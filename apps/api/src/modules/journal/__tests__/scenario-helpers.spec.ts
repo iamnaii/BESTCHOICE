@@ -7,6 +7,9 @@ const prisma = new PrismaClient();
 
 beforeAll(async () => {
   // Wipe in dependency order (Restrict FKs: JournalLine → JournalEntry first)
+  // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
+  // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+  await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
   await prisma.receipt.deleteMany({});

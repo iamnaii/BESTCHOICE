@@ -71,6 +71,18 @@ enum ExchangeRequestStatus {
   PENDING
   APPROVED
   REJECTED
+  CANCELED // ยกเลิก swap (7/30-วัน window หรือ abort ก่อน finalize) — Device Swap 2026-07
+}
+
+enum ExchangeMode {
+  MEMO // รุ่นเดิม+ราคาเดิม — ไม่มี JE, เปลี่ยน productId บนสัญญาเดิม (workbook Case 1)
+  PRICED // มีราคารับซื้อจริง — derecognition ผ่าน 21-1106 (workbook Cases 2A-2G)
+}
+
+enum ExchangeApprovalTier {
+  AUTO // ≥ NCV และผ่าน market check — อนุมัติอัตโนมัติ
+  REVIEW // ผจก.สาขา (BRANCH_MANAGER)
+  ESCALATE // < 70% NCV — OWNER เท่านั้น
 }
 
 // P1 Collections UI — Saved Filter Presets (Task 3)
@@ -7440,6 +7452,34 @@ model ContractExchangeRequest {
   /// SHOP re-intake JE (Dr S11-2002 / Cr S50-1102) — back-ref so the
   /// audit trail can pin the inventory return to its exchange request.
   je4Id         String?   @map("je_4_id")
+
+  // ===== Device Swap 2026-07 (priced exchange) =====
+  mode               ExchangeMode          @default(PRICED) @map("mode")
+  buybackPrice       Decimal?              @map("buyback_price") @db.Decimal(12, 2)
+  deviceCondition    String?               @map("device_condition") // A-D → key เข้า TradeInValuation
+  approvalTier       ExchangeApprovalTier? @map("approval_tier")
+  ncvSnapshot        Decimal?              @map("ncv_snapshot") @db.Decimal(12, 2)
+  basePriceSnapshot  Decimal?              @map("base_price_snapshot") @db.Decimal(12, 2)
+  depositAccountCode String?               @map("deposit_account_code")
+  // แผนผ่อนใหม่ (PRICED) — server-computed snapshot ตอน submit
+  newTotalMonths     Int?                  @map("new_total_months")
+  newInterestRate    Decimal?              @map("new_interest_rate") @db.Decimal(5, 4)
+  newMonthlyPayment  Decimal?              @map("new_monthly_payment") @db.Decimal(12, 2)
+  newInterestTotal   Decimal?              @map("new_interest_total") @db.Decimal(12, 2)
+  newVatAmount       Decimal?              @map("new_vat_amount") @db.Decimal(12, 2)
+  newStoreCommission Decimal?              @map("new_store_commission") @db.Decimal(12, 2)
+  // ECL reversal (A.5)
+  eclReversalJeId    String?               @map("ecl_reversal_je_id")
+  // MEMO
+  memoAppliedAt      DateTime?             @map("memo_applied_at")
+  // Cancellation
+  canceledAt         DateTime?             @map("canceled_at")
+  canceledById       String?               @map("canceled_by_id")
+  cancelReason       String?               @map("cancel_reason")
+  cancelWindow       String?               @map("cancel_window") // FREE | MEMO | PRE_FINALIZE (legacy values: FREE_7D | PENALTY_8_30D | MEMO_30D)
+  penaltyAmount      Decimal?              @map("penalty_amount") @db.Decimal(12, 2)
+  penaltyJeId        String?               @map("penalty_je_id")
+  reversalJeIds      String[]              @default([]) @map("reversal_je_ids")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

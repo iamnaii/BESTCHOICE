@@ -203,6 +203,9 @@ async function main() {
     // SP5 Phase 2 — Repair ticket CoA defaults (SHOP-side, no VAT)
     { key: 'REPAIR_EXPENSE_ACCOUNT_CODE', value: 'S51-1105', label: 'SHOP CoA — ค่าซ่อมอุปกรณ์ลูกค้า (Dr leg, payer=SHOP)' },
     { key: 'REPAIR_INCOME_ACCOUNT_CODE', value: 'S42-1101', label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)' },
+    // Device Swap 2026-07 — priced exchange (spec §10). exchange_cancel_penalty_pct
+    // removed 2026-07-31 (owner: cancellation windows + penalty retired entirely).
+    { key: 'exchange_market_check_pct', value: '15', label: 'เกณฑ์ตรวจราคาตลาด — ราคารับซื้อต่ำกว่า basePrice เกิน % นี้ → บังคับ REVIEW' },
     // D1 (2026-06-25) — overpay auto-route ceiling: multiplier × installment amountDue
     { key: 'overpay_advance_auto_max_multiplier', value: '2', label: 'เพดานรับล่วงหน้าอัตโนมัติ (× ยอดงวด) — เกินกว่านี้ต้องยืนยัน OVERPAY_ADVANCE' },
   ];

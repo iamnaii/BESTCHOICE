@@ -70,6 +70,7 @@ import { BadDebtProvisionTemplate } from '../src/modules/journal/cpa-templates/b
 import { BadDebtWriteOffTemplate } from '../src/modules/journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../src/modules/journal/cpa-templates/ecl-stage-reverse.template';
 import { ConsecutiveMissedService } from '../src/modules/overdue/consecutive-missed.service';
+import { CreditNoteDocumentService } from '../src/modules/receipts/services/credit-note-document.service';
 import { ReceiptVoidReversalTemplate } from '../src/modules/journal/cpa-templates/receipt-void-reversal.template';
 import { ContractActivation1ATemplate } from '../src/modules/journal/cpa-templates/contract-activation-1a.template';
 import { seedFinanceCoa } from '../prisma/seed-coa-finance';
@@ -184,6 +185,14 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
       new BadDebtWriteOffTemplate(journal, prisma as any),
       new EclStageReverseTemplate(journal, prisma as any),
       new ConsecutiveMissedService(prisma as any),
+      new CreditNoteDocumentService(prisma as any),
+      // CN (ใบลดหนี้) deps are reachable ONLY from writeOffBadDebt. This spec
+      // drives the payment path, where PaymentsService touches BadDebtService
+      // exclusively via reverseStageOnPayment — neither CN collaborator is ever
+      // invoked, so a no-op delivery stub is enough (a real
+      // CreditNoteDeliveryService would try to push over LINE with no
+      // configured channel token in this test DB).
+      { deliver: async () => ({ delivered: true }) } as any,
     );
 
     // Post-commit side-effect collaborators. sendPaymentSuccessLine short-circuits

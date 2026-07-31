@@ -11,6 +11,9 @@ const prisma = new PrismaClient();
 
 describe('InstallmentAccrualCron', () => {
   beforeAll(async () => {
+    // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
+    // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
@@ -71,6 +74,18 @@ describe('InstallmentAccrualCron', () => {
     await prisma.installmentSchedule.update({
       where: { id: inst.id },
       data: { dueDate: new Date() },
+    });
+
+    // scenario-helpers.seedStandard17k12m hardcodes startDate=2025-01-01, so
+    // installments #2-12 (Mar 2025 – Jan 2026) drift into the past as real
+    // wall-clock time advances past that window. The cron's backfill query
+    // (dueDate < tomorrow) then sweeps them up too, breaking this test's
+    // "only installment #1 is due" assumption — pin them safely in the future
+    // so this assertion stays isolated to installment #1 regardless of when
+    // the suite runs.
+    await prisma.installmentSchedule.updateMany({
+      where: { contractId: c.id, installmentNo: { gt: 1 } },
+      data: { dueDate: new Date(Date.now() + 365 * 86_400_000) },
     });
 
     const cron = new InstallmentAccrualCron(

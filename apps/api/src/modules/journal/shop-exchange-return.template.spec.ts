@@ -35,6 +35,7 @@ describe('ShopExchangeReturnTemplate', () => {
     const result = await template.execute({
       oldProductId: 'p-1',
       oldContractId: 'c-1',
+      requestId: 'req-1',
       cost,
     });
     expect(result).toEqual({ id: 'je-id', entryNumber: 'JE-202605-00001' });
@@ -56,47 +57,49 @@ describe('ShopExchangeReturnTemplate', () => {
   });
 
   it('tags the JE with companyId=SHOP', async () => {
-    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', cost });
+    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', cost });
     const call = journal.createAndPost.mock.calls[0][0];
     expect(call.companyId).toBe('shop-co-id');
     expect(companyResolver.getShopCompanyId).toHaveBeenCalled();
   });
 
-  it('stamps idempotencyKey = oldProductId:oldContractId on metadata', async () => {
-    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', cost });
+  it('stamps request-scoped idempotencyKey = oldProductId:oldContractId:requestId on metadata (C1b)', async () => {
+    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', cost });
     const call = journal.createAndPost.mock.calls[0][0];
     expect(call.metadata).toMatchObject({
       flow: 'shop-exchange-return',
-      idempotencyKey: 'p-1:c-1',
+      idempotencyKey: 'p-1:c-1:req-1',
       oldProductId: 'p-1',
       oldContractId: 'c-1',
       companyCode: 'SHOP',
     });
   });
 
-  it('sets a contract reference for cross-linking from reports', async () => {
-    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', cost });
+  it('sets a request-scoped contract reference for cross-linking from reports (C1b)', async () => {
+    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', cost });
     const call = journal.createAndPost.mock.calls[0][0];
-    expect(call.reference).toBe('contract:c-1:exchange-return');
+    // requestId suffix: (referenceType, referenceId) is DB-unique — round 2
+    // after a cancel must not collide with the still-POSTED first A.4.
+    expect(call.reference).toBe('contract:c-1:exchange-return:req-1');
   });
 
   it('throws InternalServerErrorException when cost = 0', async () => {
     await expect(
-      template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', cost: new Decimal(0) }),
+      template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', cost: new Decimal(0) }),
     ).rejects.toThrow(InternalServerErrorException);
     expect(journal.createAndPost).not.toHaveBeenCalled();
   });
 
   it('throws InternalServerErrorException when cost is negative', async () => {
     await expect(
-      template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', cost: new Decimal(-1) }),
+      template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', cost: new Decimal(-1) }),
     ).rejects.toThrow(InternalServerErrorException);
     expect(journal.createAndPost).not.toHaveBeenCalled();
   });
 
   it('propagates the outer transaction client when provided', async () => {
     const fakeTx = { __tag: 'tx' } as any;
-    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', cost }, fakeTx);
+    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', cost }, fakeTx);
     expect(journal.createAndPost).toHaveBeenCalledWith(expect.anything(), fakeTx);
     expect(companyResolver.getShopCompanyId).toHaveBeenCalledWith(fakeTx);
   });

@@ -60,7 +60,12 @@ export class ExchangeNewContract1ATemplate {
       {
         description: `Exchange A.1 — new contract activation (${c.contractNumber ?? newContractId})`,
         reference: newContractId,
-        metadata: { flow: 'exchange-new-contract-1a', newContractId },
+        metadata: {
+          flow: 'exchange-new-contract-1a',
+          idempotencyKey: newContractId,
+          contractId: newContractId,
+          newContractId,
+        },
         lines: [
           {
             accountCode: '11-2101',

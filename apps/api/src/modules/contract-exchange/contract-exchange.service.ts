@@ -12,11 +12,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
+import { ApproveExchangeRequestDto } from './dto/approve-exchange-request.dto';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
+import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
+import { computeExchangePlan } from './exchange-plan.util';
+import { glContractBalance } from '../journal/gl-contract-balance';
 
 /**
  * Subset of the request user that submit() needs to perform branch scoping.
@@ -60,77 +65,111 @@ export class ContractExchangeService {
     private readonly t2: ExchangeCloseOld21_1106Template,
     private readonly t3: ExchangeClearVendor21_1106Template,
     private readonly t4: ShopExchangeReturnTemplate,
+    private readonly t5: ExchangeEclReversalTemplate,
     private readonly companyResolver: CompanyResolverService,
   ) {}
 
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
-    // 1. Old contract must exist + ACTIVE + not deleted
     const oldContract = await this.prisma.contract.findUnique({
       where: { id: dto.oldContractId },
     });
     if (!oldContract || oldContract.deletedAt) {
       throw new NotFoundException('ไม่พบสัญญาเดิม');
     }
-
-    // Branch scoping (in-service because the DTO doesn't carry branchId — see
-    // issue #1086 item 2). BranchGuard isn't reachable from oldContractId
-    // without an extra controller-level resolver; doing the check here keeps
-    // the existing controller surface area unchanged.
     if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถสร้างคำขอเปลี่ยนเครื่องของสาขาอื่นได้');
     }
-
     if (oldContract.status !== 'ACTIVE') {
       throw new BadRequestException(`สัญญาเดิมสถานะ ${oldContract.status} — ต้องเป็น ACTIVE`);
     }
 
-    // 2. Old + new products: same brand+model+storage+sellingPrice; new IN_STOCK
-    // We cast to ProductPriceSnapshot — test mocks expose `sellingPrice`,
-    // production Prisma returns `installmentPrice`. The helper below normalises both.
     const [oldRaw, newRaw] = await Promise.all([
       this.prisma.product.findUnique({ where: { id: dto.oldProductId } }) as Promise<ProductPriceSnapshot | null>,
       this.prisma.product.findUnique({ where: { id: dto.newProductId } }) as Promise<ProductPriceSnapshot | null>,
     ]);
-
     if (!oldRaw) throw new NotFoundException('ไม่พบเครื่องเดิม');
     if (!newRaw) throw new NotFoundException('ไม่พบเครื่องใหม่');
-
+    // I6 (final review 2026-07-29): the submitted oldProductId must be the
+    // device actually on the contract — a mismatched id would return the WRONG
+    // device to SHOP stock at finalize (A.4 cost + product flips key off it).
+    if (oldContract.productId !== dto.oldProductId) {
+      throw new BadRequestException('เครื่องเดิมไม่ตรงกับสัญญา');
+    }
     const oldProduct = oldRaw as any;
     const newProduct = newRaw as any;
 
-    // Resolve whichever price field is populated (installmentPrice in prod, sellingPrice in tests).
-    // Return null when both fields are null/missing so the caller can reject — silently
-    // coercing to 0 would let two null-priced products pass the same-price check.
-    // (Issue #1086 item 1.)
     const resolvePriceOrNull = (p: any): Decimal | null => {
       const raw = p?.sellingPrice ?? p?.installmentPrice;
       if (raw === null || raw === undefined) return null;
       return new Decimal((raw as { toString(): string } | string).toString());
     };
-
-    const oldPrice = resolvePriceOrNull(oldProduct);
     const newPrice = resolvePriceOrNull(newProduct);
-    if (oldPrice === null || newPrice === null) {
-      throw new BadRequestException('ราคาเครื่องไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบ');
+    if (newPrice === null) {
+      throw new BadRequestException('ราคาเครื่องใหม่ไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบ');
     }
-
     if (newProduct.status !== 'IN_STOCK') {
       throw new BadRequestException('เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)');
     }
-    if (
-      oldProduct.brand !== newProduct.brand ||
-      oldProduct.model !== newProduct.model ||
-      oldProduct.storage !== newProduct.storage
-    ) {
-      throw new BadRequestException('เครื่องใหม่ต้องเป็นรุ่นเดียวกัน (brand/model/storage)');
-    }
-    if (!oldPrice.equals(newPrice)) {
-      throw new BadRequestException(`ราคาเครื่องใหม่ต้องเท่ากับเครื่องเดิม (${oldPrice} vs ${newPrice})`);
+
+    const mode = this.detectMode(
+      oldProduct,
+      newProduct,
+      newPrice,
+      new Decimal(oldContract.sellingPrice.toString()),
+    );
+
+    // ---------- MEMO (workbook Case 1): ไม่มี JE, ไม่มีราคารับซื้อ ----------
+    if (mode === 'MEMO') {
+      if (dto.buybackPrice !== undefined) {
+        throw new BadRequestException(
+          'รุ่นเดิม+ราคาเดิม = เปลี่ยนแบบไม่มีรายการบัญชี (MEMO) — ห้ามระบุราคารับซื้อ',
+        );
+      }
+      return (this.prisma as any).contractExchangeRequest.create({
+        data: {
+          oldContractId: dto.oldContractId,
+          oldProductId: dto.oldProductId,
+          newProductId: dto.newProductId,
+          conditionNote: dto.conditionNote,
+          conditionPhotos: dto.conditionPhotos ?? [],
+          status: 'PENDING',
+          mode: 'MEMO',
+          requestedById: user.id,
+        },
+      });
     }
 
-    // 3. Create PENDING request
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (this.prisma as any).contractExchangeRequest.create({
+    // ---------- PRICED (workbook Cases 2A-2G) ----------
+    if (!dto.buybackPrice) throw new BadRequestException('กรุณาระบุราคารับซื้อเครื่องเดิม');
+    if (!dto.deviceCondition) throw new BadRequestException('กรุณาระบุสภาพเครื่องเดิม (A-D)');
+    if (!dto.newTotalMonths) throw new BadRequestException('กรุณาระบุจำนวนงวดของสัญญาใหม่');
+    const buyback = new Decimal(dto.buybackPrice);
+    if (buyback.lte(0)) throw new BadRequestException('ราคารับซื้อต้องมากกว่า 0');
+
+    const rate = dto.newInterestRate
+      ? new Decimal(dto.newInterestRate)
+      : new Decimal(oldContract.interestRate.toString());
+    if (rate.lt(0) || rate.gt('0.15')) {
+      throw new BadRequestException('อัตราดอกเบี้ยต่อเดือนต้องอยู่ระหว่าง 0 ถึง 0.15');
+    }
+    const plan = computeExchangePlan({ newPrice, months: dto.newTotalMonths, monthlyRate: rate });
+
+    // Snapshot NCV + ราคากลาง + tier ณ ตอน submit (enforce ซ้ำตอน approve — spec §6)
+    const outstanding = await this.computeOldOutstanding(this.prisma as any, dto.oldContractId);
+    const ncv = outstanding.gross.minus(outstanding.unearnedInterest);
+    const basePrice = await this.lookupBasePrice(oldProduct, dto.deviceCondition);
+    const marketCheckPct = await this.configNumber('exchange_market_check_pct', 15);
+    const tier: ExchangeTier = computeExchangeTier({ buyback, ncv, basePrice, marketCheckPct });
+
+    // depositAccountCode บังคับทุกคำขอ PRICED (final review 2026-07-29):
+    // เดิมบังคับเฉพาะ buyback ≠ vendorSum แต่เคส Case-2F (buyback == vendorSum)
+    // ก็ยังต้องมีบัญชีเงินไว้ให้ penalty JE ตอน cancel วันที่ 8-30 — ไม่งั้น
+    // cancel ตาย "คำขอนี้ไม่มีบัญชีเงินสด" ทั้งที่ยกเลิกควรทำได้
+    if (!dto.depositAccountCode) {
+      throw new BadRequestException('กรุณาเลือกบัญชีเงินสด/ธนาคาร (บังคับทุกคำขอแบบมีราคารับซื้อ)');
+    }
+
+    const request = await (this.prisma as any).contractExchangeRequest.create({
       data: {
         oldContractId: dto.oldContractId,
         oldProductId: dto.oldProductId,
@@ -138,9 +177,134 @@ export class ContractExchangeService {
         conditionNote: dto.conditionNote,
         conditionPhotos: dto.conditionPhotos ?? [],
         status: 'PENDING',
+        mode: 'PRICED',
+        buybackPrice: buyback,
+        deviceCondition: dto.deviceCondition,
+        approvalTier: tier,
+        ncvSnapshot: ncv,
+        basePriceSnapshot: basePrice,
+        depositAccountCode: dto.depositAccountCode,
+        newTotalMonths: dto.newTotalMonths,
+        newInterestRate: rate,
+        newMonthlyPayment: plan.monthlyPayment,
+        newInterestTotal: plan.interestTotal,
+        newVatAmount: plan.vatAmount,
+        newStoreCommission: plan.storeCommission,
         requestedById: user.id,
       },
     });
+
+    // AUTO tier — อนุมัติทันที (audit ระบุ auto)
+    if (tier === 'AUTO') {
+      const approved = await this.approve(request.id, user, {});
+      return { ...request, status: 'APPROVED', autoApproved: true, newContractId: approved.newContractId };
+    }
+    return request;
+  }
+
+  async buildPreview(
+    params: {
+      oldContractId: string;
+      newProductId?: string;
+      buybackPrice?: string;
+      deviceCondition?: string;
+      newTotalMonths?: number;
+      newInterestRate?: string;
+    },
+    user: RequestUser,
+  ) {
+    const oldContract = await this.prisma.contract.findUnique({ where: { id: params.oldContractId } });
+    if (!oldContract || oldContract.deletedAt) throw new NotFoundException('ไม่พบสัญญาเดิม');
+    // Task 8 (carry-over from Task 7 review): same in-service branch scoping as
+    // submit() — without it any SALES user could read any contract's NCV/GL by UUID.
+    if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถดูข้อมูลสัญญาของสาขาอื่นได้');
+    }
+    const oldProduct = (await this.prisma.product.findUnique({
+      where: { id: oldContract.productId },
+    })) as any;
+
+    const outstanding = await this.computeOldOutstanding(this.prisma as any, params.oldContractId);
+    const ncv = outstanding.gross.minus(outstanding.unearnedInterest);
+    const grossRemainingInclVat = outstanding.gross.plus(outstanding.vatReceivable);
+
+    // Blockers (spec §7.0) — เตือนตั้งแต่ preview จะได้ไม่ไปตายตอน finalize
+    const bal2103 = await glContractBalance(this.prisma as any, params.oldContractId, '11-2103', 'dr');
+    const bal21_1103 = await glContractBalance(this.prisma as any, params.oldContractId, '21-1103', 'cr');
+    const overdueBlocked = bal2103.abs().gte('0.005');
+    const advanceBlocked =
+      bal21_1103.gte('0.005') ||
+      new Decimal(oldContract.advanceBalance.toString()).gt(0) ||
+      new Decimal((oldContract as any).creditBalance?.toString() ?? '0').gt(0);
+    const hasUnpaidLateFee = !!(await this.prisma.payment.findFirst({
+      where: {
+        contractId: params.oldContractId,
+        status: { not: 'PAID' },
+        dueDate: { lt: new Date() },
+        lateFee: { gt: 0 },
+        deletedAt: null,
+      },
+      select: { id: true },
+    }));
+
+    let mode: 'MEMO' | 'PRICED' | null = null;
+    let plan: ReturnType<typeof computeExchangePlan> | null = null;
+    if (params.newProductId) {
+      const newProduct = (await this.prisma.product.findUnique({
+        where: { id: params.newProductId },
+      })) as any;
+      if (newProduct) {
+        const raw = newProduct.sellingPrice ?? newProduct.installmentPrice;
+        const newPrice = raw != null ? new Decimal(raw.toString()) : null;
+        if (newPrice) {
+          mode = this.detectMode(oldProduct, newProduct, newPrice, new Decimal(oldContract.sellingPrice.toString()));
+          if (mode === 'PRICED' && params.newTotalMonths) {
+            const rate = params.newInterestRate
+              ? new Decimal(params.newInterestRate)
+              : new Decimal(oldContract.interestRate.toString());
+            plan = computeExchangePlan({ newPrice, months: params.newTotalMonths, monthlyRate: rate });
+          }
+        }
+      }
+    }
+
+    let tier: ExchangeTier | null = null;
+    let basePrice: Decimal | null = null;
+    let marketMin: Decimal | null = null;
+    let expectedPl: Decimal | null = null;
+    const marketCheckPct = await this.configNumber('exchange_market_check_pct', 15);
+    if (params.buybackPrice && params.deviceCondition) {
+      const buyback = new Decimal(params.buybackPrice);
+      basePrice = await this.lookupBasePrice(oldProduct, params.deviceCondition);
+      marketMin = basePrice
+        ? basePrice.times(new Decimal(100).minus(marketCheckPct).div(100)).toDecimalPlaces(2)
+        : null;
+      tier = computeExchangeTier({ buyback, ncv, basePrice, marketCheckPct });
+      expectedPl = buyback.minus(grossRemainingInclVat); // − = loss (Dr 51-1102), + = gain (Cr 41-1102)
+    }
+
+    return {
+      mode,
+      ncv: ncv.toFixed(2),
+      grossRemainingInclVat: grossRemainingInclVat.toFixed(2),
+      unearnedInterest: outstanding.unearnedInterest.toFixed(2),
+      basePrice: basePrice?.toFixed(2) ?? null,
+      marketMin: marketMin?.toFixed(2) ?? null,
+      marketCheckPct,
+      tier,
+      expectedPl: expectedPl?.toFixed(2) ?? null,
+      plan: plan
+        ? {
+            financedAmount: plan.financedAmount.toFixed(2),
+            storeCommission: plan.storeCommission.toFixed(2),
+            interestTotal: plan.interestTotal.toFixed(2),
+            vatAmount: plan.vatAmount.toFixed(2),
+            monthlyPayment: plan.monthlyPayment.toFixed(2),
+          }
+        : null,
+      blockers: { overdueBlocked, advanceBlocked },
+      hasUnpaidLateFee,
+    };
   }
 
   /**
@@ -161,7 +325,104 @@ export class ContractExchangeService {
    * for "ready to sign then activate" (see ContractWorkflowService.activate),
    * so we don't need a new lifecycle state.
    */
-  async approve(id: string, userId: string) {
+  async approve(id: string, user: RequestUser, dto: ApproveExchangeRequestDto) {
+    // Tier-role enforcement ที่ service (spec §6) — controller เปิด OWNER+BM แล้ว
+    const pre = await (this.prisma as any).contractExchangeRequest.findUnique({
+      where: { id },
+      include: { oldContract: { select: { branchId: true } } },
+    });
+    if (!pre || pre.deletedAt) throw new NotFoundException('ไม่พบคำขอเปลี่ยนเครื่อง');
+    // I7 (final review 2026-07-29): BM must not approve another branch's request
+    // by UUID — same in-service branch scoping as submit()/buildPreview().
+    if (!hasCrossBranchAccess(user) && pre.oldContract?.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถอนุมัติคำขอของสาขาอื่นได้');
+    }
+    if (pre.mode === 'PRICED' && pre.approvalTier === 'ESCALATE' && user.role !== 'OWNER') {
+      throw new ForbiddenException(
+        'ราคารับซื้อต่ำกว่า 70% ของมูลค่าคงเหลือ — ต้องให้ผู้จัดการใหญ่ (OWNER) อนุมัติเท่านั้น',
+      );
+    }
+
+    if (pre.mode === 'MEMO') {
+      return this.approveMemo(id, user.id, dto);
+    }
+    return this.approvePriced(id, user.id);
+  }
+
+  /** MEMO (workbook Case 1): เปลี่ยน device บนสัญญาเดิม — ไม่มี JE, ไม่มีสัญญาใหม่ (spec §8) */
+  private async approveMemo(id: string, userId: string, dto: ApproveExchangeRequestDto) {
+    if (!dto.memoAddendumSigned || !dto.memoMdmSwapped) {
+      throw new BadRequestException(
+        'ต้องยืนยัน checklist ก่อนอนุมัติ: บันทึกแนบท้ายสัญญา (ADDENDUM) + สลับ MDM เครื่องเก่า/ใหม่',
+      );
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const lock = await (tx as any).contractExchangeRequest.updateMany({
+        where: { id, status: 'PENDING', deletedAt: null },
+        data: {
+          status: 'APPROVED',
+          approvedById: userId,
+          approvedAt: new Date(),
+          memoAppliedAt: new Date(),
+        },
+      });
+      if (lock.count !== 1) {
+        throw new ConflictException('คำขออาจถูกอนุมัติแล้ว หรือสถานะเปลี่ยน');
+      }
+      const req = await (tx as any).contractExchangeRequest.findUniqueOrThrow({
+        where: { id },
+        include: { oldContract: true },
+      });
+      // Task 8 review fix 3: approval can happen days after submit — the old
+      // contract may have closed (early payoff / repossession) in between.
+      if (req.oldContract.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          `สัญญาเดิมสถานะ ${req.oldContract.status} — เปลี่ยนเครื่องไม่ได้`,
+        );
+      }
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+      const oldProduct = await tx.product.findUniqueOrThrow({
+        where: { id: req.oldProductId },
+        select: { status: true, ownedByCompanyId: true } as any,
+      });
+
+      // เครื่องใหม่รับสถานะ/ownership ของเครื่องเดิม (FINANCE ถือกรรมสิทธิ์ระหว่างผ่อน)
+      await tx.product.update({
+        where: { id: req.newProductId },
+        data: {
+          status: (oldProduct as any).status,
+          ownedByCompanyId: (oldProduct as any).ownedByCompanyId,
+        } as any,
+      });
+      await tx.product.update({
+        where: { id: req.oldProductId },
+        data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,
+      });
+      // หัวใจ MEMO: สัญญาเดิม-สถานะเดิม-ตารางเดิม แค่ชี้ product ใหม่
+      await tx.contract.update({
+        where: { id: req.oldContractId },
+        data: { productId: req.newProductId },
+      });
+
+      await this.audit.log({
+        action: 'EXCHANGE_MEMO_APPLIED',
+        entity: 'contract_exchange_request',
+        entityId: id,
+        userId,
+        newValue: {
+          contractId: req.oldContractId,
+          oldProductId: req.oldProductId,
+          newProductId: req.newProductId,
+          checklist: { addendumSigned: true, mdmSwapped: true },
+          note: 'Memo-only swap — no JE (workbook Case 1, TFRS 9 modification)',
+        },
+      });
+      return { id, newContractId: null as string | null, mode: 'MEMO' };
+    });
+  }
+
+  /** PRICED: เดิมคือ approve() ทั้งก้อน — เปลี่ยนเฉพาะที่มาของแผนผ่อน (Device Swap 2026-07) */
+  private async approvePriced(id: string, userId: string) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Lock-acquire (race-safe via updateMany count===1)
       const lock = await (tx as any).contractExchangeRequest.updateMany({
@@ -179,24 +440,95 @@ export class ContractExchangeService {
       // 2. Re-fetch with full data
       const req = await (tx as any).contractExchangeRequest.findUniqueOrThrow({
         where: { id },
-        include: { oldContract: true },
+        include: { oldContract: true, newProduct: true },
       });
       const old = req.oldContract;
 
-      // 3. Remaining-installment plan
-      const paidCount = await tx.payment.count({
-        where: { contractId: old.id, status: 'PAID', deletedAt: null },
-      });
-      const remainingMonths = old.totalMonths - paidCount;
-      if (remainingMonths <= 0) {
-        throw new BadRequestException('สัญญาเดิมจ่ายครบงวดแล้ว — เปลี่ยนเครื่องไม่ได้');
+      // 3. Installment plan for the new contract.
+      //    Device Swap 2026-07: server-computed snapshot from submit() when
+      //    present; legacy fallback (in-flight PENDING rows created before
+      //    deploy) clones the remaining installments like SP2 did.
+      let planFields: {
+        totalMonths: number;
+        monthlyPayment: Decimal;
+        financedAmount: Decimal;
+        storeCommission: Decimal;
+        interestTotal: Decimal;
+        interestRate: Decimal;
+        vatAmount: Decimal | null;
+        sellingPrice: Decimal;
+      };
+      const usedSnapshot = req.newTotalMonths != null;
+      if (usedSnapshot) {
+        // Task 8 review fix 3: approval can happen days after submit — the
+        // old contract may have closed (early payoff / repossession) since.
+        // (Legacy branch keeps its remainingMonths<=0 guard instead.)
+        if (old.status !== 'ACTIVE') {
+          throw new BadRequestException(
+            `สัญญาเดิมสถานะ ${old.status} — เปลี่ยนเครื่องไม่ได้`,
+          );
+        }
+        // Same price resolver submit() uses (sellingPrice ?? installmentPrice).
+        // Legacy product rows may still carry null prices — fail loudly
+        // instead of creating a contract financed at 0.
+        const rawNewPrice = req.newProduct?.sellingPrice ?? req.newProduct?.installmentPrice;
+        if (rawNewPrice == null) {
+          throw new BadRequestException(
+            'ราคาผ่อนของเครื่องใหม่ไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบก่อนอนุมัติ',
+          );
+        }
+        const newPrice = new Decimal(rawNewPrice.toString());
+        // Task 8 review fix 2 — price-drift guard: recompute the plan off the
+        // LIVE product price. If it no longer reproduces the submit-time
+        // monthlyPayment snapshot, the price list moved while the request was
+        // pending — refuse rather than silently book stale numbers.
+        const livePlan = computeExchangePlan({
+          newPrice,
+          months: req.newTotalMonths,
+          monthlyRate: new Decimal(req.newInterestRate.toString()),
+        });
+        if (!livePlan.monthlyPayment.equals(new Decimal(req.newMonthlyPayment.toString()))) {
+          throw new BadRequestException(
+            'ราคาเครื่องหรือแผนผ่อนเปลี่ยนไประหว่างรออนุมัติ — กรุณาส่งคำขอเปลี่ยนเครื่องใหม่',
+          );
+        }
+        planFields = {
+          totalMonths: req.newTotalMonths,
+          monthlyPayment: new Decimal(req.newMonthlyPayment.toString()),
+          financedAmount: newPrice,
+          storeCommission: new Decimal(req.newStoreCommission.toString()),
+          interestTotal: new Decimal(req.newInterestTotal.toString()),
+          interestRate: new Decimal(req.newInterestRate.toString()),
+          vatAmount: new Decimal(req.newVatAmount.toString()),
+          sellingPrice: newPrice,
+        };
+      } else {
+        // Legacy fallback (in-flight PENDING ก่อน deploy): clone งวดคงเหลือแบบ SP2 เดิม
+        const paidCount = await tx.payment.count({
+          where: { contractId: old.id, status: 'PAID', deletedAt: null },
+        });
+        const remainingMonths = old.totalMonths - paidCount;
+        if (remainingMonths <= 0) {
+          throw new BadRequestException('สัญญาเดิมจ่ายครบงวดแล้ว — เปลี่ยนเครื่องไม่ได้');
+        }
+        const monthlyPayment = new Decimal(old.monthlyPayment.toString());
+        const newFinanced = new Decimal(old.financedAmount.toString());
+        const newCommission = old.storeCommission
+          ? new Decimal(old.storeCommission.toString())
+          : new Decimal(0);
+        planFields = {
+          totalMonths: remainingMonths,
+          monthlyPayment,
+          financedAmount: newFinanced,
+          storeCommission: newCommission,
+          interestTotal: monthlyPayment.times(remainingMonths).minus(newFinanced),
+          interestRate: new Decimal(old.interestRate.toString()),
+          // Task 8 review fix 1: pass null THROUGH (template derives 7% from
+          // null; Decimal(0) would mean "book zero VAT" and kill the fallback)
+          vatAmount: old.vatAmount ? new Decimal(old.vatAmount.toString()) : null,
+          sellingPrice: new Decimal(old.sellingPrice.toString()),
+        };
       }
-      const monthlyPayment = new Decimal(old.monthlyPayment.toString());
-      const newFinanced = new Decimal(old.financedAmount.toString());
-      const newCommission = old.storeCommission
-        ? new Decimal(old.storeCommission.toString())
-        : new Decimal(0);
-      const newInterest = monthlyPayment.times(remainingMonths).minus(newFinanced);
 
       // 4. Create new contract as DRAFT (sign-then-activate gate).
       // Issue #1086 item 4 — use EXCH-YYYYMMDD-NNNN to avoid grep-collision
@@ -244,14 +576,14 @@ export class ContractExchangeService {
           workflowStatus: 'APPROVED',
           pdpaConsentId: clonedPdpaConsentId,
           planType: old.planType,
-          totalMonths: remainingMonths,
-          monthlyPayment,
-          financedAmount: newFinanced,
-          storeCommission: newCommission,
-          interestTotal: newInterest,
-          interestRate: old.interestRate,
-          vatAmount: old.vatAmount,
-          sellingPrice: old.sellingPrice,
+          totalMonths: planFields.totalMonths,
+          monthlyPayment: planFields.monthlyPayment,
+          financedAmount: planFields.financedAmount,
+          storeCommission: planFields.storeCommission,
+          interestTotal: planFields.interestTotal,
+          interestRate: planFields.interestRate,
+          vatAmount: planFields.vatAmount,
+          sellingPrice: planFields.sellingPrice,
           // Same-price exchange: customer pays ฿0 at swap (spec v3). Copying
           // old.downPayment would distort payment-history view and corrupt
           // early-payoff calcs that reference downPayment. (Issue #1086 item 5.)
@@ -288,7 +620,11 @@ export class ContractExchangeService {
         newValue: {
           oldContractId: old.id,
           newContractId: newContract.id,
-          remainingMonths,
+          // Task 8 review fix 4: snapshot plan = a FULL new plan, so the key
+          // is totalMonths; legacy clone keeps the historical remainingMonths.
+          ...(usedSnapshot
+            ? { totalMonths: planFields.totalMonths }
+            : { remainingMonths: planFields.totalMonths }),
           // Highlight the deferred-finalization design so an auditor scanning
           // the log understands no money has moved at this point.
           phase: 'awaiting-sign-then-activate',
@@ -297,7 +633,8 @@ export class ContractExchangeService {
 
       return {
         id,
-        newContractId: newContract.id,
+        newContractId: newContract.id as string | null,
+        mode: 'PRICED',
       };
     });
   }
@@ -324,7 +661,7 @@ export class ContractExchangeService {
   async finalizeAfterActivation(
     newContract: ExchangeContractForFinalize,
     tx: Prisma.TransactionClient,
-  ): Promise<{ je1aId: string; je2Id: string; je3Id: string; je4Id: string }> {
+  ): Promise<{ je1aId: string; je2Id: string; je3Id: string; je4Id: string; je5Id: string | null }> {
     // 1. Resolve SHOP companyId
     const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
 
@@ -346,21 +683,48 @@ export class ContractExchangeService {
       );
     }
 
+    // ---- Pre-flight guards (spec §7.0) ----
+    const bal2103 = await glContractBalance(tx, oldContractId, '11-2103', 'dr');
+    if (bal2103.abs().gte('0.005')) {
+      throw new BadRequestException(
+        `มีงวดค้างชำระ (11-2103 = ${bal2103.toFixed(2)}) — เคลียร์งวดค้างก่อนเปลี่ยนเครื่อง`,
+      );
+    }
+    const bal21_1103 = await glContractBalance(tx, oldContractId, '21-1103', 'cr');
+    const oldC = await tx.contract.findUniqueOrThrow({
+      where: { id: oldContractId },
+      select: { advanceBalance: true, creditBalance: true },
+    });
+    if (
+      bal21_1103.gte('0.005') ||
+      new Decimal(oldC.advanceBalance.toString()).gt(0) ||
+      new Decimal((oldC as any).creditBalance?.toString() ?? '0').gt(0)
+    ) {
+      throw new BadRequestException(
+        'มีเงินรับล่วงหน้า/เครดิตค้างบนสัญญาเดิม — ใช้หรือคืนเงินก่อนเปลี่ยนเครื่อง',
+      );
+    }
+
     // 3. Outstanding from the real ledger (not straight-line proration).
     const newFinanced = new Decimal(newContract.financedAmount.toString());
     const newCommission = newContract.storeCommission
       ? new Decimal(newContract.storeCommission.toString())
       : new Decimal(0);
-    const buyback = newFinanced.plus(newCommission);
+    const buyback = request.buybackPrice
+      ? new Decimal(request.buybackPrice.toString())
+      : newFinanced.plus(newCommission); // legacy same-price fallback
     const oldOutstanding = await this.computeOldOutstanding(tx, oldContractId);
 
     // 4. JE A.1 — open new HP receivable
     const je1a = await this.t1a.execute(newContract.id, tx);
 
     // 5. JE A.2 — close old contract's outstanding
+    // requestId keys the idempotency (C1b) so a re-exchange after cancel
+    // doesn't collide with the first lifecycle's still-POSTED JEs.
     const je2 = await this.t2.execute(
       {
         oldContractId,
+        requestId: request.id,
         buyback,
         oldGrossOutstanding: oldOutstanding.gross,
         oldVatReceivableOutstanding: oldOutstanding.vatReceivable,
@@ -377,6 +741,7 @@ export class ContractExchangeService {
         buyback,
         newVendorYodjat: newFinanced,
         newVendorCommission: newCommission,
+        depositAccountCode: request.depositAccountCode ?? undefined,
       },
       tx,
     );
@@ -394,9 +759,18 @@ export class ContractExchangeService {
     }
     const cost = new Decimal(oldProduct.costPrice.toString());
     const je4 = await this.t4.execute(
-      { oldProductId: request.oldProductId, oldContractId, cost },
+      { oldProductId: request.oldProductId, oldContractId, requestId: request.id, cost },
       tx,
     );
+
+    // JE A.5 — ECL reversal on derecognition (workbook Case 4, synchronous ใน tx เดียวกัน)
+    const je5 = await this.t5.execute({ oldContractId, requestId: request.id }, tx);
+    if (je5) {
+      await (tx as any).badDebtProvision.updateMany({
+        where: { contractId: oldContractId, status: 'ACTIVE', deletedAt: null },
+        data: { status: 'REVERSED' },
+      });
+    }
 
     // 8. Old-side status flips
     await tx.contract.update({
@@ -416,6 +790,7 @@ export class ContractExchangeService {
         je2Id: je2.id,
         je3Id: je3.id,
         je4Id: je4.id,
+        eclReversalJeId: je5?.id ?? null,
       },
     });
 
@@ -429,7 +804,13 @@ export class ContractExchangeService {
         oldContractId,
         newContractId: newContract.id,
         buyback: buyback.toString(),
-        jeIds: { je1aId: je1a.id, je2Id: je2.id, je3Id: je3.id, je4Id: je4.id },
+        jeIds: {
+          je1aId: je1a.id,
+          je2Id: je2.id,
+          je3Id: je3.id,
+          je4Id: je4.id,
+          je5Id: je5?.id ?? null,
+        },
       },
     });
     await this.audit.log({
@@ -450,6 +831,7 @@ export class ContractExchangeService {
       je2Id: je2.id,
       je3Id: je3.id,
       je4Id: je4.id,
+      je5Id: je5?.id ?? null,
     };
   }
 
@@ -481,9 +863,15 @@ export class ContractExchangeService {
     });
   }
 
-  async listPending(): Promise<any[]> {
+  async listPending(user: RequestUser): Promise<any[]> {
+    // I7 (final review 2026-07-29): BM sees only their own branch's queue —
+    // cross-branch roles (OWNER/FM/ACC) see everything.
+    const where: Record<string, unknown> = { status: 'PENDING', deletedAt: null };
+    if (!hasCrossBranchAccess(user)) {
+      where.oldContract = { branchId: user.branchId };
+    }
     return (this.prisma as any).contractExchangeRequest.findMany({
-      where: { status: 'PENDING', deletedAt: null },
+      where,
       include: {
         oldContract: {
           include: { customer: { select: { id: true, name: true, phone: true } } },
@@ -494,6 +882,79 @@ export class ContractExchangeService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * APPROVED requests from the last 90 days — feeds the "อนุมัติแล้ว
+   * (ยกเลิกได้ภายใน 30 วัน)" table on ExchangeRequestsPage. `updatedAt` is
+   * touched by both approve() (approvedAt set in the same updateMany) and
+   * finalizeAfterActivation/cancel, so a 90-day window on it comfortably
+   * covers the 30-day cancel-eligibility window this list exists to serve.
+   */
+  async listRecent(user: RequestUser): Promise<any[]> {
+    const since = new Date(Date.now() - 90 * 86_400_000);
+    // I7: same branch scoping as listPending — BM sees only their own branch.
+    const where: Record<string, unknown> = {
+      status: 'APPROVED',
+      deletedAt: null,
+      updatedAt: { gte: since },
+    };
+    if (!hasCrossBranchAccess(user)) {
+      where.oldContract = { branchId: user.branchId };
+    }
+    return (this.prisma as any).contractExchangeRequest.findMany({
+      where,
+      include: {
+        oldContract: {
+          select: { id: true, contractNumber: true, exchangedAt: true, customer: { select: { name: true } } },
+        },
+        newContract: { select: { id: true, contractNumber: true, status: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  /** SystemConfig ตัวเลข — fallback เมื่อ row หาย/parse ไม่ได้ */
+  private async configNumber(key: string, fallback: number): Promise<number> {
+    const row = await this.prisma.systemConfig.findFirst({
+      where: { key, deletedAt: null },
+      select: { value: true },
+    });
+    const n = row ? parseFloat(row.value) : NaN;
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+  }
+
+  /** ราคากลางเครื่องเดิมจากตารางตีราคา (null = ไม่มี row) */
+  private async lookupBasePrice(
+    p: { brand: string; model: string; storage: string | null },
+    condition: string,
+  ): Promise<Decimal | null> {
+    const row = await this.prisma.tradeInValuation.findFirst({
+      where: {
+        brand: p.brand,
+        model: p.model,
+        storage: p.storage ?? '',
+        condition,
+        deletedAt: null,
+      },
+      select: { basePrice: true },
+    });
+    return row ? new Decimal(row.basePrice.toString()) : null;
+  }
+
+  /** MEMO เมื่อรุ่นเดียวกันและราคาเครื่องใหม่ = ราคาบนสัญญาเดิม (spec §4 — กัน price-list drift) */
+  private detectMode(
+    oldProduct: { brand: string; model: string; storage: string | null },
+    newProduct: { brand: string; model: string; storage: string | null },
+    newPrice: Decimal,
+    oldContractSellingPrice: Decimal,
+  ): 'MEMO' | 'PRICED' {
+    const sameModel =
+      oldProduct.brand === newProduct.brand &&
+      oldProduct.model === newProduct.model &&
+      oldProduct.storage === newProduct.storage;
+    return sameModel && newPrice.equals(oldContractSellingPrice) ? 'MEMO' : 'PRICED';
   }
 
   /**

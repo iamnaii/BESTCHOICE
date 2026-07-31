@@ -17,7 +17,6 @@ import { ExchangeClearVendor21_1106Template } from '../../journal/cpa-templates/
 import { ShopExchangeReturnTemplate } from '../../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
-import { ExchangeCancelPenaltyTemplate } from '../../journal/cpa-templates/exchange-cancel-penalty.template';
 import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.cron';
 
 /**
@@ -33,9 +32,11 @@ import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.c
  *      11,333.28 (1,416.66 × 8); loss plug 51-1102 = GL-derived 4,126.68.
  *   2. ECL — provision 30.32 on the old contract → A.5 Dr 11-2102 / Cr 42-1106
  *      30.32, BadDebtProvision row REVERSED, GL 11-2102 = 0.
- *   3. Cancel day-15 — every JE mirror-reversed (per-account net 0 across
- *      originals + reversals), penalty 400.00 (5% × 8,000) → 42-1107, old
- *      contract restored to ACTIVE, and the 2A cron backfills a missed
+ *   3. Cancel day-15 / day-45 — owner removed the cancellation-fee rule +
+ *      time windows entirely (2026-07-31): every JE mirror-reversed
+ *      (per-account net 0 across originals + reversals), NO 42-1107 penalty
+ *      JE ever posts, penaltyAmount stays null regardless of days elapsed,
+ *      old contract restored to ACTIVE, and the 2A cron backfills a missed
  *      installment on the next tick (contract no longer EXCHANGED).
  *   4. MEMO — same model + price: zero new JEs, contract.productId swapped.
  *
@@ -71,7 +72,6 @@ const cancelSvc = new ExchangeCancelService(
   audit,
   companyResolver,
   new ExchangeCancelReversalTemplate(journal, prisma as never),
-  new ExchangeCancelPenaltyTemplate(journal, prisma as never),
 );
 const accrualCron = new InstallmentAccrualCron(prisma as never, accrual2a);
 
@@ -83,8 +83,6 @@ const createdProductIds: string[] = [];
 const createdCustomerIds: string[] = [];
 const createdRequestIds: string[] = [];
 let createdBranchId: string | null = null;
-let savedPenaltyPct: { value: string; label: string | null } | null = null;
-let penaltyPctExisted = false;
 
 let adminId: string;
 let shopCompanyId: string;
@@ -365,33 +363,9 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       branchId = branch.id;
       createdBranchId = branch.id;
     }
-
-    // Deterministic penalty: capture + pin exchange_cancel_penalty_pct = 5,
-    // restore original in afterAll (crash-safe upsert pattern — never delete
-    // an operator's row mid-suite).
-    const saved = await prisma.systemConfig.findUnique({
-      where: { key: 'exchange_cancel_penalty_pct' },
-    });
-    penaltyPctExisted = !!saved;
-    savedPenaltyPct = saved ? { value: saved.value, label: saved.label } : null;
-    await prisma.systemConfig.upsert({
-      where: { key: 'exchange_cancel_penalty_pct' },
-      create: { key: 'exchange_cancel_penalty_pct', value: '5' },
-      update: { value: '5' },
-    });
   }, 120_000);
 
   afterAll(async () => {
-    // Restore config FIRST (crash-safe ordering)
-    if (penaltyPctExisted && savedPenaltyPct) {
-      await prisma.systemConfig.update({
-        where: { key: 'exchange_cancel_penalty_pct' },
-        data: { value: savedPenaltyPct.value, label: savedPenaltyPct.label },
-      });
-    } else {
-      await prisma.systemConfig.deleteMany({ where: { key: 'exchange_cancel_penalty_pct' } });
-    }
-
     // Collect every JE this spec produced: (a) anything stamped
     // metadata.contractId with one of our contracts (1A/2A/receipt-sims/A.1-A.3/
     // A.5/penalty/provision-seed + their mirrors), (b) request-linked ids —
@@ -632,7 +606,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
 
   // -------------------------------------------------------------------------
   it(
-    'Cancel day-15: all JEs mirror-reversed (per-account net 0), penalty 400.00 → 42-1107, old ACTIVE + 2A cron backfills',
+    'Cancel day-15: all JEs mirror-reversed (per-account net 0), NO penalty JE (owner removed the rule 2026-07-31), old ACTIVE + 2A cron backfills',
     async () => {
       const fix = await seedSwapFixture('100003', { schedule: 'FUTURE12' });
       await act1a.execute(fix.oldContractId);
@@ -665,7 +639,9 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         ).accrualJournalEntryId,
       ).toBeNull();
 
-      // --- Backdate the swap 15 days → PENALTY_8_30D window, then REAL cancel
+      // --- Backdate the swap 15 days, then REAL cancel. Owner removed the
+      // 7/8-30-day windows + 5% penalty entirely (2026-07-31) — cancel now
+      // succeeds identically regardless of days elapsed, with no penalty JE.
       await prisma.contract.update({
         where: { id: fix.oldContractId },
         data: { exchangedAt: new Date(Date.now() - 15 * DAY) },
@@ -675,20 +651,22 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         'ทดสอบยกเลิกเปลี่ยนเครื่องภายในวันที่ 15 (integration)',
         { id: adminId, role: 'OWNER', branchId: null },
       );
-      expect(result.cancelWindow).toBe('PENALTY_8_30D');
-      expect(result.penaltyAmount).toBe('400.00'); // 5% × 8,000
+      expect(result.cancelWindow).toBe('FREE');
+      expect(result.penaltyAmount).toBeNull();
 
       const req = await prisma.contractExchangeRequest.findUniqueOrThrow({
         where: { id: request.id },
       });
       expect(req.status).toBe('CANCELED');
       expect(req.reversalJeIds.length).toBe(4); // A.1 + A.2 + A.3 + A.4 (no A.5 here)
-      expect(req.penaltyJeId).toBeTruthy();
+      expect(req.penaltyJeId).toBeNull();
+      expect(req.penaltyAmount).toBeNull();
 
-      // --- Penalty JE: Dr cash 400.00 / Cr 42-1107 400.00
-      const penaltyLines = await getJeLines(req.penaltyJeId!);
-      expect(sumSide(penaltyLines, '11-1101', 'dr').toFixed(2)).toBe('400.00');
-      expect(sumSide(penaltyLines, '42-1107', 'cr').toFixed(2)).toBe('400.00');
+      // --- NO 42-1107 penalty JE anywhere in this spec's journal rows
+      const anyPenaltyLine = await prisma.journalLine.findFirst({
+        where: { accountCode: '42-1107' },
+      });
+      expect(anyPenaltyLine).toBeNull();
 
       // --- Mirror-reverse completeness: originals + reversals net 0 per account
       const pairIds = [req.je1aId!, req.je2Id!, req.je3Id!, req.je4Id!, ...req.reversalJeIds];
@@ -773,6 +751,76 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
   );
 
   // -------------------------------------------------------------------------
+  // Owner decision 2026-07-31: the old 30-day cancellation cap is gone —
+  // prove cancel succeeds identically past it (day 45) end-to-end against a
+  // real DB. Mirrors the day-15 case above but skips the 2A-backfill
+  // assertions (already proven there) to keep this fixture lightweight.
+  it(
+    'Cancel day-45 (past the old 30-day cap): SUCCEEDS — window FREE, no penalty JE, all JEs mirror-reversed',
+    async () => {
+      const fix = await seedSwapFixture('100006', { schedule: 'NONE' });
+      await act1a.execute(fix.oldContractId);
+
+      const { newContract, request } = await seedNewContractAndRequest(fix, '100006', '8000');
+      await activateAndFinalize(newContract.id, fix.newProductId);
+
+      await prisma.contract.update({
+        where: { id: fix.oldContractId },
+        data: { exchangedAt: new Date(Date.now() - 45 * DAY) },
+      });
+      const result = await cancelSvc.cancel(
+        request.id,
+        'ทดสอบยกเลิกเปลี่ยนเครื่องวันที่ 45 (integration — เกินเพดานเดิม)',
+        { id: adminId, role: 'OWNER', branchId: null },
+      );
+      expect(result.cancelWindow).toBe('FREE');
+      expect(result.penaltyAmount).toBeNull();
+
+      const req = await prisma.contractExchangeRequest.findUniqueOrThrow({
+        where: { id: request.id },
+      });
+      expect(req.status).toBe('CANCELED');
+      expect(req.penaltyJeId).toBeNull();
+      expect(req.penaltyAmount).toBeNull();
+      expect(req.reversalJeIds.length).toBe(4); // A.1 + A.2 + A.3 + A.4 (no A.5 here)
+
+      // --- NO 42-1107 penalty JE anywhere in this spec's journal rows
+      const anyPenaltyLine = await prisma.journalLine.findFirst({
+        where: { accountCode: '42-1107' },
+      });
+      expect(anyPenaltyLine).toBeNull();
+
+      // --- Mirror-reverse completeness: originals + reversals net 0 per account
+      const pairIds = [req.je1aId!, req.je2Id!, req.je3Id!, req.je4Id!, ...req.reversalJeIds];
+      const pairLines = await prisma.journalLine.findMany({
+        where: { journalEntryId: { in: pairIds } },
+      });
+      const perAccount = new Map<string, Decimal>();
+      for (const l of pairLines) {
+        const net = (perAccount.get(l.accountCode) ?? new Decimal(0))
+          .plus(l.debit.toString())
+          .minus(l.credit.toString());
+        perAccount.set(l.accountCode, net);
+      }
+      expect(perAccount.size).toBeGreaterThan(0);
+      for (const [code, net] of perAccount) {
+        expect(net.abs().lt('0.005'), `account ${code} must net 0 across JE+reversal`).toBe(true);
+      }
+
+      // --- State restoration
+      const oldAfter = await prisma.contract.findUniqueOrThrow({
+        where: { id: fix.oldContractId },
+      });
+      expect(oldAfter.status).toBe('ACTIVE');
+      expect(oldAfter.exchangedAt).toBeNull();
+      const newAfter = await prisma.contract.findUniqueOrThrow({ where: { id: newContract.id } });
+      expect(newAfter.status).toBe('CANCELED');
+      expect(newAfter.exchangedFromContractId).toBeNull();
+    },
+    120_000,
+  );
+
+  // -------------------------------------------------------------------------
   it(
     'MEMO: same model + price → zero new JEs, contract.productId swapped',
     async () => {
@@ -842,7 +890,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       const fix = await seedSwapFixture('100005', { schedule: 'FUTURE12' });
       await act1a.execute(fix.oldContractId);
 
-      // --- Lifecycle 1: finalize a PRICED swap, then cancel on day 5 (FREE_7D)
+      // --- Lifecycle 1: finalize a PRICED swap, then cancel on day 5 (FREE)
       const first = await seedNewContractAndRequest(fix, '100005', '8000');
       await activateAndFinalize(first.newContract.id, fix.newProductId);
       await prisma.contract.update({
@@ -854,7 +902,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         'ทดสอบยกเลิกก่อนเปลี่ยนเครื่องรอบสอง (integration C1)',
         { id: adminId, role: 'OWNER', branchId: null },
       );
-      expect(cancelResult.cancelWindow).toBe('FREE_7D');
+      expect(cancelResult.cancelWindow).toBe('FREE');
 
       // Pointer nulled (C1a) — precondition for the second attempt
       const firstAfterCancel = await prisma.contract.findUniqueOrThrow({

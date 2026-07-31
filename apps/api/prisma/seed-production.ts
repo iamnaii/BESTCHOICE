@@ -200,12 +200,8 @@ async function main() {
       value: 'S42-1101',
       label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)',
     },
-    // Device Swap 2026-07 — priced exchange (spec §10)
-    {
-      key: 'exchange_cancel_penalty_pct',
-      value: '5',
-      label: 'ค่าปรับยกเลิกเปลี่ยนเครื่อง วันที่ 8-30 (% ของราคารับซื้อ) → Cr 42-1107',
-    },
+    // Device Swap 2026-07 — priced exchange (spec §10). exchange_cancel_penalty_pct
+    // removed 2026-07-31 (owner: cancellation windows + penalty retired entirely).
     {
       key: 'exchange_market_check_pct',
       value: '15',

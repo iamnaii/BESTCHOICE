@@ -59,7 +59,6 @@ type ActionTarget = {
 type CancelTarget = {
   id: string;
   contractNumber: string;
-  diffDays: number;
   mode: 'MEMO' | 'PRICED';
 };
 
@@ -160,9 +159,10 @@ export default function ExchangeRequestsPage() {
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       api.post(`/insurance/exchange-requests/${id}/cancel`, { reason }),
-    onSuccess: (response) => {
-      const penaltyAmount = response.data?.penaltyAmount;
-      toast.success(penaltyAmount ? `ยกเลิกแล้ว — ค่าปรับ ฿${penaltyAmount}` : 'ยกเลิกแล้ว');
+    onSuccess: () => {
+      // Owner removed the cancellation-fee rule 2026-07-31 — penaltyAmount is
+      // always null now; keep this a plain confirmation toast.
+      toast.success('ยกเลิกแล้ว');
       queryClient.invalidateQueries({ queryKey: ['exchange-requests-pending'] });
       queryClient.invalidateQueries({ queryKey: ['exchange-requests-recent'] });
       setCancelTarget(null);
@@ -213,12 +213,10 @@ export default function ExchangeRequestsPage() {
   };
 
   const handleCancelRequest = (item: RecentExchangeRequest) => {
-    const dDays = diffDaysFrom(exchangeDate(item)) ?? 0;
     setCancelReason('');
     setCancelTarget({
       id: item.id,
       contractNumber: item.oldContract.contractNumber,
-      diffDays: dDays,
       mode: item.mode,
     });
   };
@@ -369,7 +367,7 @@ export default function ExchangeRequestsPage() {
           <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
             <CardHeader>
               <h2 className="text-base font-semibold leading-snug">
-                อนุมัติแล้ว (ยกเลิกได้ภายใน 30 วัน)
+                อนุมัติแล้ว (ยกเลิกได้เมื่อยังไม่มีการชำระเงิน)
               </h2>
             </CardHeader>
             <CardContent className="p-0">
@@ -387,7 +385,7 @@ export default function ExchangeRequestsPage() {
                         <th className="text-left p-3 font-medium text-muted-foreground">
                           สัญญาเดิม → ใหม่
                         </th>
-                        <th className="text-left p-3 font-medium text-muted-foreground">เหลือ</th>
+                        <th className="text-left p-3 font-medium text-muted-foreground">ผ่านมา</th>
                         <th className="text-center p-3 font-medium text-muted-foreground">ดำเนินการ</th>
                       </tr>
                     </thead>
@@ -395,19 +393,19 @@ export default function ExchangeRequestsPage() {
                       {recentRequests.map((item) => {
                         const dateStr = exchangeDate(item);
                         const dDays = diffDaysFrom(dateStr);
-                        const remainingDays = dDays !== null ? 30 - dDays : null;
+                        // Owner decision 2026-07-31: cancellation windows removed
+                        // entirely — cancel is available whenever the API allows
+                        // it (the only remaining gate is zero-payment on the new
+                        // contract, enforced server-side). No countdown/expiry.
                         const newContractInactive =
                           item.mode !== 'MEMO' && item.newContract?.status !== 'ACTIVE';
-                        const expired = dDays !== null && dDays > 30;
-                        const disabled = dDays === null || newContractInactive || expired;
+                        const disabled = dDays === null || newContractInactive;
                         const disabledTitle =
                           dDays === null
                             ? 'ยังไม่มีวันที่เปลี่ยนเครื่อง'
                             : newContractInactive
                               ? `สัญญาใหม่สถานะ ${item.newContract?.status ?? 'ไม่พบ'} — ยกเลิกไม่ได้`
-                              : expired
-                                ? 'เกิน 30 วันนับจากวันเปลี่ยนเครื่อง — ยกเลิกไม่ได้'
-                                : undefined;
+                              : undefined;
                         return (
                           <tr key={item.id} className="border-t border-border hover:bg-accent/30">
                             <td className="p-3 text-muted-foreground whitespace-nowrap">
@@ -440,11 +438,7 @@ export default function ExchangeRequestsPage() {
                               </div>
                             </td>
                             <td className="p-3 text-muted-foreground whitespace-nowrap">
-                              {remainingDays === null
-                                ? '—'
-                                : remainingDays > 0
-                                  ? `เหลือ ${remainingDays} วัน`
-                                  : 'หมดอายุ'}
+                              {dDays === null ? '—' : `${dDays} วัน`}
                             </td>
                             <td className="p-3">
                               <div className="flex items-center justify-center">
@@ -551,7 +545,7 @@ export default function ExchangeRequestsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Cancel swap dialog — reason textarea + conditional 8-30d penalty warning */}
+      {/* Cancel swap dialog — reason textarea only (no penalty/window rules) */}
       <Dialog
         open={!!cancelTarget}
         onOpenChange={(open) => {
@@ -583,11 +577,6 @@ export default function ExchangeRequestsPage() {
               </p>
             )}
           </div>
-          {cancelTarget && cancelTarget.mode !== 'MEMO' && cancelTarget.diffDays >= 8 && (
-            <p className="mt-2 text-xs text-warning leading-snug">
-              วันที่ 8-30 มีค่าปรับ 5% ของราคารับซื้อ
-            </p>
-          )}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"

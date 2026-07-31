@@ -6,7 +6,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
-import { ExchangeCancelPenaltyTemplate } from '../journal/cpa-templates/exchange-cancel-penalty.template';
 
 // ============================================================================
 // bkkDayDiff — pure function (จำนวนวันปฏิทิน Asia/Bangkok)
@@ -21,16 +20,19 @@ describe('bkkDayDiff (วันปฏิทิน BKK)', () => {
     expect(bkkDayDiff(new Date('2026-07-15T03:00:00Z'), new Date('2026-07-15T10:00:00Z'))).toBe(0);
   });
 
-  it('+7 วัน → 7 (ขอบบน FREE_7D)', () => {
+  it('+7 วัน → 7', () => {
     expect(bkkDayDiff(base, plusDays(7))).toBe(7);
   });
 
-  it('+8 วัน → 8 (เริ่ม PENALTY_8_30D)', () => {
+  it('+8 วัน → 8', () => {
     expect(bkkDayDiff(base, plusDays(8))).toBe(8);
   });
 
-  it('+31 วัน → 31 (เกินหน้าต่างยกเลิก)', () => {
-    expect(bkkDayDiff(base, plusDays(31))).toBe(31);
+  // owner decision 2026-07-31 removed the 30-day cancellation cap — this
+  // pure date-math check just confirms bkkDayDiff keeps counting past it
+  // (the service no longer reads this value as a threshold, only for audit).
+  it('+45 วัน → 45 (เกินเพดานเดิม — ตอนนี้ยกเลิกได้ทุกเมื่อ)', () => {
+    expect(bkkDayDiff(base, plusDays(45))).toBe(45);
   });
 
   it('ข้ามเที่ยงคืน BKK: 23:59 → 00:01 (ห่าง 2 นาที) → 1', () => {
@@ -47,7 +49,6 @@ describe('ExchangeCancelService (spec §9)', () => {
   let svc: ExchangeCancelService;
   let txMock: any; // PrismaService mock; $transaction executes the callback with the same object
   let reversal: { reverse: jest.Mock };
-  let penalty: { execute: jest.Mock };
   let audit: any;
   let requests: Record<string, any>;
 
@@ -110,11 +111,9 @@ describe('ExchangeCancelService (spec §9)', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       installmentSchedule: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
-      systemConfig: { findFirst: jest.fn().mockResolvedValue({ value: '5' }) },
       $transaction: jest.fn(async (fn: any) => fn(txMock)),
     };
     reversal = { reverse: jest.fn().mockResolvedValue({ reversalJeIds: ['r1', 'r2'] }) };
-    penalty = { execute: jest.fn().mockResolvedValue({ id: 'pje', entryNumber: 'JE-202607-7777' }) };
     audit = { log: jest.fn() };
     const mod = await Test.createTestingModule({
       providers: [
@@ -129,25 +128,23 @@ describe('ExchangeCancelService (spec §9)', () => {
           },
         },
         { provide: ExchangeCancelReversalTemplate, useValue: reversal },
-        { provide: ExchangeCancelPenaltyTemplate, useValue: penalty },
       ],
     }).compile();
     svc = mod.get(ExchangeCancelService);
   });
 
-  it('วันที่ 5 → FREE_7D: reverse ทุก JE, ไม่มี penalty, restore สัญญาเก่า ACTIVE', async () => {
+  it('วันที่ 5 → FREE: reverse ทุก JE, ไม่มี penalty, restore สัญญาเก่า ACTIVE', async () => {
     requests.req1 = makeFinalizedReq(5);
 
     const r = await svc.cancel('req1', 'เครื่องมีปัญหา ลูกค้าขอยกเลิก', user);
 
-    expect(r.cancelWindow).toBe('FREE_7D');
+    expect(r.cancelWindow).toBe('FREE');
     expect(r.penaltyAmount).toBeNull();
     // Mirror-reverse the full JE chain incl. A.5 ECL reversal
     expect(reversal.reverse).toHaveBeenCalledWith(
       { jeIds: ['je1', 'je2', 'je3', 'je4', 'je5'], newContractId: 'newC1' },
       txMock,
     );
-    expect(penalty.execute).not.toHaveBeenCalled();
     // Restore: old contract back to ACTIVE, exchangedAt cleared
     expect(txMock.contract.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -198,7 +195,7 @@ describe('ExchangeCancelService (spec §9)', () => {
         where: expect.objectContaining({ id: 'req1', status: 'APPROVED' }),
         data: expect.objectContaining({
           status: 'CANCELED',
-          cancelWindow: 'FREE_7D',
+          cancelWindow: 'FREE',
           penaltyAmount: null,
           penaltyJeId: null,
           reversalJeIds: ['r1', 'r2'],
@@ -207,23 +204,25 @@ describe('ExchangeCancelService (spec §9)', () => {
     );
   });
 
-  it('วันที่ 15 → PENALTY_8_30D: penalty = 5% × buyback (8000 → 400.00) + JE Cr 42-1107', async () => {
-    requests.req1 = makeFinalizedReq(15);
+  // Owner decision 2026-07-31: cancellation windows + the 5%/8-30-day penalty
+  // rule were removed entirely — cancel succeeds at ANY day past finalize,
+  // with no penalty JE ever posted. This replaces the old day-31 BadRequest
+  // test (the 30-day cap no longer exists).
+  it('วันที่ 45 (เกินเพดานเดิม) → SUCCEEDS: window FREE, ไม่มี penalty JE', async () => {
+    requests.req1 = makeFinalizedReq(45);
 
-    const r = await svc.cancel('req1', 'ลูกค้าเปลี่ยนใจหลังใช้งาน', user);
+    const r = await svc.cancel('req1', 'ยกเลิกหลังผ่านไปนาน — ไม่มีเพดานแล้ว', user);
 
-    expect(r.cancelWindow).toBe('PENALTY_8_30D');
-    expect(r.penaltyAmount).toBe('400.00');
-    expect(penalty.execute).toHaveBeenCalledTimes(1);
-    const pInput = penalty.execute.mock.calls[0][0];
-    expect(pInput.requestId).toBe('req1');
-    expect(pInput.oldContractId).toBe('oldC1');
-    expect(pInput.depositAccountCode).toBe('11-1101');
-    expect(pInput.penalty.toFixed(2)).toBe('400.00');
-    // Penalty JE id persisted on the request
+    expect(r.cancelWindow).toBe('FREE');
+    expect(r.penaltyAmount).toBeNull();
+    expect(reversal.reverse).toHaveBeenCalledTimes(1);
     expect(txMock.contractExchangeRequest.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ cancelWindow: 'PENALTY_8_30D', penaltyJeId: 'pje' }),
+        data: expect.objectContaining({
+          cancelWindow: 'FREE',
+          penaltyAmount: null,
+          penaltyJeId: null,
+        }),
       }),
     );
   });
@@ -240,41 +239,8 @@ describe('ExchangeCancelService (spec §9)', () => {
       'ยกเลิกเปลี่ยนเครื่องไม่ได้',
     );
     expect(reversal.reverse).not.toHaveBeenCalled();
-    expect(penalty.execute).not.toHaveBeenCalled();
     expect(txMock.contract.update).not.toHaveBeenCalled();
     expect(txMock.product.update).not.toHaveBeenCalled();
-    expect(txMock.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('penalty pct = "0" (ปิดค่าปรับ) → วันที่ 15: ไม่มี penalty JE, penaltyAmount null, window ยัง PENALTY_8_30D', async () => {
-    requests.req1 = makeFinalizedReq(15);
-    txMock.systemConfig.findFirst.mockResolvedValue({ value: '0' });
-
-    const r = await svc.cancel('req1', 'ยกเลิกช่วงเจ้าของปิดค่าปรับ', user);
-
-    expect(r.cancelWindow).toBe('PENALTY_8_30D');
-    expect(r.penaltyAmount).toBeNull();
-    expect(penalty.execute).not.toHaveBeenCalled();
-    // Reversal + restores still run in full
-    expect(reversal.reverse).toHaveBeenCalledTimes(1);
-    expect(txMock.contractExchangeRequest.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          cancelWindow: 'PENALTY_8_30D',
-          penaltyAmount: null,
-          penaltyJeId: null,
-        }),
-      }),
-    );
-  });
-
-  it('วันที่ 31 → BadRequest "เกิน 30 วัน"', async () => {
-    requests.req1 = makeFinalizedReq(31);
-
-    await expect(svc.cancel('req1', 'สายเกินไปแล้วนะ', user)).rejects.toThrow('30 วัน');
-    await expect(svc.cancel('req1', 'สายเกินไปแล้วนะ', user)).rejects.toThrow(BadRequestException);
-    expect(reversal.reverse).not.toHaveBeenCalled();
-    expect(penalty.execute).not.toHaveBeenCalled();
     expect(txMock.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
   });
 
@@ -319,7 +285,6 @@ describe('ExchangeCancelService (spec §9)', () => {
     );
     // NO JE of any kind
     expect(reversal.reverse).not.toHaveBeenCalled();
-    expect(penalty.execute).not.toHaveBeenCalled();
   });
 
   it('PRE_FINALIZE race: DRAFT ถูก activate ระหว่างยกเลิก (CAS count=0) → Conflict, ไม่แตะ product', async () => {
@@ -345,7 +310,7 @@ describe('ExchangeCancelService (spec §9)', () => {
 
   // Post-MEMO state: contract ACTIVE + pointing at the request's NEW product
   // (I4 guard requires both before the blind revert may run).
-  const makeMemoReq = () => ({
+  const makeMemoReq = (memoDaysAgo = 5) => ({
     id: 'memoReq',
     deletedAt: null,
     status: 'APPROVED',
@@ -354,9 +319,9 @@ describe('ExchangeCancelService (spec §9)', () => {
     oldProductId: 'oldP1',
     newProductId: 'newP1',
     newContractId: null,
-    memoAppliedAt: daysAgo(5),
-    approvedAt: daysAgo(5),
-    createdAt: daysAgo(6),
+    memoAppliedAt: daysAgo(memoDaysAgo),
+    approvedAt: daysAgo(memoDaysAgo),
+    createdAt: daysAgo(memoDaysAgo + 1),
     oldContract: {
       id: 'oldC1',
       status: 'ACTIVE',
@@ -367,22 +332,21 @@ describe('ExchangeCancelService (spec §9)', () => {
     newContract: null,
   });
 
-  it('MEMO cancel ≤30 วัน: สลับ productId กลับ, ไม่มี JE, ไม่มี penalty', async () => {
+  it('MEMO cancel: สลับ productId กลับ, ไม่มี JE, ไม่มี penalty', async () => {
     requests.memoReq = makeMemoReq();
 
     const r = await svc.cancel('memoReq', 'ลูกค้าขอเครื่องเดิมคืน', user);
 
-    // MEMO_30D — distinct window label for reporting (MEMO ไม่มี penalty ทุกวัน)
-    expect(r.cancelWindow).toBe('MEMO_30D');
+    // MEMO — distinct window label for reporting (MEMO ไม่มี penalty ทุกวัน)
+    expect(r.cancelWindow).toBe('MEMO');
     expect(r.penaltyAmount).toBeNull();
     expect(txMock.contractExchangeRequest.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ cancelWindow: 'MEMO_30D' }),
+        data: expect.objectContaining({ cancelWindow: 'MEMO' }),
       }),
     );
     // No JE posted at all (templates are the only JE paths in this service)
     expect(reversal.reverse).not.toHaveBeenCalled();
-    expect(penalty.execute).not.toHaveBeenCalled();
     // Contract points back at the old product
     expect(txMock.contract.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -408,6 +372,23 @@ describe('ExchangeCancelService (spec §9)', () => {
     );
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'EXCHANGE_MEMO_CANCELED', entityId: 'memoReq' }),
+    );
+  });
+
+  // Owner decision 2026-07-31: MEMO also lost its 30-day cap — cancel at day
+  // 45 must succeed exactly like day 5, still with no JE and no penalty.
+  it('MEMO cancel วันที่ 45 (เกินเพดานเดิม) → SUCCEEDS เหมือนวันที่ 5, ไม่มี JE, ไม่มี penalty', async () => {
+    requests.memoReq = makeMemoReq(45);
+
+    const r = await svc.cancel('memoReq', 'ยกเลิก MEMO หลังผ่านไปนาน — ไม่มีเพดานแล้ว', user);
+
+    expect(r.cancelWindow).toBe('MEMO');
+    expect(r.penaltyAmount).toBeNull();
+    expect(reversal.reverse).not.toHaveBeenCalled();
+    expect(txMock.contractExchangeRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ cancelWindow: 'MEMO', penaltyAmount: null, penaltyJeId: null }),
+      }),
     );
   });
 
@@ -477,6 +458,6 @@ describe('ExchangeCancelService (spec §9)', () => {
       role: 'BRANCH_MANAGER',
       branchId: 'br-1',
     });
-    expect(r.cancelWindow).toBe('FREE_7D');
+    expect(r.cancelWindow).toBe('FREE');
   });
 });

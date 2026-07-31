@@ -16,7 +16,7 @@
 | D1 | Same-price swap: workbook Case 1 (memo only) ขัดกับ SP2 ปัจจุบัน (post JE + loss) | **ตาม workbook** — same-price = MEMO mode ไม่มี JE ไม่สร้างสัญญาใหม่; derecognition JE เฉพาะ PRICED mode |
 | D2 | บัญชี ECL reversal — workbook ใช้ 42-1106 ซึ่ง CSV ระบุเป็น "รายได้บริการซ่อม" | **ใช้ 42-1106 ตาม workbook** — ปลอดภัยเพราะ FINANCE 42-1106 เป็น orphan (runtime repair ใช้ `S42-1101` จริง: `repair-ticket-lifecycle.service.ts:27`, seed dev+prod, spec test ล็อกอยู่) → rename row ใน CSV |
 | D3 | "IQR ขอบล่าง" — ระบบไม่มีข้อมูลสถิติราคา | **ใช้ `TradeInValuation.basePrice` × 0.85 แทน** (guardrail ±15% convention เดิมของ trade-in) |
-| D4 | Cancellation windows | **ทำครบทั้ง 2 windows** (≤7 วันฟรี / 8–30 วัน + ค่าปรับ 5% → บัญชีใหม่ 42-1107) |
+| D4 | Cancellation windows | **ทำครบทั้ง 2 windows** (≤7 วันฟรี / 8–30 วัน + ค่าปรับ 5% → บัญชีใหม่ 42-1107) — **SUPERSEDED 2026-07-31: owner ยกเลิกกติกาทั้งชุด — ไม่มี window/ค่าปรับ; เหลือแค่ zero-payment precondition** |
 | D5 | ขาเงินสดใน JE จุดที่ 3 — post เมื่อไหร่ | **(a) post ทันทีตอน finalize ตาม workbook** พร้อม `depositAccountCode` (สมมติฐาน: โอนเงินระหว่างบัญชีตัวเองวันเดียวกัน) — หมายเหตุ: 21-1101 ของสัญญาปกติทั้งระบบยังไม่เคยถูกล้าง (VendorClearance unwired) = backlog CPA แยกต่างหาก ดู §12 |
 
 ## 2. Workbook-internal inconsistencies — resolution ที่ตกลงใช้
@@ -198,7 +198,19 @@ A.1–A.5 ทุกตัวมี `metadata.idempotencyKey` บังคับ�
 
 ## 9. Cancellation (PRICED — Cases 3A/3B)
 
-**Preconditions:** `exchangedAt` set; `now − exchangedAt ≤ 30 วัน` (BKK); สัญญาใหม่ไม่มี Payment ที่ `amountPaid > 0` (มิเช่นนั้นต้อง void receipt ก่อน — pattern zero-payment guard ของ defect-exchange); role OWNER/BM + เหตุผล ≥10 ตัวอักษร
+> **SUPERSEDED 2026-07-31 (owner decision):** the two time windows (≤7 วันฟรี /
+> 8–30 วัน + ค่าปรับ 5%) and the 30-day cap are **removed entirely**. Cancel is
+> allowed at ANY time. The only remaining gates are integrity guards: the
+> zero-payment precondition on the new contract, and the existing status
+> guards (finalized-but-newContract-not-ACTIVE, MEMO post-MEMO-state, branch
+> scoping). `penaltyAmount`/`penaltyJeId` are always `null`; `cancelWindow`
+> collapses to `'FREE'` (PRICED, finalized) / `'MEMO'` (MEMO mode) /
+> `'PRE_FINALIZE'` (approved but not yet activated) — see §10 for what
+> happens to account 42-1107. The section below is kept for historical
+> context (workbook Case 3A/3B origin) but the window/penalty steps (old
+> steps 4 and 6) no longer run.
+
+**Preconditions:** `exchangedAt` set; สัญญาใหม่ไม่มี Payment ที่ `amountPaid > 0` (มิเช่นนั้นต้อง void receipt ก่อน — pattern zero-payment guard ของ defect-exchange); role OWNER/BM + เหตุผล ≥10 ตัวอักษร
 
 **Abort ก่อน finalize (สถานะ APPROVED แต่ยังไม่เซ็น/activate — ยังไม่มี JE ใดๆ):** endpoint เดียวกัน — soft-delete DRAFT contract แบบ **CAS** (`updateMany` guard `status='DRAFT' AND deletedAt IS NULL`, count ≠ 1 → Conflict — กัน race กับ activation ที่วิ่งพร้อมกัน) + **null `exchangedFromContractId` ใน write เดียวกัน** (C1a — ดูด้านล่าง), คืนเครื่องใหม่ RESERVED → IN_STOCK, request → CANCELED (`cancelWindow = 'PRE_FINALIZE'`), ไม่มี reversal/penalty; audit `EXCHANGE_CANCELED`
 
@@ -207,27 +219,27 @@ A.1–A.5 ทุกตัวมี `metadata.idempotencyKey` บังคับ�
 1. **Mirror-reverse ทุก JE** (template ใหม่ `ExchangeCancelReversalTemplate` — pattern `DefectExchangeReversalTemplate` + `receipt-void-reversal`): ทุก POSTED entry tagged `metadata.contractId = newContractId` (รวม A.1 + accrual 2A ที่อาจวิ่งไปแล้วบนสัญญาใหม่) + swap JEs บนสัญญาเก่า (A.2, A.3, **A.5 ECL** — Dr 42-1106 / Cr 11-2102 คืน provision ทันที P&L ไม่พองสองข้าง; cron delta เจอ 0 = no-op) + A.4 SHOP; stamp `metadata.reversesEntryId` + `reversalJeIds[]` บน request
 2. **Catch-up accrual (Major 3):** งวดของสัญญาเก่าที่ `dueDate ≤ วันนี้ AND accrualJournalEntryId IS NULL` → รัน 2A accrual ให้ครบใน tx (สัญญา EXCHANGED ถูกยกเว้นจาก cron ระหว่าง window — ห้ามเงียบ; ตอนเขียน plan ให้ตรวจ scan window ของ `installment-accrual.cron` ก่อน ถ้า cron backfill เองอยู่แล้วให้ลดเหลือ assertion)
 3. **Restore:** สัญญาเก่า → ACTIVE + ล้าง `exchangedAt` (overdue cron จัดสถานะ OVERDUE เองถ้ามีงวดเลย due); เครื่องเก่า → คืน FINANCE-owned + สถานะเดิม; เครื่องใหม่ → IN_STOCK + SHOP; สัญญาใหม่ → CANCELED + **null `exchangedFromContractId`** (C1a, final review 2026-07-29: field เป็น `@unique` — ถ้าคงไว้บนสัญญา EXCH- ที่ตายแล้ว การเปลี่ยนเครื่องรอบใหม่ของสัญญาเดิมจะ P2002 ตอน `contract.create` ตลอดกาล; ประวัติ old↔new อยู่บน request row ครบอยู่แล้ว)
-3b. **Reverse ECL rows ของสัญญาใหม่ (I3):** `BadDebtProvision` ที่ cron ตั้งให้สัญญาใหม่ระหว่าง window ≤30 วัน → `status: ACTIVE → REVERSED` ใน tx เดียวกัน (JE ของมันถูก mirror-reverse โดย sweep ข้อ 1 อยู่แล้ว — ห้ามทิ้ง row ACTIVE ค้างบนสัญญา CANCELED)
-4. **Penalty (เฉพาะวันที่ 8–30):** `penalty = round2(buybackPrice × exchange_cancel_penalty_pct / 100)` (SystemConfig, default `'5'`) → JE แยก: `Dr {depositAccountCode} / Cr 42-1107` — **ไม่มี VAT** (นโยบายค่าปรับเดียวกับ 42-1103); flow `exchange-cancel-penalty`. เพื่อให้ path นี้ไม่ตาย: **submit แบบ PRICED บังคับ `depositAccountCode` ทุกคำขอ** (final review 2026-07-29 — เดิมบังคับเฉพาะ `buyback ≠ vendorSum` ทำให้เคส Case-2F ที่ offset พอดียกเลิกวันที่ 8–30 ไม่ได้)
-5. Request row: status → CANCELED + `cancelWindow` (FREE_7D | PENALTY_8_30D) + `penaltyAmount/penaltyJeId`; AuditLog `EXCHANGE_CANCELED`
-6. เกิน 30 วัน → block (ยกเลิกไม่ได้ — ต้องใช้เส้นทางอื่น เช่น repossession/CN ตามเหตุการณ์จริง)
+3b. **Reverse ECL rows ของสัญญาใหม่ (I3):** `BadDebtProvision` ที่ cron ตั้งให้สัญญาใหม่ระหว่างช่วงก่อนยกเลิก → `status: ACTIVE → REVERSED` ใน tx เดียวกัน (JE ของมันถูก mirror-reverse โดย sweep ข้อ 1 อยู่แล้ว — ห้ามทิ้ง row ACTIVE ค้างบนสัญญา CANCELED)
+4. ~~Penalty (เฉพาะวันที่ 8–30)~~ — **REMOVED 2026-07-31.** ไม่มี penalty JE อีกต่อไป; `penaltyAmount`/`penaltyJeId` เป็น `null` เสมอ; บัญชี 42-1107 เปิดไว้แต่ไม่ใช้งาน (§10)
+5. Request row: status → CANCELED + `cancelWindow` (`'FREE'` | `'MEMO'` | `'PRE_FINALIZE'`) + `penaltyAmount/penaltyJeId` (เสมอ `null`); AuditLog `EXCHANGE_CANCELED`
+6. ~~เกิน 30 วัน → block~~ — **REMOVED 2026-07-31.** ไม่มีเพดานวันอีกต่อไป — ยกเลิกได้ทุกเมื่อตราบใดที่ผ่าน precondition ข้อ (Preconditions) ด้านบน
 
 ## 10. Chart of accounts (ต้อง CPA sign-off ก่อน merge — แก้ `finance-coa.csv` + reseed upsert)
 
 | Code | Action | ชื่อ | หมายเหตุ |
 |---|---|---|---|
 | 42-1106 | **Rename** | รายได้บริการซ่อม → **รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ** | orphan ยืนยันแล้ว; **pre-flight prod:** `SELECT COUNT(*) FROM journal_lines WHERE account_code='42-1106'` ต้อง = 0 ก่อน rename; แก้ CLAUDE.md:451 (doc ผิด — runtime ใช้ S42-1101) |
-| 42-1107 | **Add** | รายได้ค่าปรับยกเลิกเปลี่ยนเครื่อง | รายได้, Cr, ไม่มี VAT |
+| 42-1107 | **Add** | รายได้ค่าปรับยกเลิกเปลี่ยนเครื่อง | รายได้, Cr, ไม่มี VAT — **เปิดแล้ว แต่ไม่ใช้งาน (owner ยกเลิกกติกาค่าปรับยกเลิก swap ทั้งชุด 2026-07-31)** — คงบัญชีไว้ตาม CPA sign-off เดิม เผื่ออนาคต ไม่ลบออกจาก CoA |
 | 41-1199 | ไม่เพิ่ม | — | ผิดหมวด (41 = รายได้หลัก) — workbook mapping เปลี่ยนเป็น 42-1107 |
 | 51-1106 | ไม่เพิ่ม | — | ไม่มีเคสสร้าง — รอ CPA อธิบาย |
 
-SystemConfig ใหม่: `exchange_cancel_penalty_pct` = `'5'`, `exchange_market_check_pct` = `'15'` (seed dev + prod)
+SystemConfig ใหม่: `exchange_market_check_pct` = `'15'` (seed dev + prod). **`exchange_cancel_penalty_pct` ถูกลบออกจาก seed 2026-07-31** (เคยเป็น `'5'` — กติกาค่าปรับถูกยกเลิกทั้งชุด)
 
 ## 11. Endpoints / UI / Tests
 
 **API** (`insurance/exchange-requests`): ขยาย submit DTO (`buybackPrice?, deviceCondition?, depositAccountCode?, newTotalMonths?, newInterestRate?`); `GET /preview?oldContractId&buybackPrice&deviceCondition` (OWNER/BM/SALES) → `{ncv, basePrice, marketMin, tier, expectedPl, grossRemaining}`; `POST /:id/approve` เปิด OWNER+BM (service เช็ค tier §6); `POST /:id/cancel` ใหม่ (OWNER/BM)
 
-**UI:** `ExchangeRequestForm` — mode auto-detect + input ราคารับซื้อ/สภาพเครื่อง (A–D)/บัญชีเงิน + live tier badge + P/L preview (pattern `RepossessionsPage` preview-then-commit) + MEMO addendum/MDM checklist; `ExchangeRequestsPage` — tier chips, คิวตาม role, ปุ่มยกเลิก + countdown 7/30 วัน + penalty confirm dialog
+**UI:** `ExchangeRequestForm` — mode auto-detect + input ราคารับซื้อ/สภาพเครื่อง (A–D)/บัญชีเงิน + live tier badge + P/L preview (pattern `RepossessionsPage` preview-then-commit) + MEMO addendum/MDM checklist; `ExchangeRequestsPage` — tier chips, คิวตาม role, ปุ่มยกเลิก (ใช้ได้ทุกเมื่อถ้ายังไม่มีการชำระเงิน — ไม่มี countdown/penalty dialog อีกต่อไป, ยกเลิก 2026-07-31)
 
 **Tests:**
 - Template golden specs (ตัวเลข GL จริง): 2A(8,000 loss)/2C(NCV)/2E(escalate)/2F(no-cash)/2G(refund ลูกค้า) + A.5 ECL + penalty + mirror-cancel + MEMO(no JE)
@@ -259,3 +271,4 @@ SystemConfig ใหม่: `exchange_cancel_penalty_pct` = `'5'`, `exchange_mark
 | B5 | | **รับทราบ** | — |
 | B6 | 51-1106 "ค่าเสียหายจากการยกเลิก swap" | **ไม่เปิดบัญชี** — ชี้แจงที่มา: โผล่เฉพาะ Sheet 13 (Year-End Closing) ของ workbook โดยไม่มี Case ไหน post → ขัดกันเองในไฟล์ | ตัดจาก CoA plan ถาวร; year-end กวาด 51-XXXX อัตโนมัติถ้าเพิ่มภายหลัง |
 | C1-C3 | follow-ups | ดูสถานะใน §12 ข้อ 1-3 | — |
+| D4-2 | (2026-07-31) Owner ยกเลิกกติกา cancellation windows + ค่าปรับ 5% ทั้งชุด (D4 เดิม) | **ยกเลิกได้ทุกเมื่อ** ตราบใดที่สัญญาใหม่ยังไม่มีการชำระเงิน (zero-payment precondition เดิมคงไว้) | ลบ `ExchangeCancelPenaltyTemplate` + spec + provider; ลบ `exchange_cancel_penalty_pct` จาก seed; `cancelWindow` เหลือ `FREE`/`MEMO`/`PRE_FINALIZE`; บัญชี 42-1107 เปิดไว้ไม่ใช้งาน (§10); UI ตัด countdown 7/30 วัน + penalty dialog |

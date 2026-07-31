@@ -12,7 +12,6 @@ import { AuditService } from '../audit/audit.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
-import { ExchangeCancelPenaltyTemplate } from '../journal/cpa-templates/exchange-cancel-penalty.template';
 
 /** Subset of request.user the cancel path needs (id + branch scoping — I7). */
 interface CancelRequestUser {
@@ -42,7 +41,6 @@ export class ExchangeCancelService {
     private readonly audit: AuditService,
     private readonly companyResolver: CompanyResolverService,
     private readonly reversalTemplate: ExchangeCancelReversalTemplate,
-    private readonly penaltyTemplate: ExchangeCancelPenaltyTemplate,
   ) {}
 
   async cancel(id: string, reason: string, user: CancelRequestUser) {
@@ -81,8 +79,9 @@ export class ExchangeCancelService {
             'สัญญาสถานะเปลี่ยนไป หรือเครื่องบนสัญญาไม่ตรงกับคำขอ — ยกเลิกแบบ MEMO ไม่ได้',
           );
         }
+        // Owner decision 2026-07-31: cancellation windows removed entirely —
+        // MEMO cancel allowed at ANY time. `days` kept for audit context only.
         const days = bkkDayDiff(req.memoAppliedAt ?? req.approvedAt ?? req.createdAt, now);
-        if (days > 30) throw new BadRequestException('เกิน 30 วันนับจากวันเปลี่ยน — ยกเลิกไม่ได้');
         const newProd = await tx.product.findUniqueOrThrow({
           where: { id: req.newProductId },
           select: { status: true, ownedByCompanyId: true },
@@ -99,9 +98,9 @@ export class ExchangeCancelService {
           where: { id: req.newProductId },
           data: { status: 'IN_STOCK', ownedByCompanyId: shopCompanyId } as any,
         });
-        // MEMO_30D: distinct window label for reporting — MEMO cancels have no
-        // penalty at any day (only the 30-day cap), unlike the FREE_7D window.
-        await this.markCanceled(tx, id, user.id, reason, 'MEMO_30D', null, [], now);
+        // MEMO: distinct window label for reporting — MEMO cancels never had a
+        // penalty, and (owner decision 2026-07-31) no time cap either.
+        await this.markCanceled(tx, id, user.id, reason, 'MEMO', null, [], now);
         await this.audit.log({
           action: 'EXCHANGE_MEMO_CANCELED',
           entity: 'contract_exchange_request',
@@ -109,7 +108,7 @@ export class ExchangeCancelService {
           userId: user.id,
           newValue: { reason, days },
         });
-        return { id, cancelWindow: 'MEMO_30D', penaltyAmount: null };
+        return { id, cancelWindow: 'MEMO', penaltyAmount: null };
       }
 
       // ---------- PRE_FINALIZE: อนุมัติแล้วแต่ยังไม่ activate (ไม่มี JE) ----------
@@ -152,18 +151,19 @@ export class ExchangeCancelService {
       }
 
       // ---------- FINALIZED (มี JE แล้ว) ----------
-      // Status guard ก่อน window check: finalized แต่สัญญาใหม่ไม่ ACTIVE
-      // (COMPLETED/TERMINATED/ฯลฯ) = ยกเลิก swap ไม่ได้แล้ว
+      // Status guard: finalized แต่สัญญาใหม่ไม่ ACTIVE (COMPLETED/TERMINATED/ฯลฯ)
+      // = ยกเลิก swap ไม่ได้แล้ว
       if (req.newContract?.status !== 'ACTIVE') {
         throw new BadRequestException(
           `สัญญาใหม่สถานะ ${req.newContract?.status ?? 'ไม่พบ'} — ยกเลิกเปลี่ยนเครื่องไม่ได้`,
         );
       }
+      // Owner decision 2026-07-31: cancellation windows + penalty removed
+      // entirely — cancel allowed at ANY time as long as zero payments have
+      // posted on the new contract (guard below). `days` kept for audit
+      // context only — it no longer gates anything.
       const exchangedAt: Date = req.oldContract.exchangedAt;
       const days = bkkDayDiff(exchangedAt, now);
-      if (days > 30) {
-        throw new BadRequestException('เกิน 30 วันนับจากวันเปลี่ยนเครื่อง — ยกเลิกไม่ได้');
-      }
 
       const paid = await tx.payment.findFirst({
         where: {
@@ -188,41 +188,14 @@ export class ExchangeCancelService {
         tx,
       );
 
-      // 2) penalty เฉพาะวันที่ 8-30 (workbook Case 3B)
-      let penalty: Decimal | null = null;
-      let penaltyJeId: string | null = null;
-      const window = days <= 7 ? 'FREE_7D' : 'PENALTY_8_30D';
-      if (window === 'PENALTY_8_30D') {
-        const pctRow = await tx.systemConfig.findFirst({
-          where: { key: 'exchange_cancel_penalty_pct', deletedAt: null },
-          select: { value: true },
-        });
-        // Row missing/NaN → default 5. Row EXPLICITLY '0' (or negative) →
-        // penalty disabled: no JE, penalty stays null, window stays PENALTY_8_30D.
-        const parsed = pctRow ? parseFloat(pctRow.value) : NaN;
-        const pct = Number.isFinite(parsed) ? parsed : 5;
-        if (pct > 0) {
-          if (!req.depositAccountCode) {
-            throw new BadRequestException(
-              'คำขอนี้ไม่มีบัญชีเงินสด — ระบุ depositAccountCode ตอน submit',
-            );
-          }
-          penalty = new Decimal(req.buybackPrice.toString())
-            .times(pct)
-            .div(100)
-            .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-          const pje = await this.penaltyTemplate.execute(
-            {
-              requestId: id,
-              oldContractId: req.oldContractId,
-              depositAccountCode: req.depositAccountCode,
-              penalty,
-            },
-            tx,
-          );
-          penaltyJeId = pje.id;
-        }
-      }
+      // 2) no penalty — owner removed the cancellation-fee rule entirely
+      // (2026-07-31). Window collapses to a single label; penalty fields
+      // stay always-null (see literal `null` used below instead of
+      // `penalty?.toFixed(2)` — TS narrows an always-null binding to the
+      // `null` literal type under control-flow analysis either way).
+      const penalty: Decimal | null = null;
+      const penaltyJeId: string | null = null;
+      const window = 'FREE';
 
       // 3) restore states (spec §9 step 3)
       await tx.contract.update({
@@ -272,11 +245,11 @@ export class ExchangeCancelService {
           reason,
           window,
           days,
-          penaltyAmount: penalty?.toFixed(2) ?? null,
+          penaltyAmount: null,
           reversalCount: reversalJeIds.length,
         },
       });
-      return { id, cancelWindow: window, penaltyAmount: penalty?.toFixed(2) ?? null };
+      return { id, cancelWindow: window, penaltyAmount: null };
     });
   }
 

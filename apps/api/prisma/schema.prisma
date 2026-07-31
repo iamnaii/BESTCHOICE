@@ -7476,7 +7476,7 @@ model ContractExchangeRequest {
   canceledAt         DateTime?             @map("canceled_at")
   canceledById       String?               @map("canceled_by_id")
   cancelReason       String?               @map("cancel_reason")
-  cancelWindow       String?               @map("cancel_window") // FREE_7D | PENALTY_8_30D | PRE_FINALIZE | MEMO_30D
+  cancelWindow       String?               @map("cancel_window") // FREE | MEMO | PRE_FINALIZE (legacy values: FREE_7D | PENALTY_8_30D | MEMO_30D)
   penaltyAmount      Decimal?              @map("penalty_amount") @db.Decimal(12, 2)
   penaltyJeId        String?               @map("penalty_je_id")
   reversalJeIds      String[]              @default([]) @map("reversal_je_ids")

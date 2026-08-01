@@ -10,18 +10,21 @@ import { CompanyResolverService } from '../company-resolver.service';
  *
  * Trigger: customer pays the down portion (เงินดาวน์) at SHOP during the
  * contract-creation flow. FINANCE will later wire `financedAmount + commission`
- * to SHOP separately — that flow uses `ShopFinanceReceiptTemplate`. Booking
- * the down separately here means the SHOP P&L correctly reflects "cash in
- * hand from down-payment" the moment the customer pays, even before FINANCE
- * settles its part of the deal.
+ * to SHOP separately — booked today via `IntercoSettlementService.approveBatch`
+ * (`interco-settlement` module, per-batch JE off `S11-3001`/`S11-3002` GL
+ * balances, not a per-contract template). Booking the down separately here
+ * means the SHOP P&L correctly reflects "cash in hand from down-payment" the
+ * moment the customer pays, even before FINANCE settles its part of the deal.
  *
  * JE (single SHOP entry — no FINANCE pairing yet):
  *
  *   Dr S11-1101 / S11-1201 (cash or bank)               [downAmount]
  *     Cr S21-2001 เงินรับล่วงหน้า (down-payment payable) [downAmount]
  *
- * S21-2001 stays on the books until the FINANCE receipt JE clears it
- * (`ShopFinanceReceiptTemplate` posts Dr S21-2001 / Cr S41-1101).
+ * S21-2001 stays on the books until ACTIVATION, when
+ * `ShopInventoryTransferTemplate` clears it (Dr S21-2001 / Cr revenue) — NOT
+ * by the FINANCE-wire receipt, which has nothing to do with the customer's
+ * down (see `shop-inventory-transfer.template.ts` jsdoc for why).
  *
  * No paired FINANCE entry — the down stays on SHOP's side until the contract
  * is finalised, then FINANCE wires its share and the booking finishes.

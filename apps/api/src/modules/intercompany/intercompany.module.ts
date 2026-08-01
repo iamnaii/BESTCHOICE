@@ -2,10 +2,9 @@ import { Module } from '@nestjs/common';
 import { IntercompanyController } from './intercompany.controller';
 import { IntercompanyService } from './intercompany.service';
 import { PrismaModule } from '../../prisma/prisma.module';
-import { JournalModule } from '../journal/journal.module';
 
 @Module({
-  imports: [PrismaModule, JournalModule],
+  imports: [PrismaModule],
   controllers: [IntercompanyController],
   providers: [IntercompanyService],
 })

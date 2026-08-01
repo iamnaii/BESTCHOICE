@@ -71,6 +71,7 @@ import { PaymentMethodConfigModule } from './modules/payment-method-config/payme
 import { CompanyModule } from './modules/company/company.module';
 import { InterCompanyModule } from './modules/inter-company/inter-company.module';
 import { IntercompanyModule } from './modules/intercompany/intercompany.module';
+import { IntercoSettlementModule } from './modules/interco-settlement/interco-settlement.module';
 import { JournalModule } from './modules/journal/journal.module';
 import { ChartOfAccountsModule } from './modules/chart-of-accounts/chart-of-accounts.module';
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
@@ -124,8 +125,6 @@ import { ShopBuybackModule } from './modules/shop-buyback/shop-buyback.module';
 import { ShopInstallmentApplyModule } from './modules/shop-installment-apply/shop-installment-apply.module';
 import { ShopSavingPlanModule } from './modules/shop-saving-plan/shop-saving-plan.module';
 import { ShopPublicConfigModule } from './modules/shop-public-config/shop-public-config.module';
-// Task 8 — Finance-settlement endpoint (POST /shop/finance-settlements + GET pending)
-import { ShopFinanceSettlementModule } from './modules/shop-finance-settlement/shop-finance-settlement.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
@@ -258,8 +257,11 @@ import { AppCacheModule } from './cache/cache.module';
     CompanyModule,
     // Inter-Company (SHOP ↔ FINANCE)
     InterCompanyModule,
-    // Inter-company settlement (Phase A.3 W-5 — pays Due-to-SHOP)
+    // Inter-company settlement (Phase A.3 W-5 — pays Due-to-SHOP; POST /settle retired 2026-07-30, see below)
     IntercompanyModule,
+    // เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — รอบจ่าย batch (2026-07-30), replaces
+    // the retired IntercompanyModule.settle + ShopFinanceSettlementModule paths
+    IntercoSettlementModule,
     // Journal Entries (double-entry accounting)
     JournalModule,
     ChartOfAccountsModule,
@@ -358,8 +360,6 @@ import { AppCacheModule } from './cache/cache.module';
     ShopSavingPlanModule,
     // Online Shop — public runtime config (GA4 / FB Pixel IDs) (Phase 3 follow-up)
     ShopPublicConfigModule,
-    // Task 8 — Finance-settlement endpoint (POST /shop/finance-settlements + GET pending)
-    ShopFinanceSettlementModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

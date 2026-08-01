@@ -144,6 +144,12 @@ jobs:
       # src/modules/contract-exchange/__tests__/*.integration.spec.ts (Device Swap
       # priced-flow E2E) added 2026-07-29 — same jest-invisible naming; without an
       # explicit glob here it would never run in any pipeline.
+      # src/modules/interco-settlement/__tests__/*.integration.spec.ts (Inter-co
+      # settlement batch approve/reverse E2E) added 2026-07-30 Task 4 — same
+      # jest-invisible naming; fail-loud via `ls` (no `|| true`) so a missing/
+      # renamed file breaks the build instead of silently vanishing from CI
+      # (the exact orphan-spec failure mode this glob-per-suite convention
+      # exists to prevent — see JP5_FILES/EXCH_FILES above).
       - name: Run DB-backed money-invariant specs (vitest — #1328)
         timeout-minutes: 10
         working-directory: apps/api
@@ -152,11 +158,13 @@ jobs:
           ACCT_FILES=$(ls src/modules/accounting/*.integration.spec.ts)
           JP5_FILES=$(ls src/modules/journal/cpa-templates/__tests__/*.spec.ts)
           EXCH_FILES=$(ls src/modules/contract-exchange/__tests__/*.integration.spec.ts)
+          INTERCO_FILES=$(ls src/modules/interco-settlement/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
             $JP5_FILES \
-            $EXCH_FILES
+            $EXCH_FILES \
+            $INTERCO_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

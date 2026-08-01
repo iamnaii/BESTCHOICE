@@ -2,6 +2,7 @@
 
 - **วันที่:** 2026-07-30
 - **สถานะ:** design approve โดย owner แล้ว (หลัง scrutinize) — รอเขียน implementation plan
+- **สถานะ (2026-08-01):** IMPLEMENTED T1-T7 บน branch `feat/interco-settlement-batch` — schema, pending engine, batch lifecycle, approve/reverse (paired JE + drift/period/SoD guards), endpoints + retire เส้นจ่ายเก่า (`settle` → 410, `shop-finance-settlement` module ลบ, `VendorClearanceTemplate`/`ShopFinanceReceiptTemplate` ลบ), web UI (2 แท็บ), docs (`.claude/rules/accounting.md` + `docs/accounting/interco-preflight-2026-08.sql`) ครบตาม plan `docs/superpowers/plans/2026-07-30-interco-settlement-batch.md` — รอ code review + เปิด PR
 - **ที่มา:** คำสั่ง owner ข้อ C2 (2026-07-30, spec device-swap §13): เจ้าหนี้ 21-1101/21-1102 "กำลังจะเปิดใช้" — FINANCE กับหน้าร้านล้างกันผ่านเมนูจ่ายให้หน้าร้าน + finding F3 เดิม (VendorClearance unwired ทั้งระบบ)
 
 ## 1. การตัดสินใจของ owner (2026-07-30)

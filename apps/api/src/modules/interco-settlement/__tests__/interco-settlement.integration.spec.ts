@@ -51,6 +51,10 @@ const act1a = new ContractActivation1ATemplate(journal, prisma as never);
 const shopTransfer = new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver);
 const pendingService = new IntercoPendingService(prisma as never);
 const batchNumberService = new IntercoBatchNumberService(prisma as never);
+// Task 5 added `uploadSlip` (StorageService dep) to the service — unused by
+// this approve/reverse-focused suite, stubbed out rather than wiring real
+// S3/GCS config just to satisfy the constructor.
+const storageStub = { upload: async () => undefined, delete: async () => undefined };
 const svc = new IntercoSettlementService(
   prisma as never,
   pendingService,
@@ -58,6 +62,7 @@ const svc = new IntercoSettlementService(
   pairedJournal,
   companyResolver,
   journal,
+  storageStub as never,
 );
 
 // ---------------------------------------------------------------------------

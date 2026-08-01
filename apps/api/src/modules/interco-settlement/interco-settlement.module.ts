@@ -2,19 +2,21 @@ import { Module } from '@nestjs/common';
 import { IntercoPendingService } from './interco-pending.service';
 import { IntercoBatchNumberService } from './interco-batch-number.service';
 import { IntercoSettlementService } from './interco-settlement.service';
+import { IntercoSettlementController } from './interco-settlement.controller';
 import { JournalModule } from '../journal/journal.module';
+import { StorageModule } from '../storage/storage.module';
 
 // PrismaService is provided globally via @Global() PrismaModule — no import needed.
 //
-// Batch lifecycle service (create/submit/withdraw/cancel/update/list/get)
-// landed in Task 3. `approveBatch`/`reverseBatch` (Task 4) need
-// PairedJournalService + CompanyResolverService + JournalAutoService, all
-// exported by JournalModule — imported here so Nest DI can resolve them once
-// this module is wired into app.module.ts (Task 5). Controller +
-// app.module.ts wiring land in Task 5 — see
-// docs/superpowers/plans/2026-07-30-interco-settlement-batch.md.
+// `approveBatch`/`reverseBatch` need PairedJournalService + CompanyResolverService
+// + JournalAutoService, all exported by JournalModule. `uploadSlip` needs
+// StorageService (S3/GCS upload), exported by StorageModule (also @Global(),
+// imported explicitly here to match house convention — see other-income.module.ts).
+//
+// Task 5: controller + app.module.ts wiring.
 @Module({
-  imports: [JournalModule],
+  imports: [JournalModule, StorageModule],
+  controllers: [IntercoSettlementController],
   providers: [IntercoPendingService, IntercoBatchNumberService, IntercoSettlementService],
   exports: [IntercoPendingService, IntercoBatchNumberService, IntercoSettlementService],
 })

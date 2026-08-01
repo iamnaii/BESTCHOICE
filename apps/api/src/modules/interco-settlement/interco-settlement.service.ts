@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntercoPendingService, PendingContract } from './interco-pending.service';
@@ -15,6 +16,7 @@ import { CompanyResolverService } from '../journal/company-resolver.service';
 import { JournalAutoService, JeLineInput } from '../journal/journal-auto.service';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { StorageService } from '../storage/storage.service';
 
 const DEFAULT_FINANCE_BANK_CODE = '11-1201';
 /** Batch statuses that "lock" a contract out of the pending queue (spec §4). */
@@ -67,6 +69,7 @@ export class IntercoSettlementService {
     private readonly pairedJournal: PairedJournalService,
     private readonly companyResolver: CompanyResolverService,
     private readonly journalAuto: JournalAutoService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -362,6 +365,96 @@ export class IntercoSettlementService {
 
       return updated;
     });
+  }
+
+  /**
+   * Attaches a slip/proof-of-transfer file to a batch (spec §6 — "แนบสลิป:
+   * upload S3 (optional)"). Maker-only, DRAFT/PENDING_APPROVAL only (mirrors
+   * the update/withdraw guard — once POSTED the batch + its evidence are
+   * frozen). Reuses the house S3 upload pattern from
+   * `OtherIncomeService.uploadAttachment` (magic-byte re-check on top of the
+   * controller's Content-Type validator, safe filename, `StorageService`).
+   */
+  async uploadSlip(id: string, file: Express.Multer.File, userId: string) {
+    const batch = await this.prisma.interCoSettlementBatch.findUnique({ where: { id } });
+    if (!batch || batch.deletedAt) throw new NotFoundException('ไม่พบรอบจ่าย');
+    if (batch.makerId !== userId) {
+      throw new ForbiddenException('เฉพาะผู้สร้างรอบจึงจะแนบสลิปได้');
+    }
+    if (batch.status !== 'DRAFT' && batch.status !== 'PENDING_APPROVAL') {
+      throw new BadRequestException('แนบสลิปได้เฉพาะรอบสถานะร่างหรือรอการอนุมัติเท่านั้น');
+    }
+
+    if (!this.matchesMimeMagicBytes(file)) {
+      throw new BadRequestException(
+        'ประเภทไฟล์ไม่ตรงกับเนื้อหา (รองรับเฉพาะ PDF, JPEG, PNG, WEBP)',
+      );
+    }
+
+    const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    // eslint-disable-next-line no-control-regex
+    const safeName = decodedName.replace(/[<>:"/\\|?*\x00-\s]/g, '_');
+    const key = `interco-slips/${id}/${Date.now()}-${randomUUID()}-${safeName}`;
+
+    await this.storage.upload(key, file.buffer, file.mimetype);
+
+    try {
+      return await this.prisma.interCoSettlementBatch.update({
+        where: { id },
+        data: { slipFileKey: key },
+      });
+    } catch (err) {
+      await this.storage.delete(key).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /**
+   * Confirms the uploaded file's first bytes match the declared mimetype —
+   * defence-in-depth on top of the controller's Content-Type-based
+   * `FileTypeValidator` (client-controlled header). Mirrors
+   * `OtherIncomeService.matchesMimeMagicBytes` (PDF/JPEG/PNG/WEBP only).
+   */
+  private matchesMimeMagicBytes(file: Express.Multer.File): boolean {
+    const buf = file.buffer;
+    if (!buf || buf.length < 12) return false;
+    const mime = file.mimetype;
+
+    if (mime === 'application/pdf') {
+      // %PDF-
+      return buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46 && buf[4] === 0x2d;
+    }
+    if (mime === 'image/jpeg') {
+      // FF D8 FF
+      return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    }
+    if (mime === 'image/png') {
+      // 89 50 4E 47 0D 0A 1A 0A
+      return (
+        buf[0] === 0x89 &&
+        buf[1] === 0x50 &&
+        buf[2] === 0x4e &&
+        buf[3] === 0x47 &&
+        buf[4] === 0x0d &&
+        buf[5] === 0x0a &&
+        buf[6] === 0x1a &&
+        buf[7] === 0x0a
+      );
+    }
+    if (mime === 'image/webp') {
+      // 'RIFF'....'WEBP'
+      return (
+        buf[0] === 0x52 &&
+        buf[1] === 0x49 &&
+        buf[2] === 0x46 &&
+        buf[3] === 0x46 &&
+        buf[8] === 0x57 &&
+        buf[9] === 0x45 &&
+        buf[10] === 0x42 &&
+        buf[11] === 0x50
+      );
+    }
+    return false;
   }
 
   async listBatches(query: { status?: string; page?: number; limit?: number }) {

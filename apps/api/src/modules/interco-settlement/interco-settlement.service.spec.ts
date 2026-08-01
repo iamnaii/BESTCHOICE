@@ -9,6 +9,25 @@ import { CreateBatchDto } from './dto/create-batch.dto';
 import { PairedJournalService } from '../journal/paired-journal.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { StorageService } from '../storage/storage.service';
+
+/** Minimal valid JPEG header (FF D8 FF ...) — passes the magic-byte check. */
+const jpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+const uploadedFile = (overrides: Partial<Express.Multer.File> = {}): Express.Multer.File =>
+  ({
+    fieldname: 'file',
+    originalname: 'slip.jpg',
+    encoding: '7bit',
+    mimetype: 'image/jpeg',
+    size: jpegBuffer.length,
+    buffer: jpegBuffer,
+    stream: undefined as never,
+    destination: '',
+    filename: '',
+    path: '',
+    ...overrides,
+  }) as Express.Multer.File;
 
 const pendingRow = (overrides: Partial<PendingContract> = {}): PendingContract => ({
   contractId: 'c-1',
@@ -39,6 +58,8 @@ describe('IntercoSettlementService', () => {
   let pendingService: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let batchNumberService: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let storage: any;
 
   beforeEach(async () => {
     tx = {
@@ -59,7 +80,14 @@ describe('IntercoSettlementService', () => {
 
     prisma = {
       $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(tx)),
-      interCoSettlementBatch: { findMany: jest.fn(), count: jest.fn(), findUnique: jest.fn() },
+      interCoSettlementBatch: {
+        findMany: jest.fn(),
+        count: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn().mockImplementation(({ data }: { data: unknown }) =>
+          Promise.resolve({ id: 'batch-1', ...(data as Record<string, unknown>) }),
+        ),
+      },
       journalEntry: { findUnique: jest.fn() },
     };
 
@@ -73,6 +101,7 @@ describe('IntercoSettlementService', () => {
       getShopCompanyId: jest.fn().mockResolvedValue('company-shop'),
     };
     const journalAuto = { createAndPost: jest.fn() };
+    storage = { upload: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) };
 
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -83,6 +112,7 @@ describe('IntercoSettlementService', () => {
         { provide: PairedJournalService, useValue: pairedJournal },
         { provide: CompanyResolverService, useValue: companyResolver },
         { provide: JournalAutoService, useValue: journalAuto },
+        { provide: StorageService, useValue: storage },
       ],
     }).compile();
 
@@ -393,5 +423,75 @@ describe('IntercoSettlementService', () => {
         );
       },
     );
+  });
+
+  describe('uploadSlip', () => {
+    it('rejects when the caller is not the maker', async () => {
+      prisma.interCoSettlementBatch.findUnique.mockResolvedValue({
+        id: 'batch-1',
+        makerId: 'maker-1',
+        status: 'DRAFT',
+        deletedAt: null,
+      });
+
+      await expect(
+        service.uploadSlip('batch-1', uploadedFile(), 'someone-else'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
+
+    it.each(['POSTED', 'REVERSED', 'CANCELLED'])(
+      'rejects attaching a slip to a %s batch',
+      async (status) => {
+        prisma.interCoSettlementBatch.findUnique.mockResolvedValue({
+          id: 'batch-1',
+          makerId: 'maker-1',
+          status,
+          deletedAt: null,
+        });
+
+        await expect(
+          service.uploadSlip('batch-1', uploadedFile(), 'maker-1'),
+        ).rejects.toThrow(BadRequestException);
+        expect(storage.upload).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['DRAFT', 'PENDING_APPROVAL'])(
+      'allows the maker to attach a slip to a %s batch and stores slipFileKey',
+      async (status) => {
+        prisma.interCoSettlementBatch.findUnique.mockResolvedValue({
+          id: 'batch-1',
+          makerId: 'maker-1',
+          status,
+          deletedAt: null,
+        });
+
+        const result = await service.uploadSlip('batch-1', uploadedFile(), 'maker-1');
+        expect(storage.upload).toHaveBeenCalledTimes(1);
+        const [key] = storage.upload.mock.calls[0];
+        expect(key).toMatch(/^interco-slips\/batch-1\//);
+        expect(result.slipFileKey).toBe(key);
+      },
+    );
+
+    it('rejects a file whose magic bytes do not match its declared mimetype', async () => {
+      prisma.interCoSettlementBatch.findUnique.mockResolvedValue({
+        id: 'batch-1',
+        makerId: 'maker-1',
+        status: 'DRAFT',
+        deletedAt: null,
+      });
+
+      const spoofed = uploadedFile({
+        mimetype: 'image/jpeg',
+        buffer: Buffer.from('not-a-real-jpeg-------'),
+      });
+
+      await expect(service.uploadSlip('batch-1', spoofed, 'maker-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1,39 +1,42 @@
-import {
-  Injectable,
-  BadRequestException,
-  ConflictException,
-  InternalServerErrorException,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
-import { JournalAutoService } from '../journal/journal-auto.service';
-import { validatePeriodOpen } from '../../utils/period-lock.util';
-import { SettleIntercompanyDto } from './dto/settle-intercompany.dto';
 
 @Injectable()
 export class IntercompanyService {
-  private readonly logger = new Logger(IntercompanyService.name);
-
-  constructor(
-    private prisma: PrismaService,
-    private journalAuto: JournalAutoService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   /**
    * Compute current outstanding inter-company balance.
-   * - financeOwesToShop: net Cr balance on FINANCE 21-1102 (Due-to-SHOP)
-   * - shopReceivableFromFinance: net Dr balance on SHOP 11-2105 (Due-from-FINANCE)
    *
-   * The two should always match (IC invariant). Returns both for cross-check.
+   * Formula fixed 2026-07-30 (spec:
+   * docs/superpowers/specs/2026-07-30-interco-settlement-batch-design.md §4/§9).
+   * The OLD formula read FINANCE from `21-1102` only (missed `21-1101`
+   * ยอดจัด — the bulk of the payable) and SHOP from `11-2105`, a Phase A.3
+   * placeholder account the SHOP-side templates never actually post to. The
+   * NEW formula reads the accounts the real SHOP/FINANCE templates
+   * (`ContractActivation1ATemplate` / `ShopInventoryTransferTemplate`) post
+   * to:
+   *
+   *   - financeOwesToShop: Σ(Cr−Dr) on FINANCE `21-1101` (ยอดจัด) + `21-1102` (ค่าคอม)
+   *   - shopReceivableFromFinance: Σ(Dr−Cr) on SHOP `S11-3001` (ยอดจัด) + `S11-3002` (ค่าคอม)
+   *
+   * The two should match (IC invariant) for contracts activated after the
+   * SHOP-side receivable was wired in (2026-06-23). `driftNote` documents the
+   * known, EXPECTED residual for contracts activated before that date, or
+   * created via contract-exchange (device swap) — neither posts the
+   * SHOP-side receivable yet (spec F1/F2) — so a nonzero `drift` there is not
+   * a bug on its own; it needs the pre-flight check (spec §10) to confirm.
+   *
+   * Settlement itself moved to the "จ่ายให้หน้าร้าน (INTER-CO)" batch menu
+   * (`interco-settlement` module) — this service no longer posts JEs.
    */
   async getOutstandingBalance(): Promise<{
     financeOwesToShop: number;
     shopReceivableFromFinance: number;
     balanced: boolean;
     drift: number;
+    driftNote: string;
   }> {
     const [shop, finance] = await Promise.all([
       this.prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } }),
@@ -47,7 +50,7 @@ export class IntercompanyService {
       this.prisma.journalLine.aggregate({
         where: {
           deletedAt: null,
-          accountCode: '11-2105',
+          accountCode: { in: ['S11-3001', 'S11-3002'] },
           journalEntry: { companyId: shop.id, status: 'POSTED', deletedAt: null },
         },
         _sum: { debit: true, credit: true },
@@ -55,7 +58,7 @@ export class IntercompanyService {
       this.prisma.journalLine.aggregate({
         where: {
           deletedAt: null,
-          accountCode: '21-1102',
+          accountCode: { in: ['21-1101', '21-1102'] },
           journalEntry: { companyId: finance.id, status: 'POSTED', deletedAt: null },
         },
         _sum: { debit: true, credit: true },
@@ -78,175 +81,7 @@ export class IntercompanyService {
       shopReceivableFromFinance,
       balanced: Math.abs(drift) < 0.01,
       drift,
+      driftNote: 'ส่วนต่าง = สัญญาก่อน 2026-06-23/เปลี่ยนเครื่อง (สมุด SHOP ยังไม่ตั้งลูกหนี้)',
     };
-  }
-
-  /**
-   * Record an inter-company settlement (FINANCE pays SHOP).
-   *
-   * SP2 — when called with `transactionId`, posts a real JE on the FINANCE
-   * ledger and marks the InterCompanyTransaction as RECONCILED:
-   *
-   *   Dr 21-1101 [principal]                  เจ้าหนี้-หน้าร้าน (ยอดจัด)
-   *   Dr 21-1102 [commission]                 เจ้าหนี้ค่าคอม-หน้าร้าน
-   *      Cr <depositAccountCode> [total]      เงินสด/ธนาคารที่ใช้จ่าย
-   *
-   * Idempotent: rejects if the txn is already RECONCILED.
-   * Atomic: JE post + status update happen in one $transaction.
-   *
-   * Legacy mode (no transactionId, just amount+reference) is retained for
-   * backward compatibility — it skips JE posting, mirroring the prior
-   * Phase A.4 behavior so existing callers (which already posted SHOP-side
-   * JEs elsewhere) don't double-book.
-   */
-  async settle(dto: SettleIntercompanyDto, _userId: string) {
-    // Pre-flight: settlement amount cannot exceed current outstanding.
-    const balance = await this.getOutstandingBalance();
-    if (dto.amount > balance.financeOwesToShop + 0.01) {
-      throw new BadRequestException(
-        `จำนวนชำระเกินยอดที่ค้าง (ค้าง ${balance.financeOwesToShop.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`,
-      );
-    }
-
-    // SP2: full settlement path — JE post + InterCompanyTransaction status update
-    if (dto.transactionId) {
-      return this.settleWithJournal(dto, balance);
-    }
-
-    // Legacy path (Phase A.4 behavior) — kept for backward compat
-    this.logger.warn(
-      `[Phase A.4 legacy] Inter-company settlement JE skipped for ref ${dto.reference} — caller did not pass transactionId`,
-    );
-    return {
-      amount: dto.amount,
-      reference: dto.reference,
-      remainingBalance: Math.round((balance.financeOwesToShop - dto.amount) * 100) / 100,
-    };
-  }
-
-  /**
-   * SP2: post settlement JE + update InterCompanyTransaction in one tx.
-   */
-  private async settleWithJournal(
-    dto: SettleIntercompanyDto,
-    balance: { financeOwesToShop: number },
-  ) {
-    const transactionId = dto.transactionId!;
-    const depositAccountCode = dto.depositAccountCode ?? '11-1201';
-
-    // Period guard — must run BEFORE the $transaction so a closed-period
-    // rejection doesn't roll back any other concurrent work. Mirrors the
-    // per-module pattern used by payments.service / receipts.service / etc.
-    // (see journal-auto.service.ts comment block lines 73-94).
-    // Resolve FINANCE companyId for the AccountingPeriod lookup since the
-    // settlement JE always posts on the FINANCE ledger.
-    const postedAt = dto.paidDate ? new Date(dto.paidDate) : new Date();
-    const finance = await this.prisma.companyInfo.findFirst({
-      where: { companyCode: 'FINANCE', deletedAt: null },
-      select: { id: true },
-    });
-    await validatePeriodOpen(this.prisma, postedAt, finance?.id);
-
-    return this.prisma.$transaction(async (tx) => {
-      const txn = await tx.interCompanyTransaction.findFirst({
-        where: { id: transactionId, deletedAt: null },
-        select: {
-          id: true,
-          status: true,
-          principal: true,
-          commission: true,
-          totalAmount: true,
-          journalEntryId: true,
-        },
-      });
-      if (!txn) {
-        throw new NotFoundException(`ไม่พบรายการ Inter-Company id=${transactionId}`);
-      }
-      if (txn.status === 'RECONCILED' || txn.journalEntryId) {
-        throw new ConflictException('รายการนี้ถูกจ่ายและบันทึกบัญชีไปแล้ว');
-      }
-
-      const principal = new Decimal(txn.principal.toString());
-      const commission = new Decimal(txn.commission.toString());
-      const expectedTotal = principal.plus(commission);
-      const inputAmount = new Decimal(dto.amount);
-      // Allow 1 satang rounding tolerance
-      if (inputAmount.minus(expectedTotal).abs().gt(new Decimal('0.01'))) {
-        throw new BadRequestException(
-          `จำนวนเงินที่จ่าย ${inputAmount.toFixed(2)} ไม่ตรงกับยอดในรายการ (${expectedTotal.toFixed(2)})`,
-        );
-      }
-
-      // postedAt is computed above (before period guard) — re-used here.
-
-      const lines: Array<{ accountCode: string; dr: Decimal; cr: Decimal; description?: string }> =
-        [];
-      if (principal.gt(0)) {
-        lines.push({
-          accountCode: '21-1101',
-          dr: principal,
-          cr: new Decimal(0),
-          description: 'ล้างเจ้าหนี้-หน้าร้าน (Inter-co settlement)',
-        });
-      }
-      if (commission.gt(0)) {
-        lines.push({
-          accountCode: '21-1102',
-          dr: commission,
-          cr: new Decimal(0),
-          description: 'ล้างเจ้าหนี้ค่าคอม-หน้าร้าน (Inter-co settlement)',
-        });
-      }
-      lines.push({
-        accountCode: depositAccountCode,
-        dr: new Decimal(0),
-        cr: expectedTotal,
-        description: `จ่ายค่าจัด+ค่าคอม Inter-co ref ${dto.reference}`,
-      });
-
-      const je = await this.journalAuto.createAndPost(
-        {
-          description: `Inter-co settlement ${dto.reference}`,
-          reference: `${transactionId}:inter-company-settlement`,
-          postedAt,
-          metadata: {
-            flow: 'inter-company-settlement',
-            interCompanyTransactionId: transactionId,
-            reference: dto.reference,
-            principal: principal.toFixed(2),
-            commission: commission.toFixed(2),
-            depositAccountCode,
-          },
-          lines,
-        },
-        tx,
-      );
-
-      // Override referenceType to INTER_COMPANY for clarity in reports
-      await tx.journalEntry.update({
-        where: { id: je.id },
-        data: { referenceType: 'INTER_COMPANY', referenceId: transactionId },
-      });
-
-      await tx.interCompanyTransaction.update({
-        where: { id: transactionId },
-        data: {
-          status: 'RECONCILED',
-          reconciledAt: postedAt,
-          journalEntryId: je.id,
-        },
-      });
-
-      const remainingBalance = Math.round((balance.financeOwesToShop - dto.amount) * 100) / 100;
-
-      return {
-        amount: dto.amount,
-        reference: dto.reference,
-        transactionId,
-        journalEntryId: je.id,
-        entryNumber: je.entryNumber,
-        remainingBalance,
-      };
-    });
   }
 }

@@ -85,11 +85,10 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
           ...paymentOverrides,
         }),
       },
-      // loadLateFeeConfig reads 7 keys — pin BRACKET so the quote is deterministic.
+      // loadLateFeeConfig reads 3 bracket keys — pin them so the quote is deterministic.
       systemConfig: {
         findUnique: jest.fn().mockImplementation(({ where: { key } }: { where: { key: string } }) => {
           const map: Record<string, string> = {
-            late_fee_mode: 'BRACKET',
             late_fee_tier1_amount: '50',
             late_fee_tier2_amount: '100',
             late_fee_tier2_min_days: '3',

@@ -7,12 +7,11 @@ import { PaymentQueryService } from './services/payment-query.service';
  * so the read path must recompute it from current config to reflect settings edits.
  */
 describe('PaymentQueryService — getPendingPayments live late fee', () => {
-  const PER_DAY = ({ where: { key } }: { where: { key: string } }) => {
+  const BRACKET = ({ where: { key } }: { where: { key: string } }) => {
     const map: Record<string, string> = {
-      late_fee_mode: 'PER_DAY',
-      late_fee_per_day_rate: '20',
-      late_fee_max_amount: '500',
-      late_fee_cap_pct: '5',
+      late_fee_tier1_amount: '50',
+      late_fee_tier2_amount: '100',
+      late_fee_tier2_min_days: '3',
     };
     return Promise.resolve(map[key] ? { value: map[key] } : null);
   };
@@ -21,7 +20,7 @@ describe('PaymentQueryService — getPendingPayments live late fee', () => {
   function makeService(rows: Record<string, unknown>[]) {
     const findMany = jest.fn().mockResolvedValue(rows);
     const count = jest.fn().mockResolvedValue(rows.length);
-    const systemConfig = { findUnique: jest.fn(PER_DAY) };
+    const systemConfig = { findUnique: jest.fn(BRACKET) };
     const prisma = { payment: { findMany, count }, systemConfig };
     return new PaymentQueryService(prisma as unknown as never);
   }
@@ -30,12 +29,12 @@ describe('PaymentQueryService — getPendingPayments live late fee', () => {
   const lateFeeNum = (row: { lateFee: { toString(): string } }) =>
     new Prisma.Decimal(row.lateFee.toString()).toNumber();
 
-  it('overrides the stale stored stamp with the live PER_DAY 5% cap', async () => {
+  it('overrides the stale stored stamp with the live flat-bracket tier2 fee', async () => {
     const service = makeService([
       { id: 'p1', status: 'OVERDUE', dueDate: daysAgo(30), amountDue: D('3671'), amountPaid: D('0'), lateFeeWaived: false, lateFee: D('999'), contract: {} },
     ]);
     const res = await service.getPendingPayments({});
-    expect(lateFeeNum(res.data[0])).toBe(183.55);
+    expect(lateFeeNum(res.data[0])).toBe(100);
   });
 
   it('waived installment → 0 even when the stored stamp is non-zero', async () => {

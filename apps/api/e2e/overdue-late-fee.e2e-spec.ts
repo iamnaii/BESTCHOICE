@@ -24,15 +24,12 @@
  *   - 5 days overdue → tier2 (100)
  *   - stored 200 with 5 days → DOWNGRADED to 100 (unconditional SET)
  *
- * MODE: `late_fee_mode` PIN REQUIRED — since `feat(late-fee): per-day model +
- * 5% cap + resolveLateFee dispatcher (config-switchable)` (commit 79131032b),
- * `BUSINESS_RULES.LATE_FEE_MODE` (config.util.ts) defaults to `'PER_DAY'`, not
- * `'BRACKET'`. `calculateLateFees()` reads the mode via `loadLateFeeConfig()`
- * and falls back to that code default whenever no `late_fee_mode` SystemConfig
- * row exists. This suite exercises the legacy BRACKET math specifically, so it
- * must explicitly seed `late_fee_mode=BRACKET` — otherwise every row above
- * gets priced as `min(days × 20, 500, 5% × amountDue)` (PER_DAY defaults)
- * instead of the tier1/tier2 brackets asserted below.
+ * BRACKET is the ONLY late-fee formula in the system (CPA ยืนยันขั้นบันไดถาวร
+ * 2026-08-01 — the config-switchable `late_fee_mode='PER_DAY'` path that used
+ * to live alongside this was removed the same day; it was CPA-gated and never
+ * actually ran on prod). This suite still seeds tier1/tier2/minDays explicitly
+ * rather than relying on ambient config, per the same idiom as
+ * late-fee-bracket-sql.integration.spec.ts / late-fee-skip-base-paid.integration.spec.ts.
  *
  * HARNESS: the main jest config IGNORES *.integration.spec.ts and only the e2e
  * jest config (`e2e/jest-e2e.json`, run by CI via `npm run test:e2e`) matches
@@ -68,11 +65,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const daysAgo = (n: number): Date => new Date(Date.now() - n * DAY_MS);
 const daysFromNow = (n: number): Date => new Date(Date.now() + n * DAY_MS);
 
-// late_fee_mode defaults to PER_DAY in code (BUSINESS_RULES.LATE_FEE_MODE,
-// config.util.ts) since the D2 per-day model shipped — this suite pins
-// BRACKET explicitly so the flat-tier assertions below stay meaningful.
+// Pin tier1/tier2/minDays explicitly so the flat-tier assertions below stay
+// meaningful regardless of ambient SystemConfig state in the shared e2e DB.
 const LATE_FEE_BRACKET_CONFIG = [
-  ['late_fee_mode', 'BRACKET'],
   ['late_fee_tier1_amount', '50'],
   ['late_fee_tier2_amount', '100'],
   ['late_fee_tier2_min_days', '3'],
@@ -254,12 +249,9 @@ describeOrSkip('OverdueLifecycleCronService.calculateLateFees — D2 flat-bracke
     });
     paymentIds.future = pFuture.id;
 
-    // --- SystemConfig: pin D2 bracket mode + tier defaults explicitly ----
-    // late_fee_mode MUST be forced to BRACKET — the code default is PER_DAY
-    // (see MODE note above). tier1/tier2/minDays mirror BUSINESS_RULES
-    // defaults but are seeded explicitly for the same reason: never rely on
-    // ambient config in a real-DB e2e suite. Mirrors the seeding idiom in
-    // late-fee-perday-sql.integration.spec.ts / late-fee-skip-base-paid.integration.spec.ts.
+    // --- SystemConfig: pin D2 bracket tier defaults explicitly ----------
+    // tier1/tier2/minDays mirror BUSINESS_RULES defaults but are seeded
+    // explicitly anyway: never rely on ambient config in a real-DB e2e suite.
     for (const [key, value] of LATE_FEE_BRACKET_CONFIG) {
       await prisma.systemConfig.upsert({ where: { key }, create: { key, value }, update: { value } });
     }
@@ -274,9 +266,8 @@ describeOrSkip('OverdueLifecycleCronService.calculateLateFees — D2 flat-bracke
     await prisma.customer.deleteMany({ where: { id: customerId } });
     await prisma.user.deleteMany({ where: { id: userId } });
     await prisma.branch.deleteMany({ where: { id: branchId } });
-    // Remove the late-fee config keys we seeded — most importantly
-    // late_fee_mode, which MUST NOT leak BRACKET into other e2e specs / the
-    // shared DB once this suite finishes (the code default is PER_DAY).
+    // Remove the late-fee config keys we seeded so they don't leak into
+    // other e2e specs sharing the same DB.
     await prisma.systemConfig.deleteMany({
       where: { key: { in: LATE_FEE_BRACKET_CONFIG.map(([key]) => key) } },
     });

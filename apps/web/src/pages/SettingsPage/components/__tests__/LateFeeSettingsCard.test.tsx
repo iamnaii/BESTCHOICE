@@ -35,7 +35,7 @@ function wrap(ui: ReactNode) {
 
 // Minimal /settings payload — the card fills the rest from BUSINESS_RULES defaults.
 function settingsResponse(overrides: Record<string, string> = {}) {
-  const base: Record<string, string> = { late_fee_mode: 'PER_DAY', late_fee_per_day_rate: '25', ...overrides };
+  const base: Record<string, string> = { late_fee_tier1_amount: '60', ...overrides };
   return {
     data: Object.entries(base).map(([key, value], i) => ({ id: `sc-${i}`, key, value, label: null })),
   };
@@ -56,69 +56,44 @@ describe('LateFeeSettingsCard', () => {
     (toast.success as ReturnType<typeof vi.fn>).mockClear();
   });
 
-  it('view mode shows the active PER_DAY mode badge + stored value', async () => {
+  it('view mode shows the stored tier1 value', async () => {
     apiGet.mockResolvedValue(settingsResponse());
     wrap(<LateFeeSettingsCard />);
-    await waitFor(() => expect(screen.getByText('โหมด: ต่อวัน')).toBeInTheDocument());
-    expect(screen.getByText(/25\s*บาท\/วัน/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('ค่าปรับ tier1')).toBeInTheDocument());
+    expect(screen.getByText(/60\s*บาท/)).toBeInTheDocument();
   });
 
-  it('switching mode to BRACKET swaps the per-day fields for tier fields', async () => {
+  it('edit mode shows the tier1/tier2/minDays fields (no mode selector)', async () => {
     apiGet.mockResolvedValue(settingsResponse());
     wrap(<LateFeeSettingsCard />);
     await enterEditMode();
 
-    expect(screen.getByDisplayValue('25')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('โหมดคิดค่าปรับ'), { target: { value: 'BRACKET' } });
-
-    expect(screen.getByDisplayValue('50')).toBeInTheDocument(); // tier1 default
-    expect(screen.queryByDisplayValue('25')).toBeNull(); // per-day rate gone
+    expect(screen.getByDisplayValue('60')).toBeInTheDocument(); // tier1 override
+    expect(screen.getByDisplayValue('100')).toBeInTheDocument(); // tier2 default
+    expect(screen.getByDisplayValue('3')).toBeInTheDocument(); // minDays default
+    expect(screen.queryByLabelText('โหมดคิดค่าปรับ')).toBeNull();
   });
 
-  it('PER_DAY save PATCHes only the changed keys', async () => {
+  it('save PATCHes only the changed keys', async () => {
     apiGet.mockResolvedValue(settingsResponse());
     wrap(<LateFeeSettingsCard />);
     await enterEditMode();
 
-    fireEvent.change(screen.getByDisplayValue('25'), { target: { value: '30' } });
+    fireEvent.change(screen.getByDisplayValue('60'), { target: { value: '75' } });
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
 
     await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
     const [url, body] = apiPatch.mock.calls[0];
     expect(url).toBe('/settings');
-    expect(body.items).toEqual([{ key: 'late_fee_per_day_rate', value: '30' }]);
+    expect(body.items).toEqual([{ key: 'late_fee_tier1_amount', value: '75' }]);
   });
 
-  it('BRACKET save sends late_fee_mode + edited tier field, and NOT the hidden per-day keys', async () => {
+  it('blocks save with a toast when tier2_min_days is below 1 (no PATCH)', async () => {
     apiGet.mockResolvedValue(settingsResponse());
     wrap(<LateFeeSettingsCard />);
     await enterEditMode();
 
-    fireEvent.change(screen.getByLabelText('โหมดคิดค่าปรับ'), { target: { value: 'BRACKET' } });
-    fireEvent.change(screen.getByDisplayValue('50'), { target: { value: '60' } }); // tier1 50 -> 60
-    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
-
-    await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
-    const [, body] = apiPatch.mock.calls[0];
-    const keys = body.items.map((i: { key: string }) => i.key);
-    expect(body.items).toEqual(
-      expect.arrayContaining([
-        { key: 'late_fee_mode', value: 'BRACKET' },
-        { key: 'late_fee_tier1_amount', value: '60' },
-      ]),
-    );
-    // hidden per-day keys must NOT be resent
-    expect(keys).not.toContain('late_fee_per_day_rate');
-    expect(keys).not.toContain('late_fee_max_amount');
-    expect(keys).not.toContain('late_fee_cap_pct');
-  });
-
-  it('blocks save with a toast when cap_pct is out of range (no PATCH)', async () => {
-    apiGet.mockResolvedValue(settingsResponse());
-    wrap(<LateFeeSettingsCard />);
-    await enterEditMode();
-
-    fireEvent.change(screen.getByDisplayValue('5'), { target: { value: '150' } }); // cap_pct default 5 -> 150
+    fireEvent.change(screen.getByDisplayValue('3'), { target: { value: '0' } }); // minDays 3 -> 0
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
 
     expect(toast.error).toHaveBeenCalled();
@@ -130,27 +105,26 @@ describe('LateFeeSettingsCard', () => {
     wrap(<LateFeeSettingsCard />);
     await enterEditMode();
 
-    fireEvent.change(screen.getByDisplayValue('25'), { target: { value: '' } }); // clear per-day rate
+    fireEvent.change(screen.getByDisplayValue('60'), { target: { value: '' } }); // clear tier1
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
 
     expect(toast.error).toHaveBeenCalled();
     expect(apiPatch).not.toHaveBeenCalled();
   });
 
-  it('preview estimates the PER_DAY fee with the 5% cap binding', async () => {
+  it('preview estimates the flat-bracket fee (flat tier2, not proportional to days)', async () => {
     apiGet.mockResolvedValue(settingsResponse());
     wrap(<LateFeeSettingsCard />);
     await enterEditMode();
-    // defaults: rate=25, max=500, cap=5, days=10, gross=1515.83
-    // byDay=250, byMax=500, byPct=round2(0.05*1515.83)=75.79 → min=75.79
-    expect(screen.getByText(/75\.79/)).toBeInTheDocument();
+    // defaults: tier1=60 (overridden), tier2=100, minDays=3, preview days=10 (>= minDays) → tier2 = 100
+    expect(screen.getByText(/100\.00/)).toBeInTheDocument();
   });
 
   it('non-OWNER sees a read-only notice and no edit button', async () => {
     authState.role = 'SALES';
     apiGet.mockResolvedValue(settingsResponse());
     wrap(<LateFeeSettingsCard />);
-    await waitFor(() => expect(screen.getByText('โหมด: ต่อวัน')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('ค่าปรับ tier1')).toBeInTheDocument());
     expect(screen.getByText('เฉพาะ OWNER เท่านั้นที่แก้ไขได้')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'แก้ไข' })).toBeNull();
   });

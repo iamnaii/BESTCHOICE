@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { IntercoSettlementService } from './interco-settlement.service';
 import { IntercoPendingService, PendingContract } from './interco-pending.service';
 import { IntercoBatchNumberService } from './interco-batch-number.service';
@@ -10,6 +11,8 @@ import { PairedJournalService } from '../journal/paired-journal.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { StorageService } from '../storage/storage.service';
+
+jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 
 /** Minimal valid JPEG header (FF D8 FF ...) — passes the magic-byte check. */
 const jpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -60,8 +63,11 @@ describe('IntercoSettlementService', () => {
   let batchNumberService: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let storage: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pairedJournal: any;
 
   beforeEach(async () => {
+    (Sentry.captureMessage as jest.Mock).mockClear();
     tx = {
       interCoSettlementBatch: {
         create: jest.fn(),
@@ -76,6 +82,11 @@ describe('IntercoSettlementService', () => {
       },
       contract: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      // approveBatch's drift guard reads these via glContractBalance — default
+      // to "no lines" (0 balance everywhere); approveBatch specs below
+      // override per accountCode to match their item snapshot (no drift).
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+      interCompanyTransaction: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
 
     prisma = {
@@ -95,7 +106,7 @@ describe('IntercoSettlementService', () => {
     batchNumberService = { next: jest.fn().mockResolvedValue('IC-20260801-0001') };
     // approveBatch/reverseBatch (Task 4) deps — unused by the create/update/
     // submit/withdraw/cancel specs below, just need to satisfy Nest DI.
-    const pairedJournal = { postPaired: jest.fn() };
+    pairedJournal = { postPaired: jest.fn() };
     const companyResolver = {
       getFinanceCompanyId: jest.fn().mockResolvedValue('company-finance'),
       getShopCompanyId: jest.fn().mockResolvedValue('company-shop'),
@@ -216,6 +227,34 @@ describe('IntercoSettlementService', () => {
       await expect(
         service.createBatch(dto({ contractIds: ['c-1', 'c-1'] }), 'user-1'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('W1: rejects a pending row with a negative GL component (e.g. commissionGl < 0 from a stray JV) and reports it to Sentry', async () => {
+      pendingService.getPendingContracts.mockResolvedValue([
+        pendingRow({
+          contractId: 'c-1',
+          financedGl: new Prisma.Decimal(11000),
+          // HAVING SUM(cr-dr) on 21-1101+21-1102 combined still nets +10500
+          // (11000 - 500) even though this single component is negative.
+          commissionGl: new Prisma.Decimal(-500),
+        }),
+      ]);
+
+      await expect(service.createBatch(dto({ contractIds: ['c-1'] }), 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.createBatch(dto({ contractIds: ['c-1'] }), 'user-1')).rejects.toThrow(
+        /CT-0001.*21-1102/,
+      );
+      expect(tx.interCoSettlementBatch.create).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining('negative GL component'),
+        expect.objectContaining({
+          level: 'warning',
+          tags: { subsystem: 'interco-settlement' },
+          extra: expect.objectContaining({ contractId: 'c-1', accountCode: '21-1102' }),
+        }),
+      );
     });
   });
 
@@ -492,6 +531,71 @@ describe('IntercoSettlementService', () => {
         BadRequestException,
       );
       expect(storage.upload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('approveBatch', () => {
+    /** No-drift batch: 1 item, live GL (mocked via tx.journalLine) matches the snapshot exactly. */
+    function approvableBatchFixture() {
+      return {
+        id: 'batch-1',
+        status: 'PENDING_APPROVAL',
+        deletedAt: null,
+        makerId: 'maker-1',
+        batchNumber: 'IC-20260801-0001',
+        transferDate: new Date('2026-07-15T00:00:00Z'),
+        financeBankCode: '11-1201',
+        shopBankCode: 'S11-1201',
+        totalFinanced: new Prisma.Decimal(100),
+        totalCommission: new Prisma.Decimal(0),
+        totalAmount: new Prisma.Decimal(100),
+        shopPostedAmount: new Prisma.Decimal(100),
+        items: [
+          {
+            contractId: 'c-1',
+            financedGl: new Prisma.Decimal(100),
+            commissionGl: new Prisma.Decimal(0),
+            shopFinancedGl: new Prisma.Decimal(100),
+            shopCommissionGl: new Prisma.Decimal(0),
+            legacyNoShop: false,
+            contract: { contractNumber: 'CT-0001' },
+          },
+        ],
+      };
+    }
+
+    /** Wires tx.journalLine.findMany so glContractBalance reproduces the fixture's snapshot exactly (drift guard passes). */
+    function noDriftJournalLineMock() {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tx.journalLine.findMany.mockImplementation(({ where }: { where: { accountCode: string } }) => {
+        if (where.accountCode === '21-1101') {
+          return Promise.resolve([{ debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(100) }]);
+        }
+        if (where.accountCode === 'S11-3001') {
+          return Promise.resolve([{ debit: new Prisma.Decimal(100), credit: new Prisma.Decimal(0) }]);
+        }
+        return Promise.resolve([]); // 21-1102 / S11-3002 → 0, matches fixture
+      });
+    }
+
+    it('W2: translates a P2002 race from postPaired into ConflictException without marking the batch POSTED', async () => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());
+      noDriftJournalLineMock();
+      pairedJournal.postPaired.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('dup', {
+          code: 'P2002',
+          clientVersion: 'x',
+        }),
+      );
+
+      await expect(service.approveBatch('batch-1', 'approver-1')).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.approveBatch('batch-1', 'approver-1')).rejects.toThrow(/ลงบัญชีไปแล้ว/);
+
+      // The whole $transaction rolled back on the thrown ConflictException —
+      // the batch-status update (step 7) must never have been reached/committed.
+      expect(tx.interCoSettlementBatch.update).not.toHaveBeenCalled();
     });
   });
 });

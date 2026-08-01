@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntercoPendingService, PendingContract } from './interco-pending.service';
 import { IntercoBatchNumberService } from './interco-batch-number.service';
@@ -109,6 +111,7 @@ export class IntercoSettlementService {
 
     const items = contractIds.map((contractId) => {
       const p = pendingByContractId.get(contractId)!;
+      this.assertNonNegativeGl(p);
       totalFinanced = totalFinanced.plus(p.financedGl);
       totalCommission = totalCommission.plus(p.commissionGl);
       if (!p.legacyNoShop) {
@@ -131,6 +134,41 @@ export class IntercoSettlementService {
       totalAmount: totalFinanced.plus(totalCommission),
       shopPostedAmount,
     };
+  }
+
+  /**
+   * Final-review W1: `IntercoPendingService`'s HAVING clause nets 21-1101 +
+   * 21-1102 together — if a stray JV drives ONE component negative while the
+   * combined total stays positive, the pending row still surfaces. Left
+   * unguarded, `buildFinanceLines`/`buildShopLines` would emit a Dr line with
+   * a negative amount (the JE still balances Dr=Cr in raw sum, but the line
+   * is booked on the wrong side of the ledger). Guard here — before the
+   * amount ever reaches a snapshot/JE — for all 4 GL components.
+   */
+  private assertNonNegativeGl(p: PendingContract): void {
+    const checks: Array<{ value: Prisma.Decimal; code: string }> = [
+      { value: p.financedGl, code: '21-1101' },
+      { value: p.commissionGl, code: '21-1102' },
+      { value: p.shopFinancedGl, code: 'S11-3001' },
+      { value: p.shopCommissionGl, code: 'S11-3002' },
+    ];
+    for (const { value, code } of checks) {
+      if (value.lt(0)) {
+        Sentry.captureMessage('Interco settlement: negative GL component on pending contract', {
+          level: 'warning',
+          tags: { subsystem: 'interco-settlement' },
+          extra: {
+            contractId: p.contractId,
+            contractNumber: p.contractNumber,
+            accountCode: code,
+            value: value.toFixed(2),
+          },
+        });
+        throw new BadRequestException(
+          `พบยอด GL ติดลบบนสัญญา ${p.contractNumber} (บัญชี ${code}) — ตรวจสอบ JV ผิดปกติก่อนสร้างรอบ`,
+        );
+      }
+    }
   }
 
   /** Best-effort contract-number lookup for error messages — falls back to the raw id. */
@@ -630,26 +668,48 @@ export class IntercoSettlementService {
       let financeJournalEntryId: string;
       let shopJournalEntryId: string | null = null;
 
-      if (shopLines.length > 0) {
-        const shopDescription = `รับโอนจาก FINANCE รอบ ${batch.batchNumber} (โอนจริง ${this.formatBkkDate(batch.transferDate)})`;
-        const paired = await this.pairedJournal.postPaired(
-          {
-            shop: {
-              companyCode: 'SHOP',
-              description: shopDescription,
-              metadata: {
-                flow: 'interco-settlement-batch',
-                idempotencyKey: `interco:${batch.id}:SHOP`,
-                settlementBatchId: batch.id,
-                batchNumber: batch.batchNumber,
-                transferDate: batch.transferDate.toISOString(),
-                items: itemsMetadata,
+      try {
+        if (shopLines.length > 0) {
+          const shopDescription = `รับโอนจาก FINANCE รอบ ${batch.batchNumber} (โอนจริง ${this.formatBkkDate(batch.transferDate)})`;
+          const paired = await this.pairedJournal.postPaired(
+            {
+              shop: {
+                companyCode: 'SHOP',
+                description: shopDescription,
+                metadata: {
+                  flow: 'interco-settlement-batch',
+                  idempotencyKey: `interco:${batch.id}:SHOP`,
+                  settlementBatchId: batch.id,
+                  batchNumber: batch.batchNumber,
+                  transferDate: batch.transferDate.toISOString(),
+                  items: itemsMetadata,
+                },
+                postedAt,
+                lines: shopLines,
               },
-              postedAt,
-              lines: shopLines,
+              finance: {
+                companyCode: 'FINANCE',
+                description: financeDescription,
+                metadata: {
+                  flow: 'interco-settlement-batch',
+                  idempotencyKey: `interco:${batch.id}:FINANCE`,
+                  settlementBatchId: batch.id,
+                  batchNumber: batch.batchNumber,
+                  transferDate: batch.transferDate.toISOString(),
+                  items: itemsMetadata,
+                },
+                postedAt,
+                lines: financeLines,
+              },
+              batchRef: batch.id,
             },
-            finance: {
-              companyCode: 'FINANCE',
+            tx,
+          );
+          financeJournalEntryId = paired.financeJournalEntryId;
+          shopJournalEntryId = paired.shopJournalEntryId;
+        } else {
+          const finance = await this.journalAuto.createAndPost(
+            {
               description: financeDescription,
               metadata: {
                 flow: 'interco-settlement-batch',
@@ -660,33 +720,24 @@ export class IntercoSettlementService {
                 items: itemsMetadata,
               },
               postedAt,
+              companyId: financeCompanyId,
               lines: financeLines,
             },
-            batchRef: batch.id,
-          },
-          tx,
-        );
-        financeJournalEntryId = paired.financeJournalEntryId;
-        shopJournalEntryId = paired.shopJournalEntryId;
-      } else {
-        const finance = await this.journalAuto.createAndPost(
-          {
-            description: financeDescription,
-            metadata: {
-              flow: 'interco-settlement-batch',
-              idempotencyKey: `interco:${batch.id}:FINANCE`,
-              settlementBatchId: batch.id,
-              batchNumber: batch.batchNumber,
-              transferDate: batch.transferDate.toISOString(),
-              items: itemsMetadata,
-            },
-            postedAt,
-            companyId: financeCompanyId,
-            lines: financeLines,
-          },
-          tx,
-        );
-        financeJournalEntryId = finance.id;
+            tx,
+          );
+          financeJournalEntryId = finance.id;
+        }
+      } catch (err) {
+        // W2 (final review): the DB-level `journal_entries_idempotency_idx`
+        // partial unique index (flow, idempotencyKey) is the second line of
+        // defense against a concurrent double-approve race — the LOSER of
+        // that race must not see a raw 500. Translate P2002 into a friendly
+        // Thai 409; the whole `$transaction` rolls back so the batch is
+        // never marked POSTED twice.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException('รอบจ่ายนี้ถูกลงบัญชีไปแล้ว (คำขอซ้ำ)');
+        }
+        throw err;
       }
 
       // 6. best-effort mark matching InterCompanyTransaction rows RECONCILED
@@ -770,23 +821,33 @@ export class IntercoSettlementService {
           description: `[ย้อนกลับรอบจ่าย] ${l.description ?? ''}`.trim(),
         }));
 
-        const result = await this.journalAuto.createAndPost(
-          {
-            description: `[ย้อนกลับรอบจ่าย] ${batch.batchNumber} — ${je.description}`,
-            reference: `${je.id}:interco-settlement-reverse`,
-            companyId: je.companyId,
-            metadata: {
-              tag: 'REVERSAL',
-              flow: 'interco-settlement-batch-reverse',
-              idempotencyKey: `interco-reverse:${je.id}`,
-              originalEntryId: je.id,
-              reversesEntryId: je.id,
-              settlementBatchId: batch.id,
+        let result: { id: string; entryNumber: string };
+        try {
+          result = await this.journalAuto.createAndPost(
+            {
+              description: `[ย้อนกลับรอบจ่าย] ${batch.batchNumber} — ${je.description}`,
+              reference: `${je.id}:interco-settlement-reverse`,
+              companyId: je.companyId,
+              metadata: {
+                tag: 'REVERSAL',
+                flow: 'interco-settlement-batch-reverse',
+                idempotencyKey: `interco-reverse:${je.id}`,
+                originalEntryId: je.id,
+                reversesEntryId: je.id,
+                settlementBatchId: batch.id,
+              },
+              lines: reversedLines,
             },
-            lines: reversedLines,
-          },
-          tx,
-        );
+            tx,
+          );
+        } catch (err) {
+          // W2 (final review) — same DB-index race as approveBatch, mirrored
+          // here for the reversal path.
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            throw new ConflictException('การย้อนกลับรอบจ่ายนี้ถูกลงบัญชีไปแล้ว (คำขอซ้ำ)');
+          }
+          throw err;
+        }
 
         if (je.id === batch.financeJournalEntryId) financeReversalId = result.id;
         if (je.id === batch.shopJournalEntryId) shopReversalId = result.id;

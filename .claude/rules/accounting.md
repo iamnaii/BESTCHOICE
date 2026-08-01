@@ -77,9 +77,13 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 | `EarlyPayoffJP4Template` | Early payoff | Includes Dr 52-1106 (discount) + reverse remaining 11-2106 |
 | `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102 |
 | `RescheduleJP6Template` | Reschedule (6a/6b variants) | Reclassify overdue to 21-1103 advance |
-| `VendorClearanceTemplate` | Every case point 3 | Dr 21-1101 + 21-1102 / Cr 11-1201 (bank) |
 | `Vat60dayMandatoryTemplate` | Daily cron 02:00 BKK | Mandatory VAT on 60-day overdue installments |
 | `Vat60dayReversalTemplate` | Payment after 60-day flag | Reversal when overdue payment received |
+
+`VendorClearanceTemplate` (was: `Dr 21-1101 + 21-1102 / Cr 11-1201`) was **deleted** 2026-08-01 —
+dead code, never had a production caller. Its intended trigger (clearing 21-1101/21-1102 on
+payment to SHOP) is now handled by the Inter-Co Settlement Batch flow — see "Inter-Co Settlement
+Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below.
 
 ---
 
@@ -371,16 +375,25 @@ Currently only inventory transfer uses paired wrapping; the existing FINANCE tem
 
 > **⚠️ WIRING STATUS — DEFERRED (verified 2026-06-11).** The templates below are SCAFFOLDED
 > (code + golden specs + module registration) but **only `ShopExchangeReturnTemplate` is wired
-> to a production caller** (`contract-exchange.service.ts:396`). The other 7 templates
+> to a production caller** (`contract-exchange.service.ts:396`). The other templates
 > (`ShopCashSaleTemplate`, `ShopDownPaymentTemplate`, `ShopDownPaymentReversalTemplate`,
-> `ShopInventoryTransferTemplate`, `ShopFinanceReceiptTemplate`, `ShopTradeInTemplate`,
-> `ShopExpenseTemplate`) have **ZERO production callers** — contract activation / trade-in
-> accept / cash sale do NOT post SHOP JEs. Consequence: the SHOP Trial Balance + P&L at
-> `/shop/accounting` are **near-empty** even though SHOP is actively selling (real numbers live
-> in the `Sale` table / Dashboard). The "Trigger" column below is the **intended** trigger, not
-> a live one. Wiring is gated on an owner scope decision (Phase A.5 brief §4: should contract
-> activation post SHOP+FINANCE atomically?). Do NOT treat the SHOP reports as authoritative for
-> tax/audit until these are wired. Tracking: `docs/ceo-review/deep-audit-2026-06-11-findings.md` (F3).
+> `ShopInventoryTransferTemplate`, `ShopTradeInTemplate`, `ShopExpenseTemplate`) have **ZERO
+> production callers** — contract activation / trade-in accept / cash sale do NOT post SHOP
+> JEs. Consequence: the SHOP Trial Balance + P&L at `/shop/accounting` are **near-empty** even
+> though SHOP is actively selling (real numbers live in the `Sale` table / Dashboard). The
+> "Trigger" column below is the **intended** trigger, not a live one. Wiring is gated on an
+> owner scope decision (Phase A.5 brief §4: should contract activation post SHOP+FINANCE
+> atomically?). Do NOT treat the SHOP reports as authoritative for tax/audit until these are
+> wired. Tracking: `docs/ceo-review/deep-audit-2026-06-11-findings.md` (F3).
+>
+> **Stale note (2026-08-01):** this box predates two events documented elsewhere in this file.
+> (1) `ShopInventoryTransferTemplate` DID gain a production caller on 2026-06-23
+> (`contract-workflow.service.ts`, commit `bbcfa7a3`, PR #1280) — see "Installment lifecycle
+> 3-event flow" below; this box's "ZERO production callers" claim no longer holds for that one
+> template specifically. (2) `ShopFinanceReceiptTemplate` — listed here as unwired as of
+> 2026-06-11 — was **deleted outright** on 2026-08-01 (Inter-Co Settlement Batch, C2); it is
+> removed from the list above rather than left as a dangling reference to a class that no
+> longer exists. See "Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below.
 
 All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent via `metadata.flow + metadata.idempotencyKey` (DB-level partial unique index since P3-SP5 DEEP fix W8 — `journal_entries_idempotency_idx`).
 
@@ -389,10 +402,10 @@ All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent vi
 | Template | Trigger | Companies | Notes |
 |---|---|---|---|
 | `ShopCashSaleTemplate` | Sale w/ method=CASH | SHOP only | Dr cash / Cr revenue + Dr COGS / Cr inventory. No FINANCE involvement. |
-| `ShopDownPaymentTemplate` | Customer pays down at contract creation | SHOP only | Dr cash / Cr S21-2001 (down payable). Cleared by `ShopInventoryTransferTemplate` at activation (NOT by `ShopFinanceReceiptTemplate` — that's the C1 bug fixed). |
+| `ShopDownPaymentTemplate` | Customer pays down at contract creation | SHOP only | Dr cash / Cr S21-2001 (down payable). Cleared by `ShopInventoryTransferTemplate` at activation (NOT by settlement — that's the C1 bug fixed). |
 | `ShopDownPaymentReversalTemplate` (W2) | Contract canceled BEFORE activation | SHOP only | Dr S21-2001 / Cr cash. Stamps `metadata.reversedByIdempotencyKey` onto the original down JE. |
 | `ShopInventoryTransferTemplate` | Contract activated (ownership SHOP→FINANCE) | SHOP only* | Posts TWO JEs in one `$transaction` sharing `metadata.batchId`: (A) Dr S50-XXXX / Cr S11-200X (COGS); (B) Dr S11-3001 + Dr S11-3002 + Dr S21-2001 / Cr S41-XXXX + Cr S41-1201 (revenue + receivables + down clearance). ASSERTS `financedAmount + downAmount === salePrice`. |
-| `ShopFinanceReceiptTemplate` | FINANCE wires `financedAmount + commission` to SHOP | SHOP only | Simple receipt: Dr bank / Cr S11-3001 + Cr S11-3002. NO revenue, NO COGS, NO down clearance — those already happened at activation. (Was a C1 bug — used to try to recognise revenue here too, which made the JE unbalanced and double-counted revenue.) |
+| ~~`ShopFinanceReceiptTemplate`~~ | ~~FINANCE wires `financedAmount + commission` to SHOP~~ | — | **DELETED 2026-08-01** (Inter-Co Settlement Batch, C2) — superseded by `IntercoSettlementService.approveBatch`'s `buildShopLines`, which posts the SAME clearing leg (`Dr <shopBankCode> / Cr S11-3001 + Cr S11-3002`) directly via `PairedJournalService`/`JournalAutoService`, batched across many contracts per wire instead of one template call per contract. See "Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below. |
 | `ShopTradeInTemplate` (W4) | Trade-in ACCEPTED | SHOP only | Dr `inventoryAccountCode` (default S11-2002 sellable used; optional override to S11-2004 pending evaluation) / Cr cash. |
 | `ShopExpenseTemplate` | Branch expense recorded (rent/salary/utilities/etc) | SHOP only | CASH mode (Dr expense / Cr bank) or ACCRUAL mode (Dr expense / Cr S21-1103 payable). |
 
@@ -422,10 +435,12 @@ Event 2 — Contract activation = ownership transfer SHOP → FINANCE:
     INVARIANT: financedAmount + downAmount === salePrice
 
 Event 3 — FINANCE wires payment to SHOP (may be days later, may be batched):
-  ShopFinanceReceiptTemplate
-    Dr  S11-1201 (bank)                   [financedAmount + commission]
-       Cr S11-3001 (clear receivable)     [financedAmount]
-       Cr S11-3002 (clear commission rec) [commission]
+  [RETIRED 2026-08-01 — was ShopFinanceReceiptTemplate, one contract at a time.
+   Now: IntercoSettlementService.approveBatch, one JE per BATCH of contracts —
+   see "Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below]
+    Dr  <shopBankCode> (bank, default S11-1201)   [Σ financedGl + commissionGl over the batch]
+       Cr S11-3001 (clear receivable, per contract) [financedGl]
+       Cr S11-3002 (clear commission rec, per contract, skips zero) [commissionGl]
 ```
 
 Cancellation paths:
@@ -487,6 +502,232 @@ The existing `/expenses/ledger/trial-balance` and `/expenses/ledger/profit-loss`
 - SHOP-side payroll/SSO (handled at FINANCE level for now)
 - Historical migration of past SHOP transactions (forward-only)
 - SHOP-side balance sheet (Trial Balance + P&L only in SP5)
+
+---
+
+## Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)
+
+Replaces the old per-transaction `intercompany.settle` line and the never-UI-wired
+`shop-finance-settlement` module with a **batch** ("รอบจ่าย") document: FINANCE pays SHOP
+the accumulated ยอดจัด (21-1101) + ค่าคอม (21-1102) for one or many contracts in ONE wire,
+and both sides post atomically on approval.
+
+Spec: `docs/superpowers/specs/2026-07-30-interco-settlement-batch-design.md`
+Module: `apps/api/src/modules/interco-settlement/` (`interco-pending.service.ts`,
+`interco-batch-number.service.ts`, `interco-settlement.service.ts`,
+`interco-settlement.controller.ts`, `interco-settlement.module.ts`)
+
+### Model
+
+`InterCoSettlementBatch` (table `inter_co_settlement_batches`) + `InterCoSettlementItem`
+(`inter_co_settlement_items`, one row per contract in the batch —
+`@@unique([batchId, contractId])`, `onDelete: Restrict` both FKs — it's financial
+evidence, never allowed to dangle). Enum `InterCoBatchStatus { DRAFT PENDING_APPROVAL
+POSTED REVERSED CANCELLED }`.
+
+Doc number: `IC-YYYYMMDD-NNNN` — `IntercoBatchNumberService.next()`, same BKK-day
+advisory-lock pattern as `RepairTicketDocNumberService` (max-via-`findFirst`-desc, not
+`count()`, because a soft-deleted batch still occupies its number via the unique
+constraint).
+
+### Lifecycle
+
+```
+DRAFT --submit--> PENDING_APPROVAL --approve--> POSTED --reverse--> REVERSED
+  ^                      |  |
+  +------withdraw--------+  +--cancel--> CANCELLED
+  |
+  +--cancel--> CANCELLED
+```
+
+- `createBatch` / `updateBatch` (maker-only, DRAFT-only — `updateBatch` hard-deletes
+  and recreates the item rows, safe pre-DRAFT since no JE references them yet):
+  re-snapshots the 4 GL amounts per contract from
+  `IntercoPendingService.getPendingContracts()` — **never** from
+  `Contract.financedAmount`/`storeCommission` (spec F4 — those fields can legitimately
+  diverge from the ledger, e.g. `storeCommission = null` while the 1A JE already booked
+  a 10% fallback commission on 21-1102). Any requested contractId not currently in the
+  pending queue (never activated / soft-deleted / already settled in another open batch)
+  throws `BadRequestException` naming the contract number.
+- `submitBatch`: DRAFT → PENDING_APPROVAL, maker-only; re-checks none of the batch's
+  contracts got grabbed by another `PENDING_APPROVAL`/`POSTED` batch since the snapshot
+  (closes the race window between two makers).
+- `withdrawBatch`: PENDING_APPROVAL → DRAFT, maker-only.
+- `cancelBatch`: DRAFT/PENDING_APPROVAL → CANCELLED — role-gated at the controller
+  (`ACCOUNTANT`, `FINANCE_MANAGER`), not maker-restricted in the service itself.
+- `uploadSlip`: attaches proof-of-transfer to `slipFileKey` (S3 upload + magic-byte
+  re-check on top of the controller's `FileTypeValidator`; PDF/JPEG/PNG/WEBP, ≤5MB) —
+  maker-only, DRAFT/PENDING_APPROVAL only, optional (a backfilled historical round may
+  have no surviving slip).
+
+### Pending lens (คิวรอจ่าย) — `IntercoPendingService`
+
+Per-contract "payableOrigin", GL-only (`interco-pending.service.ts`):
+
+```
+financedGl_i    = Σ(Cr−Dr) of 21-1101 from POSTED JEs where metadata.contractId = i
+commissionGl_i  = Σ(Cr−Dr) of 21-1102 from POSTED JEs where metadata.contractId = i
+shopFinancedGl_i / shopCommissionGl_i = same on SHOP S11-3001 / S11-3002, sign flipped (Dr−Cr)
+legacyNoShop_i  = (shopFinancedGl_i == 0) AND (shopCommissionGl_i == 0)
+```
+
+Computed via raw `$queryRaw` (`GROUP BY je.metadata->>'contractId' HAVING SUM(credit-debit)
+> 0`) — Prisma cannot `GROUP BY` a JSON path. **Settlement-batch JEs never enter this
+lens by construction**: they stamp `metadata.items[]` (many contracts per JE), not a
+single `metadata.contractId`, so there's no metadata-filter special-casing needed to keep
+them out.
+
+**Settled gate**: a contract leaves the pending queue the instant it has an
+`InterCoSettlementItem` row inside a batch with status `PENDING_APPROVAL` or `POSTED`.
+`REVERSED`/`CANCELLED` items do **not** count — reversing a batch puts every one of its
+contracts straight back into the queue without touching the GL lens at all.
+
+`activatedAt` shown on the pending list = `MIN(je.posted_at)` of the JEs counted in the
+lens — `Contract` has no reliable "date activated" field (`createdAt` is draft-creation
+time, `updatedAt` moves on any unrelated edit).
+
+`getReconcileTotals()` — account-level sanity check, shown alongside the queue:
+`pendingTotal` (Σ over the queue) vs `glFinanceTotal` (whole-account 21-1101+21-1102
+balance, no metadata filter) vs `glShopTotal` (S11-3001+S11-3002, no metadata filter). A
+nonzero `drift` (`pendingTotal − glFinanceTotal`) means a stray JE exists without
+`metadata.contractId` — almost certainly the old `inter-company-settlement` flow; the
+pre-flight check (below) confirms this is 0 in prod before go-live.
+
+### Approve — atomic paired JE (`approveBatch`, one `$transaction`)
+
+Exact order as implemented in `interco-settlement.service.ts`:
+
+1. **Load + status + SoD** — batch must be `PENDING_APPROVAL`; throws
+   `ForbiddenException` if the approving user is the batch's own `makerId` (approver ≠
+   maker, enforced server-side — never trust a hidden client field for this).
+2. **Double-batch re-check** — re-runs the "another open batch already grabbed this
+   contract" query inside the tx (same query `submitBatch` ran, closes the remaining
+   race window right up to the moment of posting).
+3. **Drift guard** — per item, reads the LIVE GL via `glContractBalance(tx, contractId,
+   accountCode, side)` on all 4 lens accounts (`21-1101` cr, `21-1102` cr, `S11-3001` dr,
+   `S11-3002` dr) and compares against the item's snapshot, tolerance `±0.01`. This
+   deliberately does NOT reuse `IntercoPendingService.getPendingContracts()` — that
+   service's own "settled" exclusion would hide this very batch's own
+   `PENDING_APPROVAL` items from itself. Any drift → rejects the WHOLE batch, naming
+   every drifted contract number, telling the maker to cancel and recreate (no partial
+   approve).
+4. **Period guard, both companies independently** —
+   `validatePeriodOpen(tx, postedAt, financeCompanyId)` AND
+   `validatePeriodOpen(tx, postedAt, shopCompanyId)` (SHOP has its own
+   `AccountingPeriod` rows). `postedAt = postedAtOverride ?? batch.transferDate` (D4 —
+   `ApproveBatchDto.postedAt` is the backdate override).
+5. **Post JE(s)**:
+   - If ≥1 item has `legacyNoShop = false` → `PairedJournalService.postPaired({ shop,
+     finance, batchRef: batch.id }, tx)` — both halves in one transaction,
+     balance-checked before either side posts.
+   - If **every** item is `legacyNoShop` → the SHOP half is empty, so approve skips
+     `postPaired` entirely and posts FINANCE alone via
+     `JournalAutoService.createAndPost` — `shopJournalEntryId` stays `null`.
+6. **Mark `InterCompanyTransaction`** rows whose `contractId` is in this batch →
+   `RECONCILED` (best-effort `updateMany`, no-op if none exist — does not block posting).
+7. **Batch → `POSTED`** + `financeJournalEntryId`/`shopJournalEntryId`/`approverId`/
+   `postedAt` set + `AuditLog { action: 'INTERCO_BATCH_APPROVED', entity:
+   'interco_settlement_batch' }`.
+
+### JE structure (both halves — `buildFinanceLines`/`buildShopLines`)
+
+FINANCE half (always posted):
+```
+Dr 21-1101  financedGl      (ONE line PER contract, description "ล้างเจ้าหนี้ยอดจัด {contractNumber}")
+Dr 21-1102  commissionGl    (one line per contract WITH commissionGl > 0 — zero-commission contracts skip this line)
+   Cr <financeBankCode>  totalAmount     (default '11-1201')
+```
+
+SHOP half (only over items with `legacyNoShop = false`; the WHOLE half is omitted if none qualify):
+```
+Dr <shopBankCode>  shopPostedAmount   (default 'S11-1201' = ShopAccountResolver.SHOP_RECEIVING_BANK)
+   Cr S11-3001  shopFinancedGl      (one line per non-legacy contract)
+   Cr S11-3002  shopCommissionGl    (skips zero, same as the FINANCE half)
+```
+
+**Metadata on BOTH JEs** (confirmed straight from `interco-settlement.service.ts` —
+these are the ACTUAL keys, do not assume the plan's shorthand `batchId` key name):
+
+```ts
+{
+  flow: 'interco-settlement-batch',
+  idempotencyKey: `interco:${batch.id}:FINANCE` /* or */ `interco:${batch.id}:SHOP`,
+  settlementBatchId: batch.id,       // NOT "batchId" — that name is PairedJournalService's
+                                      // own batchRef param, distinct from this metadata key
+  batchNumber: batch.batchNumber,     // e.g. "IC-20260801-0001"
+  transferDate: batch.transferDate.toISOString(),
+  items: [{ contractId, financed: '<2dp string>', commission: '<2dp string>' }, ...],
+}
+```
+
+Idempotency: the usual partial unique index `journal_entries_idempotency_idx` covers
+`flow + idempotencyKey` — re-approving an already-POSTED batch is blocked at the status
+guard (step 1) long before idempotency would even matter.
+
+### `legacyNoShop` policy (F1/F2)
+
+A contract is `legacyNoShop = true` when its SHOP-side GL (S11-3001 + S11-3002) is
+exactly 0 for that contract — i.e. contracts activated **before 2026-06-23** (commit
+`bbcfa7a3`, PR #1280 — before the SHOP-side receivable was wired into
+`contract-workflow.service.ts`) or contracts created via **contract-exchange (device
+swap)**, which still does not wire the SHOP leg. These contracts settle FINANCE-only:
+no SHOP JE line is generated for them at all, and if EVERY item in a batch is
+`legacyNoShop`, the SHOP half is skipped entirely (`shopJournalEntryId` stays `null`).
+
+`batch.shopPostedAmount` only sums the non-legacy items, so it can be strictly less than
+`batch.totalAmount` — the gap is real money FINANCE wired to SHOP with no SHOP-side
+receivable on record to clear it against. **The system deliberately does not guess a JE
+for that gap.** It is an open opening-balance question pending CPA ruling (spec §11):
+should the SHOP books get a retroactive opening balance for the May–22 Jun 2026 window
+(pre-SHOP-books era), and should device-swap contracts get a SHOP leg wired at all? Do
+not invent a JE to close this gap without that ruling.
+
+### Reverse (`reverseBatch`, POSTED → REVERSED)
+
+`OWNER`/`FINANCE_MANAGER` only, `reason` required (≥10 characters, Thai error message on
+violation). Mirror-reverses **both** JEs in one `$transaction`: for every line, swaps
+Dr/Cr, keeps the same `companyId`, and posts via `JournalAutoService.createAndPost` with
+`metadata.tag: 'REVERSAL'`, `metadata.flow: 'interco-settlement-batch-reverse'`,
+`metadata.idempotencyKey: interco-reverse:<originalJeId>`, `metadata.reversesEntryId:
+<originalJeId>` (the same reversal shape used elsewhere in the codebase, e.g.
+`ExchangeCancelReversalTemplate`). The original JEs are NOT soft-deleted or unposted —
+they're stamped `metadata.reversed = true` + `metadata.reversedByEntryNumber` and stay
+`POSTED` for audit trail; the two mirror JEs sit beside them. Batch → `REVERSED` +
+`reverseReason` persisted. Because the pending engine's "settled" gate only excludes
+`PENDING_APPROVAL`/`POSTED` items, reversing a batch instantly returns every one of its
+contracts to the pending queue — no GL-lens code path change needed, it falls out of the
+gate definition automatically.
+
+### D4 — backdated / closed-period rounds
+
+`ApproveBatchDto.postedAt` (optional ISO date string) lets the checker pin the posted
+JE's date to a day inside an already-open accounting period, independent of
+`batch.transferDate` (the real wire date, recorded once at `createBatch` time and always
+echoed into the JE description via `formatBkkDate(batch.transferDate)` regardless of
+which `postedAt` is chosen). If the period guard rejects either company's period,
+`guardPeriodOpen` re-wraps the underlying `BadRequestException` to name WHICH company
+(FINANCE or SHOP) has the closed period, and tells the maker their two options: pick a
+`postedAt` in a month that's still open, or ask an OWNER to reopen the period through the
+existing `PERIOD_REOPENED` flow (`.claude/rules/accounting.md` → "Reopen Period
+workflow" above).
+
+### Retirements
+
+| Old thing | Status | Superseded by |
+|---|---|---|
+| `POST /accounting/intercompany/settle` (+ `settleWithJournal`) | Route kept, now returns `HttpStatus.GONE` (410) with a Thai message pointing at `/interco-settlement` — deliberately not deleted outright, so a stale script/client still calling it gets an actionable error instead of a silent 404 | `POST /interco-settlement/batches/:id/approve` |
+| `apps/api/src/modules/shop-finance-settlement/` (whole module — never had a UI) | **Deleted** | `IntercoSettlementService.approveBatch`'s SHOP half (`buildShopLines`) |
+| `ShopFinanceReceiptTemplate` | **Deleted** — zero remaining references anywhere under `apps/api/src`, including `journal.module.ts` (confirmed by grep) | SHOP JE lines built inline in `approveBatch` and posted via `PairedJournalService`/`JournalAutoService` directly — no template class for this leg anymore |
+| `VendorClearanceTemplate` | **Deleted** — dead code, never had a production caller; removed from `journal.module.ts` | `buildFinanceLines` inline in `approveBatch` |
+| `IntercompanyService.getOutstandingBalance()` | Formula corrected (was: FINANCE from `21-1102` only — missed `21-1101`, the bulk of the payable — plus SHOP from `11-2105`, a dead Phase A.3 placeholder account nothing ever posts to) | New: FINANCE = Σ(Cr−Dr) `21-1101`+`21-1102` (companyId FINANCE); SHOP = Σ(Dr−Cr) `S11-3001`+`S11-3002` (companyId SHOP); response includes `driftNote: 'ส่วนต่าง = สัญญาก่อน 2026-06-23/เปลี่ยนเครื่อง (สมุด SHOP ยังไม่ตั้งลูกหนี้)'` so a nonzero drift reads as expected-legacy rather than a bug |
+| `InterCompanyTransaction` model | **Kept** (read-only history) — `approveBatch` step 6 marks matching rows `RECONCILED` best-effort; not retired this sprint |
+
+### Pre-flight (prod, before enabling)
+
+See `docs/accounting/interco-preflight-2026-08.sql` for the 3 read-only queries (old-flow
+JE count, FINANCE/SHOP payable backlog split by pre/post 2026-06-23, GL S11-3001/S11-3002
+vs FINANCE cross-check) — run via cloud-sql-proxy per the usual runbook before creating
+the first live batch.
 
 ---
 

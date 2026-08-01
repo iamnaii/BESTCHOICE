@@ -109,6 +109,16 @@ function buildHarness(overrides: Overrides = {}) {
 
   const prisma = {} as never;
   const service = new CreditNoteDocumentService(prisma);
+  // Pin the receipt number — generateReceiptNumber derives RT-YYYYMM from the
+  // real clock (BKK month), so hardcoded goldens rot every month rollover
+  // (first bit: 2026-08-01, RT-202607-* fixtures started failing).
+  jest
+    .spyOn(
+      (service as unknown as { numbers: { generateReceiptNumber: (tx: unknown) => Promise<string> } })
+        .numbers,
+      'generateReceiptNumber',
+    )
+    .mockResolvedValue('RT-202607-00001');
   return { service, tx, created };
 }
 

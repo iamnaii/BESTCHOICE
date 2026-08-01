@@ -14,13 +14,13 @@ describe('ExchangeEclReversalTemplate (A.5 — workbook Case 4, spec §7.4)', ()
     template = new ExchangeEclReversalTemplate(journal, prisma);
   });
 
-  it('GL 11-2102 = 567 → Dr 11-2102 / Cr 42-1106 = 567.00 (workbook Case 4 golden)', async () => {
+  it('GL 11-2102 = 567 → Dr 11-2102 / Cr 51-1103 = 567.00 (workbook Case 4 golden, CPA 2026-08-01 single-standard)', async () => {
     findMany.mockResolvedValue([{ debit: new Decimal(0), credit: new Decimal('567') }]);
     const result = await template.execute({ oldContractId: 'c1', requestId: 'req-1' });
     expect(result).not.toBeNull();
     const input = createAndPost.mock.calls[0][0];
     const dr = input.lines.find((l: any) => l.accountCode === '11-2102');
-    const cr = input.lines.find((l: any) => l.accountCode === '42-1106');
+    const cr = input.lines.find((l: any) => l.accountCode === '51-1103');
     expect(dr.dr.toString()).toBe('567');
     expect(cr.cr.toString()).toBe('567');
     expect(input.metadata.flow).toBe('exchange-ecl-reversal');

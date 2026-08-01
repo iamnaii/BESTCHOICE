@@ -14,7 +14,7 @@
 | # | คำถาม | คำตัดสิน |
 |---|---|---|
 | D1 | Same-price swap: workbook Case 1 (memo only) ขัดกับ SP2 ปัจจุบัน (post JE + loss) | **ตาม workbook** — same-price = MEMO mode ไม่มี JE ไม่สร้างสัญญาใหม่; derecognition JE เฉพาะ PRICED mode |
-| D2 | บัญชี ECL reversal — workbook ใช้ 42-1106 ซึ่ง CSV ระบุเป็น "รายได้บริการซ่อม" | **ใช้ 42-1106 ตาม workbook** — ปลอดภัยเพราะ FINANCE 42-1106 เป็น orphan (runtime repair ใช้ `S42-1101` จริง: `repair-ticket-lifecycle.service.ts:27`, seed dev+prod, spec test ล็อกอยู่) → rename row ใน CSV |
+| D2 | บัญชี ECL reversal — workbook ใช้ 42-1106 ซึ่ง CSV ระบุเป็น "รายได้บริการซ่อม" | **ใช้ 42-1106 ตาม workbook** — ปลอดภัยเพราะ FINANCE 42-1106 เป็น orphan (runtime repair ใช้ `S42-1101` จริง: `repair-ticket-lifecycle.service.ts:27`, seed dev+prod, spec test ล็อกอยู่) → rename row ใน CSV — **SUPERSEDED 2026-08-01: CPA เลือกมาตรฐานเดียว Cr 51-1103 ทุกเส้นทาง (§13 ข้อ A2.2, คำตอบ ข)** — 42-1106 เปิดไว้ใน CoA แต่ dormant |
 | D3 | "IQR ขอบล่าง" — ระบบไม่มีข้อมูลสถิติราคา | **ใช้ `TradeInValuation.basePrice` × 0.85 แทน** (guardrail ±15% convention เดิมของ trade-in) |
 | D4 | Cancellation windows | **ทำครบทั้ง 2 windows** (≤7 วันฟรี / 8–30 วัน + ค่าปรับ 5% → บัญชีใหม่ 42-1107) — **SUPERSEDED 2026-07-31: owner ยกเลิกกติกาทั้งชุด — ไม่มี window/ค่าปรับ; เหลือแค่ zero-payment precondition** |
 | D5 | ขาเงินสดใน JE จุดที่ 3 — post เมื่อไหร่ | **(a) post ทันทีตอน finalize ตาม workbook** พร้อม `depositAccountCode` (สมมติฐาน: โอนเงินระหว่างบัญชีตัวเองวันเดียวกัน) — หมายเหตุ: 21-1101 ของสัญญาปกติทั้งระบบยังไม่เคยถูกล้าง (VendorClearance unwired) = backlog CPA แยกต่างหาก ดู §12 |
@@ -157,12 +157,13 @@ vendorSum = newFinanced + newCommission; buyback == vendorSum → ไม่ม�
 ```
 A.5 (Case 4 — synchronous ใน tx เดียวกัน ตาม workbook):
 Dr 11-2102   GL(11-2102, cr) ของสัญญาเก่า
-   Cr 42-1106  รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ
+   Cr 51-1103  ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี) — ลดค่าใช้จ่าย
 ```
+
+**อัปเดต 2026-08-01 (CPA ruling, §13 ข้อ A2.2 = ข):** เดิมเสนอ Cr 42-1106 (D2) แต่ CPA เลือกมาตรฐานเดียวทุกเส้นทาง — เปลี่ยนเป็น Cr 51-1103 เหมือน JP5/write-off/stage-reverse ทุกจุด (ไม่มี asymmetry อีกต่อไป) 42-1106 ยังเปิดอยู่ใน CoA แต่ dormant — ไม่มี template ใดโพสต์เข้าบัญชีนี้แล้ว
 
 - skip ถ้า |GL| < 0.005; ถ้า GL ติดลบ → `Sentry.captureMessage` warning (pattern M1 ของ JP5) ไม่ auto-heal
 - ปิด `BadDebtProvision` rows ACTIVE → REVERSED ใน tx เดียวกัน (กัน stale rows — สัญญา EXCHANGED หลุด scope cron)
-- **หมายเหตุ asymmetry โดยเจตนา:** JP5/write-off/stage-reverse ยัง release เข้า 51-1103 ตามเดิม — 42-1106 ใช้เฉพาะ derecognition จากการเปลี่ยนเครื่อง (ตาม workbook + D2)
 
 ### 7.5 Idempotency (ปิด hardening gap เดิม — key รวม requestId, C1b final review 2026-07-29)
 
@@ -228,7 +229,7 @@ A.1–A.5 ทุกตัวมี `metadata.idempotencyKey` บังคับ�
 
 | Code | Action | ชื่อ | หมายเหตุ |
 |---|---|---|---|
-| 42-1106 | **Rename** | รายได้บริการซ่อม → **รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ** | orphan ยืนยันแล้ว; **pre-flight prod:** `SELECT COUNT(*) FROM journal_lines WHERE account_code='42-1106'` ต้อง = 0 ก่อน rename; แก้ CLAUDE.md:451 (doc ผิด — runtime ใช้ S42-1101) |
+| 42-1106 | **Rename** | รายได้บริการซ่อม → **รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ** | orphan ยืนยันแล้ว; **pre-flight prod:** `SELECT COUNT(*) FROM journal_lines WHERE account_code='42-1106'` ต้อง = 0 ก่อน rename; แก้ CLAUDE.md:451 (doc ผิด — runtime ใช้ S42-1101) — **SUPERSEDED 2026-08-01: CPA เลือกมาตรฐานเดียว Cr 51-1103 แทน (§13 A2.2) — เปิดไว้ ไม่ใช้งาน, ไม่ลบออกจาก CoA** |
 | 42-1107 | **Add** | รายได้ค่าปรับยกเลิกเปลี่ยนเครื่อง | รายได้, Cr, ไม่มี VAT — **เปิดแล้ว แต่ไม่ใช้งาน (owner ยกเลิกกติกาค่าปรับยกเลิก swap ทั้งชุด 2026-07-31)** — คงบัญชีไว้ตาม CPA sign-off เดิม เผื่ออนาคต ไม่ลบออกจาก CoA |
 | 41-1199 | ไม่เพิ่ม | — | ผิดหมวด (41 = รายได้หลัก) — workbook mapping เปลี่ยนเป็น 42-1107 |
 | 51-1106 | ไม่เพิ่ม | — | ไม่มีเคสสร้าง — รอ CPA อธิบาย |
@@ -265,7 +266,7 @@ SystemConfig ใหม่: `exchange_market_check_pct` = `'15'` (seed dev + prod
 | A1 | Rename 42-1106 → "รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ" (FINANCE ไม่มีรายได้บริการซ่อม — งานซ่อมอยู่ฝั่ง SHOP S42-1101) | **ยืนยัน** | ตรงที่ทำไว้แล้ว — ไม่แก้ |
 | A1 | ที่มากติกายกเลิก 7d/8-30d/5% | ชี้แจงแล้ว: โครงกติกา + "ค่าปรับเป็นรายได้" มาจาก workbook CPA (Case 3B + D4 owner เคาะ 2026-07-29); ส่วนที่เราตัดสินใจเอง = ย้ายบัญชี 41-1199→42-1107 (ผิดหมวด) + ทำ 5% เป็น config `exchange_cancel_penalty_pct` | ไม่แก้ (รอ CPA ทักถ้าไม่เห็นด้วย) |
 | A2.1 | ค่าปรับยกเลิกไม่คิด VAT | **ยืนยัน** (ตรง 42-1103 convention + ม.79) | ตรงที่ทำไว้แล้ว — 42-1107 ไม่มี VAT |
-| A2.2 | ECL reversal: ผสม (exchange→42-1106, ที่เหลือ→51-1103) vs มาตรฐานเดียว | **⏳ OPEN — รอ CPA เลือก** หลังอธิบายความต่าง (กำไรเท่ากัน ต่างที่ gross-up P&L + consistency); คำแนะนำเรา: ถ้าเลือกทางเดียวใช้ Cr 51-1103 ทุกเส้นทางแล้วแก้ workbook | ถ้า CPA เลือกมาตรฐานเดียว → แก้ A.5 template 1 จุด + spec |
+| A2.2 | ECL reversal: ผสม (exchange→42-1106, ที่เหลือ→51-1103) vs มาตรฐานเดียว | **✅ ตอบแล้ว 2026-08-01 — คำตอบ ข: มาตรฐานเดียวทุกเส้นทาง = Cr 51-1103** (ตามคำแนะนำเรา) | **Implemented** — `ExchangeEclReversalTemplate` A.5 แก้เป็น Cr 51-1103 (เดิม Cr 42-1106); 42-1106 เปิดไว้ใน CoA แต่ dormant (ดู §10); goldens/docs sync แล้ว |
 | B2 | VAT due ทันทีตอน derecognize (ม.78/1 ไม่ออก CN) | **ยืนยัน** | — |
 | B3, B4 | (ตามชุดคำถาม B) | **ยืนยัน/รับทราบ** | — |
 | B5 | | **รับทราบ** | — |

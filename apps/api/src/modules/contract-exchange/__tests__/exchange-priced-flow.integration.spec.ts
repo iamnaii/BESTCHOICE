@@ -30,8 +30,9 @@ import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.c
  *      (workbook CRITICAL CHECK); every old-contract receivable account nets 0;
  *      Cr 11-2101 = GL-true 11,333.36 (17,000 − 4×1,416.66), NOT the straight-line
  *      11,333.28 (1,416.66 × 8); loss plug 51-1102 = GL-derived 4,126.68.
- *   2. ECL — provision 30.32 on the old contract → A.5 Dr 11-2102 / Cr 42-1106
- *      30.32, BadDebtProvision row REVERSED, GL 11-2102 = 0.
+ *   2. ECL — provision 30.32 on the old contract → A.5 Dr 11-2102 / Cr 51-1103
+ *      30.32 (CPA 2026-08-01: single-standard release account, was 42-1106),
+ *      BadDebtProvision row REVERSED, GL 11-2102 = 0.
  *   3. Cancel day-15 / day-45 — owner removed the cancellation-fee rule +
  *      time windows entirely (2026-07-31): every JE mirror-reversed
  *      (per-account net 0 across originals + reversals), NO 42-1107 penalty
@@ -547,7 +548,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
 
   // -------------------------------------------------------------------------
   it(
-    'ECL: old contract carries provision 30.32 → A.5 Dr 11-2102 / Cr 42-1106 = 30.32 + BadDebtProvision REVERSED',
+    'ECL: old contract carries provision 30.32 → A.5 Dr 11-2102 / Cr 51-1103 = 30.32 + BadDebtProvision REVERSED',
     async () => {
       const fix = await seedSwapFixture('100002', { schedule: 'NONE' });
       await act1a.execute(fix.oldContractId);
@@ -589,7 +590,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         include: { lines: true },
       });
       expect(sumSide(je5.lines, '11-2102', 'dr').toFixed(2)).toBe('30.32');
-      expect(sumSide(je5.lines, '42-1106', 'cr').toFixed(2)).toBe('30.32');
+      expect(sumSide(je5.lines, '51-1103', 'cr').toFixed(2)).toBe('30.32');
       expect((je5.metadata as Record<string, unknown>).reversedProvision).toBe('30.32');
 
       const rowAfter = await prisma.badDebtProvision.findUniqueOrThrow({

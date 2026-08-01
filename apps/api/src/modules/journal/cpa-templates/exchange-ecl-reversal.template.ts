@@ -10,12 +10,14 @@ import { glContractBalance } from '../gl-contract-balance';
  * Exchange A.5 — ECL allowance reversal on derecognition (Device Swap 2026-07).
  *
  * TFRS 9 ฯ 5.5.8: derecognize สัญญา → reverse ค่าเผื่อฯ ของสัญญานั้น.
- * Workbook Case 4 + owner decision D2 (2026-07-29): Cr เข้า 42-1106
- * (รายได้จากการโอนกลับค่าเผื่อฯ) — เฉพาะ exchange path เท่านั้น;
- * JP5/write-off/stage-reverse ยังใช้ Cr 51-1103 ตาม convention เดิม (asymmetry by design).
+ * Workbook Case 4 originally proposed Cr 42-1106 (owner decision D2, 2026-07-29),
+ * but CPA ruling 2026-08-01 (spec §13 A2.2, คำตอบ ข) chose ONE standard release
+ * account across every path — Cr 51-1103 (ค่าเผื่อหนี้สงสัยจะสูญ เพิ่มในปี),
+ * same account `EclStageReverseTemplate`/JP5/write-off already use. 42-1106 stays
+ * defined in the CoA (dormant) but is no longer posted to by this template.
  *
  *   Dr 11-2102 [GL balance ของสัญญาเก่า]
- *     Cr 42-1106 [เท่ากัน]
+ *     Cr 51-1103 [เท่ากัน]
  *
  * เรียก synchronous ใน activation tx (workbook: "ถ้า error → swap rollback ทั้งหมด").
  * Null cases: GL = 0 (ไม่มี provision) / GL < 0 (anomaly → Sentry warning, ไม่ auto-heal — M1 pattern)
@@ -78,10 +80,10 @@ export class ExchangeEclReversalTemplate {
             description: 'กลับค่าเผื่อหนี้สงสัยจะสูญ — derecognize จากเปลี่ยนเครื่อง (TFRS 9 ฯ 5.5.8)',
           },
           {
-            accountCode: '42-1106',
+            accountCode: '51-1103',
             dr: zero,
             cr: balance,
-            description: 'รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ',
+            description: 'โอนกลับค่าเผื่อหนี้สงสัยจะสูญ — ลดค่าใช้จ่าย (มาตรฐานเดียว CPA 2026-08-01)',
           },
         ],
       },

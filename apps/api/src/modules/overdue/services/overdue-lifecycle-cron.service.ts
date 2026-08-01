@@ -43,37 +43,25 @@ export class OverdueLifecycleCronService {
    * Calculate late fees for all overdue payments (cron job)
    * Uses a single SQL UPDATE for efficiency instead of N+1 queries.
    *
-   * Mode-aware (Section #3):
-   *   PER_DAY → LEAST(days × perDayRate, maxAmount, ROUND(capPct/100 × amount_due, 2))
-   *   BRACKET → CASE WHEN days >= tier2MinDays THEN tier2Amount WHEN days >= 1 THEN tier1Amount ELSE 0 END
+   * Flat-bracket formula (CPA ยืนยันขั้นบันไดถาวร 2026-08-01 — the only formula
+   * in the system; the `late_fee_mode='PER_DAY'` config-switchable path that
+   * briefly lived alongside this was removed the same day):
+   *   CASE WHEN days >= tier2MinDays THEN tier2Amount WHEN days >= 1 THEN tier1Amount ELSE 0 END
    *
-   * The BRACKET branch is byte-identical to the previous flat-bracket implementation
-   * (rollback parity). The PER_DAY branch mirrors computePerDayLateFee — Postgres
-   * ROUND(numeric, 2) is half-away-from-zero, matching ROUND_HALF_UP for all
-   * non-negative values. Verified by the anti-drift integration test.
+   * Byte-identical to the pre-D2 flat-bracket implementation (rollback parity).
    */
   async calculateLateFees() {
     const now = new Date();
 
-    // Load all late-fee config keys (mode + bracket + per-day) in one pass
+    // Load the late-fee bracket config keys in one pass
     const cfg = await loadLateFeeConfig(this.prisma);
 
-    // days expression shared by both branches
     const daysExpr = Prisma.sql`FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int`;
 
-    const feeExpr =
-      cfg.mode === 'PER_DAY'
-        ? // PER_DAY: min(days × rate, maxAmount, ROUND(cap% × amountDue, 2))
-          Prisma.sql`CASE WHEN ${daysExpr} >= 1 THEN LEAST(
-              ${daysExpr} * ${cfg.perDayRate}::numeric,
-              ${cfg.maxAmount}::numeric,
-              ROUND(${cfg.capPct}::numeric / 100 * "amount_due", 2)
-            ) ELSE 0 END`
-        : // BRACKET: flat tiers — byte-identical to the previous implementation
-          Prisma.sql`CASE
-              WHEN ${daysExpr} >= ${cfg.tier2MinDays} THEN ${cfg.tier2Amount}
-              WHEN ${daysExpr} >= 1 THEN ${cfg.tier1Amount}
-              ELSE 0 END`;
+    const feeExpr = Prisma.sql`CASE
+        WHEN ${daysExpr} >= ${cfg.tier2MinDays} THEN ${cfg.tier2Amount}
+        WHEN ${daysExpr} >= 1 THEN ${cfg.tier1Amount}
+        ELSE 0 END`;
 
     const result = await this.prisma.$executeRaw(Prisma.sql`
       UPDATE "payments"

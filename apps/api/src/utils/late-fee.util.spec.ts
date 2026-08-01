@@ -1,4 +1,4 @@
-import { computeBracketLateFee, computePerDayLateFee, resolveLateFee, resolveLivePaymentLateFee, type LateFeeConfig } from './late-fee.util';
+import { computeBracketLateFee, resolveLateFee, resolveLivePaymentLateFee, type LateFeeConfig } from './late-fee.util';
 
 const s = (d: { toString(): string }) => d.toString();
 
@@ -28,45 +28,23 @@ describe('computeBracketLateFee — flat brackets (no per-day, no cap)', () => {
   });
 });
 
-const sd = (d: { toString(): string }) => d.toString();
-
-describe('computePerDayLateFee — min(days×rate, maxAmount, 5%×installment)', () => {
-  const base = { perDayRate: 20, maxAmount: 500, capPct: 5 };
-  it('0 days → 0', () => {
-    expect(sd(computePerDayLateFee({ daysOverdue: 0, installmentGross: 1515.83, ...base }))).toBe('0');
+// resolveLateFee historically dispatched by `late_fee_mode` (PER_DAY vs BRACKET).
+// CPA ยืนยันขั้นบันไดถาวร 2026-08-01 — PER_DAY was retired and BRACKET is now
+// the only formula, so resolveLateFee is a thin pass-through to
+// computeBracketLateFee (kept as a named export so call sites don't need to
+// import computeBracketLateFee directly).
+describe('resolveLateFee — flat-bracket pass-through', () => {
+  const cfg: LateFeeConfig = { tier1Amount: 50, tier2Amount: 100, tier2MinDays: 3 };
+  it('1 day → tier1 (50)', () => {
+    expect(s(resolveLateFee(cfg, 1))).toBe('50');
   });
-  it('per-day wins when small: 2 days × 20 = 40 (< maxAmount 500, < 5% 75.79)', () => {
-    expect(sd(computePerDayLateFee({ daysOverdue: 2, installmentGross: 1515.83, ...base }))).toBe('40');
-  });
-  it('5% cap binds: 10 days × 20 = 200, but 5% × 1515.83 = 75.79 → 75.79', () => {
-    expect(sd(computePerDayLateFee({ daysOverdue: 10, installmentGross: 1515.83, ...base }))).toBe('75.79');
-  });
-  it('absolute maxAmount binds when below 5%: rate 200/day, 5 days = 1000, maxAmount 500, 5% of 20000 = 1000 → 500', () => {
-    expect(sd(computePerDayLateFee({ daysOverdue: 5, installmentGross: 20000, perDayRate: 200, maxAmount: 500, capPct: 5 }))).toBe('500');
+  it('10 days → tier2 (100, at >=3 days)', () => {
+    expect(s(resolveLateFee(cfg, 10))).toBe('100');
   });
 });
 
-describe('resolveLateFee — mode dispatch', () => {
-  const perDayCfg: LateFeeConfig = { mode: 'PER_DAY', tier1Amount: 50, tier2Amount: 100, tier2MinDays: 3, perDayRate: 20, maxAmount: 500, capPct: 5 };
-  const bracketCfg: LateFeeConfig = { ...perDayCfg, mode: 'BRACKET' };
-  it('PER_DAY mode → per-day formula (5% cap) ', () => {
-    expect(sd(resolveLateFee(perDayCfg, 10, 1515.83))).toBe('75.79');
-  });
-  it('BRACKET mode → flat bracket (tier2 at >=3 days)', () => {
-    expect(sd(resolveLateFee(bracketCfg, 10, 1515.83))).toBe('100');
-  });
-});
-
-describe('resolveLivePaymentLateFee — display-side live late fee', () => {
-  const perDay: LateFeeConfig = {
-    mode: 'PER_DAY',
-    tier1Amount: 50,
-    tier2Amount: 100,
-    tier2MinDays: 3,
-    perDayRate: 20,
-    maxAmount: 500,
-    capPct: 5,
-  };
+describe('resolveLivePaymentLateFee — display-side live late fee (flat-bracket)', () => {
+  const cfg: LateFeeConfig = { tier1Amount: 50, tier2Amount: 100, tier2MinDays: 3 };
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
   const now = () => new Date();
 
@@ -74,7 +52,7 @@ describe('resolveLivePaymentLateFee — display-side live late fee', () => {
     expect(
       resolveLivePaymentLateFee(
         { dueDate: daysAgo(30), amountDue: 3671, lateFeeWaived: true },
-        perDay,
+        cfg,
         now(),
       ).toNumber(),
     ).toBe(0);
@@ -84,7 +62,7 @@ describe('resolveLivePaymentLateFee — display-side live late fee', () => {
     expect(
       resolveLivePaymentLateFee(
         { dueDate: daysAgo(-2), amountDue: 3671, lateFeeWaived: false },
-        perDay,
+        cfg,
         now(),
       ).toNumber(),
     ).toBe(0);
@@ -94,38 +72,27 @@ describe('resolveLivePaymentLateFee — display-side live late fee', () => {
     expect(
       resolveLivePaymentLateFee(
         { dueDate: now(), amountDue: 3671, lateFeeWaived: false },
-        perDay,
+        cfg,
         now(),
       ).toNumber(),
     ).toBe(0);
   });
 
-  it('PER_DAY ramp: 5 days × 20 = 100 (below the 5% cap of 183.55)', () => {
+  it('1 day overdue → tier1 (50)', () => {
     expect(
       resolveLivePaymentLateFee(
-        { dueDate: daysAgo(5), amountDue: 3671, lateFeeWaived: false },
-        perDay,
+        { dueDate: daysAgo(1), amountDue: 3671, lateFeeWaived: false },
+        cfg,
         now(),
       ).toNumber(),
-    ).toBe(100);
+    ).toBe(50);
   });
 
-  it('PER_DAY cap binds: 30 days → 5% × 3671 = 183.55', () => {
+  it('30 days overdue → still flat tier2 (100 — does not grow with days or amountDue)', () => {
     expect(
       resolveLivePaymentLateFee(
         { dueDate: daysAgo(30), amountDue: 3671, lateFeeWaived: false },
-        perDay,
-        now(),
-      ).toNumber(),
-    ).toBe(183.55);
-  });
-
-  it('BRACKET mode: 30 days → flat tier2 (100)', () => {
-    const bracket: LateFeeConfig = { ...perDay, mode: 'BRACKET' };
-    expect(
-      resolveLivePaymentLateFee(
-        { dueDate: daysAgo(30), amountDue: 3671, lateFeeWaived: false },
-        bracket,
+        cfg,
         now(),
       ).toNumber(),
     ).toBe(100);

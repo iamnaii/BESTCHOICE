@@ -8,10 +8,13 @@
  *           src/modules/journal/cpa-templates/reschedule-collect-lifecycle.integration.spec.ts
  *
  * Lifecycle under test (owner directive 2026-07-02 "เงินไม่เข้า ดิวไม่เลื่อน"):
- *   1. Overdue installment #1 (due 2025-02-01, live late fee capped 5% = 75.79).
+ *   1. Overdue installment #1 (due 2025-02-01, live late fee = flat tier2 100 —
+ *      CPA ยืนยันขั้นบันไดถาวร 2026-08-01; any run date well past minDays=3
+ *      lands on tier2 deterministically, same as the retired PER_DAY 5%-cap
+ *      fixture this test used before).
  *   2. RescheduleCollectService.executeWithCollect 6a (SPLIT, 7 days):
- *        fee = 1,515.84/30×7 ROUND_UP = 354; collect = 354 + 75.79 = 429.79
- *        JE: Dr 11-1101 429.79 / Cr 21-1103 354.00 / Cr 42-1103 75.79
+ *        fee = 1,515.84/30×7 ROUND_UP = 354; collect = 354 + 100 = 454.00
+ *        JE: Dr 11-1101 454.00 / Cr 21-1103 354.00 / Cr 42-1103 100.00
  *        + advanceBalance +354 + lateFee reset 0 + dates +7d
  *        + AuditLog OVERPAY_ADVANCE_RECORDED (source RESCHEDULE_COLLECT_6A_FEE).
  *   3. 2A accrual auto-consumes the 354 advance: Dr 21-1103 / Cr 11-2103 = 354.
@@ -20,7 +23,7 @@
  * Money-critical invariant (what reconstructPriorCleared guards):
  *   Σ(Cr 11-2103) for the installment across ALL JEs == 1,515.83 EXACTLY once
  *   (354.00 advance-consume + 1,161.83 receipt — no double principal credit),
- *   Σ(Cr 42-1103) == 75.79 exactly once (fee not re-billed at the receipt),
+ *   Σ(Cr 42-1103) == 100.00 exactly once (fee not re-billed at the receipt),
  *   and Contract.advanceBalance is drawn down 354 → 0 by the consume.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -40,12 +43,11 @@ import { ReceiptsService } from '../../receipts/receipts.service';
 const prisma = new PrismaClient();
 const D = (n: string) => new Decimal(n);
 
-/** Pin the late-fee config so the live quote is deterministic (PER_DAY defaults). */
+/** Pin the late-fee config so the live quote is deterministic (flat-bracket defaults). */
 const LATE_FEE_KEYS = [
-  ['late_fee_mode', 'PER_DAY'],
-  ['late_fee_per_day_rate', '20'],
-  ['late_fee_max_amount', '500'],
-  ['late_fee_cap_pct', '5'],
+  ['late_fee_tier1_amount', '50'],
+  ['late_fee_tier2_amount', '100'],
+  ['late_fee_tier2_min_days', '3'],
 ] as const;
 
 async function ensureFinanceCompany(): Promise<void> {
@@ -140,8 +142,10 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     ).id;
 
     // Overdue Payment row for installment #1 — Payment IS the installment. Due
-    // 2025-02-01 (seed), so any run date ≥ 25 days later caps the per-day fee at
-    // 5% × 1,515.84 = 75.79 (deterministic). lateFee 75.79 = overdue-cron stamp.
+    // 2025-02-01 (seed), so any run date well past minDays=3 lands on flat
+    // tier2 = 100 (deterministic, CPA ยืนยันขั้นบันไดถาวร). lateFee 200 below
+    // is a deliberately-wrong decoy stamp (from a stale overdue-cron run) to
+    // prove the reschedule quote LIVE-recomputes rather than trusting it.
     const payment = await prisma.payment.create({
       data: {
         contractId: c.id,
@@ -149,7 +153,7 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
         dueDate: sched1.dueDate,
         amountDue: D('1515.84'), // contract.monthlyPayment (incl. commission + VAT)
         status: 'OVERDUE',
-        lateFee: D('75.79'),
+        lateFee: D('200.00'),
       },
     });
     paymentId = payment.id;
@@ -184,21 +188,21 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     await prisma.$disconnect();
   });
 
-  it('6a executeWithCollect: Dr 11-1101 429.79 / Cr 21-1103 354 / Cr 42-1103 75.79, advance +354, lateFee reset, dates +7d, audit written', async () => {
+  it('6a executeWithCollect: Dr 11-1101 454.00 / Cr 21-1103 354 / Cr 42-1103 100.00, advance +354, lateFee reset, dates +7d, audit written', async () => {
     const result = await service.executeWithCollect({
       contractId: c.id,
       installmentNo: 1,
       daysToShift: 7,
       splitMode: 'SPLIT',
-      amount: 429.79, // fee 354 (1,515.84/30×7 ROUND_UP) + late fee 75.79
+      amount: 454.0, // fee 354 (1,515.84/30×7 ROUND_UP) + late fee 100 (flat tier2)
       paymentMethod: 'CASH',
       recordedById,
     });
 
     expect(result.variant).toBe('6a');
     expect(result.rescheduleFee).toBe('354.00');
-    expect(result.lateFeeCollected).toBe('75.79');
-    expect(result.collectAmount).toBe('429.79');
+    expect(result.lateFeeCollected).toBe('100.00');
+    expect(result.collectAmount).toBe('454.00');
     expect(result.shiftedInstallmentCount).toBe(12);
 
     // Collect JE — fee to 21-1103 advance, late fee to 42-1103 income, balanced.
@@ -215,13 +219,13 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     expect(je, 'expected a reschedule-collect JE').not.toBeNull();
     expect(je!.entryNumber).toBe(result.journalEntryNo);
     const { dr, cr } = jeLine(je!);
-    expect(dr('11-1101')).toBe('429.79'); // user default cash account
+    expect(dr('11-1101')).toBe('454.00'); // user default cash account
     expect(cr('21-1103')).toBe('354.00');
-    expect(cr('42-1103')).toBe('75.79');
+    expect(cr('42-1103')).toBe('100.00');
     const totalDr = je!.lines.reduce((s, l) => s.plus(new Decimal(l.debit.toString())), new Decimal(0));
     const totalCr = je!.lines.reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
-    expect(totalDr.toFixed(2)).toBe('429.79');
-    expect(totalCr.toFixed(2)).toBe('429.79');
+    expect(totalDr.toFixed(2)).toBe('454.00');
+    expect(totalCr.toFixed(2)).toBe('454.00');
 
     // 6a fee = PREPAYMENT — Contract.advanceBalance incremented by the fee.
     const contractAfter = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
@@ -269,7 +273,7 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
       where: { contractId: c.id, receiptType: 'RESCHEDULE_FEE', deletedAt: null },
     });
     expect(receipt, 'expected RESCHEDULE_FEE e-Receipt').not.toBeNull();
-    expect(new Decimal(receipt!.amount.toString()).toFixed(2)).toBe('429.79');
+    expect(new Decimal(receipt!.amount.toString()).toFixed(2)).toBe('454.00');
   });
 
   it('2A accrual on the shifted due date auto-consumes the 354 advance (Dr 21-1103 / Cr 11-2103)', async () => {
@@ -317,7 +321,7 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     expect(pay.status).toBe('PARTIALLY_PAID');
   });
 
-  it('final receipt clears ONLY the remainder — Σ(Cr 11-2103) == 1,515.83 exactly once, Σ(Cr 42-1103) == 75.79 exactly once', async () => {
+  it('final receipt clears ONLY the remainder — Σ(Cr 11-2103) == 1,515.83 exactly once, Σ(Cr 42-1103) == 100.00 exactly once', async () => {
     const journal = new JournalAutoService(prisma as any);
     const tpl = new PaymentReceiptTemplate(journal, prisma as any);
 
@@ -351,7 +355,7 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     const { dr, cr } = jeLine(receiptJe!);
     expect(dr('11-1201')).toBe('1161.83');
     expect(cr('11-2103')).toBe('1161.83');
-    // The 75.79 late fee was already booked at reschedule-collect — never again here.
+    // The 100.00 late fee was already booked at reschedule-collect — never again here.
     expect(receiptJe!.lines.find((l) => l.accountCode === '42-1103')).toBeUndefined();
 
     // ── Money-critical invariant ────────────────────────────────────────────
@@ -384,7 +388,7 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
       .flatMap((e) => e.lines)
       .filter((l) => l.accountCode === '42-1103')
       .reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
-    expect(lateFeeCr.toFixed(2)).toBe('75.79');
+    expect(lateFeeCr.toFixed(2)).toBe('100.00');
 
     // advanceBalance stays fully drawn down after the receipt.
     const contractAfter = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });

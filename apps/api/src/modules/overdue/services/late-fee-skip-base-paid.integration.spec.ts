@@ -20,7 +20,6 @@ import { ConsecutiveMissedService } from '../consecutive-missed.service';
 const prisma = new PrismaClient();
 
 const BRACKET_CONFIG = [
-  ['late_fee_mode', 'BRACKET'],
   ['late_fee_tier1_amount', '50'],
   ['late_fee_tier2_amount', '100'],
   ['late_fee_tier2_min_days', '3'],

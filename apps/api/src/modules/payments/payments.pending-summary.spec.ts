@@ -53,10 +53,9 @@ describe('PaymentQueryService — getPendingSummary', () => {
     const systemConfig = {
       findUnique: jest.fn(({ where: { key } }: { where: { key: string } }) => {
         const map: Record<string, string> = {
-          late_fee_mode: 'PER_DAY',
-          late_fee_per_day_rate: '20',
-          late_fee_max_amount: '500',
-          late_fee_cap_pct: '5',
+          late_fee_tier1_amount: '50',
+          late_fee_tier2_amount: '100',
+          late_fee_tier2_min_days: '3',
         };
         return Promise.resolve(map[key] ? { value: map[key] } : null);
       }),
@@ -74,7 +73,7 @@ describe('PaymentQueryService — getPendingSummary', () => {
       waived: { _sum: { waivedAmount: D('675.00') } },
       overdue60: 3,
       collected: { _count: 8, _sum: { amountPaid: D('12580.00') } },
-      // one 30-day-overdue installment; PER_DAY min(30×20=600, 500, 5%×6000=300) = 300
+      // one 30-day-overdue installment; flat bracket tier2 (>=3 days) = 100
       pendingRows: [{ dueDate: new Date(Date.now() - 30 * 86_400_000), amountDue: D('6000'), lateFeeWaived: false }],
     });
 
@@ -83,7 +82,7 @@ describe('PaymentQueryService — getPendingSummary', () => {
     expect(result).toEqual({
       pendingCount: 50,
       outstandingPrincipal: 56376, // 60000.00 − 3624.00, "เฉพาะค่างวด" (no late fee)
-      outstandingLateFee: 300, // live: 5% × 6000 (cap binds)
+      outstandingLateFee: 100, // live: flat tier2 (30 days >= minDays 3)
       waivedLateFee: 675, // → Dr 52-1105 (อนุโลม)
       overdue60Count: 3, // → trigger 21-2103 VAT
       collectedAmount: 12580,
@@ -95,13 +94,13 @@ describe('PaymentQueryService — getPendingSummary', () => {
     const D = (v: string) => new Prisma.Decimal(v);
     const { service } = makeService({
       pending: { _count: 3, _sum: { amountDue: D('4547.49'), amountPaid: D('1515.83'), lateFee: D('99.17') } },
-      // 30 days overdue, PER_DAY cap binds: 5% × 1983.40 = 99.17
+      // 30 days overdue → flat bracket tier2 (>=3 days) = 100, regardless of amountDue
       pendingRows: [{ dueDate: new Date(Date.now() - 30 * 86_400_000), amountDue: D('1983.40'), lateFeeWaived: false }],
     });
 
     const result = await service.getPendingSummary({});
     expect(result.outstandingPrincipal).toBe(3031.66); // 4547.49 − 1515.83
-    expect(result.outstandingLateFee).toBe(99.17);
+    expect(result.outstandingLateFee).toBe(100);
   });
 
   it('never reports a negative outstanding (overpaid edge clamps to 0)', async () => {

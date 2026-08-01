@@ -666,32 +666,34 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       const dueDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
       const paidDate = new Date(dueDate.getTime() + 2 * 24 * 60 * 60 * 1000); // 2 days overdue AS OF paid date
       prisma.payment.findFirst.mockResolvedValue(makePayment(43, { dueDate, lateFee: D(0) }));
-      // PER_DAY: rate=10, max=100000, cap=100% → fee = daysOverdue × 10 (no cap binding)
+      // Flat bracket (tier1=50, tier2=100, minDays=3): 2 days overdue (< minDays) → tier1
+      // = 50. Were the code to (incorrectly) use "now" instead of paidDate, the
+      // ~30-days-overdue figure would hit tier2 = 100 instead — that's the bug this
+      // test guards against.
       prisma.systemConfig.findUnique.mockImplementation(
         ({ where: { key } }: { where: { key: string } }) => {
           const map: Record<string, string> = {
-            late_fee_mode: 'PER_DAY',
-            late_fee_per_day_rate: '10',
-            late_fee_max_amount: '100000',
-            late_fee_cap_pct: '100',
+            late_fee_tier1_amount: '50',
+            late_fee_tier2_amount: '100',
+            late_fee_tier2_min_days: '3',
           };
           return Promise.resolve(map[key] ? { value: map[key] } : null);
         },
       );
 
       await service.recordPayment(
-        'adv-contract-1', 43, INST_TOTAL + 20, 'CASH', 'user-1',
+        'adv-contract-1', 43, INST_TOTAL + 50, 'CASH', 'user-1',
         'https://slip.test/43', undefined, 'TEST-LF-BACKDATE', '11-1101',
         undefined, undefined, true, paidDate,
       );
 
-      // The late-fee update must reflect 2 days overdue (= 20), NOT ~30 days (= 300 / capped).
+      // The late-fee update must reflect 2 days overdue (tier1=50), NOT ~30 days (tier2=100).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lfUpdate = prisma.payment.update.mock.calls
         .map((c: any) => c[0])
         .find((a: any) => a?.data?.lateFee !== undefined);
       expect(lfUpdate).toBeDefined();
-      expect(new Prisma.Decimal(lfUpdate.data.lateFee.toString()).toNumber()).toBe(20);
+      expect(new Prisma.Decimal(lfUpdate.data.lateFee.toString()).toNumber()).toBe(50);
     });
   });
 
@@ -699,18 +701,20 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   // P2 (D1): gross late-fee waiver — params 14/15/16 (amount, reasonCode, approverId)
   // ─────────────────────────────────────────────────────────────────────────────
   describe('gross late-fee waiver (P2)', () => {
-    const PER_DAY = ({ where: { key } }: { where: { key: string } }) => {
+    // tier2MinDays overridden to 10 (well above the 5-day fixture below) so the
+    // gross fee deterministically stays tier1=50 regardless of BUSINESS_RULES defaults.
+    const BRACKET_TIER1 = ({ where: { key } }: { where: { key: string } }) => {
       const map: Record<string, string> = {
-        late_fee_mode: 'PER_DAY', late_fee_per_day_rate: '10',
-        late_fee_max_amount: '100000', late_fee_cap_pct: '100',
+        late_fee_tier1_amount: '50', late_fee_tier2_amount: '100',
+        late_fee_tier2_min_days: '10',
       };
       return Promise.resolve(map[key] ? { value: map[key] } : null);
     };
-    // 5 days overdue × rate 10 → gross late fee = 50
+    // 5 days overdue (< tier2MinDays=10) → flat tier1 → gross late fee = 50
     const dueDate5 = () => new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
 
     it('golden: gross 50, waive 25 → cash 1025 closes; waivedAmount + FeeWaiverApproval + template lateFeeWaived', async () => {
-      prisma.systemConfig.findUnique.mockImplementation(PER_DAY);
+      prisma.systemConfig.findUnique.mockImplementation(BRACKET_TIER1);
       prisma.payment.findFirst.mockResolvedValue(makePayment(60, { dueDate: dueDate5(), lateFee: D(0) }));
       prisma.user.findUnique.mockResolvedValue({ id: 'approver-1', role: 'FINANCE_MANAGER', isActive: true, deletedAt: null });
       prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'sch-waive-1', vat60dayJournalEntryId: null });
@@ -770,7 +774,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     });
 
     it('waiver > gross late fee → BadRequestException', async () => {
-      prisma.systemConfig.findUnique.mockImplementation(PER_DAY);
+      prisma.systemConfig.findUnique.mockImplementation(BRACKET_TIER1);
       prisma.payment.findFirst.mockResolvedValue(makePayment(63, { dueDate: dueDate5(), lateFee: D(0) }));
       prisma.user.findUnique.mockResolvedValue({ id: 'approver-1', role: 'OWNER', isActive: true, deletedAt: null });
       await expect(

@@ -4,15 +4,11 @@ import { LateFeeConfig } from './late-fee.util';
 
 const D = (v: string | number) => new Prisma.Decimal(v);
 
-// PER_DAY defaults (config.util BUSINESS_RULES): 20฿/day, max 500, cap 5%.
+// Flat-bracket defaults (config.util BUSINESS_RULES): tier1=50, tier2=100, minDays=3.
 const cfg: LateFeeConfig = {
-  mode: 'PER_DAY',
   tier1Amount: 50,
   tier2Amount: 100,
   tier2MinDays: 3,
-  perDayRate: 20,
-  maxAmount: 500,
-  capPct: 5,
 };
 
 // Mockup case TEST-20260630-003: monthly 4,472; due 5 days ago → fee 100 (5×20).
@@ -117,7 +113,7 @@ describe('computeRescheduleQuote — ปรับดิว collect-first quote (
     expect(q.lateFee.toFixed(2)).toBe('0.00');
   });
 
-  it('late fee honours the per-day caps (60 days × 20 = 1200 → capped at 5% × 4472 = 223.60)', () => {
+  it('late fee stays flat tier2 for a much-more-overdue installment (60 days → still 100, not proportional)', () => {
     const q = computeRescheduleQuote({
       monthlyPayment: D('4472.00'),
       daysToShift: 7,
@@ -126,6 +122,6 @@ describe('computeRescheduleQuote — ปรับดิว collect-first quote (
       lateFeeCfg: cfg,
       now,
     });
-    expect(q.lateFee.toFixed(2)).toBe('223.60');
+    expect(q.lateFee.toFixed(2)).toBe('100.00');
   });
 });

@@ -130,7 +130,7 @@ export class AutoTriggerService {
 
     // Resolve the late-fee config ONCE per batch (not per message)
     // so the reminder estimate matches what recordPayment / the overdue cron / the
-    // LIFF chatbot actually charge. Mode-aware: PER_DAY or BRACKET.
+    // LIFF chatbot actually charge (flat-bracket formula).
     const lateFeeConfig = await loadLateFeeConfig(this.prisma);
 
     let sent = 0;
@@ -176,10 +176,8 @@ export class AutoTriggerService {
   }): Promise<'sent' | 'skipped' | 'failed'> {
     const amount = Number(args.payment.amountDue) - Number(args.payment.amountPaid);
     const daysOverdue = args.dayOffset < 0 ? Math.abs(args.dayOffset) : 0;
-    // Mode-aware late fee (matches recordPayment / overdue cron / LIFF quote).
-    const fineAmount = Number(
-      resolveLateFee(args.lateFeeConfig, daysOverdue, args.payment.amountDue),
-    );
+    // Flat-bracket late fee (matches recordPayment / overdue cron / LIFF quote).
+    const fineAmount = Number(resolveLateFee(args.lateFeeConfig, daysOverdue));
 
     const payload: ReminderPayload = {
       customerName: args.customerName,

@@ -14,8 +14,9 @@
  *   - reschedule + JE + audit share ONE $transaction; e-Receipt fires post-commit
  *
  * Hand-mocked Prisma ($transaction(cb) → cb(tx), tx === root) mirroring the
- * orchestrator spec pattern. Late-fee config keys resolve to null → PER_DAY
- * defaults (20฿/day, max 500, cap 5%).
+ * orchestrator spec pattern. Late-fee config keys resolve to null → flat-bracket
+ * BUSINESS_RULES defaults (tier1=50, tier2=100, minDays=3) — the 5-day-overdue
+ * fixture below lands on tier2 (>=3 days), giving lateFee=100.
  */
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -33,7 +34,7 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
   let receiptsService: AnyObj;
   let service: RescheduleCollectService;
 
-  // Mockup TEST-20260630-003: monthly 4,472; overdue 5 days → lateFee 100 (5×20).
+  // Mockup TEST-20260630-003: monthly 4,472; overdue 5 days → lateFee 100 (flat tier2, >=3 days).
   const NOW = new Date('2026-07-02T05:00:00Z');
   const DUE_5D_AGO = new Date('2026-06-27T05:00:00Z');
 

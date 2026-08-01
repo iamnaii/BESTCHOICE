@@ -136,15 +136,14 @@ describe('OverdueService.calculateLateFees (config resolution — raw SQL arithm
    * positional args to $executeRaw. We pin:
    *   - that $executeRaw is called once
    *   - that { updated, timestamp } is returned correctly
-   *   - that mode='BRACKET' routes to the bracket SQL path (via systemConfig mock)
-   *   - that mode='PER_DAY' routes to the per-day SQL path
+   *   - that tier1/tier2/minDays SystemConfig rows drive the SQL when present
    *
    * The arithmetic correctness (did Postgres compute the right fee?) is covered by
-   * the vitest DB-backed anti-drift spec (late-fee-perday-sql.integration.spec.ts).
+   * the vitest DB-backed anti-drift spec (late-fee-bracket-sql.integration.spec.ts).
    *
-   * For BRACKET-mode tests we pin late_fee_mode='BRACKET' in the systemConfig mock
-   * so the behaviour is deterministic regardless of the BUSINESS_RULES.LATE_FEE_MODE
-   * default value.
+   * BRACKET is the only formula (CPA ยืนยันขั้นบันไดถาวร 2026-08-01 — the
+   * config-switchable `late_fee_mode='PER_DAY'` path that used to live
+   * alongside this was removed the same day).
    */
   const makeBracketPrisma = (
     tier1Cfg: { value: string } | null,
@@ -153,9 +152,7 @@ describe('OverdueService.calculateLateFees (config resolution — raw SQL arithm
     rowsUpdated = 3,
   ): PrismaMock => ({
     systemConfig: {
-      // Pin mode=BRACKET so bracket-tier values drive the SQL (BRACKET rollback path).
       findUnique: jest.fn(({ where }: { where: { key: string } }) => {
-        if (where.key === 'late_fee_mode') return Promise.resolve({ value: 'BRACKET' });
         if (where.key === 'late_fee_tier1_amount') return Promise.resolve(tier1Cfg);
         if (where.key === 'late_fee_tier2_amount') return Promise.resolve(tier2Cfg);
         if (where.key === 'late_fee_tier2_min_days') return Promise.resolve(minDaysCfg);
@@ -165,37 +162,19 @@ describe('OverdueService.calculateLateFees (config resolution — raw SQL arithm
     $executeRaw: jest.fn().mockResolvedValue(rowsUpdated),
   });
 
-  const makePerDayPrisma = (
-    rateCfg: { value: string } | null,
-    maxCfg: { value: string } | null,
-    capCfg: { value: string } | null,
-    rowsUpdated = 3,
-  ): PrismaMock => ({
-    systemConfig: {
-      findUnique: jest.fn(({ where }: { where: { key: string } }) => {
-        if (where.key === 'late_fee_mode') return Promise.resolve({ value: 'PER_DAY' });
-        if (where.key === 'late_fee_per_day_rate') return Promise.resolve(rateCfg);
-        if (where.key === 'late_fee_max_amount') return Promise.resolve(maxCfg);
-        if (where.key === 'late_fee_cap_pct') return Promise.resolve(capCfg);
-        return Promise.resolve(null);
-      }),
-    },
-    $executeRaw: jest.fn().mockResolvedValue(rowsUpdated),
-  });
-
-  it('BRACKET mode: falls back to BUSINESS_RULES defaults when no tier SystemConfig rows exist', async () => {
+  it('falls back to BUSINESS_RULES defaults when no tier SystemConfig rows exist', async () => {
     const prisma = makeBracketPrisma(null, null, null);
     const svc = await buildService(prisma);
 
     const out = await svc.calculateLateFees();
 
-    // $executeRaw called once (mode dispatch ran the SQL)
+    // $executeRaw called once (bracket SQL ran)
     expect((prisma.$executeRaw as jest.Mock)).toHaveBeenCalledTimes(1);
     expect(out.updated).toBe(3);
     expect(out.timestamp).toBeInstanceOf(Date);
   });
 
-  it('BRACKET mode: uses Number(SystemConfig.value) for configured tier1, tier2, minDays', async () => {
+  it('uses Number(SystemConfig.value) for configured tier1, tier2, minDays', async () => {
     const prisma = makeBracketPrisma({ value: '75' }, { value: '150' }, { value: '5' });
     const svc = await buildService(prisma);
 
@@ -205,7 +184,7 @@ describe('OverdueService.calculateLateFees (config resolution — raw SQL arithm
     expect((prisma.$executeRaw as jest.Mock)).toHaveBeenCalledTimes(1);
   });
 
-  it('BRACKET mode: each tier config falls back to its own BUSINESS_RULES default independently', async () => {
+  it('each tier config falls back to its own BUSINESS_RULES default independently', async () => {
     // tier1 configured, tier2 + minDays missing → only tier1 override applies
     const prisma = makeBracketPrisma({ value: '60' }, null, null);
     const svc = await buildService(prisma);
@@ -215,7 +194,7 @@ describe('OverdueService.calculateLateFees (config resolution — raw SQL arithm
     expect((prisma.$executeRaw as jest.Mock)).toHaveBeenCalledTimes(1);
   });
 
-  it('BRACKET mode: cron runs SQL and returns row count (downgrade behaviour in Postgres, not JS)', async () => {
+  it('cron runs SQL and returns row count (downgrade behaviour in Postgres, not JS)', async () => {
     // The actual SQL CASE (downgrade 200→100, etc.) runs in Postgres — tested by the
     // vitest integration spec. Here we just confirm the cron runs and returns correctly.
     const prisma = makeBracketPrisma(null, null, null, 3);
@@ -225,17 +204,6 @@ describe('OverdueService.calculateLateFees (config resolution — raw SQL arithm
 
     expect((prisma.$executeRaw as jest.Mock)).toHaveBeenCalledTimes(1);
     expect(out.updated).toBe(3);
-  });
-
-  it('PER_DAY mode: $executeRaw called once and row count echoed back', async () => {
-    const prisma = makePerDayPrisma(null, null, null, 5);
-    const svc = await buildService(prisma);
-
-    const out = await svc.calculateLateFees();
-
-    expect((prisma.$executeRaw as jest.Mock)).toHaveBeenCalledTimes(1);
-    expect(out.updated).toBe(5);
-    expect(out.timestamp).toBeInstanceOf(Date);
   });
 
   it('echoes the $executeRaw row count back as { updated }', async () => {

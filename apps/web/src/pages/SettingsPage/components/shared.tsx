@@ -30,8 +30,9 @@ export interface ConfigGroup {
 
 // NOTE: the 'penalty' group (late fee + installment months + overdue threshold)
 // moved to the dedicated LateFeeSettingsCard (registry: finance › late-fee),
-// which adds late_fee_mode + the PER_DAY fields. It is intentionally no longer
-// declared here — that card owns those SystemConfig keys now.
+// which owns the late-fee bracket (tier1/tier2/minDays) fields. It is
+// intentionally no longer declared here — that card owns those SystemConfig
+// keys now.
 export const configGroups: ConfigGroup[] = [
   {
     key: 'pdpa',

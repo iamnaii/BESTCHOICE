@@ -10,10 +10,26 @@ import { IntercoPendingService, PendingContract } from './interco-pending.servic
 import { IntercoBatchNumberService } from './interco-batch-number.service';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
+import { PairedJournalService } from '../journal/paired-journal.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
+import { JournalAutoService, JeLineInput } from '../journal/journal-auto.service';
+import { glContractBalance } from '../journal/gl-contract-balance';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 const DEFAULT_FINANCE_BANK_CODE = '11-1201';
 /** Batch statuses that "lock" a contract out of the pending queue (spec §4). */
 const OPEN_BATCH_STATUSES = ['PENDING_APPROVAL', 'POSTED'] as const;
+/** Drift-guard tolerance on the 4 GL lens amounts (spec §5.1). */
+const DRIFT_TOLERANCE = new Prisma.Decimal('0.01');
+
+/** Batch + items + per-item contractNumber — shape approve/reverse work with. */
+type BatchWithItems = Prisma.InterCoSettlementBatchGetPayload<{
+  include: {
+    items: {
+      include: { contract: { select: { contractNumber: true } } };
+    };
+  };
+}>;
 
 interface BuiltSnapshot {
   items: Array<{
@@ -48,6 +64,9 @@ export class IntercoSettlementService {
     private readonly prisma: PrismaService,
     private readonly pendingService: IntercoPendingService,
     private readonly batchNumberService: IntercoBatchNumberService,
+    private readonly pairedJournal: PairedJournalService,
+    private readonly companyResolver: CompanyResolverService,
+    private readonly journalAuto: JournalAutoService,
   ) {}
 
   /**
@@ -411,5 +430,408 @@ export class IntercoSettlementService {
       financeEntryNumber: financeJe?.entryNumber ?? null,
       shopEntryNumber: shopJe?.entryNumber ?? null,
     };
+  }
+
+  /**
+   * PENDING_APPROVAL → POSTED. Posts the paired JE (or a FINANCE-only JE when
+   * every item is `legacyNoShop`) inside ONE `$transaction`, per spec §5:
+   *   1. load + status + SoD (approver ≠ maker)
+   *   2. re-check no item's contract got grabbed by another open batch
+   *   3. drift guard — live GL (via `glContractBalance`, which reads straight
+   *      off `journal_lines`/`journal_entries` and has NO notion of batch
+   *      status) vs the item snapshot, ±0.01 — this sidesteps the pending
+   *      engine's own "settled" exclusion entirely (this batch's own
+   *      PENDING_APPROVAL items would otherwise be invisible to
+   *      `IntercoPendingService.getPendingContracts`), so no change to that
+   *      service's public interface was needed
+   *   4. period guard both companies (FINANCE + SHOP) against `postedAt`
+   *      (`postedAtOverride` when given — D4 backdated-round support; the
+   *      controller/DTO layer (Task 5) parses the ISO string into a Date)
+   *   5. post JE(s)
+   *   6. best-effort mark matching `InterCompanyTransaction` rows RECONCILED
+   *   7. batch → POSTED + audit `INTERCO_BATCH_APPROVED`
+   */
+  async approveBatch(id: string, userId: string, postedAtOverride?: Date) {
+    return this.prisma.$transaction(async (tx) => {
+      // 1. load + status + SoD
+      const batch = (await tx.interCoSettlementBatch.findUnique({
+        where: { id },
+        include: {
+          items: {
+            where: { deletedAt: null },
+            include: { contract: { select: { contractNumber: true } } },
+          },
+        },
+      })) as BatchWithItems | null;
+      if (!batch || batch.deletedAt) throw new NotFoundException('ไม่พบรอบจ่าย');
+      if (batch.status !== 'PENDING_APPROVAL') {
+        throw new BadRequestException(
+          'อนุมัติได้เฉพาะรอบที่รอการอนุมัติ (PENDING_APPROVAL) เท่านั้น',
+        );
+      }
+      if (batch.makerId === userId) {
+        throw new ForbiddenException('ผู้อนุมัติต้องไม่ใช่ผู้สร้างรอบ');
+      }
+
+      const contractIds = batch.items.map((i) => i.contractId);
+
+      // 2. re-check no item's contract got grabbed by another PENDING_APPROVAL/POSTED batch
+      if (contractIds.length > 0) {
+        const clashes = await tx.interCoSettlementItem.findMany({
+          where: {
+            contractId: { in: contractIds },
+            batchId: { not: id },
+            deletedAt: null,
+            batch: { status: { in: [...OPEN_BATCH_STATUSES] }, deletedAt: null },
+          },
+          include: { contract: { select: { contractNumber: true } } },
+        });
+        if (clashes.length > 0) {
+          const labels = clashes.map((c) => c.contract.contractNumber);
+          throw new BadRequestException(
+            `สัญญา ${labels.join(', ')} ไม่อยู่ในคิวรอจ่าย หรืออยู่ในรอบจ่ายอื่นแล้ว`,
+          );
+        }
+      }
+
+      // 3. drift guard — live GL vs snapshot, ±0.01, per item
+      const driftedContractNumbers: string[] = [];
+      for (const item of batch.items) {
+        const [financedGl, commissionGl, shopFinancedGl, shopCommissionGl] = await Promise.all([
+          glContractBalance(tx, item.contractId, '21-1101', 'cr'),
+          glContractBalance(tx, item.contractId, '21-1102', 'cr'),
+          glContractBalance(tx, item.contractId, 'S11-3001', 'dr'),
+          glContractBalance(tx, item.contractId, 'S11-3002', 'dr'),
+        ]);
+        const drifted =
+          financedGl.minus(item.financedGl).abs().gt(DRIFT_TOLERANCE) ||
+          commissionGl.minus(item.commissionGl).abs().gt(DRIFT_TOLERANCE) ||
+          shopFinancedGl.minus(item.shopFinancedGl).abs().gt(DRIFT_TOLERANCE) ||
+          shopCommissionGl.minus(item.shopCommissionGl).abs().gt(DRIFT_TOLERANCE);
+        if (drifted) driftedContractNumbers.push(item.contract.contractNumber);
+      }
+      if (driftedContractNumbers.length > 0) {
+        throw new BadRequestException(
+          `ยอด GL ของสัญญา ${driftedContractNumbers.join(', ')} เปลี่ยนไปจากตอนสร้างรอบ ` +
+            '(มีรายการเดินบัญชีแทรกระหว่างทาง) — กรุณายกเลิกรอบนี้แล้วสร้างรอบใหม่',
+        );
+      }
+
+      // 4. period guard — both companies
+      const financeCompanyId = await this.companyResolver.getFinanceCompanyId(tx);
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+      const postedAt = postedAtOverride ?? batch.transferDate;
+      await this.guardPeriodOpen(tx, postedAt, financeCompanyId, 'FINANCE');
+      await this.guardPeriodOpen(tx, postedAt, shopCompanyId, 'SHOP');
+
+      // 5. post JE(s)
+      const itemsMetadata = batch.items.map((i) => ({
+        contractId: i.contractId,
+        financed: i.financedGl.toFixed(2),
+        commission: i.commissionGl.toFixed(2),
+      }));
+      const financeDescription = `จ่ายให้หน้าร้าน รอบ ${batch.batchNumber} (โอนจริง ${this.formatBkkDate(batch.transferDate)})`;
+      const shopLines = this.buildShopLines(batch);
+      const financeLines = this.buildFinanceLines(batch, financeDescription);
+
+      let financeJournalEntryId: string;
+      let shopJournalEntryId: string | null = null;
+
+      if (shopLines.length > 0) {
+        const shopDescription = `รับโอนจาก FINANCE รอบ ${batch.batchNumber} (โอนจริง ${this.formatBkkDate(batch.transferDate)})`;
+        const paired = await this.pairedJournal.postPaired(
+          {
+            shop: {
+              companyCode: 'SHOP',
+              description: shopDescription,
+              metadata: {
+                flow: 'interco-settlement-batch',
+                idempotencyKey: `interco:${batch.id}:SHOP`,
+                settlementBatchId: batch.id,
+                batchNumber: batch.batchNumber,
+                transferDate: batch.transferDate.toISOString(),
+                items: itemsMetadata,
+              },
+              postedAt,
+              lines: shopLines,
+            },
+            finance: {
+              companyCode: 'FINANCE',
+              description: financeDescription,
+              metadata: {
+                flow: 'interco-settlement-batch',
+                idempotencyKey: `interco:${batch.id}:FINANCE`,
+                settlementBatchId: batch.id,
+                batchNumber: batch.batchNumber,
+                transferDate: batch.transferDate.toISOString(),
+                items: itemsMetadata,
+              },
+              postedAt,
+              lines: financeLines,
+            },
+            batchRef: batch.id,
+          },
+          tx,
+        );
+        financeJournalEntryId = paired.financeJournalEntryId;
+        shopJournalEntryId = paired.shopJournalEntryId;
+      } else {
+        const finance = await this.journalAuto.createAndPost(
+          {
+            description: financeDescription,
+            metadata: {
+              flow: 'interco-settlement-batch',
+              idempotencyKey: `interco:${batch.id}:FINANCE`,
+              settlementBatchId: batch.id,
+              batchNumber: batch.batchNumber,
+              transferDate: batch.transferDate.toISOString(),
+              items: itemsMetadata,
+            },
+            postedAt,
+            companyId: financeCompanyId,
+            lines: financeLines,
+          },
+          tx,
+        );
+        financeJournalEntryId = finance.id;
+      }
+
+      // 6. best-effort mark matching InterCompanyTransaction rows RECONCILED
+      await tx.interCompanyTransaction.updateMany({
+        where: { contractId: { in: contractIds }, status: { not: 'RECONCILED' } },
+        data: { status: 'RECONCILED' },
+      });
+
+      // 7. batch → POSTED + audit
+      const posted = await tx.interCoSettlementBatch.update({
+        where: { id },
+        data: {
+          status: 'POSTED',
+          approverId: userId,
+          postedAt,
+          financeJournalEntryId,
+          shopJournalEntryId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'INTERCO_BATCH_APPROVED',
+          entity: 'interco_settlement_batch',
+          entityId: id,
+          newValue: {
+            batchNumber: batch.batchNumber,
+            postedAt: postedAt.toISOString(),
+            financeJournalEntryId,
+            shopJournalEntryId,
+            totalAmount: batch.totalAmount.toFixed(2),
+            shopPostedAmount: batch.shopPostedAmount.toFixed(2),
+          },
+        },
+      });
+
+      return posted;
+    });
+  }
+
+  /**
+   * POSTED → REVERSED. Mirror-reverses BOTH JEs (swap Dr/Cr per line, same
+   * companyId, `tag: 'REVERSAL'` + `reversesEntryId` back-ref — the house
+   * pattern from `ExchangeCancelReversalTemplate`) — no metadata sweep needed
+   * here (unlike the exchange module) because no OTHER JE ever carries this
+   * batch's metadata; the batch row itself holds both JE ids directly.
+   */
+  async reverseBatch(id: string, userId: string, reason: string) {
+    if (!reason || reason.trim().length < 10) {
+      throw new BadRequestException('เหตุผลย้อนกลับต้องมีอย่างน้อย 10 ตัวอักษร');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.interCoSettlementBatch.findUnique({ where: { id } });
+      if (!batch || batch.deletedAt) throw new NotFoundException('ไม่พบรอบจ่าย');
+      if (batch.status !== 'POSTED') {
+        throw new BadRequestException('ย้อนกลับได้เฉพาะรอบที่อนุมัติแล้ว (POSTED) เท่านั้น');
+      }
+
+      const jeIds = [batch.financeJournalEntryId, batch.shopJournalEntryId].filter(
+        (x): x is string => !!x,
+      );
+      const jes = await tx.journalEntry.findMany({
+        where: { id: { in: jeIds }, status: 'POSTED', deletedAt: null },
+        include: { lines: true },
+      });
+      if (jes.length !== jeIds.length) {
+        throw new BadRequestException('ไม่พบ JE ต้นฉบับครบทั้งสองใบ — ไม่สามารถย้อนกลับได้');
+      }
+
+      let financeReversalId: string | null = null;
+      let shopReversalId: string | null = null;
+
+      for (const je of jes) {
+        const meta = (je.metadata ?? {}) as Record<string, unknown>;
+        const reversedLines: JeLineInput[] = je.lines.map((l) => ({
+          accountCode: l.accountCode,
+          dr: new Prisma.Decimal(l.credit.toString()),
+          cr: new Prisma.Decimal(l.debit.toString()),
+          description: `[ย้อนกลับรอบจ่าย] ${l.description ?? ''}`.trim(),
+        }));
+
+        const result = await this.journalAuto.createAndPost(
+          {
+            description: `[ย้อนกลับรอบจ่าย] ${batch.batchNumber} — ${je.description}`,
+            reference: `${je.id}:interco-settlement-reverse`,
+            companyId: je.companyId,
+            metadata: {
+              tag: 'REVERSAL',
+              flow: 'interco-settlement-batch-reverse',
+              idempotencyKey: `interco-reverse:${je.id}`,
+              originalEntryId: je.id,
+              reversesEntryId: je.id,
+              settlementBatchId: batch.id,
+            },
+            lines: reversedLines,
+          },
+          tx,
+        );
+
+        if (je.id === batch.financeJournalEntryId) financeReversalId = result.id;
+        if (je.id === batch.shopJournalEntryId) shopReversalId = result.id;
+
+        await tx.journalEntry.update({
+          where: { id: je.id },
+          data: {
+            metadata: {
+              ...(meta as Prisma.InputJsonObject),
+              reversed: true,
+              reversedByEntryNumber: result.entryNumber,
+            },
+          },
+        });
+      }
+
+      const updated = await tx.interCoSettlementBatch.update({
+        where: { id },
+        data: { status: 'REVERSED', reverseReason: reason },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'INTERCO_BATCH_REVERSED',
+          entity: 'interco_settlement_batch',
+          entityId: id,
+          newValue: {
+            batchNumber: batch.batchNumber,
+            reason,
+            financeReversalJeId: financeReversalId,
+            shopReversalJeId: shopReversalId,
+          },
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  /** Dr 21-1101 per-contract (always) + Dr 21-1102 per-contract (skip zero) + Cr bank total. */
+  private buildFinanceLines(batch: BatchWithItems, description: string): JeLineInput[] {
+    const zero = new Prisma.Decimal(0);
+    const lines: JeLineInput[] = [];
+    for (const item of batch.items) {
+      lines.push({
+        accountCode: '21-1101',
+        dr: item.financedGl,
+        cr: zero,
+        description: `ล้างเจ้าหนี้ยอดจัด ${item.contract.contractNumber}`,
+      });
+    }
+    for (const item of batch.items) {
+      if (item.commissionGl.gt(0)) {
+        lines.push({
+          accountCode: '21-1102',
+          dr: item.commissionGl,
+          cr: zero,
+          description: `ล้างเจ้าหนี้ค่าคอม ${item.contract.contractNumber}`,
+        });
+      }
+    }
+    lines.push({
+      accountCode: batch.financeBankCode,
+      dr: zero,
+      cr: batch.totalAmount,
+      description,
+    });
+    return lines;
+  }
+
+  /**
+   * Dr shopBankCode (shopPostedAmount) + Cr S11-3001 per-contract (always) +
+   * Cr S11-3002 per-contract (skip zero) — ONLY over items with
+   * `legacyNoShop=false`. Empty array = no SHOP half at all (caller skips
+   * `postPaired` and posts FINANCE alone via `JournalAutoService`).
+   */
+  private buildShopLines(batch: BatchWithItems): JeLineInput[] {
+    const zero = new Prisma.Decimal(0);
+    const shopItems = batch.items.filter((i) => !i.legacyNoShop);
+    if (shopItems.length === 0) return [];
+
+    const lines: JeLineInput[] = [
+      {
+        accountCode: batch.shopBankCode,
+        dr: batch.shopPostedAmount,
+        cr: zero,
+        description: `รับโอนจาก FINANCE รอบ ${batch.batchNumber}`,
+      },
+    ];
+    for (const item of shopItems) {
+      lines.push({
+        accountCode: 'S11-3001',
+        dr: zero,
+        cr: item.shopFinancedGl,
+        description: `ล้างลูกหนี้ FINANCE-ยอดจัด ${item.contract.contractNumber}`,
+      });
+    }
+    for (const item of shopItems) {
+      if (item.shopCommissionGl.gt(0)) {
+        lines.push({
+          accountCode: 'S11-3002',
+          dr: zero,
+          cr: item.shopCommissionGl,
+          description: `ล้างลูกหนี้ FINANCE-ค่าคอม ${item.contract.contractNumber}`,
+        });
+      }
+    }
+    return lines;
+  }
+
+  /**
+   * `validatePeriodOpen` throws a company-agnostic BadRequestException — this
+   * wraps it so the message names WHICH company's period is closed (spec D4:
+   * the maker needs to know whether to pick a different postedAt or ask an
+   * OWNER to reopen the period) since approve guards FINANCE and SHOP
+   * independently.
+   */
+  private async guardPeriodOpen(
+    tx: Prisma.TransactionClient,
+    postedAt: Date,
+    companyId: string,
+    label: 'FINANCE' | 'SHOP',
+  ): Promise<void> {
+    try {
+      await validatePeriodOpen(tx, postedAt, companyId);
+    } catch (err) {
+      if (err instanceof BadRequestException) {
+        throw new BadRequestException(
+          `งวดบัญชีฝั่ง ${label} ปิดแล้ว (${err.message}) — เลือกวันที่ลงบัญชีในเดือนที่ยังเปิดอยู่ ` +
+            '(ระบบจะบันทึกวันโอนจริงไว้ในรายละเอียด JE เสมอ) หรือให้ OWNER เปิดงวดนี้ก่อนอนุมัติ',
+        );
+      }
+      throw err;
+    }
+  }
+
+  private formatBkkDate(date: Date): string {
+    return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
   }
 }

@@ -6,6 +6,9 @@ import { IntercoPendingService, PendingContract } from './interco-pending.servic
 import { IntercoBatchNumberService } from './interco-batch-number.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
+import { PairedJournalService } from '../journal/paired-journal.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 const pendingRow = (overrides: Partial<PendingContract> = {}): PendingContract => ({
   contractId: 'c-1',
@@ -62,6 +65,14 @@ describe('IntercoSettlementService', () => {
 
     pendingService = { getPendingContracts: jest.fn().mockResolvedValue([]) };
     batchNumberService = { next: jest.fn().mockResolvedValue('IC-20260801-0001') };
+    // approveBatch/reverseBatch (Task 4) deps — unused by the create/update/
+    // submit/withdraw/cancel specs below, just need to satisfy Nest DI.
+    const pairedJournal = { postPaired: jest.fn() };
+    const companyResolver = {
+      getFinanceCompanyId: jest.fn().mockResolvedValue('company-finance'),
+      getShopCompanyId: jest.fn().mockResolvedValue('company-shop'),
+    };
+    const journalAuto = { createAndPost: jest.fn() };
 
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -69,6 +80,9 @@ describe('IntercoSettlementService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: IntercoPendingService, useValue: pendingService },
         { provide: IntercoBatchNumberService, useValue: batchNumberService },
+        { provide: PairedJournalService, useValue: pairedJournal },
+        { provide: CompanyResolverService, useValue: companyResolver },
+        { provide: JournalAutoService, useValue: journalAuto },
       ],
     }).compile();
 

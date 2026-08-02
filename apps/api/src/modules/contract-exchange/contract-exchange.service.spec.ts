@@ -1144,6 +1144,64 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
     });
   });
 
+  // ==========================================================================
+  // SHOP-leg wiring (F2/D5) — review W2: assertions on the mock calls, not
+  // just "does it throw" / "call order" (the pre-review test suite never
+  // actually inspected what shopInv/shopInstant were CALLED WITH).
+  // ==========================================================================
+  describe('SHOP-leg wiring (F2 ShopInventoryTransfer + D5 instant settlement)', () => {
+    it('shopInventoryTransfer receives salePrice = downPayment + financedAmount (reconstructed, never read from a sellingPrice field)', async () => {
+      // ExchangeContractForFinalize has NO sellingPrice field at all — the
+      // only way to prove the reconstruction (not some other source) is to
+      // set a NONZERO downPayment and confirm salePrice tracks down+financed
+      // exactly (a real exchange contract always has downPayment=0, but the
+      // template's own math must hold regardless of what the caller passes).
+      const contractWithDown = { ...newContract, downPayment: '2000', financedAmount: '10000' };
+      await service.finalizeAfterActivation(contractWithDown, tx);
+
+      const call = templates.shopInv.execute.mock.calls[0][0];
+      expect(call.downAmount.toString()).toBe('2000');
+      expect(call.financedAmount.toString()).toBe('10000');
+      expect(call.salePrice.toString()).toBe('12000'); // 2000 + 10000, not e.g. a stray sellingPrice
+    });
+
+    it('shopInstant settlement receives the SAME batchId ShopInventoryTransferTemplate returned', async () => {
+      templates.shopInv.execute.mockResolvedValue({
+        batchId: 'batch-xyz-123',
+        cogsEntryNo: 'JE-COGS',
+        cogsJournalEntryId: 'cogs-id',
+        revenueEntryNo: 'JE-REV',
+        revenueJournalEntryId: 'rev-id',
+      });
+      await service.finalizeAfterActivation(newContract, tx);
+
+      expect(templates.shopInstant.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newContractId: 'new-c',
+          financedAmount: expect.anything(),
+          commission: expect.anything(),
+          batchId: 'batch-xyz-123',
+        }),
+        tx,
+      );
+    });
+
+    it('newContract.productCostPrice == null → throws BEFORE shopInv/shopInstant fire, but AFTER A.1 (matches the implemented guard at contract-exchange.service.ts:770-774)', async () => {
+      const contractNoCost = { ...newContract, productCostPrice: null };
+      await expect(service.finalizeAfterActivation(contractNoCost, tx)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+      // A.1 already posted before this guard runs (step 4, guard is step 4b)
+      expect(templates.t1a.execute).toHaveBeenCalled();
+      // Guard throws — nothing SHOP-side, and nothing past it (A.2-A.4), ever fires
+      expect(templates.shopInv.execute).not.toHaveBeenCalled();
+      expect(templates.shopInstant.execute).not.toHaveBeenCalled();
+      expect(templates.t2.execute).not.toHaveBeenCalled();
+      expect(templates.t3.execute).not.toHaveBeenCalled();
+      expect(templates.t4.execute).not.toHaveBeenCalled();
+    });
+  });
+
   it('throws InternalServerErrorException when no exchange request matches the new contract', async () => {
     tx.contractExchangeRequest.findFirst.mockResolvedValue(null);
     await expect(service.finalizeAfterActivation(newContract, tx)).rejects.toThrow(

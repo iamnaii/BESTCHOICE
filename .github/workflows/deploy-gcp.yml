@@ -150,6 +150,14 @@ jobs:
       # renamed file breaks the build instead of silently vanishing from CI
       # (the exact orphan-spec failure mode this glob-per-suite convention
       # exists to prevent — see JP5_FILES/EXCH_FILES above).
+      # CONTRACTS_FILES / JOURNAL_FILES / OVERDUE_FILES / PAYMENTS_FILES added
+      # 2026-08-02 (orphan-spec sweep) — 8 more *.integration.spec.ts (+ two
+      # plain-named journal specs) that matched NEITHER jest's ignore-carve-out
+      # NOR any glob here, so they ran in NO pipeline at all. The remaining
+      # jest-invisible orphans (eir.spec.ts, csv-fixture-loader.spec.ts,
+      # contract-cancellation.template.spec.ts) were mocked/pure — those were
+      # wired into jest instead by narrowing testPathIgnorePatterns (see
+      # apps/api/package.json), not added here.
       - name: Run DB-backed money-invariant specs (vitest — #1328)
         timeout-minutes: 10
         working-directory: apps/api
@@ -159,12 +167,20 @@ jobs:
           JP5_FILES=$(ls src/modules/journal/cpa-templates/__tests__/*.spec.ts)
           EXCH_FILES=$(ls src/modules/contract-exchange/__tests__/*.integration.spec.ts)
           INTERCO_FILES=$(ls src/modules/interco-settlement/__tests__/*.integration.spec.ts)
+          CONTRACTS_FILES=$(ls src/modules/contracts/*.integration.spec.ts)
+          JOURNAL_FILES="src/modules/journal/__tests__/scenario-helpers.spec.ts src/modules/journal/cron/installment-accrual.cron.spec.ts"
+          OVERDUE_FILES=$(ls src/modules/overdue/*.integration.spec.ts src/modules/overdue/services/*.integration.spec.ts)
+          PAYMENTS_FILES=$(ls src/modules/payments/services/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
             $JP5_FILES \
             $EXCH_FILES \
-            $INTERCO_FILES
+            $INTERCO_FILES \
+            $CONTRACTS_FILES \
+            $JOURNAL_FILES \
+            $OVERDUE_FILES \
+            $PAYMENTS_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

@@ -60,6 +60,8 @@ interface PreviewResponse {
   netIncome: string;
   isProfit: boolean;
   totalSteps: number;
+  step4Amount: string;
+  step4IsProfit: boolean;
   alreadyClosed: boolean;
   closedAt: string | null;
   closingBatchId: string | null;
@@ -368,6 +370,26 @@ export default function YearEndClosingPage() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Step 4 preview — 33-1101 → 32-1101 sweep (incl. prior-year residue) */}
+              {Number(preview.step4Amount) > 0 && (
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="pt-6 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium leading-snug">
+                        Step 4: ปิด 33-1101 เข้า 32-1101 (กำไรสะสม)
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-snug mt-1">
+                        ยอดที่จะปิด = กำไร(ขาดทุน)สุทธิปีนี้ + ยอดค้างเดิมใน 33-1101 (ถ้ามี)
+                      </p>
+                    </div>
+                    <p className="text-xl font-bold leading-snug">
+                      {preview.step4IsProfit ? '' : '-'}
+                      {fmtTHB(preview.step4Amount)}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Account detail tables */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

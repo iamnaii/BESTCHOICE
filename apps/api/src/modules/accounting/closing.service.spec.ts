@@ -76,6 +76,9 @@ describe('AccountingClosingService', () => {
         expenseTotal: new Prisma.Decimal('20000.00'),
         netIncome: new Prisma.Decimal('85000.00'),
       }),
+      // Step 4 preview projection query (live 33-1101 GL balance). Default:
+      // no prior-year residue — override per-test via mockResolvedValueOnce.
+      getEquityAccountBalance: jest.fn().mockResolvedValue(new Prisma.Decimal('0')),
       execute: jest.fn().mockResolvedValue({
         batchId: 'batch-uuid-1',
         step1: { entryNo: 'JE-202612-00001', journalEntryId: 'je-1' },
@@ -125,7 +128,13 @@ describe('AccountingClosingService', () => {
       expect(out.expenses).toHaveLength(1);
       expect(out.netIncome).toBe('85000.00');
       expect(out.isProfit).toBe(true);
-      expect(out.totalSteps).toBe(3);
+      // Step 4 will ALSO fire here (no prior residue, but netIncome=85000 !=
+      // 0 → projected 33-1101 balance = 85000 after Step 3) — totalSteps
+      // includes it (W1 fix: preview must not under-report vs. what actually
+      // posts).
+      expect(out.totalSteps).toBe(4);
+      expect(out.step4Amount).toBe('85000.00');
+      expect(out.step4IsProfit).toBe(true);
       expect(out.alreadyClosed).toBe(false);
       expect(out.openMonths).toEqual([]);
     });
@@ -167,7 +176,7 @@ describe('AccountingClosingService', () => {
       expect(out.closingBatchId).toBe('old-batch');
     });
 
-    it('totalSteps=2 when netIncome is effectively zero', async () => {
+    it('totalSteps=2 when netIncome is effectively zero AND no 33-1101 residue', async () => {
       template.getYearAccountActivity.mockResolvedValueOnce({
         revenues: [{ code: '41-1101', name: 'x', balance: new Prisma.Decimal('100') }],
         expenses: [{ code: '51-1102', name: 'y', balance: new Prisma.Decimal('100') }],
@@ -177,6 +186,45 @@ describe('AccountingClosingService', () => {
       });
       const out = await service.previewYearEndClosing(PAST_YEAR);
       expect(out.totalSteps).toBe(2);
+      expect(out.step4Amount).toBe('0.00');
+    });
+
+    /**
+     * W1 review fix: prior-year residue already sitting in 33-1101 must
+     * surface in `totalSteps`/`step4Amount` BEFORE the user posts — so
+     * Step 4 never appears as an unannounced surprise JE.
+     */
+    it('projects Step 4 (residue + net) when 33-1101 already carries a prior-year balance', async () => {
+      template.getYearAccountActivity.mockResolvedValueOnce({
+        revenues: [{ code: '41-1101', name: 'x', balance: new Prisma.Decimal('100000') }],
+        expenses: [{ code: '51-1101', name: 'y', balance: new Prisma.Decimal('60000') }],
+        revenueTotal: new Prisma.Decimal('100000'),
+        expenseTotal: new Prisma.Decimal('60000'),
+        netIncome: new Prisma.Decimal('40000'),
+      });
+      // Prior-year residue already in 33-1101 (never swept before Step 4 existed)
+      template.getEquityAccountBalance.mockResolvedValueOnce(new Prisma.Decimal('15000'));
+
+      const out = await service.previewYearEndClosing(PAST_YEAR);
+      expect(out.totalSteps).toBe(4); // step1, step2, step3, step4
+      // projected = residue (15000) + netIncome (40000) = 55000
+      expect(out.step4Amount).toBe('55000.00');
+      expect(out.step4IsProfit).toBe(true);
+    });
+
+    it('projects Step 4 from residue ALONE when netIncome is zero this year (Step 3 skipped, Step 4 still fires)', async () => {
+      template.getYearAccountActivity.mockResolvedValueOnce({
+        revenues: [{ code: '41-1101', name: 'x', balance: new Prisma.Decimal('100') }],
+        expenses: [{ code: '51-1102', name: 'y', balance: new Prisma.Decimal('100') }],
+        revenueTotal: new Prisma.Decimal('100'),
+        expenseTotal: new Prisma.Decimal('100'),
+        netIncome: new Prisma.Decimal('0'),
+      });
+      template.getEquityAccountBalance.mockResolvedValueOnce(new Prisma.Decimal('15000'));
+
+      const out = await service.previewYearEndClosing(PAST_YEAR);
+      expect(out.totalSteps).toBe(3); // step1, step2, step4 (step3 skipped — net=0)
+      expect(out.step4Amount).toBe('15000.00');
     });
   });
 

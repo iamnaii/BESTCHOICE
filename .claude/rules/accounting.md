@@ -993,11 +993,18 @@ After year-end closing posts:
   the year's profit moved all the way to accumulated retained earnings
   (32-1101), not just parked in the current-year 33-1101 bucket
 
-The "ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า 33-1101" caveat on the
-balance-sheet equity matrix (accounting.service.ts:1564) disappears for years
-that have been closed via this flow — and, since Step 4, 33-1101 no longer
-carries a lingering balance post-close at all (it nets to 0.00, with the
-amount now sitting in 32-1101 instead).
+`getEquityStatementFromJournal` (`apps/api/src/modules/accounting/general-ledger-report.service.ts:905`)
+returns a `caveat` string — "ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า
+33-1101 / 32-1101 (รอปิดบัญชีสิ้นปี)" — alongside its `currentYearProfit`
+number. That NUMBER genuinely goes to ~0 for a year that has been closed via
+this flow (its `getProfitLossFromJournal(yearStart, periodEnd)` sub-call sees
+Steps 1-2's zeroed-out revenue/expense). The caveat TEXT itself, however, is
+**static** — the method has no branch that checks whether the year is
+actually closed, so the label is always returned verbatim regardless of
+closure status. Don't read "the caveat disappears after closing" as fact:
+only the accompanying number changes; the explanatory string does not. (Not
+in scope here to add that conditional — flagging it as a known, pre-existing
+gap only.)
 
 `/accounting/periods` redirects to `/settings#periods` via `window.location.replace` (preserves hash; react-router `<Navigate>` cannot set hash fragments).
 

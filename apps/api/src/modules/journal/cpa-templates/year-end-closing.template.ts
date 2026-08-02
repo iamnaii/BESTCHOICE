@@ -172,28 +172,49 @@ export class YearEndClosingTemplate {
   }
 
   /**
-   * Live GL balance (Cr-normal) for a single equity account as of `asOf`,
-   * summed across ALL POSTED JournalLine rows for that account code — NOT
-   * year-scoped, because 33-1101/32-1101 are carry-forward equity accounts
-   * (unlike the year-windowed revenue/expense query in
-   * `getYearAccountActivity`). Used by Step 4 to sweep whatever is
-   * ACTUALLY sitting in 33-1101 (including prior-year residue), not a
-   * separately re-derived `priorBalance + netIncome` figure.
+   * Live GL balance (Cr-normal) for a single equity account — the TRUE
+   * current running balance, summed across ALL POSTED JournalLine rows for
+   * that account code with NO date restriction. NOT year-scoped, because
+   * 33-1101/32-1101 are carry-forward equity accounts (unlike the
+   * year-windowed revenue/expense query in `getYearAccountActivity`). Used
+   * by Step 4 to sweep whatever is ACTUALLY sitting in 33-1101 (including
+   * prior-year residue), not a separately re-derived
+   * `priorBalance + netIncome` figure.
    *
    * Mirrors the style of the contract-scoped `glContractBalance` helper
    * (`apps/api/src/modules/journal/gl-contract-balance.ts`) — findMany +
-   * manual sum rather than `groupBy`/`aggregate`, for consistency across
-   * the codebase's GL-balance helpers.
+   * manual sum rather than `groupBy`/`aggregate`, AND no date parameter, for
+   * the same reason `glContractBalance` has none: a POSTED JournalLine is
+   * permanent, so "the balance" is unambiguous without a cutoff.
+   *
+   * An earlier revision of this method took an `asOf` cutoff (filtering
+   * `entryDate <= asOf`, meant to be `yearEndAt`). That broke the
+   * reverse→re-close escape hatch: `reverseYearEndClosing` posts its mirror
+   * JEs dated TODAY (real wall-clock time), which is always AFTER the
+   * closed year's Dec 31 — so an `asOf = yearEndAt` cutoff silently EXCLUDED
+   * the reversal from Step 4's balance on the next close, underswept
+   * 33-1101, and left a stale residue behind. Discovered via the real-DB
+   * integration spec `year-end-step4.spec.ts` (review W2, reverse→correct→
+   * re-close scenario). Since Step 4 always runs inside the SAME
+   * transaction right after Step 3 posts, "the current balance" (no
+   * date filter) is exactly what we want — this is the "as of right now"
+   * reading, not "as of some past instant".
+   *
+   * PUBLIC (not just an `execute()` internal): `AccountingClosingService.
+   * previewYearEndClosing` also calls this — passing the root `PrismaService`
+   * (no tx, since preview never posts) — to project what Step 4 WOULD sweep
+   * before the user commits to `postYearEndClosing`. Without this, preview
+   * would under-report `totalSteps` whenever 33-1101 already carries residue,
+   * and Step 4 would post as an unannounced surprise (review W1).
    */
-  private async getEquityAccountBalance(
+  async getEquityAccountBalance(
     client: Prisma.TransactionClient | PrismaService,
     accountCode: string,
-    asOf: Date,
   ): Promise<Prisma.Decimal> {
     const lines = await client.journalLine.findMany({
       where: {
         accountCode,
-        journalEntry: { status: 'POSTED', entryDate: { lte: asOf }, deletedAt: null },
+        journalEntry: { status: 'POSTED', deletedAt: null },
         deletedAt: null,
       },
       select: { debit: true, credit: true },
@@ -279,7 +300,17 @@ export class YearEndClosingTemplate {
       const step1 = await this.journal.createAndPost(
         {
           description: `ปิดบัญชีรายได้ ปี ${year}`,
-          reference: `${year}:year-end-closing:step1`,
+          // `batchId` suffix (not just `${year}:...:step1`) is REQUIRED for the
+          // reverse→re-close escape hatch to work at all: `reference` maps to
+          // `referenceId`, which carries a partial UNIQUE index
+          // (`journal_entries_ref_unique`, scoped `WHERE deleted_at IS NULL`).
+          // Reversal does NOT soft-delete the original entries (by design —
+          // they stay POSTED for audit trail), so a re-close for the SAME
+          // year would try to reuse the exact same reference string and hit
+          // that unique constraint. Discovered via the real-DB integration
+          // spec `year-end-step4.spec.ts` (review W2) — re-close had never
+          // been exercised against a real Postgres instance before.
+          reference: `${year}:year-end-closing:step1:${batchId}`,
           postedAt: yearEndAt,
           metadata: {
             flow: 'year-end-closing',
@@ -329,7 +360,8 @@ export class YearEndClosingTemplate {
       const step2 = await this.journal.createAndPost(
         {
           description: `ปิดบัญชีค่าใช้จ่าย ปี ${year}`,
-          reference: `${year}:year-end-closing:step2`,
+          // batchId suffix — see step1's comment above (unique-index / re-close fix).
+          reference: `${year}:year-end-closing:step2:${batchId}`,
           postedAt: yearEndAt,
           metadata: {
             flow: 'year-end-closing',
@@ -385,7 +417,8 @@ export class YearEndClosingTemplate {
             description: isProfit
               ? `โอนกำไรสุทธิเข้ากำไรสะสม ปี ${year}`
               : `โอนขาดทุนสุทธิเข้ากำไรสะสม ปี ${year}`,
-            reference: `${year}:year-end-closing:step3`,
+            // batchId suffix — see step1's comment above (unique-index / re-close fix).
+            reference: `${year}:year-end-closing:step3:${batchId}`,
             postedAt: yearEndAt,
             metadata: {
               flow: 'year-end-closing',
@@ -409,16 +442,20 @@ export class YearEndClosingTemplate {
       // ── Step 4: Sweep 33-1101 → 32-1101 (skip if effectively zero) ────
       //
       // GL-BASED, not a plain `netIncome` pass-through: read the LIVE
-      // balance of 33-1101 AFTER step 3 has been posted, inside this same
+      // (no date cutoff — see `getEquityAccountBalance` jsdoc) balance of
+      // 33-1101 AFTER step 3 has been posted, inside this same
       // $transaction. Postgres statements within one transaction see that
-      // transaction's own earlier (uncommitted) writes, so this pick up
-      // step 3's contribution automatically — and, because the query is
-      // not year-scoped, it ALSO picks up any prior-year residue that was
-      // never swept (e.g. a year closed before Step 4 existed). That is
-      // the entire point of reading the ledger here instead of computing
+      // transaction's own earlier (uncommitted) writes, so this picks up
+      // step 3's contribution automatically — and, because the query has NO
+      // date restriction at all, it ALSO picks up any prior-year residue
+      // that was never swept (e.g. a year closed before Step 4 existed) AND
+      // any reversal of a PRIOR closing attempt for this same year (which
+      // posts dated today, not Dec 31 — an `entryDate <= yearEndAt` cutoff
+      // would have silently excluded it; see the jsdoc history above). That
+      // is the entire point of reading the ledger here instead of computing
       // `priorBalance + netIncome` as two independently-tracked numbers
       // that could drift apart.
-      const balance33 = await this.getEquityAccountBalance(tx, REC, yearEndAt);
+      const balance33 = await this.getEquityAccountBalance(tx, REC);
       const REAC = YearEndClosingTemplate.RETAINED_EARNINGS_ACCUM_CODE;
       let step4: { entryNo: string; journalEntryId: string } | null = null;
 
@@ -459,7 +496,8 @@ export class YearEndClosingTemplate {
         const step4Result = await this.journal.createAndPost(
           {
             description: 'ปิดกำไร(ขาดทุน)สุทธิประจำปี เข้ากำไรสะสม (Step 4)',
-            reference: `${year}:year-end-closing:step4`,
+            // batchId suffix — see step1's comment above (unique-index / re-close fix).
+            reference: `${year}:year-end-closing:step4:${batchId}`,
             postedAt: yearEndAt,
             metadata: {
               flow: 'year-end-closing',

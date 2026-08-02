@@ -233,6 +233,10 @@ describe('YearEndClosingTemplate (unit)', () => {
                 },
               })),
             ),
+            // Step 4's getEquityAccountBalance query — default to empty (33-1101
+            // balance = 0) so step 4 is skipped and pre-existing assertions
+            // about journalCalls indices/length are unaffected.
+            findMany: jest.fn().mockResolvedValue([]),
           },
           chartOfAccount: {
             findMany: jest.fn().mockResolvedValue(
@@ -287,6 +291,11 @@ describe('YearEndClosingTemplate (unit)', () => {
               },
             })),
           ),
+          // Step 4's getEquityAccountBalance query (live 33-1101 GL balance).
+          // Default empty (balance 0) — override per-test via
+          // `prisma.journalLine.findMany.mockResolvedValueOnce([...])` to
+          // simulate a specific post-step-3 balance (incl. prior-year residue).
+          findMany: jest.fn().mockResolvedValue([]),
         },
         chartOfAccount: {
           findMany: jest.fn().mockResolvedValue(
@@ -298,7 +307,7 @@ describe('YearEndClosingTemplate (unit)', () => {
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const template = new YearEndClosingTemplate(journal as any, prisma as any);
-      return { template, journal, journalCalls };
+      return { template, journal, journalCalls, prisma };
     }
 
     it('flips revenue Dr/Cr when balance is negative (refunds > sales)', async () => {
@@ -394,5 +403,112 @@ describe('YearEndClosingTemplate (unit)', () => {
       expect(revenueLine.dr.toString()).toBe('10000');
       expect(revenueLine.cr.toString()).toBe('0');
     });
+
+    /**
+     * Step 4 — sweep 33-1101 (กำไร(ขาดทุน)สุทธิประจำปี) into 32-1101
+   * (กำไร(ขาดทุน)สะสม), per CPA CSV instruction (C3, owner 2026-08-01).
+   *
+   * These tests mock `prisma.journalLine.findMany` (the GL-balance query
+   * `getEquityAccountBalance` uses) directly to whatever the "live 33-1101
+   * balance after step 3 posted" would be — proving step 4 is GL-based
+   * (reads the ledger) rather than a `netIncome` pass-through, since the
+   * mocked balance can be set to something OTHER than netIncome (the
+   * prior-residue case below).
+   */
+  describe('Step 4 — sweep 33-1101 into 32-1101', () => {
+    it('profit: posts 4 JEs, Step 4 = Dr 33-1101 / Cr 32-1101 for the swept balance', async () => {
+      const { template, journalCalls, prisma } = buildTemplateWithJournal([
+        { accountCode: '41-1101', _sum: { debit: '0', credit: '100000' } },
+        { accountCode: '51-1101', _sum: { debit: '30000', credit: '0' } },
+      ]);
+      // Simulate live 33-1101 GL balance AFTER step 3 posted = netIncome (70000),
+      // no prior-year residue.
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('70000') },
+      ]);
+
+      const result = await template.execute(2026);
+
+      expect(journalCalls).toHaveLength(4);
+      expect(result.step4).not.toBeNull();
+
+      const step4 = journalCalls[3];
+      expect(step4.metadata.step).toBe(4);
+      expect(step4.metadata.batchId).toBe(result.batchId);
+
+      const recLine = step4.lines.find((l: { accountCode: string }) => l.accountCode === '33-1101');
+      const reacLine = step4.lines.find((l: { accountCode: string }) => l.accountCode === '32-1101');
+      expect(recLine.dr.toString()).toBe('70000');
+      expect(recLine.cr.toString()).toBe('0');
+      expect(reacLine.dr.toString()).toBe('0');
+      expect(reacLine.cr.toString()).toBe('70000');
+    });
+
+    it('loss: Step 4 = Dr 32-1101 / Cr 33-1101 (mirrored)', async () => {
+      const { template, journalCalls, prisma } = buildTemplateWithJournal([
+        { accountCode: '41-1101', _sum: { debit: '0', credit: '10000' } },
+        { accountCode: '51-1101', _sum: { debit: '50000', credit: '0' } },
+      ]);
+      // netIncome = -40000 (loss). Live 33-1101 balance after step 3 = -40000
+      // (Dr-normal position) → debit 40000, credit 0.
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        { debit: new Prisma.Decimal('40000'), credit: new Prisma.Decimal('0') },
+      ]);
+
+      const result = await template.execute(2026);
+
+      expect(journalCalls).toHaveLength(4);
+      expect(result.step4).not.toBeNull();
+
+      const step4 = journalCalls[3];
+      const recLine = step4.lines.find((l: { accountCode: string }) => l.accountCode === '33-1101');
+      const reacLine = step4.lines.find((l: { accountCode: string }) => l.accountCode === '32-1101');
+      expect(reacLine.dr.toString()).toBe('40000');
+      expect(reacLine.cr.toString()).toBe('0');
+      expect(recLine.dr.toString()).toBe('0');
+      expect(recLine.cr.toString()).toBe('40000');
+    });
+
+    it('net=0: steps 3 AND 4 both skipped (2 JEs only)', async () => {
+      const { template, journalCalls, prisma } = buildTemplateWithJournal([
+        { accountCode: '41-1101', _sum: { debit: '0', credit: '100' } },
+        { accountCode: '51-1101', _sum: { debit: '100', credit: '0' } },
+      ]);
+      // No prior residue either — live 33-1101 balance stays 0.
+      prisma.journalLine.findMany.mockResolvedValueOnce([]);
+
+      const result = await template.execute(2026);
+
+      expect(result.step3).toBeNull();
+      expect(result.step4).toBeNull();
+      expect(journalCalls).toHaveLength(2);
+    });
+
+    it('prior-year residue: Step 4 sweeps residue+net, NOT just netIncome (proves GL-based)', async () => {
+      const { template, journalCalls, prisma } = buildTemplateWithJournal([
+        { accountCode: '41-1101', _sum: { debit: '0', credit: '100000' } },
+        { accountCode: '51-1101', _sum: { debit: '60000', credit: '0' } },
+      ]);
+      // netIncome = 40000, but the ledger already carries a 15000 residue in
+      // 33-1101 from a prior year that pre-dates this Step 4 feature — live
+      // balance after step 3 = 40000 + 15000 = 55000.
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('55000') },
+      ]);
+
+      const result = await template.execute(2026);
+
+      expect(result.netIncome.toFixed(2)).toBe('40000.00');
+      expect(journalCalls).toHaveLength(4);
+
+      const step4 = journalCalls[3];
+      const recLine = step4.lines.find((l: { accountCode: string }) => l.accountCode === '33-1101');
+      const reacLine = step4.lines.find((l: { accountCode: string }) => l.accountCode === '32-1101');
+      // Swept amount is 55000 (residue + net), NOT 40000 (net alone).
+      expect(recLine.dr.toString()).toBe('55000');
+      expect(reacLine.cr.toString()).toBe('55000');
+      expect(result.step4?.entryNo).toBeDefined();
+    });
+  });
   });
 });

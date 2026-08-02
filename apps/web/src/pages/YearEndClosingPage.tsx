@@ -72,6 +72,7 @@ interface PostResponse {
   step1: { entryNo: string; journalEntryId: string };
   step2: { entryNo: string; journalEntryId: string };
   step3: { entryNo: string; journalEntryId: string } | null;
+  step4: { entryNo: string; journalEntryId: string } | null;
   netIncome: string;
   revenueTotal: string;
   expenseTotal: string;
@@ -454,6 +455,12 @@ export default function YearEndClosingPage() {
                         <li>
                           <span className="text-muted-foreground">Step 3 (โอน 33-1101):</span>{' '}
                           <span className="font-mono font-medium">{lastPosted.step3.entryNo}</span>
+                        </li>
+                      )}
+                      {lastPosted.step4 && (
+                        <li>
+                          <span className="text-muted-foreground">Step 4 (ปิด 33-1101 เข้า 32-1101):</span>{' '}
+                          <span className="font-mono font-medium">{lastPosted.step4.entryNo}</span>
                         </li>
                       )}
                       <li className="pt-2 text-xs text-muted-foreground font-mono">

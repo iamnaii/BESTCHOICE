@@ -893,20 +893,26 @@ Owner sign-off on codes: 2026-05-20 (S51-1105 + S42-1101 + new S42 service-reven
 
 ---
 
-## Year-End Closing (P3-SP1)
+## Year-End Closing (P3-SP1, + Step 4 C3 2026-08-01)
 
 Runs once at the end of each fiscal year (typically Jan-March of the following
 year, after all 12 monthly periods are CLOSED). Closes revenue + expense
-accounts into Income Summary (39-9999), then transfers net income/loss to
-Retained Earnings (33-1101 — กำไร(ขาดทุน)สุทธิประจำปี).
+accounts into Income Summary (39-9999), transfers net income/loss to Retained
+Earnings — current year (33-1101 — กำไร(ขาดทุน)สุทธิประจำปี), then sweeps
+33-1101 into Retained Earnings — accumulated (32-1101 — กำไร(ขาดทุน)สะสม).
+
+**Step 4 เพิ่มตามคำสั่ง CPA CSV (owner อนุมัติ 2026-08-01)** — `finance-coa.csv`
+rows 80/82 instruct: 33-1101 "กำไรปีปัจจุบัน — ปิดเข้า 32-1101 สิ้นปี", 32-1101
+"ยกยอดจากปีก่อน ปิดบัญชีเข้านี้สิ้นปี". ก่อนหน้านี้ 33-1101 ไม่เคยถูกปิดเข้า
+32-1101 จริง — Step 4 ทำให้ตรงตามผังบัญชี CPA ก่อนปิดปี 2026 จริง.
 
 Template: `apps/api/src/modules/journal/cpa-templates/year-end-closing.template.ts`
 Service: `apps/api/src/modules/accounting/closing.service.ts`
 Page: `apps/web/src/pages/YearEndClosingPage.tsx` → route `/finance/year-end-closing`
 
-### 3-step JE flow
+### 4-step JE flow
 
-All 3 entries share `metadata.batchId` (uuid) for traceability:
+All entries share `metadata.batchId` (uuid) for traceability:
 
 ```
 Step 1 — Close revenue (per non-zero 41/42-XXXX account):
@@ -919,12 +925,27 @@ Step 2 — Close expenses (per non-zero 51/52/53/54-XXXX account):
     Cr 51-XXXX  [net Dr balance]
     Cr 52-XXXX  ...
 
-Step 3 — Transfer net to retained earnings (skipped if net = 0):
+Step 3 — Transfer net to retained earnings, current year (skipped if net = 0):
   If profit:  Dr 39-9999 / Cr 33-1101  [netIncome]
   If loss:    Dr 33-1101 / Cr 39-9999  [|netLoss|]
+
+Step 4 — Sweep 33-1101 into 32-1101, accumulated (skipped if the LIVE
+33-1101 GL balance is effectively 0 after Step 3):
+  If Cr balance (กำไร):    Dr 33-1101 / Cr 32-1101  [balance]
+  If Dr balance (ขาดทุน):  Dr 32-1101 / Cr 33-1101  [|balance|]
 ```
 
-Entry-date for all 3 JEs = `Dec 31 23:59:59.999 BKK` of the closed year (keeps
+Step 4 reads the **live GL balance of 33-1101** (query runs AFTER Step 3 posts,
+inside the same `$transaction` — Postgres sees a transaction's own earlier
+uncommitted writes) rather than passing `netIncome` straight through. This
+means any PRIOR-YEAR residue already sitting in 33-1101 (e.g. a year closed
+before Step 4 existed, or a manual correcting JE) sweeps into 32-1101 too —
+not only the current year's net. A direct consequence: Step 4 can fire even
+when Step 3 is skipped (net = 0 this year, but residue > 0 from before), and
+Step 4 can skip even when Step 3 fires (rare: this year's net exactly offsets
+a negative residue).
+
+Entry-date for all JEs = `Dec 31 23:59:59.999 BKK` of the closed year (keeps
 the closing entries inside the year window).
 
 ### Guards
@@ -936,8 +957,8 @@ the closing entries inside the year window).
   list of open months
 - **Idempotency**: a year can only be closed once. `ConflictException` on
   re-attempt unless prior batch was reversed first (then re-close allowed)
-- **Tx atomicity**: 3 JEs created in a single `$transaction` — partial
-  failure rolls all 3 back
+- **Tx atomicity**: all JEs (1-4) created in a single `$transaction` —
+  partial failure rolls all of them back
 
 ### Reversal escape hatch (OWNER only)
 
@@ -946,14 +967,18 @@ POST /accounting/year-end-closing/reverse
 Body: { year, reason }  // reason min 10 chars
 ```
 
-Creates 3 mirror-flipped JEs (Dr/Cr swapped), dated today (NOT the original
-Dec 31). Original entries keep their POSTED status — reversal sits beside
-them with `metadata.flow = 'year-end-closing-reverse'` + back-ref via
+Enumerates every JournalEntry with `metadata.flow = 'year-end-closing'` +
+`metadata.year = year` (NOT a hardcoded step count/id list) and mirror-flips
+each one (Dr/Cr swapped), dated today (NOT the original Dec 31) — so Step 4
+is picked up and reversed automatically alongside Steps 1-3, with zero
+changes needed in the reversal path when Step 4 was added. Original entries
+keep their POSTED status — reversal sits beside them with
+`metadata.flow = 'year-end-closing-reverse'` + back-ref via
 `reversesEntryId`. Originals are marked `metadata.reversedByBatchId` so the
 idempotency guard no longer blocks a re-close.
 
 AuditLog actions:
-- `YEAR_END_CLOSED` — entity=accounting_period, entityId=batchId, newValue includes year + netIncome + 3 JE ids
+- `YEAR_END_CLOSED` — entity=accounting_period, entityId=batchId, newValue includes year + netIncome + JE ids (step1-4)
 - `YEAR_END_CLOSING_REVERSED` — entity=accounting_period, entityId=originalBatchId
 
 ### Reports impact
@@ -961,15 +986,18 @@ AuditLog actions:
 After year-end closing posts:
 - `getProfitLossFromJournal(Jan-Dec)` for the closed year returns ~0 for
   Revenue and Expense (they've been zeroed out), and `netIncome ≈ 0`
-- `getTrialBalance(asOfDate >= Dec 31)` shows 33-1101 increased by net income,
-  Income Summary (39-9999) back to 0
+- `getTrialBalance(asOfDate >= Dec 31)` shows 33-1101 back to **0.00** (swept
+  by Step 4) and 32-1101 increased by the swept amount (current year's net,
+  plus any prior residue), Income Summary (39-9999) back to 0
 - `getBalanceSheetFromJournal(asOfDate >= Dec 31)` — equity section reflects
-  the year's profit moved to retained earnings (no longer "implicit" derived
-  from P&L)
+  the year's profit moved all the way to accumulated retained earnings
+  (32-1101), not just parked in the current-year 33-1101 bucket
 
 The "ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า 33-1101" caveat on the
 balance-sheet equity matrix (accounting.service.ts:1564) disappears for years
-that have been closed via this flow.
+that have been closed via this flow — and, since Step 4, 33-1101 no longer
+carries a lingering balance post-close at all (it nets to 0.00, with the
+amount now sitting in 32-1101 instead).
 
 `/accounting/periods` redirects to `/settings#periods` via `window.location.replace` (preserves hash; react-router `<Navigate>` cannot set hash fragments).
 

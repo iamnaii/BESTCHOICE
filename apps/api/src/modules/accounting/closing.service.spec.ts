@@ -81,6 +81,7 @@ describe('AccountingClosingService', () => {
         step1: { entryNo: 'JE-202612-00001', journalEntryId: 'je-1' },
         step2: { entryNo: 'JE-202612-00002', journalEntryId: 'je-2' },
         step3: { entryNo: 'JE-202612-00003', journalEntryId: 'je-3' },
+        step4: { entryNo: 'JE-202612-00004', journalEntryId: 'je-4' },
         netIncome: new Prisma.Decimal('85000.00'),
         revenueTotal: new Prisma.Decimal('105000.00'),
         expenseTotal: new Prisma.Decimal('20000.00'),
@@ -182,11 +183,12 @@ describe('AccountingClosingService', () => {
   // ─── postYearEndClosing ───────────────────────────────────────────────
 
   describe('postYearEndClosing', () => {
-    it('posts 3 JEs and emits YEAR_END_CLOSED audit log', async () => {
+    it('posts 4 JEs (incl. Step 4) and emits YEAR_END_CLOSED audit log', async () => {
       const out = await service.postYearEndClosing(PAST_YEAR, 'user-owner-1');
       expect(out.batchId).toBe('batch-uuid-1');
       expect(out.step1.entryNo).toBe('JE-202612-00001');
       expect(out.step3?.entryNo).toBe('JE-202612-00003');
+      expect(out.step4?.entryNo).toBe('JE-202612-00004');
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-owner-1',
@@ -196,6 +198,7 @@ describe('AccountingClosingService', () => {
           newValue: expect.objectContaining({
             year: PAST_YEAR,
             netIncome: '85000.00',
+            step4JournalEntryId: 'je-4',
           }),
         }),
       );
@@ -352,6 +355,45 @@ describe('AccountingClosingService', () => {
           userId: 'owner-1',
         }),
       );
+    });
+
+    /**
+     * Step 4 (C3) enumeration proof: `reverseYearEndClosing` queries by
+     * `metadata.flow`/`metadata.year` ONLY — no hardcoded step count/ids —
+     * so a 4-entry batch (steps 1-4) is picked up and mirrored automatically,
+     * with zero code changes needed in the reversal path itself.
+     */
+    it('automatically picks up a 4-entry batch (Step 1-4) with no code changes to the enumeration', async () => {
+      const batchWithStep4 = [
+        ...buildBatchEntries(),
+        {
+          id: 'je-4',
+          description: 'ปิดกำไร(ขาดทุน)สุทธิประจำปี เข้ากำไรสะสม (Step 4)',
+          entryDate: new Date(),
+          metadata: { flow: 'year-end-closing', year: PAST_YEAR, step: 4, batchId: 'b1' },
+          lines: [
+            { accountCode: '33-1101', debit: new Prisma.Decimal('80000'), credit: new Prisma.Decimal('0'), description: 'x' },
+            { accountCode: '32-1101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('80000'), description: 'y' },
+          ],
+        },
+      ];
+      prisma.journalEntry.findMany.mockResolvedValue(batchWithStep4);
+      const out = await service.reverseYearEndClosing(
+        PAST_YEAR,
+        'owner-1',
+        'กลับรายการทั้ง 4 ขั้นตอนรวม Step 4',
+        'OWNER',
+      );
+      expect(out.entries).toHaveLength(4);
+      expect(journalAuto.createAndPost).toHaveBeenCalledTimes(4);
+      // Step 4's reverse mirrors Dr/Cr (original Dr 33-1101 → reverse Cr 33-1101)
+      const step4ReverseCall = journalAuto.createAndPost.mock.calls[3][0];
+      const recLine = step4ReverseCall.lines.find(
+        (l: { accountCode: string }) => l.accountCode === '33-1101',
+      );
+      expect(recLine.cr.toString()).toBe('80000');
+      expect(recLine.dr.toString()).toBe('0');
+      expect(step4ReverseCall.metadata.step).toBe(4);
     });
 
     it('rejects non-OWNER roles', async () => {

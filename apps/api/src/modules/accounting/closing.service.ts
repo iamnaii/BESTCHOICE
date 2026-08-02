@@ -137,6 +137,7 @@ export class AccountingClosingService {
         step1JournalEntryId: result.step1.journalEntryId,
         step2JournalEntryId: result.step2.journalEntryId,
         step3JournalEntryId: result.step3?.journalEntryId ?? null,
+        step4JournalEntryId: result.step4?.journalEntryId ?? null,
       },
     });
 
@@ -150,6 +151,7 @@ export class AccountingClosingService {
       step1: result.step1,
       step2: result.step2,
       step3: result.step3,
+      step4: result.step4,
       netIncome: result.netIncome.toFixed(2),
       revenueTotal: result.revenueTotal.toFixed(2),
       expenseTotal: result.expenseTotal.toFixed(2),

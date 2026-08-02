@@ -15,6 +15,8 @@ import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchan
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
+import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 
 // Default user shape used by submit() tests after Fix 2 (issue #1086 item 2).
@@ -44,6 +46,8 @@ describe('ContractExchangeService.submit', () => {
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
+        { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
@@ -321,6 +325,8 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
+        { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
@@ -444,6 +450,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       t3: { execute: jest.fn() },
       t4: { execute: jest.fn() },
       t5: { execute: jest.fn() },
+      shopInv: { execute: jest.fn().mockResolvedValue({}) },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn() };
@@ -457,6 +464,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
+        { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -798,6 +807,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       t3: { execute: jest.fn() },
       t4: { execute: jest.fn() },
       t5: { execute: jest.fn() },
+      shopInv: { execute: jest.fn().mockResolvedValue({}) },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
@@ -811,6 +821,8 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
+        { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -1013,6 +1025,10 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
     exchangedFromContractId: 'old-c',
     financedAmount: '10000',
     storeCommission: '1000',
+    contractNumber: 'EXCH-20260801-0001',
+    downPayment: '0',
+    productCategory: 'PHONE_NEW' as const,
+    productCostPrice: '9000',
   };
 
   beforeEach(async () => {
@@ -1052,6 +1068,7 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       t3: { execute: jest.fn().mockResolvedValue({ id: 'je3-id', entryNumber: 'JV-A3' }) },
       t4: { execute: jest.fn().mockResolvedValue({ id: 'je4-id', entryNumber: 'JV-A4' }) },
       t5: { execute: jest.fn().mockResolvedValue(null) },
+      shopInv: { execute: jest.fn().mockResolvedValue({}) },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
@@ -1065,6 +1082,8 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
         { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
+        { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -1383,6 +1402,8 @@ describe('ContractExchangeService.reject', () => {
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
+        { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
@@ -1425,6 +1446,8 @@ describe('ContractExchangeService.listRecent', () => {
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
+        { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();

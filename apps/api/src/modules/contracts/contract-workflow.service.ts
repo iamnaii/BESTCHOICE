@@ -464,6 +464,13 @@ export class ContractWorkflowService {
             exchangedFromContractId: (contract as any).exchangedFromContractId,
             financedAmount: contract.financedAmount,
             storeCommission: contract.storeCommission,
+            // F2 (SHOP-leg wiring) — same pre-tx `contract`/`contract.product`
+            // snapshot the normal (non-exchange) branch below already trusts
+            // for its own ShopInventoryTransferTemplate call.
+            contractNumber: contract.contractNumber,
+            downPayment: contract.downPayment,
+            productCategory: contract.product.category,
+            productCostPrice: contract.product.costPrice,
           },
           tx,
         );

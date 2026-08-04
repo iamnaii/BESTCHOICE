@@ -1705,6 +1705,13 @@ model Product {
   reservations      ProductReservation[]
   onlineOrders      OnlineOrder[]
 
+  /// B0: อุปกรณ์ที่แถมมากับเครื่อง — { charger, cable, box, earphone, other }
+  accessoriesIncluded Json?     @map("accessories_included")
+  /// B0: ตำหนิ/รอยที่ต้องบอกลูกค้าก่อนซื้อ (≤500 ตัวอักษร บังคับที่ DTO)
+  cosmeticNotes       String?   @map("cosmetic_notes")
+  /// B0: เวลาที่ราคาถูกเติมอัตโนมัติจากตารางราคากลาง — เคลียร์เป็น null เมื่อมีคนแก้ราคามือ
+  priceAutofilledAt   DateTime? @map("price_autofilled_at")
+
   // === Online shop additions (Phase 3) ===
   savingPlansTargetingThis SavingPlan[]                   @relation("SavingPlanTarget")
   reviews                  Review[]

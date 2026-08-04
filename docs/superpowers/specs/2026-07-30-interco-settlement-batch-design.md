@@ -83,7 +83,8 @@ settled_i       = EXISTS InterCoSettlementItem ของสัญญา i ใน
 - **Reconcile view ระดับบัญชี**: ยอดรวมคิวรอจ่าย ต้อง = GL ทั้งบัญชี 21-1101+21-1102 (รวมขา Dr ของรอบ) — โชว์คู่กันบนหน้าจอเป็น sanity check; เพี้ยน = มี JE แปลกปลอม/JE เส้นเก่า
 - **แหล่งยอด = GL เท่านั้น** — ห้ามใช้ `contract.financedAmount/storeCommission` (F4: field null ↔ JE fallback 10% ไม่ตรงกัน)
 - JE เส้นเก่า (`inter-company-settlement`) ไม่มี contractId → **pre-flight prod ต้องนับก่อนเปิดใช้** (§10); ถ้าพบ >0 ทำ opening reconcile ก่อน
-- ฝั่ง SHOP แสดงคู่กัน: `shopFinanced_i` = GL S11-3001 ของสัญญา (via metadata.contractId), `shopCommission_i` = S11-3002 — ถ้าเป็น 0 ทั้งคู่ → ติดธง **LEGACY_NO_SHOP** (สัญญาก่อน 2026-06-23 หรือจาก exchange — F1/F2)
+- ฝั่ง SHOP แสดงคู่กัน: `shopFinanced_i` = GL S11-3001 ของสัญญา (via metadata.contractId), `shopCommission_i` = S11-3002 — ถ้าเป็น 0 ทั้งคู่ → ติดธง **LEGACY_NO_SHOP** (สัญญาก่อน 2026-06-23 — F1)
+  - **แก้ไข 2026-08-02 (F2 implemented)**: "หรือจาก exchange" ด้านบนไม่ถูกต้อง — สัญญาเปลี่ยนเครื่องไม่เคยเข้าเลนส์นี้เลย (ไม่ legacy ไม่ pending) เพราะ `payableOrigin_i` (21-1101+21-1102) ของสัญญาใหม่ = 0 เสมอ (A.3 เคลียร์เต็มจำนวนทันทีตอน finalize) ดูรายละเอียดที่ §11 ข้อ 2
 - หน้าเดิม `getOutstandingBalance` แก้สูตรเป็น: FINANCE = GL 21-1101+21-1102 (companyId FINANCE), SHOP = S11-3001+S11-3002 (companyId SHOP) + แสดง drift พร้อมคำอธิบายว่า drift ที่เหลือ = legacy pre-wiring (ไม่ใช่ bug)
 
 ## 5. ลงบัญชีตอนอนุมัติ (atomic ผ่าน `PairedJournalService`)
@@ -152,6 +153,7 @@ settled_i       = EXISTS InterCoSettlementItem ของสัญญา i ใน
 
 1. **Opening balance สมุด SHOP:** สัญญาช่วง พ.ค.–22 มิ.ย. 2026 สมุด SHOP ไม่มีลูกหนี้ Inter-co (ระบบเพิ่ง wire ฝั่ง SHOP 23 มิ.ย.) — เงินที่ FINANCE โอนให้ช่วงนั้น ฝั่ง SHOP ควรบันทึกอย่างไร (ตั้ง opening balance ย้อนหลัง หรือถือเป็นยุคก่อนเริ่มสมุด SHOP)?
 2. สัญญาจากการเปลี่ยนเครื่อง (device swap) — FINANCE ต้องจ่ายยอดจัดใหม่ให้ SHOP เหมือนขายปกติหรือไม่ (ตอนนี้ตั้งเจ้าหนี้ไว้แล้วโดย 1A)?
+   **✅ ตอบแล้ว 2026-08-01 — ใช่ (ข้อ 3)** → F2 implemented บน branch `feat/exchange-shop-leg`: `ShopInventoryTransferTemplate` post ให้สัญญาใหม่ตอน finalize เหมือน activation ปกติทุกประการ (COGS + revenue + S11-3001/S11-3002). A.3 (`ExchangeClearVendor21_1106Template`) เคลียร์ 21-1101/21-1102 ของสัญญาใหม่เต็มจำนวนทันทีในทรานแซคชันเดียวกับ finalize (ใช้ราคารับซื้อผ่านบัญชีพัก 21-1106 + ขาเงินสดโอนเพิ่ม/คืนทันที — D5 เดิม) — **ไม่ใช่**ผ่านรอบจ่าย "จ่ายให้หน้าร้าน (INTER-CO)" เหมือนสัญญาปกติ ดังนั้นสัญญาที่เปลี่ยนเครื่องจะ**ไม่ปรากฏใน `getPendingContracts()` เลย** (ไม่ legacy ไม่ pending — GL 21-1101+21-1102 สุทธิ = 0 เสมอ ไม่ผ่าน `HAVING SUM(credit-debit) > 0`) — **นี่คือพฤติกรรมที่ถูกต้อง ไม่ใช่ gap** เพราะทั้งสองฝั่งถูกจ่าย/รับทันทีในทรานแซคชันเดียวกันแล้ว. ✅ **ปิดวง 2026-08-02 (D5 symmetry)**: เพิ่ม `ExchangeShopInstantSettlementTemplate` post ต่อจาก `ShopInventoryTransferTemplate` ทันทีในทรานแซคชันเดียวกัน — `Dr S11-1201 (SHOP_RECEIVING_BANK) [financed+commission] / Cr S11-3001 [financed] / Cr S11-3002 [commission]` — mirror ฝั่ง SHOP ของขาเงินสดที่ A.3 บันทึกฝั่ง FINANCE ตาม D5 พอดี. ผลคือ S11-3001/S11-3002 = 0.00 ทันทีหลัง finalize (ไม่ใช่ค้างเป็น financedAmount/commission อีกต่อไป) — ไม่มี stuck balance, ไม่ต้องรอ mechanism ไหนมาล้าง. สวีปตอนยกเลิกจับ JE นี้ได้เองผ่าน `metadata.contractId` (reversalJeIds day-15 4→7, day-45 6→9)
 
 ## 12. Tests (integration DB จริง — `*.integration.spec.ts` ตาม CI glob เดิม)
 
@@ -168,5 +170,5 @@ settled_i       = EXISTS InterCoSettlementItem ของสัญญา i ใน
 - จ่ายบางส่วนของสัญญา / แบ่งงวดจ่าย (รอบ = เต็มยอดคงเหลือของสัญญาเสมอ)
 - `LATE_FEE_SHARE` + backfill opening balance ฝั่ง SHOP (รอ CPA §11)
 - จับคู่ bank statement อัตโนมัติ
-- Wire SHOP-side JE ให้ contract-exchange path (follow-up แยก — F2)
+- ~~Wire SHOP-side JE ให้ contract-exchange path (follow-up แยก — F2)~~ — **✅ DONE 2026-08-02** (`feat/exchange-shop-leg`, CPA ตอบข้อ 3 = ใช่): `ShopInventoryTransferTemplate` ต่อเข้า `ContractExchangeService.finalizeAfterActivation` ตอนสัญญาใหม่ activate เหมือนสัญญาปกติทุกประการ (idempotencyKey shape เดียวกัน `shop-inventory-transfer:<contractId>` กันโพสต์ซ้ำข้ามเส้นทาง). ดูหมายเหตุสำคัญที่ §11 ข้อ 2 ด้านบน — สัญญาเปลี่ยนเครื่องไม่เคยและจะไม่มีวันโผล่ใน pending queue นี้ (FINANCE เคลียร์ 21-1101/21-1102 เองทันทีผ่าน A.3 ไม่ผ่านรอบจ่ายนี้) ไม่ว่า F2 จะ wire หรือไม่ — คนละกลไกกับที่ spec ข้อนี้สมมติไว้ตอนแรก
 - Retire โมเดล `InterCompanyTransaction`

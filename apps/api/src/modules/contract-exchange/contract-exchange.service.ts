@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ProductCategory } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -18,6 +18,9 @@ import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchan
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
+import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { ExchangeShopInstantSettlementTemplate } from '../journal/cpa-templates/exchange-shop-instant-settlement.template';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
 import { computeExchangePlan } from './exchange-plan.util';
@@ -54,6 +57,19 @@ export interface ExchangeContractForFinalize {
   exchangedFromContractId: string;
   financedAmount: Prisma.Decimal | string | number;
   storeCommission: Prisma.Decimal | string | number | null;
+  /**
+   * F2 (SHOP-leg wiring, CPA ตอบข้อ 3 2026-08-01) — needed to post
+   * ShopInventoryTransferTemplate at the same moment ContractWorkflowService
+   * posts it for a normal activation. Sourced from the SAME pre-tx
+   * `findOne(id)` snapshot the normal path already trusts for
+   * `contract.product.category`/`costPrice` (contract-workflow.service.ts) —
+   * not re-fetched inside the tx, so behavior/race characteristics match
+   * the existing normal-activation precedent exactly.
+   */
+  contractNumber: string;
+  downPayment: Prisma.Decimal | string | number;
+  productCategory: ProductCategory;
+  productCostPrice: Prisma.Decimal | string | number | null;
 }
 
 @Injectable()
@@ -67,6 +83,9 @@ export class ContractExchangeService {
     private readonly t4: ShopExchangeReturnTemplate,
     private readonly t5: ExchangeEclReversalTemplate,
     private readonly companyResolver: CompanyResolverService,
+    private readonly shopInventoryTransferTemplate: ShopInventoryTransferTemplate,
+    private readonly shopAccountResolver: ShopAccountResolver,
+    private readonly shopInstantSettlement: ExchangeShopInstantSettlementTemplate,
   ) {}
 
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
@@ -717,6 +736,78 @@ export class ContractExchangeService {
 
     // 4. JE A.1 — open new HP receivable
     const je1a = await this.t1a.execute(newContract.id, tx);
+
+    // 4b. SHOP-side inventory transfer (F2 — CPA ตอบข้อ 3, 2026-08-01):
+    // an exchange's new contract must book the SAME SHOP mirror
+    // (COGS + revenue/receivables) a normal activation gets — otherwise
+    // SHOP's own books never show the revenue/COGS/receivable for the new
+    // device at all.
+    //
+    // NOTE this does NOT make the contract flow through the "จ่ายให้หน้าร้าน
+    // (INTER-CO)" pending-batch queue (interco-pending.service.ts): A.3
+    // below (ExchangeClearVendor21_1106Template) ALWAYS fully clears
+    // 21-1101/21-1102 for the new contract in THIS SAME transaction (via the
+    // buyback + immediate cash top-up, D5) — so the FINANCE-side lens that
+    // queue reads never shows a nonzero balance for an exchange contract,
+    // with or without this SHOP leg. D5 symmetry (2026-08-02): since FINANCE
+    // settles instantly instead of waiting for the batch, SHOP must ALSO
+    // receive instantly in this same tx — see 4c
+    // (`ExchangeShopInstantSettlementTemplate`) immediately below, which
+    // clears S11-3001/S11-3002 back to 0 so this leg never becomes a stuck
+    // balance with no operational path to clear it.
+    //
+    // Financing identity: `approvePriced` ALWAYS hardcodes downPayment=0 on
+    // the new contract (customer pays ฿0 at swap — the "down" already lives
+    // on the old contract's history), in BOTH the snapshot and legacy
+    // fallback branches. So down+financed === financed always, regardless
+    // of branch. Rather than trust `contract.sellingPrice` (the legacy
+    // fallback branch clones `old.financedAmount`, which is NOT guaranteed
+    // to equal `old.sellingPrice` when the old contract carried its own
+    // down payment), salePrice is reconstructed as down+financed — same
+    // "D-8" pattern `ContractWorkflowService.activate` uses for normal
+    // contracts — so the template's financing-identity assertion holds by
+    // construction instead of by coincidence.
+    if (newContract.productCostPrice == null) {
+      throw new InternalServerErrorException(
+        'ไม่พบ costPrice ของเครื่องใหม่ — ตั้งค่าก่อน finalize เปลี่ยนเครื่อง',
+      );
+    }
+    const newDownAmount = new Decimal(newContract.downPayment.toString());
+    const shopAcc = this.shopAccountResolver.resolveProductAccounts(newContract.productCategory);
+    const shopInvTransfer = await this.shopInventoryTransferTemplate.execute(
+      {
+        // Same idempotencyKey SHAPE ContractWorkflowService.activate uses
+        // (`shop-inventory-transfer:${contract.id}`) so a contract can never
+        // double-post regardless of which activation path it goes through.
+        idempotencyKey: `shop-inventory-transfer:${newContract.id}`,
+        contractId: newContract.id,
+        contractNumber: newContract.contractNumber,
+        productId: newContract.productId,
+        inventoryAccountCode: shopAcc.inventoryAccountCode,
+        cogsAccountCode: shopAcc.cogsAccountCode,
+        revenueAccountCode: shopAcc.revenueAccountCode,
+        costPrice: new Decimal(newContract.productCostPrice.toString()),
+        salePrice: newDownAmount.plus(newFinanced),
+        downAmount: newDownAmount,
+        financedAmount: newFinanced,
+        commission: newCommission,
+      },
+      tx,
+    );
+
+    // 4c. SHOP instant settlement (D5 symmetry, 2026-08-02) — the SHOP-side
+    // mirror of A.3's instant FINANCE-side cash movement, same tx. Clears
+    // S11-3001/S11-3002 back to 0 immediately — see 4b's comment above.
+    await this.shopInstantSettlement.execute(
+      {
+        newContractId: newContract.id,
+        contractNumber: newContract.contractNumber,
+        financedAmount: newFinanced,
+        commission: newCommission,
+        batchId: shopInvTransfer.batchId,
+      },
+      tx,
+    );
 
     // 5. JE A.2 — close old contract's outstanding
     // requestId keys the idempotency (C1b) so a re-exchange after cancel

@@ -11,6 +11,7 @@ import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exc
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
+import { ExchangeShopInstantSettlementTemplate } from '../journal/cpa-templates/exchange-shop-instant-settlement.template';
 
 @Module({
   // JournalModule already exports CompanyResolverService — no need to re-provide.
@@ -25,6 +26,7 @@ import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchang
     ShopExchangeReturnTemplate,
     ExchangeEclReversalTemplate,
     ExchangeCancelReversalTemplate,
+    ExchangeShopInstantSettlementTemplate,
   ],
   exports: [ContractExchangeService],
 })

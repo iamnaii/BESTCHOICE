@@ -1763,6 +1763,11 @@ model ProductPhoto {
   @@map("product_photos")
 }
 
+/// B0: มี SQL-only partial unique index `product_prices_one_default` บน (product_id)
+/// WHERE is_default AND deleted_at IS NULL — สร้างด้วยมือใน migration 20260982000000
+/// (Prisma schema ไม่มีทาง declare partial unique ได้) ถ้ารัน `prisma migrate dev` ต่อจากนี้
+/// อย่ายอมรับ diff ที่เสนอ DROP INDEX product_prices_one_default — index นี้จำเป็นต่อ
+/// invariant "1 product = 1 แถว isDefault" ที่บอท/write-through พึ่งอยู่
 model ProductPrice {
   id        String    @id @default(uuid())
   productId String    @map("product_id")

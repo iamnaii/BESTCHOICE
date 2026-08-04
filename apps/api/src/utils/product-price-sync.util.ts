@@ -1,0 +1,95 @@
+import { Prisma } from '@prisma/client';
+
+export const CASH_LABEL = 'ราคาเงินสด';
+export const INSTALLMENT_LABEL = 'ราคาผ่อน BESTCHOICE';
+const INSTALLMENT_PREFIX = 'ราคาผ่อน';
+
+/**
+ * B0 §2.1 — write-through ทางเดียว: คอลัมน์ราคา (`Product.cashPrice` / `installmentPrice`) → แถว `ProductPrice`
+ *
+ * ผู้อ่าน prices[] ที่ยัง load-bearing: POS, เครื่องคิดเงินสัญญา, stock-overview
+ * margin, บอท (`where:{isDefault:true} take:1` **ไม่มี orderBy**) — จึงต้องรับประกัน
+ * ว่าหลังเขียนเสร็จมีแถว isDefault **แถวเดียว** เสมอ ไม่งั้น take:1 ได้แถวสุ่ม
+ *
+ * ต้องเรียกภายใน tx ของ caller เท่านั้น (atomic กับการเขียนคอลัมน์) — util นี้ไม่เปิด tx เอง
+ *
+ * ลำดับคำสั่งสำคัญ: unset default เดิมทั้งหมดก่อน แล้วค่อยตั้งแถวเป้าหมายเป็น default
+ * เสมอ (ห้ามสลับ) — ตาราง `product_prices` มี partial unique index
+ * `product_prices_one_default` (`UNIQUE (product_id) WHERE is_default AND deleted_at IS NULL`,
+ * migration `20260982000000`) ที่ตรวจทันทีหลังแต่ละ statement ใน Postgres จริง ถ้า
+ * create/update แถวใหม่เป็น default ขณะแถวเก่ายังเป็น default อยู่ (ยังไม่ถูกปลด) จะได้
+ * P2002 ทันที ไม่ใช่แค่ข้อมูลเพี้ยน — pattern เดียวกับ `ProductsPricingService.addPrice`/
+ * `updatePrice` (unset-other-defaults ด้วย `updateMany` ก่อนเสมอ)
+ */
+export async function syncPriceRowsFromColumns(
+  tx: Prisma.TransactionClient,
+  productId: string,
+  columns: { cashPrice?: Prisma.Decimal | null; installmentPrice?: Prisma.Decimal | null },
+): Promise<{ cashRowId: string | null; installmentRowId: string | null }> {
+  const hasCash = columns.cashPrice !== undefined && columns.cashPrice !== null;
+  const hasInstallment =
+    columns.installmentPrice !== undefined && columns.installmentPrice !== null;
+  if (!hasCash && !hasInstallment) return { cashRowId: null, installmentRowId: null };
+
+  const rows = await tx.productPrice.findMany({
+    where: { productId, deletedAt: null },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  let cashRowId: string | null = null;
+  let installmentRowId: string | null = null;
+
+  // Phase 1 — upsert label + amount เท่านั้น ยังไม่แตะ isDefault ของแถวเป้าหมาย
+  // (แถวที่ update-in-place อาจเป็น default อยู่แล้ว — ปล่อยค่าเดิมไว้ก่อน ยังไม่ conflict
+  // เพราะเป็นแถวเดียวกัน; แถวที่ create ใหม่สร้างเป็น isDefault:false เสมอ กันชนแถว default
+  // เดิมที่ยังไม่ถูกปลดใน phase นี้)
+  if (hasCash) {
+    const amount = columns.cashPrice as Prisma.Decimal;
+    const exact = rows.find((r) => r.label === CASH_LABEL);
+    const defaultRow = rows.find((r) => r.isDefault && !r.label.startsWith(INSTALLMENT_PREFIX));
+    const target = exact ?? defaultRow;
+    if (target) {
+      await tx.productPrice.update({
+        where: { id: target.id },
+        data: { amount, label: CASH_LABEL },
+      });
+      cashRowId = target.id;
+    } else {
+      const created = await tx.productPrice.create({
+        data: { productId, label: CASH_LABEL, amount, isDefault: false },
+      });
+      cashRowId = created.id;
+    }
+  }
+
+  if (hasInstallment) {
+    const amount = columns.installmentPrice as Prisma.Decimal;
+    const exact = rows.find((r) => r.label === INSTALLMENT_LABEL);
+    if (exact) {
+      await tx.productPrice.update({ where: { id: exact.id }, data: { amount } });
+      installmentRowId = exact.id;
+    } else {
+      const created = await tx.productPrice.create({
+        data: { productId, label: INSTALLMENT_LABEL, amount, isDefault: false },
+      });
+      installmentRowId = created.id;
+    }
+  }
+
+  // Phase 2 — บังคับ default เดียว: แถวเงินสดชนะเสมอถ้ามี; ถ้าไม่มีแถวเงินสดและก่อนหน้านี้
+  // ยังไม่มี default ใดๆ เลย (สินค้าที่ยังไม่เคยมีแถวราคา) ใช้แถวผ่อนแทน
+  const keepDefaultId =
+    cashRowId ?? (rows.some((r) => r.isDefault) ? null : installmentRowId);
+
+  if (keepDefaultId) {
+    // ปลด default เดิมทั้งหมดก่อนเสมอ (รวมแถวที่ยังไม่ถูกแตะใน phase 1 ถ้ามี) แล้วค่อยตั้ง
+    // แถวเป้าหมายเป็น default ทีหลัง — ห้ามสลับลำดับ (ดู doc comment ด้านบน)
+    await tx.productPrice.updateMany({
+      where: { productId, isDefault: true, id: { not: keepDefaultId }, deletedAt: null },
+      data: { isDefault: false },
+    });
+    await tx.productPrice.update({ where: { id: keepDefaultId }, data: { isDefault: true } });
+  }
+
+  return { cashRowId, installmentRowId };
+}

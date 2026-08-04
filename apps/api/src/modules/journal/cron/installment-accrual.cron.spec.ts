@@ -16,6 +16,7 @@ describe('InstallmentAccrualCron', () => {
     await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
+    await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
     // contract written off via the real writeOffBadDebt() has a permanent

@@ -1,4 +1,3 @@
-import { describe, it, expect } from 'vitest';
 import { Decimal } from '@prisma/client/runtime/library';
 import { solveMonthlyEIR, buildEIRSchedule, allocateInterestEIR } from '../eir';
 

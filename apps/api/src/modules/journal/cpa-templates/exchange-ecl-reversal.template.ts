@@ -13,8 +13,9 @@ import { glContractBalance } from '../gl-contract-balance';
  * Workbook Case 4 originally proposed Cr 42-1106 (owner decision D2, 2026-07-29),
  * but CPA ruling 2026-08-01 (spec §13 A2.2, คำตอบ ข) chose ONE standard release
  * account across every path — Cr 51-1103 (ค่าเผื่อหนี้สงสัยจะสูญ เพิ่มในปี),
- * same account `EclStageReverseTemplate`/JP5/write-off already use. 42-1106 stays
- * defined in the CoA (dormant) but is no longer posted to by this template.
+ * same account `EclStageReverseTemplate`/JP5/write-off already use. 42-1106 was
+ * subsequently REMOVED from the CoA entirely (CPA/owner 2026-08-03) — it never
+ * carried a single journal line.
  *
  *   Dr 11-2102 [GL balance ของสัญญาเก่า]
  *     Cr 51-1103 [เท่ากัน]

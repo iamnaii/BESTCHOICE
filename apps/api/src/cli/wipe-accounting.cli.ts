@@ -3,7 +3,10 @@
  *
  * DESTRUCTIVE: Truncates journal_lines, journal_entries, payments,
  * installment_schedules, contracts, chart_of_accounts then reseeds the
- * 99-account FINANCE chart from the CPA CSV fixture.
+ * FINANCE chart from the CPA CSV fixture. The CSV is the source of truth for
+ * how many accounts that is — do not restate a count here (it was "99" for
+ * Phase A.4 and has drifted since; latest change: CPA removed 42-1106/42-1107
+ * on 2026-08-03). The reseed logs the actual created/updated counts below.
  *
  * Requires explicit consent env var to prevent accidental runs:
  *   CONFIRM_WIPE=YES_I_AM_SURE tsx src/cli/wipe-accounting.cli.ts
@@ -101,7 +104,7 @@ async function main(): Promise<void> {
     }
 
     console.log('');
-    console.log('[wipe-accounting] Step 2: Reseeding 99-account FINANCE chart of accounts...');
+    console.log('[wipe-accounting] Step 2: Reseeding FINANCE chart of accounts from CPA CSV...');
     // Skip seeding if the chart_of_accounts table is on OLD schema (lacks new
     // columns like normalBalance/category). Detect by attempting a probe query.
     let canSeed = true;

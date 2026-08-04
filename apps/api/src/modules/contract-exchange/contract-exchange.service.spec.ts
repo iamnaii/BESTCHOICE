@@ -12,12 +12,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
-import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+import { ExchangeBuybackReceivable11_2107Template } from '../journal/cpa-templates/exchange-buyback-receivable-11-2107.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
-import { ExchangeShopInstantSettlementTemplate } from '../journal/cpa-templates/exchange-shop-instant-settlement.template';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 
 // Default user shape used by submit() tests after Fix 2 (issue #1086 item 2).
@@ -44,12 +43,11 @@ describe('ContractExchangeService.submit', () => {
         { provide: AuditService, useValue: { write: jest.fn() } },
         { provide: ExchangeNewContract1ATemplate, useValue: {} },
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
-        { provide: ExchangeClearVendor21_1106Template, useValue: {} },
+        { provide: ExchangeBuybackReceivable11_2107Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
-        { provide: ExchangeShopInstantSettlementTemplate, useValue: { execute: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
@@ -252,7 +250,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
 
   const baseDto = { oldContractId: 'old-c', oldProductId: 'op', newProductId: 'np' };
   const pricedDtoWithoutBuyback = { oldContractId: 'old-c', oldProductId: 'op', newProductId: 'np2' };
-  // buyback 8000 ≠ vendorSum 11000 → depositAccountCode required
+  // buyback 8000 ≠ vendorSum 11000 (depositAccountCode คงไว้ในฟิกซ์เจอร์เพื่อพิสูจน์ว่ายัง "รับได้" แต่ไม่บังคับ/ไม่มีผล)
   const pricedDtoFull = {
     ...pricedDtoWithoutBuyback,
     buybackPrice: '8000',
@@ -324,12 +322,11 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
         { provide: AuditService, useValue: audit },
         { provide: ExchangeNewContract1ATemplate, useValue: {} },
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
-        { provide: ExchangeClearVendor21_1106Template, useValue: {} },
+        { provide: ExchangeBuybackReceivable11_2107Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
-        { provide: ExchangeShopInstantSettlementTemplate, useValue: { execute: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
@@ -356,16 +353,17 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
     await expect(service.submit(pricedDtoWithoutBuyback, user)).rejects.toThrow('ราคารับซื้อ');
   });
 
-  // Final review 2026-07-29: depositAccountCode is now required on EVERY
-  // PRICED submit (not just buyback ≠ vendorSum) — the Case-2F cancel penalty
-  // path needs a cash account even for a perfect-offset swap.
-  it('PRICED ไม่ส่ง depositAccountCode → BadRequest แม้ buyback == vendorSum', async () => {
+  // 2026-08-03 (คำสั่งเจ้าของ) — REVERSES the 2026-07-29 requirement:
+  // เปลี่ยนเครื่องไม่มีการเคลื่อนไหวเงินสดในวัน finalize อีกแล้ว (A.3 ตั้งลูกหนี้
+  // 11-2107 แทนขาเงินสด) และ penalty JE ถูกยกเลิกไปตั้งแต่ 2026-07-31 →
+  // ไม่มีผู้อ่าน depositAccountCode เหลือในเส้นทางนี้ จึงต้องส่งคำขอได้โดยไม่ต้องเลือกบัญชี
+  it('PRICED ไม่ส่ง depositAccountCode → ผ่าน (ไม่บังคับแล้ว) และบันทึกเป็น undefined', async () => {
     const { depositAccountCode: _drop, ...noDeposit } = pricedDtoFull;
-    // buyback 11000 == vendorSum (financed 10000 + commission 1000) — เดิมผ่าน
-    await expect(
-      service.submit({ ...noDeposit, buybackPrice: '11000' }, user),
-    ).rejects.toThrow('บัญชีเงินสด');
-    expect(prisma.contractExchangeRequest.create).not.toHaveBeenCalled();
+    const result = await service.submit(noDeposit, user);
+    expect(result.mode).toBe('PRICED');
+    expect(prisma.contractExchangeRequest.create).toHaveBeenCalledTimes(1);
+    const createData = prisma.contractExchangeRequest.create.mock.calls[0][0].data;
+    expect(createData.depositAccountCode).toBeUndefined();
   });
 
   it('PRICED ครบ field → เก็บ tier/ncv/plan snapshot; tier REVIEW ไม่ auto-approve', async () => {
@@ -454,7 +452,6 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       t4: { execute: jest.fn() },
       t5: { execute: jest.fn() },
       shopInv: { execute: jest.fn().mockResolvedValue({}) },
-      shopInstant: { execute: jest.fn().mockResolvedValue({}) },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn() };
@@ -465,12 +462,11 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         { provide: AuditService, useValue: audit },
         { provide: ExchangeNewContract1ATemplate, useValue: templates.t1a },
         { provide: ExchangeCloseOld21_1106Template, useValue: templates.t2 },
-        { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
+        { provide: ExchangeBuybackReceivable11_2107Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
-        { provide: ExchangeShopInstantSettlementTemplate, useValue: templates.shopInstant },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -813,7 +809,6 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       t4: { execute: jest.fn() },
       t5: { execute: jest.fn() },
       shopInv: { execute: jest.fn().mockResolvedValue({}) },
-      shopInstant: { execute: jest.fn().mockResolvedValue({}) },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
@@ -824,12 +819,11 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         { provide: AuditService, useValue: audit },
         { provide: ExchangeNewContract1ATemplate, useValue: templates.t1a },
         { provide: ExchangeCloseOld21_1106Template, useValue: templates.t2 },
-        { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
+        { provide: ExchangeBuybackReceivable11_2107Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
-        { provide: ExchangeShopInstantSettlementTemplate, useValue: templates.shopInstant },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -1076,7 +1070,6 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       t4: { execute: jest.fn().mockResolvedValue({ id: 'je4-id', entryNumber: 'JV-A4' }) },
       t5: { execute: jest.fn().mockResolvedValue(null) },
       shopInv: { execute: jest.fn().mockResolvedValue({}) },
-      shopInstant: { execute: jest.fn().mockResolvedValue({}) },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
@@ -1087,12 +1080,11 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
         { provide: AuditService, useValue: audit },
         { provide: ExchangeNewContract1ATemplate, useValue: templates.t1a },
         { provide: ExchangeCloseOld21_1106Template, useValue: templates.t2 },
-        { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
+        { provide: ExchangeBuybackReceivable11_2107Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
-        { provide: ExchangeShopInstantSettlementTemplate, useValue: templates.shopInstant },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -1145,11 +1137,15 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
   });
 
   // ==========================================================================
-  // SHOP-leg wiring (F2/D5) — review W2: assertions on the mock calls, not
-  // just "does it throw" / "call order" (the pre-review test suite never
-  // actually inspected what shopInv/shopInstant were CALLED WITH).
+  // SHOP-leg wiring (F2) — review W2: assertions on the mock calls, not just
+  // "does it throw" / "call order" (the pre-review test suite never actually
+  // inspected what shopInv was CALLED WITH).
+  //
+  // 2026-08-03 (คำสั่งเจ้าของ, supersedes D5): the instant-settlement leg that
+  // used to fire right after shopInv is GONE — S11-3001/S11-3002 now stay
+  // outstanding and clear through the normal INTER-CO batch.
   // ==========================================================================
-  describe('SHOP-leg wiring (F2 ShopInventoryTransfer + D5 instant settlement)', () => {
+  describe('SHOP-leg wiring (F2 ShopInventoryTransfer — no instant settlement)', () => {
     it('shopInventoryTransfer receives salePrice = downPayment + financedAmount (reconstructed, never read from a sellingPrice field)', async () => {
       // ExchangeContractForFinalize has NO sellingPrice field at all — the
       // only way to prove the reconstruction (not some other source) is to
@@ -1165,7 +1161,7 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       expect(call.salePrice.toString()).toBe('12000'); // 2000 + 10000, not e.g. a stray sellingPrice
     });
 
-    it('shopInstant settlement receives the SAME batchId ShopInventoryTransferTemplate returned', async () => {
+    it('SHOP receivable is booked ONCE and left outstanding — exactly one SHOP-side template call, no settlement leg (2026-08-03)', async () => {
       templates.shopInv.execute.mockResolvedValue({
         batchId: 'batch-xyz-123',
         cogsEntryNo: 'JE-COGS',
@@ -1175,18 +1171,16 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       });
       await service.finalizeAfterActivation(newContract, tx);
 
-      expect(templates.shopInstant.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          newContractId: 'new-c',
-          financedAmount: expect.anything(),
-          commission: expect.anything(),
-          batchId: 'batch-xyz-123',
-        }),
-        tx,
-      );
+      // ShopInventoryTransfer fires exactly once (books S11-3001/S11-3002)…
+      expect(templates.shopInv.execute).toHaveBeenCalledTimes(1);
+      // …and nothing clears it in the same tx. A.3 is the only JE that fires
+      // between shopInv and A.4, and it touches 11-2107/21-1106 only — its
+      // input carries NO cash account and NO vendor amounts (proven by shape).
+      const a3Input = templates.t3.execute.mock.calls[0][0];
+      expect(Object.keys(a3Input).sort()).toEqual(['buyback', 'newContractId']);
     });
 
-    it('newContract.productCostPrice == null → throws BEFORE shopInv/shopInstant fire, but AFTER A.1 (matches the implemented guard at contract-exchange.service.ts:770-774)', async () => {
+    it('newContract.productCostPrice == null → throws BEFORE shopInv fires, but AFTER A.1 (matches the implemented guard in contract-exchange.service.ts)', async () => {
       const contractNoCost = { ...newContract, productCostPrice: null };
       await expect(service.finalizeAfterActivation(contractNoCost, tx)).rejects.toThrow(
         InternalServerErrorException,
@@ -1195,7 +1189,6 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       expect(templates.t1a.execute).toHaveBeenCalled();
       // Guard throws — nothing SHOP-side, and nothing past it (A.2-A.4), ever fires
       expect(templates.shopInv.execute).not.toHaveBeenCalled();
-      expect(templates.shopInstant.execute).not.toHaveBeenCalled();
       expect(templates.t2.execute).not.toHaveBeenCalled();
       expect(templates.t3.execute).not.toHaveBeenCalled();
       expect(templates.t4.execute).not.toHaveBeenCalled();
@@ -1372,25 +1365,26 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       expect(templates.t1a.execute).not.toHaveBeenCalled();
     });
 
-    it('PRICED: buyback = request.buybackPrice (ไม่ใช่ vendorSum) + ส่ง depositAccountCode เข้า A.3', async () => {
+    // 2026-08-03 (คำสั่งเจ้าของ): A.3 รับแค่ { newContractId, buyback } —
+    // ไม่ส่ง depositAccountCode/vendor amounts อีกแล้ว (ไม่มีขาเงินสด และไม่แตะ
+    // 21-1101/21-1102 ที่ต้องค้างไว้ให้รอบจ่าย INTER-CO)
+    it('PRICED: buyback = request.buybackPrice (ไม่ใช่ vendorSum) + A.3 ไม่รับ depositAccountCode อีกต่อไป', async () => {
       tx.contractExchangeRequest.findFirst.mockResolvedValue({
         id: 'r1',
         oldContractId: 'old-c',
         oldProductId: 'old-p',
         newContractId: 'new-c',
         buybackPrice: '8000',
+        // ค่านี้ยังอยู่บนแถว request (ประวัติ) แต่ต้องไม่ถูกส่งต่อเข้า A.3
         depositAccountCode: '11-1201',
       });
       await service.finalizeAfterActivation(newContract, tx);
-      expect(templates.t3.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          buyback: expect.objectContaining({}),
-          depositAccountCode: '11-1201',
-        }),
-        tx,
-      );
       const t3Call = templates.t3.execute.mock.calls[0][0];
       expect(t3Call.buyback.toString()).toBe('8000');
+      expect(t3Call.newContractId).toBe('new-c');
+      expect(t3Call).not.toHaveProperty('depositAccountCode');
+      expect(t3Call).not.toHaveProperty('newVendorYodjat');
+      expect(t3Call).not.toHaveProperty('newVendorCommission');
     });
 
     it('A.5 ถูกเรียกหลัง A.4 + je5Id เก็บบน request + provision rows → REVERSED', async () => {
@@ -1466,12 +1460,11 @@ describe('ContractExchangeService.reject', () => {
         { provide: AuditService, useValue: audit },
         { provide: ExchangeNewContract1ATemplate, useValue: {} },
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
-        { provide: ExchangeClearVendor21_1106Template, useValue: {} },
+        { provide: ExchangeBuybackReceivable11_2107Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
-        { provide: ExchangeShopInstantSettlementTemplate, useValue: { execute: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
@@ -1511,12 +1504,11 @@ describe('ContractExchangeService.listRecent', () => {
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: ExchangeNewContract1ATemplate, useValue: {} },
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
-        { provide: ExchangeClearVendor21_1106Template, useValue: {} },
+        { provide: ExchangeBuybackReceivable11_2107Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
-        { provide: ExchangeShopInstantSettlementTemplate, useValue: { execute: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();

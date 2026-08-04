@@ -56,9 +56,12 @@ interface BuiltSnapshot {
  * paired-JE half) land in Task 4 — do NOT call PairedJournalService here.
  *
  * Maker–checker (spec §6): create/submit/withdraw/update are maker-only
- * server-side checks; approve/reverse role + maker≠approver enforcement is
- * Task 4's job. `cancelBatch` intentionally has NO maker/role check here —
- * the controller (Task 5) gates it by role; this method only guards status.
+ * server-side checks. approve/reverse are gated by ROLE at the controller
+ * (`@Roles('OWNER','FINANCE_MANAGER')`); the hard "approver ≠ maker" rule was
+ * retired 2026-08-03 (owner: คุมด้วยการกำหนดสิทธิแทน) and is now opt-in via
+ * SystemConfig `interco_maker_checker_enabled` (default OFF — see
+ * `approveBatch` step 1b). `cancelBatch` intentionally has NO maker/role check
+ * here — the controller (Task 5) gates it by role; this method only guards status.
  *
  * Spec: docs/superpowers/specs/2026-07-30-interco-settlement-batch-design.md §3, §4, §6
  */
@@ -566,7 +569,8 @@ export class IntercoSettlementService {
   /**
    * PENDING_APPROVAL → POSTED. Posts the paired JE (or a FINANCE-only JE when
    * every item is `legacyNoShop`) inside ONE `$transaction`, per spec §5:
-   *   1. load + status + SoD (approver ≠ maker)
+   *   1. load + status (+ optional SoD approver ≠ maker — only when
+   *      SystemConfig `interco_maker_checker_enabled` = 'true'; default OFF)
    *   2. re-check no item's contract got grabbed by another open batch
    *   3. drift guard — live GL (via `glContractBalance`, which reads straight
    *      off `journal_lines`/`journal_entries` and has NO notion of batch
@@ -584,7 +588,7 @@ export class IntercoSettlementService {
    */
   async approveBatch(id: string, userId: string, postedAtOverride?: Date) {
     return this.prisma.$transaction(async (tx) => {
-      // 1. load + status + SoD
+      // 1. load + status
       const batch = (await tx.interCoSettlementBatch.findUnique({
         where: { id },
         include: {
@@ -600,7 +604,22 @@ export class IntercoSettlementService {
           'อนุมัติได้เฉพาะรอบที่รอการอนุมัติ (PENDING_APPROVAL) เท่านั้น',
         );
       }
-      if (batch.makerId === userId) {
+      // 1b. Maker–checker (opt-in, DEFAULT OFF — คำสั่งเจ้าของ 2026-08-03).
+      //     กิจการเล็ก คุมการอนุมัติด้วย "การกำหนดสิทธิ" (`@Roles('OWNER',
+      //     'FINANCE_MANAGER')` ที่ controller) แทนกฎตายตัว "ผู้อนุมัติต้องไม่ใช่
+      //     ผู้สร้าง" — คนเดียวกันสร้างแล้วอนุมัติเองได้ ถ้ามีสิทธิ. เปิด SoD
+      //     กลับได้โดยไม่ต้องแก้โค้ด: ตั้ง SystemConfig `interco_maker_checker_enabled`
+      //     = 'true'. ไม่ seed คีย์นี้ — แถวหาย/ค่าอื่นใดที่ไม่ใช่สตริง 'true' = OFF
+      //     (config-read shape เดียวกับ OTHER_INCOME_MAKER_CHECKER_ENABLED และ
+      //     `jp5_require_terminated_status`). อ่านใน tx เดียวกับที่โพสต์ JE เพื่อให้
+      //     ค่าที่ใช้ตัดสินเป็นค่าเดียวกันตลอดการอนุมัติรอบนี้.
+      //     หมายเหตุ audit: `makerId`/`approverId` ยังถูกบันทึกครบทั้งบน batch และใน
+      //     AuditLog `INTERCO_BATCH_APPROVED` เสมอ แม้จะเป็นคนเดียวกัน.
+      const makerCheckerConfig = await tx.systemConfig.findUnique({
+        where: { key: 'interco_maker_checker_enabled' },
+      });
+      const makerCheckerEnabled = makerCheckerConfig?.value === 'true';
+      if (makerCheckerEnabled && batch.makerId === userId) {
         throw new ForbiddenException('ผู้อนุมัติต้องไม่ใช่ผู้สร้างรอบ');
       }
 

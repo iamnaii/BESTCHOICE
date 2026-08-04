@@ -41,6 +41,13 @@ import { CreateBatchDto } from '../dto/create-batch.dto';
 
 const prisma = new PrismaClient();
 
+/**
+ * Opt-in SoD flag read by `approveBatch` step 1b. NOT seeded anywhere — its
+ * absence means OFF (owner 2026-08-03: approval is governed by role assignment,
+ * not a hard maker≠approver rule). Goldens 5a/5a2 below prove both states.
+ */
+const MAKER_CHECKER_KEY = 'interco_maker_checker_enabled';
+
 // ---------------------------------------------------------------------------
 // Service wiring (real instances, no Nest DI)
 // ---------------------------------------------------------------------------
@@ -172,7 +179,16 @@ async function activateWithShop(fix: ContractFixture, commission = '1000.00'): P
   });
 }
 
-/** Real 1A only — simulates a pre-2026-06-23 (or contract-exchange-origin) contract: legacyNoShop. */
+/**
+ * Real 1A only — simulates a pre-2026-06-23 contract (activated before the
+ * SHOP leg was wired into contract-workflow.service.ts): legacyNoShop.
+ *
+ * NOTE: contract-exchange contracts are NO LONGER an example of this case.
+ * Since 2026-08-01 (F2) they post the SHOP leg too, and since 2026-08-03
+ * (owner order superseding D5) they leave BOTH sides outstanding — so an
+ * exchange contract now enters this queue as a normal `legacyNoShop = false`
+ * row. See exchange-priced-flow.integration.spec.ts Case 2A.
+ */
 async function activateLegacyNoShop(fix: ContractFixture): Promise<void> {
   await act1a.execute(fix.id);
 }
@@ -290,6 +306,10 @@ describe('Inter-co settlement batch — approve/reverse (real DB)', () => {
     await prisma.accountingPeriod.deleteMany({
       where: { companyId: { in: [shopCompanyId, financeCompanyId] }, year: 2026, month: 7 },
     });
+
+    // Same safety net for the opt-in SoD flag — a leftover 'true' row from an
+    // aborted earlier run would flip golden 5a's expected default.
+    await prisma.systemConfig.deleteMany({ where: { key: MAKER_CHECKER_KEY } });
   }, 120_000);
 
   afterAll(async () => {
@@ -323,6 +343,10 @@ describe('Inter-co settlement batch — approve/reverse (real DB)', () => {
     await prisma.accountingPeriod.deleteMany({
       where: { companyId: shopCompanyId, year: 2020, month: 1 },
     });
+
+    // Golden 5a2 flips the opt-in SoD flag on; make sure a mid-suite crash can
+    // never leave it set for the next run (absence = OFF is the shipped default).
+    await prisma.systemConfig.deleteMany({ where: { key: MAKER_CHECKER_KEY } });
 
     await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
     await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
@@ -497,16 +521,67 @@ describe('Inter-co settlement batch — approve/reverse (real DB)', () => {
   );
 
   // -------------------------------------------------------------------------
-  it('golden 5a: maker approving own batch → Forbidden', async () => {
-    const c = await seedContract('g5a', '1000.00');
-    await activateWithShop(c, '1000.00');
+  it(
+    'golden 5a: maker-checker DEFAULT OFF (no SystemConfig row) → the maker CAN approve their own batch; approverId === makerId is still recorded on the batch + audit log',
+    async () => {
+      const c = await seedContract('g5a', '1000.00');
+      await activateWithShop(c, '1000.00');
 
-    const batch = await svc.createBatch(batchDto([c.id], '2026-07-15'), adminId);
-    createdBatchIds.push(batch.id);
-    await svc.submitBatch(batch.id, adminId);
+      // Guard the default explicitly: the key must NOT be seeded (absence = OFF).
+      await prisma.systemConfig.deleteMany({ where: { key: MAKER_CHECKER_KEY } });
 
-    await expect(svc.approveBatch(batch.id, adminId)).rejects.toThrow(ForbiddenException);
-  }, 120_000);
+      const batch = await svc.createBatch(batchDto([c.id], '2026-07-15'), adminId);
+      createdBatchIds.push(batch.id);
+      await svc.submitBatch(batch.id, adminId);
+
+      const posted = await svc.approveBatch(batch.id, adminId); // same person as maker
+      expect(posted.status).toBe('POSTED');
+      expect(posted.makerId).toBe(adminId);
+      expect(posted.approverId).toBe(adminId);
+      expect(posted.financeJournalEntryId).toBeTruthy();
+
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: 'INTERCO_BATCH_APPROVED', entityId: batch.id },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(audit).toBeTruthy();
+      expect(audit!.userId).toBe(adminId);
+    },
+    120_000,
+  );
+
+  it(
+    "golden 5a2: maker-checker ON (SystemConfig interco_maker_checker_enabled='true') → the maker approving their own batch is Forbidden; a different approver still succeeds",
+    async () => {
+      const c = await seedContract('g5a2', '1000.00');
+      await activateWithShop(c, '1000.00');
+
+      const batch = await svc.createBatch(batchDto([c.id], '2026-07-15'), adminId);
+      createdBatchIds.push(batch.id);
+      await svc.submitBatch(batch.id, adminId);
+
+      await prisma.systemConfig.upsert({
+        where: { key: MAKER_CHECKER_KEY },
+        update: { value: 'true' },
+        create: {
+          key: MAKER_CHECKER_KEY,
+          value: 'true',
+          label: '[integration-test] interco maker-checker',
+        },
+      });
+      try {
+        await expect(svc.approveBatch(batch.id, adminId)).rejects.toThrow(ForbiddenException);
+
+        // The flag only blocks maker === approver — a distinct approver posts fine.
+        const posted = await svc.approveBatch(batch.id, approverId);
+        expect(posted.status).toBe('POSTED');
+        expect(posted.approverId).toBe(approverId);
+      } finally {
+        await prisma.systemConfig.deleteMany({ where: { key: MAKER_CHECKER_KEY } });
+      }
+    },
+    120_000,
+  );
 
   it(
     'golden 5b: SHOP period closed for the transfer month → approve rejects, message names SHOP',

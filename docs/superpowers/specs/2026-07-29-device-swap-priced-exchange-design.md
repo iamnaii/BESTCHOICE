@@ -17,7 +17,7 @@
 | D2 | บัญชี ECL reversal — workbook ใช้ 42-1106 ซึ่ง CSV ระบุเป็น "รายได้บริการซ่อม" | **ใช้ 42-1106 ตาม workbook** — ปลอดภัยเพราะ FINANCE 42-1106 เป็น orphan (runtime repair ใช้ `S42-1101` จริง: `repair-ticket-lifecycle.service.ts:27`, seed dev+prod, spec test ล็อกอยู่) → rename row ใน CSV — **SUPERSEDED 2026-08-01: CPA เลือกมาตรฐานเดียว Cr 51-1103 ทุกเส้นทาง (§13 ข้อ A2.2, คำตอบ ข)** — 42-1106 เปิดไว้ใน CoA แต่ dormant |
 | D3 | "IQR ขอบล่าง" — ระบบไม่มีข้อมูลสถิติราคา | **ใช้ `TradeInValuation.basePrice` × 0.85 แทน** (guardrail ±15% convention เดิมของ trade-in) |
 | D4 | Cancellation windows | **ทำครบทั้ง 2 windows** (≤7 วันฟรี / 8–30 วัน + ค่าปรับ 5% → บัญชีใหม่ 42-1107) — **SUPERSEDED 2026-07-31: owner ยกเลิกกติกาทั้งชุด — ไม่มี window/ค่าปรับ; เหลือแค่ zero-payment precondition** |
-| D5 | ขาเงินสดใน JE จุดที่ 3 — post เมื่อไหร่ | **(a) post ทันทีตอน finalize ตาม workbook** พร้อม `depositAccountCode` (สมมติฐาน: โอนเงินระหว่างบัญชีตัวเองวันเดียวกัน) — หมายเหตุ: 21-1101 ของสัญญาปกติทั้งระบบยังไม่เคยถูกล้าง (VendorClearance unwired) = backlog CPA แยกต่างหาก ดู §12 |
+| D5 | ขาเงินสดใน JE จุดที่ 3 — post เมื่อไหร่ | **(a) post ทันทีตอน finalize ตาม workbook** พร้อม `depositAccountCode` (สมมติฐาน: โอนเงินระหว่างบัญชีตัวเองวันเดียวกัน) — หมายเหตุ: 21-1101 ของสัญญาปกติทั้งระบบยังไม่เคยถูกล้าง (VendorClearance unwired) = backlog CPA แยกต่างหาก ดู §12 — **SUPERSEDED 2026-08-03 (คำสั่งเจ้าของ, §13 ข้อ D5-2): ไม่มีขาเงินสดในวันเปลี่ยนเครื่องอีกต่อไป** — A.3 ตั้งลูกหนี้ `Dr 11-2107 / Cr 21-1106` และ 21-1101/21-1102 ค้างไว้ให้รอบจ่าย INTER-CO (ซึ่งมีจริงแล้วตั้งแต่ C2 2026-08-01 — backlog ที่หมายเหตุเดิมอ้างถึงถูกปิดไปแล้ว); ฝั่ง SHOP ก็เลิกรับเงินทันทีเช่นกัน (`ExchangeShopInstantSettlementTemplate` ถูกลบ) |
 
 ## 2. Workbook-internal inconsistencies — resolution ที่ตกลงใช้
 
@@ -140,7 +140,22 @@ Dr 51-1102 loss plug      (ถ้า buyback < GL(11-2101)+GL(11-2105))
    Cr 41-1102 gain plug   (ถ้า buyback > ยอดรวมข้างต้น)
 ```
 
-### 7.3 A.3 — ExchangeClearVendor21_1106Template (**แก้: เพิ่มขาเงินสด — D5**)
+### 7.3 A.3 — ExchangeBuybackReceivable11_2107Template (**SUPERSEDED D5 — คำสั่งเจ้าของ 2026-08-03**)
+
+**ของจริงตั้งแต่ 2026-08-03** (`exchange-buyback-receivable-11-2107.template.ts` — เปลี่ยนชื่อจาก
+`ExchangeClearVendor21_1106Template` เพราะไม่แตะบัญชีเจ้าหนี้อีกแล้ว):
+
+```
+Dr 11-2107   buybackPrice      ← ลูกหนี้-หน้าร้าน (บัญชีเดิม ใช้ร่วมกับเส้นทาง shop-collect)
+   Cr 21-1106  buybackPrice    ← ล้างบัญชีพักเครดิตเปลี่ยนเครื่อง
+```
+
+2 บรรทัดเสมอ ไม่แตกกรณี **ไม่มีขาเงินสด** และ **ไม่แตะ 21-1101/21-1102** — เจ้าหนี้ยอดจัด/ค่าคอม
+ของสัญญาใหม่ค้างไว้ให้รอบจ่าย INTER-CO เหมือนการขายปกติ (เจ้าของ: "จ่ายหน้าร้านเหมือนขายปกติ").
+ผลตามมาที่ตั้งใจ: สัญญาเปลี่ยนเครื่อง **เข้าคิว** `IntercoPendingService.getPendingContracts()` แล้ว
+ด้วย `legacyNoShop = false` (ดู interco spec §11 ข้อ 2).
+
+~~**เดิม (D5, 2026-07-29 → 2026-08-03) — ยกเลิกแล้ว:**~~
 
 ```
 Dr 21-1101   newFinanced
@@ -150,7 +165,9 @@ Dr {depositAccountCode}  (buyback − vendorSum)     ← ถ้า buyback > ven
    Cr {depositAccountCode} (vendorSum − buyback)   ← ถ้า buyback < vendorSum (FINANCE โอนเพิ่มให้ SHOP — Cases 2A–2E)
 ```
 
-vendorSum = newFinanced + newCommission; buyback == vendorSum → ไม่มีขาเงินสด (Case 2F — พฤติกรรม SP2 เดิม)
+vendorSum = newFinanced + newCommission; buyback == vendorSum → ไม่มีขาเงินสด (Case 2F — พฤติกรรม SP2 เดิม).
+`depositAccountCode` จึงไม่บังคับและไม่มีผลต่อ JE ใดๆ อีกต่อไป (คอลัมน์ + ฟิลด์ DTO คงไว้เพื่อข้อมูล
+ย้อนหลัง/API back-compat; ช่องเลือกบนหน้าจอถูกถอดออก).
 
 ### 7.4 A.4 — ShopExchangeReturnTemplate (เดิม) + A.5 ใหม่ — ExchangeEclReversalTemplate
 
@@ -160,7 +177,7 @@ Dr 11-2102   GL(11-2102, cr) ของสัญญาเก่า
    Cr 51-1103  ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี) — ลดค่าใช้จ่าย
 ```
 
-**อัปเดต 2026-08-01 (CPA ruling, §13 ข้อ A2.2 = ข):** เดิมเสนอ Cr 42-1106 (D2) แต่ CPA เลือกมาตรฐานเดียวทุกเส้นทาง — เปลี่ยนเป็น Cr 51-1103 เหมือน JP5/write-off/stage-reverse ทุกจุด (ไม่มี asymmetry อีกต่อไป) 42-1106 ยังเปิดอยู่ใน CoA แต่ dormant — ไม่มี template ใดโพสต์เข้าบัญชีนี้แล้ว
+**อัปเดต 2026-08-01 (CPA ruling, §13 ข้อ A2.2 = ข):** เดิมเสนอ Cr 42-1106 (D2) แต่ CPA เลือกมาตรฐานเดียวทุกเส้นทาง — เปลี่ยนเป็น Cr 51-1103 เหมือน JP5/write-off/stage-reverse ทุกจุด (ไม่มี asymmetry อีกต่อไป) — **และบัญชี 42-1106 ถูกลบออกจากผังบัญชีไปแล้ว 2026-08-03** (คำสั่ง CPA/owner, §13 A2.3) โดยไม่เคยมี journal line แม้แถวเดียว
 
 - skip ถ้า |GL| < 0.005; ถ้า GL ติดลบ → `Sentry.captureMessage` warning (pattern M1 ของ JP5) ไม่ auto-heal
 - ปิด `BadDebtProvision` rows ACTIVE → REVERSED ใน tx เดียวกัน (กัน stale rows — สัญญา EXCHANGED หลุด scope cron)
@@ -217,11 +234,11 @@ A.1–A.5 ทุกตัวมี `metadata.idempotencyKey` บังคับ�
 
 **ขั้นตอนใน `$transaction` เดียว:**
 
-1. **Mirror-reverse ทุก JE** (template ใหม่ `ExchangeCancelReversalTemplate` — pattern `DefectExchangeReversalTemplate` + `receipt-void-reversal`): ทุก POSTED entry tagged `metadata.contractId = newContractId` (รวม A.1 + accrual 2A ที่อาจวิ่งไปแล้วบนสัญญาใหม่) + swap JEs บนสัญญาเก่า (A.2, A.3, **A.5 ECL** — Dr 42-1106 / Cr 11-2102 คืน provision ทันที P&L ไม่พองสองข้าง; cron delta เจอ 0 = no-op) + A.4 SHOP; stamp `metadata.reversesEntryId` + `reversalJeIds[]` บน request
+1. **Mirror-reverse ทุก JE** (template ใหม่ `ExchangeCancelReversalTemplate` — pattern `DefectExchangeReversalTemplate` + `receipt-void-reversal`): ทุก POSTED entry tagged `metadata.contractId = newContractId` (รวม A.1 + accrual 2A ที่อาจวิ่งไปแล้วบนสัญญาใหม่) + swap JEs บนสัญญาเก่า (A.2, A.3, **A.5 ECL** — Dr 51-1103 / Cr 11-2102 คืน provision ทันที P&L ไม่พองสองข้าง; cron delta เจอ 0 = no-op — *แก้ 2026-08-03: เดิมเอกสารเขียน `Dr 42-1106` ค้างจากยุค D2 ซึ่งผิดตั้งแต่ CPA ruling 2026-08-01 และบัญชีนั้นถูกลบออกจากผังแล้ว*) + A.4 SHOP; stamp `metadata.reversesEntryId` + `reversalJeIds[]` บน request
 2. **Catch-up accrual (Major 3):** งวดของสัญญาเก่าที่ `dueDate ≤ วันนี้ AND accrualJournalEntryId IS NULL` → รัน 2A accrual ให้ครบใน tx (สัญญา EXCHANGED ถูกยกเว้นจาก cron ระหว่าง window — ห้ามเงียบ; ตอนเขียน plan ให้ตรวจ scan window ของ `installment-accrual.cron` ก่อน ถ้า cron backfill เองอยู่แล้วให้ลดเหลือ assertion)
 3. **Restore:** สัญญาเก่า → ACTIVE + ล้าง `exchangedAt` (overdue cron จัดสถานะ OVERDUE เองถ้ามีงวดเลย due); เครื่องเก่า → คืน FINANCE-owned + สถานะเดิม; เครื่องใหม่ → IN_STOCK + SHOP; สัญญาใหม่ → CANCELED + **null `exchangedFromContractId`** (C1a, final review 2026-07-29: field เป็น `@unique` — ถ้าคงไว้บนสัญญา EXCH- ที่ตายแล้ว การเปลี่ยนเครื่องรอบใหม่ของสัญญาเดิมจะ P2002 ตอน `contract.create` ตลอดกาล; ประวัติ old↔new อยู่บน request row ครบอยู่แล้ว)
 3b. **Reverse ECL rows ของสัญญาใหม่ (I3):** `BadDebtProvision` ที่ cron ตั้งให้สัญญาใหม่ระหว่างช่วงก่อนยกเลิก → `status: ACTIVE → REVERSED` ใน tx เดียวกัน (JE ของมันถูก mirror-reverse โดย sweep ข้อ 1 อยู่แล้ว — ห้ามทิ้ง row ACTIVE ค้างบนสัญญา CANCELED)
-4. ~~Penalty (เฉพาะวันที่ 8–30)~~ — **REMOVED 2026-07-31.** ไม่มี penalty JE อีกต่อไป; `penaltyAmount`/`penaltyJeId` เป็น `null` เสมอ; บัญชี 42-1107 เปิดไว้แต่ไม่ใช้งาน (§10)
+4. ~~Penalty (เฉพาะวันที่ 8–30)~~ — **REMOVED 2026-07-31.** ไม่มี penalty JE อีกต่อไป; `penaltyAmount`/`penaltyJeId` เป็น `null` เสมอ; **บัญชี 42-1107 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03** (§10 + §13 A2.3)
 5. Request row: status → CANCELED + `cancelWindow` (`'FREE'` | `'MEMO'` | `'PRE_FINALIZE'`) + `penaltyAmount/penaltyJeId` (เสมอ `null`); AuditLog `EXCHANGE_CANCELED`
 6. ~~เกิน 30 วัน → block~~ — **REMOVED 2026-07-31.** ไม่มีเพดานวันอีกต่อไป — ยกเลิกได้ทุกเมื่อตราบใดที่ผ่าน precondition ข้อ (Preconditions) ด้านบน
 
@@ -229,9 +246,9 @@ A.1–A.5 ทุกตัวมี `metadata.idempotencyKey` บังคับ�
 
 | Code | Action | ชื่อ | หมายเหตุ |
 |---|---|---|---|
-| 42-1106 | **Rename** | รายได้บริการซ่อม → **รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ** | orphan ยืนยันแล้ว; **pre-flight prod:** `SELECT COUNT(*) FROM journal_lines WHERE account_code='42-1106'` ต้อง = 0 ก่อน rename; แก้ CLAUDE.md:451 (doc ผิด — runtime ใช้ S42-1101) — **SUPERSEDED 2026-08-01: CPA เลือกมาตรฐานเดียว Cr 51-1103 แทน (§13 A2.2) — เปิดไว้ ไม่ใช้งาน, ไม่ลบออกจาก CoA** |
-| 42-1107 | **Add** | รายได้ค่าปรับยกเลิกเปลี่ยนเครื่อง | รายได้, Cr, ไม่มี VAT — **เปิดแล้ว แต่ไม่ใช้งาน (owner ยกเลิกกติกาค่าปรับยกเลิก swap ทั้งชุด 2026-07-31)** — คงบัญชีไว้ตาม CPA sign-off เดิม เผื่ออนาคต ไม่ลบออกจาก CoA |
-| 41-1199 | ไม่เพิ่ม | — | ผิดหมวด (41 = รายได้หลัก) — workbook mapping เปลี่ยนเป็น 42-1107 |
+| 42-1106 | **Rename → REMOVED (2026-08-03)** | รายได้บริการซ่อม → **รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ** | orphan ยืนยันแล้ว; **pre-flight prod:** `SELECT COUNT(*) FROM journal_lines WHERE account_code='42-1106'` ต้อง = 0 ก่อน rename; แก้ CLAUDE.md:451 (doc ผิด — runtime ใช้ S42-1101) — **SUPERSEDED 2026-08-01: CPA เลือกมาตรฐานเดียว Cr 51-1103 แทน (§13 A2.2); REVERSED อีกครั้ง 2026-08-03: CPA สั่งลบบัญชีออกจากผัง — ถอดออกจาก `finance-coa.csv` แล้ว + soft delete บน prod ผ่าน `docs/accounting/remove-42-1106-42-1107-2026-08.sql`** |
+| 42-1107 | **Add → REMOVED (2026-08-03)** | รายได้ค่าปรับยกเลิกเปลี่ยนเครื่อง | รายได้, Cr, ไม่มี VAT — **REMOVED 2026-08-03**: owner ยกเลิกกติกาค่าปรับยกเลิก swap ทั้งชุด 2026-07-31 แล้ว CPA สั่งเอาบัญชีออกจากผังไปเลย (ไม่คงไว้เผื่ออนาคตแล้ว) — ถอดออกจาก `finance-coa.csv` + soft delete บน prod ผ่าน `docs/accounting/remove-42-1106-42-1107-2026-08.sql`; ถ้าวันหลังต้องมีค่าปรับจริง ให้เปิดบัญชีใหม่พร้อม CPA sign-off รอบใหม่ |
+| 41-1199 | ไม่เพิ่ม | — | ผิดหมวด (41 = รายได้หลัก) — workbook mapping เปลี่ยนเป็น 42-1107 — 42-1107 เองก็ถูกลบออกจากผังแล้ว 2026-08-03 |
 | 51-1106 | ไม่เพิ่ม | — | ไม่มีเคสสร้าง — รอ CPA อธิบาย |
 
 SystemConfig ใหม่: `exchange_market_check_pct` = `'15'` (seed dev + prod). **`exchange_cancel_penalty_pct` ถูกลบออกจาก seed 2026-07-31** (เคยเป็น `'5'` — กติกาค่าปรับถูกยกเลิกทั้งชุด)
@@ -266,10 +283,12 @@ SystemConfig ใหม่: `exchange_market_check_pct` = `'15'` (seed dev + prod
 | A1 | Rename 42-1106 → "รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ" (FINANCE ไม่มีรายได้บริการซ่อม — งานซ่อมอยู่ฝั่ง SHOP S42-1101) | **ยืนยัน** | ตรงที่ทำไว้แล้ว — ไม่แก้ |
 | A1 | ที่มากติกายกเลิก 7d/8-30d/5% | ชี้แจงแล้ว: โครงกติกา + "ค่าปรับเป็นรายได้" มาจาก workbook CPA (Case 3B + D4 owner เคาะ 2026-07-29); ส่วนที่เราตัดสินใจเอง = ย้ายบัญชี 41-1199→42-1107 (ผิดหมวด) + ทำ 5% เป็น config `exchange_cancel_penalty_pct` | ไม่แก้ (รอ CPA ทักถ้าไม่เห็นด้วย) |
 | A2.1 | ค่าปรับยกเลิกไม่คิด VAT | **ยืนยัน** (ตรง 42-1103 convention + ม.79) | ตรงที่ทำไว้แล้ว — 42-1107 ไม่มี VAT |
-| A2.2 | ECL reversal: ผสม (exchange→42-1106, ที่เหลือ→51-1103) vs มาตรฐานเดียว | **✅ ตอบแล้ว 2026-08-01 — คำตอบ ข: มาตรฐานเดียวทุกเส้นทาง = Cr 51-1103** (ตามคำแนะนำเรา) | **Implemented** — `ExchangeEclReversalTemplate` A.5 แก้เป็น Cr 51-1103 (เดิม Cr 42-1106); 42-1106 เปิดไว้ใน CoA แต่ dormant (ดู §10); goldens/docs sync แล้ว |
+| A2.2 | ECL reversal: ผสม (exchange→42-1106, ที่เหลือ→51-1103) vs มาตรฐานเดียว | **✅ ตอบแล้ว 2026-08-01 — คำตอบ ข: มาตรฐานเดียวทุกเส้นทาง = Cr 51-1103** (ตามคำแนะนำเรา) | **Implemented** — `ExchangeEclReversalTemplate` A.5 แก้เป็น Cr 51-1103 (เดิม Cr 42-1106); **42-1106 ถูกลบออกจากผัง 2026-08-03 (ดู §10 + แถว A2.3 ด้านล่าง)**; goldens/docs sync แล้ว |
 | B2 | VAT due ทันทีตอน derecognize (ม.78/1 ไม่ออก CN) | **ยืนยัน** | — |
 | B3, B4 | (ตามชุดคำถาม B) | **ยืนยัน/รับทราบ** | — |
 | B5 | | **รับทราบ** | — |
 | B6 | 51-1106 "ค่าเสียหายจากการยกเลิก swap" | **ไม่เปิดบัญชี** — ชี้แจงที่มา: โผล่เฉพาะ Sheet 13 (Year-End Closing) ของ workbook โดยไม่มี Case ไหน post → ขัดกันเองในไฟล์ | ตัดจาก CoA plan ถาวร; year-end กวาด 51-XXXX อัตโนมัติถ้าเพิ่มภายหลัง |
 | C1-C3 | follow-ups | ดูสถานะใน §12 ข้อ 1-3 | — |
-| D4-2 | (2026-07-31) Owner ยกเลิกกติกา cancellation windows + ค่าปรับ 5% ทั้งชุด (D4 เดิม) | **ยกเลิกได้ทุกเมื่อ** ตราบใดที่สัญญาใหม่ยังไม่มีการชำระเงิน (zero-payment precondition เดิมคงไว้) | ลบ `ExchangeCancelPenaltyTemplate` + spec + provider; ลบ `exchange_cancel_penalty_pct` จาก seed; `cancelWindow` เหลือ `FREE`/`MEMO`/`PRE_FINALIZE`; บัญชี 42-1107 เปิดไว้ไม่ใช้งาน (§10); UI ตัด countdown 7/30 วัน + penalty dialog |
+| D4-2 | (2026-07-31) Owner ยกเลิกกติกา cancellation windows + ค่าปรับ 5% ทั้งชุด (D4 เดิม) | **ยกเลิกได้ทุกเมื่อ** ตราบใดที่สัญญาใหม่ยังไม่มีการชำระเงิน (zero-payment precondition เดิมคงไว้) | ลบ `ExchangeCancelPenaltyTemplate` + spec + provider; ลบ `exchange_cancel_penalty_pct` จาก seed; `cancelWindow` เหลือ `FREE`/`MEMO`/`PRE_FINALIZE`; บัญชี 42-1107 เปิดไว้ไม่ใช้งาน (§10 — ต่อมาถูกลบออกจากผังทั้งบัญชี 2026-08-03, ดูแถว A2.3); UI ตัด countdown 7/30 วัน + penalty dialog |
+| A2.3 | (2026-08-03) เก็บ 42-1106/42-1107 ไว้เฉยๆ หรือเอาออกจากผัง | **เอาออกจากผัง** — ทั้งคู่ไม่เคยมี journal_lines แม้แถวเดียว การคงบัญชีที่ไม่มีวันใช้ไว้ทำให้ผังรก + ชวนโพสต์ผิด | ลบ 2 แถวออกจาก `finance-coa.csv` (ผัง FINANCE 112 → **110**); `exchange-coa.spec.ts` พลิกจาก assert-exists → **assert-absent**; `seed-coa-finance.spec.ts` เพิ่ม guard ว่า seeder ไม่ปลุกกลับ; prod script `docs/accounting/remove-42-1106-42-1107-2026-08.sql` (soft delete, RAISE+ROLLBACK ถ้าเจอ journal_lines) |
+| D5-2 | (2026-08-03) วันเปลี่ยนเครื่องต้องมีเงินสดขยับไหม | **ไม่มีเลย** — ราคารับซื้อคือเงินที่ SHOP ติด FINANCE → ตั้งเป็น **ลูกหนี้ 11-2107** (บัญชีเดิม ใช้ร่วมกับ shop-collect ไม่เปิดบัญชีใหม่); เจ้าหนี้ยอดจัด/ค่าคอมของสัญญาใหม่ "จ่ายหน้าร้านเหมือนขายปกติ" ผ่านรอบจ่าย INTER-CO | A.3 → `ExchangeBuybackReceivable11_2107Template` (`Dr 11-2107 / Cr 21-1106`, 2 บรรทัด ไม่มีขาเงินสด); ลบ `ExchangeShopInstantSettlementTemplate` (SHOP ก็รอรอบจ่ายเช่นกัน); `depositAccountCode` เลิกบังคับ + ถอดช่องเลือกบน UI; สัญญาเปลี่ยนเครื่อง**เข้าคิวจ่าย** `legacyNoShop = false`; `reversalJeIds` ตอน cancel 7→6 (วันที่ 15) และ 9→8 (วันที่ 45). **ค้าง CPA:** ผัง SHOP ไม่มี "เจ้าหนี้ FINANCE" จึงไม่มีขาคู่ของ 11-2107 (เหมือน shop-collect เดิม) — ไม่ประดิษฐ์บัญชี/JE เอง |

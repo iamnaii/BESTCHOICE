@@ -4467,7 +4467,7 @@ model InterCoSettlementBatch {
   note        String?
 
   makerId    String  @map("maker_id")
-  approverId String? @map("approver_id") // null จนกว่าจะ approve; server-side enforce approver ≠ maker
+  approverId String? @map("approver_id") // null จนกว่าจะ approve; approver อาจเป็นคนเดียวกับ maker ได้ (SoD เป็น opt-in ผ่าน SystemConfig interco_maker_checker_enabled — 2026-08-03)
 
   // FK-by-value ไป JournalEntry (ไม่ใส่ @relation — ตาม pattern Receipt.sourceJournalEntryId
   // เพื่อไม่ต้องแตะ JournalEntry model). null ได้ทั้งคู่ก่อน approve; shopJournalEntryId

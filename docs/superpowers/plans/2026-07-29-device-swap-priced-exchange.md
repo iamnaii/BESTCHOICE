@@ -1,5 +1,19 @@
 # Device Swap — Priced Exchange Implementation Plan
 
+> ⚠️ **ประวัติศาสตร์ — อย่าใช้แผนนี้เป็นแหล่งอ้างอิงสถานะปัจจุบัน.** แผนนี้ execute จบไปแล้ว
+> และมี 3 จุดที่ถูกกลับคำสั่งภายหลัง:
+> 1. **Task 2 เพิ่ม 42-1106/42-1107 เข้าผัง** — ทั้งสองบัญชี **ถูกลบออกจากผังแล้ว 2026-08-03**
+>    (คำสั่ง CPA/owner) โดยไม่เคยมีรายการบัญชีจริงแม้แถวเดียว
+> 2. **ECL reversal → 42-1106** (บรรทัด Goal ด้านล่าง) — ของจริงคือ **Cr 51-1103** ตั้งแต่ CPA
+>    ruling 2026-08-01 (มาตรฐานเดียวทุกเส้นทาง)
+> 3. **A.3 `ExchangeClearVendor21_1106Template` + ขาเงินสด (D5)** — ถูกแทนที่ด้วย
+>    `ExchangeBuybackReceivable11_2107Template` (`Dr 11-2107 / Cr 21-1106`, ไม่มีขาเงินสด)
+>    2026-08-03; ไฟล์ template + spec เดิมถูกลบ. ทุก snippet ในแผนนี้ที่อ้าง
+>    `exchange-clear-vendor-21-1106.template.ts` คือโค้ดที่ไม่มีอยู่แล้ว
+>
+> สถานะปัจจุบันอยู่ที่ `.claude/rules/accounting.md` → "Device Swap — Priced Exchange" และ
+> spec `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` §13
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** ขยาย SP2 same-price exchange ให้ครบตาม DeviceSwap workbook: MEMO mode (ไม่มี JE), PRICED mode (ราคารับซื้อจริง + ขาเงินสด), approval 3 ระดับ, cancellation 7/30 วัน + ค่าปรับ 5%, ECL reversal → 42-1106

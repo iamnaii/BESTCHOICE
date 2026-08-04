@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Decimal from 'decimal.js';
 import { calcBcInstallment } from '@installment/shared';
 import type { Product, InterestConfig } from '../types';
+import { getDisplayPrices } from '@/utils/getDisplayPrices';
 
 // (Audit finding P0) The backend stores all money values as Prisma.Decimal(12,2).
 // Doing the contract preview in JS float caused 0.01 baht drift per multiplication
@@ -34,12 +35,22 @@ export function useContractCalculation({
 }: UseContractCalculationParams) {
   const getSellingPrice = () => {
     if (!selectedProduct) return 0;
-    const price =
-      selectedProduct.prices.find((p) => p.label === 'ราคาผ่อน BESTCHOICE') ||
-      selectedProduct.prices.find((p) => p.label.startsWith('ราคาผ่อน')) ||
-      selectedProduct.prices.find((p) => p.isDefault) ||
-      selectedProduct.prices[0];
-    return price ? parseFloat(price.amount) : 0;
+    // B0 §2.1: columns-first ผ่าน getDisplayPrices (มัน fallback ไป prices[] label ให้อยู่แล้ว)
+    const { cash, installment } = getDisplayPrices({
+      cashPrice: selectedProduct.cashPrice ?? null,
+      installmentPrice: selectedProduct.installmentPrice ?? null,
+      prices: selectedProduct.prices,
+    });
+    // ⚠️ positivity ไม่ใช่ null-check: getDisplayPrices แปลงด้วย Number() และ guard แค่
+    // `!= null` → คอลัมน์/แถวที่เป็น 0 / '' / '0.00' จะกลายเป็นเลข 0 ที่ "ไม่ null"
+    // ถ้าใช้ `!= null` เครื่องราคา 20,000 ที่คอลัมน์เผลอเป็น 0 จะทำสัญญาที่ 0 บาท (เคส I)
+    if (installment != null && installment > 0) return installment;
+    if (cash != null && cash > 0) return cash;
+    // legacy tail ที่ getDisplayPrices ไม่ครอบ: row isDefault ที่ label ไม่ตรงชุดไหนเลย
+    // ('ราคาขาย' จาก PO receive / 'ราคาขายต่อ (Refurbished)' จากยึดเครื่อง)
+    const row =
+      selectedProduct.prices.find((p) => p.isDefault) || selectedProduct.prices[0];
+    return row ? parseFloat(row.amount) : 0;
   };
 
   const sellingPrice = getSellingPrice();

@@ -161,4 +161,36 @@ describe('useContractCalculation — แหล่งราคา (B0 golden)', (
     );
     expect(result.current.sellingPrice).toBe(17000);
   });
+
+  // J — fix-round-1 (reviewer Important repro): คอลัมน์ installmentPrice เป็น '0'
+  // (ไม่ใช่ null) ต้องไม่ short-circuit ข้าม label-chain lookup ไปเงียบๆ
+  //   ก่อนแก้: getDisplayPrices เช็คแค่ `!= null` → '0' ถือว่า "มีคอลัมน์" →
+  //     ไม่เดิน pickFromPrices เลย → getSellingPrice ตกไปที่ legacy tail (isDefault
+  //     'ราคาขาย' 17000) ทั้งที่มีแถว 'ราคาผ่อน BESTCHOICE' 20000 รออยู่ → ผิด 3,000 บาท
+  //   หลังแก้: normalizePositive('0') → null → label-chain หา 'ราคาผ่อน BESTCHOICE' เจอ → 20000
+  it('J: คอลัมน์ installmentPrice เป็น 0 (ไม่ใช่ null) แต่มีแถว "ราคาผ่อน BESTCHOICE" จริง → ต้องได้ราคาแถวนั้น ไม่ใช่แถว isDefault อื่น', () => {
+    const { result } = setup(
+      makeProduct({
+        installmentPrice: '0',
+        prices: [
+          { id: 'r1', label: 'ราคาขาย', amount: '17000', isDefault: true },
+          { id: 'r2', label: 'ราคาผ่อน BESTCHOICE', amount: '20000', isDefault: false },
+        ],
+      }),
+    );
+    expect(result.current.sellingPrice).toBe(20000);
+  });
+
+  // K — Minor: คุม precedence ระดับคอลัมน์ (installment ต้องชนะ cash เสมอเมื่อทั้งคู่เป็นบวก)
+  // ไม่มีเทสต์นี้มาก่อน → ถ้าใครสลับลำดับเช็ค cash/installment ใน getSellingPrice เทสต์ A-J ผ่านหมด
+  it('K: มีทั้งคอลัมน์ cashPrice และ installmentPrice เป็นบวกและต่างกัน (ไม่มี prices[]) → installment ชนะ', () => {
+    const { result } = setup(
+      makeProduct({
+        cashPrice: '18000',
+        installmentPrice: '20000',
+        prices: [],
+      }),
+    );
+    expect(result.current.sellingPrice).toBe(20000);
+  });
 });

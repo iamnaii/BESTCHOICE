@@ -11,6 +11,9 @@
 ## Global Constraints
 
 - **Branch:** `feat/pa-b1-admin-product-page` (แตกจาก `main` ที่ merge B0 แล้ว — ดู Pre-flight)
+- **⚠️ B1 ต้อง deploy ติดกับ B0 (วันเดียวกัน) ห้ามทิ้งช่วงหลายวัน** — B0 ย้าย "แหล่งราคาจริง" ไปที่คอลัมน์ `Product.cashPrice`/`installmentPrice` (เว็บลูกค้า + readiness อ่านคอลัมน์) แต่ **ไม่มี UI ไหนในระบบเขียนคอลัมน์นี้ได้เลย** จนกว่า B1 จะขึ้น — ตรวจโค้ดจริงแล้ว: หน้าสินค้าเดิมแก้ได้แค่แถว `ProductPrice` (`ProductDetailPage/index.tsx` price CRUD), `ProductCreatePage` ก็ส่ง `prices[]` เป็นแถว (`index.tsx:96-111`), ส่วน `PricingTemplatesPage` เป็นตารางราคากลางคนละตัว. ผลของช่องว่างนี้คือ พนักงาน "ตั้งราคาแล้ว" ผ่านตารางเดิมแต่ **เครื่องไม่ขึ้นเว็บ** และคอลัมน์กับแถวขัดกันเงียบๆ (POS/สัญญาอ่านแถว, เว็บอ่านคอลัมน์)
+  - ส่วนที่ **ปลดล็อกช่วงนี้** คือ Task 7 เฉพาะ `EditSellingPriceModal` (2 input: ราคาเงินสด/ราคาผ่อน) + mutation ที่ยิง `PATCH /products/:id` เดิม (ฟิลด์เปิดรับใน Task 4) — ไม่ต้องพึ่งการ์ด/ปุ่มอื่นของ B1 เลย
+  - ถ้า owner อยากแยก deploy จริงๆ ให้ **ยกเฉพาะส่วนนั้น (Task 4 + Task 7 Step 3/4 สร้าง `SellingPriceCard`+`EditSellingPriceModal` + Step 6 เฉพาะครึ่ง "เพิ่มของใหม่" คือ state ราคา + `useMutation` PATCH + invalidate `['product', id]`) ไปเป็น task ท้ายของ B0** แล้วปล่อย B1 ที่เหลือตามหลังได้ — ห้ามปล่อย B0 ขึ้น prod โดยไม่มีทางเขียนคอลัมน์ราคา
 - **ไม่มี migration ใน batch นี้** (B0 = `20260982000000`, B3 = `20260983000000`; ถ้าจำเป็นต้องมีจริงให้เช็ค max ก่อนเสมอ — B1 ไม่ควรมี)
 - **Red line:** ห้ามแตะ accounting/finance JE paths ทุกกรณี; ห้ามแก้สูตรใน `packages/shared/src/installment-calc.ts` และ `apps/api/src/utils/installment-calc.util.ts` — batch นี้ **เรียกใช้อย่างเดียว**; golden ที่ pin ไว้คือ `installmentPrice=19900, months=12, minDownPct=0.15, commissionPct=0.10, vatPct=0.07, rate12=0.50` → `downAmount=2985`, `monthlyPayment=2413.21` (ตรงกับ `apps/web/src/pages/ProductDetailPage/components/__tests__/BcCalculatorCard.test.tsx`)
 - **เงิน:** api ใช้ `Prisma.Decimal`; web คำนวณผ่าน `calcBcInstallment` (decimal.js) แล้วค่อย `.toNumber()` ตอนแสดงผลเท่านั้น — ห้ามคำนวณค่างวดด้วย `number` เอง
@@ -22,7 +25,11 @@
 - **UI copy ภาษาไทยทั้งหมด**; ห้าม hardcoded hex/`text-gray-*`/`bg-white` — ใช้ design tokens (`bg-card`, `text-muted-foreground`, `border-border`, …); ข้อความไทยใช้ `leading-snug`
 - **Data fetching** ใช้ `useQuery`/`useMutation` + `api` จาก `@/lib/api` เท่านั้น; หลัง mutation ต้อง `queryClient.invalidateQueries({ queryKey: ['product', id] })`
 - **Role ที่ใช้ในหน้า:** `canEditProduct = OWNER|BRANCH_MANAGER`, `canSeeCost = role !== 'SALES'`, `canCreateContract = OWNER|BRANCH_MANAGER|SALES` (ตรงกับ `App.tsx:509-515`)
-- ทุกจุดที่จบ Task ต้อง `cd apps/api && npx tsc --noEmit` = 0 และ `cd apps/web && npx tsc --noEmit` = 0 (แตะแอปไหนเช็คแอปนั้น); ปิด batch ต้อง `npx eslint .` = 0 ทั้งสองแอป
+- ทุกจุดที่จบ Task ต้อง `cd apps/api && npx tsc --noEmit` = 0 และ `cd apps/web && npx tsc --noEmit` = 0 (แตะแอปไหนเช็คแอปนั้น) — รันแยกคำสั่ง **ห้ามร้อยด้วย `&&` กับ eslint** เพราะจะกลืน exit code ของกันและกัน
+- **Lint (คำสั่งที่ใช้ได้จริง — ยืนยันแล้ว 2026-08-04, ถ้อยคำเดียวกับ B0 Global Constraints):**
+  - api: `cd apps/api && npx eslint src/<path ที่แก้>` (เฉพาะไฟล์ใน `src/`) และ gate ของ CI คือ `npm run lint --workspace=apps/api` (= `eslint "{src,test}/**/*.ts" --fix`)
+    ⚠️ **ห้ามใช้ `cd apps/api && npx eslint .` เป็น gate ปิด batch** — รันจริงวันนี้ได้ **exit 1 / 34 error ที่ค้างมาก่อน B1** ล้วนเป็น `Parsing error` ของไฟล์ที่อยู่นอก `include` ของ `apps/api/tsconfig.json` (`e2e/*.e2e-spec.ts`, `scripts/*.ts`, `eslint.config.mjs`) → เกณฑ์คือ **ไม่เพิ่ม error ใหม่ (baseline 34)** ไม่ใช่ 0 สัมบูรณ์. **ห้ามไปแก้ `tsconfig.json` / `eslint.config.mjs` เพื่อไล่ 34 error นี้ — อยู่นอก scope ของ B1**
+  - web: `cd apps/web && npx eslint .` → **0 error จริง** (513 warning ค้าง — ปล่อยได้) จึงใช้เป็น gate 0-error ได้เฉพาะฝั่ง web
 - ทุก commit ลงท้ายด้วย:
   ```
   Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
@@ -41,7 +48,7 @@ ls apps/api/src/modules/products/product-readiness.util.ts
 ```
 ทั้ง 3 คำสั่งต้องเจอของ ถ้าไม่เจอ = B0 ยังไม่ merge → **หยุด** แล้วแจ้งผู้เรียก (B1 ไม่มีทางทำ readiness card / badge autofill / ฟิลด์อุปกรณ์+ตำหนิได้)
 > หมายเหตุที่ verify กับ main `8a8982e4b` แล้ว: `Product.cashPrice` + `Product.installmentPrice` (schema.prisma:1640-1641) และ `Product.shopWarrantyDays` (:1651) + `Product.conditionGrade` (:1700) **มีอยู่บน main แล้ววันนี้** — ของที่ B0 เพิ่มจริงคือ `priceAutofilledAt` / `accessoriesIncluded` / `cosmeticNotes` (migration `20260982000000`) + endpoint readiness + write-through/autofill เท่านั้น
-- [ ] **P2:** จด shape จริงของ `GET /products/:id/readiness` จากโค้ด B0 (controller + util) แล้วเทียบกับ contract ที่ Task 8 ใช้ — ถ้าชื่อ field ต่าง ให้แก้ **ที่ `useProductReadiness.ts` จุดเดียว** (adapter) ห้ามแก้ `ReadinessCard`
+- [ ] **P2:** จด shape จริงของ `GET /products/:id/readiness` จากโค้ด B0 (controller + util) แล้วเทียบกับ contract ที่ Task 8 ใช้ — คาดว่าเป็น `{ productId, isReady, isOnlineVisible, checks[] , priceAutofilledAt, hasInstallmentPrice }` (B0 ล็อกชื่อเป็น **`isReady`** ไม่ใช่ `ready` และคืน `isOnlineVisible` มาด้วย). ถ้าชื่อ field ต่างจากนี้ ให้แก้ **ที่ `useProductReadiness.ts` จุดเดียว** (adapter) ห้ามแก้ `ReadinessCard` — และเพราะ fixture ของเทสต์ import type จาก adapter ตัวนี้ การเปลี่ยนชื่อจะทำให้ `tsc`/vitest แดงเองทันที
 - [ ] **P3:** แตกกิ่ง: `git checkout -b feat/pa-b1-admin-product-page`
 
 ---
@@ -1646,7 +1653,8 @@ export default function ReadinessCard(props: {
   data: ProductReadinessResponse | undefined;
 }): JSX.Element;
 ```
-- **กติกา:** `ReadinessCard` ต้อง render จาก `checks[]` แบบ generic (ห้าม hardcode ชื่อ key) — ถ้า B0 เปลี่ยนชื่อ check ให้แก้แค่ adapter ใน `useProductReadiness.ts`
+- **ชื่อฟิลด์ที่ล็อกไว้แล้ว:** B0 คืน **`isReady`** (ไม่ใช่ `ready`) และคืน **`isOnlineVisible`** มาด้วย — ตรงกับที่เขียนไว้ข้างบนแล้ว **ห้ามเปลี่ยนกลับเป็น `ready`**. response ของ B0 ยังมี `priceAutofilledAt` / `hasInstallmentPrice` ติดมาด้วย แต่ B1 ไม่ใช้ผ่านทางนี้ (การ์ดราคาใน Task 7 อ่าน `product.priceAutofilledAt` จาก `GET /products/:id` ตรงๆ) — adapter จึงตัดทิ้งได้
+- **กติกา:** `ReadinessCard` ต้อง render จาก `checks[]` แบบ generic (ห้าม hardcode ชื่อ key) — ถ้า B0 เปลี่ยนชื่อ check ให้แก้แค่ adapter ใน `useProductReadiness.ts`; และ fixture ในเทสต์ต้อง **annotate ด้วย `ProductReadinessResponse` ที่ import จาก adapter** เพื่อให้การเปลี่ยนชื่อฟิลด์ทำให้ `tsc` แดงแทนที่จะเงียบ
 
 - [ ] **Step 1:** เขียนเทสต์ที่ fail — `apps/web/src/pages/ProductDetailPage/components/__tests__/ReadinessCard.test.tsx`:
 
@@ -1654,8 +1662,15 @@ export default function ReadinessCard(props: {
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import ReadinessCard from '../ReadinessCard';
+import type { ProductReadinessResponse } from '../../hooks/useProductReadiness';
 
-const ready = {
+/**
+ * fixture ต้อง **ผูก type กับ adapter** (`ProductReadinessResponse` จาก
+ * useProductReadiness.ts) ห้ามพิมพ์ shape ด้วยมือ — ถ้าวันหลัง B0 เปลี่ยนชื่อฟิลด์
+ * (เช่น isReady → ready) แล้ว adapter ถูกแก้ตาม เทสต์นี้ต้อง **tsc แดงทันที**
+ * ไม่ใช่ผ่านเงียบๆ ด้วย object literal ที่ไม่มีใครตรวจ
+ */
+const ready: ProductReadinessResponse = {
   productId: 'p-1',
   isReady: true,
   isOnlineVisible: true,
@@ -1706,7 +1721,7 @@ describe('ReadinessCard', () => {
 });
 ```
 
-- [ ] **Step 2:** รันให้เห็น fail (import ไม่เจอ):
+- [ ] **Step 2:** รันให้เห็น fail (resolve ไม่เจอทั้ง `../ReadinessCard` และ `../../hooks/useProductReadiness` — ทั้งคู่ยังไม่ถูกสร้างจนถึง Step 3/4):
 ```bash
 cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx vitest run src/pages/ProductDetailPage/components/__tests__/ReadinessCard.test.tsx
 ```
@@ -2586,6 +2601,8 @@ cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx vitest run src/pages/Pr
 - Modify: `apps/web/src/pages/ProductDetailPage/index.tsx` (ประกอบการ์ดใหม่ + ปุ่ม action bar :303-411)
 - Modify: `apps/web/src/App.tsx:473-479`
 
+> ⚠️ **`ProductDetailPage/index.tsx` เปลี่ยนโครงใหญ่หลัง B1** (Task 7 ลบ price CRUD ทั้งชุด: state/mutations/handlers/modal + `ConfirmDialog`; Task 8-12 แทรกการ์ดใหม่หลายตัว) → **เลขบรรทัดทุกตัวในไฟล์นี้เลื่อนหมด**. batch หลังที่มาแตะไฟล์เดียวกัน (โดยเฉพาะ **B5** ที่ anchor ไว้ที่ `:119-125` = ท้าย `branches` query และ `:352` = แถบแท็บ) **ห้ามใช้เลขบรรทัดเป็น anchor — ให้ grep หา anchor ข้อความแทน** เช่น `grep -n "useQuery" ... | grep branches` หรือ grep ชื่อ state/แท็บที่ต้องการ แล้วค่อยแทรก
+
 **Interfaces:**
 - Produces:
 ```tsx
@@ -2813,12 +2830,18 @@ cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx vitest run
 ```
 คาดหวัง: api ทุก suite ในสองโมดูลเขียว, web ทุกไฟล์เขียว (ไม่มี regression จากไฟล์เดิม)
 
-- [ ] **Step 8:** ปิด gate:
+- [ ] **Step 8:** ปิด gate — **รันทีละคำสั่ง ห้ามร้อยด้วย `&&`** (คำสั่งที่ fail จะบังคับให้คำสั่งถัดไปไม่รัน และ exit code ปนกัน):
 ```bash
-cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api && npx tsc --noEmit && npx eslint .
-cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx tsc --noEmit && npx eslint .
+cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api && npx tsc --noEmit
+cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api && npm run lint --workspace=apps/api
+cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx tsc --noEmit
+cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx eslint .
 ```
-คาดหวัง: 0 error ทั้ง 4 คำสั่ง (ถ้า eslint จับ unused import จากของที่ลบใน Task 7 ให้เก็บกวาดตรงนี้)
+คาดหวัง:
+- `tsc` ทั้ง 2 แอป = **0 error**
+- api lint = **ไม่มี error ใหม่จากไฟล์ที่ B1 แก้** (ถ้าอยากดูเฉพาะของตัวเอง: `cd apps/api && npx eslint src/modules/products src/modules/promotions`). **ห้ามใช้ `npx eslint .` เป็นเกณฑ์** — มี 34 error ค้างมาก่อน B1 จากไฟล์นอก tsconfig (`e2e/`, `scripts/`, `eslint.config.mjs`) และ **ห้ามแก้ tsconfig/eslint config เพื่อไล่มัน** (นอก scope)
+- web eslint = **0 error** (warning ค้าง 513 ปล่อยได้)
+- ถ้า eslint จับ unused import จากของที่ลบใน Task 7 ให้เก็บกวาดตรงนี้
 
 - [ ] **Step 9:** Commit: `feat(product-page): แก้ลิงก์ตายไปแก้ราคา, ซ่อนปุ่มทำสัญญาจาก FM/ACC, เปิดหน้าสินค้าให้ FM/ACCOUNTANT`
 
@@ -2828,9 +2851,10 @@ cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx tsc --noEmit && npx esl
 
 ### ลำดับ deploy
 1. **ต้อง deploy หลัง B0 เท่านั้น** — B1 พึ่งของจาก B0 3 อย่าง: endpoint `GET /products/:id/readiness`, คอลัมน์ใหม่ `priceAutofilledAt`/`accessoriesIncluded`/`cosmeticNotes` (migration `20260982000000`) และ backfill ราคา. (คอลัมน์ `cashPrice`/`installmentPrice`/`shopWarrantyDays`/`conditionGrade` มีบน main อยู่แล้ว — ไม่ได้พึ่ง B0) ถ้า B0 ยังไม่ขึ้น prod: การ์ด readiness โชว์ "ตรวจสถานะขึ้นเว็บไม่สำเร็จ", badge autofill ไม่ขึ้นเลย, และ **การกดบันทึกอุปกรณ์/ตำหนิจะ 500** (`PrismaClientValidationError` — คอลัมน์ยังไม่มี)
-2. **ไม่มี migration ใน batch นี้** → deploy ปกติ (merge → GitHub Actions → Cloud Run + Firebase) ไม่ต้องรัน job ใดๆ ก่อน
-3. PR เดียวต่อ batch: `feat/pa-b1-admin-product-page` → `main`; CI gate ("Lint & Test") ต้องเขียว + code-owner review 1 คน (owner กดเอง — agent ห้าม `--admin` เว้นแต่ user สั่งชัดเจนเป็นประโยค)
-4. env ใหม่ (ตัวเลือก): `VITE_SHOP_URL` — **ไม่ตั้งก็ได้** ค่า default = `https://www.bestchoicephone.com` ตรงกับ canonical ของ web-shop; ตั้งเมื่ออยากให้ dev/staging ชี้โดเมนอื่นเท่านั้น (ตั้งใน GitHub Actions build step ของ apps/web)
+2. **…แต่ต้อง deploy วันเดียวกับ B0 ห้ามห่างหลายวัน** — ระหว่าง B0 ขึ้น prod ถึง B1 ขึ้น prod จะ **ไม่มี UI ไหนเขียนคอลัมน์ `cashPrice`/`installmentPrice` ได้เลย** (ของเดิมแก้ได้แค่แถว `ProductPrice`) ทั้งที่เว็บลูกค้า + readiness อ่านคอลัมน์แล้ว → พนักงานตั้งราคาผ่านตารางเดิมแล้ว "เครื่องไม่ขึ้นเว็บ" โดยไม่มีอะไรฟ้อง. ตัวปลดล็อกคือช่องราคาเงินสด/ราคาผ่อนใน `EditSellingPriceModal` (Task 7) + `UpdateProductDto` (Task 4) ที่ยิง `PATCH /products/:id` เดิม — ถ้าจำเป็นต้องแยก ยกเฉพาะสองส่วนนี้ไปท้าย B0 ได้ (ดู Global Constraints)
+3. **ไม่มี migration ใน batch นี้** → deploy ปกติ (merge → GitHub Actions → Cloud Run + Firebase) ไม่ต้องรัน job ใดๆ ก่อน
+4. PR เดียวต่อ batch: `feat/pa-b1-admin-product-page` → `main`; CI gate ("Lint & Test") ต้องเขียว + code-owner review 1 คน (owner กดเอง — agent ห้าม `--admin` เว้นแต่ user สั่งชัดเจนเป็นประโยค)
+5. env ใหม่ (ตัวเลือก): `VITE_SHOP_URL` — **ไม่ตั้งก็ได้** ค่า default = `https://www.bestchoicephone.com` ตรงกับ canonical ของ web-shop; ตั้งเมื่ออยากให้ dev/staging ชี้โดเมนอื่นเท่านั้น (ตั้งใน GitHub Actions build step ของ apps/web)
 
 ### QA บน local (บังคับ — prod ปฏิเสธ seed accounts)
 ```bash
@@ -2854,6 +2878,10 @@ cd /Users/iamnaii/Desktop/App/BESTCHOICE && npm run dev     # api :3000 + web :5
 - [ ] `GET https://api.bestchoicephone.app/api/health` = 200
 - [ ] เปิด `admin.bestchoicephone.app/products/<id ที่มีจริง>` ด้วยบัญชี owner จริง → การ์ดครบ, กดคัดลอกสรุปได้, ลิงก์ที่คัดลอกเปิดหน้าเว็บลูกค้าได้จริง (ถ้าเครื่องนั้น ready)
 - [ ] Sentry ไม่มี error ใหม่จาก `ProductDetailPage` ภายใน 30 นาทีแรก
+
+### ผลกระทบต่อ batch ถัดไป (ต้องแจ้งก่อนเริ่ม B2-B5)
+- `apps/web/src/pages/ProductDetailPage/index.tsx` **ถูกยกโครงใหม่ใน B1** (ลบ price CRUD ชุดเดิมทั้งก้อน + แทรกการ์ดใหม่ 6-7 ตัว) → **เลขบรรทัดที่แผนอื่นจดไว้ก่อนหน้าใช้ไม่ได้อีก**. ที่ต้องแก้แน่ๆ คือ **B5** ซึ่ง anchor ไว้ที่ `ProductDetailPage/index.tsx (119-125, 352)` — ตอนลงมือ B5 ให้ **grep หา anchor ข้อความ** (ท้าย `branches` query / แถบแท็บ) แทนการนับบรรทัด แล้วยืนยันกับไฟล์จริงก่อนแทรกโค้ด
+- ไฟล์อื่นที่ B1 แตะแล้ว batch หลังอาจชน: `components/OnlineListingPanel.tsx` (บล็อก Switch ถูกแทนด้วย `ReadinessCard`), `components/InstallmentCalculatorCard.tsx` / `BcCalculatorCard.tsx` (prop signature เพิ่ม), `components/ProductInfo.tsx` (ตาราง `prices[]` เป็น read-only)
 
 ### งานฝั่ง owner (ไม่ใช่โค้ด)
 - [ ] กรอก **ราคาเงินสด/ราคาผ่อน** ให้เครื่องที่ขายจริง (การ์ดราคาใหม่คือทางที่เร็วที่สุดตอนนี้) — ราคาที่ badge ขึ้นว่า "เติมอัตโนมัติจากตารางราคากลาง" ต้องรีวิวว่าตรงราคาขายจริง (§9.4)

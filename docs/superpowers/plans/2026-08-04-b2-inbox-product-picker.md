@@ -12,6 +12,15 @@
 
 - Branch: `feat/pa-b2-inbox-product-picker` (แตกจาก main หลัง B0 + B1 merge แล้ว)
 - **ไม่มี migration ใน batch นี้** — schema เดิมพอทุกอย่าง (`ChatMessage.type/mediaUrl/mediaType/clientMessageId/outboundSentAt` + `@@unique([roomId, clientMessageId])` มีครบตั้งแต่ migration `20260976000000`); migration ล่าสุดในเรโปคือ `20260981000000_add_credit_note_source_fields`, B0 จองเลข `20260982000000` ไปแล้ว — **ห้ามสร้าง migration ใน B2** และ **ห้ามใส่ `ChatRoom.attachedProductId` กลับมา** (spec §1 ตัดออกแล้ว)
+- **เจ้าของไฟล์ (สำคัญ — B3 ประกาศทับ ต้องอ่านก่อนเริ่ม):** ไฟล์ 4 ตัวนี้ **B2 เป็นเจ้าของ** และเป็น batch แรกที่แตะจริง — B3 (`2026-08-04-b3-bot-product-answers.md`) Task 14 ประกาศงานชุดเดียวกันไว้ด้วย (สร้าง `product-detect.service.spec.ts` เหมือนกัน + `new ProductDetectService(prisma)` แบบ **arg เดียว** + แก้ป้ายดาวน์ที่ `ai-suggest.service.ts` และ `ProductContextCard.tsx`) ซึ่งถ้า B3 ship ตามตัวอักษรของแผนตัวเอง **จะทับงาน B2 และดึง `ProductQuoteService` ออกจาก constructor** ทำให้ค่างวดกลับไปเป็นสูตรมือ:
+  | ไฟล์ | เจ้าของ | สัญญาที่ batch หลังต้องรักษา |
+  |---|---|---|
+  | `staff-chat/services/product-quote.service.ts` (+`.spec.ts`) | **B2 (Task 4)** | `constructor(private prisma: PrismaService)`; export `resolveProductPrices` / `computeProductQuote` (pure) + `getQuotes(inputs[])` / `getQuote(input)` |
+  | `staff-chat/services/product-detect.service.ts` (+`.spec.ts`) | **B2 (Task 10)** | `constructor(private prisma: PrismaService, private productQuote: ProductQuoteService)` — **2 args, ห้ามลดเหลือ 1**; `detectProducts`/`enrichProducts` ต้องอ่านค่างวดจาก `ProductQuoteService` เท่านั้น ห้ามคำนวณเอง; select ต้องไม่มี `photos` |
+  | `staff-chat/services/ai-suggest.service.ts` (ป้าย "ดาวน์ …") | **B2 (Task 10 Step 5 + Task 11)** | ป้ายดาวน์เป็น **บาท** ไม่ใช่ `%` — B3 ห้ามแก้ซ้ำ |
+  | `web/.../UnifiedInboxPage/components/ProductContextCard.tsx` | **B2 (Task 10 Step 7)** | ทั้งไฟล์ถูกเขียนใหม่ใน B2 (gallery/stock จริง/ปุ่มส่ง/ลิงก์ + ป้ายดาวน์เป็นบาท) — B3 ห้ามแก้ซ้ำ |
+
+  → **B3 ต้องปรับแผนตัวเองเป็น "ไม่ต้องทำ Task 14 แล้ว (B2 ทำไปแล้ว) — เหลือแค่ verify"** ก่อนเริ่ม; ถ้า B2 ยังไม่ merge ตอน B3 เริ่ม ให้ยึด constructor 2-args ข้างบนเป็นสัญญากลาง
 - **Red line:** ห้ามแตะ accounting/finance JE paths ทั้งหมด (`apps/api/src/modules/journal/**`, `accounting/**`, `payments/**`); batch นี้ไม่แตะเส้นทางเงินสัญญาเลย — `calcBcInstallment` ถูกเรียกแบบ **read-only เพื่อแสดงผล** ไม่มีการเขียน Contract/Payment/JournalEntry ใดๆ; ตัวเลขค่างวดที่แสดงต้องมี golden test ยืนยันเลขตรงกับ `calcBcInstallment` ทุกบาท
 - **รูปที่ส่งลูกค้าได้ต้องมาจาก `Product.gallery[]` เท่านั้น** — `Product.photos[]` เป็น base64 data URL (`products-online-listing.service.ts:8` `DATA_URL_RE`) ส่ง LINE/FB ไม่ได้ และ **ห้าม select `photos` ในทุก query ของ batch นี้** (payload บวมระดับ MB)
 - LINE ต้องการ public HTTPS ที่ `originalContentUrl` (`line-shop.adapter.ts:69-75`), FB ต้องการ URL ที่ดึงได้จริง (`facebook.adapter.ts:73-77`) → รูปที่ staff อัปโหลด persist เป็น **storage key** เหมือนเดิม (inbox re-sign เองที่ `room-manager.service.ts:319-326` ผ่าน `signMessageMedia` ซึ่ง **ปล่อย http(s) URL ผ่านไปเฉยๆ** — `media-url.util.ts` `isStorageKey`) แต่ส่งให้ adapter เป็น **signed URL อายุ 6 วัน** (`getSignedDownloadUrl(key, 518400)` — ใต้ลิมิต V4 signing 7 วัน)
@@ -21,7 +30,11 @@
   - api: `cd apps/api && npx jest src/modules/<path>.spec.ts`
   - web: `cd apps/web && npx vitest run src/pages/<path>.test.tsx` (apps/web ใช้ **vitest** ตาม `apps/web/vitest.config.ts`; `npx jest` ใน apps/web จะพัง — ไม่มี jest config)
   - ห้ามเพิ่ม DB-backed vitest นอก `journal/cpa-templates`
-- ปิดท้ายทุก batch: `cd apps/api && npx tsc --noEmit` = 0, `cd apps/api && npx eslint .` = 0, `cd apps/web && npx tsc --noEmit` = 0, `cd apps/web && npx eslint .` = 0
+- **Lint (คำสั่งที่ใช้ได้จริง — ยืนยันแล้ว 2026-08-04 ตรงกับ B0 Global Constraints):**
+  - api: `cd apps/api && npx eslint <path ที่แก้>` (เฉพาะไฟล์ใน `src/`) และ gate ของ CI คือ `npm run lint --workspace=apps/api` (= `eslint "{src,test}/**/*.ts" --fix`, `deploy-gcp.yml:111`)
+    ⚠️ **ห้ามใช้ `cd apps/api && npx eslint .` เป็นเกณฑ์ปิด batch** — วันนี้ (ก่อน B2 แตะอะไรเลย) มี **34 error ค้างอยู่แล้ว** ล้วนเป็น `Parsing error` ของไฟล์ที่อยู่นอก `include` ของ `apps/api/tsconfig.json` (`e2e/*.e2e-spec.ts`, `scripts/*.ts`, `eslint.config.mjs`) → **เกณฑ์ผ่าน = ไม่เพิ่ม error ใหม่ (baseline 34)** ไม่ใช่ 0 สัมบูรณ์. **ห้ามไปแก้ tsconfig/eslint config เพื่อไล่ 34 ตัวนี้ — อยู่นอก scope ของ B2**
+  - web: `cd apps/web && npx eslint .` → **0 error จริง** (มี warning ค้างจำนวนมาก — ปล่อยได้) → ฝั่ง web ใช้ 0 error เป็นเกณฑ์ได้
+- ปิดท้ายทุก batch (รัน **แยกคำสั่ง อย่าร้อยด้วย `&&`** — lint ฝั่ง api exit≠0 จาก baseline จะบังไม่ให้เห็นผล tsc): `cd apps/api && npx tsc --noEmit` = 0 · `cd apps/web && npx tsc --noEmit` = 0 · lint ตามเกณฑ์ข้างบน
 - QA เบราว์เซอร์บน **local เท่านั้น** (prod ปฏิเสธ seed accounts) — `admin@bestchoice.com / admin1234`
 - ทุก commit ลงท้าย `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
 
@@ -36,7 +49,7 @@
 | `apps/api/src/modules/staff-chat/services/product-quote.service.spec.ts` | golden test เลขค่างวด + fallback ราคา |
 | `apps/api/src/modules/staff-chat/services/product-card-text.util.ts` | สร้างข้อความการ์ดสินค้า (pure) — ไม่มี hardcode '12 งวด' |
 | `apps/api/src/modules/staff-chat/services/product-card-text.util.spec.ts` | golden test ข้อความ |
-| `apps/api/src/modules/staff-chat/services/chat-commerce.service.spec.ts` | test search select / summary / 2-bubble idempotent |
+| `apps/api/src/modules/staff-chat/services/chat-commerce.service.spec.ts` | test search select (gallery, ห้าม photos) / `shareUrl` ผ่าน readiness / 2-bubble idempotent / **เคสพิสูจน์ว่า adapter ถูกเรียกจริง** (เส้นทางเดิมเป็น dead code ที่ saveMessage เฉยๆ) |
 | `apps/api/src/modules/chat-engine/services/room-manager.upload-file.spec.ts` | test บั๊ก live (รูป composer ไม่ถึงลูกค้า) |
 | `apps/api/src/modules/staff-chat/services/ai-suggest.service.spec.ts` | test mock gate (prod ว่าง / dev `[MOCK] `) |
 
@@ -48,7 +61,7 @@
 | `apps/api/src/modules/chat-engine/services/room-manager.service.ts:288-294, 648-682` | `markOutboundSent(id, externalMessageId?)` + `uploadFile` reroute (role STAFF + ส่งจริง) |
 | `apps/api/src/modules/staff-chat/staff-chat.controller.ts:521-541` | upload รับ `clientMessageId` + คืน `delivered` |
 | `apps/api/src/modules/staff-chat/staff-chat.controller.spec.ts:307-318` | อัปเดต spec upload ให้ตรง signature ใหม่ (4 args + `delivered`) |
-| `apps/api/src/modules/staff-chat/services/chat-commerce.service.ts:174-285` | `searchProducts` ยกเครื่อง (gallery, ห้าม photos), `getProductSummary` ใหม่, `sendProductCard` = 2 bubble idempotent |
+| `apps/api/src/modules/staff-chat/services/chat-commerce.service.ts:174-285` | **เขียนใหม่ ไม่ใช่ปรับของเดิม** (ทั้ง `searchProducts`/`sendProductCard` เป็น dead code + `sendProductCard` ไม่เคยเรียก adapter): `searchProducts` ยกเครื่อง (gallery, ห้าม photos, `shareUrl` ผ่าน readiness B0), `getProductSummary` ใหม่, `sendProductCard` = 2 bubble idempotent ที่ออกช่องทางจริง |
 | `apps/api/src/modules/staff-chat/chat-commerce.controller.ts` | เพิ่ม ACCOUNTANT ทุก route + route `GET products/:id/summary` + body ใหม่ของ product-card |
 | `apps/api/src/modules/staff-chat/staff-chat.module.ts` | provider `ProductQuoteService` |
 | `apps/api/src/modules/staff-chat/services/product-detect.service.ts` | เลิก select `photos` → `gallery`, จำนวนเครื่องจริง, ค่างวดจาก `ProductQuoteService` |
@@ -732,10 +745,16 @@ export interface ProductQuote {
 export function resolveProductPrices(p: ProductPriceInput): { cash: number | null; installment: number | null };
 export function computeProductQuote(p: ProductPriceInput, config: QuoteConfigInput | null): ProductQuote;
 class ProductQuoteService {
+  constructor(prisma: PrismaService);   // ← สัญญาที่ batch หลังต้องรักษา (1 arg)
   getQuotes(inputs: ProductPriceInput[]): Promise<ProductQuote[]>;
   getQuote(input: ProductPriceInput): Promise<ProductQuote>;
 }
 ```
+
+> **🔒 เจ้าของ + กติกากลางของ resolver (B3/B4 ต้องทำตาม):** `ProductQuoteService` เป็นของ **B2** และเป็น **แหล่งเดียว** ของ "ราคา + ค่างวด" ที่ผู้บริโภคทุกตัว (inbox picker / product card / `ProductContextCard` / บอท B3 / เว็บร้าน B4) ต้องใช้ร่วมกัน. กติกาที่ห้ามเบี่ยง:
+> 1. **เลือก InterestConfig แบบ deterministic ด้วย `findMany({ orderBy: { createdAt: 'asc' } })` แล้วเอาตัวแรกต่อหมวด** — ไม่ใช่ `findFirst` เปล่าๆ. เทียบกับ `installment-preview.service.ts:61-68` ที่ `findFirst` **ไม่มี `orderBy`** → Postgres คืนแถวไหนก็ได้ ถ้าหมวดเดียวมี config ที่ active มากกว่า 1 ตัว ลูกค้าคนเดียวจะเห็น **ค่างวด 2 แบบ** จาก inbox กับหน้าเว็บ. batch หลัง (B3 บอท / B4 เว็บร้าน) **ห้ามเขียน resolver ของตัวเอง** — เรียก `ProductQuoteService` ตัวนี้ (หรือ export pure `computeProductQuote`) เท่านั้น
+> 2. **ราคาอ่านแบบ columns-first แล้วค่อย `prices[]` ตาม label ตรงตัว → prefix** และ **ห้าม fallback `prices[0]`** เด็ดขาด (prod มี default row ปนหลาย label)
+> 3. **งวดที่แสดง = งวดยาวสุดในตารางอัตรา, ดาวน์ = ขั้นต่ำของ config** — ถ้า batch หลังอยากเปลี่ยนกติกานี้ ต้องเปลี่ยนที่ util ตัวเดียวพร้อมอัปเดต golden test ห้าม fork ตรรกะ
 
 - [ ] **Step 1:** เขียน failing spec `product-quote.service.spec.ts`:
 
@@ -1228,8 +1247,15 @@ export function buildProductCardText(
 - Modify: `apps/api/src/modules/staff-chat/chat-commerce.controller.ts` (ทั้งไฟล์)
 - Create: `apps/api/src/modules/staff-chat/services/chat-commerce.service.spec.ts`
 
+**บริบท — นี่คือ "สร้างใหม่" ไม่ใช่ "รักษาพฤติกรรมเดิม" (ตรวจโค้ดจริงแล้ว):**
+- `ChatCommerceService.sendProductCard` และ `searchProducts` ปัจจุบันเป็น **dead server code** — `grep -rn "product-card\|products/search" apps/web/src apps/web-shop/src` = **0 ผลลัพธ์** (ไม่มี caller ฝั่ง UI เลย) ปุ่มใน inbox ยังไม่เคยมี
+- ตัวมันเองก็มีบั๊ก **silent drop**: `sendProductCard` เรียก `this.roomManager.saveMessage(...)` อย่างเดียว **ไม่เคยเรียก adapter** (`chat-commerce.service.ts:271-276`) → ต่อให้มี UI เรียก ข้อความก็โผล่แค่ในกล่องแชทฝั่งเรา ลูกค้าไม่เคยได้รับ (บั๊กพี่น้องกับ `uploadFile` ใน Task 3 และ `createPaymentLinkInChat` :150-155)
+- ⇒ **ไม่มี "พฤติกรรมเดิม" ให้รักษา** — ห้ามพยายามทำ backward-compat กับ shape เดิม (`price`/`priceLabel`/`photoUrl` จาก `photos[0]`) และ **ห้ามอ้าง "spec เดิมเขียว" เป็นหลักฐานว่าใช้งานได้**. หลักฐานเดียวที่นับ = เทสต์ที่พิสูจน์ว่า **adapter ถูกเรียกจริง** (Step 1 เคสสุดท้าย)
+
 **Interfaces:**
-- Consumes: `ProductQuoteService.getQuotes` (Task 4), `buildProductCardText` (Task 5), `MessageRouterService.sendStaffMessage` (Task 1), `shopBaseUrl(): string | null` (`apps/api/src/utils/shop-base-url.util.ts:10`)
+- Consumes: `ProductQuoteService.getQuotes` (Task 4), `buildProductCardText` (Task 5), `MessageRouterService.sendStaffMessage` (Task 1), `shopBaseUrl(): string | null` (`apps/api/src/utils/shop-base-url.util.ts:10`), `evaluateReadiness(p): { ready, checks }` (**B0 Task 10** — `apps/api/src/utils/product-readiness.util.ts`; ต้องการฟิลด์ `name, brand, category, status, cashPrice, gallery, conditionGrade, isOnlineVisible, deletedAt`)
+- **⚠️ `shareUrl` ต้องผ่าน readiness ก่อนเสมอ** — หลัง B0 หน้า `/products/:id` ของเว็บร้านกรองด้วย `productReadinessWhere({ requireInStock: false })` (B0 Task 11 Step 2) → เครื่องที่มีราคาแต่ **ยังไม่มี `gallery`** (= สต็อกจริงส่วนใหญ่วันนี้) หรือไม่ใช่ Apple/ไม่ใช่ PHONE_NEW/USED หรือ `isOnlineVisible=false` หรือชื่อขึ้นต้น `[DEMO]` จะได้ **404**. ถ้าใส่ลิงก์ไปดื้อๆ = ส่งลูกค้าไปหน้าเสีย. `buildProductCardText` รองรับ `shareUrl = null` อยู่แล้ว (Task 5) จึงแค่ไม่ใส่ลิงก์ ไม่ต้องแก้ util
+  - เกณฑ์ที่ใช้ = **ready ทุกข้อ ยกเว้น `inStock`** (ตัด `inStock` ทิ้งเพราะเครื่อง `RESERVED` หน้าเว็บยังเปิดได้ตาม `requireInStock:false`)
 - Produces:
 ```ts
 searchProducts(query: string, limit?: number): Promise<ChatProductHit[]>
@@ -1259,7 +1285,9 @@ interface ChatProductHit {
 - [ ] **Step 1:** เขียน failing spec `chat-commerce.service.spec.ts`:
 
 ```ts
+import { ChatChannel, MessageType } from '@prisma/client';
 import { ChatCommerceService } from './chat-commerce.service';
+import { MessageRouterService } from '../../chat-engine/services/message-router.service';
 
 function makeService(product?: any) {
   const prisma = {
@@ -1301,7 +1329,14 @@ const PRODUCT = {
   gallery: ['https://cdn.example/p1-0.jpg', 'https://cdn.example/p1-1.jpg'],
   branch: { name: 'ลาดพร้าว' },
   prices: [],
+  // ฟิลด์ที่ evaluateReadiness (B0) ต้องใช้ — ขาดตัวใดตัวหนึ่ง shareUrl ต้องเป็น null
+  isOnlineVisible: true,
+  deletedAt: null,
 };
+
+beforeEach(() => {
+  process.env.SHOP_BASE_URL = 'https://www.bestchoicephone.com';
+});
 
 describe('ChatCommerceService.searchProducts', () => {
   it('ห้าม select photos[] (base64) และคืนรูปจาก gallery[0]', async () => {
@@ -1328,6 +1363,16 @@ describe('ChatCommerceService.searchProducts', () => {
     const { svc, prisma } = makeService(PRODUCT);
     expect(await svc.searchProducts('i')).toEqual([]);
     expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('ยังไม่มีรูปขึ้นเว็บ (gallery ว่าง) → shareUrl = null (หน้าเว็บจะ 404 หลัง B0)', async () => {
+    const ready = await makeService(PRODUCT).svc.searchProducts('iphone');
+    expect(ready[0].shareUrl).toBe('https://www.bestchoicephone.com/products/p1');
+
+    const { svc } = makeService({ ...PRODUCT, gallery: [] });
+    const rows = await svc.searchProducts('iphone');
+    expect(rows[0].shareUrl).toBeNull();
+    expect(rows[0].photoUrl).toBeNull();
   });
 });
 
@@ -1398,6 +1443,59 @@ describe('ChatCommerceService.sendProductCard — 2 bubble idempotent', () => {
     expect(res.sent).toBe(1);
     expect(res.errors).toEqual(['LINE 400']);
   });
+
+  // เส้นทางเดิม (dead code) แค่ saveMessage แล้วจบ — ลูกค้าไม่เคยได้รับอะไร
+  // เคสนี้จึงต่อ MessageRouterService ตัวจริงเข้ากับ adapter ปลอม เพื่อพิสูจน์ว่า
+  // การ์ดใหม่ "ออกช่องทางจริง" ไม่ใช่แค่บันทึกลง DB
+  it('เดินทะลุถึง adapter จริง (ไม่ใช่ saveMessage เฉยๆ แบบโค้ดเดิม)', async () => {
+    const prisma = { product: { findFirst: jest.fn().mockResolvedValue(PRODUCT) } };
+    const productQuote = {
+      getQuotes: jest.fn().mockResolvedValue([
+        { cashPrice: 19500, installmentPrice: 20000, months: 12, monthlyPayment: 1926, downAmount: 4000 },
+      ]),
+    };
+    const roomManager = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'r1',
+        channel: ChatChannel.LINE_SHOP,
+        externalUserId: 'U1',
+        lineUserId: null,
+      }),
+      findByClientMessageId: jest.fn().mockResolvedValue(null),
+      saveMessage: jest.fn(async () => ({ id: 'm1', clientMessageId: null, createdAt: new Date() })),
+      markOutboundSent: jest.fn(),
+    };
+    const adapter = {
+      channel: ChatChannel.LINE_SHOP,
+      sendMessage: jest.fn().mockResolvedValue({ success: true, externalMessageId: 'ext-1' }),
+    };
+    const router = new MessageRouterService(
+      roomManager as any,
+      { initiateHandoff: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue(undefined) } as any,
+    );
+    router.registerAdapter(adapter as any);
+
+    const svc = new ChatCommerceService(
+      prisma as any,
+      roomManager as any,
+      router,
+      productQuote as any,
+    );
+    const res = await svc.sendProductCard({
+      sessionId: 'r1',
+      staffId: 'u1',
+      productId: 'p1',
+      clientMessageId: 'tok',
+    });
+
+    expect(res.sent).toBe(2);
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(2); // ← หัวใจของเคสนี้
+    expect(adapter.sendMessage.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ type: MessageType.IMAGE, imageUrl: 'https://cdn.example/p1-0.jpg' }),
+    );
+    expect(adapter.sendMessage.mock.calls[1][0].text).toContain('เงินสด 19,500 บาท');
+  });
 });
 ```
 
@@ -1418,8 +1516,23 @@ import { MessageRouterService } from '../../chat-engine/services/message-router.
 import { ProductQuoteService } from './product-quote.service';
 import { buildProductCardText } from './product-card-text.util';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
+import { evaluateReadiness } from '../../../utils/product-readiness.util';
 
 export type ProductCardPart = 'PHOTO' | 'TEXT';
+
+/**
+ * ลิงก์หน้าเว็บร้านจะใช้ได้ก็ต่อเมื่อสินค้าผ่าน readiness ของ B0 เท่านั้น —
+ * `/products/:id` ของ web-shop กรองด้วย `productReadinessWhere({requireInStock:false})`
+ * (B0 Task 11) ถ้าไม่ผ่านลูกค้าจะเจอ 404. ตัดเช็ก `inStock` ทิ้งเพราะเครื่อง
+ * RESERVED/ขายแล้ว หน้าเว็บยังเปิดได้ (permalink)
+ */
+function buildShareUrl(p: Parameters<typeof evaluateReadiness>[0] & { id: string }): string | null {
+  const base = shopBaseUrl();
+  if (!base) return null;
+  const { checks } = evaluateReadiness(p);
+  const webReady = checks.every((c) => c.key === 'inStock' || c.ok);
+  return webReady ? `${base}/products/${p.id}` : null;
+}
 
 @Injectable()
 export class ChatCommerceService {
@@ -1473,6 +1586,9 @@ export class ChatCommerceService {
         cashPrice: true,
         installmentPrice: true,
         gallery: true,
+        // 2 ฟิลด์นี้ใช้เฉพาะตอนตัดสิน shareUrl (evaluateReadiness ของ B0)
+        isOnlineVisible: true,
+        deletedAt: true,
         branch: { select: { name: true } },
         prices: {
           where: { deletedAt: null },
@@ -1491,7 +1607,6 @@ export class ChatCommerceService {
         prices: p.prices,
       })),
     );
-    const base = shopBaseUrl();
 
     return products.map((p, i) => ({
       id: p.id,
@@ -1511,7 +1626,8 @@ export class ChatCommerceService {
       months: quotes[i].months,
       monthlyPayment: quotes[i].monthlyPayment,
       downAmount: quotes[i].downAmount,
-      shareUrl: base ? `${base}/products/${p.id}` : null,
+      // null = ยังไม่พร้อมขึ้นเว็บ → การ์ดจะไม่มีบรรทัดลิงก์ (ห้ามส่งลิงก์ 404 ให้ลูกค้า)
+      shareUrl: buildShareUrl(p),
     }));
   }
 ```
@@ -1547,6 +1663,9 @@ export class ChatCommerceService {
         cashPrice: true,
         installmentPrice: true,
         gallery: true,
+        // ใช้ตัดสิน shareUrl (evaluateReadiness ของ B0)
+        isOnlineVisible: true,
+        deletedAt: true,
         branch: { select: { name: true } },
         prices: { where: { deletedAt: null }, select: { label: true, amount: true } },
       },
@@ -1563,9 +1682,9 @@ export class ChatCommerceService {
         prices: product.prices,
       },
     ]);
-    const base = shopBaseUrl();
-    // ก่อน B4 (share endpoint) ใช้ /products/:id ของหน้าร้านตรงๆ
-    const shareUrl = base ? `${base}/products/${product.id}` : null;
+    // ก่อน B4 (share endpoint) ใช้ /products/:id ของหน้าร้านตรงๆ — แต่ใส่ได้
+    // เฉพาะเครื่องที่ผ่าน readiness ของ B0 ไม่งั้นลูกค้ากดแล้วเจอ 404
+    const shareUrl = buildShareUrl(product);
     const facts = {
       name: product.name,
       brand: product.brand,
@@ -1649,7 +1768,7 @@ export class ChatCommerceService {
   }
 ```
 
-- [ ] **Step 6:** รัน `cd apps/api && npx jest src/modules/staff-chat/services/chat-commerce.service.spec.ts` → **7 passed** (3 search + 4 การ์ด)
+- [ ] **Step 6:** รัน `cd apps/api && npx jest src/modules/staff-chat/services/chat-commerce.service.spec.ts` → **9 passed** (4 search รวมเคส shareUrl/readiness + 5 การ์ด รวมเคส adapter จริง)
 > ⚠️ **ACCOUNTANT ยังเข้าไม่ถึงจริงจนกว่า owner จะเคาะ** — spec §4 สั่งเพิ่ม ACCOUNTANT ใน chat-commerce แต่ verify กับโค้ดแล้วยัง**ไม่พอ** end-to-end: (1) route `/inbox` มี `ProtectedRoute roles={['OWNER','BRANCH_MANAGER','FINANCE_MANAGER','SALES']}` (`apps/web/src/App.tsx:485`) → ACCOUNTANT เปิดหน้าไม่ได้; (2) `GET /staff-chat/rooms/:id/products` (`staff-chat.controller.ts:496-497`) และ `POST rooms/:id/upload` (:521-522) ก็ไม่มี ACCOUNTANT. B2 ทำตาม spec เฉพาะ chat-commerce (ไม่ขยาย role ที่อื่นเอง) — **ถ้า owner ต้องการให้ ACCOUNTANT ใช้ inbox ได้จริง ต้องเพิ่มอีก 3 จุดข้างต้นในงานแยก**
 
 - [ ] **Step 7:** แทน `chat-commerce.controller.ts` ทั้งไฟล์ (เพิ่ม ACCOUNTANT ทุก route + route summary + body ใหม่):
@@ -2413,7 +2532,8 @@ import { buildContractCreateUrl } from './contract-create-url';
 
 **Interfaces:**
 - Consumes: `ProductQuoteService.getQuotes` (Task 4)
-- Produces (เปลี่ยน shape ของ `DetectedProduct` แบบ additive — คีย์เดิมคงไว้ทั้งหมดเพื่อไม่ทำ `AiSuggestService` พัง):
+- **เจ้าของ:** `ProductDetectService` + spec ของมัน + ป้ายดาวน์ใน `ai-suggest.service.ts` + `ProductContextCard.tsx` = **ของ B2 (Task นี้)** — ดู "เจ้าของไฟล์" ใน Global Constraints. **B3 Task 14 ประกาศงานเดียวกันไว้ด้วย** (สร้าง `product-detect.service.spec.ts` ซ้ำ + `new ProductDetectService(makePrisma())` แบบ arg เดียว) → ถ้า B3 ทำตามตัวอักษรจะ **ลบ `ProductQuoteService` ออกจาก constructor** และค่างวดกลับไปเป็นสูตรมือที่ผิด. หลัง B2 merge ต้องแก้แผน B3 ให้ Task 14 เหลือแค่ verify
+- Produces (constructor **2 args คงที่** = `constructor(prisma: PrismaService, productQuote: ProductQuoteService)` — batch หลังห้ามลดเหลือ 1; เปลี่ยน shape ของ `DetectedProduct` แบบ additive — คีย์เดิมคงไว้ทั้งหมดเพื่อไม่ทำ `AiSuggestService` พัง):
 ```ts
 interface DetectedProduct {
   id: string; name: string; brand: string; model: string;
@@ -2937,9 +3057,26 @@ describe('AiSuggestService.suggest — mock gate', () => {
 **Files:** ไม่มีไฟล์ใหม่ (verification only)
 
 - [ ] **Step 1:** `cd apps/api && npx jest src/modules/chat-engine src/modules/staff-chat` → เขียวทั้งหมด (ไม่มี suite ไหนแดง)
-- [ ] **Step 2:** `cd apps/api && npx tsc --noEmit` → 0 error; `cd apps/api && npx eslint .` → 0 error
+- [ ] **Step 2:** `cd apps/api && npx tsc --noEmit` → 0 error. แล้ว lint แยกคำสั่ง (**ห้ามใช้ `npx eslint .` และห้ามร้อย `&&` กับ tsc**):
+
+```bash
+# gate ของ CI (deploy-gcp.yml:111)
+npm run lint --workspace=apps/api
+# ตรวจเฉพาะไฟล์ที่ B2 แตะ (ไม่มี --fix เพื่อไม่ให้ซ่อน error)
+(cd apps/api && npx eslint \
+  src/modules/chat-engine/services/message-router.service.ts \
+  src/modules/chat-engine/services/message-router.service.spec.ts \
+  src/modules/chat-engine/services/room-manager.service.ts \
+  src/modules/chat-engine/services/room-manager.upload-file.spec.ts \
+  src/modules/staff-chat/staff-chat.controller.ts \
+  src/modules/staff-chat/staff-chat.controller.spec.ts \
+  src/modules/staff-chat/staff-chat.module.ts \
+  src/modules/staff-chat/chat-commerce.controller.ts \
+  src/modules/staff-chat/services)
+```
+  → **เกณฑ์ผ่าน = ไม่มี error ใหม่** (baseline วันนี้: `npx eslint .` ฝั่ง api มี **34 error** ค้างจาก `Parsing error` ของ `e2e/`+`scripts/`+`eslint.config.mjs` ที่อยู่นอก tsconfig — **ไม่นับ และห้ามไปแก้ config เพื่อไล่มันออก**)
 - [ ] **Step 3:** `cd apps/web && npx vitest run src/pages/UnifiedInboxPage` → เขียวทั้งหมด
-- [ ] **Step 4:** `cd apps/web && npx tsc --noEmit` → 0 error; `cd apps/web && npx eslint .` → 0 error
+- [ ] **Step 4:** `cd apps/web && npx tsc --noEmit` → 0 error; แล้วรันแยกอีกคำสั่ง `cd apps/web && npx eslint .` → **0 error** (baseline ฝั่ง web = 0 error / 513 warning — warning ไม่นับ)
 - [ ] **Step 5:** ยืนยัน red line ด้วยสายตา: `git diff --stat main...HEAD` ต้อง **ไม่มี** ไฟล์ใต้ `apps/api/src/modules/journal/`, `apps/api/src/modules/accounting/`, `apps/api/src/modules/payments/`, `apps/api/prisma/migrations/`
 - [ ] **Step 6:** ยืนยันว่าไม่มี `photos` หลุดกลับเข้ามาในเส้นทางแชท: `grep -rn "photos" apps/api/src/modules/staff-chat/ apps/api/src/modules/chat-engine/` → ต้องไม่มีผลลัพธ์ที่เป็น Prisma `select`
 - [ ] **Step 7:** QA local — `npm run dev` แล้ว login `admin@bestchoice.com / admin1234` เปิด `/inbox` (Unified Inbox) แล้วไล่ตามเช็กลิสต์ใน "Deployment & Verification" ข้อ QA ทั้ง 8 ข้อ
@@ -2958,11 +3095,12 @@ describe('AiSuggestService.suggest — mock gate', () => {
 | สิ่งที่ต้องมี | เช็กยังไง | ถ้าไม่มีจะเป็นอะไร |
 |---|---|---|
 | `SHOP_BASE_URL` ตั้งบน Cloud Run | `gcloud run services describe <api> --format='value(spec.template.spec.containers[0].env)'` | ลิงก์ในการ์ดสินค้าหายไปเฉยๆ (ไม่ crash — `shopBaseUrl()` คืน null) |
+| **B0 merge แล้ว** (`apps/api/src/utils/product-readiness.util.ts` มีอยู่จริง) | `ls apps/api/src/utils/product-readiness.util.ts` | `chat-commerce.service.ts` compile ไม่ผ่าน — B2 import `evaluateReadiness` จาก B0 เพื่อ gate `shareUrl` (ดู Global Constraints: B2 แตกจาก main **หลัง** B0 merge) |
 | Storage ตั้งค่าแล้ว (`GCS_BUCKET` prod / `S3_*` local) | `GET /health` ดู probe S3/GCS | รูปจาก composer จะส่งเป็น storage key ดิบ → LINE/FB ปฏิเสธ |
 | `FACEBOOK_APP_ID` ตั้งไว้ | ดู env ของ Cloud Run | echo ของรูปที่เราส่งอาจเด้งกลับเป็น bubble ซ้ำ (Task 2 ลด แต่ไม่ลบความเสี่ยง 100%) |
 
 ### สิ่งที่ owner ต้องทำ (ไม่ใช่โค้ด)
-1. **กรอกรูปขึ้นเว็บ (`gallery`) ให้เครื่องที่ขายจริง** — ปุ่ม "ส่งรูป" จะ disabled ทุกเครื่องที่ยังไม่มี gallery (รูป 6 มุมใน `photos[]` ใช้ส่งลูกค้าไม่ได้ เพราะเป็น base64)
+1. **กรอกรูปขึ้นเว็บ (`gallery`) ให้เครื่องที่ขายจริง** — ปุ่ม "ส่งรูป" จะ disabled ทุกเครื่องที่ยังไม่มี gallery (รูป 6 มุมใน `photos[]` ใช้ส่งลูกค้าไม่ได้ เพราะเป็น base64) **และการ์ดจะไม่มีบรรทัดลิงก์หน้าเว็บด้วย** เพราะ `shareUrl` ผูกกับ readiness ของ B0 (ไม่มีรูป = หน้าเว็บ 404 → เราจงใจไม่ใส่ลิงก์)
 2. **กรอก `cashPrice`/`installmentPrice` รายเครื่อง** (ฟอร์มจาก B1) — ถ้าไม่มี การ์ดจะขึ้น "สอบถามราคากับแอดมินได้เลยค่ะ" แทนตัวเลข
 3. **ตรวจ InterestConfig ของแต่ละหมวด** ว่ามี rate ครบทุกจำนวนงวดที่ขายจริง — ตัวเลขค่างวดในแชทเลือก "งวดยาวสุดในตาราง" เสมอ
 
@@ -2977,7 +3115,8 @@ describe('AiSuggestService.suggest — mock gate', () => {
 1. อัปโหลดรูป jpg จาก composer → toast **"ส่งรูปให้ลูกค้าแล้ว"** + bubble ขวามือเป็น STAFF (ไม่ใช่ป้าย "Bot")
 2. อัปโหลด pdf → toast **"แนบไฟล์ในห้องแล้ว — ลูกค้ายังไม่ได้รับ..."** + bubble เป็นการ์ดไฟล์
 3. Product picker: พิมพ์ 1 ตัวอักษร → ขึ้น "พิมพ์อย่างน้อย 2 ตัวอักษร"; พิมพ์ 2+ → มีผลลัพธ์
-4. เลือกเครื่องที่ **ไม่มี** gallery → เห็นป้าย "ยังไม่มีรูปขึ้นเว็บ" + ปุ่ม "ส่งรูป" เทา; กด "ส่งการ์ด" → toast warning + มีแค่ bubble ข้อความ
+4. เลือกเครื่องที่ **ไม่มี** gallery → เห็นป้าย "ยังไม่มีรูปขึ้นเว็บ" + ปุ่ม "ส่งรูป" เทา; กด "ส่งการ์ด" → toast warning + มีแค่ bubble ข้อความ **และข้อความนั้นต้องไม่มีบรรทัดลิงก์ `/products/:id`** (ถ้ามี = `shareUrl` ไม่ได้ผ่าน readiness gate)
+4b. เลือกเครื่องที่ผ่าน readiness ครบ (Apple + PHONE_NEW/USED + มี `cashPrice` + มี `gallery` + `isOnlineVisible` + ชื่อไม่ขึ้นต้น `[DEMO]` + มือสองต้องมีเกรด) → การ์ดมีบรรทัดลิงก์ และ **กดลิงก์นั้นบน web-shop ต้องเปิดได้จริง (ไม่ใช่ 404)**
 5. "แทรกสรุปในกล่องพิมพ์" → ข้อความลงที่ตำแหน่ง caret ไม่ใช่ต่อท้ายเสมอ
 6. SessionActions → "สร้างสัญญา" → เลือกเครื่อง → URL เป็น `/contracts/create?customerId=...&productId=...` และ wizard เลือกเครื่องนั้นไว้ให้แล้ว
 7. ProductContextCard: กดรูป/ชื่อ → ไป `/products/:id` ของแอดมิน; ปุ่ม "ส่งให้ลูกค้า" ส่งได้; badge จำนวนเครื่องต้องตรงกับสต็อกจริง
@@ -2994,7 +3133,7 @@ Revert commit เดียว (ไม่มี migration, ไม่มี schema
 |---|---|
 | `ChatRoom.attachedProductId` + ตัวแปรสินค้าใน canned responses | spec §1 + §4 ตัดออกแล้ว — ปุ่ม "แทรกสรุป" ให้ผลเดียวกันโดยไม่มี schema/สถานะค้าง; ถ้าเพิ่มภายหลังต้อง register ทั้ง variable service **และ** `VARIABLE_KEYS` ของ `canned-response-sender.service.ts:130-140` |
 | Migration ใดๆ | ไม่จำเป็น — `ChatMessage` มีคอลัมน์ครบตั้งแต่ `20260976`; B0 ถือเลข `20260982000000` |
-| Readiness badge / endpoint `GET /products/:id/readiness` | ⚠️ spec §4 เขียนว่า search select ควรมี `readiness` ด้วย — B2 **ไม่** ใส่ เพราะ endpoint/util readiness เป็นของ B0 §2.3 + B1 §3 และ picker ของแอดมินต้องเห็นสต็อกทั้งหมด (ไม่ใช่เฉพาะที่ขึ้นเว็บได้); B2 คืนข้อเท็จจริงดิบแทน (`photoUrl` null = ยังไม่มีรูปขึ้นเว็บ, `cashPrice` null = ยังไม่กรอกราคา). ถ้าต้องการ badge readiness จริง ให้ทำเป็น follow-up หลัง B0 merge |
+| Readiness **badge** ในผลค้น / เรียก endpoint `GET /products/:id/readiness` | ⚠️ spec §4 เขียนว่า search select ควรมี `readiness` ด้วย — B2 **ไม่คืน checklist ออก API และไม่กรองผลค้นด้วย readiness** เพราะ picker ของแอดมินต้องเห็นสต็อกทั้งหมด (ไม่ใช่เฉพาะที่ขึ้นเว็บได้); B2 คืนข้อเท็จจริงดิบแทน (`photoUrl` null = ยังไม่มีรูปขึ้นเว็บ, `cashPrice` null = ยังไม่กรอกราคา). **แต่ B2 ใช้ `evaluateReadiness` ของ B0 อยู่ 1 จุด** = ตัดสินว่าจะใส่ `shareUrl` หรือไม่ (Task 6) — จำเป็น ไม่ใช่ scope creep เพราะไม่งั้นลิงก์ที่ส่งเข้าแชทจะพาลูกค้าไป 404. ถ้าต้องการ badge readiness เต็มรูปแบบให้ทำเป็น follow-up |
 | Detection คำไทย/ความจุ/สี (`device-query-normalize.util.ts`) | ⚠️ **เบี่ยงจาก spec โดยตั้งใจ — ต้องให้ owner เคาะ**: spec §2.4 ระบุ "ผู้ใช้: … inbox detect (B2)" และ §4 ระบุ "detection ใช้ util B0" แต่ §5 (B3) ก็ระบุ "แก้ `ProductDetectService` เลิกคิดค่างวดเอง → util เดียวกัน" = เจ้าของทับกัน. B2 เลือกแก้เฉพาะ payload/ตัวเลขที่ผิด (gallery/stock/ค่างวด) และ **ไม่แตะ `extractKeywords` (:63-80)** เพื่อไม่ให้ชนกับ B3 ที่จะ re-point ทั้งไฟล์อยู่แล้ว. ถ้า owner ต้องการให้ B2 ทำ ให้เพิ่ม Task 10.5 = สลับ `extractKeywords` → util B0 + spec เทียบผลลัพธ์เดิม |
 | Share endpoint `GET /api/shop/share/:id` + OG/JSON-LD | เป็นของ B4 §6 — B2 ใช้ `${SHOP_BASE_URL}/products/:id` ตรงๆ ไปก่อน (spec §4 ระบุชัด) |
 | ส่งรูป/ลิงก์จาก **บอท** (`SalesBotResult.attachments`) | เป็นของ B3 §5 — B2 สร้าง primitive ให้ B3 มาใช้ต่อเท่านั้น |

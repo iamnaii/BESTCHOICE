@@ -28,6 +28,7 @@
 - ทุก commit ลงท้าย `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
 - QA เบราว์เซอร์ทำบน **local env เท่านั้น** (prod ปฏิเสธ seed accounts — ดู memory `qa-prod-creds-and-purchasing-v2-result`)
 - **Task 6 เป็น gate ที่ต้องรอ owner ตอบ** — Task 7 (autofill) implement ต่อได้ทันทีในสาขา `PER_MONTH` (default) แต่สาขา `TOTAL` จะ verify ได้ต่อเมื่อ owner ยืนยัน
+- **gate ที่ 2 (ก่อน merge เท่านั้น ไม่บล็อกการเขียนโค้ด): เรื่อง `[DEMO]`** — prod วันนี้มีสินค้าที่ผ่าน readiness เฉพาะ `[DEMO]` 7 เครื่อง ซึ่ง fragment กรองออก **แบบ unconditional** → merge B0 ทั้งดุ้นโดยไม่จัดการก่อน = หน้าเว็บลูกค้าเหลือ **0 สินค้า**. รายละเอียด + 2 ทางเลือกอยู่ในหัวข้อ Deployment (กรอบ "BLAST RADIUS ของจริง") — **ต้องได้คำตอบ owner ก่อน merge**
 
 ---
 
@@ -41,7 +42,7 @@
 | `src/utils/product-price-autofill.util.ts` (+`.spec.ts`) | `PricingTemplate` → `cashPrice` (+`installmentPrice` ตาม semantics flag) + stamp `priceAutofilledAt` |
 | `src/utils/product-readiness.util.ts` (+`.spec.ts`) | `productReadinessWhere()` → `{AND:[...]}` AND-composable + `evaluateReadiness()` → checklist |
 | `scripts/survey-pricing-templates.ts` | read-only survey ให้ owner ตัดสินความหมาย `installmentBestchoicePrice` |
-| `prisma/migrations/20260982000000_product_price_grade_readiness/migration.sql` | 3 คอลัมน์ใหม่บน `products` |
+| `prisma/migrations/20260982000000_product_price_grade_readiness/migration.sql` | 3 คอลัมน์ใหม่บน `products` + **dedupe + partial UNIQUE INDEX บังคับ "1 product = 1 แถว isDefault"** บน `product_prices` |
 
 **สร้างใหม่ (apps/web)**
 | ไฟล์ | หน้าที่ |
@@ -60,21 +61,29 @@
 | `apps/api/src/modules/trade-in/services/trade-in-lifecycle.service.ts:416-437` | autofill หลัง `tx.product.create` |
 | `apps/api/src/modules/repossessions/repossessions.service.ts:708-726` | resellPrice → `cashPrice` + write-through (แทนโค้ด price-row มือ) |
 | `apps/api/src/modules/quality-control/inspections.service.ts` (`completeInspection` :184-190, `overrideGrade` :195-206) | เขียน `conditionGrade` 2 จุด |
-| `apps/api/src/modules/shop-catalog/shop-catalog.service.ts:51-63, 225-233, 237-248, 251-254` | ใช้ readiness fragment 3 จุด + เลิก `?? 0` |
+| `apps/api/src/modules/shop-catalog/shop-catalog.service.ts:51-63, 178-181, 225-233, 237-248, 251-254` | ใช้ readiness fragment 4 จุด (รวม head lookup ของ `listRelated` แบบ `requireInStock:false`) + เลิก `?? 0` + `monthlyPaymentFrom` เป็น null |
+| `apps/api/src/modules/shop-catalog/installment-preview.service.ts:31` | `findUnique` → `findFirst` + readiness fragment (เดิมเครื่องที่ catalog ปฏิเสธยังขอ quote ได้) |
 | `apps/api/src/modules/shop-reservation/shop-reservation.service.ts:22-24` | reserve() ใช้ readiness fragment |
 | `apps/api/src/modules/shop-cart/shop-cart.service.ts:29-43` | เลิก `?? 0` |
-| `apps/api/src/modules/shop-installment-apply/shop-installment-apply.service.ts:44` | ไม่มีราคา → `BadRequestException` |
+| `apps/api/src/modules/shop-installment-apply/shop-installment-apply.service.ts:29, 44` | `findUnique` → `findFirst` + readiness fragment; ไม่มีราคา → `BadRequestException` |
+| `apps/api/src/modules/sales-bot/tools/search-products.tool.ts:30-38` | +`NOT: { name: { startsWith: '[DEMO]' } }` (ไม่งั้นบอทยังเสนอ [DEMO] จนกว่าจะถึง B3) |
+| `apps/api/src/modules/sales-bot/tools/calculate-installment.tool.ts:28-41` | อ่าน `product.installmentPrice ?? แถว isDefault` (write-through ทำให้แถว isDefault กลายเป็นราคาสด) |
+| `apps/api/src/modules/quality-control/quality-control.module.ts` | `imports: [ProductsModule]` เพื่อใช้ `ProductsOnlineListingService.promotePhoto` |
 | `apps/api/scripts/backfill-product-prices.ts` | fallback isDefault ทุก label + log per-label + dry-run |
 | `apps/api/package.json` | +3 npm scripts (`survey:pricing-templates`, `backfill:product-prices`, `backfill:product-prices:help`) |
 | `apps/web/src/pages/ContractCreatePage/types.ts:1-11` | `Product` +`cashPrice`/`installmentPrice` |
 | `apps/web/src/pages/ContractCreatePage/hooks/useContractCalculation.ts:35-43` | `getSellingPrice` → columns-first |
-| `apps/web-shop/src/pages/ProductDetailPage.tsx:146,177,312` | ไม่ track ราคา 0 + null-safe |
+| `apps/web-shop/src/pages/ProductDetailPage.tsx:146,158,177,312` | ไม่ track ราคา 0 + null-safe + **แยก error/404 ออกจาก loading** (`:158` `if (isLoading \|\| !data)` = Skeleton ค้างตลอดกาลเมื่อ B0 ทำให้ head query 404) |
+| `apps/web-shop/src/components/catalog/ProductCard.tsx:13,92` | `monthlyPaymentFrom` เป็น `number \| null` + ซ่อนบรรทัด "ผ่อนเริ่มต้น" เมื่อ null |
 
 **แก้ไข — spec เดิมที่ "จะแดง" เพราะพฤติกรรมเปลี่ยน (ตรวจกับโค้ดจริงแล้ว — ห้ามข้าม)**
 | ไฟล์ spec | เคสที่ต้องแก้ | Task |
 |---|---|---|
 | `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` | :25 `hard-filters…`, :162 `filters by exact model…`, :180 `listAvailableModels…`, :257 `returns null when the resolved id is not an iPhone…`, :339 `listRelated…` — ทั้ง 5 เคส assert `brand`/`category`/`status`/`isOnlineVisible` ที่ **top-level ของ where** ซึ่งย้ายเข้า `AND[...]` แล้ว | 11 |
 | `apps/api/src/modules/shop-reservation/shop-reservation.service.spec.ts` | 5 เคสใน `describe('reserve')` — mock `prisma.product.findUnique` แต่โค้ดใหม่ใช้ `findFirst`; และ `rejects if product not in stock` เปลี่ยนจาก `ConflictException` → `NotFoundException` | 11 |
+| `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` | :137 `expect(result.data[0].monthlyPaymentFrom).toBe(0)` → ต้องเป็น `toBeNull()` (Task 12 เลิกส่งค่างวดจาก rate ตัวอย่าง) | 12 |
+| `apps/api/src/modules/shop-catalog/installment-preview.service.spec.ts` | mock `prisma.product.findUnique` **6 จุด** (:12, :28, :35, :51, :80, :126) แต่โค้ดใหม่ใช้ `findFirst` → ทุกเคสได้ `undefined` = `product_not_found` | 11 |
+| `apps/api/src/modules/shop-installment-apply/shop-installment-apply.service.spec.ts` | mock `prisma.product.findUnique` **8 จุด** (:8, :14, :19, :57, :88, :112, :127, :130, :139) แต่โค้ดใหม่ใช้ `findFirst` | 11 |
 | `apps/api/src/modules/shop-cart/shop-cart.service.spec.ts` | :48 `falls back to installmentPrice when cashPrice is not set` — ต้องยังเขียว (จึงต้อง**คง fallback** `cashPrice ?? installmentPrice`) | 12 |
 | `apps/api/src/modules/quality-control/inspections.grade-mapping.spec.ts` | :178-181 assert `productUpdate` ถูกเรียกด้วย `data: { status: 'QC_PENDING' }` **เป๊ะ** → ต้องเป็น `{ status:'QC_PENDING', conditionGrade:'A' }` | 13 |
 | `apps/api/src/modules/quality-control/inspections.override-grade.spec.ts` | `makePrisma` ไม่มี `products` ใน inspection และไม่มี `product.update` → ลูปใหม่จะ throw (`products` undefined ไม่ iterable) ใน 3 เคสที่ `isCompleted: true` | 13 |
@@ -98,7 +107,8 @@
 **Interfaces:**
 - Consumes: `getDisplayPrices(product: ProductForDisplay): { cash: number | null; installment: number | null }` จาก `apps/web/src/utils/getDisplayPrices.ts:26` — columns-first อยู่แล้ว (อ่าน `product.cashPrice`/`installmentPrice` ก่อน แล้วค่อย fallback label)
 - Consumes: `calcBcInstallment` จาก `@installment/shared` (ผ่าน hook เดิม — ไม่แตะ)
-- Produces (พฤติกรรมใหม่ของ `getSellingPrice`): `installment(column|label) ?? cash(column|label) ?? isDefault row ?? prices[0] ?? 0`
+- Produces (พฤติกรรมใหม่ของ `getSellingPrice`): `installment(column|label) > 0 ?? cash(column|label) > 0 ?? isDefault row ?? prices[0] ?? 0`
+- ⚠️ **guard ต้องเป็น positivity ไม่ใช่ null-check** — `getDisplayPrices` ใช้ `Number()` + guard `!= null` (`getDisplayPrices.ts:20-22,28-29`) → คอลัมน์/แถวที่เป็น `0` / `''` / `'0.00'` จะกลายเป็นเลข **0 ที่ไม่ใช่ null** ถ้าใช้ `!= null` เครื่องที่คอลัมน์เป็น 0 แต่มีแถว isDefault 17,000 จะทำสัญญาที่ **0 บาท** (เดิมได้ 17,000) = เงินสัญญาเปลี่ยนเงียบ ซึ่งคือสิ่งที่ red line ของ batch นี้ห้าม
 
 - [ ] **Step 1:** เพิ่มคอลัมน์ราคาเข้า type `Product` ใน `apps/web/src/pages/ContractCreatePage/types.ts` (แก้ interface บรรทัด 1-11 ให้เป็น):
 
@@ -270,12 +280,27 @@ describe('useContractCalculation — แหล่งราคา (B0 golden)', (
     );
     expect(result.current.sellingPrice).toBe(20000);
   });
+
+  // I ปักหมุด red line ของ batch: คอลัมน์เป็น **0** (ไม่ใช่ null) ต้องไม่ชนะแถวที่มีราคาจริง
+  // getDisplayPrices ใช้ Number() + guard `!= null` → 0 เป็นค่า "ไม่ null" จึงหลุด guard แบบ null-check
+  // ถ้าเทสต์นี้แดง = เครื่อง 20,000฿ จะทำสัญญาที่ 0฿ (เงินสัญญาเปลี่ยนเงียบ)
+  it('I: ราคา 0 ในคอลัมน์ + แถว isDefault ที่มีราคาจริง → ต้องได้ราคาจริง (ไม่ใช่ 0)', () => {
+    const { result } = setup(
+      makeProduct({
+        cashPrice: '0',
+        installmentPrice: '0',
+        prices: [{ id: 'r1', label: 'ราคาขาย', amount: '17000', isDefault: true }],
+      }),
+      3400,
+    );
+    expect(result.current.sellingPrice).toBe(17000);
+  });
 });
 ```
 
 - [ ] **Step 3:** รันให้เห็นสถานะ RED เฉพาะ F/G/H: `cd apps/web && npx vitest run src/pages/ContractCreatePage/hooks/useContractCalculation.pricesource.test.ts`
-  → คาดหวัง: **A-E ผ่าน** (พิสูจน์ว่า golden ที่ปักหมุดตรงกับพฤติกรรมปัจจุบัน), **F ล้ม (ได้ 19000)**, **G ล้ม (ได้ 17000)**, **H ล้ม (ได้ 17000)**
-  → ถ้า A-E ล้ม = golden เขียนผิด ต้องแก้ตัวเลขให้ตรงของจริงก่อน ห้ามแตะ hook
+  → คาดหวัง: **A-E + I ผ่าน** (พิสูจน์ว่า golden ที่ปักหมุดตรงกับพฤติกรรมปัจจุบัน — I ผ่านอยู่แล้ววันนี้เพราะโค้ดเดิมอ่าน `prices[]` ก่อน), **F ล้ม (ได้ 19000)**, **G ล้ม (ได้ 17000)**, **H ล้ม (ได้ 17000)**
+  → ถ้า A-E หรือ I ล้ม = golden เขียนผิด ต้องแก้ตัวเลขให้ตรงของจริงก่อน ห้ามแตะ hook
   > หมายเหตุกลไก: hook มี effect auto-set `downPayment = ceil(sellingPrice × minDownPct)` เมื่อยังไม่ touched (`useContractCalculation.ts:56-60`) — เคส A ตั้ง initialDown 4000 = 20% ของ 20000 พอดี เลขจึงนิ่ง; `calcBcInstallment` ปัด `round2` ทุกขั้น (`packages/shared/src/installment-calc.ts:44-51`) ค่าที่ได้จึงเป็น 2 ตำแหน่งเป๊ะ ใช้ `toBe` ได้ ไม่ต้อง `toBeCloseTo`
 
 - [ ] **Step 4:** เปลี่ยน `getSellingPrice` ใน `apps/web/src/pages/ContractCreatePage/hooks/useContractCalculation.ts` — แทนบรรทัด 35-43 ทั้งบล็อกด้วย:
@@ -289,8 +314,11 @@ describe('useContractCalculation — แหล่งราคา (B0 golden)', (
       installmentPrice: selectedProduct.installmentPrice ?? null,
       prices: selectedProduct.prices,
     });
-    if (installment != null) return installment;
-    if (cash != null) return cash;
+    // ⚠️ positivity ไม่ใช่ null-check: getDisplayPrices แปลงด้วย Number() และ guard แค่
+    // `!= null` → คอลัมน์/แถวที่เป็น 0 / '' / '0.00' จะกลายเป็นเลข 0 ที่ "ไม่ null"
+    // ถ้าใช้ `!= null` เครื่องราคา 20,000 ที่คอลัมน์เผลอเป็น 0 จะทำสัญญาที่ 0 บาท (เคส I)
+    if (installment != null && installment > 0) return installment;
+    if (cash != null && cash > 0) return cash;
     // legacy tail ที่ getDisplayPrices ไม่ครอบ: row isDefault ที่ label ไม่ตรงชุดไหนเลย
     // ('ราคาขาย' จาก PO receive / 'ราคาขายต่อ (Refurbished)' จากยึดเครื่อง)
     const row =
@@ -310,7 +338,7 @@ import { getDisplayPrices } from '@/utils/getDisplayPrices';
 ```bash
 cd apps/web && npx vitest run src/pages/ContractCreatePage/hooks/
 ```
-  → คาดหวัง: ไฟล์ใหม่ 8/8 ผ่าน + `useContractCalculation.test.ts` เดิม **16/16 ผ่าน** (นับแล้ว 16 `it` — เคสที่เสี่ยงที่สุดคือ `uses "ราคาผ่อน BESTCHOICE" price when present` :81 ที่มีทั้ง 'ราคาเงินสด' 20000 + 'ราคาผ่อน BESTCHOICE' 25000 → ต้องยังได้ **25000** เพราะ installment ชนะ cash)
+  → คาดหวัง: ไฟล์ใหม่ 9/9 ผ่าน (A-I) + `useContractCalculation.test.ts` เดิม **16/16 ผ่าน** (นับแล้ว 16 `it` — เคสที่เสี่ยงที่สุดคือ `uses "ราคาผ่อน BESTCHOICE" price when present` :81 ที่มีทั้ง 'ราคาเงินสด' 20000 + 'ราคาผ่อน BESTCHOICE' 25000 → ต้องยังได้ **25000** เพราะ installment ชนะ cash)
 
 - [ ] **Step 6:** `./tools/check-types.sh web` → 0 error; `cd apps/web && npx eslint src/pages/ContractCreatePage src/utils/getDisplayPrices.ts` → 0 error
 - [ ] **Step 7:** Commit: `feat(b0): เครื่องคิดเงินสัญญาอ่านคอลัมน์ราคาก่อน + golden test ปักหมุดเลขเดิม`
@@ -325,6 +353,9 @@ cd apps/web && npx vitest run src/pages/ContractCreatePage/hooks/
 
 **Interfaces:**
 - Produces: `Product.accessoriesIncluded Json?` (`{ charger?: boolean; cable?: boolean; box?: boolean; earphone?: boolean; other?: string }`), `Product.cosmeticNotes String?` (จำกัด 500 ที่ DTO), `Product.priceAutofilledAt DateTime?` (null = ราคาเซ็ตมือ / ยังไม่มีราคา)
+- Produces: **partial unique index `product_prices_one_default`** — บังคับ invariant "1 product = 1 แถว `isDefault`" ที่ระดับ DB
+  > ทำไมต้องมี: write-through (Task 4) **และบอท** พึ่ง invariant นี้ — `search-products.tool.ts:46-50` และ `calculate-installment.tool.ts:31-36` อ่าน `prices: { where: { isDefault: true }, take: 1 }` **โดยไม่มี `orderBy`** → ถ้าหลุดมี 2 แถว Postgres คืนแถวไหนก็ได้ = บอทสุ่มราคาให้ลูกค้า. ผู้เขียนแถว `isDefault` วันนี้มี ≥4 ทาง (`products.service.create` nested create, `products-pricing.service.addPrice/updatePrice`, PO receive, ยึดเครื่อง) — ไม่มีอะไรบังคับให้เหลือแถวเดียวเลย
+  > คอลัมน์จริงใน DB ตรวจกับ `schema.prisma:1759-1773` แล้ว: ตาราง `product_prices`, คอลัมน์ `product_id` / `is_default` / `deleted_at` (snake_case ทั้งหมด)
 
 - [ ] **Step 1:** เช็คเลข migration ล่าสุดจริงก่อน: `ls apps/api/prisma/migrations | sort | tail -3` → ต้องเห็น `20260981000000_add_credit_note_source_fields` เป็นตัวท้าย; ถ้าไม่ใช่ให้เลื่อนเลขใหม่แล้วอัปเดตทุกที่ในแผนนี้
 - [ ] **Step 2:** เพิ่ม 3 ฟิลด์ใน `model Product` ต่อท้ายบล็อก online shop (ก่อน `// === Online shop additions (Phase 3) ===`):
@@ -352,8 +383,47 @@ ADD COLUMN     "cosmetic_notes" TEXT,
 ADD COLUMN     "price_autofilled_at" TIMESTAMP(3);
 ```
 
+- [ ] **Step 3b:** **ต่อท้ายไฟล์ migration เดียวกันด้วยมือ** (prisma ไม่ generate ให้ เพราะเป็น partial index ที่ไม่มีใน schema) — pre-check หาแถวซ้ำ → dedupe → สร้าง unique index:
+
+```sql
+-- === B0: บังคับ invariant "1 product = 1 แถว isDefault" ===
+-- ผู้อ่านที่พึ่ง invariant นี้: write-through util, search_products tool,
+-- calculate_installment tool (ทั้งคู่ take:1 โดยไม่มี orderBy = สุ่มแถวถ้ามี 2)
+
+-- 1) pre-check: log แถวที่ซ้ำไว้ก่อน (ดูใน migration output ตอนรัน)
+DO $$
+DECLARE dup_count INT;
+BEGIN
+  SELECT count(*) INTO dup_count FROM (
+    SELECT product_id FROM product_prices
+    WHERE is_default AND deleted_at IS NULL
+    GROUP BY product_id HAVING count(*) > 1
+  ) d;
+  RAISE NOTICE 'B0: products with >1 default price row = %', dup_count;
+END $$;
+
+-- 2) dedupe: เก็บแถวที่เก่าที่สุด (createdAt asc, id เป็น tie-breaker) เหลือ default เดียว
+UPDATE product_prices p SET is_default = false
+WHERE p.is_default AND p.deleted_at IS NULL
+  AND p.id <> (
+    SELECT q.id FROM product_prices q
+    WHERE q.product_id = p.product_id AND q.is_default AND q.deleted_at IS NULL
+    ORDER BY q.created_at ASC, q.id ASC
+    LIMIT 1
+  );
+
+-- 3) index จริง
+CREATE UNIQUE INDEX IF NOT EXISTS product_prices_one_default
+  ON product_prices(product_id)
+  WHERE is_default AND deleted_at IS NULL;
+```
+
+  > ⚠️ ลำดับสำคัญ: dedupe **ต้อง** มาก่อน `CREATE UNIQUE INDEX` ไม่งั้น migration จะล้มบน prod ถ้ามีข้อมูลซ้ำอยู่จริง
+  > ⚠️ Task 4 (`syncPriceRowsFromColumns`) ต้อง `updateMany(isDefault=false)` **ก่อน** `update(keepDefaultId → true)` เสมอ — โค้ดใน Task 4 เรียงถูกอยู่แล้ว ถ้าใครสลับลำดับ index นี้จะ throw ทันที (นั่นคือประโยชน์ของมัน)
+
 - [ ] **Step 4:** apply + regenerate: `cd apps/api && npx prisma migrate dev && npx prisma generate` แล้ว `./tools/check-types.sh api` → 0 error
-- [ ] **Step 5:** Commit: `feat(b0): schema — accessoriesIncluded / cosmeticNotes / priceAutofilledAt`
+  → ยืนยัน index เกิดจริง: `psql -c "\d product_prices"` ต้องเห็น `product_prices_one_default`
+- [ ] **Step 5:** Commit: `feat(b0): schema — accessoriesIncluded / cosmeticNotes / priceAutofilledAt + unique index isDefault แถวเดียว`
 
 ---
 
@@ -425,6 +495,13 @@ describe('parseDeviceQuery', () => {
     expect(parseDeviceQuery('ไอโฟน 15 โปรแม็กซ์').model).toBe('iPhone 15 Pro Max');
     expect(parseDeviceQuery('ไอโฟน 14 พลัส').model).toBe('iPhone 14 Plus');
     expect(parseDeviceQuery('ไอโฟน 13 โปร').model).toBe('iPhone 13 Pro');
+  });
+  // ปักหมุดลำดับ VARIANTS: บล็อก Plus ต้องมาก่อน Pro เพราะ Pro มี token 'p'
+  // และ ' plus'.includes('p') === true → ถ้า Pro มาก่อน '15 plus' จะได้ 'iPhone 15 Pro'
+  // (ชุดเดิมทดสอบแค่ 'พลัส' ภาษาไทย จึงไม่จับบั๊กนี้)
+  it('plus ภาษาอังกฤษ ต้องไม่ถูกกลืนเป็น Pro (token "p" ชนกับ "plus")', () => {
+    expect(parseDeviceQuery('15 plus').model).toBe('iPhone 15 Plus');
+    expect(parseDeviceQuery('ไอโฟน 14 plus').model).toBe('iPhone 14 Plus');
   });
   it('ดึงความจุ + สีไทยออกมาแยก', () => {
     const q = parseDeviceQuery('ไอโฟน 15 โปร 256gb สีดำ');
@@ -499,11 +576,18 @@ const APPLE_TOKENS = ['ไอโฟน', 'ไอโฟ', 'iphone', 'ip'];
  * เพื่อไม่ให้ข้อความทั่วไปที่บังเอิญมีเลข (เช่น 'ผ่อน 12 งวด') ถูกตีเป็น iPhone
  */
 const BARE_MODEL_RE = /^\d{1,2}\s*(pm|promax|pro\s*max|pro|plus|\+|mini|p)?$/i;
-/** ต่อท้ายรุ่น: เรียงยาว→สั้น เพราะ 'โปรแม็กซ์' ต้องชนะ 'โปร' */
+/**
+ * ต่อท้ายรุ่น: เรียงยาว→สั้น เพราะ 'โปรแม็กซ์' ต้องชนะ 'โปร'
+ *
+ * ⚠️ **ลำดับเป็น load-bearing:** บล็อก Plus ต้องอยู่ **ก่อน** Pro เสมอ —
+ * การ match ใช้ `after.includes(t)` (ไม่ใช่ equality) และ Pro มี token `'p'`
+ * ซึ่ง `' plus'.includes('p') === true` → ถ้า Pro มาก่อน '15 plus' จะกลายเป็น
+ * 'iPhone 15 Pro' (ลูกค้าถามพลัส ได้ราคาโปร). ห้ามสลับกลับ — มีเทสต์คุมไว้
+ */
 const VARIANTS: { tokens: string[]; suffix: string }[] = [
   { tokens: ['โปรแม็กซ์', 'โปรแมกซ์', 'promax', 'pro max', 'pm'], suffix: ' Pro Max' },
-  { tokens: ['โปร', 'pro', 'p'], suffix: ' Pro' },
   { tokens: ['พลัส', 'plus', '+'], suffix: ' Plus' },
+  { tokens: ['โปร', 'pro', 'p'], suffix: ' Pro' },
   { tokens: ['มินิ', 'mini'], suffix: ' mini' },
 ];
 /** เรียงยาว→สั้นตรงคู่ที่ซ้อนกัน: 'น้ำเงิน' ต้องมาก่อน 'เงิน' ไม่งั้น find() คืน 'เงิน' */
@@ -555,7 +639,7 @@ export function parseDeviceQuery(utterance: string): DeviceQuery {
 }
 ```
 
-- [ ] **Step 4:** รันให้ผ่าน: `cd apps/api && npx jest src/utils/device-query-normalize.util.spec.ts` → คาดหวัง **12/12** ผ่าน (normalizeStorage 2 + extractStorageToken 3 + parseDeviceQuery 7)
+- [ ] **Step 4:** รันให้ผ่าน: `cd apps/api && npx jest src/utils/device-query-normalize.util.spec.ts` → คาดหวัง **13/13** ผ่าน (normalizeStorage 2 + extractStorageToken 3 + parseDeviceQuery 8)
 - [ ] **Step 5:** `./tools/check-types.sh api` → 0; `cd apps/api && npx eslint src/utils/device-query-normalize.util.ts src/utils/device-query-normalize.util.spec.ts` → ไม่มี error ใหม่
 - [ ] **Step 6:** Commit: `feat(b0): device-query-normalize util — คำค้นไทย/ย่อ + normalizeStorage ร่วม`
 
@@ -801,25 +885,34 @@ export async function syncPriceRowsFromColumns(
 
 **Interfaces:**
 - Consumes: `syncPriceRowsFromColumns(tx, productId, columns)` (Task 4)
-- Produces: `CreateProductDto`/`UpdateProductDto` +`cashPrice?: number`, `installmentPrice?: number`, `conditionGrade?: string` (จำกัดค่าด้วย `@IsIn(['A','B','C','D'])` — **ไม่ใช่ union type** เพราะ Prisma `Product.conditionGrade` เป็น `String?` ไม่ใช่ enum, schema:1700), `shopWarrantyDays?: number`, `accessoriesIncluded?: Record<string, unknown>`, `cosmeticNotes?: string`
+- Produces: `CreateProductDto`/`UpdateProductDto` +`cashPrice?: number | null`, `installmentPrice?: number | null`, `conditionGrade?: string` (จำกัดค่าด้วย `@IsIn(['A','B','C','D'])` — **ไม่ใช่ union type** เพราะ Prisma `Product.conditionGrade` เป็น `String?` ไม่ใช่ enum, schema:1700), `shopWarrantyDays?: number`, `accessoriesIncluded?: Record<string, unknown>`, `cosmeticNotes?: string`
 - `products.service.ts` มี dep เดียว (`constructor(private prisma: PrismaService)` :25) → spec ใหม่ provide แค่ `PrismaService` พอ
 - **สิทธิ์:** `POST /products` + `PATCH /products/:id` เป็น `@Roles('OWNER','BRANCH_MANAGER')` อยู่แล้ว (`products.controller.ts:150,156`) → ไม่ต้องแก้ controller
+- **3 สถานะของฟิลด์ราคา (ห้ามยุบเหลือ 2):** `undefined` = ไม่แตะ / `null` = เคลียร์คอลัมน์ / `number` = ตั้งราคา
+  > ⚠️ **BLOCKER ที่ต้องกัน:** `@IsOptional()` ปล่อย `null` ผ่าน validation → ถ้าเขียน `cashPrice !== undefined ? new Prisma.Decimal(cashPrice) : undefined` แล้วมีคนยิง `PATCH {"cashPrice": null}` จะได้ `new Prisma.Decimal(null)` ซึ่ง **decimal.js throw** (`Invalid argument: null`) ภายใน `$transaction` → rollback การแก้ฟิลด์อื่น**ทั้งหมด**ในคำขอนั้น. B1 สร้างฟอร์มบน endpoint นี้ = กดล้างราคาแล้ว 500 ทุกครั้ง. จึงต้องแยก 3 ทางชัดๆ ด้วย `=== undefined` / `=== null` / else
+  > `syncPriceRowsFromColumns` ปฏิบัติกับ `null` = ไม่ sync ไม่ลบแถวเดิมอยู่แล้ว (Task 4 กติกาข้อ 4 + guard `!== null` ที่ `hasCash`/`hasInstallment`) → ส่ง null เข้าไปได้ปลอดภัย
 - **ลำดับใน tx ที่ตั้งใจ:** `tx.product.create` สร้างแถว `dto.prices[]` (nested create) ก่อน → `syncPriceRowsFromColumns` ค่อย `findMany` เห็นแถวพวกนั้น → ถ้าผู้เรียกส่งทั้ง `prices[]` และ `cashPrice` มาพร้อมกัน แถว `isDefault` ที่ผู้เรียกส่งมา (label อะไรก็ตามที่ไม่ขึ้นต้น 'ราคาผ่อน') **จะถูก relabel เป็น 'ราคาเงินสด' + ทับ amount ด้วยค่าคอลัมน์** — นี่คือพฤติกรรมที่ต้องการ (คอลัมน์ = แหล่งจริง spec §2.1) แต่ต้องระบุใน PR description เพราะเป็น surprise ได้สำหรับ integration ที่ส่งทั้งสองอย่าง
 
 - [ ] **Step 1:** เพิ่มฟิลด์ใน `create-product.dto.ts` — แทรกต่อจาก `costPrice` (บรรทัด 46):
 
 ```ts
-  /** B0: ราคาเงินสดต่อเครื่อง — แหล่งราคาจริง (เขียน prices[] ให้อัตโนมัติ) */
+  /**
+   * B0: ราคาเงินสดต่อเครื่อง — แหล่งราคาจริง (เขียน prices[] ให้อัตโนมัติ)
+   * 3 สถานะ: ไม่ส่ง = ไม่แตะ / ส่งเลข ≥ 1 = ตั้งราคา / ส่ง null = เคลียร์ราคา
+   * ⚠️ `@Min(1)` ไม่ใช่ `@Min(0)` — ราคา 0 ที่หลุดลงคอลัมน์จะชนะแถว prices[] ที่มีราคาจริง
+   * ในเครื่องคิดเงินสัญญา (Task 1) = ทำสัญญา 0 บาท. "ไม่มีราคา" ต้องแทนด้วย null เท่านั้น
+   * (`@IsOptional()` ปล่อย null ผ่านโดยไม่ validate — ตั้งใจ)
+   */
   @IsNumber({}, { message: 'ราคาเงินสดต้องเป็นตัวเลข' })
-  @Min(0, { message: 'ราคาเงินสดต้องไม่ติดลบ' })
+  @Min(1, { message: 'ราคาเงินสดต้องมากกว่า 0 (ถ้าต้องการล้างราคาให้ส่ง null)' })
   @IsOptional()
-  cashPrice?: number;
+  cashPrice?: number | null;
 
-  /** B0: ราคาตั้งต้นสำหรับคำนวณผ่อน (ยอดเต็ม ไม่ใช่ค่างวด) */
+  /** B0: ราคาตั้งต้นสำหรับคำนวณผ่อน (ยอดเต็ม ไม่ใช่ค่างวด) — null = ล้างราคา */
   @IsNumber({}, { message: 'ราคาผ่อนต้องเป็นตัวเลข' })
-  @Min(0, { message: 'ราคาผ่อนต้องไม่ติดลบ' })
+  @Min(1, { message: 'ราคาผ่อนต้องมากกว่า 0 (ถ้าต้องการล้างราคาให้ส่ง null)' })
   @IsOptional()
-  installmentPrice?: number;
+  installmentPrice?: number | null;
 
   @IsIn(['A', 'B', 'C', 'D'], { message: 'เกรดเครื่องต้องเป็น A, B, C หรือ D' })
   @IsOptional()
@@ -929,6 +1022,20 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
     expect(data).not.toHaveProperty('priceAutofilledAt');
     expect(tx.productPrice.create).not.toHaveBeenCalled();
   });
+
+  // BLOCKER regression: `new Prisma.Decimal(null)` throw ภายใน $transaction
+  // → rollback การแก้ฟิลด์อื่นทั้งคำขอ (ฟอร์มของ B1 กดล้างราคาแล้ว 500)
+  it('update: ส่ง cashPrice: null → เคลียร์คอลัมน์ ไม่ throw และไม่ลบแถวราคาเดิม', async () => {
+    await expect(
+      service.update('p1', { cashPrice: null, cosmeticNotes: 'ไม่ระบุราคา' } as never),
+    ).resolves.toBeDefined();
+    const data = tx.product.update.mock.calls[0][0].data;
+    expect(data.cashPrice).toBeNull();
+    expect(data.priceAutofilledAt).toBeNull(); // null ก็นับว่า "แตะราคา"
+    // util ข้ามฟิลด์ที่เป็น null → ไม่สร้าง/ไม่ลบแถว
+    expect(tx.productPrice.create).not.toHaveBeenCalled();
+    expect(tx.productPrice.update).not.toHaveBeenCalled();
+  });
 });
 ```
 
@@ -940,9 +1047,16 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
     const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, ...data } = dto;
 
     const isInStock = !data.status || data.status === 'IN_STOCK';
-    const cashDecimal = cashPrice !== undefined ? new Prisma.Decimal(cashPrice) : undefined;
+    // 3 สถานะ: undefined = ไม่แตะ | null = เคลียร์คอลัมน์ | Decimal = ตั้งราคา
+    // ห้ามยุบเป็น `!== undefined ? new Prisma.Decimal(x) : undefined` — new Prisma.Decimal(null) throw
+    const cashDecimal =
+      cashPrice === undefined ? undefined : cashPrice === null ? null : new Prisma.Decimal(cashPrice);
     const installmentDecimal =
-      installmentPrice !== undefined ? new Prisma.Decimal(installmentPrice) : undefined;
+      installmentPrice === undefined
+        ? undefined
+        : installmentPrice === null
+          ? null
+          : new Prisma.Decimal(installmentPrice);
 
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.create({
@@ -968,6 +1082,7 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
       });
 
       // B0 §2.1: write-through คอลัมน์ → prices[] (ผู้อ่านเดิม POS/สัญญา/บอท ไม่พัง)
+      // null ส่งเข้าไปได้ — util จะ "ข้ามฟิลด์นั้น" (ไม่ sync ไม่ลบแถว) ตามกติกาข้อ 4
       await syncPriceRowsFromColumns(tx, product.id, {
         cashPrice: cashDecimal ?? null,
         installmentPrice: installmentDecimal ?? null,
@@ -981,9 +1096,15 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
     await this.findOne(id);
     const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, ...data } = dto;
     const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined;
-    const cashDecimal = cashPrice !== undefined ? new Prisma.Decimal(cashPrice) : undefined;
+    // 3 สถานะเหมือน create — null ต้องเขียนลงคอลัมน์ได้ (ล้างราคา) ห้ามส่งเข้า Prisma.Decimal
+    const cashDecimal =
+      cashPrice === undefined ? undefined : cashPrice === null ? null : new Prisma.Decimal(cashPrice);
     const installmentDecimal =
-      installmentPrice !== undefined ? new Prisma.Decimal(installmentPrice) : undefined;
+      installmentPrice === undefined
+        ? undefined
+        : installmentPrice === null
+          ? null
+          : new Prisma.Decimal(installmentPrice);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.product.update({
@@ -1019,7 +1140,7 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 ```
 
-- [ ] **Step 6:** รันให้ผ่าน + spec เดิมไม่พัง: `cd apps/api && npx jest src/modules/products/` → คาดหวัง products-price-columns 4/4 + `products.service.spec.ts` (มีแค่ `describe('ProductsService.transferOwnership')` — ไม่แตะ create/update จึงต้องเขียวโดยไม่ต้องแก้) + `products-online-listing.service.spec.ts` เดิมผ่านทั้งหมด (Task 13 ถึงจะแก้ไฟล์นั้น)
+- [ ] **Step 6:** รันให้ผ่าน + spec เดิมไม่พัง: `cd apps/api && npx jest src/modules/products/` → คาดหวัง products-price-columns 5/5 + `products.service.spec.ts` (มีแค่ `describe('ProductsService.transferOwnership')` — ไม่แตะ create/update จึงต้องเขียวโดยไม่ต้องแก้) + `products-online-listing.service.spec.ts` เดิมผ่านทั้งหมด (Task 13 ถึงจะแก้ไฟล์นั้น)
 - [ ] **Step 7:** `./tools/check-types.sh api` → 0; `cd apps/api && npx eslint src/modules/products` → ไม่มี error ใหม่
 - [ ] **Step 8:** Commit: `feat(b0): DTO + ProductsService เขียนคอลัมน์ราคา/เกรด/อุปกรณ์/ตำหนิ + write-through`
 
@@ -1065,6 +1186,24 @@ async function main() {
   const buckets = { perMonthLike: 0, nearCash: 0, totalLike: 0, unusable: 0 };
   const samples: Record<string, unknown>[] = [];
 
+  // B0: นับ "คู่ประกัน" ต่อ (brand, model, storage) ของหมวดมือสอง —
+  // ถ้าคีย์ไหนมีทั้งแถว hasWarranty=true และ false = autofill เดินสาย ambiguous
+  // (เทมเพลตมาตรฐานที่ระบบแจกให้กรอกมี 2 แถวต่อรุ่นมือสองพอดี —
+  //  PricingTemplatesPage.tsx:147-149 'มีประกัน' + 'ไม่มีประกัน') → เจ้าของต้องเห็นว่า
+  //  ถ้าไม่ทำ fallback เครื่องเทิร์นเกือบทุกเครื่องจะไม่ได้ราคาเลย
+  const usedKeys = new Map<string, Set<boolean>>();
+  for (const t of rows) {
+    if (t.category !== 'PHONE_USED' || !t.isActive || t.deletedAt) continue;
+    const k = `${t.brand}|${t.model}|${t.storage}`;
+    if (!usedKeys.has(k)) usedKeys.set(k, new Set());
+    usedKeys.get(k)!.add(Boolean(t.hasWarranty));
+  }
+  const usedWarrantyPairs = {
+    keysTotal: usedKeys.size,
+    keysWithBothWarrantyVariants: [...usedKeys.values()].filter((s) => s.size > 1).length,
+    keysWithSingleVariant: [...usedKeys.values()].filter((s) => s.size === 1).length,
+  };
+
   for (const t of rows) {
     const cash = Number(t.cashPrice);
     const inst = Number(t.installmentBestchoicePrice);
@@ -1105,6 +1244,7 @@ async function main() {
         totalRows: rows.length,
         activeRows: rows.filter((r) => r.isActive).length,
         buckets,
+        usedWarrantyPairs,
         verdictHint:
           buckets.perMonthLike > buckets.totalLike
             ? 'ส่วนใหญ่ดูเป็น "ค่างวดต่อเดือน" (PER_MONTH)'
@@ -1130,7 +1270,7 @@ main().catch((err) => {
     "survey:pricing-templates": "tsx scripts/survey-pricing-templates.ts",
 ```
 
-- [ ] **Step 3:** รันบน local (seed data) เพื่อพิสูจน์ว่าไม่ crash: `cd apps/api && npm run survey:pricing-templates` → ต้องได้ JSON ที่มีคีย์ `buckets` + `samples` (ถ้า local ไม่มีข้อมูล จะได้ `totalRows: 0` ก็ถือว่าผ่าน)
+- [ ] **Step 3:** รันบน local (seed data) เพื่อพิสูจน์ว่าไม่ crash: `cd apps/api && npm run survey:pricing-templates` → ต้องได้ JSON ที่มีคีย์ `buckets` + `usedWarrantyPairs` + `samples` (ถ้า local ไม่มีข้อมูล จะได้ `totalRows: 0` ก็ถือว่าผ่าน)
 - [ ] **Step 4:** เขียนคำถาม owner ลง `docs/superpowers/plans/2026-08-04-b0-owner-questions.md` (ไฟล์ใหม่สั้นๆ) ด้วยเนื้อความ:
 
 ```markdown
@@ -1139,6 +1279,16 @@ main().catch((err) => {
 **คำถาม:** ในตารางราคากลาง (`PricingTemplate`) ช่อง `installmentBestchoicePrice`
 พี่กรอกเป็น **"ค่างวดต่อเดือน"** หรือ **"ราคาเต็มที่ใช้ตั้งต้นคำนวณผ่อน"** ครับ?
 
+**หลักฐานที่ทำให้ต้องถาม (ระบบตีความไม่ตรงกันอยู่ตอนนี้):**
+- **สติกเกอร์ตีความว่าเป็น "ต่อเดือน"** — `stickers.service.ts:175` เอาค่านี้ไปใส่ช่อง
+  `rate1.monthlyPrice` คู่กับ `termMonths` แล้วพิมพ์บนป้ายว่า "X ฿ × N เดือน"
+- หน้า import ฝั่งแอดมินสื่อว่าเป็น "ราคาผ่อน" (อ่านได้ทั้ง 2 ทาง)
+- ถ้าคำตอบคือ "ต่อเดือน" แต่มีคนเผลอตั้ง flag เป็น `TOTAL` ราคาต่อเดือนจะถูกเขียนลง
+  `Product.installmentPrice` ซึ่ง **ชนะทุกแถวราคา** ในเครื่องคิดเงินสัญญาหลัง B0 →
+  สัญญาจะคิดจากยอด ~2,500 บาทแทน ~28,900 บาท (โค้ดมี guard กันไว้ 1 ชั้น: ถ้า
+  ราคาผ่อน < ราคาเงินสด จะไม่เขียน + คืนเหตุผล `INSTALLMENT_LOOKS_PER_MONTH` แต่
+  guard ไม่ครอบทุกกรณี — คำตอบของพี่คือแหล่งจริง)
+
 **ข้อมูลประกอบ:** รันคำสั่งนี้บน prod (read-only) แล้วส่งผลให้ผมดู
 `DATABASE_URL=<prod> npm --prefix apps/api run survey:pricing-templates`
 
@@ -1146,9 +1296,19 @@ main().catch((err) => {
 - ตอบ "ต่อเดือน" → ตั้ง SystemConfig `pricing_template_installment_semantics = 'PER_MONTH'`
   (ค่าเริ่มต้นในโค้ด) → autofill เติมเฉพาะ **ราคาเงินสด** ราคาผ่อนต้องกรอกเอง
 - ตอบ "ราคารวม" → ตั้งเป็น `'TOTAL'` → autofill เติม **ทั้งราคาเงินสดและราคาผ่อน**
+- ค่าอื่นนอกจาก 2 ค่านี้ (พิมพ์ผิด) โค้ดจะ **warn แล้วใช้ `PER_MONTH`** ไม่เดาเอง
 
 ตั้งค่าได้ด้วย SQL:
 `INSERT INTO system_config (id, key, value, label) VALUES (gen_random_uuid(), 'pricing_template_installment_semantics', 'TOTAL', 'ความหมายช่องราคาผ่อนในตารางราคากลาง') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;`
+
+---
+
+**คำถามที่ 2 (ขอแค่รับทราบ ไม่ต้องตัดสินใจ):** เครื่องมือสองที่เทิร์น/รับซื้อเข้ามา
+ระบบไม่รู้ว่ามีประกันศูนย์เหลือหรือไม่ และตารางราคากลางมาตรฐานมี **2 แถวต่อรุ่น**
+(มีประกัน / ไม่มีประกัน) → ระบบจะเติมราคาโดยใช้แถว **"ไม่มีประกัน"** (ราคาต่ำกว่า =
+อนุรักษ์นิยม ไม่ตั้งราคาสูงเกินจริง) แล้ว log ไว้ให้ตรวจ — เป็นแนวเดียวกับที่
+`pricing-templates.service.ts:37` (`hasWarranty ?? false`) ทำอยู่แล้ววันนี้.
+ดูตัวเลขผลกระทบได้ที่คีย์ `usedWarrantyPairs` ในผล survey
 ```
 
 - [ ] **Step 5:** **ไม่ต้อง lint/tsc ไฟล์นี้** — ยืนยันแล้วว่า `apps/api/scripts/` อยู่นอก `include` ของ `tsconfig.json` → `npx eslint scripts/survey-pricing-templates.ts` จะตอบ `Parsing error: "parserOptions.project" ... file was not found in any of the provided project(s)` (ไฟล์ `scripts/*.ts` เดิมทุกไฟล์ก็เป็นแบบเดียวกัน) และ `npx tsc --noEmit` ไม่แตะมัน. gate เดียวคือ Step 3 (รันจริงแล้วได้ JSON)
@@ -1175,7 +1335,13 @@ export const SEMANTICS_CONFIG_KEY = 'pricing_template_installment_semantics';
 
 export interface AutofillResult {
   filled: boolean;
-  reason: 'FILLED' | 'ALREADY_PRICED' | 'NO_TEMPLATE' | 'AMBIGUOUS_WARRANTY' | 'ZERO_PRICE';
+  reason:
+    | 'FILLED'
+    | 'ALREADY_PRICED'
+    | 'NO_TEMPLATE'
+    | 'ZERO_PRICE'
+    /** เติมราคาเงินสดแล้ว แต่ข้ามราคาผ่อนเพราะเลขดูเป็น "ค่างวดต่อเดือน" (filled = true) */
+    | 'INSTALLMENT_LOOKS_PER_MONTH';
   templateId?: string;
   cashPrice?: Prisma.Decimal;
   installmentPrice?: Prisma.Decimal;
@@ -1189,7 +1355,7 @@ export async function autofillProductPriceFromTemplate(
     model: string;
     storage: string | null;
     category: ProductCategory;
-    /** null = ไม่รู้ว่ามีประกันไหม → ถ้าเทมเพลตมีทั้ง 2 แบบให้ข้าม */
+    /** null = ไม่รู้ว่ามีประกันไหม → fallback แถว hasWarranty=false (ราคาถูกกว่า = อนุรักษ์นิยม) */
     hasWarranty: boolean | null;
     currentCashPrice: Prisma.Decimal | null;
   },
@@ -1206,9 +1372,12 @@ export async function autofillProductPriceFromTemplate(
 1. `currentCashPrice != null && > 0` → `ALREADY_PRICED` (ราคาที่กรอกมือ/PO ชนะเสมอ)
 2. `tx.pricingTemplate.findMany({ where: { isActive: true, deletedAt: null, category, brand: {equals, mode:'insensitive'}, model: {equals, mode:'insensitive'} } })`
 3. เลือกตามความจุ: match `normalizeStorage(row.storage) === normalizeStorage(input.storage)` ก่อน → ถ้าไม่เจอ ใช้แถว `storage === ''` (fallback แบบเดียวกับ `PricingTemplatesService.lookup:45-57`)
-4. เลือกตามประกัน: `category !== 'PHONE_USED'` → เอาแถว `hasWarranty === false`; `PHONE_USED` + `hasWarranty` ระบุมา → filter ตามนั้น; `PHONE_USED` + `null` → เหลือ 1 แถวใช้เลย, เหลือ >1 แถว → `AMBIGUOUS_WARRANTY` + log (ไม่เขียนอะไร)
+4. เลือกตามประกัน: `category !== 'PHONE_USED'` → เอาแถว `hasWarranty === false`; `PHONE_USED` + `hasWarranty` ระบุมา → filter ตามนั้น; `PHONE_USED` + `null` → **fallback แถว `hasWarranty === false`** (ราคาถูกกว่า = อนุรักษ์นิยม ไม่ตั้งราคาสูงเกินจริง) + `logger.log` ว่าเดาเป็น "ไม่มีประกัน"
+   > ทำไมไม่ข้าม: hook trade-in ส่ง `hasWarranty: null` **เสมอ** (เครื่องเทิร์นไม่มีข้อมูลประกัน) และเทมเพลตมาตรฐานมี **2 แถวต่อรุ่นมือสองพอดี** (`PricingTemplatesPage.tsx:147-149` แจก 'มีประกัน' + 'ไม่มีประกัน') → ถ้าข้ามเมื่อ >1 แถว เครื่องมือสอง**เกือบทุกเครื่อง**จะไม่ได้ราคาเลย = autofill ไร้ผลในทางปฏิบัติ. precedent ในโค้ดเดิมทำแบบเดียวกันแล้ว: `pricing-templates.service.ts:37` ใช้ `hasWarranty ?? false`
 5. ไม่เหลือแถว → `NO_TEMPLATE`; `cashPrice <= 0` → `ZERO_PRICE`
-6. `semantics = await readStringFlag(tx, SEMANTICS_CONFIG_KEY, 'PER_MONTH')` — เขียน `installmentPrice` **เฉพาะเมื่อ `TOTAL`**
+6. `semantics = await readStringFlag(tx, SEMANTICS_CONFIG_KEY, 'PER_MONTH')` แล้ว **validate ว่าเป็น `'TOTAL'` หรือ `'PER_MONTH'` เท่านั้น** (ค่าอื่น = พิมพ์ผิด → `logger.warn` + ใช้ `'PER_MONTH'`) — เขียน `installmentPrice` **เฉพาะเมื่อ `TOTAL`**
+6b. **sanity guard (แข็ง):** แม้ flag เป็น `TOTAL` ถ้า `installmentBestchoicePrice < cashPrice` แปลว่าเลขนั้นดูเป็น "ค่างวดต่อเดือน" ไม่ใช่ยอดเต็ม → **ข้ามการเขียน `installmentPrice`** แล้วคืน `reason: 'INSTALLMENT_LOOKS_PER_MONTH'` + `logger.warn`
+   > ทำไมต้องมี: หลัง Task 1 `Product.installmentPrice` **ชนะทุกแถว** ใน `useContractCalculation` → เขียนค่างวด 2,500 ลงไป = สัญญาคิดจากยอด 2,500 แทน 28,900. flag ตั้งผิดครั้งเดียวพังทั้งกระดานเงียบๆ
 7. `tx.product.update({ cashPrice, [installmentPrice], priceAutofilledAt: new Date() })` แล้วเรียก `syncPriceRowsFromColumns`
 
 - [ ] **Step 1:** เขียน spec ที่ล้มก่อน — `apps/api/src/utils/product-price-autofill.util.spec.ts`:
@@ -1297,8 +1466,10 @@ describe('autofillProductPriceFromTemplate', () => {
     expect(r.cashPrice?.toString()).toBe('27500');
   });
 
-  it('PHONE_USED + ไม่รู้ประกัน + มีทั้ง 2 แถว → ข้าม + log', async () => {
-    const warn = jest.fn();
+  // เครื่องเทิร์นส่ง hasWarranty: null เสมอ และเทมเพลตมาตรฐานมี 2 แถวต่อรุ่นมือสองพอดี
+  // → ถ้าข้าม เครื่องมือสองเกือบทุกเครื่องจะไม่ได้ราคา; เลือกแถว "ไม่มีประกัน" (ถูกกว่า)
+  it('PHONE_USED + ไม่รู้ประกัน + มีทั้ง 2 แถว → ใช้แถวไม่มีประกัน (ราคาต่ำกว่า) + log', async () => {
+    const log = jest.fn();
     const tx = makeTx([
       TPL({ id: 'a', category: 'PHONE_USED', hasWarranty: false, cashPrice: D('20000') }),
       TPL({ id: 'b', category: 'PHONE_USED', hasWarranty: true, cashPrice: D('22000') }),
@@ -1306,10 +1477,34 @@ describe('autofillProductPriceFromTemplate', () => {
     const r = await autofillProductPriceFromTemplate(
       tx as never,
       { ...BASE, category: 'PHONE_USED', hasWarranty: null },
-      { warn, log: jest.fn() },
+      { warn: jest.fn(), log },
     );
-    expect(r).toEqual({ filled: false, reason: 'AMBIGUOUS_WARRANTY' });
-    expect(tx.product.update).not.toHaveBeenCalled();
+    expect(r.filled).toBe(true);
+    expect(r.templateId).toBe('a');
+    expect(r.cashPrice?.toString()).toBe('20000');
+    expect(log).toHaveBeenCalled();
+  });
+
+  it('semantics พิมพ์ผิด (เช่น "total ") → warn + ใช้ PER_MONTH ไม่เขียน installmentPrice', async () => {
+    const warn = jest.fn();
+    const tx = makeTx([TPL({ installmentBestchoicePrice: D('31900') })], 'TOTALL');
+    const r = await autofillProductPriceFromTemplate(tx as never, BASE, { warn, log: jest.fn() });
+    expect(r.filled).toBe(true);
+    expect(r.installmentPrice).toBeUndefined();
+    expect(tx.product.update.mock.calls[0][0].data).not.toHaveProperty('installmentPrice');
+    expect(warn).toHaveBeenCalled();
+  });
+
+  // sanity guard: flag เป็น TOTAL แต่เลขต่ำกว่าราคาเงินสด = เกือบแน่ว่าเป็นค่างวดต่อเดือน
+  // ปล่อยผ่านแล้วสัญญาจะคิดจาก 2,500 แทน 28,900 (installmentPrice ชนะทุกแถวหลัง Task 1)
+  it('TOTAL แต่ราคาผ่อน < ราคาเงินสด → เติมเฉพาะเงินสด + reason INSTALLMENT_LOOKS_PER_MONTH', async () => {
+    const warn = jest.fn();
+    const tx = makeTx([TPL({ cashPrice: D('28900'), installmentBestchoicePrice: D('2500') })], 'TOTAL');
+    const r = await autofillProductPriceFromTemplate(tx as never, BASE, { warn, log: jest.fn() });
+    expect(r.filled).toBe(true);
+    expect(r.reason).toBe('INSTALLMENT_LOOKS_PER_MONTH');
+    expect(r.installmentPrice).toBeUndefined();
+    expect(tx.product.update.mock.calls[0][0].data).not.toHaveProperty('installmentPrice');
     expect(warn).toHaveBeenCalled();
   });
 
@@ -1360,7 +1555,13 @@ export const SEMANTICS_CONFIG_KEY = 'pricing_template_installment_semantics';
 
 export interface AutofillResult {
   filled: boolean;
-  reason: 'FILLED' | 'ALREADY_PRICED' | 'NO_TEMPLATE' | 'AMBIGUOUS_WARRANTY' | 'ZERO_PRICE';
+  reason:
+    | 'FILLED'
+    | 'ALREADY_PRICED'
+    | 'NO_TEMPLATE'
+    | 'ZERO_PRICE'
+    /** เติมราคาเงินสดแล้ว แต่ข้ามราคาผ่อนเพราะเลขดูเป็น "ค่างวดต่อเดือน" (filled = true) */
+    | 'INSTALLMENT_LOOKS_PER_MONTH';
   templateId?: string;
   cashPrice?: Prisma.Decimal;
   installmentPrice?: Prisma.Decimal;
@@ -1403,6 +1604,8 @@ export async function autofillProductPriceFromTemplate(
       brand: { equals: input.brand, mode: 'insensitive' },
       model: { equals: input.model, mode: 'insensitive' },
     },
+    // deterministic: hasWarranty asc = แถว false (ไม่มีประกัน / ราคาถูกกว่า) มาก่อนเสมอ
+    orderBy: [{ hasWarranty: 'asc' }, { createdAt: 'asc' }],
   });
   if (rows.length === 0) return { filled: false, reason: 'NO_TEMPLATE' };
 
@@ -1419,10 +1622,14 @@ export async function autofillProductPriceFromTemplate(
   } else if (input.hasWarranty !== null) {
     candidates = candidates.filter((r) => r.hasWarranty === input.hasWarranty);
   } else if (candidates.length > 1) {
-    logger?.warn(
-      `[autofill] ข้ามการเติมราคา product=${input.productId} — ไม่รู้สถานะประกันและตารางราคากลางมีทั้งมี/ไม่มีประกัน (${input.brand} ${input.model} ${wanted || 'ไม่ระบุความจุ'})`,
+    // ไม่รู้สถานะประกัน (เครื่องเทิร์น/รับซื้อส่ง null เสมอ) และเทมเพลตมี 2 แถวต่อรุ่น
+    // → เลือก "ไม่มีประกัน" = ราคาต่ำกว่า (อนุรักษ์นิยม ไม่ตั้งราคาสูงเกินจริง)
+    // precedent เดิม: pricing-templates.service.ts:37 ใช้ `hasWarranty ?? false`
+    const noWarranty = candidates.filter((r) => r.hasWarranty === false);
+    if (noWarranty.length > 0) candidates = noWarranty;
+    logger?.log(
+      `[autofill] product=${input.productId} ไม่รู้สถานะประกัน — ใช้ราคาแถว "ไม่มีประกัน" (${input.brand} ${input.model} ${wanted || 'ไม่ระบุความจุ'})`,
     );
-    return { filled: false, reason: 'AMBIGUOUS_WARRANTY' };
   }
   if (candidates.length === 0) return { filled: false, reason: 'NO_TEMPLATE' };
 
@@ -1433,16 +1640,29 @@ export async function autofillProductPriceFromTemplate(
   // 3) ความหมายของ installmentBestchoicePrice — gate ของ owner (spec §9.1)
   // readStringFlag รับ Prisma.TransactionClient ได้ตรงๆ ไม่ต้อง cast —
   // precedent: expense-document-lifecycle.service.ts:866-872 ส่ง tx เข้าไปแบบเดียวกัน
-  const semantics = (await readStringFlag(
-    tx,
-    SEMANTICS_CONFIG_KEY,
-    'PER_MONTH',
-  )) as TemplateInstallmentSemantics;
+  const rawSemantics = await readStringFlag(tx, SEMANTICS_CONFIG_KEY, 'PER_MONTH');
+  // validate: `as TemplateInstallmentSemantics` เฉยๆ รับสตริงอะไรก็ได้ — พิมพ์ผิดจะเงียบ
+  const semantics: TemplateInstallmentSemantics =
+    rawSemantics === 'TOTAL' || rawSemantics === 'PER_MONTH' ? rawSemantics : 'PER_MONTH';
+  if (semantics !== rawSemantics) {
+    logger?.warn(
+      `[autofill] SystemConfig ${SEMANTICS_CONFIG_KEY}='${rawSemantics}' ไม่ใช่ค่าที่รองรับ (TOTAL|PER_MONTH) — ใช้ค่าเริ่มต้น PER_MONTH`,
+    );
+  }
+
+  // sanity guard: ถ้าเลข "ราคาผ่อน" ต่ำกว่าราคาเงินสด แปลว่ามันคือค่างวดต่อเดือน
+  // (sticker ตีความแบบนั้นอยู่ — stickers.service.ts:175) เขียนลง Product.installmentPrice
+  // ไม่ได้เด็ดขาด เพราะหลัง Task 1 คอลัมน์นี้ชนะทุกแถวในเครื่องคิดเงินสัญญา
+  const templateInstallment = new Prisma.Decimal(template.installmentBestchoicePrice.toString());
+  const looksPerMonth = templateInstallment.lessThan(cashPrice);
   const installmentPrice =
-    semantics === 'TOTAL'
-      ? new Prisma.Decimal(template.installmentBestchoicePrice.toString())
-      : undefined;
-  if (semantics !== 'TOTAL') {
+    semantics === 'TOTAL' && !looksPerMonth ? templateInstallment : undefined;
+
+  if (semantics === 'TOTAL' && looksPerMonth) {
+    logger?.warn(
+      `[autofill] product=${input.productId} ข้ามการเติมราคาผ่อน — เทมเพลต ${template.id} มีราคาผ่อน ${templateInstallment.toString()} ต่ำกว่าราคาเงินสด ${cashPrice.toString()} (น่าจะเป็นค่างวดต่อเดือน ไม่ใช่ยอดเต็ม)`,
+    );
+  } else if (semantics !== 'TOTAL') {
     logger?.log(
       `[autofill] product=${input.productId} เติมเฉพาะราคาเงินสด (semantics=${semantics}) — ราคาผ่อนต้องกรอกเอง`,
     );
@@ -1462,15 +1682,23 @@ export async function autofillProductPriceFromTemplate(
     installmentPrice: installmentPrice ?? null,
   });
 
-  return { filled: true, reason: 'FILLED', templateId: template.id, cashPrice, installmentPrice };
+  return {
+    filled: true,
+    reason: semantics === 'TOTAL' && looksPerMonth ? 'INSTALLMENT_LOOKS_PER_MONTH' : 'FILLED',
+    templateId: template.id,
+    cashPrice,
+    installmentPrice,
+  };
 }
 ```
 
-- [ ] **Step 4:** รันให้ผ่าน: `cd apps/api && npx jest src/utils/product-price-autofill.util.spec.ts` → คาดหวัง 10/10 ผ่าน
+- [ ] **Step 4:** รันให้ผ่าน: `cd apps/api && npx jest src/utils/product-price-autofill.util.spec.ts` → คาดหวัง 12/12 ผ่าน
 - [ ] **Step 5:** hook #1 — `products.service.ts` `create`: แทรกก่อนบรรทัด `await syncPriceRowsFromColumns(...)` ใน tx:
 
 ```ts
       // B0 §2.1: ไม่ได้กรอกราคาเงินสดมา → ลองเติมจากตารางราคากลาง
+      // `=== undefined` ตั้งใจ: ส่ง `cashPrice: null` มาชัดๆ = "ยืนยันว่ายังไม่มีราคา"
+      // ห้าม autofill ทับ (ไม่งั้นกดล้างราคาแล้วราคาเด้งกลับมาเอง)
       if (cashDecimal === undefined) {
         await autofillProductPriceFromTemplate(
           tx,
@@ -1548,7 +1776,7 @@ import { autofillProductPriceFromTemplate } from '../../../utils/product-price-a
 
 ```ts
       // B0 §2.1: เครื่องเทิร์น/รับซื้อยังไม่มีราคาขาย — เติมจากตารางราคากลาง (มือสอง)
-      // สถานะประกันของเครื่องเทิร์นไม่มีข้อมูล → ส่ง null (util จะข้ามถ้าเทมเพลตกำกวม)
+      // สถานะประกันของเครื่องเทิร์นไม่มีข้อมูล → ส่ง null (util จะใช้แถว "ไม่มีประกัน" = ถูกกว่า)
       await autofillProductPriceFromTemplate(tx, {
         productId: product.id,
         brand: product.brand,
@@ -1685,7 +1913,9 @@ import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 
 **Interfaces:**
 - Produces: JSON บน stdout — `{ mode, scanned, updated, skipped, bySource: { <label>: n }, samples[] }`
-- **พฤติกรรมใหม่:** dry-run เป็น default (`APPLY=true` ถึงจะเขียน); ลำดับหาราคาเงินสด = `'ราคาเงินสด'` → `startsWith('ราคาเงินสด')` → **แถว `isDefault` ไม่ว่า label อะไร** (ครอบ `'ราคาขาย'` จาก PO receive และ `'ราคาขายต่อ (Refurbished)'` จากยึดเครื่อง) → `prices[0]`; ราคาผ่อนคงลำดับเดิม (`'ราคาผ่อน BESTCHOICE'` → `startsWith('ราคาผ่อน')`)
+- **พฤติกรรมใหม่:** dry-run เป็น default (`APPLY=true` ถึงจะเขียน); ลำดับหาราคาเงินสด = `'ราคาเงินสด'` → `startsWith('ราคาเงินสด')` → **แถว `isDefault` ที่ label ไม่ขึ้นต้น `'ราคาผ่อน'`** (ครอบ `'ราคาขาย'` จาก PO receive และ `'ราคาขายต่อ (Refurbished)'` จากยึดเครื่อง) → แถวแรกที่ไม่ใช่ราคาผ่อน; ราคาผ่อนคงลำดับเดิม (`'ราคาผ่อน BESTCHOICE'` → `startsWith('ราคาผ่อน')`)
+- **ต้องกันแถว `'ราคาผ่อน*'` ออกจาก fallback ทุกชั้นของ cash** — หน้า create ตั้ง `isDefault` ให้แถวแรกที่ผู้ใช้กรอก ซึ่งอาจเป็น `'ราคาผ่อน BESTCHOICE'` → ถ้าไม่กัน ราคาผ่อน (สูงกว่า) จะถูกยกขึ้นเป็นราคาเงินสด แล้วเว็บโชว์ราคาแพงกว่าจริง และขัดกับ `syncPriceRowsFromColumns` ของ batch เดียวกันที่กันไว้แล้ว (Task 4 กติกาข้อ 1b)
+- **log แยกคีย์ให้เจ้าของรีวิว:** `cash:SKIPPED_INSTALLMENT_ONLY` (มีแต่แถวราคาผ่อน → ไม่เดา) และ `cash:AMBIGUOUS_SINGLE_ROW:<label>` (มีแถวเดียวและ label ไม่รู้จัก → เดาว่าเป็นราคาเงินสด)
 - **ห้ามทับคอลัมน์ที่มีค่าแล้ว** (forward-fix; เครื่องที่ B0 เขียนไว้แล้วต้องไม่ถูก backfill ทับ)
 
 - [ ] **Step 1:** เขียนทับ `apps/api/scripts/backfill-product-prices.ts` ทั้งไฟล์ด้วย:
@@ -1722,11 +1952,26 @@ function pickCash(rows: PriceRow[]): { amount: Prisma.Decimal; source: string } 
   if (exact) return { amount: exact.amount, source: CASH_EXACT };
   const prefix = rows.find((r) => r.label.startsWith(CASH_EXACT));
   if (prefix) return { amount: prefix.amount, source: `prefix:${prefix.label}` };
+
   // B0: ครอบ default row ทุก label — 'ราคาขาย' (PO receive) /
-  // 'ราคาขายต่อ (Refurbished)' (ยึดเครื่อง) / 'ราคาผ่อน' (หน้า create)
-  const def = rows.find((r) => r.isDefault);
+  // 'ราคาขายต่อ (Refurbished)' (ยึดเครื่อง) — **แต่ต้องกันแถว 'ราคาผ่อน*'**
+  // ⚠️ แถว 'ราคาผ่อน BESTCHOICE' เป็น isDefault ได้ (หน้า create ตั้ง isDefault ให้แถวแรก)
+  //    ถ้าไม่กัน ราคาผ่อน (สูงกว่า) จะถูกยกขึ้นเป็น "ราคาเงินสด" แล้วเว็บโชว์ราคาแพงกว่าจริง
+  //    — ขัดกับ write-through util ของ batch เดียวกันที่กันไว้แล้ว (product-price-sync.util)
+  const isCashCandidate = (r: PriceRow) => !r.label.startsWith(INSTALLMENT_PREFIX);
+
+  const def = rows.find((r) => r.isDefault && isCashCandidate(r));
   if (def) return { amount: def.amount, source: `isDefault:${def.label}` };
-  if (rows.length > 0) return { amount: rows[0].amount, source: `first:${rows[0].label}` };
+
+  const first = rows.find(isCashCandidate);
+  if (first) {
+    // แถวเดียวที่ไม่รู้จัก label = เดาว่าเป็นราคาเงินสด — ต้องให้เจ้าของรีวิว
+    const source = rows.length === 1 ? `AMBIGUOUS_SINGLE_ROW:${first.label}` : `first:${first.label}`;
+    return { amount: first.amount, source };
+  }
+
+  // มีแต่แถวราคาผ่อน → ไม่เดาเป็นราคาเงินสด (ปล่อยคอลัมน์ cashPrice เป็น null
+  // แล้วให้ readiness กรองออก ดีกว่าตั้งราคาผิดแล้วขายจริงตามนั้น)
   return null;
 }
 
@@ -1774,6 +2019,9 @@ async function main() {
     }
 
     if (cash) bySource[`cash:${cash.source}`] = (bySource[`cash:${cash.source}`] ?? 0) + 1;
+    // เครื่องที่มีแต่แถวราคาผ่อน — cash เป็น null โดยตั้งใจ ต้องนับให้เจ้าของเห็น
+    if (!cash && p.cashPrice == null && installment)
+      bySource['cash:SKIPPED_INSTALLMENT_ONLY'] = (bySource['cash:SKIPPED_INSTALLMENT_ONLY'] ?? 0) + 1;
     if (installment)
       bySource[`installment:${installment.source}`] =
         (bySource[`installment:${installment.source}`] ?? 0) + 1;
@@ -1853,6 +2101,8 @@ main().catch((err) => {
 export const SHOP_BRAND = 'Apple';
 export const SHOP_PHONE_CATEGORIES = ['PHONE_NEW', 'PHONE_USED'] as const;
 export const DEMO_NAME_PREFIX = '[DEMO]';
+/** ชุดเกรดที่ระบบยอมรับ — ต้องใช้ชุดเดียวกันทั้งใน where fragment และ checklist */
+export const VALID_CONDITION_GRADES = ['A', 'B', 'C', 'D'] as const;
 
 /** fragment ที่ AND-composable — ใช้คีย์ `AND` อย่างเดียว ไม่แตะ `OR` ระดับบนสุด */
 export function productReadinessWhere(opts?: { requireInStock?: boolean }): Prisma.ProductWhereInput;
@@ -1861,6 +2111,8 @@ export interface ReadinessCheck { key: string; label: string; ok: boolean; hint?
 export interface ReadinessResult { ready: boolean; checks: ReadinessCheck[] }
 export function evaluateReadiness(p: ReadinessProductShape): ReadinessResult;
 ```
+- **เงื่อนไขเกรดต้องเหมือนกันทั้ง 2 ฝั่ง (where กับ checklist)** — เดิมแผนใช้ `{ conditionGrade: { not: '' } }` ใน where แต่ `.trim().length > 0` ใน `evaluateReadiness` → เกรดที่เป็น **ช่องว่างเดียว** (`' '`) จะ **ขึ้นเว็บได้** แต่ checklist บอก "ยังไม่พร้อม" (แอดมินไล่แก้ไม่จบ). ใช้ `in VALID_CONDITION_GRADES` ทั้งคู่ — ตรงกับค่าที่ระบบเขียนจริงทุกทาง (`InspectionsService.calculateGrade` คืน `'A'|'B'|'C'|'D'`, `repossessions.service.ts:283` validate ชุดเดียวกัน, DTO ใช้ `@IsIn(['A','B','C','D'])`)
+- **`GET /products/:id/readiness` ต้องคืนคีย์ `isReady` ไม่ใช่ `ready`** — B1 (`useProductReadiness.ts` + `ReadinessCard` + fixture เทสต์) บริโภค `isReady` ทั้งหมด (b1 plan :1633,:1746,:1790) → ถ้า B0 คืน `ready` B1 จะได้ `undefined` = แสดง "ยังขึ้นเว็บไม่ได้" ตลอด **โดยไม่มีเทสต์ไหนแดง**. แก้ที่ B0 ฝั่งเดียว (util ยังคืน `ready` ภายในได้ — endpoint เป็นตัว map)
 - **ข้อบังคับ:** fragment ต้อง**ไม่ใช้คีย์ `OR` ที่ระดับบนสุด** เพราะ `listGroupedByModel` assign `where.OR` เองสำหรับ search (`shop-catalog.service.ts:96-99`) — เงื่อนไข "มือสองต้องมีเกรด" จึงห่ออยู่ใน `AND[...]` เป็น `{ OR: [...] }` ซ้อนชั้นใน
 - `requireInStock: false` ใช้ที่ **head query ของ `getProductDetail` เท่านั้น** — spec §0 ยืนยันว่า `/products/:id` ของเครื่องที่ขายแล้วต้องยัง render หน้ารุ่นได้ (permalink ของ B4)
 
@@ -1890,12 +2142,12 @@ describe('productReadinessWhere', () => {
     expect(and).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
   });
 
-  it('มือสองต้องมีเกรด — ห่ออยู่ใน AND ไม่ใช่ OR ระดับบนสุด', () => {
+  it('มือสองต้องมีเกรด — ห่ออยู่ใน AND ไม่ใช่ OR ระดับบนสุด และใช้ชุดเกรดเดียวกับ checklist', () => {
     const and = (productReadinessWhere() as { AND: Record<string, unknown>[] }).AND;
     expect(and).toContainEqual({
       OR: [
         { category: { not: 'PHONE_USED' } },
-        { AND: [{ conditionGrade: { not: null } }, { conditionGrade: { not: '' } }] },
+        { conditionGrade: { in: ['A', 'B', 'C', 'D'] } },
       ],
     });
   });
@@ -1938,6 +2190,15 @@ describe('evaluateReadiness', () => {
     expect(r.ready).toBe(false);
   });
 
+  // ปักหมุดความสอดคล้อง where ↔ checklist: เกรดที่เป็นช่องว่าง/ค่านอกชุด ต้องไม่ผ่านทั้งคู่
+  it('มือสองเกรดเป็นช่องว่างหรือค่านอกชุด A-D → ไม่ ready (ตรงกับ where ที่ใช้ in [A,B,C,D])', () => {
+    for (const grade of [' ', '', 'ก', 'E']) {
+      const r = evaluateReadiness({ ...ok, category: 'PHONE_USED', conditionGrade: grade } as never);
+      expect(r.checks.find((c) => c.key === 'conditionGrade')?.ok).toBe(false);
+      expect(r.ready).toBe(false);
+    }
+  });
+
   it('แบรนด์นอก shop gate → เตือนว่าเว็บไม่รับ', () => {
     const r = evaluateReadiness({ ...ok, brand: 'Samsung' } as never);
     expect(r.checks.find((c) => c.key === 'shopGate')?.ok).toBe(false);
@@ -1960,6 +2221,11 @@ import { Prisma } from '@prisma/client';
 export const SHOP_BRAND = 'Apple';
 export const SHOP_PHONE_CATEGORIES = ['PHONE_NEW', 'PHONE_USED'] as const;
 export const DEMO_NAME_PREFIX = '[DEMO]';
+/**
+ * ชุดเกรดที่ระบบยอมรับ — ใช้ทั้งใน where fragment และ checklist เพื่อให้ตัดสินเหมือนกัน
+ * (ตรงกับ InspectionsService.calculateGrade / repossessions validGrades / DTO @IsIn)
+ */
+export const VALID_CONDITION_GRADES = ['A', 'B', 'C', 'D'] as const;
 
 /**
  * B0 §2.3 — เงื่อนไข "ข้อมูลครบพอขึ้นเว็บ" ชุดเดียวของทั้งระบบ
@@ -1986,9 +2252,11 @@ export function productReadinessWhere(opts?: {
     // ไม่ผูกกับ NODE_ENV — QA local ต้องเห็นพฤติกรรมเดียวกับ prod
     { NOT: { name: { startsWith: DEMO_NAME_PREFIX } } },
     {
+      // ⚠️ ต้องใช้ชุดค่าเดียวกับ evaluateReadiness — `{ not: '' }` ปล่อยเกรดที่เป็น
+      // ช่องว่างเดียวผ่าน (ขึ้นเว็บได้) ทั้งที่ checklist บอกว่ายังไม่พร้อม
       OR: [
         { category: { not: 'PHONE_USED' } },
-        { AND: [{ conditionGrade: { not: null } }, { conditionGrade: { not: '' } }] },
+        { conditionGrade: { in: [...VALID_CONDITION_GRADES] } },
       ],
     },
   ];
@@ -2060,7 +2328,11 @@ export function evaluateReadiness(p: ReadinessProductShape): ReadinessResult {
     {
       key: 'conditionGrade',
       label: 'มีเกรดเครื่อง (เฉพาะมือสอง)',
-      ok: !isUsed || !!(p.conditionGrade && p.conditionGrade.trim().length > 0),
+      // ชุดเดียวกับ where fragment เป๊ะ — ห้ามใช้ `.trim().length > 0` (จะยอมรับค่านอกชุด
+      // และเกรดช่องว่างจะตัดสินไม่ตรงกับ DB)
+      ok:
+        !isUsed ||
+        (VALID_CONDITION_GRADES as readonly string[]).includes(p.conditionGrade ?? ''),
       hint: !isUsed ? 'ไม่บังคับสำหรับเครื่องมือ 1' : undefined,
     },
     {
@@ -2080,7 +2352,7 @@ export function evaluateReadiness(p: ReadinessProductShape): ReadinessResult {
 }
 ```
 
-- [ ] **Step 4:** รันให้ผ่าน: `cd apps/api && npx jest src/utils/product-readiness.util.spec.ts` → คาดหวัง 10/10 ผ่าน
+- [ ] **Step 4:** รันให้ผ่าน: `cd apps/api && npx jest src/utils/product-readiness.util.spec.ts` → คาดหวัง 11/11 ผ่าน
 - [ ] **Step 5:** เพิ่ม method ใน `products.service.ts` (วางต่อจาก `getBrands()` ก่อนปิดคลาส):
 
 ```ts
@@ -2099,8 +2371,13 @@ export function evaluateReadiness(p: ReadinessProductShape): ReadinessResult {
     const result = evaluateReadiness(product);
     return {
       productId: product.id,
-      ready: result.ready,
+      // ⚠️ ชื่อคีย์ต้องเป็น `isReady` — B1 (useProductReadiness/ReadinessCard/fixture)
+      // อ่าน `data.isReady` ทั้งหมด; ถ้าส่ง `ready` B1 จะได้ undefined = โชว์
+      // "ยังขึ้นเว็บไม่ได้" ตลอด โดยไม่มีเทสต์ไหนแดง
+      isReady: result.ready,
       checks: result.checks,
+      // B1 โชว์สวิตช์ "แสดงบนเว็บ" คู่กับการ์ดนี้ — ส่งค่ามาด้วยจะได้ไม่ต้องยิงซ้ำ
+      isOnlineVisible: product.isOnlineVisible,
       priceAutofilledAt: product.priceAutofilledAt,
       hasInstallmentPrice: product.installmentPrice != null,
     };
@@ -2133,15 +2410,21 @@ import { evaluateReadiness } from '../../utils/product-readiness.util';
 ### Task 11: ใช้ readiness fragment กับผู้อ่านทุกตัว
 
 **Files:**
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (const :51-52, `shopBaseWhere` :55-63, `getProductDetail` head :225-233 + units :237-248)
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (const :51-52, `shopBaseWhere` :55-63, `listRelated` head :178-181, `getProductDetail` head :225-233 + units :237-248)
+- Modify: `apps/api/src/modules/shop-catalog/installment-preview.service.ts` (:31 `findUnique` → `findFirst` + fragment)
+- Modify: `apps/api/src/modules/shop-installment-apply/shop-installment-apply.service.ts` (:29 `findUnique` → `findFirst` + fragment)
 - Modify: `apps/api/src/modules/shop-reservation/shop-reservation.service.ts` (:22-24)
+- Modify: `apps/api/src/modules/sales-bot/tools/search-products.tool.ts` (:30-38 — กรอง `[DEMO]`)
+- Modify: `apps/api/src/modules/sales-bot/tools/calculate-installment.tool.ts` (:28-41 — อ่านคอลัมน์ก่อนแถว isDefault)
 - Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (**5 เคส** ที่ตรวจ where เดิม + 1 เคสใหม่)
 - Modify: `apps/api/src/modules/shop-reservation/shop-reservation.service.spec.ts` (**5 เคส** ใน `describe('reserve')`)
 
 **Interfaces:**
 - Consumes: `productReadinessWhere(opts?)` (Task 10)
+- **ผิวขายที่ต้อง gate ครบ (ไม่ใช่แค่ catalog + reserve):** เดิมแผนปล่อย 2 จุดหลุด — `InstallmentPreviewService.preview` (`installment-preview.service.ts:31` เช็คแค่ `deletedAt`) และ `ShopInstallmentApplyService.submit` (`:29` เช็คแค่ `deletedAt`) → เครื่องที่ catalog ซ่อนและ `reserve()` ปฏิเสธ **ยังขอใบเสนอค่างวดได้ และยื่นใบสมัครพร้อมเลขบัตรประชาชนได้** (เก็บ PII ให้ดีลที่เกิดไม่ได้). ปิดที่ B0 ทั้งคู่ — ถ้าจะเลื่อนต้องเขียนในหัวข้อ "สิ่งที่ batch นี้ไม่ทำ" ให้ชัด ไม่ใช่ปล่อยเงียบ
 - **จุดที่ต้องระวัง:** `listGroupedByModel` ยังทำ `where.category = ...` (:86), `where.model = ...` (:88), `where.conditionGrade = ...` (:89), `where.cashPrice = {...}` (:90-93), `where.OR = [...]` (:94-100) ที่ระดับบนสุด — Prisma AND-รวม field ระดับบนสุดกับคีย์ `AND[]` ให้อัตโนมัติ **ไม่ต้องแก้บรรทัดพวกนั้น** (เช่น `where.cashPrice = {gte:X}` จะ AND กับ `AND[{cashPrice:{gt:0}}]` ได้ถูกต้อง)
-- **ผู้อ่านที่ได้ fragment ฟรี** (ไม่ต้องแก้เพิ่ม): `listAvailableModels` (:169) และ `listRelated` (:178, :181) เพราะเรียก `shopBaseWhere()` อยู่แล้ว
+- **ผู้อ่านที่ได้ fragment ฟรี** (ไม่ต้องแก้เพิ่ม): `listAvailableModels` (:169) และ **ตัว where ของ group/sample ใน `listRelated`** (:181) เพราะเรียก `shopBaseWhere()` อยู่แล้ว
+- ⚠️ **แต่ head lookup ของ `listRelated` (:178-180) ต้องแก้** — มันใช้ `shopBaseWhere()` ซึ่ง `requireInStock:true` → เปิด permalink ของเครื่องที่ **ขายแล้ว** จะได้ `related` เป็น `[]` ทั้งที่หน้ารายละเอียดยัง render ได้ (head ของ `getProductDetail` ใช้ `requireInStock:false`) = หน้ารุ่นโล่งครึ่งหน้า ไม่สอดคล้องกัน
 
 - [ ] **Step 1:** แทน `shopBaseWhere` (บรรทัด 55-63) ใน `shop-catalog.service.ts`:
 
@@ -2187,6 +2470,18 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
 ```
   (ตัด `brand: product.brand` ออกได้เพราะ fragment บังคับ `brand: SHOP_BRAND` อยู่แล้ว — head query ผ่าน fragment เดียวกันจึงการันตีว่า `product.brand === SHOP_BRAND`)
 
+- [ ] **Step 3b:** แก้ head lookup ของ `listRelated` (บรรทัด 178-180) ให้ใช้ `requireInStock:false` เหมือน `getProductDetail` — ไม่งั้น permalink ของเครื่องที่ขายแล้วจะมี related ว่าง:
+
+```ts
+    const product = await this.prisma.product.findFirst({
+      // head lookup เท่านั้น — ต้องตรงกับ getProductDetail (permalink ของเครื่องที่ขายแล้ว)
+      where: { id: productId, ...productReadinessWhere({ requireInStock: false }) },
+    });
+    if (!product) return [];
+    // ตัวรายการ related ยังใช้ shopBaseWhere() ปกติ (ต้องเป็นเครื่องที่ซื้อได้จริง)
+    const where = { ...shopBaseWhere(), model: { not: product.model } };
+```
+
 - [ ] **Step 4:** แก้ `shop-reservation.service.ts` บรรทัด 22-24:
 
 ```ts
@@ -2205,6 +2500,57 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
   บรรทัด 24 เดิม `if (product.status !== 'IN_STOCK') throw new ConflictException(...)` **ลบทิ้ง** — fragment ครอบแล้ว.
   ⚠️ **คง import `ConflictException` ไว้** — ยังถูกใช้ที่ `:43` (`'เครื่องนี้ถูกจองโดยลูกค้ารายอื่นอยู่ — รอ 15 นาที'`) ตรวจแล้ว ห้ามลบ
   ⚠️ **พฤติกรรมที่เปลี่ยนโดยตั้งใจ:** เครื่องที่ขายไปแล้วเคยตอบ `409 ConflictException('สินค้านี้ไม่อยู่ในสต็อกแล้ว')` ตอนนี้ตอบ `404 NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ')` — ฝั่ง web-shop แสดง `e.response?.data?.message` ตรงๆ (`ProductDetailPage.tsx:153-155`) จึงไม่พังแต่ข้อความเปลี่ยน ต้องระบุใน PR description
+
+- [ ] **Step 4b:** ปิดผิวขายที่เหลือ #1 — `installment-preview.service.ts` บรรทัด 31 (`findUnique` → `findFirst` + fragment). เดิมเครื่องที่ catalog ซ่อนและจองไม่ได้ ยัง**ขอใบเสนอค่างวดได้**:
+
+```ts
+    const product = await this.prisma.product.findFirst({
+      // B0 §2.3: quote ได้เฉพาะเครื่องที่พร้อมขายบนเว็บจริง (เดิมเช็คแค่ deletedAt)
+      where: { id: dto.productId, ...productReadinessWhere() },
+      include: { prices: { where: { deletedAt: null } } },
+    });
+    if (!product) {
+      return { available: false, reason: 'product_not_found' };
+    }
+```
+  (บรรทัด `if (!product || product.deletedAt)` เดิมยุบเหลือ `if (!product)` — fragment ครอบ `deletedAt` แล้ว; `reason` คงเดิมเพื่อไม่ให้ฝั่ง web-shop ต้องแก้) + import `productReadinessWhere` จาก `'../../utils/product-readiness.util'`
+
+- [ ] **Step 4c:** ปิดผิวขายที่เหลือ #2 — `shop-installment-apply.service.ts` บรรทัด 29. **จุดนี้รุนแรงกว่า** เพราะ `submit` เก็บ `nationalId` ลง DB → เดิมลูกค้ายื่นใบสมัครพร้อมเลขบัตรประชาชนให้เครื่องที่ขายไม่ได้:
+
+```ts
+    const product = await this.prisma.product.findFirst({
+      // B0 §2.3: ข้อความเดียวกับ reserve() เพื่อให้ลูกค้าเห็นเหตุผลเดียวกันทุกทางเข้า
+      where: { id: dto.productId, ...productReadinessWhere() },
+    });
+    if (!product) throw new NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ');
+```
+  (`NotFoundException` import อยู่แล้วบรรทัด 1) + import `productReadinessWhere`
+
+- [ ] **Step 4d:** ปิดช่องว่าง B0→B3 #1 — `search-products.tool.ts` เพิ่ม 1 บรรทัดใน `where` (บรรทัด 30-38). บอทยังไม่ผ่าน readiness util จนกว่าจะถึง B3 → ระหว่างนั้นจะยัง**เสนอสินค้า [DEMO] ให้ลูกค้า** ทั้งที่เว็บกรองออกแล้ว:
+
+```ts
+        deletedAt: null,
+        isOnlineVisible: true,
+        status: 'IN_STOCK',
+        // B0: เว็บกรอง [DEMO] แล้ว บอทต้องไม่เสนอสวนทาง (B3 จะย้ายมาใช้ util เต็มตัว)
+        NOT: { name: { startsWith: '[DEMO]' } },
+```
+  > ปลอดภัยกับ grounding guard ของ B3: **ไม่เปลี่ยน shape ของผลลัพธ์** แค่ตัดแถวออก
+
+- [ ] **Step 4e:** ปิดช่องว่าง B0→B3 #2 — `calculate-installment.tool.ts` (บรรทัด 28-41). write-through ของ Task 4 ทำให้แถว `isDefault` กลายเป็น **'ราคาเงินสด' เสมอ** แต่ tool นี้อ่านแถว `isDefault` เป็นฐานคิดค่างวด → บอทจะคิดค่างวดจากราคาสด **ต่ำกว่าที่ลูกค้าเซ็นจริง** (golden test เต็มยังอยู่ B3 — ที่นี่แก้ 3 บรรทัดกัน regression ที่ B0 เป็นคนสร้าง):
+
+```ts
+      select: {
+        name: true,
+        installmentPrice: true,          // ← เพิ่ม
+        prices: { where: { deletedAt: null, isDefault: true }, select: { amount: true }, take: 1 },
+      },
+    });
+    if (!product) return { error: 'product_not_found' };
+    // B0: คอลัมน์คือแหล่งราคาจริง; แถว isDefault หลัง write-through = ราคาเงินสด
+    // ซึ่งต่ำกว่ายอดตั้งต้นผ่อน → ถ้าอ่านแถวอย่างเดียวบอทจะ quote ต่ำกว่าสัญญาจริง
+    const sellingPrice = product.installmentPrice ?? product.prices[0]?.amount;
+```
 
 - [ ] **Step 5:** แก้ `shop-reservation.service.spec.ts` — **ทั้ง 5 เคสใน `describe('reserve')` ใช้ `prisma.product.findUnique` ซึ่งโค้ดใหม่ไม่เรียกแล้ว**:
   a) ใน `beforeEach` เปลี่ยน `product: { findUnique: jest.fn() }` (บรรทัด 12) → `product: { findFirst: jest.fn() }`
@@ -2280,6 +2626,7 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
 
   e) `:339 'returns other models (iPhone-only base, excludes current model, limit 6)'` → เปลี่ยน `where: expect.objectContaining({ brand: 'Apple', model: { not: 'iPhone 16' } })` เป็น
      `where: expect.objectContaining({ model: { not: 'iPhone 16' }, AND: expect.arrayContaining([{ brand: 'Apple' }]) })`
+     > head lookup ของ `listRelated` (Step 3b) ยัง mock ด้วย `findFirst.mockResolvedValueOnce` ตัวเดิม (:340) → เคสนี้ไม่แดงจากการเปลี่ยน `requireInStock` แต่ **ควรเพิ่ม 1 assertion** ว่า head query ไม่บังคับ `IN_STOCK`: `expect(prisma.product.findFirst.mock.calls[0][0].where.AND).not.toContainEqual({ status: 'IN_STOCK' })`
 
   > เคสที่ **ไม่ต้องแตะ** (ยืนยันแล้วว่ายังเขียว): `:44`/`:51` `narrows category…` (อ่าน `where.category` top-level ซึ่งยังถูก assign อยู่), `:140` search (`where.OR` top-level), `:155` blank search, `:209` `scopes units to the SAME category` (ใช้ `objectContaining({ category: 'PHONE_USED' })` ซึ่งยังอยู่ top-level ของ units query)
 
@@ -2295,24 +2642,33 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
     });
 ```
 
-- [ ] **Step 8:** รันให้เขียว: `cd apps/api && npx jest src/modules/shop-catalog src/modules/shop-reservation` → ทุก suite ผ่าน
-- [ ] **Step 9:** `./tools/check-types.sh api` → 0; `cd apps/api && npx eslint src/modules/shop-catalog src/modules/shop-reservation` → ไม่มี error ใหม่
-- [ ] **Step 10:** Commit: `feat(b0): readiness fragment คุมทุกผู้อ่าน (catalog 3 จุด + reserve)`
+- [ ] **Step 7b:** แก้ spec ของ 2 ผิวขายที่เพิ่ง gate (ตรวจกับไฟล์จริงแล้วว่าจะแดงทั้งไฟล์ — mock ผูกกับ `findUnique`):
+  a) `installment-preview.service.spec.ts` — เปลี่ยน `product: { findUnique: jest.fn() }` (:12) เป็น `findFirst` และ `prisma.product.findUnique.mockResolvedValue(...)` ทั้ง 5 จุด (:28, :35, :51, :80, :126) เป็น `findFirst`
+  b) `shop-installment-apply.service.spec.ts` — เปลี่ยน type + mock `findUnique` → `findFirst` (:8, :14, :19 และ mockResolvedValue :57, :88, :112, :127, :130, :139); เคส `:127` (`mockResolvedValue(null)`) ที่คาด `NotFoundException` ยังถูกต้อง แต่ **ข้อความเปลี่ยนเป็น** `'สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ'` — ถ้า assert ข้อความให้แก้ตาม
+  c) เพิ่ม 1 เคสในแต่ละไฟล์ว่า fragment ถูกส่งเข้า query จริง: `expect(prisma.product.findFirst.mock.calls[0][0].where.AND).toEqual(expect.arrayContaining([{ cashPrice: { gt: 0 } }]))`
+  > `calculate-installment.tool.spec.ts` **ไม่ต้องแก้** — mock ที่ไม่มีคีย์ `installmentPrice` ให้ `undefined` → `undefined ?? prices[0]?.amount` ได้ค่าเดิม (ตรวจแล้ว); `search-products.tool.ts` ไม่มี spec
+
+- [ ] **Step 8:** รันให้เขียว: `cd apps/api && npx jest src/modules/shop-catalog src/modules/shop-reservation src/modules/shop-installment-apply src/modules/sales-bot` → ทุก suite ผ่าน
+- [ ] **Step 9:** `./tools/check-types.sh api` → 0; `cd apps/api && npx eslint src/modules/shop-catalog src/modules/shop-reservation src/modules/shop-installment-apply src/modules/sales-bot` → ไม่มี error ใหม่
+- [ ] **Step 10:** Commit: `feat(b0): readiness fragment คุมผิวขายทุกตัว (catalog 4 จุด + reserve + quote + ใบสมัคร) + กัน [DEMO]/ราคาผิดในบอท`
 
 ---
 
-### Task 12: เลิก null→0 ครบ 4 จุด
+### Task 12: เลิก null→0 ครบ 4 จุด + เลิกโชว์ค่างวดปลอม + หน้า 404 ที่ใช้งานได้
 
 **Files:**
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (:251-271 ลูปสร้าง tiers)
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (:14 type, :141/:206 `monthlyPaymentFrom`, :251-271 ลูปสร้าง tiers)
 - Modify: `apps/api/src/modules/shop-cart/shop-cart.service.ts` (:29-43)
 - Modify: `apps/api/src/modules/shop-installment-apply/shop-installment-apply.service.ts` (:44)
-- Modify: `apps/web-shop/src/pages/ProductDetailPage.tsx` (:146 `value: selectedUnit?.cashPrice ?? 0`, :177 `const price = selectedUnit?.cashPrice ?? 0`, :312 `{price > 0 ? (`)
+- Modify: `apps/web-shop/src/pages/ProductDetailPage.tsx` (:146 `value: selectedUnit?.cashPrice ?? 0`, **:158 `if (isLoading || !data)` = Skeleton ค้างตลอดกาลเมื่อ 404**, :177 `const price = selectedUnit?.cashPrice ?? 0`, :312 `{price > 0 ? (`)
+- Modify: `apps/web-shop/src/components/catalog/ProductCard.tsx` (:13 type, :92 เงื่อนไข render ค่างวด)
 - Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (+1 เคสใหม่, Step 5)
 
 **Interfaces:**
 - **ไม่เปลี่ยน type สาธารณะ**: `CartItem.product.sellingPrice` คงเป็น `number` (CheckoutPage บวก `shippingFee` ตรงๆ ที่ `CheckoutPage.tsx:91` — เปลี่ยนเป็น nullable จะลามไป 4 ไฟล์). แทนที่จะโชว์ ฿0 ให้ **ตัดรายการที่ไม่มีราคาออกจากตะกร้า** (จองใหม่ทำไม่ได้อยู่แล้วหลัง Task 11 — เหลือแค่ hold ค้างจากก่อน B0)
 - `ProductUnit.cashPrice` ยังเป็น `number` — units ที่ไม่มีราคาถูก readiness fragment กรองออกก่อนแล้ว จึง `continue` ทิ้งได้อย่างปลอดภัย
+- **B0 เป็นตัวสร้าง 404 ใหม่ จึงต้องเป็นตัวทำหน้า 404 ให้ใช้งานได้ด้วย** — Task 11 ใส่ readiness เข้า head query ของ `getProductDetail` → `shop-catalog.controller.ts:43` โยน `NotFoundException` ได้เป็นครั้งแรก แต่ `ProductDetailPage.tsx:158` เขียนว่า `if (isLoading || !data) return <Skeleton/>` **ไม่มี branch error เลย** → ลิงก์สินค้าที่พนักงานส่งให้ลูกค้าใน LINE จะเป็นโครงกระดูกหมุนค้างตลอดกาล (แย่กว่า 404 ธรรมดา เพราะลูกค้าไม่รู้ว่าต้องทำอะไรต่อ). ปล่อยให้ B4 แก้ไม่ได้ — ระหว่างนั้นลูกค้าเจอหน้าค้างจริง
+- **ค่างวดบนการ์ดรายการเป็นเลขที่ทำสัญญาจริงไม่ได้** — `shop-catalog.service.ts:48` ใช้ `INTEREST_RATE_PER_MONTH = 0.0099` ที่คอมเมนต์ตัวเองบอกว่า "example, adjust per pricing config" แล้วส่งออกเป็น `monthlyPaymentFrom` ทุกการ์ด ทั้งที่เครื่องคิดเงินจริงอ่าน `InterestConfig` จาก DB. B4 ถึงจะแก้ให้ใช้ rate จริง → ระหว่างนั้น **ไม่แสดงดีกว่าแสดงผิด** (ลูกค้าเอาเลขไปอ้างตอนทำสัญญาแล้วเจอเลขสูงกว่า = เรื่องร้องเรียน)
 - ฝั่ง web-shop `ProductUnit.cashPrice` ประกาศเป็น `number` (non-null) ที่ `apps/web-shop/src/types/product.ts:19` → `selectedUnit?.cashPrice ?? null` ให้ type `number | null` และ `track(event, params?: Record<string, unknown>)` (`src/lib/analytics.ts:108`) รับ `undefined` ได้ ไม่ต้องแก้ signature. `price` ถูกใช้แค่ 2 จุด (:312 เงื่อนไข, :314 `price.toLocaleString()`) → narrowing ด้วย `price != null && price > 0` ครอบพอ
 
 - [ ] **Step 1:** `shop-catalog.service.ts` ลูป tiers — แทนบรรทัด 251-254 (`for (const u of allUnits) { ... const price = ...`) ด้วย:
@@ -2382,6 +2738,53 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
 ```
   (สาขา else เดิมที่ render `สอบถามราคาทางไลน์` ถูกอยู่แล้ว — **ห้ามแก้ copy**)
 
+- [ ] **Step 4b:** `ProductDetailPage.tsx` — **แยก error/404 ออกจาก loading** (บรรทัด 158). ดึง `isError`/`error` จาก `useQuery` ตัวเดิมที่ให้ `data` แล้วแทนบล็อกเดิมด้วย:
+
+```tsx
+  // B0: head query ของ getProductDetail ผ่าน readiness แล้ว → controller ตอบ 404 ได้จริง
+  // ถ้ายังรวม error เข้ากับ loading ลิงก์ที่ส่งลูกค้าจะเป็น Skeleton หมุนค้างตลอดกาล
+  if (isError) {
+    return (
+      <ShopLayout>
+        <Container className="py-16">
+          <div className="mx-auto max-w-md rounded-2xl border border-border bg-card p-8 text-center leading-snug">
+            <h1 className="text-xl font-semibold text-foreground">สินค้านี้ไม่พร้อมขายบนเว็บ</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              เครื่องนี้อาจขายไปแล้ว หรือข้อมูลยังไม่ครบสำหรับขายออนไลน์ — ทักแชทมาได้เลย
+              ทีมงานช่วยหาเครื่องรุ่นเดียวกันให้ครับ
+            </p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <a href={LINE_URL} className="...ปุ่มหลัก">ทักแชทสอบถาม</a>
+              <button onClick={() => nav('/')} className="...ปุ่มรอง">ดูสินค้าทั้งหมด</button>
+            </div>
+          </div>
+        </Container>
+      </ShopLayout>
+    );
+  }
+
+  if (isLoading || !data) {
+    return ( /* ...Skeleton เดิม ไม่แก้... */ );
+  }
+```
+  > `LINE_URL` ใช้ค่าเดียวกับที่หน้าอื่นในเว็บใช้อยู่แล้ว (grep `line.me` ใน `apps/web-shop/src` แล้วใช้ตัวเดิม — **ห้ามสร้าง env ใหม่**); คลาสปุ่มลอกจากปุ่มที่มีอยู่ในหน้านี้เพื่อไม่ให้หลุด design token
+
+- [ ] **Step 4c:** เลิกส่งค่างวดปลอม — `shop-catalog.service.ts`:
+  a) เปลี่ยน type บรรทัด 14: `monthlyPaymentFrom: number | null;`
+  b) บรรทัด 141 และ 206 (สองที่ที่เรียก `calculateMonthlyPayment`) → คืน `null` แทน:
+
+```ts
+          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
+          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
+          // เลขจริงที่อ่าน InterestConfig มาใน B4
+          monthlyPaymentFrom: null,
+```
+  c) `calculateMonthlyPayment` + `INTEREST_RATE_PER_MONTH`/`DEFAULT_MONTHS`/`DEFAULT_DOWN_PCT` **คงไว้ไม่ต้องลบ** (B4 จะมาเปลี่ยนไส้ใน) — ถ้า eslint บ่น unused ค่อยเติม `// eslint-disable-next-line` พร้อมคอมเมนต์อ้าง B4
+- [ ] **Step 4d:** `apps/web-shop/src/components/catalog/ProductCard.tsx`:
+  a) บรรทัด 13: `monthlyPaymentFrom: number | null;`
+  b) บรรทัด 92: `) : p.monthlyPaymentFrom != null && p.monthlyPaymentFrom > 0 ? (`
+  → ผลลัพธ์: การ์ดตกไปสาขา else ที่แสดง **ราคาเต็ม** อย่างเดียว (สาขานั้นมีอยู่แล้วบรรทัด 102-105 — ห้ามแก้ copy)
+
 - [ ] **Step 5:** เพิ่มเคสยืนยันใน `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (ท้าย describe `getProductDetail` หรือสร้างใหม่ถ้าไม่มี):
 
 ```ts
@@ -2404,18 +2807,20 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
   });
 ```
 
+- [ ] **Step 5b:** แก้ 1 เคสที่จะแดงจาก Step 4c — `shop-catalog.service.spec.ts:137` assert `expect(result.data[0].monthlyPaymentFrom).toBe(0)` → เปลี่ยนเป็น `toBeNull()` (ชื่อเคสเดิมยังใช้ได้ ไม่ต้องแก้)
 - [ ] **Step 6:** รันให้เขียว: `cd apps/api && npx jest src/modules/shop-catalog src/modules/shop-cart src/modules/shop-installment-apply`
   → ต้องยังเขียวโดย**ไม่แก้** `shop-cart.service.spec.ts:48` (`falls back to installmentPrice…`, คาด 14000) และ `shop-installment-apply.service.spec.ts:87` (`falls back to cashPrice when installmentPrice is unset`, คาดใช้ 18000) — ถ้าแดง แปลว่าเผลอตัด fallback ออก
 - [ ] **Step 7:** `./tools/check-types.sh api` → 0; `cd apps/web-shop && npx tsc --noEmit` → 0; `cd apps/api && npx eslint src/modules/shop-catalog src/modules/shop-cart src/modules/shop-installment-apply` → ไม่มี error ใหม่
   (web-shop **ไม่มี eslint config** — ข้าม lint ฝั่งนั้น ใช้ `tsc --noEmit` เป็น gate เดียว)
-- [ ] **Step 8:** Commit: `fix(b0): เลิกแปลงราคา null เป็น 0 ครบ 4 จุด (catalog/cart/installment-apply/web-shop)`
+- [ ] **Step 8:** Commit: `fix(b0): เลิกแปลงราคา null เป็น 0 ครบ 4 จุด + ซ่อนค่างวดที่คำนวณจาก rate ตัวอย่าง + หน้า 404 ที่ทักแชทต่อได้`
 
 ---
 
-### Task 13: เขียน `Product.conditionGrade` 2 จุด + ปลด invariant `isOnlineVisible`
+### Task 13: เขียน `Product.conditionGrade` 2 จุด + auto-promote รูป QC + ปลด invariant `isOnlineVisible`
 
 **Files:**
-- Modify: `apps/api/src/modules/quality-control/inspections.service.ts` (`completeInspection` ลูป :184-190, `overrideGrade` :195-206)
+- Modify: `apps/api/src/modules/quality-control/inspections.service.ts` (constructor, `completeInspection` ลูป :184-190, `overrideGrade` :195-206)
+- Modify: `apps/api/src/modules/quality-control/quality-control.module.ts` (`imports: [ProductsModule]`)
 - Modify: `apps/api/src/modules/quality-control/inspections.grade-mapping.spec.ts` (assertion `productUpdate` ที่ :178-181)
 - Modify: `apps/api/src/modules/quality-control/inspections.override-grade.spec.ts` (`makePrisma` :30-37 — ขาด `products` + `product.update`)
 - Modify: `apps/api/src/modules/products/products-online-listing.service.ts` (บรรทัด 38-51)
@@ -2427,6 +2832,8 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
 - Consumes: `OverrideGradeDto { grade: string; reason: string }` (`dto/inspection.dto.ts`)
 - Produces: หลัง `completeInspection` → ทุก product ที่ผูกกับ inspection ได้ `conditionGrade = overallGrade`; หลัง `overrideGrade` → ได้ `conditionGrade = dto.grade`
 - **เหตุผลที่ต้อง 2 จุด:** `overrideGrade` เรียกได้หลัง `complete` เท่านั้น (`:197` throw ถ้ายังไม่ complete) → ตอน complete ค่า `gradeOverride` เป็น null เสมอ ตรรกะจุดเดียวจึงไม่พอ
+- **ทำไมต้อง auto-promote รูปด้วยใน batch นี้:** readiness บังคับ `gallery` ไม่ว่าง แต่ **ผู้เขียน `gallery` มีทางเดียวคือคนกด `promotePhoto` ทีละรูป** → "เครื่องข้อมูลครบแล้วขึ้นเว็บอัตโนมัติ" จะไม่อัตโนมัติจริงเลย ทั้งที่ QC **เก็บรูป 6 มุมไว้แล้ว**เป็น base64 (`product-photos.service.ts:74` upsert `ProductPhoto` ด้วย angle `front/back/left/right/top/bottom`) และ `promotePhoto` แปลง base64 → S3 → `gallery.push` ได้อยู่แล้ว (`products-online-listing.service.ts:82-98`). ต่อท่อ ~10 บรรทัดตอน QC เสร็จ = ได้ของครบวง
+- **dep ใหม่ต้องเป็น `@Optional()`** — spec เดิม 5 ไฟล์เรียก `new InspectionsService(prisma)` ตรงๆ 11 จุด (`inspections.grade-mapping` :47/:167/:193, `inspections.calculate-grade` :41, `inspections.override-grade` :45/:56/:66/:82/:93, `inspections.service.spec` :32) → param บังคับจะทำ tsc แดงยกชุด; `@Optional()` + guard `if (!this.onlineListing) return;` ทำให้ spec เดิมไม่ต้องแตะเลย
 
 - [ ] **Step 1:** เขียน spec ที่ล้มก่อน — `apps/api/src/modules/quality-control/inspections.product-grade.spec.ts`:
 
@@ -2434,11 +2841,14 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { Test } from '@nestjs/testing';
 import { InspectionsService } from './inspections.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ProductsOnlineListingService } from '../products/products-online-listing.service';
 
 describe('InspectionsService — เขียนเกรดลง Product (B0)', () => {
   let service: InspectionsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let onlineListing: any;
 
   const inspection = {
     id: 'i1',
@@ -2457,10 +2867,19 @@ describe('InspectionsService — เขียนเกรดลง Product (B0)'
       inspectionResult: { findMany: jest.fn().mockResolvedValue([]) },
       // calculateGrade อ่าน grade_a/b/c_threshold จาก SystemConfig — ไม่ mock = TypeError
       systemConfig: { findMany: jest.fn().mockResolvedValue([]) },
-      product: { update: jest.fn().mockResolvedValue({ id: 'p1' }) },
+      product: {
+        update: jest.fn().mockResolvedValue({ id: 'p1' }),
+        // autoPromoteQcPhotos อ่าน gallery ปัจจุบันก่อนดันรูป
+        findUnique: jest.fn().mockResolvedValue({ gallery: [] }),
+      },
     };
+    onlineListing = { promotePhoto: jest.fn().mockResolvedValue({ gallery: ['u'] }) };
     const module = await Test.createTestingModule({
-      providers: [InspectionsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        InspectionsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ProductsOnlineListingService, useValue: onlineListing },
+      ],
     }).compile();
     service = module.get(InspectionsService);
   });
@@ -2484,6 +2903,30 @@ describe('InspectionsService — เขียนเกรดลง Product (B0)'
       expect.objectContaining({ data: expect.objectContaining({ conditionGrade: 'C' }) }),
     );
     expect(prisma.product.update).toHaveBeenCalledTimes(2);
+    // override เกิดหลัง complete เสมอ — รูปถูกดันไปแล้ว ห้ามดันซ้ำ
+    expect(onlineListing.promotePhoto).not.toHaveBeenCalled();
+  });
+
+  it('completeInspection: gallery ว่าง → ดันรูป front + back จาก QC ขึ้นเว็บให้เอง', async () => {
+    await service.completeInspection('i1');
+    // 2 เครื่อง × 2 มุม
+    expect(onlineListing.promotePhoto).toHaveBeenCalledTimes(4);
+    expect(onlineListing.promotePhoto).toHaveBeenCalledWith('p1', {
+      source: 'ANGLE',
+      angle: 'front',
+    });
+  });
+
+  it('completeInspection: มีรูปขึ้นเว็บอยู่แล้ว → ไม่แตะ gallery (คนเลือกไว้เอง)', async () => {
+    prisma.product.findUnique.mockResolvedValue({ gallery: ['https://cdn/x.jpg'] });
+    await service.completeInspection('i1');
+    expect(onlineListing.promotePhoto).not.toHaveBeenCalled();
+  });
+
+  it('completeInspection: promotePhoto ล้ม (ไม่มีรูปมุมนั้น) → ปิดใบตรวจได้ตามปกติ', async () => {
+    onlineListing.promotePhoto.mockRejectedValue(new Error('ไม่พบรูปที่เลือก'));
+    await expect(service.completeInspection('i1')).resolves.toBeDefined();
+    expect(prisma.inspection.update).toHaveBeenCalled();
   });
 });
 ```
@@ -2502,6 +2945,54 @@ describe('InspectionsService — เขียนเกรดลง Product (B0)'
       });
     }
 ```
+
+- [ ] **Step 3b:** ต่อท่อรูป QC → `gallery` (ทำให้ "ขึ้นเว็บอัตโนมัติ" อัตโนมัติจริง)
+  a) `quality-control.module.ts` — เพิ่ม `imports: [ProductsModule]` (ProductsModule export `ProductsOnlineListingService` อยู่แล้ว และไม่ import QualityControlModule กลับ → ไม่มี circular)
+  b) `inspections.service.ts` — constructor:
+
+```ts
+  constructor(
+    private prisma: PrismaService,
+    // @Optional() เพราะ spec เดิม 11 จุดเรียก `new InspectionsService(prisma)` ตรงๆ
+    @Optional() private onlineListing?: ProductsOnlineListingService,
+  ) {}
+```
+  (import `Optional` จาก `@nestjs/common`, `ProductsOnlineListingService` จาก `'../products/products-online-listing.service'`)
+
+  c) ในลูปของ `completeInspection` (ต่อจาก `product.update` ของ Step 3) เรียก helper:
+
+```ts
+      await this.autoPromoteQcPhotos(product.id);
+```
+
+  d) helper ท้ายคลาส:
+
+```ts
+  /**
+   * B0 §2.3: QC ถ่ายรูป 6 มุมเก็บไว้เป็น base64 ใน ProductPhoto อยู่แล้ว แต่ readiness
+   * บังคับ `gallery` ไม่ว่าง และผู้เขียน gallery มีทางเดียวคือคนกดทีละรูป
+   * → ดันรูปหน้า (+หลัง) ขึ้น gallery ให้เองเมื่อ QC เสร็จและยังไม่มีรูปขึ้นเว็บ
+   * best-effort: รูปไม่ครบ/อัปโหลดพลาด ต้องไม่ทำให้ปิดใบตรวจไม่ได้
+   */
+  private async autoPromoteQcPhotos(productId: string) {
+    if (!this.onlineListing) return;
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { gallery: true },
+    });
+    if (!product || product.gallery.length > 0) return; // มีรูปแล้ว = คนเลือกเอง ห้ามทับ
+    for (const angle of ['front', 'back'] as const) {
+      try {
+        await this.onlineListing.promotePhoto(productId, { source: 'ANGLE', angle });
+      } catch {
+        // ไม่มีรูปมุมนั้น / รูปไม่ใช่ data URL / อัปโหลดพลาด → ข้าม ไม่ล้มการปิดใบตรวจ
+      }
+    }
+  }
+```
+
+  e) เพิ่ม 2 เคสใน `inspections.product-grade.spec.ts` (Step 1): (i) gallery ว่าง → `promotePhoto` ถูกเรียก 2 ครั้ง (`front`,`back`) (ii) gallery มีรูปแล้ว → ไม่ถูกเรียกเลย. ต้องเติม `product.findUnique` ใน mock prisma + provider ปลอมของ `ProductsOnlineListingService` (`{ promotePhoto: jest.fn() }`)
+  > **ห้ามใส่ auto-promote ใน `overrideGrade`** — override เกิดหลัง complete เสมอ รูปถูกดันไปแล้ว การดันซ้ำจะทำให้ gallery มีรูปซ้ำ
 
 - [ ] **Step 4:** แก้ `overrideGrade` — แทนบรรทัด 195-206:
 
@@ -2630,7 +3121,7 @@ const makePrisma = (
 
 - [ ] **Step 8:** รันให้เขียว: `cd apps/api && npx jest src/modules/quality-control src/modules/products` → ทุก suite ผ่าน (รวม `inspections.calculate-grade.spec.ts` + `inspections.service.spec.ts` ที่ไม่ได้แก้)
 - [ ] **Step 9:** `./tools/check-types.sh api` → 0; `cd apps/api && npx eslint src/modules/quality-control src/modules/products` → ไม่มี error ใหม่
-- [ ] **Step 10:** Commit: `feat(b0): เขียน conditionGrade จาก QC 2 จุด + ปลด invariant สวิตช์แสดงบนเว็บ`
+- [ ] **Step 10:** Commit: `feat(b0): เขียน conditionGrade จาก QC 2 จุด + ดันรูป QC ขึ้นเว็บอัตโนมัติ + ปลด invariant สวิตช์แสดงบนเว็บ`
 
 ---
 
@@ -2678,7 +3169,8 @@ npm run lint --workspace=apps/api
   src/utils/product-readiness.util.ts src/utils/product-readiness.util.spec.ts \
   src/modules/products src/modules/quality-control src/modules/purchase-orders \
   src/modules/trade-in src/modules/repossessions src/modules/shop-catalog \
-  src/modules/shop-cart src/modules/shop-reservation src/modules/shop-installment-apply)
+  src/modules/shop-cart src/modules/shop-reservation src/modules/shop-installment-apply \
+  src/modules/sales-bot/tools)
 ```
   → **เกณฑ์ผ่าน = ไม่มี error ใหม่** (baseline: `npx eslint "src/**/*.ts"` มี 1 error ค้าง `src/cli/backfill-expense-vendor-fk.cli.ts:289 prefer-const` ซึ่งไม่อยู่ในรายการข้างบน; `npx eslint .` มี 34 error ค้างจาก parsing ของ `e2e/`+`scripts/`+`eslint.config.mjs` — **ไม่นับ**)
   → **ข้าม lint ฝั่ง web-shop**: โปรเจกต์นั้นไม่มี `eslint.config.*` (`npx eslint` ตอบ `ESLint couldn't find an eslint.config.(js|mjs|cjs) file`) — gate เดียวคือ `tsc --noEmit` ใน Step 2
@@ -2687,14 +3179,28 @@ npm run lint --workspace=apps/api
 - [ ] **Step 3:** เตรียม local DB: `./tools/db-reset.sh` แล้ว `cd apps/api && npx prisma migrate dev` (ตรวจว่า `20260982000000` apply ผ่าน) แล้วรัน `APPLY=true npm run backfill:product-prices` → ดู `bySource`
 - [ ] **Step 4:** QA เบราว์เซอร์ (local เท่านั้น — prod ปฏิเสธ seed accounts). ล็อกอิน `admin@bestchoice.com / admin1234` แล้วเช็ค 6 ข้อ:
   1. `/stock` → เปิดสินค้า 1 ตัว → `PATCH` ราคาเงินสด → รีเฟรช เห็นราคาใหม่ทั้งในคอลัมน์และตาราง prices[]
-  2. `GET /api/products/<id>/readiness` (ผ่าน devtools/curl พร้อม JWT) → ได้ checklist 8 ข้อ
+  1b. `PATCH` ราคาเงินสดเป็น `null` (ล้างราคา) → ต้องได้ **200 ไม่ใช่ 500** และฟิลด์อื่นในคำขอเดียวกันต้องถูกบันทึกด้วย (regression ของ `new Prisma.Decimal(null)`)
+  2. `GET /api/products/<id>/readiness` (ผ่าน devtools/curl พร้อม JWT) → ได้ checklist 8 ข้อ และ **คีย์ชื่อ `isReady`** (ไม่ใช่ `ready`) + มี `isOnlineVisible` — B1 ผูกกับชื่อนี้
   3. `/purchase-orders` → รับเข้าตรง 1 เครื่องโดย**ไม่กรอกราคาขาย** → เปิดสินค้าที่ได้ → ถ้ามีตารางราคากลางตรงรุ่นต้องมีราคาและ `priceAutofilledAt` ไม่ null
-  4. `/quality-control` (หรือหน้าตรวจ QC) → complete inspection → เครื่องได้ `conditionGrade`
-  5. web-shop (`cd apps/web-shop && npm run dev` → :5174) → หน้ารายการต้องไม่มีเครื่องที่ไม่มีราคา/ไม่มีรูป/ชื่อขึ้นต้น `[DEMO]`
+  4. `/quality-control` (หรือหน้าตรวจ QC) → ถ่ายรูป 6 มุมให้เครื่องมือสอง 1 ตัว (gallery ว่าง) → complete inspection → เครื่องได้ `conditionGrade` **และ `gallery` มีรูป front/back ขึ้นมาเอง** (auto-promote)
+  5. web-shop (`cd apps/web-shop && npm run dev` → :5174) → หน้ารายการต้องไม่มีเครื่องที่ไม่มีราคา/ไม่มีรูป/ชื่อขึ้นต้น `[DEMO]` และ **การ์ดต้องไม่โชว์บรรทัด "ผ่อน ฿X/เดือน"** (โชว์ราคาเต็มแทน — เลขค่างวดจริงมาใน B4)
   6. หน้ารายละเอียดเครื่องที่ขายแล้ว → `/products/:id` ต้องยังเปิดได้ (ไม่ 404). **เตรียมเครื่องให้ถูก**: ต้องเป็นเครื่องที่ผ่าน readiness ทุกข้อ**ยกเว้นสถานะ** (Apple + PHONE_NEW/USED + `cash_price > 0` + `gallery` ≥ 1 + `is_online_visible` + ชื่อไม่ขึ้นต้น `[DEMO]`) แล้วค่อย `UPDATE products SET status='SOLD_CASH' WHERE id=…` — ถ้าเครื่องไม่มีรูป/ไม่มีราคาอยู่แล้วจะได้ 404 เพราะ**ข้ออื่น** ไม่ใช่เพราะสถานะ (เทสต์จะไม่พิสูจน์อะไร)
   7. จองเครื่องที่ขายแล้ว/ไม่มีราคา (`POST /api/shop/reservations`) → ต้องได้ **404** `'สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ'` (เดิมเป็น 409) — ยืนยันว่า Task 11 มีผล
-- [ ] **Step 5:** บันทึกผล QA 7 ข้อลงใน PR description (ไม่ต้องสร้างไฟล์รายงาน)
-- [ ] **Step 6:** เปิด PR: title `feat(b0): ราคาเดียว + เกรด + เงื่อนไขขึ้นเว็บ (product-answering readiness)` — body ต้องมี: ลิงก์ spec §2, ตาราง 14 tasks, ผล QA 7 ข้อ, รายการ **behavior change ที่ผู้ใช้เห็น** (จอง 409→404, `markReadyForSale` เลิกใช้ label `'ราคาขายต่อ (Refurbished)'`, PO receive เลิกสร้าง label `'ราคาขาย'`, สวิตช์ "แสดงบนเว็บ" กดเปิดได้แม้ข้อมูลไม่ครบ), และ **Deployment section ด้านล่างคัดลอกมาทั้งก้อน**
+  8. เครื่องเดียวกับข้อ 7: `GET /api/shop/installment-preview?productId=…` → `available:false`; `POST /api/shop/installment-applications` → **404** ข้อความเดียวกับข้อ 7 (ยืนยันว่าไม่มีทางยื่นใบสมัครพร้อมเลขบัตรให้เครื่องที่ขายไม่ได้)
+  9. เปิด `/products/<id ของเครื่องที่ readiness ไม่ผ่าน>` บน web-shop → ต้องเห็นกล่อง **"สินค้านี้ไม่พร้อมขายบนเว็บ" + ปุ่มทักแชท** (ห้ามเป็น Skeleton หมุนค้าง)
+  10. หน้ารายการที่มีเครื่องขายแล้ว: `GET /api/shop/products/<id ขายแล้ว>/related` → ต้อง**ไม่ใช่ `[]`** (permalink ต้องมีรุ่นอื่นให้ดูต่อ)
+- [ ] **Step 5:** บันทึกผล QA 10 ข้อลงใน PR description (ไม่ต้องสร้างไฟล์รายงาน)
+- [ ] **Step 6:** เปิด PR: title `feat(b0): ราคาเดียว + เกรด + เงื่อนไขขึ้นเว็บ (product-answering readiness)` — body ต้องมี: ลิงก์ spec §2, ตาราง 14 tasks, ผล QA 10 ข้อ, รายการ **behavior change ที่ผู้ใช้เห็น** และ **Deployment section ด้านล่างคัดลอกมาทั้งก้อน**
+  รายการ behavior change ที่ต้องเขียนให้ครบ:
+  - จอง 409 → 404 พร้อมข้อความใหม่
+  - ขอใบเสนอค่างวด/ยื่นใบสมัครบนเครื่องที่ไม่พร้อมขาย → ถูกปฏิเสธ (เดิมทำได้)
+  - `markReadyForSale` เลิกใช้ label `'ราคาขายต่อ (Refurbished)'`; PO receive เลิกสร้าง label `'ราคาขาย'`
+  - สวิตช์ "แสดงบนเว็บ" กดเปิดได้แม้ข้อมูลไม่ครบ
+  - **การ์ดสินค้าเลิกโชว์ "ผ่อนเริ่มต้น ฿X/เดือน"** (เลขเดิมมาจาก rate ตัวอย่างในโค้ด — เลขจริงมาใน B4)
+  - **QC เสร็จแล้วรูป front/back ขึ้น gallery ให้เอง** เมื่อยังไม่มีรูปขึ้นเว็บ
+  - บอทเลิกเสนอสินค้า `[DEMO]` และคิดค่างวดจากคอลัมน์ `installmentPrice` ก่อนแถว isDefault
+  - หน้ารายละเอียดบนเว็บของเครื่องที่ไม่ผ่าน readiness เปลี่ยนจาก Skeleton ค้าง → กล่อง "ไม่พร้อมขายบนเว็บ + ทักแชท"
+  - DB มี unique index บังคับ 1 product = 1 แถวราคา default
 
 ---
 
@@ -2704,15 +3210,32 @@ npm run lint --workspace=apps/api
 
 > ⚠️ **ข้อเท็จจริงของ pipeline ที่ต้องยอมรับก่อน (ตรวจ `deploy-gcp.yml` แล้ว):** job `migrate-db` (:229-270, Cloud Run Job `bestchoice-migrate` + `--wait`) จบแล้ว job `deploy-api` (:279) **วิ่งต่อทันทีโดยอัตโนมัติ ไม่มีจุดให้คนเบรก** → **ไม่มีทาง** แทรก backfill ระหว่างกลางแบบที่แผนเวอร์ชันแรกเขียนไว้. ต้องเลือก 1 ใน 2:
 >
-> - **ทางที่ใช้จริง (แนะนำ):** ยอมรับหน้าต่างสั้นๆ ที่ readiness filter มีผลแต่ backfill ยังไม่รัน → หน้าเว็บลูกค้าว่างชั่วคราวไม่กี่นาที. **blast radius วันนี้ ≈ 0** เพราะ prod มีแต่ [DEMO] 7 เครื่อง (spec §0) ซึ่ง filter กรองออกอยู่แล้ว และ prod = testing-phase (memory `prod-is-testing-phase-data-wiped`). ต้องนั่งเฝ้า Actions แล้วรัน backfill ทันทีที่ `migrate-db` เขียว
+> - **ทางที่ใช้จริง (แนะนำ):** ยอมรับหน้าต่างสั้นๆ ที่ readiness filter มีผลแต่ backfill ยังไม่รัน. ต้องนั่งเฝ้า Actions แล้วรัน backfill ทันทีที่ `migrate-db` เขียว
 > - **ทางที่ปลอดภัยกว่าถ้าตอน merge prod มีของจริงแล้ว:** merge PR ที่ **มีเฉพาะ Task 2 (migration) + Task 9 (script)** ก่อน → รัน backfill ให้จบ → ค่อย merge ส่วนที่เหลือ (Task 11 = ตัวที่เปิด filter) เป็น PR ที่สอง
 
+> 🛑 **BLAST RADIUS ของจริง (แก้จากเวอร์ชันก่อนที่เขียนกลับด้าน — ต้องอ่านก่อน merge):**
+> เวอร์ชันแรกเขียนว่า "blast radius ≈ 0 เพราะ prod มีแต่ [DEMO] 7 เครื่อง ซึ่ง filter กรองออกอยู่แล้ว" — **เหตุผลนั้นกลับด้าน**: ถ้าเครื่องเดียวที่ prod มีคือ [DEMO] และ readiness กรอง `[DEMO]` ออก **แบบ unconditional** (spec §82 ยืนยัน) แปลว่าหลัง B0 หน้าเว็บลูกค้าจะเหลือ **0 สินค้า** ไม่ใช่ blast radius 0 — มันคือ blast radius **100% ของหน้าร้าน**. backfill ก็ช่วยไม่ได้ เพราะปัญหาไม่ใช่ราคาว่าง แต่คือชื่อขึ้นต้น `[DEMO]`
+> ผลตามมาที่ต้องแก้ด้วย: verify SQL ข้อ ② ("ต้อง > 0 ไม่งั้น rollback") **จะคืน 0 แน่นอน** → ถ้าทำตามแผนตรงๆ จะ rollback ทั้งที่ระบบทำงานถูกต้องตาม design
+>
+> **เจ้าของต้องเลือก 1 ใน 2 ทาง ก่อน merge (ไม่ใช่หลัง deploy):**
+> - **ทาง A — ล้าง [DEMO] ก่อน deploy (แนะนำ ถ้าจะ launch จริงเร็วๆ นี้):** เจ้าของรัน `CLEAN=1 bash scripts/seed-demo-products-prod.sh` **ก่อน** merge B0 แล้ว**ลงสินค้าจริงอย่างน้อย 1 เครื่อง**ที่ผ่าน readiness ครบ → หลัง deploy หน้าเว็บมีของจริง. นี่เป็น **pre-requisite** ไม่ใช่งานเก็บกวาดหลัง deploy อีกต่อไป
+> - **ทาง B — ทำ [DEMO] filter เป็นสวิตช์:** เปลี่ยนเงื่อนไข `[DEMO]` ใน `product-readiness.util.ts` ให้อ่าน SystemConfig `shop_hide_demo_products` (**default `false`** = ยังโชว์ [DEMO] เหมือนวันนี้) → deploy B0 ได้โดยหน้าเว็บไม่ว่าง แล้วเจ้าของค่อยพลิกเป็น `'true'` วันที่ launch จริง **โดยไม่ต้อง deploy ใหม่**
+>   - แก้ที่ **จุดเดียว** (`productReadinessWhere` ต้องกลายเป็น `async` หรือรับ `opts.hideDemo` ที่ caller อ่าน flag มาให้ — **เลือกแบบรับ opts** เพื่อไม่ให้ util กลายเป็น async แล้วลามไปทุก call site); `evaluateReadiness` ให้ `notDemo` เป็น check ที่ `ok: true` เมื่อ flag ปิด พร้อม hint ว่า "จะถูกซ่อนเมื่อเปิดโหมด launch"
+>   - เทสต์เพิ่ม 2 เคส: flag ปิด → `AND` ไม่มี `{ NOT: { name: { startsWith: '[DEMO]' } } }`; flag เปิด → มี
+> **ถ้าเจ้าของยังไม่ตอบ = ห้าม merge** (เหมือน Task 6 ที่เป็น gate) — เพราะทั้ง 2 ทางเปลี่ยนสิ่งที่ลูกค้าเห็นทันที
+
+0. **PRE-MERGE CHECK (บังคับ — เดิมอยู่ใน verify หลัง deploy ซึ่งสายเกินไป):** รัน SQL ข้อ ② ข้างล่างบน prod **ก่อน** merge
+   - ได้ **0** → ยังห้าม merge จนกว่าเจ้าของจะเลือกทาง A (ล้าง [DEMO] + ลงของจริง) หรือทาง B (flag `shop_hide_demo_products`) แล้วทำเสร็จ
+   - ได้ **> 0** → merge ได้ และตัวเลขนี้คือ **baseline** ที่ verify หลัง deploy ต้องได้เท่าเดิม
+   > ⚠️ SQL ข้อ ② อ่านคอลัมน์ `cash_price` ซึ่งยังว่างทั้งกระดานก่อน backfill → ตอน pre-merge ให้แทนเงื่อนไข `cash_price > 0` ด้วย `EXISTS (SELECT 1 FROM product_prices pp WHERE pp.product_id = products.id AND pp.deleted_at IS NULL)` เพื่อประเมิน "หลัง backfill จะเหลือกี่เครื่อง"
 1. **Merge PR → main** → GitHub Actions (`deploy-gcp.yml`) job `migrate-db` รัน `prisma migrate deploy` → `20260982000000` apply (ADD COLUMN nullable ล้วน ไม่มี NOT NULL ไม่มี default → ไม่ล็อกตาราง ไม่ต้อง downtime)
 2. **ทันทีที่ job `migrate-db` เขียว** (ไม่ต้องรอ `deploy-api`) รัน backfill ผ่าน cloud-sql-proxy จากเครื่อง:
    ```bash
    # ① dry-run ดูก่อนเสมอ
    DATABASE_URL=<prod> npm --prefix apps/api run backfill:product-prices
    # ② ตรวจ bySource ว่าที่มาราคาสมเหตุผล (ควรเห็น cash:isDefault:ราคาขาย เป็นก้อนใหญ่)
+   #    ⚠️ ถ้าเห็น cash:isDefault:ราคาผ่อน* = pickCash ไม่ได้กันแถวราคาผ่อน → หยุด อย่า APPLY
+   #    ดู cash:AMBIGUOUS_SINGLE_ROW:* (ระบบเดา) และ cash:SKIPPED_INSTALLMENT_ONLY (จะไม่ขึ้นเว็บ)
    # ③ เขียนจริง
    APPLY=true DATABASE_URL=<prod> npm --prefix apps/api run backfill:product-prices
    ```
@@ -2728,17 +3251,28 @@ SELECT count(*) FILTER (WHERE cash_price IS NOT NULL) AS with_cash,
        count(*) FILTER (WHERE cash_price IS NULL)     AS without_cash
 FROM products WHERE deleted_at IS NULL;
 
--- ② เครื่องที่จะขึ้นเว็บจริงหลัง B0 (ต้อง > 0 ไม่งั้น rollback)
+-- ② เครื่องที่จะขึ้นเว็บจริงหลัง B0
+--    ⚠️ ข้อนี้เป็น **PRE-MERGE CHECK** (ข้อ 0 ด้านบน) — ถ้ารันครั้งแรกหลัง deploy แล้วได้ 0
+--    แปลว่าตัดสินใจผิดตั้งแต่ก่อน merge ไม่ใช่ deploy พัง
+--    หลัง deploy: ค่าที่ได้ต้อง **เท่ากับ baseline ที่จดไว้ตอน pre-merge** (ไม่ใช่แค่ > 0)
+--    เงื่อนไข [DEMO] ด้านล่างใช้เมื่อเลือกทาง A; ถ้าเลือกทาง B (flag ปิดอยู่) ให้ตัดบรรทัด
+--    `AND name NOT LIKE '[DEMO]%'` ออกตอนตรวจ
 SELECT count(*) FROM products
 WHERE deleted_at IS NULL AND is_online_visible AND status = 'IN_STOCK'
   AND brand = 'Apple' AND category IN ('PHONE_NEW','PHONE_USED')
   AND cash_price > 0 AND array_length(gallery, 1) >= 1
   AND name NOT LIKE '[DEMO]%'
-  AND (category <> 'PHONE_USED' OR (condition_grade IS NOT NULL AND condition_grade <> ''));
+  AND (category <> 'PHONE_USED' OR condition_grade IN ('A','B','C','D'));
 
 -- ③ ไม่มี product ไหนมีแถว isDefault เกิน 1 (invariant ของ write-through)
+--    หลัง migration ข้อนี้ต้องคืน 0 แถว "โดยอัตโนมัติ" เพราะมี unique index บังคับแล้ว
+--    (ถ้าคืนแถว = index ไม่ถูกสร้าง → ตรวจ migration ข้อ 3b ของ Task 2)
 SELECT product_id, count(*) FROM product_prices
 WHERE is_default AND deleted_at IS NULL GROUP BY product_id HAVING count(*) > 1;
+
+-- ④ index บังคับ default แถวเดียว ถูกสร้างจริง
+SELECT indexname FROM pg_indexes
+WHERE tablename = 'product_prices' AND indexname = 'product_prices_one_default';
 ```
 - `curl https://<api>/api/health` → 200
 - เปิด `https://www.bestchoicephone.com` (หรือ `bestchoicephone-shop.web.app`) → หน้ารายการต้องมีสินค้า, ไม่มี `[DEMO]`
@@ -2746,12 +3280,18 @@ WHERE is_default AND deleted_at IS NULL GROUP BY product_id HAVING count(*) > 1;
 
 ### สิ่งที่ owner ต้องทำ (ไม่ใช่โค้ด)
 
+> **ข้อ 0 เป็น pre-requisite ของการ merge — ที่เหลือทำหลัง deploy ได้**
+
+0. **ตัดสินใจเรื่อง [DEMO] ก่อน merge** (ดูกรอบ BLAST RADIUS ด้านบน) — เลือก
+   **ทาง A** รัน `CLEAN=1 bash scripts/seed-demo-products-prod.sh` + ลงสินค้าจริงอย่างน้อย 1 เครื่องที่ผ่าน readiness ครบ **หรือ**
+   **ทาง B** ให้ทีมทำ flag `shop_hide_demo_products` (default ปิด) แล้วเจ้าของพลิกเป็น `'true'` วัน launch
+   → ถ้าไม่เลือก หน้าเว็บลูกค้าจะเหลือ 0 สินค้าทันทีที่ deploy
 1. **ตอบคำถาม `installmentBestchoicePrice` ต่อเดือน vs ราคารวม** (`docs/superpowers/plans/2026-08-04-b0-owner-questions.md`) หลังดูผล `npm run survey:pricing-templates` บน prod
    - ตอบ "ราคารวม" → ตั้ง SystemConfig: `pricing_template_installment_semantics = 'TOTAL'` (SQL อยู่ในไฟล์คำถาม) → autofill เริ่มเติมราคาผ่อนให้เอง **ไม่ต้อง deploy ใหม่**
    - ตอบ "ต่อเดือน" → ไม่ต้องทำอะไร (default = `PER_MONTH`)
-2. **รีวิว log `bySource` ของ backfill** ว่าราคาที่ยกมาตรงราคาขายจริง (spec §9.4)
+2. **รีวิว log `bySource` ของ backfill** ว่าราคาที่ยกมาตรงราคาขายจริง (spec §9.4) — ดูคีย์ `cash:AMBIGUOUS_SINGLE_ROW:*` (ระบบเดาว่า label ที่ไม่รู้จักคือราคาเงินสด) และ `cash:SKIPPED_INSTALLMENT_ONLY` (มีแต่ราคาผ่อน → ไม่มีราคาเงินสด เครื่องพวกนี้จะไม่ขึ้นเว็บจนกว่าจะกรอกราคา) เป็นพิเศษ
 3. **กรอกตารางราคากลางให้ครบทุกรุ่นที่ขาย** — autofill จะเงียบทันทีถ้าไม่มีแถวตรงรุ่น
-4. **ล้าง [DEMO] ก่อนเปิดจริง**: `CLEAN=1 bash scripts/seed-demo-products-prod.sh` (B0 มี filter กันไว้แล้ว แต่ยังกินที่ในหน้า admin)
+4. *(ย้ายขึ้นไปเป็นข้อ 0 — ต้องทำ **ก่อน** merge ไม่ใช่หลัง deploy)*
 5. **อัปโหลดรูปขึ้นเว็บ + ใส่เกรดมือสอง** ให้เครื่องที่อยากให้ขึ้นเว็บ — checklist ที่ `GET /products/:id/readiness` บอกทีละข้อ (UI ของ checklist มาใน B1)
 
 ### Rollback
@@ -2767,8 +3307,9 @@ WHERE is_default AND deleted_at IS NULL GROUP BY product_id HAVING count(*) > 1;
 - **ซ่อน `costPrice` จาก SALES ฝั่ง server** → B1 (spec §3) — B0 ไม่แตะ response shape ของ `/products`
 - **UI ทั้งหมด**: ช่องกรอกราคาใหม่, badge "เติมอัตโนมัติจากตารางราคากลาง", การ์ด readiness, ปุ่มคัดลอกสรุป/ลิงก์ → B1 (B0 ส่งแค่ endpoint + ฟิลด์ให้)
 - **Inbox / ส่งรูป / product picker** → B2 (spec §4)
-- **บอท**: `search_products` ยกเครื่อง, `attachments` ใน `SalesBotResult`, re-point `get-installment-rates.tool` มาใช้ `device-query-normalize.util`, grounding-guard fixture, น้องเบส → B3 (spec §5). B0 สร้าง util ไว้เฉยๆ ไม่แตะ tool
-- **เว็บลูกค้า**: share endpoint/OG, ค้นหาไทยในหน้ารายการ, `monthlyPaymentFrom` ที่ใช้ rate จริง, รูปตามเครื่อง → B4 (spec §6). B0 แก้เฉพาะ null→0
+- **บอท**: `search_products` ยกเครื่อง (readiness util เต็มตัว + `photoAvailable`), `attachments` ใน `SalesBotResult`, re-point `get-installment-rates.tool` มาใช้ `device-query-normalize.util`, grounding-guard fixture, น้องเบส → B3 (spec §5).
+  > **ยกเว้น 2 บรรทัดที่ B0 ต้องทำเอง** เพราะ B0 เป็นคนสร้างปัญหา: (ก) `NOT [DEMO]` ใน `search-products.tool` — เว็บกรองแล้วบอทยังเสนอ = ขัดกันเอง (ข) `calculate-installment.tool` อ่าน `installmentPrice` ก่อนแถว isDefault — write-through ของ B0 เปลี่ยนความหมายของแถว isDefault เป็น "ราคาเงินสด" ทำให้บอท quote ต่ำกว่าสัญญาจริง. golden test เต็มยังอยู่ B3
+- **เว็บลูกค้า**: share endpoint/OG, ค้นหาไทยในหน้ารายการ, **`monthlyPaymentFrom` ที่คำนวณจาก `InterestConfig` จริง**, รูปตามเครื่อง → B4 (spec §6). B0 แก้เฉพาะ null→0 + **ซ่อน** ค่างวดที่คำนวณจาก rate ตัวอย่าง (`0.0099` hard-code) ระหว่างรอ B4 — ไม่แสดงดีกว่าแสดงเลขที่ทำสัญญาจริงไม่ได้
 - **จอง/จ่ายเงิน**: guard ใน `confirmOnlineOrderPayment`, รู `confirmBankTransfer`, preempt-in-tx, badge แจ้ง staff → B5 (spec §7)
 - **แก้ข้อมูลย้อนหลัง / reconcile ราคาเก่า** — prod เป็น testing-phase, forward-fix only (memory `prod-is-testing-phase-data-wiped`); backfill ทำแค่ยก `prices[]` ที่มีอยู่ขึ้นคอลัมน์ ไม่แก้ตัวเลขให้ถูกต้อง
 - **ลบ fallback `prices[]` ออกจาก `getDisplayPrices`** — spec §2.1 สั่งคงไว้ (ProductsPage/POSPage ยังส่ง object ที่มีแต่ `prices[]`); เก็บกวาดใน release หลัง

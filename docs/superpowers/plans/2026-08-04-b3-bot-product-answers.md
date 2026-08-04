@@ -16,7 +16,10 @@
 - **Red line:**
   - ห้ามแตะ `apps/api/src/modules/journal/`, `apps/api/src/modules/accounting/`, `apps/api/src/modules/payments/` (JE ทั้งหมด)
   - **ตัวเลขที่ลูกค้าเห็นต้องตรงกับ engine จริง** — Task 4 มี golden test เทียบ `calculate_installment` กับ `InstallmentPreviewService.preview()` ที่ input เดียวกัน **ต้องเขียวก่อน** ถึงจะถือว่า Task 4 เสร็จ
-  - Task 4 แก้ `installment-preview.service.ts` ด้วย (ดึง config-resolution ออกเป็น util) — **ต้อง behavior-preserving**: `apps/api/src/modules/shop-catalog/*.spec.ts` เดิมต้องเขียวโดยไม่แก้ assertion
+  - Task 4 แก้ `installment-preview.service.ts` ด้วย (ดึง config-resolution ออกเป็น util) — **ต้อง behavior-preserving**: `apps/api/src/modules/shop-catalog/*.spec.ts` เดิมต้องเขียวโดยไม่แก้ assertion (ข้อยกเว้นที่ documented ไว้จุดเดียว = เพิ่ม `orderBy: { createdAt: 'asc' }` ให้ deterministic — spec เดิมไม่ assert args ของ `findFirst` จึงยังเขียว)
+- **ข้อตกลงข้าม batch (เจ้าของทับกัน — ต้องบังคับใช้ ไม่งั้น red line พัง):**
+  - `apps/api/src/utils/bc-installment-config.util.ts` (Task 4) = **resolver `InterestConfig` → `BcConfig` ตัวเดียวของ repo**. แผน B4 (`2026-08-04-b4-web-shop-share-og.md:1437-1564`) วางแผนสร้าง `shop-catalog/bc-installment-config.service.ts` ที่ทำงานเดียวกันแทนบล็อกเดียวกัน **และเปลี่ยน constructor ของ `InstallmentPreviewService` เป็น 2 อาร์กิวเมนต์** ⇒ ต้องตัดออกจาก B4 แล้ว import util ของ B3 แทน (golden parity test ของ Task 4 สร้าง service ด้วย 1 อาร์กิวเมนต์)
+  - `product-detect.service.ts` / `ai-suggest.service.ts` / `ProductContextCard.tsx` = **ของ B2 (Task 10)** — B3 ห้ามแตะ; Task 14 ของ B3 เหลือแค่ให้ `ProductQuoteService` ของ B2 ใช้ resolver ตัวเดียวกัน
 - **Grounding guard = definition-of-done ของ batch** (spec §5): Task 1 ต้องเสร็จ+เขียว **ก่อน** Task 3/4 เปลี่ยน shape ผลลัพธ์ tool. บทเรียน #1064/#1337: เปลี่ยน shape โดยไม่อัปเดต `GROUNDED_PRICE_KEYS` = บอทโดน block เงียบ ๆ (confidence 0.3 → handoff) ไม่มี error ให้เห็น
 - **Runner ฝั่ง api = jest เท่านั้น**: `cd apps/api && npx jest src/modules/sales-bot` (config อยู่ใน `apps/api/package.json:145`, `rootDir: src`, `testRegex .*\.spec\.ts$`) → **spec ทุกไฟล์ต้องอยู่ใต้ `apps/api/src/`**
 - **⚠️ Runner ฝั่ง web = vitest ไม่ใช่ jest**: `cd apps/web && npx vitest run src/pages/AiSettingsPage.test.tsx` (`apps/web/vitest.config.ts`, jsdom, globals)
@@ -44,7 +47,7 @@
 **สร้างใหม่ (apps/api)**
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `src/utils/price-grounding.util.ts` (+`.spec.ts`) | `GROUNDED_PRICE_KEYS` / `collectGroundedPrices` / `collectGroundedPricesFromText` / `collectGroundedPricesFromToolText` / `guardGrounding` — ยกออกจาก `SalesBotService` ให้ทั้ง 2 บอทใช้ตัวเดียว |
+| `src/utils/price-grounding.util.ts` (+`.spec.ts`) | `GROUNDED_PRICE_KEYS` (บอทขาย) / `FINANCE_GROUNDED_PRICE_KEYS` (น้องเบส, Task 11) / `collectGroundedPrices(value, into, keys?)` / `collectGroundedPricesFromText` / `collectGroundedPricesFromToolText` / `guardGrounding` — ยกออกจาก `SalesBotService` ให้ทั้ง 2 บอทใช้ตัวเดียว **แต่คนละ key-set** |
 | `src/utils/bc-installment-config.util.ts` (+`.spec.ts`) | resolve `InterestConfig` → `BcConfig` แบบ **productCategories** (แบบเดียวกับ `sale-writer` / `contract-lifecycle` / `installment-preview`) |
 | `src/utils/kb-match.util.ts` (+`.spec.ts`) | tokenize ไทย + สกอร์ KB (ยกจาก `knowledge.service.ts:58-143`) ให้บอทขายใช้ได้โดยไม่ import module การเงิน |
 | `src/modules/sales-bot/__fixtures__/tool-results.fixture.ts` | **contract ของ shape ผลลัพธ์ tool ใหม่** (frozen) ใช้โดย grounding spec + tool spec |
@@ -76,12 +79,11 @@
 | `src/modules/chatbot-finance/tools/tool-input-schemas.ts:90-98` | +3 validator ใน `TOOL_INPUT_VALIDATORS` |
 | `src/modules/chatbot-finance/tools/tool-executor.ts:35-112` | +3 tool ใน constructor + switch |
 | `src/modules/chatbot-finance/chatbot-finance.module.ts:54-80` | +3 tool class ใน providers (import จาก sales-bot ตรง ๆ) |
-| `src/modules/chatbot-finance/services/finance-ai.service.ts:99-199` | port grounding guard + คืน `attachments` |
+| `src/modules/chatbot-finance/services/finance-ai.service.ts:99-199` | port grounding guard (+ seed ledger จาก history + `HandoffService` ในทางที่บล็อก) + คืน `attachments` |
 | `src/modules/chatbot-finance/services/chatbot-finance.service.ts:319-325,490-542` | `replyAndSave` รับ `images[]` → LINE image message ตามหลัง text |
 | `src/modules/chatbot-finance/chatbot-finance-admin.controller.ts:113-135` | KB CRUD ส่ง `channel` ต่อ |
 | `src/modules/chatbot-finance/dto/admin.dto.ts:27-57` | `CreateKbDto`/`UpdateKbDto` +`channel?` |
-| `src/modules/staff-chat/services/product-detect.service.ts:82-151` (`enrichProducts`) | เลิกคำนวณค่างวดเอง → ใช้ util Task 4 |
-| `src/modules/staff-chat/services/ai-suggest.service.ts:99` | แก้ label `(ดาวน์ {downPaymentMin}%)` → บาท (ค่านี้เป็นบาทมาแต่ไหนแต่ไร) |
+| `src/modules/staff-chat/services/product-quote.service.ts` (`computeProductQuote`) | เลิกก็อปตรรกะ resolve config → เรียก `toBcConfig` ของ util Task 4 (Task 14) |
 | `apps/api/prisma/schema.prisma:5177` | `channel ChatChannel? @default(LINE_FINANCE)` |
 
 **แก้ไข (apps/web)**
@@ -89,7 +91,8 @@
 |---|---|
 | `src/pages/AiSettingsPage.tsx:22-27,96-121,404-441` | status strip (env flags) + annotate checkbox `LINE_FINANCE`/`TIKTOK` ที่เป็น no-op |
 | `src/pages/ChatbotFinanceKnowledgePage.tsx:12-37,110-123,250-290` | เลือกช่องของ FAQ (รวม "ทุกช่อง" = null) |
-| `src/pages/UnifiedInboxPage/components/ProductContextCard.tsx:58` | แก้ label `(ดาวน์ {opt.downPaymentMin}%)` → บาท (Task 14) |
+
+> ⚠️ B3 **ไม่แก้ `apps/web` ฝั่ง inbox เลย** — `ProductContextCard.tsx` (รวมป้าย `(ดาวน์ …%)` ที่ผิดหน่วย) ถูกเขียนใหม่ทั้งไฟล์ไปแล้วใน **B2 Task 10** ห้ามแตะซ้ำ
 
 **spec เดิมที่ "จะแดง" เพราะพฤติกรรมเปลี่ยน (ตรวจกับโค้ดจริงแล้ว — ห้ามข้าม)**
 | ไฟล์ spec | เคสที่ต้องแก้ | Task |
@@ -97,7 +100,7 @@
 | `src/modules/sales-bot/tools/calculate-installment.tool.spec.ts` | **แทบทั้งไฟล์** — goldens ปัจจุบันคิดจาก `prices[isDefault]` + ไม่มี commission/VAT (`:56-70` monthlyThb 3067, `:135-144` rate 0, `:146-160` error strings) และ mock prisma ไม่มี `interestConfig.findFirst({productCategories})` shape ใหม่ | 4 |
 | `src/modules/chatbot-finance/services/knowledge.service.spec.ts` | **น่าจะเขียวอยู่** — mock `findMany` (:49-56) คืน entries เสมอโดยไม่ assert `where` และ `:117-139` assert `create` ด้วย `expect.objectContaining({channel:'LINE_FINANCE'})` ซึ่ง default ใหม่ยังให้ค่าเดิม → **ต้องรันยืนยันหลังแก้** ถ้าแดงแปลว่า default เพี้ยน; Task 7 เพิ่มเคสใหม่ 3 เคส (where มี `OR`, channel=null, listAll ตาม channel) | 7 |
 | `src/modules/chatbot-finance/tools/tool-executor.spec.ts` | `:39-45` `Test.createTestingModule` มีแค่ 3 provider — constructor เพิ่ม 3 tool → Nest resolve ไม่ได้ = ทุกเคสแดง | 10 |
-| `src/modules/chatbot-finance/services/finance-ai.service.spec.ts` | **แดงแน่นอน** — `:261` `beforeEach` ของ `describe('model routing (Phase 7.2)')` mock `toolExecutor.execute → { ok:true, data:{ ok:1 } }` (ไม่มีเลขเงินเลย) แล้วเคส `:291-300` ให้โมเดลตอบ `'ยอดคงเหลือของคุณคือ 5,000 บาทค่ะ'` → guard ใหม่จะ block แล้ว `generateReply` คืน `null` → `result?.model` เป็น undefined → assert `:298` พัง. **แก้ที่ mock** (`data: { totalAmount: 5000 }`) ห้ามปิด guard | 11 |
+| `src/modules/chatbot-finance/services/finance-ai.service.spec.ts` | **แดงแน่นอน** — Task 11 เพิ่ม `HandoffService` เข้า constructor แต่ `Test.createTestingModule` ทั้ง 2 จุด (`:48-73`, `:262-276`) ไม่มี provider ตัวนี้ → Nest resolve ไม่ได้ = ทุกเคสในไฟล์แดง ⇒ ต้องเพิ่ม `{ provide: HandoffService, useValue: { handoff: jest.fn() } }` ทั้งคู่. **บวกอีกจุดที่ไม่แดงแต่ต้องแก้**: `:261` mock `toolExecutor.execute → { ok:true, data:{ ok:1 } }` (ไม่มีเลขเงิน) แล้วเคส `:291-300` ให้โมเดลตอบ `'ยอดคงเหลือของคุณคือ 5,000 บาทค่ะ'` → guard block → คืนข้อความ handoff (model/toolsUsed เท่าเดิม ⇒ assert เดิมยัง**ผ่านแบบหลอก**) ⇒ แก้เป็น `data: { totalAmount: 5000 }` + assert `handoffTriggered === false`. ห้ามปิด guard | 11 |
 | `src/modules/chatbot-finance/services/chatbot-finance.service.spec.ts` | **แดงแน่นอน** — Task 12 เขียน `replyAndSave` ให้เรียก `lineClient.replyMessage()` เสมอ (เลิกใช้ `replyText`/`replyWithQuickReply`) แต่เคสเดิม `:119` `expect(lineClient.replyText).toHaveBeenCalledWith('rt-1','สวัสดีค่ะ')` และ `:154` (fallback `'ระบบขัดข้อง'`) ยัง assert `replyText` → ต้องแปลงเป็น `replyMessage(replyToken, [{type:'text', text:...}])`; เคส `:146` (`replyText` **ไม่** ถูกเรียกตอน handoff) ผ่านต่อได้ทั้งที่ไม่มีความหมาย → เปลี่ยนเป็น `replyMessage` ด้วยเพื่อให้ยังกันของจริง | 12 |
 | `src/modules/chat-engine/services/message-router.service.spec.ts` | `:57,:65,:101` ใช้ `toHaveBeenCalledWith` (ไม่ใช่ `Times`) → **ควรเขียวอยู่** แต่ต้องรันยืนยันหลัง Task 9 (IMAGE bubble เป็น call เพิ่ม) | 9 |
 | `src/modules/sales-bot/sales-bot.service.spec.ts` | mock ผลลัพธ์ tool เป็น shape เก่า (`products:[{priceThb}]`) — `collectGroundedPrices` เดิน object recursive → **ต้องเขียวโดยไม่แก้**; ถ้าแดงแปลว่า Task 1 ทำ regression | 1 |
@@ -116,12 +119,25 @@
 - Modify: `apps/api/src/modules/sales-bot/sales-bot.service.ts` (ลบบล็อก `GROUNDED_PRICE_KEYS` :304-314, `collectGroundedPrices` :316-334, `guardGrounding` :336-369 → import util; call sites :155, :197)
 
 **Interfaces:**
-- Consumes: ตรรกะเดิมทั้งดุ้นจาก `sales-bot.service.ts:304-369` (ห้ามเปลี่ยนพฤติกรรม: regex `/([\d][\d,]{2,})\s*(?:บาท|฿|baht|THB)/gi`, ข้ามเลข `< 1000`, ยอมรับ ±5%, `grounded.size === 0` + มีเลข = block)
+- Consumes: ตรรกะเดิมทั้งดุ้นจาก `sales-bot.service.ts:304-369` (ห้ามเปลี่ยนพฤติกรรม: ข้ามเลข `< 1000`, ยอมรับ ±5%, `grounded.size === 0` + มีเลข = block)
+  ⚠️ **ข้อยกเว้นเดียวที่ตั้งใจเปลี่ยน = regex** — ของเดิม `/([\d][\d,]{2,})\s*(?:บาท|฿|baht|THB)/gi` **จับยอดที่มีสตางค์ไม่ได้** (`'1,515.83 บาท'` → `[]`) ⇒ ยกมาเป็น `/([\d][\d,]{2,}(?:\.\d{1,2})?)\s*(?:บาท|฿|baht|THB)/gi` ตั้งแต่ Step 4 เพราะยอดฝั่งการเงินที่ Task 11 ต้องคุ้มมีสตางค์เกือบทั้งหมด. optional group ⇒ พฤติกรรมกับเลขกลมเท่าเดิม ⇒ `sales-bot.service.spec.ts` ยังเขียวโดยไม่แก้ (Step 7 เป็นตัวพิสูจน์)
 - Produces:
 ```ts
 // apps/api/src/utils/price-grounding.util.ts
+/** คีย์ราคาของ "บอทขาย" — พูลแคบ ๆ ที่รีวิวมาแล้วว่าเป็นราคาสินค้าล้วน */
 export const GROUNDED_PRICE_KEYS: ReadonlySet<string>;
-export function collectGroundedPrices(value: unknown, into: Set<number>): void;
+/**
+ * คีย์ของ "น้องเบส" = ชุดบอทขาย + คีย์เงินฝั่งการเงิน (Task 11)
+ * แยกออกมาเพราะคีย์กว้าง ๆ อย่าง `amount` ต้องไม่ไปขยายพูลที่บอทขายยอมรับ
+ * (`search_products` มีแถวราคาชื่อ `amount` ใน `prices[]`)
+ */
+export const FINANCE_GROUNDED_PRICE_KEYS: ReadonlySet<string>;
+/** `keys` default = ชุดบอทขาย — ผู้เรียกฝั่งการเงินต้องส่ง `FINANCE_GROUNDED_PRICE_KEYS` เอง */
+export function collectGroundedPrices(
+  value: unknown,
+  into: Set<number>,
+  keys?: ReadonlySet<string>,
+): void;
 /** ดูดเลขบาทออกจากข้อความ (KB template ที่แอดมินเขียนเอง = ground truth) */
 export function collectGroundedPricesFromText(text: string, into: Set<number>): void;
 /**
@@ -342,6 +358,29 @@ describe('guardGrounding — กฎเดิมต้องไม่หย่อ
   it('เลข < 1000 ถูกข้าม (ค่าปรับ/วัน/เปอร์เซ็นต์)', () => {
     expect(guardGrounding('ค่าปรับ 50 บาท/วันค่ะ', new Set([32900]))).toEqual({ ok: true });
   });
+
+  // ── regression: regex เดิมมองไม่เห็นยอดที่มีสตางค์ → guard เป็น no-op ──
+  // ยอดจริงตาม CPA rounding มีสตางค์เกือบทั้งหมด (1,416.66 + 99.17 = 1,515.83)
+  // ถ้า 3 เคสนี้ผ่านเพราะ "ไม่ match" แปลว่า regex ยังเป็นตัวเก่า — ให้ดู Step 4
+  it('ยอดที่มีสตางค์และตรงกับ grounded → ผ่าน', () => {
+    expect(guardGrounding('ยอดของคุณคือ 1,515.83 บาทค่ะ', new Set([1515.83]))).toEqual({
+      ok: true,
+    });
+  });
+
+  it('ยอดที่มีสตางค์แต่โมเดลแต่งเอง → block (เคสที่ regex เดิมปล่อยผ่าน 100%)', () => {
+    expect(guardGrounding('ยอดของคุณคือ 99,999.50 บาทค่ะ', new Set([1515.83]))).toEqual({
+      ok: false,
+      reason: 'unmatched-price=99999.5',
+    });
+  });
+
+  it('ยอดกลม .00 ที่ไม่มีใน grounded ก็ต้องโดน block', () => {
+    expect(guardGrounding('ยอด 99,999.00 บาท', new Set([13642.51]))).toEqual({
+      ok: false,
+      reason: 'unmatched-price=99999',
+    });
+  });
 });
 
 describe('collectGroundedPricesFromText — KB ที่แอดมินเขียนเองคือ ground truth', () => {
@@ -355,6 +394,12 @@ describe('collectGroundedPricesFromText — KB ที่แอดมินเข
     const set = new Set<number>();
     collectGroundedPricesFromText('ค่าปรับ 50 บาท/วัน', set);
     expect(set.size).toBe(0);
+  });
+
+  it('ดูดยอดที่มีสตางค์ได้ (regex ต้องรองรับทศนิยม)', () => {
+    const set = new Set<number>();
+    collectGroundedPricesFromText('งวดละ 1,515.83 บาท', set);
+    expect(set.has(1515.83)).toBe(true);
   });
 });
 ```
@@ -400,21 +445,47 @@ export const GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
 /** ราคาที่ต่ำกว่านี้ถูกมองว่าเป็นค่าปรับ/วัน/เปอร์เซ็นต์ — เสี่ยง false-positive เกินไป */
 const MIN_GROUNDED_THB = 1000;
 
-const PRICE_IN_TEXT_RE = /([\d][\d,]{2,})\s*(?:บาท|฿|baht|THB)/gi;
+/**
+ * ⚠️ **แก้บั๊กของเดิม (ห้าม copy regex เก่ามา)** — ตัวเดิมใน `sales-bot.service.ts:351`
+ * คือ `/([\d][\d,]{2,})\s*(?:บาท|฿|baht|THB)/gi` ซึ่ง **จับยอดที่มีสตางค์ไม่ได้เลย**
+ * เพราะ `.` ไม่อยู่ใน character class → match ขาดที่จุดทศนิยม แล้วเศษ (`83`) สั้นกว่า `{2,}`
+ * พิสูจน์แล้วด้วย node: `'ยอด 1,515.83 บาท'` → `[]`, `'ยอดรวม 13,642.51 บาท'` → `[]`,
+ * `'ยอด 99,999.00 บาท'` → `[]` (จับได้เฉพาะเลขกลมอย่าง `32,900`)
+ *
+ * ผลกระทบ: ยอดจริงฝั่งการเงินมีสตางค์เกือบทั้งหมดตาม CPA rounding
+ * (`.claude/rules/accounting.md` — 1,416.66 + 99.17 = 1,515.83) ⇒ ถ้าใช้ regex เดิม
+ * guard ของน้องเบส (Task 11) จะเป็น **no-op**: โมเดลแต่งยอด `99,999.00 บาท` ผ่านฉลุย
+ * ขณะที่ทีมเชื่อว่ามี backstop แล้ว
+ *
+ * กลุ่มทศนิยม `(?:\.\d{1,2})?` เป็น optional ⇒ พฤติกรรมกับเลขกลมเหมือนเดิมทุกประการ
+ * (ตรวจแล้ว: `sales-bot.service.spec.ts` ไม่มีเลขทศนิยมก่อน "บาท" เลยสักเคส
+ * — บรรทัด 100/259/297/374-375/415/447/491 เป็นเลขกลมล้วน → suite เดิมยังเขียว)
+ * และ `Number(m[1].replace(/,/g, ''))` ยังใช้ได้เหมือนเดิม (parse '1,515.83' → 1515.83)
+ */
+const PRICE_IN_TEXT_RE = /([\d][\d,]{2,}(?:\.\d{1,2})?)\s*(?:บาท|฿|baht|THB)/gi;
 
-export function collectGroundedPrices(value: unknown, into: Set<number>): void {
+/**
+ * `keys` เป็นพารามิเตอร์ (default = ชุดบอทขาย) ไม่ใช่ค่าคงที่ตัวเดียวที่บอท 2 ตัวใช้ร่วม
+ * — คีย์ที่ Task 11 ต้องใช้ฝั่งการเงิน (`amount`, `totalAmount`, …) กว้างเกินกว่าจะปล่อยให้
+ * ไปขยายพูลที่บอทขายยอมรับโดยไม่มีใครรีวิว (`search_products` select แถวราคาชื่อ `amount`)
+ */
+export function collectGroundedPrices(
+  value: unknown,
+  into: Set<number>,
+  keys: ReadonlySet<string> = GROUNDED_PRICE_KEYS,
+): void {
   if (value == null) return;
   if (Array.isArray(value)) {
-    for (const v of value) collectGroundedPrices(v, into);
+    for (const v of value) collectGroundedPrices(v, into, keys);
     return;
   }
   if (typeof value === 'object') {
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (GROUNDED_PRICE_KEYS.has(k) && v != null) {
+      if (keys.has(k) && v != null) {
         const n = Number(v);
         if (Number.isFinite(n) && n > 0) into.add(n);
       }
-      collectGroundedPrices(v, into);
+      collectGroundedPrices(v, into, keys);
     }
   }
 }
@@ -772,6 +843,9 @@ import {
 **การตัดสินใจที่ต้องคงไว้ (spec §0/§5):**
 - **ไม่บังคับรูป** — ของจริงส่วนใหญ่ยังไม่มี `gallery` การบังคับจะซ่อนสต็อกที่ขายได้จริงออกจากแชท; บอกความจริงผ่าน `photoAvailable` ต่อเครื่องแทน
 - **บังคับ `cashPrice > 0` แต่ไม่ทิ้งข้อมูลว่ามีของ** — เครื่องที่ match แต่ไม่มีราคา **ไม่เข้า `groups`** และถูกนับใน `priceMissingCount` → persona เดิม ("ไม่มีข้อมูลราคา → ส่งต่อ/ตอบเรทกลาง") + flow #1332 (`get_installment_rates` แล้ว flag staff ที่ `message-router.service.ts:212-234`) ทำงานเหมือนเดิมทุกประการ
+  📌 **หมายเหตุ: นี่คือการเบี่ยงจากถ้อยคำ spec §5 โดยตั้งใจ** — §5 (บรรทัด 117 ของ spec) เขียนว่า "**ไม่กรอง `cashPrice` ที่ query**" ส่วนแผนนี้ **ไม่กรองที่ query จริงตามนั้น** (ต้องอ่านมาให้ครบถึงจะนับ `priceMissingCount` ได้) แต่ **กรองตอนจัดกลุ่ม** = เครื่องไม่มีราคาไม่ถูกยกไปให้โมเดลเห็นเป็น "ของที่ quote ได้"
+  เหตุผลตาม §0: จุดประสงค์ของถ้อยคำ §5 คือ "ห้ามทำให้เครื่องที่ยังไม่มีราคาหายไปจากแชท" (คอมเมนต์ในโค้ดจริง `search-products.tool.ts:57-61` — การตัดออกที่ query "would have nuked all bot quotes") ซึ่งแผนนี้รักษาไว้ครบผ่าน `priceMissingCount` → handoff/#1332
+  ถ้าปล่อยเครื่องไม่มีราคาเข้า `groups` ด้วย จะเกิดผลข้างเคียงที่ §5 ไม่ได้ตั้งใจ: `minPrice`/`maxPrice` ของกลุ่มเพี้ยน (ต้องนับ `null` เป็น 0 หรือข้าม) และ `GROUNDED_PRICE_KEYS` จะไม่มีเลขให้ยึด ⇒ โมเดลเห็นเครื่องแต่ quote ไม่ได้ = โดน guard block เงียบ ๆ (อาการ #1337) แทนที่จะ handoff อย่างที่ควร
 - **PHONE_USED ต้องมีเกรด** — กันบอทเสนอมือสองที่ยังไม่ผ่าน QC
 - **รวม `RESERVED`** ติดธง `reserved: true` + `reservedNote: 'ติดจองชั่วคราว'` — ลูกค้าถามแล้วต้องรู้ว่ามีของแต่ติดจอง ไม่ใช่ "ไม่มี"
 - **ราคาอ่านจากคอลัมน์** `cashPrice`/`installmentPrice` (`prices[]` เลิกใช้ในเส้นทางบอท — spec §1 ข้อ 1)
@@ -1249,6 +1323,14 @@ export async function resolveBcConfigForCategory(
 ): Promise<BcConfigResolution>;
 ```
 
+> 🚩 **เจ้าของ resolver = B3 (ตัวเดียวของ repo) — ข้อตกลงข้าม batch ที่ห้ามละเมิด**
+> `apps/api/src/utils/bc-installment-config.util.ts` คือ **resolver ตัวเดียว** ที่แปลง `InterestConfig` → `BcConfig` ทั้ง repo. ทุก batch ถัดไปต้อง `import` ตัวนี้:
+> - **B4 ห้ามสร้าง `apps/api/src/modules/shop-catalog/bc-installment-config.service.ts`** (แผน B4 Task ~1437-1523 เขียนไว้ว่าจะสร้าง `BcInstallmentConfigService` ที่ทำงานเดียวกัน แทนบล็อกเดียวกัน `previewBc:61-97`) → ให้ตัด task นั้นทิ้งแล้วเรียก `resolveBcConfigForCategory` แทน. ถ้า B4 merge ก่อน B3: B3 ต้องลบ service ตัวนั้นแล้ว re-point มาที่ util ในคอมมิตของ Task 4
+> - **B4 ห้ามเปลี่ยน constructor ของ `InstallmentPreviewService`** (แผน B4 บรรทัด ~1547 เพิ่มพารามิเตอร์ที่ 2 `private bcConfig: BcInstallmentConfigService`) — golden parity test ของ Task 4 (Step 7) สร้าง service ด้วย **1 อาร์กิวเมนต์** `new InstallmentPreviewService(prisma)` ⇒ พารามิเตอร์ที่ 2 = red line ของ B3 พังทันที และเป็น red line ตาม Global Constraints ("ตัวเลขที่ลูกค้าเห็นต้องตรงกับ engine จริง")
+> - resolver เป็น **pure util (ไม่ใช่ `@Injectable`)** โดยตั้งใจ: ผู้เรียกอยู่คนละโมดูล (`sales-bot`, `shop-catalog`, `staff-chat`) การทำเป็น service บังคับให้ทุกโมดูลต้อง import โมดูลของกันและกัน
+>
+> ⚠️ **การเพิ่ม `orderBy: { createdAt: 'asc' }` = จุดเดียวที่ Task นี้ไม่ byte-identical กับ `previewBc` เดิม** (ของเดิมไม่มี orderBy = ผลลัพธ์ไม่ deterministic เมื่อมี config active หลายตัวต่อหมวด). spec เดิมของ `shop-catalog` ไม่ assert args ของ `findFirst` (`installment-preview.service.spec.ts:13,61` mock แบบไม่ดู argument) ⇒ **ยังเขียวโดยไม่แก้ assertion** ตาม Step 6
+
 - [ ] **Step 1:** เขียน spec ที่ล้มก่อน — `apps/api/src/utils/bc-installment-config.util.spec.ts`:
 
 ```ts
@@ -1280,6 +1362,8 @@ describe('resolveBcConfigForCategory', () => {
       deletedAt: null,
       isActive: true,
     });
+    // deterministic: config เก่าสุดชนะ — ตรงกับ ProductQuoteService ของ B2
+    expect(args.orderBy).toEqual({ createdAt: 'asc' });
   });
 
   it('ไม่พบ config → found=false', async () => {
@@ -1328,10 +1412,13 @@ import type { BcConfig } from './installment-calc.types';
  * B3 §5 — resolve InterestConfig → BcConfig ที่ `calcBcInstallment` กินได้
  *
  * ตรรกะยกมาจาก `modules/shop-catalog/installment-preview.service.ts:61-96`
- * แบบพฤติกรรมเดียวกันทุกบรรทัด แล้วให้ทั้ง 3 ผู้อ่านใช้ร่วมกัน:
+ * (ต่างจากเดิมจุดเดียว = ใส่ `orderBy: { createdAt: 'asc' }` ให้ deterministic)
+ * แล้วให้ผู้อ่านใช้ร่วมกัน:
  *   - InstallmentPreviewService (ตัวเลขบนเว็บลูกค้า)
  *   - CalculateInstallmentTool (ตัวเลขที่บอทตอบในแชท)
- *   - ProductDetectService (การ์ดสินค้าใน inbox)
+ *   - ProductQuoteService ของ B2 (การ์ดสินค้า/ตัวเลือกสินค้าใน inbox — Task 14)
+ * และเป็น **resolver ตัวเดียวของ repo**: batch อื่น (B4) ต้อง import ตัวนี้
+ * ห้ามสร้าง service ที่ทำงานเดียวกันขึ้นมาใหม่
  *
  * ทำไมค้นด้วย productCategories ไม่ใช่ช่วง tenure: `sale-writer.service.ts:224-226`
  * และ `contract-lifecycle.service.ts:74-80` — โค้ดที่สร้างสัญญาจริง — ค้นแบบนี้
@@ -1365,6 +1452,12 @@ export async function resolveBcConfigForCategory(
   const config = (await prisma.interestConfig.findFirst({
     where: { productCategories: { has: category }, deletedAt: null, isActive: true },
     include: { rates: { where: { deletedAt: null } } },
+    // ⚠️ ของเดิมที่ installment-preview.service.ts:61-68 **ไม่มี orderBy** = ถ้ามี
+    // config active มากกว่า 1 ตัวต่อหมวด ผลลัพธ์ขึ้นกับลำดับที่ Postgres คืนมา
+    // (ค่างวดเปลี่ยนไปมาโดยไม่มีใครแก้อะไร). ปักหมุดเป็น "ตัวเก่าสุดชนะ" ให้ตรงกับ
+    // ProductQuoteService ของ B2 (`getQuotes` ใช้ `orderBy: { createdAt: 'asc' }`
+    // แล้วเอาตัวแรกต่อหมวด) — ทั้งระบบต้อง resolve ได้ config ตัวเดียวกันเสมอ
+    orderBy: { createdAt: 'asc' },
   })) as InterestConfigRow | null;
 
   if (!config) return { found: false };
@@ -2105,8 +2198,9 @@ describe('grounding จากข้อความที่แอดมินเ
  * ledger บอทจะโดน guard block ทันทีที่พูดตามโปรที่แอดมินเขียนไว้เอง
  * (อาการเดียวกับ #1337: บอทเงียบโดยไม่มี error ให้เห็น)
  *
- * รองรับ 2 tool: `list_promotions` (Task 6) และ `search_knowledge_base` (Task 8)
- * — ทั้งบอทขายและน้องเบสมี tool ชื่อเดียวกัน shape เดียวกัน จึงใช้ตัวนี้ได้ทั้งคู่
+ * รองรับ 3 tool: `list_promotions` (Task 6), `search_knowledge_base` (Task 8)
+ * — ทั้งบอทขายและน้องเบสมี tool ชื่อเดียวกัน shape เดียวกัน จึงใช้ตัวนี้ได้ทั้งคู่ —
+ * และ `calculate_fine` (ฝั่งน้องเบส, Task 11)
  */
 export function collectGroundedPricesFromToolText(
   toolName: string,
@@ -2133,12 +2227,24 @@ export function collectGroundedPricesFromToolText(
       const t = (m as { responseTemplate?: unknown }).responseTemplate;
       if (typeof t === 'string') collectGroundedPricesFromText(t, into);
     }
+    return;
+  }
+
+  // `calculate_fine` (น้องเบส) ซ่อนตัวเลขไว้ใน `explanation` ที่ interpolate
+  // ค่าจาก SystemConfig (`finance-tools.service.ts:143-160`: `${cfg.maxAmount}`,
+  // `${cfg.tier1Amount}`, `${cfg.tier2Amount}`) — คีย์เดียวที่เป็นตัวเลขล้วนคือ
+  // `totalFine` ⇒ วันที่ owner ตั้ง `late_fee_max_amount` เป็น 4 หลัก (เช่น 1500)
+  // น้องเบสจะโดน block ทั้งที่อ่านเลขมาจาก tool ตรง ๆ. explanation ประกอบจาก
+  // config ที่ owner ตั้งเอง = ground truth เหมือน KB/โปรโมชั่น
+  if (toolName === 'calculate_fine') {
+    const explanation = (result as { explanation?: unknown }).explanation;
+    if (typeof explanation === 'string') collectGroundedPricesFromText(explanation, into);
   }
 }
 ```
   - ใน `apps/api/src/modules/sales-bot/sales-bot.service.ts`: เพิ่ม `collectGroundedPricesFromToolText` เข้ากับ import util เดิม แล้วใน tool loop ถัดจาก `collectGroundedPrices(result, groundedPrices);` เพิ่ม
     `collectGroundedPricesFromToolText(tc.name, result, groundedPrices);`
-  - เพิ่มเคสของ util เองท้าย `apps/api/src/utils/price-grounding.util.spec.ts` (list_promotions ดูดจาก description, search_knowledge_base ดูดจาก responseTemplate, tool อื่น = no-op, result ที่ไม่ใช่ object = ไม่ throw)
+  - เพิ่มเคสของ util เองท้าย `apps/api/src/utils/price-grounding.util.spec.ts` (list_promotions ดูดจาก description, search_knowledge_base ดูดจาก responseTemplate, calculate_fine ดูดจาก explanation — เคสนั้นอยู่ใน Task 11, tool ที่ไม่อยู่ใน 3 ตัวนี้ = no-op, result ที่ไม่ใช่ object = ไม่ throw)
 - [ ] **Step 8:** รันผ่าน: `cd apps/api && npx jest src/modules/sales-bot` → เขียวทั้ง module
 - [ ] **Step 9:** `cd apps/api && npx tsc --noEmit` → 0; `npx eslint src/modules/sales-bot/tools/list-promotions.tool.ts src/modules/sales-bot/sales-bot.service.ts` → ไม่มี error ใหม่
 - [ ] **Step 10:** Commit: `feat(bot): list_promotions กรองตามสินค้า/หมวดจริง + ให้บอทพูดเลขในโปรได้ (B3 Task 6)`
@@ -3174,17 +3280,25 @@ import { ListPromotionsTool } from '../../sales-bot/tools/list-promotions.tool';
 ### Task 11: port `guardGrounding` เข้า `FinanceAiService` — ห้ามพึ่ง prompt อย่างเดียว
 
 > spec §5 สั่งไว้ตรง ๆ ว่าต้องทำ **ใน PR เดียวกัน** กับ Task 10 (บทเรียน #1064/#1337)
-> ⚠️ **จุดตายที่ต้องระวัง**: tool การเงินเดิมคืนตัวเลขเงินใต้คีย์ที่ยังไม่อยู่ใน `GROUNDED_PRICE_KEYS` (`amountDue` / `lateFee` / `totalAmount` / `remainingAmount` / `nextAmount` / `paidAmount` / `totalFine` / `amount` ใน `receipts[]` — เห็นได้ที่ `finance-tools.service.ts:71-82,121-133,155-159,184-192`) ถ้าเปิด guard โดยไม่เพิ่มคีย์พวกนี้ **น้องเบสจะตอบยอดค้างไม่ได้อีกเลย**
+> ⚠️ **จุดตายที่ 1**: tool การเงินเดิมคืนตัวเลขเงินใต้คีย์ที่ยังไม่อยู่ใน `GROUNDED_PRICE_KEYS` (`amountDue` / `lateFee` / `totalAmount` / `remainingAmount` / `nextAmount` / `paidAmount` / `totalFine` / `amount` ใน `receipts[]` — เห็นได้ที่ `finance-tools.service.ts:71-82,121-133,155-159,184-192`) ถ้าเปิด guard โดยไม่เพิ่มคีย์พวกนี้ **น้องเบสจะตอบยอดค้างไม่ได้อีกเลย**
+>
+> ⚠️ **จุดตายที่ 2 — น้องเบสเป็น multi-turn แต่ ledger มีอายุแค่ 1 turn (ยืนยันกับโค้ดแล้ว)**: `generateReply` โหลด history จาก DB ทุกครั้ง (`finance-ai.service.ts:96` เรียก `loadHistory` :258-284) แต่ `groundedPrices` เกิดใหม่ทุกครั้งที่เรียก ⇒ บทสนทนาปกติอย่าง
+> เทิร์น 1 "ยอดเท่าไหร่" (tool `get_current_balance` → 1,515.83) → เทิร์น 2 "โอนยังไงคะ" (เรียกแค่ `get_bank_info` ซึ่งคืน **string ล้วน** — `finance-tools.service.ts:200-207` ไม่มีคีย์เงินสักตัว) จะได้ `grounded.size === 0`
+> แล้วถ้าน้องเบสทวนยอดเดิมโดยชอบธรรม ("โอน 1,515.83 บาทมาที่บัญชี…") จะโดน block ⇒ ถ้าปล่อยให้ `return null` เฉย ๆ ลูกค้าจะได้ `FALLBACK_REPLY` ที่บอกว่า **"ระบบขัดข้อง"** ทั้งที่ระบบไม่ได้ล่ม และ **ไม่มีใครไปหาสตาฟให้เลย**
+> → Step 7 จึงต้องทำ **2 อย่างพร้อมกัน**: (ก) seed ledger จากข้อความ BOT/STAFF ใน history (ข) ทางบล็อก = เข้าคิว `HandoffService` + ตอบข้อความจริงว่ากำลังส่งต่อพนักงาน **ห้ามคืน `null` เปล่า ๆ**
 
 **Files:**
-- Modify: `apps/api/src/utils/price-grounding.util.ts` (`GROUNDED_PRICE_KEYS` — เพิ่มคีย์ฝั่งการเงิน)
+- Modify: `apps/api/src/utils/price-grounding.util.ts` (**เพิ่ม `FINANCE_GROUNDED_PRICE_KEYS` เป็น set ใหม่** — ห้ามเติมลง `GROUNDED_PRICE_KEYS` ที่บอทขายใช้)
 - Modify: `apps/api/src/utils/price-grounding.util.spec.ts` (เพิ่ม describe ใหม่)
-- Modify: `apps/api/src/modules/chatbot-finance/services/finance-ai.service.ts` (`generateReply` :99-199)
-- Modify: `apps/api/src/modules/chatbot-finance/services/finance-ai.service.spec.ts` (:293 เป็นเคสที่จะแดงถ้า mock ไม่มีตัวเลข)
+- Modify: `apps/api/src/modules/chatbot-finance/services/finance-ai.service.ts` (constructor +`HandoffService`, `generateReply` :99-199)
+- Modify: `apps/api/src/modules/chatbot-finance/services/finance-ai.service.spec.ts` (**เพิ่ม `{ provide: HandoffService, useValue: { handoff: jest.fn() } }` ใน providers ของ `Test.createTestingModule` ทั้ง 2 จุด** — `:48-73` และ `:262-276`; ไม่งั้น Nest resolve constructor ไม่ได้ = ทุกเคสในไฟล์แดง)
 
 **Interfaces:**
-- Consumes: `collectGroundedPrices` / `collectGroundedPricesFromToolText` / `guardGrounding` (Task 1 + Task 6)
-- Produces: ไม่มี API ใหม่ — `generateReply` คืน `null` เพิ่ม 1 กรณี (grounding blocked) ซึ่ง `ChatbotFinanceService` แปลงเป็น `FALLBACK_REPLY` อยู่แล้ว (`chatbot-finance.service.ts:326-328`)
+- Consumes:
+  - `collectGroundedPrices` / `collectGroundedPricesFromText` / `collectGroundedPricesFromToolText` / `guardGrounding` / `FINANCE_GROUNDED_PRICE_KEYS` (Task 1 + Task 6 + Step 3 ของ Task นี้)
+  - `HandoffService.handoff({ roomId, reason, priority, summary, tags? })` — `services/handoff.service.ts:30` (**เป็น provider ของ `ChatbotFinanceModule` อยู่แล้ว** `:61`; deps = `PrismaService` + `StaffNotificationService` → ไม่มี circular กลับมาที่ `FinanceAiService` ⇒ inject ตรง ๆ ได้ ไม่ต้อง `forwardRef`)
+- Produces: ไม่มี API ใหม่ และ **ไม่เพิ่มเคสที่คืน `null`** — ทางที่ guard บล็อกจะคืน `AiReply` ปกติที่มี `handoffTriggered: true` + ข้อความจริงว่ากำลังส่งต่อพนักงาน (ผู้เรียกใช้เส้นทาง `INTENTS.AI_HANDOFF` ที่มีอยู่แล้ว `chatbot-finance.service.ts:305`) ⇒ ลูกค้าไม่ได้ยินคำว่า "ระบบขัดข้อง" และ staff ได้ห้องเข้าคิวจริง
+  ⚠️ ผลข้างเคียงที่ต้องรู้: `HandoffService.handoff` ตั้ง `chatRoom.handoffMode = true` (`:31-38`) ⇒ **บอทจะเงียบทั้งห้องจนกว่าพนักงานจะเคลียร์** — ตั้งใจ (บอทเพิ่งพยายามพูดตัวเลขที่ไม่มีที่มา ปล่อยให้คุยต่อคือเสี่ยงกว่า) แต่ต้องบอก owner ในหัวข้อ Deployment
 
 - [ ] **Step 1:** เขียนเทสต์ที่ล้มก่อน — ต่อท้าย `apps/api/src/utils/price-grounding.util.spec.ts`:
 
@@ -3195,6 +3309,7 @@ describe('คีย์เงินฝั่งน้องเบส (B3 Task 11)
     collectGroundedPrices(
       { found: true, amountDue: 1416.66, lateFee: 0, totalAmount: 1515.83, daysOverdue: 3 },
       set,
+      FINANCE_GROUNDED_PRICE_KEYS,
     );
     expect(set.has(1416.66)).toBe(true);
     expect(set.has(1515.83)).toBe(true);
@@ -3212,28 +3327,74 @@ describe('คีย์เงินฝั่งน้องเบส (B3 Task 11)
         receipts: [{ installmentNumber: 1, amount: 1515.83 }],
       },
       set,
+      FINANCE_GROUNDED_PRICE_KEYS,
     );
     for (const n of [18190, 4547.49, 13642.51, 1515.83]) expect(set.has(n)).toBe(true);
   });
 
   it('น้องเบสตอบยอดค้างได้โดยไม่โดน block', () => {
     const set = new Set<number>();
-    collectGroundedPrices({ totalAmount: 5000 }, set);
+    collectGroundedPrices({ totalAmount: 5000 }, set, FINANCE_GROUNDED_PRICE_KEYS);
     expect(guardGrounding('ยอดคงเหลือของคุณคือ 5,000 บาทค่ะ', set)).toEqual({ ok: true });
+  });
+
+  it('น้องเบสตอบยอดที่มีสตางค์ได้ แต่ยอดที่แต่งเองยังโดน block', () => {
+    const set = new Set<number>();
+    collectGroundedPrices({ totalAmount: 1515.83 }, set, FINANCE_GROUNDED_PRICE_KEYS);
+    expect(guardGrounding('ยอดของคุณคือ 1,515.83 บาทค่ะ', set)).toEqual({ ok: true });
+    expect(guardGrounding('ยอดของคุณคือ 99,999.50 บาทค่ะ', set)).toEqual({
+      ok: false,
+      reason: 'unmatched-price=99999.5',
+    });
+  });
+
+  it('คีย์กว้างฝั่งการเงินต้องไม่รั่วเข้าพูลของบอทขาย', () => {
+    const set = new Set<number>();
+    // ค่า default = GROUNDED_PRICE_KEYS (บอทขาย) → `amount` ต้องไม่ถูกเก็บ
+    collectGroundedPrices({ prices: [{ label: 'ราคาทุน', amount: 21000 }] }, set);
+    expect(set.size).toBe(0);
+    expect(FINANCE_GROUNDED_PRICE_KEYS.has('amount')).toBe(true);
+    expect(GROUNDED_PRICE_KEYS.has('amount')).toBe(false);
   });
 
   it('เลขบัญชีธนาคารต้องไม่ถูกนับเป็นราคา', () => {
     const set = new Set<number>();
-    collectGroundedPrices({ bankName: 'KBank', accountNumber: '1234567890' }, set);
+    collectGroundedPrices(
+      { bankName: 'KBank', accountNumber: '1234567890' },
+      set,
+      FINANCE_GROUNDED_PRICE_KEYS,
+    );
     expect(set.size).toBe(0);
+  });
+
+  // calculate_fine ซ่อนเพดานค่าปรับไว้ใน explanation (ไม่มีคีย์ตัวเลขรองรับ)
+  // — วันที่ owner ตั้ง late_fee_max_amount = 1500 น้องเบสต้องพูดตามได้
+  it('ดูดเลขจาก explanation ของ calculate_fine (เพดานค่าปรับ 4 หลัก)', () => {
+    const set = new Set<number>();
+    const result = {
+      daysOverdue: 40,
+      totalFine: 1500,
+      explanation: 'ค่าปรับล่าช้าต่อวัน: 50 บาท/วัน (สูงสุด 1500 บาท) — งวดนี้เลย 40 วัน ≈ 1500 บาท',
+    };
+    collectGroundedPrices(result, set, FINANCE_GROUNDED_PRICE_KEYS);
+    collectGroundedPricesFromToolText('calculate_fine', result, set);
+    expect(set.has(1500)).toBe(true);
+    expect(guardGrounding('ค่าปรับสูงสุด 1,500 บาทค่ะ', set)).toEqual({ ok: true });
   });
 });
 ```
+> import ของไฟล์ spec ต้องเพิ่ม `FINANCE_GROUNDED_PRICE_KEYS` และ `collectGroundedPricesFromToolText` เข้าไปในรายการที่ Task 1 Step 2 เขียนไว้
 
-- [ ] **Step 2:** รันให้เห็น fail: `cd apps/api && npx jest src/utils/price-grounding.util.spec.ts` → 3 เคสแรกแดง
-- [ ] **Step 3:** เพิ่มคีย์ใน `apps/api/src/utils/price-grounding.util.ts`:
+- [ ] **Step 2:** รันให้เห็น fail: `cd apps/api && npx jest src/utils/price-grounding.util.spec.ts` → แดงทั้ง describe (`FINANCE_GROUNDED_PRICE_KEYS` ยังไม่ถูก export)
+- [ ] **Step 3:** เพิ่ม **ชุดคีย์แยกของฝั่งการเงิน** ใน `apps/api/src/utils/price-grounding.util.ts` — **ห้ามเติมลง `GROUNDED_PRICE_KEYS` ตรง ๆ** เพราะ set นั้นใช้ร่วมกับบอทขาย และคีย์กว้าง ๆ อย่าง `amount` จะไปขยายพูลที่บอทขายยอมรับโดยไม่มีใครรีวิว (`search_products` select แถวราคาชื่อ `amount` ใน `prices[]` อยู่แล้ว → บอทขายจะ quote ราคาเก่า/ราคาซื้อได้โดยไม่โดน block):
 ```ts
-  // B3 Task 11 — ฝั่งน้องเบส (finance-tools.service.ts:71-82,121-133,155-159,184-192)
+/**
+ * B3 Task 11 — คีย์ของน้องเบส = ชุดบอทขาย + คีย์เงินฝั่งการเงิน
+ * (finance-tools.service.ts:71-82,121-133,155-159,184-192)
+ * ส่งเข้า `collectGroundedPrices(..., FINANCE_GROUNDED_PRICE_KEYS)` จาก `FinanceAiService` เท่านั้น
+ */
+export const FINANCE_GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
+  ...GROUNDED_PRICE_KEYS,
   'amountDue',
   'lateFee',
   'totalAmount',
@@ -3242,29 +3403,38 @@ describe('คีย์เงินฝั่งน้องเบส (B3 Task 11)
   'nextAmount',
   'totalFine',
   'amount',
+]);
 ```
 - [ ] **Step 4:** รันผ่าน: `cd apps/api && npx jest src/utils/price-grounding.util.spec.ts` → เขียวทั้งไฟล์
 - [ ] **Step 5:** เขียนเทสต์ guard ใน `apps/api/src/modules/chatbot-finance/services/finance-ai.service.spec.ts` — **ต้องวาง describe ใหม่ซ้อน *ข้างใน* `describe('model routing (Phase 7.2)')` (`:256-303`)** เพราะ `service` เป็น `let` ของ describe นั้น (`:257`) และ `beforeEach` ของมันเป็นที่เดียวที่ประกอบ `FinanceAiService` ขึ้นมา (`mockCreate` / `textResponse` / `toolUseResponse` เป็น module-scope ส่วน `defaultParams` / `toolExecutor` อยู่ที่ describe นอกสุด) — วางท้ายไฟล์จะได้ `service is undefined`:
 
 ```ts
   describe('grounding guard (B3 Task 11)', () => {
-    it('บล็อกคำตอบที่มีตัวเลขบาทซึ่งไม่ได้มาจาก tool → คืน null (ผู้เรียกตอบ fallback)', async () => {
+    it('บล็อกคำตอบที่มีตัวเลขบาทซึ่งไม่ได้มาจาก tool → ส่งต่อพนักงาน (ห้ามบอกลูกค้าว่าระบบขัดข้อง)', async () => {
       toolExecutor.execute.mockResolvedValue({ ok: true, data: { found: true, totalAmount: 1515.83 } });
       mockCreate
         .mockResolvedValueOnce(toolUseResponse('get_current_balance'))
-        .mockResolvedValueOnce(textResponse('ยอดของคุณคือ 99,999 บาทค่ะ'));
+        .mockResolvedValueOnce(textResponse('ยอดของคุณคือ 99,999.50 บาทค่ะ'));
 
-      await expect(service.generateReply(defaultParams)).resolves.toBeNull();
+      const r = await service.generateReply(defaultParams);
+      expect(r).not.toBeNull();
+      expect(r!.handoffTriggered).toBe(true);
+      expect(r!.text).toContain('พนักงาน');
+      expect(r!.text).not.toContain('99,999');
+      expect(handoff.handoff).toHaveBeenCalledWith(
+        expect.objectContaining({ roomId: 'sess-1', reason: 'grounding_blocked' }),
+      );
     });
 
-    it('ยอมให้ตอบตัวเลขที่ tool คืนมาจริง', async () => {
+    it('ยอมให้ตอบตัวเลขที่ tool คืนมาจริง (รวมสตางค์)', async () => {
       toolExecutor.execute.mockResolvedValue({ ok: true, data: { found: true, totalAmount: 1515.83 } });
       mockCreate
         .mockResolvedValueOnce(toolUseResponse('get_current_balance'))
         .mockResolvedValueOnce(textResponse('ยอดของคุณคือ 1,515.83 บาทค่ะ'));
 
       const r = await service.generateReply(defaultParams);
-      expect(r?.text).toContain('1,515');
+      expect(r?.text).toContain('1,515.83');
+      expect(handoff.handoff).not.toHaveBeenCalled();
     });
 
     it('คำตอบที่ไม่มีตัวเลขบาท ผ่านตลอด (ทักทาย/ขอบคุณ)', async () => {
@@ -3272,32 +3442,78 @@ describe('คีย์เงินฝั่งน้องเบส (B3 Task 11)
       const r = await service.generateReply(defaultParams);
       expect(r?.text).toContain('สวัสดี');
     });
+
+    // ── เคสที่สำคัญที่สุดของ Task นี้: เทิร์นที่ 2 ของบทสนทนาปกติ ──
+    // "ยอดเท่าไหร่" (เทิร์น 1, มี tool) → "โอนยังไงคะ" (เทิร์น 2, get_bank_info คืน string ล้วน)
+    // ถ้าไม่ seed ledger จาก history เทิร์นนี้จะ grounded.size === 0 แล้วโดน block ทั้งที่ยอดถูกต้อง
+    it('ทวนยอดเดิมในเทิร์นถัดไปได้ แม้ tool เทิร์นนั้นไม่คืนตัวเลข (seed จาก history)', async () => {
+      prisma.chatMessage.findMany.mockResolvedValue([
+        { role: 'CUSTOMER', text: 'ยอดเท่าไหร่' },
+        { role: 'BOT', text: 'งวดนี้ 1,515.83 บาทค่ะ' },
+      ]);
+      toolExecutor.execute.mockResolvedValue({
+        ok: true,
+        data: { bankName: 'KBank', accountNumber: '203-1-16520-5', formatted: '…' },
+      });
+      mockCreate
+        .mockResolvedValueOnce(toolUseResponse('get_bank_info'))
+        .mockResolvedValueOnce(textResponse('โอน 1,515.83 บาท มาที่บัญชีนี้ได้เลยค่ะ'));
+
+      const r = await service.generateReply(defaultParams);
+      expect(r?.text).toContain('1,515.83');
+      expect(r?.handoffTriggered).toBe(false);
+      expect(handoff.handoff).not.toHaveBeenCalled();
+    });
   });
 ```
-> ⚠️ **ต้องแก้ mock เดิมด้วย (ยืนยันกับโค้ดแล้วว่าจะแดงแน่นอน)**: `beforeEach` ของ `describe('model routing (Phase 7.2)')` `:261` ตั้ง
+> `handoff` = mock ตัวใหม่ที่ประกาศคู่กับ `toolExecutor` ใน `beforeEach` ของ describe นี้:
+> `handoff = { handoff: jest.fn().mockResolvedValue({ handoffId: 'sess-1', estimatedTime: '2 ชั่วโมง' }) };`
+> แล้วใส่ `{ provide: HandoffService, useValue: handoff }` ใน providers (ต้องใส่ใน `describe('when ANTHROPIC_API_KEY is not set')` `:48-73` ด้วย ไม่งั้นทั้งไฟล์แดง)
+> ⚠️ **ต้องแก้ mock เดิมด้วย — ไม่งั้นเคสจะ "ผ่านแบบหลอก"**: `beforeEach` ของ `describe('model routing (Phase 7.2)')` `:261` ตั้ง
 > `toolExecutor = { execute: jest.fn().mockResolvedValue({ ok: true, data: { ok: 1 }, triggeredHandoff: false }) };`
-> — `data: { ok: 1 }` ไม่มีคีย์เงินเลย ทำให้เคส `:291-300` ที่โมเดลตอบ `'ยอดคงเหลือของคุณคือ 5,000 บาทค่ะ'` โดน guard block → `generateReply` คืน `null` → `expect(result?.model).toBe('claude-sonnet-4-6')` (`:298`) พัง.
-> **แก้เป็น `data: { totalAmount: 5000 }`** (นี่คือความจริงของ pipeline: เลขที่บอทพูดต้องมาจาก tool) — ห้ามแก้ด้วยการปิด guard และห้ามลบเคส
+> — `data: { ok: 1 }` ไม่มีคีย์เงินเลย ⇒ เคส `:291-300` ที่โมเดลตอบ `'ยอดคงเหลือของคุณคือ 5,000 บาทค่ะ'` จะโดน guard block ทุกครั้ง.
+> เดิมทีทางบล็อกคืน `null` เคสนี้จึงแดงตรง ๆ; หลังเปลี่ยนเป็น "ตอบข้อความ handoff" (Step 7) มันจะ **ยังเขียว** เพราะ `result.model` / `result.toolsUsed` ที่มัน assert เหมือนกันทั้ง 2 ทาง —
+> กลายเป็นเคส model-routing ที่จริง ๆ แล้ววิ่งอยู่บนเส้นทาง handoff โดยไม่มีใครรู้.
+> **แก้เป็น `data: { totalAmount: 5000 }`** (นี่คือความจริงของ pipeline: เลขที่บอทพูดต้องมาจาก tool) + เพิ่ม `expect(result!.handoffTriggered).toBe(false);` ในเคสนั้นเพื่อปักหมุดว่ามันวิ่งเส้นทางปกติ — ห้ามแก้ด้วยการปิด guard และห้ามลบเคส
 
 - [ ] **Step 6:** รันให้เห็น fail: `cd apps/api && npx jest src/modules/chatbot-finance/services/finance-ai.service.spec.ts`
 - [ ] **Step 7:** implement ใน `apps/api/src/modules/chatbot-finance/services/finance-ai.service.ts`:
-  - import:
+  - import + inject:
 ```ts
 import {
   collectGroundedPrices,
+  collectGroundedPricesFromText,
   collectGroundedPricesFromToolText,
   guardGrounding,
+  FINANCE_GROUNDED_PRICE_KEYS,
 } from '../../../utils/price-grounding.util';
+import { HandoffService } from './handoff.service';
 ```
-  - ใน `generateReply` ประกาศถัดจาก `const toolsUsed: string[] = [];` (`:102`):
+  เพิ่มพารามิเตอร์ท้าย constructor (`:57-62`): `private handoff: HandoffService,`
+  - ข้อความที่ใช้ตอนบล็อก — ประกาศระดับไฟล์ข้าง ๆ `MAX_TOOL_ITERATIONS` (`:23`). **ห้ามใช้ `FALLBACK_REPLY` ที่บอกว่า "ระบบขัดข้อง"** เพราะระบบไม่ได้ล่ม:
 ```ts
-      // B3 §5 — backstop เดียวกับบอทขาย: ทุกเลขบาทที่ตอบต้องเคยผ่านตาเป็นผล tool
+/** B3 §5 — ทางที่ guard บล็อก: บอกความจริง + ส่งต่อพนักงาน (ห้ามอ้างว่าระบบล่ม) */
+const GROUNDING_BLOCKED_REPLY =
+  'ขอโทษค่ะ 🙏 น้องเบสขอให้พนักงานยืนยันตัวเลขให้อีกครั้งนะคะ\nส่งต่อให้พนักงานติดต่อกลับแล้วค่ะ';
+```
+  - ใน `generateReply` ประกาศ **ถัดจาก `const dbHistory = await this.loadHistory(params.roomId);` (`:96`)** — ต้องอยู่หลัง `dbHistory` เพราะบรรทัดถัดไป seed จากมัน:
+```ts
+      // B3 §5 — backstop เดียวกับบอทขาย: ทุกเลขบาทที่ตอบต้องมีที่มา
       const groundedPrices = new Set<number>();
+      // ⚠️ น้องเบสเป็น multi-turn (ต่างจากบอทขาย): เทิร์นถัด ๆ ไปอาจไม่เรียก tool
+      // ที่คืนตัวเลขเลย (เช่น get_bank_info คืน string ล้วน) การทวนยอดเดิมที่ตัวเอง
+      // เพิ่งบอกไปจึงต้องนับเป็น grounded ไม่งั้น guard จะบล็อกบทสนทนาปกติ
+      // (ข้อความใน history = ข้อความที่ "ส่งออกไปแล้ว" = ผ่าน guard มาแล้ว หรือ
+      //  พนักงานพิมพ์เอง — STAFF/BOT ถูก map เป็น assistant ที่ loadHistory :275-279)
+      for (const h of dbHistory) {
+        if (h.role === 'assistant') collectGroundedPricesFromText(h.content, groundedPrices);
+      }
 ```
   - ใน `toolResults` map ต่อจาก `if (result.triggeredHandoff) handoffTriggered = true;`:
 ```ts
             if (result.ok) {
-              collectGroundedPrices(result.data, groundedPrices);
+              // ⚠️ ต้องส่ง FINANCE_GROUNDED_PRICE_KEYS — ค่า default คือชุดของบอทขาย
+              collectGroundedPrices(result.data, groundedPrices, FINANCE_GROUNDED_PRICE_KEYS);
               // FAQ/โปรโมชั่นเป็นข้อความที่แอดมินพิมพ์เอง = ground truth
               // (util ตัวเดียวกับบอทขาย Task 6/8 — ห้าม inline ซ้ำ)
               collectGroundedPricesFromToolText(block.name, result.data, groundedPrices);
@@ -3324,9 +3540,36 @@ import {
               status: 'error',
               errorKind: 'grounding_blocked',
             });
-            // คืน null = ผู้เรียกตอบ FALLBACK_REPLY (chatbot-finance.service.ts:326-328)
-            // ดีกว่าปล่อยตัวเลขที่แต่งเองไปถึงลูกค้าที่กำลังผ่อนอยู่
-            return null;
+
+            // ห้ามคืน null: ผู้เรียกจะตอบ FALLBACK_REPLY = "ระบบขัดข้อง" ซึ่งเป็นคำโกหก
+            // (ระบบทำงานปกติ — โมเดลต่างหากที่พูดเลขไม่มีที่มา) และไม่มีใครไปหาสตาฟ
+            // แทนที่ด้วย: เข้าคิวพนักงานจริง + ตอบข้อความที่ตรงกับสิ่งที่เกิดขึ้น
+            try {
+              await this.handoff.handoff({
+                roomId: params.roomId,
+                reason: 'grounding_blocked',
+                priority: 'high',
+                summary:
+                  `น้องเบสตอบตัวเลขที่ไม่มีที่มา (${grounding.reason}) — ลูกค้าถาม: ` +
+                  params.userMessage.slice(0, 120),
+                tags: ['grounding'],
+              });
+            } catch (err) {
+              // handoff ล้มก็ยังต้องตอบลูกค้าให้ตรงความจริง — ห้ามพาลงทาง "ระบบขัดข้อง"
+              this.logger.error(
+                `[FinanceAI] handoff after grounding block failed: ${err instanceof Error ? err.message : err}`,
+              );
+              Sentry.captureException(err);
+            }
+
+            return {
+              text: GROUNDING_BLOCKED_REPLY,
+              model: activeModel,
+              inputTokens: totalInput,
+              outputTokens: totalOutput,
+              toolsUsed,
+              handoffTriggered: true,
+            };
           }
 ```
 - [ ] **Step 8:** รันผ่าน: `cd apps/api && npx jest src/modules/chatbot-finance` → เขียวทั้ง module
@@ -3809,202 +4052,98 @@ const CHANNELS = [
 
 ---
 
-### Task 14: `ProductDetectService` เลิกคิดค่างวดเอง → ใช้ util เดียวกับ `calculate_installment`
+### Task 14: `ProductQuoteService` (B2) ใช้ resolver ตัวเดียวกับสัญญาจริง
 
-> spec §5 บรรทัดสุดท้าย. ตรรกะปัจจุบันที่ `product-detect.service.ts:130-142` เป็นสูตรมือแบบเดียวกับที่ #1335 ตัดทิ้งไปแล้ว: `principal × (1 + interestRate)` โดย `interestRate` เป็น **per-month** และหารด้วย `minInstallmentMonths` → ค่างวดที่แอดมินเห็นในกล่องแชทต่ำกว่าความจริงหลายเท่า และยัง **ไม่มีค่าคอม/VAT** ด้วย
+> ⚠️ **ขอบเขต Task นี้ถูกย่อลงเพราะ B2 ship ก่อนและทำงานส่วนใหญ่ไปแล้ว (ยืนยันกับแผน B2 แล้ว)**
+> spec §5 บรรทัดสุดท้ายเขียนไว้ว่า "แก้ `ProductDetectService` เลิกคิดค่างวดเอง" แต่ **B2 Task 10** (`docs/superpowers/plans/2026-08-04-b2-inbox-product-picker.md:2406-2842`) ทำไปครบแล้ว:
+> - เขียน `product-detect.service.ts` ใหม่ทั้งหัวไฟล์ (บรรทัด 1-61) พร้อม **constructor 2 อาร์กิวเมนต์** `(private prisma: PrismaService, private productQuote: ProductQuoteService)` (:2549-2552)
+> - **สร้าง `product-detect.service.spec.ts` แล้ว** (:2412, 4 เคส) — B3 สร้างซ้ำไม่ได้
+> - แก้ป้าย `(ดาวน์ …%)` → จำนวนเงิน ทั้ง `ai-suggest.service.ts:100` (:2678) และ `ProductContextCard.tsx` (แทนทั้งไฟล์, :2685)
+> - `gallery` แทน `photos`, จำนวนเครื่องจริง
+> ⇒ ถ้า B3 ทำตามข้อความเดิมจะเป็นการ **เขียนทับงาน B2 ด้วย constructor 1 อาร์กิวเมนต์** = พังทั้ง `StaffChatModule` และ spec ของ B2
+>
+> **สิ่งที่ยังไม่มีใครทำ และเป็นเนื้องานทั้งหมดของ Task นี้:** `ProductQuoteService` ของ B2 **ก็อปตรรกะ resolve config มาไว้ในตัวเอง** (`computeProductQuote` สร้าง `ratePctByMonths` + fallback `interestRate × m` + `allowedMonths` เอง — B2 :944-975) ซึ่งเป็นตรรกะเดียวกับ `bc-installment-config.util.ts` ของ Task 4 ⇒ มี 2 ก็อปปี้ในระบบ วันที่แก้กติกาที่หนึ่งแล้วลืมอีกที่ ตัวเลขในกล่องแชทจะเริ่มไม่ตรงกับสัญญาอีกครั้ง (อาการเดิมของ #1335)
+
+**Preconditions (ต้องจริงก่อนเริ่ม — ถ้าไม่จริงแปลว่า B2 ยังไม่ merge ให้หยุด):**
+- `apps/api/src/modules/staff-chat/services/product-quote.service.ts` มีอยู่จริง และ export `computeProductQuote` / `resolveProductPrices` / `ProductQuoteService`
+- `apps/api/src/modules/staff-chat/services/product-detect.service.ts` มี constructor 2 อาร์กิวเมนต์และ **ไม่มี** การคำนวณค่างวดด้วยมือแล้ว
+- `product-detect.service.spec.ts` + `product-quote.service.spec.ts` มีอยู่และเขียว
 
 **Files:**
-- Modify: `apps/api/src/modules/staff-chat/services/product-detect.service.ts` (`detectProducts` :29-61, `enrichProducts` :82-151)
-- Create: `apps/api/src/modules/staff-chat/services/product-detect.service.spec.ts`
-- Modify: `apps/api/src/modules/staff-chat/services/ai-suggest.service.ts:99` (label ดาวน์)
-- Modify: `apps/web/src/pages/UnifiedInboxPage/components/ProductContextCard.tsx:58` (label ดาวน์)
-
-**ผู้อ่าน `pricingOptions` ที่ต้องเช็ก (verify แล้ว มี 2 ตัวเท่านั้น):**
-- `ProductContextCard.tsx:52-61` — render `ผ่อน {installments} งวด {monthlyPayment} บ./ด. (ดาวน์ {downPaymentMin}%)`
-- `ai-suggest.service.ts:96-101` — ประกอบ prompt context ด้วยข้อความเดียวกัน
-ทั้งคู่ **ไม่อ่าน `interestRate`** → การที่ Task นี้เปลี่ยนความหมาย `interestRate` (per-month fraction → total-contract fraction) **ไม่ทำให้ UI ไหนพัง**
-แต่ทั้งคู่ติด **บั๊กป้ายกำกับที่มีอยู่เดิม**: `downPaymentMin` เป็น **บาท** มาตลอด (`Math.ceil(price × downPaymentPct)`) แต่ถูก render ต่อท้ายด้วย `%` — Task นี้ทำให้ตัวเลขถูกแล้ว ป้ายจึงต้องถูกด้วย ไม่งั้นแอดมินอ่านว่า "ดาวน์ 6,180%"
+- Modify: `apps/api/src/utils/bc-installment-config.util.ts` — แยกส่วน pure ออกมา export เพิ่ม `toBcConfig(row)` (ตัว `resolveBcConfigForCategory` เรียกมันต่อ พฤติกรรมไม่เปลี่ยน)
+- Modify: `apps/api/src/utils/bc-installment-config.util.spec.ts` — เพิ่มเคสของ `toBcConfig` (pure, ไม่แตะ DB)
+- Modify: `apps/api/src/modules/staff-chat/services/product-quote.service.ts` — `computeProductQuote` เลิกสร้าง rate map/fallback เอง → เรียก `toBcConfig`
+- **ไม่แตะ** `product-detect.service.ts` / `ai-suggest.service.ts` / `ProductContextCard.tsx` / spec ใด ๆ ของ B2
 
 **Interfaces:**
-- Consumes: `resolveBcConfigForCategory` (Task 4), `calcBcInstallment` (`utils/installment-calc.util.ts:18`)
-- Produces: `DetectedProduct.pricingOptions` เปลี่ยนความหมาย — จาก "ทุก InterestConfig ที่ active" เป็น "แผนของหมวดสินค้านั้น ตามงวดที่มีจริงในตาราง"
+- Consumes: `toBcConfig` / `resolveBcConfigForCategory` (Task 4)
+- Produces:
+```ts
+// apps/api/src/utils/bc-installment-config.util.ts (เพิ่ม export ใหม่ 1 ตัว)
+/** map แถว InterestConfig (+rates) → BcConfig — pure, ไม่แตะ DB */
+export function toBcConfig(row: {
+  minDownPaymentPct: unknown;
+  storeCommissionPct: unknown;
+  vatPct: unknown;
+  interestRate: unknown;
+  minInstallmentMonths: number;
+  maxInstallmentMonths: number;
+  rates: { months: number; ratePct: unknown }[];
+}): BcConfig;
+```
+> `computeProductQuote` **ยังต้องเป็น pure + sync เหมือนเดิม** — ห้ามให้มันเรียก `resolveBcConfigForCategory` (async + ยิง DB) ตรง ๆ เพราะ (ก) golden test ของ B2 (`product-quote.service.spec.ts`, 7 เคส) เรียกมันแบบ sync พร้อม config literal และ (ข) `getQuotes` จงใจโหลด config ด้วย `findMany` ครั้งเดียวต่อชุดเพื่อกัน N+1 ตอน search คืน 20 เครื่อง. สิ่งที่ต้องรวมคือ **ตรรกะ map แถว → BcConfig** ไม่ใช่ตัว query
 
-- [ ] **Step 1:** เขียน spec ที่ล้มก่อน — `apps/api/src/modules/staff-chat/services/product-detect.service.spec.ts`:
+- [ ] **Step 1:** เขียนเทสต์ที่ล้มก่อน — ต่อท้าย `apps/api/src/utils/bc-installment-config.util.spec.ts` (ใช้ `baseCfg` / `makePrisma` / `Prisma` ที่ประกาศไว้แล้วหัวไฟล์ตั้งแต่ Task 4 Step 1 — แค่เพิ่ม `toBcConfig` เข้าไปใน import บรรทัดแรก):
 
 ```ts
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { ProductDetectService } from './product-detect.service';
-
-const D = (v: string) => new Prisma.Decimal(v);
-
-const makePrisma = (over: Record<string, unknown> = {}) =>
-  ({
-    product: {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          id: 'prd-1',
-          name: 'iPhone 15 128GB',
-          brand: 'Apple',
-          model: 'iPhone 15',
-          category: 'PHONE_NEW',
-          cashPrice: D('28900'),
-          installmentPrice: D('30900'),
-          gallery: ['https://cdn.example.com/p1.jpg'],
-        },
-      ]),
-    },
-    interestConfig: {
-      findFirst: jest.fn().mockResolvedValue({
-        id: 'ic-1',
-        minDownPaymentPct: D('0.20'),
-        storeCommissionPct: D('0'),
-        vatPct: D('0'),
-        interestRate: D('0.10'),
-        minInstallmentMonths: 6,
-        maxInstallmentMonths: 6,
-        rates: [],
-      }),
-    },
-    promotion: { findMany: jest.fn().mockResolvedValue([]) },
-    ...over,
-  }) as unknown as PrismaService;
-
-describe('ProductDetectService', () => {
-  it('คิดค่างวดด้วย calcBcInstallment (ไม่ใช่สูตรมือแบบเดิม)', async () => {
-    const svc = new ProductDetectService(makePrisma());
-    const [p] = await svc.detectProducts(['สนใจ iPhone 15 ครับ']);
-    // installmentPrice 30900, down 20% = 6180, financed 24720, rate 6 งวด = 0.60
-    // interest 14832 → subtotal 39552 → monthly 6592
-    expect(p.pricingOptions[0]).toMatchObject({
-      installments: 6,
-      downPaymentMin: 6180,
-      monthlyPayment: 6592,
+describe('toBcConfig — ตัว map ที่ทุกผู้อ่านต้องใช้ร่วมกัน (B3 Task 14)', () => {
+  it('มี rate rows → allowedMonths/ratePctByMonths มาจากตารางตรง ๆ', () => {
+    const c = toBcConfig({
+      ...baseCfg,
+      rates: [
+        { months: 6, ratePct: new Prisma.Decimal('0.45') },
+        { months: 12, ratePct: new Prisma.Decimal('0.90') },
+      ],
     });
+    expect(c.allowedMonths).toEqual([6, 12]);
+    expect(c.ratePctByMonths.get(12)!.toString()).toBe('0.9');
   });
 
-  it('ใช้รูปจาก gallery (ไม่ใช่ photos ที่เป็น base64)', async () => {
-    const svc = new ProductDetectService(makePrisma());
-    const [p] = await svc.detectProducts(['iPhone 15']);
-    expect(p.imageUrl).toBe('https://cdn.example.com/p1.jpg');
+  it('ไม่มี rate rows → สังเคราะห์ interestRate × m ตามช่วง min..max', () => {
+    const c = toBcConfig(baseCfg);
+    expect(c.allowedMonths).toEqual([6, 7, 8]);
+    expect(c.ratePctByMonths.get(8)!.toString()).toBe('0.8');
   });
 
-  it('ไม่มี InterestConfig ของหมวดนี้ → pricingOptions ว่าง (ไม่โชว์เลขมั่ว)', async () => {
-    const svc = new ProductDetectService(
-      makePrisma({ interestConfig: { findFirst: jest.fn().mockResolvedValue(null) } }),
+  it('resolveBcConfigForCategory คืนผลเท่ากับ toBcConfig ของแถวเดียวกัน (ไม่มีตรรกะซ้อน)', async () => {
+    const r = await resolveBcConfigForCategory(makePrisma(baseCfg), 'PHONE_NEW');
+    const direct = toBcConfig(baseCfg);
+    expect(r.config!.allowedMonths).toEqual(direct.allowedMonths);
+    expect(r.config!.minDownPct.toString()).toBe(direct.minDownPct.toString());
+    expect([...r.config!.ratePctByMonths.entries()].map(([m, v]) => [m, v.toString()])).toEqual(
+      [...direct.ratePctByMonths.entries()].map(([m, v]) => [m, v.toString()]),
     );
-    const [p] = await svc.detectProducts(['iPhone 15']);
-    expect(p.pricingOptions).toEqual([]);
-  });
-
-  it('ไม่มีคำที่เป็นชื่อรุ่น → ไม่ยิง DB', async () => {
-    const prisma = makePrisma();
-    const svc = new ProductDetectService(prisma);
-    expect(await svc.detectProducts(['สวัสดีครับ'])).toEqual([]);
-    expect(prisma.product.findMany).not.toHaveBeenCalled();
   });
 });
 ```
 
-- [ ] **Step 2:** รันให้เห็น fail: `cd apps/api && npx jest src/modules/staff-chat/services/product-detect.service.spec.ts`
-- [ ] **Step 3:** implement ใน `apps/api/src/modules/staff-chat/services/product-detect.service.ts`:
-  - import:
+- [ ] **Step 2:** รันให้เห็น fail: `cd apps/api && npx jest src/utils/bc-installment-config.util.spec.ts` → `toBcConfig is not a function`
+- [ ] **Step 3:** refactor `apps/api/src/utils/bc-installment-config.util.ts` — ยกก้อน map ออกมาเป็น `export function toBcConfig(row)` แล้วให้ `resolveBcConfigForCategory` เหลือแค่ `findFirst` (พร้อม `orderBy: { createdAt: 'asc' }` ของ Task 4) + `return { found: true, config: toBcConfig(config) }` — **ตรรกะเดิมทุกบรรทัด แค่ย้ายที่** (spec ของ Task 4 ทั้ง 5 เคสต้องยังเขียวโดยไม่แก้ assertion)
+- [ ] **Step 4:** แก้ `apps/api/src/modules/staff-chat/services/product-quote.service.ts` — ในบล็อกกลางของ `computeProductQuote` ที่วันนี้สร้าง `ratePctByMonths` / fallback / `allowedMonths` เอง แทนด้วย:
 ```ts
-import Decimal from 'decimal.js';
-import { calcBcInstallment } from '../../../utils/installment-calc.util';
-import { resolveBcConfigForCategory } from '../../../utils/bc-installment-config.util';
+  // B3 Task 14 — ห้ามมีตรรกะ resolve config 2 ก็อปในระบบ: ใช้ตัวเดียวกับ
+  // InstallmentPreviewService (เว็บ) และ CalculateInstallmentTool (บอท)
+  const bcConfig = toBcConfig(config);
+  if (bcConfig.allowedMonths.length === 0) return { ...base, ...EMPTY_INSTALLMENT };
+
+  const months = bcConfig.allowedMonths[bcConfig.allowedMonths.length - 1];
+  const result = calcBcInstallment({ installmentPrice: dec(installment), months, config: bcConfig });
 ```
-  - แทน `select` ของ `detectProducts` (`:44-56`) ทั้งก้อน (เลิกอ่าน `photos`/`prices[]`):
-```ts
-      select: {
-        id: true,
-        name: true,
-        brand: true,
-        model: true,
-        category: true,
-        cashPrice: true,
-        installmentPrice: true,
-        gallery: true,
-      },
-```
-  - แทน `enrichProducts` ทั้งเมธอด:
-```ts
-  private async enrichProducts(
-    products: {
-      id: string;
-      name: string;
-      brand: string;
-      model: string;
-      category: string;
-      cashPrice: { toString(): string } | null;
-      installmentPrice: { toString(): string } | null;
-      gallery: string[];
-    }[],
-  ): Promise<DetectedProduct[]> {
-    const now = new Date();
-    const promotions = await this.prisma.promotion.findMany({
-      where: { deletedAt: null, isActive: true, startDate: { lte: now }, endDate: { gte: now } },
-      select: { id: true, name: true, description: true },
-      take: 3,
-    });
-
-    const result: DetectedProduct[] = [];
-    for (const product of products) {
-      const price = product.cashPrice != null ? Number(product.cashPrice) : 0;
-
-      // B3 §5 — เลิกคิดสูตรมือ (#1335): ใช้เครื่องคิดตัวเดียวกับ calculate_installment
-      // และ InstallmentPreviewService เพื่อให้เลขในกล่องแชทตรงกับเลขที่ทำสัญญาได้จริง
-      const pricingOptions: DetectedProduct['pricingOptions'] = [];
-      const installmentBase = product.installmentPrice ?? product.cashPrice;
-      const resolved = await resolveBcConfigForCategory(this.prisma, product.category);
-      if (installmentBase != null && resolved.found && resolved.config) {
-        const cfg = resolved.config;
-        const installmentPrice = new Decimal(installmentBase.toString());
-        for (const months of cfg.allowedMonths.slice(0, 3)) {
-          const calc = calcBcInstallment({ installmentPrice, months, config: cfg });
-          if (!calc.isValid) continue;
-          pricingOptions.push({
-            downPaymentMin: calc.downAmount.toNumber(),
-            monthlyPayment: calc.monthlyPayment.toNumber(),
-            installments: months,
-            interestRate: calc.interestPct.toNumber(),
-          });
-        }
-      }
-
-      result.push({
-        id: product.id,
-        name: product.name,
-        brand: product.brand ?? '',
-        model: product.model ?? '',
-        price,
-        stock: 1,
-        // ⚠️ gallery เท่านั้น — photos[] เป็น base64 data URL แสดงในการ์ดไม่ไหว
-        imageUrl: product.gallery[0] ?? null,
-        pricingOptions,
-        activePromotions: promotions.map((p) => ({
-          id: p.id,
-          name: p.name,
-          description: p.description ?? '',
-        })),
-      });
-    }
-    return result;
-  }
-```
-  - **ไม่แตะ `extractKeywords` (:63-80)** — B2 จงใจไม่แตะไว้ให้ B3 แต่การสลับไป `parseDeviceQuery` เปลี่ยนพฤติกรรม detection ทั้งกล่อง (คนละเรื่องกับค่างวดผิด) → เก็บเป็น follow-up ที่ต้องมี owner เคาะ (บันทึกไว้ในหัวข้อ "สิ่งที่ batch นี้ไม่ทำ")
-- [ ] **Step 4:** รันผ่าน: `cd apps/api && npx jest src/modules/staff-chat/services/product-detect.service.spec.ts` → เขียว
-- [ ] **Step 5:** แก้ป้ายกำกับ "ดาวน์" ที่ผิดหน่วยทั้ง 2 ผู้อ่าน (ค่าเป็นบาท ไม่ใช่ %):
-  - `apps/api/src/modules/staff-chat/services/ai-suggest.service.ts:99`
-    `` `ผ่อน ${o.installments} งวด งวดละ ${o.monthlyPayment.toLocaleString()} บาท (ดาวน์ ${o.downPaymentMin}%)` ``
-    → `` `ผ่อน ${o.installments} งวด งวดละ ${o.monthlyPayment.toLocaleString()} บาท (ดาวน์ ${o.downPaymentMin.toLocaleString()} บาท)` ``
-  - `apps/web/src/pages/UnifiedInboxPage/components/ProductContextCard.tsx:58`
-    `(ดาวน์ {opt.downPaymentMin}%)` → `(ดาวน์ {opt.downPaymentMin?.toLocaleString() ?? '?'} บ.)`
-- [ ] **Step 6:** รันทั้ง module กันของเดิมพัง: `cd apps/api && npx jest src/modules/staff-chat` → เขียว
-- [ ] **Step 7:** `cd apps/api && npx tsc --noEmit` → 0; `cd apps/web && npx tsc --noEmit` → 0; `npx eslint src/modules/staff-chat/services/product-detect.service.ts src/modules/staff-chat/services/ai-suggest.service.ts` (api) + `cd apps/web && npx eslint src/pages/UnifiedInboxPage/components/ProductContextCard.tsx` → ไม่มี error ใหม่
-- [ ] **Step 8:** Commit: `fix(inbox): การ์ดสินค้าในแชทใช้เครื่องคิดค่างวดตัวจริง + แก้ป้ายดาวน์ที่ผิดหน่วย (B3 Task 14)`
-
----
+  พร้อม `import { toBcConfig } from '../../../utils/bc-installment-config.util';` และลบ `import Decimal` ที่ไม่ได้ใช้แล้วถ้ามี
+- [ ] **Step 5:** พิสูจน์ว่าไม่มีอะไรเปลี่ยนค่า: `cd apps/api && npx jest src/modules/staff-chat/services/product-quote.service.spec.ts src/modules/staff-chat/services/product-detect.service.spec.ts` → **เขียวโดยไม่แก้ assertion ของ B2 แม้แต่บรรทัดเดียว** (นี่คือ golden ของการรวม resolver; ถ้าแดง = map ไม่ตรงกัน ให้ย้อน diff ไม่ใช่แก้ spec)
+- [ ] **Step 6:** รันทั้ง module กันของเดิมพัง: `cd apps/api && npx jest src/modules/staff-chat src/modules/shop-catalog src/utils` → เขียว
+- [ ] **Step 7:** `cd apps/api && npx tsc --noEmit` → 0; `npx eslint src/utils/bc-installment-config.util.ts src/modules/staff-chat/services/product-quote.service.ts` → ไม่มี error ใหม่
+- [ ] **Step 8:** Commit: `refactor(inbox): ProductQuoteService ใช้ resolver InterestConfig ตัวเดียวกับเว็บ/บอท/สัญญา (B3 Task 14)`
 
 ### Task 15: ปิด batch — ตรวจทั้งระบบ + QA บนเบราว์เซอร์
 
@@ -4042,6 +4181,7 @@ import { resolveBcConfigForCategory } from '../../../utils/bc-installment-config
 | ตรวจ `SHOP_BASE_URL` บน Cloud Run | `gcloud run services describe <api> --format='value(spec.template.spec.containers[0].env)'` | `webUrl` เป็น null ทุกเครื่อง → บอทไม่ส่งลิงก์ (ไม่ crash) |
 | ตัดสินใจเปิด/ปิด `FB_BOT_DISABLED` | env ของ Cloud Run (owner) | บอทไม่ตอบ Facebook เลย — status strip ใหม่จะบอกสถานะนี้ให้เห็นแล้ว |
 | ตั้ง `shop_bot_central_branch_id` | `/settings` → AI Settings → SHOP Bot Setup | `shouldAutoReply` คืน false ทุกห้องของ LINE Shop/FB/WEB (`ai-auto-reply.service.ts:85-97`) → บอทขายเงียบสนิท |
+| **แจ้งทีมสตาฟ: guard ของน้องเบสจะเข้าคิว handoff เอง** (Task 11) | บอกด้วยปาก/กลุ่มไลน์สตาฟ | ห้องที่ guard บล็อกจะถูกตั้ง `handoffMode = true` (`handoff.service.ts:31-38`) = **บอทเงียบทั้งห้องจนกว่าพนักงานจะเคลียร์** ถ้าไม่มีใครรู้ ลูกค้าจะค้างรอ. สัปดาห์แรกหลัง deploy ให้ดูจำนวน `HALLUCINATION_BLOCKED` ใน Cloud Run log ควบคู่ Sentry tag `action=grounding_blocked` — ถ้ารัวผิดปกติแปลว่าลืมคีย์ใน `FINANCE_GROUNDED_PRICE_KEYS` ไม่ใช่โมเดลมั่ว |
 
 **วิธีอัปเดต prompt จริง (ไม่มี UI — ยืนยันกับโค้ดแล้ว):**
 
@@ -4112,7 +4252,7 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
 | ส่ง Flex card / carousel สินค้า | ยังไม่จำเป็น — text + image 2 bubble ตอบโจทย์ "ตอบได้เท่าแอดมิน" แล้ว และ Flex ต้องออกแบบ + แปลข้าม LINE/FB (FB ไม่มี Flex) เป็นงานดีไซน์แยก |
 | ใช้ share endpoint `/api/shop/share/:id` เป็น `webUrl` | เป็นของ **B4** §6 — B3 ใช้ `${SHOP_BASE_URL}/products/:id` ตรง ๆ ไปก่อน (จุดแก้เดียวคือ `search-products.tool.ts` + `calculate-installment.tool.ts`) |
 | idempotency ของข้อความบอท (`clientMessageId`) | trigger คือข้อความลูกค้า 1 ครั้ง ไม่ใช่ปุ่มที่กดซ้ำได้ (ต่างจาก primitive ของ B2 ที่ staff กดปุ่มเอง) — เพิ่มทีหลังได้โดยไม่ต้องรื้ออะไร |
-| สลับ `ProductDetectService.extractKeywords` (:63-80) ไปใช้ `parseDeviceQuery` | ⚠️ **เจ้าของทับกันใน spec** — §2.4 บอกว่าผู้ใช้ util คือ inbox detect (B2), §4 บอก "detection ใช้ util B0", §5 บอกแค่ "เลิกคิดค่างวดเอง"; B2 จงใจไม่แตะ B3 จึงแก้เฉพาะ **ค่างวดที่ผิด** (ตัวเลขเงินที่ลูกค้าเห็น) ส่วนการเปลี่ยน detection คือ behavior change ของทั้งกล่องแชท ต้องมี owner เคาะ + spec เทียบผลลัพธ์เดิมก่อน |
+| สลับ `ProductDetectService.extractKeywords` (:63-80) ไปใช้ `parseDeviceQuery` | ⚠️ **เจ้าของทับกันใน spec** — §2.4 บอกว่าผู้ใช้ util คือ inbox detect (B2), §4 บอก "detection ใช้ util B0", §5 บอกแค่ "เลิกคิดค่างวดเอง"; B2 จงใจไม่แตะ (แผน B2 :2515 ระบุ "`extractKeywords` :63-80 คงเดิม") และ B3 ก็ไม่แตะ `product-detect.service.ts` เลย (Task 14 ถูกย่อเหลือแค่รวม resolver) ⇒ การเปลี่ยน detection คือ behavior change ของทั้งกล่องแชท ต้องมี owner เคาะ + spec เทียบผลลัพธ์เดิมก่อน |
 | เดิน `channel` ของห้องเข้า `SalesBotInput` เพื่อกรอง KB ต่อช่อง | `SalesBotInput` (`sales-bot.service.ts:23-28`) ไม่มีฟิลด์นี้ — ต้องแก้ทั้ง `AiAutoReplyService` + `MessageRouterService` เพื่อผลลัพธ์ที่เหมือนเดิม (FAQ ของ 3 ช่องบอทขายเป็นชุดเดียวกัน) → ใช้ `channel IN (LINE_SHOP, FACEBOOK, WEB) OR NULL` แทน |
 | แก้ `list_promotions` ให้คืนตัวเลขส่วนลด (`discountValue`) | ต้องเพิ่มคีย์ใน `GROUNDED_PRICE_KEYS` + ตัดสินใจว่า % vs บาท แสดงยังไงในแชท — ตอนนี้เลขส่วนลดอยู่ในข้อความที่แอดมินเขียน (`description`) ซึ่ง `collectGroundedPricesFromText` รองรับแล้ว |
 | ย้าย `GET_INSTALLMENT_RATES_TOOL` เข้าน้องเบส | น้องเบสได้ `search_products` + `calculate_installment` ซึ่งอิงสต็อก/ราคาจริงแล้ว; เรตกลางจาก PricingTemplate เป็นทางหนีของบอทขาย (#1332 flow) ที่ผูกกับ handoff ของ MessageRouter — ยกมาโดยไม่มี flow นั้นจะได้แค่ตัวเลขลอย |

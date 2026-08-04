@@ -6,7 +6,7 @@
 
 **Architecture:** เพิ่ม endpoint `GET /api/shop/share/:id` บน `apps/api` (NestJS) ที่เสิร์ฟ HTML สั้น escaped ทั้งหมด (OG + JSON-LD + canonical + meta-refresh/JS redirect ไป `/products/:id`) — วิ่งบน Firebase rewrite `/api/**` → Cloud Run ที่มีอยู่แล้ว **ไม่แตะ** `firebase.json` / `setGlobalPrefix('api')` / `Dockerfile` / deploy ordering; `apps/web-shop` (React storefront) ใช้ URL นี้เป็นลิงก์แชร์/prefill แชททุกที่; `ShopBotDefenseService` เพิ่ม social crawler เป็น KNOWN_GOOD + แก้บั๊ก 429 ที่ทำให้ counter ไม่รีเซ็ต; `FacebookWebhookController` รับ standalone referral (`m.me/<page>?ref=p:<unitId>`) ที่ทุกวันนี้โดน drop แล้ว post SYSTEM message ในห้อง
 
-**Tech Stack:** NestJS 10 + Prisma + PostgreSQL (`apps/api`), React 19 + Vite 6 + Tailwind 4 (`apps/web-shop`), jest 29 + ts-jest (เทสต์อัตโนมัติทั้งหมดอยู่ใน `apps/api` เท่านั้น), decimal.js สำหรับเลขเงิน
+**Tech Stack:** NestJS 10 + Prisma + PostgreSQL (`apps/api`), React 19 + Vite 6 + Tailwind 4 (`apps/web-shop`), React + vitest (`apps/web` — แตะแค่ `buildShopProductUrl` ใน Task 10), jest 29 + ts-jest (เทสต์ฝั่ง api), decimal.js สำหรับเลขเงิน
 
 ## Global Constraints
 
@@ -15,9 +15,18 @@
 - **Red line:** ห้ามแตะ accounting/finance JE paths (`apps/api/src/modules/journal/**`, `apps/api/src/modules/accounting/**`, `apps/api/src/modules/payments/**`, `apps/api/src/modules/contracts/**`) — batch นี้ไม่มีไฟล์ใดในรายการนั้น; จุดเดียวที่แตะเลขเงินคือ "ผ่อนเริ่มต้น" หน้ารายการ (Task 6) ซึ่งเป็น **display-only** และต้องมี parity golden test ยืนยันว่าเลขเท่ากับ `InstallmentPreviewService` ทุกสตางค์
 - **เทสต์ (ค่าจริงของ repo นี้ — อย่าเดา):**
   - `apps/api` = **jest** (`testRegex: .*\.spec\.ts$`, `rootDir: src`) → `cd apps/api && npx jest src/modules/<path>/<file>.spec.ts`
-  - `apps/web` = vitest (batch นี้ไม่แตะ)
+  - `apps/web` = **vitest ไม่ใช่ jest** (`apps/web/package.json` → `vitest run`, glob `src/**/*.{test,spec}.{ts,tsx}`) → `cd apps/web && npx vitest run src/pages/ProductDetailPage/utils/buildCustomerSummary.test.ts` (Task 10 แตะไฟล์นี้ไฟล์เดียว)
   - `apps/web-shop` = **ไม่มี test runner และไม่มี eslint config** (`npm run lint` ในนั้นพังด้วย "couldn't find eslint.config") → ตรวจด้วย `cd apps/web-shop && npx tsc --noEmit` (ต้อง exit 0) + QA เบราว์เซอร์ local เท่านั้น
-- **Gate ปิด batch:** `cd apps/api && npx tsc --noEmit` = 0 error, `cd apps/api && npx eslint .` = 0 error (eslint config นี้ตั้ง `no-unused-vars`/`no-explicit-any` เป็น **warn** — warning ไม่ทำให้ exit code ไม่เป็น 0), `cd apps/web-shop && npx tsc --noEmit` = 0 error, `cd apps/api && npx jest src/modules/shop-catalog src/modules/shop-bot-defense src/modules/chat-adapters src/modules/chat-engine` เขียวทั้งหมด (ต้องมี `chat-engine` ด้วยเพราะ Task 8 แก้ `message-router.service.ts`)
+- **Lint (คำสั่งที่ใช้ได้จริง — ยืนยันแล้ว 2026-08-04, ถ้อยคำเดียวกับ B0):**
+  - api: `cd apps/api && npx eslint src/<path ที่แก้>` (เฉพาะไฟล์ใน `src/`) และ gate ของ CI คือ `npm run lint --workspace=apps/api` (= `eslint "{src,test}/**/*.ts" --fix`)
+    ⚠️ **ห้ามใช้ `cd apps/api && npx eslint .` เป็น gate** — วันนี้มี **34 error ค้างอยู่ก่อน B4** ล้วนเป็น `Parsing error` ของไฟล์นอก `tsconfig.json` include (`e2e/*.e2e-spec.ts`, `scripts/*.ts`, `eslint.config.mjs`) → เป้าหมายคือ **ไม่เพิ่ม error ใหม่ (baseline 34)** ไม่ใช่ 0 สัมบูรณ์. **ห้ามไปแก้ `tsconfig.json`/`eslint.config.mjs` เพื่อไล่ error พวกนี้ — อยู่นอก scope ของ B4**
+  - web-shop: **ไม่มี eslint config ในโปรเจกต์นี้** → gate เดียวคือ `npx tsc --noEmit`
+  - (eslint config ของ api ตั้ง `no-unused-vars`/`no-explicit-any` เป็น **warn** — warning ไม่ทำให้ exit code ไม่เป็น 0)
+- **Gate ปิด batch (รันแยกทีละคำสั่ง ห้ามร้อยด้วย `&&` เพราะจะกลบผลของคำสั่งหลัง):**
+  1. `cd apps/api && npx tsc --noEmit` = 0 error
+  2. `npm run lint --workspace=apps/api` = ไม่มี error ใหม่เกิน baseline 34
+  3. `cd apps/web-shop && npx tsc --noEmit` = 0 error
+  4. `cd apps/api && npx jest src/modules/shop-catalog src/modules/shop-bot-defense src/modules/chat-adapters src/modules/chat-engine src/modules/shop-public-config` เขียวทั้งหมด (ต้องมี `chat-engine` เพราะ Task 8 แก้ `message-router.service.ts` และ `shop-public-config` เพราะ Task 10 แก้ service นั้น)
 - **เงิน:** ใช้ `Decimal` จาก `decimal.js` (แบบเดียวกับ `installment-preview.service.ts`) — ห้าม `Number()` ในการคำนวณค่างวด
 - **UI copy:** ภาษาไทยทั้งหมด, ข้อความไทยใช้ `leading-snug`, ห้าม hardcoded hex/gray → ใช้ design token
 - **Commit:** ทุก commit ลงท้ายด้วย
@@ -38,7 +47,6 @@
 | `apps/api/src/modules/shop-catalog/shop-share.controller.spec.ts` | เทสต์ 404 / headers / เนื้อ HTML |
 | `apps/api/src/modules/shop-catalog/product-unit-detail.util.ts` | parse `checklistResults` / `accessoriesIncluded` (Json หลายรูปแบบ) แบบ defensive |
 | `apps/api/src/modules/shop-catalog/product-unit-detail.util.spec.ts` | เทสต์ parser ทุกรูปแบบ Json |
-| `apps/api/src/modules/shop-catalog/bc-installment-config.service.ts` | resolve `InterestConfig` → `ResolvedBcConfig` (ย้ายมาจาก `previewBc`) ใช้ร่วม preview + catalog |
 | `apps/api/src/modules/shop-catalog/shop-catalog.installment-parity.spec.ts` | golden: `monthlyPaymentFrom` ของ catalog === `monthlyPayment` ของ preview ที่ input เดียวกัน |
 | `apps/api/src/modules/shop-bot-defense/skip-bot-rate-limit.decorator.ts` | `@SkipBotRateLimit()` metadata |
 | `apps/api/src/modules/shop-bot-defense/shop-bot-defense.guard.spec.ts` | เทสต์ guard: normalize path, skip rate-limit, ยัง log |
@@ -49,40 +57,55 @@
 | `shop-bot-defense/shop-bot-defense.service.ts` | KNOWN_GOOD social crawlers, แก้บั๊ก window ไม่รีเซ็ต, ค่าคงที่ limit |
 | `shop-bot-defense/shop-bot-defense.service.spec.ts` | เทสต์ใหม่ + คงของเดิม |
 | `shop-bot-defense/shop-bot-defense.guard.ts` | normalize `/api` prefix, อ่าน `@SkipBotRateLimit()` |
-| `shop-catalog/shop-catalog.service.ts` | `_min installmentPrice`, monthly จริง, ฟิลด์ต่อเครื่อง, ค้นไทย AND-composable |
+| `shop-catalog/shop-catalog.service.ts` | `_min installmentPrice`, monthly จริงผ่าน `resolveBcConfigForCategory` (util ของ B3), ฟิลด์ต่อเครื่อง, ค้นไทย AND-composable |
 | `shop-catalog/shop-catalog.service.spec.ts` | อัปเดต assertion ที่พฤติกรรมเปลี่ยน + เทสต์ใหม่ |
-| `shop-catalog/installment-preview.service.ts` | ใช้ `BcInstallmentConfigService` แทน inline resolution |
-| `shop-catalog/installment-preview.service.spec.ts` | เพิ่ม `BcInstallmentConfigService` ใน providers (ค่าที่คาดหวังทั้ง 5 เทสต์ห้ามแก้ = golden ของ refactor) |
-| `shop-catalog/shop-catalog.module.ts` | ลงทะเบียน controller + service ใหม่ |
+| `shop-catalog/shop-catalog.module.ts` | ลงทะเบียน controller ใหม่ (ไม่มี provider ใหม่ — resolver เป็น pure util ของ B3) |
 | `chat-adapters/facebook-webhook.controller.ts` | branch `referral && !message && !postback` + note จาก postback referral |
 | `chat-adapters/facebook-webhook.controller.spec.ts` | เทสต์ referral 3 เคส |
 | `chat-adapters/facebook-admin.controller.ts` | route `setup-messenger-profile` ใน `@Controller('admin/facebook')` (URL จริงมี `admin` ซ้ำ — ดู Task 9) |
 | `chat-engine/services/message-router.service.ts` | `postSystemNote(roomId, text)` |
 | `facebook-domain/facebook-persistent-menu.service.ts` | creds จาก IntegrationConfig + `setupGetStarted()` |
 | `facebook-domain/facebook-domain.module.ts` | import `IntegrationsModule` |
+| `integrations/integration-registry.ts` | +field `pageUsername` ใน integration `facebook` (owner กรอกเองได้จากหน้า Settings) |
+| `shop-public-config/shop-public-config.service.ts` | +`getShopConfig()` → `{ facebookPageHandle }` (username ?? pageId) |
+| `shop-public-config/shop-public-config.controller.ts` | +`@Get('shop')` |
+| `shop-public-config/shop-public-config.service.spec.ts` | เทสต์ `getShopConfig` 3 เคส (username / fallback pageId / ไม่ได้ตั้ง) |
+| `staff-chat/services/chat-commerce.service.ts` | `shareUrl` 2 จุด (B2 สร้าง) → ชี้ share endpoint |
+| `sales-bot/tools/search-products.tool.ts` | `webUrl` (B3 สร้าง) → ชี้ share endpoint |
+| `sales-bot/tools/calculate-installment.tool.ts` | `webUrl` (B3 สร้าง) → ชี้ share endpoint |
+
+**แก้ไข (apps/web — admin)**
+| ไฟล์ | แก้อะไร |
+|---|---|
+| `src/pages/ProductDetailPage/utils/buildCustomerSummary.ts` | `buildShopProductUrl` → `${base}/api/shop/share/:id` (B1 ฝากไว้ให้ B4 เปลี่ยนจุดเดียว) |
+| `src/pages/ProductDetailPage/utils/buildCustomerSummary.test.ts` | อัปเดต 2 เทสต์ของ `buildShopProductUrl` |
 
 **แก้ไข (apps/web-shop)**
 | ไฟล์ | แก้อะไร |
 |---|---|
-| `src/lib/copy.ts` | `facebookPageUsername` ใน `shopInfo`, `productShareUrl`, `messengerRefUrl`, `lineProductPrefill` + copy ใหม่ |
+| `src/lib/copy.ts` | `productShareUrl`, `messengerRefUrl(productId, pageHandle)`, `lineProductPrefill` + copy ใหม่ (**ไม่มี** `facebookPageUsername` hardcode — อ่านจาก public-config) |
 | `src/types/product.ts` | ฟิลด์ใหม่ใน `ProductUnit` |
 | `src/pages/ProductDetailPage.tsx` | รูปตามเครื่อง + reset activeImage, ปุ่มแชร์, LINE prefill ใหม่, ปุ่ม Messenger, ประกันจริงใน meta |
 | `src/components/catalog/SpecTable.tsx` | แถวสาขา/อุปกรณ์/ตำหนิ + บล็อก QC |
-| `src/components/catalog/ProductCard.tsx` | `monthlyPaymentFrom: number \| null` |
+| `src/components/catalog/ProductCard.tsx` | `monthlyPaymentFrom: number \| null` — **B0 Step 4d ทำไปแล้ว** ให้ตรวจก่อนแก้ (ปกติจะไม่มี diff จาก B4) |
 
 ---
 
 ## Task 0 — ตรวจ precondition จาก B0 + เปิด branch
 
-B4 กินของ 2 อย่างจาก B0: คอลัมน์ `accessoriesIncluded`/`cosmeticNotes` (Task 5) และ util แปลงคำค้นไทย (Task 7) **ห้ามเริ่มถ้ายังไม่มี** — และ **ห้ามสร้าง util ซ้ำเอง**
+B4 กินของ 3 อย่างจาก batch ก่อนหน้า: คอลัมน์ `accessoriesIncluded`/`cosmeticNotes` (B0 → Task 5), util แปลงคำค้นไทย (B0 → Task 7) และ resolver ของ `InterestConfig` (B3 → Task 6) **ห้ามเริ่มถ้ายังไม่มี** — และ **ห้ามสร้าง util ซ้ำเอง**
+
+⚠️ **B0/B1/B3 แก้ไฟล์ชุดเดียวกับ B4 ไปก่อนแล้ว** (`shop-catalog.service.ts` + `shop-catalog.service.spec.ts` + `apps/web-shop/.../ProductDetailPage.tsx` โดน B0, `installment-preview.service.ts` โดน B3, `buildCustomerSummary.ts` โดน B1, `chat-commerce.service.ts` โดน B2, `sales-bot/tools/*` โดน B3) → **เลขบรรทัดทุกตัวในแผนนี้เป็นค่า ณ วันเขียนแผน (pre-B0) ใช้อ้างอิงคร่าว ๆ เท่านั้น**. ทุก step ที่ต้องแก้ไฟล์เหล่านี้ให้ใช้ **grep-anchor** (หา "บรรทัดที่ match X" แล้วแทน/แทรกตรงนั้น) ไม่ใช่เลขบรรทัดตรง ๆ
 
 ### Files
 - Read: `apps/api/prisma/schema.prisma` (block `model Product`, บรรทัด ~1690-1720)
 - Read: `apps/api/src/utils/device-query-normalize.util.ts` (สร้างโดย B0)
+- Read: `apps/api/src/utils/bc-installment-config.util.ts` (สร้างโดย B3)
 
 ### Interfaces
 - **Consumes (จาก B0):** `Product.accessoriesIncluded Json?`, `Product.cosmeticNotes String?`
-- **Consumes (จาก B0):** `export function normalizeDeviceQuery(utterance: string): { brand?: string; model?: string; storage?: string; color?: string }`
+- **Consumes (จาก B0):** `export function parseDeviceQuery(utterance: string): DeviceQuery` โดย `DeviceQuery = { brand: string | null; model: string | null; storage: string | null; color: string | null; rest: string }` — `apps/api/src/utils/device-query-normalize.util.ts`
+- **Consumes (จาก B3):** `export async function resolveBcConfigForCategory(prisma, category): Promise<{ found: boolean; config?: BcConfig }>` — `apps/api/src/utils/bc-installment-config.util.ts`
 
 ### Steps
 - [ ] ตรวจว่าคอลัมน์ B0 ลงแล้ว:
@@ -93,9 +116,25 @@ B4 กินของ 2 อย่างจาก B0: คอลัมน์ `acce
   คาดหวัง 3 บรรทัด ถ้าได้ 0 บรรทัด → **หยุด** แล้วรอ B0 merge ก่อน
 - [ ] ตรวจ util ค้นไทยของ B0 + ชื่อ export จริง:
   ```bash
-  ls apps/api/src/utils/device-query-normalize.util.ts && grep -n "^export" apps/api/src/utils/device-query-normalize.util.ts
+  grep -n 'export function parseDeviceQuery' apps/api/src/utils/device-query-normalize.util.ts
+  grep -n "^export" apps/api/src/utils/device-query-normalize.util.ts
   ```
-  คาดหวังเห็น `export function normalizeDeviceQuery` (ถ้า B0 ตั้งชื่ออื่น ให้จดชื่อจริงไว้ใช้ใน Task 7 — **ห้ามเขียน util ใหม่ซ้ำ**)
+  คาดหวังเห็น `export function parseDeviceQuery` (**ถ้าชื่อต่างจากนี้ ให้บันทึกชื่อจริงไว้แล้วทำต่อ** — ใช้ชื่อจริงนั้นใน Task 7 แทน ห้ามหยุดรอ และ **ห้ามเขียน util ใหม่ซ้ำ**). ถ้าไฟล์ไม่มีเลย = B0 ยังไม่ merge → หยุดรอ B0
+- [ ] ตรวจ resolver ของ B3 (Task 6 ใช้ตัวนี้ ห้ามสร้าง service ซ้ำ):
+  ```bash
+  grep -n 'export async function resolveBcConfigForCategory' apps/api/src/utils/bc-installment-config.util.ts
+  grep -n 'resolveBcConfigForCategory' apps/api/src/modules/shop-catalog/installment-preview.service.ts
+  ```
+  คาดหวังเจอทั้ง 2 บรรทัด (บรรทัดที่สองยืนยันว่า B3 re-point `previewBc` มาใช้ util แล้ว — หลัง B3 บล็อก resolve config ใน `previewBc` **เหลือบรรทัดเดียว** จึงห้ามทำตามคำสั่งเก่าที่ให้ "ยกโค้ดจาก previewBc มาทั้งดุ้น"). ถ้าไม่เจอ = B3 ยังไม่ merge → **หยุดรอ B3** (Task 6 ทั้ง task ขึ้นกับ util ตัวนี้)
+- [ ] จดตำแหน่งจริง (grep-anchor) ของไฟล์ที่ batch ก่อนหน้าแก้ไปแล้ว — ใช้แทนเลขบรรทัดในแผนนี้ทุกจุด:
+  ```bash
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api
+  grep -n "INTEREST_RATE_PER_MONTH\|DEFAULT_MONTHS\|DEFAULT_DOWN_PCT\|calculateMonthlyPayment\|monthlyPaymentFrom\|constructor(private prisma\|filters.search\|_min: { cashPrice\|shopBaseWhere\|productReadinessWhere" src/modules/shop-catalog/shop-catalog.service.ts
+  grep -n "constructor(\|previewBc\|resolveBcConfigForCategory" src/modules/shop-catalog/installment-preview.service.ts
+  cd ../web-shop && grep -n "monthlyPaymentFrom" src/components/catalog/ProductCard.tsx
+  grep -n "selectedUnit?.cashPrice\|usePageMeta\|data.gallery360\|lineOaMessageUrl\|activeImage" src/pages/ProductDetailPage.tsx
+  ```
+  **หมายเหตุ:** B0 ลบ `const SHOP_BRAND`/`const PHONE_CATEGORIES` และย่อ `shopBaseWhere()` ให้เหลือ `return { ...productReadinessWhere() }` → บล็อกค่าคงที่และเมธอด `calculateMonthlyPayment` เลื่อนขึ้นราว 6 บรรทัดจากเลขในแผนนี้
 - [ ] ตรวจว่า B0 **ยังไม่ได้** ทำงานของ Task 5/Task 11 ไปแล้ว (spec §2.2 เขียนกำกวมว่า "expose ฟิลด์ทั้งหมดใน shop `ProductUnit`") — ถ้าทำไปแล้วให้ตัดสเต็ปที่ซ้ำออกแทนที่จะเขียนทับ:
   ```bash
   cd /Users/iamnaii/Desktop/App/BESTCHOICE
@@ -112,11 +151,16 @@ B4 กินของ 2 อย่างจาก B0: คอลัมน์ `acce
   ```bash
   cd /Users/iamnaii/Desktop/App/BESTCHOICE && git checkout main && git pull && git checkout -b feat/pa-b4-web-shop-share-og
   ```
-- [ ] บันทึก baseline ให้รู้ว่าอะไรเขียวอยู่ก่อนเริ่ม (ชุดเดียวกับ gate ปิด batch ใน Task 12 — ต้องมี `chat-engine`):
+- [ ] บันทึก baseline ให้รู้ว่าอะไรเขียวอยู่ก่อนเริ่ม (ชุดเดียวกับ gate ปิด batch ใน Task 12 — ต้องมี `chat-engine` + `shop-public-config`):
   ```bash
-  cd apps/api && npx jest src/modules/shop-catalog src/modules/shop-bot-defense src/modules/chat-adapters src/modules/chat-engine 2>&1 | tail -6
+  cd apps/api && npx jest src/modules/shop-catalog src/modules/shop-bot-defense src/modules/chat-adapters src/modules/chat-engine src/modules/shop-public-config 2>&1 | tail -6
   ```
-  คาดหวัง `Tests: N passed` ไม่มี failed (จดตัวเลข N ไว้เทียบตอนจบ; ตัวเลขที่ verify ไว้ ณ เวลาเขียนแผน: shop-catalog.service 20 + installment-preview 5 + shop-bot-defense.service 14 + facebook-webhook.controller 10 + line-shop.adapter 3 = 52 บวกของ chat-engine)
+  คาดหวัง `Tests: N passed` ไม่มี failed (จดตัวเลข N ไว้เทียบตอนจบ; ตัวเลข ณ เวลาเขียนแผน **ก่อน B0/B3**: shop-catalog.service 20 + installment-preview 5 + shop-bot-defense.service 14 + facebook-webhook.controller 10 + line-shop.adapter 3 = 52 บวกของ chat-engine + shop-public-config 3 — **B0/B3 เพิ่ม/แก้เทสต์ในโมดูลเหล่านี้ไปแล้ว ตัวเลขจริงจะสูงกว่านี้ ให้ยึดเลขที่รันได้จริงวันนี้**)
+- [ ] บันทึก baseline lint (ต้องไม่เพิ่ม error ใหม่ตอนปิด batch):
+  ```bash
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE && npm run lint --workspace=apps/api 2>&1 | tail -3
+  ```
+  คาดหวังเห็นบรรทัดสรุปแบบ `✖ N problems (34 errors, ...)` — **34 error นี้เป็นของเดิม (Parsing error ของ `e2e/`, `scripts/`, `eslint.config.mjs` ที่อยู่นอก tsconfig include) ห้ามไปไล่แก้** จดเลขไว้เทียบตอนปิด batch
 
 ---
 
@@ -846,10 +890,10 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 ### Files
 - Create: `apps/api/src/modules/shop-catalog/shop-share.controller.ts`
 - Create: `apps/api/src/modules/shop-catalog/shop-share.controller.spec.ts`
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.module.ts` (บรรทัด 8-12 — เพิ่ม controller)
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.module.ts` (**grep-anchor:** `controllers: [`)
 
 ### Interfaces
-- **Consumes:** `ShopCatalogService.getProductDetail(productId: string): Promise<ProductDetail | null>` (`shop-catalog.service.ts:224`) — สืบทอด gate ของ B0 (readiness/`[DEMO]`) โดยอัตโนมัติ ไม่ต้องเขียน where ซ้ำ
+- **Consumes:** `ShopCatalogService.getProductDetail(productId: string): Promise<ProductDetail | null>` (**grep-anchor:** `async getProductDetail(`) — สืบทอด gate ของ B0 (readiness/`[DEMO]`) โดยอัตโนมัติ ไม่ต้องเขียน where ซ้ำ
 - **Consumes:** `shopBaseUrl(): string | null` จาก `../../utils/shop-base-url.util` (env `SHOP_BASE_URL`, prod = `https://www.bestchoicephone.com` ตั้งไว้แล้วที่ `deploy-gcp.yml:358`)
 - **Consumes:** `buildSharePage`, `buildShareDescription` (Task 3), `SkipBotRateLimit` (Task 2), `ShopBotDefenseGuard`
 - **Produces:** `GET /api/shop/share/:id` → `200 text/html; charset=utf-8` หรือ `404` (NotFoundException มาตรฐาน)
@@ -1139,8 +1183,8 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 ### Files
 - Create: `apps/api/src/modules/shop-catalog/product-unit-detail.util.ts`
 - Create: `apps/api/src/modules/shop-catalog/product-unit-detail.util.spec.ts`
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (บรรทัด 34-46 `ProductUnit`, 237-248 findMany, 250-271 loop สร้าง tiers)
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (describe `getProductDetail` บรรทัด 208-336)
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` — ⚠️ **B0 แก้ไฟล์นี้ไปแล้ว (แทน `shopBaseWhere`, แทน query ของ `getProductDetail` + `allUnits`, แก้ลูป tiers ให้เลิก `?? 0`)** → ใช้ **grep-anchor**: `export interface ProductUnit`, `const allUnits = await this.prisma.product.findMany(`, และลูป `for (const u of allUnits)`
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (**grep-anchor:** `describe('getProductDetail'`)
 
 ### Interfaces
 - **Produces:**
@@ -1256,7 +1300,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
   cd apps/api && npx jest src/modules/shop-catalog/product-unit-detail.util.spec.ts
   ```
   คาดหวัง `Tests: 9 passed`
-- [ ] เขียนเทสต์ service ที่ fail ก่อน — แทรกใน `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` ต่อท้าย describe `getProductDetail` (ก่อน `});` ของ describe นั้น บรรทัด ~336):
+- [ ] เขียนเทสต์ service ที่ fail ก่อน — แทรกใน `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` ต่อท้าย describe `getProductDetail` (ก่อน `});` ของ describe นั้น — **grep-anchor:** `describe('getProductDetail'`):
   ```ts
       it('exposes per-unit branch, accessories, cosmetic notes and QC checklist', async () => {
         prisma.product.findFirst.mockResolvedValue({
@@ -1346,7 +1390,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
   cd apps/api && npx jest src/modules/shop-catalog/shop-catalog.service.spec.ts -t "per-unit branch"
   ```
   คาดหวัง `u.branchName` เป็น undefined / `u.accessories` เป็น undefined
-- [ ] แก้ interface `ProductUnit` ใน `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (บรรทัด 34-46) เป็น:
+- [ ] แก้ interface `ProductUnit` ใน `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (**grep-anchor:** `export interface ProductUnit`) เป็น:
   ```ts
   export interface ProductUnit {
     id: string;
@@ -1370,27 +1414,27 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
     qcChecklist: QcCheckItem[];
   }
   ```
-- [ ] เพิ่ม import ที่หัวไฟล์เดียวกัน (ใต้บรรทัด 2):
+- [ ] เพิ่ม import ที่หัวไฟล์เดียวกัน (ต่อท้ายบล็อก import ที่มีอยู่ — **ห้ามลบ `productReadinessWhere` ที่ B0 เพิ่มไว้**):
   ```ts
   import { parseAccessories, parseQcChecklist, QcCheckItem } from './product-unit-detail.util';
   ```
-- [ ] แก้ query units (บรรทัด 237-248) เพิ่ม `include`:
+- [ ] แก้ query units (**grep-anchor:** `const allUnits = await this.prisma.product.findMany(` — บล็อกนี้ B0 แทนไปแล้วให้ใช้ `...productReadinessWhere()` **ต้องคงไว้**) เพิ่ม `include`:
   ```ts
+      // ⚠️ where ก้อนนี้เป็นของ B0 (readiness fragment) — **ห้ามเขียนกลับเป็น
+      // deletedAt/isOnlineVisible/status แบบเดิม** เพิ่มแค่ `include` เท่านั้น
       const allUnits = await this.prisma.product.findMany({
         where: {
-          brand: product.brand,
           model: product.model,
           storage: product.storage,
           category: product.category,
-          deletedAt: null,
-          isOnlineVisible: true,
-          status: 'IN_STOCK',
+          ...productReadinessWhere(),
         },
         orderBy: { cashPrice: 'asc' },
         include: { branch: { select: { name: true } } },
       });
   ```
-- [ ] แก้การสร้าง unit ใน loop (บรรทัด 256-268) เพิ่ม 4 ฟิลด์ท้าย:
+  (ถ้าเปิดไฟล์แล้วรูปของ `where` ต่างจากนี้ = B0 ปรับเพิ่ม → **คงรูปที่เจอจริงไว้ แล้วเติมแค่บรรทัด `include:`**)
+- [ ] แก้การสร้าง unit ใน loop (**grep-anchor:** `tiers[grade].units.push({` — B0 แก้บรรทัด `const price = ...` ในลูปนี้ไปแล้ว **ห้ามย้อน**) เพิ่ม 4 ฟิลด์ท้าย:
   ```ts
         tiers[grade].units.push({
           id: u.id,
@@ -1414,7 +1458,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
   ```bash
   cd apps/api && npx jest src/modules/shop-catalog/shop-catalog.service.spec.ts
   ```
-  คาดหวัง `Tests: 22 passed` (20 เดิม — นับจริงแล้วในไฟล์ ไม่ใช่ 16 — + 2 ใหม่)
+  คาดหวัง **จำนวนเทสต์ = baseline ของไฟล์นี้ที่จดไว้ใน Task 0 + 2** และไม่มี failed (ห้ามยึดเลข 20/22 ตายตัว — B0 เพิ่มเคสในไฟล์นี้ไปแล้ว)
 - [ ] commit:
   ```bash
   git add apps/api/src/modules/shop-catalog && git commit -m "$(cat <<'EOF'
@@ -1427,153 +1471,39 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 
 ---
 
-## Task 6 — ผ่อนเริ่มต้นจริง: `_min(installmentPrice)` + config resolver ใช้ร่วม
+## Task 6 — ผ่อนเริ่มต้นจริง: `_min(installmentPrice)` + resolver ของ B3
 
-`monthlyPaymentFrom` วันนี้คำนวณจาก `_min(cashPrice)` × rate ปลอม `0.0099` (`shop-catalog.service.ts:48,297-302`) → เลขบนหน้ารายการไม่ตรงกับเลขที่ทำสัญญาได้จริง B4 ย้ายมาใช้ `installmentPrice` + `InterestConfig` ผ่าน `calcBcInstallment` ตัวเดียวกับ preview
+`monthlyPaymentFrom` วันนี้คำนวณจาก `_min(cashPrice)` × rate ปลอม `0.0099` (ค่าคงที่ `INTEREST_RATE_PER_MONTH` + เมธอด `calculateMonthlyPayment` ท้ายคลาส) → เลขบนหน้ารายการไม่ตรงกับเลขที่ทำสัญญาได้จริง B4 ย้ายมาใช้ `installmentPrice` + `InterestConfig` ผ่าน `calcBcInstallment` ตัวเดียวกับ preview
 
 **นิยาม "ผ่อนเริ่มต้น" (spec §6):** งวดยาวสุดที่มีเรตในตาราง + ดาวน์ต่ำสุดตาม config → ค่างวดต่ำสุดที่เป็นไปได้จริง; กลุ่มที่ไม่มี `installmentPrice` → `null` (หน้าเว็บไม่แสดงบรรทัดผ่อน)
 
+> 🚫 **ห้ามสร้าง `bc-installment-config.service.ts`** — **B3 ทำ resolver ตัวนี้ไปแล้ว** เป็น pure util ที่ `apps/api/src/utils/bc-installment-config.util.ts` (`resolveBcConfigForCategory`) และ **re-point `InstallmentPreviewService.previewBc` ไปใช้แล้ว** (หลัง B3 บล็อก resolve ใน `previewBc` เหลือบรรทัดเดียว จึงไม่มี "โค้ดให้ยกมาทั้งดุ้น" อีกต่อไป). B4 แค่ **เรียก util ตัวเดียวกัน**
+> 🚫 **ห้ามแตะ constructor ของ `InstallmentPreviewService`** (และห้ามแตะ `installment-preview.service.ts`/`.spec.ts` เลยใน batch นี้) — B3 มี golden parity test ผูกกับ constructor รูปปัจจุบัน การเพิ่ม dependency เข้าไปจะทำ B3 พัง. `resolveBcConfigForCategory` รับ `prisma` เป็น argument อยู่แล้ว จึงไม่ต้องแก้ DI ของใครทั้งสิ้น
+
 ### Files
-- Create: `apps/api/src/modules/shop-catalog/bc-installment-config.service.ts`
 - Create: `apps/api/src/modules/shop-catalog/shop-catalog.installment-parity.spec.ts`
-- Modify: `apps/api/src/modules/shop-catalog/installment-preview.service.ts` (บรรทัด 56-97 — `previewBc` ใช้ resolver; ตัวฟังก์ชันจริงยาวถึง :112 แต่ส่วนที่แทนคือ :56-97)
-- Modify: `apps/api/src/modules/shop-catalog/installment-preview.service.spec.ts` (บรรทัด 18-23 providers)
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (บรรทัด 4-16 `ProductGroup`, 48-50 ค่าคงที่, 67 constructor, 113-121 groupBy, 137-142 + 203-207 monthly, 297-302 ลบ `calculateMonthlyPayment`)
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.module.ts`
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (บรรทัด 10-17 mock prisma, 18-22 providers, 112-114 assertion `_min`, 121-138 เทสต์ `monthlyPaymentFrom` = 0)
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` — **ใช้ grep-anchor จาก Task 0 ไม่ใช่เลขบรรทัด** (B0 แก้ไฟล์นี้ไปแล้ว: ลบ `SHOP_BRAND`/`PHONE_CATEGORIES`, ย่อ `shopBaseWhere`, แก้ `getProductDetail` → ทุกอย่างใต้นั้นเลื่อนขึ้น ~6 บรรทัด). จุดที่แก้: interface `ProductGroup` (บรรทัดที่ match `monthlyPaymentFrom: number;`), บล็อกค่าคงที่ (บรรทัดที่ match `INTEREST_RATE_PER_MONTH`), ทั้ง 2 `groupBy` (บรรทัดที่ match `_min: { cashPrice: true },`), ทั้ง 2 จุดคำนวณ monthly (บรรทัดที่ match `this.calculateMonthlyPayment(`), และเมธอด `calculateMonthlyPayment` ท้ายคลาส
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (mock prisma, assertion `_min`, เทสต์ `monthlyPaymentFrom` = 0 — หา describe/it ด้วยชื่อเทสต์ ไม่ใช่เลขบรรทัด เพราะ B0 เพิ่ม/แก้เคสในไฟล์นี้ไปแล้ว 6 เคส)
 
 ### Interfaces
-- **Produces:**
-  ```ts
-  export interface ResolvedBcConfig {
-    minDownPct: Decimal;
-    commissionPct: Decimal;
-    vatPct: Decimal;
-    ratePctByMonths: Map<number, Decimal>;
-    allowedMonths: number[];
-  }
-  @Injectable() export class BcInstallmentConfigService {
-    resolve(productCategory: string): Promise<ResolvedBcConfig | null>;
-  }
-  ```
 - **Produces (เปลี่ยน type):** `ProductGroup.monthlyPaymentFrom: number | null`
-- **Consumes:** `calcBcInstallment(input: BcCalcInput): BcCalcOutput` จาก `../../utils/installment-calc.util` (field `config` รับรูปเดียวกับ `ResolvedBcConfig` เป๊ะ)
-- **Consumes:** `prisma.interestConfig.findFirst({ where: { productCategories: { has }, deletedAt: null, isActive: true }, include: { rates: { where: { deletedAt: null } } } })`
+- **Consumes (จาก B3):** `resolveBcConfigForCategory(prisma, category): Promise<{ found: boolean; config?: BcConfig }>` จาก `../../utils/bc-installment-config.util`
+- **Consumes:** `BcConfig = { minDownPct: Decimal; commissionPct: Decimal; vatPct: Decimal; ratePctByMonths: Map<number, Decimal>; allowedMonths: number[] }` จาก `../../utils/installment-calc.types`
+- **Consumes:** `calcBcInstallment(input: BcCalcInput): BcCalcOutput` จาก `../../utils/installment-calc.util` (field `config` รับ `BcConfig` ตรง ๆ)
 
 ### Steps
-- [ ] สร้าง `apps/api/src/modules/shop-catalog/bc-installment-config.service.ts` (ยกโค้ดจาก `previewBc:61-82` มาทั้งดุ้น ห้ามแก้ตรรกะ):
-  ```ts
-  import { Injectable } from '@nestjs/common';
-  import Decimal from 'decimal.js';
-  import { PrismaService } from '../../prisma/prisma.service';
-
-  export interface ResolvedBcConfig {
-    minDownPct: Decimal;
-    commissionPct: Decimal;
-    vatPct: Decimal;
-    ratePctByMonths: Map<number, Decimal>;
-    allowedMonths: number[];
-  }
-
-  /**
-   * ตัวเลือก InterestConfig ตัวเดียวของฝั่งเว็บลูกค้า
-   *
-   * ก่อน B4 ตรรกะนี้ถูกเขียนไว้ใน InstallmentPreviewService.previewBc เท่านั้น
-   * ทำให้หน้ารายการสินค้าต้องเดาค่างวดด้วย rate ปลอม 0.99% — ย้ายออกมาเพื่อให้
-   * "ผ่อนเริ่มต้น" บนการ์ดกับ "ผ่อน X บาท" ในหน้ารายละเอียดมาจากแหล่งเดียวกัน
-   * (ตรรกะเดิมทุกบรรทัด — behavior-preserving)
-   */
-  @Injectable()
-  export class BcInstallmentConfigService {
-    constructor(private prisma: PrismaService) {}
-
-    async resolve(productCategory: string): Promise<ResolvedBcConfig | null> {
-      const config = await this.prisma.interestConfig.findFirst({
-        where: {
-          productCategories: { has: productCategory },
-          deletedAt: null,
-          isActive: true,
-        },
-        include: { rates: { where: { deletedAt: null } } },
-      });
-      if (!config) return null;
-
-      const ratePctByMonths = new Map<number, Decimal>();
-      for (const r of config.rates) {
-        ratePctByMonths.set(r.months, new Decimal(r.ratePct.toString()));
-      }
-      // Fallback when InterestConfigRate not yet seeded — synthesize from per-month × m
-      if (ratePctByMonths.size === 0) {
-        const rate = new Decimal(config.interestRate.toString());
-        for (let m = config.minInstallmentMonths; m <= config.maxInstallmentMonths; m++) {
-          ratePctByMonths.set(m, rate.mul(m));
-        }
-      }
-      const allowedMonths = Array.from(ratePctByMonths.keys()).sort((a, b) => a - b);
-
-      return {
-        minDownPct: new Decimal(config.minDownPaymentPct.toString()),
-        commissionPct: new Decimal(config.storeCommissionPct.toString()),
-        vatPct: new Decimal(config.vatPct.toString()),
-        ratePctByMonths,
-        allowedMonths,
-      };
-    }
-  }
-  ```
-- [ ] แก้ `previewBc` ใน `installment-preview.service.ts` — แทนบรรทัด 56-97 ด้วย:
-  ```ts
-    private async previewBc(
-      product: { category: string },
-      installmentPrice: Decimal,
-      dto: InstallmentPreviewDto,
-    ): Promise<PreviewResult> {
-      const config = await this.bcConfig.resolve(product.category);
-      if (!config) return { available: false, reason: 'no_interest_config' };
-
-      const result = calcBcInstallment({
-        installmentPrice,
-        months: dto.months,
-        downPct: dto.downPct !== undefined ? new Decimal(dto.downPct) : undefined,
-        customDownAmount:
-          dto.customDownAmount !== undefined ? new Decimal(dto.customDownAmount) : undefined,
-        config,
-      });
-  ```
-  และแก้ constructor (บรรทัด 28) เป็น:
-  ```ts
-    constructor(
-      private prisma: PrismaService,
-      private bcConfig: BcInstallmentConfigService,
-    ) {}
-  ```
-  พร้อม import ที่หัวไฟล์:
-  ```ts
-  import { BcInstallmentConfigService } from './bc-installment-config.service';
-  ```
-- [ ] เพิ่ม provider ใน mock ของ `installment-preview.service.spec.ts` (บรรทัด 18-24) ให้เป็น:
-  ```ts
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          InstallmentPreviewService,
-          BcInstallmentConfigService,
-          { provide: PrismaService, useValue: prisma },
-        ],
-      }).compile();
-  ```
-  พร้อม import `BcInstallmentConfigService` ที่หัวไฟล์ — **เทสต์เดิมทั้ง 5 ตัวคือ golden ของการ refactor นี้ ต้องผ่านโดยไม่แก้ค่าใด ๆ**
-- [ ] รันให้เห็นว่า refactor ไม่เปลี่ยนเลข:
+- [ ] ยืนยันว่า resolver ของ B3 อยู่แล้วจริง (ถ้าไม่เจอ = B3 ยังไม่ merge → หยุด):
   ```bash
-  cd apps/api && npx jest src/modules/shop-catalog/installment-preview.service.spec.ts
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api
+  grep -n 'export async function resolveBcConfigForCategory' src/utils/bc-installment-config.util.ts
+  grep -n 'resolveBcConfigForCategory' src/modules/shop-catalog/installment-preview.service.ts
   ```
-  คาดหวัง `Tests: 5 passed` (รวม `monthlyPayment 2413.21` และ `2923.00`)
 - [ ] เขียน parity golden ที่ fail ก่อน — สร้าง `apps/api/src/modules/shop-catalog/shop-catalog.installment-parity.spec.ts`:
   ```ts
   import { Test, TestingModule } from '@nestjs/testing';
   import { Prisma } from '@prisma/client';
   import { ShopCatalogService } from './shop-catalog.service';
   import { InstallmentPreviewService } from './installment-preview.service';
-  import { BcInstallmentConfigService } from './bc-installment-config.service';
   import { PrismaService } from '../../prisma/prisma.service';
 
   /**
@@ -1609,7 +1539,6 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
         providers: [
           ShopCatalogService,
           InstallmentPreviewService,
-          BcInstallmentConfigService,
           { provide: PrismaService, useValue: prisma },
         ],
       }).compile();
@@ -1702,37 +1631,30 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
   ```bash
   cd apps/api && npx jest src/modules/shop-catalog/shop-catalog.installment-parity.spec.ts
   ```
-  คาดหวัง fail (ได้เลขจาก rate ปลอม / constructor ไม่รับ `BcInstallmentConfigService`)
-- [ ] แก้ `shop-catalog.service.ts` — หัวไฟล์: เพิ่ม import + ลบค่าคงที่ rate ปลอม (บรรทัด 48-50) เหลือ:
+  คาดหวัง fail (ได้เลขจาก rate ปลอม 0.0099)
+- [ ] แก้ `shop-catalog.service.ts` — หัวไฟล์: เพิ่ม import (**คง import ที่ B0 ใส่ไว้ เช่น `productReadinessWhere` ห้ามลบ**) แล้วลบค่าคงที่ rate ปลอม:
   ```ts
-  import { Injectable } from '@nestjs/common';
   import Decimal from 'decimal.js';
-  import { PrismaService } from '../../prisma/prisma.service';
   import { calcBcInstallment } from '../../utils/installment-calc.util';
-  import { BcInstallmentConfigService, ResolvedBcConfig } from './bc-installment-config.service';
+  import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
+  import type { BcConfig } from '../../utils/installment-calc.types';
   import { parseAccessories, parseQcChecklist, QcCheckItem } from './product-unit-detail.util';
   ```
-  และลบ 3 บรรทัด `INTEREST_RATE_PER_MONTH` / `DEFAULT_MONTHS` / `DEFAULT_DOWN_PCT` ทิ้ง
-- [ ] แก้ `ProductGroup.monthlyPaymentFrom` (บรรทัด 14) เป็น:
+  **grep-anchor:** `grep -n "INTEREST_RATE_PER_MONTH\|DEFAULT_MONTHS\|DEFAULT_DOWN_PCT" src/modules/shop-catalog/shop-catalog.service.ts` → ลบ 3 บรรทัดนั้นทิ้ง (อย่ายึดเลข 48-50 — B0 อาจเลื่อนไปแล้ว)
+- [ ] แก้ `ProductGroup.monthlyPaymentFrom` (**grep-anchor:** บรรทัดที่ match `monthlyPaymentFrom: number;` ใน `export interface ProductGroup`) เป็น:
   ```ts
     /** ค่างวดต่ำสุดที่ทำสัญญาได้จริง (งวดยาวสุด + ดาวน์ต่ำสุด); null = ยังไม่ตั้งราคาผ่อน */
     monthlyPaymentFrom: number | null;
   ```
-- [ ] แก้ constructor (บรรทัด 67) เป็น:
-  ```ts
-    constructor(
-      private prisma: PrismaService,
-      private bcConfig: BcInstallmentConfigService,
-    ) {}
-  ```
-- [ ] เพิ่ม private helper ท้ายคลาส (แทนที่ `calculateMonthlyPayment` บรรทัด 297-302):
+- [ ] **constructor ของ `ShopCatalogService` คงเดิม** (`constructor(private prisma: PrismaService) {}`) — resolver ของ B3 เป็น pure function รับ prisma เป็น argument จึงไม่ต้องเพิ่ม dependency ใด ๆ
+- [ ] เพิ่ม private helper ท้ายคลาส (**grep-anchor:** แทนที่เมธอด `calculateMonthlyPayment(price: number, months: number, downPct: number)` ทั้งเมธอด — หาได้ด้วย `grep -n "calculateMonthlyPayment" ...`):
   ```ts
     /**
      * "ผ่อนเริ่มต้น" ของกลุ่ม = ค่างวดต่ำสุดที่ทำสัญญาได้จริง
      * (งวดยาวสุดที่มีเรต + ดาวน์ขั้นต่ำตาม InterestConfig) ผ่านเครื่องคิดตัวเดียว
      * กับ InstallmentPreviewService — ห้ามคำนวณเองด้วยสูตรย่อ
      */
-    private monthlyFrom(installmentPrice: number | null, config: ResolvedBcConfig | null): number | null {
+    private monthlyFrom(installmentPrice: number | null, config: BcConfig | null): number | null {
       if (installmentPrice == null || installmentPrice <= 0) return null;
       if (!config || config.allowedMonths.length === 0) return null;
       const months = config.allowedMonths[config.allowedMonths.length - 1];
@@ -1747,15 +1669,18 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
     }
 
     /** resolve config ครั้งเดียวต่อ category ต่อ request (กลุ่มมีได้แค่ 2 category) */
-    private async resolveConfigsFor(categories: string[]): Promise<Map<string, ResolvedBcConfig | null>> {
+    private async resolveConfigsFor(categories: string[]): Promise<Map<string, BcConfig | null>> {
       const unique = Array.from(new Set(categories));
       const entries = await Promise.all(
-        unique.map(async (c) => [c, await this.bcConfig.resolve(c)] as const),
+        unique.map(async (c) => {
+          const r = await resolveBcConfigForCategory(this.prisma, c);
+          return [c, r.found ? r.config! : null] as const;
+        }),
       );
       return new Map(entries);
     }
   ```
-- [ ] แก้ `listGroupedByModel` — groupBy (บรรทัด 113-121) เพิ่ม `_min.installmentPrice`:
+- [ ] แก้ `listGroupedByModel` — groupBy (**grep-anchor:** บรรทัดแรกที่ match `_min: { cashPrice: true },`) เพิ่ม `_min.installmentPrice`:
   ```ts
       const groups = await this.prisma.product.groupBy({
         by: [...GROUP_BY],
@@ -1769,7 +1694,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 
       const configs = await this.resolveConfigsFor(groups.map((g) => g.category));
   ```
-- [ ] แก้ตัวคำนวณใน map — **แทนเฉพาะบรรทัด 137-142** (ห้ามกินบล็อก `return {` บรรทัด 143-154) เป็น:
+- [ ] แก้ตัวคำนวณใน map — **grep-anchor:** บล็อก 6 บรรทัดที่ขึ้นต้นด้วย `const minPrice = g._min?.cashPrice != null ...` และจบที่ `: 0;` ของ `this.calculateMonthlyPayment(...)` ตัวแรก (**ห้ามกินบล็อก `return {` ที่ตามมา**) แทนด้วย:
   ```ts
           const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
           const minInstallment =
@@ -1778,53 +1703,45 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
           const monthly = this.monthlyFrom(minInstallment, configs.get(g.category) ?? null);
   ```
   (บรรทัด `monthlyPaymentFrom: monthly,` คงเดิม)
-- [ ] แก้ `listRelated` แบบเดียวกัน — groupBy (บรรทัด 182-189) เป็น `_min: { cashPrice: true, installmentPrice: true }`, เพิ่ม `const configs = await this.resolveConfigsFor(groups.map((g) => g.category));` ใต้ groupBy และแทนบรรทัด 203-207 ด้วย:
+- [ ] แก้ `listRelated` แบบเดียวกัน (**grep-anchor:** `_min: { cashPrice: true },` **ตัวที่สอง** และ `this.calculateMonthlyPayment(` **ตัวที่สอง**) — เป็น `_min: { cashPrice: true, installmentPrice: true }`, เพิ่ม `const configs = await this.resolveConfigsFor(groups.map((g) => g.category));` ใต้ groupBy และแทนบล็อก `const minPrice ... : 0;` ด้วย:
   ```ts
           const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
           const minInstallment =
             g._min?.installmentPrice != null ? Number(g._min.installmentPrice) : null;
           const monthly = this.monthlyFrom(minInstallment, configs.get(g.category) ?? null);
   ```
-- [ ] อัปเดต providers ใน `shop-catalog.service.spec.ts` (บรรทัด 18-22):
-  ```ts
-      const module = await Test.createTestingModule({
-        providers: [
-          ShopCatalogService,
-          BcInstallmentConfigService,
-          { provide: PrismaService, useValue: prisma },
-        ],
-      }).compile();
-  ```
-  เพิ่ม `interestConfig: { findFirst: jest.fn().mockResolvedValue(null) }` ใน mock prisma (บรรทัด 10-17) และ import `BcInstallmentConfigService`
-- [ ] อัปเดตเทสต์เดิมที่ผูกกับพฤติกรรมเก่า (บรรทัด 121-138) — เปลี่ยน `_min: { cashPrice: null }` เป็น `_min: { cashPrice: null, installmentPrice: null }` และ assertion บรรทัดสุดท้ายเป็น:
+- [ ] **providers ใน `shop-catalog.service.spec.ts` คงเดิม** (ไม่มี service ใหม่ให้ลงทะเบียน) — แต่ต้องเพิ่ม `interestConfig: { findFirst: jest.fn().mockResolvedValue(null) }` ใน mock prisma (**grep-anchor:** ก้อน `const prisma = {` ที่หัวไฟล์) ไม่งั้น `resolveBcConfigForCategory` จะเรียก `prisma.interestConfig.findFirst` แล้ว throw
+- [ ] อัปเดตเทสต์เดิมที่ผูกกับพฤติกรรมเก่า (**grep-anchor:** ทุกก้อนที่ match `_min: { cashPrice`) — เปลี่ยน `_min: { cashPrice: null }` เป็น `_min: { cashPrice: null, installmentPrice: null }` และ assertion ของเคสนั้นเป็น:
   ```ts
         expect(result.data[0].monthlyPaymentFrom).toBeNull();
   ```
-  และในเทสต์ `groups by category ...` (บรรทัด 59-76) กับ `uses cashPrice (not costPrice) ...` (บรรทัด 98-107) กับ `listRelated` (บรรทัด 341-350) เพิ่ม `installmentPrice: null` เข้าไปใน `_min` ทุกก้อน
-- [ ] **อัปเดต assertion ที่จะแดงแน่ ๆ** — `uses cashPrice (not costPrice)...` บรรทัด 112-114 ยืนยัน shape ของ `_min` ที่ส่งเข้า groupBy ตรง ๆ ต้องแก้เป็น:
+  และเคสอื่น ๆ (`groups by category ...`, `uses cashPrice (not costPrice) ...`, `listRelated`) เพิ่ม `installmentPrice: null` เข้าไปใน `_min` ทุกก้อน — **รวมถึงเคสใหม่ที่ B0 เพิ่มเข้ามาในไฟล์นี้ด้วย** (`grep -c "_min: { cashPrice"` ก่อน/หลังแก้ต้องได้เท่ากัน)
+- [ ] **อัปเดต assertion ที่จะแดงแน่ ๆ** — เคส `uses cashPrice (not costPrice)...` ยืนยัน shape ของ `_min` ที่ส่งเข้า groupBy ตรง ๆ (**grep-anchor:** `_min: { cashPrice: true }` ใน `toHaveBeenCalledWith`) ต้องแก้เป็น:
   ```ts
         expect(prisma.product.groupBy).toHaveBeenCalledWith(
           expect.objectContaining({ _min: { cashPrice: true, installmentPrice: true } }),
         );
   ```
   (ถ้าไม่แก้ เทสต์นี้จะ fail ทันทีที่เพิ่ม `installmentPrice: true` ใน groupBy)
-- [ ] เพิ่ม provider ใน `shop-catalog.module.ts`:
-  ```ts
-    providers: [ShopCatalogService, InstallmentPreviewService, BcInstallmentConfigService],
-  ```
-  (พร้อม import) — `exports` คงเดิม
+- [ ] **`shop-catalog.module.ts` ไม่ต้องเพิ่ม provider ใหม่ใน Task นี้** — resolver เป็น pure util (`providers` เดิม `[ShopCatalogService, InstallmentPreviewService]` คงไว้; controller ใหม่ของ Task 4 ลงทะเบียนไปแล้ว)
 - [ ] รันให้ผ่านทั้งโมดูล:
   ```bash
   cd apps/api && npx jest src/modules/shop-catalog
   ```
   คาดหวัง 6 suites passed, ไม่มี failed; parity spec `Tests: 4 passed`
+  (6 suites = shop-catalog.service + installment-preview.service ของเดิม + share-page.util + shop-share.controller + product-unit-detail.util + installment-parity ของ B4)
+- [ ] **ยืนยันว่าไม่ได้แตะ `installment-preview.service.ts`/`.spec.ts`** (ของ B3):
+  ```bash
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE && git diff --name-only | grep installment-preview || echo "PREVIEW_UNTOUCHED"
+  ```
+  คาดหวัง `PREVIEW_UNTOUCHED`
 - [ ] commit:
   ```bash
   git add apps/api/src/modules/shop-catalog && git commit -m "$(cat <<'EOF'
-  feat(shop-catalog): real ผ่อนเริ่มต้น from installmentPrice + shared InterestConfig resolver
+  feat(shop-catalog): real ผ่อนเริ่มต้น from installmentPrice via B3 InterestConfig resolver
 
   เลิกใช้ rate ปลอม 0.0099 บนหน้ารายการ; เพิ่ม _min(installmentPrice) ใน groupBy และ
-  ย้าย config resolution ของ preview มาเป็น BcInstallmentConfigService ใช้ร่วมกัน
+  เรียก resolveBcConfigForCategory (util ของ B3) ตัวเดียวกับที่ previewBc ใช้
   พร้อม golden parity test ยืนยันว่าเลขสองหน้าตรงกัน
 
   Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
@@ -1836,18 +1753,20 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 
 ## Task 7 — ค้นหาไทยผ่าน util ของ B0 (AND-composable ห้าม assign `where.OR`)
 
-โค้ดเดิม `shop-catalog.service.ts:96-99` **assign** `where.OR = [...]` ตรง ๆ ซึ่งจะทับ/ชนกับ readiness fragment ของ B0 ที่คืน `{AND:[...]}` — Task นี้เปลี่ยนเป็นต่อ `where.AND` เสมอ
+โค้ดเดิมใน `listGroupedByModel` **assign** `where.OR = [...]` ตรง ๆ ซึ่งจะทับ/ชนกับ readiness fragment ของ B0 ที่คืน `{AND:[...]}` — Task นี้เปลี่ยนเป็นต่อ `where.AND` เสมอ
+
+⚠️ **สีต้องไม่อยู่ใน where:** `parseDeviceQuery` คืนสีเป็น**คำไทย** (`'ดำ'`/`'น้ำเงิน'`/`'ทอง'` — ดู `COLORS` ใน util ของ B0) ขณะที่ `Product.color` ในฐานข้อมูลเก็บเป็น**อังกฤษ** (`'Black'`/`'Blue'`/`'Gold'`/`'Natural Titanium'` — `prisma/seed.ts` POItems และ `prisma/seed-demo-products.ts`) → ถ้าใส่ `{ color: { contains: parsed.color } }` เป็น AND clause คำค้น `'ไอโฟน 15 สีดำ'` จะได้ **0 ผลลัพธ์** (แย่กว่าเดิมที่ยังเจอ iPhone 15 อยู่) และ **B4 ไม่มี test runner ฝั่ง web-shop จึงไม่มีอะไรจับได้เลย**. ทำแบบ B3 (`search-products.tool.ts`) คือกรองสีแบบ **post-query narrowing ที่ no-op เมื่อไม่ match** (`if (byColor.length > 0) candidates = byColor`) ไม่ใช่เงื่อนไข where
 
 ### Files
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (บรรทัด 94-100)
-- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (บรรทัด 140-160 — เทสต์ search 2 ตัวที่พฤติกรรมเปลี่ยน)
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.ts` (**grep-anchor:** บล็อก `if (filters.search?.trim()) { ... where.OR = [ ... ]; }` — หาได้ด้วย `grep -n "filters.search" ...`; อย่ายึดเลข 94-100 เพราะ B0 แก้ไฟล์นี้ไปแล้ว)
+- Modify: `apps/api/src/modules/shop-catalog/shop-catalog.service.spec.ts` (**grep-anchor:** เทสต์ชื่อ `filters by search text on brand OR model (case-insensitive)` และ `ignores a blank search string`)
 
 ### Interfaces
-- **Consumes (จาก B0):** `normalizeDeviceQuery(utterance: string): { brand?: string; model?: string; storage?: string; color?: string }` จาก `../../utils/device-query-normalize.util` — ใช้ชื่อจริงที่จดไว้จาก Task 0; **ห้ามเขียน util ซ้ำ**
-- **Produces:** `listGroupedByModel(filters)` — `filters.search` รองรับคำไทย (ไอโฟน / โปรแม็กซ์ / 15pm / ความจุ / สีไทย)
+- **Consumes (จาก B0):** `parseDeviceQuery(utterance: string): { brand: string | null; model: string | null; storage: string | null; color: string | null; rest: string }` จาก `../../utils/device-query-normalize.util` — ใช้ชื่อจริงที่จดไว้จาก Task 0; **ห้ามเขียน util ซ้ำ**
+- **Produces:** `listGroupedByModel(filters)` — `filters.search` รองรับคำไทย (ไอโฟน / โปรแม็กซ์ / 15pm / ความจุ) และ **ไม่พังเมื่อลูกค้าพิมพ์สีไทย** (สีถูกละเลยอย่างปลอดภัย ไม่ทำให้ผลลัพธ์เป็นศูนย์)
 
 ### Steps
-- [ ] เขียนเทสต์ที่ fail ก่อน — แทนที่เทสต์ `filters by search text on brand OR model (case-insensitive)` (บรรทัด 140-153) และเพิ่มตัวใหม่:
+- [ ] เขียนเทสต์ที่ fail ก่อน — แทนที่เทสต์ `filters by search text on brand OR model (case-insensitive)` และเพิ่มตัวใหม่:
   ```ts
       it('แปลงคำค้นไทยเป็นเงื่อนไข AND (ไม่ assign where.OR ทับ fragment อื่น)', async () => {
         prisma.product.groupBy.mockResolvedValue([]);
@@ -1884,25 +1803,40 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
         expect(where.model).toBe('iPhone 16');
         expect(Array.isArray(where.AND)).toBe(true);
       });
+
+      // สีที่ util คืนเป็นคำไทย แต่ Product.color เก็บอังกฤษ ('Black'/'Blue'/'Gold')
+      // ถ้าเผลอเอา parsed.color ไปใส่ where จะได้ 0 ผลลัพธ์ทันที — เทสต์นี้ตรึงไว้
+      it('ไม่เอาสี (คำไทย) ไปเป็นเงื่อนไข where — ไม่งั้นค้น "สีดำ" จะได้ 0 ผลลัพธ์', async () => {
+        prisma.product.groupBy.mockResolvedValue([]);
+        await service.listGroupedByModel({ search: 'ไอโฟน 15 สีดำ' });
+        const where = prisma.product.groupBy.mock.calls[0][0].where;
+        expect(JSON.stringify(where)).not.toContain('color');
+        expect(where.AND).toEqual(
+          expect.arrayContaining([{ model: { contains: 'iPhone 15', mode: 'insensitive' } }]),
+        );
+      });
   ```
-  (เทสต์ `ignores a blank search string` บรรทัด 155-160 คงเดิม แต่เปลี่ยน assertion เป็น `expect(where.AND).toBeUndefined();`)
+  (เทสต์ `ignores a blank search string` คงเดิม แต่เปลี่ยน assertion เป็น `expect(where.AND).toBeUndefined();`)
 - [ ] รันให้เห็น fail:
   ```bash
   cd apps/api && npx jest src/modules/shop-catalog/shop-catalog.service.spec.ts -t "คำค้นไทย"
   ```
   คาดหวัง `where.AND` undefined / `where.OR` ยังถูก assign
-- [ ] แก้ `shop-catalog.service.ts` บรรทัด 94-100 เป็น:
+- [ ] แก้บล็อก `if (filters.search?.trim())` ใน `shop-catalog.service.ts` (**grep-anchor** ตาม Files ข้างบน) เป็น:
   ```ts
       if (filters.search?.trim()) {
         const q = filters.search.trim();
         // util กลางจาก B0 — ตัวเดียวกับที่บอทและ inbox ใช้ เพื่อให้ "ไอโฟน 15 โปร"
         // ที่ลูกค้าพิมพ์ในเว็บกับในแชทให้ผลเดียวกัน
-        const parsed = normalizeDeviceQuery(q);
+        const parsed = parseDeviceQuery(q);
         const clauses: Record<string, unknown>[] = [];
         if (parsed.model) clauses.push({ model: { contains: parsed.model, mode: 'insensitive' } });
         if (parsed.storage) clauses.push({ storage: { equals: parsed.storage, mode: 'insensitive' } });
-        if (parsed.color) clauses.push({ color: { contains: parsed.color, mode: 'insensitive' } });
-        // brand ถูกตรึงเป็น Apple ใน shopBaseWhere อยู่แล้ว จึงไม่ต้องใช้ parsed.brand
+        // ⚠️ ห้ามใส่ parsed.color ลง where: util คืนคำไทย ('ดำ') แต่ Product.color
+        // เก็บอังกฤษ ('Black') → จะกลายเป็นเงื่อนไขที่ไม่มีวันจริง = 0 ผลลัพธ์
+        // สีใช้เป็น "narrowing แบบ no-op" หลัง query แทน (แบบเดียวกับ B3
+        // search-products.tool: `if (byColor.length > 0) candidates = byColor`)
+        // brand ถูกตรึงเป็น Apple ใน readiness fragment อยู่แล้ว จึงไม่ต้องใช้ parsed.brand
         if (clauses.length === 0) {
           clauses.push({
             OR: [
@@ -1918,8 +1852,14 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
   ```
   พร้อม import ที่หัวไฟล์:
   ```ts
-  import { normalizeDeviceQuery } from '../../utils/device-query-normalize.util';
+  import { parseDeviceQuery } from '../../utils/device-query-normalize.util';
   ```
+  (ถ้า Task 0 จดไว้ว่า B0 ตั้งชื่อ export อื่น ให้ใช้ชื่อนั้นแทนทั้ง 2 จุด)
+- [ ] ตรวจว่าไม่มีสีหลุดเข้า where:
+  ```bash
+  cd apps/api && grep -n "color:" src/modules/shop-catalog/shop-catalog.service.ts | grep -v "^\s*//"
+  ```
+  คาดหวัง: ไม่มีบรรทัดไหนอยู่ในบล็อก `if (filters.search?.trim())` (บรรทัด `color:` ที่เจอควรเป็นของ `select`/`ProductUnit` เท่านั้น — บรรทัด comment ที่มีคำว่า `parsed.color` เป็นเจตนา ไม่ใช่โค้ด). เหตุผล: สีถูกละเลยโดยเจตนา — การ narrow ตามสีต่อ unit เป็นงานของ B3 ฝั่งแชท ซึ่งกรองบน `candidates` ที่ query มาแล้วจึง no-op ได้ปลอดภัย; ฝั่งเว็บ `listGroupedByModel` คืนเป็น **กลุ่มรุ่น** ไม่ใช่รายเครื่อง จึงไม่มีพื้นผิวให้ narrow และไม่ควรตัดผลลัพธ์ทิ้งเพราะคำสี)
 - [ ] รันให้ผ่าน:
   ```bash
   cd apps/api && npx jest src/modules/shop-catalog/shop-catalog.service.spec.ts
@@ -2417,34 +2357,156 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 
 ---
 
-## Task 10 — web-shop: copy.ts เป็นจุดแก้เดียวของลิงก์แชร์ / LINE / Messenger
+## Task 10 — ต่อสายลิงก์แชร์ทุกผู้เรียก: web-shop + admin + inbox + บอท (+ page handle จาก IntegrationConfig)
 
-`apps/web-shop` **ไม่มี test runner และไม่มี eslint config** → Task 10-11 ตรวจด้วย `npx tsc --noEmit` + QA เบราว์เซอร์ local เท่านั้น จึงต้องคุมให้ตรรกะบางที่สุดและรวมไว้ที่ `copy.ts` ที่เดียว (ทั้ง 2 call site ของ LINE prefill อยู่ที่ `ProductDetailPage.tsx:380` และ `:444`)
+`apps/web-shop` **ไม่มี test runner และไม่มี eslint config** → ส่วน web-shop ของ Task 10-11 ตรวจด้วย `npx tsc --noEmit` + QA เบราว์เซอร์ local เท่านั้น จึงต้องคุมให้ตรรกะบางที่สุดและรวมไว้ที่ `copy.ts` ที่เดียว (ทั้ง 2 call site ของ LINE prefill อยู่ในบล็อก CTA เดสก์ท็อป/มือถือของ `ProductDetailPage.tsx` — หาด้วย `grep -n lineOaMessageUrl`)
+
+**⚠️ Task นี้ไม่ใช่งาน web-shop ล้วน — มันคือจุดที่ "ต่อสาย" ลิงก์แชร์เข้ากับผู้เรียกทั้งหมด** ถ้าไม่ทำครบ endpoint `GET /api/shop/share/:id` จะถูกใช้แค่จากหน้าเว็บลูกค้า ส่วนลิงก์ที่แอดมินคัดลอกส่งลูกค้า (B1), การ์ดสินค้าที่ staff ยิงในแชท (B2) และลิงก์ที่บอทตอบ (B3) จะยัง**ไม่มีการ์ด OG** ทั้งที่นั่นคือเหตุผลทั้งหมดของ endpoint นี้ — B1/B2/B3 ทุกตัวเขียนไว้ว่า "ค่อยเปลี่ยนตอน B4"
+
+**Page handle ของ Messenger มาจาก IntegrationConfig ไม่ใช่ค่าคงที่ในซอร์ส** — ถ้า hardcode `facebookPageUsername: null` + `TODO(owner)` ไว้ในซอร์ส ปุ่มจะถูกซ่อนตลอดกาล, webhook branch ของ Task 8 จะไม่มีทางถูกกระตุ้น และเจ้าของแก้เองไม่ได้ (ต้องแก้ TS + deploy). เจ้าของกรอกค่าที่ **Settings → เชื่อมต่อ → Facebook** อยู่แล้ว จึงเสิร์ฟผ่าน `/api/shop/public-config` (พื้นผิวเดียวกับ GA4/Pixel) และมี **fallback เป็น `pageId`** ที่กรอกไว้แล้วแน่ ๆ (`https://m.me/<PAGE_ID>` ใช้ได้เท่ากับ username) ⇒ ปุ่มทำงานทันทีตั้งแต่วัน deploy
 
 ### Files
-- Modify: `apps/web-shop/src/lib/copy.ts` (บรรทัด 11-22 `shopInfo`, 24-28 `lineOaMessageUrl`, 78-85 `copy.product`)
+- Modify: `apps/api/src/modules/integrations/integration-registry.ts` (integration `facebook` — เพิ่ม field `pageUsername`)
+- Modify: `apps/api/src/modules/shop-public-config/shop-public-config.service.ts` (เพิ่ม `getShopConfig()`)
+- Modify: `apps/api/src/modules/shop-public-config/shop-public-config.controller.ts` (เพิ่ม `@Get('shop')`)
+- Modify: `apps/api/src/modules/shop-public-config/shop-public-config.service.spec.ts` (เพิ่ม describe `getShopConfig`)
+- Modify: `apps/web/src/pages/ProductDetailPage/utils/buildCustomerSummary.ts` (`buildShopProductUrl` — B1 สร้างไว้)
+- Modify: `apps/web/src/pages/ProductDetailPage/utils/buildCustomerSummary.test.ts` (2 เทสต์ของ `buildShopProductUrl`)
+- Modify: `apps/api/src/modules/staff-chat/services/chat-commerce.service.ts` (`shareUrl` 2 จุด — B2 สร้างไว้)
+- Modify: `apps/api/src/modules/staff-chat/services/chat-commerce.service.spec.ts` (ค่าคาดหวังของ `shareUrl`)
+- Modify: `apps/api/src/modules/sales-bot/tools/search-products.tool.ts` + `.spec.ts` (`webUrl` — B3 สร้างไว้)
+- Modify: `apps/api/src/modules/sales-bot/tools/calculate-installment.tool.ts` + `.spec.ts` (`webUrl` — B3 สร้างไว้)
+- Modify: `apps/web-shop/src/lib/copy.ts` (**grep-anchor:** `export const shopInfo`, `export function lineOaMessageUrl`, `product: {` ใน `copy`)
 
 ### Interfaces
-- **Produces:**
+- **Produces (apps/api):**
   ```ts
-  export const shopInfo: { ...; facebookPageUsername: string | null };
+  // shop-public-config.service.ts
+  export interface PublicShopConfig { facebookPageHandle: string | null }
+  getShopConfig(): Promise<PublicShopConfig>;   // GET /api/shop/public-config/shop
+  ```
+- **Produces (apps/web-shop):**
+  ```ts
   export function productShareUrl(productId: string): string;
-  export function messengerRefUrl(productId: string): string | null;
+  export function messengerRefUrl(productId: string, pageHandle: string | null | undefined): string | null;
   export function lineProductPrefill(displayName: string, imeiLast4: string | undefined, shareUrl: string): string;
   ```
 - **Consumes:** `GET /api/shop/share/:id` (Task 4) — same-origin ทั้ง dev (vite proxy) และ prod (Firebase rewrite)
+- **Consumes:** `IntegrationConfigService.getValue('facebook', 'pageUsername' | 'pageId')`
+- **Consumes:** `shopBaseUrl()` — `apps/api/src/utils/shop-base-url.util.ts:10` (ผู้เรียกฝั่ง api ทั้ง 3 ตัวใช้อยู่แล้ว)
 
 ### Steps
-- [ ] แก้ `shopInfo` ใน `apps/web-shop/src/lib/copy.ts` (บรรทัด 11-22) เพิ่ม 1 ฟิลด์ก่อนปีกกาปิด:
+
+**(ก) api — เสิร์ฟ page handle ให้ web-shop (เจ้าของกรอกเองได้ ไม่ต้อง deploy)**
+- [ ] เพิ่ม field ใน `integration-registry.ts` ใต้ `pageId` ของ integration `facebook` (**grep-anchor:** `key: 'facebook',` แล้วหา block `key: 'pageId'`):
   ```ts
-    /**
-     * TODO(owner): ใส่ username เพจ Facebook (ส่วนที่อยู่หลัง m.me/ เช่น 'bestchoicephone')
-     * แล้วปุ่ม "ทักทาง Messenger" บนหน้าสินค้าจะโผล่เอง — ปล่อย null ไว้ปุ่มจะถูกซ่อน
-     * ข้อมูลนี้เป็นข้อมูลสาธารณะของเพจ (โชว์บนหน้าเพจอยู่แล้ว) ไม่ใช่ความลับ
-     */
-    facebookPageUsername: null as string | null,
+        {
+          key: 'pageUsername',
+          label: 'Page Username (ส่วนหลัง m.me/ เช่น bestchoicephone)',
+          sensitive: false,
+          required: false,
+          envVar: 'FB_PAGE_USERNAME',
+        },
   ```
-- [ ] เพิ่ม 3 helper ต่อจาก `lineOaMessageUrl` (หลังบรรทัด 28):
+  (ไม่ sensitive — เป็นข้อมูลสาธารณะที่โชว์บนหน้าเพจอยู่แล้ว; `integration-registry.spec.ts` ไม่ได้ล็อกจำนวน field จึงไม่มีเทสต์ไหนแดง)
+- [ ] เพิ่มใน `shop-public-config.service.ts`:
+  ```ts
+  export interface PublicShopConfig {
+    /**
+     * ตัวระบุเพจสำหรับลิงก์ m.me/<handle>?ref=p:<productId>
+     * ใช้ `pageUsername` ถ้าเจ้าของกรอกไว้ ไม่งั้นถอยไปใช้ `pageId`
+     * (m.me รับได้ทั้งคู่) — เป็นข้อมูลสาธารณะของเพจ ไม่ใช่ความลับ
+     */
+    facebookPageHandle: string | null;
+  }
+  ```
+  และเมธอด:
+  ```ts
+    async getShopConfig(): Promise<PublicShopConfig> {
+      const [username, pageId] = await Promise.all([
+        this.integrations.getValue('facebook', 'pageUsername'),
+        this.integrations.getValue('facebook', 'pageId'),
+      ]);
+      const handle = username?.trim() || pageId?.trim() || null;
+      return { facebookPageHandle: handle };
+    }
+  ```
+- [ ] เพิ่ม route ใน `shop-public-config.controller.ts` (คลาสนี้ไม่มี guard โดยเจตนา — ดู `.claude/rules/security.md` รายการ `shop/public-config`):
+  ```ts
+    @Get('shop')
+    getShop() {
+      return this.service.getShopConfig();
+    }
+  ```
+- [ ] เพิ่มเทสต์ใน `shop-public-config.service.spec.ts` (mock `getValue` มีอยู่แล้วใน providers):
+  ```ts
+    describe('getShopConfig', () => {
+      const getValue = () =>
+        (service as unknown as { integrations: { getValue: jest.Mock } }).integrations.getValue;
+
+      it('ใช้ pageUsername เมื่อเจ้าของกรอกไว้', async () => {
+        getValue().mockImplementation((_k: string, f: string) =>
+          Promise.resolve(f === 'pageUsername' ? ' bestchoicephone ' : '123456'),
+        );
+        expect(await service.getShopConfig()).toEqual({ facebookPageHandle: 'bestchoicephone' });
+      });
+
+      it('ถอยไปใช้ pageId เมื่อยังไม่ได้กรอก username (m.me รับ id ได้)', async () => {
+        getValue().mockImplementation((_k: string, f: string) =>
+          Promise.resolve(f === 'pageUsername' ? '' : '123456'),
+        );
+        expect(await service.getShopConfig()).toEqual({ facebookPageHandle: '123456' });
+      });
+
+      it('คืน null เมื่อยังไม่ได้ตั้งค่า Facebook เลย (ปุ่มจะถูกซ่อน)', async () => {
+        getValue().mockResolvedValue(undefined);
+        expect(await service.getShopConfig()).toEqual({ facebookPageHandle: null });
+      });
+    });
+  ```
+  (ถ้า `service` ไม่ถือ reference ของ mock ให้ยกตัวแปร mock ออกมาเป็น `const integrations = { getValue: jest.fn() }` แล้ว inject ตัวเดียวกัน — สำคัญคือ assert 3 เคสนี้ ไม่ใช่รูปแบบการเข้าถึง mock)
+- [ ] รัน:
+  ```bash
+  cd apps/api && npx jest src/modules/shop-public-config
+  ```
+  คาดหวังเขียว (3 เคสเดิม + 3 เคสใหม่)
+
+**(ข) api/web — ต่อสายผู้เรียกเดิมทั้ง 3 ตัวให้ชี้ share endpoint**
+- [ ] **แอดมิน (B1)** — `apps/web/src/pages/ProductDetailPage/utils/buildCustomerSummary.ts` แก้ `buildShopProductUrl` (B1 เขียน comment ฝากไว้ว่า "B4 จะเปลี่ยนปลายทางเป็น share endpoint — แก้ที่ฟังก์ชันนี้จุดเดียว"):
+  ```ts
+  /**
+   * ลิงก์หน้าสินค้าฝั่งลูกค้า — ชี้ share endpoint ของ API ที่เสิร์ฟ Open Graph
+   * (B4) เพื่อให้ลิงก์ที่แอดมินคัดลอกส่งลูกค้าขึ้นการ์ดใน LINE/Facebook
+   * endpoint จะเด้งคนจริงต่อไปที่ /products/:id ทันที
+   */
+  export function buildShopProductUrl(productId: string, base: string = SHOP_BASE_URL): string {
+    return `${base.replace(/\/+$/, '')}/api/shop/share/${productId}`;
+  }
+  ```
+  แล้วแก้ 2 เทสต์ใน `buildCustomerSummary.test.ts` (**grep-anchor:** `describe('buildShopProductUrl'`) ให้คาดหวัง `.../api/shop/share/p-1` แทน `.../products/p-1`
+  ```bash
+  cd apps/web && npx vitest run src/pages/ProductDetailPage/utils/buildCustomerSummary.test.ts
+  ```
+  คาดหวังเขียวครบ (จำนวนเทสต์เท่าเดิม — แค่ค่าคาดหวังเปลี่ยน)
+- [ ] **inbox (B2)** — `apps/api/src/modules/staff-chat/services/chat-commerce.service.ts` มี `shareUrl` **2 จุด** (ใน `searchProducts` และใน `sendProductCard`) รูป `base ? \`${base}/products/${...}\` : null` (**grep-anchor:** `grep -n "shareUrl" ...`) เปลี่ยนทั้ง 2 จุดเป็น:
+  ```ts
+      shareUrl: base ? `${base}/api/shop/share/${p.id}` : null,
+  ```
+  (จุดที่สองใช้ `product.id`) แล้วแก้ค่าคาดหวังใน `chat-commerce.service.spec.ts` ให้ตรง
+- [ ] **บอท (B3)** — `search-products.tool.ts` และ `calculate-installment.tool.ts` มี `webUrl: base ? \`${base}/products/${...}\` : null` อย่างละ 1 จุด (**grep-anchor:** `grep -rn "products/\${" src/modules/sales-bot/tools/`) เปลี่ยนเป็น `\`${base}/api/shop/share/${...}\`` ทั้งคู่ แล้วแก้ค่าคาดหวังใน `.spec.ts` ทั้ง 2 ไฟล์ (B3 มี assertion ตรง ๆ ว่า `'https://shop.example.com/products/prd-1'`)
+- [ ] ยืนยันว่าไม่มีใครสร้างลิงก์ `/products/:id` ไปให้ลูกค้าเหลืออยู่ในเส้นทาง "แชร์/ส่งลูกค้า":
+  ```bash
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE && grep -rn "products/\${" apps/api/src/modules/staff-chat apps/api/src/modules/sales-bot apps/web/src/pages/ProductDetailPage/utils
+  ```
+  คาดหวัง: ไม่มีผลลัพธ์ (ลิงก์ภายในของ SPA เช่น `navigate('/products/...')` ไม่นับ — คำสั่งนี้จับเฉพาะ template literal ที่ประกอบ URL สาธารณะ)
+- [ ] รันเทสต์ของโมดูลที่เพิ่งแตะ:
+  ```bash
+  cd apps/api && npx jest src/modules/staff-chat/services/chat-commerce.service.spec.ts src/modules/sales-bot/tools
+  ```
+  คาดหวังเขียว
+
+**(ค) web-shop — copy.ts เป็นจุดแก้เดียว**
+- [ ] เพิ่ม 3 helper ต่อจาก `lineOaMessageUrl` (**grep-anchor:** ท้ายฟังก์ชัน `lineOaMessageUrl`) — **ไม่ต้องแตะ `shopInfo`** (page handle มาจาก API ไม่ใช่ค่าคงที่):
   ```ts
   /**
    * ลิงก์ "แชร์สินค้า" — ชี้ไป share endpoint ของ API ที่เสิร์ฟ Open Graph
@@ -2462,12 +2524,17 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
   /**
    * ลิงก์ Messenger พร้อม ref ต่อเครื่อง — webhook ฝั่ง API อ่าน `p:<productId>`
    * แล้วโพสต์โน้ตในห้องแชทให้ทีมงานรู้ว่าลูกค้ามาจากเครื่องไหน
-   * คืน null เมื่อเจ้าของยังไม่กรอก username เพจ (ปุ่มจะถูกซ่อน)
+   *
+   * `pageHandle` มาจาก GET /api/shop/public-config/shop (username ที่เจ้าของกรอก
+   * ในหน้า Settings หรือถอยไปใช้ pageId) — **ห้าม hardcode ในไฟล์นี้** เพราะจะทำให้
+   * เจ้าของแก้เองไม่ได้และปุ่มถูกซ่อนถาวร. คืน null เมื่อยังไม่ได้ตั้งค่า Facebook เลย
    */
-  export function messengerRefUrl(productId: string): string | null {
-    const page = shopInfo.facebookPageUsername;
-    if (!page) return null;
-    return `https://m.me/${page}?ref=${encodeURIComponent(`p:${productId}`)}`;
+  export function messengerRefUrl(
+    productId: string,
+    pageHandle: string | null | undefined,
+  ): string | null {
+    if (!pageHandle) return null;
+    return `https://m.me/${encodeURIComponent(pageHandle)}?ref=${encodeURIComponent(`p:${productId}`)}`;
   }
 
   /** ข้อความ prefill ตอนทักไลน์จากหน้าสินค้า — จุดแก้เดียวของทั้ง 2 ปุ่ม */
@@ -2480,7 +2547,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
     return `สนใจ ${displayName}${tail} ${shareUrl}`;
   }
   ```
-- [ ] เพิ่ม copy ใหม่ใน `copy.product` (บรรทัด 78-85) ต่อท้าย:
+- [ ] เพิ่ม copy ใหม่ใน `copy.product` (**grep-anchor:** `product: {` ใน `export const copy`) ต่อท้าย:
   ```ts
       shareCta: 'แชร์เครื่องนี้',
       shareCopied: 'คัดลอกลิงก์แล้ว',
@@ -2493,15 +2560,24 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
       qcPassed: 'ผ่าน',
       qcFailed: 'ไม่ผ่าน',
   ```
-- [ ] ตรวจ:
+- [ ] ตรวจ (รันแยกทีละคำสั่ง):
   ```bash
+  cd apps/api && npx tsc --noEmit
+  cd apps/web && npx tsc --noEmit
   cd apps/web-shop && npx tsc --noEmit
   ```
-  คาดหวัง exit 0
+  คาดหวัง exit 0 ทั้งสาม
 - [ ] commit:
   ```bash
-  git add apps/web-shop/src/lib/copy.ts && git commit -m "$(cat <<'EOF'
-  feat(web-shop): centralize share URL, Messenger ref link and LINE prefill in copy.ts
+  git add apps/api/src/modules/integrations apps/api/src/modules/shop-public-config \
+    apps/api/src/modules/staff-chat apps/api/src/modules/sales-bot \
+    apps/web/src/pages/ProductDetailPage/utils apps/web-shop/src/lib/copy.ts && git commit -m "$(cat <<'EOF'
+  feat(share): point every customer-facing product link at the OG share endpoint
+
+  แอดมิน (buildShopProductUrl), การ์ดสินค้าในแชท (chat-commerce shareUrl x2) และ
+  ลิงก์ที่บอทตอบ (search-products / calculate-installment webUrl) ชี้ /api/shop/share/:id
+  พร้อมเสิร์ฟ facebookPageHandle จาก IntegrationConfig ผ่าน /api/shop/public-config/shop
+  (เจ้าของกรอกเองได้จากหน้า Settings ไม่ต้อง deploy) และ helper แชร์/LINE/Messenger ใน copy.ts
 
   Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   EOF
@@ -2512,21 +2588,24 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 
 ## Task 11 — web-shop: รูปตามเครื่อง + ปุ่มแชร์ + ข้อมูลจริงต่อเครื่อง
 
-4 อาการที่แก้ในงานนี้: (1) เลือกเครื่องแล้วรูปไม่เปลี่ยน (`ProductDetailPage.tsx:183-185` อ่าน `data.gallery` ระดับรุ่นเสมอ) (2) ไม่มีปุ่มแชร์เลย (3) prefill ไลน์เป็น `สนใจ <ชื่อ> ครับ/ค่ะ` ไม่มีลิงก์/ไม่ระบุเครื่อง (`:380`, `:444`) (4) meta description hardcode `รับประกันร้าน 30 วัน` (`:130`) ทั้งที่ `shopWarrantyDays` มีจริงต่อเครื่อง
+4 อาการที่แก้ในงานนี้: (1) เลือกเครื่องแล้วรูปไม่เปลี่ยน (อ่าน `data.gallery` ระดับรุ่นเสมอ) (2) ไม่มีปุ่มแชร์เลย (3) prefill ไลน์เป็น `สนใจ <ชื่อ> ครับ/ค่ะ` ไม่มีลิงก์/ไม่ระบุเครื่อง (2 call site ของ `lineOaMessageUrl`) (4) meta description hardcode `รับประกันร้าน 30 วัน` ใน `usePageMeta` ทั้งที่ `shopWarrantyDays` มีจริงต่อเครื่อง
+
+⚠️ **เลขบรรทัดของ `ProductDetailPage.tsx` / `ProductCard.tsx` ในงานนี้เป็นค่า pre-B0/B1** — B0 แก้ `ProductDetailPage.tsx` (null cashPrice → 'สอบถามราคา') ไปแล้ว ให้ใช้ grep-anchor ที่จดไว้จาก Task 0 ทุกจุด
 
 ### Files
-- Modify: `apps/web-shop/src/types/product.ts` (บรรทัด 12-24 `ProductUnit`)
-- Modify: `apps/web-shop/src/components/catalog/SpecTable.tsx` (ทั้งไฟล์ 1-48)
-- Modify: `apps/web-shop/src/components/catalog/ProductCard.tsx` (บรรทัด 13 type, 88-106 บล็อกราคา)
-- Modify: `apps/web-shop/src/pages/ProductDetailPage.tsx` (บรรทัด 1-22 imports, 69-82 state/effect, 125-131 usePageMeta, 176-187 derived, 199-280 gallery, 359-388 desktop CTA, 442-452 mobile CTA)
+- Modify: `apps/web-shop/src/types/product.ts` (**grep-anchor:** `export interface ProductUnit`)
+- Modify: `apps/web-shop/src/components/catalog/SpecTable.tsx` (ทั้งไฟล์)
+- Modify: `apps/web-shop/src/components/catalog/ProductCard.tsx` (**grep-anchor:** `monthlyPaymentFrom` ใน type prop และในบล็อกราคา)
+- Modify: `apps/web-shop/src/pages/ProductDetailPage.tsx` (**grep-anchor:** import block, `useState`/`useEffect` ของ `activeImage`/`selectedUnitId`, `usePageMeta(`, บล็อก derived ที่ขึ้นต้น `const displayName =`, `<Product360Viewer`, `lineOaMessageUrl(` ทั้ง 2 จุด)
 
 ### Interfaces
 - **Consumes:** `ProductUnit` ที่ API ส่งมาใหม่จาก Task 5 (`branchName`, `accessories`, `cosmeticNotes`, `qcChecklist`)
 - **Consumes:** `ProductGroup.monthlyPaymentFrom: number | null` จาก Task 6
-- **Consumes:** `productShareUrl`, `messengerRefUrl`, `lineProductPrefill`, `copy.product.*` จาก Task 10
+- **Consumes:** `productShareUrl`, `messengerRefUrl(productId, pageHandle)`, `lineProductPrefill`, `copy.product.*` จาก Task 10
+- **Consumes:** `GET /api/shop/public-config/shop` → `{ facebookPageHandle: string | null }` (Task 10)
 
 ### Steps
-- [ ] แก้ `apps/web-shop/src/types/product.ts` (บรรทัด 12-24) เป็น:
+- [ ] แก้ `apps/web-shop/src/types/product.ts` (**grep-anchor:** `export interface ProductUnit`) เป็น:
   ```ts
   export interface QcCheckItem {
     item: string;
@@ -2634,11 +2713,12 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
     );
   }
   ```
-- [ ] แก้ `ProductCard.tsx` บรรทัด 13 เป็น `monthlyPaymentFrom: number | null;` และบรรทัด 92 เป็น:
-  ```tsx
-            ) : p.monthlyPaymentFrom != null && p.monthlyPaymentFrom > 0 ? (
+- [ ] `ProductCard.tsx` — ⚠️ **B0 Step 4d ทำจุดนี้ไปแล้ว** (เปลี่ยน type เป็น `number | null` + เงื่อนไข `!= null && > 0`) ให้ **ตรวจก่อน ถ้าตรงแล้วข้าม ห้ามแก้ซ้ำ**:
+  ```bash
+  cd apps/web-shop && grep -n "monthlyPaymentFrom" src/components/catalog/ProductCard.tsx
   ```
-- [ ] แก้ `ProductDetailPage.tsx` — เพิ่ม import (บรรทัด 5, 8):
+  คาดหวังเห็น `monthlyPaymentFrom: number | null;` และ `) : p.monthlyPaymentFrom != null && p.monthlyPaymentFrom > 0 ? (`. ถ้ายังเป็นรูปเดิม (`number;` / `p.monthlyPaymentFrom > 0`) ให้แก้เป็น 2 บรรทัดข้างบน
+- [ ] แก้ `ProductDetailPage.tsx` — เพิ่ม import (**grep-anchor:** บรรทัดที่ import จาก `lucide-react` และจาก `@/lib/copy`):
   ```tsx
   import { MessageCircle, Share2 } from 'lucide-react';
   import {
@@ -2649,7 +2729,20 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
     productShareUrl,
   } from '@/lib/copy';
   ```
-- [ ] เพิ่ม effect รีเซ็ตรูปเมื่อสลับเครื่อง — แทรกต่อจาก effect เดิม (หลังบรรทัด 82):
+- [ ] ดึง page handle จาก public-config (hook ต้องอยู่**เหนือ** early-return เหมือน hook อื่นในไฟล์นี้ — วางต่อจาก `useQuery` ตัวที่ดึง product; `useQuery`/`api` import อยู่แล้ว):
+  ```tsx
+    // page handle ของ Messenger มาจาก IntegrationConfig (เจ้าของกรอกเองได้จากหน้า
+    // Settings) ไม่ใช่ค่าคงที่ในซอร์ส — ยังไม่ตั้งค่า = ปุ่มถูกซ่อนโดยไม่พังหน้า
+    const { data: shopConfig } = useQuery({
+      queryKey: ['shop', 'public-config', 'shop'],
+      queryFn: () =>
+        api
+          .get<{ facebookPageHandle: string | null }>('/api/shop/public-config/shop')
+          .then((r) => r.data),
+      staleTime: 5 * 60 * 1000,
+    });
+  ```
+- [ ] เพิ่ม effect รีเซ็ตรูปเมื่อสลับเครื่อง — แทรกต่อจาก effect เดิม (**grep-anchor:** `useEffect` ตัวสุดท้ายเหนือ early-return):
   ```tsx
     // สลับเครื่องแล้ว gallery เป็นคนละชุด — index เดิมอาจชี้เกินขอบ/ชี้รูปเครื่องอื่น
     useEffect(() => {
@@ -2657,7 +2750,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
       setView360(false);
     }, [selectedUnitId]);
   ```
-- [ ] แก้ block derived (บรรทัด 176-187) เป็นโค้ดข้างล่าง — ⚠️ **ก่อนแทน ให้เปิดไฟล์อ่านของจริงก่อน**: spec §2.1 ให้ B0 แก้ `ProductDetailPage.tsx:146,177` (null cashPrice → 'สอบถามราคา') ถ้า B0 ลงไปแล้ว บรรทัด `const price = selectedUnit?.cashPrice ?? 0;` จะไม่ใช่รูปเดิม — **ให้คงรูปที่ B0 ทิ้งไว้** แล้วเติมเฉพาะ 5 บรรทัดใหม่ท้ายบล็อก (`shareTargetId` / `shareUrl` / `imeiLast4` / `linePrefill` / `messengerUrl`) + การสลับ gallery ต่อเครื่อง ห้ามเขียนทับจนย้อน B0:
+- [ ] แก้ block derived (**grep-anchor:** บล็อกที่ขึ้นต้นด้วย `const displayName =`) เป็นโค้ดข้างล่าง — ⚠️ **ก่อนแทน ให้เปิดไฟล์อ่านของจริงก่อน**: spec §2.1 ให้ B0 แก้ `ProductDetailPage.tsx` (null cashPrice → 'สอบถามราคา') ถ้า B0 ลงไปแล้ว บรรทัด `const price = selectedUnit?.cashPrice ?? 0;` จะไม่ใช่รูปเดิม — **ให้คงรูปที่ B0 ทิ้งไว้** แล้วเติมเฉพาะ 5 บรรทัดใหม่ท้ายบล็อก (`shareTargetId` / `shareUrl` / `imeiLast4` / `linePrefill` / `messengerUrl`) + การสลับ gallery ต่อเครื่อง ห้ามเขียนทับจนย้อน B0:
   ```tsx
     const displayName = [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ');
     const price = selectedUnit?.cashPrice ?? 0;
@@ -2679,10 +2772,10 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
     const shareUrl = productShareUrl(shareTargetId);
     const imeiLast4 = selectedUnit?.imeiPartial?.slice(-4);
     const linePrefill = lineProductPrefill(displayName, imeiLast4, shareUrl);
-    const messengerUrl = messengerRefUrl(shareTargetId);
+    const messengerUrl = messengerRefUrl(shareTargetId, shopConfig?.facebookPageHandle);
   ```
-- [ ] แก้ `<Product360Viewer frames={data.gallery360} ...>` (บรรทัด 229) เป็น `frames={gallery360}`
-- [ ] เพิ่ม handler แชร์ — แทรกก่อน `if (isLoading || !data)` (ก่อนบรรทัด 158) จะผิด rules-of-hooks ถ้าใช้ hook; ใช้ฟังก์ชันธรรมดาแทน โดยแทรก **หลัง** block derived ข้างบน (หลังบรรทัด `const messengerUrl = ...`):
+- [ ] แก้ `<Product360Viewer frames={data.gallery360} ...>` (**grep-anchor:** `<Product360Viewer`) เป็น `frames={gallery360}`
+- [ ] เพิ่ม handler แชร์ — ห้ามใช้ hook (จะผิด rules-of-hooks เพราะอยู่ใต้ early-return `if (isLoading || !data)`); ใช้ฟังก์ชันธรรมดาแทน โดยแทรก **หลัง** block derived ข้างบน (หลังบรรทัด `const messengerUrl = ...`):
   ```tsx
     async function handleShare() {
       const shareData = { title: displayName, text: `${displayName} — BESTCHOICE ลพบุรี`, url: shareUrl };
@@ -2703,7 +2796,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
       }
     }
   ```
-- [ ] แก้ meta description ให้ใช้ประกันจริง (บรรทัด 128-131) — ย้ายให้อ่านจาก tiers โดยตรง (hook ต้องอยู่เหนือ early-return เหมือนเดิม) เป็น:
+- [ ] แก้ meta description ให้ใช้ประกันจริง (**grep-anchor:** `usePageMeta(`) — ย้ายให้อ่านจาก tiers โดยตรง (hook ต้องอยู่เหนือ early-return เหมือนเดิม) เป็น:
   ```tsx
     const metaWarrantyDays =
       flatUnits.find((u) => u.shopWarrantyDays != null)?.shopWarrantyDays ?? null;
@@ -2714,7 +2807,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
         : undefined,
     );
   ```
-- [ ] แทนที่บล็อก CTA เดสก์ท็อป (บรรทัด 359-388) ด้วย:
+- [ ] แทนที่บล็อก CTA เดสก์ท็อป (**grep-anchor:** `<div className="hidden md:flex flex-col gap-3 pt-2">` ถึงปีกกาปิดของ div นั้น — มี `lineOaMessageUrl(` call site ที่ 1 อยู่ข้างใน) ด้วย:
   ```tsx
             {/* Desktop primary CTA (mobile uses StickyBottomBar) */}
             <div className="hidden md:flex flex-col gap-3 pt-2">
@@ -2764,7 +2857,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
               </div>
             </div>
   ```
-- [ ] แทนที่บล็อกลิงก์ไลน์มือถือ (บรรทัด 442-452) ด้วย:
+- [ ] แทนที่บล็อกลิงก์ไลน์มือถือ (**grep-anchor:** `<div className="md:hidden ...">` ที่มี `lineOaMessageUrl(` call site ที่ 2) ด้วย:
   ```tsx
         <div className="md:hidden flex flex-col items-center gap-2 py-3">
           <a
@@ -2814,6 +2907,7 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
   4. วางลิงก์นั้นในเบราว์เซอร์ → เด้งไป `/products/<id>` ทันที
   5. `curl -s -A 'facebookexternalhit/1.1' http://localhost:5174/api/shop/share/<unitId> | head -25` → เห็น `og:image`, `og:title`, `product:price:amount` และไม่ติด 429
   6. กด "สอบถามเครื่องนี้ทางไลน์" → ข้อความ prefill = `สนใจ <ชื่อรุ่น> (<4 ตัวท้าย>) <share URL>`
+  7. `curl -s http://localhost:3000/api/shop/public-config/shop` → ถ้ามี `facebookPageHandle` ไม่เป็น null ปุ่ม "ทักเรื่องเครื่องนี้ทาง Messenger" ต้องโผล่และลิงก์เป็น `https://m.me/<handle>?ref=p%3A<unitId>`; ถ้าเป็น null ปุ่มต้องถูกซ่อน**โดยหน้าไม่พัง**
 - [ ] commit:
   ```bash
   git add apps/web-shop && git commit -m "$(cat <<'EOF'
@@ -2839,20 +2933,30 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 - **Consumes:** ผลลัพธ์ของ Task 1-11 ทั้งหมด
 
 ### Steps
-- [ ] tsc ทั้ง 2 แอปที่แตะ:
+- [ ] tsc ทั้ง 3 แอปที่แตะ (Task 10 แตะ `apps/web` ด้วย) — รันแยกทีละบรรทัด:
   ```bash
   cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api && npx tsc --noEmit && echo "API_TSC_OK"
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx tsc --noEmit && echo "WEB_TSC_OK"
   cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web-shop && npx tsc --noEmit && echo "SHOP_TSC_OK"
   ```
-  คาดหวังเห็นทั้ง `API_TSC_OK` และ `SHOP_TSC_OK`
-- [ ] eslint (apps/api เท่านั้น — web-shop ไม่มี config):
+  คาดหวังเห็นครบทั้ง 3
+- [ ] vitest ของ `apps/web` (Task 10 แก้ `buildShopProductUrl` + เทสต์):
   ```bash
-  cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api && npx eslint . && echo "API_LINT_OK"
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx vitest run src/pages/ProductDetailPage/utils/buildCustomerSummary.test.ts
   ```
-  คาดหวัง `API_LINT_OK` (0 error)
+  คาดหวังเขียว (**vitest ไม่ใช่ jest** — `apps/web` ไม่มี jest ติดตั้ง)
+- [ ] eslint (apps/api เท่านั้น — web-shop ไม่มี config). **รันแยกจาก tsc ห้ามร้อย `&&`** และ **ห้ามใช้ `npx eslint .`** (มี 34 Parsing error ค้างมาก่อน B4 จากไฟล์นอก tsconfig include — `e2e/*.e2e-spec.ts`, `scripts/*.ts`, `eslint.config.mjs`):
+  ```bash
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE && npm run lint --workspace=apps/api 2>&1 | tail -5
+  ```
+  เกณฑ์ผ่าน = **ไม่มี error ใหม่** เทียบ baseline ที่จดไว้ใน Task 0 (34 error, ทั้งหมดเป็น Parsing error นอก `src/`). ถ้าอยากตรวจเฉพาะไฟล์ที่ batch นี้แตะ:
+  ```bash
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api && npx eslint src/modules/shop-catalog src/modules/shop-bot-defense src/modules/chat-adapters src/modules/chat-engine src/modules/facebook-domain src/modules/shop-public-config src/modules/integrations 2>&1 | tail -5
+  ```
+  คาดหวัง 0 error (warning ปล่อยได้). **ห้ามแก้ `tsconfig.json`/`eslint.config.mjs` เพื่อไล่ 34 error เดิม — นอก scope**
 - [ ] jest ทุกโมดูลที่แตะ:
   ```bash
-  cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api && npx jest src/modules/shop-catalog src/modules/shop-bot-defense src/modules/chat-adapters src/modules/chat-engine 2>&1 | tail -8
+  cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/api && npx jest src/modules/shop-catalog src/modules/shop-bot-defense src/modules/chat-adapters src/modules/chat-engine src/modules/shop-public-config 2>&1 | tail -8
   ```
   คาดหวัง `Tests: N passed` โดย N > baseline ที่จดไว้ใน Task 0 และ `failed: 0`
 - [ ] ตรวจ red line — ไม่มีไฟล์บัญชี/การเงินอยู่ใน diff:
@@ -2883,14 +2987,17 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
   - bot-defense: แก้บั๊ก 429 (หน้าต่างนับไม่เคยรีเซ็ต → IP โดนบล็อกถาวร) + รู้จัก facebookexternalhit/Facebot/Twitterbot/Line-Poker + `@SkipBotRateLimit()` บน endpoint แชร์
   - หน้าเว็บ: รูป/360 ตามเครื่องที่เลือก, ปุ่มแชร์, สาขา/อุปกรณ์/ตำหนิ/QC/ประกันจริงต่อเครื่อง
   - แชท: LINE prefill = `สนใจ <รุ่น> (<4 ตัวท้าย>) <share URL>`, ปุ่ม Messenger `?ref=p:<unitId>` + webhook รับ standalone referral ที่เคยถูก drop แล้วโพสต์โน้ตระบบให้ทีมงานเห็น + ปุ่ม Get Started
-  - "ผ่อนเริ่มต้น" หน้ารายการเลิกใช้ rate ปลอม 0.99% → `_min(installmentPrice)` + `InterestConfig` ผ่านเครื่องคิดตัวเดียวกับ preview (มี parity golden test)
-  - ค้นหาไทยผ่าน util กลางของ B0 และเลิก assign `where.OR`
+  - "ผ่อนเริ่มต้น" หน้ารายการเลิกใช้ rate ปลอม 0.99% → `_min(installmentPrice)` + `InterestConfig` ผ่าน `resolveBcConfigForCategory` (util ของ B3) เครื่องคิดตัวเดียวกับ preview (มี parity golden test)
+  - ค้นหาไทยผ่าน `parseDeviceQuery` ของ B0 และเลิก assign `where.OR` (สีไม่เข้า where — ไทย/อังกฤษไม่ตรงกัน จะทำให้ได้ 0 ผลลัพธ์)
+  - **ต่อสายลิงก์แชร์ครบทุกผู้เรียก**: แอดมิน (`buildShopProductUrl` ของ B1), การ์ดสินค้าในแชท (`shareUrl` ของ B2 x2), บอท (`webUrl` ของ B3 x2) ชี้ `/api/shop/share/:id` แล้ว
+  - `facebookPageHandle` เสิร์ฟจาก IntegrationConfig ผ่าน `/api/shop/public-config/shop` (username → fallback pageId) → ปุ่ม Messenger ทำงานได้เองโดยเจ้าของไม่ต้องแก้โค้ด
 
   ## ไม่ได้ทำ (ตาม spec §1 / §8)
   `/p/:slug`, dynamic sitemap, `attachedProductId`, ตัวแปรสินค้าใน canned responses
 
   ## Verification
-  - `apps/api`: tsc 0 / eslint 0 / jest เขียวทุกโมดูลที่แตะ
+  - `apps/api`: tsc 0 / `npm run lint --workspace=apps/api` ไม่มี error ใหม่เกิน baseline 34 (Parsing error เดิมของไฟล์นอก tsconfig) / jest เขียวทุกโมดูลที่แตะ
+  - `apps/web`: tsc 0 + vitest `buildCustomerSummary.test.ts` เขียว
   - `apps/web-shop`: tsc 0 + `npm run build` ผ่าน (แอปนี้ไม่มี test runner/eslint config)
   - ไม่มี migration, ไม่แตะ firebase.json / main.ts / Dockerfile / workflows
   EOF
@@ -2902,12 +3009,12 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 ## Deployment & Verification
 
 ### ลำดับ deploy
-1. **B0 ต้องอยู่บน prod ก่อน** (คอลัมน์ `accessoriesIncluded`/`cosmeticNotes` + `device-query-normalize.util` + backfill ราคา) — B4 อ่านของพวกนี้ล้วน ๆ ไม่มี migration ของตัวเอง
+1. **B0 + B1 + B2 + B3 ต้อง merge ก่อน** — B4 ไม่มี migration ของตัวเอง แต่กินของจากทุก batch: B0 (คอลัมน์ `accessoriesIncluded`/`cosmeticNotes` + `parseDeviceQuery` + backfill ราคา), B3 (`resolveBcConfigForCategory` ใน Task 6 + `webUrl` ที่ Task 10 ต้องแก้), B1 (`buildShopProductUrl`), B2 (`shareUrl` ใน chat-commerce). **B0/B3 เป็น hard blocker** (Task 6/7 เรียก util ของมันตรง ๆ); **B1/B2 เป็น soft blocker** — ถ้ายังไม่ merge ให้ข้ามสเต็ปที่เกี่ยวข้องใน Task 10ข แล้ว**บันทึกไว้ใน PR ว่าเหลือต้องต่อสาย** ห้ามเงียบ
 2. Merge PR → GitHub Actions (`deploy-gcp.yml`) deploy Cloud Run (`bestchoice-api`) + Firebase Hosting target `shop` ตามปกติ — **ไม่มีขั้นตอนพิเศษ** เพราะ endpoint ใหม่วิ่งบน rewrite `/api/**` ที่มีอยู่แล้ว
 3. ไม่ต้องรัน migration, ไม่ต้อง restart อะไรเพิ่ม, ไม่มี env var ใหม่ (`SHOP_BASE_URL` ตั้งไว้แล้วที่ `deploy-gcp.yml:358`)
 
 ### สิ่งที่เจ้าของต้องกด (ops — ไม่ใช่โค้ด)
-1. **กรอก username เพจ Facebook** ใน `apps/web-shop/src/lib/copy.ts` → `shopInfo.facebookPageUsername` (ตอนนี้เป็น `null` ⇒ ปุ่ม Messenger ถูกซ่อนไว้) แล้ว deploy web-shop ใหม่ 1 รอบ
+1. **(ไม่บังคับ) กรอก username เพจ Facebook** ที่ **Settings → เชื่อมต่อ → Facebook → Page Username** — **ไม่ต้อง deploy** เพราะค่าอ่านจาก IntegrationConfig ผ่าน `/api/shop/public-config/shop` (cache 5 นาที). ถ้าไม่กรอก ระบบถอยไปใช้ `Page ID` ที่กรอกไว้อยู่แล้ว (`m.me/<PAGE_ID>` ใช้ได้เท่ากับ username) ⇒ **ปุ่ม Messenger ทำงานตั้งแต่วัน deploy** โดยเจ้าของไม่ต้องทำอะไร; ปุ่มจะถูกซ่อนก็ต่อเมื่อยังไม่ได้ตั้งค่า Facebook เลย
 2. **กดตั้งปุ่ม Get Started 1 ครั้งหลัง deploy** (ไม่งั้นลูกค้าใหม่ที่กดลิงก์ Messenger จะไม่ส่ง `ref` มา) — สังเกต `admin` **ซ้ำสองชั้น** เพราะ `AdminPrefixMiddleware` ตัดชั้นแรกทิ้งก่อน routing:
    ```bash
    curl -X POST https://api.bestchoicephone.app/api/admin/admin/facebook/setup-messenger-profile \
@@ -2932,7 +3039,12 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 - [ ] 404 ของสินค้าที่ถูกซ่อน/ลบ: `curl -s -o /dev/null -w "%{http_code}\n" https://www.bestchoicephone.com/api/shop/share/00000000-0000-0000-0000-000000000000` → `404`
 - [ ] แชร์ลงห้องแชท LINE จริง 1 ครั้ง → ต้องขึ้นการ์ด (ถ้าไม่ขึ้น ให้เช็ค `bot_detection_logs` ว่า UA ของ LINE ถูกจัดเป็น `KNOWN_GOOD` หรือไม่ แล้วเติม pattern)
 - [ ] ผ่อนเริ่มต้นบนหน้ารายการตรงกับหน้ารายละเอียด — เปิด `/products` แล้วกดการ์ดใดการ์ดหนึ่ง ตัวเลข "ผ่อน ฿X/เดือน" บนการ์ดต้อง **≤** ตัวเลข "ผ่อนเริ่ม" ของหน้ารายละเอียด (ซึ่งคิดที่ 12 งวด ดาวน์ 15% จากเครื่องที่เลือก) เพราะการ์ดใช้ `_min(installmentPrice)` ของทั้งกลุ่ม + งวดยาวสุด = ค่างวดต่ำสุดเสมอ (จะ "เท่ากัน" เมื่อกลุ่มมีเครื่องเดียวและงวดยาวสุด = 12); การ์ดที่ยังไม่ตั้ง `installmentPrice` ต้อง **ไม่มี** บรรทัดผ่อนเลย
-- [ ] Messenger deep-link: กด `m.me/<page>?ref=p:<unitId>` จากมือถือที่**เคยคุย**กับเพจ → เปิด `/chat` แล้วต้องเห็นข้อความระบบ `ลูกค้ากดมาจากสินค้า ... (####) บนเว็บ` ในห้องนั้น; ทดสอบซ้ำด้วยบัญชีที่**ไม่เคยคุย** → ต้องได้ปุ่ม Get Started แล้วโน้ตตามมาหลังกด
+- [ ] ลิงก์จาก **ทุกผู้เรียก** เป็น share URL จริง (ไม่ใช่ `/products/:id` เปล่า):
+  - แอดมิน: เปิดหน้าสินค้าใน admin → กด "คัดลอกสรุปส่งลูกค้า" → ลิงก์ในข้อความต้องเป็น `.../api/shop/share/<id>`
+  - inbox: ยิงการ์ดสินค้าเข้าห้องแชท → ลิงก์ท้ายการ์ดต้องเป็น `.../api/shop/share/<id>` และขึ้นการ์ด OG ในแอป LINE จริง
+  - บอท: ถามบอทหารุ่นหนึ่ง → ลิงก์ที่บอทตอบต้องเป็น `.../api/shop/share/<id>`
+- [ ] `curl -s https://api.bestchoicephone.app/api/shop/public-config/shop` → `{"facebookPageHandle":"..."}` ไม่เป็น null (ถ้า null = ยังไม่ได้กรอก Page ID/Username ในหน้า Settings ⇒ ปุ่ม Messenger จะถูกซ่อนและ Task 8 จะไม่มีทางถูกกระตุ้น)
+- [ ] Messenger deep-link: กด `m.me/<handle>?ref=p:<unitId>` จากมือถือที่**เคยคุย**กับเพจ → เปิด `/chat` แล้วต้องเห็นข้อความระบบ `ลูกค้ากดมาจากสินค้า ... (####) บนเว็บ` ในห้องนั้น; ทดสอบซ้ำด้วยบัญชีที่**ไม่เคยคุย** → ต้องได้ปุ่ม Get Started แล้วโน้ตตามมาหลังกด
 - [ ] rollback plan: batch นี้ไม่มี migration และไม่มี state ใหม่ → `git revert` PR แล้ว deploy ใหม่ได้ทันที ผลข้างเคียงเดียวคือลิงก์แชร์ที่กระจายไปแล้วจะกลายเป็น 404 (ลิงก์ `/products/:id` ที่ผู้ใช้ bookmark ไว้ไม่ได้รับผลกระทบ)
 
 ### เฝ้าดูหลัง deploy 24 ชม.
@@ -2947,9 +3059,9 @@ API ไม่เคยเสิร์ฟ HTML มาก่อน (helmet ปิ�
 | rewrite `/products/**` ไป Cloud Run เพื่อทำ SSR meta | api image ไม่มี `index.html` ของ web-shop (Dockerfile build แค่ `apps/api`) + `setGlobalPrefix('api')` ไม่มี exclude → จะ 404 ทั้งเว็บ (spec §0) |
 | `ChatRoom.attachedProductId` + ตัวแปรสินค้าใน canned responses | ตัดออกตาม spec §1 — โน้ตระบบให้ผลเดียวกันโดยไม่มี schema/สถานะค้าง |
 | เปิด CSP ทั้งระบบใน `main.ts` | นอก scope และเสี่ยงพัง Swagger/dev — B4 ใส่ CSP เฉพาะ response ของหน้าแชร์เท่านั้น |
-| ส่งรูป/ลิงก์จากบอทเข้าแชท, `search_products` ยกเครื่อง, grounding guard | เป็น B3 |
-| ปุ่ม "คัดลอกสรุปส่งลูกค้า"/"คัดลอกลิงก์" ในแอดมิน, การ์ด readiness | เป็น B1 (กิน share URL จาก batch นี้) |
-| Product picker/การ์ดสินค้าใน inbox | เป็น B2 |
+| ส่งรูป/ลิงก์จากบอทเข้าแชท, `search_products` ยกเครื่อง, grounding guard | เป็น B3 (B4 แก้แค่ **ปลายทาง** ของ `webUrl` ให้เป็น share endpoint — Task 10ข) |
+| ปุ่ม "คัดลอกสรุปส่งลูกค้า"/"คัดลอกลิงก์" ในแอดมิน, การ์ด readiness | เป็น B1 (B4 แก้แค่ **ปลายทาง** ของ `buildShopProductUrl` — Task 10ข) |
+| Product picker/การ์ดสินค้าใน inbox | เป็น B2 (B4 แก้แค่ **ปลายทาง** ของ `shareUrl` 2 จุด — Task 10ข) |
 | guard จองซ้ำ/BANK_TRANSFER/preempt-in-tx | เป็น B5 |
 | ตาราง spec รายรุ่น (จอ/กล้อง/ชิป), วิดีโอสินค้า, back-in-stock | นอกขอบเขต spec §8 |
 | unit test ฝั่ง `apps/web-shop` | แอปนี้ไม่มี test runner (และไม่มี eslint config) — ตรรกะจึงถูกกดให้บางที่สุดและตรวจด้วย tsc + build + QA เบราว์เซอร์ local |

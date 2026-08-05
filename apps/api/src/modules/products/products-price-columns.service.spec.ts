@@ -142,6 +142,51 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
 
   // BLOCKER regression: `new Prisma.Decimal(null)` throw ภายใน $transaction
   // → rollback การแก้ฟิลด์อื่นทั้งคำขอ (ฟอร์มของ B1 กดล้างราคาแล้ว 500)
+  // Fix round 1 [Critical]: reviewer repro จริงว่า ProductCreatePage ไม่เคยส่งคอลัมน์
+  // cashPrice เลย — ส่งแต่ prices[] เสมอ ⇒ guard เดิม (`cashDecimal === undefined`)
+  // เข้าใจผิดว่า "ไม่มีราคา" แล้วให้ autofill ทำงาน → syncPriceRowsFromColumns เจอแถว
+  // default ที่พนักงานกรอกเอง (25,000) แล้ว relabel+overwrite เป็นราคาเทมเพลต (28,900)
+  // เงียบๆ. เทสต์นี้คุมว่า mock template ไม่ว่าง (ก่อนหน้านี้ mock findMany→[] ตลอด =
+  // ไม่เคยแตะ branch นี้เลย) แล้วยืนยันว่า autofill ต้องไม่ทำงาน
+  it('create: fix round 1 [Critical] — ส่ง prices[] อย่างเดียว (ไม่มีคอลัมน์ cashPrice) + มีเทมเพลตตรง → ต้องไม่ autofill ทับ', async () => {
+    tx.pricingTemplate.findMany.mockResolvedValue([
+      {
+        id: 't1', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
+        hasWarranty: false, cashPrice: new Prisma.Decimal('28900'),
+        installmentBestchoicePrice: new Prisma.Decimal('2500'),
+      },
+    ]);
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1',
+      prices: [{ label: 'ราคาขาย', amount: 25000, isDefault: true }],
+    } as never);
+    // autofill ต้องไม่ทำงานเลย — ไม่อ่านเทมเพลต ไม่แตะคอลัมน์ราคาผ่าน product.update
+    expect(tx.pricingTemplate.findMany).not.toHaveBeenCalled();
+    expect(tx.product.update).not.toHaveBeenCalled();
+    // แถวราคาที่พนักงานกรอกเองต้องไม่ถูก relabel/overwrite ผ่าน sync
+    expect(tx.productPrice.update).not.toHaveBeenCalled();
+  });
+
+  it('create: ไม่ส่งอะไรเลย (ไม่มีทั้ง cashPrice และ prices[]) + มีเทมเพลตตรง → autofill ต้องทำงานจริง', async () => {
+    tx.pricingTemplate.findMany.mockResolvedValue([
+      {
+        id: 't1', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
+        hasWarranty: false, cashPrice: new Prisma.Decimal('28900'),
+        installmentBestchoicePrice: new Prisma.Decimal('2500'),
+      },
+    ]);
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1',
+    } as never);
+    expect(tx.pricingTemplate.findMany).toHaveBeenCalled();
+    expect(tx.product.update).toHaveBeenCalled();
+    const data = tx.product.update.mock.calls[0][0].data;
+    expect(data.cashPrice.toString()).toBe('28900');
+    expect(data.priceAutofilledAt).toBeInstanceOf(Date);
+  });
+
   it('update: ส่ง cashPrice: null → เคลียร์คอลัมน์ ไม่ throw และไม่ลบแถวราคาเดิม', async () => {
     await expect(
       service.update('p1', { cashPrice: null, cosmeticNotes: 'ไม่ระบุราคา' } as never),

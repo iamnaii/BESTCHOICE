@@ -142,7 +142,19 @@ export class ProductsService {
       // B0 §2.1: ไม่ได้กรอกราคาเงินสดมา → ลองเติมจากตารางราคากลาง
       // `=== undefined` ตั้งใจ: ส่ง `cashPrice: null` มาชัดๆ = "ยืนยันว่ายังไม่มีราคา"
       // ห้าม autofill ทับ (ไม่งั้นกดล้างราคาแล้วราคาเด้งกลับมาเอง)
-      if (cashDecimal === undefined) {
+      //
+      // Fix round 1 [Critical]: guard เดิมเช็คแค่คอลัมน์ cashPrice อย่างเดียว — แต่
+      // ProductCreatePage (หน้าเพิ่มสินค้าหลัก) ไม่เคยส่งคอลัมน์ cashPrice เลย ส่งแต่
+      // prices[] เสมอ ⇒ autofill ทำงานทุกครั้งที่เพิ่มสินค้าผ่านหน้าจอ แล้ว
+      // syncPriceRowsFromColumns ภายใน util จะ relabel+overwrite แถว default ที่พนักงาน
+      // กรอกเอง (repro จริง: กรอก 25,000 → โดนเทมเพลตทับเป็น 28,900 เงียบๆ) — เลือกวิธี
+      // "skip autofill ไปเลยเมื่อมี prices[]" แทนการ derive currentCashPrice จาก
+      // effective-default row เพราะเรียบกว่า/ไม่ต้อง duplicate logic การหา default row
+      // ที่มีอยู่แล้วด้านบน (บรรทัด ~90) — ผู้ใช้ที่ตั้งใจส่ง prices[] มา ถือว่า "มีราคาแล้ว"
+      // เสมอไม่ว่า amount จะเท่าไหร่ (แม้จะเป็น 0 หรือราคาพิเศษก็ตาม ไม่ใช่หน้าที่ autofill
+      // ตัดสินใจแทน)
+      const hasManualPrices = (prices?.length ?? 0) > 0;
+      if (cashDecimal === undefined && !hasManualPrices) {
         await autofillProductPriceFromTemplate(
           tx,
           {

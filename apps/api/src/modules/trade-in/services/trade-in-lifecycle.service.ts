@@ -2,6 +2,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -29,6 +30,10 @@ import { ShopAccountResolver } from '../../journal/shop-account-resolver.service
 import { autofillProductPriceFromTemplate } from '../../../utils/product-price-autofill.util';
 
 export class TradeInLifecycleService {
+  // Fix round 1 [Important 1]: plain class (not @Injectable) — constructed via `new`
+  // from TradeInService, so NestJS DI never populates a Logger for us.
+  private readonly logger = new Logger('TradeInLifecycle');
+
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
@@ -438,15 +443,32 @@ export class TradeInLifecycleService {
 
       // B0 §2.1: เครื่องเทิร์น/รับซื้อยังไม่มีราคาขาย — เติมจากตารางราคากลาง (มือสอง)
       // สถานะประกันของเครื่องเทิร์นไม่มีข้อมูล → ส่ง null (util จะใช้แถว "ไม่มีประกัน" = ถูกกว่า)
-      await autofillProductPriceFromTemplate(tx, {
-        productId: product.id,
-        brand: product.brand,
-        model: product.model,
-        storage: product.storage,
-        category: 'PHONE_USED',
-        hasWarranty: null,
-        currentCashPrice: null,
-      });
+      //
+      // Fix round 1 [Important 2]: autofill เป็น "ของประดับ" อยู่ใน tx เดียวกับ JE รับซื้อ
+      // (ShopTradeInTemplate ด้านล่าง) และ accept() ไม่มี retry loop เหมือน po-receiving —
+      // error ใดๆ จาก autofill (เช่น template lookup พัง) จะ rollback การรับซื้อ+JE ทั้งก้อน
+      // ถ้าไม่ห่อ. fail-soft: log error แล้วรับซื้อต่อ — เครื่องไม่มีราคาตั้งต้น (กรอกทีหลังได้)
+      // ดีกว่ารับซื้อไม่ได้เลย. ไม่มี retry loop ในเส้นทางนี้ (ต่างจาก po-receiving) จึง swallow
+      // ทุก error code ได้ ไม่ต้องแยก P2002/P2034
+      try {
+        await autofillProductPriceFromTemplate(
+          tx,
+          {
+            productId: product.id,
+            brand: product.brand,
+            model: product.model,
+            storage: product.storage,
+            category: 'PHONE_USED',
+            hasWarranty: null,
+            currentCashPrice: null,
+          },
+          this.logger,
+        );
+      } catch (e) {
+        this.logger.error(
+          `[autofill] product=${product.id} ข้ามการเติมราคาอัตโนมัติ — เกิด error ระหว่างเรียก autofillProductPriceFromTemplate (รับซื้อต่อได้ปกติ ไม่มีราคาตั้งต้นให้กรอกทีหลัง): ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
 
       const updated = await tx.tradeIn.update({
         where: { id },

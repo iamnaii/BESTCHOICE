@@ -32,6 +32,29 @@ export interface AutofillInput {
 }
 
 /**
+ * Fix round 1 [Minor] — อ่าน + validate flag `pricing_template_installment_semantics`
+ * ครั้งเดียว แยกออกมาเป็น export ได้ เพื่อให้ caller ที่เรียก `autofillProductPriceFromTemplate`
+ * ในลูป (เช่น po-receiving รับหลายเครื่องต่อ 1 batch) hoist การอ่าน SystemConfig ออกนอกลูป
+ * แล้วส่งผลลัพธ์ที่ validate แล้วเข้ามาทาง `semanticsOverride` แทนการอ่านซ้ำทุกรอบใน
+ * Serializable tx เดียวกัน (50 เครื่อง = 50 queries โดยไม่จำเป็น)
+ */
+export async function resolveInstallmentSemantics(
+  tx: Prisma.TransactionClient,
+  logger?: { warn: (m: string) => void },
+): Promise<TemplateInstallmentSemantics> {
+  const rawSemantics = await readStringFlag(tx, SEMANTICS_CONFIG_KEY, 'PER_MONTH');
+  // validate: `as TemplateInstallmentSemantics` เฉยๆ รับสตริงอะไรก็ได้ — พิมพ์ผิดจะเงียบ
+  const semantics: TemplateInstallmentSemantics =
+    rawSemantics === 'TOTAL' || rawSemantics === 'PER_MONTH' ? rawSemantics : 'PER_MONTH';
+  if (semantics !== rawSemantics) {
+    logger?.warn(
+      `[autofill] SystemConfig ${SEMANTICS_CONFIG_KEY}='${rawSemantics}' ไม่ใช่ค่าที่รองรับ (TOTAL|PER_MONTH) — ใช้ค่าเริ่มต้น PER_MONTH`,
+    );
+  }
+  return semantics;
+}
+
+/**
  * B0 §2.1 — เติมราคาตั้งต้นจากตารางราคากลางตอนสร้าง Product
  *
  * เงื่อนไข: เติมเฉพาะเมื่อยังไม่มี cashPrice (ราคาที่คนกรอกชนะเสมอ),
@@ -44,6 +67,13 @@ export async function autofillProductPriceFromTemplate(
   tx: Prisma.TransactionClient,
   input: AutofillInput,
   logger?: { warn: (m: string) => void; log: (m: string) => void },
+  /**
+   * Fix round 1 [Minor]: caller ที่เรียกในลูป (po-receiving) ควร resolve ครั้งเดียวก่อนลูป
+   * ด้วย `resolveInstallmentSemantics` แล้วส่งเข้ามาตรงนี้ — ข้าม readStringFlag ซ้ำ. ไม่ส่ง
+   * (undefined) = พฤติกรรมเดิมเป๊ะ อ่าน+validate เองภายใน (caller ที่เรียกครั้งเดียวต่อ tx
+   * อย่าง products.service.ts/trade-in ไม่ต้องแก้อะไร)
+   */
+  semanticsOverride?: TemplateInstallmentSemantics,
 ): Promise<AutofillResult> {
   if (input.currentCashPrice != null && input.currentCashPrice.greaterThan(0)) {
     return { filled: false, reason: 'ALREADY_PRICED' };
@@ -93,15 +123,10 @@ export async function autofillProductPriceFromTemplate(
   // 3) ความหมายของ installmentBestchoicePrice — gate ของ owner (spec §9.1)
   // readStringFlag รับ Prisma.TransactionClient ได้ตรงๆ ไม่ต้อง cast —
   // precedent: expense-document-lifecycle.service.ts:866-872 ส่ง tx เข้าไปแบบเดียวกัน
-  const rawSemantics = await readStringFlag(tx, SEMANTICS_CONFIG_KEY, 'PER_MONTH');
-  // validate: `as TemplateInstallmentSemantics` เฉยๆ รับสตริงอะไรก็ได้ — พิมพ์ผิดจะเงียบ
+  // Fix round 1 [Minor]: caller ที่ resolve ไว้ก่อนลูปแล้วส่ง semanticsOverride เข้ามา ข้าม
+  // การอ่าน+validate ซ้ำตรงนี้ทั้งหมด (ทั้ง query และ warn log)
   const semantics: TemplateInstallmentSemantics =
-    rawSemantics === 'TOTAL' || rawSemantics === 'PER_MONTH' ? rawSemantics : 'PER_MONTH';
-  if (semantics !== rawSemantics) {
-    logger?.warn(
-      `[autofill] SystemConfig ${SEMANTICS_CONFIG_KEY}='${rawSemantics}' ไม่ใช่ค่าที่รองรับ (TOTAL|PER_MONTH) — ใช้ค่าเริ่มต้น PER_MONTH`,
-    );
-  }
+    semanticsOverride ?? (await resolveInstallmentSemantics(tx, logger));
 
   // sanity guard: ถ้าเลข "ราคาผ่อน" ต่ำกว่าราคาเงินสด แปลว่ามันคือค่างวดต่อเดือน
   // (sticker ตีความแบบนั้นอยู่ — stickers.service.ts:175) เขียนลง Product.installmentPrice

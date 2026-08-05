@@ -16,19 +16,27 @@ describe('productReadinessWhere', () => {
     expect(and).toContainEqual({ gallery: { isEmpty: false } });
   });
 
-  it('กรอง [DEMO] แบบไม่ผูกกับ NODE_ENV', () => {
+  it('default excludeDemo:false → ไม่กรอง [DEMO] (owner decision: prod มีแต่ [DEMO] ที่ข้อมูลครบ ต้องยังโชว์จนกว่าจะเปิด flag)', () => {
     const and = (productReadinessWhere() as { AND: Record<string, unknown>[] }).AND;
+    expect(and).not.toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
+  });
+
+  it('excludeDemo:true → กรอง [DEMO] แบบไม่ผูกกับ NODE_ENV', () => {
+    const and = (productReadinessWhere({ excludeDemo: true }) as { AND: Record<string, unknown>[] }).AND;
     expect(and).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
   });
 
-  it('มือสองต้องมีเกรด — ห่ออยู่ใน AND ไม่ใช่ OR ระดับบนสุด และใช้ชุดเกรดเดียวกับ checklist', () => {
-    const and = (productReadinessWhere() as { AND: Record<string, unknown>[] }).AND;
-    expect(and).toContainEqual({
+  it('มือสองต้องมีเกรด — ห่ออยู่ใน AND ไม่ใช่ OR ระดับบนสุด และใช้ชุดเกรดเดียวกับ checklist (compose ถูกทั้งกับ excludeDemo true/false)', () => {
+    const nested = {
       OR: [
         { category: { not: 'PHONE_USED' } },
         { conditionGrade: { in: ['A', 'B', 'C', 'D'] } },
       ],
-    });
+    };
+    expect((productReadinessWhere() as { AND: Record<string, unknown>[] }).AND).toContainEqual(nested);
+    expect(
+      (productReadinessWhere({ excludeDemo: true }) as { AND: Record<string, unknown>[] }).AND,
+    ).toContainEqual(nested);
   });
 
   it('requireInStock:false ตัดเฉพาะเงื่อนไขสถานะ (permalink เครื่องที่ขายแล้ว)', () => {
@@ -51,10 +59,11 @@ describe('evaluateReadiness', () => {
     deletedAt: null,
   };
 
-  it('ครบทุกข้อ → ready = true', () => {
+  it('ครบทุกข้อ → ready = true, isDemo = false', () => {
     const r = evaluateReadiness(ok as never);
     expect(r.ready).toBe(true);
     expect(r.checks.every((c) => c.ok)).toBe(true);
+    expect(r.isDemo).toBe(false);
   });
 
   it('ไม่มีราคา → ไม่ ready และมี check ราคาเป็น false', () => {
@@ -84,8 +93,12 @@ describe('evaluateReadiness', () => {
     expect(r.checks.find((c) => c.key === 'shopGate')?.hint).toContain('iPhone');
   });
 
-  it('ชื่อขึ้นต้น [DEMO] → ไม่ ready', () => {
+  it('ชื่อขึ้นต้น [DEMO] → isDemo:true แต่เป็น non-blocking note ไม่ทำให้ ready เป็น false (owner decision: default โชว์ [DEMO] จนกว่าจะเปิด flag)', () => {
     const r = evaluateReadiness({ ...ok, name: '[DEMO] iPhone 15' } as never);
-    expect(r.checks.find((c) => c.key === 'notDemo')?.ok).toBe(false);
+    expect(r.isDemo).toBe(true);
+    expect(r.ready).toBe(true);
+    expect(r.checks.every((c) => c.ok)).toBe(true);
+    expect(r.checks.find((c) => c.key === 'isDemo')?.ok).toBe(true);
+    expect(r.checks.find((c) => c.key === 'isDemo')?.hint).toContain('[DEMO]');
   });
 });

@@ -481,6 +481,9 @@ export class ProductsService {
       // "ยังขึ้นเว็บไม่ได้" ตลอด โดยไม่มีเทสต์ไหนแดง
       isReady: result.ready,
       checks: result.checks,
+      // non-blocking note (owner decision 2026-08) — B1 ใช้โชว์ป้ายเตือน "สินค้าตัวอย่าง"
+      // ไม่กระทบ isReady (ดู evaluateReadiness/ProductReadinessOptions.excludeDemo)
+      isDemo: result.isDemo,
       // B1 โชว์สวิตช์ "แสดงบนเว็บ" คู่กับการ์ดนี้ — ส่งค่ามาด้วยจะได้ไม่ต้องยิงซ้ำ
       isOnlineVisible: product.isOnlineVisible,
       priceAutofilledAt: product.priceAutofilledAt,

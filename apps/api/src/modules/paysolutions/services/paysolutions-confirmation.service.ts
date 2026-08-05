@@ -377,7 +377,11 @@ export class PaySolutionsConfirmationService {
         // "sold to this order's own customer" apart from "sold to someone else / hit the
         // shop floor" — both read as `status !== 'IN_STOCK'`. Check for the Sale itself first.
         const existingSale = await this.prisma.sale.findFirst({
-          where: { productId: order.productId, customerId: order.customerId },
+          where: {
+            productId: order.productId,
+            customerId: order.customerId,
+            deletedAt: null,
+          },
           select: { id: true },
         });
         if (existingSale) {

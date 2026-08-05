@@ -659,8 +659,10 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
 
       await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
 
+      // fix round 2/5: must filter deletedAt: null (backend.md soft-delete convention) —
+      // a soft-deleted Sale row must not false-positive as "fulfilled".
       expect(prisma.sale.findFirst).toHaveBeenCalledWith({
-        where: { productId: 'p1', customerId: 'cust-1' },
+        where: { productId: 'p1', customerId: 'cust-1', deletedAt: null },
         select: { id: true },
       });
       // Order was already flipped PAID inside the tx — must NOT be re-flipped to

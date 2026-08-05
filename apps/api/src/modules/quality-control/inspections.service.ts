@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ProductsOnlineListingService } from '../products/products-online-listing.service';
 import {
   CreateTemplateDto, UpdateTemplateDto,
   CreateTemplateItemDto, UpdateTemplateItemDto,
@@ -9,7 +10,11 @@ import {
 
 @Injectable()
 export class InspectionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    // @Optional() เพราะ spec เดิม 11 จุดเรียก `new InspectionsService(prisma)` ตรงๆ
+    @Optional() private onlineListing?: ProductsOnlineListingService,
+  ) {}
 
   // === Template Management ===
 
@@ -182,11 +187,14 @@ export class InspectionsService {
     });
 
     // Update all linked products' grade and status
+    // B0 §2.2: conditionGrade ไม่เคยมี production writer มาก่อน — publish gate
+    // (products-online-listing.service.ts:48) จึงบล็อกเครื่องมือสองทุกเครื่อง
     for (const product of inspection.products) {
       await this.prisma.product.update({
         where: { id: product.id },
-        data: { status: 'QC_PENDING' },
+        data: { status: 'QC_PENDING', conditionGrade: grade },
       });
+      await this.autoPromoteQcPhotos(product.id);
     }
 
     return this.findOneInspection(id);
@@ -201,6 +209,14 @@ export class InspectionsService {
       data: { gradeOverride: dto.grade as 'A' | 'B' | 'C' | 'D', overrideReason: dto.reason },
     });
 
+    // B0 §2.2: override เกิดหลัง complete เสมอ → ต้องเขียนทับเกรดเครื่องด้วย
+    // ไม่งั้นเครื่องค้างเกรด auto ที่ QC ตีกลับไปแล้ว
+    for (const product of inspection.products) {
+      await this.prisma.product.update({
+        where: { id: product.id },
+        data: { conditionGrade: dto.grade },
+      });
+    }
 
     return this.findOneInspection(id);
   }
@@ -264,5 +280,27 @@ export class InspectionsService {
     if (percentage >= thresholds.B) return 'B';
     if (percentage >= thresholds.C) return 'C';
     return 'D';
+  }
+
+  /**
+   * B0 §2.3: QC ถ่ายรูป 6 มุมเก็บไว้เป็น base64 ใน ProductPhoto อยู่แล้ว แต่ readiness
+   * บังคับ `gallery` ไม่ว่าง และผู้เขียน gallery มีทางเดียวคือคนกดทีละรูป
+   * → ดันรูปหน้า (+หลัง) ขึ้น gallery ให้เองเมื่อ QC เสร็จและยังไม่มีรูปขึ้นเว็บ
+   * best-effort: รูปไม่ครบ/อัปโหลดพลาด ต้องไม่ทำให้ปิดใบตรวจไม่ได้
+   */
+  private async autoPromoteQcPhotos(productId: string) {
+    if (!this.onlineListing) return;
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { gallery: true },
+    });
+    if (!product || product.gallery.length > 0) return; // มีรูปแล้ว = คนเลือกเอง ห้ามทับ
+    for (const angle of ['front', 'back'] as const) {
+      try {
+        await this.onlineListing.promotePhoto(productId, { source: 'ANGLE', angle });
+      } catch {
+        // ไม่มีรูปมุมนั้น / รูปไม่ใช่ data URL / อัปโหลดพลาด → ข้าม ไม่ล้มการปิดใบตรวจ
+      }
+    }
   }
 }

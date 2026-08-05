@@ -14,6 +14,7 @@ type PrismaMock = {
     findMany: jest.Mock;
     findUnique: jest.Mock;
   };
+  systemConfig: { findFirst: jest.Mock };
 };
 
 const prismaMock: PrismaMock = {
@@ -25,6 +26,9 @@ const prismaMock: PrismaMock = {
     findMany: jest.fn(),
     findUnique: jest.fn(),
   },
+  // readBoolFlag('shop_hide_demo_products') reads this — most tests leave it unmocked
+  // (undefined → readRawValue catches → default false, matches prod day-1).
+  systemConfig: { findFirst: jest.fn() },
 };
 
 const lineMock = { sendFlexMessage: jest.fn() };
@@ -143,6 +147,16 @@ describe('ShopInstallmentApplyService', () => {
     expect(where.AND).toEqual(
       expect.arrayContaining([{ deletedAt: null }, { cashPrice: { gt: 0 } }]),
     );
+  });
+
+  it('Fix round 1/5 (Important): กรอง [DEMO] เมื่อเปิด flag shop_hide_demo_products — ใบสมัครถูกปฏิเสธ 404 (เดิม excludeDemo ตายตัว false, ยังรับใบสมัครพร้อมเลขบัตรประชาชนของเครื่อง [DEMO] ได้)', async () => {
+    prismaMock.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
+    prismaMock.product.findFirst.mockResolvedValue(null);
+    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(
+      'สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ',
+    );
+    const where = prismaMock.product.findFirst.mock.calls[0][0].where;
+    expect(where.AND).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
   });
 
   it('sends Flex message when lineUserId provided (non-fatal on failure)', async () => {

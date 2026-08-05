@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
+import { readBoolFlag } from '../../utils/config.util';
 import { CreateApplicationDto } from './dto/create-application.dto';
 
 /**
@@ -27,9 +28,13 @@ export class ShopInstallmentApplyService {
   ) {}
 
   async submit(dto: CreateApplicationDto, customerId: string | undefined) {
+    // Fix round 1/5 (Important): เดิม excludeDemo ตายตัว false — เปิด flag แล้ว catalog ซ่อน +
+    // reserve ปฏิเสธ + บอทปฏิเสธ แต่ apply ยังรับใบสมัครพร้อมเลขบัตรประชาชนของเครื่อง [DEMO] ได้
+    // (รูรั่ว PII ที่ brief เขียนเตือนไว้เอง — เก็บข้อมูลลูกค้าให้ดีลที่เกิดไม่ได้)
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
     const product = await this.prisma.product.findFirst({
       // B0 §2.3: ข้อความเดียวกับ reserve() เพื่อให้ลูกค้าเห็นเหตุผลเดียวกันทุกทางเข้า
-      where: { id: dto.productId, ...productReadinessWhere() },
+      where: { id: dto.productId, ...productReadinessWhere({ excludeDemo }) },
     });
     if (!product) throw new NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ');
 

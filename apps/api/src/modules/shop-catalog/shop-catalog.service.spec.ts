@@ -275,6 +275,15 @@ describe('ShopCatalogService', () => {
       expect(result!.tiers.A.units).toHaveLength(1);
       expect(result!.tiers.A.minPrice).toBe(13900);
       expect(JSON.stringify(result)).not.toContain('costPrice');
+
+      // Fix round 1/5 (Minor): pin the permalink invariant on BOTH halves — head query
+      // (requireInStock:false) must NOT force IN_STOCK, units query (default) MUST.
+      // Without this a regression that flips either half silently breaks the permalink
+      // (sold unit's page 404s) or breaks the catalog gate (sold units listed as buyable).
+      const headWhere = prisma.product.findFirst.mock.calls[0][0].where;
+      expect(headWhere.AND).not.toContainEqual({ status: 'IN_STOCK' });
+      const unitsWhere = prisma.product.findMany.mock.calls[0][0].where;
+      expect(unitsWhere.AND).toContainEqual({ status: 'IN_STOCK' });
     });
 
     it('returns null when the resolved id is not an iPhone (brand/category guard on the initial lookup)', async () => {

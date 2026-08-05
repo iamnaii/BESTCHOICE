@@ -14,6 +14,9 @@ describe('InstallmentPreviewService', () => {
       gfinModelMapping: { findMany: jest.fn() },
       gfinOverpriceRule: { findMany: jest.fn() },
       gfinRateFactor: { findFirst: jest.fn() },
+      // readBoolFlag('shop_hide_demo_products') reads this — most tests leave it unmocked
+      // (undefined → readRawValue catches → default false, matches prod day-1).
+      systemConfig: { findFirst: jest.fn() },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -53,6 +56,16 @@ describe('InstallmentPreviewService', () => {
     expect(prisma.product.findFirst.mock.calls[0][0].where.AND).toEqual(
       expect.arrayContaining([{ cashPrice: { gt: 0 } }]),
     );
+  });
+
+  it('Fix round 1/5 (Important): กรอง [DEMO] เมื่อเปิด flag shop_hide_demo_products — quote ไม่ได้อีก (เดิม excludeDemo ตายตัว false)', async () => {
+    prisma.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
+    prisma.product.findFirst.mockResolvedValue(null);
+    const result = await service.preview({ productId: 'demo-1', provider: 'BC', months: 12 });
+    expect(result.available).toBe(false);
+    expect(result.reason).toBe('product_not_found');
+    const where = prisma.product.findFirst.mock.calls[0][0].where;
+    expect(where.AND).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
   });
 
   it('BC: returns canonical worked example monthly payment 2,413.21', async () => {

@@ -16,6 +16,9 @@ describe('ShopReservationService', () => {
         update: jest.fn(),
         updateMany: jest.fn(),
       },
+      // Fix round 1/5 (Minor): readBoolFlag('shop_hide_demo_products') reads this — most
+      // tests leave it unmocked (undefined → readRawValue catches → default false).
+      systemConfig: { findFirst: jest.fn() },
     };
     const module = await Test.createTestingModule({
       providers: [ShopReservationService, { provide: PrismaService, useValue: prisma }],
@@ -48,11 +51,21 @@ describe('ShopReservationService', () => {
     it('rejects (404) เมื่อเครื่องไม่ผ่าน readiness — ขายแล้ว / ปิดจากเว็บ / ไม่มีราคา / ไม่มีรูป', async () => {
       prisma.product.findFirst.mockResolvedValue(null);
       await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
-        NotFoundException,
+        'สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ',
       );
       // fragment ถูกส่งเข้า query จริง (ไม่ได้จองเครื่องไม่มีราคาได้อีก)
       const where = prisma.product.findFirst.mock.calls[0][0].where;
       expect(where.AND).toEqual(expect.arrayContaining([{ cashPrice: { gt: 0 } }]));
+    });
+
+    it('Fix round 1/5 (Minor): กรอง [DEMO] เมื่อเปิด flag shop_hide_demo_products — จองเครื่อง [DEMO] ไม่ได้ (404)', async () => {
+      prisma.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
+      prisma.product.findFirst.mockResolvedValue(null);
+      await expect(service.reserve({ productId: 'demo-1', sessionId: 's1' })).rejects.toThrow(
+        'สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ',
+      );
+      const where = prisma.product.findFirst.mock.calls[0][0].where;
+      expect(where.AND).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
     });
 
     it('rejects if already reserved by another session', async () => {

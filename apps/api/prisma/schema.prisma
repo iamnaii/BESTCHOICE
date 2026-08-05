@@ -6106,6 +6106,9 @@ model BroadcastApproval {
 /// (Prisma schema ไม่มีทาง declare partial unique ได้) ถ้ารัน `prisma migrate dev` ต่อจากนี้
 /// อย่ายอมรับ diff ที่เสนอ DROP INDEX product_reservations_active_product_idx — index นี้จำเป็นต่อ
 /// invariant "1 เครื่อง = hold ACTIVE ได้แถวเดียว" ที่กันขายซ้ำเว็บ ↔ หน้าร้าน
+/// เดียวกัน migration ยังสร้างตาราง `_b5_active_hold_dedupe_backup` เป็น artifact ถาวร
+/// (เก็บแถว ACTIVE ซ้อนที่ถูก flip เป็น EXPIRED ตอน dedupe ก่อนสร้าง partial unique index)
+/// — เหมือน `_b0_default_price_dedupe_backup` ของ migration 20260982000000 อย่าลบทิ้ง
 model ProductReservation {
   id                String            @id @default(uuid())
   productId         String            @map("product_id")

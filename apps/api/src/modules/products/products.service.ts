@@ -7,6 +7,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
+import { evaluateReadiness } from '../../utils/product-readiness.util';
 
 const productInclude = {
   prices: { orderBy: { createdAt: 'asc' as const } },
@@ -458,6 +459,33 @@ export class ProductsService {
       orderBy: { brand: 'asc' },
     });
     return brands.map((b) => b.brand);
+  }
+
+  /** B0 §2.3 — checklist "พร้อมขึ้นเว็บ" รายข้อ (หน้าสินค้า admin ใน B1 กินอันนี้) */
+  async getReadiness(id: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, brand: true, category: true, status: true,
+        cashPrice: true, installmentPrice: true, gallery: true,
+        conditionGrade: true, isOnlineVisible: true, deletedAt: true,
+        priceAutofilledAt: true,
+      },
+    });
+    if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+    const result = evaluateReadiness(product);
+    return {
+      productId: product.id,
+      // ⚠️ ชื่อคีย์ต้องเป็น `isReady` — B1 (useProductReadiness/ReadinessCard/fixture)
+      // อ่าน `data.isReady` ทั้งหมด; ถ้าส่ง `ready` B1 จะได้ undefined = โชว์
+      // "ยังขึ้นเว็บไม่ได้" ตลอด โดยไม่มีเทสต์ไหนแดง
+      isReady: result.ready,
+      checks: result.checks,
+      // B1 โชว์สวิตช์ "แสดงบนเว็บ" คู่กับการ์ดนี้ — ส่งค่ามาด้วยจะได้ไม่ต้องยิงซ้ำ
+      isOnlineVisible: product.isOnlineVisible,
+      priceAutofilledAt: product.priceAutofilledAt,
+      hasInstallmentPrice: product.installmentPrice != null,
+    };
   }
 }
 

@@ -3,7 +3,7 @@ import {
   IsIn, IsNumberString, IsInt, Min, Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CASH_ACCOUNT_CODES } from '../../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 
 export class SubmitExchangeRequestDto {
   @IsUUID('all', { message: 'oldContractId ต้องเป็น UUID' })
@@ -35,6 +35,13 @@ export class SubmitExchangeRequestDto {
   @IsIn(['A', 'B', 'C', 'D'], { message: 'สภาพเครื่องต้องเป็น A-D' })
   deviceCondition?: string;
 
+  /**
+   * ไม่บังคับ และ **ไม่มีผลต่อ JE ใดๆ** ตั้งแต่ 2026-08-03 (คำสั่งเจ้าของ):
+   * เส้นทางเปลี่ยนเครื่องไม่มีการเคลื่อนไหวเงินสดในวัน finalize อีกต่อไป
+   * (A.3 ตั้งลูกหนี้ 11-2107 แทน + เจ้าหนี้สัญญาใหม่ไปล้างที่รอบจ่ายปกติ).
+   * คงฟิลด์ไว้เพื่อความเข้ากันได้ของ API + คอลัมน์ประวัติบนตาราง request;
+   * ถ้าไคลเอนต์เก่ายังส่งมา จะถูกบันทึกเป็นข้อมูลอ้างอิงเท่านั้น.
+   */
   @IsOptional()
   @IsIn(CASH_ACCOUNT_CODES as unknown as string[], { message: 'บัญชีเงินสดไม่ถูกต้อง' })
   depositAccountCode?: string;

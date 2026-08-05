@@ -87,6 +87,10 @@ describe('IntercoSettlementService', () => {
       // override per accountCode to match their item snapshot (no drift).
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
       interCompanyTransaction: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // approveBatch step 1b reads `interco_maker_checker_enabled` here.
+      // Default = row absent → maker-checker OFF (owner 2026-08-03: approval is
+      // governed by role assignment, not a hard different-person rule).
+      systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     };
 
     prisma = {
@@ -577,6 +581,78 @@ describe('IntercoSettlementService', () => {
         return Promise.resolve([]); // 21-1102 / S11-3002 → 0, matches fixture
       });
     }
+
+    it('maker-checker DEFAULT OFF (no SystemConfig row): the SAME person may approve the batch they created — approverId === makerId, both still recorded', async () => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());
+      noDriftJournalLineMock();
+      pairedJournal.postPaired.mockResolvedValue({
+        financeJournalEntryId: 'je-finance-1',
+        shopJournalEntryId: 'je-shop-1',
+      });
+
+      // maker-1 approves their OWN batch — allowed now that approval is gated by
+      // role (@Roles OWNER/FINANCE_MANAGER at the controller) instead of SoD.
+      const posted = await service.approveBatch('batch-1', 'maker-1');
+
+      expect(tx.systemConfig.findUnique).toHaveBeenCalledWith({
+        where: { key: 'interco_maker_checker_enabled' },
+      });
+      expect(posted.status).toBe('POSTED');
+      expect(posted.approverId).toBe('maker-1');
+      expect(pairedJournal.postPaired).toHaveBeenCalled();
+
+      // Audit trail unchanged: the batch row carries approverId, and the
+      // INTERCO_BATCH_APPROVED audit log carries the acting userId — even though
+      // maker and approver are the same human.
+      const updateArgs = tx.interCoSettlementBatch.update.mock.calls[0][0];
+      expect(updateArgs.data.approverId).toBe('maker-1');
+      const auditArgs = tx.auditLog.create.mock.calls[0][0];
+      expect(auditArgs.data.userId).toBe('maker-1');
+      expect(auditArgs.data.action).toBe('INTERCO_BATCH_APPROVED');
+      expect(auditArgs.data.entityId).toBe('batch-1');
+    });
+
+    it("maker-checker ON (interco_maker_checker_enabled='true'): the maker approving their own batch is rejected with ForbiddenException, nothing posted", async () => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());
+      noDriftJournalLineMock();
+      tx.systemConfig.findUnique.mockResolvedValue({ value: 'true' });
+
+      await expect(service.approveBatch('batch-1', 'maker-1')).rejects.toThrow(ForbiddenException);
+      await expect(service.approveBatch('batch-1', 'maker-1')).rejects.toThrow(
+        /ผู้อนุมัติต้องไม่ใช่ผู้สร้างรอบ/,
+      );
+
+      expect(pairedJournal.postPaired).not.toHaveBeenCalled();
+      expect(tx.interCoSettlementBatch.update).not.toHaveBeenCalled();
+    });
+
+    it("maker-checker ON but a DIFFERENT person approves → allowed (the flag only blocks maker === approver)", async () => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());
+      noDriftJournalLineMock();
+      tx.systemConfig.findUnique.mockResolvedValue({ value: 'true' });
+      pairedJournal.postPaired.mockResolvedValue({
+        financeJournalEntryId: 'je-finance-1',
+        shopJournalEntryId: 'je-shop-1',
+      });
+
+      const posted = await service.approveBatch('batch-1', 'approver-1');
+      expect(posted.status).toBe('POSTED');
+      expect(posted.approverId).toBe('approver-1');
+    });
+
+    it('a non-"true" config value (e.g. "false") leaves maker-checker OFF — same person may still approve', async () => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());
+      noDriftJournalLineMock();
+      tx.systemConfig.findUnique.mockResolvedValue({ value: 'false' });
+      pairedJournal.postPaired.mockResolvedValue({
+        financeJournalEntryId: 'je-finance-1',
+        shopJournalEntryId: 'je-shop-1',
+      });
+
+      const posted = await service.approveBatch('batch-1', 'maker-1');
+      expect(posted.status).toBe('POSTED');
+      expect(posted.approverId).toBe('maker-1');
+    });
 
     it('W2: translates a P2002 race from postPaired into ConflictException without marking the batch POSTED', async () => {
       tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());

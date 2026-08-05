@@ -34,8 +34,10 @@ import { ReverseBatchDto } from './dto/reverse-batch.dto';
  * Roles per spec §6/§9 + plan Task 5 table:
  *   - read (pending queue / batch list / batch detail): OWNER, FINANCE_MANAGER, ACCOUNTANT
  *   - create/submit/withdraw/cancel/update-DRAFT/attach-slip (maker side): ACCOUNTANT, FINANCE_MANAGER
- *   - approve/reverse (checker side): OWNER, FINANCE_MANAGER — maker≠approver enforced
- *     server-side inside `IntercoSettlementService.approveBatch` (SoD), not here.
+ *   - approve/reverse (checker side): OWNER, FINANCE_MANAGER — สิทธิ์ตาม role นี้
+ *     คือกลไกคุมการอนุมัติ (คำสั่งเจ้าของ 2026-08-03). กฎเดิม "ผู้อนุมัติต้องไม่ใช่
+ *     ผู้สร้าง" ไม่บังคับแล้วโดยค่าเริ่มต้น — เปิดกลับได้ที่ SystemConfig
+ *     `interco_maker_checker_enabled` = 'true' (เช็คใน `approveBatch`).
  *
  * Spec: docs/superpowers/specs/2026-07-30-interco-settlement-batch-design.md
  */
@@ -118,7 +120,7 @@ export class IntercoSettlementController {
     return this.service.cancelBatch(id, userId);
   }
 
-  /** อนุมัติ = post paired JE (checker side — approver ≠ maker เช็คใน service). */
+  /** อนุมัติ = post paired JE (checker side — คุมด้วย @Roles; SoD เป็น opt-in ใน service). */
   @Post('batches/:id/approve')
   @Roles('OWNER', 'FINANCE_MANAGER')
   approve(

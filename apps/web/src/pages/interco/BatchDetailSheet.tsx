@@ -25,7 +25,7 @@ import { ReverseBatchDialog } from './ReverseBatchDialog';
  *
  * ปุ่มตาม role×status (spec §6):
  *   - DRAFT: ส่งอนุมัติ (maker เท่านั้น) / ยกเลิก (ACCOUNTANT, FINANCE_MANAGER ใดก็ได้)
- *   - PENDING_APPROVAL: ถอนกลับ (maker) / ยกเลิก / อนุมัติ (OWNER, FINANCE_MANAGER — ไม่ใช่ maker)
+ *   - PENDING_APPROVAL: ถอนกลับ (maker) / ยกเลิก / อนุมัติ (OWNER, FINANCE_MANAGER)
  *   - POSTED: ย้อนกลับ (OWNER, FINANCE_MANAGER)
  *   - REVERSED/CANCELLED: read-only
  */
@@ -244,16 +244,12 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                   </Button>
                 )}
                 {batch.status === 'PENDING_APPROVAL' && isApproverRole && (
-                  <div className="flex flex-col gap-1">
-                    <Button onClick={() => setApproveOpen(true)} disabled={isMakerOfBatch}>
-                      อนุมัติ
-                    </Button>
-                    {isMakerOfBatch && (
-                      <p className="text-xs text-destructive leading-snug">
-                        ผู้สร้างรอบไม่สามารถอนุมัติเองได้ (maker ≠ approver)
-                      </p>
-                    )}
-                  </div>
+                  // คำสั่งเจ้าของ 2026-08-03: ผู้สร้างรอบอนุมัติเองได้ถ้ามีสิทธิ์
+                  // (คุมด้วยการกำหนดสิทธิ ไม่ใช่กฎ maker ≠ approver ตายตัว).
+                  // ถ้าเปิด SystemConfig `interco_maker_checker_enabled = 'true'`
+                  // เซิร์ฟเวอร์จะตอบ 403 ภาษาไทยเอง — ให้เซิร์ฟเวอร์เป็นผู้ตัดสิน
+                  // ไม่ปิดปุ่มฝั่งไคลเอนต์ล่วงหน้า
+                  <Button onClick={() => setApproveOpen(true)}>อนุมัติ</Button>
                 )}
                 {batch.status === 'POSTED' && isApproverRole && (
                   <Button variant="destructive" onClick={() => setReverseOpen(true)}>

@@ -13,14 +13,13 @@ import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contra
 import { InstallmentAccrual2ATemplate } from '../../journal/cpa-templates/installment-accrual-2a.template';
 import { ExchangeNewContract1ATemplate } from '../../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../../journal/cpa-templates/exchange-close-old-21-1106.template';
-import { ExchangeClearVendor21_1106Template } from '../../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+import { ExchangeBuybackReceivable11_2107Template } from '../../journal/cpa-templates/exchange-buyback-receivable-11-2107.template';
 import { ShopExchangeReturnTemplate } from '../../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
 import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.cron';
 import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
-import { ExchangeShopInstantSettlementTemplate } from '../../journal/cpa-templates/exchange-shop-instant-settlement.template';
 import { IntercoPendingService } from '../../interco-settlement/interco-pending.service';
 
 /**
@@ -34,15 +33,16 @@ import { IntercoPendingService } from '../../interco-settlement/interco-pending.
  *      (workbook CRITICAL CHECK); every old-contract receivable account nets 0;
  *      Cr 11-2101 = GL-true 11,333.36 (17,000 − 4×1,416.66), NOT the straight-line
  *      11,333.28 (1,416.66 × 8); loss plug 51-1102 = GL-derived 4,126.68.
- *      Also asserts F2+D5 (CPA ตอบข้อ 3, 2026-08-01 + symmetry fix 2026-08-02):
- *      ShopInventoryTransferTemplate posts on the NEW contract too (S41-1101
- *      15,000 / S41-1201 1,500 / S50-1101↔S11-2001 9,000), immediately
- *      followed in the same tx by ExchangeShopInstantSettlementTemplate which
- *      clears S11-3001/S11-3002 back to 0 (Dr S11-1201 16,500 / Cr S11-3001
- *      15,000 / Cr S11-3002 1,500) — mirrors A.3's instant FINANCE-side cash
- *      settlement so the new SHOP receivable never becomes a stuck balance.
- *      The contract still never appears in the INTER-CO pending queue (both
- *      sides already settled instantly, same as before F2 — see the test).
+ *      A.3 (2026-08-03 owner order — SUPERSEDES D5 for this path) is now a
+ *      2-line JE: Dr 11-2107 8,000 / Cr 21-1106 8,000 — NO cash leg, and
+ *      21-1101/21-1102 are NOT cleared (they stay outstanding at 15,000 /
+ *      1,500 for the normal "จ่ายให้หน้าร้าน" INTER-CO batch).
+ *      Also asserts F2 (CPA ตอบข้อ 3, 2026-08-01): ShopInventoryTransferTemplate
+ *      posts on the NEW contract too (S41-1101 15,000 / S41-1201 1,500 /
+ *      S50-1101↔S11-2001 9,000) and its S11-3001/S11-3002 receivables now STAY
+ *      outstanding too (the D5 instant-settlement leg was deleted 2026-08-03),
+ *      with S11-1201 untouched. Consequence asserted explicitly: the contract
+ *      DOES appear in the INTER-CO pending queue with legacyNoShop = false.
  *   2. ECL — provision 30.32 on the old contract → A.5 Dr 11-2102 / Cr 51-1103
  *      30.32 (CPA 2026-08-01: single-standard release account, was 42-1106),
  *      BadDebtProvision row REVERSED, GL 11-2102 = 0.
@@ -76,13 +76,12 @@ const svc = new ContractExchangeService(
   audit,
   new ExchangeNewContract1ATemplate(journal, prisma as never),
   new ExchangeCloseOld21_1106Template(journal, prisma as never),
-  new ExchangeClearVendor21_1106Template(journal, prisma as never),
+  new ExchangeBuybackReceivable11_2107Template(journal, prisma as never),
   new ShopExchangeReturnTemplate(journal, prisma as never, companyResolver),
   new ExchangeEclReversalTemplate(journal, prisma as never),
   companyResolver,
   new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver),
   new ShopAccountResolver(prisma as never),
-  new ExchangeShopInstantSettlementTemplate(journal, prisma as never, companyResolver),
 );
 const cancelSvc = new ExchangeCancelService(
   prisma as never,
@@ -341,13 +340,14 @@ function sumSide(lines: LineRow[], code: string, side: 'dr' | 'cr'): Decimal {
 }
 
 /**
- * Look up the 3 JE ids F2/D5 post at finalize — ShopInventoryTransferTemplate's
- * COGS + revenue legs, and ExchangeShopInstantSettlementTemplate's instant
- * receipt leg. None are stored on the ContractExchangeRequest row
- * (traceability is metadata-only by design, same as the swept 2A accruals),
- * so tests that need their ids explicitly (e.g. for a "pair originals with
- * reversals" completeness check) must look them up the same way the cancel
- * sweep itself does.
+ * Look up the 2 JE ids F2 posts at finalize — ShopInventoryTransferTemplate's
+ * COGS + revenue legs. (A third, `ExchangeShopInstantSettlementTemplate`'s
+ * instant receipt, existed 2026-08-02→2026-08-03 and was removed when the
+ * owner reversed D5 for this path: SHOP now waits for the INTER-CO batch too.)
+ * Neither id is stored on the ContractExchangeRequest row (traceability is
+ * metadata-only by design, same as the swept 2A accruals), so tests that need
+ * them explicitly (e.g. for a "pair originals with reversals" completeness
+ * check) must look them up the same way the cancel sweep itself does.
  */
 async function findShopInventoryTransferJeIds(newContractId: string): Promise<string[]> {
   const cogsJe = await prisma.journalEntry.findFirstOrThrow({
@@ -364,12 +364,7 @@ async function findShopInventoryTransferJeIds(newContractId: string): Promise<st
       ],
     },
   });
-  const settlementJe = await prisma.journalEntry.findFirstOrThrow({
-    where: {
-      metadata: { path: ['idempotencyKey'], equals: `exchange-shop-receipt:${newContractId}` } as never,
-    },
-  });
-  return [cogsJe.id, revenueJe.id, settlementJe.id];
+  return [cogsJe.id, revenueJe.id];
 }
 
 async function getJeLines(jeId: string): Promise<LineRow[]> {
@@ -557,10 +552,16 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       // Loss plug = threshold (11,333.36 + 793.32) − buyback 8,000 = GL-true 4,126.68
       expect(sumSide(je2Lines, '51-1102', 'dr').toFixed(2)).toBe('4126.68');
 
-      // --- A.3: vendor clearance + cash top-up (16,500 − 8,000 = 8,500)
-      expect(sumSide(je3Lines, '21-1101', 'dr').toFixed(2)).toBe('15000.00');
-      expect(sumSide(je3Lines, '21-1102', 'dr').toFixed(2)).toBe('1500.00');
-      expect(sumSide(je3Lines, '11-1101', 'cr').toFixed(2)).toBe('8500.00');
+      // --- A.3 (คำสั่งเจ้าของ 2026-08-03 — supersedes D5 for this path):
+      // ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้าง 21-1106 เท่านั้น. EXACTLY 2 lines —
+      // ไม่มีขาเงินสด และไม่แตะเจ้าหนี้สัญญาใหม่ (21-1101/21-1102) เลย.
+      expect(sumSide(je3Lines, '11-2107', 'dr').toFixed(2)).toBe('8000.00');
+      expect(sumSide(je3Lines, '21-1106', 'cr').toFixed(2)).toBe('8000.00');
+      expect(je3Lines).toHaveLength(2);
+      expect(je3Lines.some((l) => l.accountCode === '21-1101')).toBe(false);
+      expect(je3Lines.some((l) => l.accountCode === '21-1102')).toBe(false);
+      // ไม่มีบรรทัดเงินสด/ธนาคารใดๆ (11-11xx / 11-12xx) ในใบนี้
+      expect(je3Lines.some((l) => /^11-1[12]0[123]$/.test(l.accountCode))).toBe(false);
 
       // --- A.4: SHOP re-intake at costPrice, posted under SHOP company
       const je4 = await prisma.journalEntry.findUniqueOrThrow({
@@ -589,57 +590,69 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         (await glContractBalance(prisma, newContractId, 'S11-2001', 'cr')).toFixed(2),
       ).toBe('9000.00');
 
-      // --- D5 symmetry (2026-08-02): ExchangeShopInstantSettlementTemplate
-      // posts RIGHT AFTER ShopInventoryTransferTemplate, same tx — mirrors
-      // A.3's instant FINANCE-side cash movement onto SHOP's own books. So
-      // S11-3001/S11-3002 are booked THEN immediately cleared in this same
-      // finalize — they net to 0, not to financedAmount/commission (an
-      // earlier version of this test asserted 15,000.00/1,500.00 before this
-      // settlement leg existed — that is now WRONG, this replaces it). The
-      // cash actually lands on S11-1201 (SHOP_RECEIVING_BANK).
+      // --- คำสั่งเจ้าของ 2026-08-03 (SUPERSEDES D5 for this path): the
+      // instant-settlement leg is GONE. S11-3001/S11-3002 stay OUTSTANDING at
+      // financedAmount/commission (this reverts the 2026-08-02 goldens of
+      // 0.00/0.00) and S11-1201 is never touched at finalize — SHOP now waits
+      // for the same "จ่ายให้หน้าร้าน" batch a normal sale waits for.
       expect(
         (await glContractBalance(prisma, newContractId, 'S11-3001', 'dr')).toFixed(2),
-      ).toBe('0.00');
+      ).toBe('15000.00');
       expect(
         (await glContractBalance(prisma, newContractId, 'S11-3002', 'dr')).toFixed(2),
-      ).toBe('0.00');
+      ).toBe('1500.00');
       expect(
         (await glContractBalance(prisma, newContractId, 'S11-1201', 'dr')).toFixed(2),
-      ).toBe('16500.00');
+      ).toBe('0.00');
+      // No SHOP settlement JE exists at all for this contract any more.
+      expect(
+        await prisma.journalEntry.findFirst({
+          where: {
+            metadata: {
+              path: ['idempotencyKey'],
+              equals: `exchange-shop-receipt:${newContractId}`,
+            } as never,
+          },
+        }),
+      ).toBeNull();
 
-      // Settlement JE itself — exact line shape (Dr bank / Cr both receivables)
-      const settlementJe = await prisma.journalEntry.findFirstOrThrow({
-        where: {
-          metadata: { path: ['idempotencyKey'], equals: `exchange-shop-receipt:${newContractId}` } as never,
-        },
-        include: { lines: true },
-      });
-      expect(settlementJe.companyId).toBe(shopCompanyId);
-      expect(sumSide(settlementJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('16500.00');
-      expect(sumSide(settlementJe.lines, 'S11-3001', 'cr').toFixed(2)).toBe('15000.00');
-      expect(sumSide(settlementJe.lines, 'S11-3002', 'cr').toFixed(2)).toBe('1500.00');
-
-      // --- INTER-CO pending engine (interco-pending.service.ts): an exchange
-      // new contract never surfaces in getPendingContracts() at all, legacy
-      // or not. A.3 (ExchangeClearVendor21_1106Template) ALWAYS fully clears
-      // 21-1101/21-1102 for the new contract in the SAME finalize transaction
-      // (Dr newVendorYodjat + Dr newVendorCommission — exactly what A.1
-      // credited), using the old device's buyback value (via the 21-1106
-      // suspense account) plus an immediate cash top-up/refund (D5) — NOT the
-      // later "จ่ายให้หน้าร้าน" interco batch a normal contract's 21-1101/
-      // 21-1102 would wait for. getPendingContracts()'s FINANCE lens requires
-      // `SUM(credit-debit) > 0` (HAVING clause) — since this nets to exactly
-      // 0 for an exchange contract, the row never appears. This is CORRECT
-      // and expected — D5 settles both sides instantly in this same tx
-      // (asserted above), so there is nothing left for the batch to ever pay.
-      const pendingAfter = await intercoPending.getPendingContracts();
-      expect(pendingAfter.find((p) => p.contractId === newContractId)).toBeUndefined();
+      // --- FINANCE side: A.1's vendor payables stay OUTSTANDING (A.3 no
+      // longer nets them against the buyback). 11-2107 carries the buyback as
+      // a FINANCE receivable on SHOP instead — cleared later by the existing
+      // shop-collect settlement path (Dr <cash> / Cr 11-2107).
       expect(
         (await glContractBalance(prisma, newContractId, '21-1101', 'cr')).toFixed(2),
-      ).toBe('0.00');
+      ).toBe('15000.00');
       expect(
         (await glContractBalance(prisma, newContractId, '21-1102', 'cr')).toFixed(2),
+      ).toBe('1500.00');
+      expect(
+        (await glContractBalance(prisma, newContractId, '11-2107', 'dr')).toFixed(2),
+      ).toBe('8000.00');
+      // ยืนยันว่าไม่มีเงินสด/ธนาคารขยับบนสัญญาใหม่เลยในวัน finalize
+      expect(
+        (await glContractBalance(prisma, newContractId, '11-1101', 'dr')).toFixed(2),
       ).toBe('0.00');
+      expect(
+        (await glContractBalance(prisma, newContractId, '11-1201', 'dr')).toFixed(2),
+      ).toBe('0.00');
+
+      // --- INTER-CO pending engine (interco-pending.service.ts): an exchange
+      // contract NOW DOES surface in getPendingContracts() — this assertion is
+      // the exact INVERSE of what this spec asserted before 2026-08-03 (when
+      // A.3 cleared 21-1101/21-1102 in the same tx and the HAVING
+      // `SUM(credit-debit) > 0` lens therefore never saw the row). It settles
+      // through the normal "จ่ายให้หน้าร้าน" batch like an ordinary sale, and
+      // carries legacyNoShop = false because the F2 SHOP leg left real
+      // S11-3001/S11-3002 balances for the batch's SHOP half to clear.
+      const pendingAfter = await intercoPending.getPendingContracts();
+      const pendingRow = pendingAfter.find((p) => p.contractId === newContractId);
+      expect(pendingRow, 'exchange contract must appear in the INTER-CO pending queue').toBeDefined();
+      expect(pendingRow!.financedGl.toFixed(2)).toBe('15000.00');
+      expect(pendingRow!.commissionGl.toFixed(2)).toBe('1500.00');
+      expect(pendingRow!.shopFinancedGl.toFixed(2)).toBe('15000.00');
+      expect(pendingRow!.shopCommissionGl.toFixed(2)).toBe('1500.00');
+      expect(pendingRow!.legacyNoShop).toBe(false);
 
       // --- Old-contract GL: every receivable/deferral account nets EXACTLY 0
       for (const [code, side] of [
@@ -787,11 +800,13 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         where: { id: request.id },
       });
       expect(req.status).toBe('CANCELED');
-      // A.1 + A.2 + A.3 + A.4 (no A.5 here) + the 3 SHOP JEs F2/D5 now post on
-      // the new contract at finalize (ShopInventoryTransfer COGS + revenue +
-      // ExchangeShopInstantSettlement receipt) — swept via metadata.contractId,
-      // same mechanism as the 2A accruals in the day-45 case below.
-      expect(req.reversalJeIds.length).toBe(7);
+      // A.1 + A.2 + A.3 + A.4 (no A.5 here) + the 2 SHOP JEs F2 posts on the
+      // new contract at finalize (ShopInventoryTransfer COGS + revenue) —
+      // swept via metadata.contractId, same mechanism as the 2A accruals in
+      // the day-45 case below. Was 7 until 2026-08-03: the D5
+      // ExchangeShopInstantSettlement receipt is gone (owner order — SHOP now
+      // settles through the INTER-CO batch instead of instantly at finalize).
+      expect(req.reversalJeIds.length).toBe(6);
       expect(req.penaltyJeId).toBeNull();
       expect(req.penaltyAmount).toBeNull();
 
@@ -835,7 +850,8 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         (await glContractBalance(prisma, fix.oldContractId, '21-1106', 'cr')).toFixed(2),
       ).toBe('0.00');
 
-      // --- New-contract GL: everything nets 0 (incl. F2's SHOP legs)
+      // --- New-contract GL: everything nets 0 (incl. F2's SHOP legs and the
+      // 11-2107 buyback receivable A.3 now opens instead of a cash leg)
       for (const [code, side] of [
         ['11-2101', 'dr'],
         ['11-2105', 'dr'],
@@ -844,6 +860,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         ['21-1101', 'cr'],
         ['21-1102', 'cr'],
         ['21-1106', 'cr'],
+        ['11-2107', 'dr'],
         ['11-1101', 'dr'],
         ['S11-3001', 'dr'],
         ['S11-3002', 'dr'],
@@ -965,12 +982,12 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(req.status).toBe('CANCELED');
       expect(req.penaltyJeId).toBeNull();
       expect(req.penaltyAmount).toBeNull();
-      // (ก) A.1 + A.2 + A.3 + A.4 (no A.5 here) + the 3 F2/D5 SHOP JEs
-      // (ShopInventoryTransfer COGS + revenue + ExchangeShopInstantSettlement
-      // receipt, posted at finalize) + the 2 swept 2A accrual JEs on the new
-      // contract — proves the metadata sweep, not just the 4
-      // explicitly-tracked core swap JEs, actually ran.
-      expect(req.reversalJeIds.length).toBe(9);
+      // (ก) A.1 + A.2 + A.3 + A.4 (no A.5 here) + the 2 F2 SHOP JEs
+      // (ShopInventoryTransfer COGS + revenue, posted at finalize) + the 2
+      // swept 2A accrual JEs on the new contract — proves the metadata sweep,
+      // not just the 4 explicitly-tracked core swap JEs, actually ran.
+      // Was 9 until 2026-08-03 (the D5 instant-settlement receipt is gone).
+      expect(req.reversalJeIds.length).toBe(8);
 
       // --- NO 42-1107 penalty JE anywhere in this spec's journal rows
       const anyPenaltyLine = await prisma.journalLine.findFirst({
@@ -991,6 +1008,9 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
         ['21-2102', 'cr'],
         ['21-2101', 'cr'],
         ['41-1101', 'cr'],
+        ['21-1101', 'cr'],
+        ['21-1102', 'cr'],
+        ['11-2107', 'dr'],
         ['S11-3001', 'dr'],
         ['S11-3002', 'dr'],
         ['S11-1201', 'dr'],

@@ -4,7 +4,7 @@
 - TFRS for NPAEs (มาตรฐานรายงานทางการเงินสำหรับกิจการที่ไม่มีส่วนได้เสียสาธารณะ)
 - **Full Accrual TFRS 15** — ดอกเบี้ยรับรู้ตามงวด ผ่าน 11-2106 Unearned Interest (Contra Asset)
 - **Accrual VAT** — ตั้งภาษีวันเปิดสัญญา (11-2105/21-2102) ล้างทีละงวดเข้า 21-2101
-- Single **FINANCE chart** (99 accounts) — SHOP-side deferred to A.5
+- Single **FINANCE chart** (110 accounts ณ 2026-08-03 — ตัวเลขนี้เดินตาม CSV ไม่ใช่ค่าคงที่; เดิม 99 ตอน Phase A.4) — SHOP-side deferred to A.5
 - Source of truth: `docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md` + CSV at `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/`
 
 ## Phase A.0-A.3 Status
@@ -13,7 +13,7 @@ Do NOT reference old A.0-A.3 JE templates, chart codes, or journal service metho
 
 ---
 
-## Chart of Accounts (99 accounts — FINANCE only)
+## Chart of Accounts (110 accounts ณ 2026-08-03 — FINANCE only)
 
 Full list lives in `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv`.
 Key codes referenced by JE templates:
@@ -156,7 +156,7 @@ The migration `20260801100000_phase_a4_cpa_chart_schema` adds NOT NULL columns (
 **Mandatory sequence:**
 1. Wipe first: run the CLI below (clears accounting tables including `chart_of_accounts`)
 2. Then migrate: `npx prisma migrate deploy`
-3. Reseed is automatic (wipe CLI reseeds 99 FINANCE CoA after truncate)
+3. Reseed is automatic (wipe CLI reseeds ผัง FINANCE ทั้งชุดจาก CSV หลัง truncate — จำนวนบัญชีอ่านจาก CSV, CLI พิมพ์ created/updated จริงออกมา)
 
 ```bash
 # Step 1: Wipe + reseed CoA
@@ -168,10 +168,10 @@ npx prisma migrate deploy
 
 For fresh dev environments (`prisma migrate reset`): ordering is automatic — no manual wipe needed.
 
-Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds 99 FINANCE CoA from CPA CSV.
+Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds ผัง FINANCE ทั้งชุดจาก CPA CSV (ปัจจุบัน 110 บัญชี).
 
 After wipe + migrate, verify (P3-SP5 DEEP fix C4 — counts split by company):
-1. `SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';` — expected 99 (FINANCE)
+1. `SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';` — expected 110 (FINANCE, ณ 2026-08-03 หลังลบ 42-1106/42-1107 — เลขนี้เดินตาม `finance-coa.csv` เสมอ อย่าจำเป็นค่าคงที่ ให้นับจาก CSV)
 2. `SELECT COUNT(*) FROM chart_of_accounts WHERE code LIKE 'S%';` — expected ~56 (SHOP, P3-SP5)
 3. Smoke one contract end-to-end via UI
 4. Run TB report (`scope=FINANCE`) and confirm it balances
@@ -559,6 +559,10 @@ DRAFT --submit--> PENDING_APPROVAL --approve--> POSTED --reverse--> REVERSED
   re-check on top of the controller's `FileTypeValidator`; PDF/JPEG/PNG/WEBP, ≤5MB) —
   maker-only, DRAFT/PENDING_APPROVAL only, optional (a backfilled historical round may
   have no surviving slip).
+- `approveBatch` / `reverseBatch`: role-gated at the controller
+  (`OWNER`, `FINANCE_MANAGER`) — **no maker-restriction and no maker≠approver rule by
+  default** since 2026-08-03. See "Approve — atomic paired JE" step 1b for the opt-in
+  `interco_maker_checker_enabled` flag.
 
 ### Pending lens (คิวรอจ่าย) — `IntercoPendingService`
 
@@ -576,6 +580,13 @@ Computed via raw `$queryRaw` (`GROUP BY je.metadata->>'contractId' HAVING SUM(cr
 lens by construction**: they stamp `metadata.items[]` (many contracts per JE), not a
 single `metadata.contractId`, so there's no metadata-filter special-casing needed to keep
 them out.
+
+**สัญญาเปลี่ยนเครื่อง (PRICED device swap) ปรากฏในคิวนี้ตั้งแต่ 2026-08-03** — ก่อนหน้านั้น
+A.3 ล้าง 21-1101/21-1102 ทันทีตอน finalize (D5) เลนส์ FINANCE (`HAVING SUM(credit-debit)
+> 0`) จึงไม่มีวันเห็นสัญญาเหล่านั้นเลย. ตอนนี้เจ้าหนี้ทั้งสองบัญชีค้างไว้ตามปกติ สัญญาเปลี่ยนเครื่อง
+จึงจ่ายผ่านรอบจ่ายเดียวกับการขายปกติทุกประการ (`legacyNoShop = false` เพราะ F2 SHOP leg
+ตั้ง S11-3001/S11-3002 ไว้ให้ SHOP half ของรอบจ่ายล้าง). พิสูจน์ที่
+`exchange-priced-flow.integration.spec.ts` Case 2A (assertion ตรงข้ามกับของเดิมทุกประการ).
 
 **Settled gate**: a contract leaves the pending queue the instant it has an
 `InterCoSettlementItem` row inside a batch with status `PENDING_APPROVAL` or `POSTED`.
@@ -597,9 +608,26 @@ pre-flight check (below) confirms this is 0 in prod before go-live.
 
 Exact order as implemented in `interco-settlement.service.ts`:
 
-1. **Load + status + SoD** — batch must be `PENDING_APPROVAL`; throws
-   `ForbiddenException` if the approving user is the batch's own `makerId` (approver ≠
-   maker, enforced server-side — never trust a hidden client field for this).
+1. **Load + status** — batch must be `PENDING_APPROVAL`.
+1b. **Maker–checker (opt-in, DEFAULT OFF — คำสั่งเจ้าของ 2026-08-03)** — the hard
+   "approver ≠ maker" rule was **retired**. Approval is now governed by **role
+   assignment** alone: `@Roles('OWNER','FINANCE_MANAGER')` on
+   `POST /interco-settlement/batches/:id/approve`. The SAME person may create a batch
+   and approve it, provided they hold an approver role (กิจการเล็ก — เจ้าของสั่งให้คุม
+   ด้วยการกำหนดสิทธิแทน). Strict segregation of duties is re-enablable **without a code
+   change**: set SystemConfig **`interco_maker_checker_enabled` = `'true'`** and
+   `approveBatch` restores `throw new ForbiddenException('ผู้อนุมัติต้องไม่ใช่ผู้สร้างรอบ')`
+   when `batch.makerId === userId`. The key is **NOT seeded** anywhere — a missing row,
+   or any value other than the exact string `'true'` (including `'false'`), means OFF.
+   Read via `tx.systemConfig.findUnique({ where: { key: 'interco_maker_checker_enabled' } })`
+   **inside the approve `$transaction`** so one value governs the whole approval — the
+   same config-read shape as `OTHER_INCOME_MAKER_CHECKER_ENABLED`
+   (`other-income-config.service.ts`) and `jp5_require_terminated_status`
+   (`repossessions.service.ts`). No toggle endpoint / UI exists for this key yet —
+   flip it with a SystemConfig row.
+   **Audit trail is unchanged either way**: `makerId` and `approverId` are both still
+   persisted on the batch row, and the `INTERCO_BATCH_APPROVED` AuditLog still records
+   the acting `userId` — even when maker and approver are the same human.
 2. **Double-batch re-check** — re-runs the "another open batch already grabbed this
    contract" query inside the tx (same query `submitBatch` ran, closes the remaining
    race window right up to the moment of posting).
@@ -667,20 +695,26 @@ guard (step 1) long before idempotency would even matter.
 ### `legacyNoShop` policy (F1/F2)
 
 A contract is `legacyNoShop = true` when its SHOP-side GL (S11-3001 + S11-3002) is
-exactly 0 for that contract — i.e. contracts activated **before 2026-06-23** (commit
-`bbcfa7a3`, PR #1280 — before the SHOP-side receivable was wired into
-`contract-workflow.service.ts`) or contracts created via **contract-exchange (device
-swap)**, which still does not wire the SHOP leg. These contracts settle FINANCE-only:
-no SHOP JE line is generated for them at all, and if EVERY item in a batch is
-`legacyNoShop`, the SHOP half is skipped entirely (`shopJournalEntryId` stays `null`).
+exactly 0 for that contract. These contracts settle FINANCE-only: no SHOP JE line is
+generated for them at all, and if EVERY item in a batch is `legacyNoShop`, the SHOP half
+is skipped entirely (`shopJournalEntryId` stays `null`).
+
+**นิยามแคบลง 2026-08-03** — สัญญาจาก **contract-exchange (device swap) ไม่ใช่กรณี
+`legacyNoShop` อีกต่อไป** (ข้อความเดิมของหัวข้อนี้ที่นับ device swap รวมอยู่ด้วย **ยกเลิก**):
+ตั้งแต่ 2026-08-01 (F2) มันโพสต์ SHOP leg แล้ว และตั้งแต่ 2026-08-03 (คำสั่งเจ้าของ ยกเลิก D5)
+มันปล่อยให้ทั้งสองฝั่งค้างไว้ จึงเข้าคิวจ่ายเป็นแถวปกติที่ `legacyNoShop = false`.
+`legacyNoShop = true` เหลือความหมายเดียวคือ **สัญญาที่ activate ก่อน 2026-06-23**
+(commit `bbcfa7a3`, PR #1280 — ก่อน SHOP-side receivable ถูกต่อเข้า
+`contract-workflow.service.ts`).
 
 `batch.shopPostedAmount` only sums the non-legacy items, so it can be strictly less than
 `batch.totalAmount` — the gap is real money FINANCE wired to SHOP with no SHOP-side
 receivable on record to clear it against. **The system deliberately does not guess a JE
 for that gap.** It is an open opening-balance question pending CPA ruling (spec §11):
 should the SHOP books get a retroactive opening balance for the May–22 Jun 2026 window
-(pre-SHOP-books era), and should device-swap contracts get a SHOP leg wired at all? Do
-not invent a JE to close this gap without that ruling.
+(pre-SHOP-books era)? Do not invent a JE to close this gap without that ruling. (The
+sibling question "should device-swap contracts get a SHOP leg wired at all?" is **ANSWERED
+— yes**, F2 2026-08-01; those contracts are no longer part of this gap.)
 
 ### Reverse (`reverseBatch`, POSTED → REVERSED)
 
@@ -806,7 +840,7 @@ Module: `apps/api/src/modules/other-income/`
 Frontend pages: `apps/web/src/pages/other-income/`
 Routes: `/other-income`, `/other-income/new`, `/other-income/:id`, `/other-income/:id/receipt`, `/other-income/daily-sheet`
 
-Key accounts (from FINANCE 99-account chart):
+Key accounts (from FINANCE chart — 110 บัญชี ณ 2026-08-03):
 - `42-1102` — ดอกเบี้ยเงินฝาก (Bank interest income — exempt from VAT, subject to 15% WHT)
 - `42-1103` — ค่าปรับชำระล่าช้า (Late fee — usually auto-posted via `PaymentReceipt2BTemplate` together with installment payment. Also bookable here for "late-fee-only" scenarios where customer pays just the penalty without settling the installment. **Watch for duplicate-entry risk**: if booked here, do NOT also pass `lateFee` on the next installment Payment for the same month, or 42-1103 will be credited twice.)
 - `42-1104` — รายได้จากการหักค่าจ้าง (Payroll deduction — Pattern B deferred until payroll module exists)
@@ -1227,14 +1261,14 @@ Auto-issues the ม.82/5 ใบลดหนี้ (Credit Note) receipt that doc
 Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` (D1-D5 owner decisions)
 
 - MEMO mode (รุ่นเดิม+ราคาเดิม): ไม่มี JE — เปลี่ยน `contract.productId` บนสัญญาเดิม (TFRS 9 modification, workbook Case 1). SP2 same-price + `case-8-same-price.csv` golden ถูก retire
-- PRICED mode: A.1 (1A สัญญาใหม่) → A.2 (derecognize ผ่าน 21-1106, VAT due ทันที ม.78/1 ไม่ออก CN) → A.3 (ตัดเจ้าหนี้ + ขาเงินสดโอนเพิ่ม/คืนลูกค้า — D5 post ทันที) → **A.1b SHOP-leg** (ดูหัวข้อถัดไป) → A.4 (SHOP re-intake) → A.5 (ECL reversal Dr 11-2102 / Cr 51-1103 — **CPA ruling 2026-08-01 (คำตอบข้อ A2.2 = ข): มาตรฐานเดียวทุกเส้นทาง**, was Cr 42-1106 per D2; same account `EclStageReverseTemplate`/JP5/write-off already use — no more asymmetry)
+- PRICED mode: A.1 (1A สัญญาใหม่) → **A.1b SHOP-leg** (`ShopInventoryTransferTemplate`, ดูหัวข้อถัดไป) → A.2 (derecognize ผ่าน 21-1106, VAT due ทันที ม.78/1 ไม่ออก CN) → **A.3 (ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106 — ไม่มีขาเงินสด, ไม่แตะ 21-1101/21-1102 — คำสั่งเจ้าของ 2026-08-03 ยกเลิก D5 สำหรับเส้นทางนี้; เดิม "ตัดเจ้าหนี้ + ขาเงินสดโอนเพิ่ม/คืนลูกค้า D5 post ทันที")** → A.4 (SHOP re-intake) → A.5 (ECL reversal Dr 11-2102 / Cr 51-1103 — **CPA ruling 2026-08-01 (คำตอบข้อ A2.2 = ข): มาตรฐานเดียวทุกเส้นทาง**, was Cr 42-1106 per D2 — **บัญชี 42-1106 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03**; same account `EclStageReverseTemplate`/JP5/write-off already use — no more asymmetry)
 - Approval: AUTO (≥NCV + ≥basePrice×0.85) / REVIEW (BM) / ESCALATE (<70% NCV — OWNER) — `exchange-tier.util.ts`
 - Guards ก่อน finalize: GL 11-2103 = 0, ไม่มี advance/credit ค้าง
-- Cancellation: ยกเลิกได้ทุกเมื่อถ้าสัญญาใหม่ยังไม่มีการชำระ (owner ยกเลิก windows/ค่าปรับ 2026-07-31) — mirror-reverse ทุก JE รวม A.5 + A.1b SHOP-leg (สวีปตาม `metadata.contractId` ไม่ hardcode บัญชี — สวีปจับ SHOP JE ได้เองแม้ไม่มี id เก็บบน request row); 2A cron backfill เอง; 42-1107 เปิดไว้ไม่ใช้งาน
-- 42-1106 = เปิดแล้ว — **ไม่ใช้งาน** (CPA เลือกมาตรฐานเดียว Cr 51-1103, 2026-08-01) — เดิมเสนอใช้เป็น "รายได้จากการโอนกลับค่าเผื่อฯ" ใน A.5 (rename จาก orphan "รายได้บริการซ่อม" — runtime repair ใช้ S42-1101) แต่ถูกแทนที่ก่อน merge เข้า production จริง
-- Integration E2E (DB จริง): `apps/api/src/modules/contract-exchange/__tests__/exchange-priced-flow.integration.spec.ts` — Case 2A (21-1106 net 0, Cr 11-2101 = GL-true 11,333.36 ไม่ใช่สูตรคูณ 11,333.28, loss plug 4,126.68, + F2/D5 SHOP legs: S41-1101/S41-1201/S50-1101↔S11-2001 booked, S11-3001/S11-3002 = 0.00 หลังตัดทันที, S11-1201 รับ 16,500), ECL 30.32 → 51-1103, cancel วันที่ 15 (reversalJeIds 7: A.1+A.2+A.3+A.4+3 SHOP legs) + วันที่ 45 (reversalJeIds 9: + 2 swept 2A accruals — ทั้งคู่ SUCCEED เหมือนกัน, ไม่มี window/penalty JE อีกต่อไป, owner ยกเลิก 2026-07-31 + mirror-reverse net 0 ทุกบัญชีรวม SHOP + 2A backfill), MEMO (JE count คงเดิม). CI: glob `src/modules/contract-exchange/__tests__/*.integration.spec.ts` ใน deploy-gcp.yml vitest step (jest มองไม่เห็นไฟล์ `*.integration.spec.ts` ตาม testPathIgnorePatterns)
+- Cancellation: ยกเลิกได้ทุกเมื่อถ้าสัญญาใหม่ยังไม่มีการชำระ (owner ยกเลิก windows/ค่าปรับ 2026-07-31) — mirror-reverse ทุก JE รวม A.5 + A.1b SHOP-leg (สวีปตาม `metadata.contractId` ไม่ hardcode บัญชี — สวีปจับ SHOP JE ได้เองแม้ไม่มี id เก็บบน request row); 2A cron backfill เอง; **42-1107 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03 (คำสั่ง CPA/owner) — ไม่มีบัญชีรองรับค่าปรับยกเลิกอีกต่อไป**
+- **42-1106 + 42-1107 = ลบออกจากผังบัญชีแล้ว (2026-08-03, คำสั่ง CPA/owner)** — ทั้งคู่เปิดไว้แต่ไม่เคยมี `journal_lines` แม้แถวเดียว: 42-1106 ("รายได้จากการโอนกลับค่าเผื่อฯ", rename จาก orphan "รายได้บริการซ่อม" — runtime repair ใช้ S42-1101) ถูกแทนที่ด้วย Cr 51-1103 มาตรฐานเดียวทุกเส้นทาง; 42-1107 ("รายได้ค่าปรับยกเลิกเปลี่ยนเครื่อง") หมดความหมายเมื่อ owner ยกเลิกกติกาค่าปรับ swap ทั้งชุด 2026-07-31. ถอดออกจาก `finance-coa.csv` แล้ว (ผัง FINANCE เหลือ **110** บัญชี) + `exchange-coa.spec.ts` พลิกเป็น assert ว่า **ไม่มี** ทั้งสองรหัส กันเพิ่มกลับเงียบๆ. Prod: `docs/accounting/remove-42-1106-42-1107-2026-08.sql` (soft delete + guard "ถ้ามี journal_lines แม้แถวเดียว → ROLLBACK")
+- Integration E2E (DB จริง): `apps/api/src/modules/contract-exchange/__tests__/exchange-priced-flow.integration.spec.ts` — Case 2A (21-1106 net 0, Cr 11-2101 = GL-true 11,333.36 ไม่ใช่สูตรคูณ 11,333.28, loss plug 4,126.68; A.3 = 2 บรรทัดพอดี Dr 11-2107 8,000 / Cr 21-1106 8,000 ไม่มีขาเงินสด; ค้างรอรอบจ่าย: 21-1101 15,000 / 21-1102 1,500 / S11-3001 15,000 / S11-3002 1,500, S11-1201 + เงินสด FINANCE = 0.00 ไม่ถูกแตะ; + F2 SHOP legs: S41-1101/S41-1201/S50-1101↔S11-2001 booked; อยู่ในคิวจ่าย INTER-CO ด้วย `legacyNoShop = false`), ECL 30.32 → 51-1103, cancel วันที่ 15 (reversalJeIds 6: A.1+A.2+A.3+A.4+2 SHOP legs) + วันที่ 45 (reversalJeIds 8: + 2 swept 2A accruals — ทั้งคู่ SUCCEED เหมือนกัน, ไม่มี window/penalty JE อีกต่อไป, owner ยกเลิก 2026-07-31 + mirror-reverse net 0 ทุกบัญชีรวม SHOP + 2A backfill), MEMO (JE count คงเดิม). CI: glob `src/modules/contract-exchange/__tests__/*.integration.spec.ts` ใน deploy-gcp.yml vitest step (jest มองไม่เห็นไฟล์ `*.integration.spec.ts` ตาม testPathIgnorePatterns)
 
-### SHOP-leg wiring บนสัญญาใหม่ + D5 instant settlement (F2, CPA ตอบข้อ 3 = ใช่, 2026-08-02)
+### SHOP-leg wiring บนสัญญาใหม่ (F2, CPA ตอบข้อ 3 = ใช่, 2026-08-01)
 
 ก่อนหน้านี้ exchange PRICED contracts post FINANCE templates เท่านั้น (A.1-A.3 + A.5) — ไม่มี SHOP-side revenue/COGS/receivable สำหรับสัญญาใหม่เลย (ต่างจาก activation ปกติที่ `ContractWorkflowService.activate` ต่อ `ShopInventoryTransferTemplate` เสมอ). F2 ต่อ `ShopInventoryTransferTemplate.execute` เข้า `ContractExchangeService.finalizeAfterActivation` (หลัง A.1, ก่อน A.2) — **เหมือน activation ปกติทุกประการ**:
 
@@ -1244,19 +1278,76 @@ JE B (revenue): Dr S11-3001 [financedAmount] + Dr S11-3002 [commission]
                   Cr S41-XXXX [salePrice] + Cr S41-1201 [commission]
 ```
 
-**ทันทีถัดมาในทรานแซคชันเดียวกัน** — `ExchangeShopInstantSettlementTemplate` (ไฟล์ `exchange-shop-instant-settlement.template.ts`) ล้าง S11-3001/S11-3002 กลับเป็น 0 ทันที, สมมาตรกับที่ A.3 (`ExchangeClearVendor21_1106Template`) เคลียร์ 21-1101/21-1102 ฝั่ง FINANCE ทันทีเช่นกันตาม D5 ("สมมติฐานโอนวันเดียวกัน"):
-
-```
-JE C (instant settlement): Dr S11-1201 (SHOP_RECEIVING_BANK) [financed+commission]
-                             Cr S11-3001 [financed]
-                             Cr S11-3002 [commission]  (ข้ามถ้า 0)
-```
-
-**ทำไมต้องมี JE C**: ถ้าไม่มี — S11-3001/S11-3002 ที่ JE B ตั้งขึ้นจะไม่มีวันถูกล้าง เพราะ `IntercoPendingService.getPendingContracts()` (เมนู "จ่ายให้หน้าร้าน") อ่านฝั่ง FINANCE (21-1101/21-1102) เป็นตัวตัดสิน และฝั่งนั้นถูก A.3 เคลียร์เต็มจำนวนทันทีอยู่แล้ว (ดูด้านล่าง) — คิวจึงไม่มีวันเห็นสัญญานี้ ไม่ว่า SHOP จะมี JE ล้างของตัวเองหรือไม่. ไม่มี JE C จะกลายเป็น **stuck-balance generator ตัวใหม่**: S11-3001/S11-3002 ค้างตลอดไปไม่มีกลไกล้าง. JE C ปิดช่องนี้ด้วยการโอนกลับหลักการเดียวกับ A.3 — จ่ายทันทีในทรานแซคชันเดียวกัน แทนที่จะรอรอบจ่าย.
-
-- **Invariant ตรวจแล้ว (JE B)**: `downPayment` บนสัญญาใหม่ = 0 เสมอ (hardcode ใน `approvePriced` ทั้ง snapshot branch และ legacy fallback branch, contract-exchange.service.ts:609) — นี่คือ invariant เดียวที่ hold ทุก branch จริงๆ. `financedAmount` **ไม่การันตี**เท่ากับ `sellingPrice` เสมอไป: snapshot branch (`usedSnapshot=true`) ตั้งทั้งสองค่าเท่ากันจาก `newPrice` เดียวกัน (บรรทัด 517/522) แต่ legacy fallback branch (`usedSnapshot=false`, บรรทัด 524-549) clone `financedAmount: old.financedAmount` และ `sellingPrice: old.sellingPrice` เป็น**คนละค่าอิสระกัน**จากสัญญาเดิม — ถ้าสัญญาเดิมเคยมีดาวน์ (`old.downPayment > 0`) แล้ว `old.sellingPrice = old.financedAmount + old.downPayment > old.financedAmount` ไม่เท่ากัน. ด้วยเหตุนี้ `salePrice` ที่ส่งเข้า `ShopInventoryTransferTemplate`/`ExchangeShopInstantSettlementTemplate` จึง**reconstruct เป็น `down(0)+financedAmount` เสมอ ไม่เคยอ่าน `contract.sellingPrice`** — invariant ของ template (`down+financed===salePrice`) จึง hold โดยโครงสร้าง (`salePrice` ก็คือ `down+financed` ตรงๆ ไม่ใช่ค่าที่ต้องมาเท่ากันโดยบังเอิญ) ทั้งสอง branch โดยไม่ต้องพึ่ง `financedAmount===sellingPrice`
-- **idempotencyKey**: JE B ใช้ `shop-inventory-transfer:<newContractId>` (รูปแบบเดียวกับ `ContractWorkflowService.activate`, กันโพสต์ซ้ำข้ามเส้นทาง); JE C ใช้ `exchange-shop-receipt:<newContractId>` (เฉพาะทาง exchange — ไม่ใช่ `ShopFinanceReceiptTemplate` เดิมที่ถูกลบไปแล้วใน #1386, ตั้งชื่อใหม่ให้สื่อว่าเป็น instant settlement ตาม D5 ไม่ใช่ batch receipt)
+- **Invariant ตรวจแล้ว (JE B)**: `downPayment` บนสัญญาใหม่ = 0 เสมอ (hardcode ใน `approvePriced` ทั้ง snapshot branch และ legacy fallback branch) — นี่คือ invariant เดียวที่ hold ทุก branch จริงๆ. `financedAmount` **ไม่การันตี**เท่ากับ `sellingPrice` เสมอไป: snapshot branch (`usedSnapshot=true`) ตั้งทั้งสองค่าเท่ากันจาก `newPrice` เดียวกัน แต่ legacy fallback branch (`usedSnapshot=false`) clone `financedAmount: old.financedAmount` และ `sellingPrice: old.sellingPrice` เป็น**คนละค่าอิสระกัน**จากสัญญาเดิม — ถ้าสัญญาเดิมเคยมีดาวน์ (`old.downPayment > 0`) แล้ว `old.sellingPrice = old.financedAmount + old.downPayment > old.financedAmount` ไม่เท่ากัน. ด้วยเหตุนี้ `salePrice` ที่ส่งเข้า `ShopInventoryTransferTemplate` จึง**reconstruct เป็น `down(0)+financedAmount` เสมอ ไม่เคยอ่าน `contract.sellingPrice`** — invariant ของ template (`down+financed===salePrice`) จึง hold โดยโครงสร้าง (`salePrice` ก็คือ `down+financed` ตรงๆ ไม่ใช่ค่าที่ต้องมาเท่ากันโดยบังเอิญ) ทั้งสอง branch โดยไม่ต้องพึ่ง `financedAmount===sellingPrice`
+- **idempotencyKey**: `shop-inventory-transfer:<newContractId>` (รูปแบบเดียวกับ `ContractWorkflowService.activate`, กันโพสต์ซ้ำข้ามเส้นทาง)
 - **Fields บน `ExchangeContractForFinalize`**: เพิ่ม `contractNumber`/`downPayment`/`productCategory`/`productCostPrice` — มาจาก pre-tx `findOne(id)` snapshot เดียวกับที่ activation ปกติใช้ (ไม่ query DB ซ้ำใน tx) — race characteristics เหมือนเส้นทางปกติทุกประการ
-- **ไม่เข้าคิว "จ่ายให้หน้าร้าน (INTER-CO)" — ถูกต้องแล้ว ไม่ใช่ gap**: `ExchangeClearVendor21_1106Template` (A.3) เคลียร์ 21-1101/21-1102 ของสัญญาใหม่เต็มจำนวนทันทีในทรานแซคชันเดียวกับ finalize (ใช้ราคารับซื้อผ่าน 21-1106 + ขาเงินสด D5) — ไม่ผ่านรอบจ่าย batch เหมือนสัญญาปกติ. ผลคือ `IntercoPendingService.getPendingContracts()` (`HAVING SUM(credit-debit) > 0` บน 21-1101+21-1102) จะไม่เจอสัญญาเปลี่ยนเครื่องเลย — เพราะ**ทั้งสองฝั่งถูกจ่าย/รับทันทีในทรานแซคชันเดียวกันแล้ว** (FINANCE ผ่าน A.3, SHOP ผ่าน JE C ข้างบน) ไม่ใช่เพราะ tracking พัง — ไม่มีอะไรเหลือให้รอบจ่ายต้องจ่ายอีก. ดูรายละเอียดที่ `docs/superpowers/specs/2026-07-30-interco-settlement-batch-design.md` §11 ข้อ 2
-- **Coverage**: ทดสอบครบใน integration spec ด้านบน (booking values ของ JE B, ล้างเป็น 0 + JE C line shape ถูกต้อง, cancel-sweep 3 SHOP JEs, net-zero ทุกบัญชี SHOP รวม S11-1201)
+- **S11-3001/S11-3002 ค้างไว้ ไปล้างที่รอบจ่าย INTER-CO** (คำสั่งเจ้าของ 2026-08-03) — ดูหัวข้อ "A.3 = ตั้งลูกหนี้ 11-2107 …" ด้านล่าง. JE C (`ExchangeShopInstantSettlementTemplate`, idempotencyKey `exchange-shop-receipt:<newContractId>`, มีอายุ 2026-08-02 → 2026-08-03) ที่เคยล้างสองบัญชีนี้ทันที **ถูกลบทิ้งทั้งไฟล์แล้ว** พร้อมกับ D5
+- **Coverage**: `apps/api/src/modules/contract-exchange/__tests__/exchange-priced-flow.integration.spec.ts` (booking values ของ JE A/JE B, ยอดค้างหลัง finalize, การปรากฏในคิวจ่าย, cancel-sweep 2 SHOP JEs, net-zero ทุกบัญชีหลัง cancel รวม 11-2107)
 - **Scope ไม่ครอบคลุม**: MEMO mode ยังไม่มี SHOP JE (unrelated — เป็น TFRS 9 modification ไม่มีรายได้ใหม่ ดู §12 ข้อ 4 ของ device-swap spec ซึ่งยังเปิดอยู่ ไม่เกี่ยวกับ F2)
+
+### A.3 = ตั้งลูกหนี้ 11-2107 + เจ้าหนี้เข้าคิวจ่ายปกติ (คำสั่งเจ้าของ 2026-08-03 — SUPERSEDES D5)
+
+**D5 ("สมมติฐานโอนวันเดียวกัน") ถูกยกเลิกสำหรับเส้นทางเปลี่ยนเครื่อง** — วันเปลี่ยนเครื่อง
+**ไม่มีการเคลื่อนไหวเงินสดใดๆ** ทั้งฝั่ง FINANCE และ SHOP.
+
+**A.3 รูปแบบใหม่** (`ExchangeBuybackReceivable11_2107Template`,
+ไฟล์ `apps/api/src/modules/journal/cpa-templates/exchange-buyback-receivable-11-2107.template.ts` —
+เปลี่ยนชื่อจาก `ExchangeClearVendor21_1106Template` เพราะไม่แตะบัญชีเจ้าหนี้อีกแล้ว):
+
+```
+Dr 11-2107 ลูกหนี้-หน้าร้าน              [buyback]
+   Cr 21-1106 บัญชีพักเครดิตเปลี่ยนเครื่อง  [buyback]
+```
+
+ทิศทางเดียวเสมอ 2 บรรทัด ไม่มีการแตกกรณี (เดิมแตก 3 ทางตามส่วนต่าง buyback vs vendorSum)
+และ balanced โดยโครงสร้าง. `metadata.flow = 'exchange-buyback-receivable-11-2107'`,
+`idempotencyKey = newContractId`, `metadata.contractId = newContractId` (ให้ cancel sweep จับได้).
+
+**เดิม (D5, 2026-07-29 → 2026-08-03):**
+`Dr 21-1101 [ยอดจัดสัญญาใหม่] + Dr 21-1102 [ค่าคอม] + ขาเงินสดโอนเพิ่ม/คืนลูกค้า / Cr 21-1106 [buyback]`
+— คือหักกลบเจ้าหนี้หน้าร้านของสัญญาใหม่กับเครดิตราคารับซื้อ แล้วจ่ายส่วนต่างเป็นเงินสดทันที.
+
+**เหตุผลของรูปแบบใหม่ (เจ้าของ):**
+1. ราคารับซื้อ = เงินที่ SHOP ติด FINANCE → เป็น **ลูกหนี้ฝั่ง FINANCE** บัญชี **11-2107
+   ลูกหนี้-หน้าร้าน** (บัญชีเดิมที่มีอยู่แล้ว ใช้ร่วมกับเส้นทาง shop-collect — ล้างเมื่อหน้าร้าน
+   โอนเงินเข้า FINANCE ด้วย `Dr <cash> / Cr 11-2107` ผ่าน
+   `ContractPaymentService.settleShopCollect`). **ไม่มีการเปิดบัญชีใหม่.**
+2. เจ้าหนี้ยอดจัด/ค่าคอมของสัญญาใหม่ (21-1101 / 21-1102 ที่ A.1 ตั้งไว้) **ค้างไว้ตามปกติ**
+   → "จ่ายหน้าร้านเหมือนขายปกติ" ผ่านรอบจ่าย INTER-CO.
+
+**`ExchangeShopInstantSettlementTemplate` ถูกลบทิ้งทั้งไฟล์** (มีอายุ 2026-08-02 → 2026-08-03,
+ไม่เคยขึ้น production เป็นรอบจ่ายจริง): เมื่อ FINANCE ไม่รับเงินทันทีแล้ว SHOP ก็ต้องไม่รับทันที
+เช่นกัน — S11-3001/S11-3002 **ค้างไว้** และไปล้างที่รอบจ่ายเดียวกัน. `ShopInventoryTransferTemplate`
+(A.1b, การจองรายได้/COGS/ลูกหนี้ฝั่ง SHOP) **คงไว้ไม่เปลี่ยนแปลง**.
+
+**GL หลัง finalize (สัญญาใหม่, ตัวอย่าง Case 2A ในสเปคทดสอบ — financed 15,000 / คอม 1,500 /
+buyback 8,000):**
+
+| บัญชี | ยอดคงค้างหลัง finalize |
+|---|---|
+| 21-1101 (Cr) | 15,000.00 — **ค้าง** รอรอบจ่าย |
+| 21-1102 (Cr) | 1,500.00 — **ค้าง** รอรอบจ่าย |
+| 11-2107 (Dr) | 8,000.00 — ลูกหนี้หน้าร้าน (ราคารับซื้อ) |
+| S11-3001 (Dr) | 15,000.00 — **ค้าง** รอรอบจ่าย |
+| S11-3002 (Dr) | 1,500.00 — **ค้าง** รอรอบจ่าย |
+| S11-1201 | 0.00 — **ไม่ถูกแตะเลย** |
+| เงินสด/ธนาคาร FINANCE (11-11xx/11-12xx) | 0.00 — **ไม่ถูกแตะเลย** |
+
+**ASYMMETRY ที่รู้ตัวและตั้งใจ (สำหรับ CPA):** ผัง SHOP **ไม่มีบัญชี "เจ้าหนี้ FINANCE"**
+ดังนั้นสมุด SHOP **ไม่มีขาคู่ของ 11-2107** — SHOP ไม่ได้บันทึกว่าตัวเองติดหนี้ FINANCE
+เท่าราคารับซื้อ. นี่เป็นพฤติกรรมเดียวกับเส้นทาง shop-collect ที่มีอยู่เดิม (11-2107 เป็น
+FINANCE-side-only มาตลอด) — **ไม่ได้ประดิษฐ์บัญชีใหม่ และไม่ได้เดา JE ปิดช่องนี้**.
+รอ CPA ตัดสินว่าจะเปิดบัญชีเจ้าหนี้ฝั่ง SHOP (คู่กับ S11-3001/S11-3002 ที่เป็นลูกหนี้) หรือไม่
+— เป็นคำถามเดียวกับ opening-balance gap ใน interco spec §11.
+
+**Cancel:** mirror-reverse ตามเดิมทุกประการ (สวีปด้วย `metadata.contractId`) — A.3 ใบใหม่ถูก
+กลับรายการเหมือนกัน ทำให้ 11-2107 net = 0. จำนวน `reversalJeIds` **ลดลง 1 ใบ**
+(instant-settlement หายไป): cancel วันที่ 15 = **6** ใบ (เดิม 7), cancel วันที่ 45 = **8** ใบ
+(เดิม 9 — รวม 2A accrual ที่ถูกสวีป 2 ใบ).
+
+**`depositAccountCode`:** ไม่บังคับอีกต่อไปบนคำขอ PRICED และ **ไม่มีผลต่อ JE ใดๆ** —
+เหตุผลเดิมที่บังคับคือขาเงินสดของ A.3 (ถอด 2026-08-03) + penalty JE ตอน cancel
+(ยกเลิกไปแล้ว 2026-07-31). คอลัมน์ `ContractExchangeRequest.depositAccountCode`
+และฟิลด์ใน DTO **ยังคงอยู่** (ข้อมูลย้อนหลัง + API back-compat) แต่ไม่มีผู้อ่านในเส้นทางนี้แล้ว;
+ช่องเลือกบัญชีบนหน้าจอส่งคำขอถูกถอดออก. `CASH_ACCOUNT_CODES` ที่ DTO import ถูกชี้กลับไปที่
+`constants/cash-account.constants.ts` (แหล่งกลางที่ DTO อื่นอีก 6 ตัวใช้อยู่แล้ว) แทน template ที่ถูกลบ.

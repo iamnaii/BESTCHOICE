@@ -116,7 +116,7 @@ settled_i       = EXISTS InterCoSettlementItem ของสัญญา i ใน
 
 ## 6. Maker–Checker (D3)
 
-- สร้าง/แก้ DRAFT + submit: `ACCOUNTANT`, `FINANCE_MANAGER` | อนุมัติ: `OWNER`, `FINANCE_MANAGER` โดย **approver ≠ maker** (server-side เช็ค — pattern tolerance approver เดิม)
+- สร้าง/แก้ DRAFT + submit: `ACCOUNTANT`, `FINANCE_MANAGER` | อนุมัติ: `OWNER`, `FINANCE_MANAGER` — **คุมด้วยการกำหนดสิทธิ (role) เท่านั้น** (คำสั่งเจ้าของ 2026-08-03); กฎ **approver ≠ maker** เป็น opt-in ผ่าน SystemConfig `interco_maker_checker_enabled = 'true'` (ค่าเริ่มต้น = ไม่มีแถว = ปิด) — ~~เดิม: บังคับ approver ≠ maker เสมอ server-side (pattern tolerance approver)~~
 - DRAFT แก้ได้/ลบได้ (soft), PENDING_APPROVAL แก้ไม่ได้ (ถอนกลับ DRAFT ได้โดย maker), POSTED แตะไม่ได้นอกจาก reverse
 - แนบสลิป: upload S3 (optional — บังคับไม่ได้เพราะรอบ backfill บางรอบอาจไม่มีสลิปเหลือ)
 
@@ -153,7 +153,15 @@ settled_i       = EXISTS InterCoSettlementItem ของสัญญา i ใน
 
 1. **Opening balance สมุด SHOP:** สัญญาช่วง พ.ค.–22 มิ.ย. 2026 สมุด SHOP ไม่มีลูกหนี้ Inter-co (ระบบเพิ่ง wire ฝั่ง SHOP 23 มิ.ย.) — เงินที่ FINANCE โอนให้ช่วงนั้น ฝั่ง SHOP ควรบันทึกอย่างไร (ตั้ง opening balance ย้อนหลัง หรือถือเป็นยุคก่อนเริ่มสมุด SHOP)?
 2. สัญญาจากการเปลี่ยนเครื่อง (device swap) — FINANCE ต้องจ่ายยอดจัดใหม่ให้ SHOP เหมือนขายปกติหรือไม่ (ตอนนี้ตั้งเจ้าหนี้ไว้แล้วโดย 1A)?
-   **✅ ตอบแล้ว 2026-08-01 — ใช่ (ข้อ 3)** → F2 implemented บน branch `feat/exchange-shop-leg`: `ShopInventoryTransferTemplate` post ให้สัญญาใหม่ตอน finalize เหมือน activation ปกติทุกประการ (COGS + revenue + S11-3001/S11-3002). A.3 (`ExchangeClearVendor21_1106Template`) เคลียร์ 21-1101/21-1102 ของสัญญาใหม่เต็มจำนวนทันทีในทรานแซคชันเดียวกับ finalize (ใช้ราคารับซื้อผ่านบัญชีพัก 21-1106 + ขาเงินสดโอนเพิ่ม/คืนทันที — D5 เดิม) — **ไม่ใช่**ผ่านรอบจ่าย "จ่ายให้หน้าร้าน (INTER-CO)" เหมือนสัญญาปกติ ดังนั้นสัญญาที่เปลี่ยนเครื่องจะ**ไม่ปรากฏใน `getPendingContracts()` เลย** (ไม่ legacy ไม่ pending — GL 21-1101+21-1102 สุทธิ = 0 เสมอ ไม่ผ่าน `HAVING SUM(credit-debit) > 0`) — **นี่คือพฤติกรรมที่ถูกต้อง ไม่ใช่ gap** เพราะทั้งสองฝั่งถูกจ่าย/รับทันทีในทรานแซคชันเดียวกันแล้ว. ✅ **ปิดวง 2026-08-02 (D5 symmetry)**: เพิ่ม `ExchangeShopInstantSettlementTemplate` post ต่อจาก `ShopInventoryTransferTemplate` ทันทีในทรานแซคชันเดียวกัน — `Dr S11-1201 (SHOP_RECEIVING_BANK) [financed+commission] / Cr S11-3001 [financed] / Cr S11-3002 [commission]` — mirror ฝั่ง SHOP ของขาเงินสดที่ A.3 บันทึกฝั่ง FINANCE ตาม D5 พอดี. ผลคือ S11-3001/S11-3002 = 0.00 ทันทีหลัง finalize (ไม่ใช่ค้างเป็น financedAmount/commission อีกต่อไป) — ไม่มี stuck balance, ไม่ต้องรอ mechanism ไหนมาล้าง. สวีปตอนยกเลิกจับ JE นี้ได้เองผ่าน `metadata.contractId` (reversalJeIds day-15 4→7, day-45 6→9)
+   **✅ ตอบแล้ว 2026-08-01 — ใช่ (ข้อ 3)** → F2 implemented: `ShopInventoryTransferTemplate` post ให้สัญญาใหม่ตอน finalize เหมือน activation ปกติทุกประการ (COGS + revenue + S11-3001/S11-3002).
+
+   > **(ปรับปรุง 2026-08-03 — คำสั่งเจ้าของ)** ข้อความเดิมของหัวข้อนี้ **ไม่ใช้แล้ว** (เดิมเขียนว่าสัญญาเปลี่ยนเครื่อง "ไม่ปรากฏใน `getPendingContracts()` เลย เพราะทั้งสองฝั่งถูกจ่าย/รับทันทีในทรานแซคชันเดียวกันแล้ว — FINANCE ผ่าน A.3, SHOP ผ่าน `ExchangeShopInstantSettlementTemplate` ที่เพิ่มไว้ 2026-08-02"):
+   > สัญญาเปลี่ยนเครื่อง (PRICED) **เข้าคิวจ่ายตามปกติ** เหมือนการขายปกติทุกประการ.
+   > A.3 เปลี่ยนจาก "ตัดเจ้าหนี้ + จ่ายเงินสดส่วนต่างทันที (D5)" เป็น `Dr 11-2107 ลูกหนี้-หน้าร้าน / Cr 21-1106` — 21-1101/21-1102 จึงค้างไว้ให้รอบจ่ายล้าง และ `ExchangeShopInstantSettlementTemplate` (JE ที่ล้าง S11-3001/S11-3002 ทันที) **ถูกลบทิ้ง** SHOP จึงค้างรอรอบจ่ายเช่นกัน. รายการเหล่านี้จะปรากฏในคิวด้วย `legacyNoShop = false`. (`reversalJeIds` ตอน cancel: day-15 = 6, day-45 = 8 — เดิม 7/9 ตอนยังมี instant-settlement JE)
+   >
+   > ราคารับซื้อเครื่องเดิมกลายเป็น **ลูกหนี้ฝั่ง FINANCE 11-2107** ซึ่งล้างผ่านเส้นทาง shop-collect เดิม (`Dr <cash> / Cr 11-2107`) — **แยกคนละเส้นทางกับรอบจ่าย INTER-CO** โดยเจตนา: รอบจ่ายคือ FINANCE จ่าย SHOP, ส่วน 11-2107 คือ SHOP ต้องส่งเงินคืน FINANCE. ทั้งสองยอดไม่ถูกหักกลบกันอัตโนมัติอีกต่อไป (เจ้าของสั่ง — เดิม A.3 หักกลบให้).
+   >
+   > **ช่องว่างที่รู้ตัว (รอ CPA):** ผัง SHOP ไม่มีบัญชี "เจ้าหนี้ FINANCE" สมุด SHOP จึงไม่มีขาคู่ของ 11-2107 (เหมือนเส้นทาง shop-collect เดิม ที่ 11-2107 เป็น FINANCE-side-only). ระบบ **ไม่ประดิษฐ์บัญชีหรือ JE ปิดช่องนี้เอง** — เป็นคำถามเดียวกันกับ opening-balance gap ในข้อ 1 ของหัวข้อนี้.
 
 ## 12. Tests (integration DB จริง — `*.integration.spec.ts` ตาม CI glob เดิม)
 
@@ -161,7 +169,7 @@ settled_i       = EXISTS InterCoSettlementItem ของสัญญา i ใน
 2. **Legacy round (F1)**: สัญญาที่ไม่มี SHOP GL → FINANCE JE ใบเดียว, `shopJournalEntryId=null`, `legacyNoShop=true`
 3. **Drift guard**: post JE แทรกแก้ 21-1101 หลัง snapshot → approve ต้อง reject ทั้งรอบ
 4. **กันซ้ำ**: สัญญาเดียวถูกใส่ 2 รอบ → รอบสองโดน reject ตั้งแต่ submit (และถ้า race ผ่านมาได้ → โดนซ้ำใน approve tx); หลัง reverse รอบแรก → รอบใหม่ผ่าน + pending engine เห็นสัญญากลับมา
-5. **Maker=approver → 403**; งวดปิด (ทั้งฝั่ง SHOP-only closed) → BadRequest + ข้อความ D4
+5. **Maker=approver** — ค่าเริ่มต้น (ไม่มีแถว SystemConfig) = **อนุมัติได้** โดยบันทึก `approverId === makerId` + AuditLog ครบ; ตั้ง `interco_maker_checker_enabled = 'true'` → 403 (`ผู้อนุมัติต้องไม่ใช่ผู้สร้างรอบ`) แล้วคนอื่นอนุมัติผ่าน — ~~เดิม: maker=approver → 403 เสมอ~~ (คำสั่งเจ้าของ 2026-08-03); งวดปิด (ทั้งฝั่ง SHOP-only closed) → BadRequest + ข้อความ D4
 6. **Reverse**: GL กลับครบทุกบัญชี + กลับเข้า pending list
 7. Unit: pending engine (สูตร GL, ธง legacy, ไม่อ่าน contract fields)
 

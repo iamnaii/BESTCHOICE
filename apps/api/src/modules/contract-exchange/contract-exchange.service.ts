@@ -15,12 +15,11 @@ import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { ApproveExchangeRequestDto } from './dto/approve-exchange-request.dto';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
-import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+import { ExchangeBuybackReceivable11_2107Template } from '../journal/cpa-templates/exchange-buyback-receivable-11-2107.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
-import { ExchangeShopInstantSettlementTemplate } from '../journal/cpa-templates/exchange-shop-instant-settlement.template';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
 import { computeExchangePlan } from './exchange-plan.util';
@@ -79,13 +78,12 @@ export class ContractExchangeService {
     private readonly audit: AuditService,
     private readonly t1a: ExchangeNewContract1ATemplate,
     private readonly t2: ExchangeCloseOld21_1106Template,
-    private readonly t3: ExchangeClearVendor21_1106Template,
+    private readonly t3: ExchangeBuybackReceivable11_2107Template,
     private readonly t4: ShopExchangeReturnTemplate,
     private readonly t5: ExchangeEclReversalTemplate,
     private readonly companyResolver: CompanyResolverService,
     private readonly shopInventoryTransferTemplate: ShopInventoryTransferTemplate,
     private readonly shopAccountResolver: ShopAccountResolver,
-    private readonly shopInstantSettlement: ExchangeShopInstantSettlementTemplate,
   ) {}
 
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
@@ -180,13 +178,14 @@ export class ContractExchangeService {
     const marketCheckPct = await this.configNumber('exchange_market_check_pct', 15);
     const tier: ExchangeTier = computeExchangeTier({ buyback, ncv, basePrice, marketCheckPct });
 
-    // depositAccountCode บังคับทุกคำขอ PRICED (final review 2026-07-29):
-    // เดิมบังคับเฉพาะ buyback ≠ vendorSum แต่เคส Case-2F (buyback == vendorSum)
-    // ก็ยังต้องมีบัญชีเงินไว้ให้ penalty JE ตอน cancel วันที่ 8-30 — ไม่งั้น
-    // cancel ตาย "คำขอนี้ไม่มีบัญชีเงินสด" ทั้งที่ยกเลิกควรทำได้
-    if (!dto.depositAccountCode) {
-      throw new BadRequestException('กรุณาเลือกบัญชีเงินสด/ธนาคาร (บังคับทุกคำขอแบบมีราคารับซื้อ)');
-    }
+    // depositAccountCode ไม่บังคับแล้ว (คำสั่งเจ้าของ 2026-08-03): เส้นทาง
+    // เปลี่ยนเครื่องไม่มีการเคลื่อนไหวเงินสดในวัน finalize อีกต่อไป — A.3 ตั้ง
+    // ลูกหนี้ 11-2107 แทนขาเงินสด และเจ้าหนี้สัญญาใหม่ค้างไว้ให้รอบจ่ายปกติ.
+    // เหตุผลเดิมที่บังคับ (final review 2026-07-29) คือขาเงินสดของ A.3 + penalty
+    // JE ตอน cancel — penalty ถูกยกเลิกไปแล้ว 2026-07-31, ขาเงินสดถูกถอด
+    // 2026-08-03 → ไม่มีผู้อ่านค่านี้เหลืออยู่ในเส้นทางนี้แล้ว. คอลัมน์
+    // `ContractExchangeRequest.depositAccountCode` ยังคงอยู่ (ข้อมูลย้อนหลัง)
+    // และยังรับค่ามาบันทึกได้ถ้าไคลเอนต์ส่งมา แต่ไม่มีผลต่อ JE ใดๆ.
 
     const request = await (this.prisma as any).contractExchangeRequest.create({
       data: {
@@ -670,7 +669,8 @@ export class ContractExchangeService {
    *
    *   - A.1 ExchangeNewContract1ATemplate — open new HP receivable
    *   - A.2 ExchangeCloseOld21_1106Template — close old contract's outstanding
-   *   - A.3 ExchangeClearVendor21_1106Template — clear vendor liability
+   *   - A.3 ExchangeBuybackReceivable11_2107Template — ตั้งลูกหนี้-หน้าร้าน
+   *     11-2107 ล้างบัญชีพัก 21-1106 (ไม่มีขาเงินสด, เจ้าหนี้สัญญาใหม่ค้างไว้)
    *   - A.4 ShopExchangeReturnTemplate — re-intake old device into SHOP inventory
    *   - flip OLD contract → EXCHANGED
    *   - flip OLD product → REFURBISHED + ownedByCompanyId = SHOP
@@ -743,18 +743,13 @@ export class ContractExchangeService {
     // SHOP's own books never show the revenue/COGS/receivable for the new
     // device at all.
     //
-    // NOTE this does NOT make the contract flow through the "จ่ายให้หน้าร้าน
-    // (INTER-CO)" pending-batch queue (interco-pending.service.ts): A.3
-    // below (ExchangeClearVendor21_1106Template) ALWAYS fully clears
-    // 21-1101/21-1102 for the new contract in THIS SAME transaction (via the
-    // buyback + immediate cash top-up, D5) — so the FINANCE-side lens that
-    // queue reads never shows a nonzero balance for an exchange contract,
-    // with or without this SHOP leg. D5 symmetry (2026-08-02): since FINANCE
-    // settles instantly instead of waiting for the batch, SHOP must ALSO
-    // receive instantly in this same tx — see 4c
-    // (`ExchangeShopInstantSettlementTemplate`) immediately below, which
-    // clears S11-3001/S11-3002 back to 0 so this leg never becomes a stuck
-    // balance with no operational path to clear it.
+    // เจ้าของสั่ง 2026-08-03 (SUPERSEDES D5 สำหรับเส้นทางนี้): S11-3001/S11-3002
+    // ที่ leg นี้ตั้งขึ้น **ค้างไว้ตามปกติ** ไม่ถูกล้างทันทีอีกต่อไป —
+    // `ExchangeShopInstantSettlementTemplate` (เพิ่ม 2026-08-02 ตาม D5) ถูกลบทิ้ง
+    // พร้อมกับที่ A.3 เลิกจ่ายเงินสดฝั่ง FINANCE. ทั้งสองฝั่งไปล้างที่รอบจ่าย
+    // "จ่ายให้หน้าร้าน (INTER-CO)" เหมือนสัญญาขายปกติ — สัญญาเปลี่ยนเครื่อง
+    // จึง**ปรากฏ**ในคิว `IntercoPendingService.getPendingContracts()` แล้ว
+    // (21-1101/21-1102 ค้าง) พร้อม `legacyNoShop = false` (S11-3001/S11-3002 ค้าง).
     //
     // Financing identity: `approvePriced` ALWAYS hardcodes downPayment=0 on
     // the new contract (customer pays ฿0 at swap — the "down" already lives
@@ -774,7 +769,7 @@ export class ContractExchangeService {
     }
     const newDownAmount = new Decimal(newContract.downPayment.toString());
     const shopAcc = this.shopAccountResolver.resolveProductAccounts(newContract.productCategory);
-    const shopInvTransfer = await this.shopInventoryTransferTemplate.execute(
+    await this.shopInventoryTransferTemplate.execute(
       {
         // Same idempotencyKey SHAPE ContractWorkflowService.activate uses
         // (`shop-inventory-transfer:${contract.id}`) so a contract can never
@@ -795,20 +790,6 @@ export class ContractExchangeService {
       tx,
     );
 
-    // 4c. SHOP instant settlement (D5 symmetry, 2026-08-02) — the SHOP-side
-    // mirror of A.3's instant FINANCE-side cash movement, same tx. Clears
-    // S11-3001/S11-3002 back to 0 immediately — see 4b's comment above.
-    await this.shopInstantSettlement.execute(
-      {
-        newContractId: newContract.id,
-        contractNumber: newContract.contractNumber,
-        financedAmount: newFinanced,
-        commission: newCommission,
-        batchId: shopInvTransfer.batchId,
-      },
-      tx,
-    );
-
     // 5. JE A.2 — close old contract's outstanding
     // requestId keys the idempotency (C1b) so a re-exchange after cancel
     // doesn't collide with the first lifecycle's still-POSTED JEs.
@@ -825,17 +806,11 @@ export class ContractExchangeService {
       tx,
     );
 
-    // 6. JE A.3 — clear vendor liability for the new contract
-    const je3 = await this.t3.execute(
-      {
-        newContractId: newContract.id,
-        buyback,
-        newVendorYodjat: newFinanced,
-        newVendorCommission: newCommission,
-        depositAccountCode: request.depositAccountCode ?? undefined,
-      },
-      tx,
-    );
+    // 6. JE A.3 — ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106
+    // (คำสั่งเจ้าของ 2026-08-03): ไม่มีขาเงินสด และไม่แตะ 21-1101/21-1102 ของ
+    // สัญญาใหม่ — เจ้าหนี้นั้นค้างไว้ให้รอบจ่าย INTER-CO ปกติ. `buyback` คือ
+    // ยอดเดียวกับที่ A.2 พักไว้ที่ 21-1106 ดังนั้น 21-1106 net = 0 เสมอ.
+    const je3 = await this.t3.execute({ newContractId: newContract.id, buyback }, tx);
 
     // 7. JE A.4 — SHOP re-intake the old device.
     // Old product must have a costPrice so the inventory line lands correctly.

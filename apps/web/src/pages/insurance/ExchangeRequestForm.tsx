@@ -64,7 +64,6 @@ export default function ExchangeRequestForm() {
   const [conditionNote, setConditionNote] = useState('');
   const [buybackPrice, setBuybackPrice] = useState('');
   const [deviceCondition, setDeviceCondition] = useState('B');
-  const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
   const [newTotalMonths, setNewTotalMonths] = useState('12');
   const [newInterestRatePct, setNewInterestRatePct] = useState('');
 
@@ -140,7 +139,6 @@ export default function ExchangeRequestForm() {
           : {
               buybackPrice,
               deviceCondition,
-              depositAccountCode,
               newTotalMonths: parseInt(newTotalMonths, 10),
               ...(pctToRate(newInterestRatePct) !== undefined
                 ? { newInterestRate: pctToRate(newInterestRatePct) }
@@ -278,15 +276,6 @@ export default function ExchangeRequestForm() {
                 <label className="text-xs text-muted-foreground">จำนวนงวดสัญญาใหม่</label>
                 <input type="number" min="1" max="48" value={newTotalMonths} onChange={(e) => setNewTotalMonths(e.target.value)}
                   className="w-full mt-1 px-3 py-2 border border-input rounded-lg bg-background text-sm" />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">บัญชีรับ/จ่ายเงิน</label>
-                <select value={depositAccountCode} onChange={(e) => setDepositAccountCode(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 border border-input rounded-lg bg-background text-sm">
-                  {['11-1101', '11-1102', '11-1103', '11-1201', '11-1202', '11-1203'].map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">อัตราดอกเบี้ย (%/เดือน)</label>

@@ -326,6 +326,8 @@ enum OnlineOrderStatus {
   COMPLETED
   CANCELLED
   REFUNDED
+  /// B5: เงินเข้าแล้วแต่เครื่องถูกขายไปก่อน (แพ้ race / โดนตัดหน้า) — ต้องคืนเงินลูกค้า
+  PAYMENT_RECEIVED_UNFULFILLABLE
 }
 
 enum OnlinePaymentChannel {
@@ -6099,19 +6101,26 @@ model BroadcastApproval {
 // Online Shop — Phase 1
 // ============================================================
 
+/// B5: มี SQL-only partial unique index `product_reservations_active_product_idx`
+/// บน (product_id) WHERE status = 'ACTIVE' — สร้างด้วยมือใน migration 20260984000000
+/// (Prisma schema ไม่มีทาง declare partial unique ได้) ถ้ารัน `prisma migrate dev` ต่อจากนี้
+/// อย่ายอมรับ diff ที่เสนอ DROP INDEX product_reservations_active_product_idx — index นี้จำเป็นต่อ
+/// invariant "1 เครื่อง = hold ACTIVE ได้แถวเดียว" ที่กันขายซ้ำเว็บ ↔ หน้าร้าน
 model ProductReservation {
-  id           String            @id @default(uuid())
-  productId    String            @map("product_id")
-  product      Product           @relation(fields: [productId], references: [id])
-  customerId   String?           @map("customer_id")
-  customer     Customer?         @relation(fields: [customerId], references: [id])
-  sessionId    String            @map("session_id")
-  reservedAt   DateTime          @default(now()) @map("reserved_at")
-  expiresAt    DateTime          @map("expires_at")
-  status       ReservationStatus @default(ACTIVE)
-  consumedById String?           @map("consumed_by_id")
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  id                String            @id @default(uuid())
+  productId         String            @map("product_id")
+  product           Product           @relation(fields: [productId], references: [id])
+  customerId        String?           @map("customer_id")
+  customer          Customer?         @relation(fields: [customerId], references: [id])
+  sessionId         String            @map("session_id")
+  reservedAt        DateTime          @default(now()) @map("reserved_at")
+  expiresAt         DateTime          @map("expires_at")
+  status            ReservationStatus @default(ACTIVE)
+  consumedById      String?           @map("consumed_by_id")
+  /// B5: เวลาที่แจ้งลูกค้าแล้วว่า hold นี้โดนตัดหน้า (null = ยังไม่แจ้ง) — กัน cron แจ้งซ้ำ
+  preemptNotifiedAt DateTime?         @map("preempt_notified_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
 
   onlineOrder       OnlineOrder?
   onlineApplication OnlineInstallmentApplication? @relation("ApplicationReservation")
@@ -6119,6 +6128,7 @@ model ProductReservation {
   @@index([productId, status])
   @@index([customerId])
   @@index([expiresAt])
+  @@index([status, preemptNotifiedAt])
   @@map("product_reservations")
 }
 

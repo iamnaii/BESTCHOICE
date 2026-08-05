@@ -9,7 +9,7 @@ describe('ShopReservationService', () => {
 
   beforeEach(async () => {
     prisma = {
-      product: { findUnique: jest.fn() },
+      product: { findFirst: jest.fn() },
       productReservation: {
         findFirst: jest.fn(),
         create: jest.fn(),
@@ -25,7 +25,7 @@ describe('ShopReservationService', () => {
 
   describe('reserve', () => {
     it('creates 15-min reservation for available product', async () => {
-      prisma.product.findUnique.mockResolvedValue({ id: 'p1', status: 'IN_STOCK', isOnlineVisible: true });
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
       prisma.productReservation.findFirst.mockResolvedValue(null);
       prisma.productReservation.create.mockResolvedValue({ id: 'r1', expiresAt: new Date(Date.now() + 900_000) });
 
@@ -41,22 +41,22 @@ describe('ShopReservationService', () => {
     });
 
     it('rejects if product not found', async () => {
-      prisma.product.findUnique.mockResolvedValue(null);
+      prisma.product.findFirst.mockResolvedValue(null);
       await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(NotFoundException);
     });
 
-    it('rejects if product not in stock', async () => {
-      prisma.product.findUnique.mockResolvedValue({ id: 'p1', status: 'SOLD' });
-      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(ConflictException);
-    });
-
-    it('rejects if product not online visible', async () => {
-      prisma.product.findUnique.mockResolvedValue({ id: 'p1', status: 'IN_STOCK', isOnlineVisible: false });
-      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(NotFoundException);
+    it('rejects (404) เมื่อเครื่องไม่ผ่าน readiness — ขายแล้ว / ปิดจากเว็บ / ไม่มีราคา / ไม่มีรูป', async () => {
+      prisma.product.findFirst.mockResolvedValue(null);
+      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
+        NotFoundException,
+      );
+      // fragment ถูกส่งเข้า query จริง (ไม่ได้จองเครื่องไม่มีราคาได้อีก)
+      const where = prisma.product.findFirst.mock.calls[0][0].where;
+      expect(where.AND).toEqual(expect.arrayContaining([{ cashPrice: { gt: 0 } }]));
     });
 
     it('rejects if already reserved by another session', async () => {
-      prisma.product.findUnique.mockResolvedValue({ id: 'p1', status: 'IN_STOCK', isOnlineVisible: true });
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
       prisma.productReservation.findFirst.mockResolvedValue({
         id: 'r-existing',
         sessionId: 'other-session',
@@ -67,7 +67,7 @@ describe('ShopReservationService', () => {
     });
 
     it('extends existing reservation if same session re-reserves', async () => {
-      prisma.product.findUnique.mockResolvedValue({ id: 'p1', status: 'IN_STOCK', isOnlineVisible: true });
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
       prisma.productReservation.findFirst.mockResolvedValue({
         id: 'r-existing',
         sessionId: 's1',

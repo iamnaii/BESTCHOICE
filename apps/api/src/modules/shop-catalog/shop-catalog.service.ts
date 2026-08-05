@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { productReadinessWhere } from '../../utils/product-readiness.util';
+import { readBoolFlag } from '../../utils/config.util';
 
 export interface ProductGroup {
   /** Representative product id — the catalog card links to /products/:id with this. */
@@ -48,18 +50,15 @@ export interface ProductUnit {
 const INTEREST_RATE_PER_MONTH = 0.0099; // 0.99%/month — example, adjust per pricing config
 const DEFAULT_MONTHS = 12;
 const DEFAULT_DOWN_PCT = 0.2;
-const SHOP_BRAND = 'Apple';
-const PHONE_CATEGORIES = ['PHONE_NEW', 'PHONE_USED'] as const;
 const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
-function shopBaseWhere(): Record<string, any> {
-  return {
-    deletedAt: null,
-    isOnlineVisible: true,
-    status: 'IN_STOCK',
-    brand: SHOP_BRAND,
-    category: { in: [...PHONE_CATEGORIES] },
-  };
+// B0 §2.3: เงื่อนไขขึ้นเว็บมาจาก util ตัวเดียว (brand/category/สถานะ/ราคา/รูป/เกรด/[DEMO])
+// fragment ใช้คีย์ `AND` เท่านั้น → ปลอดภัยกับ where.OR ที่ listGroupedByModel assign เอง
+// `excludeDemo` มาจาก SystemConfig flag `shop_hide_demo_products` ที่ผู้เรียก (แต่ละ public
+// method ด้านล่าง) อ่านมาครั้งเดียวต่อ request แล้ว thread เข้ามา — ตาม util's JSDoc contract
+// (util นี้ pure ไม่อ่าน SystemConfig เอง)
+function shopBaseWhere(excludeDemo: boolean): Record<string, any> {
+  return { ...productReadinessWhere({ excludeDemo }) };
 }
 
 @Injectable()
@@ -80,8 +79,11 @@ export class ShopCatalogService {
   }): Promise<{ data: ProductGroup[]; total: number; page: number; limit: number }> {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 24;
+    // อ่าน [DEMO] flag ครั้งเดียวต่อ request — ใช้ร่วมกันทั้ง groupBy หลัก + allGroups count
+    // (ทั้งคู่ reuse `where` object เดียวกัน ไม่ได้เรียก shopBaseWhere ซ้ำ)
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
 
-    const where: any = { ...shopBaseWhere() };
+    const where: any = { ...shopBaseWhere(excludeDemo) };
     if (filters.condition) {
       where.category = filters.condition === 'NEW' ? 'PHONE_NEW' : 'PHONE_USED';
     }
@@ -164,9 +166,10 @@ export class ShopCatalogService {
   }
 
   async listAvailableModels(): Promise<{ model: string; count: number }[]> {
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
     const rows = await this.prisma.product.groupBy({
       by: ['model'],
-      where: shopBaseWhere(),
+      where: shopBaseWhere(excludeDemo),
       _count: { id: true },
       orderBy: [{ _count: { id: 'desc' as const } }],
     });
@@ -174,11 +177,15 @@ export class ShopCatalogService {
   }
 
   async listRelated(productId: string): Promise<ProductGroup[]> {
+    // [DEMO] flag ครั้งเดียวต่อ request — ใช้ทั้ง head lookup และ related list ด้านล่าง
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
     const product = await this.prisma.product.findFirst({
-      where: { id: productId, ...shopBaseWhere() },
+      // head lookup เท่านั้น — ต้องตรงกับ getProductDetail (permalink ของเครื่องที่ขายแล้ว)
+      where: { id: productId, ...productReadinessWhere({ requireInStock: false, excludeDemo }) },
     });
     if (!product) return [];
-    const where = { ...shopBaseWhere(), model: { not: product.model } };
+    // ตัวรายการ related ยังใช้ shopBaseWhere() ปกติ (ต้องเป็นเครื่องที่ซื้อได้จริง)
+    const where = { ...shopBaseWhere(excludeDemo), model: { not: product.model } };
     const groups = await this.prisma.product.groupBy({
       by: [...GROUP_BY],
       where,
@@ -222,27 +229,24 @@ export class ShopCatalogService {
   }
 
   async getProductDetail(productId: string): Promise<ProductDetail | null> {
+    // [DEMO] flag อ่านครั้งเดียวต่อ request — ใช้ร่วมกันทั้ง head query + units query ด้านล่าง
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
     const product = await this.prisma.product.findFirst({
       where: {
         id: productId,
-        deletedAt: null,
-        isOnlineVisible: true,
-        brand: SHOP_BRAND,
-        category: { in: [...PHONE_CATEGORIES] },
+        // ไม่บังคับ IN_STOCK — เครื่องที่ขายแล้วต้องยังเปิดหน้ารุ่นได้ (permalink)
+        ...productReadinessWhere({ requireInStock: false, excludeDemo }),
       },
     });
     if (!product) return null;
 
-    // Get all units (same brand+model, in stock)
+    // Get all units (same brand+model+storage+category, พร้อมขายจริง)
     const allUnits = await this.prisma.product.findMany({
       where: {
-        brand: product.brand,
         model: product.model,
         storage: product.storage,
         category: product.category,
-        deletedAt: null,
-        isOnlineVisible: true,
-        status: 'IN_STOCK',
+        ...productReadinessWhere({ excludeDemo }),
       },
       orderBy: { cashPrice: 'asc' },
     });

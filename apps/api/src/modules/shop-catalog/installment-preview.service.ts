@@ -7,6 +7,7 @@ import {
   findGfinMapping,
   findGfinOverpriceRule,
 } from '../../utils/installment-calc.util';
+import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
 
 export interface PreviewResult {
@@ -28,11 +29,12 @@ export class InstallmentPreviewService {
   constructor(private prisma: PrismaService) {}
 
   async preview(dto: InstallmentPreviewDto): Promise<PreviewResult> {
-    const product = await this.prisma.product.findUnique({
-      where: { id: dto.productId },
+    const product = await this.prisma.product.findFirst({
+      // B0 §2.3: quote ได้เฉพาะเครื่องที่พร้อมขายบนเว็บจริง (เดิมเช็คแค่ deletedAt)
+      where: { id: dto.productId, ...productReadinessWhere() },
       include: { prices: { where: { deletedAt: null } } },
     });
-    if (!product || product.deletedAt) {
+    if (!product) {
       return { available: false, reason: 'product_not_found' };
     }
 

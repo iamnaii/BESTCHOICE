@@ -3,6 +3,7 @@ import { ApplicationStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
+import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { CreateApplicationDto } from './dto/create-application.dto';
 
 /**
@@ -26,8 +27,11 @@ export class ShopInstallmentApplyService {
   ) {}
 
   async submit(dto: CreateApplicationDto, customerId: string | undefined) {
-    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+    const product = await this.prisma.product.findFirst({
+      // B0 §2.3: ข้อความเดียวกับ reserve() เพื่อให้ลูกค้าเห็นเหตุผลเดียวกันทุกทางเข้า
+      where: { id: dto.productId, ...productReadinessWhere() },
+    });
+    if (!product) throw new NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ');
 
     const duplicate = await this.prisma.onlineInstallmentApplication.findFirst({
       where: {

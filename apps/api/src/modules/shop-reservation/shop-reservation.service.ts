@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { productReadinessWhere } from '../../utils/product-readiness.util';
+import { readBoolFlag } from '../../utils/config.util';
 
 const RESERVATION_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -19,9 +21,13 @@ export class ShopReservationService {
   constructor(private prisma: PrismaService) {}
 
   async reserve(input: ReserveInput) {
-    const product = await this.prisma.product.findUnique({ where: { id: input.productId } });
-    if (!product || product.isOnlineVisible === false) throw new NotFoundException('สินค้านี้ไม่พบ');
-    if (product.status !== 'IN_STOCK') throw new ConflictException('สินค้านี้ไม่อยู่ในสต็อกแล้ว');
+    // B0 §2.3: จองได้เฉพาะเครื่องที่ "พร้อมขึ้นเว็บ" จริง — เดิมจองเครื่องไม่มีราคาได้
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
+    const product = await this.prisma.product.findFirst({
+      where: { id: input.productId, ...productReadinessWhere({ excludeDemo }) },
+      select: { id: true, status: true },
+    });
+    if (!product) throw new NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ');
 
     const existing = await this.prisma.productReservation.findFirst({
       where: {

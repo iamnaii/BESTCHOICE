@@ -79,12 +79,15 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, ...data } = dto;
+    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
 
-    // DTO guard: prices[] ที่มี isDefault: true มากกว่า 1 รายการ จะชน DB partial unique
-    // index `product_prices_one_default` เป็น P2002 ดิบ → ต้อง validate ที่ชั้นนี้ก่อน
-    const explicitDefaultCount = (prices ?? []).filter((p) => p.isDefault === true).length;
-    if (explicitDefaultCount > 1) {
+    // DTO guard: prices[] ที่มี isDefault:true (หรือ fallback ของ element แรกที่ไม่ได้ระบุ)
+    // มากกว่า 1 รายการ จะชน DB partial unique index `product_prices_one_default` เป็น P2002
+    // ดิบ → ต้องคำนวณ "effective default" หลัง apply fallback `isDefault ?? (i===0)` ก่อนนับ
+    // (นับแค่ isDefault===true ตรงๆ พลาดเคส element 0 ที่ fallback เป็น true โดยปริยาย เช่น
+    // [{...}, {..., isDefault:true}] → element 0 fallback true + element 1 explicit true = ชน)
+    const effectiveDefaultCount = (prices ?? []).filter((p, i) => p.isDefault ?? i === 0).length;
+    if (effectiveDefaultCount > 1) {
       throw new BadRequestException('ตั้งราคา default ได้เพียงรายการเดียว');
     }
 
@@ -99,6 +102,15 @@ export class ProductsService {
         : installmentPrice === null
           ? null
           : new Prisma.Decimal(installmentPrice);
+    // Json? column: ส่ง JS `null` ตรงๆ เขียนเป็น JSON literal null (column ไม่เป็น SQL NULL —
+    // `accessories_included IS NULL` จะ false, Prisma filter หา null ไม่เจอ) ต้องแปลงเป็น
+    // Prisma.DbNull ตอนต้องการ "เคลียร์" คอลัมน์จริงๆ
+    const accessoriesIncludedValue =
+      accessoriesIncluded === undefined
+        ? undefined
+        : accessoriesIncluded === null
+          ? Prisma.DbNull
+          : accessoriesIncluded;
 
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.create({
@@ -107,6 +119,9 @@ export class ProductsService {
           costPrice,
           ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          ...(accessoriesIncludedValue !== undefined
+            ? { accessoriesIncluded: accessoriesIncludedValue }
+            : {}),
           warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null,
           ...(isInStock ? { stockInDate: new Date() } : {}),
           ...(prices && prices.length > 0
@@ -136,7 +151,7 @@ export class ProductsService {
 
   async update(id: string, dto: UpdateProductDto) {
     await this.findOne(id);
-    const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, ...data } = dto;
+    const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
     const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined;
     // 3 สถานะเหมือน create — null ต้องเขียนลงคอลัมน์ได้ (ล้างราคา) ห้ามส่งเข้า Prisma.Decimal
     const cashDecimal =
@@ -147,6 +162,14 @@ export class ProductsService {
         : installmentPrice === null
           ? null
           : new Prisma.Decimal(installmentPrice);
+    // Json? column — เหมือน create: null ต้องแปลงเป็น Prisma.DbNull ไม่งั้นเขียนเป็น JSON
+    // literal null (SQL column ไม่เป็น NULL จริง)
+    const accessoriesIncludedValue =
+      accessoriesIncluded === undefined
+        ? undefined
+        : accessoriesIncluded === null
+          ? Prisma.DbNull
+          : accessoriesIncluded;
 
     return this.prisma.$transaction(async (tx) => {
       await tx.product.update({
@@ -156,6 +179,9 @@ export class ProductsService {
           ...(costPrice !== undefined ? { costPrice } : {}),
           ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          ...(accessoriesIncludedValue !== undefined
+            ? { accessoriesIncluded: accessoriesIncludedValue }
+            : {}),
           // แก้ราคามือ = เลิกเป็นราคาที่เติมอัตโนมัติ (badge ฝั่ง B1 อ่านฟิลด์นี้)
           ...(touchesPrice ? { priceAutofilledAt: null } : {}),
           ...(warrantyExpireDate !== undefined

@@ -76,8 +76,54 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
           { label: 'ราคา B', amount: 12000, isDefault: true },
         ],
       } as never),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(new BadRequestException('ตั้งราคา default ได้เพียงรายการเดียว'));
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // Fix round 1 [Important]: guard เดิมนับเฉพาะ isDefault===true ตรงๆ พลาดเคส element 0
+  // ที่ไม่ได้ระบุ isDefault แล้ว fallback เป็น true โดยปริยาย (`isDefault ?? (i===0)` ที่ :118)
+  // payload นี้ reviewer reproduce แล้วว่าชน DB partial unique index เป็น P2002/500 ดิบ ถ้า
+  // guard ไม่คำนวณ "effective default" หลัง apply fallback ก่อนนับ
+  it('create: element แรกไม่ระบุ isDefault (fallback=true) + element ถัดไป isDefault:true ตรงๆ → BadRequestException ไทย เช่นกัน', async () => {
+    await expect(
+      service.create({
+        name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+        costPrice: 15000, branchId: 'b1',
+        prices: [
+          { label: 'ราคาขาย', amount: 17000 },
+          { label: 'ราคาโปร', amount: 15000, isDefault: true },
+        ],
+      } as never),
+    ).rejects.toThrow(new BadRequestException('ตั้งราคา default ได้เพียงรายการเดียว'));
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('create: element เดียวไม่ระบุ isDefault (fallback=true) → ผ่าน guard ปกติ', async () => {
+    await expect(
+      service.create({
+        name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+        costPrice: 15000, branchId: 'b1',
+        prices: [{ label: 'ราคาขาย', amount: 17000 }],
+      } as never),
+    ).resolves.toBeDefined();
+  });
+
+  // Fix round 1 [Minor]: accessoriesIncluded เป็น Json? column — ส่ง JS null ตรงๆ เขียนเป็น
+  // JSON literal null (SQL column ไม่เป็น NULL จริง, `IS NULL` filter หาไม่เจอ) ต้องแปลงเป็น
+  // Prisma.DbNull เมื่อต้องการเคลียร์คอลัมน์จริงๆ
+  it('create: accessoriesIncluded: null → เขียนเป็น Prisma.DbNull (ไม่ใช่ JSON null)', async () => {
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1', accessoriesIncluded: null,
+    } as never);
+    const data = tx.product.create.mock.calls[0][0].data;
+    expect(data.accessoriesIncluded).toBe(Prisma.DbNull);
+  });
+
+  it('update: accessoriesIncluded: null → เขียนเป็น Prisma.DbNull (ไม่ใช่ JSON null)', async () => {
+    await service.update('p1', { accessoriesIncluded: null } as never);
+    const data = tx.product.update.mock.calls[0][0].data;
+    expect(data.accessoriesIncluded).toBe(Prisma.DbNull);
   });
 
   it('update: แก้ราคามือ → เคลียร์ priceAutofilledAt เป็น null', async () => {

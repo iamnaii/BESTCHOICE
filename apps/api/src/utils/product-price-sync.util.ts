@@ -20,15 +20,27 @@ const INSTALLMENT_PREFIX = 'ราคาผ่อน';
  * create/update แถวใหม่เป็น default ขณะแถวเก่ายังเป็น default อยู่ (ยังไม่ถูกปลด) จะได้
  * P2002 ทันที ไม่ใช่แค่ข้อมูลเพี้ยน — pattern เดียวกับ `ProductsPricingService.addPrice`/
  * `updatePrice` (unset-other-defaults ด้วย `updateMany` ก่อนเสมอ)
+ *
+ * Fix round 1 [Important 1]: ค่าที่ **ไม่เป็นบวก** (`0` หรือติดลบ) ปฏิบัติเหมือน `null` เป๊ะ
+ * — ถือว่า "ยืนยันว่าไม่มีราคา" ข้าม sync ทั้งหมด (ไม่ relabel/overwrite แถวเดิม, ไม่สร้างแถว
+ * ใหม่) นี่คือฝาแฝดฝั่ง **เขียน** ของบั๊กที่ Task 1 แก้ฝั่ง **อ่าน** แล้ว (`getPositiveDisplayPrices`
+ * ใน `apps/web` ที่ short-circuit เฉพาะ `!= null` เดิมปล่อยให้คอลัมน์ `0` ชนะ label chain) —
+ * ถ้าไม่กันตรงนี้ ส่ง `Decimal('0')` เข้ามาจะ relabel+overwrite แถว default เดิม (เช่น
+ * `'ราคาขาย'` 17,000) ให้กลายเป็นแถว default เดียวราคา 0 ⇒ ผู้อ่านที่ `take:1` (POS/บอท/margin)
+ * ควอต 0 บาทให้ลูกค้าทันที ปิดที่ util นี้เพราะเป็นคอขวดจุดเดียวที่ caller ทั้ง 3 ทาง
+ * (products.service / po-receiving / repossessions) inherit การกันนี้ไปฟรีโดยไม่ต้องแก้แยก
  */
+function isUsablePrice(value: Prisma.Decimal | null | undefined): value is Prisma.Decimal {
+  return value !== undefined && value !== null && value.gt(0);
+}
+
 export async function syncPriceRowsFromColumns(
   tx: Prisma.TransactionClient,
   productId: string,
   columns: { cashPrice?: Prisma.Decimal | null; installmentPrice?: Prisma.Decimal | null },
 ): Promise<{ cashRowId: string | null; installmentRowId: string | null }> {
-  const hasCash = columns.cashPrice !== undefined && columns.cashPrice !== null;
-  const hasInstallment =
-    columns.installmentPrice !== undefined && columns.installmentPrice !== null;
+  const hasCash = isUsablePrice(columns.cashPrice);
+  const hasInstallment = isUsablePrice(columns.installmentPrice);
   if (!hasCash && !hasInstallment) return { cashRowId: null, installmentRowId: null };
 
   const rows = await tx.productPrice.findMany({

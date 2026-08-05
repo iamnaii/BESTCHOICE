@@ -128,4 +128,52 @@ describe('syncPriceRowsFromColumns', () => {
     expect(tx.state.filter((r) => r.isDefault)).toHaveLength(1);
     expect(tx.state.find((r) => r.isDefault)!.label).toBe(CASH_LABEL);
   });
+
+  // Fix round 1 [Important 2]: เทสต์ก่อนหน้าคุมได้แค่ branch "create ใหม่" ของการตั้ง default
+  // (เพราะ seed ของมันไม่มีแถว CASH_LABEL อยู่ก่อน จึงไม่มีทางเดิน update-in-place path เลย)
+  // reviewer ทำ mutation test เติม `isDefault: true` กลับเข้า branch update-in-place
+  // (util.ts บรรทัด update ของ cash เมื่อ exact/defaultRow ถูกพบ) แล้วเทสต์เดิมทั้งหมดยังเขียว
+  // ทั้งที่ mutant ตัวนั้น P2002 จริงบน DB (อีกกิ่งหนึ่งของ "ตั้ง default ใหม่ก่อนปลดของเดิม")
+  // เคสนี้ seed ให้มีแถว CASH_LABEL (isDefault:false) อยู่แล้ว บังคับให้ต้องเดิน
+  // update-in-place branch จริง (ไม่ใช่ create) พร้อมกับมีแถวอื่นเป็น default อยู่ก่อน
+  it('unset default เดิมก่อนตั้ง default ใหม่เสมอ (branch update-in-place) — ไม่มี isDefault ซ้อน 2 แถวระหว่างทาง', async () => {
+    const tx = makeTx([
+      { id: 'r1', label: CASH_LABEL, amount: D('15000'), isDefault: false },
+      { id: 'r2', label: INSTALLMENT_LABEL, amount: D('20000'), isDefault: true },
+    ]);
+    await syncPriceRowsFromColumns(tx as any, 'p1', { cashPrice: D('18000') });
+    expect(Math.max(...tx.calls.defaultCountSnapshots)).toBeLessThanOrEqual(1);
+    expect(tx.state.filter((r) => r.isDefault)).toHaveLength(1);
+    expect(tx.state.find((r) => r.isDefault)!.label).toBe(CASH_LABEL);
+    expect(tx.state.find((r) => r.id === 'r1')!.amount.toString()).toBe('18000');
+  });
+
+  // Fix round 1 [Important 1]: ค่าที่ไม่เป็นบวก (0 / ติดลบ) ต้องปฏิบัติเหมือน null เป๊ะ —
+  // ฝาแฝดฝั่งเขียนของบั๊กที่ Task 1 แก้ฝั่งอ่านแล้ว (คอลัมน์ 0 ต้องไม่ชนะแถวราคาจริง)
+  it('cashPrice = 0 → ปฏิบัติเหมือน null (ไม่ sync, ไม่สร้างแถวใหม่)', async () => {
+    const tx = makeTx([]);
+    const result = await syncPriceRowsFromColumns(tx as any, 'p1', { cashPrice: D('0') });
+    expect(tx.productPrice.create).not.toHaveBeenCalled();
+    expect(tx.productPrice.update).not.toHaveBeenCalled();
+    expect(tx.state).toHaveLength(0);
+    expect(result.cashRowId).toBeNull();
+  });
+
+  it('cashPrice = ติดลบ → ปฏิบัติเหมือน null (ไม่ sync, ไม่สร้างแถวใหม่)', async () => {
+    const tx = makeTx([]);
+    const result = await syncPriceRowsFromColumns(tx as any, 'p1', { cashPrice: D('-100') });
+    expect(tx.productPrice.create).not.toHaveBeenCalled();
+    expect(tx.productPrice.update).not.toHaveBeenCalled();
+    expect(tx.state).toHaveLength(0);
+    expect(result.cashRowId).toBeNull();
+  });
+
+  it('มีแถว "ราคาขาย" 17000 อยู่ก่อน ส่ง cashPrice=0 เข้ามา → แถวเดิมต้องไม่ถูกแตะเลย', async () => {
+    const tx = makeTx([{ id: 'r1', label: 'ราคาขาย', amount: D('17000'), isDefault: true }]);
+    await syncPriceRowsFromColumns(tx as any, 'p1', { cashPrice: D('0') });
+    expect(tx.productPrice.update).not.toHaveBeenCalled();
+    expect(tx.productPrice.create).not.toHaveBeenCalled();
+    expect(tx.state[0]).toMatchObject({ id: 'r1', label: 'ราคาขาย', isDefault: true });
+    expect(tx.state[0].amount.toString()).toBe('17000');
+  });
 });

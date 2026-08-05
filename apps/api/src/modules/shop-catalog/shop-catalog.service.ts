@@ -13,7 +13,7 @@ export interface ProductGroup {
   stockCount: number;
   thumbnailUrl?: string;
   conditionGrades: string[];
-  monthlyPaymentFrom: number;
+  monthlyPaymentFrom: number | null;
   condition: 'NEW' | 'USED';
 }
 
@@ -48,7 +48,12 @@ export interface ProductUnit {
 }
 
 const INTEREST_RATE_PER_MONTH = 0.0099; // 0.99%/month — example, adjust per pricing config
+// B0: unused now that monthlyPaymentFrom is hardcoded to null (calculateMonthlyPayment's
+// 2 call sites were removed) — kept for B4, which will re-wire these into a real InterestConfig
+// read instead of deleting and re-adding them.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const DEFAULT_MONTHS = 12;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const DEFAULT_DOWN_PCT = 0.2;
 const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
@@ -138,10 +143,6 @@ export class ShopCatalogService {
         });
         const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
         const stockCount = g._count?.id ?? 0;
-        const monthly =
-          minPrice != null
-            ? this.calculateMonthlyPayment(minPrice, DEFAULT_MONTHS, DEFAULT_DOWN_PCT)
-            : 0;
         return {
           id: sample?.id ?? '',
           brand: g.brand,
@@ -151,7 +152,10 @@ export class ShopCatalogService {
           stockCount,
           thumbnailUrl: sample?.gallery[0],
           conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-          monthlyPaymentFrom: monthly,
+          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
+          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
+          // เลขจริงที่อ่าน InterestConfig มาใน B4
+          monthlyPaymentFrom: null,
           condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
         };
       }),
@@ -208,10 +212,6 @@ export class ShopCatalogService {
           select: { id: true, gallery: true, conditionGrade: true },
         });
         const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
-        const monthly =
-          minPrice != null
-            ? this.calculateMonthlyPayment(minPrice, DEFAULT_MONTHS, DEFAULT_DOWN_PCT)
-            : 0;
         return {
           id: sample?.id ?? '',
           brand: g.brand,
@@ -221,7 +221,10 @@ export class ShopCatalogService {
           stockCount: g._count?.id ?? 0,
           thumbnailUrl: sample?.gallery[0],
           conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-          monthlyPaymentFrom: monthly,
+          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
+          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
+          // เลขจริงที่อ่าน InterestConfig มาใน B4
+          monthlyPaymentFrom: null,
           condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
         };
       }),
@@ -253,9 +256,12 @@ export class ShopCatalogService {
 
     const tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }> = {};
     for (const u of allUnits) {
+      // B0: readiness fragment กรอง cashPrice > 0 มาแล้ว — ถ้ายังเจอ null แปลว่า
+      // ข้อมูลไม่ครบ ให้ตกจากรายการแทนการโชว์ ฿0 (เคยหลอกลูกค้าว่าเครื่องฟรี)
+      if (u.cashPrice == null) continue;
       const grade = u.conditionGrade ?? 'unknown';
       if (!tiers[grade]) tiers[grade] = { minPrice: Infinity, maxPrice: 0, units: [] };
-      const price = u.cashPrice != null ? Number(u.cashPrice) : 0;
+      const price = Number(u.cashPrice);
       const imeiPartial = u.imeiSerial ? `••••••••••${u.imeiSerial.slice(-4)}` : undefined;
       tiers[grade].units.push({
         id: u.id,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { MessageCircle } from 'lucide-react';
@@ -81,10 +81,13 @@ export default function ProductDetailPage() {
     setLightboxOpen(false);
   }, [id]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['shop-product', id],
     queryFn: () => api.get(`/api/shop/products/${id}`).then((r) => r.data as ProductDetail),
     enabled: !!id,
+    // B0: 404 (readiness-filtered/sold-out) is a real, expected outcome here —
+    // don't burn 3 retries with backoff before the error branch below can show.
+    retry: false,
   });
 
   // Computed null-safely so this can sit above the early return below and
@@ -143,7 +146,7 @@ export default function ProductDetailPage() {
       if (id) {
         track('AddToCart', {
           content_ids: [selectedUnit?.id ?? id],
-          value: selectedUnit?.cashPrice ?? 0,
+          value: selectedUnit?.cashPrice ?? undefined,
           currency: 'THB',
         });
       }
@@ -154,6 +157,38 @@ export default function ProductDetailPage() {
       toast.error(e.response?.data?.message ?? 'จองไม่สำเร็จ');
     },
   });
+
+  // B0: head query ของ getProductDetail ผ่าน readiness แล้ว → controller ตอบ 404 ได้จริง
+  // ถ้ายังรวม error เข้ากับ loading ลิงก์ที่ส่งลูกค้าจะเป็น Skeleton หมุนค้างตลอดกาล
+  if (isError) {
+    return (
+      <ShopLayout>
+        <Container className="py-16">
+          <div className="mx-auto max-w-md rounded-2xl border border-border bg-card p-8 text-center leading-snug">
+            <h1 className="text-xl font-semibold text-foreground">สินค้านี้ไม่พร้อมขายบนเว็บ</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              เครื่องนี้อาจขายไปแล้ว หรือข้อมูลยังไม่ครบสำหรับขายออนไลน์ — ทักแชทมาได้เลย
+              ทีมงานช่วยหาเครื่องรุ่นเดียวกันให้ครับ
+            </p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button asChild variant="cta" size="lg">
+                <a
+                  href={lineOaMessageUrl(`สนใจสินค้ารหัส ${id ?? ''} ครับ/ค่ะ`)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  ทักแชทสอบถาม
+                </a>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                <Link to="/products">ดูสินค้าทั้งหมด</Link>
+              </Button>
+            </div>
+          </div>
+        </Container>
+      </ShopLayout>
+    );
+  }
 
   if (isLoading || !data) {
     return (
@@ -174,7 +209,7 @@ export default function ProductDetailPage() {
   }
 
   const displayName = [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ');
-  const price = selectedUnit?.cashPrice ?? 0;
+  const price = selectedUnit?.cashPrice ?? null;
   const monthlyFrom =
     preview?.available && preview.monthlyPayment ? Math.ceil(preview.monthlyPayment) : null;
   const gradeKeys = Object.keys(data.tiers);
@@ -309,7 +344,7 @@ export default function ProductDetailPage() {
 
             <div className="space-y-1">
               <div className="flex flex-wrap items-baseline gap-2">
-                {price > 0 ? (
+                {price != null && price > 0 ? (
                   <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
                     ฿{price.toLocaleString()}
                   </div>

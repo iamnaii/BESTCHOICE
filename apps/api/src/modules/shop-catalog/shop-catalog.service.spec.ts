@@ -159,7 +159,7 @@ describe('ShopCatalogService', () => {
       const result = await service.listGroupedByModel({});
 
       expect(result.data[0].minPrice).toBeNull();
-      expect(result.data[0].monthlyPaymentFrom).toBe(0);
+      expect(result.data[0].monthlyPaymentFrom).toBeNull();
     });
 
     it('filters by search text on brand OR model (case-insensitive)', async () => {
@@ -366,6 +366,56 @@ describe('ShopCatalogService', () => {
       expect(u.color).toBe('Blue');
       expect(u.installmentPrice).toBe(17500);
       expect(JSON.stringify(result)).not.toContain('costPrice');
+    });
+
+    describe('getProductDetail — ราคา null (B0)', () => {
+      it('ตัด unit ที่ไม่มี cashPrice ออกแทนการโชว์ 0', async () => {
+        prisma.product.findFirst.mockResolvedValue({
+          id: 'p1',
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '128GB',
+          category: 'PHONE_NEW',
+          color: null,
+          onlineDescription: null,
+          gallery: ['g'],
+          gallery360: [],
+          cashPrice: '28900',
+          installmentPrice: null,
+        });
+        prisma.product.findMany.mockResolvedValue([
+          {
+            id: 'u1',
+            conditionGrade: null,
+            cashPrice: '28900',
+            installmentPrice: null,
+            gallery: [],
+            gallery360: [],
+            imeiSerial: null,
+            batteryHealth: null,
+            hasBox: null,
+            color: null,
+            shopWarrantyDays: null,
+          },
+          {
+            id: 'u2',
+            conditionGrade: null,
+            cashPrice: null,
+            installmentPrice: null,
+            gallery: [],
+            gallery360: [],
+            imeiSerial: null,
+            batteryHealth: null,
+            hasBox: null,
+            color: null,
+            shopWarrantyDays: null,
+          },
+        ]);
+
+        const detail = await service.getProductDetail('p1');
+        const units = Object.values(detail!.tiers).flatMap((t) => t.units);
+        expect(units.map((u) => u.id)).toEqual(['u1']);
+      });
     });
   });
 

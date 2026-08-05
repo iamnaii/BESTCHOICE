@@ -163,6 +163,8 @@ describe('ShopInstallmentApplyService', () => {
     prismaMock.product.findFirst.mockResolvedValue({
       id: 'p1',
       costPrice: 12000,
+      cashPrice: 18000,
+      installmentPrice: null,
       deletedAt: null,
     });
     prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue(null);

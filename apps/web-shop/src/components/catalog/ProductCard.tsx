@@ -10,7 +10,7 @@ export interface ProductGroup {
   minPrice: number | null;
   stockCount: number;
   thumbnailUrl?: string;
-  monthlyPaymentFrom: number;
+  monthlyPaymentFrom: number | null;
   conditionGrades?: string[];
   condition: 'NEW' | 'USED';
   stock: { display: string; tone: string };
@@ -89,7 +89,7 @@ export function ProductCard({ product: p }: Props) {
             <p className="text-base md:text-lg font-medium text-muted-foreground pt-1 md:pt-2">
               สอบถามราคา
             </p>
-          ) : p.monthlyPaymentFrom > 0 ? (
+          ) : p.monthlyPaymentFrom != null && p.monthlyPaymentFrom > 0 ? (
             <>
               <p className="num text-lg md:text-2xl font-semibold text-emerald-600 pt-1 md:pt-2">
                 ผ่อน ฿{p.monthlyPaymentFrom.toLocaleString()}

@@ -50,7 +50,12 @@ export class ShopInstallmentApplyService {
       throw new BadRequestException('มีใบสมัครของท่านอยู่แล้ว ทีมงานจะติดต่อกลับ');
     }
 
-    const price = Number(product.installmentPrice ?? product.cashPrice ?? 0);
+    // B0: ห้ามคำนวณแผนผ่อนบนราคา 0 (เดิม ?? 0 → ลูกค้าได้ค่างวด 0 บาท)
+    const priceSource = product.installmentPrice ?? product.cashPrice;
+    if (priceSource == null || Number(priceSource) <= 0) {
+      throw new BadRequestException('สินค้านี้ยังไม่มีราคาผ่อน กรุณาติดต่อร้านเพื่อสอบถามราคา');
+    }
+    const price = Number(priceSource);
     const financed = Math.max(0, price - dto.proposedDownPayment);
     const interestTotal = financed * DEFAULT_INTEREST_MONTHLY * dto.proposedTotalMonths;
     const monthly = Math.ceil((financed + interestTotal) / dto.proposedTotalMonths);

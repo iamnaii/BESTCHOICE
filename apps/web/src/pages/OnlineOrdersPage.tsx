@@ -90,8 +90,17 @@ export default function OnlineOrdersPage() {
 
   const confirmBankMutation = useMutation({
     mutationFn: async (id: string) => api.patch(`/admin/online-orders/${id}/confirm-bank`),
-    onSuccess: () => {
-      toast.success('ยืนยันการรับเงินเรียบร้อย');
+    onSuccess: (res) => {
+      // fix round 1/5 [reversal]: the endpoint can come back PAYMENT_RECEIVED_UNFULFILLABLE
+      // when the device turned out to be sold/gone before the slip was confirmed — that's a
+      // failure the admin must act on (customer needs a refund), not a plain success. The
+      // generic success toast used to fire unconditionally regardless of returned status.
+      const status = (res.data as { status?: string } | undefined)?.status;
+      if (status === 'PAYMENT_RECEIVED_UNFULFILLABLE') {
+        toast.error('เครื่องหลุดมือไปก่อนยืนยันสลิป — ต้องคืนเงินลูกค้า กรุณาติดต่อลูกค้าเพื่อดำเนินการคืนเงิน');
+      } else {
+        toast.success('ยืนยันการรับเงินเรียบร้อย');
+      }
       queryClient.invalidateQueries({ queryKey: ['admin-online-orders'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),

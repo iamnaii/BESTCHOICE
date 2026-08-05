@@ -3,7 +3,9 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OnlineOrderSaleAdapter } from './online-order-sale.adapter';
 import { consumeOrderHoldInTx } from './consume-order-hold.util';
-import type { OnlineOrderStatus } from '@prisma/client';
+import { buildOrderUnfulfillableFlex } from './order-unfulfillable-flex.util';
+import { LineOaService } from '../line-oa/line-oa.service';
+import type { OnlineOrderStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class ShopOrdersService {
@@ -12,6 +14,7 @@ export class ShopOrdersService {
   constructor(
     private prisma: PrismaService,
     private saleAdapter: OnlineOrderSaleAdapter,
+    private lineOaService: LineOaService,
   ) {}
 
   async listMine(customerId: string) {
@@ -74,6 +77,10 @@ export class ShopOrdersService {
         status: true,
         productId: true,
         reservationId: true,
+        customerId: true,
+        totalAmount: true,
+        customer: { select: { lineIdShop: true } },
+        product: { select: { name: true } },
       },
     });
     if (!order) throw new NotFoundException('ไม่พบคำสั่งซื้อ');
@@ -81,7 +88,28 @@ export class ShopOrdersService {
       throw new ForbiddenException('คำสั่งซื้อนี้ยืนยันการรับเงินไปแล้ว หรืออยู่ในสถานะที่ยืนยันไม่ได้');
     }
 
-    const { updated, fulfillable } = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
+      // fix round 1/5 [Important+Minor]: the status check above reads via a plain
+      // findUnique OUTSIDE this tx — 2 concurrent confirms on the SAME order (double-
+      // click / 2 admin tabs — the UI only disables the button locally) can both pass
+      // it. CAS-claim it here: whichever tx's claim loses (count=0) stops immediately
+      // — it must NOT touch the hold or overwrite the winner's PAID with UNFULFILLABLE.
+      // (Proven race: winner's tx flips the SAME reservation row to CONSUMED; loser's
+      // consume-hold legitimately count=0's on that row, and without this CAS the
+      // loser would then write UNFULFILLABLE straight over the winner's PAID while
+      // the winner's Sale creation is still in flight.) paymentChannel filter (Minor)
+      // also blocks this endpoint from marking a QR/gateway order PAID when no bank
+      // money has actually moved.
+      const claim = await tx.onlineOrder.updateMany({
+        where: {
+          id: order.id,
+          status: { in: ['PENDING_BANK_REVIEW', 'PENDING_PAYMENT'] },
+          paymentChannel: 'BANK_TRANSFER',
+        },
+        data: { bankConfirmedById: adminUserId },
+      });
+      if (claim.count === 0) return { updated: null, fulfillable: null };
+
       const hold = await consumeOrderHoldInTx(tx, {
         orderId: order.id,
         productId: order.productId,
@@ -101,6 +129,16 @@ export class ShopOrdersService {
       return { updated: row, fulfillable: hold.fulfillable };
     });
 
+    if (result.updated === null) {
+      // Race lost (or this endpoint was hit on a non-bank-transfer order) — another
+      // request already resolved this order. Return its current state instead of
+      // alarming or retrying; nothing was left half-done by this call.
+      const current = await this.prisma.onlineOrder.findUnique({ where: { id: order.id } });
+      if (!current) throw new NotFoundException('ไม่พบคำสั่งซื้อ');
+      return current;
+    }
+    const { updated, fulfillable } = result;
+
     if (!fulfillable) {
       this.logger.error(
         `Bank transfer confirmed for ${order.orderNumber} but product ${order.productId} is gone — refund required`,
@@ -113,6 +151,7 @@ export class ShopOrdersService {
           extra: { orderId: order.id, productId: order.productId, adminUserId },
         },
       );
+      await this.notifyUnfulfillable(order);
       return updated;
     }
 
@@ -129,29 +168,77 @@ export class ShopOrdersService {
       // B5: เหมือน gateway path — ห้ามปล่อยค้าง PAID เงียบ. แท็บ "ต้องคืนเงิน" กรองด้วย
       // PAYMENT_RECEIVED_UNFULFILLABLE เท่านั้น ถ้าไม่ย้ายสถานะ staff จะไม่เห็นงานนี้เลย
       try {
-        const p = await this.prisma.product.findUnique({
-          where: { id: order.productId },
-          select: { status: true },
+        // fix round 1/5 [Critical]: OnlineOrderSaleAdapter commits Sale + product→
+        // SOLD_CASH in ITS OWN tx, then runs 2 MORE statements OUTSIDE that tx
+        // (sale.update saleSource/onlineOrderId, then onlineOrder.update saleId/
+        // PACKING — online-order-sale.adapter.ts:59-66). If either of those throws,
+        // the Sale + SOLD_CASH flip already committed for THIS customer. A bare
+        // product.status re-check can't tell "sold to this order's own customer"
+        // apart from "sold to someone else / hit the shop floor" — both read as
+        // `status !== 'IN_STOCK'`. Check for the Sale itself first — mirrors
+        // paysolutions-confirmation.service.ts:379-408 exactly (T3 closed this exact
+        // gap there; the first draft of this method copied the fallback WITHOUT this
+        // layer, which would have told a customer to expect a refund while they
+        // already had the device and the money was in the shop's account).
+        const existingSale = await this.prisma.sale.findFirst({
+          where: {
+            productId: order.productId,
+            customerId: order.customerId,
+            deletedAt: null,
+          },
+          select: { id: true },
         });
-        if (p?.status !== 'IN_STOCK') {
-          const requeued = await this.prisma.onlineOrder.update({
-            where: { id: order.id },
-            data: {
-              status: 'PAYMENT_RECEIVED_UNFULFILLABLE',
-              cancelReason: 'สร้างรายการขายไม่สำเร็จและเครื่องหลุดมือแล้ว — ต้องคืนเงินลูกค้า',
-            },
-          });
+        if (existingSale) {
+          // Fulfilled — the device really did go to this customer. Only the
+          // post-sale linkback (saleId/status/saleSource) failed. Leave the order
+          // PAID (already set above); alarm so admin reconciles manually — do NOT
+          // queue a refund for a sale that already happened.
+          this.logger.error(
+            `Sale ${existingSale.id} exists for order ${order.orderNumber} but post-sale linkback failed — reconcile saleId/status manually`,
+          );
           Sentry.captureException(
-            new Error(`Online order ${order.orderNumber} bank-confirmed but sale failed & product gone`),
+            new Error(
+              `Online order ${order.orderNumber}: Sale created but post-sale linkback failed`,
+            ),
             {
               level: 'error',
               tags: {
-                critical: 'online-order-unfulfillable',
+                critical: 'online-order-post-sale-linkback-failed',
                 orderNumber: order.orderNumber,
               },
+              extra: { saleId: existingSale.id },
             },
           );
-          return requeued;
+        } else {
+          // No Sale exists for this order's product+customer — the adapter genuinely
+          // failed before creating one. re-read สถานะเครื่อง: ถ้ายัง IN_STOCK = adapter
+          // ล้มก่อนแตะเครื่อง → แอดมินสร้าง Sale เองได้ ปล่อย PAID ไว้ตามเดิม; ถ้าไม่
+          // IN_STOCK แล้ว = ของหลุดมือไปทางอื่นจริง → คิวคืนเงิน
+          const p = await this.prisma.product.findUnique({
+            where: { id: order.productId },
+            select: { status: true },
+          });
+          if (p?.status !== 'IN_STOCK') {
+            const requeued = await this.prisma.onlineOrder.update({
+              where: { id: order.id },
+              data: {
+                status: 'PAYMENT_RECEIVED_UNFULFILLABLE',
+                cancelReason: 'สร้างรายการขายไม่สำเร็จและเครื่องหลุดมือแล้ว — ต้องคืนเงินลูกค้า',
+              },
+            });
+            Sentry.captureException(
+              new Error(`Online order ${order.orderNumber} bank-confirmed but sale failed & product gone`),
+              {
+                level: 'error',
+                tags: {
+                  critical: 'online-order-unfulfillable',
+                  orderNumber: order.orderNumber,
+                },
+              },
+            );
+            await this.notifyUnfulfillable(order);
+            return requeued;
+          }
         }
       } catch (e2) {
         this.logger.error(`Failed to queue refund for ${order.orderNumber}: ${e2}`);
@@ -163,6 +250,34 @@ export class ShopOrdersService {
     const final = await this.prisma.onlineOrder.findUnique({ where: { id: order.id } });
     if (!final) throw new NotFoundException('ไม่พบคำสั่งซื้อ');
     return final;
+  }
+
+  /**
+   * B5 fix round 1/5 [reversal]: best-effort LINE notice when an order lands in
+   * PAYMENT_RECEIVED_UNFULFILLABLE — before this, that status appeared nowhere in
+   * apps/web or apps/web-shop; a customer who transferred real money had no way to
+   * find out a refund was coming from any channel. Mirrors the equivalent send in
+   * `PaySolutionsConfirmationService.confirmOnlineOrderPayment` (shares the same
+   * flex builder — see order-unfulfillable-flex.util.ts).
+   */
+  private async notifyUnfulfillable(order: {
+    orderNumber: string;
+    totalAmount: Prisma.Decimal;
+    product: { name: string };
+    customer: { lineIdShop: string | null };
+  }) {
+    if (!order.customer.lineIdShop) return;
+    try {
+      await this.lineOaService.sendFlexMessage(
+        order.customer.lineIdShop,
+        buildOrderUnfulfillableFlex(order),
+        'line-shop',
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to send unfulfillable LINE notice for ${order.orderNumber}: ${err}`,
+      );
+    }
   }
 
   async markShipped(orderId: string, trackingNumber: string) {

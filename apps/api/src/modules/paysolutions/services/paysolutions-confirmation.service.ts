@@ -8,6 +8,7 @@ import { FlexMessagePayload } from '../../line-oa/flex-messages/base-template';
 import { OnlineOrderSaleAdapter } from '../../shop-orders/online-order-sale.adapter';
 import { PaymentsService } from '../../payments/payments.service';
 import { consumeOrderHoldInTx } from '../../shop-orders/consume-order-hold.util';
+import { buildOrderUnfulfillableFlex } from '../../shop-orders/order-unfulfillable-flex.util';
 
 export interface PaymentStatusResult {
   paymentId: string;
@@ -338,7 +339,7 @@ export class PaySolutionsConfirmationService {
         try {
           await this.lineOaService.sendFlexMessage(
             order.customer.lineIdShop,
-            this.buildOrderUnfulfillableFlex(order),
+            buildOrderUnfulfillableFlex(order),
             'line-shop',
           );
         } catch (err) {
@@ -452,7 +453,7 @@ export class PaySolutionsConfirmationService {
         try {
           await this.lineOaService.sendFlexMessage(
             order.customer.lineIdShop,
-            this.buildOrderUnfulfillableFlex(order),
+            buildOrderUnfulfillableFlex(order),
             'line-shop',
           );
         } catch (err) {
@@ -526,60 +527,9 @@ export class PaySolutionsConfirmationService {
     };
   }
 
-  /**
-   * flex แจ้งลูกค้าเมื่อเงินเข้าแล้วแต่เครื่องถูกจำหน่ายไปก่อน — ต้องบอกตรงๆ ว่าจะคืนเงิน
-   * (best-effort: ล้มก็แค่ warn — คิวคืนเงินฝั่งแอดมินคือแหล่งความจริง)
-   */
-  private buildOrderUnfulfillableFlex(order: {
-    orderNumber: string;
-    totalAmount: Prisma.Decimal;
-    product: { name: string };
-  }): FlexMessagePayload {
-    return {
-      type: 'flex',
-      altText: `คำสั่งซื้อ ${order.orderNumber} — เครื่องถูกจำหน่ายไปก่อน ทางร้านจะคืนเงิน`,
-      contents: {
-        type: 'bubble',
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            { type: 'text', text: 'ขออภัยอย่างสูง', weight: 'bold', size: 'lg' },
-            {
-              type: 'text',
-              text: `คำสั่งซื้อ ${order.orderNumber}`,
-              size: 'md',
-              margin: 'md',
-            },
-            { type: 'text', text: order.product.name, size: 'sm', color: '#666666', wrap: true },
-            { type: 'separator', margin: 'md' },
-            {
-              type: 'text',
-              text: 'สินค้าถูกจำหน่ายไปก่อนที่การชำระเงินจะเข้าระบบ ทางร้านจะคืนเงินเต็มจำนวนให้ครับ/ค่ะ',
-              size: 'sm',
-              margin: 'md',
-              wrap: true,
-            },
-            {
-              type: 'text',
-              text: `ยอดที่จะคืน ฿${Number(order.totalAmount).toLocaleString()}`,
-              size: 'md',
-              margin: 'md',
-              weight: 'bold',
-            },
-            {
-              type: 'text',
-              text: 'ทีมงานจะติดต่อกลับเพื่อยืนยันช่องทางคืนเงินโดยเร็วที่สุด',
-              size: 'xs',
-              color: '#888888',
-              margin: 'md',
-              wrap: true,
-            },
-          ],
-        },
-      },
-    };
-  }
+  // buildOrderUnfulfillableFlex extracted to
+  // ../../shop-orders/order-unfulfillable-flex.util.ts (B5 fix round 1/5 [reversal]) —
+  // shared with ShopOrdersService.confirmBankTransfer, which sends the same notice.
 
   /**
    * ยืนยันชำระเงินงวดออมดาวน์ — idempotent

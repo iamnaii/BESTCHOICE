@@ -2,6 +2,26 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { CreditNoteDocumentService, IssueCreditNoteInput } from './credit-note-document.service';
 
 /**
+ * Golden receipt number for the "no prior receipts this month" case (empty
+ * $queryRaw mock → seq always starts at 00001). Computed the same way as
+ * ReceiptNumberService.generateReceiptNumber — RT-YYYYMM-00001, YYYY/MM
+ * pinned to Asia/Bangkok off `new Date()` — so this test doesn't hard-code a
+ * calendar month and go red at the next month boundary (was `RT-202607-00001`,
+ * broke 2026-08-01; see progress.md Task 13 DISCOVERY).
+ */
+function currentBkkReceiptNumberPrefix(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  const year = parts.find((p) => p.type === 'year')!.value;
+  const month = parts.find((p) => p.type === 'month')!.value;
+  return `RT-${year}${month}-`;
+}
+const GOLDEN_RECEIPT_NUMBER = `${currentBkkReceiptNumberPrefix()}00001`;
+
+/**
  * CPA CSV golden fixture (17,000฿ financed+commission+interest / 12 months —
  * same fixture used by seedStandard17k12m + bad-debt-writeoff.template.spec.ts):
  *   financedAmount=10,000 / storeCommission=1,000 / interestTotal=6,000 / vatAmount=1,190
@@ -54,7 +74,7 @@ function buildHarness(overrides: Overrides = {}) {
       findFirst: jest.fn().mockResolvedValue(overrides.receiptFindFirst ?? null),
       create: jest.fn(async (args: { data: Record<string, unknown> }) => {
         created.receipts.push(args.data);
-        return { id: 'receipt-1', receiptNumber: 'RT-202607-00001', ...args.data };
+        return { id: 'receipt-1', receiptNumber: GOLDEN_RECEIPT_NUMBER, ...args.data };
       }),
     },
     contract: {
@@ -116,7 +136,7 @@ describe('CreditNoteDocumentService', () => {
       expect(result).toEqual({
         outcome: 'ISSUED',
         receiptId: 'receipt-1',
-        receiptNumber: 'RT-202607-00001',
+        receiptNumber: GOLDEN_RECEIPT_NUMBER,
       });
       expect(tx.todo.create).not.toHaveBeenCalled();
       expect(created.receipts).toHaveLength(1);

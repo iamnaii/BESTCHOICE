@@ -415,6 +415,7 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
         orderNumber: 'OO-2026-0001',
         status: 'PENDING',
         productId: 'p1',
+        customerId: 'cust-1',
         reservationId: 'resv-1',
         totalAmount: new Prisma.Decimal(9990),
         customer: { lineIdShop: null },
@@ -449,6 +450,9 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
           update: jest.fn().mockResolvedValue({}),
         },
         product: { findUnique: jest.fn().mockResolvedValue({ status: 'SOLD_CASH' }) },
+        // fix round 1/5 [Important 1]: catch-block re-check for "did this order's own
+        // Sale already commit before the post-sale linkback failed" — default = no.
+        sale: { findFirst: jest.fn().mockResolvedValue(null) },
         $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txMock)),
         __tx: txMock,
       };
@@ -630,8 +634,8 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
       expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
     });
 
-    it.each(['PAYMENT_RECEIVED_UNFULFILLABLE', 'REFUNDED'])(
-      'idempotency: webhook ซ้ำหลังเข้าคิวคืนเงิน (status=%s) = no-op',
+    it.each(['PAYMENT_RECEIVED_UNFULFILLABLE', 'REFUNDED', 'DELIVERED', 'COMPLETED'])(
+      'idempotency: webhook ซ้ำหลังเข้าคิวคืนเงิน/ส่งของแล้ว (status=%s) = no-op',
       async (status) => {
         prisma.onlineOrder.findUnique.mockResolvedValueOnce(makeOrder({ status }));
 
@@ -641,6 +645,62 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
         expect(saleAdapter.createForOnlineOrder).not.toHaveBeenCalled();
       },
     );
+
+    it('adapter ล้ม แต่ Sale ของออเดอร์นี้ถูกสร้างไปแล้วจริง (แค่ post-sale linkback ล้ม) → คง PAID ไม่คืนเงินซ้อน', async () => {
+      // fix round 1/5 [Important 1]: SalesService.create already committed Sale +
+      // product→SOLD_CASH in its own tx before the adapter's post-sale linkback
+      // (sale.update / onlineOrder.update saleId+PACKING) threw. The device really
+      // did go to THIS customer — must not be treated as "sold to someone else".
+      saleAdapter.createForOnlineOrder.mockRejectedValueOnce(new Error('linkback failed'));
+      prisma.sale.findFirst.mockResolvedValue({ id: 'sale-99' });
+      prisma.onlineOrder.findUnique.mockResolvedValueOnce(
+        makeOrder({ customer: { lineIdShop: 'U-line-shop' } }),
+      );
+
+      await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+      expect(prisma.sale.findFirst).toHaveBeenCalledWith({
+        where: { productId: 'p1', customerId: 'cust-1' },
+        select: { id: true },
+      });
+      // Order was already flipped PAID inside the tx — must NOT be re-flipped to
+      // PAYMENT_RECEIVED_UNFULFILLABLE (that would refund a sale that already happened).
+      expect(prisma.onlineOrder.update).not.toHaveBeenCalled();
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          tags: expect.objectContaining({
+            critical: 'online-order-post-sale-linkback-failed',
+          }),
+        }),
+      );
+      // Fulfilled → paid flex, not the refund flex.
+      expect(lineOa.sendFlexMessage).toHaveBeenCalledTimes(1);
+      const [, flex] = lineOa.sendFlexMessage.mock.calls[0];
+      expect(JSON.stringify(flex)).not.toContain('คืนเงิน');
+    });
+
+    it('adapter ล้ม + เครื่องหลุดมือ + ลูกค้ามี lineIdShop → ส่งเฉพาะ flex คืนเงิน ไม่ส่ง flex ชำระสำเร็จซ้อน', async () => {
+      // fix round 1/5 [Important 2]: the catch-block unfulfillable branch previously had
+      // no return/flag, so execution fell through to the "paid" flex send right after —
+      // customer got 2 contradictory LINE messages. Regression-guards the fix by being
+      // the first test in this describe to set lineIdShop on this exact code path.
+      saleAdapter.createForOnlineOrder.mockRejectedValueOnce(new Error('sale failed'));
+      prisma.product.findUnique.mockResolvedValue({ status: 'SOLD_CASH' });
+      prisma.onlineOrder.findUnique.mockResolvedValueOnce(
+        makeOrder({ customer: { lineIdShop: 'U-line-shop' } }),
+      );
+
+      await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+      expect(prisma.onlineOrder.update).toHaveBeenCalledWith({
+        where: { id: orderId },
+        data: expect.objectContaining({ status: 'PAYMENT_RECEIVED_UNFULFILLABLE' }),
+      });
+      expect(lineOa.sendFlexMessage).toHaveBeenCalledTimes(1);
+      const [, flex] = lineOa.sendFlexMessage.mock.calls[0];
+      expect(JSON.stringify(flex)).toContain('คืนเงิน');
+    });
   });
 
   // ---------------------------------------------------------------------------

@@ -281,7 +281,14 @@ export class PaySolutionsConfirmationService {
       order.status === 'PACKING' ||
       order.status === 'SHIPPED' ||
       order.status === 'PAYMENT_RECEIVED_UNFULFILLABLE' ||
-      order.status === 'REFUNDED'
+      order.status === 'REFUNDED' ||
+      // fix round 1/5 [Important 3]: a late-arriving webhook on an order that already
+      // reached the customer (DELIVERED/COMPLETED) must NOT re-enter the lock-miss path —
+      // that would flip it to PAYMENT_RECEIVED_UNFULFILLABLE and tell a customer holding
+      // the device that we're refunding them. Pre-B5 this silently no-op'd via the same
+      // gap; post-B5 the same gap actively lies to the customer, so it's closed here.
+      order.status === 'DELIVERED' ||
+      order.status === 'COMPLETED'
     ) {
       this.logger.log(
         `Order ${order.orderNumber} already confirmed — idempotent skip`,
@@ -347,6 +354,7 @@ export class PaySolutionsConfirmationService {
     // SOLD_CASH, applies loyalty redemption, and transitions the OnlineOrder to
     // PACKING. Failures are logged (not re-thrown) — webhook must still return
     // 200 so PaySolutions doesn't retry, and admin can reconcile manually.
+    let markedUnfulfillableInCatch = false;
     try {
       await this.saleAdapter.createForOnlineOrder(order.id);
     } catch (err) {
@@ -357,40 +365,99 @@ export class PaySolutionsConfirmationService {
         level: 'error',
         tags: { critical: 'online-order-sale-failed', orderNumber: order.orderNumber },
       });
-      // B5: ห้ามปล่อยให้ออเดอร์ค้าง PAID เงียบๆ — แท็บ "ต้องคืนเงิน" ของแอดมินกรอง
-      // ด้วย PAYMENT_RECEIVED_UNFULFILLABLE เท่านั้น ถ้าไม่ย้ายสถานะ staff จะไม่มีวัน
+      // B5: ห้ามปล่อยให้ออเดอร์ค้าง PAID เงียบๆ — แท็บ "ต้องคืนเงิน" ของแอดมิน (จะมาใน Task 11)
+      // จะกรองด้วย PAYMENT_RECEIVED_UNFULFILLABLE เท่านั้น ถ้าไม่ย้ายสถานะ staff จะไม่มีวัน
       // เห็นงานนี้ (เห็นแค่ Sentry) ทั้งที่เงินลูกค้าอยู่ในมือร้านแล้ว
-      // re-read สถานะเครื่อง: ถ้ายัง IN_STOCK = adapter ล้มก่อนแตะเครื่อง → แอดมินสร้าง
-      // Sale เองได้ ปล่อย PAID ไว้ตามเดิม; ถ้าไม่ IN_STOCK แล้ว = ของหลุดมือ → คิวคืนเงิน
       try {
-        const p = await this.prisma.product.findUnique({
-          where: { id: order.productId },
-          select: { status: true },
+        // fix round 1/5 [Important 1]: SalesService.create commits Sale + product→SOLD_CASH
+        // in ITS OWN tx (sale-writer.service.ts). But online-order-sale.adapter.ts then runs
+        // 2 MORE statements OUTSIDE that tx (sale.update saleSource/onlineOrderId, then
+        // onlineOrder.update saleId/PACKING) — if either of those throws, the Sale + SOLD_CASH
+        // flip already committed for THIS customer. A bare product.status re-check can't tell
+        // "sold to this order's own customer" apart from "sold to someone else / hit the
+        // shop floor" — both read as `status !== 'IN_STOCK'`. Check for the Sale itself first.
+        const existingSale = await this.prisma.sale.findFirst({
+          where: { productId: order.productId, customerId: order.customerId },
+          select: { id: true },
         });
-        if (p?.status !== 'IN_STOCK') {
-          await this.prisma.onlineOrder.update({
-            where: { id: onlineOrderId },
-            data: {
-              status: 'PAYMENT_RECEIVED_UNFULFILLABLE',
-              cancelReason: 'สร้างรายการขายไม่สำเร็จและเครื่องหลุดมือแล้ว — ต้องคืนเงินลูกค้า',
-            },
-          });
+        if (existingSale) {
+          // Fulfilled — the device really did go to this customer. Only the post-sale
+          // linkback (saleId/status/saleSource on the OnlineOrder+Sale rows) failed.
+          // Leave the order PAID (already set in the tx above); alarm so admin
+          // reconciles the linkback manually — do NOT queue a refund for a sale that
+          // already happened.
+          this.logger.error(
+            `Sale ${existingSale.id} exists for order ${order.orderNumber} but post-sale linkback failed — reconcile saleId/status manually`,
+          );
           Sentry.captureException(
-            new Error(`Online order ${order.orderNumber} paid but sale failed & product gone`),
+            new Error(
+              `Online order ${order.orderNumber}: Sale created but post-sale linkback failed`,
+            ),
             {
               level: 'error',
               tags: {
-                critical: 'online-order-unfulfillable',
+                critical: 'online-order-post-sale-linkback-failed',
                 orderNumber: order.orderNumber,
               },
+              extra: { saleId: existingSale.id },
             },
           );
+        } else {
+          // No Sale exists for this order's product+customer — the adapter genuinely
+          // failed before creating one. re-read สถานะเครื่อง: ถ้ายัง IN_STOCK = adapter
+          // ล้มก่อนแตะเครื่อง → แอดมินสร้าง Sale เองได้ ปล่อย PAID ไว้ตามเดิม; ถ้าไม่
+          // IN_STOCK แล้ว = ของหลุดมือไปทางอื่นจริง → คิวคืนเงิน
+          const p = await this.prisma.product.findUnique({
+            where: { id: order.productId },
+            select: { status: true },
+          });
+          if (p?.status !== 'IN_STOCK') {
+            await this.prisma.onlineOrder.update({
+              where: { id: onlineOrderId },
+              data: {
+                status: 'PAYMENT_RECEIVED_UNFULFILLABLE',
+                cancelReason: 'สร้างรายการขายไม่สำเร็จและเครื่องหลุดมือแล้ว — ต้องคืนเงินลูกค้า',
+              },
+            });
+            Sentry.captureException(
+              new Error(`Online order ${order.orderNumber} paid but sale failed & product gone`),
+              {
+                level: 'error',
+                tags: {
+                  critical: 'online-order-unfulfillable',
+                  orderNumber: order.orderNumber,
+                },
+              },
+            );
+            markedUnfulfillableInCatch = true;
+          }
         }
       } catch (e2) {
         this.logger.error(`Failed to queue refund for ${order.orderNumber}: ${e2}`);
         Sentry.captureException(e2);
       }
       // Don't re-throw — Sale can be created manually by admin if needed
+    }
+
+    // fix round 1/5 [Important 2]: when the catch block above just moved the order to
+    // PAYMENT_RECEIVED_UNFULFILLABLE, sending the "จะจัดส่งภายใน 1 วันทำการ" paid-flex
+    // right after would contradict the refund notice the customer just got. Pick the
+    // flex that matches what actually happened to the order.
+    if (markedUnfulfillableInCatch) {
+      if (order.customer.lineIdShop) {
+        try {
+          await this.lineOaService.sendFlexMessage(
+            order.customer.lineIdShop,
+            this.buildOrderUnfulfillableFlex(order),
+            'line-shop',
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Failed to send unfulfillable LINE notice for ${order.orderNumber}: ${err}`,
+          );
+        }
+      }
+      return;
     }
 
     if (order.customer.lineIdShop) {
@@ -484,7 +551,7 @@ export class PaySolutionsConfirmationService {
             { type: 'separator', margin: 'md' },
             {
               type: 'text',
-              text: 'เครื่องนี้ถูกจำหน่ายที่หน้าร้านก่อนเงินเข้าระบบ ทางร้านจะคืนเงินเต็มจำนวนให้ครับ/ค่ะ',
+              text: 'สินค้าถูกจำหน่ายไปก่อนที่การชำระเงินจะเข้าระบบ ทางร้านจะคืนเงินเต็มจำนวนให้ครับ/ค่ะ',
               size: 'sm',
               margin: 'md',
               wrap: true,
@@ -498,7 +565,7 @@ export class PaySolutionsConfirmationService {
             },
             {
               type: 'text',
-              text: 'ทีมงานจะติดต่อกลับเพื่อยืนยันช่องทางคืนเงินภายใน 1 วันทำการ',
+              text: 'ทีมงานจะติดต่อกลับเพื่อยืนยันช่องทางคืนเงินโดยเร็วที่สุด',
               size: 'xs',
               color: '#888888',
               margin: 'md',

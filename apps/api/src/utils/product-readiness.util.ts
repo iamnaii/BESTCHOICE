@@ -82,6 +82,16 @@ export interface ReadinessCheck {
   label: string;
   ok: boolean;
   hint?: string;
+  /**
+   * 'blocking' = fails `ready` when `ok:false`. 'info' = purely informational —
+   * its `ok` value NEVER affects `ready` (used for the [DEMO] badge). B1 must
+   * render `info` entries differently (e.g. no red-X/checklist styling) since
+   * `ok:true` there does not mean "requirement met", just "this is the current
+   * state". Reviewer flag (Important 2): without this marker a naive uniform
+   * render of `checks[]` would show "สินค้าตัวอย่าง [DEMO] ✓" on a check whose
+   * true meaning is a warning, not a pass.
+   */
+  severity: 'blocking' | 'info';
 }
 
 export interface ReadinessResult {
@@ -105,69 +115,88 @@ export function evaluateReadiness(p: ReadinessProductShape): ReadinessResult {
     p.brand === SHOP_BRAND &&
     (SHOP_PHONE_CATEGORIES as readonly string[]).includes(p.category);
 
+  const conditionGradeOk =
+    !isUsed || (VALID_CONDITION_GRADES as readonly string[]).includes(p.conditionGrade ?? '');
+  const isDemoProduct = p.name.startsWith(DEMO_NAME_PREFIX);
+
   const checks: ReadinessCheck[] = [
     {
       key: 'notDeleted',
       label: 'ยังไม่ถูกลบ',
       ok: p.deletedAt == null,
+      severity: 'blocking',
     },
     {
       key: 'shopGate',
       label: 'อยู่ในหมวดที่เว็บขาย',
       ok: inShopGate,
       hint: inShopGate ? undefined : 'เว็บขายเฉพาะ iPhone (มือ 1 / มือ 2) — สินค้านี้จะไม่ขึ้นเว็บ',
+      severity: 'blocking',
     },
     {
       key: 'inStock',
       label: 'อยู่ในสต็อก',
       ok: p.status === 'IN_STOCK',
       hint: p.status === 'IN_STOCK' ? undefined : `สถานะปัจจุบัน: ${p.status}`,
+      severity: 'blocking',
     },
     {
       key: 'cashPrice',
       label: 'มีราคาเงินสด',
       ok: cash > 0,
       hint: cash > 0 ? undefined : 'กรอกราคาเงินสดในส่วนราคา หรือกรอกตารางราคากลางให้ครบ',
+      severity: 'blocking',
     },
     {
       key: 'gallery',
       label: 'มีรูปขึ้นเว็บอย่างน้อย 1 รูป',
       ok: p.gallery.length > 0,
       hint: p.gallery.length > 0 ? undefined : 'เลือกรูปจากรูปสินค้าในระบบมาเป็นรูปขึ้นเว็บ',
+      severity: 'blocking',
     },
     {
       key: 'conditionGrade',
       label: 'มีเกรดเครื่อง (เฉพาะมือสอง)',
       // ชุดเดียวกับ where fragment เป๊ะ — ห้ามใช้ `.trim().length > 0` (จะยอมรับค่านอกชุด
       // และเกรดช่องว่างจะตัดสินไม่ตรงกับ DB)
-      ok:
-        !isUsed ||
-        (VALID_CONDITION_GRADES as readonly string[]).includes(p.conditionGrade ?? ''),
-      hint: !isUsed ? 'ไม่บังคับสำหรับเครื่องมือ 1' : undefined,
+      ok: conditionGradeOk,
+      // Minor fix (reviewer): hint belongs on the FAILING side (มือสองไม่มีเกรด —
+      // the one row admin actually needs guidance on), not the passing มือ 1 side —
+      // matches every other check in this list (hint only when ok:false).
+      hint: conditionGradeOk ? undefined : 'ตั้งเกรดได้ที่หน้าแก้ไขสินค้า (OWNER/BM)',
+      severity: 'blocking',
     },
     {
       key: 'isOnlineVisible',
       label: 'เปิดแสดงบนเว็บ',
       ok: p.isOnlineVisible === true,
       hint: p.isOnlineVisible ? undefined : 'ถูกปิดจากเว็บด้วยมือ — เปิดได้ที่สวิตช์แสดงบนเว็บ',
-    },
-    {
-      // Non-blocking note (owner decision 2026-08): [DEMO] no longer blocks
-      // readiness — `ok` is always true. Real gating (if any) happens at the
-      // where-fragment level via `excludeDemo`, driven by SystemConfig flag
-      // `shop_hide_demo_products` that the CALLER reads (this fn stays pure).
-      key: 'isDemo',
-      label: 'สินค้าตัวอย่าง [DEMO]',
-      ok: true,
-      hint: p.name.startsWith(DEMO_NAME_PREFIX)
-        ? 'สินค้านี้เป็นตัวอย่าง [DEMO] — จะถูกกรองออกจากเว็บเมื่อเปิดสวิตช์ "ซ่อนสินค้าตัวอย่าง"'
-        : undefined,
+      severity: 'blocking',
     },
   ];
 
+  // Non-blocking [DEMO] badge (owner decision 2026-08): [DEMO] never blocks
+  // `ready` — the where-fragment level (`excludeDemo`) is the only real gate,
+  // driven by SystemConfig `shop_hide_demo_products` that the CALLER reads
+  // (this fn stays pure). Reviewer flag (Important 2) — TWO layers of defense
+  // against a naive uniform-render of checks[] misreading this as a pass/fail
+  // item: (1) only pushed onto the array when the product actually IS a demo
+  // product — never present (let alone "✓") on a non-demo product; (2) `ready`
+  // below is computed only from `severity:'blocking'` entries, so even if this
+  // entry's `ok` were ever wrong it could not flip `ready`.
+  if (isDemoProduct) {
+    checks.push({
+      key: 'isDemo',
+      label: 'สินค้าตัวอย่าง [DEMO]',
+      ok: true,
+      hint: 'สินค้านี้เป็นตัวอย่าง [DEMO] — จะถูกกรองออกจากเว็บเมื่อเปิดสวิตช์ "ซ่อนสินค้าตัวอย่าง"',
+      severity: 'info',
+    });
+  }
+
   return {
-    ready: checks.every((c) => c.ok),
+    ready: checks.filter((c) => c.severity === 'blocking').every((c) => c.ok),
     checks,
-    isDemo: p.name.startsWith(DEMO_NAME_PREFIX),
+    isDemo: isDemoProduct,
   };
 }

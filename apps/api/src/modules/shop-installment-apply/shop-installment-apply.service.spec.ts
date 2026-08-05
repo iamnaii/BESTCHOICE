@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ShopInstallmentApplyService } from './shop-installment-apply.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
@@ -111,6 +111,27 @@ describe('ShopInstallmentApplyService', () => {
     // monthly = ceil((16000 + 2496) / 12) = 1542
     expect(createArgs.data.proposedMonthlyPayment).toBe(1542);
     expect(res.proposedMonthlyPayment).toBe(1542);
+  });
+
+  it('B0 (fix round 1/5, Important 2): rejects when product has no price at all (installmentPrice + cashPrice both null) — guard must survive even when readiness already matched', async () => {
+    // Simulates a hold from before B0 shipped, or any other path that lets a readiness-matched
+    // product through to submit() with no price on either field — the mutation-testing gap the
+    // reviewer found: without this test, deleting the guard in shop-installment-apply.service.ts
+    // still left all 43 tests green.
+    prismaMock.product.findFirst.mockResolvedValue({
+      id: 'p1',
+      costPrice: 5000,
+      installmentPrice: null,
+      cashPrice: null,
+      deletedAt: null,
+    });
+    prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue(null);
+
+    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(BadRequestException);
+    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(
+      'สินค้านี้ยังไม่มีราคาผ่อน กรุณาติดต่อร้านเพื่อสอบถามราคา',
+    );
+    expect(prismaMock.onlineInstallmentApplication.create).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate active applications for same phone + product', async () => {

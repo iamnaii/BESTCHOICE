@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import type { AxiosError } from 'axios';
 import { MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getSessionId } from '@/lib/session';
@@ -81,14 +82,20 @@ export default function ProductDetailPage() {
     setLightboxOpen(false);
   }, [id]);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isFetching, error, refetch } = useQuery({
     queryKey: ['shop-product', id],
     queryFn: () => api.get(`/api/shop/products/${id}`).then((r) => r.data as ProductDetail),
     enabled: !!id,
-    // B0: 404 (readiness-filtered/sold-out) is a real, expected outcome here —
-    // don't burn 3 retries with backoff before the error branch below can show.
-    retry: false,
+    // B0: 404 (readiness-filtered/sold-out) is a real, permanent outcome — never retry
+    // it (matches ApplyStatusPage.tsx's notFound pattern). Transient errors (429 from
+    // ShopBotDefenseGuard, 5xx, network hiccup) get 2 retries with backoff before the
+    // generic error branch below offers a manual "ลองใหม่".
+    retry: (failureCount, err) => (err as AxiosError)?.response?.status !== 404 && failureCount < 2,
   });
+
+  // Fix round 1/5: only 404 means "this product is really gone" — other errors
+  // (bot-defense 429, 5xx, network) must NOT show the same "ขายไปแล้ว" copy.
+  const notFound = (error as AxiosError | null)?.response?.status === 404;
 
   // Computed null-safely so this can sit above the early return below and
   // keep the installment-preview query (which re-keys off the selected
@@ -160,30 +167,63 @@ export default function ProductDetailPage() {
 
   // B0: head query ของ getProductDetail ผ่าน readiness แล้ว → controller ตอบ 404 ได้จริง
   // ถ้ายังรวม error เข้ากับ loading ลิงก์ที่ส่งลูกค้าจะเป็น Skeleton หมุนค้างตลอดกาล
-  if (isError) {
+  //
+  // Fix round 1/5 [Important 1]: `isError` alone เหมารวมทุก error (403/429 บอทดีเฟนส์,
+  // 5xx, เน็ตหลุด) ว่าเป็น "สินค้าขายไปแล้ว" — ผิด. แยกด้วย `notFound` (403/429/5xx เข้าการ์ด
+  // error ทั่วไปพร้อมปุ่มลองใหม่แทน) และเช็ค `!data` กันไม่ให้ refetchOnReconnect ที่พังชั่วคราว
+  // ไล่ที่หน้าสินค้าที่กำลังโชว์อยู่ (data ยังอยู่ใน cache) ออกไปเป็นหน้า error ทั้งที่ข้อมูลพร้อมอยู่แล้ว.
+  if (isError && !data) {
     return (
       <ShopLayout>
         <Container className="py-16">
           <div className="mx-auto max-w-md rounded-2xl border border-border bg-card p-8 text-center leading-snug">
-            <h1 className="text-xl font-semibold text-foreground">สินค้านี้ไม่พร้อมขายบนเว็บ</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              เครื่องนี้อาจขายไปแล้ว หรือข้อมูลยังไม่ครบสำหรับขายออนไลน์ — ทักแชทมาได้เลย
-              ทีมงานช่วยหาเครื่องรุ่นเดียวกันให้ครับ
-            </p>
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <Button asChild variant="cta" size="lg">
-                <a
-                  href={lineOaMessageUrl(`สนใจสินค้ารหัส ${id ?? ''} ครับ/ค่ะ`)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  ทักแชทสอบถาม
-                </a>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link to="/products">ดูสินค้าทั้งหมด</Link>
-              </Button>
-            </div>
+            {notFound ? (
+              <>
+                <h1 className="text-xl font-semibold text-foreground">
+                  สินค้านี้ไม่พร้อมขายบนเว็บ
+                </h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  เครื่องนี้อาจขายไปแล้ว หรือข้อมูลยังไม่ครบสำหรับขายออนไลน์ — ทักแชทมาได้เลย
+                  ทีมงานช่วยหาเครื่องรุ่นเดียวกันให้ครับ
+                </p>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                  <Button asChild variant="cta" size="lg">
+                    <a
+                      href={lineOaMessageUrl(`สนใจสินค้ารหัส ${id ?? ''} ครับ/ค่ะ`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      ทักแชทสอบถาม
+                    </a>
+                  </Button>
+                  <Button asChild variant="outline" size="lg">
+                    <Link to="/products">ดูสินค้าทั้งหมด</Link>
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold text-foreground">{copy.common.error}</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  โหลดข้อมูลสินค้าไม่สำเร็จ อาจเป็นเพราะเน็ตหลุดหรือระบบขัดข้องชั่วคราว
+                  ลองใหม่อีกครั้งได้เลย
+                </p>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                  <Button
+                    variant="cta"
+                    size="lg"
+                    onClick={() => refetch()}
+                    disabled={isFetching}
+                    loading={isFetching}
+                  >
+                    {copy.common.retry}
+                  </Button>
+                  <Button asChild variant="outline" size="lg">
+                    <Link to="/products">ดูสินค้าทั้งหมด</Link>
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </Container>
       </ShopLayout>

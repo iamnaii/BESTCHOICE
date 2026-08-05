@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 
 const productInclude = {
   prices: { orderBy: { createdAt: 'asc' as const } },
@@ -78,44 +79,99 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    const { prices, costPrice, warrantyExpireDate, ...data } = dto;
+    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, ...data } = dto;
+
+    // DTO guard: prices[] ที่มี isDefault: true มากกว่า 1 รายการ จะชน DB partial unique
+    // index `product_prices_one_default` เป็น P2002 ดิบ → ต้อง validate ที่ชั้นนี้ก่อน
+    const explicitDefaultCount = (prices ?? []).filter((p) => p.isDefault === true).length;
+    if (explicitDefaultCount > 1) {
+      throw new BadRequestException('ตั้งราคา default ได้เพียงรายการเดียว');
+    }
 
     const isInStock = !data.status || data.status === 'IN_STOCK';
-    const product = await this.prisma.product.create({
-      data: {
-        ...data,
-        costPrice,
-        warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null,
-        ...(isInStock ? { stockInDate: new Date() } : {}),
-        ...(prices && prices.length > 0
-          ? {
-              prices: {
-                create: prices.map((p, i) => ({
-                  label: p.label,
-                  amount: p.amount,
-                  isDefault: p.isDefault ?? (i === 0),
-                })),
-              },
-            }
-          : {}),
-      } as Prisma.ProductUncheckedCreateInput,
-      include: productInclude,
-    });
+    // 3 สถานะ: undefined = ไม่แตะ | null = เคลียร์คอลัมน์ | Decimal = ตั้งราคา
+    // ห้ามยุบเป็น `!== undefined ? new Prisma.Decimal(x) : undefined` — new Prisma.Decimal(null) throw
+    const cashDecimal =
+      cashPrice === undefined ? undefined : cashPrice === null ? null : new Prisma.Decimal(cashPrice);
+    const installmentDecimal =
+      installmentPrice === undefined
+        ? undefined
+        : installmentPrice === null
+          ? null
+          : new Prisma.Decimal(installmentPrice);
 
-    return product;
+    return this.prisma.$transaction(async (tx) => {
+      const product = await tx.product.create({
+        data: {
+          ...data,
+          costPrice,
+          ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
+          ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null,
+          ...(isInStock ? { stockInDate: new Date() } : {}),
+          ...(prices && prices.length > 0
+            ? {
+                prices: {
+                  create: prices.map((p, i) => ({
+                    label: p.label,
+                    amount: p.amount,
+                    isDefault: p.isDefault ?? (i === 0),
+                  })),
+                },
+              }
+            : {}),
+        } as Prisma.ProductUncheckedCreateInput,
+      });
+
+      // B0 §2.1: write-through คอลัมน์ → prices[] (ผู้อ่านเดิม POS/สัญญา/บอท ไม่พัง)
+      // null ส่งเข้าไปได้ — util จะ "ข้ามฟิลด์นั้น" (ไม่ sync ไม่ลบแถว) ตามกติกาข้อ 4
+      await syncPriceRowsFromColumns(tx, product.id, {
+        cashPrice: cashDecimal ?? null,
+        installmentPrice: installmentDecimal ?? null,
+      });
+
+      return tx.product.findUnique({ where: { id: product.id }, include: productInclude });
+    });
   }
 
   async update(id: string, dto: UpdateProductDto) {
     await this.findOne(id);
-    const { costPrice, warrantyExpireDate, ...data } = dto;
-    return this.prisma.product.update({
-      where: { id },
-      data: {
-        ...data,
-        ...(costPrice !== undefined ? { costPrice } : {}),
-        ...(warrantyExpireDate !== undefined ? { warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null } : {}),
-      } as Prisma.ProductUncheckedUpdateInput,
-      include: productInclude,
+    const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, ...data } = dto;
+    const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined;
+    // 3 สถานะเหมือน create — null ต้องเขียนลงคอลัมน์ได้ (ล้างราคา) ห้ามส่งเข้า Prisma.Decimal
+    const cashDecimal =
+      cashPrice === undefined ? undefined : cashPrice === null ? null : new Prisma.Decimal(cashPrice);
+    const installmentDecimal =
+      installmentPrice === undefined
+        ? undefined
+        : installmentPrice === null
+          ? null
+          : new Prisma.Decimal(installmentPrice);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.product.update({
+        where: { id },
+        data: {
+          ...data,
+          ...(costPrice !== undefined ? { costPrice } : {}),
+          ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
+          ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          // แก้ราคามือ = เลิกเป็นราคาที่เติมอัตโนมัติ (badge ฝั่ง B1 อ่านฟิลด์นี้)
+          ...(touchesPrice ? { priceAutofilledAt: null } : {}),
+          ...(warrantyExpireDate !== undefined
+            ? { warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null }
+            : {}),
+        } as Prisma.ProductUncheckedUpdateInput,
+      });
+
+      if (touchesPrice) {
+        await syncPriceRowsFromColumns(tx, id, {
+          cashPrice: cashDecimal ?? null,
+          installmentPrice: installmentDecimal ?? null,
+        });
+      }
+
+      return tx.product.findUnique({ where: { id }, include: productInclude });
     });
   }
 

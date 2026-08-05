@@ -414,6 +414,7 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
         id: orderId,
         orderNumber: 'OO-2026-0001',
         status: 'PENDING',
+        productId: 'p1',
         reservationId: 'resv-1',
         totalAmount: new Prisma.Decimal(9990),
         customer: { lineIdShop: null },
@@ -428,12 +429,26 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
     beforeEach(async () => {
       txMock = {
         onlineOrder: { update: jest.fn().mockResolvedValue({}) },
-        productReservation: { update: jest.fn().mockResolvedValue({}) },
+        productReservation: {
+          update: jest.fn().mockResolvedValue({}),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          count: jest.fn().mockResolvedValue(0),   // hold CONSUMED อื่นบนเครื่องเดียวกัน
+        },
+        // consumeOrderHoldInTx locks via a conditional updateMany (not a plain read) —
+        // default = lock succeeds (product IS IN_STOCK). findUnique is the reporting-only
+        // fallback the util reads when the lock's WHERE doesn't match any row.
+        product: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUnique: jest.fn().mockResolvedValue({ status: 'IN_STOCK' }),
+        },
       };
       prisma = {
         onlineOrder: {
           findUnique: jest.fn().mockResolvedValue(makeOrder()),
+          // ใช้ตอน catch ของ saleAdapter (re-read สถานะเครื่อง) + อัปเดตเข้าคิวคืนเงิน
+          update: jest.fn().mockResolvedValue({}),
         },
+        product: { findUnique: jest.fn().mockResolvedValue({ status: 'SOLD_CASH' }) },
         $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txMock)),
         __tx: txMock,
       };
@@ -464,14 +479,13 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
       },
     );
 
-    it('success: flips order PAID + reservation CONSUMED in one tx, stamps paymentRef, then creates Sale', async () => {
+    it('success: flips order PAID + consume hold แบบมีเงื่อนไข (ห้าม update by id เปล่าๆ)', async () => {
       await service.confirmOnlineOrderPayment(orderId, {
         transaction_id: 'tx-success',
         refno: 'refno-fallback',
       });
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      // Order → PAID with paymentRef = transaction_id (preferred over refno).
       expect(txMock.onlineOrder.update).toHaveBeenCalledWith({
         where: { id: orderId },
         data: expect.objectContaining({
@@ -480,12 +494,11 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
           paymentRef: 'tx-success',
         }),
       });
-      // Reservation → CONSUMED, linked back to the order.
-      expect(txMock.productReservation.update).toHaveBeenCalledWith({
-        where: { id: 'resv-1' },
+      expect(txMock.productReservation.updateMany).toHaveBeenCalledWith({
+        where: { id: 'resv-1', status: { in: ['ACTIVE', 'EXPIRED'] } },
         data: { status: 'CONSUMED', consumedById: orderId },
       });
-      // Sale created from the paid order.
+      expect(txMock.productReservation.update).not.toHaveBeenCalled();
       expect(saleAdapter.createForOnlineOrder).toHaveBeenCalledWith(orderId);
     });
 
@@ -526,6 +539,108 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
         'line-shop',
       );
     });
+
+    it('unfulfillable: เครื่องถูกขายหน้าร้านไปแล้ว → order = PAYMENT_RECEIVED_UNFULFILLABLE, ไม่สร้าง Sale', async () => {
+      // consumeOrderHoldInTx locks via product.updateMany({where:{status:'IN_STOCK'}}) —
+      // sold-at-store means that conditional write matches 0 rows, so the lock fails
+      // and the util falls back to product.findUnique purely for reporting.
+      txMock.product.updateMany.mockResolvedValue({ count: 0 });
+      txMock.product.findUnique.mockResolvedValue({ status: 'SOLD_CASH' });
+
+      await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+      expect(txMock.onlineOrder.update).toHaveBeenCalledWith({
+        where: { id: orderId },
+        data: expect.objectContaining({
+          status: 'PAYMENT_RECEIVED_UNFULFILLABLE',
+          paymentRef: 'tx-1',
+        }),
+      });
+      expect(txMock.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(saleAdapter.createForOnlineOrder).not.toHaveBeenCalled();
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          tags: expect.objectContaining({ critical: 'online-order-unfulfillable' }),
+        }),
+      );
+    });
+
+    it('unfulfillable: hold โดน PREEMPTED ก่อน (count=0) → unfulfillable แม้เครื่องยัง IN_STOCK', async () => {
+      txMock.productReservation.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+      expect(txMock.onlineOrder.update).toHaveBeenCalledWith({
+        where: { id: orderId },
+        data: expect.objectContaining({ status: 'PAYMENT_RECEIVED_UNFULFILLABLE' }),
+      });
+      expect(saleAdapter.createForOnlineOrder).not.toHaveBeenCalled();
+    });
+
+    it('unfulfillable: ส่ง LINE แจ้งลูกค้าคนละแบบกับ flex ชำระสำเร็จ', async () => {
+      prisma.onlineOrder.findUnique.mockResolvedValueOnce(
+        makeOrder({ customer: { lineIdShop: 'U-line-shop' } }),
+      );
+      txMock.product.updateMany.mockResolvedValue({ count: 0 });
+      txMock.product.findUnique.mockResolvedValue({ status: 'SOLD_CASH' });
+
+      await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+      expect(lineOa.sendFlexMessage).toHaveBeenCalledTimes(1);
+      const [, flex, channel] = lineOa.sendFlexMessage.mock.calls[0];
+      expect(channel).toBe('line-shop');
+      expect(JSON.stringify(flex)).toContain('คืนเงิน');
+    });
+
+    it('unfulfillable: เครื่องยัง IN_STOCK แต่มี hold CONSUMED ของออเดอร์อื่นอยู่ → เข้าคิวคืนเงิน', async () => {
+      // เคส adapter เคยพังเมื่อออเดอร์ก่อนหน้า: เงินเข้าแล้ว hold=CONSUMED แต่เครื่องไม่เคย
+      // ถูก flip เป็น SOLD_CASH → ถ้าเช็คแค่ IN_STOCK จะเก็บเงินคนที่ 2 บนเครื่องเดียวกัน
+      txMock.productReservation.count.mockResolvedValue(1);
+
+      await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+      expect(txMock.onlineOrder.update).toHaveBeenCalledWith({
+        where: { id: orderId },
+        data: expect.objectContaining({ status: 'PAYMENT_RECEIVED_UNFULFILLABLE' }),
+      });
+      expect(txMock.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(saleAdapter.createForOnlineOrder).not.toHaveBeenCalled();
+    });
+
+    it('adapter ล้ม + เครื่องหลุดมือไปแล้ว → ออเดอร์ถูกย้ายเข้าคิวคืนเงิน (ไม่ค้าง PAID เงียบ)', async () => {
+      saleAdapter.createForOnlineOrder.mockRejectedValueOnce(new Error('sale failed'));
+      prisma.product.findUnique.mockResolvedValue({ status: 'SOLD_CASH' });
+
+      await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+      expect(prisma.onlineOrder.update).toHaveBeenCalledWith({
+        where: { id: orderId },
+        data: expect.objectContaining({ status: 'PAYMENT_RECEIVED_UNFULFILLABLE' }),
+      });
+    });
+
+    it('adapter ล้ม แต่เครื่องยัง IN_STOCK → คงสถานะ PAID เหมือนเดิม (แอดมินสร้าง Sale เองได้)', async () => {
+      saleAdapter.createForOnlineOrder.mockRejectedValueOnce(new Error('sale failed'));
+      prisma.product.findUnique.mockResolvedValue({ status: 'IN_STOCK' });
+
+      await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+      expect(prisma.onlineOrder.update).not.toHaveBeenCalled();
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
+    });
+
+    it.each(['PAYMENT_RECEIVED_UNFULFILLABLE', 'REFUNDED'])(
+      'idempotency: webhook ซ้ำหลังเข้าคิวคืนเงิน (status=%s) = no-op',
+      async (status) => {
+        prisma.onlineOrder.findUnique.mockResolvedValueOnce(makeOrder({ status }));
+
+        await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-1' });
+
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(saleAdapter.createForOnlineOrder).not.toHaveBeenCalled();
+      },
+    );
   });
 
   // ---------------------------------------------------------------------------

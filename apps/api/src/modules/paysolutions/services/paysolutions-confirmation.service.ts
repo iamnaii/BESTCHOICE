@@ -7,6 +7,7 @@ import { LineOaService } from '../../line-oa/line-oa.service';
 import { FlexMessagePayload } from '../../line-oa/flex-messages/base-template';
 import { OnlineOrderSaleAdapter } from '../../shop-orders/online-order-sale.adapter';
 import { PaymentsService } from '../../payments/payments.service';
+import { consumeOrderHoldInTx } from '../../shop-orders/consume-order-hold.util';
 
 export interface PaymentStatusResult {
   paymentId: string;
@@ -278,7 +279,9 @@ export class PaySolutionsConfirmationService {
     if (
       order.status === 'PAID' ||
       order.status === 'PACKING' ||
-      order.status === 'SHIPPED'
+      order.status === 'SHIPPED' ||
+      order.status === 'PAYMENT_RECEIVED_UNFULFILLABLE' ||
+      order.status === 'REFUNDED'
     ) {
       this.logger.log(
         `Order ${order.orderNumber} already confirmed — idempotent skip`,
@@ -286,20 +289,59 @@ export class PaySolutionsConfirmationService {
       return;
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    // B5: จุดนี้คือ "เงินเข้าจริง" — ต้อง re-check ว่าเครื่องยังอยู่ใน tx เดียวกับที่ consume hold
+    // เครื่องหลุดมือไปแล้ว (โดนขายหน้าร้าน/เข้าสัญญา) → เงินรับไปแล้วแต่ส่งของไม่ได้ = คิวคืนเงิน
+    const fulfillable = await this.prisma.$transaction(async (tx) => {
+      const hold = await consumeOrderHoldInTx(tx, {
+        orderId: order.id,
+        productId: order.productId,
+        reservationId: order.reservationId,
+      });
       await tx.onlineOrder.update({
         where: { id: onlineOrderId },
         data: {
-          status: 'PAID',
+          status: hold.fulfillable ? 'PAID' : 'PAYMENT_RECEIVED_UNFULFILLABLE',
           paidAt: new Date(),
           paymentRef: webhookData.transaction_id || webhookData.refno || null,
+          ...(hold.fulfillable
+            ? {}
+            : { cancelReason: 'เครื่องถูกจำหน่ายก่อนเงินเข้า — ต้องคืนเงินลูกค้า' }),
         },
       });
-      await tx.productReservation.update({
-        where: { id: order.reservationId },
-        data: { status: 'CONSUMED', consumedById: order.id },
-      });
+      return hold.fulfillable;
     });
+
+    if (!fulfillable) {
+      this.logger.error(
+        `Order ${order.orderNumber} paid but product ${order.productId} no longer available — refund required`,
+      );
+      Sentry.captureException(
+        new Error(`Online order ${order.orderNumber} paid but unfulfillable`),
+        {
+          level: 'error',
+          tags: { critical: 'online-order-unfulfillable', orderNumber: order.orderNumber },
+          extra: {
+            orderId: order.id,
+            productId: order.productId,
+            reservationId: order.reservationId,
+          },
+        },
+      );
+      if (order.customer.lineIdShop) {
+        try {
+          await this.lineOaService.sendFlexMessage(
+            order.customer.lineIdShop,
+            this.buildOrderUnfulfillableFlex(order),
+            'line-shop',
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Failed to send unfulfillable LINE notice for ${order.orderNumber}: ${err}`,
+          );
+        }
+      }
+      return;
+    }
 
     // Create a Sale record for the paid online order. Adapter moves product to
     // SOLD_CASH, applies loyalty redemption, and transitions the OnlineOrder to
@@ -315,6 +357,39 @@ export class PaySolutionsConfirmationService {
         level: 'error',
         tags: { critical: 'online-order-sale-failed', orderNumber: order.orderNumber },
       });
+      // B5: ห้ามปล่อยให้ออเดอร์ค้าง PAID เงียบๆ — แท็บ "ต้องคืนเงิน" ของแอดมินกรอง
+      // ด้วย PAYMENT_RECEIVED_UNFULFILLABLE เท่านั้น ถ้าไม่ย้ายสถานะ staff จะไม่มีวัน
+      // เห็นงานนี้ (เห็นแค่ Sentry) ทั้งที่เงินลูกค้าอยู่ในมือร้านแล้ว
+      // re-read สถานะเครื่อง: ถ้ายัง IN_STOCK = adapter ล้มก่อนแตะเครื่อง → แอดมินสร้าง
+      // Sale เองได้ ปล่อย PAID ไว้ตามเดิม; ถ้าไม่ IN_STOCK แล้ว = ของหลุดมือ → คิวคืนเงิน
+      try {
+        const p = await this.prisma.product.findUnique({
+          where: { id: order.productId },
+          select: { status: true },
+        });
+        if (p?.status !== 'IN_STOCK') {
+          await this.prisma.onlineOrder.update({
+            where: { id: onlineOrderId },
+            data: {
+              status: 'PAYMENT_RECEIVED_UNFULFILLABLE',
+              cancelReason: 'สร้างรายการขายไม่สำเร็จและเครื่องหลุดมือแล้ว — ต้องคืนเงินลูกค้า',
+            },
+          });
+          Sentry.captureException(
+            new Error(`Online order ${order.orderNumber} paid but sale failed & product gone`),
+            {
+              level: 'error',
+              tags: {
+                critical: 'online-order-unfulfillable',
+                orderNumber: order.orderNumber,
+              },
+            },
+          );
+        }
+      } catch (e2) {
+        this.logger.error(`Failed to queue refund for ${order.orderNumber}: ${e2}`);
+        Sentry.captureException(e2);
+      }
       // Don't re-throw — Sale can be created manually by admin if needed
     }
 
@@ -369,6 +444,61 @@ export class PaySolutionsConfirmationService {
             {
               type: 'text',
               text: 'ทางร้านจะจัดส่งภายใน 1 วันทำการ',
+              size: 'xs',
+              color: '#888888',
+              margin: 'md',
+              wrap: true,
+            },
+          ],
+        },
+      },
+    };
+  }
+
+  /**
+   * flex แจ้งลูกค้าเมื่อเงินเข้าแล้วแต่เครื่องถูกจำหน่ายไปก่อน — ต้องบอกตรงๆ ว่าจะคืนเงิน
+   * (best-effort: ล้มก็แค่ warn — คิวคืนเงินฝั่งแอดมินคือแหล่งความจริง)
+   */
+  private buildOrderUnfulfillableFlex(order: {
+    orderNumber: string;
+    totalAmount: Prisma.Decimal;
+    product: { name: string };
+  }): FlexMessagePayload {
+    return {
+      type: 'flex',
+      altText: `คำสั่งซื้อ ${order.orderNumber} — เครื่องถูกจำหน่ายไปก่อน ทางร้านจะคืนเงิน`,
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: 'ขออภัยอย่างสูง', weight: 'bold', size: 'lg' },
+            {
+              type: 'text',
+              text: `คำสั่งซื้อ ${order.orderNumber}`,
+              size: 'md',
+              margin: 'md',
+            },
+            { type: 'text', text: order.product.name, size: 'sm', color: '#666666', wrap: true },
+            { type: 'separator', margin: 'md' },
+            {
+              type: 'text',
+              text: 'เครื่องนี้ถูกจำหน่ายที่หน้าร้านก่อนเงินเข้าระบบ ทางร้านจะคืนเงินเต็มจำนวนให้ครับ/ค่ะ',
+              size: 'sm',
+              margin: 'md',
+              wrap: true,
+            },
+            {
+              type: 'text',
+              text: `ยอดที่จะคืน ฿${Number(order.totalAmount).toLocaleString()}`,
+              size: 'md',
+              margin: 'md',
+              weight: 'bold',
+            },
+            {
+              type: 'text',
+              text: 'ทีมงานจะติดต่อกลับเพื่อยืนยันช่องทางคืนเงินภายใน 1 วันทำการ',
               size: 'xs',
               color: '#888888',
               margin: 'md',

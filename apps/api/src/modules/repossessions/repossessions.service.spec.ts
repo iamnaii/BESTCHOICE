@@ -944,4 +944,36 @@ describe('RepossessionsService', () => {
       expect(template.execute).not.toHaveBeenCalled();
     });
   });
+
+  describe('markReadyForSale — B0 เขียนคอลัมน์ราคา', () => {
+    it('set Product.cashPrice = resellPrice และสร้างแถวราคาเงินสด', async () => {
+      // findOne() อ่านจาก this.prisma (ไม่ใช่ tx) — mock ที่นี่
+      prisma.repossession.findUnique.mockResolvedValue({
+        id: 'r1',
+        status: 'REPOSSESSED',
+        appraisalPrice: null,
+        product: { id: 'prod-1', prices: [] },
+        deletedAt: null,
+      });
+      prisma.repossession.update.mockResolvedValue({ id: 'r1', status: 'READY_FOR_SALE' });
+      prisma.product.update.mockResolvedValue({ id: 'prod-1' });
+      // beforeEach เดิมมีแค่ productPrice.{findFirst,create,update} — util ใช้ findMany + updateMany
+      prisma.productPrice.findMany = jest.fn().mockResolvedValue([]);
+      prisma.productPrice.updateMany = jest.fn().mockResolvedValue({ count: 0 });
+      prisma.productPrice.create.mockResolvedValue({ id: 'row-1' });
+
+      await service.markReadyForSale('r1', 21000);
+
+      // product.update ถูกเรียก 2 ครั้ง: (1) status/costPrice เดิม (2) cashPrice ของ B0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const priceUpdate = prisma.product.update.mock.calls.find(
+        (c: any[]) => c[0].data.cashPrice !== undefined,
+      );
+      expect(priceUpdate).toBeDefined();
+      expect(priceUpdate[0].data.cashPrice.toString()).toBe('21000');
+      expect(prisma.productPrice.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาเงินสด' }) }),
+      );
+    });
+  });
 });

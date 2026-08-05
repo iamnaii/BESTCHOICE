@@ -19,6 +19,7 @@ import { CreditNoteDeliveryService } from '../receipts/services/credit-note-deli
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
+import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 
 const TWO_DP = (d: Prisma.Decimal) => d.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
@@ -705,25 +706,15 @@ export class RepossessionsService {
         },
       });
 
-      // Create/update selling price for refurbished product
-      const existingPrice = await tx.productPrice.findFirst({
-        where: { productId: repo.product.id, isDefault: true },
+      // B0 §2.1: ราคาขายต่อ = ราคาเงินสดของเครื่อง (คอลัมน์เป็นแหล่งจริง)
+      // write-through สร้าง/อัปเดตแถว ProductPrice ให้เอง — เลิก label เฉพาะกิจ
+      // 'ราคาขายต่อ (Refurbished)' ที่ผู้อ่านทุกตัวต้องรู้จักเป็นพิเศษ
+      const cashPrice = new Prisma.Decimal(resellPrice);
+      await tx.product.update({
+        where: { id: repo.product.id },
+        data: { cashPrice },
       });
-      if (existingPrice) {
-        await tx.productPrice.update({
-          where: { id: existingPrice.id },
-          data: { amount: resellPrice, label: 'ราคาขายต่อ (Refurbished)' },
-        });
-      } else {
-        await tx.productPrice.create({
-          data: {
-            productId: repo.product.id,
-            label: 'ราคาขายต่อ (Refurbished)',
-            amount: resellPrice,
-            isDefault: true,
-          },
-        });
-      }
+      await syncPriceRowsFromColumns(tx, repo.product.id, { cashPrice });
 
       return tx.repossession.update({
         where: { id },

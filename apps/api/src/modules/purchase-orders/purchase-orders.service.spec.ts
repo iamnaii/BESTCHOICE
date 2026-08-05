@@ -29,8 +29,16 @@ describe('PurchaseOrdersService — T5-C16 goodsReceiving race condition', () =>
       product: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: `prod-${Math.random()}`, ...data })),
         findMany: jest.fn().mockResolvedValue([]), // no existing IMEI conflicts
+        update: jest.fn().mockResolvedValue({}),
       },
-      productPrice: { create: jest.fn() },
+      productPrice: {
+        create: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       pOItem: {
         findMany: jest.fn().mockImplementation(({ where: { id: { in: ids } } }) =>
           Promise.resolve(dbState.items.filter((i) => ids.includes(i.id)).map((i) => ({ ...i })))),
@@ -72,8 +80,15 @@ describe('goodsReceiving — IMEI duplicate guard', () => {
       goodsReceiving: { create: jest.fn().mockResolvedValue({ id: 'gr1' }), count: jest.fn().mockResolvedValue(0) },
       goodsReceivingItem: { create: jest.fn() },
       pOItem: { findMany: jest.fn().mockResolvedValue([{ id: 'poi-1', quantity: 5, receivedQty: 0, brand: 'A', model: 'B' }]), update: jest.fn() },
-      product: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([{ imeiSerial: 'DUP1', name: 'iPhone', deletedAt: null }]) },
-      productPrice: { create: jest.fn() },
+      product: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([{ imeiSerial: 'DUP1', name: 'iPhone', deletedAt: null }]), update: jest.fn().mockResolvedValue({}) },
+      productPrice: {
+        create: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
     const module: TestingModule = await Test.createTestingModule({ providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }] }).compile();

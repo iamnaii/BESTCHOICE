@@ -18,6 +18,9 @@ function makeTx() {
       create: jest.fn(),
       findFirst: jest.fn().mockResolvedValue(null),
     },
+    // B0 §2.1: autofill hook queries pricingTemplate — empty means NO_TEMPLATE,
+    // returns before touching product.update/systemConfig, so this is all that's needed.
+    pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
   };
 }
 

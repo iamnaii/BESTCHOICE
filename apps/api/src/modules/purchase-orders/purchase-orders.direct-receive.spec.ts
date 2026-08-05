@@ -46,8 +46,16 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
       product: {
         create: jest.fn().mockImplementation(({ data }) => { created.product.push(data); return Promise.resolve({ id: 'prod-1', ...data }); }),
         findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
       },
-      productPrice: { create: jest.fn().mockImplementation(({ data }) => { created.price.push(data); return Promise.resolve({}); }) },
+      productPrice: {
+        create: jest.fn().mockImplementation(({ data }) => { created.price.push(data); return Promise.resolve({}); }),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     return { tx, created };
   };
@@ -84,6 +92,9 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     expect(created.audit[0]).toEqual(expect.objectContaining({ userId: 'user-1', action: 'PO_DIRECT_RECEIVE_APPROVAL_BYPASS', entity: 'purchase_order', entityId: 'po-new' }));
     // product created with costPrice from unitPrice
     expect(created.product[0]).toEqual(expect.objectContaining({ costPrice: 30000, imeiSerial: 'IMEI-1' }));
+    // B0 §2.1: sellingPrice writes cashPrice via the column write-through path —
+    // label is 'ราคาเงินสด' (CASH_LABEL), not the old hardcoded 'ราคาขาย'
+    expect(created.price[0]).toEqual(expect.objectContaining({ label: 'ราคาเงินสด' }));
     // GR result surfaced
     expect(result).toEqual(expect.objectContaining({ poId: 'po-new', poNumber: 'PO-2099-01-003', receivingId: 'gr1', passed: 1, rejected: 0 }));
   });

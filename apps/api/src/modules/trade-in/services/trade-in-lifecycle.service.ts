@@ -26,6 +26,7 @@ import { TradeInQueryService } from './trade-in-query.service';
 import { TradeInValuationService } from './trade-in-valuation.service';
 import { ShopTradeInTemplate } from '../../journal/cpa-templates/shop-trade-in.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { autofillProductPriceFromTemplate } from '../../../utils/product-price-autofill.util';
 
 export class TradeInLifecycleService {
   constructor(
@@ -433,6 +434,18 @@ export class TradeInLifecycleService {
             notes: tradeIn.notes ?? null,
           } as unknown as Prisma.InputJsonValue,
         },
+      });
+
+      // B0 §2.1: เครื่องเทิร์น/รับซื้อยังไม่มีราคาขาย — เติมจากตารางราคากลาง (มือสอง)
+      // สถานะประกันของเครื่องเทิร์นไม่มีข้อมูล → ส่ง null (util จะใช้แถว "ไม่มีประกัน" = ถูกกว่า)
+      await autofillProductPriceFromTemplate(tx, {
+        productId: product.id,
+        brand: product.brand,
+        model: product.model,
+        storage: product.storage,
+        category: 'PHONE_USED',
+        hasWarranty: null,
+        currentCashPrice: null,
       });
 
       const updated = await tx.tradeIn.update({

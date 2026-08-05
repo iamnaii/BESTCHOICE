@@ -4,6 +4,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
+import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
+import { autofillProductPriceFromTemplate } from '../../../utils/product-price-autofill.util';
 
 /**
  * Inventory-mutating goods-receiving flows. Owns the 2 write transactions:
@@ -194,15 +196,28 @@ export class PoReceivingService {
           },
         });
 
-        // Create selling price if provided
+        // B0 §2.1: ราคาขายที่กรอกตอนรับเข้า = ราคาเงินสดของเครื่อง (คอลัมน์คือแหล่งจริง)
         if (item.sellingPrice && item.sellingPrice > 0) {
-          await tx.productPrice.create({
-            data: {
-              productId: product.id,
-              label: 'ราคาขาย',
-              amount: item.sellingPrice,
-              isDefault: true,
-            },
+          const cashPrice = new Prisma.Decimal(item.sellingPrice);
+          await tx.product.update({ where: { id: product.id }, data: { cashPrice } });
+          await syncPriceRowsFromColumns(tx, product.id, { cashPrice });
+        } else {
+          // ไม่ได้กรอกราคา → เติมจากตารางราคากลาง (ครอบ direct-receive ที่ delegate เข้ามาที่นี่)
+          await autofillProductPriceFromTemplate(tx, {
+            productId: product.id,
+            brand: product.brand,
+            model: product.model,
+            storage: product.storage,
+            category: product.category,
+            hasWarranty:
+              productCategory !== 'PHONE_USED'
+                ? false
+                : item.warrantyExpired === true
+                  ? false
+                  : item.warrantyExpired === false
+                    ? true
+                    : null,
+            currentCashPrice: null,
           });
         }
 

@@ -6,6 +6,7 @@ import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
+import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 
 const productInclude = {
   prices: { orderBy: { createdAt: 'asc' as const } },
@@ -137,6 +138,25 @@ export class ProductsService {
             : {}),
         } as Prisma.ProductUncheckedCreateInput,
       });
+
+      // B0 §2.1: ไม่ได้กรอกราคาเงินสดมา → ลองเติมจากตารางราคากลาง
+      // `=== undefined` ตั้งใจ: ส่ง `cashPrice: null` มาชัดๆ = "ยืนยันว่ายังไม่มีราคา"
+      // ห้าม autofill ทับ (ไม่งั้นกดล้างราคาแล้วราคาเด้งกลับมาเอง)
+      if (cashDecimal === undefined) {
+        await autofillProductPriceFromTemplate(
+          tx,
+          {
+            productId: product.id,
+            brand: product.brand,
+            model: product.model,
+            storage: product.storage,
+            category: product.category,
+            hasWarranty: resolveHasWarranty(product),
+            currentCashPrice: null,
+          },
+          this.logger,
+        );
+      }
 
       // B0 §2.1: write-through คอลัมน์ → prices[] (ผู้อ่านเดิม POS/สัญญา/บอท ไม่พัง)
       // null ส่งเข้าไปได้ — util จะ "ข้ามฟิลด์นั้น" (ไม่ sync ไม่ลบแถว) ตามกติกาข้อ 4
@@ -427,4 +447,17 @@ export class ProductsService {
     });
     return brands.map((b) => b.brand);
   }
+}
+
+/** สรุปสถานะประกันของเครื่องสำหรับเลือกแถวตารางราคากลาง — null = ไม่รู้ */
+function resolveHasWarranty(p: {
+  category: string;
+  warrantyExpired: boolean | null;
+  warrantyExpireDate: Date | null;
+}): boolean | null {
+  if (p.category !== 'PHONE_USED') return false;
+  if (p.warrantyExpired === true) return false;
+  if (p.warrantyExpired === false) return true;
+  if (p.warrantyExpireDate) return p.warrantyExpireDate.getTime() > Date.now();
+  return null;
 }

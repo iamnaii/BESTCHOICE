@@ -3,6 +3,12 @@
  * SALES ต้องไม่เห็นราคาทุน/กำไร และต้องบังคับที่ฝั่ง server (การซ่อนใน DOM
  * อย่างเดียวเปิด response ดิบดูได้). Mirror ของ precedent per-field redaction
  * ที่ staff-chat.controller.ts:126-135 (SALES → nationalId: null).
+ *
+ * ตั้งใจเขียนเป็น deny-list (`role !== 'SALES'`) ไม่ใช่ allow-list — role ใหม่
+ * ที่เพิ่มเข้าระบบในอนาคตจะ "เห็นทุน" โดย default ทันทีที่ไม่ใช่ SALES โดยไม่ต้อง
+ * แก้ไฟล์นี้. ถ้ามี role ใหม่ที่ควรถูกซ่อนทุนเหมือน SALES (เช่น role
+ * part-time/intern ในอนาคต) ต้องกลับมาทบทวนเงื่อนไขนี้ให้เป็น list หรือ set
+ * แทนการเทียบสตริงเดียว.
  */
 export function canSeeCost(role: string | undefined | null): boolean {
   return role !== 'SALES';

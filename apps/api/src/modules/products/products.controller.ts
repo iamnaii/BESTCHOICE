@@ -138,11 +138,13 @@ export class ProductsController {
 
   @Get('transfers/:transferId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getTransferById(
+  async getTransferById(
     @Param('transferId') transferId: string,
     @CurrentUser() user: { role: string; branchId: string | null },
   ) {
-    return this.productsStockService.getTransferById(transferId, user);
+    const transfer = await this.productsStockService.getTransferById(transferId, user);
+    if (canSeeCost(user.role)) return transfer;
+    return { ...transfer, product: omitCostPrice(transfer.product) };
   }
 
   @Get(':id/workflow')
@@ -223,14 +225,20 @@ export class ProductsController {
 
   @Post(':id/reserve')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  reserve(@Param('id') id: string, @Body() dto: ReserveProductDto) {
-    return this.productsStockService.reserve(id, dto.reason);
+  async reserve(
+    @Param('id') id: string,
+    @Body() dto: ReserveProductDto,
+    @CurrentUser() user: { role: string },
+  ) {
+    const product = await this.productsStockService.reserve(id, dto.reason);
+    return canSeeCost(user.role) ? product : omitCostPrice(product);
   }
 
   @Post(':id/unreserve')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  unreserve(@Param('id') id: string) {
-    return this.productsStockService.unreserve(id);
+  async unreserve(@Param('id') id: string, @CurrentUser() user: { role: string }) {
+    const product = await this.productsStockService.unreserve(id);
+    return canSeeCost(user.role) ? product : omitCostPrice(product);
   }
 
   // === Transfer Endpoints ===

@@ -23,6 +23,17 @@ export interface ProductReadinessResponse {
 }
 
 /**
+ * Single source of truth for the readiness query key. Any caller that needs to
+ * invalidate this query (mutations in OnlineListingPanel.tsx, SellingPriceCard's
+ * save flow in index.tsx) MUST import this instead of typing the literal
+ * `['product-readiness', id]` array — a typo in a hand-typed literal doesn't fail
+ * any test (react-query just treats it as a different, unrelated cache key), so
+ * the only safe guard is a single exported function every call site shares.
+ */
+export const PRODUCT_READINESS_QUERY_KEY = (productId: string | undefined) =>
+  ['product-readiness', productId] as const;
+
+/**
  * Adapter จุดเดียวที่ผูกกับ shape ของ GET /products/:id/readiness (B0 §2.3).
  * response จริงของ B0 มีฟิลด์เพิ่ม (isDemo, priceAutofilledAt, hasInstallmentPrice) ที่
  * B1 ไม่ใช้ผ่านทางนี้ — การ์ดราคา (Task 7) อ่าน product.priceAutofilledAt จาก
@@ -32,7 +43,7 @@ export interface ProductReadinessResponse {
  */
 export function useProductReadiness(productId: string | undefined) {
   return useQuery<ProductReadinessResponse>({
-    queryKey: ['product-readiness', productId],
+    queryKey: PRODUCT_READINESS_QUERY_KEY(productId),
     queryFn: async () => {
       const { data } = await api.get(`/products/${productId}/readiness`);
       const rawChecks = Array.isArray(data.checks) ? data.checks : [];

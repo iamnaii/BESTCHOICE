@@ -18,6 +18,7 @@ import { InstallmentCalculatorCard } from './components/InstallmentCalculatorCar
 import OnlineListingPanel from './components/OnlineListingPanel';
 import SellingPriceCard from './components/SellingPriceCard';
 import EditSellingPriceModal from './components/EditSellingPriceModal';
+import { PRODUCT_READINESS_QUERY_KEY } from './hooks/useProductReadiness';
 
 interface Price {
   id: string;
@@ -154,7 +155,10 @@ export default function ProductDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['products-available'] });
       // fix-round I2: readiness card (Task 8) reads this key — ไม่ invalidate จะค้างสถานะเก่า
       // (เช่นแก้ราคาแล้วแต่การ์ด readiness ยังบอกว่า "ยังไม่มีราคา")
-      queryClient.invalidateQueries({ queryKey: ['product-readiness', id] });
+      // Task 8 fix round 1: use the shared key builder, not a hand-typed literal —
+      // a typo here wouldn't fail any test (react-query just treats it as an
+      // unrelated cache key), so the single exported function is the real guard.
+      queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(id) });
       toast.success('บันทึกราคาขายสำเร็จ');
       setIsSellingPriceModalOpen(false);
     },

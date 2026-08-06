@@ -14,7 +14,9 @@ export default function CustomerSummaryActions({ summaryText, shareUrl, isReady 
   const handleCopy = async (text: string, okMessage: string) => {
     const ok = await copy(text);
     if (ok) toast.success(okMessage);
-    else toast.error('คัดลอกไม่สำเร็จ — กดค้างเพื่อคัดลอกเองได้');
+    // fix-round 1 (I2): เดิมข้อความบอกให้ "กดค้างเพื่อคัดลอกเอง" แต่ไม่มีข้อความให้กดค้างที่ไหนเลย
+    // (ปุ่มไม่ใช่ text field) — เปลี่ยนเป็นคำแนะนำที่ทำได้จริง
+    else toast.error('คัดลอกไม่สำเร็จ กรุณาลองใหม่');
   };
 
   return (

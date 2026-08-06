@@ -22,6 +22,15 @@ function resolveApiUrl(): string {
 export const API_URL = resolveApiUrl();
 export const LIFF_ID = import.meta.env.VITE_LIFF_ID || '';
 
+/**
+ * โดเมนหน้าร้านลูกค้า — ใช้ประกอบลิงก์ที่แอดมินคัดลอกส่งลูกค้า.
+ * ค่า canonical ตรงกับ apps/web-shop/src/hooks/usePageMeta.ts:4
+ * (B4 จะเปลี่ยนปลายทางเป็น /api/shop/share/:id — แก้ที่ buildShopProductUrl จุดเดียว)
+ */
+export const SHOP_BASE_URL = (
+  import.meta.env.VITE_SHOP_URL || 'https://www.bestchoicephone.com'
+).replace(/\/+$/, '');
+
 if (import.meta.env.PROD) {
   if (!import.meta.env.VITE_LIFF_ID) {
     console.warn('[env] VITE_LIFF_ID is not set — LIFF features will be unavailable');

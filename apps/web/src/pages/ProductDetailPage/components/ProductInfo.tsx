@@ -21,7 +21,7 @@ interface Product {
   imeiSerial: string | null;
   serialNumber: string | null;
   category: string;
-  costPrice: string;
+  costPrice?: string;     // optional — server strip ทิ้งเมื่อ role = SALES (Task 1)
   status: string;
   batteryHealth: number | null;
   warrantyExpired: boolean | null;
@@ -41,17 +41,21 @@ interface Product {
 interface ProductInfoProps {
   product: Product;
   isManager: boolean;
-  defaultPrice: Price | undefined;
+  /** FM/ACCOUNTANT เห็นทุนได้ แต่ SALES ไม่ได้ (server ก็ strip แล้ว) */
+  canSeeCost: boolean;
   profit: number | null;
-  onAddPrice: () => void;
-  onEditPrice: (price: Price) => void;
-  onDeletePrice: (priceId: string) => void;
+  // 4 ตัวล่างเป็นซากของ price CRUD เดิม — ถูกถอดทิ้งจริงใน Task 7 Step 5
+  // ทำเป็น optional ชั่วคราวเพื่อให้เทสต์ Step 1 (ไม่ส่งมา) คอมไพล์ผ่าน
+  defaultPrice?: Price;
+  onAddPrice?: () => void;
+  onEditPrice?: (price: Price) => void;
+  onDeletePrice?: (priceId: string) => void;
 }
 
 export default function ProductInfo({
   product,
   isManager,
-  defaultPrice,
+  canSeeCost,
   profit,
   onAddPrice,
   onEditPrice,
@@ -117,53 +121,47 @@ export default function ProductInfo({
         </CardContent>
       </Card>
 
-      {/* Price Summary */}
-      <div className="grid grid-cols-3 gap-5 lg:gap-7.5 mb-5 lg:mb-7.5">
-        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาทุน</div>
-            <div className="text-lg font-semibold text-foreground tabular-nums font-mono">
-              {parseFloat(product.costPrice).toLocaleString()} ฿
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย (default)</div>
-            <div className="text-lg font-semibold text-primary tabular-nums font-mono">
-              {defaultPrice ? `${parseFloat(defaultPrice.amount).toLocaleString()} ฿` : '-'}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-success" />
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไร</div>
-            <div
-              className={`text-lg font-semibold tabular-nums font-mono ${
-                profit === null
-                  ? 'text-muted-foreground'
-                  : profit > 0
-                  ? 'text-success'
-                  : profit === 0
-                  ? 'text-muted-foreground'
-                  : 'text-destructive'
-              }`}
-            >
-              {profit !== null ? `${profit.toLocaleString()} ฿` : '-'}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Price Summary — ทุน/กำไรเป็นข้อมูลต้นทุน: ซ่อนทั้งบล็อกจาก SALES
+          (server ก็ strip costPrice ให้แล้วที่ products.controller.ts) */}
+      {canSeeCost && (
+        <div className="grid grid-cols-2 gap-5 lg:gap-7.5 mb-5 lg:mb-7.5">
+          <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
+            <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาทุน</div>
+              <div className="text-lg font-semibold text-foreground tabular-nums font-mono">
+                {product.costPrice != null ? `${parseFloat(product.costPrice).toLocaleString()} ฿` : '-'}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200">
+            <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-success" />
+            <CardContent className="p-5">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไร</div>
+              <div
+                className={`text-lg font-semibold tabular-nums font-mono ${
+                  profit === null
+                    ? 'text-muted-foreground'
+                    : profit > 0
+                    ? 'text-success'
+                    : profit === 0
+                    ? 'text-muted-foreground'
+                    : 'text-destructive'
+                }`}
+              >
+                {profit !== null ? `${profit.toLocaleString()} ฿` : '-'}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Prices Table */}
       <Card className="mb-5 lg:mb-7.5 rounded-xl border border-border/50 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>ราคาขาย ({product.prices.length})</CardTitle>
           {isManager && (
-            <button onClick={onAddPrice} className="text-sm text-primary hover:text-primary/80 font-medium">
+            <button onClick={() => onAddPrice?.()} className="text-sm text-primary hover:text-primary/80 font-medium">
               + เพิ่มราคา
             </button>
           )}
@@ -185,13 +183,13 @@ export default function ProductInfo({
                   {isManager && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => onEditPrice(price)}
+                        onClick={() => onEditPrice?.(price)}
                         className="text-xs text-primary hover:text-primary/80"
                       >
                         แก้ไข
                       </button>
                       <button
-                        onClick={() => onDeletePrice(price.id)}
+                        onClick={() => onDeletePrice?.(price.id)}
                         className="text-xs text-destructive hover:text-destructive/80"
                       >
                         ลบ

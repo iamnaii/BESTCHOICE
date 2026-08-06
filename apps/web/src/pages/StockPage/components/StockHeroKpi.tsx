@@ -4,7 +4,7 @@ import { StockDashboard } from '../types';
 
 export interface StockHeroKpiProps {
   totalInStock: number;
-  totalValue: number;
+  totalValue: number | null;
   dashboard: StockDashboard | undefined;
   isManager: boolean;
 }
@@ -55,9 +55,11 @@ export function StockHeroKpi({ totalInStock, totalValue, dashboard, isManager }:
             </span>
             <span className="text-xs text-muted-foreground">ชิ้น</span>
           </div>
-          <div className="text-xs text-muted-foreground mt-1 tabular-nums">
-            {totalValue.toLocaleString()} ฿
-          </div>
+          {totalValue != null && (
+            <div className="text-xs text-muted-foreground mt-1 tabular-nums">
+              {totalValue.toLocaleString()} ฿
+            </div>
+          )}
         </div>
       </div>
 

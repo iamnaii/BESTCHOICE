@@ -47,7 +47,9 @@ export function BranchSummaryCards({ summary, filterBranch, setFilterBranch }: B
                 <span className="text-[11px] text-muted-foreground">/ {s.total} ชิ้น</span>
               </div>
               <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-1.5">
-                <span className="tabular-nums">{s.totalValue.toLocaleString()} ฿</span>
+                <span className="tabular-nums">
+                  {s.totalValue != null ? `${s.totalValue.toLocaleString()} ฿` : ''}
+                </span>
                 <span className="tabular-nums">{sharePct.toFixed(0)}%</span>
               </div>
             </div>

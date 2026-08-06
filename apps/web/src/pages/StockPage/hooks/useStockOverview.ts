@@ -39,7 +39,10 @@ export function useStockOverview(filterBranch: string) {
 
   const summary = summaryQuery.data?.summary ?? [];
   const totalInStock = summary.reduce((sum, s) => sum + s.inStock, 0);
-  const totalValue = summary.reduce((sum, s) => sum + s.totalValue, 0);
+  // SALES ไม่ได้รับ totalValue (server redact) → คืน null ทั้งก้อนแทนที่จะรวมเป็น 0
+  const totalValue = summary.some((s) => s.totalValue == null)
+    ? null
+    : summary.reduce((sum, s) => sum + (s.totalValue ?? 0), 0);
 
   return {
     isManager,

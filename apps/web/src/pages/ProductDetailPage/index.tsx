@@ -35,7 +35,7 @@ interface Product {
   imeiSerial: string | null;
   serialNumber: string | null;
   category: string;
-  costPrice: string;
+  costPrice?: string;
   status: string;
   batteryHealth: number | null;
   warrantyExpired: boolean | null;
@@ -83,6 +83,7 @@ export default function ProductDetailPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const canSeeCost = user?.role !== 'SALES';
 
   const [activeTab, setActiveTab] = useState<Tab>('info');
 
@@ -132,10 +133,11 @@ export default function ProductDetailPage() {
     // on Product when set; falls back to prices[] label lookup)
     const { installment, cash } = getDisplayPrices(product);
     const displayPrice = installment ?? cash;
+    // costPrice ถูก strip ฝั่ง server เมื่อ role = SALES → ไม่มีทางคำนวณกำไร
+    const cost = product.costPrice != null ? parseFloat(product.costPrice) : null;
     return {
       defaultPrice: dp,
-      profit:
-        displayPrice != null ? displayPrice - parseFloat(product.costPrice) : null,
+      profit: displayPrice != null && cost != null ? displayPrice - cost : null,
     };
   }, [product]);
 
@@ -212,7 +214,7 @@ export default function ProductDetailPage() {
       imeiSerial: product.imeiSerial || '',
       serialNumber: product.serialNumber || '',
       category: product.category,
-      costPrice: product.costPrice,
+      costPrice: product.costPrice ?? '',
       status: product.status,
       batteryHealth: product.batteryHealth != null ? String(product.batteryHealth) : '',
       warrantyExpired: product.warrantyExpired ?? false,
@@ -390,7 +392,7 @@ export default function ProductDetailPage() {
           <ProductInfo
             product={product}
             isManager={isManager}
-            defaultPrice={defaultPrice}
+            canSeeCost={canSeeCost}
             profit={profit}
             onAddPrice={openAddPrice}
             onEditPrice={openEditPrice}

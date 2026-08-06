@@ -19,7 +19,7 @@ export interface BranchSummary {
   branch: { id: string; name: string };
   total: number;
   inStock: number;
-  totalValue: number;
+  totalValue: number | null;
 }
 
 export interface AgingBucket {

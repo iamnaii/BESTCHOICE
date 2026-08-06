@@ -7,6 +7,14 @@ interface Props {
   installmentPrice: string | number | null;
   /** B0 stamp เมื่อราคาถูกเติมจาก PricingTemplate — เคลียร์เมื่อมีคนแก้ราคาด้วยมือ */
   priceAutofilledAt: string | null;
+  /**
+   * true เมื่อ `cashPrice`/`installmentPrice` ที่ได้รับมาไม่ได้มาจากคอลัมน์จริง แต่ fallback
+   * ไปหาแถว `prices[]` แบบเก่า (คอลัมน์ดิบเป็น null/ไม่บวก) — caller (index.tsx) เป็นคนคำนวณ
+   * โดยเทียบผลลัพธ์ของ getPositiveDisplayPrices กับคอลัมน์ดิบ. คนละสถานะกับ priceAutofilledAt
+   * (นั่นคือระบบเติมให้ "เข้าคอลัมน์แล้ว" — นี่คือ "ยังไม่เข้าคอลัมน์เลย เว็บเลยไม่เห็น")
+   */
+  cashIsFallback?: boolean;
+  installmentIsFallback?: boolean;
   canEdit: boolean;
   onEdit: () => void;
 }
@@ -21,11 +29,14 @@ export default function SellingPriceCard({
   cashPrice,
   installmentPrice,
   priceAutofilledAt,
+  cashIsFallback,
+  installmentIsFallback,
   canEdit,
   onEdit,
 }: Props) {
   const cash = toNum(cashPrice);
   const installment = toNum(installmentPrice);
+  const isFallback = Boolean(cashIsFallback || installmentIsFallback);
 
   return (
     <Card className="mb-5 lg:mb-7.5 rounded-xl border border-border/50 bg-card shadow-sm">
@@ -66,6 +77,11 @@ export default function SellingPriceCard({
         {cash == null && installment == null && (
           <p className="mt-3 text-sm text-muted-foreground leading-snug">
             ยังไม่กำหนดราคา — แจ้งผู้จัดการก่อนเสนอลูกค้า
+          </p>
+        )}
+        {isFallback && (
+          <p className="mt-3 text-sm text-warning leading-snug">
+            ราคาจากระบบเดิม — ยังไม่ได้ตั้งราคาขายใหม่ เครื่องนี้จะยังไม่ขึ้นเว็บ
           </p>
         )}
       </CardContent>

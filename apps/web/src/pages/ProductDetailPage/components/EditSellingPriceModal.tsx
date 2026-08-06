@@ -29,7 +29,7 @@ export default function EditSellingPriceModal({
           <input
             type="number"
             step="0.01"
-            min="0"
+            min="1"
             value={cashPrice}
             onChange={(e) => onChange({ cashPrice: e.target.value, installmentPrice })}
             className="w-full px-3 py-2 border border-input rounded-lg text-sm"
@@ -42,14 +42,14 @@ export default function EditSellingPriceModal({
           <input
             type="number"
             step="0.01"
-            min="0"
+            min="1"
             value={installmentPrice}
             onChange={(e) => onChange({ cashPrice, installmentPrice: e.target.value })}
             className="w-full px-3 py-2 border border-input rounded-lg text-sm"
           />
         </div>
         <p className="text-xs text-muted-foreground leading-snug">
-          ราคานี้คือแหล่งเดียวที่เว็บลูกค้า/บอท/เครื่องคิดค่างวดใช้ — เว้นว่างได้ถ้ายังไม่ตั้งราคา
+          ราคานี้คือแหล่งเดียวที่เว็บลูกค้า/บอท/เครื่องคิดค่างวดใช้ — เว้นว่าง = ไม่แก้ไขค่านี้
         </p>
         <div className="flex justify-end gap-3 pt-2">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground">

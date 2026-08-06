@@ -220,6 +220,10 @@ describeOrSkip('PaySolutions webhook — cross-path Σ-invariant (real DB e2e, P
       paymentReceiptTemplate,
       vat60Reversal,
       paymentsStub,
+      // #1385 added BadDebtService (reverseStageOnPayment on the QR path) to the
+      // constructor but never updated this spec — pre-existing TS2554 on main.
+      // Reuse the REAL badDebt built above, same money-critical-deps-are-real policy.
+      badDebt,
     );
   }, 120_000);
 

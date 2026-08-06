@@ -134,6 +134,11 @@ describeOrSkip('PaySolutions webhook — overpay surplus → park as advance (re
       paymentReceiptTemplate,
       vat60Reversal,
       paymentsStub,
+      // #1385 added BadDebtService to the constructor but never updated this
+      // spec — pre-existing TS2554 on main. This spec drives the overpay/surplus
+      // path via the paymentsStub (recordPayment no-op), so the webhook's
+      // reverseStageOnPayment call is never reached — a no-op stub suffices.
+      { reverseStageOnPayment: async () => undefined } as any,
     );
   }, 120_000);
 

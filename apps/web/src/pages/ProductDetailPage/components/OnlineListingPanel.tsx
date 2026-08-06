@@ -6,6 +6,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { useProductReadiness } from '../hooks/useProductReadiness';
+import ReadinessCard from './ReadinessCard';
 
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = (typeof ANGLES)[number];
@@ -47,6 +49,7 @@ export default function OnlineListingPanel({
   canEdit: boolean;
 }) {
   const queryClient = useQueryClient();
+  const readiness = useProductReadiness(product.id);
   const [localGallery, setLocalGallery] = useState<string[]>(product.gallery);
   const [description, setDescription] = useState(product.onlineDescription ?? '');
   // Last server gallery this component has reconciled against — lets the
@@ -136,13 +139,6 @@ export default function OnlineListingPanel({
   );
   const isDirtyDescription = description !== (product.onlineDescription ?? '');
 
-  const missingReasons = useMemo(() => {
-    const reasons: string[] = [];
-    if (product.gallery.length < 1) reasons.push('ยังไม่มีรูปขึ้นเว็บ');
-    if (product.category === 'PHONE_USED' && !product.conditionGrade) reasons.push('ยังไม่ระบุเกรด (เฉพาะมือสอง)');
-    return reasons;
-  }, [product.gallery.length, product.category, product.conditionGrade]);
-
   // Gate against the server's gallery length (source of truth the API will
   // actually enforce), not the unsaved local buffer — an unsaved local
   // removal doesn't free up room on the server until "บันทึกการจัดเรียง" lands.
@@ -182,6 +178,8 @@ export default function OnlineListingPanel({
 
   return (
     <div className="space-y-4">
+      <ReadinessCard isLoading={readiness.isLoading} isError={readiness.isError} data={readiness.data} />
+
       {/* รูปที่ขึ้นเว็บ */}
       <div className="bg-card rounded-lg border p-4">
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
@@ -315,20 +313,16 @@ export default function OnlineListingPanel({
             <Switch
               id="online-visible"
               checked={product.isOnlineVisible}
-              disabled={!canEdit || toggleMutation.isPending || (!product.isOnlineVisible && missingReasons.length > 0)}
+              disabled={!canEdit || toggleMutation.isPending}
               onCheckedChange={(checked) => toggleMutation.mutate(checked)}
             />
             <Label htmlFor="online-visible" className="text-sm leading-snug">
               แสดงบนเว็บ shop
             </Label>
           </div>
-          {!product.isOnlineVisible && missingReasons.length > 0 && (
-            <ul className="ml-6 mt-2 list-disc text-xs text-muted-foreground leading-snug space-y-0.5">
-              {missingReasons.map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
-          )}
+          <p className="ml-6 mt-1 text-xs text-muted-foreground leading-snug">
+            ปิดสวิตช์นี้เพื่อซ่อนเครื่องนี้จากเว็บลูกค้า — เงื่อนไข "ข้อมูลครบ" ดูที่การ์ดสถานะขึ้นเว็บ
+          </p>
         </div>
 
         <div>

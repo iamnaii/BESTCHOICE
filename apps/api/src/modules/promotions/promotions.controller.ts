@@ -38,7 +38,8 @@ export class PromotionsController {
   }
 
   @Get('active')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  // B1: FM/ACCOUNTANT เปิดหน้าสินค้าได้แล้ว → ต้องอ่านโปรที่ใช้ได้เหมือนกัน
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findActive() {
     return this.promotionsService.findActivePromotions();
   }

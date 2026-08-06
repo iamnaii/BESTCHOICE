@@ -197,7 +197,7 @@ describe('CalculateInstallmentTool.run vs InstallmentPreviewService (#1335 parit
     const previewSvc = new InstallmentPreviewService(
       ({
         product: {
-          findUnique: jest.fn().mockResolvedValue({
+          findFirst: jest.fn().mockResolvedValue({
             id: productId,
             deletedAt: null,
             category: 'PHONE_USED',

@@ -1,5 +1,5 @@
 import type { Product } from '../types';
-import { getDisplayPrices } from '@/utils/getDisplayPrices';
+import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 
 export interface ProductSelectStepProps {
   products: Product[];
@@ -47,8 +47,16 @@ export function ProductSelectStep({
               </div>
               <div className="text-right">
                 {(() => {
-                  const { installment, cash } = getDisplayPrices(p);
-                  const displayPrice = installment ?? cash;
+                  // fix-round-1 (reviewer Minor): positivity guard, not null-check —
+                  // must match useContractCalculation.getSellingPrice so the card
+                  // never shows "0 ฿" for a machine the hook prices at a real amount.
+                  const { installment, cash } = getPositiveDisplayPrices(p);
+                  const displayPrice =
+                    installment != null && installment > 0
+                      ? installment
+                      : cash != null && cash > 0
+                        ? cash
+                        : null;
                   return (
                     <>
                       {displayPrice != null && (

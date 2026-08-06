@@ -12,6 +12,13 @@ import { PlaceOrderDto, PaymentChannel } from './dto/place-order.dto';
 import { generateOrderNumber } from './order-number.util';
 import type { OnlinePaymentChannel, OnlineShippingMethod } from '@prisma/client';
 
+/**
+ * B5: hold ปกติ 15 นาที (พอสำหรับจ่าย QR) แต่ช่องทางโอนธนาคารลูกค้าต้องไปโอนจริง
+ * + อัปสลิป + รอแอดมินตรวจ — 15 นาทีสั้นเกินจนของหลุดมือระหว่างรอ จึงยืดถึง 48 ชม.
+ * ออเดอร์ที่ถูกยกเลิกจะปล่อย hold เองที่ `ShopOrdersService.cancelOrder`
+ */
+const BANK_TRANSFER_HOLD_MS = 48 * 60 * 60 * 1000;
+
 export interface ValidatePromoResult {
   valid: boolean;
   reason?: string;
@@ -156,6 +163,10 @@ export class ShopCheckoutService {
     });
 
     if (dto.paymentChannel === PaymentChannel.BANK_TRANSFER) {
+      await this.prisma.productReservation.updateMany({
+        where: { id: reservation.id, status: 'ACTIVE' },
+        data: { expiresAt: new Date(Date.now() + BANK_TRANSFER_HOLD_MS) },
+      });
       return {
         orderNumber: order.orderNumber,
         orderId: order.id,

@@ -1,9 +1,14 @@
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
+import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
+import {
+  autofillProductPriceFromTemplate,
+  resolveInstallmentSemantics,
+} from '../../../utils/product-price-autofill.util';
 
 /**
  * Inventory-mutating goods-receiving flows. Owns the 2 write transactions:
@@ -19,6 +24,11 @@ import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util
  * PurchaseOrdersService facade.
  */
 export class PoReceivingService {
+  // Fix round 1 [Important 1]: plain class (not @Injectable, see class doc above) —
+  // constructed via `new`, so NestJS DI never populates a Logger for us; instantiate
+  // one module-scope like other plain classes in this codebase do.
+  private readonly logger = new Logger('PoReceiving');
+
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -154,6 +164,11 @@ export class PoReceivingService {
       }
     }
 
+    // Fix round 1 [Minor]: resolve the installment-semantics SystemConfig flag ONCE
+    // before the per-unit loop below, not once per unit — a 50-unit receiving batch
+    // was reading SystemConfig 50 times inside this same Serializable tx.
+    const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
+
     // Process each item
     for (const item of dto.items) {
       const poItem = po.items.find((i) => i.id === item.poItemId);
@@ -194,16 +209,48 @@ export class PoReceivingService {
           },
         });
 
-        // Create selling price if provided
+        // B0 §2.1: ราคาขายที่กรอกตอนรับเข้า = ราคาเงินสดของเครื่อง (คอลัมน์คือแหล่งจริง)
         if (item.sellingPrice && item.sellingPrice > 0) {
-          await tx.productPrice.create({
-            data: {
-              productId: product.id,
-              label: 'ราคาขาย',
-              amount: item.sellingPrice,
-              isDefault: true,
-            },
-          });
+          const cashPrice = new Prisma.Decimal(item.sellingPrice);
+          await tx.product.update({ where: { id: product.id }, data: { cashPrice } });
+          await syncPriceRowsFromColumns(tx, product.id, { cashPrice });
+        } else {
+          // ไม่ได้กรอกราคา → เติมจากตารางราคากลาง (ครอบ direct-receive ที่ delegate เข้ามาที่นี่)
+          //
+          // Fix round 1 [Important 2]: autofill เป็น "ของประดับ" ไม่ใช่ path การเงินหลัก —
+          // ห้าม fail-hard rollback การรับเข้าทั้ง batch เพราะ template lookup พัง เครื่องไม่มี
+          // ราคาตั้งต้น (กรอกทีหลังได้) ดีกว่ารับเข้าไม่ได้เลย. ห้าม swallow P2002/P2034 —
+          // 2 โค้ดนี้ต้องหลุดขึ้นไปให้ retry loop ใน goodsReceiving() จับแล้ว retry ทั้ง tx
+          // เหมือนเดิม (ไม่งั้น retry-on-conflict ที่มีอยู่แล้วจะไม่ทำงาน)
+          try {
+            await autofillProductPriceFromTemplate(
+              tx,
+              {
+                productId: product.id,
+                brand: product.brand,
+                model: product.model,
+                storage: product.storage,
+                category: product.category,
+                hasWarranty:
+                  productCategory !== 'PHONE_USED'
+                    ? false
+                    : item.warrantyExpired === true
+                      ? false
+                      : item.warrantyExpired === false
+                        ? true
+                        : null,
+                currentCashPrice: null,
+              },
+              this.logger,
+              installmentSemantics,
+            );
+          } catch (e) {
+            const code = (e as { code?: string })?.code;
+            if (code === 'P2002' || code === 'P2034') throw e;
+            this.logger.error(
+              `[autofill] product=${product.id} ข้ามการเติมราคาอัตโนมัติ — เกิด error ระหว่างเรียก autofillProductPriceFromTemplate (รับเข้าต่อได้ปกติ ไม่มีราคาตั้งต้นให้กรอกทีหลัง): ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
         }
 
         // Create receiving item linked to product

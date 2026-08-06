@@ -1,11 +1,12 @@
 import { Test } from '@nestjs/testing';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ShopInstallmentApplyService } from './shop-installment-apply.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import type { CreateApplicationDto } from './dto/create-application.dto';
 
 type PrismaMock = {
-  product: { findUnique: jest.Mock };
+  product: { findFirst: jest.Mock };
   onlineInstallmentApplication: {
     findFirst: jest.Mock;
     create: jest.Mock;
@@ -13,10 +14,11 @@ type PrismaMock = {
     findMany: jest.Mock;
     findUnique: jest.Mock;
   };
+  systemConfig: { findFirst: jest.Mock };
 };
 
 const prismaMock: PrismaMock = {
-  product: { findUnique: jest.fn() },
+  product: { findFirst: jest.fn() },
   onlineInstallmentApplication: {
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -24,6 +26,9 @@ const prismaMock: PrismaMock = {
     findMany: jest.fn(),
     findUnique: jest.fn(),
   },
+  // readBoolFlag('shop_hide_demo_products') reads this — most tests leave it unmocked
+  // (undefined → readRawValue catches → default false, matches prod day-1).
+  systemConfig: { findFirst: jest.fn() },
 };
 
 const lineMock = { sendFlexMessage: jest.fn() };
@@ -54,7 +59,7 @@ describe('ShopInstallmentApplyService', () => {
 
   it('computes monthly payment from installmentPrice, never costPrice', async () => {
     // costPrice is the internal cost and must never leak into the customer-facing quote.
-    prismaMock.product.findUnique.mockResolvedValue({
+    prismaMock.product.findFirst.mockResolvedValue({
       id: 'p1',
       costPrice: 5000,
       installmentPrice: 20000,
@@ -85,7 +90,7 @@ describe('ShopInstallmentApplyService', () => {
   });
 
   it('falls back to cashPrice when installmentPrice is unset', async () => {
-    prismaMock.product.findUnique.mockResolvedValue({
+    prismaMock.product.findFirst.mockResolvedValue({
       id: 'p1',
       costPrice: 5000,
       installmentPrice: null,
@@ -108,8 +113,29 @@ describe('ShopInstallmentApplyService', () => {
     expect(res.proposedMonthlyPayment).toBe(1542);
   });
 
+  it('B0 (fix round 1/5, Important 2): rejects when product has no price at all (installmentPrice + cashPrice both null) — guard must survive even when readiness already matched', async () => {
+    // Simulates a hold from before B0 shipped, or any other path that lets a readiness-matched
+    // product through to submit() with no price on either field — the mutation-testing gap the
+    // reviewer found: without this test, deleting the guard in shop-installment-apply.service.ts
+    // still left all 43 tests green.
+    prismaMock.product.findFirst.mockResolvedValue({
+      id: 'p1',
+      costPrice: 5000,
+      installmentPrice: null,
+      cashPrice: null,
+      deletedAt: null,
+    });
+    prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue(null);
+
+    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(BadRequestException);
+    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(
+      'สินค้านี้ยังไม่มีราคาผ่อน กรุณาติดต่อร้านเพื่อสอบถามราคา',
+    );
+    expect(prismaMock.onlineInstallmentApplication.create).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate active applications for same phone + product', async () => {
-    prismaMock.product.findUnique.mockResolvedValue({
+    prismaMock.product.findFirst.mockResolvedValue({
       id: 'p1',
       costPrice: 12000,
       deletedAt: null,
@@ -123,22 +149,43 @@ describe('ShopInstallmentApplyService', () => {
     expect(prismaMock.onlineInstallmentApplication.create).not.toHaveBeenCalled();
   });
 
-  it('returns NotFound when product is missing or soft-deleted', async () => {
-    prismaMock.product.findUnique.mockResolvedValue(null);
-    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(/ไม่พบสินค้า/);
+  it('returns NotFound (สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ) when product is missing or not readiness-eligible — ข้อความเดียวกับ reserve()', async () => {
+    // B0: submit() now uses findFirst + productReadinessWhere() (was findUnique + manual
+    // deletedAt check). A soft-deleted / not-ready product can no longer come back truthy
+    // from this query at all (the fragment's `deletedAt: null` / cashPrice / gallery checks
+    // already exclude it at the DB level) — both "missing" and "soft-deleted/not-ready"
+    // collapse to the SAME "findFirst returns null" case, same as shop-reservation.reserve().
+    prismaMock.product.findFirst.mockResolvedValue(null);
+    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(
+      'สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ',
+    );
+  });
 
-    prismaMock.product.findUnique.mockResolvedValue({
-      id: 'p1',
-      costPrice: 12000,
-      deletedAt: new Date(),
-    });
-    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(/ไม่พบสินค้า/);
+  it('sends the readiness fragment into the product lookup (fragment ครอบ deletedAt/cashPrice/gallery แทน explicit check เดิม)', async () => {
+    prismaMock.product.findFirst.mockResolvedValue(null);
+    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(NotFoundException);
+    const where = prismaMock.product.findFirst.mock.calls[0][0].where;
+    expect(where.AND).toEqual(
+      expect.arrayContaining([{ deletedAt: null }, { cashPrice: { gt: 0 } }]),
+    );
+  });
+
+  it('Fix round 1/5 (Important): กรอง [DEMO] เมื่อเปิด flag shop_hide_demo_products — ใบสมัครถูกปฏิเสธ 404 (เดิม excludeDemo ตายตัว false, ยังรับใบสมัครพร้อมเลขบัตรประชาชนของเครื่อง [DEMO] ได้)', async () => {
+    prismaMock.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
+    prismaMock.product.findFirst.mockResolvedValue(null);
+    await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(
+      'สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ',
+    );
+    const where = prismaMock.product.findFirst.mock.calls[0][0].where;
+    expect(where.AND).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
   });
 
   it('sends Flex message when lineUserId provided (non-fatal on failure)', async () => {
-    prismaMock.product.findUnique.mockResolvedValue({
+    prismaMock.product.findFirst.mockResolvedValue({
       id: 'p1',
       costPrice: 12000,
+      cashPrice: 18000,
+      installmentPrice: null,
       deletedAt: null,
     });
     prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue(null);

@@ -35,20 +35,9 @@ export class ProductsOnlineListingService {
       }
     }
 
-    const effectiveGallery = dto.gallery ?? product.gallery;
-    // The "visible ⇒ has photo + graded" invariant must hold for the
-    // resulting row regardless of whether THIS request flips the toggle —
-    // e.g. `PATCH { gallery: [] }` on an already-visible product must not
-    // silently leave it visible with an empty gallery.
-    const nextVisible = dto.isOnlineVisible ?? product.isOnlineVisible;
-    if (nextVisible === true) {
-      if (effectiveGallery.length < 1) {
-        throw new BadRequestException('ต้องมีรูปขึ้นเว็บอย่างน้อย 1 รูปก่อนเปิดแสดงบนเว็บ');
-      }
-      if (product.category === 'PHONE_USED' && !product.conditionGrade) {
-        throw new BadRequestException('กรุณาระบุเกรดเครื่องก่อนเปิดแสดงบนเว็บ');
-      }
-    }
+    // B0 §2.3: สวิตช์นี้กลายเป็น "ปิดจากเว็บ" ล้วนๆ — การขึ้นเว็บจริงตัดสินที่
+    // readiness fragment (product-readiness.util) ไม่ใช่ที่นี่ ดังนั้นกดเปิดได้เสมอ
+    // เครื่องที่เปิดไว้แต่ข้อมูลไม่ครบจะไม่ปรากฏบนเว็บอยู่ดี (GET /products/:id/readiness บอกเหตุผล)
 
     return this.prisma.product.update({
       where: { id },

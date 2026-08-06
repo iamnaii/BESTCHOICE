@@ -1,10 +1,13 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
+import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
+import { evaluateReadiness } from '../../utils/product-readiness.util';
 
 const productInclude = {
   prices: { orderBy: { createdAt: 'asc' as const } },
@@ -78,44 +81,156 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    const { prices, costPrice, warrantyExpireDate, ...data } = dto;
+    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
+
+    // DTO guard: prices[] ที่มี isDefault:true (หรือ fallback ของ element แรกที่ไม่ได้ระบุ)
+    // มากกว่า 1 รายการ จะชน DB partial unique index `product_prices_one_default` เป็น P2002
+    // ดิบ → ต้องคำนวณ "effective default" หลัง apply fallback `isDefault ?? (i===0)` ก่อนนับ
+    // (นับแค่ isDefault===true ตรงๆ พลาดเคส element 0 ที่ fallback เป็น true โดยปริยาย เช่น
+    // [{...}, {..., isDefault:true}] → element 0 fallback true + element 1 explicit true = ชน)
+    const effectiveDefaultCount = (prices ?? []).filter((p, i) => p.isDefault ?? i === 0).length;
+    if (effectiveDefaultCount > 1) {
+      throw new BadRequestException('ตั้งราคา default ได้เพียงรายการเดียว');
+    }
 
     const isInStock = !data.status || data.status === 'IN_STOCK';
-    const product = await this.prisma.product.create({
-      data: {
-        ...data,
-        costPrice,
-        warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null,
-        ...(isInStock ? { stockInDate: new Date() } : {}),
-        ...(prices && prices.length > 0
-          ? {
-              prices: {
-                create: prices.map((p, i) => ({
-                  label: p.label,
-                  amount: p.amount,
-                  isDefault: p.isDefault ?? (i === 0),
-                })),
-              },
-            }
-          : {}),
-      } as Prisma.ProductUncheckedCreateInput,
-      include: productInclude,
-    });
+    // 3 สถานะ: undefined = ไม่แตะ | null = เคลียร์คอลัมน์ | Decimal = ตั้งราคา
+    // ห้ามยุบเป็น `!== undefined ? new Prisma.Decimal(x) : undefined` — new Prisma.Decimal(null) throw
+    const cashDecimal =
+      cashPrice === undefined ? undefined : cashPrice === null ? null : new Prisma.Decimal(cashPrice);
+    const installmentDecimal =
+      installmentPrice === undefined
+        ? undefined
+        : installmentPrice === null
+          ? null
+          : new Prisma.Decimal(installmentPrice);
+    // Json? column: ส่ง JS `null` ตรงๆ เขียนเป็น JSON literal null (column ไม่เป็น SQL NULL —
+    // `accessories_included IS NULL` จะ false, Prisma filter หา null ไม่เจอ) ต้องแปลงเป็น
+    // Prisma.DbNull ตอนต้องการ "เคลียร์" คอลัมน์จริงๆ
+    const accessoriesIncludedValue =
+      accessoriesIncluded === undefined
+        ? undefined
+        : accessoriesIncluded === null
+          ? Prisma.DbNull
+          : accessoriesIncluded;
 
-    return product;
+    return this.prisma.$transaction(async (tx) => {
+      const product = await tx.product.create({
+        data: {
+          ...data,
+          costPrice,
+          ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
+          ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          ...(accessoriesIncludedValue !== undefined
+            ? { accessoriesIncluded: accessoriesIncludedValue }
+            : {}),
+          warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null,
+          ...(isInStock ? { stockInDate: new Date() } : {}),
+          ...(prices && prices.length > 0
+            ? {
+                prices: {
+                  create: prices.map((p, i) => ({
+                    label: p.label,
+                    amount: p.amount,
+                    isDefault: p.isDefault ?? (i === 0),
+                  })),
+                },
+              }
+            : {}),
+        } as Prisma.ProductUncheckedCreateInput,
+      });
+
+      // B0 §2.1: ไม่ได้กรอกราคาเงินสดมา → ลองเติมจากตารางราคากลาง
+      // `=== undefined` ตั้งใจ: ส่ง `cashPrice: null` มาชัดๆ = "ยืนยันว่ายังไม่มีราคา"
+      // ห้าม autofill ทับ (ไม่งั้นกดล้างราคาแล้วราคาเด้งกลับมาเอง)
+      //
+      // Fix round 1 [Critical]: guard เดิมเช็คแค่คอลัมน์ cashPrice อย่างเดียว — แต่
+      // ProductCreatePage (หน้าเพิ่มสินค้าหลัก) ไม่เคยส่งคอลัมน์ cashPrice เลย ส่งแต่
+      // prices[] เสมอ ⇒ autofill ทำงานทุกครั้งที่เพิ่มสินค้าผ่านหน้าจอ แล้ว
+      // syncPriceRowsFromColumns ภายใน util จะ relabel+overwrite แถว default ที่พนักงาน
+      // กรอกเอง (repro จริง: กรอก 25,000 → โดนเทมเพลตทับเป็น 28,900 เงียบๆ) — เลือกวิธี
+      // "skip autofill ไปเลยเมื่อมี prices[]" แทนการ derive currentCashPrice จาก
+      // effective-default row เพราะเรียบกว่า/ไม่ต้อง duplicate logic การหา default row
+      // ที่มีอยู่แล้วด้านบน (บรรทัด ~90) — ผู้ใช้ที่ตั้งใจส่ง prices[] มา ถือว่า "มีราคาแล้ว"
+      // เสมอไม่ว่า amount จะเท่าไหร่ (แม้จะเป็น 0 หรือราคาพิเศษก็ตาม ไม่ใช่หน้าที่ autofill
+      // ตัดสินใจแทน)
+      const hasManualPrices = (prices?.length ?? 0) > 0;
+      if (cashDecimal === undefined && !hasManualPrices) {
+        await autofillProductPriceFromTemplate(
+          tx,
+          {
+            productId: product.id,
+            brand: product.brand,
+            model: product.model,
+            storage: product.storage,
+            category: product.category,
+            hasWarranty: resolveHasWarranty(product),
+            currentCashPrice: null,
+          },
+          this.logger,
+        );
+      }
+
+      // B0 §2.1: write-through คอลัมน์ → prices[] (ผู้อ่านเดิม POS/สัญญา/บอท ไม่พัง)
+      // null ส่งเข้าไปได้ — util จะ "ข้ามฟิลด์นั้น" (ไม่ sync ไม่ลบแถว) ตามกติกาข้อ 4
+      await syncPriceRowsFromColumns(tx, product.id, {
+        cashPrice: cashDecimal ?? null,
+        installmentPrice: installmentDecimal ?? null,
+      });
+
+      return tx.product.findUnique({ where: { id: product.id }, include: productInclude });
+    });
   }
 
   async update(id: string, dto: UpdateProductDto) {
     await this.findOne(id);
-    const { costPrice, warrantyExpireDate, ...data } = dto;
-    return this.prisma.product.update({
-      where: { id },
-      data: {
-        ...data,
-        ...(costPrice !== undefined ? { costPrice } : {}),
-        ...(warrantyExpireDate !== undefined ? { warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null } : {}),
-      } as Prisma.ProductUncheckedUpdateInput,
-      include: productInclude,
+    const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
+    const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined;
+    // 3 สถานะเหมือน create — null ต้องเขียนลงคอลัมน์ได้ (ล้างราคา) ห้ามส่งเข้า Prisma.Decimal
+    const cashDecimal =
+      cashPrice === undefined ? undefined : cashPrice === null ? null : new Prisma.Decimal(cashPrice);
+    const installmentDecimal =
+      installmentPrice === undefined
+        ? undefined
+        : installmentPrice === null
+          ? null
+          : new Prisma.Decimal(installmentPrice);
+    // Json? column — เหมือน create: null ต้องแปลงเป็น Prisma.DbNull ไม่งั้นเขียนเป็น JSON
+    // literal null (SQL column ไม่เป็น NULL จริง)
+    const accessoriesIncludedValue =
+      accessoriesIncluded === undefined
+        ? undefined
+        : accessoriesIncluded === null
+          ? Prisma.DbNull
+          : accessoriesIncluded;
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.product.update({
+        where: { id },
+        data: {
+          ...data,
+          ...(costPrice !== undefined ? { costPrice } : {}),
+          ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
+          ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          ...(accessoriesIncludedValue !== undefined
+            ? { accessoriesIncluded: accessoriesIncludedValue }
+            : {}),
+          // แก้ราคามือ = เลิกเป็นราคาที่เติมอัตโนมัติ (badge ฝั่ง B1 อ่านฟิลด์นี้)
+          ...(touchesPrice ? { priceAutofilledAt: null } : {}),
+          ...(warrantyExpireDate !== undefined
+            ? { warrantyExpireDate: warrantyExpireDate ? new Date(warrantyExpireDate) : null }
+            : {}),
+        } as Prisma.ProductUncheckedUpdateInput,
+      });
+
+      if (touchesPrice) {
+        await syncPriceRowsFromColumns(tx, id, {
+          cashPrice: cashDecimal ?? null,
+          installmentPrice: installmentDecimal ?? null,
+        });
+      }
+
+      return tx.product.findUnique({ where: { id }, include: productInclude });
     });
   }
 
@@ -345,4 +460,47 @@ export class ProductsService {
     });
     return brands.map((b) => b.brand);
   }
+
+  /** B0 §2.3 — checklist "พร้อมขึ้นเว็บ" รายข้อ (หน้าสินค้า admin ใน B1 กินอันนี้) */
+  async getReadiness(id: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, brand: true, category: true, status: true,
+        cashPrice: true, installmentPrice: true, gallery: true,
+        conditionGrade: true, isOnlineVisible: true, deletedAt: true,
+        priceAutofilledAt: true,
+      },
+    });
+    if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+    const result = evaluateReadiness(product);
+    return {
+      productId: product.id,
+      // ⚠️ ชื่อคีย์ต้องเป็น `isReady` — B1 (useProductReadiness/ReadinessCard/fixture)
+      // อ่าน `data.isReady` ทั้งหมด; ถ้าส่ง `ready` B1 จะได้ undefined = โชว์
+      // "ยังขึ้นเว็บไม่ได้" ตลอด โดยไม่มีเทสต์ไหนแดง
+      isReady: result.ready,
+      checks: result.checks,
+      // non-blocking note (owner decision 2026-08) — B1 ใช้โชว์ป้ายเตือน "สินค้าตัวอย่าง"
+      // ไม่กระทบ isReady (ดู evaluateReadiness/ProductReadinessOptions.excludeDemo)
+      isDemo: result.isDemo,
+      // B1 โชว์สวิตช์ "แสดงบนเว็บ" คู่กับการ์ดนี้ — ส่งค่ามาด้วยจะได้ไม่ต้องยิงซ้ำ
+      isOnlineVisible: product.isOnlineVisible,
+      priceAutofilledAt: product.priceAutofilledAt,
+      hasInstallmentPrice: product.installmentPrice != null,
+    };
+  }
+}
+
+/** สรุปสถานะประกันของเครื่องสำหรับเลือกแถวตารางราคากลาง — null = ไม่รู้ */
+function resolveHasWarranty(p: {
+  category: string;
+  warrantyExpired: boolean | null;
+  warrantyExpireDate: Date | null;
+}): boolean | null {
+  if (p.category !== 'PHONE_USED') return false;
+  if (p.warrantyExpired === true) return false;
+  if (p.warrantyExpired === false) return true;
+  if (p.warrantyExpireDate) return p.warrantyExpireDate.getTime() > Date.now();
+  return null;
 }

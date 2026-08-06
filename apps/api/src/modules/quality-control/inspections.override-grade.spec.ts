@@ -27,13 +27,21 @@ import { OverrideGradeDto } from './dto/inspection.dto';
  * inspections.grade-mapping.spec.ts.
  */
 
-const makePrisma = (before: { isCompleted: boolean }, after: Record<string, unknown> = {}) => {
-  const findUnique = jest.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(after);
+const makePrisma = (
+  before: { isCompleted: boolean; products?: { id: string }[] },
+  after: Record<string, unknown> = {},
+) => {
+  const findUnique = jest
+    .fn()
+    .mockResolvedValueOnce({ products: [], ...before })
+    .mockResolvedValueOnce(after);
   const update = jest.fn().mockResolvedValue({});
+  const productUpdate = jest.fn().mockResolvedValue({});
   const prisma = {
     inspection: { findUnique, update },
+    product: { update: productUpdate },
   } as unknown as PrismaService;
-  return { prisma, findUnique, update };
+  return { prisma, findUnique, update, productUpdate };
 };
 
 const dto = (grade: string, reason: string): OverrideGradeDto =>
@@ -101,5 +109,19 @@ describe('InspectionsService.overrideGrade (195-206)', () => {
     expect(update).toHaveBeenCalledTimes(1);
     // the value returned is the reloaded record, not the update() result
     expect(out.gradeOverride).toBe('A');
+  });
+
+  it('B0: เขียน conditionGrade ลงทุกเครื่องที่ผูกกับใบตรวจ', async () => {
+    const { prisma, productUpdate } = makePrisma({
+      isCompleted: true,
+      products: [{ id: 'prod-1' }, { id: 'prod-2' }],
+    });
+    const svc = new InspectionsService(prisma);
+    await svc.overrideGrade('insp-1', dto('C', 'จอมีรอย'));
+    expect(productUpdate).toHaveBeenCalledTimes(2);
+    expect(productUpdate).toHaveBeenCalledWith({
+      where: { id: 'prod-2' },
+      data: { conditionGrade: 'C' },
+    });
   });
 });

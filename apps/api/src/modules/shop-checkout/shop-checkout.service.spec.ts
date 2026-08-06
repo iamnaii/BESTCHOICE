@@ -225,5 +225,30 @@ describe('ShopCheckoutService', () => {
       await expect(service.placeOrder(dto, 'cust-1')).rejects.toThrow(/ราคาขาย/);
       expect(prismaMock.onlineOrder.create).not.toHaveBeenCalled();
     });
+
+    it('BANK_TRANSFER: ยืด hold เป็น 48 ชม. ก่อนคืนผลลัพธ์ (ไม่ให้ของหลุดระหว่างรอสลิป)', async () => {
+      prismaMock.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', productId: 'p1', status: 'ACTIVE',
+        expiresAt: new Date(Date.now() + 60000), customerId: null,
+        product: { cashPrice: 10000 },
+      });
+      shippingMock.quote.mockReturnValue({ fee: 0 });
+      prismaMock.onlineOrder.create.mockResolvedValue({ id: 'oo-1', orderNumber: 'OO-1' });
+      prismaMock.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.placeOrder({
+        reservationId: 'r1',
+        shippingMethod: 'BRANCH_PICKUP',
+        shippingAddress: { province: 'ลพบุรี' },
+        paymentChannel: 'BANK_TRANSFER',
+      } as any, 'cust-1');
+
+      const call = prismaMock.productReservation.updateMany.mock.calls.at(-1)[0];
+      expect(call.where).toEqual({ id: 'r1', status: 'ACTIVE' });
+      const ms = new Date(call.data.expiresAt).getTime() - Date.now();
+      expect(ms).toBeGreaterThan(47 * 3600 * 1000);
+      expect(ms).toBeLessThanOrEqual(48 * 3600 * 1000);
+      expect(paysolutionsMock.createOnlineOrderIntent).not.toHaveBeenCalled();
+    });
   });
 });

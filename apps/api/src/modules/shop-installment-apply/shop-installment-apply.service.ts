@@ -3,6 +3,8 @@ import { ApplicationStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
+import { productReadinessWhere } from '../../utils/product-readiness.util';
+import { readBoolFlag } from '../../utils/config.util';
 import { CreateApplicationDto } from './dto/create-application.dto';
 
 /**
@@ -26,8 +28,15 @@ export class ShopInstallmentApplyService {
   ) {}
 
   async submit(dto: CreateApplicationDto, customerId: string | undefined) {
-    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
+    // Fix round 1/5 (Important): เดิม excludeDemo ตายตัว false — เปิด flag แล้ว catalog ซ่อน +
+    // reserve ปฏิเสธ + บอทปฏิเสธ แต่ apply ยังรับใบสมัครพร้อมเลขบัตรประชาชนของเครื่อง [DEMO] ได้
+    // (รูรั่ว PII ที่ brief เขียนเตือนไว้เอง — เก็บข้อมูลลูกค้าให้ดีลที่เกิดไม่ได้)
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
+    const product = await this.prisma.product.findFirst({
+      // B0 §2.3: ข้อความเดียวกับ reserve() เพื่อให้ลูกค้าเห็นเหตุผลเดียวกันทุกทางเข้า
+      where: { id: dto.productId, ...productReadinessWhere({ excludeDemo }) },
+    });
+    if (!product) throw new NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ');
 
     const duplicate = await this.prisma.onlineInstallmentApplication.findFirst({
       where: {
@@ -41,7 +50,12 @@ export class ShopInstallmentApplyService {
       throw new BadRequestException('มีใบสมัครของท่านอยู่แล้ว ทีมงานจะติดต่อกลับ');
     }
 
-    const price = Number(product.installmentPrice ?? product.cashPrice ?? 0);
+    // B0: ห้ามคำนวณแผนผ่อนบนราคา 0 (เดิม ?? 0 → ลูกค้าได้ค่างวด 0 บาท)
+    const priceSource = product.installmentPrice ?? product.cashPrice;
+    if (priceSource == null || Number(priceSource) <= 0) {
+      throw new BadRequestException('สินค้านี้ยังไม่มีราคาผ่อน กรุณาติดต่อร้านเพื่อสอบถามราคา');
+    }
+    const price = Number(priceSource);
     const financed = Math.max(0, price - dto.proposedDownPayment);
     const interestTotal = financed * DEFAULT_INTEREST_MONTHLY * dto.proposedTotalMonths;
     const monthly = Math.ceil((financed + interestTotal) / dto.proposedTotalMonths);

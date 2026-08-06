@@ -54,14 +54,21 @@ describe('ProductsOnlineListingService', () => {
       expect(prisma.product.update).not.toHaveBeenCalled();
     });
 
-    it('blocks turning isOnlineVisible on when gallery is empty', async () => {
+    it('B0: เปิด isOnlineVisible ได้แม้ยังไม่มีรูป (readiness เป็นคนตัดสินการขึ้นเว็บ)', async () => {
       prisma.product.findFirst.mockResolvedValue({ ...baseProduct, gallery: [] });
-      await expect(service.updateOnlineListing('p1', { isOnlineVisible: true })).rejects.toThrow(/รูป/);
+      await expect(
+        service.updateOnlineListing('p1', { isOnlineVisible: true }),
+      ).resolves.toBeDefined();
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ isOnlineVisible: true }) }),
+      );
     });
 
-    it('blocks turning on for PHONE_USED without conditionGrade', async () => {
+    it('B0: เปิด isOnlineVisible ได้แม้มือสองยังไม่มีเกรด', async () => {
       prisma.product.findFirst.mockResolvedValue({ ...baseProduct, conditionGrade: null });
-      await expect(service.updateOnlineListing('p1', { isOnlineVisible: true })).rejects.toThrow(/เกรด/);
+      await expect(
+        service.updateOnlineListing('p1', { isOnlineVisible: true }),
+      ).resolves.toBeDefined();
     });
 
     it('allows turning on for non-PHONE_USED without grade', async () => {
@@ -69,10 +76,15 @@ describe('ProductsOnlineListingService', () => {
       await expect(service.updateOnlineListing('p1', { isOnlineVisible: true })).resolves.toBeDefined();
     });
 
-    it('validates against the INCOMING gallery when both provided (turn on with empty list = reject)', async () => {
+    it('B0: เปิดพร้อมส่ง gallery ว่าง ไม่ throw แล้ว (บันทึก gallery ว่าง + เปิดสวิตช์)', async () => {
       await expect(
         service.updateOnlineListing('p1', { isOnlineVisible: true, gallery: [] }),
-      ).rejects.toThrow(BadRequestException);
+      ).resolves.toBeDefined();
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ gallery: [], isOnlineVisible: true }),
+        }),
+      );
     });
 
     it('turning OFF is always allowed', async () => {
@@ -85,14 +97,12 @@ describe('ProductsOnlineListingService', () => {
       await expect(service.updateOnlineListing('nope', {})).rejects.toThrow(NotFoundException);
     });
 
-    // Regression (review finding CRITICAL): the visible⇒has-photo invariant
-    // must hold even when THIS request doesn't touch isOnlineVisible at all —
-    // clearing gallery on an already-visible product must not silently leave
-    // it visible with an empty gallery.
-    it('rejects PATCH { gallery: [] } on a product that is already visible', async () => {
+    // B0: the visible⇒has-photo invariant moved OUT of this service and into
+    // the readiness fragment — the switch itself no longer blocks an
+    // already-visible product from clearing its gallery.
+    it('B0: PATCH { gallery: [] } บนเครื่องที่เปิดอยู่ = ล้างรูปได้ (เครื่องจะหลุดจากเว็บเองด้วย readiness)', async () => {
       prisma.product.findFirst.mockResolvedValue({ ...baseProduct, isOnlineVisible: true });
-      await expect(service.updateOnlineListing('p1', { gallery: [] })).rejects.toThrow(/รูป/);
-      expect(prisma.product.update).not.toHaveBeenCalled();
+      await expect(service.updateOnlineListing('p1', { gallery: [] })).resolves.toBeDefined();
     });
 
     // Regression (review finding IMPORTANT): duplicate URLs in the incoming

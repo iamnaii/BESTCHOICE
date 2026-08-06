@@ -9,11 +9,14 @@ describe('InstallmentPreviewService', () => {
 
   beforeEach(async () => {
     prisma = {
-      product: { findUnique: jest.fn() },
+      product: { findFirst: jest.fn() },
       interestConfig: { findFirst: jest.fn() },
       gfinModelMapping: { findMany: jest.fn() },
       gfinOverpriceRule: { findMany: jest.fn() },
       gfinRateFactor: { findFirst: jest.fn() },
+      // readBoolFlag('shop_hide_demo_products') reads this — most tests leave it unmocked
+      // (undefined → readRawValue catches → default false, matches prod day-1).
+      systemConfig: { findFirst: jest.fn() },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -25,14 +28,14 @@ describe('InstallmentPreviewService', () => {
   });
 
   it('returns available:false when product not found', async () => {
-    prisma.product.findUnique.mockResolvedValue(null);
+    prisma.product.findFirst.mockResolvedValue(null);
     const result = await service.preview({ productId: 'nope', provider: 'BC', months: 12 });
     expect(result.available).toBe(false);
     expect(result.reason).toBe('product_not_found');
   });
 
   it('returns available:false when no installment price set', async () => {
-    prisma.product.findUnique.mockResolvedValue({
+    prisma.product.findFirst.mockResolvedValue({
       id: 'p1',
       installmentPrice: null,
       prices: [],
@@ -47,8 +50,26 @@ describe('InstallmentPreviewService', () => {
     expect(result.reason).toBe('no_installment_price');
   });
 
+  it('sends the readiness fragment into the product lookup — quote ได้เฉพาะเครื่องที่พร้อมขายบนเว็บจริง', async () => {
+    prisma.product.findFirst.mockResolvedValue(null);
+    await service.preview({ productId: 'p1', provider: 'BC', months: 12 });
+    expect(prisma.product.findFirst.mock.calls[0][0].where.AND).toEqual(
+      expect.arrayContaining([{ cashPrice: { gt: 0 } }]),
+    );
+  });
+
+  it('Fix round 1/5 (Important): กรอง [DEMO] เมื่อเปิด flag shop_hide_demo_products — quote ไม่ได้อีก (เดิม excludeDemo ตายตัว false)', async () => {
+    prisma.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
+    prisma.product.findFirst.mockResolvedValue(null);
+    const result = await service.preview({ productId: 'demo-1', provider: 'BC', months: 12 });
+    expect(result.available).toBe(false);
+    expect(result.reason).toBe('product_not_found');
+    const where = prisma.product.findFirst.mock.calls[0][0].where;
+    expect(where.AND).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
+  });
+
   it('BC: returns canonical worked example monthly payment 2,413.21', async () => {
-    prisma.product.findUnique.mockResolvedValue({
+    prisma.product.findFirst.mockResolvedValue({
       id: 'p1',
       installmentPrice: new Prisma.Decimal('19900'),
       prices: [],
@@ -77,7 +98,7 @@ describe('InstallmentPreviewService', () => {
   });
 
   it('GFIN: returns canonical worked example monthly payment 2,923.00', async () => {
-    prisma.product.findUnique.mockResolvedValue({
+    prisma.product.findFirst.mockResolvedValue({
       id: 'p1',
       installmentPrice: new Prisma.Decimal('19900'),
       prices: [],
@@ -123,7 +144,7 @@ describe('InstallmentPreviewService', () => {
   });
 
   it('SECURITY: never leaks maxPrice, factor, seriesPattern in response', async () => {
-    prisma.product.findUnique.mockResolvedValue({
+    prisma.product.findFirst.mockResolvedValue({
       id: 'p1',
       installmentPrice: new Prisma.Decimal('19900'),
       prices: [],

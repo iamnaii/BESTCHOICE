@@ -6,9 +6,10 @@ import { OnlineOrderSaleAdapter } from './online-order-sale.adapter';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { SalesModule } from '../sales/sales.module';
 import { AuthModule } from '../auth/auth.module';
+import { LineOaModule } from '../line-oa/line-oa.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => SalesModule), AuthModule],
+  imports: [PrismaModule, forwardRef(() => SalesModule), AuthModule, LineOaModule],
   controllers: [ShopOrdersController, ShopOrdersAdminController],
   providers: [ShopOrdersService, OnlineOrderSaleAdapter],
   exports: [ShopOrdersService, OnlineOrderSaleAdapter],

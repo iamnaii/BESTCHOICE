@@ -7,6 +7,8 @@ import {
   findGfinMapping,
   findGfinOverpriceRule,
 } from '../../utils/installment-calc.util';
+import { productReadinessWhere } from '../../utils/product-readiness.util';
+import { readBoolFlag } from '../../utils/config.util';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
 
 export interface PreviewResult {
@@ -28,11 +30,16 @@ export class InstallmentPreviewService {
   constructor(private prisma: PrismaService) {}
 
   async preview(dto: InstallmentPreviewDto): Promise<PreviewResult> {
-    const product = await this.prisma.product.findUnique({
-      where: { id: dto.productId },
+    // Fix round 1/5 (Important): preview ต้องกัน [DEMO] เหมือน catalog/reserve/bot — เดิม
+    // excludeDemo ตายตัว false ทำให้เปิด flag แล้ว catalog ซ่อน + reserve ปฏิเสธ แต่ preview
+    // ยัง quote ได้ (รูรั่ว PII surface ที่ brief เตือนไว้ — ลูกค้าขอใบเสนอราคาเครื่อง [DEMO] ได้)
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
+    const product = await this.prisma.product.findFirst({
+      // B0 §2.3: quote ได้เฉพาะเครื่องที่พร้อมขายบนเว็บจริง (เดิมเช็คแค่ deletedAt)
+      where: { id: dto.productId, ...productReadinessWhere({ excludeDemo }) },
       include: { prices: { where: { deletedAt: null } } },
     });
-    if (!product || product.deletedAt) {
+    if (!product) {
       return { available: false, reason: 'product_not_found' };
     }
 

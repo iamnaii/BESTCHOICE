@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { readBoolFlag } from '../../../utils/config.util';
+import { DEMO_NAME_PREFIX } from '../../../utils/product-readiness.util';
 
 export const SEARCH_PRODUCTS_TOOL = {
   name: 'search_products',
@@ -26,11 +28,14 @@ export class SearchProductsTool {
     // wholesale `costPrice` as the asking price (Nai bug 2026-05-21:
     // tool returned iPhone 15 Blue 128GB at priceThb=7000 — that's the
     // wholesale, plus the unit wasn't actually in stock).
+    // B0: เว็บกรอง [DEMO] แล้ว บอทต้องไม่เสนอสวนทาง (B3 จะย้ายมาใช้ util เต็มตัว)
+    const hideDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
     const rows = await this.prisma.product.findMany({
       where: {
         deletedAt: null,
         isOnlineVisible: true,
         status: 'IN_STOCK',
+        ...(hideDemo ? { NOT: { name: { startsWith: DEMO_NAME_PREFIX } } } : {}),
         OR: [
           { name: { contains: input.query, mode: 'insensitive' } },
           { brand: { contains: input.query, mode: 'insensitive' } },

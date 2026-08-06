@@ -28,6 +28,12 @@ export class ShopCartService {
     const now = Date.now();
     return reservations
       .filter((r) => r.expiresAt.getTime() > now)
+      // B0: ห้ามโชว์ ฿0 — จองใหม่ต้องผ่าน readiness (มีราคาแน่นอน);
+      // hold ค้างจากก่อน B0 ที่ไม่มีราคาให้ตกจากตะกร้าแทนคิดเงินเป็นศูนย์
+      // ⚠️ คง fallback `cashPrice ?? installmentPrice` ไว้ตามพฤติกรรมเดิม (:39)
+      //    spec เดิม `falls back to installmentPrice when cashPrice is not set`
+      //    (shop-cart.service.spec.ts:48) ยืนยันไว้ — ตัดออกจะทำให้แดง
+      .filter((r) => Number(r.product.cashPrice ?? r.product.installmentPrice ?? 0) > 0)
       .map((r) => ({
         reservationId: r.id,
         productId: r.productId,

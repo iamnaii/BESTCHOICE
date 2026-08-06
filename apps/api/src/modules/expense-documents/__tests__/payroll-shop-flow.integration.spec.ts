@@ -16,6 +16,8 @@ import { PayrollCustomService } from '../services/payroll-custom.service';
 import { PettyCashService } from '../services/petty-cash.service';
 import { GeneralLedgerReportService } from '../../accounting/general-ledger-report.service';
 import { TaxPreviewService } from '../../tax/services/tax-preview.service';
+import { PayrollRemittanceTemplate } from '../../journal/cpa-templates/payroll-remittance.template';
+import { ExpenseDocumentQueryService } from '../services/expense-document-query.service';
 
 /**
  * Payroll ฝั่ง SHOP — สถานการณ์สมมุติ E2E กับ DB จริง (คำสั่งเจ้าของ 2026-08-06 ข้อ 4:
@@ -64,12 +66,22 @@ const creator = new ExpenseDocumentCreateService(
 );
 const glReport = new GeneralLedgerReportService(prisma as never, companyResolver);
 const taxPreview = new TaxPreviewService(prisma as never);
+const remitTemplate = new PayrollRemittanceTemplate(
+  journal,
+  prisma as never,
+  roles,
+  companyResolver,
+);
+// buildPayrollBankCsv path never touches jePreview — safe to omit here.
+const queryService = new ExpenseDocumentQueryService(prisma as never, undefined as never);
 
 let shopCompanyId: string;
 let financeCompanyId: string;
 let branchId: string;
 let adminId: string;
 const createdDocIds: string[] = [];
+// นำส่ง ปกส./ภ.ง.ด.1 — JE ไม่ผูกกับ document จึงต้อง track แยกเพื่อ cleanup
+const remitJeEntryNos: string[] = [];
 
 const OWNER_USER = () => ({ id: adminId, branchId: null, role: 'OWNER' });
 
@@ -132,6 +144,14 @@ afterAll(async () => {
       return createdDocIds.some((d) => key.endsWith(d));
     })
     .map((j) => j.id);
+  // Remittance JEs (flow sso-remittance / pnd1-remittance) tracked by entryNumber
+  if (remitJeEntryNos.length > 0) {
+    const remitJes = await prisma.journalEntry.findMany({
+      where: { entryNumber: { in: remitJeEntryNos } },
+      select: { id: true },
+    });
+    ourJeIds.push(...remitJes.map((j) => j.id));
+  }
   if (ourJeIds.length > 0) {
     await prisma.expenseDocument.updateMany({
       where: { id: { in: createdDocIds } },
@@ -347,5 +367,131 @@ describe('Payroll SHOP scope — สถานการณ์สมมุติ�
     const somsri = pnd1.items.find((i) => i.employeeName.startsWith('สมศรี'));
     expect(somsri).toBeDefined();
     expect(somsri!.whtAmount.toString()).toBe('300');
+  });
+
+  it('9. สปส.1-10 preview: เฉพาะคน SSO > 0 + แยกยอด per scope', async () => {
+    const sso = await taxPreview.previewSso110(2099, 1);
+    const ours = sso.items.filter((i) => i.employeeName.includes('ทดสอบเงินเดือน'));
+    expect(ours).toHaveLength(2);
+    const somchai = ours.find((i) => i.employeeName.startsWith('สมชาย'))!;
+    expect(somchai.ssoEmployee.toString()).toBe('600');
+    expect(somchai.ssoEmployer.toString()).toBe('600');
+    expect(somchai.scope).toBe('SHOP');
+    // งวด 2099-01 มีแต่ SHOP → ฝั่ง SHOP = 600+875 = 1,475 ต่อข้าง
+    expect(sso.perScope.shop.employeeTotal.toString()).toBe('1475');
+    expect(sso.perScope.shop.grandTotal.toString()).toBe('2950');
+  });
+
+  it('10. ภ.ง.ด.1ก annual: รวมทั้งปีต่อคน (ฐาน+รายได้พิเศษที่เสียภาษี)', async () => {
+    const annual = await taxPreview.previewPnd1Annual(2099);
+    const ours = annual.items.filter((i) => i.employeeName.includes('ทดสอบ'));
+    // สมชาย + สมหญิง (2099-01) + สมศรี (2099-03) + คนจากใบแก้ไข (ยัง DRAFT — ไม่นับ)
+    const somying = ours.find((i) => i.employeeName.startsWith('สมหญิง'))!;
+    expect(somying.grossTotal.toString()).toBe('20000'); // 18,000 + โบนัส 2,000
+    expect(somying.whtTotal.toString()).toBe('150');
+    expect(somying.monthsPaid).toBe(1);
+  });
+
+  it('11. นำส่ง ปกส. ฝั่ง SHOP งวด 2099-01 → GL S21-3105/S21-3106 เหลือ 0 + กันนำส่งซ้ำ', async () => {
+    const result = await remitTemplate.executeSso({
+      scope: 'SHOP',
+      period: '2099-01',
+      depositAccountCode: 'S11-1202',
+    });
+    remitJeEntryNos.push(result.entryNo);
+    expect(result.amountPerSide).toBe('1475.00');
+    expect(result.total).toBe('2950.00');
+
+    const glBalance = async (accountCode: string, companyId: string) => {
+      const agg = await prisma.journalLine.aggregate({
+        where: {
+          accountCode,
+          deletedAt: null,
+          journalEntry: { status: 'POSTED', deletedAt: null, companyId },
+        },
+        _sum: { credit: true, debit: true },
+      });
+      return new Decimal((agg._sum.credit ?? 0).toString()).minus(
+        (agg._sum.debit ?? 0).toString(),
+      );
+    };
+    expect((await glBalance('S21-3105', shopCompanyId)).toString()).toBe('0');
+    expect((await glBalance('S21-3106', shopCompanyId)).toString()).toBe('0');
+
+    // นำส่งซ้ำงวดเดิม → ปฏิเสธ
+    await expect(
+      remitTemplate.executeSso({
+        scope: 'SHOP',
+        period: '2099-01',
+        depositAccountCode: 'S11-1202',
+      }),
+    ).rejects.toThrow(/นำส่งไปแล้ว/);
+  });
+
+  it('12. นำส่ง ภ.ง.ด.1 ฝั่ง SHOP งวด 2099-01 → GL S21-3101 เหลือ 0', async () => {
+    const result = await remitTemplate.executePnd1({
+      scope: 'SHOP',
+      period: '2099-01',
+      depositAccountCode: 'S11-1202',
+    });
+    remitJeEntryNos.push(result.entryNo);
+    expect(result.total).toBe('150.00');
+
+    const agg = await prisma.journalLine.aggregate({
+      where: {
+        accountCode: 'S21-3101',
+        deletedAt: null,
+        journalEntry: { status: 'POSTED', deletedAt: null, companyId: shopCompanyId },
+      },
+      _sum: { credit: true, debit: true },
+    });
+    const balance = new Decimal((agg._sum.credit ?? 0).toString()).minus(
+      (agg._sum.debit ?? 0).toString(),
+    );
+    expect(balance.toString()).toBe('0');
+  });
+
+  it('13. แก้ไขร่าง (R3-2): เปลี่ยนพนักงาน + ยอด → totals ใหม่ถูก และงวดเดิมของตัวเองไม่ชน dup guard', async () => {
+    const draft = await creator.createPayroll(
+      {
+        branchId,
+        documentDate: '2099-04-15',
+        payrollPeriod: '2099-04',
+        entityScope: 'SHOP',
+        depositAccountCode: 'S11-1202',
+        lines: [{ employeeName: 'คนแรก ก่อนแก้', baseSalary: 9000 }],
+      } as never,
+      OWNER_USER(),
+    );
+    createdDocIds.push(draft.id);
+
+    const updated = await creator.updatePayroll(
+      draft.id,
+      {
+        documentDate: '2099-04-20',
+        payrollPeriod: '2099-04', // งวดเดิม — ต้องไม่ชนกับตัวเอง
+        entityScope: 'SHOP',
+        depositAccountCode: 'S11-1202',
+        lines: [
+          { employeeName: 'คนแรก หลังแก้', baseSalary: 9500, ssoEmployee: 475 },
+          { employeeName: 'คนที่สอง เพิ่มใหม่', baseSalary: 11000, ssoEmployee: 550 },
+        ],
+      } as never,
+      OWNER_USER(),
+    );
+
+    expect(updated.subtotal.toString()).toBe('20500');
+    expect(updated.netPayment?.toString()).toBe('19475'); // 9,025 + 10,450
+    expect(updated.payroll?.lines).toHaveLength(2);
+    expect(
+      updated.payroll?.lines.find((l) => l.employeeName === 'คนแรก ก่อนแก้'),
+    ).toBeUndefined();
+  });
+
+  it('14. ไฟล์โอนธนาคาร (R3-3): แถว free-text ไม่มีเลขบัญชี → ข้ามพร้อมนับ', async () => {
+    const { csv, skipped } = await queryService.buildPayrollBankCsv(shopDocId, 'OWNER', null);
+    // พนักงานในสถานการณ์สมมุติเป็น free-text (ไม่มี userId) → ถูกข้ามทั้งคู่
+    expect(skipped).toHaveLength(2);
+    expect(csv).toContain('ลำดับ,ชื่อพนักงาน,ธนาคาร,เลขบัญชี,จำนวนเงิน');
   });
 });

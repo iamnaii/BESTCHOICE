@@ -748,4 +748,204 @@ export class TaxPreviewService {
       transactionCount: items.length,
     };
   }
+
+  /**
+   * สปส.1-10 (SSO monthly filing) preview — payroll round 2 (2026-08-06).
+   *
+   * Same document-driven sourcing as previewPayrollWHT: POSTED payroll docs
+   * keyed on paidAt (documentDate fallback), VOIDs drop out automatically, no
+   * branch/company gate (one juristic person files a single สปส.1-10).
+   * Only insured rows appear (`ssoEmployee > 0` — พนักงานที่ไม่เข้า ปกส. ไม่ขึ้นแบบ).
+   * Employer side mirrors the employee figure (Thai law: identical 5%).
+   */
+  async previewSso110(year: number, month: number) {
+    const { startDate, endDate } = this.getDateRange(year, month);
+    const period = `${year}-${String(month).padStart(2, '0')}`;
+
+    const docs = await this.prisma.expenseDocument.findMany({
+      where: {
+        documentType: 'PAYROLL',
+        status: 'POSTED',
+        journalEntryId: { not: null },
+        deletedAt: null,
+        OR: [
+          { paidAt: { gte: startDate, lte: endDate } },
+          { paidAt: null, documentDate: { gte: startDate, lte: endDate } },
+        ],
+      },
+      orderBy: { documentDate: 'asc' },
+      select: {
+        number: true,
+        payroll: {
+          select: {
+            entityScope: true,
+            lines: {
+              where: { ssoEmployee: { gt: 0 } },
+              select: {
+                employeeName: true,
+                employeeTaxId: true,
+                baseSalary: true,
+                ssoEmployee: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const items: Array<{
+      scope: string;
+      employeeName: string;
+      employeeTaxId: string | null;
+      wage: Prisma.Decimal;
+      ssoEmployee: Prisma.Decimal;
+      ssoEmployer: Prisma.Decimal;
+      payrollDocNumber: string;
+    }> = [];
+    for (const doc of docs) {
+      const scope = doc.payroll?.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP';
+      for (const line of doc.payroll?.lines ?? []) {
+        items.push({
+          scope,
+          employeeName: line.employeeName,
+          employeeTaxId: line.employeeTaxId,
+          wage: line.baseSalary,
+          ssoEmployee: line.ssoEmployee,
+          // Employer matches employee by law (ม.46 — identical 5%); a future
+          // divergence needs a real ssoEmployer column (see payroll.template).
+          ssoEmployer: line.ssoEmployee,
+          payrollDocNumber: doc.number,
+        });
+      }
+    }
+
+    const zero = new Prisma.Decimal(0);
+    const scopeTotal = (scope: 'SHOP' | 'FINANCE') => {
+      const rows = items.filter((i) => i.scope === scope);
+      const employee = rows.reduce((s, i) => s.add(i.ssoEmployee), zero);
+      return {
+        count: rows.length,
+        employeeTotal: employee,
+        employerTotal: employee,
+        grandTotal: employee.mul(2),
+      };
+    };
+    const employeeTotal = items.reduce((s, i) => s.add(i.ssoEmployee), zero);
+
+    return {
+      form: 'SSO110' as const,
+      period: { year, month, startDate, endDate },
+      periodKey: period,
+      items,
+      count: items.length,
+      employeeTotal,
+      employerTotal: employeeTotal,
+      grandTotal: employeeTotal.mul(2),
+      perScope: { shop: scopeTotal('SHOP'), finance: scopeTotal('FINANCE') },
+    };
+  }
+
+  /**
+   * ภ.ง.ด.1ก (annual PND1 summary) — payroll round 2 (2026-08-06).
+   *
+   * Aggregates the whole calendar year per employee (keyed employeeTaxId,
+   * falling back to name for legacy free-text rows). Feeds three outputs:
+   * the ภ.ง.ด.1ก filing, the per-employee ใบ 50 ทวิ print sheet, and the
+   * annual wage total the accountant needs for กท.20ก.
+   */
+  async previewPnd1Annual(year: number) {
+    const startDate = new Date(Date.UTC(year, 0, 1));
+    const endDate = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+
+    const docs = await this.prisma.expenseDocument.findMany({
+      where: {
+        documentType: 'PAYROLL',
+        status: 'POSTED',
+        journalEntryId: { not: null },
+        deletedAt: null,
+        OR: [
+          { paidAt: { gte: startDate, lte: endDate } },
+          { paidAt: null, documentDate: { gte: startDate, lte: endDate } },
+        ],
+      },
+      orderBy: { documentDate: 'asc' },
+      select: {
+        payroll: {
+          select: {
+            payrollPeriod: true,
+            lines: {
+              select: {
+                employeeName: true,
+                employeeTaxId: true,
+                baseSalary: true,
+                whtAmount: true,
+                ssoEmployee: true,
+                customIncome: { where: { isTaxable: true }, select: { amount: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const zero = new Prisma.Decimal(0);
+    const byEmployee = new Map<
+      string,
+      {
+        employeeName: string;
+        employeeTaxId: string | null;
+        monthsPaid: Set<string>;
+        grossTotal: Prisma.Decimal;
+        whtTotal: Prisma.Decimal;
+        ssoTotal: Prisma.Decimal;
+      }
+    >();
+
+    for (const doc of docs) {
+      const period = doc.payroll?.payrollPeriod ?? '';
+      for (const line of doc.payroll?.lines ?? []) {
+        const key = line.employeeTaxId ?? `name:${line.employeeName}`;
+        const taxableIncome = (line.customIncome ?? []).reduce(
+          (s, r) => s.add(r.amount),
+          zero,
+        );
+        const gross = line.baseSalary.add(taxableIncome);
+        const agg = byEmployee.get(key) ?? {
+          employeeName: line.employeeName,
+          employeeTaxId: line.employeeTaxId,
+          monthsPaid: new Set<string>(),
+          grossTotal: zero,
+          whtTotal: zero,
+          ssoTotal: zero,
+        };
+        agg.monthsPaid.add(period);
+        agg.grossTotal = agg.grossTotal.add(gross);
+        agg.whtTotal = agg.whtTotal.add(line.whtAmount);
+        agg.ssoTotal = agg.ssoTotal.add(line.ssoEmployee);
+        byEmployee.set(key, agg);
+      }
+    }
+
+    const items = [...byEmployee.values()]
+      .map((a) => ({
+        employeeName: a.employeeName,
+        employeeTaxId: a.employeeTaxId,
+        monthsPaid: a.monthsPaid.size,
+        grossTotal: a.grossTotal,
+        whtTotal: a.whtTotal,
+        ssoTotal: a.ssoTotal,
+      }))
+      .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'th'));
+
+    return {
+      form: 'PND1A' as const,
+      year,
+      items,
+      count: items.length,
+      grossTotal: items.reduce((s, i) => s.add(i.grossTotal), zero),
+      whtTotal: items.reduce((s, i) => s.add(i.whtTotal), zero),
+      // Σ ค่าจ้างทั้งปี — ตัวเลขอ้างอิงสำหรับ กท.20ก (กองทุนเงินทดแทน)
+      annualWageTotal: items.reduce((s, i) => s.add(i.grossTotal), zero),
+    };
+  }
 }

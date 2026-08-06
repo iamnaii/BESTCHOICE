@@ -5,7 +5,7 @@ import { TaxPreviewService } from './services/tax-preview.service';
 import { TaxReportService } from './services/tax-report.service';
 import { TaxExportService } from './services/tax-export.service';
 
-export type TaxFormCode = 'PP30' | 'PND1' | 'PND3' | 'PND53';
+export type TaxFormCode = 'PP30' | 'PND1' | 'PND3' | 'PND53' | 'SSO110' | 'PND1A';
 
 /**
  * TaxService — facade preserving the 9-method public surface + DI contract.
@@ -40,6 +40,16 @@ export class TaxService {
 
   previewPND53(companyId: string, year: number, month: number) {
     return this.preview.previewPND53(companyId, year, month);
+  }
+
+  // Payroll round 2 (2026-08-06) — สปส.1-10 + ภ.ง.ด.1ก. Company-wide by design
+  // (one juristic person files a single form; no companyId param).
+  previewSso110(year: number, month: number) {
+    return this.preview.previewSso110(year, month);
+  }
+
+  previewPnd1Annual(year: number) {
+    return this.preview.previewPnd1Annual(year);
   }
 
   generate(dto: GenerateTaxReportDto, userId: string, entityScope?: EntityScope) {

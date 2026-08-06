@@ -22,7 +22,11 @@ import { readBoolFlag, readIntFlag } from '../../../utils/config.util';
 import { CreateExpenseDocumentDto } from '../dto/create.dto';
 import { UpdateExpenseDocumentDto } from '../dto/update.dto';
 import { CreateCreditNoteDto } from '../dto/create-credit-note.dto';
-import { CreatePayrollDto } from '../dto/create-payroll.dto';
+import {
+  CreatePayrollDto,
+  UpdatePayrollDto,
+  PayrollLineInput,
+} from '../dto/create-payroll.dto';
 import { CreateSettlementDto } from '../dto/create-settlement.dto';
 import { CreatePettyCashDto } from '../dto/create-petty-cash.dto';
 
@@ -443,6 +447,223 @@ export class ExpenseDocumentCreateService {
       throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
     }
 
+    const { entityScope, documentDate, linesPrepared, sumBase, sumWht, sumNet } =
+      await this.preparePayrollInput(dto);
+
+    const doc = await this.prisma.$transaction(async (tx) => {
+      // กันสร้างงวดซ้ำ (สาขา + งวด + ฝั่ง) — advisory lock ปิด race ระหว่าง 2 คน
+      // กดพร้อมกัน แล้วเช็คว่ามีใบเดิมที่ยังไม่ถูก VOID/ลบอยู่หรือไม่.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${dto.branchId}:${dto.payrollPeriod}:${entityScope}`}))`;
+      const duplicate = await tx.expenseDocument.findFirst({
+        where: {
+          documentType: 'PAYROLL',
+          branchId: dto.branchId,
+          deletedAt: null,
+          status: { not: 'VOIDED' },
+          payroll: { payrollPeriod: dto.payrollPeriod, entityScope },
+        },
+        select: { number: true },
+      });
+      if (duplicate) {
+        throw new BadRequestException(
+          `มีใบเงินเดือนงวด ${dto.payrollPeriod} ของสาขานี้ (ฝั่ง ${entityScope}) อยู่แล้ว — ` +
+            `เอกสาร ${duplicate.number} ต้องยกเลิก (VOID) ก่อนจึงจะสร้างใหม่ได้`,
+        );
+      }
+
+      const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
+      return tx.expenseDocument.create({
+        data: {
+          number,
+          documentType: 'PAYROLL',
+          branchId: dto.branchId,
+          documentDate,
+          description: dto.description ?? null,
+          subtotal: sumBase,
+          vatAmount: new Prisma.Decimal(0),
+          withholdingTax: sumWht,
+          totalAmount: sumBase,
+          netPayment: sumNet,
+          depositAccountCode: dto.depositAccountCode,
+          paymentMethod: (dto.paymentMethod as never) ?? null,
+          status: 'DRAFT',
+          reference: dto.reference ?? null,
+          note: dto.note ?? null,
+          fromTemplateId: dto.fromTemplateId ?? null,
+          createdById: user.id,
+          payroll: {
+            create: {
+              payrollPeriod: dto.payrollPeriod,
+              entityScope,
+              lines: {
+                create: linesPrepared.map((l) => ({
+                  userId: l.userId,
+                  employeeName: l.employeeName,
+                  employeeTaxId: l.employeeTaxId,
+                  baseSalary: l.baseSalary,
+                  ssoEmployee: l.ssoEmployee,
+                  whtAmount: l.whtAmount,
+                  netPaid: l.netPaid,
+                  customIncome:
+                    l.customIncome.length > 0 ? { create: l.customIncome } : undefined,
+                  customDeduction:
+                    l.customDeduction.length > 0 ? { create: l.customDeduction } : undefined,
+                })),
+              },
+            },
+          },
+        },
+        include: {
+          payroll: {
+            include: {
+              lines: { include: { customIncome: true, customDeduction: true } },
+            },
+          },
+        },
+      });
+    });
+
+    // PR-C PII — the snapshot employeeTaxId === the employee's nationalId (or
+    // override). Mask it in the response for roles PR-A blocks from national
+    // IDs, so a draft payroll can't enumerate them.
+    maskPayrollTaxIds(doc, user.role);
+    return doc;
+  }
+
+  // ─── Payroll update (R3-2, 2026-08-06) — DRAFT only, replaces lines ───
+  async updatePayroll(
+    id: string,
+    dto: UpdatePayrollDto,
+    user: { id: string; branchId?: string | null; role?: string | null },
+  ) {
+    const existing = await this.prisma.expenseDocument.findUnique({
+      where: { id },
+      include: { payroll: { select: { entityScope: true } } },
+    });
+    if (!existing || existing.deletedAt) throw new NotFoundException('ไม่พบเอกสาร');
+    if (existing.documentType !== 'PAYROLL') {
+      throw new BadRequestException('เอกสารนี้ไม่ใช่ใบเงินเดือน (PR)');
+    }
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException(
+        `แก้ไขได้เฉพาะร่าง (DRAFT) — สถานะปัจจุบัน ${existing.status}. ` +
+          'ใบที่โพสต์แล้วต้องกลับรายการ (VOID) แล้วสร้างใหม่',
+      );
+    }
+    if (!hasCrossBranchAccess(user) && user.branchId !== existing.branchId) {
+      throw new ForbiddenException('ไม่สามารถแก้ไขเอกสารของสาขาอื่นได้');
+    }
+
+    const { entityScope, documentDate, linesPrepared, sumBase, sumWht, sumNet } =
+      await this.preparePayrollInput({
+        ...dto,
+        entityScope:
+          dto.entityScope ??
+          (existing.payroll?.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP'),
+      });
+
+    const doc = await this.prisma.$transaction(async (tx) => {
+      // Review W1 (2026-08-06) — serialize with post()/approve()/voidDocument()
+      // via the SAME per-document advisory key ('post:<id>'), then re-check the
+      // status INSIDE the tx. Without this, a racing post() could build the JE
+      // from the OLD lines while this tx replaces them — a POSTED doc whose
+      // totals no longer match its own JE.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`post:${id}`}))`;
+      const fresh = await tx.expenseDocument.findUnique({
+        where: { id },
+        select: { status: true, deletedAt: true },
+      });
+      if (!fresh || fresh.deletedAt) throw new NotFoundException('ไม่พบเอกสาร');
+      if (fresh.status !== 'DRAFT') {
+        throw new BadRequestException(
+          `แก้ไขได้เฉพาะร่าง (DRAFT) — สถานะปัจจุบัน ${fresh.status}`,
+        );
+      }
+
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${existing.branchId}:${dto.payrollPeriod}:${entityScope}`}))`;
+      const duplicate = await tx.expenseDocument.findFirst({
+        where: {
+          id: { not: id }, // งวดซ้ำนับเฉพาะใบอื่น — แก้ใบเดิมงวดเดิมต้องผ่าน
+          documentType: 'PAYROLL',
+          branchId: existing.branchId,
+          deletedAt: null,
+          status: { not: 'VOIDED' },
+          payroll: { payrollPeriod: dto.payrollPeriod, entityScope },
+        },
+        select: { number: true },
+      });
+      if (duplicate) {
+        throw new BadRequestException(
+          `มีใบเงินเดือนงวด ${dto.payrollPeriod} ของสาขานี้ (ฝั่ง ${entityScope}) อยู่แล้ว — ` +
+            `เอกสาร ${duplicate.number}`,
+        );
+      }
+
+      // DRAFT → no JE references the detail rows; hard-delete + recreate is
+      // the same shape IntercoSettlementService.updateBatch uses. deleteMany
+      // (not delete) tolerates a legacy PAYROLL doc created without a detail.
+      await tx.payrollDetail.deleteMany({ where: { documentId: id } });
+      return tx.expenseDocument.update({
+        where: { id },
+        data: {
+          documentDate,
+          description: dto.description ?? null,
+          subtotal: sumBase,
+          withholdingTax: sumWht,
+          totalAmount: sumBase,
+          netPayment: sumNet,
+          depositAccountCode: dto.depositAccountCode,
+          paymentMethod: (dto.paymentMethod as never) ?? null,
+          reference: dto.reference ?? null,
+          note: dto.note ?? null,
+          payroll: {
+            create: {
+              payrollPeriod: dto.payrollPeriod,
+              entityScope,
+              lines: {
+                create: linesPrepared.map((l) => ({
+                  userId: l.userId,
+                  employeeName: l.employeeName,
+                  employeeTaxId: l.employeeTaxId,
+                  baseSalary: l.baseSalary,
+                  ssoEmployee: l.ssoEmployee,
+                  whtAmount: l.whtAmount,
+                  netPaid: l.netPaid,
+                  customIncome:
+                    l.customIncome.length > 0 ? { create: l.customIncome } : undefined,
+                  customDeduction:
+                    l.customDeduction.length > 0 ? { create: l.customDeduction } : undefined,
+                })),
+              },
+            },
+          },
+        },
+        include: {
+          payroll: {
+            include: {
+              lines: { include: { customIncome: true, customDeduction: true } },
+            },
+          },
+        },
+      });
+    });
+
+    maskPayrollTaxIds(doc, user.role);
+    return doc;
+  }
+
+  /**
+   * Shared create/update validation + line preparation (extracted 2026-08-06
+   * so updatePayroll runs the EXACT same validator chain as createPayroll:
+   * scope infer + deposit↔scope, dup-userId, SSO cap, V16/V17/V18, V19,
+   * employee-registry snapshot derive, netPaid computation).
+   */
+  private async preparePayrollInput(dto: {
+    entityScope?: 'SHOP' | 'FINANCE';
+    depositAccountCode: string;
+    documentDate: string;
+    lines: PayrollLineInput[];
+  }) {
     // คำสั่งเจ้าของ 2026-08-06 — payroll สังกัดฝั่งเดียวต่อใบ. SHOP = พนักงานสาขา
     // → ผัง S + companyId SHOP; FINANCE = ส่วนกลาง → ผังเดิม. UI ส่ง entityScope
     // เสมอ (default SHOP บนฟอร์ม); caller เก่าที่ไม่ส่ง (recurring template /
@@ -620,95 +841,14 @@ export class ExpenseDocumentCreateService {
       new Prisma.Decimal(0),
     );
 
-    const documentDate = new Date(dto.documentDate);
-    const doc = await this.prisma.$transaction(async (tx) => {
-      // กันสร้างงวดซ้ำ (สาขา + งวด + ฝั่ง) — advisory lock ปิด race ระหว่าง 2 คน
-      // กดพร้อมกัน แล้วเช็คว่ามีใบเดิมที่ยังไม่ถูก VOID/ลบอยู่หรือไม่.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${dto.branchId}:${dto.payrollPeriod}:${entityScope}`}))`;
-      const duplicate = await tx.expenseDocument.findFirst({
-        where: {
-          documentType: 'PAYROLL',
-          branchId: dto.branchId,
-          deletedAt: null,
-          status: { not: 'VOIDED' },
-          payroll: { payrollPeriod: dto.payrollPeriod, entityScope },
-        },
-        select: { number: true },
-      });
-      if (duplicate) {
-        throw new BadRequestException(
-          `มีใบเงินเดือนงวด ${dto.payrollPeriod} ของสาขานี้ (ฝั่ง ${entityScope}) อยู่แล้ว — ` +
-            `เอกสาร ${duplicate.number} ต้องยกเลิก (VOID) ก่อนจึงจะสร้างใหม่ได้`,
-        );
-      }
-
-      const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
-      return tx.expenseDocument.create({
-        data: {
-          number,
-          documentType: 'PAYROLL',
-          branchId: dto.branchId,
-          documentDate,
-          description: dto.description ?? null,
-          subtotal: sumBase,
-          vatAmount: new Prisma.Decimal(0),
-          withholdingTax: sumWht,
-          totalAmount: sumBase,
-          netPayment: sumNet,
-          depositAccountCode: dto.depositAccountCode,
-          paymentMethod: (dto.paymentMethod as never) ?? null,
-          status: 'DRAFT',
-          reference: dto.reference ?? null,
-          note: dto.note ?? null,
-          fromTemplateId: dto.fromTemplateId ?? null,
-          createdById: user.id,
-          payroll: {
-            create: {
-              payrollPeriod: dto.payrollPeriod,
-              entityScope,
-              lines: {
-                create: linesPrepared.map((l) => ({
-                  userId: l.userId,
-                  employeeName: l.employeeName,
-                  employeeTaxId: l.employeeTaxId,
-                  baseSalary: l.baseSalary,
-                  ssoEmployee: l.ssoEmployee,
-                  whtAmount: l.whtAmount,
-                  netPaid: l.netPaid,
-                  // C2 — nested custom income/deduction (Prisma create relation)
-                  customIncome:
-                    l.customIncome.length > 0
-                      ? { create: l.customIncome }
-                      : undefined,
-                  customDeduction:
-                    l.customDeduction.length > 0
-                      ? { create: l.customDeduction }
-                      : undefined,
-                })),
-              },
-            },
-          },
-        },
-        include: {
-          payroll: {
-            include: {
-              lines: {
-                include: {
-                  customIncome: true,
-                  customDeduction: true,
-                },
-              },
-            },
-          },
-        },
-      });
-    });
-
-    // PR-C PII — the snapshot employeeTaxId === the employee's nationalId (or
-    // override). Mask it in the response for roles PR-A blocks from national
-    // IDs, so a draft payroll can't enumerate them.
-    maskPayrollTaxIds(doc, user.role);
-    return doc;
+    return {
+      entityScope,
+      documentDate: new Date(dto.documentDate),
+      linesPrepared,
+      sumBase,
+      sumWht,
+      sumNet,
+    };
   }
 
   // ─── Vendor Settlement create — multi-line clears ACCRUAL EXs ────────

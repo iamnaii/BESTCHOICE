@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { cn } from '@/lib/utils';
 import { DocType, ExpenseFormState, newLine, newPayrollLine, newPettyCashLine } from './types';
+// (Clock/Users etc. imported above from lucide-react)
 import { SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { useFormCompute } from './useFormCompute';
 import { QuickStartPanel } from './QuickStartPanel';
@@ -32,6 +33,10 @@ interface Props {
    *  the query param was silently dropped and the form always opened on
    *  EXPENSE_SAMEDAY. */
   initialDocType?: DocType;
+  /** R3-2 (2026-08-06) — แก้ไขร่างใบเงินเดือน: โหลดเอกสาร DRAFT มาเติมฟอร์ม
+   *  แล้วบันทึกด้วย PATCH /expense-documents/:id/payroll แทน POST.
+   *  รองรับเฉพาะ PAYROLL — ประเภทอื่นยังสร้างใหม่อย่างเดียว. */
+  editDocId?: string;
 }
 
 // W3 fix — return YYYY-MM-DD for "today in Asia/Bangkok" (en-CA gives ISO-shaped
@@ -108,7 +113,7 @@ const initial = (
   };
 };
 
-export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType }: Props) {
+export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, editDocId }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   // D1.1.5.1 — Petty Cash feature flag. When disabled, the picker hides the
@@ -126,6 +131,90 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType }: Pr
   );
 
   const patch = (p: Partial<ExpenseFormState>) => setState((s) => ({ ...s, ...p }));
+
+  // R3-2 — โหลดร่างใบเงินเดือนมาเติมฟอร์ม (edit mode). เฉพาะ PAYROLL + DRAFT.
+  const editQuery = useQuery({
+    queryKey: ['expense-doc-edit', editDocId],
+    queryFn: async () => (await api.get(`/expense-documents/${editDocId}`)).data,
+    enabled: !!editDocId,
+    staleTime: 0,
+  });
+  const [editLoaded, setEditLoaded] = useState(false);
+  useEffect(() => {
+    if (!editDocId || !editQuery.data || editLoaded) return;
+    const doc = editQuery.data as {
+      documentType: string;
+      status: string;
+      branchId: string;
+      documentDate: string;
+      depositAccountCode: string | null;
+      description: string | null;
+      note: string | null;
+      reference: string | null;
+      payroll?: {
+        entityScope: 'SHOP' | 'FINANCE';
+        payrollPeriod: string;
+        lines: Array<{
+          userId: string | null;
+          employeeName: string;
+          baseSalary: string;
+          ssoEmployee: string;
+          whtAmount: string;
+          customIncome: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean }>;
+          customDeduction: Array<{ accountCode: string; name: string; amount: string }>;
+        }>;
+      } | null;
+    };
+    if (doc.documentType !== 'PAYROLL' || doc.status !== 'DRAFT' || !doc.payroll) {
+      toast.error('แก้ไขได้เฉพาะร่างใบเงินเดือน (DRAFT)');
+      onClose();
+      return;
+    }
+    const [pyStr, pmStr] = doc.payroll.payrollPeriod.split('-');
+    const py = parseInt(pyStr, 10);
+    const pm = parseInt(pmStr, 10);
+    setState((s) => ({
+      ...s,
+      docType: 'PAYROLL',
+      branchId: doc.branchId,
+      documentDate: doc.documentDate.slice(0, 10),
+      depositAccountCode: doc.depositAccountCode ?? s.depositAccountCode,
+      note: doc.note ?? '',
+      reference: doc.reference ?? '',
+      payroll: {
+        year: py + 543,
+        month: pm,
+        payrollPeriod: doc.payroll!.payrollPeriod,
+        entityScope: doc.payroll!.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP',
+        lines: doc.payroll!.lines.map((l) =>
+          newPayrollLine({
+            userId: l.userId ?? '',
+            employeeName: l.employeeName,
+            employeeTaxId: '',
+            baseSalary: String(parseFloat(l.baseSalary)),
+            ssoEmployee: String(parseFloat(l.ssoEmployee)),
+            whtAmount: String(parseFloat(l.whtAmount)),
+            customIncome: (l.customIncome ?? []).map((r) => ({
+              uid: Math.random().toString(36).slice(2),
+              accountCode: r.accountCode,
+              name: r.name,
+              amount: String(parseFloat(r.amount)),
+              isTaxable: r.isTaxable,
+            })),
+            customDeduction: (l.customDeduction ?? []).map((r) => ({
+              uid: Math.random().toString(36).slice(2),
+              accountCode: r.accountCode,
+              name: r.name,
+              amount: String(parseFloat(r.amount)),
+            })),
+          }),
+        ),
+      },
+    }));
+    setShowQuickStart(false);
+    setEditLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editDocId, editQuery.data, editLoaded]);
 
   // Payroll: pin the cash account to the scope's chart (SHOP → S11-XXXX,
   // FINANCE → 11-XXXX). Fires on entering the payroll form and on scope toggle;
@@ -240,8 +329,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType }: Pr
       } else if (state.docType === 'PAYROLL') {
         // C2 — forward customIncome + customDeduction. Server V16/V17/V18
         // re-validate: whitelist, deduction ≤ gross, taxable-base calc.
-        const { data } = await api.post('/expense-documents/payroll', {
-          branchId: state.branchId,
+        // R3-2 — edit mode: PATCH ทับร่างเดิม (ไม่ส่ง branchId — ห้ามย้ายสาขา)
+        const payrollPayload = {
           documentDate: state.documentDate,
           payrollPeriod: state.payroll.payrollPeriod,
           entityScope: state.payroll.entityScope,
@@ -282,8 +371,20 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType }: Pr
                     : undefined,
               };
             }),
-        });
-        createdId = data.id;
+        };
+        if (editDocId) {
+          const { data } = await api.patch(
+            `/expense-documents/${editDocId}/payroll`,
+            payrollPayload,
+          );
+          createdId = data.id;
+        } else {
+          const { data } = await api.post('/expense-documents/payroll', {
+            branchId: state.branchId,
+            ...payrollPayload,
+          });
+          createdId = data.id;
+        }
       } else if (state.docType === 'VENDOR_SETTLEMENT') {
         // B2 — forward adjustments + amountPaid when the user has reconciled
         // a supplier discount / bank fee / rounding diff. Server-side V12
@@ -430,6 +531,17 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType }: Pr
     ? !!preview && preview.totals.balanced && itemCount > 0
     : itemCount > 0;
 
+  // R3-2 — edit mode: อย่าแสดงฟอร์มเปล่าระหว่างโหลดร่าง (กันผู้ใช้เริ่มกรอกผิดใบ)
+  if (editDocId && !editLoaded) {
+    return (
+      <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="bg-background rounded-xl shadow-modal px-8 py-6 flex items-center gap-3 text-sm text-muted-foreground">
+          <Clock className="size-4 animate-pulse" /> กำลังโหลดร่างใบเงินเดือน…
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="w-full max-w-5xl bg-background rounded-xl shadow-modal max-h-[95vh] flex flex-col">
@@ -553,6 +665,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType }: Pr
                       onChange={(p) => patch({ payroll: p })}
                       documentDate={state.documentDate}
                       onDocumentDateChange={(d) => patch({ documentDate: d })}
+                      branchId={state.branchId}
                     />
                   </Section>
                 )}

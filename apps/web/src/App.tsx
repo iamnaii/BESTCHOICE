@@ -205,6 +205,8 @@ const IntercompanyReportPage = lazy(() => import('@/pages/finance/IntercompanyRe
 // P4-SP2 — Tax UI pages (finance-tax endpoints + e-receipt config)
 const VatPage = lazy(() => import('@/pages/finance/VatPage'));
 const WhtPage = lazy(() => import('@/pages/finance/WhtPage'));
+const SsoReportPage = lazy(() => import('@/pages/finance/SsoReportPage'));
+const WhtAnnualPage = lazy(() => import('@/pages/finance/WhtAnnualPage'));
 const ETaxPage = lazy(() => import('@/pages/finance/ETaxPage'));
 const VatAutoJournalPage = lazy(() => import('@/pages/finance/VatAutoJournalPage'));
 const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
@@ -919,6 +921,23 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <WhtReportPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Payroll round 2 (2026-08-06) — สปส.1-10 + ภ.ง.ด.1ก/50 ทวิ */}
+          <Route
+            path="/finance/sso-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <SsoReportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/wht-annual"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <WhtAnnualPage />
               </ProtectedRoute>
             }
           />

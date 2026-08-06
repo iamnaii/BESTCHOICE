@@ -113,6 +113,11 @@ jobs:
       - name: Lint Web
         run: npm run lint --workspace=apps/web
 
+      # 2026-08-06 (payroll round 2-3) — web unit tests never ran in ANY
+      # pipeline before this step (both payroll web tests were dead in CI).
+      - name: Test Web
+        run: npm run test --workspace=apps/web
+
       - name: Test API
         run: npm run test --workspace=apps/api
         env:

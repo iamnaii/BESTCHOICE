@@ -19,6 +19,8 @@ export default function ExpenseDocumentNewPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const initialDocType = TYPE_PARAM_MAP[searchParams.get('type') ?? ''];
+  // R3-2 — ?edit=<docId> เปิดโหมดแก้ไขร่างใบเงินเดือน (PATCH แทน POST)
+  const editDocId = searchParams.get('edit') ?? undefined;
   const { data: branches } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
     queryFn: async () => (await api.get('/branches')).data,
@@ -29,7 +31,8 @@ export default function ExpenseDocumentNewPage() {
   return (
     <ExpenseFormV4
       branchId={branchId}
-      initialDocType={initialDocType}
+      initialDocType={editDocId ? 'PAYROLL' : initialDocType}
+      editDocId={editDocId}
       onClose={() => navigate('/expenses')}
       onSaved={() => navigate('/expenses')}
     />

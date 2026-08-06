@@ -1,4 +1,7 @@
-import { AlertTriangle, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, ChevronDown, ChevronRight, CopyPlus, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { suggestMonthlyWht } from '@/utils/pit-withholding';
 import {
   PayrollFormFields,
   PayrollLineForm,
@@ -24,6 +27,8 @@ interface Props {
   onChange: (v: PayrollFormFields) => void;
   documentDate: string;
   onDocumentDateChange: (d: string) => void;
+  /** สาขาของเอกสาร — ใช้ดึงใบเงินเดือนงวดล่าสุดมาเติม (R3-1 คัดลอกงวดก่อน). */
+  branchId?: string;
 }
 
 export interface IncomeOption {
@@ -60,9 +65,90 @@ interface PayrollMetaResponse {
   cashAccounts: { code: string; name: string }[];
 }
 
-export function PayrollLinesSection({ value, onChange, documentDate, onDocumentDateChange }: Props) {
+export function PayrollLinesSection({
+  value,
+  onChange,
+  documentDate,
+  onDocumentDateChange,
+  branchId,
+}: Props) {
   const { taxExemptWarningEnabled } = useUiFlags();
   const updateField = (patch: Partial<PayrollFormFields>) => onChange({ ...value, ...patch });
+  const [copyLoading, setCopyLoading] = useState(false);
+
+  // R3-1 — ดึงใบเงินเดือนล่าสุดของสาขา (ไม่นับใบ VOID) มาเติมทั้งชุด: ฝั่ง +
+  // พนักงาน + ฐาน/SSO/WHT + รายได้พิเศษ/รายการหัก. แถวที่ผูกทะเบียน (มี userId)
+  // ชื่อ-เลขบัตรถูก re-derive ฝั่ง server ตอนบันทึก (คนลาออก → server แจ้งให้เอาออก);
+  // แถว free-text เลขบัตรไม่ถูกคัดลอก (อาจเป็นค่า mask) — ต้องกรอกใหม่ถ้าจำเป็น.
+  // SSO cap ถูก validate ใหม่ด้วยวันที่จ่ายของงวดนี้.
+  const copyFromLatest = async () => {
+    if (!branchId) return;
+    setCopyLoading(true);
+    try {
+      const { data: list } = await api.get<{
+        data: Array<{ id: string; status: string; documentDate: string }>;
+      }>(`/expense-documents?type=PAYROLL&branchId=${branchId}&limit=10`);
+      const candidate = (list.data ?? []).find((d) => d.status !== 'VOIDED');
+      if (!candidate) {
+        toast.info('ยังไม่มีใบเงินเดือนเดิมของสาขานี้ให้คัดลอก');
+        return;
+      }
+      const { data: doc } = await api.get<{
+        number: string;
+        payroll?: {
+          entityScope: 'SHOP' | 'FINANCE';
+          payrollPeriod: string;
+          lines: Array<{
+            userId: string | null;
+            employeeName: string;
+            baseSalary: string;
+            ssoEmployee: string;
+            whtAmount: string;
+            customIncome: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean }>;
+            customDeduction: Array<{ accountCode: string; name: string; amount: string }>;
+          }>;
+        } | null;
+      }>(`/expense-documents/${candidate.id}`);
+      if (!doc.payroll || doc.payroll.lines.length === 0) {
+        toast.info('ใบล่าสุดไม่มีรายชื่อพนักงาน');
+        return;
+      }
+      onChange({
+        ...value,
+        entityScope: doc.payroll.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP',
+        lines: doc.payroll.lines.map((l) =>
+          newPayrollLine({
+            userId: l.userId ?? '',
+            employeeName: l.employeeName,
+            employeeTaxId: '',
+            baseSalary: String(parseFloat(l.baseSalary)),
+            ssoEmployee: String(parseFloat(l.ssoEmployee)),
+            whtAmount: String(parseFloat(l.whtAmount)),
+            customIncome: (l.customIncome ?? []).map((r) =>
+              newPayrollCustomIncome({
+                accountCode: r.accountCode,
+                name: r.name,
+                amount: String(parseFloat(r.amount)),
+                isTaxable: r.isTaxable,
+              }),
+            ),
+            customDeduction: (l.customDeduction ?? []).map((r) =>
+              newPayrollCustomDeduction({
+                accountCode: r.accountCode,
+                name: r.name,
+                amount: String(parseFloat(r.amount)),
+              }),
+            ),
+          }),
+        ),
+      });
+      toast.success(`ดึงข้อมูลจาก ${doc.number} แล้ว (${doc.payroll.lines.length} คน) — ตรวจยอดก่อนบันทึก`);
+    } catch {
+      toast.error('ดึงงวดล่าสุดไม่สำเร็จ');
+    } finally {
+      setCopyLoading(false);
+    }
+  };
 
   const scope = value.entityScope;
 
@@ -160,6 +246,8 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
       .reduce((s, r) => s + (parseFloat(r.amount) || 0), base);
     const netPaid = Math.max(0, base + income - sso - wht - deduction);
     const hasExtras = (l.customIncome?.length ?? 0) + (l.customDeduction?.length ?? 0) > 0;
+    // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น
+    const suggestedWht = suggestMonthlyWht(taxableBase, sso);
     return {
       ...l,
       baseN: base,
@@ -168,6 +256,7 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
       incomeN: income,
       deductionN: deduction,
       taxableBaseN: taxableBase,
+      suggestedWht,
       netPaid,
       hasExtras,
     };
@@ -215,6 +304,17 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
             ? 'ลงบัญชีเป็นค่าใช้จ่ายหน้าร้าน (ผัง SHOP: S52-1201) — จ่ายจากบัญชี SHOP'
             : 'ลงบัญชีเป็นค่าใช้จ่ายส่วนกลาง (ผัง FINANCE: 53-1101) — จ่ายจากบัญชี FINANCE'}
         </p>
+        {branchId && (
+          <button
+            type="button"
+            onClick={copyFromLatest}
+            disabled={copyLoading}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-dashed border-border rounded-lg text-muted-foreground hover:text-foreground hover:border-primary disabled:opacity-50"
+          >
+            <CopyPlus className="size-3.5" />
+            {copyLoading ? 'กำลังดึงข้อมูล…' : 'ดึงข้อมูลงวดล่าสุดมาเติม'}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -366,6 +466,7 @@ function PayrollRow({
     incomeN: number;
     deductionN: number;
     taxableBaseN: number;
+    suggestedWht: number;
     hasExtras: boolean;
   };
   disableRemove: boolean;
@@ -432,6 +533,17 @@ function PayrollRow({
             onChange={(e) => onUpdate({ whtAmount: e.target.value })}
             className="w-full px-2 py-1.5 border border-input rounded text-sm bg-background text-right font-mono"
           />
+          {/* R3-4 — ค่าแนะนำขั้นบันได ม.48 (ลดหย่อนมาตรฐาน) — กดเพื่อใช้ */}
+          {row.suggestedWht > 0 && row.whtN !== row.suggestedWht && (
+            <button
+              type="button"
+              onClick={() => onUpdate({ whtAmount: String(row.suggestedWht) })}
+              className="block w-full text-right text-[10px] text-muted-foreground hover:text-primary mt-0.5"
+              title="ภาษีแนะนำจากขั้นบันได ม.48 หักลดหย่อนมาตรฐาน (ส่วนตัว 60,000 + ค่าใช้จ่าย 50% + ปกส.) — กดเพื่อใช้ค่านี้"
+            >
+              แนะนำ ~{formatNumberDecimal(row.suggestedWht)}
+            </button>
+          )}
         </td>
         <td className="px-3 py-2 text-right font-mono">
           {formatNumberDecimal(row.netPaid)}

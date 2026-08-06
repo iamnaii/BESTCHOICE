@@ -281,8 +281,35 @@ E2E: `apps/api/src/modules/expense-documents/__tests__/payroll-shop-flow.integra
   รวม `S21-3101` (นิติบุคคลเดียว ยื่นรวม). หน้าจอ `/finance/wht-report` ต่อ route แล้ว.
 - **Wipe**: `npm --prefix apps/api run wipe:payroll` (DRY_RUN + guards ชุดเดียวกับ
   wipe-accounting) — ล้างใบเงินเดือนเก่าที่ลงผิดผังทั้งหมดตามคำสั่งเจ้าของ.
-- **ค้างคิวรอบถัดไป**: สปส.1-10 + JE นำส่ง ปกส./ภ.ง.ด.1 (เจ้าหนี้ 21-3101/S21-31xx
-  ยังไม่มี flow ล้าง), ใบ 50 ทวิ, ภ.ง.ด.1ก, copy งวดก่อน, คำนวณ WHT แนะนำ, ไฟล์โอนธนาคาร.
+- **รอบ 2-3 (2026-08-06 "ทำเลยสิ") — เสร็จแล้ว**
+  (spec: `docs/superpowers/specs/2026-08-06-payroll-round2-3-design.md`):
+  - **นำส่ง per-book (D1)**: `PayrollRemittanceTemplate` — SSO `Dr <sso_employee>
+    + Dr <sso_employer> / Cr <cash ฝั่งนั้น>`, PND1 `Dr <wht_payroll> / Cr <cash>`;
+    ยอด = Σ PayrollLine ของใบ POSTED ในงวด+ฝั่ง (ตรงแบบยื่น), guard GL คุ้มยอด +
+    idempotency `sso-remit:<scope>:<period>` / `pnd1-remit:...` + period-open ที่วันจ่าย.
+    จ่ายรวมฝั่งเดียว = ต้องมีบัญชี interco ฝั่ง SHOP → **รอ CPA** (คำถามเดียวกับ
+    interco spec §11) — ห้ามเดา JE. Endpoints `POST /tax/payroll-remit/{sso,pnd1}`
+    (OWNER/FM), UI ปุ่มนำส่งบน `/finance/sso-report`.
+  - **สปส.1-10**: `GET /tax/sso-1-10-preview` + XLSX `form=SSO110` + หน้า
+    `/finance/sso-report` (เฉพาะแถว ssoEmployee > 0, นายจ้าง = ลูกจ้างตามกฎหมาย).
+  - **ภ.ง.ด.1ก + 50 ทวิ**: `GET /tax/pnd1-annual-preview?year` (group ต่อคนทั้งปี,
+    gross รวมรายได้พิเศษที่เสียภาษี, + `annualWageTotal` อ้างอิง กท.20ก) + XLSX
+    `form=PND1A` + หน้า `/finance/wht-annual` พิมพ์ใบ 50 ทวิ ต่อคน (ผู้จ่าย =
+    FINANCE CompanyInfo — นิติบุคคลจดทะเบียนเดียว).
+  - **แก้ไขร่าง (R3-2)**: `PATCH /expense-documents/:id/payroll` — DRAFT เท่านั้น,
+    validator ชุดเดียวกับ create (`preparePayrollInput` shared), dup-งวด guard
+    ยกเว้นตัวเอง, ลบ+สร้าง PayrollDetail ใหม่ (pattern interco updateBatch).
+  - **คัดลอกงวดก่อน (R3-1)**: ปุ่มในฟอร์ม — client ดึงใบล่าสุดของสาขา (findOne)
+    มาเติมทั้ง scope+lines; server re-validate ทุกอย่างตอนบันทึกตามปกติ.
+  - **ไฟล์โอนธนาคาร (R3-3)**: `GET /expense-documents/:id/bank-transfer.csv`
+    (จาก `EmployeeProfile.bankName/bankAccountNo`; แถวไม่มีข้อมูล → ข้าม +
+    `X-Skipped-Lines`).
+  - **WHT แนะนำ (R3-4)**: `apps/web/src/utils/pit-withholding.ts` — ขั้นบันได ม.48
+    + ลดหย่อนมาตรฐาน (ส่วนตัว 60k, ค่าใช้จ่าย 50%≤100k, ปกส.จริง) — **advisory
+    เท่านั้น** แสดงใต้ช่อง WHT กดใช้ได้ ไม่ block.
+  - **CI**: เพิ่ม step `Test Web` (เทสต์ web ไม่เคยรันใน pipeline ใดมาก่อน).
+- **ยังค้าง**: ส่งสลิปให้พนักงาน (LINE/email — ต้องต่อ infra), PDPA retention
+  payroll_lines (รอนโยบายเจ้าของ), กท.20ก แบบฟอร์มเต็ม, จ่ายนำส่งรวมฝั่งเดียว (รอ CPA).
 
 ## SSO accounts (P0-3 — Fix Report v1.0)
 

@@ -38,13 +38,15 @@ export class ProductsController {
     @CurrentUser() user: { role: string },
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
-    @Query('status') status?: string,
+    @Query('status') status?: string | string[],
     @Query('category') category?: string,
     @Query('brand') brand?: string,
     @Query('supplierId') supplierId?: string,
+    @Query('model') model?: string,
+    @Query('storage') storage?: string,
   ) {
     const result = await this.productsService.findAll({
-      search, branchId, status, category, brand, supplierId,
+      search, branchId, status, category, brand, supplierId, model, storage,
       page: pagination.page,
       limit: pagination.limit,
     });

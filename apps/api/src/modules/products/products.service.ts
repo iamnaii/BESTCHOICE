@@ -30,9 +30,11 @@ export class ProductsService {
   async findAll(filters: {
     search?: string;
     branchId?: string;
-    status?: string;
+    status?: string | string[];
     category?: string;
     brand?: string;
+    model?: string;
+    storage?: string;
     supplierId?: string;
     page?: number;
     limit?: number;
@@ -40,9 +42,18 @@ export class ProductsService {
     const where: Record<string, unknown> = { deletedAt: null };
 
     if (filters.branchId) where.branchId = filters.branchId;
-    if (filters.status) where.status = filters.status;
+    // status รับได้ทั้ง ?status=A, ?status=A&status=B (array) และ ?status=A,B
+    // — FE ของ B1 ส่งแบบ comma เพื่อไม่ต้องพึ่ง query serializer ของ axios
+    const statuses = (Array.isArray(filters.status) ? filters.status : [filters.status ?? ''])
+      .flatMap((s) => String(s).split(','))
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (statuses.length === 1) where.status = statuses[0];
+    else if (statuses.length > 1) where.status = { in: statuses };
     if (filters.category) where.category = filters.category;
     if (filters.brand) where.brand = filters.brand;
+    if (filters.model) where.model = filters.model;
+    if (filters.storage) where.storage = filters.storage;
     if (filters.supplierId) where.supplierId = filters.supplierId;
 
     if (filters.search) {

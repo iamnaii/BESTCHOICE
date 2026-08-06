@@ -6,7 +6,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { useProductReadiness } from '../hooks/useProductReadiness';
+import { useProductReadiness, PRODUCT_READINESS_QUERY_KEY } from '../hooks/useProductReadiness';
 import ReadinessCard from './ReadinessCard';
 
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
@@ -95,11 +95,18 @@ export default function OnlineListingPanel({
   });
 
   const invalidateProduct = () => queryClient.invalidateQueries({ queryKey: ['product', product.id] });
+  // gallery/photos/visibility all feed evaluateReadiness() (PHOTO/IN_STOCK/SHOP_GATE
+  // checks etc.) directly — invalidate the readiness card alongside the product on
+  // every mutation that can move it, or the card shows a stale checklist for up to
+  // staleTime (3 min, refetchOnWindowFocus off).
+  const invalidateReadiness = () =>
+    queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(product.id) });
 
   const saveGalleryMutation = useMutation({
     mutationFn: async () => api.patch(`/products/${product.id}/online-listing`, { gallery: localGallery }),
     onSuccess: () => {
       invalidateProduct();
+      invalidateReadiness();
       toast.success('บันทึกการจัดเรียงรูปสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -109,6 +116,7 @@ export default function OnlineListingPanel({
     mutationFn: async (dto: PromoteDto) => api.post(`/products/${product.id}/online-listing/photos`, dto),
     onSuccess: () => {
       invalidateProduct();
+      invalidateReadiness();
       toast.success('ส่งรูปขึ้นเว็บสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -119,6 +127,7 @@ export default function OnlineListingPanel({
       api.patch(`/products/${product.id}/online-listing`, { isOnlineVisible }),
     onSuccess: () => {
       invalidateProduct();
+      invalidateReadiness();
       toast.success('อัปเดตสถานะแสดงบนเว็บสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

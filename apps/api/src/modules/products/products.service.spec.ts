@@ -91,3 +91,52 @@ describe('ProductsService.transferOwnership', () => {
     expect(prisma.product.update).not.toHaveBeenCalled();
   });
 });
+
+describe('ProductsService.findAll — filters สำหรับการ์ด "เครื่องอื่นรุ่นเดียวกัน" (B1)', () => {
+  let service: ProductsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  const whereOf = () => prisma.product.findMany.mock.calls[0][0].where;
+
+  it('กรอง model + storage แบบ exact', async () => {
+    await service.findAll({ model: 'iPhone 13', storage: '128GB' });
+    expect(whereOf()).toMatchObject({ deletedAt: null, model: 'iPhone 13', storage: '128GB' });
+  });
+
+  it('status เดี่ยว = ค่าเดิม (ไม่ใช่ { in: [...] })', async () => {
+    await service.findAll({ status: 'IN_STOCK' });
+    expect(whereOf().status).toBe('IN_STOCK');
+  });
+
+  it('status เป็น array → { in: [...] }', async () => {
+    await service.findAll({ status: ['IN_STOCK', 'RESERVED'] });
+    expect(whereOf().status).toEqual({ in: ['IN_STOCK', 'RESERVED'] });
+  });
+
+  it('status เป็น comma string → { in: [...] } (กัน query serializer ต่างกัน)', async () => {
+    await service.findAll({ status: 'IN_STOCK,RESERVED' });
+    expect(whereOf().status).toEqual({ in: ['IN_STOCK', 'RESERVED'] });
+  });
+
+  it('ค่าว่างถูกทิ้ง — ไม่โผล่ใน where', async () => {
+    await service.findAll({ model: '', storage: '', status: '' });
+    const where = whereOf();
+    expect(where).not.toHaveProperty('model');
+    expect(where).not.toHaveProperty('storage');
+    expect(where).not.toHaveProperty('status');
+  });
+});

@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ShopReservationService } from './shop-reservation.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -94,6 +95,49 @@ describe('ShopReservationService', () => {
         expect.objectContaining({ where: { id: 'r-existing' } })
       );
       expect(prisma.productReservation.create).not.toHaveBeenCalled();
+    });
+
+    it('Final fix wave F1: sweeps a stale-expired ACTIVE row (still ACTIVE, expiresAt in the past) before checking/creating — so the new hold does not collide with the partial unique index', async () => {
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
+      prisma.productReservation.updateMany.mockResolvedValue({ count: 1 });
+      // ยังไม่ถูก cron กวาด (cron รันทุก 5 นาที) — findFirst หลัง sweep ต้องไม่เจอมันแล้ว
+      prisma.productReservation.findFirst.mockResolvedValue(null);
+      prisma.productReservation.create.mockResolvedValue({
+        id: 'r-new',
+        expiresAt: new Date(Date.now() + 900_000),
+      });
+
+      await service.reserve({ productId: 'p1', sessionId: 's1' });
+
+      expect(prisma.productReservation.updateMany).toHaveBeenCalledWith({
+        where: { productId: 'p1', status: 'ACTIVE', expiresAt: { lte: expect.any(Date) } },
+        data: { status: 'EXPIRED' },
+      });
+      // sweep ต้องเกิดก่อน findFirst/create (ลำดับสำคัญ — ไม่งั้นแถวหมดอายุยังกันทางอยู่)
+      const sweepOrder = prisma.productReservation.updateMany.mock.invocationCallOrder[0];
+      const findOrder = prisma.productReservation.findFirst.mock.invocationCallOrder[0];
+      const createOrder = prisma.productReservation.create.mock.invocationCallOrder[0];
+      expect(sweepOrder).toBeLessThan(findOrder);
+      expect(findOrder).toBeLessThan(createOrder);
+      expect(prisma.productReservation.create).toHaveBeenCalled();
+    });
+
+    it('Final fix wave F1: create() ชน partial unique index (P2002 race — สองคนจองพร้อมกัน) → ConflictException ข้อความไทย ไม่ใช่ error ดิบหลุดเป็น 500', async () => {
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
+      prisma.productReservation.findFirst.mockResolvedValue(null);
+      const raceError = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.x',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      prisma.productReservation.create.mockRejectedValue(raceError);
+
+      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
+        'เครื่องนี้ถูกจองโดยลูกค้ารายอื่นอยู่ กรุณาลองใหม่อีกครั้ง',
+      );
     });
   });
 

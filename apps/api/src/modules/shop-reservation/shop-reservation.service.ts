@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
@@ -29,6 +30,16 @@ export class ShopReservationService {
     });
     if (!product) throw new NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ');
 
+    // Fix round: migration 20260984 ใส่ partial unique index `product_reservations_active_product_idx`
+    // (UNIQUE product_id WHERE status='ACTIVE') แต่ cron กวาด hold หมดอายุทุก 5 นาที (reservation-cleanup.cron.ts)
+    // — ในหน้าต่างระหว่างนั้น แถวหมดอายุยัง status='ACTIVE' ค้างอยู่ ขณะที่ findFirst ด้านล่างกรอง
+    // expiresAt:{gt:now} เลยมองไม่เห็นแถวนี้ ตกไป create() ชน index ดิบ (P2002 → 500) sweep แบบ inline
+    // นี้ปล่อยแถวหมดอายุค้างให้พ้นทางก่อนเช็ค/สร้าง — cron ยังทำหน้าที่กวาดใหญ่เหมือนเดิม ไม่ได้แทนที่กัน
+    await this.prisma.productReservation.updateMany({
+      where: { productId: input.productId, status: 'ACTIVE', expiresAt: { lte: new Date() } },
+      data: { status: 'EXPIRED' },
+    });
+
     const existing = await this.prisma.productReservation.findFirst({
       where: {
         productId: input.productId,
@@ -49,15 +60,24 @@ export class ShopReservationService {
       throw new ConflictException('เครื่องนี้ถูกจองโดยลูกค้ารายอื่นอยู่ — รอ 15 นาที');
     }
 
-    return this.prisma.productReservation.create({
-      data: {
-        productId: input.productId,
-        customerId: input.customerId,
-        sessionId: input.sessionId,
-        expiresAt,
-        status: 'ACTIVE',
-      },
-    });
+    try {
+      return await this.prisma.productReservation.create({
+        data: {
+          productId: input.productId,
+          customerId: input.customerId,
+          sessionId: input.sessionId,
+          expiresAt,
+          status: 'ACTIVE',
+        },
+      });
+    } catch (err) {
+      // เข็มขัดกันเรซ: สอง request พร้อมกันผ่าน findFirst ด้านบนพร้อมกันได้ (check-then-act) —
+      // ผู้แพ้ชน partial unique index ที่ DB เป็น P2002 ดิบ แปลงเป็น 409 ที่อ่านออกแทน 500
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('เครื่องนี้ถูกจองโดยลูกค้ารายอื่นอยู่ กรุณาลองใหม่อีกครั้ง');
+      }
+      throw err;
+    }
   }
 
   async cancel(reservationId: string, sessionId: string) {

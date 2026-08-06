@@ -80,6 +80,11 @@ describe('ExpenseDocumentsService', () => {
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'shop-co-id' }),
       },
+      // 2026-08-06 — executePostBody reads PayrollDetail.entityScope to pick
+      // the period-guard company for PAYROLL docs. Legacy fixtures = FINANCE.
+      payrollDetail: {
+        findUnique: jest.fn().mockResolvedValue({ entityScope: 'FINANCE' }),
+      },
       // C9 Round 2 — validatePeriodOpen reads accountingPeriod by
       // (companyId, year, month). Default = no row (= OPEN), so post() passes.
       accountingPeriod: {

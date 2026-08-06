@@ -12,7 +12,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
+import { PAYROLL_CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 
 /**
  * C2 — Custom Income line (bonus, OT, per-diem allowances). V17 enforces
@@ -20,8 +20,9 @@ import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
  * rows to exclude from the WHT base (ม.42 exemption).
  */
 export class PayrollCustomIncomeInput {
+  // S-prefix = SHOP chart (payroll SHOP scope); bare digits = FINANCE chart.
   @IsString()
-  @Matches(/^\d{2}-\d{4}$/, { message: 'หมวดบัญชีต้องเป็นรูปแบบ XX-XXXX' })
+  @Matches(/^S?\d{2}-\d{4}$/, { message: 'หมวดบัญชีต้องเป็นรูปแบบ XX-XXXX หรือ SXX-XXXX' })
   accountCode!: string;
 
   @IsString()
@@ -44,8 +45,11 @@ export class PayrollCustomIncomeInput {
  * No whitelist (employer-discretion); validator only enforces format.
  */
 export class PayrollCustomDeductionInput {
+  // S-prefix = SHOP chart (payroll SHOP scope); bare digits = FINANCE chart.
+  // Existence in chart_of_accounts + scope-prefix consistency are enforced in
+  // PayrollCustomService.validateDeductionAccounts (V19).
   @IsString()
-  @Matches(/^\d{2}-\d{4}$/, { message: 'หมวดบัญชีต้องเป็นรูปแบบ XX-XXXX' })
+  @Matches(/^S?\d{2}-\d{4}$/, { message: 'หมวดบัญชีต้องเป็นรูปแบบ XX-XXXX หรือ SXX-XXXX' })
   accountCode!: string;
 
   @IsString()
@@ -57,7 +61,7 @@ export class PayrollCustomDeductionInput {
   amount!: number;
 }
 
-class PayrollLineInput {
+export class PayrollLineInput {
   // Optional: required only when userId is absent (enforced in
   // ExpenseDocumentsService.createPayroll). When userId is present the server
   // derives employeeName from the User record (spec §4.2 — don't trust client).
@@ -135,12 +139,25 @@ export class CreatePayrollDto {
   })
   payrollPeriod!: string;
 
+  /**
+   * คำสั่งเจ้าของ 2026-08-06 — เอกสารเงินเดือน 1 ใบสังกัดฝั่งเดียว:
+   *   SHOP (default)  = พนักงานสาขา → ผัง S (S52-12XX/S21-31XX) + companyId SHOP
+   *   FINANCE         = พนักงานส่วนกลาง → ผัง FINANCE (53-11XX/21-31XX) + companyId FINANCE
+   */
+  @IsString()
+  @IsOptional()
+  @IsIn(['SHOP', 'FINANCE'], { message: 'entityScope ต้องเป็น SHOP หรือ FINANCE' })
+  entityScope?: 'SHOP' | 'FINANCE';
+
   @IsString()
   @IsOptional()
   description?: string;
 
+  // Union of FINANCE + SHOP cash codes at the DTO layer; scope-consistency
+  // (SHOP doc → S11-XXXX only, FINANCE doc → 11-XXXX only) is enforced in
+  // ExpenseDocumentCreateService.createPayroll with a Thai message.
   @IsString()
-  @IsIn([...CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินไม่ถูกต้อง' })
+  @IsIn([...PAYROLL_CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินไม่ถูกต้อง' })
   depositAccountCode!: string;
 
   @IsString()
@@ -163,4 +180,49 @@ export class CreatePayrollDto {
   @IsString()
   @IsOptional()
   fromTemplateId?: string;
+}
+
+/**
+ * แก้ไขร่างใบเงินเดือน (R3-2, 2026-08-06) — DRAFT เท่านั้น. ชุดเดียวกับ create
+ * ยกเว้น `branchId` (ห้ามย้ายสาขาด้วยการแก้ไข — สร้างใหม่แทน). Lines แทนที่ทั้งชุด.
+ */
+export class UpdatePayrollDto {
+  @IsDateString({}, { message: 'วันที่จ่ายไม่ถูกต้อง' })
+  documentDate!: string;
+
+  @IsString()
+  @Matches(/^(20\d{2})-(0[1-9]|1[0-2])$/, {
+    message: 'รูปแบบงวดต้องเป็น YYYY-MM (ค.ศ. 2000-2099) — ห้ามใช้ พ.ศ.',
+  })
+  payrollPeriod!: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['SHOP', 'FINANCE'], { message: 'entityScope ต้องเป็น SHOP หรือ FINANCE' })
+  entityScope?: 'SHOP' | 'FINANCE';
+
+  @IsString()
+  @IsIn([...PAYROLL_CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินไม่ถูกต้อง' })
+  depositAccountCode!: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @ValidateNested({ each: true })
+  @ArrayMinSize(1, { message: 'ต้องมีพนักงานอย่างน้อย 1 คน' })
+  @Type(() => PayrollLineInput)
+  lines!: PayrollLineInput[];
+
+  @IsString()
+  @IsOptional()
+  reference?: string;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
 }

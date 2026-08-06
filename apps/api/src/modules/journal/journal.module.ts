@@ -33,6 +33,7 @@ import { ExpenseSameDayTemplate } from './cpa-templates/expense-same-day.templat
 import { ExpenseAccrualTemplate } from './cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from './cpa-templates/credit-note.template';
 import { PayrollTemplate } from './cpa-templates/payroll.template';
+import { PayrollRemittanceTemplate } from './cpa-templates/payroll-remittance.template';
 import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.template';
 import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
 import { YearEndClosingTemplate } from './cpa-templates/year-end-closing.template';
@@ -93,6 +94,7 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ExpenseAccrualTemplate,
     CreditNoteTemplate,
     PayrollTemplate,
+    PayrollRemittanceTemplate,
     VendorSettlementTemplate,
     PettyCashTemplate,
     YearEndClosingTemplate,
@@ -146,6 +148,7 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ExpenseAccrualTemplate,
     CreditNoteTemplate,
     PayrollTemplate,
+    PayrollRemittanceTemplate,
     VendorSettlementTemplate,
     PettyCashTemplate,
     YearEndClosingTemplate,

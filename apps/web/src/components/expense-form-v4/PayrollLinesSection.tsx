@@ -1,4 +1,7 @@
-import { AlertTriangle, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, ChevronDown, ChevronRight, CopyPlus, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { suggestMonthlyWht } from '@/utils/pit-withholding';
 import {
   PayrollFormFields,
   PayrollLineForm,
@@ -13,6 +16,8 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { THAI_MONTHS_FULL } from '@/lib/date';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
+import { cn } from '@/lib/utils';
 import EmployeeCombobox from '@/components/employees/EmployeeCombobox';
 import { type PickableEmployee } from '@/lib/api/employees';
 import { ssoConfigApi, ssoConfigKeys } from '@/lib/api/ssoConfig';
@@ -22,19 +27,167 @@ interface Props {
   onChange: (v: PayrollFormFields) => void;
   documentDate: string;
   onDocumentDateChange: (d: string) => void;
+  /** สาขาของเอกสาร — ใช้ดึงใบเงินเดือนงวดล่าสุดมาเติม (R3-1 คัดลอกงวดก่อน). */
+  branchId?: string;
 }
 
-// C2 — Whitelist of custom income account codes (Settings: custom_income_accounts_whitelist).
-// Hard-coded here matches the migration seed default. UI can resync from
-// API later when /settings page exposes the whitelist editor.
-const CUSTOM_INCOME_WHITELIST: { code: string; label: string }[] = [
-  { code: '53-1104', label: '53-1104 โบนัส' },
-  { code: '53-1105', label: '53-1105 ค่าล่วงเวลา (OT)' },
-];
+export interface IncomeOption {
+  code: string;
+  label: string;
+}
 
-export function PayrollLinesSection({ value, onChange, documentDate, onDocumentDateChange }: Props) {
+// Fallback whitelist per scope while /expense-documents/payroll/meta loads (or
+// errors). Mirrors the server-side defaults in PayrollCustomService.loadWhitelist
+// — B1 fix: OT = 53-1103 (ค่าล่วงเวลา), NOT 53-1105 (ค่าอบรม สัมมนา).
+const FALLBACK_INCOME_WHITELIST: Record<'SHOP' | 'FINANCE', IncomeOption[]> = {
+  SHOP: [
+    { code: 'S52-1202', label: 'S52-1202 ค่าล่วงเวลา (OT)' },
+    { code: 'S52-1204', label: 'S52-1204 โบนัส' },
+  ],
+  FINANCE: [
+    { code: '53-1103', label: '53-1103 ค่าล่วงเวลา (OT)' },
+    { code: '53-1104', label: '53-1104 โบนัส' },
+  ],
+};
+
+// Known cross-scope pairs — lets the scope toggle carry existing custom-income
+// rows across instead of wiping them (S52-1202 ↔ 53-1103 OT, S52-1204 ↔ 53-1104 โบนัส).
+const SCOPE_SWAP: Record<string, string> = {
+  '53-1103': 'S52-1202',
+  '53-1104': 'S52-1204',
+  'S52-1202': '53-1103',
+  'S52-1204': '53-1104',
+};
+
+interface PayrollMetaResponse {
+  scope: 'SHOP' | 'FINANCE';
+  incomeWhitelist: { code: string; name: string }[];
+  cashAccounts: { code: string; name: string }[];
+}
+
+export function PayrollLinesSection({
+  value,
+  onChange,
+  documentDate,
+  onDocumentDateChange,
+  branchId,
+}: Props) {
   const { taxExemptWarningEnabled } = useUiFlags();
   const updateField = (patch: Partial<PayrollFormFields>) => onChange({ ...value, ...patch });
+  const [copyLoading, setCopyLoading] = useState(false);
+
+  // R3-1 — ดึงใบเงินเดือนล่าสุดของสาขา (ไม่นับใบ VOID) มาเติมทั้งชุด: ฝั่ง +
+  // พนักงาน + ฐาน/SSO/WHT + รายได้พิเศษ/รายการหัก. แถวที่ผูกทะเบียน (มี userId)
+  // ชื่อ-เลขบัตรถูก re-derive ฝั่ง server ตอนบันทึก (คนลาออก → server แจ้งให้เอาออก);
+  // แถว free-text เลขบัตรไม่ถูกคัดลอก (อาจเป็นค่า mask) — ต้องกรอกใหม่ถ้าจำเป็น.
+  // SSO cap ถูก validate ใหม่ด้วยวันที่จ่ายของงวดนี้.
+  const copyFromLatest = async () => {
+    if (!branchId) return;
+    setCopyLoading(true);
+    try {
+      const { data: list } = await api.get<{
+        data: Array<{ id: string; status: string; documentDate: string }>;
+      }>(`/expense-documents?type=PAYROLL&branchId=${branchId}&limit=10`);
+      const candidate = (list.data ?? []).find((d) => d.status !== 'VOIDED');
+      if (!candidate) {
+        toast.info('ยังไม่มีใบเงินเดือนเดิมของสาขานี้ให้คัดลอก');
+        return;
+      }
+      const { data: doc } = await api.get<{
+        number: string;
+        payroll?: {
+          entityScope: 'SHOP' | 'FINANCE';
+          payrollPeriod: string;
+          lines: Array<{
+            userId: string | null;
+            employeeName: string;
+            baseSalary: string;
+            ssoEmployee: string;
+            whtAmount: string;
+            customIncome: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean }>;
+            customDeduction: Array<{ accountCode: string; name: string; amount: string }>;
+          }>;
+        } | null;
+      }>(`/expense-documents/${candidate.id}`);
+      if (!doc.payroll || doc.payroll.lines.length === 0) {
+        toast.info('ใบล่าสุดไม่มีรายชื่อพนักงาน');
+        return;
+      }
+      onChange({
+        ...value,
+        entityScope: doc.payroll.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP',
+        lines: doc.payroll.lines.map((l) =>
+          newPayrollLine({
+            userId: l.userId ?? '',
+            employeeName: l.employeeName,
+            employeeTaxId: '',
+            baseSalary: String(parseFloat(l.baseSalary)),
+            ssoEmployee: String(parseFloat(l.ssoEmployee)),
+            whtAmount: String(parseFloat(l.whtAmount)),
+            customIncome: (l.customIncome ?? []).map((r) =>
+              newPayrollCustomIncome({
+                accountCode: r.accountCode,
+                name: r.name,
+                amount: String(parseFloat(r.amount)),
+                isTaxable: r.isTaxable,
+              }),
+            ),
+            customDeduction: (l.customDeduction ?? []).map((r) =>
+              newPayrollCustomDeduction({
+                accountCode: r.accountCode,
+                name: r.name,
+                amount: String(parseFloat(r.amount)),
+              }),
+            ),
+          }),
+        ),
+      });
+      toast.success(`ดึงข้อมูลจาก ${doc.number} แล้ว (${doc.payroll.lines.length} คน) — ตรวจยอดก่อนบันทึก`);
+    } catch {
+      toast.error('ดึงงวดล่าสุดไม่สำเร็จ');
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const scope = value.entityScope;
+
+  // Whitelist + names come from the server (single source of truth — the old
+  // hardcoded list drifted from the seed and mislabeled 53-1105 as OT).
+  const meta = useQuery<PayrollMetaResponse>({
+    queryKey: ['payroll-meta', scope],
+    queryFn: async () =>
+      (await api.get(`/expense-documents/payroll/meta?scope=${scope}`)).data,
+    staleTime: 5 * 60 * 1000,
+  });
+  const incomeOptions: IncomeOption[] =
+    meta.data?.incomeWhitelist?.length
+      ? meta.data.incomeWhitelist.map((r) => ({ code: r.code, label: `${r.code} ${r.name}` }))
+      : FALLBACK_INCOME_WHITELIST[scope];
+
+  // Scope toggle — swap known custom-income codes across charts; unknown codes
+  // reset to '' (the sub-table re-defaults to the first whitelist option).
+  // Deduction codes from the other chart reset to '' too (V19 would reject them).
+  const setScope = (next: 'SHOP' | 'FINANCE') => {
+    if (next === scope) return;
+    const fallbackCode = FALLBACK_INCOME_WHITELIST[next][0].code;
+    onChange({
+      ...value,
+      entityScope: next,
+      lines: value.lines.map((l) => ({
+        ...l,
+        customIncome: (l.customIncome ?? []).map((r) => ({
+          ...r,
+          accountCode: SCOPE_SWAP[r.accountCode] ?? fallbackCode,
+        })),
+        customDeduction: (l.customDeduction ?? []).map((r) => ({
+          ...r,
+          accountCode:
+            (next === 'SHOP') === r.accountCode.startsWith('S') ? r.accountCode : '',
+        })),
+      })),
+    });
+  };
 
   const updateLine = (uid: string, p: Partial<PayrollLineForm>) => {
     onChange({ ...value, lines: value.lines.map((l) => (l.uid === uid ? { ...l, ...p } : l)) });
@@ -93,6 +246,8 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
       .reduce((s, r) => s + (parseFloat(r.amount) || 0), base);
     const netPaid = Math.max(0, base + income - sso - wht - deduction);
     const hasExtras = (l.customIncome?.length ?? 0) + (l.customDeduction?.length ?? 0) > 0;
+    // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น
+    const suggestedWht = suggestMonthlyWht(taxableBase, sso);
     return {
       ...l,
       baseN: base,
@@ -101,6 +256,7 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
       incomeN: income,
       deductionN: deduction,
       taxableBaseN: taxableBase,
+      suggestedWht,
       netPaid,
       hasExtras,
     };
@@ -117,6 +273,50 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
 
   return (
     <div className="space-y-4">
+      {/* คำสั่งเจ้าของ 2026-08-06 — เอกสาร 1 ใบสังกัดฝั่งเดียว */}
+      <div>
+        <label className="block text-xs font-medium mb-1">กลุ่มพนักงาน</label>
+        <div className="inline-flex rounded-lg border border-border overflow-hidden" role="group">
+          {(
+            [
+              { key: 'SHOP', label: 'พนักงานสาขา (SHOP)' },
+              { key: 'FINANCE', label: 'ส่วนกลาง (FINANCE)' },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setScope(opt.key)}
+              aria-pressed={scope === opt.key}
+              className={cn(
+                'px-3 py-1.5 text-sm transition-colors',
+                scope === opt.key
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-accent',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground leading-snug">
+          {scope === 'SHOP'
+            ? 'ลงบัญชีเป็นค่าใช้จ่ายหน้าร้าน (ผัง SHOP: S52-1201) — จ่ายจากบัญชี SHOP'
+            : 'ลงบัญชีเป็นค่าใช้จ่ายส่วนกลาง (ผัง FINANCE: 53-1101) — จ่ายจากบัญชี FINANCE'}
+        </p>
+        {branchId && (
+          <button
+            type="button"
+            onClick={copyFromLatest}
+            disabled={copyLoading}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-dashed border-border rounded-lg text-muted-foreground hover:text-foreground hover:border-primary disabled:opacity-50"
+          >
+            <CopyPlus className="size-3.5" />
+            {copyLoading ? 'กำลังดึงข้อมูล…' : 'ดึงข้อมูลงวดล่าสุดมาเติม'}
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium mb-1">ปี (พ.ศ.)</label>
@@ -198,6 +398,7 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
                 key={row.uid}
                 row={row}
                 disableRemove={value.lines.length === 1}
+                incomeOptions={incomeOptions}
                 onUpdate={(p) => updateLine(row.uid, p)}
                 onRemove={() => removeLine(row.uid)}
                 onPickEmployee={(emp) => handlePickEmployee(row.uid, emp)}
@@ -252,6 +453,7 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
 function PayrollRow({
   row,
   disableRemove,
+  incomeOptions,
   onUpdate,
   onRemove,
   onPickEmployee,
@@ -264,9 +466,11 @@ function PayrollRow({
     incomeN: number;
     deductionN: number;
     taxableBaseN: number;
+    suggestedWht: number;
     hasExtras: boolean;
   };
   disableRemove: boolean;
+  incomeOptions: IncomeOption[];
   onUpdate: (p: Partial<PayrollLineForm>) => void;
   onRemove: () => void;
   onPickEmployee: (emp: PickableEmployee) => void;
@@ -329,6 +533,17 @@ function PayrollRow({
             onChange={(e) => onUpdate({ whtAmount: e.target.value })}
             className="w-full px-2 py-1.5 border border-input rounded text-sm bg-background text-right font-mono"
           />
+          {/* R3-4 — ค่าแนะนำขั้นบันได ม.48 (ลดหย่อนมาตรฐาน) — กดเพื่อใช้ */}
+          {row.suggestedWht > 0 && row.whtN !== row.suggestedWht && (
+            <button
+              type="button"
+              onClick={() => onUpdate({ whtAmount: String(row.suggestedWht) })}
+              className="block w-full text-right text-[10px] text-muted-foreground hover:text-primary mt-0.5"
+              title="ภาษีแนะนำจากขั้นบันได ม.48 หักลดหย่อนมาตรฐาน (ส่วนตัว 60,000 + ค่าใช้จ่าย 50% + ปกส.) — กดเพื่อใช้ค่านี้"
+            >
+              แนะนำ ~{formatNumberDecimal(row.suggestedWht)}
+            </button>
+          )}
         </td>
         <td className="px-3 py-2 text-right font-mono">
           {formatNumberDecimal(row.netPaid)}
@@ -354,7 +569,11 @@ function PayrollRow({
         <tr className="border-t border-border bg-muted/10">
           <td></td>
           <td colSpan={7} className="px-3 py-3 space-y-3">
-            <CustomIncomeSubTable rows={row.customIncome ?? []} onChange={updateIncome} />
+            <CustomIncomeSubTable
+              rows={row.customIncome ?? []}
+              options={incomeOptions}
+              onChange={updateIncome}
+            />
             <CustomDeductionSubTable rows={row.customDeduction ?? []} onChange={updateDeduction} />
             {row.taxableBaseN !== row.baseN && (
               <div className="text-xs text-muted-foreground italic">
@@ -370,16 +589,19 @@ function PayrollRow({
 
 function CustomIncomeSubTable({
   rows,
+  options,
   onChange,
 }: {
   rows: PayrollCustomIncomeRow[];
+  options: IncomeOption[];
   onChange: (rows: PayrollCustomIncomeRow[]) => void;
 }) {
   const { taxExemptWarningEnabled } = useUiFlags();
   const update = (uid: string, p: Partial<PayrollCustomIncomeRow>) =>
     onChange(rows.map((r) => (r.uid === uid ? { ...r, ...p } : r)));
   const remove = (uid: string) => onChange(rows.filter((r) => r.uid !== uid));
-  const add = () => onChange([...rows, newPayrollCustomIncome()]);
+  const add = () =>
+    onChange([...rows, newPayrollCustomIncome({ accountCode: options[0]?.code ?? '' })]);
 
   // D1.2.8.2 — show ม.42 tax-exempt warning when any row marked non-taxable.
   // Gated by SystemConfig TAX_EXEMPT_WARNING_ENABLED (default true, OWNER toggleable).
@@ -418,7 +640,8 @@ function CustomIncomeSubTable({
                   onChange={(e) => update(r.uid, { accountCode: e.target.value })}
                   className="w-full px-1.5 py-1 border border-input rounded text-xs bg-background"
                 >
-                  {CUSTOM_INCOME_WHITELIST.map((opt) => (
+                  {r.accountCode === '' && <option value="">— เลือกบัญชี —</option>}
+                  {options.map((opt) => (
                     <option key={opt.code} value={opt.code}>
                       {opt.label}
                     </option>
@@ -539,7 +762,7 @@ function CustomDeductionSubTable({
                   type="text"
                   value={r.accountCode}
                   onChange={(e) => update(r.uid, { accountCode: e.target.value })}
-                  placeholder="11-2199"
+                  placeholder="เช่น S11-3001 (SHOP) / 11-2199 (FINANCE)"
                   className="w-full px-1.5 py-1 border border-input rounded text-xs bg-background font-mono"
                 />
               </td>

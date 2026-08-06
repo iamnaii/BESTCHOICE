@@ -20,6 +20,19 @@ export const CASH_ACCOUNT_CODES = [
 ] as const;
 
 /**
+ * SHOP-side cash/bank codes (S-prefixed partition) — used by the payroll
+ * SHOP scope (คำสั่งเจ้าของ 2026-08-06): เงินเดือนพนักงานสาขาจ่ายจากบัญชี
+ * ของหน้าร้านเท่านั้น. Mirrors apps/api/src/constants/cash-account.constants.ts.
+ */
+export const SHOP_CASH_ACCOUNT_CODES = [
+  'S11-1101',
+  'S11-1102',
+  'S11-1103',
+  'S11-1201',
+  'S11-1202',
+] as const;
+
+/**
  * ธนาคารกสิกร (KBank) only — for flows where money must arrive at FINANCE's
  * KBank account directly (early payoff JP4 + repossession JP5, owner rule
  * 2026-07-08). Cash collected at a branch uses the shop-collect toggle

@@ -347,6 +347,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // P4-SP2 — Tax module (finance-tax endpoints)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
+        { label: 'ภ.ง.ด.1 เงินเดือน (รายพนักงาน)', path: '/finance/wht-report', icon: Calculator },
+        { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Calculator },
+        { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
         // SP6 — Bank/Cash account directory
@@ -433,6 +436,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt },
         { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt },
+        { label: 'ภ.ง.ด.1 เงินเดือน (รายพนักงาน)', path: '/finance/wht-report', icon: Receipt },
+        { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Receipt },
+        { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Receipt },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
       ],
@@ -578,6 +584,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt },
         { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt },
+        { label: 'ภ.ง.ด.1 เงินเดือน (รายพนักงาน)', path: '/finance/wht-report', icon: Receipt },
+        { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Receipt },
+        { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Receipt },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
       ],

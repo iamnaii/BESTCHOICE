@@ -4,26 +4,30 @@ import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../account-role.service';
+import { CompanyResolverService } from '../company-resolver.service';
 
 /**
  * Template — Payroll (PR เงินเดือนงวด).
  *
  * Spec §4.4 — aggregates PayrollLine[] into single balanced JE.
+ * คำสั่งเจ้าของ 2026-08-06 — เอกสารสังกัดฝั่งเดียวผ่าน PayrollDetail.entityScope:
  *
- *   Dr 53-1101 เงินเดือน-ค่าจ้าง           (Σ baseSalary)
- *   Dr 53-1102 เงินสมทบประกันสังคม-นายจ้าง  (Σ ssoEmployee)   [if Σ > 0]
- *     Cr 21-3101 ภ.ง.ด. 1 ค้างจ่าย         (Σ whtAmount)      [if Σ > 0]
- *     Cr 21-3105 SSO พนักงานค้างนำส่ง       (Σ ssoEmployee)   [if Σ > 0]
- *     Cr 21-3106 SSO นายจ้างค้างนำส่ง       (Σ ssoEmployee)   [if Σ > 0]
- *     Cr depositAccountCode                (Σ netPaid)
+ *   SHOP (default — พนักงานสาขา, companyId = SHOP):
+ *     Dr S52-1201 เงินเดือนพนักงานสาขา        (Σ baseSalary)
+ *     Dr S52-1205 เงินสมทบ ปกส. นายจ้าง-สาขา   (Σ ssoEmployee)  [if Σ > 0]
+ *       Cr S21-3101 ภ.ง.ด. 1 ค้างจ่าย - SHOP   (Σ whtAmount)    [if Σ > 0]
+ *       Cr S21-3105 ปกส. พนักงานค้างนำส่ง       (Σ ssoEmployee)  [if Σ > 0]
+ *       Cr S21-3106 ปกส. นายจ้างค้างนำส่ง       (Σ ssoEmployee)  [if Σ > 0]
+ *       Cr depositAccountCode (S11-XXXX)       (Σ netPaid)
  *
- * Line-level data stays in PayrollLine[]. ภงด.1 file generation deferred.
+ *   FINANCE (พนักงานส่วนกลาง, companyId = FINANCE — B2 fix: เดิม post SHOP
+ *   companyId คู่กับรหัสผัง FINANCE ทำให้ JE ตกทุก scope filter ของรายงาน):
+ *     Dr 53-1101 / Dr 53-1102 / Cr 21-3101 / Cr 21-3105 / Cr 21-3106 / Cr 11-XXXX
  *
- * Account code notes (Fix Report P0-3, 2026-05-11):
- *   - WHT employee   = 21-3101 (ภ.ง.ด. 1 ค้างจ่าย — employee income tax payable)
- *   - SSO employee   = 21-3105 (NEW — dedicated SSO payable)
- *   - SSO employer   = 21-3106 (NEW — dedicated SSO payable, employer side)
- *   - SSO employer expense = 53-1102 (เงินสมทบประกันสังคม)
+ * Account codes are role-resolved (AccountRoleService) — owner can remap in
+ * admin UI without redeploying. When the CPA's full SHOP chart renumbering
+ * lands (payroll → 53-11XX per the 2026-08-06 chart image), only the
+ * account_role_map rows change.
  *
  * Thai SSO law: both employee and employer contribute 5% (cap is period-effective:
  * 875 in 2569+, 1000 in 2572+, 1150 in 2575+ — see `sso_config` table).
@@ -34,12 +38,11 @@ import { AccountRoleService } from '../account-role.service';
  */
 @Injectable()
 export class PayrollTemplate {
-  private shopCompanyIdCache: string | null = null;
-
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
     private readonly roles: AccountRoleService,
+    private readonly companyResolver: CompanyResolverService,
   ) {}
 
   async execute(
@@ -63,17 +66,30 @@ export class PayrollTemplate {
         },
       });
 
-      // Idempotency
+      // Idempotency (app-level; DB-level partial unique index on
+      // (metadata.flow, metadata.idempotencyKey) backs this up below).
       if (doc.journalEntryId) {
         const existing = await tx.journalEntry.findUnique({ where: { id: doc.journalEntryId } });
         return { entryNo: existing?.entryNumber ?? doc.journalEntryId };
       }
 
       if (!doc.payroll || doc.payroll.lines.length === 0) {
-        throw new Error(`Payroll ${documentId} missing payroll detail or lines`);
+        throw new BadRequestException(`Payroll ${documentId} missing payroll detail or lines`);
       }
       if (!doc.depositAccountCode) {
         throw new BadRequestException(`Payroll ${documentId} requires depositAccountCode`);
+      }
+
+      const scope: 'SHOP' | 'FINANCE' =
+        doc.payroll.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP';
+
+      // Defense in depth — create-service already pins the cash leg to the
+      // scope's chart; re-assert here so a hand-edited row can't cross books.
+      const depositIsShop = doc.depositAccountCode.startsWith('S');
+      if ((scope === 'SHOP') !== depositIsShop) {
+        throw new BadRequestException(
+          `Payroll ${doc.number}: บัญชีจ่าย ${doc.depositAccountCode} ไม่ตรงฝั่งเอกสาร (${scope})`,
+        );
       }
 
       const zero = new Decimal(0);
@@ -96,11 +112,12 @@ export class PayrollTemplate {
 
       // Resolve account codes via role map (Fix Report P1-3 — POC integration).
       // Owner can edit the mappings in admin UI without redeploying.
-      const codePayrollExpense = this.roles.code('payroll_expense');
-      const codeSsoExpense = this.roles.code('payroll_sso_expense');
-      const codeWhtPayroll = this.roles.code('wht_payroll');
-      const codeSsoEmployee = this.roles.code('sso_employee');
-      const codeSsoEmployer = this.roles.code('sso_employer');
+      const rolePrefix = scope === 'SHOP' ? 'shop_' : '';
+      const codePayrollExpense = this.roles.code(`${rolePrefix}payroll_expense`);
+      const codeSsoExpense = this.roles.code(`${rolePrefix}payroll_sso_expense`);
+      const codeWhtPayroll = this.roles.code(`${rolePrefix}wht_payroll`);
+      const codeSsoEmployee = this.roles.code(`${rolePrefix}sso_employee`);
+      const codeSsoEmployer = this.roles.code(`${rolePrefix}sso_employer`);
 
       const lines: JeLineInput[] = [
         {
@@ -200,7 +217,10 @@ export class PayrollTemplate {
         description: `จ่ายเงินเดือนสุทธิ ${sumNet.toFixed(2)} ฿`,
       });
 
-      const shopCompanyId = await this.getShopCompanyId(tx);
+      const companyId =
+        scope === 'SHOP'
+          ? await this.companyResolver.getShopCompanyId(tx)
+          : await this.companyResolver.getFinanceCompanyId(tx);
 
       const result = await this.journal.createAndPost(
         {
@@ -212,11 +232,16 @@ export class PayrollTemplate {
             documentNumber: doc.number,
             documentType: doc.documentType,
             payrollPeriod: doc.payroll.payrollPeriod,
+            entityScope: scope,
             employeeCount: doc.payroll.lines.length,
             flow: 'expense-payroll',
+            // DB partial unique index journal_entries_idempotency_idx on
+            // (flow, idempotencyKey) — a concurrent double-post now fails at
+            // the DB even if both writers read journalEntryId as null.
+            idempotencyKey: `expense-payroll:${doc.id}`,
           },
           postedAt: doc.documentDate,
-          companyId: shopCompanyId,
+          companyId,
           lines,
         },
         tx,
@@ -236,16 +261,5 @@ export class PayrollTemplate {
     };
 
     return outerTx ? exec(outerTx) : this.prisma.$transaction(exec);
-  }
-
-  private async getShopCompanyId(tx: Prisma.TransactionClient): Promise<string> {
-    if (this.shopCompanyIdCache) return this.shopCompanyIdCache;
-    const co = await tx.companyInfo.findFirst({
-      where: { companyCode: 'SHOP', deletedAt: null },
-      select: { id: true },
-    });
-    if (!co) throw new Error('SHOP companyInfo not found — seed required');
-    this.shopCompanyIdCache = co.id;
-    return co.id;
   }
 }

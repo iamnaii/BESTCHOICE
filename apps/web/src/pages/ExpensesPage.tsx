@@ -224,7 +224,16 @@ export default function ExpensesPage() {
   });
 
   const openCreate = () => { setEditingExpense(null); setShowForm(true); };
-  const openEdit = (e: Expense) => { setEditingExpense(e); setShowForm(true); setOpenMenuId(null); };
+  const openEdit = (e: Expense) => {
+    // R3-2 (2026-08-06) — ร่างใบเงินเดือนแก้ไขได้จริงผ่านฟอร์ม edit mode
+    // (PATCH /expense-documents/:id/payroll). ประเภทอื่นยังใช้ flow เดิม.
+    if (e.documentType === 'PAYROLL') {
+      setOpenMenuId(null);
+      navigate(`/expenses/new?edit=${e.id}`);
+      return;
+    }
+    setEditingExpense(e); setShowForm(true); setOpenMenuId(null);
+  };
   const handleFormSaved = () => { setShowForm(false); setEditingExpense(null); invalidateAll(); };
 
   // D1.2.1 — Approval Workflow. Flags + mutations stay at page level so all

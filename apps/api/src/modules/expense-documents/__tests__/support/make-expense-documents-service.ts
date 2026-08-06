@@ -132,6 +132,8 @@ export function makeExpenseDocumentsService(
     {
       loadWhitelist: jest.fn().mockResolvedValue(new Set()),
       validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }),
+      validateDeductionAccounts: jest.fn().mockResolvedValue(undefined),
+      getMeta: jest.fn().mockResolvedValue({ scope: 'SHOP', incomeWhitelist: [], cashAccounts: [] }),
     };
   // notifications: undefined unless explicitly provided — preserves the
   // early-return behavior of specs that omit it.

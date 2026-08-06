@@ -333,15 +333,27 @@ export class ExpenseDocumentLifecycleService {
     //   2. We know the canonical companyId — SHOP (all expense flows post
     //      SHOP-side per accounting.md §VAT Policy; expense template
     //      resolves SHOP later, this guard mirrors that).
-    // Resolve SHOP companyId once via tx + cache; re-using the same
-    // pattern as expense templates' getShopCompanyId.
-    const shopForPeriod = await tx.companyInfo.findFirst({
-      where: { companyCode: 'SHOP', deletedAt: null },
+    // Resolve the period-guard company. Default = SHOP (all expense flows
+    // post SHOP-side per accounting.md §VAT Policy). PAYROLL is scope-aware
+    // (คำสั่งเจ้าของ 2026-08-06): a FINANCE-scope payroll posts its JE under
+    // the FINANCE company, so its period guard must check the FINANCE
+    // AccountingPeriod — guarding SHOP's period for a FINANCE JE would let a
+    // closed FINANCE month be reopened through payroll by accident.
+    let periodCompanyCode: 'SHOP' | 'FINANCE' = 'SHOP';
+    if (doc.documentType === 'PAYROLL') {
+      const pd = await tx.payrollDetail.findUnique({
+        where: { documentId: id },
+        select: { entityScope: true },
+      });
+      if (pd?.entityScope === 'FINANCE') periodCompanyCode = 'FINANCE';
+    }
+    const companyForPeriod = await tx.companyInfo.findFirst({
+      where: { companyCode: periodCompanyCode, deletedAt: null },
       select: { id: true },
     });
-    if (!shopForPeriod) {
+    if (!companyForPeriod) {
       throw new NotFoundException(
-        'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+        `CompanyInfo with companyCode=${periodCompanyCode} not found — seed accounting data first`,
       );
     }
     // documentDate is required on the schema but defend against legacy
@@ -349,7 +361,7 @@ export class ExpenseDocumentLifecycleService {
     // payments.service behavior — neither has a per-row date column on
     // the doc, both pass new Date()).
     const periodDate = doc.documentDate ?? new Date();
-    await validatePeriodOpen(tx, periodDate, shopForPeriod.id);
+    await validatePeriodOpen(tx, periodDate, companyForPeriod.id);
 
     // Fix #C10 — attachment threshold enforced server-side.
     // ATTACHMENT_REQUIRED_ABOVE_AMOUNT is set in /settings#attachment but
@@ -726,16 +738,29 @@ export class ExpenseDocumentLifecycleService {
       const reverseAt = dto.reverseDate
         ? bkkBusinessDate(new Date(dto.reverseDate))
         : bkkBusinessDate(new Date());
-      const shopForVoidPeriod = await tx.companyInfo.findFirst({
-        where: { companyCode: 'SHOP', deletedAt: null },
+      // 2026-08-06 (review fix) — guard the period of the company the reversal
+      // JE will actually post under. FINANCE-scope payroll (the first doc type
+      // whose JE lives under the FINANCE company) must check FINANCE's
+      // AccountingPeriod, not SHOP's — otherwise a void could slip a reversal
+      // into a closed FINANCE month, bypassing the OWNER-only reopen flow.
+      let voidPeriodCompanyCode: 'SHOP' | 'FINANCE' = 'SHOP';
+      if (doc.documentType === 'PAYROLL') {
+        const pd = await tx.payrollDetail.findUnique({
+          where: { documentId: id },
+          select: { entityScope: true },
+        });
+        if (pd?.entityScope === 'FINANCE') voidPeriodCompanyCode = 'FINANCE';
+      }
+      const companyForVoidPeriod = await tx.companyInfo.findFirst({
+        where: { companyCode: voidPeriodCompanyCode, deletedAt: null },
         select: { id: true },
       });
-      if (!shopForVoidPeriod) {
+      if (!companyForVoidPeriod) {
         throw new NotFoundException(
-          'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+          `CompanyInfo with companyCode=${voidPeriodCompanyCode} not found — seed accounting data first`,
         );
       }
-      await validatePeriodOpen(tx, reverseAt, shopForVoidPeriod.id);
+      await validatePeriodOpen(tx, reverseAt, companyForVoidPeriod.id);
 
       // Post reversal JE (flipped Dr/Cr) if doc had one. The original JE stays
       // intact; the reversal lives as a separate POSTED entry tagged via metadata.

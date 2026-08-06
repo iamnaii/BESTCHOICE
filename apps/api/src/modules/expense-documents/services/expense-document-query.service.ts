@@ -562,13 +562,28 @@ export class ExpenseDocumentQueryService {
   // CN view, payroll view, SE view) don't need a follow-up roundtrip. The
   // base includes (expenseDetail / branch / approver) work for every type;
   // creditNote / payroll / settlement detail are added based on documentType.
-  async findOne(id: string, viewerRole?: string | null) {
+  async findOne(id: string, viewerRole?: string | null, viewerBranchId?: string | null) {
     // First pass to read documentType, then a typed include.
     const docType = await this.prisma.expenseDocument.findUniqueOrThrow({
       where: { id },
-      select: { documentType: true, deletedAt: true },
+      select: { documentType: true, deletedAt: true, branchId: true },
     });
     if (docType.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
+    // Branch scoping (คำสั่งเจ้าของ 2026-08-06 — สิทธิเห็นเงินเดือนระหว่างสาขา;
+    // mirrors getAuditTrail). Non-cross-branch roles (BRANCH_MANAGER) may only
+    // read documents of their OWN branch — closes the id-guessing leak that
+    // exposed another branch's full salary lines. Callers that pass no
+    // viewerBranchId (undefined — internal service-to-service reads like
+    // getAuditTrail's own findOne) keep the legacy unscoped behavior.
+    if (
+      viewerBranchId !== undefined &&
+      !hasCrossBranchAccess({ role: viewerRole ?? '' }) &&
+      docType.branchId &&
+      docType.branchId !== viewerBranchId
+    ) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสารของสาขาอื่น');
+    }
 
     const doc = await this.prisma.expenseDocument.findUniqueOrThrow({
       where: { id },
@@ -609,5 +624,78 @@ export class ExpenseDocumentQueryService {
       viewerRole,
     );
     return doc;
+  }
+
+  // ─── Payroll bank-transfer CSV (R3-3, 2026-08-06) ────────────────────
+  /**
+   * ไฟล์โอนเงินเดือนเข้าธนาคาร — คอลัมน์ ลำดับ,ชื่อ,ธนาคาร,เลขบัญชี,จำนวนเงิน
+   * (netPaid). แถวที่ไม่มีข้อมูลธนาคาร (free-text row / ยังไม่กรอกในทะเบียน
+   * พนักงาน) ถูกข้าม — รายชื่อคืนใน `skipped` ให้ controller ใส่ X-Skipped-Lines
+   * header (pattern เดียวกับ PEAK export). เงินเป็น Decimal.toFixed(2) —
+   * ไม่ผ่าน Number().
+   */
+  async buildPayrollBankCsv(
+    id: string,
+    viewerRole?: string | null,
+    viewerBranchId?: string | null,
+  ): Promise<{ csv: string; filename: string; skipped: string[] }> {
+    // Reuses findOne's branch scoping (สิทธิเห็นเงินเดือนข้ามสาขา).
+    const doc = (await this.findOne(id, viewerRole, viewerBranchId)) as {
+      number: string;
+      documentType: string;
+      payroll?: {
+        lines: Array<{
+          userId: string | null;
+          employeeName: string;
+          netPaid: Prisma.Decimal;
+        }>;
+      } | null;
+    };
+    if (doc.documentType !== 'PAYROLL' || !doc.payroll) {
+      throw new BadRequestException('เอกสารนี้ไม่ใช่ใบเงินเดือน (PR)');
+    }
+
+    const userIds = [
+      ...new Set(
+        doc.payroll.lines.map((l) => l.userId).filter((v): v is string => v !== null),
+      ),
+    ];
+    const profiles = userIds.length
+      ? await this.prisma.employeeProfile.findMany({
+          where: { userId: { in: userIds }, deletedAt: null },
+          select: { userId: true, bankName: true, bankAccountNo: true },
+        })
+      : [];
+    const bankByUserId = new Map(profiles.map((p) => [p.userId, p]));
+
+    const rows: string[] = ['ลำดับ,ชื่อพนักงาน,ธนาคาร,เลขบัญชี,จำนวนเงิน'];
+    const skipped: string[] = [];
+    let no = 0;
+    for (const line of doc.payroll.lines) {
+      const bank = line.userId ? bankByUserId.get(line.userId) : undefined;
+      if (!bank?.bankName || !bank?.bankAccountNo) {
+        skipped.push(line.employeeName);
+        continue;
+      }
+      no += 1;
+      const esc = (v: string) =>
+        /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+      rows.push(
+        [
+          String(no),
+          esc(line.employeeName),
+          esc(bank.bankName),
+          esc(bank.bankAccountNo),
+          new Prisma.Decimal(line.netPaid.toString()).toFixed(2),
+        ].join(','),
+      );
+    }
+
+    // UTF-8 BOM ให้ Excel เปิดภาษาไทยถูก
+    return {
+      csv: '﻿' + rows.join('\r\n') + '\r\n',
+      filename: `bank-transfer-${doc.number}.csv`,
+      skipped,
+    };
   }
 }

@@ -4158,6 +4158,10 @@ model PayrollDetail {
   documentId    String          @id @map("document_id")
   document      ExpenseDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
   payrollPeriod String          @map("payroll_period")
+  // คำสั่งเจ้าของ 2026-08-06 — 'SHOP' (พนักงานสาขา, ผัง S + companyId SHOP) |
+  // 'FINANCE' (พนักงานส่วนกลาง, ผัง FINANCE + companyId FINANCE). Drives which
+  // account-role set PayrollTemplate resolves + which company's period is guarded.
+  entityScope   String          @default("SHOP") @map("entity_scope")
   lines         PayrollLine[]
 
   @@map("payroll_details")
@@ -4185,6 +4189,9 @@ model PayrollLine {
   createdAt       DateTime                 @default(now()) @map("created_at")
   updatedAt       DateTime                 @updatedAt @map("updated_at")
 
+  // One employee appears at most once per payroll document. NULL userId
+  // (legacy free-text rows) never collides — PG treats NULLs as distinct.
+  @@unique([payrollId, userId])
   @@index([payrollId])
   @@index([userId])
   @@map("payroll_lines")

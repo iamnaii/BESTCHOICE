@@ -16,6 +16,11 @@ vi.mock('@/lib/api/ssoConfig', () => ({
   ssoConfigApi: { effective: vi.fn() },
 }));
 vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({ taxExemptWarningEnabled: true }) }));
+// payroll/meta endpoint (2026-08-06) — resolve with empty whitelist so the
+// component falls back to FALLBACK_INCOME_WHITELIST (what these tests exercise).
+vi.mock('@/lib/api', () => ({
+  default: { get: vi.fn().mockResolvedValue({ data: { incomeWhitelist: [], cashAccounts: [] } }) },
+}));
 
 const EMP: PickableEmployee = {
   userId: 'u1', employeeId: 'EMP-001', name: 'สมชาย ใจดี', nickname: 'ชาย',
@@ -24,7 +29,13 @@ const EMP: PickableEmployee = {
 
 function Harness({ initial }: { initial?: PayrollFormFields }) {
   const [value, setValue] = useState<PayrollFormFields>(
-    initial ?? { year: 2569, month: 6, payrollPeriod: '2026-06', lines: [newPayrollLine()] },
+    initial ?? {
+      year: 2569,
+      month: 6,
+      payrollPeriod: '2026-06',
+      entityScope: 'SHOP',
+      lines: [newPayrollLine()],
+    },
   );
   return (
     <PayrollLinesSection

@@ -25,6 +25,12 @@ describe('formatBaht', () => {
     expect(formatBaht(2413.21)).toBe('2,413.21');
     expect(formatBaht(99.5)).toBe('99.50');
   });
+
+  it('NaN/Infinity ไม่หลุดออกจอเป็น "NaN.undefined" — คืน "-" แทน', () => {
+    expect(formatBaht(NaN)).toBe('-');
+    expect(formatBaht(Infinity)).toBe('-');
+    expect(formatBaht(-Infinity)).toBe('-');
+  });
 });
 
 describe('computeDefaultBcInstallment — golden 19,900 (ตรงกับ BcCalculatorCard)', () => {
@@ -47,6 +53,11 @@ describe('computeDefaultBcInstallment — golden 19,900 (ตรงกับ BcCa
     expect(computeDefaultBcInstallment(19900, null)).toBeNull();
     expect(computeDefaultBcInstallment(19900, { ...config, allowedMonths: [] })).toBeNull();
   });
+
+  it('config เสีย (minDownPct/vatPct เป็น NaN) → null ไม่ใช่ NaN (decimal.js ไม่ throw บน NaN)', () => {
+    expect(computeDefaultBcInstallment(19900, { ...config, minDownPct: NaN })).toBeNull();
+    expect(computeDefaultBcInstallment(19900, { ...config, vatPct: NaN })).toBeNull();
+  });
 });
 
 describe('buildCustomerSummary', () => {
@@ -55,7 +66,7 @@ describe('buildCustomerSummary', () => {
       brand: 'Apple',
       model: 'iPhone 13',
       storage: '128GB',
-      color: 'ดำ',
+      color: 'Black', // product.color เก็บค่าอังกฤษดิบ (VariantSelector IPHONE_COLORS.value) — ไม่ใช่ label ไทย
       category: 'PHONE_USED',
       conditionGrade: 'A',
       batteryHealth: 89,
@@ -127,6 +138,84 @@ describe('buildCustomerSummary', () => {
   it('IMEI สั้นกว่า 4 ตัว ไม่ทำให้บรรทัดท้ายเพี้ยน', () => {
     const text = buildCustomerSummary({ brand: 'Apple', model: 'iPhone 13', imeiSerial: '12' });
     expect(text).not.toContain('เลขเครื่อง');
+  });
+
+  it('สีที่ไม่อยู่ใน IPHONE_COLORS mapping → ใช้ค่าดิบ ไม่มีคำว่า "สี" นำ (ตรงกับหน้าร้านจริง)', () => {
+    const text = buildCustomerSummary({
+      brand: 'Apple',
+      model: 'iPhone 15',
+      color: 'Midnight Green', // ค่า custom ที่พนักงานพิมพ์เอง ไม่อยู่ใน IPHONE_COLORS
+      cashPrice: 25900,
+    });
+    expect(text).toContain('Apple iPhone 15 Midnight Green');
+    expect(text).not.toContain('สีMidnight Green');
+  });
+
+  it('บรรทัดผ่อนมีค่า NaN/Infinity (installment object ที่ส่งมาตรงๆ เสีย) → ตัดทั้งบรรทัด ไม่โชว์ "NaN.undefined"', () => {
+    const textNaN = buildCustomerSummary({
+      brand: 'Apple',
+      model: 'iPhone 13',
+      cashPrice: 19900,
+      installmentPrice: 19900,
+      installment: { months: 12, downAmount: NaN, monthlyPayment: 2413.21 },
+    });
+    expect(textNaN).not.toContain('ผ่อน');
+    expect(textNaN).not.toContain('NaN');
+
+    const textInfinity = buildCustomerSummary({
+      brand: 'Apple',
+      model: 'iPhone 13',
+      cashPrice: 19900,
+      installmentPrice: 19900,
+      installment: { months: 12, downAmount: 2985, monthlyPayment: Infinity },
+    });
+    expect(textInfinity).not.toContain('ผ่อน');
+    expect(textInfinity).not.toContain('Infinity');
+  });
+
+  it('computeDefaultBcInstallment คืน null เมื่อ config เสีย → บรรทัดผ่อนตัดทั้งบรรทัดเหมือนกัน', () => {
+    const badConfig = { ...config, minDownPct: NaN, vatPct: NaN };
+    const installment = computeDefaultBcInstallment(19900, badConfig);
+    expect(installment).toBeNull();
+
+    const text = buildCustomerSummary({
+      brand: 'Apple',
+      model: 'iPhone 13',
+      cashPrice: 19900,
+      installmentPrice: 19900,
+      installment,
+    });
+    expect(text).not.toContain('ผ่อน');
+  });
+
+  it('สมาชิก accessoriesIncluded ที่ว่าง/มีช่องว่างรอบ → trim + กรองทิ้งก่อน join', () => {
+    const text = buildCustomerSummary({
+      brand: 'Apple',
+      model: 'iPhone 13',
+      cashPrice: 15900,
+      accessoriesIncluded: ['', '  กล่อง  ', 'สายชาร์จ', '   '],
+    });
+    expect(text).toContain('อุปกรณ์: กล่อง, สายชาร์จ');
+  });
+
+  it('accessoriesIncluded เป็นค่าว่างล้วน → ไม่มีบรรทัดอุปกรณ์เกิดขึ้นเลย', () => {
+    const text = buildCustomerSummary({
+      brand: 'Apple',
+      model: 'iPhone 13',
+      cashPrice: 15900,
+      accessoriesIncluded: ['', '   '],
+    });
+    expect(text).not.toContain('อุปกรณ์');
+  });
+
+  it('batteryHealth เป็น 0 → ไม่โชว์ "แบต 0%"', () => {
+    const text = buildCustomerSummary({
+      brand: 'Apple',
+      model: 'iPhone 13',
+      cashPrice: 15900,
+      batteryHealth: 0,
+    });
+    expect(text).not.toContain('แบต');
   });
 });
 

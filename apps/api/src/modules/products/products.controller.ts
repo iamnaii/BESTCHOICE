@@ -17,6 +17,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { canSeeCost, omitCostPrice, redactStockSummary } from './cost-visibility.util';
 
 @ApiTags('Products')
 @ApiBearerAuth('JWT')
@@ -32,8 +33,9 @@ export class ProductsController {
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findAll(
+  async findAll(
     @Query() pagination: PaginationDto,
+    @CurrentUser() user: { role: string },
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
@@ -41,28 +43,37 @@ export class ProductsController {
     @Query('brand') brand?: string,
     @Query('supplierId') supplierId?: string,
   ) {
-    return this.productsService.findAll({
+    const result = await this.productsService.findAll({
       search, branchId, status, category, brand, supplierId,
       page: pagination.page,
       limit: pagination.limit,
     });
+    if (canSeeCost(user.role)) return result;
+    return { ...result, data: result.data.map(omitCostPrice) };
   }
 
   @Get('stock')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getStock(
+  async getStock(
     @Query() pagination: PaginationDto,
+    @CurrentUser() user: { role: string },
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
     @Query('category') category?: string,
     @Query('brand') brand?: string,
   ) {
-    return this.productsStockService.getStock({
+    const result = await this.productsStockService.getStock({
       search, branchId, status, category, brand,
       page: pagination.page,
       limit: pagination.limit,
     });
+    if (canSeeCost(user.role)) return result;
+    return {
+      ...result,
+      products: result.products.map(omitCostPrice),
+      summary: redactStockSummary(result.summary),
+    };
   }
 
   @Get('stock/dashboard')
@@ -149,8 +160,9 @@ export class ProductsController {
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findOne(@Param('id') id: string) {
-    return this.productsService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() user: { role: string }) {
+    const product = await this.productsService.findOne(id);
+    return canSeeCost(user.role) ? product : omitCostPrice(product);
   }
 
   @Post()

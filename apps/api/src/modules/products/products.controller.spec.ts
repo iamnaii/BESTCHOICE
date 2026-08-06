@@ -15,9 +15,14 @@ import { BranchGuard } from '../auth/guards/branch.guard';
  */
 describe('ProductsController — cost visibility by role', () => {
   const productRow = { id: 'p-1', name: 'iPhone 13', costPrice: '12000', cashPrice: '15900' };
+  const transferRow = {
+    id: 't-1',
+    status: 'PENDING',
+    product: { id: 'p-1', name: 'iPhone 13', model: 'A2482', costPrice: '12000' },
+  };
   let controller: ProductsController;
   let products: { findAll: jest.Mock; findOne: jest.Mock };
-  let stock: { getStock: jest.Mock };
+  let stock: { getStock: jest.Mock; reserve: jest.Mock; unreserve: jest.Mock; getTransferById: jest.Mock };
 
   beforeEach(async () => {
     products = {
@@ -39,6 +44,13 @@ describe('ProductsController — cost visibility by role', () => {
         totalPages: 1,
         summary: [{ branch: { id: 'b-1', name: 'ลาดพร้าว' }, total: 3, inStock: 2, totalValue: 24000 }],
       }),
+      // reserve/unreserve return the raw updated Product (Prisma `include:`, not
+      // `select:`) — costPrice comes back as a scalar just like findOne/findAll.
+      reserve: jest.fn().mockResolvedValue({ ...productRow, status: 'RESERVED' }),
+      unreserve: jest.fn().mockResolvedValue({ ...productRow, status: 'IN_STOCK' }),
+      // getTransferById nests costPrice under `product` (Prisma `select`) —
+      // different shape from the other 4 endpoints, must strip at the nested key.
+      getTransferById: jest.fn().mockResolvedValue({ ...transferRow, product: { ...transferRow.product } }),
     };
 
     const module = await Test.createTestingModule({
@@ -92,5 +104,46 @@ describe('ProductsController — cost visibility by role', () => {
     const res = await controller.getStock({ page: 1, limit: 50 }, owner);
     expect(res.products[0]).toHaveProperty('costPrice', '12000');
     expect(res.summary[0].totalValue).toBe(24000);
+  });
+
+  /**
+   * Fix round 1/5 (reviewer 2026-08-06): reserve/unreserve/getTransferById
+   * leaked costPrice to SALES even after the first pass — they weren't in the
+   * original brief's 3-endpoint list but SALES has @Roles access to all 3 and
+   * their services return raw Product rows (reserve/unreserve) or a Product
+   * nested under `product` (getTransferById).
+   */
+  it('POST /products/:id/reserve — SALES ไม่ได้ costPrice', async () => {
+    const res = await controller.reserve('p-1', { reason: 'ลูกค้าจะมาซื้อ' }, sales);
+    expect(res).not.toHaveProperty('costPrice');
+    expect(res).toHaveProperty('status', 'RESERVED');
+  });
+
+  it('POST /products/:id/reserve — OWNER ยังได้ costPrice', async () => {
+    const res = await controller.reserve('p-1', { reason: 'ลูกค้าจะมาซื้อ' }, owner);
+    expect(res).toHaveProperty('costPrice', '12000');
+  });
+
+  it('POST /products/:id/unreserve — SALES ไม่ได้ costPrice', async () => {
+    const res = await controller.unreserve('p-1', sales);
+    expect(res).not.toHaveProperty('costPrice');
+    expect(res).toHaveProperty('status', 'IN_STOCK');
+  });
+
+  it('POST /products/:id/unreserve — OWNER ยังได้ costPrice', async () => {
+    const res = await controller.unreserve('p-1', owner);
+    expect(res).toHaveProperty('costPrice', '12000');
+  });
+
+  it('GET /products/transfers/:transferId — SALES ไม่ได้ costPrice (nested ใต้ product)', async () => {
+    const res = await controller.getTransferById('t-1', sales);
+    expect(res.product).not.toHaveProperty('costPrice');
+    expect(res.product).toHaveProperty('model', 'A2482');
+    expect(res).toHaveProperty('status', 'PENDING');
+  });
+
+  it('GET /products/transfers/:transferId — OWNER ยังได้ costPrice (nested ใต้ product)', async () => {
+    const res = await controller.getTransferById('t-1', owner);
+    expect(res.product).toHaveProperty('costPrice', '12000');
   });
 });

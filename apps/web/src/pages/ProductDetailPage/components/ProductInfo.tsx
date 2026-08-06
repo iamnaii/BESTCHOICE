@@ -44,22 +44,13 @@ interface ProductInfoProps {
   /** FM/ACCOUNTANT เห็นทุนได้ แต่ SALES ไม่ได้ (server ก็ strip แล้ว) */
   canSeeCost: boolean;
   profit: number | null;
-  // 4 ตัวล่างเป็นซากของ price CRUD เดิม — ถูกถอดทิ้งจริงใน Task 7 Step 5
-  // ทำเป็น optional ชั่วคราวเพื่อให้เทสต์ Step 1 (ไม่ส่งมา) คอมไพล์ผ่าน
-  defaultPrice?: Price;
-  onAddPrice?: () => void;
-  onEditPrice?: (price: Price) => void;
-  onDeletePrice?: (priceId: string) => void;
 }
 
 export default function ProductInfo({
   product,
-  isManager,
+  isManager: _isManager,
   canSeeCost,
   profit,
-  onAddPrice,
-  onEditPrice,
-  onDeletePrice,
 }: ProductInfoProps) {
   const statusCfg = getStatusBadgeProps(product.status, productStatusMap);
 
@@ -156,55 +147,34 @@ export default function ProductInfo({
         </div>
       )}
 
-      {/* Prices Table */}
-      <Card className="mb-5 lg:mb-7.5 rounded-xl border border-border/50 bg-card shadow-sm">
-        <CardHeader>
-          <CardTitle>ราคาขาย ({product.prices.length})</CardTitle>
-          {isManager && (
-            <button onClick={() => onAddPrice?.()} className="text-sm text-primary hover:text-primary/80 font-medium">
-              + เพิ่มราคา
-            </button>
-          )}
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {product.prices.map((price) => (
-              <div key={price.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-foreground">{price.label}</span>
-                  {price.isDefault && (
-                    <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium">
-                      ค่าเริ่มต้น
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-semibold">{parseFloat(price.amount).toLocaleString()} ฿</span>
-                  {isManager && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => onEditPrice?.(price)}
-                        className="text-xs text-primary hover:text-primary/80"
-                      >
-                        แก้ไข
-                      </button>
-                      <button
-                        onClick={() => onDeletePrice?.(price.id)}
-                        className="text-xs text-destructive hover:text-destructive/80"
-                      >
-                        ลบ
-                      </button>
-                    </div>
-                  )}
-                </div>
+      {/* ราคาในระบบเดิม (prices[]) — read-only, กำลังเลิกใช้ตาม owner decision §1.1 */}
+      <details className="mb-5 lg:mb-7.5 rounded-xl border border-border/50 bg-card shadow-sm">
+        <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-muted-foreground leading-snug">
+          ราคาในระบบเดิม ({product.prices.length}) — อ่านอย่างเดียว
+        </summary>
+        <div className="px-5 pb-4 space-y-2">
+          {product.prices.map((price) => (
+            <div key={price.id} className="flex items-center justify-between py-1.5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-foreground leading-snug">{price.label}</span>
+                {price.isDefault && (
+                  <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium leading-snug">
+                    ค่าเริ่มต้น
+                  </span>
+                )}
               </div>
-            ))}
-            {product.prices.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">ยังไม่มีราคาขาย</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              <span className="text-sm font-semibold tabular-nums">
+                {parseFloat(price.amount).toLocaleString()} ฿
+              </span>
+            </div>
+          ))}
+          {product.prices.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-3 leading-snug">
+              ยังไม่มีข้อมูลราคาเดิม
+            </p>
+          )}
+        </div>
+      </details>
 
       {/* Inspection Result (if applicable) */}
       {product.inspection && (

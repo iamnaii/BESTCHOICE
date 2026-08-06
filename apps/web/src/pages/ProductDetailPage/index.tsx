@@ -5,18 +5,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import PageHeader from '@/components/ui/PageHeader';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { transferableStatuses } from '@/lib/constants';
 import ProductInfo from './components/ProductInfo';
-import { getDisplayPrices } from '@/utils/getDisplayPrices';
+import { getDisplayPrices, getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 import ProductPhotos from './components/ProductPhotos';
 import EditProductModal from './components/EditProductModal';
 import { InstallmentCalculatorCard } from './components/InstallmentCalculatorCard';
 import OnlineListingPanel from './components/OnlineListingPanel';
+import SellingPriceCard from './components/SellingPriceCard';
+import EditSellingPriceModal from './components/EditSellingPriceModal';
 
 interface Price {
   id: string;
@@ -54,6 +55,12 @@ interface Product {
   isOnlineVisible: boolean;
   onlineDescription: string | null;
   conditionGrade: string | null;
+  cashPrice: string | null;
+  installmentPrice: string | null;
+  priceAutofilledAt: string | null;
+  shopWarrantyDays: number | null;
+  accessoriesIncluded: string[] | null;
+  cosmeticNotes: string | null;
 }
 
 type Tab = 'info' | 'photos' | 'online';
@@ -87,10 +94,9 @@ export default function ProductDetailPage() {
 
   const [activeTab, setActiveTab] = useState<Tab>('info');
 
-  // Price modal state
-  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
-  const [editingPrice, setEditingPrice] = useState<Price | null>(null);
-  const [priceForm, setPriceForm] = useState({ label: '', amount: '', isDefault: false });
+  // Selling price modal state (cashPrice/installmentPrice columns — B0/Task 7)
+  const [isSellingPriceModalOpen, setIsSellingPriceModalOpen] = useState(false);
+  const [sellingPriceForm, setSellingPriceForm] = useState({ cashPrice: '', installmentPrice: '' });
 
   // Edit product modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -104,9 +110,6 @@ export default function ProductDetailPage() {
   // Transfer modal state
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferForm, setTransferForm] = useState({ toBranchId: '', notes: '' });
-  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({
-    open: false, message: '', action: () => {},
-  });
 
   const { data: product, isLoading, isError, error, refetch } = useQuery<Product>({
     queryKey: ['product', id],
@@ -125,52 +128,46 @@ export default function ProductDetailPage() {
     },
   });
 
-  // Compute default price and profit (must be before early returns to satisfy Rules of Hooks)
-  const { defaultPrice, profit } = useMemo(() => {
-    if (!product) return { defaultPrice: undefined, profit: null };
-    const dp = product.prices.find((p) => p.isDefault);
+  // Compute profit (must be before early returns to satisfy Rules of Hooks)
+  const profit = useMemo(() => {
+    if (!product) return null;
     // Use getDisplayPrices to derive the canonical selling price (prefers cashPrice/installmentPrice
     // on Product when set; falls back to prices[] label lookup)
     const { installment, cash } = getDisplayPrices(product);
     const displayPrice = installment ?? cash;
     // costPrice ถูก strip ฝั่ง server เมื่อ role = SALES → ไม่มีทางคำนวณกำไร
     const cost = product.costPrice != null ? parseFloat(product.costPrice) : null;
-    return {
-      defaultPrice: dp,
-      profit: displayPrice != null && cost != null ? displayPrice - cost : null,
-    };
+    return displayPrice != null && cost != null ? displayPrice - cost : null;
   }, [product]);
 
-  // Price mutations
-  const priceMutation = useMutation({
-    mutationFn: async (data: { label: string; amount: number; isDefault: boolean }) => {
-      if (editingPrice) {
-        return api.patch(`/products/${id}/prices/${editingPrice.id}`, data);
-      }
-      return api.post(`/products/${id}/prices`, data);
-    },
+  // Selling price mutation (cashPrice/installmentPrice columns — B0/Task 7)
+  const sellingPriceMutation = useMutation({
+    mutationFn: async () =>
+      api.patch(`/products/${id}`, {
+        cashPrice: sellingPriceForm.cashPrice !== '' ? parseFloat(sellingPriceForm.cashPrice) : undefined,
+        installmentPrice:
+          sellingPriceForm.installmentPrice !== '' ? parseFloat(sellingPriceForm.installmentPrice) : undefined,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-available'] });
-      toast.success(editingPrice ? 'แก้ไขราคาสำเร็จ' : 'เพิ่มราคาสำเร็จ');
-      setIsPriceModalOpen(false);
+      toast.success('บันทึกราคาขายสำเร็จ');
+      setIsSellingPriceModalOpen(false);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+  // หมายเหตุที่ตั้งใจ: ช่องว่าง = "ไม่แก้ค่านี้" (ส่ง undefined → axios ตัดคีย์ทิ้ง)
+  // ไม่ใช่ "ล้างราคาเป็น null" — การล้างราคาเป็น follow-up (มี UI ปุ่มเคลียร์ราคาชัดเจน)
 
-  const deletePriceMutation = useMutation({
-    mutationFn: async (priceId: string) => {
-      return api.delete(`/products/${id}/prices/${priceId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product', id] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['products-available'] });
-      toast.success('ลบราคาสำเร็จ');
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
+  const openSellingPriceModal = () => {
+    if (!product) return;
+    setSellingPriceForm({
+      cashPrice: product.cashPrice != null ? String(product.cashPrice) : '',
+      installmentPrice: product.installmentPrice != null ? String(product.installmentPrice) : '',
+    });
+    setIsSellingPriceModalOpen(true);
+  };
 
   // Transfer mutation
   const transferMutation = useMutation({
@@ -254,27 +251,6 @@ export default function ProductDetailPage() {
     editMutation.mutate(payload);
   };
 
-  const openAddPrice = () => {
-    setEditingPrice(null);
-    setPriceForm({ label: '', amount: '', isDefault: false });
-    setIsPriceModalOpen(true);
-  };
-
-  const openEditPrice = (price: Price) => {
-    setEditingPrice(price);
-    setPriceForm({ label: price.label, amount: price.amount, isDefault: price.isDefault });
-    setIsPriceModalOpen(true);
-  };
-
-  const handlePriceSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    priceMutation.mutate({
-      label: priceForm.label,
-      amount: parseFloat(priceForm.amount),
-      isDefault: priceForm.isDefault,
-    });
-  };
-
   const handleTransferSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     transferMutation.mutate();
@@ -301,6 +277,11 @@ export default function ProductDetailPage() {
   if (!product) {
     return <div className="text-center py-12 text-muted-foreground">ไม่พบสินค้า</div>;
   }
+
+  // ราคาที่โชว์ในการ์ด (Task 5 ledger M1) ต้องมาจาก getPositiveDisplayPrices — ไม่ใช่คอลัมน์ดิบ
+  // (คอลัมน์ 0/ลบ/ว่าง ถือว่า "ไม่มี" แล้ว fallback ไป prices[] label chain) ยกเว้นช่องอินพุตของ
+  // EditSellingPriceModal ที่ผูกกับคอลัมน์ตรง — sellingPriceForm อ่าน product.cashPrice/installmentPrice ดิบ
+  const { cash: displayCashPrice, installment: displayInstallmentPrice } = getPositiveDisplayPrices(product);
 
   return (
     <div>
@@ -389,20 +370,18 @@ export default function ProductDetailPage() {
       {/* Tab: Info */}
       {activeTab === 'info' && (
         <>
+          <SellingPriceCard
+            cashPrice={displayCashPrice}
+            installmentPrice={displayInstallmentPrice}
+            priceAutofilledAt={product.priceAutofilledAt}
+            canEdit={isManager}
+            onEdit={openSellingPriceModal}
+          />
           <ProductInfo
             product={product}
             isManager={isManager}
             canSeeCost={canSeeCost}
             profit={profit}
-            onAddPrice={openAddPrice}
-            onEditPrice={openEditPrice}
-            onDeletePrice={(priceId) => {
-              setConfirmDialog({
-                open: true,
-                message: 'ต้องการลบราคานี้?',
-                action: () => deletePriceMutation.mutate(priceId),
-              });
-            }}
           />
           {(product.category === 'PHONE_NEW' || product.category === 'PHONE_USED') && (
             <div className="mt-6">
@@ -412,62 +391,19 @@ export default function ProductDetailPage() {
         </>
       )}
 
-      {/* Price Add/Edit Modal */}
-      <Modal
-        isOpen={isPriceModalOpen}
-        onClose={() => setIsPriceModalOpen(false)}
-        title={editingPrice ? 'แก้ไขราคาขาย' : 'เพิ่มราคาขาย'}
-      >
-        <form onSubmit={handlePriceSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ชื่อราคา *</label>
-            <input
-              type="text"
-              value={priceForm.label}
-              onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
-              placeholder='เช่น "ราคาเงินสด", "ราคาผ่อน"'
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">จำนวนเงิน (บาท) *</label>
-            <input
-              type="number"
-              step="0.01"
-              value={priceForm.amount}
-              onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-              required
-            />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={priceForm.isDefault}
-              onChange={(e) => setPriceForm({ ...priceForm, isDefault: e.target.checked })}
-              className="rounded text-primary"
-            />
-            ตั้งเป็นราคาค่าเริ่มต้น
-          </label>
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setIsPriceModalOpen(false)}
-              className="px-4 py-2 text-sm text-muted-foreground"
-            >
-              ยกเลิก
-            </button>
-            <button
-              type="submit"
-              disabled={priceMutation.isPending}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-            >
-              {priceMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      {/* Edit Selling Price Modal */}
+      <EditSellingPriceModal
+        isOpen={isSellingPriceModalOpen}
+        onClose={() => setIsSellingPriceModalOpen(false)}
+        cashPrice={sellingPriceForm.cashPrice}
+        installmentPrice={sellingPriceForm.installmentPrice}
+        onChange={setSellingPriceForm}
+        onSubmit={(e) => {
+          e.preventDefault();
+          sellingPriceMutation.mutate();
+        }}
+        isPending={sellingPriceMutation.isPending}
+      />
 
       {/* Edit Product Modal */}
       <EditProductModal
@@ -533,14 +469,6 @@ export default function ProductDetailPage() {
           </div>
         </form>
       </Modal>
-
-      <ConfirmDialog
-        open={confirmDialog.open}
-        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
-        description={confirmDialog.message}
-        variant="destructive"
-        onConfirm={confirmDialog.action}
-      />
     </div>
   );
 }

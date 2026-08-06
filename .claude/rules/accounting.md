@@ -4,7 +4,7 @@
 - TFRS for NPAEs (มาตรฐานรายงานทางการเงินสำหรับกิจการที่ไม่มีส่วนได้เสียสาธารณะ)
 - **Full Accrual TFRS 15** — ดอกเบี้ยรับรู้ตามงวด ผ่าน 11-2106 Unearned Interest (Contra Asset)
 - **Accrual VAT** — ตั้งภาษีวันเปิดสัญญา (11-2105/21-2102) ล้างทีละงวดเข้า 21-2101
-- Single **FINANCE chart** (99 accounts) — SHOP-side deferred to A.5
+- Single **FINANCE chart** (110 accounts ณ 2026-08-03 — ตัวเลขนี้เดินตาม CSV ไม่ใช่ค่าคงที่; เดิม 99 ตอน Phase A.4) — SHOP-side deferred to A.5
 - Source of truth: `docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md` + CSV at `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/`
 
 ## Phase A.0-A.3 Status
@@ -13,7 +13,7 @@ Do NOT reference old A.0-A.3 JE templates, chart codes, or journal service metho
 
 ---
 
-## Chart of Accounts (99 accounts — FINANCE only)
+## Chart of Accounts (110 accounts ณ 2026-08-03 — FINANCE only)
 
 Full list lives in `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv`.
 Key codes referenced by JE templates:
@@ -77,9 +77,13 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 | `EarlyPayoffJP4Template` | Early payoff | Includes Dr 52-1106 (discount) + reverse remaining 11-2106 |
 | `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102 |
 | `RescheduleJP6Template` | Reschedule (6a/6b variants) | Reclassify overdue to 21-1103 advance |
-| `VendorClearanceTemplate` | Every case point 3 | Dr 21-1101 + 21-1102 / Cr 11-1201 (bank) |
 | `Vat60dayMandatoryTemplate` | Daily cron 02:00 BKK | Mandatory VAT on 60-day overdue installments |
 | `Vat60dayReversalTemplate` | Payment after 60-day flag | Reversal when overdue payment received |
+
+`VendorClearanceTemplate` (was: `Dr 21-1101 + 21-1102 / Cr 11-1201`) was **deleted** 2026-08-01 —
+dead code, never had a production caller. Its intended trigger (clearing 21-1101/21-1102 on
+payment to SHOP) is now handled by the Inter-Co Settlement Batch flow — see "Inter-Co Settlement
+Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below.
 
 ---
 
@@ -152,7 +156,7 @@ The migration `20260801100000_phase_a4_cpa_chart_schema` adds NOT NULL columns (
 **Mandatory sequence:**
 1. Wipe first: run the CLI below (clears accounting tables including `chart_of_accounts`)
 2. Then migrate: `npx prisma migrate deploy`
-3. Reseed is automatic (wipe CLI reseeds 99 FINANCE CoA after truncate)
+3. Reseed is automatic (wipe CLI reseeds ผัง FINANCE ทั้งชุดจาก CSV หลัง truncate — จำนวนบัญชีอ่านจาก CSV, CLI พิมพ์ created/updated จริงออกมา)
 
 ```bash
 # Step 1: Wipe + reseed CoA
@@ -164,10 +168,10 @@ npx prisma migrate deploy
 
 For fresh dev environments (`prisma migrate reset`): ordering is automatic — no manual wipe needed.
 
-Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds 99 FINANCE CoA from CPA CSV.
+Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds ผัง FINANCE ทั้งชุดจาก CPA CSV (ปัจจุบัน 110 บัญชี).
 
 After wipe + migrate, verify (P3-SP5 DEEP fix C4 — counts split by company):
-1. `SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';` — expected 99 (FINANCE)
+1. `SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';` — expected 110 (FINANCE, ณ 2026-08-03 หลังลบ 42-1106/42-1107 — เลขนี้เดินตาม `finance-coa.csv` เสมอ อย่าจำเป็นค่าคงที่ ให้นับจาก CSV)
 2. `SELECT COUNT(*) FROM chart_of_accounts WHERE code LIKE 'S%';` — expected ~56 (SHOP, P3-SP5)
 3. Smoke one contract end-to-end via UI
 4. Run TB report (`scope=FINANCE`) and confirm it balances
@@ -184,7 +188,7 @@ CLI source: `apps/api/src/cli/wipe-accounting.cli.ts`
 - **FINANCE** VAT-registered at 7%
 - **Late fees** (ค่าปรับล่าช้า) — NOT subject to VAT (owner policy, legally correct: penalties excluded from VAT base)
 
-  **Per-day late-fee model (D2, 2026-06-25):** late fee = `min(daysOverdue × ratePerDay, maxAmount, capPct% × installmentGross)`, driven by SystemConfig keys `late_fee_per_day_rate` (฿/day), `late_fee_max_amount` (฿ ceiling), `late_fee_cap_pct` (% of installment gross). Switched by `late_fee_mode`: `PER_DAY` (default in code) or `BRACKET` (flat-tier, legacy). Production seeds `BRACKET` as a CPA gate — flip to `PER_DAY` after CPA sign-off on the 5% cap. Worked example: 5% × 1,515.83฿ = 75.79฿ cap. Single source of truth: `resolveLateFee` in `late-fee.util.ts`; the overdue cron reproduces the formula in SQL using `LEAST(...)`, guarded by an anti-drift test.
+  **Flat-bracket late-fee model (bracket-only, permanent):** late fee = `tier1Amount` for 1..(tier2MinDays-1) days overdue, `tier2Amount` (flat, does not accumulate per day) for >= tier2MinDays days overdue, driven by SystemConfig keys `late_fee_tier1_amount`, `late_fee_tier2_amount`, `late_fee_tier2_min_days` (defaults 50/100/3). CPA ยืนยันขั้นบันไดถาวร + ถอด PER_DAY ออกจากโค้ด 2026-08-01 (เดิม D2 2026-06-25 CPA-gated ไม่เคยเปิดใช้บน prod) — the per-day model (`min(daysOverdue × ratePerDay, maxAmount, capPct% × installmentGross)`) and its config-switchable `late_fee_mode` were removed entirely; BRACKET is the only formula in the system now. Single source of truth: `resolveLateFee` in `late-fee.util.ts`; the overdue cron reproduces the same flat-bracket CASE expression in SQL, guarded by an anti-drift test (`late-fee-bracket-sql.integration.spec.ts`).
 
 - No WHT on customer transactions (deferred to A.5 for vendor/payroll flows)
 
@@ -371,16 +375,25 @@ Currently only inventory transfer uses paired wrapping; the existing FINANCE tem
 
 > **⚠️ WIRING STATUS — DEFERRED (verified 2026-06-11).** The templates below are SCAFFOLDED
 > (code + golden specs + module registration) but **only `ShopExchangeReturnTemplate` is wired
-> to a production caller** (`contract-exchange.service.ts:396`). The other 7 templates
+> to a production caller** (`contract-exchange.service.ts:396`). The other templates
 > (`ShopCashSaleTemplate`, `ShopDownPaymentTemplate`, `ShopDownPaymentReversalTemplate`,
-> `ShopInventoryTransferTemplate`, `ShopFinanceReceiptTemplate`, `ShopTradeInTemplate`,
-> `ShopExpenseTemplate`) have **ZERO production callers** — contract activation / trade-in
-> accept / cash sale do NOT post SHOP JEs. Consequence: the SHOP Trial Balance + P&L at
-> `/shop/accounting` are **near-empty** even though SHOP is actively selling (real numbers live
-> in the `Sale` table / Dashboard). The "Trigger" column below is the **intended** trigger, not
-> a live one. Wiring is gated on an owner scope decision (Phase A.5 brief §4: should contract
-> activation post SHOP+FINANCE atomically?). Do NOT treat the SHOP reports as authoritative for
-> tax/audit until these are wired. Tracking: `docs/ceo-review/deep-audit-2026-06-11-findings.md` (F3).
+> `ShopInventoryTransferTemplate`, `ShopTradeInTemplate`, `ShopExpenseTemplate`) have **ZERO
+> production callers** — contract activation / trade-in accept / cash sale do NOT post SHOP
+> JEs. Consequence: the SHOP Trial Balance + P&L at `/shop/accounting` are **near-empty** even
+> though SHOP is actively selling (real numbers live in the `Sale` table / Dashboard). The
+> "Trigger" column below is the **intended** trigger, not a live one. Wiring is gated on an
+> owner scope decision (Phase A.5 brief §4: should contract activation post SHOP+FINANCE
+> atomically?). Do NOT treat the SHOP reports as authoritative for tax/audit until these are
+> wired. Tracking: `docs/ceo-review/deep-audit-2026-06-11-findings.md` (F3).
+>
+> **Stale note (2026-08-01):** this box predates two events documented elsewhere in this file.
+> (1) `ShopInventoryTransferTemplate` DID gain a production caller on 2026-06-23
+> (`contract-workflow.service.ts`, commit `bbcfa7a3`, PR #1280) — see "Installment lifecycle
+> 3-event flow" below; this box's "ZERO production callers" claim no longer holds for that one
+> template specifically. (2) `ShopFinanceReceiptTemplate` — listed here as unwired as of
+> 2026-06-11 — was **deleted outright** on 2026-08-01 (Inter-Co Settlement Batch, C2); it is
+> removed from the list above rather than left as a dangling reference to a class that no
+> longer exists. See "Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below.
 
 All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent via `metadata.flow + metadata.idempotencyKey` (DB-level partial unique index since P3-SP5 DEEP fix W8 — `journal_entries_idempotency_idx`).
 
@@ -389,10 +402,10 @@ All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent vi
 | Template | Trigger | Companies | Notes |
 |---|---|---|---|
 | `ShopCashSaleTemplate` | Sale w/ method=CASH | SHOP only | Dr cash / Cr revenue + Dr COGS / Cr inventory. No FINANCE involvement. |
-| `ShopDownPaymentTemplate` | Customer pays down at contract creation | SHOP only | Dr cash / Cr S21-2001 (down payable). Cleared by `ShopInventoryTransferTemplate` at activation (NOT by `ShopFinanceReceiptTemplate` — that's the C1 bug fixed). |
+| `ShopDownPaymentTemplate` | Customer pays down at contract creation | SHOP only | Dr cash / Cr S21-2001 (down payable). Cleared by `ShopInventoryTransferTemplate` at activation (NOT by settlement — that's the C1 bug fixed). |
 | `ShopDownPaymentReversalTemplate` (W2) | Contract canceled BEFORE activation | SHOP only | Dr S21-2001 / Cr cash. Stamps `metadata.reversedByIdempotencyKey` onto the original down JE. |
 | `ShopInventoryTransferTemplate` | Contract activated (ownership SHOP→FINANCE) | SHOP only* | Posts TWO JEs in one `$transaction` sharing `metadata.batchId`: (A) Dr S50-XXXX / Cr S11-200X (COGS); (B) Dr S11-3001 + Dr S11-3002 + Dr S21-2001 / Cr S41-XXXX + Cr S41-1201 (revenue + receivables + down clearance). ASSERTS `financedAmount + downAmount === salePrice`. |
-| `ShopFinanceReceiptTemplate` | FINANCE wires `financedAmount + commission` to SHOP | SHOP only | Simple receipt: Dr bank / Cr S11-3001 + Cr S11-3002. NO revenue, NO COGS, NO down clearance — those already happened at activation. (Was a C1 bug — used to try to recognise revenue here too, which made the JE unbalanced and double-counted revenue.) |
+| ~~`ShopFinanceReceiptTemplate`~~ | ~~FINANCE wires `financedAmount + commission` to SHOP~~ | — | **DELETED 2026-08-01** (Inter-Co Settlement Batch, C2) — superseded by `IntercoSettlementService.approveBatch`'s `buildShopLines`, which posts the SAME clearing leg (`Dr <shopBankCode> / Cr S11-3001 + Cr S11-3002`) directly via `PairedJournalService`/`JournalAutoService`, batched across many contracts per wire instead of one template call per contract. See "Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below. |
 | `ShopTradeInTemplate` (W4) | Trade-in ACCEPTED | SHOP only | Dr `inventoryAccountCode` (default S11-2002 sellable used; optional override to S11-2004 pending evaluation) / Cr cash. |
 | `ShopExpenseTemplate` | Branch expense recorded (rent/salary/utilities/etc) | SHOP only | CASH mode (Dr expense / Cr bank) or ACCRUAL mode (Dr expense / Cr S21-1103 payable). |
 
@@ -422,10 +435,12 @@ Event 2 — Contract activation = ownership transfer SHOP → FINANCE:
     INVARIANT: financedAmount + downAmount === salePrice
 
 Event 3 — FINANCE wires payment to SHOP (may be days later, may be batched):
-  ShopFinanceReceiptTemplate
-    Dr  S11-1201 (bank)                   [financedAmount + commission]
-       Cr S11-3001 (clear receivable)     [financedAmount]
-       Cr S11-3002 (clear commission rec) [commission]
+  [RETIRED 2026-08-01 — was ShopFinanceReceiptTemplate, one contract at a time.
+   Now: IntercoSettlementService.approveBatch, one JE per BATCH of contracts —
+   see "Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below]
+    Dr  <shopBankCode> (bank, default S11-1201)   [Σ financedGl + commissionGl over the batch]
+       Cr S11-3001 (clear receivable, per contract) [financedGl]
+       Cr S11-3002 (clear commission rec, per contract, skips zero) [commissionGl]
 ```
 
 Cancellation paths:
@@ -487,6 +502,266 @@ The existing `/expenses/ledger/trial-balance` and `/expenses/ledger/profit-loss`
 - SHOP-side payroll/SSO (handled at FINANCE level for now)
 - Historical migration of past SHOP transactions (forward-only)
 - SHOP-side balance sheet (Trial Balance + P&L only in SP5)
+
+---
+
+## Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)
+
+Replaces the old per-transaction `intercompany.settle` line and the never-UI-wired
+`shop-finance-settlement` module with a **batch** ("รอบจ่าย") document: FINANCE pays SHOP
+the accumulated ยอดจัด (21-1101) + ค่าคอม (21-1102) for one or many contracts in ONE wire,
+and both sides post atomically on approval.
+
+Spec: `docs/superpowers/specs/2026-07-30-interco-settlement-batch-design.md`
+Module: `apps/api/src/modules/interco-settlement/` (`interco-pending.service.ts`,
+`interco-batch-number.service.ts`, `interco-settlement.service.ts`,
+`interco-settlement.controller.ts`, `interco-settlement.module.ts`)
+
+### Model
+
+`InterCoSettlementBatch` (table `inter_co_settlement_batches`) + `InterCoSettlementItem`
+(`inter_co_settlement_items`, one row per contract in the batch —
+`@@unique([batchId, contractId])`, `onDelete: Restrict` both FKs — it's financial
+evidence, never allowed to dangle). Enum `InterCoBatchStatus { DRAFT PENDING_APPROVAL
+POSTED REVERSED CANCELLED }`.
+
+Doc number: `IC-YYYYMMDD-NNNN` — `IntercoBatchNumberService.next()`, same BKK-day
+advisory-lock pattern as `RepairTicketDocNumberService` (max-via-`findFirst`-desc, not
+`count()`, because a soft-deleted batch still occupies its number via the unique
+constraint).
+
+### Lifecycle
+
+```
+DRAFT --submit--> PENDING_APPROVAL --approve--> POSTED --reverse--> REVERSED
+  ^                      |  |
+  +------withdraw--------+  +--cancel--> CANCELLED
+  |
+  +--cancel--> CANCELLED
+```
+
+- `createBatch` / `updateBatch` (maker-only, DRAFT-only — `updateBatch` hard-deletes
+  and recreates the item rows, safe pre-DRAFT since no JE references them yet):
+  re-snapshots the 4 GL amounts per contract from
+  `IntercoPendingService.getPendingContracts()` — **never** from
+  `Contract.financedAmount`/`storeCommission` (spec F4 — those fields can legitimately
+  diverge from the ledger, e.g. `storeCommission = null` while the 1A JE already booked
+  a 10% fallback commission on 21-1102). Any requested contractId not currently in the
+  pending queue (never activated / soft-deleted / already settled in another open batch)
+  throws `BadRequestException` naming the contract number.
+- `submitBatch`: DRAFT → PENDING_APPROVAL, maker-only; re-checks none of the batch's
+  contracts got grabbed by another `PENDING_APPROVAL`/`POSTED` batch since the snapshot
+  (closes the race window between two makers).
+- `withdrawBatch`: PENDING_APPROVAL → DRAFT, maker-only.
+- `cancelBatch`: DRAFT/PENDING_APPROVAL → CANCELLED — role-gated at the controller
+  (`ACCOUNTANT`, `FINANCE_MANAGER`), not maker-restricted in the service itself.
+- `uploadSlip`: attaches proof-of-transfer to `slipFileKey` (S3 upload + magic-byte
+  re-check on top of the controller's `FileTypeValidator`; PDF/JPEG/PNG/WEBP, ≤5MB) —
+  maker-only, DRAFT/PENDING_APPROVAL only, optional (a backfilled historical round may
+  have no surviving slip).
+- `approveBatch` / `reverseBatch`: role-gated at the controller
+  (`OWNER`, `FINANCE_MANAGER`) — **no maker-restriction and no maker≠approver rule by
+  default** since 2026-08-03. See "Approve — atomic paired JE" step 1b for the opt-in
+  `interco_maker_checker_enabled` flag.
+
+### Pending lens (คิวรอจ่าย) — `IntercoPendingService`
+
+Per-contract "payableOrigin", GL-only (`interco-pending.service.ts`):
+
+```
+financedGl_i    = Σ(Cr−Dr) of 21-1101 from POSTED JEs where metadata.contractId = i
+commissionGl_i  = Σ(Cr−Dr) of 21-1102 from POSTED JEs where metadata.contractId = i
+shopFinancedGl_i / shopCommissionGl_i = same on SHOP S11-3001 / S11-3002, sign flipped (Dr−Cr)
+legacyNoShop_i  = (shopFinancedGl_i == 0) AND (shopCommissionGl_i == 0)
+```
+
+Computed via raw `$queryRaw` (`GROUP BY je.metadata->>'contractId' HAVING SUM(credit-debit)
+> 0`) — Prisma cannot `GROUP BY` a JSON path. **Settlement-batch JEs never enter this
+lens by construction**: they stamp `metadata.items[]` (many contracts per JE), not a
+single `metadata.contractId`, so there's no metadata-filter special-casing needed to keep
+them out.
+
+**สัญญาเปลี่ยนเครื่อง (PRICED device swap) ปรากฏในคิวนี้ตั้งแต่ 2026-08-03** — ก่อนหน้านั้น
+A.3 ล้าง 21-1101/21-1102 ทันทีตอน finalize (D5) เลนส์ FINANCE (`HAVING SUM(credit-debit)
+> 0`) จึงไม่มีวันเห็นสัญญาเหล่านั้นเลย. ตอนนี้เจ้าหนี้ทั้งสองบัญชีค้างไว้ตามปกติ สัญญาเปลี่ยนเครื่อง
+จึงจ่ายผ่านรอบจ่ายเดียวกับการขายปกติทุกประการ (`legacyNoShop = false` เพราะ F2 SHOP leg
+ตั้ง S11-3001/S11-3002 ไว้ให้ SHOP half ของรอบจ่ายล้าง). พิสูจน์ที่
+`exchange-priced-flow.integration.spec.ts` Case 2A (assertion ตรงข้ามกับของเดิมทุกประการ).
+
+**Settled gate**: a contract leaves the pending queue the instant it has an
+`InterCoSettlementItem` row inside a batch with status `PENDING_APPROVAL` or `POSTED`.
+`REVERSED`/`CANCELLED` items do **not** count — reversing a batch puts every one of its
+contracts straight back into the queue without touching the GL lens at all.
+
+`activatedAt` shown on the pending list = `MIN(je.posted_at)` of the JEs counted in the
+lens — `Contract` has no reliable "date activated" field (`createdAt` is draft-creation
+time, `updatedAt` moves on any unrelated edit).
+
+`getReconcileTotals()` — account-level sanity check, shown alongside the queue:
+`pendingTotal` (Σ over the queue) vs `glFinanceTotal` (whole-account 21-1101+21-1102
+balance, no metadata filter) vs `glShopTotal` (S11-3001+S11-3002, no metadata filter). A
+nonzero `drift` (`pendingTotal − glFinanceTotal`) means a stray JE exists without
+`metadata.contractId` — almost certainly the old `inter-company-settlement` flow; the
+pre-flight check (below) confirms this is 0 in prod before go-live.
+
+### Approve — atomic paired JE (`approveBatch`, one `$transaction`)
+
+Exact order as implemented in `interco-settlement.service.ts`:
+
+1. **Load + status** — batch must be `PENDING_APPROVAL`.
+1b. **Maker–checker (opt-in, DEFAULT OFF — คำสั่งเจ้าของ 2026-08-03)** — the hard
+   "approver ≠ maker" rule was **retired**. Approval is now governed by **role
+   assignment** alone: `@Roles('OWNER','FINANCE_MANAGER')` on
+   `POST /interco-settlement/batches/:id/approve`. The SAME person may create a batch
+   and approve it, provided they hold an approver role (กิจการเล็ก — เจ้าของสั่งให้คุม
+   ด้วยการกำหนดสิทธิแทน). Strict segregation of duties is re-enablable **without a code
+   change**: set SystemConfig **`interco_maker_checker_enabled` = `'true'`** and
+   `approveBatch` restores `throw new ForbiddenException('ผู้อนุมัติต้องไม่ใช่ผู้สร้างรอบ')`
+   when `batch.makerId === userId`. The key is **NOT seeded** anywhere — a missing row,
+   or any value other than the exact string `'true'` (including `'false'`), means OFF.
+   Read via `tx.systemConfig.findUnique({ where: { key: 'interco_maker_checker_enabled' } })`
+   **inside the approve `$transaction`** so one value governs the whole approval — the
+   same config-read shape as `OTHER_INCOME_MAKER_CHECKER_ENABLED`
+   (`other-income-config.service.ts`) and `jp5_require_terminated_status`
+   (`repossessions.service.ts`). No toggle endpoint / UI exists for this key yet —
+   flip it with a SystemConfig row.
+   **Audit trail is unchanged either way**: `makerId` and `approverId` are both still
+   persisted on the batch row, and the `INTERCO_BATCH_APPROVED` AuditLog still records
+   the acting `userId` — even when maker and approver are the same human.
+2. **Double-batch re-check** — re-runs the "another open batch already grabbed this
+   contract" query inside the tx (same query `submitBatch` ran, closes the remaining
+   race window right up to the moment of posting).
+3. **Drift guard** — per item, reads the LIVE GL via `glContractBalance(tx, contractId,
+   accountCode, side)` on all 4 lens accounts (`21-1101` cr, `21-1102` cr, `S11-3001` dr,
+   `S11-3002` dr) and compares against the item's snapshot, tolerance `±0.01`. This
+   deliberately does NOT reuse `IntercoPendingService.getPendingContracts()` — that
+   service's own "settled" exclusion would hide this very batch's own
+   `PENDING_APPROVAL` items from itself. Any drift → rejects the WHOLE batch, naming
+   every drifted contract number, telling the maker to cancel and recreate (no partial
+   approve).
+4. **Period guard, both companies independently** —
+   `validatePeriodOpen(tx, postedAt, financeCompanyId)` AND
+   `validatePeriodOpen(tx, postedAt, shopCompanyId)` (SHOP has its own
+   `AccountingPeriod` rows). `postedAt = postedAtOverride ?? batch.transferDate` (D4 —
+   `ApproveBatchDto.postedAt` is the backdate override).
+5. **Post JE(s)**:
+   - If ≥1 item has `legacyNoShop = false` → `PairedJournalService.postPaired({ shop,
+     finance, batchRef: batch.id }, tx)` — both halves in one transaction,
+     balance-checked before either side posts.
+   - If **every** item is `legacyNoShop` → the SHOP half is empty, so approve skips
+     `postPaired` entirely and posts FINANCE alone via
+     `JournalAutoService.createAndPost` — `shopJournalEntryId` stays `null`.
+6. **Mark `InterCompanyTransaction`** rows whose `contractId` is in this batch →
+   `RECONCILED` (best-effort `updateMany`, no-op if none exist — does not block posting).
+7. **Batch → `POSTED`** + `financeJournalEntryId`/`shopJournalEntryId`/`approverId`/
+   `postedAt` set + `AuditLog { action: 'INTERCO_BATCH_APPROVED', entity:
+   'interco_settlement_batch' }`.
+
+### JE structure (both halves — `buildFinanceLines`/`buildShopLines`)
+
+FINANCE half (always posted):
+```
+Dr 21-1101  financedGl      (ONE line PER contract, description "ล้างเจ้าหนี้ยอดจัด {contractNumber}")
+Dr 21-1102  commissionGl    (one line per contract WITH commissionGl > 0 — zero-commission contracts skip this line)
+   Cr <financeBankCode>  totalAmount     (default '11-1201')
+```
+
+SHOP half (only over items with `legacyNoShop = false`; the WHOLE half is omitted if none qualify):
+```
+Dr <shopBankCode>  shopPostedAmount   (default 'S11-1201' = ShopAccountResolver.SHOP_RECEIVING_BANK)
+   Cr S11-3001  shopFinancedGl      (one line per non-legacy contract)
+   Cr S11-3002  shopCommissionGl    (skips zero, same as the FINANCE half)
+```
+
+**Metadata on BOTH JEs** (confirmed straight from `interco-settlement.service.ts` —
+these are the ACTUAL keys, do not assume the plan's shorthand `batchId` key name):
+
+```ts
+{
+  flow: 'interco-settlement-batch',
+  idempotencyKey: `interco:${batch.id}:FINANCE` /* or */ `interco:${batch.id}:SHOP`,
+  settlementBatchId: batch.id,       // NOT "batchId" — that name is PairedJournalService's
+                                      // own batchRef param, distinct from this metadata key
+  batchNumber: batch.batchNumber,     // e.g. "IC-20260801-0001"
+  transferDate: batch.transferDate.toISOString(),
+  items: [{ contractId, financed: '<2dp string>', commission: '<2dp string>' }, ...],
+}
+```
+
+Idempotency: the usual partial unique index `journal_entries_idempotency_idx` covers
+`flow + idempotencyKey` — re-approving an already-POSTED batch is blocked at the status
+guard (step 1) long before idempotency would even matter.
+
+### `legacyNoShop` policy (F1/F2)
+
+A contract is `legacyNoShop = true` when its SHOP-side GL (S11-3001 + S11-3002) is
+exactly 0 for that contract. These contracts settle FINANCE-only: no SHOP JE line is
+generated for them at all, and if EVERY item in a batch is `legacyNoShop`, the SHOP half
+is skipped entirely (`shopJournalEntryId` stays `null`).
+
+**นิยามแคบลง 2026-08-03** — สัญญาจาก **contract-exchange (device swap) ไม่ใช่กรณี
+`legacyNoShop` อีกต่อไป** (ข้อความเดิมของหัวข้อนี้ที่นับ device swap รวมอยู่ด้วย **ยกเลิก**):
+ตั้งแต่ 2026-08-01 (F2) มันโพสต์ SHOP leg แล้ว และตั้งแต่ 2026-08-03 (คำสั่งเจ้าของ ยกเลิก D5)
+มันปล่อยให้ทั้งสองฝั่งค้างไว้ จึงเข้าคิวจ่ายเป็นแถวปกติที่ `legacyNoShop = false`.
+`legacyNoShop = true` เหลือความหมายเดียวคือ **สัญญาที่ activate ก่อน 2026-06-23**
+(commit `bbcfa7a3`, PR #1280 — ก่อน SHOP-side receivable ถูกต่อเข้า
+`contract-workflow.service.ts`).
+
+`batch.shopPostedAmount` only sums the non-legacy items, so it can be strictly less than
+`batch.totalAmount` — the gap is real money FINANCE wired to SHOP with no SHOP-side
+receivable on record to clear it against. **The system deliberately does not guess a JE
+for that gap.** It is an open opening-balance question pending CPA ruling (spec §11):
+should the SHOP books get a retroactive opening balance for the May–22 Jun 2026 window
+(pre-SHOP-books era)? Do not invent a JE to close this gap without that ruling. (The
+sibling question "should device-swap contracts get a SHOP leg wired at all?" is **ANSWERED
+— yes**, F2 2026-08-01; those contracts are no longer part of this gap.)
+
+### Reverse (`reverseBatch`, POSTED → REVERSED)
+
+`OWNER`/`FINANCE_MANAGER` only, `reason` required (≥10 characters, Thai error message on
+violation). Mirror-reverses **both** JEs in one `$transaction`: for every line, swaps
+Dr/Cr, keeps the same `companyId`, and posts via `JournalAutoService.createAndPost` with
+`metadata.tag: 'REVERSAL'`, `metadata.flow: 'interco-settlement-batch-reverse'`,
+`metadata.idempotencyKey: interco-reverse:<originalJeId>`, `metadata.reversesEntryId:
+<originalJeId>` (the same reversal shape used elsewhere in the codebase, e.g.
+`ExchangeCancelReversalTemplate`). The original JEs are NOT soft-deleted or unposted —
+they're stamped `metadata.reversed = true` + `metadata.reversedByEntryNumber` and stay
+`POSTED` for audit trail; the two mirror JEs sit beside them. Batch → `REVERSED` +
+`reverseReason` persisted. Because the pending engine's "settled" gate only excludes
+`PENDING_APPROVAL`/`POSTED` items, reversing a batch instantly returns every one of its
+contracts to the pending queue — no GL-lens code path change needed, it falls out of the
+gate definition automatically.
+
+### D4 — backdated / closed-period rounds
+
+`ApproveBatchDto.postedAt` (optional ISO date string) lets the checker pin the posted
+JE's date to a day inside an already-open accounting period, independent of
+`batch.transferDate` (the real wire date, recorded once at `createBatch` time and always
+echoed into the JE description via `formatBkkDate(batch.transferDate)` regardless of
+which `postedAt` is chosen). If the period guard rejects either company's period,
+`guardPeriodOpen` re-wraps the underlying `BadRequestException` to name WHICH company
+(FINANCE or SHOP) has the closed period, and tells the maker their two options: pick a
+`postedAt` in a month that's still open, or ask an OWNER to reopen the period through the
+existing `PERIOD_REOPENED` flow (`.claude/rules/accounting.md` → "Reopen Period
+workflow" above).
+
+### Retirements
+
+| Old thing | Status | Superseded by |
+|---|---|---|
+| `POST /accounting/intercompany/settle` (+ `settleWithJournal`) | Route kept, now returns `HttpStatus.GONE` (410) with a Thai message pointing at `/interco-settlement` — deliberately not deleted outright, so a stale script/client still calling it gets an actionable error instead of a silent 404 | `POST /interco-settlement/batches/:id/approve` |
+| `apps/api/src/modules/shop-finance-settlement/` (whole module — never had a UI) | **Deleted** | `IntercoSettlementService.approveBatch`'s SHOP half (`buildShopLines`) |
+| `ShopFinanceReceiptTemplate` | **Deleted** — zero remaining references anywhere under `apps/api/src`, including `journal.module.ts` (confirmed by grep) | SHOP JE lines built inline in `approveBatch` and posted via `PairedJournalService`/`JournalAutoService` directly — no template class for this leg anymore |
+| `VendorClearanceTemplate` | **Deleted** — dead code, never had a production caller; removed from `journal.module.ts` | `buildFinanceLines` inline in `approveBatch` |
+| `IntercompanyService.getOutstandingBalance()` | Formula corrected (was: FINANCE from `21-1102` only — missed `21-1101`, the bulk of the payable — plus SHOP from `11-2105`, a dead Phase A.3 placeholder account nothing ever posts to) | New: FINANCE = Σ(Cr−Dr) `21-1101`+`21-1102` (companyId FINANCE); SHOP = Σ(Dr−Cr) `S11-3001`+`S11-3002` (companyId SHOP); response includes `driftNote: 'ส่วนต่าง = สัญญาก่อน 2026-06-23/เปลี่ยนเครื่อง (สมุด SHOP ยังไม่ตั้งลูกหนี้)'` so a nonzero drift reads as expected-legacy rather than a bug |
+| `InterCompanyTransaction` model | **Kept** (read-only history) — `approveBatch` step 6 marks matching rows `RECONCILED` best-effort; not retired this sprint |
+
+### Pre-flight (prod, before enabling)
+
+See `docs/accounting/interco-preflight-2026-08.sql` for the 3 read-only queries (old-flow
+JE count, FINANCE/SHOP payable backlog split by pre/post 2026-06-23, GL S11-3001/S11-3002
+vs FINANCE cross-check) — run via cloud-sql-proxy per the usual runbook before creating
+the first live batch.
 
 ---
 
@@ -565,7 +840,7 @@ Module: `apps/api/src/modules/other-income/`
 Frontend pages: `apps/web/src/pages/other-income/`
 Routes: `/other-income`, `/other-income/new`, `/other-income/:id`, `/other-income/:id/receipt`, `/other-income/daily-sheet`
 
-Key accounts (from FINANCE 99-account chart):
+Key accounts (from FINANCE chart — 110 บัญชี ณ 2026-08-03):
 - `42-1102` — ดอกเบี้ยเงินฝาก (Bank interest income — exempt from VAT, subject to 15% WHT)
 - `42-1103` — ค่าปรับชำระล่าช้า (Late fee — usually auto-posted via `PaymentReceipt2BTemplate` together with installment payment. Also bookable here for "late-fee-only" scenarios where customer pays just the penalty without settling the installment. **Watch for duplicate-entry risk**: if booked here, do NOT also pass `lateFee` on the next installment Payment for the same month, or 42-1103 will be credited twice.)
 - `42-1104` — รายได้จากการหักค่าจ้าง (Payroll deduction — Pattern B deferred until payroll module exists)
@@ -652,20 +927,26 @@ Owner sign-off on codes: 2026-05-20 (S51-1105 + S42-1101 + new S42 service-reven
 
 ---
 
-## Year-End Closing (P3-SP1)
+## Year-End Closing (P3-SP1, + Step 4 C3 2026-08-01)
 
 Runs once at the end of each fiscal year (typically Jan-March of the following
 year, after all 12 monthly periods are CLOSED). Closes revenue + expense
-accounts into Income Summary (39-9999), then transfers net income/loss to
-Retained Earnings (33-1101 — กำไร(ขาดทุน)สุทธิประจำปี).
+accounts into Income Summary (39-9999), transfers net income/loss to Retained
+Earnings — current year (33-1101 — กำไร(ขาดทุน)สุทธิประจำปี), then sweeps
+33-1101 into Retained Earnings — accumulated (32-1101 — กำไร(ขาดทุน)สะสม).
+
+**Step 4 เพิ่มตามคำสั่ง CPA CSV (owner อนุมัติ 2026-08-01)** — `finance-coa.csv`
+rows 80/82 instruct: 33-1101 "กำไรปีปัจจุบัน — ปิดเข้า 32-1101 สิ้นปี", 32-1101
+"ยกยอดจากปีก่อน ปิดบัญชีเข้านี้สิ้นปี". ก่อนหน้านี้ 33-1101 ไม่เคยถูกปิดเข้า
+32-1101 จริง — Step 4 ทำให้ตรงตามผังบัญชี CPA ก่อนปิดปี 2026 จริง.
 
 Template: `apps/api/src/modules/journal/cpa-templates/year-end-closing.template.ts`
 Service: `apps/api/src/modules/accounting/closing.service.ts`
 Page: `apps/web/src/pages/YearEndClosingPage.tsx` → route `/finance/year-end-closing`
 
-### 3-step JE flow
+### 4-step JE flow
 
-All 3 entries share `metadata.batchId` (uuid) for traceability:
+All entries share `metadata.batchId` (uuid) for traceability:
 
 ```
 Step 1 — Close revenue (per non-zero 41/42-XXXX account):
@@ -678,12 +959,27 @@ Step 2 — Close expenses (per non-zero 51/52/53/54-XXXX account):
     Cr 51-XXXX  [net Dr balance]
     Cr 52-XXXX  ...
 
-Step 3 — Transfer net to retained earnings (skipped if net = 0):
+Step 3 — Transfer net to retained earnings, current year (skipped if net = 0):
   If profit:  Dr 39-9999 / Cr 33-1101  [netIncome]
   If loss:    Dr 33-1101 / Cr 39-9999  [|netLoss|]
+
+Step 4 — Sweep 33-1101 into 32-1101, accumulated (skipped if the LIVE
+33-1101 GL balance is effectively 0 after Step 3):
+  If Cr balance (กำไร):    Dr 33-1101 / Cr 32-1101  [balance]
+  If Dr balance (ขาดทุน):  Dr 32-1101 / Cr 33-1101  [|balance|]
 ```
 
-Entry-date for all 3 JEs = `Dec 31 23:59:59.999 BKK` of the closed year (keeps
+Step 4 reads the **live GL balance of 33-1101** (query runs AFTER Step 3 posts,
+inside the same `$transaction` — Postgres sees a transaction's own earlier
+uncommitted writes) rather than passing `netIncome` straight through. This
+means any PRIOR-YEAR residue already sitting in 33-1101 (e.g. a year closed
+before Step 4 existed, or a manual correcting JE) sweeps into 32-1101 too —
+not only the current year's net. A direct consequence: Step 4 can fire even
+when Step 3 is skipped (net = 0 this year, but residue > 0 from before), and
+Step 4 can skip even when Step 3 fires (rare: this year's net exactly offsets
+a negative residue).
+
+Entry-date for all JEs = `Dec 31 23:59:59.999 BKK` of the closed year (keeps
 the closing entries inside the year window).
 
 ### Guards
@@ -695,8 +991,8 @@ the closing entries inside the year window).
   list of open months
 - **Idempotency**: a year can only be closed once. `ConflictException` on
   re-attempt unless prior batch was reversed first (then re-close allowed)
-- **Tx atomicity**: 3 JEs created in a single `$transaction` — partial
-  failure rolls all 3 back
+- **Tx atomicity**: all JEs (1-4) created in a single `$transaction` —
+  partial failure rolls all of them back
 
 ### Reversal escape hatch (OWNER only)
 
@@ -705,14 +1001,18 @@ POST /accounting/year-end-closing/reverse
 Body: { year, reason }  // reason min 10 chars
 ```
 
-Creates 3 mirror-flipped JEs (Dr/Cr swapped), dated today (NOT the original
-Dec 31). Original entries keep their POSTED status — reversal sits beside
-them with `metadata.flow = 'year-end-closing-reverse'` + back-ref via
+Enumerates every JournalEntry with `metadata.flow = 'year-end-closing'` +
+`metadata.year = year` (NOT a hardcoded step count/id list) and mirror-flips
+each one (Dr/Cr swapped), dated today (NOT the original Dec 31) — so Step 4
+is picked up and reversed automatically alongside Steps 1-3, with zero
+changes needed in the reversal path when Step 4 was added. Original entries
+keep their POSTED status — reversal sits beside them with
+`metadata.flow = 'year-end-closing-reverse'` + back-ref via
 `reversesEntryId`. Originals are marked `metadata.reversedByBatchId` so the
 idempotency guard no longer blocks a re-close.
 
 AuditLog actions:
-- `YEAR_END_CLOSED` — entity=accounting_period, entityId=batchId, newValue includes year + netIncome + 3 JE ids
+- `YEAR_END_CLOSED` — entity=accounting_period, entityId=batchId, newValue includes year + netIncome + JE ids (step1-4)
 - `YEAR_END_CLOSING_REVERSED` — entity=accounting_period, entityId=originalBatchId
 
 ### Reports impact
@@ -720,27 +1020,39 @@ AuditLog actions:
 After year-end closing posts:
 - `getProfitLossFromJournal(Jan-Dec)` for the closed year returns ~0 for
   Revenue and Expense (they've been zeroed out), and `netIncome ≈ 0`
-- `getTrialBalance(asOfDate >= Dec 31)` shows 33-1101 increased by net income,
-  Income Summary (39-9999) back to 0
+- `getTrialBalance(asOfDate >= Dec 31)` shows 33-1101 back to **0.00** (swept
+  by Step 4) and 32-1101 increased by the swept amount (current year's net,
+  plus any prior residue), Income Summary (39-9999) back to 0
 - `getBalanceSheetFromJournal(asOfDate >= Dec 31)` — equity section reflects
-  the year's profit moved to retained earnings (no longer "implicit" derived
-  from P&L)
+  the year's profit moved all the way to accumulated retained earnings
+  (32-1101), not just parked in the current-year 33-1101 bucket
 
-The "ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า 33-1101" caveat on the
-balance-sheet equity matrix (accounting.service.ts:1564) disappears for years
-that have been closed via this flow.
+`getEquityStatementFromJournal` (`apps/api/src/modules/accounting/general-ledger-report.service.ts:905`)
+returns a `caveat` string — "ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า
+33-1101 / 32-1101 (รอปิดบัญชีสิ้นปี)" — alongside its `currentYearProfit`
+number. That NUMBER genuinely goes to ~0 for a year that has been closed via
+this flow (its `getProfitLossFromJournal(yearStart, periodEnd)` sub-call sees
+Steps 1-2's zeroed-out revenue/expense). The caveat TEXT itself, however, is
+**static** — the method has no branch that checks whether the year is
+actually closed, so the label is always returned verbatim regardless of
+closure status. Don't read "the caveat disappears after closing" as fact:
+only the accompanying number changes; the explanatory string does not. (Not
+in scope here to add that conditional — flagging it as a known, pre-existing
+gap only.)
 
 `/accounting/periods` redirects to `/settings#periods` via `window.location.replace` (preserves hash; react-router `<Navigate>` cannot set hash fragments).
 
 ---
 
-## Bad Debt Provision — ECL v3 (Excel v3 alignment, Phase 1+2, owner sign-off 2026-07-23/24)
+## Bad Debt Provision — ECL v4 (Per-Installment Aging, 2026-07-26 redesign)
 
-TFRS for NPAEs Ch.13 aging-based Expected Credit Loss, 6 buckets (B0 implicit + B1-B5).
-Source: `apps/api/src/modules/accounting/bad-debt.service.ts` + `bad-debt-provision.cron.ts` +
-`apps/api/src/modules/journal/cpa-templates/{bad-debt-provision,bad-debt-writeoff,ecl-stage-reverse}.template.ts`.
+TFRS for NPAEs Ch.13 aging-based Expected Credit Loss, 6 buckets (B0 implicit + B1-B5) — same buckets/rates as the earlier v3, but the BASE changed: v3 keyed a contract's ENTIRE provision off a single bucket (the oldest overdue installment); **v4 ages every outstanding installment independently** off its own `Payment.dueDate`, gives each its own bucket/rate, and sums the per-installment provisions into the contract total. A contract carrying installments overdue 90/60/30 days now provisions `757.92 + 227.37 + 30.32 = 1,015.61` (each installment at its OWN bucket's rate), not the whole outstanding balance provisioned at a single rate (e.g. the 90-day rate applied to all three installments' combined outstanding).
 
-### Buckets & rates
+Source: `apps/api/src/modules/accounting/bad-debt.service.ts` + `bad-debt-provision.cron.ts` + `apps/api/src/modules/journal/compute-cn-breakdown.ts` (`computeInstallmentOutstanding` engine, shared with the CN pro-rate util) + `apps/api/src/modules/journal/gl-contract-balance.ts` (shared GL-balance helper) + `apps/api/src/modules/journal/cpa-templates/{bad-debt-provision,bad-debt-writeoff,ecl-stage-reverse,repossession-jp5}.template.ts`.
+
+Spec: `docs/superpowers/specs/2026-07-26-ecl-per-installment-design.md`. Plan: `docs/superpowers/plans/2026-07-26-ecl-per-installment.md`.
+
+### Buckets & rates (unchanged from v3)
 
 | Bucket | Days overdue | Rate | Contract status | Notes |
 |---|---|---|---|---|
@@ -751,15 +1063,41 @@ Source: `apps/api/src/modules/accounting/bad-debt.service.ts` + `bad-debt-provis
 | B4 | 91-180 | 75% | TERMINATED | |
 | B5 | 180+ | 100% | TERMINATED (NPL) | |
 
-Rates configurable via SystemConfig **`bad_debt_provision_rates`** (JSON `{bucket: rate}`) — code defaults above apply if the row is missing OR the JSON fails to parse (corrupt JSON → Sentry alarm + safe fallback to defaults; never silently posts on a stale/zero basis).
+Rates configurable via SystemConfig **`bad_debt_provision_rates`** (JSON `{bucket: rate}`) — code defaults above apply if the row is missing OR the JSON fails to parse (corrupt JSON → Sentry alarm + safe fallback to defaults; never silently posts on a stale/zero basis). Buckets now apply PER INSTALLMENT rather than per contract (see Method below), but the rate table itself is unchanged.
 
-**Streak floor** — SystemConfig **`consecutive_missed_bucket_map`** (default `{2:'31-60', 3:'61-90', 4:'91-180', 5:'180+'}`, unset → code default): a contract with N consecutive missed/overdue installments (`ConsecutiveMissedService.getStreaks` — max run of `PENDING/OVERDUE/PARTIALLY_PAID` with `dueDate < now`) is floored to at least that bucket even when aging-by-days alone would land lower. Effective bucket = whichever of (aging bucket, streak-floor bucket) carries the HIGHER rate — streak can only escalate, never downgrade.
+### Method — per-installment engine
 
-### Daily cron (00:30 BKK) — GL-delta, self-healing
+- **Engine**: `computeInstallmentOutstanding(client, contract, { selection, asOf, preloaded })` in `compute-cn-breakdown.ts` — single source of truth for "how much is still owed on installment `i`, and how old is it", feeding BOTH ECL (`selection: 'DUE'`) and the CN pro-rate util (`selection: 'ACCRUED'`, via `computeCnBreakdown`). Two deliberately different universes:
+  - **DUE** (ECL): iterates `Payment` rows directly — `status != 'PAID' AND dueDate < asOf`. Does NOT require accrual to have run (resilience: the ECL base must not go blind just because the 2A cron missed a day).
+  - **ACCRUED** (CN, unchanged definition): iterates `InstallmentSchedule` rows with `accrualJournalEntryId != null`; unpaid = no `Payment` row with `status = 'PAID'`.
+- **Exhaustive DUE status allow-list** — `DUE_STATUS_MAP` in `compute-cn-breakdown.ts` is typed `satisfies Record<PaymentStatus, boolean>` (PENDING/PARTIALLY_PAID/OVERDUE = `true`, PAID = `false`). This is NOT `status !== 'PAID'` — a 5th `PaymentStatus` value added later (e.g. CANCELLED/REFUNDED) fails compilation instead of silently flowing into the ECL base as "still due", forcing a deliberate yes/no decision at the call site.
+- **Fee-netted outstanding** — both DUE and ACCRUED share the exact same `feeNettedOutstanding` formula (FEE-FIRST, PR #1313 convention) — never re-derived independently:
+  ```
+  netFee       = lateFeeWaived ? 0 : lateFee
+  feeCollected = min(amountPaid, netFee)
+  baseCash     = amountPaid − feeCollected
+  outstanding  = clamp(amountDue − baseCash, 0, installmentTotal)
+  ```
+- **Per-row rounding, then sum** — each installment's provision = `outstanding × rate(bucket)`, rounded `ROUND_HALF_UP` to 2dp, THEN summed across installments (never round-after-sum). `computePerInstallmentProvision` in `bad-debt.service.ts` is the ONE shared aggregator used by BOTH `calculateProvisions` (daily cron) and `reverseStageOnPayment` (real-time payment hook) — the two can never independently drift on what "the current provision for this contract" means.
+- **daysOverdue** = `floor((asOf − Payment.dueDate) / 1 day)` per installment (DUE selection); informational-only for ACCRUED (CN never reads it).
+- **Persisted row shape** (`BadDebtProvision`): `agingBucket` = bucket of the OLDEST outstanding installment — display/sort convention only, does NOT mean the whole balance provisions at that rate. `bucketBreakdown Json?` (new column, migration `20260982000000_add_bucket_breakdown_to_bad_debt_provisions`) persists the TRUE per-bucket split: `{ "<bucket>": { count, base, provision } }` (count = installment count in that bucket, base/provision as 2dp strings). `provisionRate` persisted = blended (`provision / base`, 4dp) for backward-compat with any UI/report expecting one rate per contract.
+
+### Streak floor — DORMANT by default (semantics CHANGED 2026-07-26)
+
+**Breaking change from v3**: SystemConfig `consecutive_missed_bucket_map` missing, empty (`{}`), or corrupt JSON now means **NO floor at all**. This is a deliberate reversal of the old v3 behavior, where any of those cases silently fell back to a code-default map (`DEFAULT_STREAK_BUCKET_MAP`) — that fallback has been REMOVED from the code entirely. Only an EXPLICIT, non-empty SystemConfig row activates the floor.
+
+- Missing row → no floor. The `ConsecutiveMissedService.getStreaks` query is skipped entirely (not just ignored — never called).
+- `{}` (empty object, after JSON.parse) → no floor.
+- Corrupt JSON → `Sentry.captureException` + no floor (v3 behavior was: Sentry + fall back to code defaults; v4 is: Sentry + apply literally nothing).
+- Explicit non-empty row, e.g. `{"2": "31-60", "3": "61-90"}` → for a contract with N consecutive missed/overdue installments (`ConsecutiveMissedService.getStreaks` — max run of `PENDING/OVERDUE/PARTIALLY_PAID` with `dueDate < now`), floor bucket = the entry whose threshold is the LARGEST `<= N`. ONE floor bucket per contract (streak is a contract-level metric) is compared against EACH installment's own aging bucket independently — `effectiveBucket` picks whichever of (aging, floor) carries the HIGHER provision rate; the floor can only escalate a row, never downgrade it.
+
+If the CPA later reinstates the floor as the operational default, that is a 1-row SystemConfig `INSERT` — no code change required.
+
+### Daily cron (00:30 BKK) — GL-delta, self-healing (mechanics UNCHANGED by the per-installment redesign)
 
 `BadDebtProvisionCron` — `@Cron('30 0 * * *', { timeZone: 'Asia/Bangkok' })`, fires after the 00:01 2A accrual cron. System-wide single run (not per-branch/company).
 
-- For each in-scope contract, computes the TARGET provision, compares it against the contract's actual **11-2102** GL balance (not the `BadDebtProvision` DB rows), and posts only the **delta** via `BadDebtProvisionTemplate`:
+- For each in-scope contract, computes the TARGET provision (now via the per-installment engine — see Method above), compares it against the contract's actual **11-2102** GL balance (not the `BadDebtProvision` DB rows), and posts only the **delta** via `BadDebtProvisionTemplate`:
   - delta > 0 (increase) → `Dr 51-1103 / Cr 11-2102`
   - delta < 0 (release) → `Dr 11-2102 / Cr 51-1103`
   - `|delta| < 0.005` → skipped, no JE
@@ -767,46 +1105,97 @@ Rates configurable via SystemConfig **`bad_debt_provision_rates`** (JSON `{bucke
 - **Self-healing**: because the delta compares to the LIVE GL balance rather than DB state, a prior day's JE failure (caught per-contract, Sentry-alarmed, does not abort the batch) is automatically absorbed into the next day's delta — no manual backfill needed.
 - `BadDebtProvision` row maintenance (REVERSE stale ACTIVE rows + createMany fresh ones) happens in one `$transaction` up front, decoupled from the JE-posting loop.
 
-### ECL base — non-TERMINATED contracts
+### ECL base
 
-`amountDue − amountPaid` summed over unpaid/partial overdue installments (ties to GL **11-2103** accrued receivable). **Late fee is excluded from the base** — it isn't a GL asset (only recognized as `42-1103` income when actually collected), so folding it in would overstate exposure.
+The universe differs by contract status (C1 final-review fix, 2026-07-26 — see "TERMINATED contracts" below for the history):
 
-Stage-reverse on payment (`BadDebtService.reverseStageOnPayment`, invoked from the payment-receipt flow) only considers installments with `dueDate < now` — future-dated installments never enter the aging/base recompute, so pre-paying ahead of schedule can't manufacture a stage-drop.
+- **ACTIVE/OVERDUE/DEFAULT** — `Σ outstanding` (fee-netted, per `feeNettedOutstanding` above) over each in-scope contract's **DUE** installments (Payment-row-driven, does NOT require accrual to have run). This is a **resilient SUPERSET** of GL **11-2103**, not an exact tie — it deliberately stays visible even when the 2A accrual cron lags a day, so it can include installments 11-2103 hasn't booked yet.
+- **TERMINATED** — `Σ outstanding` over only the **ACCRUED** installments (`InstallmentSchedule.accrualJournalEntryId != null`, unpaid). This DOES tie literally to GL 11-2103, because the 2A cron stops firing post-termination and admitting an un-accrued installment into the base would provision against interest/VAT that was never recognized (spec §2.2 "deferred ไม่ตั้งสำรอง").
 
-### TERMINATED contracts
+**Late fee is excluded from the base** either way — it isn't a GL asset (only recognized as `42-1103` income when actually collected), so folding it in would overstate exposure.
 
-TERMINATED contracts stay IN SCOPE for the daily recalc (escalate while awaiting repossession/write-off) — only `CLOSED_BAD_DEBT` (already written off) drops out.
+Stage-reverse on payment (`BadDebtService.reverseStageOnPayment`, invoked from the payment-receipt flow) applies the same DUE/ACCRUED split per contract status, and only considers installments with `dueDate < now` — future-dated installments never enter the aging/base recompute, so pre-paying ahead of schedule can't manufacture a stage-drop.
 
-Base flips to **carrying amount**: `11-2103 (accrued) + 11-2101 (gross, not-yet-accrued) − 11-2106 (unearned interest)`. VAT-deferred legs (11-2105/21-2102) net to zero and are excluded. Reason: the 2A accrual cron stops firing once a contract is TERMINATED, so a Payment-rows-based base would balloon past true carrying value with un-accrued interest/VAT.
+### TERMINATED contracts — ACCRUED-gated (C1 final-review fix, 2026-07-26)
 
-Stage-reverse for TERMINATED contracts has no bucket-drop semantics (no more due dates to age against) — only a **full reverse** when carrying amount settles to `<= 0`; otherwise a **no-op**, provision left untouched (the daily cron owns the adjustment, not the payment-time hook).
+v3 gave TERMINATED contracts a special "carrying amount" base (`11-2103 + 11-2101 − 11-2106` GL balances), because the 2A accrual cron stops firing once a contract is TERMINATED. The initial per-installment redesign (same day) retired that override and UNIFIED TERMINATED with ACTIVE — both used plain **DUE** selection. **A same-day final-review caught that this reintroduced the exact problem the carrying-amount base existed to prevent**: DUE is Payment-row-driven and does not require accrual, so a TERMINATED contract's un-accrued future installments (2A never runs again post-termination) would cross `dueDate < now` and get provisioned against interest that was never recognized. **Fix**: `calculateProvisions` and `reverseStageOnPayment` both branch on `contract.status` — TERMINATED calls the engine with `selection: 'ACCRUED'` (only installments 2A already accrued, unpaid); ACTIVE/OVERDUE/DEFAULT keep `selection: 'DUE'`. `terminatedCarryingAmount()` is still gone — this is NOT a revival of the old carrying-amount formula, just a narrower installment universe feeding the SAME per-installment bucket/rate math (`computePerInstallmentProvision`) ACTIVE contracts use.
 
-**Known conservative-lag behavior** (documented, deliberately not "fixed" — escalation policy pending owner/CPA decision): if a TERMINATED contract's overdue installments are paid off in full but the NEXT installment hasn't reached its own due date yet, `terminatedCarryingAmount` can still read `> 0` (remaining gross/unearned-interest on that not-yet-due installment), so the provision stays at its prior value until that next installment itself goes overdue.
+- TERMINATED contracts stay IN SCOPE for the daily recalc (escalate while awaiting repossession/write-off) — only `CLOSED_BAD_DEBT` (already written off) drops out. Unchanged from v3.
+- `reverseStageOnPayment` mirrors the same status branch — ACTIVE/OVERDUE/DEFAULT compute `target` off DUE rows, TERMINATED off ACCRUED rows; either way it releases `min(existing.provisionAmount − target, GL 11-2102)`.
+- The golden below (2,122.16) is unaffected — all 3 installments in that fixture went through a real 2A run before being aged, so ACCRUED and DUE selections coincide for that specific case. `bad-debt.service.spec.ts` adds the divergence proof: a TERMINATED contract with 3 accrued + 2 past-due-but-never-accrued installments provisions ONLY the 3 accrued (2,122.16), not all 5.
+- **The old v3 carrying-amount goldens no longer apply and must not be cited**: the carrying-amount golden (base `12,797.51` → provision `9,598.13`) described a base formula that has been deleted from the code. `ecl-terminated-base.spec.ts` asserts the ACCRUED-gated per-installment golden instead — see the goldens table below (**2,122.16**).
 
-### Write-off (`BadDebtWriteOffTemplate`)
+### Golden fixtures — 17,000฿ / 12-month contract (installmentTotal 1,515.83, vatPerInst 99.17)
 
-Gate: `BadDebtService.writeOffBadDebt` throws unless `contract.status === 'TERMINATED'` (ปพพ.386 — CONTRACT_TERMINATION_60D letter must be dispatched first). Also enforces T3-C6 amount-tier approval + writer≠approver (pre-existing SoD rule, unchanged).
+Per-installment aging only (no floor — `consecutive_missed_bucket_map` absent):
 
-JE mirrors `RepossessionJP5Template` minus the cash/inventory legs — sweeps every GL balance the 1A+2A cycle can leave, split accrued vs deferred:
+| Scenario | Per-installment math (ROUND_HALF_UP each, then sum) | Provision |
+|---|---|---|
+| Single 30d installment (1-30, 2%) | 1,515.83 × 0.02 = 30.3166 → HALF_UP | **30.32** |
+| {60d, 30d} (31-60 15% + 1-30 2%) | 227.3745 + 30.3166 → 227.37 + 30.32 | **257.69** |
+| {90d, 60d, 30d} (61-90 50% + 31-60 15% + 1-30 2%) | 757.915 + 227.3745 + 30.3166 → 757.92 + 227.37 + 30.32 | **1,015.61** |
+| {120d, 90d, 60d, 30d} (91-180 75% + 61-90 50% + 31-60 15% + 1-30 2%) | 1,136.8725 + 757.915 + 227.3745 + 30.3166 | **2,152.48** |
+| Partial payment: due 1,515.83, paid 1,000 (no fee), 40d overdue (31-60, 15%) | outstanding = 1,515.83 − 1,000 = 515.83 → 515.83 × 0.15 = 77.3745 | **77.37** |
+| TERMINATED, 3 installments at 100d/70d/40d (91-180 75% + 61-90 50% + 31-60 15%) | 1,136.8725 + 757.915 + 227.3745 | **2,122.16** (`ecl-terminated-base.spec.ts`, `agingBucket` display = `91-180`, `outstandingAmount` = 4,547.49) |
+
+Floor-enabled (`consecutive_missed_bucket_map = {"2": "31-60"}`, streak = 2 consecutive missed installments):
+
+| Scenario | Without floor | With floor | Why |
+|---|---|---|---|
+| {60d, 30d}, streak 2 | 257.69 | **454.74** | BOTH installments floored to 31-60 (15%): 2 × HALF_UP(1,515.83 × 0.15) = 2 × 227.37 = 454.74. The 30d installment's own aging bucket (1-30, 2%) loses to the floor (31-60, 15%) per-installment — higher rate wins. |
+
+CN (ใบลดหนี้) goldens are UNCHANGED by this redesign — the ACCRUED selection was already shaped this way before 2026-07-26 (it just now runs through the shared `computeInstallmentOutstanding` engine instead of its own copy of the logic). See "เอกสารใบลดหนี้" below for those numbers.
+
+**By design, ECL's `outstandingAmount` and a CN's `totalOutstanding` can differ on the SAME contract at the SAME moment** — ECL for an ACTIVE/OVERDUE/DEFAULT contract uses DUE (Payment-row-driven, includes un-accrued past-due installments), while a CN only ever fires from JP5/write-off (both ACCRUED-only, and only ever on a TERMINATED-adjacent contract). An ACTIVE contract with a past-due-but-never-accrued installment shows it in ECL's DUE base right away, but that installment would not appear in a CN computed at that same instant (there is no CN yet — CN only issues at repossession/write-off time). Do not expect the two figures to reconcile 1:1 outside the "TERMINATED, fully-accrued" case where DUE and ACCRUED happen to coincide.
+
+### Write-off & JP5 — GL-based clearing legs + consume-then-release residual (2026-07-26)
+
+v3's `RepossessionJP5Template`/`BadDebtWriteOffTemplate` derived their clearing legs (`Cr 11-2103`, `Cr 11-2101`, etc.) by RE-DERIVING `installmentTotal × count` — count-based math. If a real partial 2B receipt had already reduced 11-2103 for an accrued installment, the count-based leg OVER-CREDITED it (clearing the full `installmentTotal` regardless of what cash was actually collected), leaving a stale nonzero balance on 11-2103 forever. **This was an open backlog item and is now CLOSED.**
+
+**GL-based legs** — shared helper `apps/api/src/modules/journal/gl-contract-balance.ts` (`glContractBalance(client, contractId, accountCode, side)`, extracted 2026-07-26 from 3 previously-independent copies of the same query in `BadDebtWriteOffTemplate`, `RepossessionJP5Template`, and `BadDebtService`'s ECL delta cron): every clearing leg now reads the ACTUAL live GL balance for that contract/account instead of re-deriving from installment count. Loss/gain is whatever is left to balance the JE (`ΣCr(GL-based lines) − ΣDr(GL-based lines)`) — not a separately re-derived formula.
+
+**Consume-then-release residual** (symmetric between JP5 and write-off):
+```
+provisionBalance = GL balance of 11-2102 for this contract
+consume = min(loss, provisionBalance)          → Dr 11-2102 (when loss > 0)
+release = provisionBalance − consume           → Dr 11-2102 / Cr 51-1103 (when > 0)
+```
+Once a contract is repossessed or written off there is no more receivable to provide against, so **11-2102 for that contract always lands on exactly 0** after the JE — via consume alone (provision <= loss), release alone (gain / exact-wash, consume = 0), or both (provision > loss), ASSUMING the pre-JE `11-2102` balance was itself non-negative. `metadata.releasedProvision` (string, `"0.00"` when nothing was released) is stamped on every JP5/write-off JE for audit traceability.
+
+**Caveat (M1 final-review fix, 2026-07-26)**: a NEGATIVE pre-JE `11-2102` balance (Dr > Cr — e.g. a past mis-posted JE) is a GL anomaly, and neither template auto-heals it. `RepossessionJP5Template`/`BadDebtWriteOffTemplate` both clamp what they REPORT (`releasedProvision` never goes negative in `metadata` — `Decimal.max(0, ...)` on JP5's return value; write-off's `provisionConsumed`/`releasedProvision` already clamp via their existing `provisionBalance.gt(0)` guards) and fire `Sentry.captureMessage` (`subsystem: 'bad-debt'`, level `warning`) on `provisionBalance.lt(0)` so the anomaly surfaces for manual investigation instead of silently zeroing itself out. Neither template attempts to correct the underlying negative balance — that requires a human-reviewed correcting JE.
+
+**JP5 partial-over-credit backlog: CLOSED.** Earlier documentation here warned that "the receivable-clearing legs are still count-based, only the CN VAT line is pro-rated" — that caveat NO LONGER APPLIES and must not be repeated. `bal2103 = glContractBalance(client, contractId, '11-2103', 'dr')` (and every other clearing leg) reads the live post-receipt balance. Proven by `jp5-vat-split.spec.ts` ("Cr 11-2103 = GL net after a REAL partial 2B receipt — closes the backlog over-credit (11-2103 = 0 after JP5)"): GL 11-2103 for the contract is asserted `0.00` after JP5 posts, even with a real partial 2B receipt in the mix beforehand.
+
+**JP5 golden — Scenario A** (composed full-flow, `jp5-vat-split.spec.ts`): 1A + 2A×4 (installments 1-4 accrued) + 2B×3 (installments 1-3 REALLY paid in full via posted receipts) + a pre-existing 30.32 provision (B1 on installment #4) + JP5 @ repossessionValue 5,000.00 —
 
 ```
-Dr 21-2101  cnVat = vatPerInst × accruedUnpaidCount   [only if any accrued+unpaid installment — ใบลดหนี้ VAT ม.82/5]
-Dr 11-2106  glBalance(11-2106)                        [ล้าง unearned interest คงเหลือ]
-Dr 21-2102  glBalance(21-2102)                        [ล้างภาษีขายรอเรียกเก็บ]
-Dr 11-2102  provisionConsumed = min(glBalance(11-2102), loss)  [ใช้ค่าเผื่อก่อน plug]
-Dr 51-1102  loss plug (ส่วนเกินค่าเผื่อ)                     [ให้ JE balance]
-   Cr 11-2103  glBalance(11-2103)   [ล้างลูกหนี้ค้างชำระ — accrued]
-   Cr 11-2101  glBalance(11-2101)   [ล้างลูกหนี้ผ่อนชำระ — Gross/deferred]
-   Cr 11-2105  glBalance(11-2105)   [ล้างลูกหนี้ภาษีขายรอฯ]
-   Cr 21-2101  glBalance(21-2102)   [VAT deferred ถึงกำหนดนำส่ง — ม.82/3]
-   Cr 41-1101  glBalance(11-2106)   [รับรู้รายได้ดอกเบี้ย deferred]
+Dr  11-1101 (cash)          5,000.00
+Dr  21-2101 (CN VAT)           99.17   ← installment #4, only accrued+unpaid, fully outstanding
+Dr  11-2106                 4,000.00   ← GL: 6,000 − 4×500
+Dr  21-2102                   793.32   ← GL: 1,190 − 4×99.17
+Dr  11-2102 (consume)          30.32   ← min(loss 8,543.34, provisionBalance 30.32)
+Dr  51-1102 (loss plug)      8,513.02  ← remainingLoss = 8,543.34 − 30.32
+   Cr 11-2103                1,515.83  ← GL after 3 real receipts (4×1,515.83 − 3×1,515.83)
+   Cr 11-2101               11,333.36  ← GL: 17,000 − 4×1,416.66
+   Cr 11-2105                  793.32  ← GL: 1,190 − 4×99.17
+   Cr 21-2101 (deferred due)    793.32  ← mirrors 21-2102
+   Cr 41-1101                4,000.00  ← mirrors 11-2106
+ΣDr = ΣCr = 18,435.83 — metadata.releasedProvision = "0.00" (provision fully consumed)
 ```
 
-All Cr legs read the LIVE GL balance (not a re-derived formula), so any rounding residual parked by the last-installment true-up in 2A sweeps to zero along with everything else. `provisionConsumed` is capped at both the real `11-2102` GL balance AND the loss amount — never over-consumes.
+**Write-off release-residual golden** (`bad-debt-writeoff.template.spec.ts`, all-deferred 1A-only contract, provision seeded 20,000.00 > loss 18,190.00): `provisionConsumed = 18,190.00` (Dr 11-2102), `releasedProvision = 1,810.00` (Dr 11-2102 / Cr 51-1103), NO `51-1102` loss line at all (fully absorbed) — GL 11-2102 nets to exactly `0.00` after the JE.
 
-Idempotent per `(flow='write-off', contractId)` — no `runDate`; a contract can only be written off once (unlike the daily provision JE, which is idempotent per-day).
+**JP5 gain-branch golden** (`jp5-vat-split.spec.ts`, no accrual, repossessionValue 20,000 vs remaining total 18,190.00, provision seeded 2,000.00): consume = 0 (no loss to consume against), release = the FULL 2,000.00 provision (`Dr 11-2102` / `Cr 51-1103`), gain `Cr 41-1102` = 1,810.00 recognized independently and unaffected by the release.
 
-`metadata.creditNoteIssued` (bool) + `metadata.creditNoteVatAmount` (string) are stamped on the JE for a future Phase 3 to actually issue the physical CN document — the write-off JE itself only books the VAT-reversal accounting line, it does NOT create a CreditNote/Document row yet.
+**Write-off, mixed accrued/deferred** (`bad-debt-writeoff.template.spec.ts`, unaffected by the release addition since provision < loss here): 3 accrued+unpaid installments → CN VAT (Dr 21-2101) = `99.17 × 3 = 297.51`; loss plug (Dr 51-1102) = **17,892.49**.
+
+### Reports — `getProvisionSummary` + `calculateProvisions` (Task 7, 2026-07-26)
+
+Both response shapes' `byBucket` are now aggregated from the TRUE per-installment split, not a whole-contract dump onto the oldest bucket:
+
+- `calculateProvisions(...).byBucket` — built by summing each in-scope contract's `bucketAgg` (the same per-bucket aggregation `computePerInstallmentProvision` already computes) into the response, instead of adding the contract's whole `provisionAmount` under its single `contractBucket`. A `{90,60,30}` contract now shows `757.92` on `'61-90'`, `227.37` on `'31-60'`, `30.32` on `'1-30'` — not `1,015.61` dumped entirely onto `'61-90'`. **`count` per bucket is a count of INSTALLMENTS, not contracts** — that same `{90,60,30}` contract contributes `count:1` to EACH of `'61-90'`/`'31-60'`/`'1-30'`, not `count:3` piled onto one bucket.
+- `getProvisionSummary().byBucket` — sums each ACTIVE row's persisted `bucketBreakdown` (see Method above) across contracts. Rows persisted BEFORE the per-installment migration carry no `bucketBreakdown` (`null`) — those fall back to the OLD whole-row attribution (their entire outstanding/provision keyed under their single `agingBucket`) so legacy data still reports sensibly instead of silently vanishing from the summary. **This means a legacy row's `count` contribution is a CONTRACT count (1), not an installment count** — until that contract is recalculated (gets a fresh `bucketBreakdown` on its next `calculateProvisions` run) or its provision is REVERSED, `byBucket.count` from this endpoint is a mix of true installment-counts (post-migration rows) and contract-counts (legacy rows); do not treat it as a pure installment tally until all legacy rows have aged out. `rate` per bucket is derived from the aggregated data (`provision / outstanding`) rather than re-read from the live rates config, since a bucket's aggregate reflects whatever rate was actually in effect when each contributing row was calculated. `details[]` keeps its existing shape and additionally passes through each row's `bucketBreakdown` (`null` for legacy rows).
+- **Dry-run CLI** (`ecl-dry-run.cli.ts`) prints a per-bucket count/amount table sourced from the now-truthful `byBucket` (previously it dumped the raw, misleading-for-multi-bucket JSON).
 
 ### Enforcement gates (Phase 2, owner sign-off 2026-07-24)
 
@@ -823,22 +1212,29 @@ Fresh dev seed (`collections-foundation.seed.ts`) now seeds both `'true'`. **Exi
 DATABASE_URL=... npm --prefix apps/api run ecl:dry-run
 ```
 
-`apps/api/src/cli/ecl-dry-run.cli.ts` — read-only: calls `calculateProvisions(systemUserId, undefined, dryRun=true)`, which skips BOTH the `BadDebtProvision` row writes AND JE posting. Reports per-contract delta vs the current `11-2102` GL balance (`prevGl`, `target`, `delta`), bucket totals, and aggregate increase/release. Point `DATABASE_URL` at a prod-copy via cloud-sql-proxy and run this before the first Phase 1 prod rollout to sanity-check the blast radius.
+`apps/api/src/cli/ecl-dry-run.cli.ts` — read-only: calls `calculateProvisions(systemUserId, undefined, dryRun=true)`, which skips BOTH the `BadDebtProvision` row writes AND JE posting. Reports per-contract delta vs the current `11-2102` GL balance (`prevGl`, `target`, `delta`), the (now truthful, per-installment) bucket totals, and aggregate increase/release. Point `DATABASE_URL` at a prod-copy via cloud-sql-proxy and run this before a prod rollout to sanity-check the blast radius.
 
-### Golden fixtures (CPA CSV 17,000฿ / 12-month contract)
+### CI coverage (2026-07-26)
 
-- **TERMINATED carrying-amount base** (`ecl-terminated-base.spec.ts`): 3 installments accrued + unpaid, marked 100 days overdue → carrying = `3×1,515.83 + (17,000 − 3×1,416.66) − (6,000 − 3×500) = 12,797.51` → bucket B4 (91-180d, 75%) → provision = **9,598.13**.
-- **Write-off, mixed accrued/deferred** (`bad-debt-writeoff.template.spec.ts`): 3 accrued+unpaid installments → CN VAT (Dr 21-2101) = `99.17 × 3 = 297.51`; loss plug (Dr 51-1102) = **17,892.49**.
+`.github/workflows/deploy-gcp.yml`'s vitest step now explicitly globs `src/modules/journal/cpa-templates/__tests__/*.spec.ts`. `jp5-vat-split.spec.ts` (the JP5 GL-based-legs golden suite above, ~960 lines) previously matched no glob in CI and had NEVER actually run there — a regression in it would not have been caught before merge. Any new spec placed directly under `cpa-templates/__tests__/` is now covered by construction; if a NEW subdirectory nesting level is ever introduced there, verify it is covered by an explicit glob too — do not assume `*.spec.ts` recurses into subdirectories on its own.
 
 ### เอกสารใบลดหนี้ (CN document — Phase 3)
 
 Auto-issues the ม.82/5 ใบลดหนี้ (Credit Note) receipt that documents the VAT reversal already booked by JP5/write-off — closes the loop from "JE says CN VAT was reversed" to "customer actually received a CN document".
 
-**Trigger.** `RepossessionsService.create` (JP5) and `BadDebtService.writeOffBadDebt` both call `CreditNoteDocumentService.issueForContract` **inside the same `$transaction`** that posted the source JE, so a CN-issuance failure rolls back the JE too (atomic). It does NOT gate on a `metadata.creditNoteIssued` flag read off the JE (no such read exists in the service) — instead it independently RE-DERIVES the accrued-unpaid installment set (same definition as `RepossessionJP5Template`/`BadDebtWriteOffTemplate`: has an accrual JE + no PAID payment); zero accrued-unpaid → `SKIPPED_NO_ACCRUED`, no CN issued. On the clean (non-`PARTIALLY_PAID`) path it also re-derives its own VAT total (via `computeInstallmentBreakdown`) and ASSERTS it equals the JE's stamped `metadata.creditNoteVatAmount`, throwing (and rolling back the whole tx) on any mismatch — equivalent protection to trusting a boolean flag, but self-verifying against the source JE instead. LINE delivery (`CreditNoteDeliveryService.deliver`) is deliberately NOT called from inside that tx — both callers fire it fire-and-forget **after** the tx commits (`void this.cnDeliveryService.deliver(receiptId).catch(Sentry.captureException)`), so a rollback can never hand the customer a link to a receipt that turned out not to exist.
+**Trigger.** `RepossessionsService.create` (JP5) and `BadDebtService.writeOffBadDebt` both call `CreditNoteDocumentService.issueForContract` **inside the same `$transaction`** that posted the source JE, so a CN-issuance failure rolls back the JE too (atomic). It does NOT gate on a `metadata.creditNoteIssued` flag read off the JE (no such read exists in the service) — instead it independently RE-DERIVES the accrued-unpaid set + pro-rated amounts via `computeCnBreakdown` (same util `RepossessionJP5Template`/`BadDebtWriteOffTemplate` use to stamp `metadata.creditNoteVatAmount` — see "Pro-rate ruling" below); zero accrued-unpaid → `SKIPPED_NO_ACCRUED`, no CN issued. It ASSERTS its own recomputed `totalCnVat` equals the JE's stamped `metadata.creditNoteVatAmount` for EVERY case (clean or partial), throwing (and rolling back the whole tx) on any mismatch — equivalent protection to trusting a boolean flag, but self-verifying against the source JE instead. LINE delivery (`CreditNoteDeliveryService.deliver`) is deliberately NOT called from inside that tx — both callers fire it fire-and-forget **after** the tx commits (`void this.cnDeliveryService.deliver(receiptId).catch(Sentry.captureException)`), so a rollback can never hand the customer a link to a receipt that turned out not to exist.
 
-**Clean/dirty gate (owner decision, 2026-07-24).** `CreditNoteDocumentService.issueForContract` treats any accrued-unpaid installment carrying a `Payment.status = 'PARTIALLY_PAID'` as **dirty**: no Receipt row, no RT number — instead creates a HIGH-priority Todo (tag `credit-note-review`) and returns `HELD_PARTIAL_PAID`, pending a CPA ruling on pro-rating the CN. **Clean** (all accrued-unpaid installments unpaid, none partial) → issues a `Receipt` with `receiptType='CREDIT_NOTE'`, number `RT-YYYYMM-NNNNN` (same per-month advisory-lock sequencer as ordinary receipts — `ReceiptNumberService`). Amount is computed independently from `computeInstallmentBreakdown` (financedAmount/commission/interest/vat ÷ totalMonths — same source as the JE) and asserted to equal `journalEntry.metadata.creditNoteVatAmount`; a mismatch throws rather than silently issuing a wrong-amount CN.
+**Pro-rate — HELD gate retired (CPA ruling 2026-07-26).** `CreditNoteDocumentService.issueForContract` auto-issues a `Receipt` with `receiptType='CREDIT_NOTE'` for EVERY accrued-unpaid case, clean or partial — no dirty gate, no Todo, no held state. Amount/VAT/before-VAT come straight from `computeCnBreakdown(tx, contract)`: `amount=totalOutstanding`, `vatAmount=totalCnVat`, `amountBeforeVat=totalBeforeVat` (per-installment pro-rate formula documented in `compute-cn-breakdown.ts` — see the "Bad Debt Provision — ECL v4" section above for the shared util's CPA golden fixtures). `itemDescription` is `ใบลดหนี้ยกเลิกงวดค้าง {count} งวด — เลิกสัญญา (ม.82/5)`, with `(ลดตามสัดส่วนยอดค้างจริง)` appended whenever at least one accrued-unpaid installment's outstanding balance is less than a full installment (i.e. was pro-rated). Number `RT-YYYYMM-NNNNN` (same per-month advisory-lock sequencer as ordinary receipts — `ReceiptNumberService`). This SUPERSEDES the 2026-07-24 dirty gate: no more `HELD_PARTIAL_PAID` outcome, no more Todo tag `credit-note-review`, no more `CN_HELD_PARTIAL_PAID` audit action for new cases.
 
-**Monthly-close / ภ.พ.30 checklist (I2 mitigation, must-do — a HELD CN is a dead end otherwise).** A `HELD_PARTIAL_PAID` receipt means the JP5/write-off JE already reversed the ม.82/5 VAT in the ledger, but no physical CN document exists yet. Before closing any period or filing ภ.พ.30, the accountant MUST check for open Todos tagged `credit-note-review` — filing a VAT reversal without the mandated CN in hand is a ม.86/10 exposure. This is not optional cleanup; treat an open `credit-note-review` Todo as a period-close blocker until resolved (CN issued or explicitly waived by the CPA).
+**JP5 clearing legs residual — CLOSED 2026-07-26 (superseded; see "Bad Debt Provision — ECL v4" → "Write-off & JP5" above).** This section previously warned (I3, final-review 2026-07-26) that `RepossessionJP5Template`'s `Cr 11-2103` clearing leg was still COUNT-based (`installmentTotal × accruedCount`) even after the CN VAT line was pro-rated — meaning a partially-paid accrued installment would OVER-credit `11-2103` and OVERSTATE the `51-1102` loss. **That gap was closed the same day** by the ECL-per-installment redesign's Task 5: every clearing leg (`11-2103`, `11-2101`, `11-2105`, `21-2102`/`21-2101`, `11-2106`/`41-1101`) now reads the live GL balance via the shared `glContractBalance` helper instead of re-deriving from installment count. `jp5-vat-split.spec.ts` proves GL `11-2103` nets to exactly `0.00` after JP5 even with a real partial 2B receipt in the mix. Do not resurrect the old "only the CN VAT line is pro-rated" caveat — it no longer describes the code.
+
+**Monthly-close / ภ.พ.30 checklist — historical note (superseded 2026-07-26).** Before the CPA pro-rate ruling, a `HELD_PARTIAL_PAID` outcome meant the JP5/write-off JE had already reversed the ม.82/5 VAT in the ledger with no physical CN document yet, and every open Todo tagged `credit-note-review` was a period-close blocker (filing ภ.พ.30 without the mandated CN in hand is a ม.86/10 exposure). New repossessions/write-offs no longer produce this state — `CreditNoteDocumentService` auto-issues a pro-rated CN for every case (see above).
+
+**Manual CN-issue endpoint — honesty about which legacy Todos it actually clears (I2, final-review 2026-07-26).** The manual endpoint (`POST /receipts/credit-note/issue`, `CreditNoteIssueService.issueManually` — CN pro-rate plan Task 5) reuses `CreditNoteDocumentService.issueForContract`'s own drift guard: it recomputes the CN breakdown via `computeCnBreakdown` and ASSERTS the result equals the JE's stamped `metadata.creditNoteVatAmount`, throwing `CnVatMismatchError` → mapped to `422 UnprocessableEntityException` on any mismatch (`mapIssueError` in `credit-note-issue.service.ts`). This means:
+  - **JE posted AFTER the pro-rate util shipped** (`metadata.creditNoteVatAmount` already computed via `computeCnBreakdown`) → the endpoint works exactly as intended: issues the missing Receipt for a JE whose document-issuance step failed or was skipped.
+  - **JE posted BEFORE the pro-rate util shipped, or a legacy full-amount JE from the pre-2026-07-24 dirty-gate era** → its `metadata.creditNoteVatAmount` is FROZEN at whatever the old (non-pro-rated or pre-existing) formula produced. `computeCnBreakdown`'s recompute will essentially never match that frozen value for a partially-paid installment, so calling the manual endpoint on one of these JEs throws the SAME `422` every single time — it does **not** self-resolve, and there is no retry that fixes it. Do not tell an accountant "just call the endpoint again" for these — it is a dead end until the JE itself is corrected.
+  - **The only fix for the legacy-JE case**: an OWNER/CPA-approved ops SQL that updates the frozen JE metadata to match what `computeCnBreakdown` would compute today, e.g. `UPDATE journal_entries SET metadata = jsonb_set(metadata, '{creditNoteVatAmount}', '"<recomputed-value>"') WHERE entry_number = '<JE-...>';` — run this ONLY after a CPA has reviewed and approved the recomputed figure (this changes what ภ.พ.30-relevant amount the ledger claims was reversed), then re-run the manual endpoint, which will now pass the drift-guard cross-check. There is no automated backfill for this — it is a one-JE-at-a-time, human-reviewed operation.
+  - **Current status (2026-07-26): zero legacy/frozen-metadata cases exist in prod** — the pro-rate util shipped before any real JE accumulated drifted metadata, so this is a documented dead-end path for future-proofing, not an active backlog item.
 
 **Fields (Receipt model, migration `20260981000000_add_credit_note_source_fields`).**
 
@@ -850,9 +1246,108 @@ Auto-issues the ม.82/5 ใบลดหนี้ (Credit Note) receipt that doc
 
 **Public endpoint.** `GET /receipts/public/:token/pdf` (`ReceiptsPublicController`) — a separate controller with **no class-level guards** (not `@Public()` on `ReceiptsController`, because that controller's `BranchGuard` reads `request.user` unconditionally and has no bypass). Access is entirely token-based: unknown token, expired token, soft-deleted receipt, and non-CN receipt all collapse to the **same** `404 ไม่พบเอกสาร หรือลิงก์หมดอายุแล้ว` so the response never confirms whether a token ever existed. Throttled 10/min per IP (`@Throttle`). This route is **intentionally NOT behind `ExportEnabledGuard`** — unlike the staff-facing `GET /receipts/:id/pdf` (which the OWNER can disable via `export_enabled` SystemConfig), this link is the customer's own legally-mandated tax document, not a staff bulk-export path; final call is pending owner sign-off during PR review. Already listed as an intentionally-public entry in `.claude/rules/security.md`.
 
-**LINE delivery.** `CreditNoteDeliveryService.deliver` pushes a Flex card via `LineFinanceClientService` (same LINE FINANCE channel as payment flows) with a "ดูเอกสาร" button linking to `${baseUrl}/cn/:token` — `baseUrl` reuses `PAYMENT_LINK_BASE_URL`/`FRONTEND_URL` (no new env var). `${baseUrl}/cn/:token` is a public frontend route (`CreditNoteViewPage`, declared outside `ProtectedRoute`/`MainLayout`, fetches via `liffApi`) that streams the PDF inline. **PDPA: no consent gate** — a CN is a legally-mandated tax document (legitimate interest/legal obligation basis), unlike the discretionary payment-receipt Flex which does gate on `pdpaService.hasActiveConsent()`. **No auto-retry in v1** — a failed push writes a `NotificationLog` FAILED row + a MEDIUM-priority Todo (tag `credit-note`) for manual follow-up (e.g. attach to the EMS termination letter); a "ส่งซ้ำ" resend button exists in the UI (`ReceiptsTab`/`RepossessionsPage`) instead of automatic backoff. Delivery attempts log to `NotificationLog` with `category = 'CREDIT_NOTE'`. New AuditLog action strings: `CN_ISSUED`, `CN_HELD_PARTIAL_PAID`, `CN_SENT`, `CN_SEND_FAILED` (all `entity` = `receipt` except `CN_HELD_PARTIAL_PAID` = `contract`).
+**LINE delivery.** `CreditNoteDeliveryService.deliver` pushes a Flex card via `LineFinanceClientService` (same LINE FINANCE channel as payment flows) with a "ดูเอกสาร" button linking to `${baseUrl}/cn/:token` — `baseUrl` reuses `PAYMENT_LINK_BASE_URL`/`FRONTEND_URL` (no new env var). `${baseUrl}/cn/:token` is a public frontend route (`CreditNoteViewPage`, declared outside `ProtectedRoute`/`MainLayout`, fetches via `liffApi`) that streams the PDF inline. **PDPA: no consent gate** — a CN is a legally-mandated tax document (legitimate interest/legal obligation basis), unlike the discretionary payment-receipt Flex which does gate on `pdpaService.hasActiveConsent()`. **No auto-retry in v1** — a failed push writes a `NotificationLog` FAILED row + a MEDIUM-priority Todo (tag `credit-note`) for manual follow-up (e.g. attach to the EMS termination letter); a "ส่งซ้ำ" resend button exists in the UI (`ReceiptsTab`/`RepossessionsPage`) instead of automatic backoff. Delivery attempts log to `NotificationLog` with `category = 'CREDIT_NOTE'`. AuditLog action strings: `CN_ISSUED`, `CN_SENT`, `CN_SEND_FAILED` (all `entity` = `receipt`). `CN_HELD_PARTIAL_PAID` (`entity` = `contract`) was RETIRED 2026-07-26 along with the dirty gate — historical only, may still appear on audit rows predating the pro-rate ruling.
 
 **Follow-ups pending (documented, not yet done — committed, NOT optional):**
-- Pro-rate CN for the `PARTIALLY_PAID`/HELD case — needs a CPA ruling on the pro-rate formula. The manual CN-issue endpoint and the pro-rate logic ship TOGETHER once that ruling lands; this is a committed follow-up (I2), not a someday-maybe — every HELD receipt sitting on `credit-note-review` until then is a period-close blocker per the checklist above.
+- ~~Pro-rate CN for the `PARTIALLY_PAID`/HELD case~~ — DONE 2026-07-26 (CPA ruling): `computeCnBreakdown` pro-rates every accrued-unpaid installment's CN VAT to its outstanding balance; `CreditNoteDocumentService` auto-issues for every case, no more HELD state (see "Pro-rate — HELD gate retired" above). ~~The manual CN-issue endpoint~~ (CN pro-rate plan Task 5) — DONE (`POST /receipts/credit-note/issue`, `CreditNoteIssueService`); see "Manual CN-issue endpoint — honesty about which legacy Todos it actually clears" above for what it can and cannot fix.
+- `computeCnBreakdown`'s outstanding formula nets out `Payment.amountPaid`'s FEE-FIRST late-fee component before comparing against `amountDue` (see `compute-cn-breakdown.ts` jsdoc) — otherwise a fee-heavy partial payment understated `outstanding`/`cnVat`. ~~`RepossessionJP5Template`'s `Cr 11-2103` clearing leg and loss/gain plug remain count-based~~ — DONE 2026-07-26 (ECL-per-installment Task 5): both now read the live GL balance via `glContractBalance`, closing the over-credit gap. See "JP5 clearing legs residual — CLOSED" above.
 - The public token appears in the React Query `queryKey` (`['cn-view', token]`) and in the client-side download filename (`ใบลดหนี้-${token}.pdf`) on `CreditNoteViewPage` — same pre-existing pattern as other public-token pages (e.g. `/pay/:token`); not newly introduced here, but not yet remediated either.
 - No backfill for CNs on JEs posted before this phase shipped — forward-only. A backfill CLI would be a separate, explicit task if the owner wants historical coverage.
+
+---
+
+## Device Swap — Priced Exchange (2026-07-29)
+
+Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` (D1-D5 owner decisions)
+
+- MEMO mode (รุ่นเดิม+ราคาเดิม): ไม่มี JE — เปลี่ยน `contract.productId` บนสัญญาเดิม (TFRS 9 modification, workbook Case 1). SP2 same-price + `case-8-same-price.csv` golden ถูก retire
+- PRICED mode: A.1 (1A สัญญาใหม่) → **A.1b SHOP-leg** (`ShopInventoryTransferTemplate`, ดูหัวข้อถัดไป) → A.2 (derecognize ผ่าน 21-1106, VAT due ทันที ม.78/1 ไม่ออก CN) → **A.3 (ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106 — ไม่มีขาเงินสด, ไม่แตะ 21-1101/21-1102 — คำสั่งเจ้าของ 2026-08-03 ยกเลิก D5 สำหรับเส้นทางนี้; เดิม "ตัดเจ้าหนี้ + ขาเงินสดโอนเพิ่ม/คืนลูกค้า D5 post ทันที")** → A.4 (SHOP re-intake) → A.5 (ECL reversal Dr 11-2102 / Cr 51-1103 — **CPA ruling 2026-08-01 (คำตอบข้อ A2.2 = ข): มาตรฐานเดียวทุกเส้นทาง**, was Cr 42-1106 per D2 — **บัญชี 42-1106 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03**; same account `EclStageReverseTemplate`/JP5/write-off already use — no more asymmetry)
+- Approval: AUTO (≥NCV + ≥basePrice×0.85) / REVIEW (BM) / ESCALATE (<70% NCV — OWNER) — `exchange-tier.util.ts`
+- Guards ก่อน finalize: GL 11-2103 = 0, ไม่มี advance/credit ค้าง
+- Cancellation: ยกเลิกได้ทุกเมื่อถ้าสัญญาใหม่ยังไม่มีการชำระ (owner ยกเลิก windows/ค่าปรับ 2026-07-31) — mirror-reverse ทุก JE รวม A.5 + A.1b SHOP-leg (สวีปตาม `metadata.contractId` ไม่ hardcode บัญชี — สวีปจับ SHOP JE ได้เองแม้ไม่มี id เก็บบน request row); 2A cron backfill เอง; **42-1107 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03 (คำสั่ง CPA/owner) — ไม่มีบัญชีรองรับค่าปรับยกเลิกอีกต่อไป**
+- **42-1106 + 42-1107 = ลบออกจากผังบัญชีแล้ว (2026-08-03, คำสั่ง CPA/owner)** — ทั้งคู่เปิดไว้แต่ไม่เคยมี `journal_lines` แม้แถวเดียว: 42-1106 ("รายได้จากการโอนกลับค่าเผื่อฯ", rename จาก orphan "รายได้บริการซ่อม" — runtime repair ใช้ S42-1101) ถูกแทนที่ด้วย Cr 51-1103 มาตรฐานเดียวทุกเส้นทาง; 42-1107 ("รายได้ค่าปรับยกเลิกเปลี่ยนเครื่อง") หมดความหมายเมื่อ owner ยกเลิกกติกาค่าปรับ swap ทั้งชุด 2026-07-31. ถอดออกจาก `finance-coa.csv` แล้ว (ผัง FINANCE เหลือ **110** บัญชี) + `exchange-coa.spec.ts` พลิกเป็น assert ว่า **ไม่มี** ทั้งสองรหัส กันเพิ่มกลับเงียบๆ. Prod: `docs/accounting/remove-42-1106-42-1107-2026-08.sql` (soft delete + guard "ถ้ามี journal_lines แม้แถวเดียว → ROLLBACK")
+- Integration E2E (DB จริง): `apps/api/src/modules/contract-exchange/__tests__/exchange-priced-flow.integration.spec.ts` — Case 2A (21-1106 net 0, Cr 11-2101 = GL-true 11,333.36 ไม่ใช่สูตรคูณ 11,333.28, loss plug 4,126.68; A.3 = 2 บรรทัดพอดี Dr 11-2107 8,000 / Cr 21-1106 8,000 ไม่มีขาเงินสด; ค้างรอรอบจ่าย: 21-1101 15,000 / 21-1102 1,500 / S11-3001 15,000 / S11-3002 1,500, S11-1201 + เงินสด FINANCE = 0.00 ไม่ถูกแตะ; + F2 SHOP legs: S41-1101/S41-1201/S50-1101↔S11-2001 booked; อยู่ในคิวจ่าย INTER-CO ด้วย `legacyNoShop = false`), ECL 30.32 → 51-1103, cancel วันที่ 15 (reversalJeIds 6: A.1+A.2+A.3+A.4+2 SHOP legs) + วันที่ 45 (reversalJeIds 8: + 2 swept 2A accruals — ทั้งคู่ SUCCEED เหมือนกัน, ไม่มี window/penalty JE อีกต่อไป, owner ยกเลิก 2026-07-31 + mirror-reverse net 0 ทุกบัญชีรวม SHOP + 2A backfill), MEMO (JE count คงเดิม). CI: glob `src/modules/contract-exchange/__tests__/*.integration.spec.ts` ใน deploy-gcp.yml vitest step (jest มองไม่เห็นไฟล์ `*.integration.spec.ts` ตาม testPathIgnorePatterns)
+
+### SHOP-leg wiring บนสัญญาใหม่ (F2, CPA ตอบข้อ 3 = ใช่, 2026-08-01)
+
+ก่อนหน้านี้ exchange PRICED contracts post FINANCE templates เท่านั้น (A.1-A.3 + A.5) — ไม่มี SHOP-side revenue/COGS/receivable สำหรับสัญญาใหม่เลย (ต่างจาก activation ปกติที่ `ContractWorkflowService.activate` ต่อ `ShopInventoryTransferTemplate` เสมอ). F2 ต่อ `ShopInventoryTransferTemplate.execute` เข้า `ContractExchangeService.finalizeAfterActivation` (หลัง A.1, ก่อน A.2) — **เหมือน activation ปกติทุกประการ**:
+
+```
+JE A (COGS):    Dr S50-XXXX / Cr S11-200X          [costPrice ของเครื่องใหม่]
+JE B (revenue): Dr S11-3001 [financedAmount] + Dr S11-3002 [commission]
+                  Cr S41-XXXX [salePrice] + Cr S41-1201 [commission]
+```
+
+- **Invariant ตรวจแล้ว (JE B)**: `downPayment` บนสัญญาใหม่ = 0 เสมอ (hardcode ใน `approvePriced` ทั้ง snapshot branch และ legacy fallback branch) — นี่คือ invariant เดียวที่ hold ทุก branch จริงๆ. `financedAmount` **ไม่การันตี**เท่ากับ `sellingPrice` เสมอไป: snapshot branch (`usedSnapshot=true`) ตั้งทั้งสองค่าเท่ากันจาก `newPrice` เดียวกัน แต่ legacy fallback branch (`usedSnapshot=false`) clone `financedAmount: old.financedAmount` และ `sellingPrice: old.sellingPrice` เป็น**คนละค่าอิสระกัน**จากสัญญาเดิม — ถ้าสัญญาเดิมเคยมีดาวน์ (`old.downPayment > 0`) แล้ว `old.sellingPrice = old.financedAmount + old.downPayment > old.financedAmount` ไม่เท่ากัน. ด้วยเหตุนี้ `salePrice` ที่ส่งเข้า `ShopInventoryTransferTemplate` จึง**reconstruct เป็น `down(0)+financedAmount` เสมอ ไม่เคยอ่าน `contract.sellingPrice`** — invariant ของ template (`down+financed===salePrice`) จึง hold โดยโครงสร้าง (`salePrice` ก็คือ `down+financed` ตรงๆ ไม่ใช่ค่าที่ต้องมาเท่ากันโดยบังเอิญ) ทั้งสอง branch โดยไม่ต้องพึ่ง `financedAmount===sellingPrice`
+- **idempotencyKey**: `shop-inventory-transfer:<newContractId>` (รูปแบบเดียวกับ `ContractWorkflowService.activate`, กันโพสต์ซ้ำข้ามเส้นทาง)
+- **Fields บน `ExchangeContractForFinalize`**: เพิ่ม `contractNumber`/`downPayment`/`productCategory`/`productCostPrice` — มาจาก pre-tx `findOne(id)` snapshot เดียวกับที่ activation ปกติใช้ (ไม่ query DB ซ้ำใน tx) — race characteristics เหมือนเส้นทางปกติทุกประการ
+- **S11-3001/S11-3002 ค้างไว้ ไปล้างที่รอบจ่าย INTER-CO** (คำสั่งเจ้าของ 2026-08-03) — ดูหัวข้อ "A.3 = ตั้งลูกหนี้ 11-2107 …" ด้านล่าง. JE C (`ExchangeShopInstantSettlementTemplate`, idempotencyKey `exchange-shop-receipt:<newContractId>`, มีอายุ 2026-08-02 → 2026-08-03) ที่เคยล้างสองบัญชีนี้ทันที **ถูกลบทิ้งทั้งไฟล์แล้ว** พร้อมกับ D5
+- **Coverage**: `apps/api/src/modules/contract-exchange/__tests__/exchange-priced-flow.integration.spec.ts` (booking values ของ JE A/JE B, ยอดค้างหลัง finalize, การปรากฏในคิวจ่าย, cancel-sweep 2 SHOP JEs, net-zero ทุกบัญชีหลัง cancel รวม 11-2107)
+- **Scope ไม่ครอบคลุม**: MEMO mode ยังไม่มี SHOP JE (unrelated — เป็น TFRS 9 modification ไม่มีรายได้ใหม่ ดู §12 ข้อ 4 ของ device-swap spec ซึ่งยังเปิดอยู่ ไม่เกี่ยวกับ F2)
+
+### A.3 = ตั้งลูกหนี้ 11-2107 + เจ้าหนี้เข้าคิวจ่ายปกติ (คำสั่งเจ้าของ 2026-08-03 — SUPERSEDES D5)
+
+**D5 ("สมมติฐานโอนวันเดียวกัน") ถูกยกเลิกสำหรับเส้นทางเปลี่ยนเครื่อง** — วันเปลี่ยนเครื่อง
+**ไม่มีการเคลื่อนไหวเงินสดใดๆ** ทั้งฝั่ง FINANCE และ SHOP.
+
+**A.3 รูปแบบใหม่** (`ExchangeBuybackReceivable11_2107Template`,
+ไฟล์ `apps/api/src/modules/journal/cpa-templates/exchange-buyback-receivable-11-2107.template.ts` —
+เปลี่ยนชื่อจาก `ExchangeClearVendor21_1106Template` เพราะไม่แตะบัญชีเจ้าหนี้อีกแล้ว):
+
+```
+Dr 11-2107 ลูกหนี้-หน้าร้าน              [buyback]
+   Cr 21-1106 บัญชีพักเครดิตเปลี่ยนเครื่อง  [buyback]
+```
+
+ทิศทางเดียวเสมอ 2 บรรทัด ไม่มีการแตกกรณี (เดิมแตก 3 ทางตามส่วนต่าง buyback vs vendorSum)
+และ balanced โดยโครงสร้าง. `metadata.flow = 'exchange-buyback-receivable-11-2107'`,
+`idempotencyKey = newContractId`, `metadata.contractId = newContractId` (ให้ cancel sweep จับได้).
+
+**เดิม (D5, 2026-07-29 → 2026-08-03):**
+`Dr 21-1101 [ยอดจัดสัญญาใหม่] + Dr 21-1102 [ค่าคอม] + ขาเงินสดโอนเพิ่ม/คืนลูกค้า / Cr 21-1106 [buyback]`
+— คือหักกลบเจ้าหนี้หน้าร้านของสัญญาใหม่กับเครดิตราคารับซื้อ แล้วจ่ายส่วนต่างเป็นเงินสดทันที.
+
+**เหตุผลของรูปแบบใหม่ (เจ้าของ):**
+1. ราคารับซื้อ = เงินที่ SHOP ติด FINANCE → เป็น **ลูกหนี้ฝั่ง FINANCE** บัญชี **11-2107
+   ลูกหนี้-หน้าร้าน** (บัญชีเดิมที่มีอยู่แล้ว ใช้ร่วมกับเส้นทาง shop-collect — ล้างเมื่อหน้าร้าน
+   โอนเงินเข้า FINANCE ด้วย `Dr <cash> / Cr 11-2107` ผ่าน
+   `ContractPaymentService.settleShopCollect`). **ไม่มีการเปิดบัญชีใหม่.**
+2. เจ้าหนี้ยอดจัด/ค่าคอมของสัญญาใหม่ (21-1101 / 21-1102 ที่ A.1 ตั้งไว้) **ค้างไว้ตามปกติ**
+   → "จ่ายหน้าร้านเหมือนขายปกติ" ผ่านรอบจ่าย INTER-CO.
+
+**`ExchangeShopInstantSettlementTemplate` ถูกลบทิ้งทั้งไฟล์** (มีอายุ 2026-08-02 → 2026-08-03,
+ไม่เคยขึ้น production เป็นรอบจ่ายจริง): เมื่อ FINANCE ไม่รับเงินทันทีแล้ว SHOP ก็ต้องไม่รับทันที
+เช่นกัน — S11-3001/S11-3002 **ค้างไว้** และไปล้างที่รอบจ่ายเดียวกัน. `ShopInventoryTransferTemplate`
+(A.1b, การจองรายได้/COGS/ลูกหนี้ฝั่ง SHOP) **คงไว้ไม่เปลี่ยนแปลง**.
+
+**GL หลัง finalize (สัญญาใหม่, ตัวอย่าง Case 2A ในสเปคทดสอบ — financed 15,000 / คอม 1,500 /
+buyback 8,000):**
+
+| บัญชี | ยอดคงค้างหลัง finalize |
+|---|---|
+| 21-1101 (Cr) | 15,000.00 — **ค้าง** รอรอบจ่าย |
+| 21-1102 (Cr) | 1,500.00 — **ค้าง** รอรอบจ่าย |
+| 11-2107 (Dr) | 8,000.00 — ลูกหนี้หน้าร้าน (ราคารับซื้อ) |
+| S11-3001 (Dr) | 15,000.00 — **ค้าง** รอรอบจ่าย |
+| S11-3002 (Dr) | 1,500.00 — **ค้าง** รอรอบจ่าย |
+| S11-1201 | 0.00 — **ไม่ถูกแตะเลย** |
+| เงินสด/ธนาคาร FINANCE (11-11xx/11-12xx) | 0.00 — **ไม่ถูกแตะเลย** |
+
+**ASYMMETRY ที่รู้ตัวและตั้งใจ (สำหรับ CPA):** ผัง SHOP **ไม่มีบัญชี "เจ้าหนี้ FINANCE"**
+ดังนั้นสมุด SHOP **ไม่มีขาคู่ของ 11-2107** — SHOP ไม่ได้บันทึกว่าตัวเองติดหนี้ FINANCE
+เท่าราคารับซื้อ. นี่เป็นพฤติกรรมเดียวกับเส้นทาง shop-collect ที่มีอยู่เดิม (11-2107 เป็น
+FINANCE-side-only มาตลอด) — **ไม่ได้ประดิษฐ์บัญชีใหม่ และไม่ได้เดา JE ปิดช่องนี้**.
+รอ CPA ตัดสินว่าจะเปิดบัญชีเจ้าหนี้ฝั่ง SHOP (คู่กับ S11-3001/S11-3002 ที่เป็นลูกหนี้) หรือไม่
+— เป็นคำถามเดียวกับ opening-balance gap ใน interco spec §11.
+
+**Cancel:** mirror-reverse ตามเดิมทุกประการ (สวีปด้วย `metadata.contractId`) — A.3 ใบใหม่ถูก
+กลับรายการเหมือนกัน ทำให้ 11-2107 net = 0. จำนวน `reversalJeIds` **ลดลง 1 ใบ**
+(instant-settlement หายไป): cancel วันที่ 15 = **6** ใบ (เดิม 7), cancel วันที่ 45 = **8** ใบ
+(เดิม 9 — รวม 2A accrual ที่ถูกสวีป 2 ใบ).
+
+**`depositAccountCode`:** ไม่บังคับอีกต่อไปบนคำขอ PRICED และ **ไม่มีผลต่อ JE ใดๆ** —
+เหตุผลเดิมที่บังคับคือขาเงินสดของ A.3 (ถอด 2026-08-03) + penalty JE ตอน cancel
+(ยกเลิกไปแล้ว 2026-07-31). คอลัมน์ `ContractExchangeRequest.depositAccountCode`
+และฟิลด์ใน DTO **ยังคงอยู่** (ข้อมูลย้อนหลัง + API back-compat) แต่ไม่มีผู้อ่านในเส้นทางนี้แล้ว;
+ช่องเลือกบัญชีบนหน้าจอส่งคำขอถูกถอดออก. `CASH_ACCOUNT_CODES` ที่ DTO import ถูกชี้กลับไปที่
+`constants/cash-account.constants.ts` (แหล่งกลางที่ DTO อื่นอีก 6 ตัวใช้อยู่แล้ว) แทน template ที่ถูกลบ.

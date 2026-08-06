@@ -167,11 +167,6 @@ async function main() {
     { key: 'late_fee_tier1_amount', value: '50', label: 'ค่าปรับล่าช้า tier1 (บาท) — 1 ถึง tier2MinDays-1 วัน' },
     { key: 'late_fee_tier2_amount', value: '100', label: 'ค่าปรับล่าช้า tier2 (บาท) — ตั้งแต่ tier2MinDays วันขึ้นไป' },
     { key: 'late_fee_tier2_min_days', value: '3', label: 'วันเริ่มต้น tier2 ค่าปรับล่าช้า' },
-    // D2 (2026-06-25) — per-day late-fee config; dev seeds PER_DAY to exercise the new code path
-    { key: 'late_fee_mode', value: 'PER_DAY', label: 'โหมดคำนวณค่าปรับล่าช้า: BRACKET (flat tier) หรือ PER_DAY (รายวัน)' },
-    { key: 'late_fee_per_day_rate', value: '20', label: 'ค่าปรับล่าช้ารายวัน (บาท/วัน) — ใช้เมื่อ late_fee_mode=PER_DAY' },
-    { key: 'late_fee_max_amount', value: '500', label: 'เพดานค่าปรับล่าช้าสูงสุด (บาท) — ใช้เมื่อ late_fee_mode=PER_DAY' },
-    { key: 'late_fee_cap_pct', value: '5', label: 'เพดานค่าปรับ (% ของยอดงวด gross) — ใช้เมื่อ late_fee_mode=PER_DAY' },
     // P2 (D1) — late-fee waiver reasons for the gross-waiver flow (Dr 52-1105). JSON {code,label}[].
     { key: 'late_fee_waiver_reasons', value: JSON.stringify([
       { code: 'loyal_customer', label: 'ลูกค้าประจำ — ผ่อนตรงเวลามาตลอด' },
@@ -203,6 +198,9 @@ async function main() {
     // SP5 Phase 2 — Repair ticket CoA defaults (SHOP-side, no VAT)
     { key: 'REPAIR_EXPENSE_ACCOUNT_CODE', value: 'S51-1105', label: 'SHOP CoA — ค่าซ่อมอุปกรณ์ลูกค้า (Dr leg, payer=SHOP)' },
     { key: 'REPAIR_INCOME_ACCOUNT_CODE', value: 'S42-1101', label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)' },
+    // Device Swap 2026-07 — priced exchange (spec §10). exchange_cancel_penalty_pct
+    // removed 2026-07-31 (owner: cancellation windows + penalty retired entirely).
+    { key: 'exchange_market_check_pct', value: '15', label: 'เกณฑ์ตรวจราคาตลาด — ราคารับซื้อต่ำกว่า basePrice เกิน % นี้ → บังคับ REVIEW' },
     // D1 (2026-06-25) — overpay auto-route ceiling: multiplier × installment amountDue
     { key: 'overpay_advance_auto_max_multiplier', value: '2', label: 'เพดานรับล่วงหน้าอัตโนมัติ (× ยอดงวด) — เกินกว่านี้ต้องยืนยัน OVERPAY_ADVANCE' },
   ];

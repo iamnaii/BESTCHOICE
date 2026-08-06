@@ -12,12 +12,10 @@ import {
 
 /**
  * Late-fee amount keys that must be a finite number >= 0 (rejecting '' so
- * loadLateFeeConfig never reads a blank as 0). cap_pct and tier2_min_days have
- * tighter bounds handled inline in validateKeyValue.
+ * loadLateFeeConfig never reads a blank as 0). tier2_min_days has a tighter
+ * bound (integer >= 1) handled inline in validateKeyValue.
  */
 const LATE_FEE_NONNEG_KEYS = new Set<string>([
-  'late_fee_per_day_rate',
-  'late_fee_max_amount',
   'late_fee_tier1_amount',
   'late_fee_tier2_amount',
 ]);
@@ -91,14 +89,6 @@ export class SettingsWriteService {
         );
       }
     }
-    // Late-fee dispatch mode — mirror of resolveLateFee (apps/api/src/utils/
-    // late-fee.util.ts). Only these two values select a real branch; anything
-    // else would silently fall back to the code default and confuse the owner.
-    if (key === 'late_fee_mode') {
-      if (value !== 'BRACKET' && value !== 'PER_DAY') {
-        throw new BadRequestException('late_fee_mode ต้องเป็น BRACKET หรือ PER_DAY');
-      }
-    }
     // Late-fee amounts flow through loadLateFeeConfig, which does
     // `row ? Number(row.value) : default`. A stored '' is a present row, so
     // Number('')=0 silently DISABLES the fee (default never applies). Reject
@@ -107,12 +97,6 @@ export class SettingsWriteService {
       const n = Number(value);
       if (value.trim() === '' || !Number.isFinite(n) || n < 0) {
         throw new BadRequestException(`${key} ต้องเป็นตัวเลข ≥ 0`);
-      }
-    }
-    if (key === 'late_fee_cap_pct') {
-      const n = Number(value);
-      if (value.trim() === '' || !Number.isFinite(n) || n < 0 || n > 100) {
-        throw new BadRequestException('late_fee_cap_pct ต้องเป็นตัวเลข 0–100');
       }
     }
     if (key === 'late_fee_tier2_min_days') {

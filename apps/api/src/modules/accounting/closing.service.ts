@@ -38,6 +38,14 @@ export class AccountingClosingService {
   /**
    * Preview the closing JE without posting. Returns the same shape that the
    * Page will render in its table — list of accounts + balances + net.
+   *
+   * Step 4 (W1 review fix): projects whether `postYearEndClosing` would ALSO
+   * post a Step 4 (33-1101 → 32-1101 sweep), mirroring `execute()`'s own
+   * "read live 33-1101 balance after Step 3" logic:
+   *   projectedBalance33 = currentBalance33 (+ netIncome IF Step 3 would fire)
+   * This means preview surfaces prior-year residue sitting in 33-1101 BEFORE
+   * the user commits to posting — Step 4 can never appear as a surprise 4th
+   * JE that preview didn't warn about.
    */
   async previewYearEndClosing(year: number) {
     this.validateYear(year);
@@ -45,6 +53,20 @@ export class AccountingClosingService {
     const activity = await this.template.getYearAccountActivity(year);
     const existing = await this.findExistingClosingBatch(year);
     const periodIssues = await this.findOpenMonthlyPeriods(year);
+
+    const ZERO = new Prisma.Decimal('0.005');
+    const step3Fires = !activity.netIncome.abs().lessThan(ZERO);
+
+    // No date cutoff (see `getEquityAccountBalance` jsdoc) — TRUE current
+    // 33-1101 balance, same query Step 4 itself uses at post time.
+    const currentBalance33 = await this.template.getEquityAccountBalance(
+      this.prisma,
+      YearEndClosingTemplate.RETAINED_EARNINGS_CODE,
+    );
+    const projectedBalance33 = step3Fires
+      ? currentBalance33.add(activity.netIncome)
+      : currentBalance33;
+    const step4Fires = !projectedBalance33.abs().lessThan(ZERO);
 
     return {
       year,
@@ -62,7 +84,9 @@ export class AccountingClosingService {
       expenseTotal: activity.expenseTotal.toFixed(2),
       netIncome: activity.netIncome.toFixed(2),
       isProfit: activity.netIncome.gte(0),
-      totalSteps: activity.netIncome.abs().lessThan(new Prisma.Decimal('0.005')) ? 2 : 3,
+      totalSteps: 2 + (step3Fires ? 1 : 0) + (step4Fires ? 1 : 0),
+      step4Amount: step4Fires ? projectedBalance33.abs().toFixed(2) : '0.00',
+      step4IsProfit: projectedBalance33.gte(0),
       // Pre-flight problems for the UI banner:
       alreadyClosed: existing ? true : false,
       closedAt: existing?.entryDate.toISOString() ?? null,
@@ -137,6 +161,7 @@ export class AccountingClosingService {
         step1JournalEntryId: result.step1.journalEntryId,
         step2JournalEntryId: result.step2.journalEntryId,
         step3JournalEntryId: result.step3?.journalEntryId ?? null,
+        step4JournalEntryId: result.step4?.journalEntryId ?? null,
       },
     });
 
@@ -150,6 +175,7 @@ export class AccountingClosingService {
       step1: result.step1,
       step2: result.step2,
       step3: result.step3,
+      step4: result.step4,
       netIncome: result.netIncome.toFixed(2),
       revenueTotal: result.revenueTotal.toFixed(2),
       expenseTotal: result.expenseTotal.toFixed(2),

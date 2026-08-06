@@ -23,6 +23,7 @@ describe('ExchangeCloseOld21_1106Template', () => {
   it('LOSS branch: buyback 11,000 < (Gross 11,333.28 + VAT 793.36 = 12,126.64) → Dr 51-1102 1,126.64', async () => {
     await template.execute({
       oldContractId: 'old',
+      requestId: 'req-1',
       buyback: new Decimal('11000'),
       oldGrossOutstanding: new Decimal('11333.28'),
       oldVatReceivableOutstanding: new Decimal('793.36'),
@@ -45,6 +46,7 @@ describe('ExchangeCloseOld21_1106Template', () => {
   it('GAIN branch: buyback 13,000 > 12,126.64 → Cr 41-1102 873.36', async () => {
     await template.execute({
       oldContractId: 'old',
+      requestId: 'req-1',
       buyback: new Decimal('13000'),
       oldGrossOutstanding: new Decimal('11333.28'),
       oldVatReceivableOutstanding: new Decimal('793.36'),
@@ -60,6 +62,7 @@ describe('ExchangeCloseOld21_1106Template', () => {
   it('PERFECT branch: buyback 12,126.64 == threshold → no P&L line', async () => {
     await template.execute({
       oldContractId: 'old',
+      requestId: 'req-1',
       buyback: new Decimal('12126.64'),
       oldGrossOutstanding: new Decimal('11333.28'),
       oldVatReceivableOutstanding: new Decimal('793.36'),
@@ -69,5 +72,26 @@ describe('ExchangeCloseOld21_1106Template', () => {
     const lines = journal.createAndPost.mock.calls[0][0].lines;
     expect(lines.find((l: any) => l.accountCode === '51-1102')).toBeUndefined();
     expect(lines.find((l: any) => l.accountCode === '41-1102')).toBeUndefined();
+  });
+
+  it('stamps contractId + request-scoped idempotencyKey (Device Swap Task 6 + C1b)', async () => {
+    // Why: glContractBalance filters journal entries by metadata.contractId ONLY.
+    // Without this stamp, computeOldOutstanding after a device swap would still
+    // see the old contract's outstanding balance (never nets to 0).
+    // C1b: key includes requestId — a canceled swap's still-POSTED JE must not
+    // block the same contract's second exchange attempt.
+    await template.execute({
+      oldContractId: 'old',
+      requestId: 'req-1',
+      buyback: new Decimal('11000'),
+      oldGrossOutstanding: new Decimal('11333.28'),
+      oldVatReceivableOutstanding: new Decimal('793.36'),
+      oldUnearnedInterestOutstanding: new Decimal('2666.64'),
+      oldDeferredVatOutstanding: new Decimal('793.36'),
+    });
+
+    const meta = journal.createAndPost.mock.calls[0][0].metadata;
+    expect(meta.contractId).toBe('old');
+    expect(meta.idempotencyKey).toBe('old:req-1');
   });
 });

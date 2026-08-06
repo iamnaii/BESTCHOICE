@@ -71,6 +71,18 @@ enum ExchangeRequestStatus {
   PENDING
   APPROVED
   REJECTED
+  CANCELED // ยกเลิก swap (7/30-วัน window หรือ abort ก่อน finalize) — Device Swap 2026-07
+}
+
+enum ExchangeMode {
+  MEMO // รุ่นเดิม+ราคาเดิม — ไม่มี JE, เปลี่ยน productId บนสัญญาเดิม (workbook Case 1)
+  PRICED // มีราคารับซื้อจริง — derecognition ผ่าน 21-1106 (workbook Cases 2A-2G)
+}
+
+enum ExchangeApprovalTier {
+  AUTO // ≥ NCV และผ่าน market check — อนุมัติอัตโนมัติ
+  REVIEW // ผจก.สาขา (BRANCH_MANAGER)
+  ESCALATE // < 70% NCV — OWNER เท่านั้น
 }
 
 // P1 Collections UI — Saved Filter Presets (Task 3)
@@ -799,6 +811,10 @@ model User {
   // P3-SP2 — Off-site backup manual triggers (forensics: who clicked "Run Now")
   offsiteBackupRunsTriggered OffsiteBackupRun[] @relation("OffsiteBackupTriggeredBy")
 
+  // C2 — Inter-co settlement batch maker-checker (2026-07-30)
+  intercoSettlementBatchesMade     InterCoSettlementBatch[] @relation("InterCoBatchMaker")
+  intercoSettlementBatchesApproved InterCoSettlementBatch[] @relation("InterCoBatchApprover")
+
   // P3-SP4 — PDPA PII encryption backfill triggers (forensics: who started a backfill run)
   pdpaBackfillRunsTriggered PdpaBackfillRun[] @relation("PdpaBackfillTriggeredBy")
 
@@ -1214,6 +1230,9 @@ model Contract {
   // SP2 — Exchange request relations
   exchangeRequestsAsOld ContractExchangeRequest[] @relation("ExchangeRequestsFromOldContract")
   exchangeRequestsAsNew ContractExchangeRequest[] @relation("ExchangeRequestsToNewContract")
+
+  // C2 — Inter-co settlement batch items (รอบจ่ายให้หน้าร้าน, 2026-07-30)
+  interCoSettlementItems InterCoSettlementItem[]
 
   @@index([customerId])
   @@index([branchId])
@@ -4426,6 +4445,104 @@ model InterCompanyTransaction {
 }
 
 // ============================================================
+// INTER-CO SETTLEMENT BATCH (รอบจ่ายให้หน้าร้าน — C2, 2026-07-30)
+// ============================================================
+
+enum InterCoBatchStatus {
+  DRAFT
+  PENDING_APPROVAL
+  POSTED
+  REVERSED
+  CANCELLED
+}
+
+/// เอกสาร "รอบจ่าย" — FINANCE จ่ายยอดจัด+ค่าคอมให้ SHOP เป็นก้อนเดียว (หลายสัญญารวมยอดโอน
+/// เดียว) แล้วลงบัญชี 2 ฝั่ง atomic ตอนอนุมัติ (ผ่าน PairedJournalService). แทนที่เส้นจ่ายเก่า
+/// (`intercompany.settle` ต่อรายการ + `shop-finance-settlement` ที่ไม่เคยต่อ UI).
+/// spec: docs/superpowers/specs/2026-07-30-interco-settlement-batch-design.md §3
+model InterCoSettlementBatch {
+  id             String             @id @default(uuid())
+  batchNumber    String             @unique @map("batch_number") // IC-YYYYMMDD-NNNN
+  status         InterCoBatchStatus @default(DRAFT)
+  transferDate   DateTime           @map("transfer_date") // วันโอนจริงตาม statement (โหมดย้อนหลังได้ — D2/D4)
+  postedAt       DateTime?          @map("posted_at") // วันที่ลงบัญชีจริง (ต่างจาก transferDate ได้ถ้างวดปิด — D4)
+  financeBankCode String            @map("finance_bank_code") // default '11-1201'
+  shopBankCode    String            @map("shop_bank_code") // default 'S11-1201'
+
+  totalFinanced    Decimal @map("total_financed") @db.Decimal(12, 2)
+  totalCommission  Decimal @map("total_commission") @db.Decimal(12, 2)
+  totalAmount      Decimal @map("total_amount") @db.Decimal(12, 2) // = totalFinanced + totalCommission (ยอดโอนจริง)
+  /// รวมเฉพาะ item ที่ legacyNoShop=false — ส่วนต่างจาก totalAmount คือเงินที่ SHOP รับจริง
+  /// แต่สมุด SHOP ไม่มีลูกหนี้รองรับ (สัญญา legacy/exchange) — ไม่เดาลงบัญชีแทน (spec §5.4, §11).
+  shopPostedAmount Decimal @map("shop_posted_amount") @db.Decimal(12, 2)
+
+  transferRef String? @map("transfer_ref") // เลขอ้างอิงโอน/สลิป
+  slipFileKey String? @map("slip_file_key") // S3 key (optional — รอบ backfill บางรอบอาจไม่มีสลิปเหลือ)
+  note        String?
+
+  makerId    String  @map("maker_id")
+  approverId String? @map("approver_id") // null จนกว่าจะ approve; approver อาจเป็นคนเดียวกับ maker ได้ (SoD เป็น opt-in ผ่าน SystemConfig interco_maker_checker_enabled — 2026-08-03)
+
+  // FK-by-value ไป JournalEntry (ไม่ใส่ @relation — ตาม pattern Receipt.sourceJournalEntryId
+  // เพื่อไม่ต้องแตะ JournalEntry model). null ได้ทั้งคู่ก่อน approve; shopJournalEntryId
+  // ยังคง null ได้ถาวรถ้าทั้งรอบเป็นสัญญา legacyNoShop ล้วน (ไม่มี SHOP JE เลย — F1).
+  financeJournalEntryId String? @unique @map("finance_journal_entry_id")
+  shopJournalEntryId    String? @unique @map("shop_journal_entry_id")
+
+  reverseReason String? @map("reverse_reason") // บังคับ ≥10 ตัวอักษรที่ service layer เมื่อ reverse
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  maker    User                     @relation("InterCoBatchMaker", fields: [makerId], references: [id])
+  approver User?                    @relation("InterCoBatchApprover", fields: [approverId], references: [id])
+  items    InterCoSettlementItem[]
+
+  @@index([status])
+  @@index([transferDate])
+  @@map("inter_co_settlement_batches")
+}
+
+/// รายการต่อสัญญาในรอบจ่าย — บันทึกการจ่ายรายสัญญา (v1 จ่ายเต็มยอดคงเหลือเสมอ ไม่มี partial).
+/// เป็น "settled" gate ของ pending engine (เลนส์ §4): สัญญาที่มี item อยู่ใน batch
+/// PENDING_APPROVAL/POSTED จะหลุดจากคิวรอจ่าย; REVERSED/CANCELLED ไม่หลุด (กลับเข้าคิวได้).
+model InterCoSettlementItem {
+  id         String @id @default(uuid())
+  batchId    String @map("batch_id")
+  contractId String @map("contract_id")
+
+  /// Snapshot จาก GL ต่อสัญญา ณ เวลาสร้างรอบ (payableOrigin lens — spec §4):
+  /// financedGl/commissionGl = ฝั่ง FINANCE เจ้าหนี้คงเหลือ Σ(Cr−Dr) ของ 21-1101/21-1102.
+  financedGl   Decimal @map("financed_gl") @db.Decimal(12, 2)
+  commissionGl Decimal @map("commission_gl") @db.Decimal(12, 2)
+
+  /// shopFinancedGl/shopCommissionGl = ฝั่ง SHOP ลูกหนี้คงเหลือ Σ(Dr−Cr) ของ S11-3001/S11-3002.
+  /// เป็น 0 ทั้งคู่เมื่อ legacyNoShop=true (ดูด้านล่าง).
+  shopFinancedGl   Decimal @map("shop_financed_gl") @db.Decimal(12, 2)
+  shopCommissionGl Decimal @map("shop_commission_gl") @db.Decimal(12, 2)
+
+  /// true เมื่อ GL ฝั่ง SHOP (S11-3001/S11-3002) ของสัญญานี้ = 0 ทั้งคู่ — สัญญา activate
+  /// ก่อน 2026-06-23 (ก่อน wiring ฝั่ง SHOP, commit bbcfa7a3 PR #1280) หรือสัญญาจาก
+  /// contract-exchange (device swap) ที่ยังไม่ wire SHOP-leg (spec F1/F2). รอบนี้จะไม่ post
+  /// SHOP JE ให้สัญญานี้เลย — ไม่เดาลงบัญชีแทน (เป็นคำถาม opening balance ถึง CPA §11).
+  legacyNoShop Boolean @default(false) @map("legacy_no_shop")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // onDelete: Restrict — ทั้ง batch และ contract ห้ามหายไปเงียบๆ ใต้ item ที่อ้างอิงอยู่
+  // (item คือหลักฐานการจ่ายทางบัญชี ตาม v3 "Restrict on financial/evidence tables" policy).
+  batch    InterCoSettlementBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  contract Contract              @relation(fields: [contractId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, contractId])
+  @@index([contractId])
+  @@map("inter_co_settlement_items")
+}
+
+// ============================================================
 // SALES COMMISSION (ค่าคอมมิชชันพนักงานขาย)
 // ============================================================
 
@@ -4833,6 +4950,9 @@ model BadDebtProvision {
   outstandingAmount Decimal   @map("outstanding_amount") @db.Decimal(12, 2)
   provisionRate     Decimal   @map("provision_rate") @db.Decimal(5, 4) // e.g. 0.05 = 5%
   provisionAmount   Decimal   @map("provision_amount") @db.Decimal(12, 2)
+  /// Per-installment ECL breakdown (spec 2026-07-26 §2.3) — per-bucket sums
+  /// `{ "<bucket>": { count, base, provision } }`
+  bucketBreakdown   Json?     @map("bucket_breakdown")
   status            String    @default("ACTIVE") // ACTIVE, REVERSED, WRITTEN_OFF
   writtenOffAt      DateTime? @map("written_off_at")
   writtenOffById    String?   @map("written_off_by_id")
@@ -7462,6 +7582,34 @@ model ContractExchangeRequest {
   /// SHOP re-intake JE (Dr S11-2002 / Cr S50-1102) — back-ref so the
   /// audit trail can pin the inventory return to its exchange request.
   je4Id         String?   @map("je_4_id")
+
+  // ===== Device Swap 2026-07 (priced exchange) =====
+  mode               ExchangeMode          @default(PRICED) @map("mode")
+  buybackPrice       Decimal?              @map("buyback_price") @db.Decimal(12, 2)
+  deviceCondition    String?               @map("device_condition") // A-D → key เข้า TradeInValuation
+  approvalTier       ExchangeApprovalTier? @map("approval_tier")
+  ncvSnapshot        Decimal?              @map("ncv_snapshot") @db.Decimal(12, 2)
+  basePriceSnapshot  Decimal?              @map("base_price_snapshot") @db.Decimal(12, 2)
+  depositAccountCode String?               @map("deposit_account_code")
+  // แผนผ่อนใหม่ (PRICED) — server-computed snapshot ตอน submit
+  newTotalMonths     Int?                  @map("new_total_months")
+  newInterestRate    Decimal?              @map("new_interest_rate") @db.Decimal(5, 4)
+  newMonthlyPayment  Decimal?              @map("new_monthly_payment") @db.Decimal(12, 2)
+  newInterestTotal   Decimal?              @map("new_interest_total") @db.Decimal(12, 2)
+  newVatAmount       Decimal?              @map("new_vat_amount") @db.Decimal(12, 2)
+  newStoreCommission Decimal?              @map("new_store_commission") @db.Decimal(12, 2)
+  // ECL reversal (A.5)
+  eclReversalJeId    String?               @map("ecl_reversal_je_id")
+  // MEMO
+  memoAppliedAt      DateTime?             @map("memo_applied_at")
+  // Cancellation
+  canceledAt         DateTime?             @map("canceled_at")
+  canceledById       String?               @map("canceled_by_id")
+  cancelReason       String?               @map("cancel_reason")
+  cancelWindow       String?               @map("cancel_window") // FREE | MEMO | PRE_FINALIZE (legacy values: FREE_7D | PENALTY_8_30D | MEMO_30D)
+  penaltyAmount      Decimal?              @map("penalty_amount") @db.Decimal(12, 2)
+  penaltyJeId        String?               @map("penalty_je_id")
+  reversalJeIds      String[]              @default([]) @map("reversal_je_ids")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

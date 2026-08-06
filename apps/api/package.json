@@ -155,8 +155,8 @@
     "testRegex": ".*\\.spec\\.ts$",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/cpa-templates/.*\\.spec\\.ts$",
-      "/journal/.*__tests__/.*\\.spec\\.ts$",
+      "/cpa-templates/(?!contract-cancellation\\.template\\.spec\\.ts$).*\\.spec\\.ts$",
+      "/journal/__tests__/scenario-helpers\\.spec\\.ts$",
       "/journal/cron/.*\\.spec\\.ts$",
       "/installments/reschedule\\.service\\.spec\\.ts$",
       ".*\\.integration\\.spec\\.ts$"

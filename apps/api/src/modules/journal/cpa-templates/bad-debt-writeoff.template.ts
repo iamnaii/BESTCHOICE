@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
+import { computeCnBreakdown } from '../compute-cn-breakdown';
+import { glContractBalance } from '../gl-contract-balance';
 
 export interface BadDebtWriteOffInput {
   contractId: string;
@@ -24,16 +26,27 @@ export interface BadDebtWriteOffInput {
  * along with everything else — no orphaned cents left on the ledger.
  *
  * JE:
- *   Dr 21-2101  cnVat (= vatPerInst × accruedUnpaidCount)   ← ใบลดหนี้ VAT (ม.82/5), only if any accrued+unpaid
+ *   Dr 21-2101  cnVat (pro-rated per accrued+unpaid installment — computeCnBreakdown)   ← ใบลดหนี้ VAT (ม.82/5), only if any accrued+unpaid
  *   Dr 11-2106  glBalance(11-2106)                          ← ล้าง unearned interest คงเหลือ
  *   Dr 21-2102  glBalance(21-2102, cr side)                 ← ล้างภาษีขายรอเรียกเก็บคงเหลือ
  *   Dr 11-2102  provisionConsumed                           ← ใช้ค่าเผื่อก่อน (เดิม)
+ *   Dr 11-2102  releasedProvision (when provision > loss)   ← คืนค่าเผื่อส่วนเกิน (Task 6, symmetric to JP5)
  *   Dr 51-1102  plug (loss ส่วนเกินค่าเผื่อ)                    ← ส่วนที่เหลือให้ JE balance
  *     Cr 11-2103  glBalance(11-2103)                        ← ล้างลูกหนี้ค้าง (accrued)
  *     Cr 11-2101  glBalance(11-2101)                        ← ล้างลูกหนี้ Gross (deferred)
  *     Cr 11-2105  glBalance(11-2105)                        ← ล้างลูกหนี้ภาษีขายรอฯ
  *     Cr 21-2101  glBalance(21-2102, cr side)                ← VAT deferred ถึงกำหนดนำส่ง (ม.82/3)
  *     Cr 41-1101  glBalance(11-2106)                        ← รับรู้ดอกเบี้ยงวด deferred (แบบ JP5)
+ *     Cr 51-1103  releasedProvision                         ← กลับรายการค่าเผื่อหนี้สงสัยจะสูญ (ตัดหนี้สูญแล้ว ไม่ต้องตั้งสำรองอีก)
+ *
+ * Bad Debt provision (11-2102) — consume THEN release residual (Task 6, mirrors JP5 Task 5):
+ *   provisionBalance = GL balance of 11-2102 for this contract
+ *   provisionConsumed = min(loss, provisionBalance)      → Dr 11-2102 (when loss > 0)
+ *   releasedProvision = provisionBalance − provisionConsumed → Dr 11-2102 / Cr 51-1103 (when > 0)
+ *   Once a contract is written off there is no more receivable left to provide
+ *   against, so 11-2102 for this contract always lands on exactly 0 after this
+ *   JE — whether via consume (provision <= loss), release (provision > loss,
+ *   including the loss = 0 exact-wash edge case), or both.
  */
 @Injectable()
 export class BadDebtWriteOffTemplate {
@@ -74,27 +87,10 @@ export class BadDebtWriteOffTemplate {
     });
 
     // ---- GL balances (เก็บกวาดจริงถึงศูนย์ รวมเศษ rounding งวดสุดท้าย) ----
-    const glBal = async (accountCode: string, side: 'dr' | 'cr'): Promise<Decimal> => {
-      const ls = await client.journalLine.findMany({
-        where: {
-          accountCode,
-          journalEntry: {
-            metadata: { path: ['contractId'], equals: contractId },
-            status: 'POSTED',
-            deletedAt: null,
-          },
-        },
-        select: { debit: true, credit: true },
-      });
-      let b = new Decimal(0);
-      for (const l of ls) {
-        b =
-          side === 'dr'
-            ? b.plus(l.debit.toString()).minus(l.credit.toString())
-            : b.plus(l.credit.toString()).minus(l.debit.toString());
-      }
-      return b;
-    };
+    // Shared helper (2026-07-26, Task 5) — single source of truth with
+    // RepossessionJP5Template + BadDebtService's ECL delta cron.
+    const glBal = (accountCode: string, side: 'dr' | 'cr'): Promise<Decimal> =>
+      glContractBalance(client, contractId, accountCode, side);
 
     const bal2103 = await glBal('11-2103', 'dr');
     const bal2101 = await glBal('11-2101', 'dr');
@@ -102,6 +98,19 @@ export class BadDebtWriteOffTemplate {
     const bal2105 = await glBal('11-2105', 'dr');
     const bal21_2102 = await glBal('21-2102', 'cr');
     const provisionBalance = await glBal('11-2102', 'cr');
+    // M1 (final-review 2026-07-26, mirrors RepossessionJP5Template): a
+    // negative pre-JE 11-2102 balance (Dr > Cr — e.g. a past mis-posted JE)
+    // is a GL anomaly this template does NOT auto-heal — `provisionConsumed`/
+    // `releasedProvision` below already clamp to 0 in this case (via the
+    // `provisionBalance.gt(0)` guards), but the anomaly itself must still
+    // surface for manual investigation instead of silently vanishing.
+    if (provisionBalance.lt(0)) {
+      Sentry.captureMessage('Write-off: negative 11-2102 balance', {
+        level: 'warning',
+        tags: { subsystem: 'bad-debt' },
+        extra: { contractId, balance: provisionBalance.toFixed(2) },
+      });
+    }
 
     const totalReceivable = bal2103.plus(bal2101);
     if (totalReceivable.lte(0)) {
@@ -123,33 +132,19 @@ export class BadDebtWriteOffTemplate {
         vatAmount: true,
       },
     });
-    const breakdown = computeInstallmentBreakdown({
-      financedAmount: c.financedAmount.toString(),
-      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
-      interestTotal: c.interestTotal.toString(),
-      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
-      totalMonths: c.totalMonths,
-    });
-    const vatPerInst = breakdown.vatPerInst;
-
-    const allInsts = await client.installmentSchedule.findMany({
-      where: { contractId, deletedAt: null },
-      select: { installmentNo: true, accrualJournalEntryId: true },
-    });
-    const paidNos = new Set(
-      (
-        await client.payment.findMany({
-          where: { contractId, status: 'PAID' },
-          select: { installmentNo: true },
-        })
-      ).map((p) => p.installmentNo),
-    );
-    const accruedUnpaidCount = new Decimal(
-      allInsts.filter((i) => i.accrualJournalEntryId !== null && !paidNos.has(i.installmentNo))
-        .length,
-    );
-    const cnVat = vatPerInst.times(accruedUnpaidCount);
-    const creditNoteIssued = accruedUnpaidCount.gt(0);
+    // CPA pro-rate ruling (2026-07-26, docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md):
+    // a partially-paid accrued installment's CN VAT is pro-rated to its
+    // outstanding balance instead of the full vatPerInst. computeCnBreakdown is
+    // the single source of truth shared with RepossessionJP5Template and
+    // CreditNoteDocumentService so the JE and the CN document never drift.
+    // opts omitted (unlike JP5) — this template doesn't already have the
+    // installments/payments loaded in memory, so let the util query them.
+    const cnBreakdown = await computeCnBreakdown(client, c);
+    const cnVat = cnBreakdown.totalCnVat;
+    // CPA pro-rate: key off the actual amount, not the raw count, so this flag
+    // stays truthful on the (theoretical) fully-paid-but-still-accrued edge case
+    // (matches RepossessionJP5Template's identical fix).
+    const creditNoteIssued = cnVat.gt(0);
 
     // ---- สร้าง lines: Dr ทั้งหมดก่อน แล้ว plug 51-1102 ให้ balance ----
     const zero = new Decimal(0);
@@ -160,7 +155,7 @@ export class BadDebtWriteOffTemplate {
         accountCode: '21-2101',
         dr: cnVat,
         cr: zero,
-        description: `ใบลดหนี้ VAT ${accruedUnpaidCount.toNumber()} งวด (ม.82/5)`,
+        description: `ใบลดหนี้ VAT ${cnBreakdown.count} งวด (ม.82/5)`,
       });
     }
     if (bal2106.gt(0)) {
@@ -243,6 +238,30 @@ export class BadDebtWriteOffTemplate {
       });
       loss = loss.minus(provisionConsumed);
     }
+
+    // Release provision residual (Task 6, symmetric to RepossessionJP5Template
+    // Task 5) — whatever provision is LEFT after consuming the loss must be
+    // released back to income; once written off there is no more receivable
+    // to provide against, so 11-2102 for this contract always lands on
+    // exactly 0 after this JE.
+    const releasedProvision = provisionBalance.gt(0)
+      ? provisionBalance.minus(provisionConsumed)
+      : new Decimal(0);
+    if (releasedProvision.gt(0)) {
+      lines.push({
+        accountCode: '11-2102',
+        dr: releasedProvision,
+        cr: zero,
+        description: 'คืนค่าเผื่อหนี้สงสัยจะสูญส่วนเกิน (release)',
+      });
+      lines.push({
+        accountCode: '51-1103',
+        dr: zero,
+        cr: releasedProvision,
+        description: 'กลับรายการค่าเผื่อหนี้สงสัยจะสูญ (ตัดหนี้สูญแล้ว ไม่ต้องตั้งสำรองอีก)',
+      });
+    }
+
     if (loss.gt(0)) {
       lines.push({
         accountCode: '51-1102',
@@ -270,6 +289,9 @@ export class BadDebtWriteOffTemplate {
             contractId,
             totalReceivable: totalReceivable.toFixed(2),
             provisionConsumed: provisionConsumed.toFixed(2),
+            // Task 6 (2026-07-26) — Bad Debt provision (11-2102) released back
+            // to 51-1103 on this contract (0.00 when nothing was left to release).
+            releasedProvision: releasedProvision.toFixed(2),
             writeOffExpense: loss.toFixed(2),
             creditNoteIssued,
             creditNoteVatAmount: cnVat.toFixed(2),

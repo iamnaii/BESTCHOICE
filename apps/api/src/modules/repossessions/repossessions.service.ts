@@ -457,6 +457,19 @@ export class RepossessionsService {
           },
           tx,
         );
+
+        // Task 5 (2026-07-26, ECL-per-installment plan §2.4) — JP5 already
+        // released any remaining 11-2102 GL balance for this contract back to
+        // 51-1103 (see RepossessionJP5Template). Mark the DB-side
+        // BadDebtProvision rows REVERSED to match — the contract is
+        // derecognized, so there's no more receivable left to provide
+        // against. Same convention as BadDebtService.calculateProvisions'
+        // "REVERSE stale ACTIVE rows" step.
+        await tx.badDebtProvision.updateMany({
+          where: { status: 'ACTIVE', contractId: dto.contractId, deletedAt: null },
+          data: { status: 'REVERSED' },
+        });
+
         // Mirrors SHOP_COLLECT_PAYOFF — forensic trail that the repossession
         // value is parked as a shop receivable awaiting settlement.
         if (dto.collectedByShop) {

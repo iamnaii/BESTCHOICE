@@ -7,6 +7,7 @@ import { ContractActivation1ATemplate } from './contract-activation-1a.template'
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { BadDebtProvisionTemplate } from './bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from './bad-debt-writeoff.template';
+import { PaymentReceiptTemplate } from './payment-receipt.template';
 import { JournalAutoService } from '../journal-auto.service';
 
 const prisma = new PrismaClient();
@@ -165,6 +166,94 @@ describe('BadDebtWriteOffTemplate', () => {
     expect(new Decimal(expenseLine!.debit.toString()).toFixed(2)).toBe('17190.00');
   });
 
+  /**
+   * Task 6 (2026-07-26, symmetric to RepossessionJP5Template Task 5) —
+   * provision seeded ABOVE the loss must release the residual to income
+   * instead of leaving it stranded on 11-2102.
+   *
+   * Same all-deferred (1A only, no 2A) contract as the "all-deferred" golden
+   * below: loss before consume = 18,190.00 (Dr 11-2106 6,000.00 + Dr 21-2102
+   * 1,190.00 vs Cr 11-2101 17,000.00 + Cr 11-2105 1,190.00 + Cr 21-2101
+   * 1,190.00 + Cr 41-1101 6,000.00 → 25,380.00 − 7,190.00 = 18,190.00).
+   *
+   * Provision seeded = 20,000.00 (> loss):
+   *   provisionConsumed = min(18,190.00, 20,000.00) = 18,190.00 → Dr 11-2102
+   *   releasedProvision = 20,000.00 − 18,190.00 = 1,810.00 → Dr 11-2102 / Cr 51-1103
+   *   remaining loss = 18,190.00 − 18,190.00 = 0.00 exactly → no 51-1102 plug line
+   *   GL 11-2102 for this contract: +20,000.00 (provision JE Cr) − 20,000.00
+   *   (write-off JE's two Dr lines, consume+release) = 0.00
+   */
+  it('releases provision residual to income when provision exceeds the loss (Task 6, symmetric to JP5)', async () => {
+    const c6 = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c6.id);
+
+    const provisionTmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    await provisionTmpl.execute({
+      contractId: c6.id,
+      provisionAmount: new Decimal('20000.00'),
+      period: '2026-04',
+    });
+
+    const result = await new BadDebtWriteOffTemplate(journal, prisma as any).execute({
+      contractId: c6.id,
+    });
+    expect(result.entryNo).toMatch(/^JE-/);
+
+    const je = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'write-off' } } as any,
+          { metadata: { path: ['contractId'], equals: c6.id } } as any,
+        ],
+      },
+      include: { lines: true },
+    });
+    expect(je).toBeDefined();
+
+    const totalDr = je!.lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    const totalCr = je!.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+
+    // Two separate Dr 11-2102 lines (consume 18,190.00 + release 1,810.00) sum
+    // to the full provisionBalance (20,000.00).
+    const provisionDrTotal = je!.lines
+      .filter((l) => l.accountCode === '11-2102')
+      .reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    expect(provisionDrTotal.toFixed(2)).toBe('20000.00');
+
+    const releaseLine = je!.lines.find(
+      (l) => l.accountCode === '51-1103' && new Decimal(l.credit.toString()).gt(0),
+    );
+    expect(releaseLine).toBeDefined();
+    expect(new Decimal(releaseLine!.credit.toString()).toFixed(2)).toBe('1810.00');
+
+    // Loss fully absorbed by consume → no 51-1102 plug line at all.
+    const expenseLine = je!.lines.find((l) => l.accountCode === '51-1102');
+    expect(expenseLine).toBeUndefined();
+
+    expect((je!.metadata as any).provisionConsumed).toBe('18190.00');
+    expect((je!.metadata as any).releasedProvision).toBe('1810.00');
+    expect((je!.metadata as any).writeOffExpense).toBe('0.00');
+
+    // GL 11-2102 for this contract nets to exactly 0 after provision + write-off.
+    const glLines = await prisma.journalLine.findMany({
+      where: {
+        accountCode: '11-2102',
+        journalEntry: {
+          metadata: { path: ['contractId'], equals: c6.id } as any,
+          status: 'POSTED',
+          deletedAt: null,
+        },
+      },
+      select: { debit: true, credit: true },
+    });
+    const glBalance = glLines.reduce(
+      (s, l) => s.plus(l.credit.toString()).minus(l.debit.toString()),
+      new Decimal(0),
+    );
+    expect(glBalance.toFixed(2)).toBe('0.00');
+  });
+
   it('mixed accrued/deferred: issues CN VAT + clears 11-2103/11-2106/VAT legs (golden 17k, 3 accrued)', async () => {
     const c3 = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c3.id);
@@ -247,5 +336,113 @@ describe('BadDebtWriteOffTemplate', () => {
     // → Dr 51-1102 = 25,380 − 7,190 = 18,190.00
     const loss = je!.lines.find((l) => l.accountCode === '51-1102');
     expect(new Decimal(loss!.debit.toString()).toFixed(2)).toBe('18190.00');
+  });
+
+  /**
+   * CN pro-rate (CPA ruling 2026-07-26, docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md).
+   *
+   * Same 3-accrued / 9-deferred split as the "mixed" golden above, but
+   * installment #1 gets a REAL partial receipt — Dr 11-1101 1,000 / Cr 11-2103
+   * 1,000 posted via PaymentReceiptTemplate (not just a bare Payment row).
+   * Unlike JP5's accruedClear11_2103 (count-based, pre-existing backlog item —
+   * not touched by pro-rate), write-off's Cr legs are GL-based (`glBal` reads
+   * live JE balances), so a bare Payment row with no matching GL movement would
+   * silently produce the WRONG Cr 11-2103 for this template. Posting the real
+   * receipt JE is the only faithful way to exercise the GL-based leg.
+   *
+   * Per-installment CN VAT (computeCnBreakdown, ROUND_HALF_UP 2dp):
+   *   #1 (partial): outstanding = 1,515.83 − 1,000 = 515.83
+   *     cnVat = 99.17 × 515.83 / 1,515.83 = 33.75
+   *   #2, #3 (no Payment row → fully outstanding): cnVat = 99.17 each
+   *   totalCnVat = 33.75 + 99.17 + 99.17 = 232.09  (was 297.51 in the mixed golden)
+   *
+   * GL 11-2103 (accrued): 3 × 1,515.83 − 1,000 (real receipt) = 3,547.49
+   *   (was 4,547.49 in the mixed golden — reduced by exactly the cash received)
+   *
+   * Every other leg is identical to the mixed golden (same 9 deferred
+   * installments, untouched by this receipt): 11-2101 Cr 12,750.02, 11-2106 Dr
+   * 4,500.00, 21-2102 Dr 892.49, 11-2105 Cr 892.49, 21-2101 Cr 892.49, 41-1101
+   * Cr 4,500.00.
+   *
+   * Loss plug (51-1102) = ΣCr − ΣDr (no prior provision on this contract):
+   *   ΣDr = 232.09 (CN VAT) + 4,500.00 (11-2106) + 892.49 (21-2102) = 5,624.58
+   *   ΣCr = 3,547.49 (11-2103) + 12,750.02 (11-2101) + 892.49 (11-2105)
+   *         + 892.49 (21-2101) + 4,500.00 (41-1101) = 22,582.49
+   *   plug = 22,582.49 − 5,624.58 = 16,957.91  (never negative here — the
+   *   negative-plug guard in the template stays untripped; the plug only ever
+   *   drops with real cash collected, which strictly reduces the loss)
+   *   (vs. mixed golden's 17,892.49 — delta = 1,000 [less cash to clear, so
+   *   less Cr] − 65.42 [less CN VAT recovered, so less Dr] = 934.58 reduction)
+   */
+  it('pro-rates CN VAT for a partially-paid accrued installment, Cr 11-2103 reflects the real GL reduction (CPA 2026-07-26)', async () => {
+    const c5 = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c5.id);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c5.id },
+      orderBy: { installmentNo: 'asc' },
+      take: 3,
+    });
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    for (const inst of insts) await accrual.execute(inst.id);
+
+    // Real 2B-equivalent receipt on installment #1 — Dr 11-1101 / Cr 11-2103
+    // 1,000, actually moving the GL balance (not just a Payment-row fiction).
+    const receiptTpl = new PaymentReceiptTemplate(journal, prisma as any);
+    await receiptTpl.execute({
+      installmentScheduleId: insts[0].id,
+      delta: new Decimal('1000.00'),
+      debitAccountCode: '11-1101',
+    });
+
+    // Payment row — computeCnBreakdown reads amountDue/amountPaid/status from
+    // here to pro-rate the CN VAT (PaymentReceiptTemplate never touches Payment).
+    await prisma.payment.create({
+      data: {
+        contractId: c5.id,
+        installmentNo: insts[0].installmentNo,
+        dueDate: insts[0].dueDate,
+        amountDue: new Decimal('1515.83'),
+        amountPaid: new Decimal('1000.00'),
+        status: 'PARTIALLY_PAID',
+      },
+    });
+
+    const result = await new BadDebtWriteOffTemplate(journal, prisma as any).execute({
+      contractId: c5.id,
+    });
+    expect(result.entryNo).toMatch(/^JE-/);
+
+    const je = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'write-off' } } as any,
+          { metadata: { path: ['contractId'], equals: c5.id } } as any,
+        ],
+      },
+      include: { lines: true },
+    });
+    const get = (code: string, side: 'debit' | 'credit') => {
+      const l = je!.lines.find(
+        (x) => x.accountCode === code && new Decimal(x[side].toString()).gt(0),
+      );
+      return l ? new Decimal(l[side].toString()).toFixed(2) : null;
+    };
+
+    expect(get('21-2101', 'debit')).toBe('232.09'); // CN ม.82/5, pro-rated
+    expect(get('11-2103', 'credit')).toBe('3547.49'); // GL-based — reflects the real 1,000 receipt
+    expect(get('11-2101', 'credit')).toBe('12750.02');
+    expect(get('11-2106', 'debit')).toBe('4500.00');
+    expect(get('21-2102', 'debit')).toBe('892.49');
+    expect(get('11-2105', 'credit')).toBe('892.49');
+    expect(get('21-2101', 'credit')).toBe('892.49'); // deferred VAT ถึงกำหนด
+    expect(get('41-1101', 'credit')).toBe('4500.00');
+    expect(get('51-1102', 'debit')).toBe('16957.91'); // loss plug — self-adjusts
+
+    const totalDr = je!.lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    const totalCr = je!.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+
+    expect((je!.metadata as any).creditNoteIssued).toBe(true);
+    expect((je!.metadata as any).creditNoteVatAmount).toBe('232.09');
   });
 });

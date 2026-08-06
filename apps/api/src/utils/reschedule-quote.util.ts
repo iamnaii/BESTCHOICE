@@ -55,7 +55,7 @@ export interface RescheduleQuote {
  *
  * Fee formula mirrors RescheduleService.execute exactly (anti-drift assert at the
  * execution site). Late fee mirrors the wizard display / recordPayment recompute
- * via resolveLivePaymentLateFee (mode-aware PER_DAY/BRACKET, waived → 0).
+ * via resolveLivePaymentLateFee (flat-bracket formula, waived → 0).
  */
 /** ยอดปรับดิว = monthlyPayment / 30 × daysToShift, ROUND_UP whole baht (owner policy 2026-06). */
 export function computeRescheduleFee(

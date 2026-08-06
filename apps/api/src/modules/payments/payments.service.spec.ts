@@ -400,9 +400,9 @@ describe('PaymentsService', () => {
       // PR-843/I2 Phase 3 3a: the receipt now posts via the PaymentReceiptTemplate
       // primitive — the lateFee forward is asserted on THAT mock.
       //
-      // Set up a payment overdue by 5 days. The service computes a late fee
-      // capped at LATE_FEE_CAP_PCT * amountDue (~5% by default). For
-      // amountDue=1000, that's ~50฿. Customer pays amountDue + lateFee_capped.
+      // Set up a payment overdue by 5 days. The service computes a flat-bracket
+      // late fee (tier2Amount, ~100฿ by default — 5 days >= tier2MinDays default
+      // of 3). Customer pays amountDue + the computed lateFee.
       const dueDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
       const overduePayment = {
         ...mockPayment,
@@ -449,9 +449,9 @@ describe('PaymentsService', () => {
       );
 
       // Verify lateFee was passed to the template. Must be a Decimal-like > 0
-      // (the precise value depends on BUSINESS_RULES.LATE_FEE_CAP_PCT, which
-      // is exercised here — what matters is that the field is FORWARDED, not
-      // dropped on the floor as the pre-fix code did).
+      // (the precise value depends on BUSINESS_RULES late-fee tier defaults,
+      // which are exercised here — what matters is that the field is
+      // FORWARDED, not dropped on the floor as the pre-fix code did).
       expect(templateMock.execute).toHaveBeenCalled();
       const callArgs = templateMock.execute.mock.calls[0][0];
       expect(callArgs.lateFee).toBeDefined();

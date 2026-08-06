@@ -3,13 +3,14 @@ import { FinanceToolsService } from './finance-tools.service';
 
 /**
  * The LIFF chatbot late-fee quote MUST match what the collection path actually
- * charges (payments.service.recordPayment): mode-aware (PER_DAY or BRACKET),
- * config-driven. Default mode = PER_DAY (rate=20/day, max=500, cap=5%).
+ * charges (payments.service.recordPayment): flat-bracket, config-driven.
+ * Defaults (BUSINESS_RULES): tier1=50, tier2=100, tier2MinDays=3.
  *
- * Updated from flat-bracket assertions (100/50) to per-day values in Task 2
- * of feat/late-fee-perday (resolveLateFee dispatcher wired to all TS call sites).
+ * CPA ยืนยันขั้นบันไดถาวร 2026-08-01 — the config-switchable
+ * `late_fee_mode='PER_DAY'` path that this spec previously exercised as the
+ * code default was retired; BRACKET is now the only formula.
  */
-describe('FinanceToolsService — per-day late-fee quote (PER_DAY default)', () => {
+describe('FinanceToolsService — flat-bracket late-fee quote', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   let service: FinanceToolsService;
@@ -23,7 +24,7 @@ describe('FinanceToolsService — per-day late-fee quote (PER_DAY default)', () 
         ]),
       },
       payment: { findFirst: jest.fn() },
-      // default: no config rows → defaults mode=PER_DAY, rate=20, max=500, cap=5
+      // default: no config rows → BUSINESS_RULES defaults (tier1=50, tier2=100, minDays=3)
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const financeConfig = { bankInfoBlock: 'BANK' } as unknown as ConstructorParameters<
@@ -47,25 +48,24 @@ describe('FinanceToolsService — per-day late-fee quote (PER_DAY default)', () 
 
   // ─── getCurrentBalance tests ───────────────────────────────────
 
-  it('getCurrentBalance: 5 days overdue, amountDue=2000 → lateFee=100 (5×20=100, min(100,500,5%×2000=100)=100)', async () => {
+  it('getCurrentBalance: 5 days overdue, amountDue=2000 → lateFee=100 (tier2, >= minDays 3)', async () => {
     prisma.payment.findFirst.mockResolvedValue(overdue({ amountDue: 2000, daysOverdue: 5 }));
     const res = await service.getCurrentBalance('cust-1');
-    expect(res.lateFee).toBe(100); // 5×20=100, cap=5%×2000=100 → min=100
+    expect(res.lateFee).toBe(100);
   });
 
-  it('getCurrentBalance: 60 days overdue, amountDue=2000 → lateFee=100 (5% cap binds)', async () => {
+  it('getCurrentBalance: 60 days overdue, amountDue=2000 → lateFee=100 (still flat tier2, does not grow)', async () => {
     prisma.payment.findFirst.mockResolvedValue(overdue({ amountDue: 2000, daysOverdue: 60 }));
     const res = await service.getCurrentBalance('cust-1');
-    expect(res.lateFee).toBe(100); // 60×20=1200, cap=5%×2000=100 → min=100
+    expect(res.lateFee).toBe(100);
     expect(res.totalAmount).toBe(2100); // remainingBase 2000 + 100
     expect(res.daysOverdue).toBe(60);
   });
 
-  it('getCurrentBalance: 1 day overdue, amountDue=2000 → lateFee=20 (per-day rate binds)', async () => {
-    // Updated from 50 (bracket tier1) to 20 (1 day × 20฿/day) in Task 2.
+  it('getCurrentBalance: 1 day overdue, amountDue=2000 → lateFee=50 (tier1, < minDays 3)', async () => {
     prisma.payment.findFirst.mockResolvedValue(overdue({ amountDue: 2000, daysOverdue: 1 }));
     const res = await service.getCurrentBalance('cust-1');
-    expect(res.lateFee).toBe(20); // 1×20=20 < maxAmount 500 < 5%×2000=100 → 20
+    expect(res.lateFee).toBe(50);
   });
 
   it('getCurrentBalance: honors lateFeeWaived → lateFee 0', async () => {
@@ -74,15 +74,14 @@ describe('FinanceToolsService — per-day late-fee quote (PER_DAY default)', () 
     expect(res.lateFee).toBe(0);
   });
 
-  it('getCurrentBalance: uses the configured per-day rate when set', async () => {
-    // Updated from tier1 test (bracket) to per-day rate test.
-    // Configured rate=10/day, 1 day, amountDue=5000 → 1×10=10
+  it('getCurrentBalance: uses the configured tier1 amount when set', async () => {
+    // Configured tier1=30, 1 day overdue (< default minDays 3) → 30
     prisma.systemConfig.findUnique.mockImplementation(({ where }: { where: { key: string } }) =>
-      Promise.resolve(where.key === 'late_fee_per_day_rate' ? { value: '10' } : null),
+      Promise.resolve(where.key === 'late_fee_tier1_amount' ? { value: '30' } : null),
     );
     prisma.payment.findFirst.mockResolvedValue(overdue({ amountDue: 5000, daysOverdue: 1 }));
     const res = await service.getCurrentBalance('cust-1');
-    expect(res.lateFee).toBe(10); // 1×10=10
+    expect(res.lateFee).toBe(30);
   });
 
   it('getCurrentBalance: found=false when no active contract', async () => {
@@ -93,33 +92,27 @@ describe('FinanceToolsService — per-day late-fee quote (PER_DAY default)', () 
 
   // ─── calculateFine tests ───────────────────────────────────────
 
-  it('calculateFine(5): 5×20=100 (per-day rate wins, cap not binding for no-context estimate)', async () => {
-    // Updated from bracket 100 (still 100, but now per-day).
-    const res = await service.calculateFine(5);
-    expect(res.totalFine).toBe(100); // 5×20=100 ≤ maxAmount=500
-  });
-
-  it('calculateFine explanation describes per-day model, contains rate and max', async () => {
-    // Updated: PER_DAY explanation now says "บาท/วัน" not bracket ranges.
+  it('calculateFine(5): tier2 (>= minDays 3) = 100', async () => {
     const res = await service.calculateFine(5);
     expect(res.totalFine).toBe(100);
+  });
+
+  it('calculateFine explanation describes the flat-bracket model, contains tier amounts', async () => {
+    const res = await service.calculateFine(5);
+    expect(res.totalFine).toBe(100);
+    expect(res.explanation).toContain('เหมาจ่าย');
     expect(res.explanation).toContain('100');
-    expect(res.explanation).toContain('/วัน');
   });
 
-  it('calculateFine(60): 60×20=1200, maxAmount 500 binds → 500', async () => {
-    // Updated from 100 (bracket tier2) to 500 (maxAmount ceiling in PER_DAY).
+  it('calculateFine(60): still flat tier2 = 100 (does not grow with days)', async () => {
     const res = await service.calculateFine(60);
-    expect(res.totalFine).toBe(500); // 60×20=1200 > maxAmount=500 → 500
-    // no ratePerDay field directly, but mode is PER_DAY
-    expect((res as Record<string, unknown>).ratePerDay).toBeUndefined();
-    expect(res.explanation).toContain('500');
+    expect(res.totalFine).toBe(100);
+    expect(res.explanation).toContain('100');
   });
 
-  it('calculateFine(2): 2×20=40 (per-day, below maxAmount and cap)', async () => {
-    // Updated from 50 (bracket tier1) to 40 (2 days × 20).
+  it('calculateFine(2): tier1 (< minDays 3) = 50', async () => {
     const res = await service.calculateFine(2);
-    expect(res.totalFine).toBe(40);
+    expect(res.totalFine).toBe(50);
   });
 
   it('calculateFine(0): no fine', async () => {
@@ -127,9 +120,8 @@ describe('FinanceToolsService — per-day late-fee quote (PER_DAY default)', () 
     expect(res.totalFine).toBe(0);
   });
 
-  it('calculateFine explanation contains per-day rate info', async () => {
-    // Updated: PER_DAY mode explanation contains "บาท/วัน".
+  it('calculateFine explanation contains the flat-bracket tier description', async () => {
     const res = await service.calculateFine(10);
-    expect(res.explanation).toContain('บาท/วัน');
+    expect(res.explanation).toContain('เหมาจ่าย');
   });
 });

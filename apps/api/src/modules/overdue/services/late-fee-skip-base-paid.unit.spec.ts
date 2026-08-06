@@ -9,17 +9,16 @@
  *
  * This spec closes that gap cheaply: it constructs OverdueLifecycleCronService with a
  * mocked Prisma, runs calculateLateFees(), and asserts the compiled bulk-UPDATE SQL
- * still contains `"amount_paid" < "amount_due"` — in BOTH fee-formula modes, so the
- * guard survives a BRACKET/PER_DAY branch refactor. Mock-only, no DB.
+ * still contains `"amount_paid" < "amount_due"`. Mock-only, no DB.
  *
- * Sibling pattern: overdue.late-fee-escalation.spec.ts (makeBracketPrisma/makePerDayPrisma).
+ * Sibling pattern: overdue.late-fee-escalation.spec.ts.
  */
 import { OverdueLifecycleCronService } from './overdue-lifecycle-cron.service';
 import type { ConsecutiveMissedService } from '../consecutive-missed.service';
 
 // calculateLateFees calls `this.prisma.$executeRaw(Prisma.sql`…`)`, so mock.calls[0][0]
 // is a Prisma.Sql. The new skip clause is a pure literal (no interpolation), so it lands
-// verbatim in Sql.strings regardless of which fee fragment (BRACKET / PER_DAY) is spliced in.
+// verbatim in Sql.strings.
 type SqlLike = { strings?: readonly string[]; sql?: string };
 const sqlTextOf = (arg: unknown): string => {
   const s = arg as SqlLike;
@@ -28,14 +27,12 @@ const sqlTextOf = (arg: unknown): string => {
   return String(arg);
 };
 
-/** Minimal Prisma stub: only systemConfig.findUnique (mode dispatch) + $executeRaw. */
-const makePrisma = (mode: 'BRACKET' | 'PER_DAY', rowsUpdated = 4) => {
+/** Minimal Prisma stub: systemConfig.findUnique (bracket keys) + $executeRaw. */
+const makePrisma = (rowsUpdated = 4) => {
   const $executeRaw = jest.fn().mockResolvedValue(rowsUpdated);
   const prisma = {
     systemConfig: {
-      findUnique: jest.fn(({ where }: { where: { key: string } }) =>
-        Promise.resolve(where.key === 'late_fee_mode' ? { value: mode } : null),
-      ),
+      findUnique: jest.fn().mockResolvedValue(null), // no rows → BUSINESS_RULES defaults
     },
     $executeRaw,
   };
@@ -51,8 +48,8 @@ const buildCron = (prisma: unknown) =>
 describe('OverdueLifecycleCronService.calculateLateFees — base-settled skip guard (SQL text)', () => {
   afterEach(() => jest.clearAllMocks());
 
-  it('BRACKET mode: bulk UPDATE skips base-settled rows via "amount_paid" < "amount_due"', async () => {
-    const { prisma, $executeRaw } = makePrisma('BRACKET');
+  it('bulk UPDATE skips base-settled rows via "amount_paid" < "amount_due"', async () => {
+    const { prisma, $executeRaw } = makePrisma();
 
     const out = await buildCron(prisma).calculateLateFees();
 
@@ -62,18 +59,8 @@ describe('OverdueLifecycleCronService.calculateLateFees — base-settled skip gu
     expect(text).toContain('"amount_paid" < "amount_due"');
   });
 
-  it('PER_DAY mode: the same guard survives the alternate fee-formula branch', async () => {
-    const { prisma, $executeRaw } = makePrisma('PER_DAY');
-
-    await buildCron(prisma).calculateLateFees();
-
-    expect($executeRaw).toHaveBeenCalledTimes(1);
-    const text = sqlTextOf($executeRaw.mock.calls[0][0]);
-    expect(text).toContain('"amount_paid" < "amount_due"');
-  });
-
   it('the skip clause sits beside the existing filters without displacing them', async () => {
-    const { prisma, $executeRaw } = makePrisma('BRACKET');
+    const { prisma, $executeRaw } = makePrisma();
 
     await buildCron(prisma).calculateLateFees();
 

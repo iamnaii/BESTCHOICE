@@ -7,6 +7,7 @@ import { ContractActivation1ATemplate } from './contract-activation-1a.template'
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { BadDebtProvisionTemplate } from './bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from './bad-debt-writeoff.template';
+import { PaymentReceiptTemplate } from './payment-receipt.template';
 import { EclStageReverseTemplate } from './ecl-stage-reverse.template';
 import { JournalAutoService } from '../journal-auto.service';
 import { BadDebtService } from '../../accounting/bad-debt.service';
@@ -49,6 +50,10 @@ describe('BadDebtService.writeOffBadDebt — auto-issues CN atomically with the 
   let contractId: string;
   let writerId: string;
   let approverId: string;
+  // Second contract — used only by the pro-rate (partial payment) test below,
+  // created lazily inside that test (not beforeAll) so the primary contract's
+  // "clean" golden numbers stay unaffected.
+  let contractId2: string | undefined;
 
   beforeAll(async () => {
     // Same comprehensive wipe list as bad-debt-writeoff.template.spec.ts's
@@ -172,6 +177,18 @@ describe('BadDebtService.writeOffBadDebt — auto-issues CN atomically with the 
       where: { id: contractId },
       data: { deletedAt: new Date() },
     });
+
+    if (contractId2) {
+      await prisma.receipt.deleteMany({ where: { contractId: contractId2 } });
+      await prisma.badDebtProvision.deleteMany({ where: { contractId: contractId2 } });
+      await prisma.payment.deleteMany({ where: { contractId: contractId2 } });
+      await prisma.installmentSchedule.deleteMany({ where: { contractId: contractId2 } });
+      await prisma.contract.update({
+        where: { id: contractId2 },
+        data: { deletedAt: new Date() },
+      });
+    }
+
     await prisma.$disconnect();
   });
 
@@ -242,5 +259,100 @@ describe('BadDebtService.writeOffBadDebt — auto-issues CN atomically with the 
     );
 
     expect(result).toEqual({ outcome: 'SKIPPED_DUPLICATE' });
+  });
+
+  /**
+   * CN pro-rate (CPA ruling 2026-07-26, docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md).
+   *
+   * End-to-end proof (real DB, through BadDebtService.writeOffBadDebt — not
+   * just the JE template like bad-debt-writeoff.template.spec.ts's partial
+   * golden) that the write-off JE's `metadata.creditNoteVatAmount` and the
+   * auto-issued CN Receipt agree, because both derive from the SAME
+   * `computeCnBreakdown` call graph: 3 accrued installments, #1 gets a REAL
+   * partial receipt (Dr 11-1101 1,000 / Cr 11-2103 1,000 via
+   * PaymentReceiptTemplate — not just a bare Payment row, so the GL-based
+   * write-off legs move faithfully) →
+   *   outstanding #1 = 1,515.83 − 1,000 = 515.83, cnVat #1 = 33.75
+   *   #2, #3 fully outstanding → cnVat 99.17 each
+   *   totalCnVat = 232.09 / totalOutstanding = 3,547.49 / totalBeforeVat = 3,315.40
+   * (same golden as bad-debt-writeoff.template.spec.ts's partial case and
+   * compute-cn-breakdown.spec.ts's "mixed" case).
+   */
+  it('pro-rates the CN for a partially-paid accrued installment — JE and Receipt agree (CPA 2026-07-26)', async () => {
+    const c2 = await seedStandard17k12m(prisma);
+    contractId2 = c2.id;
+
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(contractId2);
+
+    const insts2 = await prisma.installmentSchedule.findMany({
+      where: { contractId: contractId2 },
+      orderBy: { installmentNo: 'asc' },
+      take: 3,
+    });
+    const accrual2 = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    for (const inst of insts2) await accrual2.execute(inst.id);
+
+    // Real 2B-equivalent receipt on installment #1 — actually moves the GL
+    // balance (Dr 11-1101 / Cr 11-2103 1,000), not just a bare Payment row.
+    await new PaymentReceiptTemplate(journal, prisma as any).execute({
+      installmentScheduleId: insts2[0].id,
+      delta: new Decimal('1000.00'),
+      debitAccountCode: '11-1101',
+    });
+
+    // Payment row — computeCnBreakdown reads amountDue/amountPaid/status from
+    // here to pro-rate the CN VAT (PaymentReceiptTemplate never touches Payment).
+    await prisma.payment.create({
+      data: {
+        contractId: contractId2,
+        installmentNo: insts2[0].installmentNo,
+        dueDate: insts2[0].dueDate,
+        amountDue: new Decimal('1515.83'),
+        amountPaid: new Decimal('1000.00'),
+        status: 'PARTIALLY_PAID',
+      },
+    });
+
+    await prisma.contract.update({ where: { id: contractId2 }, data: { status: 'TERMINATED' } });
+
+    const service = buildService(journal);
+    const result = await service.writeOffBadDebt(
+      contractId2,
+      writerId,
+      approverId,
+      'ทดสอบ CN pro-rate CPA 2026-07-26',
+    );
+
+    expect(result.status).toBe('CLOSED_BAD_DEBT');
+    expect(result.creditNote).toBeDefined();
+    expect(result.creditNote!.outcome).toBe('ISSUED');
+    expect(result.creditNote!.receiptId).toBeDefined();
+
+    const je = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'write-off' } } as any,
+          { metadata: { path: ['contractId'], equals: contractId2 } } as any,
+        ],
+      },
+    });
+    expect(je).toBeDefined();
+    expect((je!.metadata as any).creditNoteVatAmount).toBe('232.09');
+
+    const receipt = await prisma.receipt.findUnique({
+      where: { id: result.creditNote!.receiptId! },
+    });
+    expect(receipt).toBeDefined();
+    expect(receipt!.cnSource).toBe('WRITE_OFF');
+    expect(receipt!.sourceJournalEntryId).toBe(je!.id);
+    // The document's own amounts must match the JE's stamped VAT exactly —
+    // proof both sides pro-rated via the same computeCnBreakdown call.
+    expect(new Decimal(receipt!.vatAmount!.toString()).toFixed(2)).toBe(
+      (je!.metadata as any).creditNoteVatAmount,
+    );
+    expect(new Decimal(receipt!.amount.toString()).toFixed(2)).toBe('3547.49');
+    expect(new Decimal(receipt!.vatAmount!.toString()).toFixed(2)).toBe('232.09');
+    expect(new Decimal(receipt!.amountBeforeVat!.toString()).toFixed(2)).toBe('3315.40');
+    expect(receipt!.itemDescription).toContain('ลดตามสัดส่วนยอดค้างจริง');
   });
 });

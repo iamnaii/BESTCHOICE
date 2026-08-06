@@ -233,10 +233,10 @@ export class PaymentReceiptOrchestrator {
         data: { status: 'CANCELLED', cancelledAt: new Date() },
       });
 
-      // Real-time late fee: mode-aware via resolveLateFee (PER_DAY default —
-      // min(days×rate, maxAmount, 5%×amountDue); config-switchable to BRACKET).
-      // Set = resolved fee (NOT max(stored, resolved)) so this path agrees with
-      // the overdue cron's retroactive downgrade. Skip waived.
+      // Real-time late fee: flat-bracket via resolveLateFee (CPA ยืนยันขั้นบันได
+      // ถาวร 2026-08-01 — the only formula). Set = resolved fee (NOT
+      // max(stored, resolved)) so this path agrees with the overdue cron's
+      // retroactive downgrade. Skip waived.
       let lateFee = d(payment.lateFee);
       if (!payment.lateFeeWaived && payment.dueDate < effectivePaidDate) {
         const daysOverdue = Math.max(
@@ -244,7 +244,7 @@ export class PaymentReceiptOrchestrator {
           Math.floor((effectivePaidDate.getTime() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24)),
         );
         const lateFeeCfg = await loadLateFeeConfig(tx);
-        const bracketFee = resolveLateFee(lateFeeCfg, daysOverdue, payment.amountDue);
+        const bracketFee = resolveLateFee(lateFeeCfg, daysOverdue);
         if (!bracketFee.eq(lateFee)) {
           lateFee = bracketFee;
           await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });

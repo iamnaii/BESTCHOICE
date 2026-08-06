@@ -49,8 +49,28 @@ async function main() {
     const result = await service.calculateProvisions(system.id, undefined, true);
 
     console.log('=== ECL DRY-RUN (no writes) ===');
-    console.log('byBucket:', JSON.stringify(result.byBucket, null, 2));
     console.log('totalProvision target:', result.totalProvision.toLocaleString());
+
+    // Per-bucket summary (2026-07-26 Task 7) — now TRUTHFUL: byBucket is
+    // aggregated from each contract's per-installment bucketAgg, so a
+    // multi-bucket contract's provision is split across its real buckets
+    // instead of being dumped onto the oldest installment's display bucket.
+    console.log('--- per-bucket summary (per-installment, truthful) ---');
+    const bucketOrder = ['1-30', '31-60', '61-90', '91-180', '180+'];
+    const bucketKeys = Object.keys(result.byBucket).sort((a, b) => {
+      const ia = bucketOrder.indexOf(a);
+      const ib = bucketOrder.indexOf(b);
+      if (ia === -1 && ib === -1) return a.localeCompare(b);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+    for (const bucket of bucketKeys) {
+      const agg = result.byBucket[bucket];
+      console.log(
+        `  ${bucket.padEnd(7)} count=${agg.count.toString().padStart(4)}  amount=${agg.amount.toLocaleString()} ฿`,
+      );
+    }
 
     let increase = 0;
     let release = 0;

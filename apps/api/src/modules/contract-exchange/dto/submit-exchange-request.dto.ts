@@ -1,4 +1,9 @@
-import { IsUUID, IsString, IsArray, ArrayMaxSize, IsOptional, MinLength } from 'class-validator';
+import {
+  IsUUID, IsString, IsArray, ArrayMaxSize, IsOptional, MinLength,
+  IsIn, IsNumberString, IsInt, Min, Max,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 
 export class SubmitExchangeRequestDto {
   @IsUUID('all', { message: 'oldContractId ต้องเป็น UUID' })
@@ -20,4 +25,35 @@ export class SubmitExchangeRequestDto {
   @ArrayMaxSize(5, { message: 'ภาพถ่ายไม่เกิน 5 รูป' })
   @IsString({ each: true })
   conditionPhotos?: string[];
+
+  // ===== PRICED mode (Device Swap 2026-07) =====
+  @IsOptional()
+  @IsNumberString({}, { message: 'ราคารับซื้อต้องเป็นตัวเลข' })
+  buybackPrice?: string;
+
+  @IsOptional()
+  @IsIn(['A', 'B', 'C', 'D'], { message: 'สภาพเครื่องต้องเป็น A-D' })
+  deviceCondition?: string;
+
+  /**
+   * ไม่บังคับ และ **ไม่มีผลต่อ JE ใดๆ** ตั้งแต่ 2026-08-03 (คำสั่งเจ้าของ):
+   * เส้นทางเปลี่ยนเครื่องไม่มีการเคลื่อนไหวเงินสดในวัน finalize อีกต่อไป
+   * (A.3 ตั้งลูกหนี้ 11-2107 แทน + เจ้าหนี้สัญญาใหม่ไปล้างที่รอบจ่ายปกติ).
+   * คงฟิลด์ไว้เพื่อความเข้ากันได้ของ API + คอลัมน์ประวัติบนตาราง request;
+   * ถ้าไคลเอนต์เก่ายังส่งมา จะถูกบันทึกเป็นข้อมูลอ้างอิงเท่านั้น.
+   */
+  @IsOptional()
+  @IsIn(CASH_ACCOUNT_CODES as unknown as string[], { message: 'บัญชีเงินสดไม่ถูกต้อง' })
+  depositAccountCode?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'จำนวนงวดต้องเป็นจำนวนเต็ม' })
+  @Min(1, { message: 'จำนวนงวดอย่างน้อย 1' })
+  @Max(48, { message: 'จำนวนงวดไม่เกิน 48' })
+  newTotalMonths?: number;
+
+  @IsOptional()
+  @IsNumberString({}, { message: 'อัตราดอกเบี้ยต้องเป็นตัวเลข' })
+  newInterestRate?: string;
 }

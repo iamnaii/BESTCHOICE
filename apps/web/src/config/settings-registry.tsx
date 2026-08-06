@@ -99,7 +99,7 @@ export const settingsRegistry: SettingsCategory[] = [
     id: 'finance', label: 'การเงิน & สินเชื่อ', icon: Wallet, roles: ['OWNER', 'FINANCE_MANAGER'],
     items: [
       { id: 'interest', label: 'ดอกเบี้ย', roles: ['OWNER'], kind: 'route', component: InterestConfigPage, path: '/settings/finance/interest' },
-      { id: 'late-fee', label: 'ค่าปรับ & เงื่อนไขผ่อน', roles: ['OWNER'], kind: 'inline', component: LateFeeSettingsCard, keywords: ['ค่าปรับ', 'late fee', 'เบี้ยปรับ', 'ปรับล่าช้า', 'per day', 'ต่อวัน', 'งวด', 'overdue', 'ติดตามหนี้', 'ปิดก่อนกำหนด'] },
+      { id: 'late-fee', label: 'ค่าปรับ & เงื่อนไขผ่อน', roles: ['OWNER'], kind: 'inline', component: LateFeeSettingsCard, keywords: ['ค่าปรับ', 'late fee', 'เบี้ยปรับ', 'ปรับล่าช้า', 'ขั้นบันได', 'bracket', 'งวด', 'overdue', 'ติดตามหนี้', 'ปิดก่อนกำหนด'] },
       { id: 'gfin', label: 'GFIN', roles: ['OWNER'], kind: 'route', component: GfinConfigPage, path: '/settings/finance/gfin' },
       { id: 'payment-methods', label: 'ช่องทางชำระเงิน', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'route', component: PaymentMethodSettingsPage, path: '/settings/finance/payment-methods' },
     ],

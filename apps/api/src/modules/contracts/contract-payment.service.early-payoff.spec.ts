@@ -103,6 +103,8 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
       {} as any, // ShopCollectSettlementTemplate never invoked by getEarlyPayoffQuote
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {} as any, // ReceiptsService never invoked by getEarlyPayoffQuote
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any, // EclStageReverseTemplate never invoked by getEarlyPayoffQuote
     );
   });
 

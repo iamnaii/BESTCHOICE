@@ -10,9 +10,16 @@ import { Decimal } from '@prisma/client/runtime/library';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import {
+  computeInstallmentOutstanding,
+  type CnBreakdownContractInput,
+  type CnPaymentInput,
+  type InstallmentOutstandingRow,
+} from '../journal/compute-cn-breakdown';
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import { glContractBalance } from '../journal/gl-contract-balance';
 import { ConsecutiveMissedService } from '../overdue/consecutive-missed.service';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
@@ -29,15 +36,6 @@ const DEFAULT_PROVISION_RATES: Record<string, number> = {
   '61-90': 0.50,   // B3 → contract should be TERMINATED (manual)
   '91-180': 0.75,  // B4 TERMINATED
   '180+': 1.00,    // B5 TERMINATED (NPL)
-};
-
-// streak count -> minimum aging bucket it floors the provision to (CPA spec §1).
-// Threshold = the largest key <= streak. Streak 0-1 → no floor (aging only).
-const DEFAULT_STREAK_BUCKET_MAP: Record<string, string> = {
-  '2': '31-60',  // B2
-  '3': '61-90',  // B3
-  '4': '91-180', // B4
-  '5': '180+',   // B5
 };
 
 @Injectable()
@@ -127,27 +125,48 @@ export class BadDebtService {
     return '180+';                             // B5 (NPL)
   }
 
-  /** Load streak→bucket map from SystemConfig or use defaults. */
-  private async getStreakBucketMap(): Promise<Record<string, string>> {
+  /**
+   * Load streak→bucket map from SystemConfig.
+   *
+   * Streak-floor DORMANT semantics (2026-07-26 per-installment plan, spec
+   * §2.2 — scrutinize blocker resolution): a MISSING row, an EMPTY object,
+   * or CORRUPT JSON all mean **NO floor at all** — this is a deliberate
+   * reversal of the old behaviour where any of those cases silently fell
+   * back to a code-default map (DEFAULT_STREAK_BUCKET_MAP, now retired).
+   * Only an explicit, non-empty SystemConfig row activates the floor. If the
+   * CPA later reinstates the floor as the default, that's a 1-row config
+   * INSERT — no code change.
+   */
+  private async getStreakBucketMap(): Promise<Record<string, string> | null> {
     const config = await this.prisma.systemConfig.findUnique({
       where: { key: 'consecutive_missed_bucket_map' },
     });
-    if (config) {
-      try {
-        return JSON.parse(config.value);
-      } catch (err) {
-        Sentry.captureException(err, {
-          level: 'error',
-          tags: { subsystem: 'bad-debt', key: 'consecutive_missed_bucket_map' },
-        });
-        this.logger.error('Corrupt consecutive_missed_bucket_map — using defaults');
+    if (!config) return null;
+    try {
+      const parsed = JSON.parse(config.value) as Record<string, string>;
+      if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
+        return null;
       }
+      return parsed;
+    } catch (err) {
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: { subsystem: 'bad-debt', key: 'consecutive_missed_bucket_map' },
+      });
+      this.logger.error(
+        'Corrupt consecutive_missed_bucket_map — no floor applied (2026-07-26 dormant-by-default semantics)',
+      );
+      return null;
     }
-    return DEFAULT_STREAK_BUCKET_MAP;
   }
 
-  /** Floor bucket for a streak: the entry whose threshold is the largest <= streak. */
-  private streakToBucket(streak: number, map = DEFAULT_STREAK_BUCKET_MAP): string | null {
+  /**
+   * Floor bucket for a streak: the entry whose threshold is the largest <=
+   * streak. `map` is required — no code-default fallback (see
+   * `getStreakBucketMap`); callers must only invoke this once they already
+   * know a non-null map is configured.
+   */
+  private streakToBucket(streak: number, map: Record<string, string>): string | null {
     let best: string | null = null;
     let bestThreshold = -1;
     for (const [k, bucket] of Object.entries(map)) {
@@ -180,32 +199,13 @@ export class BadDebtService {
   }
 
   /**
-   * ฐาน ECL ของสัญญา TERMINATED = มูลค่าตามบัญชีของลูกหนี้ (carrying amount):
-   * 11-2103 (accrued ค้าง) + 11-2101 (ยังไม่ accrue, excl VAT) − 11-2106 (unearned interest).
-   * VAT deferred (11-2105/21-2102) หักล้างกันเอง — ไม่เข้าฐาน.
-   * เหตุผล: หลังบอกเลิก 2A หยุด accrue — ฐานจาก Payment rows จะบวมรวมดอกเบี้ย/VAT
-   * ที่ยังไม่รับรู้ เกิน carrying amount (spec 2026-07-23 §4 1c)
-   */
-  private async terminatedCarryingAmount(
-    contractId: string,
-    db: Prisma.TransactionClient | PrismaService = this.prisma,
-  ): Promise<Decimal> {
-    const [accrued, gross, unearned] = await Promise.all([
-      this.glBalance(contractId, '11-2103', 'dr', db),
-      this.glBalance(contractId, '11-2101', 'dr', db),
-      this.glBalance(contractId, '11-2106', 'cr', db),
-    ]);
-    // M4: clamp at >= 0 — unearned interest can (in edge/rounding cases)
-    // exceed accrued+gross, which would otherwise hand a negative "carrying
-    // amount" into the ECL rate multiplication downstream.
-    return Decimal.max(0, accrued.plus(gross).minus(unearned));
-  }
-
-  /**
-   * GL balance ราย contract จาก journal lines (POSTED เท่านั้น) — pattern เดียวกับ
-   * BadDebtWriteOffTemplate/RepossessionJP5Template. side='cr' คืน ΣCr−ΣDr
-   * (contra-asset/liability เช่น 11-2102, 11-2106), side='dr' คืน ΣDr−ΣCr
-   * (asset เช่น 11-2101, 11-2103).
+   * GL balance ราย contract — thin delegate to the shared
+   * `journal/gl-contract-balance.ts` helper (2026-07-26, ECL-per-installment
+   * Task 5 — extracted from this exact method + the identical copies in
+   * `BadDebtWriteOffTemplate` and `RepossessionJP5Template`). Kept as a
+   * same-signature wrapper (contractId first, `db` defaulted last) so every
+   * existing call site in this file, and every jest mock of
+   * `prisma.journalLine.findMany`, keeps working unchanged.
    */
   private async glBalance(
     contractId: string,
@@ -213,37 +213,104 @@ export class BadDebtService {
     side: 'dr' | 'cr',
     db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<Decimal> {
-    const lines = await db.journalLine.findMany({
-      where: {
-        accountCode,
-        journalEntry: {
-          metadata: { path: ['contractId'], equals: contractId },
-          status: 'POSTED',
-          deletedAt: null,
-        },
-      },
-      select: { debit: true, credit: true },
-    });
-    let bal = new Decimal(0);
-    for (const l of lines) {
-      bal =
-        side === 'cr'
-          ? bal.plus(l.credit.toString()).minus(l.debit.toString())
-          : bal.plus(l.debit.toString()).minus(l.credit.toString());
+    return glContractBalance(db, contractId, accountCode, side);
+  }
+
+  /**
+   * Shared per-installment provision math — the SINGLE place that turns a set
+   * of engine rows (`computeInstallmentOutstanding(..., { selection: 'DUE' })`)
+   * into a bucket/provision aggregation. Used by BOTH `calculateProvisions`
+   * (daily cron) and `reverseStageOnPayment` (real-time payment hook) so the
+   * two can never independently drift on what "the current provision for
+   * this contract" means (2026-07-26 Task 4 — extracted from T3's
+   * `calculateProvisions` loop, behavior-identical).
+   *
+   * `floorBucket` is the ONE contract-level streak-floor bucket (or null if
+   * the floor is dormant) — compared per-row against that row's own aging
+   * bucket via `effectiveBucket` (higher provision rate wins).
+   */
+  private computePerInstallmentProvision(
+    rows: InstallmentOutstandingRow[],
+    rates: Record<string, number>,
+    floorBucket: string | null,
+  ): {
+    bucketAgg: Record<string, { count: number; base: Decimal; provision: Decimal }>;
+    contractOutstanding: Decimal;
+    contractProvision: Decimal;
+    oldest: InstallmentOutstandingRow;
+  } {
+    const bucketAgg: Record<string, { count: number; base: Decimal; provision: Decimal }> = {};
+    let contractOutstanding = new Decimal(0);
+    let contractProvision = new Decimal(0);
+    let oldest = rows[0];
+
+    for (const row of rows) {
+      const rowDays = row.daysOverdue ?? 0;
+      if (rowDays > (oldest.daysOverdue ?? 0)) oldest = row;
+
+      const rowAgingBucket = this.getAgingBucket(rowDays);
+      const bucket = this.effectiveBucket(rowAgingBucket, floorBucket, rates);
+      const rate = rates[bucket] || 0;
+      const rowProvision = row.outstanding
+        .mul(new Decimal(rate))
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+
+      contractOutstanding = contractOutstanding.add(row.outstanding);
+      contractProvision = contractProvision.add(rowProvision);
+
+      if (!bucketAgg[bucket]) {
+        bucketAgg[bucket] = { count: 0, base: new Decimal(0), provision: new Decimal(0) };
+      }
+      bucketAgg[bucket].count++;
+      bucketAgg[bucket].base = bucketAgg[bucket].base.add(row.outstanding);
+      bucketAgg[bucket].provision = bucketAgg[bucket].provision.add(rowProvision);
     }
-    return bal;
+
+    return { bucketAgg, contractOutstanding, contractProvision, oldest };
   }
 
   /**
    * Calculate Bad Debt provisions per TFRS for NPAEs Chapter 13.
    *
-   * Uses CPA ECL v3.0 (NPAEs Ch.13 Aging-based · 6 buckets B0-B5):
+   * Per-installment engine (2026-07-26 ECL-per-installment plan, spec §2.1-2.2):
+   * every outstanding installment ages INDEPENDENTLY off its own
+   * `Payment.dueDate` via `computeInstallmentOutstanding(..., { selection })`
+   * — the same fee-netted engine that powers the CN (ใบลดหนี้) pro-rate. A
+   * contract with 4 unpaid installments at 120/90/60/30 days gets 4 separate
+   * bucket provisions summed together, NOT one whole-contract bucket keyed
+   * off the oldest installment (the retired v3 model). The old carrying-amount
+   * base (`terminatedCarryingAmount`) is retired entirely (Task 4, 2026-07-26)
+   * — `reverseStageOnPayment` shares this same per-installment math via
+   * `computePerInstallmentProvision`.
+   *
+   * C1 (final-review 2026-07-26, critical fix): TERMINATED contracts do NOT
+   * use plain `selection: 'DUE'` like ACTIVE/OVERDUE/DEFAULT contracts —
+   * they use `selection: 'ACCRUED'` instead. DUE is Payment-row-driven and
+   * deliberately does NOT require accrual to have run (resilience so ECL
+   * doesn't go blind when the 2A cron lags on an ACTIVE contract) — but the
+   * 2A cron stops firing entirely once a contract is TERMINATED, so an
+   * unconditional DUE selection would provision against un-accrued
+   * (unearned) interest/VAT the moment a future installment's dueDate
+   * crosses into the past post-termination (spec §2.2 "deferred ไม่ตั้งสำรอง").
+   * ACCRUED only admits installments the 2A cron actually accrued
+   * (`InstallmentSchedule.accrualJournalEntryId != null`), so the base
+   * always ties to what is actually sitting on GL 11-2103. See the inline
+   * branch below + `reverseStageOnPayment`'s identical branch.
+   *
+   * CPA ECL v3.0 buckets (NPAEs Ch.13 Aging-based · 6 buckets B0-B5), unchanged:
    *   B0: 0 days (ปกติ)    0%   ACTIVE (no provision row created)
    *   B1: 1-30 days        2%   ACTIVE
    *   B2: 31-60 days       15%  ACTIVE (alert 60d trigger)
    *   B3: 61-90 days       50%  → contract should be TERMINATED (manual)
    *   B4: 91-180 days      75%  TERMINATED
    *   B5: >180 days        100% TERMINATED (NPL)
+   *
+   * Streak floor is DORMANT by default (spec §2.2) — an empty/missing/corrupt
+   * `consecutive_missed_bucket_map` SystemConfig means NO floor at all; only
+   * an explicit non-empty row activates it. When active, ONE floor bucket
+   * per contract (streak is a contract-level metric) is compared against
+   * EACH installment's own aging bucket — higher provision rate wins
+   * per-installment (see `getStreakBucketMap`).
    *
    * Approved NPAEs simplification per Ch.13 — forward-looking macro factors
    * not required at NPAEs level. Rates are configurable via
@@ -252,9 +319,10 @@ export class BadDebtService {
    *
    * Reverses existing ACTIVE provisions for in-scope contracts before
    * creating fresh ones, so re-running is idempotent. Posts a delta JE
-   * per contract via BadDebtProvisionTemplate (Phase A.5a).
+   * per contract via BadDebtProvisionTemplate (Phase A.5a) — delta-vs-GL
+   * mechanics are untouched by the per-installment engine swap.
    *
-   * Refs: docs/accounting/audit-report.html (Wave 4 T1, TFRS 9 W-1/W-2)
+   * Refs: docs/superpowers/specs/2026-07-26-ecl-per-installment-design.md §2.2
    */
   async calculateProvisions(
     calculatedById: string,
@@ -270,10 +338,13 @@ export class BadDebtService {
     const now = new Date();
     const branchFilter = branchId ? { branchId } : {};
 
-    // Find all overdue payments from active contracts
-    // Aging is based on the oldest UNPAID overdue installment per contract.
-    // Paid installments are excluded (status filter), so if installments 1-4 are paid
-    // and installment 5 (due 100 days ago) is unpaid, aging = 100 days. This is correct.
+    // Find all overdue payments from in-scope contracts — same scope as
+    // before (PENDING/PARTIALLY_PAID/OVERDUE, dueDate < now, contract in
+    // ACTIVE/OVERDUE/DEFAULT/TERMINATED) — PLUS the contract money fields the
+    // per-installment engine needs (financedAmount/storeCommission/
+    // interestTotal/vatAmount/totalMonths), fetched once here so the
+    // per-contract engine call below never re-queries either the contract or
+    // its payments (preloaded — no N+1).
     const overduePayments = await this.prisma.payment.findMany({
       where: {
         // OVERDUE included (2026-07-24 hotfix): overdue-lifecycle cron flips past-due
@@ -281,6 +352,9 @@ export class BadDebtService {
         // aged installment (ConsecutiveMissedService already counts OVERDUE; now consistent)
         status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
         dueDate: { lt: now },
+        // I1 (final-review 2026-07-26): a soft-deleted Payment row must never
+        // count toward the ECL candidate/grouping query.
+        deletedAt: null,
         contract: {
           deletedAt: null,
           // TERMINATED เข้า scope ตาม Excel v3 B4/B5 — escalate ต่อระหว่างรอยึด/ตัดหนี้สูญ
@@ -290,44 +364,65 @@ export class BadDebtService {
         },
       },
       include: {
-        contract: { select: { id: true, status: true } },
+        contract: {
+          select: {
+            id: true,
+            // C1 (final-review 2026-07-26): needed to branch DUE vs ACCRUED
+            // selection per contract below — TERMINATED must NOT provision
+            // un-accrued installments (2A stops firing post-termination).
+            status: true,
+            totalMonths: true,
+            financedAmount: true,
+            storeCommission: true,
+            interestTotal: true,
+            vatAmount: true,
+          },
+        },
       },
       take: 10000, // safety cap — prevent unbounded memory usage
       orderBy: { dueDate: 'asc' },
     });
 
-    // Group by contract and calculate total outstanding per contract (Decimal arithmetic)
-    const contractOutstanding = new Map<
-      string,
-      { amount: Decimal; oldestDueDate: Date }
-    >();
-    const contractStatus = new Map<string, string>();
+    // Group payments per contract — every row already matches
+    // computeInstallmentOutstanding's DUE filter (status/dueDate), so this
+    // preload lets the engine skip its own payment query entirely per contract
+    // for NON-TERMINATED contracts (TERMINATED contracts bypass this preload
+    // entirely — see the per-contract loop below, C1 final-review fix).
+    type ContractGroup = {
+      contract: CnBreakdownContractInput & { status: string };
+      payments: CnPaymentInput[];
+    };
+    const contractGroups = new Map<string, ContractGroup>();
     for (const p of overduePayments) {
-      contractStatus.set(p.contract.id, p.contract.status);
-      const existing = contractOutstanding.get(p.contract.id);
-      const remaining = this.computeOutstanding(p);
-      if (existing) {
-        existing.amount = existing.amount.add(remaining);
-      } else {
-        contractOutstanding.set(p.contract.id, {
-          amount: remaining,
-          oldestDueDate: p.dueDate,
-        });
+      let group = contractGroups.get(p.contract.id);
+      if (!group) {
+        group = { contract: p.contract, payments: [] };
+        contractGroups.set(p.contract.id, group);
       }
+      group.payments.push({
+        installmentNo: p.installmentNo,
+        status: p.status,
+        amountDue: p.amountDue,
+        amountPaid: p.amountPaid,
+        lateFee: p.lateFee,
+        lateFeeWaived: p.lateFeeWaived,
+        dueDate: p.dueDate,
+      });
     }
 
     // Reverse existing ACTIVE provisions only for contracts in scope.
     // Wrap REVERSE + CREATE in a single $transaction — without it, a
     // failed createMany after the reverse would leave provisions REVERSED
     // with no replacement, dropping coverage on the balance sheet.
-    const contractIdsInScope = [...contractOutstanding.keys()];
+    const contractIdsInScope = [...contractGroups.keys()];
 
-    // Fetch streak data once before the loop (streak floor = max severity wins).
+    // Streak floor is OPT-IN (2026-07-26 semantics, see getStreakBucketMap) —
+    // a missing/empty/corrupt config means NO floor, so skip the streak
+    // query entirely in that case (nothing would read it anyway).
     const streakMap = await this.getStreakBucketMap();
-    const streaks = await this.consecutiveMissed.getStreaks(
-      { contractIds: contractIdsInScope },
-      now,
-    );
+    const streaks = streakMap
+      ? await this.consecutiveMissed.getStreaks({ contractIds: contractIdsInScope }, now)
+      : new Map<string, number>();
 
     // Pre-compute provision rows (Decimal — no Number cast in persisted values)
     type ProvisionRow = {
@@ -338,41 +433,102 @@ export class BadDebtService {
       outstandingAmount: Prisma.Decimal;
       provisionRate: Prisma.Decimal;
       provisionAmount: Prisma.Decimal;
+      bucketBreakdown: Record<string, { count: number; base: string; provision: string }>;
     };
     const byBucket: Record<string, { count: number; amount: Decimal }> = {};
     const provisions: ProvisionRow[] = [];
 
-    for (const [contractId, data] of contractOutstanding) {
-      const isTerminated = contractStatus.get(contractId) === 'TERMINATED';
-      const baseAmount = isTerminated
-        ? await this.terminatedCarryingAmount(contractId)
-        : data.amount;
-      const daysOverdue = Math.floor(
-        (now.getTime() - data.oldestDueDate.getTime()) / (1000 * 60 * 60 * 24),
+    for (const [contractId, group] of contractGroups) {
+      // C1 (final-review 2026-07-26, critical fix): TERMINATED contracts must
+      // NOT provision un-accrued installments. DUE selection is Payment-row-
+      // driven and does NOT require accrual to have run (by design, so ECL
+      // stays resilient when the 2A cron lags on an ACTIVE contract) — but
+      // the 2A accrual cron stops firing entirely once a contract is
+      // TERMINATED, so a future installment whose dueDate crosses into the
+      // past post-termination would surface in DUE and get provisioned
+      // against interest/VAT that was never recognized into the ledger
+      // (violates spec §2.2 "deferred ไม่ตั้งสำรอง"). TERMINATED contracts use
+      // ACCRUED selection instead — only installments the 2A cron actually
+      // accrued (`InstallmentSchedule.accrualJournalEntryId != null`) enter
+      // the base, mirroring exactly what's sitting on GL 11-2103. ACCRUED
+      // can't reuse the DUE-preloaded `group.payments` (that preload already
+      // excludes PAID rows, which ACCRUED needs to see in order to correctly
+      // skip a fully-settled-but-still-accrued installment) — it re-queries
+      // installmentSchedule + payment itself. TERMINATED contracts are a
+      // small subset of contractGroups, so the extra query per contract is
+      // acceptable.
+      const isTerminated = group.contract.status === 'TERMINATED';
+      const { rows } = isTerminated
+        ? await computeInstallmentOutstanding(this.prisma, group.contract, {
+            selection: 'ACCRUED',
+            asOf: now,
+          })
+        : await computeInstallmentOutstanding(this.prisma, group.contract, {
+            selection: 'DUE',
+            asOf: now,
+            preloaded: { payments: group.payments },
+          });
+      // All installments fully covered net of fees (incl. overpaid edge
+      // case) — nothing to provision. The contract stays in
+      // `contractIdsInScope` so a stale ACTIVE provision still gets
+      // REVERSED below (correctly reflects "no allowance needed anymore").
+      if (rows.length === 0) continue;
+
+      // ONE floor bucket per contract (streak is a contract-level metric) —
+      // compared against EACH installment's own aging bucket, higher rate wins.
+      const floorBucket = streakMap
+        ? this.streakToBucket(streaks.get(contractId) ?? 0, streakMap)
+        : null;
+
+      const { bucketAgg, contractOutstanding, contractProvision, oldest } =
+        this.computePerInstallmentProvision(rows, rates, floorBucket);
+
+      // agingBucket (display/sort, spec §2.3) = bucket of the OLDEST
+      // installment, post-floor — reflects what actually drove that row's rate.
+      const contractBucket = this.effectiveBucket(
+        this.getAgingBucket(oldest.daysOverdue ?? 0),
+        floorBucket,
+        rates,
       );
-      const agingBucket = this.getAgingBucket(daysOverdue);
-      const streakBucket = this.streakToBucket(streaks.get(contractId) ?? 0, streakMap);
-      const bucket = this.effectiveBucket(agingBucket, streakBucket, rates);
-      const rate = rates[bucket] || 0;
-      const rateDec = new Decimal(rate);
-      const outstandingDec = baseAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      const provisionAmountDec = baseAmount
-        .mul(rateDec)
-        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const outstandingDec = contractOutstanding.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const provisionAmountDec = contractProvision.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      // Blended rate for backward-compat with UI/reports reading a single
+      // provisionRate per contract (spec §2.3) — provision/base, 4dp.
+      const provisionRateDec = outstandingDec.gt(0)
+        ? contractProvision.div(outstandingDec).toDecimalPlaces(4, Decimal.ROUND_HALF_UP)
+        : new Decimal(0);
+
+      const bucketBreakdown: Record<string, { count: number; base: string; provision: string }> = {};
+      for (const [b, agg] of Object.entries(bucketAgg)) {
+        bucketBreakdown[b] = {
+          count: agg.count,
+          base: agg.base.toFixed(2),
+          provision: agg.provision.toFixed(2),
+        };
+      }
 
       provisions.push({
         contractId,
         provisionDate: now,
-        agingBucket: bucket,
-        daysOverdue,
+        agingBucket: contractBucket,
+        daysOverdue: oldest.daysOverdue ?? 0,
         outstandingAmount: outstandingDec,
-        provisionRate: rateDec,
+        provisionRate: provisionRateDec,
         provisionAmount: provisionAmountDec,
+        bucketBreakdown,
       });
 
-      if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: new Decimal(0) };
-      byBucket[bucket].count++;
-      byBucket[bucket].amount = byBucket[bucket].amount.add(provisionAmountDec);
+      // byBucket aggregates from the PER-INSTALLMENT bucketAgg (Task 7 fix) —
+      // NOT the whole-contract provisionAmountDec dumped onto contractBucket
+      // (the oldest installment's display bucket). A contract spanning
+      // multiple buckets (e.g. {90,60,30} → 757.92/227.37/30.32) must show its
+      // TRUE per-bucket split, not the full 1,015.61 attributed to '61-90'
+      // alone — that was the deferred Warning from the earlier review.
+      for (const [bucket, agg] of Object.entries(bucketAgg)) {
+        if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: new Decimal(0) };
+        byBucket[bucket].count += agg.count;
+        byBucket[bucket].amount = byBucket[bucket].amount.add(agg.provision);
+      }
     }
 
     // Atomic REVERSE + CREATE — never leave the balance sheet without coverage.
@@ -401,19 +557,35 @@ export class BadDebtService {
 
     const deltas: { contractId: string; bucket: string; prevGl: string; target: string; delta: string }[] = [];
 
-    for (const p of provisions) {
+    // CRITICAL fix (second-reviewer finding, post-Task-4): iterate
+    // `contractIdsInScope`, NOT `provisions`. A contract whose engine rows all
+    // dropped (rows.length === 0 in the loop above — e.g. fee-netted fully
+    // covered, status not yet flipped to PAID) never gets a `provisions`
+    // entry, so looping over `provisions` alone silently skipped its
+    // delta-vs-GL evaluation entirely — a stale 11-2102 GL balance from a
+    // PRIOR run would never be released, diverging from the DB row (which
+    // still gets REVERSED above). Every in-scope contract must get a GL
+    // evaluation with target defaulting to 0 when no provision was computed —
+    // this restores the pre-Task-4 guarantee ("delta-vs-GL กลไกเดิม ไม่แตะ").
+    const provisionsByContract = new Map(provisions.map((p) => [p.contractId, p]));
+
+    for (const contractId of contractIdsInScope) {
       try {
-        const glPrev = await this.glBalance(p.contractId, '11-2102', 'cr');
-        const delta = new Decimal(p.provisionAmount.toString()).sub(glPrev);
+        const p = provisionsByContract.get(contractId);
+        const target = p ? new Decimal(p.provisionAmount.toString()) : new Decimal(0);
+        const bucket = p ? p.agingBucket : 'CURRENT';
+        const glPrev = await this.glBalance(contractId, '11-2102', 'cr');
+        const delta = target.sub(glPrev);
 
         if (dryRun) {
-          // Report completeness: include zero-delta contracts too (they would
-          // be skipped for posting, but still reflect target vs GL state).
+          // Report completeness: include zero-delta AND zero-target contracts
+          // too (they would be skipped for posting, but still reflect target
+          // vs GL state).
           deltas.push({
-            contractId: p.contractId,
-            bucket: p.agingBucket,
+            contractId,
+            bucket,
             prevGl: glPrev.toFixed(2),
-            target: p.provisionAmount.toFixed(2),
+            target: target.toFixed(2),
             delta: delta.toFixed(2),
           });
           continue;
@@ -422,15 +594,15 @@ export class BadDebtService {
         if (delta.abs().lt(new Decimal('0.005'))) continue;
 
         await this.badDebtProvisionTemplate.execute({
-          contractId: p.contractId,
+          contractId,
           provisionAmount: delta,
           period,
           runDate,
         });
       } catch (err) {
-        Sentry.captureException(err, { extra: { contractId: p.contractId, period } });
+        Sentry.captureException(err, { extra: { contractId, period } });
         this.logger.error(
-          `[A.5a] Bad debt provision JE failed for contract ${p.contractId} period ${period}: ${(err as Error).message}`,
+          `[A.5a] Bad debt provision JE failed for contract ${contractId} period ${period}: ${(err as Error).message}`,
         );
       }
     }
@@ -455,9 +627,20 @@ export class BadDebtService {
   }
 
   /**
-   * Get provision summary (current ACTIVE provisions)
+   * Get provision summary (current ACTIVE provisions).
+   *
+   * byBucket (2026-07-26, Task 7 — reports+docs alignment): aggregated from
+   * Σ `bucketBreakdown` across ACTIVE rows, NOT the row's single `agingBucket`
+   * (oldest-installment display bucket) — a contract spanning multiple
+   * buckets (e.g. {90,60,30}) must contribute its TRUE per-bucket share to
+   * each bucket, not dump its whole provisionAmount onto the oldest one.
+   * Rows persisted BEFORE the per-installment migration (Task 2/3) carry no
+   * `bucketBreakdown` — those fall back to the old whole-row attribution
+   * (their entire outstanding/provision keyed under their single agingBucket)
+   * so pre-migration data still reports sensibly instead of vanishing.
    */
   async getProvisionSummary() {
+    const rates = await this.getProvisionRates();
     const provisions = await this.prisma.badDebtProvision.findMany({
       where: { status: 'ACTIVE', deletedAt: null },
       include: {
@@ -475,10 +658,18 @@ export class BadDebtService {
     // Decimal accumulation (TFRS 9 / v4 mandate — avoid float drift on aggregation)
     let totalOutstandingDec = new Decimal(0);
     let totalProvisionDec = new Decimal(0);
-    const bucketDec = new Map<
-      string,
-      { count: number; outstanding: Decimal; provision: Decimal; rate: number }
-    >();
+    const bucketDec = new Map<string, { count: number; outstanding: Decimal; provision: Decimal }>();
+
+    const addBucket = (bucket: string, count: number, outstanding: Decimal, provision: Decimal) => {
+      const entry = bucketDec.get(bucket);
+      if (!entry) {
+        bucketDec.set(bucket, { count, outstanding, provision });
+      } else {
+        entry.count += count;
+        entry.outstanding = entry.outstanding.add(outstanding);
+        entry.provision = entry.provision.add(provision);
+      }
+    };
 
     for (const p of provisions) {
       const outstandingDec = new Decimal(p.outstandingAmount.toString());
@@ -486,19 +677,21 @@ export class BadDebtService {
       totalOutstandingDec = totalOutstandingDec.add(outstandingDec);
       totalProvisionDec = totalProvisionDec.add(provisionDec);
 
-      const bucket = p.agingBucket;
-      const entry = bucketDec.get(bucket);
-      if (!entry) {
-        bucketDec.set(bucket, {
-          count: 1,
-          outstanding: outstandingDec,
-          provision: provisionDec,
-          rate: Number(p.provisionRate),
-        });
+      const breakdown = p.bucketBreakdown as Record<
+        string,
+        { count: number; base: string; provision: string }
+      > | null;
+
+      if (breakdown && typeof breakdown === 'object' && Object.keys(breakdown).length > 0) {
+        // Per-installment engine (Task 3+) — true per-bucket share.
+        for (const [bucket, agg] of Object.entries(breakdown)) {
+          addBucket(bucket, agg.count, new Decimal(agg.base), new Decimal(agg.provision));
+        }
       } else {
-        entry.count++;
-        entry.outstanding = entry.outstanding.add(outstandingDec);
-        entry.provision = entry.provision.add(provisionDec);
+        // Legacy row (pre per-installment migration, no bucketBreakdown
+        // persisted) — fall back to whole-row attribution under its single
+        // agingBucket, same as the retired v3 behavior.
+        addBucket(p.agingBucket, 1, outstandingDec, provisionDec);
       }
     }
 
@@ -507,11 +700,19 @@ export class BadDebtService {
       { count: number; outstanding: number; provision: number; rate: number }
     > = {};
     for (const [bucket, entry] of bucketDec) {
+      // Rate derived from the actual data (provision/outstanding) rather than
+      // the current rates config — a contract's persisted provision reflects
+      // whatever rate was in effect WHEN it was calculated, which may differ
+      // from the live SystemConfig by the time this summary is read. Falls
+      // back to the configured rate only for the (should-be-impossible)
+      // zero-outstanding case.
       byBucket[bucket] = {
         count: entry.count,
         outstanding: entry.outstanding.toNumber(),
         provision: entry.provision.toNumber(),
-        rate: entry.rate,
+        rate: entry.outstanding.gt(0)
+          ? entry.provision.div(entry.outstanding).toNumber()
+          : (rates[bucket] ?? 0),
       };
     }
 
@@ -528,6 +729,12 @@ export class BadDebtService {
         outstandingAmount: new Decimal(p.outstandingAmount.toString()).toNumber(),
         provisionRate: Number(p.provisionRate),
         provisionAmount: new Decimal(p.provisionAmount.toString()).toNumber(),
+        // Passthrough (Task 7) — per-bucket breakdown for this contract's
+        // provision, null for legacy pre-migration rows.
+        bucketBreakdown: (p.bucketBreakdown as Record<
+          string,
+          { count: number; base: string; provision: string }
+        > | null) ?? null,
       })),
     };
 
@@ -786,21 +993,37 @@ export class BadDebtService {
   }
 
   /**
-   * ECL Stage Reverse on payment (CPA Policy A spec §3.6).
+   * ECL Stage Reverse on payment (CPA Policy A §3.6 → per-installment engine,
+   * Task 4 2026-07-26).
    *
    * Called from PaymentReceipt2BTemplate / payments.service after a successful
-   * payment posts. Recomputes the contract's max-aging bucket using the latest
-   * (post-payment) installment state. If the new bucket is below all the
-   * persisted ACTIVE provisions, releases the over-provision delta back to
-   * P&L via EclStageReverseTemplate (Dr 11-2102 / Cr 51-1103).
+   * payment posts. Recomputes the contract's TARGET provision using the exact
+   * same per-installment engine + math as `calculateProvisions`
+   * (`computeInstallmentOutstanding(..., { selection })` →
+   * `computePerInstallmentProvision`) — never a separate formula, so the
+   * real-time payment hook and the daily cron can never compute a different
+   * number for the same contract state.
+   *
+   * release = min(existing.provisionAmount − target, GL 11-2102) when > 0.
+   * target === 0 (no outstanding installments left) → full release via the
+   * shared `fullReverseProvision` helper (already GL-capped). TERMINATED
+   * contracts use `selection: 'ACCRUED'` here too (C1, final-review
+   * 2026-07-26 — same fix as `calculateProvisions`): the old GL-carrying-
+   * amount override (`terminatedCarryingAmount`, reading
+   * 11-2103/11-2101/11-2106) is still retired, but a plain unconditional DUE
+   * selection for TERMINATED contracts would provision against un-accrued
+   * (unearned) interest once the 2A cron stops firing post-termination — see
+   * `calculateProvisions`'s inline comment for the full rationale. ACTIVE/
+   * OVERDUE/DEFAULT contracts keep DUE selection unchanged.
    *
    * Pass `tx` to chain into the caller's transaction so a JE failure rolls
-   * back the parent receipt JE. Returns null when no reverse is needed
-   * (no ACTIVE provision, or aging didn't drop).
+   * back the parent receipt JE. Returns null when no reverse is needed (no
+   * ACTIVE provision, or the target didn't drop below the persisted amount).
    *
-   * Note: bucket comparison is done by rate ordering (B1=2% < B2=15% < B3=50%
-   * < B4=75% < B5=100%) — a "drop" is when the new bucket's rate is strictly
-   * less than the existing provision's rate.
+   * fromBucket/toBucket on the returned metadata (and the JE) are cosmetic —
+   * "bucket of the oldest outstanding installment" before/after, same as
+   * `calculateProvisions`'s `agingBucket` display convention. They do not
+   * drive the release math (the release is amount-based, not rate-based).
    */
   async reverseStageOnPayment(
     contractId: string,
@@ -814,82 +1037,63 @@ export class BadDebtService {
     });
     if (!existing) return null;
 
-    const now = new Date();
-    const overduePayments = await db.payment.findMany({
-      where: {
-        contractId,
-        // OVERDUE included (2026-07-24 hotfix): overdue-lifecycle cron flips past-due
-        // payments PENDING → OVERDUE on prod — excluding it made ECL blind to every
-        // aged installment (ConsecutiveMissedService already counts OVERDUE; now consistent)
-        status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
-        dueDate: { lt: now },
-        deletedAt: null,
-      },
-      select: { dueDate: true, amountDue: true, amountPaid: true },
-    });
-
-    let maxOverdueDays = 0;
-    let totalOutstanding = new Decimal(0);
-    for (const p of overduePayments) {
-      const days = Math.floor((now.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24));
-      if (days > maxOverdueDays) maxOverdueDays = days;
-      totalOutstanding = totalOutstanding.add(this.computeOutstanding(p));
-    }
-
-    // TERMINATED — ฐาน ECL = carrying amount จาก GL (เดียวกับ calculateProvisions,
-    // Task 4). หลังบอกเลิก 2A หยุด accrue จึงต้องอิง GL แทน Payment rows.
-    //
-    // CRITICAL (review round 2): this lookup MUST happen BEFORE the
-    // maxOverdueDays<=0 early-exit below. If a TERMINATED contract's overdue
-    // Payment rows just got paid off, `overduePayments` comes back empty and
-    // maxOverdueDays = 0 — but GL carrying amount can still show real
-    // exposure. Falling into the old "fully current → full reverse" branch
-    // on maxOverdueDays alone would zero out legitimate ECL coverage while
-    // the contract is still carrying a receivable. Doing the TERMINATED
-    // check first and branching on carrying amount (not maxOverdueDays)
-    // avoids that.
     const contract = await db.contract.findUnique({
       where: { id: contractId },
-      select: { status: true },
+      select: {
+        id: true,
+        // C1 (final-review 2026-07-26) — branches DUE vs ACCRUED below.
+        status: true,
+        totalMonths: true,
+        financedAmount: true,
+        storeCommission: true,
+        interestTotal: true,
+        vatAmount: true,
+      },
     });
-    const isTerminated = contract?.status === 'TERMINATED';
-    if (isTerminated) {
-      totalOutstanding = await this.terminatedCarryingAmount(contractId, db);
+    // Defensive — contract vanished between the provision row existing and
+    // this payment posting (should not happen in practice).
+    if (!contract) return null;
 
-      // No aging-bucket stage-drop semantics for TERMINATED at payment time —
-      // there are no more due dates to age against. Only fully release the
-      // provision when carrying amount is truly settled (<=0). Otherwise
-      // leave the provision untouched: provision อัปเดตโดย daily cron เมื่อ
-      // สัญญามีงวดค้างอย่างน้อย 1 งวด (dueDate < now); ถ้าชำระงวดค้างครบแต่
-      // ยังมีงวดอนาคต provision จะคงค้างที่ค่าเดิม (ทิศ conservative) จนกว่า
-      // งวดถัดไปเลย dueDate — นโยบาย escalate ระหว่างช่องว่างนี้รอ owner/CPA
-      // ตัดสิน (spec 2026-07-23 §4 1c follow-up).
-      if (totalOutstanding.gt(0)) return null;
-      return this.fullReverseProvision(contractId, existing, db, tx);
-    }
+    const now = new Date();
+    // C1 (final-review 2026-07-26) — see calculateProvisions's identical
+    // branch for the full rationale: TERMINATED must not provision un-accrued
+    // installments once the 2A cron stops firing post-termination.
+    const { rows } = await computeInstallmentOutstanding(db, contract, {
+      selection: contract.status === 'TERMINATED' ? 'ACCRUED' : 'DUE',
+      asOf: now,
+    });
 
-    if (maxOverdueDays <= 0 || totalOutstanding.lte(0)) {
-      // Contract is fully current — fall through and reverse the entire provision.
+    if (rows.length === 0) {
+      // No outstanding installments left (fully current / fully paid off) —
+      // target is 0 → full release, same path for ACTIVE and TERMINATED.
       return this.fullReverseProvision(contractId, existing, db, tx);
     }
 
     const rates = await this.getProvisionRates();
+    // Streak floor is opt-in (2026-07-26 semantics, see getStreakBucketMap) —
+    // skip the streak query entirely when no map is configured.
     const streakMap = await this.getStreakBucketMap();
-    const streaks = await this.consecutiveMissed.getStreaks({ contractIds: [contractId] }, now, db);
-    const agingBucket = this.getAgingBucket(maxOverdueDays);
-    const streakBucket = this.streakToBucket(streaks.get(contractId) ?? 0, streakMap);
-    const newBucket = this.effectiveBucket(agingBucket, streakBucket, rates);
-    // Decimal compare to avoid float-precision drift when rates come from
-    // SystemConfig JSON (e.g. 0.15 stored as 0.149999... after JSON roundtrip).
-    const oldRate = new Decimal(existing.provisionRate.toString());
-    const newRate = new Decimal(rates[newBucket] ?? 0);
-    if (newRate.gte(oldRate)) return null; // Stage didn't drop
+    const streaks = streakMap
+      ? await this.consecutiveMissed.getStreaks({ contractIds: [contractId] }, now, db)
+      : new Map<string, number>();
+    const floorBucket = streakMap ? this.streakToBucket(streaks.get(contractId) ?? 0, streakMap) : null;
 
-    const newProvision = totalOutstanding
-      .times(newRate)
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const rowDelta = new Decimal(existing.provisionAmount.toString()).sub(newProvision);
-    if (rowDelta.lte(0)) return null;
+    const { bucketAgg, contractOutstanding, contractProvision, oldest } =
+      this.computePerInstallmentProvision(rows, rates, floorBucket);
+
+    const target = contractProvision.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const rowDelta = new Decimal(existing.provisionAmount.toString()).sub(target);
+    if (rowDelta.lte(0)) return null; // Target didn't drop (cron owns any increase)
+
+    const outstandingDec = contractOutstanding.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const newBucket = this.effectiveBucket(this.getAgingBucket(oldest.daysOverdue ?? 0), floorBucket, rates);
+    const provisionRateDec = outstandingDec.gt(0)
+      ? contractProvision.div(outstandingDec).toDecimalPlaces(4, Decimal.ROUND_HALF_UP)
+      : new Decimal(0);
+    const bucketBreakdown: Record<string, { count: number; base: string; provision: string }> = {};
+    for (const [b, agg] of Object.entries(bucketAgg)) {
+      bucketBreakdown[b] = { count: agg.count, base: agg.base.toFixed(2), provision: agg.provision.toFixed(2) };
+    }
 
     // I1: cap the release at what the GL actually holds on 11-2102 — same
     // rationale as fullReverseProvision. The row-based delta can overstate a
@@ -899,10 +1103,11 @@ export class BadDebtService {
 
     const rowUpdateData = {
       agingBucket: newBucket,
-      daysOverdue: maxOverdueDays,
-      outstandingAmount: totalOutstanding,
-      provisionRate: new Prisma.Decimal(newRate.toString()),
-      provisionAmount: newProvision,
+      daysOverdue: oldest.daysOverdue ?? 0,
+      outstandingAmount: outstandingDec,
+      provisionRate: new Prisma.Decimal(provisionRateDec.toString()),
+      provisionAmount: target,
+      bucketBreakdown,
     };
 
     if (reverseAmount.lte(0)) {

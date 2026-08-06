@@ -39,7 +39,7 @@ describe('AutoTriggerService', () => {
         create: jest.fn().mockResolvedValue({ id: 'trig-1' }),
         update: jest.fn().mockResolvedValue({}),
       },
-      // No late-fee config rows → defaults mode=PER_DAY, rate=20, max=500, cap=5
+      // No late-fee config rows → BUSINESS_RULES defaults (tier1=50, tier2=100, minDays=3)
       // loadLateFeeConfig uses findUnique (not findFirst)
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     };
@@ -131,8 +131,7 @@ describe('AutoTriggerService', () => {
     expect(lineClient.pushText).toHaveBeenCalled();
   });
 
-  it('T+3 escalation quotes per-day fine 60 (3 days × 20฿/day, min(60,500,5%×3500=175)=60)', async () => {
-    // Updated from flat-bracket 100 to per-day 60 in Task 2.
+  it('T+3 escalation quotes flat-bracket tier2 fine 100 (3 days >= minDays 3)', async () => {
     // runDailyEscalations runs processOffset(-1) then processOffset(-3). Return the
     // overdue payment ONLY for the T+3 window (dueDate strictly more than 1 day ago)
     // by matching the window start against a 3-day-old midnight boundary.
@@ -147,21 +146,18 @@ describe('AutoTriggerService', () => {
 
     await service.runDailyEscalations();
 
-    // 3 days × 20฿/day = 60 (< maxAmount 500, < 5%×3500=175) → 60฿
+    // 3 days overdue >= tier2MinDays default (3) → flat tier2 = 100
     expect(lineClient.pushText).toHaveBeenCalledWith(
       'U123',
-      expect.stringContaining('ค่าปรับ 60.00'),
+      expect.stringContaining('ค่าปรับ 100.00'),
     );
-    // Total = amount 3500 + 60 = 3560.00
+    // Total = amount 3500 + 100 = 3600.00
     const sentText = (lineClient.pushText as jest.Mock).mock.calls[0][1] as string;
-    expect(sentText).toContain('3,560.00');
-    expect(sentText).not.toContain('3,650.00');
-    expect(sentText).not.toContain('150.00');
+    expect(sentText).toContain('3,600.00');
   });
 
-  it('T+3 escalation honors configured per-day rate from SystemConfig', async () => {
-    // Updated from tier2 bracket test to per-day rate test.
-    // Configured rate=30/day, 3 days × 30 = 90, min(90,500,5%×3500=175) = 90
+  it('T+3 escalation honors a configured tier2 amount from SystemConfig', async () => {
+    // Configured tier2=90 (3 days overdue still >= default minDays 3 → tier2 applies)
     const dueDate = new Date();
     dueDate.setHours(0, 0, 0, 0);
     dueDate.setDate(dueDate.getDate() - 3);
@@ -171,12 +167,11 @@ describe('AutoTriggerService', () => {
       ),
     );
     prisma.systemConfig.findUnique.mockImplementation(({ where }: { where: { key: string } }) =>
-      Promise.resolve(where.key === 'late_fee_per_day_rate' ? { value: '30' } : null),
+      Promise.resolve(where.key === 'late_fee_tier2_amount' ? { value: '90' } : null),
     );
 
     await service.runDailyEscalations();
 
-    // 3 days × 30฿/day = 90
     expect(lineClient.pushText).toHaveBeenCalledWith(
       'U123',
       expect.stringContaining('ค่าปรับ 90.00'),

@@ -12,26 +12,21 @@ import { EditField, StatCard, type ConfigItem, type ConfigGroupItem } from './sh
  *
  * Backing keys map 1:1 onto the SystemConfig keys consumed by the API
  * `resolveLateFee` / `loadLateFeeConfig` (apps/api/src/utils/late-fee.util.ts).
- * `late_fee_mode` switches which branch is live:
- *   PER_DAY → min(days × per_day_rate, max_amount, cap_pct% × installmentGross)
- *   BRACKET → flat tier1 (1..min-1 days) / tier2 (>= min days)
+ * CPA ยืนยันขั้นบันไดถาวร (2026-08-01) — the backend's config-switchable
+ * `late_fee_mode='PER_DAY'` path was removed entirely, so this card only ever
+ * edits the flat-bracket tier fields:
+ *   flat tier1 (1..min-1 days) / tier2 (>= min days)
  * Defaults below mirror BUSINESS_RULES in apps/api/src/utils/config.util.ts so
  * the form reflects what the backend actually uses when a key is not yet stored
- * (e.g. a fresh DB with no per-day rows).
+ * (e.g. a fresh DB with no tier rows).
  */
-
-type Mode = 'BRACKET' | 'PER_DAY';
 
 // Mirrors BUSINESS_RULES.* in apps/api/src/utils/config.util.ts (keep in sync)
 // so the form reflects what the backend actually uses when a key is not yet stored.
 const DEFAULTS: Record<string, string> = {
-  late_fee_mode: 'PER_DAY',
   late_fee_tier1_amount: '50',
   late_fee_tier2_amount: '100',
   late_fee_tier2_min_days: '3',
-  late_fee_per_day_rate: '20',
-  late_fee_max_amount: '500',
-  late_fee_cap_pct: '5',
   min_installment_months: '6',
   max_installment_months: '12',
   overdue_days_threshold: '7',
@@ -41,19 +36,10 @@ const DEFAULTS: Record<string, string> = {
 // (NOT the default) — so a blank must never be persisted for them. Guarded both
 // in validate() below and server-side in settings-write.service.ts.
 const LATE_FEE_NUMERIC = new Set([
-  'late_fee_per_day_rate',
-  'late_fee_max_amount',
-  'late_fee_cap_pct',
   'late_fee_tier1_amount',
   'late_fee_tier2_amount',
   'late_fee_tier2_min_days',
 ]);
-
-const PER_DAY_FIELDS: ConfigGroupItem[] = [
-  { key: 'late_fee_per_day_rate', label: 'ค่าปรับต่อวัน (บาท/วัน)', shortLabel: 'ค่าปรับ/วัน', suffix: ' บาท/วัน', type: 'number', step: '1', desc: 'คิดค่าปรับ = ฿/วัน × จำนวนวันที่ค้าง (ก่อนเพดาน)' },
-  { key: 'late_fee_max_amount', label: 'เพดานค่าปรับสูงสุด (บาท)', shortLabel: 'เพดาน (บาท)', suffix: ' บาท', type: 'number', step: '1', desc: 'ค่าปรับต่องวดไม่เกินจำนวนนี้' },
-  { key: 'late_fee_cap_pct', label: 'เพดาน % ของค่างวด', shortLabel: 'เพดาน %', suffix: ' %', type: 'number', step: '0.1', desc: 'ค่าปรับต่องวดไม่เกิน x% ของค่างวด (รวม VAT)' },
-];
 
 const BRACKET_FIELDS: ConfigGroupItem[] = [
   { key: 'late_fee_tier1_amount', label: 'ค่าปรับ tier1 (บาท) — ช้า 1 ถึง (วันเริ่ม tier2 − 1) วัน', shortLabel: 'ค่าปรับ tier1', suffix: ' บาท', type: 'number', step: '1', desc: 'ค่าปรับคงที่เมื่อช้าไม่ถึงขั้นที่ 2' },
@@ -75,51 +61,31 @@ const COLLECTIONS_FIELDS: ConfigGroupItem[] = [
 ];
 
 const ALL_KEYS = [
-  'late_fee_mode',
-  ...PER_DAY_FIELDS.map((f) => f.key),
   ...BRACKET_FIELDS.map((f) => f.key),
   ...TERMS_FIELDS.map((f) => f.key),
   ...COLLECTIONS_FIELDS.map((f) => f.key),
 ];
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
-/** Client-side mirror of resolveLateFee — estimate only (display), not authoritative. */
-function estimateLateFee(mode: Mode, v: Record<string, string>, days: number, gross: number): number {
+/** Client-side mirror of resolveLateFee (flat-bracket) — estimate only (display), not authoritative. */
+function estimateLateFee(v: Record<string, string>, days: number): number {
   const d = Math.max(0, Math.floor(days));
-  if (mode === 'PER_DAY') {
-    if (d < 1) return 0;
-    const byDay = Number(v.late_fee_per_day_rate || 0) * d;
-    const byMax = Number(v.late_fee_max_amount || 0);
-    const byPct = round2((Number(v.late_fee_cap_pct || 0) / 100) * gross);
-    return Math.min(byDay, byMax, byPct);
-  }
   if (d <= 0) return 0;
   return d >= Number(v.late_fee_tier2_min_days || 0)
     ? Number(v.late_fee_tier2_amount || 0)
     : Number(v.late_fee_tier1_amount || 0);
 }
 
-// The ACTIVE mode's fee fields must carry a concrete number — an empty value
-// would persist as '' and resolve to 0 downstream (see LATE_FEE_NUMERIC note).
-// Months go through config.util getValue which falls back safely on '', so they
-// may stay blank; we only guard NaN + the min<max relationship.
+// The fee fields must carry a concrete number — an empty value would persist
+// as '' and resolve to 0 downstream (see LATE_FEE_NUMERIC note). Months go
+// through config.util getValue which falls back safely on '', so they may
+// stay blank; we only guard NaN + the min<max relationship.
 function validate(v: Record<string, string>): string | null {
-  const mode = v.late_fee_mode;
-  if (mode !== 'BRACKET' && mode !== 'PER_DAY') return 'โหมดค่าปรับต้องเป็น BRACKET หรือ PER_DAY';
   const num = (k: string) => Number(v[k]);
   const reqNonNeg = (k: string) => v[k] !== '' && Number.isFinite(num(k)) && num(k) >= 0;
-  if (mode === 'PER_DAY') {
-    if (!reqNonNeg('late_fee_per_day_rate')) return 'ค่าปรับต่อวันต้องเป็นตัวเลข ≥ 0';
-    if (!reqNonNeg('late_fee_max_amount')) return 'เพดานค่าปรับต้องเป็นตัวเลข ≥ 0';
-    if (!reqNonNeg('late_fee_cap_pct') || num('late_fee_cap_pct') > 100)
-      return 'เพดาน % ของค่างวดต้องเป็นตัวเลข 0–100';
-  } else {
-    if (!reqNonNeg('late_fee_tier1_amount')) return 'ค่าปรับ tier1 ต้องเป็นตัวเลข ≥ 0';
-    if (!reqNonNeg('late_fee_tier2_amount')) return 'ค่าปรับ tier2 ต้องเป็นตัวเลข ≥ 0';
-    if (!Number.isFinite(num('late_fee_tier2_min_days')) || num('late_fee_tier2_min_days') < 1)
-      return 'วันเริ่ม tier2 ต้องเป็นจำนวน ≥ 1';
-  }
+  if (!reqNonNeg('late_fee_tier1_amount')) return 'ค่าปรับ tier1 ต้องเป็นตัวเลข ≥ 0';
+  if (!reqNonNeg('late_fee_tier2_amount')) return 'ค่าปรับ tier2 ต้องเป็นตัวเลข ≥ 0';
+  if (!Number.isFinite(num('late_fee_tier2_min_days')) || num('late_fee_tier2_min_days') < 1)
+    return 'วันเริ่ม tier2 ต้องเป็นจำนวน ≥ 1';
   if (v.min_installment_months !== '' && v.max_installment_months !== '') {
     const minM = num('min_installment_months');
     const maxM = num('max_installment_months');
@@ -136,7 +102,6 @@ export function LateFeeSettingsCard() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [previewDays, setPreviewDays] = useState('10');
-  const [previewGross, setPreviewGross] = useState('1515.83');
 
   const { data: configs = [], isLoading, isError, refetch } = useQuery<ConfigItem[]>({
     queryKey: ['settings'],
@@ -161,17 +126,10 @@ export function LateFeeSettingsCard() {
   });
 
   const current = editing ? draft : serverValues;
-  const mode = (current.late_fee_mode === 'BRACKET' ? 'BRACKET' : 'PER_DAY') as Mode;
-  const activeFeeFields = mode === 'PER_DAY' ? PER_DAY_FIELDS : BRACKET_FIELDS;
 
   const startEdit = () => {
     if (!isOwner) return;
-    // Normalise a legacy/corrupt stored mode so the draft matches what the
-    // <select> displays — otherwise save would block on a value the UI can't show.
-    setDraft({
-      ...serverValues,
-      late_fee_mode: serverValues.late_fee_mode === 'BRACKET' ? 'BRACKET' : 'PER_DAY',
-    });
+    setDraft({ ...serverValues });
     setEditing(true);
   };
 
@@ -196,12 +154,7 @@ export function LateFeeSettingsCard() {
     saveMutation.mutate(items);
   };
 
-  const previewResult = estimateLateFee(
-    mode,
-    current,
-    Number(previewDays) || 0,
-    Number(previewGross) || 0,
-  );
+  const previewResult = estimateLateFee(current, Number(previewDays) || 0);
 
   return (
     <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
@@ -236,46 +189,16 @@ export function LateFeeSettingsCard() {
               </button>
             </div>
           ) : !editing ? (
-            <ViewMode values={serverValues} mode={mode} activeFeeFields={activeFeeFields} />
+            <ViewMode values={serverValues} />
           ) : (
             <div className="mt-4 flex flex-col gap-5">
-              {/* Section 1 — late fee mode + fields */}
+              {/* Section 1 — late fee fields (flat-bracket) */}
               <section className="flex flex-col gap-4">
-                <SectionTitle>ค่าปรับล่าช้า</SectionTitle>
-                <div>
-                  <div className="flex items-center gap-4">
-                    <label htmlFor="late_fee_mode" className="flex-1 text-sm text-foreground">
-                      โหมดคิดค่าปรับ
-                    </label>
-                    <div className="w-48">
-                      <select
-                        id="late_fee_mode"
-                        value={mode}
-                        onChange={(e) => setField('late_fee_mode', e.target.value)}
-                        className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-                      >
-                        <option value="PER_DAY">ต่อวัน (PER_DAY)</option>
-                        <option value="BRACKET">ขั้นบันได (BRACKET)</option>
-                      </select>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground/70 mt-1 ml-0.5 leading-snug">
-                    {mode === 'PER_DAY'
-                      ? 'คิด ฿/วัน × จำนวนวันที่ค้าง แล้วจำกัดด้วยเพดานบาท และเพดาน % ของค่างวด (อันที่น้อยสุดชนะ)'
-                      : 'คิดค่าปรับคงที่เป็นขั้น: tier1 เมื่อช้าไม่ถึงเกณฑ์, tier2 เมื่อช้าตั้งแต่วันที่กำหนด'}
-                  </p>
-                </div>
-                {activeFeeFields.map((item) => (
+                <SectionTitle>ค่าปรับล่าช้า (ขั้นบันได)</SectionTitle>
+                {BRACKET_FIELDS.map((item) => (
                   <EditField key={item.key} item={item} value={draft[item.key] ?? ''} onChange={(val) => setField(item.key, val)} />
                 ))}
-                <FeePreview
-                  days={previewDays}
-                  gross={previewGross}
-                  onDays={setPreviewDays}
-                  onGross={setPreviewGross}
-                  result={previewResult}
-                  mode={mode}
-                />
+                <FeePreview days={previewDays} onDays={setPreviewDays} result={previewResult} />
               </section>
 
               {/* Section 2 — installment terms */}
@@ -321,26 +244,13 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground leading-snug">{children}</h4>;
 }
 
-function ViewMode({
-  values,
-  mode,
-  activeFeeFields,
-}: {
-  values: Record<string, string>;
-  mode: Mode;
-  activeFeeFields: ConfigGroupItem[];
-}) {
+function ViewMode({ values }: { values: Record<string, string> }) {
   return (
     <div className="mt-4 flex flex-col gap-4">
       <section className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <SectionTitle>ค่าปรับล่าช้า</SectionTitle>
-          <span className="text-xs font-medium rounded-md bg-primary/10 text-primary px-2 py-0.5">
-            {mode === 'PER_DAY' ? 'โหมด: ต่อวัน' : 'โหมด: ขั้นบันได'}
-          </span>
-        </div>
+        <SectionTitle>ค่าปรับล่าช้า (ขั้นบันได)</SectionTitle>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {activeFeeFields.map((item) => (
+          {BRACKET_FIELDS.map((item) => (
             <StatCard key={item.key} label={item.shortLabel} value={values[item.key] || ''} suffix={item.suffix} desc={item.desc} />
           ))}
         </div>
@@ -367,18 +277,12 @@ function ViewMode({
 
 function FeePreview({
   days,
-  gross,
   onDays,
-  onGross,
   result,
-  mode,
 }: {
   days: string;
-  gross: string;
   onDays: (v: string) => void;
-  onGross: (v: string) => void;
   result: number;
-  mode: Mode;
 }) {
   return (
     <div className="rounded-lg bg-muted p-3">
@@ -394,18 +298,6 @@ function FeePreview({
             className="mt-1 block w-24 px-2 py-1 border border-input rounded-md text-sm text-right bg-background text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden"
           />
         </label>
-        {mode === 'PER_DAY' && (
-          <label className="text-xs text-muted-foreground">
-            ค่างวด (รวม VAT)
-            <input
-              type="number"
-              step="0.01"
-              value={gross}
-              onChange={(e) => onGross(e.target.value)}
-              className="mt-1 block w-32 px-2 py-1 border border-input rounded-md text-sm text-right bg-background text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden"
-            />
-          </label>
-        )}
         <div className="text-sm">
           <span className="text-muted-foreground">ค่าปรับ ≈ </span>
           <span className="font-bold text-foreground">{result.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>

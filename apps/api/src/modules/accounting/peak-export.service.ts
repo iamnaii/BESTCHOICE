@@ -43,7 +43,7 @@ export class PeakExportService {
     }
 
     // 1) Build a peakCode lookup for every account that has one. Single query
-    //    is cheaper than joining inline because there are ~99 accounts total.
+    //    is cheaper than joining inline because there are ~110 accounts total.
     const mappedAccounts = await this.prisma.chartOfAccount.findMany({
       where: { deletedAt: null, peakCode: { not: null } },
       select: { code: true, name: true, peakCode: true },

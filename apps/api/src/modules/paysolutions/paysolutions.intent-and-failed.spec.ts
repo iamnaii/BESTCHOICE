@@ -16,6 +16,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 // Same Sentry-transport stub the sibling specs use — captureException /
 // captureMessage are asserted directly in the orphan-intent test.
@@ -103,6 +104,7 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
         { provide: PaymentReceiptTemplate, useValue: template },
         { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn() } },
         { provide: PaymentsService, useValue: payments },
+        { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
 

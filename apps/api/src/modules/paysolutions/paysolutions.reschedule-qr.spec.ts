@@ -13,6 +13,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 // Same Sentry-transport stub the sibling specs use — captureException is
 // asserted directly in the orphan test.
@@ -84,11 +85,10 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
           ...paymentOverrides,
         }),
       },
-      // loadLateFeeConfig reads 7 keys — pin BRACKET so the quote is deterministic.
+      // loadLateFeeConfig reads 3 bracket keys — pin them so the quote is deterministic.
       systemConfig: {
         findUnique: jest.fn().mockImplementation(({ where: { key } }: { where: { key: string } }) => {
           const map: Record<string, string> = {
-            late_fee_mode: 'BRACKET',
             late_fee_tier1_amount: '50',
             late_fee_tier2_amount: '100',
             late_fee_tier2_min_days: '3',
@@ -137,6 +137,7 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
         { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn() } },
         { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn() } },
         { provide: PaymentsService, useValue: { recordPayment: jest.fn() } },
+        { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
 

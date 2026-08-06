@@ -12,6 +12,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 // Same Sentry-transport stub the sibling spec uses — captureMessage /
 // captureException are asserted directly in the not-found / orphan tests.
@@ -76,6 +77,7 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
         { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn() } },
         { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn() } },
         { provide: PaymentsService, useValue: payments },
+        { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
 

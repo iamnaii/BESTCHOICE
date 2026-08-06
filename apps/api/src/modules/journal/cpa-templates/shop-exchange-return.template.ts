@@ -8,6 +8,12 @@ import { CompanyResolverService } from '../company-resolver.service';
 export interface ShopExchangeReturnInput {
   oldProductId: string;
   oldContractId: string;
+  /**
+   * ContractExchangeRequest.id — part of the idempotency key (C1b, final
+   * review 2026-07-29): a canceled swap's still-POSTED A.4 must not block
+   * the same product+contract's second exchange attempt.
+   */
+  requestId: string;
   /** Cost basis of the returning device (Product.costPrice). Must be > 0. */
   cost: Decimal;
 }
@@ -33,8 +39,10 @@ export interface ShopExchangeReturnInput {
  * already has a `tx.product.update` for the status change.
  *
  * Idempotency: `metadata.flow = 'shop-exchange-return'` + `metadata.idempotencyKey
- * = <oldProductId>:<oldContractId>` (one re-intake per product per contract).
- * The journal_entries_idempotency_idx partial unique index enforces this at
+ * = <oldProductId>:<oldContractId>:<requestId>` (one re-intake per product per
+ * contract per exchange REQUEST — request-scoped since C1b so a canceled swap's
+ * still-POSTED JE doesn't block a re-exchange). The
+ * journal_entries_idempotency_idx partial unique index enforces this at
  * the DB level.
  */
 @Injectable()
@@ -59,12 +67,15 @@ export class ShopExchangeReturnTemplate {
     }
     const zero = new Decimal(0);
     const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
-    const idempotencyKey = `${input.oldProductId}:${input.oldContractId}`;
+    const idempotencyKey = `${input.oldProductId}:${input.oldContractId}:${input.requestId}`;
 
     return this.journal.createAndPost(
       {
         description: `Exchange A.4 — re-intake used device to SHOP inventory (product ${input.oldProductId})`,
-        reference: `contract:${input.oldContractId}:exchange-return`,
+        // requestId suffix (C1b): journal_entries has a unique (referenceType,
+        // referenceId) constraint — the canceled lifecycle's still-POSTED A.4
+        // keeps its reference slot, so round 2 must not reuse the same string.
+        reference: `contract:${input.oldContractId}:exchange-return:${input.requestId}`,
         metadata: {
           flow: 'shop-exchange-return',
           idempotencyKey,

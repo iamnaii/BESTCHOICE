@@ -12,6 +12,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 // We don't care about the underlying Sentry transport during unit tests —
 // captureException is spied on directly in the JE-failure test.
@@ -25,6 +26,7 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
   let prisma: any;
   let journalAuto: { createPaymentJournal: jest.Mock };
   let paymentReceiptTemplate: { execute: jest.Mock };
+  let badDebtService: { reverseStageOnPayment: jest.Mock };
   const paymentId = 'pay-1';
   const contractId = 'ct-1';
   const linkId = 'link-1';
@@ -131,6 +133,7 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
+          id: contractId,
           contractNumber: 'CT-2026-0001',
           branchId: 'br-1',
         }),
@@ -174,10 +177,12 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK', split: {} }) } },
         { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue(null) } },
         { provide: PaymentsService, useValue: { recordPayment: jest.fn() } },
+        { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
 
     paymentReceiptTemplate = mod.get(PaymentReceiptTemplate);
+    badDebtService = mod.get(BadDebtService);
     service = mod.get<PaySolutionsService>(PaySolutionsService);
     // Suppress notification-side-effect logs/throws — we don't test those here.
     jest
@@ -214,6 +219,48 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
     // Delta is the DELTA applied this webhook (1000), never cumulative.
     const jeInput = paymentReceiptTemplate.execute.mock.calls[0][0];
     expect(jeInput.delta.toString()).toBe('1000');
+  });
+
+  it('ordinary single-installment payment — reverseStageOnPayment fires once with (contractId, tx) after the receipt JE (ECL follow-up to C1)', async () => {
+    await service.handlePaymentCallback({
+      refno: 'refno-1',
+      result_code: '00',
+      order_no: 'order-1',
+      transaction_id: 'tx-1',
+      total: '1000',
+    });
+
+    expect(badDebtService.reverseStageOnPayment).toHaveBeenCalledTimes(1);
+    expect(badDebtService.reverseStageOnPayment).toHaveBeenCalledWith(contractId, prisma.__tx);
+  });
+
+  it('hook throwing rolls back the whole webhook tx — matches the orchestrator\'s Sentry-capture-then-rethrow semantics (payment-receipt-orchestrator.ts:478-485), NOT a swallowed/non-blocking failure', async () => {
+    const eclError = new Error('ECL reverse JE failed (unbalanced)');
+    badDebtService.reverseStageOnPayment.mockRejectedValueOnce(eclError);
+
+    // Same atomicity contract as a receipt-JE failure (see the sibling
+    // 'C2 fix: JE failure inside tx rolls back Payment.update' test below):
+    // the $transaction callback throws, Prisma aborts the whole tx, and the
+    // rejection propagates out of handlePaymentCallback — no orphan PAID
+    // rows AND no orphan un-released ECL allowance can exist.
+    await expect(
+      service.handlePaymentCallback({
+        refno: 'refno-1',
+        result_code: '00',
+        order_no: 'order-1',
+        transaction_id: 'tx-1',
+        total: '1000',
+      }),
+    ).rejects.toThrow(/ECL reverse JE failed/);
+
+    // The hook WAS called (mock counts even though it threw) with the exact
+    // same call shape as the success case.
+    expect(badDebtService.reverseStageOnPayment).toHaveBeenCalledWith(contractId, prisma.__tx);
+    // Sentry captured the failure with contract context BEFORE rethrowing.
+    expect(Sentry.captureException as jest.Mock).toHaveBeenCalledWith(
+      eclError,
+      expect.objectContaining({ extra: expect.objectContaining({ contractId }) }),
+    );
   });
 
   it('lazy-generates the schedule for a legacy contract (no rows) then still posts the 2B JE', async () => {

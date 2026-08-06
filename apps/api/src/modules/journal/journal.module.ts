@@ -11,7 +11,6 @@ import { PaymentReceiptTemplate } from './cpa-templates/payment-receipt.template
 import { EarlyPayoffJP4Template } from './cpa-templates/early-payoff-jp4.template';
 import { RepossessionJP5Template } from './cpa-templates/repossession-jp5.template';
 import { RescheduleJP6Template } from './cpa-templates/reschedule-jp6.template';
-import { VendorClearanceTemplate } from './cpa-templates/vendor-clearance.template';
 import { Vat60dayMandatoryTemplate } from './cpa-templates/vat-60day-mandatory.template';
 import { Vat60dayReversalTemplate } from './cpa-templates/vat-60day-reversal.template';
 import { Vat60dayCron } from './cron/vat-60day.cron';
@@ -44,7 +43,6 @@ import { PairedJournalService } from './paired-journal.service';
 import { ShopCashSaleTemplate } from './cpa-templates/shop-cash-sale.template';
 import { ShopDownPaymentTemplate } from './cpa-templates/shop-down-payment.template';
 import { ShopDownPaymentReversalTemplate } from './cpa-templates/shop-down-payment-reversal.template';
-import { ShopFinanceReceiptTemplate } from './cpa-templates/shop-finance-receipt.template';
 import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
 import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
 import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-transfer.template';
@@ -73,7 +71,6 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     EarlyPayoffJP4Template,
     RepossessionJP5Template,
     RescheduleJP6Template,
-    VendorClearanceTemplate,
     Vat60dayMandatoryTemplate,
     Vat60dayReversalTemplate,
     Vat60dayCron,
@@ -106,7 +103,6 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ShopCashSaleTemplate,
     ShopDownPaymentTemplate,
     ShopDownPaymentReversalTemplate,
-    ShopFinanceReceiptTemplate,
     ShopTradeInTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
@@ -130,7 +126,6 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     EarlyPayoffJP4Template,
     RepossessionJP5Template,
     RescheduleJP6Template,
-    VendorClearanceTemplate,
     Vat60dayMandatoryTemplate,
     Vat60dayReversalTemplate,
     BadDebtProvisionTemplate,
@@ -161,7 +156,6 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ShopCashSaleTemplate,
     ShopDownPaymentTemplate,
     ShopDownPaymentReversalTemplate,
-    ShopFinanceReceiptTemplate,
     ShopTradeInTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,

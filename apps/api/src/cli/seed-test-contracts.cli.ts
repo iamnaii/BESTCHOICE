@@ -232,7 +232,7 @@ export async function seedTestContracts(
             // Pre-stamp late fee on overdue installments (mirrors the daily overdue
             // cron) so the wizard + preview show it; record recomputes to match.
             ...(overdueDays > 0
-              ? { lateFee: resolveLateFee(lateFeeCfg, overdueDays, c.monthlyPayment) }
+              ? { lateFee: resolveLateFee(lateFeeCfg, overdueDays) }
               : {}),
             monthlyPrincipal: principal,
             monthlyInterest: interest,

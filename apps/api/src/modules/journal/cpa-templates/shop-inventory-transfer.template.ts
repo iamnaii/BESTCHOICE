@@ -39,18 +39,24 @@ import { CompanyResolverService } from '../company-resolver.service';
  * inconsistent numbers a `BadRequestException` is thrown BEFORE either JE
  * touches the ledger.
  *
- * Why the down-payment liability is cleared HERE (not in
- * ShopFinanceReceiptTemplate as the previous design did):
+ * Why the down-payment liability is cleared HERE (not in a FINANCE-receipt
+ * template, per an earlier design that was reverted):
  *   - The customer paid the down BEFORE contract activation
  *     (`ShopDownPaymentTemplate` booked Dr cash / Cr S21-2001).
  *   - At ACTIVATION the sale is complete and revenue is earned, so the
  *     "advance from customer" liability must be reclassified into revenue.
- *   - Booking it in the FINANCE-receipt template was incorrect because
- *     FINANCE's wire to SHOP has nothing to do with the customer's down.
+ *   - Booking it in a separate FINANCE-receipt-triggered template was
+ *     incorrect because FINANCE's wire to SHOP has nothing to do with the
+ *     customer's down.
  *
- * Pairs with `ShopFinanceReceiptTemplate` which now becomes a simple
- * cash-in / receivable-clearance posting when FINANCE actually wires the
- * money (which may be the same day as activation, or days later batched).
+ * When FINANCE actually wires `financedAmount + commission` to SHOP (same
+ * day as activation, or days later, possibly batched across many contracts),
+ * that receipt is booked by `IntercoSettlementService.approveBatch`
+ * (`interco-settlement` module, 2026-07-30) — a per-batch JE built directly
+ * from `S11-3001`/`S11-3002` GL balances, not a per-contract template call.
+ * The old per-contract `ShopFinanceReceiptTemplate` this comment used to
+ * reference was retired the same day (caller-less once
+ * `shop-finance-settlement` module was removed).
  *
  * FINANCE-side bookings:
  *   - `ContractActivation1ATemplate` already posts Dr 11-2101 / Cr 21-1101

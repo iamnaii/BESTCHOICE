@@ -14,6 +14,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
+import { BadDebtService } from '../accounting/bad-debt.service';
 import type { PartialPaymentLink } from '@prisma/client';
 import { PaySolutionsGatewayClient } from './services/paysolutions-gateway.client';
 import {
@@ -76,6 +77,7 @@ export class PaySolutionsService {
     private vat60Reversal: Vat60dayReversalTemplate,
     @Inject(forwardRef(() => PaymentsService))
     private paymentsService: PaymentsService,
+    private badDebtService: BadDebtService,
   ) {}
 
   /**
@@ -108,6 +110,7 @@ export class PaySolutionsService {
         this.journalAutoService,
         this.paymentReceiptTemplate,
         this.vat60Reversal,
+        this.badDebtService,
         {
           handlePartialPaymentCallback: (link, data) =>
             this.handlePartialPaymentCallback(link, data),

@@ -1,6 +1,7 @@
 import Decimal from 'decimal.js';
 import { calcBcInstallment } from '@installment/shared';
 import { SHOP_BASE_URL } from '@/lib/env';
+import { IPHONE_COLORS } from '@/components/product/VariantSelector';
 
 /** shape ของ GET /interest-configs/resolved?category=... */
 export interface BcConfigJson {
@@ -22,6 +23,7 @@ export interface DefaultInstallment {
  * ถูกคัดลอกไปส่งลูกค้าและถูก assert แบบตรงตัวในเทสต์
  */
 export function formatBaht(value: number): string {
+  if (!Number.isFinite(value)) return '-';
   const fixed = Math.abs(value).toFixed(2);
   const [intPart, decPart] = fixed.split('.');
   const withSep = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -61,10 +63,19 @@ export function computeDefaultBcInstallment(
   });
 
   if (!result.isValid) return null;
+
+  const downAmountNum = result.downAmount.toNumber();
+  const monthlyPaymentNum = result.monthlyPayment.toNumber();
+  // decimal.js accepts NaN/Infinity as valid Decimal values (no throw) — a corrupt
+  // config (e.g. minDownPct/vatPct already NaN upstream) can sail through calcBcInstallment
+  // with isValid still true. Treat a non-finite result as invalid so the caller never
+  // receives a NaN/Infinity to print into a customer-facing message.
+  if (!Number.isFinite(downAmountNum) || !Number.isFinite(monthlyPaymentNum)) return null;
+
   return {
     months,
-    downAmount: result.downAmount.toNumber(),
-    monthlyPayment: result.monthlyPayment.toNumber(),
+    downAmount: downAmountNum,
+    monthlyPayment: monthlyPaymentNum,
   };
 }
 
@@ -106,6 +117,19 @@ function nonEmpty(value: string | null | undefined): string | null {
 }
 
 /**
+ * product.color เก็บค่าอังกฤษดิบ (เช่น 'Natural Titanium' — ดู VariantSelector.tsx
+ * IPHONE_COLORS ที่ value=อังกฤษ/label=ไทย). ถ้า map ได้ ใช้ label ไทยพร้อมคำ "สี" นำ
+ * (ตรงกับที่พนักงานเห็นในตัวเลือกสี). ถ้า map ไม่ได้ (สีที่พิมพ์เองแบบ custom) fallback
+ * เป็นค่าดิบ **ไม่มี** คำว่า "สี" นำ — ตรงกับที่หน้าร้านจริงโชว์ (เช่น "…256GB Natural Titanium").
+ */
+function resolveColorLabel(color: string | null | undefined): string | null {
+  const raw = nonEmpty(color);
+  if (!raw) return null;
+  const match = IPHONE_COLORS.find((c) => c.value === raw);
+  return match ? `สี${match.label}` : raw;
+}
+
+/**
  * ข้อความสรุปสำหรับส่งลูกค้าทางแชท — pure function ทั้งก้อน (ไม่แตะ DOM/network)
  * เพื่อให้เป็นแกนที่ทดสอบได้เต็ม. กติกา null-safe: บรรทัดหลัก (ชื่อรุ่น + เงินสด)
  * แสดงเสมอ, บรรทัดรองที่ไม่มีข้อมูล **ตัดทิ้งทั้งบรรทัด** ไม่โชว์ '-' ให้ลูกค้าอ่าน
@@ -117,7 +141,7 @@ export function buildCustomerSummary(input: CustomerSummaryInput): string {
     nonEmpty(input.brand),
     nonEmpty(input.model),
     nonEmpty(input.storage),
-    nonEmpty(input.color) ? `สี${nonEmpty(input.color)}` : null,
+    resolveColorLabel(input.color),
   ]
     .filter((p): p is string => p !== null)
     .join(' ');
@@ -135,21 +159,31 @@ export function buildCustomerSummary(input: CustomerSummaryInput): string {
   );
 
   const instPrice = toNumber(input.installmentPrice);
-  if (input.installment && instPrice != null && instPrice > 0) {
+  if (
+    input.installment &&
+    instPrice != null &&
+    instPrice > 0 &&
+    Number.isFinite(input.installment.downAmount) &&
+    Number.isFinite(input.installment.monthlyPayment)
+  ) {
     const { months, downAmount, monthlyPayment } = input.installment;
     lines.push(
       `ผ่อน ${months} งวด ดาวน์ ${formatBaht(downAmount)} บาท งวดละ ${formatBaht(monthlyPayment)} บาท`,
     );
   }
 
+  const accessories = (input.accessoriesIncluded ?? [])
+    .map((a) => a.trim())
+    .filter((a) => a.length > 0);
+
   const specs = [
-    input.batteryHealth != null ? `แบต ${input.batteryHealth}%` : null,
+    input.batteryHealth != null && input.batteryHealth > 0
+      ? `แบต ${input.batteryHealth}%`
+      : null,
     input.shopWarrantyDays != null && input.shopWarrantyDays > 0
       ? `ประกันร้าน ${input.shopWarrantyDays} วัน`
       : null,
-    input.accessoriesIncluded && input.accessoriesIncluded.length > 0
-      ? `อุปกรณ์: ${input.accessoriesIncluded.join(', ')}`
-      : null,
+    accessories.length > 0 ? `อุปกรณ์: ${accessories.join(', ')}` : null,
   ].filter((s): s is string => s !== null);
   if (specs.length > 0) lines.push(specs.join(' | '));
 

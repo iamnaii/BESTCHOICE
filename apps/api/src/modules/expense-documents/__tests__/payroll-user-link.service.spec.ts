@@ -20,10 +20,13 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
     created = undefined;
     prisma = {
       $transaction: jest.fn(async (cb: any) => cb(prisma)),
+      // Duplicate-period guard (2026-08-06) — advisory lock + probe (null = no dup)
+      $executeRaw: jest.fn().mockResolvedValue(0),
       employeeProfile: {
         findMany: jest.fn().mockResolvedValue([activeEmployee]),
       },
       expenseDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(async (args: any) => {
           created = args;
           return { id: 'pr-1', number: 'PR-20260601-0001' };
@@ -46,8 +49,9 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
       pettyCashTemplate: { execute: jest.fn() }, // pettyCash template
       pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
       payrollCustom: {
-        loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])),
+        loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1103', '53-1104'])),
         validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }),
+        validateDeductionAccounts: jest.fn().mockResolvedValue(undefined),
       }, // payrollCustom
       notifications: { send: jest.fn().mockResolvedValue({ id: 'n-1', status: 'SENT' }) },
     }).service;

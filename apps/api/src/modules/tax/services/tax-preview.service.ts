@@ -620,16 +620,33 @@ export class TaxPreviewService {
   }
 
   /**
-   * Payroll WHT (ภ.ง.ด.1) preview. Source: JournalLine accountCode='21-3101'
-   * (WHT payable — payroll) joined to PayrollLine via metadata.documentId on
-   * the originating PAYROLL ExpenseDocument.
+   * Payroll WHT (ภ.ง.ด.1) preview.
    *
-   * WHT base on a payroll line = baseSalary (already pre-VAT; payroll has no
-   * VAT). Each PayrollLine row maps 1:1 to a beneficiary on form ภ.ง.ด.1.
+   * 2026-08-06 rewrite (payroll-shop-side design §8) — sources directly from
+   * POSTED PAYROLL ExpenseDocuments (status='POSTED' + journalEntryId set)
+   * instead of walking 21-3101 JE lines. Why:
+   *   1. ภ.ง.ด.1 ต้องแสดงผู้มีเงินได้ทุกคน — พนักงานภาษี 0 ไม่มีบรรทัด 21-3101
+   *      ใน JE เลย จึงหายทั้งคนใน implementation เดิม (และ filter
+   *      whtAmount > 0 บน PayrollLine ตัดซ้ำอีกชั้น). เอกสารเป็นแหล่งที่ครบ.
+   *   2. เอกสารที่ VOID แล้วหลุดออกอัตโนมัติ (เดิม JE ต้นฉบับยัง POSTED อยู่ —
+   *      ใบเงินเดือนที่ยกเลิกยังโผล่ใน ภ.ง.ด.1).
+   *   3. Payroll โพสต์ได้ทั้ง 21-3101 (FINANCE scope) และ S21-3101 (SHOP scope
+   *      — นิติบุคคลเดียวกัน ยื่นรวม) — เดิมอ่านแค่ 21-3101.
+   *
+   * gross = baseSalary + Σ customIncome(isTaxable=true) — โบนัส/OT ที่เสียภาษี
+   * เป็นเงินได้ตาม ม.40(1) ต้องเข้าฐาน (ม.42-exempt rows excluded by design).
+   * Period keyed on paidAt (ม.50 — หักเมื่อจ่าย), documentDate fallback.
+   *
+   * NO branch/company gate (review fix 2026-08-06): SHOP + FINANCE are ONE
+   * juristic person today — ภ.ง.ด.1 ยื่นรวมทั้งบริษัท. Branches all belong to
+   * the SHOP CompanyInfo while FINANCE-scope payroll posts under FINANCE, so
+   * gating on getBranchIds(companyId) made the FINANCE selection permanently
+   * empty and the SHOP selection silently company-wide anyway. `companyId` is
+   * kept for the response/TaxReport bookkeeping only. Revisit when Phase 3 SP7
+   * splits the entities into separate legal companies.
    */
   private async previewPayrollWHT(companyId: string, year: number, month: number) {
     const { startDate, endDate } = this.getDateRange(year, month);
-    const branchIds = await this.getBranchIds(companyId);
     const emptyResult = {
       items: [] as Array<{
         employeeName: string;
@@ -650,59 +667,18 @@ export class TaxPreviewService {
       transactionCount: 0,
     };
 
-    if (branchIds.length === 0) return emptyResult;
-
-    const lines = await this.prisma.journalLine.findMany({
-      where: {
-        accountCode: '21-3101',
-        credit: { gt: 0 },
-        deletedAt: null,
-        journalEntry: {
-          deletedAt: null,
-          status: 'POSTED',
-          postedAt: { gte: startDate, lte: endDate },
-          // payroll.template.ts writes `flow: 'expense-payroll'` — must match exactly
-          metadata: {
-            path: ['flow'],
-            string_starts_with: 'expense-payroll',
-          } as Prisma.JsonFilter,
-        },
-      },
-      include: {
-        journalEntry: {
-          select: {
-            id: true,
-            postedAt: true,
-            description: true,
-            metadata: true,
-          },
-        },
-      },
-      orderBy: { journalEntry: { postedAt: 'asc' } },
-    });
-
-    if (lines.length === 0) return emptyResult;
-
-    const documentIds = [
-      ...new Set(
-        lines
-          .map((l) => {
-            const md = l.journalEntry.metadata as Prisma.JsonObject | null;
-            const docId = md?.documentId;
-            return typeof docId === 'string' ? docId : null;
-          })
-          .filter((v): v is string => v !== null),
-      ),
-    ];
-
-    if (documentIds.length === 0) return emptyResult;
-
     const docs = await this.prisma.expenseDocument.findMany({
       where: {
-        id: { in: documentIds },
-        branchId: { in: branchIds },
+        documentType: 'PAYROLL',
+        status: 'POSTED',
+        journalEntryId: { not: null },
         deletedAt: null,
+        OR: [
+          { paidAt: { gte: startDate, lte: endDate } },
+          { paidAt: null, documentDate: { gte: startDate, lte: endDate } },
+        ],
       },
+      orderBy: { documentDate: 'asc' },
       select: {
         id: true,
         number: true,
@@ -711,18 +687,23 @@ export class TaxPreviewService {
         payroll: {
           select: {
             lines: {
-              where: { whtAmount: { gt: 0 } },
               select: {
                 employeeName: true,
                 employeeTaxId: true,
                 baseSalary: true,
                 whtAmount: true,
+                customIncome: {
+                  where: { isTaxable: true },
+                  select: { amount: true },
+                },
               },
             },
           },
         },
       },
     });
+
+    if (docs.length === 0) return emptyResult;
 
     const items: Array<{
       employeeName: string;
@@ -736,10 +717,14 @@ export class TaxPreviewService {
     for (const doc of docs) {
       const payDate = doc.paidAt ?? doc.documentDate ?? new Date();
       for (const line of doc.payroll?.lines ?? []) {
+        const taxableIncome = (line.customIncome ?? []).reduce(
+          (s, r) => s.add(r.amount),
+          new Prisma.Decimal(0),
+        );
         items.push({
           employeeName: line.employeeName,
           employeeTaxId: line.employeeTaxId,
-          gross: line.baseSalary,
+          gross: line.baseSalary.add(taxableIncome),
           whtAmount: line.whtAmount,
           payDate,
           payrollDocNumber: doc.number,

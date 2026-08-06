@@ -427,6 +427,11 @@ export class ExpenseDocumentCreateService {
     });
   }
 
+  // ─── Payroll form meta (delegate — facade → here → PayrollCustomService) ──
+  async getPayrollMeta(scope: 'SHOP' | 'FINANCE') {
+    return this.payrollCustom.getMeta(scope);
+  }
+
   // ─── Payroll create — multi-line, computes netPaid per line ──────────
   async createPayroll(
     dto: CreatePayrollDto,
@@ -438,6 +443,44 @@ export class ExpenseDocumentCreateService {
       throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
     }
 
+    // คำสั่งเจ้าของ 2026-08-06 — payroll สังกัดฝั่งเดียวต่อใบ. SHOP = พนักงานสาขา
+    // → ผัง S + companyId SHOP; FINANCE = ส่วนกลาง → ผังเดิม. UI ส่ง entityScope
+    // เสมอ (default SHOP บนฟอร์ม); caller เก่าที่ไม่ส่ง (recurring template /
+    // instantiate เดิม) infer จากบัญชีจ่าย — template เดิมถือรหัส 11-XXXX จึงตก
+    // FINANCE ตรงกับรหัสบัญชีที่มันจะโพสต์จริง แทนที่จะ error ทั้ง cron.
+    const entityScope: 'SHOP' | 'FINANCE' =
+      dto.entityScope ?? (dto.depositAccountCode.startsWith('S') ? 'SHOP' : 'FINANCE');
+
+    // Scope-consistency of the cash leg: a SHOP payroll pays out of a SHOP
+    // cash/bank account (S11-XXXX) and vice versa. The DTO's @IsIn already
+    // limited the code to the union whitelist; this pins it to the scope.
+    const depositIsShop = dto.depositAccountCode.startsWith('S');
+    if (entityScope === 'SHOP' && !depositIsShop) {
+      throw new BadRequestException(
+        'เงินเดือนพนักงานสาขา (SHOP) ต้องจ่ายจากบัญชีเงินสด/ธนาคารของหน้าร้าน (S11-XXXX) — ' +
+          `พบ ${dto.depositAccountCode}`,
+      );
+    }
+    if (entityScope === 'FINANCE' && depositIsShop) {
+      throw new BadRequestException(
+        'เงินเดือนส่วนกลาง (FINANCE) ต้องจ่ายจากบัญชีเงินสด/ธนาคารของ FINANCE (11-XXXX) — ' +
+          `พบ ${dto.depositAccountCode}`,
+      );
+    }
+
+    // กันพนักงานคนเดียวกันซ้ำหลายแถวในใบเดียว (จ่ายซ้ำ = เงินออกจริง). DB ก็มี
+    // unique (payroll_id, user_id) รองรับอีกชั้น — ตรงนี้ให้ error ภาษาไทยอ่านรู้เรื่อง.
+    const seenUserIds = new Set<string>();
+    for (const l of dto.lines) {
+      if (!l.userId) continue;
+      if (seenUserIds.has(l.userId)) {
+        throw new BadRequestException(
+          'มีพนักงานคนเดียวกันซ้ำมากกว่า 1 แถวในใบเงินเดือน — กรุณารวมเป็นแถวเดียว',
+        );
+      }
+      seenUserIds.add(l.userId);
+    }
+
     // SSO cap is law-mandated (กฎกระทรวง) and changes ~every 3 years. The
     // applicable cap depends on the payroll's documentDate, not the static
     // value we'd otherwise hardcode in the DTO @Max decorator. Validate each
@@ -447,8 +490,16 @@ export class ExpenseDocumentCreateService {
       await this.ssoConfig.validateContribution(docDate, l.ssoEmployee);
     }
 
-    // C2 — V17 whitelist lookup once (per request), then V16/V17/V18 per line.
-    const whitelist = await this.payrollCustom.loadWhitelist();
+    // C2 — V17 whitelist lookup once (per request, per scope), then
+    // V16/V17/V18 per line.
+    const whitelist = await this.payrollCustom.loadWhitelist(entityScope);
+
+    // V19 — deduction accounts must exist in the CoA and match the scope
+    // partition (SHOP → S-codes). Collected across all lines, checked once.
+    await this.payrollCustom.validateDeductionAccounts(
+      dto.lines.flatMap((l) => (l.customDeduction ?? []).map((d) => d.accountCode)),
+      entityScope,
+    );
 
     // PR-C — resolve linked employees once. Lines with a userId get their
     // name/taxId snapshot derived from the registry (spec §4.2 — never trust
@@ -571,6 +622,26 @@ export class ExpenseDocumentCreateService {
 
     const documentDate = new Date(dto.documentDate);
     const doc = await this.prisma.$transaction(async (tx) => {
+      // กันสร้างงวดซ้ำ (สาขา + งวด + ฝั่ง) — advisory lock ปิด race ระหว่าง 2 คน
+      // กดพร้อมกัน แล้วเช็คว่ามีใบเดิมที่ยังไม่ถูก VOID/ลบอยู่หรือไม่.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${dto.branchId}:${dto.payrollPeriod}:${entityScope}`}))`;
+      const duplicate = await tx.expenseDocument.findFirst({
+        where: {
+          documentType: 'PAYROLL',
+          branchId: dto.branchId,
+          deletedAt: null,
+          status: { not: 'VOIDED' },
+          payroll: { payrollPeriod: dto.payrollPeriod, entityScope },
+        },
+        select: { number: true },
+      });
+      if (duplicate) {
+        throw new BadRequestException(
+          `มีใบเงินเดือนงวด ${dto.payrollPeriod} ของสาขานี้ (ฝั่ง ${entityScope}) อยู่แล้ว — ` +
+            `เอกสาร ${duplicate.number} ต้องยกเลิก (VOID) ก่อนจึงจะสร้างใหม่ได้`,
+        );
+      }
+
       const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
       return tx.expenseDocument.create({
         data: {
@@ -594,6 +665,7 @@ export class ExpenseDocumentCreateService {
           payroll: {
             create: {
               payrollPeriod: dto.payrollPeriod,
+              entityScope,
               lines: {
                 create: linesPrepared.map((l) => ({
                   userId: l.userId,

@@ -66,6 +66,14 @@ export class ExpenseDocumentsController {
     return this.service.createPayroll(dto, user);
   }
 
+  // Payroll form meta (whitelist + cash accounts per scope, with CoA names).
+  // Declared BEFORE @Get(':id') so the literal path wins route matching.
+  @Get('payroll/meta')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  payrollMeta(@Query('scope') scope?: string) {
+    return this.service.getPayrollMeta(scope === 'FINANCE' ? 'FINANCE' : 'SHOP');
+  }
+
   @Post('settlement')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   createSettlement(
@@ -197,8 +205,14 @@ export class ExpenseDocumentsController {
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findOne(@Param('id') id: string, @CurrentUser() user: { role?: string | null }) {
-    return this.service.findOne(id, user.role);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: { role?: string | null; branchId?: string | null },
+  ) {
+    // สิทธิเห็นข้ามสาขา (คำสั่งเจ้าของ 2026-08-06): role นอก CROSS_BRANCH_ROLES
+    // (เช่น BRANCH_MANAGER) เห็นเฉพาะเอกสารสาขาตัวเอง — สำคัญเป็นพิเศษกับใบ
+    // เงินเดือน (PayrollLine เปิดเผยฐานเงินเดือนรายคน).
+    return this.service.findOne(id, user.role, user.branchId);
   }
 
   @Patch(':id')

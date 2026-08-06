@@ -32,6 +32,8 @@
     "ecl:dry-run": "node dist/src/cli/ecl-dry-run.cli.js",
     "wipe:expenses": "tsx src/cli/wipe-expenses.cli.ts",
     "wipe:expenses:help": "echo 'Usage: CONFIRM_WIPE_EXPENSES=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:expenses'",
+    "wipe:payroll": "tsx src/cli/wipe-payroll.cli.ts",
+    "wipe:payroll:help": "echo 'Usage: [DRY_RUN=1] CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:payroll'",
     "wipe:assets": "node dist/src/cli/wipe-assets.cli.js",
     "wipe:assets:help": "echo 'Usage: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:assets'",
     "seed:coa": "node dist/src/cli/seed-coa.cli.js",

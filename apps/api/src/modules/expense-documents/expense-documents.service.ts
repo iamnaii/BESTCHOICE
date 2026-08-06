@@ -253,14 +253,20 @@ export class ExpenseDocumentsService implements OnModuleInit {
     return this.query.getAuditTrail(id, user);
   }
 
+  // ─── Payroll form meta ───────────────────────────────────────────────
+  // Whitelist + cash accounts per scope (SHOP/FINANCE) with CoA names.
+  async getPayrollMeta(scope: 'SHOP' | 'FINANCE') {
+    return this.creator.getPayrollMeta(scope);
+  }
+
   // ─── Find one ────────────────────────────────────────────────────────
   // I5 — include type-specific detail so single-doc views (PaymentVoucher,
   // CN view, payroll view, SE view) don't need a follow-up roundtrip. The
   // base includes (expenseDetail / branch / approver) work for every type;
   // creditNote / payroll / settlement detail are added based on documentType.
   // Phase 1 decompose — delegates to ExpenseDocumentQueryService.
-  async findOne(id: string, viewerRole?: string | null) {
-    return this.query.findOne(id, viewerRole);
+  async findOne(id: string, viewerRole?: string | null, viewerBranchId?: string | null) {
+    return this.query.findOne(id, viewerRole, viewerBranchId);
   }
 
   // ─── Update (DRAFT only) ─────────────────────────────────────────────

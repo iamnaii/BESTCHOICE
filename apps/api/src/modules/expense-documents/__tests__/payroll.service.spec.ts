@@ -12,8 +12,12 @@ describe('ExpenseDocumentsService.createPayroll', () => {
   beforeEach(() => {
     prisma = {
       $transaction: jest.fn(async (cb: any) => cb(prisma)),
+      // Duplicate-period guard (2026-08-06) — advisory lock + existing-doc probe
+      // run inside the tx before create. findFirst → null = no duplicate.
+      $executeRaw: jest.fn().mockResolvedValue(0),
       expenseDocument: {
         create: jest.fn().mockResolvedValue({ id: 'pr-1', number: 'PR-20260510-0001' }),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     };
     docNumber = { next: jest.fn().mockResolvedValue('PR-20260510-0001') };
@@ -43,7 +47,11 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
       // payrollCustom mock — fixtures don't exercise custom income/deduction; loadWhitelist
       // returns the seeded default + validateLine no-ops.
-      payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }) },
+      payrollCustom: {
+        loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1103', '53-1104'])),
+        validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }),
+        validateDeductionAccounts: jest.fn().mockResolvedValue(undefined),
+      },
       notifications: { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) },
     }).service;
   });

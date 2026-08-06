@@ -7,7 +7,8 @@ import { ArrowLeft, Receipt, Users, Banknote, FileText, Check, CheckCircle2, Clo
 import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { cn } from '@/lib/utils';
-import { ExpenseFormState, newLine, newPayrollLine, newPettyCashLine } from './types';
+import { DocType, ExpenseFormState, newLine, newPayrollLine, newPettyCashLine } from './types';
+import { SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { useFormCompute } from './useFormCompute';
 import { QuickStartPanel } from './QuickStartPanel';
 import { DocTypePicker } from './DocTypePicker';
@@ -27,6 +28,10 @@ interface Props {
   branchId: string;
   onClose: () => void;
   onSaved: () => void;
+  /** Pre-select a doc type (e.g. /expenses/new?type=PR → 'PAYROLL'). Previously
+   *  the query param was silently dropped and the form always opened on
+   *  EXPENSE_SAMEDAY. */
+  initialDocType?: DocType;
 }
 
 // W3 fix — return YYYY-MM-DD for "today in Asia/Bangkok" (en-CA gives ISO-shaped
@@ -49,10 +54,14 @@ const daysBetweenBkkIso = (todayIso: string, docDateIso: string): number => {
   return Math.round(ms / (24 * 60 * 60 * 1000));
 };
 
-const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
+const initial = (
+  branchId: string,
+  defaultCash: string,
+  initialDocType?: DocType,
+): ExpenseFormState => {
   const today = new Date();
   return {
-    docType: 'EXPENSE_SAMEDAY',
+    docType: initialDocType ?? 'EXPENSE_SAMEDAY',
     branchId,
     documentDate: todayBkkIso(),
     vendorName: '',
@@ -76,6 +85,8 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
       year: today.getFullYear() + 543,
       month: today.getMonth() + 1,
       payrollPeriod: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`,
+      // คำสั่งเจ้าของ 2026-08-06 — default พนักงานสาขา (SHOP).
+      entityScope: 'SHOP',
       lines: [newPayrollLine()],
     },
     settlement: {
@@ -97,7 +108,7 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
   };
 };
 
-export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
+export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   // D1.1.5.1 — Petty Cash feature flag. When disabled, the picker hides the
@@ -107,14 +118,35 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
   // D1.3.4.1 — smartDoctypeSwitchEnabled gates the SAMEDAY→ACCRUAL auto-flip.
   // D1.3.4.2 — smartSwitchThresholdDays adds a tolerance: only flip when
   // (today − docDate) > threshold. Default 0 = legacy behavior.
-  const { smartDoctypeSwitchEnabled, smartSwitchThresholdDays, pettyCashEnabled } =
+  const { smartDoctypeSwitchEnabled, smartSwitchThresholdDays, pettyCashEnabled, approvalEnabled } =
     useUiFlags();
   const [showQuickStart, setShowQuickStart] = useState(true);
   const [state, setState] = useState<ExpenseFormState>(() =>
-    initial(branchId, user?.defaultCashAccountCode || '11-1101'),
+    initial(branchId, user?.defaultCashAccountCode || '11-1101', initialDocType),
   );
 
   const patch = (p: Partial<ExpenseFormState>) => setState((s) => ({ ...s, ...p }));
+
+  // Payroll: pin the cash account to the scope's chart (SHOP → S11-XXXX,
+  // FINANCE → 11-XXXX). Fires on entering the payroll form and on scope toggle;
+  // leaving PAYROLL restores the user's default FINANCE cash account.
+  useEffect(() => {
+    setState((s) => {
+      const isShopCode = s.depositAccountCode.startsWith('S');
+      if (s.docType === 'PAYROLL') {
+        if (s.payroll.entityScope === 'SHOP' && !isShopCode) {
+          return { ...s, depositAccountCode: 'S11-1202' }; // SCB (SHOP จ่าย)
+        }
+        if (s.payroll.entityScope === 'FINANCE' && isShopCode) {
+          return { ...s, depositAccountCode: user?.defaultCashAccountCode || '11-1201' };
+        }
+      } else if (isShopCode) {
+        return { ...s, depositAccountCode: user?.defaultCashAccountCode || '11-1101' };
+      }
+      return s;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.docType, state.payroll.entityScope]);
 
   // D1.1.5.1 — if flag flips off while user is on the Petty Cash form,
   // revert to the safe default doctype so the form doesn't render an empty
@@ -212,6 +244,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
           branchId: state.branchId,
           documentDate: state.documentDate,
           payrollPeriod: state.payroll.payrollPeriod,
+          entityScope: state.payroll.entityScope,
           depositAccountCode: state.depositAccountCode,
           paymentMethod: 'BANK_TRANSFER',
           lines: state.payroll.lines
@@ -353,13 +386,24 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         createdId = data.id;
       }
 
+      let submittedForApproval = false;
       if (andPost && createdId) {
-        await api.post(`/expense-documents/${createdId}/post`);
+        // คำสั่งเจ้าของ 2026-08-06 — เงินเดือนต้องผ่านการอนุมัติก่อนจ่าย. เมื่อ
+        // approval workflow เปิด เอกสาร PAYROLL ห้าม POST ตรง (backend ปฏิเสธ
+        // ด้วย approval_required_doc_types อยู่แล้ว) — ส่งขออนุมัติแทน.
+        if (state.docType === 'PAYROLL' && approvalEnabled) {
+          await api.post(`/expense-documents/${createdId}/submit-for-approval`);
+          submittedForApproval = true;
+        } else {
+          await api.post(`/expense-documents/${createdId}/post`);
+        }
       }
-      return { id: createdId };
+      return { id: createdId, submittedForApproval };
     },
-    onSuccess: () => {
-      toast.success('บันทึกรายจ่ายสำเร็จ');
+    onSuccess: (result) => {
+      toast.success(
+        result?.submittedForApproval ? 'บันทึกและส่งขออนุมัติแล้ว' : 'บันทึกรายจ่ายสำเร็จ',
+      );
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
       onSaved();
@@ -549,7 +593,19 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                     <CashAccountVisualPicker
                       value={state.depositAccountCode}
                       onChange={(code) => patch({ depositAccountCode: code })}
+                      codes={
+                        state.docType === 'PAYROLL' && state.payroll.entityScope === 'SHOP'
+                          ? SHOP_CASH_ACCOUNT_CODES
+                          : undefined
+                      }
                     />
+                    {state.docType === 'PAYROLL' && (
+                      <p className="mt-2 text-xs text-muted-foreground leading-snug">
+                        {state.payroll.entityScope === 'SHOP'
+                          ? 'เงินเดือนพนักงานสาขาจ่ายจากบัญชีของหน้าร้าน (SHOP) เท่านั้น'
+                          : 'เงินเดือนส่วนกลางจ่ายจากบัญชีของ FINANCE'}
+                      </p>
+                    )}
                     {state.docType === 'EXPENSE_SAMEDAY' && (
                       <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
                         <Stat label="ที่ต้องจ่าย" value={preview?.totals.netPayment ?? '0.00'} />
@@ -650,7 +706,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
               onClick={() => saveMutation.mutate({ andPost: true })}
               disabled={!ready || saveMutation.isPending}
             >
-              บันทึก & POST
+              {state.docType === 'PAYROLL' && approvalEnabled
+                ? 'บันทึก & ส่งขออนุมัติ'
+                : 'บันทึก & POST'}
             </Button>
           </div>
         </div>

@@ -562,13 +562,28 @@ export class ExpenseDocumentQueryService {
   // CN view, payroll view, SE view) don't need a follow-up roundtrip. The
   // base includes (expenseDetail / branch / approver) work for every type;
   // creditNote / payroll / settlement detail are added based on documentType.
-  async findOne(id: string, viewerRole?: string | null) {
+  async findOne(id: string, viewerRole?: string | null, viewerBranchId?: string | null) {
     // First pass to read documentType, then a typed include.
     const docType = await this.prisma.expenseDocument.findUniqueOrThrow({
       where: { id },
-      select: { documentType: true, deletedAt: true },
+      select: { documentType: true, deletedAt: true, branchId: true },
     });
     if (docType.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
+    // Branch scoping (คำสั่งเจ้าของ 2026-08-06 — สิทธิเห็นเงินเดือนระหว่างสาขา;
+    // mirrors getAuditTrail). Non-cross-branch roles (BRANCH_MANAGER) may only
+    // read documents of their OWN branch — closes the id-guessing leak that
+    // exposed another branch's full salary lines. Callers that pass no
+    // viewerBranchId (undefined — internal service-to-service reads like
+    // getAuditTrail's own findOne) keep the legacy unscoped behavior.
+    if (
+      viewerBranchId !== undefined &&
+      !hasCrossBranchAccess({ role: viewerRole ?? '' }) &&
+      docType.branchId &&
+      docType.branchId !== viewerBranchId
+    ) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสารของสาขาอื่น');
+    }
 
     const doc = await this.prisma.expenseDocument.findUniqueOrThrow({
       where: { id },

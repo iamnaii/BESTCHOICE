@@ -912,6 +912,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* ภ.ง.ด.1 รายพนักงาน + export XLSX — เดิม lazy-import ไว้แต่ไม่เคยต่อ
+              route ทำให้กดจาก UI ไม่ได้เลย (payroll-shop-side design §8) */}
+          <Route
+            path="/finance/wht-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <WhtReportPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/finance/e-tax"
             element={

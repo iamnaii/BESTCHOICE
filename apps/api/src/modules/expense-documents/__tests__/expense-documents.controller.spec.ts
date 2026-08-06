@@ -91,9 +91,9 @@ describe('ExpenseDocumentsController', () => {
     });
   });
 
-  it('GET /:id calls findOne with viewer role', async () => {
-    await controller.findOne('doc-1', { role: 'OWNER' });
-    expect(service.findOne).toHaveBeenCalledWith('doc-1', 'OWNER');
+  it('GET /:id calls findOne with viewer role + branch (สิทธิเห็นข้ามสาขา 2026-08-06)', async () => {
+    await controller.findOne('doc-1', { role: 'OWNER', branchId: 'br-1' });
+    expect(service.findOne).toHaveBeenCalledWith('doc-1', 'OWNER', 'br-1');
   });
 
   it('GET /:id/audit calls getAuditTrail with user (timeline; branch-scoped)', async () => {

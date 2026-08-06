@@ -52,6 +52,14 @@ export class AccountRoleService implements OnModuleInit {
     'sso_employer',
     'payroll_expense',
     'payroll_sso_expense',
+    // คำสั่งเจ้าของ 2026-08-06 — payroll ฝั่ง SHOP (พนักงานสาขา) ใช้ผัง S.
+    // Seeded by migration 20260990000000_payroll_shop_side (CoA rows inserted
+    // in the same migration so assertCodesExistInCoa can never fail the boot).
+    'shop_payroll_expense',
+    'shop_payroll_sso_expense',
+    'shop_wht_payroll',
+    'shop_sso_employee',
+    'shop_sso_employer',
     // D1.1.6.1 — rounding-tolerance routing role (≤1฿ underpay adjustment on
     // Payment). Seeded by migration 20260919000000_add_account_role_map.
     // Owner may remap via admin UI without redeploying the JE templates.

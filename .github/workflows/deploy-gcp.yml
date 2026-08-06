@@ -171,6 +171,8 @@ jobs:
           JOURNAL_FILES="src/modules/journal/__tests__/scenario-helpers.spec.ts src/modules/journal/cron/installment-accrual.cron.spec.ts"
           OVERDUE_FILES=$(ls src/modules/overdue/*.integration.spec.ts src/modules/overdue/services/*.integration.spec.ts)
           PAYMENTS_FILES=$(ls src/modules/payments/services/*.integration.spec.ts)
+          # Payroll SHOP-side E2E (2026-08-06) — jest ignores *.integration.spec.ts
+          EXPDOC_FILES=$(ls src/modules/expense-documents/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
@@ -180,7 +182,8 @@ jobs:
             $CONTRACTS_FILES \
             $JOURNAL_FILES \
             $OVERDUE_FILES \
-            $PAYMENTS_FILES
+            $PAYMENTS_FILES \
+            $EXPDOC_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

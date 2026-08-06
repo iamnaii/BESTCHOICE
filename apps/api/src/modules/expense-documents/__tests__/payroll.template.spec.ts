@@ -10,6 +10,8 @@ describe('PayrollTemplate', () => {
   let journal: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let roles: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let companyResolver: any;
 
   const docId = 'pr-1';
 
@@ -26,33 +28,46 @@ describe('PayrollTemplate', () => {
       journalEntry: {
         findUnique: jest.fn().mockResolvedValue({ entryNumber: 'JE-PR-001' }),
       },
-      companyInfo: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'shop-co-1' }),
-      },
     };
-    // AccountRoleService mock — same defaults the seed migration ships.
+    // AccountRoleService mock — same defaults the seed migrations ship
+    // (20260919000000 FINANCE set + 20260990000000 shop_* set).
     const roleMap: Record<string, string> = {
       payroll_expense: '53-1101',
       payroll_sso_expense: '53-1102',
       wht_payroll: '21-3101',
       sso_employee: '21-3105',
       sso_employer: '21-3106',
+      shop_payroll_expense: 'S52-1201',
+      shop_payroll_sso_expense: 'S52-1205',
+      shop_wht_payroll: 'S21-3101',
+      shop_sso_employee: 'S21-3105',
+      shop_sso_employer: 'S21-3106',
     };
     roles = { code: jest.fn((r: string) => roleMap[r] ?? `__missing_${r}`) };
-    template = new PayrollTemplate(journal, prisma, roles);
+    companyResolver = {
+      getShopCompanyId: jest.fn().mockResolvedValue('shop-co-1'),
+      getFinanceCompanyId: jest.fn().mockResolvedValue('fin-co-1'),
+    };
+    template = new PayrollTemplate(journal, prisma, roles, companyResolver);
   });
 
-  it('posts balanced JE: Dr 53-1101 + Dr 53-1102 / Cr 21-3101 + Cr 21-3105 + Cr 21-3106 + Cr cash (Fix Report P0-3)', async () => {
+  const sumDrCr = (lines: Array<{ dr: Decimal; cr: Decimal }>) => ({
+    dr: lines.reduce((s, l) => s.plus(l.dr), new Decimal(0)),
+    cr: lines.reduce((s, l) => s.plus(l.cr), new Decimal(0)),
+  });
+
+  it('SHOP scope (default — คำสั่งเจ้าของ 2026-08-06): Dr S52-1201 + Dr S52-1205 / Cr S21-3101 + S21-3105 + S21-3106 + Cr S11-1202, companyId=SHOP', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,
-      number: 'PR-20260510-0001',
+      number: 'PR-2608-001',
       documentType: 'PAYROLL',
-      documentDate: new Date('2026-05-10'),
+      documentDate: new Date('2026-08-05'),
       totalAmount: new Decimal('25000.00'),
-      depositAccountCode: '11-1101',
+      depositAccountCode: 'S11-1202',
       journalEntryId: null,
       payroll: {
-        payrollPeriod: '2026-05',
+        payrollPeriod: '2026-08',
+        entityScope: 'SHOP',
         lines: [
           { id: '1', baseSalary: new Decimal('10000.00'), ssoEmployee: new Decimal('750.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('9250.00') },
           { id: '2', baseSalary: new Decimal('15000.00'), ssoEmployee: new Decimal('750.00'), whtAmount: new Decimal('300.00'), netPaid: new Decimal('13950.00') },
@@ -63,51 +78,145 @@ describe('PayrollTemplate', () => {
     const result = await template.execute(docId);
 
     expect(result.entryNo).toBe('JE-PR-001');
-    expect(journal.createAndPost).toHaveBeenCalledTimes(1);
     const [args] = journal.createAndPost.mock.calls[0];
 
-    const drExpense = args.lines.find((l: { accountCode: string }) => l.accountCode === '53-1101');
-    expect(drExpense.dr).toEqual(new Decimal('25000'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === 'S52-1201').dr).toEqual(new Decimal('25000'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === 'S52-1205').dr).toEqual(new Decimal('1500'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === 'S21-3101').cr).toEqual(new Decimal('300'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === 'S21-3105').cr).toEqual(new Decimal('1500'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === 'S21-3106').cr).toEqual(new Decimal('1500'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === 'S11-1202').cr).toEqual(new Decimal('23200'));
 
-    // Employer SSO expense (Dr 53-1102) — matches sumSso
-    const drSsoEmployer = args.lines.find((l: { accountCode: string }) => l.accountCode === '53-1102');
-    expect(drSsoEmployer.dr).toEqual(new Decimal('1500'));
+    // ห้ามมีรหัสผัง FINANCE ปนใน SHOP-scope JE (B2 anti-regression)
+    const codes = args.lines.map((l: { accountCode: string }) => l.accountCode);
+    expect(codes.every((c: string) => c.startsWith('S'))).toBe(true);
 
-    const crWht = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3101');
-    expect(crWht.cr).toEqual(new Decimal('300'));
+    // companyId = SHOP → รายงาน scope=SHOP เห็น JE นี้ (code S + companyId ตรงกัน)
+    expect(args.companyId).toBe('shop-co-1');
+    expect(companyResolver.getFinanceCompanyId).not.toHaveBeenCalled();
 
-    // Employee SSO payable (Cr 21-3105) — new dedicated account
-    const crSsoEmp = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3105');
-    expect(crSsoEmp.cr).toEqual(new Decimal('1500'));
+    // DB-level idempotency + scope stamped in metadata
+    expect(args.metadata.idempotencyKey).toBe(`expense-payroll:${docId}`);
+    expect(args.metadata.flow).toBe('expense-payroll');
+    expect(args.metadata.entityScope).toBe('SHOP');
 
-    // Employer SSO payable (Cr 21-3106) — new dedicated account
-    const crSsoEr = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3106');
-    expect(crSsoEr.cr).toEqual(new Decimal('1500'));
+    const { dr, cr } = sumDrCr(args.lines);
+    expect(dr.toString()).toBe('26500');
+    expect(cr.toString()).toBe('26500');
+  });
 
-    // Old placeholder must NOT appear
+  it('FINANCE scope: legacy codes 53-1101/53-1102/21-31XX but companyId=FINANCE (B2 fix — เดิม post SHOP companyId)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'PR-20260510-0001',
+      documentType: 'PAYROLL',
+      documentDate: new Date('2026-05-10'),
+      totalAmount: new Decimal('25000.00'),
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      payroll: {
+        payrollPeriod: '2026-05',
+        entityScope: 'FINANCE',
+        lines: [
+          { id: '1', baseSalary: new Decimal('10000.00'), ssoEmployee: new Decimal('750.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('9250.00') },
+          { id: '2', baseSalary: new Decimal('15000.00'), ssoEmployee: new Decimal('750.00'), whtAmount: new Decimal('300.00'), netPaid: new Decimal('13950.00') },
+        ],
+      },
+    });
+
+    await template.execute(docId);
+    const [args] = journal.createAndPost.mock.calls[0];
+
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '53-1101').dr).toEqual(new Decimal('25000'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '53-1102').dr).toEqual(new Decimal('1500'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3101').cr).toEqual(new Decimal('300'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3105').cr).toEqual(new Decimal('1500'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3106').cr).toEqual(new Decimal('1500'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '11-1101').cr).toEqual(new Decimal('23200'));
+    // Old placeholder must NOT appear (Fix Report P0-3 anti-regression)
     expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '21-1104')).toBeUndefined();
 
-    const crCash = args.lines.find((l: { accountCode: string }) => l.accountCode === '11-1101');
-    expect(crCash.cr).toEqual(new Decimal('23200'));
+    expect(args.companyId).toBe('fin-co-1');
+    expect(companyResolver.getShopCompanyId).not.toHaveBeenCalled();
 
-    // Sanity: balanced — Dr (25000 + 1500) = Cr (300 + 1500 + 1500 + 23200) = 26500
-    const sumDr = args.lines.reduce(
-      (s: Decimal, l: { dr: Decimal }) => s.plus(l.dr),
-      new Decimal(0),
-    );
-    const sumCr = args.lines.reduce(
-      (s: Decimal, l: { cr: Decimal }) => s.plus(l.cr),
-      new Decimal(0),
-    );
-    expect(sumDr.toString()).toBe('26500');
-    expect(sumCr.toString()).toBe('26500');
+    const { dr, cr } = sumDrCr(args.lines);
+    expect(dr.toString()).toBe('26500');
+    expect(cr.toString()).toBe('26500');
+  });
+
+  it('custom income (OT S52-1202) Dr + custom deduction Cr land in the JE and it balances (C2.5 — เทสต์ที่เคยขาดจนบั๊ก B1 ซ่อนอยู่ได้)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'PR-2608-002',
+      documentType: 'PAYROLL',
+      documentDate: new Date('2026-08-05'),
+      totalAmount: new Decimal('12000.00'),
+      depositAccountCode: 'S11-1202',
+      journalEntryId: null,
+      payroll: {
+        payrollPeriod: '2026-08',
+        entityScope: 'SHOP',
+        lines: [
+          {
+            id: '1',
+            baseSalary: new Decimal('12000.00'),
+            ssoEmployee: new Decimal('600.00'),
+            whtAmount: new Decimal('0.00'),
+            // 12000 + 1000 (OT) − 600 (SSO) − 500 (หักคืนเงินยืม) = 11900
+            netPaid: new Decimal('11900.00'),
+            customIncome: [
+              { accountCode: 'S52-1202', name: 'OT', amount: new Decimal('1000.00'), isTaxable: true },
+            ],
+            customDeduction: [
+              { accountCode: 'S11-3001', name: 'คืนเงินยืม', amount: new Decimal('500.00') },
+            ],
+          },
+        ],
+      },
+    });
+
+    await template.execute(docId);
+    const [args] = journal.createAndPost.mock.calls[0];
+
+    const drOt = args.lines.find((l: { accountCode: string }) => l.accountCode === 'S52-1202');
+    expect(drOt.dr).toEqual(new Decimal('1000'));
+    const crDeduction = args.lines.find((l: { accountCode: string }) => l.accountCode === 'S11-3001');
+    expect(crDeduction.cr).toEqual(new Decimal('500'));
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === 'S11-1202').cr).toEqual(new Decimal('11900'));
+
+    // Dr 12000 + 600 + 1000 = Cr 600 + 600 + 500 + 11900 = 13600
+    const { dr, cr } = sumDrCr(args.lines);
+    expect(dr.toString()).toBe('13600');
+    expect(cr.toString()).toBe('13600');
+  });
+
+  it('rejects a SHOP-scope doc whose deposit account is a FINANCE code (scope-mismatch defense in depth)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'PR-2608-003',
+      documentType: 'PAYROLL',
+      documentDate: new Date('2026-08-05'),
+      totalAmount: new Decimal('5000.00'),
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      payroll: {
+        payrollPeriod: '2026-08',
+        entityScope: 'SHOP',
+        lines: [
+          { id: '1', baseSalary: new Decimal('5000.00'), ssoEmployee: new Decimal('0.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('5000.00') },
+        ],
+      },
+    });
+
+    await expect(template.execute(docId)).rejects.toThrow(BadRequestException);
+    expect(journal.createAndPost).not.toHaveBeenCalled();
   });
 
   it('idempotent: returns existing entryNo when journalEntryId set', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,
       journalEntryId: 'je-existing-uuid',
-      payroll: { payrollPeriod: '2569-05', lines: [] },
+      payroll: { payrollPeriod: '2569-05', entityScope: 'FINANCE', lines: [] },
     });
     prisma.journalEntry.findUnique.mockResolvedValueOnce({ entryNumber: 'JE-EXISTING' });
 
@@ -127,6 +236,7 @@ describe('PayrollTemplate', () => {
       journalEntryId: null,
       payroll: {
         payrollPeriod: '2026-05',
+        entityScope: 'FINANCE',
         lines: [
           { id: '1', baseSalary: new Decimal('5000.00'), ssoEmployee: new Decimal('0.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('5000.00') },
         ],
@@ -158,6 +268,7 @@ describe('PayrollTemplate', () => {
       journalEntryId: null,
       payroll: {
         payrollPeriod: '2026-05',
+        entityScope: 'FINANCE',
         lines: [
           { id: '1', baseSalary: new Decimal('5000.00'), ssoEmployee: new Decimal('0.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('5000.00') },
         ],
@@ -187,6 +298,7 @@ describe('PayrollTemplate', () => {
       journalEntryId: null,
       payroll: {
         payrollPeriod: '2026-05',
+        entityScope: 'FINANCE',
         lines: [
           { id: '1', baseSalary: new Decimal('5000.00'), ssoEmployee: new Decimal('0.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('5000.00') },
         ],
@@ -215,6 +327,7 @@ describe('PayrollTemplate', () => {
       journalEntryId: null,
       payroll: {
         payrollPeriod: '2026-06',
+        entityScope: 'FINANCE',
         lines: [{ ...baseLine, userId, employeeName: 'สมชาย', employeeTaxId: '1234567890123' }],
       },
     });

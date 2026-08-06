@@ -246,6 +246,44 @@ Reference: ป.รัษฎากร — WHT is calculated on the net taxable in
 
 ---
 
+## Payroll — แยกฝั่ง SHOP/FINANCE (คำสั่งเจ้าของ 2026-08-06)
+
+Spec: `docs/superpowers/specs/2026-08-06-payroll-shop-side-design.md` ·
+Runbook: `docs/accounting/payroll-shop-rollout-2026-08.md` ·
+E2E: `apps/api/src/modules/expense-documents/__tests__/payroll-shop-flow.integration.spec.ts`
+
+- ใบเงินเดือน 1 ใบสังกัดฝั่งเดียวผ่าน `PayrollDetail.entityScope`:
+  **SHOP** (default — พนักงานสาขา) | **FINANCE** (ส่วนกลาง). UI มี toggle "กลุ่มพนักงาน".
+- `PayrollTemplate` resolve บัญชีผ่าน AccountRoleMap ตาม scope:
+  | | SHOP | FINANCE |
+  |---|---|---|
+  | เงินเดือน (Dr) | `shop_payroll_expense` → S52-1201 | `payroll_expense` → 53-1101 |
+  | ปกส.นายจ้าง (Dr) | `shop_payroll_sso_expense` → S52-1205 | `payroll_sso_expense` → 53-1102 |
+  | ภ.ง.ด.1 ค้างจ่าย (Cr) | `shop_wht_payroll` → S21-3101 | `wht_payroll` → 21-3101 |
+  | ปกส.ค้างนำส่ง (Cr×2) | S21-3105 / S21-3106 | 21-3105 / 21-3106 |
+  | เงินสด/ธนาคาร (Cr) | S11-1101..1103 / S11-1201..1202 | 11-1101..1103 / 11-1201..1203 |
+  `companyId` = ฝั่งของเอกสาร (แก้บั๊ก B2 เดิม: FINANCE codes + SHOP companyId →
+  เงินเดือนหายจาก TB/P&L ทั้งสอง scope). Period guard ตรวจ AccountingPeriod ของฝั่งนั้น.
+- **Custom income whitelist ต่อ scope** (V17): FINANCE `custom_income_accounts_whitelist`
+  default `["53-1103","53-1104"]` (แก้ B1 — OT = 53-1103 ค่าล่วงเวลา ไม่ใช่ 53-1105
+  ค่าอบรม); SHOP `custom_income_accounts_whitelist_shop` default `["S52-1202","S52-1204"]`.
+  UI ดึงจาก `GET /expense-documents/payroll/meta?scope=` — เลิก hardcode.
+- **V19**: รหัสรายการหักต้องมีจริงใน CoA + prefix ตรงฝั่ง (S สำหรับ SHOP).
+- **กันซ้ำ**: (สาขา + งวด + ฝั่ง) ซ้ำ → reject โดย advisory lock ใน tx (ใบ VOID ไม่นับ);
+  พนักงาน (userId) ซ้ำแถวในใบเดียว → reject + DB unique `(payroll_id, user_id)`.
+- **สิทธิ**: อนุมัติก่อนจ่ายผ่าน `approval_enabled` + `approval_required_doc_types`
+  (default `['PAYROLL']`) + `approvers_list`; ฟอร์มเปลี่ยนปุ่มเป็น "บันทึก & ส่งขออนุมัติ".
+  เห็นเงินเดือนข้ามสาขา: เฉพาะ CROSS_BRANCH_ROLES — `GET /expense-documents/:id`
+  บังคับ branch scope แล้ว (BM เห็นเฉพาะสาขาตัวเอง).
+- **ภ.ง.ด.1** (`previewPayrollWHT` เขียนใหม่ 2026-08-06): อ่านจากเอกสาร PAYROLL ที่
+  POSTED โดยตรง (ไม่ใช่เดิน JE 21-3101) → พนักงานภาษี 0 ปรากฏครบ, ใบ VOID หลุดออก
+  อัตโนมัติ, gross = ฐาน + Σ customIncome(isTaxable). `finance-tax` WHT_PND1_ACCOUNTS
+  รวม `S21-3101` (นิติบุคคลเดียว ยื่นรวม). หน้าจอ `/finance/wht-report` ต่อ route แล้ว.
+- **Wipe**: `npm --prefix apps/api run wipe:payroll` (DRY_RUN + guards ชุดเดียวกับ
+  wipe-accounting) — ล้างใบเงินเดือนเก่าที่ลงผิดผังทั้งหมดตามคำสั่งเจ้าของ.
+- **ค้างคิวรอบถัดไป**: สปส.1-10 + JE นำส่ง ปกส./ภ.ง.ด.1 (เจ้าหนี้ 21-3101/S21-31xx
+  ยังไม่มี flow ล้าง), ใบ 50 ทวิ, ภ.ง.ด.1ก, copy งวดก่อน, คำนวณ WHT แนะนำ, ไฟล์โอนธนาคาร.
+
 ## SSO accounts (P0-3 — Fix Report v1.0)
 
 Payroll JE splits employee deduction + employer contribution into dedicated payables instead of lumping into 21-1104 ("เจ้าหนี้ค่าใช้จ่ายกิจการ"). This keeps the Trial Balance for 21-1104 = real AP and makes สปส.1-10 filing trivial.

@@ -1075,29 +1075,32 @@ describe('SettingsService audit trail', () => {
       expect(flags.dateFormat).toBe('BE');
     });
 
-    // D1.2.1.1 — Approval Workflow opt-in (default true per Settings_Audit_Core_v2.0.md)
-    it('approvalEnabled defaults to true when SystemConfig missing', async () => {
+    // D1.2.1.1 — Approval Workflow opt-in. Default FALSE (review 2026-08-06):
+    // must match the enforcing side (expense-document-lifecycle also defaults
+    // false) — the old UI-default of true showed "ส่งขออนุมัติ" buttons that the
+    // backend rejected on envs missing the SystemConfig row.
+    it('approvalEnabled defaults to false when SystemConfig missing (matches backend enforcement default)', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
-      const flags = await service.getUiFlags();
-      expect(flags.approvalEnabled).toBe(true);
-    });
-
-    it('approvalEnabled returns false when OWNER disables it explicitly', async () => {
-      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
-        if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'false' });
-        return Promise.resolve(null);
-      });
       const flags = await service.getUiFlags();
       expect(flags.approvalEnabled).toBe(false);
     });
 
-    it('approvalEnabled falls back to default (true) on unparseable value', async () => {
+    it('approvalEnabled returns true when OWNER enables it explicitly', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.approvalEnabled).toBe(true);
+    });
+
+    it('approvalEnabled falls back to default (false) on unparseable value', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
         if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'maybe' });
         return Promise.resolve(null);
       });
       const flags = await service.getUiFlags();
-      expect(flags.approvalEnabled).toBe(true);
+      expect(flags.approvalEnabled).toBe(false);
     });
 
     // D1.2.3.2 — pagination_size

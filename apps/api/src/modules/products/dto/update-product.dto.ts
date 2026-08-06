@@ -6,7 +6,6 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
-  IsObject,
   Min,
   MaxLength,
 } from 'class-validator';
@@ -72,9 +71,19 @@ export class UpdateProductDto {
   @IsOptional()
   shopWarrantyDays?: number;
 
-  @IsObject({ message: 'อุปกรณ์ที่แถมต้องเป็นอ็อบเจกต์' })
+  /**
+   * Task 4 (B1): แก้จาก B0 เดิม (`@IsObject()` / `Record<string, unknown>`) เป็น string[] —
+   * ต้องตรงกับ frontend B1 (คอมม่าคั่นแล้ว split เป็น array ก่อนส่ง — Task 11 EditProductModal)
+   * และ buildCustomerSummary (Task 5) ที่ทำ `accessoriesIncluded.join(', ')`. `@IsObject()`
+   * เดิม reject array (class-validator isObject() คัด Array.isArray ออกไปแล้ว) — เทสต์
+   * เก่า/frontend ที่ส่ง array จะ 400 ทุกครั้งถ้าไม่แก้จุดนี้ เช่น ['สายชาร์จ', 'กล่อง'].
+   * ยังคง 3 สถานะเดิม (undefined/null/value) ผ่าน products.service.ts (Prisma.DbNull สำหรับ
+   * Json null) — ไม่กระทบ logic นั้น เปลี่ยนแค่ shape ของ "value" state
+   */
+  @IsArray()
+  @IsString({ each: true })
   @IsOptional()
-  accessoriesIncluded?: Record<string, unknown>;
+  accessoriesIncluded?: string[];
 
   @IsString()
   @MaxLength(500, { message: 'ตำหนิ/สภาพภายนอกยาวเกิน 500 ตัวอักษร' })

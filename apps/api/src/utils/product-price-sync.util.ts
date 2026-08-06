@@ -16,7 +16,7 @@ const INSTALLMENT_PREFIX = 'ราคาผ่อน';
  * ลำดับคำสั่งสำคัญ: unset default เดิมทั้งหมดก่อน แล้วค่อยตั้งแถวเป้าหมายเป็น default
  * เสมอ (ห้ามสลับ) — ตาราง `product_prices` มี partial unique index
  * `product_prices_one_default` (`UNIQUE (product_id) WHERE is_default AND deleted_at IS NULL`,
- * migration `20260982000000`) ที่ตรวจทันทีหลังแต่ละ statement ใน Postgres จริง ถ้า
+ * migration `20260985000000`) ที่ตรวจทันทีหลังแต่ละ statement ใน Postgres จริง ถ้า
  * create/update แถวใหม่เป็น default ขณะแถวเก่ายังเป็น default อยู่ (ยังไม่ถูกปลด) จะได้
  * P2002 ทันที ไม่ใช่แค่ข้อมูลเพี้ยน — pattern เดียวกับ `ProductsPricingService.addPrice`/
  * `updatePrice` (unset-other-defaults ด้วย `updateMany` ก่อนเสมอ)

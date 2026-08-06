@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Branch:** `feat/pa-b3-bot-product-answers` (ต่อจาก B0/B1/B2 — **B3 ขึ้นกับ B0 อย่างหนัก**: ใช้ `device-query-normalize.util.ts` + คอลัมน์ `accessoriesIncluded`/`cosmeticNotes` + `Product.conditionGrade` ที่มี writer จริง; **ห้ามเริ่ม B3 ก่อน B0 merge**)
-- **Migration:** `20260983000000_kb_channel_nullable` — max บน main วันนี้ = `20260981000000_add_credit_note_source_fields`, B0 จอง `20260982000000` → `20260983000000` ว่างจริง. ก่อนสร้างให้รัน `ls apps/api/prisma/migrations | sort | tail -3` ยืนยันอีกครั้ง แล้วเลื่อนเลขถ้าชน
+- **Migration:** `20260983000000_kb_channel_nullable` — max บน main วันนี้ = `20260981000000_add_credit_note_source_fields`, B0 จอง `20260985000000` → `20260983000000` ว่างจริง. ก่อนสร้างให้รัน `ls apps/api/prisma/migrations | sort | tail -3` ยืนยันอีกครั้ง แล้วเลื่อนเลขถ้าชน
 - **เนื้อ migration = `ALTER COLUMN ... DROP NOT NULL` เท่านั้น** — คอลัมน์ `chat_knowledge_base.channel` **มีอยู่แล้ว** (`schema.prisma:5177` `channel ChatChannel @default(LINE_FINANCE)` + `@@index([channel, intent])`) ห้าม `ADD COLUMN`
 - **Red line:**
   - ห้ามแตะ `apps/api/src/modules/journal/`, `apps/api/src/modules/accounting/`, `apps/api/src/modules/payments/` (JE ทั้งหมด)
@@ -2287,7 +2287,7 @@ async listAll(channel?: ChatChannel): Promise<ChatKnowledgeBase[]>;
 async create(input: KbUpsertInput): Promise<ChatKnowledgeBase>;  // KbUpsertInput += channel?: ChatChannel | null
 ```
 
-- [ ] **Step 1:** เช็กเลข migration ก่อน: `ls apps/api/prisma/migrations | sort | tail -3` → ถ้า max ยังเป็น `20260982000000_*` (ของ B0) ให้ใช้ `20260983000000`; ถ้ามีตัวใหม่แทรกให้เลื่อนเลขทั้ง Task
+- [ ] **Step 1:** เช็กเลข migration ก่อน: `ls apps/api/prisma/migrations | sort | tail -3` → ถ้า max ยังเป็น `20260985000000_*` (ของ B0) ให้ใช้ `20260983000000`; ถ้ามีตัวใหม่แทรกให้เลื่อนเลขทั้ง Task
 - [ ] **Step 2:** สร้าง `apps/api/prisma/migrations/20260983000000_kb_channel_nullable/migration.sql`:
 
 ```sql

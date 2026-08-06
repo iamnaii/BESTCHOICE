@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Branch:** `feat/pa-b4-web-shop-share-og` (แตกจาก `main` หลัง B0 merge แล้ว — ดู Task 0)
-- **Migration:** **ไม่มี** ใน batch นี้ (B0 = `20260982000000`, B3 = `20260983000000`; B4 ใช้คอลัมน์ที่ B0 สร้างไว้แล้ว ห้ามสร้าง migration ใหม่)
+- **Migration:** **ไม่มี** ใน batch นี้ (B0 = `20260985000000`, B3 = `20260983000000`; B4 ใช้คอลัมน์ที่ B0 สร้างไว้แล้ว ห้ามสร้าง migration ใหม่)
 - **Red line:** ห้ามแตะ accounting/finance JE paths (`apps/api/src/modules/journal/**`, `apps/api/src/modules/accounting/**`, `apps/api/src/modules/payments/**`, `apps/api/src/modules/contracts/**`) — batch นี้ไม่มีไฟล์ใดในรายการนั้น; จุดเดียวที่แตะเลขเงินคือ "ผ่อนเริ่มต้น" หน้ารายการ (Task 6) ซึ่งเป็น **display-only** และต้องมี parity golden test ยืนยันว่าเลขเท่ากับ `InstallmentPreviewService` ทุกสตางค์
 - **เทสต์ (ค่าจริงของ repo นี้ — อย่าเดา):**
   - `apps/api` = **jest** (`testRegex: .*\.spec\.ts$`, `rootDir: src`) → `cd apps/api && npx jest src/modules/<path>/<file>.spec.ts`

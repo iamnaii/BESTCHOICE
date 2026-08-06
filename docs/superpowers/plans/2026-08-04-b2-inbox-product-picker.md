@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Branch: `feat/pa-b2-inbox-product-picker` (แตกจาก main หลัง B0 + B1 merge แล้ว)
-- **ไม่มี migration ใน batch นี้** — schema เดิมพอทุกอย่าง (`ChatMessage.type/mediaUrl/mediaType/clientMessageId/outboundSentAt` + `@@unique([roomId, clientMessageId])` มีครบตั้งแต่ migration `20260976000000`); migration ล่าสุดในเรโปคือ `20260981000000_add_credit_note_source_fields`, B0 จองเลข `20260982000000` ไปแล้ว — **ห้ามสร้าง migration ใน B2** และ **ห้ามใส่ `ChatRoom.attachedProductId` กลับมา** (spec §1 ตัดออกแล้ว)
+- **ไม่มี migration ใน batch นี้** — schema เดิมพอทุกอย่าง (`ChatMessage.type/mediaUrl/mediaType/clientMessageId/outboundSentAt` + `@@unique([roomId, clientMessageId])` มีครบตั้งแต่ migration `20260976000000`); migration ล่าสุดในเรโปคือ `20260981000000_add_credit_note_source_fields`, B0 จองเลข `20260985000000` ไปแล้ว — **ห้ามสร้าง migration ใน B2** และ **ห้ามใส่ `ChatRoom.attachedProductId` กลับมา** (spec §1 ตัดออกแล้ว)
 - **เจ้าของไฟล์ (สำคัญ — B3 ประกาศทับ ต้องอ่านก่อนเริ่ม):** ไฟล์ 4 ตัวนี้ **B2 เป็นเจ้าของ** และเป็น batch แรกที่แตะจริง — B3 (`2026-08-04-b3-bot-product-answers.md`) Task 14 ประกาศงานชุดเดียวกันไว้ด้วย (สร้าง `product-detect.service.spec.ts` เหมือนกัน + `new ProductDetectService(prisma)` แบบ **arg เดียว** + แก้ป้ายดาวน์ที่ `ai-suggest.service.ts` และ `ProductContextCard.tsx`) ซึ่งถ้า B3 ship ตามตัวอักษรของแผนตัวเอง **จะทับงาน B2 และดึง `ProductQuoteService` ออกจาก constructor** ทำให้ค่างวดกลับไปเป็นสูตรมือ:
   | ไฟล์ | เจ้าของ | สัญญาที่ batch หลังต้องรักษา |
   |---|---|---|
@@ -3132,7 +3132,7 @@ Revert commit เดียว (ไม่มี migration, ไม่มี schema
 | ไม่ทำ | เหตุผล |
 |---|---|
 | `ChatRoom.attachedProductId` + ตัวแปรสินค้าใน canned responses | spec §1 + §4 ตัดออกแล้ว — ปุ่ม "แทรกสรุป" ให้ผลเดียวกันโดยไม่มี schema/สถานะค้าง; ถ้าเพิ่มภายหลังต้อง register ทั้ง variable service **และ** `VARIABLE_KEYS` ของ `canned-response-sender.service.ts:130-140` |
-| Migration ใดๆ | ไม่จำเป็น — `ChatMessage` มีคอลัมน์ครบตั้งแต่ `20260976`; B0 ถือเลข `20260982000000` |
+| Migration ใดๆ | ไม่จำเป็น — `ChatMessage` มีคอลัมน์ครบตั้งแต่ `20260976`; B0 ถือเลข `20260985000000` |
 | Readiness **badge** ในผลค้น / เรียก endpoint `GET /products/:id/readiness` | ⚠️ spec §4 เขียนว่า search select ควรมี `readiness` ด้วย — B2 **ไม่คืน checklist ออก API และไม่กรองผลค้นด้วย readiness** เพราะ picker ของแอดมินต้องเห็นสต็อกทั้งหมด (ไม่ใช่เฉพาะที่ขึ้นเว็บได้); B2 คืนข้อเท็จจริงดิบแทน (`photoUrl` null = ยังไม่มีรูปขึ้นเว็บ, `cashPrice` null = ยังไม่กรอกราคา). **แต่ B2 ใช้ `evaluateReadiness` ของ B0 อยู่ 1 จุด** = ตัดสินว่าจะใส่ `shareUrl` หรือไม่ (Task 6) — จำเป็น ไม่ใช่ scope creep เพราะไม่งั้นลิงก์ที่ส่งเข้าแชทจะพาลูกค้าไป 404. ถ้าต้องการ badge readiness เต็มรูปแบบให้ทำเป็น follow-up |
 | Detection คำไทย/ความจุ/สี (`device-query-normalize.util.ts`) | ⚠️ **เบี่ยงจาก spec โดยตั้งใจ — ต้องให้ owner เคาะ**: spec §2.4 ระบุ "ผู้ใช้: … inbox detect (B2)" และ §4 ระบุ "detection ใช้ util B0" แต่ §5 (B3) ก็ระบุ "แก้ `ProductDetectService` เลิกคิดค่างวดเอง → util เดียวกัน" = เจ้าของทับกัน. B2 เลือกแก้เฉพาะ payload/ตัวเลขที่ผิด (gallery/stock/ค่างวด) และ **ไม่แตะ `extractKeywords` (:63-80)** เพื่อไม่ให้ชนกับ B3 ที่จะ re-point ทั้งไฟล์อยู่แล้ว. ถ้า owner ต้องการให้ B2 ทำ ให้เพิ่ม Task 10.5 = สลับ `extractKeywords` → util B0 + spec เทียบผลลัพธ์เดิม |
 | Share endpoint `GET /api/shop/share/:id` + OG/JSON-LD | เป็นของ B4 §6 — B2 ใช้ `${SHOP_BASE_URL}/products/:id` ตรงๆ ไปก่อน (spec §4 ระบุชัด) |

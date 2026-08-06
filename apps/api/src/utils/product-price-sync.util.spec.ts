@@ -8,7 +8,7 @@ function makeTx(rows: Row[]) {
   let seq = 0;
   // แตะ isDefault ทุกครั้ง (create/update/updateMany) → snapshot จำนวนแถว isDefault:true
   // ทันทีหลัง apply — จำลอง partial unique index `product_prices_one_default`
-  // (UNIQUE (product_id) WHERE is_default AND deleted_at IS NULL, migration 20260982000000)
+  // (UNIQUE (product_id) WHERE is_default AND deleted_at IS NULL, migration 20260985000000)
   // ที่ตรวจทันทีหลังแต่ละ statement ใน Postgres จริง ไม่ใช่ตอนจบ tx
   const defaultCountSnapshots: number[] = [];
   const snapshot = () => defaultCountSnapshots.push(state.filter((r) => r.isDefault).length);

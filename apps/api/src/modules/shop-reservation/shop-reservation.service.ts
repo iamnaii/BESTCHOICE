@@ -30,7 +30,7 @@ export class ShopReservationService {
     });
     if (!product) throw new NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ');
 
-    // Fix round: migration 20260984 ใส่ partial unique index `product_reservations_active_product_idx`
+    // Fix round: migration 20260986000000 ใส่ partial unique index `product_reservations_active_product_idx`
     // (UNIQUE product_id WHERE status='ACTIVE') แต่ cron กวาด hold หมดอายุทุก 5 นาที (reservation-cleanup.cron.ts)
     // — ในหน้าต่างระหว่างนั้น แถวหมดอายุยัง status='ACTIVE' ค้างอยู่ ขณะที่ findFirst ด้านล่างกรอง
     // expiresAt:{gt:now} เลยมองไม่เห็นแถวนี้ ตกไป create() ชน index ดิบ (P2002 → 500) sweep แบบ inline

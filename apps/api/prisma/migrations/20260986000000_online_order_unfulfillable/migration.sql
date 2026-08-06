@@ -18,7 +18,7 @@ CREATE INDEX "product_reservations_status_preempt_notified_at_idx"
 
 -- Fix round 1 [Important]: migration นี้ถอยไม่ได้ (ALTER TYPE ADD VALUE ไม่มี DROP VALUE) —
 -- ถ้าเลือกแถวผิดบน prod (เช่น dup เยอะกว่าที่คาด) จะไม่มีทางรู้ว่า flip แถวไหนจากอะไร ต้องมี
--- ตารางสำรองก่อน UPDATE เหมือน precedent B0 (20260982000000, "_b0_default_price_dedupe_backup").
+-- ตารางสำรองก่อน UPDATE เหมือน precedent B0 (20260985000000, "_b0_default_price_dedupe_backup").
 -- IF NOT EXISTS + "... AS SELECT" เป็น no-op ถ้าตารางมีอยู่แล้ว (Postgres ไม่รัน SELECT ซ้ำ) —
 -- idempotent เหมือน CREATE UNIQUE INDEX IF NOT EXISTS ด้านล่าง. WHERE ต้องตรงกับ UPDATE เป๊ะ
 -- (ก็อปมาจากเงื่อนไข UPDATE ด้านล่างตรงๆ ไม่ derive ทีหลัง กันสองเงื่อนไขเพี้ยนออกจากกัน)

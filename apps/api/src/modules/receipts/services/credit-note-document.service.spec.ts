@@ -138,7 +138,7 @@ function buildHarness(overrides: Overrides = {}) {
         .numbers,
       'generateReceiptNumber',
     )
-    .mockResolvedValue('RT-202607-00001');
+    .mockResolvedValue(GOLDEN_RECEIPT_NUMBER);
   return { service, tx, created };
 }
 
@@ -212,7 +212,7 @@ describe('CreditNoteDocumentService', () => {
       expect(result).toEqual({
         outcome: 'ISSUED',
         receiptId: 'receipt-1',
-        receiptNumber: 'RT-202607-00001',
+        receiptNumber: GOLDEN_RECEIPT_NUMBER,
       });
       expect(created.receipts).toHaveLength(1);
 

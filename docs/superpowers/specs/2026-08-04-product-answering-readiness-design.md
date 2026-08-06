@@ -43,7 +43,7 @@
 - monthlyPaymentFrom ใช้ rate ปลอม (0.0099) จาก `_min(cashPrice)` — engine จริงต้องใช้ `installmentPrice` + InterestConfig (สองเครื่องคิดเงิน resolve config คนละ key: บอท tenure-range/createdAt desc vs preview productCategories ไม่กรอง tenure)
 - **จอง/จ่ายเงิน:** `placeOrder` เป็นขั้น **ก่อนจ่ายเงิน** (เงินเข้าทีหลังผ่าน PaySolutions webhook) — จุดต้อง guard จริงคือ `confirmOnlineOrderPayment` (`paysolutions-confirmation.service.ts:289-319` — tx เดียว order→PAID + reservation→CONSUMED **update by id ไม่กรอง status** + Sale fail = swallow); **BANK_TRANSFER คือรูโหว่ที่สุด**: `confirmBankTransfer` (`shop-orders.service.ts:54-59`) set PAID อย่างเดียว — ไม่ consume จอง ไม่สร้าง Sale ไม่ flip status → **ขายซ้ำได้ 100% ไม่ต้องอาศัย race**; `preemptByInStoreSale` ใช้ this.prisma (ร่วม tx caller ไม่ได้); hold ทุกอัน anonymous (DTO มีแค่ productId+sessionId); EventsGateway ปิดใน prod (ไม่มี ENABLE_WEBSOCKET) — pattern แจ้งเตือนจริงคือ 30s polling badge (`useQcPendingCount` + MenuBadge)
 - ข้อความ 'หมดสต็อก แจ้งเตือนเมื่อมาใหม่' อยู่ฝั่ง **api** (`shop-catalog.service.ts:291` + spec assertion) ไม่ใช่ web-shop
-- [DEMO] 7 เครื่องบน prod, ไม่มี filter; migration ล่าสุด `20260981000000` → ว่าง `20260982000000+`; QA UI ใช้ local เท่านั้น
+- [DEMO] 7 เครื่องบน prod, ไม่มี filter; migration ล่าสุด `20260981000000` → ว่าง `20260985000000+`; QA UI ใช้ local เท่านั้น
 
 ## 1. การตัดสินใจของ owner (ยืนยันแล้ว 2026-08-04)
 
@@ -75,7 +75,7 @@
 ### 2.2 เกรด + ฟิลด์ใหม่
 - เขียน `Product.conditionGrade` **2 จุด**: `completeInspection` (เขียน overallGrade ลงทุก product ที่ผูก) **และ `overrideGrade`** (อัปเดตเกรดเครื่องตาม dto.grade ด้วย — override เกิดหลัง complete เสมอ ตรรกะจุดเดียวไม่พอ)
 - เปิดแก้ `conditionGrade` + `shopWarrantyDays` ผ่าน DTO (OWNER/BM)
-- **Migration `20260982000000`**: `accessoriesIncluded Json?`, `cosmeticNotes String?` (≤500), `priceAutofilledAt DateTime?`
+- **Migration `20260985000000`**: `accessoriesIncluded Json?`, `cosmeticNotes String?` (≤500), `priceAutofilledAt DateTime?`
 - expose ฟิลด์ทั้งหมดใน shop `ProductUnit` + bot tools (B3)
 
 ### 2.3 ขึ้นเว็บอัตโนมัติเมื่อครบ
@@ -164,5 +164,5 @@
 
 - **Red line**: ห้ามแตะ accounting/finance JE; เครื่องคิดเงินสัญญา/สร้างสัญญา behavior-preserving — ทุกจุดที่แตะ (useContractCalculation B0, preempt-in-tx B5) ต้องมี golden test เลขเดิมทุกบาท
 - ทดสอบ: jest ต่อ module (money-math = mock-based golden ตาม convention journal); tsc 0 + eslint 0; browser QA บน local
-- Migration: B0=`20260982000000`, B3=`20260983000000` (KB DROP NOT NULL) — เช็ค max จริงก่อนสร้างทุกครั้ง
+- Migration: B0=`20260985000000`, B3=`20260983000000` (KB DROP NOT NULL) — เช็ค max จริงก่อนสร้างทุกครั้ง
 - Deploy ทีละ batch; B0 ต้อง**รวม backfill ไว้ใน deploy เดียวกับ readiness filter**; CI gate เขียว + code-owner review 1 คน (owner กด)

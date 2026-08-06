@@ -12,7 +12,7 @@
 
 - Branch: `feat/pa-b5-reservation-oversell` (แตกจาก `spec/product-answering-readiness`); ทุก commit ลงท้าย `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
 - **Red line — ห้ามแตะ accounting/finance JE:** งาน B5 แตะ `sale-writer.service.ts` และ `contract-lifecycle.service.ts` ซึ่งเป็นเส้นทางเงินสัญญา → การแก้ต้องเป็น **additive บรรทัดเดียวใน tx เดิม** (เรียก util) เท่านั้น; ห้ามย้าย/แก้ลำดับ `ShopCashSaleTemplate.execute` / `ShopDownPaymentTemplate.execute` / `interCompanyService.createFromSaleInTx` / `calculateInstallmentWithInterest`; **หลักฐานคือเทสต์เดิมต้องเขียวโดยไม่แก้ assertion แม้แต่บรรทัดเดียว** (`sale-writer.service.spec.ts` (a)-(d) พิน JE args + จำนวนเงินทุกบาท, `contract-lifecycle.service.spec.ts` พิน down-payment JE)
-- Migration ใหม่ = `20260984000000_online_order_unfulfillable` (max ปัจจุบันบน main = `20260981000000_add_credit_note_source_fields`; B0 จอง `20260982000000`, B3 จอง `20260983000000` → 984 คือตัวถัดไปที่ว่าง) — **ต้อง `ls apps/api/prisma/migrations | sort | tail -3` ยืนยันก่อนสร้างจริง**
+- Migration ใหม่ = `20260986000000_online_order_unfulfillable` (max ปัจจุบันบน main = `20260981000000_add_credit_note_source_fields`; B0 จอง `20260985000000`, B3 จอง `20260983000000` → 984 คือตัวถัดไปที่ว่าง) — **ต้อง `ls apps/api/prisma/migrations | sort | tail -3` ยืนยันก่อนสร้างจริง**
 - ใน migration: วาง `ALTER TYPE "OnlineOrderStatus" ADD VALUE 'PAYMENT_RECEIVED_UNFULFILLABLE'` เป็น **statement สุดท้าย** ของไฟล์ — ข้อจำกัดจริงของ Postgres (12+) คือ *ห้ามใช้* ค่า enum ใหม่ใน transaction เดียวกับที่เพิ่ม (การ ADD เองทำใน tx ได้); migration นี้ไม่มี statement ไหนใช้ค่าใหม่เลย จึงปลอดภัยอยู่แล้ว — วางท้ายไฟล์เป็นการกันพลาดเผื่ออนาคตมีคนเติม UPDATE ที่อ้างค่าใหม่ต่อท้าย; ค่า enum ต่อท้ายรายการเสมอ ห้ามแทรกกลาง
 - เงินใช้ `Prisma.Decimal` เท่านั้น; B5 **ไม่คำนวณเงินใหม่เลย** (แค่ย้ายสถานะ) — ไม่มี money-math ใหม่ที่ต้อง golden แต่มี behavior-preserving golden ตาม red line ข้างบน
 - เทสต์ฝั่ง api = **jest**: `cd apps/api && npx jest <path>` (config อยู่ใน `apps/api/package.json:152` `testRegex: ".*\\.spec\\.ts$"`)
@@ -37,7 +37,7 @@
 **สร้างใหม่ (api)**
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `apps/api/prisma/migrations/20260984000000_online_order_unfulfillable/migration.sql` | enum ใหม่ + `preempt_notified_at` + backfill กันแจ้งย้อนหลัง + partial unique index กัน hold ACTIVE ซ้อน |
+| `apps/api/prisma/migrations/20260986000000_online_order_unfulfillable/migration.sql` | enum ใหม่ + `preempt_notified_at` + backfill กันแจ้งย้อนหลัง + partial unique index กัน hold ACTIVE ซ้อน |
 | `apps/api/src/utils/reservation-preempt.util.ts` | `preemptReservationsInTx(tx, productIds)` — ตัด hold ใน tx ที่เครื่องออกจาก IN_STOCK |
 | `apps/api/src/utils/reservation-preempt.util.spec.ts` | jest unit |
 | `apps/api/src/modules/shop-orders/consume-order-hold.util.ts` | `consumeOrderHoldInTx(tx, {...})` — re-check IN_STOCK + consume hold แบบ conditional |
@@ -66,7 +66,7 @@
 
 **Files:**
 - Modify: `apps/api/prisma/schema.prisma` (enum `OnlineOrderStatus` บรรทัด 318-329, model `ProductReservation` บรรทัด 6090-6111)
-- Create: `apps/api/prisma/migrations/20260984000000_online_order_unfulfillable/migration.sql`
+- Create: `apps/api/prisma/migrations/20260986000000_online_order_unfulfillable/migration.sql`
 
 **Interfaces:**
 - Produces: `OnlineOrderStatus.PAYMENT_RECEIVED_UNFULFILLABLE` (ค่าใหม่ต่อท้าย enum), `ProductReservation.preemptNotifiedAt DateTime? @map("preempt_notified_at")`, index `product_reservations(status, preempt_notified_at)`, **partial unique index `product_reservations(product_id) WHERE status='ACTIVE'`** (raw SQL เท่านั้น — ไม่มีใน schema.prisma)
@@ -107,7 +107,7 @@ enum OnlineOrderStatus {
   @@map("product_reservations")
 ```
 
-- [ ] **Step 3:** ยืนยันเลข migration ว่าง: `ls apps/api/prisma/migrations | sort | tail -3` → ถ้ามี `20260984000000_*` อยู่แล้วให้ขยับเป็นเลขถัดไป
+- [ ] **Step 3:** ยืนยันเลข migration ว่าง: `ls apps/api/prisma/migrations | sort | tail -3` → ถ้ามี `20260986000000_*` อยู่แล้วให้ขยับเป็นเลขถัดไป
 - [ ] **Step 4:** สร้าง migration แบบ `--create-only` **แล้วเปลี่ยนชื่อโฟลเดอร์เป็นเลขของ repo** — Prisma ตั้งชื่อด้วย timestamp จริง (เช่น `20260804xxxxxx_online_order_unfulfillable`) ซึ่ง **น้อยกว่า** เลขที่ repo ใช้อยู่ (`20260981000000`) → ลำดับ lexicographic จะเพี้ยนเทียบกับ B0 (`982`) / B3 (`983`) ต้อง rename ทุกครั้ง:
 
 ```bash
@@ -115,10 +115,10 @@ cd apps/api
 npx prisma migrate dev --name online_order_unfulfillable --create-only
 # Prisma พิมพ์ path โฟลเดอร์ที่สร้าง — rename ให้ตรงเลขที่จองไว้
 mv prisma/migrations/*_online_order_unfulfillable \
-   prisma/migrations/20260984000000_online_order_unfulfillable
+   prisma/migrations/20260986000000_online_order_unfulfillable
 ```
 
-เขียนทับเนื้อไฟล์ `prisma/migrations/20260984000000_online_order_unfulfillable/migration.sql` ให้เป็น (Prisma generate `ALTER TYPE` ไว้บนสุด — เขียนทับทั้งไฟล์ตามนี้):
+เขียนทับเนื้อไฟล์ `prisma/migrations/20260986000000_online_order_unfulfillable/migration.sql` ให้เป็น (Prisma generate `ALTER TYPE` ไว้บนสุด — เขียนทับทั้งไฟล์ตามนี้):
 
 ```sql
 -- B5: กันขายซ้ำเว็บ ↔ หน้าร้าน
@@ -2998,7 +2998,7 @@ npm run lint --workspace=apps/api
 
 - [ ] เปิด PR base = `spec/product-answering-readiness` (หรือ `main` ตามที่ wave ตกลง) — รอ CI "Lint & Test" เขียว + code-owner review 1 คน (owner กด; **ห้าม `--admin` override**)
 - [ ] **ลำดับ deploy: web ต้องไม่ช้ากว่า API** — batch นี้เพิ่มค่า enum ใหม่ที่ API เริ่มส่งออกทันทีหลัง rollout แต่ `OnlineOrdersPage` ฝั่ง web map สถานะจาก union ที่เขียนมือ (ไม่ใช่ Prisma enum) → ถ้า API ขึ้นก่อนแล้ว web ยังเป็น bundle เก่า ตารางออเดอร์จะพังทั้งจอ. **ถ้า pipeline deploy ทั้ง api+web ในงานเดียวกัน (deploy-gcp.yml) ก็ถือว่าปลอดภัยอยู่แล้ว — แต่ห้าม deploy api เดี่ยวๆ ก่อน**; fallback ที่ Task 11 Step 1b ใส่ไว้เป็นตาข่ายชั้นสอง (ผู้ใช้ที่ค้าง bundle เก่าจะเห็นชื่อสถานะดิบแทนจอขาว)
-- [ ] Deploy ผ่าน GitHub Actions ตามปกติ — migration `20260984000000` รันอัตโนมัติ (`prisma migrate deploy`) ก่อน Cloud Run rollout
+- [ ] Deploy ผ่าน GitHub Actions ตามปกติ — migration `20260986000000` รันอัตโนมัติ (`prisma migrate deploy`) ก่อน Cloud Run rollout
 - [ ] **หลัง migrate** ตรวจว่า enum เข้าจริง:
 ```sql
 SELECT unnest(enum_range(NULL::"OnlineOrderStatus"));   -- ต้องมี PAYMENT_RECEIVED_UNFULFILLABLE
@@ -3036,7 +3036,7 @@ SET status = 'PAID',
 WHERE status = 'PAYMENT_RECEIVED_UNFULFILLABLE';
 ```
 - [ ] **3. revert โค้ด** (api + web พร้อมกัน) — ไม่ต้อง revert migration
-- [ ] **4. ค่า enum `PAYMENT_RECEIVED_UNFULFILLABLE` จะค้างอยู่ใน type ของ DB ตลอดไป — ยอมรับได้** (ไม่มีแถวไหนใช้ ไม่มีผลต่อ query/report) ถ้า deploy B5 ใหม่ในอนาคต migration `20260984000000` จะถูกข้ามตาม `_prisma_migrations` ปกติ
+- [ ] **4. ค่า enum `PAYMENT_RECEIVED_UNFULFILLABLE` จะค้างอยู่ใน type ของ DB ตลอดไป — ยอมรับได้** (ไม่มีแถวไหนใช้ ไม่มีผลต่อ query/report) ถ้า deploy B5 ใหม่ในอนาคต migration `20260986000000` จะถูกข้ามตาม `_prisma_migrations` ปกติ
 - [ ] **สิ่งที่ revert ได้ฟรี (ไม่ต้องทำอะไรกับ DB):** คอลัมน์ `preempt_notified_at` (nullable — client เก่าไม่รู้จักก็ไม่พัง), index ทั้ง 2 ตัว, สถานะ hold `PREEMPTED` (มีอยู่ใน `ReservationStatus` ก่อน B5 อยู่แล้ว)
 - [ ] ⚠️ **partial unique index `product_reservations_active_product_idx` ค้างต่อหลัง revert** — ถ้าจำเป็นต้องเอาออกจริงๆ (เช่นโค้ดเก่าสร้าง hold ACTIVE ซ้อนได้และจะเจอ P2002): `DROP INDEX IF EXISTS "product_reservations_active_product_idx";`
 

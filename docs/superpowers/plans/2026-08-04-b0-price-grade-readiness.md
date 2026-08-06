@@ -6,12 +6,12 @@
 
 **Architecture:** ตรรกะใหม่ทั้งหมดอยู่ใน **pure util ที่รับ `Prisma.TransactionClient`** (`apps/api/src/utils/*.util.ts`) ไม่ใช่ injectable service — เพราะจุด hook สำคัญที่สุด (`PoReceivingService`) เป็น **plain class ที่ถูก `new` ด้วย prisma ตัวเดียว** (`purchase-orders.service.ts:25`) จะ inject service เข้าไปไม่ได้ถ้าไม่รื้อ facade. util 4 ตัว: `product-price-sync` (คอลัมน์ → prices[]), `product-price-autofill` (PricingTemplate → คอลัมน์), `product-readiness` (Prisma where fragment + checklist), `device-query-normalize` (คำค้นไทย → brand/model/storage/color)
 
-**Tech Stack:** NestJS + Prisma (apps/api), React + vitest (apps/web), React (apps/web-shop), Postgres migration `20260982000000`
+**Tech Stack:** NestJS + Prisma (apps/api), React + vitest (apps/web), React (apps/web-shop), Postgres migration `20260985000000`
 
 ## Global Constraints
 
 - **Branch:** `feat/pa-b0-price-grade-readiness` (แตกจาก `spec/product-answering-readiness`)
-- **Migration:** `20260982000000_product_price_grade_readiness` — ตรวจแล้ว max ปัจจุบันบน main = `20260981000000_add_credit_note_source_fields` → `20260982000000` ว่างจริง. ถ้า merge ช้าและมี migration ใหม่แทรก ให้ `ls apps/api/prisma/migrations | sort | tail -3` ก่อน แล้วเลื่อนเลข
+- **Migration:** `20260985000000_product_price_grade_readiness` — ตรวจแล้ว max ปัจจุบันบน main = `20260981000000_add_credit_note_source_fields` → `20260985000000` ว่างจริง. ถ้า merge ช้าและมี migration ใหม่แทรก ให้ `ls apps/api/prisma/migrations | sort | tail -3` ก่อน แล้วเลื่อนเลข
 - **เงิน = `Prisma.Decimal` เท่านั้น** — ห้าม `Number()` ในเส้นทางเขียนราคา; `Number()` ใช้ได้เฉพาะตอนแปลงออก response ให้ JSON
 - **Red line:** ห้ามแตะ accounting/finance JE templates, ห้ามแตะ `journal/`, `accounting/`, `payments/`. Task 1 เป็น golden test ของเครื่องคิดเงินสัญญา — **ต้องเขียวก่อน** ถึงจะแตะ `getSellingPrice`. Task 8 แตะ `repossessions.service.markReadyForSale` ซึ่งอยู่ในไฟล์เดียวกับ JP5 — **แก้เฉพาะบล็อก 708-726 เท่านั้น ห้ามแตะ `create()`/JP5 และห้ามแตะบล็อก costPrice 694-707**
 - **Runner ฝั่ง api = jest**: `cd apps/api && npx jest src/utils/product-readiness.util.spec.ts` (config อยู่ใน `apps/api/package.json:145`, `rootDir: src`, `testRegex .*\.spec\.ts$`) หรือ `npm run test --workspace=apps/api -- <pattern>`
@@ -42,7 +42,7 @@
 | `src/utils/product-price-autofill.util.ts` (+`.spec.ts`) | `PricingTemplate` → `cashPrice` (+`installmentPrice` ตาม semantics flag) + stamp `priceAutofilledAt` |
 | `src/utils/product-readiness.util.ts` (+`.spec.ts`) | `productReadinessWhere()` → `{AND:[...]}` AND-composable + `evaluateReadiness()` → checklist |
 | `scripts/survey-pricing-templates.ts` | read-only survey ให้ owner ตัดสินความหมาย `installmentBestchoicePrice` |
-| `prisma/migrations/20260982000000_product_price_grade_readiness/migration.sql` | 3 คอลัมน์ใหม่บน `products` + **dedupe + partial UNIQUE INDEX บังคับ "1 product = 1 แถว isDefault"** บน `product_prices` |
+| `prisma/migrations/20260985000000_product_price_grade_readiness/migration.sql` | 3 คอลัมน์ใหม่บน `products` + **dedupe + partial UNIQUE INDEX บังคับ "1 product = 1 แถว isDefault"** บน `product_prices` |
 
 **สร้างใหม่ (apps/web)**
 | ไฟล์ | หน้าที่ |
@@ -345,11 +345,11 @@ cd apps/web && npx vitest run src/pages/ContractCreatePage/hooks/
 
 ---
 
-### Task 2: Schema + migration `20260982000000`
+### Task 2: Schema + migration `20260985000000`
 
 **Files:**
 - Modify: `apps/api/prisma/schema.prisma` (model `Product` — แทรกต่อจากบล็อก `=== Online shop additions (Phase 1) ===` ~บรรทัด 1700-1712)
-- Create: `apps/api/prisma/migrations/20260982000000_product_price_grade_readiness/migration.sql`
+- Create: `apps/api/prisma/migrations/20260985000000_product_price_grade_readiness/migration.sql`
 
 **Interfaces:**
 - Produces: `Product.accessoriesIncluded Json?` (`{ charger?: boolean; cable?: boolean; box?: boolean; earphone?: boolean; other?: string }`), `Product.cosmeticNotes String?` (จำกัด 500 ที่ DTO), `Product.priceAutofilledAt DateTime?` (null = ราคาเซ็ตมือ / ยังไม่มีราคา)
@@ -374,7 +374,7 @@ cd apps/web && npx vitest run src/pages/ContractCreatePage/hooks/
 ```bash
 cd apps/api && npx prisma migrate dev --name product_price_grade_readiness --create-only
 ```
-  แล้วเปลี่ยนชื่อโฟลเดอร์ให้เป็น `20260982000000_product_price_grade_readiness` (prisma จะตั้ง timestamp ปัจจุบันมา — ต้อง rename ให้ตรง convention repo) และตรวจว่า SQL ที่ได้เป็น:
+  แล้วเปลี่ยนชื่อโฟลเดอร์ให้เป็น `20260985000000_product_price_grade_readiness` (prisma จะตั้ง timestamp ปัจจุบันมา — ต้อง rename ให้ตรง convention repo) และตรวจว่า SQL ที่ได้เป็น:
 
 ```sql
 -- AlterTable
@@ -3176,7 +3176,7 @@ npm run lint --workspace=apps/api
   → **ข้าม lint ฝั่ง web-shop**: โปรเจกต์นั้นไม่มี `eslint.config.*` (`npx eslint` ตอบ `ESLint couldn't find an eslint.config.(js|mjs|cjs) file`) — gate เดียวคือ `tsc --noEmit` ใน Step 2
   → **ข้าม lint ไฟล์ `apps/api/scripts/*.ts`**: อยู่นอก tsconfig → lint ไม่ได้ (Parsing error) และ tsc ไม่แตะ; ตรวจด้วยการรันจริงใน Step 3
 
-- [ ] **Step 3:** เตรียม local DB: `./tools/db-reset.sh` แล้ว `cd apps/api && npx prisma migrate dev` (ตรวจว่า `20260982000000` apply ผ่าน) แล้วรัน `APPLY=true npm run backfill:product-prices` → ดู `bySource`
+- [ ] **Step 3:** เตรียม local DB: `./tools/db-reset.sh` แล้ว `cd apps/api && npx prisma migrate dev` (ตรวจว่า `20260985000000` apply ผ่าน) แล้วรัน `APPLY=true npm run backfill:product-prices` → ดู `bySource`
 - [ ] **Step 4:** QA เบราว์เซอร์ (local เท่านั้น — prod ปฏิเสธ seed accounts). ล็อกอิน `admin@bestchoice.com / admin1234` แล้วเช็ค 6 ข้อ:
   1. `/stock` → เปิดสินค้า 1 ตัว → `PATCH` ราคาเงินสด → รีเฟรช เห็นราคาใหม่ทั้งในคอลัมน์และตาราง prices[]
   1b. `PATCH` ราคาเงินสดเป็น `null` (ล้างราคา) → ต้องได้ **200 ไม่ใช่ 500** และฟิลด์อื่นในคำขอเดียวกันต้องถูกบันทึกด้วย (regression ของ `new Prisma.Decimal(null)`)
@@ -3228,7 +3228,7 @@ npm run lint --workspace=apps/api
    - ได้ **0** → ยังห้าม merge จนกว่าเจ้าของจะเลือกทาง A (ล้าง [DEMO] + ลงของจริง) หรือทาง B (flag `shop_hide_demo_products`) แล้วทำเสร็จ
    - ได้ **> 0** → merge ได้ และตัวเลขนี้คือ **baseline** ที่ verify หลัง deploy ต้องได้เท่าเดิม
    > ⚠️ SQL ข้อ ② อ่านคอลัมน์ `cash_price` ซึ่งยังว่างทั้งกระดานก่อน backfill → ตอน pre-merge ให้แทนเงื่อนไข `cash_price > 0` ด้วย `EXISTS (SELECT 1 FROM product_prices pp WHERE pp.product_id = products.id AND pp.deleted_at IS NULL)` เพื่อประเมิน "หลัง backfill จะเหลือกี่เครื่อง"
-1. **Merge PR → main** → GitHub Actions (`deploy-gcp.yml`) job `migrate-db` รัน `prisma migrate deploy` → `20260982000000` apply (ADD COLUMN nullable ล้วน ไม่มี NOT NULL ไม่มี default → ไม่ล็อกตาราง ไม่ต้อง downtime)
+1. **Merge PR → main** → GitHub Actions (`deploy-gcp.yml`) job `migrate-db` รัน `prisma migrate deploy` → `20260985000000` apply (ADD COLUMN nullable ล้วน ไม่มี NOT NULL ไม่มี default → ไม่ล็อกตาราง ไม่ต้อง downtime)
 2. **ทันทีที่ job `migrate-db` เขียว** (ไม่ต้องรอ `deploy-api`) รัน backfill ผ่าน cloud-sql-proxy จากเครื่อง:
    ```bash
    # ① dry-run ดูก่อนเสมอ

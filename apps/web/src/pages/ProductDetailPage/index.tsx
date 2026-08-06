@@ -11,7 +11,7 @@ import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { transferableStatuses } from '@/lib/constants';
 import ProductInfo from './components/ProductInfo';
-import { getDisplayPrices, getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
+import { getDisplayPrices, getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
 import ProductPhotos from './components/ProductPhotos';
 import EditProductModal from './components/EditProductModal';
 import { InstallmentCalculatorCard } from './components/InstallmentCalculatorCard';
@@ -152,6 +152,9 @@ export default function ProductDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-available'] });
+      // fix-round I2: readiness card (Task 8) reads this key — ไม่ invalidate จะค้างสถานะเก่า
+      // (เช่นแก้ราคาแล้วแต่การ์ด readiness ยังบอกว่า "ยังไม่มีราคา")
+      queryClient.invalidateQueries({ queryKey: ['product-readiness', id] });
       toast.success('บันทึกราคาขายสำเร็จ');
       setIsSellingPriceModalOpen(false);
     },
@@ -159,15 +162,6 @@ export default function ProductDetailPage() {
   });
   // หมายเหตุที่ตั้งใจ: ช่องว่าง = "ไม่แก้ค่านี้" (ส่ง undefined → axios ตัดคีย์ทิ้ง)
   // ไม่ใช่ "ล้างราคาเป็น null" — การล้างราคาเป็น follow-up (มี UI ปุ่มเคลียร์ราคาชัดเจน)
-
-  const openSellingPriceModal = () => {
-    if (!product) return;
-    setSellingPriceForm({
-      cashPrice: product.cashPrice != null ? String(product.cashPrice) : '',
-      installmentPrice: product.installmentPrice != null ? String(product.installmentPrice) : '',
-    });
-    setIsSellingPriceModalOpen(true);
-  };
 
   // Transfer mutation
   const transferMutation = useMutation({
@@ -279,9 +273,25 @@ export default function ProductDetailPage() {
   }
 
   // ราคาที่โชว์ในการ์ด (Task 5 ledger M1) ต้องมาจาก getPositiveDisplayPrices — ไม่ใช่คอลัมน์ดิบ
-  // (คอลัมน์ 0/ลบ/ว่าง ถือว่า "ไม่มี" แล้ว fallback ไป prices[] label chain) ยกเว้นช่องอินพุตของ
-  // EditSellingPriceModal ที่ผูกกับคอลัมน์ตรง — sellingPriceForm อ่าน product.cashPrice/installmentPrice ดิบ
+  // (คอลัมน์ 0/ลบ/ว่าง ถือว่า "ไม่มี" แล้ว fallback ไป prices[] label chain)
   const { cash: displayCashPrice, installment: displayInstallmentPrice } = getPositiveDisplayPrices(product);
+
+  // fix-round I1: ค่าที่โชว์มาจาก fallback ไปหา prices[] label เมื่อคอลัมน์ดิบเป็น null/ไม่บวก
+  // (เครื่องแบบนี้ยังไม่ขึ้นเว็บ — readiness gate อ่านคอลัมน์ ไม่อ่าน prices[]) — ใช้ติดป้ายเตือน
+  const cashIsFallback = displayCashPrice != null && normalizePositive(product.cashPrice) == null;
+  const installmentIsFallback =
+    displayInstallmentPrice != null && normalizePositive(product.installmentPrice) == null;
+
+  // fix-round I1(b): prefill modal ด้วยค่าที่ "โชว์จริง" (คอลัมน์ถ้ามี ไม่งั้น fallback จาก
+  // prices[]) แทนที่จะอ่านคอลัมน์ดิบเฉยๆ — เดิม fallback-only เครื่องจะเปิด modal มาว่าง ทั้งที่
+  // การ์ดโชว์ราคาอยู่; ตอนนี้กดบันทึกครั้งเดียว = migrate ค่าจาก prices[] เข้าคอลัมน์จริง
+  const openSellingPriceModal = () => {
+    setSellingPriceForm({
+      cashPrice: displayCashPrice != null ? String(displayCashPrice) : '',
+      installmentPrice: displayInstallmentPrice != null ? String(displayInstallmentPrice) : '',
+    });
+    setIsSellingPriceModalOpen(true);
+  };
 
   return (
     <div>
@@ -374,6 +384,8 @@ export default function ProductDetailPage() {
             cashPrice={displayCashPrice}
             installmentPrice={displayInstallmentPrice}
             priceAutofilledAt={product.priceAutofilledAt}
+            cashIsFallback={cashIsFallback}
+            installmentIsFallback={installmentIsFallback}
             canEdit={isManager}
             onEdit={openSellingPriceModal}
           />
@@ -400,6 +412,12 @@ export default function ProductDetailPage() {
         onChange={setSellingPriceForm}
         onSubmit={(e) => {
           e.preventDefault();
+          // fix-round Minor 1: ว่างทั้ง 2 ช่อง = ไม่มีอะไรจะแก้ (ทั้งคู่ส่ง undefined อยู่แล้ว) —
+          // ปิด modal เฉยๆ แทนที่จะยิง PATCH {} ที่ไม่แตะอะไรเลยแล้วโชว์ toast สำเร็จหลอกๆ
+          if (sellingPriceForm.cashPrice === '' && sellingPriceForm.installmentPrice === '') {
+            setIsSellingPriceModalOpen(false);
+            return;
+          }
           sellingPriceMutation.mutate();
         }}
         isPending={sellingPriceMutation.isPending}

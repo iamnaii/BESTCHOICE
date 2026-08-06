@@ -37,8 +37,14 @@ export function getDisplayPrices(product: ProductForDisplay): DisplayPrices {
   return { cash, installment };
 }
 
-/** Non-positive (0 / '' / negative / NaN) column value treated as "absent". */
-function normalizePositive(v?: string | number | null): number | null {
+/**
+ * Non-positive (0 / '' / negative / NaN) column value treated as "absent".
+ * Exported so callers can independently check "is this raw column actually positive"
+ * — e.g. ProductDetailPage/index.tsx compares this against `getPositiveDisplayPrices`'s
+ * result to detect when the displayed price is a fallback (prices[] label match) rather
+ * than a real column value (fix-round I1, 2026-08-06).
+ */
+export function normalizePositive(v?: string | number | null): number | null {
   if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : null;

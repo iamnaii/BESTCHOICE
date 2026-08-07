@@ -62,6 +62,10 @@ export default function RepossessionsPage() {
   const { user } = useAuth();
   // POST /contracts/:id/shop-collect-settlement roles (OWNER/FM/ACC)
   const canSettle = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
+  // PATCH /repossessions/:id + POST :id/ready-for-sale = OWNER/BRANCH_MANAGER เท่านั้น
+  const canManage = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
+  // GET /repossessions/profit-loss = OWNER/FM/ACC — gate query กัน 403 เงียบๆ + retry รัวๆ
+  const canViewPl = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
   const [statusFilter, setStatusFilter] = useState('');
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repossession | null>(null);
@@ -101,6 +105,7 @@ export default function RepossessionsPage() {
   const { data: profitLoss } = useQuery({
     queryKey: ['repossessions-pl'],
     queryFn: async () => (await api.get('/repossessions/profit-loss')).data,
+    enabled: canViewPl,
   });
 
   const updateMutation = useMutation({
@@ -255,7 +260,7 @@ export default function RepossessionsPage() {
       label: '',
       render: (r: Repossession) => (
         <div className="flex items-center gap-2">
-          {(r.status === 'REPOSSESSED' || r.status === 'UNDER_REPAIR') && (
+          {canManage && (r.status === 'REPOSSESSED' || r.status === 'UNDER_REPAIR') && (
             <button
               onClick={() => {
                 setReadyForSaleRepo(r);
@@ -266,12 +271,14 @@ export default function RepossessionsPage() {
               พร้อมขาย
             </button>
           )}
-          <button
-            onClick={() => openUpdate(r)}
-            className="text-primary hover:text-primary/80 text-sm font-medium"
-          >
-            จัดการ
-          </button>
+          {canManage && (
+            <button
+              onClick={() => openUpdate(r)}
+              className="text-primary hover:text-primary/80 text-sm font-medium"
+            >
+              จัดการ
+            </button>
+          )}
           {canSettle && (
             <button
               onClick={() => openSettlement(r)}

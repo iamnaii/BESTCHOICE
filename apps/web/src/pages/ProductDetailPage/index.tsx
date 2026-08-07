@@ -200,6 +200,10 @@ export default function ProductDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-available'] });
+      // review round 1 [C1]: conditionGrade เป็น blocking check ของ readiness (PHONE_USED) —
+      // แก้จาก modal นี้แล้วไม่ invalidate จะค้างสถานะเก่าที่การ์ด readiness (เหมือน I2 ของ
+      // sellingPriceMutation ด้านบน)
+      queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(id) });
       toast.success('แก้ไขข้อมูลสินค้าสำเร็จ');
       setIsEditModalOpen(false);
     },
@@ -308,19 +312,26 @@ export default function ProductDetailPage() {
   const installmentIsFallback =
     displayInstallmentPrice != null && normalizePositive(product.installmentPrice) == null;
 
-  // fix-round I1(b): prefill modal ด้วยค่าที่ "โชว์จริง" (คอลัมน์ถ้ามี ไม่งั้น fallback จาก
-  // prices[]) แทนที่จะอ่านคอลัมน์ดิบเฉยๆ — เดิม fallback-only เครื่องจะเปิด modal มาว่าง ทั้งที่
-  // การ์ดโชว์ราคาอยู่; ตอนนี้กดบันทึกครั้งเดียว = migrate ค่าจาก prices[] เข้าคอลัมน์จริง
+  // fix-round I1(b) [Task 7]: prefill ฟอร์มด้วยค่าที่ "โชว์จริง" (คอลัมน์ถ้ามี ไม่งั้น fallback
+  // จาก prices[]) แทนที่จะอ่านคอลัมน์ดิบเฉยๆ — เดิม fallback-only เครื่องจะเปิด modal มาว่าง
+  // ทั้งที่การ์ดโชว์ราคาอยู่; ตอนนี้กดบันทึกครั้งเดียว = migrate ค่าจาก prices[] เข้าคอลัมน์จริง
+  //
+  // review round 1 [I1, Task 11]: sellingPriceInitial (ค่าที่ dirty-check เทียบด้วย) ต้อง
+  // snapshot จาก "คอลัมน์ดิบ normalize แล้ว" — ไม่ใช่ค่า display เดียวกับฟอร์ม เดิมถ้าใช้
+  // display ทั้งคู่ เครื่อง fallback จะมี form === initial เสมอ (ทั้งคู่มาจาก
+  // getPositiveDisplayPrices) → payload ว่างตลอด → ฟีเจอร์ "กดบันทึกครั้งเดียว migrate ค่าจาก
+  // prices[] เข้าคอลัมน์จริง" ของ I1(b) ข้างบนจะใช้งานไม่ได้อีกต่อไป (dirty-check ปิดกั้นไว้)
   const openSellingPriceModal = () => {
-    // Task 11 deferred fix: จำค่า ณ ตอนเปิด modal ไว้คู่กับฟอร์ม — buildSellingPricePayload
-    // เทียบสองค่านี้ตอน submit เพื่อไม่ส่งฟิลด์ที่ไม่เปลี่ยนซ้ำ (กันเคลียร์ priceAutofilledAt badge
-    // โดยไม่ตั้งใจเวลากดบันทึกโดยไม่ได้แก้อะไรเลย)
-    const initial = {
+    const rawCash = normalizePositive(product.cashPrice);
+    const rawInstallment = normalizePositive(product.installmentPrice);
+    setSellingPriceForm({
       cashPrice: displayCashPrice != null ? String(displayCashPrice) : '',
       installmentPrice: displayInstallmentPrice != null ? String(displayInstallmentPrice) : '',
-    };
-    setSellingPriceForm(initial);
-    setSellingPriceInitial(initial);
+    });
+    setSellingPriceInitial({
+      cashPrice: rawCash != null ? String(rawCash) : '',
+      installmentPrice: rawInstallment != null ? String(rawInstallment) : '',
+    });
     setIsSellingPriceModalOpen(true);
   };
 

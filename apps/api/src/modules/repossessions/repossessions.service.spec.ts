@@ -864,6 +864,40 @@ describe('RepossessionsService', () => {
       // JP5 was awaited — error propagated (proves no .catch() fire-and-forget remains)
       expect(template.execute).toHaveBeenCalled();
     });
+
+    it('create() โหลด payments เฉพาะ deletedAt:null (เหมือน previewCalculation)', async () => {
+      // ทุกงวด PAID → outstandingBalance = 0 → ข้าม JP5/CN path ทั้งชุด — test นี้
+      // สนแค่ shape ของ include จึงไม่ต้องพึ่ง mock ของ jp5/creditNoteService เลย
+      const allPaid = makeContract({ status: 'TERMINATED' }).payments.map((p) => ({
+        ...p,
+        status: 'PAID',
+        amountPaid: p.amountDue,
+      }));
+      prisma.contract.findUnique.mockResolvedValue(
+        makeContract({ status: 'TERMINATED', payments: allPaid }),
+      );
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+      await service.create(
+        {
+          contractId: 'contract-1',
+          repossessedDate: '2026-08-07',
+          conditionGrade: 'B',
+          appraisalPrice: 5000,
+        } as never,
+        'user-1',
+      );
+      expect(prisma.contract.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
+          }),
+        }),
+      );
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

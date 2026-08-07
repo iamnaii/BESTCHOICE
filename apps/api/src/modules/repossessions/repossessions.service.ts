@@ -332,7 +332,11 @@ export class RepossessionsService {
     const result = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: dto.contractId },
-        include: { product: true, payments: true },
+        include: {
+          product: true,
+          // mirror previewCalculation — แถว soft-deleted ห้ามเข้าสูตรยอดปิด/JP5 gate
+          payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
+        },
       });
 
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');

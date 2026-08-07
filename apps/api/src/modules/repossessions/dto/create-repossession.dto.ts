@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsBoolean, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsBoolean, IsIn, Min, Max } from 'class-validator';
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateRepossessionDto {
@@ -21,13 +21,16 @@ export class CreateRepossessionDto {
   conditionGrade: string; // A, B, C, D
 
   @IsNumber({}, { message: 'กรุณาระบุราคาประเมิน' })
+  @Min(0, { message: 'ราคาประเมินต้องไม่ติดลบ' })
   appraisalPrice: number;
 
   @IsNumber({}, { message: 'กรุณาระบุค่าซ่อม' })
+  @Min(0, { message: 'ค่าซ่อมต้องไม่ติดลบ' })
   @IsOptional()
   repairCost?: number;
 
   @IsNumber({}, { message: 'กรุณาระบุราคาขายต่อ' })
+  @Min(0, { message: 'ราคาขายต่อต้องไม่ติดลบ' })
   @IsOptional()
   resellPrice?: number;
 
@@ -37,10 +40,13 @@ export class CreateRepossessionDto {
 
   // ─── ราคากลาง + คำนวณกำไร/ขาดทุน (FINANCE perspective) ───
   @IsNumber({}, { message: 'ราคากลางต้องเป็นตัวเลข' })
+  @Min(0, { message: 'ราคากลางต้องไม่ติดลบ' })
   @IsOptional()
   marketValue?: number;
 
   @IsNumber({}, { message: 'ส่วนลดต้องเป็นตัวเลข' })
+  @Min(0, { message: 'ส่วนลดต้องไม่ติดลบ' })
+  @Max(100, { message: 'ส่วนลดต้องไม่เกิน 100%' })
   @IsOptional()
   discountPct?: number;
 
@@ -72,10 +78,12 @@ export class CreateRepossessionDto {
 
 export class UpdateRepossessionDto {
   @IsNumber()
+  @Min(0, { message: 'ค่าซ่อมต้องไม่ติดลบ' })
   @IsOptional()
   repairCost?: number;
 
   @IsNumber()
+  @Min(0, { message: 'ราคาขายต่อต้องไม่ติดลบ' })
   @IsOptional()
   resellPrice?: number;
 

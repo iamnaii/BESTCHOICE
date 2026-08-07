@@ -149,7 +149,11 @@ export class RepossessionsService {
    * Preview repossession P&L calculation for a contract.
    * Used by frontend to show live breakdown before creating.
    */
-  async previewCalculation(contractId: string, options: { marketValue?: number; appraisalPrice?: number; discountPct?: number; customerRefundEnabled?: boolean; depositAccountCode?: string; collectedByShop?: boolean }) {
+  async previewCalculation(
+    contractId: string,
+    options: { marketValue?: number; appraisalPrice?: number; discountPct?: number; customerRefundEnabled?: boolean; depositAccountCode?: string; collectedByShop?: boolean },
+    user?: RequestUser,
+  ) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: {
@@ -159,6 +163,14 @@ export class RepossessionsService {
       },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+
+    const scope = getBranchScope(user);
+    if (user && !scope.all) {
+      // ตอบ 404 เดียวกับ "ไม่มีอยู่" — ไม่ยืนยันว่ามีสัญญาของสาขาอื่น
+      if (!scope.branchId || contract.branchId !== scope.branchId) {
+        throw new NotFoundException('ไม่พบสัญญา');
+      }
+    }
 
     if (!contract.totalMonths || contract.totalMonths <= 0) {
       throw new BadRequestException('ข้อมูลสัญญาผิดพลาด: จำนวนงวดต้องมากกว่า 0');
@@ -612,6 +624,15 @@ export class RepossessionsService {
       );
     }
 
+    // แถวที่ประกาศขายแล้ว (READY_FOR_SALE) ห้ามล้างราคาขายเป็น 0 ผ่าน self-transition/PATCH ตรง
+    if (
+      repo.status === 'READY_FOR_SALE' &&
+      dto.resellPrice !== undefined &&
+      new Prisma.Decimal(dto.resellPrice).lessThanOrEqualTo(0)
+    ) {
+      throw new BadRequestException('กรุณาระบุราคาขายต่อมากกว่า 0');
+    }
+
     // ฟอร์มหน้าเว็บส่งสถานะปัจจุบันติดมาด้วยเสมอ — สถานะเดิมไม่ใช่การเปลี่ยนสถานะ
     // (เช็คแบบ inline แทนตัวแปร statusChanged แยก — TS ไม่ narrow dto.status ผ่าน
     // boolean ที่เก็บแยกเมื่อ dto.status เป็น property access ไม่ใช่ local variable)
@@ -662,8 +683,7 @@ export class RepossessionsService {
           // Wave 3 / Task 4 (W-2): Decimal arithmetic to preserve precision.
           if (dto.status === 'READY_FOR_SALE') {
             const appraisal = new Prisma.Decimal(repo.appraisalPrice ?? 0);
-            const fallback =
-              dto.resellPrice != null ? new Prisma.Decimal(dto.resellPrice) : new Prisma.Decimal(0);
+            const fallback = new Prisma.Decimal(dto.resellPrice ?? repo.resellPrice ?? 0);
             const costBasis = appraisal.greaterThan(0) ? appraisal : fallback;
             if (costBasis.greaterThan(0)) {
               productUpdateData.costPrice = costBasis;

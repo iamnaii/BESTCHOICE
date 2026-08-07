@@ -1058,6 +1058,57 @@ describe('RepossessionsService', () => {
         service.update('repo-1', { status: 'SOLD' } as never, owner),
       ).rejects.toThrow(BadRequestException);
     });
+
+    // Finding 2 (WARNING): self-transition/plain PATCH must not silently
+    // clear resellPrice to 0 on a row already READY_FOR_SALE.
+    it('READY_FOR_SALE + self-transition resellPrice=0 → BadRequestException (กันล้างราคาขาย)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(6000) }),
+      );
+      await expect(
+        service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 0 } as never, owner),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('READY_FOR_SALE + PATCH resellPrice=0 โดยไม่ส่ง status → BadRequestException', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(6000) }),
+      );
+      await expect(
+        service.update('repo-1', { resellPrice: 0 } as never, owner),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('READY_FOR_SALE + self-transition resellPrice=6000 (>0) → สำเร็จ', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(5000) }),
+      );
+      prisma.repossession.update.mockResolvedValue(
+        makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(6000) }),
+      );
+      await expect(
+        service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 6000 } as never, owner),
+      ).resolves.toBeTruthy();
+    });
+
+    // Finding 3 (WARNING): costBasis fallback should use the stored
+    // repo.resellPrice, not drop to 0, when dto.resellPrice is omitted.
+    it('READY_FOR_SALE costBasis fallback = repo.resellPrice เมื่อไม่มี appraisalPrice และไม่ส่ง dto.resellPrice ใหม่', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          status: 'UNDER_REPAIR',
+          appraisalPrice: decimal(0),
+          resellPrice: decimal(7000),
+        }),
+      );
+      prisma.product.update.mockResolvedValue({});
+      prisma.repossession.update.mockResolvedValue({});
+
+      await service.update('repo-1', { status: 'READY_FOR_SALE' } as never, owner);
+
+      const call = prisma.product.update.mock.calls[0][0];
+      expect(new Prisma.Decimal(call.data.costPrice).eq(7000)).toBe(true);
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1126,6 +1177,31 @@ describe('RepossessionsService', () => {
       );
       await expect(
         service.findOne('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-1' }),
+      ).resolves.toBeTruthy();
+    });
+
+    // Finding 1 (CRITICAL): preview endpoint must not leak cross-branch data.
+    it('previewCalculation: BM ข้ามสาขา → NotFoundException (ไม่ leak ว่ามีสัญญาของสาขาอื่น)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract({ branchId: 'branch-1' }));
+
+      await expect(
+        service.previewCalculation('contract-1', {}, {
+          id: 'u1',
+          role: 'BRANCH_MANAGER',
+          branchId: 'branch-2',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('previewCalculation: BM สาขาเดียวกัน → ผ่าน', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract({ branchId: 'branch-1' }));
+
+      await expect(
+        service.previewCalculation('contract-1', {}, {
+          id: 'u1',
+          role: 'BRANCH_MANAGER',
+          branchId: 'branch-1',
+        }),
       ).resolves.toBeTruthy();
     });
   });

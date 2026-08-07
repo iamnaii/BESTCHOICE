@@ -54,6 +54,7 @@ export class RepossessionsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   previewCalculation(
     @Param('contractId') contractId: string,
+    @CurrentUser() user: RequestUser,
     @Query('marketValue') marketValue?: string,
     @Query('appraisalPrice') appraisalPrice?: string,
     @Query('discountPct') discountPct?: string,
@@ -61,14 +62,18 @@ export class RepossessionsController {
     @Query('depositAccountCode') depositAccountCode?: string,
     @Query('collectedByShop') collectedByShop?: string,
   ) {
-    return this.repossessionsService.previewCalculation(contractId, {
-      marketValue: marketValue ? parseFloat(marketValue) : undefined,
-      appraisalPrice: appraisalPrice ? parseFloat(appraisalPrice) : undefined,
-      discountPct: discountPct ? parseFloat(discountPct) : undefined,
-      customerRefundEnabled: customerRefundEnabled === 'true',
-      depositAccountCode: depositAccountCode || undefined,
-      collectedByShop: collectedByShop === 'true',
-    });
+    return this.repossessionsService.previewCalculation(
+      contractId,
+      {
+        marketValue: marketValue ? parseFloat(marketValue) : undefined,
+        appraisalPrice: appraisalPrice ? parseFloat(appraisalPrice) : undefined,
+        discountPct: discountPct ? parseFloat(discountPct) : undefined,
+        customerRefundEnabled: customerRefundEnabled === 'true',
+        depositAccountCode: depositAccountCode || undefined,
+        collectedByShop: collectedByShop === 'true',
+      },
+      user,
+    );
   }
 
   @Get(':id')

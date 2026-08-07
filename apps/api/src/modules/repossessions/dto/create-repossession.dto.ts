@@ -89,6 +89,9 @@ export class UpdateRepossessionDto {
 
   @IsString()
   @IsOptional()
+  @IsIn(['REPOSSESSED', 'UNDER_REPAIR', 'READY_FOR_SALE', 'SOLD'], {
+    message: 'สถานะไม่ถูกต้อง',
+  })
   status?: string; // REPOSSESSED, UNDER_REPAIR, READY_FOR_SALE, SOLD
 
   @IsString()

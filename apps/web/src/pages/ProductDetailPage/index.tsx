@@ -83,6 +83,10 @@ interface EditForm {
   hasBox: boolean;
   accessoryType: string;
   accessoryBrand: string;
+  conditionGrade: string;
+  shopWarrantyDays: string;
+  accessoriesIncluded: string;
+  cosmeticNotes: string;
 }
 
 export default function ProductDetailPage() {
@@ -106,6 +110,7 @@ export default function ProductDetailPage() {
     imeiSerial: '', serialNumber: '', category: '', costPrice: '',
     status: '', batteryHealth: '', warrantyExpired: false,
     warrantyExpireDate: '', hasBox: false, accessoryType: '', accessoryBrand: '',
+    conditionGrade: '', shopWarrantyDays: '', accessoriesIncluded: '', cosmeticNotes: '',
   });
 
   // Transfer modal state
@@ -217,6 +222,10 @@ export default function ProductDetailPage() {
       hasBox: product.hasBox ?? false,
       accessoryType: product.accessoryType || '',
       accessoryBrand: product.accessoryBrand || '',
+      conditionGrade: product.conditionGrade || '',
+      shopWarrantyDays: product.shopWarrantyDays != null ? String(product.shopWarrantyDays) : '',
+      accessoriesIncluded: (product.accessoriesIncluded ?? []).join(', '),
+      cosmeticNotes: product.cosmeticNotes || '',
     });
     setIsEditModalOpen(true);
   };
@@ -246,6 +255,16 @@ export default function ProductDetailPage() {
       payload.accessoryType = editForm.accessoryType || undefined;
       payload.accessoryBrand = editForm.accessoryBrand || undefined;
     }
+    // ค่าว่าง → undefined = "ไม่แก้" (DTO @IsIn ปฏิเสธ '' อยู่แล้ว);
+    // accessoriesIncluded ส่งเสมอ (array ว่าง = ล้างรายการอุปกรณ์ ซึ่งตั้งใจให้ทำได้)
+    payload.conditionGrade = editForm.conditionGrade || undefined;
+    payload.shopWarrantyDays =
+      editForm.shopWarrantyDays !== '' ? Number(editForm.shopWarrantyDays) : undefined;
+    payload.accessoriesIncluded = editForm.accessoriesIncluded
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    payload.cosmeticNotes = editForm.cosmeticNotes || undefined;
     editMutation.mutate(payload);
   };
 

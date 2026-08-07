@@ -20,6 +20,13 @@ function PeriodsRedirect() {
   return null;
 }
 
+// Extracted (not inlined like most other route role lists) so a regression test can assert
+// on it directly — B1 Task 12 fix round 1 [I2]: repo has no route-render-test pattern, this
+// is the lightest guard against "roles quietly narrowed back down" without rendering the
+// whole <App/>. Kept as a plain string[] (not `as const`) to match ProtectedRoute's
+// `roles?: string[]` prop type without a readonly-array/mutable-array TS mismatch.
+export const PRODUCT_DETAIL_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'];
+
 // Lazy-load all pages (separate chunks, loaded on demand)
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const PrivacyPolicyPage = lazy(() => import('@/pages/PrivacyPolicyPage'));
@@ -474,7 +481,7 @@ function App() {
           <Route
             path="/products/:id"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}>
+              <ProtectedRoute roles={PRODUCT_DETAIL_ROLES}>
                 <ProductDetailPage />
               </ProtectedRoute>
             }

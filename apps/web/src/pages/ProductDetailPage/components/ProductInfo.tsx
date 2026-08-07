@@ -36,6 +36,10 @@ interface Product {
   po: { id: string; poNumber: string } | null;
   inspection: { id: string; overallGrade: string | null; isCompleted: boolean } | null;
   prices: Price[];
+  conditionGrade?: string | null;
+  shopWarrantyDays?: number | null;
+  accessoriesIncluded?: string[] | null;
+  cosmeticNotes?: string | null;
 }
 
 interface ProductInfoProps {
@@ -102,8 +106,25 @@ export default function ProductInfo({
                   }
                 />
                 <InfoField label="กล่อง" value={product.hasBox != null ? (product.hasBox ? 'มีกล่อง' : 'ไม่มีกล่อง') : null} />
+                <InfoField
+                  label="เกรดเครื่อง"
+                  value={product.conditionGrade ? `เกรด ${product.conditionGrade}` : null}
+                />
               </>
             )}
+            <InfoField
+              label="ประกันร้าน"
+              value={product.shopWarrantyDays != null ? `${product.shopWarrantyDays} วัน` : null}
+            />
+            <InfoField
+              label="อุปกรณ์ที่แถม"
+              value={
+                product.accessoriesIncluded && product.accessoriesIncluded.length > 0
+                  ? product.accessoriesIncluded.join(', ')
+                  : null
+              }
+            />
+            <InfoField label="ตำหนิ" value={product.cosmeticNotes} />
             <InfoField label="สาขา" value={product.branch.name} />
             <InfoField label="ผู้จัดจำหน่าย" value={product.supplier?.name} />
             <InfoField label="PO" value={product.po?.poNumber} mono />

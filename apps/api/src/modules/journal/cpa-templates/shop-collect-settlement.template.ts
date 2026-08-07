@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
@@ -89,6 +89,23 @@ export class ShopCollectSettlementTemplate {
         },
       });
       if (dupe) {
+        const amountStr = amount.toFixed(2);
+        const dupeMetadata = dupe.metadata as Record<string, unknown> | null;
+        const bookedAmount = dupeMetadata?.['amount'];
+        const isSameAmount = typeof bookedAmount === 'string' && bookedAmount === amountStr;
+
+        if (!isSameAmount) {
+          // ยอดเปลี่ยนไปจากตอนโพสต์ JE เดิม (หรืออ่าน metadata ไม่ได้) — ห้ามกลืนเงียบ
+          // ต้องปฏิเสธ ไม่ใช่คืน success ของยอดเก่าให้ operator เข้าใจผิดว่ายอดใหม่บันทึกแล้ว
+          const bookedDisplay = typeof bookedAmount === 'string' ? bookedAmount : 'ไม่ทราบยอด';
+          this.logger.warn(
+            `[SCS] requestId ${input.requestId} matched JE ${dupe.entryNumber} but amount differs (booked=${bookedDisplay}, incoming=${amountStr}) — rejecting`,
+          );
+          throw new ConflictException(
+            `คำขอนี้ถูกบันทึกไปแล้วที่ยอด ${bookedDisplay} ฿ — กรุณาปิดหน้าต่างรับโอนแล้วเปิดใหม่ หากต้องการบันทึกยอดใหม่`,
+          );
+        }
+
         this.logger.log(
           `[SCS] duplicate requestId ${input.requestId} — JE ${dupe.entryNumber} already posted, skipping`,
         );

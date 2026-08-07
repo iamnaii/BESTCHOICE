@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { seedFinanceCoa } from '../../../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../journal/__tests__/scenario-helpers';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
@@ -479,5 +479,76 @@ describe('shop-collect-settlement integration', () => {
       },
     });
     expect(jes).toHaveLength(1);
+  });
+
+  it('requestId เดิมซ้ำแต่ยอดเปลี่ยน → ConflictException (ห้ามกลืนเงียบ ยอดใหม่ต้องไม่หาย)', async () => {
+    const cAmountChange = await seedStandard17k12m(prisma);
+    const journalAmountChange = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journalAmountChange, prisma as any).execute(cAmountChange.id);
+    await seedPendingPayments(cAmountChange.id, cAmountChange.installmentCount);
+
+    await svc.earlyPayoff(cAmountChange.id, userId, {
+      paymentMethod: 'CASH',
+      discountPct: 50,
+      collectedByShop: true,
+    } as any);
+
+    const outstanding = await getNet11_2107(cAmountChange.id);
+    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(true);
+
+    const requestId = '44444444-4444-4444-8444-444444444444';
+
+    // First call: settle half the outstanding balance.
+    const firstAmount = outstanding.div(2).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+    const r1 = await svc.shopCollectSettlement(cAmountChange.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: firstAmount.toNumber(),
+      requestId,
+    });
+    expect(r1, 'First call should succeed').toBeDefined();
+
+    // Simulates: client saw a timeout on the first call, dialog stayed open
+    // (same requestId), operator edited the amount and resubmitted. The new
+    // amount must still be within the (now-reduced) outstanding balance.
+    const secondAmount = outstanding.minus(firstAmount).minus('2');
+    expect(
+      secondAmount.gt(0),
+      `Fixture sanity: expected a positive alternate amount, got ${secondAmount.toFixed(2)}`,
+    ).toBe(true);
+
+    await expect(
+      svc.shopCollectSettlement(cAmountChange.id, userId, {
+        depositAccountCode: '11-1201',
+        amount: secondAmount.toNumber(),
+        requestId,
+      }),
+    ).rejects.toThrow(ConflictException);
+
+    await expect(
+      svc.shopCollectSettlement(cAmountChange.id, userId, {
+        depositAccountCode: '11-1201',
+        amount: secondAmount.toNumber(),
+        requestId,
+      }),
+    ).rejects.toThrow('คำขอนี้ถูกบันทึกไปแล้ว');
+
+    // Only the first JE should exist for this contract.
+    const jes = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as any,
+          { metadata: { path: ['contractId'], equals: cAmountChange.id } } as any,
+        ],
+        deletedAt: null,
+      },
+    });
+    expect(jes).toHaveLength(1);
+
+    // Net 11-2107 must reflect only the first (accepted) amount.
+    const finalBalance = await getNet11_2107(cAmountChange.id);
+    expect(
+      finalBalance.minus(outstanding.minus(firstAmount)).abs().lte('0.01'),
+      `Expected net 11-2107 to reflect only the first settlement (${outstanding.minus(firstAmount).toFixed(2)}), got ${finalBalance.toFixed(2)}`,
+    ).toBe(true);
   });
 });

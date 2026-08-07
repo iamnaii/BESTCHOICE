@@ -127,3 +127,144 @@ describe('MessageRouterService — staff follow-up flag after rate reply (#1332)
     expect(handoffManager.initiateHandoff).not.toHaveBeenCalled();
   });
 });
+
+// ─── B2: image primitive + exactly-once on clientMessageId ───────────────────
+
+function makeStaffSender() {
+  const room = {
+    id: 'r1',
+    channel: ChatChannel.LINE_SHOP,
+    externalUserId: 'U1',
+    lineUserId: null,
+  };
+  // จำลอง @@unique([roomId, clientMessageId]) ด้วย Map
+  const store = new Map<string, any>();
+  let seq = 0;
+  const roomManager = {
+    findById: jest.fn().mockResolvedValue(room),
+    findByClientMessageId: jest.fn(async (_roomId: string, token: string) => store.get(token) ?? null),
+    saveMessage: jest.fn(async (p: any) => {
+      if (p.clientMessageId && store.has(p.clientMessageId)) {
+        const err: any = new Error('Unique constraint failed');
+        err.code = 'P2002';
+        throw err;
+      }
+      const row = {
+        id: `m${++seq}`,
+        clientMessageId: p.clientMessageId ?? null,
+        createdAt: new Date('2026-08-04T03:00:00.000Z'),
+        outboundSentAt: null as Date | null,
+        type: p.type,
+        mediaUrl: p.mediaUrl,
+        role: p.role,
+      };
+      if (p.clientMessageId) store.set(p.clientMessageId, row);
+      return row;
+    }),
+    markOutboundSent: jest.fn(async (id: string, externalMessageId?: string) => {
+      for (const row of store.values()) {
+        if (row.id === id) {
+          row.outboundSentAt = new Date();
+          if (externalMessageId) row.externalMessageId = externalMessageId;
+        }
+      }
+    }),
+  };
+  const adapter = {
+    channel: ChatChannel.LINE_SHOP,
+    sendMessage: jest.fn().mockResolvedValue({ success: true, externalMessageId: 'ext-1' }),
+  };
+  const router = new MessageRouterService(
+    roomManager as any,
+    { initiateHandoff: jest.fn() } as any,
+    { get: jest.fn().mockReturnValue(undefined) } as any,
+  );
+  router.registerAdapter(adapter as any);
+  return { router, adapter, roomManager, store };
+}
+
+describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
+  it('ส่ง imageUrl ให้ adapter และ persist type/mediaUrl ลง ChatMessage', async () => {
+    const { router, adapter, roomManager } = makeStaffSender();
+    const res = await router.sendStaffMessage({
+      roomId: 'r1',
+      staffId: 'u1',
+      type: MessageType.IMAGE,
+      mediaUrl: 'staff-chat/r1/1.jpg',
+      mediaType: 'image/jpeg',
+      deliveryMediaUrl: 'https://signed.example/1.jpg',
+      clientMessageId: 'tok-img',
+    });
+
+    expect(res.success).toBe(true);
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: MessageType.IMAGE,
+        mediaUrl: 'staff-chat/r1/1.jpg',
+        mediaType: 'image/jpeg',
+        clientMessageId: 'tok-img',
+      }),
+    );
+    // adapter ต้องได้ URL ที่ public (ไม่ใช่ storage key) และไม่มี text ปนใน bubble รูป
+    expect(adapter.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageUrl: 'https://signed.example/1.jpg',
+        type: MessageType.IMAGE,
+        text: undefined,
+      }),
+    );
+  });
+
+  it('retry ด้วย clientMessageId เดิม (ส่งสำเร็จแล้ว) → ไม่เรียก adapter ซ้ำ', async () => {
+    const { router, adapter } = makeStaffSender();
+    const params = {
+      roomId: 'r1',
+      staffId: 'u1',
+      type: MessageType.IMAGE,
+      mediaUrl: 'https://cdn.example/g0.jpg',
+      clientMessageId: 'tok-same',
+    };
+    await router.sendStaffMessage(params);
+    const second = await router.sendStaffMessage(params);
+
+    expect(second.success).toBe(true);
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(1); // ลูกค้าได้รูปครั้งเดียว
+  });
+
+  it('P2002 race (คู่แข่งชนะ) → คืน success โดยไม่เรียก adapter', async () => {
+    const { router, adapter, roomManager } = makeStaffSender();
+    const winner = {
+      id: 'm-winner',
+      clientMessageId: 'tok-race',
+      createdAt: new Date('2026-08-04T03:00:00.000Z'),
+      outboundSentAt: null as Date | null,
+    };
+    // อ่านครั้งแรกยังไม่เห็น row (คู่แข่ง INSERT ไม่เสร็จ) → saveMessage ชน unique
+    // → อ่านซ้ำเจอ row ของคู่แข่ง. ต้องไม่ยิง adapter ซ้ำ (ลูกค้าได้รูปครั้งเดียว)
+    roomManager.findByClientMessageId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(winner);
+    roomManager.saveMessage.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+
+    const res = await router.sendStaffMessage({
+      roomId: 'r1',
+      staffId: 'u1',
+      type: MessageType.IMAGE,
+      mediaUrl: 'https://cdn.example/g0.jpg',
+      clientMessageId: 'tok-race',
+    });
+    expect(res.success).toBe(true);
+    expect(res.message?.id).toBe('m-winner');
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('ไม่มีทั้ง text และ mediaUrl → ปฏิเสธก่อนบันทึก', async () => {
+    const { router, adapter, roomManager } = makeStaffSender();
+    const res = await router.sendStaffMessage({ roomId: 'r1', staffId: 'u1', text: '   ' });
+    expect(res).toEqual({ success: false, error: 'ไม่มีเนื้อหาที่จะส่ง' });
+    expect(roomManager.saveMessage).not.toHaveBeenCalled();
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+  });
+});

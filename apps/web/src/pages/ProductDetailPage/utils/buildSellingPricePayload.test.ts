@@ -41,4 +41,24 @@ describe('buildSellingPricePayload', () => {
     const payload = buildSellingPricePayload(current, initial);
     expect(payload).toEqual({});
   });
+
+  // review round 1 [I1]: caller (index.tsx openSellingPriceModal) ต้อง snapshot `initial`
+  // จากคอลัมน์ดิบ normalize แล้ว ไม่ใช่ค่า display — เครื่อง fallback (คอลัมน์ null, การ์ดโชว์
+  // ราคาจาก prices[]) initial.cashPrice จึงเป็น '' แม้ฟอร์ม prefill ด้วยค่า display ที่ไม่ว่าง
+  it('[I1] initial ว่าง (คอลัมน์ null) แต่ฟอร์ม prefill ด้วยค่า fallback ที่ไม่ตรงกัน → ต้องส่ง (promote เข้าคอลัมน์)', () => {
+    const initial = { cashPrice: '', installmentPrice: '' };
+    const current = { cashPrice: '15900', installmentPrice: '' };
+    const payload = buildSellingPricePayload(current, initial);
+    expect(payload).toEqual({ cashPrice: 15900 });
+    expect(isSellingPricePayloadEmpty(payload)).toBe(false);
+  });
+
+  // review round 1 [I1]: เครื่องที่มีคอลัมน์จริงอยู่แล้ว (initial = คอลัมน์ดิบ, ไม่ใช่ fallback)
+  // กดบันทึกโดยไม่แก้ → ฟอร์มเท่ากับ initial พอดี → payload ว่าง → badge autofill รอด
+  it('[I1] initial = คอลัมน์จริง, ฟอร์มเท่าเดิม → payload ว่าง (ไม่ promote ซ้ำ ไม่เคลียร์ badge)', () => {
+    const initial = { cashPrice: '15900', installmentPrice: '19900' };
+    const current = { cashPrice: '15900', installmentPrice: '19900' };
+    const payload = buildSellingPricePayload(current, initial);
+    expect(isSellingPricePayloadEmpty(payload)).toBe(true);
+  });
 });

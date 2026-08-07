@@ -244,6 +244,7 @@ export default function EditProductModal({
               <input
                 type="number"
                 min="0"
+                step="1"
                 value={editForm.shopWarrantyDays}
                 onChange={(e) => setEditForm({ ...editForm, shopWarrantyDays: e.target.value })}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm"

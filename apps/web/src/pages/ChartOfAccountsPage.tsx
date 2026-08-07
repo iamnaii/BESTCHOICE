@@ -6,8 +6,18 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import {
+  CoaScope,
+  coaScopeOf,
+  coaCodePrefix,
+  coaSectionLabel,
+  validateCoaCodeForScope,
+} from '@/utils/coa-partition';
 
-// removed in A.4 — single FINANCE chart, no companyId / multi-entity filter
+// 2026-08-07 (เจ้าของเลือกทาง ก): ผังอยู่ตารางเดียวแต่แยก 2 ฝั่งด้วย S-prefix
+// (P3-SP5 partition key) — หน้านี้จึงมีแท็บ FINANCE | SHOP; เดิมรวมกันและจัด
+// หมวด S-code เพี้ยนเป็น "หมวด S1/S2" (codePrefix ตัด 2 ตัวอักษรตรงๆ)
 
 interface ChartOfAccount {
   id: string;
@@ -43,36 +53,8 @@ const TYPE_OPTIONS = [
   'ค่าใช้จ่าย',
 ];
 
-// Section headers by 2-digit code prefix (matching CSV structure)
-const CODE_PREFIX_LABELS: Record<string, string> = {
-  '11': 'สินทรัพย์หมุนเวียน',
-  '12': 'สินทรัพย์ไม่หมุนเวียน',
-  '21': 'หนี้สินหมุนเวียน',
-  '22': 'หนี้สินไม่หมุนเวียน',
-  '31': 'ทุนเรือนหุ้น / ส่วนของเจ้าของ',
-  '32': 'กำไรสะสม',
-  '33': 'กำไรประจำปี',
-  '39': 'บัญชีปิดงบ (Closing Accounts)',
-  '41': 'รายได้จากการขาย',
-  '42': 'รายได้อื่น',
-  '51': 'ต้นทุนขาย',
-  '52': 'ค่าใช้จ่ายในการขาย',
-  '53': 'ค่าใช้จ่ายในการบริหาร',
-  '54': 'ค่าใช้จ่ายทางการเงิน',
-  '55': 'ค่าใช้จ่ายอื่น',
-};
-
-// Derive section label from code — fallback to raw prefix
-function getSectionLabel(prefix: string): string {
-  return CODE_PREFIX_LABELS[prefix] ?? `หมวด ${prefix}`;
-}
-
-// Extract 2-digit prefix from code like "11-1101" → "11"
-function codePrefix(code: string): string {
-  const dash = code.indexOf('-');
-  if (dash >= 2) return code.slice(0, 2);
-  return code.slice(0, 2);
-}
+// Section labels + prefix extraction moved to utils/coa-partition.ts —
+// handles both charts (S52-1201 → "S52 ค่าใช้จ่ายบริหารสาขา (SHOP)").
 
 interface FormState {
   code: string;
@@ -98,6 +80,8 @@ const emptyForm: FormState = {
 
 export default function ChartOfAccountsPage() {
   const queryClient = useQueryClient();
+  // แท็บฝั่งผังบัญชี — default FINANCE (ผังหลักที่นักบัญชีใช้บ่อยสุด)
+  const [scope, setScope] = useState<CoaScope>('FINANCE');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -123,9 +107,21 @@ export default function ChartOfAccountsPage() {
     },
   });
 
-  // Client-side filter: type + search
+  // Per-scope counts for the tab badges (before search/type filters)
+  const scopeCounts = useMemo(() => {
+    let finance = 0;
+    let shop = 0;
+    for (const a of accounts) {
+      if (coaScopeOf(a.code) === 'SHOP') shop += 1;
+      else finance += 1;
+    }
+    return { FINANCE: finance, SHOP: shop };
+  }, [accounts]);
+
+  // Client-side filter: scope tab → type → search
   const filtered = useMemo(() => {
     return accounts.filter((a) => {
+      if (coaScopeOf(a.code) !== scope) return false;
       // Type filter — "สินทรัพย์" matches both "สินทรัพย์" and "สินทรัพย์ (Contra)"
       if (typeFilter !== 'ALL' && !a.type.startsWith(typeFilter)) return false;
       if (search) {
@@ -134,13 +130,14 @@ export default function ChartOfAccountsPage() {
       }
       return true;
     });
-  }, [accounts, typeFilter, search]);
+  }, [accounts, scope, typeFilter, search]);
 
-  // Group by 2-digit code prefix, preserving sort order (accounts are already sorted by code asc)
+  // Group by section prefix ("11" / "S52"), preserving sort order (accounts
+  // are already sorted by code asc)
   const sections = useMemo(() => {
     const map = new Map<string, ChartOfAccount[]>();
     for (const a of filtered) {
-      const prefix = codePrefix(a.code);
+      const prefix = coaCodePrefix(a.code);
       if (!map.has(prefix)) map.set(prefix, []);
       map.get(prefix)!.push(a);
     }
@@ -236,6 +233,15 @@ export default function ChartOfAccountsPage() {
       toast.error('กรุณากรอกรหัสและชื่อบัญชี');
       return;
     }
+    // กันสร้างบัญชีผิดฝั่ง (ต้นเหตุบัญชีหลงผังแบบ 42-1199) — ตรวจเฉพาะตอนสร้างใหม่
+    // (แก้ไขล็อกช่องรหัสไว้แล้ว)
+    if (!editing) {
+      const codeError = validateCoaCodeForScope(form.code, scope);
+      if (codeError) {
+        toast.error(codeError);
+        return;
+      }
+    }
     if (editing) updateMutation.mutate();
     else createMutation.mutate();
   }
@@ -247,16 +253,50 @@ export default function ChartOfAccountsPage() {
     <div>
       <PageHeader
         title="ผังบัญชี"
-        subtitle="จัดการรหัสบัญชี (Chart of Accounts) — BESTCHOICE FINANCE"
+        subtitle={
+          scope === 'FINANCE'
+            ? 'จัดการรหัสบัญชี (Chart of Accounts) — BESTCHOICE FINANCE (จด VAT)'
+            : 'จัดการรหัสบัญชี (Chart of Accounts) — BESTCHOICE SHOP (หน้าร้าน — ไม่จด VAT, รหัสขึ้นต้น S)'
+        }
         action={
           <button
             onClick={openCreate}
             className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shadow-sm"
           >
-            + เพิ่มบัญชี
+            + เพิ่มบัญชี ({scope})
           </button>
         }
       />
+
+      {/* Scope tabs — ผัง 2 ฝั่งในตารางเดียว แยกด้วย S-prefix (P3-SP5) */}
+      <div className="inline-flex rounded-lg border border-border overflow-hidden mb-4" role="group">
+        {(
+          [
+            { key: 'FINANCE', label: `FINANCE (การเงิน) · ${scopeCounts.FINANCE}` },
+            { key: 'SHOP', label: `SHOP (หน้าร้าน) · ${scopeCounts.SHOP}` },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => {
+              setScope(t.key);
+              // Review W1 — คำค้น/ตัวกรองของอีกฝั่งทำให้แท็บใหม่ว่างเปล่าแบบงงๆ
+              setSearch('');
+              setTypeFilter('ALL');
+            }}
+            aria-pressed={scope === t.key}
+            className={cn(
+              'px-4 py-2 text-sm transition-colors leading-snug',
+              scope === t.key
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-background text-muted-foreground hover:bg-accent',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -297,7 +337,7 @@ export default function ChartOfAccountsPage() {
                 {/* Section header */}
                 <div className="px-4 py-2.5 border-b border-border bg-muted/40 flex items-center gap-2">
                   <span className="font-mono text-xs font-semibold text-muted-foreground">{prefix}</span>
-                  <span className="font-semibold text-sm leading-snug">{getSectionLabel(prefix)}</span>
+                  <span className="font-semibold text-sm leading-snug">{coaSectionLabel(prefix)}</span>
                   <span className="text-muted-foreground font-normal text-xs">({list.length})</span>
                 </div>
                 <table className="w-full text-sm">
@@ -398,9 +438,16 @@ export default function ChartOfAccountsPage() {
                     value={form.code}
                     onChange={(e) => setForm({ ...form, code: e.target.value })}
                     className={inputClass}
-                    placeholder="เช่น 11-1101"
+                    placeholder={scope === 'SHOP' ? 'เช่น S11-1101' : 'เช่น 11-1101'}
                     disabled={!!editing}
                   />
+                  {!editing && (
+                    <p className="mt-1 text-xs text-muted-foreground leading-snug">
+                      {scope === 'SHOP'
+                        ? 'ผังหน้าร้าน — รหัสต้องขึ้นต้นด้วย S (SXX-XXXX)'
+                        : 'ผัง FINANCE — รหัสตัวเลข XX-XXXX'}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5 leading-snug">

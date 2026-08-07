@@ -1,8 +1,13 @@
 import { IsString, IsOptional, IsBoolean, Matches, MaxLength } from 'class-validator';
 
 export class CreateChartOfAccountDto {
+  // 2026-08-07 (review fix) — เดิม /^[0-9-]{2,12}$/ (ยุค A.4 ผัง FINANCE เดียว)
+  // reject รหัสผัง SHOP ทั้งหมด → กดเพิ่มบัญชีจากแท็บ SHOP 400 เสมอ.
+  // รูปแบบเดียวกับ csv-fixture-loader (^S?\d{2}-\d{4}$): S = SHOP partition (P3-SP5).
   @IsString()
-  @Matches(/^[0-9-]{2,12}$/, { message: 'รหัสบัญชีต้องเป็นตัวเลขและขีดเท่านั้น' })
+  @Matches(/^S?\d{2}-\d{4}$/, {
+    message: 'รหัสบัญชีต้องเป็นรูปแบบ XX-XXXX (FINANCE) หรือ SXX-XXXX (SHOP)',
+  })
   code: string;
 
   @IsString()

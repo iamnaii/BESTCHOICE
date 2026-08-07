@@ -131,6 +131,7 @@ test.describe('ACCOUNTANT role — finance access', () => {
     { url: '/finance-receivable', name: 'เงินรับจากไฟแนนซ์' },
     { url: '/financial-audit', name: 'Financial Audit' },
     { url: '/stock', name: 'คลังสินค้า (ดูอย่างเดียว)' },
+    { url: '/repossessions', name: 'ยึดคืน' },
   ];
 
   for (const { url, name } of allowedPages) {

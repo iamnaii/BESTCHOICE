@@ -46,18 +46,13 @@ test.describe('ยึดคืน & ขายต่อ', () => {
     }
   });
 
-  test('should have create repossession action', async ({ page }) => {
+  test('should have repossession CTA linking to payments page (OWNER-only)', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /ยึดคืน|สร้าง|เพิ่ม/ }).first();
-    if (await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await createBtn.click();
-      await page.waitForTimeout(500);
-      const hasModal = await page.locator('[role="dialog"], .modal, form').first()
-        .isVisible({ timeout: 3000 }).catch(() => false);
-      if (hasModal) {
-        await expect(page.locator('[role="dialog"], .modal, form').first()).toBeVisible();
-      }
-    }
+    // loginViaAPI logs in as admin@bestchoice.com (OWNER) — the create modal was
+    // removed; the action is now a Link to /payments, shown to OWNER only.
+    const cta = page.getByRole('link', { name: /ยึดเครื่อง/ });
+    await expect(cta).toBeVisible({ timeout: 5000 });
+    await expect(cta).toHaveAttribute('href', '/payments');
   });
 
   test('should display status indicators for repossessions', async ({ page }) => {

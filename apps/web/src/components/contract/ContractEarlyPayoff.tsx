@@ -109,6 +109,9 @@ export function EarlyPayoffOverlay({
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [settlementAccountCode, setSettlementAccountCode] = useState('11-1201');
   const [settlementAmount, setSettlementAmount] = useState('');
+  // Client-generated per-dialog-open UUID — dedupe key for shop-collect
+  // settlement retries without swallowing an intentional same-amount repeat.
+  const [settlementRequestId, setSettlementRequestId] = useState('');
 
   const canSettlement = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
 
@@ -164,6 +167,7 @@ export function EarlyPayoffOverlay({
       const { data } = await api.post(`/contracts/${contractId}/shop-collect-settlement`, {
         depositAccountCode: settlementAccountCode,
         amount: Number(settlementAmount),
+        requestId: settlementRequestId,
       });
       return data;
     },
@@ -589,7 +593,10 @@ export function EarlyPayoffOverlay({
         {canSettlement ? (
           <button
             type="button"
-            onClick={() => setSettlementOpen(true)}
+            onClick={() => {
+              setSettlementRequestId(crypto.randomUUID());
+              setSettlementOpen(true);
+            }}
             className="flex items-center gap-1.5 px-4 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors text-muted-foreground"
           >
             <Store className="size-4" />

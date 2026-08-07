@@ -12,6 +12,12 @@ export interface ShopCollectSettlementInput {
   /** Amount to settle — must be ≤ outstanding 11-2107 balance + 0.01 tolerance. */
   amount: number | Decimal;
   postedById?: string;
+  /**
+   * Client-generated UUID ต่อการกดยืนยันหนึ่งครั้ง — dedupe เฉพาะ retry ของคำขอเดิม
+   * โดยไม่กลืนการโอนซ้ำยอดเท่ากันที่ตั้งใจ. ไม่ส่ง = fallback dedupe แบบเก่า
+   * (contractId+amount) เพื่อ backward compat กับ caller เดิม.
+   */
+  requestId?: string;
 }
 
 /**
@@ -30,8 +36,17 @@ export interface ShopCollectSettlementInput {
  *   - outstanding 11-2107 (ΣDr − ΣCr over metadata.contractId) must be > 0
  *   - amount must be ≤ outstanding + 0.01 (over-settle rejected)
  *
- * Idempotency: via metadata flow='shop-collect-settlement' + contractId + amount
- * (mirrors the existing template idempotency pattern across this codebase).
+ * Idempotency:
+ *   - Preferred: metadata flow='shop-collect-settlement' + requestId (client-
+ *     generated UUID, one per dialog-open). Dedupes ONLY retries of the exact
+ *     same request — two intentional remittances of the same amount (e.g. two
+ *     separate ฿2,500 transfers) each get their own JE.
+ *   - Legacy fallback (requestId omitted): metadata flow + contractId + amount
+ *     (mirrors the existing template idempotency pattern across this
+ *     codebase) — kept for backward compat with callers that haven't been
+ *     updated to send requestId yet. This fallback CANNOT distinguish two
+ *     intentional same-amount remittances from a retry — it swallows the
+ *     second one.
  */
 @Injectable()
 export class ShopCollectSettlementTemplate {
@@ -57,6 +72,29 @@ export class ShopCollectSettlementTemplate {
     }
 
     const client = outerTx ?? this.prisma;
+
+    // ── requestId idempotency (เช็คก่อน guard อื่นทั้งหมด) ─────────────────────
+    // Checked BEFORE the outstanding computation so a retry that lands AFTER the
+    // 11-2107 balance has already been fully cleared (by the first call) still
+    // returns the original idempotent success instead of tripping the
+    // no-balance guard below.
+    if (input.requestId) {
+      const dupe = await client.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
+            { metadata: { path: ['requestId'], equals: input.requestId } } as Prisma.JournalEntryWhereInput,
+          ],
+          deletedAt: null,
+        },
+      });
+      if (dupe) {
+        this.logger.log(
+          `[SCS] duplicate requestId ${input.requestId} — JE ${dupe.entryNumber} already posted, skipping`,
+        );
+        return { entryNo: dupe.entryNumber };
+      }
+    }
 
     // ── Compute outstanding 11-2107 for this contract ─────────────────────────
     // Sum all POSTED JL lines (Dr − Cr) where parentJE.metadata.contractId = contractId
@@ -91,39 +129,52 @@ export class ShopCollectSettlementTemplate {
       );
     }
 
-    // ── Idempotency check ─────────────────────────────────────────────────────
-    const existing = await client.journalEntry.findFirst({
-      where: {
-        AND: [
-          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
-          { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
-          { metadata: { path: ['amount'], equals: amount.toFixed(2) } } as Prisma.JournalEntryWhereInput,
-        ],
-        deletedAt: null,
-      },
-    });
+    // ── Legacy idempotency (เฉพาะ caller เก่าที่ไม่ส่ง requestId) ─────────────
+    if (!input.requestId) {
+      const existing = await client.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
+            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+            { metadata: { path: ['amount'], equals: amount.toFixed(2) } } as Prisma.JournalEntryWhereInput,
+          ],
+          deletedAt: null,
+        },
+      });
 
-    if (existing) {
-      this.logger.log(
-        `[SCS] ShopCollectSettlement idempotency — JE ${existing.entryNumber} already exists for contract ${contractId} amount=${amount.toFixed(2)}, skipping`,
-      );
-      return { entryNo: existing.entryNumber };
+      if (existing) {
+        this.logger.log(
+          `[SCS] ShopCollectSettlement idempotency — JE ${existing.entryNumber} already exists for contract ${contractId} amount=${amount.toFixed(2)}, skipping`,
+        );
+        return { entryNo: existing.entryNumber };
+      }
     }
 
     const zero = new Decimal(0);
 
     // ── Post Dr cash / Cr 11-2107 ─────────────────────────────────────────────
+    // `reference` feeds a project-wide UNIQUE index on (referenceType,
+    // referenceId) — it must stay unique per JE. The legacy reference string
+    // (contractId+amount) is intentionally identical across two same-amount
+    // calls, which is exactly what the old (contractId, amount) dedupe relied
+    // on. Once requestId is present, fold it into `reference` too so two
+    // intentionally-equal-amount remittances don't collide on that index.
     const result = await this.journal.createAndPost(
       {
         description: `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
-        reference: `${contractId}:shop-collect-settlement:${amount.toFixed(2)}`,
+        reference: input.requestId
+          ? `${contractId}:shop-collect-settlement:${input.requestId}`
+          : `${contractId}:shop-collect-settlement:${amount.toFixed(2)}`,
         metadata: {
           tag: 'SCS',
           flow: 'shop-collect-settlement',
           contractId,
           amount: amount.toFixed(2),
           depositAccountCode,
-          idempotencyKey: `${contractId}:${amount.toFixed(2)}`,
+          ...(input.requestId ? { requestId: input.requestId } : {}),
+          idempotencyKey: input.requestId
+            ? `${contractId}:${input.requestId}`
+            : `${contractId}:${amount.toFixed(2)}`,
         },
         lines: [
           {

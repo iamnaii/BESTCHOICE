@@ -551,6 +551,7 @@ export class ContractPaymentService {
             depositAccountCode: dto.depositAccountCode,
             amount: dto.amount,
             postedById: userId,
+            requestId: dto.requestId,
           },
           tx,
         );

@@ -73,6 +73,9 @@ export default function RepossessionsPage() {
   const [settlementRepo, setSettlementRepo] = useState<Repossession | null>(null);
   const [settlementAmount, setSettlementAmount] = useState('');
   const [settlementAccountCode, setSettlementAccountCode] = useState('11-1201');
+  // Client-generated per-dialog-open UUID — dedupe key for shop-collect
+  // settlement retries without swallowing an intentional same-amount repeat.
+  const [settlementRequestId, setSettlementRequestId] = useState('');
   // พร้อมขาย modal (ต้องระบุราคาขายต่อ — endpoint บังคับ ReadyForSaleDto.resellPrice)
   const [readyForSaleRepo, setReadyForSaleRepo] = useState<Repossession | null>(null);
   const [readyForSalePrice, setReadyForSalePrice] = useState('');
@@ -150,6 +153,7 @@ export default function RepossessionsPage() {
       api.post(`/contracts/${settlementRepo!.contract.id}/shop-collect-settlement`, {
         depositAccountCode: settlementAccountCode,
         amount: Number(settlementAmount),
+        requestId: settlementRequestId,
       }),
     onSuccess: () => {
       toast.success('บันทึกรับโอนจากหน้าร้านแล้ว — ล้างลูกหนี้-หน้าร้าน (11-2107)');
@@ -165,6 +169,7 @@ export default function RepossessionsPage() {
     // Prefill with the parked repossession value (the JP5 Dr 11-2107 amount).
     setSettlementAmount(String(Number(repo.appraisalPrice)));
     setSettlementAccountCode('11-1201');
+    setSettlementRequestId(crypto.randomUUID());
   };
 
   const openUpdate = (repo: Repossession) => {

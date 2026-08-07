@@ -390,4 +390,94 @@ describe('shop-collect-settlement integration', () => {
       expect(crLine, `Expected Cr 11-2107 line in settlement JE ${je.entryNumber}`).toBeDefined();
     }
   });
+
+  it('requestId ต่างกัน ยอดเท่ากัน → post 2 JE (โอนซ้ำยอดเท่ากันโดยตั้งใจต้องไม่หาย)', async () => {
+    // Seed a fresh contract with its OWN Dr 11-2107 balance — never reuse another
+    // case's contract, the 11-2107 balances would mix across cases.
+    const cPartial2 = await seedStandard17k12m(prisma);
+    const journalPartial2 = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journalPartial2, prisma as any).execute(cPartial2.id);
+    await seedPendingPayments(cPartial2.id, cPartial2.installmentCount);
+
+    await svc.earlyPayoff(cPartial2.id, userId, {
+      paymentMethod: 'CASH',
+      discountPct: 50,
+      collectedByShop: true,
+    } as any);
+
+    const outstanding = await getNet11_2107(cPartial2.id);
+    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(true);
+
+    // Same amount posted twice (equal halves — floor-rounded so the second call
+    // never exceeds the remaining outstanding).
+    const amount = outstanding.div(2).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+
+    await svc.shopCollectSettlement(cPartial2.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: amount.toNumber(),
+      requestId: '11111111-1111-4111-8111-111111111111',
+    });
+    await svc.shopCollectSettlement(cPartial2.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: amount.toNumber(),
+      requestId: '22222222-2222-4222-8222-222222222222',
+    });
+
+    const jes = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as any,
+          { metadata: { path: ['contractId'], equals: cPartial2.id } } as any,
+        ],
+        deletedAt: null,
+      },
+    });
+    expect(jes).toHaveLength(2);
+  });
+
+  it('requestId เดิมซ้ำ → JE เดียว (retry ปลอดภัย แม้หลังยอดถูกล้างหมดแล้ว)', async () => {
+    const cRetry = await seedStandard17k12m(prisma);
+    const journalRetry = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journalRetry, prisma as any).execute(cRetry.id);
+    await seedPendingPayments(cRetry.id, cRetry.installmentCount);
+
+    await svc.earlyPayoff(cRetry.id, userId, {
+      paymentMethod: 'CASH',
+      discountPct: 50,
+      collectedByShop: true,
+    } as any);
+
+    const outstanding = await getNet11_2107(cRetry.id);
+    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(true);
+
+    const requestId = '33333333-3333-4333-8333-333333333333';
+
+    // First call settles the FULL outstanding balance — outstanding is 0 by the
+    // time the retry lands, proving the requestId check runs BEFORE the
+    // outstanding computation (retry after full clearance must still succeed
+    // idempotently instead of tripping the no-balance guard).
+    const r1 = await svc.shopCollectSettlement(cRetry.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: outstanding.toNumber(),
+      requestId,
+    });
+    const r2 = await svc.shopCollectSettlement(cRetry.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: outstanding.toNumber(),
+      requestId,
+    });
+    expect(r1, 'First call should succeed').toBeDefined();
+    expect(r2, 'Retry with same requestId should succeed idempotently').toBeDefined();
+
+    const jes = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as any,
+          { metadata: { path: ['contractId'], equals: cRetry.id } } as any,
+        ],
+        deletedAt: null,
+      },
+    });
+    expect(jes).toHaveLength(1);
+  });
 });

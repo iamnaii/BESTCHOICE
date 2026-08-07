@@ -1,6 +1,24 @@
-import { UseMutationResult } from '@tanstack/react-query';
+import { UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
+import api, { getErrorMessage } from '@/lib/api';
+import { CANONICAL_PRICE_LABELS, CASH_LABEL } from '@/utils/getDisplayPrices';
+import { PRODUCT_READINESS_QUERY_KEY } from '@/pages/ProductDetailPage/hooks/useProductReadiness';
 import { StockProduct } from '../types';
+
+/**
+ * Task 13 — is this the label `syncPriceRowsFromColumns` (apps/api) write-through
+ * targets? If so the row mirrors `Product.cashPrice`/`installmentPrice` (source
+ * of truth) and must be edited via the column PATCH, never the row-level
+ * `/products/:id/prices` CRUD.
+ */
+function isCanonicalLabel(label: string): boolean {
+  return (CANONICAL_PRICE_LABELS as readonly string[]).includes(label.trim());
+}
+
+function canonicalLabelToField(label: string): 'cashPrice' | 'installmentPrice' {
+  return label.trim() === CASH_LABEL ? 'cashPrice' : 'installmentPrice';
+}
 
 export interface PriceManagementModalProps {
   editingProduct: StockProduct | null;
@@ -31,6 +49,90 @@ export function PriceManagementModal({
   deletePriceMutation,
   setConfirmDialog,
 }: PriceManagementModalProps) {
+  const queryClient = useQueryClient();
+
+  // Task 13 — canonical rows (ราคาเงินสด / ราคาผ่อน BESTCHOICE) mirror
+  // Product.cashPrice/installmentPrice (source of truth). Editing/adding one
+  // must PATCH the column, never the row-level /products/:id/prices CRUD —
+  // otherwise the next column write-through (`syncPriceRowsFromColumns`)
+  // silently overwrites whatever was typed here.
+  const columnPriceMutation = useMutation({
+    mutationFn: async ({
+      productId,
+      field,
+      amount,
+    }: {
+      productId: string;
+      field: 'cashPrice' | 'installmentPrice';
+      amount: number;
+    }) => api.patch(`/products/${productId}`, { [field]: amount }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-list'] });
+      queryClient.invalidateQueries({ queryKey: ['product'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-available'] });
+      queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(variables.productId) });
+      toast.success('บันทึกราคาสำเร็จ');
+      cancelEditPrice();
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const onPriceFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    const trimmedLabel = priceForm.label.trim();
+    if (!isCanonicalLabel(trimmedLabel)) {
+      handlePriceSubmit(e);
+      return;
+    }
+
+    // Existing canonical row being edited (not the "add new" form) — used to
+    // decouple isDefault toggles from amount edits (req #3).
+    const originalPrice =
+      editingPriceId && editingPriceId !== 'new'
+        ? editingProduct.prices.find((p) => p.id === editingPriceId)
+        : undefined;
+
+    const newAmount = parseFloat(priceForm.amount);
+    if (!Number.isFinite(newAmount) || newAmount <= 0) {
+      toast.error('กรุณาระบุราคามากกว่า 0');
+      return;
+    }
+
+    const amountChanged = !originalPrice || newAmount !== parseFloat(originalPrice.amount);
+    if (amountChanged) {
+      columnPriceMutation.mutate({
+        productId: editingProduct.id,
+        field: canonicalLabelToField(trimmedLabel),
+        amount: newAmount,
+      });
+    }
+
+    // isDefault isn't a column — let the existing /prices route manage it,
+    // but ALWAYS resend the row's ORIGINAL amount (never the form's typed
+    // value) so this can never become a second write-path for money on a
+    // canonical row.
+    if (originalPrice && priceForm.isDefault !== originalPrice.isDefault) {
+      priceMutation.mutate({
+        productId: editingProduct.id,
+        priceId: originalPrice.id,
+        data: {
+          label: originalPrice.label,
+          amount: parseFloat(originalPrice.amount),
+          isDefault: priceForm.isDefault,
+        },
+      });
+    }
+
+    if (!amountChanged && (!originalPrice || priceForm.isDefault === originalPrice.isDefault)) {
+      // Nothing actually changed — just close the edit row.
+      cancelEditPrice();
+    }
+  };
+
   return (
     <Modal
       isOpen={!!editingProduct}
@@ -51,7 +153,7 @@ export function PriceManagementModal({
               <div key={price.id}>
                 {editingPriceId === price.id ? (
                   /* Inline edit form */
-                  <form onSubmit={handlePriceSubmit} className="border-2 border-primary/20 rounded-lg p-3 bg-primary/5 space-y-2">
+                  <form onSubmit={onPriceFormSubmit} className="border-2 border-primary/20 rounded-lg p-3 bg-primary/5 space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <input
                         type="text"
@@ -87,10 +189,10 @@ export function PriceManagementModal({
                         </button>
                         <button
                           type="submit"
-                          disabled={priceMutation.isPending}
+                          disabled={priceMutation.isPending || columnPriceMutation.isPending}
                           className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
                         >
-                          {priceMutation.isPending ? 'บันทึก...' : 'บันทึก'}
+                          {priceMutation.isPending || columnPriceMutation.isPending ? 'บันทึก...' : 'บันทึก'}
                         </button>
                       </div>
                     </div>
@@ -105,6 +207,11 @@ export function PriceManagementModal({
                   <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50 border border-transparent hover:border-border">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground">{price.label}</span>
+                      {isCanonicalLabel(price.label) && (
+                        <span className="px-1.5 py-0.5 bg-success/10 text-success text-xs rounded font-medium leading-snug">
+                          ราคาหลัก
+                        </span>
+                      )}
                       {price.isDefault && (
                         <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium">
                           ค่าเริ่มต้น
@@ -124,11 +231,13 @@ export function PriceManagementModal({
                           </svg>
                         </button>
                         <button
+                          disabled={isCanonicalLabel(price.label)}
                           onClick={() => {
+                            if (isCanonicalLabel(price.label)) return;
                             setConfirmDialog({ open: true, message: 'ต้องการลบราคานี้?', action: () => deletePriceMutation.mutate({ productId: editingProduct.id, priceId: price.id }) });
                           }}
-                          className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                          title="ลบ"
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40 disabled:pointer-events-none disabled:hover:text-muted-foreground"
+                          title={isCanonicalLabel(price.label) ? 'ราคาหลักลบไม่ได้ — แก้ตัวเลขแทน' : 'ลบ'}
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -148,7 +257,7 @@ export function PriceManagementModal({
 
           {/* Add new price form */}
           {editingPriceId === 'new' ? (
-            <form onSubmit={handlePriceSubmit} className="border-2 border-success/20 rounded-lg p-3 bg-success/5 space-y-2">
+            <form onSubmit={onPriceFormSubmit} className="border-2 border-success/20 rounded-lg p-3 bg-success/5 space-y-2">
               <div className="text-xs font-medium text-success mb-1">เพิ่มราคาใหม่</div>
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -185,10 +294,10 @@ export function PriceManagementModal({
                   </button>
                   <button
                     type="submit"
-                    disabled={priceMutation.isPending}
+                    disabled={priceMutation.isPending || columnPriceMutation.isPending}
                     className="px-3 py-1 bg-success text-success-foreground rounded text-xs font-medium hover:bg-success/90 disabled:opacity-50"
                   >
-                    {priceMutation.isPending ? 'เพิ่ม...' : 'เพิ่ม'}
+                    {priceMutation.isPending || columnPriceMutation.isPending ? 'เพิ่ม...' : 'เพิ่ม'}
                   </button>
                 </div>
               </div>

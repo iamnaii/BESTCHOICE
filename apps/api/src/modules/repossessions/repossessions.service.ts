@@ -19,6 +19,10 @@ import { CreditNoteDeliveryService } from '../receipts/services/credit-note-deli
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
+import { getBranchScope } from '../auth/branch-access.util';
+
+/** Authenticated request user — service-level branch scoping (BranchGuard delegates to us). */
+export type RequestUser = { id: string; role?: string; branchId?: string | null };
 
 const TWO_DP = (d: Prisma.Decimal) => d.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
@@ -41,14 +45,24 @@ export class RepossessionsService {
     private cnDeliveryService: CreditNoteDeliveryService,
   ) {}
 
-  async findAll(filters: { status?: string; branchId?: string; page?: number; limit?: number }) {
+  async findAll(
+    filters: { status?: string; branchId?: string; page?: number; limit?: number },
+    user?: RequestUser,
+  ) {
     const where: Record<string, unknown> = { deletedAt: null };
 
     if (filters.status) {
       where.status = filters.status;
     }
 
-    if (filters.branchId) {
+    const scope = getBranchScope(user);
+    if (user && !scope.all) {
+      // Branch-scoped role (BM) — บังคับสาขาตัวเอง ไม่สน branchId จาก client
+      if (!scope.branchId) {
+        return { data: [], total: 0, page: 1, limit: filters.limit || 20, totalPages: 0 };
+      }
+      where.contract = { branchId: scope.branchId };
+    } else if (filters.branchId) {
       where.contract = { branchId: filters.branchId };
     }
 
@@ -255,7 +269,7 @@ export class RepossessionsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, user?: RequestUser) {
     const repo = await this.prisma.repossession.findUnique({
       where: { id },
       include: {
@@ -271,6 +285,15 @@ export class RepossessionsService {
       },
     });
     if (!repo) throw new NotFoundException('ไม่พบข้อมูลการยึดคืน');
+
+    const scope = getBranchScope(user);
+    if (user && !scope.all) {
+      // ตอบ 404 เดียวกับ "ไม่มีอยู่" — ไม่ยืนยันว่ามี record ของสาขาอื่น
+      if (!scope.branchId || repo.contract.branchId !== scope.branchId) {
+        throw new NotFoundException('ไม่พบข้อมูลการยึดคืน');
+      }
+    }
+
     return repo;
   }
 
@@ -569,8 +592,8 @@ export class RepossessionsService {
   /**
    * Update repossession (repair cost, resell price, status) with workflow validation
    */
-  async update(id: string, dto: UpdateRepossessionDto, userId?: string) {
-    const repo = await this.findOne(id);
+  async update(id: string, dto: UpdateRepossessionDto, user?: RequestUser) {
+    const repo = await this.findOne(id, user);
 
     const data: Record<string, unknown> = {};
     if (dto.repairCost !== undefined) data.repairCost = dto.repairCost;
@@ -647,7 +670,7 @@ export class RepossessionsService {
 
         // Post resale JE after the main $transaction commits (non-blocking, no tx-poison risk).
         // bookValue = costPrice (adjusted to appraisalPrice at READY_FOR_SALE per R-007) + repairCost
-        if (dto.status === 'SOLD' && userId) {
+        if (dto.status === 'SOLD' && user?.id) {
           // Wave 3 / Task 4 (W-2): build Decimal directly from repo value
           // (skip Number() round-trip that loses precision on large amounts).
           const resellPrice = dto.resellPrice != null
@@ -686,8 +709,8 @@ export class RepossessionsService {
    * Mark repossessed product as ready for sale with pricing
    * Creates ProductPrice and moves product to REFURBISHED + back to main warehouse
    */
-  async markReadyForSale(id: string, resellPrice: number) {
-    const repo = await this.findOne(id);
+  async markReadyForSale(id: string, resellPrice: number, user?: RequestUser) {
+    const repo = await this.findOne(id, user);
 
     if (repo.status !== 'UNDER_REPAIR' && repo.status !== 'REPOSSESSED') {
       throw new BadRequestException('สถานะไม่ถูกต้อง ต้องเป็น REPOSSESSED หรือ UNDER_REPAIR');

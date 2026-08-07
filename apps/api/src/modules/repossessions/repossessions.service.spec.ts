@@ -941,7 +941,10 @@ describe('RepossessionsService', () => {
       const updatedRepo = makeRepossession({ status: 'SOLD', resellPrice: decimal(7000) });
       prisma.repossession.update.mockResolvedValue(updatedRepo);
 
-      const result = await service.update('repo-1', { status: 'SOLD', resellPrice: 7000 } as never, 'user-1');
+      const result = await service.update('repo-1', { status: 'SOLD', resellPrice: 7000 } as never, {
+        id: 'user-1',
+        role: 'OWNER',
+      });
 
       // Repossession was updated to SOLD
       expect(result.status).toBe('SOLD');
@@ -949,6 +952,76 @@ describe('RepossessionsService', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const template = (service as any).repossessionJP5Template;
       expect(template.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // branch scoping
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('branch scoping', () => {
+    it('findAll: BRANCH_MANAGER ถูกบังคับ filter สาขาตัวเอง แม้ client ส่ง branchId อื่นมา', async () => {
+      prisma.repossession.findMany.mockResolvedValue([]);
+      prisma.repossession.count.mockResolvedValue(0);
+      await service.findAll(
+        { branchId: 'branch-OTHER' },
+        { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-A' },
+      );
+      expect(prisma.repossession.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contract: { branchId: 'branch-A' } }),
+        }),
+      );
+    });
+
+    it('findAll: BM ที่ไม่มี branchId → คืนหน้าว่าง ไม่ query DB', async () => {
+      const res = await service.findAll({}, { id: 'u1', role: 'BRANCH_MANAGER', branchId: null });
+      expect(res).toEqual({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 });
+      expect(prisma.repossession.findMany).not.toHaveBeenCalled();
+    });
+
+    it('findAll: OWNER (cross-branch) ใช้ branchId จาก query param ได้ตามเดิม', async () => {
+      prisma.repossession.findMany.mockResolvedValue([]);
+      prisma.repossession.count.mockResolvedValue(0);
+      await service.findAll({ branchId: 'branch-B' }, { id: 'u1', role: 'OWNER', branchId: null });
+      expect(prisma.repossession.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contract: { branchId: 'branch-B' } }),
+        }),
+      );
+    });
+
+    it('findOne: BM ข้ามสาขา → NotFoundException (ไม่ leak ว่ามีอยู่)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          contract: {
+            branchId: 'branch-1',
+            contractNumber: 'BC-202601-0001',
+            customer: { name: 'สมชาย ใจดี' },
+            branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+            payments: [],
+          },
+        }),
+      );
+      await expect(
+        service.findOne('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('findOne: BM สาขาเดียวกัน → ผ่าน', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          contract: {
+            branchId: 'branch-1',
+            contractNumber: 'BC-202601-0001',
+            customer: { name: 'สมชาย ใจดี' },
+            branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+            payments: [],
+          },
+        }),
+      );
+      await expect(
+        service.findOne('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-1' }),
+      ).resolves.toBeTruthy();
     });
   });
 });

@@ -26,10 +26,9 @@ function makeWrapper(client: QueryClient) {
 
 function mockApi({ isReady }: { isReady: boolean }) {
   get.mockImplementation((url?: string) => {
-    // testing-library's afterEach(cleanup()) can trigger a post-unmount react-query
-    // housekeeping call with no args as it tears down the QueryClientProvider tree —
-    // harmless (result is never observed after unmount); guard instead of throwing.
-    if (typeof url !== 'string') return Promise.resolve({ data: {} });
+    if (url === undefined || !url.includes('/')) {
+      return Promise.reject(new Error(`unexpected call: ${String(url)}`));
+    }
     if (url.includes('/interest-configs/resolved')) {
       return Promise.resolve({ data: bcConfig });
     }
@@ -43,7 +42,12 @@ function mockApi({ isReady }: { isReady: boolean }) {
 }
 
 describe('useCustomerSummary', () => {
-  beforeEach(() => get.mockReset());
+  // braces จำเป็น — arrow ไม่มี braces จะ return ตัว mock (mockReset คืน instance)
+  // แล้ว vitest ถือ return value ของ beforeEach เป็น cleanup fn → เรียก get() เปล่าๆ
+  // หลังจบเทสต์ (ที่มาของ zero-arg call ที่เคยเข้าใจว่าเป็น react-query housekeeping)
+  beforeEach(() => {
+    get.mockReset();
+  });
 
   it('อ่านราคาเส้นเดียวกับการ์ด — คอลัมน์ null แต่มีราคาใน prices[] ก็ยังได้บรรทัดผ่อน (fix C1)', async () => {
     mockApi({ isReady: true });

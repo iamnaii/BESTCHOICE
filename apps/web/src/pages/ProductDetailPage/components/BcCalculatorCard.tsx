@@ -11,6 +11,8 @@ interface Props {
   productId: string;
   installmentPrice: number;
   hideCommission?: boolean; // SALES role
+  /** FM/ACCOUNTANT เข้า /contracts/create ไม่ได้ (App.tsx) → ซ่อนปุ่ม */
+  canCreateContract?: boolean; // default true
   config: {
     minDownPct: number;
     commissionPct: number;
@@ -24,7 +26,13 @@ function formatTHB(n: number): string {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function BcCalculatorCard({ productId, installmentPrice, hideCommission, config }: Props) {
+export function BcCalculatorCard({
+  productId,
+  installmentPrice,
+  hideCommission,
+  canCreateContract = true,
+  config,
+}: Props) {
   const navigate = useNavigate();
   const defaultMonths = config.allowedMonths.includes(12) ? 12 : config.allowedMonths[0];
   const [months, setMonths] = useState(defaultMonths);
@@ -116,14 +124,16 @@ export function BcCalculatorCard({ productId, installmentPrice, hideCommission, 
             {formatTHB(result.monthlyPayment.toNumber())} / เดือน
           </span>
         </div>
-        <Button
-          className="w-full"
-          variant="primary"
-          disabled={!result.isValid}
-          onClick={handleUseInContract}
-        >
-          ใช้ราคานี้ทำสัญญา
-        </Button>
+        {canCreateContract && (
+          <Button
+            className="w-full"
+            variant="primary"
+            disabled={!result.isValid}
+            onClick={handleUseInContract}
+          >
+            ใช้ราคานี้ทำสัญญา
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

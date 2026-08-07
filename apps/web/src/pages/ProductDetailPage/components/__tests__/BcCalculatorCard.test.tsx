@@ -36,4 +36,27 @@ describe('BcCalculatorCard', () => {
     const rows = screen.queryAllByText(/^คอม/);
     expect(rows.length).toBe(0);
   });
+
+  it('ซ่อนปุ่ม "ใช้ราคานี้ทำสัญญา" เมื่อ canCreateContract=false (FM/ACCOUNTANT)', () => {
+    render(
+      <BrowserRouter>
+        <BcCalculatorCard
+          productId="p1"
+          installmentPrice={19900}
+          canCreateContract={false}
+          config={config}
+        />
+      </BrowserRouter>,
+    );
+    expect(screen.queryByRole('button', { name: 'ใช้ราคานี้ทำสัญญา' })).toBeNull();
+  });
+
+  it('ยังแสดงปุ่มเมื่อไม่ส่ง prop (ค่า default = true)', () => {
+    render(
+      <BrowserRouter>
+        <BcCalculatorCard productId="p1" installmentPrice={19900} config={config} />
+      </BrowserRouter>,
+    );
+    expect(screen.getByRole('button', { name: 'ใช้ราคานี้ทำสัญญา' })).toBeInTheDocument();
+  });
 });

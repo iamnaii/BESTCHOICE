@@ -18,7 +18,12 @@ import { InstallmentCalculatorCard } from './components/InstallmentCalculatorCar
 import OnlineListingPanel from './components/OnlineListingPanel';
 import SellingPriceCard from './components/SellingPriceCard';
 import EditSellingPriceModal from './components/EditSellingPriceModal';
-import { PRODUCT_READINESS_QUERY_KEY } from './hooks/useProductReadiness';
+import QcResultsCard from './components/QcResultsCard';
+import SameModelCard from './components/SameModelCard';
+import ActivePromotionsCard from './components/ActivePromotionsCard';
+import CustomerSummaryActions from './components/CustomerSummaryActions';
+import { PRODUCT_READINESS_QUERY_KEY, useProductReadiness } from './hooks/useProductReadiness';
+import { useCustomerSummary } from './hooks/useCustomerSummary';
 import {
   buildSellingPricePayload,
   isSellingPricePayloadEmpty,
@@ -152,6 +157,12 @@ export default function ProductDetailPage() {
     const cost = product.costPrice != null ? parseFloat(product.costPrice) : null;
     return displayPrice != null && cost != null ? displayPrice - cost : null;
   }, [product]);
+
+  // Task 12: readiness (action-bar link gate) + customer summary (copy-to-clipboard) —
+  // must be called before early returns to satisfy Rules of Hooks. Same query key as
+  // useCustomerSummary's own internal useProductReadiness call, so react-query dedupes.
+  const readiness = useProductReadiness(id);
+  const { summaryText, shareUrl } = useCustomerSummary(product);
 
   // Selling price mutation (cashPrice/installmentPrice columns — B0/Task 7)
   // payload มาจาก buildSellingPricePayload — เฉพาะฟิลด์ที่เปลี่ยนจริงเท่านั้น (Task 11 deferred fix)
@@ -354,7 +365,12 @@ export default function ProductDetailPage() {
           </Breadcrumb>
         }
         action={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <CustomerSummaryActions
+              summaryText={summaryText}
+              shareUrl={shareUrl}
+              isReady={readiness.data?.isReady ?? false}
+            />
             {isManager && (
               <button
                 onClick={openEditProduct}
@@ -437,11 +453,20 @@ export default function ProductDetailPage() {
             canSeeCost={canSeeCost}
             profit={profit}
           />
+          {product.inspection && <QcResultsCard inspectionId={product.inspection.id} />}
           {(product.category === 'PHONE_NEW' || product.category === 'PHONE_USED') && (
             <div className="mt-6">
-              <InstallmentCalculatorCard product={product} />
+              <InstallmentCalculatorCard
+                product={product}
+                onEditPrice={openSellingPriceModal}
+                canEditPrice={isManager}
+              />
             </div>
           )}
+          <div className="grid gap-5 lg:grid-cols-2 mt-6">
+            <SameModelCard productId={product.id} model={product.model} storage={product.storage} />
+            <ActivePromotionsCard />
+          </div>
         </>
       )}
 

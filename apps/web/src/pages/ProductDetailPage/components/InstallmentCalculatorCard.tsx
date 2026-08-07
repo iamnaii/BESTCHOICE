@@ -3,7 +3,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { BcCalculatorCard } from './BcCalculatorCard';
 import { GfinCalculatorCard } from './GfinCalculatorCard';
-import { getDisplayPrices } from '@/utils/getDisplayPrices';
+import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 
 interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,7 +23,12 @@ interface BcConfigResponse {
 
 export function InstallmentCalculatorCard({ product, onEditPrice, canEditPrice }: Props) {
   const { user } = useAuth();
-  const { installment } = getDisplayPrices(product);
+  // final-review F1 (2026-08-07): must match every other price-reading site on this page —
+  // getDisplayPrices' `!= null` guard short-circuits past the prices[] fallback chain for a
+  // non-positive-but-non-null column (0/''/negative); getPositiveDisplayPrices normalizes
+  // that to null first. Not reachable through the app today (DTOs @Min(1) the columns), but
+  // this file is the one B1 itself edited (Task 12) and left on the old function.
+  const { installment } = getPositiveDisplayPrices(product);
   const canCreateContract =
     user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES';
 

@@ -8,7 +8,6 @@ import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatDateShort } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
@@ -70,7 +69,9 @@ export default function RepossessionsPage() {
   const [settlementRepo, setSettlementRepo] = useState<Repossession | null>(null);
   const [settlementAmount, setSettlementAmount] = useState('');
   const [settlementAccountCode, setSettlementAccountCode] = useState('11-1201');
-  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
+  // พร้อมขาย modal (ต้องระบุราคาขายต่อ — endpoint บังคับ ReadyForSaleDto.resellPrice)
+  const [readyForSaleRepo, setReadyForSaleRepo] = useState<Repossession | null>(null);
+  const [readyForSalePrice, setReadyForSalePrice] = useState('');
   const [updateForm, setUpdateForm] = useState({
     repairCost: '',
     resellPrice: '',
@@ -115,10 +116,13 @@ export default function RepossessionsPage() {
   });
 
   const readyForSaleMutation = useMutation({
-    mutationFn: async (id: string) => api.post(`/repossessions/${id}/ready-for-sale`),
+    mutationFn: async ({ id, resellPrice }: { id: string; resellPrice: number }) =>
+      api.post(`/repossessions/${id}/ready-for-sale`, { resellPrice }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repossessions'] });
       toast.success('เปลี่ยนสถานะเป็น พร้อมขาย แล้ว');
+      setReadyForSaleRepo(null);
+      setReadyForSalePrice('');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -253,8 +257,10 @@ export default function RepossessionsPage() {
         <div className="flex items-center gap-2">
           {(r.status === 'REPOSSESSED' || r.status === 'UNDER_REPAIR') && (
             <button
-              onClick={() => setConfirmDialog({ open: true, message: 'เปลี่ยนสถานะเป็น พร้อมขาย?', action: () => readyForSaleMutation.mutate(r.id) })}
-              disabled={readyForSaleMutation.isPending}
+              onClick={() => {
+                setReadyForSaleRepo(r);
+                setReadyForSalePrice(r.resellPrice ? String(Number(r.resellPrice)) : '');
+              }}
               className="text-success hover:text-success/80 text-sm font-medium"
             >
               พร้อมขาย
@@ -490,6 +496,65 @@ export default function RepossessionsPage() {
         )}
       </Modal>
 
+      {/* พร้อมขาย Modal — ต้องระบุราคาขายต่อ (endpoint บังคับ + ย้ายเครื่องกลับคลังหลัก) */}
+      <Modal
+        isOpen={!!readyForSaleRepo}
+        onClose={() => setReadyForSaleRepo(null)}
+        title="เปลี่ยนสถานะเป็น พร้อมขาย"
+      >
+        {readyForSaleRepo && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              readyForSaleMutation.mutate({
+                id: readyForSaleRepo.id,
+                resellPrice: Number(readyForSalePrice),
+              });
+            }}
+            className="space-y-4"
+          >
+            <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
+              <div><strong>สินค้า:</strong> {readyForSaleRepo.product.brand} {readyForSaleRepo.product.model}</div>
+              <div><strong>ราคาตี:</strong> {Number(readyForSaleRepo.appraisalPrice).toLocaleString()} บาท</div>
+              <div className="text-xs text-muted-foreground leading-snug pt-1">
+                เครื่องจะย้ายกลับคลังหลักและตั้งราคาขาย Refurbished ตามที่ระบุ
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                ราคาขายต่อ (บาท) <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={readyForSalePrice}
+                onChange={(e) => setReadyForSalePrice(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-hidden focus:ring-2 focus:ring-ring/20"
+                placeholder="0.00"
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setReadyForSaleRepo(null)}
+                className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={readyForSaleMutation.isPending || !(Number(readyForSalePrice) > 0)}
+                className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
+              >
+                {readyForSaleMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน พร้อมขาย'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       {/* Update Modal */}
       <Modal isOpen={isUpdateModalOpen} onClose={() => setIsUpdateModalOpen(false)} title="จัดการเครื่องยึดคืน">
         {selectedRepo && (
@@ -569,13 +634,6 @@ export default function RepossessionsPage() {
           </form>
         )}
       </Modal>
-
-      <ConfirmDialog
-        open={confirmDialog.open}
-        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
-        description={confirmDialog.message}
-        onConfirm={confirmDialog.action}
-      />
     </div>
   );
 }

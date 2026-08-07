@@ -600,7 +600,18 @@ export class RepossessionsService {
     if (dto.resellPrice !== undefined) data.resellPrice = dto.resellPrice;
     if (dto.notes !== undefined) data.notes = dto.notes;
 
-    if (dto.status) {
+    // เครื่องที่ขายแล้ว: repairCost/resellPrice ถูกใช้คำนวณกำไรในรายงานไปแล้ว —
+    // แก้ย้อนหลังโดยไม่มี JE = ตัวเลขรายงานเปลี่ยนเงียบๆ ไม่มี audit trail
+    if (repo.status === 'SOLD' && (dto.repairCost !== undefined || dto.resellPrice !== undefined)) {
+      throw new BadRequestException(
+        'เครื่องที่ขายแล้วแก้ไขค่าซ่อม/ราคาขายไม่ได้ (แก้ไขได้เฉพาะหมายเหตุ)',
+      );
+    }
+
+    // ฟอร์มหน้าเว็บส่งสถานะปัจจุบันติดมาด้วยเสมอ — สถานะเดิมไม่ใช่การเปลี่ยนสถานะ
+    // (เช็คแบบ inline แทนตัวแปร statusChanged แยก — TS ไม่ narrow dto.status ผ่าน
+    // boolean ที่เก็บแยกเมื่อ dto.status เป็น property access ไม่ใช่ local variable)
+    if (dto.status !== undefined && dto.status !== repo.status) {
       // Validate status transition
       const currentStatus = repo.status;
       const allowedTransitions = VALID_TRANSITIONS[currentStatus] || [];

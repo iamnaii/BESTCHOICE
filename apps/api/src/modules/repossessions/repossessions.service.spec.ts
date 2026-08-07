@@ -955,6 +955,43 @@ describe('RepossessionsService', () => {
     });
   });
 
+  describe('update self-transition & SOLD lock', () => {
+    const owner = { id: 'user-1', role: 'OWNER' as const };
+
+    it('status เดิม (REPOSSESSED→REPOSSESSED) + แก้ค่าซ่อม → ไม่ throw, ไม่ส่ง status ใน data', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'REPOSSESSED' }));
+      prisma.repossession.update.mockResolvedValue(makeRepossession());
+      await service.update('repo-1', { repairCost: 500, status: 'REPOSSESSED' } as never, owner);
+      expect(prisma.repossession.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({ status: expect.anything() }),
+        }),
+      );
+    });
+
+    it('SOLD + แก้ repairCost → BadRequestException ภาษาไทย', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'SOLD' }));
+      await expect(
+        service.update('repo-1', { repairCost: 999, status: 'SOLD' } as never, owner),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('SOLD + แก้เฉพาะ notes → สำเร็จ', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'SOLD' }));
+      prisma.repossession.update.mockResolvedValue(makeRepossession({ status: 'SOLD' }));
+      await expect(
+        service.update('repo-1', { notes: 'ขายผ่าน Facebook', status: 'SOLD' } as never, owner),
+      ).resolves.toBeTruthy();
+    });
+
+    it('transition ผิด (REPOSSESSED→SOLD) ยัง reject เหมือนเดิม', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'REPOSSESSED' }));
+      await expect(
+        service.update('repo-1', { status: 'SOLD' } as never, owner),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
   // ──────────────────────────────────────────────────────────────────────────
   // branch scoping
   // ──────────────────────────────────────────────────────────────────────────

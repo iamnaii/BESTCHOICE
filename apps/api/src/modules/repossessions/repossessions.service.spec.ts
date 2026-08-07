@@ -949,10 +949,44 @@ describe('RepossessionsService', () => {
 
       // Wave 3 / Task 4 (W-2): costPrice now passed as Prisma.Decimal to
       // preserve precision. Compare via Decimal.eq instead of numeric equality.
+      // Task 4 (R-007/TAS 2, Phase 1): costPrice = appraisalPrice (6000), NOT
+      // resellPrice (7500) — using the resale price as costPrice would zero out
+      // margin when the item is actually sold.
       expect(prisma.product.update).toHaveBeenCalledTimes(1);
       const call = prisma.product.update.mock.calls[0][0];
       expect(call.data.status).toBe('REFURBISHED');
-      expect(new Prisma.Decimal(call.data.costPrice).eq(7500)).toBe(true);
+      expect(new Prisma.Decimal(call.data.costPrice).eq(6000)).toBe(true);
+    });
+
+    it('READY_FOR_SALE ตั้ง costPrice = ราคาประเมิน ไม่ใช่ราคาขายต่อ (R-007/TAS 2)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'REPOSSESSED', appraisalPrice: decimal(3000) }),
+      );
+      prisma.repossession.update.mockResolvedValue(makeRepossession({ status: 'READY_FOR_SALE' }));
+      prisma.product.update.mockResolvedValue({});
+      await service.update(
+        'repo-1',
+        { status: 'READY_FOR_SALE', resellPrice: 5500 } as never,
+        { id: 'user-1', role: 'OWNER' },
+      );
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ costPrice: new Prisma.Decimal(3000) }),
+        }),
+      );
+    });
+
+    it('READY_FOR_SALE falls back to resellPrice when appraisalPrice is 0/null', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'UNDER_REPAIR', appraisalPrice: null }),
+      );
+      prisma.product.update.mockResolvedValue({});
+      prisma.repossession.update.mockResolvedValue({});
+
+      await service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 4200 } as never);
+
+      const call = prisma.product.update.mock.calls[0][0];
+      expect(new Prisma.Decimal(call.data.costPrice).eq(4200)).toBe(true);
     });
 
     it('updates repossession to SOLD status and returns updated record (Phase A.5 JE deferred)', async () => {

@@ -657,14 +657,16 @@ export class RepossessionsService {
       if (newProductStatus) {
         const updatedRepo = await this.prisma.$transaction(async (tx) => {
           const productUpdateData: Record<string, unknown> = { status: newProductStatus };
-          // R-007: Adjust costPrice to appraised/fair value per TAS 2 when moving to REFURBISHED
+          // R-007/TAS 2: fair value ณ วันยึด = ราคาประเมิน (mirror markReadyForSale) —
+          // ใช้ราคาขายต่อเป็น costPrice จะทำให้ margin ตอนขายจริงเป็นศูนย์
           // Wave 3 / Task 4 (W-2): Decimal arithmetic to preserve precision.
           if (dto.status === 'READY_FOR_SALE') {
-            const appraisalPrice = dto.resellPrice != null
-              ? new Prisma.Decimal(dto.resellPrice)
-              : new Prisma.Decimal(repo.appraisalPrice ?? 0);
-            if (appraisalPrice.greaterThan(0)) {
-              productUpdateData.costPrice = appraisalPrice;
+            const appraisal = new Prisma.Decimal(repo.appraisalPrice ?? 0);
+            const fallback =
+              dto.resellPrice != null ? new Prisma.Decimal(dto.resellPrice) : new Prisma.Decimal(0);
+            const costBasis = appraisal.greaterThan(0) ? appraisal : fallback;
+            if (costBasis.greaterThan(0)) {
+              productUpdateData.costPrice = costBasis;
             }
           }
           await tx.product.update({

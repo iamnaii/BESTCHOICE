@@ -503,6 +503,10 @@ export class MessageRouterService {
    *    the loser would fall through to `adapter.sendMessage` in the window before
    *    the winner stamped `outboundSentAt`, sending the message twice.
    *
+   * รองรับทั้ง TEXT และ IMAGE — bubble รูปใช้ `mediaUrl` (ค่าที่ persist) กับ
+   * `deliveryMediaUrl` (URL ที่ส่งให้ช่องทาง เมื่อ mediaUrl เป็น storage key).
+   * idempotency ทำงานเหมือนกันทั้งสองชนิดเพราะผูกกับ clientMessageId ไม่ใช่ชนิด.
+   *
    * ## Accepted residual (exactly-once is impossible over an unreliable adapter)
    *
    * A crash in the narrow window between `adapter.sendMessage` returning success and
@@ -514,13 +518,27 @@ export class MessageRouterService {
   async sendStaffMessage(params: {
     roomId: string;
     staffId: string;
-    text: string;
+    text?: string;
     clientMessageId?: string;
+    /** ชนิดข้อความที่จะ persist + ส่งออก (ไม่ระบุ = TEXT) */
+    type?: MessageType;
+    /** ค่าที่ persist ลง ChatMessage.mediaUrl — storage key หรือ public URL */
+    mediaUrl?: string;
+    mediaType?: string;
+    /**
+     * URL ที่ส่งให้ "ช่องทาง" จริง — ใช้เมื่อค่าที่ persist เป็น storage key
+     * (LINE/FB ต้องการ public HTTPS). ไม่ระบุ = ใช้ mediaUrl
+     */
+    deliveryMediaUrl?: string;
   }): Promise<{
     success: boolean;
     error?: string;
     message?: { id: string; clientMessageId: string | null; createdAt: Date };
   }> {
+    if (!params.text?.trim() && !params.mediaUrl) {
+      return { success: false, error: 'ไม่มีเนื้อหาที่จะส่ง' };
+    }
+
     const room = await this.roomManager.findById(params.roomId);
     if (!room) {
       this.logger.error(`Room not found: ${params.roomId}`);
@@ -552,7 +570,10 @@ export class MessageRouterService {
         saved = await this.roomManager.saveMessage({
           roomId: params.roomId,
           role: MessageRole.STAFF,
+          type: params.type ?? MessageType.TEXT,
           text: params.text,
+          mediaUrl: params.mediaUrl,
+          mediaType: params.mediaType,
           staffId: params.staffId,
           clientMessageId: params.clientMessageId,
         });
@@ -578,11 +599,18 @@ export class MessageRouterService {
       return { success: false, error: 'save failed' };
     }
 
+    const outboundType = params.type ?? MessageType.TEXT;
+    const deliveryUrl = params.deliveryMediaUrl ?? params.mediaUrl;
+    const isImageBubble = outboundType === MessageType.IMAGE && !!deliveryUrl;
+    // LINE (line-shop.adapter.ts:69-75) และ FB (facebook.adapter.ts:73-77) เลือก
+    // payload จาก imageUrl ก่อน text เสมอ — ถ้าส่ง text มาด้วยจะถูกทิ้งเงียบๆ
+    // ผู้เรียกที่อยากได้ทั้งรูปและข้อความต้องส่ง 2 bubble (ดู ChatCommerceService)
     const result = await adapter.sendMessage({
       externalUserId,
       channel: room.channel,
-      type: 'TEXT' as any,
-      text: params.text,
+      type: outboundType,
+      text: isImageBubble ? undefined : params.text,
+      ...(isImageBubble ? { imageUrl: deliveryUrl, mediaUrl: deliveryUrl } : {}),
     });
 
     if (!result.success) {

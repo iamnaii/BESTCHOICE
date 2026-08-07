@@ -4,6 +4,19 @@ export interface ProductPriceRow {
   isDefault: boolean;
 }
 
+/**
+ * Canonical `ProductPrice.label` values — the ONLY two labels
+ * `syncPriceRowsFromColumns` (apps/api) write-through targets when
+ * `Product.cashPrice`/`installmentPrice` (columns, source of truth) change.
+ * A price row with one of these labels is not an independent editable row —
+ * it mirrors a column and must be edited via `PATCH /products/:id` instead
+ * of the generic `/products/:id/prices` CRUD (Task 13, StockPage
+ * PriceManagementModal column-awareness).
+ */
+export const CASH_LABEL = 'ราคาเงินสด';
+export const INSTALLMENT_LABEL = 'ราคาผ่อน BESTCHOICE';
+export const CANONICAL_PRICE_LABELS = [CASH_LABEL, INSTALLMENT_LABEL] as const;
+
 export interface ProductForDisplay {
   cashPrice?: string | number | null;
   installmentPrice?: string | number | null;
@@ -27,12 +40,12 @@ export function getDisplayPrices(product: ProductForDisplay): DisplayPrices {
   const cash =
     product.cashPrice != null
       ? Number(product.cashPrice)
-      : pickFromPrices(product.prices, 'ราคาเงินสด', 'ราคาเงินสด');
+      : pickFromPrices(product.prices, CASH_LABEL, CASH_LABEL);
 
   const installment =
     product.installmentPrice != null
       ? Number(product.installmentPrice)
-      : pickFromPrices(product.prices, 'ราคาผ่อน BESTCHOICE', 'ราคาผ่อน');
+      : pickFromPrices(product.prices, INSTALLMENT_LABEL, 'ราคาผ่อน');
 
   return { cash, installment };
 }

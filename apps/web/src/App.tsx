@@ -740,7 +740,7 @@ function App() {
           <Route
             path="/repossessions"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <RepossessionsPage />
               </ProtectedRoute>
             }

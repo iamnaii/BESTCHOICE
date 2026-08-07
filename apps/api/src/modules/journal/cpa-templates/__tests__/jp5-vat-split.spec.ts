@@ -960,3 +960,122 @@ describe('JP5 GL-based legs + release residual (Task 5 — ECL per-installment)'
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
   });
 });
+
+/**
+ * JP5 soft-deleted PAID payment ≠ evidence of a real receipt (regression,
+ * repossessions-page-rework Phase 1 review, 2026-08-07).
+ *
+ * `buildJe`'s paid-installments query (`repossession-jp5.template.ts`, near
+ * line 142-147) gained `deletedAt: null` — the same convention `I1` already
+ * established in `compute-cn-breakdown.ts`'s ACCRUED/DUE payment queries. A
+ * `Payment` row that was marked PAID and later soft-deleted (e.g. by
+ * schedule regeneration — a real soft-delete producer, not a hypothetical
+ * one) is NOT evidence the customer actually paid; without the filter that
+ * row's `installmentNo` would wrongly land in `paidNos`, silently dropping
+ * an otherwise-accrued-and-owed installment out of `unpaidInsts` →
+ * `accruedInsts` → the CN VAT (ม.82/5) computation and the `unpaid` count.
+ *
+ * Setup mirrors "issues credit note for accrued installments" above (3
+ * installments accrued via 2A, no real 2B receipt posted) so the golden
+ * numbers are directly comparable — the only difference is installment #1
+ * carries a PAID-then-soft-deleted `Payment` row instead of no row at all.
+ * Both must produce the IDENTICAL JE: the soft-deleted row must be
+ * functionally invisible to JP5.
+ */
+describe('JP5 soft-deleted PAID payment does not count as paid (review Phase 1, 2026-08-07)', () => {
+  beforeAll(async () => {
+    await setup();
+  });
+
+  it('treats a soft-deleted PAID installment as unpaid — CN VAT + loss unaffected, JE balances, no false BadRequestException', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    // Accrue installments 1-3 — same shape as "issues credit note..." / "reduces 51-1102 loss..." above.
+    for (let i = 0; i < 3; i++) {
+      await accrual.execute(insts[i].id);
+    }
+
+    // Installment #1: mark its Payment row PAID, then immediately soft-delete
+    // it — simulates a real soft-delete producer (e.g. schedule regen), NOT
+    // a hypothetical. No real 2B JE is posted (mirrors the "no live Payment
+    // row" siblings), so 11-2103/21-2102 GL balances stay untouched by this.
+    const paidThenDeleted = await prisma.payment.create({
+      data: {
+        contractId: c.id,
+        installmentNo: insts[0].installmentNo,
+        dueDate: insts[0].dueDate,
+        amountDue: new Decimal('1515.83'),
+        amountPaid: new Decimal('1515.83'),
+        paidDate: new Date(),
+        paidAt: new Date(),
+        status: 'PAID',
+      },
+    });
+    await prisma.payment.update({
+      where: { id: paidThenDeleted.id },
+      data: { deletedAt: new Date() },
+    });
+
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    // Must NOT throw — the soft-deleted row must not falsely shrink `unpaid`
+    // to 0 (the "ไม่มีงวดค้างชำระให้ล้าง" / "nothing to repossess" guard).
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // CN VAT (Dr 21-2101) includes installment #1's 99.17 share exactly like
+    // installments #2/#3 (which have no Payment row at all) — 3 × 99.17 =
+    // 297.51, identical to the clean-3-accrued golden above. If the
+    // soft-deleted row wrongly counted as paid, installment #1 would drop
+    // out of accruedInsts and this would read 198.34 (2 × 99.17) instead.
+    const dr21_2101 = sumDr(lines, '21-2101');
+    expect(dr21_2101.toFixed(2)).toBe('297.51');
+
+    // GL clearing legs identical to the clean-3-accrued golden — no real 2B
+    // JE ever touched the ledger for installment #1.
+    const cr11_2103 = sumCr(lines, '11-2103');
+    expect(cr11_2103.toFixed(2)).toBe('4547.49'); // 3 × 1,515.83
+    const cr21_2101 = sumCr(lines, '21-2101');
+    expect(cr21_2101.toFixed(2)).toBe('892.49'); // GL 21-2102 (cr) after 3× 2A
+
+    // Loss identical to "reduces 51-1102 loss by exactly the accrued VAT
+    // amount" above: remainingTotal 18,190.00 − CN 297.51 − repo 5,000 = 12,892.49.
+    const dr51_1102 = sumDr(lines, '51-1102');
+    expect(dr51_1102.toFixed(2)).toBe('12892.49');
+
+    // JE balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+
+    // metadata: unpaid count includes installment #1 (12 of 12, not 11) —
+    // proves it flowed through as unpaid+accrued rather than being silently
+    // excluded, and that the `unpaid === 0` BadRequestException gate was
+    // never even close to firing for this contract.
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+        ],
+      },
+    });
+    expect(entries.length).toBe(1);
+    const meta = entries[0].metadata as Record<string, unknown>;
+    expect(meta.unpaidInstallments).toBe(12);
+    expect(meta.accruedInstallments).toBe(3);
+    expect(meta.creditNoteIssued).toBe(true);
+    expect(meta.creditNoteVatAmount).toBe('297.51');
+  });
+});

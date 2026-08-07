@@ -11,7 +11,7 @@ import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { transferableStatuses } from '@/lib/constants';
 import ProductInfo from './components/ProductInfo';
-import { getDisplayPrices, getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
+import { getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
 import ProductPhotos from './components/ProductPhotos';
 import EditProductModal from './components/EditProductModal';
 import { InstallmentCalculatorCard } from './components/InstallmentCalculatorCard';
@@ -29,6 +29,7 @@ import {
   isSellingPricePayloadEmpty,
   type SellingPricePayload,
 } from './utils/buildSellingPricePayload';
+import { buildEditProductPayload, type EditForm } from './utils/buildEditProductPayload';
 
 interface Price {
   id: string;
@@ -76,28 +77,9 @@ interface Product {
 
 type Tab = 'info' | 'photos' | 'online';
 
-interface EditForm {
-  name: string;
-  brand: string;
-  model: string;
-  color: string;
-  storage: string;
-  imeiSerial: string;
-  serialNumber: string;
-  category: string;
-  costPrice: string;
-  status: string;
-  batteryHealth: string;
-  warrantyExpired: boolean;
-  warrantyExpireDate: string;
-  hasBox: boolean;
-  accessoryType: string;
-  accessoryBrand: string;
-  conditionGrade: string;
-  shopWarrantyDays: string;
-  accessoriesIncluded: string;
-  cosmeticNotes: string;
-}
+// EditForm now lives in ./utils/buildEditProductPayload — shared with the extracted
+// pure payload-builder so its costPrice fix (final-review N2) is unit-testable without
+// rendering this page (no index.tsx-level render test exists on this branch).
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -149,9 +131,12 @@ export default function ProductDetailPage() {
   // Compute profit (must be before early returns to satisfy Rules of Hooks)
   const profit = useMemo(() => {
     if (!product) return null;
-    // Use getDisplayPrices to derive the canonical selling price (prefers cashPrice/installmentPrice
-    // on Product when set; falls back to prices[] label lookup)
-    const { installment, cash } = getDisplayPrices(product);
+    // Use getPositiveDisplayPrices to derive the canonical selling price (prefers
+    // cashPrice/installmentPrice on Product when set; falls back to prices[] label lookup).
+    // final-review F1 (2026-08-07): was the raw getDisplayPrices — the one other display-price
+    // read on this page (besides InstallmentCalculatorCard.tsx) that hadn't been switched to
+    // the positive-normalizing variant every other site on this page already uses.
+    const { installment, cash } = getPositiveDisplayPrices(product);
     const displayPrice = installment ?? cash;
     // costPrice ถูก strip ฝั่ง server เมื่อ role = SALES → ไม่มีทางคำนวณกำไร
     const cost = product.costPrice != null ? parseFloat(product.costPrice) : null;
@@ -172,6 +157,13 @@ export default function ProductDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-available'] });
+      // final-review F2 (2026-08-07): StockPage's table reads ['stock']/['stock-list']
+      // (useStockProducts.ts), not any of the 3 keys above — without this, editing price
+      // from the detail page then navigating back to /stock shows the stale price for up
+      // to staleTime (3 min). Task 13's PriceManagementModal already invalidates both;
+      // this page (Task 7/11) didn't. Copied from PriceManagementModal.tsx:70-71.
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-list'] });
       // fix-round I2: readiness card (Task 8) reads this key — ไม่ invalidate จะค้างสถานะเก่า
       // (เช่นแก้ราคาแล้วแต่การ์ด readiness ยังบอกว่า "ยังไม่มีราคา")
       // Task 8 fix round 1: use the shared key builder, not a hand-typed literal —
@@ -211,6 +203,10 @@ export default function ProductDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-available'] });
+      // final-review F2 (2026-08-07): same gap as sellingPriceMutation above — this modal
+      // also writes costPrice/status, both shown in StockPage's table.
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-list'] });
       // review round 1 [C1]: conditionGrade เป็น blocking check ของ readiness (PHONE_USED) —
       // แก้จาก modal นี้แล้วไม่ invalidate จะค้างสถานะเก่าที่การ์ด readiness (เหมือน I2 ของ
       // sellingPriceMutation ด้านบน)
@@ -250,40 +246,7 @@ export default function ProductDetailPage() {
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: Record<string, unknown> = {
-      name: editForm.name,
-      brand: editForm.brand,
-      model: editForm.model,
-      color: editForm.color || undefined,
-      storage: editForm.storage || undefined,
-      imeiSerial: editForm.imeiSerial || undefined,
-      serialNumber: editForm.serialNumber || undefined,
-      category: editForm.category,
-      costPrice: parseFloat(editForm.costPrice) || 0,
-      status: editForm.status,
-    };
-    if (editForm.category === 'PHONE_USED') {
-      payload.batteryHealth = editForm.batteryHealth ? Number(editForm.batteryHealth) : undefined;
-      payload.warrantyExpired = editForm.warrantyExpired;
-      payload.warrantyExpireDate =
-        !editForm.warrantyExpired && editForm.warrantyExpireDate ? editForm.warrantyExpireDate : undefined;
-      payload.hasBox = editForm.hasBox;
-    }
-    if (editForm.category === 'ACCESSORY') {
-      payload.accessoryType = editForm.accessoryType || undefined;
-      payload.accessoryBrand = editForm.accessoryBrand || undefined;
-    }
-    // ค่าว่าง → undefined = "ไม่แก้" (DTO @IsIn ปฏิเสธ '' อยู่แล้ว);
-    // accessoriesIncluded ส่งเสมอ (array ว่าง = ล้างรายการอุปกรณ์ ซึ่งตั้งใจให้ทำได้)
-    payload.conditionGrade = editForm.conditionGrade || undefined;
-    payload.shopWarrantyDays =
-      editForm.shopWarrantyDays !== '' ? Number(editForm.shopWarrantyDays) : undefined;
-    payload.accessoriesIncluded = editForm.accessoriesIncluded
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    payload.cosmeticNotes = editForm.cosmeticNotes || undefined;
-    editMutation.mutate(payload);
+    editMutation.mutate(buildEditProductPayload(editForm));
   };
 
   const handleTransferSubmit = (e: React.FormEvent) => {

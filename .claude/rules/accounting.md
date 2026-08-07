@@ -308,8 +308,13 @@ E2E: `apps/api/src/modules/expense-documents/__tests__/payroll-shop-flow.integra
     + ลดหย่อนมาตรฐาน (ส่วนตัว 60k, ค่าใช้จ่าย 50%≤100k, ปกส.จริง) — **advisory
     เท่านั้น** แสดงใต้ช่อง WHT กดใช้ได้ ไม่ block.
   - **CI**: เพิ่ม step `Test Web` (เทสต์ web ไม่เคยรันใน pipeline ใดมาก่อน).
-- **ยังค้าง**: ส่งสลิปให้พนักงาน (LINE/email — ต้องต่อ infra), PDPA retention
-  payroll_lines (รอนโยบายเจ้าของ), กท.20ก แบบฟอร์มเต็ม, จ่ายนำส่งรวมฝั่งเดียว (รอ CPA).
+- **คำตัดสินเจ้าของ 2026-08-06 (ปิดประเด็น — อย่าเสนอซ้ำ)**:
+  - ส่งสลิปให้พนักงานทาง LINE/email — **ไม่ทำ** (เจ้าของ: "ไม่ต้องส่ง"; พิมพ์สลิป
+    กระดาษจาก PaymentVoucherPage ตามเดิม)
+  - PDPA retention `payroll_lines` — **ไม่ลบทิ้ง** (เจ้าของ: เก็บถาวร; สอดคล้อง
+    พ.ร.บ.การบัญชี เก็บเอกสาร ≥5 ปี — ไม่ต้องสร้าง retention cron)
+- **ยังค้างจริง**: กท.20ก แบบฟอร์มเต็ม (มี annualWageTotal อ้างอิงแล้ว),
+  จ่ายนำส่งรวมฝั่งเดียว (รอ CPA — บัญชี interco ฝั่ง SHOP, interco spec §11).
 
 ## SSO accounts (P0-3 — Fix Report v1.0)
 

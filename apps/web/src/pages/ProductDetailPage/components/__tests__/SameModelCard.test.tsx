@@ -51,6 +51,32 @@ describe('SameModelCard', () => {
     expect(screen.queryByText('ลาดพร้าว')).toBeNull();
   });
 
+  it('เครื่องคอลัมน์ราคา null แต่มีราคาใน prices[] → โชว์ราคา fallback ตรงกับการ์ดหลัก (Task-9 C1)', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        data: [
+          { id: 'p-1', color: 'ดำ', storage: '128GB', status: 'IN_STOCK', cashPrice: '15900', installmentPrice: null, prices: [], branch: { name: 'ลาดพร้าว' } },
+          {
+            id: 'p-3',
+            color: 'เขียว',
+            storage: '128GB',
+            status: 'IN_STOCK',
+            cashPrice: null,
+            installmentPrice: null,
+            prices: [{ label: 'ราคาเงินสด', amount: '14500', isDefault: true }],
+            branch: { name: 'บางแค' },
+          },
+        ],
+        total: 2,
+      },
+    });
+
+    render(wrap(<SameModelCard productId="p-1" model="iPhone 13" storage="128GB" />));
+
+    // ราคาต้องมาจากเส้น getPositiveDisplayPrices (fallback ไป prices[]) ไม่ใช่คอลัมน์ดิบ
+    expect(await screen.findByText('14,500 ฿')).toBeInTheDocument();
+  });
+
   it('ไม่มีเครื่องอื่น → ไม่ render การ์ด', async () => {
     apiGet.mockResolvedValue({ data: { data: [{ id: 'p-1', color: 'ดำ', status: 'IN_STOCK', branch: { name: 'ลาดพร้าว' } }], total: 1 } });
     const { container } = render(wrap(<SameModelCard productId="p-1" model="iPhone 13" storage="128GB" />));

@@ -19,6 +19,11 @@ import OnlineListingPanel from './components/OnlineListingPanel';
 import SellingPriceCard from './components/SellingPriceCard';
 import EditSellingPriceModal from './components/EditSellingPriceModal';
 import { PRODUCT_READINESS_QUERY_KEY } from './hooks/useProductReadiness';
+import {
+  buildSellingPricePayload,
+  isSellingPricePayloadEmpty,
+  type SellingPricePayload,
+} from './utils/buildSellingPricePayload';
 
 interface Price {
   id: string;
@@ -102,6 +107,8 @@ export default function ProductDetailPage() {
   // Selling price modal state (cashPrice/installmentPrice columns — B0/Task 7)
   const [isSellingPriceModalOpen, setIsSellingPriceModalOpen] = useState(false);
   const [sellingPriceForm, setSellingPriceForm] = useState({ cashPrice: '', installmentPrice: '' });
+  // ค่า ณ ตอนเปิด modal — ใช้เทียบว่าฟิลด์ไหน "เปลี่ยนจริง" ก่อนส่ง payload (Task 11 deferred fix)
+  const [sellingPriceInitial, setSellingPriceInitial] = useState({ cashPrice: '', installmentPrice: '' });
 
   // Edit product modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -147,13 +154,9 @@ export default function ProductDetailPage() {
   }, [product]);
 
   // Selling price mutation (cashPrice/installmentPrice columns — B0/Task 7)
+  // payload มาจาก buildSellingPricePayload — เฉพาะฟิลด์ที่เปลี่ยนจริงเท่านั้น (Task 11 deferred fix)
   const sellingPriceMutation = useMutation({
-    mutationFn: async () =>
-      api.patch(`/products/${id}`, {
-        cashPrice: sellingPriceForm.cashPrice !== '' ? parseFloat(sellingPriceForm.cashPrice) : undefined,
-        installmentPrice:
-          sellingPriceForm.installmentPrice !== '' ? parseFloat(sellingPriceForm.installmentPrice) : undefined,
-      }),
+    mutationFn: async (payload: SellingPricePayload) => api.patch(`/products/${id}`, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -309,10 +312,15 @@ export default function ProductDetailPage() {
   // prices[]) แทนที่จะอ่านคอลัมน์ดิบเฉยๆ — เดิม fallback-only เครื่องจะเปิด modal มาว่าง ทั้งที่
   // การ์ดโชว์ราคาอยู่; ตอนนี้กดบันทึกครั้งเดียว = migrate ค่าจาก prices[] เข้าคอลัมน์จริง
   const openSellingPriceModal = () => {
-    setSellingPriceForm({
+    // Task 11 deferred fix: จำค่า ณ ตอนเปิด modal ไว้คู่กับฟอร์ม — buildSellingPricePayload
+    // เทียบสองค่านี้ตอน submit เพื่อไม่ส่งฟิลด์ที่ไม่เปลี่ยนซ้ำ (กันเคลียร์ priceAutofilledAt badge
+    // โดยไม่ตั้งใจเวลากดบันทึกโดยไม่ได้แก้อะไรเลย)
+    const initial = {
       cashPrice: displayCashPrice != null ? String(displayCashPrice) : '',
       installmentPrice: displayInstallmentPrice != null ? String(displayInstallmentPrice) : '',
-    });
+    };
+    setSellingPriceForm(initial);
+    setSellingPriceInitial(initial);
     setIsSellingPriceModalOpen(true);
   };
 
@@ -435,13 +443,15 @@ export default function ProductDetailPage() {
         onChange={setSellingPriceForm}
         onSubmit={(e) => {
           e.preventDefault();
-          // fix-round Minor 1: ว่างทั้ง 2 ช่อง = ไม่มีอะไรจะแก้ (ทั้งคู่ส่ง undefined อยู่แล้ว) —
-          // ปิด modal เฉยๆ แทนที่จะยิง PATCH {} ที่ไม่แตะอะไรเลยแล้วโชว์ toast สำเร็จหลอกๆ
-          if (sellingPriceForm.cashPrice === '' && sellingPriceForm.installmentPrice === '') {
+          // Task 11 deferred fix: payload มีเฉพาะฟิลด์ที่เปลี่ยนจริงจากตอนเปิด modal
+          // (ครอบคลุมทั้งเคสว่างทั้ง 2 ช่อง และเคสกดบันทึกโดยไม่แก้อะไรเลย) — ว่าง = ไม่มีอะไรจะแก้
+          // ปิด modal เฉยๆ แทนที่จะยิง PATCH ที่ไม่แตะอะไรเลยแล้วโชว์ toast สำเร็จหลอกๆ
+          const payload = buildSellingPricePayload(sellingPriceForm, sellingPriceInitial);
+          if (isSellingPricePayloadEmpty(payload)) {
             setIsSellingPriceModalOpen(false);
             return;
           }
-          sellingPriceMutation.mutate();
+          sellingPriceMutation.mutate(payload);
         }}
         isPending={sellingPriceMutation.isPending}
       />

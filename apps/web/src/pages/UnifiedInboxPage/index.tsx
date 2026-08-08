@@ -11,6 +11,7 @@ import { useNotificationPrefs } from './hooks/useNotificationPrefs';
 import { useAuth } from '@/contexts/AuthContext';
 import type { InboxTab } from './components/ChannelFilter';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { resolveUploadFeedback } from './components/upload-feedback';
 
 // Sound notification
 const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU4GAAB/f39/f39/f39/f3+AgICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqeop6ioqamqqqqrq6ysra2urq+vsLCxsbKys7O0tLW1tra3t7i4ubm6uru7vLy9vb6+v7/AwMHBwsLDw8TExcXGxsfHyMjJycrKy8vMzM3Nzs7Pz9DQ0dHS0tPT1NTV1dbW19fY2NnZ2tra29vc3N3d3t7f3+Dg4eHi4uPj5OTl5ebm5+fo6Onp6urr6+zs7e3u7u/v8PDx8fLy8/P09PX19vb39/j4+fn6+vv7/Pz9/f7+/v7+/v7+';
@@ -421,12 +422,13 @@ export default function UnifiedInboxPage() {
       return data as { delivered?: boolean; error?: string };
     },
     onSuccess: (data) => {
-      if (data?.delivered) {
-        toast.success('ส่งรูปให้ลูกค้าแล้ว');
-      } else if (data?.error) {
-        toast.error(`อัปโหลดแล้วแต่ส่งถึงลูกค้าไม่สำเร็จ — ${data.error}`);
+      const feedback = resolveUploadFeedback(data);
+      if (feedback.kind === 'success') {
+        toast.success(feedback.message);
+      } else if (feedback.kind === 'retryable') {
+        toast.error(feedback.message);
       } else {
-        toast.warning('แนบไฟล์ในห้องแล้ว — ลูกค้ายังไม่ได้รับ (ช่องทางนี้ส่งไฟล์ไม่ได้)');
+        toast.warning(feedback.message);
       }
       if (activeRoomId) {
         queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });

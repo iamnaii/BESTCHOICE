@@ -93,20 +93,51 @@ describe('RoomManagerService.uploadFile — รูปต้องถึงลู
     expect(res.error).toBe('LINE 400');
   });
 
-  it('ไฟล์ non-image + retry clientMessageId เดิม (P2002) → คืนแถวเดิม ไม่ throw 500', async () => {
+  it('ไฟล์ non-image + P2002 race (2 request ชนกันหลังผ่านเช็ค dedup) → คืนแถวเดิม ไม่ throw 500', async () => {
     const { manager, prisma } = makeManager();
     const p2002 = Object.assign(new Error('Unique constraint failed on the fields: (`room_id`,`client_message_id`)'), {
       code: 'P2002',
     });
     prisma.chatMessage.create.mockRejectedValueOnce(p2002);
-    prisma.chatMessage.findFirst.mockResolvedValueOnce({ id: 'm-existing', clientMessageId: 'tok-retry' });
+    // เรียกครั้งที่ 1 (เช็ค dedup ก่อน upload, I1) — ยังไม่พบแถว จึงเดินเส้นปกติจนถึง
+    // create; เรียกครั้งที่ 2 (ใน catch หลัง P2002) — คู่แข่งชนะ race ไปแล้วระหว่างนั้น
+    // พอดี พบแถวที่ concurrent request สร้างไว้
+    prisma.chatMessage.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'm-existing', clientMessageId: 'tok-retry' });
 
     const res = await manager.uploadFile('r1', makeFile('application/pdf', 'doc.pdf'), 'u1', 'tok-retry');
 
     expect(res.success).toBe(true);
     expect(res.delivered).toBe(false);
+    expect(prisma.chatMessage.findFirst).toHaveBeenCalledTimes(2);
     expect(prisma.chatMessage.findFirst).toHaveBeenCalledWith({
       where: { roomId: 'r1', clientMessageId: 'tok-retry' },
     });
+  });
+
+  it('ไฟล์ non-image + retry clientMessageId เดิม (แถวมีอยู่แล้วจริง) → เช็คก่อน upload ไม่สร้างไฟล์ orphan ใน storage [I1]', async () => {
+    const { manager, prisma, storage } = makeManager();
+
+    // Attempt แรก: ยังไม่มีแถว → เดินเส้นปกติ (upload จริง 1 ครั้ง + save)
+    prisma.chatMessage.findFirst.mockResolvedValueOnce(null);
+    const res1 = await manager.uploadFile('r1', makeFile('application/pdf', 'doc.pdf'), 'u1', 'tok-retry');
+    expect(res1.success).toBe(true);
+    expect(storage.upload).toHaveBeenCalledTimes(1);
+
+    // Attempt ที่สอง (retry ด้วย clientMessageId เดิม): จำลองว่าแถวจาก attempt แรกมีอยู่
+    // แล้วจริงใน DB — findByClientMessageId ต้องเจอและ short-circuit ก่อนแตะ storage เลย
+    prisma.chatMessage.findFirst.mockResolvedValue({
+      id: 'm1',
+      mediaUrl: res1.key,
+      text: 'doc.pdf',
+    });
+    const res2 = await manager.uploadFile('r1', makeFile('application/pdf', 'doc.pdf'), 'u1', 'tok-retry');
+
+    expect(res2.success).toBe(true);
+    expect(res2.delivered).toBe(false);
+    expect(res2.key).toBe(res1.key); // คืน key เดิม ไม่ใช่ key ใหม่จาก Date.now()
+    // storageService.upload ถูกเรียกครั้งเดียวรวมทั้ง 2 attempt — retry ไม่ upload ซ้ำ
+    expect(storage.upload).toHaveBeenCalledTimes(1);
   });
 });

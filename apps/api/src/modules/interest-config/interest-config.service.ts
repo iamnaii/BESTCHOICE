@@ -69,6 +69,14 @@ export class InterestConfigService {
   }
 
   async resolveConfig(category: string) {
+    // Fix round 1 [C2]: `orderBy: { createdAt: 'asc' }` makes the pick
+    // deterministic when a category has >1 active config — without it,
+    // Postgres can return either row on different calls, and a customer
+    // could see two different monthly-payment quotes for the same category
+    // from the bot/web-shop (this resolver) vs the inbox picker
+    // (`ProductQuoteService.getQuotes` in
+    // apps/api/src/modules/staff-chat/services/product-quote.service.ts,
+    // which uses the same `orderBy` + first-wins rule). Keep both in sync.
     const cfg = await this.prisma.interestConfig.findFirst({
       where: {
         productCategories: { has: category },
@@ -76,6 +84,7 @@ export class InterestConfigService {
         isActive: true,
       },
       include: { rates: { where: { deletedAt: null } } },
+      orderBy: { createdAt: 'asc' },
     });
 
     if (!cfg) {

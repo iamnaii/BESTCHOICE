@@ -38,16 +38,43 @@ const dec = (v: DecimalLike): Decimal => new Decimal(v.toString());
 const EMPTY_INSTALLMENT = { months: null, monthlyPayment: null, downAmount: null } as const;
 
 /**
+ * Fix round 1 [C1]: non-positive (0 / '' / negative / NaN) treated as "absent"
+ * — same rule as `isUsablePrice` (`apps/api/src/utils/product-price-sync.util.ts`,
+ * write-side) and `normalizePositive` (`apps/web/src/utils/getDisplayPrices.ts`,
+ * read-side). A column or `prices[]` row that is exactly 0 or negative means
+ * "no price on record", not "free" — it must never win outright and must never
+ * be treated as a usable fallback candidate either.
+ *
+ * Returns the ORIGINAL `DecimalLike` (not a coerced `number`) when valid, so
+ * `computeProductQuote` can feed the winning value straight into `Decimal`
+ * without round-tripping through a JS `number` first (Fix round 1 [I2] — avoids
+ * an unnecessary Decimal→Number→Decimal hop between resolution and
+ * `calcBcInstallment`). `resolveProductPrices` below is the public,
+ * contract-fixed wrapper that coerces this to `number` for display.
+ */
+function positiveOrNull(v: DecimalLike | null | undefined): DecimalLike | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? v : null;
+}
+
+/**
  * ลำดับการอ่านราคา — columns-first แล้วค่อย prices[] เหมือน
  * `installment-preview.service.ts:39-43` (api) และ `getDisplayPrices.ts:26-37` (web).
  * ห้าม fallback ไป prices[0] เด็ดขาด: prod มี default row ปนหลาย label
  * ('ราคาขาย' / 'ราคาขายต่อ (Refurbished)') ที่ไม่ใช่ราคาขายจริงของเครื่องนั้น
+ *
+ * Fix round 1 [C1]: both layers are positive-only. A column that is 0/negative
+ * loses to a real `prices[]` row (does NOT short-circuit past the label-chain);
+ * a `prices[]` row that is 0/negative/unparseable is dropped from the
+ * candidate set entirely before label matching runs, so it can never win —
+ * label matching moves on to the next row instead of surfacing a bad value.
  */
-export function resolveProductPrices(p: ProductPriceInput): {
-  cash: number | null;
-  installment: number | null;
+function resolvePriceSources(p: ProductPriceInput): {
+  cash: DecimalLike | null;
+  installment: DecimalLike | null;
 } {
-  const rows = p.prices ?? [];
+  const rows = (p.prices ?? []).filter((r) => positiveOrNull(r.amount) != null);
   const pick = (exact: string, prefix: string) =>
     rows.find((r) => r.label === exact) ?? rows.find((r) => r.label.startsWith(prefix));
 
@@ -55,13 +82,19 @@ export function resolveProductPrices(p: ProductPriceInput): {
   const instRow = pick('ราคาผ่อน BESTCHOICE', 'ราคาผ่อน');
 
   return {
-    cash: p.cashPrice != null ? Number(p.cashPrice) : cashRow ? Number(cashRow.amount) : null,
-    installment:
-      p.installmentPrice != null
-        ? Number(p.installmentPrice)
-        : instRow
-          ? Number(instRow.amount)
-          : null,
+    cash: positiveOrNull(p.cashPrice) ?? cashRow?.amount ?? null,
+    installment: positiveOrNull(p.installmentPrice) ?? instRow?.amount ?? null,
+  };
+}
+
+export function resolveProductPrices(p: ProductPriceInput): {
+  cash: number | null;
+  installment: number | null;
+} {
+  const { cash, installment } = resolvePriceSources(p);
+  return {
+    cash: cash != null ? Number(cash) : null,
+    installment: installment != null ? Number(installment) : null,
   };
 }
 
@@ -74,10 +107,15 @@ export function computeProductQuote(
   p: ProductPriceInput,
   config: QuoteConfigInput | null,
 ): ProductQuote {
-  const { cash, installment } = resolveProductPrices(p);
-  const base = { cashPrice: cash, installmentPrice: installment };
+  // Resolve straight to DecimalLike sources (not through the public
+  // number-returning `resolveProductPrices`) — see positiveOrNull's jsdoc [I2].
+  const { cash, installment } = resolvePriceSources(p);
+  const base = {
+    cashPrice: cash != null ? Number(cash) : null,
+    installmentPrice: installment != null ? Number(installment) : null,
+  };
 
-  if (installment == null || installment <= 0 || !config) {
+  if (installment == null || !config) {
     return { ...base, ...EMPTY_INSTALLMENT };
   }
 
@@ -137,7 +175,12 @@ export class ProductQuoteService {
     });
 
     // config ตัวแรกสุด (createdAt asc) ชนะต่อหมวด — deterministic ต่างจาก
-    // installment-preview.service.ts ที่ findFirst ไม่มี orderBy
+    // installment-preview.service.ts ที่ findFirst ไม่มี orderBy. Fix round 1
+    // [C2]: InterestConfigService.resolveConfig (interest-config.service.ts)
+    // now carries the SAME `orderBy: { createdAt: 'asc' }` for the same
+    // reason — keep both in sync if this selection rule ever changes, or the
+    // bot/web-shop resolver and this one can quote two different numbers for
+    // a category with >1 active config.
     const byCategory = new Map<string, (typeof configs)[number]>();
     for (const c of configs) {
       for (const cat of c.productCategories) {

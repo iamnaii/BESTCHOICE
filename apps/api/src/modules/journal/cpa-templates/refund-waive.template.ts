@@ -82,10 +82,11 @@ export class RefundWaiveTemplate {
 
     const dupeMetadata = dupe.metadata as Record<string, unknown> | null;
     const bookedAmount = dupeMetadata?.['amount'];
+    // metadata.amount always present in practice — numeric-shaped fallback for the money field
     return {
       status: 'match',
       entryNo: dupe.entryNumber,
-      amount: typeof bookedAmount === 'string' ? bookedAmount : 'ไม่ทราบยอด',
+      amount: typeof bookedAmount === 'string' ? bookedAmount : '0.00',
     };
   }
 

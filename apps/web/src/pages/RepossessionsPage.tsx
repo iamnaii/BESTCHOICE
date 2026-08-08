@@ -216,8 +216,10 @@ export default function RepossessionsPage() {
       api.post(`/repossessions/${waiveRepo!.id}/refund-waive`, {
         requestId: waiveRequestId,
       }),
-    onSuccess: () => {
-      toast.success('ล้างหนี้เงินคืนแล้ว — บันทึกเป็นรายได้จากการยึด');
+    onSuccess: (res) => {
+      toast.success(
+        `ล้างหนี้เงินคืนแล้ว ${Number(res.data.waivedAmount).toLocaleString()} ฿ — บันทึกเป็นรายได้จากการยึดเครื่อง (41-1102)`,
+      );
       queryClient.invalidateQueries({ queryKey: ['repossessions'] });
       setWaiveRepo(null);
     },
@@ -681,6 +683,10 @@ export default function RepossessionsPage() {
             <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
               <div><strong>สัญญา:</strong> {waiveRepo.contract.contractNumber}</div>
               <div><strong>ลูกค้า:</strong> {waiveRepo.contract.customer.name}</div>
+              <div><strong>ยอดเงินคืนตอนยึด:</strong> {Number(waiveRepo.customerRefund).toLocaleString()} บาท</div>
+            </div>
+            <div className="text-xs text-muted-foreground leading-snug">
+              ระบบจะล้าง "ยอดคงเหลือจริง" ในบัญชี ซึ่งอาจต่ำกว่านี้ถ้าจ่ายคืนบางส่วนไปแล้ว
             </div>
             <div className="text-xs text-destructive leading-snug">
               เคลียร์หนี้เงินคืนส่วนต่างที่เหลือทั้งหมดออกจากบัญชี (บันทึกเป็นรายได้จากการยึด

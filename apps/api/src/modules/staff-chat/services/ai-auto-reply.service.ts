@@ -2,7 +2,6 @@ import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AiSuggestService } from './ai-suggest.service';
 import { SalesBotService, SalesBotResult } from '../../sales-bot/sales-bot.service';
 import { LlmProviderRegistry } from '../../sales-bot/providers/llm-provider.registry';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
@@ -21,7 +20,6 @@ export class AiAutoReplyService {
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
-    private aiSuggest: AiSuggestService,
     private salesBot: SalesBotService,
     private llmRegistry: LlmProviderRegistry,
     private personaService: PersonaService,

@@ -4,7 +4,7 @@
 - TFRS for NPAEs (มาตรฐานรายงานทางการเงินสำหรับกิจการที่ไม่มีส่วนได้เสียสาธารณะ)
 - **Full Accrual TFRS 15** — ดอกเบี้ยรับรู้ตามงวด ผ่าน 11-2106 Unearned Interest (Contra Asset)
 - **Accrual VAT** — ตั้งภาษีวันเปิดสัญญา (11-2105/21-2102) ล้างทีละงวดเข้า 21-2101
-- Single **FINANCE chart** (110 accounts ณ 2026-08-03 — ตัวเลขนี้เดินตาม CSV ไม่ใช่ค่าคงที่; เดิม 99 ตอน Phase A.4) — SHOP-side deferred to A.5
+- Single **FINANCE chart** (111 accounts ณ 2026-08-08 — ตัวเลขนี้เดินตาม CSV ไม่ใช่ค่าคงที่; เดิม 99 ตอน Phase A.4, 110 ก่อน 21-1107 เพิ่ม 2026-08-08) — SHOP-side deferred to A.5
 - Source of truth: `docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md` + CSV at `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/`
 
 ## Phase A.0-A.3 Status
@@ -13,7 +13,7 @@ Do NOT reference old A.0-A.3 JE templates, chart codes, or journal service metho
 
 ---
 
-## Chart of Accounts (110 accounts ณ 2026-08-03 — FINANCE only)
+## Chart of Accounts (111 accounts ณ 2026-08-08 — FINANCE only)
 
 Full list lives in `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv`.
 Key codes referenced by JE templates:
@@ -40,6 +40,7 @@ Key codes referenced by JE templates:
 | 21-1101 | เจ้าหนี้-หน้าร้าน (ยอดจัด) |
 | 21-1102 | เจ้าหนี้ค่าคอม-หน้าร้าน |
 | 21-1103 | เงินรับล่วงหน้า (Advance from customer) |
+| 21-1107 | เจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (ตั้ง ณ วันยึดเมื่อราคากลาง > ยอดปิด — JP5; ล้างเมื่อจ่ายคืนผ่าน RefundPayoutTemplate) |
 | 21-2101 | ภาษีขาย ภ.พ.30 (VAT Output — settled) |
 | 21-2102 | ภาษีขายรอเรียกเก็บ (VAT Deferred Output) |
 | 21-2103 | VAT บังคับ-ลูกหนี้ค้าง 60 วัน |
@@ -75,7 +76,8 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 | `PaymentReceipt2BTemplate` | Payment received (single) | Dr cash / Cr 11-2101 + 11-2103 + 21-2101 cleared from 21-2102 |
 | `PaymentReceipt2BSplitTemplate` | Partial payment | As above with pro-rata split |
 | `EarlyPayoffJP4Template` | Early payoff | Includes Dr 52-1106 (discount) + reverse remaining 11-2106 |
-| `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102 |
+| `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; optional `input.customerRefund` → Cr 21-1107 (เงินคืนส่วนต่างลูกค้า, คำสั่งเจ้าของ 2026-08-08 ข้อ 2) pushed BEFORE the loss/gain plug is computed — the plug absorbs it automatically (gain shrinks/loss grows by exactly the refund, no separate formula). Paid out later via `RefundPayoutTemplate` |
+| `RefundPayoutTemplate` | Manual — `POST /repossessions/:id/refund-payment` | Dr 21-1107 / Cr depositAccountCode — clears the 21-1107 balance JP5 parked (mirrors `ShopCollectSettlementTemplate`'s outstanding/idempotency pattern, scoped to 21-1107 instead of 11-2107) |
 | `RescheduleJP6Template` | Reschedule (6a/6b variants) | Reclassify overdue to 21-1103 advance |
 | `Vat60dayMandatoryTemplate` | Daily cron 02:00 BKK | Mandatory VAT on 60-day overdue installments |
 | `Vat60dayReversalTemplate` | Payment after 60-day flag | Reversal when overdue payment received |
@@ -910,7 +912,7 @@ Module: `apps/api/src/modules/other-income/`
 Frontend pages: `apps/web/src/pages/other-income/`
 Routes: `/other-income`, `/other-income/new`, `/other-income/:id`, `/other-income/:id/receipt`, `/other-income/daily-sheet`
 
-Key accounts (from FINANCE chart — 110 บัญชี ณ 2026-08-03):
+Key accounts (from FINANCE chart — 111 บัญชี ณ 2026-08-08):
 - `42-1102` — ดอกเบี้ยเงินฝาก (Bank interest income — exempt from VAT, subject to 15% WHT)
 - `42-1103` — ค่าปรับชำระล่าช้า (Late fee — usually auto-posted via `PaymentReceipt2BTemplate` together with installment payment. Also bookable here for "late-fee-only" scenarios where customer pays just the penalty without settling the installment. **Watch for duplicate-entry risk**: if booked here, do NOT also pass `lateFee` on the next installment Payment for the same month, or 42-1103 will be credited twice.)
 - `42-1104` — รายได้จากการหักค่าจ้าง (Payroll deduction — Pattern B deferred until payroll module exists)

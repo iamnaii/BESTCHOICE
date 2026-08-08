@@ -14,6 +14,7 @@ import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { RepossessionJP5Template, RepossessionJePreview } from '../journal/cpa-templates/repossession-jp5.template';
+import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.template';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -41,6 +42,7 @@ export class RepossessionsService {
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
     private repossessionJP5Template: RepossessionJP5Template,
+    private refundPayoutTemplate: RefundPayoutTemplate,
     private creditNoteDocumentService: CreditNoteDocumentService,
     private cnDeliveryService: CreditNoteDeliveryService,
   ) {}
@@ -236,6 +238,7 @@ export class RepossessionsService {
           depositAccountCode: previewDepositCode,
           repossessionValue: new Prisma.Decimal(options.appraisalPrice ?? 0),
           collectedByShop: options.collectedByShop === true,
+          customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
         });
       } catch (err) {
         this.logger.warn(
@@ -499,6 +502,7 @@ export class RepossessionsService {
             repossessionValue: repoValue,
             collectedByShop: dto.collectedByShop === true,
             postedAt: paymentDate,
+            customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
           },
           tx,
         );
@@ -610,6 +614,61 @@ export class RepossessionsService {
     }
 
     return result;
+  }
+
+  /**
+   * Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2): จ่ายเงินคืนส่วนต่างลูกค้าที่ JP5
+   * ตั้งไว้ที่ 21-1107 ตอนยึดเครื่อง — Dr 21-1107 / Cr depositAccountCode.
+   * findOne(id, user) ให้ branch scope ฟรี (404 แทน 403 ถ้าข้ามสาขา). ต้อง
+   * ติ๊ก "ตั้งลูกหนี้เงินคืน" ไว้ตอนยึดจริง (customerRefundEnabled) ไม่งั้น
+   * ไม่มี 21-1107 ให้ล้าง — RefundPayoutTemplate เองก็จะ throw ถ้ายอดคงเหลือ
+   * เป็น 0 อยู่แล้ว แต่เช็คตรงนี้ก่อนให้ error message เจาะจงกว่า.
+   */
+  async refundPayment(
+    id: string,
+    user: RequestUser,
+    dto: { depositAccountCode: string; amount: number; requestId?: string },
+  ) {
+    const repo = await this.findOne(id, user);
+
+    if (!repo.customerRefundEnabled) {
+      throw new BadRequestException('ไม่ได้ติ๊กคืนเงินส่วนต่างไว้ตอนยึด');
+    }
+
+    const payoutResult = await this.prisma.$transaction(
+      async (tx) => {
+        const result = await this.refundPayoutTemplate.execute(
+          {
+            contractId: repo.contractId,
+            depositAccountCode: dto.depositAccountCode,
+            amount: dto.amount,
+            postedById: user.id,
+            requestId: dto.requestId,
+          },
+          tx,
+        );
+
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: 'REFUND_PAYOUT',
+            entity: 'repossession',
+            entityId: id,
+            newValue: {
+              amount: String(dto.amount),
+              depositAccountCode: dto.depositAccountCode,
+              requestId: dto.requestId ?? null,
+              deduped: result.deduped,
+            },
+          },
+        });
+
+        return result;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return { success: true, repossessionId: id, ...payoutResult };
   }
 
   /**

@@ -5,6 +5,7 @@ import { RepossessionsService } from './repossessions.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
+import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.template';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
@@ -120,6 +121,8 @@ describe('RepossessionsService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let jp5: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let refundPayoutTemplate: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let creditNoteService: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let cnDeliveryServiceMock: any;
@@ -202,6 +205,12 @@ describe('RepossessionsService', () => {
               totalCredit: '6000.00',
               isBalanced: true,
             }),
+          }),
+        },
+        {
+          provide: RefundPayoutTemplate,
+          useValue: (refundPayoutTemplate = {
+            execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REFUND-MOCK', deduped: false }),
           }),
         },
         {
@@ -978,6 +987,106 @@ describe('RepossessionsService', () => {
           }),
         }),
       );
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // refundPayment (Task 2 — คำสั่งเจ้าของ 2026-08-08 ข้อ 2)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('refundPayment', () => {
+    const owner = { id: 'user-1', role: 'OWNER' as const };
+    const dto = { depositAccountCode: '11-1201', amount: 1810, requestId: 'req-1' };
+
+    it('throws BadRequestException when customerRefundEnabled is false (ไม่ได้ติ๊กตอนยึด)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: false }),
+      );
+
+      await expect(service.refundPayment('repo-1', owner, dto)).rejects.toThrow(BadRequestException);
+      expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('calls RefundPayoutTemplate.execute with contractId from the repossession + dto fields, inside $transaction', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+
+      await service.refundPayment('repo-1', owner, dto);
+
+      expect(refundPayoutTemplate.execute).toHaveBeenCalledWith(
+        {
+          contractId: 'contract-1',
+          depositAccountCode: '11-1201',
+          amount: 1810,
+          postedById: 'user-1',
+          requestId: 'req-1',
+        },
+        prisma, // tx (mock $transaction passes prisma itself as tx)
+      );
+      expect(prisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({ isolationLevel: 'Serializable' }),
+      );
+    });
+
+    it('writes a REFUND_PAYOUT audit log with amount/depositAccountCode/requestId/deduped', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      refundPayoutTemplate.execute.mockResolvedValueOnce({ entryNo: 'JE-X', deduped: true });
+
+      await service.refundPayment('repo-1', owner, dto);
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          action: 'REFUND_PAYOUT',
+          entity: 'repossession',
+          entityId: 'repo-1',
+          newValue: {
+            amount: '1810',
+            depositAccountCode: '11-1201',
+            requestId: 'req-1',
+            deduped: true,
+          },
+        },
+      });
+    });
+
+    it('returns success + entryNo/deduped from the template result', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      refundPayoutTemplate.execute.mockResolvedValueOnce({ entryNo: 'JE-Y', deduped: false });
+
+      const result = await service.refundPayment('repo-1', owner, dto);
+
+      expect(result).toEqual({
+        success: true,
+        repossessionId: 'repo-1',
+        entryNo: 'JE-Y',
+        deduped: false,
+      });
+    });
+
+    it('BM ข้ามสาขา → NotFoundException (findOne branch scope) ก่อนถึง template', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          customerRefundEnabled: true,
+          contract: {
+            branchId: 'branch-1',
+            contractNumber: 'BC-202601-0001',
+            customer: { name: 'สมชาย ใจดี' },
+            branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+            payments: [],
+          },
+        }),
+      );
+
+      await expect(
+        service.refundPayment('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' }, dto),
+      ).rejects.toThrow(NotFoundException);
+      expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
     });
   });
 

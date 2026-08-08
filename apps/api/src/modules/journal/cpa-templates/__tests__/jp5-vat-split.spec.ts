@@ -1079,3 +1079,147 @@ describe('JP5 soft-deleted PAID payment does not count as paid (review Phase 1, 
     expect(meta.creditNoteVatAmount).toBe('297.51');
   });
 });
+
+/**
+ * JP5 customerRefund — Cr 21-1107 เจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (คำสั่งเจ้าของ
+ * 2026-08-08 ข้อ 2). ตั้งหนี้เงินคืนส่วนต่าง ณ วันยึด — เมื่อราคากลาง > ยอดปิด
+ * สัญญา ต้องคืนส่วนต่างให้ลูกค้า. บรรทัดนี้ถูก push เข้า `lines` ก่อนคำนวณ
+ * lossOrGain (the balance-equation plug) — ไม่มีสูตรใหม่, plug ดูดซับ
+ * customerRefund โดยอัตโนมัติ:
+ *   - gain branch: ถ้า customerRefund == gain เดิมพอดี → lossOrGain กลายเป็น 0
+ *     → ไม่มี Cr 41-1102 (กำไร) เหลืออยู่เลย (คืนให้ลูกค้าหมด ไม่ใช่กำไรบริษัท)
+ *   - loss branch: customerRefund เพิ่ม Cr เข้า lines ก่อน plug → lossOrGain
+ *     (loss) เพิ่มขึ้นเท่ากับ customerRefund พอดี → Dr 51-1102 เพิ่มขึ้นเท่ากัน
+ */
+describe('JP5 customerRefund — Cr 21-1107 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2)', () => {
+  beforeAll(async () => {
+    await setup();
+  });
+
+  it('gain branch: customerRefund เท่ากับ gain เดิมพอดี (1,810.00) → gain (41-1102) หายเป็น 0, Cr 21-1107 = 1,810.00', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // No accrual — all 12 deferred. GL invariant: remainingTotal = 18,190.00.
+    // repossessionValue 20,000 → gain 1,810.00 WITHOUT refund (same golden as
+    // "gain branch releases the FULL provision balance" above, minus provision).
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('20000.00'),
+      customerRefund: new Decimal('1810.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Cr 21-1107 = customerRefund exactly
+    expect(sumCr(lines, '21-1107').toFixed(2)).toBe('1810.00');
+    // Plug absorbs the refund exactly — no gain (41-1102) line at all
+    expect(sumCr(lines, '41-1102').toFixed(2)).toBe('0.00');
+    // No loss line either — lossOrGain landed on exactly 0
+    expect(sumDr(lines, '51-1102').toFixed(2)).toBe('0.00');
+    // No provision was seeded — no 11-2102 movement
+    expect(sumDr(lines, '11-2102').toFixed(2)).toBe('0.00');
+    expect(sumCr(lines, '51-1103').toFixed(2)).toBe('0.00');
+
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+  });
+
+  it('loss branch: customerRefund 500.00 เพิ่ม 51-1102 loss plug ขึ้น 500.00 พอดี (Scenario A + refund)', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+
+    // 2A × 4 — installments 1-4 accrued (mirrors Scenario A above).
+    for (let i = 0; i < 4; i++) {
+      await accrual.execute(insts[i].id);
+    }
+
+    // 2B × 3 — REAL full receipts on installments 1-3.
+    const installmentTotal = new Decimal('1515.83');
+    for (let i = 0; i < 3; i++) {
+      const inst = insts[i];
+      const payment = await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          dueDate: inst.dueDate,
+          amountDue: installmentTotal,
+          amountPaid: installmentTotal,
+          paidDate: new Date(),
+          paidAt: new Date(),
+          status: 'PAID',
+        },
+      });
+      await journal.createAndPost({
+        description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${c.id}`,
+        reference: payment.id,
+        metadata: {
+          tag: 'receipt',
+          contractId: c.id,
+          installmentScheduleId: inst.id,
+          paymentId: payment.id,
+        },
+        lines: [
+          { accountCode: '11-1101', dr: installmentTotal, cr: new Decimal(0), description: 'รับเงิน' },
+          {
+            accountCode: '11-2103',
+            dr: new Decimal(0),
+            cr: installmentTotal,
+            description: 'ล้างลูกหนี้ค้างชำระ',
+          },
+        ],
+      });
+    }
+
+    // PROV 30.32 — identical to Scenario A.
+    const provisionTmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    await provisionTmpl.execute({
+      contractId: c.id,
+      provisionAmount: new Decimal('30.32'),
+      period: '2025-04',
+    });
+
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+      customerRefund: new Decimal('500.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Cr 21-1107 = customerRefund exactly
+    expect(sumCr(lines, '21-1107').toFixed(2)).toBe('500.00');
+    // Loss plug = Scenario A golden (8,513.02) + refund (500.00) exactly
+    expect(sumDr(lines, '51-1102').toFixed(2)).toBe('9013.02');
+    // Everything else identical to Scenario A (unaffected by the refund line)
+    expect(sumCr(lines, '11-2103').toFixed(2)).toBe('1515.83');
+    expect(sumCr(lines, '11-2101').toFixed(2)).toBe('11333.36');
+    expect(sumCr(lines, '11-2105').toFixed(2)).toBe('793.32');
+    expect(sumDr(lines, '21-2102').toFixed(2)).toBe('793.32');
+    expect(sumCr(lines, '21-2101').toFixed(2)).toBe('793.32');
+    expect(sumDr(lines, '11-2106').toFixed(2)).toBe('4000.00');
+    expect(sumCr(lines, '41-1101').toFixed(2)).toBe('4000.00');
+    expect(sumDr(lines, '21-2101').toFixed(2)).toBe('99.17'); // CN
+    expect(sumDr(lines, '11-1101').toFixed(2)).toBe('5000.00');
+    expect(sumDr(lines, '11-2102').toFixed(2)).toBe('30.32'); // consume, unchanged
+    expect(sumCr(lines, '51-1103').toFixed(2)).toBe('0.00'); // no release
+
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    expect(totalDr.toFixed(2)).toBe('18935.83');
+  });
+});

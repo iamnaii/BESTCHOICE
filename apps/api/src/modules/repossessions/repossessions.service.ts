@@ -18,7 +18,7 @@ import { CreditNoteDocumentService } from '../receipts/services/credit-note-docu
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
-import { isFutureBkkDay } from '../../utils/date.util';
+import { isFutureBkkDay, bkkYearMonth } from '../../utils/date.util';
 import { getBranchScope } from '../auth/branch-access.util';
 
 /** Authenticated request user — service-level branch scoping (BranchGuard delegates to us). */
@@ -328,9 +328,7 @@ export class RepossessionsService {
     }
     // คำสั่งเจ้าของ 2026-08-08 (ข้อ 3): ใบลดหนี้ (CN) ออกวันที่/เลขที่เดือนปัจจุบันเสมอ
     // → JE ต้องอยู่เดือนเดียวกัน ไม่งั้นงวด ภ.พ.30 ของ VAT reversal กับเอกสารแยกกัน
-    const bkkMonth = (d: Date) =>
-      d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(0, 7);
-    if (bkkMonth(paymentDate) !== bkkMonth(new Date())) {
+    if (bkkYearMonth(paymentDate) !== bkkYearMonth(new Date())) {
       throw new BadRequestException(
         'วันที่รับเงินย้อนหลังได้เฉพาะภายในเดือนปัจจุบัน (ใบลดหนี้ต้องอยู่งวดภาษีเดียวกับ JE)',
       );

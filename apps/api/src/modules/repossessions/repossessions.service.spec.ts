@@ -622,31 +622,45 @@ describe('RepossessionsService', () => {
       ).resolves.toBeDefined();
     });
 
-    it('rejects a paymentDate inside a CLOSED FINANCE period past the grace window', async () => {
+    it('ยอมรับ paymentDate ในงวดที่ CLOSED แต่ยังอยู่ใน grace window (validatePeriodOpen ของจริง)', async () => {
+      // Task 1 (คำสั่งเจ้าของ 2026-08-08 ข้อ 3) บังคับ paymentDate ให้อยู่ภายในเดือน
+      // ปัจจุบันเท่านั้น (guard ใหม่ทำงานก่อน validatePeriodOpen เสมอ) — ผลคือกิ่ง
+      // "CLOSED + เลย grace window" ของ validatePeriodOpen เป็นไปไม่ได้อีกต่อไปทาง
+      // คณิตศาสตร์ที่ default grace_days >= 1 (default 5): graceEnd = วันสุดท้ายของ
+      // เดือนปัจจุบัน + graceDays ซึ่ง >= "วันนี้" เสมอตราบใดที่ "วันนี้" ยังอยู่ในเดือน
+      // นั้น จึง `now > graceEnd` เป็นเท็จเสมอ (กิ่งนี้ยังมี unit test ครบที่
+      // period-lock.util.spec.ts ซึ่งไม่ผ่าน guard เดือนของ repossessions เลย — ไม่
+      // ได้รับผลกระทบ). กิ่งที่ยัง reachable จริงคือ "CLOSED แต่ยังอยู่ใน grace" —
+      // เทสต์นี้เรียก validatePeriodOpen ของจริง (ไม่ mock reject) เพื่อพิสูจน์ integration
+      // ตรงนี้ยังทำงานถูกต้อง: closed-but-within-grace ต้องผ่าน ไม่ throw
       prisma.contract.findUnique.mockResolvedValue(makeContract());
-      // Task 1 (คำสั่งเจ้าของ 2026-08-08 ข้อ 3) บังคับ paymentDate ให้อยู่ภายใน
-      // เดือนปัจจุบันเท่านั้น (guard ใหม่ทำงานก่อน validatePeriodOpen เสมอ) — ผลคือ
-      // สถานการณ์เดิมของเทสต์นี้ ("เดือนปัจจุบัน" + "เลย grace window") เป็นไปไม่ได้
-      // ในทางคณิตศาสตร์อีกต่อไป: graceEnd = วันสุดท้ายของเดือนปัจจุบัน + graceDays
-      // ซึ่ง >= "วันนี้" เสมอตราบใดที่ "วันนี้" ยังอยู่ในเดือนนั้น จึง `now > graceEnd`
-      // เป็นเท็จเสมอ — ไม่มีทางประกอบวันที่จริงให้ตกกิ่ง "ปิดแล้ว+เลย grace" ได้อีก
-      // (คณิตศาสตร์ grace-window เองยังมี unit test ครบที่ period-lock.util.spec.ts
-      // ไม่ได้รับผลกระทบ — ไฟล์นั้นไม่ผ่าน paymentDate ผ่าน repossessions guard)
-      // จึงปรับเทสต์นี้ให้ mock การ query งวดบัญชีให้ reject ตรงๆ แทน — ยังพิสูจน์
-      // wiring เดิมได้ครบ: create() ต้อง propagate การ reject จาก period lookup
-      // และห้ามเรียก jp5.execute ก่อนหน้านั้น (ลำดับ guard ยังถูกต้อง)
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const now = new Date();
+      // realistic AccountingPeriod row shape (period-lock.util.ts only reads
+      // .status, but mirror the real Prisma model shape for clarity/honesty)
       prisma.accountingPeriod = {
-        findUnique: jest
-          .fn()
-          .mockRejectedValue(
-            new BadRequestException('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/08 สถานะ: CLOSED)'),
-          ),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'period-1',
+          companyId: 'company-finance',
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          status: 'CLOSED',
+        }),
       };
+      // prisma.systemConfig.findUnique is already mocked to resolve null in
+      // beforeEach ("strict mode off by default") — getGraceDays() falls back
+      // to the documented default of 5 days when the row is missing, so "now"
+      // (always inside the current month, per the Task 1 guard above) is
+      // always within the grace window.
 
       await expect(
-        service.create({ ...baseDto, paymentDate: new Date().toISOString() } as never, 'user-1'),
-      ).rejects.toThrow(/งวดที่ปิดแล้ว/);
-      expect(jp5.execute).not.toHaveBeenCalled();
+        service.create({ ...baseDto, paymentDate: now.toISOString() } as never, 'user-1'),
+      ).resolves.toBeDefined();
+      expect(prisma.accountingPeriod.findUnique).toHaveBeenCalled();
     });
 
     it('fails loud when FINANCE company is not configured (period guard must not silently no-op)', async () => {

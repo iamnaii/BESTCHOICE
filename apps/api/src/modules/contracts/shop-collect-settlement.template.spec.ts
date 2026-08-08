@@ -35,8 +35,11 @@
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ConflictException } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
 import { JournalAutoService } from '../journal/journal-auto.service';
+
+jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 
 function makeP2002(message = 'Unique constraint failed on the fields'): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError(message, {
@@ -132,6 +135,14 @@ describe('ShopCollectSettlementTemplate — P2002 race handling', () => {
 
     // No re-query after the P2034 catch — same poisoned-tx rule as P2002.
     expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(2);
+
+    // SentryExceptionFilter only captures status >= 500 — a 409 here would
+    // otherwise be invisible, so P2034 must surface a Sentry warning.
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      '[SCS] P2034 write-conflict translated to 409',
+      expect.objectContaining({ level: 'warning' }),
+    );
   });
 
   it('non-P2002 error from createAndPost → rethrown untouched, no race-recovery attempted', async () => {

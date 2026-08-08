@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
@@ -305,6 +306,13 @@ export class ShopCollectSettlementTemplate {
         this.logger.warn(
           `[SCS] write conflict (P2034) on contract ${contractId} — rejecting with 409, client should retry`,
         );
+        // SentryExceptionFilter only captures status >= 500 — a 409 like this
+        // would otherwise be invisible. A spike of these could mean genuine
+        // lock contention worth investigating, so surface it explicitly.
+        Sentry.captureMessage('[SCS] P2034 write-conflict translated to 409', {
+          level: 'warning',
+          extra: { contractId, requestId: input.requestId ?? null, amount: amount.toFixed(2) },
+        });
         throw new ConflictException(
           'มีการบันทึกรายการนี้พร้อมกันจากอีกจุดหนึ่ง (write conflict) — กรุณาลองใหม่อีกครั้ง',
         );

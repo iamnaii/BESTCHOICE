@@ -267,4 +267,46 @@ describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
     expect(roomManager.saveMessage).not.toHaveBeenCalled();
     expect(adapter.sendMessage).not.toHaveBeenCalled();
   });
+
+  // fix round 1 [I1]: storage key ห้ามหลุดไปช่องทาง — fail fast ก่อน persist
+  // (ถ้าปล่อยผ่าน: LINE/FB reject non-https → แถว ChatMessage ค้าง undelivered ถาวร)
+  it('IMAGE ที่ deliveryUrl เป็น storage key → ปฏิเสธก่อนบันทึก ไม่เรียก adapter', async () => {
+    const { router, adapter, roomManager } = makeStaffSender();
+    const res = await router.sendStaffMessage({
+      roomId: 'r1',
+      staffId: 'u1',
+      type: MessageType.IMAGE,
+      mediaUrl: 'staff-chat/r1/1.jpg', // storage key + ไม่ส่ง deliveryMediaUrl
+      clientMessageId: 'tok-key-leak',
+    });
+    expect(res.success).toBe(false);
+    expect(res.error).toContain('deliveryMediaUrl');
+    expect(roomManager.saveMessage).not.toHaveBeenCalled();
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // fix round 1 [I2]: state 3 ของ jsdoc — retry ของแถวที่บันทึกแล้วแต่ยังไม่เคยส่งสำเร็จ
+  // ต้อง "ส่งใหม่" (at-least-once ตามสัญญา inbox-J) โดย DB ยังมีแถวเดียว
+  it('adapter fail ครั้งแรก → retry ด้วย clientMessageId เดิมส่งใหม่ได้ (แถวเดียว, stamp หลังสำเร็จ)', async () => {
+    const { router, adapter, roomManager, store } = makeStaffSender();
+    adapter.sendMessage.mockResolvedValueOnce({ success: false, error: 'timeout' });
+
+    const params = {
+      roomId: 'r1',
+      staffId: 'u1',
+      type: MessageType.IMAGE,
+      mediaUrl: 'https://cdn.example/g0.jpg',
+      clientMessageId: 'tok-retry-undelivered',
+    };
+    const first = await router.sendStaffMessage(params);
+    expect(first.success).toBe(false);
+    expect(store.get('tok-retry-undelivered')?.outboundSentAt).toBeNull(); // ยังไม่ stamp
+
+    const second = await router.sendStaffMessage(params);
+    expect(second.success).toBe(true);
+    // ส่งซ้ำจริง (at-least-once) แต่ DB ไม่สร้างแถวใหม่
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(2);
+    expect(roomManager.saveMessage).toHaveBeenCalledTimes(1);
+    expect(store.get('tok-retry-undelivered')?.outboundSentAt).not.toBeNull();
+  });
 });

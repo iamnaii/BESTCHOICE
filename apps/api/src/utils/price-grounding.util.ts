@@ -42,9 +42,11 @@ export const GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
  * และต้องแก้ตรงนี้เพิ่มคีย์ตามที่ tool ฝั่งการเงินคืนจริง — ห้ามไปแก้ GROUNDED_PRICE_KEYS
  * (ชุดของบอทขาย) เพื่อขยายพูลนี้แทน.
  */
+// review round 1 [I2]: ยังไม่เติมคีย์ใดเกินชุดฐาน — 'amount' ที่เคยใส่ไว้เป็นการเดา
+// (คีย์ชื่อกว้างโผล่ใน tool result การเงินหลายตัวที่ไม่ใช่ราคา = fail-open ทีละนิด)
+// Task 11 ต้อง audit shape จริงของ FinanceAiService tools แล้วเติมทีละคีย์พร้อมเทสต์
 export const FINANCE_GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
   ...GROUNDED_PRICE_KEYS,
-  'amount',
 ]);
 
 /** ราคาที่ต่ำกว่านี้ถูกมองว่าเป็นค่าปรับ/วัน/เปอร์เซ็นต์ — เสี่ยง false-positive เกินไป */
@@ -123,9 +125,14 @@ export function collectGroundedPricesFromToolText(
   result: unknown,
   into: Set<number>,
 ): void {
-  void toolName;
   void result;
   void into;
+  // review round 1 [I1]: fail LOUD ไม่ fail เงียบ — stub เงียบในบริบท guard จะทำให้
+  // การ wire ก่อน implement (Task 6/8/11) กลายเป็น over-block เงียบๆ (ราคา legit
+  // ไม่ถูกนับเป็น grounded → บอทโดน confidence 0.3 โดยไม่มีร่องรอย = บทเรียน #1064 ซ้ำ)
+  throw new Error(
+    `collectGroundedPricesFromToolText ยังไม่ถูก implement (เรียกด้วย tool "${toolName}") — Task 6/8/11 ต้องเขียน field-walk จริงก่อน wire`,
+  );
 }
 
 export type GroundingVerdict = { ok: true } | { ok: false; reason: string };

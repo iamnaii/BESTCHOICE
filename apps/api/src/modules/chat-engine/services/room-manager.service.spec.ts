@@ -21,6 +21,7 @@ describe('RoomManagerService', () => {
       chatMessage: {
         create: jest.fn(),
         findMany: jest.fn(),
+        update: jest.fn(),
       },
       customerLineLink: {
         findUnique: jest.fn(),
@@ -223,6 +224,39 @@ describe('RoomManagerService', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('markOutboundSent', () => {
+    // fix round 1 [I1]: the P2002 catch/fallback branch had zero coverage —
+    // mutation-tested and proven live (all 42 chat-engine tests stayed green
+    // with that branch disabled). These two tests close that gap.
+    it('P2002 (echo ชิงบันทึก externalMessageId ก่อน) → fallback stamp เฉพาะ outboundSentAt โดยไม่ throw', async () => {
+      const p2002 = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+      prisma.chatMessage.update
+        .mockRejectedValueOnce(p2002) // 1st attempt: stamp outboundSentAt + externalMessageId → collides
+        .mockResolvedValueOnce({}); // fallback attempt: stamp outboundSentAt only → succeeds
+
+      await expect(service.markOutboundSent('m1', 'ext-1')).resolves.toBeUndefined();
+
+      expect(prisma.chatMessage.update).toHaveBeenCalledTimes(2);
+      expect(prisma.chatMessage.update).toHaveBeenNthCalledWith(1, {
+        where: { id: 'm1' },
+        data: { outboundSentAt: expect.any(Date), externalMessageId: 'ext-1' },
+      });
+      expect(prisma.chatMessage.update).toHaveBeenNthCalledWith(2, {
+        where: { id: 'm1' },
+        data: { outboundSentAt: expect.any(Date) },
+      });
+    });
+
+    it('error อื่นที่ไม่ใช่ P2002 → throw ตามเดิม (กัน mutation กลืน error ทุกชนิด)', async () => {
+      const dbDown = Object.assign(new Error('connection refused'), { code: 'P1001' });
+      prisma.chatMessage.update.mockRejectedValueOnce(dbDown);
+
+      await expect(service.markOutboundSent('m1', 'ext-1')).rejects.toThrow('connection refused');
+      // no fallback attempted for a non-P2002 error
+      expect(prisma.chatMessage.update).toHaveBeenCalledTimes(1);
     });
   });
 

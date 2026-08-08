@@ -285,6 +285,22 @@ describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
     expect(adapter.sendMessage).not.toHaveBeenCalled();
   });
 
+  // fix round 2 [I1]: line:// เป็น lazy-fetch ref ของ inbound media (แถว legacy มีจริง —
+  // ดู media-content.service.spec) — LINE ดึงไม่ได้เหมือนกัน ต้องโดน guard เท่า storage key
+  it('IMAGE ที่ deliveryUrl เป็น line:// ref → ปฏิเสธก่อนบันทึกเช่นกัน', async () => {
+    const { router, adapter, roomManager } = makeStaffSender();
+    const res = await router.sendStaffMessage({
+      roomId: 'r1',
+      staffId: 'u1',
+      type: MessageType.IMAGE,
+      mediaUrl: 'line://message/12345/content',
+      clientMessageId: 'tok-line-ref',
+    });
+    expect(res.success).toBe(false);
+    expect(roomManager.saveMessage).not.toHaveBeenCalled();
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+  });
+
   // fix round 1 [I2]: state 3 ของ jsdoc — retry ของแถวที่บันทึกแล้วแต่ยังไม่เคยส่งสำเร็จ
   // ต้อง "ส่งใหม่" (at-least-once ตามสัญญา inbox-J) โดย DB ยังมีแถวเดียว
   it('adapter fail ครั้งแรก → retry ด้วย clientMessageId เดิมส่งใหม่ได้ (แถวเดียว, stamp หลังสำเร็จ)', async () => {

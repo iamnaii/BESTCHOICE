@@ -186,6 +186,18 @@ export default function RepossessionsPage() {
   const handleUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRepo) return;
+    // เครื่องที่ขายแล้ว (SOLD): server ปฏิเสธ 400 ถ้าเห็นคีย์ repairCost/resellPrice
+    // อยู่ใน body เลย ไม่ว่าค่าจะเปลี่ยนหรือไม่ — ส่งเฉพาะ status+notes เท่านั้น
+    if (selectedRepo.status === 'SOLD') {
+      updateMutation.mutate({
+        id: selectedRepo.id,
+        data: {
+          status: updateForm.status,
+          notes: updateForm.notes,
+        },
+      });
+      return;
+    }
     updateMutation.mutate({
       id: selectedRepo.id,
       data: {
@@ -611,7 +623,8 @@ export default function RepossessionsPage() {
                   type="number"
                   value={updateForm.repairCost}
                   onChange={(e) => setUpdateForm({ ...updateForm, repairCost: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                  disabled={selectedRepo.status === 'SOLD'}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden disabled:opacity-50"
                 />
               </div>
               <div>
@@ -620,9 +633,15 @@ export default function RepossessionsPage() {
                   type="number"
                   value={updateForm.resellPrice}
                   onChange={(e) => setUpdateForm({ ...updateForm, resellPrice: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                  disabled={selectedRepo.status === 'SOLD'}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden disabled:opacity-50"
                 />
               </div>
+              {selectedRepo.status === 'SOLD' && (
+                <p className="col-span-2 text-xs text-muted-foreground leading-snug mt-1">
+                  เครื่องที่ขายแล้วแก้ไขได้เฉพาะหมายเหตุ
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>

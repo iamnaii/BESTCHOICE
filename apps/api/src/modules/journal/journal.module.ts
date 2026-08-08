@@ -57,6 +57,8 @@ import { ContractCancellationTemplate } from './cpa-templates/contract-cancellat
 import { ReconcileController } from './reconcile.controller';
 // Section 2 Task 3 — shop-collect settlement
 import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-settlement.template';
+// Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
+import { RefundPayoutTemplate } from './cpa-templates/refund-payout.template';
 
 @Module({
   imports: [PrismaModule],
@@ -117,6 +119,8 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ContractCancellationTemplate,
     // Section 2 Task 3 — shop-collect settlement
     ShopCollectSettlementTemplate,
+    // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
+    RefundPayoutTemplate,
   ],
   exports: [
     JournalService,
@@ -169,6 +173,8 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ContractCancellationTemplate,
     // Section 2 Task 3 — shop-collect settlement
     ShopCollectSettlementTemplate,
+    // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
+    RefundPayoutTemplate,
   ],
 })
 export class JournalModule {}

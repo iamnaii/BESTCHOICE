@@ -14,11 +14,12 @@ import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { RepossessionJP5Template, RepossessionJePreview } from '../journal/cpa-templates/repossession-jp5.template';
+import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.template';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
-import { isFutureBkkDay } from '../../utils/date.util';
+import { isFutureBkkDay, bkkYearMonth } from '../../utils/date.util';
 import { getBranchScope } from '../auth/branch-access.util';
 
 /** Authenticated request user — service-level branch scoping (BranchGuard delegates to us). */
@@ -41,6 +42,7 @@ export class RepossessionsService {
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
     private repossessionJP5Template: RepossessionJP5Template,
+    private refundPayoutTemplate: RefundPayoutTemplate,
     private creditNoteDocumentService: CreditNoteDocumentService,
     private cnDeliveryService: CreditNoteDeliveryService,
   ) {}
@@ -236,6 +238,7 @@ export class RepossessionsService {
           depositAccountCode: previewDepositCode,
           repossessionValue: new Prisma.Decimal(options.appraisalPrice ?? 0),
           collectedByShop: options.collectedByShop === true,
+          customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
         });
       } catch (err) {
         this.logger.warn(
@@ -326,6 +329,13 @@ export class RepossessionsService {
     if (isFutureBkkDay(paymentDate)) {
       throw new BadRequestException('วันที่รับเงินต้องไม่เป็นวันในอนาคต');
     }
+    // คำสั่งเจ้าของ 2026-08-08 (ข้อ 3): ใบลดหนี้ (CN) ออกวันที่/เลขที่เดือนปัจจุบันเสมอ
+    // → JE ต้องอยู่เดือนเดียวกัน ไม่งั้นงวด ภ.พ.30 ของ VAT reversal กับเอกสารแยกกัน
+    if (bkkYearMonth(paymentDate) !== bkkYearMonth(new Date())) {
+      throw new BadRequestException(
+        'วันที่รับเงินย้อนหลังได้เฉพาะภายในเดือนปัจจุบัน (ใบลดหนี้ต้องอยู่งวดภาษีเดียวกับ JE)',
+      );
+    }
     // Period-lock guard (mirror JP4 J3): cannot book a repossession JE into a
     // closed (FINANCE) accounting period. Repossessions previously had no
     // guard at all — JEs always landed on "now", which masked the gap.
@@ -395,6 +405,15 @@ export class RepossessionsService {
           remainingMonths += 1;
         }
         totalPaid = dAdd(totalPaid, d(p.amountPaid));
+      }
+
+      // คำสั่งเจ้าของ 2026-08-08 (ข้อ 2) + final review W1: การตั้งหนี้เงินคืน (Cr 21-1107)
+      // เกิดใน JP5 ซึ่งรันเฉพาะเมื่อมียอดค้าง — ถ้าไม่มียอดค้างห้ามติ๊กคืนเงิน
+      // ไม่งั้นระบบสัญญาว่าจะคืนแต่ไม่มีหนี้ถูกบันทึก (จ่ายคืนภายหลังไม่ได้)
+      if (dto.customerRefundEnabled && outstandingBalance.lessThanOrEqualTo(0)) {
+        throw new BadRequestException(
+          'สัญญานี้ไม่มียอดค้างชำระ — ระบบไม่ตั้งหนี้เงินคืนส่วนต่าง กรุณาเอาตัวเลือก "คืนเงินส่วนต่างให้ลูกค้า" ออก',
+        );
       }
 
       // ─── ยอดปิดสัญญา = สูตรเดียวกับปิดสัญญาก่อนกำหนด (computePayoffQuote) ───
@@ -492,6 +511,7 @@ export class RepossessionsService {
             repossessionValue: repoValue,
             collectedByShop: dto.collectedByShop === true,
             postedAt: paymentDate,
+            customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
           },
           tx,
         );
@@ -603,6 +623,74 @@ export class RepossessionsService {
     }
 
     return result;
+  }
+
+  /**
+   * Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2): จ่ายเงินคืนส่วนต่างลูกค้าที่ JP5
+   * ตั้งไว้ที่ 21-1107 ตอนยึดเครื่อง — Dr 21-1107 / Cr depositAccountCode.
+   * findOne(id, user) ให้ branch scope ฟรี (404 แทน 403 ถ้าข้ามสาขา). ต้อง
+   * ติ๊ก "ตั้งลูกหนี้เงินคืน" ไว้ตอนยึดจริง (customerRefundEnabled) ไม่งั้น
+   * ไม่มี 21-1107 ให้ล้าง — RefundPayoutTemplate เองก็จะ throw ถ้ายอดคงเหลือ
+   * เป็น 0 อยู่แล้ว แต่เช็คตรงนี้ก่อนให้ error message เจาะจงกว่า.
+   *
+   * I3 (review): period-lock guard — mirror create()'s guard so a refund JE
+   * cannot post into a CLOSED FINANCE period. Missing FINANCE row fails LOUD
+   * (same pattern as create()) instead of silently no-opping the guard.
+   */
+  async refundPayment(
+    id: string,
+    user: RequestUser,
+    dto: { depositAccountCode: string; amount: number; requestId?: string },
+  ) {
+    const repo = await this.findOne(id, user);
+
+    if (!repo.customerRefundEnabled) {
+      throw new BadRequestException('ไม่ได้ติ๊กคืนเงินส่วนต่างไว้ตอนยึด');
+    }
+
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!financeCompany) {
+      throw new InternalServerErrorException('FINANCE company not configured');
+    }
+    await validatePeriodOpen(this.prisma, new Date(), financeCompany.id);
+
+    const payoutResult = await this.prisma.$transaction(
+      async (tx) => {
+        const result = await this.refundPayoutTemplate.execute(
+          {
+            contractId: repo.contractId,
+            depositAccountCode: dto.depositAccountCode,
+            amount: dto.amount,
+            postedById: user.id,
+            requestId: dto.requestId,
+          },
+          tx,
+        );
+
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: 'REFUND_PAYOUT',
+            entity: 'repossession',
+            entityId: id,
+            newValue: {
+              amount: new Prisma.Decimal(dto.amount).toFixed(2),
+              depositAccountCode: dto.depositAccountCode,
+              requestId: dto.requestId ?? null,
+              deduped: result.deduped,
+            },
+          },
+        });
+
+        return result;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return { success: true, repossessionId: id, ...payoutResult };
   }
 
   /**

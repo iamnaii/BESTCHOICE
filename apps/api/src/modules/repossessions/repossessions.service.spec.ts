@@ -5,9 +5,11 @@ import { RepossessionsService } from './repossessions.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
+import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.template';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
+import * as periodLockUtil from '../../utils/period-lock.util';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -120,6 +122,8 @@ describe('RepossessionsService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let jp5: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let refundPayoutTemplate: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let creditNoteService: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let cnDeliveryServiceMock: any;
@@ -202,6 +206,12 @@ describe('RepossessionsService', () => {
               totalCredit: '6000.00',
               isBalanced: true,
             }),
+          }),
+        },
+        {
+          provide: RefundPayoutTemplate,
+          useValue: (refundPayoutTemplate = {
+            execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REFUND-MOCK', deduped: false }),
           }),
         },
         {
@@ -574,17 +584,93 @@ describe('RepossessionsService', () => {
       ).rejects.toThrow(/อนาคต/);
     });
 
-    it('rejects a paymentDate inside a CLOSED FINANCE period past the grace window', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      // validatePeriodOpen only runs when the client exposes accountingPeriod
-      prisma.accountingPeriod = {
-        findUnique: jest.fn().mockResolvedValue({ status: 'CLOSED' }),
-      };
+    it('create() ปฏิเสธ paymentDate เดือนก่อนหน้า (ห้ามข้ามเดือน — คำสั่งเจ้าของ 2026-08-08 ข้อ 3)', async () => {
+      const prevMonth = new Date();
+      prevMonth.setDate(1);
+      prevMonth.setDate(0); // วันสุดท้ายของเดือนก่อน
+      await expect(
+        service.create(
+          {
+            contractId: 'contract-1',
+            repossessedDate: '2026-08-01',
+            conditionGrade: 'B',
+            appraisalPrice: 5000,
+            paymentDate: prevMonth.toISOString(),
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow('วันที่รับเงินย้อนหลังได้เฉพาะภายในเดือนปัจจุบัน');
+    });
+
+    it('create() ผ่านเมื่อ paymentDate อยู่ภายในเดือนปัจจุบัน (ไม่ปฏิเสธด้วยข้อความ "ห้ามข้ามเดือน")', async () => {
+      // ให้ payments ทั้งหมด PAID → outstandingBalance = 0 → ข้าม JP5/CN path ทั้งชุด
+      // (มิเรอร์ pattern ของเทสต์ 'create() โหลด payments เฉพาะ deletedAt:null' ด้านล่าง)
+      const allPaid = makeContract({ status: 'TERMINATED' }).payments.map((p) => ({
+        ...p,
+        status: 'PAID',
+        amountPaid: p.amountDue,
+      }));
+      prisma.contract.findUnique.mockResolvedValue(
+        makeContract({ status: 'TERMINATED', payments: allPaid }),
+      );
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
 
       await expect(
-        service.create({ ...baseDto, paymentDate: '2020-01-15' } as never, 'user-1'),
-      ).rejects.toThrow(/งวดที่ปิดแล้ว/);
-      expect(jp5.execute).not.toHaveBeenCalled();
+        service.create(
+          {
+            contractId: 'contract-1',
+            repossessedDate: '2026-08-01',
+            conditionGrade: 'B',
+            appraisalPrice: 5000,
+            paymentDate: new Date().toISOString(),
+          },
+          'user-1',
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('ยอมรับ paymentDate ในงวดที่ CLOSED แต่ยังอยู่ใน grace window (validatePeriodOpen ของจริง)', async () => {
+      // Task 1 (คำสั่งเจ้าของ 2026-08-08 ข้อ 3) บังคับ paymentDate ให้อยู่ภายในเดือน
+      // ปัจจุบันเท่านั้น (guard ใหม่ทำงานก่อน validatePeriodOpen เสมอ) — ผลคือกิ่ง
+      // "CLOSED + เลย grace window" ของ validatePeriodOpen เป็นไปไม่ได้อีกต่อไปทาง
+      // คณิตศาสตร์ที่ default grace_days >= 1 (default 5): graceEnd = วันสุดท้ายของ
+      // เดือนปัจจุบัน + graceDays ซึ่ง >= "วันนี้" เสมอตราบใดที่ "วันนี้" ยังอยู่ในเดือน
+      // นั้น จึง `now > graceEnd` เป็นเท็จเสมอ (กิ่งนี้ยังมี unit test ครบที่
+      // period-lock.util.spec.ts ซึ่งไม่ผ่าน guard เดือนของ repossessions เลย — ไม่
+      // ได้รับผลกระทบ). กิ่งที่ยัง reachable จริงคือ "CLOSED แต่ยังอยู่ใน grace" —
+      // เทสต์นี้เรียก validatePeriodOpen ของจริง (ไม่ mock reject) เพื่อพิสูจน์ integration
+      // ตรงนี้ยังทำงานถูกต้อง: closed-but-within-grace ต้องผ่าน ไม่ throw
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const now = new Date();
+      // realistic AccountingPeriod row shape (period-lock.util.ts only reads
+      // .status, but mirror the real Prisma model shape for clarity/honesty)
+      prisma.accountingPeriod = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'period-1',
+          companyId: 'company-finance',
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          status: 'CLOSED',
+        }),
+      };
+      // prisma.systemConfig.findUnique is already mocked to resolve null in
+      // beforeEach ("strict mode off by default") — getGraceDays() falls back
+      // to the documented default of 5 days when the row is missing, so "now"
+      // (always inside the current month, per the Task 1 guard above) is
+      // always within the grace window.
+
+      await expect(
+        service.create({ ...baseDto, paymentDate: now.toISOString() } as never, 'user-1'),
+      ).resolves.toBeDefined();
+      expect(prisma.accountingPeriod.findUnique).toHaveBeenCalled();
     });
 
     it('fails loud when FINANCE company is not configured (period guard must not silently no-op)', async () => {
@@ -601,10 +687,15 @@ describe('RepossessionsService', () => {
       prisma.contract.update.mockResolvedValue({});
       prisma.product.update.mockResolvedValue({});
 
-      await service.create({ ...baseDto, paymentDate: '2026-01-10' } as never, 'user-1');
+      // วันที่ 1 ของเดือนปัจจุบัน (ไม่ใช่วันในอนาคต, ไม่ข้ามเดือน) แทนค่า hardcode
+      // เดิม '2026-01-10' ที่ตกเป็นเดือนก่อนหน้าเมื่อรันหลัง 2026-08-08 (task-1 guard)
+      const now = new Date();
+      const paymentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+      await service.create({ ...baseDto, paymentDate: paymentDateStr } as never, 'user-1');
 
       expect(jp5.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ postedAt: new Date('2026-01-10') }),
+        expect.objectContaining({ postedAt: new Date(paymentDateStr) }),
         prisma,
       );
     });
@@ -735,6 +826,30 @@ describe('RepossessionsService', () => {
       // No JP5 → no provision to release either (outstanding balance was 0).
       expect(prisma.badDebtProvision.updateMany).not.toHaveBeenCalled();
       expect(result.creditNote).toBeUndefined();
+    });
+
+    it('W1 final review: rejects customerRefundEnabled=true when the contract has no outstanding balance (JP5 skipped → refund would never be booked)', async () => {
+      const paidUpContract = makeContract({
+        payments: [
+          {
+            id: 'pay-1',
+            installmentNo: 1,
+            status: 'PAID',
+            amountDue: decimal(1000),
+            amountPaid: decimal(1000),
+            lateFee: decimal(0),
+            lateFeeWaived: false,
+          },
+        ],
+      });
+      prisma.contract.findUnique.mockResolvedValue(paidUpContract);
+
+      await expect(
+        service.create({ ...baseDto, customerRefundEnabled: true } as never, 'user-1'),
+      ).rejects.toThrow(/ไม่มียอดค้างชำระ/);
+
+      expect(prisma.repossession.create).not.toHaveBeenCalled();
+      expect(jp5.execute).not.toHaveBeenCalled();
     });
 
     it('rolls back the whole repossession when CN issuance throws (atomicity)', async () => {
@@ -897,6 +1012,152 @@ describe('RepossessionsService', () => {
           }),
         }),
       );
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // refundPayment (Task 2 — คำสั่งเจ้าของ 2026-08-08 ข้อ 2)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('refundPayment', () => {
+    const owner = { id: 'user-1', role: 'OWNER' as const };
+    const dto = { depositAccountCode: '11-1201', amount: 1810, requestId: 'req-1' };
+
+    it('throws BadRequestException when customerRefundEnabled is false (ไม่ได้ติ๊กตอนยึด)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: false }),
+      );
+
+      await expect(service.refundPayment('repo-1', owner, dto)).rejects.toThrow(BadRequestException);
+      expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('calls RefundPayoutTemplate.execute with contractId from the repossession + dto fields, inside $transaction', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+
+      await service.refundPayment('repo-1', owner, dto);
+
+      expect(refundPayoutTemplate.execute).toHaveBeenCalledWith(
+        {
+          contractId: 'contract-1',
+          depositAccountCode: '11-1201',
+          amount: 1810,
+          postedById: 'user-1',
+          requestId: 'req-1',
+        },
+        prisma, // tx (mock $transaction passes prisma itself as tx)
+      );
+      expect(prisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({ isolationLevel: 'Serializable' }),
+      );
+    });
+
+    it('writes a REFUND_PAYOUT audit log with amount (2dp Decimal string, matches JE metadata shape)/depositAccountCode/requestId/deduped (M3 review)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      refundPayoutTemplate.execute.mockResolvedValueOnce({ entryNo: 'JE-X', deduped: true });
+
+      await service.refundPayment('repo-1', owner, dto);
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          action: 'REFUND_PAYOUT',
+          entity: 'repossession',
+          entityId: 'repo-1',
+          newValue: {
+            amount: '1810.00',
+            depositAccountCode: '11-1201',
+            requestId: 'req-1',
+            deduped: true,
+          },
+        },
+      });
+    });
+
+    it('returns success + entryNo/deduped from the template result', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      refundPayoutTemplate.execute.mockResolvedValueOnce({ entryNo: 'JE-Y', deduped: false });
+
+      const result = await service.refundPayment('repo-1', owner, dto);
+
+      expect(result).toEqual({
+        success: true,
+        repossessionId: 'repo-1',
+        entryNo: 'JE-Y',
+        deduped: false,
+      });
+    });
+
+    it('BM ข้ามสาขา → NotFoundException (findOne branch scope) ก่อนถึง template', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          customerRefundEnabled: true,
+          contract: {
+            branchId: 'branch-1',
+            contractNumber: 'BC-202601-0001',
+            customer: { name: 'สมชาย ใจดี' },
+            branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+            payments: [],
+          },
+        }),
+      );
+
+      await expect(
+        service.refundPayment('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' }, dto),
+      ).rejects.toThrow(NotFoundException);
+      expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    // I3 (review, Task 2): refundPayment must not post an accounting entry
+    // into a CLOSED FINANCE period. Note on determinism: unlike create(),
+    // refundPayment always books to `new Date()` (today) — the transaction
+    // date can never fall in a past/CLOSED-and-past-grace month by
+    // construction, so a real "CLOSED + past grace window" rejection cannot
+    // be reproduced deterministically through validatePeriodOpen's actual
+    // date math (mirrors the reasoning already documented on create()'s
+    // grace-window test above). Strongest deterministic option: spy on
+    // validatePeriodOpen to force the throw, which simultaneously proves (a)
+    // the guard is wired with the correct (prisma, date≈now, FINANCE
+    // companyId) args, (b) the real BadRequestException propagates out of
+    // refundPayment, and (c) the guard runs BEFORE the $transaction/template
+    // (proven by RefundPayoutTemplate.execute never being called).
+    it('period guard rejects when validatePeriodOpen throws (CLOSED period past grace) — runs BEFORE the transaction', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      const spy = jest
+        .spyOn(periodLockUtil, 'validatePeriodOpen')
+        .mockRejectedValueOnce(
+          new BadRequestException('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/07 สถานะ: CLOSED)'),
+        );
+
+      await expect(service.refundPayment('repo-1', owner, dto)).rejects.toThrow(
+        'ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว',
+      );
+
+      expect(spy).toHaveBeenCalledWith(prisma, expect.any(Date), 'company-finance');
+      expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+
+      spy.mockRestore();
+    });
+
+    it('fails loud when FINANCE company is not configured (period guard must not silently no-op)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      prisma.companyInfo.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.refundPayment('repo-1', owner, dto)).rejects.toThrow(
+        'FINANCE company not configured',
+      );
+      expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
     });
   });
 

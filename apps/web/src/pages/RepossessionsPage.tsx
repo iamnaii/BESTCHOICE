@@ -12,7 +12,7 @@ import { formatDateShort } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
 import { Download, Send } from 'lucide-react';
-import { CashAccountSelect, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
+import { CashAccountSelect, CASH_ACCOUNT_CODES, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 
 async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
@@ -41,6 +41,9 @@ interface Repossession {
   resellPrice: string | null;
   status: string;
   notes: string | null;
+  /** เงินคืนส่วนต่างลูกค้า (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — ตั้งหนี้ 21-1107 ตอนยึด */
+  customerRefundEnabled: boolean;
+  customerRefund: string | null;
   contract: {
     id: string;
     contractNumber: string;
@@ -76,6 +79,12 @@ export default function RepossessionsPage() {
   // Client-generated per-dialog-open UUID — dedupe key for shop-collect
   // settlement retries without swallowing an intentional same-amount repeat.
   const [settlementRequestId, setSettlementRequestId] = useState('');
+  // Refund payout dialog (เงินคืนส่วนต่างลูกค้า — ล้างเจ้าหนี้ 21-1107)
+  const [refundRepo, setRefundRepo] = useState<Repossession | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundAccountCode, setRefundAccountCode] = useState('11-1201');
+  // Client-generated per-dialog-open UUID — เหมือน settlementRequestId
+  const [refundRequestId, setRefundRequestId] = useState('');
   // พร้อมขาย modal (ต้องระบุราคาขายต่อ — endpoint บังคับ ReadyForSaleDto.resellPrice)
   const [readyForSaleRepo, setReadyForSaleRepo] = useState<Repossession | null>(null);
   const [readyForSalePrice, setReadyForSalePrice] = useState('');
@@ -170,6 +179,32 @@ export default function RepossessionsPage() {
     setSettlementAmount(String(Number(repo.appraisalPrice)));
     setSettlementAccountCode('11-1201');
     setSettlementRequestId(crypto.randomUUID());
+  };
+
+  // Clears the Cr 21-1107 parked by JP5's customerRefund line (คำสั่งเจ้าของ
+  // 2026-08-08 ข้อ 2) — Dr 21-1107 / Cr depositAccountCode.
+  const refundMutation = useMutation({
+    mutationFn: async () =>
+      api.post(`/repossessions/${refundRepo!.id}/refund-payment`, {
+        depositAccountCode: refundAccountCode,
+        amount: Number(refundAmount),
+        requestId: refundRequestId,
+      }),
+    onSuccess: () => {
+      toast.success('บันทึกจ่ายเงินคืนลูกค้าแล้ว — ล้างเจ้าหนี้เงินคืนลูกค้า (21-1107)');
+      queryClient.invalidateQueries({ queryKey: ['repossessions'] });
+      setRefundRepo(null);
+      setRefundAmount('');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const openRefund = (repo: Repossession) => {
+    setRefundRepo(repo);
+    // Prefill with the customerRefund amount JP5 booked to 21-1107.
+    setRefundAmount(String(Number(repo.customerRefund ?? 0)));
+    setRefundAccountCode('11-1201');
+    setRefundRequestId(crypto.randomUUID());
   };
 
   const openUpdate = (repo: Repossession) => {
@@ -303,6 +338,15 @@ export default function RepossessionsPage() {
               className="text-warning hover:text-warning/80 text-sm font-medium"
             >
               รับโอนหน้าร้าน
+            </button>
+          )}
+          {canSettle && r.customerRefundEnabled && Number(r.customerRefund) > 0 && (
+            <button
+              onClick={() => openRefund(r)}
+              title="จ่ายเงินคืนส่วนต่างลูกค้า — ล้างเจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (21-1107)"
+              className="text-info hover:text-info/80 text-sm font-medium"
+            >
+              จ่ายเงินคืน
             </button>
           )}
           {r.creditNote && (
@@ -516,6 +560,73 @@ export default function RepossessionsPage() {
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
               >
                 {settlementMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันรับโอน'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Refund payout Modal — Dr 21-1107 / Cr บัญชีจ่ายเงิน (เงินคืนส่วนต่างลูกค้า) */}
+      <Modal
+        isOpen={!!refundRepo}
+        onClose={() => setRefundRepo(null)}
+        title="จ่ายเงินคืนส่วนต่างลูกค้า"
+      >
+        {refundRepo && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              refundMutation.mutate();
+            }}
+            className="space-y-4"
+          >
+            <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
+              <div><strong>สัญญา:</strong> {refundRepo.contract.contractNumber}</div>
+              <div><strong>ลูกค้า:</strong> {refundRepo.contract.customer.name}</div>
+              <div className="text-xs text-muted-foreground leading-snug pt-1">
+                ล้างเจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (Dr 21-1107 / Cr บัญชีจ่ายเงิน) — ใช้เมื่อ
+                ราคากลาง &gt; ยอดปิดสัญญาและติ๊ก "คืนเงินส่วนต่าง" ไว้ตอนยึด · ระบบจะปฏิเสธถ้ายอด
+                เกินเจ้าหนี้คงค้างของสัญญา
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                บัญชีจ่ายเงิน <span className="text-destructive">*</span>
+              </label>
+              <CashAccountSelect
+                value={refundAccountCode}
+                onChange={setRefundAccountCode}
+                codes={CASH_ACCOUNT_CODES}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                จำนวนเงินที่จ่ายคืน <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-hidden focus:ring-2 focus:ring-ring/20"
+                placeholder="0.00"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setRefundRepo(null)}
+                className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={refundMutation.isPending || !(Number(refundAmount) > 0)}
+                className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
+              >
+                {refundMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันจ่ายเงินคืน'}
               </button>
             </div>
           </form>

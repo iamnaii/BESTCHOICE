@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RepossessionsService, RequestUser } from './repossessions.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ReadyForSaleDto } from './dto/ready-for-sale.dto';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -109,5 +110,16 @@ export class RepossessionsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.repossessionsService.markReadyForSale(id, dto.resellPrice, user);
+  }
+
+  // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — จ่ายเงินคืนส่วนต่างลูกค้า (ล้าง 21-1107)
+  @Post(':id/refund-payment')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  refundPayment(
+    @Param('id') id: string,
+    @Body() dto: RefundPaymentDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.repossessionsService.refundPayment(id, user, dto);
   }
 }

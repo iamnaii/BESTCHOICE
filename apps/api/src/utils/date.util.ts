@@ -48,3 +48,12 @@ export function isFutureBkkDay(date: Date, now: Date = new Date()): boolean {
   const bkkDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
   return bkkDay(date) > bkkDay(now);
 }
+
+/**
+ * `YYYY-MM` for `date` on the Asia/Bangkok calendar. Use to compare two dates
+ * for "same tax period" guards (e.g. repossession paymentDate must not cross
+ * a calendar month — CN document numbers/dates always use the current month).
+ */
+export function bkkYearMonth(date: Date): string {
+  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(0, 7);
+}

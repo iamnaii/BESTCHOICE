@@ -709,6 +709,15 @@ export class RoomManagerService {
    * เดิมซ้ำตอน retry (unique [roomId, clientMessageId]) จะ throw 500 แทนที่จะ
    * idempotent เหมือน sendStaffMessage. ตอนนี้ catch P2002 แล้วยืนยันว่าแถวเดิมมีจริง
    * ก่อนคืน success — ดู try/catch รอบ saveMessage ด้านล่าง
+   *
+   * แก้แล้ว (2026-08-08, Task 8 review round 1, I1): P2002 catch ด้านบนกัน 500 ได้ แต่
+   * storageService.upload() (ก่อนหน้านั้นในเมธอดนี้) ยังรันไปแล้วด้วย Date.now() key
+   * ใหม่ทุกครั้งก่อนจะรู้ว่ามันคือ retry — ไฟล์ที่เพิ่ง upload ซ้ำนั้นกลายเป็น orphan ใน
+   * storage เพราะแถว DB ยังชี้ key เดิมจาก attempt แรก (ไม่มี caller ไหนอ่าน key ใหม่นี้
+   * เลย). ตอนนี้เช็ค findByClientMessageId ก่อน upload (non-image เท่านั้น — image ไม่ต้อง
+   * เพราะ idempotency ของมันอยู่ใน sendStaffMessage อยู่แล้ว) เจอแถวเดิม → คืนแถวเดิมทันที
+   * ไม่ upload ไม่ save; ไม่เจอ → เดินเส้นเดิม (P2002 catch ที่มีอยู่แล้วยังคงเป็น
+   * race-net ชั้นสอง สำหรับ 2 request แข่งกันในหน้าต่างเวลาแคบๆ ระหว่างเช็คกับ insert)
    */
   async uploadFile(
     roomId: string,
@@ -723,6 +732,25 @@ export class RoomManagerService {
     delivered: boolean;
     error?: string;
   }> {
+    const isImage = file.mimetype.startsWith('image/');
+
+    if (!isImage && clientMessageId) {
+      const existing = await this.findByClientMessageId(roomId, clientMessageId);
+      if (existing) {
+        const existingKey = existing.mediaUrl ?? '';
+        const url = this.storageService.configured && existingKey
+          ? await this.storageService.getSignedDownloadUrl(existingKey, 3600)
+          : existingKey;
+        return {
+          success: true,
+          url,
+          key: existingKey,
+          filename: existing.text ?? file.originalname,
+          delivered: false,
+        };
+      }
+    }
+
     const extMap: Record<string, string> = {
       'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
       'application/pdf': '.pdf',
@@ -736,8 +764,6 @@ export class RoomManagerService {
     const downloadUrl = this.storageService.configured
       ? await this.storageService.getSignedDownloadUrl(key, 3600)
       : key;
-
-    const isImage = file.mimetype.startsWith('image/');
 
     if (isImage && this.messageRouter && userId) {
       const deliveryMediaUrl = this.storageService.configured

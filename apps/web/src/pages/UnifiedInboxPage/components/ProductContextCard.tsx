@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -41,20 +42,48 @@ export default function ProductContextCard({ roomId }: ProductContextCardProps) 
     staleTime: 60_000,
   });
 
+  // clientMessageId ต่อ "สินค้า 1 ชิ้นในลิสต์" — คงค่าเดิมไว้จนกว่าจะส่งสำเร็จเต็ม
+  // หรือเปลี่ยนห้อง (idempotency contract จาก backend: unique [roomId, clientMessageId]),
+  // เหมือน pattern เดียวกับ ProductPickerDialog.tsx. ถ้า generate ใหม่ทุกครั้งที่กด "ส่ง"
+  // การ retry หลังพังบางส่วน (เช่น รูปส่งสำเร็จแต่ข้อความพัง) จะกลายเป็นส่งรูปซ้ำให้ลูกค้า
+  // แทนที่จะข้ามไปส่งเฉพาะส่วนที่ยังไม่สำเร็จ — คีย์ด้วย productId เพราะการ์ดนี้มีหลายสินค้า
+  // ให้กดส่งพร้อมกันได้ ไม่ใช่เลือกทีละชิ้นแบบ dialog
+  const clientMessageIdsRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    clientMessageIdsRef.current = new Map();
+  }, [roomId]);
+
   const sendMut = useMutation({
-    mutationFn: (productId: string) =>
-      api.post(`/staff-chat/rooms/${roomId}/product-card`, {
+    mutationFn: (productId: string) => {
+      let clientMessageId = clientMessageIdsRef.current.get(productId);
+      if (!clientMessageId) {
+        clientMessageId = crypto.randomUUID();
+        clientMessageIdsRef.current.set(productId, clientMessageId);
+      }
+      return api.post(`/staff-chat/rooms/${roomId}/product-card`, {
         productId,
-        clientMessageId: crypto.randomUUID(),
+        clientMessageId,
         parts: ['PHOTO', 'TEXT'],
-      }),
-    onSuccess: (res: any) => {
+      });
+    },
+    onSuccess: (res: any, productId) => {
       const data = res?.data ?? res;
-      if (data?.errors?.length) toast.error(`ส่งไม่ครบ — ${data.errors[0]}`);
-      else if (data?.photoSkipped) toast.warning('ส่งข้อความแล้ว — เครื่องนี้ยังไม่มีรูปขึ้นเว็บ');
-      else toast.success('ส่งให้ลูกค้าแล้ว');
+      // การ์ดถูกบันทึกเป็น ChatMessage ฝั่ง server (บาง bubble อาจสำเร็จแล้วแม้ผลรวมจะ
+      // error) → ดึงข้อความ/รายการห้องใหม่เสมอ ไม่ว่าจะสำเร็จเต็มหรือบางส่วน
       queryClient.invalidateQueries({ queryKey: ['chat-messages', roomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+
+      if (data?.errors?.length) {
+        // ส่งไม่ครบ (HTTP 200 แต่มี errors) — ห้ามล้าง ref ของสินค้าชิ้นนี้: ปล่อยให้กด
+        // ปุ่มเดิมซ้ำได้ clientMessageId เดิม ไม่งั้น bubble ที่ลูกค้าได้รับไปแล้ว (เช่นรูป)
+        // จะถูกส่งซ้ำ เพราะ server dedupe ด้วย `${clientMessageId}-img`/`-txt` ตาม id ที่ส่งมา
+        toast.error(`ส่งไม่ครบ — ${data.errors[0]} · กดปุ่มเดิมอีกครั้งเพื่อส่งซ้ำเฉพาะส่วนที่ยังไม่สำเร็จ`);
+        return;
+      }
+      clientMessageIdsRef.current.delete(productId);
+      if (data?.photoSkipped) toast.warning('ส่งข้อความแล้ว — เครื่องนี้ยังไม่มีรูปขึ้นเว็บ');
+      else toast.success('ส่งให้ลูกค้าแล้ว');
     },
     onError: () => toast.error('ส่งข้อมูลสินค้าไม่สำเร็จ'),
   });

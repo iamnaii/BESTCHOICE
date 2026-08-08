@@ -208,7 +208,12 @@ export default function SessionActions({
                     กำลังโหลด...
                   </div>
                 )}
-                {!prefillQuery.isLoading && suggestedProducts.length === 0 && (
+                {prefillQuery.isError && (
+                  <div className="px-3 py-2 text-xs text-destructive leading-snug">
+                    โหลดรายการเครื่องไม่สำเร็จ
+                  </div>
+                )}
+                {!prefillQuery.isLoading && !prefillQuery.isError && suggestedProducts.length === 0 && (
                   <div className="px-3 py-2 text-xs text-muted-foreground leading-snug">
                     ไม่พบเครื่องที่พูดถึงในแชท — เลือกเครื่องในขั้นตอนถัดไป
                   </div>

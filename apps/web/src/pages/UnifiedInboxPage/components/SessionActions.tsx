@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { takeOver } from '@/pages/chat/lib/chat-api';
+import { buildContractCreateUrl } from './contract-create-url';
 
 interface SessionActionsProps {
   session: any;
@@ -30,6 +31,8 @@ export default function SessionActions({
   const [showStaffList, setShowStaffList] = useState(false);
   const [isTakingOver, setIsTakingOver] = useState(false);
   const transferRef = useRef<HTMLDivElement>(null);
+  const [showProductList, setShowProductList] = useState(false);
+  const contractRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!showStaffList) return;
@@ -48,6 +51,23 @@ export default function SessionActions({
     };
   }, [showStaffList]);
 
+  useEffect(() => {
+    if (!showProductList) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowProductList(false);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (contractRef.current && !contractRef.current.contains(e.target as Node))
+        setShowProductList(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onClick);
+    };
+  }, [showProductList]);
+
   // Fetch online staff only when transfer dropdown is opened
   const staffQuery = useQuery({
     queryKey: ['staff-online'],
@@ -55,6 +75,18 @@ export default function SessionActions({
     enabled: showStaffList,
     staleTime: 30_000,
   });
+
+  // เครื่องที่ลูกค้าเอ่ยถึงในแชท — เป็นแค่ "ตัวช่วยเลือก" ฝั่ง inbox
+  // เลือก 1 เครื่อง = กลายเป็น productId ใน URL ของ wizard
+  const prefillQuery = useQuery({
+    queryKey: ['chat-contract-prefill', session?.id],
+    queryFn: () =>
+      api.get(`/staff-chat/rooms/${session.id}/contract-prefill`).then((r: any) => r.data),
+    enabled: showProductList && !!session?.id,
+    staleTime: 60_000,
+  });
+  const suggestedProducts: { id: string; name: string; brand: string }[] =
+    prefillQuery.data?.suggestedProducts ?? [];
 
   const assignedToMe = session?.assignedStaffId === currentUserId;
   const assignedStaffName = session?.assignedStaff?.name ?? session?.assignedStaff?.email ?? null;
@@ -154,17 +186,61 @@ export default function SessionActions({
           ปิดการสนทนา
         </button>
 
-        {/* Create contract */}
+        {/* Create contract — เลือกเครื่องก่อน แล้ว prefill ทั้ง customerId + productId */}
         {session.customerId && (
-          <button
-            onClick={() => {
-              navigate(`/contracts/create?customerId=${session.customerId}`);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"
-          >
-            <FileSignature className="w-3.5 h-3.5" />
-            สร้างสัญญา
-          </button>
+          <div className="relative" ref={contractRef}>
+            <button
+              onClick={() => setShowProductList((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={showProductList}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"
+            >
+              <FileSignature className="w-3.5 h-3.5" />
+              สร้างสัญญา
+              <ChevronRight className={`w-3 h-3 transition-transform ${showProductList ? 'rotate-90' : ''}`} />
+            </button>
+
+            {showProductList && (
+              <div role="menu" className="absolute left-0 top-full mt-1 w-60 bg-card border border-border rounded-lg shadow-lg z-20 py-1">
+                {prefillQuery.isLoading && (
+                  <div className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    กำลังโหลด...
+                  </div>
+                )}
+                {!prefillQuery.isLoading && suggestedProducts.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground leading-snug">
+                    ไม่พบเครื่องที่พูดถึงในแชท — เลือกเครื่องในขั้นตอนถัดไป
+                  </div>
+                )}
+                {suggestedProducts.map((p) => (
+                  <button
+                    key={p.id}
+                    role="menuitem"
+                    onClick={() => {
+                      navigate(buildContractCreateUrl(session.customerId, p.id));
+                      setShowProductList(false);
+                      onClose();
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                  >
+                    <span className="truncate flex-1 leading-snug">{p.name}</span>
+                  </button>
+                ))}
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    navigate(buildContractCreateUrl(session.customerId));
+                    setShowProductList(false);
+                    onClose();
+                  }}
+                  className="mt-1 w-full border-t border-border px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted transition-colors leading-snug"
+                >
+                  ไม่ระบุเครื่อง — ไปเลือกในหน้าสร้างสัญญา
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Take over from AI (symmetric inverse of "ส่งกลับ Bot") */}

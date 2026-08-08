@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     console.log('[wipe-accounting] Wipe & reseed finished successfully.');
     console.log('[wipe-accounting] Next steps:');
     console.log('  1. Verify CoA count: ');
-    console.log("     SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';  -- expected 110 (FINANCE)");
+    console.log("     SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';  -- expected 111 (FINANCE — เดินตาม finance-coa.csv, ณ 2026-08-08)");
     console.log("     SELECT COUNT(*) FROM chart_of_accounts WHERE code LIKE 'S%';      -- expected ~56 (SHOP)");
     console.log('  2. Smoke test: create one contract end-to-end via UI');
     console.log('  3. Run TB report (scope=FINANCE) and confirm it balances');

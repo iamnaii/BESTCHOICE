@@ -78,9 +78,13 @@ export class RefundPayoutTemplate {
     const dupe = await client.journalEntry.findFirst({
       where: {
         AND: [
-          { metadata: { path: ['flow'], equals: 'refund-payout' } } as Prisma.JournalEntryWhereInput,
+          {
+            metadata: { path: ['flow'], equals: 'refund-payout' },
+          } as Prisma.JournalEntryWhereInput,
           { metadata: { path: ['requestId'], equals: requestId } } as Prisma.JournalEntryWhereInput,
-          { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+          {
+            metadata: { path: ['contractId'], equals: contractId },
+          } as Prisma.JournalEntryWhereInput,
         ],
         deletedAt: null,
       },
@@ -151,7 +155,9 @@ export class RefundPayoutTemplate {
         accountCode: '21-1107',
         journalEntry: {
           AND: [
-            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['contractId'], equals: contractId },
+            } as Prisma.JournalEntryWhereInput,
             { status: 'POSTED' },
             { deletedAt: null },
           ],
@@ -161,7 +167,10 @@ export class RefundPayoutTemplate {
     });
 
     const totalDr = lines.reduce((s, l) => s.plus(new Decimal(l.debit.toString())), new Decimal(0));
-    const totalCr = lines.reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+    const totalCr = lines.reduce(
+      (s, l) => s.plus(new Decimal(l.credit.toString())),
+      new Decimal(0),
+    );
     const outstanding = totalCr.minus(totalDr);
 
     if (outstanding.lte(0)) {
@@ -182,9 +191,15 @@ export class RefundPayoutTemplate {
       const existing = await client.journalEntry.findFirst({
         where: {
           AND: [
-            { metadata: { path: ['flow'], equals: 'refund-payout' } } as Prisma.JournalEntryWhereInput,
-            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
-            { metadata: { path: ['amount'], equals: amount.toFixed(2) } } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['flow'], equals: 'refund-payout' },
+            } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['contractId'], equals: contractId },
+            } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['amount'], equals: amount.toFixed(2) },
+            } as Prisma.JournalEntryWhereInput,
           ],
           deletedAt: null,
         },
@@ -244,7 +259,11 @@ export class RefundPayoutTemplate {
       // caller transaction, that transaction is already aborted, so no
       // further query on the same client can succeed. Throw a clean 409
       // immediately instead of attempting to re-query and classify the race.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && input.requestId) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002' &&
+        input.requestId
+      ) {
         this.logger.warn(
           `[RefundPayout] race on requestId ${input.requestId} (contract ${contractId}) — P2002 inside an aborted tx, rejecting with 409 instead of re-querying`,
         );

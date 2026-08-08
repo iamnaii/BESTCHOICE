@@ -828,6 +828,30 @@ describe('RepossessionsService', () => {
       expect(result.creditNote).toBeUndefined();
     });
 
+    it('W1 final review: rejects customerRefundEnabled=true when the contract has no outstanding balance (JP5 skipped → refund would never be booked)', async () => {
+      const paidUpContract = makeContract({
+        payments: [
+          {
+            id: 'pay-1',
+            installmentNo: 1,
+            status: 'PAID',
+            amountDue: decimal(1000),
+            amountPaid: decimal(1000),
+            lateFee: decimal(0),
+            lateFeeWaived: false,
+          },
+        ],
+      });
+      prisma.contract.findUnique.mockResolvedValue(paidUpContract);
+
+      await expect(
+        service.create({ ...baseDto, customerRefundEnabled: true } as never, 'user-1'),
+      ).rejects.toThrow(/ไม่มียอดค้างชำระ/);
+
+      expect(prisma.repossession.create).not.toHaveBeenCalled();
+      expect(jp5.execute).not.toHaveBeenCalled();
+    });
+
     it('rolls back the whole repossession when CN issuance throws (atomicity)', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
       prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });

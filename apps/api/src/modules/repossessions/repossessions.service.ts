@@ -407,6 +407,15 @@ export class RepossessionsService {
         totalPaid = dAdd(totalPaid, d(p.amountPaid));
       }
 
+      // คำสั่งเจ้าของ 2026-08-08 (ข้อ 2) + final review W1: การตั้งหนี้เงินคืน (Cr 21-1107)
+      // เกิดใน JP5 ซึ่งรันเฉพาะเมื่อมียอดค้าง — ถ้าไม่มียอดค้างห้ามติ๊กคืนเงิน
+      // ไม่งั้นระบบสัญญาว่าจะคืนแต่ไม่มีหนี้ถูกบันทึก (จ่ายคืนภายหลังไม่ได้)
+      if (dto.customerRefundEnabled && outstandingBalance.lessThanOrEqualTo(0)) {
+        throw new BadRequestException(
+          'สัญญานี้ไม่มียอดค้างชำระ — ระบบไม่ตั้งหนี้เงินคืนส่วนต่าง กรุณาเอาตัวเลือก "คืนเงินส่วนต่างให้ลูกค้า" ออก',
+        );
+      }
+
       // ─── ยอดปิดสัญญา = สูตรเดียวกับปิดสัญญาก่อนกำหนด (computePayoffQuote) ───
       // owner 2026-07-20: ยอดยึดคืนต้องตรงกับ JP4 quote เสมอ — ต้องตรงกับ
       // previewCalculation ด้านบนเสมอด้วย (เรียกฟังก์ชันเดียวกัน)

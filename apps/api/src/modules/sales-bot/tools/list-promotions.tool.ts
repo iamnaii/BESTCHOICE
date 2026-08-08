@@ -24,6 +24,19 @@ interface PromotionConditions {
   categories?: string[];
 }
 
+/**
+ * B3 Task 6 review [C1]: this parser is forward-compatible, not active yet against
+ * today's real producer. `PromotionsPage.tsx`'s only "เงื่อนไข / หมายเหตุ" input is a
+ * free-text `<textarea>` (`form.conditions: string`) — the admin UI has no structured
+ * productIds/categories picker. Whatever the admin types there arrives here as a plain
+ * string, `typeof raw !== 'object'` is true, and this function returns `null` — which
+ * makes every existing promotion resolve to `appliesTo: 'ALL'` unconditionally. That is
+ * CORRECT behavior (matches "conditions ว่าง/พัง → ใช้ได้ทุกสินค้า" in the brief), not a
+ * bug — but don't read the productIds/categories filter logic below as "already filtering
+ * promotions in production today." It activates only once a structured producer exists
+ * (e.g. an admin UI that writes `{ productIds, categories, minPurchase }` as real JSON
+ * instead of prose) — building that UI is an owner decision, out of scope for this task.
+ */
 function parseConditions(raw: unknown): PromotionConditions | null {
   if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const c = raw as Record<string, unknown>;

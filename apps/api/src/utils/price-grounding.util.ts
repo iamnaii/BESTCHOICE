@@ -169,16 +169,25 @@ export function collectGroundedPricesFromToolText(
 export type GroundingVerdict = { ok: true } | { ok: false; reason: string };
 
 export function guardGrounding(reply: string, grounded: Set<number>): GroundingVerdict {
-  const matches = [...reply.matchAll(PRICE_IN_TEXT_RE)];
+  // B3 Task 6 review [C2]: filter down to numbers that actually count as "a price"
+  // (>= MIN_GROUNDED_THB) BEFORE the `grounded.size === 0` early-return below. The
+  // old order ran the size check first, so a reply that ONLY mentions sub-1,000
+  // figures (e.g. a promo's "ลด 500 บาท") got blocked as price-mentioned-no-tool-result
+  // even though the identical figure inside the per-match loop further down would
+  // have been exempted via `num < MIN_GROUNDED_THB` — the two paths disagreed for the
+  // exact same input. Filtering first makes both paths apply the same exemption
+  // consistently; it does not loosen the backstop for real prices (>= 1,000 still
+  // requires a non-empty grounded set, same as before).
+  const matches = [...reply.matchAll(PRICE_IN_TEXT_RE)]
+    .map((m) => Number(m[1].replace(/,/g, '')))
+    .filter((num) => Number.isFinite(num) && num >= MIN_GROUNDED_THB);
   if (matches.length === 0) return { ok: true };
 
   if (grounded.size === 0) {
     return { ok: false, reason: 'price-mentioned-no-tool-result' };
   }
 
-  for (const m of matches) {
-    const num = Number(m[1].replace(/,/g, ''));
-    if (!Number.isFinite(num) || num < MIN_GROUNDED_THB) continue;
+  for (const num of matches) {
     const closeMatch = [...grounded].some((g) => Math.abs(g - num) / g <= 0.05);
     if (!closeMatch) {
       return { ok: false, reason: `unmatched-price=${num}` };

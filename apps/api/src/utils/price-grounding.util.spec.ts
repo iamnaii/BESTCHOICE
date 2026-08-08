@@ -116,6 +116,33 @@ describe('guardGrounding — กฎเดิมต้องไม่หย่อ
     expect(guardGrounding('ค่าปรับ 50 บาท/วันค่ะ', new Set([32900]))).toEqual({ ok: true });
   });
 
+  // ── regression [C2 — review round 1 บน B3 Task 6] ──
+  // เดิม `grounded.size === 0` เช็คก่อน per-match exemption (num < MIN_GROUNDED_THB)
+  // ทำงาน → กรณี list_promotions เป็น tool เดียวที่ถูกเรียกและโปรเขียน "ลด 500 บาท"
+  // (ไม่มีอะไรเข้า grounded set เลย) จะโดน block ทั้งที่ 500 < 1,000 ควรถูกยกเว้นเหมือน
+  // เคส "เลข < 1000 ถูกข้าม" ด้านบน — สองเส้นทางต้องให้คำตอบตรงกันสำหรับ input เดียวกัน
+  it('เลข < 1000 ถูกข้าม แม้ grounded set ว่างเปล่า (ไม่ผ่าน early-return ผิดจังหวะ)', () => {
+    expect(guardGrounding('เดือนนี้ลดทันที 500 บาทค่ะ', new Set())).toEqual({ ok: true });
+  });
+
+  it('เลข >= 1000 ยังโดน block ตามเดิมเมื่อ grounded ว่างเปล่า (backstop เดิมไม่หลวม)', () => {
+    expect(guardGrounding('เดือนนี้ลดทันที 99,999 บาทค่ะ', new Set())).toEqual({
+      ok: false,
+      reason: 'price-mentioned-no-tool-result',
+    });
+  });
+
+  it('พอดี threshold 999 (< 1000) ถูกข้ามแม้ grounded ว่าง', () => {
+    expect(guardGrounding('ลด 999 บาทค่ะ', new Set())).toEqual({ ok: true });
+  });
+
+  it('พอดี threshold 1,001 (>= 1000) โดน block เมื่อ grounded ว่าง', () => {
+    expect(guardGrounding('ลด 1,001 บาทค่ะ', new Set())).toEqual({
+      ok: false,
+      reason: 'price-mentioned-no-tool-result',
+    });
+  });
+
   // ── regression: regex เดิมมองไม่เห็นยอดที่มีสตางค์ → guard เป็น no-op ──
   // ยอดจริงตาม CPA rounding มีสตางค์เกือบทั้งหมด (1,416.66 + 99.17 = 1,515.83)
   // ถ้า 3 เคสนี้ผ่านเพราะ "ไม่ match" แปลว่า regex ยังเป็นตัวเก่า — ให้ดู Step 4

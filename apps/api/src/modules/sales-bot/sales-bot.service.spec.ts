@@ -784,5 +784,84 @@ describe('SalesBotService', () => {
       expect(r.confidence).not.toBe(0.3);
       expect(r.reply).toContain('1,000');
     });
+
+    // review round 1 [C2] — bracket the exact-1,000 case above with the threshold's
+    // two neighbors so the boundary is proven at the e2e level, not just in the util:
+    // 999 (< MIN_GROUNDED_THB) must pass WITHOUT needing a grounded set at all (this
+    // is the exact bug: list_promotions is the only tool called, its description text
+    // never crosses 1,000 so the grounded set stays empty — the old early-return
+    // blocked this unconditionally); 1,001 (>= MIN_GROUNDED_THB) must still require
+    // and receive real grounding from the promo description (backstop not loosened).
+    it('บอทพูด "999 บาท" (ต่ำกว่า threshold) ได้แม้ grounded set จะว่างเปล่า', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [{ id: 't1', name: 'list_promotions', input: {} }],
+          inputTokens: 5,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        })
+        .mockResolvedValueOnce({
+          text: 'เดือนนี้ลด 999 บาทค่ะ',
+          toolCalls: [],
+          inputTokens: 5,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        });
+      const { svc, listPromotions } = await build(chat);
+      listPromotions.run.mockResolvedValue({
+        promotions: [
+          {
+            id: 'p1',
+            name: 'ลดพิเศษ',
+            description: 'ลด 999 บาท', // < 1,000 → ไม่เข้า grounded set เลย (ยืนยันว่าไม่จำเป็นต้องเข้า)
+            endsAt: '2026-12-31T00:00:00.000Z',
+            appliesTo: 'ALL',
+            minPurchaseThb: null,
+          },
+        ],
+      });
+
+      const r = await svc.generateReply({ text: 'มีโปรไหม', roomId: 'r1', customerId: null });
+      expect(r.confidence).not.toBe(0.3);
+      expect(r.reply).toContain('999');
+    });
+
+    it('บอทพูด "1,001 บาท" (สูงกว่า threshold) ได้เมื่อมีอยู่ใน description จริง', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [{ id: 't1', name: 'list_promotions', input: {} }],
+          inputTokens: 5,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        })
+        .mockResolvedValueOnce({
+          text: 'เดือนนี้ลดทันที 1,001 บาทค่ะ',
+          toolCalls: [],
+          inputTokens: 5,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        });
+      const { svc, listPromotions } = await build(chat);
+      listPromotions.run.mockResolvedValue({
+        promotions: [
+          {
+            id: 'p1',
+            name: 'ลดพิเศษ',
+            description: 'ลดทันที 1,001 บาท', // >= 1,000 → ต้องเข้า grounded set จริงถึงจะผ่าน
+            endsAt: '2026-12-31T00:00:00.000Z',
+            appliesTo: 'ALL',
+            minPurchaseThb: null,
+          },
+        ],
+      });
+
+      const r = await svc.generateReply({ text: 'มีโปรไหม', roomId: 'r1', customerId: null });
+      expect(r.confidence).not.toBe(0.3);
+      expect(r.reply).toContain('1,001');
+    });
   });
 });

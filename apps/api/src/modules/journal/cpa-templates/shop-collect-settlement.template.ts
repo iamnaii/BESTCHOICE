@@ -59,9 +59,11 @@ export class ShopCollectSettlementTemplate {
 
   /**
    * Look up an existing JE for this (contractId, requestId) pair and classify
-   * it against the incoming amount. Shared by the up-front idempotency check
-   * and the post-P2002-race retry in `execute` so both paths agree on what
-   * "duplicate" means.
+   * it against the incoming amount. Used by the up-front idempotency check in
+   * `execute` only — the post-P2002-race path does NOT call this (see the
+   * catch block around `createAndPost`: the caller's tx is already aborted by
+   * the time P2002 surfaces, so no further query on that connection can
+   * succeed).
    */
   private async findRequestIdDupe(
     client: Prisma.TransactionClient | PrismaService,
@@ -129,8 +131,12 @@ export class ShopCollectSettlementTemplate {
     // requestId can both pass this check (neither JE exists yet) and both
     // proceed to createAndPost below. The loser hits a raw Prisma unique
     // violation (P2002 on journal_entries_idempotency_idx / ..._ref_unique)
-    // there; that's translated back into this same idempotent-hit shape in
-    // the catch block around createAndPost, instead of surfacing as a 500.
+    // there. Because the only production caller wraps this whole call in a
+    // Serializable `$transaction`, that P2002 has already aborted the tx —
+    // there is no safe re-query left to run. The catch block around
+    // createAndPost throws a clean ConflictException (409) instead of trying
+    // to classify the race, so the loser gets an actionable error rather
+    // than a raw 500. See that catch block for details.
     if (input.requestId) {
       const result = await this.findRequestIdDupe(client, contractId, input.requestId, amountStr);
 
@@ -258,38 +264,52 @@ export class ShopCollectSettlementTemplate {
       // up-front dedupe check above (neither JE existed yet) and both
       // reached createAndPost. The winner posts; the loser hits a raw
       // Prisma unique violation (P2002 on journal_entries_idempotency_idx
-      // or journal_entries_ref_unique) here. Translate that back into the
-      // same idempotent-hit shape the up-front check returns, instead of
-      // letting a 500 surface to the loser.
+      // or journal_entries_ref_unique) here.
+      //
+      // The ONLY production caller (ContractPaymentService.shopCollectSettlement)
+      // always wraps this call in a Serializable `$transaction` — by the time
+      // createAndPost throws P2002, Postgres has already aborted that
+      // transaction (25P02 "current transaction is aborted, commands ignored
+      // until end of transaction block"). ANY further query on the SAME
+      // client (including a re-query trying to classify the race as
+      // match/mismatch) will itself throw — there is no DB access left to
+      // recover with. Do NOT attempt one (precedent:
+      // payroll-remittance.template.ts `postWithIdempotencyTranslation`) —
+      // throw a clean, user-facing exception immediately instead. Throwing
+      // needs no DB access, so it works inside the aborted tx and propagates
+      // as a 409 instead of an unhandled 500.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && input.requestId) {
-        let retry: Awaited<ReturnType<typeof this.findRequestIdDupe>>;
-        try {
-          retry = await this.findRequestIdDupe(client, contractId, input.requestId, amountStr);
-        } catch {
-          // The re-query itself failed — most likely because outerTx is the
-          // SAME Postgres transaction that createAndPost just aborted
-          // (25P02 "current transaction is aborted"). We cannot learn
-          // anything more from inside a poisoned tx — surface the ORIGINAL
-          // P2002 rather than this secondary failure.
-          throw err;
-        }
-
-        if (retry.status === 'match') {
-          this.logger.log(
-            `[SCS] race on requestId ${input.requestId} — resolved to existing JE ${retry.entryNo} (idempotent hit)`,
-          );
-          return { entryNo: retry.entryNo, deduped: true };
-        }
-        if (retry.status === 'mismatch') {
-          throw new ConflictException(
-            `คำขอนี้ถูกบันทึกไปแล้วที่ยอด ${retry.bookedAmount} ฿ — กรุณาปิดหน้าต่างรับโอนแล้วเปิดใหม่ หากต้องการบันทึกยอดใหม่`,
-          );
-        }
-        // status === 'none' — the P2002 wasn't caused by our own requestId
-        // row (e.g. a legacy contractId+amount reference collision from a
-        // caller that omitted requestId) → surface the original error.
-        throw err;
+        this.logger.warn(
+          `[SCS] race on requestId ${input.requestId} (contract ${contractId}) — P2002 inside an aborted tx, rejecting with 409 instead of re-querying`,
+        );
+        throw new ConflictException(
+          'รายการนี้กำลังถูกบันทึกอยู่ (กดยืนยันซ้ำพร้อมกัน) — กรุณารอสักครู่ แล้วตรวจสอบรายการก่อนลองใหม่',
+        );
       }
+
+      // Empirically observed 2026-08-08 via a live 2-Postgres-connection race
+      // test (shop-collect-settlement.integration.spec.ts): because the only
+      // production caller uses SERIALIZABLE isolation, two concurrent
+      // shopCollectSettlement calls on the SAME contract don't always collide
+      // on the P2002 unique index first — Postgres SSI can detect the
+      // read-write dependency (both transactions read the same 11-2107
+      // journal_line predicate set, then one inserts a new row matching it)
+      // and abort the loser with a 40001 serialization failure BEFORE it ever
+      // reaches the unique-index insert. Prisma surfaces that as P2034
+      // ("Transaction failed due to a write conflict or a deadlock. Please
+      // retry your transaction."). This is a genuine transient DB conflict,
+      // not a business-logic duplicate, so it applies regardless of whether
+      // requestId was supplied — translate it into the same clean 409 so the
+      // client can safely retry instead of seeing a raw Prisma error.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        this.logger.warn(
+          `[SCS] write conflict (P2034) on contract ${contractId} — rejecting with 409, client should retry`,
+        );
+        throw new ConflictException(
+          'มีการบันทึกรายการนี้พร้อมกันจากอีกจุดหนึ่ง (write conflict) — กรุณาลองใหม่อีกครั้ง',
+        );
+      }
+
       throw err;
     }
   }

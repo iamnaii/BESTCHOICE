@@ -398,6 +398,12 @@ export class ChatCommerceService {
       else errors.push(r.error ?? 'ส่งข้อความสินค้าไม่สำเร็จ');
     }
 
+    // ไม่มี bubble ไหนถูกส่งและไม่มี error รายทาง (เช่น parts=['PHOTO'] แต่ gallery ว่าง)
+    // ต้องไม่เงียบ — ไม่งั้น UI toast "ส่งแล้ว" ทั้งที่ลูกค้าไม่ได้อะไรเลย (final-review fast-follow)
+    if (sent === 0 && errors.length === 0) {
+      errors.push('ไม่มีข้อความหรือรูปที่ส่งได้ (เครื่องนี้อาจไม่มีรูป)');
+    }
+
     this.logger.log(
       `Product card sent: room=${params.sessionId} product=${params.productId} sent=${sent} skipped=${photoSkipped}`,
     );

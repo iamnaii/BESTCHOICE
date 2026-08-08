@@ -256,11 +256,15 @@ describe('คีย์เงินฝั่งน้องเบส (B3 Task 11)
   it('เก็บยอดจาก get_current_balance ได้ครบ', () => {
     const set = new Set<number>();
     collectGroundedPrices(
-      { found: true, amountDue: 1416.66, lateFee: 0, totalAmount: 1515.83, daysOverdue: 3 },
+      // review round 1 [I1]: lateFee ต้อง > 0 — ค่า 0 เดิมไม่ผ่านเช็ค `n > 0` ใน
+      // collectGroundedPrices อยู่แล้ว ต่อให้ถอดคีย์ 'lateFee' ออกจาก
+      // FINANCE_GROUNDED_PRICE_KEYS เทสต์เดิมก็ยังผ่าน (ไม่พิสูจน์อะไรเรื่อง key-walk เลย)
+      { found: true, amountDue: 1416.66, lateFee: 1050, totalAmount: 1515.83, daysOverdue: 3 },
       set,
       FINANCE_GROUNDED_PRICE_KEYS,
     );
     expect(set.has(1416.66)).toBe(true);
+    expect(set.has(1050)).toBe(true); // lateFee (>0) — พิสูจน์ผ่าน key-walk จริง
     expect(set.has(1515.83)).toBe(true);
     expect(set.has(3)).toBe(false); // daysOverdue ไม่ใช่เงิน
   });
@@ -329,5 +333,22 @@ describe('คีย์เงินฝั่งน้องเบส (B3 Task 11)
     collectGroundedPricesFromToolText('calculate_fine', result, set);
     expect(set.has(1500)).toBe(true);
     expect(guardGrounding('ค่าปรับสูงสุด 1,500 บาทค่ะ', set)).toEqual({ ok: true });
+  });
+
+  // review round 1 [I1]: เทสต์ข้างบนใช้ explanation ที่พูดเลขเดียวกับ totalFine (1500)
+  // ทั้งคู่ — ถ้าถอดคีย์ 'totalFine' ออกจาก FINANCE_GROUNDED_PRICE_KEYS เทสต์นั้นยังผ่าน
+  // เพราะ collectGroundedPricesFromToolText('calculate_fine', ...) ดูด 1500 จาก
+  // ข้อความ explanation ได้อยู่แล้ว (ไม่พิสูจน์ว่า key-walk ทำงานจริง) เคสนี้แยกให้เลขใน
+  // totalFine ไม่ปรากฏใน explanation เลย — ถ้า set มี 1250 แปลว่ามาจาก key-walk เท่านั้น
+  it('totalFine ถูกเก็บผ่าน key-walk เท่านั้น (เลขไม่ปรากฏใน explanation เลย)', () => {
+    const set = new Set<number>();
+    const result = {
+      daysOverdue: 45,
+      totalFine: 1250,
+      explanation: 'ค่าปรับล่าช้าแบบเหมาจ่าย: 1–2 วัน = 500 บาท, ตั้งแต่ 3 วันขึ้นไป = 1,000 บาท — งวดนี้เลย 45 วัน',
+    };
+    collectGroundedPrices(result, set, FINANCE_GROUNDED_PRICE_KEYS);
+    collectGroundedPricesFromToolText('calculate_fine', result, set);
+    expect(set.has(1250)).toBe(true);
   });
 });

@@ -35,8 +35,12 @@ export const GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
 /**
  * คีย์ของ "น้องเบส" = ชุดบอทขาย + คีย์เงินฝั่งการเงิน (Task 11)
  * แยกออกมาเพราะคีย์กว้าง ๆ อย่าง `amount` ต้องไม่ไปขยายพูลที่บอทขายยอมรับ
- * (`search_products` มีแถวราคาชื่อ `amount` ใน `prices[]`) — ห้ามไปแก้
- * `GROUNDED_PRICE_KEYS` (ชุดของบอทขาย) เพื่อขยายพูลนี้แทน. `FinanceAiService`
+ * (review round 1 [Minor]: แก้ข้อความเดิมที่อ้างผิดว่า `search_products` มีแถวราคาชื่อ
+ * `amount` — ไฟล์จริงไม่มี field นั้น ตัว `amount` ตัวจริงอยู่ใน `Product.prices[]`
+ * relation ที่ DB ใช้เก็บราคาหลายประเภท (รวมราคาทุน/ราคาเก่า) ปัจจุบัน query เฉพาะภายใน
+ * `calculate-installment.tool.ts:41` เท่านั้น ไม่เคยถูกส่งออกให้ Claude ตรง ๆ ในรูป
+ * `prices[]` — แต่ยังเป็นความเสี่ยงถ้ามี tool ฝั่งบอทขายในอนาคต expose field นี้ตรง ๆ)
+ * — ห้ามไปแก้ `GROUNDED_PRICE_KEYS` (ชุดของบอทขาย) เพื่อขยายพูลนี้แทน. `FinanceAiService`
  * (น้องเบส) เป็นเจ้าของพูลนี้จริง ๆ และเป็นคนเดียวที่ส่ง set นี้เข้า
  * `collectGroundedPrices`.
  */
@@ -54,8 +58,12 @@ export const GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
 //                                       แยกต่างหาก ไม่ต้องเติมคีย์ใหม่)
 //  - listRecentReceipts (:182-186)   → receipts[].amount เป็นเงิน (ใช้คีย์กว้าง 'amount' —
 //                                       ตั้งใจแยกพูลนี้จาก GROUNDED_PRICE_KEYS ของบอทขายเพราะ
-//                                       search_products มี prices[].amount ที่เป็นราคาทุน/ราคาเก่า
-//                                       ที่บอทขายห้าม quote)
+//                                       'amount' คือชื่อ field เดียวกับที่ Product.prices[]
+//                                       relation ใช้เก็บราคาทุน/ราคาเก่าใน DB (query ภายใน
+//                                       calculate-installment.tool.ts:41 เท่านั้น — ไม่เคยถูก
+//                                       ส่งออกให้ Claude ตรง ๆ ในปัจจุบัน แต่ถ้ารวมเข้า
+//                                       GROUNDED_PRICE_KEYS แล้ววันหนึ่งมี tool ฝั่งบอทขาย
+//                                       expose field นี้ บอทขายจะ quote ราคาทุนได้ทันที)
 //  - getBankInfo (:196-201)          → bankName/accountNumber/accountName/formatted เป็น string
 //                                       ล้วน ไม่มีคีย์ตัวเลขให้เติม (นี่คือ tool ที่ทำให้ turn 2
 //                                       ของบทสนทนาปกติ "โอนยังไงคะ" ไม่คืนตัวเลขเลย — ต้อง seed
@@ -97,7 +105,9 @@ const PRICE_IN_TEXT_RE = /([\d][\d,]{2,}(?:\.\d{1,2})?)\s*(?:บาท|฿|baht|
 /**
  * `keys` เป็นพารามิเตอร์ (default = ชุดบอทขาย) ไม่ใช่ค่าคงที่ตัวเดียวที่บอท 2 ตัวใช้ร่วม
  * — คีย์ที่ Task 11 ต้องใช้ฝั่งการเงิน (`amount`, `totalAmount`, …) กว้างเกินกว่าจะปล่อยให้
- * ไปขยายพูลที่บอทขายยอมรับโดยไม่มีใครรีวิว (`search_products` select แถวราคาชื่อ `amount`)
+ * ไปขยายพูลที่บอทขายยอมรับโดยไม่มีใครรีวิว (`amount` คือชื่อ field ที่ `Product.prices[]`
+ * relation ใช้เก็บราคาทุน/ราคาเก่าใน DB — ปัจจุบัน query ภายใน
+ * `calculate-installment.tool.ts:41` เท่านั้น ไม่เคยถูกส่งออกให้ Claude ตรง ๆ)
  */
 export function collectGroundedPrices(
   value: unknown,

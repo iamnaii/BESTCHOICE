@@ -114,6 +114,16 @@ export class FinanceAiService {
       // เพิ่งบอกไปจึงต้องนับเป็น grounded ไม่งั้น guard จะบล็อกบทสนทนาปกติ
       // (ข้อความใน history = ข้อความที่ "ส่งออกไปแล้ว" = ผ่าน guard มาแล้ว หรือ
       //  พนักงานพิมพ์เอง — STAFF/BOT ถูก map เป็น assistant ที่ loadHistory :275-279)
+      //
+      // ⚠️ residual risk (review round 1 [I2], ยอมรับความเสี่ยงนี้ — bounded/self-limiting):
+      // ข้อความ assistant ใน window นี้ (HISTORY_FETCH_LIMIT=10 ข้อความ, HISTORY_CHAR_BUDGET=
+      // 20k ตัวอักษร — ดูด้านบน) อาจมาจาก "ก่อน" guard ตัวนี้มีผลจริง (เช่น deploy แรกที่ยังไม่มี
+      // guard, หรือ STAFF พิมพ์เลขเองในแชทโดยไม่ผ่าน guard เลย) เลขเหล่านั้นจะถูก legitimize
+      // เข้า grounded set ของเทิร์นถัดไปได้โดยไม่มี tool call จริงรองรับ — ไม่ต่างจากช่องโหว่ที่
+      // guard ตัวนี้ตั้งใจปิดในหลักการ แต่ต่างตรงที่ scope ถูกจำกัดด้วย window เดียวกับที่ seed
+      // นี้ใช้อยู่แล้ว: เลขเก่าจะหลุดออกจาก window เองภายใน 10 ข้อความ/20k ตัวอักษร ไม่สะสมค้าง
+      // ตลอดไป และไม่ขยายไปยัง tool อื่นที่ไม่เกี่ยวข้อง — ไม่ใช่ unlimited fail-open เหมือนการ
+      // ปิด guard ทั้งระบบ (รายละเอียดเพิ่มเติม: task-11-report.md § Concerns)
       for (const h of dbHistory) {
         if (h.role === 'assistant') collectGroundedPricesFromText(h.content, groundedPrices);
       }

@@ -26,6 +26,7 @@ import { SessionOpsController } from './session-ops.controller';
 import { SessionOpsService } from './services/session-ops.service';
 import { ChatCommerceController } from './chat-commerce.controller';
 import { ChatCommerceService } from './services/chat-commerce.service';
+import { ProductQuoteService } from './services/product-quote.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
 import { AiSuggestService } from './services/ai-suggest.service';
 import { AiAutoReplyService } from './services/ai-auto-reply.service';
@@ -69,7 +70,7 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
     }),
   ],
   controllers: [StaffChatController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
-  providers: [StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ChatToContractService, CannedResponseVariableService, CannedResponseBubbleService, CannedResponseQuickReplyService, BubbleTranslatorService, CannedResponseSenderService, QuickReplyPostbackRouterService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, AiSuggestService, AiAutoReplyService, ProductDetectService, LeadScoringService, AiTrainingService, AiImportService, AiMetricsService, EmbeddingService, PersonaService, TrainingExtractCron, EmbeddingBackfillCron, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
+  providers: [StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ProductQuoteService, ChatToContractService, CannedResponseVariableService, CannedResponseBubbleService, CannedResponseQuickReplyService, BubbleTranslatorService, CannedResponseSenderService, QuickReplyPostbackRouterService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, AiSuggestService, AiAutoReplyService, ProductDetectService, LeadScoringService, AiTrainingService, AiImportService, AiMetricsService, EmbeddingService, PersonaService, TrainingExtractCron, EmbeddingBackfillCron, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
   exports: [StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService, AiAutoReplyService, PersonaService, QuickReplyPostbackRouterService, CHAT_GATEWAY_TOKEN],
 })
 export class StaffChatModule {}

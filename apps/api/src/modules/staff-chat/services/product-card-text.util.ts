@@ -66,7 +66,9 @@ export function buildProductCardText(
   if (p.shopWarrantyDays != null) lines.push(`🛡️ ประกันร้าน ${p.shopWarrantyDays} วัน`);
   if (p.branchName) lines.push(`📍 สาขา${p.branchName}`);
 
-  lines.push(`สถานะ: ${STATUS_TEXT[p.status] ?? p.status}`);
+  // fallback ไทยกลางๆ — สถานะนอก map (REPOSSESSED/LOST/…) เข้าถึงได้เฉพาะ race แคบ
+  // แต่ห้ามหลุด enum อังกฤษดิบถึงลูกค้า (final-review fast-follow)
+  lines.push(`สถานะ: ${STATUS_TEXT[p.status] ?? 'ติดต่อร้านเพื่อเช็คสถานะ'}`);
   if (shareUrl) lines.push(shareUrl);
 
   return lines.join('\n');

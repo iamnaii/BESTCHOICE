@@ -123,6 +123,25 @@ describe('SearchProductsTool.run', () => {
     });
   });
 
+  // review round 1 [I2]: กลุ่มที่มีเครื่องพร้อมขาย >= MAX_UNITS_PER_GROUP (3) เครื่อง RESERVED
+  // จะโดน .slice(0,3) ตัดออกจาก units[] ไปเงียบ ๆ — ลูกค้าเข้าใจผิดว่า "หมด" ทั้งที่ยังติดจอง
+  // อยู่ groups[].reservedCount ต้องนับให้ครบ (นับก่อน slice) แม้ unit นั้นจะไม่ปรากฏใน units[] แล้ว
+  it('กลุ่มมี in-stock ครบ 3 + reserved 1 → units ตัดเหลือ 3 (in-stock ล้วน) แต่ reservedCount ยังนับครบ 1', async () => {
+    const tool = new SearchProductsTool(
+      makePrisma([
+        row({ id: 'a', cashPrice: D('30000') }),
+        row({ id: 'b', cashPrice: D('31000') }),
+        row({ id: 'c', cashPrice: D('32000') }),
+        row({ id: 'res', status: 'RESERVED', cashPrice: D('29000') }),
+      ]),
+    );
+    const r = await tool.run({ query: 'iPhone 15 Pro Max' });
+    expect(r.groups[0].unitCount).toBe(4);
+    expect(r.groups[0].units.map((u) => u.id)).toEqual(['a', 'b', 'c']);
+    expect(r.groups[0].units.some((u) => u.reserved)).toBe(false);
+    expect(r.groups[0].reservedCount).toBe(1);
+  });
+
   it('เครื่องที่ไม่มีราคาเงินสด → ไม่เข้ากลุ่ม แต่ถูกนับใน priceMissingCount (คง flow handoff/#1332)', async () => {
     const tool = new SearchProductsTool(
       makePrisma([row({ id: 'no-price', cashPrice: null }), row({ id: 'ok' })]),
@@ -137,6 +156,26 @@ describe('SearchProductsTool.run', () => {
     const r = await tool.run({ query: 'iPhone 15 Pro Max' });
     expect(r.groups).toEqual([]);
     expect(r.priceMissingCount).toBe(1);
+  });
+
+  // review round 1 [I1]: boundary ราคา 0/ติดลบ — บั๊ก class ที่โผล่ 6 รอบในเวฟนี้ (guard `> 0`
+  // ไม่ใช่ `!= null` เฉย ๆ) mutation ที่เอา `> 0` ออกแล้วเหลือแค่ `!= null` ต้องทำให้เคสนี้ตก
+  it('cashPrice = 0 → ไม่อยู่ใน groups แต่นับใน priceMissingCount (boundary กันบั๊กราคา 0)', async () => {
+    const tool = new SearchProductsTool(
+      makePrisma([row({ id: 'zero-price', cashPrice: D('0') }), row({ id: 'ok' })]),
+    );
+    const r = await tool.run({ query: 'iPhone 15 Pro Max' });
+    expect(r.priceMissingCount).toBe(1);
+    expect(r.groups.flatMap((g) => g.units).map((u) => u.id)).toEqual(['ok']);
+  });
+
+  it('cashPrice ติดลบ → ไม่อยู่ใน groups แต่นับใน priceMissingCount (boundary กันบั๊กราคาติดลบ)', async () => {
+    const tool = new SearchProductsTool(
+      makePrisma([row({ id: 'negative-price', cashPrice: D('-500') }), row({ id: 'ok' })]),
+    );
+    const r = await tool.run({ query: 'iPhone 15 Pro Max' });
+    expect(r.priceMissingCount).toBe(1);
+    expect(r.groups.flatMap((g) => g.units).map((u) => u.id)).toEqual(['ok']);
   });
 
   it('maxPriceThb ตัดเครื่องที่แพงเกินงบ', async () => {

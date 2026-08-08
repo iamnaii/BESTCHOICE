@@ -22,6 +22,7 @@ export const SEARCH_PRODUCTS_RESULT_FIXTURE = {
       unitCount: 2,
       minPrice: 32900,
       maxPrice: 34900,
+      reservedCount: 1, // review round 1 [I2] — นับ RESERVED ทั้งกลุ่ม (prd-2), ไม่ใช่ตัวเลขเงิน
       units: [
         {
           id: 'prd-1',

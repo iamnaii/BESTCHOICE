@@ -12,6 +12,7 @@ export const SEARCH_PRODUCTS_TOOL = {
     'คืนผลจัดกลุ่มตาม รุ่น+ความจุ+สภาพ พร้อมจำนวนเครื่อง ช่วงราคา และรายละเอียดรายเครื่อง ' +
     '(ราคาเงินสด/ราคาผ่อน/สี/แบต/ประกันร้าน/อุปกรณ์ที่แถม/ตำหนิ/สาขา/มีรูปไหม/ลิงก์เว็บ). ' +
     'เครื่องที่ติดจองอยู่จะมี reserved=true — บอกลูกค้าว่า "มีของแต่ติดจองชั่วคราว" ห้ามบอกว่าไม่มี. ' +
+    'groups[].reservedCount = จำนวนเครื่องติดจองทั้งกลุ่ม (นับรวมแม้บางเครื่องจะไม่ได้อยู่ใน units[] เพราะแสดงได้จำกัด) — ใช้บอกจำนวนติดจองได้แม้ units[] จะไม่ครบทุกเครื่อง. ' +
     'priceMissingCount > 0 แปลว่ามีเครื่องตรงรุ่นแต่ยังไม่ได้ตั้งราคา — อย่าเดาราคาเอง ให้ใช้ get_installment_rates ตอบเรทกลางแทน. ' +
     'ห้าม quote ตัวเลขใด ๆ ที่ไม่ได้มาจากผลลัพธ์นี้.',
   input_schema: {
@@ -61,6 +62,17 @@ export interface SearchProductGroup {
   unitCount: number;
   minPrice: number;
   maxPrice: number;
+  /**
+   * จำนวนเครื่อง RESERVED ทั้งหมดในกลุ่ม — นับ**ก่อน**ตัด `units[]` เหลือ
+   * `MAX_UNITS_PER_GROUP`. review round 1 [I2]: ถ้ากลุ่มมีเครื่องพร้อมขาย
+   * ≥3 เครื่อง `.slice(0, MAX_UNITS_PER_GROUP)` จะตัดเครื่องติดจองออกจาก
+   * `units[]` ไปเงียบ ๆ — ลูกค้าจะเข้าใจผิดว่า "หมด" ทั้งที่ยังมีของติดจองอยู่
+   * (ขัดกับ spec §5 ที่สั่งชัดว่าต้องรู้ว่าติดจอง ไม่ใช่หายไป). field นี้ทำให้
+   * บอทพูด "ติดจอง N เครื่อง" ได้เสมอแม้ unit นั้นจะโดน slice ทิ้งไปแล้วก็ตาม.
+   * ไม่ใช่ตัวเลขเงิน — ไม่อยู่ใน GROUNDED_PRICE_KEYS โดยเจตนา (ดูคอมเมนต์ที่
+   * price-grounding.util.ts และ fixture)
+   */
+  reservedCount: number;
   units: SearchProductUnit[];
 }
 
@@ -197,6 +209,9 @@ export class SearchProductsTool {
         g.unitCount += 1;
         g.minPrice = Math.min(g.minPrice, priceThb);
         g.maxPrice = Math.max(g.maxPrice, priceThb);
+        // นับ RESERVED ก่อน slice (I2) — g.units ยังไม่ถูกตัดตอนนี้ แต่ reservedCount
+        // ต้องรอด แม้ตอน sort+slice ท้ายฟังก์ชันจะตัด unit ตัวนี้ทิ้งจาก units[] ก็ตาม
+        if (r.status === 'RESERVED') g.reservedCount += 1;
         g.units.push(unit);
       } else {
         groups.set(key, {
@@ -207,6 +222,7 @@ export class SearchProductsTool {
           unitCount: 1,
           minPrice: priceThb,
           maxPrice: priceThb,
+          reservedCount: r.status === 'RESERVED' ? 1 : 0,
           units: [unit],
         });
       }

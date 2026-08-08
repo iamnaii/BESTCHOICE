@@ -41,6 +41,23 @@ describe('shape ใหม่ของ tool ต้องผ่าน guard (defin
     expect(set.has(35900)).toBe(true); // installmentPriceThb — key ใหม่
   });
 
+  // review round 1 [I2]: groups[].reservedCount เป็นเลขนับเครื่อง ไม่ใช่ตัวเลขเงิน —
+  // ต้องไม่ถูกเก็บเป็น grounded และต้องไม่ทำให้ guard บล็อกคำตอบที่พูดถึงมัน สองชั้นป้องกัน:
+  // (1) 'reservedCount' ไม่อยู่ใน GROUNDED_PRICE_KEYS จึงไม่ถูก collect เลย
+  // (2) แม้โมเดลจะพลาดพูดเลขนับเป็นสำนวนเงิน MIN_GROUNDED_THB=1000 ก็ยังกันเลขเล็ก ๆ ไว้อีกชั้น
+  it('reservedCount (เลขนับเครื่อง) ไม่ถูกเก็บเป็น grounded และไม่โดน guard บล็อก', () => {
+    const set = new Set<number>();
+    collectGroundedPrices(SEARCH_PRODUCTS_RESULT_FIXTURE, set);
+    expect(set.has(1)).toBe(false); // reservedCount: 1 ในฟิกซ์เจอร์ ต้องไม่ถูกเก็บ
+
+    // ชั้นที่ 1: ข้อความนับจำนวนเครื่องไม่มีหน่วยเงินต่อท้าย — PRICE_IN_TEXT_RE ไม่จับตั้งแต่แรก
+    expect(guardGrounding('ติดจอง 1 เครื่องค่ะ', set)).toEqual({ ok: true });
+
+    // ชั้นที่ 2 (สมมุติโมเดลพูดผิดปกติ เอาเลขนับไปต่อท้ายด้วยหน่วยเงิน — ไม่ควรเกิดจริง):
+    // เลขยังเล็กกว่า MIN_GROUNDED_THB=1000 → guard ข้ามให้ผ่านอยู่ดี ไม่ block
+    expect(guardGrounding('ติดจอง 500 บาทค่ะ', set)).toEqual({ ok: true });
+  });
+
   it('บอท quote ราคาจาก search_products ได้โดยไม่โดน block', () => {
     const set = new Set<number>();
     collectGroundedPrices(SEARCH_PRODUCTS_RESULT_FIXTURE, set);

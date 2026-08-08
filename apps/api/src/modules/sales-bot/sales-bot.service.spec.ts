@@ -723,5 +723,28 @@ describe('SalesBotService', () => {
       expect(r.confidence).toBe(0.3);
       expect(r.attachments).toBeUndefined();
     });
+
+    // review round 1 [I2]: ก่อนหน้านี้ไม่มีเทสต์ตรวจ max-hop-exhausted path เลย —
+    // เคสเดิม "falls back to staff message after 3 unresolved hops" (บรรทัด 163)
+    // mock tool result ว่าง (`{ products: [] }`) จึงจับ mutation "แนบ attachments
+    // บนทางออก max-hop" ไม่ได้ (ไม่มีรูปให้แนบอยู่แล้วไม่ว่า mutation จะใส่โค้ดแนบหรือไม่).
+    // เคสนี้ใช้ tool result ที่มีรูป+ลิงก์จริง (searchResultOneUnit) เพื่อพิสูจน์ว่า
+    // ทางออก max-hop (:232-240) ไม่คืน attachments แม้ระหว่างทางจะเก็บเข้า Map ไว้แล้วก็ตาม
+    it('hop จนครบ (max-hop exhausted) แม้ tool result มีรูปจริง → ไม่มี attachments', async () => {
+      const alwaysToolCall = jest.fn().mockResolvedValue({
+        text: '',
+        toolCalls: [{ id: 't1', name: 'search_products', input: { query: 'iPhone 15' } }],
+        inputTokens: 10,
+        outputTokens: 5,
+        modelName: 'claude-sonnet-4-6',
+      } satisfies LlmChatResponse);
+      const { svc, searchProducts } = await build(alwaysToolCall);
+      searchProducts.run.mockResolvedValue(searchResultOneUnit);
+
+      const r = await svc.generateReply({ text: 'iPhone 15 มีไหม', roomId: 'r1', customerId: null });
+      expect(r.reply).toContain('staff');
+      expect(r.confidence).toBe(0.3);
+      expect(r.attachments).toBeUndefined();
+    });
   });
 });

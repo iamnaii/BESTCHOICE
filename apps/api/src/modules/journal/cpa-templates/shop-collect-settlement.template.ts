@@ -60,7 +60,7 @@ export class ShopCollectSettlementTemplate {
   async execute(
     input: ShopCollectSettlementInput,
     outerTx?: Prisma.TransactionClient,
-  ): Promise<{ entryNo: string }> {
+  ): Promise<{ entryNo: string; deduped: boolean }> {
     const { contractId, depositAccountCode } = input;
     const amount = new Decimal(input.amount.toString());
 
@@ -78,12 +78,19 @@ export class ShopCollectSettlementTemplate {
     // 11-2107 balance has already been fully cleared (by the first call) still
     // returns the original idempotent success instead of tripping the
     // no-balance guard below.
+    //
+    // contractId is part of the match — a requestId reused on a DIFFERENT
+    // contract (client-side UUID collision, copy-pasted requestId across two
+    // dialog opens, etc.) must NOT match that other contract's JE. Without
+    // this, the second contract's settlement would be silently skipped,
+    // leaving its 11-2107 balance uncleared with no error surfaced.
     if (input.requestId) {
       const dupe = await client.journalEntry.findFirst({
         where: {
           AND: [
             { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
             { metadata: { path: ['requestId'], equals: input.requestId } } as Prisma.JournalEntryWhereInput,
+            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
           ],
           deletedAt: null,
         },
@@ -109,7 +116,7 @@ export class ShopCollectSettlementTemplate {
         this.logger.log(
           `[SCS] duplicate requestId ${input.requestId} — JE ${dupe.entryNumber} already posted, skipping`,
         );
-        return { entryNo: dupe.entryNumber };
+        return { entryNo: dupe.entryNumber, deduped: true };
       }
     }
 
@@ -163,7 +170,7 @@ export class ShopCollectSettlementTemplate {
         this.logger.log(
           `[SCS] ShopCollectSettlement idempotency — JE ${existing.entryNumber} already exists for contract ${contractId} amount=${amount.toFixed(2)}, skipping`,
         );
-        return { entryNo: existing.entryNumber };
+        return { entryNo: existing.entryNumber, deduped: true };
       }
     }
 
@@ -211,6 +218,6 @@ export class ShopCollectSettlementTemplate {
       outerTx,
     );
 
-    return { entryNo: result.entryNumber };
+    return { entryNo: result.entryNumber, deduped: false };
   }
 }

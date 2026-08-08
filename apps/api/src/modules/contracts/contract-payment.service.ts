@@ -545,7 +545,7 @@ export class ContractPaymentService {
   async shopCollectSettlement(id: string, userId: string, dto: ShopCollectSettlementDto) {
     await this.prisma.$transaction(
       async (tx) => {
-        await this.shopCollectSettlementTemplate.execute(
+        const result = await this.shopCollectSettlementTemplate.execute(
           {
             contractId: id,
             depositAccountCode: dto.depositAccountCode,
@@ -565,6 +565,8 @@ export class ContractPaymentService {
             newValue: {
               depositAccountCode: dto.depositAccountCode,
               amount: String(dto.amount),
+              requestId: dto.requestId ?? null,
+              deduped: result.deduped,
             },
           },
         });

@@ -435,6 +435,92 @@ describe('shop-collect-settlement integration', () => {
     expect(jes).toHaveLength(2);
   });
 
+  it('requestId เดิม แต่คนละสัญญา → post 2 JE คนละใบ (ห้าม dedupe ข้ามสัญญา)', async () => {
+    // Final-review finding: the requestId dedupe query only filtered on
+    // metadata.flow + metadata.requestId — it did NOT scope by contractId.
+    // A requestId reused on a DIFFERENT contract (e.g. a client-side UUID
+    // collision, or a copy-pasted requestId across two dialog opens) would
+    // match the OTHER contract's JE and skip posting entirely, silently
+    // leaving that second contract's 11-2107 balance uncleared.
+    const cCrossA = await seedStandard17k12m(prisma);
+    const journalCrossA = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journalCrossA, prisma as any).execute(cCrossA.id);
+    await seedPendingPayments(cCrossA.id, cCrossA.installmentCount);
+    await svc.earlyPayoff(cCrossA.id, userId, {
+      paymentMethod: 'CASH',
+      discountPct: 50,
+      collectedByShop: true,
+    } as any);
+
+    const cCrossB = await seedStandard17k12m(prisma);
+    const journalCrossB = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journalCrossB, prisma as any).execute(cCrossB.id);
+    await seedPendingPayments(cCrossB.id, cCrossB.installmentCount);
+    await svc.earlyPayoff(cCrossB.id, userId, {
+      paymentMethod: 'CASH',
+      discountPct: 50,
+      collectedByShop: true,
+    } as any);
+
+    const outstandingA = await getNet11_2107(cCrossA.id);
+    const outstandingB = await getNet11_2107(cCrossB.id);
+    expect(outstandingA.gt(0), `Expected contract A 11-2107 balance > 0, got ${outstandingA.toFixed(2)}`).toBe(true);
+    expect(outstandingB.gt(0), `Expected contract B 11-2107 balance > 0, got ${outstandingB.toFixed(2)}`).toBe(true);
+
+    // Worst case for a cross-contract dedupe bug: identical amount on both.
+    const amount = outstandingA.lt(outstandingB) ? outstandingA : outstandingB;
+    const sharedRequestId = '55555555-5555-4555-8555-555555555555';
+
+    await svc.shopCollectSettlement(cCrossA.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: amount.toNumber(),
+      requestId: sharedRequestId,
+    });
+    await svc.shopCollectSettlement(cCrossB.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: amount.toNumber(),
+      requestId: sharedRequestId,
+    });
+
+    const balanceAfterA = await getNet11_2107(cCrossA.id);
+    const balanceAfterB = await getNet11_2107(cCrossB.id);
+    expect(
+      balanceAfterA.minus(outstandingA.minus(amount)).abs().lte('0.01'),
+      `Expected contract A's 11-2107 reduced by ${amount.toFixed(2)}, got ${balanceAfterA.toFixed(2)}`,
+    ).toBe(true);
+    expect(
+      balanceAfterB.minus(outstandingB.minus(amount)).abs().lte('0.01'),
+      `Expected contract B's 11-2107 reduced by ${amount.toFixed(2)} — a cross-contract requestId dedupe hit must NOT skip this JE, got ${balanceAfterB.toFixed(2)}`,
+    ).toBe(true);
+
+    const jeA = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as any,
+          { metadata: { path: ['contractId'], equals: cCrossA.id } } as any,
+          { metadata: { path: ['requestId'], equals: sharedRequestId } } as any,
+        ],
+        deletedAt: null,
+      },
+    });
+    const jeB = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as any,
+          { metadata: { path: ['contractId'], equals: cCrossB.id } } as any,
+          { metadata: { path: ['requestId'], equals: sharedRequestId } } as any,
+        ],
+        deletedAt: null,
+      },
+    });
+    expect(jeA, 'Expected a JE for contract A with the shared requestId').not.toBeNull();
+    expect(
+      jeB,
+      'Expected a JE for contract B with the shared requestId (must not be swallowed by cross-contract dedupe)',
+    ).not.toBeNull();
+    expect(jeA!.id).not.toBe(jeB!.id);
+  });
+
   it('requestId เดิมซ้ำ → JE เดียว (retry ปลอดภัย แม้หลังยอดถูกล้างหมดแล้ว)', async () => {
     const cRetry = await seedStandard17k12m(prisma);
     const journalRetry = new JournalAutoService(prisma as any);
@@ -479,6 +565,23 @@ describe('shop-collect-settlement integration', () => {
       },
     });
     expect(jes).toHaveLength(1);
+
+    // Both calls write an audit row (forensic trail kept in both cases), but
+    // now distinguishable: the first call actually posted a JE (deduped:
+    // false), the retry hit the requestId dedupe and posted nothing new
+    // (deduped: true). Also asserts requestId itself lands in newValue.
+    const auditRows = await prisma.auditLog.findMany({
+      where: { action: 'SHOP_COLLECT_SETTLED', entityId: cRetry.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(auditRows, 'Expected 2 audit rows — one per call').toHaveLength(2);
+    const [firstAudit, secondAudit] = auditRows as Array<{
+      newValue: { requestId?: string | null; deduped?: boolean } | null;
+    }>;
+    expect(firstAudit.newValue?.requestId).toBe(requestId);
+    expect(firstAudit.newValue?.deduped, 'First call posted a fresh JE — deduped must be false').toBe(false);
+    expect(secondAudit.newValue?.requestId).toBe(requestId);
+    expect(secondAudit.newValue?.deduped, 'Retry hit the requestId dedupe — deduped must be true').toBe(true);
   });
 
   it('requestId เดิมซ้ำแต่ยอดเปลี่ยน → ConflictException (ห้ามกลืนเงียบ ยอดใหม่ต้องไม่หาย)', async () => {

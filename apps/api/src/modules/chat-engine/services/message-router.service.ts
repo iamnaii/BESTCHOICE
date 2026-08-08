@@ -13,6 +13,7 @@ import {
   DOMAIN_HANDLER_TOKEN,
 } from '../interfaces/domain-handler.interface';
 import { RoomManagerService } from './room-manager.service';
+import { isStorageKey } from './media-url.util';
 import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
@@ -539,6 +540,22 @@ export class MessageRouterService {
       return { success: false, error: 'ไม่มีเนื้อหาที่จะส่ง' };
     }
 
+    // Fail fast BEFORE persisting: an IMAGE whose delivery URL is a storage key
+    // (or missing) would reach LINE/FB as a non-https URL, get rejected, and leave
+    // the saved row stuck undelivered forever. mediaUrl may stay a storage key
+    // (that's what we persist; inbox re-signs on read) — but the URL handed to the
+    // channel must be public https (task-1 review I1).
+    if ((params.type ?? MessageType.TEXT) === MessageType.IMAGE) {
+      const candidateDeliveryUrl = params.deliveryMediaUrl ?? params.mediaUrl;
+      if (!candidateDeliveryUrl || isStorageKey(candidateDeliveryUrl)) {
+        return {
+          success: false,
+          error:
+            'ต้องส่ง deliveryMediaUrl เป็น public URL (https) — mediaUrl ที่เป็น storage key ใช้ส่งออกช่องทางไม่ได้',
+        };
+      }
+    }
+
     const room = await this.roomManager.findById(params.roomId);
     if (!room) {
       this.logger.error(`Room not found: ${params.roomId}`);
@@ -610,7 +627,8 @@ export class MessageRouterService {
       channel: room.channel,
       type: outboundType,
       text: isImageBubble ? undefined : params.text,
-      ...(isImageBubble ? { imageUrl: deliveryUrl, mediaUrl: deliveryUrl } : {}),
+      // adapters read only `imageUrl` (grep: no adapter reads OutboundMessage.mediaUrl)
+      ...(isImageBubble ? { imageUrl: deliveryUrl } : {}),
     });
 
     if (!result.success) {

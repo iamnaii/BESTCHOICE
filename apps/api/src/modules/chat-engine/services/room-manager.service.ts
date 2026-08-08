@@ -703,6 +703,12 @@ export class RoomManagerService {
    * ไม่มี adapter ของ channel) รูปจะไม่ถูก persist เลย. ทั้ง 5 channel ลงทะเบียน
    * adapter ครบที่ chat-adapters.module.ts:85-89 และ roomId มาจากห้องที่เปิดอยู่
    * → เกิดได้เฉพาะตอน config พัง; แอดมินเห็น error จาก toast (Task 8) แล้วส่งใหม่ได้
+   *
+   * แก้แล้ว (2026-08-08, Task 8 forward-flag): แต่ก่อน branch ไฟล์ non-image เรียก
+   * saveMessage ตรงโดยไม่มี P2002 handling — เมื่อ frontend เริ่มส่ง clientMessageId
+   * เดิมซ้ำตอน retry (unique [roomId, clientMessageId]) จะ throw 500 แทนที่จะ
+   * idempotent เหมือน sendStaffMessage. ตอนนี้ catch P2002 แล้วยืนยันว่าแถวเดิมมีจริง
+   * ก่อนคืน success — ดู try/catch รอบ saveMessage ด้านล่าง
    */
   async uploadFile(
     roomId: string,
@@ -759,16 +765,30 @@ export class RoomManagerService {
       };
     }
 
-    await this.saveMessage({
-      roomId,
-      role: MessageRole.STAFF,
-      type: isImage ? MessageType.IMAGE : MessageType.FILE,
-      text: file.originalname,
-      mediaUrl: key,
-      mediaType: file.mimetype,
-      staffId: userId,
-      clientMessageId,
-    });
+    try {
+      await this.saveMessage({
+        roomId,
+        role: MessageRole.STAFF,
+        type: isImage ? MessageType.IMAGE : MessageType.FILE,
+        text: file.originalname,
+        mediaUrl: key,
+        mediaType: file.mimetype,
+        staffId: userId,
+        clientMessageId,
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002' && clientMessageId) {
+        // Retry ด้วย clientMessageId เดิม (ไฟล์ non-image) — แถวก่อนหน้าถูกบันทึกแล้ว
+        // จาก attempt ที่แล้ว (unique [roomId, clientMessageId]). คืนแถวเดิมแทนที่จะ
+        // throw 500 ให้ frontend (idempotent) — เหมือน sendStaffMessage's P2002
+        // branch (message-router.service.ts) แต่ response shape ของ uploadFile ไม่มี
+        // field message ให้คืน จึงแค่ re-fetch ยืนยันว่าแถวมีจริงแล้วปล่อยผ่าน
+        const existing = await this.findByClientMessageId(roomId, clientMessageId);
+        if (!existing) throw e; // unreachable in practice — P2002 implies the row exists
+      } else {
+        throw e;
+      }
+    }
 
     return { success: true, url: downloadUrl, key, filename: file.originalname, delivered: false };
   }

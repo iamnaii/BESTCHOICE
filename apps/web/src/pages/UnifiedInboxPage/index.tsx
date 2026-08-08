@@ -395,18 +395,39 @@ export default function UnifiedInboxPage() {
     [activeRoomId, queryClient],
   );
 
+  // clientMessageId ต่อไฟล์ — คงค่าเดิมไว้ถ้า mutate() ถูกเรียกซ้ำด้วย File object
+  // เดิม (เช่น retry ผ่าน react-query หรือ future retry-button ที่ถือ ref ของไฟล์
+  // เดิมไว้) กันส่งรูปซ้ำให้ลูกค้า (idempotency contract จาก backend: unique
+  // [roomId, clientMessageId] — ดู clientMessageIdRef ใน ProductPickerDialog.tsx
+  // สำหรับ pattern เดียวกัน). ไฟล์ใหม่ (เลือก/ลากไฟล์ใหม่) เป็น File object คนละตัว
+  // เสมอ จึงได้ id ใหม่โดยอัตโนมัติ — ไม่ต้อง reset ref เอง
+  const uploadClientIdsRef = useRef(new WeakMap<File, string>());
+
   const uploadFileMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!activeRoomId) throw new Error('ไม่มี room');
+      let clientMessageId = uploadClientIdsRef.current.get(file);
+      if (!clientMessageId) {
+        clientMessageId = crypto.randomUUID();
+        uploadClientIdsRef.current.set(file, clientMessageId);
+      }
       const formData = new FormData();
       formData.append('file', file);
+      // token กัน double-send เวลา retry (unique [roomId, clientMessageId] ฝั่ง DB)
+      formData.append('clientMessageId', clientMessageId);
       const { data } = await api.post(`/staff-chat/rooms/${activeRoomId}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      return data;
+      return data as { delivered?: boolean; error?: string };
     },
-    onSuccess: () => {
-      toast.success('อัพโหลดไฟล์เรียบร้อย');
+    onSuccess: (data) => {
+      if (data?.delivered) {
+        toast.success('ส่งรูปให้ลูกค้าแล้ว');
+      } else if (data?.error) {
+        toast.error(`อัปโหลดแล้วแต่ส่งถึงลูกค้าไม่สำเร็จ — ${data.error}`);
+      } else {
+        toast.warning('แนบไฟล์ในห้องแล้ว — ลูกค้ายังไม่ได้รับ (ช่องทางนี้ส่งไฟล์ไม่ได้)');
+      }
       if (activeRoomId) {
         queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
       }

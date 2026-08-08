@@ -18,7 +18,10 @@ function makeFile(mimetype: string, originalname: string): Express.Multer.File {
 
 function makeManager() {
   const prisma = {
-    chatMessage: { create: jest.fn().mockResolvedValue({ id: 'm1' }) },
+    chatMessage: {
+      create: jest.fn().mockResolvedValue({ id: 'm1' }),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     chatRoom: {
       findUnique: jest.fn().mockResolvedValue({ firstResponseAt: new Date() }),
       update: jest.fn().mockResolvedValue({}),
@@ -88,5 +91,22 @@ describe('RoomManagerService.uploadFile — รูปต้องถึงลู
     expect(res.success).toBe(true);
     expect(res.delivered).toBe(false);
     expect(res.error).toBe('LINE 400');
+  });
+
+  it('ไฟล์ non-image + retry clientMessageId เดิม (P2002) → คืนแถวเดิม ไม่ throw 500', async () => {
+    const { manager, prisma } = makeManager();
+    const p2002 = Object.assign(new Error('Unique constraint failed on the fields: (`room_id`,`client_message_id`)'), {
+      code: 'P2002',
+    });
+    prisma.chatMessage.create.mockRejectedValueOnce(p2002);
+    prisma.chatMessage.findFirst.mockResolvedValueOnce({ id: 'm-existing', clientMessageId: 'tok-retry' });
+
+    const res = await manager.uploadFile('r1', makeFile('application/pdf', 'doc.pdf'), 'u1', 'tok-retry');
+
+    expect(res.success).toBe(true);
+    expect(res.delivered).toBe(false);
+    expect(prisma.chatMessage.findFirst).toHaveBeenCalledWith({
+      where: { roomId: 'r1', clientMessageId: 'tok-retry' },
+    });
   });
 });

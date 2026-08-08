@@ -1,9 +1,11 @@
 import { Test } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StaffChatController } from './staff-chat.controller';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RoomManagerService } from '../chat-engine/services/room-manager.service';
 import { AssignmentService } from '../chat-engine/services/assignment.service';
@@ -37,6 +39,7 @@ describe('StaffChatController', () => {
   let cannedResponseSender: CannedResponseSenderService;
   let roomManager: RoomManagerService;
   let gateway: StaffChatGateway;
+  let aiAutoReply: AiAutoReplyService;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -74,7 +77,7 @@ describe('StaffChatController', () => {
         { provide: LeadScoringService, useValue: {} },
         { provide: ProductDetectService, useValue: {} },
         { provide: AiTrainingService, useValue: {} },
-        { provide: AiAutoReplyService, useValue: {} },
+        { provide: AiAutoReplyService, useValue: { getRuntimeStatus: jest.fn() } },
         { provide: AiImportService, useValue: {} },
         { provide: AiMetricsService, useValue: {} },
         { provide: ConfigService, useValue: { get: jest.fn() } },
@@ -122,6 +125,7 @@ describe('StaffChatController', () => {
     cannedResponseSender = module.get(CannedResponseSenderService);
     roomManager = module.get(RoomManagerService);
     gateway = module.get(StaffChatGateway);
+    aiAutoReply = module.get(AiAutoReplyService);
   });
 
   describe('GET /staff-chat/rooms/:roomId/canned-responses/:id/preview', () => {
@@ -415,6 +419,31 @@ describe('StaffChatController', () => {
 
       expect(roomManager.getCrossChannelRooms).toHaveBeenCalledWith('room-1');
       expect(result).toEqual(rooms);
+    });
+  });
+
+  describe('GET /staff-chat/ai/status (B3 Task 13)', () => {
+    it('@Roles restricts to OWNER only', () => {
+      const reflector = new Reflector();
+      const roles = reflector.get<string[]>(ROLES_KEY, StaffChatController.prototype.getAiStatus);
+      expect(roles).toEqual(['OWNER']);
+    });
+
+    it('delegates to aiAutoReply.getRuntimeStatus', async () => {
+      const status = {
+        fbBotDisabled: false,
+        fbWhitelistCount: 0,
+        centralBranchSet: true,
+        promptpaySet: true,
+        tiktokAdapterStub: true,
+        financeBotSeparatePipeline: true,
+      };
+      jest.spyOn(aiAutoReply, 'getRuntimeStatus').mockResolvedValue(status);
+
+      const result = await controller.getAiStatus();
+
+      expect(aiAutoReply.getRuntimeStatus).toHaveBeenCalledWith();
+      expect(result).toEqual(status);
     });
   });
 });

@@ -673,6 +673,12 @@ export class StaffChatController {
     return this.aiAutoReply.getSettings();
   }
 
+  @Get('ai/status')
+  @Roles('OWNER')
+  async getAiStatus() {
+    return this.aiAutoReply.getRuntimeStatus();
+  }
+
   @Patch('ai/settings')
   @Roles('OWNER')
   async updateAiSettings(@Body() dto: UpdateAiSettingsDto) {

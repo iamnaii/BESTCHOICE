@@ -479,3 +479,72 @@ describe('AiAutoReplyService.llmProvider — get + update + cache invalidation',
     });
   });
 });
+
+describe('AiAutoReplyService.getRuntimeStatus', () => {
+  let svc: AiAutoReplyService;
+  let prisma: { systemConfig: { findMany: jest.Mock } };
+  let configGet: jest.Mock;
+
+  beforeEach(async () => {
+    configGet = jest.fn().mockReturnValue(undefined);
+    prisma = {
+      systemConfig: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        AiAutoReplyService,
+        { provide: ConfigService, useValue: { get: configGet } },
+        { provide: PrismaService, useValue: prisma },
+        { provide: AiSuggestService, useValue: {} },
+        { provide: SalesBotService, useValue: { generateReply: jest.fn() } },
+        { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
+        { provide: LlmProviderRegistry, useValue: makeLlmRegistryMock() },
+        { provide: PersonaService, useValue: makePersonaMock() },
+      ],
+    }).compile();
+    svc = mod.get(AiAutoReplyService);
+  });
+
+  it('reports fbBotDisabled=true + whitelist count from env, without extra DB queries', async () => {
+    configGet.mockImplementation((key: string) => {
+      if (key === 'FB_BOT_DISABLED') return 'true';
+      if (key === 'FB_BOT_WHITELIST_PSIDS') return 'psid-1, psid-2,  psid-3 ';
+      return undefined;
+    });
+
+    const status = await svc.getRuntimeStatus();
+
+    expect(status.fbBotDisabled).toBe(true);
+    expect(status.fbWhitelistCount).toBe(3);
+    // getRuntimeStatus reuses getSettings() — no separate DB round trip
+    expect(prisma.systemConfig.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports fbBotDisabled=false + fbWhitelistCount=0 when env unset', async () => {
+    const status = await svc.getRuntimeStatus();
+    expect(status.fbBotDisabled).toBe(false);
+    expect(status.fbWhitelistCount).toBe(0);
+  });
+
+  it('derives centralBranchSet/promptpaySet from SystemConfig (via getSettings)', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_central_branch_id', value: 'branch-1' },
+      { key: 'shop_bot_promptpay_id', value: '0812345678' },
+    ]);
+    const status = await svc.getRuntimeStatus();
+    expect(status.centralBranchSet).toBe(true);
+    expect(status.promptpaySet).toBe(true);
+  });
+
+  it('centralBranchSet/promptpaySet are false when SystemConfig rows are missing', async () => {
+    const status = await svc.getRuntimeStatus();
+    expect(status.centralBranchSet).toBe(false);
+    expect(status.promptpaySet).toBe(false);
+  });
+
+  it('tiktokAdapterStub and financeBotSeparatePipeline are always true (architectural constants)', async () => {
+    const status = await svc.getRuntimeStatus();
+    expect(status.tiktokAdapterStub).toBe(true);
+    expect(status.financeBotSeparatePipeline).toBe(true);
+  });
+});

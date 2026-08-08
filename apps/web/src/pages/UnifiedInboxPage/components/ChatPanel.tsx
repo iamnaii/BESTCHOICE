@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import MessageBubble from './MessageBubble';
 import { swapRoomDraft } from './composer-draft';
 import SessionActions from './SessionActions';
 import MessageTemplatePicker from './MessageTemplatePicker';
+import ProductPickerDialog from './ProductPickerDialog';
 import AiSuggestPanel from './AiSuggestPanel';
 import { useKeyboardShortcuts, isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
@@ -151,6 +152,7 @@ export default function ChatPanel({
   const [showActions, setShowActions] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showProductPicker, setShowProductPicker] = useState(false);
   // picker top-level tab
   type PickerTab = 'emoji' | 'sticker' | 'gif';
   const [pickerTab, setPickerTab] = useState<PickerTab>('emoji');
@@ -477,6 +479,21 @@ export default function ChatPanel({
     setInputText(text);
     setSelectedSuggestion(metadata);
     inputRef.current?.focus();
+  };
+
+  const insertAtCaret = (content: string) => {
+    const textarea = inputRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart ?? inputText.length;
+      const end = textarea.selectionEnd ?? inputText.length;
+      setInputText(inputText.slice(0, start) + content + inputText.slice(end));
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + content.length;
+        textarea.focus();
+      });
+    } else {
+      setInputText((prev) => prev + (prev ? '\n' : '') + content);
+    }
   };
 
   if (!session) {
@@ -1003,6 +1020,16 @@ export default function ChatPanel({
                 )}
               </PopoverContent>
             </Popover>
+            {/* Product picker */}
+            <button
+              onClick={() => setShowProductPicker(true)}
+              disabled={!session?.id}
+              aria-label="ส่งข้อมูลสินค้า"
+              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="ส่งข้อมูล/รูปสินค้า"
+            >
+              <Smartphone className="w-4 h-4" />
+            </button>
             {/* Message template picker */}
             <button
               onClick={() => setShowTemplatePicker(true)}
@@ -1061,22 +1088,14 @@ export default function ChatPanel({
       <MessageTemplatePicker
         isOpen={showTemplatePicker}
         onClose={() => setShowTemplatePicker(false)}
-        onInsert={(content) => {
-          // Insert at the caret (like emoji insertion) rather than always
-          // appending, so a snippet dropped mid-message lands where intended.
-          const textarea = inputRef.current;
-          if (textarea) {
-            const start = textarea.selectionStart ?? inputText.length;
-            const end = textarea.selectionEnd ?? inputText.length;
-            setInputText(inputText.slice(0, start) + content + inputText.slice(end));
-            requestAnimationFrame(() => {
-              textarea.selectionStart = textarea.selectionEnd = start + content.length;
-              textarea.focus();
-            });
-          } else {
-            setInputText((prev) => prev + (prev ? '\n' : '') + content);
-          }
-        }}
+        onInsert={insertAtCaret}
+        roomId={session?.id ?? null}
+      />
+
+      <ProductPickerDialog
+        isOpen={showProductPicker}
+        onClose={() => setShowProductPicker(false)}
+        onInsert={insertAtCaret}
         roomId={session?.id ?? null}
       />
     </div>

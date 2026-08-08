@@ -304,6 +304,19 @@ export class RoomManagerService {
     } catch (err) {
       // echo webhook อาจมาถึงก่อน HTTP ของเราจะ return แล้วจอง mid ไปก่อน —
       // ยอมเสีย stamp ดีกว่า throw (ข้อความส่งถึงลูกค้าแล้ว ถ้า throw client จะ retry = ส่งซ้ำ)
+      //
+      // Accepted residual: this fallback only narrows the FB-echo-duplicate window,
+      // it does NOT eliminate it. In the race that lands here, `mirrorOutbound`
+      // (message-router.service.ts) has ALREADY inserted the echo as a second
+      // ChatMessage row before this update collided — this P2002 fires strictly
+      // after that insert, so there is no undo path back to one row here. What this
+      // fallback DOES prevent is compounding that into a second problem: without it,
+      // markOutboundSent would throw, the caller would treat the send as failed, and
+      // a client retry would re-deliver the message to the customer for real (see
+      // sendStaffMessage's own "Accepted residual" jsdoc — this is the same class of
+      // unavoidable-without-2PC gap, one layer down). Trigger: env `FACEBOOK_APP_ID`
+      // unset or mismatched, so facebook-webhook.controller.ts's layer-1 app_id check
+      // (:319-330) can't short-circuit the echo before it reaches mirrorOutbound.
       if ((err as { code?: string })?.code === 'P2002' && externalMessageId) {
         this.logger.warn(
           `[markOutboundSent] externalMessageId ${externalMessageId} ถูกใช้แล้ว — stamp เฉพาะ outboundSentAt`,

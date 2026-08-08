@@ -526,6 +526,9 @@ export function RepossessionOverlay({
               onChange={(e) => setPaymentDate(e.target.value)}
               className={`${inputClass} font-mono`}
             />
+            <p className="text-xs text-muted-foreground leading-snug mt-1">
+              ย้อนหลังได้ภายในเดือนนี้เท่านั้น
+            </p>
           </div>
           {/* Shop-collect toggle — mirrors early payoff (JP4) */}
           <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-3 py-3 mb-3">

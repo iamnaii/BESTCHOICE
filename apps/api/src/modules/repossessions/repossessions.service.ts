@@ -326,6 +326,15 @@ export class RepossessionsService {
     if (isFutureBkkDay(paymentDate)) {
       throw new BadRequestException('วันที่รับเงินต้องไม่เป็นวันในอนาคต');
     }
+    // คำสั่งเจ้าของ 2026-08-08 (ข้อ 3): ใบลดหนี้ (CN) ออกวันที่/เลขที่เดือนปัจจุบันเสมอ
+    // → JE ต้องอยู่เดือนเดียวกัน ไม่งั้นงวด ภ.พ.30 ของ VAT reversal กับเอกสารแยกกัน
+    const bkkMonth = (d: Date) =>
+      d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(0, 7);
+    if (bkkMonth(paymentDate) !== bkkMonth(new Date())) {
+      throw new BadRequestException(
+        'วันที่รับเงินย้อนหลังได้เฉพาะภายในเดือนปัจจุบัน (ใบลดหนี้ต้องอยู่งวดภาษีเดียวกับ JE)',
+      );
+    }
     // Period-lock guard (mirror JP4 J3): cannot book a repossession JE into a
     // closed (FINANCE) accounting period. Repossessions previously had no
     // guard at all — JEs always landed on "now", which masked the gap.

@@ -574,15 +574,77 @@ describe('RepossessionsService', () => {
       ).rejects.toThrow(/อนาคต/);
     });
 
+    it('create() ปฏิเสธ paymentDate เดือนก่อนหน้า (ห้ามข้ามเดือน — คำสั่งเจ้าของ 2026-08-08 ข้อ 3)', async () => {
+      const prevMonth = new Date();
+      prevMonth.setDate(1);
+      prevMonth.setDate(0); // วันสุดท้ายของเดือนก่อน
+      await expect(
+        service.create(
+          {
+            contractId: 'contract-1',
+            repossessedDate: '2026-08-01',
+            conditionGrade: 'B',
+            appraisalPrice: 5000,
+            paymentDate: prevMonth.toISOString(),
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow('วันที่รับเงินย้อนหลังได้เฉพาะภายในเดือนปัจจุบัน');
+    });
+
+    it('create() ผ่านเมื่อ paymentDate อยู่ภายในเดือนปัจจุบัน (ไม่ปฏิเสธด้วยข้อความ "ห้ามข้ามเดือน")', async () => {
+      // ให้ payments ทั้งหมด PAID → outstandingBalance = 0 → ข้าม JP5/CN path ทั้งชุด
+      // (มิเรอร์ pattern ของเทสต์ 'create() โหลด payments เฉพาะ deletedAt:null' ด้านล่าง)
+      const allPaid = makeContract({ status: 'TERMINATED' }).payments.map((p) => ({
+        ...p,
+        status: 'PAID',
+        amountPaid: p.amountDue,
+      }));
+      prisma.contract.findUnique.mockResolvedValue(
+        makeContract({ status: 'TERMINATED', payments: allPaid }),
+      );
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      await expect(
+        service.create(
+          {
+            contractId: 'contract-1',
+            repossessedDate: '2026-08-01',
+            conditionGrade: 'B',
+            appraisalPrice: 5000,
+            paymentDate: new Date().toISOString(),
+          },
+          'user-1',
+        ),
+      ).resolves.toBeDefined();
+    });
+
     it('rejects a paymentDate inside a CLOSED FINANCE period past the grace window', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
-      // validatePeriodOpen only runs when the client exposes accountingPeriod
+      // Task 1 (คำสั่งเจ้าของ 2026-08-08 ข้อ 3) บังคับ paymentDate ให้อยู่ภายใน
+      // เดือนปัจจุบันเท่านั้น (guard ใหม่ทำงานก่อน validatePeriodOpen เสมอ) — ผลคือ
+      // สถานการณ์เดิมของเทสต์นี้ ("เดือนปัจจุบัน" + "เลย grace window") เป็นไปไม่ได้
+      // ในทางคณิตศาสตร์อีกต่อไป: graceEnd = วันสุดท้ายของเดือนปัจจุบัน + graceDays
+      // ซึ่ง >= "วันนี้" เสมอตราบใดที่ "วันนี้" ยังอยู่ในเดือนนั้น จึง `now > graceEnd`
+      // เป็นเท็จเสมอ — ไม่มีทางประกอบวันที่จริงให้ตกกิ่ง "ปิดแล้ว+เลย grace" ได้อีก
+      // (คณิตศาสตร์ grace-window เองยังมี unit test ครบที่ period-lock.util.spec.ts
+      // ไม่ได้รับผลกระทบ — ไฟล์นั้นไม่ผ่าน paymentDate ผ่าน repossessions guard)
+      // จึงปรับเทสต์นี้ให้ mock การ query งวดบัญชีให้ reject ตรงๆ แทน — ยังพิสูจน์
+      // wiring เดิมได้ครบ: create() ต้อง propagate การ reject จาก period lookup
+      // และห้ามเรียก jp5.execute ก่อนหน้านั้น (ลำดับ guard ยังถูกต้อง)
       prisma.accountingPeriod = {
-        findUnique: jest.fn().mockResolvedValue({ status: 'CLOSED' }),
+        findUnique: jest
+          .fn()
+          .mockRejectedValue(
+            new BadRequestException('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/08 สถานะ: CLOSED)'),
+          ),
       };
 
       await expect(
-        service.create({ ...baseDto, paymentDate: '2020-01-15' } as never, 'user-1'),
+        service.create({ ...baseDto, paymentDate: new Date().toISOString() } as never, 'user-1'),
       ).rejects.toThrow(/งวดที่ปิดแล้ว/);
       expect(jp5.execute).not.toHaveBeenCalled();
     });
@@ -601,10 +663,15 @@ describe('RepossessionsService', () => {
       prisma.contract.update.mockResolvedValue({});
       prisma.product.update.mockResolvedValue({});
 
-      await service.create({ ...baseDto, paymentDate: '2026-01-10' } as never, 'user-1');
+      // วันที่ 1 ของเดือนปัจจุบัน (ไม่ใช่วันในอนาคต, ไม่ข้ามเดือน) แทนค่า hardcode
+      // เดิม '2026-01-10' ที่ตกเป็นเดือนก่อนหน้าเมื่อรันหลัง 2026-08-08 (task-1 guard)
+      const now = new Date();
+      const paymentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+      await service.create({ ...baseDto, paymentDate: paymentDateStr } as never, 'user-1');
 
       expect(jp5.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ postedAt: new Date('2026-01-10') }),
+        expect.objectContaining({ postedAt: new Date(paymentDateStr) }),
         prisma,
       );
     });

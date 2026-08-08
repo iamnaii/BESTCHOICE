@@ -13,7 +13,6 @@ import {
   DOMAIN_HANDLER_TOKEN,
 } from '../interfaces/domain-handler.interface';
 import { RoomManagerService } from './room-manager.service';
-import { isStorageKey } from './media-url.util';
 import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
@@ -547,7 +546,12 @@ export class MessageRouterService {
     // channel must be public https (task-1 review I1).
     if ((params.type ?? MessageType.TEXT) === MessageType.IMAGE) {
       const candidateDeliveryUrl = params.deliveryMediaUrl ?? params.mediaUrl;
-      if (!candidateDeliveryUrl || isStorageKey(candidateDeliveryUrl)) {
+      // Positive allow-list (fix round 2): only public http(s) may reach the channel.
+      // NOT `isStorageKey()` — that helper deliberately lets `line://` refs through
+      // (read/sign-path semantics), but LINE cannot fetch a `line://` value either;
+      // a legacy row's mediaUrl forwarded here unresolved must be rejected the same
+      // way as a raw storage key.
+      if (!candidateDeliveryUrl || !/^https?:\/\//i.test(candidateDeliveryUrl)) {
         return {
           success: false,
           error:

@@ -228,3 +228,29 @@ describe('GetInstallmentRatesTool.run', () => {
     expect(keys.has('monthlyPrice')).toBe(true);
   });
 });
+
+describe('storage parsing หลัง re-point ไป util B0 (B3 Task 5)', () => {
+  it('ตัด token ความจุออกจาก modelQuery แล้วยัง match รุ่นได้', async () => {
+    const prisma = makePrisma([
+      tpl({ model: 'iPhone 15 Pro Max', storage: '256GB' }),
+      tpl({ model: 'iPhone 15 Pro Max', storage: '512GB' }),
+    ]);
+    const tool = new GetInstallmentRatesTool(prisma);
+    const r = await tool.run({ query: 'iPhone 15 Pro Max 256 gb' });
+    // where.OR ต้องใช้คำที่ไม่มี "256 gb" ปนอยู่ ไม่งั้น contains ไม่เจออะไรเลย
+    const where = (prisma.pricingTemplate.findMany as unknown as jest.Mock).mock.calls[0][0].where;
+    expect(JSON.stringify(where)).not.toContain('256');
+    // และ refine ตามความจุที่ลูกค้าระบุ
+    expect(r.templates).toHaveLength(1);
+    expect(r.templates[0].storage).toBe('256GB');
+  });
+
+  it('ความจุที่ลูกค้าขอไม่มีในตาราง → ไม่ทิ้งผลทั้งหมด (คง exact-then-fallback)', async () => {
+    const tool = new GetInstallmentRatesTool(
+      makePrisma([tpl({ model: 'iPhone 15', storage: '128GB' })]),
+    );
+    const r = await tool.run({ query: 'iPhone 15 1TB' });
+    expect(r.templates).toHaveLength(1);
+    expect(r.templates[0].storage).toBe('128GB');
+  });
+});

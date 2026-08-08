@@ -209,4 +209,92 @@ describe('ChatCommerceService.sendProductCard — 2 bubble idempotent', () => {
     );
     expect(adapter.sendMessage.mock.calls[1][0].text).toContain('เงินสด 19,500 บาท');
   });
+
+  // Review fix round 1 [I1] — idempotency ที่ระดับ sendProductCard (ไม่ใช่แค่ primitive):
+  // bubble รูปสำเร็จ, bubble ข้อความล้มเหลว, retry ด้วย clientMessageId เดิม —
+  // ลูกค้าต้องไม่ได้รูปซ้ำ (adapter IMAGE รวม 1 ครั้ง) แต่ต้องได้ข้อความ (adapter TEXT รวม 2 ครั้ง
+  // เพราะครั้งแรกไม่เคยถึงลูกค้า). ใช้ MessageRouterService ตัวจริง + fake adapter เหมือนเคสข้างบน
+  // แต่ roomManager เป็น in-memory store จริง (ไม่ใช่ mock เดี่ยว) เพื่อให้เห็นสถานะ
+  // outboundSentAt ข้าม call ของ sendProductCard สองครั้ง
+  it('retry หลัง bubble ข้อความล้มเหลว → resend เฉพาะข้อความ, ลูกค้าไม่ได้รูปซ้ำ (idempotent ที่ระดับ sendProductCard)', async () => {
+    const prisma = { product: { findFirst: jest.fn().mockResolvedValue(PRODUCT) } };
+    const productQuote = {
+      getQuotes: jest.fn().mockResolvedValue([
+        { cashPrice: 19500, installmentPrice: 20000, months: 12, monthlyPayment: 1926, downAmount: 4000 },
+      ]),
+    };
+
+    type Row = { id: string; clientMessageId: string | null; createdAt: Date; outboundSentAt: Date | null };
+    const rows = new Map<string, Row>();
+    let seq = 0;
+    const roomManager = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'r1',
+        channel: ChatChannel.LINE_SHOP,
+        externalUserId: 'U1',
+        lineUserId: null,
+      }),
+      findByClientMessageId: jest.fn(async (_roomId: string, clientMessageId: string) => rows.get(clientMessageId) ?? null),
+      saveMessage: jest.fn(async (params: any) => {
+        seq += 1;
+        const row: Row = {
+          id: `m${seq}`,
+          clientMessageId: params.clientMessageId ?? null,
+          createdAt: new Date(),
+          outboundSentAt: null,
+        };
+        if (params.clientMessageId) rows.set(params.clientMessageId, row);
+        return row;
+      }),
+      markOutboundSent: jest.fn(async (messageId: string) => {
+        for (const row of rows.values()) {
+          if (row.id === messageId) row.outboundSentAt = new Date();
+        }
+      }),
+    };
+    const adapter = {
+      channel: ChatChannel.LINE_SHOP,
+      sendMessage: jest
+        .fn()
+        .mockResolvedValueOnce({ success: true, externalMessageId: 'ext-img' }) // IMAGE ครั้งแรก สำเร็จ
+        .mockResolvedValueOnce({ success: false, error: 'LINE 500' }) // TEXT ครั้งแรก ล้มเหลว
+        .mockResolvedValueOnce({ success: true, externalMessageId: 'ext-txt' }), // TEXT retry สำเร็จ
+    };
+    const router = new MessageRouterService(
+      roomManager as any,
+      { initiateHandoff: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue(undefined) } as any,
+    );
+    router.registerAdapter(adapter as any);
+    const svc = new ChatCommerceService(prisma as any, roomManager as any, router, productQuote as any);
+
+    const first = await svc.sendProductCard({
+      sessionId: 'r1',
+      staffId: 'u1',
+      productId: 'p1',
+      clientMessageId: 'tok',
+    });
+    expect(first).toEqual({ sent: 1, photoSkipped: false, errors: ['LINE 500'] });
+
+    // retry ด้วย clientMessageId เดิมเป๊ะ
+    const second = await svc.sendProductCard({
+      sessionId: 'r1',
+      staffId: 'u1',
+      productId: 'p1',
+      clientMessageId: 'tok',
+    });
+    expect(second).toEqual({ sent: 2, photoSkipped: false, errors: [] }); // สภาพสุดท้าย = ครบ 2 bubble
+
+    // IMAGE ถูกส่งออกช่องทางจริงแค่ 1 ครั้งรวม (dedup ข้าม retry — ลูกค้าไม่ได้รูปซ้ำ)
+    const imageCalls = adapter.sendMessage.mock.calls.filter(([m]: any[]) => m.type === MessageType.IMAGE);
+    expect(imageCalls).toHaveLength(1);
+    // TEXT ถูกส่งออก 2 ครั้งรวม (ครั้งแรกล้มเหลวไม่เคยถึงลูกค้า + retry ส่งใหม่สำเร็จ)
+    const textCalls = adapter.sendMessage.mock.calls.filter(([m]: any[]) => m.type === MessageType.TEXT);
+    expect(textCalls).toHaveLength(2);
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(3);
+
+    // DB: มีแถวจริงแค่ 2 แถว (IMAGE 1 + TEXT 1) — retry ไม่ insert ซ้ำ
+    expect(roomManager.saveMessage).toHaveBeenCalledTimes(2);
+    expect(rows.size).toBe(2);
+  });
 });

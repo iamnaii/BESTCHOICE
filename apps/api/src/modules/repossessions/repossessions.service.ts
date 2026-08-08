@@ -623,6 +623,10 @@ export class RepossessionsService {
    * ติ๊ก "ตั้งลูกหนี้เงินคืน" ไว้ตอนยึดจริง (customerRefundEnabled) ไม่งั้น
    * ไม่มี 21-1107 ให้ล้าง — RefundPayoutTemplate เองก็จะ throw ถ้ายอดคงเหลือ
    * เป็น 0 อยู่แล้ว แต่เช็คตรงนี้ก่อนให้ error message เจาะจงกว่า.
+   *
+   * I3 (review): period-lock guard — mirror create()'s guard so a refund JE
+   * cannot post into a CLOSED FINANCE period. Missing FINANCE row fails LOUD
+   * (same pattern as create()) instead of silently no-opping the guard.
    */
   async refundPayment(
     id: string,
@@ -634,6 +638,15 @@ export class RepossessionsService {
     if (!repo.customerRefundEnabled) {
       throw new BadRequestException('ไม่ได้ติ๊กคืนเงินส่วนต่างไว้ตอนยึด');
     }
+
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!financeCompany) {
+      throw new InternalServerErrorException('FINANCE company not configured');
+    }
+    await validatePeriodOpen(this.prisma, new Date(), financeCompany.id);
 
     const payoutResult = await this.prisma.$transaction(
       async (tx) => {
@@ -655,7 +668,7 @@ export class RepossessionsService {
             entity: 'repossession',
             entityId: id,
             newValue: {
-              amount: String(dto.amount),
+              amount: new Prisma.Decimal(dto.amount).toFixed(2),
               depositAccountCode: dto.depositAccountCode,
               requestId: dto.requestId ?? null,
               deduped: result.deduped,

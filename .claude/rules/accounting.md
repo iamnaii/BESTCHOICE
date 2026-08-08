@@ -40,7 +40,7 @@ Key codes referenced by JE templates:
 | 21-1101 | เจ้าหนี้-หน้าร้าน (ยอดจัด) |
 | 21-1102 | เจ้าหนี้ค่าคอม-หน้าร้าน |
 | 21-1103 | เงินรับล่วงหน้า (Advance from customer) |
-| 21-1107 | เจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (ตั้ง ณ วันยึดเมื่อราคากลาง > ยอดปิด — JP5; ล้างเมื่อจ่ายคืนผ่าน RefundPayoutTemplate) |
+| 21-1107 | เจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (ตั้ง ณ วันยึดเมื่อราคากลาง > ยอดปิด — JP5; ล้างเมื่อจ่ายคืนผ่าน RefundPayoutTemplate) (prod: ต้องรัน seed:coa หลัง deploy — บัญชีใหม่ไม่ได้ seed อัตโนมัติใน pipeline) |
 | 21-2101 | ภาษีขาย ภ.พ.30 (VAT Output — settled) |
 | 21-2102 | ภาษีขายรอเรียกเก็บ (VAT Deferred Output) |
 | 21-2103 | VAT บังคับ-ลูกหนี้ค้าง 60 วัน |
@@ -170,10 +170,10 @@ npx prisma migrate deploy
 
 For fresh dev environments (`prisma migrate reset`): ordering is automatic — no manual wipe needed.
 
-Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds ผัง FINANCE ทั้งชุดจาก CPA CSV (ปัจจุบัน 110 บัญชี).
+Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds ผัง FINANCE ทั้งชุดจาก CPA CSV (ปัจจุบัน 111 บัญชี (ณ 2026-08-08 หลังเพิ่ม 21-1107)).
 
 After wipe + migrate, verify (P3-SP5 DEEP fix C4 — counts split by company):
-1. `SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';` — expected 110 (FINANCE, ณ 2026-08-03 หลังลบ 42-1106/42-1107 — เลขนี้เดินตาม `finance-coa.csv` เสมอ อย่าจำเป็นค่าคงที่ ให้นับจาก CSV)
+1. `SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';` — expected 111 (ณ 2026-08-08 — เลขนี้เดินตาม finance-coa.csv เสมอ) (FINANCE — อย่าจำเป็นค่าคงที่ ให้นับจาก CSV)
 2. `SELECT COUNT(*) FROM chart_of_accounts WHERE code LIKE 'S%';` — expected ~56 (SHOP, P3-SP5)
 3. Smoke one contract end-to-end via UI
 4. Run TB report (`scope=FINANCE`) and confirm it balances

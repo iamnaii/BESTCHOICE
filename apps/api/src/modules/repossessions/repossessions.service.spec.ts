@@ -9,6 +9,7 @@ import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.tem
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
+import * as periodLockUtil from '../../utils/period-lock.util';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1029,7 +1030,7 @@ describe('RepossessionsService', () => {
       );
     });
 
-    it('writes a REFUND_PAYOUT audit log with amount/depositAccountCode/requestId/deduped', async () => {
+    it('writes a REFUND_PAYOUT audit log with amount (2dp Decimal string, matches JE metadata shape)/depositAccountCode/requestId/deduped (M3 review)', async () => {
       prisma.repossession.findUnique.mockResolvedValue(
         makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
       );
@@ -1044,7 +1045,7 @@ describe('RepossessionsService', () => {
           entity: 'repossession',
           entityId: 'repo-1',
           newValue: {
-            amount: '1810',
+            amount: '1810.00',
             depositAccountCode: '11-1201',
             requestId: 'req-1',
             deduped: true,
@@ -1086,6 +1087,52 @@ describe('RepossessionsService', () => {
       await expect(
         service.refundPayment('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' }, dto),
       ).rejects.toThrow(NotFoundException);
+      expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    // I3 (review, Task 2): refundPayment must not post an accounting entry
+    // into a CLOSED FINANCE period. Note on determinism: unlike create(),
+    // refundPayment always books to `new Date()` (today) — the transaction
+    // date can never fall in a past/CLOSED-and-past-grace month by
+    // construction, so a real "CLOSED + past grace window" rejection cannot
+    // be reproduced deterministically through validatePeriodOpen's actual
+    // date math (mirrors the reasoning already documented on create()'s
+    // grace-window test above). Strongest deterministic option: spy on
+    // validatePeriodOpen to force the throw, which simultaneously proves (a)
+    // the guard is wired with the correct (prisma, date≈now, FINANCE
+    // companyId) args, (b) the real BadRequestException propagates out of
+    // refundPayment, and (c) the guard runs BEFORE the $transaction/template
+    // (proven by RefundPayoutTemplate.execute never being called).
+    it('period guard rejects when validatePeriodOpen throws (CLOSED period past grace) — runs BEFORE the transaction', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      const spy = jest
+        .spyOn(periodLockUtil, 'validatePeriodOpen')
+        .mockRejectedValueOnce(
+          new BadRequestException('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/07 สถานะ: CLOSED)'),
+        );
+
+      await expect(service.refundPayment('repo-1', owner, dto)).rejects.toThrow(
+        'ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว',
+      );
+
+      expect(spy).toHaveBeenCalledWith(prisma, expect.any(Date), 'company-finance');
+      expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+
+      spy.mockRestore();
+    });
+
+    it('fails loud when FINANCE company is not configured (period guard must not silently no-op)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      prisma.companyInfo.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.refundPayment('repo-1', owner, dto)).rejects.toThrow(
+        'FINANCE company not configured',
+      );
       expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
     });
   });

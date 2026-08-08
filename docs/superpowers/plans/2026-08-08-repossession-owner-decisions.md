@@ -149,4 +149,5 @@ service create(): ที่จุดเรียก `repossessionJP5Template.exe
 
 - [ ] jest + integration + types ทั้งหมดเขียว
 - [ ] Dispatch `code-reviewer` ตรวจทั้ง branch — แก้ Critical/Important ก่อนไปต่อ
+- [ ] **Prod rollout**: หลัง merge ต้องรัน `npm --prefix apps/api run seed:coa` (non-destructive upsert) ก่อนมีการยึดเครื่องที่ติ๊กคืนเงินส่วนต่าง — ไม่งั้น JournalAuto reject 21-1107 แล้ว rollback ทั้งการยึด (precedent: 11-2107 rollout 2026-06-25)
 - [ ] **STOP — สรุปให้เจ้าของ approve → เปิด PR** (ระบุใน PR ว่า supersede คำถาม CPA + ถ้า #1398 merge แล้วให้ rebase ก่อนเปิด)

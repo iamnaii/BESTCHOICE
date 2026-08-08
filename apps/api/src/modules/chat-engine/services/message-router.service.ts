@@ -641,7 +641,9 @@ export class MessageRouterService {
     }
 
     // Delivered — stamp the idempotency flag so a retry won't re-send.
-    await this.roomManager.markOutboundSent(saved.id);
+    // externalMessageId (if the adapter returns one, e.g. FB `mid`) is also
+    // stamped here — see markOutboundSent jsdoc for why (FB echo dedup).
+    await this.roomManager.markOutboundSent(saved.id, result.externalMessageId);
     return {
       success: true,
       message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },

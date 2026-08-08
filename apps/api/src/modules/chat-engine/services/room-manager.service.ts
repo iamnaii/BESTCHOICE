@@ -285,12 +285,37 @@ export class RoomManagerService {
     });
   }
 
-  /** Mark a message as successfully delivered to the customer (idempotency flag). */
-  async markOutboundSent(messageId: string): Promise<void> {
-    await this.prisma.chatMessage.update({
-      where: { id: messageId },
-      data: { outboundSentAt: new Date() },
-    });
+  /**
+   * Mark a message as successfully delivered to the customer (idempotency flag).
+   * เก็บ platform message id ด้วยเมื่อ adapter คืนมา — FB echo webhook dedup
+   * ชั้นที่ 2 อาศัย UNIQUE บน ChatMessage.externalMessageId
+   * (facebook-webhook.controller.ts:298-303) ถ้าไม่ stamp ไว้ echo ของข้อความที่
+   * เราส่งเองจะกลายเป็น bubble STAFF ซ้ำเมื่อ env FACEBOOK_APP_ID ไม่ได้ตั้ง
+   */
+  async markOutboundSent(messageId: string, externalMessageId?: string): Promise<void> {
+    try {
+      await this.prisma.chatMessage.update({
+        where: { id: messageId },
+        data: {
+          outboundSentAt: new Date(),
+          ...(externalMessageId ? { externalMessageId } : {}),
+        },
+      });
+    } catch (err) {
+      // echo webhook อาจมาถึงก่อน HTTP ของเราจะ return แล้วจอง mid ไปก่อน —
+      // ยอมเสีย stamp ดีกว่า throw (ข้อความส่งถึงลูกค้าแล้ว ถ้า throw client จะ retry = ส่งซ้ำ)
+      if ((err as { code?: string })?.code === 'P2002' && externalMessageId) {
+        this.logger.warn(
+          `[markOutboundSent] externalMessageId ${externalMessageId} ถูกใช้แล้ว — stamp เฉพาะ outboundSentAt`,
+        );
+        await this.prisma.chatMessage.update({
+          where: { id: messageId },
+          data: { outboundSentAt: new Date() },
+        });
+        return;
+      }
+      throw err;
+    }
   }
 
   /** Get recent messages for AI context or display */

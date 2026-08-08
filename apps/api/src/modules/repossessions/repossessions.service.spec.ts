@@ -6,6 +6,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
 import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.template';
+import { RefundWaiveTemplate } from '../journal/cpa-templates/refund-waive.template';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
@@ -124,6 +125,8 @@ describe('RepossessionsService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let refundPayoutTemplate: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let refundWaiveTemplate: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let creditNoteService: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let cnDeliveryServiceMock: any;
@@ -212,6 +215,16 @@ describe('RepossessionsService', () => {
           provide: RefundPayoutTemplate,
           useValue: (refundPayoutTemplate = {
             execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REFUND-MOCK', deduped: false }),
+          }),
+        },
+        {
+          provide: RefundWaiveTemplate,
+          useValue: (refundWaiveTemplate = {
+            execute: jest.fn().mockResolvedValue({
+              entryNo: 'JE-WAIVE-MOCK',
+              waivedAmount: '1810.00',
+              deduped: false,
+            }),
           }),
         },
         {
@@ -1158,6 +1171,149 @@ describe('RepossessionsService', () => {
         'FINANCE company not configured',
       );
       expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // waiveRefund (คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ไม่คืนเงิน)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('waiveRefund', () => {
+    const owner = { id: 'user-1', role: 'OWNER' as const };
+    const dto = { requestId: 'req-waive-1' };
+
+    it('throws BadRequestException when customerRefundEnabled is false (ไม่ได้ติ๊กตอนยึด)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: false }),
+      );
+
+      await expect(service.waiveRefund('repo-1', owner, dto)).rejects.toThrow(BadRequestException);
+      expect(refundWaiveTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('calls RefundWaiveTemplate.execute with contractId from the repossession + requestId, inside $transaction', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+
+      await service.waiveRefund('repo-1', owner, dto);
+
+      expect(refundWaiveTemplate.execute).toHaveBeenCalledWith(
+        {
+          contractId: 'contract-1',
+          postedById: 'user-1',
+          requestId: 'req-waive-1',
+        },
+        prisma, // tx (mock $transaction passes prisma itself as tx)
+      );
+      expect(prisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({ isolationLevel: 'Serializable' }),
+      );
+    });
+
+    it('writes a REFUND_WAIVED audit log with contractId/waivedAmount/requestId/deduped', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      refundWaiveTemplate.execute.mockResolvedValueOnce({
+        entryNo: 'JE-X',
+        waivedAmount: '900.00',
+        deduped: true,
+      });
+
+      await service.waiveRefund('repo-1', owner, dto);
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          action: 'REFUND_WAIVED',
+          entity: 'repossession',
+          entityId: 'repo-1',
+          newValue: {
+            contractId: 'contract-1',
+            waivedAmount: '900.00',
+            requestId: 'req-waive-1',
+            deduped: true,
+          },
+        },
+      });
+    });
+
+    it('returns success + entryNo/waivedAmount/deduped from the template result', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      refundWaiveTemplate.execute.mockResolvedValueOnce({
+        entryNo: 'JE-Y',
+        waivedAmount: '1810.00',
+        deduped: false,
+      });
+
+      const result = await service.waiveRefund('repo-1', owner, dto);
+
+      expect(result).toEqual({
+        success: true,
+        repossessionId: 'repo-1',
+        entryNo: 'JE-Y',
+        waivedAmount: '1810.00',
+        deduped: false,
+      });
+    });
+
+    it('BM ข้ามสาขา → NotFoundException (findOne branch scope) ก่อนถึง template', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          customerRefundEnabled: true,
+          contract: {
+            branchId: 'branch-1',
+            contractNumber: 'BC-202601-0001',
+            customer: { name: 'สมชาย ใจดี' },
+            branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+            payments: [],
+          },
+        }),
+      );
+
+      await expect(
+        service.waiveRefund('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' }, dto),
+      ).rejects.toThrow(NotFoundException);
+      expect(refundWaiveTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    // Mirrors refundPayment's period-guard test above — same rationale: waiveRefund
+    // always books to `new Date()` (today), so a real CLOSED-past-grace rejection
+    // cannot be reproduced deterministically; spy on validatePeriodOpen instead.
+    it('period guard rejects when validatePeriodOpen throws (CLOSED period past grace) — runs BEFORE the transaction', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      const spy = jest
+        .spyOn(periodLockUtil, 'validatePeriodOpen')
+        .mockRejectedValueOnce(
+          new BadRequestException('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/07 สถานะ: CLOSED)'),
+        );
+
+      await expect(service.waiveRefund('repo-1', owner, dto)).rejects.toThrow(
+        'ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว',
+      );
+
+      expect(spy).toHaveBeenCalledWith(prisma, expect.any(Date), 'company-finance');
+      expect(refundWaiveTemplate.execute).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+
+      spy.mockRestore();
+    });
+
+    it('fails loud when FINANCE company is not configured (period guard must not silently no-op)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ customerRefundEnabled: true, contractId: 'contract-1' }),
+      );
+      prisma.companyInfo.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.waiveRefund('repo-1', owner, dto)).rejects.toThrow(
+        'FINANCE company not configured',
+      );
+      expect(refundWaiveTemplate.execute).not.toHaveBeenCalled();
     });
   });
 

@@ -20,3 +20,15 @@ export class RefundPaymentDto {
   @IsOptional()
   requestId?: string;
 }
+
+/**
+ * คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — POST /repossessions/:id/refund-waive body.
+ * ล้างยอด 21-1107 คงเหลือทั้งหมดเข้ารายได้จากการยึด (41-1102) — ไม่มี amount input,
+ * เคลียร์ทั้งยอดคงเหลือเสมอ.
+ */
+export class RefundWaiveDto {
+  /** Client-generated UUID ต่อการกดยืนยันหนึ่งครั้ง — dedupe retry โดยไม่กลืนการยกเลิกซ้ำที่ตั้งใจ. */
+  @IsUUID(4, { message: 'requestId ไม่ถูกต้อง' })
+  @IsOptional()
+  requestId?: string;
+}

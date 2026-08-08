@@ -78,6 +78,7 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 | `EarlyPayoffJP4Template` | Early payoff | Includes Dr 52-1106 (discount) + reverse remaining 11-2106 |
 | `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; optional `input.customerRefund` → Cr 21-1107 (เงินคืนส่วนต่างลูกค้า, คำสั่งเจ้าของ 2026-08-08 ข้อ 2) pushed BEFORE the loss/gain plug is computed — the plug absorbs it automatically (gain shrinks/loss grows by exactly the refund, no separate formula). Paid out later via `RefundPayoutTemplate` |
 | `RefundPayoutTemplate` | Manual — `POST /repossessions/:id/refund-payment` | Dr 21-1107 / Cr depositAccountCode — clears the 21-1107 balance JP5 parked (mirrors `ShopCollectSettlementTemplate`'s outstanding/idempotency pattern, scoped to 21-1107 instead of 11-2107) |
+| `RefundWaiveTemplate` | Manual — `POST /repossessions/:id/refund-waive` | Dr 21-1107 / Cr 41-1102 — ล้างยอด 21-1107 คงเหลือทั้งหมด (ไม่มี amount input) เข้ารายได้จากการยึดสินค้า เมื่อเจ้าของตัดสินใจ "ไม่คืนเงิน" ส่วนต่าง (คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม) |
 | `RescheduleJP6Template` | Reschedule (6a/6b variants) | Reclassify overdue to 21-1103 advance |
 | `Vat60dayMandatoryTemplate` | Daily cron 02:00 BKK | Mandatory VAT on 60-day overdue installments |
 | `Vat60dayReversalTemplate` | Payment after 60-day flag | Reversal when overdue payment received |

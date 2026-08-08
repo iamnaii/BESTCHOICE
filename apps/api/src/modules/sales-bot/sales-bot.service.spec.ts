@@ -6,6 +6,7 @@ import { ListPromotionsTool } from './tools/list-promotions.tool';
 import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool } from './tools/capture-lead.tool';
 import { GetInstallmentRatesTool } from './tools/get-installment-rates.tool';
+import { SearchKnowledgeBaseTool } from './tools/search-knowledge-base.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import { PersonaService } from '../staff-chat/services/persona.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
@@ -27,6 +28,7 @@ describe('SalesBotService', () => {
     const handoff = { run: jest.fn() };
     const captureLead = { run: jest.fn() };
     const getInstallmentRates = { run: jest.fn() };
+    const searchKnowledgeBase = { run: jest.fn() };
     const persona = {
       getBase: jest.fn().mockResolvedValue('test-base'),
       getBotExtras: jest.fn().mockResolvedValue('-extras'),
@@ -45,6 +47,7 @@ describe('SalesBotService', () => {
         { provide: HandoffToHumanTool, useValue: handoff },
         { provide: CaptureLeadTool, useValue: captureLead },
         { provide: GetInstallmentRatesTool, useValue: getInstallmentRates },
+        { provide: SearchKnowledgeBaseTool, useValue: searchKnowledgeBase },
         { provide: PersonaService, useValue: persona },
         { provide: AiUsageService, useValue: aiUsage },
       ],
@@ -59,6 +62,7 @@ describe('SalesBotService', () => {
       handoff,
       captureLead,
       getInstallmentRates,
+      searchKnowledgeBase,
       aiUsage,
     };
   }
@@ -213,6 +217,7 @@ describe('SalesBotService', () => {
       {} as any,
       {} as any,
       {} as any, // GetInstallmentRatesTool — unused by the private estimateConfidence path
+      {} as any, // SearchKnowledgeBaseTool — unused by the private estimateConfidence path
       {} as any, // PersonaService — unused by the private estimateConfidence path
       {} as any, // AiUsageService
     );
@@ -862,6 +867,43 @@ describe('SalesBotService', () => {
       const r = await svc.generateReply({ text: 'มีโปรไหม', roomId: 'r1', customerId: null });
       expect(r.confidence).not.toBe(0.3);
       expect(r.reply).toContain('1,001');
+    });
+  });
+
+  describe('search_knowledge_base ในบอทขาย (B3 Task 8)', () => {
+    it('บอทตอบตัวเลขที่อยู่ใน FAQ ได้โดยไม่โดน grounding block', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [{ id: 't1', name: 'search_knowledge_base', input: { query: 'มัดจำ' } }],
+          inputTokens: 5,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        })
+        .mockResolvedValueOnce({
+          text: 'ค่ามัดจำ 3,000 บาทค่ะ คืนให้เมื่อรับเครื่อง',
+          toolCalls: [],
+          inputTokens: 5,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        });
+      const { svc, searchKnowledgeBase } = await build(chat);
+      searchKnowledgeBase.run.mockResolvedValue({
+        matches: [
+          {
+            intent: 'deposit',
+            category: 'general',
+            responseTemplate: 'ค่ามัดจำ 3,000 บาท คืนเมื่อรับเครื่อง',
+            responseType: 'info',
+            score: 3,
+          },
+        ],
+      });
+
+      const r = await svc.generateReply({ text: 'มัดจำเท่าไหร่', roomId: 'r1', customerId: null });
+      expect(r.confidence).not.toBe(0.3);
+      expect(r.toolsUsed).toContain('search_knowledge_base');
     });
   });
 });

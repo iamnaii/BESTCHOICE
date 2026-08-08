@@ -13,6 +13,10 @@ import {
   GetInstallmentRatesTool,
   GET_INSTALLMENT_RATES_TOOL,
 } from './tools/get-installment-rates.tool';
+import {
+  SearchKnowledgeBaseTool,
+  SEARCH_KNOWLEDGE_BASE_TOOL,
+} from './tools/search-knowledge-base.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import {
   LlmChatMessage,
@@ -84,6 +88,7 @@ export class SalesBotService {
     private readonly handoff: HandoffToHumanTool,
     private readonly captureLead: CaptureLeadTool,
     private readonly getInstallmentRates: GetInstallmentRatesTool,
+    private readonly searchKnowledgeBase: SearchKnowledgeBaseTool,
     private readonly persona: PersonaService,
     private readonly aiUsage: AiUsageService,
   ) {}
@@ -121,6 +126,7 @@ export class SalesBotService {
       HANDOFF_TO_HUMAN_TOOL,
       CAPTURE_LEAD_TOOL,
       GET_INSTALLMENT_RATES_TOOL,
+      SEARCH_KNOWLEDGE_BASE_TOOL,
     ].map(adaptTool);
 
     const messages: LlmChatMessage[] = [
@@ -288,6 +294,8 @@ export class SalesBotService {
         });
       case 'get_installment_rates':
         return this.getInstallmentRates.run(input);
+      case 'search_knowledge_base':
+        return this.searchKnowledgeBase.run({ query: String(input.query ?? '') });
       default:
         return { error: 'unknown_tool' };
     }

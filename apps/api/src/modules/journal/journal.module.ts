@@ -59,6 +59,8 @@ import { ReconcileController } from './reconcile.controller';
 import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-settlement.template';
 // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
 import { RefundPayoutTemplate } from './cpa-templates/refund-payout.template';
+// คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ไม่คืนเงิน (ล้าง 21-1107 เข้ารายได้ 41-1102)
+import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
 
 @Module({
   imports: [PrismaModule],
@@ -121,6 +123,8 @@ import { RefundPayoutTemplate } from './cpa-templates/refund-payout.template';
     ShopCollectSettlementTemplate,
     // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
     RefundPayoutTemplate,
+    // คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ไม่คืนเงิน
+    RefundWaiveTemplate,
   ],
   exports: [
     JournalService,
@@ -175,6 +179,8 @@ import { RefundPayoutTemplate } from './cpa-templates/refund-payout.template';
     ShopCollectSettlementTemplate,
     // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
     RefundPayoutTemplate,
+    // คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ไม่คืนเงิน
+    RefundWaiveTemplate,
   ],
 })
 export class JournalModule {}

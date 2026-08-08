@@ -15,6 +15,7 @@ import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { RepossessionJP5Template, RepossessionJePreview } from '../journal/cpa-templates/repossession-jp5.template';
 import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.template';
+import { RefundWaiveTemplate } from '../journal/cpa-templates/refund-waive.template';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -43,6 +44,7 @@ export class RepossessionsService {
     private journalAutoService: JournalAutoService,
     private repossessionJP5Template: RepossessionJP5Template,
     private refundPayoutTemplate: RefundPayoutTemplate,
+    private refundWaiveTemplate: RefundWaiveTemplate,
     private creditNoteDocumentService: CreditNoteDocumentService,
     private cnDeliveryService: CreditNoteDeliveryService,
   ) {}
@@ -691,6 +693,64 @@ export class RepossessionsService {
     );
 
     return { success: true, repossessionId: id, ...payoutResult };
+  }
+
+  /**
+   * คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม: ล้างหนี้ 21-1107 ที่เหลือทั้งหมดเข้ารายได้
+   * จากการยึดสินค้า (41-1102) เมื่อเจ้าของตัดสินใจ "ไม่คืนเงิน" ส่วนต่างที่ JP5
+   * ตั้งไว้ตอนยึดเครื่อง — Dr 21-1107 / Cr 41-1102. mirror ของ refundPayment
+   * ทุกจุด (findOne branch scope → customerRefundEnabled check → FINANCE
+   * company resolve → period guard → $transaction Serializable) ต่างกันแค่
+   * ไม่มี amount input (เคลียร์ทั้งยอดคงเหลือเสมอ).
+   */
+  async waiveRefund(id: string, user: RequestUser, dto: { requestId?: string }) {
+    const repo = await this.findOne(id, user);
+
+    if (!repo.customerRefundEnabled) {
+      throw new BadRequestException('ไม่ได้ติ๊กคืนเงินส่วนต่างไว้ตอนยึด');
+    }
+
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!financeCompany) {
+      throw new InternalServerErrorException('FINANCE company not configured');
+    }
+    await validatePeriodOpen(this.prisma, new Date(), financeCompany.id);
+
+    const waiveResult = await this.prisma.$transaction(
+      async (tx) => {
+        const result = await this.refundWaiveTemplate.execute(
+          {
+            contractId: repo.contractId,
+            postedById: user.id,
+            requestId: dto.requestId,
+          },
+          tx,
+        );
+
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: 'REFUND_WAIVED',
+            entity: 'repossession',
+            entityId: id,
+            newValue: {
+              contractId: repo.contractId,
+              waivedAmount: result.waivedAmount,
+              requestId: dto.requestId ?? null,
+              deduped: result.deduped,
+            },
+          },
+        });
+
+        return result;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return { success: true, repossessionId: id, ...waiveResult };
   }
 
   /**

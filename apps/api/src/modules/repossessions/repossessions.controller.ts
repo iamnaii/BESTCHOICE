@@ -3,7 +3,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RepossessionsService, RequestUser } from './repossessions.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ReadyForSaleDto } from './dto/ready-for-sale.dto';
-import { RefundPaymentDto } from './dto/refund-payment.dto';
+import { RefundPaymentDto, RefundWaiveDto } from './dto/refund-payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -121,5 +121,16 @@ export class RepossessionsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.repossessionsService.refundPayment(id, user, dto);
+  }
+
+  // คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ไม่คืนเงิน (ล้าง 21-1107 ที่เหลือเข้ารายได้ 41-1102)
+  @Post(':id/refund-waive')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  refundWaive(
+    @Param('id') id: string,
+    @Body() dto: RefundWaiveDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.repossessionsService.waiveRefund(id, user, dto);
   }
 }

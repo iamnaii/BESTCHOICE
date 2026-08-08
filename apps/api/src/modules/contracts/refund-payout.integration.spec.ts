@@ -23,6 +23,7 @@ import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
 import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.template';
+import { RefundWaiveTemplate } from '../journal/cpa-templates/refund-waive.template';
 
 const prisma = new PrismaClient();
 
@@ -296,5 +297,131 @@ describe('refund-payout integration', () => {
       },
     });
     expect(jes).toHaveLength(1);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // refund-waive — คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม: ล้างยอด 21-1107 คงเหลือ
+  // ทั้งหมดเข้ารายได้จากการยึด (41-1102) เมื่อตัดสินใจ "ไม่คืนเงิน". ไม่มี amount
+  // input — เคลียร์ทั้งยอดคงเหลือเสมอ.
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('refund-waive', () => {
+    let waiveTemplate: RefundWaiveTemplate;
+
+    beforeAll(() => {
+      waiveTemplate = new RefundWaiveTemplate(journal, prisma as any);
+    });
+
+    async function getWaiveJe(contractId: string) {
+      return prisma.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'refund-waive' } } as any,
+            { metadata: { path: ['contractId'], equals: contractId } } as any,
+          ],
+          deletedAt: null,
+        },
+        include: { lines: true },
+      });
+    }
+
+    it('FULL WAIVE: JP5 with refund → waive zeroes 21-1107 and credits 41-1102 exactly the refund', async () => {
+      const { contractId } = await seedRefundableRepossession(journal, '1810.00');
+
+      const outstanding = await getNet21_1107(contractId);
+      expect(outstanding.toFixed(2)).toBe('1810.00');
+
+      const result = await waiveTemplate.execute({ contractId });
+      expect(result.deduped).toBe(false);
+      expect(result.waivedAmount).toBe('1810.00');
+
+      const balanceAfter = await getNet21_1107(contractId);
+      expect(
+        balanceAfter.abs().lte('0.01'),
+        `Expected net 21-1107 ≈ 0 after waive, got ${balanceAfter.toFixed(2)}`,
+      ).toBe(true);
+
+      const je = await getWaiveJe(contractId);
+      expect(je, 'Expected refund-waive JE to be created').not.toBeNull();
+
+      const drLine = je!.lines.find(
+        (l) => l.accountCode === '21-1107' && new Decimal(l.debit.toString()).gt(0),
+      );
+      expect(drLine, 'Expected Dr 21-1107 line').toBeDefined();
+      expect(new Decimal(drLine!.debit.toString()).toFixed(2)).toBe('1810.00');
+
+      const crLine = je!.lines.find(
+        (l) => l.accountCode === '41-1102' && new Decimal(l.credit.toString()).gt(0),
+      );
+      expect(crLine, 'Expected Cr 41-1102 line').toBeDefined();
+      expect(new Decimal(crLine!.credit.toString()).toFixed(2)).toBe('1810.00');
+
+      const totalDr = je!.lines.reduce((s, l) => s.plus(new Decimal(l.debit.toString())), new Decimal(0));
+      const totalCr = je!.lines.reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+      expect(totalDr.minus(totalCr).abs().lte('0.01'), 'Refund waive JE must be balanced').toBe(true);
+    });
+
+    it('PARTIAL PAYOUT THEN WAIVE: waive clears only the remainder into 41-1102', async () => {
+      const { contractId } = await seedRefundableRepossession(journal, '1800.00');
+      const outstanding = await getNet21_1107(contractId);
+      const payoutAmount = outstanding.div(3).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+      const remainder = outstanding.minus(payoutAmount);
+
+      await refundTemplate.execute({
+        contractId,
+        depositAccountCode: '11-1201',
+        amount: payoutAmount.toNumber(),
+      });
+      const midBalance = await getNet21_1107(contractId);
+      expect(midBalance.minus(remainder).abs().lte('0.01')).toBe(true);
+
+      const result = await waiveTemplate.execute({ contractId });
+      expect(result.waivedAmount).toBe(remainder.toFixed(2));
+
+      const finalBalance = await getNet21_1107(contractId);
+      expect(finalBalance.abs().lte('0.01')).toBe(true);
+
+      const je = await getWaiveJe(contractId);
+      const crLine = je!.lines.find(
+        (l) => l.accountCode === '41-1102' && new Decimal(l.credit.toString()).gt(0),
+      );
+      expect(new Decimal(crLine!.credit.toString()).toFixed(2)).toBe(remainder.toFixed(2));
+    });
+
+    it('NO-BALANCE GUARD: waive after outstanding already fully paid out → BadRequestException', async () => {
+      const { contractId } = await seedRefundableRepossession(journal, '900.00');
+      const outstanding = await getNet21_1107(contractId);
+
+      await refundTemplate.execute({
+        contractId,
+        depositAccountCode: '11-1201',
+        amount: outstanding.toNumber(),
+      });
+
+      await expect(waiveTemplate.execute({ contractId })).rejects.toThrow(BadRequestException);
+    });
+
+    it('requestId เดิมซ้ำ → JE เดียว (retry ปลอดภัย, deduped:true ครั้งที่สอง)', async () => {
+      const { contractId } = await seedRefundableRepossession(journal, '1500.00');
+      const requestId = '88888888-8888-4888-8888-888888888888';
+
+      const r1 = await waiveTemplate.execute({ contractId, requestId });
+      const r2 = await waiveTemplate.execute({ contractId, requestId });
+
+      expect(r1.deduped).toBe(false);
+      expect(r2.deduped).toBe(true);
+      expect(r2.entryNo).toBe(r1.entryNo);
+      expect(r2.waivedAmount).toBe(r1.waivedAmount);
+
+      const jes = await prisma.journalEntry.findMany({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'refund-waive' } } as any,
+            { metadata: { path: ['contractId'], equals: contractId } } as any,
+          ],
+          deletedAt: null,
+        },
+      });
+      expect(jes).toHaveLength(1);
+    });
   });
 });

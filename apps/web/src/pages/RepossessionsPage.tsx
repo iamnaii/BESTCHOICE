@@ -85,6 +85,9 @@ export default function RepossessionsPage() {
   const [refundAccountCode, setRefundAccountCode] = useState('11-1201');
   // Client-generated per-dialog-open UUID — เหมือน settlementRequestId
   const [refundRequestId, setRefundRequestId] = useState('');
+  // ไม่คืนเงิน dialog (คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ล้าง 21-1107 ที่เหลือเข้ารายได้ 41-1102)
+  const [waiveRepo, setWaiveRepo] = useState<Repossession | null>(null);
+  const [waiveRequestId, setWaiveRequestId] = useState('');
   // พร้อมขาย modal (ต้องระบุราคาขายต่อ — endpoint บังคับ ReadyForSaleDto.resellPrice)
   const [readyForSaleRepo, setReadyForSaleRepo] = useState<Repossession | null>(null);
   const [readyForSalePrice, setReadyForSalePrice] = useState('');
@@ -205,6 +208,25 @@ export default function RepossessionsPage() {
     setRefundAmount(String(Number(repo.customerRefund ?? 0)));
     setRefundAccountCode('11-1201');
     setRefundRequestId(crypto.randomUUID());
+  };
+
+  // ล้างหนี้ 21-1107 ที่เหลือทั้งหมดเข้ารายได้จากการยึด (41-1102) — Dr 21-1107 / Cr 41-1102.
+  const waiveMutation = useMutation({
+    mutationFn: async () =>
+      api.post(`/repossessions/${waiveRepo!.id}/refund-waive`, {
+        requestId: waiveRequestId,
+      }),
+    onSuccess: () => {
+      toast.success('ล้างหนี้เงินคืนแล้ว — บันทึกเป็นรายได้จากการยึด');
+      queryClient.invalidateQueries({ queryKey: ['repossessions'] });
+      setWaiveRepo(null);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const openWaive = (repo: Repossession) => {
+    setWaiveRepo(repo);
+    setWaiveRequestId(crypto.randomUUID());
   };
 
   const openUpdate = (repo: Repossession) => {
@@ -347,6 +369,15 @@ export default function RepossessionsPage() {
               className="text-info hover:text-info/80 text-sm font-medium"
             >
               จ่ายเงินคืน
+            </button>
+          )}
+          {canSettle && r.customerRefundEnabled && Number(r.customerRefund) > 0 && (
+            <button
+              onClick={() => openWaive(r)}
+              title="ไม่คืนเงิน — ล้างหนี้เงินคืนลูกค้าที่เหลือทั้งหมดเข้ารายได้จากการยึด (41-1102)"
+              className="text-destructive hover:text-destructive/80 text-sm font-medium"
+            >
+              ไม่คืนเงิน
             </button>
           )}
           {r.creditNote && (
@@ -627,6 +658,48 @@ export default function RepossessionsPage() {
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
               >
                 {refundMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันจ่ายเงินคืน'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* ไม่คืนเงิน Modal — Dr 21-1107 / Cr 41-1102 (ล้างยอดคงเหลือทั้งหมดเข้ารายได้) */}
+      <Modal
+        isOpen={!!waiveRepo}
+        onClose={() => setWaiveRepo(null)}
+        title="ไม่คืนเงินส่วนต่างลูกค้า"
+      >
+        {waiveRepo && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              waiveMutation.mutate();
+            }}
+            className="space-y-4"
+          >
+            <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
+              <div><strong>สัญญา:</strong> {waiveRepo.contract.contractNumber}</div>
+              <div><strong>ลูกค้า:</strong> {waiveRepo.contract.customer.name}</div>
+            </div>
+            <div className="text-xs text-destructive leading-snug">
+              เคลียร์หนี้เงินคืนส่วนต่างที่เหลือทั้งหมดออกจากบัญชี (บันทึกเป็นรายได้จากการยึด
+              41-1102) — ทำแล้วย้อนกลับไม่ได้จากหน้าจอนี้
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setWaiveRepo(null)}
+                className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={waiveMutation.isPending}
+                className="px-6 py-2.5 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
+              >
+                {waiveMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันไม่คืนเงิน'}
               </button>
             </div>
           </form>

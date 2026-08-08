@@ -4,9 +4,30 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { MessageRole, MessageType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RoomManagerService } from '../../chat-engine/services/room-manager.service';
-import { MessageRole } from '@prisma/client';
+import { MessageRouterService } from '../../chat-engine/services/message-router.service';
+import { ProductQuoteService } from './product-quote.service';
+import { buildProductCardText } from './product-card-text.util';
+import { shopBaseUrl } from '../../../utils/shop-base-url.util';
+import { evaluateReadiness } from '../../../utils/product-readiness.util';
+
+export type ProductCardPart = 'PHOTO' | 'TEXT';
+
+/**
+ * ลิงก์หน้าเว็บร้านจะใช้ได้ก็ต่อเมื่อสินค้าผ่าน readiness ของ B0 เท่านั้น —
+ * `/products/:id` ของ web-shop กรองด้วย `productReadinessWhere({requireInStock:false})`
+ * (B0 Task 11) ถ้าไม่ผ่านลูกค้าจะเจอ 404. ตัดเช็ก `inStock` ทิ้งเพราะเครื่อง
+ * RESERVED/ขายแล้ว หน้าเว็บยังเปิดได้ (permalink)
+ */
+function buildShareUrl(p: Parameters<typeof evaluateReadiness>[0] & { id: string }): string | null {
+  const base = shopBaseUrl();
+  if (!base) return null;
+  const { checks } = evaluateReadiness(p);
+  const webReady = checks.every((c) => c.key === 'inStock' || c.ok);
+  return webReady ? `${base}/products/${p.id}` : null;
+}
 
 /**
  * ChatCommerceService — payment links & product cards in staff chat.
@@ -23,6 +44,8 @@ export class ChatCommerceService {
   constructor(
     private prisma: PrismaService,
     private roomManager: RoomManagerService,
+    private messageRouter: MessageRouterService,
+    private productQuote: ProductQuoteService,
   ) {}
 
   /**
@@ -168,24 +191,25 @@ export class ChatCommerceService {
   }
 
   /**
-   * Search in-stock products for sharing in chat.
-   * Searches by name, brand, or model.
+   * ค้นสินค้าสำหรับ product picker ในกล่องแชท.
+   * ห้าม select `photos` — เป็น base64 data URL (products-online-listing.service.ts:8)
+   * ส่ง LINE/FB ไม่ได้และทำ payload บวมระดับ MB. รูปที่ส่งลูกค้าได้คือ gallery[] เท่านั้น
    */
   async searchProducts(query: string, limit = 10) {
     if (!query || query.trim().length < 2) {
       return [];
     }
-
     const searchTerm = query.trim();
 
     const products = await this.prisma.product.findMany({
       where: {
         deletedAt: null,
-        status: 'IN_STOCK',
+        status: { in: ['IN_STOCK', 'RESERVED'] },
         OR: [
           { name: { contains: searchTerm, mode: 'insensitive' } },
           { brand: { contains: searchTerm, mode: 'insensitive' } },
           { model: { contains: searchTerm, mode: 'insensitive' } },
+          { imeiSerial: { contains: searchTerm, mode: 'insensitive' } },
         ],
       },
       select: {
@@ -196,19 +220,36 @@ export class ChatCommerceService {
         color: true,
         storage: true,
         status: true,
-        photos: true,
+        category: true,
+        conditionGrade: true,
+        batteryHealth: true,
+        shopWarrantyDays: true,
+        cashPrice: true,
+        installmentPrice: true,
+        gallery: true,
+        // 2 ฟิลด์นี้ใช้เฉพาะตอนตัดสิน shareUrl (evaluateReadiness ของ B0)
+        isOnlineVisible: true,
+        deletedAt: true,
+        branch: { select: { name: true } },
         prices: {
           where: { deletedAt: null },
-          orderBy: { isDefault: 'desc' },
-          take: 1,
-          select: { amount: true, label: true },
+          select: { label: true, amount: true },
         },
       },
       orderBy: { updatedAt: 'desc' },
       take: Math.min(limit, 20),
     });
 
-    return products.map((p) => ({
+    const quotes = await this.productQuote.getQuotes(
+      products.map((p) => ({
+        category: p.category,
+        cashPrice: p.cashPrice,
+        installmentPrice: p.installmentPrice,
+        prices: p.prices,
+      })),
+    );
+
+    return products.map((p, i) => ({
       id: p.id,
       name: p.name,
       brand: p.brand,
@@ -216,71 +257,150 @@ export class ChatCommerceService {
       color: p.color,
       storage: p.storage,
       status: p.status,
-      photoUrl: p.photos.length > 0 ? p.photos[0] : null,
-      price: p.prices.length > 0 ? Number(p.prices[0].amount) : null,
-      priceLabel: p.prices.length > 0 ? p.prices[0].label : null,
+      category: p.category,
+      conditionGrade: p.conditionGrade,
+      batteryHealth: p.batteryHealth,
+      branchName: p.branch?.name ?? null,
+      photoUrl: p.gallery[0] ?? null,
+      cashPrice: quotes[i].cashPrice,
+      installmentPrice: quotes[i].installmentPrice,
+      months: quotes[i].months,
+      monthlyPayment: quotes[i].monthlyPayment,
+      downAmount: quotes[i].downAmount,
+      // null = ยังไม่พร้อมขึ้นเว็บ → การ์ดจะไม่มีบรรทัดลิงก์ (ห้ามส่งลิงก์ 404 ให้ลูกค้า)
+      shareUrl: buildShareUrl(p),
     }));
   }
 
   /**
-   * Send a product info card as a text message in chat.
+   * ข้อมูลการ์ดสินค้าชุดเดียวที่ทั้ง "แทรกสรุป" (ฝั่ง UI) และ "ส่งการ์ด"
+   * (ฝั่ง server) ใช้ร่วมกัน — ข้อความจึงไม่มีทาง drift ระหว่าง 2 ทาง
+   */
+  async getProductSummary(productId: string): Promise<{
+    productId: string;
+    title: string;
+    text: string;
+    photoUrl: string | null;
+    shareUrl: string | null;
+  }> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        brand: true,
+        model: true,
+        color: true,
+        storage: true,
+        status: true,
+        category: true,
+        conditionGrade: true,
+        batteryHealth: true,
+        shopWarrantyDays: true,
+        cashPrice: true,
+        installmentPrice: true,
+        gallery: true,
+        // ใช้ตัดสิน shareUrl (evaluateReadiness ของ B0)
+        isOnlineVisible: true,
+        deletedAt: true,
+        branch: { select: { name: true } },
+        prices: { where: { deletedAt: null }, select: { label: true, amount: true } },
+      },
+    });
+    if (!product) {
+      throw new NotFoundException('ไม่พบสินค้าที่ระบุ');
+    }
+
+    const [quote] = await this.productQuote.getQuotes([
+      {
+        category: product.category,
+        cashPrice: product.cashPrice,
+        installmentPrice: product.installmentPrice,
+        prices: product.prices,
+      },
+    ]);
+    // ก่อน B4 (share endpoint) ใช้ /products/:id ของหน้าร้านตรงๆ — แต่ใส่ได้
+    // เฉพาะเครื่องที่ผ่าน readiness ของ B0 ไม่งั้นลูกค้ากดแล้วเจอ 404
+    const shareUrl = buildShareUrl(product);
+    const facts = {
+      name: product.name,
+      brand: product.brand,
+      model: product.model,
+      color: product.color,
+      storage: product.storage,
+      category: product.category,
+      status: product.status,
+      conditionGrade: product.conditionGrade,
+      batteryHealth: product.batteryHealth,
+      shopWarrantyDays: product.shopWarrantyDays,
+      branchName: product.branch?.name ?? null,
+    };
+
+    return {
+      productId: product.id,
+      title: [product.brand, product.model, product.storage, product.color]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || product.name,
+      text: buildProductCardText(facts, quote, shareUrl),
+      photoUrl: product.gallery[0] ?? null,
+      shareUrl,
+    };
+  }
+
+  /**
+   * ส่งการ์ดสินค้าเป็น 2 bubble (รูป → ข้อความ) ผ่าน primitive เดียวกับ
+   * ข้อความปกติ. token ของแต่ละ bubble คำนวณจาก clientMessageId ของผู้เรียก
+   * แบบ deterministic (`-img` / `-txt`) → กด "ส่ง" ซ้ำหรือ retry ทั้ง request
+   * ลูกค้าจะไม่ได้รับซ้ำ (unique [roomId, clientMessageId])
    */
   async sendProductCard(params: {
     sessionId: string;
     staffId: string;
     productId: string;
-  }): Promise<void> {
-    // 1. Find product with prices
-    const product = await this.prisma.product.findUnique({
-      where: { id: params.productId },
-      include: {
-        prices: {
-          where: { deletedAt: null },
-          orderBy: { isDefault: 'desc' },
-        },
-      },
-    });
+    clientMessageId: string;
+    parts?: ProductCardPart[];
+  }): Promise<{ sent: number; photoSkipped: boolean; errors: string[] }> {
+    const summary = await this.getProductSummary(params.productId);
+    const parts: ProductCardPart[] = params.parts?.length ? params.parts : ['PHOTO', 'TEXT'];
+    const errors: string[] = [];
+    let sent = 0;
+    let photoSkipped = false;
 
-    if (!product || product.deletedAt) {
-      throw new NotFoundException('ไม่พบสินค้าที่ระบุ');
+    if (parts.includes('PHOTO')) {
+      if (!summary.photoUrl) {
+        photoSkipped = true;
+      } else {
+        // gallery[] เป็น public URL อยู่แล้ว (products-online-listing.service.ts:90
+        // `storage.getPublicUrl(key)`) จึงไม่ต้อง deliveryMediaUrl และ signMessageMedia
+        // ปล่อยผ่านเพราะไม่ใช่ storage key. ไม่ส่ง mediaType → MessageBubble.tsx:342-357
+        // เข้า branch ChatImage (เงื่อนไข file คือ type==='FILE' หรือ mediaType ไม่ใช่ image/*)
+        const r = await this.messageRouter.sendStaffMessage({
+          roomId: params.sessionId,
+          staffId: params.staffId,
+          type: MessageType.IMAGE,
+          mediaUrl: summary.photoUrl,
+          clientMessageId: `${params.clientMessageId}-img`,
+        });
+        if (r.success) sent += 1;
+        else errors.push(r.error ?? 'ส่งรูปสินค้าไม่สำเร็จ');
+      }
     }
 
-    // 2. Build product info text
-    const nameParts = [product.brand, product.model, product.color, product.storage]
-      .filter(Boolean)
-      .join(' ');
-
-    const defaultPrice = product.prices.find((p) => p.isDefault) || product.prices[0];
-    const priceText = defaultPrice
-      ? `${Number(defaultPrice.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`
-      : 'สอบถามราคา';
-
-    const statusMap: Record<string, string> = {
-      IN_STOCK: 'มีสินค้า',
-      RESERVED: 'จองแล้ว',
-      SOLD_CASH: 'ขายแล้ว',
-      SOLD_INSTALLMENT: 'ขายผ่อนแล้ว',
-    };
-
-    const statusText = statusMap[product.status] || product.status;
-
-    const messageText = [
-      `📱 ${nameParts}`,
-      `💰 ราคา: ${priceText}`,
-      `สถานะ: ${statusText}`,
-      `ผ่อนได้สูงสุด 12 งวด`,
-    ].join('\n');
-
-    // 3. Save as staff message
-    await this.roomManager.saveMessage({
-      roomId: params.sessionId,
-      role: MessageRole.STAFF,
-      text: messageText,
-      staffId: params.staffId,
-    });
+    if (parts.includes('TEXT')) {
+      const r = await this.messageRouter.sendStaffMessage({
+        roomId: params.sessionId,
+        staffId: params.staffId,
+        text: summary.text,
+        clientMessageId: `${params.clientMessageId}-txt`,
+      });
+      if (r.success) sent += 1;
+      else errors.push(r.error ?? 'ส่งข้อความสินค้าไม่สำเร็จ');
+    }
 
     this.logger.log(
-      `Product card sent in chat: session=${params.sessionId}, product=${product.id} (${nameParts})`,
+      `Product card sent: room=${params.sessionId} product=${params.productId} sent=${sent} skipped=${photoSkipped}`,
     );
+    return { sent, photoSkipped, errors };
   }
 }

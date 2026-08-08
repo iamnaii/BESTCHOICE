@@ -57,6 +57,7 @@ describe('ProductDetectService.detectProducts', () => {
         brand: 'Apple',
         model: 'iPhone 13',
         storage: '128GB',
+        category: 'PHONE_USED',
       },
     });
   });

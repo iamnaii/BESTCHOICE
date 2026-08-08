@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ProductQuoteService, type DecimalLike } from './product-quote.service';
 
@@ -117,12 +118,18 @@ export class ProductDetectService {
       Promise.all(
         products.map((p) =>
           this.prisma.product.count({
+            // ต้องกรอง category ด้วย — brand+model+storage อย่างเดียวจะนับ
+            // PHONE_NEW กับ PHONE_USED รุ่นเดียวกันปนกัน ทั้งที่ราคา/ค่างวดข้างๆ
+            // (จาก ProductQuoteService) เป็นราคาต่อ category เดียวเท่านั้น
+            // (ไม่กรอง branchId โดยตั้งใจ — บริบทแชทไม่รู้ว่าลูกค้าจะไปรับที่สาขาไหน
+            // จึงนับรวมทุกสาขา ต่างจาก reorder-points ที่กรอง per-branch)
             where: {
               deletedAt: null,
               status: 'IN_STOCK',
               brand: p.brand,
               model: p.model,
               storage: p.storage,
+              category: p.category as ProductCategory,
             },
           }),
         ),

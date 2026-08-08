@@ -38,6 +38,30 @@ export interface BcConfigResolution {
   config?: BcConfig;
 }
 
+/** map แถว InterestConfig (+rates) → BcConfig — pure, ไม่แตะ DB (B3 Task 14) */
+export function toBcConfig(row: InterestConfigRow): BcConfig {
+  const ratePctByMonths = new Map<number, Decimal>();
+  for (const r of row.rates ?? []) {
+    ratePctByMonths.set(r.months, new Decimal(String(r.ratePct)));
+  }
+  // Fallback เมื่อ InterestConfigRate ยังไม่ seed — สังเคราะห์จาก per-month × m
+  if (ratePctByMonths.size === 0) {
+    const rate = new Decimal(String(row.interestRate));
+    for (let m = row.minInstallmentMonths; m <= row.maxInstallmentMonths; m++) {
+      ratePctByMonths.set(m, rate.mul(m));
+    }
+  }
+  const allowedMonths = Array.from(ratePctByMonths.keys()).sort((a, b) => a - b);
+
+  return {
+    minDownPct: new Decimal(String(row.minDownPaymentPct)),
+    commissionPct: new Decimal(String(row.storeCommissionPct)),
+    vatPct: new Decimal(String(row.vatPct)),
+    ratePctByMonths,
+    allowedMonths,
+  };
+}
+
 export async function resolveBcConfigForCategory(
   prisma: InterestConfigReader,
   category: string,
@@ -55,27 +79,5 @@ export async function resolveBcConfigForCategory(
 
   if (!config) return { found: false };
 
-  const ratePctByMonths = new Map<number, Decimal>();
-  for (const r of config.rates ?? []) {
-    ratePctByMonths.set(r.months, new Decimal(String(r.ratePct)));
-  }
-  // Fallback เมื่อ InterestConfigRate ยังไม่ seed — สังเคราะห์จาก per-month × m
-  if (ratePctByMonths.size === 0) {
-    const rate = new Decimal(String(config.interestRate));
-    for (let m = config.minInstallmentMonths; m <= config.maxInstallmentMonths; m++) {
-      ratePctByMonths.set(m, rate.mul(m));
-    }
-  }
-  const allowedMonths = Array.from(ratePctByMonths.keys()).sort((a, b) => a - b);
-
-  return {
-    found: true,
-    config: {
-      minDownPct: new Decimal(String(config.minDownPaymentPct)),
-      commissionPct: new Decimal(String(config.storeCommissionPct)),
-      vatPct: new Decimal(String(config.vatPct)),
-      ratePctByMonths,
-      allowedMonths,
-    },
-  };
+  return { found: true, config: toBcConfig(config) };
 }

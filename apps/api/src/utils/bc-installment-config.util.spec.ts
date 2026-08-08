@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { resolveBcConfigForCategory } from './bc-installment-config.util';
+import { resolveBcConfigForCategory, toBcConfig } from './bc-installment-config.util';
 
 const makePrisma = (cfg: unknown) =>
   ({ interestConfig: { findFirst: jest.fn().mockResolvedValue(cfg) } }) as never;
@@ -61,5 +61,35 @@ describe('resolveBcConfigForCategory', () => {
     expect(r.config!.minDownPct.toString()).toBe('0.2');
     expect(r.config!.commissionPct.toString()).toBe('0.05');
     expect(r.config!.vatPct.toString()).toBe('0.07');
+  });
+});
+
+describe('toBcConfig — ตัว map ที่ทุกผู้อ่านต้องใช้ร่วมกัน (B3 Task 14)', () => {
+  it('มี rate rows → allowedMonths/ratePctByMonths มาจากตารางตรง ๆ', () => {
+    const c = toBcConfig({
+      ...baseCfg,
+      rates: [
+        { months: 6, ratePct: new Prisma.Decimal('0.45') },
+        { months: 12, ratePct: new Prisma.Decimal('0.90') },
+      ],
+    });
+    expect(c.allowedMonths).toEqual([6, 12]);
+    expect(c.ratePctByMonths.get(12)!.toString()).toBe('0.9');
+  });
+
+  it('ไม่มี rate rows → สังเคราะห์ interestRate × m ตามช่วง min..max', () => {
+    const c = toBcConfig(baseCfg);
+    expect(c.allowedMonths).toEqual([6, 7, 8]);
+    expect(c.ratePctByMonths.get(8)!.toString()).toBe('0.8');
+  });
+
+  it('resolveBcConfigForCategory คืนผลเท่ากับ toBcConfig ของแถวเดียวกัน (ไม่มีตรรกะซ้อน)', async () => {
+    const r = await resolveBcConfigForCategory(makePrisma(baseCfg), 'PHONE_NEW');
+    const direct = toBcConfig(baseCfg);
+    expect(r.config!.allowedMonths).toEqual(direct.allowedMonths);
+    expect(r.config!.minDownPct.toString()).toBe(direct.minDownPct.toString());
+    expect([...r.config!.ratePctByMonths.entries()].map(([m, v]) => [m, v.toString()])).toEqual(
+      [...direct.ratePctByMonths.entries()].map(([m, v]) => [m, v.toString()]),
+    );
   });
 });

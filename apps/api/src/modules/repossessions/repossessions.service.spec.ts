@@ -1109,6 +1109,29 @@ describe('RepossessionsService', () => {
       const call = prisma.product.update.mock.calls[0][0];
       expect(new Prisma.Decimal(call.data.costPrice).eq(7000)).toBe(true);
     });
+
+    // Phase 2 review follow-up (Item 1): costBasis = appraisal>0 ? appraisal : fallback
+    // (fallback = dto.resellPrice ?? repo.resellPrice ?? 0) can only reach 0 when BOTH
+    // appraisalPrice and resellPrice are unset — but the READY_FOR_SALE/SOLD resell-price
+    // guard above (line ~653-659) already throws BadRequestException in that exact case,
+    // using the identical `dto.resellPrice ?? repo.resellPrice ?? 0` fallback. So the
+    // both-zero costPrice branch is UNREACHABLE by construction: this test proves the
+    // guard fires first, so productUpdateData.costPrice can never be silently left unset.
+    it('appraisalPrice=0 + ไม่มีราคาขายทั้งจาก dto/repo → BadRequestException ก่อนถึง costPrice branch (พิสูจน์ unreachable)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          status: 'UNDER_REPAIR',
+          appraisalPrice: decimal(0),
+          resellPrice: null,
+        }),
+      );
+
+      await expect(
+        service.update('repo-1', { status: 'READY_FOR_SALE' } as never, owner),
+      ).rejects.toThrow('กรุณาระบุราคาขายต่อก่อนเปลี่ยนสถานะ');
+
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

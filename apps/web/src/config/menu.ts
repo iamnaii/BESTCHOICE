@@ -141,7 +141,7 @@ const assetMenuSection: MenuSection = {
   ],
 };
 
-/* ── SALES — พนักงานขาย (10 เมนู) ──────────────────── */
+/* ── SALES — พนักงานขาย ────────────────────────────── */
 
 const SALES_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -196,7 +196,7 @@ const SALES_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── BRANCH_MANAGER — ผจก.สาขา (12 เมนู) ──────────── */
+/* ── BRANCH_MANAGER — ผจก.สาขา ────────────────────── */
 
 const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -283,7 +283,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── FINANCE_MANAGER — ผจก.การเงิน (12 เมนู) ─────── */
+/* ── FINANCE_MANAGER — ผจก.การเงิน ───────────────── */
 
 const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -383,7 +383,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── ACCOUNTANT — ฝ่ายบัญชี (11 เมนู) ─────────────── */
+/* ── ACCOUNTANT — ฝ่ายบัญชี ─────────────────────────── */
 
 const ACCOUNTANT_CONFIG: RoleMenuConfig = {
   sidebar: [

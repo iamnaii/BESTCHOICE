@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException } from '@nestjs/common';
 import { seedFinanceCoa } from '../../../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../journal/__tests__/scenario-helpers';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
@@ -20,15 +20,21 @@ import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-col
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 
 const prisma = new PrismaClient();
+// Item 3 (Critical review, 2026-08-08) — the empirical race test needs TWO
+// genuinely independent Postgres connections firing shopCollectSettlement
+// concurrently with the SAME requestId, to prove the P2002-inside-an-aborted-
+// Serializable-tx scenario actually surfaces as a clean 409 at the real call
+// site (ContractPaymentService.shopCollectSettlement), not a raw 500.
+const prisma2 = new PrismaClient();
 
-function buildService(): ContractPaymentService {
-  const journal = new JournalAutoService(prisma as any);
-  const vat60Reversal = new Vat60dayReversalTemplate(journal, prisma as any);
-  const jp4 = new EarlyPayoffJP4Template(journal, prisma as any, vat60Reversal);
-  const products = new ProductsService(prisma as any);
-  const settlementTemplate = new ShopCollectSettlementTemplate(journal, prisma as any);
-  const eclStageReverseTemplate = new EclStageReverseTemplate(journal, prisma as any);
-  return new ContractPaymentService(prisma as any, products, journal, jp4, settlementTemplate, { generateReceipt: async () => undefined } as any, eclStageReverseTemplate);
+function buildService(client: PrismaClient): ContractPaymentService {
+  const journal = new JournalAutoService(client as any);
+  const vat60Reversal = new Vat60dayReversalTemplate(journal, client as any);
+  const jp4 = new EarlyPayoffJP4Template(journal, client as any, vat60Reversal);
+  const products = new ProductsService(client as any);
+  const settlementTemplate = new ShopCollectSettlementTemplate(journal, client as any);
+  const eclStageReverseTemplate = new EclStageReverseTemplate(journal, client as any);
+  return new ContractPaymentService(client as any, products, journal, jp4, settlementTemplate, { generateReceipt: async () => undefined } as any, eclStageReverseTemplate);
 }
 
 async function ensureFinanceCompany(): Promise<void> {
@@ -124,6 +130,7 @@ describe('shop-collect-settlement integration', () => {
     const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
     await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
     await prisma.$disconnect();
+    await prisma2.$disconnect();
   });
 
   beforeAll(async () => {
@@ -144,7 +151,7 @@ describe('shop-collect-settlement integration', () => {
     await seedFinanceCoa(prisma);
     await ensureFinanceCompany();
     userId = await ensureAdminUser();
-    svc = buildService();
+    svc = buildService(prisma);
   });
 
   it('SETTLEMENT: Dr 11-1201 / Cr 11-2107 zeroes the shop receivable balance', async () => {
@@ -652,6 +659,114 @@ describe('shop-collect-settlement integration', () => {
     expect(
       finalBalance.minus(outstanding.minus(firstAmount)).abs().lte('0.01'),
       `Expected net 11-2107 to reflect only the first settlement (${outstanding.minus(firstAmount).toFixed(2)}), got ${finalBalance.toFixed(2)}`,
+    ).toBe(true);
+  });
+
+  it('RACE (2 REAL Postgres connections, same requestId, fired concurrently): exactly one JE posted, no raw Prisma/500-class error escapes', async () => {
+    // Critical-finding regression proof (2026-08-08 review): the template's
+    // ONLY production caller (ContractPaymentService.shopCollectSettlement)
+    // always wraps execute() in a Serializable `$transaction`. A prior
+    // implementation tried to recover from the P2002 race by RE-QUERYING via
+    // the SAME (now-aborted, 25P02) tx — that re-query can never succeed at
+    // this real call site, so it always fell through to rethrowing the raw
+    // P2002 as an unhandled 500. This test proves the actual fix: two
+    // GENUINELY independent Postgres connections (svcA on `prisma`, svcB on
+    // `prisma2`) racing the SAME requestId must never let a raw
+    // PrismaClientKnownRequestError (or any non-HttpException) escape to the
+    // caller — only a clean HttpException (409 ConflictException), or a
+    // successful (possibly deduped) fulfillment.
+    const cRace = await seedStandard17k12m(prisma);
+    const journalRace = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journalRace, prisma as any).execute(cRace.id);
+    await seedPendingPayments(cRace.id, cRace.installmentCount);
+
+    await svc.earlyPayoff(cRace.id, userId, {
+      paymentMethod: 'CASH',
+      discountPct: 50,
+      collectedByShop: true,
+    } as any);
+
+    const outstanding = await getNet11_2107(cRace.id);
+    expect(outstanding.gt(0), `Expected 11-2107 balance > 0 before race, got ${outstanding.toFixed(2)}`).toBe(true);
+
+    const raceRequestId = '66666666-6666-4666-8666-666666666666';
+    const svcA = buildService(prisma);
+    const svcB = buildService(prisma2);
+
+    // Warm up prisma2's connection BEFORE the race. `prisma` has already
+    // issued many queries by this point in the suite; `prisma2` is fresh —
+    // its first query pays a one-time connection-establishment cost that
+    // would otherwise give svcA an unfair head start and let A's whole
+    // transaction complete before B even sends its first statement (which
+    // manifests as a false-negative "race": B's up-front dedupe check simply
+    // finds A's already-committed row instead of the two transactions ever
+    // truly overlapping at the DB).
+    await prisma2.$queryRaw`SELECT 1`;
+
+    const results = await Promise.allSettled([
+      svcA.shopCollectSettlement(cRace.id, userId, {
+        depositAccountCode: '11-1201',
+        amount: outstanding.toNumber(),
+        requestId: raceRequestId,
+      }),
+      svcB.shopCollectSettlement(cRace.id, userId, {
+        depositAccountCode: '11-1201',
+        amount: outstanding.toNumber(),
+        requestId: raceRequestId,
+      }),
+    ]);
+
+    // Report what actually happened — the task explicitly asks us to observe
+    // and note the real error code(s), not assume them.
+    // eslint-disable-next-line no-console
+    console.log(
+      '[race test] outcomes:',
+      results.map((r) =>
+        r.status === 'fulfilled'
+          ? 'fulfilled'
+          : `rejected: ${(r.reason as { constructor?: { name?: string } })?.constructor?.name} code=${(r.reason as { code?: string })?.code ?? 'n/a'} status=${
+              typeof (r.reason as { getStatus?: () => number })?.getStatus === 'function'
+                ? (r.reason as { getStatus: () => number }).getStatus()
+                : 'n/a'
+            } msg=${(r.reason as Error)?.message}`,
+      ),
+    );
+
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        const reason = r.reason;
+        expect(
+          reason instanceof HttpException,
+          `Expected an HttpException (never a raw Prisma/unknown error), got ${
+            (reason as { constructor?: { name?: string } })?.constructor?.name
+          }: ${(reason as Error)?.message}`,
+        ).toBe(true);
+        expect(
+          (reason as HttpException).getStatus(),
+          `Expected HTTP 409 (ConflictException), got ${(reason as HttpException).getStatus()} — ${(reason as Error).message}`,
+        ).toBe(409);
+      }
+    }
+
+    // Exactly ONE settlement JE for this contract, regardless of which
+    // connection "won" the race.
+    const jes = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as any,
+          { metadata: { path: ['contractId'], equals: cRace.id } } as any,
+        ],
+        deletedAt: null,
+      },
+    });
+    expect(jes, `Expected exactly 1 settlement JE, got ${jes.length}`).toHaveLength(1);
+
+    // 11-2107 reduced exactly once (net balance returns to 0 — the settled
+    // amount equaled the full outstanding balance).
+    const finalBalance = await getNet11_2107(cRace.id);
+    expect(
+      finalBalance.abs().lte('0.01'),
+      `Expected net 11-2107 ≈ 0 after exactly one settlement, got ${finalBalance.toFixed(2)}`,
     ).toBe(true);
   });
 });

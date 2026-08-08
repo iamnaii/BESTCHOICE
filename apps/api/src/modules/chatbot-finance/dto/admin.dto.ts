@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsBoolean,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -9,6 +10,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ChatChannel } from '@prisma/client';
 
 export class ListSessionsQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
@@ -35,6 +37,8 @@ export class CreateKbDto {
   @IsOptional() @IsArray() @IsString({ each: true }) requiresTools?: string[];
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsInt() priority?: number;
+  @IsOptional() @IsEnum(ChatChannel, { message: 'ช่องทางไม่ถูกต้อง' })
+  channel?: ChatChannel | null;
 }
 
 export class UpdatePromptDto {
@@ -55,4 +59,6 @@ export class UpdateKbDto {
   @IsOptional() @IsArray() @IsString({ each: true }) requiresTools?: string[];
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsInt() priority?: number;
+  @IsOptional() @IsEnum(ChatChannel, { message: 'ช่องทางไม่ถูกต้อง' })
+  channel?: ChatChannel | null;
 }

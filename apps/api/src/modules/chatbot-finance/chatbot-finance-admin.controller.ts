@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ChatChannel } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -112,8 +113,8 @@ export class ChatbotFinanceAdminController {
 
   @Get('knowledge')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  async listKnowledge() {
-    return this.knowledge.listAll();
+  async listKnowledge(@Query('channel') channel?: ChatChannel) {
+    return this.knowledge.listAll(channel);
   }
 
   @Post('knowledge')

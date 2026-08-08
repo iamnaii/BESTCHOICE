@@ -20,6 +20,7 @@ interface KbEntry {
   requiresAuth: boolean;
   active: boolean;
   priority: number;
+  channel: string | null;
 }
 
 type FormState = Omit<KbEntry, 'id'>;
@@ -34,6 +35,7 @@ const EMPTY_FORM: FormState = {
   requiresAuth: true,
   active: true,
   priority: 0,
+  channel: 'LINE_FINANCE',
 };
 
 // ─── KB Suggestion types ──────────────────────────────────
@@ -119,6 +121,7 @@ function KnowledgeBaseTab() {
       requiresAuth: entry.requiresAuth,
       active: entry.active,
       priority: entry.priority,
+      channel: entry.channel,
     });
   }
 
@@ -184,6 +187,9 @@ function KnowledgeBaseTab() {
                         </Badge>
                       );
                     })()}
+                    <Badge variant="info" appearance="outline" className="text-[10px] px-2 py-0.5">
+                      {kb.channel ?? 'ทุกช่องทาง'}
+                    </Badge>
                     {!kb.active && (
                       <Badge variant="secondary" className="text-[10px] px-2 py-0.5">inactive</Badge>
                     )}
@@ -263,6 +269,26 @@ function KnowledgeBaseTab() {
                   rows={6}
                   required
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1 leading-snug">
+                  ช่องทางที่ใช้ FAQ นี้
+                </label>
+                <select
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={form.channel ?? ''}
+                  onChange={(e) => setForm({ ...form, channel: e.target.value || null })}
+                >
+                  <option value="">ทุกช่องทาง (ใช้ได้ทั้งน้องเบสและบอทขาย)</option>
+                  <option value="LINE_FINANCE">LINE Finance (น้องเบส)</option>
+                  <option value="LINE_SHOP">LINE Shop</option>
+                  <option value="FACEBOOK">Facebook</option>
+                  <option value="WEB">เว็บไซต์</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                  เลือก "ทุกช่องทาง" เมื่อเป็นข้อมูลกลาง เช่น เวลาเปิด-ปิดร้าน ที่อยู่สาขา
+                </p>
               </div>
 
               <div className="grid grid-cols-3 gap-3">

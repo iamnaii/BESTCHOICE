@@ -2,6 +2,7 @@ import {
   GROUNDED_PRICE_KEYS,
   collectGroundedPrices,
   collectGroundedPricesFromText,
+  collectGroundedPricesFromToolText,
   guardGrounding,
 } from './price-grounding.util';
 import {
@@ -156,5 +157,69 @@ describe('collectGroundedPricesFromText — KB ที่แอดมินเข
     const set = new Set<number>();
     collectGroundedPricesFromText('งวดละ 1,515.83 บาท', set);
     expect(set.has(1515.83)).toBe(true);
+  });
+});
+
+describe('collectGroundedPricesFromToolText — B3 Task 6: ข้อความแอดมินเขียนเองจาก tool result', () => {
+  it('list_promotions: ดูดเลขบาทจาก description ของแต่ละโปร', () => {
+    const set = new Set<number>();
+    collectGroundedPricesFromToolText(
+      'list_promotions',
+      {
+        promotions: [
+          { id: 'p1', name: 'ลดพิเศษ', description: 'ลดทันที 1,000 บาท', endsAt: '2026-12-31' },
+        ],
+      },
+      set,
+    );
+    expect(set.has(1000)).toBe(true);
+  });
+
+  it('list_promotions: ดูดเลขบาทจาก name ด้วยเช่นกัน', () => {
+    const set = new Set<number>();
+    collectGroundedPricesFromToolText(
+      'list_promotions',
+      { promotions: [{ id: 'p1', name: 'ลด 2,500 บาท', description: null }] },
+      set,
+    );
+    expect(set.has(2500)).toBe(true);
+  });
+
+  it('search_knowledge_base: ดูดเลขบาทจาก matches[].responseTemplate', () => {
+    const set = new Set<number>();
+    collectGroundedPricesFromToolText(
+      'search_knowledge_base',
+      { matches: [{ id: 'kb1', responseTemplate: 'ค่ามัดจำเครื่อง 3,000 บาท คืนเมื่อรับเครื่อง' }] },
+      set,
+    );
+    expect(set.has(3000)).toBe(true);
+  });
+
+  it('tool ที่ไม่อยู่ใน 3 ตัวที่รองรับ = no-op ไม่เพิ่มอะไรเข้า set', () => {
+    const set = new Set<number>();
+    collectGroundedPricesFromToolText(
+      'search_products',
+      { promotions: [{ description: 'ลด 1,000 บาท' }] },
+      set,
+    );
+    expect(set.size).toBe(0);
+  });
+
+  it('result ที่ไม่ใช่ object (null/string/number) → ไม่ throw และไม่เพิ่มอะไร', () => {
+    const set = new Set<number>();
+    expect(() => collectGroundedPricesFromToolText('list_promotions', null, set)).not.toThrow();
+    expect(() =>
+      collectGroundedPricesFromToolText('list_promotions', 'not-an-object', set),
+    ).not.toThrow();
+    expect(() => collectGroundedPricesFromToolText('list_promotions', 42, set)).not.toThrow();
+    expect(set.size).toBe(0);
+  });
+
+  it('list_promotions: promotions ไม่ใช่ array → ไม่ throw ไม่เพิ่มอะไร', () => {
+    const set = new Set<number>();
+    expect(() =>
+      collectGroundedPricesFromToolText('list_promotions', { promotions: 'oops' }, set),
+    ).not.toThrow();
+    expect(set.size).toBe(0);
   });
 });

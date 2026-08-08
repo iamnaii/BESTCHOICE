@@ -117,22 +117,53 @@ export function collectGroundedPricesFromText(text: string, into: Set<number>): 
  * ต้องเป็น util เพราะ **บอททั้ง 2 ตัวมี tool ชื่อเดียวกันแต่คนละ pipeline**
  * (Task 6/8 = SalesBotService, Task 11 = FinanceAiService) — ห้าม copy-paste 2 ที่
  *
- * NOTE (Task 1): ยังไม่มี caller จริง — `toolName` รับไว้เผื่ออนาคตที่ต้อง switch
- * พฤติกรรมต่อ tool (Task 6/8 จะเติม field-walk จริงตาม tool name)
+ * B3 §5 — บาง tool คืน "ข้อความที่แอดมินพิมพ์เอง" (คำอธิบายโปรโมชั่น, FAQ) ซึ่ง
+ * เป็น ground truth ไม่ใช่การเดาของโมเดล ถ้าไม่ดูดเลขบาทจากข้อความพวกนี้เข้า
+ * ledger บอทจะโดน guard block ทันทีที่พูดตามโปรที่แอดมินเขียนไว้เอง
+ * (อาการเดียวกับ #1337: บอทเงียบโดยไม่มี error ให้เห็น)
+ *
+ * รองรับ 3 tool: `list_promotions` (Task 6), `search_knowledge_base` (Task 8)
+ * — ทั้งบอทขายและน้องเบสมี tool ชื่อเดียวกัน shape เดียวกัน จึงใช้ตัวนี้ได้ทั้งคู่ —
+ * และ `calculate_fine` (ฝั่งน้องเบส, Task 11)
  */
 export function collectGroundedPricesFromToolText(
   toolName: string,
   result: unknown,
   into: Set<number>,
 ): void {
-  void result;
-  void into;
-  // review round 1 [I1]: fail LOUD ไม่ fail เงียบ — stub เงียบในบริบท guard จะทำให้
-  // การ wire ก่อน implement (Task 6/8/11) กลายเป็น over-block เงียบๆ (ราคา legit
-  // ไม่ถูกนับเป็น grounded → บอทโดน confidence 0.3 โดยไม่มีร่องรอย = บทเรียน #1064 ซ้ำ)
-  throw new Error(
-    `collectGroundedPricesFromToolText ยังไม่ถูก implement (เรียกด้วย tool "${toolName}") — Task 6/8/11 ต้องเขียน field-walk จริงก่อน wire`,
-  );
+  if (result == null || typeof result !== 'object') return;
+
+  if (toolName === 'list_promotions') {
+    const promos = (result as { promotions?: unknown }).promotions;
+    if (!Array.isArray(promos)) return;
+    for (const p of promos) {
+      const r = p as { name?: unknown; description?: unknown };
+      if (typeof r.name === 'string') collectGroundedPricesFromText(r.name, into);
+      if (typeof r.description === 'string') collectGroundedPricesFromText(r.description, into);
+    }
+    return;
+  }
+
+  if (toolName === 'search_knowledge_base') {
+    const matches = (result as { matches?: unknown }).matches;
+    if (!Array.isArray(matches)) return;
+    for (const m of matches) {
+      const t = (m as { responseTemplate?: unknown }).responseTemplate;
+      if (typeof t === 'string') collectGroundedPricesFromText(t, into);
+    }
+    return;
+  }
+
+  // `calculate_fine` (น้องเบส) ซ่อนตัวเลขไว้ใน `explanation` ที่ interpolate
+  // ค่าจาก SystemConfig (`finance-tools.service.ts:143-160`: `${cfg.maxAmount}`,
+  // `${cfg.tier1Amount}`, `${cfg.tier2Amount}`) — คีย์เดียวที่เป็นตัวเลขล้วนคือ
+  // `totalFine` ⇒ วันที่ owner ตั้ง `late_fee_max_amount` เป็น 4 หลัก (เช่น 1500)
+  // น้องเบสจะโดน block ทั้งที่อ่านเลขมาจาก tool ตรง ๆ. explanation ประกอบจาก
+  // config ที่ owner ตั้งเอง = ground truth เหมือน KB/โปรโมชั่น
+  if (toolName === 'calculate_fine') {
+    const explanation = (result as { explanation?: unknown }).explanation;
+    if (typeof explanation === 'string') collectGroundedPricesFromText(explanation, into);
+  }
 }
 
 export type GroundingVerdict = { ok: true } | { ok: false; reason: string };

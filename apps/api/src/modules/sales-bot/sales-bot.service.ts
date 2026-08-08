@@ -19,7 +19,11 @@ import {
   LlmToolCall,
   LlmToolDefinition,
 } from './providers/llm-provider.interface';
-import { collectGroundedPrices, guardGrounding } from '../../utils/price-grounding.util';
+import {
+  collectGroundedPrices,
+  collectGroundedPricesFromToolText,
+  guardGrounding,
+} from '../../utils/price-grounding.util';
 import {
   collectAttachmentsFromToolResult,
   MAX_BOT_ATTACHMENTS,
@@ -209,6 +213,7 @@ export class SalesBotService {
             throw toolError;
           }
           collectGroundedPrices(result, groundedPrices);
+          collectGroundedPricesFromToolText(tc.name, result, groundedPrices);
           collectAttachmentsFromToolResult(tc.name, result, attachments);
           this.logger.log(
             `[ToolCall] room=${input.roomId} tool=${tc.name} args=${JSON.stringify(tc.input).slice(0, 300)} result=${JSON.stringify(result).slice(0, 600)}`,

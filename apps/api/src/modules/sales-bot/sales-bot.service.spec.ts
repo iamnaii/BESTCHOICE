@@ -747,4 +747,42 @@ describe('SalesBotService', () => {
       expect(r.attachments).toBeUndefined();
     });
   });
+
+  describe('grounding จากข้อความที่แอดมินเขียนเอง (B3 Task 6)', () => {
+    it('บอทพูดตัวเลขส่วนลดที่อยู่ในคำอธิบายโปรได้ ไม่โดน block', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [{ id: 't1', name: 'list_promotions', input: {} }],
+          inputTokens: 5,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        })
+        .mockResolvedValueOnce({
+          text: 'เดือนนี้ลดทันที 1,000 บาทค่ะ',
+          toolCalls: [],
+          inputTokens: 5,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        });
+      const { svc, listPromotions } = await build(chat);
+      listPromotions.run.mockResolvedValue({
+        promotions: [
+          {
+            id: 'p1',
+            name: 'ลดพิเศษ',
+            description: 'ลดทันที 1,000 บาท',
+            endsAt: '2026-12-31T00:00:00.000Z',
+            appliesTo: 'ALL',
+            minPurchaseThb: null,
+          },
+        ],
+      });
+
+      const r = await svc.generateReply({ text: 'มีโปรไหม', roomId: 'r1', customerId: null });
+      expect(r.confidence).not.toBe(0.3);
+      expect(r.reply).toContain('1,000');
+    });
+  });
 });

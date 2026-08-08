@@ -28,6 +28,11 @@ export class InterestConfigService {
         deletedAt: null,
         productCategories: { has: category },
       },
+      // Deterministic pick — MUST match resolveConfig (below) and
+      // ProductQuoteService.getQuotes: oldest-active wins. Without this, a category
+      // with ≥2 active configs could quote different numbers on the contract-create
+      // screen vs the bot/admin page (B2 Task 4 C2-residual).
+      orderBy: { createdAt: 'asc' },
     });
     return config;
   }

@@ -197,6 +197,8 @@ export class MessageRouterService {
               inputTokens: result.inputTokens,
               outputTokens: result.outputTokens,
             });
+            // B3 §5 — ส่งรูปสินค้าตามหลังข้อความ (best-effort)
+            await this.sendBotAttachments(adapter, message, room.id, result.attachments);
           }
           await this.aiAutoReplyService.logAutoReply({
             roomId: room.id,
@@ -469,6 +471,55 @@ export class MessageRouterService {
       channel: params.channel,
       roomId: room.id,
     });
+  }
+
+  /**
+   * B3 §5 — ส่ง IMAGE bubble ตามหลังคำตอบบอท
+   *
+   * ต้องส่ง "หลัง" ข้อความเสมอ: LINE reply token ใช้ได้ครั้งเดียวและถูกใช้ไปกับ
+   * ข้อความแรกแล้ว — bubble ถัดไปจึงไม่ส่ง replyToken (adapter จะ push ให้เอง)
+   *
+   * best-effort ทั้งก้อน: รูปส่งไม่ได้ต้องไม่ทำให้คำตอบที่ส่งไปแล้วกลายเป็น error
+   * และต้องไม่ปล่อยให้หลุดไปเส้นทาง domain-handler (จะกลายเป็นตอบซ้ำ)
+   */
+  private async sendBotAttachments(
+    adapter: IChannelAdapter,
+    message: InboundMessage,
+    roomId: string,
+    attachments?: { productId: string; imageUrl?: string; webUrl?: string }[],
+  ): Promise<void> {
+    if (!attachments?.length) return;
+    for (const att of attachments.slice(0, 2)) {
+      if (!att.imageUrl) continue;
+      try {
+        const sendResult = await adapter.sendMessage({
+          externalUserId: message.externalUserId,
+          channel: message.channel,
+          type: MessageType.IMAGE,
+          imageUrl: att.imageUrl,
+        });
+        await this.roomManager.saveMessage({
+          roomId,
+          externalMessageId: sendResult.externalMessageId,
+          role: MessageRole.BOT,
+          type: MessageType.IMAGE,
+          // `text` ต้องมีค่า — room-list preview อ่านจากคอลัมน์นี้ ถ้าปล่อย null
+          // ห้องจะแสดง preview ว่างหลังบอทส่งรูป (ใช้ค่าเดียวกับฝั่งน้องเบส Task 12)
+          text: '[image]',
+          mediaUrl: att.imageUrl,
+          intent: 'AUTO:sales:image',
+        });
+        if (!sendResult.success) {
+          this.logger.warn(
+            `[AiAutoReply] image send failed room=${roomId} product=${att.productId}: ${sendResult.error}`,
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          `[AiAutoReply] image send threw room=${roomId} product=${att.productId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
   }
 
   /**

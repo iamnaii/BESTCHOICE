@@ -140,6 +140,8 @@ export class AiAutoReplyService {
       toolsUsed: result.toolsUsed,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
+      // B3 §5 — รูป/ลิงก์ที่บอทเก็บมาจากผล tool (deterministic) ให้ router ส่งต่อ
+      ...(result.attachments?.length ? { attachments: result.attachments } : {}),
     };
   }
 

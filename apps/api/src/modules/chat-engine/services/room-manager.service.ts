@@ -35,6 +35,13 @@ import { signMessageMedia } from './media-url.util';
 export class RoomManagerService {
   private readonly logger = new Logger(RoomManagerService.name);
 
+  /**
+   * อายุ signed URL ที่ยื่นให้ adapter — ยาวกว่าที่ inbox ใช้ (1 ชม.) เพราะ LINE
+   * โหลด originalContentUrl ตอนลูกค้าเปิดดู ไม่ใช่ตอนส่ง. 6 วัน = ใต้เพดาน
+   * V4 signing (7 วัน) และไม่ต้องเปิด object ให้เป็น public (PDPA)
+   */
+  private static readonly ADAPTER_MEDIA_TTL_SEC = 6 * 24 * 3600; // 518400
+
   constructor(
     private prisma: PrismaService,
     private storageService: StorageService,
@@ -285,12 +292,50 @@ export class RoomManagerService {
     });
   }
 
-  /** Mark a message as successfully delivered to the customer (idempotency flag). */
-  async markOutboundSent(messageId: string): Promise<void> {
-    await this.prisma.chatMessage.update({
-      where: { id: messageId },
-      data: { outboundSentAt: new Date() },
-    });
+  /**
+   * Mark a message as successfully delivered to the customer (idempotency flag).
+   * เก็บ platform message id ด้วยเมื่อ adapter คืนมา — FB echo webhook dedup
+   * ชั้นที่ 2 อาศัย UNIQUE บน ChatMessage.externalMessageId
+   * (facebook-webhook.controller.ts:298-303) ถ้าไม่ stamp ไว้ echo ของข้อความที่
+   * เราส่งเองจะกลายเป็น bubble STAFF ซ้ำเมื่อ env FACEBOOK_APP_ID ไม่ได้ตั้ง
+   */
+  async markOutboundSent(messageId: string, externalMessageId?: string): Promise<void> {
+    try {
+      await this.prisma.chatMessage.update({
+        where: { id: messageId },
+        data: {
+          outboundSentAt: new Date(),
+          ...(externalMessageId ? { externalMessageId } : {}),
+        },
+      });
+    } catch (err) {
+      // echo webhook อาจมาถึงก่อน HTTP ของเราจะ return แล้วจอง mid ไปก่อน —
+      // ยอมเสีย stamp ดีกว่า throw (ข้อความส่งถึงลูกค้าแล้ว ถ้า throw client จะ retry = ส่งซ้ำ)
+      //
+      // Accepted residual: this fallback only narrows the FB-echo-duplicate window,
+      // it does NOT eliminate it. In the race that lands here, `mirrorOutbound`
+      // (message-router.service.ts) has ALREADY inserted the echo as a second
+      // ChatMessage row before this update collided — this P2002 fires strictly
+      // after that insert, so there is no undo path back to one row here. What this
+      // fallback DOES prevent is compounding that into a second problem: without it,
+      // markOutboundSent would throw, the caller would treat the send as failed, and
+      // a client retry would re-deliver the message to the customer for real (see
+      // sendStaffMessage's own "Accepted residual" jsdoc — this is the same class of
+      // unavoidable-without-2PC gap, one layer down). Trigger: env `FACEBOOK_APP_ID`
+      // unset or mismatched, so facebook-webhook.controller.ts's layer-1 app_id check
+      // (:319-330) can't short-circuit the echo before it reaches mirrorOutbound.
+      if ((err as { code?: string })?.code === 'P2002' && externalMessageId) {
+        this.logger.warn(
+          `[markOutboundSent] externalMessageId ${externalMessageId} ถูกใช้แล้ว — stamp เฉพาะ outboundSentAt`,
+        );
+        await this.prisma.chatMessage.update({
+          where: { id: messageId },
+          data: { outboundSentAt: new Date() },
+        });
+        return;
+      }
+      throw err;
+    }
   }
 
   /** Get recent messages for AI context or display */
@@ -646,14 +691,66 @@ export class RoomManagerService {
   }
 
   /**
-   * Store an uploaded file and save it as a chat message with media.
-   * Returns the persisted key + a (signed) download URL for the caller.
+   * Store an uploaded file and deliver it to the customer.
+   *
+   * บั๊กเดิม (ถึง 2026-08-04): เมธอดนี้ saveMessage เป็น role BOT อย่างเดียว
+   * ไม่เคยเรียก adapter → รูปที่แอดมินอัปโหลดไม่เคยถึงลูกค้าเลย. ตอนนี้รูปวิ่ง
+   * ผ่าน sendStaffMessage (มี clientMessageId exactly-once) ส่วนไฟล์ที่ไม่ใช่รูป
+   * ยังบันทึกในห้องอย่างเดียว (LINE ไม่มี file bubble) แต่ persist เป็น STAFF
+   * และคืน delivered=false ให้ UI บอกแอดมินตรงๆ
+   *
+   * ข้อจำกัดที่ยอมรับ: ถ้า sendStaffMessage ล้มเหลว "ก่อน" บันทึก (room ไม่พบ /
+   * ไม่มี adapter ของ channel) รูปจะไม่ถูก persist เลย. ทั้ง 5 channel ลงทะเบียน
+   * adapter ครบที่ chat-adapters.module.ts:85-89 และ roomId มาจากห้องที่เปิดอยู่
+   * → เกิดได้เฉพาะตอน config พัง; แอดมินเห็น error จาก toast (Task 8) แล้วส่งใหม่ได้
+   *
+   * แก้แล้ว (2026-08-08, Task 8 forward-flag): แต่ก่อน branch ไฟล์ non-image เรียก
+   * saveMessage ตรงโดยไม่มี P2002 handling — เมื่อ frontend เริ่มส่ง clientMessageId
+   * เดิมซ้ำตอน retry (unique [roomId, clientMessageId]) จะ throw 500 แทนที่จะ
+   * idempotent เหมือน sendStaffMessage. ตอนนี้ catch P2002 แล้วยืนยันว่าแถวเดิมมีจริง
+   * ก่อนคืน success — ดู try/catch รอบ saveMessage ด้านล่าง
+   *
+   * แก้แล้ว (2026-08-08, Task 8 review round 1, I1): P2002 catch ด้านบนกัน 500 ได้ แต่
+   * storageService.upload() (ก่อนหน้านั้นในเมธอดนี้) ยังรันไปแล้วด้วย Date.now() key
+   * ใหม่ทุกครั้งก่อนจะรู้ว่ามันคือ retry — ไฟล์ที่เพิ่ง upload ซ้ำนั้นกลายเป็น orphan ใน
+   * storage เพราะแถว DB ยังชี้ key เดิมจาก attempt แรก (ไม่มี caller ไหนอ่าน key ใหม่นี้
+   * เลย). ตอนนี้เช็ค findByClientMessageId ก่อน upload (non-image เท่านั้น — image ไม่ต้อง
+   * เพราะ idempotency ของมันอยู่ใน sendStaffMessage อยู่แล้ว) เจอแถวเดิม → คืนแถวเดิมทันที
+   * ไม่ upload ไม่ save; ไม่เจอ → เดินเส้นเดิม (P2002 catch ที่มีอยู่แล้วยังคงเป็น
+   * race-net ชั้นสอง สำหรับ 2 request แข่งกันในหน้าต่างเวลาแคบๆ ระหว่างเช็คกับ insert)
    */
   async uploadFile(
     roomId: string,
     file: Express.Multer.File,
     userId: string | undefined,
-  ): Promise<{ success: boolean; url: string; key: string; filename: string }> {
+    clientMessageId?: string,
+  ): Promise<{
+    success: boolean;
+    url: string;
+    key: string;
+    filename: string;
+    delivered: boolean;
+    error?: string;
+  }> {
+    const isImage = file.mimetype.startsWith('image/');
+
+    if (!isImage && clientMessageId) {
+      const existing = await this.findByClientMessageId(roomId, clientMessageId);
+      if (existing) {
+        const existingKey = existing.mediaUrl ?? '';
+        const url = this.storageService.configured && existingKey
+          ? await this.storageService.getSignedDownloadUrl(existingKey, 3600)
+          : existingKey;
+        return {
+          success: true,
+          url,
+          key: existingKey,
+          filename: existing.text ?? file.originalname,
+          delivered: false,
+        };
+      }
+    }
+
     const extMap: Record<string, string> = {
       'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
       'application/pdf': '.pdf',
@@ -668,18 +765,58 @@ export class RoomManagerService {
       ? await this.storageService.getSignedDownloadUrl(key, 3600)
       : key;
 
-    // Save as a message with media
-    await this.saveMessage({
-      roomId,
-      role: MessageRole.BOT,
-      type: file.mimetype.startsWith('image/') ? MessageType.IMAGE : MessageType.FILE,
-      text: file.originalname,
-      mediaUrl: key,
-      mediaType: file.mimetype,
-      staffId: userId,
-    });
+    if (isImage && this.messageRouter && userId) {
+      const deliveryMediaUrl = this.storageService.configured
+        ? await this.storageService.getSignedDownloadUrl(
+            key,
+            RoomManagerService.ADAPTER_MEDIA_TTL_SEC,
+          )
+        : key;
+      const sent = await this.messageRouter.sendStaffMessage({
+        roomId,
+        staffId: userId,
+        type: MessageType.IMAGE,
+        mediaUrl: key,
+        mediaType: file.mimetype,
+        deliveryMediaUrl,
+        clientMessageId,
+      });
+      return {
+        success: true,
+        url: downloadUrl,
+        key,
+        filename: file.originalname,
+        delivered: sent.success,
+        ...(sent.success ? {} : { error: sent.error }),
+      };
+    }
 
-    return { success: true, url: downloadUrl, key, filename: file.originalname };
+    try {
+      await this.saveMessage({
+        roomId,
+        role: MessageRole.STAFF,
+        type: isImage ? MessageType.IMAGE : MessageType.FILE,
+        text: file.originalname,
+        mediaUrl: key,
+        mediaType: file.mimetype,
+        staffId: userId,
+        clientMessageId,
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002' && clientMessageId) {
+        // Retry ด้วย clientMessageId เดิม (ไฟล์ non-image) — แถวก่อนหน้าถูกบันทึกแล้ว
+        // จาก attempt ที่แล้ว (unique [roomId, clientMessageId]). คืนแถวเดิมแทนที่จะ
+        // throw 500 ให้ frontend (idempotent) — เหมือน sendStaffMessage's P2002
+        // branch (message-router.service.ts) แต่ response shape ของ uploadFile ไม่มี
+        // field message ให้คืน จึงแค่ re-fetch ยืนยันว่าแถวมีจริงแล้วปล่อยผ่าน
+        const existing = await this.findByClientMessageId(roomId, clientMessageId);
+        if (!existing) throw e; // unreachable in practice — P2002 implies the row exists
+      } else {
+        throw e;
+      }
+    }
+
+    return { success: true, url: downloadUrl, key, filename: file.originalname, delivered: false };
   }
 
   /**

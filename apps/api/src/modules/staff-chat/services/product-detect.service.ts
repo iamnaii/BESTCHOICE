@@ -1,14 +1,21 @@
 import { Injectable } from '@nestjs/common';
+import { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ProductQuoteService, type DecimalLike } from './product-quote.service';
 
 interface DetectedProduct {
   id: string;
   name: string;
   brand: string;
   model: string;
+  /** ราคาเงินสด (columns-first) — เดิมอ่าน prices[0] ซึ่ง label ปนกันใน prod */
   price: number;
+  /** จำนวนเครื่องในสต็อกรุ่น+ความจุเดียวกัน */
   stock: number;
+  /** gallery[0] เท่านั้น — photos[] เป็น base64 data URL ห้ามส่งออก */
   imageUrl: string | null;
+  installmentPrice: number | null;
+  conditionGrade: string | null;
   pricingOptions: {
     downPaymentMin: number;
     monthlyPayment: number;
@@ -24,7 +31,10 @@ interface DetectedProduct {
 
 @Injectable()
 export class ProductDetectService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private productQuote: ProductQuoteService,
+  ) {}
 
   async detectProducts(messages: string[]): Promise<DetectedProduct[]> {
     const text = messages.join(' ').toLowerCase();
@@ -46,13 +56,13 @@ export class ProductDetectService {
         name: true,
         brand: true,
         model: true,
-        photos: true,
-        prices: {
-          where: { deletedAt: null },
-          orderBy: { isDefault: 'desc' },
-          take: 1,
-          select: { amount: true },
-        },
+        storage: true,
+        category: true,
+        conditionGrade: true,
+        cashPrice: true,
+        installmentPrice: true,
+        gallery: true,
+        prices: { where: { deletedAt: null }, select: { label: true, amount: true } },
       },
       take: 3,
     });
@@ -85,68 +95,86 @@ export class ProductDetectService {
       name: string;
       brand: string;
       model: string;
-      photos: string[];
-      prices: { amount: { toNumber(): number } }[];
+      storage: string | null;
+      category: string;
+      conditionGrade: string | null;
+      cashPrice: DecimalLike | null;
+      installmentPrice: DecimalLike | null;
+      gallery: string[];
+      prices: { label: string; amount: DecimalLike }[];
     }[],
   ): Promise<DetectedProduct[]> {
-    const result: DetectedProduct[] = [];
+    if (products.length === 0) return [];
 
-    // Use InterestConfig for installment option preview
-    const interestConfigs = await this.prisma.interestConfig.findMany({
-      where: { deletedAt: null, isActive: true },
-      select: {
-        interestRate: true,
-        minDownPaymentPct: true,
-        minInstallmentMonths: true,
-        maxInstallmentMonths: true,
-      },
-      take: 3,
-    });
+    const [quotes, counts, promotions] = await Promise.all([
+      this.productQuote.getQuotes(
+        products.map((p) => ({
+          category: p.category,
+          cashPrice: p.cashPrice,
+          installmentPrice: p.installmentPrice,
+          prices: p.prices,
+        })),
+      ),
+      Promise.all(
+        products.map((p) =>
+          this.prisma.product.count({
+            // ต้องกรอง category ด้วย — brand+model+storage อย่างเดียวจะนับ
+            // PHONE_NEW กับ PHONE_USED รุ่นเดียวกันปนกัน ทั้งที่ราคา/ค่างวดข้างๆ
+            // (จาก ProductQuoteService) เป็นราคาต่อ category เดียวเท่านั้น
+            // (ไม่กรอง branchId โดยตั้งใจ — บริบทแชทไม่รู้ว่าลูกค้าจะไปรับที่สาขาไหน
+            // จึงนับรวมทุกสาขา ต่างจาก reorder-points ที่กรอง per-branch)
+            where: {
+              deletedAt: null,
+              status: 'IN_STOCK',
+              brand: p.brand,
+              model: p.model,
+              storage: p.storage,
+              category: p.category as ProductCategory,
+            },
+          }),
+        ),
+      ),
+      this.prisma.promotion.findMany({
+        where: {
+          deletedAt: null,
+          isActive: true,
+          startDate: { lte: new Date() },
+          endDate: { gte: new Date() },
+        },
+        select: { id: true, name: true, description: true },
+        take: 3,
+      }),
+    ]);
 
-    const now = new Date();
-    const promotions = await this.prisma.promotion.findMany({
-      where: {
-        deletedAt: null,
-        isActive: true,
-        startDate: { lte: now },
-        endDate: { gte: now },
-      },
-      select: { id: true, name: true, description: true },
-      take: 3,
-    });
-
-    for (const product of products) {
-      const price = product.prices.length > 0 ? product.prices[0].amount.toNumber() : 0;
-      const imageUrl = product.photos.length > 0 ? product.photos[0] : null;
-
-      result.push({
+    return products.map((product, i) => {
+      const quote = quotes[i];
+      return {
         id: product.id,
         name: product.name,
         brand: product.brand ?? '',
         model: product.model ?? '',
-        price,
-        stock: 1, // Each Product row = 1 unit; aggregated count done upstream if needed
-        imageUrl,
-        pricingOptions: interestConfigs.map((cfg) => {
-          const interestRate = cfg.interestRate.toNumber();
-          const downPaymentPct = cfg.minDownPaymentPct.toNumber();
-          const installments = cfg.minInstallmentMonths;
-          const principal = price * (1 - downPaymentPct);
-          const totalWithInterest = principal * (1 + interestRate);
-          return {
-            downPaymentMin: Math.ceil(price * downPaymentPct),
-            monthlyPayment: Math.ceil(totalWithInterest / installments),
-            installments,
-            interestRate,
-          };
-        }),
+        price: quote.cashPrice ?? 0,
+        stock: counts[i],
+        imageUrl: product.gallery[0] ?? null,
+        installmentPrice: quote.installmentPrice,
+        conditionGrade: product.conditionGrade,
+        pricingOptions:
+          quote.months != null && quote.monthlyPayment != null
+            ? [
+                {
+                  downPaymentMin: quote.downAmount ?? 0,
+                  monthlyPayment: quote.monthlyPayment,
+                  installments: quote.months,
+                  interestRate: 0,
+                },
+              ]
+            : [],
         activePromotions: promotions.map((p) => ({
           id: p.id,
           name: p.name,
           description: p.description ?? '',
         })),
-      });
-    }
-    return result;
+      };
+    });
   }
 }

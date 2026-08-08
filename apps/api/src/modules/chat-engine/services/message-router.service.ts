@@ -503,6 +503,10 @@ export class MessageRouterService {
    *    the loser would fall through to `adapter.sendMessage` in the window before
    *    the winner stamped `outboundSentAt`, sending the message twice.
    *
+   * รองรับทั้ง TEXT และ IMAGE — bubble รูปใช้ `mediaUrl` (ค่าที่ persist) กับ
+   * `deliveryMediaUrl` (URL ที่ส่งให้ช่องทาง เมื่อ mediaUrl เป็น storage key).
+   * idempotency ทำงานเหมือนกันทั้งสองชนิดเพราะผูกกับ clientMessageId ไม่ใช่ชนิด.
+   *
    * ## Accepted residual (exactly-once is impossible over an unreliable adapter)
    *
    * A crash in the narrow window between `adapter.sendMessage` returning success and
@@ -514,13 +518,48 @@ export class MessageRouterService {
   async sendStaffMessage(params: {
     roomId: string;
     staffId: string;
-    text: string;
+    text?: string;
     clientMessageId?: string;
+    /** ชนิดข้อความที่จะ persist + ส่งออก (ไม่ระบุ = TEXT) */
+    type?: MessageType;
+    /** ค่าที่ persist ลง ChatMessage.mediaUrl — storage key หรือ public URL */
+    mediaUrl?: string;
+    mediaType?: string;
+    /**
+     * URL ที่ส่งให้ "ช่องทาง" จริง — ใช้เมื่อค่าที่ persist เป็น storage key
+     * (LINE/FB ต้องการ public HTTPS). ไม่ระบุ = ใช้ mediaUrl
+     */
+    deliveryMediaUrl?: string;
   }): Promise<{
     success: boolean;
     error?: string;
     message?: { id: string; clientMessageId: string | null; createdAt: Date };
   }> {
+    if (!params.text?.trim() && !params.mediaUrl) {
+      return { success: false, error: 'ไม่มีเนื้อหาที่จะส่ง' };
+    }
+
+    // Fail fast BEFORE persisting: an IMAGE whose delivery URL is a storage key
+    // (or missing) would reach LINE/FB as a non-https URL, get rejected, and leave
+    // the saved row stuck undelivered forever. mediaUrl may stay a storage key
+    // (that's what we persist; inbox re-signs on read) — but the URL handed to the
+    // channel must be public https (task-1 review I1).
+    if ((params.type ?? MessageType.TEXT) === MessageType.IMAGE) {
+      const candidateDeliveryUrl = params.deliveryMediaUrl ?? params.mediaUrl;
+      // Positive allow-list (fix round 2): only public http(s) may reach the channel.
+      // NOT `isStorageKey()` — that helper deliberately lets `line://` refs through
+      // (read/sign-path semantics), but LINE cannot fetch a `line://` value either;
+      // a legacy row's mediaUrl forwarded here unresolved must be rejected the same
+      // way as a raw storage key.
+      if (!candidateDeliveryUrl || !/^https:\/\//i.test(candidateDeliveryUrl)) {
+        return {
+          success: false,
+          error:
+            'ต้องส่ง deliveryMediaUrl เป็น public URL (https) — mediaUrl ที่เป็น storage key ใช้ส่งออกช่องทางไม่ได้',
+        };
+      }
+    }
+
     const room = await this.roomManager.findById(params.roomId);
     if (!room) {
       this.logger.error(`Room not found: ${params.roomId}`);
@@ -552,7 +591,10 @@ export class MessageRouterService {
         saved = await this.roomManager.saveMessage({
           roomId: params.roomId,
           role: MessageRole.STAFF,
+          type: params.type ?? MessageType.TEXT,
           text: params.text,
+          mediaUrl: params.mediaUrl,
+          mediaType: params.mediaType,
           staffId: params.staffId,
           clientMessageId: params.clientMessageId,
         });
@@ -578,11 +620,19 @@ export class MessageRouterService {
       return { success: false, error: 'save failed' };
     }
 
+    const outboundType = params.type ?? MessageType.TEXT;
+    const deliveryUrl = params.deliveryMediaUrl ?? params.mediaUrl;
+    const isImageBubble = outboundType === MessageType.IMAGE && !!deliveryUrl;
+    // LINE (line-shop.adapter.ts:69-75) และ FB (facebook.adapter.ts:73-77) เลือก
+    // payload จาก imageUrl ก่อน text เสมอ — ถ้าส่ง text มาด้วยจะถูกทิ้งเงียบๆ
+    // ผู้เรียกที่อยากได้ทั้งรูปและข้อความต้องส่ง 2 bubble (ดู ChatCommerceService)
     const result = await adapter.sendMessage({
       externalUserId,
       channel: room.channel,
-      type: 'TEXT' as any,
-      text: params.text,
+      type: outboundType,
+      text: isImageBubble ? undefined : params.text,
+      // adapters read only `imageUrl` (grep: no adapter reads OutboundMessage.mediaUrl)
+      ...(isImageBubble ? { imageUrl: deliveryUrl } : {}),
     });
 
     if (!result.success) {
@@ -591,7 +641,9 @@ export class MessageRouterService {
     }
 
     // Delivered — stamp the idempotency flag so a retry won't re-send.
-    await this.roomManager.markOutboundSent(saved.id);
+    // externalMessageId (if the adapter returns one, e.g. FB `mid`) is also
+    // stamped here — see markOutboundSent jsdoc for why (FB echo dedup).
+    await this.roomManager.markOutboundSent(saved.id, result.externalMessageId);
     return {
       success: true,
       message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },

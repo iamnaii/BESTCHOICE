@@ -21,6 +21,10 @@ interface EditForm {
   hasBox: boolean;
   accessoryType: string;
   accessoryBrand: string;
+  conditionGrade: string;
+  shopWarrantyDays: string;
+  accessoriesIncluded: string;
+  cosmeticNotes: string;
 }
 
 interface EditProductModalProps {
@@ -217,6 +221,59 @@ export default function EditProductModal({
             </div>
           </div>
         )}
+
+        <div className="border-t pt-3 space-y-3">
+          <div className="text-xs font-semibold text-muted-foreground">ข้อมูลสำหรับตอบลูกค้า</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">เกรดเครื่อง</label>
+              <select
+                value={editForm.conditionGrade}
+                onChange={(e) => setEditForm({ ...editForm, conditionGrade: e.target.value })}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+              >
+                <option value="">ไม่ระบุ</option>
+                <option value="A">เกรด A</option>
+                <option value="B">เกรด B</option>
+                <option value="C">เกรด C</option>
+                <option value="D">เกรด D</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">ประกันร้าน (วัน)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={editForm.shopWarrantyDays}
+                onChange={(e) => setEditForm({ ...editForm, shopWarrantyDays: e.target.value })}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">
+              อุปกรณ์ที่แถม (คั่นด้วยลูกน้ำ)
+            </label>
+            <input
+              type="text"
+              value={editForm.accessoriesIncluded}
+              onChange={(e) => setEditForm({ ...editForm, accessoriesIncluded: e.target.value })}
+              placeholder="สายชาร์จ, กล่อง, หัวชาร์จ"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">ตำหนิ (ไม่เกิน 500 ตัวอักษร)</label>
+            <textarea
+              value={editForm.cosmeticNotes}
+              onChange={(e) => setEditForm({ ...editForm, cosmeticNotes: e.target.value })}
+              maxLength={500}
+              rows={2}
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug resize-none"
+            />
+          </div>
+        </div>
 
         <div className="flex justify-end gap-3 pt-2 border-t">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground">

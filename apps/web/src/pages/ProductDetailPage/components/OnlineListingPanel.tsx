@@ -6,6 +6,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { useProductReadiness, PRODUCT_READINESS_QUERY_KEY } from '../hooks/useProductReadiness';
+import ReadinessCard from './ReadinessCard';
 
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = (typeof ANGLES)[number];
@@ -47,6 +49,7 @@ export default function OnlineListingPanel({
   canEdit: boolean;
 }) {
   const queryClient = useQueryClient();
+  const readiness = useProductReadiness(product.id);
   const [localGallery, setLocalGallery] = useState<string[]>(product.gallery);
   const [description, setDescription] = useState(product.onlineDescription ?? '');
   // Last server gallery this component has reconciled against — lets the
@@ -92,11 +95,18 @@ export default function OnlineListingPanel({
   });
 
   const invalidateProduct = () => queryClient.invalidateQueries({ queryKey: ['product', product.id] });
+  // gallery/photos/visibility all feed evaluateReadiness() (PHOTO/IN_STOCK/SHOP_GATE
+  // checks etc.) directly — invalidate the readiness card alongside the product on
+  // every mutation that can move it, or the card shows a stale checklist for up to
+  // staleTime (3 min, refetchOnWindowFocus off).
+  const invalidateReadiness = () =>
+    queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(product.id) });
 
   const saveGalleryMutation = useMutation({
     mutationFn: async () => api.patch(`/products/${product.id}/online-listing`, { gallery: localGallery }),
     onSuccess: () => {
       invalidateProduct();
+      invalidateReadiness();
       toast.success('บันทึกการจัดเรียงรูปสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -106,6 +116,7 @@ export default function OnlineListingPanel({
     mutationFn: async (dto: PromoteDto) => api.post(`/products/${product.id}/online-listing/photos`, dto),
     onSuccess: () => {
       invalidateProduct();
+      invalidateReadiness();
       toast.success('ส่งรูปขึ้นเว็บสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -116,6 +127,7 @@ export default function OnlineListingPanel({
       api.patch(`/products/${product.id}/online-listing`, { isOnlineVisible }),
     onSuccess: () => {
       invalidateProduct();
+      invalidateReadiness();
       toast.success('อัปเดตสถานะแสดงบนเว็บสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -135,13 +147,6 @@ export default function OnlineListingPanel({
     [localGallery, product.gallery],
   );
   const isDirtyDescription = description !== (product.onlineDescription ?? '');
-
-  const missingReasons = useMemo(() => {
-    const reasons: string[] = [];
-    if (product.gallery.length < 1) reasons.push('ยังไม่มีรูปขึ้นเว็บ');
-    if (product.category === 'PHONE_USED' && !product.conditionGrade) reasons.push('ยังไม่ระบุเกรด (เฉพาะมือสอง)');
-    return reasons;
-  }, [product.gallery.length, product.category, product.conditionGrade]);
 
   // Gate against the server's gallery length (source of truth the API will
   // actually enforce), not the unsaved local buffer — an unsaved local
@@ -182,6 +187,8 @@ export default function OnlineListingPanel({
 
   return (
     <div className="space-y-4">
+      <ReadinessCard isLoading={readiness.isLoading} isError={readiness.isError} data={readiness.data} />
+
       {/* รูปที่ขึ้นเว็บ */}
       <div className="bg-card rounded-lg border p-4">
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
@@ -315,20 +322,16 @@ export default function OnlineListingPanel({
             <Switch
               id="online-visible"
               checked={product.isOnlineVisible}
-              disabled={!canEdit || toggleMutation.isPending || (!product.isOnlineVisible && missingReasons.length > 0)}
+              disabled={!canEdit || toggleMutation.isPending}
               onCheckedChange={(checked) => toggleMutation.mutate(checked)}
             />
             <Label htmlFor="online-visible" className="text-sm leading-snug">
               แสดงบนเว็บ shop
             </Label>
           </div>
-          {!product.isOnlineVisible && missingReasons.length > 0 && (
-            <ul className="ml-6 mt-2 list-disc text-xs text-muted-foreground leading-snug space-y-0.5">
-              {missingReasons.map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
-          )}
+          <p className="ml-6 mt-1 text-xs text-muted-foreground leading-snug">
+            ปิดสวิตช์นี้เพื่อซ่อนเครื่องนี้จากเว็บลูกค้า — เงื่อนไข "ข้อมูลครบ" ดูที่การ์ดสถานะขึ้นเว็บ
+          </p>
         </div>
 
         <div>

@@ -6,6 +6,11 @@ export interface StockProduct {
   imeiSerial: string | null;
   category: string;
   costPrice: string;
+  // B0 column source-of-truth (Task 13) — already returned by GET /products and
+  // GET /products/stock (Prisma `include` returns all scalars by default), just
+  // not previously typed here.
+  cashPrice: string | null;
+  installmentPrice: string | null;
   status: string;
   color: string | null;
   storage: string | null;
@@ -19,7 +24,7 @@ export interface BranchSummary {
   branch: { id: string; name: string };
   total: number;
   inStock: number;
-  totalValue: number;
+  totalValue: number | null;
 }
 
 export interface AgingBucket {

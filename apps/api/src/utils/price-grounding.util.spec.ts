@@ -1,5 +1,6 @@
 import {
   GROUNDED_PRICE_KEYS,
+  FINANCE_GROUNDED_PRICE_KEYS,
   collectGroundedPrices,
   collectGroundedPricesFromText,
   collectGroundedPricesFromToolText,
@@ -248,5 +249,85 @@ describe('collectGroundedPricesFromToolText — B3 Task 6: ข้อความ
       collectGroundedPricesFromToolText('list_promotions', { promotions: 'oops' }, set),
     ).not.toThrow();
     expect(set.size).toBe(0);
+  });
+});
+
+describe('คีย์เงินฝั่งน้องเบส (B3 Task 11)', () => {
+  it('เก็บยอดจาก get_current_balance ได้ครบ', () => {
+    const set = new Set<number>();
+    collectGroundedPrices(
+      { found: true, amountDue: 1416.66, lateFee: 0, totalAmount: 1515.83, daysOverdue: 3 },
+      set,
+      FINANCE_GROUNDED_PRICE_KEYS,
+    );
+    expect(set.has(1416.66)).toBe(true);
+    expect(set.has(1515.83)).toBe(true);
+    expect(set.has(3)).toBe(false); // daysOverdue ไม่ใช่เงิน
+  });
+
+  it('เก็บยอดจาก get_payment_schedule + list_recent_receipts', () => {
+    const set = new Set<number>();
+    collectGroundedPrices(
+      {
+        totalAmount: 18190,
+        paidAmount: 4547.49,
+        remainingAmount: 13642.51,
+        nextAmount: 1515.83,
+        receipts: [{ installmentNumber: 1, amount: 1515.83 }],
+      },
+      set,
+      FINANCE_GROUNDED_PRICE_KEYS,
+    );
+    for (const n of [18190, 4547.49, 13642.51, 1515.83]) expect(set.has(n)).toBe(true);
+  });
+
+  it('น้องเบสตอบยอดค้างได้โดยไม่โดน block', () => {
+    const set = new Set<number>();
+    collectGroundedPrices({ totalAmount: 5000 }, set, FINANCE_GROUNDED_PRICE_KEYS);
+    expect(guardGrounding('ยอดคงเหลือของคุณคือ 5,000 บาทค่ะ', set)).toEqual({ ok: true });
+  });
+
+  it('น้องเบสตอบยอดที่มีสตางค์ได้ แต่ยอดที่แต่งเองยังโดน block', () => {
+    const set = new Set<number>();
+    collectGroundedPrices({ totalAmount: 1515.83 }, set, FINANCE_GROUNDED_PRICE_KEYS);
+    expect(guardGrounding('ยอดของคุณคือ 1,515.83 บาทค่ะ', set)).toEqual({ ok: true });
+    expect(guardGrounding('ยอดของคุณคือ 99,999.50 บาทค่ะ', set)).toEqual({
+      ok: false,
+      reason: 'unmatched-price=99999.5',
+    });
+  });
+
+  it('คีย์กว้างฝั่งการเงินต้องไม่รั่วเข้าพูลของบอทขาย', () => {
+    const set = new Set<number>();
+    // ค่า default = GROUNDED_PRICE_KEYS (บอทขาย) → `amount` ต้องไม่ถูกเก็บ
+    collectGroundedPrices({ prices: [{ label: 'ราคาทุน', amount: 21000 }] }, set);
+    expect(set.size).toBe(0);
+    expect(FINANCE_GROUNDED_PRICE_KEYS.has('amount')).toBe(true);
+    expect(GROUNDED_PRICE_KEYS.has('amount')).toBe(false);
+  });
+
+  it('เลขบัญชีธนาคารต้องไม่ถูกนับเป็นราคา', () => {
+    const set = new Set<number>();
+    collectGroundedPrices(
+      { bankName: 'KBank', accountNumber: '1234567890' },
+      set,
+      FINANCE_GROUNDED_PRICE_KEYS,
+    );
+    expect(set.size).toBe(0);
+  });
+
+  // calculate_fine ซ่อนเพดานค่าปรับไว้ใน explanation (ไม่มีคีย์ตัวเลขรองรับ)
+  // — วันที่ owner ตั้ง late_fee_max_amount = 1500 น้องเบสต้องพูดตามได้
+  it('ดูดเลขจาก explanation ของ calculate_fine (เพดานค่าปรับ 4 หลัก)', () => {
+    const set = new Set<number>();
+    const result = {
+      daysOverdue: 40,
+      totalFine: 1500,
+      explanation: 'ค่าปรับล่าช้าต่อวัน: 50 บาท/วัน (สูงสุด 1500 บาท) — งวดนี้เลย 40 วัน ≈ 1500 บาท',
+    };
+    collectGroundedPrices(result, set, FINANCE_GROUNDED_PRICE_KEYS);
+    collectGroundedPricesFromToolText('calculate_fine', result, set);
+    expect(set.has(1500)).toBe(true);
+    expect(guardGrounding('ค่าปรับสูงสุด 1,500 บาทค่ะ', set)).toEqual({ ok: true });
   });
 });

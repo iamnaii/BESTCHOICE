@@ -6,6 +6,7 @@ import { FinanceConfigService } from './finance-config.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
 import { AiUsageService } from '../../ai-usage/ai-usage.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { HandoffService } from './handoff.service';
 
 // Phase 7.2 model-routing tests drive the Anthropic tool loop, so mock the SDK to give
 // `new Anthropic()` a controllable `messages.create`. (Other tests never invoke create.)
@@ -70,6 +71,7 @@ describe('FinanceAiService', () => {
             useValue: { record: jest.fn().mockResolvedValue(undefined) },
           },
           { provide: PrismaService, useValue: prisma },
+          { provide: HandoffService, useValue: { handoff: jest.fn() } },
         ],
       }).compile();
 
@@ -116,6 +118,7 @@ describe('FinanceAiService', () => {
             useValue: { record: jest.fn().mockResolvedValue(undefined) },
           },
           { provide: PrismaService, useValue: prisma },
+          { provide: HandoffService, useValue: { handoff: jest.fn() } },
         ],
       }).compile();
 
@@ -255,10 +258,21 @@ describe('FinanceAiService', () => {
 
   describe('model routing (Phase 7.2)', () => {
     let service: FinanceAiService;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let handoff: any;
 
     beforeEach(async () => {
       mockCreate.mockReset();
-      toolExecutor = { execute: jest.fn().mockResolvedValue({ ok: true, data: { ok: 1 }, triggeredHandoff: false }) };
+      // B3 Task 11: `data: { totalAmount: 5000 }` — NOT `{ ok: 1 }`. The old placeholder had
+      // no money key at all, so the grounding guard below would have blocked EVERY reply that
+      // quotes a number (including the pre-existing 'ยอดคงเหลือของคุณคือ 5,000 บาทค่ะ' fixture
+      // response in the escalation test right below), making that test pass for the wrong
+      // reason once the guard exists. This is the real shape of the pipeline: any number the
+      // bot speaks must trace back to a tool result.
+      toolExecutor = {
+        execute: jest.fn().mockResolvedValue({ ok: true, data: { totalAmount: 5000 }, triggeredHandoff: false }),
+      };
+      handoff = { handoff: jest.fn().mockResolvedValue({ handoffId: 'sess-1', estimatedTime: '2 ชั่วโมง' }) };
       prisma = { chatMessage: { findMany: jest.fn().mockResolvedValue([]) } };
       const module: TestingModule = await Test.createTestingModule({
         providers: [
@@ -272,6 +286,7 @@ describe('FinanceAiService', () => {
           },
           { provide: AiUsageService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
           { provide: PrismaService, useValue: prisma },
+          { provide: HandoffService, useValue: handoff },
         ],
       }).compile();
       service = module.get(FinanceAiService);
@@ -298,6 +313,66 @@ describe('FinanceAiService', () => {
       expect(result?.model).toBe('claude-sonnet-4-6');
       expect(result?.toolsUsed).toContain('get_contract_status');
       expect(toolExecutor.execute).toHaveBeenCalledTimes(1);
+      // B3 Task 11: pin down that this is the NORMAL (non-guard-blocked) path — the
+      // number spoken (5,000) really does trace back to the tool's totalAmount above.
+      expect(result!.handoffTriggered).toBe(false);
+    });
+
+    describe('grounding guard (B3 Task 11)', () => {
+      it('บล็อกคำตอบที่มีตัวเลขบาทซึ่งไม่ได้มาจาก tool → ส่งต่อพนักงาน (ห้ามบอกลูกค้าว่าระบบขัดข้อง)', async () => {
+        toolExecutor.execute.mockResolvedValue({ ok: true, data: { found: true, totalAmount: 1515.83 } });
+        mockCreate
+          .mockResolvedValueOnce(toolUseResponse('get_current_balance'))
+          .mockResolvedValueOnce(textResponse('ยอดของคุณคือ 99,999.50 บาทค่ะ'));
+
+        const r = await service.generateReply(defaultParams);
+        expect(r).not.toBeNull();
+        expect(r!.handoffTriggered).toBe(true);
+        expect(r!.text).toContain('พนักงาน');
+        expect(r!.text).not.toContain('99,999');
+        expect(handoff.handoff).toHaveBeenCalledWith(
+          expect.objectContaining({ roomId: 'sess-1', reason: 'grounding_blocked' }),
+        );
+      });
+
+      it('ยอมให้ตอบตัวเลขที่ tool คืนมาจริง (รวมสตางค์)', async () => {
+        toolExecutor.execute.mockResolvedValue({ ok: true, data: { found: true, totalAmount: 1515.83 } });
+        mockCreate
+          .mockResolvedValueOnce(toolUseResponse('get_current_balance'))
+          .mockResolvedValueOnce(textResponse('ยอดของคุณคือ 1,515.83 บาทค่ะ'));
+
+        const r = await service.generateReply(defaultParams);
+        expect(r?.text).toContain('1,515.83');
+        expect(handoff.handoff).not.toHaveBeenCalled();
+      });
+
+      it('คำตอบที่ไม่มีตัวเลขบาท ผ่านตลอด (ทักทาย/ขอบคุณ)', async () => {
+        mockCreate.mockResolvedValueOnce(textResponse('สวัสดีค่ะ ให้น้องเบสช่วยอะไรดีคะ'));
+        const r = await service.generateReply(defaultParams);
+        expect(r?.text).toContain('สวัสดี');
+      });
+
+      // ── เคสที่สำคัญที่สุดของ Task นี้: เทิร์นที่ 2 ของบทสนทนาปกติ ──
+      // "ยอดเท่าไหร่" (เทิร์น 1, มี tool) → "โอนยังไงคะ" (เทิร์น 2, get_bank_info คืน string ล้วน)
+      // ถ้าไม่ seed ledger จาก history เทิร์นนี้จะ grounded.size === 0 แล้วโดน block ทั้งที่ยอดถูกต้อง
+      it('ทวนยอดเดิมในเทิร์นถัดไปได้ แม้ tool เทิร์นนั้นไม่คืนตัวเลข (seed จาก history)', async () => {
+        prisma.chatMessage.findMany.mockResolvedValue([
+          { role: 'CUSTOMER', text: 'ยอดเท่าไหร่' },
+          { role: 'BOT', text: 'งวดนี้ 1,515.83 บาทค่ะ' },
+        ]);
+        toolExecutor.execute.mockResolvedValue({
+          ok: true,
+          data: { bankName: 'KBank', accountNumber: '203-1-16520-5', formatted: '…' },
+        });
+        mockCreate
+          .mockResolvedValueOnce(toolUseResponse('get_bank_info'))
+          .mockResolvedValueOnce(textResponse('โอน 1,515.83 บาท มาที่บัญชีนี้ได้เลยค่ะ'));
+
+        const r = await service.generateReply(defaultParams);
+        expect(r?.text).toContain('1,515.83');
+        expect(r?.handoffTriggered).toBe(false);
+        expect(handoff.handoff).not.toHaveBeenCalled();
+      });
     });
   });
 });

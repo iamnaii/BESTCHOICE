@@ -35,18 +35,41 @@ export const GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
 /**
  * คีย์ของ "น้องเบส" = ชุดบอทขาย + คีย์เงินฝั่งการเงิน (Task 11)
  * แยกออกมาเพราะคีย์กว้าง ๆ อย่าง `amount` ต้องไม่ไปขยายพูลที่บอทขายยอมรับ
- * (`search_products` มีแถวราคาชื่อ `amount` ใน `prices[]`)
- *
- * Task 1 scope: มีแค่ `amount` (คีย์เดียวที่ brief นี้เอ่ยชื่อไว้ตรง ๆ) — ห้ามเดาเพิ่มคีย์เงิน
- * ฝั่งการเงินอื่น ๆ ที่ยังไม่ถูกระบุ. Task 11 (FinanceAiService) เป็นเจ้าของพูลนี้จริง ๆ
- * และต้องแก้ตรงนี้เพิ่มคีย์ตามที่ tool ฝั่งการเงินคืนจริง — ห้ามไปแก้ GROUNDED_PRICE_KEYS
- * (ชุดของบอทขาย) เพื่อขยายพูลนี้แทน.
+ * (`search_products` มีแถวราคาชื่อ `amount` ใน `prices[]`) — ห้ามไปแก้
+ * `GROUNDED_PRICE_KEYS` (ชุดของบอทขาย) เพื่อขยายพูลนี้แทน. `FinanceAiService`
+ * (น้องเบส) เป็นเจ้าของพูลนี้จริง ๆ และเป็นคนเดียวที่ส่ง set นี้เข้า
+ * `collectGroundedPrices`.
  */
-// review round 1 [I2]: ยังไม่เติมคีย์ใดเกินชุดฐาน — 'amount' ที่เคยใส่ไว้เป็นการเดา
-// (คีย์ชื่อกว้างโผล่ใน tool result การเงินหลายตัวที่ไม่ใช่ราคา = fail-open ทีละนิด)
-// Task 11 ต้อง audit shape จริงของ FinanceAiService tools แล้วเติมทีละคีย์พร้อมเทสต์
+// B3 Task 11 — audit shape จริงของ FinanceToolsService (apps/api/src/modules/chatbot-finance/
+// services/finance-tools.service.ts) ทีละ method แล้วเติมทีละคีย์พร้อมเทสต์ใน
+// price-grounding.util.spec.ts (ห้ามเดาเพิ่มคีย์ที่ไม่พิสูจน์ว่าเป็นราคาจริง):
+//
+//  - getCurrentBalance (:71-82)      → amountDue, lateFee, totalAmount เป็นเงิน;
+//                                       daysOverdue เป็นจำนวนวัน ไม่เติม
+//  - getPaymentSchedule (:121-133)   → totalAmount, paidAmount, remainingAmount, nextAmount
+//                                       เป็นเงิน; totalInstallments/paidInstallments/
+//                                       remainingInstallments เป็นจำนวนนับ ไม่เติม
+//  - calculateFine (:150-154)        → totalFine เป็นเงิน (ตัวเลขในเพดานค่าปรับซ้ำใน
+//                                       explanation ด้วย ดูดผ่าน collectGroundedPricesFromToolText
+//                                       แยกต่างหาก ไม่ต้องเติมคีย์ใหม่)
+//  - listRecentReceipts (:182-186)   → receipts[].amount เป็นเงิน (ใช้คีย์กว้าง 'amount' —
+//                                       ตั้งใจแยกพูลนี้จาก GROUNDED_PRICE_KEYS ของบอทขายเพราะ
+//                                       search_products มี prices[].amount ที่เป็นราคาทุน/ราคาเก่า
+//                                       ที่บอทขายห้าม quote)
+//  - getBankInfo (:196-201)          → bankName/accountNumber/accountName/formatted เป็น string
+//                                       ล้วน ไม่มีคีย์ตัวเลขให้เติม (นี่คือ tool ที่ทำให้ turn 2
+//                                       ของบทสนทนาปกติ "โอนยังไงคะ" ไม่คืนตัวเลขเลย — ต้อง seed
+//                                       grounded จาก history แทน ดู finance-ai.service.ts)
 export const FINANCE_GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
   ...GROUNDED_PRICE_KEYS,
+  'amountDue',
+  'lateFee',
+  'totalAmount',
+  'paidAmount',
+  'remainingAmount',
+  'nextAmount',
+  'totalFine',
+  'amount',
 ]);
 
 /** ราคาที่ต่ำกว่านี้ถูกมองว่าเป็นค่าปรับ/วัน/เปอร์เซ็นต์ — เสี่ยง false-positive เกินไป */

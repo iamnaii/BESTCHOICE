@@ -10,6 +10,14 @@ import { FinanceConfigService } from './finance-config.service';
 import { FINANCE_BOT_SYSTEM_PROMPT } from '../prompts/system-prompt';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
 import { AiUsageService } from '../../ai-usage/ai-usage.service';
+import {
+  collectGroundedPrices,
+  collectGroundedPricesFromText,
+  collectGroundedPricesFromToolText,
+  guardGrounding,
+  FINANCE_GROUNDED_PRICE_KEYS,
+} from '../../../utils/price-grounding.util';
+import { HandoffService } from './handoff.service';
 
 export interface AiReply {
   text: string;
@@ -21,6 +29,10 @@ export interface AiReply {
 }
 
 const MAX_TOOL_ITERATIONS = 5;
+
+/** B3 §5 — ทางที่ guard บล็อก: บอกความจริง + ส่งต่อพนักงาน (ห้ามอ้างว่าระบบล่ม) */
+const GROUNDING_BLOCKED_REPLY =
+  'ขอโทษค่ะ 🙏 น้องเบสขอให้พนักงานยืนยันตัวเลขให้อีกครั้งนะคะ\nส่งต่อให้พนักงานติดต่อกลับแล้วค่ะ';
 
 /**
  * Wrapper รอบ Claude API สำหรับ Finance Bot
@@ -59,6 +71,7 @@ export class FinanceAiService {
     private integrationConfig: IntegrationConfigService,
     private aiUsage: AiUsageService,
     private prisma: PrismaService,
+    private handoff: HandoffService,
   ) {}
 
   private async getAnthropicClient(): Promise<Anthropic | null> {
@@ -94,6 +107,16 @@ export class FinanceAiService {
       // Task 8: load full conversation history from DB (last 10 messages, oldest-first)
       // so Claude has full context across turns.
       const dbHistory = await this.loadHistory(params.roomId);
+      // B3 §5 — backstop เดียวกับบอทขาย: ทุกเลขบาทที่ตอบต้องมีที่มา
+      const groundedPrices = new Set<number>();
+      // ⚠️ น้องเบสเป็น multi-turn (ต่างจากบอทขาย): เทิร์นถัด ๆ ไปอาจไม่เรียก tool
+      // ที่คืนตัวเลขเลย (เช่น get_bank_info คืน string ล้วน) การทวนยอดเดิมที่ตัวเอง
+      // เพิ่งบอกไปจึงต้องนับเป็น grounded ไม่งั้น guard จะบล็อกบทสนทนาปกติ
+      // (ข้อความใน history = ข้อความที่ "ส่งออกไปแล้ว" = ผ่าน guard มาแล้ว หรือ
+      //  พนักงานพิมพ์เอง — STAFF/BOT ถูก map เป็น assistant ที่ loadHistory :275-279)
+      for (const h of dbHistory) {
+        if (h.role === 'assistant') collectGroundedPricesFromText(h.content, groundedPrices);
+      }
       const messages = this.buildMessagesFromHistory(dbHistory, params.userMessage);
 
       let totalInput = 0;
@@ -145,6 +168,58 @@ export class FinanceAiService {
             });
             return null;
           }
+
+          const grounding = guardGrounding(text, groundedPrices);
+          if (!grounding.ok) {
+            this.logger.warn(
+              `[FinanceAI] GroundingGuard HALLUCINATION_BLOCKED room=${params.roomId} reason=${grounding.reason} reply=${JSON.stringify(text).slice(0, 200)} grounded=${JSON.stringify([...groundedPrices])}`,
+            );
+            Sentry.captureMessage('FinanceAI grounding blocked', {
+              level: 'warning',
+              tags: { module: 'chatbot-finance', action: 'grounding_blocked' },
+              extra: { reason: grounding.reason, toolsUsed },
+            });
+            void this.aiUsage.record({
+              service: 'finance-ai',
+              method: 'generateReply',
+              model: activeModel,
+              inputTokens: totalInput,
+              outputTokens: totalOutput,
+              status: 'error',
+              errorKind: 'grounding_blocked',
+            });
+
+            // ห้ามคืน null: ผู้เรียกจะตอบ FALLBACK_REPLY = "ระบบขัดข้อง" ซึ่งเป็นคำโกหก
+            // (ระบบทำงานปกติ — โมเดลต่างหากที่พูดเลขไม่มีที่มา) และไม่มีใครไปหาสตาฟ
+            // แทนที่ด้วย: เข้าคิวพนักงานจริง + ตอบข้อความที่ตรงกับสิ่งที่เกิดขึ้น
+            try {
+              await this.handoff.handoff({
+                roomId: params.roomId,
+                reason: 'grounding_blocked',
+                priority: 'high',
+                summary:
+                  `น้องเบสตอบตัวเลขที่ไม่มีที่มา (${grounding.reason}) — ลูกค้าถาม: ` +
+                  params.userMessage.slice(0, 120),
+                tags: ['grounding'],
+              });
+            } catch (err) {
+              // handoff ล้มก็ยังต้องตอบลูกค้าให้ตรงความจริง — ห้ามพาลงทาง "ระบบขัดข้อง"
+              this.logger.error(
+                `[FinanceAI] handoff after grounding block failed: ${err instanceof Error ? err.message : err}`,
+              );
+              Sentry.captureException(err);
+            }
+
+            return {
+              text: GROUNDING_BLOCKED_REPLY,
+              model: activeModel,
+              inputTokens: totalInput,
+              outputTokens: totalOutput,
+              toolsUsed,
+              handoffTriggered: true,
+            };
+          }
+
           void this.aiUsage.record({
             service: 'finance-ai',
             method: 'generateReply',
@@ -184,6 +259,13 @@ export class FinanceAiService {
               { customerId: params.customerId, roomId: params.roomId },
             );
             if (result.triggeredHandoff) handoffTriggered = true;
+            if (result.ok) {
+              // ⚠️ ต้องส่ง FINANCE_GROUNDED_PRICE_KEYS — ค่า default คือชุดของบอทขาย
+              collectGroundedPrices(result.data, groundedPrices, FINANCE_GROUNDED_PRICE_KEYS);
+              // FAQ/โปรโมชั่นเป็นข้อความที่แอดมินพิมพ์เอง = ground truth
+              // (util ตัวเดียวกับบอทขาย Task 6/8 — ห้าม inline ซ้ำ)
+              collectGroundedPricesFromToolText(block.name, result.data, groundedPrices);
+            }
             return {
               type: 'tool_result' as const,
               tool_use_id: block.id,

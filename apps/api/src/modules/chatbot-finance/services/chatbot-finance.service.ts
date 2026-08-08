@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChatChannel, MessageRole } from '@prisma/client';
+import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   LineFinanceWebhookEvent,
@@ -9,7 +9,8 @@ import {
   LinePostbackEvent,
 } from '../dto/line-webhook.dto';
 import { LineFinanceClientService } from './line-finance-client.service';
-import { LineQuickReply, FlexContainer } from './line-finance-client.service';
+import { LineQuickReply, FlexContainer, LineMessage } from './line-finance-client.service';
+import { MAX_BOT_ATTACHMENTS } from '../../../utils/bot-attachments.util';
 import { ChatRoomService } from './chat-room.service';
 import { VerificationService } from './verification.service';
 import { FinanceAiService } from './finance-ai.service';
@@ -316,13 +317,22 @@ export class ChatbotFinanceService {
           ? this.buildFeedbackQuickReply(session.id)
           : undefined;
 
-      await this.replyAndSave(session.id, event.replyToken, aiReply.text, intent, {
-        model: aiReply.model,
-        inputTokens: aiReply.inputTokens,
-        outputTokens: aiReply.outputTokens,
-        toolsUsed: aiReply.toolsUsed,
-        costUsd,
-      }, feedbackQuickReply);
+      await this.replyAndSave(
+        session.id,
+        event.replyToken,
+        aiReply.text,
+        intent,
+        {
+          model: aiReply.model,
+          inputTokens: aiReply.inputTokens,
+          outputTokens: aiReply.outputTokens,
+          toolsUsed: aiReply.toolsUsed,
+          costUsd,
+        },
+        feedbackQuickReply,
+        // ส่งเฉพาะ attachment ที่มีรูปจริง — ลิงก์อยู่ในข้อความที่โมเดลเขียนแล้ว
+        aiReply.attachments?.filter((a) => !!a.imageUrl).map((a) => ({ url: a.imageUrl! })),
+      );
     } else {
       await this.replyAndSave(session.id, event.replyToken, FALLBACK_REPLY, INTENTS.FALLBACK);
     }
@@ -500,8 +510,9 @@ export class ChatbotFinanceService {
       costUsd?: number;
     },
     quickReply?: LineQuickReply,
+    images?: { url: string }[], // B3 §5 Task 12 — รูปสินค้าตามหลังข้อความ (optional = call site เดิมไม่พัง)
   ): Promise<string> {
-    // Save message first to get the ID for feedback Quick Reply
+    // บันทึกข้อความ text ก่อนเพื่อเอา id ไปใส่ใน feedback quick reply
     const savedMsg = await this.sessions.saveMessage({
       roomId,
       role: MessageRole.BOT,
@@ -514,9 +525,32 @@ export class ChatbotFinanceService {
       costUsd: modelMeta?.costUsd,
     });
 
+    // B3 §5 — รูปสินค้าตามหลังข้อความใน reply เดียวกัน (LINE รับได้ 5 ข้อความ/ครั้ง)
+    const imageList = (images ?? []).filter((i) => !!i.url).slice(0, MAX_BOT_ATTACHMENTS);
+    for (const img of imageList) {
+      await this.sessions.saveMessage({
+        roomId,
+        role: MessageRole.BOT,
+        type: MessageType.IMAGE,
+        text: '[image]',
+        mediaUrl: img.url,
+        intent,
+      });
+    }
+
     try {
+      const messages: LineMessage[] = [
+        { type: 'text', text },
+        ...imageList.map((i) => ({
+          type: 'image' as const,
+          originalContentUrl: i.url,
+          previewImageUrl: i.url,
+        })),
+      ];
+
       if (quickReply) {
-        // Replace placeholder with actual message ID
+        // LINE แสดง quick reply ของ "ข้อความสุดท้าย" เท่านั้น — ถ้าแปะไว้ที่ text
+        // แล้วมีรูปตามหลัง ปุ่มจะหายไปเฉย ๆ
         const resolvedQuickReply: LineQuickReply = {
           items: quickReply.items.map((item) => ({
             ...item,
@@ -528,10 +562,13 @@ export class ChatbotFinanceService {
             },
           })),
         } as LineQuickReply;
-        await this.lineClient.replyWithQuickReply(replyToken, text, resolvedQuickReply);
-      } else {
-        await this.lineClient.replyText(replyToken, text);
+        messages[messages.length - 1] = {
+          ...messages[messages.length - 1],
+          quickReply: resolvedQuickReply,
+        } as LineMessage;
       }
+
+      await this.lineClient.replyMessage(replyToken, messages);
     } catch (err) {
       this.logger.error(
         `[Finance] reply failed: ${err instanceof Error ? err.message : err}`,

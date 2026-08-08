@@ -18,6 +18,7 @@ import {
   FINANCE_GROUNDED_PRICE_KEYS,
 } from '../../../utils/price-grounding.util';
 import { HandoffService } from './handoff.service';
+import { collectAttachmentsFromToolResult, type BotAttachment } from '../../../utils/bot-attachments.util';
 
 export interface AiReply {
   text: string;
@@ -26,6 +27,7 @@ export interface AiReply {
   outputTokens: number;
   toolsUsed: string[];
   handoffTriggered: boolean;
+  attachments?: BotAttachment[]; // B3 §5 — รูปสินค้าจาก tool results (Task 12)
 }
 
 const MAX_TOOL_ITERATIONS = 5;
@@ -109,6 +111,8 @@ export class FinanceAiService {
       const dbHistory = await this.loadHistory(params.roomId);
       // B3 §5 — backstop เดียวกับบอทขาย: ทุกเลขบาทที่ตอบต้องมีที่มา
       const groundedPrices = new Set<number>();
+      // B3 §5 Task 12 — เก็บรูปสินค้าจาก tool results แบบ deterministic (util เดียวกับบอทขาย)
+      const attachments = new Map<string, BotAttachment>();
       // ⚠️ น้องเบสเป็น multi-turn (ต่างจากบอทขาย): เทิร์นถัด ๆ ไปอาจไม่เรียก tool
       // ที่คืนตัวเลขเลย (เช่น get_bank_info คืน string ล้วน) การทวนยอดเดิมที่ตัวเอง
       // เพิ่งบอกไปจึงต้องนับเป็น grounded ไม่งั้น guard จะบล็อกบทสนทนาปกติ
@@ -245,6 +249,7 @@ export class FinanceAiService {
             outputTokens: totalOutput,
             toolsUsed,
             handoffTriggered,
+            ...(attachments.size > 0 ? { attachments: [...attachments.values()] } : {}),
           };
         }
 
@@ -275,6 +280,8 @@ export class FinanceAiService {
               // FAQ/โปรโมชั่นเป็นข้อความที่แอดมินพิมพ์เอง = ground truth
               // (util ตัวเดียวกับบอทขาย Task 6/8 — ห้าม inline ซ้ำ)
               collectGroundedPricesFromToolText(block.name, result.data, groundedPrices);
+              // B3 §5 Task 12 — เก็บรูปสินค้า (util เดียวกับบอทขาย Task 2/9)
+              collectAttachmentsFromToolResult(block.name, result.data, attachments);
             }
             return {
               type: 'tool_result' as const,

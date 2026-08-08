@@ -116,7 +116,7 @@ describe('ChatbotFinanceService', () => {
     expect(ai.generateReply).toHaveBeenCalledWith(
       expect.objectContaining({ userMessage: 'ยอดเท่าไหร่', customerId: 'c1' }),
     );
-    expect(lineClient.replyText).toHaveBeenCalledWith('rt-1', 'สวัสดีค่ะ');
+    expect(lineClient.replyMessage).toHaveBeenCalledWith('rt-1', [{ type: 'text', text: 'สวัสดีค่ะ' }]);
   });
 
   it('sends verify Flex prompt when not linked', async () => {
@@ -143,7 +143,7 @@ describe('ChatbotFinanceService', () => {
 
     expect(sessions.saveMessage).toHaveBeenCalled();
     expect(ai.generateReply).not.toHaveBeenCalled();
-    expect(lineClient.replyText).not.toHaveBeenCalled();
+    expect(lineClient.replyMessage).not.toHaveBeenCalled();
   });
 
   it('sends fallback when AI returns null', async () => {
@@ -151,10 +151,9 @@ describe('ChatbotFinanceService', () => {
 
     await service.handleEvent(makeTextEvent('test'));
 
-    expect(lineClient.replyText).toHaveBeenCalledWith(
-      'rt-1',
-      expect.stringContaining('ระบบขัดข้อง'),
-    );
+    expect(lineClient.replyMessage).toHaveBeenCalledWith('rt-1', [
+      expect.objectContaining({ type: 'text', text: expect.stringContaining('ระบบขัดข้อง') }),
+    ]);
   });
 
   it('processes image through slip processing', async () => {
@@ -222,5 +221,80 @@ describe('ChatbotFinanceService', () => {
     await service.handleEvent(makeTextEvent('ยอดเท่าไหร่'));
 
     expect(sessions.linkRoomToCustomer).toHaveBeenCalledWith('sess-1', 'c1');
+  });
+
+  describe('น้องเบสส่งรูปสินค้า (B3 Task 12)', () => {
+    it('ส่ง text + image ใน reply เดียว และบันทึกทั้งสองข้อความ', async () => {
+      ai.generateReply.mockResolvedValue({
+        text: 'iPhone 15 128GB ราคา 28,900 บาทค่ะ',
+        model: 'claude-sonnet-4-6',
+        inputTokens: 10,
+        outputTokens: 5,
+        toolsUsed: ['search_products'],
+        handoffTriggered: false,
+        attachments: [{ productId: 'prd-1', imageUrl: 'https://cdn.example.com/p1.jpg' }],
+      });
+
+      await service.handleEvent(makeTextEvent('iPhone 15 มีไหม'));
+
+      const messages = lineClient.replyMessage.mock.calls.at(-1)![1];
+      expect(messages[0]).toMatchObject({ type: 'text' });
+      expect(messages[1]).toMatchObject({
+        type: 'image',
+        originalContentUrl: 'https://cdn.example.com/p1.jpg',
+        previewImageUrl: 'https://cdn.example.com/p1.jpg',
+      });
+      expect(sessions.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'IMAGE', mediaUrl: 'https://cdn.example.com/p1.jpg' }),
+      );
+    });
+
+    it('quick reply แปะกับข้อความสุดท้าย (รูป) เมื่อมีรูป', async () => {
+      ai.generateReply.mockResolvedValue({
+        text: 'ราคา 28,900 บาทค่ะ',
+        model: 'm',
+        inputTokens: 1,
+        outputTokens: 1,
+        toolsUsed: ['search_products'], // toolsUsed > 0 → มี feedback quick reply
+        handoffTriggered: false,
+        attachments: [{ productId: 'prd-1', imageUrl: 'https://cdn.example.com/p1.jpg' }],
+      });
+
+      await service.handleEvent(makeTextEvent('ราคาเท่าไหร่'));
+      const messages = lineClient.replyMessage.mock.calls.at(-1)![1];
+      expect(messages.at(-1).quickReply).toBeDefined();
+      expect(messages[0].quickReply).toBeUndefined();
+    });
+
+    it('ไม่มี attachments → ส่งข้อความเดียวเหมือนเดิม', async () => {
+      ai.generateReply.mockResolvedValue({
+        text: 'สวัสดีค่ะ',
+        model: 'm',
+        inputTokens: 1,
+        outputTokens: 1,
+        toolsUsed: [],
+        handoffTriggered: false,
+      });
+      await service.handleEvent(makeTextEvent('สวัสดี'));
+      expect(lineClient.replyMessage.mock.calls.at(-1)![1]).toHaveLength(1);
+    });
+
+    it('ส่งรูปมากสุด 2 ใบ (กันเกินโควตา 5 ข้อความ/reply)', async () => {
+      ai.generateReply.mockResolvedValue({
+        text: 'มี 3 เครื่องค่ะ',
+        model: 'm',
+        inputTokens: 1,
+        outputTokens: 1,
+        toolsUsed: ['search_products'],
+        handoffTriggered: false,
+        attachments: [
+          { productId: 'a', imageUrl: 'https://c/a.jpg' },
+          { productId: 'b', imageUrl: 'https://c/b.jpg' },
+          { productId: 'c', imageUrl: 'https://c/c.jpg' },
+        ],
+      });
+      await service.handleEvent(makeTextEvent('มีอะไรบ้าง'));
+      expect(lineClient.replyMessage.mock.calls.at(-1)![1]).toHaveLength(3); // 1 text + 2 image
+    });
   });
 });

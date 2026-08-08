@@ -534,10 +534,11 @@ export class StaffChatController {
       }),
     )
     file: Express.Multer.File,
+    @Body('clientMessageId') clientMessageId: string | undefined,
     @Req() req: Request,
   ) {
     const userId = (req as Request & { user?: { id: string } }).user?.id;
-    return this.roomManager.uploadFile(roomId, file, userId);
+    return this.roomManager.uploadFile(roomId, file, userId, clientMessageId);
   }
 
   // ─── Contract Prefill ─────────────────────────────────

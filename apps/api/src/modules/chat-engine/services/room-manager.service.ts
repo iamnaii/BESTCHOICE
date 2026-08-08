@@ -35,6 +35,13 @@ import { signMessageMedia } from './media-url.util';
 export class RoomManagerService {
   private readonly logger = new Logger(RoomManagerService.name);
 
+  /**
+   * อายุ signed URL ที่ยื่นให้ adapter — ยาวกว่าที่ inbox ใช้ (1 ชม.) เพราะ LINE
+   * โหลด originalContentUrl ตอนลูกค้าเปิดดู ไม่ใช่ตอนส่ง. 6 วัน = ใต้เพดาน
+   * V4 signing (7 วัน) และไม่ต้องเปิด object ให้เป็น public (PDPA)
+   */
+  private static readonly ADAPTER_MEDIA_TTL_SEC = 6 * 24 * 3600; // 518400
+
   constructor(
     private prisma: PrismaService,
     private storageService: StorageService,
@@ -684,14 +691,32 @@ export class RoomManagerService {
   }
 
   /**
-   * Store an uploaded file and save it as a chat message with media.
-   * Returns the persisted key + a (signed) download URL for the caller.
+   * Store an uploaded file and deliver it to the customer.
+   *
+   * บั๊กเดิม (ถึง 2026-08-04): เมธอดนี้ saveMessage เป็น role BOT อย่างเดียว
+   * ไม่เคยเรียก adapter → รูปที่แอดมินอัปโหลดไม่เคยถึงลูกค้าเลย. ตอนนี้รูปวิ่ง
+   * ผ่าน sendStaffMessage (มี clientMessageId exactly-once) ส่วนไฟล์ที่ไม่ใช่รูป
+   * ยังบันทึกในห้องอย่างเดียว (LINE ไม่มี file bubble) แต่ persist เป็น STAFF
+   * และคืน delivered=false ให้ UI บอกแอดมินตรงๆ
+   *
+   * ข้อจำกัดที่ยอมรับ: ถ้า sendStaffMessage ล้มเหลว "ก่อน" บันทึก (room ไม่พบ /
+   * ไม่มี adapter ของ channel) รูปจะไม่ถูก persist เลย. ทั้ง 5 channel ลงทะเบียน
+   * adapter ครบที่ chat-adapters.module.ts:85-89 และ roomId มาจากห้องที่เปิดอยู่
+   * → เกิดได้เฉพาะตอน config พัง; แอดมินเห็น error จาก toast (Task 8) แล้วส่งใหม่ได้
    */
   async uploadFile(
     roomId: string,
     file: Express.Multer.File,
     userId: string | undefined,
-  ): Promise<{ success: boolean; url: string; key: string; filename: string }> {
+    clientMessageId?: string,
+  ): Promise<{
+    success: boolean;
+    url: string;
+    key: string;
+    filename: string;
+    delivered: boolean;
+    error?: string;
+  }> {
     const extMap: Record<string, string> = {
       'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
       'application/pdf': '.pdf',
@@ -706,18 +731,46 @@ export class RoomManagerService {
       ? await this.storageService.getSignedDownloadUrl(key, 3600)
       : key;
 
-    // Save as a message with media
+    const isImage = file.mimetype.startsWith('image/');
+
+    if (isImage && this.messageRouter && userId) {
+      const deliveryMediaUrl = this.storageService.configured
+        ? await this.storageService.getSignedDownloadUrl(
+            key,
+            RoomManagerService.ADAPTER_MEDIA_TTL_SEC,
+          )
+        : key;
+      const sent = await this.messageRouter.sendStaffMessage({
+        roomId,
+        staffId: userId,
+        type: MessageType.IMAGE,
+        mediaUrl: key,
+        mediaType: file.mimetype,
+        deliveryMediaUrl,
+        clientMessageId,
+      });
+      return {
+        success: true,
+        url: downloadUrl,
+        key,
+        filename: file.originalname,
+        delivered: sent.success,
+        ...(sent.success ? {} : { error: sent.error }),
+      };
+    }
+
     await this.saveMessage({
       roomId,
-      role: MessageRole.BOT,
-      type: file.mimetype.startsWith('image/') ? MessageType.IMAGE : MessageType.FILE,
+      role: MessageRole.STAFF,
+      type: isImage ? MessageType.IMAGE : MessageType.FILE,
       text: file.originalname,
       mediaUrl: key,
       mediaType: file.mimetype,
       staffId: userId,
+      clientMessageId,
     });
 
-    return { success: true, url: downloadUrl, key, filename: file.originalname };
+    return { success: true, url: downloadUrl, key, filename: file.originalname, delivered: false };
   }
 
   /**

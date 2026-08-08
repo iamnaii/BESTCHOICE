@@ -109,4 +109,57 @@ describe('ProductPickerDialog', () => {
 
     await waitFor(() => expect(onInsert).toHaveBeenCalledWith('สรุปสินค้า'));
   });
+
+  it('ส่งแล้วพัง (มี errors) → dialog ไม่ปิด + กดส่งซ้ำใช้ clientMessageId เดิม', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [HIT] });
+    vi.mocked(api.post)
+      .mockReset()
+      .mockResolvedValueOnce({ data: { sent: 1, photoSkipped: false, errors: ['LINE 500'] } })
+      .mockResolvedValueOnce({ data: { sent: 2, photoSkipped: false, errors: [] } });
+    const onClose = vi.fn();
+    render(wrap(<ProductPickerDialog isOpen onClose={onClose} onInsert={vi.fn()} roomId="r1" />));
+
+    fireEvent.change(screen.getByPlaceholderText('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI'), {
+      target: { value: 'iphone' },
+    });
+    fireEvent.click(await screen.findByText('Apple iPhone 13'));
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งการ์ด (รูป + ข้อความ)' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    // ส่งไม่ครบ — ต้องไม่ปิด dialog ไม่งั้นกดส่งซ้ำแล้วได้ clientMessageId ใหม่
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งการ์ด (รูป + ข้อความ)' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    const [, firstBody] = vi.mocked(api.post).mock.calls[0];
+    const [, secondBody] = vi.mocked(api.post).mock.calls[1];
+    expect((firstBody as any).clientMessageId).toBe((secondBody as any).clientMessageId);
+  });
+
+  it('สำเร็จเต็ม → ปิด dialog; เลือกสินค้าอื่นได้ clientMessageId ใหม่ (ไม่ใช่ retry)', async () => {
+    const HIT2 = { ...HIT, id: 'p2', model: 'iPhone 14' };
+    vi.mocked(api.get).mockResolvedValue({ data: [HIT, HIT2] });
+    vi.mocked(api.post).mockReset().mockResolvedValue({ data: { sent: 2, photoSkipped: false, errors: [] } });
+    const onClose = vi.fn();
+    render(wrap(<ProductPickerDialog isOpen onClose={onClose} onInsert={vi.fn()} roomId="r1" />));
+
+    fireEvent.change(screen.getByPlaceholderText('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI'), {
+      target: { value: 'iphone' },
+    });
+    fireEvent.click(await screen.findByText('Apple iPhone 13'));
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งการ์ด (รูป + ข้อความ)' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByText('Apple iPhone 14'));
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งการ์ด (รูป + ข้อความ)' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+
+    const [, firstBody] = vi.mocked(api.post).mock.calls[0];
+    const [, secondBody] = vi.mocked(api.post).mock.calls[1];
+    expect((secondBody as any).productId).toBe('p2');
+    expect((firstBody as any).clientMessageId).not.toBe((secondBody as any).clientMessageId);
+  });
 });

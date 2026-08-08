@@ -111,16 +111,26 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
     },
     onSuccess: (res: any) => {
       const data = res?.data ?? res;
-      if (data?.errors?.length) {
-        toast.error(`ส่งไม่ครบ — ${data.errors[0]}`);
-      } else if (data?.photoSkipped) {
+      const errors: string[] = data?.errors ?? [];
+      // การ์ดถูกบันทึกเป็น ChatMessage ฝั่ง server (บาง bubble อาจสำเร็จแล้วแม้ผลรวม
+      // จะ error) → ดึงข้อความ/รายการห้องใหม่เสมอ ไม่ว่าจะสำเร็จเต็มหรือบางส่วน
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', roomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+
+      if (errors.length > 0) {
+        // ส่งไม่ครบ (HTTP 200 แต่มี errors) — ห้ามปิด dialog: ปิดแล้วเปิดใหม่จะ reset
+        // selectedId → เข้า effect ที่ล้าง clientMessageIdRef ทำให้กด "ส่งซ้ำ" ครั้ง
+        // ถัดไปได้ id ใหม่ และ bubble ที่ลูกค้าได้รับไปแล้ว (เช่นรูป) จะถูกส่งซ้ำ เพราะ
+        // server dedupe ด้วย `${clientMessageId}-img`/`-txt` ตาม id ที่ส่งมา ไม่ใช่ตาม
+        // productId — ปล่อยให้ผู้ใช้กดปุ่มเดิมซ้ำ (ref ยังไม่ถูกล้างเพราะ selectedId ไม่เปลี่ยน)
+        toast.error(`ส่งไม่ครบ — ${errors[0]} · กดปุ่มเดิมอีกครั้งเพื่อส่งซ้ำเฉพาะส่วนที่ยังไม่สำเร็จ`);
+        return;
+      }
+      if (data?.photoSkipped) {
         toast.warning('ส่งข้อความแล้ว — เครื่องนี้ยังไม่มีรูปขึ้นเว็บ');
       } else {
         toast.success('ส่งให้ลูกค้าแล้ว');
       }
-      // การ์ดถูกบันทึกเป็น ChatMessage ฝั่ง server → ดึงข้อความ/รายการห้องใหม่
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', roomId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       onClose();
     },
     onError: () => toast.error('ส่งข้อมูลสินค้าไม่สำเร็จ'),

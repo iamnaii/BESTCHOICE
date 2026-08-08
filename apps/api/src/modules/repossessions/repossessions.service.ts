@@ -19,6 +19,10 @@ import { CreditNoteDeliveryService } from '../receipts/services/credit-note-deli
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
+import { getBranchScope } from '../auth/branch-access.util';
+
+/** Authenticated request user — service-level branch scoping (BranchGuard delegates to us). */
+export type RequestUser = { id: string; role?: string; branchId?: string | null };
 
 const TWO_DP = (d: Prisma.Decimal) => d.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
@@ -41,14 +45,24 @@ export class RepossessionsService {
     private cnDeliveryService: CreditNoteDeliveryService,
   ) {}
 
-  async findAll(filters: { status?: string; branchId?: string; page?: number; limit?: number }) {
+  async findAll(
+    filters: { status?: string; branchId?: string; page?: number; limit?: number },
+    user?: RequestUser,
+  ) {
     const where: Record<string, unknown> = { deletedAt: null };
 
     if (filters.status) {
       where.status = filters.status;
     }
 
-    if (filters.branchId) {
+    const scope = getBranchScope(user);
+    if (user && !scope.all) {
+      // Branch-scoped role (BM) — บังคับสาขาตัวเอง ไม่สน branchId จาก client
+      if (!scope.branchId) {
+        return { data: [], total: 0, page: 1, limit: filters.limit || 20, totalPages: 0 };
+      }
+      where.contract = { branchId: scope.branchId };
+    } else if (filters.branchId) {
       where.contract = { branchId: filters.branchId };
     }
 
@@ -135,7 +149,11 @@ export class RepossessionsService {
    * Preview repossession P&L calculation for a contract.
    * Used by frontend to show live breakdown before creating.
    */
-  async previewCalculation(contractId: string, options: { marketValue?: number; appraisalPrice?: number; discountPct?: number; customerRefundEnabled?: boolean; depositAccountCode?: string; collectedByShop?: boolean }) {
+  async previewCalculation(
+    contractId: string,
+    options: { marketValue?: number; appraisalPrice?: number; discountPct?: number; customerRefundEnabled?: boolean; depositAccountCode?: string; collectedByShop?: boolean },
+    user?: RequestUser,
+  ) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: {
@@ -145,6 +163,14 @@ export class RepossessionsService {
       },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+
+    const scope = getBranchScope(user);
+    if (user && !scope.all) {
+      // ตอบ 404 เดียวกับ "ไม่มีอยู่" — ไม่ยืนยันว่ามีสัญญาของสาขาอื่น
+      if (!scope.branchId || contract.branchId !== scope.branchId) {
+        throw new NotFoundException('ไม่พบสัญญา');
+      }
+    }
 
     if (!contract.totalMonths || contract.totalMonths <= 0) {
       throw new BadRequestException('ข้อมูลสัญญาผิดพลาด: จำนวนงวดต้องมากกว่า 0');
@@ -255,7 +281,7 @@ export class RepossessionsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, user?: RequestUser) {
     const repo = await this.prisma.repossession.findUnique({
       where: { id },
       include: {
@@ -271,6 +297,15 @@ export class RepossessionsService {
       },
     });
     if (!repo) throw new NotFoundException('ไม่พบข้อมูลการยึดคืน');
+
+    const scope = getBranchScope(user);
+    if (user && !scope.all) {
+      // ตอบ 404 เดียวกับ "ไม่มีอยู่" — ไม่ยืนยันว่ามี record ของสาขาอื่น
+      if (!scope.branchId || repo.contract.branchId !== scope.branchId) {
+        throw new NotFoundException('ไม่พบข้อมูลการยึดคืน');
+      }
+    }
+
     return repo;
   }
 
@@ -309,7 +344,11 @@ export class RepossessionsService {
     const result = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: dto.contractId },
-        include: { product: true, payments: true },
+        include: {
+          product: true,
+          // mirror previewCalculation — แถว soft-deleted ห้ามเข้าสูตรยอดปิด/JP5 gate
+          payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
+        },
       });
 
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
@@ -569,15 +608,35 @@ export class RepossessionsService {
   /**
    * Update repossession (repair cost, resell price, status) with workflow validation
    */
-  async update(id: string, dto: UpdateRepossessionDto, userId?: string) {
-    const repo = await this.findOne(id);
+  async update(id: string, dto: UpdateRepossessionDto, user?: RequestUser) {
+    const repo = await this.findOne(id, user);
 
     const data: Record<string, unknown> = {};
     if (dto.repairCost !== undefined) data.repairCost = dto.repairCost;
     if (dto.resellPrice !== undefined) data.resellPrice = dto.resellPrice;
     if (dto.notes !== undefined) data.notes = dto.notes;
 
-    if (dto.status) {
+    // เครื่องที่ขายแล้ว: repairCost/resellPrice ถูกใช้คำนวณกำไรในรายงานไปแล้ว —
+    // แก้ย้อนหลังโดยไม่มี JE = ตัวเลขรายงานเปลี่ยนเงียบๆ ไม่มี audit trail
+    if (repo.status === 'SOLD' && (dto.repairCost !== undefined || dto.resellPrice !== undefined)) {
+      throw new BadRequestException(
+        'เครื่องที่ขายแล้วแก้ไขค่าซ่อม/ราคาขายไม่ได้ (แก้ไขได้เฉพาะหมายเหตุ)',
+      );
+    }
+
+    // แถวที่ประกาศขายแล้ว (READY_FOR_SALE) ห้ามล้างราคาขายเป็น 0 ผ่าน self-transition/PATCH ตรง
+    if (
+      repo.status === 'READY_FOR_SALE' &&
+      dto.resellPrice !== undefined &&
+      new Prisma.Decimal(dto.resellPrice).lessThanOrEqualTo(0)
+    ) {
+      throw new BadRequestException('กรุณาระบุราคาขายต่อมากกว่า 0');
+    }
+
+    // ฟอร์มหน้าเว็บส่งสถานะปัจจุบันติดมาด้วยเสมอ — สถานะเดิมไม่ใช่การเปลี่ยนสถานะ
+    // (เช็คแบบ inline แทนตัวแปร statusChanged แยก — TS ไม่ narrow dto.status ผ่าน
+    // boolean ที่เก็บแยกเมื่อ dto.status เป็น property access ไม่ใช่ local variable)
+    if (dto.status !== undefined && dto.status !== repo.status) {
       // Validate status transition
       const currentStatus = repo.status;
       const allowedTransitions = VALID_TRANSITIONS[currentStatus] || [];
@@ -619,14 +678,15 @@ export class RepossessionsService {
       if (newProductStatus) {
         const updatedRepo = await this.prisma.$transaction(async (tx) => {
           const productUpdateData: Record<string, unknown> = { status: newProductStatus };
-          // R-007: Adjust costPrice to appraised/fair value per TAS 2 when moving to REFURBISHED
+          // R-007/TAS 2: fair value ณ วันยึด = ราคาประเมิน (mirror markReadyForSale) —
+          // ใช้ราคาขายต่อเป็น costPrice จะทำให้ margin ตอนขายจริงเป็นศูนย์
           // Wave 3 / Task 4 (W-2): Decimal arithmetic to preserve precision.
           if (dto.status === 'READY_FOR_SALE') {
-            const appraisalPrice = dto.resellPrice != null
-              ? new Prisma.Decimal(dto.resellPrice)
-              : new Prisma.Decimal(repo.appraisalPrice ?? 0);
-            if (appraisalPrice.greaterThan(0)) {
-              productUpdateData.costPrice = appraisalPrice;
+            const appraisal = new Prisma.Decimal(repo.appraisalPrice ?? 0);
+            const fallback = new Prisma.Decimal(dto.resellPrice ?? repo.resellPrice ?? 0);
+            const costBasis = appraisal.greaterThan(0) ? appraisal : fallback;
+            if (costBasis.greaterThan(0)) {
+              productUpdateData.costPrice = costBasis;
             }
           }
           await tx.product.update({
@@ -647,7 +707,7 @@ export class RepossessionsService {
 
         // Post resale JE after the main $transaction commits (non-blocking, no tx-poison risk).
         // bookValue = costPrice (adjusted to appraisalPrice at READY_FOR_SALE per R-007) + repairCost
-        if (dto.status === 'SOLD' && userId) {
+        if (dto.status === 'SOLD' && user?.id) {
           // Wave 3 / Task 4 (W-2): build Decimal directly from repo value
           // (skip Number() round-trip that loses precision on large amounts).
           const resellPrice = dto.resellPrice != null
@@ -686,8 +746,8 @@ export class RepossessionsService {
    * Mark repossessed product as ready for sale with pricing
    * Creates ProductPrice and moves product to REFURBISHED + back to main warehouse
    */
-  async markReadyForSale(id: string, resellPrice: number) {
-    const repo = await this.findOne(id);
+  async markReadyForSale(id: string, resellPrice: number, user?: RequestUser) {
+    const repo = await this.findOne(id, user);
 
     if (repo.status !== 'UNDER_REPAIR' && repo.status !== 'REPOSSESSED') {
       throw new BadRequestException('สถานะไม่ถูกต้อง ต้องเป็น REPOSSESSED หรือ UNDER_REPAIR');

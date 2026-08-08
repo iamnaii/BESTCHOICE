@@ -140,7 +140,9 @@ export class RepossessionJP5Template {
       orderBy: { installmentNo: 'asc' },
     });
     const paidPayments = await client.payment.findMany({
-      where: { contractId: c.id, status: 'PAID' },
+      // deletedAt:null — แถว PAID ที่ถูก soft-delete ไม่ใช่หลักฐานว่ารับเงินจริง
+      // (convention เดียวกับ compute-cn-breakdown I1 fix)
+      where: { contractId: c.id, status: 'PAID', deletedAt: null },
       select: { installmentNo: true },
     });
     const paidNos = new Set(paidPayments.map((p) => p.installmentNo));

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -7,12 +8,10 @@ import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatDateShort } from '@/utils/formatters';
-import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
-import { Check, X, Download, Send } from 'lucide-react';
+import { Download, Send } from 'lucide-react';
 import { CashAccountSelect, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -63,48 +62,28 @@ export default function RepossessionsPage() {
   const { user } = useAuth();
   // POST /contracts/:id/shop-collect-settlement roles (OWNER/FM/ACC)
   const canSettle = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
+  // PATCH /repossessions/:id + POST :id/ready-for-sale = OWNER/BRANCH_MANAGER เท่านั้น
+  const canManage = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
+  // GET /repossessions/profit-loss = OWNER/FM/ACC — gate query กัน 403 เงียบๆ + retry รัวๆ
+  const canViewPl = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
   const [statusFilter, setStatusFilter] = useState('');
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repossession | null>(null);
   // Shop-collect settlement dialog (ยึดคืนแบบตั้งลูกหนี้-หน้าร้าน 11-2107)
   const [settlementRepo, setSettlementRepo] = useState<Repossession | null>(null);
   const [settlementAmount, setSettlementAmount] = useState('');
   const [settlementAccountCode, setSettlementAccountCode] = useState('11-1201');
-  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
-  const [createForm, setCreateForm] = useState({
-    contractId: '',
-    // BKK-aware today — toISOString() is UTC and yields "yesterday" before 07:00 น. (PR #1327 bug class)
-    repossessedDate: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }),
-    conditionGrade: 'C',
-    appraisalPrice: '',
-    repairCost: '0',
-    notes: '',
-    marketValue: '',
-    discountPct: '50',
-    customerRefundEnabled: false,
-  });
+  // Client-generated per-dialog-open UUID — dedupe key for shop-collect
+  // settlement retries without swallowing an intentional same-amount repeat.
+  const [settlementRequestId, setSettlementRequestId] = useState('');
+  // พร้อมขาย modal (ต้องระบุราคาขายต่อ — endpoint บังคับ ReadyForSaleDto.resellPrice)
+  const [readyForSaleRepo, setReadyForSaleRepo] = useState<Repossession | null>(null);
+  const [readyForSalePrice, setReadyForSalePrice] = useState('');
   const [updateForm, setUpdateForm] = useState({
     repairCost: '',
     resellPrice: '',
     status: '',
     notes: '',
-  });
-
-  // Fetch contracts that can be repossessed (OVERDUE or DEFAULT).
-  // (Audit finding P2) Bounded at 200 each so a branch with hundreds of
-  // overdue contracts doesn't pull an unbounded payload into the
-  // create-repossession dropdown — that response would either time out or
-  // make the dropdown unusable.
-  const { data: overdueContracts = [] } = useQuery<{ id: string; contractNumber: string; customer: { name: string }; product: { name: string } }[]>({
-    queryKey: ['contracts-for-repo'],
-    queryFn: async () => {
-      const [overdue, defaulted] = await Promise.all([
-        api.get('/contracts?status=OVERDUE&limit=200'),
-        api.get('/contracts?status=DEFAULT&limit=200'),
-      ]);
-      return [...(overdue.data.data || []), ...(defaulted.data.data || [])];
-    },
   });
 
   const {
@@ -129,34 +108,7 @@ export default function RepossessionsPage() {
   const { data: profitLoss } = useQuery({
     queryKey: ['repossessions-pl'],
     queryFn: async () => (await api.get('/repossessions/profit-loss')).data,
-  });
-
-  // Live P&L preview when creating
-  const { data: previewData } = useQuery<{
-    contract: { contractNumber: string; customer: { name: string }; product: { brand: string; model: string }; totalMonths: number; monthlyPayment: number; sellingPrice: number; financedAmount: number; storeCommission: number };
-    calculation: { remainingMonths: number; totalPaid: number; outstandingBalance: number; principalExVat: number; financeCost: number; remainingCost: number; grossProfit: number; discountPct: number; discountAmount: number; unpaidLateFees: number; closingAmount: number; marketValue: number; customerRefundEnabled: boolean; customerRefund: number; profitLoss: number };
-  }>({
-    queryKey: ['repossession-preview', createForm.contractId, createForm.marketValue, createForm.appraisalPrice, createForm.discountPct, createForm.customerRefundEnabled],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (createForm.marketValue) params.set('marketValue', createForm.marketValue);
-      // ราคากลางเว้นว่าง → ให้ backend ใช้ราคาประเมิน (ตรงกับ fallback ตอน create จริง)
-      if (createForm.appraisalPrice) params.set('appraisalPrice', createForm.appraisalPrice);
-      if (createForm.discountPct) params.set('discountPct', createForm.discountPct);
-      params.set('customerRefundEnabled', String(createForm.customerRefundEnabled));
-      return (await api.get(`/repossessions/preview/${createForm.contractId}?${params}`)).data;
-    },
-    enabled: !!createForm.contractId && isCreateModalOpen,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => api.post('/repossessions', data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['repossessions'] });
-      toast.success('บันทึกการยึดคืนสำเร็จ');
-      setIsCreateModalOpen(false);
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    enabled: canViewPl,
   });
 
   const updateMutation = useMutation({
@@ -172,10 +124,13 @@ export default function RepossessionsPage() {
   });
 
   const readyForSaleMutation = useMutation({
-    mutationFn: async (id: string) => api.post(`/repossessions/${id}/ready-for-sale`),
+    mutationFn: async ({ id, resellPrice }: { id: string; resellPrice: number }) =>
+      api.post(`/repossessions/${id}/ready-for-sale`, { resellPrice }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repossessions'] });
       toast.success('เปลี่ยนสถานะเป็น พร้อมขาย แล้ว');
+      setReadyForSaleRepo(null);
+      setReadyForSalePrice('');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -198,6 +153,7 @@ export default function RepossessionsPage() {
       api.post(`/contracts/${settlementRepo!.contract.id}/shop-collect-settlement`, {
         depositAccountCode: settlementAccountCode,
         amount: Number(settlementAmount),
+        requestId: settlementRequestId,
       }),
     onSuccess: () => {
       toast.success('บันทึกรับโอนจากหน้าร้านแล้ว — ล้างลูกหนี้-หน้าร้าน (11-2107)');
@@ -213,6 +169,7 @@ export default function RepossessionsPage() {
     // Prefill with the parked repossession value (the JP5 Dr 11-2107 amount).
     setSettlementAmount(String(Number(repo.appraisalPrice)));
     setSettlementAccountCode('11-1201');
+    setSettlementRequestId(crypto.randomUUID());
   };
 
   const openUpdate = (repo: Repossession) => {
@@ -226,26 +183,21 @@ export default function RepossessionsPage() {
     setIsUpdateModalOpen(true);
   };
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    createMutation.mutate({
-      contractId: createForm.contractId,
-      repossessedDate: createForm.repossessedDate,
-      conditionGrade: createForm.conditionGrade,
-      appraisalPrice: Number(createForm.appraisalPrice),
-      repairCost: Number(createForm.repairCost),
-      notes: createForm.notes,
-      marketValue: createForm.marketValue ? Number(createForm.marketValue) : undefined,
-      discountPct: createForm.discountPct ? Number(createForm.discountPct) : 50,
-      customerRefundEnabled: createForm.customerRefundEnabled,
-      // No paymentDate field on this legacy modal — server defaults the JE
-      // date to today. Backdating lives in RepossessionOverlay (รับชำระ).
-    });
-  };
-
   const handleUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRepo) return;
+    // เครื่องที่ขายแล้ว (SOLD): server ปฏิเสธ 400 ถ้าเห็นคีย์ repairCost/resellPrice
+    // อยู่ใน body เลย ไม่ว่าค่าจะเปลี่ยนหรือไม่ — ส่งเฉพาะ status+notes เท่านั้น
+    if (selectedRepo.status === 'SOLD') {
+      updateMutation.mutate({
+        id: selectedRepo.id,
+        data: {
+          status: updateForm.status,
+          notes: updateForm.notes,
+        },
+      });
+      return;
+    }
     updateMutation.mutate({
       id: selectedRepo.id,
       data: {
@@ -325,21 +277,25 @@ export default function RepossessionsPage() {
       label: '',
       render: (r: Repossession) => (
         <div className="flex items-center gap-2">
-          {(r.status === 'REPOSSESSED' || r.status === 'UNDER_REPAIR') && (
+          {canManage && (r.status === 'REPOSSESSED' || r.status === 'UNDER_REPAIR') && (
             <button
-              onClick={() => setConfirmDialog({ open: true, message: 'เปลี่ยนสถานะเป็น พร้อมขาย?', action: () => readyForSaleMutation.mutate(r.id) })}
-              disabled={readyForSaleMutation.isPending}
+              onClick={() => {
+                setReadyForSaleRepo(r);
+                setReadyForSalePrice(r.resellPrice ? String(Number(r.resellPrice)) : '');
+              }}
               className="text-success hover:text-success/80 text-sm font-medium"
             >
               พร้อมขาย
             </button>
           )}
-          <button
-            onClick={() => openUpdate(r)}
-            className="text-primary hover:text-primary/80 text-sm font-medium"
-          >
-            จัดการ
-          </button>
+          {canManage && (
+            <button
+              onClick={() => openUpdate(r)}
+              className="text-primary hover:text-primary/80 text-sm font-medium"
+            >
+              จัดการ
+            </button>
+          )}
           {canSettle && (
             <button
               onClick={() => openSettlement(r)}
@@ -379,14 +335,16 @@ export default function RepossessionsPage() {
     <div>
       <PageHeader
         title="ยึดคืน & ขายต่อ"
-        subtitle="จัดการเครื่องที่ยึดคืนจากลูกค้า"
+        subtitle="จัดการเครื่องที่ยึดคืนแล้ว — การยึดเครื่องทำผ่านหน้ารับชำระ (เลือกสัญญา → ยึดเครื่อง)"
         action={
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-          >
-            + บันทึกการยึดคืน
-          </button>
+          user?.role === 'OWNER' ? (
+            <Link
+              to="/payments"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              ยึดเครื่อง — ไปหน้ารับชำระ
+            </Link>
+          ) : undefined
         }
       />
 
@@ -498,282 +456,6 @@ export default function RepossessionsPage() {
         <DataTable columns={columns} data={repos} isLoading={isLoading} emptyMessage="ยังไม่มีการยึดคืน" />
       </QueryBoundary>
 
-      {/* Create Modal — full-screen overlay with live P&L breakdown */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-md flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="บันทึกการยึดคืน">
-          <div className="w-full max-w-3xl bg-card dark:bg-card rounded-2xl shadow-modal overflow-hidden flex flex-col max-h-[calc(100vh-4rem)] ring-1 ring-border/60">
-            {/* Sticky Header */}
-            <div className="sticky top-0 z-10 bg-linear-to-b from-background to-muted/80 backdrop-blur-xl border-b border-border/60 px-6 py-5 flex items-center justify-between shrink-0">
-              <button type="button" onClick={() => setIsCreateModalOpen(false)} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                กลับ
-              </button>
-              <div className="text-center">
-                <h2 className="text-base font-semibold tracking-tight text-foreground">บันทึกการยึดคืนเครื่อง</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">คำนวณกำไร/ขาดทุนแบบ real-time</p>
-              </div>
-              <div className="w-16" />
-            </div>
-
-            <form onSubmit={handleCreate} className="flex-1 overflow-y-auto flex flex-col bg-muted/40">
-              <div className="p-6 space-y-4 flex-1">
-
-                {/* Section 1: เลือกสัญญา */}
-                <div className="group rounded-2xl border border-border/80 bg-card dark:bg-card/60 p-5 shadow-sm hover:shadow-md hover:border-info/40 transition-all duration-300">
-                  <div className="flex items-center gap-3.5 mb-5">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-info/10 border border-info/20 text-info ring-1 ring-info/20 group-hover:scale-105 transition-transform">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold tracking-tight text-foreground">เลือกสัญญา</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">เฉพาะสัญญาค้างชำระ/ผิดนัด</p>
-                    </div>
-                  </div>
-                  <select
-                    value={createForm.contractId}
-                    onChange={(e) => setCreateForm({ ...createForm, contractId: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-info/30 focus:border-info focus:outline-hidden focus:ring-2 focus:ring-info/20"
-                    required
-                  >
-                    <option value="">-- เลือกสัญญา --</option>
-                    {overdueContracts.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.contractNumber} - {c.customer.name} ({c.product.name})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Section 2: ข้อมูลลูกค้า + สินค้า (auto from preview) */}
-                {previewData && (
-                  <div className="rounded-2xl border border-border/80 bg-card dark:bg-card/60 p-5 shadow-sm">
-                    <div className="flex items-center gap-3.5 mb-4">
-                      <div className="flex items-center justify-center size-10 rounded-xl bg-secondary/20 border border-secondary/30 text-secondary-foreground ring-1 ring-secondary/30">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold tracking-tight text-foreground">สรุปข้อมูลสัญญา</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">{previewData.contract.customer.name} · {previewData.contract.product.brand} {previewData.contract.product.model}</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 text-xs">
-                      <div className="rounded-lg bg-muted p-2.5">
-                        <div className="text-muted-foreground">ค่างวด/เดือน</div>
-                        <div className="font-semibold text-foreground mt-0.5">{previewData.contract.monthlyPayment.toLocaleString()} ฿</div>
-                      </div>
-                      <div className="rounded-lg bg-muted p-2.5">
-                        <div className="text-muted-foreground">งวดทั้งหมด</div>
-                        <div className="font-semibold text-foreground mt-0.5">{previewData.contract.totalMonths} งวด</div>
-                      </div>
-                      <div className="rounded-lg bg-warning/10 p-2.5">
-                        <div className="text-warning">งวดคงค้าง</div>
-                        <div className="font-semibold text-warning mt-0.5">{previewData.calculation.remainingMonths} งวด</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Section 3: รายละเอียดการยึด */}
-                <div className="group rounded-2xl border border-border/80 bg-card dark:bg-card/60 p-5 shadow-sm hover:shadow-md hover:border-warning/40 transition-all duration-300">
-                  <div className="flex items-center gap-3.5 mb-5">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-warning/10 border border-warning/20 text-warning ring-1 ring-warning/20 group-hover:scale-105 transition-transform">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold tracking-tight text-foreground">รายละเอียดการยึด</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">วันที่ยึด สภาพ ราคาตี ค่าซ่อม</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ยึดคืน <span className="text-destructive">*</span></label>
-                      <ThaiDateInput
-                        value={createForm.repossessedDate}
-                        onChange={(e) => setCreateForm({ ...createForm, repossessedDate: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-warning/30 focus:border-warning focus:outline-hidden focus:ring-2 focus:ring-warning/20"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">สภาพเครื่อง <span className="text-destructive">*</span></label>
-                      <select
-                        value={createForm.conditionGrade}
-                        onChange={(e) => setCreateForm({ ...createForm, conditionGrade: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-warning/30 focus:border-warning focus:outline-hidden focus:ring-2 focus:ring-warning/20"
-                      >
-                        <option value="A">A - ดีมาก</option>
-                        <option value="B">B - ดี</option>
-                        <option value="C">C - พอใช้</option>
-                        <option value="D">D - เสียหาย</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ราคาตี (บาท) <span className="text-destructive">*</span></label>
-                      <input
-                        type="number"
-                        value={createForm.appraisalPrice}
-                        onChange={(e) => setCreateForm({ ...createForm, appraisalPrice: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-warning/30 focus:border-warning focus:outline-hidden focus:ring-2 focus:ring-warning/20"
-                        placeholder="0"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ค่าซ่อม (บาท)</label>
-                      <input
-                        type="number"
-                        value={createForm.repairCost}
-                        onChange={(e) => setCreateForm({ ...createForm, repairCost: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-warning/30 focus:border-warning focus:outline-hidden focus:ring-2 focus:ring-warning/20"
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 4: คำนวณยอดปิด + กำไร/ขาดทุน (Live breakdown) */}
-                {previewData && (
-                  <div className="group rounded-2xl border border-border/80 bg-card dark:bg-card/60 p-5 shadow-sm hover:shadow-md hover:border-success/40 transition-all duration-300">
-                    <div className="flex items-center gap-3.5 mb-5">
-                      <div className="flex items-center justify-center size-10 rounded-xl bg-success/10 border border-success/20 text-success ring-1 ring-success/20 group-hover:scale-105 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold tracking-tight text-foreground">คำนวณยอดปิดสัญญา + กำไร/ขาดทุน</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">มุมมองไฟแนนซ์ ไม่รวม VAT</p>
-                      </div>
-                    </div>
-
-                    {/* Inputs */}
-                    <div className="grid grid-cols-2 gap-4 mb-5">
-                      <div>
-                        <label className="block text-xs font-medium text-foreground mb-1.5">ราคากลาง (บาท)</label>
-                        <input
-                          type="number"
-                          value={createForm.marketValue}
-                          onChange={(e) => setCreateForm({ ...createForm, marketValue: e.target.value })}
-                          className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-success/30 focus:border-success focus:outline-hidden focus:ring-2 focus:ring-success/20"
-                          placeholder={String(previewData.calculation.marketValue || 0)}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-foreground mb-1.5">ส่วนลดลูกค้า (%)</label>
-                        <input
-                          type="number"
-                          value={createForm.discountPct}
-                          onChange={(e) => setCreateForm({ ...createForm, discountPct: e.target.value })}
-                          className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-success/30 focus:border-success focus:outline-hidden focus:ring-2 focus:ring-success/20"
-                          placeholder="50"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Customer refund toggle */}
-                    <label className="flex items-center gap-2 cursor-pointer mb-5 px-3 py-2.5 rounded-lg bg-muted hover:bg-accent transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={createForm.customerRefundEnabled}
-                        onChange={(e) => setCreateForm({ ...createForm, customerRefundEnabled: e.target.checked })}
-                        className="rounded border-border text-success focus:ring-2 focus:ring-success/20"
-                      />
-                      <span className="text-sm font-medium text-foreground">คืนเงินส่วนต่างให้ลูกค้า</span>
-                      <span className="text-xs text-muted-foreground ml-auto">(กรณีราคากลาง &gt; ยอดปิด)</span>
-                    </label>
-
-                    {/* Live breakdown */}
-                    <div className="rounded-xl bg-linear-to-br from-muted to-muted/60 p-4 space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">ยอดค้าง (รวม VAT)</span>
-                        <span className="font-medium text-foreground">{previewData.calculation.outstandingBalance.toLocaleString()} ฿</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">ค่างวดไม่รวม VAT (÷ 1.07)</span>
-                        <span className="font-medium text-foreground">{previewData.calculation.principalExVat.toLocaleString()} ฿</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">ต้นทุนยอดค้างชำระ (ยอดจัด + คอม)</span>
-                        <span className="font-medium text-foreground">{previewData.calculation.remainingCost.toLocaleString()} ฿</span>
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-border pt-2">
-                        <span className="text-muted-foreground">ส่วนลดลูกค้า ({previewData.calculation.discountPct}%)</span>
-                        <span className="font-medium text-destructive">- {previewData.calculation.discountAmount.toLocaleString()} ฿</span>
-                      </div>
-                      {previewData.calculation.unpaidLateFees > 0 && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">ค่าปรับค้างชำระ</span>
-                          <span className="font-medium text-destructive">+ {previewData.calculation.unpaidLateFees.toLocaleString()} ฿</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between text-sm pt-2 border-t border-border">
-                        <span className="font-semibold text-foreground">ยอดปิดสัญญา (ตรงกับปิดยอดก่อนกำหนด)</span>
-                        <span className="font-bold text-foreground">{previewData.calculation.closingAmount.toLocaleString()} ฿</span>
-                      </div>
-
-                      {/* Market value & refund */}
-                      <div className="border-t border-border pt-2 space-y-2">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">ราคากลางเครื่อง</span>
-                          <span className="font-medium text-foreground">{previewData.calculation.marketValue.toLocaleString()} ฿</span>
-                        </div>
-                        {previewData.calculation.customerRefundEnabled && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">เงินคืนลูกค้า</span>
-                            <span className="font-medium text-destructive">- {previewData.calculation.customerRefund.toLocaleString()} ฿</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Final P&L */}
-                      <div className={`flex justify-between items-center mt-2 p-3 rounded-lg ${previewData.calculation.profitLoss >= 0 ? 'bg-success/10 ring-1 ring-success/30' : 'bg-destructive/10 ring-1 ring-destructive/30'}`}>
-                        <div>
-                          <div className={`text-xs font-medium ${previewData.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
-                            {previewData.calculation.profitLoss >= 0 ? <><Check className="size-4 inline mr-1" />บริษัทได้กำไร</> : <><X className="size-4 inline mr-1" />บริษัทขาดทุน</>}
-                          </div>
-                          <div className="text-xs text-muted-foreground">ราคากลาง − ยอดปิดสัญญา − เงินคืน</div>
-                        </div>
-                        <div className={`text-xl font-bold ${previewData.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
-                          {previewData.calculation.profitLoss >= 0 ? '+' : ''}{previewData.calculation.profitLoss.toLocaleString()} ฿
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Section 5: หมายเหตุ */}
-                <div className="rounded-2xl border border-border/80 bg-card dark:bg-card/60 p-5 shadow-sm">
-                  <div className="flex items-center gap-3.5 mb-4">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-linear-to-br from-muted to-muted/80 text-muted-foreground ring-1 ring-border">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-semibold tracking-tight text-foreground">หมายเหตุ</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">บันทึกเพิ่มเติม (ถ้ามี)</p>
-                    </div>
-                  </div>
-                  <textarea
-                    value={createForm.notes}
-                    onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm transition-colors hover:border-border focus:border-border focus:outline-hidden focus:ring-2 focus:ring-ring/20 resize-none"
-                    placeholder="หมายเหตุ..."
-                  />
-                </div>
-              </div>
-
-              {/* Sticky Footer */}
-              <div className="sticky bottom-0 bg-linear-to-t from-background to-muted/80 backdrop-blur-xl border-t border-border/60 px-6 py-4 flex justify-end gap-3 shrink-0">
-                <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-5 py-2.5 text-sm border border-border/80 rounded-xl hover:bg-accent hover:border-border transition-all font-medium text-foreground">
-                  ยกเลิก
-                </button>
-                <button type="submit" disabled={createMutation.isPending} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-card hover:shadow-card-hover ring-1 ring-primary/20">
-                  {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการยึดคืน'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Shop-collect settlement Modal — Dr KBank / Cr 11-2107 */}
       <Modal
         isOpen={!!settlementRepo}
@@ -840,6 +522,65 @@ export default function RepossessionsPage() {
         )}
       </Modal>
 
+      {/* พร้อมขาย Modal — ต้องระบุราคาขายต่อ (endpoint บังคับ + ย้ายเครื่องกลับคลังหลัก) */}
+      <Modal
+        isOpen={!!readyForSaleRepo}
+        onClose={() => setReadyForSaleRepo(null)}
+        title="เปลี่ยนสถานะเป็น พร้อมขาย"
+      >
+        {readyForSaleRepo && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              readyForSaleMutation.mutate({
+                id: readyForSaleRepo.id,
+                resellPrice: Number(readyForSalePrice),
+              });
+            }}
+            className="space-y-4"
+          >
+            <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
+              <div><strong>สินค้า:</strong> {readyForSaleRepo.product.brand} {readyForSaleRepo.product.model}</div>
+              <div><strong>ราคาตี:</strong> {Number(readyForSaleRepo.appraisalPrice).toLocaleString()} บาท</div>
+              <div className="text-xs text-muted-foreground leading-snug pt-1">
+                เครื่องจะย้ายกลับคลังหลักและตั้งราคาขาย Refurbished ตามที่ระบุ
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                ราคาขายต่อ (บาท) <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={readyForSalePrice}
+                onChange={(e) => setReadyForSalePrice(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-hidden focus:ring-2 focus:ring-ring/20"
+                placeholder="0.00"
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setReadyForSaleRepo(null)}
+                className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={readyForSaleMutation.isPending || !(Number(readyForSalePrice) > 0)}
+                className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
+              >
+                {readyForSaleMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน พร้อมขาย'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       {/* Update Modal */}
       <Modal isOpen={isUpdateModalOpen} onClose={() => setIsUpdateModalOpen(false)} title="จัดการเครื่องยึดคืน">
         {selectedRepo && (
@@ -882,7 +623,8 @@ export default function RepossessionsPage() {
                   type="number"
                   value={updateForm.repairCost}
                   onChange={(e) => setUpdateForm({ ...updateForm, repairCost: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                  disabled={selectedRepo.status === 'SOLD'}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden disabled:opacity-50"
                 />
               </div>
               <div>
@@ -891,9 +633,15 @@ export default function RepossessionsPage() {
                   type="number"
                   value={updateForm.resellPrice}
                   onChange={(e) => setUpdateForm({ ...updateForm, resellPrice: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                  disabled={selectedRepo.status === 'SOLD'}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden disabled:opacity-50"
                 />
               </div>
+              {selectedRepo.status === 'SOLD' && (
+                <p className="col-span-2 text-xs text-muted-foreground leading-snug mt-1">
+                  เครื่องที่ขายแล้วแก้ไขได้เฉพาะหมายเหตุ
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
@@ -919,13 +667,6 @@ export default function RepossessionsPage() {
           </form>
         )}
       </Modal>
-
-      <ConfirmDialog
-        open={confirmDialog.open}
-        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
-        description={confirmDialog.message}
-        onConfirm={confirmDialog.action}
-      />
     </div>
   );
 }

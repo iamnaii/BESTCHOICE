@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { RepossessionsService } from './repossessions.service';
+import { RepossessionsService, RequestUser } from './repossessions.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ReadyForSaleDto } from './dto/ready-for-sale.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -19,17 +19,21 @@ export class RepossessionsController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
+    @CurrentUser() user: RequestUser,
     @Query('status') status?: string,
     @Query('branchId') branchId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.repossessionsService.findAll({
-      status,
-      branchId,
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
-    });
+    return this.repossessionsService.findAll(
+      {
+        status,
+        branchId,
+        page: page ? parseInt(page) : undefined,
+        limit: limit ? parseInt(limit) : undefined,
+      },
+      user,
+    );
   }
 
   @Get('profit-loss')
@@ -50,6 +54,7 @@ export class RepossessionsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   previewCalculation(
     @Param('contractId') contractId: string,
+    @CurrentUser() user: RequestUser,
     @Query('marketValue') marketValue?: string,
     @Query('appraisalPrice') appraisalPrice?: string,
     @Query('discountPct') discountPct?: string,
@@ -57,27 +62,31 @@ export class RepossessionsController {
     @Query('depositAccountCode') depositAccountCode?: string,
     @Query('collectedByShop') collectedByShop?: string,
   ) {
-    return this.repossessionsService.previewCalculation(contractId, {
-      marketValue: marketValue ? parseFloat(marketValue) : undefined,
-      appraisalPrice: appraisalPrice ? parseFloat(appraisalPrice) : undefined,
-      discountPct: discountPct ? parseFloat(discountPct) : undefined,
-      customerRefundEnabled: customerRefundEnabled === 'true',
-      depositAccountCode: depositAccountCode || undefined,
-      collectedByShop: collectedByShop === 'true',
-    });
+    return this.repossessionsService.previewCalculation(
+      contractId,
+      {
+        marketValue: marketValue ? parseFloat(marketValue) : undefined,
+        appraisalPrice: appraisalPrice ? parseFloat(appraisalPrice) : undefined,
+        discountPct: discountPct ? parseFloat(discountPct) : undefined,
+        customerRefundEnabled: customerRefundEnabled === 'true',
+        depositAccountCode: depositAccountCode || undefined,
+        collectedByShop: collectedByShop === 'true',
+      },
+      user,
+    );
   }
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findOne(@Param('id') id: string) {
-    return this.repossessionsService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.repossessionsService.findOne(id, user);
   }
 
   @Post()
   @Roles('OWNER')
   create(
     @Body() dto: CreateRepossessionDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: RequestUser,
   ) {
     return this.repossessionsService.create(dto, user.id);
   }
@@ -87,9 +96,9 @@ export class RepossessionsController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateRepossessionDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.repossessionsService.update(id, dto, user.id);
+    return this.repossessionsService.update(id, dto, user);
   }
 
   @Post(':id/ready-for-sale')
@@ -97,7 +106,8 @@ export class RepossessionsController {
   markReadyForSale(
     @Param('id') id: string,
     @Body() dto: ReadyForSaleDto,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.repossessionsService.markReadyForSale(id, dto.resellPrice);
+    return this.repossessionsService.markReadyForSale(id, dto.resellPrice, user);
   }
 }

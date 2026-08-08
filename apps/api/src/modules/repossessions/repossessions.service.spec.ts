@@ -864,6 +864,40 @@ describe('RepossessionsService', () => {
       // JP5 was awaited — error propagated (proves no .catch() fire-and-forget remains)
       expect(template.execute).toHaveBeenCalled();
     });
+
+    it('create() โหลด payments เฉพาะ deletedAt:null (เหมือน previewCalculation)', async () => {
+      // ทุกงวด PAID → outstandingBalance = 0 → ข้าม JP5/CN path ทั้งชุด — test นี้
+      // สนแค่ shape ของ include จึงไม่ต้องพึ่ง mock ของ jp5/creditNoteService เลย
+      const allPaid = makeContract({ status: 'TERMINATED' }).payments.map((p) => ({
+        ...p,
+        status: 'PAID',
+        amountPaid: p.amountDue,
+      }));
+      prisma.contract.findUnique.mockResolvedValue(
+        makeContract({ status: 'TERMINATED', payments: allPaid }),
+      );
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+      await service.create(
+        {
+          contractId: 'contract-1',
+          repossessedDate: '2026-08-07',
+          conditionGrade: 'B',
+          appraisalPrice: 5000,
+        } as never,
+        'user-1',
+      );
+      expect(prisma.contract.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
+          }),
+        }),
+      );
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -915,10 +949,44 @@ describe('RepossessionsService', () => {
 
       // Wave 3 / Task 4 (W-2): costPrice now passed as Prisma.Decimal to
       // preserve precision. Compare via Decimal.eq instead of numeric equality.
+      // Task 4 (R-007/TAS 2, Phase 1): costPrice = appraisalPrice (6000), NOT
+      // resellPrice (7500) — using the resale price as costPrice would zero out
+      // margin when the item is actually sold.
       expect(prisma.product.update).toHaveBeenCalledTimes(1);
       const call = prisma.product.update.mock.calls[0][0];
       expect(call.data.status).toBe('REFURBISHED');
-      expect(new Prisma.Decimal(call.data.costPrice).eq(7500)).toBe(true);
+      expect(new Prisma.Decimal(call.data.costPrice).eq(6000)).toBe(true);
+    });
+
+    it('READY_FOR_SALE ตั้ง costPrice = ราคาประเมิน ไม่ใช่ราคาขายต่อ (R-007/TAS 2)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'REPOSSESSED', appraisalPrice: decimal(3000) }),
+      );
+      prisma.repossession.update.mockResolvedValue(makeRepossession({ status: 'READY_FOR_SALE' }));
+      prisma.product.update.mockResolvedValue({});
+      await service.update(
+        'repo-1',
+        { status: 'READY_FOR_SALE', resellPrice: 5500 } as never,
+        { id: 'user-1', role: 'OWNER' },
+      );
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ costPrice: new Prisma.Decimal(3000) }),
+        }),
+      );
+    });
+
+    it('READY_FOR_SALE falls back to resellPrice when appraisalPrice is 0/null', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'UNDER_REPAIR', appraisalPrice: null }),
+      );
+      prisma.product.update.mockResolvedValue({});
+      prisma.repossession.update.mockResolvedValue({});
+
+      await service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 4200 } as never);
+
+      const call = prisma.product.update.mock.calls[0][0];
+      expect(new Prisma.Decimal(call.data.costPrice).eq(4200)).toBe(true);
     });
 
     it('updates repossession to SOLD status and returns updated record (Phase A.5 JE deferred)', async () => {
@@ -941,7 +1009,10 @@ describe('RepossessionsService', () => {
       const updatedRepo = makeRepossession({ status: 'SOLD', resellPrice: decimal(7000) });
       prisma.repossession.update.mockResolvedValue(updatedRepo);
 
-      const result = await service.update('repo-1', { status: 'SOLD', resellPrice: 7000 } as never, 'user-1');
+      const result = await service.update('repo-1', { status: 'SOLD', resellPrice: 7000 } as never, {
+        id: 'user-1',
+        role: 'OWNER',
+      });
 
       // Repossession was updated to SOLD
       expect(result.status).toBe('SOLD');
@@ -949,6 +1020,189 @@ describe('RepossessionsService', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const template = (service as any).repossessionJP5Template;
       expect(template.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update self-transition & SOLD lock', () => {
+    const owner = { id: 'user-1', role: 'OWNER' as const };
+
+    it('status เดิม (REPOSSESSED→REPOSSESSED) + แก้ค่าซ่อม → ไม่ throw, ไม่ส่ง status ใน data', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'REPOSSESSED' }));
+      prisma.repossession.update.mockResolvedValue(makeRepossession());
+      await service.update('repo-1', { repairCost: 500, status: 'REPOSSESSED' } as never, owner);
+      expect(prisma.repossession.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({ status: expect.anything() }),
+        }),
+      );
+    });
+
+    it('SOLD + แก้ repairCost → BadRequestException ภาษาไทย', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'SOLD' }));
+      await expect(
+        service.update('repo-1', { repairCost: 999, status: 'SOLD' } as never, owner),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('SOLD + แก้เฉพาะ notes → สำเร็จ', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'SOLD' }));
+      prisma.repossession.update.mockResolvedValue(makeRepossession({ status: 'SOLD' }));
+      await expect(
+        service.update('repo-1', { notes: 'ขายผ่าน Facebook', status: 'SOLD' } as never, owner),
+      ).resolves.toBeTruthy();
+    });
+
+    it('transition ผิด (REPOSSESSED→SOLD) ยัง reject เหมือนเดิม', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'REPOSSESSED' }));
+      await expect(
+        service.update('repo-1', { status: 'SOLD' } as never, owner),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    // Finding 2 (WARNING): self-transition/plain PATCH must not silently
+    // clear resellPrice to 0 on a row already READY_FOR_SALE.
+    it('READY_FOR_SALE + self-transition resellPrice=0 → BadRequestException (กันล้างราคาขาย)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(6000) }),
+      );
+      await expect(
+        service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 0 } as never, owner),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('READY_FOR_SALE + PATCH resellPrice=0 โดยไม่ส่ง status → BadRequestException', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(6000) }),
+      );
+      await expect(
+        service.update('repo-1', { resellPrice: 0 } as never, owner),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('READY_FOR_SALE + self-transition resellPrice=6000 (>0) → สำเร็จ', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(5000) }),
+      );
+      prisma.repossession.update.mockResolvedValue(
+        makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(6000) }),
+      );
+      await expect(
+        service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 6000 } as never, owner),
+      ).resolves.toBeTruthy();
+    });
+
+    // Finding 3 (WARNING): costBasis fallback should use the stored
+    // repo.resellPrice, not drop to 0, when dto.resellPrice is omitted.
+    it('READY_FOR_SALE costBasis fallback = repo.resellPrice เมื่อไม่มี appraisalPrice และไม่ส่ง dto.resellPrice ใหม่', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          status: 'UNDER_REPAIR',
+          appraisalPrice: decimal(0),
+          resellPrice: decimal(7000),
+        }),
+      );
+      prisma.product.update.mockResolvedValue({});
+      prisma.repossession.update.mockResolvedValue({});
+
+      await service.update('repo-1', { status: 'READY_FOR_SALE' } as never, owner);
+
+      const call = prisma.product.update.mock.calls[0][0];
+      expect(new Prisma.Decimal(call.data.costPrice).eq(7000)).toBe(true);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // branch scoping
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('branch scoping', () => {
+    it('findAll: BRANCH_MANAGER ถูกบังคับ filter สาขาตัวเอง แม้ client ส่ง branchId อื่นมา', async () => {
+      prisma.repossession.findMany.mockResolvedValue([]);
+      prisma.repossession.count.mockResolvedValue(0);
+      await service.findAll(
+        { branchId: 'branch-OTHER' },
+        { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-A' },
+      );
+      expect(prisma.repossession.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contract: { branchId: 'branch-A' } }),
+        }),
+      );
+    });
+
+    it('findAll: BM ที่ไม่มี branchId → คืนหน้าว่าง ไม่ query DB', async () => {
+      const res = await service.findAll({}, { id: 'u1', role: 'BRANCH_MANAGER', branchId: null });
+      expect(res).toEqual({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 });
+      expect(prisma.repossession.findMany).not.toHaveBeenCalled();
+    });
+
+    it('findAll: OWNER (cross-branch) ใช้ branchId จาก query param ได้ตามเดิม', async () => {
+      prisma.repossession.findMany.mockResolvedValue([]);
+      prisma.repossession.count.mockResolvedValue(0);
+      await service.findAll({ branchId: 'branch-B' }, { id: 'u1', role: 'OWNER', branchId: null });
+      expect(prisma.repossession.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contract: { branchId: 'branch-B' } }),
+        }),
+      );
+    });
+
+    it('findOne: BM ข้ามสาขา → NotFoundException (ไม่ leak ว่ามีอยู่)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          contract: {
+            branchId: 'branch-1',
+            contractNumber: 'BC-202601-0001',
+            customer: { name: 'สมชาย ใจดี' },
+            branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+            payments: [],
+          },
+        }),
+      );
+      await expect(
+        service.findOne('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('findOne: BM สาขาเดียวกัน → ผ่าน', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(
+        makeRepossession({
+          contract: {
+            branchId: 'branch-1',
+            contractNumber: 'BC-202601-0001',
+            customer: { name: 'สมชาย ใจดี' },
+            branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+            payments: [],
+          },
+        }),
+      );
+      await expect(
+        service.findOne('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-1' }),
+      ).resolves.toBeTruthy();
+    });
+
+    // Finding 1 (CRITICAL): preview endpoint must not leak cross-branch data.
+    it('previewCalculation: BM ข้ามสาขา → NotFoundException (ไม่ leak ว่ามีสัญญาของสาขาอื่น)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract({ branchId: 'branch-1' }));
+
+      await expect(
+        service.previewCalculation('contract-1', {}, {
+          id: 'u1',
+          role: 'BRANCH_MANAGER',
+          branchId: 'branch-2',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('previewCalculation: BM สาขาเดียวกัน → ผ่าน', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract({ branchId: 'branch-1' }));
+
+      await expect(
+        service.previewCalculation('contract-1', {}, {
+          id: 'u1',
+          role: 'BRANCH_MANAGER',
+          branchId: 'branch-1',
+        }),
+      ).resolves.toBeTruthy();
     });
   });
 });

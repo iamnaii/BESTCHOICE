@@ -396,6 +396,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],

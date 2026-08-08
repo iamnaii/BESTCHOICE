@@ -551,7 +551,7 @@ export class MessageRouterService {
       // (read/sign-path semantics), but LINE cannot fetch a `line://` value either;
       // a legacy row's mediaUrl forwarded here unresolved must be rejected the same
       // way as a raw storage key.
-      if (!candidateDeliveryUrl || !/^https?:\/\//i.test(candidateDeliveryUrl)) {
+      if (!candidateDeliveryUrl || !/^https:\/\//i.test(candidateDeliveryUrl)) {
         return {
           success: false,
           error:

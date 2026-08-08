@@ -4,6 +4,10 @@ import { FinanceToolExecutor } from './tool-executor';
 import { FinanceToolsService } from '../services/finance-tools.service';
 import { KnowledgeService } from '../services/knowledge.service';
 import { HandoffService } from '../services/handoff.service';
+import { ChatChannel } from '@prisma/client';
+import { SearchProductsTool } from '../../sales-bot/tools/search-products.tool';
+import { CalculateInstallmentTool } from '../../sales-bot/tools/calculate-installment.tool';
+import { ListPromotionsTool } from '../../sales-bot/tools/list-promotions.tool';
 
 jest.mock('@sentry/nestjs', () => ({
   captureMessage: jest.fn(),
@@ -18,6 +22,12 @@ describe('FinanceToolExecutor', () => {
   let knowledge: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let handoff: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let searchProducts: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let calcInstallment: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let listPromotions: any;
 
   const ctx = { customerId: 'cust-1', roomId: 'sess-1' };
 
@@ -35,6 +45,9 @@ describe('FinanceToolExecutor', () => {
     handoff = {
       handoff: jest.fn().mockResolvedValue({ handoffId: 'sess-1', estimatedTime: '2 ชั่วโมง' }),
     };
+    searchProducts = { run: jest.fn() };
+    calcInstallment = { run: jest.fn() };
+    listPromotions = { run: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -42,6 +55,9 @@ describe('FinanceToolExecutor', () => {
         { provide: FinanceToolsService, useValue: tools },
         { provide: KnowledgeService, useValue: knowledge },
         { provide: HandoffService, useValue: handoff },
+        { provide: SearchProductsTool, useValue: searchProducts },
+        { provide: CalculateInstallmentTool, useValue: calcInstallment },
+        { provide: ListPromotionsTool, useValue: listPromotions },
       ],
     }).compile();
 
@@ -85,7 +101,7 @@ describe('FinanceToolExecutor', () => {
       ctx,
     );
     expect(result.ok).toBe(true);
-    expect(knowledge.search).toHaveBeenCalledWith('ค่าปรับ');
+    expect(knowledge.search).toHaveBeenCalledWith('ค่าปรับ', ChatChannel.LINE_FINANCE);
   });
 
   it('rejects search_knowledge_base without query', async () => {
@@ -179,6 +195,65 @@ describe('FinanceToolExecutor', () => {
       expect(extra.national_id).toBe('[REDACTED]');
       expect(extra.apiSecret).toBe('[REDACTED]');
       expect(extra.query).toBe('');
+    });
+  });
+
+  describe('product tools ของน้องเบส (B3 Task 10)', () => {
+    it('search_products ส่ง query ต่อให้ tool', async () => {
+      searchProducts.run.mockResolvedValue({ query: {}, totalMatches: 0, priceMissingCount: 0, groups: [] });
+      const r = await executor.execute(
+        { name: 'search_products', input: { query: 'ไอโฟน 15' } },
+        ctx,
+      );
+      expect(r.ok).toBe(true);
+      expect(searchProducts.run).toHaveBeenCalledWith({ query: 'ไอโฟน 15' });
+    });
+
+    it('search_products ปฏิเสธ query ที่ไม่ใช่ string (prompt injection)', async () => {
+      const r = await executor.execute({ name: 'search_products', input: { query: 42 } }, ctx);
+      expect(r.ok).toBe(false);
+      expect(searchProducts.run).not.toHaveBeenCalled();
+    });
+
+    it('calculate_installment ต้องมี productId + tenureMonths', async () => {
+      const bad = await executor.execute(
+        { name: 'calculate_installment', input: { productId: 'p1' } },
+        ctx,
+      );
+      expect(bad.ok).toBe(false);
+
+      calcInstallment.run.mockResolvedValue({ monthlyThb: 3113 });
+      const ok = await executor.execute(
+        { name: 'calculate_installment', input: { productId: 'p1', tenureMonths: 12, downPct: 20 } },
+        ctx,
+      );
+      expect(ok.ok).toBe(true);
+      expect(calcInstallment.run).toHaveBeenCalledWith({
+        productId: 'p1',
+        tenureMonths: 12,
+        downPct: 20,
+      });
+    });
+
+    it('calculate_installment ปฏิเสธ tenureMonths นอกช่วง 1-60', async () => {
+      const r = await executor.execute(
+        { name: 'calculate_installment', input: { productId: 'p1', tenureMonths: 999 } },
+        ctx,
+      );
+      expect(r.ok).toBe(false);
+    });
+
+    it('list_promotions ทำงานได้ทั้งแบบมีและไม่มี productId', async () => {
+      listPromotions.run.mockResolvedValue({ promotions: [] });
+      expect((await executor.execute({ name: 'list_promotions', input: {} }, ctx)).ok).toBe(true);
+      expect(
+        (await executor.execute({ name: 'list_promotions', input: { productId: 'p1' } }, ctx)).ok,
+      ).toBe(true);
+    });
+
+    it('tool ที่ไม่รู้จักยังถูกปฏิเสธเหมือนเดิม', async () => {
+      const r = await executor.execute({ name: 'delete_everything', input: {} }, ctx);
+      expect(r.ok).toBe(false);
     });
   });
 });

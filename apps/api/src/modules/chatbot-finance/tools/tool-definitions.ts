@@ -7,6 +7,22 @@
  */
 
 import type { Tool } from '@anthropic-ai/sdk/resources/messages';
+import { SEARCH_PRODUCTS_TOOL } from '../../sales-bot/tools/search-products.tool';
+import { CALCULATE_INSTALLMENT_TOOL } from '../../sales-bot/tools/calculate-installment.tool';
+import { LIST_PROMOTIONS_TOOL } from '../../sales-bot/tools/list-promotions.tool';
+
+/** ค่าคงที่ tool ของบอทขายเป็น Anthropic shape อยู่แล้ว — ต้องแคสต์ literal type เท่านั้น */
+function asAnthropicTool(t: {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}): Tool {
+  return {
+    name: t.name,
+    description: t.description,
+    input_schema: t.input_schema as Tool['input_schema'],
+  };
+}
 
 export const FINANCE_TOOLS: Tool[] = [
   {
@@ -112,6 +128,12 @@ export const FINANCE_TOOLS: Tool[] = [
       required: ['reason', 'priority', 'summary'],
     },
   },
+
+  // B3 §5 — น้องเบสตอบเรื่องสินค้าได้ด้วย (ลูกค้าผ่อนอยู่มักถามเครื่องใหม่ในห้องเดิม)
+  // ใช้ tool ตัวเดียวกับบอทขาย: ราคา/ค่างวดจึงตรงกันทุกช่องโดยอัตโนมัติ
+  asAnthropicTool(SEARCH_PRODUCTS_TOOL),
+  asAnthropicTool(CALCULATE_INSTALLMENT_TOOL),
+  asAnthropicTool(LIST_PROMOTIONS_TOOL),
 ];
 
 export type ToolName =
@@ -121,4 +143,7 @@ export type ToolName =
   | 'list_recent_receipts'
   | 'get_bank_info'
   | 'search_knowledge_base'
-  | 'handoff_to_human';
+  | 'handoff_to_human'
+  | 'search_products'
+  | 'calculate_installment'
+  | 'list_promotions';

@@ -20,6 +20,11 @@ import {
   LlmToolDefinition,
 } from './providers/llm-provider.interface';
 import { collectGroundedPrices, guardGrounding } from '../../utils/price-grounding.util';
+import {
+  collectAttachmentsFromToolResult,
+  MAX_BOT_ATTACHMENTS,
+  type BotAttachment,
+} from '../../utils/bot-attachments.util';
 
 export interface SalesBotInput {
   text: string;
@@ -28,6 +33,8 @@ export interface SalesBotInput {
   priorMessages?: { role: 'user' | 'assistant'; content: string }[];
 }
 
+export type SalesBotAttachment = BotAttachment; // re-export ชื่อเดิมไว้ให้ผู้เรียกอ่านง่าย
+
 export interface SalesBotResult {
   reply: string;
   confidence: number;
@@ -35,6 +42,7 @@ export interface SalesBotResult {
   inputTokens: number;
   outputTokens: number;
   modelUsed: string;
+  attachments?: SalesBotAttachment[]; // ← ใหม่ (optional = ผู้เรียกเดิมไม่พัง)
 }
 
 const MAX_TOOL_HOPS = 3;
@@ -130,6 +138,8 @@ export class SalesBotService {
     // (e.g. Gemini 2.5 ignored PR #1064 anti-hallucinate rules and replied
     // "iPhone 15 7,000" though tool returned only iPhone 13/16 at 14,691/17,000).
     const groundedPrices = new Set<number>();
+    // ช่องส่งรูป/ลิงก์ — เติมจาก "ผลลัพธ์ tool" เท่านั้น (deterministic)
+    const attachments = new Map<string, BotAttachment>();
     let totalIn = 0;
     let totalOut = 0;
     let modelUsed = '';
@@ -176,6 +186,9 @@ export class SalesBotService {
             inputTokens: totalIn,
             outputTokens: totalOut,
             modelUsed,
+            ...(attachments.size > 0
+              ? { attachments: [...attachments.values()].slice(0, MAX_BOT_ATTACHMENTS) }
+              : {}),
           };
         }
 
@@ -196,6 +209,7 @@ export class SalesBotService {
             throw toolError;
           }
           collectGroundedPrices(result, groundedPrices);
+          collectAttachmentsFromToolResult(tc.name, result, attachments);
           this.logger.log(
             `[ToolCall] room=${input.roomId} tool=${tc.name} args=${JSON.stringify(tc.input).slice(0, 300)} result=${JSON.stringify(result).slice(0, 600)}`,
           );

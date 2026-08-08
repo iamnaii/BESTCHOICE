@@ -1,0 +1,53 @@
+/**
+ * B3 §5 — เก็บ "รูป+ลิงก์สินค้า" จากผลลัพธ์ tool แบบ deterministic
+ *
+ * เป็น util ไม่ใช่ private method เพราะบอท 2 ตัวอยู่คนละ pipeline
+ * (SalesBotService ผ่าน MessageRouter / FinanceAiService ไม่ผ่าน) แต่ต้องใช้
+ * "กติกาการแนบ" ชุดเดียวกัน
+ *
+ * ⚠️ ห้ามอ่าน productId/URL จากข้อความที่โมเดลเขียน — โมเดลแต่ง id ได้ และ
+ * เราจะกลายเป็นคนส่งรูปผิดเครื่องให้ลูกค้า
+ */
+
+export interface BotAttachment {
+  productId: string;
+  imageUrl?: string;
+  webUrl?: string;
+}
+
+/** ส่งได้มากสุด 2 ใบต่อ 1 คำตอบ — LINE reply รับ 5 ข้อความ/ครั้ง เหลือที่ให้ text + เผื่อ */
+export const MAX_BOT_ATTACHMENTS = 2;
+
+export function collectAttachmentsFromToolResult(
+  toolName: string,
+  result: unknown,
+  into: Map<string, BotAttachment>,
+): void {
+    if (result == null || typeof result !== 'object') return;
+
+    const push = (u: { id?: unknown; photoUrl?: unknown; webUrl?: unknown }) => {
+      const productId = typeof u.id === 'string' ? u.id : null;
+      if (!productId || into.has(productId)) return;
+      const imageUrl = typeof u.photoUrl === 'string' && u.photoUrl ? u.photoUrl : undefined;
+      const webUrl = typeof u.webUrl === 'string' && u.webUrl ? u.webUrl : undefined;
+      if (!imageUrl && !webUrl) return;
+      if (into.size >= MAX_BOT_ATTACHMENTS) return;
+      into.set(productId, { productId, ...(imageUrl ? { imageUrl } : {}), ...(webUrl ? { webUrl } : {}) });
+    };
+
+    if (toolName === 'search_products') {
+      const groups = (result as { groups?: unknown }).groups;
+      if (!Array.isArray(groups)) return;
+      const units = groups.flatMap((g) =>
+        Array.isArray((g as { units?: unknown }).units) ? (g as { units: unknown[] }).units : [],
+      );
+      if (units.length === 0 || units.length > MAX_BOT_ATTACHMENTS) return;
+      for (const u of units) push(u as Record<string, unknown>);
+      return;
+    }
+
+    if (toolName === 'calculate_installment') {
+      const r = result as { productId?: unknown; photoUrl?: unknown; webUrl?: unknown };
+      push({ id: r.productId, photoUrl: r.photoUrl, webUrl: r.webUrl });
+    }
+}

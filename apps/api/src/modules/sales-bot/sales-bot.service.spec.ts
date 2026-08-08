@@ -584,4 +584,144 @@ describe('SalesBotService', () => {
       })
     );
   });
+
+  describe('SalesBotResult.attachments (B3 §5)', () => {
+    const searchResultOneUnit = {
+      query: { brand: 'Apple', model: 'iPhone 15', storage: null, color: null },
+      totalMatches: 1,
+      priceMissingCount: 0,
+      groups: [
+        {
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '128GB',
+          condition: 'NEW',
+          unitCount: 1,
+          minPrice: 28900,
+          maxPrice: 28900,
+          units: [
+            {
+              id: 'prd-1',
+              priceThb: 28900,
+              photoAvailable: true,
+              photoUrl: 'https://cdn.example.com/p1.jpg',
+              webUrl: 'https://shop.example.com/products/prd-1',
+              reserved: false,
+            },
+          ],
+        },
+      ],
+    };
+
+    const twoHopChat = (toolName: string, finalText: string) =>
+      jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [{ id: 't1', name: toolName, input: { query: 'iPhone 15' } }],
+          inputTokens: 10,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        })
+        .mockResolvedValueOnce({
+          text: finalText,
+          toolCalls: [],
+          inputTokens: 10,
+          outputTokens: 5,
+          modelName: 'claude-sonnet-4-6',
+        });
+
+    it('แนบรูป+ลิงก์เมื่อ search_products ให้ผลเจาะจงเครื่องเดียว', async () => {
+      const chat = twoHopChat('search_products', 'iPhone 15 128GB ราคา 28,900 บาทค่ะ');
+      const { svc, searchProducts } = await build(chat);
+      searchProducts.run.mockResolvedValue(searchResultOneUnit);
+
+      const r = await svc.generateReply({ text: 'iPhone 15 มีไหม', roomId: 'r1', customerId: null });
+      expect(r.attachments).toEqual([
+        {
+          productId: 'prd-1',
+          imageUrl: 'https://cdn.example.com/p1.jpg',
+          webUrl: 'https://shop.example.com/products/prd-1',
+        },
+      ]);
+    });
+
+    it('ผลกว้าง (เกิน 2 เครื่อง) → ไม่แนบอะไรเลย', async () => {
+      const many = {
+        ...searchResultOneUnit,
+        totalMatches: 3,
+        groups: [
+          {
+            ...searchResultOneUnit.groups[0],
+            unitCount: 3,
+            units: [
+              { id: 'a', priceThb: 1, photoUrl: 'https://c/a.jpg', webUrl: 'https://s/a', reserved: false },
+              { id: 'b', priceThb: 2, photoUrl: 'https://c/b.jpg', webUrl: 'https://s/b', reserved: false },
+              { id: 'c', priceThb: 3, photoUrl: 'https://c/c.jpg', webUrl: 'https://s/c', reserved: false },
+            ],
+          },
+        ],
+      };
+      const chat = twoHopChat('search_products', 'มีหลายเครื่องเลยค่ะ');
+      const { svc, searchProducts } = await build(chat);
+      searchProducts.run.mockResolvedValue(many);
+
+      const r = await svc.generateReply({ text: 'มีอะไรบ้าง', roomId: 'r1', customerId: null });
+      expect(r.attachments).toBeUndefined();
+    });
+
+    it('เครื่องไม่มีรูปแต่มีลิงก์ → ยังแนบ (imageUrl หายไปเฉย ๆ)', async () => {
+      const noPhoto = {
+        ...searchResultOneUnit,
+        groups: [
+          {
+            ...searchResultOneUnit.groups[0],
+            units: [
+              {
+                id: 'prd-9',
+                priceThb: 28900,
+                photoAvailable: false,
+                photoUrl: null,
+                webUrl: 'https://shop.example.com/products/prd-9',
+                reserved: false,
+              },
+            ],
+          },
+        ],
+      };
+      const chat = twoHopChat('search_products', 'มีค่ะ ราคา 28,900 บาท');
+      const { svc, searchProducts } = await build(chat);
+      searchProducts.run.mockResolvedValue(noPhoto);
+
+      const r = await svc.generateReply({ text: 'iPhone 15', roomId: 'r1', customerId: null });
+      expect(r.attachments).toEqual([
+        { productId: 'prd-9', webUrl: 'https://shop.example.com/products/prd-9' },
+      ]);
+    });
+
+    it('calculate_installment แนบเครื่องที่คำนวณให้', async () => {
+      const chat = twoHopChat('calculate_installment', 'ผ่อนเดือนละ 3,113 บาทค่ะ');
+      const { svc, calcInstallment } = await build(chat);
+      calcInstallment.run.mockResolvedValue({
+        productId: 'prd-5',
+        productName: 'iPhone 15',
+        monthlyThb: 3113,
+        photoUrl: 'https://cdn.example.com/p5.jpg',
+        webUrl: 'https://shop.example.com/products/prd-5',
+      });
+
+      const r = await svc.generateReply({ text: 'ผ่อน 12 งวด', roomId: 'r1', customerId: null });
+      expect(r.attachments?.[0].productId).toBe('prd-5');
+    });
+
+    it('คำตอบที่โดน grounding block → ไม่แนบอะไรเลย', async () => {
+      const chat = twoHopChat('search_products', 'ราคาเริ่มต้น 7,000 บาทค่ะ'); // ไม่ตรง grounded
+      const { svc, searchProducts } = await build(chat);
+      searchProducts.run.mockResolvedValue(searchResultOneUnit);
+
+      const r = await svc.generateReply({ text: 'iPhone 15', roomId: 'r1', customerId: null });
+      expect(r.confidence).toBe(0.3);
+      expect(r.attachments).toBeUndefined();
+    });
+  });
 });

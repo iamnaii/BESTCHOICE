@@ -97,7 +97,7 @@ export class AiSuggestService {
                   ? p.pricingOptions
                       .map(
                         (o) =>
-                          `ผ่อน ${o.installments} งวด งวดละ ${o.monthlyPayment.toLocaleString()} บาท (ดาวน์ ${o.downPaymentMin}%)`,
+                          `ผ่อน ${o.installments} งวด งวดละ ${o.monthlyPayment.toLocaleString()} บาท (ดาวน์ ${o.downPaymentMin.toLocaleString()} บาท)`,
                       )
                       .join(', ')
                   : 'ไม่มีข้อมูลผ่อน';

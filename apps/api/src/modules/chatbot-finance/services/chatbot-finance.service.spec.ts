@@ -279,6 +279,29 @@ describe('ChatbotFinanceService', () => {
       expect(lineClient.replyMessage.mock.calls.at(-1)![1]).toHaveLength(1);
     });
 
+    it('[I1] quick reply ไม่หายเงียบเมื่อ attachments ถูกตัดทิ้งหมด (all-or-nothing gate เจอ >2 เครื่อง) แต่ toolsUsed ยัง trigger feedback quick reply', async () => {
+      ai.generateReply.mockResolvedValue({
+        text: 'มี 3 เครื่องค่ะ ลองระบุรุ่นที่สนใจเพิ่มเติมได้เลยค่ะ',
+        model: 'm',
+        inputTokens: 1,
+        outputTokens: 1,
+        // search_products เจอ >2 เครื่อง → collectAttachmentsFromToolResult all-or-nothing gate
+        // ตัดรูปทั้งหมดออก (ดู bot-attachments.util.ts) แต่ toolsUsed ยังไม่ว่าง → ยัง trigger
+        // feedback quick reply ตามปกติ — attachments จึงเป็น undefined ไม่ใช่ array ว่าง
+        toolsUsed: ['search_products'],
+        handoffTriggered: false,
+        // attachments omitted — เหมือนผลจริงจาก all-or-nothing gate ที่ FinanceAiService
+        // ไม่ใส่ key นี้เลยเมื่อ Map ว่าง (attachments.size > 0 ? {...} : {})
+      });
+
+      await service.handleEvent(makeTextEvent('มีอะไรบ้าง'));
+
+      const messages = lineClient.replyMessage.mock.calls.at(-1)![1];
+      expect(messages).toHaveLength(1); // ไม่มีรูป → ข้อความเดียว (TEXT)
+      expect(messages[0]).toMatchObject({ type: 'text' });
+      expect(messages[0].quickReply).toBeDefined();
+    });
+
     it('ส่งรูปมากสุด 2 ใบ (กันเกินโควตา 5 ข้อความ/reply)', async () => {
       ai.generateReply.mockResolvedValue({
         text: 'มี 3 เครื่องค่ะ',

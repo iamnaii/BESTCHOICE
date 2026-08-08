@@ -325,4 +325,15 @@ describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
     expect(roomManager.saveMessage).toHaveBeenCalledTimes(1);
     expect(store.get('tok-retry-undelivered')?.outboundSentAt).not.toBeNull();
   });
+
+  it('stamp externalMessageId ที่ adapter คืนมา (กัน FB echo สร้าง bubble ซ้ำ)', async () => {
+    const { router, roomManager } = makeStaffSender();
+    await router.sendStaffMessage({
+      roomId: 'r1',
+      staffId: 'u1',
+      text: 'สวัสดีค่ะ',
+      clientMessageId: 'tok-echo',
+    });
+    expect(roomManager.markOutboundSent).toHaveBeenCalledWith('m1', 'ext-1');
+  });
 });

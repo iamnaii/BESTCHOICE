@@ -225,6 +225,7 @@ const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 // LineGreetingPage moved to settings-registry (P2b comms migration)
 const CustomerIntakePage = lazy(() => import('@/pages/CustomerIntakePage'));
 const OnlineOrdersPage = lazy(() => import('@/pages/OnlineOrdersPage'));
+const ProductHoldsPage = lazy(() => import('@/pages/ProductHoldsPage'));
 const InstallmentApplicationsPage = lazy(() => import('@/pages/InstallmentApplicationsPage'));
 const SavingPlansAdminPage = lazy(() => import('@/pages/SavingPlansAdminPage'));
 const ReviewsModerationPage = lazy(() => import('@/pages/ReviewsModerationPage'));
@@ -997,6 +998,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
                 <OnlineOrdersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/product-holds"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
+                <ProductHoldsPage />
               </ProtectedRoute>
             }
           />

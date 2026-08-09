@@ -270,6 +270,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
+        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
         { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
@@ -375,6 +376,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
+        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
         { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
       ],
@@ -655,6 +657,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
+        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
         { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },

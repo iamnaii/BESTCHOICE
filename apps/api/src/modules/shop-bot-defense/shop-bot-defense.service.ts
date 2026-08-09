@@ -39,9 +39,14 @@ export class ShopBotDefenseService {
   classifyUserAgent(ua: string): BotType | null {
     // Social/link-preview crawlers ต้องเช็คก่อนทุกกฎ — ตัวมันคือคนดึงการ์ด OG
     // ของ /api/shop/share/:id ถ้าโดนจัดเป็น SCRAPER/RATE_ABUSE การ์ดจะไม่ขึ้นเลย
-    if (/facebookexternalhit|Facebot|Twitterbot|Line-?Poker|LineBot|Slackbot|Discordbot|WhatsApp|TelegramBot|LinkedInBot/i.test(ua))
+    if (
+      /facebookexternalhit|Facebot|Twitterbot|Line-?Poker|LineBot|Slackbot|Discordbot|WhatsApp|TelegramBot|LinkedInBot/i.test(
+        ua,
+      )
+    )
       return 'KNOWN_GOOD';
-    if (/GPTBot|ClaudeBot|Anthropic-AI|PerplexityBot|Google-Extended/i.test(ua)) return 'AI_CRAWLER';
+    if (/GPTBot|ClaudeBot|Anthropic-AI|PerplexityBot|Google-Extended/i.test(ua))
+      return 'AI_CRAWLER';
     if (/Bytespider|CCBot/i.test(ua)) return 'SCRAPER';
     if (/HeadlessChrome|PhantomJS|Selenium|Puppeteer/i.test(ua)) return 'HEADLESS_BROWSER';
     if (/wget|curl|python-requests|axios|node-fetch|scrapy/i.test(ua)) return 'SCRAPER';
@@ -94,42 +99,50 @@ export class ShopBotDefenseService {
   async recordRateLimit(ip: string, userAgent: string, _pagePath: string): Promise<void> {
     const salt = process.env.PII_HASH_SALT;
     if (!salt) return;
-    const ipHash = hashPII(ip, salt);
-    const now = new Date();
+    // review round 1 [Critical]: guard เรียกเราแบบ fire-and-forget (`void ...`) —
+    // DB error ชั่วคราว (pool หมด/connection blip) ที่หลุดจากตรงนี้ = unhandled
+    // rejection = process ทั้งตัวล่มบน Node 24 (พิสูจน์ empirically) ทั้งที่นี่เป็น
+    // แค่ตัวนับกันบอท ห้าม block/ล้ม shopper เด็ดขาด — pattern เดียวกับ logDetection
+    try {
+      const ipHash = hashPII(ip, salt);
+      const now = new Date();
 
-    const existing = await this.prisma.ipRateLimit.findUnique({ where: { ipHash } });
-    const expired =
-      !existing || now.getTime() - existing.windowStart.getTime() >= RATE_LIMIT_WINDOW_MS;
+      const existing = await this.prisma.ipRateLimit.findUnique({ where: { ipHash } });
+      const expired =
+        !existing || now.getTime() - existing.windowStart.getTime() >= RATE_LIMIT_WINDOW_MS;
 
-    if (expired) {
-      await this.prisma.ipRateLimit.upsert({
+      if (expired) {
+        await this.prisma.ipRateLimit.upsert({
+          where: { ipHash },
+          create: {
+            ipHash,
+            windowStart: now,
+            requestCount: 1,
+            pagesVisited: 1,
+            uniquePagesVisited: 1,
+            lastUserAgent: userAgent,
+          },
+          update: {
+            windowStart: now,
+            requestCount: 1,
+            pagesVisited: 1,
+            lastUserAgent: userAgent,
+          },
+        });
+        return;
+      }
+
+      await this.prisma.ipRateLimit.update({
         where: { ipHash },
-        create: {
-          ipHash,
-          windowStart: now,
-          requestCount: 1,
-          pagesVisited: 1,
-          uniquePagesVisited: 1,
-          lastUserAgent: userAgent,
-        },
-        update: {
-          windowStart: now,
-          requestCount: 1,
-          pagesVisited: 1,
+        data: {
+          requestCount: { increment: 1 },
+          pagesVisited: { increment: 1 },
           lastUserAgent: userAgent,
         },
       });
-      return;
+    } catch (err) {
+      this.logger.error(`Rate limit record failed: ${(err as Error).message}`);
     }
-
-    await this.prisma.ipRateLimit.update({
-      where: { ipHash },
-      data: {
-        requestCount: { increment: 1 },
-        pagesVisited: { increment: 1 },
-        lastUserAgent: userAgent,
-      },
-    });
   }
 
   async getRequestRate(ip: string): Promise<number> {

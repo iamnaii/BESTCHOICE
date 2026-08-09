@@ -22,7 +22,9 @@ describe('ShopBotDefenseService', () => {
     service = module.get(ShopBotDefenseService);
   });
 
-  afterEach(() => { delete process.env.PII_HASH_SALT; });
+  afterEach(() => {
+    delete process.env.PII_HASH_SALT;
+  });
 
   describe('classifyUserAgent', () => {
     it('detects GPTBot as AI_CRAWLER', () => {
@@ -84,7 +86,9 @@ describe('ShopBotDefenseService', () => {
   describe('classifyUserAgent — social preview crawlers (B4)', () => {
     it('detects facebookexternalhit as KNOWN_GOOD', () => {
       expect(
-        service.classifyUserAgent('facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'),
+        service.classifyUserAgent(
+          'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+        ),
       ).toBe('KNOWN_GOOD');
     });
     it('detects Facebot as KNOWN_GOOD', () => {
@@ -94,11 +98,17 @@ describe('ShopBotDefenseService', () => {
       expect(service.classifyUserAgent('Twitterbot/1.0')).toBe('KNOWN_GOOD');
     });
     it('detects the LINE link preview crawler as KNOWN_GOOD', () => {
-      expect(service.classifyUserAgent('Mozilla/5.0 (compatible; Line-Poker/1.0)')).toBe('KNOWN_GOOD');
+      expect(service.classifyUserAgent('Mozilla/5.0 (compatible; Line-Poker/1.0)')).toBe(
+        'KNOWN_GOOD',
+      );
     });
     it('never rate-limits a social crawler even at a huge request rate', () => {
       expect(
-        service.decideAction({ userAgent: 'facebookexternalhit/1.1', requestRate: 9999, pagePath: '/shop/share/abc' }),
+        service.decideAction({
+          userAgent: 'facebookexternalhit/1.1',
+          requestRate: 9999,
+          pagePath: '/shop/share/abc',
+        }),
       ).toBe('LOGGED');
     });
   });
@@ -159,6 +169,17 @@ describe('ShopBotDefenseService', () => {
         requestCount: 12,
       });
       expect(await service.getRequestRate('1.2.3.4')).toBe(12);
+    });
+  });
+
+  // review round 1 [Critical]: recordRateLimit ถูกเรียก fire-and-forget จาก guard —
+  // DB error ต้องถูกกลืน (log) ไม่ใช่หลุดเป็น unhandled rejection ล้ม process
+  describe('recordRateLimit — DB error ไม่หลุดออกไปล้ม process (B4 T1 fix)', () => {
+    it('prisma throw → resolve เงียบ ไม่ reject', async () => {
+      prisma.ipRateLimit.findUnique.mockRejectedValueOnce(new Error('connection pool exhausted'));
+      await expect(
+        service.recordRateLimit('1.2.3.4', 'Mozilla/5.0', '/api/shop/products'),
+      ).resolves.toBeUndefined();
     });
   });
 });

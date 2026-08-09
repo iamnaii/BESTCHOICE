@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Decimal from 'decimal.js';
 import { calcBcInstallment } from '@installment/shared';
 import type { Product, InterestConfig } from '../types';
+import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 
 // (Audit finding P0) The backend stores all money values as Prisma.Decimal(12,2).
 // Doing the contract preview in JS float caused 0.01 baht drift per multiplication
@@ -34,12 +35,26 @@ export function useContractCalculation({
 }: UseContractCalculationParams) {
   const getSellingPrice = () => {
     if (!selectedProduct) return 0;
-    const price =
-      selectedProduct.prices.find((p) => p.label === 'ราคาผ่อน BESTCHOICE') ||
-      selectedProduct.prices.find((p) => p.label.startsWith('ราคาผ่อน')) ||
-      selectedProduct.prices.find((p) => p.isDefault) ||
-      selectedProduct.prices[0];
-    return price ? parseFloat(price.amount) : 0;
+    // B0 §2.1: columns-first ผ่าน getPositiveDisplayPrices (มัน fallback ไป prices[] label ให้อยู่แล้ว)
+    // fix-round-1 (reviewer Important): ใช้ getPositiveDisplayPrices แทน getDisplayPrices ตรงๆ —
+    // มัน normalize คอลัมน์ที่ 0/''/ติดลบ ให้เป็น null ก่อนเรียก getDisplayPrices ภายใน ทำให้
+    // label-chain lookup ('ราคาผ่อน BESTCHOICE' / 'ราคาเงินสด') ยังทำงานได้แทนที่จะโดน
+    // short-circuit ข้ามไปเงียบๆ (getDisplayPrices เช็คแค่ `!= null` ซึ่ง 0 ไม่ null)
+    const { cash, installment } = getPositiveDisplayPrices({
+      cashPrice: selectedProduct.cashPrice ?? null,
+      installmentPrice: selectedProduct.installmentPrice ?? null,
+      prices: selectedProduct.prices,
+    });
+    // ⚠️ positivity guard ซ้ำอีกชั้นบนผลลัพธ์รวม (defence in depth): แม้คอลัมน์จะ normalize
+    // แล้ว แต่ label-chain fallback (pickFromPrices) เองไม่ได้กรอง positivity ของแถว prices[]
+    // ถ้าใช้ `!= null` เฉยๆ เครื่องราคา 20,000 ที่ดันมีแถวราคาเป็น 0 จะทำสัญญาที่ 0 บาท (เคส I)
+    if (installment != null && installment > 0) return installment;
+    if (cash != null && cash > 0) return cash;
+    // legacy tail ที่ getDisplayPrices ไม่ครอบ: row isDefault ที่ label ไม่ตรงชุดไหนเลย
+    // ('ราคาขาย' จาก PO receive / 'ราคาขายต่อ (Refurbished)' จากยึดเครื่อง)
+    const row =
+      selectedProduct.prices.find((p) => p.isDefault) || selectedProduct.prices[0];
+    return row ? parseFloat(row.amount) : 0;
   };
 
   const sellingPrice = getSellingPrice();

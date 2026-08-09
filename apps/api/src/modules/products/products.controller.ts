@@ -140,6 +140,13 @@ export class ProductsController {
     return this.productsService.getWorkflowStatus(id);
   }
 
+  @Get(':id/readiness')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'เช็คว่าสินค้าข้อมูลครบพอขึ้นเว็บหรือยัง (checklist รายข้อ)' })
+  getReadiness(@Param('id') id: string) {
+    return this.productsService.getReadiness(id);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {

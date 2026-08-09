@@ -14,6 +14,9 @@ describe('ShopCatalogService', () => {
         groupBy: jest.fn(),
         count: jest.fn(),
       },
+      // readBoolFlag('shop_hide_demo_products') reads this — most tests don't care and leave it
+      // unmocked (undefined return → readRawValue catches → default false, matches prod day-1).
+      systemConfig: { findFirst: jest.fn() },
     };
     const module = await Test.createTestingModule({
       providers: [ShopCatalogService, { provide: PrismaService, useValue: prisma }],
@@ -22,23 +25,45 @@ describe('ShopCatalogService', () => {
   });
 
   describe('listGroupedByModel', () => {
-    it('hard-filters to iPhone only (brand=Apple AND category in phone set)', async () => {
+    it('hard-filters ผ่าน readiness fragment (brand/category/สถานะ/ราคา/รูป) และกรอง [DEMO] เมื่อเปิด flag shop_hide_demo_products', async () => {
+      prisma.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
       prisma.product.groupBy.mockResolvedValue([]);
 
       await service.listGroupedByModel({});
 
-      expect(prisma.product.groupBy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          by: ['brand', 'model', 'storage', 'category'],
-          where: expect.objectContaining({
-            brand: 'Apple',
-            category: { in: ['PHONE_NEW', 'PHONE_USED'] },
-            isOnlineVisible: true,
-            status: 'IN_STOCK',
-            deletedAt: null,
-          }),
-        }),
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.AND).toEqual(
+        expect.arrayContaining([
+          { brand: 'Apple' },
+          { category: { in: ['PHONE_NEW', 'PHONE_USED'] } },
+          { isOnlineVisible: true },
+          { status: 'IN_STOCK' },
+          { deletedAt: null },
+          { cashPrice: { gt: 0 } },
+          { gallery: { isEmpty: false } },
+          { NOT: { name: { startsWith: '[DEMO]' } } },
+        ]),
       );
+    });
+
+    it('ไม่กรอง [DEMO] เมื่อไม่ได้เปิด flag shop_hide_demo_products (default — เว็บยังโชว์สินค้าตัวอย่างจนกว่า owner จะกรอกของจริง)', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+
+      await service.listGroupedByModel({});
+
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.AND).toEqual(
+        expect.arrayContaining([
+          { brand: 'Apple' },
+          { category: { in: ['PHONE_NEW', 'PHONE_USED'] } },
+          { isOnlineVisible: true },
+          { status: 'IN_STOCK' },
+          { deletedAt: null },
+          { cashPrice: { gt: 0 } },
+          { gallery: { isEmpty: false } },
+        ]),
+      );
+      expect(where.AND).not.toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
     });
 
     it('narrows category to PHONE_NEW when condition=NEW', async () => {
@@ -134,7 +159,7 @@ describe('ShopCatalogService', () => {
       const result = await service.listGroupedByModel({});
 
       expect(result.data[0].minPrice).toBeNull();
-      expect(result.data[0].monthlyPaymentFrom).toBe(0);
+      expect(result.data[0].monthlyPaymentFrom).toBeNull();
     });
 
     it('filters by search text on brand OR model (case-insensitive)', async () => {
@@ -162,17 +187,19 @@ describe('ShopCatalogService', () => {
     it('filters by exact model while keeping the iPhone-only base', async () => {
       prisma.product.groupBy.mockResolvedValue([]);
       await service.listGroupedByModel({ model: 'iPhone 16' });
-      expect(prisma.product.groupBy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            model: 'iPhone 16',
-            brand: 'Apple',
-            category: { in: ['PHONE_NEW', 'PHONE_USED'] },
-            isOnlineVisible: true,
-            status: 'IN_STOCK',
-          }),
-        }),
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.model).toBe('iPhone 16');
+      expect(where.AND).toEqual(
+        expect.arrayContaining([{ brand: 'Apple' }, { status: 'IN_STOCK' }]),
       );
+    });
+
+    it('search assign where.OR แล้ว readiness fragment ยังอยู่ครบ (ไม่โดนทับ)', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+      await service.listGroupedByModel({ search: 'iphone 15' });
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.OR).toHaveLength(2);
+      expect(where.AND).toEqual(expect.arrayContaining([{ cashPrice: { gt: 0 } }]));
     });
   });
 
@@ -189,11 +216,7 @@ describe('ShopCatalogService', () => {
         expect.objectContaining({
           by: ['model'],
           where: expect.objectContaining({
-            brand: 'Apple',
-            category: { in: ['PHONE_NEW', 'PHONE_USED'] },
-            isOnlineVisible: true,
-            status: 'IN_STOCK',
-            deletedAt: null,
+            AND: expect.arrayContaining([{ brand: 'Apple' }, { status: 'IN_STOCK' }, { deletedAt: null }]),
           }),
           orderBy: [{ _count: { id: 'desc' } }],
         }),
@@ -252,6 +275,15 @@ describe('ShopCatalogService', () => {
       expect(result!.tiers.A.units).toHaveLength(1);
       expect(result!.tiers.A.minPrice).toBe(13900);
       expect(JSON.stringify(result)).not.toContain('costPrice');
+
+      // Fix round 1/5 (Minor): pin the permalink invariant on BOTH halves — head query
+      // (requireInStock:false) must NOT force IN_STOCK, units query (default) MUST.
+      // Without this a regression that flips either half silently breaks the permalink
+      // (sold unit's page 404s) or breaks the catalog gate (sold units listed as buyable).
+      const headWhere = prisma.product.findFirst.mock.calls[0][0].where;
+      expect(headWhere.AND).not.toContainEqual({ status: 'IN_STOCK' });
+      const unitsWhere = prisma.product.findMany.mock.calls[0][0].where;
+      expect(unitsWhere.AND).toContainEqual({ status: 'IN_STOCK' });
     });
 
     it('returns null when the resolved id is not an iPhone (brand/category guard on the initial lookup)', async () => {
@@ -260,14 +292,16 @@ describe('ShopCatalogService', () => {
       const result = await service.getProductDetail('non-iphone-id');
 
       expect(result).toBeNull();
-      expect(prisma.product.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            brand: 'Apple',
-            category: { in: ['PHONE_NEW', 'PHONE_USED'] },
-          }),
-        }),
+      const where = prisma.product.findFirst.mock.calls[0][0].where;
+      expect(where.id).toBe('non-iphone-id');
+      expect(where.AND).toEqual(
+        expect.arrayContaining([
+          { brand: 'Apple' },
+          { category: { in: ['PHONE_NEW', 'PHONE_USED'] } },
+        ]),
       );
+      // permalink: ไม่บังคับ IN_STOCK ที่ head query
+      expect(where.AND).not.toContainEqual({ status: 'IN_STOCK' });
     });
 
     it('reports condition=NEW for a brand-new phone', async () => {
@@ -333,6 +367,56 @@ describe('ShopCatalogService', () => {
       expect(u.installmentPrice).toBe(17500);
       expect(JSON.stringify(result)).not.toContain('costPrice');
     });
+
+    describe('getProductDetail — ราคา null (B0)', () => {
+      it('ตัด unit ที่ไม่มี cashPrice ออกแทนการโชว์ 0', async () => {
+        prisma.product.findFirst.mockResolvedValue({
+          id: 'p1',
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '128GB',
+          category: 'PHONE_NEW',
+          color: null,
+          onlineDescription: null,
+          gallery: ['g'],
+          gallery360: [],
+          cashPrice: '28900',
+          installmentPrice: null,
+        });
+        prisma.product.findMany.mockResolvedValue([
+          {
+            id: 'u1',
+            conditionGrade: null,
+            cashPrice: '28900',
+            installmentPrice: null,
+            gallery: [],
+            gallery360: [],
+            imeiSerial: null,
+            batteryHealth: null,
+            hasBox: null,
+            color: null,
+            shopWarrantyDays: null,
+          },
+          {
+            id: 'u2',
+            conditionGrade: null,
+            cashPrice: null,
+            installmentPrice: null,
+            gallery: [],
+            gallery360: [],
+            imeiSerial: null,
+            batteryHealth: null,
+            hasBox: null,
+            color: null,
+            shopWarrantyDays: null,
+          },
+        ]);
+
+        const detail = await service.getProductDetail('p1');
+        const units = Object.values(detail!.tiers).flatMap((t) => t.units);
+        expect(units.map((u) => u.id)).toEqual(['u1']);
+      });
+    });
   });
 
   describe('listRelated', () => {
@@ -359,11 +443,18 @@ describe('ShopCatalogService', () => {
       expect(prisma.product.groupBy).toHaveBeenCalledWith(
         expect.objectContaining({
           by: ['brand', 'model', 'storage', 'category'],
-          where: expect.objectContaining({ brand: 'Apple', model: { not: 'iPhone 16' } }),
+          where: expect.objectContaining({
+            model: { not: 'iPhone 16' },
+            AND: expect.arrayContaining([{ brand: 'Apple' }]),
+          }),
           take: 6,
         }),
       );
       expect(result[0].model).toBe('iPhone 15');
+      // head lookup ของ listRelated ไม่บังคับ IN_STOCK (permalink ของเครื่องที่ขายแล้ว)
+      expect(prisma.product.findFirst.mock.calls[0][0].where.AND).not.toContainEqual({
+        status: 'IN_STOCK',
+      });
     });
 
     it('returns [] when product not found', async () => {

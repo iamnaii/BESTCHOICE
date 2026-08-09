@@ -69,6 +69,32 @@ describe('ShopCartService', () => {
     expect(items[0].product.sellingPrice).toBe(14000);
   });
 
+  it('B0 (fix round 1/5, Important 2): filters out a reservation whose product has no price at all (cashPrice + installmentPrice both null) — a stale hold from before B0', async () => {
+    // Mutation-testing gap the reviewer found: without this test, deleting the
+    // `.filter((r) => Number(r.product.cashPrice ?? r.product.installmentPrice ?? 0) > 0)`
+    // line in shop-cart.service.ts still left all 43 tests green.
+    prismaMock.productReservation.findMany.mockResolvedValue([
+      {
+        id: 'r4',
+        productId: 'p4',
+        sessionId: 's1',
+        expiresAt: new Date(Date.now() + 10 * 60000),
+        status: 'ACTIVE',
+        product: {
+          id: 'p4',
+          name: 'iPhone 16',
+          costPrice: 21000,
+          cashPrice: null,
+          installmentPrice: null,
+          gallery: [],
+          conditionGrade: null,
+        },
+      },
+    ]);
+    const items = await service.listForSession('s1');
+    expect(items).toHaveLength(0);
+  });
+
   it('filters out expired reservations even if still ACTIVE in DB', async () => {
     prismaMock.productReservation.findMany.mockResolvedValue([
       {

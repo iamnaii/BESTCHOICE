@@ -175,10 +175,10 @@ describe('InspectionsService.completeInspection (168-193)', () => {
     });
     // inspectedAt is stamped with a real Date
     expect(inspectionUpdate.mock.calls[0][0].data.inspectedAt).toBeInstanceOf(Date);
-    // each linked product is pushed to QC_PENDING
+    // each linked product is pushed to QC_PENDING and gets the computed grade
     expect(productUpdate).toHaveBeenCalledWith({
       where: { id: 'prod-1' },
-      data: { status: 'QC_PENDING' },
+      data: { status: 'QC_PENDING', conditionGrade: 'A' },
     });
     // the returned record is the re-fetched (graded) inspection
     expect(out.overallGrade).toBe('A');

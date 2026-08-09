@@ -90,6 +90,9 @@ describe('TradeInService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'prod-new-1' }),
       },
+      // B0 §2.1: autofill hook (trade-in accept/quickBuy) queries pricingTemplate —
+      // empty means NO_TEMPLATE, returns before touching product.update/systemConfig.
+      pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
       },

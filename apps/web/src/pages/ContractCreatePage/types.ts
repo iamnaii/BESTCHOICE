@@ -7,6 +7,9 @@ export interface Product {
   status: string;
   branchId: string;
   branch: { id: string; name: string };
+  /** B0: แหล่งราคาจริง (คอลัมน์) — API ส่งเป็น string เพราะ Prisma.Decimal serialize เป็น string */
+  cashPrice?: string | null;
+  installmentPrice?: string | null;
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
 }
 

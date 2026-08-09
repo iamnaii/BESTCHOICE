@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import type { AxiosError } from 'axios';
 import { MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getSessionId } from '@/lib/session';
@@ -81,11 +82,20 @@ export default function ProductDetailPage() {
     setLightboxOpen(false);
   }, [id]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, isFetching, error, refetch } = useQuery({
     queryKey: ['shop-product', id],
     queryFn: () => api.get(`/api/shop/products/${id}`).then((r) => r.data as ProductDetail),
     enabled: !!id,
+    // B0: 404 (readiness-filtered/sold-out) is a real, permanent outcome — never retry
+    // it (matches ApplyStatusPage.tsx's notFound pattern). Transient errors (429 from
+    // ShopBotDefenseGuard, 5xx, network hiccup) get 2 retries with backoff before the
+    // generic error branch below offers a manual "ลองใหม่".
+    retry: (failureCount, err) => (err as AxiosError)?.response?.status !== 404 && failureCount < 2,
   });
+
+  // Fix round 1/5: only 404 means "this product is really gone" — other errors
+  // (bot-defense 429, 5xx, network) must NOT show the same "ขายไปแล้ว" copy.
+  const notFound = (error as AxiosError | null)?.response?.status === 404;
 
   // Computed null-safely so this can sit above the early return below and
   // keep the installment-preview query (which re-keys off the selected
@@ -143,7 +153,7 @@ export default function ProductDetailPage() {
       if (id) {
         track('AddToCart', {
           content_ids: [selectedUnit?.id ?? id],
-          value: selectedUnit?.cashPrice ?? 0,
+          value: selectedUnit?.cashPrice ?? undefined,
           currency: 'THB',
         });
       }
@@ -154,6 +164,71 @@ export default function ProductDetailPage() {
       toast.error(e.response?.data?.message ?? 'จองไม่สำเร็จ');
     },
   });
+
+  // B0: head query ของ getProductDetail ผ่าน readiness แล้ว → controller ตอบ 404 ได้จริง
+  // ถ้ายังรวม error เข้ากับ loading ลิงก์ที่ส่งลูกค้าจะเป็น Skeleton หมุนค้างตลอดกาล
+  //
+  // Fix round 1/5 [Important 1]: `isError` alone เหมารวมทุก error (403/429 บอทดีเฟนส์,
+  // 5xx, เน็ตหลุด) ว่าเป็น "สินค้าขายไปแล้ว" — ผิด. แยกด้วย `notFound` (403/429/5xx เข้าการ์ด
+  // error ทั่วไปพร้อมปุ่มลองใหม่แทน) และเช็ค `!data` กันไม่ให้ refetchOnReconnect ที่พังชั่วคราว
+  // ไล่ที่หน้าสินค้าที่กำลังโชว์อยู่ (data ยังอยู่ใน cache) ออกไปเป็นหน้า error ทั้งที่ข้อมูลพร้อมอยู่แล้ว.
+  if (isError && !data) {
+    return (
+      <ShopLayout>
+        <Container className="py-16">
+          <div className="mx-auto max-w-md rounded-2xl border border-border bg-card p-8 text-center leading-snug">
+            {notFound ? (
+              <>
+                <h1 className="text-xl font-semibold text-foreground">
+                  สินค้านี้ไม่พร้อมขายบนเว็บ
+                </h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  เครื่องนี้อาจขายไปแล้ว หรือข้อมูลยังไม่ครบสำหรับขายออนไลน์ — ทักแชทมาได้เลย
+                  ทีมงานช่วยหาเครื่องรุ่นเดียวกันให้ครับ
+                </p>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                  <Button asChild variant="cta" size="lg">
+                    <a
+                      href={lineOaMessageUrl(`สนใจสินค้ารหัส ${id ?? ''} ครับ/ค่ะ`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      ทักแชทสอบถาม
+                    </a>
+                  </Button>
+                  <Button asChild variant="outline" size="lg">
+                    <Link to="/products">ดูสินค้าทั้งหมด</Link>
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold text-foreground">{copy.common.error}</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  โหลดข้อมูลสินค้าไม่สำเร็จ อาจเป็นเพราะเน็ตหลุดหรือระบบขัดข้องชั่วคราว
+                  ลองใหม่อีกครั้งได้เลย
+                </p>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                  <Button
+                    variant="cta"
+                    size="lg"
+                    onClick={() => refetch()}
+                    disabled={isFetching}
+                    loading={isFetching}
+                  >
+                    {copy.common.retry}
+                  </Button>
+                  <Button asChild variant="outline" size="lg">
+                    <Link to="/products">ดูสินค้าทั้งหมด</Link>
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </Container>
+      </ShopLayout>
+    );
+  }
 
   if (isLoading || !data) {
     return (
@@ -174,7 +249,7 @@ export default function ProductDetailPage() {
   }
 
   const displayName = [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ');
-  const price = selectedUnit?.cashPrice ?? 0;
+  const price = selectedUnit?.cashPrice ?? null;
   const monthlyFrom =
     preview?.available && preview.monthlyPayment ? Math.ceil(preview.monthlyPayment) : null;
   const gradeKeys = Object.keys(data.tiers);
@@ -309,7 +384,7 @@ export default function ProductDetailPage() {
 
             <div className="space-y-1">
               <div className="flex flex-wrap items-baseline gap-2">
-                {price > 0 ? (
+                {price != null && price > 0 ? (
                   <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
                     ฿{price.toLocaleString()}
                   </div>

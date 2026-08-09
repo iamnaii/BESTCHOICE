@@ -29,6 +29,7 @@ export class CalculateInstallmentTool {
       where: { id: input.productId, deletedAt: null },
       select: {
         name: true,
+        installmentPrice: true,
         prices: {
           where: { deletedAt: null, isDefault: true },
           select: { amount: true },
@@ -37,7 +38,9 @@ export class CalculateInstallmentTool {
       },
     });
     if (!product) return { error: 'product_not_found' };
-    const sellingPrice = product.prices[0]?.amount;
+    // B0: คอลัมน์คือแหล่งราคาจริง; แถว isDefault หลัง write-through = ราคาเงินสด
+    // ซึ่งต่ำกว่ายอดตั้งต้นผ่อน → ถ้าอ่านแถวอย่างเดียวบอทจะ quote ต่ำกว่าสัญญาจริง
+    const sellingPrice = product.installmentPrice ?? product.prices[0]?.amount;
     if (sellingPrice == null) return { error: 'price_not_configured' };
 
     const downPct = input.downPct ?? 20;

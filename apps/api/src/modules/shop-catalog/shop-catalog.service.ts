@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { productReadinessWhere } from '../../utils/product-readiness.util';
+import { readBoolFlag } from '../../utils/config.util';
 
 export interface ProductGroup {
   /** Representative product id — the catalog card links to /products/:id with this. */
@@ -11,7 +13,7 @@ export interface ProductGroup {
   stockCount: number;
   thumbnailUrl?: string;
   conditionGrades: string[];
-  monthlyPaymentFrom: number;
+  monthlyPaymentFrom: number | null;
   condition: 'NEW' | 'USED';
 }
 
@@ -46,20 +48,22 @@ export interface ProductUnit {
 }
 
 const INTEREST_RATE_PER_MONTH = 0.0099; // 0.99%/month — example, adjust per pricing config
+// B0: unused now that monthlyPaymentFrom is hardcoded to null (calculateMonthlyPayment's
+// 2 call sites were removed) — kept for B4, which will re-wire these into a real InterestConfig
+// read instead of deleting and re-adding them.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const DEFAULT_MONTHS = 12;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const DEFAULT_DOWN_PCT = 0.2;
-const SHOP_BRAND = 'Apple';
-const PHONE_CATEGORIES = ['PHONE_NEW', 'PHONE_USED'] as const;
 const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
-function shopBaseWhere(): Record<string, any> {
-  return {
-    deletedAt: null,
-    isOnlineVisible: true,
-    status: 'IN_STOCK',
-    brand: SHOP_BRAND,
-    category: { in: [...PHONE_CATEGORIES] },
-  };
+// B0 §2.3: เงื่อนไขขึ้นเว็บมาจาก util ตัวเดียว (brand/category/สถานะ/ราคา/รูป/เกรด/[DEMO])
+// fragment ใช้คีย์ `AND` เท่านั้น → ปลอดภัยกับ where.OR ที่ listGroupedByModel assign เอง
+// `excludeDemo` มาจาก SystemConfig flag `shop_hide_demo_products` ที่ผู้เรียก (แต่ละ public
+// method ด้านล่าง) อ่านมาครั้งเดียวต่อ request แล้ว thread เข้ามา — ตาม util's JSDoc contract
+// (util นี้ pure ไม่อ่าน SystemConfig เอง)
+function shopBaseWhere(excludeDemo: boolean): Record<string, any> {
+  return { ...productReadinessWhere({ excludeDemo }) };
 }
 
 @Injectable()
@@ -80,8 +84,11 @@ export class ShopCatalogService {
   }): Promise<{ data: ProductGroup[]; total: number; page: number; limit: number }> {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 24;
+    // อ่าน [DEMO] flag ครั้งเดียวต่อ request — ใช้ร่วมกันทั้ง groupBy หลัก + allGroups count
+    // (ทั้งคู่ reuse `where` object เดียวกัน ไม่ได้เรียก shopBaseWhere ซ้ำ)
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
 
-    const where: any = { ...shopBaseWhere() };
+    const where: any = { ...shopBaseWhere(excludeDemo) };
     if (filters.condition) {
       where.category = filters.condition === 'NEW' ? 'PHONE_NEW' : 'PHONE_USED';
     }
@@ -136,10 +143,6 @@ export class ShopCatalogService {
         });
         const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
         const stockCount = g._count?.id ?? 0;
-        const monthly =
-          minPrice != null
-            ? this.calculateMonthlyPayment(minPrice, DEFAULT_MONTHS, DEFAULT_DOWN_PCT)
-            : 0;
         return {
           id: sample?.id ?? '',
           brand: g.brand,
@@ -149,7 +152,10 @@ export class ShopCatalogService {
           stockCount,
           thumbnailUrl: sample?.gallery[0],
           conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-          monthlyPaymentFrom: monthly,
+          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
+          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
+          // เลขจริงที่อ่าน InterestConfig มาใน B4
+          monthlyPaymentFrom: null,
           condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
         };
       }),
@@ -164,9 +170,10 @@ export class ShopCatalogService {
   }
 
   async listAvailableModels(): Promise<{ model: string; count: number }[]> {
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
     const rows = await this.prisma.product.groupBy({
       by: ['model'],
-      where: shopBaseWhere(),
+      where: shopBaseWhere(excludeDemo),
       _count: { id: true },
       orderBy: [{ _count: { id: 'desc' as const } }],
     });
@@ -174,11 +181,15 @@ export class ShopCatalogService {
   }
 
   async listRelated(productId: string): Promise<ProductGroup[]> {
+    // [DEMO] flag ครั้งเดียวต่อ request — ใช้ทั้ง head lookup และ related list ด้านล่าง
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
     const product = await this.prisma.product.findFirst({
-      where: { id: productId, ...shopBaseWhere() },
+      // head lookup เท่านั้น — ต้องตรงกับ getProductDetail (permalink ของเครื่องที่ขายแล้ว)
+      where: { id: productId, ...productReadinessWhere({ requireInStock: false, excludeDemo }) },
     });
     if (!product) return [];
-    const where = { ...shopBaseWhere(), model: { not: product.model } };
+    // ตัวรายการ related ยังใช้ shopBaseWhere() ปกติ (ต้องเป็นเครื่องที่ซื้อได้จริง)
+    const where = { ...shopBaseWhere(excludeDemo), model: { not: product.model } };
     const groups = await this.prisma.product.groupBy({
       by: [...GROUP_BY],
       where,
@@ -201,10 +212,6 @@ export class ShopCatalogService {
           select: { id: true, gallery: true, conditionGrade: true },
         });
         const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
-        const monthly =
-          minPrice != null
-            ? this.calculateMonthlyPayment(minPrice, DEFAULT_MONTHS, DEFAULT_DOWN_PCT)
-            : 0;
         return {
           id: sample?.id ?? '',
           brand: g.brand,
@@ -214,7 +221,10 @@ export class ShopCatalogService {
           stockCount: g._count?.id ?? 0,
           thumbnailUrl: sample?.gallery[0],
           conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-          monthlyPaymentFrom: monthly,
+          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
+          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
+          // เลขจริงที่อ่าน InterestConfig มาใน B4
+          monthlyPaymentFrom: null,
           condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
         };
       }),
@@ -222,36 +232,36 @@ export class ShopCatalogService {
   }
 
   async getProductDetail(productId: string): Promise<ProductDetail | null> {
+    // [DEMO] flag อ่านครั้งเดียวต่อ request — ใช้ร่วมกันทั้ง head query + units query ด้านล่าง
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
     const product = await this.prisma.product.findFirst({
       where: {
         id: productId,
-        deletedAt: null,
-        isOnlineVisible: true,
-        brand: SHOP_BRAND,
-        category: { in: [...PHONE_CATEGORIES] },
+        // ไม่บังคับ IN_STOCK — เครื่องที่ขายแล้วต้องยังเปิดหน้ารุ่นได้ (permalink)
+        ...productReadinessWhere({ requireInStock: false, excludeDemo }),
       },
     });
     if (!product) return null;
 
-    // Get all units (same brand+model, in stock)
+    // Get all units (same brand+model+storage+category, พร้อมขายจริง)
     const allUnits = await this.prisma.product.findMany({
       where: {
-        brand: product.brand,
         model: product.model,
         storage: product.storage,
         category: product.category,
-        deletedAt: null,
-        isOnlineVisible: true,
-        status: 'IN_STOCK',
+        ...productReadinessWhere({ excludeDemo }),
       },
       orderBy: { cashPrice: 'asc' },
     });
 
     const tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }> = {};
     for (const u of allUnits) {
+      // B0: readiness fragment กรอง cashPrice > 0 มาแล้ว — ถ้ายังเจอ null แปลว่า
+      // ข้อมูลไม่ครบ ให้ตกจากรายการแทนการโชว์ ฿0 (เคยหลอกลูกค้าว่าเครื่องฟรี)
+      if (u.cashPrice == null) continue;
       const grade = u.conditionGrade ?? 'unknown';
       if (!tiers[grade]) tiers[grade] = { minPrice: Infinity, maxPrice: 0, units: [] };
-      const price = u.cashPrice != null ? Number(u.cashPrice) : 0;
+      const price = Number(u.cashPrice);
       const imeiPartial = u.imeiSerial ? `••••••••••${u.imeiSerial.slice(-4)}` : undefined;
       tiers[grade].units.push({
         id: u.id,

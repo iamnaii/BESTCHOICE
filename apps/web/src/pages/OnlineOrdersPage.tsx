@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ShoppingBag, Package, Truck, CheckCircle2, XCircle } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -72,6 +73,11 @@ function formatMoney(v: string | number | undefined | null): string {
 }
 
 export default function OnlineOrdersPage() {
+  // FF-3 (B5 final review): endpoint refund = OWNER/FM/ACCOUNTANT — BM เข้าหน้านี้ได้
+  // แต่กดแล้วจะ 403 ทุกครั้ง ซ่อนปุ่มแบบเดียวกับ canRelease ของ ProductHoldsPage
+  const { user } = useAuth();
+  const canRefund =
+    user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER' || user?.role === 'ACCOUNTANT';
   useDocumentTitle('คำสั่งซื้อออนไลน์');
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<OnlineOrderStatus | 'ALL'>('ALL');
@@ -238,15 +244,21 @@ export default function OnlineOrdersPage() {
                               <div className="text-xs text-destructive leading-snug">
                                 เงินเข้าแล้วแต่เครื่องถูกขายไปก่อน — ติดต่อลูกค้าเพื่อคืนเงิน
                               </div>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => refundMutation.mutate(order.id)}
-                                disabled={refundMutation.isPending}
-                              >
-                                <CheckCircle2 className="size-4 mr-1.5" />
-                                บันทึกว่าคืนเงินแล้ว
-                              </Button>
+                              {canRefund ? (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => refundMutation.mutate(order.id)}
+                                  disabled={refundMutation.isPending}
+                                >
+                                  <CheckCircle2 className="size-4 mr-1.5" />
+                                  บันทึกว่าคืนเงินแล้ว
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground leading-snug">
+                                  แจ้งเจ้าของ/การเงินเพื่อบันทึกการคืนเงิน
+                                </span>
+                              )}
                             </>
                           )}
                           {order.status === 'PENDING_BANK_REVIEW' && (

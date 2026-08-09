@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { calcBcInstallment } from '../../../utils/installment-calc.util';
 import { resolveBcConfigForCategory } from '../../../utils/bc-installment-config.util';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
+import { DEMO_NAME_PREFIX } from '../../../utils/product-readiness.util';
 
 export const CALCULATE_INSTALLMENT_TOOL = {
   name: 'calculate_installment',
@@ -82,7 +83,11 @@ export class CalculateInstallmentTool {
     const base = shopBaseUrl();
     return {
       productId: product.id,
-      productName: product.name,
+      // final-review D1: ห้ามให้ prefix [DEMO] หลุดถึงลูกค้า — เว็บไม่เคยโชว์ Product.name
+      // ดิบ และ search_products ก็ไม่ emit name; tool นี้เป็นจุดเดียวที่ปล่อยชื่อออก
+      productName: product.name.startsWith(DEMO_NAME_PREFIX)
+        ? product.name.slice(DEMO_NAME_PREFIX.length).trimStart()
+        : product.name,
       cashPriceThb: product.cashPrice != null ? Number(product.cashPrice) : null,
       priceThb: installmentPrice.toNumber(),
       downPct: result.downPct.mul(100).toNumber(),

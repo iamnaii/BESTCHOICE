@@ -17,6 +17,7 @@ import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 import { AiAutoReplyService } from '../../staff-chat/services/ai-auto-reply.service';
+import { MAX_BOT_ATTACHMENTS } from '../../../utils/bot-attachments.util';
 
 /**
  * MessageRouter — the central nerve of the chat engine.
@@ -489,7 +490,7 @@ export class MessageRouterService {
     attachments?: { productId: string; imageUrl?: string; webUrl?: string }[],
   ): Promise<void> {
     if (!attachments?.length) return;
-    for (const att of attachments.slice(0, 2)) {
+    for (const att of attachments.slice(0, MAX_BOT_ATTACHMENTS)) {
       if (!att.imageUrl) continue;
       try {
         const sendResult = await adapter.sendMessage({

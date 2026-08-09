@@ -76,6 +76,15 @@ describe('CalculateInstallmentTool.run', () => {
     );
   });
 
+  // final-review D1: prefix [DEMO] ห้ามหลุดถึงลูกค้า — tool นี้เป็นจุดเดียวที่ emit Product.name
+  it('เครื่องชื่อ [DEMO] → productName ไม่มี prefix หลุดไปหาลูกค้า', async () => {
+    const tool = new CalculateInstallmentTool(
+      makePrisma(productRow({ name: '[DEMO] iPhone 15 Pro Max 256GB' }), cfgRow()),
+    );
+    const r = (await tool.run({ productId: 'prd-1', tenureMonths: 6 })) as Record<string, unknown>;
+    expect(r.productName).toBe('iPhone 15 Pro Max 256GB');
+  });
+
   it('ค่างวดตรงกับสูตร calcBcInstallment (commission/VAT = 0, rate สังเคราะห์ 0.10 × 12)', async () => {
     const tool = new CalculateInstallmentTool(makePrisma(productRow(), cfgRow()));
     const r = (await tool.run({ productId: 'prd-1', downPct: 20, tenureMonths: 12 })) as unknown as Record<

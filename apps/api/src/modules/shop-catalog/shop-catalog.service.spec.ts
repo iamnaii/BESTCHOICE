@@ -620,7 +620,7 @@ describe('ShopCatalogService', () => {
     });
     it('returns OUT for 0 stock', () => {
       expect(service.smartStockCount(0)).toEqual({
-        display: 'หมดสต็อก แจ้งเตือนเมื่อมาใหม่',
+        display: 'หมดสต็อก — ทักแชทเช็ครอบเข้าใหม่',
         tone: 'out',
       });
     });

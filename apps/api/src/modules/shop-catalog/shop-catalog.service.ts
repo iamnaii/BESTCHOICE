@@ -333,7 +333,7 @@ export class ShopCatalogService {
   }
 
   smartStockCount(n: number): { display: string; tone: 'out' | 'urgent' | 'low' | 'available' } {
-    if (n === 0) return { display: 'หมดสต็อก แจ้งเตือนเมื่อมาใหม่', tone: 'out' };
+    if (n === 0) return { display: 'หมดสต็อก — ทักแชทเช็ครอบเข้าใหม่', tone: 'out' };
     if (n <= 3) return { display: `เหลือ ${n} เครื่อง — ใกล้หมด`, tone: 'urgent' };
     if (n <= 10) return { display: `เหลือ ${n} เครื่อง`, tone: 'low' };
     return { display: 'ในสต็อก พร้อมส่ง', tone: 'available' };

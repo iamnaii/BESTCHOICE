@@ -22,6 +22,7 @@ describe('ShopReservationService', () => {
         create: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
       },
       // Fix round 1/5 (Minor): readBoolFlag('shop_hide_demo_products') reads this — most
       // tests leave it unmocked (undefined → readRawValue catches → default false).
@@ -158,7 +159,7 @@ describe('ShopReservationService', () => {
         ConflictException,
       );
       await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
-        'เครื่องนี้ถูกจองโดยลูกค้ารายอื่นอยู่ กรุณาลองใหม่อีกครั้ง',
+        'เครื่องนี้ถูกจองโดยลูกค้ารายอื่นอยู่ — กรุณาลองใหม่ภายหลัง',
       );
     });
 
@@ -215,6 +216,15 @@ describe('ShopReservationService', () => {
         where: { id: 'p1' },
         select: { status: true },
       });
+    });
+
+    it('B5: มี hold CONSUMED ค้างบนเครื่อง → จองไม่ได้ แม้เครื่องยัง IN_STOCK', async () => {
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
+      prisma.productReservation.count.mockResolvedValue(1);
+      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
+        'เครื่องนี้ถูกจำหน่ายไปแล้ว — กรุณาเลือกเครื่องอื่น',
+      );
+      expect(prisma.productReservation.create).not.toHaveBeenCalled();
     });
   });
 

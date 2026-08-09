@@ -68,6 +68,26 @@ describe('ShopCheckoutService', () => {
       ).rejects.toThrow();
     });
 
+    it('hold โดนตัดหน้า (PREEMPTED) → ข้อความคนละแบบกับหมดอายุ', async () => {
+      prismaMock.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'PREEMPTED', expiresAt: new Date(Date.now() + 60000),
+        product: { cashPrice: 10000 },
+      });
+      await expect(
+        service.validatePromoCode({ code: 'SAVE10', reservationId: 'r1' })
+      ).rejects.toThrow('เครื่องนี้เพิ่งถูกขายที่หน้าร้าน — กรุณาเลือกเครื่องอื่น');
+    });
+
+    it('hold หมดอายุ → ข้อความหมดอายุ (ไม่ใช่ข้อความถูกตัดหน้า)', async () => {
+      prismaMock.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() - 60000),
+        product: { cashPrice: 10000 },
+      });
+      await expect(
+        service.validatePromoCode({ code: 'SAVE10', reservationId: 'r1' })
+      ).rejects.toThrow('การจองหมดอายุแล้ว — กรุณาเลือกสินค้าใหม่');
+    });
+
     it('rejects unknown promo code', async () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),

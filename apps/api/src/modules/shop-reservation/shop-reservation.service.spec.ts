@@ -27,6 +27,9 @@ describe('ShopReservationService', () => {
       // Fix round 1/5 (Minor): readBoolFlag('shop_hide_demo_products') reads this — most
       // tests leave it unmocked (undefined → readRawValue catches → default false).
       systemConfig: { findFirst: jest.fn() },
+      // B5 fix round 1: reserve()'s re-reserve guard now counts unresolved PAID
+      // OnlineOrder rows on this productId (was: terminal CONSUMED hold count).
+      onlineOrder: { count: jest.fn().mockResolvedValue(0) },
     };
     // Fix 2 (F2): in these unit tests `tx` and `prisma` are the SAME mock object — every
     // product/productReservation method lives on one shape — so `prisma.$transaction`
@@ -218,13 +221,30 @@ describe('ShopReservationService', () => {
       });
     });
 
-    it('B5: มี hold CONSUMED ค้างบนเครื่อง → จองไม่ได้ แม้เครื่องยัง IN_STOCK', async () => {
+    it('B5 fix round 1: มี OnlineOrder ค้างสถานะ PAID บนเครื่องนี้ → จองไม่ได้ แม้เครื่องยัง IN_STOCK (saleAdapter พังหลังเงินเข้า)', async () => {
       prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
-      prisma.productReservation.count.mockResolvedValue(1);
+      prisma.onlineOrder.count.mockResolvedValue(1);
       await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
         'เครื่องนี้ถูกจำหน่ายไปแล้ว — กรุณาเลือกเครื่องอื่น',
       );
       expect(prisma.productReservation.create).not.toHaveBeenCalled();
+    });
+
+    it('B5 fix round 1: ไม่มี OnlineOrder ค้างสถานะ PAID → จองได้ตามปกติ', async () => {
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
+      prisma.onlineOrder.count.mockResolvedValue(0);
+      prisma.productReservation.findFirst.mockResolvedValue(null);
+      prisma.productReservation.create.mockResolvedValue({
+        id: 'r-new',
+        expiresAt: new Date(Date.now() + 900_000),
+      });
+
+      await service.reserve({ productId: 'p1', sessionId: 's1' });
+
+      expect(prisma.onlineOrder.count).toHaveBeenCalledWith({
+        where: { productId: 'p1', status: 'PAID' },
+      });
+      expect(prisma.productReservation.create).toHaveBeenCalled();
     });
   });
 

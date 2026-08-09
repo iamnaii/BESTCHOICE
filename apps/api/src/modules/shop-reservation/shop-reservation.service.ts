@@ -30,13 +30,22 @@ export class ShopReservationService {
     });
     if (!product) throw new NotFoundException('สินค้านี้ไม่พร้อมจำหน่ายบนเว็บ');
 
-    // B5 (1): เครื่องที่ "ขายไปแล้วผ่านออเดอร์เว็บ" อาจยัง IN_STOCK อยู่ได้ ถ้า
-    // saleAdapter.createForOnlineOrder พังหลังเงินเข้า (มันอยู่นอก tx และ error ถูก swallow)
-    // → ถ้ามี hold CONSUMED ค้างบนเครื่องนี้ ห้ามให้คนถัดไปจองซ้ำ
-    const consumed = await this.prisma.productReservation.count({
-      where: { productId: input.productId, status: 'CONSUMED' },
+    // B5 fix round 1 (reviewer Major, was: raw CONSUMED-hold count — that check never
+    // clears, because CONSUMED is a terminal audit state on the ProductReservation row,
+    // so a product id that was EVER sold once through the web-shop stayed permanently
+    // 409'd here even after legitimately returning to IN_STOCK, e.g. via repossession +
+    // manual restock through the generic product-status editor). Guard the actual
+    // dangerous window instead: "เงินเข้าแล้ว (hold CONSUMED) แต่ saleAdapter พังหลัง
+    // commit → order ค้าง PAID ขณะเครื่องยัง IN_STOCK" (saleAdapter.createForOnlineOrder
+    // runs OUTSIDE the payment tx and its error is swallowed). An unresolved PAID
+    // OnlineOrder on THIS productId means fulfillment is genuinely still open — every
+    // resolution path (saleAdapter retry → PACKING, ShopCsService.cancel → CANCELLED,
+    // ShopCsService.requestRefund → REFUNDED) moves the order OFF PAID, so this guard
+    // self-clears once staff resolve the stuck order — unlike the old CONSUMED count.
+    const unresolvedPaidOrder = await this.prisma.onlineOrder.count({
+      where: { productId: input.productId, status: 'PAID' },
     });
-    if (consumed > 0) {
+    if (unresolvedPaidOrder > 0) {
       throw new ConflictException('เครื่องนี้ถูกจำหน่ายไปแล้ว — กรุณาเลือกเครื่องอื่น');
     }
 

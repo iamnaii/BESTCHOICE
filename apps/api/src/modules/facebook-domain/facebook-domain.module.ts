@@ -6,6 +6,7 @@ import { FacebookPersistentMenuService } from './facebook-persistent-menu.servic
 import { DOMAIN_HANDLER_TOKEN } from '../chat-engine/interfaces/domain-handler.interface';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 /**
  * FacebookDomainModule — handles Facebook Messenger business logic.
@@ -17,7 +18,7 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
  * - FacebookPersistentMenuService (persistent menu setup)
  */
 @Module({
-  imports: [ChatEngineModule],
+  imports: [ChatEngineModule, IntegrationsModule],
   providers: [
     FacebookDomainHandler,
     FacebookQuickReplyService,

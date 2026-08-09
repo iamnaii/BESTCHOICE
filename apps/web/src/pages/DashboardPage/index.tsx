@@ -19,6 +19,7 @@ import DashboardFinanceOverview from './components/DashboardFinanceOverview';
 import AgingSummaryWidget from './widgets/AgingSummaryWidget';
 import PromiseDueTodayWidget from './widgets/PromiseDueTodayWidget';
 import ContractMilestonesWidget from './widgets/ContractMilestonesWidget';
+import CashPositionWidget from './widgets/CashPositionWidget';
 import type {
   KPIs,
   MonthlyTrend,
@@ -199,9 +200,13 @@ export default function DashboardPage() {
       {/* KPI Stats — all roles */}
       {kpis && <DashboardKPIs kpis={kpis} comparativePL={comparativePL} />}
 
-      {/* FINANCE zone widgets — Aging / Promises / Milestones */}
+      {/* FINANCE zone widgets — Cash / Aging / Promises / Milestones */}
+      {/* CashPositionWidget gated to OWNER/FM/ACC — /bank-accounts + /dashboard/cash-forecast 403 for BM */}
       {currentZone === 'fin' && (
-        <div className="grid md:grid-cols-3 gap-4 mt-6">
+        <div
+          className={`grid md:grid-cols-2 ${isFinanceRole ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-4 mt-6`}
+        >
+          {isFinanceRole && <CashPositionWidget />}
           <AgingSummaryWidget />
           <PromiseDueTodayWidget />
           <ContractMilestonesWidget />

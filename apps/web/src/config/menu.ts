@@ -465,7 +465,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: Landmark,
       zone: 'fin',
       items: [
-        { label: 'บัญชีธนาคาร', path: '/finance/bank-accounts', icon: Landmark, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },
+        { label: 'บัญชีธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
     },
     // acc-doc-config section ลบออก (2026-06-24) — document-config เป็น OWNER-only page

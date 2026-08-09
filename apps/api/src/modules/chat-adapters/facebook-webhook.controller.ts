@@ -248,11 +248,22 @@ export class FacebookWebhookController {
         attribution,
       };
 
-      this.logger.log(
-        `[FB Webhook] Postback from PSID ${senderId}: "${postback.payload}"`,
-      );
+      this.logger.log(`[FB Webhook] Postback from PSID ${senderId}: "${postback.payload}"`);
 
       await this.messageRouter.routeInbound(inbound);
+      // referral ที่พ่วงมากับ Get Started/ปุ่ม — ห้องเพิ่งถูกสร้างโดย routeInbound
+      // ข้างบน จึง resolve ได้แล้วตอนนี้ (ads attribution ยังทำงานเหมือนเดิมด้านบน)
+      if (referral?.ref) {
+        await this.handleProductReferral(senderId, String(referral.ref));
+      }
+      return;
+    }
+
+    // Standalone referral: ลูกค้าที่เคยคุยกับเพจแล้วกด m.me/<page>?ref=...
+    // Facebook ส่ง event ที่ "ไม่มี" ทั้ง message และ postback — ก่อน B4 ตกที่
+    // `if (!message) return` ด้านล่างและหายเงียบ ทำให้แอดมินไม่รู้ว่ามาจากเครื่องไหน
+    if (event.referral && !message && !postback) {
+      await this.handleProductReferral(senderId, String(event.referral.ref ?? ''));
       return;
     }
 
@@ -311,7 +322,9 @@ export class FacebookWebhookController {
     const message = event.message;
 
     if (!recipientId) {
-      this.logger.warn('[FB Webhook] Echo event missing recipient.id — cannot map to customer room');
+      this.logger.warn(
+        '[FB Webhook] Echo event missing recipient.id — cannot map to customer room',
+      );
       return;
     }
 
@@ -344,6 +357,61 @@ export class FacebookWebhookController {
       mediaUrl: mediaUrl ?? undefined,
       externalMessageId: message.mid,
     });
+  }
+
+  /**
+   * แปลง `ref` จากลิงก์ m.me เป็นโน้ตระบบในห้องแชท
+   *
+   * รูปแบบที่เว็บลูกค้าส่งมา: `p:<productId>` (ดู apps/web-shop/src/lib/copy.ts)
+   * เจตนา: ให้ทีมงาน + ProductContextCard เห็นว่าลูกค้ามาจากเครื่องไหน โดย
+   * ไม่ต้องมีคอลัมน์สถานะใหม่ (ChatRoom.attachedProductId ถูกตัดออกจาก scope)
+   */
+  private async handleProductReferral(senderId: string, ref: string): Promise<void> {
+    try {
+      const room = await this.prisma.chatRoom.findFirst({
+        where: {
+          externalUserId: senderId,
+          channel: ChatChannel.FACEBOOK,
+          deletedAt: null,
+        },
+        orderBy: { lastMessageAt: 'desc' },
+        select: { id: true },
+      });
+      if (!room) {
+        this.logger.log(
+          `[FB referral] PSID ${senderId} ref="${ref}" — ยังไม่มีห้อง ข้ามการโพสต์โน้ต`,
+        );
+        return;
+      }
+      const text = await this.buildReferralNote(ref);
+      if (!text) return;
+      await this.messageRouter.postSystemNote(room.id, text);
+      this.logger.log(`[FB referral] PSID ${senderId} ref="${ref}" → โน้ตระบบในห้อง ${room.id}`);
+    } catch (err) {
+      // referral เป็นข้อมูลเสริม — ห้ามทำให้ webhook ทั้งก้อนล้ม
+      this.logger.warn(
+        `[FB referral] failed for PSID ${senderId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  private async buildReferralNote(ref: string): Promise<string | null> {
+    const trimmed = ref.trim();
+    if (!trimmed) return null;
+    if (!trimmed.startsWith('p:')) {
+      return `ลูกค้ากดเข้ามาจากลิงก์เว็บ (ref: ${trimmed})`;
+    }
+    const productId = trimmed.slice(2);
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      select: { brand: true, model: true, storage: true, color: true, imeiSerial: true },
+    });
+    if (!product) return 'ลูกค้ากดเข้ามาจากลิงก์สินค้าบนเว็บ (ไม่พบสินค้านี้แล้ว)';
+    const name = [product.brand, product.model, product.storage, product.color]
+      .filter(Boolean)
+      .join(' ');
+    const tail = product.imeiSerial ? ` (${product.imeiSerial.slice(-4)})` : '';
+    return `ลูกค้ากดมาจากสินค้า ${name}${tail} บนเว็บ`;
   }
 
   /**
@@ -382,9 +450,7 @@ export class FacebookWebhookController {
     // Location has coordinates instead of URL
     if (attachment.type === 'location') {
       const coords = attachment.payload?.coordinates;
-      const text = coords
-        ? `${coords.lat},${coords.long}`
-        : null;
+      const text = coords ? `${coords.lat},${coords.long}` : null;
       return { type: MessageType.LOCATION, text, mediaUrl: null };
     }
 
@@ -419,9 +485,7 @@ export class FacebookWebhookController {
     }
 
     // Verify signature
-    const expectedSig = createHmac('sha256', appSecret)
-      .update(payloadB64)
-      .digest('base64url');
+    const expectedSig = createHmac('sha256', appSecret).update(payloadB64).digest('base64url');
 
     if (!this.timingSafeCompare(sigB64, expectedSig)) {
       this.logger.warn('[FB Data Deletion] Signature verification failed');
@@ -497,11 +561,7 @@ export class FacebookWebhookController {
       return false;
     }
 
-    const expectedSig =
-      'sha256=' +
-      createHmac('sha256', appSecret)
-        .update(rawBody)
-        .digest('hex');
+    const expectedSig = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex');
 
     return this.timingSafeCompare(signature, expectedSig);
   }

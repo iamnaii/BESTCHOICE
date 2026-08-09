@@ -26,7 +26,10 @@ jest.mock('@sentry/nestjs', () => ({
   captureMessage: jest.fn(),
 }));
 
-function signedRequest(secret: string, body: unknown): {
+function signedRequest(
+  secret: string,
+  body: unknown,
+): {
   rawBody: Buffer;
   signature: string;
   req: import('express').Request;
@@ -85,10 +88,9 @@ describe('FacebookWebhookController.handleWebhook — rawBody SLO alert (T6-C14)
       controller.handleWebhook(req, { object: 'page', entry: [] }, 'sha256=deadbeef'),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
 
-    expect(Sentry.captureMessage).toHaveBeenCalledWith(
-      'Facebook webhook rawBody capture failed',
-      { level: 'error' },
-    );
+    expect(Sentry.captureMessage).toHaveBeenCalledWith('Facebook webhook rawBody capture failed', {
+      level: 'error',
+    });
     expect(anomaly.record).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: 'facebook',
@@ -258,9 +260,7 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
       is_echo: true,
       app_id: 99999999,
       mid: 'mid.image.echo.1',
-      attachments: [
-        { type: 'image', payload: { url: 'https://cdn.fb/image.jpg' } },
-      ],
+      attachments: [{ type: 'image', payload: { url: 'https://cdn.fb/image.jpg' } }],
     });
     const { signature, req } = signedRequest(FB_APP_SECRET, body);
 
@@ -381,5 +381,136 @@ describe('FacebookWebhookController.verifyWebhook — verify token from Integrat
     const res = makeRes();
     await controller.verifyWebhook('subscribe', '', 'CHALLENGE_123', res);
     expect((res as any).status).toHaveBeenCalledWith(400);
+  });
+});
+
+describe('FacebookWebhookController — standalone referral จากลิงก์สินค้า (B4)', () => {
+  const FB_APP_SECRET = 'secret';
+  const PSID = 'psid_ref_1';
+  const PRODUCT_ID = '11111111-2222-3333-4444-555555555555';
+
+  let controller: FacebookWebhookController;
+  let router: { routeInbound: jest.Mock; mirrorOutbound: jest.Mock; postSystemNote: jest.Mock };
+  let prisma: { chatRoom: { findFirst: jest.Mock }; product: { findFirst: jest.Mock } };
+
+  function referralEvent(ref: string) {
+    return {
+      object: 'page',
+      entry: [
+        {
+          id: 'page1',
+          time: 1,
+          messaging: [
+            {
+              sender: { id: PSID },
+              recipient: { id: 'page1' },
+              timestamp: 1,
+              referral: { ref, source: 'SHORTLINK', type: 'OPEN_THREAD' },
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  beforeEach(async () => {
+    router = {
+      routeInbound: jest.fn().mockResolvedValue(undefined),
+      mirrorOutbound: jest.fn().mockResolvedValue(undefined),
+      postSystemNote: jest.fn().mockResolvedValue(undefined),
+    };
+    prisma = {
+      chatRoom: { findFirst: jest.fn().mockResolvedValue({ id: 'room-1' }) },
+      product: {
+        findFirst: jest.fn().mockResolvedValue({
+          brand: 'Apple',
+          model: 'iPhone 15 Pro',
+          storage: '256GB',
+          color: 'Blue',
+          imeiSerial: '111122223333',
+        }),
+      },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      controllers: [FacebookWebhookController],
+      providers: [
+        { provide: MessageRouterService, useValue: router },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
+        { provide: WebhookAnomalyService, useValue: { record: jest.fn() } },
+        {
+          provide: QuickReplyPostbackRouterService,
+          useValue: { route: jest.fn().mockResolvedValue({ handled: false }) },
+        },
+        { provide: PrismaService, useValue: prisma },
+        { provide: IntegrationConfigService, useValue: fbConfigMock(FB_APP_SECRET) },
+      ],
+    }).compile();
+    controller = mod.get(FacebookWebhookController);
+  });
+
+  it('โพสต์โน้ตระบบพร้อมชื่อรุ่น + 4 ตัวท้าย IMEI เมื่อ ref เป็น p:<unitId>', async () => {
+    const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
+    await controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature);
+
+    // ชื่อประกอบจาก brand+model+storage+color ตาม buildReferralNote → มี 'Apple' นำหน้า
+    expect(router.postSystemNote).toHaveBeenCalledWith(
+      'room-1',
+      'ลูกค้ากดมาจากสินค้า Apple iPhone 15 Pro 256GB Blue (3333) บนเว็บ',
+    );
+    expect(router.routeInbound).not.toHaveBeenCalled();
+  });
+
+  it('ใช้ข้อความกลางเมื่อ ref ไม่ใช่รูปแบบสินค้า', async () => {
+    const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent('promo-songkran'));
+    await controller.handleWebhook(req, referralEvent('promo-songkran'), signature);
+
+    expect(prisma.product.findFirst).not.toHaveBeenCalled();
+    expect(router.postSystemNote).toHaveBeenCalledWith(
+      'room-1',
+      'ลูกค้ากดเข้ามาจากลิงก์เว็บ (ref: promo-songkran)',
+    );
+  });
+
+  it('ไม่พังเมื่อยังไม่มีห้องของ PSID นี้', async () => {
+    prisma.chatRoom.findFirst.mockResolvedValue(null);
+    const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
+    await expect(
+      controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature),
+    ).resolves.toBe('EVENT_RECEIVED');
+    expect(router.postSystemNote).not.toHaveBeenCalled();
+  });
+
+  it('ไม่พังเมื่อ productId ใน ref ไม่มีอยู่จริง', async () => {
+    prisma.product.findFirst.mockResolvedValue(null);
+    const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
+    await controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature);
+    expect(router.postSystemNote).toHaveBeenCalledWith(
+      'room-1',
+      'ลูกค้ากดเข้ามาจากลิงก์สินค้าบนเว็บ (ไม่พบสินค้านี้แล้ว)',
+    );
+  });
+
+  it('ข้อความปกติที่ไม่มี referral ยังวิ่งเข้า routeInbound เหมือนเดิม', async () => {
+    const body = {
+      object: 'page',
+      entry: [
+        {
+          id: 'page1',
+          time: 1,
+          messaging: [
+            {
+              sender: { id: PSID },
+              recipient: { id: 'page1' },
+              timestamp: 1,
+              message: { mid: 'm1', text: 'สวัสดี' },
+            },
+          ],
+        },
+      ],
+    };
+    const { req, signature } = signedRequest(FB_APP_SECRET, body);
+    await controller.handleWebhook(req, body, signature);
+    expect(router.routeInbound).toHaveBeenCalledTimes(1);
+    expect(router.postSystemNote).not.toHaveBeenCalled();
   });
 });

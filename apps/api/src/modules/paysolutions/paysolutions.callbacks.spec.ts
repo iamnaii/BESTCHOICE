@@ -460,6 +460,11 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
           // default = this webhook wins the race (count 1). Race-lost tests below
           // override to {count: 0}.
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          // Fix round 1 (reviewer Important finding): claim-loser status re-read,
+          // inside the same tx, right after a failed claim — default = an ordinary
+          // already-PAID duplicate (ordinary idempotent-skip case). The
+          // CANCELLED-specific test overrides this to {status: 'CANCELLED'}.
+          findUnique: jest.fn().mockResolvedValue({ status: 'PAID' }),
         },
         productReservation: {
           update: jest.fn().mockResolvedValue({}),
@@ -809,6 +814,75 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
           data: expect.objectContaining({ status: 'PAID' }),
         });
         expect(saleAdapter.createForOnlineOrder).toHaveBeenCalledWith(orderId);
+      });
+    });
+
+    // ── Fix round 1 (reviewer Important finding, APPROVED-with-fast-follow on the
+    // original F2 review) ──
+    // Pre-F2, a late successful gateway webhook landing on an order the customer had
+    // already CANCELLED (ShopCsService.cancel — CANCELLABLE_STATUSES includes
+    // PENDING_PAYMENT) fell through the (unconditional) tx: consumeOrderHoldInTx
+    // legitimately count=0's on the CANCELLED reservation → fulfillable=false → order
+    // flips CANCELLED→PAYMENT_RECEIVED_UNFULFILLABLE, Sentry alarms, LINE flex sent.
+    // Wrong (clobbers the CANCELLED label) but the "money captured on a dead order"
+    // signal WAS surfaced. Post-F2, the CAS claim requires status=PENDING_PAYMENT, so
+    // a CANCELLED order fails the claim (count=0) and the loser path returned after
+    // only a log line — no alarm, no refund-queue visibility anywhere. This closes
+    // that observability regression WITHOUT resurrecting the status overwrite: the
+    // order row is never touched, only an alarm is raised.
+    //
+    // Status audit (honest, not just CANCELLED-shaped): `OnlineOrderStatus` enum has
+    // DRAFT/PENDING_PAYMENT/PENDING_BANK_REVIEW/PAID/PACKING/SHIPPED/DELIVERED/
+    // COMPLETED/CANCELLED/REFUNDED/PAYMENT_RECEIVED_UNFULFILLABLE. Grepped every
+    // OnlineOrder status writer in the codebase: CANCELLED is the ONLY one reachable
+    // here that represents "no money should have moved but did" — `ShopCsService
+    // .cancel` is the sole writer of OnlineOrder CANCELLED, and its
+    // `CANCELLABLE_STATUSES = ['PENDING_PAYMENT','PAID']` confirms a PENDING_PAYMENT
+    // order can legitimately become CANCELLED while a webhook is in flight. DRAFT has
+    // ZERO writers anywhere for OnlineOrder (shop-checkout.service.ts always creates
+    // at PENDING_PAYMENT, never DRAFT) — structurally unreachable, not wired as a
+    // branch. There is no `EXPIRED` value in this enum at all (that belongs to
+    // ProductReservation/PaymentLink, a different model). REFUNDED is reachable only
+    // FROM PAID (`REFUNDABLE_STATUSES` in shop-cs.service.ts), meaning a webhook must
+    // have already succeeded once before REFUNDED is possible — an ordinary duplicate,
+    // not a signal-loss case — so it stays in the plain idempotent-skip bucket.
+    describe('Fix round 1: alarm on payment captured for cancelled order (claim-loser signal loss)', () => {
+      it('late webhook on a CANCELLED order (claim lost) → order untouched, distinct Sentry alarm fires, error logged', async () => {
+        txMock.onlineOrder.updateMany.mockResolvedValue({ count: 0 });
+        txMock.onlineOrder.findUnique.mockResolvedValue({ status: 'CANCELLED' });
+
+        await service.confirmOnlineOrderPayment(orderId, {
+          transaction_id: 'tx-captured-after-cancel',
+        });
+
+        // Re-read runs INSIDE the same tx, right after the failed claim.
+        expect(txMock.onlineOrder.findUnique).toHaveBeenCalledWith({
+          where: { id: orderId },
+          select: { status: true },
+        });
+        // Do NOT resurrect the status overwrite — the order row is never touched.
+        expect(txMock.onlineOrder.update).not.toHaveBeenCalled();
+        expect(prisma.onlineOrder.update).not.toHaveBeenCalled();
+        expect(Sentry.captureException as jest.Mock).toHaveBeenCalledWith(
+          expect.any(Error),
+          expect.objectContaining({
+            level: 'error',
+            tags: expect.objectContaining({
+              critical: 'payment-captured-on-cancelled-order',
+              orderNumber: makeOrder().orderNumber,
+            }),
+          }),
+        );
+      });
+
+      it('late webhook on an ordinary already-PAID order (claim lost) → idempotent skip, NO Sentry alarm (pins the CANCELLED-only distinction)', async () => {
+        txMock.onlineOrder.updateMany.mockResolvedValue({ count: 0 });
+        txMock.onlineOrder.findUnique.mockResolvedValue({ status: 'PAID' });
+
+        await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-dup' });
+
+        expect(txMock.onlineOrder.update).not.toHaveBeenCalled();
+        expect(Sentry.captureException as jest.Mock).not.toHaveBeenCalled();
       });
     });
   });

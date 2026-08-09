@@ -341,7 +341,21 @@ export class PaySolutionsConfirmationService {
         data: { updatedAt: new Date() },
       });
       if (claimed.count === 0) {
-        return { claimed: false as const, fulfillable: null };
+        // Fix round 1 (reviewer Important finding on the F2 review, closed here):
+        // distinguish WHY the claim was lost before deciding whether this is an
+        // ordinary duplicate or a signal that needs an alarm. Re-read the order's
+        // CURRENT status inside this SAME tx, immediately after the failed claim —
+        // the failed updateMany above matched 0 rows, so it never acquired a row
+        // lock on this order; a plain SELECT here vs. a plain SELECT taken right
+        // after this tx commits would see the identical value under READ COMMITTED
+        // unless something else mutates the row in that gap, so reading it here
+        // (zero elapsed time, same round-trip) minimizes that window to the
+        // smallest possible instead of adding a second query after commit.
+        const current = await tx.onlineOrder.findUnique({
+          where: { id: onlineOrderId },
+          select: { status: true },
+        });
+        return { claimed: false as const, currentStatus: current?.status ?? null };
       }
 
       const hold = await consumeOrderHoldInTx(tx, {
@@ -364,6 +378,38 @@ export class PaySolutionsConfirmationService {
     });
 
     if (!claim.claimed) {
+      // Fix round 1: CANCELLED is the ONLY reachable non-payment-bearing status here
+      // (status audit — see the doc-comment above the claim). Pre-F2, this same
+      // scenario (a late successful webhook after the customer cancelled) fell
+      // through into the unconditional tx and got a Sentry alarm + LINE refund
+      // notice, even though it also wrongly clobbered CANCELLED with
+      // PAYMENT_RECEIVED_UNFULFILLABLE. The F2 CAS claim correctly stops that
+      // overwrite, but without this branch the "money captured on a dead order"
+      // signal would vanish entirely — a real ops hole (captured payment, no alarm,
+      // no refund-queue visibility). Alarm ONLY — do NOT touch the order row (that
+      // would resurrect the status-overwrite bug F2 just closed).
+      if (claim.currentStatus === 'CANCELLED') {
+        const paymentRef = webhookData.transaction_id || webhookData.refno || 'unknown';
+        this.logger.error(
+          `Order ${order.orderNumber} payment captured by gateway AFTER cancellation — refund needed (paymentRef=${paymentRef})`,
+        );
+        Sentry.captureException(
+          new Error(`Online order ${order.orderNumber} payment captured on a CANCELLED order`),
+          {
+            level: 'error',
+            tags: {
+              critical: 'payment-captured-on-cancelled-order',
+              orderNumber: order.orderNumber,
+            },
+            extra: { orderId: order.id, paymentRef },
+          },
+        );
+        return;
+      }
+      // Ordinary claim-loser: an already-confirmed/terminal status
+      // (PAID/PACKING/SHIPPED/DELIVERED/COMPLETED/PAYMENT_RECEIVED_UNFULFILLABLE/
+      // REFUNDED) — the routine idempotent-duplicate-webhook case. No alarm needed;
+      // this order's outcome was already accounted for by whichever tx claimed it.
       this.logger.log(
         `Order ${order.orderNumber} already confirmed — idempotent skip (CAS claim lost)`,
       );

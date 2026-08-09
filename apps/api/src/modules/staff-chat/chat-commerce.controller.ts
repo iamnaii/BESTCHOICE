@@ -7,11 +7,20 @@ import {
   Query,
   Req,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { ChatCommerceService } from './services/chat-commerce.service';
+import { ChatCommerceService, ProductCardPart } from './services/chat-commerce.service';
+
+const STAFF_ROLES = [
+  'OWNER',
+  'BRANCH_MANAGER',
+  'FINANCE_MANAGER',
+  'ACCOUNTANT',
+  'SALES',
+] as const;
 
 @Controller('staff-chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,7 +30,7 @@ export class ChatCommerceController {
   // ─── Payment Links ────────────────────────────────────
 
   @Post('rooms/:id/payment-link')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  @Roles(...STAFF_ROLES)
   async createPaymentLink(
     @Param('id') roomId: string,
     @Body() body: { contractId: string; installmentNo?: number },
@@ -38,25 +47,39 @@ export class ChatCommerceController {
   // ─── Product Cards ────────────────────────────────────
 
   @Post('rooms/:id/product-card')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  @Roles(...STAFF_ROLES)
   async sendProductCard(
     @Param('id') roomId: string,
-    @Body() body: { productId: string },
+    @Body() body: { productId: string; clientMessageId?: string; parts?: ProductCardPart[] },
     @Req() req: any,
   ) {
-    await this.chatCommerce.sendProductCard({
+    if (!body?.productId) {
+      throw new BadRequestException('กรุณาระบุสินค้าที่จะส่ง');
+    }
+    // ไม่มี token = ส่งซ้ำได้ → บังคับให้ client ส่งมาเสมอ (idempotency)
+    if (!body?.clientMessageId) {
+      throw new BadRequestException('กรุณาระบุ clientMessageId');
+    }
+    return this.chatCommerce.sendProductCard({
       sessionId: roomId,
       staffId: req.user.id,
       productId: body.productId,
+      clientMessageId: body.clientMessageId,
+      parts: body.parts,
     });
-    return { success: true };
   }
 
   // ─── Product Search ───────────────────────────────────
 
   @Get('products/search')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  @Roles(...STAFF_ROLES)
   async searchProducts(@Query('q') query: string) {
     return this.chatCommerce.searchProducts(query);
+  }
+
+  @Get('products/:id/summary')
+  @Roles(...STAFF_ROLES)
+  async getProductSummary(@Param('id') productId: string) {
+    return this.chatCommerce.getProductSummary(productId);
   }
 }

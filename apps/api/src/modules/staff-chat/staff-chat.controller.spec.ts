@@ -305,15 +305,38 @@ describe('StaffChatController', () => {
   });
 
   describe('POST /staff-chat/rooms/:id/upload', () => {
-    it('delegates to roomManager.uploadFile with room, file, user id', async () => {
+    it('delegates to roomManager.uploadFile with room, file, user id, clientMessageId', async () => {
       const file = { originalname: 'x.png', mimetype: 'image/png', buffer: Buffer.from('') } as any;
-      const uploadResult = { success: true, url: 'signed-url', key: 'k', filename: 'x.png' };
+      const uploadResult = {
+        success: true,
+        url: 'signed-url',
+        key: 'k',
+        filename: 'x.png',
+        delivered: true,
+      };
       jest.spyOn(roomManager, 'uploadFile').mockResolvedValue(uploadResult);
 
-      const result = await controller.uploadFile('room-1', file, { user: { id: 'user-1' } } as any);
+      const result = await controller.uploadFile('room-1', file, 'tok-1', {
+        user: { id: 'user-1' },
+      } as any);
 
-      expect(roomManager.uploadFile).toHaveBeenCalledWith('room-1', file, 'user-1');
+      expect(roomManager.uploadFile).toHaveBeenCalledWith('room-1', file, 'user-1', 'tok-1');
       expect(result).toEqual(uploadResult);
+    });
+
+    it('ไม่ส่ง clientMessageId มาก็ยังทำงาน (ผู้เรียกเก่า)', async () => {
+      const file = { originalname: 'x.pdf', mimetype: 'application/pdf', buffer: Buffer.from('') } as any;
+      jest.spyOn(roomManager, 'uploadFile').mockResolvedValue({
+        success: true,
+        url: 'signed-url',
+        key: 'k',
+        filename: 'x.pdf',
+        delivered: false,
+      });
+
+      await controller.uploadFile('room-1', file, undefined, { user: { id: 'user-1' } } as any);
+
+      expect(roomManager.uploadFile).toHaveBeenCalledWith('room-1', file, 'user-1', undefined);
     });
   });
 

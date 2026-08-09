@@ -205,6 +205,22 @@ describe('InterestConfigService.resolveConfig — precedence / no-match fallback
         isActive: true,
       },
       include: { rates: { where: { deletedAt: null } } },
+      orderBy: { createdAt: 'asc' },
+    });
+  });
+
+  it('Fix round 1 [C2]: orderBy createdAt asc is present — determinism when a category has >1 active config (mirrors ProductQuoteService.getQuotes)', async () => {
+    const { svc, findFirst } = makeSvc(null);
+
+    await svc.resolveConfig('PHONE_NEW');
+
+    // Postgres findFirst with no orderBy can return either row when >1
+    // matches — this pins the query shape so a future edit can't silently
+    // drop orderBy and reintroduce the "bot vs web-shop quote different
+    // numbers" bug (product-quote.service.ts pins the identical clause on
+    // its own getQuotes() query).
+    expect(findFirst.mock.calls[0][0]).toMatchObject({
+      orderBy: { createdAt: 'asc' },
     });
   });
 

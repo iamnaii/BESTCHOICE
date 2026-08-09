@@ -34,7 +34,13 @@ export class AiSuggestService {
     const start = Date.now();
 
     if (!this.anthropic) {
-      // Mock mode: return realistic suggestions when no API key
+      // Mock mode มีราคา/โปรที่แต่งขึ้น แล้วแอดมินกดส่งได้ทันที — ห้ามหลุดขึ้น prod
+      if (this.config.get<string>('NODE_ENV') === 'production') {
+        this.logger.warn(
+          'AI suggest ปิดอยู่บน production (ไม่มี ANTHROPIC_API_KEY) — ไม่คืนข้อความ mock',
+        );
+        return { suggestions: [], detectedProducts: [], processingTimeMs: Date.now() - start };
+      }
       return this.getMockSuggestions(roomId);
     }
 
@@ -97,7 +103,7 @@ export class AiSuggestService {
                   ? p.pricingOptions
                       .map(
                         (o) =>
-                          `ผ่อน ${o.installments} งวด งวดละ ${o.monthlyPayment.toLocaleString()} บาท (ดาวน์ ${o.downPaymentMin}%)`,
+                          `ผ่อน ${o.installments} งวด งวดละ ${o.monthlyPayment.toLocaleString()} บาท (ดาวน์ ${o.downPaymentMin.toLocaleString()} บาท)`,
                       )
                       .join(', ')
                   : 'ไม่มีข้อมูลผ่อน';
@@ -260,7 +266,8 @@ confidence แนวทาง:
     }
 
     return {
-      suggestions,
+      // ป้าย [MOCK] ทำให้แอดมินเห็นทันทีว่าตัวเลขในข้อความนี้ไม่ใช่ของจริง
+      suggestions: suggestions.map((s) => ({ ...s, text: `[MOCK] ${s.text}` })),
       detectedProducts: ['iPhone 16 Pro'],
       processingTimeMs: Date.now() - start,
     };

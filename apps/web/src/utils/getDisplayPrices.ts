@@ -4,6 +4,19 @@ export interface ProductPriceRow {
   isDefault: boolean;
 }
 
+/**
+ * Canonical `ProductPrice.label` values — the ONLY two labels
+ * `syncPriceRowsFromColumns` (apps/api) write-through targets when
+ * `Product.cashPrice`/`installmentPrice` (columns, source of truth) change.
+ * A price row with one of these labels is not an independent editable row —
+ * it mirrors a column and must be edited via `PATCH /products/:id` instead
+ * of the generic `/products/:id/prices` CRUD (Task 13, StockPage
+ * PriceManagementModal column-awareness).
+ */
+export const CASH_LABEL = 'ราคาเงินสด';
+export const INSTALLMENT_LABEL = 'ราคาผ่อน BESTCHOICE';
+export const CANONICAL_PRICE_LABELS = [CASH_LABEL, INSTALLMENT_LABEL] as const;
+
 export interface ProductForDisplay {
   cashPrice?: string | number | null;
   installmentPrice?: string | number | null;
@@ -27,18 +40,24 @@ export function getDisplayPrices(product: ProductForDisplay): DisplayPrices {
   const cash =
     product.cashPrice != null
       ? Number(product.cashPrice)
-      : pickFromPrices(product.prices, 'ราคาเงินสด', 'ราคาเงินสด');
+      : pickFromPrices(product.prices, CASH_LABEL, CASH_LABEL);
 
   const installment =
     product.installmentPrice != null
       ? Number(product.installmentPrice)
-      : pickFromPrices(product.prices, 'ราคาผ่อน BESTCHOICE', 'ราคาผ่อน');
+      : pickFromPrices(product.prices, INSTALLMENT_LABEL, 'ราคาผ่อน');
 
   return { cash, installment };
 }
 
-/** Non-positive (0 / '' / negative / NaN) column value treated as "absent". */
-function normalizePositive(v?: string | number | null): number | null {
+/**
+ * Non-positive (0 / '' / negative / NaN) column value treated as "absent".
+ * Exported so callers can independently check "is this raw column actually positive"
+ * — e.g. ProductDetailPage/index.tsx compares this against `getPositiveDisplayPrices`'s
+ * result to detect when the displayed price is a fallback (prices[] label match) rather
+ * than a real column value (fix-round I1, 2026-08-06).
+ */
+export function normalizePositive(v?: string | number | null): number | null {
   if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : null;

@@ -88,6 +88,49 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
     expect(list.data[0].monthlyPaymentFrom).toBe(2414);
   });
 
+  // review round 1 [Important]: fixture เดิมมี tenure เดียว — mutation เลือก allowedMonths[0]
+  // (งวดสั้นสุด) รอดทุกเทสต์; เคสนี้ pin กติกา spec §6 "งวดยาวสุดที่มีเรตชนะ" ด้วย config 2 tenure
+  it('config มีหลาย tenure → ใช้งวดยาวสุด (spec §6) ไม่ใช่งวดสั้นสุด', async () => {
+    prisma.interestConfig.findFirst.mockResolvedValue({
+      ...INTEREST_CONFIG,
+      rates: [
+        { months: 6, ratePct: new Prisma.Decimal('0.25'), deletedAt: null },
+        { months: 12, ratePct: new Prisma.Decimal('0.50'), deletedAt: null },
+      ],
+    });
+    prisma.product.groupBy.mockResolvedValue([
+      {
+        brand: 'Apple',
+        model: 'iPhone 14 Pro',
+        storage: '128GB',
+        category: 'PHONE_USED',
+        _min: { cashPrice: 17900, installmentPrice: 19900 },
+        _count: { id: 2 },
+      },
+    ]);
+    prisma.product.findFirst.mockResolvedValue({
+      id: 'rep',
+      gallery: [],
+      conditionGrade: 'A',
+      installmentPrice: new Prisma.Decimal('19900'),
+      prices: [],
+      category: 'PHONE_USED',
+      brand: 'Apple',
+      model: 'iPhone 14 Pro',
+      storage: '128GB',
+      deletedAt: null,
+    });
+
+    const list = await catalog.listGroupedByModel({});
+    const at12 = await preview.preview({ productId: 'rep', provider: 'BC', months: 12 });
+    const at6 = await preview.preview({ productId: 'rep', provider: 'BC', months: 6 });
+
+    expect(at12.available).toBe(true);
+    expect(at6.available).toBe(true);
+    expect(list.data[0].monthlyPaymentFrom).toBe(Math.ceil(at12.monthlyPayment!));
+    expect(list.data[0].monthlyPaymentFrom).not.toBe(Math.ceil(at6.monthlyPayment!));
+  });
+
   it('คืน null เมื่อกลุ่มไม่มี installmentPrice (หน้าเว็บจะไม่แสดงบรรทัดผ่อน)', async () => {
     prisma.product.groupBy.mockResolvedValue([
       {

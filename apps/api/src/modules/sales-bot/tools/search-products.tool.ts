@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { parseDeviceQuery, normalizeStorage } from '../../../utils/device-query-normalize.util';
 import { DEMO_NAME_PREFIX } from '../../../utils/product-readiness.util';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
+import { readBoolFlag } from '../../../utils/config.util';
 
 export const SEARCH_PRODUCTS_TOOL = {
   name: 'search_products',
@@ -105,13 +106,24 @@ export class SearchProductsTool {
       .map((t) => t.trim());
     if (terms.length === 0) return emptyResult;
 
+    // QA blocker (Task 15, 2026-08-09): brief เดิมสั่งกรอง [DEMO] แบบ unconditional —
+    // ขัดกับเว็บ storefront ที่อ่าน SystemConfig `shop_hide_demo_products` แล้วโชว์ [DEMO]
+    // เมื่อ flag เป็น false/ไม่มีแถว (owner decision: โชว์จนกว่าจะเปิดร้านจริง — ดู
+    // shop-catalog.service.ts + product-readiness.util.ts). prod catalog วันนี้เป็น
+    // [DEMO] ล้วน — ถ้ากรองไม่มีเงื่อนไข บอทจะตอบ "ของหมด" กับเครื่องที่ลูกค้าเห็นอยู่บนเว็บ
+    // จริง ๆ ขัด invariant ของเวฟ "บอทตอบได้เท่าเว็บ" — ใช้ flag เดียวกับเว็บเป๊ะ ๆ ตรงนี้
+    const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
+
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
       isOnlineVisible: true,
       // spec §5: บอทต้องเห็นเครื่องที่ติดจองด้วย เพื่อตอบว่า "มีของแต่ติดจอง"
       status: { in: ['IN_STOCK', 'RESERVED'] },
-      // [DEMO] ถูกกรองแบบไม่ผูก NODE_ENV — กติกาเดียวกับ B0 product-readiness.util
-      NOT: { name: { startsWith: DEMO_NAME_PREFIX } },
+      // flag true → กรอง [DEMO] ทิ้ง (เหมือนเว็บ); false/ไม่มีแถว → รวม [DEMO] ในผลลัพธ์
+      // (เหมือนเว็บ) — หมายเหตุ: tool นี้ไม่เคยส่ง Product.name (ที่มี prefix [DEMO])
+      // ออกไปให้โมเดลอยู่แล้ว (ส่งแค่ brand/model column) จึงไม่มีความเสี่ยงที่บอทจะพูด
+      // ชื่อ "[DEMO] ..." แปลก ๆ ไม่ว่า flag จะเป็นค่าไหน
+      ...(excludeDemo ? { NOT: { name: { startsWith: DEMO_NAME_PREFIX } } } : {}),
       OR: terms.flatMap((t) => [
         { name: { contains: t, mode: 'insensitive' as const } },
         { brand: { contains: t, mode: 'insensitive' as const } },

@@ -25,8 +25,16 @@ const row = (over: Partial<Record<string, unknown>> = {}) => ({
   ...over,
 });
 
-const makePrisma = (rows: unknown[]) =>
-  ({ product: { findMany: jest.fn().mockResolvedValue(rows) } }) as unknown as PrismaService;
+// review round 2 [QA blocker]: `systemConfig.findFirst` เพิ่มเข้ามาเพื่อ mock ค่า
+// SystemConfig `shop_hide_demo_products` — `configValue = null` (default) จำลอง "ไม่มีแถว"
+// ซึ่งตรงกับ prod จริงวันนี้ (fallback → false → โชว์ [DEMO] เหมือนเว็บ)
+const makePrisma = (rows: unknown[], configValue: string | null = null) =>
+  ({
+    product: { findMany: jest.fn().mockResolvedValue(rows) },
+    systemConfig: {
+      findFirst: jest.fn().mockResolvedValue(configValue == null ? null : { value: configValue }),
+    },
+  }) as unknown as PrismaService;
 
 describe('SearchProductsTool.run', () => {
   const prevBase = process.env.SHOP_BASE_URL;
@@ -186,15 +194,17 @@ describe('SearchProductsTool.run', () => {
     expect(r.groups.flatMap((g) => g.units).map((u) => u.id)).toEqual(['cheap']);
   });
 
-  it('where ที่ยิงเข้า Prisma: กรอง [DEMO] + RESERVED/IN_STOCK + มือสองต้องมีเกรด + ไม่บังคับรูป', async () => {
-    const prisma = makePrisma([]);
+  it('where ที่ยิงเข้า Prisma: RESERVED/IN_STOCK + มือสองต้องมีเกรด + ไม่บังคับรูป + [DEMO] ไม่ถูกกรองเมื่อ flag ปิด (default)', async () => {
+    const prisma = makePrisma([]); // configValue=null → shop_hide_demo_products fallback false (เหมือนเว็บ)
     const tool = new SearchProductsTool(prisma);
     await tool.run({ query: 'iPhone 15' });
     const where = (prisma.product.findMany as jest.Mock).mock.calls[0][0].where;
     expect(where.deletedAt).toBeNull();
     expect(where.isOnlineVisible).toBe(true);
     expect(where.status).toEqual({ in: ['IN_STOCK', 'RESERVED'] });
-    expect(where.NOT).toEqual({ name: { startsWith: '[DEMO]' } });
+    // review round 2 [QA blocker]: flag ปิด/ไม่มีแถว → ต้อง "ไม่กรอง" [DEMO] เหมือนเว็บ
+    // (shop-catalog.service.ts default excludeDemo=false) — ห้ามมี NOT ของ [DEMO] เลย
+    expect(where.NOT).toBeUndefined();
     expect(where.AND).toContainEqual({
       OR: [
         { category: { not: 'PHONE_USED' } },
@@ -203,6 +213,35 @@ describe('SearchProductsTool.run', () => {
     });
     // ไม่มีเงื่อนไข gallery ที่ไหนเลย — บอทต้องเห็นเครื่องที่ยังไม่มีรูป
     expect(JSON.stringify(where)).not.toContain('gallery');
+  });
+
+  // review round 2 [QA blocker, Task 15]: Gemini + DB จริงพิสูจน์ว่า prod catalog วันนี้
+  // เป็น [DEMO] ล้วน — tool เดิมกรอง [DEMO] แบบ unconditional ทำให้บอทตอบ "ของหมด" กับ
+  // เครื่องที่ลูกค้าเห็นอยู่บนเว็บจริง ๆ (เว็บอ่าน flag `shop_hide_demo_products` แล้วโชว์
+  // [DEMO] ตราบใดที่ยังไม่ตั้งค่าเปิด). ต้องใช้ flag เดียวกับเว็บ — 2 เคสด้านล่างพิสูจน์ทั้ง
+  // `where` ที่ยิงจริงและผลลัพธ์ปลายทางใน groups (mockImplementation จำลองพฤติกรรม DB filter
+  // จริงตาม where.NOT ที่ tool ส่งไป — ไม่ใช่แค่เช็ค shape เฉย ๆ)
+  it('shop_hide_demo_products ปิด/ไม่มีแถว (default) → เครื่อง [DEMO] ยังอยู่ใน groups (เหมือนเว็บ)', async () => {
+    const demoRow = row({ id: 'demo-1', name: '[DEMO] iPhone 15 Pro Max 256GB' });
+    const prisma = makePrisma([], null);
+    (prisma.product.findMany as jest.Mock).mockImplementation((args: { where: { NOT?: unknown } }) =>
+      Promise.resolve(args.where.NOT ? [] : [demoRow]),
+    );
+    const tool = new SearchProductsTool(prisma);
+    const r = await tool.run({ query: 'iPhone 15 Pro Max' });
+    expect(r.groups.flatMap((g) => g.units).map((u) => u.id)).toEqual(['demo-1']);
+  });
+
+  it("shop_hide_demo_products = 'true' → เครื่อง [DEMO] ถูกกรองออก (เหมือนเว็บ)", async () => {
+    const demoRow = row({ id: 'demo-1', name: '[DEMO] iPhone 15 Pro Max 256GB' });
+    const prisma = makePrisma([], 'true');
+    (prisma.product.findMany as jest.Mock).mockImplementation((args: { where: { NOT?: unknown } }) =>
+      Promise.resolve(args.where.NOT ? [] : [demoRow]),
+    );
+    const tool = new SearchProductsTool(prisma);
+    const r = await tool.run({ query: 'iPhone 15 Pro Max' });
+    expect(r.groups.flatMap((g) => g.units).map((u) => u.id)).toEqual([]);
+    expect(r.totalMatches).toBe(0);
   });
 
   it('SHOP_BASE_URL ไม่ได้ตั้ง → webUrl เป็น null (ไม่ throw)', async () => {

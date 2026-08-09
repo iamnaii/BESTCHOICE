@@ -76,6 +76,10 @@ describe('BookingsService', () => {
       create: jest.fn((args) => Promise.resolve({ id: 'cm-1', ...args.data })),
     };
 
+    const txProductReservation = {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    };
+
     prisma = {
       booking: {
         findFirst: jest.fn(),
@@ -97,6 +101,7 @@ describe('BookingsService', () => {
           commissionRule: txCommissionRule,
           salesCommission: txSalesCommission,
           auditLog: txAuditLog,
+          productReservation: txProductReservation,
         }),
       ),
       _tx: {
@@ -107,6 +112,7 @@ describe('BookingsService', () => {
         commissionRule: txCommissionRule,
         salesCommission: txSalesCommission,
         auditLog: txAuditLog,
+        productReservation: txProductReservation,
       },
     };
 
@@ -377,6 +383,29 @@ describe('BookingsService', () => {
         }),
       }),
     );
+  });
+
+  it('convertToSale — B5: ตัด hold ของเว็บใน tx เดียวกับที่เครื่องออกจาก IN_STOCK', async () => {
+    prisma.booking.findFirst.mockResolvedValueOnce({
+      id: 'bk-1',
+      status: 'PAID',
+      convertedToSaleId: null,
+      bookingNumber: 'BK-20260517-0001',
+      customerId: 'cust-1',
+      branchId: 'br-1',
+      totalAmount: new Prisma.Decimal(40990),
+      depositAmount: new Prisma.Decimal(40990),
+      depositMethod: 'CASH',
+      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 40990, amount: 40990 }],
+    });
+    prisma._tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.convertToSale('bk-1', {}, 'user-1', OWNER);
+
+    const call = prisma._tx.productReservation.updateMany.mock.calls.at(-1)[0];
+    expect(call.where.productId.in).toContain('prod-1');
+    expect(call.where.status).toBe('ACTIVE');
+    expect(call.data).toEqual({ status: 'PREEMPTED' });
   });
 
   it('convertToSale — partial deposit without collectBalance → BadRequest (C2 — no revenue overstatement)', async () => {

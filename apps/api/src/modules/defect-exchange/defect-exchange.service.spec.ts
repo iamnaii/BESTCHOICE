@@ -103,6 +103,9 @@ describe('DefectExchangeService', () => {
       repairTicket: {
         findUnique: jest.fn(),
       },
+      productReservation: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     };
 
     prisma = {
@@ -199,6 +202,32 @@ describe('DefectExchangeService', () => {
           OR: [{ status: 'PAID' }, { amountPaid: { gt: 0 } }],
         },
       });
+    });
+
+    it('B5: ตัด hold ของเว็บใน tx เดียวกับที่เครื่องออกจาก IN_STOCK', async () => {
+      const contract = baseContract();
+      prisma.contract.findUnique.mockResolvedValue(contract);
+      prisma.product.findUnique.mockResolvedValue(newProductRec);
+
+      const tx = prisma.__tx;
+      tx.payment.count.mockResolvedValue(0);
+      tx.contract.findUnique.mockResolvedValue(contract);
+      tx.product.findUnique.mockResolvedValue(newProductRec);
+      tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.execute(
+        {
+          oldContractId,
+          newProductId,
+          defectReason: 'screen broken',
+        } as any,
+        userId,
+      );
+
+      const call = tx.productReservation.updateMany.mock.calls.at(-1)[0];
+      expect(call.where.productId.in).toContain(newProductId);
+      expect(call.where.status).toBe('ACTIVE');
+      expect(call.data).toEqual({ status: 'PREEMPTED' });
     });
 
     it('payment guard message includes the count of payment records', async () => {

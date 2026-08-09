@@ -24,6 +24,7 @@ import { CompanyResolverService } from '../journal/company-resolver.service';
 import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
 import { computeExchangePlan } from './exchange-plan.util';
 import { glContractBalance } from '../journal/gl-contract-balance';
+import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 
 /**
  * Subset of the request user that submit() needs to perform branch scoping.
@@ -619,6 +620,8 @@ export class ContractExchangeService {
         where: { id: req.newProductId },
         data: { status: 'RESERVED' } as any,
       });
+      // B5: เครื่องใหม่ถูกจองไว้รอ activate — ตัด hold ของเว็บใน tx เดียวกัน (เปลี่ยนเครื่องระหว่างสัญญา)
+      await preemptReservationsInTx(tx, [req.newProductId]);
 
       // 6. Link request to new contract (jeXIds are written later by
       // finalizeAfterActivation when the JE chain actually posts).

@@ -291,6 +291,10 @@ export default function ProductDetailPage() {
   const gallery360 = unitGallery360.length > 0 ? unitGallery360 : data.gallery360;
   const has360 = gallery360.length > 0;
   const stockCount = flatUnits.length;
+  // B5 T12b: model นี้เหลือ 0 หน่วยพร้อมขาย (ทุกเครื่องถูกขาย/ไม่ IN_STOCK แล้ว) —
+  // permalink ยังเปิดได้ตามสเปก B4 (getProductDetail requireInStock:false บน head
+  // query) แต่หน้าเว็บต้องไม่ทำ CTA ให้ดูเหมือนซื้อได้จริง — ดู copy.product.soldOutNotice
+  const isSoldOut = stockCount === 0;
   const shareTargetId = selectedUnit?.id ?? data.id;
   const shareUrl = productShareUrl(shareTargetId);
   const imeiLast4 = selectedUnit?.imeiPartial?.slice(-4);
@@ -448,7 +452,7 @@ export default function ProductDetailPage() {
                     สอบถามราคาทางไลน์
                   </div>
                 )}
-                {stockCount > 0 && (
+                {stockCount > 0 ? (
                   <StockIndicator
                     display={
                       stockCount <= 3
@@ -457,6 +461,8 @@ export default function ProductDetailPage() {
                     }
                     tone={stockCount <= 3 ? 'urgent' : 'low'}
                   />
+                ) : (
+                  <StockIndicator display={copy.product.soldOutNotice} tone="out" />
                 )}
               </div>
               {monthlyFrom && (
@@ -488,38 +494,61 @@ export default function ProductDetailPage() {
 
             {/* Desktop primary CTA (mobile uses StickyBottomBar) */}
             <div className="hidden md:flex flex-col gap-3 pt-2">
-              <Button
-                variant="cta"
-                size="lg"
-                fullWidth
-                onClick={() => reserveMut.mutate()}
-                disabled={reserveMut.isPending}
-                loading={reserveMut.isPending}
-              >
-                {copy.product.reserveCta}
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                fullWidth
-                onClick={() => nav(`/apply/${selectedUnit?.id ?? data.id}`)}
-              >
-                สมัครผ่อนทันที
-              </Button>
+              {isSoldOut ? (
+                // B5 T12b: หมดสต็อก — ไม่มีเครื่องให้จอง/สมัครผ่อนแล้ว ปุ่มหลัก
+                // ต้องพาไปทักแชทแทน (ไม่ใช่ปุ่มที่ดูเหมือนซื้อได้จริงแล้ว fail
+                // แบบ reactive ตอนกด — ดู B5 task-12 QA report scenario I)
+                <Button asChild variant="cta" size="lg" fullWidth>
+                  <a
+                    href={lineOaMessageUrl(linePrefill)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <MessageCircle className="size-4" aria-hidden="true" />
+                    {copy.product.soldOutLineCta}
+                  </a>
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant="cta"
+                    size="lg"
+                    fullWidth
+                    onClick={() => reserveMut.mutate()}
+                    disabled={reserveMut.isPending}
+                    loading={reserveMut.isPending}
+                  >
+                    {copy.product.reserveCta}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    fullWidth
+                    onClick={() => nav(`/apply/${selectedUnit?.id ?? data.id}`)}
+                  >
+                    สมัครผ่อนทันที
+                  </Button>
+                </>
+              )}
               <Button variant="ghost" size="lg" fullWidth onClick={handleShare}>
                 <Share2 className="size-4" aria-hidden="true" />
                 {copy.product.shareCta}
               </Button>
               <div className="flex flex-col gap-1.5">
-                <a
-                  href={lineOaMessageUrl(linePrefill)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
-                >
-                  <MessageCircle className="size-4" aria-hidden="true" />
-                  {copy.product.askLineCta}
-                </a>
+                {/* หมดสต็อกแล้ว: ปุ่มไลน์หลักด้านบนคือ CTA เดียวกันนี้อยู่แล้ว —
+                    ไม่ซ้ำลิงก์ปลายทางเดียวกันสองจุด (Messenger ยังโชว์ต่อ
+                    เพราะเป็นช่องทางติดต่อคนละช่อง) */}
+                {!isSoldOut && (
+                  <a
+                    href={lineOaMessageUrl(linePrefill)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+                  >
+                    <MessageCircle className="size-4" aria-hidden="true" />
+                    {copy.product.askLineCta}
+                  </a>
+                )}
                 {messengerUrl && (
                   <a
                     href={messengerUrl}
@@ -537,15 +566,21 @@ export default function ProductDetailPage() {
         </div>
       </Container>
 
-      <Section padding="md">
-        <Container>
-          <InstallmentCalculatorCard
-            productId={selectedUnit?.id ?? data.id}
-            cashPrice={selectedUnit?.cashPrice ?? data.cashPrice}
-            installmentPrice={selectedUnit?.installmentPrice ?? data.installmentPrice}
-          />
-        </Container>
-      </Section>
+      {/* B5 T12b: หมดสต็อกแล้วไม่มีเครื่องให้เลือกงวด/สมัครผ่อน — การ์ดนี้มีปุ่ม
+         "สมัครผ่อนออนไลน์" ของตัวเองที่ยังชี้ไป /apply/<sold-product-id> อยู่
+         (data.installmentPrice ของ head record อาจไม่ null แม้ 0 หน่วยพร้อมขาย)
+         ต้องซ่อนทั้งการ์ดไปเลย ไม่ปล่อยให้โผล่บนหน้าเครื่องที่ขายแล้ว */}
+      {!isSoldOut && (
+        <Section padding="md">
+          <Container>
+            <InstallmentCalculatorCard
+              productId={selectedUnit?.id ?? data.id}
+              cashPrice={selectedUnit?.cashPrice ?? data.cashPrice}
+              installmentPrice={selectedUnit?.installmentPrice ?? data.installmentPrice}
+            />
+          </Container>
+        </Section>
+      )}
 
       <Section tone="muted" padding="sm">
         <Container>
@@ -562,40 +597,52 @@ export default function ProductDetailPage() {
       <RelatedSection productId={id!} />
 
       {/* Mobile sticky CTA — installment customers are the majority; give
-         "สมัครผ่อน" equal billing with reserve instead of burying it above the fold */}
+         "สมัครผ่อน" equal billing with reserve instead of burying it above the fold.
+         B5 T12b: หมดสต็อกแล้ว → ปุ่มเดียว พาไปทักแชทแทน (ดู desktop CTA ด้านบน) */}
       <StickyBottomBar>
-        <div className="flex gap-2">
-          <Button
-            variant="cta"
-            size="lg"
-            className="flex-1"
-            onClick={() => reserveMut.mutate()}
-            disabled={reserveMut.isPending}
-            loading={reserveMut.isPending}
-          >
-            {copy.product.reserveCta}
+        {isSoldOut ? (
+          <Button asChild variant="cta" size="lg" fullWidth>
+            <a href={lineOaMessageUrl(linePrefill)} target="_blank" rel="noopener noreferrer">
+              <MessageCircle className="size-4" aria-hidden="true" />
+              {copy.product.soldOutLineCta}
+            </a>
           </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            className="flex-1"
-            onClick={() => nav(`/apply/${selectedUnit?.id ?? data.id}`)}
-          >
-            สมัครผ่อน
-          </Button>
-        </div>
+        ) : (
+          <div className="flex gap-2">
+            <Button
+              variant="cta"
+              size="lg"
+              className="flex-1"
+              onClick={() => reserveMut.mutate()}
+              disabled={reserveMut.isPending}
+              loading={reserveMut.isPending}
+            >
+              {copy.product.reserveCta}
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              className="flex-1"
+              onClick={() => nav(`/apply/${selectedUnit?.id ?? data.id}`)}
+            >
+              สมัครผ่อน
+            </Button>
+          </div>
+        )}
       </StickyBottomBar>
       <StickyBottomBarSpacer />
       <div className="md:hidden flex flex-col items-center gap-2 py-3">
-        <a
-          href={lineOaMessageUrl(linePrefill)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
-        >
-          <MessageCircle className="size-4" aria-hidden="true" />
-          {copy.product.askLineCta}
-        </a>
+        {!isSoldOut && (
+          <a
+            href={lineOaMessageUrl(linePrefill)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+          >
+            <MessageCircle className="size-4" aria-hidden="true" />
+            {copy.product.askLineCta}
+          </a>
+        )}
         {messengerUrl && (
           <a
             href={messengerUrl}

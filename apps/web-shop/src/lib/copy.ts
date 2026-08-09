@@ -116,6 +116,12 @@ export const copy = {
 
   product: {
     reserveCta: 'จองเครื่องนี้ 15 นาที',
+    // B5 T12b: honest sold-out copy — same wording as ProductCard's
+    // 'out' tone (see shop-catalog.service.ts smartStockCount(0)) so the
+    // message is identical whether a customer sees it on a listing card
+    // or lands directly on a sold-out model's permalink.
+    soldOutNotice: 'หมดสต็อก — ทักแชทเช็ครอบเข้าใหม่',
+    soldOutLineCta: 'ทักแชทเช็ครอบเข้าใหม่',
     specTitle: 'รายละเอียดสินค้า',
     conditionAFull: 'เกรด A — สภาพดีมาก เหมือนใหม่',
     conditionBFull: 'เกรด B — สภาพใช้งาน มีรอยเล็กน้อย',

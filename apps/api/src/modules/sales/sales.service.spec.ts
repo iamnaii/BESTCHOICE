@@ -188,6 +188,13 @@ describe('SalesService', () => {
       financeReceivable: {
         create: jest.fn().mockResolvedValue({}),
       },
+      // B5: preemptReservationsInTx runs inside the same tx right after the
+      // product status flip in every create*Sale path — every txPrisma stub
+      // in this file needs this, whether via `...prisma` spread or built
+      // standalone (see the two EXTERNAL_FINANCE tests below that don't spread).
+      productReservation: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       externalFinanceCompany: {
         upsert: jest.fn().mockResolvedValue({ id: 'mock-co' }),
       },
@@ -670,6 +677,7 @@ describe('SalesService', () => {
             },
             sale: { create: jest.fn().mockResolvedValue({ ...mockSale, saleType: 'EXTERNAL_FINANCE' }) },
             financeReceivable: { create: jest.fn().mockResolvedValue({}) },
+            productReservation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
           };
           return fn(txPrisma);
         },
@@ -698,6 +706,7 @@ describe('SalesService', () => {
                 return Promise.resolve({});
               }),
             },
+            productReservation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
           };
           return fn(txPrisma);
         },

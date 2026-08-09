@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { SaleWriterService } from './sale-writer.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -64,12 +65,23 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       salesCommission: {
         create: jest.fn().mockResolvedValue({}),
       },
+      productReservation: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     };
 
     prisma = {
       $transaction: jest.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb(tx),
       ),
+      // createInstallmentSale reads these BEFORE opening its $transaction.
+      // interestConfig = null → params fall back to config.util DEFAULTS
+      // (minDownPaymentPct 0.15 / months 6-12) และ getRateForMonths ไม่ถูกเรียก
+      // → เลขเงินคุมได้จาก DTO อย่างเดียว ไม่มี I/O ซ่อน
+      product: { findUnique: jest.fn().mockResolvedValue(null) },
+      interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      systemConfig: { findMany: jest.fn().mockResolvedValue([]) },
+      branch: { findUnique: jest.fn().mockResolvedValue(null) },
     };
 
     shopCashSaleTemplate = {
@@ -301,5 +313,193 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     const [input] = shopCashSaleTemplate.execute.mock.calls[0];
     expect(input.idempotencyKey).toBe('shop-cash-sale:sale-1:p1');
     expect(input.revenueAmount.toString()).toBe('10000');
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // (e) B5 — preempt hold ของเว็บใน tx เดียวกับที่เครื่องออกจาก IN_STOCK
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('(e) createCashSale: ตัด hold ของเครื่องหลัก + ของแถม ภายใน tx เดียวกัน', async () => {
+    tx.product.findMany
+      .mockResolvedValueOnce([{ id: 'p2', status: 'IN_STOCK', name: 'Case' }])
+      .mockResolvedValueOnce([
+        { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000) },
+        { id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(500) },
+      ]);
+    tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.createCashSale(
+      {
+        productId: 'p1', branchId: 'br-1', customerId: 'c1',
+        sellingPrice: 10000, bundleProductIds: ['p2'], paymentMethod: 'CASH',
+      } as any,
+      'sp-1', 10000, 0,
+    );
+
+    // ของแถมถูกตัดก่อน (ใน markBundleProductsSold) แล้วเครื่องหลักตามหลัง product.update
+    const calls = tx.productReservation.updateMany.mock.calls;
+    expect(calls[0][0].where.productId).toEqual({ in: ['p2'] });
+    expect(calls[1][0].where.productId).toEqual({ in: ['p1'] });
+    calls.forEach((c: any) => {
+      expect(c[0].where.status).toBe('ACTIVE');
+      expect(c[0].where.expiresAt.gt).toBeInstanceOf(Date);
+      expect(c[0].data).toEqual({ status: 'PREEMPTED' });
+    });
+    // red line perf: ห้ามมี range read บนตารางนี้ — tx นี้เป็น Serializable และไม่มี retry
+    expect(tx.productReservation.findMany).toBeUndefined();
+  });
+
+  it('(f) createInstallmentSale: ตัด hold หลัง flip เครื่องเป็น RESERVED', async () => {
+    // downPayment 3000 = 15% ของ 20000 พอดี = ค่า DEFAULTS.minDownPaymentPct
+    // (config.util.ts:183) → ผ่านเงื่อนไข `downPayment < netAmount * pct` แบบเฉียดฉิว
+    // ห้ามลดเลขนี้ ไม่งั้นจะโดน BadRequestException 'เงินดาวน์ขั้นต่ำ 15%' แทน
+    tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+    tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
+    tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+    tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+    tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.createInstallmentSale(
+      {
+        productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
+        bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
+      } as any,
+      'sp-1', 20000, 0,
+    );
+
+    const call = tx.productReservation.updateMany.mock.calls.at(-1)[0];
+    expect(call.where.productId).toEqual({ in: ['p1'] });
+    expect(call.where.status).toBe('ACTIVE');
+    expect(call.where.expiresAt.gt).toBeInstanceOf(Date);
+    expect(call.data).toEqual({ status: 'PREEMPTED' });
+  });
+
+  it('(g) createExternalFinanceSale: ตัด hold หลัง flip เป็น SOLD_INSTALLMENT', async () => {
+    tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+    tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+    tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.createExternalFinanceSale(
+      {
+        productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 15000,
+        bundleProductIds: [], financeCompany: 'GFIN', downPayment: 2000, paymentMethod: 'CASH',
+      } as any,
+      'sp-1', 15000, 0,
+    );
+
+    const call = tx.productReservation.updateMany.mock.calls.at(-1)[0];
+    expect(call.where.productId).toEqual({ in: ['p1'] });
+    expect(call.where.status).toBe('ACTIVE');
+    expect(call.data).toEqual({ status: 'PREEMPTED' });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // (h)-(k) B5 forward-flag — P2034 retry wrapper around $transaction.
+  // Serializable tx + new productReservation writes raise write-write
+  // conflict odds; a P2034 must retry quietly instead of surfacing as a 500
+  // at the cashier's screen. Pattern mirrors
+  // contract-lifecycle.service.ts:255-259 (MAX_RETRIES=3, retry only on a
+  // Prisma-known P2034, everything else propagates immediately).
+  // ───────────────────────────────────────────────────────────────────────────
+
+  describe('B5 forward-flag — P2034 retry wrapper', () => {
+    const p2034 = new Prisma.PrismaClientKnownRequestError('write conflict', {
+      code: 'P2034',
+      clientVersion: 'x',
+    });
+
+    it('(h) createCashSale: first $transaction attempt rejects P2034 → retried → succeeds', async () => {
+      tx.product.findMany.mockResolvedValue([
+        { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000) },
+      ]);
+      tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.$transaction
+        .mockImplementationOnce(async () => { throw p2034; })
+        .mockImplementationOnce(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx));
+
+      const result = await service.createCashSale(
+        {
+          productId: 'p1', branchId: 'br-1', customerId: 'c1',
+          sellingPrice: 10000, bundleProductIds: [], paymentMethod: 'CASH',
+        } as any,
+        'sp-1', 10000, 0,
+      );
+
+      expect(result).toEqual(mockSale);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it('(i) createInstallmentSale: first $transaction attempt rejects P2034 → retried → succeeds', async () => {
+      tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+      tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
+      tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+      tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+      tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.$transaction
+        .mockImplementationOnce(async () => { throw p2034; })
+        .mockImplementationOnce(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx));
+
+      const result = await service.createInstallmentSale(
+        {
+          productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
+          bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
+        } as any,
+        'sp-1', 20000, 0,
+      );
+
+      expect(result).toEqual(mockSale);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it('(j) createExternalFinanceSale: first $transaction attempt rejects P2034 → retried → succeeds', async () => {
+      tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+      tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+      tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.$transaction
+        .mockImplementationOnce(async () => { throw p2034; })
+        .mockImplementationOnce(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx));
+
+      const result = await service.createExternalFinanceSale(
+        {
+          productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 15000,
+          bundleProductIds: [], financeCompany: 'GFIN', downPayment: 2000, paymentMethod: 'CASH',
+        } as any,
+        'sp-1', 15000, 0,
+      );
+
+      expect(result).toEqual(mockSale);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it('(k) createCashSale: a non-P2034 error is NOT retried — propagates on the first attempt', async () => {
+      const p2002 = new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' });
+      prisma.$transaction.mockImplementation(async () => { throw p2002; });
+
+      await expect(
+        service.createCashSale(
+          {
+            productId: 'p1', branchId: 'br-1', customerId: 'c1',
+            sellingPrice: 10000, bundleProductIds: [], paymentMethod: 'CASH',
+          } as any,
+          'sp-1', 10000, 0,
+        ),
+      ).rejects.toBe(p2002);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('(l) createCashSale: P2034 exhausts all 3 attempts → propagates the P2034', async () => {
+      prisma.$transaction.mockImplementation(async () => { throw p2034; });
+
+      await expect(
+        service.createCashSale(
+          {
+            productId: 'p1', branchId: 'br-1', customerId: 'c1',
+            sellingPrice: 10000, bundleProductIds: [], paymentMethod: 'CASH',
+          } as any,
+          'sp-1', 10000, 0,
+        ),
+      ).rejects.toBe(p2034);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    });
   });
 });

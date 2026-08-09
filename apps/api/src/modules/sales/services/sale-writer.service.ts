@@ -16,6 +16,7 @@ import { InterCompanyService } from '../../inter-company/inter-company.service';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { allocateCashSaleByCost } from '../shop-cash-sale-allocation.util';
+import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
 
 /**
  * Per-sale-type transactional writers extracted from SalesService.
@@ -37,6 +38,48 @@ export class SaleWriterService {
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
   ) {}
+
+  /**
+   * Retry wrapper around `this.prisma.$transaction` — same shape/constants as
+   * `ContractLifecycleService.create`'s retry loop
+   * (contract-lifecycle.service.ts:255-259): up to 3 attempts, retry only on
+   * a Prisma serialization failure (P2034).
+   *
+   * B5: `preemptReservationsInTx` adds a `productReservation.updateMany`
+   * write-write surface inside these `$transaction` calls. Under
+   * Serializable isolation (cash/external) that raises the odds of a P2034
+   * write-conflict abort — see `reservation-preempt.util.ts`'s doc-comment.
+   * `createInstallmentSale` runs at the default isolation level, but P2034
+   * ("write conflict or a deadlock") also covers plain deadlocks, which are
+   * possible regardless of isolation level, so it is wrapped too. Without
+   * this, a conflict would surface as a raw 500 at the cashier's screen
+   * instead of quietly retrying. Any other error (including P2002) is NOT
+   * retried — it propagates immediately, unchanged.
+   */
+  private async runSaleTransaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
+  ): Promise<T> {
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return await this.prisma.$transaction(fn, options);
+      } catch (err: unknown) {
+        // Retry on serialization failure (P2034) only.
+        const prismaErr = err instanceof Prisma.PrismaClientKnownRequestError ? err : null;
+        const isRetryable = prismaErr?.code === 'P2034';
+        if (isRetryable && attempt < MAX_RETRIES - 1) {
+          continue;
+        }
+        throw err;
+      }
+    }
+    // Unreachable — the loop above always returns (success) or throws
+    // (exhausted retries / non-retryable error).
+    throw new Error(
+      'unreachable: runSaleTransaction retry loop exited without returning or throwing',
+    );
+  }
 
   private async resolveExternalFinanceCompanyId(
     tx: Prisma.TransactionClient,
@@ -113,12 +156,14 @@ export class SaleWriterService {
       where: { id: { in: bundleProductIds } },
       data: { status: 'SOLD_CASH' },
     });
+    // B5: ของแถมออกจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (กันขายซ้ำ)
+    await preemptReservationsInTx(tx, bundleProductIds);
   }
 
   async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSaleTransaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
@@ -147,6 +192,8 @@ export class SaleWriterService {
         where: { id: dto.productId },
         data: { status: 'SOLD_CASH' },
       });
+      // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน
+      await preemptReservationsInTx(tx, [dto.productId]);
 
       // SHOP-side: post one cash-sale JE per product (bundle-aware). Sale has no
       // per-product price, so revenue is allocated proportionally by product cost.
@@ -255,7 +302,7 @@ export class SaleWriterService {
       params.vatPct,
     );
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSaleTransaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
@@ -327,6 +374,8 @@ export class SaleWriterService {
         where: { id: dto.productId },
         data: { status: 'RESERVED' },
       });
+      // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน
+      await preemptReservationsInTx(tx, [dto.productId]);
 
       // W-007: COGS tracked via sale.product.costPrice + InterCompanyTransaction.costPrice.
       // P&L report captures product cost by joining Sale → Product.costPrice.
@@ -412,7 +461,7 @@ export class SaleWriterService {
     const downPayment = dto.downPayment || 0;
     const financeAmount = dto.financeAmount || (netAmount - downPayment);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSaleTransaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
@@ -445,6 +494,8 @@ export class SaleWriterService {
         where: { id: dto.productId },
         data: { status: 'SOLD_INSTALLMENT' },
       });
+      // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน
+      await preemptReservationsInTx(tx, [dto.productId]);
 
       // W-007: COGS tracked via sale.product.costPrice relationship.
       // P&L report captures product cost by joining Sale → Product.costPrice.

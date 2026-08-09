@@ -65,10 +65,22 @@ JE เกิดจากการใช้งานจริงผ่านแ�
 |---|---|
 | `repossessions` | contractId ∈ สัญญาเทส |
 | `contract_letters` | contractId ∈ สัญญาเทส (cron 09:15 สร้างหนังสือ 45D/60D ให้สัญญาค้างอัตโนมัติ) |
-| `sales` | productId ∈ เครื่องเทส OR customerId ∈ ลูกค้าเทส |
+| `contract_cancellations` | contractId ∈ สัญญาเทส (+ null FK `reversalJournalEntryId` ก่อนลบ JE) |
+| `installment_schedules` | contractId ∈ สัญญาเทส |
+| `sales` | productId ∈ เครื่องเทส OR customerId ∈ ลูกค้าเทส OR contractId ∈ สัญญาเทส |
+| `finance_receivables` | saleId ∈ ใบขายเทส |
+| `sales_commissions` | saleId ∈ ใบขายเทส OR contractId ∈ สัญญาเทส (กันค่าคอมพนักงานเกินจริง) |
 | `trade_ins` | customerId ∈ ลูกค้าเทส |
 | `products` | imeiSerial LIKE 'TEST-%' (รวมเครื่องที่เกิดจาก trade-in ถ้ากรอก IMEI ขึ้นต้น TEST- ตามคู่มือ) |
 | `customers` | address marker (ครอบลูกค้าเปล่าด้วย) ∪ เจ้าของสัญญาเทส |
+
+**FK guard ก่อน hard-delete JE** (review 2026-08-09): ลบ `journal_post_audit_logs` (Restrict)
++ null `contract_cancellations.reversal_journal_entry_id` (NO ACTION) ก่อน `journal_lines` →
+`journal_entries` เสมอ — ไม่งั้น transaction ทั้งก้อน abort กลางทางบน prod
+
+**Dry-run/live พิมพ์ identity เสมอ** (review 2026-08-09): เลขสัญญา (flag ตัวที่เปิดผ่าน UI),
+IMEI+ชื่อเครื่อง, ชื่อลูกค้า, เลขใบขาย — เป็นด่านสุดท้ายให้คนรันตรวจตาก่อนยืนยัน เพราะ marker
+IMEI เป็น free text (เครื่องจริงที่พนักงานเคยกรอก IMEI ขึ้นต้น TEST- จะโดนกวาดไปด้วย)
 
 - JE sweep เดิม (`metadata.contractId`) ครอบ JE ทุกชนิดที่เทสได้: 2B, JP4, JP5, CN-related,
   refund 21-1107, **รวม JE จาก cron กลางคืน** (2A accrual, ECL provision) ซึ่งยืนยันแล้วว่า

@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { ShopReservationService } from './shop-reservation.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
+import { AuditService } from '../audit/audit.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -11,9 +12,11 @@ describe('ShopReservationService', () => {
   let service: ShopReservationService;
   let prisma: any;
   let lineOa: { sendFlexMessage: jest.Mock };
+  let audit: { log: jest.Mock };
 
   beforeEach(async () => {
     lineOa = { sendFlexMessage: jest.fn().mockResolvedValue(undefined) };
+    audit = { log: jest.fn() };
     prisma = {
       product: {
         findFirst: jest.fn(),
@@ -25,6 +28,7 @@ describe('ShopReservationService', () => {
       productReservation: {
         findFirst: jest.fn(),
         findMany: jest.fn(),
+        findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
@@ -48,6 +52,7 @@ describe('ShopReservationService', () => {
         ShopReservationService,
         { provide: PrismaService, useValue: prisma },
         { provide: LineOaService, useValue: lineOa },
+        { provide: AuditService, useValue: audit },
       ],
     }).compile();
     service = module.get(ShopReservationService);
@@ -345,6 +350,79 @@ describe('ShopReservationService', () => {
       expect(where.status).toBe('PREEMPTED');
       expect(where.preemptNotifiedAt).toBeNull();
       expect(where.updatedAt.gt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('listAdminHolds', () => {
+    it('แปลงแถวเป็นรูปแบบแอดมิน + ระบุที่มา + ชื่อลูกค้าเฉพาะเมื่อมีออเดอร์/ใบสมัคร', async () => {
+      const soon = new Date(Date.now() + 600_000);
+      prisma.productReservation.findMany.mockResolvedValue([
+        {
+          id: 'r1', productId: 'p1', status: 'ACTIVE',
+          reservedAt: new Date(), expiresAt: soon,
+          product: { name: 'iPhone 15', imeiSerial: '356789012345678', branch: { name: 'ลาดพร้าว' } },
+          onlineOrder: { orderNumber: 'OO-1', customer: { name: 'สมชาย' } },
+          onlineApplication: null,
+        },
+        {
+          id: 'r2', productId: 'p2', status: 'ACTIVE',
+          reservedAt: new Date(), expiresAt: soon,
+          product: { name: 'iPhone 14', imeiSerial: null, branch: null },
+          onlineOrder: null, onlineApplication: null,
+        },
+      ]);
+
+      const rows = await service.listAdminHolds({});
+
+      expect(rows[0]).toMatchObject({
+        id: 'r1', productName: 'iPhone 15', imeiLast4: '5678', branchName: 'ลาดพร้าว',
+        source: 'ORDER', orderNumber: 'OO-1', customerName: 'สมชาย',
+      });
+      expect(rows[0].secondsRemaining).toBeGreaterThan(0);
+      expect(rows[1]).toMatchObject({
+        source: 'UNLINKED', customerName: null, orderNumber: null, imeiLast4: null,
+      });
+    });
+
+    it('กรองตาม productId ได้', async () => {
+      prisma.productReservation.findMany.mockResolvedValue([]);
+      await service.listAdminHolds({ productId: 'p1', status: 'ACTIVE' });
+      const where = prisma.productReservation.findMany.mock.calls[0][0].where;
+      expect(where).toMatchObject({ productId: 'p1', status: 'ACTIVE' });
+    });
+  });
+
+  describe('releaseHold', () => {
+    it('ปลด hold ที่ยัง ACTIVE และไม่มีออเดอร์ค้าง', async () => {
+      prisma.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'ACTIVE', productId: 'p1', onlineOrder: null,
+      });
+      prisma.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+      expect(await service.releaseHold('r1', 'admin-1')).toEqual({ released: true });
+      expect(prisma.productReservation.updateMany).toHaveBeenCalledWith({
+        where: { id: 'r1', status: 'ACTIVE' },
+        data: { status: 'CANCELLED' },
+      });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'HOLD_RELEASED', entity: 'product_reservation', entityId: 'r1' }),
+      );
+    });
+
+    it('มีออเดอร์ที่ยังไม่ถูกยกเลิกผูกอยู่ → ปฏิเสธ (กันปลดทิ้งทั้งที่ลูกค้ากำลังจ่าย)', async () => {
+      prisma.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'ACTIVE', productId: 'p1',
+        onlineOrder: { orderNumber: 'OO-1', status: 'PENDING_BANK_REVIEW' },
+      });
+      await expect(service.releaseHold('r1', 'admin-1')).rejects.toThrow(ConflictException);
+      expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('hold ไม่ ACTIVE แล้ว → NotFound', async () => {
+      prisma.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'CONSUMED', productId: 'p1', onlineOrder: null,
+      });
+      await expect(service.releaseHold('r1', 'admin-1')).rejects.toThrow(NotFoundException);
     });
   });
 });

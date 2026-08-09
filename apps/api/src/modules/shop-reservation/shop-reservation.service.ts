@@ -12,6 +12,7 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
+import { AuditService } from '../audit/audit.service';
 
 const RESERVATION_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 /** หน้าต่างเวลาที่ยังคุ้มจะแจ้ง — เกินนี้ลูกค้าน่าจะรู้เองแล้ว (และกันยิงย้อนหลังตอน deploy) */
@@ -31,6 +32,7 @@ export class ShopReservationService {
   constructor(
     private prisma: PrismaService,
     private lineOa: LineOaService,
+    private audit: AuditService,
   ) {}
 
   async reserve(input: ReserveInput) {
@@ -256,5 +258,95 @@ export class ShopReservationService {
         },
       },
     };
+  }
+
+  /**
+   * รายการ hold สำหรับแอดมิน — แสดงเท่าที่มีข้อมูลจริง: hold ของเว็บเป็น anonymous
+   * (DTO มีแค่ productId + sessionId) ชื่อลูกค้าจึงโผล่เฉพาะเมื่อ hold ถูกผูกกับ
+   * ออเดอร์หรือใบสมัครผ่อนแล้วเท่านั้น — ห้ามเดา/ห้ามโชว์ sessionId เป็นตัวแทนคน
+   */
+  async listAdminHolds(filter: { status?: string; productId?: string }) {
+    const rows = await this.prisma.productReservation.findMany({
+      where: {
+        ...(filter.status ? { status: filter.status as never } : { status: 'ACTIVE' }),
+        ...(filter.productId ? { productId: filter.productId } : {}),
+      },
+      select: {
+        id: true,
+        productId: true,
+        status: true,
+        reservedAt: true,
+        expiresAt: true,
+        product: {
+          select: { name: true, imeiSerial: true, branch: { select: { name: true } } },
+        },
+        onlineOrder: { select: { orderNumber: true, customer: { select: { name: true } } } },
+        onlineApplication: { select: { applicationNumber: true, fullName: true } },
+      },
+      orderBy: { reservedAt: 'desc' },
+      take: 200,
+    });
+
+    const now = Date.now();
+    return rows.map((r) => {
+      const source: 'ORDER' | 'APPLICATION' | 'UNLINKED' = r.onlineOrder
+        ? 'ORDER'
+        : r.onlineApplication
+          ? 'APPLICATION'
+          : 'UNLINKED';
+      return {
+        id: r.id,
+        productId: r.productId,
+        productName: r.product?.name ?? '-',
+        imeiLast4: r.product?.imeiSerial ? r.product.imeiSerial.slice(-4) : null,
+        branchName: r.product?.branch?.name ?? null,
+        status: r.status,
+        reservedAt: r.reservedAt,
+        expiresAt: r.expiresAt,
+        secondsRemaining: Math.max(0, Math.floor((r.expiresAt.getTime() - now) / 1000)),
+        source,
+        orderNumber: r.onlineOrder?.orderNumber ?? null,
+        applicationNumber: r.onlineApplication?.applicationNumber ?? null,
+        customerName: r.onlineOrder?.customer?.name ?? r.onlineApplication?.fullName ?? null,
+      };
+    });
+  }
+
+  /** ปลด hold ด้วยมือ (OWNER/BM) — ใช้เมื่อลูกค้าหน้าร้านยืนรออยู่และ hold เว็บค้างอยู่ */
+  async releaseHold(reservationId: string, adminUserId: string) {
+    const hold = await this.prisma.productReservation.findUnique({
+      where: { id: reservationId },
+      select: {
+        id: true,
+        status: true,
+        productId: true,
+        onlineOrder: { select: { orderNumber: true, status: true } },
+      },
+    });
+    if (!hold || hold.status !== 'ACTIVE') {
+      throw new NotFoundException('ไม่พบการจองที่ปลดได้ (อาจถูกใช้/หมดอายุไปแล้ว)');
+    }
+    if (hold.onlineOrder && hold.onlineOrder.status !== 'CANCELLED') {
+      throw new ConflictException(
+        `การจองนี้ผูกกับคำสั่งซื้อ ${hold.onlineOrder.orderNumber} ที่ยังไม่ถูกยกเลิก — ยกเลิกคำสั่งซื้อก่อน`,
+      );
+    }
+
+    const result = await this.prisma.productReservation.updateMany({
+      where: { id: reservationId, status: 'ACTIVE' },
+      data: { status: 'CANCELLED' },
+    });
+    if (result.count === 0) {
+      throw new NotFoundException('ไม่พบการจองที่ปลดได้ (อาจถูกใช้/หมดอายุไปแล้ว)');
+    }
+
+    await this.audit.log({
+      userId: adminUserId,
+      action: 'HOLD_RELEASED',
+      entity: 'product_reservation',
+      entityId: reservationId,
+      newValue: { productId: hold.productId, status: 'CANCELLED' },
+    });
+    return { released: true as const };
   }
 }

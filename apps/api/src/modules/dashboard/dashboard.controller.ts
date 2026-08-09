@@ -88,6 +88,14 @@ export class DashboardController {
     return this.dashboardService.getAgingSummary(effectiveBranch);
   }
 
+  // Roles mirror GET /bank-accounts (SP6) — the widget pairs this forecast with
+  // cash balances, so BRANCH_MANAGER is excluded the same way
+  @Get('cash-forecast')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getCashForecast() {
+    return this.dashboardService.getCashForecast();
+  }
+
   @Get('sla')
   @Roles('OWNER', 'BRANCH_MANAGER')
   getSlaMetrics(

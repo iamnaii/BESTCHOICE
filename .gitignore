@@ -46,3 +46,4 @@ backups/
 
 # UI audit tool outputs (generated artifacts)
 scripts/ui-audit/
+__pycache__/

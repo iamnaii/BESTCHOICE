@@ -251,6 +251,9 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
+        // คำสั่งเจ้าของ 2026-08-08: หน้าร้าน (BM) ต้องเห็นเมนูยึดคืน — API/route/branch
+        // scoping รองรับ BM อยู่แล้ว (#1397: เห็นเฉพาะสาขาตัวเอง) ขาดแค่รายการเมนู
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },

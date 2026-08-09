@@ -145,6 +145,9 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      productReservation: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       customer: {
         findUnique: jest.fn().mockResolvedValue(mockCustomer),
       },
@@ -303,5 +306,35 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
     await service.softDelete('c-1', 'user-1');
 
     expect(shopDownPaymentReversalTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  // ─── Task-6 (B5) web-hold preemption ─────────────────────────────────────────
+
+  it('B5: create() ตัด hold ของเว็บใน tx เดียวกับที่ flip เครื่องเป็น RESERVED (ไม่กระทบ JE ดาวน์)', async () => {
+    tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    // เรียกด้วย 2 args เหมือนเทสต์เดิมทั้งไฟล์ — signature จริงคือ
+    // create(dto, salespersonId, salespersonRole?) และไม่ต้องส่ง role เพราะ
+    // prisma.contract.findMany คืน [] อยู่แล้ว = ไม่มีสัญญา active ให้ override
+    await service.create({ ...baseDto } as any, 'sp-1');
+
+    const call = tx.productReservation.updateMany.mock.calls.at(-1)[0];
+    expect(call.where.productId).toEqual({ in: ['prod-1'] });
+    expect(call.where.status).toBe('ACTIVE');
+    expect(call.where.expiresAt.gt).toBeInstanceOf(Date);
+    expect(call.data).toEqual({ status: 'PREEMPTED' });
+    // red line: JE เงินดาวน์ยังยิงเหมือนเดิมทุกประการ
+    expect(shopDownPaymentTemplate.execute).toHaveBeenCalledTimes(1);
+    // cast แบบเดียวกับเทสต์เดิมในไฟล์ (shopDownPaymentTemplate ถูก type เป็น
+    // jest.Mocked<Pick<…,'execute'>> — เข้า .mock ตรงๆ ไม่ผ่าน tsc)
+    const input = (shopDownPaymentTemplate.execute as jest.Mock).mock.calls[0][0];
+    expect(input.idempotencyKey).toBe('shop-down-payment:c-1');
+    expect(input.downAmount.toString()).toBe('2000');
+  });
+
+  it('B5: ไม่มี hold ค้าง → updateMany คืน count 0 และไม่มีใคร throw', async () => {
+    tx.productReservation.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.create({ ...baseDto } as any, 'sp-1')).resolves.toBeDefined();
+    expect(shopDownPaymentTemplate.execute).toHaveBeenCalledTimes(1);
   });
 });

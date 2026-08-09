@@ -19,7 +19,8 @@ type OnlineOrderStatus =
   | 'SHIPPED'
   | 'DELIVERED'
   | 'CANCELLED'
-  | 'REFUNDED';
+  | 'REFUNDED'
+  | 'PAYMENT_RECEIVED_UNFULFILLABLE';
 
 interface OnlineOrder {
   id: string;
@@ -42,6 +43,7 @@ interface OnlineOrdersResponse {
 
 const STATUS_TABS: Array<{ key: OnlineOrderStatus | 'ALL'; label: string }> = [
   { key: 'ALL', label: 'ทั้งหมด' },
+  { key: 'PAYMENT_RECEIVED_UNFULFILLABLE', label: 'ต้องคืนเงิน' },
   { key: 'PENDING_BANK_REVIEW', label: 'รอตรวจสลิป' },
   { key: 'PAID', label: 'ชำระแล้ว' },
   { key: 'PACKING', label: 'กำลังแพ็ค' },
@@ -59,6 +61,7 @@ const STATUS_BADGE: Record<OnlineOrderStatus, { label: string; variant: 'primary
   DELIVERED: { label: 'ส่งถึงแล้ว', variant: 'success' },
   CANCELLED: { label: 'ยกเลิก', variant: 'destructive' },
   REFUNDED: { label: 'คืนเงิน', variant: 'secondary' },
+  PAYMENT_RECEIVED_UNFULFILLABLE: { label: 'ต้องคืนเงิน', variant: 'destructive' },
 };
 
 function formatMoney(v: string | number | undefined | null): string {
@@ -102,6 +105,7 @@ export default function OnlineOrdersPage() {
         toast.success('ยืนยันการรับเงินเรียบร้อย');
       }
       queryClient.invalidateQueries({ queryKey: ['admin-online-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['online-orders-pending-count'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -117,6 +121,7 @@ export default function OnlineOrdersPage() {
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ['admin-online-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['online-orders-pending-count'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -141,6 +146,17 @@ export default function OnlineOrdersPage() {
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ['admin-online-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['online-orders-pending-count'] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const refundMutation = useMutation({
+    mutationFn: async (id: string) => api.patch(`/admin/online-orders/${id}/refund`),
+    onSuccess: () => {
+      toast.success('บันทึกว่าคืนเงินแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['admin-online-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['online-orders-pending-count'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -193,7 +209,10 @@ export default function OnlineOrdersPage() {
                 </tr>
               ) : (
                 orders.map((order) => {
-                  const badge = STATUS_BADGE[order.status];
+                  const badge = STATUS_BADGE[order.status] ?? {
+                    label: order.status,
+                    variant: 'secondary' as const,
+                  };
                   const tracking = trackingInputs[order.id] ?? '';
                   const cancelReason = cancelReasonInputs[order.id] ?? '';
                   return (
@@ -207,17 +226,29 @@ export default function OnlineOrdersPage() {
                       </td>
                       <td className="px-4 py-3 text-foreground">{formatMoney(order.totalAmount)}</td>
                       <td className="px-4 py-3">
-                        {badge ? (
-                          <Badge variant={badge.variant}>{badge.label}</Badge>
-                        ) : (
-                          <Badge variant="secondary">{order.status}</Badge>
-                        )}
+                        <Badge variant={badge.variant}>{badge.label}</Badge>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {formatDateShort(order.createdAt)}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-2 min-w-[240px]">
+                          {order.status === 'PAYMENT_RECEIVED_UNFULFILLABLE' && (
+                            <>
+                              <div className="text-xs text-destructive leading-snug">
+                                เงินเข้าแล้วแต่เครื่องถูกขายไปก่อน — ติดต่อลูกค้าเพื่อคืนเงิน
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => refundMutation.mutate(order.id)}
+                                disabled={refundMutation.isPending}
+                              >
+                                <CheckCircle2 className="size-4 mr-1.5" />
+                                บันทึกว่าคืนเงินแล้ว
+                              </Button>
+                            </>
+                          )}
                           {order.status === 'PENDING_BANK_REVIEW' && (
                             <Button
                               size="sm"

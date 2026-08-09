@@ -237,12 +237,18 @@ export class FacebookWebhookController {
           }
         : undefined;
 
+      // FF-1 (B4 final review): ปุ่ม Get Started (Task 9) ส่ง payload 'GET_STARTED'
+      // ถึงตรงนี้ทุกครั้งที่ลูกค้าใหม่กด — ถ้าปล่อย raw token จะกลายเป็นบับเบิลลูกค้า
+      // เขียนว่า "GET_STARTED" ในกล่องแชท + AI ตอบ token นั้น; แปลงเป็นข้อความอ่านรู้เรื่อง
+      // (ยังต้องวิ่งผ่าน routeInbound เพื่อสร้างห้อง — โน้ต referral ด้านล่างพึ่งห้องนี้)
+      const inboundText =
+        payload === 'GET_STARTED' ? 'ลูกค้ากดเริ่มต้นใช้งาน (Get Started)' : payload;
       const inbound: InboundMessage = {
         externalMessageId: `postback_${Date.now()}_${senderId}`,
         externalUserId: senderId,
         channel: ChatChannel.FACEBOOK,
         type: MessageType.TEXT,
-        text: payload,
+        text: inboundText,
         rawPayload: event,
         timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
         attribution,

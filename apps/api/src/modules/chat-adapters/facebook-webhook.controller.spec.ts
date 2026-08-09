@@ -513,4 +513,39 @@ describe('FacebookWebhookController — standalone referral จากลิง�
     expect(router.routeInbound).toHaveBeenCalledTimes(1);
     expect(router.postSystemNote).not.toHaveBeenCalled();
   });
+
+  // FF-1 (final review): ลูกค้าใหม่ทุกคนกดปุ่ม Get Started — token ดิบห้ามโผล่เป็น
+  // บับเบิลลูกค้าในกล่องแชท (และห้ามข้าม routeInbound เพราะโน้ต referral พึ่งห้องที่มันสร้าง)
+  it('postback GET_STARTED ถูกแปลงเป็นข้อความอ่านรู้เรื่อง ไม่ใช่ raw token', async () => {
+    const body = {
+      object: 'page',
+      entry: [
+        {
+          id: 'page1',
+          time: 1,
+          messaging: [
+            {
+              sender: { id: PSID },
+              recipient: { id: 'page1' },
+              timestamp: 1,
+              postback: { payload: 'GET_STARTED', title: 'เริ่มต้นใช้งาน' },
+              referral: { ref: `p:${PRODUCT_ID}`, source: 'SHORTLINK', type: 'OPEN_THREAD' },
+            },
+          ],
+        },
+      ],
+    };
+    const { req, signature } = signedRequest(FB_APP_SECRET, body);
+    await controller.handleWebhook(req, body, signature);
+
+    expect(router.routeInbound).toHaveBeenCalledTimes(1);
+    const inbound = router.routeInbound.mock.calls[0][0];
+    expect(inbound.text).toBe('ลูกค้ากดเริ่มต้นใช้งาน (Get Started)');
+    expect(inbound.text).not.toContain('GET_STARTED_RAW');
+    // referral ที่พ่วงมากับ Get Started ยังโพสต์โน้ตตามเดิม
+    expect(router.postSystemNote).toHaveBeenCalledWith(
+      'room-1',
+      'ลูกค้ากดมาจากสินค้า Apple iPhone 15 Pro 256GB Blue (3333) บนเว็บ',
+    );
+  });
 });

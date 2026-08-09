@@ -2,14 +2,21 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
+import { LineOaService } from '../line-oa/line-oa.service';
+import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 
 const RESERVATION_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+/** หน้าต่างเวลาที่ยังคุ้มจะแจ้ง — เกินนี้ลูกค้าน่าจะรู้เองแล้ว (และกันยิงย้อนหลังตอน deploy) */
+const PREEMPT_NOTIFY_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const PREEMPT_NOTIFY_BATCH = 50;
 
 export interface ReserveInput {
   productId: string;
@@ -19,7 +26,12 @@ export interface ReserveInput {
 
 @Injectable()
 export class ShopReservationService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(ShopReservationService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private lineOa: LineOaService,
+  ) {}
 
   async reserve(input: ReserveInput) {
     // B0 §2.3: จองได้เฉพาะเครื่องที่ "พร้อมขึ้นเว็บ" จริง — เดิมจองเครื่องไม่มีราคาได้
@@ -149,5 +161,100 @@ export class ShopReservationService {
       data: { status: 'EXPIRED' },
     });
     return result.count;
+  }
+
+  /**
+   * แจ้งลูกค้าที่ hold โดนตัดหน้า (PREEMPTED) — best-effort ทาง LINE
+   *
+   * ทำเป็น cron แทนการยิงหลัง commit ใน sale-writer/contract-lifecycle เพราะ
+   * (ก) โมดูลเงินไม่ควรผูกกับ LineOaService และ (ข) `preemptNotifiedAt` ทำให้ retry
+   * ปลอดภัย — ยิงพลาดครั้งเดียวไม่วนซ้ำ และ deploy ใหม่ไม่ยิงย้อนหลังทั้งกอง
+   *
+   * ลูกค้าที่จองแบบ anonymous (ไม่มีออเดอร์) ไม่มีช่องทางติดต่อ — ตะกร้าฝั่งเว็บ
+   * self-correct เองจาก poll 5 วินาที (`apps/web-shop/src/hooks/useCart.ts:32`)
+   */
+  async notifyPreemptedHolds(): Promise<number> {
+    const holds = await this.prisma.productReservation.findMany({
+      where: {
+        status: 'PREEMPTED',
+        preemptNotifiedAt: null,
+        updatedAt: { gt: new Date(Date.now() - PREEMPT_NOTIFY_LOOKBACK_MS) },
+      },
+      select: {
+        id: true,
+        product: { select: { name: true } },
+        onlineOrder: {
+          select: {
+            id: true,
+            orderNumber: true,
+            customer: { select: { lineIdShop: true } },
+          },
+        },
+      },
+      take: PREEMPT_NOTIFY_BATCH,
+    });
+
+    let sent = 0;
+    for (const hold of holds) {
+      const lineId = hold.onlineOrder?.customer?.lineIdShop;
+      if (lineId) {
+        try {
+          await this.lineOa.sendFlexMessage(
+            lineId,
+            this.buildHoldPreemptedFlex({
+              productName: hold.product?.name ?? 'สินค้าที่จองไว้',
+              orderNumber: hold.onlineOrder?.orderNumber ?? null,
+            }),
+            'line-shop',
+          );
+          sent++;
+        } catch (err) {
+          this.logger.warn(`Failed to notify preempted hold ${hold.id}: ${err}`);
+          Sentry.captureException(err, {
+            level: 'warning',
+            tags: { critical: 'hold-preempt-notify-failed' },
+            extra: { reservationId: hold.id },
+          });
+        }
+      }
+      // สตางค์เสมอ แม้ไม่มีช่องทางส่ง/ส่งไม่สำเร็จ — ไม่งั้น cron จะวน scan แถวเดิมทุกนาที
+      await this.prisma.productReservation.update({
+        where: { id: hold.id },
+        data: { preemptNotifiedAt: new Date() },
+      });
+    }
+    return sent;
+  }
+
+  private buildHoldPreemptedFlex(input: {
+    productName: string;
+    orderNumber: string | null;
+  }): FlexMessagePayload {
+    return {
+      type: 'flex',
+      altText: `${input.productName} ถูกจำหน่ายไปก่อน — กรุณาเลือกเครื่องอื่น`,
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: 'เครื่องที่จองไว้ถูกจำหน่ายแล้ว', weight: 'bold', size: 'lg', wrap: true },
+            { type: 'text', text: input.productName, size: 'sm', color: '#666666', margin: 'md', wrap: true },
+            ...(input.orderNumber
+              ? [{ type: 'text' as const, text: `คำสั่งซื้อ ${input.orderNumber}`, size: 'sm' as const, margin: 'sm' as const }]
+              : []),
+            { type: 'separator', margin: 'md' },
+            {
+              type: 'text',
+              text: 'มีลูกค้าซื้อที่หน้าร้านก่อนพอดี ขออภัยจริงๆ ครับ/ค่ะ — ยังมีเครื่องรุ่นเดียวกันเครื่องอื่นอยู่ ทักแชทมาได้เลย',
+              size: 'sm',
+              margin: 'md',
+              wrap: true,
+            },
+          ],
+        },
+      },
+    };
   }
 }

@@ -3,12 +3,17 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Prisma } from '@prisma/client';
 import { ShopReservationService } from './shop-reservation.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LineOaService } from '../line-oa/line-oa.service';
+
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
 describe('ShopReservationService', () => {
   let service: ShopReservationService;
   let prisma: any;
+  let lineOa: { sendFlexMessage: jest.Mock };
 
   beforeEach(async () => {
+    lineOa = { sendFlexMessage: jest.fn().mockResolvedValue(undefined) };
     prisma = {
       product: {
         findFirst: jest.fn(),
@@ -19,6 +24,7 @@ describe('ShopReservationService', () => {
       },
       productReservation: {
         findFirst: jest.fn(),
+        findMany: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
@@ -38,7 +44,11 @@ describe('ShopReservationService', () => {
     // similar) valid without introducing a separate tx-mock surface.
     prisma.$transaction = jest.fn().mockImplementation(async (cb: any) => cb(prisma));
     const module = await Test.createTestingModule({
-      providers: [ShopReservationService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ShopReservationService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: LineOaService, useValue: lineOa },
+      ],
     }).compile();
     service = module.get(ShopReservationService);
   });
@@ -275,6 +285,66 @@ describe('ShopReservationService', () => {
       const count = await service.expireOldReservations();
       expect(count).toBe(5);
       expect(prisma.productReservation.updateMany).toHaveBeenCalled();
+    });
+  });
+
+  describe('notifyPreemptedHolds', () => {
+    const hold = (over: any = {}) => ({
+      id: 'r1',
+      product: { name: 'iPhone 15 128GB' },
+      onlineOrder: {
+        id: 'oo-1',
+        orderNumber: 'OO-2026-0001',
+        customer: { lineIdShop: 'U-line' },
+      },
+      ...over,
+    });
+
+    it('ส่ง LINE ให้ลูกค้าที่มีออเดอร์ผูกอยู่ แล้วสตางค์ preemptNotifiedAt', async () => {
+      prisma.productReservation.findMany.mockResolvedValue([hold()]);
+      prisma.productReservation.update.mockResolvedValue({});
+
+      expect(await service.notifyPreemptedHolds()).toBe(1);
+
+      expect(lineOa.sendFlexMessage).toHaveBeenCalledTimes(1);
+      const [to, flex, channel] = lineOa.sendFlexMessage.mock.calls[0];
+      expect(to).toBe('U-line');
+      expect(channel).toBe('line-shop');
+      expect(JSON.stringify(flex)).toContain('iPhone 15 128GB');
+      expect(prisma.productReservation.update).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+        data: { preemptNotifiedAt: expect.any(Date) },
+      });
+    });
+
+    it('hold anonymous (ไม่มีออเดอร์) → ไม่ส่ง LINE แต่ยังสตางค์ไม่ให้ scan ซ้ำ', async () => {
+      prisma.productReservation.findMany.mockResolvedValue([hold({ onlineOrder: null })]);
+      prisma.productReservation.update.mockResolvedValue({});
+
+      expect(await service.notifyPreemptedHolds()).toBe(0);
+      expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
+      expect(prisma.productReservation.update).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+        data: { preemptNotifiedAt: expect.any(Date) },
+      });
+    });
+
+    it('LINE ล้ม → ไม่ throw และยังสตางค์ (best-effort ไม่วนแจ้งซ้ำ)', async () => {
+      prisma.productReservation.findMany.mockResolvedValue([hold()]);
+      lineOa.sendFlexMessage.mockRejectedValue(new Error('line down'));
+      prisma.productReservation.update.mockResolvedValue({});
+
+      await expect(service.notifyPreemptedHolds()).resolves.toBe(0);
+      expect(prisma.productReservation.update).toHaveBeenCalled();
+    });
+
+    it('query เฉพาะ PREEMPTED ที่ยังไม่แจ้ง และไม่เก่าเกินหน้าต่างเวลา', async () => {
+      prisma.productReservation.findMany.mockResolvedValue([]);
+      await service.notifyPreemptedHolds();
+      const where = prisma.productReservation.findMany.mock.calls[0][0].where;
+      expect(where.status).toBe('PREEMPTED');
+      expect(where.preemptNotifiedAt).toBeNull();
+      expect(where.updatedAt.gt).toBeInstanceOf(Date);
     });
   });
 });

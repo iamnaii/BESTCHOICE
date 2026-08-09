@@ -141,7 +141,7 @@ const assetMenuSection: MenuSection = {
   ],
 };
 
-/* ── SALES — พนักงานขาย (10 เมนู) ──────────────────── */
+/* ── SALES — พนักงานขาย ────────────────────────────── */
 
 const SALES_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -196,7 +196,7 @@ const SALES_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── BRANCH_MANAGER — ผจก.สาขา (12 เมนู) ──────────── */
+/* ── BRANCH_MANAGER — ผจก.สาขา ────────────────────── */
 
 const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -251,6 +251,9 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
+        // คำสั่งเจ้าของ 2026-08-08: หน้าร้าน (BM) ต้องเห็นเมนูยึดคืน — API/route/branch
+        // scoping รองรับ BM อยู่แล้ว (#1397: เห็นเฉพาะสาขาตัวเอง) ขาดแค่รายการเมนู
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
@@ -283,7 +286,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── FINANCE_MANAGER — ผจก.การเงิน (12 เมนู) ─────── */
+/* ── FINANCE_MANAGER — ผจก.การเงิน ───────────────── */
 
 const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -347,6 +350,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // P4-SP2 — Tax module (finance-tax endpoints)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
+        { label: 'ภ.ง.ด.1 เงินเดือน (รายพนักงาน)', path: '/finance/wht-report', icon: Calculator },
+        { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Calculator },
+        { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
         // SP6 — Bank/Cash account directory
@@ -380,7 +386,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── ACCOUNTANT — ฝ่ายบัญชี (11 เมนู) ─────────────── */
+/* ── ACCOUNTANT — ฝ่ายบัญชี ─────────────────────────── */
 
 const ACCOUNTANT_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -393,6 +399,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
@@ -433,6 +440,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt },
         { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt },
+        { label: 'ภ.ง.ด.1 เงินเดือน (รายพนักงาน)', path: '/finance/wht-report', icon: Receipt },
+        { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Receipt },
+        { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Receipt },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
       ],
@@ -455,7 +465,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: Landmark,
       zone: 'fin',
       items: [
-        { label: 'บัญชีธนาคาร', path: '/finance/bank-accounts', icon: Landmark, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },
+        { label: 'บัญชีธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
     },
     // acc-doc-config section ลบออก (2026-06-24) — document-config เป็น OWNER-only page
@@ -522,6 +532,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
         { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
         { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
+        // คำสั่งเจ้าของ 2026-08-08: ยึดคืนต้องเห็นจาก zone หน้าร้านด้วย (duplicate กับ
+        // owner-fin-revenue โดยตั้งใจ — OWNER เห็นได้จากทั้งสอง zone เหมือน overdue/mdm)
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
       ],
     },
     /* ── FIN zone restructure (per owner CSV) ───────────────────
@@ -578,6 +591,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt },
         { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt },
+        { label: 'ภ.ง.ด.1 เงินเดือน (รายพนักงาน)', path: '/finance/wht-report', icon: Receipt },
+        { label: 'ประกันสังคม (สปส.1-10)', path: '/finance/sso-report', icon: Receipt },
+        { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Receipt },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
       ],

@@ -102,6 +102,14 @@ export class DashboardService {
   }
 
   /**
+   * Cash inflow forecast (overdue / next 7 / next 30 days) — FINANCE-global,
+   * no branch dimension (cash accounts are FINANCE-level entities)
+   */
+  async getCashForecast() {
+    return this.cached('dashboard:cash-forecast', 60, () => this.overview.getCashForecast());
+  }
+
+  /**
    * SLA metrics: contract approval time + pending approvals > 20 min
    */
   async getSlaMetrics(branchId?: string) {

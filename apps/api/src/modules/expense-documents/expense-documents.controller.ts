@@ -25,7 +25,7 @@ import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
-import { CreatePayrollDto } from './dto/create-payroll.dto';
+import { CreatePayrollDto, UpdatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { CreatePettyCashDto } from './dto/create-petty-cash.dto';
 import { VoidExpenseDocumentDto } from './dto/void-expense.dto';
@@ -64,6 +64,45 @@ export class ExpenseDocumentsController {
     @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
   ) {
     return this.service.createPayroll(dto, user);
+  }
+
+  // Payroll form meta (whitelist + cash accounts per scope, with CoA names).
+  // Declared BEFORE @Get(':id') so the literal path wins route matching.
+  @Get('payroll/meta')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  payrollMeta(@Query('scope') scope?: string) {
+    return this.service.getPayrollMeta(scope === 'FINANCE' ? 'FINANCE' : 'SHOP');
+  }
+
+  // R3-2 (2026-08-06) — แก้ไขร่างใบเงินเดือน (DRAFT เท่านั้น, แทนที่ lines ทั้งชุด)
+  @Patch(':id/payroll')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  updatePayroll(
+    @Param('id') id: string,
+    @Body() dto: UpdatePayrollDto,
+    @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
+  ) {
+    return this.service.updatePayroll(id, dto, user);
+  }
+
+  // R3-3 (2026-08-06) — ไฟล์โอนเงินเดือนเข้าธนาคาร (จาก EmployeeProfile bank data)
+  @Get(':id/bank-transfer.csv')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async payrollBankCsv(
+    @Param('id') id: string,
+    @CurrentUser() user: { role?: string | null; branchId?: string | null },
+    @Res() res: Response,
+  ): Promise<void> {
+    const { csv, filename, skipped } = await this.service.buildPayrollBankCsv(
+      id,
+      user.role,
+      user.branchId,
+    );
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Skipped-Lines', String(skipped.length));
+    res.setHeader('Access-Control-Expose-Headers', 'X-Skipped-Lines');
+    res.send(csv);
   }
 
   @Post('settlement')
@@ -197,8 +236,14 @@ export class ExpenseDocumentsController {
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findOne(@Param('id') id: string, @CurrentUser() user: { role?: string | null }) {
-    return this.service.findOne(id, user.role);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: { role?: string | null; branchId?: string | null },
+  ) {
+    // สิทธิเห็นข้ามสาขา (คำสั่งเจ้าของ 2026-08-06): role นอก CROSS_BRANCH_ROLES
+    // (เช่น BRANCH_MANAGER) เห็นเฉพาะเอกสารสาขาตัวเอง — สำคัญเป็นพิเศษกับใบ
+    // เงินเดือน (PayrollLine เปิดเผยฐานเงินเดือนรายคน).
+    return this.service.findOne(id, user.role, user.branchId);
   }
 
   @Patch(':id')

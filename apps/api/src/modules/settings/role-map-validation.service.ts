@@ -53,6 +53,14 @@ export class RoleMapValidationService {
     payroll_sso_expense: 'Dr',
     payroll_overtime: 'Dr',
     payroll_bonus: 'Dr',
+    // SHOP-side payroll (คำสั่งเจ้าของ 2026-08-06 — migration 20260990000000)
+    shop_payroll_expense: 'Dr',
+    shop_payroll_sso_expense: 'Dr',
+    shop_payroll_overtime: 'Dr',
+    shop_payroll_bonus: 'Dr',
+    shop_wht_payroll: 'Cr',
+    shop_sso_employee: 'Cr',
+    shop_sso_employer: 'Cr',
     // Payroll deduction — other income (Cr)
     payroll_deduction: 'Cr',
     // Employee bond — liability (Cr)

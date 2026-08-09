@@ -22,16 +22,30 @@ describe('PayrollCustomService — V16/V17/V18 (C2)', () => {
   });
 
   describe('loadWhitelist', () => {
-    it('returns the seeded default when SystemConfig row is absent', async () => {
+    it('FINANCE default when SystemConfig row is absent — B1 fix: OT = 53-1103, NOT 53-1105 (ค่าอบรม)', async () => {
       const wl = await service.loadWhitelist();
+      expect(wl.has('53-1103')).toBe(true);
       expect(wl.has('53-1104')).toBe(true);
-      expect(wl.has('53-1105')).toBe(true);
+      expect(wl.has('53-1105')).toBe(false);
       expect(wl.size).toBe(2);
+      expect(prisma.systemConfig.findUnique).toHaveBeenCalledWith({
+        where: { key: 'custom_income_accounts_whitelist' },
+      });
+    });
+
+    it('SHOP scope reads its own key and defaults to S52-1202 (OT) + S52-1204 (โบนัส)', async () => {
+      const wl = await service.loadWhitelist('SHOP');
+      expect(wl.has('S52-1202')).toBe(true);
+      expect(wl.has('S52-1204')).toBe(true);
+      expect(wl.size).toBe(2);
+      expect(prisma.systemConfig.findUnique).toHaveBeenCalledWith({
+        where: { key: 'custom_income_accounts_whitelist_shop' },
+      });
     });
 
     it('parses JSON array from SystemConfig.value', async () => {
       prisma.systemConfig.findUnique.mockResolvedValue({
-        value: '["53-1104","53-1105","53-1199"]',
+        value: '["53-1103","53-1104","53-1199"]',
       });
       const wl = await service.loadWhitelist();
       expect(wl.has('53-1199')).toBe(true);
@@ -41,13 +55,54 @@ describe('PayrollCustomService — V16/V17/V18 (C2)', () => {
     it('falls back to default on malformed JSON (resilience)', async () => {
       prisma.systemConfig.findUnique.mockResolvedValue({ value: 'not-json' });
       const wl = await service.loadWhitelist();
-      expect(wl.has('53-1104')).toBe(true);
+      expect(wl.has('53-1103')).toBe(true);
     });
 
     it('falls back to default if JSON is not an array', async () => {
       prisma.systemConfig.findUnique.mockResolvedValue({ value: '{"foo":1}' });
       const wl = await service.loadWhitelist();
-      expect(wl.has('53-1104')).toBe(true);
+      expect(wl.has('53-1103')).toBe(true);
+    });
+  });
+
+  describe('validateDeductionAccounts (V19 — 2026-08-06)', () => {
+    beforeEach(() => {
+      // @ts-expect-error — extend the loose test double
+      prisma.chartOfAccount = {
+        findMany: jest.fn().mockResolvedValue([{ code: 'S11-3001' }]),
+      };
+    });
+
+    it('accepts S-codes that exist in the CoA for SHOP scope', async () => {
+      await expect(
+        service.validateDeductionAccounts(['S11-3001'], 'SHOP'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects a FINANCE code on a SHOP-scope document (wrong partition)', async () => {
+      await expect(
+        service.validateDeductionAccounts(['11-2199'], 'SHOP'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects an S-code on a FINANCE-scope document', async () => {
+      await expect(
+        service.validateDeductionAccounts(['S11-3001'], 'FINANCE'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects codes that do not exist in the chart (typo 99-9999 no longer explodes at post time)', async () => {
+      // @ts-expect-error — loose double
+      prisma.chartOfAccount.findMany.mockResolvedValue([]);
+      await expect(
+        service.validateDeductionAccounts(['S99-9999'], 'SHOP'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('no-ops on an empty list without touching the DB', async () => {
+      await expect(service.validateDeductionAccounts([], 'SHOP')).resolves.toBeUndefined();
+      // @ts-expect-error — loose double
+      expect(prisma.chartOfAccount.findMany).not.toHaveBeenCalled();
     });
   });
 

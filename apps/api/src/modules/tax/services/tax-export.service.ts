@@ -109,6 +109,76 @@ export class TaxExportService {
       total.getCell('gross').value = Number(data.grossIncome);
       total.getCell('wht').value = Number(data.whtTotal);
       total.font = { bold: true };
+    } else if (form === 'SSO110') {
+      // สปส.1-10 — payroll round 2 (2026-08-06). Company-wide (one juristic person).
+      const data = await this.preview.previewSso110(year, month);
+      const sheet = workbook.addWorksheet(`SSO110-${periodLabel}`);
+      sheet.columns = [
+        { header: 'ลำดับ', key: 'no', width: 6 },
+        { header: 'ชื่อผู้ประกันตน', key: 'name', width: 30 },
+        { header: 'เลขประจำตัวประชาชน', key: 'taxId', width: 22 },
+        { header: 'ค่าจ้าง (บาท)', key: 'wage', width: 14 },
+        { header: 'เงินสมทบผู้ประกันตน (บาท)', key: 'ssoEmployee', width: 22 },
+        { header: 'เงินสมทบนายจ้าง (บาท)', key: 'ssoEmployer', width: 20 },
+        { header: 'ฝั่ง', key: 'scope', width: 10 },
+        { header: 'เลขที่เอกสาร', key: 'doc', width: 18 },
+      ];
+      sheet.getRow(1).font = { bold: true };
+      data.items.forEach((it, idx) => {
+        sheet.addRow({
+          no: idx + 1,
+          name: it.employeeName,
+          taxId: it.employeeTaxId ?? '',
+          wage: Number(it.wage),
+          ssoEmployee: Number(it.ssoEmployee),
+          ssoEmployer: Number(it.ssoEmployer),
+          scope: it.scope,
+          doc: it.payrollDocNumber,
+        });
+      });
+      const total = sheet.addRow({});
+      total.getCell('name').value = 'รวม';
+      total.getCell('ssoEmployee').value = Number(data.employeeTotal);
+      total.getCell('ssoEmployer').value = Number(data.employerTotal);
+      total.font = { bold: true };
+      const grand = sheet.addRow({});
+      grand.getCell('name').value = 'รวมนำส่งทั้งสิ้น (ลูกจ้าง + นายจ้าง)';
+      grand.getCell('ssoEmployer').value = Number(data.grandTotal);
+      grand.font = { bold: true };
+    } else if (form === 'PND1A') {
+      // ภ.ง.ด.1ก — annual summary per employee (month param ignored).
+      const data = await this.preview.previewPnd1Annual(year);
+      const sheet = workbook.addWorksheet(`PND1A-${year}`);
+      sheet.columns = [
+        { header: 'ลำดับ', key: 'no', width: 6 },
+        { header: 'ชื่อพนักงาน', key: 'name', width: 30 },
+        { header: 'เลขประจำตัวผู้เสียภาษี', key: 'taxId', width: 22 },
+        { header: 'จำนวนเดือนที่จ่าย', key: 'months', width: 14 },
+        { header: 'เงินได้ทั้งปี (บาท)', key: 'gross', width: 18 },
+        { header: 'ภาษีหัก ณ ที่จ่ายทั้งปี (บาท)', key: 'wht', width: 22 },
+        { header: 'เงินสมทบ ปกส. ทั้งปี (บาท)', key: 'sso', width: 22 },
+      ];
+      sheet.getRow(1).font = { bold: true };
+      data.items.forEach((it, idx) => {
+        sheet.addRow({
+          no: idx + 1,
+          name: it.employeeName,
+          taxId: it.employeeTaxId ?? '',
+          months: it.monthsPaid,
+          gross: Number(it.grossTotal),
+          wht: Number(it.whtTotal),
+          sso: Number(it.ssoTotal),
+        });
+      });
+      const total = sheet.addRow({});
+      total.getCell('name').value = 'รวม';
+      total.getCell('gross').value = Number(data.grossTotal);
+      total.getCell('wht').value = Number(data.whtTotal);
+      total.font = { bold: true };
+      const wage = sheet.addRow({});
+      wage.getCell('name').value = 'ค่าจ้างรวมทั้งปี (อ้างอิงยื่น กท.20ก)';
+      wage.getCell('gross').value = Number(data.annualWageTotal);
+      wage.font = { bold: true, italic: true };
     } else {
       // PND3 / PND53 — vendor WHT
       const data =

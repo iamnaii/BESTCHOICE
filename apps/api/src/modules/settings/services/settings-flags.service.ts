@@ -825,10 +825,14 @@ export class SettingsFlagsService {
     // D1.2.3.3 — date_format. Whitelist 'BE' / 'CE'; everything else → 'BE'.
     // Default 'BE' so existing flows are unchanged.
     const dateFormat = pickEnum(await this.getKey('date_format'), ['BE', 'CE'] as const, 'BE');
-    // D1.2.1.1 — Approval Workflow opt-in. Default true per
-    // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
-    // SystemConfig if rollout needs to be gradual.
-    const approvalEnabled = await this.readBoolean('approval_enabled', true);
+    // D1.2.1.1 — Approval Workflow opt-in. Default FALSE to match the
+    // enforcing side (expense-document-lifecycle.service.ts also defaults
+    // false): with no SystemConfig row the backend allows direct post(), so a
+    // UI default of `true` (the old Settings_Audit_Core_v2.0.md value) showed
+    // "ส่งขออนุมัติ" buttons that the backend would then reject with
+    // "ฟีเจอร์ขออนุมัติยังไม่เปิดใช้งาน" (review 2026-08-06). Dev seed + prod
+    // runbook both set the row to 'true' explicitly.
+    const approvalEnabled = await this.readBoolean('approval_enabled', false);
     // D1.2.1.2 — approval threshold (THB). Default 0; clamp negatives.
     const approvalThresholdRaw = await this.readNumber('approval_threshold', 0);
     const approvalThreshold = approvalThresholdRaw >= 0 ? approvalThresholdRaw : 0;

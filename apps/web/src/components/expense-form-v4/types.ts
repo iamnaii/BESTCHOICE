@@ -85,6 +85,9 @@ export interface PayrollFormFields {
   year: number;
   month: number;
   payrollPeriod: string;
+  // คำสั่งเจ้าของ 2026-08-06 — SHOP (default, พนักงานสาขา → ผัง S + เงินสด S11-XXXX)
+  // | FINANCE (ส่วนกลาง → ผัง FINANCE + เงินสด 11-XXXX). ส่งไปกับ POST /payroll.
+  entityScope: 'SHOP' | 'FINANCE';
   lines: PayrollLineForm[];
 }
 
@@ -227,7 +230,9 @@ export const newPayrollCustomIncome = (
   overrides?: Partial<PayrollCustomIncomeRow>,
 ): PayrollCustomIncomeRow => ({
   uid: Math.random().toString(36).slice(2),
-  accountCode: '53-1104', // default = bonus (most common)
+  // Default account is scope-dependent (SHOP vs FINANCE whitelist) — the
+  // caller (CustomIncomeSubTable.add) passes the first whitelist option.
+  accountCode: '',
   name: '',
   amount: '',
   isTaxable: true,

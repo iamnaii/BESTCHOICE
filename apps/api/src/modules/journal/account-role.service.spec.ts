@@ -133,6 +133,12 @@ describe('AccountRoleService — boot guard (D1.1.6.x)', () => {
     { role: 'sso_employer', accountCode: '21-3106' },
     { role: 'payroll_expense', accountCode: '53-1101' },
     { role: 'payroll_sso_expense', accountCode: '53-1102' },
+    // SHOP-side payroll roles (คำสั่งเจ้าของ 2026-08-06 — migration 20260990000000)
+    { role: 'shop_payroll_expense', accountCode: 'S52-1201' },
+    { role: 'shop_payroll_sso_expense', accountCode: 'S52-1205' },
+    { role: 'shop_wht_payroll', accountCode: 'S21-3101' },
+    { role: 'shop_sso_employee', accountCode: 'S21-3105' },
+    { role: 'shop_sso_employer', accountCode: 'S21-3106' },
     { role: 'adj_underpay', accountCode: '52-1104' },
     { role: 'adj_overpay', accountCode: '53-1503' },
   ];

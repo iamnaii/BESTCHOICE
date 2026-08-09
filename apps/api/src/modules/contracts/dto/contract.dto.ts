@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID } from 'class-validator';
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
@@ -187,4 +187,9 @@ export class ShopCollectSettlementDto {
   @IsNumber({}, { message: 'ยอดชำระต้องเป็นตัวเลข' })
   @IsPositive({ message: 'ยอดชำระต้องมากกว่า 0' })
   amount: number;
+
+  /** ไอดีคำขอจากหน้าจอ — กัน retry ซ้ำโดยไม่กลืนการโอนซ้ำยอดเท่ากันที่ตั้งใจ */
+  @IsUUID(4, { message: 'requestId ไม่ถูกต้อง' })
+  @IsOptional()
+  requestId?: string;
 }

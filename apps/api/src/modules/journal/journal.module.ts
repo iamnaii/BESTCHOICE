@@ -33,6 +33,7 @@ import { ExpenseSameDayTemplate } from './cpa-templates/expense-same-day.templat
 import { ExpenseAccrualTemplate } from './cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from './cpa-templates/credit-note.template';
 import { PayrollTemplate } from './cpa-templates/payroll.template';
+import { PayrollRemittanceTemplate } from './cpa-templates/payroll-remittance.template';
 import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.template';
 import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
 import { YearEndClosingTemplate } from './cpa-templates/year-end-closing.template';
@@ -56,6 +57,10 @@ import { ContractCancellationTemplate } from './cpa-templates/contract-cancellat
 import { ReconcileController } from './reconcile.controller';
 // Section 2 Task 3 — shop-collect settlement
 import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-settlement.template';
+// Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
+import { RefundPayoutTemplate } from './cpa-templates/refund-payout.template';
+// คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ไม่คืนเงิน (ล้าง 21-1107 เข้ารายได้ 41-1102)
+import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
 
 @Module({
   imports: [PrismaModule],
@@ -93,6 +98,7 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ExpenseAccrualTemplate,
     CreditNoteTemplate,
     PayrollTemplate,
+    PayrollRemittanceTemplate,
     VendorSettlementTemplate,
     PettyCashTemplate,
     YearEndClosingTemplate,
@@ -115,6 +121,10 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ContractCancellationTemplate,
     // Section 2 Task 3 — shop-collect settlement
     ShopCollectSettlementTemplate,
+    // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
+    RefundPayoutTemplate,
+    // คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ไม่คืนเงิน
+    RefundWaiveTemplate,
   ],
   exports: [
     JournalService,
@@ -146,6 +156,7 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ExpenseAccrualTemplate,
     CreditNoteTemplate,
     PayrollTemplate,
+    PayrollRemittanceTemplate,
     VendorSettlementTemplate,
     PettyCashTemplate,
     YearEndClosingTemplate,
@@ -166,6 +177,10 @@ import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-sett
     ContractCancellationTemplate,
     // Section 2 Task 3 — shop-collect settlement
     ShopCollectSettlementTemplate,
+    // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
+    RefundPayoutTemplate,
+    // คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ไม่คืนเงิน
+    RefundWaiveTemplate,
   ],
 })
 export class JournalModule {}

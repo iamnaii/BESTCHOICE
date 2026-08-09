@@ -24,6 +24,8 @@ export interface RepossessionInput {
    * createAndPost does not re-validate).
    */
   postedAt?: Date;
+  /** เงินคืนส่วนต่างลูกค้า — ตั้งหนี้ ณ วันยึด (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) */
+  customerRefund?: Decimal;
 }
 
 /**
@@ -140,7 +142,9 @@ export class RepossessionJP5Template {
       orderBy: { installmentNo: 'asc' },
     });
     const paidPayments = await client.payment.findMany({
-      where: { contractId: c.id, status: 'PAID' },
+      // deletedAt:null — แถว PAID ที่ถูก soft-delete ไม่ใช่หลักฐานว่ารับเงินจริง
+      // (convention เดียวกับ compute-cn-breakdown I1 fix)
+      where: { contractId: c.id, status: 'PAID', deletedAt: null },
       select: { installmentNo: true },
     });
     const paidNos = new Set(paidPayments.map((p) => p.installmentNo));
@@ -268,6 +272,17 @@ export class RepossessionJP5Template {
         dr: zero,
         cr: bal2106,
         description: 'รับรู้รายได้ดอกเบี้ย (deferred)',
+      });
+    }
+
+    // คำสั่งเจ้าของ 2026-08-08 (ข้อ 2): เงินคืนส่วนต่างลูกค้า — Cr เจ้าหนี้ 21-1107
+    // วางก่อน plug → ขาดทุนเพิ่ม/กำไรลดเท่าเงินคืนโดยอัตโนมัติ (ไม่มีสูตรใหม่)
+    if (input.customerRefund && input.customerRefund.gt(0)) {
+      lines.push({
+        accountCode: '21-1107',
+        dr: zero,
+        cr: input.customerRefund,
+        description: `เงินคืนส่วนต่างลูกค้า ${input.customerRefund.toFixed(2)} ฿`,
       });
     }
 

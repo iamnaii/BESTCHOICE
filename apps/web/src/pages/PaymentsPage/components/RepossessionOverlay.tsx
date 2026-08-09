@@ -79,6 +79,28 @@ const PREVIEW_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
 const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
 /**
+ * ผลทางบัญชี (ledger P&L) จาก JP5 journalPreview — คำสั่งเจ้าของ 2026-08-08 (ข้อ 1):
+ * โชว์คู่กับ "กำไร/ขาดทุนเชิงบริหาร" (calculation.profitLoss ซึ่งมีส่วนลด/ราคากลาง)
+ * เพราะสองเลขนี้ต่างกันได้โดยตั้งใจ. อ่านตรงจากบรรทัด JE: 41-1102 (Cr) = กำไรจากการยึดสินค้า,
+ * 51-1102 (Dr) = ขาดทุนจากยึดเครื่อง. บรรทัด 21-1107 (เงินคืนส่วนต่างลูกค้า, Task 2) วางก่อน
+ * plug ในเทมเพลตแล้ว — ตัวเลขนี้จึงรวมผลของเงินคืนอยู่ในตัวโดยอัตโนมัติ ไม่ต้องคำนวณซ้ำ.
+ */
+function computeLedgerPl(journalPreview: RepoPreview['journalPreview']): number {
+  if (!journalPreview) return 0;
+  let pl = 0;
+  for (const line of journalPreview.lines) {
+    if (line.accountCode === '41-1102') {
+      const cr = parseFloat(line.credit);
+      if (cr > 0) pl += cr;
+    } else if (line.accountCode === '51-1102') {
+      const dr = parseFloat(line.debit);
+      if (dr > 0) pl -= dr;
+    }
+  }
+  return pl;
+}
+
+/**
  * In-modal "คืนเครื่อง" (repossession) overlay — full create, mirrors EarlyPayoffOverlay's
  * portal pattern. Live P&L preview via GET /repossessions/preview/:id; submit POST /repossessions
  * (JP5 + contract/product status changes, atomic server-side). Role-gated per backend:
@@ -116,6 +138,9 @@ export function RepossessionOverlay({
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [settlementAccountCode, setSettlementAccountCode] = useState('11-1201');
   const [settlementAmount, setSettlementAmount] = useState('');
+  // Client-generated per-dialog-open UUID — dedupe key for shop-collect
+  // settlement retries without swallowing an intentional same-amount repeat.
+  const [settlementRequestId, setSettlementRequestId] = useState('');
   const canSettlement = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
 
   const { data: preview, isLoading: previewLoading } = useQuery<RepoPreview>({
@@ -144,6 +169,9 @@ export function RepossessionOverlay({
     },
     enabled: canPreview && !!contractId,
   });
+
+  // ผลทางบัญชี (ledger) — คู่กับ calculation.profitLoss เชิงบริหาร (คำสั่งเจ้าของ 2026-08-08 ข้อ 1)
+  const ledgerPl = useMemo(() => computeLedgerPl(preview?.journalPreview), [preview]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -185,6 +213,7 @@ export function RepossessionOverlay({
       const { data } = await api.post(`/contracts/${contractId}/shop-collect-settlement`, {
         depositAccountCode: settlementAccountCode,
         amount: Number(settlementAmount),
+        requestId: settlementRequestId,
       });
       return data;
     },
@@ -472,12 +501,12 @@ export function RepossessionOverlay({
                       {preview.calculation.profitLoss >= 0 ? (
                         <>
                           <Check className="size-4 inline mr-1" />
-                          บริษัทได้กำไร
+                          กำไร/ขาดทุนเชิงบริหาร
                         </>
                       ) : (
                         <>
                           <X className="size-4 inline mr-1" />
-                          บริษัทขาดทุน
+                          กำไร/ขาดทุนเชิงบริหาร
                         </>
                       )}
                     </div>
@@ -496,6 +525,24 @@ export function RepossessionOverlay({
                     ฿
                   </div>
                 </div>
+                {/* คำสั่งเจ้าของ 2026-08-08 (ข้อ 1): โชว์เลขบัญชีคู่กับเลขบริหาร — สองเลขต่างกันได้
+                    (ส่วนลด/ราคากลาง อยู่เฉพาะมุมมองบริหาร; บัญชีรับรู้จากราคาตี + เงินคืน) */}
+                {preview.journalPreview && (
+                  <div className="flex justify-between text-xs mt-2 px-3">
+                    <span className="text-muted-foreground leading-snug">
+                      ผลทางบัญชี (ledger — จากราคาตี
+                      {preview.calculation.customerRefundEnabled ? ' หักเงินคืน' : ''})
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {ledgerPl >= 0 ? '+' : ''}
+                      {ledgerPl.toLocaleString('th-TH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{' '}
+                      ฿
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -522,6 +569,9 @@ export function RepossessionOverlay({
               onChange={(e) => setPaymentDate(e.target.value)}
               className={`${inputClass} font-mono`}
             />
+            <p className="text-xs text-muted-foreground leading-snug mt-1">
+              ย้อนหลังได้ภายในเดือนนี้เท่านั้น
+            </p>
           </div>
           {/* Shop-collect toggle — mirrors early payoff (JP4) */}
           <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-3 py-3 mb-3">
@@ -651,7 +701,10 @@ export function RepossessionOverlay({
         {canSettlement ? (
           <button
             type="button"
-            onClick={() => setSettlementOpen(true)}
+            onClick={() => {
+              setSettlementRequestId(crypto.randomUUID());
+              setSettlementOpen(true);
+            }}
             className="flex items-center gap-1.5 px-4 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors text-muted-foreground"
           >
             <Store className="size-4" />

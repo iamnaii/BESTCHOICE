@@ -960,3 +960,266 @@ describe('JP5 GL-based legs + release residual (Task 5 — ECL per-installment)'
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
   });
 });
+
+/**
+ * JP5 soft-deleted PAID payment ≠ evidence of a real receipt (regression,
+ * repossessions-page-rework Phase 1 review, 2026-08-07).
+ *
+ * `buildJe`'s paid-installments query (`repossession-jp5.template.ts`, near
+ * line 142-147) gained `deletedAt: null` — the same convention `I1` already
+ * established in `compute-cn-breakdown.ts`'s ACCRUED/DUE payment queries. A
+ * `Payment` row that was marked PAID and later soft-deleted (e.g. by
+ * schedule regeneration — a real soft-delete producer, not a hypothetical
+ * one) is NOT evidence the customer actually paid; without the filter that
+ * row's `installmentNo` would wrongly land in `paidNos`, silently dropping
+ * an otherwise-accrued-and-owed installment out of `unpaidInsts` →
+ * `accruedInsts` → the CN VAT (ม.82/5) computation and the `unpaid` count.
+ *
+ * Setup mirrors "issues credit note for accrued installments" above (3
+ * installments accrued via 2A, no real 2B receipt posted) so the golden
+ * numbers are directly comparable — the only difference is installment #1
+ * carries a PAID-then-soft-deleted `Payment` row instead of no row at all.
+ * Both must produce the IDENTICAL JE: the soft-deleted row must be
+ * functionally invisible to JP5.
+ */
+describe('JP5 soft-deleted PAID payment does not count as paid (review Phase 1, 2026-08-07)', () => {
+  beforeAll(async () => {
+    await setup();
+  });
+
+  it('treats a soft-deleted PAID installment as unpaid — CN VAT + loss unaffected, JE balances, no false BadRequestException', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    // Accrue installments 1-3 — same shape as "issues credit note..." / "reduces 51-1102 loss..." above.
+    for (let i = 0; i < 3; i++) {
+      await accrual.execute(insts[i].id);
+    }
+
+    // Installment #1: mark its Payment row PAID, then immediately soft-delete
+    // it — simulates a real soft-delete producer (e.g. schedule regen), NOT
+    // a hypothetical. No real 2B JE is posted (mirrors the "no live Payment
+    // row" siblings), so 11-2103/21-2102 GL balances stay untouched by this.
+    const paidThenDeleted = await prisma.payment.create({
+      data: {
+        contractId: c.id,
+        installmentNo: insts[0].installmentNo,
+        dueDate: insts[0].dueDate,
+        amountDue: new Decimal('1515.83'),
+        amountPaid: new Decimal('1515.83'),
+        paidDate: new Date(),
+        paidAt: new Date(),
+        status: 'PAID',
+      },
+    });
+    await prisma.payment.update({
+      where: { id: paidThenDeleted.id },
+      data: { deletedAt: new Date() },
+    });
+
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    // Must NOT throw — the soft-deleted row must not falsely shrink `unpaid`
+    // to 0 (the "ไม่มีงวดค้างชำระให้ล้าง" / "nothing to repossess" guard).
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // CN VAT (Dr 21-2101) includes installment #1's 99.17 share exactly like
+    // installments #2/#3 (which have no Payment row at all) — 3 × 99.17 =
+    // 297.51, identical to the clean-3-accrued golden above. If the
+    // soft-deleted row wrongly counted as paid, installment #1 would drop
+    // out of accruedInsts and this would read 198.34 (2 × 99.17) instead.
+    const dr21_2101 = sumDr(lines, '21-2101');
+    expect(dr21_2101.toFixed(2)).toBe('297.51');
+
+    // GL clearing legs identical to the clean-3-accrued golden — no real 2B
+    // JE ever touched the ledger for installment #1.
+    const cr11_2103 = sumCr(lines, '11-2103');
+    expect(cr11_2103.toFixed(2)).toBe('4547.49'); // 3 × 1,515.83
+    const cr21_2101 = sumCr(lines, '21-2101');
+    expect(cr21_2101.toFixed(2)).toBe('892.49'); // GL 21-2102 (cr) after 3× 2A
+
+    // Loss identical to "reduces 51-1102 loss by exactly the accrued VAT
+    // amount" above: remainingTotal 18,190.00 − CN 297.51 − repo 5,000 = 12,892.49.
+    const dr51_1102 = sumDr(lines, '51-1102');
+    expect(dr51_1102.toFixed(2)).toBe('12892.49');
+
+    // JE balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+
+    // metadata: unpaid count includes installment #1 (12 of 12, not 11) —
+    // proves it flowed through as unpaid+accrued rather than being silently
+    // excluded, and that the `unpaid === 0` BadRequestException gate was
+    // never even close to firing for this contract.
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+        ],
+      },
+    });
+    expect(entries.length).toBe(1);
+    const meta = entries[0].metadata as Record<string, unknown>;
+    expect(meta.unpaidInstallments).toBe(12);
+    expect(meta.accruedInstallments).toBe(3);
+    expect(meta.creditNoteIssued).toBe(true);
+    expect(meta.creditNoteVatAmount).toBe('297.51');
+  });
+});
+
+/**
+ * JP5 customerRefund — Cr 21-1107 เจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (คำสั่งเจ้าของ
+ * 2026-08-08 ข้อ 2). ตั้งหนี้เงินคืนส่วนต่าง ณ วันยึด — เมื่อราคากลาง > ยอดปิด
+ * สัญญา ต้องคืนส่วนต่างให้ลูกค้า. บรรทัดนี้ถูก push เข้า `lines` ก่อนคำนวณ
+ * lossOrGain (the balance-equation plug) — ไม่มีสูตรใหม่, plug ดูดซับ
+ * customerRefund โดยอัตโนมัติ:
+ *   - gain branch: ถ้า customerRefund == gain เดิมพอดี → lossOrGain กลายเป็น 0
+ *     → ไม่มี Cr 41-1102 (กำไร) เหลืออยู่เลย (คืนให้ลูกค้าหมด ไม่ใช่กำไรบริษัท)
+ *   - loss branch: customerRefund เพิ่ม Cr เข้า lines ก่อน plug → lossOrGain
+ *     (loss) เพิ่มขึ้นเท่ากับ customerRefund พอดี → Dr 51-1102 เพิ่มขึ้นเท่ากัน
+ */
+describe('JP5 customerRefund — Cr 21-1107 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2)', () => {
+  beforeAll(async () => {
+    await setup();
+  });
+
+  it('gain branch: customerRefund เท่ากับ gain เดิมพอดี (1,810.00) → gain (41-1102) หายเป็น 0, Cr 21-1107 = 1,810.00', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // No accrual — all 12 deferred. GL invariant: remainingTotal = 18,190.00.
+    // repossessionValue 20,000 → gain 1,810.00 WITHOUT refund (same golden as
+    // "gain branch releases the FULL provision balance" above, minus provision).
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('20000.00'),
+      customerRefund: new Decimal('1810.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Cr 21-1107 = customerRefund exactly
+    expect(sumCr(lines, '21-1107').toFixed(2)).toBe('1810.00');
+    // Plug absorbs the refund exactly — no gain (41-1102) line at all
+    expect(sumCr(lines, '41-1102').toFixed(2)).toBe('0.00');
+    // No loss line either — lossOrGain landed on exactly 0
+    expect(sumDr(lines, '51-1102').toFixed(2)).toBe('0.00');
+    // No provision was seeded — no 11-2102 movement
+    expect(sumDr(lines, '11-2102').toFixed(2)).toBe('0.00');
+    expect(sumCr(lines, '51-1103').toFixed(2)).toBe('0.00');
+
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+  });
+
+  it('loss branch: customerRefund 500.00 เพิ่ม 51-1102 loss plug ขึ้น 500.00 พอดี (Scenario A + refund)', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+
+    // 2A × 4 — installments 1-4 accrued (mirrors Scenario A above).
+    for (let i = 0; i < 4; i++) {
+      await accrual.execute(insts[i].id);
+    }
+
+    // 2B × 3 — REAL full receipts on installments 1-3.
+    const installmentTotal = new Decimal('1515.83');
+    for (let i = 0; i < 3; i++) {
+      const inst = insts[i];
+      const payment = await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          dueDate: inst.dueDate,
+          amountDue: installmentTotal,
+          amountPaid: installmentTotal,
+          paidDate: new Date(),
+          paidAt: new Date(),
+          status: 'PAID',
+        },
+      });
+      await journal.createAndPost({
+        description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${c.id}`,
+        reference: payment.id,
+        metadata: {
+          tag: 'receipt',
+          contractId: c.id,
+          installmentScheduleId: inst.id,
+          paymentId: payment.id,
+        },
+        lines: [
+          { accountCode: '11-1101', dr: installmentTotal, cr: new Decimal(0), description: 'รับเงิน' },
+          {
+            accountCode: '11-2103',
+            dr: new Decimal(0),
+            cr: installmentTotal,
+            description: 'ล้างลูกหนี้ค้างชำระ',
+          },
+        ],
+      });
+    }
+
+    // PROV 30.32 — identical to Scenario A.
+    const provisionTmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    await provisionTmpl.execute({
+      contractId: c.id,
+      provisionAmount: new Decimal('30.32'),
+      period: '2025-04',
+    });
+
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+      customerRefund: new Decimal('500.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Cr 21-1107 = customerRefund exactly
+    expect(sumCr(lines, '21-1107').toFixed(2)).toBe('500.00');
+    // Loss plug = Scenario A golden (8,513.02) + refund (500.00) exactly
+    expect(sumDr(lines, '51-1102').toFixed(2)).toBe('9013.02');
+    // Everything else identical to Scenario A (unaffected by the refund line)
+    expect(sumCr(lines, '11-2103').toFixed(2)).toBe('1515.83');
+    expect(sumCr(lines, '11-2101').toFixed(2)).toBe('11333.36');
+    expect(sumCr(lines, '11-2105').toFixed(2)).toBe('793.32');
+    expect(sumDr(lines, '21-2102').toFixed(2)).toBe('793.32');
+    expect(sumCr(lines, '21-2101').toFixed(2)).toBe('793.32');
+    expect(sumDr(lines, '11-2106').toFixed(2)).toBe('4000.00');
+    expect(sumCr(lines, '41-1101').toFixed(2)).toBe('4000.00');
+    expect(sumDr(lines, '21-2101').toFixed(2)).toBe('99.17'); // CN
+    expect(sumDr(lines, '11-1101').toFixed(2)).toBe('5000.00');
+    expect(sumDr(lines, '11-2102').toFixed(2)).toBe('30.32'); // consume, unchanged
+    expect(sumCr(lines, '51-1103').toFixed(2)).toBe('0.00'); // no release
+
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    expect(totalDr.toFixed(2)).toBe('18935.83');
+  });
+});

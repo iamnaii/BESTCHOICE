@@ -1,6 +1,7 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
@@ -12,6 +13,12 @@ export interface ShopCollectSettlementInput {
   /** Amount to settle — must be ≤ outstanding 11-2107 balance + 0.01 tolerance. */
   amount: number | Decimal;
   postedById?: string;
+  /**
+   * Client-generated UUID ต่อการกดยืนยันหนึ่งครั้ง — dedupe เฉพาะ retry ของคำขอเดิม
+   * โดยไม่กลืนการโอนซ้ำยอดเท่ากันที่ตั้งใจ. ไม่ส่ง = fallback dedupe แบบเก่า
+   * (contractId+amount) เพื่อ backward compat กับ caller เดิม.
+   */
+  requestId?: string;
 }
 
 /**
@@ -30,8 +37,17 @@ export interface ShopCollectSettlementInput {
  *   - outstanding 11-2107 (ΣDr − ΣCr over metadata.contractId) must be > 0
  *   - amount must be ≤ outstanding + 0.01 (over-settle rejected)
  *
- * Idempotency: via metadata flow='shop-collect-settlement' + contractId + amount
- * (mirrors the existing template idempotency pattern across this codebase).
+ * Idempotency:
+ *   - Preferred: metadata flow='shop-collect-settlement' + requestId (client-
+ *     generated UUID, one per dialog-open). Dedupes ONLY retries of the exact
+ *     same request — two intentional remittances of the same amount (e.g. two
+ *     separate ฿2,500 transfers) each get their own JE.
+ *   - Legacy fallback (requestId omitted): metadata flow + contractId + amount
+ *     (mirrors the existing template idempotency pattern across this
+ *     codebase) — kept for backward compat with callers that haven't been
+ *     updated to send requestId yet. This fallback CANNOT distinguish two
+ *     intentional same-amount remittances from a retry — it swallows the
+ *     second one.
  */
 @Injectable()
 export class ShopCollectSettlementTemplate {
@@ -42,12 +58,54 @@ export class ShopCollectSettlementTemplate {
     private readonly prisma: PrismaService,
   ) {}
 
+  /**
+   * Look up an existing JE for this (contractId, requestId) pair and classify
+   * it against the incoming amount. Used by the up-front idempotency check in
+   * `execute` only — the post-P2002-race path does NOT call this (see the
+   * catch block around `createAndPost`: the caller's tx is already aborted by
+   * the time P2002 surfaces, so no further query on that connection can
+   * succeed).
+   */
+  private async findRequestIdDupe(
+    client: Prisma.TransactionClient | PrismaService,
+    contractId: string,
+    requestId: string,
+    amountStr: string,
+  ): Promise<
+    | { status: 'match'; entryNo: string }
+    | { status: 'mismatch'; bookedAmount: string }
+    | { status: 'none' }
+  > {
+    const dupe = await client.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
+          { metadata: { path: ['requestId'], equals: requestId } } as Prisma.JournalEntryWhereInput,
+          { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+        ],
+        deletedAt: null,
+      },
+    });
+    if (!dupe) return { status: 'none' };
+
+    const dupeMetadata = dupe.metadata as Record<string, unknown> | null;
+    const bookedAmount = dupeMetadata?.['amount'];
+    const isSameAmount = typeof bookedAmount === 'string' && bookedAmount === amountStr;
+
+    if (isSameAmount) return { status: 'match', entryNo: dupe.entryNumber };
+    return {
+      status: 'mismatch',
+      bookedAmount: typeof bookedAmount === 'string' ? bookedAmount : 'ไม่ทราบยอด',
+    };
+  }
+
   async execute(
     input: ShopCollectSettlementInput,
     outerTx?: Prisma.TransactionClient,
-  ): Promise<{ entryNo: string }> {
+  ): Promise<{ entryNo: string; deduped: boolean }> {
     const { contractId, depositAccountCode } = input;
     const amount = new Decimal(input.amount.toString());
+    const amountStr = amount.toFixed(2);
 
     // ── Validate deposit account ──────────────────────────────────────────────
     if (!(CASH_ACCOUNT_CODES as readonly string[]).includes(depositAccountCode)) {
@@ -57,6 +115,50 @@ export class ShopCollectSettlementTemplate {
     }
 
     const client = outerTx ?? this.prisma;
+
+    // ── requestId idempotency (เช็คก่อน guard อื่นทั้งหมด) ─────────────────────
+    // Checked BEFORE the outstanding computation so a retry that lands AFTER the
+    // 11-2107 balance has already been fully cleared (by the first call) still
+    // returns the original idempotent success instead of tripping the
+    // no-balance guard below.
+    //
+    // contractId is part of the match — a requestId reused on a DIFFERENT
+    // contract (client-side UUID collision, copy-pasted requestId across two
+    // dialog opens, etc.) must NOT match that other contract's JE. Without
+    // this, the second contract's settlement would be silently skipped,
+    // leaving its 11-2107 balance uncleared with no error surfaced.
+    //
+    // NOTE: this is a check-then-act race — two requests with the SAME
+    // requestId can both pass this check (neither JE exists yet) and both
+    // proceed to createAndPost below. The loser hits a raw Prisma unique
+    // violation (P2002 on journal_entries_idempotency_idx / ..._ref_unique)
+    // there. Because the only production caller wraps this whole call in a
+    // Serializable `$transaction`, that P2002 has already aborted the tx —
+    // there is no safe re-query left to run. The catch block around
+    // createAndPost throws a clean ConflictException (409) instead of trying
+    // to classify the race, so the loser gets an actionable error rather
+    // than a raw 500. See that catch block for details.
+    if (input.requestId) {
+      const result = await this.findRequestIdDupe(client, contractId, input.requestId, amountStr);
+
+      if (result.status === 'mismatch') {
+        // ยอดเปลี่ยนไปจากตอนโพสต์ JE เดิม (หรืออ่าน metadata ไม่ได้) — ห้ามกลืนเงียบ
+        // ต้องปฏิเสธ ไม่ใช่คืน success ของยอดเก่าให้ operator เข้าใจผิดว่ายอดใหม่บันทึกแล้ว
+        this.logger.warn(
+          `[SCS] requestId ${input.requestId} matched an existing JE but amount differs (booked=${result.bookedAmount}, incoming=${amountStr}) — rejecting`,
+        );
+        throw new ConflictException(
+          `คำขอนี้ถูกบันทึกไปแล้วที่ยอด ${result.bookedAmount} ฿ — กรุณาปิดหน้าต่างรับโอนแล้วเปิดใหม่ หากต้องการบันทึกยอดใหม่`,
+        );
+      }
+
+      if (result.status === 'match') {
+        this.logger.log(
+          `[SCS] duplicate requestId ${input.requestId} — JE ${result.entryNo} already posted, skipping`,
+        );
+        return { entryNo: result.entryNo, deduped: true };
+      }
+    }
 
     // ── Compute outstanding 11-2107 for this contract ─────────────────────────
     // Sum all POSTED JL lines (Dr − Cr) where parentJE.metadata.contractId = contractId
@@ -91,58 +193,132 @@ export class ShopCollectSettlementTemplate {
       );
     }
 
-    // ── Idempotency check ─────────────────────────────────────────────────────
-    const existing = await client.journalEntry.findFirst({
-      where: {
-        AND: [
-          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
-          { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
-          { metadata: { path: ['amount'], equals: amount.toFixed(2) } } as Prisma.JournalEntryWhereInput,
-        ],
-        deletedAt: null,
-      },
-    });
+    // ── Legacy idempotency (เฉพาะ caller เก่าที่ไม่ส่ง requestId) ─────────────
+    if (!input.requestId) {
+      const existing = await client.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
+            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+            { metadata: { path: ['amount'], equals: amount.toFixed(2) } } as Prisma.JournalEntryWhereInput,
+          ],
+          deletedAt: null,
+        },
+      });
 
-    if (existing) {
-      this.logger.log(
-        `[SCS] ShopCollectSettlement idempotency — JE ${existing.entryNumber} already exists for contract ${contractId} amount=${amount.toFixed(2)}, skipping`,
-      );
-      return { entryNo: existing.entryNumber };
+      if (existing) {
+        this.logger.log(
+          `[SCS] ShopCollectSettlement idempotency — JE ${existing.entryNumber} already exists for contract ${contractId} amount=${amount.toFixed(2)}, skipping`,
+        );
+        return { entryNo: existing.entryNumber, deduped: true };
+      }
     }
 
     const zero = new Decimal(0);
 
     // ── Post Dr cash / Cr 11-2107 ─────────────────────────────────────────────
-    const result = await this.journal.createAndPost(
-      {
-        description: `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
-        reference: `${contractId}:shop-collect-settlement:${amount.toFixed(2)}`,
-        metadata: {
-          tag: 'SCS',
-          flow: 'shop-collect-settlement',
-          contractId,
-          amount: amount.toFixed(2),
-          depositAccountCode,
-          idempotencyKey: `${contractId}:${amount.toFixed(2)}`,
+    // `reference` feeds a project-wide UNIQUE index on (referenceType,
+    // referenceId) — it must stay unique per JE. The legacy reference string
+    // (contractId+amount) is intentionally identical across two same-amount
+    // calls, which is exactly what the old (contractId, amount) dedupe relied
+    // on. Once requestId is present, fold it into `reference` too so two
+    // intentionally-equal-amount remittances don't collide on that index.
+    try {
+      const result = await this.journal.createAndPost(
+        {
+          description: `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
+          reference: input.requestId
+            ? `${contractId}:shop-collect-settlement:${input.requestId}`
+            : `${contractId}:shop-collect-settlement:${amountStr}`,
+          metadata: {
+            tag: 'SCS',
+            flow: 'shop-collect-settlement',
+            contractId,
+            amount: amountStr,
+            depositAccountCode,
+            ...(input.requestId ? { requestId: input.requestId } : {}),
+            idempotencyKey: input.requestId
+              ? `${contractId}:${input.requestId}`
+              : `${contractId}:${amountStr}`,
+          },
+          lines: [
+            {
+              accountCode: depositAccountCode,
+              dr: amount,
+              cr: zero,
+              description: `รับโอนจากหน้าร้าน ${amountStr} ฿`,
+            },
+            {
+              accountCode: '11-2107',
+              dr: zero,
+              cr: amount,
+              description: 'ล้างลูกหนี้-หน้าร้าน (shop-collect)',
+            },
+          ],
         },
-        lines: [
-          {
-            accountCode: depositAccountCode,
-            dr: amount,
-            cr: zero,
-            description: `รับโอนจากหน้าร้าน ${amount.toFixed(2)} ฿`,
-          },
-          {
-            accountCode: '11-2107',
-            dr: zero,
-            cr: amount,
-            description: 'ล้างลูกหนี้-หน้าร้าน (shop-collect)',
-          },
-        ],
-      },
-      outerTx,
-    );
+        outerTx,
+      );
 
-    return { entryNo: result.entryNumber };
+      return { entryNo: result.entryNumber, deduped: false };
+    } catch (err) {
+      // Race: two submissions with the SAME requestId both passed the
+      // up-front dedupe check above (neither JE existed yet) and both
+      // reached createAndPost. The winner posts; the loser hits a raw
+      // Prisma unique violation (P2002 on journal_entries_idempotency_idx
+      // or journal_entries_ref_unique) here.
+      //
+      // The ONLY production caller (ContractPaymentService.shopCollectSettlement)
+      // always wraps this call in a Serializable `$transaction` — by the time
+      // createAndPost throws P2002, Postgres has already aborted that
+      // transaction (25P02 "current transaction is aborted, commands ignored
+      // until end of transaction block"). ANY further query on the SAME
+      // client (including a re-query trying to classify the race as
+      // match/mismatch) will itself throw — there is no DB access left to
+      // recover with. Do NOT attempt one (precedent:
+      // payroll-remittance.template.ts `postWithIdempotencyTranslation`) —
+      // throw a clean, user-facing exception immediately instead. Throwing
+      // needs no DB access, so it works inside the aborted tx and propagates
+      // as a 409 instead of an unhandled 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && input.requestId) {
+        this.logger.warn(
+          `[SCS] race on requestId ${input.requestId} (contract ${contractId}) — P2002 inside an aborted tx, rejecting with 409 instead of re-querying`,
+        );
+        throw new ConflictException(
+          'รายการนี้กำลังถูกบันทึกอยู่ (กดยืนยันซ้ำพร้อมกัน) — กรุณารอสักครู่ แล้วตรวจสอบรายการก่อนลองใหม่',
+        );
+      }
+
+      // Empirically observed 2026-08-08 via a live 2-Postgres-connection race
+      // test (shop-collect-settlement.integration.spec.ts): because the only
+      // production caller uses SERIALIZABLE isolation, two concurrent
+      // shopCollectSettlement calls on the SAME contract don't always collide
+      // on the P2002 unique index first — Postgres SSI can detect the
+      // read-write dependency (both transactions read the same 11-2107
+      // journal_line predicate set, then one inserts a new row matching it)
+      // and abort the loser with a 40001 serialization failure BEFORE it ever
+      // reaches the unique-index insert. Prisma surfaces that as P2034
+      // ("Transaction failed due to a write conflict or a deadlock. Please
+      // retry your transaction."). This is a genuine transient DB conflict,
+      // not a business-logic duplicate, so it applies regardless of whether
+      // requestId was supplied — translate it into the same clean 409 so the
+      // client can safely retry instead of seeing a raw Prisma error.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        this.logger.warn(
+          `[SCS] write conflict (P2034) on contract ${contractId} — rejecting with 409, client should retry`,
+        );
+        // SentryExceptionFilter only captures status >= 500 — a 409 like this
+        // would otherwise be invisible. A spike of these could mean genuine
+        // lock contention worth investigating, so surface it explicitly.
+        Sentry.captureMessage('[SCS] P2034 write-conflict translated to 409', {
+          level: 'warning',
+          extra: { contractId, requestId: input.requestId ?? null, amount: amount.toFixed(2) },
+        });
+        throw new ConflictException(
+          'มีการบันทึกรายการนี้พร้อมกันจากอีกจุดหนึ่ง (write conflict) — กรุณาลองใหม่อีกครั้ง',
+        );
+      }
+
+      throw err;
+    }
   }
 }

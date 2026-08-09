@@ -4,7 +4,7 @@
 - TFRS for NPAEs (มาตรฐานรายงานทางการเงินสำหรับกิจการที่ไม่มีส่วนได้เสียสาธารณะ)
 - **Full Accrual TFRS 15** — ดอกเบี้ยรับรู้ตามงวด ผ่าน 11-2106 Unearned Interest (Contra Asset)
 - **Accrual VAT** — ตั้งภาษีวันเปิดสัญญา (11-2105/21-2102) ล้างทีละงวดเข้า 21-2101
-- Single **FINANCE chart** (110 accounts ณ 2026-08-03 — ตัวเลขนี้เดินตาม CSV ไม่ใช่ค่าคงที่; เดิม 99 ตอน Phase A.4) — SHOP-side deferred to A.5
+- Single **FINANCE chart** (111 accounts ณ 2026-08-08 — ตัวเลขนี้เดินตาม CSV ไม่ใช่ค่าคงที่; เดิม 99 ตอน Phase A.4, 110 ก่อน 21-1107 เพิ่ม 2026-08-08) — SHOP-side deferred to A.5
 - Source of truth: `docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md` + CSV at `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/`
 
 ## Phase A.0-A.3 Status
@@ -13,7 +13,7 @@ Do NOT reference old A.0-A.3 JE templates, chart codes, or journal service metho
 
 ---
 
-## Chart of Accounts (110 accounts ณ 2026-08-03 — FINANCE only)
+## Chart of Accounts (111 accounts ณ 2026-08-08 — FINANCE only)
 
 Full list lives in `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv`.
 Key codes referenced by JE templates:
@@ -40,6 +40,7 @@ Key codes referenced by JE templates:
 | 21-1101 | เจ้าหนี้-หน้าร้าน (ยอดจัด) |
 | 21-1102 | เจ้าหนี้ค่าคอม-หน้าร้าน |
 | 21-1103 | เงินรับล่วงหน้า (Advance from customer) |
+| 21-1107 | เจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (ตั้ง ณ วันยึดเมื่อราคากลาง > ยอดปิด — JP5; ล้างเมื่อจ่ายคืนผ่าน RefundPayoutTemplate) (prod: ต้องรัน seed:coa หลัง deploy — บัญชีใหม่ไม่ได้ seed อัตโนมัติใน pipeline) |
 | 21-2101 | ภาษีขาย ภ.พ.30 (VAT Output — settled) |
 | 21-2102 | ภาษีขายรอเรียกเก็บ (VAT Deferred Output) |
 | 21-2103 | VAT บังคับ-ลูกหนี้ค้าง 60 วัน |
@@ -75,7 +76,9 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 | `PaymentReceipt2BTemplate` | Payment received (single) | Dr cash / Cr 11-2101 + 11-2103 + 21-2101 cleared from 21-2102 |
 | `PaymentReceipt2BSplitTemplate` | Partial payment | As above with pro-rata split |
 | `EarlyPayoffJP4Template` | Early payoff | Includes Dr 52-1106 (discount) + reverse remaining 11-2106 |
-| `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102 |
+| `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; optional `input.customerRefund` → Cr 21-1107 (เงินคืนส่วนต่างลูกค้า, คำสั่งเจ้าของ 2026-08-08 ข้อ 2) pushed BEFORE the loss/gain plug is computed — the plug absorbs it automatically (gain shrinks/loss grows by exactly the refund, no separate formula). Paid out later via `RefundPayoutTemplate` |
+| `RefundPayoutTemplate` | Manual — `POST /repossessions/:id/refund-payment` | Dr 21-1107 / Cr depositAccountCode — clears the 21-1107 balance JP5 parked (mirrors `ShopCollectSettlementTemplate`'s outstanding/idempotency pattern, scoped to 21-1107 instead of 11-2107) |
+| `RefundWaiveTemplate` | Manual — `POST /repossessions/:id/refund-waive` | Dr 21-1107 / Cr 41-1102 — ล้างยอด 21-1107 คงเหลือทั้งหมด (ไม่มี amount input) เข้ารายได้จากการยึดสินค้า เมื่อเจ้าของตัดสินใจ "ไม่คืนเงิน" ส่วนต่าง (คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม) |
 | `RescheduleJP6Template` | Reschedule (6a/6b variants) | Reclassify overdue to 21-1103 advance |
 | `Vat60dayMandatoryTemplate` | Daily cron 02:00 BKK | Mandatory VAT on 60-day overdue installments |
 | `Vat60dayReversalTemplate` | Payment after 60-day flag | Reversal when overdue payment received |
@@ -168,10 +171,10 @@ npx prisma migrate deploy
 
 For fresh dev environments (`prisma migrate reset`): ordering is automatic — no manual wipe needed.
 
-Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds ผัง FINANCE ทั้งชุดจาก CPA CSV (ปัจจุบัน 110 บัญชี).
+Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds ผัง FINANCE ทั้งชุดจาก CPA CSV (ปัจจุบัน 111 บัญชี (ณ 2026-08-08 หลังเพิ่ม 21-1107)).
 
 After wipe + migrate, verify (P3-SP5 DEEP fix C4 — counts split by company):
-1. `SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';` — expected 110 (FINANCE, ณ 2026-08-03 หลังลบ 42-1106/42-1107 — เลขนี้เดินตาม `finance-coa.csv` เสมอ อย่าจำเป็นค่าคงที่ ให้นับจาก CSV)
+1. `SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';` — expected 111 (ณ 2026-08-08 — เลขนี้เดินตาม finance-coa.csv เสมอ) (FINANCE — อย่าจำเป็นค่าคงที่ ให้นับจาก CSV)
 2. `SELECT COUNT(*) FROM chart_of_accounts WHERE code LIKE 'S%';` — expected ~56 (SHOP, P3-SP5)
 3. Smoke one contract end-to-end via UI
 4. Run TB report (`scope=FINANCE`) and confirm it balances
@@ -245,6 +248,76 @@ NEVER `totalAmount × whtPercent` (would double-tax the VAT). This applies unifo
 Reference: ป.รัษฎากร — WHT is calculated on the net taxable income, excluding VAT.
 
 ---
+
+## Payroll — แยกฝั่ง SHOP/FINANCE (คำสั่งเจ้าของ 2026-08-06)
+
+Spec: `docs/superpowers/specs/2026-08-06-payroll-shop-side-design.md` ·
+Runbook: `docs/accounting/payroll-shop-rollout-2026-08.md` ·
+E2E: `apps/api/src/modules/expense-documents/__tests__/payroll-shop-flow.integration.spec.ts`
+
+- ใบเงินเดือน 1 ใบสังกัดฝั่งเดียวผ่าน `PayrollDetail.entityScope`:
+  **SHOP** (default — พนักงานสาขา) | **FINANCE** (ส่วนกลาง). UI มี toggle "กลุ่มพนักงาน".
+- `PayrollTemplate` resolve บัญชีผ่าน AccountRoleMap ตาม scope:
+  | | SHOP | FINANCE |
+  |---|---|---|
+  | เงินเดือน (Dr) | `shop_payroll_expense` → S52-1201 | `payroll_expense` → 53-1101 |
+  | ปกส.นายจ้าง (Dr) | `shop_payroll_sso_expense` → S52-1205 | `payroll_sso_expense` → 53-1102 |
+  | ภ.ง.ด.1 ค้างจ่าย (Cr) | `shop_wht_payroll` → S21-3101 | `wht_payroll` → 21-3101 |
+  | ปกส.ค้างนำส่ง (Cr×2) | S21-3105 / S21-3106 | 21-3105 / 21-3106 |
+  | เงินสด/ธนาคาร (Cr) | S11-1101..1103 / S11-1201..1202 | 11-1101..1103 / 11-1201..1203 |
+  `companyId` = ฝั่งของเอกสาร (แก้บั๊ก B2 เดิม: FINANCE codes + SHOP companyId →
+  เงินเดือนหายจาก TB/P&L ทั้งสอง scope). Period guard ตรวจ AccountingPeriod ของฝั่งนั้น.
+- **Custom income whitelist ต่อ scope** (V17): FINANCE `custom_income_accounts_whitelist`
+  default `["53-1103","53-1104"]` (แก้ B1 — OT = 53-1103 ค่าล่วงเวลา ไม่ใช่ 53-1105
+  ค่าอบรม); SHOP `custom_income_accounts_whitelist_shop` default `["S52-1202","S52-1204"]`.
+  UI ดึงจาก `GET /expense-documents/payroll/meta?scope=` — เลิก hardcode.
+- **V19**: รหัสรายการหักต้องมีจริงใน CoA + prefix ตรงฝั่ง (S สำหรับ SHOP).
+- **กันซ้ำ**: (สาขา + งวด + ฝั่ง) ซ้ำ → reject โดย advisory lock ใน tx (ใบ VOID ไม่นับ);
+  พนักงาน (userId) ซ้ำแถวในใบเดียว → reject + DB unique `(payroll_id, user_id)`.
+- **สิทธิ**: อนุมัติก่อนจ่ายผ่าน `approval_enabled` + `approval_required_doc_types`
+  (default `['PAYROLL']`) + `approvers_list`; ฟอร์มเปลี่ยนปุ่มเป็น "บันทึก & ส่งขออนุมัติ".
+  เห็นเงินเดือนข้ามสาขา: เฉพาะ CROSS_BRANCH_ROLES — `GET /expense-documents/:id`
+  บังคับ branch scope แล้ว (BM เห็นเฉพาะสาขาตัวเอง).
+- **ภ.ง.ด.1** (`previewPayrollWHT` เขียนใหม่ 2026-08-06): อ่านจากเอกสาร PAYROLL ที่
+  POSTED โดยตรง (ไม่ใช่เดิน JE 21-3101) → พนักงานภาษี 0 ปรากฏครบ, ใบ VOID หลุดออก
+  อัตโนมัติ, gross = ฐาน + Σ customIncome(isTaxable). `finance-tax` WHT_PND1_ACCOUNTS
+  รวม `S21-3101` (นิติบุคคลเดียว ยื่นรวม). หน้าจอ `/finance/wht-report` ต่อ route แล้ว.
+- **Wipe**: `npm --prefix apps/api run wipe:payroll` (DRY_RUN + guards ชุดเดียวกับ
+  wipe-accounting) — ล้างใบเงินเดือนเก่าที่ลงผิดผังทั้งหมดตามคำสั่งเจ้าของ.
+- **รอบ 2-3 (2026-08-06 "ทำเลยสิ") — เสร็จแล้ว**
+  (spec: `docs/superpowers/specs/2026-08-06-payroll-round2-3-design.md`):
+  - **นำส่ง per-book (D1)**: `PayrollRemittanceTemplate` — SSO `Dr <sso_employee>
+    + Dr <sso_employer> / Cr <cash ฝั่งนั้น>`, PND1 `Dr <wht_payroll> / Cr <cash>`;
+    ยอด = Σ PayrollLine ของใบ POSTED ในงวด+ฝั่ง (ตรงแบบยื่น), guard GL คุ้มยอด +
+    idempotency `sso-remit:<scope>:<period>` / `pnd1-remit:...` + period-open ที่วันจ่าย.
+    จ่ายรวมฝั่งเดียว = ต้องมีบัญชี interco ฝั่ง SHOP → **รอ CPA** (คำถามเดียวกับ
+    interco spec §11) — ห้ามเดา JE. Endpoints `POST /tax/payroll-remit/{sso,pnd1}`
+    (OWNER/FM), UI ปุ่มนำส่งบน `/finance/sso-report`.
+  - **สปส.1-10**: `GET /tax/sso-1-10-preview` + XLSX `form=SSO110` + หน้า
+    `/finance/sso-report` (เฉพาะแถว ssoEmployee > 0, นายจ้าง = ลูกจ้างตามกฎหมาย).
+  - **ภ.ง.ด.1ก + 50 ทวิ**: `GET /tax/pnd1-annual-preview?year` (group ต่อคนทั้งปี,
+    gross รวมรายได้พิเศษที่เสียภาษี, + `annualWageTotal` อ้างอิง กท.20ก) + XLSX
+    `form=PND1A` + หน้า `/finance/wht-annual` พิมพ์ใบ 50 ทวิ ต่อคน (ผู้จ่าย =
+    FINANCE CompanyInfo — นิติบุคคลจดทะเบียนเดียว).
+  - **แก้ไขร่าง (R3-2)**: `PATCH /expense-documents/:id/payroll` — DRAFT เท่านั้น,
+    validator ชุดเดียวกับ create (`preparePayrollInput` shared), dup-งวด guard
+    ยกเว้นตัวเอง, ลบ+สร้าง PayrollDetail ใหม่ (pattern interco updateBatch).
+  - **คัดลอกงวดก่อน (R3-1)**: ปุ่มในฟอร์ม — client ดึงใบล่าสุดของสาขา (findOne)
+    มาเติมทั้ง scope+lines; server re-validate ทุกอย่างตอนบันทึกตามปกติ.
+  - **ไฟล์โอนธนาคาร (R3-3)**: `GET /expense-documents/:id/bank-transfer.csv`
+    (จาก `EmployeeProfile.bankName/bankAccountNo`; แถวไม่มีข้อมูล → ข้าม +
+    `X-Skipped-Lines`).
+  - **WHT แนะนำ (R3-4)**: `apps/web/src/utils/pit-withholding.ts` — ขั้นบันได ม.48
+    + ลดหย่อนมาตรฐาน (ส่วนตัว 60k, ค่าใช้จ่าย 50%≤100k, ปกส.จริง) — **advisory
+    เท่านั้น** แสดงใต้ช่อง WHT กดใช้ได้ ไม่ block.
+  - **CI**: เพิ่ม step `Test Web` (เทสต์ web ไม่เคยรันใน pipeline ใดมาก่อน).
+- **คำตัดสินเจ้าของ 2026-08-06 (ปิดประเด็น — อย่าเสนอซ้ำ)**:
+  - ส่งสลิปให้พนักงานทาง LINE/email — **ไม่ทำ** (เจ้าของ: "ไม่ต้องส่ง"; พิมพ์สลิป
+    กระดาษจาก PaymentVoucherPage ตามเดิม)
+  - PDPA retention `payroll_lines` — **ไม่ลบทิ้ง** (เจ้าของ: เก็บถาวร; สอดคล้อง
+    พ.ร.บ.การบัญชี เก็บเอกสาร ≥5 ปี — ไม่ต้องสร้าง retention cron)
+- **ยังค้างจริง**: กท.20ก แบบฟอร์มเต็ม (มี annualWageTotal อ้างอิงแล้ว),
+  จ่ายนำส่งรวมฝั่งเดียว (รอ CPA — บัญชี interco ฝั่ง SHOP, interco spec §11).
 
 ## SSO accounts (P0-3 — Fix Report v1.0)
 
@@ -840,7 +913,7 @@ Module: `apps/api/src/modules/other-income/`
 Frontend pages: `apps/web/src/pages/other-income/`
 Routes: `/other-income`, `/other-income/new`, `/other-income/:id`, `/other-income/:id/receipt`, `/other-income/daily-sheet`
 
-Key accounts (from FINANCE chart — 110 บัญชี ณ 2026-08-03):
+Key accounts (from FINANCE chart — 111 บัญชี ณ 2026-08-08):
 - `42-1102` — ดอกเบี้ยเงินฝาก (Bank interest income — exempt from VAT, subject to 15% WHT)
 - `42-1103` — ค่าปรับชำระล่าช้า (Late fee — usually auto-posted via `PaymentReceipt2BTemplate` together with installment payment. Also bookable here for "late-fee-only" scenarios where customer pays just the penalty without settling the installment. **Watch for duplicate-entry risk**: if booked here, do NOT also pass `lateFee` on the next installment Payment for the same month, or 42-1103 will be credited twice.)
 - `42-1104` — รายได้จากการหักค่าจ้าง (Payroll deduction — Pattern B deferred until payroll module exists)

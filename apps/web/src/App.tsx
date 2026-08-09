@@ -205,6 +205,8 @@ const IntercompanyReportPage = lazy(() => import('@/pages/finance/IntercompanyRe
 // P4-SP2 — Tax UI pages (finance-tax endpoints + e-receipt config)
 const VatPage = lazy(() => import('@/pages/finance/VatPage'));
 const WhtPage = lazy(() => import('@/pages/finance/WhtPage'));
+const SsoReportPage = lazy(() => import('@/pages/finance/SsoReportPage'));
+const WhtAnnualPage = lazy(() => import('@/pages/finance/WhtAnnualPage'));
 const ETaxPage = lazy(() => import('@/pages/finance/ETaxPage'));
 const VatAutoJournalPage = lazy(() => import('@/pages/finance/VatAutoJournalPage'));
 const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
@@ -738,7 +740,7 @@ function App() {
           <Route
             path="/repossessions"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <RepossessionsPage />
               </ProtectedRoute>
             }
@@ -909,6 +911,33 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <WhtPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* ภ.ง.ด.1 รายพนักงาน + export XLSX — เดิม lazy-import ไว้แต่ไม่เคยต่อ
+              route ทำให้กดจาก UI ไม่ได้เลย (payroll-shop-side design §8) */}
+          <Route
+            path="/finance/wht-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <WhtReportPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Payroll round 2 (2026-08-06) — สปส.1-10 + ภ.ง.ด.1ก/50 ทวิ */}
+          <Route
+            path="/finance/sso-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <SsoReportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/wht-annual"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <WhtAnnualPage />
               </ProtectedRoute>
             }
           />
@@ -1279,18 +1308,7 @@ function App() {
           {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
           {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}
           {/* /finance/general-ledger — handled by SP2 GeneralLedgerPage route above (line ~780) */}
-          <Route
-            path="/finance/bank-accounts"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="บัญชีธนาคาร"
-                  trackingSP="SP6"
-                  eta="ภายในไตรมาส 4/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
+          {/* /finance/bank-accounts — handled by SP6 BankAccountsPage route above */}
           <Route
             path="/settings/brands"
             element={

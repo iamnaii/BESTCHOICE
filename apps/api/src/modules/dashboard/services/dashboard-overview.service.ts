@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { bangkokStartOfDay } from '../../../utils/date.util';
 
 @Injectable()
 export class DashboardOverviewService {
@@ -296,6 +297,85 @@ export class DashboardOverviewService {
       interestIncome: Math.round(interestIncome.toNumber()),
       lateFeeIncome: new Prisma.Decimal(lateFeeAgg._sum.lateFee ?? 0).toNumber(),
       paymentCount: paidPayments.length,
+    };
+  }
+
+  /**
+   * Cash inflow forecast for the fin-zone dashboard widget: unpaid installments
+   * bucketed by due date relative to today (Asia/Bangkok day boundary).
+   *
+   * Outstanding per installment uses the FEE-FIRST convention (PR #1313 —
+   * same formula as `feeNettedOutstanding` in compute-cn-breakdown.ts):
+   * collected cash pays the late fee before the installment base, so the
+   * base outstanding nets the fee portion out of amountPaid.
+   *
+   * Deliberate deviations from the canonical util (forecast-only metric, NOT
+   * an ECL/CN input — anti-drift guard: cash-forecast-sql.integration.spec.ts):
+   * - The `installmentTotal` ceiling is omitted: deriving it needs the full
+   *   per-contract CPA rounding of computeInstallmentBreakdown, and without it
+   *   an anomalous amountDue > installmentTotal row over-forecasts by satang
+   *   instead of corrupting a posted figure.
+   * - The status list mirrors DUE_STATUS_MAP (compute-cn-breakdown.ts) but has
+   *   no compile-time exhaustiveness: a future 5th PaymentStatus would be
+   *   EXCLUDED here (conservative) — update both places together.
+   */
+  async getCashForecast() {
+    const todayStart = bangkokStartOfDay();
+    const plus7 = new Date(todayStart.getTime() + 7 * 86_400_000);
+    const plus30 = new Date(todayStart.getTime() + 30 * 86_400_000);
+
+    const rows = await this.prisma.$queryRaw<
+      { bucket: string; count: number; outstanding: Prisma.Decimal }[]
+    >`
+      SELECT
+        CASE
+          WHEN p.due_date < ${todayStart} THEN 'overdue'
+          WHEN p.due_date < ${plus7} THEN 'next7'
+          ELSE 'next8to30'
+        END AS bucket,
+        COUNT(*)::int AS count,
+        COALESCE(SUM(
+          GREATEST(
+            p.amount_due - GREATEST(
+              p.amount_paid - CASE
+                WHEN p.late_fee_waived THEN 0
+                ELSE LEAST(p.amount_paid, p.late_fee)
+              END,
+              0
+            ),
+            0
+          )
+        ), 0) AS outstanding
+      FROM payments p
+      JOIN contracts c ON c.id = p.contract_id
+      WHERE p.deleted_at IS NULL
+        AND c.deleted_at IS NULL
+        AND p.status::text IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
+        AND c.status::text IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
+        AND p.due_date < ${plus30}
+      GROUP BY 1
+    `;
+
+    const byBucket = new Map(rows.map((r) => [r.bucket, r]));
+    const amountOf = (key: string) =>
+      new Prisma.Decimal(byBucket.get(key)?.outstanding ?? 0).toDecimalPlaces(2);
+    const countOf = (key: string) => byBucket.get(key)?.count ?? 0;
+
+    return {
+      asOf: todayStart.toISOString(),
+      overdue: {
+        count: countOf('overdue'),
+        amount: amountOf('overdue').toNumber(),
+      },
+      next7Days: {
+        count: countOf('next7'),
+        amount: amountOf('next7').toNumber(),
+      },
+      // Cumulative: everything due within the next 30 days (7-day window included)
+      next30Days: {
+        count: countOf('next7') + countOf('next8to30'),
+        amount: amountOf('next7').add(amountOf('next8to30')).toNumber(),
+      },
     };
   }
 }

@@ -203,6 +203,15 @@ async function main() {
     { key: 'exchange_market_check_pct', value: '15', label: 'เกณฑ์ตรวจราคาตลาด — ราคารับซื้อต่ำกว่า basePrice เกิน % นี้ → บังคับ REVIEW' },
     // D1 (2026-06-25) — overpay auto-route ceiling: multiplier × installment amountDue
     { key: 'overpay_advance_auto_max_multiplier', value: '2', label: 'เพดานรับล่วงหน้าอัตโนมัติ (× ยอดงวด) — เกินกว่านี้ต้องยืนยัน OVERPAY_ADVANCE' },
+    // คำสั่งเจ้าของ 2026-08-06 — เงินเดือนต้องผ่านการอนุมัติก่อนจ่าย (สิทธิผ่าน
+    // approvers_list + OWNER). approval_required_doc_types default ['PAYROLL']
+    // อยู่แล้วใน approval-config.util — เปิด master switch ที่นี่. Prod เปิดผ่าน
+    // SystemConfig row ตาม runbook (docs/accounting/payroll-shop-rollout-2026-08.md).
+    { key: 'approval_enabled', value: 'true', label: 'เปิด workflow ขออนุมัติเอกสารรายจ่าย (เงินเดือนต้องอนุมัติเสมอ)' },
+    // Payroll custom-income whitelists (per scope — B1 fix: OT = 53-1103).
+    // Migration 20260990000000 seeds these on existing DBs; dev reset seeds here.
+    { key: 'custom_income_accounts_whitelist', value: '["53-1103","53-1104"]', label: 'C2/V17 — บัญชี Custom Income ใบเงินเดือน FINANCE (OT 53-1103 + โบนัส 53-1104)' },
+    { key: 'custom_income_accounts_whitelist_shop', value: '["S52-1202","S52-1204"]', label: 'V17 — บัญชี Custom Income ใบเงินเดือน SHOP (OT S52-1202 + โบนัส S52-1204)' },
   ];
 
   for (const c of configs) {

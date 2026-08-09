@@ -274,6 +274,41 @@ export default function ExpenseDetailPage() {
                   <div className="text-xl font-semibold leading-snug">
                     {money(doc.netPayment ?? doc.totalAmount)}
                   </div>
+                  {/* R3-3 (2026-08-06) — ไฟล์โอนเงินเดือนเข้าธนาคาร (จากเลขบัญชี
+                      ในทะเบียนพนักงาน). แถวที่ไม่มีข้อมูลธนาคารถูกข้าม + แจ้งจำนวน. */}
+                  {doc.documentType === 'PAYROLL' && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await api.get(
+                            `/expense-documents/${doc.id}/bank-transfer.csv`,
+                            { responseType: 'blob' },
+                          );
+                          const skipped = parseInt(
+                            (res.headers['x-skipped-lines'] as string) ?? '0',
+                            10,
+                          );
+                          const url = URL.createObjectURL(res.data as Blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `bank-transfer-${doc.number}.csv`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          if (skipped > 0) {
+                            toast.warning(
+                              `ข้าม ${skipped} คนที่ไม่มีเลขบัญชีธนาคารในทะเบียนพนักงาน — เพิ่มได้ที่ ผู้ใช้ → HR/เงินเดือน`,
+                            );
+                          }
+                        } catch {
+                          toast.error('ดาวน์โหลดไฟล์โอนธนาคารไม่สำเร็จ');
+                        }
+                      }}
+                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent"
+                    >
+                      ไฟล์โอนธนาคาร (CSV)
+                    </button>
+                  )}
                 </div>
               </div>
 

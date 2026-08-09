@@ -11,7 +11,9 @@ const VAT_INPUT_BEHALF_ACCOUNTS = ['11-2104'];
 const ALL_VAT_ACCOUNTS = ['21-2101', '21-2102', '11-4101', '11-2104', '11-2105'];
 
 // WHT accounts
-const WHT_PND1_ACCOUNTS = ['21-3101'];
+// S21-3101 = SHOP-scope payroll (คำสั่งเจ้าของ 2026-08-06) — นิติบุคคลเดียวกัน
+// ภ.ง.ด.1 ยื่นรวม จึงรวมทั้งสองบัญชีในรายงานเดียว.
+const WHT_PND1_ACCOUNTS = ['21-3101', 'S21-3101'];
 const WHT_PND3_ACCOUNTS = ['21-3102'];
 const WHT_PND53_ACCOUNTS = ['21-3103'];
 const ALL_WHT_ACCOUNTS = [...WHT_PND1_ACCOUNTS, ...WHT_PND3_ACCOUNTS, ...WHT_PND53_ACCOUNTS];

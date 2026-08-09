@@ -414,7 +414,7 @@ describe('TaxService.previewPND1 — payroll WHT from 21-3101', () => {
     prisma.expenseDocument.findMany.mockResolvedValue([]);
   });
 
-  it('returns empty result when no PAYROLL journal lines exist', async () => {
+  it('returns empty result when no POSTED payroll documents exist', async () => {
     const result = await service.previewPND1('co-1', 2026, 5);
     expect(result.items).toEqual([]);
     expect(result.whtTotal.toString()).toBe('0');
@@ -422,18 +422,7 @@ describe('TaxService.previewPND1 — payroll WHT from 21-3101', () => {
     expect(result.form).toBe('PND1');
   });
 
-  it('aggregates PayrollLine items from PAYROLL ExpenseDocument', async () => {
-    prisma.journalLine.findMany.mockResolvedValue([
-      {
-        credit: Dec('1500'),
-        journalEntry: {
-          id: 'je-pr-1',
-          postedAt: new Date('2026-05-31'),
-          description: 'Payroll May',
-          metadata: { flow: 'expense-payroll', documentId: 'pr-doc-1' },
-        },
-      },
-    ]);
+  it('aggregates PayrollLine items — includes zero-WHT employees + taxable custom income in gross (2026-08-06 rewrite)', async () => {
     prisma.expenseDocument.findMany.mockResolvedValue([
       {
         id: 'pr-doc-1',
@@ -447,12 +436,23 @@ describe('TaxService.previewPND1 — payroll WHT from 21-3101', () => {
               employeeTaxId: '1234567890123',
               baseSalary: Dec('30000'),
               whtAmount: Dec('1000'),
+              // โบนัสที่เสียภาษี — ต้องรวมเข้า gross (ม.40(1))
+              customIncome: [{ amount: Dec('5000') }],
             },
             {
               employeeName: 'นางสาว ข',
               employeeTaxId: '1234567890124',
               baseSalary: Dec('15000'),
               whtAmount: Dec('500'),
+              customIncome: [],
+            },
+            {
+              // ภาษี 0 — ภ.ง.ด.1 ต้องแสดงผู้มีเงินได้ทุกคน (เดิมหายทั้งคน)
+              employeeName: 'นาย ค',
+              employeeTaxId: '1234567890125',
+              baseSalary: Dec('12000'),
+              whtAmount: Dec('0'),
+              customIncome: [],
             },
           ],
         },
@@ -461,40 +461,47 @@ describe('TaxService.previewPND1 — payroll WHT from 21-3101', () => {
 
     const result = await service.previewPND1('co-1', 2026, 5);
 
-    expect(result.items).toHaveLength(2);
+    expect(result.items).toHaveLength(3);
     expect(result.items[0].employeeName).toBe('นาย ก');
-    expect(result.items[0].gross.toString()).toBe('30000');
+    expect(result.items[0].gross.toString()).toBe('35000'); // 30000 + โบนัส 5000
     expect(result.items[0].whtAmount.toString()).toBe('1000');
+    expect(result.items[2].employeeName).toBe('นาย ค');
+    expect(result.items[2].whtAmount.toString()).toBe('0');
     expect(result.whtTotal.toString()).toBe('1500');
-    expect(result.grossIncome.toString()).toBe('45000');
-    expect(result.count).toBe(2);
+    expect(result.grossIncome.toString()).toBe('62000'); // 35000 + 15000 + 12000
+    expect(result.count).toBe(3);
     expect(result.items[0].payrollDocNumber).toBe('PR-20260531-0001');
   });
 
-  it('scopes by branch — branches in other companies excluded', async () => {
+  it('is company-wide — นิติบุคคลเดียว ภ.ง.ด.1 ยื่นรวม: FINANCE selection (0 branches) must NOT come back empty', async () => {
     prisma.branch.findMany.mockResolvedValue([]);
-    const result = await service.previewPND1('co-empty', 2026, 5);
-    expect(prisma.journalLine.findMany).not.toHaveBeenCalled();
-    expect(result.count).toBe(0);
-    expect(result.whtTotal.toString()).toBe('0');
+    await service.previewPND1('co-finance', 2026, 5);
+    // เดิม gate ด้วย getBranchIds(companyId) → เลือก FINANCE (ไม่มี branch) ได้
+    // รายงานว่างตลอดกาล ทั้งที่มี payroll ฝั่ง FINANCE จริง (review fix 2026-08-06)
+    expect(prisma.expenseDocument.findMany).toHaveBeenCalled();
+    const call = prisma.expenseDocument.findMany.mock.calls[0][0];
+    expect(call.where.branchId).toBeUndefined();
   });
 
-  it('Critical #1 regression: query filters by metadata.flow string_starts_with "expense-payroll" (matches payroll.template.ts)', async () => {
+  it('sources from POSTED PAYROLL documents (status filter excludes VOIDED — เดิม JE ของใบที่ VOID แล้วยังโผล่ใน ภ.ง.ด.1) and selects only taxable custom income', async () => {
     await service.previewPND1('co-1', 2026, 5);
-    expect(prisma.journalLine.findMany).toHaveBeenCalledWith(
+    expect(prisma.expenseDocument.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          accountCode: '21-3101',
-          credit: { gt: 0 },
-          journalEntry: expect.objectContaining({
-            metadata: { path: ['flow'], string_starts_with: 'expense-payroll' },
-          }),
+          documentType: 'PAYROLL',
+          status: 'POSTED',
+          journalEntryId: { not: null },
+          deletedAt: null,
         }),
       }),
     );
-    const call = prisma.journalLine.findMany.mock.calls[0][0];
-    // Anti-regression: legacy 'payroll' prefix would miss the real 'expense-payroll' flow tag
-    expect(call.where.journalEntry.metadata.string_starts_with).not.toBe('payroll');
+    const call = prisma.expenseDocument.findMany.mock.calls[0][0];
+    // ม.42-exempt custom income must NOT enter the ภ.ง.ด.1 gross
+    expect(call.select.payroll.select.lines.select.customIncome.where).toEqual({
+      isTaxable: true,
+    });
+    // ห้ามมี filter whtAmount > 0 — พนักงานภาษี 0 ต้องปรากฏ
+    expect(call.select.payroll.select.lines.where).toBeUndefined();
   });
 });
 

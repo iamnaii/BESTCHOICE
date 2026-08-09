@@ -10,7 +10,7 @@ import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
-import { CreatePayrollDto } from './dto/create-payroll.dto';
+import { CreatePayrollDto, UpdatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { CreatePettyCashDto } from './dto/create-petty-cash.dto';
 import { VoidExpenseDocumentDto } from './dto/void-expense.dto';
@@ -253,14 +253,34 @@ export class ExpenseDocumentsService implements OnModuleInit {
     return this.query.getAuditTrail(id, user);
   }
 
+  // ─── Payroll form meta ───────────────────────────────────────────────
+  // Whitelist + cash accounts per scope (SHOP/FINANCE) with CoA names.
+  async getPayrollMeta(scope: 'SHOP' | 'FINANCE') {
+    return this.creator.getPayrollMeta(scope);
+  }
+
+  // ─── Payroll update (R3-2, 2026-08-06) — DRAFT only ──────────────────
+  async updatePayroll(
+    id: string,
+    dto: UpdatePayrollDto,
+    user: { id: string; branchId?: string | null; role?: string | null },
+  ) {
+    return this.creator.updatePayroll(id, dto, user);
+  }
+
+  // ─── Payroll bank-transfer CSV (R3-3, 2026-08-06) ────────────────────
+  async buildPayrollBankCsv(id: string, viewerRole?: string | null, viewerBranchId?: string | null) {
+    return this.query.buildPayrollBankCsv(id, viewerRole, viewerBranchId);
+  }
+
   // ─── Find one ────────────────────────────────────────────────────────
   // I5 — include type-specific detail so single-doc views (PaymentVoucher,
   // CN view, payroll view, SE view) don't need a follow-up roundtrip. The
   // base includes (expenseDetail / branch / approver) work for every type;
   // creditNote / payroll / settlement detail are added based on documentType.
   // Phase 1 decompose — delegates to ExpenseDocumentQueryService.
-  async findOne(id: string, viewerRole?: string | null) {
-    return this.query.findOne(id, viewerRole);
+  async findOne(id: string, viewerRole?: string | null, viewerBranchId?: string | null) {
+    return this.query.findOne(id, viewerRole, viewerBranchId);
   }
 
   // ─── Update (DRAFT only) ─────────────────────────────────────────────

@@ -10,21 +10,24 @@ interface CoaRow { code: string; name: string }
 interface Props {
   value?: string;
   onChange: (code: string) => void;
+  /** Account codes to offer. Default = FINANCE cash set; payroll SHOP scope
+   *  passes SHOP_CASH_ACCOUNT_CODES (S11-XXXX). */
+  codes?: readonly string[];
 }
 
-/** Visual 6-card cash account selector — replaces the dropdown. Layout: 3 cash codes (11-11xx) + 3 bank codes (11-12xx) in 2 rows. */
-export function CashAccountVisualPicker({ value, onChange }: Props) {
+/** Visual cash account selector — replaces the dropdown. Layout: cash codes (XX-11xx) + bank codes (XX-12xx) in rows of 3. */
+export function CashAccountVisualPicker({ value, onChange, codes = CASH_ACCOUNT_CODES }: Props) {
   const { data } = useQuery<CoaRow[]>({
-    queryKey: ['chart-of-accounts', 'cash-codes'],
-    queryFn: async () => (await api.get(`/chart-of-accounts/by-codes?codes=${CASH_ACCOUNT_CODES.join(',')}`)).data,
+    queryKey: ['chart-of-accounts', 'cash-codes', codes.join(',')],
+    queryFn: async () => (await api.get(`/chart-of-accounts/by-codes?codes=${codes.join(',')}`)).data,
     staleTime: Infinity,
   });
   const nameMap = new Map<string, string>(data?.map((r) => [r.code, r.name]) ?? []);
 
   return (
     <div className="grid grid-cols-3 gap-3">
-      {CASH_ACCOUNT_CODES.map((code) => {
-        const isBank = code.startsWith('11-12');
+      {codes.map((code) => {
+        const isBank = code.includes('-12');
         const Icon = isBank ? Landmark : Banknote;
         const selected = value === code;
         return (

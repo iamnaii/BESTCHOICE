@@ -68,12 +68,39 @@ interface AccountDetail extends BankAccount {
   recentTransactions: JournalLineRow[];
 }
 
-interface TransactionPage {
-  data: JournalLineRow[];
-  total: number;
-  page: number;
-  limit: number;
+interface LedgerLine {
+  entryDate: string;
+  entryNumber: string;
+  description: string;
+  referenceType: string | null;
+  referenceId: string | null;
+  debit: number;
+  credit: number;
+  runningBalance: number;
 }
+
+interface LedgerReport {
+  accountCode: string;
+  accountName: string;
+  normalBalance: 'Dr' | 'Cr' | 'Dr/Cr';
+  periodStart: string;
+  periodEnd: string;
+  opening: number;
+  closing: number;
+  totalDebit: number;
+  totalCredit: number;
+  lines: LedgerLine[];
+}
+
+/** YYYY-MM-DD in the browser's local calendar (no UTC shift) */
+function toDateInput(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+const MAX_DRAWER_LINES = 300;
 
 function formatBalance(amount: string | number): string {
   const n = typeof amount === 'string' ? parseFloat(amount) : amount;
@@ -155,8 +182,25 @@ interface AccountDrawerProps {
 }
 
 function AccountDrawer({ accountCode, open, onOpenChange }: AccountDrawerProps) {
-  const [page, setPage] = useState(1);
-  const limit = 25;
+  const today = new Date();
+  const [periodStart, setPeriodStart] = useState(() =>
+    toDateInput(new Date(today.getFullYear(), today.getMonth(), 1)),
+  );
+  const [periodEnd, setPeriodEnd] = useState(() => toDateInput(today));
+
+  const applyPreset = (preset: 'thisMonth' | 'lastMonth' | 'thisYear') => {
+    const now = new Date();
+    if (preset === 'thisMonth') {
+      setPeriodStart(toDateInput(new Date(now.getFullYear(), now.getMonth(), 1)));
+      setPeriodEnd(toDateInput(now));
+    } else if (preset === 'lastMonth') {
+      setPeriodStart(toDateInput(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+      setPeriodEnd(toDateInput(new Date(now.getFullYear(), now.getMonth(), 0)));
+    } else {
+      setPeriodStart(toDateInput(new Date(now.getFullYear(), 0, 1)));
+      setPeriodEnd(toDateInput(now));
+    }
+  };
 
   const detailQuery = useQuery({
     queryKey: ['bank-account', accountCode],
@@ -164,16 +208,25 @@ function AccountDrawer({ accountCode, open, onOpenChange }: AccountDrawerProps) 
     enabled: Boolean(accountCode && open),
   });
 
-  const txQuery = useQuery({
-    queryKey: ['bank-account-tx', accountCode, page, limit],
+  const validRange = Boolean(periodStart && periodEnd && periodStart <= periodEnd);
+  const ledgerQuery = useQuery({
+    queryKey: ['bank-account-ledger', accountCode, periodStart, periodEnd],
     queryFn: () =>
       api
-        .get<TransactionPage>(`/bank-accounts/${accountCode}/transactions`, {
-          params: { page, limit },
+        .get<LedgerReport>('/expenses/ledger/general-ledger', {
+          params: { accountCode, periodStart, periodEnd },
         })
         .then((r) => r.data),
-    enabled: Boolean(accountCode && open),
+    enabled: Boolean(accountCode && open && validRange),
   });
+
+  // GL lines arrive oldest-first (running balance is computed in that order);
+  // display newest-first like a bank statement — top row's running = closing
+  const displayLines = useMemo(
+    () => (ledgerQuery.data ? [...ledgerQuery.data.lines].reverse() : []),
+    [ledgerQuery.data],
+  );
+  const truncated = displayLines.length > MAX_DRAWER_LINES;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -219,78 +272,135 @@ function AccountDrawer({ accountCode, open, onOpenChange }: AccountDrawerProps) 
               </Card>
 
               <div>
-                <h3 className="font-medium text-sm leading-snug mb-3">รายการเดินบัญชี</h3>
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <h3 className="font-medium text-sm leading-snug">รายการเดินบัญชี</h3>
+                  <div className="flex gap-1.5">
+                    <Button size="sm" variant="outline" onClick={() => applyPreset('thisMonth')}>
+                      เดือนนี้
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => applyPreset('lastMonth')}>
+                      เดือนก่อน
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => applyPreset('thisYear')}>
+                      ปีนี้
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 mb-3">
+                  <Input
+                    type="date"
+                    aria-label="วันที่เริ่มต้น"
+                    value={periodStart}
+                    onChange={(e) => setPeriodStart(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground shrink-0">ถึง</span>
+                  <Input
+                    type="date"
+                    aria-label="วันที่สิ้นสุด"
+                    value={periodEnd}
+                    onChange={(e) => setPeriodEnd(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                {!validRange && (
+                  <p className="text-xs text-destructive leading-snug mb-3">
+                    ช่วงวันที่ไม่ถูกต้อง — วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด
+                  </p>
+                )}
+
                 <QueryBoundary
-                  isLoading={txQuery.isLoading}
-                  isError={txQuery.isError}
-                  error={txQuery.error}
-                  onRetry={txQuery.refetch}
+                  isLoading={ledgerQuery.isLoading}
+                  isError={ledgerQuery.isError}
+                  error={ledgerQuery.error}
+                  onRetry={ledgerQuery.refetch}
                 >
-                  {txQuery.data && (
+                  {ledgerQuery.data && (
                     <>
-                      {txQuery.data.data.length === 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                        <div className="bg-muted rounded-lg p-2.5 flex flex-col gap-0.5">
+                          <span className="text-xs text-muted-foreground leading-snug">
+                            ยอดยกมา
+                          </span>
+                          <span className="text-sm font-semibold leading-snug">
+                            {formatBalance(ledgerQuery.data.opening)}
+                          </span>
+                        </div>
+                        <div className="bg-muted rounded-lg p-2.5 flex flex-col gap-0.5">
+                          <span className="text-xs text-muted-foreground leading-snug">
+                            รวมเงินเข้า
+                          </span>
+                          <span className="text-sm font-semibold leading-snug text-success">
+                            +{formatBalance(ledgerQuery.data.totalDebit)}
+                          </span>
+                        </div>
+                        <div className="bg-muted rounded-lg p-2.5 flex flex-col gap-0.5">
+                          <span className="text-xs text-muted-foreground leading-snug">
+                            รวมเงินออก
+                          </span>
+                          <span className="text-sm font-semibold leading-snug text-destructive">
+                            -{formatBalance(ledgerQuery.data.totalCredit)}
+                          </span>
+                        </div>
+                        <div className="bg-muted rounded-lg p-2.5 flex flex-col gap-0.5">
+                          <span className="text-xs text-muted-foreground leading-snug">
+                            คงเหลือปลายช่วง
+                          </span>
+                          <span
+                            className={`text-sm font-semibold leading-snug ${ledgerQuery.data.closing < 0 ? 'text-destructive' : ''}`}
+                          >
+                            {formatBalance(ledgerQuery.data.closing)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {displayLines.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-8 leading-snug">
-                          ยังไม่มีรายการเดินบัญชี
+                          ไม่มีรายการเดินบัญชีในช่วงเวลานี้
                         </p>
                       ) : (
-                        <div className="border border-border rounded-md divide-y divide-border">
-                          {txQuery.data.data.map((tx) => (
-                            <div key={tx.id} className="p-3 text-sm">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-mono text-xs text-muted-foreground">
-                                    {tx.journalEntry.entryNumber}
-                                  </p>
-                                  <p className="leading-snug">
-                                    {tx.journalEntry.description}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground leading-snug">
-                                    {formatDateShort(tx.journalEntry.entryDate)}
-                                  </p>
-                                </div>
-                                <div className="text-right shrink-0">
-                                  {parseFloat(tx.debit) > 0 && (
-                                    <p className="text-sm font-medium text-emerald-600">
-                                      +{formatBalance(tx.debit)}
+                        <>
+                          {truncated && (
+                            <p className="text-xs text-muted-foreground leading-snug mb-2">
+                              แสดง {MAX_DRAWER_LINES} รายการล่าสุดจากทั้งหมด{' '}
+                              {displayLines.length} รายการ — ดูครบทุกรายการที่หน้า
+                              สมุดแยกประเภท หรือย่อช่วงเวลาลง
+                            </p>
+                          )}
+                          <div className="border border-border rounded-md divide-y divide-border">
+                            {displayLines.slice(0, MAX_DRAWER_LINES).map((line, i) => (
+                              <div key={`${line.entryNumber}-${i}`} className="p-3 text-sm">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-mono text-xs text-muted-foreground">
+                                      {line.entryNumber}
                                     </p>
-                                  )}
-                                  {parseFloat(tx.credit) > 0 && (
-                                    <p className="text-sm font-medium text-destructive">
-                                      -{formatBalance(tx.credit)}
+                                    <p className="leading-snug">{line.description}</p>
+                                    <p className="text-xs text-muted-foreground leading-snug">
+                                      {formatDateShort(line.entryDate)}
                                     </p>
-                                  )}
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    {line.debit > 0 && (
+                                      <p className="text-sm font-medium text-success">
+                                        +{formatBalance(line.debit)}
+                                      </p>
+                                    )}
+                                    {line.credit > 0 && (
+                                      <p className="text-sm font-medium text-destructive">
+                                        -{formatBalance(line.credit)}
+                                      </p>
+                                    )}
+                                    <p className="text-xs text-muted-foreground leading-snug">
+                                      คงเหลือ {formatBalance(line.runningBalance)}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {txQuery.data.total > limit && (
-                        <div className="flex items-center justify-between mt-4 text-sm">
-                          <p className="text-muted-foreground">
-                            หน้า {txQuery.data.page} /{' '}
-                            {Math.ceil(txQuery.data.total / txQuery.data.limit)}
-                          </p>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={page <= 1}
-                              onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            >
-                              ก่อนหน้า
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={page >= Math.ceil(txQuery.data.total / limit)}
-                              onClick={() => setPage((p) => p + 1)}
-                            >
-                              ถัดไป
-                            </Button>
+                            ))}
                           </div>
-                        </div>
+                        </>
                       )}
                     </>
                   )}

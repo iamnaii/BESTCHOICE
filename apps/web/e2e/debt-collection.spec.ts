@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginViaAPI } from './helpers/auth';
+import { loginViaAPI, loginAsRole } from './helpers/auth';
 import { gotoWithRetry, hasErrorBoundary } from './helpers/navigation';
 
 /* ================================================================
@@ -46,18 +46,13 @@ test.describe('ยึดคืน & ขายต่อ', () => {
     }
   });
 
-  test('should have create repossession action', async ({ page }) => {
+  test('should have repossession CTA linking to payments page (OWNER-only)', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /ยึดคืน|สร้าง|เพิ่ม/ }).first();
-    if (await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await createBtn.click();
-      await page.waitForTimeout(500);
-      const hasModal = await page.locator('[role="dialog"], .modal, form').first()
-        .isVisible({ timeout: 3000 }).catch(() => false);
-      if (hasModal) {
-        await expect(page.locator('[role="dialog"], .modal, form').first()).toBeVisible();
-      }
-    }
+    // loginViaAPI logs in as admin@bestchoice.com (OWNER) — the create modal was
+    // removed; the action is now a Link to /payments, shown to OWNER only.
+    const cta = page.getByRole('link', { name: /ยึดเครื่อง/ });
+    await expect(cta).toBeVisible({ timeout: 5000 });
+    await expect(cta).toHaveAttribute('href', '/payments');
   });
 
   test('should display status indicators for repossessions', async ({ page }) => {
@@ -67,5 +62,26 @@ test.describe('ยึดคืน & ขายต่อ', () => {
       await expect(statusBadge).toBeVisible();
     }
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
+  });
+});
+
+/* ================================================================
+   ยึดคืน & ขายต่อ (/repossessions) — CTA role gating (negative case)
+   Phase 2 review follow-up: the OWNER-only CTA link must stay hidden
+   for other roles that can still view the page (e.g. FINANCE_MANAGER,
+   which has canSettle/canViewPl access but not canManage/CTA access).
+   ================================================================ */
+test.describe('ยึดคืน & ขายต่อ — CTA role gating', () => {
+  test('CTA ยึดเครื่องต้องไม่แสดงสำหรับ FINANCE_MANAGER', async ({ page }) => {
+    await loginAsRole(page, 'FINANCE_MANAGER');
+    await gotoWithRetry(page, '/repossessions');
+    if (await hasErrorBoundary(page)) return;
+
+    // Page still loads for FINANCE_MANAGER (canSettle/canViewPl = true)
+    await expect(page.getByText(/ยึดคืน/).first()).toBeVisible({ timeout: 15000 });
+
+    // But the OWNER-only "ยึดเครื่อง" CTA link must not render
+    const cta = page.getByRole('link', { name: /ยึดเครื่อง/ });
+    await expect(cta).toHaveCount(0);
   });
 });

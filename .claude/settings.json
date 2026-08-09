@@ -1,9 +1,33 @@
 {
-  "permissions": {
-    "defaultMode": "auto"
-  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(echo \"watch_exit=$?\")",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/installment_db?schema=public\" DATABASE_URL_FINANCE=\"postgresql://postgres:postgres@localhost:5433/installment_finance_db?schema=public\" JWT_SECRET=test-secret npx jest --runInBand --forceExit src/modules/asset src/modules/other-income src/modules/depreciation)",
+      "Bash(timeout 500 npm run lint --workspace=apps/web)",
+      "Bash(python -)",
+      "Bash(python -c ' *)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/installment_db?schema=public\" DATABASE_URL_FINANCE=\"postgresql://postgres:postgres@localhost:5433/installment_finance_db?schema=public\" JWT_SECRET=\"test-secret\" NODE_ENV=test npx vitest run --no-file-parallelism src/modules/journal/utils/__tests__/eir.spec.ts)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/installment_db?schema=public\" DATABASE_URL_FINANCE=\"postgresql://postgres:postgres@localhost:5433/installment_finance_db?schema=public\" JWT_SECRET=\"test-secret\" NODE_ENV=test npx vitest run --no-file-parallelism src/modules/overdue/consecutive-missed.service.integration.spec.ts)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/installment_db?schema=public\" DATABASE_URL_FINANCE=\"postgresql://postgres:postgres@localhost:5433/installment_finance_db?schema=public\" JWT_SECRET=\"test-secret\" NODE_ENV=test npx vitest run --no-file-parallelism src/modules/overdue/services/late-fee-perday-sql.integration.spec.ts)",
+      "PowerShell(git add \"docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md\")",
+      "PowerShell(git add \"docs/superpowers/plans/2026-07-29-device-swap-priced-exchange.md\")",
+      "Read(//c/Users/what_/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/**)",
+      "Bash(powershell -Command \"Get-Process 'Docker Desktop' -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -Command \"Test-Path 'C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe'\")",
+      "Bash(powershell -Command \"Start-Process 'C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe'\")",
+      "Bash(git checkout *)",
+      "Bash(docker compose *)",
+      "Bash(bash tools/check-types.sh api)",
+      "Bash(grep -vE \"^\\\\s*//|^\\\\s*\\\\*|^\\\\s*$\")",
+      "Bash(grep -vE \"^\\\\s*$\")",
+      "Bash(grep -E \"saleType|INSTALLMENT|if |//\")",
+      "Bash(grep -n 'EARLY_PAYOFF\\\\|CLOSED\\\\|$transaction' src/modules/contracts/contract-payment.service.ts)",
+      "Bash(npx jest *)"
+    ],
+    "defaultMode": "auto"
   },
   "hooks": {
     "SessionStart": [

@@ -78,3 +78,64 @@ describe('DashboardService cache graceful degrade', () => {
     await expect(service.getKPIs()).resolves.toBeDefined();
   });
 });
+
+describe('DashboardService getCashForecast', () => {
+  let service: DashboardService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cache: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    cache = { get: jest.fn().mockResolvedValue(undefined), set: jest.fn() };
+    prisma = { $queryRaw: jest.fn() };
+
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        DashboardService,
+        DashboardOverviewService,
+        DashboardCollectionsService,
+        DashboardOpsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CACHE_MANAGER, useValue: cache },
+      ],
+    }).compile();
+    service = mod.get(DashboardService);
+  });
+
+  it('maps buckets and sums next30 as cumulative (next7 + next8to30)', async () => {
+    prisma.$queryRaw.mockResolvedValue([
+      { bucket: 'overdue', count: 2, outstanding: '1000.50' },
+      { bucket: 'next7', count: 3, outstanding: '4500.00' },
+      { bucket: 'next8to30', count: 5, outstanding: '9000.25' },
+    ]);
+
+    const result = await service.getCashForecast();
+
+    expect(result.overdue).toEqual({ count: 2, amount: 1000.5 });
+    expect(result.next7Days).toEqual({ count: 3, amount: 4500 });
+    expect(result.next30Days).toEqual({ count: 8, amount: 13500.25 });
+    expect(result.asOf).toEqual(expect.any(String));
+  });
+
+  it('returns zeros for missing buckets (no unpaid installments)', async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+
+    const result = await service.getCashForecast();
+
+    expect(result.overdue).toEqual({ count: 0, amount: 0 });
+    expect(result.next7Days).toEqual({ count: 0, amount: 0 });
+    expect(result.next30Days).toEqual({ count: 0, amount: 0 });
+  });
+
+  it('asOf is the Bangkok start-of-day boundary (00:00 BKK = 17:00 UTC)', async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+
+    const result = await service.getCashForecast();
+
+    const asOf = new Date(result.asOf);
+    // 00:00 Asia/Bangkok is 17:00 UTC on the previous calendar day
+    expect(asOf.getUTCHours()).toBe(17);
+    expect(asOf.getUTCMinutes()).toBe(0);
+  });
+});

@@ -62,7 +62,11 @@ import {
 
 /* ── Types ─────────────────────────────────────────── */
 
-export type MenuBadgeKey = 'chat-unread' | 'asset-draft-count' | 'qc-pending-count';
+export type MenuBadgeKey =
+  | 'chat-unread'
+  | 'asset-draft-count'
+  | 'qc-pending-count'
+  | 'online-orders-pending';
 
 /** Logical zone — sidebar splits navigation into these contexts */
 export type Zone = 'shop' | 'fin' | 'settings';
@@ -265,7 +269,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       icon: ShoppingBag,
       zone: 'shop',
       items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
         { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
@@ -370,7 +374,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: ShoppingBag,
       zone: 'shop',
       items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
         { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
       ],
@@ -650,7 +654,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: ShoppingBag,
       zone: 'shop',
       items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
         { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },

@@ -236,3 +236,65 @@ describe('ShopOrdersService.confirmBankTransfer', () => {
     expect(Sentry.captureException as jest.Mock).not.toHaveBeenCalled();
   });
 });
+
+describe('ShopOrdersService.getPendingCount / markRefunded', () => {
+  let service: ShopOrdersService;
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      onlineOrder: {
+        count: jest.fn(),
+        update: jest.fn().mockResolvedValue({ id: 'oo-1', status: 'REFUNDED' }),
+        findUnique: jest.fn(),
+      },
+      $transaction: jest.fn(),
+    };
+    const mod = await Test.createTestingModule({
+      providers: [
+        ShopOrdersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: OnlineOrderSaleAdapter, useValue: { createForOnlineOrder: jest.fn() } },
+        // Task 10 note: ShopOrdersService also depends on LineOaService (added by an
+        // earlier B5 fix round for the unfulfillable LINE notice) — the plan-time
+        // brief's provider list didn't account for it. Without this the module
+        // fails to compile with a DI resolution error.
+        { provide: LineOaService, useValue: { sendFlexMessage: jest.fn() } },
+      ],
+    }).compile();
+    service = mod.get(ShopOrdersService);
+  });
+
+  it('นับเฉพาะสถานะที่ staff ต้องลงมือ (ตรวจสลิป/แพ็ค/คืนเงิน)', async () => {
+    prisma.onlineOrder.count
+      .mockResolvedValueOnce(2) // PENDING_BANK_REVIEW
+      .mockResolvedValueOnce(3) // PAID
+      .mockResolvedValueOnce(1); // PAYMENT_RECEIVED_UNFULFILLABLE
+
+    expect(await service.getPendingCount()).toEqual({
+      total: 6, pendingBankReview: 2, paid: 3, unfulfillable: 1,
+    });
+    const statuses = prisma.onlineOrder.count.mock.calls.map((c: any) => c[0].where.status);
+    expect(statuses).toEqual(['PENDING_BANK_REVIEW', 'PAID', 'PAYMENT_RECEIVED_UNFULFILLABLE']);
+    prisma.onlineOrder.count.mock.calls.forEach((c: any) => {
+      expect(c[0].where.deletedAt).toBeNull();
+    });
+  });
+
+  it('markRefunded: เฉพาะออเดอร์ที่อยู่ในคิวคืนเงินเท่านั้น', async () => {
+    prisma.onlineOrder.findUnique.mockResolvedValue({
+      id: 'oo-1', status: 'PAYMENT_RECEIVED_UNFULFILLABLE',
+    });
+    await service.markRefunded('oo-1', 'u1');
+    expect(prisma.onlineOrder.update).toHaveBeenCalledWith({
+      where: { id: 'oo-1' },
+      data: expect.objectContaining({ status: 'REFUNDED' }),
+    });
+  });
+
+  it('markRefunded: ออเดอร์สถานะอื่น → Forbidden', async () => {
+    prisma.onlineOrder.findUnique.mockResolvedValue({ id: 'oo-1', status: 'PAID' });
+    await expect(service.markRefunded('oo-1', 'u1')).rejects.toThrow(ForbiddenException);
+    expect(prisma.onlineOrder.update).not.toHaveBeenCalled();
+  });
+});

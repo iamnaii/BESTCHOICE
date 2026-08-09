@@ -18,6 +18,11 @@ import { ShopOrdersService } from './shop-orders.service';
 export class ShopOrdersAdminController {
   constructor(private service: ShopOrdersService) {}
 
+  @Get('pending-count')
+  pendingCount() {
+    return this.service.getPendingCount();
+  }
+
   @Get()
   list(@Query('status') status?: string) {
     return this.service.listAdminQueue(status);
@@ -43,5 +48,11 @@ export class ShopOrdersAdminController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   cancel(@Param('id') id: string, @Body() body: { reason: string }) {
     return this.service.cancelOrder(id, body.reason);
+  }
+
+  @Patch(':id/refund')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  refund(@Param('id') id: string, @Req() req: { user: { id: string } }) {
+    return this.service.markRefunded(id, req.user.id);
   }
 }

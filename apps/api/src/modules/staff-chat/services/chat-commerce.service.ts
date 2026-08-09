@@ -26,7 +26,7 @@ function buildShareUrl(p: Parameters<typeof evaluateReadiness>[0] & { id: string
   if (!base) return null;
   const { checks } = evaluateReadiness(p);
   const webReady = checks.every((c) => c.key === 'inStock' || c.ok);
-  return webReady ? `${base}/products/${p.id}` : null;
+  return webReady ? `${base}/api/shop/share/${p.id}` : null;
 }
 
 /**
@@ -319,8 +319,8 @@ export class ChatCommerceService {
         prices: product.prices,
       },
     ]);
-    // ก่อน B4 (share endpoint) ใช้ /products/:id ของหน้าร้านตรงๆ — แต่ใส่ได้
-    // เฉพาะเครื่องที่ผ่าน readiness ของ B0 ไม่งั้นลูกค้ากดแล้วเจอ 404
+    // ชี้ share endpoint ของ API (B4) ที่เสิร์ฟ Open Graph แล้วเด้งต่อไปที่
+    // /products/:id — แต่ใส่ได้เฉพาะเครื่องที่ผ่าน readiness ของ B0 ไม่งั้นลูกค้ากดแล้วเจอ 404
     const shareUrl = buildShareUrl(product);
     const facts = {
       name: product.name,

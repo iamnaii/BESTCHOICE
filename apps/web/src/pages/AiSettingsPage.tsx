@@ -20,11 +20,15 @@ import {
 import { Sparkles, Route, Store } from 'lucide-react';
 
 const CHANNELS = [
-  { value: 'LINE_FINANCE', label: 'LINE Finance' },
-  { value: 'LINE_SHOP', label: 'LINE Shop' },
-  { value: 'FACEBOOK', label: 'Facebook' },
-  { value: 'TIKTOK', label: 'TikTok' },
-  { value: 'WEB', label: 'Web' },
+  {
+    value: 'LINE_FINANCE',
+    label: 'LINE Finance',
+    noop: 'น้องเบสตอบเองอยู่แล้ว — ค่านี้ไม่มีผล',
+  },
+  { value: 'LINE_SHOP', label: 'LINE Shop', noop: null },
+  { value: 'FACEBOOK', label: 'Facebook', noop: null },
+  { value: 'TIKTOK', label: 'TikTok', noop: 'ยังไม่ได้เชื่อมต่อ TikTok — ค่านี้ไม่มีผล' },
+  { value: 'WEB', label: 'Web', noop: null },
 ] as const;
 
 interface AiSettings {
@@ -118,7 +122,12 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
                   onChange={() => toggleChannel(ch.value)}
                   className="accent-primary"
                 />
-                <span className="text-sm text-foreground">{ch.label}</span>
+                <span className="text-sm text-foreground leading-snug">
+                  {ch.label}
+                  {ch.noop && (
+                    <span className="block text-xs text-muted-foreground leading-snug">{ch.noop}</span>
+                  )}
+                </span>
               </label>
             ))}
           </div>
@@ -400,6 +409,59 @@ function ChannelRoutingCard() {
   );
 }
 
+export interface AiRuntimeStatus {
+  fbBotDisabled: boolean;
+  fbWhitelistCount: number;
+  centralBranchSet: boolean;
+  promptpaySet: boolean;
+  tiktokAdapterStub: boolean;
+  financeBotSeparatePipeline: boolean;
+}
+
+export function AiRuntimeStatusStrip({ status }: { status: AiRuntimeStatus }) {
+  const rows: { label: string; ok: boolean; hint: string }[] = [
+    {
+      label: status.fbBotDisabled
+        ? `บอท Facebook ปิดอยู่ (FB_BOT_DISABLED) — ยกเว้น ${status.fbWhitelistCount} คนใน whitelist`
+        : 'บอท Facebook เปิดอยู่',
+      ok: !status.fbBotDisabled,
+      hint: 'สวิตช์นี้อยู่ที่ env ของเซิร์ฟเวอร์ แก้จากหน้านี้ไม่ได้',
+    },
+    {
+      label: status.centralBranchSet
+        ? 'ตั้งสาขาศูนย์กลางแล้ว'
+        : 'ยังไม่ได้ตั้งสาขาศูนย์กลาง — บอทจะไม่ตอบช่อง LINE Shop / Facebook / เว็บ',
+      ok: status.centralBranchSet,
+      hint: 'ตั้งได้ในส่วน "SHOP Bot Setup" ด้านล่าง',
+    },
+    {
+      label: status.promptpaySet ? 'ตั้ง PromptPay แล้ว' : 'ยังไม่ได้ตั้ง PromptPay',
+      ok: status.promptpaySet,
+      hint: 'ใช้ตอนบอทออกคิวรับเงิน',
+    },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base leading-snug">สถานะระบบ (แก้จากหน้านี้ไม่ได้)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {rows.map((r) => (
+          <div
+            key={r.label}
+            data-status={r.ok ? 'ok' : 'warn'}
+            className={`rounded-md border p-3 ${r.ok ? 'border-border bg-card' : 'border-destructive/40 bg-destructive/5'}`}
+          >
+            <p className="text-sm text-foreground leading-snug">{r.label}</p>
+            <p className="text-xs text-muted-foreground leading-snug mt-0.5">{r.hint}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AiSettingsPage() {
   const settingsQuery = useQuery<AiSettings>({
     queryKey: ['ai-settings', 'full'],
@@ -414,6 +476,11 @@ export default function AiSettingsPage() {
     }),
   });
 
+  const statusQuery = useQuery<AiRuntimeStatus>({
+    queryKey: ['ai-settings', 'status'],
+    queryFn: () => api.get('/staff-chat/ai/status').then((r: any) => r.data?.data ?? r.data),
+  });
+
   const defaultSettings: AiSettings = {
     autoModeEnabled: false,
     enabledChannels: [],
@@ -425,6 +492,7 @@ export default function AiSettingsPage() {
     <div>
       <PageHeader title="AI Settings" subtitle="ตั้งค่า AI Auto Mode สำหรับตอบแชทอัตโนมัติ" />
       <div className="max-w-2xl space-y-6">
+        {statusQuery.data && <AiRuntimeStatusStrip status={statusQuery.data} />}
         <ChannelRoutingCard />
         <QueryBoundary
           isLoading={settingsQuery.isLoading}

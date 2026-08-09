@@ -13,8 +13,22 @@ export type BotType =
 
 export type BotAction = 'LOGGED' | 'RATE_LIMITED' | 'CAPTCHA_REQUIRED' | 'BLOCKED' | 'CLOAKED';
 
+/** ความยาวหน้าต่างนับ rate — ใช้ร่วมกันทั้ง record และ read เพื่อกันค่าคลาดกัน */
+export const RATE_LIMIT_WINDOW_MS = 60_000;
+
 const RATE_LIMIT_PER_MIN = 100;
-const CATALOG_RATE_LIMIT_PER_MIN = 30;
+/**
+ * หน้ารายการ/รายละเอียดสินค้ายิงหลาย request ต่อการเปิด 1 หน้า (list + models +
+ * detail + related + installment-preview) และลูกค้าหลายคนอาจอยู่หลัง NAT เดียวกัน
+ * → เพดานต้อง "หลวมกว่า" ปกติ ไม่ใช่แน่นกว่า (บั๊กเดิมตั้งใจให้แน่นกว่าแต่ dead code อยู่)
+ */
+const CATALOG_RATE_LIMIT_PER_MIN = 240;
+
+/** path (หลังตัด prefix /api แล้ว) ที่ถือเป็นการเดินดูสินค้าปกติ */
+function isCatalogPath(pagePath?: string): boolean {
+  if (!pagePath) return false;
+  return pagePath.startsWith('/shop/products') || pagePath.startsWith('/products');
+}
 
 @Injectable()
 export class ShopBotDefenseService {
@@ -23,7 +37,16 @@ export class ShopBotDefenseService {
   constructor(private prisma: PrismaService) {}
 
   classifyUserAgent(ua: string): BotType | null {
-    if (/GPTBot|ClaudeBot|Anthropic-AI|PerplexityBot|Google-Extended/i.test(ua)) return 'AI_CRAWLER';
+    // Social/link-preview crawlers ต้องเช็คก่อนทุกกฎ — ตัวมันคือคนดึงการ์ด OG
+    // ของ /api/shop/share/:id ถ้าโดนจัดเป็น SCRAPER/RATE_ABUSE การ์ดจะไม่ขึ้นเลย
+    if (
+      /facebookexternalhit|Facebot|Twitterbot|Line-?Poker|LineBot|Slackbot|Discordbot|WhatsApp|TelegramBot|LinkedInBot/i.test(
+        ua,
+      )
+    )
+      return 'KNOWN_GOOD';
+    if (/GPTBot|ClaudeBot|Anthropic-AI|PerplexityBot|Google-Extended/i.test(ua))
+      return 'AI_CRAWLER';
     if (/Bytespider|CCBot/i.test(ua)) return 'SCRAPER';
     if (/HeadlessChrome|PhantomJS|Selenium|Puppeteer/i.test(ua)) return 'HEADLESS_BROWSER';
     if (/wget|curl|python-requests|axios|node-fetch|scrapy/i.test(ua)) return 'SCRAPER';
@@ -55,37 +78,71 @@ export class ShopBotDefenseService {
       return 'LOGGED';
     }
     // Rate limit check for normal browsers
-    const limit = input.pagePath?.startsWith('/products') ? CATALOG_RATE_LIMIT_PER_MIN * 2 : RATE_LIMIT_PER_MIN;
+    const limit = isCatalogPath(input.pagePath) ? CATALOG_RATE_LIMIT_PER_MIN : RATE_LIMIT_PER_MIN;
     if (input.requestRate > limit) {
       return 'RATE_LIMITED';
     }
     return 'LOGGED';
   }
 
-  async recordRateLimit(ip: string, userAgent: string, pagePath: string): Promise<void> {
+  /**
+   * นับ request ต่อ IP ในหน้าต่าง 60 วินาทีแบบ "รีเซ็ตได้จริง"
+   *
+   * บั๊กเดิม: windowStart ถูกคำนวณเป็นต้นนาทีปัจจุบันแล้วเขียนทับทุกครั้ง ส่วน
+   * requestCount ใช้ increment อย่างเดียว → counter ไม่เคยกลับเป็น 1 และ
+   * getRequestRate ก็เห็น window ใหม่เสมอ ⇒ IP ที่เคยยิงครบเพดานโดน 429 ถาวร
+   *
+   * อ่านก่อนเขียน (2 query) แทน raw upsert แบบมีเงื่อนไข เพื่อให้ตรรกะรีเซ็ต
+   * ทดสอบได้ด้วย unit test; ช่อง race ที่เหลือทำให้นับพลาดได้ไม่กี่ครั้งต่อ
+   * หน้าต่าง ซึ่งรับได้สำหรับ bot-defense (ไม่ใช่เส้นทางเงิน)
+   */
+  async recordRateLimit(ip: string, userAgent: string, _pagePath: string): Promise<void> {
     const salt = process.env.PII_HASH_SALT;
     if (!salt) return;
-    const ipHash = hashPII(ip, salt);
-    const now = new Date();
-    const windowStart = new Date(now.getTime() - (now.getTime() % 60_000));
+    // review round 1 [Critical]: guard เรียกเราแบบ fire-and-forget (`void ...`) —
+    // DB error ชั่วคราว (pool หมด/connection blip) ที่หลุดจากตรงนี้ = unhandled
+    // rejection = process ทั้งตัวล่มบน Node 24 (พิสูจน์ empirically) ทั้งที่นี่เป็น
+    // แค่ตัวนับกันบอท ห้าม block/ล้ม shopper เด็ดขาด — pattern เดียวกับ logDetection
+    try {
+      const ipHash = hashPII(ip, salt);
+      const now = new Date();
 
-    await this.prisma.ipRateLimit.upsert({
-      where: { ipHash },
-      create: {
-        ipHash,
-        windowStart,
-        requestCount: 1,
-        pagesVisited: 1,
-        uniquePagesVisited: 1,
-        lastUserAgent: userAgent,
-      },
-      update: {
-        requestCount: { increment: 1 },
-        pagesVisited: { increment: 1 },
-        lastUserAgent: userAgent,
-        windowStart: now.getTime() - windowStart.getTime() > 60_000 ? now : windowStart,
-      },
-    });
+      const existing = await this.prisma.ipRateLimit.findUnique({ where: { ipHash } });
+      const expired =
+        !existing || now.getTime() - existing.windowStart.getTime() >= RATE_LIMIT_WINDOW_MS;
+
+      if (expired) {
+        await this.prisma.ipRateLimit.upsert({
+          where: { ipHash },
+          create: {
+            ipHash,
+            windowStart: now,
+            requestCount: 1,
+            pagesVisited: 1,
+            uniquePagesVisited: 1,
+            lastUserAgent: userAgent,
+          },
+          update: {
+            windowStart: now,
+            requestCount: 1,
+            pagesVisited: 1,
+            lastUserAgent: userAgent,
+          },
+        });
+        return;
+      }
+
+      await this.prisma.ipRateLimit.update({
+        where: { ipHash },
+        data: {
+          requestCount: { increment: 1 },
+          pagesVisited: { increment: 1 },
+          lastUserAgent: userAgent,
+        },
+      });
+    } catch (err) {
+      this.logger.error(`Rate limit record failed: ${(err as Error).message}`);
+    }
   }
 
   async getRequestRate(ip: string): Promise<number> {
@@ -95,7 +152,7 @@ export class ShopBotDefenseService {
     const row = await this.prisma.ipRateLimit.findUnique({ where: { ipHash } });
     if (!row) return 0;
     const elapsedMs = Date.now() - row.windowStart.getTime();
-    if (elapsedMs > 60_000) return 0; // window expired
+    if (elapsedMs >= RATE_LIMIT_WINDOW_MS) return 0; // window expired
     return row.requestCount;
   }
 

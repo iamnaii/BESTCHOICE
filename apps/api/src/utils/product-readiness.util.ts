@@ -28,9 +28,10 @@ export interface ProductReadinessOptions {
 /**
  * B0 §2.3 — เงื่อนไข "ข้อมูลครบพอขึ้นเว็บ" ชุดเดียวของทั้งระบบ
  *
- * คืน fragment ที่ **ใช้คีย์ `AND` อย่างเดียวที่ระดับบนสุด** — จำเป็น เพราะ
- * `ShopCatalogService.listGroupedByModel` assign `where.OR` เองสำหรับ search
- * (shop-catalog.service.ts:96-99) ถ้า fragment ใช้ `OR` ระดับบนสุดจะโดนทับเงียบๆ
+ * คืน fragment ที่ **ใช้คีย์ `AND` อย่างเดียวที่ระดับบนสุด** — ผู้บริโภคทุกตัว
+ * (รวม search ของ `ShopCatalogService.listGroupedByModel` ตั้งแต่ B4 Task 7)
+ * ต้องต่อเงื่อนไขด้วยการ append เข้า `where.AND` เท่านั้น ห้าม assign
+ * `where.OR`/`where.AND` ทับ ไม่งั้น fragment นี้หายเงียบๆ
  *
  * `requireInStock:false` ใช้เฉพาะ head query ของ getProductDetail — เครื่องที่
  * ขายแล้วต้องยังเปิดหน้ารุ่นได้ (permalink; spec §0)
@@ -112,8 +113,7 @@ export function evaluateReadiness(p: ReadinessProductShape): ReadinessResult {
   const cash = p.cashPrice != null ? Number(p.cashPrice) : 0;
   const isUsed = p.category === 'PHONE_USED';
   const inShopGate =
-    p.brand === SHOP_BRAND &&
-    (SHOP_PHONE_CATEGORIES as readonly string[]).includes(p.category);
+    p.brand === SHOP_BRAND && (SHOP_PHONE_CATEGORIES as readonly string[]).includes(p.category);
 
   const conditionGradeOk =
     !isUsed || (VALID_CONDITION_GRADES as readonly string[]).includes(p.conditionGrade ?? '');

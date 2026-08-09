@@ -30,6 +30,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
+// B3 §5 — tool เดียวกับบอทขาย (import class ตรง ห้าม import ทั้งโมดูล sales-bot)
+import { SearchProductsTool } from '../sales-bot/tools/search-products.tool';
+import { CalculateInstallmentTool } from '../sales-bot/tools/calculate-installment.tool';
+import { ListPromotionsTool } from '../sales-bot/tools/list-promotions.tool';
 
 /**
  * Finance Bot Module ("น้องเบส")
@@ -76,6 +80,9 @@ import { TestModeModule } from '../test-mode/test-mode.module';
     WebhookDedupService,
     FinanceDomainHandler,
     SlipSlaCron,
+    SearchProductsTool,
+    CalculateInstallmentTool,
+    ListPromotionsTool,
   ],
   exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler, FinanceAiService],
 })

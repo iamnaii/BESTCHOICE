@@ -337,3 +337,93 @@ describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
     expect(roomManager.markOutboundSent).toHaveBeenCalledWith('m1', 'ext-1');
   });
 });
+
+// ─── B3 Task 9: ส่งรูปสินค้าตามหลังคำตอบบอท ───────────────────────────────────
+
+describe('MessageRouterService — ส่งรูปสินค้าตามคำตอบบอท (B3 Task 9)', () => {
+  const aiWithAttachments = {
+    reply: 'iPhone 15 128GB ราคา 28,900 บาทค่ะ',
+    confidence: 0.95,
+    toolsUsed: ['search_products'],
+    inputTokens: 1,
+    outputTokens: 1,
+    attachments: [
+      { productId: 'prd-1', imageUrl: 'https://cdn.example.com/p1.jpg', webUrl: 'https://s/p1' },
+    ],
+  };
+
+  it('ส่งข้อความก่อน (ใช้ replyToken) แล้วค่อยส่งรูป (ไม่มี replyToken)', async () => {
+    const { router, adapter } = makeRouter({ aiEligible: true, aiResult: aiWithAttachments });
+    await router.routeInbound(baseMsg as any);
+
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(2);
+    const [first, second] = adapter.sendMessage.mock.calls.map((c: any[]) => c[0]);
+    expect(first).toMatchObject({ type: MessageType.TEXT, replyToken: 'rt-1' });
+    expect(second).toMatchObject({
+      type: MessageType.IMAGE,
+      imageUrl: 'https://cdn.example.com/p1.jpg',
+    });
+    expect(second.replyToken).toBeUndefined();
+  });
+
+  it('บันทึกข้อความรูปลง DB พร้อม type/mediaUrl (widget ฝั่งเว็บอาศัยแถวนี้)', async () => {
+    const { router, roomManager } = makeRouter({ aiEligible: true, aiResult: aiWithAttachments });
+    await router.routeInbound(baseMsg as any);
+
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: MessageType.IMAGE,
+        mediaUrl: 'https://cdn.example.com/p1.jpg',
+      }),
+    );
+  });
+
+  it('attachment ที่ไม่มีรูป (มีแต่ลิงก์) → ไม่ส่ง bubble เพิ่ม', async () => {
+    const { router, adapter } = makeRouter({
+      aiEligible: true,
+      aiResult: { ...aiWithAttachments, attachments: [{ productId: 'prd-1', webUrl: 'https://s/p1' }] },
+    });
+    await router.routeInbound(baseMsg as any);
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('ไม่มี attachments → พฤติกรรมเดิมทุกอย่าง (ส่งข้อความเดียว)', async () => {
+    const { router, adapter } = makeRouter({
+      aiEligible: true,
+      aiResult: { reply: 'มีค่ะ', confidence: 0.9, toolsUsed: [], inputTokens: 1, outputTokens: 1 },
+    });
+    await router.routeInbound(baseMsg as any);
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('ส่งรูปล้มเหลว → ไม่ทำให้ทั้ง flow พัง และไม่ตอบซ้ำ', async () => {
+    const { router, adapter, aiAutoReply } = makeRouter({
+      aiEligible: true,
+      aiResult: aiWithAttachments,
+    });
+    adapter.sendMessage
+      .mockResolvedValueOnce({ success: true })
+      .mockRejectedValueOnce(new Error('LINE 500'));
+
+    await expect(router.routeInbound(baseMsg as any)).resolves.toBeUndefined();
+    expect(aiAutoReply.logAutoReply).toHaveBeenCalledWith(
+      expect.objectContaining({ autoSent: true }),
+    );
+  });
+
+  it('ส่งรูปมากสุด 2 ใบ', async () => {
+    const { router, adapter } = makeRouter({
+      aiEligible: true,
+      aiResult: {
+        ...aiWithAttachments,
+        attachments: [
+          { productId: 'a', imageUrl: 'https://c/a.jpg' },
+          { productId: 'b', imageUrl: 'https://c/b.jpg' },
+          { productId: 'c', imageUrl: 'https://c/c.jpg' },
+        ],
+      },
+    });
+    await router.routeInbound(baseMsg as any);
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(3); // 1 text + 2 image
+  });
+});

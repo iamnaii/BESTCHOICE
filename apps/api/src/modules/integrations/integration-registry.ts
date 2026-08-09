@@ -190,6 +190,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
         envVar: 'FB_PAGE_ID',
       },
       {
+        key: 'pageUsername',
+        label: 'Page Username (ส่วนหลัง m.me/ เช่น bestchoicephone)',
+        sensitive: false,
+        required: false,
+        envVar: 'FB_PAGE_USERNAME',
+      },
+      {
         key: 'appSecret',
         label: 'App Secret',
         sensitive: true,

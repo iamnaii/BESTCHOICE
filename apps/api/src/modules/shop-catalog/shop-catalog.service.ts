@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
+import { calcBcInstallment } from '../../utils/installment-calc.util';
+import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
+import type { BcConfig } from '../../utils/installment-calc.types';
+import { parseAccessories, parseQcChecklist, QcCheckItem } from './product-unit-detail.util';
+import { parseDeviceQuery } from '../../utils/device-query-normalize.util';
 
 export interface ProductGroup {
   /** Representative product id — the catalog card links to /products/:id with this. */
@@ -13,6 +19,7 @@ export interface ProductGroup {
   stockCount: number;
   thumbnailUrl?: string;
   conditionGrades: string[];
+  /** ค่างวดต่ำสุดที่ทำสัญญาได้จริง (งวดยาวสุด + ดาวน์ต่ำสุด); null = ยังไม่ตั้งราคาผ่อน */
   monthlyPaymentFrom: number | null;
   condition: 'NEW' | 'USED';
 }
@@ -45,20 +52,21 @@ export interface ProductUnit {
   imeiPartial?: string; // last 4 digits
   gallery: string[];
   gallery360: string[];
+  /** ชื่อสาขาที่เครื่องนี้อยู่ — ลูกค้าถามบ่อยว่า "อยู่สาขาไหน" */
+  branchName?: string;
+  /** อุปกรณ์ที่ให้ไปกับเครื่อง (รวม 'กล่อง' จาก hasBox) */
+  accessories: string[];
+  /** ตำหนิ/รอยที่แจ้งลูกค้าตรง ๆ */
+  cosmeticNotes?: string;
+  /** ผลตรวจ QC รายข้อ (เฉพาะที่เก็บเป็น checklist จริง) */
+  qcChecklist: QcCheckItem[];
 }
 
-const INTEREST_RATE_PER_MONTH = 0.0099; // 0.99%/month — example, adjust per pricing config
-// B0: unused now that monthlyPaymentFrom is hardcoded to null (calculateMonthlyPayment's
-// 2 call sites were removed) — kept for B4, which will re-wire these into a real InterestConfig
-// read instead of deleting and re-adding them.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const DEFAULT_MONTHS = 12;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const DEFAULT_DOWN_PCT = 0.2;
 const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
 // B0 §2.3: เงื่อนไขขึ้นเว็บมาจาก util ตัวเดียว (brand/category/สถานะ/ราคา/รูป/เกรด/[DEMO])
-// fragment ใช้คีย์ `AND` เท่านั้น → ปลอดภัยกับ where.OR ที่ listGroupedByModel assign เอง
+// fragment ใช้คีย์ `AND` เท่านั้น → ประกอบต่อกับเงื่อนไข search (Task 7) ที่ต่อเข้า
+// `where.AND` เช่นกันได้อย่างปลอดภัย ไม่มีคีย์ชนกัน
 // `excludeDemo` มาจาก SystemConfig flag `shop_hide_demo_products` ที่ผู้เรียก (แต่ละ public
 // method ด้านล่าง) อ่านมาครั้งเดียวต่อ request แล้ว thread เข้ามา — ตาม util's JSDoc contract
 // (util นี้ pure ไม่อ่าน SystemConfig เอง)
@@ -100,10 +108,29 @@ export class ShopCatalogService {
       where.cashPrice = { ...where.cashPrice, lte: filters.maxPrice };
     if (filters.search?.trim()) {
       const q = filters.search.trim();
-      where.OR = [
-        { brand: { contains: q, mode: 'insensitive' } },
-        { model: { contains: q, mode: 'insensitive' } },
-      ];
+      // util กลางจาก B0 — ตัวเดียวกับที่บอทและ inbox ใช้ เพื่อให้ "ไอโฟน 15 โปร"
+      // ที่ลูกค้าพิมพ์ในเว็บกับในแชทให้ผลเดียวกัน
+      const parsed = parseDeviceQuery(q);
+      const clauses: Record<string, unknown>[] = [];
+      if (parsed.model) clauses.push({ model: { contains: parsed.model, mode: 'insensitive' } });
+      if (parsed.storage)
+        clauses.push({ storage: { equals: parsed.storage, mode: 'insensitive' } });
+      // ⚠️ ห้ามใส่ parsed.color ลง where: util คืนคำไทย ('ดำ') แต่ Product.color
+      // เก็บอังกฤษ ('Black') → จะกลายเป็นเงื่อนไขที่ไม่มีวันจริง = 0 ผลลัพธ์
+      // สีใช้เป็น "narrowing แบบ no-op" หลัง query แทน (แบบเดียวกับ B3
+      // search-products.tool: `if (byColor.length > 0) candidates = byColor`)
+      // brand ถูกตรึงเป็น Apple ใน readiness fragment อยู่แล้ว จึงไม่ต้องใช้ parsed.brand
+      if (clauses.length === 0) {
+        clauses.push({
+          OR: [
+            { brand: { contains: q, mode: 'insensitive' } },
+            { model: { contains: q, mode: 'insensitive' } },
+          ],
+        });
+      }
+      // ต่อ AND เสมอ — ห้ามเขียนทับ where ด้วยเงื่อนไข OR ระดับบนสุดตรง ๆ เพราะจะชนกับ
+      // fragment readiness/base ที่ประกอบมาเป็น {AND:[...]} อยู่แล้ว
+      where.AND = [...((where.AND as unknown[]) ?? []), ...clauses];
     }
 
     const orderBy =
@@ -120,12 +147,14 @@ export class ShopCatalogService {
     const groups = await this.prisma.product.groupBy({
       by: [...GROUP_BY],
       where,
-      _min: { cashPrice: true },
+      _min: { cashPrice: true, installmentPrice: true },
       _count: { id: true },
       orderBy,
       skip: (page - 1) * limit,
       take: limit,
     });
+
+    const configs = await this.resolveConfigsFor(groups.map((g) => g.category));
 
     // Fetch the cheapest product of each group for the card link target + thumbnail
     const data: ProductGroup[] = await Promise.all(
@@ -142,7 +171,10 @@ export class ShopCatalogService {
           select: { id: true, gallery: true, conditionGrade: true },
         });
         const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
+        const minInstallment =
+          g._min?.installmentPrice != null ? Number(g._min.installmentPrice) : null;
         const stockCount = g._count?.id ?? 0;
+        const monthly = this.monthlyFrom(minInstallment, configs.get(g.category) ?? null);
         return {
           id: sample?.id ?? '',
           brand: g.brand,
@@ -152,10 +184,7 @@ export class ShopCatalogService {
           stockCount,
           thumbnailUrl: sample?.gallery[0],
           conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
-          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
-          // เลขจริงที่อ่าน InterestConfig มาใน B4
-          monthlyPaymentFrom: null,
+          monthlyPaymentFrom: monthly,
           condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
         };
       }),
@@ -193,11 +222,12 @@ export class ShopCatalogService {
     const groups = await this.prisma.product.groupBy({
       by: [...GROUP_BY],
       where,
-      _min: { cashPrice: true },
+      _min: { cashPrice: true, installmentPrice: true },
       _count: { id: true },
       orderBy: [{ _count: { id: 'desc' as const } }],
       take: 6,
     });
+    const configs = await this.resolveConfigsFor(groups.map((g) => g.category));
     return Promise.all(
       groups.map(async (g) => {
         const sample = await this.prisma.product.findFirst({
@@ -212,6 +242,9 @@ export class ShopCatalogService {
           select: { id: true, gallery: true, conditionGrade: true },
         });
         const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
+        const minInstallment =
+          g._min?.installmentPrice != null ? Number(g._min.installmentPrice) : null;
+        const monthly = this.monthlyFrom(minInstallment, configs.get(g.category) ?? null);
         return {
           id: sample?.id ?? '',
           brand: g.brand,
@@ -221,10 +254,7 @@ export class ShopCatalogService {
           stockCount: g._count?.id ?? 0,
           thumbnailUrl: sample?.gallery[0],
           conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
-          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
-          // เลขจริงที่อ่าน InterestConfig มาใน B4
-          monthlyPaymentFrom: null,
+          monthlyPaymentFrom: monthly,
           condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
         };
       }),
@@ -252,6 +282,7 @@ export class ShopCatalogService {
         ...productReadinessWhere({ excludeDemo }),
       },
       orderBy: { cashPrice: 'asc' },
+      include: { branch: { select: { name: true } } },
     });
 
     const tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }> = {};
@@ -275,6 +306,10 @@ export class ShopCatalogService {
         imeiPartial,
         gallery: u.gallery,
         gallery360: u.gallery360,
+        branchName: u.branch?.name ?? undefined,
+        accessories: parseAccessories(u.accessoriesIncluded, u.hasBox),
+        cosmeticNotes: u.cosmeticNotes ?? undefined,
+        qcChecklist: parseQcChecklist(u.checklistResults),
       });
       if (price < tiers[grade].minPrice) tiers[grade].minPrice = price;
       if (price > tiers[grade].maxPrice) tiers[grade].maxPrice = price;
@@ -304,10 +339,34 @@ export class ShopCatalogService {
     return { display: 'ในสต็อก พร้อมส่ง', tone: 'available' };
   }
 
-  calculateMonthlyPayment(price: number, months: number, downPct: number): number {
-    const downPayment = price * downPct;
-    const financed = price - downPayment;
-    const totalInterest = financed * INTEREST_RATE_PER_MONTH * months;
-    return Math.round((financed + totalInterest) / months);
+  /**
+   * "ผ่อนเริ่มต้น" ของกลุ่ม = ค่างวดต่ำสุดที่ทำสัญญาได้จริง
+   * (งวดยาวสุดที่มีเรต + ดาวน์ขั้นต่ำตาม InterestConfig) ผ่านเครื่องคิดตัวเดียว
+   * กับ InstallmentPreviewService — ห้ามคำนวณเองด้วยสูตรย่อ
+   */
+  private monthlyFrom(installmentPrice: number | null, config: BcConfig | null): number | null {
+    if (installmentPrice == null || installmentPrice <= 0) return null;
+    if (!config || config.allowedMonths.length === 0) return null;
+    const months = config.allowedMonths[config.allowedMonths.length - 1];
+    const result = calcBcInstallment({
+      installmentPrice: new Decimal(installmentPrice),
+      months,
+      downPct: config.minDownPct,
+      config,
+    });
+    if (!result.isValid) return null;
+    return Math.ceil(result.monthlyPayment.toNumber());
+  }
+
+  /** resolve config ครั้งเดียวต่อ category ต่อ request (กลุ่มมีได้แค่ 2 category) */
+  private async resolveConfigsFor(categories: string[]): Promise<Map<string, BcConfig | null>> {
+    const unique = Array.from(new Set(categories));
+    const entries = await Promise.all(
+      unique.map(async (c) => {
+        const r = await resolveBcConfigForCategory(this.prisma, c);
+        return [c, r.found ? r.config! : null] as const;
+      }),
+    );
+    return new Map(entries);
   }
 }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { calcBcInstallment } from '../../../utils/installment-calc.util';
+import { toBcConfig } from '../../../utils/bc-installment-config.util';
 
 export type DecimalLike = string | number | { toString(): string };
 
@@ -119,30 +120,13 @@ export function computeProductQuote(
     return { ...base, ...EMPTY_INSTALLMENT };
   }
 
-  const ratePctByMonths = new Map<number, Decimal>();
-  for (const r of config.rates) ratePctByMonths.set(r.months, dec(r.ratePct));
-  if (ratePctByMonths.size === 0) {
-    // fallback เดียวกับ installment-preview.service.ts:83-88 — rate ต่อเดือน × จำนวนงวด
-    const perMonth = dec(config.interestRate);
-    for (let m = config.minInstallmentMonths; m <= config.maxInstallmentMonths; m++) {
-      ratePctByMonths.set(m, perMonth.mul(m));
-    }
-  }
-  const allowedMonths = Array.from(ratePctByMonths.keys()).sort((a, b) => a - b);
-  if (allowedMonths.length === 0) return { ...base, ...EMPTY_INSTALLMENT };
+  // B3 Task 14 — ห้ามมีตรรกะ resolve config 2 ก็อปในระบบ: ใช้ตัวเดียวกับ
+  // InstallmentPreviewService (เว็บ) และ CalculateInstallmentTool (บอท)
+  const bcConfig = toBcConfig(config);
+  if (bcConfig.allowedMonths.length === 0) return { ...base, ...EMPTY_INSTALLMENT };
 
-  const months = allowedMonths[allowedMonths.length - 1];
-  const result = calcBcInstallment({
-    installmentPrice: dec(installment),
-    months,
-    config: {
-      minDownPct: dec(config.minDownPaymentPct),
-      commissionPct: dec(config.storeCommissionPct),
-      vatPct: dec(config.vatPct),
-      ratePctByMonths,
-      allowedMonths,
-    },
-  });
+  const months = bcConfig.allowedMonths[bcConfig.allowedMonths.length - 1];
+  const result = calcBcInstallment({ installmentPrice: dec(installment), months, config: bcConfig });
   if (!result.isValid) return { ...base, ...EMPTY_INSTALLMENT };
 
   return {

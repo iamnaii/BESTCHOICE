@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 /**
  * Manages the Facebook Messenger persistent menu via Graph API.
@@ -16,16 +16,20 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class FacebookPersistentMenuService {
   private readonly logger = new Logger(FacebookPersistentMenuService.name);
-  private readonly pageAccessToken?: string;
-  private readonly pageId?: string;
 
-  constructor(private configService: ConfigService) {
-    this.pageAccessToken = this.configService.get<string>('FB_PAGE_ACCESS_TOKEN');
-    this.pageId = this.configService.get<string>('FB_PAGE_ID');
-  }
+  constructor(private readonly integrationConfig: IntegrationConfigService) {}
 
-  private get isConfigured(): boolean {
-    return !!this.pageAccessToken && !!this.pageId;
+  /**
+   * อ่าน creds จาก IntegrationConfig (DB → env fallback) ทุกครั้งที่เรียก
+   * เหมือน FacebookAdapter — เดิมอ่านจาก env ตอน constructor ทำให้เพจที่ตั้งค่า
+   * ผ่านหน้า Settings อย่างเดียวใช้ไม่ได้เลย
+   */
+  private async getCreds(): Promise<{ pageAccessToken?: string; pageId?: string }> {
+    const cfg = await this.integrationConfig.getConfig('facebook');
+    return {
+      pageAccessToken: cfg.pageAccessToken || undefined,
+      pageId: cfg.pageId || undefined,
+    };
   }
 
   /**
@@ -33,7 +37,8 @@ export class FacebookPersistentMenuService {
    * Call once on setup or when menu needs updating.
    */
   async setupMenu(): Promise<{ success: boolean; error?: string }> {
-    if (!this.isConfigured) {
+    const { pageAccessToken, pageId } = await this.getCreds();
+    if (!pageAccessToken || !pageId) {
       return { success: false, error: 'Facebook not configured' };
     }
 
@@ -75,18 +80,15 @@ export class FacebookPersistentMenuService {
     };
 
     try {
-      const res = await fetch(
-        `https://graph.facebook.com/v25.0/${this.pageId}/messenger_profile`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.pageAccessToken}`,
-          },
-          body: JSON.stringify(menu),
-          signal: AbortSignal.timeout(10_000),
+      const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/messenger_profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${pageAccessToken}`,
         },
-      );
+        body: JSON.stringify(menu),
+        signal: AbortSignal.timeout(10_000),
+      });
 
       if (!res.ok) {
         const errBody = await res.text();
@@ -107,23 +109,21 @@ export class FacebookPersistentMenuService {
    * Remove the persistent menu from the Facebook Page.
    */
   async removeMenu(): Promise<{ success: boolean; error?: string }> {
-    if (!this.isConfigured) {
+    const { pageAccessToken, pageId } = await this.getCreds();
+    if (!pageAccessToken || !pageId) {
       return { success: false, error: 'Facebook not configured' };
     }
 
     try {
-      const res = await fetch(
-        `https://graph.facebook.com/v25.0/${this.pageId}/messenger_profile`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.pageAccessToken}`,
-          },
-          body: JSON.stringify({ fields: ['persistent_menu'] }),
-          signal: AbortSignal.timeout(10_000),
+      const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/messenger_profile`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${pageAccessToken}`,
         },
-      );
+        body: JSON.stringify({ fields: ['persistent_menu'] }),
+        signal: AbortSignal.timeout(10_000),
+      });
 
       if (!res.ok) {
         const errBody = await res.text();
@@ -136,6 +136,55 @@ export class FacebookPersistentMenuService {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`[FB Menu] Remove error: ${errorMsg}`);
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  /**
+   * ตั้งปุ่ม "เริ่มต้นใช้งาน" + ข้อความทักทายของเพจ
+   *
+   * จำเป็นสำหรับลิงก์ m.me/<page>?ref=p:<productId> จากหน้าสินค้า: ผู้ใช้ใหม่ที่
+   * ยังไม่เคยคุยกับเพจจะได้หน้าจอ Get Started ก่อน และ Facebook จะแนบ `ref`
+   * มากับ postback ของปุ่มนี้เท่านั้น — ไม่มีปุ่ม = ref หายทั้งดุ้น
+   */
+  async setupGetStarted(): Promise<{ success: boolean; error?: string }> {
+    const { pageAccessToken, pageId } = await this.getCreds();
+    if (!pageAccessToken || !pageId) {
+      return { success: false, error: 'Facebook not configured' };
+    }
+
+    const profile = {
+      get_started: { payload: 'GET_STARTED' },
+      greeting: [
+        {
+          locale: 'default',
+          text: 'สวัสดีครับ ร้าน BESTCHOICE ลพบุรี 👋 ทักมาสอบถามรุ่น ราคา หรือยอดผ่อนได้เลยครับ',
+        },
+      ],
+    };
+
+    try {
+      const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/messenger_profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${pageAccessToken}`,
+        },
+        body: JSON.stringify(profile),
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text();
+        this.logger.error(`[FB Menu] Get Started setup failed ${res.status}: ${errBody}`);
+        return { success: false, error: errBody };
+      }
+
+      this.logger.log('[FB Menu] Get Started button + greeting set successfully');
+      return { success: true };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[FB Menu] Get Started setup error: ${errorMsg}`);
       return { success: false, error: errorMsg };
     }
   }

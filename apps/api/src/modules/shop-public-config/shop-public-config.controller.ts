@@ -21,4 +21,9 @@ export class ShopPublicConfigController {
   getAuth() {
     return this.service.getAuthConfig();
   }
+
+  @Get('shop')
+  getShop() {
+    return this.service.getShopConfig();
+  }
 }

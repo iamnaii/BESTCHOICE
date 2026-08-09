@@ -2,14 +2,9 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel } from '@prisma/client';
 import { KB_SEED_ENTRIES } from '../constants/kb-seed-data';
+import { scoreKbEntries, type KbMatch } from '../../../utils/kb-match.util';
 
-export interface KbMatch {
-  intent: string;
-  category: string;
-  responseTemplate: string;
-  responseType: string; // 'auto' | 'handoff' | 'info'
-  score: number;
-}
+export type { KbMatch };
 
 export interface KbUpsertInput {
   intent: string;
@@ -22,6 +17,7 @@ export interface KbUpsertInput {
   requiresTools?: string[];
   active?: boolean;
   priority?: number;
+  channel?: ChatChannel | null;
 }
 
 /**
@@ -38,108 +34,26 @@ export class KnowledgeService {
 
   /**
    * ค้นหา FAQ ที่ตรงกับคำถามลูกค้า
-   * @returns top 3 matches เรียงตาม score
+   * channel = null ใน DB แปลว่า "ทุกช่องทาง" — จึงดึงมาคู่กับ FAQ ของช่องที่ระบุเสมอ
    */
-  async search(query: string): Promise<KbMatch[]> {
+  async search(query: string, channel: ChatChannel = ChatChannel.LINE_FINANCE): Promise<KbMatch[]> {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return [];
 
-    const queryTokens = this.tokenize(normalized);
-
     const entries = await this.prisma.chatKnowledgeBase.findMany({
       where: {
-        channel: ChatChannel.LINE_FINANCE,
+        OR: [{ channel: null }, { channel }],
         active: true,
         deletedAt: null,
       },
       orderBy: { priority: 'desc' },
     });
 
-    const scored = entries
-      .map((e) => {
-        let score = 0;
-        let keywordMatches = 0;
-
-        // Exact keyword containment (highest weight: 3 pts)
-        for (const kw of e.triggerKeywords) {
-          if (normalized.includes(kw.toLowerCase())) {
-            score += 3;
-            keywordMatches++;
-          }
-        }
-
-        // Token-level fuzzy matching (2 pts per token match)
-        for (const kw of e.triggerKeywords) {
-          const kwLower = kw.toLowerCase();
-          for (const token of queryTokens) {
-            if (token.length >= 2 && kwLower.includes(token) && !normalized.includes(kwLower)) {
-              score += 2;
-              break;
-            }
-          }
-        }
-
-        // Example question similarity (1 pt per match)
-        for (const ex of e.exampleQuestions) {
-          const exLower = ex.toLowerCase();
-          if (normalized.includes(exLower) || exLower.includes(normalized)) {
-            score += 1;
-          } else {
-            // Token overlap between query and example
-            const exTokens = this.tokenize(exLower);
-            const overlap = queryTokens.filter((t) => t.length >= 2 && exTokens.some((et) => et.includes(t) || t.includes(et)));
-            if (overlap.length >= 2) score += 0.5;
-          }
-        }
-
-        // Priority weight (lower than keyword matches)
-        score += e.priority * 0.05;
-
-        // Only return entries with actual keyword/example matches
-        const hasRealMatch = keywordMatches > 0 || score > e.priority * 0.05;
-
-        return {
-          intent: e.intent,
-          category: e.category,
-          responseTemplate: e.responseTemplate,
-          responseType: e.responseType,
-          score: hasRealMatch ? score : 0,
-        };
-      })
-      .filter((m) => m.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
-
+    const scored = scoreKbEntries(normalized, entries);
     if (scored.length > 0) {
-      this.logger.log(`[KB] "${query.slice(0, 30)}..." → ${scored.length} match(es)`);
+      this.logger.log(`[KB] "${query.slice(0, 30)}..." (${channel}) → ${scored.length} match(es)`);
     }
     return scored;
-  }
-
-  /**
-   * Simple Thai tokenizer — splits on spaces, punctuation, and common Thai particles.
-   * Not a full NLP tokenizer, but sufficient for keyword matching.
-   */
-  private tokenize(text: string): string[] {
-    // Split on whitespace, punctuation, emoji
-    const tokens = text
-      .split(/[\s,.\-!?:;()[\]{}/\\|@#$%^&*+=<>~`'"]+/)
-      .filter((t) => t.length >= 2);
-
-    // Also split long Thai text on common particles/boundaries
-    const thaiParticles = ['ครับ', 'ค่ะ', 'คะ', 'นะ', 'จ้า', 'ไหม', 'หรือ', 'แล้ว', 'ได้', 'ที่', 'ของ', 'ให้', 'กับ', 'จะ', 'อยาก', 'ต้องการ'];
-    const extraTokens: string[] = [];
-    for (const token of tokens) {
-      for (const particle of thaiParticles) {
-        const idx = token.indexOf(particle);
-        if (idx > 1) {
-          extraTokens.push(token.slice(0, idx));
-          extraTokens.push(token.slice(idx));
-        }
-      }
-    }
-
-    return [...new Set([...tokens, ...extraTokens])].filter((t) => t.length >= 2);
   }
 
   // ─── Seed ────────────────────────────────────────────────
@@ -184,9 +98,9 @@ export class KnowledgeService {
 
   // ─── Admin CRUD ──────────────────────────────────────────
 
-  async listAll() {
+  async listAll(channel?: ChatChannel) {
     return this.prisma.chatKnowledgeBase.findMany({
-      where: { channel: ChatChannel.LINE_FINANCE, deletedAt: null },
+      where: { deletedAt: null, ...(channel ? { OR: [{ channel: null }, { channel }] } : {}) },
       orderBy: [{ priority: 'desc' }, { intent: 'asc' }],
     });
   }
@@ -194,7 +108,7 @@ export class KnowledgeService {
   async create(input: KbUpsertInput) {
     return this.prisma.chatKnowledgeBase.create({
       data: {
-        channel: ChatChannel.LINE_FINANCE,
+        channel: input.channel === undefined ? ChatChannel.LINE_FINANCE : input.channel,
         intent: input.intent,
         category: input.category,
         triggerKeywords: input.triggerKeywords,
@@ -229,6 +143,7 @@ export class KnowledgeService {
         ...(input.requiresTools !== undefined && { requiresTools: input.requiresTools }),
         ...(input.active !== undefined && { active: input.active }),
         ...(input.priority !== undefined && { priority: input.priority }),
+        ...(input.channel !== undefined && { channel: input.channel }),
       },
     });
   }

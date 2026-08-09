@@ -1,19 +1,25 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { getRateForMonths } from '../../../utils/get-rate-for-months.util';
+import { calcBcInstallment } from '../../../utils/installment-calc.util';
+import { resolveBcConfigForCategory } from '../../../utils/bc-installment-config.util';
+import { shopBaseUrl } from '../../../utils/shop-base-url.util';
+import { DEMO_NAME_PREFIX } from '../../../utils/product-readiness.util';
 
 export const CALCULATE_INSTALLMENT_TOOL = {
   name: 'calculate_installment',
   description:
-    'Calculate monthly installment for a product. Down payment percent defaults to 20%. Tenure in months. ' +
-    'Output เป็นยอดประมาณการเบื้องต้น — ยอดผ่อนจริงตามสัญญาอาจสูงกว่านี้ (ยังไม่รวมภาษี/ค่าธรรมเนียม) ' +
-    'so frame quotes to the customer as an initial estimate, not the final contract amount.',
+    'คำนวณค่างวดจริงของเครื่องที่ระบุ ด้วยเครื่องคิดตัวเดียวกับที่ใช้ทำสัญญา (รวมค่าคอม/VAT ตาม InterestConfig). ' +
+    'ต้องมี productId จากผลลัพธ์ search_products ก่อนเสมอ — ห้ามเดา id. ' +
+    'downPct เป็นเปอร์เซ็นต์ 0-100 ถ้าไม่ส่งจะใช้ดาวน์ขั้นต่ำตามที่ตั้งค่าไว้. ' +
+    'error=rate_not_configured แปลว่าจำนวนงวดนี้ไม่มีในตาราง ให้เสนอจำนวนงวดอื่นหรือส่งต่อพนักงาน. ' +
+    'ห้าม quote ตัวเลขใด ๆ ที่ไม่ได้มาจากผลลัพธ์นี้.',
   input_schema: {
     type: 'object',
     properties: {
-      productId: { type: 'string' },
-      downPct: { type: 'number', description: 'Down payment percent 0-100' },
-      tenureMonths: { type: 'integer', description: '3, 6, 10, or 12' },
+      productId: { type: 'string', description: 'id ของเครื่องจาก search_products' },
+      downPct: { type: 'number', description: 'เปอร์เซ็นต์เงินดาวน์ 0-100' },
+      tenureMonths: { type: 'integer', description: 'จำนวนงวด เช่น 6, 10, 12' },
     },
     required: ['productId', 'tenureMonths'],
   },
@@ -21,101 +27,78 @@ export const CALCULATE_INSTALLMENT_TOOL = {
 
 @Injectable()
 export class CalculateInstallmentTool {
-  private readonly logger = new Logger(CalculateInstallmentTool.name);
   constructor(private readonly prisma: PrismaService) {}
 
   async run(input: { productId: string; downPct?: number; tenureMonths: number }) {
     const product = await this.prisma.product.findFirst({
       where: { id: input.productId, deletedAt: null },
       select: {
+        id: true,
         name: true,
+        category: true,
+        cashPrice: true,
         installmentPrice: true,
-        prices: {
-          where: { deletedAt: null, isDefault: true },
-          select: { amount: true },
-          take: 1,
-        },
+        gallery: true,
+        prices: { where: { deletedAt: null }, select: { label: true, amount: true } },
       },
     });
     if (!product) return { error: 'product_not_found' };
-    // B0: คอลัมน์คือแหล่งราคาจริง; แถว isDefault หลัง write-through = ราคาเงินสด
-    // ซึ่งต่ำกว่ายอดตั้งต้นผ่อน → ถ้าอ่านแถวอย่างเดียวบอทจะ quote ต่ำกว่าสัญญาจริง
-    const sellingPrice = product.installmentPrice ?? product.prices[0]?.amount;
-    if (sellingPrice == null) return { error: 'price_not_configured' };
 
-    const downPct = input.downPct ?? 20;
-    const price = Number(sellingPrice);
-    const downAmount = Math.round(price * (downPct / 100));
-    const financed = price - downAmount;
-    const rateFraction = await this.loadRateFraction(input.tenureMonths);
-    // Reviewer fix (#1335 re-review): null = a config matched the tenure
-    // range but getRateForMonths found no per-term row (NotFoundException
-    // under USE_NEW_RATE_LOOKUP=true, e.g. 9 months in a 3-12 range seeded
-    // only at 3/6/10/12). Return an {error} result — the persona's
-    // calc-error → handoff flow handles those — instead of letting the
-    // exception propagate and kill the whole bot turn with no handoff.
-    if (rateFraction === null) return { error: 'rate_not_configured' };
-    // TOTAL-contract rate for this term (a fraction, e.g. 1.0 = 100% of
-    // financed over the WHOLE tenure) — NOT annual. Per get-rate-for-months.util.ts /
-    // interest-config.service.ts:100-105 / installment-preview.service.ts:75-80:
-    // InterestConfigRate.ratePct (per-term row) is already the TOTAL rate for
-    // that term; the legacy InterestConfig.interestRate is PER-MONTH, so
-    // total = rate × months (no ÷12). #1335: this tool used to divide by
-    // tenure/12, treating the per-month rate as if it were annual — quoting
-    // installments far below what installment-preview.service (the contract
-    // engine's own preview) computes for the identical input.
-    const totalInterest = Math.round(financed * rateFraction);
-    const totalFinanced = financed + totalInterest;
-    const monthly = Math.round(totalFinanced / input.tenureMonths);
+    // ลำดับเดียวกับ installment-preview.service.ts:39-43 เป๊ะ — คอลัมน์ก่อน
+    // แล้วค่อย fallback label (ระหว่างที่ B0 ยังไล่ backfill ราคาไม่ครบ)
+    const baseRaw =
+      product.installmentPrice ??
+      product.prices.find((p) => p.label === 'ราคาผ่อน BESTCHOICE')?.amount ??
+      product.prices.find((p) => p.label.startsWith('ราคาผ่อน'))?.amount ??
+      null;
+    if (baseRaw == null) return { error: 'price_not_configured' };
+    const installmentPrice = new Decimal(baseRaw.toString());
 
-    return {
-      productName: product.name,
-      priceThb: price,
-      downAmountThb: downAmount,
-      financedThb: financed,
-      tenureMonths: input.tenureMonths,
-      ratePct: Math.round(rateFraction * 10000) / 100, // TOTAL rate for the term, as %
-      monthlyThb: monthly,
-      totalPaidThb: downAmount + totalFinanced,
-    };
-  }
+    const resolved = await resolveBcConfigForCategory(this.prisma, product.category);
+    if (!resolved.found || !resolved.config) return { error: 'rate_not_configured' };
+    const config = resolved.config;
 
-  /**
-   * Resolves the TOTAL-contract rate (fraction) for `tenure` months using the
-   * same resolution the contract engine uses (sale-writer.service.ts,
-   * contract-lifecycle.service.ts): find the matching InterestConfig row,
-   * then delegate to getRateForMonths — which reads the per-term
-   * InterestConfigRate row when `USE_NEW_RATE_LOOKUP=true`, else falls back
-   * to legacy `interestRate × months`. Returns 0 when no config matches the
-   * tenure (kept from the original behaviour). Returns null when a config
-   * matched but the per-term rate row is missing (getRateForMonths throws
-   * NotFoundException) — the caller turns that into a graceful
-   * `rate_not_configured` error result rather than crashing the bot turn.
-   */
-  private async loadRateFraction(tenure: number): Promise<number | null> {
-    // InterestConfig schema uses min/maxInstallmentMonths + interestRate
-    // (a decimal fraction, e.g. 0.15 = 15%) and `isActive` (not `active`).
-    const cfg = await this.prisma.interestConfig.findFirst({
-      where: {
-        isActive: true,
-        deletedAt: null,
-        minInstallmentMonths: { lte: tenure },
-        maxInstallmentMonths: { gte: tenure },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!cfg) return 0;
-    try {
-      const rate = await getRateForMonths(this.prisma, cfg.id, tenure);
-      return Number(rate);
-    } catch (e) {
-      if (e instanceof NotFoundException) {
-        this.logger.warn(
-          `No per-term rate for ${tenure} months (configId=${cfg.id}) — returning rate_not_configured`,
-        );
-        return null;
-      }
-      throw e;
+    // schema ของ tool รับเป็นเปอร์เซ็นต์ (0-100) แต่ calcBcInstallment กินเศษส่วน
+    const downPctFraction =
+      input.downPct !== undefined && Number.isFinite(input.downPct)
+        ? new Decimal(input.downPct).div(100)
+        : config.minDownPct;
+
+    // งวดที่ไม่มีในตาราง = ตอบ rate_not_configured เหมือนพฤติกรรมเดิม (#1335)
+    // ไม่ปล่อยเป็น invalid_installment เพราะ persona มี flow แยกไว้แล้ว
+    if (!config.allowedMonths.includes(input.tenureMonths)) {
+      return { error: 'rate_not_configured' };
     }
+
+    const result = calcBcInstallment({
+      installmentPrice,
+      months: input.tenureMonths,
+      downPct: downPctFraction,
+      config,
+    });
+    if (!result.isValid) {
+      return { error: 'invalid_installment', reasons: result.errors };
+    }
+
+    const base = shopBaseUrl();
+    return {
+      productId: product.id,
+      // final-review D1: ห้ามให้ prefix [DEMO] หลุดถึงลูกค้า — เว็บไม่เคยโชว์ Product.name
+      // ดิบ และ search_products ก็ไม่ emit name; tool นี้เป็นจุดเดียวที่ปล่อยชื่อออก
+      productName: product.name.startsWith(DEMO_NAME_PREFIX)
+        ? product.name.slice(DEMO_NAME_PREFIX.length).trimStart()
+        : product.name,
+      cashPriceThb: product.cashPrice != null ? Number(product.cashPrice) : null,
+      priceThb: installmentPrice.toNumber(),
+      downPct: result.downPct.mul(100).toNumber(),
+      downAmountThb: result.downAmount.toNumber(),
+      financedThb: result.financedAmount.toNumber(),
+      tenureMonths: input.tenureMonths,
+      ratePct: result.interestPct.mul(100).toNumber(),
+      monthlyThb: result.monthlyPayment.toNumber(),
+      totalPaidThb: result.downAmount.add(result.totalWithVat).toNumber(),
+      photoUrl: product.gallery[0] ?? null,
+      webUrl: base ? `${base}/api/shop/share/${product.id}` : null,
+    };
   }
 }

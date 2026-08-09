@@ -80,7 +80,7 @@ describe('ChatCommerceService.searchProducts', () => {
 
   it('ยังไม่มีรูปขึ้นเว็บ (gallery ว่าง) → shareUrl = null (หน้าเว็บจะ 404 หลัง B0)', async () => {
     const ready = await makeService(PRODUCT).svc.searchProducts('iphone');
-    expect(ready[0].shareUrl).toBe('https://www.bestchoicephone.com/products/p1');
+    expect(ready[0].shareUrl).toBe('https://www.bestchoicephone.com/api/shop/share/p1');
 
     const { svc } = makeService({ ...PRODUCT, gallery: [] });
     const rows = await svc.searchProducts('iphone');

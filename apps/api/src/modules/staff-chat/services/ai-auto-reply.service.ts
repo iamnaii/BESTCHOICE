@@ -140,6 +140,8 @@ export class AiAutoReplyService {
       toolsUsed: result.toolsUsed,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
+      // B3 §5 — รูป/ลิงก์ที่บอทเก็บมาจากผล tool (deterministic) ให้ router ส่งต่อ
+      ...(result.attachments?.length ? { attachments: result.attachments } : {}),
     };
   }
 
@@ -213,6 +215,35 @@ export class AiAutoReplyService {
       shopBotPromptpayId: configMap.get('shop_bot_promptpay_id') ?? null,
       shopBotTestUserId: configMap.get('shop_bot_test_user_id') ?? null,
       llmProvider,
+    };
+  }
+
+  /**
+   * B3 §5 — สถานะที่ "แก้จากหน้าเว็บไม่ได้" (env flag / ข้อจำกัดสถาปัตยกรรม)
+   *
+   * เจตนา: ไม่ทำการ์ดซ้ำกับ setting ที่หน้านี้แก้ได้อยู่แล้ว — แสดงเฉพาะสิ่งที่
+   * เจ้าของร้านมองไม่เห็นและเข้าใจผิดบ่อย (เช่นติ๊ก TikTok แล้วคิดว่าบอทตอบ)
+   */
+  async getRuntimeStatus(): Promise<{
+    fbBotDisabled: boolean;
+    fbWhitelistCount: number;
+    centralBranchSet: boolean;
+    promptpaySet: boolean;
+    tiktokAdapterStub: boolean;
+    financeBotSeparatePipeline: boolean;
+  }> {
+    const settings = await this.getSettings();
+    const whitelist = (this.config.get<string>('FB_BOT_WHITELIST_PSIDS') ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return {
+      fbBotDisabled: this.config.get<string>('FB_BOT_DISABLED') === 'true',
+      fbWhitelistCount: whitelist.length,
+      centralBranchSet: !!settings.shopBotCentralBranchId,
+      promptpaySet: !!settings.shopBotPromptpayId,
+      tiktokAdapterStub: true,
+      financeBotSeparatePipeline: true,
     };
   }
 

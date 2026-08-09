@@ -19,9 +19,27 @@ export interface PublicAuthConfig {
   lineLoginRedirectUri: string | null;
 }
 
+export interface PublicShopConfig {
+  /**
+   * ตัวระบุเพจสำหรับลิงก์ m.me/<handle>?ref=p:<productId>
+   * ใช้ `pageUsername` ถ้าเจ้าของกรอกไว้ ไม่งั้นถอยไปใช้ `pageId`
+   * (m.me รับได้ทั้งคู่) — เป็นข้อมูลสาธารณะของเพจ ไม่ใช่ความลับ
+   */
+  facebookPageHandle: string | null;
+}
+
 @Injectable()
 export class ShopPublicConfigService {
   constructor(private integrations: IntegrationConfigService) {}
+
+  async getShopConfig(): Promise<PublicShopConfig> {
+    const [username, pageId] = await Promise.all([
+      this.integrations.getValue('facebook', 'pageUsername'),
+      this.integrations.getValue('facebook', 'pageId'),
+    ]);
+    const handle = username?.trim() || pageId?.trim() || null;
+    return { facebookPageHandle: handle };
+  }
 
   async getAnalyticsConfig(): Promise<PublicAnalyticsConfig> {
     const [ga4, fb] = await Promise.all([

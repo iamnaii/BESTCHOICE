@@ -17,6 +17,7 @@ import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 import { AiAutoReplyService } from '../../staff-chat/services/ai-auto-reply.service';
+import { MAX_BOT_ATTACHMENTS } from '../../../utils/bot-attachments.util';
 
 /**
  * MessageRouter — the central nerve of the chat engine.
@@ -82,9 +83,7 @@ export class MessageRouterService {
   registerDomainHandler(handler: IDomainHandler): void {
     if (this.domainHandlers.includes(handler)) return;
     this.domainHandlers.push(handler);
-    this.logger.log(
-      `Registered domain handler (${this.domainHandlers.length} total)`,
-    );
+    this.logger.log(`Registered domain handler (${this.domainHandlers.length} total)`);
   }
 
   /**
@@ -165,14 +164,12 @@ export class MessageRouterService {
 
     // 3b. Check handoff mode — if staff is handling, don't run AI
     if (room.handoffMode) {
-      this.logger.debug(
-        `Room ${room.id} in handoff mode — skipping AI processing`,
-      );
+      this.logger.debug(`Room ${room.id} in handoff mode — skipping AI processing`);
       return;
     }
 
     // 3.5 AI auto-reply — runs when auto mode is enabled for the room channel
-    if (this.aiAutoReplyService && await this.aiAutoReplyService.shouldAutoReply(room)) {
+    if (this.aiAutoReplyService && (await this.aiAutoReplyService.shouldAutoReply(room))) {
       const customerMessage = message.text ?? '';
       try {
         const result = await this.aiAutoReplyService.autoReply(room.id, customerMessage);
@@ -197,6 +194,8 @@ export class MessageRouterService {
               inputTokens: result.inputTokens,
               outputTokens: result.outputTokens,
             });
+            // B3 §5 — ส่งรูปสินค้าตามหลังข้อความ (best-effort)
+            await this.sendBotAttachments(adapter, message, room.id, result.attachments);
           }
           await this.aiAutoReplyService.logAutoReply({
             roomId: room.id,
@@ -253,9 +252,7 @@ export class MessageRouterService {
             priority: 'normal',
             summary: customerMessage,
           });
-          this.logger.log(
-            `[AiAutoReply] Low confidence for room ${room.id} — initiated handoff`,
-          );
+          this.logger.log(`[AiAutoReply] Low confidence for room ${room.id} — initiated handoff`);
           return;
         }
       } catch (err) {
@@ -269,9 +266,7 @@ export class MessageRouterService {
     // 4. After-hours auto-reply (only reached when AI auto mode is off or errored)
     if (this.afterHoursService?.isAfterHours() && !room.handoffMode && !room.aiPaused) {
       try {
-        const reply = await this.afterHoursService.getAutoReply(
-          message.text ?? '',
-        );
+        const reply = await this.afterHoursService.getAutoReply(message.text ?? '');
         const adapter = this.adapterMap.get(message.channel);
         if (adapter) {
           await adapter.sendMessage({
@@ -287,14 +282,10 @@ export class MessageRouterService {
             text: reply,
           });
         }
-        this.logger.log(
-          `[AfterHours] Auto-replied to room ${room.id}`,
-        );
+        this.logger.log(`[AfterHours] Auto-replied to room ${room.id}`);
         return;
       } catch (err) {
-        this.logger.error(
-          `[AfterHours] Error: ${err instanceof Error ? err.message : err}`,
-        );
+        this.logger.error(`[AfterHours] Error: ${err instanceof Error ? err.message : err}`);
         // Fall through to normal processing
       }
     }
@@ -347,9 +338,7 @@ export class MessageRouterService {
           });
 
           if (!sendResult.success) {
-            this.logger.error(
-              `Failed to send reply on ${message.channel}: ${sendResult.error}`,
-            );
+            this.logger.error(`Failed to send reply on ${message.channel}: ${sendResult.error}`);
           }
         }
       }
@@ -358,9 +347,7 @@ export class MessageRouterService {
       if (result.tags?.length) {
         // Tags will be handled by ConversationTagService
         // For now, just log
-        this.logger.debug(
-          `Tags suggested for room ${room.id}: ${result.tags.join(', ')}`,
-        );
+        this.logger.debug(`Tags suggested for room ${room.id}: ${result.tags.join(', ')}`);
       }
     } catch (err) {
       this.logger.error(
@@ -454,9 +441,7 @@ export class MessageRouterService {
       // UNIQUE violation on externalMessageId — echo replay; safe to ignore.
       const code = (err as { code?: string })?.code;
       if (params.externalMessageId && code === 'P2002') {
-        this.logger.debug(
-          `[mirrorOutbound] Duplicate echo skipped: ${params.externalMessageId}`,
-        );
+        this.logger.debug(`[mirrorOutbound] Duplicate echo skipped: ${params.externalMessageId}`);
         return;
       }
       throw err;
@@ -469,6 +454,55 @@ export class MessageRouterService {
       channel: params.channel,
       roomId: room.id,
     });
+  }
+
+  /**
+   * B3 §5 — ส่ง IMAGE bubble ตามหลังคำตอบบอท
+   *
+   * ต้องส่ง "หลัง" ข้อความเสมอ: LINE reply token ใช้ได้ครั้งเดียวและถูกใช้ไปกับ
+   * ข้อความแรกแล้ว — bubble ถัดไปจึงไม่ส่ง replyToken (adapter จะ push ให้เอง)
+   *
+   * best-effort ทั้งก้อน: รูปส่งไม่ได้ต้องไม่ทำให้คำตอบที่ส่งไปแล้วกลายเป็น error
+   * และต้องไม่ปล่อยให้หลุดไปเส้นทาง domain-handler (จะกลายเป็นตอบซ้ำ)
+   */
+  private async sendBotAttachments(
+    adapter: IChannelAdapter,
+    message: InboundMessage,
+    roomId: string,
+    attachments?: { productId: string; imageUrl?: string; webUrl?: string }[],
+  ): Promise<void> {
+    if (!attachments?.length) return;
+    for (const att of attachments.slice(0, MAX_BOT_ATTACHMENTS)) {
+      if (!att.imageUrl) continue;
+      try {
+        const sendResult = await adapter.sendMessage({
+          externalUserId: message.externalUserId,
+          channel: message.channel,
+          type: MessageType.IMAGE,
+          imageUrl: att.imageUrl,
+        });
+        await this.roomManager.saveMessage({
+          roomId,
+          externalMessageId: sendResult.externalMessageId,
+          role: MessageRole.BOT,
+          type: MessageType.IMAGE,
+          // `text` ต้องมีค่า — room-list preview อ่านจากคอลัมน์นี้ ถ้าปล่อย null
+          // ห้องจะแสดง preview ว่างหลังบอทส่งรูป (ใช้ค่าเดียวกับฝั่งน้องเบส Task 12)
+          text: '[image]',
+          mediaUrl: att.imageUrl,
+          intent: 'AUTO:sales:image',
+        });
+        if (!sendResult.success) {
+          this.logger.warn(
+            `[AiAutoReply] image send failed room=${roomId} product=${att.productId}: ${sendResult.error}`,
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          `[AiAutoReply] image send threw room=${roomId} product=${att.productId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
   }
 
   /**
@@ -582,7 +616,11 @@ export class MessageRouterService {
       // Already delivered on a prior attempt — do NOT re-send to the customer.
       return {
         success: true,
-        message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },
+        message: {
+          id: saved.id,
+          clientMessageId: saved.clientMessageId,
+          createdAt: saved.createdAt,
+        },
       };
     }
 
@@ -602,11 +640,18 @@ export class MessageRouterService {
         if (e?.code === 'P2002' && params.clientMessageId) {
           // A concurrent identical send won the unique race. Let it own delivery —
           // do NOT call the adapter again (that would double-deliver to the customer).
-          saved = await this.roomManager.findByClientMessageId(params.roomId, params.clientMessageId);
+          saved = await this.roomManager.findByClientMessageId(
+            params.roomId,
+            params.clientMessageId,
+          );
           if (saved) {
             return {
               success: true,
-              message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },
+              message: {
+                id: saved.id,
+                clientMessageId: saved.clientMessageId,
+                createdAt: saved.createdAt,
+              },
             };
           }
           throw e; // unreachable in practice — P2002 implies the row exists
@@ -648,6 +693,28 @@ export class MessageRouterService {
       success: true,
       message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },
     };
+  }
+
+  /**
+   * บันทึกโน้ตระบบลงห้อง (ไม่ส่งออกหาลูกค้า)
+   *
+   * ใช้กับเหตุการณ์ที่ทีมงานต้องเห็นในเธรดแต่ลูกค้าไม่ได้พิมพ์เอง เช่นลูกค้ากด
+   * ลิงก์ Messenger จากหน้าสินค้าบนเว็บ (B4) — ข้อความมีชื่อรุ่นเต็มเพื่อให้
+   * ProductContextCard/detection จับได้เหมือนลูกค้าพิมพ์ชื่อรุ่นมาเอง
+   */
+  async postSystemNote(roomId: string, text: string): Promise<void> {
+    await this.roomManager.saveMessage({
+      roomId,
+      role: MessageRole.SYSTEM,
+      type: MessageType.TEXT,
+      text,
+    });
+    this.gateway?.emitNewMessage(roomId, {
+      role: 'SYSTEM',
+      text,
+      type: MessageType.TEXT,
+      roomId,
+    });
   }
 
   /**
@@ -714,9 +781,7 @@ export class MessageRouterService {
     });
 
     if (!result.success) {
-      this.logger.error(
-        `Failed to send staff outbound on ${room.channel}: ${result.error}`,
-      );
+      this.logger.error(`Failed to send staff outbound on ${room.channel}: ${result.error}`);
     }
     return result;
   }

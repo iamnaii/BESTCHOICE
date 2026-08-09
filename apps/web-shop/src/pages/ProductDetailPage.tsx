@@ -3,10 +3,16 @@ import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Share2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getSessionId } from '@/lib/session';
-import { copy, lineOaMessageUrl } from '@/lib/copy';
+import {
+  copy,
+  lineOaMessageUrl,
+  lineProductPrefill,
+  messengerRefUrl,
+  productShareUrl,
+} from '@/lib/copy';
 import { media } from '@/lib/media-placeholders';
 import { useCartStore } from '@/stores/cartStore';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
@@ -97,6 +103,17 @@ export default function ProductDetailPage() {
   // (bot-defense 429, 5xx, network) must NOT show the same "ขายไปแล้ว" copy.
   const notFound = (error as AxiosError | null)?.response?.status === 404;
 
+  // page handle ของ Messenger มาจาก IntegrationConfig (เจ้าของกรอกเองได้จากหน้า
+  // Settings) ไม่ใช่ค่าคงที่ในซอร์ส — ยังไม่ตั้งค่า = ปุ่มถูกซ่อนโดยไม่พังหน้า
+  const { data: shopConfig } = useQuery({
+    queryKey: ['shop', 'public-config', 'shop'],
+    queryFn: () =>
+      api
+        .get<{ facebookPageHandle: string | null }>('/api/shop/public-config/shop')
+        .then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Computed null-safely so this can sit above the early return below and
   // keep the installment-preview query (which re-keys off the selected
   // unit) unconditional per rules-of-hooks.
@@ -129,15 +146,25 @@ export default function ProductDetailPage() {
     }
   }, [data, id, track]);
 
+  // สลับเครื่องแล้ว gallery เป็นคนละชุด — index เดิมอาจชี้เกินขอบ/ชี้รูปเครื่องอื่น
+  useEffect(() => {
+    setActiveImage(0);
+    setView360(false);
+  }, [selectedUnitId]);
+
   // Hook must run every render (rules-of-hooks) — call before the loading
   // early-return below, with an undefined title while data hasn't arrived
   // yet (hook design tolerates that and swaps in the real name on re-render).
   const metaTitle = data
     ? [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ')
     : undefined;
+  const metaWarrantyDays =
+    flatUnits.find((u) => u.shopWarrantyDays != null)?.shopWarrantyDays ?? null;
   usePageMeta(
     metaTitle,
-    metaTitle ? `${metaTitle} ผ่อนได้บัตรประชาชนใบเดียว รับประกันร้าน 30 วัน` : undefined,
+    metaTitle
+      ? `${metaTitle} ผ่อนได้บัตรประชาชนใบเดียว${metaWarrantyDays != null ? ` รับประกันร้าน ${metaWarrantyDays} วัน` : ''}`
+      : undefined,
   );
 
   const reserveMut = useMutation({
@@ -255,11 +282,39 @@ export default function ProductDetailPage() {
   const gradeKeys = Object.keys(data.tiers);
   const isNew = data.condition === 'NEW';
   const showGrades = !isNew && gradeKeys.length > 0;
-  const gallery =
-    data.gallery && data.gallery.length > 0 ? data.gallery : [media('product.placeholder')];
+  // รูปตามเครื่องที่เลือก — ถอยไปใช้รูประดับรุ่นเมื่อเครื่องนั้นยังไม่มีรูปของตัวเอง
+  const unitGallery = selectedUnit?.gallery ?? [];
+  const gallerySource = unitGallery.length > 0 ? unitGallery : (data.gallery ?? []);
+  const gallery = gallerySource.length > 0 ? gallerySource : [media('product.placeholder')];
   const mainImage = gallery[activeImage] ?? gallery[0];
-  const has360 = data.gallery360.length > 0;
+  const unitGallery360 = selectedUnit?.gallery360 ?? [];
+  const gallery360 = unitGallery360.length > 0 ? unitGallery360 : data.gallery360;
+  const has360 = gallery360.length > 0;
   const stockCount = flatUnits.length;
+  const shareTargetId = selectedUnit?.id ?? data.id;
+  const shareUrl = productShareUrl(shareTargetId);
+  const imeiLast4 = selectedUnit?.imeiPartial?.slice(-4);
+  const linePrefill = lineProductPrefill(displayName, imeiLast4, shareUrl);
+  const messengerUrl = messengerRefUrl(shareTargetId, shopConfig?.facebookPageHandle);
+
+  async function handleShare() {
+    const shareData = { title: displayName, text: `${displayName} — BESTCHOICE ลพบุรี`, url: shareUrl };
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err) {
+        // ผู้ใช้กดยกเลิกชีทแชร์ — ไม่ต้องทำอะไรต่อ
+        if ((err as Error)?.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success(copy.product.shareCopied);
+    } catch {
+      toast.error(copy.product.shareFailed);
+    }
+  }
 
   return (
     <ShopLayout>
@@ -301,7 +356,7 @@ export default function ProductDetailPage() {
               </div>
             )}
             {view360 && has360 ? (
-              <Product360Viewer frames={data.gallery360} alt={displayName} />
+              <Product360Viewer frames={gallery360} alt={displayName} />
             ) : (
               <button
                 type="button"
@@ -451,15 +506,32 @@ export default function ProductDetailPage() {
               >
                 สมัครผ่อนทันที
               </Button>
-              <a
-                href={lineOaMessageUrl(`สนใจ ${displayName} ครับ/ค่ะ`)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
-              >
-                <MessageCircle className="size-4" aria-hidden="true" />
-                {copy.product.askLineCta}
-              </a>
+              <Button variant="ghost" size="lg" fullWidth onClick={handleShare}>
+                <Share2 className="size-4" aria-hidden="true" />
+                {copy.product.shareCta}
+              </Button>
+              <div className="flex flex-col gap-1.5">
+                <a
+                  href={lineOaMessageUrl(linePrefill)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+                >
+                  <MessageCircle className="size-4" aria-hidden="true" />
+                  {copy.product.askLineCta}
+                </a>
+                {messengerUrl && (
+                  <a
+                    href={messengerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+                  >
+                    <MessageCircle className="size-4" aria-hidden="true" />
+                    {copy.product.askMessengerCta}
+                  </a>
+                )}
+              </div>
             </div>
           </Stack>
         </div>
@@ -514,9 +586,9 @@ export default function ProductDetailPage() {
         </div>
       </StickyBottomBar>
       <StickyBottomBarSpacer />
-      <div className="md:hidden text-center py-3">
+      <div className="md:hidden flex flex-col items-center gap-2 py-3">
         <a
-          href={lineOaMessageUrl(`สนใจ ${displayName} ครับ/ค่ะ`)}
+          href={lineOaMessageUrl(linePrefill)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
@@ -524,6 +596,25 @@ export default function ProductDetailPage() {
           <MessageCircle className="size-4" aria-hidden="true" />
           {copy.product.askLineCta}
         </a>
+        {messengerUrl && (
+          <a
+            href={messengerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+          >
+            <MessageCircle className="size-4" aria-hidden="true" />
+            {copy.product.askMessengerCta}
+          </a>
+        )}
+        <button
+          type="button"
+          onClick={handleShare}
+          className="inline-flex items-center justify-center gap-1.5 min-h-11 px-4 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+        >
+          <Share2 className="size-4" aria-hidden="true" />
+          {copy.product.shareCta}
+        </button>
       </div>
     </ShopLayout>
   );

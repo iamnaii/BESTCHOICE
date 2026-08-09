@@ -1,10 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
+import { ChatChannel } from '@prisma/client';
 import { FinanceToolsService } from '../services/finance-tools.service';
 import { KnowledgeService } from '../services/knowledge.service';
 import { HandoffService, HandoffPriority } from '../services/handoff.service';
 import { ToolName } from './tool-definitions';
 import { redactPii, validateToolInput } from './tool-input-schemas';
+// B3 §5 — tool เดียวกับบอทขาย (import class ตรง ไม่ import ทั้งโมดูล sales-bot)
+import { SearchProductsTool } from '../../sales-bot/tools/search-products.tool';
+import { CalculateInstallmentTool } from '../../sales-bot/tools/calculate-installment.tool';
+import { ListPromotionsTool } from '../../sales-bot/tools/list-promotions.tool';
 
 export interface ToolCallRequest {
   name: string;
@@ -36,6 +41,10 @@ export class FinanceToolExecutor {
     private tools: FinanceToolsService,
     private knowledge: KnowledgeService,
     private handoff: HandoffService,
+    // B3 §5 — tool เดียวกับบอทขาย (import class ตรง ไม่ import ทั้งโมดูล sales-bot)
+    private searchProducts: SearchProductsTool,
+    private calcInstallment: CalculateInstallmentTool,
+    private listPromotions: ListPromotionsTool,
   ) {}
 
   async execute(req: ToolCallRequest, ctx: ToolCallContext): Promise<ToolCallResult> {
@@ -90,8 +99,27 @@ export class FinanceToolExecutor {
 
         case 'search_knowledge_base': {
           const query = input.query as string;
-          const matches = await this.knowledge.search(query);
+          const matches = await this.knowledge.search(query, ChatChannel.LINE_FINANCE);
           return { ok: true, data: { matches } };
+        }
+
+        case 'search_products': {
+          const data = await this.searchProducts.run(
+            input as { query: string; maxPriceThb?: number },
+          );
+          return { ok: true, data };
+        }
+
+        case 'calculate_installment': {
+          const data = await this.calcInstallment.run(
+            input as { productId: string; downPct?: number; tenureMonths: number },
+          );
+          return { ok: true, data };
+        }
+
+        case 'list_promotions': {
+          const data = await this.listPromotions.run(input as { productId?: string });
+          return { ok: true, data };
         }
 
         case 'handoff_to_human': {

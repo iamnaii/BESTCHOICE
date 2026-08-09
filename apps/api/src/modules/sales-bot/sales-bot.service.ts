@@ -13,12 +13,26 @@ import {
   GetInstallmentRatesTool,
   GET_INSTALLMENT_RATES_TOOL,
 } from './tools/get-installment-rates.tool';
+import {
+  SearchKnowledgeBaseTool,
+  SEARCH_KNOWLEDGE_BASE_TOOL,
+} from './tools/search-knowledge-base.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import {
   LlmChatMessage,
   LlmToolCall,
   LlmToolDefinition,
 } from './providers/llm-provider.interface';
+import {
+  collectGroundedPrices,
+  collectGroundedPricesFromToolText,
+  guardGrounding,
+} from '../../utils/price-grounding.util';
+import {
+  collectAttachmentsFromToolResult,
+  MAX_BOT_ATTACHMENTS,
+  type BotAttachment,
+} from '../../utils/bot-attachments.util';
 
 export interface SalesBotInput {
   text: string;
@@ -27,6 +41,8 @@ export interface SalesBotInput {
   priorMessages?: { role: 'user' | 'assistant'; content: string }[];
 }
 
+export type SalesBotAttachment = BotAttachment; // re-export ชื่อเดิมไว้ให้ผู้เรียกอ่านง่าย
+
 export interface SalesBotResult {
   reply: string;
   confidence: number;
@@ -34,6 +50,7 @@ export interface SalesBotResult {
   inputTokens: number;
   outputTokens: number;
   modelUsed: string;
+  attachments?: SalesBotAttachment[]; // ← ใหม่ (optional = ผู้เรียกเดิมไม่พัง)
 }
 
 const MAX_TOOL_HOPS = 3;
@@ -71,6 +88,7 @@ export class SalesBotService {
     private readonly handoff: HandoffToHumanTool,
     private readonly captureLead: CaptureLeadTool,
     private readonly getInstallmentRates: GetInstallmentRatesTool,
+    private readonly searchKnowledgeBase: SearchKnowledgeBaseTool,
     private readonly persona: PersonaService,
     private readonly aiUsage: AiUsageService,
   ) {}
@@ -108,6 +126,7 @@ export class SalesBotService {
       HANDOFF_TO_HUMAN_TOOL,
       CAPTURE_LEAD_TOOL,
       GET_INSTALLMENT_RATES_TOOL,
+      SEARCH_KNOWLEDGE_BASE_TOOL,
     ].map(adaptTool);
 
     const messages: LlmChatMessage[] = [
@@ -129,6 +148,8 @@ export class SalesBotService {
     // (e.g. Gemini 2.5 ignored PR #1064 anti-hallucinate rules and replied
     // "iPhone 15 7,000" though tool returned only iPhone 13/16 at 14,691/17,000).
     const groundedPrices = new Set<number>();
+    // ช่องส่งรูป/ลิงก์ — เติมจาก "ผลลัพธ์ tool" เท่านั้น (deterministic)
+    const attachments = new Map<string, BotAttachment>();
     let totalIn = 0;
     let totalOut = 0;
     let modelUsed = '';
@@ -152,7 +173,7 @@ export class SalesBotService {
           this.logger.log(
             `[FinalReply] room=${input.roomId} hop=${hop} toolsUsed=${JSON.stringify(toolsUsed)} reply=${JSON.stringify(resp.text).slice(0, 400)}`,
           );
-          const grounding = this.guardGrounding(resp.text, groundedPrices);
+          const grounding = guardGrounding(resp.text, groundedPrices);
           if (!grounding.ok) {
             this.logger.warn(
               `[GroundingGuard] room=${input.roomId} HALLUCINATION_BLOCKED reason=${grounding.reason} reply=${JSON.stringify(resp.text).slice(0, 200)} grounded=${JSON.stringify([...groundedPrices])}`,
@@ -175,6 +196,9 @@ export class SalesBotService {
             inputTokens: totalIn,
             outputTokens: totalOut,
             modelUsed,
+            ...(attachments.size > 0
+              ? { attachments: [...attachments.values()].slice(0, MAX_BOT_ATTACHMENTS) }
+              : {}),
           };
         }
 
@@ -194,7 +218,9 @@ export class SalesBotService {
             toolFailed = true;
             throw toolError;
           }
-          this.collectGroundedPrices(result, groundedPrices);
+          collectGroundedPrices(result, groundedPrices);
+          collectGroundedPricesFromToolText(tc.name, result, groundedPrices);
+          collectAttachmentsFromToolResult(tc.name, result, attachments);
           this.logger.log(
             `[ToolCall] room=${input.roomId} tool=${tc.name} args=${JSON.stringify(tc.input).slice(0, 300)} result=${JSON.stringify(result).slice(0, 600)}`,
           );
@@ -268,6 +294,8 @@ export class SalesBotService {
         });
       case 'get_installment_rates':
         return this.getInstallmentRates.run(input);
+      case 'search_knowledge_base':
+        return this.searchKnowledgeBase.run({ query: String(input.query ?? '') });
       default:
         return { error: 'unknown_tool' };
     }
@@ -287,84 +315,5 @@ export class SalesBotService {
     if (reply.trim().length < 20) return 0.6;
     if (toolsUsed.length > 0) return 0.95;
     return 0.9;
-  }
-
-  // Grounded-price key names collected from tool results. The model can name
-  // any of these as a "price" in its reply, so all are valid grounding
-  // sources:
-  // - priceThb / monthly / minPrice / maxPrice — original set (search_products
-  //   et al.)
-  // - downPayment / monthlyPrice — #1337: get_installment_rates v2 returns
-  //   real baht (PricingTemplate) under these keys so a template-quoted baht
-  //   figure passes while an invented one stays blocked
-  // - downAmountThb / monthlyThb / totalPaidThb — #1337 reviewer fix:
-  //   calculate_installment's computed baht outputs; without these, quoting
-  //   the calculated monthly/down/total got HALLUCINATION_BLOCKED (only
-  //   priceThb was collected from the calc result)
-  private static readonly GROUNDED_PRICE_KEYS = new Set([
-    'priceThb',
-    'monthly',
-    'minPrice',
-    'maxPrice',
-    'downPayment',
-    'monthlyPrice',
-    'downAmountThb',
-    'monthlyThb',
-    'totalPaidThb',
-  ]);
-
-  // Walk a tool result and collect every GROUNDED_PRICE_KEYS numeric field.
-  // We accept Decimal/string/number and coerce to Number — Decimal serialised
-  // across the LlmProvider boundary.
-  private collectGroundedPrices(value: unknown, into: Set<number>): void {
-    if (value == null) return;
-    if (Array.isArray(value)) {
-      for (const v of value) this.collectGroundedPrices(v, into);
-      return;
-    }
-    if (typeof value === 'object') {
-      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-        if (SalesBotService.GROUNDED_PRICE_KEYS.has(k) && v != null) {
-          const n = Number(v);
-          if (Number.isFinite(n) && n > 0) into.add(n);
-        }
-        this.collectGroundedPrices(v, into);
-      }
-    }
-  }
-
-  // Cheap programmatic grounding guard. After Gemini 2.5 ignored the
-  // anti-hallucinate persona rules in PR #1064 and replied "iPhone 15 7,000"
-  // though tool only returned iPhone 13 (14,691) + iPhone 16 (17,000), we
-  // need a deterministic backstop independent of model behaviour.
-  //
-  // Rule: every "<number> บาท|฿|baht" mention in the final reply must match
-  // (±5%) at least one price the model saw via a tool result this session.
-  // Sub-1000 numbers are skipped (could be late fee / interest rate / day
-  // count / etc — false-positive risk too high).
-  private guardGrounding(
-    reply: string,
-    grounded: Set<number>,
-  ): { ok: true } | { ok: false; reason: string } {
-    // Common Thai/English price suffix patterns
-    const priceRegex = /([\d][\d,]{2,})\s*(?:บาท|฿|baht|THB)/gi;
-    const matches = [...reply.matchAll(priceRegex)];
-    if (matches.length === 0) return { ok: true };
-
-    // If the bot mentions ANY price but no tool returned one, it cannot
-    // possibly be grounded — block.
-    if (grounded.size === 0) {
-      return { ok: false, reason: 'price-mentioned-no-tool-result' };
-    }
-
-    for (const m of matches) {
-      const num = Number(m[1].replace(/,/g, ''));
-      if (!Number.isFinite(num) || num < 1000) continue;
-      const closeMatch = [...grounded].some((g) => Math.abs(g - num) / g <= 0.05);
-      if (!closeMatch) {
-        return { ok: false, reason: `unmatched-price=${num}` };
-      }
-    }
-    return { ok: true };
   }
 }

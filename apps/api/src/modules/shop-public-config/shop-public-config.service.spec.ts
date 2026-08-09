@@ -55,4 +55,28 @@ describe('ShopPublicConfigService', () => {
       });
     });
   });
+
+  describe('getShopConfig', () => {
+    const getValue = () =>
+      (service as unknown as { integrations: { getValue: jest.Mock } }).integrations.getValue;
+
+    it('ใช้ pageUsername เมื่อเจ้าของกรอกไว้', async () => {
+      getValue().mockImplementation((_k: string, f: string) =>
+        Promise.resolve(f === 'pageUsername' ? ' bestchoicephone ' : '123456'),
+      );
+      expect(await service.getShopConfig()).toEqual({ facebookPageHandle: 'bestchoicephone' });
+    });
+
+    it('ถอยไปใช้ pageId เมื่อยังไม่ได้กรอก username (m.me รับ id ได้)', async () => {
+      getValue().mockImplementation((_k: string, f: string) =>
+        Promise.resolve(f === 'pageUsername' ? '' : '123456'),
+      );
+      expect(await service.getShopConfig()).toEqual({ facebookPageHandle: '123456' });
+    });
+
+    it('คืน null เมื่อยังไม่ได้ตั้งค่า Facebook เลย (ปุ่มจะถูกซ่อน)', async () => {
+      getValue().mockResolvedValue(undefined);
+      expect(await service.getShopConfig()).toEqual({ facebookPageHandle: null });
+    });
+  });
 });

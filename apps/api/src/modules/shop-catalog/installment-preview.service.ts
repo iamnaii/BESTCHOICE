@@ -9,6 +9,7 @@ import {
 } from '../../utils/installment-calc.util';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
+import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
 
 export interface PreviewResult {
@@ -65,28 +66,8 @@ export class InstallmentPreviewService {
     installmentPrice: Decimal,
     dto: InstallmentPreviewDto,
   ): Promise<PreviewResult> {
-    const config = await this.prisma.interestConfig.findFirst({
-      where: {
-        productCategories: { has: product.category },
-        deletedAt: null,
-        isActive: true,
-      },
-      include: { rates: { where: { deletedAt: null } } },
-    });
-    if (!config) return { available: false, reason: 'no_interest_config' };
-
-    const ratePctByMonths = new Map<number, Decimal>();
-    for (const r of config.rates) {
-      ratePctByMonths.set(r.months, new Decimal(r.ratePct.toString()));
-    }
-    // Fallback when InterestConfigRate not yet seeded — synthesize from per-month × m
-    if (ratePctByMonths.size === 0) {
-      const rate = new Decimal(config.interestRate.toString());
-      for (let m = config.minInstallmentMonths; m <= config.maxInstallmentMonths; m++) {
-        ratePctByMonths.set(m, rate.mul(m));
-      }
-    }
-    const allowedMonths = Array.from(ratePctByMonths.keys()).sort((a, b) => a - b);
+    const resolved = await resolveBcConfigForCategory(this.prisma, product.category);
+    if (!resolved.found) return { available: false, reason: 'no_interest_config' };
 
     const result = calcBcInstallment({
       installmentPrice,
@@ -94,13 +75,7 @@ export class InstallmentPreviewService {
       downPct: dto.downPct !== undefined ? new Decimal(dto.downPct) : undefined,
       customDownAmount:
         dto.customDownAmount !== undefined ? new Decimal(dto.customDownAmount) : undefined,
-      config: {
-        minDownPct: new Decimal(config.minDownPaymentPct.toString()),
-        commissionPct: new Decimal(config.storeCommissionPct.toString()),
-        vatPct: new Decimal(config.vatPct.toString()),
-        ratePctByMonths,
-        allowedMonths,
-      },
+      config: resolved.config!,
     });
 
     if (!result.isValid) {

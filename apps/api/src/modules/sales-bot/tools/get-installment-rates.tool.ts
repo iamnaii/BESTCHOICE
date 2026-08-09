@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  extractStorageToken,
+  normalizeStorage,
+  stripStorageToken,
+} from '../../../utils/device-query-normalize.util';
 
 export const GET_INSTALLMENT_RATES_TOOL = {
   name: 'get_installment_rates',
@@ -73,17 +78,6 @@ interface PricingTemplateRow {
 
 const MAX_MATCHES = 3;
 
-/** Pulls a storage token like "256GB" / "1TB" out of free text, normalized upper-case no-space. */
-function extractStorageToken(text: string): string | null {
-  const m = text.match(/(\d+)\s*(gb|tb)\b/i);
-  if (!m) return null;
-  return `${m[1]}${m[2].toUpperCase()}`;
-}
-
-function normalizeStorage(storage: string): string {
-  return storage.toUpperCase().replace(/\s+/g, '');
-}
-
 @Injectable()
 export class GetInstallmentRatesTool {
   constructor(private readonly prisma: PrismaService) {}
@@ -98,9 +92,7 @@ export class GetInstallmentRatesTool {
     // Strip the storage token from the text used for the brand/model contains
     // match — a stored model like "iPhone 15 Pro Max" would never contain the
     // literal "256GB" substring the customer typed alongside it.
-    const modelQuery = storageToken
-      ? rawQuery.replace(/(\d+)\s*(gb|tb)\b/i, ' ').replace(/\s+/g, ' ').trim()
-      : rawQuery;
+    const modelQuery = storageToken ? stripStorageToken(rawQuery) : rawQuery;
     if (!modelQuery) return { templates: [] };
 
     const rows: PricingTemplateRow[] = await this.prisma.pricingTemplate.findMany({

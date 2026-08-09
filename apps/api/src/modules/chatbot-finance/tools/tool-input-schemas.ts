@@ -87,6 +87,61 @@ function handoffToHumanInput(): Validator {
   };
 }
 
+function searchProductsInput(): Validator {
+  return (input) => {
+    if (!isPlainObject(input)) return { ok: false, error: 'input ต้องเป็น object' };
+    const query = input.query;
+    if (typeof query !== 'string') return { ok: false, error: 'query ต้องเป็น string' };
+    const trimmed = query.trim();
+    if (trimmed.length === 0) return { ok: false, error: 'query ห้ามว่าง' };
+    if (trimmed.length > 200) return { ok: false, error: 'query ยาวเกินไป (สูงสุด 200 ตัวอักษร)' };
+    const value: Record<string, unknown> = { query: trimmed };
+    const cap = input.maxPriceThb;
+    if (cap !== undefined) {
+      if (typeof cap !== 'number' || !Number.isFinite(cap) || cap <= 0 || cap > 10_000_000) {
+        return { ok: false, error: 'maxPriceThb ต้องเป็นตัวเลข 1-10,000,000' };
+      }
+      value.maxPriceThb = cap;
+    }
+    return { ok: true, value };
+  };
+}
+
+function calculateInstallmentInput(): Validator {
+  return (input) => {
+    if (!isPlainObject(input)) return { ok: false, error: 'input ต้องเป็น object' };
+    const productId = input.productId;
+    if (typeof productId !== 'string' || productId.trim().length === 0 || productId.length > 64) {
+      return { ok: false, error: 'productId ต้องเป็น string ไม่เกิน 64 ตัวอักษร' };
+    }
+    const tenure = input.tenureMonths;
+    if (typeof tenure !== 'number' || !Number.isInteger(tenure) || tenure < 1 || tenure > 60) {
+      return { ok: false, error: 'tenureMonths ต้องเป็นจำนวนเต็ม 1-60' };
+    }
+    const value: Record<string, unknown> = { productId: productId.trim(), tenureMonths: tenure };
+    const downPct = input.downPct;
+    if (downPct !== undefined) {
+      if (typeof downPct !== 'number' || !Number.isFinite(downPct) || downPct < 0 || downPct > 100) {
+        return { ok: false, error: 'downPct ต้องเป็นตัวเลข 0-100' };
+      }
+      value.downPct = downPct;
+    }
+    return { ok: true, value };
+  };
+}
+
+function listPromotionsInput(): Validator {
+  return (input) => {
+    if (!isPlainObject(input)) return { ok: false, error: 'input ต้องเป็น object' };
+    const productId = input.productId;
+    if (productId === undefined) return { ok: true, value: {} };
+    if (typeof productId !== 'string' || productId.length > 64) {
+      return { ok: false, error: 'productId ต้องเป็น string ไม่เกิน 64 ตัวอักษร' };
+    }
+    return { ok: true, value: { productId: productId.trim() } };
+  };
+}
+
 const TOOL_INPUT_VALIDATORS: Record<ToolName, Validator> = {
   get_current_balance: emptyObject(),
   get_payment_schedule: emptyObject(),
@@ -95,6 +150,9 @@ const TOOL_INPUT_VALIDATORS: Record<ToolName, Validator> = {
   get_bank_info: emptyObject(),
   search_knowledge_base: searchKnowledgeBaseInput(),
   handoff_to_human: handoffToHumanInput(),
+  search_products: searchProductsInput(),
+  calculate_installment: calculateInstallmentInput(),
+  list_promotions: listPromotionsInput(),
 };
 
 export function validateToolInput(name: string, input: unknown): ValidationResult {

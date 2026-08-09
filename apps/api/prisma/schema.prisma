@@ -5314,8 +5314,10 @@ model ChatMessage {
 
 /// Knowledge base entries (FAQ)
 model ChatKnowledgeBase {
-  id      String      @id @default(uuid())
-  channel ChatChannel @default(LINE_FINANCE)
+  id String @id @default(uuid())
+
+  /// NULL = ใช้ได้ทุกช่องทาง (B3); ค่า default คงเดิมเพื่อไม่ให้ caller เก่าเปลี่ยนพฤติกรรม
+  channel ChatChannel? @default(LINE_FINANCE)
 
   category String
   intent   String

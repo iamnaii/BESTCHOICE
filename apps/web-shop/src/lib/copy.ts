@@ -27,6 +27,45 @@ export function lineOaMessageUrl(text: string): string {
   return `https://line.me/R/oaMessage/%40${handle}/?${encodeURIComponent(text)}`;
 }
 
+/**
+ * ลิงก์ "แชร์สินค้า" — ชี้ไป share endpoint ของ API ที่เสิร์ฟ Open Graph
+ * (SPA เป็น client-render ล้วน LINE/Facebook จึงไม่เห็น meta ที่ usePageMeta ใส่)
+ * endpoint จะเด้งคนจริงต่อไปที่ /products/:id ทันที
+ */
+export function productShareUrl(productId: string): string {
+  const origin =
+    typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'https://www.bestchoicephone.com';
+  return `${origin}/api/shop/share/${encodeURIComponent(productId)}`;
+}
+
+/**
+ * ลิงก์ Messenger พร้อม ref ต่อเครื่อง — webhook ฝั่ง API อ่าน `p:<productId>`
+ * แล้วโพสต์โน้ตในห้องแชทให้ทีมงานรู้ว่าลูกค้ามาจากเครื่องไหน
+ *
+ * `pageHandle` มาจาก GET /api/shop/public-config/shop (username ที่เจ้าของกรอก
+ * ในหน้า Settings หรือถอยไปใช้ pageId) — **ห้าม hardcode ในไฟล์นี้** เพราะจะทำให้
+ * เจ้าของแก้เองไม่ได้และปุ่มถูกซ่อนถาวร. คืน null เมื่อยังไม่ได้ตั้งค่า Facebook เลย
+ */
+export function messengerRefUrl(
+  productId: string,
+  pageHandle: string | null | undefined,
+): string | null {
+  if (!pageHandle) return null;
+  return `https://m.me/${encodeURIComponent(pageHandle)}?ref=${encodeURIComponent(`p:${productId}`)}`;
+}
+
+/** ข้อความ prefill ตอนทักไลน์จากหน้าสินค้า — จุดแก้เดียวของทั้ง 2 ปุ่ม */
+export function lineProductPrefill(
+  displayName: string,
+  imeiLast4: string | undefined,
+  shareUrl: string,
+): string {
+  const tail = imeiLast4 ? ` (${imeiLast4})` : '';
+  return `สนใจ ${displayName}${tail} ${shareUrl}`;
+}
+
 export const copy = {
   common: {
     loading: 'กำลังโหลด...',
@@ -82,6 +121,16 @@ export const copy = {
     conditionBFull: 'เกรด B — สภาพใช้งาน มีรอยเล็กน้อย',
     conditionCFull: 'เกรด C — สภาพมีรอย หรือตำหนิ',
     askLineCta: 'สอบถามเครื่องนี้ทางไลน์',
+    shareCta: 'แชร์เครื่องนี้',
+    shareCopied: 'คัดลอกลิงก์แล้ว',
+    shareFailed: 'คัดลอกลิงก์ไม่สำเร็จ',
+    askMessengerCta: 'ทักเรื่องเครื่องนี้ทาง Messenger',
+    branchLabel: 'เครื่องอยู่ที่',
+    accessoriesLabel: 'อุปกรณ์ที่ได้',
+    cosmeticLabel: 'ตำหนิที่แจ้งไว้',
+    qcTitle: 'ผลตรวจสภาพเครื่อง',
+    qcPassed: 'ผ่าน',
+    qcFailed: 'ไม่ผ่าน',
   },
 
   cart: {

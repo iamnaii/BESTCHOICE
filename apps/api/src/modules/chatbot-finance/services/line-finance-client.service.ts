@@ -25,7 +25,15 @@ interface LineStickerMessage {
   quickReply?: LineQuickReply;
 }
 
-type LineMessage = LineTextMessage | LineFlexMessage | LineStickerMessage;
+/** รูปภาพ — LINE ต้องการ URL สาธารณะ HTTPS เท่านั้น (Product.gallery[]; ห้ามใช้ photos[] ที่เป็น base64) */
+interface LineImageMessage {
+  type: 'image';
+  originalContentUrl: string;
+  previewImageUrl: string;
+  quickReply?: LineQuickReply;
+}
+
+export type LineMessage = LineTextMessage | LineFlexMessage | LineStickerMessage | LineImageMessage;
 
 export interface LineQuickReplyItem {
   type: 'action';

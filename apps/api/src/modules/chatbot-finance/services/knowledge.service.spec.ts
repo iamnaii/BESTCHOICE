@@ -160,4 +160,46 @@ describe('KnowledgeService', () => {
       await expect(service.remove('nonexistent')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('channel ข้ามช่อง (B3 Task 7)', () => {
+    it('search ดึงทั้ง FAQ ของช่องนั้นและ FAQ กลาง (channel = null)', async () => {
+      await service.search('ค่าปรับ');
+      expect(prisma.chatKnowledgeBase.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            active: true,
+            deletedAt: null,
+            OR: [{ channel: null }, { channel: 'LINE_FINANCE' }],
+          }),
+        }),
+      );
+    });
+
+    it('search ระบุ channel อื่นได้', async () => {
+      await service.search('ค่าปรับ', 'LINE_SHOP' as never);
+      const where = prisma.chatKnowledgeBase.findMany.mock.calls.at(-1)![0].where;
+      expect(where.OR).toEqual([{ channel: null }, { channel: 'LINE_SHOP' }]);
+    });
+
+    it('create ที่ส่ง channel = null → บันทึกเป็น FAQ กลาง', async () => {
+      await service.create({
+        intent: 'shop_hours',
+        category: 'general',
+        triggerKeywords: ['เปิดกี่โมง'],
+        exampleQuestions: [],
+        responseTemplate: 'เปิด 10:00-20:00',
+        responseType: 'info',
+        channel: null,
+      });
+      expect(prisma.chatKnowledgeBase.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ channel: null }) }),
+      );
+    });
+
+    it('listAll ไม่ระบุ channel → คืนทุกช่อง (ไม่กรอง)', async () => {
+      await service.listAll();
+      const where = prisma.chatKnowledgeBase.findMany.mock.calls.at(-1)![0].where;
+      expect(where).toEqual({ deletedAt: null });
+    });
+  });
 });

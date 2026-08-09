@@ -9,6 +9,11 @@ export interface ShopProduct {
   model?: string;
 }
 
+export interface QcCheckItem {
+  item: string;
+  passed: boolean;
+}
+
 export interface ProductUnit {
   id: string;
   conditionGrade: string;
@@ -21,4 +26,8 @@ export interface ProductUnit {
   imeiPartial?: string;
   gallery: string[];
   gallery360: string[];
+  branchName?: string;
+  accessories?: string[];
+  cosmeticNotes?: string;
+  qcChecklist?: QcCheckItem[];
 }

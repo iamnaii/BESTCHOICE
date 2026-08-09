@@ -7,6 +7,7 @@ import { calcBcInstallment } from '../../utils/installment-calc.util';
 import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
 import type { BcConfig } from '../../utils/installment-calc.types';
 import { parseAccessories, parseQcChecklist, QcCheckItem } from './product-unit-detail.util';
+import { parseDeviceQuery } from '../../utils/device-query-normalize.util';
 
 export interface ProductGroup {
   /** Representative product id — the catalog card links to /products/:id with this. */
@@ -64,7 +65,8 @@ export interface ProductUnit {
 const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
 // B0 §2.3: เงื่อนไขขึ้นเว็บมาจาก util ตัวเดียว (brand/category/สถานะ/ราคา/รูป/เกรด/[DEMO])
-// fragment ใช้คีย์ `AND` เท่านั้น → ปลอดภัยกับ where.OR ที่ listGroupedByModel assign เอง
+// fragment ใช้คีย์ `AND` เท่านั้น → ประกอบต่อกับเงื่อนไข search (Task 7) ที่ต่อเข้า
+// `where.AND` เช่นกันได้อย่างปลอดภัย ไม่มีคีย์ชนกัน
 // `excludeDemo` มาจาก SystemConfig flag `shop_hide_demo_products` ที่ผู้เรียก (แต่ละ public
 // method ด้านล่าง) อ่านมาครั้งเดียวต่อ request แล้ว thread เข้ามา — ตาม util's JSDoc contract
 // (util นี้ pure ไม่อ่าน SystemConfig เอง)
@@ -106,10 +108,29 @@ export class ShopCatalogService {
       where.cashPrice = { ...where.cashPrice, lte: filters.maxPrice };
     if (filters.search?.trim()) {
       const q = filters.search.trim();
-      where.OR = [
-        { brand: { contains: q, mode: 'insensitive' } },
-        { model: { contains: q, mode: 'insensitive' } },
-      ];
+      // util กลางจาก B0 — ตัวเดียวกับที่บอทและ inbox ใช้ เพื่อให้ "ไอโฟน 15 โปร"
+      // ที่ลูกค้าพิมพ์ในเว็บกับในแชทให้ผลเดียวกัน
+      const parsed = parseDeviceQuery(q);
+      const clauses: Record<string, unknown>[] = [];
+      if (parsed.model) clauses.push({ model: { contains: parsed.model, mode: 'insensitive' } });
+      if (parsed.storage)
+        clauses.push({ storage: { equals: parsed.storage, mode: 'insensitive' } });
+      // ⚠️ ห้ามใส่ parsed.color ลง where: util คืนคำไทย ('ดำ') แต่ Product.color
+      // เก็บอังกฤษ ('Black') → จะกลายเป็นเงื่อนไขที่ไม่มีวันจริง = 0 ผลลัพธ์
+      // สีใช้เป็น "narrowing แบบ no-op" หลัง query แทน (แบบเดียวกับ B3
+      // search-products.tool: `if (byColor.length > 0) candidates = byColor`)
+      // brand ถูกตรึงเป็น Apple ใน readiness fragment อยู่แล้ว จึงไม่ต้องใช้ parsed.brand
+      if (clauses.length === 0) {
+        clauses.push({
+          OR: [
+            { brand: { contains: q, mode: 'insensitive' } },
+            { model: { contains: q, mode: 'insensitive' } },
+          ],
+        });
+      }
+      // ต่อ AND เสมอ — ห้ามเขียนทับ where ด้วยเงื่อนไข OR ระดับบนสุดตรง ๆ เพราะจะชนกับ
+      // fragment readiness/base ที่ประกอบมาเป็น {AND:[...]} อยู่แล้ว
+      where.AND = [...((where.AND as unknown[]) ?? []), ...clauses];
     }
 
     const orderBy =

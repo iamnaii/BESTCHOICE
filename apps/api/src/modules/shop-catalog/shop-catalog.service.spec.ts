@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ShopCatalogService } from './shop-catalog.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { productReadinessWhere } from '../../utils/product-readiness.util';
 
 describe('ShopCatalogService', () => {
   let service: ShopCatalogService;
@@ -165,18 +166,57 @@ describe('ShopCatalogService', () => {
       expect(result.data[0].monthlyPaymentFrom).toBeNull();
     });
 
-    it('filters by search text on brand OR model (case-insensitive)', async () => {
+    it('แปลงคำค้นไทยเป็นเงื่อนไข AND (ไม่ assign where.OR ทับ fragment อื่น)', async () => {
       prisma.product.groupBy.mockResolvedValue([]);
-      await service.listGroupedByModel({ search: ' iphone 15 ' });
-      expect(prisma.product.groupBy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
+      await service.listGroupedByModel({ search: ' ไอโฟน 15 โปรแม็กซ์ 256gb ' });
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.OR).toBeUndefined();
+      expect(where.AND).toEqual(
+        expect.arrayContaining([
+          { model: { contains: 'iPhone 15 Pro Max', mode: 'insensitive' } },
+          { storage: { equals: '256GB', mode: 'insensitive' } },
+        ]),
+      );
+    });
+
+    it('ถอยไป contains ธรรมดาเมื่อ util แปลงคำค้นไม่ออก', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+      await service.listGroupedByModel({ search: 'zzzz' });
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.OR).toBeUndefined();
+      // arrayContaining, not exact equality: where.AND already carries the B0 readiness
+      // fragment (brand/category/status/etc — see the "hard-filters" test above) BEFORE the
+      // search block appends anything, so the fallback OR clause is one element AMONG those,
+      // not the sole element of the array.
+      expect(where.AND).toEqual(
+        expect.arrayContaining([
+          {
             OR: [
-              { brand: { contains: 'iphone 15', mode: 'insensitive' } },
-              { model: { contains: 'iphone 15', mode: 'insensitive' } },
+              { brand: { contains: 'zzzz', mode: 'insensitive' } },
+              { model: { contains: 'zzzz', mode: 'insensitive' } },
             ],
-          }),
-        }),
+          },
+        ]),
+      );
+    });
+
+    it('ต่อท้าย where.AND ที่มีอยู่แล้วแทนที่จะเขียนทับ', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+      await service.listGroupedByModel({ search: 'zzzz', model: 'iPhone 16' });
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.model).toBe('iPhone 16');
+      expect(Array.isArray(where.AND)).toBe(true);
+    });
+
+    // สีที่ util คืนเป็นคำไทย แต่ Product.color เก็บอังกฤษ ('Black'/'Blue'/'Gold')
+    // ถ้าเผลอเอา parsed.color ไปใส่ where จะได้ 0 ผลลัพธ์ทันที — เทสต์นี้ตรึงไว้
+    it('ไม่เอาสี (คำไทย) ไปเป็นเงื่อนไข where — ไม่งั้นค้น "สีดำ" จะได้ 0 ผลลัพธ์', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+      await service.listGroupedByModel({ search: 'ไอโฟน 15 สีดำ' });
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(JSON.stringify(where)).not.toContain('color');
+      expect(where.AND).toEqual(
+        expect.arrayContaining([{ model: { contains: 'iPhone 15', mode: 'insensitive' } }]),
       );
     });
 
@@ -184,7 +224,11 @@ describe('ShopCatalogService', () => {
       prisma.product.groupBy.mockResolvedValue([]);
       await service.listGroupedByModel({ search: '   ' });
       const where = prisma.product.groupBy.mock.calls[0][0].where;
-      expect(where.OR).toBeUndefined();
+      // where.AND is never `undefined` — the B0 readiness fragment always populates it,
+      // even with zero filters (see the "hard-filters ผ่าน readiness fragment" test above).
+      // A blank search must add NOTHING on top of that base — assert exact equality with
+      // the real util's output rather than a hand-copied literal (can't drift out of sync).
+      expect(where.AND).toEqual(productReadinessWhere({ excludeDemo: false }).AND);
     });
 
     it('filters by exact model while keeping the iPhone-only base', async () => {
@@ -197,12 +241,17 @@ describe('ShopCatalogService', () => {
       );
     });
 
-    it('search assign where.OR แล้ว readiness fragment ยังอยู่ครบ (ไม่โดนทับ)', async () => {
+    it('search ต่อเข้า where.AND แล้ว readiness fragment ยังอยู่ครบ (ไม่โดนทับ)', async () => {
       prisma.product.groupBy.mockResolvedValue([]);
       await service.listGroupedByModel({ search: 'iphone 15' });
       const where = prisma.product.groupBy.mock.calls[0][0].where;
-      expect(where.OR).toHaveLength(2);
-      expect(where.AND).toEqual(expect.arrayContaining([{ cashPrice: { gt: 0 } }]));
+      expect(where.OR).toBeUndefined();
+      expect(where.AND).toEqual(
+        expect.arrayContaining([
+          { cashPrice: { gt: 0 } },
+          { model: { contains: 'iPhone 15', mode: 'insensitive' } },
+        ]),
+      );
     });
   });
 

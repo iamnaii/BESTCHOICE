@@ -394,15 +394,19 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // (h)-(k) B5 forward-flag — P2034 retry wrapper around $transaction.
+  // (h)-(m) B5 forward-flag — P2002/P2034 retry wrapper around $transaction.
   // Serializable tx + new productReservation writes raise write-write
-  // conflict odds; a P2034 must retry quietly instead of surfacing as a 500
-  // at the cashier's screen. Pattern mirrors
-  // contract-lifecycle.service.ts:255-259 (MAX_RETRIES=3, retry only on a
-  // Prisma-known P2034, everything else propagates immediately).
+  // conflict odds (P2034); separately, sequence.util.ts's unlocked
+  // findFirst(desc)+parseInt+1 number generators give createInstallmentSale
+  // (default isolation) a genuine P2002 race on Contract.contractNumber /
+  // Sale.saleNumber. Neither should surface as a raw 500 at the cashier's
+  // screen. Pattern mirrors contract-lifecycle.service.ts:255-259
+  // (MAX_RETRIES=3, retry on Prisma-known P2002 OR P2034, everything else
+  // propagates immediately — fix round 1: widened from P2034-only after
+  // review found the P2002 exclusion's stated justification false).
   // ───────────────────────────────────────────────────────────────────────────
 
-  describe('B5 forward-flag — P2034 retry wrapper', () => {
+  describe('B5 forward-flag — P2002/P2034 retry wrapper', () => {
     const p2034 = new Prisma.PrismaClientKnownRequestError('write conflict', {
       code: 'P2034',
       clientVersion: 'x',
@@ -471,9 +475,15 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(2);
     });
 
-    it('(k) createCashSale: a non-P2034 error is NOT retried — propagates on the first attempt', async () => {
-      const p2002 = new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' });
-      prisma.$transaction.mockImplementation(async () => { throw p2002; });
+    it('(k) createCashSale: non-retryable P2025 (not P2002/P2034) propagates on the first attempt', async () => {
+      // P2025 = "Record to update not found" — a real Prisma-known code that is
+      // neither P2002 nor P2034, so this still pins "unknown/non-retryable
+      // errors are NOT retried" now that P2002 itself IS retryable (fix round 1).
+      const p2025 = new Prisma.PrismaClientKnownRequestError('record not found', {
+        code: 'P2025',
+        clientVersion: 'x',
+      });
+      prisma.$transaction.mockImplementation(async () => { throw p2025; });
 
       await expect(
         service.createCashSale(
@@ -483,7 +493,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
           } as any,
           'sp-1', 10000, 0,
         ),
-      ).rejects.toBe(p2002);
+      ).rejects.toBe(p2025);
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
 
@@ -500,6 +510,37 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         ),
       ).rejects.toBe(p2034);
       expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    });
+
+    it('(m) createInstallmentSale: first attempt rejects P2002 (unlocked contractNumber race) → retried → succeeds', async () => {
+      // Fix round 1: sequence.util.ts's generateContractNumber/generateSaleNumber
+      // have no advisory lock (plain findFirst(desc)+parseInt+1) — two concurrent
+      // installment sales (default isolation, no Serializable) can race to INSERT
+      // the same Contract.contractNumber, producing a real P2002. This must retry
+      // exactly like contract-lifecycle.service.ts's own P2002 branch for that field.
+      const p2002 = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on Contract.contractNumber',
+        { code: 'P2002', clientVersion: 'x' },
+      );
+      tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+      tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
+      tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+      tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+      tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.$transaction
+        .mockImplementationOnce(async () => { throw p2002; })
+        .mockImplementationOnce(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx));
+
+      const result = await service.createInstallmentSale(
+        {
+          productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
+          bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
+        } as any,
+        'sp-1', 20000, 0,
+      );
+
+      expect(result).toEqual(mockSale);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
     });
   });
 });

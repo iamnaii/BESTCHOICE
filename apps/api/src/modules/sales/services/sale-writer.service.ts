@@ -40,21 +40,30 @@ export class SaleWriterService {
   ) {}
 
   /**
-   * Retry wrapper around `this.prisma.$transaction` — same shape/constants as
-   * `ContractLifecycleService.create`'s retry loop
-   * (contract-lifecycle.service.ts:255-259): up to 3 attempts, retry only on
-   * a Prisma serialization failure (P2034).
+   * Retry wrapper around `this.prisma.$transaction` — same shape/constants AND
+   * error-detection predicate as `ContractLifecycleService.create`'s retry loop
+   * (contract-lifecycle.service.ts:255-259): up to 3 attempts, retry on a
+   * Prisma unique-constraint violation (P2002) OR serialization failure
+   * (P2034).
    *
-   * B5: `preemptReservationsInTx` adds a `productReservation.updateMany`
-   * write-write surface inside these `$transaction` calls. Under
-   * Serializable isolation (cash/external) that raises the odds of a P2034
-   * write-conflict abort — see `reservation-preempt.util.ts`'s doc-comment.
-   * `createInstallmentSale` runs at the default isolation level, but P2034
-   * ("write conflict or a deadlock") also covers plain deadlocks, which are
-   * possible regardless of isolation level, so it is wrapped too. Without
-   * this, a conflict would surface as a raw 500 at the cashier's screen
-   * instead of quietly retrying. Any other error (including P2002) is NOT
-   * retried — it propagates immediately, unchanged.
+   * B5 (fix round 1 — widened from P2034-only): `preemptReservationsInTx`
+   * adds a `productReservation.updateMany` write-write surface inside these
+   * `$transaction` calls, raising P2034 odds under Serializable isolation
+   * (cash/external) — see `reservation-preempt.util.ts`'s doc-comment.
+   * Separately, and unrelated to preempt: `generateSaleNumber`/
+   * `generateContractNumber` (`sequence.util.ts`) have NO advisory lock —
+   * plain unlocked `findFirst(desc)` + `parseInt+1`. `createInstallmentSale`
+   * runs at default isolation (no `isolationLevel: 'Serializable'`), so two
+   * concurrent installment sales can race past that unlocked read and both
+   * try to `INSERT` the same `Contract.contractNumber`/`Sale.saleNumber`,
+   * producing a genuine P2002 — not a P2034. This is exactly the race
+   * `contract-lifecycle.service.ts`'s own P2002 branch exists for (same
+   * `contractNumber` field), and retrying is safe here for the same reason:
+   * `Sale` has no unique `idempotencyKey`, `productReservation` writes are
+   * `updateMany`-only, and the whole callback reruns on retry so a fresh
+   * number is generated each attempt — no duplicate-effect risk. Any other
+   * error (e.g. P2003, P2025, or a non-Prisma error) is NOT retried — it
+   * propagates immediately, unchanged.
    */
   private async runSaleTransaction<T>(
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -65,9 +74,10 @@ export class SaleWriterService {
       try {
         return await this.prisma.$transaction(fn, options);
       } catch (err: unknown) {
-        // Retry on serialization failure (P2034) only.
+        // Retry on unique constraint (P2002) or serialization failure (P2034)
+        // — same predicate as ContractLifecycleService.create.
         const prismaErr = err instanceof Prisma.PrismaClientKnownRequestError ? err : null;
-        const isRetryable = prismaErr?.code === 'P2034';
+        const isRetryable = prismaErr?.code === 'P2002' || prismaErr?.code === 'P2034';
         if (isRetryable && attempt < MAX_RETRIES - 1) {
           continue;
         }

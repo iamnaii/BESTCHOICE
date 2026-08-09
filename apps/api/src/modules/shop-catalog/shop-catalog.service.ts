@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
+import { parseAccessories, parseQcChecklist, QcCheckItem } from './product-unit-detail.util';
 
 export interface ProductGroup {
   /** Representative product id — the catalog card links to /products/:id with this. */
@@ -45,6 +46,14 @@ export interface ProductUnit {
   imeiPartial?: string; // last 4 digits
   gallery: string[];
   gallery360: string[];
+  /** ชื่อสาขาที่เครื่องนี้อยู่ — ลูกค้าถามบ่อยว่า "อยู่สาขาไหน" */
+  branchName?: string;
+  /** อุปกรณ์ที่ให้ไปกับเครื่อง (รวม 'กล่อง' จาก hasBox) */
+  accessories: string[];
+  /** ตำหนิ/รอยที่แจ้งลูกค้าตรง ๆ */
+  cosmeticNotes?: string;
+  /** ผลตรวจ QC รายข้อ (เฉพาะที่เก็บเป็น checklist จริง) */
+  qcChecklist: QcCheckItem[];
 }
 
 const INTEREST_RATE_PER_MONTH = 0.0099; // 0.99%/month — example, adjust per pricing config
@@ -252,6 +261,7 @@ export class ShopCatalogService {
         ...productReadinessWhere({ excludeDemo }),
       },
       orderBy: { cashPrice: 'asc' },
+      include: { branch: { select: { name: true } } },
     });
 
     const tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }> = {};
@@ -275,6 +285,10 @@ export class ShopCatalogService {
         imeiPartial,
         gallery: u.gallery,
         gallery360: u.gallery360,
+        branchName: u.branch?.name ?? undefined,
+        accessories: parseAccessories(u.accessoriesIncluded, u.hasBox),
+        cosmeticNotes: u.cosmeticNotes ?? undefined,
+        qcChecklist: parseQcChecklist(u.checklistResults),
       });
       if (price < tiers[grade].minPrice) tiers[grade].minPrice = price;
       if (price > tiers[grade].maxPrice) tiers[grade].maxPrice = price;

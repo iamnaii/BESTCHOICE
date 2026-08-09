@@ -216,7 +216,11 @@ describe('ShopCatalogService', () => {
         expect.objectContaining({
           by: ['model'],
           where: expect.objectContaining({
-            AND: expect.arrayContaining([{ brand: 'Apple' }, { status: 'IN_STOCK' }, { deletedAt: null }]),
+            AND: expect.arrayContaining([
+              { brand: 'Apple' },
+              { status: 'IN_STOCK' },
+              { deletedAt: null },
+            ]),
           }),
           orderBy: [{ _count: { id: 'desc' } }],
         }),
@@ -416,6 +420,89 @@ describe('ShopCatalogService', () => {
         const units = Object.values(detail!.tiers).flatMap((t) => t.units);
         expect(units.map((u) => u.id)).toEqual(['u1']);
       });
+    });
+
+    it('exposes per-unit branch, accessories, cosmetic notes and QC checklist', async () => {
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p1',
+        brand: 'Apple',
+        model: 'iPhone 13',
+        storage: '128GB',
+        category: 'PHONE_USED',
+        cashPrice: 13900,
+        conditionGrade: 'A',
+        gallery: [],
+        gallery360: [],
+        isOnlineVisible: true,
+      });
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'u1',
+          conditionGrade: 'A',
+          batteryHealth: 92,
+          hasBox: true,
+          shopWarrantyDays: 45,
+          cashPrice: 13900,
+          installmentPrice: 15900,
+          imeiSerial: '111122223333',
+          gallery: [],
+          gallery360: [],
+          accessoriesIncluded: ['สายชาร์จ'],
+          cosmeticNotes: 'มีรอยขีดมุมล่างซ้าย',
+          checklistResults: [
+            { item: 'หน้าจอ', category: 'display', passed: true },
+            { item: 'ลำโพง', category: 'audio', passed: false },
+          ],
+          branch: { name: 'สาขาลพบุรี' },
+        },
+      ]);
+
+      const result = await service.getProductDetail('p1');
+      const u = result!.tiers.A.units[0];
+
+      expect(u.branchName).toBe('สาขาลพบุรี');
+      expect(u.accessories).toEqual(['กล่อง', 'สายชาร์จ']);
+      expect(u.cosmeticNotes).toBe('มีรอยขีดมุมล่างซ้าย');
+      expect(u.qcChecklist).toEqual([
+        { item: 'หน้าจอ', passed: true },
+        { item: 'ลำโพง', passed: false },
+      ]);
+      expect(u.shopWarrantyDays).toBe(45);
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ include: { branch: { select: { name: true } } } }),
+      );
+    });
+
+    it('degrades to empty lists when the unit has no accessories/QC data', async () => {
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p1',
+        brand: 'Apple',
+        model: 'iPhone 13',
+        storage: '128GB',
+        category: 'PHONE_USED',
+        cashPrice: 13900,
+        conditionGrade: 'A',
+        gallery: [],
+        gallery360: [],
+        isOnlineVisible: true,
+      });
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'u1',
+          conditionGrade: 'A',
+          cashPrice: 13900,
+          gallery: [],
+          gallery360: [],
+          imeiSerial: null,
+          checklistResults: { source: 'trade-in', tradeInId: 't1' },
+        },
+      ]);
+
+      const u = (await service.getProductDetail('p1'))!.tiers.A.units[0];
+      expect(u.accessories).toEqual([]);
+      expect(u.qcChecklist).toEqual([]);
+      expect(u.branchName).toBeUndefined();
+      expect(u.cosmeticNotes).toBeUndefined();
     });
   });
 

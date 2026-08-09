@@ -34,7 +34,10 @@ describe('buildSharePage — XSS hardening', () => {
   });
 
   it('escapes < inside the JSON-LD block so </script> cannot break out', () => {
-    const html = buildSharePage({ ...base, description: 'x </script><img src=1 onerror=alert(1)>' });
+    const html = buildSharePage({
+      ...base,
+      description: 'x </script><img src=1 onerror=alert(1)>',
+    });
     const ld = html.slice(html.indexOf('application/ld+json'));
     expect(ld).not.toContain('</script><img');
     expect(html).toContain('\\u003c/script');
@@ -61,8 +64,19 @@ describe('buildSharePage — Open Graph', () => {
       '<link rel="canonical" href="https://www.bestchoicephone.com/products/p-1">',
     );
   });
+  it('emits product:availability matching stock state (FF-1: crawler twin of the sold-out page)', () => {
+    expect(buildSharePage(base)).toContain(
+      '<meta property="product:availability" content="in stock">',
+    );
+    expect(buildSharePage({ ...base, inStock: false })).toContain(
+      '<meta property="product:availability" content="out of stock">',
+    );
+  });
+
   it('emits the price meta pair when a price exists and skips it when null', () => {
-    expect(buildSharePage(base)).toContain('<meta property="product:price:amount" content="29900">');
+    expect(buildSharePage(base)).toContain(
+      '<meta property="product:price:amount" content="29900">',
+    );
     expect(buildSharePage({ ...base, price: null })).not.toContain('product:price:amount');
   });
 });
@@ -73,7 +87,9 @@ describe('buildSharePage — redirect', () => {
     expect(html).toContain(
       '<meta http-equiv="refresh" content="0;url=https://www.bestchoicephone.com/products/p-1">',
     );
-    expect(html).toContain('window.location.replace("https://www.bestchoicephone.com/products/p-1")');
+    expect(html).toContain(
+      'window.location.replace("https://www.bestchoicephone.com/products/p-1")',
+    );
   });
   it('keeps a plain <a> fallback for crawlers/no-JS', () => {
     expect(buildSharePage(base)).toContain('href="https://www.bestchoicephone.com/products/p-1"');

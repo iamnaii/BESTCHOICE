@@ -24,6 +24,7 @@ import { CompanyResolverService } from '../journal/company-resolver.service';
 import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
 import { computeExchangePlan } from './exchange-plan.util';
 import { glContractBalance } from '../journal/gl-contract-balance';
+import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 
 /**
  * Subset of the request user that submit() needs to perform branch scoping.
@@ -412,6 +413,8 @@ export class ContractExchangeService {
           ownedByCompanyId: (oldProduct as any).ownedByCompanyId,
         } as any,
       });
+      // B5: เครื่องใหม่หลุดจาก IN_STOCK แล้ว (รับสถานะเครื่องเดิม) — ตัด hold ของเว็บใน tx เดียวกัน
+      await preemptReservationsInTx(tx, [req.newProductId]);
       await tx.product.update({
         where: { id: req.oldProductId },
         data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,
@@ -619,6 +622,8 @@ export class ContractExchangeService {
         where: { id: req.newProductId },
         data: { status: 'RESERVED' } as any,
       });
+      // B5: เครื่องใหม่ถูกจองไว้รอ activate — ตัด hold ของเว็บใน tx เดียวกัน (เปลี่ยนเครื่องระหว่างสัญญา)
+      await preemptReservationsInTx(tx, [req.newProductId]);
 
       // 6. Link request to new contract (jeXIds are written later by
       // finalizeAfterActivation when the JE chain actually posts).

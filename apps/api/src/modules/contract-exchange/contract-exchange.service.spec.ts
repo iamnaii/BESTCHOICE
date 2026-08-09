@@ -311,6 +311,9 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'cloned-pdpa' }),
       },
+      productReservation: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };
@@ -443,6 +446,9 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       pDPAConsent: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'cloned-pdpa-uuid' }),
+      },
+      productReservation: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
     templates = {
@@ -801,6 +807,9 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'cloned-pdpa' }),
       },
+      productReservation: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     };
     templates = {
       t1a: { execute: jest.fn() },
@@ -932,6 +941,20 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     );
   });
 
+  it('MEMO: B5 — ตัด hold ของเว็บใน tx เดียวกับที่เครื่องใหม่ออกจาก IN_STOCK (dynamic status flip)', async () => {
+    prisma.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.approve('memoReq', { id: 'u1', role: 'OWNER', branchId: null }, {
+      memoAddendumSigned: true,
+      memoMdmSwapped: true,
+    });
+
+    const call = prisma.productReservation.updateMany.mock.calls.at(-1)[0];
+    expect(call.where.productId.in).toContain('newP1');
+    expect(call.where.status).toBe('ACTIVE');
+    expect(call.data).toEqual({ status: 'PREEMPTED' });
+  });
+
   it('PRICED: สัญญาใหม่ใช้แผนจาก request snapshot (ไม่ clone งวดเดิม)', async () => {
     const result = await service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {});
     const created = prisma.contract.create.mock.calls[0][0].data;
@@ -955,6 +978,17 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       (c: any[]) => c[0].action === 'EXCHANGE_REQUEST_APPROVED',
     )![0].newValue;
     expect(auditValue.remainingMonths).toBeUndefined();
+  });
+
+  it('B5: ตัด hold ของเว็บใน tx เดียวกับที่เครื่องออกจาก IN_STOCK', async () => {
+    prisma.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {});
+
+    const call = prisma.productReservation.updateMany.mock.calls.at(-1)[0];
+    expect(call.where.productId.in).toContain('new-p');
+    expect(call.where.status).toBe('ACTIVE');
+    expect(call.data).toEqual({ status: 'PREEMPTED' });
   });
 
   it('PRICED snapshot branch: newProduct.installmentPrice null → BadRequest (defensive)', async () => {

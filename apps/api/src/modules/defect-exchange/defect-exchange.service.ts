@@ -11,6 +11,7 @@ import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-
 import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
 import { ExecuteDefectExchangeDto } from './dto/defect-exchange.dto';
 import { generateContractNumber } from '../../utils/sequence.util';
+import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 import { Decimal } from '@prisma/client/runtime/library';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
@@ -297,6 +298,8 @@ export class DefectExchangeService {
           where: { id: dto.newProductId },
           data: { status: 'RESERVED' },
         });
+        // B5: เครื่องใหม่ถูกจองไว้แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (เคลมเปลี่ยนเครื่อง)
+        await preemptReservationsInTx(tx, [dto.newProductId]);
 
         // === repair-ticket handoff (bypass path only) ===
         if (dto.bypassWindowCheck && dto.originRepairTicketId) {

@@ -11,6 +11,7 @@ import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateBookingNumber, generateSaleNumber } from '../../utils/sequence.util';
 import { readNumberFlag } from '../../utils/config.util';
+import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 import { getBranchScope, hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
@@ -635,6 +636,8 @@ export class BookingsService {
         where: { id: firstItem.productId! },
         data: { status: 'SOLD_CASH' },
       });
+      // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (แปลงใบจองเป็นการขาย)
+      await preemptReservationsInTx(tx, [firstItem.productId]);
 
       // 5. Auto-create sales commission (read from CommissionRule, fallback 3%).
       const nowCommission = new Date();

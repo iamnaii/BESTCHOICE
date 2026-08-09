@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { cn } from '@/lib/utils';
+import { shopInfo } from '@/lib/copy';
 
 export interface ProductGroup {
   /** Representative product id — the card links to /products/:id (unit picker). */
@@ -133,16 +134,27 @@ export function ProductCard({ product: p }: Props) {
         </span>
         {/* CTA button hidden on mobile — whole card is linkable.
            Shown on md+ where grid is sparser and the action affordance helps.
-           aria-hidden + tabIndex=-1 because the parent block link already
-           handles navigation; this is a visual-only secondary cue. */}
-        <Link
-          to={to}
-          aria-hidden="true"
-          tabIndex={-1}
-          className="hidden md:inline-flex h-10 px-6 rounded-full bg-cta text-cta-foreground text-sm font-medium hover:bg-orange-700 active:bg-orange-700 transition-colors items-center justify-center"
-        >
-          เลือกเครื่อง
-        </Link>
+           B5: กลุ่มที่หมดสต็อกไม่มีเครื่องให้เลือก — ปุ่มต้องพาไปทักแชทแทน ไม่ใช่
+           พาเข้าหน้าที่ว่างเปล่า (และ copy ก็เลิกสัญญาว่าจะแจ้งเตือนแล้ว) */}
+        {p.stock.tone === 'out' ? (
+          <a
+            href={shopInfo.lineUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden md:inline-flex h-10 px-6 rounded-full border border-foreground/15 text-foreground text-sm font-medium hover:bg-muted transition-colors items-center justify-center"
+          >
+            ทักแชทเช็ครอบเข้าใหม่
+          </a>
+        ) : (
+          <Link
+            to={to}
+            aria-hidden="true"
+            tabIndex={-1}
+            className="hidden md:inline-flex h-10 px-6 rounded-full bg-cta text-cta-foreground text-sm font-medium hover:bg-orange-700 active:bg-orange-700 transition-colors items-center justify-center"
+          >
+            เลือกเครื่อง
+          </Link>
+        )}
       </div>
     </article>
   );

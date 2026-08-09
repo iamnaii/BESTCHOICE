@@ -15,6 +15,7 @@ import { ContractQueryService } from './contract-query.service';
 import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
 import { ShopDownPaymentReversalTemplate } from '../../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
 
 /**
  * ContractLifecycleService — write-side lifecycle of a contract: create
@@ -238,6 +239,8 @@ export class ContractLifecycleService {
             where: { id: dto.productId },
             data: { status: 'RESERVED' },
           });
+          // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (กันขายซ้ำ)
+          await preemptReservationsInTx(tx, [dto.productId]);
 
           // Link the approved credit check to this contract.
           // Guarded: when the credit gate was bypassed in test-mode there is no

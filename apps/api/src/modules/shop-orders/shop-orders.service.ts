@@ -307,4 +307,67 @@ export class ShopOrdersService {
       return order;
     });
   }
+
+  /**
+   * นับ "งานค้างที่ staff ต้องลงมือ" สำหรับ badge บน sidebar (poll 30 วิ)
+   * - PENDING_BANK_REVIEW = รอตรวจสลิป
+   * - PAID               = จ่ายแล้วรอเริ่มแพ็ค
+   * - PAYMENT_RECEIVED_UNFULFILLABLE = ต้องคืนเงิน (งานด่วนที่สุด)
+   * PACKING/SHIPPED ไม่นับ — มีคนรับงานไปแล้ว ถ้านับด้วย badge จะไม่มีวันเป็นศูนย์
+   */
+  async getPendingCount() {
+    const [pendingBankReview, paid, unfulfillable] = await Promise.all([
+      this.prisma.onlineOrder.count({
+        where: { deletedAt: null, status: 'PENDING_BANK_REVIEW' },
+      }),
+      this.prisma.onlineOrder.count({ where: { deletedAt: null, status: 'PAID' } }),
+      this.prisma.onlineOrder.count({
+        where: { deletedAt: null, status: 'PAYMENT_RECEIVED_UNFULFILLABLE' },
+      }),
+    ]);
+    return {
+      total: pendingBankReview + paid + unfulfillable,
+      pendingBankReview,
+      paid,
+      unfulfillable,
+    };
+  }
+
+  /**
+   * ปิดงานคิวคืนเงิน — บันทึกว่าคืนเงินให้ลูกค้าแล้ว (การโอนจริงทำนอกระบบ)
+   *
+   * ใช้ `cancelledAt` เป็นเวลาปิดงานเพราะ `OnlineOrder` ไม่มีคอลัมน์ `refundedAt`
+   * (schema.prisma:2615-2617 มีแค่ status/cancelReason/cancelledAt) — B5 เลือกไม่เพิ่ม
+   * คอลัมน์ใหม่เพื่อไม่ให้ migration บวมเกินเหตุ; ถ้า owner อยากได้ timeline แยกจริงๆ
+   * ค่อยเพิ่ม `refundedAt` ในงานคืนเงินผ่าน gateway (งานแยก)
+   *
+   * NOTE (race, flagged for reviewer): this follows the brief's plain
+   * findUnique-then-update shape rather than the CAS-claim discipline this
+   * batch established in confirmBankTransfer. Two admins double-clicking
+   * "mark refunded" on the same order within the read/write window can both
+   * pass the status check and both call update — no financial double-spend
+   * (nothing moves money; the actual transfer happens outside this system),
+   * but the audit `logger.log` line and the eventual actor-of-record are not
+   * race-safe: whichever update lands last "wins" the log line even though
+   * both admins believed they closed the ticket. Low blast radius (single
+   * idempotent status write, no double-consumption of a scarce resource like
+   * a hold or a Sale row) but not zero — a CAS `updateMany` guard mirroring
+   * confirmBankTransfer's claim step would close it if this becomes a real
+   * two-admin workflow.
+   */
+  async markRefunded(orderId: string, adminUserId: string) {
+    const order = await this.prisma.onlineOrder.findUnique({
+      where: { id: orderId },
+      select: { id: true, status: true },
+    });
+    if (!order) throw new NotFoundException('ไม่พบคำสั่งซื้อ');
+    if (order.status !== 'PAYMENT_RECEIVED_UNFULFILLABLE') {
+      throw new ForbiddenException('คำสั่งซื้อนี้ไม่ได้อยู่ในคิวคืนเงิน');
+    }
+    this.logger.log(`Order ${orderId} marked REFUNDED by ${adminUserId}`);
+    return this.prisma.onlineOrder.update({
+      where: { id: orderId },
+      data: { status: 'REFUNDED' as OnlineOrderStatus, cancelledAt: new Date() },
+    });
+  }
 }

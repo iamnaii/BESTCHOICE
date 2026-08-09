@@ -207,6 +207,9 @@ describe('ContractsService', () => {
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      productReservation: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       interestConfig: {
         findFirst: jest.fn().mockResolvedValue(mockInterestConfig),
         findUnique: jest.fn().mockResolvedValue(mockInterestConfig),

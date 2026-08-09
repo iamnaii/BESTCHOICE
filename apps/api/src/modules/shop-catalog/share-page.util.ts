@@ -48,7 +48,11 @@ export function buildShareDescription(input: {
   );
   if (input.batteryHealth != null) parts.push(`แบต ${input.batteryHealth}%`);
   if (input.shopWarrantyDays != null) parts.push(`ประกันร้าน ${input.shopWarrantyDays} วัน`);
-  parts.push(input.price != null && input.price > 0 ? `฿${input.price.toLocaleString('en-US')}` : 'สอบถามราคา');
+  parts.push(
+    input.price != null && input.price > 0
+      ? `฿${input.price.toLocaleString('en-US')}`
+      : 'สอบถามราคา',
+  );
   return `${parts.join(' · ')} — ผ่อนได้บัตรประชาชนใบเดียว ร้าน ${TITLE_SUFFIX}`;
 }
 
@@ -80,7 +84,9 @@ export function buildSharePage(input: SharePageInput): string {
     description: input.description,
     brand: { '@type': 'Brand', name: input.brand },
     itemCondition:
-      input.condition === 'NEW' ? 'https://schema.org/NewCondition' : 'https://schema.org/UsedCondition',
+      input.condition === 'NEW'
+        ? 'https://schema.org/NewCondition'
+        : 'https://schema.org/UsedCondition',
   };
   if (input.imageUrl) jsonLd.image = [input.imageUrl];
   if (hasPrice) {
@@ -114,8 +120,15 @@ export function buildSharePage(input: SharePageInput): string {
     lines.push(`<meta property="product:price:amount" content="${String(input.price)}">`);
     lines.push('<meta property="product:price:currency" content="THB">');
   }
+  // FF-1 (B5 final review): ฝาแฝดฝั่ง crawler ของหน้า sold-out (T12b) — JSON-LD บอก
+  // OutOfStock อยู่แล้ว แต่ OG scraper ของ FB/LINE อ่าน product:availability เป็นหลัก
   lines.push(
-    image ? '<meta name="twitter:card" content="summary_large_image">' : '<meta name="twitter:card" content="summary">',
+    `<meta property="product:availability" content="${input.inStock ? 'in stock' : 'out of stock'}">`,
+  );
+  lines.push(
+    image
+      ? '<meta name="twitter:card" content="summary_large_image">'
+      : '<meta name="twitter:card" content="summary">',
     `<meta name="twitter:title" content="${title}">`,
     `<meta name="twitter:description" content="${description}">`,
   );

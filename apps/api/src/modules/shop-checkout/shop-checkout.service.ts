@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -43,8 +43,14 @@ export class ShopCheckoutService {
       include: { product: true },
     });
     if (!r) throw new NotFoundException('ไม่พบรายการที่จองไว้');
+    // B5: แยกเหตุให้ชัด — "ถูกตัดหน้า" (เครื่องถูกขายที่หน้าร้านระหว่างที่ลูกค้าจ่ายอยู่)
+    // คนละเรื่องกับ "หมดอายุ" (ลูกค้าปล่อยจองทิ้งไว้เกิน 15 นาที) ข้อความรวมทำให้ลูกค้า
+    // กดจองเครื่องเดิมซ้ำแล้วเจอ error วนอีก
+    if (r.status === 'PREEMPTED') {
+      throw new ConflictException('เครื่องนี้เพิ่งถูกขายที่หน้าร้าน — กรุณาเลือกเครื่องอื่น');
+    }
     if (r.status !== 'ACTIVE' || r.expiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('reservation หมดอายุแล้ว — กรุณาเลือกสินค้าใหม่');
+      throw new BadRequestException('การจองหมดอายุแล้ว — กรุณาเลือกสินค้าใหม่');
     }
     return r;
   }

@@ -413,6 +413,8 @@ export class ContractExchangeService {
           ownedByCompanyId: (oldProduct as any).ownedByCompanyId,
         } as any,
       });
+      // B5: เครื่องใหม่หลุดจาก IN_STOCK แล้ว (รับสถานะเครื่องเดิม) — ตัด hold ของเว็บใน tx เดียวกัน
+      await preemptReservationsInTx(tx, [req.newProductId]);
       await tx.product.update({
         where: { id: req.oldProductId },
         data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,

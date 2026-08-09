@@ -941,6 +941,20 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     );
   });
 
+  it('MEMO: B5 — ตัด hold ของเว็บใน tx เดียวกับที่เครื่องใหม่ออกจาก IN_STOCK (dynamic status flip)', async () => {
+    prisma.productReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.approve('memoReq', { id: 'u1', role: 'OWNER', branchId: null }, {
+      memoAddendumSigned: true,
+      memoMdmSwapped: true,
+    });
+
+    const call = prisma.productReservation.updateMany.mock.calls.at(-1)[0];
+    expect(call.where.productId.in).toContain('newP1');
+    expect(call.where.status).toBe('ACTIVE');
+    expect(call.data).toEqual({ status: 'PREEMPTED' });
+  });
+
   it('PRICED: สัญญาใหม่ใช้แผนจาก request snapshot (ไม่ clone งวดเดิม)', async () => {
     const result = await service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {});
     const created = prisma.contract.create.mock.calls[0][0].data;

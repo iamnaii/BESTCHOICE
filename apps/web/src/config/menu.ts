@@ -532,6 +532,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
         { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
         { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
+        // คำสั่งเจ้าของ 2026-08-08: ยึดคืนต้องเห็นจาก zone หน้าร้านด้วย (duplicate กับ
+        // owner-fin-revenue โดยตั้งใจ — OWNER เห็นได้จากทั้งสอง zone เหมือน overdue/mdm)
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
       ],
     },
     /* ── FIN zone restructure (per owner CSV) ───────────────────

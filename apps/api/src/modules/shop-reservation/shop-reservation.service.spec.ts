@@ -10,7 +10,13 @@ describe('ShopReservationService', () => {
 
   beforeEach(async () => {
     prisma = {
-      product: { findFirst: jest.fn() },
+      product: {
+        findFirst: jest.fn(),
+        // Fix 2 (F2, final-review forward-flag): reserve()'s create() now runs inside a
+        // $transaction, then re-reads product.status AFTER the insert, in the SAME tx.
+        // Default = still IN_STOCK (happy path) — the sold-mid-race tests below override.
+        findUnique: jest.fn().mockResolvedValue({ status: 'IN_STOCK' }),
+      },
       productReservation: {
         findFirst: jest.fn(),
         create: jest.fn(),
@@ -21,6 +27,12 @@ describe('ShopReservationService', () => {
       // tests leave it unmocked (undefined → readRawValue catches → default false).
       systemConfig: { findFirst: jest.fn() },
     };
+    // Fix 2 (F2): in these unit tests `tx` and `prisma` are the SAME mock object — every
+    // product/productReservation method lives on one shape — so `prisma.$transaction`
+    // just invokes the callback with `prisma` itself. This keeps every EXISTING
+    // assertion that reads `prisma.productReservation.create.mock.calls[...]` (or
+    // similar) valid without introducing a separate tx-mock surface.
+    prisma.$transaction = jest.fn().mockImplementation(async (cb: any) => cb(prisma));
     const module = await Test.createTestingModule({
       providers: [ShopReservationService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -31,7 +43,10 @@ describe('ShopReservationService', () => {
     it('creates 15-min reservation for available product', async () => {
       prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
       prisma.productReservation.findFirst.mockResolvedValue(null);
-      prisma.productReservation.create.mockResolvedValue({ id: 'r1', expiresAt: new Date(Date.now() + 900_000) });
+      prisma.productReservation.create.mockResolvedValue({
+        id: 'r1',
+        expiresAt: new Date(Date.now() + 900_000),
+      });
 
       const result = await service.reserve({ productId: 'p1', sessionId: 's1' });
 
@@ -46,7 +61,9 @@ describe('ShopReservationService', () => {
 
     it('rejects if product not found', async () => {
       prisma.product.findFirst.mockResolvedValue(null);
-      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(NotFoundException);
+      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('rejects (404) เมื่อเครื่องไม่ผ่าน readiness — ขายแล้ว / ปิดจากเว็บ / ไม่มีราคา / ไม่มีรูป', async () => {
@@ -77,7 +94,9 @@ describe('ShopReservationService', () => {
         status: 'ACTIVE',
         expiresAt: new Date(Date.now() + 600_000),
       });
-      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(ConflictException);
+      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('extends existing reservation if same session re-reserves', async () => {
@@ -87,12 +106,15 @@ describe('ShopReservationService', () => {
         sessionId: 's1',
         status: 'ACTIVE',
       });
-      prisma.productReservation.update.mockResolvedValue({ id: 'r-existing', expiresAt: new Date() });
+      prisma.productReservation.update.mockResolvedValue({
+        id: 'r-existing',
+        expiresAt: new Date(),
+      });
 
       await service.reserve({ productId: 'p1', sessionId: 's1' });
 
       expect(prisma.productReservation.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'r-existing' } })
+        expect.objectContaining({ where: { id: 'r-existing' } }),
       );
       expect(prisma.productReservation.create).not.toHaveBeenCalled();
     });
@@ -138,6 +160,61 @@ describe('ShopReservationService', () => {
       await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
         'เครื่องนี้ถูกจองโดยลูกค้ารายอื่นอยู่ กรุณาลองใหม่อีกครั้ง',
       );
+    });
+
+    // ── Fix 2 (F2, final-review forward-flag, closed here — proven with a 554ms-block
+    // experiment): product.status was read via a plain findFirst with NO tx/lock at the
+    // TOP of reserve(). The create() below can BLOCK on the partial unique index while a
+    // competing checkout holds the same product's hold slot — and while blocked, the
+    // in-store sale flow can sell the very same device (its preempt only flips holds
+    // that already EXIST at the moment it runs; a hold created AFTER the sale committed
+    // is invisible to it). Fix: wrap create() in a $transaction, then RE-READ
+    // product.status INSIDE the same tx, AFTER the create resolves — at READ COMMITTED
+    // (Prisma default) every statement sees the latest committed data, so a sale that
+    // committed while our INSERT was blocked is visible to this post-insert SELECT.
+    it('Fix 2 (F2): เครื่องถูกขายไปแล้วระหว่าง initial check กับ post-insert re-read → ConflictException, rollback (create รันอยู่ใน tx เดียวกัน)', async () => {
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
+      prisma.productReservation.findFirst.mockResolvedValue(null);
+      prisma.productReservation.create.mockResolvedValue({
+        id: 'r-new',
+        expiresAt: new Date(Date.now() + 900_000),
+      });
+      // Post-insert re-read runs INSIDE the same tx, AFTER create — sees the device
+      // already sold (e.g. the in-store sale flow committed while our INSERT was
+      // blocked on the partial unique index).
+      prisma.product.findUnique.mockResolvedValue({ status: 'SOLD_CASH' });
+
+      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.reserve({ productId: 'p1', sessionId: 's1' })).rejects.toThrow(
+        'เครื่องนี้เพิ่งถูกจำหน่าย กรุณาเลือกเครื่องอื่น',
+      );
+
+      // Proves the create + re-read ran INSIDE the same $transaction callback — the tx
+      // wraps both, so throwing after create() rolls the INSERT back with it.
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.productReservation.create).toHaveBeenCalled();
+      expect(prisma.product.findUnique).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        select: { status: true },
+      });
+    });
+
+    it('Fix 2 (F2): happy path — post-insert re-read ยืนยัน IN_STOCK แล้ว → คืน hold ตามปกติ ไม่เปลี่ยนพฤติกรรมเดิม', async () => {
+      prisma.product.findFirst.mockResolvedValue({ id: 'p1', status: 'IN_STOCK' });
+      prisma.productReservation.findFirst.mockResolvedValue(null);
+      const created = { id: 'r-new', expiresAt: new Date(Date.now() + 900_000) };
+      prisma.productReservation.create.mockResolvedValue(created);
+      prisma.product.findUnique.mockResolvedValue({ status: 'IN_STOCK' });
+
+      const result = await service.reserve({ productId: 'p1', sessionId: 's1' });
+
+      expect(result).toEqual(created);
+      expect(prisma.product.findUnique).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        select: { status: true },
+      });
     });
   });
 

@@ -61,14 +61,44 @@ export class ShopReservationService {
     }
 
     try {
-      return await this.prisma.productReservation.create({
-        data: {
-          productId: input.productId,
-          customerId: input.customerId,
-          sessionId: input.sessionId,
-          expiresAt,
-          status: 'ACTIVE',
-        },
+      return await this.prisma.$transaction(async (tx) => {
+        const reservation = await tx.productReservation.create({
+          data: {
+            productId: input.productId,
+            customerId: input.customerId,
+            sessionId: input.sessionId,
+            expiresAt,
+            status: 'ACTIVE',
+          },
+        });
+
+        // Fix 2 (F2, final-review forward-flag, closed here — proven with a
+        // 554ms-block experiment): `product` above was read via a plain findFirst
+        // with NO tx and NO lock. The create() above can BLOCK on the partial unique
+        // index (`product_reservations_active_product_idx`) while a competing
+        // checkout holds the same product's hold slot — and while we're blocked, the
+        // in-store sale flow can sell the very same device out from under us (its
+        // preempt — `preemptByInStoreSale` — only flips holds that already EXIST at
+        // the moment it runs; a hold created AFTER the sale committed is invisible to
+        // it). Re-reading status INSIDE this tx, AFTER the create resolves, closes
+        // the gap: at READ COMMITTED (Prisma's default isolation, unchanged here) every
+        // statement sees the latest committed data, so a sale that committed WHILE our
+        // INSERT was blocked is guaranteed visible to this SELECT once the INSERT
+        // unblocks. The other interleaving — our hold commits BEFORE the sale's
+        // preemptByInStoreSale updateMany runs — is handled the existing way (preempt
+        // flips this row PREEMPTED afterward, unrelated to this method). Both
+        // orderings end safe; only the third interleaving (an ACTIVE hold surviving on
+        // a device that's already SOLD) was the bug, and this closes it by rolling the
+        // whole tx (including the INSERT) back via the throw below.
+        const recheck = await tx.product.findUnique({
+          where: { id: input.productId },
+          select: { status: true },
+        });
+        if (recheck?.status !== 'IN_STOCK') {
+          throw new ConflictException('เครื่องนี้เพิ่งถูกจำหน่าย กรุณาเลือกเครื่องอื่น');
+        }
+
+        return reservation;
       });
     } catch (err) {
       // เข็มขัดกันเรซ: สอง request พร้อมกันผ่าน findFirst ด้านบนพร้อมกันได้ (check-then-act) —

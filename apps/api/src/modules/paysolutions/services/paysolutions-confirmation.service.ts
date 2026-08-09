@@ -50,7 +50,12 @@ export class PaySolutionsConfirmationService {
     if (payment) {
       return {
         paymentId: payment.id,
-        status: payment.status === 'PAID' ? 'PAID' : payment.gatewayStatus === 'FAILED' ? 'FAILED' : 'PENDING',
+        status:
+          payment.status === 'PAID'
+            ? 'PAID'
+            : payment.gatewayStatus === 'FAILED'
+              ? 'FAILED'
+              : 'PENDING',
         gatewayRef: payment.gatewayRef || undefined,
         gatewayStatus: payment.gatewayStatus || undefined,
         amount: Number(payment.amountDue),
@@ -118,11 +123,19 @@ export class PaySolutionsConfirmationService {
       if (link.status === 'EXPIRED' && result_code === '00') {
         // fatal — same class as the sibling partial-orphan/reschedule-exec-fail
         // alarms: customer's money reached the gateway but nothing was recorded.
-        Sentry.captureMessage('PaySolutions success webhook on EXPIRED link — money captured but unrecorded', {
-          level: 'fatal',
-          tags: { critical: 'paysolutions-expired-paid', refno },
-          extra: { linkId: link.id, paymentId: link.paymentId, purpose: link.purpose, amount: link.amount.toString() },
-        });
+        Sentry.captureMessage(
+          'PaySolutions success webhook on EXPIRED link — money captured but unrecorded',
+          {
+            level: 'fatal',
+            tags: { critical: 'paysolutions-expired-paid', refno },
+            extra: {
+              linkId: link.id,
+              paymentId: link.paymentId,
+              purpose: link.purpose,
+              amount: link.amount.toString(),
+            },
+          },
+        );
       }
       this.logger.log(
         `Duplicate partial-payment webhook for refno=${refno} (status=${link.status}, idempotent skip)`,
@@ -136,9 +149,7 @@ export class PaySolutionsConfirmationService {
         where: { id: link.id },
         data: { status: 'CANCELLED', cancelledAt: new Date() },
       });
-      this.logger.log(
-        `Partial-payment FAILED: refno=${refno}, result_code=${result_code}`,
-      );
+      this.logger.log(`Partial-payment FAILED: refno=${refno}, result_code=${result_code}`);
       return;
     }
 
@@ -291,15 +302,48 @@ export class PaySolutionsConfirmationService {
       order.status === 'DELIVERED' ||
       order.status === 'COMPLETED'
     ) {
-      this.logger.log(
-        `Order ${order.orderNumber} already confirmed — idempotent skip`,
-      );
+      this.logger.log(`Order ${order.orderNumber} already confirmed — idempotent skip`);
       return;
     }
 
     // B5: จุดนี้คือ "เงินเข้าจริง" — ต้อง re-check ว่าเครื่องยังอยู่ใน tx เดียวกับที่ consume hold
     // เครื่องหลุดมือไปแล้ว (โดนขายหน้าร้าน/เข้าสัญญา) → เงินรับไปแล้วแต่ส่งของไม่ได้ = คิวคืนเงิน
-    const fulfillable = await this.prisma.$transaction(async (tx) => {
+    //
+    // F2 (B5 final-review forward-flag, closed here): the already-confirmed status
+    // check above reads via a plain findUnique OUTSIDE this tx — 2 concurrent gateway
+    // webhooks for the SAME order (PaySolutions retries the callback up to 3x, or two
+    // webhook deliveries racing) can both pass it. Mirrors ShopOrdersService
+    // .confirmBankTransfer's CAS claim (shop-orders.service.ts ~103): CAS-claim it
+    // here FIRST — whichever tx's claim loses (count=0) stops immediately, must NOT
+    // touch the hold or overwrite the winner's PAID with UNFULFILLABLE. (Same proven
+    // race as confirmBankTransfer: the winner's tx flips the SAME reservation row to
+    // CONSUMED; the loser's consumeOrderHoldInTx legitimately count=0's on that row,
+    // and without this CAS the loser would then write UNFULFILLABLE straight over the
+    // winner's PAID while the winner's Sale creation is still in flight.)
+    //
+    // Claim predicate: status must still be PENDING_PAYMENT — the ONLY status a
+    // gateway-channel order legitimately sits at when this webhook fires
+    // (shop-checkout.service.ts always creates an OnlineOrder at PENDING_PAYMENT
+    // regardless of channel; PENDING_BANK_REVIEW only exists for BANK_TRANSFER orders
+    // via uploadBankSlip and is structurally unreachable here — a BANK_TRANSFER order
+    // never receives a paymentLinkId, so paysolutions-webhook.service.ts's
+    // `onlineOrder.findFirst({where:{paymentLinkId}})` routing can never resolve one
+    // into this method at all). paymentChannel is scoped to the 2 gateway channels as
+    // belt-and-suspenders — mirrors confirmBankTransfer's own paymentChannel guard in
+    // reverse, blocking this path from ever claiming a BANK_TRANSFER order.
+    const claim = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.onlineOrder.updateMany({
+        where: {
+          id: onlineOrderId,
+          status: { in: ['PENDING_PAYMENT'] },
+          paymentChannel: { in: ['PROMPTPAY_QR', 'CREDIT_DEBIT_CARD'] },
+        },
+        data: { updatedAt: new Date() },
+      });
+      if (claimed.count === 0) {
+        return { claimed: false as const, fulfillable: null };
+      }
+
       const hold = await consumeOrderHoldInTx(tx, {
         orderId: order.id,
         productId: order.productId,
@@ -316,8 +360,16 @@ export class PaySolutionsConfirmationService {
             : { cancelReason: 'เครื่องถูกจำหน่ายก่อนเงินเข้า — ต้องคืนเงินลูกค้า' }),
         },
       });
-      return hold.fulfillable;
+      return { claimed: true as const, fulfillable: hold.fulfillable };
     });
+
+    if (!claim.claimed) {
+      this.logger.log(
+        `Order ${order.orderNumber} already confirmed — idempotent skip (CAS claim lost)`,
+      );
+      return;
+    }
+    const fulfillable = claim.fulfillable;
 
     if (!fulfillable) {
       this.logger.error(
@@ -359,9 +411,7 @@ export class PaySolutionsConfirmationService {
     try {
       await this.saleAdapter.createForOnlineOrder(order.id);
     } catch (err) {
-      this.logger.error(
-        `Failed to create Sale for online order ${order.orderNumber}: ${err}`,
-      );
+      this.logger.error(`Failed to create Sale for online order ${order.orderNumber}: ${err}`);
       Sentry.captureException(err, {
         level: 'error',
         tags: { critical: 'online-order-sale-failed', orderNumber: order.orderNumber },
@@ -473,9 +523,7 @@ export class PaySolutionsConfirmationService {
           'line-shop',
         );
       } catch (err) {
-        this.logger.warn(
-          `Failed to send LINE notification for order ${order.orderNumber}: ${err}`,
-        );
+        this.logger.warn(`Failed to send LINE notification for order ${order.orderNumber}: ${err}`);
       }
     }
   }

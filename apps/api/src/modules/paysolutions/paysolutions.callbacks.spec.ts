@@ -77,7 +77,10 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
         { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn() } },
         { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn() } },
         { provide: PaymentsService, useValue: payments },
-        { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: BadDebtService,
+          useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
 
@@ -174,7 +177,13 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
       const link = makeLink({
         status: 'EXPIRED',
         purpose: 'RESCHEDULE',
-        metadata: { daysToShift: 7, splitMode: 'SPLIT', rescheduleFee: '1044', lateFee: '100', collectAmount: '1144' },
+        metadata: {
+          daysToShift: 7,
+          splitMode: 'SPLIT',
+          rescheduleFee: '1044',
+          lateFee: '100',
+          collectAmount: '1144',
+        },
       });
 
       await service.handlePartialPaymentCallback(link, {
@@ -251,7 +260,10 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
 
       // Link flipped PAID first (same as the partial path).
       expect(prisma.partialPaymentLink.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: linkId }, data: expect.objectContaining({ status: 'PAID' }) }),
+        expect.objectContaining({
+          where: { id: linkId },
+          data: expect.objectContaining({ status: 'PAID' }),
+        }),
       );
       expect(payments.rescheduleWithCollect).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -273,11 +285,21 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
       payments.rescheduleWithCollect.mockRejectedValueOnce(new Error('period closed'));
       const link = makeLink({
         purpose: 'RESCHEDULE',
-        metadata: { daysToShift: 7, splitMode: 'SINGLE', rescheduleFee: '1044', lateFee: '100', collectAmount: '100' },
+        metadata: {
+          daysToShift: 7,
+          splitMode: 'SINGLE',
+          rescheduleFee: '1044',
+          lateFee: '100',
+          collectAmount: '100',
+        },
       });
 
       await expect(
-        service.handlePartialPaymentCallback(link, { refno, result_code: '00', transaction_id: 'tx-r2' }),
+        service.handlePartialPaymentCallback(link, {
+          refno,
+          result_code: '00',
+          transaction_id: 'tx-r2',
+        }),
       ).resolves.toBeUndefined();
 
       expect(Sentry.captureException).toHaveBeenCalledWith(
@@ -423,6 +445,7 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
         customer: { lineIdShop: null },
         product: { name: 'iPhone 15' },
         reservation: { id: 'resv-1' },
+        paymentChannel: 'PROMPTPAY_QR',
         ...overrides,
       } as any;
     }
@@ -431,11 +454,17 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
 
     beforeEach(async () => {
       txMock = {
-        onlineOrder: { update: jest.fn().mockResolvedValue({}) },
+        onlineOrder: {
+          update: jest.fn().mockResolvedValue({}),
+          // F2 (final-review forward-flag, closed here): CAS claim inside the tx —
+          // default = this webhook wins the race (count 1). Race-lost tests below
+          // override to {count: 0}.
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
         productReservation: {
           update: jest.fn().mockResolvedValue({}),
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-          count: jest.fn().mockResolvedValue(0),   // hold CONSUMED อื่นบนเครื่องเดียวกัน
+          count: jest.fn().mockResolvedValue(0), // hold CONSUMED อื่นบนเครื่องเดียวกัน
         },
         // consumeOrderHoldInTx locks via a conditional updateMany (not a plain read) —
         // default = lock succeeds (product IS IN_STOCK). findUnique is the reporting-only
@@ -704,6 +733,83 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
       expect(lineOa.sendFlexMessage).toHaveBeenCalledTimes(1);
       const [, flex] = lineOa.sendFlexMessage.mock.calls[0];
       expect(JSON.stringify(flex)).toContain('คืนเงิน');
+    });
+
+    // ── F2 (final-review forward-flag, closed here) — CAS-claim the gateway webhook ──
+    // Mirrors ShopOrdersService.confirmBankTransfer's CAS claim (shop-orders.service.ts
+    // ~103): the already-confirmed status check above reads via findUnique OUTSIDE the
+    // $transaction — 2 concurrent webhooks for the SAME order (PaySolutions retries up
+    // to 3x, or 2 webhook deliveries racing) can both pass it. Without an in-tx claim,
+    // the winner flips PAID; the loser's consumeOrderHoldInTx legitimately count=0's on
+    // the already-CONSUMED hold → fulfillable=false → its unconditional
+    // tx.onlineOrder.update OVERWRITES the winner's PAID with
+    // PAYMENT_RECEIVED_UNFULFILLABLE (customer paid + device available, yet flagged for
+    // refund). Claim predicate: status MUST still be PENDING_PAYMENT (the only status a
+    // gateway order legitimately sits at when this webhook fires — shop-checkout.service.ts
+    // always creates at PENDING_PAYMENT; PENDING_BANK_REVIEW is BANK_TRANSFER-only and
+    // structurally unreachable here since those orders never get a paymentLinkId) AND
+    // paymentChannel must be a gateway channel (blocks a BANK_TRANSFER order from ever
+    // being claimed by this path, mirroring confirmBankTransfer's Minor fix in reverse).
+    describe('F2: CAS claim (gateway webhook race)', () => {
+      it('race loser: a concurrent webhook already flipped the order PAID before this claim runs (CAS claim count=0) → idempotent skip, no consume-hold, no status overwrite', async () => {
+        // Pre-tx read still sees the stale PENDING_PAYMENT state — this is the exact
+        // TOCTOU gap the outer status skip-list alone cannot catch; only the in-tx CAS
+        // claim closes it.
+        prisma.onlineOrder.findUnique.mockResolvedValueOnce(
+          makeOrder({ status: 'PENDING_PAYMENT' }),
+        );
+        txMock.onlineOrder.updateMany.mockResolvedValue({ count: 0 }); // lost the race
+
+        await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-loser' });
+
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+        expect(txMock.onlineOrder.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: orderId,
+            status: { in: ['PENDING_PAYMENT'] },
+            paymentChannel: { in: ['PROMPTPAY_QR', 'CREDIT_DEBIT_CARD'] },
+          },
+          data: { updatedAt: expect.any(Date) },
+        });
+        // Must NOT touch the hold or overwrite the winner's already-committed status.
+        expect(txMock.onlineOrder.update).not.toHaveBeenCalled();
+        expect(saleAdapter.createForOnlineOrder).not.toHaveBeenCalled();
+        expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
+        expect(Sentry.captureException as jest.Mock).not.toHaveBeenCalled();
+      });
+
+      it('race loser: CAS claim count=0 → returns without ever invoking consumeOrderHoldInTx (no product lock, no reservation count/consume)', async () => {
+        txMock.onlineOrder.updateMany.mockResolvedValue({ count: 0 });
+
+        await service.confirmOnlineOrderPayment(orderId, { refno: 'refno-loser' });
+
+        // consumeOrderHoldInTx's internals (the product row-lock + CONSUMED-elsewhere
+        // count + the reservation status flip) must never run for a claim loser.
+        expect(txMock.product.updateMany).not.toHaveBeenCalled();
+        expect(txMock.productReservation.count).not.toHaveBeenCalled();
+        expect(txMock.productReservation.updateMany).not.toHaveBeenCalled();
+        expect(txMock.onlineOrder.update).not.toHaveBeenCalled();
+      });
+
+      it('winner path: CAS claim runs first with the PENDING_PAYMENT + gateway-channel predicate, then proceeds to consume hold + PAID exactly as before', async () => {
+        await service.confirmOnlineOrderPayment(orderId, { transaction_id: 'tx-winner' });
+
+        expect(txMock.onlineOrder.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: orderId,
+            status: { in: ['PENDING_PAYMENT'] },
+            paymentChannel: { in: ['PROMPTPAY_QR', 'CREDIT_DEBIT_CARD'] },
+          },
+          data: { updatedAt: expect.any(Date) },
+        });
+        // Claim succeeds (default mock count:1) → rest of the winner flow proceeds
+        // byte-identical to the pre-F2 'success' tests above.
+        expect(txMock.onlineOrder.update).toHaveBeenCalledWith({
+          where: { id: orderId },
+          data: expect.objectContaining({ status: 'PAID' }),
+        });
+        expect(saleAdapter.createForOnlineOrder).toHaveBeenCalledWith(orderId);
+      });
     });
   });
 

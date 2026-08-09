@@ -17,6 +17,11 @@ describe('parseQcChecklist', () => {
       [],
     );
   });
+  // review round 1 [Important]: fixture ข้างบน key ไม่ชน item/passed เลย — mutation ที่ยอมรับ
+  // bare object รอดได้; เคสนี้ pin ว่า "ไม่ใช่ array = ทิ้ง" แม้ object จะมี key ครบรูป
+  it('returns [] for a bare object even when it carries item/passed keys', () => {
+    expect(parseQcChecklist({ item: 'หน้าจอ', passed: true })).toEqual([]);
+  });
   it('drops entries that are missing item or passed', () => {
     expect(parseQcChecklist([{ item: 'ok', passed: true }, { item: 'x' }, null, 'nope'])).toEqual([
       { item: 'ok', passed: true },

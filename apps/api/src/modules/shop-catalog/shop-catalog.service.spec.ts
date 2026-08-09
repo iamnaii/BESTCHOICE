@@ -17,6 +17,9 @@ describe('ShopCatalogService', () => {
       // readBoolFlag('shop_hide_demo_products') reads this — most tests don't care and leave it
       // unmocked (undefined return → readRawValue catches → default false, matches prod day-1).
       systemConfig: { findFirst: jest.fn() },
+      // resolveBcConfigForCategory (B3 util) reads this — default null (no config found) so
+      // existing tests that don't care about ผ่อนเริ่มต้น keep getting monthlyPaymentFrom: null.
+      interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const module = await Test.createTestingModule({
       providers: [ShopCatalogService, { provide: PrismaService, useValue: prisma }],
@@ -87,7 +90,7 @@ describe('ShopCatalogService', () => {
           model: 'iPhone 16',
           storage: '128GB',
           category: 'PHONE_NEW',
-          _min: { cashPrice: 29900 },
+          _min: { cashPrice: 29900, installmentPrice: null },
           _count: { id: 3 },
         },
         {
@@ -95,7 +98,7 @@ describe('ShopCatalogService', () => {
           model: 'iPhone 16',
           storage: '128GB',
           category: 'PHONE_USED',
-          _min: { cashPrice: 19900 },
+          _min: { cashPrice: 19900, installmentPrice: null },
           _count: { id: 2 },
         },
       ]);
@@ -126,7 +129,7 @@ describe('ShopCatalogService', () => {
           model: 'iPhone 15',
           storage: null,
           category: 'PHONE_USED',
-          _min: { cashPrice: 16900 },
+          _min: { cashPrice: 16900, installmentPrice: null },
           _count: { id: 1 },
         },
       ]);
@@ -135,7 +138,7 @@ describe('ShopCatalogService', () => {
       const result = await service.listGroupedByModel({ sort: 'price_asc' });
 
       expect(prisma.product.groupBy).toHaveBeenCalledWith(
-        expect.objectContaining({ _min: { cashPrice: true } }),
+        expect.objectContaining({ _min: { cashPrice: true, installmentPrice: true } }),
       );
       expect(prisma.product.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: { cashPrice: 'asc' } }),
@@ -150,7 +153,7 @@ describe('ShopCatalogService', () => {
           model: 'iPhone 12',
           storage: '64GB',
           category: 'PHONE_USED',
-          _min: { cashPrice: null },
+          _min: { cashPrice: null, installmentPrice: null },
           _count: { id: 1 },
         },
       ]);
@@ -515,7 +518,7 @@ describe('ShopCatalogService', () => {
           model: 'iPhone 15',
           storage: '128GB',
           category: 'PHONE_USED',
-          _min: { cashPrice: 14000 },
+          _min: { cashPrice: 14000, installmentPrice: null },
           _count: { id: 2 },
         },
       ]);

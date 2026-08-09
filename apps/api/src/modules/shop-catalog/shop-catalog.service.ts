@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
+import { calcBcInstallment } from '../../utils/installment-calc.util';
+import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
+import type { BcConfig } from '../../utils/installment-calc.types';
 import { parseAccessories, parseQcChecklist, QcCheckItem } from './product-unit-detail.util';
 
 export interface ProductGroup {
@@ -14,6 +18,7 @@ export interface ProductGroup {
   stockCount: number;
   thumbnailUrl?: string;
   conditionGrades: string[];
+  /** ค่างวดต่ำสุดที่ทำสัญญาได้จริง (งวดยาวสุด + ดาวน์ต่ำสุด); null = ยังไม่ตั้งราคาผ่อน */
   monthlyPaymentFrom: number | null;
   condition: 'NEW' | 'USED';
 }
@@ -56,14 +61,6 @@ export interface ProductUnit {
   qcChecklist: QcCheckItem[];
 }
 
-const INTEREST_RATE_PER_MONTH = 0.0099; // 0.99%/month — example, adjust per pricing config
-// B0: unused now that monthlyPaymentFrom is hardcoded to null (calculateMonthlyPayment's
-// 2 call sites were removed) — kept for B4, which will re-wire these into a real InterestConfig
-// read instead of deleting and re-adding them.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const DEFAULT_MONTHS = 12;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const DEFAULT_DOWN_PCT = 0.2;
 const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
 // B0 §2.3: เงื่อนไขขึ้นเว็บมาจาก util ตัวเดียว (brand/category/สถานะ/ราคา/รูป/เกรด/[DEMO])
@@ -129,12 +126,14 @@ export class ShopCatalogService {
     const groups = await this.prisma.product.groupBy({
       by: [...GROUP_BY],
       where,
-      _min: { cashPrice: true },
+      _min: { cashPrice: true, installmentPrice: true },
       _count: { id: true },
       orderBy,
       skip: (page - 1) * limit,
       take: limit,
     });
+
+    const configs = await this.resolveConfigsFor(groups.map((g) => g.category));
 
     // Fetch the cheapest product of each group for the card link target + thumbnail
     const data: ProductGroup[] = await Promise.all(
@@ -151,7 +150,10 @@ export class ShopCatalogService {
           select: { id: true, gallery: true, conditionGrade: true },
         });
         const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
+        const minInstallment =
+          g._min?.installmentPrice != null ? Number(g._min.installmentPrice) : null;
         const stockCount = g._count?.id ?? 0;
+        const monthly = this.monthlyFrom(minInstallment, configs.get(g.category) ?? null);
         return {
           id: sample?.id ?? '',
           brand: g.brand,
@@ -161,10 +163,7 @@ export class ShopCatalogService {
           stockCount,
           thumbnailUrl: sample?.gallery[0],
           conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
-          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
-          // เลขจริงที่อ่าน InterestConfig มาใน B4
-          monthlyPaymentFrom: null,
+          monthlyPaymentFrom: monthly,
           condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
         };
       }),
@@ -202,11 +201,12 @@ export class ShopCatalogService {
     const groups = await this.prisma.product.groupBy({
       by: [...GROUP_BY],
       where,
-      _min: { cashPrice: true },
+      _min: { cashPrice: true, installmentPrice: true },
       _count: { id: true },
       orderBy: [{ _count: { id: 'desc' as const } }],
       take: 6,
     });
+    const configs = await this.resolveConfigsFor(groups.map((g) => g.category));
     return Promise.all(
       groups.map(async (g) => {
         const sample = await this.prisma.product.findFirst({
@@ -221,6 +221,9 @@ export class ShopCatalogService {
           select: { id: true, gallery: true, conditionGrade: true },
         });
         const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
+        const minInstallment =
+          g._min?.installmentPrice != null ? Number(g._min.installmentPrice) : null;
+        const monthly = this.monthlyFrom(minInstallment, configs.get(g.category) ?? null);
         return {
           id: sample?.id ?? '',
           brand: g.brand,
@@ -230,10 +233,7 @@ export class ShopCatalogService {
           stockCount: g._count?.id ?? 0,
           thumbnailUrl: sample?.gallery[0],
           conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-          // B0: rate 0.99% ที่ใช้อยู่เป็นค่าตัวอย่างในโค้ด (:48 "example, adjust per
-          // pricing config") ไม่ใช่ rate ที่ทำสัญญาจริง → ไม่แสดงดีกว่าแสดงผิด
-          // เลขจริงที่อ่าน InterestConfig มาใน B4
-          monthlyPaymentFrom: null,
+          monthlyPaymentFrom: monthly,
           condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
         };
       }),
@@ -318,10 +318,34 @@ export class ShopCatalogService {
     return { display: 'ในสต็อก พร้อมส่ง', tone: 'available' };
   }
 
-  calculateMonthlyPayment(price: number, months: number, downPct: number): number {
-    const downPayment = price * downPct;
-    const financed = price - downPayment;
-    const totalInterest = financed * INTEREST_RATE_PER_MONTH * months;
-    return Math.round((financed + totalInterest) / months);
+  /**
+   * "ผ่อนเริ่มต้น" ของกลุ่ม = ค่างวดต่ำสุดที่ทำสัญญาได้จริง
+   * (งวดยาวสุดที่มีเรต + ดาวน์ขั้นต่ำตาม InterestConfig) ผ่านเครื่องคิดตัวเดียว
+   * กับ InstallmentPreviewService — ห้ามคำนวณเองด้วยสูตรย่อ
+   */
+  private monthlyFrom(installmentPrice: number | null, config: BcConfig | null): number | null {
+    if (installmentPrice == null || installmentPrice <= 0) return null;
+    if (!config || config.allowedMonths.length === 0) return null;
+    const months = config.allowedMonths[config.allowedMonths.length - 1];
+    const result = calcBcInstallment({
+      installmentPrice: new Decimal(installmentPrice),
+      months,
+      downPct: config.minDownPct,
+      config,
+    });
+    if (!result.isValid) return null;
+    return Math.ceil(result.monthlyPayment.toNumber());
+  }
+
+  /** resolve config ครั้งเดียวต่อ category ต่อ request (กลุ่มมีได้แค่ 2 category) */
+  private async resolveConfigsFor(categories: string[]): Promise<Map<string, BcConfig | null>> {
+    const unique = Array.from(new Set(categories));
+    const entries = await Promise.all(
+      unique.map(async (c) => {
+        const r = await resolveBcConfigForCategory(this.prisma, c);
+        return [c, r.found ? r.config! : null] as const;
+      }),
+    );
+    return new Map(entries);
   }
 }

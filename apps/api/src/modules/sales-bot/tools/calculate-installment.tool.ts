@@ -98,7 +98,7 @@ export class CalculateInstallmentTool {
       monthlyThb: result.monthlyPayment.toNumber(),
       totalPaidThb: result.downAmount.add(result.totalWithVat).toNumber(),
       photoUrl: product.gallery[0] ?? null,
-      webUrl: base ? `${base}/products/${product.id}` : null,
+      webUrl: base ? `${base}/api/shop/share/${product.id}` : null,
     };
   }
 }

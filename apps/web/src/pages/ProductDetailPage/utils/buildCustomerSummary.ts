@@ -204,9 +204,10 @@ export function buildCustomerSummary(input: CustomerSummaryInput): string {
 }
 
 /**
- * ลิงก์หน้าสินค้าฝั่งลูกค้า. B4 จะเปลี่ยนปลายทางเป็น share endpoint
- * (`/api/shop/share/:id`) — แก้ที่ฟังก์ชันนี้จุดเดียว ผู้เรียกไม่ต้องแก้
+ * ลิงก์หน้าสินค้าฝั่งลูกค้า — ชี้ share endpoint ของ API ที่เสิร์ฟ Open Graph
+ * (B4) เพื่อให้ลิงก์ที่แอดมินคัดลอกส่งลูกค้าขึ้นการ์ดใน LINE/Facebook
+ * endpoint จะเด้งคนจริงต่อไปที่ /products/:id ทันที
  */
 export function buildShopProductUrl(productId: string, base: string = SHOP_BASE_URL): string {
-  return `${base.replace(/\/+$/, '')}/products/${productId}`;
+  return `${base.replace(/\/+$/, '')}/api/shop/share/${productId}`;
 }

@@ -104,7 +104,7 @@ describe('SearchProductsTool.run', () => {
       branchName: 'ลาดพร้าว',
       photoAvailable: true,
       photoUrl: 'https://cdn.example.com/p1.jpg',
-      webUrl: 'https://shop.example.com/products/prd-1',
+      webUrl: 'https://shop.example.com/api/shop/share/prd-1',
       reserved: false,
     });
   });

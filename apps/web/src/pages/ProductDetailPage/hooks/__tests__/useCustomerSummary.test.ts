@@ -148,7 +148,7 @@ describe('useCustomerSummary', () => {
 
     await waitFor(() =>
       expect(result.current.summaryText).toContain(
-        'ดูรายละเอียด: https://www.bestchoicephone.com/products/p-3',
+        'ดูรายละเอียด: https://www.bestchoicephone.com/api/shop/share/p-3',
       ),
     );
   });

@@ -211,7 +211,7 @@ export class SearchProductsTool {
         // ⚠️ ห้ามใช้ Product.photos — เป็น base64 data URL ส่งเข้า LINE/FB ไม่ได้
         photoAvailable: r.gallery.length > 0,
         photoUrl: r.gallery[0] ?? null,
-        webUrl: base ? `${base}/products/${r.id}` : null,
+        webUrl: base ? `${base}/api/shop/share/${r.id}` : null,
         reserved: r.status === 'RESERVED',
         ...(r.status === 'RESERVED' ? { reservedNote: RESERVED_NOTE } : {}),
       };

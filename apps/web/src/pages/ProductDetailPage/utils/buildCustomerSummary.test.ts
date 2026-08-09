@@ -222,13 +222,13 @@ describe('buildCustomerSummary', () => {
 describe('buildShopProductUrl', () => {
   it('ต่อ path จาก base ที่ส่งเข้ามา', () => {
     expect(buildShopProductUrl('p-1', 'https://www.bestchoicephone.com')).toBe(
-      'https://www.bestchoicephone.com/products/p-1',
+      'https://www.bestchoicephone.com/api/shop/share/p-1',
     );
   });
 
   it('ตัด / ท้าย base ซ้ำซ้อนออก', () => {
     expect(buildShopProductUrl('p-1', 'https://www.bestchoicephone.com/')).toBe(
-      'https://www.bestchoicephone.com/products/p-1',
+      'https://www.bestchoicephone.com/api/shop/share/p-1',
     );
   });
 });

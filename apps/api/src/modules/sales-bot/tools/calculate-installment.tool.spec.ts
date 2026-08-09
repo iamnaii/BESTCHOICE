@@ -173,7 +173,7 @@ describe('CalculateInstallmentTool.run', () => {
     const tool = new CalculateInstallmentTool(makePrisma(productRow(), cfgRow()));
     const r = (await tool.run({ productId: 'prd-1', tenureMonths: 12 })) as Record<string, unknown>;
     expect(r.photoUrl).toBe('https://cdn.example.com/p1.jpg');
-    expect(r.webUrl).toBe('https://shop.example.com/products/prd-1');
+    expect(r.webUrl).toBe('https://shop.example.com/api/shop/share/prd-1');
   });
 });
 

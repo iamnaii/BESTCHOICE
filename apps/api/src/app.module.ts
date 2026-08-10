@@ -65,6 +65,7 @@ import { FinanceCompanyContactsModule } from './modules/finance-company-contacts
 import { FinanceReceivableContactLogsModule } from './modules/finance-receivable-contact-logs/finance-receivable-contact-logs.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
+import { EquityModule } from './modules/equity/equity.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
@@ -247,6 +248,8 @@ import { AppCacheModule } from './cache/cache.module';
     AccountingModule,
     // Other Income (รายได้อื่น — FINANCE only)
     OtherIncomeModule,
+    // Equity (ทุน/ปันผล — FINANCE only)
+    EquityModule,
     // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation + deposit)
     BookingsModule,
     // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)

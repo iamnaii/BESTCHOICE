@@ -1183,8 +1183,8 @@ export class EquityService {
       include: {
         lines: { orderBy: { lineNo: 'asc' }, include: { shareholder: true } },
         attachments: true,
-        maker: { select: { id: true, firstName: true, lastName: true } },
-        approver: { select: { id: true, firstName: true, lastName: true } },
+        maker: { select: { id: true, name: true } },
+        approver: { select: { id: true, name: true } },
       },
     });
     if (!doc) throw new NotFoundException('ไม่พบเอกสาร');

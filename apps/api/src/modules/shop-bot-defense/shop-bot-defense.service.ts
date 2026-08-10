@@ -30,6 +30,18 @@ function isCatalogPath(pagePath?: string): boolean {
   return pagePath.startsWith('/shop/products') || pagePath.startsWith('/products');
 }
 
+/**
+ * พื้นผิวที่ crawler จริงมีเหตุให้แตะ: หน้าแชร์ OG + รายการ/รายละเอียดสินค้า
+ * (FF-4 จาก B5 final review): UA เป็นแค่ string ปลอมได้ฟรี — สิทธิ์ KNOWN_GOOD
+ * จึงต้องผูกกับ path ไม่ใช่ทั้งระบบ ไม่งั้นใครก็ swap UA แล้วยิง checkout/reserve
+ * ได้ไม่จำกัด. นอกพื้นผิวนี้ crawler UA เข้ากติกา rate limit ปกติ (แย่สุดคือ 429
+ * ซึ่ง crawler จริงถือเป็น transient — ไม่มีทางโดน BLOCK/CAPTCHA จากทางนี้)
+ */
+function isCrawlerSurface(pagePath?: string): boolean {
+  if (!pagePath) return false;
+  return isCatalogPath(pagePath) || pagePath.startsWith('/shop/share');
+}
+
 @Injectable()
 export class ShopBotDefenseService {
   private readonly logger = new Logger(ShopBotDefenseService.name);
@@ -73,8 +85,8 @@ export class ShopBotDefenseService {
     if (type === 'AI_CRAWLER') {
       return 'LOGGED';
     }
-    // Known good search bots — allow
-    if (type === 'KNOWN_GOOD') {
+    // Known good search bots — allow เฉพาะพื้นผิวที่ crawler ใช้จริง (ดู isCrawlerSurface)
+    if (type === 'KNOWN_GOOD' && isCrawlerSurface(input.pagePath)) {
       return 'LOGGED';
     }
     // Rate limit check for normal browsers

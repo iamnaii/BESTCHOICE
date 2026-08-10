@@ -167,6 +167,37 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
     expect(list.data[0].monthlyPaymentFrom).toBeNull();
   });
 
+  // final-review minor (T6): edge guards ใน monthlyFrom ถูกต้องแต่ไม่เคยมีเทสต์
+  it('installmentPrice ติดลบ/ศูนย์ → monthlyPaymentFrom = null (ไม่ throw ไม่เดา)', async () => {
+    prisma.product.groupBy.mockResolvedValue([
+      { brand: 'Apple', model: 'X', storage: '64GB', category: 'PHONE_USED',
+        _min: { cashPrice: 100, installmentPrice: -5 }, _count: { id: 1 } },
+      { brand: 'Apple', model: 'Y', storage: '64GB', category: 'PHONE_USED',
+        _min: { cashPrice: 100, installmentPrice: 0 }, _count: { id: 1 } },
+    ]);
+    prisma.product.findFirst.mockResolvedValue({ id: 'rep', gallery: [], conditionGrade: 'A' });
+    const list = await catalog.listGroupedByModel({});
+    expect(list.data[0].monthlyPaymentFrom).toBeNull();
+    expect(list.data[1].monthlyPaymentFrom).toBeNull();
+  });
+
+  it('config มีแต่ rates ที่ถูกลบ (allowedMonths ว่าง) → null', async () => {
+    // min > max → loop สังเคราะห์เรตไม่รัน → allowedMonths ว่าง (ratePctByMonths ว่าง)
+    prisma.interestConfig.findFirst.mockResolvedValue({
+      ...INTEREST_CONFIG,
+      minInstallmentMonths: 5,
+      maxInstallmentMonths: 4,
+      rates: [],
+    });
+    prisma.product.groupBy.mockResolvedValue([
+      { brand: 'Apple', model: 'Z', storage: '64GB', category: 'PHONE_USED',
+        _min: { cashPrice: 100, installmentPrice: 19900 }, _count: { id: 1 } },
+    ]);
+    prisma.product.findFirst.mockResolvedValue({ id: 'rep', gallery: [], conditionGrade: 'A' });
+    const list = await catalog.listGroupedByModel({});
+    expect(list.data[0].monthlyPaymentFrom).toBeNull();
+  });
+
   it('resolve InterestConfig ไม่เกิน 1 ครั้งต่อ category ต่อ 1 request', async () => {
     prisma.product.groupBy.mockResolvedValue([
       {

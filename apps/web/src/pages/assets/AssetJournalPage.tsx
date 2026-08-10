@@ -14,6 +14,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { assetsApi } from './api';
 import type { AssetJournalRow } from './types';
+import AssetHubTabs from './components/AssetHubTabs';
 
 const FLOW_LABEL: Record<string, string> = {
   'asset-purchase': 'ซื้อ',
@@ -93,6 +94,7 @@ export default function AssetJournalPage() {
 
   return (
     <div className="space-y-4">
+      <AssetHubTabs />
       <PageHeader
         title="JV สินทรัพย์"
         subtitle="รายการบัญชีที่เกี่ยวกับสินทรัพย์ทั้งหมด"

@@ -23,6 +23,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { formatNumberDecimal, formatDateTime, formatMonthName } from '@/utils/formatters';
 import { getErrorMessage } from '@/lib/api';
 import { depreciationApi } from './api';
+import AssetHubTabs from '@/pages/assets/components/AssetHubTabs';
 import { DepreciationPreviewTable } from './components/DepreciationPreviewTable';
 import { DepreciationRunDialog } from './components/DepreciationRunDialog';
 import { ReverseDepreciationRunDialog } from './components/ReverseDepreciationRunDialog';
@@ -154,6 +155,7 @@ export default function DepreciationPage() {
 
   return (
     <div className="space-y-4">
+      <AssetHubTabs />
       <PageHeader
         title="ค่าเสื่อมราคา"
         subtitle="Auto-run cron 01:00 BKK ทุกสิ้นเดือน · Manual run สำหรับ catch-up"

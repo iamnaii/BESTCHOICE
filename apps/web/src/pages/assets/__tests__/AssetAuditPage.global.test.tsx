@@ -4,10 +4,30 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import AssetAuditPage from '../AssetAuditPage';
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'u1', role: 'OWNER', branchId: null },
+    isLoading: false,
+    isAuthenticated: true,
+  }),
+}));
+
 vi.mock('../api', () => ({
   assetsApi: {
     getAudit: vi.fn().mockResolvedValue([]),
     getGlobalAudit: vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 50 }),
+    // AssetHubTabs (global mode) → useDraftAssetCount badge
+    list: vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 1 }),
+  },
+}));
+
+// AssetHubTabs → depreciation pending badge
+vi.mock('@/pages/depreciation/api', () => ({
+  depreciationApi: {
+    preview: vi
+      .fn()
+      .mockResolvedValue({ period: '', lines: [], totalAmount: '0', assetCount: 0, alreadyRunForAssetIds: [] }),
+    list: vi.fn().mockResolvedValue([]),
   },
 }));
 

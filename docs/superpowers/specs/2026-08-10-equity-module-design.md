@@ -54,7 +54,7 @@ model Shareholder {
 }
 
 model EquityDocument {
-  docNumber            String  @unique        // EQ-YYYYMMDD-NNNN (DocNumberService, BKK advisory lock)
+  docNumber            String  @unique        // EQ-YYYYMMDD-NNNN (EquityDocNumberService, BKK advisory lock)
   companyId            String                 // FINANCE เสมอใน v1
   txnType              EquityTxnType
   txnDate              DateTime               // วันที่ลง JE — ต้องอยู่ในงวดเปิด
@@ -108,6 +108,9 @@ model EquityAttachment {
 ```
 equity.module.ts / equity.controller.ts / equity.service.ts
 equity-journal.builder.ts        # pure function: (doc, lines) → JournalLine[] — port จาก generateJournal
+services/equity-doc-number.service.ts  # สำเนา pattern BKK-day advisory lock ของ other-income
+                                       # (ไม่มี DocNumberService กลางให้ inject — แต่ละ module ถือสำเนาเอง
+                                       #  ตาม precedent: other-income / repair-tickets / interco)
 dto/                             # class-validator, error message ภาษาไทย
 __tests__/
 ```
@@ -172,6 +175,11 @@ READY → DRAFT (withdraw, maker เท่านั้น)
 | V_SH_UNIQUE | ผู้ถือหุ้นซ้ำในใบเดียว → reject (+ DB unique) — ปิด edge case Handover §17.2 | block |
 | V_DIV_WHT | DIV_PAY: wht รวม > 0 ต้องมีบรรทัด 21-3104 (builder รับประกันโดยโครงสร้าง — มี spec ยืนยัน) | block |
 | DIV_VS_RE | DIV_DEC: Σประกาศ > ยอด GL 32-1101 (Cr) ณ ตอนโพสต์ → **เตือน ไม่ block** (เผื่อปันผลระหว่างกาลก่อนปิดปี) — UI แสดง confirm dialog | warning |
+| V_DIV_PAY_LE_PAYABLE | DIV_PAY: Σgross ≤ ยอด GL 21-4104 (Cr) จริง ณ ตอนโพสต์ — กันจ่ายปันผลที่ไม่เคยประกาศ/เกินประกาศ ทำให้หนี้สินติดลบ (pattern outstanding guard ของ RefundPayoutTemplate) | block |
+| V_CAP_DEC_LE_CAPITAL | CAP_DEC: Σamount ≤ ยอด GL 31-1101 (Cr) จริง ณ ตอนโพสต์ — กันลดทุนเกินทุนที่มี | block |
+
+- การเทียบทุกตัว (รวม V_INIT_25) ใช้ `Prisma.Decimal` ตรงๆ (`gte`/`lte`) — ไม่ใช้ float
+  tolerance แบบ prototype (`−0.001`)
 
 - WHT default: server คำนวณ 10% (`ROUND_HALF_UP`) เมื่อ shareholder.type = `INDIVIDUAL` และ client ไม่ส่งค่า ·
   `JURISTIC_TH` default 0 (ม.65 ทวิ(10)) · `JURISTIC_FOREIGN` default 10% แก้ได้ (DTA) ·
@@ -184,6 +192,8 @@ READY → DRAFT (withdraw, maker เท่านั้น)
   `reversesEntryId` · JE เดิมคง POSTED + stamp `metadata.reversed`
 - ลงวันที่ปัจจุบัน (ไม่ใช่ txnDate เดิม) + period guard ที่วันโพสต์กลับ
 - UI: reverse `CAP_INIT/CAP_INC/CAP_DEC` แสดง ConfirmDialog เตือนต้องแจ้ง DBD (อัพเดตทุนจดทะเบียน)
+- Reverse `DIV_DEC` หลังมี `DIV_PAY` โพสต์ไปแล้ว: ถ้ายอด GL 21-4104 (Cr) < ยอดที่จะกลับ →
+  เตือนใน ConfirmDialog ว่าจะทำให้ 21-4104 ติดลบ (ควร reverse DIV_PAY ก่อน) — เตือน ไม่ block
 
 ### AuditLog
 
@@ -242,9 +252,12 @@ AuditInterceptor เดิม)
 - **Validation specs**: V_INIT_25 (ผ่าน 25% พอดี / ไม่ผ่าน 24.99%), V_INIT_PAID_LE_PAR,
   V_INIT_ONCE (บล็อกใบที่สอง / อนุญาตหลัง reverse), V_SH_UNIQUE, V8/V_RESOLUTION, WHT default
   ต่อ ShareholderType
-- **Service integration** (`*.integration.spec.ts` — DB จริง, CI glob ต้องครอบ): โพสต์ →
-  GL ถูกต้อง → reverse → net 0 ทุกบัญชี · idempotency (โพสต์ซ้ำไม่ double) · maker-checker
-  ON/OFF · period guard
+- **Service integration** (`*.integration.spec.ts` — DB จริง): โพสต์ → GL ถูกต้อง → reverse →
+  net 0 ทุกบัญชี · idempotency (โพสต์ซ้ำไม่ double) · maker-checker ON/OFF · period guard ·
+  GL guards (V_DIV_PAY_LE_PAYABLE / V_CAP_DEC_LE_CAPITAL)
+- **CI**: เพิ่มบรรทัด `EQUITY_FILES=$(ls src/modules/equity/__tests__/*.integration.spec.ts)`
+  ใน vitest step ของ `deploy-gcp.yml` — glob เป็น `ls` รายโฟลเดอร์แบบ explicit
+  (deploy-gcp.yml:171-183) module ใหม่ไม่ถูกรันอัตโนมัติ (บทเรียน jp5-vat-split ที่ไม่เคยรันใน CI)
 - **Web tests**: wizard validation state + preview rendering (ตามกำลัง — อย่างน้อย journal
   preview + summary panel)
 
@@ -252,9 +265,13 @@ AuditInterceptor เดิม)
 
 1. Merge + deploy → รัน `seed:coa` บน prod (เพิ่ม 11-1310)
 2. สร้างทะเบียนผู้ถือหุ้นจริง (~3 ราย ตาม บอจ.5)
-3. เอกสารแรก: `CAP_INIT` backfill ทุนจดทะเบียนจริงตามหนังสือบริคณห์สนธิ/บอจ.5 —
-   **ลงวันที่ในงวดปัจจุบันที่เปิดอยู่** (opening entry; ไม่ backdate ไปปีจดทะเบียน — ติด period
-   guard และไม่จำเป็น) ใส่คำอธิบาย "ยอดยกมา ณ วันเริ่มใช้ระบบ"
+3. เอกสารแรก `CAP_INIT` backfill ทุนตามบอจ.5 — **CPA-gated, ห้ามโพสต์เงียบๆ**:
+   สมุดทั้งระบบไม่เคยตั้งยอดยกมา (GL ธนาคาร = ยอดสะสมจาก flow ตั้งแต่เริ่มใช้ระบบ ไม่ใช่ยอด
+   statement จริง) การโพสต์ขา Dr เงินสด/ธนาคารตอนนี้จะยิ่งบิดจากความจริง — ประเด็นเดียวกับ
+   opening-balance gap ที่รอ CPA ใน interco spec §11 · ให้ CPA เคาะ**ชุดยอดยกมาทั้งก้อน
+   พร้อมกัน** (ทุน 31-1101 + เงินสด/ธนาคาร + กำไรสะสม 32-1101) แล้วค่อยโพสต์ ·
+   ลงวันที่ในงวดปัจจุบันที่เปิดอยู่ (ไม่ backdate — ติด period guard) ใส่คำอธิบาย
+   "ยอดยกมา ณ วันเริ่มใช้ระบบ"
 4. ตรวจ TB scope=FINANCE ยัง balance + 31-1101 ตรง บอจ.5
 5. ถ้าเจ้าของต้องการ segregation of duties: ตั้ง SystemConfig `EQUITY_MAKER_CHECKER_ENABLED='true'`
 

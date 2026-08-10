@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 
 const BASE_TITLE = 'BESTCHOICE — ร้านขายไอโฟนผ่อนได้ลพบุรี';
-const CANONICAL_BASE = 'https://www.bestchoicephone.com';
+// INTERIM (2026-08-10): .com ยัง 301-loop จนกว่า owner ต่อ custom domain เข้า Firebase
+// site bestchoicephone-shop เสร็จ — canonical ชี้โดเมนที่ crawler เข้าถึงได้จริงไปก่อน
+const CANONICAL_BASE = 'https://bestchoicephone-shop.web.app';
 
 /** ตั้ง document.title + meta description + canonical ต่อหน้า (คืนค่าเดิมเมื่อ unmount) */
 export function usePageMeta(title?: string, description?: string) {

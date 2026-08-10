@@ -397,7 +397,7 @@ jobs:
           PAYSOLUTIONS_TERMINAL_ID=TID00001,\
           GCS_BUCKET=bestchoice-documents,\
           API_BASE_URL=https://api.bestchoicephone.app,\
-          SHOP_BASE_URL=https://www.bestchoicephone.com,\
+          SHOP_BASE_URL=https://bestchoicephone-shop.web.app,\
           LIFF_CHANNEL_ID=2009442540,\
           LINE_LOGIN_CHANNEL_ID=2009442540,\
           SMS_PAYMENT_REMINDER_DISABLED=true,\
@@ -471,6 +471,11 @@ jobs:
         run: npm run build --workspace=apps/web
         env:
           VITE_API_URL: https://api.bestchoicephone.app/api
+          # INTERIM (2026-08-10): www.bestchoicephone.com ยัง 301-loop (โดเมนไม่เคยถูกต่อเข้า
+          # Firebase site bestchoicephone-shop — งานค้าง Cloudflare+custom domain ของ owner)
+          # ลิงก์ที่ระบบสร้างทุกจุดจึงชี้โดเมน canonical ของ site ไปก่อน — ต่อโดเมนเสร็จค่อยสลับกลับ
+          # (จุดคู่กัน: SHOP_BASE_URL ของ api ด้านบน + CANONICAL_BASE ใน usePageMeta.ts)
+          VITE_SHOP_URL: https://bestchoicephone-shop.web.app
           VITE_LIFF_ID: 2009442540-d9XnzWwl
           # Surface short commit SHA so the version badge can show it next
           # to the CalVer (e.g. "v26.5.1·a1b2c3d"). vite.config.ts trims to 7 chars.

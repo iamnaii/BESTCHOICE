@@ -2,7 +2,9 @@ import { Prisma } from '@prisma/client';
 import { buildEquityJournal, EQ_ACCOUNTS } from './equity-journal.builder';
 
 const D = Prisma.Decimal;
-const line = (over: Partial<{ amount: string; premium: string; paid: string; wht: string }> = {}) => ({
+const line = (
+  over: Partial<{ amount: string; premium: string; paid: string; wht: string }> = {},
+) => ({
   amount: new D(over.amount ?? '0'),
   premium: new D(over.premium ?? '0'),
   paid: new D(over.paid ?? '0'),
@@ -42,6 +44,16 @@ describe('buildEquityJournal — goldens (Handover §8)', () => {
     });
     expect(j).toHaveLength(2);
     expect(byCode(j, EQ_ACCOUNTS.UNPAID_CAPITAL)).toBeUndefined();
+  });
+
+  it('CAP_INIT paid > par รวม → throw (กัน JE ไม่ balance)', () => {
+    expect(() =>
+      buildEquityJournal({
+        txnType: 'CAP_INIT',
+        paymentAccountCode: '11-1201',
+        lines: [line({ amount: '100', paid: '150' })],
+      }),
+    ).toThrow(/เกินมูลค่าหุ้นที่จองรวม/);
   });
 
   it('CAP_INC 500k + premium 100k → Dr bank 600k / Cr 31-1101 500k + Cr 31-1102 100k', () => {
@@ -144,8 +156,16 @@ describe('buildEquityJournal — goldens (Handover §8)', () => {
 
   it('ทุกประเภท: ΣDr = ΣCr เสมอ (โครงสร้าง balanced)', () => {
     const cases = [
-      { txnType: 'CAP_INIT' as const, paymentAccountCode: '11-1101', lines: [line({ amount: '999.99', paid: '250.00' })] },
-      { txnType: 'DIV_PAY' as const, paymentAccountCode: '11-1101', lines: [line({ amount: '333.33', wht: '33.33' })] },
+      {
+        txnType: 'CAP_INIT' as const,
+        paymentAccountCode: '11-1101',
+        lines: [line({ amount: '999.99', paid: '250.00' })],
+      },
+      {
+        txnType: 'DIV_PAY' as const,
+        paymentAccountCode: '11-1101',
+        lines: [line({ amount: '333.33', wht: '33.33' })],
+      },
     ];
     for (const c of cases) {
       const t = sum(buildEquityJournal(c));

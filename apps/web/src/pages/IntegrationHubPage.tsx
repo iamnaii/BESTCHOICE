@@ -320,6 +320,26 @@ function ConfigDrawer({
     onError: () => toast.error('Backfill รูปไม่สำเร็จ'),
   });
 
+  // Facebook only — ตั้งปุ่ม Get Started + ข้อความทักทาย + เมนูของเพจ (idempotent)
+  // จำเป็นสำหรับลิงก์ m.me/<page>?ref=p:<id> จากหน้าสินค้า: ไม่มีปุ่มนี้ ลูกค้าใหม่กดลิงก์
+  // แล้ว Facebook จะไม่ส่ง ref มาเลย (B4 Task 9 — endpoint มีอยู่แล้ว ปุ่มนี้แค่เรียกให้)
+  const messengerProfileMutation = useMutation({
+    mutationFn: () =>
+      api
+        .post('/admin/facebook/setup-messenger-profile', undefined, { timeout: 60000 })
+        .then((r: any) => r.data),
+    onSuccess: (data: any) => {
+      const gs = data?.getStarted?.success;
+      const menu = data?.menu?.success;
+      if (gs && menu) toast.success('ตั้งปุ่ม Get Started + เมนู Messenger สำเร็จ');
+      else
+        toast.error(
+          `ไม่สำเร็จ: ${data?.getStarted?.error ?? data?.menu?.error ?? 'ตรวจ Page Access Token/Page ID แล้วลองใหม่'}`,
+        );
+    },
+    onError: () => toast.error('ตั้งค่า Messenger ไม่สำเร็จ — ตรวจ Page Access Token/Page ID'),
+  });
+
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
     saveMutation.mutate(formValues);
@@ -457,6 +477,31 @@ function ConfigDrawer({
               {integrationKey === 'facebook' && (
                 <>
                   <FacebookAppReviewPanel />
+                  <div className="mt-3 rounded-lg border border-border p-3">
+                    <div className="text-sm font-medium">ปุ่ม Get Started + เมนู Messenger</div>
+                    <p className="mt-0.5 text-xs text-muted-foreground leading-snug">
+                      ตั้งปุ่มเริ่มต้นใช้งาน + ข้อความทักทาย + เมนูของเพจ — ต้องกด 1 ครั้งหลังตั้งค่า
+                      Facebook ไม่งั้นลิงก์ Messenger จากหน้าสินค้าจะไม่บอกว่าลูกค้ามาจากเครื่องไหน
+                      (กดซ้ำได้ ไม่มีผลข้างเคียง)
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      disabled={messengerProfileMutation.isPending}
+                      onClick={() => messengerProfileMutation.mutate()}
+                    >
+                      {messengerProfileMutation.isPending ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          กำลังตั้งค่า...
+                        </>
+                      ) : (
+                        'ตั้งค่าปุ่ม Get Started'
+                      )}
+                    </Button>
+                  </div>
                   <div className="mt-3 rounded-lg border border-border p-3">
                     <div className="text-sm font-medium">รูปโปรไฟล์ลูกค้า (Facebook)</div>
                     <p className="mt-0.5 text-xs text-muted-foreground leading-snug">

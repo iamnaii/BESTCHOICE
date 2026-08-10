@@ -3,6 +3,17 @@ import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/node';
 import { ShopReservationService } from './shop-reservation.service';
 
+/**
+ * prod พบ log "Preempt-notify cron failed: " ที่ข้อความว่างเปล่า (err ไม่ใช่ Error
+ * หรือ message ว่าง เช่น Prisma connection error บางชนิด) — ประกอบเองให้เห็น
+ * name/code เสมอ เพื่อวินิจฉัยจาก Cloud Run log ได้โดยไม่ต้องเปิด Sentry
+ */
+function describeError(err: unknown): string {
+  const e = err as { name?: string; code?: string; message?: string };
+  const parts = [e?.name, e?.code, e?.message].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : String(err);
+}
+
 @Injectable()
 export class ReservationCleanupCron {
   private readonly logger = new Logger(ReservationCleanupCron.name);
@@ -15,7 +26,7 @@ export class ReservationCleanupCron {
       const count = await this.reservationService.expireOldReservations();
       if (count > 0) this.logger.log(`Expired ${count} reservations`);
     } catch (err) {
-      this.logger.error(`Cron failed: ${(err as Error).message}`);
+      this.logger.error(`Cron failed: ${describeError(err)}`);
       Sentry.captureException(err);
     }
   }
@@ -30,7 +41,7 @@ export class ReservationCleanupCron {
       const sent = await this.reservationService.notifyPreemptedHolds();
       if (sent > 0) this.logger.log(`Notified ${sent} preempted holds`);
     } catch (err) {
-      this.logger.error(`Preempt-notify cron failed: ${(err as Error).message}`);
+      this.logger.error(`Preempt-notify cron failed: ${describeError(err)}`);
       Sentry.captureException(err);
     }
   }

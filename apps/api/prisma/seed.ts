@@ -23,86 +23,23 @@ async function main() {
 
   // DELETE ALL DATA (reverse dependency order)
   console.log('Deleting all existing data...');
-  await prisma.paymentEvidence.deleteMany();
-  await prisma.paymentLink.deleteMany();
-  await prisma.receipt.deleteMany();
-  await prisma.documentAuditLog.deleteMany();
-  await prisma.customerAccessToken.deleteMany();
-  await prisma.dSARRequest.deleteMany();
-  await prisma.pDPAConsent.deleteMany();
-  await prisma.stockCountItem.deleteMany();
-  await prisma.stockCount.deleteMany();
-  await prisma.branchReceivingItem.deleteMany();
-  await prisma.branchReceiving.deleteMany();
-  await prisma.stockAlert.deleteMany();
-  await prisma.reorderPoint.deleteMany();
-  await prisma.stockAdjustment.deleteMany();
-  await prisma.stockTransfer.deleteMany();
-  await prisma.inspectionResult.deleteMany();
-  await prisma.inspection.deleteMany();
-  await prisma.inspectionTemplateItem.deleteMany();
-  await prisma.inspectionTemplate.deleteMany();
-  await prisma.repossession.deleteMany();
-  await prisma.callLog.deleteMany();
-  // Phase 6 models
-  await prisma.promotionUsage.deleteMany();
-  await prisma.promotion.deleteMany();
-  await prisma.tradeIn.deleteMany();
-  await prisma.loyaltyRedemption.deleteMany();
-  // Phase 5 models
-  await prisma.salesCommission.deleteMany();
-  await prisma.commissionRule.deleteMany();
-  // Phase 4 models
-  await prisma.taxReport.deleteMany();
-  // Core models (reverse dependency order)
-  await prisma.notificationLog.deleteMany();
-  await prisma.auditLog.deleteMany();
-  await prisma.signature.deleteMany();
-  await prisma.eDocument.deleteMany();
-  await prisma.contractDocument.deleteMany();
-  await prisma.kycVerification.deleteMany();
-  await prisma.creditCheck.deleteMany();
-  await prisma.loyaltyPoint.deleteMany();
-  await prisma.badDebtProvision.deleteMany();
-  await prisma.interCompanyTransaction.deleteMany();
-  await prisma.financeReceivable.deleteMany();
-  await prisma.repossession.deleteMany();
-  await prisma.callLog.deleteMany();
-  await prisma.dunningAction.deleteMany();
-  await prisma.dunningRule.deleteMany();
-  await prisma.paymentEvidence.deleteMany();
-  await prisma.paymentLink.deleteMany();
-  await prisma.receipt.deleteMany();
-  await prisma.payment.deleteMany();
-  await prisma.sale.deleteMany();
-  await prisma.contract.deleteMany();
-  await prisma.interestConfig.deleteMany();
-  await prisma.productPrice.deleteMany();
-  await prisma.pricingTemplate.deleteMany();
-  await prisma.productPhoto.deleteMany();
-  await prisma.goodsReceivingItem.deleteMany();
-  await prisma.goodsReceiving.deleteMany();
-  await prisma.pOItem.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.purchaseOrder.deleteMany();
-  await prisma.supplierPaymentMethod.deleteMany();
-  await prisma.supplier.deleteMany();
-  await prisma.dSARRequest.deleteMany();
-  await prisma.pDPAConsent.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.refreshToken.deleteMany();
-  await prisma.passwordResetToken.deleteMany();
-  await prisma.inviteToken.deleteMany();
-  await prisma.journalLine.deleteMany();
-  await prisma.journalEntry.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.branch.deleteMany();
-  await prisma.systemConfig.deleteMany();
-  await prisma.contractTemplate.deleteMany();
-  await prisma.stickerTemplate.deleteMany();
-  await prisma.chartOfAccount.deleteMany();
-  await prisma.companyInfo.deleteMany();
-  console.log('All data deleted.');
+  // เดิมเป็น deleteMany ~60 บรรทัดเรียงมือตาม FK — drift ทุกครั้งที่มี model ใหม่
+  // (ตอนพัง: audit_logs trigger กันลบ + FK ของ 46 ตารางที่เพิ่มทีหลัง) →
+  // TRUNCATE ทุกตาราง public ยกเว้น _prisma_migrations ในคำสั่งเดียว:
+  // - order-independent (ระบุครบทุกตารางในสเตตเมนต์เดียว + CASCADE)
+  // - ไม่ fire row-level DELETE trigger (audit_logs immutable ใช้กับ prod;
+  //   ไฟล์นี้คือ dev reset เท่านั้น — prod ใช้ seed-production.ts)
+  // - model ใหม่ในอนาคตถูกล้างอัตโนมัติ ไม่ต้องตามมาเติมอีก
+  const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
+  `;
+  if (tables.length > 0) {
+    await prisma.$executeRawUnsafe(
+      `TRUNCATE TABLE ${tables.map((t) => `"${t.tablename}"`).join(', ')} CASCADE`,
+    );
+  }
+  console.log(`All data deleted (${tables.length} tables truncated).`);
 
   // ============================================================
   // STEP 1: CompanyInfo

@@ -392,6 +392,15 @@ describe('ShopReservationService', () => {
     });
   });
 
+  describe('listAdminHolds — status validation', () => {
+    it('ค่า status นอก enum → BadRequest 400 ไม่ใช่ Prisma 500', async () => {
+      await expect(service.listAdminHolds({ status: 'HACKED' })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.productReservation.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('releaseHold', () => {
     it('ปลด hold ที่ยัง ACTIVE และไม่มีออเดอร์ค้าง', async () => {
       prisma.productReservation.findUnique.mockResolvedValue({

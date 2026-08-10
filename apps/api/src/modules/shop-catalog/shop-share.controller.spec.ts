@@ -130,4 +130,16 @@ describe('ShopShareController', () => {
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
+
+  // final-review minor (T4): fixture เดิม id === detail.id เสมอ ทำให้ mutation
+  // detail.id→raw id รอด — เคสนี้บังคับให้สองค่าต่างกันแล้ว pin ว่า canonical/redirect
+  // มาจาก detail.id (ค่าจาก DB) ไม่ใช่ raw :id จาก URL
+  it('canonical/redirect ใช้ detail.id จาก DB ไม่ใช่ raw :id param', async () => {
+    catalog.getProductDetail.mockResolvedValue({ ...detail, id: 'db-canonical-id' });
+    const res = resMock();
+    await controller.share('raw-param-id', res);
+    const html = res.send.mock.calls[0][0] as string;
+    expect(html).toContain('/products/db-canonical-id');
+    expect(html).not.toContain('raw-param-id');
+  });
 });

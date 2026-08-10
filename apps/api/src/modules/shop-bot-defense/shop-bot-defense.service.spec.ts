@@ -102,6 +102,24 @@ describe('ShopBotDefenseService', () => {
         'KNOWN_GOOD',
       );
     });
+    it('FF-4: crawler UA นอกพื้นผิว crawl (เช่น checkout) เข้ากติกา rate limit ปกติ', () => {
+      expect(
+        service.decideAction({
+          userAgent: 'facebookexternalhit/1.1',
+          requestRate: 150,
+          pagePath: '/shop/checkout',
+        }),
+      ).toBe('RATE_LIMITED');
+      // ใต้เพดานยังผ่านปกติ — แค่ไม่ได้สิทธิ์พิเศษ
+      expect(
+        service.decideAction({
+          userAgent: 'Googlebot/2.1',
+          requestRate: 5,
+          pagePath: '/shop/checkout',
+        }),
+      ).toBe('LOGGED');
+    });
+
     it('never rate-limits a social crawler even at a huge request rate', () => {
       expect(
         service.decideAction({

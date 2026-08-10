@@ -266,6 +266,12 @@ export class ShopReservationService {
    * ออเดอร์หรือใบสมัครผ่อนแล้วเท่านั้น — ห้ามเดา/ห้ามโชว์ sessionId เป็นตัวแทนคน
    */
   async listAdminHolds(filter: { status?: string; productId?: string }) {
+    // review minor (T9): ค่า status นอก enum เคยหลุดไปถึง Prisma แล้วเด้ง 500 —
+    // ตัดที่ปากทางเป็น 400 ภาษาไทยแทน (admin-only surface แต่ก็ไม่ควรเห็น 500)
+    const VALID_STATUSES = ['ACTIVE', 'EXPIRED', 'CONSUMED', 'PREEMPTED', 'CANCELLED'];
+    if (filter.status && !VALID_STATUSES.includes(filter.status)) {
+      throw new BadRequestException(`สถานะการจองไม่ถูกต้อง: ${filter.status}`);
+    }
     const rows = await this.prisma.productReservation.findMany({
       where: {
         ...(filter.status ? { status: filter.status as never } : { status: 'ACTIVE' }),

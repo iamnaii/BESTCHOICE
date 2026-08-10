@@ -153,6 +153,7 @@ const AssetDetailPage = lazy(() => import('@/pages/assets/AssetDetailPage'));
 const AssetDisposePage = lazy(() => import('@/pages/assets/AssetDisposePage'));
 const AssetSchedulePage = lazy(() => import('@/pages/assets/AssetSchedulePage'));
 const AssetAuditPage = lazy(() => import('@/pages/assets/AssetAuditPage'));
+const AssetPeriodClosePage = lazy(() => import('@/pages/assets/AssetPeriodClosePage'));
 const AssetRegisterPage = lazy(() => import('@/pages/assets/AssetRegisterPage'));
 const AssetJournalPage = lazy(() => import('@/pages/assets/AssetJournalPage'));
 const AssetSummaryReportPage = lazy(() => import('@/pages/assets/AssetSummaryReportPage'));
@@ -1081,6 +1082,26 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Asset hub ปิดงวด tab — read-only depreciation-vs-period checklist.
+              Roles mirror /expenses/periods/overview (OWNER/FM/ACC — no BM). */}
+          <Route
+            path="/assets/period-close"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetPeriodClosePage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Moved under the asset hub (2026-08-10 tab mockup) so the sidebar
+              "สินทรัพย์" item stays highlighted; /depreciation redirects below. */}
+          <Route
+            path="/assets/depreciation"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <DepreciationPage />
+              </ProtectedRoute>
+            }
+          />
           {/* CRITICAL: /assets/audit must come BEFORE /assets/:id (static-before-dynamic) */}
           {/* Roles intentionally exclude BRANCH_MANAGER — global view spans branches (CROSS_BRANCH_ROLES policy, matches asset.controller.ts @Roles on GET /assets/audit) */}
           <Route
@@ -1123,14 +1144,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/depreciation"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <DepreciationPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* Old standalone path — now a tab inside the asset hub */}
+          <Route path="/depreciation" element={<Navigate to="/assets/depreciation" replace />} />
           {/* P2b — Chart of Accounts moved to /settings/accounting/chart */}
           <Route path="/settings/chart-of-accounts" element={<Navigate to="/settings/accounting/chart" replace />} />
           {/* SP6 — Bank/Cash account directory (closes /finance/bank-accounts placeholder). */}

@@ -11,6 +11,7 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatDateTime } from '@/utils/formatters';
 import { assetsApi } from './api';
 import type { AuditLogEntry, GlobalAuditLogEntry } from './types';
+import AssetHubTabs from './components/AssetHubTabs';
 
 const ACTION_LABEL: Record<string, string> = {
   ASSET_CREATE: 'สร้าง',
@@ -84,6 +85,7 @@ export default function AssetAuditPage() {
 
   return (
     <div className="space-y-4">
+      {isGlobal && <AssetHubTabs />}
       <PageHeader
         title={isGlobal ? 'Audit Log สินทรัพย์ทั้งหมด' : 'ประวัติการเปลี่ยนแปลง (Audit Trail)'}
         subtitle={isGlobal ? `แสดงล่าสุด ${globalQuery.data?.limit ?? 50} รายการ` : 'แสดง 100 รายการล่าสุด'}

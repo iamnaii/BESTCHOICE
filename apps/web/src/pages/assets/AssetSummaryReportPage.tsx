@@ -13,6 +13,7 @@ import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { assetsApi } from './api';
 import { CATEGORY_LABEL, type AssetCategory } from './types';
 import type { SummaryRow, AssetTransferRow } from './types';
+import AssetHubTabs from './components/AssetHubTabs';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -194,6 +195,7 @@ export default function AssetSummaryReportPage() {
 
   return (
     <div className="space-y-4">
+      <AssetHubTabs />
       <PageHeader
         title="รายงานสรุปสินทรัพย์"
         subtitle={`ณ วันที่ ${formatDateShortThai(asOfDate)}`}

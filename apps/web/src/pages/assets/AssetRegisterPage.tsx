@@ -34,6 +34,7 @@ import {
   type AssetCategory,
   type AssetStatus,
 } from './types';
+import AssetHubTabs from './components/AssetHubTabs';
 
 // D1.2.3.2 — fallback when useUiFlags() hasn't resolved yet.
 const PAGE_SIZE_FALLBACK = 50;
@@ -169,6 +170,7 @@ export default function AssetRegisterPage() {
 
   return (
     <div className="space-y-4">
+      <AssetHubTabs />
       <PageHeader
         title="ทะเบียนสินทรัพย์"
         subtitle={`ณ วันที่ ${formatDateShortThai(asOfDate)}`}

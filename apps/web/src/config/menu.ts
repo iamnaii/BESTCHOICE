@@ -46,7 +46,6 @@ import {
   Tag,
   TrendingDown,
   BookOpen,
-  History,
   // SP5 — SHOP additions
   ShieldCheck,
   // P3-SP5 — SHOP-side accounting menu icon
@@ -126,18 +125,16 @@ export interface RoleZoneConfig {
 // own asset workflows. The `asset-draft-count` badge moves from the parent
 // to the "บันทึกซื้อ" item where drafts are actually listed.
 // SP1 zone tag: 'fin' — assets are FINANCE-side per spec §3.2
+// Collapsed to ONE entry (2026-08-10, owner mockup) — the 7 sub-views
+// (เอกสาร / ทะเบียน+NBV / สมุดรายวัน / สรุปแยกหมวด / ค่าเสื่อม / ปิดงวด / Audit)
+// now live as in-page tabs (AssetHubTabs) on top of every asset page.
 const assetMenuSection: MenuSection = {
   key: 'asset',
   label: 'สินทรัพย์',
   icon: Landmark,
   zone: 'fin',
   items: [
-    { label: 'บันทึกซื้อ',                          path: '/assets',                icon: FileText, badgeKey: 'asset-draft-count' },
-    { label: 'ทะเบียน + มูลค่าตามบัญชีสุทธิ (NBV)', path: '/assets/register',       icon: BookOpen },
-    { label: 'สมุดรายวัน',                          path: '/assets/journal',        icon: FileText },
-    { label: 'สรุปแยกหมวด',                         path: '/assets/summary-report', icon: BarChart3 },
-    { label: 'ค่าเสื่อม',                           path: '/depreciation',          icon: TrendingDown },
-    { label: 'ประวัติสินทรัพย์',                    path: '/assets/audit',          icon: History },
+    { label: 'สินทรัพย์ถาวร', path: '/assets', icon: Landmark, badgeKey: 'asset-draft-count' },
   ],
 };
 

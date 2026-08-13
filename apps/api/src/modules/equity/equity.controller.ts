@@ -88,7 +88,41 @@ export class EquityController {
     return this.service.softDelete(id, userId);
   }
 
-  // Task 5 เพิ่ม: submit / withdraw / post / reverse
+  @Get('maker-checker-enabled')
+  makerCheckerEnabled() {
+    return this.service.isMakerCheckerEnabled();
+  }
+
+  @Post('documents/:id/submit')
+  @HttpCode(200)
+  submit(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser('id') userId: string) {
+    return this.service.submit(id, userId);
+  }
+
+  @Post('documents/:id/withdraw')
+  @HttpCode(200)
+  withdraw(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser('id') userId: string) {
+    return this.service.withdraw(id, userId);
+  }
+
+  @Post('documents/:id/post')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  @HttpCode(200)
+  post(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser('id') userId: string) {
+    return this.service.post(id, userId);
+  }
+
+  @Post('documents/:id/reverse')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  @HttpCode(200)
+  reverse(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ReverseEquityDocumentDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.reverse(id, dto, userId);
+  }
+
   // Task 7 เพิ่ม: attachments
   // Task 8 เพิ่ม: dividend-register
 }

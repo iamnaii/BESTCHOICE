@@ -15,6 +15,14 @@ vi.mock('@/lib/api', () => ({
   getErrorMessage: (e: any) => e?.message ?? 'error',
 }));
 
+// #1407 เพิ่ม useAuth() เข้า OnlineOrdersPage (ซ่อนปุ่มคืนเงินตาม role) หลังเทสต์ชุดนี้
+// merge ไปแล้ว 7 นาที — wrap() ไม่มี AuthProvider หน้าจึง throw ทุกเคส. ที่ main ไม่แดง
+// เพราะ job "Lint & Test" ถูก skip บน push เข้า main (รันเฉพาะ PR) ดู deploy-gcp.yml
+// mock แทนการครอบ AuthProvider จริง — provider จริงจะ bootstrap auth/refresh token ตามมา
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u-test', role: 'OWNER' } }),
+}));
+
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 vi.mock('sonner', () => ({ toast: { success: (...a: unknown[]) => toastSuccess(...a), error: (...a: unknown[]) => toastError(...a) } }));

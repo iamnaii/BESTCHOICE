@@ -121,6 +121,7 @@ export default function DividendRegisterPage() {
                   <th className="text-right">ปันผลก่อนหัก</th>
                   <th className="text-right">WHT 10%</th>
                   <th className="text-right">จ่ายสุทธิ</th>
+                  <th>เอกสารอ้างอิง</th>
                   <th className="text-right"></th>
                 </tr>
               </thead>
@@ -139,6 +140,9 @@ export default function DividendRegisterPage() {
                     <td className="text-right font-mono text-success">
                       {formatNumberDecimal(parseFloat(r.net), 2)}
                     </td>
+                    <td className="font-mono text-[11px] text-muted-foreground leading-snug">
+                      {r.docNumbers.join(', ')}
+                    </td>
                     <td className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => setCertFor(r)}>
                         <Printer className="h-4 w-4 mr-1" /> หนังสือรับรอง
@@ -149,7 +153,7 @@ export default function DividendRegisterPage() {
                 {(q.data?.rows ?? []).length === 0 && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="py-10 text-center text-muted-foreground leading-snug"
                     >
                       ยังไม่มีการจ่ายปันผลปีนี้
@@ -172,6 +176,7 @@ export default function DividendRegisterPage() {
                     <td className="text-right font-mono">
                       {formatNumberDecimal(parseFloat(q.data.totals.net), 2)}
                     </td>
+                    <td />
                     <td />
                   </tr>
                 </tfoot>

@@ -5,6 +5,7 @@ import { EquityController } from './equity.controller';
 import { EquityService } from './equity.service';
 import { EquityDocNumberService } from './services/equity-doc-number.service';
 import { EquityAttachmentService } from './services/equity-attachment.service';
+import { EquityReportService } from './services/equity-report.service';
 
 // PrismaService global ผ่าน PrismaModule (@Global) — ไม่ต้อง import
 // JournalModule ให้ JournalAutoService + CompanyResolverService (ตรวจ exports ของ
@@ -12,7 +13,7 @@ import { EquityAttachmentService } from './services/equity-attachment.service';
 @Module({
   imports: [JournalModule, StorageModule],
   controllers: [EquityController],
-  providers: [EquityService, EquityDocNumberService, EquityAttachmentService],
+  providers: [EquityService, EquityDocNumberService, EquityAttachmentService, EquityReportService],
   exports: [EquityService],
 })
 export class EquityModule {}

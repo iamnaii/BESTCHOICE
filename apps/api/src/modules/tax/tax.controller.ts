@@ -128,6 +128,18 @@ export class TaxController {
     return this.taxService.previewPnd1Annual(y);
   }
 
+  // ภ.ง.ด.2 — หัก ณ ที่จ่ายเงินปันผล (ม.50(2)) จากเอกสาร equity DIV_PAY
+  @Get('pnd2-preview')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  previewPnd2(@Query('year') year: string, @Query('month') month: string) {
+    const y = parseInt(year);
+    const m = parseInt(month);
+    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) {
+      throw new BadRequestException('ปี/เดือนไม่ถูกต้อง');
+    }
+    return this.taxService.previewPnd2(y, m);
+  }
+
   // นำส่ง = โพสต์ JE ล้างเจ้าหนี้จริง — จำกัด OWNER/FINANCE_MANAGER (จ่ายเงินออก)
   @Post('payroll-remit/sso')
   @Roles('OWNER', 'FINANCE_MANAGER')
@@ -160,12 +172,12 @@ export class TaxController {
     @Query('month') month: string,
     @Res() res: Response,
   ): Promise<void> {
-    const ALLOWED: TaxFormCode[] = ['PP30', 'PND1', 'PND3', 'PND53', 'SSO110', 'PND1A'];
+    const ALLOWED: TaxFormCode[] = ['PP30', 'PND1', 'PND3', 'PND53', 'SSO110', 'PND1A', 'PND2'];
     if (!ALLOWED.includes(form as TaxFormCode)) {
       throw new BadRequestException('รูปแบบฟอร์มภาษีไม่ถูกต้อง');
     }
-    // SSO110/PND1A are company-wide (นิติบุคคลเดียว); PND1A is annual (no month).
-    const companyWide = form === 'SSO110' || form === 'PND1A';
+    // SSO110/PND1A/PND2 are company-wide (นิติบุคคลเดียว); PND1A is annual (no month).
+    const companyWide = form === 'SSO110' || form === 'PND1A' || form === 'PND2';
     if (!companyWide && !companyId) throw new BadRequestException('กรุณาระบุบริษัท');
     const y = parseInt(year);
     const m = form === 'PND1A' ? 0 : parseInt(month);

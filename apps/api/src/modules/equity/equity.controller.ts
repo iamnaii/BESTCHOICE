@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -25,6 +26,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { EquityService } from './equity.service';
 import { EquityAttachmentService } from './services/equity-attachment.service';
+import { EquityReportService } from './services/equity-report.service';
 import { CreateEquityDocumentDto } from './dto/create-equity-document.dto';
 import { UpdateEquityDocumentDto } from './dto/update-equity-document.dto';
 import { ReverseEquityDocumentDto } from './dto/reverse-equity-document.dto';
@@ -40,12 +42,22 @@ export class EquityController {
   constructor(
     private readonly service: EquityService,
     private readonly attachments: EquityAttachmentService,
+    private readonly reports: EquityReportService,
   ) {}
 
   // ─── Shareholders (literal — ต้องมาก่อน documents/:id) ─────────────────
   @Get('shareholders')
   listShareholders() {
     return this.service.listShareholders();
+  }
+
+  @Get('dividend-register')
+  dividendRegister(@Query('year') year: string) {
+    const y = parseInt(year, 10);
+    if (!Number.isInteger(y) || y < 2020 || y > 2100) {
+      throw new BadRequestException('ปีไม่ถูกต้อง (ค.ศ.)');
+    }
+    return this.reports.dividendRegister(y);
   }
 
   @Post('shareholders')
@@ -166,6 +178,4 @@ export class EquityController {
   ) {
     return this.attachments.remove(id, attId, userId);
   }
-
-  // Task 8 เพิ่ม: dividend-register
 }

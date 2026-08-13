@@ -14,16 +14,28 @@ type ClaudePayload = {
   objections?: Record<string, unknown>[];
 };
 
-function mockClaude(payload: ClaudePayload | string) {
+function mockClaude(
+  payload: ClaudePayload | string,
+  opts: { tokenCounts?: number[]; stopReason?: string } = {},
+) {
   const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  const mockCreate = jest.fn().mockResolvedValue({
-    content: [{ type: 'text', text }],
-    usage: { input_tokens: 10, output_tokens: 20 },
+  const mockStream = jest.fn().mockReturnValue({
+    finalMessage: jest.fn().mockResolvedValue({
+      content: [{ type: 'text', text }],
+      usage: { input_tokens: 10, output_tokens: 20 },
+      stop_reason: opts.stopReason ?? 'end_turn',
+    }),
+  });
+  // countTokens ถูกเรียกก่อน stream เสมอ — default ตอบค่าต่ำ (ไม่ trigger การตัด)
+  const counts = opts.tokenCounts ?? [];
+  const mockCountTokens = jest.fn().mockImplementation(() => {
+    const next = counts.length > 0 ? counts.shift() : 1000;
+    return Promise.resolve({ input_tokens: next });
   });
   (Anthropic as unknown as jest.Mock).mockImplementation(() => ({
-    messages: { create: mockCreate },
+    messages: { stream: mockStream, countTokens: mockCountTokens },
   }));
-  return mockCreate;
+  return { mockStream, mockCountTokens };
 }
 
 async function buildService(
@@ -202,10 +214,39 @@ describe('KnowledgeExtractorService', () => {
   });
 
   it('ไม่มีคู่ข้อความ → ไม่เรียก Claude', async () => {
-    const mockCreate = mockClaude({ faqs: [], objections: [] });
+    const { mockStream } = mockClaude({ faqs: [], objections: [] });
     const { svc } = await buildService([]);
 
     await expect(svc.extractAndSeed()).resolves.toEqual({ faqsSeeded: 0, objectionsSeeded: 0 });
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  it('prompt เกินเพดาน token → ตัดคู่ข้อความจนพอดีก่อนเรียก Claude จริง', async () => {
+    // countTokens ครั้งแรกเกินเพดาน (จำลองเคสจริง 212,906) ครั้งถัดมาพอดี
+    const { mockStream, mockCountTokens } = mockClaude(
+      { faqs: [FAQ], objections: [] },
+      { tokenCounts: [212_906, 170_000] },
+    );
+    const manyPairs = Array.from({ length: 2000 }, (_, i) => ({
+      customerMessage: `คำถามที่ ${i}`,
+      humanEdit: `คำตอบที่ ${i}`,
+    }));
+    const { svc } = await buildService(manyPairs);
+
+    await expect(svc.extractAndSeed()).resolves.toEqual({ faqsSeeded: 1, objectionsSeeded: 0 });
+    expect(mockCountTokens).toHaveBeenCalledTimes(2);
+    expect(mockStream).toHaveBeenCalledTimes(1);
+    // 2000 × (180000×0.95/212906) = 1606 คู่ — ข้อความที่ส่งจริงต้องไม่มีคู่ท้าย ๆ แล้ว
+    const sent = (mockStream.mock.calls[0][0] as { messages: { content: string }[] })
+      .messages[0].content;
+    expect(sent).toContain('คำถามที่ 0');
+    expect(sent).not.toContain('คำถามที่ 1999');
+  });
+
+  it('คำตอบโดนตัดที่ max_tokens → โยน error ชัดเจน ไม่ปล่อยไป parse JSON ครึ่งเดียว', async () => {
+    mockClaude({ faqs: [FAQ], objections: [] }, { stopReason: 'max_tokens' });
+    const { svc } = await buildService();
+
+    await expect(svc.extractAndSeed()).rejects.toThrow(/max_tokens/);
   });
 });

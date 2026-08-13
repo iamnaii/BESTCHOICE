@@ -21,18 +21,40 @@ export class ChatHistoryExtractorService {
     since.setMonth(since.getMonth() - months);
 
     this.logger.log(`Extracting from ${since.toISOString()} onward`);
-    const [lineMsgs, fbMsgs] = await Promise.all([
+    // LINE มี 2 OA: น้องเบส (LINE_FINANCE) + ร้าน (LINE_SHOP) — เดิมดูดแค่ FINANCE
+    // ซึ่งบน prod แทบว่าง แชทลูกค้าจริงส่วนใหญ่อยู่ฝั่ง SHOP
+    const [lineFinanceMsgs, lineShopMsgs, fbMsgs] = await Promise.all([
       this.lineSrc.extract({ channel: 'LINE_FINANCE', since }),
+      this.lineSrc.extract({ channel: 'LINE_SHOP', since }),
       this.fbSrc.extract({ since }),
     ]);
+    const lineMsgs = [...lineFinanceMsgs, ...lineShopMsgs];
 
     const all = [...lineMsgs, ...fbMsgs].map((m) => ({ ...m, text: scrubPii(m.text) }));
     const pairs = this.buildPairs(all);
 
+    // ai_training_pairs ไม่มี unique constraint — skipDuplicates ด้านล่างจึงไม่กันซ้ำให้จริง
+    // ต้องเทียบกับของเดิมในโค้ด: กันทั้งซ้ำข้ามรอบ (re-run) และซ้ำในรอบเดียวกัน
+    const existing = await this.prisma.aiTrainingPair.findMany({
+      where: { source: 'SYSTEM_EXTRACT' },
+      select: { customerMessage: true, humanEdit: true },
+    });
+    const pairKey = (q: string, a: string) => `${q}\u0000${a}`;
+    const seen = new Set(existing.map((e) => pairKey(e.customerMessage, e.humanEdit ?? '')));
+    const freshPairs = pairs.filter((p) => {
+      const k = pairKey(p.customerMessage, p.staffAnswer);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    if (freshPairs.length < pairs.length) {
+      this.logger.log(`ข้ามคู่ข้อความซ้ำ ${pairs.length - freshPairs.length} คู่`);
+    }
+
     const BATCH = 500;
     let written = 0;
-    for (let i = 0; i < pairs.length; i += BATCH) {
-      const batch = pairs.slice(i, i + BATCH);
+    for (let i = 0; i < freshPairs.length; i += BATCH) {
+      const batch = freshPairs.slice(i, i + BATCH);
       await this.prisma.aiTrainingPair.createMany({
         data: batch.map((p) => ({
           type: 'ACCEPT',

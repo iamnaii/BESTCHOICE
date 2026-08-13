@@ -79,12 +79,10 @@ ok "ต่อ prod DB ($DB_NAME) ได้แล้ว"
 
 # ---------- [1] รัน CLI ----------
 say "[1/1] รัน train-ai-knowledge (MONTHS=${MONTHS:-12}${DRY_RUN:+ DRY_RUN=$DRY_RUN}${SKIP_EXTRACT:+ SKIP_EXTRACT=$SKIP_EXTRACT})"
+# export แทน env-prefix — npm เอา prefix assignments ไปโชว์ใน process title (ps เห็นรหัสผ่าน DB)
 (cd apps/api && \
-  DATABASE_URL="$PGURL" \
-  EXPECTED_DB_NAME="$DB_NAME" \
-  MONTHS="${MONTHS:-12}" \
-  DRY_RUN="${DRY_RUN:-}" \
-  SKIP_EXTRACT="${SKIP_EXTRACT:-}" \
+  export DATABASE_URL="$PGURL" EXPECTED_DB_NAME="$DB_NAME" \
+         MONTHS="${MONTHS:-12}" DRY_RUN="${DRY_RUN:-}" SKIP_EXTRACT="${SKIP_EXTRACT:-}" && \
   npx -y tsx src/cli/train-ai-knowledge.cli.ts) || die "CLI พัง — อ่าน error ด้านบน"
 
 ok "เสร็จแล้ว — ไปรีวิว/เปิดใช้ที่หน้า /chatbot-finance/knowledge"

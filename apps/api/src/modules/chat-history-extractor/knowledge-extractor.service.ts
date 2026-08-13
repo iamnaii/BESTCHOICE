@@ -78,6 +78,12 @@ export class KnowledgeExtractorService {
   private static readonly MODEL = 'claude-haiku-4-5-20251001';
   /** ต่ำกว่านี้ = เจอครั้งเดียว/ไม่สอดคล้อง ไม่คุ้มเอาเข้าคลังคำตอบ */
   private static readonly MIN_CONFIDENCE = 0.5;
+  /**
+   * เพดาน input จริงของโมเดลคือ 200k — เผื่อที่ให้ system prompt + output 8k
+   * ห้ามกะจากจำนวนตัวอักษร: ไทย token-แพง (~1 token/ตัวอักษร — 2,000 คู่
+   * ~240k chars วัดจริงได้ 212,906 tokens) ต้องวัดด้วย countTokens เท่านั้น
+   */
+  private static readonly MAX_INPUT_TOKENS = 180_000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -93,12 +99,46 @@ export class KnowledgeExtractorService {
     });
     if (pairs.length === 0) return { faqsSeeded: 0, objectionsSeeded: 0 };
 
-    const resp = await this.client.messages.create({
-      model: KnowledgeExtractorService.MODEL,
-      max_tokens: 8000,
-      system: KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildKnowledgeExtractionUserMessage(pairs) }],
-    });
+    // วัด token จริงแล้วตัดคู่เก่าสุดทิ้ง (เรียง createdAt desc อยู่แล้ว) จนพอดีเพดาน
+    let fitPairs = pairs;
+    let content = buildKnowledgeExtractionUserMessage(fitPairs);
+    for (;;) {
+      const { input_tokens: inputTokens } = await this.client.messages.countTokens({
+        model: KnowledgeExtractorService.MODEL,
+        system: KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content }],
+      });
+      if (inputTokens <= KnowledgeExtractorService.MAX_INPUT_TOKENS) break;
+      const keep = Math.max(
+        1,
+        Math.floor(
+          (fitPairs.length * KnowledgeExtractorService.MAX_INPUT_TOKENS * 0.95) / inputTokens,
+        ),
+      );
+      if (keep >= fitPairs.length) break; // กันลูปตายกรณี ratio ไม่ลด
+      this.logger.warn(
+        `prompt ${inputTokens.toLocaleString()} tokens เกินเพดาน — ตัดเหลือ ${keep}/${fitPairs.length} คู่`,
+      );
+      fitPairs = fitPairs.slice(0, keep);
+      content = buildKnowledgeExtractionUserMessage(fitPairs);
+    }
+
+    // streaming — max_tokens 8000 เดิมไม่พอ (JSON โดนตัดกลาง array ตอนรันกับข้อมูลจริง)
+    // ค่าสูง ๆ แบบ non-streaming เสี่ยงชน HTTP timeout จึงต้อง stream แล้วรอ finalMessage
+    const resp = await this.client.messages
+      .stream({
+        model: KnowledgeExtractorService.MODEL,
+        max_tokens: 32000,
+        system: KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content }],
+      })
+      .finalMessage();
+
+    if (resp.stop_reason === 'max_tokens') {
+      throw new Error(
+        `คำตอบจาก Claude โดนตัดที่เพดาน max_tokens (${resp.usage?.output_tokens} tokens) — JSON ไม่ครบ parse ไม่ได้`,
+      );
+    }
 
     void this.aiUsage.record({
       service: 'knowledge-extractor',
@@ -184,7 +224,7 @@ export class KnowledgeExtractorService {
     }
 
     this.logger.log(
-      `Extracted ${parsed.faqs.length} FAQs / ${parsed.objections.length} objections from ${pairs.length} pairs ` +
+      `Extracted ${parsed.faqs.length} FAQs / ${parsed.objections.length} objections from ${fitPairs.length} pairs ` +
         `→ seeded ${faqsSeeded} FAQs, ${objectionsSeeded} objections (inactive, รอแอดมินรีวิว)`,
     );
 

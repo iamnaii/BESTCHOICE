@@ -3,7 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface ExtractedMessage {
   roomId: string;
-  channel: 'LINE_FINANCE' | 'FACEBOOK';
+  channel: 'LINE_FINANCE' | 'LINE_SHOP' | 'FACEBOOK';
   role: 'CUSTOMER' | 'STAFF';
   text: string;
   createdAt: Date;
@@ -14,7 +14,10 @@ export interface ExtractedMessage {
 export class LineExtractorSource {
   constructor(private readonly prisma: PrismaService) {}
 
-  async extract(opts: { channel: 'LINE_FINANCE'; since: Date }): Promise<ExtractedMessage[]> {
+  async extract(opts: {
+    channel: 'LINE_FINANCE' | 'LINE_SHOP';
+    since: Date;
+  }): Promise<ExtractedMessage[]> {
     const rows = await this.prisma.chatMessage.findMany({
       where: {
         room: { channel: opts.channel },
@@ -37,7 +40,7 @@ export class LineExtractorSource {
       .filter((r): r is typeof r & { text: string } => r.text !== null)
       .map((r) => ({
         roomId: r.roomId,
-        channel: 'LINE_FINANCE' as const,
+        channel: opts.channel,
         // MessageRole enum: CUSTOMER, BOT, STAFF, AUTO_TRIGGER, SYSTEM
         // Treat BOT + STAFF as outgoing (STAFF side); everything else is inbound (CUSTOMER).
         role: r.role === 'STAFF' || r.role === 'BOT' ? 'STAFF' : 'CUSTOMER',

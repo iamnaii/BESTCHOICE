@@ -18,7 +18,8 @@ describe('getEquityStatementFromJournal — capitalStatus (2026-08-10)', () => {
     const D = Prisma.Decimal;
     const je = await journalAuto.createAndPost({
       description: 'ทดสอบ capitalStatus — CAP_INIT partial',
-      metadata: { flow: 'equity', idempotencyKey: `capstat-test-${Date.now()}` },
+      // flow ทดสอบแยก — ห้ามใช้ 'equity' จริง เพราะ cleanup ของ equity.integration.spec กวาดทั้ง flow
+      metadata: { flow: 'equity-capstat-test', idempotencyKey: `capstat-test-${Date.now()}` },
       lines: [
         { accountCode: '11-1201', dr: new D(700000), cr: new D(0) },
         { accountCode: '11-1310', dr: new D(300000), cr: new D(0) },

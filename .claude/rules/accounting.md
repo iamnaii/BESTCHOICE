@@ -1117,6 +1117,33 @@ gap only.)
 
 ---
 
+## Equity Module — ธุรกรรมส่วนของผู้ถือหุ้น (2026-08-10)
+
+Spec: `docs/superpowers/specs/2026-08-10-equity-module-design.md` · Plan: `docs/superpowers/plans/2026-08-10-equity-module.md`
+Module: `apps/api/src/modules/equity/` · หน้า: `/finance/equity`, `/finance/dividend-register`
+
+- 7 ประเภท: CAP_INIT (ครั้งเดียว, ชำระขั้นต่ำ 25% ม.1110, ค้างชำระเข้า **11-1310**), CAP_INC (31-1102 premium),
+  CAP_DEC, DRAW (22-1102 Contra), DIV_DEC (Dr 32-1101 / Cr 21-4104 — TAS 10), DIV_PAY (WHT 10% → **21-3104**,
+  เฉพาะบุคคลธรรมดา/นิติต่างชาติ; นิติไทย 0 ตาม ม.65 ทวิ(10)), PRIOR_ADJ (คู่ 32-1101 เท่านั้น — TAS 8)
+- YE_CLOSE ของ prototype ถูกตัด — ใช้ `/finance/year-end-closing` เดิม
+- JE: builder เดียว `equity-journal.builder.ts` → `JournalAutoService.createAndPost` ·
+  `metadata.flow='equity'`, `idempotencyKey='equity:<docId>'` · reverse = mirror ตาม pattern interco
+- Workflow: DRAFT→READY→POSTED→REVERSED · maker-checker opt-in ผ่าน SystemConfig
+  **`EQUITY_MAKER_CHECKER_ENABLED`** (ไม่ seed — missing = OFF; เปิดแล้ว approver ≠ maker; อ่าน config
+  แบบ fail-closed — DB error = โยน ไม่ใช่ปิดด่านเงียบ ต่างจาก other-income ที่กลืน error) ·
+  CAP_INIT โพสต์ใต้ pg advisory lock กันตั้งทุน 2 ใบพร้อมกัน
+- GL guards ตอนโพสต์: `V_DIV_PAY_LE_PAYABLE` (Σจ่าย ≤ ยอด 21-4104), `V_CAP_DEC_LE_CAPITAL` (Σลด ≤ 31-1101) —
+  block · `DIV_VS_RE` (ประกาศ > 32-1101) — **warning ไม่ block** (ปันผลระหว่างกาลทำได้)
+- ภ.ง.ด.2: `GET /tax/pnd2-preview` + `export-xlsx?form=PND2` — อ่านจากเอกสาร DIV_PAY POSTED (ไม่เดิน GL)
+- งบ Equity เดิมเพิ่ม `capitalStatus` (authorized/paidUp/unpaid/premium) + caveat เป็น conditional ตามสถานะปิดปี
+- AuditLog: `EQUITY_CREATED/UPDATED/DELETED/SUBMITTED/WITHDRAWN/POSTED/REVERSED` (entity `equity_document`)
+- **Prod rollout**: (1) รัน `seed:coa` หลัง deploy (บัญชีใหม่ 11-1310) (2) สร้างทะเบียนผู้ถือหุ้นตาม บอจ.5
+  (3) **CAP_INIT backfill = CPA-gated** — ยอดยกมาทั้งชุด (ทุน+เงินสด+กำไรสะสม) ต้องให้ CPA เคาะก่อน
+  ห้ามโพสต์ขา Dr ธนาคารเงียบๆ (opening-balance gap เดียวกับ interco spec §11)
+- Deferred: Capital Call (รับชำระค่าหุ้นค้างภายหลัง — Dr เงิน / Cr 11-1310), แบบยื่น ภ.ง.ด.2 ทางการ
+
+---
+
 ## Bad Debt Provision — ECL v4 (Per-Installment Aging, 2026-07-26 redesign)
 
 TFRS for NPAEs Ch.13 aging-based Expected Credit Loss, 6 buckets (B0 implicit + B1-B5) — same buckets/rates as the earlier v3, but the BASE changed: v3 keyed a contract's ENTIRE provision off a single bucket (the oldest overdue installment); **v4 ages every outstanding installment independently** off its own `Payment.dueDate`, gives each its own bucket/rate, and sums the per-installment provisions into the contract total. A contract carrying installments overdue 90/60/30 days now provisions `757.92 + 227.37 + 30.32 = 1,015.61` (each installment at its OWN bucket's rate), not the whole outstanding balance provisioned at a single rate (e.g. the 90-day rate applied to all three installments' combined outstanding).

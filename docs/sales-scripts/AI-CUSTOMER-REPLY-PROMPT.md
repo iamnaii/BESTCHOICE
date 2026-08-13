@@ -8,7 +8,7 @@
 | | Prompt | ทำอะไร | อยู่ที่ไหน |
 |---|---|---|---|
 | **A** | Training / Extraction | อ่านแชทเก่า → สรุปว่า "ลูกค้าถามอะไรบ่อย + คำตอบที่ดีที่สุดคืออะไร" | `apps/api/src/modules/chat-history-extractor/prompts/knowledge-extraction.prompt.ts` |
-| **B** | Reply add-on | สั่งบอทให้ **ใช้** คลังคำตอบที่สกัดได้ ตอนตอบลูกค้าจริง | วางเพิ่มใน `/settings/ai-persona` ช่อง "playbook (BOT_EXTRAS)" |
+| **B** | Reply add-on | สั่งบอทให้ **ใช้** คลังคำตอบที่สกัดได้ ตอนตอบลูกค้าจริง | วางเพิ่มที่หน้า `/settings/ai/persona` ช่อง "Playbook & กฎ tools (BOT_EXTRAS)" |
 
 > **หลักการ:** แชทเก่าใช้สอน "ต้องตอบอะไร" (เนื้อหา/นโยบาย) เท่านั้น
 > ส่วน "ตัวเลข" (ราคา ค่างวด ยอดค้าง) ต้องมาจาก tool ตอนตอบเสมอ — ห้ามเอาเลขจากแชทเก่ามาตอบ เพราะราคาเปลี่ยนไปแล้ว
@@ -26,8 +26,10 @@
         อ่านคู่ข้อความล่าสุด 2,000 คู่ → สรุปเป็น FAQ + วิธีตอบข้อโต้แย้ง
         → เก็บลง chat_knowledge_base แบบ active = false
 
-ขั้น 3 — รีวิวแล้วเปิดใช้     แก้/เปิดจากหน้าจัดการ FAQ (ChatKnowledgeBase)
-        เปิดแล้วบอทจะค้นเจอผ่าน tool search_knowledge_base ทันที
+ขั้น 3 — รีวิวแล้วเปิดใช้     หน้า /chatbot-finance/knowledge → แท็บ Knowledge Base
+        (OWNER / FINANCE_MANAGER — หน้านี้ list ทุกช่องทาง ไม่ได้กรองเฉพาะ LINE_FINANCE
+         แถวฝั่งขายที่สกัดมาจึงเห็นและแก้ได้จากหน้าเดียวกัน)
+        กดแก้ → ติ๊ก active → บอทจะค้นเจอผ่าน tool search_knowledge_base ทันที
 ```
 
 **ขั้น 3 ห้ามข้าม** — ทุกแถวที่สกัดมาถูกบันทึกเป็น `active = false` โดยตั้งใจ
@@ -71,8 +73,11 @@
 
 ## 3. Prompt B — บล็อกที่ต้องเพิ่มให้บอทตอบลูกค้า
 
-ไปที่ `/settings/ai-persona` → ช่อง playbook (BOT_EXTRAS) → **วางต่อท้ายของเดิม อย่าลบของเดิมทิ้ง**
-(ของเดิมมีกฎ tool-calling ที่บอทต้องใช้ ถ้าลบชื่อ tool หายบอทจะเงียบ)
+ไปที่ `/settings/ai/persona` (OWNER เท่านั้น) → กล่อง **"Playbook & กฎ tools (BOT_EXTRAS)"**
+→ **วางต่อท้ายของเดิม อย่าลบของเดิมทิ้ง**
+(ของเดิมมีกฎ tool-calling ที่บอทต้องใช้ ถ้าชื่อ tool หายไปบอทจะเลิกเรียก tool เงียบ ๆ — หน้าจอจะเตือนให้)
+
+> อย่าเอาไปวางในกล่อง "บุคลิก & โทน (BASE)" — BASE ใช้ร่วมกับ AI Suggest ของพนักงานที่ไม่มี tool
 
 ```
 # คลังคำตอบจากแชทเก่า (search_knowledge_base) — ใช้ก่อนตอบเสมอสำหรับคำถามเชิงนโยบาย
@@ -160,7 +165,82 @@
 
 ---
 
-## 5. ข้อควรระวัง
+## 5. ทำงานกับ prompt นี้ใน VS Code
+
+### 5.1 ดึงโค้ดมาก่อน
+
+```bash
+git fetch origin claude/ai-training-prompt-customer-tp7zdr
+git switch claude/ai-training-prompt-customer-tp7zdr
+```
+
+### 5.2 ไฟล์ไหนคืออะไร (กด `Cmd/Ctrl + P` แล้วพิมพ์ชื่อไฟล์ได้เลย)
+
+| ไฟล์ | คือ prompt อะไร | แก้แล้วมีผลเมื่อ |
+|---|---|---|
+| `chat-history-extractor/prompts/knowledge-extraction.prompt.ts` | **Prompt A** — สกัดความรู้จากแชทเก่า | restart API แล้วรัน extract รอบใหม่ |
+| `chat-history-extractor/knowledge-extractor.service.ts` | ตัวกรอง + ตัวเขียนลง DB | restart API |
+| `staff-chat/prompts/sales-persona.ts` | บุคลิก + playbook บอทขาย (ค่าเริ่มต้น) | restart API — **แต่ถ้ามี override ใน DB ค่านี้จะไม่ถูกใช้** |
+| `chatbot-finance/prompts/system-prompt.ts` | prompt น้องเบส (ฝั่งการเงิน) | restart API |
+| `docs/sales-scripts/AI-CUSTOMER-REPLY-PROMPT.md` | เอกสารนี้ (Prompt B ไว้ copy) | — |
+
+### 5.3 แก้ prompt มี 2 ทาง — เลือกให้ถูก
+
+| | แก้ในโค้ด (VS Code) | แก้ผ่านหน้าเว็บ `/settings/ai/persona` |
+|---|---|---|
+| เก็บที่ | ไฟล์ `.ts` ใน git | `SystemConfig` (`shop_bot_persona_base` / `shop_bot_persona_bot_extras`) |
+| มีผลเมื่อ | ต้อง restart API + deploy | **ทันที** (invalidate cache ตอนกดบันทึก) |
+| เหมาะกับ | เปลี่ยนโครงสร้าง/กฎถาวร มีคนรีวิวใน PR | ปรับถ้อยคำ ลองโทน แก้ด่วนหน้าร้าน |
+| ระวัง | ถ้ามี override ใน DB อยู่ **แก้โค้ดแล้วจะไม่เห็นผล** | ไม่มี history ไม่มีรีวิว — กด "คืนค่าเริ่มต้น" เพื่อกลับไปใช้ค่าในโค้ด |
+
+**Prompt B ในข้อ 3 = ทางที่สอง** (วางในหน้าเว็บ) เพราะเป็นของที่ต้องลองปรับบ่อย
+
+### 5.4 รัน + ทดสอบจาก VS Code
+
+เปิด terminal ใน VS Code (`` Ctrl + ` ``):
+
+```bash
+# สตาร์ทเซิร์ฟเวอร์ (หรือ Cmd/Ctrl+Shift+P → "BESTCHOICE: Start Dev Servers")
+npm run dev                    # API :3000 + Web :5173
+
+# เทสต์เฉพาะส่วนนี้ — ไม่ต้องมี DB ไม่ต้องมี API key (7 เคส)
+npm --prefix apps/api test -- src/modules/chat-history-extractor
+```
+
+ยิง endpoint (ต้องเป็น OWNER — API มี prefix `/api` และ **CsrfGuard บังคับ header `X-Requested-With`**
+ทุก POST ถ้าลืมจะได้ 403 ทันที):
+
+```bash
+# 1) ขอ token
+TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -H 'X-Requested-With: XMLHttpRequest' \
+  -d '{"email":"admin@bestchoice.com","password":"admin1234"}' | jq -r .accessToken)
+
+# 2) ขั้น 1 — ดูดแชทเก่า 12 เดือน
+curl -X POST http://localhost:3000/api/chat-history/extract \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'X-Requested-With: XMLHttpRequest' \
+  -d '{"months":12}'
+
+# 3) ขั้น 2 — สกัดเป็น FAQ/objection (ใช้ Prompt A · เรียก Claude 1 ครั้ง · ต้องมี ANTHROPIC_API_KEY)
+curl -X POST http://localhost:3000/api/chat-history/extract-knowledge \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'X-Requested-With: XMLHttpRequest'
+```
+
+อยากกดยิงจากในไฟล์แทน terminal → ลง extension **REST Client** (`humao.rest-client`)
+แล้วสร้างไฟล์ `.http` วางคำสั่งข้างบนในรูปแบบ `POST http://... ` + บรรทัด header — จะมีปุ่ม "Send Request" ให้กด
+
+### 5.5 ดูผลลัพธ์
+
+เปิดเว็บ `http://localhost:5173/chatbot-finance/knowledge` → แท็บ Knowledge Base
+→ มองหาแถว `category = EXTRACTED` / `EXTRACTED_OBJECTION` → อ่าน → แก้ถ้อยคำถ้าจำเป็น → ติ๊ก `active`
+
+---
+
+## 6. ข้อควรระวัง
 
 - **รันขั้น 2 ซ้ำได้** ปลอดภัย (upsert ทับ id เดิม) แต่จะ **ไม่** รีเซ็ต `active` ของแถวที่แอดมินเปิดไว้แล้ว —
   ถ้าคำตอบเปลี่ยนเพราะสกัดรอบใหม่ ต้องรีวิวแถวที่เปิดอยู่อีกครั้ง

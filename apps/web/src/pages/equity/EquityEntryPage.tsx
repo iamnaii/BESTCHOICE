@@ -96,9 +96,9 @@ export default function EquityEntryPage() {
       lines: d.lines.map((l) => ({
         shareholderId: l.shareholderId,
         amount: parseFloat(l.amount),
-        premium: parseFloat(l.premium) || undefined,
-        paid: parseFloat(l.paid) || undefined,
-        wht: parseFloat(l.wht) || undefined,
+        premium: parseFloat(l.premium),
+        paid: parseFloat(l.paid),
+        wht: parseFloat(l.wht),
       })),
     });
   }, [existing.data]);
@@ -168,9 +168,12 @@ export default function EquityEntryPage() {
       {step === 1 && (
         <QueryBoundary
           isLoading={shareholders.isLoading || (!!id && existing.isLoading)}
-          isError={shareholders.isError}
-          error={shareholders.error}
-          onRetry={shareholders.refetch}
+          isError={shareholders.isError || (!!id && existing.isError)}
+          error={shareholders.error ?? existing.error}
+          onRetry={() => {
+            shareholders.refetch();
+            if (id) existing.refetch();
+          }}
         >
           {/* 1.1 เลือกประเภท */}
           <Card>

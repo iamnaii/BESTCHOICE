@@ -147,6 +147,34 @@ export default function EquityViewPage() {
             </Card>
           </div>
 
+          {doc.txnType === 'PRIOR_ADJ' && (
+            <Card>
+              <CardHeader className="font-semibold">
+                รายละเอียดการปรับปรุงงบย้อนหลัง (TAS 8)
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-muted-foreground leading-snug">ทิศทาง</div>
+                  <div className="mt-1 leading-snug">
+                    {doc.paDirection === 'DR_OTHER_CR_RE'
+                      ? 'Dr บัญชีคู่ / Cr 32-1101 (กำไรสะสมเพิ่ม)'
+                      : 'Dr 32-1101 / Cr บัญชีคู่ (กำไรสะสมลด)'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground leading-snug">บัญชีคู่ปรับปรุง</div>
+                  <div className="mt-1 font-mono">{doc.paAccountCode ?? '—'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground leading-snug">ยอดปรับปรุง</div>
+                  <div className="mt-1 font-mono">
+                    {doc.paAmount ? formatNumberDecimal(parseFloat(doc.paAmount), 2) : '—'}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {doc.lines.length > 0 && (
             <Card>
               <CardHeader className="font-semibold">ผู้ถือหุ้น</CardHeader>
@@ -222,7 +250,10 @@ export default function EquityViewPage() {
                     type="button"
                     className="flex items-center gap-2 hover:underline"
                     onClick={() =>
-                      equityApi.attachmentUrl(a.id).then(({ url }) => window.open(url, '_blank'))
+                      equityApi
+                        .attachmentUrl(a.id)
+                        .then(({ url }) => window.open(url, '_blank'))
+                        .catch((e) => toast.error(getErrorMessage(e)))
                     }
                   >
                     <FileText className="h-4 w-4" /> {a.filename}

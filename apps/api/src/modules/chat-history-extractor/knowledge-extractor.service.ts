@@ -32,8 +32,41 @@ interface ExtractedObjection {
   confidence?: number;
 }
 
-/** ข้อความส่งลูกค้า — คัดออกถ้าหลุดกฎ "ห้ามพูด %/ดอกเบี้ย" (sales-persona กฎเหล็ก #1337) */
-const FORBIDDEN_RESPONSE_RE = /ดอกเบี้ย|เปอร์เซ็นต์|%/;
+/** พูดถึงดอกเบี้ยตรง ๆ — ห้ามเสมอ ไม่ว่าบริบทไหน */
+const INTEREST_WORD_RE = /ดอกเบี้ย/;
+
+/** ทุกจุดที่มี % หรือ "เปอร์เซ็นต์" ในข้อความ */
+const PERCENT_TOKEN_RE = /%|เปอร์เซ็นต์/g;
+
+/**
+ * คำที่ทำให้ % กลายเป็น "การพูดถึงเรทดอกเบี้ย/ค่างวด" ซึ่งกฎเหล็กห้าม
+ * (sales-persona: บอกเป็นยอดบาทเท่านั้น ห้ามพูดเรทเป็น %)
+ */
+const RATE_CONTEXT_RE = /ดอก|เบี้ย|ผ่อน|งวด|ต่อเดือน|ต่อปี|อัตรา|เรท|ดาวน์|ลด/;
+
+/** ระยะรอบ ๆ % ที่นับว่า "อยู่ในประโยคเดียวกัน" */
+const RATE_CONTEXT_WINDOW = 15;
+
+/**
+ * คัดคำตอบที่หลุดกฎ "ห้ามพูดเรทเป็น %" ออก
+ *
+ * ตั้งใจ **ไม่** บล็อก % ทุกตัว — กฎเหมารวมเคยกินคำตอบที่ถูกต้องทิ้ง เช่น
+ * "ของแท้ 100% ค่ะ ไม่ติด iCloud" หรือ "แบต 89% สภาพสวย" ซึ่งเป็นสำนวนขาย
+ * ปกติที่ไม่เกี่ยวกับดอกเบี้ยเลย (เจอตอนรัน CLI กับข้อมูลจริง)
+ * บล็อกเฉพาะเมื่อ % อยู่ใกล้คำที่บ่งบอกว่ากำลังพูดถึงเรท/ค่างวด
+ */
+export function containsForbiddenRateTalk(text: string): boolean {
+  if (INTEREST_WORD_RE.test(text)) return true;
+
+  PERCENT_TOKEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = PERCENT_TOKEN_RE.exec(text)) !== null) {
+    const from = Math.max(0, match.index - RATE_CONTEXT_WINDOW);
+    const to = Math.min(text.length, match.index + match[0].length + RATE_CONTEXT_WINDOW);
+    if (RATE_CONTEXT_RE.test(text.slice(from, to))) return true;
+  }
+  return false;
+}
 
 const VALID_INTENTS = new Set<string>(ALL_KNOWLEDGE_INTENTS);
 const VALID_RESPONSE_TYPES = new Set(['auto', 'info', 'handoff']);
@@ -178,11 +211,11 @@ export class KnowledgeExtractorService {
     return this.isUsableText(faq.responseTemplate);
   }
 
-  /** คำตอบที่จะส่งลูกค้าต้องมีเนื้อหา และห้ามหลุดคำต้องห้าม */
+  /** คำตอบที่จะส่งลูกค้าต้องมีเนื้อหา และห้ามพูดเรทเป็นดอกเบี้ย/% */
   private isUsableText(text: string | undefined): boolean {
     if (!text || !text.trim()) return false;
-    if (FORBIDDEN_RESPONSE_RE.test(text)) {
-      this.logger.warn(`ข้ามคำตอบที่มีคำต้องห้าม (ดอกเบี้ย/%): "${text.slice(0, 40)}…"`);
+    if (containsForbiddenRateTalk(text)) {
+      this.logger.warn(`ข้ามคำตอบที่พูดถึงเรทดอกเบี้ย/%: "${text.slice(0, 40)}…"`);
       return false;
     }
     return true;

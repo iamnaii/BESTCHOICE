@@ -15,7 +15,33 @@
 
 ---
 
-## 1. ขั้นตอนใช้งาน (3 ขั้น)
+## 1. ขั้นตอนใช้งาน
+
+### รันทีเดียวจบ (แนะนำ)
+
+```bash
+npm --prefix apps/api run ai:train
+```
+
+ทำขั้น 1 + ขั้น 2 ต่อกันให้เอง ไม่ต้องสตาร์ท API ไม่ต้อง login ไม่ต้อง build
+จบแล้วพิมพ์ตารางสรุปว่าได้อะไรมาบ้าง แล้วบอกให้ไปกดเปิดใช้ที่หน้าไหน
+
+| ตัวแปร | ผล |
+|---|---|
+| `MONTHS=6` | เปลี่ยนช่วงเวลาย้อนหลัง (ค่าเริ่มต้น 12 เดือน) |
+| `SKIP_EXTRACT=1` | ข้ามขั้น 1 — แก้ prompt แล้วสกัดใหม่จากคู่ข้อความเดิม (ไม่ดูดแชทซ้ำ) |
+| `DRY_RUN=1` | นับให้ดูเฉย ๆ ไม่เขียน DB ไม่เรียก Claude (ไม่ต้องมี API key) |
+| `EXPECTED_DB_NAME=bestchoice_prod` | กันรันผิด DB — ไม่ตรงแล้วหยุดทันที |
+
+ตัวสคริปต์: `apps/api/src/cli/train-ai-knowledge.cli.ts` — เรียก service ตัวเดียวกับที่
+endpoint เรียก ตรรกะและตัวกรองเป็นชุดเดียวกันเป๊ะ
+
+**ตัวหยุดอัตโนมัติ** (กันจ่ายค่า Claude ฟรี ๆ / รันผิดที่):
+ไม่มี `ANTHROPIC_API_KEY` → หยุดตั้งแต่ยังไม่ดูดแชท ·
+`ai_training_pairs` ว่าง → ไม่เรียก Claude เลย ·
+`EXPECTED_DB_NAME` ไม่ตรง → หยุดก่อนเขียน
+
+### หรือแยกทีละขั้นผ่าน API (เมื่ออยากรันจากหน้าเว็บ/มือถือ)
 
 ```
 ขั้น 1 — ดูดแชทเก่า          POST /chat-history/extract          { "months": 12 }   (OWNER)
@@ -55,7 +81,9 @@
 
 **กฎเหล็กตอนสกัด**
 - ตัวเลขที่เปลี่ยนตามรุ่น/สัญญา → บังคับเป็นตัวแปร `{{ราคา}} {{ดาวน์}} {{ค่างวด}} {{จำนวนงวด}} {{ยอดค้าง}} {{วันครบกำหนด}}`
-- ห้ามคำว่า **ดอกเบี้ย / เปอร์เซ็นต์ / %** (โค้ดกรองซ้ำอีกชั้น — เจอเมื่อไหร่ทิ้งทั้งแถว)
+- ห้ามคำว่า **ดอกเบี้ย / เปอร์เซ็นต์ / %** เวลาพูดถึงเรทหรือค่างวด
+  (โค้ดกรองซ้ำอีกชั้นด้วย `containsForbiddenRateTalk` — บล็อกเฉพาะเมื่อ % อยู่ใกล้คำว่า
+  ดอก/ผ่อน/งวด/ต่อเดือน/ดาวน์ ฯลฯ ส่วนสำนวนขายปกติอย่าง "ของแท้ 100%" หรือ "แบต 89%" ผ่านได้)
 - ห้ามรับปากว่าอนุมัติแน่ / ห้ามพูดล็อกเครื่องเชิงขู่ / ห้ามมี PII
 - ห้ามเอาคำตอบเฉพาะเคส (ยอดของคนนั้น เลขสัญญานั้น) มาเป็น template
 - `intent` ต้องอยู่ใน taxonomy ที่กำหนดเท่านั้น (นอกรายการ = ทิ้ง)
@@ -203,8 +231,11 @@ git switch claude/ai-training-prompt-customer-tp7zdr
 # สตาร์ทเซิร์ฟเวอร์ (หรือ Cmd/Ctrl+Shift+P → "BESTCHOICE: Start Dev Servers")
 npm run dev                    # API :3000 + Web :5173
 
-# เทสต์เฉพาะส่วนนี้ — ไม่ต้องมี DB ไม่ต้องมี API key (7 เคส)
+# เทสต์เฉพาะส่วนนี้ — ไม่ต้องมี DB ไม่ต้องมี API key
 npm --prefix apps/api test -- src/modules/chat-history-extractor
+
+# รันเทรนทีเดียวจบ (ดูข้อ 1)
+npm --prefix apps/api run ai:train
 ```
 
 ยิง endpoint (ต้องเป็น OWNER — API มี prefix `/api` และ **CsrfGuard บังคับ header `X-Requested-With`**
@@ -260,22 +291,15 @@ curl -X POST http://localhost:3000/api/chat-history/extract-knowledge \
 ### 7.1 รันทั้ง pipeline (ครั้งแรก)
 
 ```
-ช่วยรันขั้นตอนเทรน AI ตอบลูกค้าให้หน่อย อ้างอิง docs/sales-scripts/AI-CUSTOMER-REPLY-PROMPT.md ข้อ 5.4
+ช่วยรันเทรน AI ตอบลูกค้าให้หน่อย
 
-1. เช็คว่ามี ANTHROPIC_API_KEY ใน apps/api/.env แล้วหรือยัง — ถ้ายังไม่มี ให้หยุดแล้วบอกผมก่อน
-2. สตาร์ท API (npm run dev) รอจน GET /api/health ตอบ 200
-3. login admin@bestchoice.com / admin1234 เอา accessToken
-4. POST /api/chat-history/extract  body {"months":12}
-   → รายงาน lineCount / fbCount / pairsWritten
-5. ถ้า pairsWritten = 0 ให้หยุด แล้วบอกว่าไม่มีแชทเก่าใน DB (อย่าไปเรียก Claude ฟรี ๆ)
-6. POST /api/chat-history/extract-knowledge
-   → รายงาน faqsSeeded / objectionsSeeded + log บรรทัดที่ขึ้นว่าแถวไหนถูกตัดทิ้งเพราะอะไร
-7. query chat_knowledge_base ที่ category IN ('EXTRACTED','EXTRACTED_OBJECTION')
-   สรุปเป็นตาราง: intent | channel | responseType | priority | responseTemplate (200 ตัวแรก)
-8. บอกว่าแถวไหนเปิดใช้ได้เลย แถวไหนควรแก้ก่อน เพราะอะไร
+1. DRY_RUN=1 npm --prefix apps/api run ai:train   → ดูก่อนว่ามีแชทเก่ากี่ข้อความ
+2. ถ้ามีข้อมูล ให้รันจริง: npm --prefix apps/api run ai:train
+3. อ่านตารางที่มันพิมพ์ออกมา แล้วบอกผมว่าแถวไหนเปิดใช้ได้เลย แถวไหนควรแก้ก่อน เพราะอะไร
+4. ถ้ามีแถวที่ log บอกว่าถูกตัดทิ้ง ให้บอกด้วยว่าโดนกฎข้อไหน
 
-ทุก POST ใส่ header X-Requested-With: XMLHttpRequest ไม่งั้น CsrfGuard เด้ง 403
 ห้ามตั้ง active = true ให้เอง — ผมจะกดเปิดเองที่ /chatbot-finance/knowledge
+ถ้าติด ANTHROPIC_API_KEY ไม่มี ให้หยุดแล้วบอกผม อย่าไปหาทางลัดอื่น
 ```
 
 ### 7.2 รันซ้ำหลังแก้ prompt (ไม่ต้องดูดแชทใหม่)
@@ -283,11 +307,10 @@ curl -X POST http://localhost:3000/api/chat-history/extract-knowledge \
 ```
 ผมแก้ apps/api/src/modules/chat-history-extractor/prompts/knowledge-extraction.prompt.ts แล้ว
 
-1. restart API
-2. เรียกเฉพาะ POST /api/chat-history/extract-knowledge (ข้ามขั้น extract — ใช้คู่ข้อความเดิมใน ai_training_pairs)
-3. เทียบผลกับรอบก่อน: intent ไหนเพิ่ม/หายไป, responseTemplate ต่างตรงไหน
-4. แถวที่หายไป ให้ไล่ log ว่าโดนตัดด้วยกฎข้อไหน (intent นอก taxonomy / confidence < 0.5 / คำต้องห้าม)
-   แล้วบอกว่าควรแก้ prompt ตรงไหนถ้าอยากให้มันรอด
+1. SKIP_EXTRACT=1 npm --prefix apps/api run ai:train
+2. เทียบผลกับรอบก่อน: intent ไหนเพิ่ม/หายไป, responseTemplate ต่างตรงไหน
+3. แถวที่หายไป ให้ไล่ log ว่าโดนตัดด้วยกฎข้อไหน (intent นอก taxonomy / confidence < 0.5 /
+   พูดถึงเรทดอกเบี้ย-%) แล้วบอกว่าควรแก้ prompt ตรงไหนถ้าอยากให้มันรอด
 ```
 
 ### 7.3 ลองก่อนโดยไม่แตะ DB (dry run)

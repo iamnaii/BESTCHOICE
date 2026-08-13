@@ -1,5 +1,8 @@
 import { Test } from '@nestjs/testing';
-import { KnowledgeExtractorService } from './knowledge-extractor.service';
+import {
+  KnowledgeExtractorService,
+  containsForbiddenRateTalk,
+} from './knowledge-extractor.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import Anthropic from '@anthropic-ai/sdk';
@@ -140,6 +143,26 @@ describe('KnowledgeExtractorService', () => {
       ['due_date', 'LINE_FINANCE'],
       ['store_location_hours', null],
     ]);
+  });
+
+  describe('containsForbiddenRateTalk', () => {
+    it.each([
+      'ผ่อน 0% 12 งวดค่ะ',
+      'ดอกเบี้ยถูกกว่าที่อื่นค่ะ',
+      'คิด 3 เปอร์เซ็นต์ต่อเดือนค่ะ',
+      'ดาวน์ 20% ที่เหลือผ่อนได้เลยค่ะ',
+    ])('บล็อกเรท: %s', (text) => {
+      expect(containsForbiddenRateTalk(text)).toBe(true);
+    });
+
+    // เคสจริงที่กฎเหมารวม "%" เคยกินทิ้ง — สำนวนขายปกติ ไม่เกี่ยวกับดอกเบี้ย
+    it.each([
+      'ของแท้ 100% ค่ะ ไม่ติด iCloud ตรวจสภาพทุกเครื่อง',
+      'แบต 89% สภาพสวยมากค่ะ',
+      'ใช้บัตรประชาชนใบเดียวเลยค่ะ ไม่เช็คบูโรนะคะ',
+    ])('ปล่อยผ่าน: %s', (text) => {
+      expect(containsForbiddenRateTalk(text)).toBe(false);
+    });
   });
 
   it('ตัดคำตอบที่มีคำต้องห้าม (ดอกเบี้ย/%) ทิ้ง', async () => {

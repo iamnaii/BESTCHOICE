@@ -361,6 +361,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
+        { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
         // P3-SP3 — PEAK CSV export (deep-linked from /settings#peak-mapping which is OWNER-only)
         { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
@@ -428,6 +430,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
+        { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
         // ผังบัญชี + PEAK Sync ลบออก — ใช้ผ่าน settings › บัญชี & ภาษี (dedupe 2026-06-24)
@@ -583,6 +587,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
+        { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
       ],
     },

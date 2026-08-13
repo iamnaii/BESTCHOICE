@@ -239,6 +239,10 @@ const OtherIncomePendingApprovalPage = lazy(
   () => import('@/pages/other-income/OtherIncomePendingApprovalPage'),
 );
 const OtherIncomeTemplatesPage = lazy(() => import('@/pages/other-income/OtherIncomeTemplatesPage'));
+const EquityListPage = lazy(() => import('@/pages/equity/EquityListPage'));
+const EquityEntryPage = lazy(() => import('@/pages/equity/EquityEntryPage'));
+const EquityViewPage = lazy(() => import('@/pages/equity/EquityViewPage'));
+const DividendRegisterPage = lazy(() => import('@/pages/equity/DividendRegisterPage'));
 const PeriodClosePage = lazy(() => import('@/pages/accounting/PeriodClosePage'));
 const TaxDisallowedSummaryPage = lazy(
   () => import('@/pages/accounting/TaxDisallowedSummaryPage'),
@@ -841,6 +845,47 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <YearEndClosingPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* ส่วนของผู้ถือหุ้น (Equity) — CRITICAL: /new ก่อน /:id */}
+          <Route
+            path="/finance/equity"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <EquityListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/equity/new"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <EquityEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/equity/:id/edit"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <EquityEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/equity/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <EquityViewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/dividend-register"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <DividendRegisterPage />
               </ProtectedRoute>
             }
           />

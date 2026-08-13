@@ -31,7 +31,11 @@ npm --prefix apps/api run ai:train
 | `MONTHS=6` | เปลี่ยนช่วงเวลาย้อนหลัง (ค่าเริ่มต้น 12 เดือน) |
 | `SKIP_EXTRACT=1` | ข้ามขั้น 1 — แก้ prompt แล้วสกัดใหม่จากคู่ข้อความเดิม (ไม่ดูดแชทซ้ำ) |
 | `DRY_RUN=1` | นับให้ดูเฉย ๆ ไม่เขียน DB ไม่เรียก Claude (ไม่ต้องมี API key) |
-| `EXPECTED_DB_NAME=bestchoice_prod` | กันรันผิด DB — ไม่ตรงแล้วหยุดทันที |
+| `EXPECTED_DB_NAME=bestchoice` | กันรันผิด DB — ไม่ตรงแล้วหยุดทันที (DB prod ชื่อ `bestchoice` จริง ๆ — ชื่อเดียวกับ dev, ตัวกันนี้จึงกันแค่ URL แปลก ไม่ได้แยก dev/prod) |
+
+> **รันกับ prod**: ใช้ `bash scripts/ops/train-ai-prod.sh` — เปิด cloud-sql-proxy + ดึง
+> `DATABASE_URL`/`ANTHROPIC_API_KEY` จาก GCP secrets ให้เอง (รับ `DRY_RUN`/`MONTHS`/
+> `SKIP_EXTRACT` เหมือนกันทุกตัว)
 
 ตัวสคริปต์: `apps/api/src/cli/train-ai-knowledge.cli.ts` — เรียก service ตัวเดียวกับที่
 endpoint เรียก ตรรกะและตัวกรองเป็นชุดเดียวกันเป๊ะ

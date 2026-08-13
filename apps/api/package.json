@@ -68,7 +68,7 @@
     "sp7:clone-orig-to-finance": "tsx src/cli/clone-orig-to-finance.cli.ts",
     "sp7:extract-shop": "tsx src/cli/extract-shop-from-finance.cli.ts",
     "sp7:opening-balance": "tsx src/cli/post-opening-balance-transfer-sp7.cli.ts",
-    "ai:train": "tsx src/cli/train-ai-knowledge.cli.ts",
+    "ai:train": "npx -y tsx src/cli/train-ai-knowledge.cli.ts",
     "ai:train:help": "echo 'Usage: [MONTHS=12] [SKIP_EXTRACT=1] [DRY_RUN=1] [EXPECTED_DB_NAME=<db>] npm --prefix apps/api run ai:train — ดูดแชทเก่า + สกัดเป็น FAQ/objection ลง chat_knowledge_base (active=false)'"
   },
   "dependencies": {

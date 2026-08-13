@@ -248,3 +248,89 @@ curl -X POST http://localhost:3000/api/chat-history/extract-knowledge \
 - ค่าใช้จ่าย: ขั้น 2 เรียก Claude Haiku 1 ครั้งต่อการรัน (บันทึกใน `ai_usage`) — ไม่ใช่ต่อข้อความ
 - แชทเก่ามีคำตอบที่ขัดนโยบายปัจจุบันปนอยู่แน่นอน (เช่น เคยพูด % / เคยรับปากอนุมัติ)
   prompt กรองไว้ 2 ชั้นแล้ว แต่ **ชั้นสุดท้ายคือคนรีวิวก่อนกดเปิด**
+
+---
+
+## 7. Prompt สั่งรัน (copy วางใน Claude Code / VS Code)
+
+ข้อกำหนดร่วมของทุก prompt ด้านล่าง — ระบบตรวจ 3 อย่างนี้เสมอ:
+`ANTHROPIC_API_KEY` ใน `apps/api/.env` · role ต้องเป็น **OWNER** · POST ต้องมี header
+`X-Requested-With: XMLHttpRequest` (CsrfGuard)
+
+### 7.1 รันทั้ง pipeline (ครั้งแรก)
+
+```
+ช่วยรันขั้นตอนเทรน AI ตอบลูกค้าให้หน่อย อ้างอิง docs/sales-scripts/AI-CUSTOMER-REPLY-PROMPT.md ข้อ 5.4
+
+1. เช็คว่ามี ANTHROPIC_API_KEY ใน apps/api/.env แล้วหรือยัง — ถ้ายังไม่มี ให้หยุดแล้วบอกผมก่อน
+2. สตาร์ท API (npm run dev) รอจน GET /api/health ตอบ 200
+3. login admin@bestchoice.com / admin1234 เอา accessToken
+4. POST /api/chat-history/extract  body {"months":12}
+   → รายงาน lineCount / fbCount / pairsWritten
+5. ถ้า pairsWritten = 0 ให้หยุด แล้วบอกว่าไม่มีแชทเก่าใน DB (อย่าไปเรียก Claude ฟรี ๆ)
+6. POST /api/chat-history/extract-knowledge
+   → รายงาน faqsSeeded / objectionsSeeded + log บรรทัดที่ขึ้นว่าแถวไหนถูกตัดทิ้งเพราะอะไร
+7. query chat_knowledge_base ที่ category IN ('EXTRACTED','EXTRACTED_OBJECTION')
+   สรุปเป็นตาราง: intent | channel | responseType | priority | responseTemplate (200 ตัวแรก)
+8. บอกว่าแถวไหนเปิดใช้ได้เลย แถวไหนควรแก้ก่อน เพราะอะไร
+
+ทุก POST ใส่ header X-Requested-With: XMLHttpRequest ไม่งั้น CsrfGuard เด้ง 403
+ห้ามตั้ง active = true ให้เอง — ผมจะกดเปิดเองที่ /chatbot-finance/knowledge
+```
+
+### 7.2 รันซ้ำหลังแก้ prompt (ไม่ต้องดูดแชทใหม่)
+
+```
+ผมแก้ apps/api/src/modules/chat-history-extractor/prompts/knowledge-extraction.prompt.ts แล้ว
+
+1. restart API
+2. เรียกเฉพาะ POST /api/chat-history/extract-knowledge (ข้ามขั้น extract — ใช้คู่ข้อความเดิมใน ai_training_pairs)
+3. เทียบผลกับรอบก่อน: intent ไหนเพิ่ม/หายไป, responseTemplate ต่างตรงไหน
+4. แถวที่หายไป ให้ไล่ log ว่าโดนตัดด้วยกฎข้อไหน (intent นอก taxonomy / confidence < 0.5 / คำต้องห้าม)
+   แล้วบอกว่าควรแก้ prompt ตรงไหนถ้าอยากให้มันรอด
+```
+
+### 7.3 ลองก่อนโดยไม่แตะ DB (dry run)
+
+```
+ผมอยากเห็นหน้าตาผลลัพธ์ของ prompt ก่อนรันจริง
+
+เขียน script ชั่วคราวไว้ใน scratchpad (อย่าเพิ่ม script ลง repo) ที่:
+- import KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT + buildKnowledgeExtractionUserMessage
+  จาก apps/api/src/modules/chat-history-extractor/prompts/knowledge-extraction.prompt.ts
+- ดึง 30 คู่ล่าสุดจาก ai_training_pairs (source = SYSTEM_EXTRACT) มาเป็น input
+- ยิง Claude แล้ว print JSON ดิบที่ได้ออกมาเฉย ๆ ห้ามเขียนลง chat_knowledge_base
+แล้วสรุปให้ผมว่า output หน้าตาโอเคไหม ตรงไหนที่ prompt ยังคุมไม่อยู่
+```
+
+### 7.4 ให้ช่วยรีวิวก่อนกดเปิดใช้
+
+```
+อ่านแถว chat_knowledge_base ที่ category IN ('EXTRACTED','EXTRACTED_OBJECTION') ทั้งหมด
+ตรวจทีละแถวว่า:
+- มีคำต้องห้ามหลุดไหม — ดอกเบี้ย / % / รับปากว่าอนุมัติแน่ / ขู่เรื่องล็อกเครื่อง
+- มีเลขราคา-ค่างวดฝังอยู่ไหม (ต้องเป็น {{ตัวแปร}} เท่านั้น)
+- มี PII หลุดไหม — ชื่อลูกค้า เบอร์ เลขบัตร เลขที่สัญญา
+- channel ถูกฝั่งไหม (เรื่องยอดค้าง/วันครบกำหนด ต้องเป็น LINE_FINANCE ไม่ใช่ LINE_SHOP)
+- โทนเหมือนแอดมินจริงไหม ไม่ใช่สำนวนแปล
+
+สรุปเป็นตาราง ผ่าน / ต้องแก้ + เขียนข้อความฉบับแก้แล้วมาให้ ผมจะ copy ไปวางเองในหน้าเว็บ
+```
+
+### 7.5 รันเองด้วย shell ล้วน (ไม่ผ่าน Claude)
+
+```bash
+cd ~/BESTCHOICE && npm run dev        # terminal ที่ 1 — ทิ้งไว้
+
+# terminal ที่ 2
+TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
+  -d '{"email":"admin@bestchoice.com","password":"admin1234"}' | jq -r .accessToken)
+
+curl -s -X POST http://localhost:3000/api/chat-history/extract \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'X-Requested-With: XMLHttpRequest' -d '{"months":12}' | jq
+
+curl -s -X POST http://localhost:3000/api/chat-history/extract-knowledge \
+  -H "Authorization: Bearer $TOKEN" -H 'X-Requested-With: XMLHttpRequest' | jq
+```

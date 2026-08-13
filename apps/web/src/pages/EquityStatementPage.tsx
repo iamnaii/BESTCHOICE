@@ -4,12 +4,7 @@ import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Landmark, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
@@ -34,6 +29,13 @@ export interface EquityRow {
   closing: number;
 }
 
+export interface EquityCapitalStatus {
+  authorized: number;
+  unpaid: number;
+  paidUp: number;
+  premium: number;
+}
+
 export interface EquityStatementData {
   periodStart: string;
   periodEnd: string;
@@ -42,6 +44,7 @@ export interface EquityStatementData {
   caveat: string;
   totalOpening: number;
   totalClosing: number;
+  capitalStatus?: EquityCapitalStatus;
 }
 
 const inputClass =
@@ -179,6 +182,43 @@ export function EquityStatementPage() {
               </div>
             </div>
 
+            {equity.capitalStatus && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                {[
+                  {
+                    label: 'ทุนจดทะเบียน (Authorized)',
+                    value: equity.capitalStatus.authorized,
+                    hint: 'GL 31-1101',
+                  },
+                  {
+                    label: 'ทุนชำระแล้ว (Paid-up)',
+                    value: equity.capitalStatus.paidUp,
+                    hint: 'Authorized − ค้างชำระ',
+                  },
+                  {
+                    label: 'ค่าหุ้นค้างชำระ',
+                    value: equity.capitalStatus.unpaid,
+                    hint: 'GL 11-1310',
+                  },
+                  {
+                    label: 'ส่วนเกินมูลค่าหุ้น',
+                    value: equity.capitalStatus.premium,
+                    hint: 'GL 31-1102',
+                  },
+                ].map((c) => (
+                  <div key={c.label} className="rounded-lg border border-border bg-card p-4">
+                    <div className="text-xs text-muted-foreground leading-snug">{c.label}</div>
+                    <div className="text-lg font-semibold font-mono mt-1 tabular-nums">
+                      {c.value.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                      {c.hint}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -192,9 +232,7 @@ export function EquityStatementPage() {
                         <th className="text-right p-3 font-medium text-muted-foreground">
                           + เพิ่ม
                         </th>
-                        <th className="text-right p-3 font-medium text-muted-foreground">
-                          − ลด
-                        </th>
+                        <th className="text-right p-3 font-medium text-muted-foreground">− ลด</th>
                         <th className="text-right p-3 font-medium text-muted-foreground">
                           ยอดปลายงวด
                         </th>
@@ -202,15 +240,12 @@ export function EquityStatementPage() {
                     </thead>
                     <tbody>
                       {equity.rows.map((row) => {
-                        const hasDetails =
-                          row.increases.length > 0 || row.decreases.length > 0;
+                        const hasDetails = row.increases.length > 0 || row.decreases.length > 0;
                         return (
                           <tr
                             key={row.accountCode}
                             className={`border-t border-border ${
-                              hasDetails
-                                ? 'cursor-pointer hover:bg-accent/50'
-                                : 'cursor-default'
+                              hasDetails ? 'cursor-pointer hover:bg-accent/50' : 'cursor-default'
                             }`}
                             onClick={() => {
                               if (hasDetails) setDrillRow(row);
@@ -278,8 +313,7 @@ export function EquityStatementPage() {
               {drillRow.increases.length > 0 && (
                 <div>
                   <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5 text-success leading-snug">
-                    <ArrowUp className="size-4" /> รายการเพิ่ม (
-                    {drillRow.increases.length})
+                    <ArrowUp className="size-4" /> รายการเพิ่ม ({drillRow.increases.length})
                   </h4>
                   <div className="space-y-1 max-h-64 overflow-y-auto">
                     {drillRow.increases.map((m, i) => (
@@ -305,8 +339,7 @@ export function EquityStatementPage() {
               {drillRow.decreases.length > 0 && (
                 <div>
                   <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5 text-destructive leading-snug">
-                    <ArrowDown className="size-4" /> รายการลด (
-                    {drillRow.decreases.length})
+                    <ArrowDown className="size-4" /> รายการลด ({drillRow.decreases.length})
                   </h4>
                   <div className="space-y-1 max-h-64 overflow-y-auto">
                     {drillRow.decreases.map((m, i) => (

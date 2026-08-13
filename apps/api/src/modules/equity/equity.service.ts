@@ -317,15 +317,17 @@ export class EquityService {
 
   // ─── Maker-checker (SystemConfig EQUITY_MAKER_CHECKER_ENABLED, default OFF) ─
 
+  /**
+   * Maker-checker opt-in — SystemConfig EQUITY_MAKER_CHECKER_ENABLED.
+   * แถวหาย/ค่าอื่น = OFF · อ่านพลาด (DB error) = โยนต่อ ไม่ fail-open
+   * (fail-closed ตามแนว interco_maker_checker_enabled — คนละแนวกับ other-income
+   * ที่กลืน error; ด่าน SoD ห้ามหายเงียบเพราะ DB สะดุด)
+   */
   async isMakerCheckerEnabled(): Promise<{ enabled: boolean }> {
-    try {
-      const row = await this.prisma.systemConfig.findUnique({
-        where: { key: 'EQUITY_MAKER_CHECKER_ENABLED' },
-      });
-      return { enabled: row?.value === 'true' };
-    } catch {
-      return { enabled: false };
-    }
+    const row = await this.prisma.systemConfig.findUnique({
+      where: { key: 'EQUITY_MAKER_CHECKER_ENABLED' },
+    });
+    return { enabled: row?.value === 'true' };
   }
 
   // ─── Workflow: submit / withdraw ────────────────────────────────────────
@@ -367,7 +369,13 @@ export class EquityService {
     if (doc.makerId !== userId) {
       throw new ForbiddenException('เฉพาะผู้สร้างเอกสารจึงจะถอนกลับเป็นร่างได้');
     }
-    await this.prisma.equityDocument.update({ where: { id }, data: { status: 'DRAFT' } });
+    const claimed = await this.prisma.equityDocument.updateMany({
+      where: { id, status: 'READY' },
+      data: { status: 'DRAFT' },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictException('เอกสารถูกเปลี่ยนสถานะโดยผู้อื่นแล้ว — กรุณารีโหลด');
+    }
     await this.audit(userId, 'EQUITY_WITHDRAWN', id, { docNumber: doc.docNumber });
     return this.findOne(id);
   }
@@ -401,6 +409,8 @@ export class EquityService {
   // ─── GL guards ──────────────────────────────────────────────────────────
 
   /** ยอดคงเหลือทั้งบัญชี (POSTED, ไม่ลบ) — side 'cr' = ΣCr−ΣDr, 'dr' = ΣDr−ΣCr */
+  // ไม่ filter companyId — ปลอดภัยเพราะผัง SHOP ใช้ prefix 'S' จึงไม่มีทางชนรหัส FINANCE
+  // (สมมติฐานนี้พังเมื่อ P3-SP7 แยกนิติบุคคล — ตอนนั้นต้องเพิ่ม companyId filter)
   private async accountBalance(
     client: Prisma.TransactionClient | PrismaService,
     accountCode: string,
@@ -502,30 +512,41 @@ export class EquityService {
       if (claimed.count === 0) {
         throw new ConflictException('เอกสารถูกเปลี่ยนสถานะโดยผู้อื่นแล้ว — กรุณารีโหลด');
       }
-      await runGlGuards(tx); // เช็คซ้ำใน tx ปิด race window
+      // เช็คซ้ำใน tx — จับกรณียอดเปลี่ยนระหว่าง pre-check กับ tx เท่านั้น
+      // (READ COMMITTED ไม่ serialize โพสต์คนละใบที่วิ่งพร้อมกัน — ความเสี่ยงที่เหลือ
+      //  ยอมรับได้: เอกสาร equity เป็นงาน manual OWNER/FM นานๆ ครั้ง)
+      await runGlGuards(tx);
 
-      const je = await this.journalAuto.createAndPost(
-        {
-          description: `ส่วนของผู้ถือหุ้น ${doc.txnType} ${doc.docNumber}${doc.description ? ` — ${doc.description}` : ''}`,
-          reference: doc.id,
-          companyId: doc.companyId,
-          postedAt: doc.txnDate,
-          metadata: {
-            flow: 'equity',
-            idempotencyKey: `equity:${doc.id}`,
-            equityDocId: doc.id,
-            docNumber: doc.docNumber,
-            txnType: doc.txnType,
+      let je: { id: string; entryNumber: string };
+      try {
+        je = await this.journalAuto.createAndPost(
+          {
+            description: `ส่วนของผู้ถือหุ้น ${doc.txnType} ${doc.docNumber}${doc.description ? ` — ${doc.description}` : ''}`,
+            reference: doc.id,
+            companyId: doc.companyId,
+            postedAt: doc.txnDate,
+            metadata: {
+              flow: 'equity',
+              idempotencyKey: `equity:${doc.id}`,
+              equityDocId: doc.id,
+              docNumber: doc.docNumber,
+              txnType: doc.txnType,
+            },
+            lines: jeLines.map<JeLineInput>((l) => ({
+              accountCode: l.accountCode,
+              dr: l.dr,
+              cr: l.cr,
+              description: l.description,
+            })),
           },
-          lines: jeLines.map<JeLineInput>((l) => ({
-            accountCode: l.accountCode,
-            dr: l.dr,
-            cr: l.cr,
-            description: l.description,
-          })),
-        },
-        tx,
-      );
+          tx,
+        );
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException('เอกสารนี้ถูกลงบัญชีไปแล้ว (คำขอซ้ำ)');
+        }
+        throw err;
+      }
       return tx.equityDocument.update({
         where: { id },
         data: { journalEntryId: je.id },

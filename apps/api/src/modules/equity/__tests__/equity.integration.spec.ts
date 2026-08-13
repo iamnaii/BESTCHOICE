@@ -88,7 +88,9 @@ describe('EquityService — integration (DB จริง)', () => {
         data: {
           companyCode: 'FINANCE',
           nameTh: 'บริษัท เบสท์ช้อยส์ไฟแนนซ์ จำกัด (test)',
-          taxId: '0000000000000',
+          // ต้อง unique — ห้าม hardcode ค่าเดียวกันซ้ำ เพราะ suite อื่นใน CI run
+          // เดียวกันอาจสร้าง fallback CompanyInfo ด้วย taxId เดิมจนชน unique constraint
+          taxId: `TEST-EQ-${Date.now()}`,
           address: 'ที่อยู่ทดสอบ (integration spec)',
           directorName: 'ผู้ทดสอบระบบ',
         },
@@ -96,25 +98,35 @@ describe('EquityService — integration (DB จริง)', () => {
     }
     financeCompanyId = finance.id;
 
-    const admin = await prisma.user.findFirst({
+    // find-or-create — CI test_db รัน `prisma migrate deploy` โดยไม่ seed เลย
+    // (mirror convention ของ jp5-vat-split.spec.ts) ห้าม throw เมื่อไม่พบผู้ใช้
+    let admin = await prisma.user.findFirst({
       where: { email: 'admin@bestchoice.com', deletedAt: null },
     });
-    if (!admin)
-      throw new Error('ต้อง seed dev DB ก่อน (admin@bestchoice.com) — ดู project_local_dev_setup');
+    if (!admin) {
+      admin = await prisma.user.create({
+        data: { email: 'admin@bestchoice.com', password: 'x', name: 'admin', role: 'OWNER' },
+      });
+    }
     userId = admin.id;
 
-    // เลือก approver จริงคนละคนกับ maker — dev seed มี finance@bestchoice.com
-    // (FINANCE_MANAGER) อยู่แล้ว ใช้อันนั้นก่อน ถ้าไม่มีค่อย fallback ไปผู้ใช้อื่น
-    // แล้วสุดท้ายค่อย fallback เป็น admin เอง (self-approve, สาขา else ของเทส MC)
-    const financeManager = await prisma.user.findFirst({
+    // ผู้อนุมัติต้องเป็นคนละคนกับ maker เสมอ (ไม่ fallback เป็น admin เอง) —
+    // find-or-create แบบเดียวกัน เพื่อให้เทส maker-checker มีอีกคนจริงเสมอ และ
+    // full-approval branch ถูก exercise ทุกครั้งที่รัน
+    let financeManager = await prisma.user.findFirst({
       where: { email: 'finance@bestchoice.com', deletedAt: null },
     });
-    const other =
-      financeManager ??
-      (await prisma.user.findFirst({
-        where: { email: { not: 'admin@bestchoice.com' }, deletedAt: null },
-      }));
-    approverUserId = other?.id ?? admin.id;
+    if (!financeManager) {
+      financeManager = await prisma.user.create({
+        data: {
+          email: 'finance@bestchoice.com',
+          password: 'x',
+          name: 'finance-manager',
+          role: 'FINANCE_MANAGER',
+        },
+      });
+    }
+    approverUserId = financeManager.id;
 
     const a = await prisma.shareholder.create({
       data: { name: 'ผู้ถือหุ้นทดสอบ 1', taxId: '1100200111111', type: 'INDIVIDUAL' },
@@ -165,18 +177,21 @@ describe('EquityService — integration (DB จริง)', () => {
   }
 
   it('CAP_INIT post → GL ถูกต้อง แล้ว reverse → net 0 ทุกบัญชี', async () => {
+    // 11-1201 ใช้ delta — บัญชีแชร์กับ suite อื่นใน CI run เดียวกัน; บัญชี equity-only ใช้ absolute
+    const bankBase = await bal(prisma, '11-1201', 'dr');
+
     const doc = await service.create(capInitDto(), userId);
     await withAttachment(doc.id);
     await service.post(doc.id, userId);
 
     expect((await bal(prisma, '31-1101', 'cr')).toFixed(2)).toBe('1000000.00');
     expect((await bal(prisma, '11-1310', 'dr')).toFixed(2)).toBe('300000.00');
-    expect((await bal(prisma, '11-1201', 'dr')).toFixed(2)).toBe('700000.00');
+    expect((await bal(prisma, '11-1201', 'dr')).minus(bankBase).toFixed(2)).toBe('700000.00');
 
     await service.reverse(doc.id, { reason: 'ทดสอบกลับรายการยาวสิบตัวอักษร' }, userId);
     expect((await bal(prisma, '31-1101', 'cr')).toFixed(2)).toBe('0.00');
     expect((await bal(prisma, '11-1310', 'dr')).toFixed(2)).toBe('0.00');
-    expect((await bal(prisma, '11-1201', 'dr')).toFixed(2)).toBe('0.00');
+    expect((await bal(prisma, '11-1201', 'dr')).minus(bankBase).toFixed(2)).toBe('0.00');
 
     const after = await service.findOne(doc.id);
     expect(after.status).toBe('REVERSED');
@@ -273,6 +288,10 @@ describe('EquityService — integration (DB จริง)', () => {
     const pay1 = await service.create(payDto, userId);
     await expect(service.post(pay1.id, userId)).rejects.toThrow(/V_DIV_PAY_LE_PAYABLE/);
 
+    // กำไรสะสมคงค้างจาก suite อื่นใน CI run เดียวกัน (year-end-step4.spec.ts
+    // อาจโพสต์ค้างไว้ที่ 32-1101) — local (equity DB สะอาด) = 0
+    const reBase = await bal(prisma, '32-1101', 'cr');
+
     const dec = await service.create(
       {
         txnType: 'DIV_DEC' as const,
@@ -288,8 +307,13 @@ describe('EquityService — integration (DB จริง)', () => {
     );
     await withAttachment(dec.id);
     const decRes = await service.post(dec.id, userId);
-    // 32-1101 ว่าง → DIV_VS_RE warning (ไม่ block)
-    expect(decRes.warning).toMatch(/DIV_VS_RE/);
+    // ปันผลรวม 100,000 เทียบกับกำไรสะสมจริง (รวม baseline จาก suite อื่น) —
+    // ถ้าปันผล > กำไรสะสม ต้องมี DIV_VS_RE warning, ถ้า ≤ ต้องไม่มี (ไม่ block ทั้งคู่)
+    if (new D(100000).gt(reBase)) {
+      expect(decRes.warning).toMatch(/DIV_VS_RE/);
+    } else {
+      expect(decRes.warning).toBeNull();
+    }
 
     const posted = await service.post(pay1.id, userId);
     expect(posted.warning ?? null).toBeNull();
@@ -331,13 +355,12 @@ describe('EquityService — integration (DB จริง)', () => {
     await withAttachment(doc.id);
     await expect(service.post(doc.id, userId)).rejects.toThrow(/ส่งอนุมัติก่อน/);
     await service.submit(doc.id, userId);
-    if (approverUserId !== userId) {
-      await expect(service.post(doc.id, userId)).rejects.toThrow(/ผู้อนุมัติต้องไม่ใช่ผู้สร้าง/);
-      await service.post(doc.id, approverUserId);
-      expect((await service.findOne(doc.id)).status).toBe('POSTED');
-    } else {
-      await expect(service.post(doc.id, userId)).rejects.toThrow(/ผู้อนุมัติต้องไม่ใช่ผู้สร้าง/);
-    }
+    // approverUserId (finance@bestchoice.com) การันตีว่าเป็นคนละคนกับ userId
+    // เสมอ (find-or-create ใน beforeAll) — full-approval branch จึงถูก exercise
+    // ทุกครั้งที่รัน ไม่มี else-branch ที่ self-approve อีกต่อไป
+    await expect(service.post(doc.id, userId)).rejects.toThrow(/ผู้อนุมัติต้องไม่ใช่ผู้สร้าง/);
+    await service.post(doc.id, approverUserId);
+    expect((await service.findOne(doc.id)).status).toBe('POSTED');
   });
 
   it('period guard — txnDate ในงวด CLOSED ถูก block', async () => {

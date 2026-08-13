@@ -282,14 +282,47 @@ export class EquityService {
   /** Preview JE จาก payload ร่าง (wizard step 2) — single source of truth ฝั่ง server */
   async journalPreview(dto: CreateEquityDocumentDto) {
     const lines = await this.resolveLines(dto.txnType, dto.lines ?? []);
-    const jeLines = buildEquityJournal({
-      txnType: dto.txnType,
-      paymentAccountCode: dto.paymentAccountCode ?? null,
-      paAccountCode: dto.paAccountCode ?? null,
-      paAmount: dto.paAmount != null ? new D(dto.paAmount) : null,
-      paDirection: (dto.paDirection ?? null) as PaDirection | null,
-      lines: this.toBuilderLines(lines),
-    });
+
+    // Preview ต้องตอบ 400 ภาษาไทยเสมอ — ข้าม V8 (ไฟล์แนบยังไม่เกี่ยวตอน preview)
+    const previewErrors = validateEquityDoc(
+      {
+        txnType: dto.txnType,
+        resolutionNo: dto.resolutionNo ?? null,
+        resolutionDate: dto.resolutionDate ? new Date(dto.resolutionDate) : null,
+        paymentAccountCode: dto.paymentAccountCode ?? null,
+        paAccountCode: dto.paAccountCode ?? null,
+        paAmount: dto.paAmount != null ? new D(dto.paAmount) : null,
+        paDirection: dto.paDirection ?? null,
+        lines: lines.map((l) => ({
+          shareholderId: l.shareholderId,
+          amount: l.amount,
+          premium: l.premium,
+          paid: l.paid,
+          wht: l.wht,
+        })),
+      },
+      { hasAttachment: true }, // ให้ V8 ผ่านเสมอใน preview
+    ).filter((e) => e.code !== 'V_RESOLUTION'); // เลขมติกรอกทีหลังได้ — ไม่ block การดู preview
+    if (previewErrors.length > 0) {
+      throw new BadRequestException({
+        message: 'ข้อมูลยังไม่ครบสำหรับสร้าง Journal',
+        errors: previewErrors,
+      });
+    }
+
+    let jeLines: ReturnType<typeof buildEquityJournal>;
+    try {
+      jeLines = buildEquityJournal({
+        txnType: dto.txnType,
+        paymentAccountCode: dto.paymentAccountCode ?? null,
+        paAccountCode: dto.paAccountCode ?? null,
+        paAmount: dto.paAmount != null ? new D(dto.paAmount) : null,
+        paDirection: (dto.paDirection ?? null) as PaDirection | null,
+        lines: this.toBuilderLines(lines),
+      });
+    } catch (err) {
+      throw new BadRequestException(err instanceof Error ? err.message : 'สร้าง Journal ไม่สำเร็จ');
+    }
     const codes = [...new Set(jeLines.map((l) => l.accountCode))];
     const coa = await this.prisma.chartOfAccount.findMany({
       where: { code: { in: codes }, deletedAt: null },

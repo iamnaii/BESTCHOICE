@@ -134,7 +134,7 @@ export class TaxController {
   previewPnd2(@Query('year') year: string, @Query('month') month: string) {
     const y = parseInt(year);
     const m = parseInt(month);
-    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) {
+    if (!Number.isInteger(y) || y < 2020 || y > 2100 || !Number.isInteger(m) || m < 1 || m > 12) {
       throw new BadRequestException('ปี/เดือนไม่ถูกต้อง');
     }
     return this.taxService.previewPnd2(y, m);

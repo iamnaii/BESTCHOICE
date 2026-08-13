@@ -765,16 +765,20 @@ export class TaxPreviewService {
         },
       },
     });
+    // ภ.ง.ด.2 = บุคคลธรรมดาเท่านั้น (ม.50(2)); นิติไทย exempt ม.65 ทวิ(10);
+    // นิติต่างชาติ → ภ.ง.ด.54 (ยังไม่รองรับ — ดู accounting.md)
     const items = docs.flatMap((doc) =>
-      doc.lines.map((ln) => ({
-        shareholderName: ln.shareholderName,
-        taxId: ln.shareholder?.taxId ?? null,
-        type: ln.shareholder?.type ?? 'INDIVIDUAL',
-        gross: ln.amount,
-        whtAmount: ln.wht,
-        payDate: doc.txnDate,
-        docNumber: doc.docNumber,
-      })),
+      doc.lines
+        .filter((ln) => (ln.shareholder?.type ?? 'INDIVIDUAL') === 'INDIVIDUAL')
+        .map((ln) => ({
+          shareholderName: ln.shareholderName,
+          taxId: ln.shareholder?.taxId ?? null,
+          type: ln.shareholder?.type ?? 'INDIVIDUAL',
+          gross: ln.amount,
+          whtAmount: ln.wht,
+          payDate: doc.txnDate,
+          docNumber: doc.docNumber,
+        })),
     );
     const grossIncome = items.reduce((s, x) => s.add(x.gross), new Prisma.Decimal(0));
     const whtTotal = items.reduce((s, x) => s.add(x.whtAmount), new Prisma.Decimal(0));

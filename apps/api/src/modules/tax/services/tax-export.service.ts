@@ -188,7 +188,7 @@ export class TaxExportService {
         { header: 'เลขประจำตัวผู้เสียภาษี', key: 'taxId', width: 22 },
         { header: 'วันที่จ่าย', key: 'payDate', width: 14 },
         { header: 'เงินปันผล (บาท)', key: 'gross', width: 18 },
-        { header: 'ภาษีหัก ณ ที่จ่าย 10% (บาท)', key: 'wht', width: 22 },
+        { header: 'ภาษีหัก ณ ที่จ่าย ม.50(2) (บาท)', key: 'wht', width: 22 },
         { header: 'เอกสารอ้างอิง', key: 'doc', width: 20 },
       ];
       sheet.getRow(1).font = { bold: true };
@@ -208,6 +208,10 @@ export class TaxExportService {
       total.getCell('gross').value = Number(data.grossIncome);
       total.getCell('wht').value = Number(data.whtTotal);
       total.font = { bold: true };
+      const note = sheet.addRow({});
+      note.getCell('name').value =
+        'หมายเหตุ: ภ.ง.ด.2 เฉพาะผู้รับบุคคลธรรมดา — นิติบุคคลต่างชาติยื่น ภ.ง.ด.54 (ยังไม่รองรับในระบบ)';
+      note.font = { italic: true };
     } else {
       // PND3 / PND53 — vendor WHT
       const data =

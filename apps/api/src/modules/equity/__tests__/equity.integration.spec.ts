@@ -4,6 +4,7 @@
 // Named `*.integration.spec.ts` so jest's testPathIgnorePatterns skips it;
 // runs ONLY under vitest (see CI glob EQUITY_FILES in deploy-gcp.yml).
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
@@ -373,5 +374,16 @@ describe('EquityService — integration (DB จริง)', () => {
     const doc = await service.create({ ...capInitDto(), txnDate: closed.toISOString() }, userId);
     await withAttachment(doc.id);
     await expect(service.post(doc.id, userId)).rejects.toThrow(/งวดที่ปิดแล้ว/);
+  });
+
+  it('journalPreview ข้อมูลไม่ครบ → BadRequest ภาษาไทย (ไม่ใช่ 500)', async () => {
+    await expect(
+      service.journalPreview({
+        txnType: 'CAP_INC',
+        txnDate: new Date().toISOString(),
+        lines: [{ shareholderId: sh1, amount: 1000 }],
+        // ไม่มี paymentAccountCode
+      } as never),
+    ).rejects.toThrow(BadRequestException);
   });
 });

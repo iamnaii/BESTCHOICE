@@ -1135,12 +1135,14 @@ Module: `apps/api/src/modules/equity/` · หน้า: `/finance/equity`, `/fin
 - GL guards ตอนโพสต์: `V_DIV_PAY_LE_PAYABLE` (Σจ่าย ≤ ยอด 21-4104), `V_CAP_DEC_LE_CAPITAL` (Σลด ≤ 31-1101) —
   block · `DIV_VS_RE` (ประกาศ > 32-1101) — **warning ไม่ block** (ปันผลระหว่างกาลทำได้)
 - ภ.ง.ด.2: `GET /tax/pnd2-preview` + `export-xlsx?form=PND2` — อ่านจากเอกสาร DIV_PAY POSTED (ไม่เดิน GL)
+  — เฉพาะผู้รับบุคคลธรรมดา (ม.50(2)); นิติไทย exempt, นิติต่างชาติ = ภ.ง.ด.54 (deferred)
 - งบ Equity เดิมเพิ่ม `capitalStatus` (authorized/paidUp/unpaid/premium) + caveat เป็น conditional ตามสถานะปิดปี
 - AuditLog: `EQUITY_CREATED/UPDATED/DELETED/SUBMITTED/WITHDRAWN/POSTED/REVERSED` (entity `equity_document`)
 - **Prod rollout**: (1) รัน `seed:coa` หลัง deploy (บัญชีใหม่ 11-1310) (2) สร้างทะเบียนผู้ถือหุ้นตาม บอจ.5
   (3) **CAP_INIT backfill = CPA-gated** — ยอดยกมาทั้งชุด (ทุน+เงินสด+กำไรสะสม) ต้องให้ CPA เคาะก่อน
   ห้ามโพสต์ขา Dr ธนาคารเงียบๆ (opening-balance gap เดียวกับ interco spec §11)
-- Deferred: Capital Call (รับชำระค่าหุ้นค้างภายหลัง — Dr เงิน / Cr 11-1310), แบบยื่น ภ.ง.ด.2 ทางการ
+- Deferred: Capital Call (รับชำระค่าหุ้นค้างภายหลัง — Dr เงิน / Cr 11-1310), แบบยื่น ภ.ง.ด.2 ทางการ,
+  การเคลียร์ 22-1102 (DRAW) — ต้องทำ JV/PRIOR_ADJ มือไปก่อน, ภ.ง.ด.54
 
 ---
 

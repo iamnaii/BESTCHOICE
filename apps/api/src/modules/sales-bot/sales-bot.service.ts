@@ -53,7 +53,9 @@ export interface SalesBotResult {
   attachments?: SalesBotAttachment[]; // ← ใหม่ (optional = ผู้เรียกเดิมไม่พัง)
 }
 
-const MAX_TOOL_HOPS = 3;
+// 4 (เดิม 3): เผื่อทางเดิน self-correct ของ GroundingGuard — search(hop0) →
+// คำตอบโดนบล็อก+retry(hop1) → โมเดลเรียก calculate/rates เพิ่ม(hop2) → ตอบจริง(hop3)
+const MAX_TOOL_HOPS = 4;
 
 /**
  * Convert legacy Anthropic-style tool definition (uses `input_schema`)
@@ -157,6 +159,8 @@ export class SalesBotService {
     // blew up mid-loop" so the AiUsage error row tells an honest story instead of
     // always blaming the provider — see the outer catch below.
     let toolFailed = false;
+    // One self-correction retry when guardGrounding blocks a reply — see below.
+    let groundingRetried = false;
 
     try {
       for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
@@ -178,6 +182,23 @@ export class SalesBotService {
             this.logger.warn(
               `[GroundingGuard] room=${input.roomId} HALLUCINATION_BLOCKED reason=${grounding.reason} reply=${JSON.stringify(resp.text).slice(0, 200)} grounded=${JSON.stringify([...groundedPrices])}`,
             );
+            // Self-correct ครั้งเดียวก่อนยอมแพ้: ป้อนเหตุผลที่โดนบล็อกกลับให้โมเดล
+            // เขียนใหม่ (แทนที่จะเงียบ+handoff ทันที — ลูกค้าไม่ได้คำตอบทั้งที่แค่
+            // ตัวเลขไม่มีแหล่ง เช่น Haiku คำนวณค่างวดเองแทนที่จะเรียก tool)
+            if (!groundingRetried && hop < MAX_TOOL_HOPS - 1) {
+              groundingRetried = true;
+              messages.push({ role: 'assistant', content: resp.text });
+              messages.push({
+                role: 'user',
+                content:
+                  `[SYSTEM GUARD — ลูกค้าไม่เห็นข้อความนี้ ห้ามเอ่ยถึง] คำตอบล่าสุดถูกบล็อก: ` +
+                  `มีตัวเลขที่ไม่ได้มาจากผล tool (${grounding.reason}) — ห้ามคำนวณ/เดา/จำตัวเลขเอง ` +
+                  `เขียนคำตอบใหม่ทางใดทางหนึ่ง: (1) ใช้เฉพาะตัวเลขที่ tool คืนมาแล้วในบทสนทนานี้ ` +
+                  `(2) ถ้าจะพูดค่างวด เรียก calculate_installment (ของในสต็อก) หรือ get_installment_rates (รับออเดอร์) ก่อน ` +
+                  `(3) ตัดตัวเลขที่ไม่มีแหล่งออก แล้วถามขั้นถัดไปตามลำดับการขายแทน`,
+              });
+              continue;
+            }
             this.recordUsage(modelUsed, totalIn, totalOut);
             return {
               reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',

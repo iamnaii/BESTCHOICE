@@ -164,7 +164,7 @@ describe('SalesBotService', () => {
     expect(result.confidence).toBeLessThanOrEqual(0.3);
   });
 
-  it('falls back to staff message after 3 unresolved hops', async () => {
+  it('falls back to staff message after MAX_TOOL_HOPS unresolved hops', async () => {
     const chat = jest.fn().mockResolvedValue({
       text: '',
       toolCalls: [
@@ -183,8 +183,8 @@ describe('SalesBotService', () => {
     });
     expect(result.reply).toContain('staff');
     expect(result.confidence).toBeLessThanOrEqual(0.3);
-    // 3 hops × 1 tool call each.
-    expect(searchProducts.run).toHaveBeenCalledTimes(3);
+    // MAX_TOOL_HOPS (4) hops × 1 tool call each.
+    expect(searchProducts.run).toHaveBeenCalledTimes(4);
   });
 
   it('records usage via AiUsageService with the provider-reported model', async () => {
@@ -247,7 +247,15 @@ describe('SalesBotService', () => {
   // ignored anti-hallucinate persona rules in PR #1064 and reported "iPhone 15
   // 7,000 บาท" though the tool returned only iPhone 13/16 at 14,691/17,000.
   // The guard catches this without depending on model behaviour.
-  it('blocks reply with hallucinated price not seen in any tool result', async () => {
+  it('blocks reply with hallucinated price not seen in any tool result (retry also fails → staff)', async () => {
+    const hallucinated = {
+      // Hallucinated reply: tool only returned 14,691 + 17,000.
+      text: 'iPhone 15 ราคาเริ่มต้น 7,000 บาทค่ะ',
+      toolCalls: [],
+      inputTokens: 120,
+      outputTokens: 25,
+      modelName: 'gemini-2.5-flash',
+    } satisfies LlmChatResponse;
     const chat = jest
       .fn()
       .mockResolvedValueOnce({
@@ -259,14 +267,9 @@ describe('SalesBotService', () => {
         outputTokens: 10,
         modelName: 'gemini-2.5-flash',
       } satisfies LlmChatResponse)
-      .mockResolvedValueOnce({
-        // Hallucinated reply: tool only returned 14,691 + 17,000.
-        text: 'iPhone 15 ราคาเริ่มต้น 7,000 บาทค่ะ',
-        toolCalls: [],
-        inputTokens: 120,
-        outputTokens: 25,
-        modelName: 'gemini-2.5-flash',
-      } satisfies LlmChatResponse);
+      // ครั้งแรกโดนบล็อก → guard ป้อน feedback ให้เขียนใหม่ → ยังมั่วเลขเดิมอีก
+      .mockResolvedValueOnce(hallucinated)
+      .mockResolvedValueOnce(hallucinated);
     const { svc, searchProducts } = await build(chat);
     searchProducts.run.mockResolvedValue({
       products: [
@@ -283,6 +286,54 @@ describe('SalesBotService', () => {
     expect(result.reply).not.toContain('7,000');
     expect(result.reply).toContain('staff');
     expect(result.confidence).toBeLessThanOrEqual(0.3);
+    // Retry ครั้งเดียวเท่านั้น: search + คำตอบมั่ว + คำตอบมั่วหลัง feedback = 3 calls
+    expect(chat).toHaveBeenCalledTimes(3);
+    // feedback ที่ป้อนกลับต้องเป็นข้อความ SYSTEM GUARD
+    const retryMessages = chat.mock.calls[2][0].messages;
+    expect(retryMessages[retryMessages.length - 1].content).toContain('[SYSTEM GUARD');
+  });
+
+  it('grounding-blocked reply self-corrects on retry and auto-sends the fixed reply', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: '',
+        toolCalls: [
+          { id: 'tu_1', name: 'search_products', input: { query: 'iPhone' } },
+        ],
+        inputTokens: 100,
+        outputTokens: 10,
+        modelName: 'claude-haiku-4-5-20251001',
+      } satisfies LlmChatResponse)
+      .mockResolvedValueOnce({
+        // แต่งค่างวดเอง (1,460 ไม่มีในผล tool) → โดนบล็อก
+        text: 'iPhone 13 ราคา 14,691 บาท ผ่อนเดือนละ 1,460 บาทค่ะ',
+        toolCalls: [],
+        inputTokens: 120,
+        outputTokens: 25,
+        modelName: 'claude-haiku-4-5-20251001',
+      } satisfies LlmChatResponse)
+      .mockResolvedValueOnce({
+        // หลังได้ feedback: ตัดเลขไม่มีแหล่งออก เหลือราคาที่ grounded
+        text: 'iPhone 13 ราคา 14,691 บาทค่ะ สนใจผ่อนกี่เดือนดีคะ',
+        toolCalls: [],
+        inputTokens: 130,
+        outputTokens: 20,
+        modelName: 'claude-haiku-4-5-20251001',
+      } satisfies LlmChatResponse);
+    const { svc, searchProducts } = await build(chat);
+    searchProducts.run.mockResolvedValue({
+      products: [{ id: 'p1', name: 'iPhone 13', priceThb: 14691 }],
+    });
+    const result = await svc.generateReply({
+      text: 'iPhone 13 ราคา',
+      roomId: 'r1',
+      customerId: null,
+    });
+    expect(result.reply).toContain('14,691');
+    expect(result.reply).not.toContain('1,460');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+    expect(chat).toHaveBeenCalledTimes(3);
   });
 
   it('accepts reply citing a price within ±5% of a grounded tool result', async () => {
@@ -414,9 +465,11 @@ describe('SalesBotService', () => {
           outputTokens: 10,
           modelName: 'claude-sonnet-4-6',
         } satisfies LlmChatResponse)
-        .mockResolvedValueOnce({
+        .mockResolvedValue({
           // 10,000 / 867 do not match downPayment=4900/1900 or monthlyPrice=2490
           // within ±5% — must still be blocked despite grounded.size > 0.
+          // (persistent mock: the guard's one self-correct retry gets the same
+          // invented figures and must fall back to staff)
           text: 'ดาวน์ 10,000 บาท ผ่อนเดือนละ 867 บาทค่ะ',
           toolCalls: [],
           inputTokens: 120,
@@ -448,7 +501,8 @@ describe('SalesBotService', () => {
           outputTokens: 10,
           modelName: 'claude-sonnet-4-6',
         } satisfies LlmChatResponse)
-        .mockResolvedValueOnce({
+        .mockResolvedValue({
+          // persistent: retry หลัง guard feedback ยังมั่วเหมือนเดิม → staff fallback
           text: 'Nokia 3310 ดาวน์ 500 บาท ผ่อนเดือนละ 1,200 บาทค่ะ',
           toolCalls: [],
           inputTokens: 120,
@@ -628,7 +682,9 @@ describe('SalesBotService', () => {
           outputTokens: 5,
           modelName: 'claude-sonnet-4-6',
         })
-        .mockResolvedValueOnce({
+        // persistent (ไม่ใช่ Once): เคสที่ finalText โดน grounding block จะมี
+        // retry อีก 1 call หลัง guard feedback — ให้ได้คำตอบเดิมซ้ำ → staff fallback
+        .mockResolvedValue({
           text: finalText,
           toolCalls: [],
           inputTokens: 10,

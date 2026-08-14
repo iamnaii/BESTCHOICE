@@ -179,6 +179,39 @@ export class TaxExportService {
       wage.getCell('name').value = 'ค่าจ้างรวมทั้งปี (อ้างอิงยื่น กท.20ก)';
       wage.getCell('gross').value = Number(data.annualWageTotal);
       wage.font = { bold: true, italic: true };
+    } else if (form === 'PND2') {
+      const data = await this.preview.previewPnd2(year, month);
+      const sheet = workbook.addWorksheet(`PND2-${year}-${String(month).padStart(2, '0')}`);
+      sheet.columns = [
+        { header: 'ลำดับ', key: 'no', width: 6 },
+        { header: 'ผู้รับเงินปันผล', key: 'name', width: 30 },
+        { header: 'เลขประจำตัวผู้เสียภาษี', key: 'taxId', width: 22 },
+        { header: 'วันที่จ่าย', key: 'payDate', width: 14 },
+        { header: 'เงินปันผล (บาท)', key: 'gross', width: 18 },
+        { header: 'ภาษีหัก ณ ที่จ่าย ม.50(2) (บาท)', key: 'wht', width: 22 },
+        { header: 'เอกสารอ้างอิง', key: 'doc', width: 20 },
+      ];
+      sheet.getRow(1).font = { bold: true };
+      data.items.forEach((it, idx) => {
+        sheet.addRow({
+          no: idx + 1,
+          name: it.shareholderName,
+          taxId: it.taxId ?? '',
+          payDate: it.payDate.toISOString().slice(0, 10),
+          gross: Number(it.gross),
+          wht: Number(it.whtAmount),
+          doc: it.docNumber,
+        });
+      });
+      const total = sheet.addRow({});
+      total.getCell('name').value = 'รวม';
+      total.getCell('gross').value = Number(data.grossIncome);
+      total.getCell('wht').value = Number(data.whtTotal);
+      total.font = { bold: true };
+      const note = sheet.addRow({});
+      note.getCell('name').value =
+        'หมายเหตุ: ภ.ง.ด.2 เฉพาะผู้รับบุคคลธรรมดา — นิติบุคคลต่างชาติยื่น ภ.ง.ด.54 (ยังไม่รองรับในระบบ)';
+      note.font = { italic: true };
     } else {
       // PND3 / PND53 — vendor WHT
       const data =

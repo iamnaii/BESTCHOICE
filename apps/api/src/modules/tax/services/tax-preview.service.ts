@@ -152,22 +152,13 @@ export class TaxPreviewService {
         })
       : [];
 
-    const totalSales = payments.reduce(
-      (sum, p) => sum.add(p.amountPaid),
-      new Prisma.Decimal(0),
-    );
+    const totalSales = payments.reduce((sum, p) => sum.add(p.amountPaid), new Prisma.Decimal(0));
 
     // ── Input VAT side — UNCHANGED (already journal-based; verified correct) ─
     const expenses = await this.getInputVatLineItems(branchIds, startDate, endDate);
 
-    const totalPurchases = expenses.reduce(
-      (s, e) => s.add(e.totalAmount),
-      new Prisma.Decimal(0),
-    );
-    const totalVatInput = expenses.reduce(
-      (s, e) => s.add(e.vatAmount),
-      new Prisma.Decimal(0),
-    );
+    const totalPurchases = expenses.reduce((s, e) => s.add(e.totalAmount), new Prisma.Decimal(0));
+    const totalVatInput = expenses.reduce((s, e) => s.add(e.vatAmount), new Prisma.Decimal(0));
 
     const netVat = totalVatOutput.sub(totalVatInput);
 
@@ -749,6 +740,58 @@ export class TaxPreviewService {
     };
   }
 
+  /** ภ.ง.ด.2 รายเดือน — จากเอกสาร equity DIV_PAY ที่ POSTED (จ่ายจริงในเดือนนั้น, ม.52 ยื่นใน 7 วันเดือนถัดไป) */
+  async previewPnd2(year: number, month: number) {
+    const { startDate, endDate } = this.getDateRange(year, month);
+    const docs = await this.prisma.equityDocument.findMany({
+      where: {
+        txnType: 'DIV_PAY',
+        status: 'POSTED',
+        journalEntryId: { not: null },
+        deletedAt: null,
+        txnDate: { gte: startDate, lte: endDate },
+      },
+      orderBy: { txnDate: 'asc' },
+      select: {
+        docNumber: true,
+        txnDate: true,
+        lines: {
+          select: {
+            shareholderName: true,
+            amount: true,
+            wht: true,
+            shareholder: { select: { taxId: true, type: true } },
+          },
+        },
+      },
+    });
+    // ภ.ง.ด.2 = บุคคลธรรมดาเท่านั้น (ม.50(2)); นิติไทย exempt ม.65 ทวิ(10);
+    // นิติต่างชาติ → ภ.ง.ด.54 (ยังไม่รองรับ — ดู accounting.md)
+    const items = docs.flatMap((doc) =>
+      doc.lines
+        .filter((ln) => (ln.shareholder?.type ?? 'INDIVIDUAL') === 'INDIVIDUAL')
+        .map((ln) => ({
+          shareholderName: ln.shareholderName,
+          taxId: ln.shareholder?.taxId ?? null,
+          type: ln.shareholder?.type ?? 'INDIVIDUAL',
+          gross: ln.amount,
+          whtAmount: ln.wht,
+          payDate: doc.txnDate,
+          docNumber: doc.docNumber,
+        })),
+    );
+    const grossIncome = items.reduce((s, x) => s.add(x.gross), new Prisma.Decimal(0));
+    const whtTotal = items.reduce((s, x) => s.add(x.whtAmount), new Prisma.Decimal(0));
+    return {
+      items,
+      grossIncome,
+      whtTotal,
+      count: items.length,
+      period: { year, month, startDate, endDate },
+      form: 'PND2' as const,
+    };
+  }
+
   /**
    * สปส.1-10 (SSO monthly filing) preview — payroll round 2 (2026-08-06).
    *
@@ -905,10 +948,7 @@ export class TaxPreviewService {
       const period = doc.payroll?.payrollPeriod ?? '';
       for (const line of doc.payroll?.lines ?? []) {
         const key = line.employeeTaxId ?? `name:${line.employeeName}`;
-        const taxableIncome = (line.customIncome ?? []).reduce(
-          (s, r) => s.add(r.amount),
-          zero,
-        );
+        const taxableIncome = (line.customIncome ?? []).reduce((s, r) => s.add(r.amount), zero);
         const gross = line.baseSalary.add(taxableIncome);
         const agg = byEmployee.get(key) ?? {
           employeeName: line.employeeName,

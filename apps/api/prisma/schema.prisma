@@ -835,6 +835,10 @@ model User {
   // PR-C — back-relation for PayrollLine.userId → User (FK lives on PayrollLine)
   payrollLines    PayrollLine[]
 
+  // Equity module — maker/approver of equity documents (CAP_INIT/CAP_INC/CAP_DEC/DRAW/DIV_DEC/DIV_PAY/PRIOR_ADJ)
+  equityDocsMade     EquityDocument[] @relation("EquityDocMaker")
+  equityDocsApproved EquityDocument[] @relation("EquityDocApprover")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -3352,6 +3356,7 @@ model CompanyInfo {
   accountingPeriods    AccountingPeriod[]
   otherIncomes         OtherIncome[]
   otherIncomeTemplates OtherIncomeTemplate[]
+  equityDocuments      EquityDocument[]
 
   @@index([pettyCashCustodianId])
   @@map("company_info")
@@ -6632,6 +6637,33 @@ model SmsTemplate {
 }
 
 // ============================================================
+// EQUITY MODULE
+// ============================================================
+
+enum EquityTxnType {
+  CAP_INIT
+  CAP_INC
+  CAP_DEC
+  DRAW
+  DIV_DEC
+  DIV_PAY
+  PRIOR_ADJ
+}
+
+enum EquityDocStatus {
+  DRAFT
+  READY // maker-checker opt-in (SystemConfig EQUITY_MAKER_CHECKER_ENABLED) — ไม่มี APPROVED ตามบทเรียน W5 other-income
+  POSTED
+  REVERSED
+}
+
+enum ShareholderType {
+  INDIVIDUAL // บุคคลธรรมดา — WHT ปันผล 10% (ม.50(2))
+  JURISTIC_TH // นิติบุคคลไทย — ไม่หัก (ม.65 ทวิ(10))
+  JURISTIC_FOREIGN // นิติบุคคลต่างชาติ — default 10% แก้ได้ตาม DTA
+}
+
+// ============================================================
 // OTHER INCOME MODULE (42-XXXX accounts)
 // ============================================================
 
@@ -7648,4 +7680,124 @@ model ReverseReason {
 
   @@index([isActive, sortOrder])
   @@map("reverse_reasons")
+}
+
+// ============================================================
+// EQUITY MODULE
+// ============================================================
+
+model Shareholder {
+  id       String          @id @default(uuid())
+  name     String
+  taxId    String?         @map("tax_id") // เลขผู้เสียภาษี — ใช้ออก ภ.ง.ด.2
+  shares   Int             @default(0)
+  sharePct Decimal?        @map("share_pct") @db.Decimal(5, 2)
+  type     ShareholderType @default(INDIVIDUAL)
+  note     String?
+  isActive Boolean         @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  lines EquityShareholderLine[]
+
+  @@index([isActive])
+  @@map("shareholders")
+}
+
+model EquityDocument {
+  id        String          @id @default(uuid())
+  docNumber String          @unique @map("doc_number") // EQ-YYYYMMDD-NNNN (BKK)
+  companyId String          @map("company_id") // FINANCE เสมอใน v1
+  txnType   EquityTxnType   @map("txn_type")
+  status    EquityDocStatus @default(DRAFT)
+
+  txnDate     DateTime @map("txn_date") // วันที่ลง JE — ต้องอยู่ในงวดเปิด
+  description String?
+
+  // มติที่ประชุม — บังคับเมื่อ txnType ∈ NEEDS_RESOLUTION (V_RESOLUTION)
+  resolutionNo   String?   @map("resolution_no")
+  resolutionDate DateTime? @map("resolution_date")
+
+  // ช่องทางเงิน — บังคับเมื่อ txnType ∈ NEEDS_PAYMENT (validate กับ CASH_ACCOUNT_CODES)
+  paymentAccountCode String? @map("payment_account_code")
+
+  // PRIOR_ADJ เท่านั้น
+  paAccountCode String?  @map("pa_account_code")
+  paAmount      Decimal? @map("pa_amount") @db.Decimal(12, 2)
+  paDirection   String?  @map("pa_direction") // 'DR_OTHER_CR_RE' | 'DR_RE_CR_OTHER'
+
+  makerId    String  @map("maker_id")
+  approverId String? @map("approver_id") // null จนกว่า approve; maker=approver ได้เมื่อ MC ปิด
+
+  // FK-by-value ไป JournalEntry (pattern InterCoSettlementBatch — ไม่แตะ JournalEntry model)
+  journalEntryId        String? @unique @map("journal_entry_id")
+  reverseJournalEntryId String? @unique @map("reverse_journal_entry_id")
+  reverseReason         String? @map("reverse_reason") // ≥10 ตัวอักษร บังคับที่ DTO
+
+  postedAt   DateTime? @map("posted_at")
+  reversedAt DateTime? @map("reversed_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company  CompanyInfo @relation(fields: [companyId], references: [id])
+  maker    User        @relation("EquityDocMaker", fields: [makerId], references: [id])
+  approver User?       @relation("EquityDocApprover", fields: [approverId], references: [id])
+
+  lines       EquityShareholderLine[]
+  attachments EquityAttachment[]
+
+  @@index([txnType, status])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([txnDate])
+  @@index([deletedAt])
+  @@map("equity_documents")
+}
+
+/// บรรทัดผู้ถือหุ้นของเอกสาร equity — แก้ร่าง = deleteMany แล้วสร้างใหม่ทั้งชุด
+/// (precedent interco updateBatch: ปลอดภัยก่อน POSTED เพราะไม่มี JE อ้างถึง)
+/// deletedAt intentionally omitted — replaced wholesale, ไม่มี soft-delete รายบรรทัด
+model EquityShareholderLine {
+  id              String @id @default(uuid())
+  documentId      String @map("document_id")
+  shareholderId   String @map("shareholder_id")
+  shareholderName String @map("shareholder_name") // snapshot กัน history เพี้ยนเมื่อแก้ master
+  lineNo          Int    @map("line_no")
+
+  amount  Decimal @default(0) @db.Decimal(12, 2) // par (CAP_*) หรือจำนวนเงิน (DRAW/DIV_*)
+  premium Decimal @default(0) @db.Decimal(12, 2) // CAP_INC เท่านั้น
+  paid    Decimal @default(0) @db.Decimal(12, 2) // CAP_INIT เท่านั้น
+  wht     Decimal @default(0) @db.Decimal(12, 2) // DIV_PAY เท่านั้น
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  document    EquityDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  shareholder Shareholder    @relation(fields: [shareholderId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, shareholderId]) // V_SH_UNIQUE ระดับ DB
+  @@unique([documentId, lineNo])
+  @@index([shareholderId])
+  @@map("equity_shareholder_lines")
+}
+
+/// Append-only (pattern OtherIncomeAttachment) — updatedAt/deletedAt intentionally omitted;
+/// ลบไฟล์ = hard delete แถว + ลบ S3 (DRAFT/READY เท่านั้น, service enforce)
+model EquityAttachment {
+  id           String   @id @default(uuid())
+  documentId   String   @map("document_id")
+  s3Key        String   @map("s3_key")
+  filename     String
+  size         Int
+  mimeType     String   @map("mime_type")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  document EquityDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@index([documentId])
+  @@map("equity_attachments")
 }

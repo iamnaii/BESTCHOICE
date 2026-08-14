@@ -2,11 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
-import {
-  SECTION_MAP,
-  codePrefix,
-  EQUITY_ACCOUNTS,
-} from './accounting-section-map.util';
+import { SECTION_MAP, codePrefix, EQUITY_ACCOUNTS } from './accounting-section-map.util';
 
 /**
  * Wave-4 P6: journal-line-based general-ledger reports extracted from
@@ -109,16 +105,24 @@ export class GeneralLedgerReportService {
 
     // 3. Build per-section rows (include accounts with activity even if CoA doesn't exist,
     //    and include CoA accounts with zero balances)
-    const sectionMap = new Map<string, {
-      sectionName: string;
-      codePrefix: string;
-      rows: {
-        code: string; name: string; type: string; normalBalance: string;
-        drBalance: Prisma.Decimal; crBalance: Prisma.Decimal; netBalance: Prisma.Decimal;
-      }[];
-      drTotal: Prisma.Decimal;
-      crTotal: Prisma.Decimal;
-    }>();
+    const sectionMap = new Map<
+      string,
+      {
+        sectionName: string;
+        codePrefix: string;
+        rows: {
+          code: string;
+          name: string;
+          type: string;
+          normalBalance: string;
+          drBalance: Prisma.Decimal;
+          crBalance: Prisma.Decimal;
+          netBalance: Prisma.Decimal;
+        }[];
+        drTotal: Prisma.Decimal;
+        crTotal: Prisma.Decimal;
+      }
+    >();
 
     for (const acc of accounts) {
       const prefix = codePrefix(acc.code);
@@ -136,9 +140,7 @@ export class GeneralLedgerReportService {
 
       const sums = sumMap.get(acc.code) ?? { dr: new Prisma.Decimal(0), cr: new Prisma.Decimal(0) };
       // netBalance: Dr-normal → dr - cr; Cr-normal → cr - dr; Dr/Cr → dr - cr (default Dr)
-      const netBalance = acc.normalBalance === 'Cr'
-        ? sums.cr.sub(sums.dr)
-        : sums.dr.sub(sums.cr);
+      const netBalance = acc.normalBalance === 'Cr' ? sums.cr.sub(sums.dr) : sums.dr.sub(sums.cr);
 
       const section = sectionMap.get(prefix)!;
       section.rows.push({
@@ -329,12 +331,13 @@ export class GeneralLedgerReportService {
 
     // Load CoA for names
     const codes = lineSums.map((r) => r.accountCode);
-    const coaRecords = codes.length > 0
-      ? await this.prisma.chartOfAccount.findMany({
-          where: { code: { in: codes }, deletedAt: null },
-          select: { code: true, name: true },
-        })
-      : [];
+    const coaRecords =
+      codes.length > 0
+        ? await this.prisma.chartOfAccount.findMany({
+            where: { code: { in: codes }, deletedAt: null },
+            select: { code: true, name: true },
+          })
+        : [];
     const nameMap = new Map(coaRecords.map((c) => [c.code, c.name]));
 
     const revenueRows: { code: string; name: string; amount: Prisma.Decimal }[] = [];
@@ -444,11 +447,23 @@ export class GeneralLedgerReportService {
     };
 
     const buildSection = (prefixes: string[]) => {
-      const rows: { code: string; name: string; type: string; normalBalance: string; netBalance: Prisma.Decimal }[] = [];
+      const rows: {
+        code: string;
+        name: string;
+        type: string;
+        normalBalance: string;
+        netBalance: Prisma.Decimal;
+      }[] = [];
       for (const section of tb.sections) {
         if (!prefixes.includes(section.codePrefix)) continue;
         for (const row of section.rows) {
-          rows.push({ code: row.code, name: row.name, type: row.type, normalBalance: row.normalBalance, netBalance: row.netBalance });
+          rows.push({
+            code: row.code,
+            name: row.name,
+            type: row.type,
+            normalBalance: row.normalBalance,
+            netBalance: row.netBalance,
+          });
         }
       }
       rows.sort((a, b) => a.code.localeCompare(b.code));
@@ -585,11 +600,7 @@ export class GeneralLedgerReportService {
    * @param periodEnd   end of period (inclusive — caller should set 23:59:59.999 if needed)
    * @param companyId   optional CompanyInfo.id scope
    */
-  async getCashFlowFromJournal(
-    periodStart: Date,
-    periodEnd: Date,
-    companyId?: string,
-  ) {
+  async getCashFlowFromJournal(periodStart: Date, periodEnd: Date, companyId?: string) {
     const startMinusOne = new Date(periodStart);
     startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
 
@@ -602,18 +613,38 @@ export class GeneralLedgerReportService {
     // Depreciation: Dr side of 53-16XX in the period
     const depreciation = await this.sumDebitInPeriod(['53-16'], periodStart, periodEnd, companyId);
     // Bad-debt provision change: Δ balance of 11-2102 (Cr-normal contra asset)
-    const allowanceOpening = await this.sumAccountBalances(['11-2102'], startMinusOne, 'Cr', companyId);
+    const allowanceOpening = await this.sumAccountBalances(
+      ['11-2102'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
     const allowanceClosing = await this.sumAccountBalances(['11-2102'], periodEnd, 'Cr', companyId);
     const badDebtProvisionChange = allowanceClosing.sub(allowanceOpening);
     // Unearned interest change: Δ balance of 11-2106 (Cr-normal contra asset)
-    const unearnedOpening = await this.sumAccountBalances(['11-2106'], startMinusOne, 'Cr', companyId);
+    const unearnedOpening = await this.sumAccountBalances(
+      ['11-2106'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
     const unearnedClosing = await this.sumAccountBalances(['11-2106'], periodEnd, 'Cr', companyId);
     const unearnedInterestChange = unearnedClosing.sub(unearnedOpening);
 
     // 3. Working capital changes
     // AR (Dr-normal): 11-2101 + 11-2103. Increase consumes cash → subtract change.
-    const arOpening = await this.sumAccountBalances(['11-2101', '11-2103'], startMinusOne, 'Dr', companyId);
-    const arClosing = await this.sumAccountBalances(['11-2101', '11-2103'], periodEnd, 'Dr', companyId);
+    const arOpening = await this.sumAccountBalances(
+      ['11-2101', '11-2103'],
+      startMinusOne,
+      'Dr',
+      companyId,
+    );
+    const arClosing = await this.sumAccountBalances(
+      ['11-2101', '11-2103'],
+      periodEnd,
+      'Dr',
+      companyId,
+    );
     const arChange = arClosing.sub(arOpening); // positive = AR grew → cash OUT
     // Inventory (Dr-normal): 11-3XXX
     const invOpening = await this.sumAccountBalances(['11-3'], startMinusOne, 'Dr', companyId);
@@ -696,7 +727,9 @@ export class GeneralLedgerReportService {
         deletedAt: null,
         ...(companyId ? { companyId } : {}),
         AND: [
-          { metadata: { path: ['flow'], equals: 'asset-disposal' } } as Prisma.JournalEntryWhereInput,
+          {
+            metadata: { path: ['flow'], equals: 'asset-disposal' },
+          } as Prisma.JournalEntryWhereInput,
         ],
       },
       select: { metadata: true },
@@ -729,7 +762,12 @@ export class GeneralLedgerReportService {
     // Dividends: Δ 32-1101 (Cr-normal). Decrease = cash OUT. We expose the raw
     // delta — UI displays positive movements as injections (rare) and negative as
     // dividends. Without year-end closing entries the line is approximate.
-    const dividendOpening = await this.sumAccountBalances(['32-1101'], startMinusOne, 'Cr', companyId);
+    const dividendOpening = await this.sumAccountBalances(
+      ['32-1101'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
     const dividendClosing = await this.sumAccountBalances(['32-1101'], periodEnd, 'Cr', companyId);
     const dividends = dividendOpening.sub(dividendClosing); // positive = paid out
 
@@ -739,7 +777,12 @@ export class GeneralLedgerReportService {
 
     // 6. Reconciliation: compare with raw cash account movement
     const CASH_PREFIXES = ['11-11', '11-12']; // 11-1101..11-1103 + 11-1201..11-1203
-    const openingCash = await this.sumAccountBalances(CASH_PREFIXES, startMinusOne, 'Dr', companyId);
+    const openingCash = await this.sumAccountBalances(
+      CASH_PREFIXES,
+      startMinusOne,
+      'Dr',
+      companyId,
+    );
     const closingCash = await this.sumAccountBalances(CASH_PREFIXES, periodEnd, 'Dr', companyId);
     const actualCashChange = closingCash.sub(openingCash);
     const drift = netChange.sub(actualCashChange);
@@ -786,11 +829,7 @@ export class GeneralLedgerReportService {
   // The current-year P&L line is derived from getProfitLossFromJournal — labelled
   // with a caveat because year-end closing entries have not been posted to 33-1101.
 
-  async getEquityStatementFromJournal(
-    periodStart: Date,
-    periodEnd: Date,
-    companyId?: string,
-  ) {
+  async getEquityStatementFromJournal(periodStart: Date, periodEnd: Date, companyId?: string) {
     const codes = EQUITY_ACCOUNTS.map((a) => a.code);
     const startMinusOne = new Date(periodStart);
     startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
@@ -896,13 +935,45 @@ export class GeneralLedgerReportService {
     const yearPL = await this.getProfitLossFromJournal(yearStart, periodEnd, companyId, 'FINANCE');
     const currentYearProfit = yearPL.netIncome.toNumber();
 
+    // Equity module (2026-08-10): สถานะทุนจดทะเบียน — 11-1310 เป็น Dr-normal อยู่นอก EQUITY_ACCOUNTS
+    const authorized = await this.sumAccountBalances(['31-1101'], periodEnd, 'Cr', companyId);
+    const unpaid = await this.sumAccountBalances(['11-1310'], periodEnd, 'Dr', companyId);
+    const premium = await this.sumAccountBalances(['31-1102'], periodEnd, 'Cr', companyId);
+    const capitalStatus = {
+      authorized: authorized.toNumber(),
+      unpaid: unpaid.toNumber(),
+      paidUp: authorized.sub(unpaid).toNumber(),
+      premium: premium.toNumber(),
+    };
+
+    // Caveat conditional (ปิด gap เดิมที่ documented ใน .claude/rules/accounting.md):
+    // มี year-end closing ของปีนั้นที่ยังไม่ถูก reverse → เปลี่ยนข้อความ
+    const yeCandidates = await this.prisma.journalEntry.findMany({
+      where: {
+        status: 'POSTED',
+        deletedAt: null,
+        AND: [
+          { metadata: { path: ['flow'], equals: 'year-end-closing' } },
+          { metadata: { path: ['year'], equals: periodEnd.getFullYear() } },
+        ],
+      },
+      select: { metadata: true },
+    });
+    const yearClosed = yeCandidates.some((je) => {
+      const m = (je.metadata ?? {}) as Record<string, unknown>;
+      return !m.reversedByBatchId;
+    });
+    const caveat = yearClosed
+      ? `ปิดบัญชีสิ้นปี ${periodEnd.getFullYear()} แล้ว — กำไรปีปัจจุบันถูกโอนเข้า 33-1101/32-1101 เรียบร้อย`
+      : 'ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า 33-1101 / 32-1101 (รอปิดบัญชีสิ้นปี)';
+
     return {
       periodStart,
       periodEnd,
       rows,
       currentYearProfit,
-      caveat:
-        'ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า 33-1101 / 32-1101 (รอปิดบัญชีสิ้นปี)',
+      caveat,
+      capitalStatus,
       totalOpening: totalOpening.toNumber(),
       totalClosing: totalClosing.toNumber(),
     };

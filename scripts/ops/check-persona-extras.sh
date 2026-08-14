@@ -2,7 +2,7 @@
 # อ่านอย่างเดียว: เช็คแถว shop_bot_persona_bot_extras บน prod (มี/ไม่มี + เนื้อหา)
 set -u
 cd "$(dirname "$0")/../.."
-PORT=15432
+PORT=${PORT:-15432}
 PROXY_LOG=$(mktemp "${TMPDIR:-/tmp}/sqlproxy.XXXXXX")
 PROXY_PID=""
 cleanup() { [ -n "$PROXY_PID" ] && kill "$PROXY_PID" 2>/dev/null; PROXY_PID=""; }
@@ -20,5 +20,6 @@ PROXY_PID=$!
 for i in $(seq 1 15); do grep -q "ready for new connections" "$PROXY_LOG" 2>/dev/null && break; sleep 1; done
 grep -q "ready for new connections" "$PROXY_LOG" || die "proxy ไม่ขึ้น"
 
-psql "$PGURL" -qAt -c "SELECT COALESCE((SELECT 'EXISTS len='||length(value) FROM system_config WHERE key='shop_bot_persona_bot_extras' AND deleted_at IS NULL), 'ABSENT');"
-psql "$PGURL" -qAt -c "SELECT value FROM system_config WHERE key='shop_bot_persona_bot_extras' AND deleted_at IS NULL;"
+for KEY in shop_bot_persona_base shop_bot_persona_bot_extras; do
+  psql "$PGURL" -qAt -c "SELECT '$KEY: ' || COALESCE((SELECT 'EXISTS len='||length(value) FROM system_config WHERE key='$KEY' AND deleted_at IS NULL), 'ABSENT (ใช้ default จากโค้ด)');"
+done

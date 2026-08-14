@@ -17,7 +17,10 @@ import {
 const DEFAULT_CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 const MODEL_CONFIG_KEY = 'shop_bot_claude_model';
 const MODEL_CACHE_TTL_MS = 60_000;
-const DEFAULT_MAX_TOKENS = 1024;
+// 4096 (เดิม 1024): ตระกูล Claude 5 (เช่น claude-sonnet-5) ใช้ adaptive thinking —
+// การคิดกินโควต้า max_tokens ร่วมกับคำตอบ ถ้าตั้ง 1024 การคิดอาจกินจนหมด
+// เหลือข้อความจริง 0 ตัวอักษร (เจอจริง 2026-08-14: FinalReply reply="")
+const DEFAULT_MAX_TOKENS = 4096;
 
 @Injectable()
 export class ClaudeProvider implements ILlmProvider {
@@ -77,6 +80,14 @@ export class ClaudeProvider implements ILlmProvider {
     const textBlock = resp.content.find(
       (c): c is Anthropic.TextBlock => c.type === 'text',
     );
+
+    // วินิจฉัยเคสตอบว่าง: ถ้าไม่มีทั้ง text และ tool_use ให้บันทึกโครงสร้าง
+    // ที่ได้จริง (เช่น มีแต่ thinking block / โดน max_tokens ตัด) จะได้ไล่ต่อได้
+    if (!textBlock && toolCalls.length === 0) {
+      this.logger.warn(
+        `[EmptyReply] model=${model} stop_reason=${resp.stop_reason} blocks=${JSON.stringify(resp.content.map((c) => c.type))}`,
+      );
+    }
 
     // inputTokens = ปริมาณที่ประมวลผลจริงทั้งหมด (รวม cache read/write) เพื่อให้ log
     // สะท้อน volume จริง — cache read คิดเงินแค่ 0.1x ของราคา input ปกติ

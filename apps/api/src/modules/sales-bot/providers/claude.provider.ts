@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   ILlmProvider,
   LlmChatMessage,
@@ -8,7 +9,14 @@ import {
   LlmProviderName,
 } from './llm-provider.interface';
 
-const CLAUDE_MODEL = 'claude-sonnet-4-6';
+/**
+ * Default = Haiku 4.5 (คำสั่งเจ้าของ 2026-08-14 — คุมงบ AI ≤10,000 บาท/เดือน).
+ * Override ได้ผ่าน SystemConfig `shop_bot_claude_model` (เช่น 'claude-sonnet-4-6')
+ * — มีผลใน ≤60s ไม่ต้อง deploy, ใช้ TTL cache แบบเดียวกับ LlmProviderRegistry.
+ */
+const DEFAULT_CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+const MODEL_CONFIG_KEY = 'shop_bot_claude_model';
+const MODEL_CACHE_TTL_MS = 60_000;
 const DEFAULT_MAX_TOKENS = 1024;
 
 @Injectable()
@@ -16,6 +24,9 @@ export class ClaudeProvider implements ILlmProvider {
   readonly providerName: LlmProviderName = 'claude';
   private readonly logger = new Logger(ClaudeProvider.name);
   private _client: Anthropic | null = null;
+  private modelCache: { value: string; readAt: number } | null = null;
+
+  constructor(private readonly prisma: PrismaService) {}
 
   private get client(): Anthropic {
     if (!this._client) {
@@ -25,18 +36,32 @@ export class ClaudeProvider implements ILlmProvider {
   }
 
   async chat(req: LlmChatRequest): Promise<LlmChatResponse> {
-    const tools: Anthropic.Tool[] | undefined = req.tools?.map((t) => ({
+    const model = await this.resolveModel();
+
+    // Prompt caching: tools + system prompt เป็น prefix คงที่ (~9k tokens) ที่ทุกห้อง
+    // ทุกข้อความ และทุกยกของ tool loop ใช้ร่วมกัน — ปัก cache_control ที่ tool ตัวสุดท้าย
+    // กับ system block เพื่อให้ Anthropic cache ทั้ง prefix (cache read = 0.1x ราคา input)
+    const tools: Anthropic.Tool[] | undefined = req.tools?.map((t, i, arr) => ({
       name: t.name,
       description: t.description,
       input_schema: t.inputSchema as Anthropic.Tool['input_schema'],
+      ...(i === arr.length - 1
+        ? { cache_control: { type: 'ephemeral' as const } }
+        : {}),
     }));
 
     const messages = this.projectMessages(req.messages);
 
     const resp = await this.client.messages.create({
-      model: CLAUDE_MODEL,
+      model,
       max_tokens: req.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
-      system: req.systemPrompt,
+      system: [
+        {
+          type: 'text' as const,
+          text: req.systemPrompt,
+          cache_control: { type: 'ephemeral' as const },
+        },
+      ],
       ...(tools ? { tools } : {}),
       messages,
     });
@@ -53,13 +78,45 @@ export class ClaudeProvider implements ILlmProvider {
       (c): c is Anthropic.TextBlock => c.type === 'text',
     );
 
+    // inputTokens = ปริมาณที่ประมวลผลจริงทั้งหมด (รวม cache read/write) เพื่อให้ log
+    // สะท้อน volume จริง — cache read คิดเงินแค่ 0.1x ของราคา input ปกติ
+    const usage = resp.usage;
+    const cachedIn =
+      (usage.cache_read_input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0);
+
     return {
       text: textBlock?.text ?? '',
       toolCalls,
-      inputTokens: resp.usage.input_tokens,
-      outputTokens: resp.usage.output_tokens,
-      modelName: CLAUDE_MODEL,
+      inputTokens: usage.input_tokens + cachedIn,
+      outputTokens: usage.output_tokens,
+      modelName: model,
     };
+  }
+
+  /** อ่าน model จาก SystemConfig (TTL 60s) — แถวหาย/ค่าว่าง = ใช้ default (Haiku) */
+  private async resolveModel(): Promise<string> {
+    if (
+      this.modelCache &&
+      Date.now() - this.modelCache.readAt < MODEL_CACHE_TTL_MS
+    ) {
+      return this.modelCache.value;
+    }
+    let model = DEFAULT_CLAUDE_MODEL;
+    try {
+      const cfg = await this.prisma.systemConfig.findFirst({
+        where: { key: MODEL_CONFIG_KEY, deletedAt: null },
+        select: { value: true },
+      });
+      const raw = (cfg?.value ?? '').trim();
+      if (raw) model = raw;
+    } catch (err) {
+      this.logger.error(
+        `Failed to read ${MODEL_CONFIG_KEY}: ${err instanceof Error ? err.message : err} — using ${DEFAULT_CLAUDE_MODEL}`,
+      );
+    }
+    this.modelCache = { value: model, readAt: Date.now() };
+    return model;
   }
 
   /**
@@ -117,6 +174,7 @@ export class ClaudeProvider implements ILlmProvider {
     }
 
     flushToolResults();
+
     return out;
   }
 }

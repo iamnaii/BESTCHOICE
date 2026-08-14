@@ -1,25 +1,34 @@
 import { Test } from '@nestjs/testing';
 import Anthropic from '@anthropic-ai/sdk';
 import { ClaudeProvider } from './claude.provider';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 jest.mock('@anthropic-ai/sdk');
 
 describe('ClaudeProvider', () => {
   let provider: ClaudeProvider;
   let createMock: jest.Mock;
+  let configFindFirst: jest.Mock;
 
   beforeEach(async () => {
     createMock = jest.fn();
+    configFindFirst = jest.fn().mockResolvedValue(null);
     (Anthropic as unknown as jest.Mock).mockImplementation(() => ({
       messages: { create: createMock },
     }));
     const mod = await Test.createTestingModule({
-      providers: [ClaudeProvider],
+      providers: [
+        ClaudeProvider,
+        {
+          provide: PrismaService,
+          useValue: { systemConfig: { findFirst: configFindFirst } },
+        },
+      ],
     }).compile();
     provider = mod.get(ClaudeProvider);
   });
 
-  it('parses text response → LlmChatResponse', async () => {
+  it('parses text response → LlmChatResponse (default model = Haiku 4.5)', async () => {
     createMock.mockResolvedValue({
       content: [{ type: 'text', text: 'สวัสดีค่ะ' }],
       usage: { input_tokens: 50, output_tokens: 10 },
@@ -32,7 +41,79 @@ describe('ClaudeProvider', () => {
     expect(resp.toolCalls).toHaveLength(0);
     expect(resp.inputTokens).toBe(50);
     expect(resp.outputTokens).toBe(10);
+    expect(resp.modelName).toBe('claude-haiku-4-5-20251001');
+    expect(createMock.mock.calls[0][0].model).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('shop_bot_claude_model in SystemConfig overrides the default model', async () => {
+    configFindFirst.mockResolvedValue({ value: 'claude-sonnet-4-6' });
+    createMock.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    const resp = await provider.chat({
+      systemPrompt: 'persona',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
     expect(resp.modelName).toBe('claude-sonnet-4-6');
+    expect(createMock.mock.calls[0][0].model).toBe('claude-sonnet-4-6');
+  });
+
+  it('SystemConfig read failure falls back to default model (never blocks the reply)', async () => {
+    configFindFirst.mockRejectedValue(new Error('db down'));
+    createMock.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    const resp = await provider.chat({
+      systemPrompt: 'persona',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(resp.modelName).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('marks system prompt + last tool with cache_control (prompt caching)', async () => {
+    createMock.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    await provider.chat({
+      systemPrompt: 'persona',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [
+        { name: 'a', description: 'A', inputSchema: { type: 'object' } },
+        { name: 'b', description: 'B', inputSchema: { type: 'object' } },
+      ],
+    });
+    const call = createMock.mock.calls[0][0];
+    // system เป็น array block พร้อม cache_control
+    expect(call.system).toEqual([
+      {
+        type: 'text',
+        text: 'persona',
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
+    // เฉพาะ tool ตัวสุดท้ายถูกปัก cache_control
+    expect(call.tools[0].cache_control).toBeUndefined();
+    expect(call.tools[1].cache_control).toEqual({ type: 'ephemeral' });
+  });
+
+  it('sums cache read/write tokens into inputTokens for usage logging', async () => {
+    createMock.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: {
+        input_tokens: 300,
+        output_tokens: 20,
+        cache_read_input_tokens: 9000,
+        cache_creation_input_tokens: 500,
+      },
+    });
+    const resp = await provider.chat({
+      systemPrompt: 'persona',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(resp.inputTokens).toBe(9800);
   });
 
   it('parses tool_use blocks → LlmToolCall[]', async () => {

@@ -260,7 +260,7 @@ export class AiAutoReplyService {
   }> {
     const settings = await this.getSettings();
     const whitelist = (this.config.get<string>('FB_BOT_WHITELIST_PSIDS') ?? '')
-      .split(',')
+      .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean);
     return {

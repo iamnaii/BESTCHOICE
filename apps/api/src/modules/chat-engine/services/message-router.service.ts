@@ -151,8 +151,10 @@ export class MessageRouterService {
       message.channel === ChatChannel.FACEBOOK &&
       this.configService.get<string>('FB_BOT_DISABLED') === 'true'
     ) {
+      // split on , or ; — the deploy workflow's --set-env-vars uses commas as the
+      // PAIR separator, so the whitelist value itself must use semicolons there
       const whitelist = (this.configService.get<string>('FB_BOT_WHITELIST_PSIDS') ?? '')
-        .split(',')
+        .split(/[,;]/)
         .map((s) => s.trim())
         .filter(Boolean);
       if (!whitelist.includes(message.externalUserId ?? '')) {

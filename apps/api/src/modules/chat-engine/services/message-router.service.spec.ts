@@ -135,18 +135,17 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
   });
 });
 
-// Issue #1332 — after the bot answers a not-found model question with the
-// standard rates (get_installment_rates), staff must still follow up with
-// the real price. The room flag comes from the ROUTER, post-send (so it can
-// never suppress the reply), NOT from inside the read-only tool and NOT
-// from a same-turn handoff_to_human (which would tank confidence to 0.3 and
-// silence the reply — the exact behavior being eliminated).
-describe('MessageRouterService — staff follow-up flag after rate reply (#1332)', () => {
-  it('auto-send whose toolsUsed includes get_installment_rates → sends AND flags the room for staff', async () => {
+// #1332 auto-flag REMOVED (2026-08-14): after pricing_templates got seeded,
+// get_installment_rates became the PRIMARY quoting tool — flagging (and thus
+// muting the bot) after every rate reply silenced it right after the first
+// quote. Handoff now happens at the right moment instead: capture_lead /
+// handoff_to_human set handoffMode themselves when the bot collects a lead.
+describe('MessageRouterService — rate reply must NOT mute the bot (#1332 removal)', () => {
+  it('auto-send whose toolsUsed includes get_installment_rates → sends WITHOUT flagging the room', async () => {
     const { router, adapter, handoffManager } = makeRouter({
       aiEligible: true,
       aiResult: {
-        reply: 'เรทผ่อนมาตรฐานดอกเบี้ยรวม 30% ดาวน์ขั้นต่ำ 20% ค่ะ เดี๋ยวทีมงานเช็คราคารุ่นนี้แล้วทักกลับนะคะ',
+        reply: 'เรทรุ่นนี้ ดาวน์ 1,900 ผ่อนเดือนละ 2,566 (12 เดือน) ค่ะ',
         confidence: 0.95,
         toolsUsed: ['search_products', 'get_installment_rates'],
         inputTokens: 1,
@@ -155,17 +154,10 @@ describe('MessageRouterService — staff follow-up flag after rate reply (#1332)
     });
     await router.routeInbound(baseMsg as any);
 
-    // Reply still goes out first…
     expect(adapter.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining('เรทผ่อน') }),
+      expect.objectContaining({ text: expect.stringContaining('เรท') }),
     );
-    // …and the room is flagged for the price follow-up.
-    expect(handoffManager.initiateHandoff).toHaveBeenCalledWith({
-      roomId: 'r1',
-      reason: 'บอทส่งเรทแล้ว — ตามราคารุ่นที่ลูกค้าต้องการ',
-      priority: 'normal',
-      summary: baseMsg.text,
-    });
+    expect(handoffManager.initiateHandoff).not.toHaveBeenCalled();
   });
 
   it('auto-send WITHOUT get_installment_rates → no staff follow-up flag', async () => {

@@ -61,7 +61,8 @@ describe('MessageTemplatePicker — tree', () => {
     render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
     expect(await screen.findByText('เรทผ่อน iPhone')).toBeInTheDocument();
     expect(screen.getByText('ข้อมูลร้าน')).toBeInTheDocument();
-    expect(screen.getByText('อื่นๆ')).toBeInTheDocument(); // null category bucket
+    // null category bucket — ปรากฏทั้งเป็นหัวกลุ่มและชื่อ template (กางทุกกลุ่มโดย default)
+    expect(screen.getAllByText('อื่นๆ').length).toBeGreaterThan(0);
   });
 
   it('shows count badge per category', async () => {
@@ -70,18 +71,22 @@ describe('MessageTemplatePicker — tree', () => {
     expect(iphoneRow).toHaveTextContent('2');
   });
 
-  it('expands category on click and reveals templates', async () => {
+  it('ทุกกลุ่มกางให้เห็นรายการทันทีตั้งแต่เปิด และคลิกหัวกลุ่มเพื่อพับได้', async () => {
     render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
     const header = await screen.findByText('เรทผ่อน iPhone');
-    expect(screen.queryByText('iPhone 16 Pro 256GB')).not.toBeInTheDocument();
-    fireEvent.click(header);
+    // default = กางทุกกลุ่ม — เห็น template โดยไม่ต้องคลิก
     expect(await screen.findByText('iPhone 16 Pro 256GB')).toBeInTheDocument();
     expect(screen.getByText('iPhone 16 Pro 512GB')).toBeInTheDocument();
+    fireEvent.click(header); // พับ
+    await waitFor(() => {
+      expect(screen.queryByText('iPhone 16 Pro 256GB')).not.toBeInTheDocument();
+    });
+    fireEvent.click(header); // กางกลับ
+    expect(await screen.findByText('iPhone 16 Pro 256GB')).toBeInTheDocument();
   });
 
   it('selects template on click and highlights it', async () => {
     render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
-    fireEvent.click(await screen.findByText('เรทผ่อน iPhone'));
     const item = await screen.findByText('iPhone 16 Pro 256GB');
     fireEvent.click(item);
     await waitFor(() => {
@@ -122,7 +127,6 @@ describe('MessageTemplatePicker — preview', () => {
 
   it('fetches preview when template selected', async () => {
     render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
-    fireEvent.click(await screen.findByText('เรทผ่อน iPhone'));
     fireEvent.click(await screen.findByText('iPhone 16'));
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/staff-chat/rooms/r1/canned-responses/t1/preview');
@@ -139,11 +143,22 @@ describe('MessageTemplatePicker — preview', () => {
     const onInsert = vi.fn();
     const onClose = vi.fn();
     render(wrap(<MessageTemplatePicker isOpen={true} onClose={onClose} onInsert={onInsert} roomId="r1" />));
-    fireEvent.click(await screen.findByText('เรทผ่อน iPhone'));
     fireEvent.click(await screen.findByText('iPhone 16'));
     await screen.findByText('สวัสดีคุณ สมชาย'); // preview loaded
     fireEvent.click(screen.getByRole('button', { name: /ใส่ข้อความ/ }));
     expect(onInsert).toHaveBeenCalledWith('สวัสดีคุณ สมชาย');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('ดับเบิลคลิกรายการ = ใส่ข้อความทันทีเมื่อ preview โหลดเสร็จ', async () => {
+    const onInsert = vi.fn();
+    const onClose = vi.fn();
+    render(wrap(<MessageTemplatePicker isOpen={true} onClose={onClose} onInsert={onInsert} roomId="r1" />));
+    const item = await screen.findByText('iPhone 16');
+    fireEvent.doubleClick(item);
+    await waitFor(() => {
+      expect(onInsert).toHaveBeenCalledWith('สวัสดีคุณ สมชาย');
+    });
     expect(onClose).toHaveBeenCalled();
   });
 });
@@ -172,17 +187,17 @@ describe('MessageTemplatePicker — search', () => {
     expect(screen.queryByText('Samsung S25')).not.toBeInTheDocument();
   });
 
-  it('clears filter when search emptied', async () => {
+  it('clears filter when search emptied — ทุกกลุ่มกลับมาครบและยังกางอยู่', async () => {
     render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
     await screen.findByText('A');
     const search = screen.getByPlaceholderText(/ค้นหา/);
     fireEvent.change(search, { target: { value: 'iphone' } });
     await screen.findByText('iPhone 16');
+    expect(screen.queryByText('Samsung S25')).not.toBeInTheDocument();
     fireEvent.change(search, { target: { value: '' } });
-    // All categories present, none auto-expanded → expanded items hidden again
-    await waitFor(() => {
-      expect(screen.queryByText('iPhone 16')).not.toBeInTheDocument();
-    });
+    // ล้างคำค้น → กลับสู่ default (กางทุกกลุ่ม) เห็นทุกรายการ
+    expect(await screen.findByText('Samsung S25')).toBeInTheDocument();
+    expect(screen.getByText('iPhone 16')).toBeInTheDocument();
     expect(screen.getByText('A')).toBeInTheDocument();
     expect(screen.getByText('B')).toBeInTheDocument();
   });

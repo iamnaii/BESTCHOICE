@@ -10,22 +10,32 @@ import {
 export const CAPTURE_LEAD_TOOL = {
   name: 'capture_lead',
   description:
-    'Call after customer confirms purchase (says "เอา/โอเค/สนใจ"). Captures lead, creates Customer draft, initiates handoff to staff for KYC verification + PromptPay QR delivery.',
+    'Call after customer confirms purchase (says "เอา/โอเค/สนใจ"). Captures lead, creates Customer draft, initiates handoff to staff for KYC verification + PromptPay QR delivery. ' +
+    'Works for BOTH in-stock sales (pass productId + packageChoice from search_products/calculate_installment) ' +
+    'AND order-taking of out-of-stock models (omit productId/packageChoice, pass productNote instead — never invent a productId).',
   input_schema: {
     type: 'object',
     properties: {
       customerName: { type: 'string', description: 'ชื่อลูกค้า (ขออย่างน้อย firstname)' },
       phone: { type: 'string', description: 'เบอร์โทร 10 หลัก' },
       address: { type: 'string', description: 'ที่อยู่จัดส่ง (ตัวเลือก ถ้ามี)' },
-      productId: { type: 'string', description: 'productId จาก search_products' },
+      productId: {
+        type: 'string',
+        description: 'productId จาก search_products — เฉพาะของที่มีในสต็อก (ห้ามแต่งเอง)',
+      },
       packageChoice: {
         type: 'string',
         enum: ['A', 'B', 'C'],
-        description: 'แพ็คผ่อนที่ลูกค้าเลือก (A=ดาวน์เบา, B=กลาง, C=หนัก)',
+        description: 'แพ็คผ่อนที่ลูกค้าเลือก (A=ดาวน์เบา, B=กลาง, C=หนัก) — เฉพาะของในสต็อก',
       },
-      downAmount: { type: 'number', description: 'ยอดดาวน์ที่จะส่ง QR' },
+      productNote: {
+        type: 'string',
+        description:
+          'กรณีรับออเดอร์ (ของไม่มีในสต็อก ไม่มี productId): รุ่น+ความจุ+มือ 1/มือสอง+เรทที่เลือก เช่น "iPhone 15 Plus 128GB มือสอง สั่งเข้า เรทร้าน"',
+      },
+      downAmount: { type: 'number', description: 'ยอดดาวน์ที่จะส่ง QR (จากแพ็คหรือเรทที่ลูกค้าเลือก)' },
     },
-    required: ['customerName', 'phone', 'productId', 'packageChoice', 'downAmount'],
+    required: ['customerName', 'phone', 'downAmount'],
   },
 };
 
@@ -33,8 +43,9 @@ export interface CaptureLeadInput {
   customerName: string;
   phone: string;
   address?: string;
-  productId: string;
-  packageChoice: 'A' | 'B' | 'C';
+  productId?: string;
+  packageChoice?: 'A' | 'B' | 'C';
+  productNote?: string;
   downAmount: number;
   roomId: string;
 }
@@ -176,8 +187,9 @@ export class CaptureLeadTool {
           entity: 'customer',
           entityId: cId,
           newValue: {
-            productId: input.productId,
-            packageChoice: input.packageChoice,
+            productId: input.productId ?? null,
+            packageChoice: input.packageChoice ?? null,
+            productNote: input.productNote ?? null,
             downAmount: input.downAmount,
             address: input.address ?? null,
           },

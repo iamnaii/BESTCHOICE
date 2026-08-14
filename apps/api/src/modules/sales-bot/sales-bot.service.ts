@@ -287,8 +287,9 @@ export class SalesBotService {
           customerName: String(input.customerName ?? ''),
           phone: String(input.phone ?? ''),
           address: input.address as string | undefined,
-          productId: String(input.productId ?? ''),
-          packageChoice: input.packageChoice as 'A' | 'B' | 'C',
+          productId: input.productId ? String(input.productId) : undefined,
+          packageChoice: input.packageChoice as 'A' | 'B' | 'C' | undefined,
+          productNote: input.productNote ? String(input.productNote) : undefined,
           downAmount: Number(input.downAmount ?? 0),
           roomId,
         });

@@ -59,6 +59,38 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
     );
   });
 
+  it('แยกส่งหลายบับเบิลเมื่อบอทคั่นด้วย "---" — replyToken เฉพาะใบแรก, token stats เฉพาะใบแรก', async () => {
+    const { router, adapter, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: {
+        reply: 'มีของพร้อมส่งค่า\n---\nดาวน์ 1,780 ผ่อน 774 (12 เดือน)\n---\nสนใจแบบไหนดีคะ',
+        confidence: 0.9,
+        toolsUsed: ['calculate_installment'],
+        inputTokens: 10,
+        outputTokens: 20,
+      },
+    });
+    await router.routeInbound(baseMsg as any);
+
+    const sent = adapter.sendMessage.mock.calls.map((c: any[]) => c[0]);
+    expect(sent.map((s: any) => s.text)).toEqual([
+      'มีของพร้อมส่งค่า',
+      'ดาวน์ 1,780 ผ่อน 774 (12 เดือน)',
+      'สนใจแบบไหนดีคะ',
+    ]);
+    expect(sent[0].replyToken).toBe('rt-1');
+    expect(sent[1].replyToken).toBeUndefined();
+    expect(sent[2].replyToken).toBeUndefined();
+
+    // BOT message ถูกบันทึกครบทุกบับเบิล แต่ token/tool stats อยู่ใบแรกใบเดียว
+    const saved = roomManager.saveMessage.mock.calls
+      .map((c: any[]) => c[0])
+      .filter((m: any) => m.role === 'BOT');
+    expect(saved).toHaveLength(3);
+    expect(saved[0].toolsUsed).toEqual(['calculate_installment']);
+    expect(saved[1].toolsUsed).toBeUndefined();
+  }, 10000);
+
   it('threads the replyToken into the after-hours reply', async () => {
     const { router, adapter } = makeRouter({ afterHours: true });
     await router.routeInbound(baseMsg as any);

@@ -116,13 +116,13 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
       <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
         <div className="flex flex-col max-w-[75%] items-end">
           {(isBot || isStaff) && (
-            <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
+            <span className="text-[11px] text-muted-foreground mb-0.5 px-1">
               {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
             </span>
           )}
           <FlexBubblePreview flex={message.flexJson} />
           <span className="flex items-center mt-0.5 px-1">
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
@@ -160,7 +160,7 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
             loading="lazy"
           />
           <span className="flex items-center mt-1 px-1 self-end">
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
@@ -182,13 +182,13 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
       <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
         <div className="flex flex-col max-w-[75%] items-end">
           {(isBot || isStaff) && (
-            <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
+            <span className="text-[11px] text-muted-foreground mb-0.5 px-1">
               {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
             </span>
           )}
           <PaymentFlexPreview data={paymentFlex} />
           <span className="flex items-center mt-0.5 px-1">
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
@@ -209,7 +209,7 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
       <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
         <div className="flex flex-col max-w-[75%] items-end">
           {(isBot || isStaff) && (
-            <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
+            <span className="text-[11px] text-muted-foreground mb-0.5 px-1">
               {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
             </span>
           )}
@@ -231,7 +231,7 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
             </div>
           </div>
           <span className="flex items-center mt-0.5 px-1">
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
@@ -266,7 +266,7 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
             className="w-[120px] h-[120px] object-contain"
           />
           <span className="flex items-center mt-1 px-1 self-end">
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
@@ -305,7 +305,7 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
       <div className={cn('group relative max-w-[75%] flex flex-col', isCustomer ? 'items-start' : 'items-end')}>
         {/* Sender label */}
         {(isBot || isStaff) && (
-          <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
+          <span className="text-[11px] text-muted-foreground mb-0.5 px-1">
             {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
           </span>
         )}

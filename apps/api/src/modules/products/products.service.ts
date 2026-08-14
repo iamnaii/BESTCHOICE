@@ -6,6 +6,7 @@ import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
+import { assertManualStatusChangeAllowed } from './product-status.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 import { evaluateReadiness } from '../../utils/product-readiness.util';
 
@@ -194,7 +195,11 @@ export class ProductsService {
   }
 
   async update(id: string, dto: UpdateProductDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    // สถานะขาย/จอง/ยึด ระบบตั้งผ่าน flow — ห้ามแก้ข้าม lifecycle จากหน้าแก้ไขสินค้า
+    if (dto.status !== undefined) {
+      assertManualStatusChangeAllowed(existing.status, dto.status);
+    }
     const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
     const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined;
     // 3 สถานะเหมือน create — null ต้องเขียนลงคอลัมน์ได้ (ล้างราคา) ห้ามส่งเข้า Prisma.Decimal

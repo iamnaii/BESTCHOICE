@@ -16,6 +16,14 @@ const CHANNELS = [
 ] as const;
 
 export type InboxTab = 'mine' | 'all' | 'unread';
+export type AiFilter = 'all' | 'ai' | 'human' | 'pending';
+
+const AI_FILTER_LABELS: Record<AiFilter, string> = {
+  all: 'ทั้งหมด',
+  ai: 'AI',
+  human: 'พนักงาน',
+  pending: 'รอตอบ',
+};
 
 interface ChannelFilterProps {
   activeTab: InboxTab;
@@ -24,6 +32,8 @@ interface ChannelFilterProps {
   onChannelToggle: (channel: string) => void;
   counts?: { mine: number; all: number; unread: number };
   channelCounts?: Record<string, number>;
+  aiFilter?: AiFilter;
+  onAiFilterChange?: (filter: AiFilter) => void;
 }
 
 export default function ChannelFilter({
@@ -33,6 +43,8 @@ export default function ChannelFilter({
   onChannelToggle,
   counts,
   channelCounts,
+  aiFilter,
+  onAiFilterChange,
 }: ChannelFilterProps) {
   return (
     <div>
@@ -45,8 +57,9 @@ export default function ChannelFilter({
             <button
               key={tab.key}
               onClick={() => onTabChange(tab.key)}
+              aria-pressed={isActive}
               className={cn(
-                'flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors',
+                'flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
                 isActive
                   ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
@@ -64,16 +77,17 @@ export default function ChannelFilter({
         })}
       </div>
 
-      {/* Channel filter chips */}
-      <div className="flex gap-1 px-3 pb-2.5 overflow-x-auto">
+      {/* Channel + AI status chips — one wrapping row so nothing gets clipped */}
+      <div className="flex flex-wrap items-center gap-1 px-3 pb-2.5">
         {CHANNELS.map((ch) => {
           const isActive = selectedChannels.includes(ch.key);
           return (
             <button
               key={ch.key}
               onClick={() => onChannelToggle(ch.key)}
+              aria-pressed={isActive}
               className={cn(
-                'inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded-full font-medium transition-all duration-200 whitespace-nowrap',
+                'inline-flex items-center gap-1.5 px-2 py-1 min-h-6 text-[11px] rounded-full font-medium transition-all duration-200 whitespace-nowrap',
                 isActive
                   ? 'bg-foreground text-background shadow-sm'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
@@ -92,6 +106,27 @@ export default function ChannelFilter({
             </button>
           );
         })}
+
+        {aiFilter && onAiFilterChange && (
+          <>
+            <span className="mx-1 h-3.5 w-px bg-border/60" aria-hidden />
+            {(Object.keys(AI_FILTER_LABELS) as AiFilter[]).map((key) => (
+              <button
+                key={key}
+                onClick={() => onAiFilterChange(key)}
+                aria-pressed={aiFilter === key}
+                className={cn(
+                  'px-2 py-1 min-h-6 text-[11px] rounded-full border font-medium transition-colors whitespace-nowrap',
+                  aiFilter === key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
+                )}
+              >
+                {AI_FILTER_LABELS[key]}
+              </button>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );

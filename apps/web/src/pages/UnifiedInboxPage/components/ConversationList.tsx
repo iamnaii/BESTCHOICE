@@ -8,17 +8,8 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import ConversationItem from './ConversationItem';
-import ChannelFilter, { type InboxTab } from './ChannelFilter';
+import ChannelFilter, { type InboxTab, type AiFilter } from './ChannelFilter';
 import { deriveTabCounts, deriveChannelUnreadCounts } from './tab-counts';
-
-type AiFilter = 'all' | 'ai' | 'human' | 'pending';
-
-const AI_FILTER_LABELS: Record<AiFilter, string> = {
-  all: 'ทั้งหมด',
-  ai: 'AI',
-  human: 'พนักงาน',
-  pending: 'รอตอบ',
-};
 
 interface ConversationListProps {
   sessions: any[];
@@ -156,7 +147,7 @@ export default function ConversationList({
             {connectionStatus && connectionStatus !== 'connected' ? (
               <div
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-medium leading-snug',
+                  'flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium leading-snug',
                   connectionStatus === 'disconnected'
                     ? 'bg-destructive/10 text-destructive'
                     : 'bg-warning/10 text-warning',
@@ -183,7 +174,7 @@ export default function ConversationList({
                 <button
                   onClick={() => markAllReadMutation.mutate(unreadInView)}
                   disabled={markAllReadMutation.isPending}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium leading-snug text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium leading-snug text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                   title="ทำเครื่องหมายอ่านทั้งหมดในมุมมองนี้"
                 >
                   {markAllReadMutation.isPending ? (
@@ -210,15 +201,16 @@ export default function ConversationList({
         ) : null}
         {/* Search */}
         <div className="relative mb-2">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/40" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" />
           <input
             type="text"
             placeholder="ค้นหาชื่อ, เบอร์..."
+            aria-label="ค้นหาชื่อลูกค้าหรือเบอร์โทร"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
-            className="w-full pl-8 pr-7 py-1.5 text-xs rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/40"
+            className="w-full pl-8 pr-7 py-1.5 text-[13px] rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/70"
           />
           {searchInput.length > 0 && (
             <button
@@ -236,7 +228,8 @@ export default function ConversationList({
         </div>
       </div>
 
-      {/* Tabs + Channel filter */}
+      {/* Tabs + Channel filter + AI status chips (AI chips merged into the same
+          wrapping row — owner asked "หาแต่แชทที่รอตอบ" → 'pending') */}
       <ChannelFilter
         activeTab={filters.tab}
         selectedChannels={filters.channels ?? []}
@@ -244,25 +237,9 @@ export default function ConversationList({
         onChannelToggle={handleChannelToggle}
         counts={serverCounts ?? tabCounts}
         channelCounts={serverCounts?.byChannel ?? channelCounts}
+        aiFilter={aiFilter}
+        onAiFilterChange={(key) => onFiltersChange({ ...filters, aiFilter: key })}
       />
-
-      {/* AI status filter chips — owner asked "หาแต่แชทที่รอตอบ" → 'pending' */}
-      <div className="flex gap-1.5 px-4 pb-2 pt-1">
-        {(['all', 'ai', 'human', 'pending'] as const).map((key) => (
-          <button
-            key={key}
-            onClick={() => onFiltersChange({ ...filters, aiFilter: key })}
-            className={cn(
-              'px-2 py-0.5 text-[10px] rounded-full border transition-colors',
-              aiFilter === key
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
-            )}
-          >
-            {AI_FILTER_LABELS[key]}
-          </button>
-        ))}
-      </div>
 
       {/* Divider */}
       <div className="h-px bg-border/60" />
@@ -288,14 +265,14 @@ export default function ConversationList({
             </div>
             {sessions.length === 0 ? (
               <>
-                <p className="text-xs font-medium text-muted-foreground leading-snug">ยังไม่มีการสนทนา</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-0.5 leading-snug">
+                <p className="text-sm font-medium text-muted-foreground leading-snug">ยังไม่มีการสนทนา</p>
+                <p className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">
                   เมื่อมีลูกค้าทักเข้ามา แชทจะแสดงที่นี่
                 </p>
               </>
             ) : filters.search ? (
               <>
-                <p className="text-xs font-medium text-muted-foreground leading-snug">
+                <p className="text-sm font-medium text-muted-foreground leading-snug">
                   ไม่พบผลการค้นหา &ldquo;{filters.search}&rdquo;
                 </p>
                 <button
@@ -304,20 +281,20 @@ export default function ConversationList({
                     setSearchInput('');
                     onFiltersChange({ ...filters, search: undefined });
                   }}
-                  className="text-[10px] text-primary hover:underline mt-1"
+                  className="text-xs text-primary hover:underline mt-1"
                 >
                   ล้างการค้นหา
                 </button>
               </>
             ) : (
               <>
-                <p className="text-xs font-medium text-muted-foreground leading-snug">ไม่มีแชทในตัวกรองนี้</p>
+                <p className="text-sm font-medium text-muted-foreground leading-snug">ไม่มีแชทในตัวกรองนี้</p>
                 <button
                   type="button"
                   onClick={() => {
                     onFiltersChange({ ...filters, channels: [], tab: 'all', aiFilter: 'all' });
                   }}
-                  className="text-[10px] text-primary hover:underline mt-1"
+                  className="text-xs text-primary hover:underline mt-1"
                 >
                   ดูทั้งหมด
                 </button>

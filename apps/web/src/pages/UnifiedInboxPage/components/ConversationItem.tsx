@@ -41,7 +41,7 @@ function AiStatusBadge({
 }) {
   if (handoffMode) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-destructive px-1.5 py-0.5 text-[9px] font-semibold leading-none text-destructive-foreground">
+      <span className="inline-flex items-center gap-1 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold leading-snug text-destructive-foreground">
         <span className="size-1.5 rounded-full bg-destructive-foreground" />
         ต้องตอบ
       </span>
@@ -49,7 +49,7 @@ function AiStatusBadge({
   }
   if (aiPaused) {
     return (
-      <span className="inline-flex items-center gap-1 text-[9px] text-warning">
+      <span className="inline-flex items-center gap-1 text-[10px] leading-snug text-warning">
         <span className="size-1.5 rounded-full bg-warning" />
         พนักงาน
       </span>
@@ -59,7 +59,7 @@ function AiStatusBadge({
     aiAutoEnabled && enabledChannels.length > 0 && enabledChannels.includes(channel);
   if (channelAllowed) {
     return (
-      <span className="inline-flex items-center gap-1 text-[9px] text-success">
+      <span className="inline-flex items-center gap-1 text-[10px] leading-snug text-success">
         <span className="size-1.5 rounded-full bg-success" />
         AI
       </span>
@@ -162,14 +162,24 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-current={isActive || undefined}
       className={cn(
         'relative group flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors duration-100 border-b border-border/40',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset',
         isActive
           ? 'bg-primary/10 border-l-2 border-l-primary'
           : 'hover:bg-muted/40',
         isPinned && !isActive && 'bg-warning/5',
       )}
       onClick={() => onSelect(session.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(session.id);
+        }
+      }}
     >
       <Avatar session={session} displayName={displayName} />
 
@@ -179,13 +189,13 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           <div className="flex items-center gap-1 min-w-0">
             {isPinned && <Pin className="w-2.5 h-2.5 text-warning flex-shrink-0 fill-warning" />}
             <span className={cn(
-              'text-[13px] truncate',
+              'text-sm truncate',
               hasUnread ? 'font-bold text-foreground' : 'font-medium text-foreground/80',
             )}>
               {displayName}
             </span>
           </div>
-          <span className="text-[10px] text-muted-foreground/70 flex-shrink-0 tabular-nums">
+          <span className="text-[11px] text-muted-foreground flex-shrink-0 tabular-nums">
             {formatChatTimestamp(session.lastMessageAt)}
           </span>
         </div>
@@ -193,8 +203,8 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
         {/* Last message preview */}
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <p className={cn(
-            'text-xs truncate',
-            hasUnread ? 'text-foreground/70' : 'text-muted-foreground/70',
+            'text-[13px] truncate',
+            hasUnread ? 'text-foreground/90' : 'text-muted-foreground',
           )}>
             {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
             {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
@@ -216,7 +226,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
           <div className="flex items-center gap-1.5 mt-1.5">
             {session.tags?.some((t: { tag: string }) => t.tag === 'overdue') && (
-              <Badge variant="destructive" appearance="light" className="text-[9px] px-1.5 py-0 h-4">
+              <Badge variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5">
                 ค้างชำระ
               </Badge>
             )}
@@ -224,7 +234,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
               (() => {
                 const cfg = getStatusBadgeProps(session.priority, sessionPriorityMap);
                 return (
-                  <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-[9px] px-1.5 py-0 h-4">
+                  <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-1.5 py-0 h-5">
                     {cfg.label}
                   </Badge>
                 );
@@ -238,7 +248,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
               handoffMode={handoffMode}
             />
             {session.assignedTo && (
-              <span className="text-[10px] text-muted-foreground/60 ml-auto truncate max-w-[80px]">
+              <span className="text-[11px] text-muted-foreground/80 ml-auto truncate max-w-[80px]">
                 {session.assignedTo.name}
               </span>
             )}

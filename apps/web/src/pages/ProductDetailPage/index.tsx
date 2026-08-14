@@ -490,6 +490,7 @@ export default function ProductDetailPage() {
         setEditForm={setEditForm}
         onSubmit={handleEditSubmit}
         isPending={editMutation.isPending}
+        currentStatus={product?.status ?? ''}
       />
 
       {/* Transfer Modal */}

@@ -172,6 +172,33 @@ describe('AiAutoReplyService.autoReply', () => {
     }));
   });
 
+  it('สัญลักษณ์ #เริ่มใหม่ → ตอบยืนยันทันที ไม่เรียก LLM', async () => {
+    const result = await svc.autoReply('room-1', ' #เริ่มใหม่ ');
+    expect(result).toEqual(
+      expect.objectContaining({ reply: expect.stringContaining('เริ่มแชทใหม่'), confidence: 1 }),
+    );
+    expect(salesBot.generateReply).not.toHaveBeenCalled();
+  });
+
+  it('ประวัติก่อน marker #เริ่มใหม่ ถูกตัดออกจากบริบท', async () => {
+    // เรียง desc (ใหม่ → เก่า): 2 ข้อความใหม่, marker, ของเก่าที่ต้องไม่ติดไป
+    prisma.chatMessage.findMany.mockResolvedValue([
+      { role: 'CUSTOMER', text: 'สนใจ 15 pro' },
+      { role: 'BOT', text: 'เริ่มแชทใหม่ให้แล้วค่ะ 😊 สอบถามได้เลยนะคะ' },
+      { role: 'CUSTOMER', text: '#เริ่มใหม่' },
+      { role: 'CUSTOMER', text: 'เรื่องเก่าเมื่อวาน' },
+      { role: 'BOT', text: 'คำตอบเก่า' },
+    ]);
+    salesBot.generateReply.mockResolvedValue({ reply: 'ok', confidence: 0.99, toolsUsed: [] });
+
+    await svc.autoReply('room-1', 'ดาวน์เท่าไหร่');
+
+    const passed = salesBot.generateReply.mock.calls[0][0].priorMessages.map(
+      (m: { content: string }) => m.content,
+    );
+    expect(passed).toEqual(['เริ่มแชทใหม่ให้แล้วค่ะ 😊 สอบถามได้เลยนะคะ', 'สนใจ 15 pro']);
+  });
+
   it('returns null when confidence < threshold', async () => {
     salesBot.generateReply.mockResolvedValue({
       reply: 'ขออนุญาตเรียกแอดมิน',

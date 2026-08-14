@@ -98,10 +98,30 @@ export class AiAutoReplyService {
     return true;
   }
 
+  /**
+   * สัญลักษณ์ "เริ่มแชทใหม่" — พิมพ์ในแชทแล้วบอทจะไม่เอาข้อความก่อนหน้านั้นมาประมวลผล
+   * (ใช้ทดสอบ/เปลี่ยนเรื่องแบบล้างบริบท — ประวัติในกล่องพนักงานยังอยู่ครบ)
+   */
+  private static readonly RESET_MARKERS = new Set(['#เริ่มใหม่', '#รีเซ็ต', '#reset', '/reset']);
+
+  private static isResetMarker(text: string | null | undefined): boolean {
+    return AiAutoReplyService.RESET_MARKERS.has((text ?? '').trim().toLowerCase());
+  }
+
   async autoReply(
     roomId: string,
     customerMessage: string,
   ): Promise<({ reply: string; confidence: number } & Partial<SalesBotResult>) | null> {
+    // สัญลักษณ์เริ่มใหม่ → ตอบยืนยันสั้น ๆ ไม่เรียก LLM; ข้อความก่อนหน้าจะถูกตัดออก
+    // จากบริบทของคำถามถัดไปโดย marker ที่ถูกบันทึกไว้ในห้องแล้ว
+    if (AiAutoReplyService.isResetMarker(customerMessage)) {
+      return {
+        reply: 'เริ่มแชทใหม่ให้แล้วค่ะ 😊 สอบถามได้เลยนะคะ',
+        confidence: 1,
+        toolsUsed: [],
+      };
+    }
+
     const settings = await this.getSettings();
     // Convert scale 0-100 → 0-1 for comparison with SalesBot confidence
     const threshold = settings.aiAutoConfidenceThreshold / 100;
@@ -112,12 +132,18 @@ export class AiAutoReplyService {
       select: { customerId: true },
     });
 
-    const priorRows = await this.prisma.chatMessage.findMany({
+    // ดึงเผื่อ (15) แล้วตัดที่ marker เริ่มใหม่ล่าสุดก่อน ค่อยเหลือ 5 ข้อความหลัง marker
+    const priorRowsRaw = await this.prisma.chatMessage.findMany({
       where: { roomId, deletedAt: null, text: { not: null } },
       orderBy: { createdAt: 'desc' },
-      take: 5,
+      take: 15,
       select: { role: true, text: true },
     });
+    const markerIdx = priorRowsRaw.findIndex((r) => AiAutoReplyService.isResetMarker(r.text));
+    const priorRows = (markerIdx >= 0 ? priorRowsRaw.slice(0, markerIdx) : priorRowsRaw).slice(
+      0,
+      5,
+    );
     const priorMessages = priorRows.reverse().map((r) => ({
       role: (r.role === MessageRole.BOT || r.role === MessageRole.STAFF
         ? 'assistant'

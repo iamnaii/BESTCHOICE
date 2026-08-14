@@ -105,6 +105,10 @@ endpoint เรียก ตรรกะและตัวกรองเป็�
 
 ## 3. Prompt B — บล็อกที่ต้องเพิ่มให้บอทตอบลูกค้า
 
+> **ของจริงล่าสุดที่บอทใช้อยู่ = [persona-live-snapshot.md](persona-live-snapshot.md)**
+> (ดัมพ์ตรงจาก prod — บล็อกด้านล่างนี้คือเวอร์ชันตั้งต้น อาจตามหลังการจูนล่าสุด
+> อัปเดต snapshot: `bash scripts/ops/dump-persona-snapshot.sh`)
+
 ไปที่ `/settings/ai/persona` (OWNER เท่านั้น) → กล่อง **"Playbook & กฎ tools (BOT_EXTRAS)"**
 → **วางต่อท้ายของเดิม อย่าลบของเดิมทิ้ง**
 (ของเดิมมีกฎ tool-calling ที่บอทต้องใช้ ถ้าชื่อ tool หายไปบอทจะเลิกเรียก tool เงียบ ๆ — หน้าจอจะเตือนให้)

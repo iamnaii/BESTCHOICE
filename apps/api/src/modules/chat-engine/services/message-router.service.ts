@@ -178,22 +178,39 @@ export class MessageRouterService {
           // AI is confident — send reply and skip further processing
           const adapter = this.adapterMap.get(message.channel);
           if (adapter) {
-            await adapter.sendMessage({
-              externalUserId: message.externalUserId,
-              channel: message.channel,
-              type: 'TEXT' as any,
-              text: result.reply,
-              replyToken: message.replyToken,
-            });
-            await this.roomManager.saveMessage({
-              roomId: room.id,
-              role: MessageRole.BOT,
-              text: result.reply,
-              intent: 'AUTO:sales', // Phase A: SHOP channels always sales (intent router skipped)
-              toolsUsed: result.toolsUsed,
-              inputTokens: result.inputTokens,
-              outputTokens: result.outputTokens,
-            });
+            // บอทคั่นก้อนข้อความด้วยบรรทัด "---" (persona: ก้อนข้อมูลก่อน ปิดด้วยก้อนคำถามเดียว)
+            // → ส่งเป็นคนละข้อความต่อกันเหมือนคนพิมจริง; ไม่มีตัวคั่น = ส่งเดียวตามเดิม
+            // replyToken (LINE) ใช้ได้ครั้งเดียว — ใส่เฉพาะบับเบิลแรก ที่เหลือ push
+            const bubbles = result.reply
+              .split(/\n\s*---+\s*\n/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .slice(0, 4);
+            const parts = bubbles.length > 0 ? bubbles : [result.reply];
+            for (let i = 0; i < parts.length; i++) {
+              if (i > 0) await new Promise((r) => setTimeout(r, 700));
+              await adapter.sendMessage({
+                externalUserId: message.externalUserId,
+                channel: message.channel,
+                type: 'TEXT' as any,
+                text: parts[i],
+                replyToken: i === 0 ? message.replyToken : undefined,
+              });
+              await this.roomManager.saveMessage({
+                roomId: room.id,
+                role: MessageRole.BOT,
+                text: parts[i],
+                intent: 'AUTO:sales', // Phase A: SHOP channels always sales (intent router skipped)
+                // token/tool stats เก็บที่บับเบิลแรกใบเดียว — กันนับซ้ำในรายงาน
+                ...(i === 0
+                  ? {
+                      toolsUsed: result.toolsUsed,
+                      inputTokens: result.inputTokens,
+                      outputTokens: result.outputTokens,
+                    }
+                  : {}),
+              });
+            }
             // B3 §5 — ส่งรูปสินค้าตามหลังข้อความ (best-effort)
             await this.sendBotAttachments(adapter, message, room.id, result.attachments);
           }

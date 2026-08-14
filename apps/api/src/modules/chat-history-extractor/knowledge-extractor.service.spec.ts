@@ -40,10 +40,14 @@ function mockClaude(
 
 async function buildService(
   pairs = [{ customerMessage: 'ใช้เอกสารอะไรบ้าง', humanEdit: 'บัตรใบเดียวค่ะ' }],
+  activeRowIds: string[] = [],
 ) {
   const prisma = {
     aiTrainingPair: { findMany: jest.fn().mockResolvedValue(pairs) },
-    chatKnowledgeBase: { upsert: jest.fn().mockResolvedValue({ id: 'kb1' }) },
+    chatKnowledgeBase: {
+      upsert: jest.fn().mockResolvedValue({ id: 'kb1' }),
+      findMany: jest.fn().mockResolvedValue(activeRowIds.map((id) => ({ id }))),
+    },
   };
   const aiUsage = { record: jest.fn() };
 
@@ -248,5 +252,17 @@ describe('KnowledgeExtractorService', () => {
     const { svc } = await buildService();
 
     await expect(svc.extractAndSeed()).rejects.toThrow(/max_tokens/);
+  });
+
+  it('แถวที่เปิดใช้อยู่ (ผ่านรีวิว/แต่งมือแล้ว) → ไม่ทับด้วยข้อความสกัดใหม่', async () => {
+    mockClaude({ faqs: [FAQ], objections: [OBJECTION] });
+    // documents_required เปิดใช้อยู่ → ต้องถูกข้าม; objection ยังปิด → ลงตามปกติ
+    const { svc, prisma } = await buildService(undefined, ['extracted:documents_required']);
+
+    await expect(svc.extractAndSeed()).resolves.toEqual({ faqsSeeded: 0, objectionsSeeded: 1 });
+    const upsertedIds = prisma.chatKnowledgeBase.upsert.mock.calls.map(
+      (c: [{ where: { id: string } }]) => c[0].where.id,
+    );
+    expect(upsertedIds).toEqual(['extracted:objection_price_too_high']);
   });
 });

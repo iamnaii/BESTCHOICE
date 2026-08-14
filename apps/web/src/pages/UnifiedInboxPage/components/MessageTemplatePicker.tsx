@@ -58,7 +58,10 @@ interface Props {
 export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomId }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  // เก็บ "กลุ่มที่พับ" แทน "กลุ่มที่กาง" — default คือกางทุกกลุ่ม พนักงานเห็นรายการทันที
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  // ดับเบิลคลิกรายการ = ใส่ทันทีเมื่อ preview (แทนค่าตัวแปรแล้ว) โหลดเสร็จ
+  const [pendingInsertId, setPendingInsertId] = useState<string | null>(null);
 
   // Reset local state when modal opens — prevents stale selection/search from
   // a previous conversation leaking into the current one.
@@ -66,7 +69,8 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
     if (isOpen) {
       setSelectedId(null);
       setSearchQuery('');
-      setExpandedCategories(new Set());
+      setCollapsedCategories(new Set());
+      setPendingInsertId(null);
     }
   }, [isOpen]);
 
@@ -107,6 +111,19 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
     onInsert(content);
     onClose();
   };
+
+  // ดับเบิลคลิกไว้ก่อน preview มา — พอ preview ของรายการนั้นโหลดเสร็จค่อยใส่ให้อัตโนมัติ
+  useEffect(() => {
+    if (!pendingInsertId) return;
+    if (isPreviewError) {
+      setPendingInsertId(null);
+      return;
+    }
+    if (preview && preview.id === pendingInsertId) {
+      setPendingInsertId(null);
+      handleInsert();
+    }
+  }, [pendingInsertId, preview, isPreviewError]);
 
   const sendDirectMut = useMutation({
     mutationFn: () =>
@@ -162,22 +179,8 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
     });
   }, [templates, searchQuery]);
 
-  // Auto-expand all categories during search; collapse when cleared.
-  // Bail out when value would not change — a fresh `new Set()` every render
-  // would otherwise loop with Radix Dialog's Presence transitions.
-  useEffect(() => {
-    setExpandedCategories((prev) => {
-      if (searchQuery.trim()) {
-        const all = new Set(grouped.map(([cat]) => cat));
-        if (prev.size === all.size && [...all].every((c) => prev.has(c))) return prev;
-        return all;
-      }
-      return prev.size === 0 ? prev : new Set();
-    });
-  }, [searchQuery, grouped]);
-
   const toggleCategory = (cat: string) => {
-    setExpandedCategories((prev) => {
+    setCollapsedCategories((prev) => {
       const next = new Set(prev);
       if (next.has(cat)) next.delete(cat);
       else next.add(cat);
@@ -193,7 +196,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
             เลือกข้อความสำเร็จรูป
           </DialogTitle>
           <DialogDescription className="text-xs leading-snug">
-            เลือก template เพื่อใส่ในช่องตอบ — ตัวแปร เช่น {'{customerName}'} จะถูกแทนค่าอัตโนมัติ
+            คลิกเพื่อดูตัวอย่าง · <span className="font-medium text-foreground">ดับเบิลคลิก = ใส่ในช่องตอบทันที</span> — ตัวแปร เช่น {'{customerName}'} จะถูกแทนค่าอัตโนมัติ
           </DialogDescription>
         </DialogHeader>
 
@@ -214,7 +217,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
         {/* Body: tree + preview */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left: tree */}
-          <div className="w-72 border-r border-border overflow-y-auto py-2">
+          <div className="w-80 border-r border-border overflow-y-auto py-2">
             {isError && (
               <div className="px-4 py-8 text-sm text-muted-foreground text-center">
                 โหลด template ไม่สำเร็จ
@@ -230,12 +233,13 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
               </div>
             )}
             {grouped.map(([cat, items]) => {
-              const isExpanded = expandedCategories.has(cat);
+              // default = กางทุกกลุ่ม; ระหว่างค้นหาบังคับกางเสมอเพื่อให้เห็นผลลัพธ์
+              const isExpanded = searchQuery.trim() !== '' || !collapsedCategories.has(cat);
               return (
                 <div key={cat}>
                   <button
                     onClick={() => toggleCategory(cat)}
-                    className="w-full px-4 py-2 flex items-center gap-2 text-sm font-medium text-foreground hover:bg-accent leading-snug"
+                    className="w-full px-4 py-2 flex items-center gap-2 text-sm font-semibold text-foreground hover:bg-accent leading-snug sticky top-0 bg-background/95 backdrop-blur-sm"
                   >
                     {isExpanded ? (
                       <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -246,28 +250,38 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                     <span className="text-[10px] text-muted-foreground">{items.length}</span>
                   </button>
                   {isExpanded && (
-                    <div className="pl-5">
+                    <div>
                       {items.map((t) => {
                         const isSelected = t.id === selectedId;
+                        const snippet = t.content.replace(/\s+/g, ' ').trim();
                         return (
                           <button
                             key={t.id}
                             onClick={() => setSelectedId(t.id)}
+                            onDoubleClick={() => {
+                              setSelectedId(t.id);
+                              setPendingInsertId(t.id);
+                            }}
                             aria-selected={isSelected}
+                            title="คลิกเพื่อดูตัวอย่าง · ดับเบิลคลิกเพื่อใส่ในช่องตอบทันที"
                             className={cn(
-                              'w-full px-4 py-1.5 text-left text-sm flex items-center gap-2 leading-snug',
+                              'w-full pl-9 pr-4 py-2 text-left flex flex-col gap-0.5 leading-snug border-l-2',
                               isSelected
-                                ? 'bg-primary/10 text-primary font-medium border-l-2 border-primary'
-                                : 'text-muted-foreground hover:bg-accent',
+                                ? 'bg-primary/10 border-primary'
+                                : 'border-transparent hover:bg-accent',
                             )}
                           >
                             <span
                               className={cn(
-                                'w-1 h-1 rounded-full',
-                                isSelected ? 'bg-primary' : 'bg-muted-foreground',
+                                'text-sm',
+                                isSelected ? 'text-primary font-medium' : 'text-foreground',
                               )}
-                            />
-                            {t.title}
+                            >
+                              {t.title}
+                            </span>
+                            <span className="text-xs text-muted-foreground truncate w-full">
+                              {snippet}
+                            </span>
                           </button>
                         );
                       })}

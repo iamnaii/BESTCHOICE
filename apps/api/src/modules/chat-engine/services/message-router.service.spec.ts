@@ -91,6 +91,32 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
     expect(saved[1].toolsUsed).toBeUndefined();
   }, 10000);
 
+  it('"[ตัวเลือก: ...]" ท้ายข้อความ → quick replies บนบับเบิลสุดท้าย และตัดออกจากตัวข้อความ', async () => {
+    const { router, adapter } = makeRouter({
+      aiEligible: true,
+      aiResult: {
+        reply:
+          'มี 15 ธรรมดา, Plus, Pro, Pro Max เลยค่า\n---\nสนใจตัวไหนคะ\n[ตัวเลือก: 15 | 15 Plus | 15 Pro | 15 Pro Max]',
+        confidence: 0.9,
+        toolsUsed: [],
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    });
+    await router.routeInbound(baseMsg as any);
+
+    const sent = adapter.sendMessage.mock.calls.map((c: any[]) => c[0]);
+    expect(sent).toHaveLength(2);
+    expect(sent[0].quickReplies).toBeUndefined();
+    expect(sent[1].text).toBe('สนใจตัวไหนคะ');
+    expect(sent[1].quickReplies).toEqual([
+      { label: '15', type: 'MESSAGE', message: '15' },
+      { label: '15 Plus', type: 'MESSAGE', message: '15 Plus' },
+      { label: '15 Pro', type: 'MESSAGE', message: '15 Pro' },
+      { label: '15 Pro Max', type: 'MESSAGE', message: '15 Pro Max' },
+    ]);
+  }, 10000);
+
   it('threads the replyToken into the after-hours reply', async () => {
     const { router, adapter } = makeRouter({ afterHours: true });
     await router.routeInbound(baseMsg as any);

@@ -5,6 +5,7 @@ import {
   IChannelAdapter,
   InboundMessage,
   OutboundMessage,
+  OutboundQuickReply,
   CHANNEL_ADAPTER_TOKEN,
 } from '../interfaces/channel-adapter.interface';
 import {
@@ -178,15 +179,34 @@ export class MessageRouterService {
           // AI is confident — send reply and skip further processing
           const adapter = this.adapterMap.get(message.channel);
           if (adapter) {
+            // "[ตัวเลือก: a | b | c]" ท้ายข้อความ → ปุ่มกดตอบ (quick replies) บนบับเบิลสุดท้าย
+            // กดแล้วส่งข้อความนั้นแทนลูกค้า — persona สั่งให้แนบเมื่อคำถามมีตัวเลือกชัด
+            let quickReplies: OutboundQuickReply[] | undefined;
+            let replyText = result.reply;
+            const qrMatch = replyText.match(/\n?\s*\[ตัวเลือก:\s*([^\]]+)\]\s*$/);
+            if (qrMatch) {
+              replyText = replyText.slice(0, qrMatch.index).trimEnd();
+              quickReplies = qrMatch[1]
+                .split('|')
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .slice(0, 13)
+                .map((label) => ({
+                  // FB จำกัด label 20 ตัวอักษร แต่ข้อความที่ส่งเมื่อกดใช้ตัวเต็ม
+                  label: label.slice(0, 20),
+                  type: 'MESSAGE' as const,
+                  message: label,
+                }));
+            }
             // บอทคั่นก้อนข้อความด้วยบรรทัด "---" (persona: ก้อนข้อมูลก่อน ปิดด้วยก้อนคำถามเดียว)
             // → ส่งเป็นคนละข้อความต่อกันเหมือนคนพิมจริง; ไม่มีตัวคั่น = ส่งเดียวตามเดิม
             // replyToken (LINE) ใช้ได้ครั้งเดียว — ใส่เฉพาะบับเบิลแรก ที่เหลือ push
-            const bubbles = result.reply
+            const bubbles = replyText
               .split(/\n\s*---+\s*\n/)
               .map((s) => s.trim())
               .filter(Boolean)
               .slice(0, 4);
-            const parts = bubbles.length > 0 ? bubbles : [result.reply];
+            const parts = bubbles.length > 0 ? bubbles : [replyText];
             for (let i = 0; i < parts.length; i++) {
               if (i > 0) await new Promise((r) => setTimeout(r, 700));
               await adapter.sendMessage({
@@ -195,6 +215,8 @@ export class MessageRouterService {
                 type: 'TEXT' as any,
                 text: parts[i],
                 replyToken: i === 0 ? message.replyToken : undefined,
+                // ปุ่มกดต้องอยู่ข้อความสุดท้าย (FB/LINE แสดง quick reply เฉพาะข้อความล่าสุด)
+                ...(i === parts.length - 1 && quickReplies ? { quickReplies } : {}),
               });
               await this.roomManager.saveMessage({
                 roomId: room.id,

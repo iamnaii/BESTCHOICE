@@ -369,6 +369,45 @@ describe('SalesBotService', () => {
     expect(result.confidence).toBeGreaterThanOrEqual(0.8);
   });
 
+  it('บอททวนเลขงบที่ลูกค้าพิมพ์เองได้ โดยไม่ต้องเรียก tool (แก้ false positive 2026-08-15)', async () => {
+    const chat = jest.fn().mockResolvedValue({
+      text: 'ได้ค่ะ งบดาวน์ 3,000 บาท\n\nพี่อยากผ่อนต่อเดือนสบาย ๆ ไม่เกินประมาณเท่าไหร่คะ',
+      toolCalls: [],
+      inputTokens: 50,
+      outputTokens: 15,
+      modelName: 'claude-sonnet-5',
+    } satisfies LlmChatResponse);
+    const { svc } = await build(chat);
+    const result = await svc.generateReply({
+      text: '3000',
+      roomId: 'r1',
+      customerId: null,
+    });
+    expect(result.reply).toContain('3,000');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('บอททวนเลขที่ตัวเองเคยส่งไปแล้ว (จาก priorMessages) ได้โดยไม่เรียก tool ซ้ำ', async () => {
+    const chat = jest.fn().mockResolvedValue({
+      text: 'ได้เลยค่า เรทที่ 1 ดาวน์ 1,900 บาทนะคะ รบกวนส่งสเตทเม้นท์ย้อนหลัง 3 เดือนมาในแชทนี้ได้เลยค่ะ',
+      toolCalls: [],
+      inputTokens: 50,
+      outputTokens: 20,
+      modelName: 'claude-sonnet-5',
+    } satisfies LlmChatResponse);
+    const { svc } = await build(chat);
+    const result = await svc.generateReply({
+      text: 'เรทที่ 1',
+      roomId: 'r1',
+      customerId: null,
+      priorMessages: [
+        { role: 'assistant', content: 'เรทที่ 1 ดาวน์ 1,900 บาท ผ่อนเดือนละ 2,566 บาท 12 งวด สนใจเรทไหนดีคะ' },
+      ],
+    });
+    expect(result.reply).toContain('1,900');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+  });
+
   it('passes reply without any price mention even if no tools used', async () => {
     const chat = jest.fn().mockResolvedValue({
       text: 'สวัสดีค่ะ สนใจรุ่นไหนเป็นพิเศษคะ',

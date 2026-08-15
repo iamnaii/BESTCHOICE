@@ -39,6 +39,12 @@ describe('SalesStateService', () => {
       expect(note).toContain('iPhone 14');
     });
 
+    it('chosenRate เป็นเลขดิบ (ตัวจดคืน 1 แทน "เรทที่ 1") → แปลงเป็น "เรทที่ 1" ให้', () => {
+      const { svc } = build();
+      const note = svc.buildNote({ interestModel: 'iPhone 15 Plus', chosenRate: 1 });
+      expect(note).toContain('เรท/แพ็คที่เลือก: เรทที่ 1');
+    });
+
     it('เติมอายุโน้ตเมื่อคุยล่าสุดนานแล้ว (ข้ามวัน = หน่วยวัน)', () => {
       const { svc } = build();
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3_600_000).toISOString();

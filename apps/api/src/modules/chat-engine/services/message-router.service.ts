@@ -175,6 +175,14 @@ export class MessageRouterService {
     if (this.aiAutoReplyService && (await this.aiAutoReplyService.shouldAutoReply(room))) {
       const customerMessage = message.text ?? '';
       try {
+        // "กำลังพิมพ์..." ทันทีที่เริ่มคิด — Sonnet 5 ใช้เวลาคิด 10-30s ต่อเทิร์น
+        // ลูกค้าต้องเห็นว่าบอทกำลังตอบอยู่ ไม่ใช่เงียบ (best-effort, FB เท่านั้นที่รองรับ)
+        if (message.externalUserId) {
+          void this.adapterMap
+            .get(message.channel)
+            ?.sendTypingIndicator?.(message.externalUserId)
+            ?.catch(() => undefined);
+        }
         const result = await this.aiAutoReplyService.autoReply(room.id, customerMessage);
 
         if (result !== null) {

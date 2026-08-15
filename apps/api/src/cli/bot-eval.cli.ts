@@ -91,8 +91,16 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
     }
     case 'list_promotions':
       return { promotions: [] };
-    case 'search_knowledge_base':
-      return { results: [] };
+    case 'search_knowledge_base': {
+      // คลังสเปคจำลอง — ให้เทิร์นเทียบรุ่นมีสเปคอ้างอิงเหมือน prod (id ขึ้นต้น spec:)
+      if (q.includes('สเปค') || q.includes('15') || q.includes('16')) {
+        return { matches: [
+          { id: 'spec:iphone-15', responseTemplate: 'iPhone 15 — กล้องหลัก 48MP คมขึ้นชัดเจน · สาย USB-C · Dynamic Island' },
+          { id: 'spec:iphone-16', responseTemplate: 'iPhone 16 — ชิปรุ่นใหม่รองรับ AI ยาว ๆ · ปุ่มชัตเตอร์กล้อง · แบตอึดขึ้นจาก 15' },
+        ] };
+      }
+      return { matches: [] };
+    }
     case 'capture_lead':
       return { customerId: 'eval-c1', promptPayQr: null, downAmount: Number(input.downAmount ?? 0), handoffMessage: 'ทางแอดมินจะส่ง QR ให้ในแชทนี้นะคะ' };
     case 'handoff_to_human':

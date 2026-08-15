@@ -24,6 +24,7 @@ import {
   LlmToolDefinition,
 } from './providers/llm-provider.interface';
 import {
+  collectConversationNumbers,
   collectGroundedPrices,
   collectGroundedPricesFromToolText,
   guardGrounding,
@@ -150,6 +151,15 @@ export class SalesBotService {
     // (e.g. Gemini 2.5 ignored PR #1064 anti-hallucinate rules and replied
     // "iPhone 15 7,000" though tool returned only iPhone 13/16 at 14,691/17,000).
     const groundedPrices = new Set<number>();
+    // เลขที่อยู่ในบทสนทนาแล้ว = มีที่มาเช่นกัน (แก้ false positive จากเทสจริง 2026-08-15:
+    // ลูกค้าบอกงบ "3000" → บอททวน "งบดาวน์ 3,000 บาท" → โดน block ฐานไม่มี tool result):
+    // - เลขที่ลูกค้าพิมพ์เอง (งบ/ยอดที่ต่อรอง) — บอทต้องทวนได้
+    // - เลขที่บอทเคยส่งไปแล้วในเทิร์นก่อน — ผ่าน guard ตอนส่งครั้งแรกแล้ว
+    //   (เช่น ทวน "เรทที่ 1 ดาวน์ 1,900" หลังลูกค้าเลือก โดยไม่ต้องเรียก tool ซ้ำ)
+    collectConversationNumbers(input.text, groundedPrices);
+    for (const pm of input.priorMessages ?? []) {
+      collectConversationNumbers(pm.content, groundedPrices);
+    }
     // ช่องส่งรูป/ลิงก์ — เติมจาก "ผลลัพธ์ tool" เท่านั้น (deterministic)
     const attachments = new Map<string, BotAttachment>();
     let totalIn = 0;

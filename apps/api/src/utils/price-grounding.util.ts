@@ -144,6 +144,25 @@ export function collectGroundedPricesFromText(text: string, into: Set<number>): 
 }
 
 /**
+ * ดูดเลขจาก "ข้อความในบทสนทนา" — ต่างจาก collectGroundedPricesFromText ตรงที่
+ * ไม่บังคับคำว่า "บาท" ต่อท้าย (ลูกค้าพิมพ์งบเป็นเลขเปล่า ๆ: "3000", "งบ 2-3 พัน",
+ * "5k") — เลขที่ลูกค้าพิมพ์เอง/บอทเคยส่งแล้ว เป็นข้อเท็จจริงของบทสนทนา บอททวนได้
+ * (แก้ false positive 2026-08-15: ทวน "งบดาวน์ 3,000 บาท" แล้วโดน block)
+ */
+export function collectConversationNumbers(text: string, into: Set<number>): void {
+  if (!text) return;
+  for (const m of text.matchAll(/([\d][\d,]*(?:\.\d{1,2})?)\s*(พัน|หมื่น|k)?/gi)) {
+    if (!m[1]) continue;
+    let n = Number(m[1].replace(/,/g, ''));
+    if (!Number.isFinite(n)) continue;
+    const unit = (m[2] ?? '').toLowerCase();
+    if (unit === 'พัน' || unit === 'k') n *= 1000;
+    else if (unit === 'หมื่น') n *= 10000;
+    if (n >= MIN_GROUNDED_THB) into.add(n);
+  }
+}
+
+/**
  * ดูดเลขบาทจาก "ฟิลด์ที่เป็นข้อความแอดมินเขียนเอง" ในผลลัพธ์ tool
  * (list_promotions.name/description, search_knowledge_base.matches[].responseTemplate)
  * — เติมของจริงใน Task 6 (list_promotions) และ Task 8 (search_knowledge_base)

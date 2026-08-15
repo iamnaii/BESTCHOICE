@@ -1001,4 +1001,65 @@ describe('SalesBotService', () => {
       expect(r.toolsUsed).toContain('search_knowledge_base');
     });
   });
+
+  describe('sessionNote (สมุดสถานะการขาย — ความจำ 3 ชั้น)', () => {
+    const NOTE =
+      '[บันทึกสถานะลูกค้าจากระบบ — ใช้เป็นบริบท ห้ามเอ่ยถึงบันทึกนี้กับลูกค้า]\nรุ่นที่ลูกค้าสนใจ/ตามหา: iPhone 15 Plus 128GB\nงบดาวน์ที่บอกไว้: 3,000 บาท';
+
+    it('ฉีดโน้ตเป็นข้อความแรกของประวัติ ก่อน priorMessages และคำถามล่าสุด', async () => {
+      const chat = jest.fn().mockResolvedValue({
+        text: 'รับทราบค่ะ สนใจความจุไหนคะ [ตัวเลือก: 128GB | 256GB]',
+        toolCalls: [],
+        inputTokens: 100,
+        outputTokens: 20,
+        modelName: 'claude-sonnet-5',
+      } satisfies LlmChatResponse);
+      const { svc } = await build(chat);
+      await svc.generateReply({
+        text: 'เอา 128 ค่ะ',
+        roomId: 'r1',
+        customerId: null,
+        priorMessages: [{ role: 'assistant', content: 'สนใจความจุไหนคะ' }],
+        sessionNote: NOTE,
+      });
+      const req = chat.mock.calls[0][0];
+      expect(req.messages[0]).toEqual({ role: 'user', content: NOTE });
+      expect(req.messages[1]).toEqual({ role: 'assistant', content: 'สนใจความจุไหนคะ' });
+      expect(req.messages[2]).toEqual({ role: 'user', content: 'เอา 128 ค่ะ' });
+    });
+
+    it('เลขในโน้ต (งบข้ามวัน) นับเป็น grounded — บอททวนได้โดยไม่เรียก tool ไม่โดน block', async () => {
+      const chat = jest.fn().mockResolvedValue({
+        text: 'เมื่อวานคุยไว้งบดาวน์ 3,000 บาทใช่ไหมคะ',
+        toolCalls: [],
+        inputTokens: 100,
+        outputTokens: 20,
+        modelName: 'claude-sonnet-5',
+      } satisfies LlmChatResponse);
+      const { svc } = await build(chat);
+      const r = await svc.generateReply({
+        text: 'สวัสดีครับ มาต่อจากเมื่อวาน',
+        roomId: 'r1',
+        customerId: null,
+        sessionNote: NOTE,
+      });
+      expect(r.reply).toContain('3,000');
+      expect(r.confidence).not.toBe(0.3);
+      expect(chat).toHaveBeenCalledTimes(1); // ไม่มี retry จาก grounding block
+    });
+
+    it('ไม่มีโน้ต → โครง messages เดิมทุกประการ (back-compat)', async () => {
+      const chat = jest.fn().mockResolvedValue({
+        text: 'สวัสดีค่ะ สนใจรุ่นไหนคะ',
+        toolCalls: [],
+        inputTokens: 100,
+        outputTokens: 20,
+        modelName: 'claude-sonnet-5',
+      } satisfies LlmChatResponse);
+      const { svc } = await build(chat);
+      await svc.generateReply({ text: 'สวัสดีครับ', roomId: 'r1', customerId: null });
+      const req = chat.mock.calls[0][0];
+      expect(req.messages).toEqual([{ role: 'user', content: 'สวัสดีครับ' }]);
+    });
+  });
 });

@@ -18,7 +18,7 @@ export interface SalesState {
   interestModel?: string | null; // รุ่นหลักที่ลูกค้าต้องการ (รวมความจุ/มือ 1-มือสอง)
   downBudget?: number | null;
   monthlyBudget?: number | null;
-  chosenRate?: string | null; // "เรทที่ 1" | "เรทที่ 2" | ชื่อแพ็ค
+  chosenRate?: string | number | null; // "เรทที่ 1" | "เรทที่ 2" | ชื่อแพ็ค (ตัวจดบางทีคืนเลขดิบ — buildNote แปลงให้)
   docsStatus?: string | null; // เช่น "ส่งสเตทเม้นท์แล้ว"
   name?: string | null;
   phone?: string | null;
@@ -71,7 +71,11 @@ export class SalesStateService {
     if (state.interestModel) lines.push(`รุ่นที่ลูกค้าสนใจ/ตามหา: ${state.interestModel}`);
     if (state.downBudget) lines.push(`งบดาวน์ที่บอกไว้: ${state.downBudget.toLocaleString()} บาท`);
     if (state.monthlyBudget) lines.push(`งวด/เดือนที่ไหว: ${state.monthlyBudget.toLocaleString()} บาท`);
-    if (state.chosenRate) lines.push(`เรท/แพ็คที่เลือก: ${state.chosenRate}`);
+    if (state.chosenRate) {
+      const rate =
+        typeof state.chosenRate === 'number' ? `เรทที่ ${state.chosenRate}` : state.chosenRate;
+      lines.push(`เรท/แพ็คที่เลือก: ${rate}`);
+    }
     if (state.docsStatus) lines.push(`เอกสาร: ${state.docsStatus}`);
     if (state.name || state.phone) lines.push(`ติดต่อ: ${[state.name, state.phone].filter(Boolean).join(' ')}`);
     if (state.offered?.length) lines.push(`รุ่นอื่นที่เคยเสนอ: ${state.offered.join(', ')}`);
@@ -103,8 +107,9 @@ export class SalesStateService {
         max_tokens: 400,
         system:
           'คุณคือตัวจดสถานะการขายของร้านผ่อนมือถือ อ่านสถานะเดิมกับบทสนทนาเทิร์นล่าสุด แล้วคืนสถานะใหม่เป็น JSON ล้วน ๆ (ไม่มีข้อความอื่น)\n' +
-          'ฟิลด์: interestModel (รุ่นหลักที่ลูกค้าต้องการ รวมความจุ/มือ 1-มือสอง), downBudget (ตัวเลข), monthlyBudget (ตัวเลข), chosenRate, docsStatus, name, phone, offered (array รุ่นที่บอทเสนอเพิ่ม), note (เรื่องค้างสั้น ๆ)\n' +
-          'กติกา: เริ่มจากสถานะเดิมแล้วอัปเดตเฉพาะที่มีข้อมูลใหม่ · ไม่รู้ = null · ห้ามเดา · ลูกค้าเปลี่ยนใจรุ่น = แทนที่ interestModel',
+          'ฟิลด์: interestModel (รุ่นหลักที่ลูกค้าต้องการ รวมความจุ/มือ 1-มือสอง), downBudget (ตัวเลข), monthlyBudget (ตัวเลข), chosenRate (string เช่น "เรทที่ 1"), docsStatus, name, phone, offered (array รุ่นที่บอทเสนอเพิ่ม), note (เรื่องค้างสั้น ๆ)\n' +
+          'กติกา: เริ่มจากสถานะเดิมแล้วอัปเดตเฉพาะที่มีข้อมูลใหม่ · ไม่รู้ = null · ห้ามเดา · ลูกค้าเปลี่ยนใจรุ่น = แทนที่ interestModel\n' +
+          'สำคัญ: downBudget/monthlyBudget = ตัวเลขที่ "ลูกค้า" บอกเองว่าเป็นงบ/ไหวต่อเดือนเท่านั้น — ตัวเลขดาวน์/ค่างวดที่ "บอท" เสนอในแพ็ค ห้ามเอามาใส่สองช่องนี้ (ใส่ note แทนถ้าสำคัญ)',
         messages: [
           {
             role: 'user',

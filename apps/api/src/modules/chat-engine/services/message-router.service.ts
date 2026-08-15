@@ -173,7 +173,11 @@ export class MessageRouterService {
 
     // 3.5 AI auto-reply — runs when auto mode is enabled for the room channel
     if (this.aiAutoReplyService && (await this.aiAutoReplyService.shouldAutoReply(room))) {
-      const customerMessage = message.text ?? '';
+      // ข้อความไม่มี text (รูป/สติกเกอร์/เสียง/วิดีโอ/ไฟล์) ห้ามส่ง '' เข้า Claude —
+      // API ปฏิเสธ text block ว่าง → ลูกค้าเห็น "กำลังพิมพ์" แล้วเงียบ/หลุดไปข้อความยืนยันตัวตน
+      // สำคัญสุดกับขั้นรับเอกสาร: ลูกค้าส่งรูปสเตทเม้นท์ = IMAGE → บอทต้องตอบรับแล้วเดินขั้นถัดไป
+      const customerMessage =
+        message.text ?? MessageRouterService.describeNonTextInbound(message.type);
       try {
         // "กำลังพิมพ์..." ทันทีที่เริ่มคิด — Sonnet 5 ใช้เวลาคิด 10-30s ต่อเทิร์น
         // ลูกค้าต้องเห็นว่าบอทกำลังตอบอยู่ ไม่ใช่เงียบ (best-effort, FB เท่านั้นที่รองรับ)
@@ -278,6 +282,23 @@ export class MessageRouterService {
             autoSent: false,
             handoffReason: 'ความมั่นใจของ AI ต่ำกว่า threshold',
           });
+          // บอกลูกค้าก่อนเงียบ — ไม่งั้นเห็น "กำลังพิมพ์..." แล้วหายไปเฉย ๆ
+          const lowConfMsg = 'อันนี้เดี๋ยวแอดมินเข้ามาตอบให้นะคะ รอสักครู่ค่า 🙏';
+          const lowConfAdapter = this.adapterMap.get(message.channel);
+          if (lowConfAdapter) {
+            await lowConfAdapter.sendMessage({
+              externalUserId: message.externalUserId,
+              channel: message.channel,
+              type: 'TEXT' as any,
+              text: lowConfMsg,
+              replyToken: message.replyToken,
+            });
+            await this.roomManager.saveMessage({
+              roomId: room.id,
+              role: MessageRole.BOT,
+              text: lowConfMsg,
+            });
+          }
           await this.handoffManager.initiateHandoff({
             roomId: room.id,
             reason: 'AI ไม่มั่นใจในการตอบ — ส่งต่อให้พนักงาน',
@@ -291,11 +312,42 @@ export class MessageRouterService {
         this.logger.error(
           `[AiAutoReply] Error for room ${room.id}: ${err instanceof Error ? err.message : err}`,
         );
-        // Fall through to normal processing on error
+        // AI ล่ม: ห้ามหลุดไป domain handler — ห้อง FB ขายของส่วนใหญ่ยังไม่ verify
+        // จะโดนข้อความ "ยืนยันตัวตน" ของ flow ไฟแนนซ์ซึ่งผิดเรื่อง — ขอโทษสั้น ๆ
+        // + ปักธงให้พนักงานเห็นในคิว "ต้องตอบ" แล้วจบเทิร์น
+        try {
+          const errAdapter = this.adapterMap.get(message.channel);
+          if (errAdapter) {
+            const apology = 'ขออภัยค่ะ ระบบขัดข้องชั่วคราว เดี๋ยวแอดมินเข้ามาดูแลต่อให้นะคะ 🙏';
+            await errAdapter.sendMessage({
+              externalUserId: message.externalUserId,
+              channel: message.channel,
+              type: 'TEXT' as any,
+              text: apology,
+              replyToken: message.replyToken,
+            });
+            await this.roomManager.saveMessage({
+              roomId: room.id,
+              role: MessageRole.BOT,
+              text: apology,
+            });
+          }
+          await this.handoffManager.initiateHandoff({
+            roomId: room.id,
+            reason: 'ระบบ AI ขัดข้อง — ส่งต่อให้พนักงาน',
+            priority: 'normal',
+            summary: message.text ?? '(ข้อความไม่มีตัวอักษร)',
+          });
+        } catch (innerErr) {
+          this.logger.error(
+            `[AiAutoReply] Fallback notify failed for room ${room.id}: ${innerErr instanceof Error ? innerErr.message : innerErr}`,
+          );
+        }
+        return;
       }
     }
 
-    // 4. After-hours auto-reply (only reached when AI auto mode is off or errored)
+    // 4. After-hours auto-reply (only reached when AI auto mode is off/skipped)
     if (this.afterHoursService?.isAfterHours() && !room.handoffMode && !room.aiPaused) {
       try {
         const reply = await this.afterHoursService.getAutoReply(message.text ?? '');
@@ -824,6 +876,27 @@ export class MessageRouterService {
   }
 
   /** Find domain handler that supports the given channel */
+  /**
+   * ข้อความลูกค้าที่ไม่มีตัวอักษร (สติกเกอร์ FB มาเป็น attachment image เช่นกัน) —
+   * แปลงเป็น marker ภาษาไทยให้บอทรู้ว่าลูกค้าส่งอะไรมา แทนการส่งสตริงว่างเข้า LLM
+   */
+  private static describeNonTextInbound(type: MessageType): string {
+    switch (type) {
+      case MessageType.IMAGE:
+        return '[ลูกค้าส่งรูปภาพมา 1 รูป — อาจเป็นเอกสาร/สลิป/รูปเครื่อง/สติกเกอร์]';
+      case MessageType.AUDIO:
+        return '[ลูกค้าส่งข้อความเสียงมา — บอทฟังเสียงไม่ได้]';
+      case MessageType.VIDEO:
+        return '[ลูกค้าส่งวิดีโอมา]';
+      case MessageType.FILE:
+        return '[ลูกค้าส่งไฟล์แนบมา]';
+      case MessageType.LOCATION:
+        return '[ลูกค้าแชร์ตำแหน่งที่ตั้งมา]';
+      default:
+        return '[ลูกค้าส่งข้อความที่ไม่ใช่ตัวอักษร]';
+    }
+  }
+
   private findDomainHandler(channel: ChatChannel): IDomainHandler | undefined {
     return this.domainHandlers.find((h) => h.supportsChannel(channel));
   }

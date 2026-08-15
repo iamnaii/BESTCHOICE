@@ -16,6 +16,15 @@ import {
  */
 const DEFAULT_CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 const MODEL_CONFIG_KEY = 'shop_bot_claude_model';
+/**
+ * effort (output_config.effort) — คันเร่ง latency ของตระกูล Claude 5:
+ * docs ระบุ Sonnet 5 medium ≈ Sonnet 4.6 ที่ high, low = เหมาะงานแชท latency-sensitive.
+ * ปรับผ่าน SystemConfig `shop_bot_claude_effort` (low/medium/high/xhigh/max) ไม่ต้อง deploy.
+ * ⚠️ เปลี่ยนค่า = prompt cache หลุดหนึ่งรอบ (docs: hold effort constant) — เปลี่ยนเฉพาะตอนตั้งใจ
+ */
+const DEFAULT_CLAUDE_EFFORT = 'medium';
+const EFFORT_CONFIG_KEY = 'shop_bot_claude_effort';
+const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MODEL_CACHE_TTL_MS = 60_000;
 // 4096 (เดิม 1024): ตระกูล Claude 5 (เช่น claude-sonnet-5) ใช้ adaptive thinking —
 // การคิดกินโควต้า max_tokens ร่วมกับคำตอบ ถ้าตั้ง 1024 การคิดอาจกินจนหมด
@@ -27,7 +36,8 @@ export class ClaudeProvider implements ILlmProvider {
   readonly providerName: LlmProviderName = 'claude';
   private readonly logger = new Logger(ClaudeProvider.name);
   private _client: Anthropic | null = null;
-  private modelCache: { value: string; readAt: number } | null = null;
+  private modelCache: { value: string; effort: string; readAt: number } | null =
+    null;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -39,7 +49,7 @@ export class ClaudeProvider implements ILlmProvider {
   }
 
   async chat(req: LlmChatRequest): Promise<LlmChatResponse> {
-    const model = await this.resolveModel();
+    const { model, effort } = await this.resolveModelAndEffort();
 
     // Prompt caching: tools + system prompt เป็น prefix คงที่ (~9k tokens) ที่ทุกห้อง
     // ทุกข้อความ และทุกยกของ tool loop ใช้ร่วมกัน — ปัก cache_control ที่ tool ตัวสุดท้าย
@@ -66,6 +76,8 @@ export class ClaudeProvider implements ILlmProvider {
         },
       ],
       ...(tools ? { tools } : {}),
+      // effort คุมความลึกการคิดของตระกูล Claude 5 = คันเร่ง latency หลักของแชทบอท
+      output_config: { effort: effort as 'low' | 'medium' | 'high' },
       messages,
     });
 
@@ -105,29 +117,39 @@ export class ClaudeProvider implements ILlmProvider {
     };
   }
 
-  /** อ่าน model จาก SystemConfig (TTL 60s) — แถวหาย/ค่าว่าง = ใช้ default (Haiku) */
-  private async resolveModel(): Promise<string> {
+  /** อ่าน model + effort จาก SystemConfig (TTL 60s) — แถวหาย/ค่าเพี้ยน = ใช้ default */
+  private async resolveModelAndEffort(): Promise<{
+    model: string;
+    effort: string;
+  }> {
     if (
       this.modelCache &&
       Date.now() - this.modelCache.readAt < MODEL_CACHE_TTL_MS
     ) {
-      return this.modelCache.value;
+      return { model: this.modelCache.value, effort: this.modelCache.effort };
     }
     let model = DEFAULT_CLAUDE_MODEL;
+    let effort = DEFAULT_CLAUDE_EFFORT;
     try {
-      const cfg = await this.prisma.systemConfig.findFirst({
-        where: { key: MODEL_CONFIG_KEY, deletedAt: null },
-        select: { value: true },
+      const rows = await this.prisma.systemConfig.findMany({
+        where: {
+          key: { in: [MODEL_CONFIG_KEY, EFFORT_CONFIG_KEY] },
+          deletedAt: null,
+        },
+        select: { key: true, value: true },
       });
-      const raw = (cfg?.value ?? '').trim();
-      if (raw) model = raw;
+      const map = new Map(rows.map((r) => [r.key, r.value]));
+      const rawModel = (map.get(MODEL_CONFIG_KEY) ?? '').trim();
+      if (rawModel) model = rawModel;
+      const rawEffort = (map.get(EFFORT_CONFIG_KEY) ?? '').trim().toLowerCase();
+      if (VALID_EFFORTS.has(rawEffort)) effort = rawEffort;
     } catch (err) {
       this.logger.error(
-        `Failed to read ${MODEL_CONFIG_KEY}: ${err instanceof Error ? err.message : err} — using ${DEFAULT_CLAUDE_MODEL}`,
+        `Failed to read ${MODEL_CONFIG_KEY}/${EFFORT_CONFIG_KEY}: ${err instanceof Error ? err.message : err} — using defaults`,
       );
     }
-    this.modelCache = { value: model, readAt: Date.now() };
-    return model;
+    this.modelCache = { value: model, effort, readAt: Date.now() };
+    return { model, effort };
   }
 
   /**

@@ -6,6 +6,7 @@ import { SalesBotService, SalesBotResult } from '../../sales-bot/sales-bot.servi
 import { LlmProviderRegistry } from '../../sales-bot/providers/llm-provider.registry';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
 import { PersonaService } from './persona.service';
+import { SalesStateService, type SalesState } from './sales-state.service';
 import {
   LLM_PROVIDERS,
   type AiAutoSettings,
@@ -26,6 +27,9 @@ export class AiAutoReplyService {
     @Optional()
     @Inject(forwardRef(() => MessageRouterService))
     private messageRouter?: MessageRouterService,
+    // Optional เพื่อไม่บังคับ mock ใน spec เก่า — prod module ลงทะเบียน provider ให้เสมอ
+    @Optional()
+    private salesState?: SalesStateService,
   ) {}
 
   async shouldAutoReply(session: any): Promise<boolean> {
@@ -115,6 +119,8 @@ export class AiAutoReplyService {
     // สัญลักษณ์เริ่มใหม่ → ตอบยืนยันสั้น ๆ ไม่เรียก LLM; ข้อความก่อนหน้าจะถูกตัดออก
     // จากบริบทของคำถามถัดไปโดย marker ที่ถูกบันทึกไว้ในห้องแล้ว
     if (AiAutoReplyService.isResetMarker(customerMessage)) {
+      // #reset ล้างทั้งประวัติ (marker ตัด window) และสมุดสถานะการขาย
+      void this.salesState?.clear(roomId);
       return {
         reply: 'เริ่มแชทใหม่ให้แล้วค่ะ 😊 สอบถามได้เลยนะคะ',
         confidence: 1,
@@ -129,8 +135,10 @@ export class AiAutoReplyService {
     // Fetch room context (customerId) + last 5 prior messages (duplicate of loadPrior pattern)
     const room = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
-      select: { customerId: true },
+      select: { customerId: true, aiSalesState: true },
     });
+    const prevState = ((room?.aiSalesState as SalesState | null) ?? null) || null;
+    const sessionNote = this.salesState?.buildNote(prevState) ?? undefined;
 
     // ดึงเผื่อ (40) แล้วตัดที่ marker เริ่มใหม่ล่าสุดก่อน ค่อยเหลือ 16 ข้อความหลัง marker
     // 16 (เดิม 5): เทสจริง 2026-08-15 — window 5 ทำให้ "รุ่นที่ลูกค้าสนใจตอนแรก" หลุดความจำ
@@ -159,9 +167,13 @@ export class AiAutoReplyService {
       roomId,
       customerId: room?.customerId ?? null,
       priorMessages,
+      sessionNote,
     });
 
     if (result.confidence < threshold) return null;
+
+    // จดสถานะการขายหลังตอบ — fire-and-forget (Haiku, ไม่ถ่วง latency ของคำตอบ)
+    void this.salesState?.extractAndSave(roomId, prevState, customerMessage, result.reply);
 
     return {
       reply: result.reply,

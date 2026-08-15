@@ -501,7 +501,7 @@ export class MessageRouterService {
     adapter: IChannelAdapter,
     message: InboundMessage,
     roomId: string,
-    attachments?: { productId: string; imageUrl?: string; webUrl?: string }[],
+    attachments?: { productId: string; imageUrl?: string; webUrl?: string; label?: string }[],
   ): Promise<void> {
     if (!attachments?.length) return;
     for (const att of attachments.slice(0, MAX_BOT_ATTACHMENTS)) {
@@ -518,9 +518,9 @@ export class MessageRouterService {
           externalMessageId: sendResult.externalMessageId,
           role: MessageRole.BOT,
           type: MessageType.IMAGE,
-          // `text` ต้องมีค่า — room-list preview อ่านจากคอลัมน์นี้ ถ้าปล่อย null
-          // ห้องจะแสดง preview ว่างหลังบอทส่งรูป (ใช้ค่าเดียวกับฝั่งน้องเบส Task 12)
-          text: '[image]',
+          // `text` ต้องมีค่า — room-list preview อ่านจากคอลัมน์นี้ และเป็น "ความจำรูป"
+          // ของบอท (ประวัติเก็บเฉพาะ text — จดชื่อรุ่นไว้ให้บอทรู้ว่าลูกค้ากำลังดูรูปอะไร)
+          text: att.label ? `[รูป ${att.label}]` : '[image]',
           mediaUrl: att.imageUrl,
           intent: 'AUTO:sales:image',
         });

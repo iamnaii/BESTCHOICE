@@ -40,6 +40,11 @@ export interface SalesBotInput {
   roomId: string;
   customerId: string | null;
   priorMessages?: { role: 'user' | 'assistant'; content: string }[];
+  /**
+   * บันทึกสถานะการขายจาก SalesStateService (สมุดสถานะประจำห้อง) — ฉีดเป็นข้อความแรก
+   * ของประวัติ ไม่ใช่ system block (system โดน prompt cache; note ต่างกันทุกห้อง)
+   */
+  sessionNote?: string;
 }
 
 export type SalesBotAttachment = BotAttachment; // re-export ชื่อเดิมไว้ให้ผู้เรียกอ่านง่าย
@@ -133,6 +138,7 @@ export class SalesBotService {
     ].map(adaptTool);
 
     const messages: LlmChatMessage[] = [
+      ...(input.sessionNote ? [{ role: 'user', content: input.sessionNote } as LlmChatMessage] : []),
       ...(input.priorMessages ?? []).map(
         (m): LlmChatMessage => ({ role: m.role, content: m.content }),
       ),
@@ -160,6 +166,8 @@ export class SalesBotService {
     for (const pm of input.priorMessages ?? []) {
       collectConversationNumbers(pm.content, groundedPrices);
     }
+    // เลขในสมุดสถานะ (งบ/เรทที่จดไว้ข้ามวัน) ก็มีที่มาแล้วเช่นกัน
+    if (input.sessionNote) collectConversationNumbers(input.sessionNote, groundedPrices);
     // ช่องส่งรูป/ลิงก์ — เติมจาก "ผลลัพธ์ tool" เท่านั้น (deterministic)
     const attachments = new Map<string, BotAttachment>();
     let totalIn = 0;

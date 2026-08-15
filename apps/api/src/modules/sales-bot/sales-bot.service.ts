@@ -224,21 +224,27 @@ export class SalesBotService {
         }
 
         // Record + execute every tool call from this turn (typically 1, but
-        // models can request several at once).
+        // models can request several at once — prompt v2.18 encourages calling
+        // them together). Execute in PARALLEL: tools are independent reads
+        // (search/rates/calc/promotions), so concurrent execution shaves the
+        // sum of their latencies down to the max.
+        for (const tc of resp.toolCalls) toolsUsed.push(tc.name);
+        const executed = await Promise.all(
+          resp.toolCalls.map(async (tc) => {
+            try {
+              return { tc, result: await this.runTool(tc.name, tc.input, input.roomId) };
+            } catch (toolError) {
+              // Tag before rethrow — tools are Prisma-backed and can throw for
+              // reasons that have nothing to do with the LLM provider (DB down,
+              // constraint violation, etc). The outer catch reads this flag to
+              // record an honest errorKind instead of always blaming the provider.
+              toolFailed = true;
+              throw toolError;
+            }
+          }),
+        );
         const toolResults: LlmChatMessage[] = [];
-        for (const tc of resp.toolCalls) {
-          toolsUsed.push(tc.name);
-          let result: unknown;
-          try {
-            result = await this.runTool(tc.name, tc.input, input.roomId);
-          } catch (toolError) {
-            // Tag before rethrow — tools are Prisma-backed and can throw for
-            // reasons that have nothing to do with the LLM provider (DB down,
-            // constraint violation, etc). The outer catch reads this flag to
-            // record an honest errorKind instead of always blaming the provider.
-            toolFailed = true;
-            throw toolError;
-          }
+        for (const { tc, result } of executed) {
           collectGroundedPrices(result, groundedPrices);
           collectGroundedPricesFromToolText(tc.name, result, groundedPrices);
           collectAttachmentsFromToolResult(tc.name, result, attachments);

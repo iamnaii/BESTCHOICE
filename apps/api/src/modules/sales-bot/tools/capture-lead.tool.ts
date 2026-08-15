@@ -18,7 +18,15 @@ export const CAPTURE_LEAD_TOOL = {
     properties: {
       customerName: { type: 'string', description: 'ชื่อลูกค้า (ขออย่างน้อย firstname)' },
       phone: { type: 'string', description: 'เบอร์โทร 10 หลัก' },
-      address: { type: 'string', description: 'ที่อยู่จัดส่ง (ตัวเลือก ถ้ามี)' },
+      address: {
+        type: 'string',
+        description:
+          'ที่อยู่ — ห้ามถามลูกค้าเด็ดขาด (ร้านไม่มีบริการจัดส่ง ลูกค้ารับเครื่องที่ร้าน) ใส่เฉพาะเมื่อลูกค้าพิมพ์มาเอง',
+      },
+      visitPlan: {
+        type: 'string',
+        description: 'แผนเข้ามาที่ร้าน/ช่วงที่วางแผนซื้อ ตามคำลูกค้า เช่น "เสาร์นี้บ่าย" "สิ้นเดือน"',
+      },
       productId: {
         type: 'string',
         description: 'productId จาก search_products — เฉพาะของที่มีในสต็อก (ห้ามแต่งเอง)',
@@ -43,6 +51,7 @@ export interface CaptureLeadInput {
   customerName: string;
   phone: string;
   address?: string;
+  visitPlan?: string;
   productId?: string;
   packageChoice?: 'A' | 'B' | 'C';
   productNote?: string;
@@ -192,6 +201,7 @@ export class CaptureLeadTool {
             productNote: input.productNote ?? null,
             downAmount: input.downAmount,
             address: input.address ?? null,
+            visitPlan: input.visitPlan ?? null,
           },
         },
       });

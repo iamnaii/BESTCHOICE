@@ -139,7 +139,7 @@ const SCENARIOS: Scenario[] = [
       // ไม่บังคับ search ในเทิร์นถามตระกูล — ตราบใดที่ไม่เคลมสถานะของ (ชื่อรุ่นย่อย = ความรู้ทั่วไป)
       { user: 'สนใจ 15', contains: ['ธรรมดา', 'Plus', 'Pro Max', '[ตัวเลือก:'], notContains: ['พร้อมส่ง', 'มีของ'], noBigNumbers: true },
       { user: '15 Plus', contains: ['ไม่มีผลิต', '128GB', '256GB', '[ตัวเลือก:'], notContains: ['พร้อมส่ง'], noBigNumbers: true },
-      { user: '128GB', expectTools: ['get_installment_rates'], contains: ['เรทที่ 1', 'เรทที่ 2', '1,900', '2,566', '3,400', '2,905', 'กำลังเข้ามา', 'สเตทเม้นท์', '---', '[ตัวเลือก:'] },
+      { user: '128GB', expectTools: ['get_installment_rates'], contains: ['เรทที่ 1', 'เรทที่ 2', '1,900', '2,566', '3,400', '2,905', 'เข้ามา', 'จอง', 'สเตทเม้นท์', '---', '[ตัวเลือก:'] },
       { user: 'เรทที่ 1', contains: ['สเตทเม้นท์', 'แชทนี้'], notContains: ['อนุมัติแน่นอน'] },
     ],
   },

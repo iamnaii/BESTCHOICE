@@ -218,7 +218,8 @@ export class MessageRouterService {
               .slice(0, 4);
             const parts = bubbles.length > 0 ? bubbles : [replyText];
             for (let i = 0; i < parts.length; i++) {
-              if (i > 0) await new Promise((r) => setTimeout(r, 700));
+              // 350ms (เดิม 700): ยังได้จังหวะ "คนทยอยพิมพ์" แต่เทิร์น 4 ก้อนประหยัด ~1 วิ
+              if (i > 0) await new Promise((r) => setTimeout(r, 350));
               await adapter.sendMessage({
                 externalUserId: message.externalUserId,
                 channel: message.channel,

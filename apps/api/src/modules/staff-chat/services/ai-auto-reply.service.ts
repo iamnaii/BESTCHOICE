@@ -132,17 +132,20 @@ export class AiAutoReplyService {
       select: { customerId: true },
     });
 
-    // ดึงเผื่อ (15) แล้วตัดที่ marker เริ่มใหม่ล่าสุดก่อน ค่อยเหลือ 5 ข้อความหลัง marker
+    // ดึงเผื่อ (40) แล้วตัดที่ marker เริ่มใหม่ล่าสุดก่อน ค่อยเหลือ 16 ข้อความหลัง marker
+    // 16 (เดิม 5): เทสจริง 2026-08-15 — window 5 ทำให้ "รุ่นที่ลูกค้าสนใจตอนแรก" หลุดความจำ
+    // หลังมีรูป/หลายเทิร์นคั่น ("ต่างกันยังไง" แล้วบอทถามกลับว่าเทียบกับอะไร) — บทสนทนาขาย
+    // เต็มเส้นยาว ~14-20 ข้อความ; ต้นทุน input ส่วนเพิ่มถูกเพราะ system+tools โดน cache แล้ว
     const priorRowsRaw = await this.prisma.chatMessage.findMany({
       where: { roomId, deletedAt: null, text: { not: null } },
       orderBy: { createdAt: 'desc' },
-      take: 15,
+      take: 40,
       select: { role: true, text: true },
     });
     const markerIdx = priorRowsRaw.findIndex((r) => AiAutoReplyService.isResetMarker(r.text));
     const priorRows = (markerIdx >= 0 ? priorRowsRaw.slice(0, markerIdx) : priorRowsRaw).slice(
       0,
-      5,
+      16,
     );
     const priorMessages = priorRows.reverse().map((r) => ({
       role: (r.role === MessageRole.BOT || r.role === MessageRole.STAFF

@@ -13,6 +13,14 @@ export interface NetReceiptDueInput {
   advanceBalance?: Decimal.Value;
   /** Whether the advance balance is deducted (cashier "หักเครดิต" toggle). */
   consumeAdvance?: boolean;
+  /**
+   * พักงวดสุดท้าย — reschedule-fee (6a/6b) prepayment parked in 21-1103, separate
+   * from `advanceBalance`. Consumable ONLY when `isLastInstallment` is true —
+   * owner directive 2026-08-16 (park-at-last-installment, not FIFO-next).
+   */
+  rescheduleAdvanceBalance?: Decimal.Value;
+  /** Whether the installment being paid is the contract's LAST installment. Gates rescheduleAdvanceBalance consumption. */
+  isLastInstallment?: boolean;
 }
 
 /**
@@ -37,10 +45,21 @@ export function computeNetReceiptDue(input: NetReceiptDueInput): Decimal {
   const owed = amountDue.plus(netLateFee).minus(amountPaid);
 
   const advance = new Decimal(input.advanceBalance ?? 0);
+  const consumeAdvance = input.consumeAdvance ?? true;
   const consumed =
-    (input.consumeAdvance ?? true) && advance.gt(0)
+    consumeAdvance && advance.gt(0)
       ? Decimal.min(advance, Decimal.max(new Decimal(0), owed))
       : new Decimal(0);
 
-  return Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
+  const owedAfterGeneric = Decimal.max(new Decimal(0), owed.minus(consumed));
+
+  // Park bucket (พักงวดสุดท้าย) — generic advance is consumed FIRST; the park
+  // bucket only covers whatever gap remains, and only on the last installment.
+  const park = new Decimal(input.rescheduleAdvanceBalance ?? 0);
+  const parkConsumed =
+    input.isLastInstallment && consumeAdvance && park.gt(0)
+      ? Decimal.min(park, owedAfterGeneric)
+      : new Decimal(0);
+
+  return Decimal.max(new Decimal(0), owedAfterGeneric.minus(parkConsumed)).toDecimalPlaces(2);
 }

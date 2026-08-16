@@ -9,16 +9,33 @@ interface Props {
   consumeAdvance: boolean;
   /** Toggle the deduction. */
   onToggle: (next: boolean) => void;
+  /**
+   * พักงวดสุดท้าย — reschedule-fee (6a/6b) prepayment, separate from advanceBalance.
+   * Only shown/consumed when `isLastInstallment` is true (owner directive 2026-08-16).
+   */
+  rescheduleAdvanceBalance?: Decimal;
+  /** Whether the installment being paid is the contract's LAST installment. */
+  isLastInstallment?: boolean;
 }
 
 /**
- * Shown when contract.advanceBalance > 0. The checkbox controls whether the
- * parked advance (21-1103) is auto-deducted on save: checked → collect only the
- * net; unchecked → collect the full owed and keep the credit for next time.
+ * Shown when contract.advanceBalance > 0 (or, on the last installment, when
+ * rescheduleAdvanceBalance > 0). The checkbox controls whether the parked
+ * advance (21-1103) is auto-deducted on save: checked → collect only the net;
+ * unchecked → collect the full owed and keep the credit for next time.
  */
-export function AdvanceBalanceBanner({ amountDue, advanceBalance, consumeAdvance, onToggle }: Props) {
-  if (advanceBalance.lte(0)) return null;
-  const netDue = Decimal.max(new Decimal(0), amountDue.minus(advanceBalance));
+export function AdvanceBalanceBanner({
+  amountDue,
+  advanceBalance,
+  consumeAdvance,
+  onToggle,
+  rescheduleAdvanceBalance = new Decimal(0),
+  isLastInstallment = false,
+}: Props) {
+  const park = isLastInstallment ? rescheduleAdvanceBalance : new Decimal(0);
+  const totalCredit = advanceBalance.plus(park);
+  if (totalCredit.lte(0)) return null;
+  const netDue = Decimal.max(new Decimal(0), amountDue.minus(totalCredit));
 
   return (
     <label className="flex items-start gap-2.5 rounded-lg border border-primary/40 bg-primary/5 p-3 cursor-pointer">
@@ -31,10 +48,11 @@ export function AdvanceBalanceBanner({ amountDue, advanceBalance, consumeAdvance
       />
       <div className="min-w-0 space-y-0.5">
         <div className="text-sm font-medium text-foreground leading-snug">
-          มีเครดิตคงเหลือ {advanceBalance.toFixed(2)} ฿
+          มีเครดิตคงเหลือ {totalCredit.toFixed(2)} ฿
         </div>
         <div className="text-xs text-muted-foreground leading-snug">
-          จากชำระงวดก่อนเกิน · พักใน 21-1103 ·{' '}
+          {advanceBalance.gt(0) && `จากชำระงวดก่อนเกิน ${advanceBalance.toFixed(2)} ฿ `}
+          {park.gt(0) && `· พักงวดสุดท้าย ${park.toFixed(2)} ฿ `}· พักใน 21-1103 ·{' '}
           {consumeAdvance ? 'ระบบจะหักอัตโนมัติ' : 'ไม่หัก — เก็บไว้งวดถัดไป'}
         </div>
         <div className="text-xs leading-snug">
@@ -43,9 +61,7 @@ export function AdvanceBalanceBanner({ amountDue, advanceBalance, consumeAdvance
               หักแล้ว เหลือเก็บ {netDue.toFixed(2)} ฿
             </span>
           ) : (
-            <span className="text-muted-foreground">
-              เก็บเต็ม {amountDue.toFixed(2)} ฿
-            </span>
+            <span className="text-muted-foreground">เก็บเต็ม {amountDue.toFixed(2)} ฿</span>
           )}
         </div>
       </div>

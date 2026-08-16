@@ -43,7 +43,9 @@ export interface PendingPayment {
     contractNumber: string;
     totalMonths: number;
     monthlyPayment: string;
-    advanceBalance: string;  // serialized Decimal from API — '0' for most contracts
+    advanceBalance: string; // serialized Decimal from API — '0' for most contracts
+    /** พักงวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a/6b) parked for the LAST installment only. */
+    rescheduleAdvanceBalance: string;
     customer: { id: string; name: string; phone: string };
     branch: { id: string; name: string };
   };
@@ -94,8 +96,14 @@ export interface PendingSummary {
 export const paymentStatusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอชำระ', className: 'bg-muted text-foreground' },
   PAID: { label: 'ชำระแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
-  OVERDUE: { label: 'เกินกำหนด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  OVERDUE: {
+    label: 'เกินกำหนด',
+    className: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  },
+  PARTIALLY_PAID: {
+    label: 'ชำระบางส่วน',
+    className: 'bg-warning/10 text-warning dark:bg-warning/15',
+  },
 };
 
 export const methodLabels: Record<string, string> = {

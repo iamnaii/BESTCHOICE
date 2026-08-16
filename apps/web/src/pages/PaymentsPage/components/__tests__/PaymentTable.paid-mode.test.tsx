@@ -36,6 +36,7 @@ function makePayment(overrides: Partial<PendingPayment> = {}): PendingPayment {
       totalMonths: 12,
       monthlyPayment: '1515.83',
       advanceBalance: '0',
+      rescheduleAdvanceBalance: '0',
       customer: { id: 'cus-1', name: 'ลูกค้า ก', phone: '0812345678' },
       branch: { id: 'br-1', name: 'ลาดพร้าว' },
     },

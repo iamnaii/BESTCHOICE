@@ -1,4 +1,12 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -133,7 +141,11 @@ export class ContractPaymentService {
         total = total.plus(d(p.lateFee));
         continue;
       }
-      const { priorLateFeeBooked } = await reconstructPriorCleared(client, schedId, installmentTotal);
+      const { priorLateFeeBooked } = await reconstructPriorCleared(
+        client,
+        schedId,
+        installmentTotal,
+      );
       const remaining = d(p.lateFee).minus(priorLateFeeBooked);
       if (remaining.gt(0)) total = total.plus(remaining);
     }
@@ -188,6 +200,7 @@ export class ContractPaymentService {
       remainingMonths,
       totalMonths: contract.totalMonths,
       creditBalance: contract.creditBalance,
+      rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
       vatPct: contract.vatPct,
       sellingPrice: contract.sellingPrice,
       downPayment: contract.downPayment,
@@ -207,7 +220,8 @@ export class ContractPaymentService {
     const je = computeEarlyPayoffJE({
       depositAccountCode: epDepositCode,
       financedAmount: contract.financedAmount.toString(),
-      storeCommission: contract.storeCommission != null ? contract.storeCommission.toString() : null,
+      storeCommission:
+        contract.storeCommission != null ? contract.storeCommission.toString() : null,
       interestTotal: contract.interestTotal.toString(),
       vatAmount: contract.vatAmount != null ? contract.vatAmount.toString() : null,
       totalMonths: contract.totalMonths,
@@ -244,7 +258,13 @@ export class ContractPaymentService {
       '42-1103': `ค่าปรับค้างชำระ ${je.lateFees.toFixed(2)} (ไม่คิด VAT)`,
     };
 
-    type JeLine = { accountCode: string; accountName: string; debit: string; credit: string; description: string };
+    type JeLine = {
+      accountCode: string;
+      accountName: string;
+      debit: string;
+      credit: string;
+      description: string;
+    };
     const jeLines: JeLine[] = je.lines.map((l) => ({
       accountCode: l.accountCode,
       accountName: nameOf(l.accountCode),
@@ -352,10 +372,7 @@ export class ContractPaymentService {
           const lateFee = payment.lateFeeWaived ? d(0) : d(payment.lateFee);
           const owed = dSub(dAdd(payment.amountDue, lateFee), payment.amountPaid);
           const owedNum = owed.toNumber();
-          const payAmountNum = Math.min(
-            remainingPayoff.toNumber(),
-            Math.max(0, owedNum),
-          );
+          const payAmountNum = Math.min(remainingPayoff.toNumber(), Math.max(0, owedNum));
           const payAmount = d(payAmountNum);
           remainingPayoff = dSub(remainingPayoff, payAmount);
 
@@ -369,9 +386,7 @@ export class ContractPaymentService {
               recordedById: userId,
               evidenceUrl: dto.slipUrl ?? payment.evidenceUrl,
               gatewayRef: dto.referenceNo ?? payment.gatewayRef,
-              notes: dto.notes
-                ? `[ปิดก่อนกำหนด] ${dto.notes}`
-                : '[ปิดก่อนกำหนด]',
+              notes: dto.notes ? `[ปิดก่อนกำหนด] ${dto.notes}` : '[ปิดก่อนกำหนด]',
             },
           });
         }
@@ -401,7 +416,8 @@ export class ContractPaymentService {
           const epJe = computeEarlyPayoffJE({
             depositAccountCode: effectiveDepositCode,
             financedAmount: epContract.financedAmount.toString(),
-            storeCommission: epContract.storeCommission != null ? epContract.storeCommission.toString() : null,
+            storeCommission:
+              epContract.storeCommission != null ? epContract.storeCommission.toString() : null,
             interestTotal: epContract.interestTotal.toString(),
             vatAmount: epContract.vatAmount != null ? epContract.vatAmount.toString() : null,
             totalMonths: epContract.totalMonths,
@@ -594,7 +610,10 @@ export class ContractPaymentService {
    * calling this twice on an already-released contract posts nothing new
    * (idempotent) — the GL balance nets to 0 after the first release.
    */
-  private async releaseEclOnPayoff(tx: Prisma.TransactionClient, contractId: string): Promise<void> {
+  private async releaseEclOnPayoff(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+  ): Promise<void> {
     const bal = await glContractBalance(tx, contractId, '11-2102', 'cr');
     // Negative 11-2102 = GL anomaly (Dr > Cr — e.g. past mis-posted JE). Same
     // alarm-and-skip convention as JP5/write-off (M1 hardening) — never

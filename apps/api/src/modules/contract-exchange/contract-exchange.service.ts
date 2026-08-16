@@ -102,8 +102,12 @@ export class ContractExchangeService {
     }
 
     const [oldRaw, newRaw] = await Promise.all([
-      this.prisma.product.findUnique({ where: { id: dto.oldProductId } }) as Promise<ProductPriceSnapshot | null>,
-      this.prisma.product.findUnique({ where: { id: dto.newProductId } }) as Promise<ProductPriceSnapshot | null>,
+      this.prisma.product.findUnique({
+        where: { id: dto.oldProductId },
+      }) as Promise<ProductPriceSnapshot | null>,
+      this.prisma.product.findUnique({
+        where: { id: dto.newProductId },
+      }) as Promise<ProductPriceSnapshot | null>,
     ]);
     if (!oldRaw) throw new NotFoundException('ไม่พบเครื่องเดิม');
     if (!newRaw) throw new NotFoundException('ไม่พบเครื่องใหม่');
@@ -216,7 +220,12 @@ export class ContractExchangeService {
     // AUTO tier — อนุมัติทันที (audit ระบุ auto)
     if (tier === 'AUTO') {
       const approved = await this.approve(request.id, user, {});
-      return { ...request, status: 'APPROVED', autoApproved: true, newContractId: approved.newContractId };
+      return {
+        ...request,
+        status: 'APPROVED',
+        autoApproved: true,
+        newContractId: approved.newContractId,
+      };
     }
     return request;
   }
@@ -232,7 +241,9 @@ export class ContractExchangeService {
     },
     user: RequestUser,
   ) {
-    const oldContract = await this.prisma.contract.findUnique({ where: { id: params.oldContractId } });
+    const oldContract = await this.prisma.contract.findUnique({
+      where: { id: params.oldContractId },
+    });
     if (!oldContract || oldContract.deletedAt) throw new NotFoundException('ไม่พบสัญญาเดิม');
     // Task 8 (carry-over from Task 7 review): same in-service branch scoping as
     // submit() — without it any SALES user could read any contract's NCV/GL by UUID.
@@ -248,13 +259,28 @@ export class ContractExchangeService {
     const grossRemainingInclVat = outstanding.gross.plus(outstanding.vatReceivable);
 
     // Blockers (spec §7.0) — เตือนตั้งแต่ preview จะได้ไม่ไปตายตอน finalize
-    const bal2103 = await glContractBalance(this.prisma as any, params.oldContractId, '11-2103', 'dr');
-    const bal21_1103 = await glContractBalance(this.prisma as any, params.oldContractId, '21-1103', 'cr');
+    const bal2103 = await glContractBalance(
+      this.prisma as any,
+      params.oldContractId,
+      '11-2103',
+      'dr',
+    );
+    const bal21_1103 = await glContractBalance(
+      this.prisma as any,
+      params.oldContractId,
+      '21-1103',
+      'cr',
+    );
     const overdueBlocked = bal2103.abs().gte('0.005');
     const advanceBlocked =
       bal21_1103.gte('0.005') ||
       new Decimal(oldContract.advanceBalance.toString()).gt(0) ||
-      new Decimal((oldContract as any).creditBalance?.toString() ?? '0').gt(0);
+      new Decimal((oldContract as any).creditBalance?.toString() ?? '0').gt(0) ||
+      // Park-at-last-installment (2026-08-16): unswept reschedule-fee credit is
+      // also unreconciled customer money — same treatment as advanceBalance/
+      // creditBalance above (block, don't silently orphan it on a swapped-away
+      // contract).
+      new Decimal((oldContract as any).rescheduleAdvanceBalance?.toString() ?? '0').gt(0);
     const hasUnpaidLateFee = !!(await this.prisma.payment.findFirst({
       where: {
         contractId: params.oldContractId,
@@ -276,12 +302,21 @@ export class ContractExchangeService {
         const raw = newProduct.sellingPrice ?? newProduct.installmentPrice;
         const newPrice = raw != null ? new Decimal(raw.toString()) : null;
         if (newPrice) {
-          mode = this.detectMode(oldProduct, newProduct, newPrice, new Decimal(oldContract.sellingPrice.toString()));
+          mode = this.detectMode(
+            oldProduct,
+            newProduct,
+            newPrice,
+            new Decimal(oldContract.sellingPrice.toString()),
+          );
           if (mode === 'PRICED' && params.newTotalMonths) {
             const rate = params.newInterestRate
               ? new Decimal(params.newInterestRate)
               : new Decimal(oldContract.interestRate.toString());
-            plan = computeExchangePlan({ newPrice, months: params.newTotalMonths, monthlyRate: rate });
+            plan = computeExchangePlan({
+              newPrice,
+              months: params.newTotalMonths,
+              monthlyRate: rate,
+            });
           }
         }
       }
@@ -485,9 +520,7 @@ export class ContractExchangeService {
         // old contract may have closed (early payoff / repossession) since.
         // (Legacy branch keeps its remainingMonths<=0 guard instead.)
         if (old.status !== 'ACTIVE') {
-          throw new BadRequestException(
-            `สัญญาเดิมสถานะ ${old.status} — เปลี่ยนเครื่องไม่ได้`,
-          );
+          throw new BadRequestException(`สัญญาเดิมสถานะ ${old.status} — เปลี่ยนเครื่องไม่ได้`);
         }
         // Same price resolver submit() uses (sellingPrice ?? installmentPrice).
         // Legacy product rows may still carry null prices — fail loudly
@@ -685,7 +718,13 @@ export class ContractExchangeService {
   async finalizeAfterActivation(
     newContract: ExchangeContractForFinalize,
     tx: Prisma.TransactionClient,
-  ): Promise<{ je1aId: string; je2Id: string; je3Id: string; je4Id: string; je5Id: string | null }> {
+  ): Promise<{
+    je1aId: string;
+    je2Id: string;
+    je3Id: string;
+    je4Id: string;
+    je5Id: string | null;
+  }> {
     // 1. Resolve SHOP companyId
     const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
 
@@ -717,12 +756,14 @@ export class ContractExchangeService {
     const bal21_1103 = await glContractBalance(tx, oldContractId, '21-1103', 'cr');
     const oldC = await tx.contract.findUniqueOrThrow({
       where: { id: oldContractId },
-      select: { advanceBalance: true, creditBalance: true },
+      select: { advanceBalance: true, creditBalance: true, rescheduleAdvanceBalance: true },
     });
     if (
       bal21_1103.gte('0.005') ||
       new Decimal(oldC.advanceBalance.toString()).gt(0) ||
-      new Decimal((oldC as any).creditBalance?.toString() ?? '0').gt(0)
+      new Decimal((oldC as any).creditBalance?.toString() ?? '0').gt(0) ||
+      // Park-at-last-installment (2026-08-16) — see preview guard above.
+      new Decimal((oldC as any).rescheduleAdvanceBalance?.toString() ?? '0').gt(0)
     ) {
       throw new BadRequestException(
         'มีเงินรับล่วงหน้า/เครดิตค้างบนสัญญาเดิม — ใช้หรือคืนเงินก่อนเปลี่ยนเครื่อง',
@@ -977,7 +1018,12 @@ export class ContractExchangeService {
       where,
       include: {
         oldContract: {
-          select: { id: true, contractNumber: true, exchangedAt: true, customer: { select: { name: true } } },
+          select: {
+            id: true,
+            contractNumber: true,
+            exchangedAt: true,
+            customer: { select: { name: true } },
+          },
         },
         newContract: { select: { id: true, contractNumber: true, status: true } },
       },

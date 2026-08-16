@@ -13,7 +13,10 @@ import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/clien
 import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { RepossessionJP5Template, RepossessionJePreview } from '../journal/cpa-templates/repossession-jp5.template';
+import {
+  RepossessionJP5Template,
+  RepossessionJePreview,
+} from '../journal/cpa-templates/repossession-jp5.template';
 import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.template';
 import { RefundWaiveTemplate } from '../journal/cpa-templates/refund-waive.template';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
@@ -106,7 +109,10 @@ export class RepossessionsService {
     // action without a per-row Receipt lookup. Two small batched queries
     // (never per-row) scoped to just the contracts on this page.
     const contractIds = data.map((r) => r.contract.id).filter(Boolean);
-    const receiptByContractId = new Map<string, { id: string; receiptNumber: string; contractId: string }>();
+    const receiptByContractId = new Map<
+      string,
+      { id: string; receiptNumber: string; contractId: string }
+    >();
     if (contractIds.length) {
       const receipts = await this.prisma.receipt.findMany({
         where: { contractId: { in: contractIds }, cnSource: 'REPOSSESSION', deletedAt: null },
@@ -156,7 +162,14 @@ export class RepossessionsService {
    */
   async previewCalculation(
     contractId: string,
-    options: { marketValue?: number; appraisalPrice?: number; discountPct?: number; customerRefundEnabled?: boolean; depositAccountCode?: string; collectedByShop?: boolean },
+    options: {
+      marketValue?: number;
+      appraisalPrice?: number;
+      discountPct?: number;
+      customerRefundEnabled?: boolean;
+      depositAccountCode?: string;
+      collectedByShop?: boolean;
+    },
     user?: RequestUser,
   ) {
     const contract = await this.prisma.contract.findUnique({
@@ -206,6 +219,7 @@ export class RepossessionsService {
       remainingMonths,
       totalMonths: contract.totalMonths,
       creditBalance: contract.creditBalance,
+      rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
       vatPct: contract.vatPct,
       sellingPrice: contract.sellingPrice,
       downPayment: contract.downPayment,
@@ -259,7 +273,11 @@ export class RepossessionsService {
         id: contract.id,
         contractNumber: contract.contractNumber,
         customer: contract.customer,
-        product: { name: contract.product.name, brand: contract.product.brand, model: contract.product.model },
+        product: {
+          name: contract.product.name,
+          brand: contract.product.brand,
+          model: contract.product.model,
+        },
         totalMonths: contract.totalMonths,
         monthlyPayment: Number(contract.monthlyPayment),
         sellingPrice: Number(contract.sellingPrice),
@@ -404,7 +422,10 @@ export class RepossessionsService {
       for (const p of contract.payments) {
         if (p.status !== 'PAID') {
           const lateFee = p.lateFeeWaived ? new Prisma.Decimal(0) : d(p.lateFee);
-          outstandingBalance = dAdd(outstandingBalance, dSub(dAdd(d(p.amountDue), lateFee), d(p.amountPaid)));
+          outstandingBalance = dAdd(
+            outstandingBalance,
+            dSub(dAdd(d(p.amountDue), lateFee), d(p.amountPaid)),
+          );
           remainingMonths += 1;
         }
         totalPaid = dAdd(totalPaid, d(p.amountPaid));
@@ -427,6 +448,7 @@ export class RepossessionsService {
         remainingMonths,
         totalMonths: contract.totalMonths,
         creditBalance: contract.creditBalance,
+        rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
         vatPct: contract.vatPct,
         sellingPrice: contract.sellingPrice,
         downPayment: contract.downPayment,
@@ -495,9 +517,8 @@ export class RepossessionsService {
       // ลูกหนี้ค้างใน ledger ตลอดกาล. ตอนนี้ ถ้า JE fail ทุกอย่าง rollback.
       let creditNote: { outcome: string; receiptId?: string } | undefined;
       if (outstandingBalance.greaterThan(0)) {
-        const repoValue = dto.appraisalPrice != null
-          ? new Decimal(String(dto.appraisalPrice))
-          : new Decimal('0');
+        const repoValue =
+          dto.appraisalPrice != null ? new Decimal(String(dto.appraisalPrice)) : new Decimal('0');
         // Owner rule 2026-07-08: direct FINANCE receipt = KBank (11-1201) only.
         // collectedByShop mirrors JP4 early payoff — the shop takes the device
         // (and any money) so FINANCE books Dr 11-2107 ลูกหนี้-หน้าร้าน instead;
@@ -800,9 +821,10 @@ export class RepossessionsService {
       // Wave 3 / Task 4 (W-2): use Decimal comparison instead of Number() cast
       // to avoid float precision drift on large amounts.
       if (['READY_FOR_SALE', 'SOLD'].includes(dto.status)) {
-        const resellPrice = dto.resellPrice != null
-          ? new Prisma.Decimal(dto.resellPrice)
-          : new Prisma.Decimal(repo.resellPrice ?? 0);
+        const resellPrice =
+          dto.resellPrice != null
+            ? new Prisma.Decimal(dto.resellPrice)
+            : new Prisma.Decimal(repo.resellPrice ?? 0);
         if (resellPrice.lessThanOrEqualTo(0)) {
           throw new BadRequestException('กรุณาระบุราคาขายต่อก่อนเปลี่ยนสถานะ');
         }
@@ -859,9 +881,10 @@ export class RepossessionsService {
         if (dto.status === 'SOLD' && user?.id) {
           // Wave 3 / Task 4 (W-2): build Decimal directly from repo value
           // (skip Number() round-trip that loses precision on large amounts).
-          const resellPrice = dto.resellPrice != null
-            ? new Prisma.Decimal(dto.resellPrice)
-            : new Prisma.Decimal(repo.resellPrice ?? 0);
+          const resellPrice =
+            dto.resellPrice != null
+              ? new Prisma.Decimal(dto.resellPrice)
+              : new Prisma.Decimal(repo.resellPrice ?? 0);
           const costPrice = new Prisma.Decimal(
             (repo.product as unknown as { costPrice?: number | Prisma.Decimal })?.costPrice ?? 0,
           );
@@ -921,7 +944,9 @@ export class RepossessionsService {
         where: { id: repo.product.id },
         data: {
           status: 'REFURBISHED',
-          costPrice: appraisalPrice.greaterThan(0) ? appraisalPrice : new Prisma.Decimal(resellPrice),
+          costPrice: appraisalPrice.greaterThan(0)
+            ? appraisalPrice
+            : new Prisma.Decimal(resellPrice),
           stockInDate: new Date(),
           ...(mainWarehouse ? { branchId: mainWarehouse.id } : {}),
         },

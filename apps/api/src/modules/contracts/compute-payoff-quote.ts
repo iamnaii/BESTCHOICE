@@ -17,6 +17,13 @@ export interface PayoffQuoteInput {
   remainingMonths: number;
   totalMonths: number;
   creditBalance: DecimalInput;
+  /**
+   * พักงวดสุดท้าย (Contract.rescheduleAdvanceBalance) — ค่าธรรมเนียมปรับดิว (6a/6b)
+   * ที่พักรอหักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16). ปิดสัญญาก่อนกำหนด/ยึดคืน = ลูกค้า
+   * ไม่มีงวดสุดท้ายให้หักแล้ว จึงต้องคืนเป็นเครดิตหักยอดปิดสัญญาเช่นเดียวกับ creditBalance.
+   * Optional — omit หรือ undefined = 0 (ค่าเดิม ไม่กระทบ caller ที่ยังไม่ส่งมา).
+   */
+  rescheduleAdvanceBalance?: DecimalInput;
   /** สัดส่วน VAT เช่น 0.07 (0 หรือ null = ไม่มี VAT) */
   vatPct: DecimalInput;
   sellingPrice: DecimalInput;
@@ -74,10 +81,16 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
   const totalRemaining = round2(dMul(monthlyPayment, input.remainingMonths));
 
   // (2) ยอดชำระล่วงหน้า / partial credit
+  // + พักงวดสุดท้าย (rescheduleAdvanceBalance) — ลูกค้าไม่มีงวดสุดท้ายให้หักแล้ว
+  // (ปิดก่อนกำหนด/ยึดคืน) จึงคืนเป็นเครดิตหักยอดปิดสัญญาเหมือน creditBalance
+  // (คำสั่งเจ้าของ 2026-08-16). ไม่แตะ Contract.advanceBalance ทั่วไป — จุดนั้นเป็น
+  // gap เดิมที่แยกออกจากงานนี้ (ดูรายงาน readers table).
   const partialPaid = dSum(
     input.payments.filter((p) => p.status === 'PARTIALLY_PAID').map((p) => d(p.amountPaid)),
   );
-  const advancePayment = round2(dAdd(d(input.creditBalance), partialPaid));
+  const advancePayment = round2(
+    dAdd(dAdd(d(input.creditBalance), d(input.rescheduleAdvanceBalance ?? 0)), partialPaid),
+  );
 
   // (3) คงเหลือยอดค้าง
   const remainingBalance = round2(dSub(totalRemaining, advancePayment));
@@ -105,9 +118,7 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
 
   // (8) ยอดชำระปิดยอด — ค่าปรับบวกทั้งก้อน (ไม่คิด VAT ไม่ลด ตามนโยบาย)
   const unpaidLateFees = dSum(
-    input.payments
-      .filter((p) => p.status !== 'PAID' && !p.lateFeeWaived)
-      .map((p) => d(p.lateFee)),
+    input.payments.filter((p) => p.status !== 'PAID' && !p.lateFeeWaived).map((p) => d(p.lateFee)),
   ).toNumber();
   const payoffBeforeLateFees = Math.max(0, round2(dSub(remainingBalance, discountAmount)));
   const totalPayoff = round2(dAdd(payoffBeforeLateFees, unpaidLateFees));

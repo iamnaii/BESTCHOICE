@@ -11,10 +11,7 @@ import { loadLateFeeConfig, resolveLivePaymentLateFee } from '../../../utils/lat
  * covered. Returns `null` when neither bound is supplied (= "ทั้งหมด", no
  * filter). Bad/empty inputs are ignored gracefully.
  */
-function buildDueDateRange(
-  dueFrom?: string,
-  dueTo?: string,
-): { gte?: Date; lt?: Date } | null {
+function buildDueDateRange(dueFrom?: string, dueTo?: string): { gte?: Date; lt?: Date } | null {
   const range: { gte?: Date; lt?: Date } = {};
   if (dueFrom) {
     const f = new Date(dueFrom);
@@ -81,9 +78,12 @@ export class PaymentQueryService {
       contract: {
         contractNumber: contract.contractNumber,
         customerName: contract.customer?.name ?? null,
-        productName: contract.product ? `${contract.product.brand} ${contract.product.model}` : null,
+        productName: contract.product
+          ? `${contract.product.brand} ${contract.product.model}`
+          : null,
         totalMonths: contract.totalMonths,
         advanceBalance: contract.advanceBalance,
+        rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
       },
     };
   }
@@ -129,9 +129,24 @@ export class PaymentQueryService {
         OR: [
           { AND: [{ metadata: byContract }, { metadata: { path: ['tag'], equals: 'receipt' } }] },
           { AND: [{ metadata: byContract }, { metadata: { path: ['tag'], equals: '2B' } }] },
-          { AND: [{ metadata: byContract }, { metadata: { path: ['tag'], equals: 'credit-allocation' } }] },
-          { AND: [{ metadata: byContract }, { metadata: { path: ['tag'], equals: 'overpayment-credit' } }] },
-          { AND: [{ metadata: byContract }, { metadata: { path: ['flow'], equals: 'early-payoff' } }] },
+          {
+            AND: [
+              { metadata: byContract },
+              { metadata: { path: ['tag'], equals: 'credit-allocation' } },
+            ],
+          },
+          {
+            AND: [
+              { metadata: byContract },
+              { metadata: { path: ['tag'], equals: 'overpayment-credit' } },
+            ],
+          },
+          {
+            AND: [
+              { metadata: byContract },
+              { metadata: { path: ['flow'], equals: 'early-payoff' } },
+            ],
+          },
         ],
       },
       include: { lines: lineSelect },
@@ -291,6 +306,7 @@ export class PaymentQueryService {
               totalMonths: true,
               monthlyPayment: true,
               advanceBalance: true,
+              rescheduleAdvanceBalance: true,
               customer: { select: { id: true, name: true, phone: true } },
               branch: { select: { id: true, name: true } },
             },
@@ -318,7 +334,11 @@ export class PaymentQueryService {
     // 52-1105) — returning the gross fee would make the row read as an
     // underpayment. Clamped at 0 because the standalone waiver flow zeroes
     // lateFee AND sets waivedAmount, so an unclamped subtraction goes negative.
-    const netStoredFee = (p: { lateFee: Prisma.Decimal; lateFeeWaived: boolean; waivedAmount: Prisma.Decimal | null }) =>
+    const netStoredFee = (p: {
+      lateFee: Prisma.Decimal;
+      lateFeeWaived: boolean;
+      waivedAmount: Prisma.Decimal | null;
+    }) =>
       p.lateFeeWaived
         ? Prisma.Decimal.max(0, new Prisma.Decimal(p.lateFee).sub(p.waivedAmount ?? 0))
         : p.lateFee;
@@ -339,11 +359,7 @@ export class PaymentQueryService {
   //   waivedLateFee          → Dr 52-1105 (ส่วนลด/อนุโลมค่าปรับ)
   //   overdue60Count         → trigger 21-2103 (VAT บังคับ-ลูกหนี้ค้าง 60 วัน)
   //   collected*             ยอด/รายการที่เก็บได้แล้วของงวดในช่วงนี้
-  async getPendingSummary(filters: {
-    branchId?: string;
-    dueFrom?: string;
-    dueTo?: string;
-  }) {
+  async getPendingSummary(filters: { branchId?: string; dueFrom?: string; dueTo?: string }) {
     // Only count APPROVED contracts — mirrors getPendingPayments so the cards
     // and the list never disagree.
     const contractWhere: Record<string, unknown> = {
@@ -374,7 +390,12 @@ export class PaymentQueryService {
     cutoff.setDate(cutoff.getDate() - 60);
     const overdueDueDate: Record<string, unknown> = { ...(dueDate ?? {}), lte: cutoff };
 
-    const pendingWhere = { deletedAt: null, status: { in: PENDING_STATUSES }, contract: contractWhere, ...(dueDate ? { dueDate } : {}) };
+    const pendingWhere = {
+      deletedAt: null,
+      status: { in: PENDING_STATUSES },
+      contract: contractWhere,
+      ...(dueDate ? { dueDate } : {}),
+    };
 
     const [pending, waived, overdue60Count, collected, pendingRows, cfg] = await Promise.all([
       // Pending bucket: count + outstanding principal (late fee computed live below)
@@ -385,16 +406,31 @@ export class PaymentQueryService {
       }),
       // Waived bucket: late fees written down (อนุโลม) — any status
       this.prisma.payment.aggregate({
-        where: { deletedAt: null, lateFeeWaived: true, contract: contractWhere, ...(dueDate ? { dueDate } : {}) },
+        where: {
+          deletedAt: null,
+          lateFeeWaived: true,
+          contract: contractWhere,
+          ...(dueDate ? { dueDate } : {}),
+        },
         _sum: { waivedAmount: true },
       }),
       // Overdue ≥ 60 days bucket: still-unpaid installments past the cutoff
       this.prisma.payment.count({
-        where: { deletedAt: null, status: { in: UNPAID_OVERDUE_STATUSES }, contract: contractWhere, dueDate: overdueDueDate },
+        where: {
+          deletedAt: null,
+          status: { in: UNPAID_OVERDUE_STATUSES },
+          contract: contractWhere,
+          dueDate: overdueDueDate,
+        },
       }),
       // Collected bucket: money actually received for installments due in range
       this.prisma.payment.aggregate({
-        where: { deletedAt: null, amountPaid: { gt: 0 }, contract: contractWhere, ...(dueDate ? { dueDate } : {}) },
+        where: {
+          deletedAt: null,
+          amountPaid: { gt: 0 },
+          contract: contractWhere,
+          ...(dueDate ? { dueDate } : {}),
+        },
         _count: true,
         _sum: { amountPaid: true },
       }),
@@ -407,8 +443,7 @@ export class PaymentQueryService {
       loadLateFeeConfig(this.prisma),
     ]);
 
-    const dec = (v: Prisma.Decimal | number | null | undefined) =>
-      new Prisma.Decimal(v ?? 0);
+    const dec = (v: Prisma.Decimal | number | null | undefined) => new Prisma.Decimal(v ?? 0);
     const outstandingPrincipal = dec(pending._sum?.amountDue)
       .sub(dec(pending._sum?.amountPaid))
       .toDecimalPlaces(2)
@@ -416,10 +451,7 @@ export class PaymentQueryService {
 
     const now = new Date();
     const outstandingLateFee = pendingRows
-      .reduce(
-        (sum, p) => sum.add(resolveLivePaymentLateFee(p, cfg, now)),
-        new Prisma.Decimal(0),
-      )
+      .reduce((sum, p) => sum.add(resolveLivePaymentLateFee(p, cfg, now)), new Prisma.Decimal(0))
       .toDecimalPlaces(2)
       .toNumber();
 

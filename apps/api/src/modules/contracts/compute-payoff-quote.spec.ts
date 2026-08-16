@@ -113,4 +113,34 @@ describe('computePayoffQuote', () => {
       expect(q.remainingExVat).toBe(q.remainingBalance);
     });
   });
+
+  describe('park-at-last-installment (owner directive 2026-08-16)', () => {
+    it('omitting rescheduleAdvanceBalance behaves exactly as before (backward-compatible default 0)', () => {
+      const q = computePayoffQuote(prodCaseInput());
+      expect(q.advancePayment).toBe(0);
+      expect(q.totalPayoff).toBe(33411.96); // same golden as the base case above
+    });
+
+    it('nets rescheduleAdvanceBalance into advancePayment alongside creditBalance + PARTIALLY_PAID (customer credit — parked fee has nowhere left to relieve into once the contract closes)', () => {
+      const input = prodCaseInput();
+      input.payments[0].status = 'PARTIALLY_PAID';
+      input.payments[0].amountPaid = decimal(1000);
+      const q = computePayoffQuote({
+        ...input,
+        creditBalance: decimal(500),
+        rescheduleAdvanceBalance: decimal(354),
+      });
+
+      // 500 (creditBalance) + 1000 (PARTIALLY_PAID) + 354 (park) = 1854
+      expect(q.advancePayment).toBe(1854);
+      expect(q.remainingBalance).toBe(42198); // 44052 − 1854
+    });
+
+    it('does NOT double count when rescheduleAdvanceBalance is 0 (explicit zero == omitted)', () => {
+      const q1 = computePayoffQuote(prodCaseInput());
+      const q2 = computePayoffQuote({ ...prodCaseInput(), rescheduleAdvanceBalance: decimal(0) });
+      expect(q2.advancePayment).toBe(q1.advancePayment);
+      expect(q2.totalPayoff).toBe(q1.totalPayoff);
+    });
+  });
 });

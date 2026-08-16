@@ -81,6 +81,20 @@ export class AiAutoReplyService {
       this.logger.log(
         `[ShouldAutoReply] room=${session.id} skip=capHit24h sentCount=${sentCount} cap=${settings.aiAutoMaxRepliesPerSession}`,
       );
+      // ชนแคป = คุยเข้มข้นผิดปกติ/ลูป — ปักธงให้ห้องเด้งเข้าคิว "ต้องตอบ" หนึ่งครั้ง
+      // (ห้องที่ handoffMode แล้วถูกกรองไว้บนสุดของฟังก์ชัน — จึงไม่ปักซ้ำ)
+      try {
+        await this.prisma.chatRoom.update({
+          where: { id: session.id },
+          data: {
+            handoffMode: true,
+            handoffReason: 'บอทตอบครบโควต้า 24 ชม. — ส่งต่อพนักงาน',
+            handoffTaggedAt: new Date(),
+          },
+        });
+      } catch {
+        // best-effort — พลาดก็แค่ไม่มีธง log ยังอยู่
+      }
       return false;
     }
 
@@ -138,14 +152,32 @@ export class AiAutoReplyService {
       select: { customerId: true, aiSalesState: true },
     });
     const prevState = ((room?.aiSalesState as SalesState | null) ?? null) || null;
-    const sessionNote = this.salesState?.buildNote(prevState) ?? undefined;
+    // อายุสมุดสถานะ: >48 ชม. = ราคา/เรทในโน้ตอาจเก่า (ห้าม seed เป็น grounded — บังคับ
+    // เรียก tool ใหม่ก่อนทวนราคา) · >14 วัน = เหลือไว้แค่รุ่นที่สนใจ (งบ/เรทเก่าเกินกว่าจะเชื่อ)
+    const stateAgeMs = prevState?.updatedAt
+      ? Date.now() - new Date(prevState.updatedAt).getTime()
+      : 0;
+    const noteIsStale = stateAgeMs > 48 * 3_600_000;
+    const noteState =
+      prevState && stateAgeMs > 14 * 24 * 3_600_000
+        ? ({ interestModel: prevState.interestModel, updatedAt: prevState.updatedAt } as SalesState)
+        : prevState;
+    const sessionNote = this.salesState?.buildNote(noteState) ?? undefined;
 
     // ดึงเผื่อ (40) แล้วตัดที่ marker เริ่มใหม่ล่าสุดก่อน ค่อยเหลือ 16 ข้อความหลัง marker
     // 16 (เดิม 5): เทสจริง 2026-08-15 — window 5 ทำให้ "รุ่นที่ลูกค้าสนใจตอนแรก" หลุดความจำ
     // หลังมีรูป/หลายเทิร์นคั่น ("ต่างกันยังไง" แล้วบอทถามกลับว่าเทียบกับอะไร) — บทสนทนาขาย
     // เต็มเส้นยาว ~14-20 ข้อความ; ต้นทุน input ส่วนเพิ่มถูกเพราะ system+tools โดน cache แล้ว
     const priorRowsRaw = await this.prisma.chatMessage.findMany({
-      where: { roomId, deletedAt: null, text: { not: null } },
+      // จำกัดอายุ 7 วัน: ลูกค้าเก่าหาย 3 เดือนแล้วทัก "สวัสดี" ไม่ควรเจอบทสนทนา
+      // เดือนพฤษภาเหมือนเพิ่งคุยเมื่อกี้ (ราคา/ดีลเก่าจะโดนลากมาทวน) — บริบทข้ามช่วง
+      // ให้สมุดสถานะ (sessionNote พร้อมอายุกำกับ) เป็นคนเล่าแทน
+      where: {
+        roomId,
+        deletedAt: null,
+        text: { not: null },
+        createdAt: { gte: new Date(Date.now() - 7 * 24 * 3_600_000) },
+      },
       orderBy: { createdAt: 'desc' },
       take: 40,
       select: { role: true, text: true },
@@ -168,6 +200,7 @@ export class AiAutoReplyService {
       customerId: room?.customerId ?? null,
       priorMessages,
       sessionNote,
+      sessionNoteStale: noteIsStale,
     });
 
     if (result.confidence < threshold) return null;

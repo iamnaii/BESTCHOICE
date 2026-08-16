@@ -101,7 +101,27 @@ export class MessageRouterService {
    * 7. Send reply through adapter
    * 8. Save outbound message
    */
+  /**
+   * คิวประมวลผลต่อ (channel, ลูกค้า) — ลูกค้าพิมพ์รัวหลายข้อความติดกันคือ webhook
+   * หลายลูกวิ่งขนาน → AI หลายเทิร์นซ้อนในห้องเดียว (ตอบสลับลำดับ, เทิร์นหลังไม่เห็น
+   * คำตอบเทิร์นแรกใน history, จ่ายโทเคนคูณ) — จับเรียงเป็นลูกโซ่ต่อคีย์เดียวกัน
+   */
+  private readonly inboundChains = new Map<string, Promise<unknown>>();
+
   async routeInbound(message: InboundMessage): Promise<void> {
+    const chainKey = `${message.channel}:${message.externalUserId}`;
+    const prev = this.inboundChains.get(chainKey) ?? Promise.resolve();
+    const run = prev.then(() => this.routeInboundInner(message));
+    // เก็บลง map แบบกลืน error — เทิร์นถัดไปต้องไม่ตายตามเทิร์นก่อนหน้า
+    const settled = run.catch(() => undefined);
+    this.inboundChains.set(chainKey, settled);
+    void settled.then(() => {
+      if (this.inboundChains.get(chainKey) === settled) this.inboundChains.delete(chainKey);
+    });
+    return run;
+  }
+
+  private async routeInboundInner(message: InboundMessage): Promise<void> {
     // 0. Best-effort profile fetch — never block webhook on profile API issues
     const adapter = this.adapterMap.get(message.channel);
     let profile: { displayName?: string; avatarUrl?: string } | null = null;
@@ -189,6 +209,28 @@ export class MessageRouterService {
         }
         const result = await this.aiAutoReplyService.autoReply(room.id, customerMessage);
 
+        // เทิร์น LLM กิน 10-30s — พนักงานอาจ takeover (aiPaused) หรือห้องเข้าสถานะ
+        // handoff ระหว่างที่บอทคิด: อ่านสถานะสดอีกครั้งก่อนส่ง ไม่งั้นบอทยิงคำตอบ
+        // ทับหลังพนักงานที่เพิ่งตอบไป (คำตอบไม่หาย — เก็บใน log autoSent=false)
+        if (result !== null) {
+          const fresh = await this.roomManager.findById(room.id);
+          if (fresh?.aiPaused || fresh?.handoffMode) {
+            await this.aiAutoReplyService.logAutoReply({
+              roomId: room.id,
+              customerMessage,
+              aiReply: result.reply,
+              confidence: result.confidence,
+              autoSent: false,
+              handoffReason: 'พนักงาน takeover ระหว่างบอทกำลังคิด',
+              toolsUsed: result.toolsUsed,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+            });
+            this.logger.log(`[AiAutoReply] Suppressed reply for room ${room.id} — staff took over mid-turn`);
+            return;
+          }
+        }
+
         if (result !== null) {
           // AI is confident — send reply and skip further processing
           const adapter = this.adapterMap.get(message.channel);
@@ -221,10 +263,14 @@ export class MessageRouterService {
               .filter(Boolean)
               .slice(0, 4);
             const parts = bubbles.length > 0 ? bubbles : [replyText];
+            // FB อาจปฏิเสธการส่ง (rate limit/ลูกค้าบล็อกเพจ/token) — เดิมไม่เช็คผลเลย
+            // ระบบบันทึกเหมือนส่งสำเร็จทั้งที่ลูกค้าไม่ได้อะไร; ตอนนี้ bubble แรกล่ม =
+            // นับว่าเทิร์นล่ม → ปักธงพนักงาน, bubble หลังล่ม = ตัดที่เหลือทิ้ง (แรกถึงแล้ว)
+            let firstBubbleFailed = false;
             for (let i = 0; i < parts.length; i++) {
               // 350ms (เดิม 700): ยังได้จังหวะ "คนทยอยพิมพ์" แต่เทิร์น 4 ก้อนประหยัด ~1 วิ
               if (i > 0) await new Promise((r) => setTimeout(r, 350));
-              await adapter.sendMessage({
+              const sendResult = await adapter.sendMessage({
                 externalUserId: message.externalUserId,
                 channel: message.channel,
                 type: 'TEXT' as any,
@@ -233,6 +279,13 @@ export class MessageRouterService {
                 // ปุ่มกดต้องอยู่ข้อความสุดท้าย (FB/LINE แสดง quick reply เฉพาะข้อความล่าสุด)
                 ...(i === parts.length - 1 && quickReplies ? { quickReplies } : {}),
               });
+              if (sendResult && sendResult.success === false) {
+                this.logger.error(
+                  `[AiAutoReply] ส่ง bubble ${i + 1}/${parts.length} ไม่สำเร็จ room=${room.id}: ${sendResult.error ?? 'unknown'}`,
+                );
+                if (i === 0) firstBubbleFailed = true;
+                break;
+              }
               await this.roomManager.saveMessage({
                 roomId: room.id,
                 role: MessageRole.BOT,
@@ -247,6 +300,27 @@ export class MessageRouterService {
                     }
                   : {}),
               });
+            }
+            if (firstBubbleFailed) {
+              // ลูกค้าไม่ได้รับอะไรเลย — บันทึกตามจริง + ปักธงให้พนักงานตามต่อ
+              await this.aiAutoReplyService.logAutoReply({
+                roomId: room.id,
+                customerMessage,
+                aiReply: result.reply,
+                confidence: result.confidence,
+                autoSent: false,
+                handoffReason: 'ส่งข้อความไม่สำเร็จ (channel error)',
+                toolsUsed: result.toolsUsed,
+                inputTokens: result.inputTokens,
+                outputTokens: result.outputTokens,
+              });
+              await this.handoffManager.initiateHandoff({
+                roomId: room.id,
+                reason: 'ส่งคำตอบบอทไม่สำเร็จ — ให้พนักงานติดต่อลูกค้า',
+                priority: 'normal',
+                summary: customerMessage,
+              });
+              return;
             }
             // B3 §5 — ส่งรูปสินค้าตามหลังข้อความ (best-effort)
             await this.sendBotAttachments(adapter, message, room.id, result.attachments);
@@ -506,11 +580,25 @@ export class MessageRouterService {
     mediaUrl?: string;
     staffId?: string;
     externalMessageId?: string;
+    /** true = echo จากแอปอื่นที่ยืนยันได้ (มี FACEBOOK_APP_ID เทียบ) → pause AI ห้องนี้ */
+    pauseAi?: boolean;
   }): Promise<void> {
     const room = await this.roomManager.getOrCreateRoom({
       externalUserId: params.externalUserId,
       channel: params.channel,
     });
+    // echo STAFF จากแอปอื่น (พนักงานตอบผ่าน Meta Business Suite/แอป Page มือถือ)
+    // = takeover เช่นเดียวกับพิมพ์จาก inbox — หยุด AI ห้องนี้ กันบอทแทรก
+    if (params.role === MessageRole.STAFF && params.pauseAi) {
+      void this.roomManager
+        .pauseAiIfActive?.(room.id, params.staffId)
+        ?.then((paused) => {
+          if (paused) {
+            this.gateway?.emitRoomUpdate(room.id, { roomId: room.id, aiPaused: true });
+          }
+        })
+        ?.catch(() => undefined);
+    }
     try {
       await this.roomManager.saveMessage({
         roomId: room.id,
@@ -690,6 +778,22 @@ export class MessageRouterService {
       this.logger.error(error);
       return { success: false, error };
     }
+
+    // พนักงานพิมพ์เอง = takeover โดยพฤตินัย — หยุด AI ห้องนี้ทันที (กันบอทแทรกกลาง
+    // การเจรจา) ปลดด้วยปุ่ม "คืนให้ AI" ตามเดิม; best-effort ไม่บล็อกการส่ง
+    // (?. — spec หลายตัว mock roomManager บางส่วน ไม่มีเมธอดนี้)
+    void this.roomManager
+      .pauseAiIfActive?.(params.roomId, params.staffId)
+      ?.then((paused) => {
+        if (paused) {
+          this.gateway?.emitRoomUpdate(params.roomId, {
+            roomId: params.roomId,
+            aiPaused: true,
+            aiPausedById: params.staffId,
+          });
+        }
+      })
+      ?.catch(() => undefined);
 
     // Idempotency: reuse the row for this clientMessageId if it already exists.
     let saved = params.clientMessageId

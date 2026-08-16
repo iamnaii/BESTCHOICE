@@ -24,6 +24,8 @@ const RATE_CARD: Record<string, ModelRate> = {
   'claude-sonnet-4-5-20250514': { inputPer1M: 3, outputPer1M: 15 },
   'claude-sonnet-4-6': { inputPer1M: 3, outputPer1M: 15 },
   'claude-haiku-4-5-20251001': { inputPer1M: 0.8, outputPer1M: 4 },
+  // Claude 5 (SHOP sales-bot ตัวหลักตั้งแต่ 2026-08-14) — ราคาระดับ Sonnet เดิม
+  'claude-sonnet-5': { inputPer1M: 3, outputPer1M: 15 },
   // Gemini (SHOP sales-bot alternate provider) — https://ai.google.dev/pricing
   // (snapshot 2026-07)
   'gemini-2.5-flash-lite': { inputPer1M: 0.1, outputPer1M: 0.4 },

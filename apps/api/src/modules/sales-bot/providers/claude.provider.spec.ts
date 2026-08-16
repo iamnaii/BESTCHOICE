@@ -151,7 +151,7 @@ describe('ClaudeProvider', () => {
     expect(call.tools[1].cache_control).toEqual({ type: 'ephemeral' });
   });
 
-  it('sums cache read/write tokens into inputTokens for usage logging', async () => {
+  it('inputTokens = billing-equivalent (cache read ×0.1, cache write ×1.25) — cost ตรงบิลจริง', async () => {
     createMock.mockResolvedValue({
       content: [{ type: 'text', text: 'ok' }],
       usage: {
@@ -165,7 +165,9 @@ describe('ClaudeProvider', () => {
       systemPrompt: 'persona',
       messages: [{ role: 'user', content: 'hi' }],
     });
-    expect(resp.inputTokens).toBe(9800);
+    // 300 + 9000×0.1 + 500×1.25 = 300 + 900 + 625 = 1825
+    // (เดิมรวมดิบ 9800 → costUsd โชว์แพงเกินจริง ~5 เท่าเพราะ cache read จ่ายแค่ 0.1×)
+    expect(resp.inputTokens).toBe(1825);
   });
 
   it('parses tool_use blocks → LlmToolCall[]', async () => {

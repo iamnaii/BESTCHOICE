@@ -18,6 +18,8 @@ function makeRouter(opts: {
 }) {
   const room = opts.room ?? { id: 'r1', handoffMode: false, aiPaused: false, verifiedAt: null };
   const roomManager = {
+    pauseAiIfActive: jest.fn().mockResolvedValue(false),
+    findById: jest.fn().mockResolvedValue({ aiPaused: false, handoffMode: false }),
     getOrCreateRoom: jest.fn().mockResolvedValue(room),
     saveMessage: jest.fn().mockResolvedValue({ id: 'm1' }),
   };
@@ -191,6 +193,7 @@ function makeStaffSender() {
   const store = new Map<string, any>();
   let seq = 0;
   const roomManager = {
+    pauseAiIfActive: jest.fn().mockResolvedValue(false),
     findById: jest.fn().mockResolvedValue(room),
     findByClientMessageId: jest.fn(async (_roomId: string, token: string) => store.get(token) ?? null),
     saveMessage: jest.fn(async (p: any) => {

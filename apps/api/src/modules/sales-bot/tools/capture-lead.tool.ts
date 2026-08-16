@@ -219,13 +219,15 @@ export class CaptureLeadTool {
 
     // Generate PromptPay QR if configured; fall back to lead-only otherwise
     let promptPayQr: string | null = null;
-    let handoffMessage = `ทางแอดมินจะส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท ให้พี่ในแชทนี้นะคะ 🙏`;
+    // ประโยคท้าย = privacy notice ตาม พ.ร.บ.คุ้มครองข้อมูลฯ (ใช้ข้อมูลเพื่อคำสั่งซื้อนี้เท่านั้น)
+    const pdpaNote = 'ข้อมูลชื่อ-เบอร์จะใช้ติดต่อเรื่องคำสั่งซื้อนี้เท่านั้นนะคะ';
+    let handoffMessage = `ทางแอดมินจะส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท ให้พี่ในแชทนี้นะคะ 🙏 ${pdpaNote}`;
 
     if (promptpayId) {
       try {
         const payload = generatePayload(promptpayId, { amount: input.downAmount });
         promptPayQr = await QRCode.toDataURL(payload);
-        handoffMessage = `ส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท แล้วนะคะ พอโอนเสร็จแอดมินจะติดต่อกลับเพื่อยืนยันสัญญาค่ะ 🙏`;
+        handoffMessage = `ส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท แล้วนะคะ พอโอนเสร็จแอดมินจะติดต่อกลับเพื่อยืนยันสัญญาค่ะ 🙏 ${pdpaNote}`;
       } catch (err) {
         this.logger.error(
           `PromptPay QR generation failed for room ${input.roomId}: ${err instanceof Error ? err.message : err}`,

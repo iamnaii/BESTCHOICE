@@ -45,6 +45,8 @@ export interface SalesBotInput {
    * ของประวัติ ไม่ใช่ system block (system โดน prompt cache; note ต่างกันทุกห้อง)
    */
   sessionNote?: string;
+  /** โน้ตเก่ากว่า 48 ชม. — ห้าม seed เลขในโน้ตเป็น grounded (เรทอาจเปลี่ยน ต้องเรียก tool ใหม่) */
+  sessionNoteStale?: boolean;
 }
 
 export type SalesBotAttachment = BotAttachment; // re-export ชื่อเดิมไว้ให้ผู้เรียกอ่านง่าย
@@ -166,8 +168,11 @@ export class SalesBotService {
     for (const pm of input.priorMessages ?? []) {
       collectConversationNumbers(pm.content, groundedPrices);
     }
-    // เลขในสมุดสถานะ (งบ/เรทที่จดไว้ข้ามวัน) ก็มีที่มาแล้วเช่นกัน
-    if (input.sessionNote) collectConversationNumbers(input.sessionNote, groundedPrices);
+    // เลขในสมุดสถานะ (งบ/เรทที่จดไว้ข้ามวัน) ก็มีที่มาแล้วเช่นกัน — ยกเว้นโน้ตเก่า
+    // (>48 ชม.): ราคา/เรทอาจเปลี่ยนแล้ว บังคับให้บอทเรียก tool ใหม่ก่อนทวนตัวเลข
+    if (input.sessionNote && !input.sessionNoteStale) {
+      collectConversationNumbers(input.sessionNote, groundedPrices);
+    }
     // ช่องส่งรูป/ลิงก์ — เติมจาก "ผลลัพธ์ tool" เท่านั้น (deterministic)
     const attachments = new Map<string, BotAttachment>();
     let totalIn = 0;

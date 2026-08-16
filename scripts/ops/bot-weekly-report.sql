@@ -24,7 +24,9 @@ GROUP BY 1 ORDER BY 2 DESC;
 SELECT
   sum(input_tokens) AS tokens_in,
   sum(output_tokens) AS tokens_out,
-  round(((sum(input_tokens) / 1000000.0) * 2 * 0.5 + (sum(output_tokens) / 1000000.0) * 10) * 33.1) AS est_cost_thb_capped
+  -- input_tokens เป็น billing-equivalent แล้ว (cache read ×0.1 / write ×1.25 ถ่วงจาก provider
+  -- ตั้งแต่ 2026-08-16) — คิดเรทตรง Sonnet $3/$15 ต่อ 1M ไม่ต้องหักส่วนลด cache ซ้ำ
+  round(((sum(input_tokens) / 1000000.0) * 3 + (sum(output_tokens) / 1000000.0) * 15) * 33.1) AS est_cost_thb
 FROM ai_auto_reply_logs
 WHERE created_at > NOW() - interval '7 days' AND input_tokens IS NOT NULL;
 
@@ -32,4 +34,4 @@ WHERE created_at > NOW() - interval '7 days' AND input_tokens IS NOT NULL;
 SELECT r.display_name, count(*) AS sent_24h
 FROM ai_auto_reply_logs l JOIN chat_rooms r ON r.id = l.room_id
 WHERE l.auto_sent AND l.created_at > NOW() - interval '24 hours'
-GROUP BY 1 HAVING count(*) > 200 ORDER BY 2 DESC;
+GROUP BY 1 HAVING count(*) > 80 ORDER BY 2 DESC; -- แคปตอนนี้ 100/ห้อง/24ชม. — เตือนที่ 80%

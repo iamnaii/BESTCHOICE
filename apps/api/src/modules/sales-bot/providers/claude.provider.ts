@@ -101,17 +101,25 @@ export class ClaudeProvider implements ILlmProvider {
       );
     }
 
-    // inputTokens = ปริมาณที่ประมวลผลจริงทั้งหมด (รวม cache read/write) เพื่อให้ log
-    // สะท้อน volume จริง — cache read คิดเงินแค่ 0.1x ของราคา input ปกติ
+    // inputTokens = "billing-equivalent tokens": cache read จ่ายจริง 0.1×, cache write
+    // 1.25× ของราคา input ปกติ — ถ่วงน้ำหนักก่อนส่งให้ computeCostUsd (ซึ่งคิดเรทเดียว)
+    // เพื่อให้ costUsd ใน dashboard/AiBudgetCron ตรงบิล Anthropic จริง
+    // (เดิมรวมดิบทั้งก้อน → โชว์แพงเกิน ~5-7 เท่า + budget alarm เด้งก่อนเวลา)
+    // volume ดิบยังดูได้จาก log บรรทัดล่างนี้
     const usage = resp.usage;
-    const cachedIn =
-      (usage.cache_read_input_tokens ?? 0) +
-      (usage.cache_creation_input_tokens ?? 0);
+    const cacheRead = usage.cache_read_input_tokens ?? 0;
+    const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+    this.logger.log(
+      `[TokenUsage] in=${usage.input_tokens} cacheRead=${cacheRead} cacheWrite=${cacheWrite} out=${usage.output_tokens}`,
+    );
+    const billingEquivalentIn = Math.round(
+      usage.input_tokens + cacheRead * 0.1 + cacheWrite * 1.25,
+    );
 
     return {
       text: textBlock?.text ?? '',
       toolCalls,
-      inputTokens: usage.input_tokens + cachedIn,
+      inputTokens: billingEquivalentIn,
       outputTokens: usage.output_tokens,
       modelName: model,
     };

@@ -102,12 +102,16 @@ type ContractStub = {
   monthlyPayment: Prisma.Decimal | null;
   vatAmount: Prisma.Decimal | null;
   advanceBalance: Prisma.Decimal | null;
+  /** พักงวดสุดท้าย (owner directive 2026-08-16) — see "park-at-last-installment" below. */
+  rescheduleAdvanceBalance: Prisma.Decimal | null;
 };
 
 type InstallmentStub = {
   accrualJournalEntryId: string | null;
   dueDate: Date;
   contract: ContractStub;
+  /** Needed to test the park-bucket "last installment" gate (== contract.totalMonths). */
+  installmentNo: number;
 };
 
 describe('PaymentsService.previewJournal (characterization)', () => {
@@ -124,6 +128,7 @@ describe('PaymentsService.previewJournal (characterization)', () => {
     monthlyPayment: D(2000),
     vatAmount: D(0),
     advanceBalance: D(0),
+    rescheduleAdvanceBalance: D(0),
     ...overrides,
   });
 
@@ -131,6 +136,7 @@ describe('PaymentsService.previewJournal (characterization)', () => {
     // accrualJournalEntryId set → 2B-ONLY path (single Cr 11-2103 clear).
     accrualJournalEntryId: 'je-accrual-1',
     dueDate: new Date('2027-01-15'),
+    installmentNo: 1,
     contract: baseContract(),
     ...overrides,
   });
@@ -536,6 +542,93 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       expect(out.isBalanced).toBe(true);
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Park-at-last-installment (owner directive 2026-08-16) — the preview must
+  // mirror the orchestrator's gate exactly: rescheduleAdvanceBalance only
+  // consumes when installmentNo === contract.totalMonths.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe('park-at-last-installment preview', () => {
+    it('non-last installment: rescheduleAdvanceBalance is NOT consumed even with a matching shortfall', async () => {
+      installment = baseInstallment({
+        installmentNo: 1, // totalMonths=12 → NOT the last installment
+        contract: baseContract({
+          monthlyPayment: D(2000),
+          advanceBalance: D(0),
+          rescheduleAdvanceBalance: D(300),
+        }),
+      });
+
+      const out = await service.previewJournal({
+        contractId: 'c-1',
+        installmentNo: 1,
+        amountReceived: 1900, // 100 short of 2000
+        depositAccountCode: '11-1101',
+        case: 'NORMAL',
+      });
+
+      // No 21-1103 line at all — park bucket ignored on a non-last installment,
+      // so the 100 shortfall falls through to the ≤1฿ tolerance check (it's
+      // NOT ≤1฿, so no adj line either — the preview simply shows an unbalanced
+      // JE, same as it would with no advance/park at all).
+      expect(lineFor(out.lines, '21-1103')).toBeUndefined();
+      expect(out.isBalanced).toBe(false);
+    });
+
+    it('last installment, no generic advance: rescheduleAdvanceBalance covers the shortfall via 21-1103', async () => {
+      installment = baseInstallment({
+        installmentNo: 12, // == contract.totalMonths → LAST installment
+        contract: baseContract({
+          totalMonths: 12,
+          monthlyPayment: D(2000),
+          advanceBalance: D(0),
+          rescheduleAdvanceBalance: D(300),
+        }),
+      });
+
+      const out = await service.previewJournal({
+        contractId: 'c-1',
+        installmentNo: 12,
+        amountReceived: 1900, // 100 short of 2000
+        depositAccountCode: '11-1101',
+        case: 'NORMAL',
+      });
+
+      expect(lineFor(out.lines, '21-1103')?.debit).toBe('100.00');
+      expect(lineFor(out.lines, '52-1104')).toBeUndefined(); // suppressed, same as generic advance
+      expect(out.totalDebit).toBe('2000.00');
+      expect(out.totalCredit).toBe('2000.00');
+      expect(out.isBalanced).toBe(true);
+    });
+
+    it('last installment, BOTH buckets funded: generic consumes first, park covers only the remaining gap', async () => {
+      installment = baseInstallment({
+        installmentNo: 12,
+        contract: baseContract({
+          totalMonths: 12,
+          monthlyPayment: D(2000),
+          advanceBalance: D(40), // covers only part of the 100 gap
+          rescheduleAdvanceBalance: D(300),
+        }),
+      });
+
+      const out = await service.previewJournal({
+        contractId: 'c-1',
+        installmentNo: 12,
+        amountReceived: 1900, // 100 short of 2000
+        depositAccountCode: '11-1101',
+        case: 'NORMAL',
+      });
+
+      // Combined 21-1103 line = generic (40) + park (60) = 100 — SAME GL account,
+      // the preview does not split it into two lines (mirrors the save's single
+      // Dr 21-1103 leg for advanceConsume.plus(parkConsume)).
+      expect(lineFor(out.lines, '21-1103')?.debit).toBe('100.00');
+      expect(out.totalDebit).toBe('2000.00');
+      expect(out.totalCredit).toBe('2000.00');
+      expect(out.isBalanced).toBe(true);
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -584,21 +677,19 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
       payment: {
         findFirst: jest.fn().mockResolvedValue(makePayment()),
         findMany: jest.fn().mockResolvedValue([]),
-        update: jest
-          .fn()
-          .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
-            Promise.resolve({
-              id: 'tol-payment-1',
-              contractId: 'tol-contract-1',
-              installmentNo: 1,
-              amountDue: D(REMAINING),
-              amountPaid: data.amountPaid ?? D(0),
-              lateFee: data.lateFee ?? D(0),
-              status: data.status ?? 'PENDING',
-              paidDate: data.paidDate ?? null,
-              depositAccountCode: data.depositAccountCode ?? null,
-            }),
-          ),
+        update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: 'tol-payment-1',
+            contractId: 'tol-contract-1',
+            installmentNo: 1,
+            amountDue: D(REMAINING),
+            amountPaid: data.amountPaid ?? D(0),
+            lateFee: data.lateFee ?? D(0),
+            status: data.status ?? 'PENDING',
+            paidDate: data.paidDate ?? null,
+            depositAccountCode: data.depositAccountCode ?? null,
+          }),
+        ),
         count: jest.fn().mockResolvedValue(1),
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: REMAINING, lateFee: 0 } }),
       },
@@ -640,7 +731,10 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
       providers: [
         PaymentsService,
         { provide: PrismaService, useValue: prisma },
-        { provide: ReceiptsService, useValue: { generateReceipt: jest.fn().mockResolvedValue({ id: 'r-1' }) } },
+        {
+          provide: ReceiptsService,
+          useValue: { generateReceipt: jest.fn().mockResolvedValue({ id: 'r-1' }) },
+        },
         {
           provide: AuditService,
           useValue: {
@@ -650,22 +744,49 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
             logContractFinancialEvent: jest.fn().mockResolvedValue(undefined),
           },
         },
-        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1') } },
+        {
+          provide: JournalAutoService,
+          useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1') },
+        },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         {
           provide: LineOaService,
-          useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() },
+          useValue: {
+            buildPaymentSuccess: jest.fn().mockReturnValue({}),
+            sendFlexMessage: jest.fn(),
+          },
         },
         {
           provide: FlexTemplatesService,
-          useValue: { paymentReceipt: jest.fn().mockReturnValue({ type: 'flex', altText: 't', contents: {} }) },
+          useValue: {
+            paymentReceipt: jest.fn().mockReturnValue({ type: 'flex', altText: 't', contents: {} }),
+          },
         },
         { provide: QuickReplyService, useValue: { afterPayment: jest.fn().mockReturnValue([]) } },
-        { provide: PromiseService, useValue: { findActivePromise: jest.fn().mockResolvedValue(null) } },
-        { provide: MdmLockService, useValue: { autoUnlock: jest.fn().mockResolvedValue(undefined) } },
-        { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE', split: { principalRemainingAfter: 0 } }) } },
-        { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue(null) } },
-        { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: PromiseService,
+          useValue: { findActivePromise: jest.fn().mockResolvedValue(null) },
+        },
+        {
+          provide: MdmLockService,
+          useValue: { autoUnlock: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: PaymentReceiptTemplate,
+          useValue: {
+            execute: jest
+              .fn()
+              .mockResolvedValue({ entryNo: 'JE', split: { principalRemainingAfter: 0 } }),
+          },
+        },
+        {
+          provide: Vat60dayReversalTemplate,
+          useValue: { execute: jest.fn().mockResolvedValue(null) },
+        },
+        {
+          provide: BadDebtService,
+          useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
 

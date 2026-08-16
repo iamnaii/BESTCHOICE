@@ -60,6 +60,8 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
   // Mutable advance balance that persists across tests (simulates DB state)
   let advanceBalance: number;
+  // Mutable park-bucket balance (พักงวดสุดท้าย, owner directive 2026-08-16).
+  let rescheduleAdvanceBalance: number;
 
   // Simulate the installment amountDue + prevPaid state
   // Each test will override as needed
@@ -71,6 +73,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     branchId: 'branch-1',
     customerId: 'cust-1',
     advanceBalance: D(advanceBalance),
+    rescheduleAdvanceBalance: D(rescheduleAdvanceBalance),
     ...overrides,
   });
 
@@ -92,52 +95,82 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
   beforeEach(async () => {
     advanceBalance = 0; // reset at start of each test
+    rescheduleAdvanceBalance = 0; // reset at start of each test
 
     // We need fresh mocks per test so contract.advanceBalance reflects current state
     const buildMockPrisma = () => ({
       contract: {
         findUnique: jest.fn().mockImplementation(() =>
-          Promise.resolve(makeContract({ advanceBalance: D(advanceBalance) })),
+          Promise.resolve(
+            makeContract({
+              advanceBalance: D(advanceBalance),
+              rescheduleAdvanceBalance: D(rescheduleAdvanceBalance),
+            }),
+          ),
         ),
-        update: jest.fn().mockImplementation(({ data }: { data: { advanceBalance?: { increment?: Prisma.Decimal } } }) => {
-          // Simulate the increment update in-memory
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        update: jest.fn().mockImplementation(({ data }: { data: any }) => {
+          // Simulate the increment/decrement updates in-memory
           if (data.advanceBalance?.increment !== undefined) {
             const delta = parseFloat(data.advanceBalance.increment.toString());
             advanceBalance = parseFloat((advanceBalance + delta).toFixed(2));
           }
-          return Promise.resolve(makeContract({ advanceBalance: D(advanceBalance) }));
+          if (data.rescheduleAdvanceBalance?.increment !== undefined) {
+            const delta = parseFloat(data.rescheduleAdvanceBalance.increment.toString());
+            rescheduleAdvanceBalance = parseFloat((rescheduleAdvanceBalance + delta).toFixed(2));
+          }
+          if (data.rescheduleAdvanceBalance?.decrement !== undefined) {
+            const delta = parseFloat(data.rescheduleAdvanceBalance.decrement.toString());
+            rescheduleAdvanceBalance = parseFloat((rescheduleAdvanceBalance - delta).toFixed(2));
+          }
+          return Promise.resolve(
+            makeContract({
+              advanceBalance: D(advanceBalance),
+              rescheduleAdvanceBalance: D(rescheduleAdvanceBalance),
+            }),
+          );
         }),
       },
       payment: {
         findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
-        update: jest.fn().mockImplementation(({ data }: { data: { amountPaid?: Prisma.Decimal; status?: string; paidDate?: Date | null } }) => {
-          return Promise.resolve({
-            id: 'adv-payment-x',
-            contractId: 'adv-contract-1',
-            installmentNo: 1,
-            amountPaid: data.amountPaid ?? D(0),
-            amountDue: D(INST_TOTAL),
-            status: data.status ?? 'PENDING',
-            paidDate: data.paidDate ?? null,
-          });
-        }),
+        update: jest
+          .fn()
+          .mockImplementation(
+            ({
+              data,
+            }: {
+              data: { amountPaid?: Prisma.Decimal; status?: string; paidDate?: Date | null };
+            }) => {
+              return Promise.resolve({
+                id: 'adv-payment-x',
+                contractId: 'adv-contract-1',
+                installmentNo: 1,
+                amountPaid: data.amountPaid ?? D(0),
+                amountDue: D(INST_TOTAL),
+                status: data.status ?? 'PENDING',
+                paidDate: data.paidDate ?? null,
+              });
+            },
+          ),
         count: jest.fn().mockResolvedValue(1), // checkContractCompletion
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: INST_TOTAL, lateFee: 0 } }),
-        findUnique: jest.fn().mockImplementation(() =>
-          Promise.resolve(makePayment(1)),
-        ),
+        findUnique: jest.fn().mockImplementation(() => Promise.resolve(makePayment(1))),
       },
       // Phase 4 draft/post split
       paymentDraft: {
         findFirst: jest.fn().mockResolvedValue(null),
-        upsert: jest.fn().mockImplementation(({ create, update }: { create: object; update: object }) =>
-          Promise.resolve({ id: 'draft-1', ...create, ...update }),
-        ),
+        upsert: jest
+          .fn()
+          .mockImplementation(({ create, update }: { create: object; update: object }) =>
+            Promise.resolve({ id: 'draft-1', ...create, ...update }),
+          ),
         update: jest.fn().mockResolvedValue({ id: 'draft-1' }),
       },
       user: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'user-1', defaultCashAccountCode: null, deletedAt: null }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'user-1', defaultCashAccountCode: null, deletedAt: null }),
       },
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
@@ -180,7 +213,10 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       providers: [
         PaymentsService,
         { provide: PrismaService, useValue: prisma },
-        { provide: ReceiptsService, useValue: { generateReceipt: jest.fn().mockResolvedValue({ id: 'r-1' }) } },
+        {
+          provide: ReceiptsService,
+          useValue: { generateReceipt: jest.fn().mockResolvedValue({ id: 'r-1' }) },
+        },
         {
           provide: AuditService,
           useValue: {
@@ -198,17 +234,26 @@ describe('PaymentsService — advance balance (Task 4)', () => {
             createContractActivationJournal: jest.fn(),
             createBadDebtWriteOffJournal: jest.fn(),
             createCustomerCreditOverpaymentJournal: jest.fn().mockResolvedValue('je-2'),
-            createCreditAllocationJournal: jest.fn().mockResolvedValue({ financeEntryId: 'je-3', shopEntryId: 'je-4' }),
+            createCreditAllocationJournal: jest
+              .fn()
+              .mockResolvedValue({ financeEntryId: 'je-3', shopEntryId: 'je-4' }),
           },
         },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         {
           provide: LineOaService,
-          useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() },
+          useValue: {
+            buildPaymentSuccess: jest.fn().mockReturnValue({}),
+            sendFlexMessage: jest.fn(),
+          },
         },
         {
           provide: FlexTemplatesService,
-          useValue: { paymentReceipt: jest.fn().mockReturnValue({ type: 'flex', altText: 'test', contents: {} }) },
+          useValue: {
+            paymentReceipt: jest
+              .fn()
+              .mockReturnValue({ type: 'flex', altText: 'test', contents: {} }),
+          },
         },
         {
           provide: QuickReplyService,
@@ -589,9 +634,18 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       prisma.payment.findFirst.mockResolvedValue(makePayment(20));
       await expect(
         service.recordPayment(
-          'adv-contract-1', 20, INST_TOTAL - 50, 'CASH', 'user-1',
-          'https://slip.test/20', undefined, 'TEST-NOCONSUME', '11-1101',
-          undefined, undefined, false,
+          'adv-contract-1',
+          20,
+          INST_TOTAL - 50,
+          'CASH',
+          'user-1',
+          'https://slip.test/20',
+          undefined,
+          'TEST-NOCONSUME',
+          '11-1101',
+          undefined,
+          undefined,
+          false,
         ),
       ).rejects.toThrow(/PARTIAL/);
       expect(advanceBalance).toBeCloseTo(50, 2); // advance untouched
@@ -601,9 +655,18 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       advanceBalance = 50;
       prisma.payment.findFirst.mockResolvedValue(makePayment(21));
       const result = await service.recordPayment(
-        'adv-contract-1', 21, INST_TOTAL, 'CASH', 'user-1',
-        'https://slip.test/21', undefined, 'TEST-FULL-NOCONSUME', '11-1101',
-        undefined, undefined, false,
+        'adv-contract-1',
+        21,
+        INST_TOTAL,
+        'CASH',
+        'user-1',
+        'https://slip.test/21',
+        undefined,
+        'TEST-FULL-NOCONSUME',
+        '11-1101',
+        undefined,
+        undefined,
+        false,
       );
       expect(result.status).toBe('PAID');
       expect(advanceBalance).toBeCloseTo(50, 2); // NOT consumed
@@ -613,12 +676,164 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       advanceBalance = 50;
       prisma.payment.findFirst.mockResolvedValue(makePayment(22));
       const result = await service.recordPayment(
-        'adv-contract-1', 22, INST_TOTAL - 50, 'CASH', 'user-1',
-        'https://slip.test/22', undefined, 'TEST-CONSUME', '11-1101',
-        undefined, undefined, true,
+        'adv-contract-1',
+        22,
+        INST_TOTAL - 50,
+        'CASH',
+        'user-1',
+        'https://slip.test/22',
+        undefined,
+        'TEST-CONSUME',
+        '11-1101',
+        undefined,
+        undefined,
+        true,
       );
       expect(result.status).toBe('PAID');
       expect(advanceBalance).toBeCloseTo(0, 2); // consumed
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Park-at-last-installment (owner directive 2026-08-16) — Contract.
+  // rescheduleAdvanceBalance is consumable ONLY when the installment being paid
+  // is the contract's LAST installment (installmentNo === contract.totalMonths).
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe('park-at-last-installment (owner directive 2026-08-16)', () => {
+    it('does NOT consume the park bucket on a non-last installment — shortage still requires case=PARTIAL', async () => {
+      rescheduleAdvanceBalance = 500;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(5));
+      prisma.contract.findUnique.mockImplementation(() =>
+        Promise.resolve(
+          makeContract({
+            totalMonths: 12,
+            advanceBalance: D(0),
+            rescheduleAdvanceBalance: D(rescheduleAdvanceBalance),
+          }),
+        ),
+      );
+
+      // 300฿ shortage on installment #5/12 — NOT the last installment, so the
+      // park bucket must not be considered at all, even though it has 500.
+      await expect(
+        service.recordPayment(
+          'adv-contract-1',
+          5,
+          INST_TOTAL - 300,
+          'CASH',
+          'user-1',
+          'https://slip.test/park-notlast',
+          undefined,
+          'TEST-PARK-NOTLAST',
+          '11-1101',
+        ),
+      ).rejects.toThrow(/PARTIAL/);
+
+      expect(rescheduleAdvanceBalance).toBe(500); // untouched
+    });
+
+    it('consumes the park bucket on the LAST installment when there is no generic advance', async () => {
+      rescheduleAdvanceBalance = 500;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(12));
+      prisma.contract.findUnique.mockImplementation(() =>
+        Promise.resolve(
+          makeContract({
+            totalMonths: 12,
+            advanceBalance: D(0),
+            rescheduleAdvanceBalance: D(rescheduleAdvanceBalance),
+          }),
+        ),
+      );
+
+      const result = await service.recordPayment(
+        'adv-contract-1',
+        12,
+        INST_TOTAL - 300,
+        'CASH',
+        'user-1',
+        'https://slip.test/park-last',
+        undefined,
+        'TEST-PARK-LAST',
+        '11-1101',
+      );
+
+      expect(result.status).toBe('PAID');
+      expect(rescheduleAdvanceBalance).toBe(200); // 500 − 300 consumed
+
+      expect(prisma.contract.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'adv-contract-1' },
+          data: { rescheduleAdvanceBalance: { decrement: expect.anything() } },
+        }),
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parkAudit = prisma.auditLog.create.mock.calls
+        .map((c: any) => c[0].data)
+        .find((d: any) => d.action === 'RESCHEDULE_ADVANCE_CONSUMED');
+      expect(parkAudit).toBeDefined();
+      expect(Number(parkAudit.newValue.parkConsume)).toBe(300);
+      expect(parkAudit.newValue.source).toBe('RECORD_PAYMENT_LAST_INSTALLMENT_PARK_CONSUME');
+    });
+
+    it('consumes generic advance FIRST, park only for the remaining gap, on the last installment', async () => {
+      advanceBalance = 100;
+      rescheduleAdvanceBalance = 500;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(12));
+      prisma.contract.findUnique.mockImplementation(() =>
+        Promise.resolve(
+          makeContract({
+            totalMonths: 12,
+            advanceBalance: D(advanceBalance),
+            rescheduleAdvanceBalance: D(rescheduleAdvanceBalance),
+          }),
+        ),
+      );
+
+      // 300฿ gap: generic (100) covers first, park covers the remaining 200.
+      await service.recordPayment(
+        'adv-contract-1',
+        12,
+        INST_TOTAL - 300,
+        'CASH',
+        'user-1',
+        'https://slip.test/park-both',
+        undefined,
+        'TEST-PARK-BOTH',
+        '11-1101',
+      );
+
+      expect(advanceBalance).toBe(0); // generic fully drained (100 < 300 gap)
+      expect(rescheduleAdvanceBalance).toBe(300); // 500 − 200 (only the leftover gap)
+    });
+
+    it('park bucket alone, on the last installment, still requires case=PARTIAL when it cannot cover the whole gap', async () => {
+      rescheduleAdvanceBalance = 100; // less than the 300 gap
+      prisma.payment.findFirst.mockResolvedValue(makePayment(12));
+      prisma.contract.findUnique.mockImplementation(() =>
+        Promise.resolve(
+          makeContract({
+            totalMonths: 12,
+            advanceBalance: D(0),
+            rescheduleAdvanceBalance: D(rescheduleAdvanceBalance),
+          }),
+        ),
+      );
+
+      await expect(
+        service.recordPayment(
+          'adv-contract-1',
+          12,
+          INST_TOTAL - 300,
+          'CASH',
+          'user-1',
+          'https://slip.test/park-last-short',
+          undefined,
+          'TEST-PARK-LAST-SHORT',
+          '11-1101',
+        ),
+      ).rejects.toThrow(/PARTIAL/);
+
+      expect(rescheduleAdvanceBalance).toBe(100); // rolled back — nothing consumed on a throw
     });
   });
 
@@ -630,9 +845,19 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       const backdated = new Date('2026-03-15T00:00:00.000Z');
       prisma.payment.findFirst.mockResolvedValue(makePayment(40)); // dueDate 2027 (future)
       await service.recordPayment(
-        'adv-contract-1', 40, INST_TOTAL, 'CASH', 'user-1',
-        'https://slip.test/40', undefined, 'TEST-BACKDATE', '11-1101',
-        undefined, undefined, true, backdated,
+        'adv-contract-1',
+        40,
+        INST_TOTAL,
+        'CASH',
+        'user-1',
+        'https://slip.test/40',
+        undefined,
+        'TEST-BACKDATE',
+        '11-1101',
+        undefined,
+        undefined,
+        true,
+        backdated,
       );
       expect(prisma.payment.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -646,9 +871,19 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       prisma.payment.findFirst.mockResolvedValue(makePayment(41));
       await expect(
         service.recordPayment(
-          'adv-contract-1', 41, INST_TOTAL, 'CASH', 'user-1',
-          'https://slip.test/41', undefined, 'TEST-FUTURE', '11-1101',
-          undefined, undefined, true, future,
+          'adv-contract-1',
+          41,
+          INST_TOTAL,
+          'CASH',
+          'user-1',
+          'https://slip.test/41',
+          undefined,
+          'TEST-FUTURE',
+          '11-1101',
+          undefined,
+          undefined,
+          true,
+          future,
         ),
       ).rejects.toThrow(BadRequestException);
     });
@@ -656,8 +891,15 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     it('omitted paidDate → defaults to now, Payment marked PAID', async () => {
       prisma.payment.findFirst.mockResolvedValue(makePayment(42));
       const result = await service.recordPayment(
-        'adv-contract-1', 42, INST_TOTAL, 'CASH', 'user-1',
-        'https://slip.test/42', undefined, 'TEST-NODATE', '11-1101',
+        'adv-contract-1',
+        42,
+        INST_TOTAL,
+        'CASH',
+        'user-1',
+        'https://slip.test/42',
+        undefined,
+        'TEST-NODATE',
+        '11-1101',
       );
       expect(result.status).toBe('PAID');
     });
@@ -682,9 +924,19 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       );
 
       await service.recordPayment(
-        'adv-contract-1', 43, INST_TOTAL + 50, 'CASH', 'user-1',
-        'https://slip.test/43', undefined, 'TEST-LF-BACKDATE', '11-1101',
-        undefined, undefined, true, paidDate,
+        'adv-contract-1',
+        43,
+        INST_TOTAL + 50,
+        'CASH',
+        'user-1',
+        'https://slip.test/43',
+        undefined,
+        'TEST-LF-BACKDATE',
+        '11-1101',
+        undefined,
+        undefined,
+        true,
+        paidDate,
       );
 
       // The late-fee update must reflect 2 days overdue (tier1=50), NOT ~30 days (tier2=100).
@@ -705,7 +957,8 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     // gross fee deterministically stays tier1=50 regardless of BUSINESS_RULES defaults.
     const BRACKET_TIER1 = ({ where: { key } }: { where: { key: string } }) => {
       const map: Record<string, string> = {
-        late_fee_tier1_amount: '50', late_fee_tier2_amount: '100',
+        late_fee_tier1_amount: '50',
+        late_fee_tier2_amount: '100',
         late_fee_tier2_min_days: '10',
       };
       return Promise.resolve(map[key] ? { value: map[key] } : null);
@@ -715,15 +968,37 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     it('golden: gross 50, waive 25 → cash 1025 closes; waivedAmount + FeeWaiverApproval + template lateFeeWaived', async () => {
       prisma.systemConfig.findUnique.mockImplementation(BRACKET_TIER1);
-      prisma.payment.findFirst.mockResolvedValue(makePayment(60, { dueDate: dueDate5(), lateFee: D(0) }));
-      prisma.user.findUnique.mockResolvedValue({ id: 'approver-1', role: 'FINANCE_MANAGER', isActive: true, deletedAt: null });
-      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'sch-waive-1', vat60dayJournalEntryId: null });
+      prisma.payment.findFirst.mockResolvedValue(
+        makePayment(60, { dueDate: dueDate5(), lateFee: D(0) }),
+      );
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'approver-1',
+        role: 'FINANCE_MANAGER',
+        isActive: true,
+        deletedAt: null,
+      });
+      prisma.installmentSchedule.findUnique.mockResolvedValue({
+        id: 'sch-waive-1',
+        vat60dayJournalEntryId: null,
+      });
 
       const result = await service.recordPayment(
-        'adv-contract-1', 60, INST_TOTAL + 25, 'CASH', 'user-1',
-        'https://slip.test/60', undefined, 'TEST-WAIVE', '11-1101',
-        undefined, undefined, true, undefined,
-        25, 'goodwill', 'approver-1',
+        'adv-contract-1',
+        60,
+        INST_TOTAL + 25,
+        'CASH',
+        'user-1',
+        'https://slip.test/60',
+        undefined,
+        'TEST-WAIVE',
+        '11-1101',
+        undefined,
+        undefined,
+        true,
+        undefined,
+        25,
+        'goodwill',
+        'approver-1',
       );
 
       expect(result.status).toBe('PAID');
@@ -753,10 +1028,22 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       prisma.payment.findFirst.mockResolvedValue(makePayment(61, { dueDate: dueDate5() }));
       await expect(
         service.recordPayment(
-          'adv-contract-1', 61, INST_TOTAL + 25, 'CASH', 'user-1',
-          'https://slip.test/61', undefined, 'TEST-WAIVE-SOD', '11-1101',
-          undefined, undefined, true, undefined,
-          25, 'goodwill', 'user-1', // approver === recorder
+          'adv-contract-1',
+          61,
+          INST_TOTAL + 25,
+          'CASH',
+          'user-1',
+          'https://slip.test/61',
+          undefined,
+          'TEST-WAIVE-SOD',
+          '11-1101',
+          undefined,
+          undefined,
+          true,
+          undefined,
+          25,
+          'goodwill',
+          'user-1', // approver === recorder
         ),
       ).rejects.toThrow(/Segregation of Duties/);
     });
@@ -765,24 +1052,55 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       prisma.payment.findFirst.mockResolvedValue(makePayment(62, { dueDate: dueDate5() }));
       await expect(
         service.recordPayment(
-          'adv-contract-1', 62, INST_TOTAL + 25, 'CASH', 'user-1',
-          'https://slip.test/62', undefined, 'TEST-WAIVE-NOAPP', '11-1101',
-          undefined, undefined, true, undefined,
-          25, 'goodwill', undefined,
+          'adv-contract-1',
+          62,
+          INST_TOTAL + 25,
+          'CASH',
+          'user-1',
+          'https://slip.test/62',
+          undefined,
+          'TEST-WAIVE-NOAPP',
+          '11-1101',
+          undefined,
+          undefined,
+          true,
+          undefined,
+          25,
+          'goodwill',
+          undefined,
         ),
       ).rejects.toThrow(/ผู้อนุมัติ/);
     });
 
     it('waiver > gross late fee → BadRequestException', async () => {
       prisma.systemConfig.findUnique.mockImplementation(BRACKET_TIER1);
-      prisma.payment.findFirst.mockResolvedValue(makePayment(63, { dueDate: dueDate5(), lateFee: D(0) }));
-      prisma.user.findUnique.mockResolvedValue({ id: 'approver-1', role: 'OWNER', isActive: true, deletedAt: null });
+      prisma.payment.findFirst.mockResolvedValue(
+        makePayment(63, { dueDate: dueDate5(), lateFee: D(0) }),
+      );
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'approver-1',
+        role: 'OWNER',
+        isActive: true,
+        deletedAt: null,
+      });
       await expect(
         service.recordPayment(
-          'adv-contract-1', 63, INST_TOTAL, 'CASH', 'user-1',
-          'https://slip.test/63', undefined, 'TEST-WAIVE-OVER', '11-1101',
-          undefined, undefined, true, undefined,
-          999, 'goodwill', 'approver-1', // 999 > gross 50
+          'adv-contract-1',
+          63,
+          INST_TOTAL,
+          'CASH',
+          'user-1',
+          'https://slip.test/63',
+          undefined,
+          'TEST-WAIVE-OVER',
+          '11-1101',
+          undefined,
+          undefined,
+          true,
+          undefined,
+          999,
+          'goodwill',
+          'approver-1', // 999 > gross 50
         ),
       ).rejects.toThrow(/เกินค่าปรับ/);
     });
@@ -795,7 +1113,8 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     it('saveDraft stores params WITHOUT posting a JE (no money movement)', async () => {
       prisma.payment.findFirst.mockResolvedValue(makePayment(70));
       await service.saveDraft(
-        'adv-contract-1', 70,
+        'adv-contract-1',
+        70,
         { amount: INST_TOTAL, paymentMethod: 'CASH', consumeAdvance: true },
         'user-1',
       );
@@ -807,21 +1126,39 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     it('saveDraft rejects a PAID installment', async () => {
       prisma.payment.findFirst.mockResolvedValue(makePayment(71, { status: 'PAID' }));
       await expect(
-        service.saveDraft('adv-contract-1', 71, { amount: INST_TOTAL, paymentMethod: 'CASH' }, 'user-1'),
+        service.saveDraft(
+          'adv-contract-1',
+          71,
+          { amount: INST_TOTAL, paymentMethod: 'CASH' },
+          'user-1',
+        ),
       ).rejects.toThrow(/ชำระแล้ว/);
     });
 
     it('postDraft runs recordPayment (posts JE) then retires the draft', async () => {
       prisma.paymentDraft.findFirst.mockResolvedValue({
-        id: 'draft-9', paymentId: 'adv-payment-9', amount: D(INST_TOTAL), paymentMethod: 'CASH',
-        depositAccountCode: '11-1101', consumeAdvance: true, transactionRef: 'TEST-DRAFT-9',
-        evidenceUrl: null, notes: null, paidDate: null, paymentCase: null,
-        lateFeeWaiverAmount: null, lateFeeWaiverReasonCode: null, waiverApproverId: null,
+        id: 'draft-9',
+        paymentId: 'adv-payment-9',
+        amount: D(INST_TOTAL),
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        consumeAdvance: true,
+        transactionRef: 'TEST-DRAFT-9',
+        evidenceUrl: null,
+        notes: null,
+        paidDate: null,
+        paymentCase: null,
+        lateFeeWaiverAmount: null,
+        lateFeeWaiverReasonCode: null,
+        waiverApproverId: null,
         createdById: 'maker-1', // recordedById = maker (preserves SoD vs approver)
       });
       prisma.payment.findUnique.mockResolvedValue(makePayment(9));
       prisma.payment.findFirst.mockResolvedValue(makePayment(9));
-      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'sch-9', vat60dayJournalEntryId: null });
+      prisma.installmentSchedule.findUnique.mockResolvedValue({
+        id: 'sch-9',
+        vat60dayJournalEntryId: null,
+      });
 
       await service.postDraft('adv-payment-9', 'manager-1');
 
@@ -832,7 +1169,10 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     });
 
     it('cancelDraft soft-deletes the draft', async () => {
-      prisma.paymentDraft.findFirst.mockResolvedValue({ id: 'draft-c', paymentId: 'adv-payment-c' });
+      prisma.paymentDraft.findFirst.mockResolvedValue({
+        id: 'draft-c',
+        paymentId: 'adv-payment-c',
+      });
       await service.cancelDraft('adv-payment-c');
       expect(prisma.paymentDraft.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ deletedAt: expect.any(Date) }) }),
@@ -852,8 +1192,17 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       prisma.payment.findFirst.mockResolvedValueOnce(makePayment(30)); // amountDue 1000, fresh (amountPaid 0)
 
       await service.recordPayment(
-        'adv-contract-1', 30, 800, 'CASH', 'user-1',
-        undefined, undefined, 'TEST-GUARD', '11-1101', undefined, 'PARTIAL',
+        'adv-contract-1',
+        30,
+        800,
+        'CASH',
+        'user-1',
+        undefined,
+        undefined,
+        'TEST-GUARD',
+        '11-1101',
+        undefined,
+        'PARTIAL',
       );
 
       const partialUpdate = (prisma.payment.update as jest.Mock).mock.calls

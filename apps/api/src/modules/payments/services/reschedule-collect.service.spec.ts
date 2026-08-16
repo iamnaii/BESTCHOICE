@@ -66,6 +66,13 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
       contract: {
         findUnique: jest.fn().mockResolvedValue(contractRow),
         update: jest.fn().mockResolvedValue({}),
+        // 6b bundledPaid sweep (park-at-last-installment, 2026-08-16) re-reads
+        // the fresh generic/park balances inside the tx. Default both to 0 —
+        // tests that need a nonzero generic balance to sweep override this.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          advanceBalance: D('0'),
+          rescheduleAdvanceBalance: D('0'),
+        }),
       },
       payment: {
         findFirst: jest.fn().mockResolvedValue(paymentRow),
@@ -93,12 +100,7 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     };
     receiptsService = { generateReceipt: jest.fn().mockResolvedValue({ id: 'rt-1' }) };
 
-    service = new RescheduleCollectService(
-      prisma,
-      journalAuto,
-      rescheduleService,
-      receiptsService,
-    );
+    service = new RescheduleCollectService(prisma, journalAuto, rescheduleService, receiptsService);
   });
 
   afterEach(() => jest.useRealTimers());
@@ -162,6 +164,11 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     const line = (code: string) => je.lines.find((l: AnyObj) => l.accountCode === code);
     expect(line('11-1101').dr.toFixed(2)).toBe('1144.00');
     expect(line('21-1103').cr.toFixed(2)).toBe('1044.00');
+    // CPA CSV wording (park-at-last-installment, owner directive 2026-08-16) —
+    // NOT "เงินรับล่วงหน้า — ..." (that phrasing implied FIFO-next relief).
+    expect(line('21-1103').description).toBe(
+      'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)',
+    );
     expect(line('42-1103').cr.toFixed(2)).toBe('100.00');
     expect(je.metadata.tag).toBe('reschedule-collect'); // NOT 'receipt' — reconstructPrior must ignore
     // JE posts on the shared tx (2nd arg).
@@ -175,22 +182,30 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
 
     // Reschedule runs on the SAME tx (atomic with the JE).
     expect(rescheduleService.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ contractId: 'ct-1', fromInstallmentNo: 1, daysToShift: 7, variant: '6a' }),
+      expect.objectContaining({
+        contractId: 'ct-1',
+        fromInstallmentNo: 1,
+        daysToShift: 7,
+        variant: '6a',
+      }),
       prisma,
     );
 
-    // 6a fee = PREPAYMENT (CPA case 6a): must land on the REAL advance ledger
-    // pair — Cr 21-1103 (JE above) + Contract.advanceBalance — so the existing
-    // advance machinery relieves it against upcoming installments (review C1).
+    // 6a fee = PREPAYMENT (CPA case 6a), park-at-last-installment (owner
+    // directive 2026-08-16): must land on the DEDICATED park bucket
+    // (Contract.rescheduleAdvanceBalance) — Cr 21-1103 (JE above) is unchanged
+    // (same GL account), but the application-level bucket is now the park one,
+    // NOT the generic FIFO advanceBalance.
     expect(prisma.contract.update).toHaveBeenCalledWith({
       where: { id: 'ct-1' },
-      data: { advanceBalance: { increment: expect.anything() } },
+      data: { rescheduleAdvanceBalance: { increment: expect.anything() } },
     });
     const advAudit = prisma.auditLog.create.mock.calls
       .map((c: AnyObj) => c[0].data)
       .find((d2: AnyObj) => d2.action === 'OVERPAY_ADVANCE_RECORDED');
     expect(advAudit.newValue.advanceCredit).toBe('1044');
     expect(advAudit.newValue.source).toBe('RESCHEDULE_COLLECT_6A_FEE');
+    expect(advAudit.newValue.bucket).toBe('RESCHEDULE_PARK');
 
     // Money-detail audit + post-commit receipt.
     expect(prisma.auditLog.create).toHaveBeenCalledWith(
@@ -199,7 +214,14 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
       }),
     );
     expect(receiptsService.generateReceipt).toHaveBeenCalledWith(
-      'ct-1', 'pay-1', 'RESCHEDULE_FEE', 1144, 1, 'CASH', null, 'user-1',
+      'ct-1',
+      'pay-1',
+      'RESCHEDULE_FEE',
+      1144,
+      1,
+      'CASH',
+      null,
+      'user-1',
     );
 
     expect(result).toMatchObject({
@@ -234,9 +256,12 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     expect(rescheduleService.execute).not.toHaveBeenCalled();
   });
 
-  it('6b bundledPaid (phase 2): NO JE, NO receipt, NO advance, NO lateFee reset — shifts from installmentNo+1, PAID row allowed', async () => {
+  it('6b bundledPaid (phase 2), NOTHING to sweep: NO JE, NO receipt, NO lateFee reset — shifts from installmentNo+1, PAID row allowed', async () => {
     // Phase 1 (controller) already booked installment + fee + late fee through
-    // the orchestrator — the row is PAID by the time phase 2 runs.
+    // the orchestrator — the row is PAID by the time phase 2 runs. Fresh
+    // contract read (mocked in beforeEach) shows generic advanceBalance = 0 —
+    // e.g. phase 1's overage rounded to ≤1฿ and never crossed the D1 auto-route
+    // threshold — so there is nothing to sweep into the park bucket.
     prisma.payment.findFirst.mockResolvedValue({ ...paymentRow, status: 'PAID' });
 
     const result = await service.executeWithCollect({
@@ -252,7 +277,13 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
 
     expect(journalAuto.createAndPost).not.toHaveBeenCalled();
     expect(receiptsService.generateReceipt).not.toHaveBeenCalled();
-    expect(prisma.contract.update).not.toHaveBeenCalled(); // advance parked by D1 already
+    // Sweep gate reads the fresh balance (0 in this fixture) → nothing to move.
+    expect(prisma.contract.update).not.toHaveBeenCalled();
+    expect(
+      prisma.auditLog.create.mock.calls
+        .map((c: AnyObj) => c[0].data)
+        .find((d2: AnyObj) => d2.action === 'RESCHEDULE_ADVANCE_PARKED'),
+    ).toBeUndefined();
 
     // Note stamped, but the orchestrator's lateFee stamp is preserved.
     const upd = prisma.payment.update.mock.calls[0][0];
@@ -274,6 +305,80 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     expect(audit.newValue.collectAmount).toBe('5616.00');
     expect(result.collectAmount).toBe('5616.00');
     expect(result.success).toBe(true);
+  });
+
+  it('6b bundledPaid (phase 2), park sweep: phase-1 generic advance ≥ fee → sweeps min(fee, generic) into rescheduleAdvanceBalance', async () => {
+    // Phase 1 (orchestrator, not the SUT here) already D1-auto-routed the
+    // fee-sized overage into the GENERIC advance bucket (it has no way to know
+    // this payment was a reschedule fee). Simulate that: fresh contract read
+    // shows generic advanceBalance = 1044 (== the fee) — possibly plus some
+    // UNRELATED pre-existing advance (200) that must NOT be swept.
+    prisma.payment.findFirst.mockResolvedValue({ ...paymentRow, status: 'PAID' });
+    prisma.contract.findUniqueOrThrow.mockResolvedValue({
+      advanceBalance: D('1244'), // 1044 (this fee) + 200 (unrelated, pre-existing)
+      rescheduleAdvanceBalance: D('0'),
+    });
+
+    const result = await service.executeWithCollect({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SINGLE',
+      amount: 5616,
+      paymentMethod: 'CASH',
+      recordedById: 'user-1',
+      bundledPaid: true,
+    });
+
+    // Sweep = min(fee 1044, generic 1244) = 1044 — the unrelated 200 stays generic.
+    expect(prisma.contract.update).toHaveBeenCalledWith({
+      where: { id: 'ct-1' },
+      data: {
+        advanceBalance: { decrement: expect.anything() },
+        rescheduleAdvanceBalance: { increment: expect.anything() },
+      },
+    });
+    const sweepCall = prisma.contract.update.mock.calls.find(
+      (c: AnyObj) => c[0].data.advanceBalance?.decrement !== undefined,
+    );
+    expect(sweepCall[0].data.advanceBalance.decrement.toString()).toBe('1044');
+    expect(sweepCall[0].data.rescheduleAdvanceBalance.increment.toString()).toBe('1044');
+
+    const sweepAudit = prisma.auditLog.create.mock.calls
+      .map((c: AnyObj) => c[0].data)
+      .find((d2: AnyObj) => d2.action === 'RESCHEDULE_ADVANCE_PARKED');
+    expect(sweepAudit).toBeDefined();
+    expect(sweepAudit.newValue.sweptAmount).toBe('1044');
+    expect(sweepAudit.newValue.beforeGenericBalance).toBe('1244');
+    expect(sweepAudit.newValue.afterGenericBalance).toBe('200');
+    expect(sweepAudit.newValue.source).toBe('RESCHEDULE_COLLECT_6B_FEE_SWEEP');
+
+    expect(result.success).toBe(true);
+  });
+
+  it('6b bundledPaid (phase 2), park sweep capped: phase-1 generic advance < fee → sweeps only what is there', async () => {
+    prisma.payment.findFirst.mockResolvedValue({ ...paymentRow, status: 'PAID' });
+    prisma.contract.findUniqueOrThrow.mockResolvedValue({
+      advanceBalance: D('500'), // less than the fee (1044) — e.g. partial rounding drift
+      rescheduleAdvanceBalance: D('0'),
+    });
+
+    await service.executeWithCollect({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SINGLE',
+      amount: 5616,
+      paymentMethod: 'CASH',
+      recordedById: 'user-1',
+      bundledPaid: true,
+    });
+
+    const sweepCall = prisma.contract.update.mock.calls.find(
+      (c: AnyObj) => c[0].data.advanceBalance?.decrement !== undefined,
+    );
+    expect(sweepCall[0].data.advanceBalance.decrement.toString()).toBe('500');
+    expect(sweepCall[0].data.rescheduleAdvanceBalance.increment.toString()).toBe('500');
   });
 
   it('bundledPaid with SPLIT → BadRequest (ใช้ได้เฉพาะ 6b)', async () => {
@@ -342,10 +447,10 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     expect(line('11-1201').dr.toFixed(2)).toBe('1144.00');
     expect(line('21-1103').cr.toFixed(2)).toBe('1044.00');
     expect(line('42-1103').cr.toFixed(2)).toBe('100.00');
-    // 6a via QR: advance ledger pair still maintained.
+    // 6a via QR: park bucket still maintained (park-at-last-installment).
     expect(prisma.contract.update).toHaveBeenCalledWith({
       where: { id: 'ct-1' },
-      data: { advanceBalance: { increment: expect.anything() } },
+      data: { rescheduleAdvanceBalance: { increment: expect.anything() } },
     });
     const audit = prisma.auditLog.create.mock.calls
       .map((c: AnyObj) => c[0].data)

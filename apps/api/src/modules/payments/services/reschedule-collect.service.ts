@@ -14,10 +14,7 @@ import {
 } from '../../../utils/reschedule-quote.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { d } from '../../../utils/decimal.util';
-import {
-  resolveUserDefaultCashAccount,
-  resolveFinanceCompanyId,
-} from './payment-helpers';
+import { resolveUserDefaultCashAccount, resolveFinanceCompanyId } from './payment-helpers';
 
 export interface RescheduleCollectInput {
   contractId: string;
@@ -128,8 +125,18 @@ export class RescheduleCollectService {
     newDueDate: string;
     currentDueDate: string;
   }> {
-    const { contract, payment } = await this.loadRow(this.prisma, input.contractId, input.installmentNo);
-    const q = await this.buildQuote(this.prisma, contract, payment, input.daysToShift, input.splitMode);
+    const { contract, payment } = await this.loadRow(
+      this.prisma,
+      input.contractId,
+      input.installmentNo,
+    );
+    const q = await this.buildQuote(
+      this.prisma,
+      contract,
+      payment,
+      input.daysToShift,
+      input.splitMode,
+    );
     const newDue = new Date(payment.dueDate);
     newDue.setDate(newDue.getDate() + input.daysToShift);
     return {
@@ -246,7 +253,12 @@ export class RescheduleCollectService {
         let journalEntryNo: string | null = null;
         if (collectHere.gt(0)) {
           const zero = new Prisma.Decimal(0);
-          const lines: { accountCode: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [
+          const lines: {
+            accountCode: string;
+            dr: Prisma.Decimal;
+            cr: Prisma.Decimal;
+            description: string;
+          }[] = [
             {
               accountCode: resolvedDepositAccountCode,
               dr: collectHere,
@@ -259,9 +271,11 @@ export class RescheduleCollectService {
               accountCode: '21-1103',
               dr: zero,
               cr: q.rescheduleFee,
-              // "เงินรับล่วงหน้า" (not "งวดสุดท้าย") — the 2A auto-consume relieves it
-              // FIFO against whichever installment accrues next, not the literal last.
-              description: 'เงินรับล่วงหน้า — ค่าธรรมเนียมปรับดิว (6a)',
+              // Park-at-last-installment (owner directive 2026-08-16): the fee
+              // is relieved ONLY at the contract's last installment (2A there,
+              // or an earlier direct payment of it) — never FIFO'd into
+              // whichever installment accrues next. CPA CSV wording.
+              description: 'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)',
             });
           }
           if (q.lateFee.gt(0)) {
@@ -333,20 +347,25 @@ export class RescheduleCollectService {
 
         // 4b. 6a: the fee is a PREPAYMENT under the CPA model (CSV case 6a — the
         // contract total never changes; the customer just pays part of it early).
-        // Credit it to the REAL advance ledger pair the rest of the system uses:
-        // Cr 21-1103 (JE above) + Contract.advanceBalance — the existing machinery
-        // (wizard AdvanceBalanceBanner, computeNetReceiptDue netting, orchestrator /
-        // 2A auto-consume) then relieves it against upcoming installments.
+        // Park-at-last-installment (owner directive 2026-08-16): credit it to the
+        // DEDICATED park bucket (Contract.rescheduleAdvanceBalance) — separate from
+        // the generic FIFO advance bucket (Contract.advanceBalance) so the 2A cron
+        // and the wizard/orchestrator only relieve it against the contract's LAST
+        // installment, never whichever installment accrues next.
         // (Review C1 2026-07-02: the old InstallmentSchedule.amountDue reduction was
         // write-only — no billing path read it — so the 21-1103 credit was never
         // relieved and the fee was effectively double-billed.)
         if (q.variant === '6a' && q.rescheduleFee.gt(0)) {
-          const beforeAdvance = new Prisma.Decimal((contract.advanceBalance ?? 0).toString());
+          const beforePark = new Prisma.Decimal(
+            (contract.rescheduleAdvanceBalance ?? 0).toString(),
+          );
           await tx.contract.update({
             where: { id: contract.id },
-            data: { advanceBalance: { increment: q.rescheduleFee } },
+            data: { rescheduleAdvanceBalance: { increment: q.rescheduleFee } },
           });
-          // Same forensic trail the orchestrator writes for every advance delta.
+          // Same forensic trail the orchestrator writes for every advance delta —
+          // action name kept for continuity, bucket named explicitly in newValue
+          // so audit readers can tell park-bucket credits from generic-advance ones.
           await tx.auditLog.create({
             data: {
               action: 'OVERPAY_ADVANCE_RECORDED',
@@ -359,12 +378,60 @@ export class RescheduleCollectService {
                 advanceCredit: q.rescheduleFee.toString(),
                 advanceConsume: '0',
                 delta: q.rescheduleFee.toString(),
-                beforeBalance: beforeAdvance.toString(),
-                afterBalance: beforeAdvance.plus(q.rescheduleFee).toString(),
+                beforeBalance: beforePark.toString(),
+                afterBalance: beforePark.plus(q.rescheduleFee).toString(),
                 source: 'RESCHEDULE_COLLECT_6A_FEE',
+                bucket: 'RESCHEDULE_PARK',
               },
             },
           });
+        }
+
+        // 4c. 6b bundled phase 2: phase 1 (orchestrator recordPayment, called by
+        // the controller BEFORE this method) already parked the fee-sized overage
+        // into the GENERIC advance bucket via its own D1 OVERPAY_ADVANCE routing
+        // (it has no way to know this payment is a reschedule fee). Sweep exactly
+        // min(fee, currentGenericAdvance) out of the generic bucket into the park
+        // bucket here, inside this same tx, so the fee ends up parked for the
+        // LAST installment instead of FIFO-consumed into whichever installment
+        // accrues next. Bounded by min() so any OTHER, unrelated generic advance
+        // already sitting on the contract before phase 1 is left untouched.
+        if (input.bundledPaid && q.rescheduleFee.gt(0)) {
+          const freshContract = await tx.contract.findUniqueOrThrow({
+            where: { id: contract.id },
+            select: { advanceBalance: true, rescheduleAdvanceBalance: true },
+          });
+          const beforeGeneric = new Prisma.Decimal(freshContract.advanceBalance.toString());
+          const beforePark = new Prisma.Decimal(freshContract.rescheduleAdvanceBalance.toString());
+          const sweep = Prisma.Decimal.min(q.rescheduleFee, beforeGeneric);
+          if (sweep.gt(0)) {
+            await tx.contract.update({
+              where: { id: contract.id },
+              data: {
+                advanceBalance: { decrement: sweep },
+                rescheduleAdvanceBalance: { increment: sweep },
+              },
+            });
+            await tx.auditLog.create({
+              data: {
+                action: 'RESCHEDULE_ADVANCE_PARKED',
+                entity: 'contract',
+                entityId: contract.id,
+                userId: input.recordedById,
+                newValue: {
+                  paymentId: payment.id,
+                  installmentNo: input.installmentNo,
+                  rescheduleFee: q.rescheduleFee.toString(),
+                  sweptAmount: sweep.toString(),
+                  beforeGenericBalance: beforeGeneric.toString(),
+                  afterGenericBalance: beforeGeneric.minus(sweep).toString(),
+                  beforeParkBalance: beforePark.toString(),
+                  afterParkBalance: beforePark.plus(sweep).toString(),
+                  source: 'RESCHEDULE_COLLECT_6B_FEE_SWEEP',
+                },
+              },
+            });
+          }
         }
 
         // 5. Shift due dates + RESCHEDULE audit — same tx.
@@ -483,7 +550,9 @@ export class RescheduleCollectService {
     const contract = await client.contract.findUnique({ where: { id: contractId } });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
-      throw new BadRequestException('ไม่สามารถปรับดิวได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
+      throw new BadRequestException(
+        'ไม่สามารถปรับดิวได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT',
+      );
     }
     const payment = await client.payment.findFirst({
       where: { contractId, installmentNo, deletedAt: null },
@@ -498,7 +567,12 @@ export class RescheduleCollectService {
   private async buildQuote(
     client: Prisma.TransactionClient | PrismaService,
     contract: { monthlyPayment: Prisma.Decimal },
-    payment: { dueDate: Date; amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal; lateFeeWaived: boolean },
+    payment: {
+      dueDate: Date;
+      amountDue: Prisma.Decimal;
+      amountPaid: Prisma.Decimal;
+      lateFeeWaived: boolean;
+    },
     daysToShift: number,
     splitMode: RescheduleSplitMode,
   ): Promise<RescheduleQuote> {

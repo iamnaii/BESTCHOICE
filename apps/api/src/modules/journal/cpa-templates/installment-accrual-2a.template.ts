@@ -141,54 +141,54 @@ export class InstallmentAccrual2ATemplate {
 
     const result = await this.journal.createAndPost(
       {
-      description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
-      reference: inst.id,
-      metadata: { tag: '2A', contractId: c.id, installmentScheduleId: inst.id },
-      postedAt: inst.dueDate,
-      lines: [
-        {
-          accountCode: '11-2103',
-          dr: installmentTotal,
-          cr: zero,
-          description: 'ลูกหนี้ค้างชำระ (Accrual)',
-        },
-        {
-          accountCode: '21-2102',
-          dr: vatPerInst,
-          cr: zero,
-          description: 'ล้าง ภาษีขายรอเรียกเก็บ',
-        },
-        {
-          accountCode: '11-2106',
-          dr: interestPerInst,
-          cr: zero,
-          description: 'ล้าง รายได้รอตัดบัญชี-ดอกเบี้ย',
-        },
-        {
-          accountCode: '11-2101',
-          dr: zero,
-          cr: installmentExclVat,
-          description: 'ลูกหนี้ Gross (ลด excl.VAT)',
-        },
-        {
-          accountCode: '11-2105',
-          dr: zero,
-          cr: vatPerInst,
-          description: 'ลูกหนี้ภาษีขายรอฯ (ล้าง)',
-        },
-        {
-          accountCode: '41-1101',
-          dr: zero,
-          cr: interestPerInst,
-          description: 'รายได้ดอกเบี้ย (รับรู้)',
-        },
-        {
-          accountCode: '21-2101',
-          dr: zero,
-          cr: vatPerInst,
-          description: 'ภาษีขาย ภ.พ.30',
-        },
-      ],
+        description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
+        reference: inst.id,
+        metadata: { tag: '2A', contractId: c.id, installmentScheduleId: inst.id },
+        postedAt: inst.dueDate,
+        lines: [
+          {
+            accountCode: '11-2103',
+            dr: installmentTotal,
+            cr: zero,
+            description: 'ลูกหนี้ค้างชำระ (Accrual)',
+          },
+          {
+            accountCode: '21-2102',
+            dr: vatPerInst,
+            cr: zero,
+            description: 'ล้าง ภาษีขายรอเรียกเก็บ',
+          },
+          {
+            accountCode: '11-2106',
+            dr: interestPerInst,
+            cr: zero,
+            description: 'ล้าง รายได้รอตัดบัญชี-ดอกเบี้ย',
+          },
+          {
+            accountCode: '11-2101',
+            dr: zero,
+            cr: installmentExclVat,
+            description: 'ลูกหนี้ Gross (ลด excl.VAT)',
+          },
+          {
+            accountCode: '11-2105',
+            dr: zero,
+            cr: vatPerInst,
+            description: 'ลูกหนี้ภาษีขายรอฯ (ล้าง)',
+          },
+          {
+            accountCode: '41-1101',
+            dr: zero,
+            cr: interestPerInst,
+            description: 'รายได้ดอกเบี้ย (รับรู้)',
+          },
+          {
+            accountCode: '21-2101',
+            dr: zero,
+            cr: vatPerInst,
+            description: 'ภาษีขาย ภ.พ.30',
+          },
+        ],
       },
       tx,
     );
@@ -218,8 +218,10 @@ export class InstallmentAccrual2ATemplate {
     // so a JE-post failure rolls everything back — no partially-consumed
     // advance with the receivable still showing.
     const advanceBalance = new Decimal(c.advanceBalance.toString());
+    let genericConsumed = zero;
     if (advanceBalance.gt(0)) {
       const consume = Decimal.min(advanceBalance, installmentTotal);
+      genericConsumed = consume;
 
       await this.journal.createAndPost(
         {
@@ -304,6 +306,106 @@ export class InstallmentAccrual2ATemplate {
             consume: consume.toFixed(2),
           },
         });
+      }
+    }
+
+    // Park-at-last-installment (owner directive 2026-08-16) — Contract.
+    // rescheduleAdvanceBalance is a SEPARATE bucket from the generic advance
+    // above (reschedule fees, 6a/6b). It is relieved ONLY on the contract's
+    // LAST installment, never FIFO'd into whichever installment accrues next
+    // — every OTHER installment must leave this bucket untouched. Runs AFTER
+    // the generic-advance block so its cap (installmentTotal minus whatever
+    // the generic advance already cleared) reflects any generic consume that
+    // happened above in this same tx.
+    if (inst.installmentNo === c.totalMonths) {
+      const parkBalance = new Decimal((c.rescheduleAdvanceBalance ?? 0).toString());
+      const remainingAfterGeneric = installmentTotal.minus(genericConsumed);
+      if (parkBalance.gt(0) && remainingAfterGeneric.gt(0)) {
+        const parkConsume = Decimal.min(parkBalance, remainingAfterGeneric);
+
+        await this.journal.createAndPost(
+          {
+            description: `หักเงินพักปรับดิวเข้างวดสุดท้าย #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
+            reference: `${inst.id}:reschedule-park-consume`,
+            metadata: {
+              tag: '2B',
+              flow: 'reschedule-park-consume',
+              contractId: c.id,
+              installmentScheduleId: inst.id,
+              installmentNo: inst.installmentNo,
+              consumeAmount: parkConsume.toFixed(2),
+            },
+            postedAt: inst.dueDate,
+            lines: [
+              {
+                accountCode: '21-1103',
+                dr: parkConsume,
+                cr: zero,
+                description: 'หักเงินพักปรับดิวเข้างวดสุดท้าย',
+              },
+              {
+                accountCode: '11-2103',
+                dr: zero,
+                cr: parkConsume,
+                description: 'ล้างลูกหนี้ค้างชำระ (จากเงินพักปรับดิว)',
+              },
+            ],
+          },
+          tx,
+        );
+
+        // Decrement contract's parked reschedule-fee balance by the consumed amount.
+        await tx.contract.update({
+          where: { id: c.id },
+          data: { rescheduleAdvanceBalance: { decrement: parkConsume } },
+        });
+
+        // Reflect the consume on the Payment row — same stamping shape as the
+        // generic consume above. Re-queried fresh (the generic block above may
+        // already have updated this exact row earlier in this same tx).
+        const paymentForPark = await tx.payment.findFirst({
+          where: {
+            contractId: c.id,
+            installmentNo: inst.installmentNo,
+            deletedAt: null,
+          },
+          select: { id: true, amountDue: true, amountPaid: true },
+        });
+        if (paymentForPark) {
+          const newAmountPaid = new Decimal(paymentForPark.amountPaid.toString()).plus(parkConsume);
+          const due = new Decimal((paymentForPark.amountDue ?? installmentTotal).toString());
+          const isPaidInFull = newAmountPaid.gte(due);
+          await tx.payment.update({
+            where: { id: paymentForPark.id },
+            data: {
+              amountPaid: newAmountPaid,
+              status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
+              paidDate: isPaidInFull ? new Date() : null,
+              paidAt: isPaidInFull ? new Date() : null,
+            },
+          });
+        } else {
+          // Mirrors the generic-advance no-Payment-row alarm above — alert ops
+          // instead of silently dropping the stamp (would let a later receipt
+          // re-clear an installment the park consume already cleared).
+          Sentry.captureMessage(
+            'Reschedule park balance consumed on accrual with no Payment row to update',
+            {
+              level: 'error',
+              tags: {
+                module: 'journal',
+                action: 'reschedule-park-consume-no-payment-row',
+              },
+              extra: {
+                contractId: c.id,
+                contractNumber: c.contractNumber,
+                installmentScheduleId: inst.id,
+                installmentNo: inst.installmentNo,
+                consume: parkConsume.toFixed(2),
+              },
+            },
+          );
+        }
       }
     }
 

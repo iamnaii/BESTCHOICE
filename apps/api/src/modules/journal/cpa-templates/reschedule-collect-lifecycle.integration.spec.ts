@@ -1,5 +1,5 @@
 /**
- * P0 golden — ปรับดิว 6a collect-first → 2A accrual auto-consume → final receipt.
+ * P0 golden — ปรับดิว 6a collect-first → park-at-last-installment → final receipt.
  *
  * Runner: vitest (DB-backed; cpa-templates + *.integration.spec.ts are jest-ignored
  * per package.json testPathIgnorePatterns — same gating as
@@ -7,7 +7,14 @@
  * Run:    cd apps/api && npx vitest run --no-file-parallelism \
  *           src/modules/journal/cpa-templates/reschedule-collect-lifecycle.integration.spec.ts
  *
- * Lifecycle under test (owner directive 2026-07-02 "เงินไม่เข้า ดิวไม่เลื่อน"):
+ * REWRITTEN 2026-08-16 (owner directive — ค่าปรับดิวพักงวดสุดท้าย): the fee no
+ * longer auto-consumes at the NEXT installment's 2A accrual (that was the bug
+ * this directive fixes — "fee 857฿ ของ 6b งวด 6/12 ถูกหักเข้างวด 7/12"). It now
+ * parks in the DEDICATED `Contract.rescheduleAdvanceBalance` bucket and is
+ * relieved ONLY when the contract's actual LAST installment (#12 here) accrues.
+ *
+ * Lifecycle under test (owner directive 2026-07-02 "เงินไม่เข้า ดิวไม่เลื่อน" +
+ * 2026-08-16 park-at-last-installment):
  *   1. Overdue installment #1 (due 2025-02-01, live late fee = flat tier2 100 —
  *      CPA ยืนยันขั้นบันไดถาวร 2026-08-01; any run date well past minDays=3
  *      lands on tier2 deterministically, same as the retired PER_DAY 5%-cap
@@ -15,16 +22,27 @@
  *   2. RescheduleCollectService.executeWithCollect 6a (SPLIT, 7 days):
  *        fee = 1,515.84/30×7 ROUND_UP = 354; collect = 354 + 100 = 454.00
  *        JE: Dr 11-1101 454.00 / Cr 21-1103 354.00 / Cr 42-1103 100.00
- *        + advanceBalance +354 + lateFee reset 0 + dates +7d
- *        + AuditLog OVERPAY_ADVANCE_RECORDED (source RESCHEDULE_COLLECT_6A_FEE).
- *   3. 2A accrual auto-consumes the 354 advance: Dr 21-1103 / Cr 11-2103 = 354.
- *   4. Final receipt for the remainder 1,161.83 (= 1,515.83 − 354).
+ *        + rescheduleAdvanceBalance +354 (NOT advanceBalance — separate park
+ *        bucket) + lateFee reset 0 + dates +7d
+ *        + AuditLog OVERPAY_ADVANCE_RECORDED (source RESCHEDULE_COLLECT_6A_FEE,
+ *        bucket RESCHEDULE_PARK).
+ *   3. 2A accrual on the shifted installment #1 (NOT the contract's last
+ *      installment — totalMonths=12) does NOT touch the park bucket at all —
+ *      no advance-consume JE, no reschedule-park-consume JE. The 354 stays
+ *      parked untouched.
+ *   4. Final receipt for installment #1 clears the FULL installmentTotal
+ *      1,515.83 (not netted — installment #1 isn't the last installment).
+ *   5. 2A accrual on installment #12 (the ACTUAL last installment) consumes
+ *      the parked 354: Dr 21-1103 / Cr 11-2103 = 354, rescheduleAdvanceBalance
+ *      → 0. This is the money finally being relieved, proving it isn't lost.
  *
  * Money-critical invariant (what reconstructPriorCleared guards):
- *   Σ(Cr 11-2103) for the installment across ALL JEs == 1,515.83 EXACTLY once
- *   (354.00 advance-consume + 1,161.83 receipt — no double principal credit),
- *   Σ(Cr 42-1103) == 100.00 exactly once (fee not re-billed at the receipt),
- *   and Contract.advanceBalance is drawn down 354 → 0 by the consume.
+ *   Σ(Cr 11-2103) for installment #1 across ALL JEs == 1,515.83 EXACTLY once
+ *   (the accrual Dr 1,515.83 nets against ONE receipt Cr 1,515.83 — no advance
+ *   consume in the mix this time), Σ(Cr 42-1103) == 100.00 exactly once (fee
+ *   not re-billed at the receipt), and Contract.advanceBalance (the GENERIC
+ *   bucket) never moves in this whole scenario — only rescheduleAdvanceBalance
+ *   does, and only at installment #12.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
@@ -92,7 +110,9 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
   let service: RescheduleCollectService;
 
   type DecimalLike = { toString(): string };
-  const jeLine = (je: { lines: { accountCode: string; debit: DecimalLike; credit: DecimalLike }[] }) => ({
+  const jeLine = (je: {
+    lines: { accountCode: string; debit: DecimalLike; credit: DecimalLike }[];
+  }) => ({
     dr: (code: string) =>
       new Decimal(je.lines.find((l) => l.accountCode === code)!.debit.toString()).toFixed(2),
     cr: (code: string) =>
@@ -111,14 +131,22 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
     // contract written off via the real writeOffBadDebt() has a permanent
     // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
-    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
-    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({
+      select: { contractId: true },
+    });
+    await prisma.contract.deleteMany({
+      where: { id: { notIn: woPoisoned.map((p) => p.contractId) } },
+    });
 
     await seedFinanceCoa(prisma);
     await ensureFinanceCompany();
     await ensureSystemAdminUser();
     for (const [key, value] of LATE_FEE_KEYS) {
-      await prisma.systemConfig.upsert({ where: { key }, update: { value }, create: { key, value } });
+      await prisma.systemConfig.upsert({
+        where: { key },
+        update: { value },
+        create: { key, value },
+      });
     }
 
     const journal = new JournalAutoService(prisma as any);
@@ -180,8 +208,12 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
     // contract written off via the real writeOffBadDebt() has a permanent
     // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
-    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
-    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({
+      select: { contractId: true },
+    });
+    await prisma.contract.deleteMany({
+      where: { id: { notIn: woPoisoned.map((p) => p.contractId) } },
+    });
     await prisma.systemConfig.deleteMany({
       where: { key: { in: LATE_FEE_KEYS.map(([key]) => key) } },
     });
@@ -222,14 +254,25 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     expect(dr('11-1101')).toBe('454.00'); // user default cash account
     expect(cr('21-1103')).toBe('354.00');
     expect(cr('42-1103')).toBe('100.00');
-    const totalDr = je!.lines.reduce((s, l) => s.plus(new Decimal(l.debit.toString())), new Decimal(0));
-    const totalCr = je!.lines.reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+    const totalDr = je!.lines.reduce(
+      (s, l) => s.plus(new Decimal(l.debit.toString())),
+      new Decimal(0),
+    );
+    const totalCr = je!.lines.reduce(
+      (s, l) => s.plus(new Decimal(l.credit.toString())),
+      new Decimal(0),
+    );
     expect(totalDr.toFixed(2)).toBe('454.00');
     expect(totalCr.toFixed(2)).toBe('454.00');
 
-    // 6a fee = PREPAYMENT — Contract.advanceBalance incremented by the fee.
+    // 6a fee = PREPAYMENT, park-at-last-installment (2026-08-16): the fee lands
+    // on the DEDICATED park bucket — Contract.advanceBalance (generic) is
+    // NEVER touched by this reschedule at all.
     const contractAfter = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
-    expect(new Decimal(contractAfter.advanceBalance.toString()).toFixed(2)).toBe('354.00');
+    expect(new Decimal(contractAfter.rescheduleAdvanceBalance.toString()).toFixed(2)).toBe(
+      '354.00',
+    );
+    expect(new Decimal(contractAfter.advanceBalance.toString()).toFixed(2)).toBe('0.00');
 
     // Payment.lateFee reset to 0 (collected) + collected note; dueDate shifted +7d.
     const pay = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
@@ -262,7 +305,8 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     const nv = advAudit!.newValue as Record<string, unknown>;
     expect(nv.advanceCredit).toBe('354');
     expect(nv.source).toBe('RESCHEDULE_COLLECT_6A_FEE');
-    expect(nv.afterBalance).toBe('354');
+    expect(nv.afterBalance).toBe('354'); // afterBalance of the PARK bucket now, not generic
+    expect(nv.bucket).toBe('RESCHEDULE_PARK');
 
     // Money-detail audit row + post-commit e-Receipt for the collected cash.
     const collectAudit = await prisma.auditLog.findFirst({
@@ -276,12 +320,14 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     expect(new Decimal(receipt!.amount.toString()).toFixed(2)).toBe('454.00');
   });
 
-  it('2A accrual on the shifted due date auto-consumes the 354 advance (Dr 21-1103 / Cr 11-2103)', async () => {
+  it('2A accrual on the shifted installment #1 (NOT the last installment) does NOT touch the park bucket at all', async () => {
     const journal = new JournalAutoService(prisma as any);
-    const accrued = await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(sched1Id);
+    const accrued = await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(
+      sched1Id,
+    );
     expect(accrued).not.toBeNull();
 
-    // Accrual JE — full installmentTotal receivable.
+    // Accrual JE — full installmentTotal receivable, unaffected by the park change.
     const accrualJe = await prisma.journalEntry.findFirst({
       where: {
         AND: [
@@ -295,7 +341,11 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     expect(accrualJe, 'expected a 2A accrual JE').not.toBeNull();
     expect(jeLine(accrualJe!).dr('11-2103')).toBe('1515.83');
 
-    // Advance-consume JE (CPA Policy A) posted in the same accrual tx.
+    // Park-at-last-installment (2026-08-16): installment #1 is NOT the
+    // contract's last installment (totalMonths=12) — neither the generic
+    // advance-consume JE NOR a reschedule-park-consume JE should post here.
+    // This is the exact class of bug the directive fixes: the fee must NOT
+    // auto-relieve into whichever installment accrues next.
     const consumeJe = await prisma.journalEntry.findFirst({
       where: {
         AND: [
@@ -304,41 +354,49 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
         ],
         deletedAt: null,
       },
-      include: { lines: true },
     });
-    expect(consumeJe, 'expected an advance-consume JE').not.toBeNull();
-    const { dr, cr } = jeLine(consumeJe!);
-    expect(dr('21-1103')).toBe('354.00');
-    expect(cr('11-2103')).toBe('354.00');
+    expect(consumeJe, 'no generic advance-consume JE expected (generic bucket is 0)').toBeNull();
+    const parkConsumeJe = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } } as any,
+          { metadata: { path: ['installmentScheduleId'], equals: sched1Id } } as any,
+        ],
+        deletedAt: null,
+      },
+    });
+    expect(
+      parkConsumeJe,
+      'no park-consume JE expected — installment #1 is not the last installment',
+    ).toBeNull();
 
-    // advanceBalance drawn down by the consumed amount: 354 → 0.
+    // Park bucket untouched — still 354.00. Generic advance still 0.
     const contractAfter = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+    expect(new Decimal(contractAfter.rescheduleAdvanceBalance.toString()).toFixed(2)).toBe(
+      '354.00',
+    );
     expect(new Decimal(contractAfter.advanceBalance.toString()).toFixed(2)).toBe('0.00');
 
-    // Payment row reflects the consume (partial cover).
+    // Payment row completely untouched by 2A (no advance/park to consume into it).
     const pay = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
-    expect(new Decimal(pay.amountPaid.toString()).toFixed(2)).toBe('354.00');
-    expect(pay.status).toBe('PARTIALLY_PAID');
+    expect(new Decimal(pay.amountPaid.toString()).toFixed(2)).toBe('0.00');
   });
 
-  it('final receipt clears ONLY the remainder — Σ(Cr 11-2103) == 1,515.83 exactly once, Σ(Cr 42-1103) == 100.00 exactly once', async () => {
+  it('final receipt for installment #1 clears the FULL installmentTotal 1,515.83 — NOT netted (installment #1 is not the last installment)', async () => {
     const journal = new JournalAutoService(prisma as any);
     const tpl = new PaymentReceiptTemplate(journal, prisma as any);
 
-    // reconstructPriorCleared must count the 354 advance-consume (tag 2B,
-    // flow advance-consume-on-accrual) and IGNORE the reschedule-collect JE
-    // (tag intentionally NOT 'receipt') — so the final receipt clears exactly
-    // 1,515.83 − 354 = 1,161.83. Were the consume invisible, isFinalReceipt
-    // would reject (residual 354 > 1฿) — and counting the collect JE would
-    // under-clear. Either failure mode breaks this test.
+    // Nothing pre-cleared this installment (no advance/park consume happened
+    // in the previous test) — the final receipt clears the full 1,515.83 in
+    // one go, exactly as an ordinary receipt on an un-touched installment would.
     const { split } = await tpl.execute({
       installmentScheduleId: sched1Id,
-      delta: D('1161.83'),
+      delta: D('1515.83'),
       debitAccountCode: '11-1201',
       isFinalReceipt: true,
       paymentId,
     });
-    expect(split.principalCleared.toFixed(2)).toBe('1161.83');
+    expect(split.principalCleared.toFixed(2)).toBe('1515.83');
     expect(split.principalRemainingAfter.toFixed(2)).toBe('0.00');
 
     const receiptJe = await prisma.journalEntry.findFirst({
@@ -353,14 +411,15 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     });
     expect(receiptJe, 'expected a receipt JE').not.toBeNull();
     const { dr, cr } = jeLine(receiptJe!);
-    expect(dr('11-1201')).toBe('1161.83');
-    expect(cr('11-2103')).toBe('1161.83');
+    expect(dr('11-1201')).toBe('1515.83');
+    expect(cr('11-2103')).toBe('1515.83');
     // The 100.00 late fee was already booked at reschedule-collect — never again here.
     expect(receiptJe!.lines.find((l) => l.accountCode === '42-1103')).toBeUndefined();
 
     // ── Money-critical invariant ────────────────────────────────────────────
-    // Across ALL JEs of this installment: 11-2103 credited installmentTotal
-    // exactly ONCE (354.00 consume + 1,161.83 receipt) and fully cleared.
+    // Across ALL JEs of installment #1: 11-2103 credited installmentTotal
+    // exactly ONCE (this single receipt, since no advance/park consume ever
+    // touched this installment) and fully cleared.
     const instEntries = await prisma.journalEntry.findMany({
       where: {
         metadata: { path: ['installmentScheduleId'], equals: sched1Id } as any,
@@ -390,8 +449,51 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
       .reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
     expect(lateFeeCr.toFixed(2)).toBe('100.00');
 
-    // advanceBalance stays fully drawn down after the receipt.
+    // Both buckets still exactly as before this receipt — a receipt on a
+    // non-last installment must never touch either advance bucket.
     const contractAfter = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+    expect(new Decimal(contractAfter.advanceBalance.toString()).toFixed(2)).toBe('0.00');
+    expect(new Decimal(contractAfter.rescheduleAdvanceBalance.toString()).toFixed(2)).toBe(
+      '354.00',
+    );
+  });
+
+  it('2A accrual on installment #12 (the ACTUAL last installment) finally consumes the parked 354 — proves the money is not lost', async () => {
+    const journal = new JournalAutoService(prisma as any);
+    const sched12 = await prisma.installmentSchedule.findUniqueOrThrow({
+      where: { contractId_installmentNo: { contractId: c.id, installmentNo: 12 } },
+    });
+
+    const accrued = await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(
+      sched12.id,
+    );
+    expect(accrued).not.toBeNull();
+
+    const parkConsumeJe = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } } as any,
+          { metadata: { path: ['installmentScheduleId'], equals: sched12.id } } as any,
+        ],
+        deletedAt: null,
+      },
+      include: { lines: true },
+    });
+    expect(
+      parkConsumeJe,
+      'expected a reschedule-park-consume JE on the LAST installment',
+    ).not.toBeNull();
+    const { dr, cr } = jeLine(parkConsumeJe!);
+    expect(dr('21-1103')).toBe('354.00');
+    expect(cr('11-2103')).toBe('354.00');
+    expect(parkConsumeJe!.lines.find((l) => l.accountCode === '21-1103')!.description).toBe(
+      'หักเงินพักปรับดิวเข้างวดสุดท้าย',
+    );
+
+    // Park bucket fully drained; generic advance still untouched throughout
+    // this entire scenario (it was never the mechanism in play).
+    const contractAfter = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+    expect(new Decimal(contractAfter.rescheduleAdvanceBalance.toString()).toFixed(2)).toBe('0.00');
     expect(new Decimal(contractAfter.advanceBalance.toString()).toFixed(2)).toBe('0.00');
   });
 });

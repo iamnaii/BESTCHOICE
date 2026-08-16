@@ -19,6 +19,7 @@ import type { VoidedReceiptInfo } from '@/pages/PaymentsPage/types';
 interface PaymentItem {
   id: string;
   installmentNo: number;
+  dueDate: string;
   amountDue: string;
   amountPaid: string;
   lateFee: string;
@@ -273,7 +274,8 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                       <thead className="bg-muted/40 text-xs text-muted-foreground">
                         <tr className="text-left">
                           <Th>เลขที่ใบเสร็จ</Th>
-                          <Th>วันที่</Th>
+                          <Th>ดิวชำระ</Th>
+                          <Th>วันที่ชำระ</Th>
                           <Th>งวด</Th>
                           <Th className="text-right">ยอดต้องชำระ</Th>
                           <Th className="text-right">ยอดรับจริง</Th>
@@ -298,6 +300,8 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                               className={`border-t border-border ${r.isVoided ? 'opacity-50 line-through' : ''}`}
                             >
                               <Td className="font-mono text-xs">{r.receiptNumber}</Td>
+                              {/* ดิวชำระ = dueDate ของงวด — ใบเสร็จที่ไม่ผูกงวด (ดาวน์/ปิดยอด/CN) ไม่มีดิว */}
+                              <Td>{p ? formatDateShort(p.dueDate) : '–'}</Td>
                               <Td>{formatDateShort(r.paidDate)}</Td>
                               <Td>{r.installmentNo ?? '–'}{contract ? `/${contract.totalMonths}` : ''}</Td>
                               <Td className="text-right">{p ? `${money(p.amountDue)}` : '–'}</Td>

@@ -148,8 +148,11 @@ function globalChecks(reply: string): string[] {
     if (textLines.length > lineCap) fails.push(`บับเบิล ${i + 1} มี ${textLines.length} บรรทัด (เพดาน ${lineCap})`);
     textLines.forEach((l) => {
       const t = l.trim();
-      if (t.length > 75 && !t.startsWith('[ตัวเลือก:')) {
-        fails.push(`บรรทัดยาว ${t.length} ตัวอักษร: "${t.slice(0, 40)}..." (เพดาน 75 — ตัดเป็นหลายบรรทัด)`);
+      // สคริปต์บังคับของเจ้าของ ("มือ 1 ไม่มีผลิตแล้ว...") ห้ามเรียบเรียงใหม่และยาว ~58
+      // ตัวอักษรโดยตัวมันเอง — พอมีชื่อรุ่นนำหน้าก็ชนเพดานปกติ จึงผ่อนเป็น 90 เฉพาะบรรทัดนั้น
+      const cap = t.includes('ไม่มีผลิตแล้ว') ? 90 : 75;
+      if (t.length > cap && !t.startsWith('[ตัวเลือก:')) {
+        fails.push(`บรรทัดยาว ${t.length} ตัวอักษร: "${t.slice(0, 40)}..." (เพดาน ${cap} — ตัดเป็นหลายบรรทัด)`);
       }
     });
   });

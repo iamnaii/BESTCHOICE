@@ -141,7 +141,7 @@ function globalChecks(reply: string): string[] {
     // ก้อนที่เป็น "การ์ดเทียบ" (มีบรรทัดดาวน์/ผ่อน ตั้งแต่ 2 ใบ) จัดเป็นตารางกวาดตาอยู่แล้ว
     // → เพดานสูงกว่าก้อนร้อยแก้วปกติ (กฎ prompt: 180 ทั่วไป / 240 ก้อนการ์ด)
     const cardLines = (b.match(/ดาวน์[^\n]*ผ่อนเดือนละ/g) ?? []).length;
-    const cap = cardLines >= 2 ? 265 : 200;
+    const cap = cardLines >= 2 ? 285 : 200; // 285: การ์ด 2 ใบ + 📱 นำหน้า (v4.1)
     if (len > cap) fails.push(`บับเบิล ${i + 1} ยาว ${len} ตัวอักษร (เพดาน ${cap} — ควรแตกด้วย ---)`);
     const textLines = b.split('\n').filter((l) => l.trim());
     const lineCap = cardLines >= 2 ? 7 : 6;

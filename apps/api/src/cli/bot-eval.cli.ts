@@ -117,7 +117,8 @@ const GROUNDED = [17500, 19900, 13900, 1750, 1578, 1990, 1790, 1390, 1245, 1900,
 type Turn = { user: string; expectTools?: string[]; forbidTools?: string[]; contains?: string[]; notContains?: string[]; wantButtons?: boolean; noBigNumbers?: boolean };
 type Scenario = { id: string; name: string; turns: Turn[] };
 
-const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ'];
+// 'เกรด' — คำสั่งเจ้าของ 2026-08-17: tool คืนเกรดมาได้ แต่ห้ามพิมพ์ให้ลูกค้า (บอก % แบตพอ)
+const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ', 'เกรด'];
 
 function globalChecks(reply: string): string[] {
   const fails: string[] = [];

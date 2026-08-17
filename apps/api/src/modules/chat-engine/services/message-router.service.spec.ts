@@ -1,5 +1,5 @@
 import { MessageRouterService } from './message-router.service';
-import { ChatChannel, MessageType } from '@prisma/client';
+import { ChatChannel, MessageType, MessageRole } from '@prisma/client';
 
 const baseMsg = {
   externalMessageId: 'em1',
@@ -478,5 +478,59 @@ describe('MessageRouterService — ส่งรูปสินค้าตาม
     });
     await router.routeInbound(baseMsg as any);
     expect(adapter.sendMessage).toHaveBeenCalledTimes(3); // 1 text + 2 image
+  });
+});
+
+describe('MessageRouterService — รวมข้อความที่ลูกค้าพิมพ์รัว (coalesce)', () => {
+  // ย่อหน้าต่างรอเหลือ 30ms เฉพาะในเทส — ของจริง 3 วิ (โค้ดอ่าน env ตอนรัน)
+  const prevEnv = process.env.CHAT_COALESCE_MS;
+  beforeAll(() => {
+    process.env.CHAT_COALESCE_MS = '30';
+  });
+  afterAll(() => {
+    if (prevEnv === undefined) delete process.env.CHAT_COALESCE_MS;
+    else process.env.CHAT_COALESCE_MS = prevEnv;
+  });
+  const AI_REPLY = { reply: 'ตอบรวมให้ทีเดียวค่ะ', confidence: 0.95, toolsUsed: [], inputTokens: 1, outputTokens: 1 };
+
+  it('ลูกค้าส่ง 2 ข้อความติดกัน → บอทตอบครั้งเดียว (เทิร์นล่าสุดเป็นคนตอบ)', async () => {
+    const { router, adapter, aiAutoReply, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: AI_REPLY,
+    });
+    const msg = (text: string, mid: string) => ({
+      externalMessageId: mid,
+      externalUserId: 'U1',
+      channel: ChatChannel.LINE_SHOP,
+      type: 'TEXT',
+      text,
+    });
+    // ยิงติดกันแบบลูกค้าพิมพ์รัว — ไม่ await ตัวแรกก่อน
+    const first = router.routeInbound(msg('แล้วเครื่องจะออกก่อนไหม', 'm1') as any);
+    const second = router.routeInbound(msg('อีกตั้งครึ่งเดือน', 'm2') as any);
+    await Promise.all([first, second]);
+
+    // ข้อความลูกค้าทั้ง 2 ต้องถูกบันทึกครบ (ไม่หาย ขึ้น inbox ปกติ)
+    const savedCustomer = roomManager.saveMessage.mock.calls.filter(
+      (c: any[]) => c[0].role === MessageRole.CUSTOMER,
+    );
+    expect(savedCustomer).toHaveLength(2);
+    // แต่ AI ต้องถูกเรียกครั้งเดียว และส่งออกครั้งเดียว
+    expect(aiAutoReply.autoReply).toHaveBeenCalledTimes(1);
+    const sentTexts = adapter.sendMessage.mock.calls.map((c: any[]) => c[0].text);
+    expect(sentTexts).toEqual(['ตอบรวมให้ทีเดียวค่ะ']);
+  });
+
+  it('ข้อความเดียวธรรมดา → ตอบตามปกติ (ไม่ถูกกลืน)', async () => {
+    const { router, adapter, aiAutoReply } = makeRouter({ aiEligible: true, aiResult: AI_REPLY });
+    await router.routeInbound({
+      externalMessageId: 'm9',
+      externalUserId: 'U9',
+      channel: ChatChannel.LINE_SHOP,
+      type: 'TEXT',
+      text: 'สนใจ iPhone 15',
+    } as any);
+    expect(aiAutoReply.autoReply).toHaveBeenCalledTimes(1);
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
   });
 });

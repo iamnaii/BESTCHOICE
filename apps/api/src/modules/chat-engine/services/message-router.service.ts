@@ -108,10 +108,35 @@ export class MessageRouterService {
    */
   private readonly inboundChains = new Map<string, Promise<unknown>>();
 
+  /**
+   * รวมข้อความที่ลูกค้าพิมพ์ติดกันให้เป็นเทิร์นเดียว (coalesce)
+   *
+   * คนไทยแชทจริงพิมพ์รัวเป็นท่อน ๆ ("แล้วเครื่องจะออกก่อนไหม" / "อีกตั้งครึ่งเดือน")
+   * — เดิมนับเป็น 2 เทิร์น บอทจึงตอบ 2 ชุดติดกัน (เห็นจริงในแชทลูกค้า 2026-08-17)
+   * คิว inboundChains กันตอบ "พร้อมกัน" ได้ แต่ไม่ได้กันตอบ "สองครั้ง"
+   *
+   * วิธีแก้: ทุกข้อความรับตั๋วเรียงลำดับต่อลูกค้า → ก่อนเรียก AI รอ DEBOUNCE
+   * แล้วเช็คว่าตั๋วตัวเองยังเป็นใบล่าสุดไหม ถ้าไม่ใช่ = ลูกค้าพิมพ์ต่อ ให้ข้ามการตอบ
+   * (ข้อความยังถูกบันทึก + ขึ้น inbox ตามปกติ และเทิร์นล่าสุดเห็นทุกข้อความใน history)
+   */
+  private readonly inboundTickets = new Map<string, number>();
+  private inboundSeq = 0;
+  /**
+   * 3 วิ — ยาวพอให้พิมพ์ท่อนถัดไปจบ สั้นพอไม่รู้สึกว่าบอทอืด (มี typing indicator คั่นแล้ว)
+   * ปรับได้ด้วย env CHAT_COALESCE_MS โดยไม่ต้องแก้โค้ด (0 = ปิดการรอ)
+   */
+  private static get coalesceWindowMs(): number {
+    const v = Number(process.env.CHAT_COALESCE_MS);
+    return Number.isFinite(v) && v >= 0 ? v : 3000;
+  }
+
   async routeInbound(message: InboundMessage): Promise<void> {
     const chainKey = `${message.channel}:${message.externalUserId}`;
+    // ออกตั๋วตั้งแต่ "รับเข้า" (ไม่ใช่ตอนถึงคิว) เพื่อให้เทิร์นที่กำลังรออยู่รู้ทันทีว่ามีข้อความใหม่
+    const ticket = ++this.inboundSeq;
+    this.inboundTickets.set(chainKey, ticket);
     const prev = this.inboundChains.get(chainKey) ?? Promise.resolve();
-    const run = prev.then(() => this.routeInboundInner(message));
+    const run = prev.then(() => this.routeInboundInner(message, chainKey, ticket));
     // เก็บลง map แบบกลืน error — เทิร์นถัดไปต้องไม่ตายตามเทิร์นก่อนหน้า
     const settled = run.catch(() => undefined);
     this.inboundChains.set(chainKey, settled);
@@ -121,7 +146,11 @@ export class MessageRouterService {
     return run;
   }
 
-  private async routeInboundInner(message: InboundMessage): Promise<void> {
+  private async routeInboundInner(
+    message: InboundMessage,
+    chainKey?: string,
+    ticket?: number,
+  ): Promise<void> {
     // 0. Best-effort profile fetch — never block webhook on profile API issues
     const adapter = this.adapterMap.get(message.channel);
     let profile: { displayName?: string; avatarUrl?: string } | null = null;
@@ -192,6 +221,25 @@ export class MessageRouterService {
     }
 
     // 3.5 AI auto-reply — runs when auto mode is enabled for the room channel
+    // รอให้ลูกค้าพิมพ์จบก่อนค่อยตอบ — ยิง typing indicator ก่อนเข้าโหมดรอ เพื่อให้ลูกค้า
+    // เห็นว่ากำลังตอบอยู่ (ไม่รู้สึกว่าเงียบ) แล้วค่อยเช็คว่ามีข้อความใหม่ตามมาไหม
+    if (chainKey && ticket !== undefined && this.aiAutoReplyService) {
+      if (message.externalUserId) {
+        void this.adapterMap
+          .get(message.channel)
+          ?.sendTypingIndicator?.(message.externalUserId)
+          ?.catch(() => undefined);
+      }
+      const waitMs = MessageRouterService.coalesceWindowMs;
+      if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+      if (this.inboundTickets.get(chainKey) !== ticket) {
+        this.logger.log(
+          `[Coalesce] room=${room.id} ข้ามการตอบข้อความนี้ — ลูกค้าพิมพ์ต่อ เทิร์นล่าสุดจะตอบรวมให้`,
+        );
+        return;
+      }
+    }
+
     if (this.aiAutoReplyService && (await this.aiAutoReplyService.shouldAutoReply(room))) {
       // ข้อความไม่มี text (รูป/สติกเกอร์/เสียง/วิดีโอ/ไฟล์) ห้ามส่ง '' เข้า Claude —
       // API ปฏิเสธ text block ว่าง → ลูกค้าเห็น "กำลังพิมพ์" แล้วเงียบ/หลุดไปข้อความยืนยันตัวตน

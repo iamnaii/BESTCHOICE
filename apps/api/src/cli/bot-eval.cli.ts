@@ -133,20 +133,34 @@ function globalChecks(reply: string): string[] {
   bubbles.forEach((b) => b.split('\n').forEach((l) => { if (l.trim() && isQ(l)) qCount++; }));
   if (qCount > 1) fails.push(`คำถามเกิน 1 ข้อ (${qCount})`);
   // อ่านง่าย (เจ้าของสั่ง 2026-08-17 "กลัวคนอ่านยาก แล้วจะขี้เกียจอ่าน"):
-  // เพดานต่อบับเบิล 220 ตัวอักษร · ต่อเทิร์นรวม 480 · บรรทัดเดียวไม่ควรเกิน 90
+  // กฎใน prompt ตั้ง target ที่ บรรทัด 60 / ก้อน 180 / ทั้งเทิร์น 300 ตัวอักษร
+  // ด่านนี้เผื่อ ~25% แล้วจับที่ 75 / 200 / 380 — เกินนี้คือกำแพงตัวหนังสือจริง ๆ
   // (วัดจากของจริงบน prod: เฉลี่ย 87 แต่เทิร์นสำคัญพุ่งถึง 366 ก้อนเดียว)
   bubbles.forEach((b, i) => {
     const len = b.trim().length;
-    if (len > 220) fails.push(`บับเบิล ${i + 1} ยาว ${len} ตัวอักษร (เพดาน 220 — ควรแตกด้วย ---)`);
-    b.split('\n').forEach((l) => {
+    // ก้อนที่เป็น "การ์ดเทียบ" (มีบรรทัดดาวน์/ผ่อน ตั้งแต่ 2 ใบ) จัดเป็นตารางกวาดตาอยู่แล้ว
+    // → เพดานสูงกว่าก้อนร้อยแก้วปกติ (กฎ prompt: 180 ทั่วไป / 240 ก้อนการ์ด)
+    const cardLines = (b.match(/ดาวน์[^\n]*ผ่อนเดือนละ/g) ?? []).length;
+    const cap = cardLines >= 2 ? 265 : 200;
+    if (len > cap) fails.push(`บับเบิล ${i + 1} ยาว ${len} ตัวอักษร (เพดาน ${cap} — ควรแตกด้วย ---)`);
+    const textLines = b.split('\n').filter((l) => l.trim());
+    const lineCap = cardLines >= 2 ? 7 : 6;
+    if (textLines.length > lineCap) fails.push(`บับเบิล ${i + 1} มี ${textLines.length} บรรทัด (เพดาน ${lineCap})`);
+    textLines.forEach((l) => {
       const t = l.trim();
-      if (t.length > 90 && !t.startsWith('[ตัวเลือก:')) {
-        fails.push(`บรรทัดยาว ${t.length} ตัวอักษร: "${t.slice(0, 40)}..." (เพดาน 90 — ตัดเป็นหลายบรรทัด)`);
+      if (t.length > 75 && !t.startsWith('[ตัวเลือก:')) {
+        fails.push(`บรรทัดยาว ${t.length} ตัวอักษร: "${t.slice(0, 40)}..." (เพดาน 75 — ตัดเป็นหลายบรรทัด)`);
       }
     });
   });
-  const totalLen = reply.replace(/\n---\n/g, '').trim().length;
-  if (totalLen > 480) fails.push(`ทั้งเทิร์นยาว ${totalLen} ตัวอักษร (เพดาน 480)`);
+  const visible = reply.replace(/\n---\n/g, '').replace(/\[ตัวเลือก:[^\]]*\]/g, '').trim();
+  // เทิร์นที่มีการ์ดเทียบ 2 ใบ (+สคริปต์บังคับบางเคส) ยาวกว่าโดยธรรมชาติ แต่ยังกวาดตาได้
+  const totalCards = (reply.match(/ดาวน์[^\n]*ผ่อนเดือนละ/g) ?? []).length;
+  const totalCap = totalCards >= 2 ? 430 : 380;
+  if (visible.length > totalCap) {
+    fails.push(`ทั้งเทิร์นยาว ${visible.length} ตัวอักษร (เพดาน ${totalCap})`);
+  }
+  if (bubbles.length > 3) fails.push(`แตก ${bubbles.length} ก้อน (เพดาน 3)`);
 
   // ตัวเลขต้องมีที่มา
   const nums = [...reply.matchAll(/\d[\d,]{2,}/g)].map((m) => Number(m[0].replace(/,/g, ''))).filter((n) => n >= 500);

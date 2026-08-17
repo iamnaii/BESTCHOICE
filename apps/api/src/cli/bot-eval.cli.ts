@@ -132,6 +132,22 @@ function globalChecks(reply: string): string[] {
   let qCount = 0;
   bubbles.forEach((b) => b.split('\n').forEach((l) => { if (l.trim() && isQ(l)) qCount++; }));
   if (qCount > 1) fails.push(`คำถามเกิน 1 ข้อ (${qCount})`);
+  // อ่านง่าย (เจ้าของสั่ง 2026-08-17 "กลัวคนอ่านยาก แล้วจะขี้เกียจอ่าน"):
+  // เพดานต่อบับเบิล 220 ตัวอักษร · ต่อเทิร์นรวม 480 · บรรทัดเดียวไม่ควรเกิน 90
+  // (วัดจากของจริงบน prod: เฉลี่ย 87 แต่เทิร์นสำคัญพุ่งถึง 366 ก้อนเดียว)
+  bubbles.forEach((b, i) => {
+    const len = b.trim().length;
+    if (len > 220) fails.push(`บับเบิล ${i + 1} ยาว ${len} ตัวอักษร (เพดาน 220 — ควรแตกด้วย ---)`);
+    b.split('\n').forEach((l) => {
+      const t = l.trim();
+      if (t.length > 90 && !t.startsWith('[ตัวเลือก:')) {
+        fails.push(`บรรทัดยาว ${t.length} ตัวอักษร: "${t.slice(0, 40)}..." (เพดาน 90 — ตัดเป็นหลายบรรทัด)`);
+      }
+    });
+  });
+  const totalLen = reply.replace(/\n---\n/g, '').trim().length;
+  if (totalLen > 480) fails.push(`ทั้งเทิร์นยาว ${totalLen} ตัวอักษร (เพดาน 480)`);
+
   // ตัวเลขต้องมีที่มา
   const nums = [...reply.matchAll(/\d[\d,]{2,}/g)].map((m) => Number(m[0].replace(/,/g, ''))).filter((n) => n >= 500);
   for (const n of nums) {
@@ -170,6 +186,15 @@ const SCENARIOS: Scenario[] = [
     id: 'S4', name: 'ของมีในสต๊อก 2 สภาพ → เทียบด้วยดาวน์+งวด',
     turns: [
       { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], notContains: ['17,500', '19,900'], contains: ['ผ่อนเดือนละ'] },
+    ],
+  },
+  {
+    // เทิร์นเทียบรุ่นคือตัวที่ยาวที่สุดในโลกจริง (วัดจาก prod: 366/323 ตัวอักษรก้อนเดียว)
+    // — ด่านอ่านง่ายใน globalChecks จะจับตรงนี้เป็นหลัก
+    id: 'S5', name: 'เทียบรุ่น (เทิร์นยาวสุดในโลกจริง) → ต้องอ่านง่าย',
+    turns: [
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], contains: ['ผ่อนเดือนละ'] },
+      { user: 'ต่างกับ 15 Plus ยังไง', contains: ['ผ่อนเดือนละ'] },
     ],
   },
 ];

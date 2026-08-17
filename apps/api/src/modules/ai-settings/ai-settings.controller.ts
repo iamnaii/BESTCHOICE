@@ -88,7 +88,7 @@ export class AiSettingsController {
         requiredToolNames: REQUIRED_TOOL_NAMES,
       },
       serviceBot: {
-        name: 'น้องเบส (Service Bot)',
+        name: 'แอดมิน (Service Bot)',
         channels: ['LINE FINANCE'],
         source: 'apps/api/src/modules/chatbot-finance/prompts/system-prompt.ts',
         editable: false,

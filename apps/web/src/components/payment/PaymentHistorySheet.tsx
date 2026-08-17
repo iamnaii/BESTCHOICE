@@ -11,6 +11,8 @@ import {
   computeCumulativePaid,
   computeFeeTotals,
   jesForReceipt as selectJesForReceipt,
+  receiptLabelsForJes,
+  type JeReceiptLabel,
 } from './paymentHistoryDerivations';
 import { toast } from 'sonner';
 import type { VoidedReceiptInfo } from '@/pages/PaymentsPage/types';
@@ -19,6 +21,7 @@ import type { VoidedReceiptInfo } from '@/pages/PaymentsPage/types';
 interface PaymentItem {
   id: string;
   installmentNo: number;
+  dueDate: string;
   amountDue: string;
   amountPaid: string;
   lateFee: string;
@@ -175,6 +178,11 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
   // else by shared paymentId). Extracted to paymentHistoryDerivations for unit test.
   const jesForReceipt = (r: ReceiptItem): ContractJe[] => selectJesForReceipt(r, journalEntries);
   const jeTargetJes = jeTarget ? jesForReceipt(jeTarget) : [];
+  // ป้าย "JE ใบนี้เป็นของใบเสร็จใบไหน" — เฉพาะงวดแบ่งชำระ (>1 ใบ) ที่จับคู่ได้ครบ
+  const jeReceiptLabels = useMemo(
+    () => receiptLabelsForJes(journalEntries, receipts, jeTarget?.paymentId ?? null),
+    [journalEntries, receipts, jeTarget?.paymentId],
+  );
 
   const payments = pResp?.data ?? [];
   const contract = pResp?.contract;
@@ -273,7 +281,8 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                       <thead className="bg-muted/40 text-xs text-muted-foreground">
                         <tr className="text-left">
                           <Th>เลขที่ใบเสร็จ</Th>
-                          <Th>วันที่</Th>
+                          <Th>ดิวชำระ</Th>
+                          <Th>วันที่ชำระ</Th>
                           <Th>งวด</Th>
                           <Th className="text-right">ยอดต้องชำระ</Th>
                           <Th className="text-right">ยอดรับจริง</Th>
@@ -298,6 +307,8 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                               className={`border-t border-border ${r.isVoided ? 'opacity-50 line-through' : ''}`}
                             >
                               <Td className="font-mono text-xs">{r.receiptNumber}</Td>
+                              {/* ดิวชำระ = dueDate ของงวด — ใบเสร็จที่ไม่ผูกงวด (ดาวน์/ปิดยอด/CN) ไม่มีดิว */}
+                              <Td>{p ? formatDateShort(p.dueDate) : '–'}</Td>
                               <Td>{formatDateShort(r.paidDate)}</Td>
                               <Td>{r.installmentNo ?? '–'}{contract ? `/${contract.totalMonths}` : ''}</Td>
                               <Td className="text-right">{p ? `${money(p.amountDue)}` : '–'}</Td>
@@ -417,7 +428,12 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
             ) : (
               <div className={`grid gap-3 ${jeTargetJes.length > 1 ? 'lg:grid-cols-2' : ''}`}>
                 {jeTargetJes.map((je) => (
-                  <JeBlock key={je.id} je={je} />
+                  <JeBlock
+                    key={je.id}
+                    je={je}
+                    receiptLabel={jeReceiptLabels.get(je.id)}
+                    openedReceiptNumber={jeTarget?.receiptNumber}
+                  />
                 ))}
               </div>
             )}
@@ -440,18 +456,42 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
 /* ─── Helpers ───────────────────────────────────────── */
 /** One posted JE rendered as a Dr/Cr grid — same layout as the JOURNAL AUTO
  * section in ContractEarlyPayoff (grid-cols-[80px_1fr_90px_90px]). */
-function JeBlock({ je }: { je: ContractJe }) {
+function JeBlock({
+  je,
+  receiptLabel,
+  openedReceiptNumber,
+}: {
+  je: ContractJe;
+  /** ใบเสร็จเจ้าของ JE ใบนี้ (undefined = จับคู่ไม่ได้/งวดใบเดียว — ไม่ติดป้าย) */
+  receiptLabel?: JeReceiptLabel;
+  openedReceiptNumber?: string;
+}) {
   const isVoidReversal = je.flow === 'receipt-void' || je.tag === 'REVERSAL';
   const flowLabel = isVoidReversal
     ? 'กลับรายการ (VOID)'
     : je.flow === 'early-payoff'
     ? 'JP4 — ปิดยอดก่อนกำหนด'
     : 'รับชำระ (2B)';
+  // ป้ายเฉพาะงวดแบ่งชำระ (>1 ใบ) — บอกว่า JE นี้เป็นของใบเสร็จใบไหน กันอ่านสับสน
+  // ว่าค่าปรับไปลงใบหลัง (คำสั่งเจ้าของ 2026-08-16 — ค่าปรับลง "ใบแรก" เสมอ FEE-FIRST)
+  const showReceiptTag = !isVoidReversal && receiptLabel && receiptLabel.total > 1;
+  const isOpenedReceipt = showReceiptTag && receiptLabel.receiptNumber === openedReceiptNumber;
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 text-xs leading-snug flex-wrap">
           <span className="font-mono font-semibold text-foreground">{je.entryNumber}</span>
+          {showReceiptTag && (
+            <span
+              className={`px-1.5 py-0.5 rounded-full font-medium ${
+                isOpenedReceipt ? 'bg-info/10 text-info' : 'bg-muted text-muted-foreground'
+              }`}
+            >
+              <span className="font-mono">{receiptLabel.receiptNumber}</span> · ใบที่{' '}
+              {receiptLabel.seq}/{receiptLabel.total}
+              {isOpenedReceipt ? ' (ใบนี้)' : ''}
+            </span>
+          )}
           <span className="text-muted-foreground">{formatDateShort(je.postedAt ?? je.entryDate)}</span>
           <span
             className={`px-1.5 py-0.5 rounded-full font-medium ${

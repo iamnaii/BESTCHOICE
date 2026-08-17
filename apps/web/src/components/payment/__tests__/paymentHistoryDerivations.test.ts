@@ -3,9 +3,12 @@ import {
   computeCumulativePaid,
   computeFeeTotals,
   jesForReceipt,
+  receiptLabelsForJes,
   type ReceiptAmountRow,
   type FeePaymentRow,
   type JeRef,
+  type JeForLabel,
+  type ReceiptForLabel,
 } from '../paymentHistoryDerivations';
 
 const rec = (over: Partial<ReceiptAmountRow>): ReceiptAmountRow => ({
@@ -83,7 +86,13 @@ describe('computeFeeTotals', () => {
   it('prefers waivedAmount, falling back to full lateFee when lateFeeWaived is set', () => {
     const payments = [
       pay({ status: 'PAID', amountPaid: '1', lateFee: '100', waivedAmount: '40' }), // explicit partial waiver
-      pay({ status: 'PAID', amountPaid: '1', lateFee: '80', waivedAmount: null, lateFeeWaived: true }), // full waive
+      pay({
+        status: 'PAID',
+        amountPaid: '1',
+        lateFee: '80',
+        waivedAmount: null,
+        lateFeeWaived: true,
+      }), // full waive
     ];
     expect(computeFeeTotals(payments)).toEqual({ totalLateFee: 180, totalWaived: 120 });
   });
@@ -91,7 +100,10 @@ describe('computeFeeTotals', () => {
 
 describe('jesForReceipt', () => {
   it('EARLY_PAYOFF receipt matches JEs by flow (paymentId is null on the JP4 receipt)', () => {
-    const jes = [je({ id: 'a', flow: 'early-payoff' }), je({ id: 'b', flow: null, paymentId: 'p1' })];
+    const jes = [
+      je({ id: 'a', flow: 'early-payoff' }),
+      je({ id: 'b', flow: null, paymentId: 'p1' }),
+    ];
     const out = jesForReceipt({ receiptType: 'EARLY_PAYOFF', paymentId: null }, jes);
     expect(out.map((j) => j.id)).toEqual(['a']);
   });
@@ -124,5 +136,89 @@ describe('jesForReceipt', () => {
   it('non-early-payoff receipt with a null paymentId returns nothing', () => {
     const jes = [je({ id: 'a', paymentId: 'p1' })];
     expect(jesForReceipt({ receiptType: 'INSTALLMENT', paymentId: null }, jes)).toEqual([]);
+  });
+});
+
+describe('receiptLabelsForJes (คำสั่งเจ้าของ 2026-08-16 — ป้ายบอกว่า JE เป็นของใบเสร็จใบไหน)', () => {
+  const jeL = (over: Partial<JeForLabel>): JeForLabel => ({
+    id: 'je',
+    entryNumber: 'JE-202608-00001',
+    paymentId: null,
+    tag: null,
+    flow: null,
+    originalEntryId: null,
+    ...over,
+  });
+  const recL = (over: Partial<ReceiptForLabel>): ReceiptForLabel => ({
+    receiptNumber: 'RT-202608-00001',
+    receiptType: 'INSTALLMENT',
+    paymentId: null,
+    ...over,
+  });
+
+  it('งวดแบ่งชำระ 2 ใบ — JE แรก (มีค่าปรับ) จับคู่ใบเสร็จใบแรก ตามลำดับเลขที่', () => {
+    // เคสจริงจาก screenshot: RT-00006 (1,771 + ค่าปรับ) → JE-00042, RT-00007 (2,000) → JE-00044
+    const receipts = [
+      recL({ receiptNumber: 'RT-202608-00007', paymentId: 'p1' }),
+      recL({ receiptNumber: 'RT-202608-00006', paymentId: 'p1' }),
+    ];
+    const jes = [
+      jeL({ id: 'j-fee', entryNumber: 'JE-202608-00042', paymentId: 'p1' }),
+      jeL({ id: 'j-close', entryNumber: 'JE-202608-00044', paymentId: 'p1' }),
+    ];
+    const labels = receiptLabelsForJes(jes, receipts, 'p1');
+    expect(labels.get('j-fee')).toEqual({
+      receiptNumber: 'RT-202608-00006',
+      seq: 1,
+      total: 2,
+    });
+    expect(labels.get('j-close')).toEqual({
+      receiptNumber: 'RT-202608-00007',
+      seq: 2,
+      total: 2,
+    });
+  });
+
+  it('REVERSAL mirror และ receipt-void ถูกกรองออกจากการจับคู่', () => {
+    const receipts = [
+      recL({ receiptNumber: 'RT-1', paymentId: 'p1' }),
+      recL({ receiptNumber: 'RT-2', paymentId: 'p1' }),
+    ];
+    const jes = [
+      jeL({ id: 'j1', entryNumber: 'JE-1', paymentId: 'p1' }),
+      jeL({ id: 'j-rev', entryNumber: 'JE-2', paymentId: 'p1', tag: 'REVERSAL' }),
+      jeL({ id: 'j-void', entryNumber: 'JE-3', paymentId: 'p1', flow: 'receipt-void' }),
+      jeL({ id: 'j-mirror', entryNumber: 'JE-4', paymentId: 'p1', originalEntryId: 'j1' }),
+      jeL({ id: 'j2', entryNumber: 'JE-5', paymentId: 'p1' }),
+    ];
+    const labels = receiptLabelsForJes(jes, receipts, 'p1');
+    expect(labels.size).toBe(2);
+    expect(labels.get('j1')?.receiptNumber).toBe('RT-1');
+    expect(labels.get('j2')?.receiptNumber).toBe('RT-2');
+    expect(labels.has('j-rev')).toBe(false);
+    expect(labels.has('j-mirror')).toBe(false);
+  });
+
+  it('CREDIT_NOTE ไม่นับเป็นใบเก็บเงิน', () => {
+    const receipts = [
+      recL({ receiptNumber: 'RT-1', paymentId: 'p1' }),
+      recL({ receiptNumber: 'RT-9', paymentId: 'p1', receiptType: 'CREDIT_NOTE' }),
+    ];
+    const jes = [jeL({ id: 'j1', entryNumber: 'JE-1', paymentId: 'p1' })];
+    const labels = receiptLabelsForJes(jes, receipts, 'p1');
+    expect(labels.get('j1')?.total).toBe(1);
+  });
+
+  it('legacy — จำนวน JE ไม่เท่าจำนวนใบเสร็จ → ไม่ติดป้าย (map ว่าง)', () => {
+    const receipts = [
+      recL({ receiptNumber: 'RT-1', paymentId: 'p1' }),
+      recL({ receiptNumber: 'RT-2', paymentId: 'p1' }),
+    ];
+    const jes = [jeL({ id: 'j-cumulative', entryNumber: 'JE-1', paymentId: 'p1' })];
+    expect(receiptLabelsForJes(jes, receipts, 'p1').size).toBe(0);
+  });
+
+  it('paymentId null → map ว่าง', () => {
+    expect(receiptLabelsForJes([], [], null).size).toBe(0);
   });
 });

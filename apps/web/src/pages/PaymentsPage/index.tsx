@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import Decimal from 'decimal.js';
 import { paymentToleranceGate } from './paymentToleranceGate';
+import { computeGateRemaining } from './computeGateRemaining';
 import { invalidatePaymentQueries } from './invalidatePaymentQueries';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useSearchParams } from 'react-router';
@@ -846,22 +847,14 @@ export default function PaymentsPage() {
           payment={selectedPayment}
           onClose={() => { setShowPayWizard(false); setSelectedPayment(null); }}
           onSubmit={(payload) => {
-            // Net owed = principal + late fee − waiver (the waived portion books to
-            // Dr 52-1105, not collected in cash) − amountPaid.
-            const grossRemaining = new Decimal(selectedPayment.amountDue)
-              .add(selectedPayment.lateFee)
-              .sub(payload.lateFeeWaiverAmount ?? 0)
-              .sub(selectedPayment.amountPaid);
             // When the cashier keeps the credit checkbox on, the wizard prefills the
-            // NET amount (gross − advance); the tolerance check must compare against
-            // that net figure, else it flags the whole advance as an over/under-pay.
-            const advance = new Decimal(selectedPayment.contract.advanceBalance ?? 0);
-            const consumed = payload.consumeAdvance
-              ? Decimal.min(advance, Decimal.max(new Decimal(0), grossRemaining))
-              : new Decimal(0);
-            const remaining = Decimal.max(new Decimal(0), grossRemaining.sub(consumed))
-              .toDecimalPlaces(2)
-              .toNumber();
+            // NET amount (gross − advance − park); the tolerance check must compare
+            // against that same net figure, else it flags the netted credit as an
+            // over/under-pay. computeGateRemaining delegates to computeNetReceiptDue —
+            // the wizard's own source of truth — so the two can never drift again
+            // (a hand-rolled copy that netted only advanceBalance hard-blocked every
+            // last-installment payment carrying a park bucket).
+            const remaining = computeGateRemaining(selectedPayment, payload);
             // แบ่งชำระ (PARTIAL) และ ล่วงหน้า (OVERPAY_ADVANCE) ตั้งใจให้ส่วนต่าง > 1฿ —
             // จึง bypass tolerance gate (backend บันทึกเป็น PARTIALLY_PAID / เงินรับล่วงหน้า).
             const gate = paymentToleranceGate(payload.case, payload.amount, remaining);
@@ -964,11 +957,13 @@ export default function PaymentsPage() {
 
       {/* T16: Tolerance Approval Dialog */}
       {showToleranceDialog && pendingPayload && selectedPayment && (() => {
-        const remaining = new Decimal(selectedPayment.amountDue)
-          .add(selectedPayment.lateFee)
-          .sub(selectedPayment.amountPaid)
-          .toDecimalPlaces(2)
-          .toNumber();
+        // Must be the SAME netted figure the gate approved against — otherwise the
+        // approver is shown a ส่วนต่าง that contradicts the ≤1฿ decision that opened
+        // this dialog (it would restate the whole credit/park as an under-payment).
+        const remaining = computeGateRemaining(selectedPayment, {
+          consumeAdvance: pendingPayload.consumeAdvance as boolean,
+          lateFeeWaiverAmount: pendingPayload.lateFeeWaiverAmount as number | undefined,
+        });
         const diff = new Decimal(pendingPayload.amount as number).sub(remaining).toDecimalPlaces(2).toNumber();
         return (
           <ToleranceApprovalDialog

@@ -215,8 +215,32 @@ function ContractInfoPanel({
 
 // ─── Auto-detect case badge ────────────────────────────────────────────────────
 
-function CaseBadge({ detectedCase, diff }: { detectedCase: DetectedCase; diff: number }) {
+function CaseBadge({
+  detectedCase,
+  diff,
+  received,
+}: {
+  detectedCase: DetectedCase;
+  diff: number;
+  received: number;
+}) {
   const absDiff = Math.abs(diff).toLocaleString('th-TH', { minimumFractionDigits: 2 });
+
+  // Important-1 (re-review 2026-08-18): เครดิต/เงินพักคลุมยอดงวดทั้งงวด → ไม่มีเงินสด
+  // ต้องรับจริง. ระบบหลังบ้าน **ไม่รับ** ใบเสร็จยอด 0 (RecordPaymentDto @Min(0.01)
+  // + ด่านใน orchestrator) ซึ่งเป็นกติกาเดิมที่คุ้มครองทุกเส้นทางการชำระ — จึงบอกตรงๆ
+  // ตรงนี้แทนที่จะปล่อยให้กดแล้วเด้ง 400. งวดนี้จะถูกตัดด้วยเครดิตเองตอนตั้งค้างรับ (2A).
+  if (received <= 0 && detectedCase === 'NORMAL') {
+    return (
+      <div className="flex items-start gap-1.5 rounded-lg border border-info/40 bg-info/5 px-3 py-2 text-sm">
+        <Info className="size-4 text-info shrink-0 mt-0.5" />
+        <span className="text-info font-medium leading-snug">
+          เครดิตคงเหลือคลุมยอดงวดนี้ทั้งงวด — ไม่ต้องเก็บเงินสด ระบบจะตัดเครดิตให้อัตโนมัติ
+          เมื่อถึงกำหนดงวด (ไม่ต้องบันทึกรับชำระยอด 0 บาท)
+        </span>
+      </div>
+    );
+  }
 
   if (detectedCase === 'NORMAL') {
     return (
@@ -1010,8 +1034,15 @@ export function RecordPaymentWizard({
   const requiresSlip = method === 'TRANSFER';
 
   const canSubmit = (): boolean => {
-    // Allow zero-cash when advance fully covers the installment (detectCase returns NORMAL)
-    if (receivedNum <= 0 && detectedCase !== 'NORMAL') return false;
+    // Important-1 (re-review 2026-08-18): a zero-cash receipt is rejected by the
+    // server on TWO independent guards (`RecordPaymentDto.amount @Min(0.01)` and
+    // the orchestrator's own `amount <= 0` check), so the previous "allow zero-cash
+    // when the advance fully covers the installment" branch could only ever produce
+    // a 400. Those guards are deliberately NOT relaxed — they protect every payment
+    // path — so the wizard refuses honestly instead, and CaseBadge explains that the
+    // credit is applied automatically at accrual. Fully-covered installments need no
+    // receipt at all.
+    if (receivedNum <= 0) return false;
     if (!depositAccountCode) return false;
     if (detectedCase === 'OUT_OF_RANGE') return false;
     if (requiresRef && !referenceNumber.trim()) return false;
@@ -1354,7 +1385,11 @@ export function RecordPaymentWizard({
                   />
                   {hasAmount && (
                     <div className="mt-2">
-                      <CaseBadge detectedCase={detectedCase} diff={amountDiff} />
+                      <CaseBadge
+                        detectedCase={detectedCase}
+                        diff={amountDiff}
+                        received={receivedNum}
+                      />
                     </div>
                   )}
                 </div>

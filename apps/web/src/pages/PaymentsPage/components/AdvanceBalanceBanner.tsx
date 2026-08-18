@@ -37,6 +37,16 @@ export function AdvanceBalanceBanner({
   if (totalCredit.lte(0)) return null;
   const netDue = Decimal.max(new Decimal(0), amountDue.minus(totalCredit));
 
+  // Join with ' · ' instead of prefixing each optional fragment — a hard-coded
+  // leading '·' rendered a stray dot whenever the generic bucket was empty and
+  // only the park bucket had money ("· พักงวดสุดท้าย 354.00 ฿ · พักใน 21-1103").
+  const detailParts = [
+    advanceBalance.gt(0) ? `จากชำระงวดก่อนเกิน ${advanceBalance.toFixed(2)} ฿` : null,
+    park.gt(0) ? `พักงวดสุดท้าย ${park.toFixed(2)} ฿` : null,
+    'พักใน 21-1103',
+    consumeAdvance ? 'ระบบจะหักอัตโนมัติ' : 'ไม่หัก — เก็บไว้งวดถัดไป',
+  ].filter((part): part is string => part !== null);
+
   return (
     <label className="flex items-start gap-2.5 rounded-lg border border-primary/40 bg-primary/5 p-3 cursor-pointer">
       <input
@@ -50,11 +60,7 @@ export function AdvanceBalanceBanner({
         <div className="text-sm font-medium text-foreground leading-snug">
           มีเครดิตคงเหลือ {totalCredit.toFixed(2)} ฿
         </div>
-        <div className="text-xs text-muted-foreground leading-snug">
-          {advanceBalance.gt(0) && `จากชำระงวดก่อนเกิน ${advanceBalance.toFixed(2)} ฿ `}
-          {park.gt(0) && `· พักงวดสุดท้าย ${park.toFixed(2)} ฿ `}· พักใน 21-1103 ·{' '}
-          {consumeAdvance ? 'ระบบจะหักอัตโนมัติ' : 'ไม่หัก — เก็บไว้งวดถัดไป'}
-        </div>
+        <div className="text-xs text-muted-foreground leading-snug">{detailParts.join(' · ')}</div>
         <div className="text-xs leading-snug">
           {consumeAdvance ? (
             <span className="text-primary font-medium">

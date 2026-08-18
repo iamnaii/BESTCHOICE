@@ -94,6 +94,7 @@ const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
+const ImportedSalesPage = lazy(() => import('@/pages/ImportedSalesPage'));
 // PricingTemplatesPage moved to settings-registry (P2b products migration)
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockOverviewPage = lazy(() => import('@/pages/StockPage/OverviewPage'));
@@ -496,6 +497,7 @@ function App() {
           <Route path="/stickers" element={<StickerPrintPage />} />
           <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
+          <Route path="/imported-sales" element={<ImportedSalesPage />} />
           <Route path="/todos" element={<TodosPage />} />
           <Route path="/inbox" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><UnifiedInboxPage /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><ChatInboxPage /></ProtectedRoute>} />

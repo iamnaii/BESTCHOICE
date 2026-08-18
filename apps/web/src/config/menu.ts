@@ -46,6 +46,7 @@ import {
   Tag,
   TrendingDown,
   BookOpen,
+  History,
   // SP5 — SHOP additions
   ShieldCheck,
   // P3-SP5 — SHOP-side accounting menu icon
@@ -348,6 +349,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
+        // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
+        { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         // P4-SP2 — Tax module (finance-tax endpoints)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
@@ -417,6 +420,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
+        { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
         // P3-SP5 — SHOP-side accounting reports
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
@@ -627,6 +632,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
+        { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
         // CSV §6 placeholders — flagged "ต้องสร้าง"
         { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle },
         { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },

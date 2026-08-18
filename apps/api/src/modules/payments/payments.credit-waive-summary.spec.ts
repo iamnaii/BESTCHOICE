@@ -102,7 +102,14 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: 0, lateFee: 0 } }),
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      receipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amount: null } }),
+        groupBy: jest.fn().mockResolvedValue([]),
+      },
       user: {
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue({
           id: 'approver-1',
           role: 'OWNER',
@@ -441,18 +448,25 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // getDailySummary — aggregate sums kept at 2-dp (W6 fix), byMethod from page
+  // getDailySummary — aggregate sums kept at 2-dp (W6 fix), byMethod grouped
+  // over the WHOLE day. Source switched Payment → Receipt on 2026-08-18 (the
+  // tab reports cash received, not obligation cleared) — see
+  // services/daily-summary-receipt-based.spec.ts for that contract.
   // ───────────────────────────────────────────────────────────────────────────
   describe('getDailySummary', () => {
-    it('aggregate _sum amountPaid=251.67 lateFee=12.34 → totalAmount=251.67 (no satang drop), totalLateFees=12.34; two CASH 152.50+99.17 → 251.67', async () => {
-      prisma.payment.findMany.mockResolvedValue([
-        { paymentMethod: 'CASH', amountPaid: D(152.5) },
-        { paymentMethod: 'CASH', amountPaid: D(99.17) },
+    it('aggregate _sum amount=251.67 → totalAmount=251.67 (no satang drop), lateFee 12.34 net; two CASH 152.50+99.17 → 251.67', async () => {
+      prisma.receipt.findMany.mockResolvedValue([
+        { id: 'r1', receiptNumber: 'RT-202606-00001', receiptType: 'INSTALLMENT', amount: D(152.5), installmentNo: 1, paymentId: 'p1', paymentMethod: 'CASH', paidDate: new Date('2026-06-08'), issuedById: 'u1', contract: null },
+        { id: 'r2', receiptNumber: 'RT-202606-00002', receiptType: 'INSTALLMENT', amount: D(99.17), installmentNo: 2, paymentId: 'p2', paymentMethod: 'CASH', paidDate: new Date('2026-06-08'), issuedById: 'u1', contract: null },
       ]);
-      prisma.payment.count.mockResolvedValue(2);
-      prisma.payment.aggregate.mockResolvedValue({
-        _sum: { amountPaid: D(251.67), lateFee: D(12.34) },
-      });
+      prisma.receipt.count.mockResolvedValue(2);
+      prisma.receipt.aggregate.mockResolvedValue({ _sum: { amount: D(251.67) } });
+      prisma.receipt.groupBy.mockResolvedValue([
+        { paymentMethod: 'CASH', _sum: { amount: D(251.67) } },
+      ]);
+      prisma.payment.findMany.mockResolvedValue([
+        { lateFee: D(12.34), lateFeeWaived: false, waivedAmount: null },
+      ]);
 
       const summary = await service.getDailySummary('2026-06-08');
 
@@ -460,14 +474,15 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       expect(summary.totalAmount).toBe(251.67);
       expect(summary.totalLateFees).toBe(12.34);
       expect(summary.totalPayments).toBe(2);
-      // byMethod accumulated from the page (152.50 + 99.17 = 251.67).
+      // byMethod comes from the groupBy over the whole day, not the page.
       expect(summary.byMethod).toEqual({ CASH: 251.67 });
     });
 
     it('empty day → aggregate _sum nulls coalesce to 0; byMethod {}', async () => {
-      prisma.payment.findMany.mockResolvedValue([]);
-      prisma.payment.count.mockResolvedValue(0);
-      prisma.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: null, lateFee: null } });
+      prisma.receipt.findMany.mockResolvedValue([]);
+      prisma.receipt.count.mockResolvedValue(0);
+      prisma.receipt.aggregate.mockResolvedValue({ _sum: { amount: null } });
+      prisma.receipt.groupBy.mockResolvedValue([]);
 
       const summary = await service.getDailySummary('2026-06-08');
 

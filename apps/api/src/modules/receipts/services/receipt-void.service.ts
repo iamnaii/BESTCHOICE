@@ -256,6 +256,8 @@ export class ReceiptVoidService {
         survivingAmountPaid: string;
       } | null = null;
       let voidedSiblingReceipts = 0;
+      /** Credit-note numbers issued for the sibling receipts voided alongside the target. */
+      const siblingCreditNoteNumbers: string[] = [];
       let advanceAdj = new Prisma.Decimal(0);
       /**
        * I-2 (review 2026-08-16): the park bucket's share of the reversed
@@ -522,18 +524,31 @@ export class ReceiptVoidService {
               paidDate: null,
             },
           });
+          const siblingWhere = {
+            paymentId: payment.id,
+            id: { not: receipt.id },
+            isVoided: false,
+            deletedAt: null,
+            // Only installment-money siblings get voided together: CN rows
+            // are reversal documents, RESCHEDULE_FEE money lives in the
+            // (untouched) reschedule-collect JE — both stay valid. Shared
+            // constant keeps this aligned with issuance/PDF/fee-display.
+            receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
+          };
+          // Read the rows BEFORE voiding them: each one needs its OWN credit
+          // note carrying its OWN amount. An installment paid in N receipts was
+          // cancelled in N documents, so N cancelling documents must exist —
+          // a receipt prints as "ใบเสร็จรับเงิน / ใบกำกับภาษี" whenever VAT
+          // applies (receipt-pdf.service.ts), and ม.86/10 requires a ใบลดหนี้
+          // for every cancelled tax invoice. Before this, only the receipt the
+          // user clicked got one: a 1,771 + 2,000 installment voided 3,771 of
+          // money against a single 2,000 credit note (prod contract
+          // TEST-20260809-004, งวด 4). The LEDGER was always fully reversed
+          // (`originalEntries` is a findMany over every JE sharing
+          // metadata.paymentId) — this closes the DOCUMENT side of the same gap.
+          const siblingReceipts = await tx.receipt.findMany({ where: siblingWhere });
           const siblings = await tx.receipt.updateMany({
-            where: {
-              paymentId: payment.id,
-              id: { not: receipt.id },
-              isVoided: false,
-              deletedAt: null,
-              // Only installment-money siblings get voided together: CN rows
-              // are reversal documents, RESCHEDULE_FEE money lives in the
-              // (untouched) reschedule-collect JE — both stay valid. Shared
-              // constant keeps this aligned with issuance/PDF/fee-display.
-              receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
-            },
+            where: siblingWhere,
             data: {
               isVoided: true,
               voidReason: `ยกเลิกพร้อมใบเสร็จ ${receipt.receiptNumber}: ${reason.trim()}`,
@@ -542,6 +557,31 @@ export class ReceiptVoidService {
             },
           });
           voidedSiblingReceipts = siblings.count;
+
+          for (const sibling of siblingReceipts) {
+            // Same numbering lock + same shape as the target's credit note
+            // above — one CN per voided receipt, back-referenced by
+            // `voidedReceiptId` so the PDF can print "ออกเพื่อยกเลิกใบเสร็จ
+            // เลขที่ …" naming the right original.
+            const siblingCreditNoteNumber = await this.numbers.generateReceiptNumber(tx);
+            await tx.receipt.create({
+              data: {
+                receiptNumber: siblingCreditNoteNumber,
+                contractId: sibling.contractId,
+                paymentId: sibling.paymentId,
+                receiptType: 'CREDIT_NOTE',
+                payerName: sibling.payerName,
+                receiverName: sibling.receiverName,
+                amount: sibling.amount,
+                installmentNo: sibling.installmentNo,
+                paymentMethod: sibling.paymentMethod,
+                paidDate: new Date(),
+                voidedReceiptId: sibling.id,
+                issuedById,
+              },
+            });
+            siblingCreditNoteNumbers.push(siblingCreditNoteNumber);
+          }
           // Loyalty points were awarded for this (now un-paid) payment.
           await tx.loyaltyPoint.updateMany({
             where: { paymentId: payment.id, deletedAt: null },
@@ -584,6 +624,9 @@ export class ReceiptVoidService {
             // Un-pay trail (2026-07-08)
             paymentReverted,
             voidedSiblingReceipts,
+            // One credit note per voided receipt (ม.86/10) — this array is the
+            // trail for the siblings; `creditNoteNumber` above is the target's.
+            siblingCreditNoteNumbers,
             advanceBalanceRestored: advanceAdj.isZero() ? null : advanceAdj.toString(),
             creditBalanceRestored: creditAdj.isZero() ? null : creditAdj.toString(),
             // I-2: park bucket restored separately (พักงวดสุดท้าย) — a non-null

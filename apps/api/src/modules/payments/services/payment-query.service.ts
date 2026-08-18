@@ -469,25 +469,65 @@ export class PaymentQueryService {
   }
 
   // ─── Daily summary ────────────────────────────────────
+  /**
+   * สรุปรายวัน — **เงินสดที่รับจริงในวันนั้น**, one row per RECEIPT.
+   *
+   * Sourced from `Receipt`, not `Payment`. `Payment.amountPaid` is the
+   * OBLIGATION CLEARED on an installment, which is a different number from the
+   * cash that crossed the counter whenever a 21-1103 advance is created or
+   * consumed: paying 3,800 on a 3,671 + 100 installment records amountPaid =
+   * 3,771 and parks 29 as advance; the next installment then records 3,771
+   * while only 3,742 in cash arrived. A tab whose KPI card reads
+   * "แยกตามวิธี → เงินสด" must report the cash. (Prod contract
+   * TEST-20260809-004, งวด 2 — reported 2026-08-18.)
+   *
+   * Three further consequences of the old `Payment` source, all fixed by the
+   * switch rather than by extra code here:
+   *   - `Payment.paidDate` is set ONLY when the installment closes
+   *     (`payment-receipt-orchestrator.ts`: `paidDate: isPaidInFull ? … : null`),
+   *     so a partial payment's cash was invisible on the day it was received
+   *     and then landed in full on the closing day;
+   *   - N receipts against one installment collapsed into ONE row, so
+   *     "จำนวนรายการ" undercounted the day's transactions;
+   *   - down payments, early payoffs and reschedule fees never appeared at all
+   *     (no `Payment.paidDate` of their own) — they do now.
+   *
+   * Scope: non-voided, non-CREDIT_NOTE receipts. This is the same "money
+   * collected" definition the payment-history modal's ยอดชำระสะสม card already
+   * uses (`computeCumulativePaid`), so the two agree by construction. A void
+   * therefore restates the day it corrects — which is what the owner wants to
+   * see, and is already true regardless: a re-issued receipt is backdated to
+   * the real cash date (D4), not to the day it was re-keyed.
+   */
   async getDailySummary(date: string, branchId?: string, page = 1, limit = 50) {
     const d = new Date(date);
     const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
 
-    const where: Record<string, unknown> = {
+    const where: Prisma.ReceiptWhereInput = {
       paidDate: { gte: startOfDay, lt: endOfDay },
-      status: 'PAID',
+      isVoided: false,
       deletedAt: null,
+      // A credit note carries the ORIGINAL receipt's POSITIVE amount, so counting
+      // it would double the day instead of cancelling it. The void it documents
+      // already removed the original via `isVoided`.
+      receiptType: { not: 'CREDIT_NOTE' },
+      ...(branchId ? { contract: { branchId } } : {}),
     };
 
-    if (branchId) {
-      where.contract = { branchId };
-    }
-
-    const [payments, total, aggregation] = await Promise.all([
-      this.prisma.payment.findMany({
+    const [receipts, total, aggregation, methodGroups, dayPaymentRefs] = await Promise.all([
+      this.prisma.receipt.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          receiptNumber: true,
+          receiptType: true,
+          amount: true,
+          installmentNo: true,
+          paymentId: true,
+          paymentMethod: true,
+          paidDate: true,
+          issuedById: true,
           contract: {
             select: {
               contractNumber: true,
@@ -495,48 +535,84 @@ export class PaymentQueryService {
               branch: { select: { name: true } },
             },
           },
-          recordedBy: { select: { name: true } },
         },
         orderBy: { paidDate: 'asc' },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.payment.count({ where }),
-      this.prisma.payment.aggregate({
-        where,
-        _sum: { amountPaid: true, lateFee: true },
-      }),
+      this.prisma.receipt.count({ where }),
+      this.prisma.receipt.aggregate({ where, _sum: { amount: true } }),
+      // Grouped over the WHOLE day. The previous implementation accumulated
+      // byMethod from the current PAGE while totalAmount came from the aggregate,
+      // so the two KPI cards silently disagreed on any day past `limit` rows.
+      this.prisma.receipt.groupBy({ by: ['paymentMethod'], where, _sum: { amount: true } }),
+      // Distinct installments settled today — also whole-day, not page-scoped.
+      this.prisma.receipt.findMany({ where, select: { paymentId: true }, distinct: ['paymentId'] }),
     ]);
 
-    // Compute byMethod from the current page (for display) — summary totals use aggregate
     const byMethod: Record<string, number> = {};
-    payments.forEach((p) => {
-      const method = p.paymentMethod || 'UNKNOWN';
-      byMethod[method] = roundBaht(
-        new Prisma.Decimal(byMethod[method] ?? 0)
-          .add(new Prisma.Decimal(p.amountPaid ?? 0))
-          .toNumber(),
-      );
-    });
+    for (const group of methodGroups) {
+      const method = group.paymentMethod || 'UNKNOWN';
+      byMethod[method] = new Prisma.Decimal(group._sum.amount ?? 0).toDecimalPlaces(2).toNumber();
+    }
 
-    // W6 fix: the previous Math.round(Decimal.toNumber()) silently dropped
-    // satang on every daily total — a day collecting 152.50 + 99.17 + ...
-    // was rounded to whole baht for the summary card. Drop the Math.round
-    // and keep two-decimal precision; the UI side already calls .toLocaleString
-    // which formats both ints and floats consistently.
-    const totalAmount = new Prisma.Decimal(aggregation._sum.amountPaid ?? 0)
+    // Late fee lives on the INSTALLMENT (Payment.lateFee), not on the receipt, so
+    // it is counted once per distinct installment even when two receipts cleared
+    // it. Net of the waiver, using the same convention as the history modal's
+    // computeFeeTotals: an explicit `waivedAmount` wins, otherwise
+    // `lateFeeWaived` means the whole gross fee was waived (legacy rows).
+    // `distinct` above dedupes at the DB, the Set dedupes again in code — the
+    // fee must be counted once per installment even if that clause ever moves.
+    const paymentIds = [
+      ...new Set(dayPaymentRefs.map((r) => r.paymentId).filter((id): id is string => id != null)),
+    ];
+    const feeRows = paymentIds.length
+      ? await this.prisma.payment.findMany({
+          where: { id: { in: paymentIds } },
+          select: { lateFee: true, lateFeeWaived: true, waivedAmount: true },
+        })
+      : [];
+    const totalLateFees = feeRows
+      .reduce((acc, p) => {
+        const gross = new Prisma.Decimal(p.lateFee ?? 0);
+        const waived =
+          p.waivedAmount != null
+            ? new Prisma.Decimal(p.waivedAmount)
+            : p.lateFeeWaived
+              ? gross
+              : new Prisma.Decimal(0);
+        return acc.plus(gross.minus(waived));
+      }, new Prisma.Decimal(0))
       .toDecimalPlaces(2)
       .toNumber();
-    const totalLateFees = new Prisma.Decimal(aggregation._sum.lateFee ?? 0)
+
+    // Receipt has no `issuedBy` relation in the schema — batch-resolve the names
+    // in one query, same pattern as ReceiptQueryService.getContractReceipts.
+    const issuerIds = [...new Set(receipts.map((r) => r.issuedById).filter(Boolean))];
+    const issuers = issuerIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: issuerIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const issuerName = new Map(issuers.map((u) => [u.id, u.name]));
+
+    // W6 fix (kept): 2-dp precision preserved — a day collecting 152.50 + 99.17
+    // must not round to whole baht for the summary card.
+    const totalAmount = new Prisma.Decimal(aggregation._sum.amount ?? 0)
       .toDecimalPlaces(2)
       .toNumber();
+
     return {
       date,
       totalPayments: total,
       totalAmount,
       totalLateFees,
       byMethod,
-      data: payments,
+      data: receipts.map((r) => ({
+        ...r,
+        issuedByName: issuerName.get(r.issuedById) ?? null,
+      })),
       total,
       page,
       limit,

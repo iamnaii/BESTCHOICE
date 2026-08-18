@@ -79,7 +79,14 @@ describe('PaymentsService', () => {
         count: jest.fn().mockResolvedValue(0),
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: 0, lateFee: 0 } }),
       },
+      receipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0 } }),
+        groupBy: jest.fn().mockResolvedValue([]),
+      },
       user: {
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue({
           id: 'approver-1',
           role: 'FINANCE_MANAGER',
@@ -678,21 +685,34 @@ describe('PaymentsService', () => {
     });
   });
 
+  // Receipt-based since 2026-08-18 — the daily tab reports CASH RECEIVED
+  // (Receipt.amount), not the obligation cleared (Payment.amountPaid). See
+  // services/daily-summary-receipt-based.spec.ts for the full contract.
   describe('getDailySummary', () => {
     it('should return summary with correct totals', async () => {
-      const payments = [
-        { amountPaid: 3000, lateFee: 100, paymentMethod: 'CASH', paidDate: new Date(), contract: { contractNumber: 'BC-001', customer: { name: 'A' }, branch: { name: 'B1' } }, recordedBy: { name: 'Staff' } },
-        { amountPaid: 5000, lateFee: 0, paymentMethod: 'TRANSFER', paidDate: new Date(), contract: { contractNumber: 'BC-002', customer: { name: 'B' }, branch: { name: 'B1' } }, recordedBy: { name: 'Staff' } },
+      const receipts = [
+        { id: 'r1', receiptNumber: 'RT-202603-00001', receiptType: 'INSTALLMENT', amount: 3000, installmentNo: 1, paymentId: 'p1', paymentMethod: 'CASH', paidDate: new Date(), issuedById: 'u1', contract: { contractNumber: 'BC-001', customer: { name: 'A' }, branch: { name: 'B1' } } },
+        { id: 'r2', receiptNumber: 'RT-202603-00002', receiptType: 'INSTALLMENT', amount: 5000, installmentNo: 1, paymentId: 'p2', paymentMethod: 'TRANSFER', paidDate: new Date(), issuedById: 'u1', contract: { contractNumber: 'BC-002', customer: { name: 'B' }, branch: { name: 'B1' } } },
       ];
-      prisma.payment.findMany.mockResolvedValue(payments);
-      prisma.payment.count.mockResolvedValue(2);
-      prisma.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: 8000, lateFee: 100 } });
+      prisma.receipt.findMany.mockResolvedValue(receipts);
+      prisma.receipt.count.mockResolvedValue(2);
+      prisma.receipt.aggregate.mockResolvedValue({ _sum: { amount: 8000 } });
+      prisma.receipt.groupBy.mockResolvedValue([
+        { paymentMethod: 'CASH', _sum: { amount: 3000 } },
+        { paymentMethod: 'TRANSFER', _sum: { amount: 5000 } },
+      ]);
+      prisma.payment.findMany.mockResolvedValue([
+        { lateFee: 100, lateFeeWaived: false, waivedAmount: null },
+        { lateFee: 0, lateFeeWaived: false, waivedAmount: null },
+      ]);
+      prisma.user.findMany.mockResolvedValue([{ id: 'u1', name: 'Staff' }]);
 
       const result = await service.getDailySummary('2026-03-11');
       expect(result.totalPayments).toBe(2);
       expect(result.totalAmount).toBe(8000);
       expect(result.totalLateFees).toBe(100);
       expect(result.byMethod).toEqual({ CASH: 3000, TRANSFER: 5000 });
+      expect(result.data[0].issuedByName).toBe('Staff');
     });
   });
 

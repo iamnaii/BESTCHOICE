@@ -3,6 +3,13 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import type { DailySummary, DailySummaryPayment } from '../types';
 import { methodLabels } from '../types';
 
+/** ใบเสร็จที่ไม่ผูกงวด (ดาวน์ / ปิดยอด / ปรับดิว) — แสดงชนิดเอกสารแทนเลขงวด. */
+const RECEIPT_TYPE_LABELS: Record<string, string> = {
+  DOWN_PAYMENT: 'เงินดาวน์',
+  EARLY_PAYOFF: 'ปิดยอด',
+  RESCHEDULE_FEE: 'ค่าปรับดิว',
+};
+
 interface PaymentSummaryProps {
   summaryDate: string;
   onDateChange: (date: string) => void;
@@ -88,10 +95,11 @@ export default function PaymentSummary({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-muted/40 border-b border-border/60">
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">เลขที่ใบเสร็จ</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">สัญญา</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ลูกค้า</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">งวดที่</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ยอดชำระ</th>
+                      <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ยอดรับจริง</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">วิธี</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">เวลา</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">ผู้บันทึก</th>
@@ -100,17 +108,20 @@ export default function PaymentSummary({
                   <tbody className="divide-y divide-border/50">
                     {summary.data.map((p: DailySummaryPayment) => (
                       <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground">{p.receiptNumber}</td>
                         <td className="px-5 py-3.5 font-mono text-xs text-primary font-semibold">{p.contract?.contractNumber}</td>
                         <td className="px-5 py-3.5 text-sm font-medium text-foreground">{p.contract?.customer?.name}</td>
-                        <td className="px-5 py-3.5 text-sm text-muted-foreground">งวดที่ {p.installmentNo}</td>
-                        <td className="px-5 py-3.5 text-right text-sm font-semibold text-success tabular-nums">{Number(p.amountPaid).toLocaleString()} ฿</td>
+                        <td className="px-5 py-3.5 text-sm text-muted-foreground">
+                          {p.installmentNo != null ? `งวดที่ ${p.installmentNo}` : RECEIPT_TYPE_LABELS[p.receiptType] || '—'}
+                        </td>
+                        <td className="px-5 py-3.5 text-right text-sm font-semibold text-success tabular-nums">{Number(p.amount).toLocaleString()} ฿</td>
                         <td className="px-5 py-3.5">
                           <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-                            {methodLabels[p.paymentMethod] || p.paymentMethod}
+                            {methodLabels[p.paymentMethod ?? ''] || p.paymentMethod || '—'}
                           </span>
                         </td>
                         <td className="px-5 py-3.5 text-xs text-muted-foreground">{p.paidDate ? new Date(p.paidDate).toLocaleTimeString('th-TH') : '—'}</td>
-                        <td className="px-5 py-3.5 text-xs text-muted-foreground">{p.recordedBy?.name || '—'}</td>
+                        <td className="px-5 py-3.5 text-xs text-muted-foreground">{p.issuedByName || '—'}</td>
                       </tr>
                     ))}
                   </tbody>

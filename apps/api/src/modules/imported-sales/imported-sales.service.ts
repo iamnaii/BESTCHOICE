@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryImportedSalesDto } from './dto/query-imported-sales.dto';
 
-interface Bucket { key: string; count: number; sales: string; profit: string }
+export interface Bucket { key: string; count: number; sales: string; profit: string }
 
 @Injectable()
 export class ImportedSalesService {

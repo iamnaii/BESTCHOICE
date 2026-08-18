@@ -101,18 +101,39 @@ async function main(): Promise<void> {
     console.log(`\nTOTAL line items: ${all.length}`);
     console.log('by channel:', byChannel);
 
+    // drop rows with an unparseable soldAt (Invalid Date) before insert — a single
+    // bad row must not blow up the whole insert (spec §8: partial success, not all-or-nothing).
+    const validRows: ParsedSale[] = [];
+    let skippedInvalidCount = 0;
+    for (const r of all) {
+      if (Number.isNaN(r.soldAt.getTime())) {
+        skippedInvalidCount++;
+      } else {
+        validRows.push(r);
+      }
+    }
+    console.log(`skipped ${skippedInvalidCount} rows with unparseable soldAt`);
+
     if (!write) {
       console.log(`\n[DRY_RUN] set CONFIRM_IMPORT=${REQUIRED_CONSENT} to write.`);
       return;
     }
 
-    const res = await prisma.importedSale.createMany({
-      data: all.map((r) => ({ ...r })),
-      skipDuplicates: true,
-    });
-    console.log(`\nINSERTED ${res.count} rows (skipDuplicates on @@unique([source, barcode, orderNumber, soldAt])).`);
-    if (res.count < all.length) {
-      console.log(`SKIPPED ${all.length - res.count} rows as duplicates.`);
+    // chunked insert: ~18 cols x 1000 rows keeps bind params well under Postgres'
+    // 65,535 ceiling per statement (a single createMany over 3400+ rows was hitting it).
+    const CHUNK_SIZE = 1000;
+    let insertedCount = 0;
+    for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+      const slice = validRows.slice(i, i + CHUNK_SIZE).map((r) => ({ ...r }));
+      const res = await prisma.importedSale.createMany({
+        data: slice,
+        skipDuplicates: true,
+      });
+      insertedCount += res.count;
+    }
+    console.log(`\nINSERTED ${insertedCount} rows (skipDuplicates on @@unique([source, barcode, orderNumber, soldAt])).`);
+    if (insertedCount < validRows.length) {
+      console.log(`SKIPPED ${validRows.length - insertedCount} rows as duplicates.`);
     }
   } finally {
     await prisma.$disconnect();

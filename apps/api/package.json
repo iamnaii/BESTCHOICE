@@ -71,7 +71,7 @@
     "ai:train": "npx -y tsx src/cli/train-ai-knowledge.cli.ts",
     "ai:train:help": "echo 'Usage: [MONTHS=12] [SKIP_EXTRACT=1] [DRY_RUN=1] [EXPECTED_DB_NAME=<db>] npm --prefix apps/api run ai:train — ดูดแชทเก่า + สกัดเป็น FAQ/objection ลง chat_knowledge_base (active=false)'",
     "bot:eval": "npx -y tsx src/cli/bot-eval.cli.ts",
-    "import:tooltify": "tsx src/cli/import-tooltify.cli.ts",
+    "import:tooltify": "npx -y tsx src/cli/import-tooltify.cli.ts",
     "import:tooltify:help": "echo 'Dry-run default: TOOLTIFY_IMPORT_DIR=<folder> EXPECTED_DB_NAME=<db> npm --prefix apps/api run import:tooltify. To write: CONFIRM_IMPORT=YES_I_AM_SURE TOOLTIFY_IMPORT_DIR=<folder> EXPECTED_DB_NAME=<db> [ALLOW_PROD_IMPORT=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run import:tooltify'"
   },
   "dependencies": {

@@ -2,28 +2,19 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { ImportedSalesService } from './imported-sales.service';
+import { ImportedSalesService, Bucket } from './imported-sales.service';
 import { QueryImportedSalesDto } from './dto/query-imported-sales.dto';
 
-// Locally-declared, exported mirror of the service's private `Bucket` shape.
-// Needed because apps/api/tsconfig.json has `declaration: true`: an exported
+// `Bucket` is exported from imported-sales.service.ts (TS4053 fix): an exported
 // class cannot expose a public method whose inferred return type names an
-// unexported type from another module (TS4053). Structurally identical to
-// ImportedSalesService's private `Bucket`, so the actual return value
-// type-checks against it without any change to imported-sales.service.ts.
-export interface ImportedSalesBucket {
-  key: string;
-  count: number;
-  sales: string;
-  profit: string;
-}
-
+// unexported type from another module, and this controller's `summary()`
+// method returns whatever shape `ImportedSalesService.summary()` produces.
 export interface ImportedSalesSummaryResult {
   totals: { count: number; sales: string; profit: string; cost: string };
-  byMonth: ImportedSalesBucket[];
-  byChannel: ImportedSalesBucket[];
-  bySalesperson: ImportedSalesBucket[];
-  byCategory: ImportedSalesBucket[];
+  byMonth: Bucket[];
+  byChannel: Bucket[];
+  bySalesperson: Bucket[];
+  byCategory: Bucket[];
 }
 
 @Controller('imported-sales')

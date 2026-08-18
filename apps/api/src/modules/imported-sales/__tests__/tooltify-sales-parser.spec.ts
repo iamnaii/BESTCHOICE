@@ -2,6 +2,8 @@ import {
   deriveSaleChannel,
   normalizePayment,
   parseThaiDateTime,
+  parseSalesLineItems,
+  ParsedSale,
 } from '../tooltify-sales-parser';
 
 describe('deriveSaleChannel', () => {
@@ -35,5 +37,71 @@ describe('parseThaiDateTime', () => {
   it('accepts an ISO string too (exceljs Date cell path)', () => {
     const d = parseThaiDateTime('2026-08-18T06:46:40.000Z');
     expect(d.toISOString()).toBe('2026-08-18T06:46:40.000Z');
+  });
+});
+
+const HEADER = [
+  'บาร์โค้ดสินค้า','ชื่อสินค้า','หมวดหมู่สินค้า','ผู้ซื้อสินค้า','ร้านค้า',
+  'คำสั่งซื้อ','รูปแบบการขาย','กลุ่มราคาขาย','ต้นทุนรวม','ราคาตั้งขาย',
+  'ราคาขาย','กำไร','ผู้ขายสินค้า','วันที่ขายสินค้า',
+];
+
+function mkRows(): string[][] {
+  return [
+    ['สรุปยอดการขายสินค้า 2026-07-01 ถึง 2026-08-31'],
+    [],
+    ['รูปแบบการขาย','คำสั่งซื้อ','รายการขาย'], // summary block (ignored)
+    ['ขายแบบเงินสด','17','49'],
+    [],
+    ['เบิกอะไหล่ไปซ่อม ( 0 )'],               // other section title (ignored)
+    ['บาร์โค้ดสินค้า','ชื่อสินค้า','งานซ่อม'], // other section header (ignored)
+    [],
+    ['รายการขาย ( 2 )'],                       // <-- the detail section title
+    HEADER,
+    ['350630609144613','iPhone 17 Pro 256GB Silver (สีเงิน)','iPhone มือ 2','GFIN',
+      'บริษัท จีฟินน์ จำกัด','1246','ขายแบบโอน','ราคา 3','37900','40063','40063','2163',
+      'ภานุมาส ศรีวิลัย ( หมวย )','2026-08-18 13:46:40'],
+    ['F17P01','ฟิล์มกระจก iPhone 17 Pro - iStar','Accessories','ลูกค้าทั่วไป','-',
+      '1244','ขายแบบเงินสด','ราคาปลีก','35','0','0','-35',
+      'ภานุมาส ศรีวิลัย ( หมวย )','2026-08-17 18:13:44'],
+    [],                                        // blank terminates the table
+    ['ignored trailing row'],
+  ];
+}
+
+describe('parseSalesLineItems', () => {
+  it('reads only the "รายการขาย" detail table and maps fields', () => {
+    const out = parseSalesLineItems(mkRows(), { importBatch: 'file-A.xlsx' });
+    expect(out).toHaveLength(2);
+    const a = out[0];
+    expect(a).toMatchObject<Partial<ParsedSale>>({
+      source: 'TOOLTIFY',
+      barcode: '350630609144613',
+      productName: 'iPhone 17 Pro 256GB Silver (สีเงิน)',
+      category: 'iPhone มือ 2',
+      buyerLabel: 'GFIN',
+      shopLabel: 'บริษัท จีฟินน์ จำกัด',
+      orderNumber: '1246',
+      paymentType: 'BANK_TRANSFER',
+      priceGroup: 'ราคา 3',
+      saleChannel: 'EXTERNAL_FINANCE',
+      costTotal: '37900',
+      salePrice: '40063',
+      profit: '2163',
+      salespersonName: 'ภานุมาส ศรีวิลัย ( หมวย )',
+      importBatch: 'file-A.xlsx',
+    });
+    expect(a.soldAt.toISOString()).toBe('2026-08-18T06:46:40.000Z');
+    expect(out[1].shopLabel).toBeNull(); // '-' -> null
+    expect(out[1].saleChannel).toBe('CASH');
+  });
+
+  it('returns [] when no detail section present', () => {
+    expect(parseSalesLineItems([['x'], ['y']], { importBatch: 'f' })).toEqual([]);
+  });
+
+  it('skips rows with empty barcode', () => {
+    const rows = [['รายการขาย ( 1 )'], HEADER, ['', 'x', 'y'], ['']];
+    expect(parseSalesLineItems(rows, { importBatch: 'f' })).toEqual([]);
   });
 });

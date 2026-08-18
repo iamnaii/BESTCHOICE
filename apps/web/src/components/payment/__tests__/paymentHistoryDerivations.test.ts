@@ -4,11 +4,14 @@ import {
   computeFeeTotals,
   jesForReceipt,
   receiptLabelsForJes,
+  caseForReceipt,
   type ReceiptAmountRow,
   type FeePaymentRow,
   type JeRef,
   type JeForLabel,
   type ReceiptForLabel,
+  type CaseReceiptRow,
+  type CasePaymentRow,
 } from '../paymentHistoryDerivations';
 
 const rec = (over: Partial<ReceiptAmountRow>): ReceiptAmountRow => ({
@@ -220,5 +223,76 @@ describe('receiptLabelsForJes (คำสั่งเจ้าของ 2026-08-1
 
   it('paymentId null → map ว่าง', () => {
     expect(receiptLabelsForJes([], [], null).size).toBe(0);
+  });
+});
+
+/* ─── caseForReceipt ───────────────────────────────────
+ * The CASE column used to compare a receipt against `Payment.amountDue`, which
+ * EXCLUDES the late fee by schema. Every receipt that correctly collected งวด +
+ * ค่าปรับ therefore read "OVER" (prod contract TEST-20260809-004: งวด 1 paid
+ * exactly 3,671 + 100 and was labelled OVER). The obligation is งวด + NET late
+ * fee (gross − waived); only a receipt above THAT is genuinely an overpay.
+ */
+const caseRcpt = (over: Partial<CaseReceiptRow>): CaseReceiptRow => ({
+  receiptType: 'INSTALLMENT',
+  amount: '0',
+  paymentStatus: 'PAID',
+  ...over,
+});
+
+const casePay = (over: Partial<CasePaymentRow>): CasePaymentRow => ({
+  amountDue: '3671',
+  lateFee: '0',
+  lateFeeWaived: false,
+  waivedAmount: null,
+  ...over,
+});
+
+describe('caseForReceipt', () => {
+  it('paying งวด + ค่าปรับ exactly is NORMAL, not OVER', () => {
+    const r = caseRcpt({ amount: '3771' });
+    const p = casePay({ lateFee: '100' });
+    expect(caseForReceipt(r, p).label).toBe('NORMAL');
+  });
+
+  it('paying above งวด + ค่าปรับ is OVER', () => {
+    const r = caseRcpt({ amount: '3800' });
+    const p = casePay({ lateFee: '100' });
+    expect(caseForReceipt(r, p).label).toBe('OVER');
+  });
+
+  it('cash short of the obligation (credit covered the rest) is NORMAL, not OVER', () => {
+    const r = caseRcpt({ amount: '3742' });
+    const p = casePay({ lateFee: '100' });
+    expect(caseForReceipt(r, p).label).toBe('NORMAL');
+  });
+
+  it('a waived late fee lowers the obligation back to the installment', () => {
+    const r = caseRcpt({ amount: '3700' });
+    const p = casePay({ lateFee: '100', lateFeeWaived: true, waivedAmount: '100' });
+    expect(caseForReceipt(r, p).label).toBe('OVER');
+  });
+
+  it('a partially waived late fee uses the NET fee as the threshold', () => {
+    // งวด 3,671 + net fee (100 − 40 = 60) = 3,731 is the exact obligation.
+    const p = casePay({ lateFee: '100', waivedAmount: '40' });
+    expect(caseForReceipt(caseRcpt({ amount: '3731' }), p).label).toBe('NORMAL');
+    expect(caseForReceipt(caseRcpt({ amount: '3732' }), p).label).toBe('OVER');
+  });
+
+  it('PARTIAL wins over the amount comparison', () => {
+    const r = caseRcpt({ amount: '2000', paymentStatus: 'PARTIAL' });
+    expect(caseForReceipt(r, casePay({ lateFee: '100' })).label).toBe('PARTIAL');
+  });
+
+  it('document receipt types keep their own labels', () => {
+    expect(caseForReceipt(caseRcpt({ receiptType: 'CREDIT_NOTE' }), undefined).label).toBe('ใบลดหนี้');
+    expect(caseForReceipt(caseRcpt({ receiptType: 'RESCHEDULE_FEE' }), undefined).label).toBe('ปรับดิว');
+    expect(caseForReceipt(caseRcpt({ receiptType: 'DOWN_PAYMENT' }), undefined).label).toBe('ดาวน์');
+    expect(caseForReceipt(caseRcpt({ receiptType: 'EARLY_PAYOFF' }), undefined).label).toBe('ปิดยอด');
+  });
+
+  it('falls back to NORMAL when the receipt has no linked installment', () => {
+    expect(caseForReceipt(caseRcpt({ amount: '9999' }), undefined).label).toBe('NORMAL');
   });
 });

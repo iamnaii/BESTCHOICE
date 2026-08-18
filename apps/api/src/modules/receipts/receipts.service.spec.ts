@@ -34,6 +34,9 @@ describe('ReceiptsService', () => {
         // Un-pay (2026-07-08): sibling receipts of the same payment are voided
         // together (the JE reversal is per-payment, not per-receipt).
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        // 2026-08-18: the siblings are READ before they are voided so each gets
+        // its own ใบลดหนี้ (ม.86/10) — see receipt-void.sibling-credit-note.spec.ts.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       journalEntry: {
         // PR-843/I2 Phase 3 PR 3.1: voidReceipt now finds ALL receipt JEs of the

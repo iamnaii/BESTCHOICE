@@ -51,14 +51,19 @@ export interface PendingPayment {
   };
 }
 
+/** หนึ่งแถว = หนึ่งใบเสร็จ (เงินสดที่รับจริง) — ไม่ใช่หนึ่งงวด. GET /payments/daily-summary
+ *  อ่านจาก Receipt ตั้งแต่ 2026-08-18 เพื่อให้ยอดตรงกับเงินที่รับมาจริง ๆ. */
 export interface DailySummaryPayment {
   id: string;
-  installmentNo: number;
-  amountPaid: string;
-  paymentMethod: string;
-  paidDate: string | null;
+  receiptNumber: string;
+  receiptType: string;
+  /** ยอดบนใบเสร็จ = เงินสดที่รับจริง (ไม่ใช่ยอดที่ตัดหนี้งวดได้) */
+  amount: string;
+  installmentNo: number | null;
+  paymentMethod: string | null;
+  paidDate: string;
   contract?: { contractNumber: string; customer?: { name: string } };
-  recordedBy?: { name: string } | null;
+  issuedByName?: string | null;
 }
 
 export interface DailySummary {

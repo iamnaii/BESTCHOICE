@@ -157,3 +157,51 @@ export function receiptLabelsForJes(
   });
   return labels;
 }
+
+export interface CaseReceiptRow {
+  receiptType: string;
+  amount: string;
+  paymentStatus: string | null;
+}
+
+export interface CasePaymentRow {
+  /** งวดล้วน — EXCLUDES the late fee by schema. */
+  amountDue: string;
+  lateFee: string;
+  lateFeeWaived: boolean;
+  waivedAmount: string | null;
+}
+
+export type CaseTone = 'warning' | 'info' | 'primary' | 'success';
+
+/**
+ * The derived CASE label for one receipt row (no persisted `case` field).
+ *
+ * OVER means the customer handed over MORE than this installment obliged them
+ * to. The obligation is `amountDue + NET late fee` (gross − waived) — the same
+ * figure `PaymentReceiptOrchestrator` calls `remaining` when it decides whether
+ * an overage becomes a 21-1103 advance credit. Comparing against `amountDue`
+ * alone (the pre-2026-08-18 rule) labelled every correctly-collected fee as an
+ * overpay, and hid the genuine ones: on prod contract TEST-20260809-004, งวด 1
+ * paid exactly 3,671 + 100 read "OVER" while งวด 3 — which was 29฿ SHORT in
+ * cash and closed by an advance credit — read "OVER" too.
+ */
+export function caseForReceipt(
+  r: CaseReceiptRow,
+  p: CasePaymentRow | undefined,
+): { label: string; tone: CaseTone } {
+  if (r.receiptType === 'EARLY_PAYOFF') return { label: 'ปิดยอด', tone: 'warning' };
+  if (r.receiptType === 'DOWN_PAYMENT') return { label: 'ดาวน์', tone: 'warning' };
+  if (r.receiptType === 'CREDIT_NOTE') return { label: 'ใบลดหนี้', tone: 'warning' };
+  if (r.receiptType === 'RESCHEDULE_FEE') return { label: 'ปรับดิว', tone: 'warning' };
+  if (r.paymentStatus === 'PARTIAL') return { label: 'PARTIAL', tone: 'info' };
+  if (p) {
+    // Same waiver convention as computeFeeTotals: an explicit waivedAmount wins,
+    // otherwise lateFeeWaived means the whole gross fee was waived.
+    const waived =
+      p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0;
+    const obligation = Number(p.amountDue) + (Number(p.lateFee) - waived);
+    if (Number(r.amount) > obligation) return { label: 'OVER', tone: 'primary' };
+  }
+  return { label: 'NORMAL', tone: 'success' };
+}

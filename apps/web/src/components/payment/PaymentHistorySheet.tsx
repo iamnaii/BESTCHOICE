@@ -18,7 +18,9 @@ import {
   computeFeeTotals,
   jesForReceipt as selectJesForReceipt,
   receiptLabelsForJes,
+  caseForReceipt,
   type JeReceiptLabel,
+  type CaseTone,
 } from './paymentHistoryDerivations';
 import { toast } from 'sonner';
 import type { VoidedReceiptInfo } from '@/pages/PaymentsPage/types';
@@ -104,15 +106,18 @@ const UNVOIDABLE_RECEIPT_TYPES = ['CREDIT_NOTE', 'RESCHEDULE_FEE', 'EARLY_PAYOFF
 // Use the shared money formatter (honours user separator preference + ROUND_HALF_UP).
 const money = (n: number | string) => formatNumberDecimal(n, 2);
 
+/** Semantic tone → token class for the CASE column. */
+const CASE_TONE_CLASS: Record<CaseTone, string> = {
+  warning: 'text-warning',
+  info: 'text-info',
+  primary: 'text-primary',
+  success: 'text-success',
+};
+
 /** Derived CASE label + token color (no persisted `case` field). */
 function caseFor(r: ReceiptItem, p: PaymentItem | undefined): { label: string; cls: string } {
-  if (r.receiptType === 'EARLY_PAYOFF') return { label: 'ปิดยอด', cls: 'text-warning' };
-  if (r.receiptType === 'DOWN_PAYMENT') return { label: 'ดาวน์', cls: 'text-warning' };
-  if (r.receiptType === 'CREDIT_NOTE') return { label: 'ใบลดหนี้', cls: 'text-warning' };
-  if (r.receiptType === 'RESCHEDULE_FEE') return { label: 'ปรับดิว', cls: 'text-warning' };
-  if (r.paymentStatus === 'PARTIAL') return { label: 'PARTIAL', cls: 'text-info' };
-  if (p && Number(r.amount) > Number(p.amountDue)) return { label: 'OVER', cls: 'text-primary' };
-  return { label: 'NORMAL', cls: 'text-success' };
+  const { label, tone } = caseForReceipt(r, p);
+  return { label, cls: CASE_TONE_CLASS[tone] };
 }
 
 async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {

@@ -3258,6 +3258,9 @@ model Receipt {
   // (`generateReceipt` looks up `(contractId, installmentNo)` rows on every
   // partial payment to compute installmentPartialSeq + remainingAmount).
   @@index([contractId, installmentNo])
+  // สรุปรายวัน: Receipt rows for one day, always paired with isVoided=false
+  // (GET /payments/daily-summary — receipt-based since 2026-08-18).
+  @@index([paidDate, isVoided])
   @@map("receipts")
 }
 

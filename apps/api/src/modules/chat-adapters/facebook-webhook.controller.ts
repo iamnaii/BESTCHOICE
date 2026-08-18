@@ -256,12 +256,19 @@ export class FacebookWebhookController {
 
       this.logger.log(`[FB Webhook] Postback from PSID ${senderId}: "${postback.payload}"`);
 
-      await this.messageRouter.routeInbound(inbound);
-      // referral ที่พ่วงมากับ Get Started/ปุ่ม — ห้องเพิ่งถูกสร้างโดย routeInbound
-      // ข้างบน จึง resolve ได้แล้วตอนนี้ (ads attribution ยังทำงานเหมือนเดิมด้านบน)
-      if (referral?.ref) {
-        await this.handleProductReferral(senderId, String(referral.ref));
-      }
+      // fast-ack: ห้ามให้ webhook response แขวนรอเทิร์น AI (10-30s+ และยาวขึ้นตามคิว
+      // ต่อลูกค้า) — Meta รอ ~20s แล้ว redeliver + นับ fail สะสม เสี่ยงโดนลดเกรด webhook
+      // referral note ต้องรอห้องถูกสร้างก่อน จึงต่อท้าย promise แทนการ await
+      void this.messageRouter
+        .routeInbound(inbound)
+        .then(() =>
+          referral?.ref ? this.handleProductReferral(senderId, String(referral.ref)) : undefined,
+        )
+        .catch((err) =>
+          this.logger.error(
+            `[FB Webhook] postback routeInbound failed: ${err instanceof Error ? err.message : err}`,
+          ),
+        );
       return;
     }
 
@@ -304,7 +311,15 @@ export class FacebookWebhookController {
       `[FB Webhook] Inbound ${type} from PSID ${senderId} (mid: ${message.mid})${attribution ? ' [with attribution]' : ''}`,
     );
 
-    await this.messageRouter.routeInbound(inbound);
+    // fast-ack: ตอบ Meta ทันที — เทิร์น AI วิ่งต่อในคิวต่อลูกค้า (inboundChains)
+    // dedup redelivery มี UNIQUE externalMessageId (mid) คุ้มที่ชั้น saveMessage แล้ว
+    void this.messageRouter
+      .routeInbound(inbound)
+      .catch((err) =>
+        this.logger.error(
+          `[FB Webhook] routeInbound failed for mid ${message.mid}: ${err instanceof Error ? err.message : err}`,
+        ),
+      );
   }
 
   /**
@@ -362,6 +377,10 @@ export class FacebookWebhookController {
       text: text ?? undefined,
       mediaUrl: mediaUrl ?? undefined,
       externalMessageId: message.mid,
+      // pause AI เฉพาะเมื่อรู้แน่ว่าเป็นคนตอบจากแอปอื่นจริง — ถ้า FACEBOOK_APP_ID
+      // ไม่ได้ตั้ง echo ของบอทเราเองจะแยกไม่ออก การ pause จะกลายเป็น kill switch
+      // ที่บอทกดใส่ตัวเองหลังตอบครั้งแรกทุกห้อง
+      pauseAi: Boolean(ownAppId),
     });
   }
 

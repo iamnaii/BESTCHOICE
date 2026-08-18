@@ -13,6 +13,8 @@ export interface BotAttachment {
   productId: string;
   imageUrl?: string;
   webUrl?: string;
+  /** ป้ายรุ่นสำหรับจดลงประวัติแชท ("[รูป iPhone 12 64GB เกรด A]") — ให้บอทจำได้ว่าส่งรูปอะไรไป */
+  label?: string;
 }
 
 /** ส่งได้มากสุด 2 ใบต่อ 1 คำตอบ — LINE reply รับ 5 ข้อความ/ครั้ง เหลือที่ให้ text + เผื่อ */
@@ -36,17 +38,27 @@ export function collectAttachmentsFromToolResult(
 ): void {
   if (result == null || typeof result !== 'object') return;
 
-  const push = (u: { id?: unknown; photoUrl?: unknown; webUrl?: unknown }) => {
+  const push = (u: {
+    id?: unknown; photoUrl?: unknown; webUrl?: unknown;
+    model?: unknown; storage?: unknown; grade?: unknown; productName?: unknown;
+  }) => {
     const productId = typeof u.id === 'string' ? u.id : null;
     if (!productId || into.has(productId)) return;
     const imageUrl = httpsUrlOrUndefined(u.photoUrl);
     const webUrl = httpsUrlOrUndefined(u.webUrl);
     if (!imageUrl && !webUrl) return;
     if (into.size >= MAX_BOT_ATTACHMENTS) return;
+    const label = [
+      typeof u.productName === 'string' ? u.productName : undefined,
+      typeof u.model === 'string' ? u.model : undefined,
+      typeof u.storage === 'string' ? u.storage : undefined,
+      typeof u.grade === 'string' ? `เกรด ${u.grade}` : undefined,
+    ].filter(Boolean).join(' ') || undefined;
     into.set(productId, {
       productId,
       ...(imageUrl ? { imageUrl } : {}),
       ...(webUrl ? { webUrl } : {}),
+      ...(label ? { label } : {}),
     });
   };
 
@@ -62,7 +74,7 @@ export function collectAttachmentsFromToolResult(
   }
 
   if (toolName === 'calculate_installment') {
-    const r = result as { productId?: unknown; photoUrl?: unknown; webUrl?: unknown };
-    push({ id: r.productId, photoUrl: r.photoUrl, webUrl: r.webUrl });
+    const r = result as { productId?: unknown; photoUrl?: unknown; webUrl?: unknown; productName?: unknown };
+    push({ id: r.productId, photoUrl: r.photoUrl, webUrl: r.webUrl, productName: r.productName });
   }
 }

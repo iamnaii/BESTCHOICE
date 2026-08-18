@@ -10,22 +10,40 @@ import {
 export const CAPTURE_LEAD_TOOL = {
   name: 'capture_lead',
   description:
-    'Call after customer confirms purchase (says "เอา/โอเค/สนใจ"). Captures lead, creates Customer draft, initiates handoff to staff for KYC verification + PromptPay QR delivery.',
+    'Call after customer confirms purchase (says "เอา/โอเค/สนใจ"). Captures lead, creates Customer draft, initiates handoff to staff for KYC verification + PromptPay QR delivery. ' +
+    'Works for BOTH in-stock sales (pass productId + packageChoice from search_products/calculate_installment) ' +
+    'AND order-taking of out-of-stock models (omit productId/packageChoice, pass productNote instead — never invent a productId).',
   input_schema: {
     type: 'object',
     properties: {
       customerName: { type: 'string', description: 'ชื่อลูกค้า (ขออย่างน้อย firstname)' },
       phone: { type: 'string', description: 'เบอร์โทร 10 หลัก' },
-      address: { type: 'string', description: 'ที่อยู่จัดส่ง (ตัวเลือก ถ้ามี)' },
-      productId: { type: 'string', description: 'productId จาก search_products' },
+      address: {
+        type: 'string',
+        description:
+          'ที่อยู่ — ห้ามถามลูกค้าเด็ดขาด (ร้านไม่มีบริการจัดส่ง ลูกค้ารับเครื่องที่ร้าน) ใส่เฉพาะเมื่อลูกค้าพิมพ์มาเอง',
+      },
+      visitPlan: {
+        type: 'string',
+        description: 'แผนเข้ามาที่ร้าน/ช่วงที่วางแผนซื้อ ตามคำลูกค้า เช่น "เสาร์นี้บ่าย" "สิ้นเดือน"',
+      },
+      productId: {
+        type: 'string',
+        description: 'productId จาก search_products — เฉพาะของที่มีในสต็อก (ห้ามแต่งเอง)',
+      },
       packageChoice: {
         type: 'string',
         enum: ['A', 'B', 'C'],
-        description: 'แพ็คผ่อนที่ลูกค้าเลือก (A=ดาวน์เบา, B=กลาง, C=หนัก)',
+        description: 'แพ็คผ่อนที่ลูกค้าเลือก (A=ดาวน์เบา, B=กลาง, C=หนัก) — เฉพาะของในสต็อก',
       },
-      downAmount: { type: 'number', description: 'ยอดดาวน์ที่จะส่ง QR' },
+      productNote: {
+        type: 'string',
+        description:
+          'กรณีรับออเดอร์ (ของไม่มีในสต็อก ไม่มี productId): รุ่น+ความจุ+มือ 1/มือสอง+เรทที่เลือก เช่น "iPhone 15 Plus 128GB มือสอง สั่งเข้า เรทร้าน"',
+      },
+      downAmount: { type: 'number', description: 'ยอดดาวน์ที่จะส่ง QR (จากแพ็คหรือเรทที่ลูกค้าเลือก)' },
     },
-    required: ['customerName', 'phone', 'productId', 'packageChoice', 'downAmount'],
+    required: ['customerName', 'phone', 'downAmount'],
   },
 };
 
@@ -33,8 +51,10 @@ export interface CaptureLeadInput {
   customerName: string;
   phone: string;
   address?: string;
-  productId: string;
-  packageChoice: 'A' | 'B' | 'C';
+  visitPlan?: string;
+  productId?: string;
+  packageChoice?: 'A' | 'B' | 'C';
+  productNote?: string;
   downAmount: number;
   roomId: string;
 }
@@ -176,10 +196,12 @@ export class CaptureLeadTool {
           entity: 'customer',
           entityId: cId,
           newValue: {
-            productId: input.productId,
-            packageChoice: input.packageChoice,
+            productId: input.productId ?? null,
+            packageChoice: input.packageChoice ?? null,
+            productNote: input.productNote ?? null,
             downAmount: input.downAmount,
             address: input.address ?? null,
+            visitPlan: input.visitPlan ?? null,
           },
         },
       });
@@ -197,13 +219,15 @@ export class CaptureLeadTool {
 
     // Generate PromptPay QR if configured; fall back to lead-only otherwise
     let promptPayQr: string | null = null;
-    let handoffMessage = `ทางแอดมินจะส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท ให้พี่ในแชทนี้นะคะ 🙏`;
+    // ประโยคท้าย = privacy notice ตาม พ.ร.บ.คุ้มครองข้อมูลฯ (ใช้ข้อมูลเพื่อคำสั่งซื้อนี้เท่านั้น)
+    const pdpaNote = 'ข้อมูลชื่อ-เบอร์จะใช้ติดต่อเรื่องคำสั่งซื้อนี้เท่านั้นนะคะ';
+    let handoffMessage = `ทางแอดมินจะส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท ให้พี่ในแชทนี้นะคะ 🙏 ${pdpaNote}`;
 
     if (promptpayId) {
       try {
         const payload = generatePayload(promptpayId, { amount: input.downAmount });
         promptPayQr = await QRCode.toDataURL(payload);
-        handoffMessage = `ส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท แล้วนะคะ พอโอนเสร็จแอดมินจะติดต่อกลับเพื่อยืนยันสัญญาค่ะ 🙏`;
+        handoffMessage = `ส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท แล้วนะคะ พอโอนเสร็จแอดมินจะติดต่อกลับเพื่อยืนยันสัญญาค่ะ 🙏 ${pdpaNote}`;
       } catch (err) {
         this.logger.error(
           `PromptPay QR generation failed for room ${input.roomId}: ${err instanceof Error ? err.message : err}`,

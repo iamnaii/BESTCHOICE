@@ -189,6 +189,8 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
       text: 'สวัสดีครับ ตอบจาก Meta Business Suite',
       mediaUrl: undefined,
       externalMessageId: 'mid.external.echo.1',
+      // echo จากแอปอื่น (ยืนยันได้เพราะ FACEBOOK_APP_ID ตั้งอยู่) = takeover → pause AI
+      pauseAi: true,
     });
     expect(router.routeInbound).not.toHaveBeenCalled();
   });
@@ -537,6 +539,8 @@ describe('FacebookWebhookController — standalone referral จากลิง�
     };
     const { req, signature } = signedRequest(FB_APP_SECRET, body);
     await controller.handleWebhook(req, body, signature);
+    // fast-ack: referral note ต่อท้าย promise ของ routeInbound — flush microtasks ก่อน assert
+    await new Promise((r) => setImmediate(r));
 
     expect(router.routeInbound).toHaveBeenCalledTimes(1);
     const inbound = router.routeInbound.mock.calls[0][0];

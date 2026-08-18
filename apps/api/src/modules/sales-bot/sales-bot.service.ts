@@ -24,6 +24,7 @@ import {
   LlmToolDefinition,
 } from './providers/llm-provider.interface';
 import {
+  collectConversationNumbers,
   collectGroundedPrices,
   collectGroundedPricesFromToolText,
   guardGrounding,
@@ -39,6 +40,13 @@ export interface SalesBotInput {
   roomId: string;
   customerId: string | null;
   priorMessages?: { role: 'user' | 'assistant'; content: string }[];
+  /**
+   * บันทึกสถานะการขายจาก SalesStateService (สมุดสถานะประจำห้อง) — ฉีดเป็นข้อความแรก
+   * ของประวัติ ไม่ใช่ system block (system โดน prompt cache; note ต่างกันทุกห้อง)
+   */
+  sessionNote?: string;
+  /** โน้ตเก่ากว่า 48 ชม. — ห้าม seed เลขในโน้ตเป็น grounded (เรทอาจเปลี่ยน ต้องเรียก tool ใหม่) */
+  sessionNoteStale?: boolean;
 }
 
 export type SalesBotAttachment = BotAttachment; // re-export ชื่อเดิมไว้ให้ผู้เรียกอ่านง่าย
@@ -53,7 +61,9 @@ export interface SalesBotResult {
   attachments?: SalesBotAttachment[]; // ← ใหม่ (optional = ผู้เรียกเดิมไม่พัง)
 }
 
-const MAX_TOOL_HOPS = 3;
+// 4 (เดิม 3): เผื่อทางเดิน self-correct ของ GroundingGuard — search(hop0) →
+// คำตอบโดนบล็อก+retry(hop1) → โมเดลเรียก calculate/rates เพิ่ม(hop2) → ตอบจริง(hop3)
+const MAX_TOOL_HOPS = 4;
 
 /**
  * Convert legacy Anthropic-style tool definition (uses `input_schema`)
@@ -130,6 +140,7 @@ export class SalesBotService {
     ].map(adaptTool);
 
     const messages: LlmChatMessage[] = [
+      ...(input.sessionNote ? [{ role: 'user', content: input.sessionNote } as LlmChatMessage] : []),
       ...(input.priorMessages ?? []).map(
         (m): LlmChatMessage => ({ role: m.role, content: m.content }),
       ),
@@ -148,6 +159,20 @@ export class SalesBotService {
     // (e.g. Gemini 2.5 ignored PR #1064 anti-hallucinate rules and replied
     // "iPhone 15 7,000" though tool returned only iPhone 13/16 at 14,691/17,000).
     const groundedPrices = new Set<number>();
+    // เลขที่อยู่ในบทสนทนาแล้ว = มีที่มาเช่นกัน (แก้ false positive จากเทสจริง 2026-08-15:
+    // ลูกค้าบอกงบ "3000" → บอททวน "งบดาวน์ 3,000 บาท" → โดน block ฐานไม่มี tool result):
+    // - เลขที่ลูกค้าพิมพ์เอง (งบ/ยอดที่ต่อรอง) — บอทต้องทวนได้
+    // - เลขที่บอทเคยส่งไปแล้วในเทิร์นก่อน — ผ่าน guard ตอนส่งครั้งแรกแล้ว
+    //   (เช่น ทวน "เรทที่ 1 ดาวน์ 1,900" หลังลูกค้าเลือก โดยไม่ต้องเรียก tool ซ้ำ)
+    collectConversationNumbers(input.text, groundedPrices);
+    for (const pm of input.priorMessages ?? []) {
+      collectConversationNumbers(pm.content, groundedPrices);
+    }
+    // เลขในสมุดสถานะ (งบ/เรทที่จดไว้ข้ามวัน) ก็มีที่มาแล้วเช่นกัน — ยกเว้นโน้ตเก่า
+    // (>48 ชม.): ราคา/เรทอาจเปลี่ยนแล้ว บังคับให้บอทเรียก tool ใหม่ก่อนทวนตัวเลข
+    if (input.sessionNote && !input.sessionNoteStale) {
+      collectConversationNumbers(input.sessionNote, groundedPrices);
+    }
     // ช่องส่งรูป/ลิงก์ — เติมจาก "ผลลัพธ์ tool" เท่านั้น (deterministic)
     const attachments = new Map<string, BotAttachment>();
     let totalIn = 0;
@@ -157,6 +182,8 @@ export class SalesBotService {
     // blew up mid-loop" so the AiUsage error row tells an honest story instead of
     // always blaming the provider — see the outer catch below.
     let toolFailed = false;
+    // One self-correction retry when guardGrounding blocks a reply — see below.
+    let groundingRetried = false;
 
     try {
       for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
@@ -178,6 +205,23 @@ export class SalesBotService {
             this.logger.warn(
               `[GroundingGuard] room=${input.roomId} HALLUCINATION_BLOCKED reason=${grounding.reason} reply=${JSON.stringify(resp.text).slice(0, 200)} grounded=${JSON.stringify([...groundedPrices])}`,
             );
+            // Self-correct ครั้งเดียวก่อนยอมแพ้: ป้อนเหตุผลที่โดนบล็อกกลับให้โมเดล
+            // เขียนใหม่ (แทนที่จะเงียบ+handoff ทันที — ลูกค้าไม่ได้คำตอบทั้งที่แค่
+            // ตัวเลขไม่มีแหล่ง เช่น Haiku คำนวณค่างวดเองแทนที่จะเรียก tool)
+            if (!groundingRetried && hop < MAX_TOOL_HOPS - 1) {
+              groundingRetried = true;
+              messages.push({ role: 'assistant', content: resp.text });
+              messages.push({
+                role: 'user',
+                content:
+                  `[SYSTEM GUARD — ลูกค้าไม่เห็นข้อความนี้ ห้ามเอ่ยถึง] คำตอบล่าสุดถูกบล็อก: ` +
+                  `มีตัวเลขที่ไม่ได้มาจากผล tool (${grounding.reason}) — ห้ามคำนวณ/เดา/จำตัวเลขเอง ` +
+                  `เขียนคำตอบใหม่ทางใดทางหนึ่ง: (1) ใช้เฉพาะตัวเลขที่ tool คืนมาแล้วในบทสนทนานี้ ` +
+                  `(2) ถ้าจะพูดค่างวด เรียก calculate_installment (ของในสต็อก) หรือ get_installment_rates (รับออเดอร์) ก่อน ` +
+                  `(3) ตัดตัวเลขที่ไม่มีแหล่งออก แล้วถามขั้นถัดไปตามลำดับการขายแทน`,
+              });
+              continue;
+            }
             this.recordUsage(modelUsed, totalIn, totalOut);
             return {
               reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
@@ -203,21 +247,27 @@ export class SalesBotService {
         }
 
         // Record + execute every tool call from this turn (typically 1, but
-        // models can request several at once).
+        // models can request several at once — prompt v2.18 encourages calling
+        // them together). Execute in PARALLEL: tools are independent reads
+        // (search/rates/calc/promotions), so concurrent execution shaves the
+        // sum of their latencies down to the max.
+        for (const tc of resp.toolCalls) toolsUsed.push(tc.name);
+        const executed = await Promise.all(
+          resp.toolCalls.map(async (tc) => {
+            try {
+              return { tc, result: await this.runTool(tc.name, tc.input, input.roomId) };
+            } catch (toolError) {
+              // Tag before rethrow — tools are Prisma-backed and can throw for
+              // reasons that have nothing to do with the LLM provider (DB down,
+              // constraint violation, etc). The outer catch reads this flag to
+              // record an honest errorKind instead of always blaming the provider.
+              toolFailed = true;
+              throw toolError;
+            }
+          }),
+        );
         const toolResults: LlmChatMessage[] = [];
-        for (const tc of resp.toolCalls) {
-          toolsUsed.push(tc.name);
-          let result: unknown;
-          try {
-            result = await this.runTool(tc.name, tc.input, input.roomId);
-          } catch (toolError) {
-            // Tag before rethrow — tools are Prisma-backed and can throw for
-            // reasons that have nothing to do with the LLM provider (DB down,
-            // constraint violation, etc). The outer catch reads this flag to
-            // record an honest errorKind instead of always blaming the provider.
-            toolFailed = true;
-            throw toolError;
-          }
+        for (const { tc, result } of executed) {
           collectGroundedPrices(result, groundedPrices);
           collectGroundedPricesFromToolText(tc.name, result, groundedPrices);
           collectAttachmentsFromToolResult(tc.name, result, attachments);
@@ -287,8 +337,9 @@ export class SalesBotService {
           customerName: String(input.customerName ?? ''),
           phone: String(input.phone ?? ''),
           address: input.address as string | undefined,
-          productId: String(input.productId ?? ''),
-          packageChoice: input.packageChoice as 'A' | 'B' | 'C',
+          productId: input.productId ? String(input.productId) : undefined,
+          packageChoice: input.packageChoice as 'A' | 'B' | 'C' | undefined,
+          productNote: input.productNote ? String(input.productNote) : undefined,
           downAmount: Number(input.downAmount ?? 0),
           roomId,
         });

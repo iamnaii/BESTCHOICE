@@ -1,5 +1,5 @@
 import { MessageRouterService } from './message-router.service';
-import { ChatChannel, MessageType } from '@prisma/client';
+import { ChatChannel, MessageType, MessageRole } from '@prisma/client';
 
 const baseMsg = {
   externalMessageId: 'em1',
@@ -18,6 +18,8 @@ function makeRouter(opts: {
 }) {
   const room = opts.room ?? { id: 'r1', handoffMode: false, aiPaused: false, verifiedAt: null };
   const roomManager = {
+    pauseAiIfActive: jest.fn().mockResolvedValue(false),
+    findById: jest.fn().mockResolvedValue({ aiPaused: false, handoffMode: false }),
     getOrCreateRoom: jest.fn().mockResolvedValue(room),
     saveMessage: jest.fn().mockResolvedValue({ id: 'm1' }),
   };
@@ -59,6 +61,64 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
     );
   });
 
+  it('แยกส่งหลายบับเบิลเมื่อบอทคั่นด้วย "---" — replyToken เฉพาะใบแรก, token stats เฉพาะใบแรก', async () => {
+    const { router, adapter, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: {
+        reply: 'มีของพร้อมส่งค่า\n---\nดาวน์ 1,780 ผ่อน 774 (12 เดือน)\n---\nสนใจแบบไหนดีคะ',
+        confidence: 0.9,
+        toolsUsed: ['calculate_installment'],
+        inputTokens: 10,
+        outputTokens: 20,
+      },
+    });
+    await router.routeInbound(baseMsg as any);
+
+    const sent = adapter.sendMessage.mock.calls.map((c: any[]) => c[0]);
+    expect(sent.map((s: any) => s.text)).toEqual([
+      'มีของพร้อมส่งค่า',
+      'ดาวน์ 1,780 ผ่อน 774 (12 เดือน)',
+      'สนใจแบบไหนดีคะ',
+    ]);
+    expect(sent[0].replyToken).toBe('rt-1');
+    expect(sent[1].replyToken).toBeUndefined();
+    expect(sent[2].replyToken).toBeUndefined();
+
+    // BOT message ถูกบันทึกครบทุกบับเบิล แต่ token/tool stats อยู่ใบแรกใบเดียว
+    const saved = roomManager.saveMessage.mock.calls
+      .map((c: any[]) => c[0])
+      .filter((m: any) => m.role === 'BOT');
+    expect(saved).toHaveLength(3);
+    expect(saved[0].toolsUsed).toEqual(['calculate_installment']);
+    expect(saved[1].toolsUsed).toBeUndefined();
+  }, 10000);
+
+  it('"[ตัวเลือก: ...]" ท้ายข้อความ → quick replies บนบับเบิลสุดท้าย และตัดออกจากตัวข้อความ', async () => {
+    const { router, adapter } = makeRouter({
+      aiEligible: true,
+      aiResult: {
+        reply:
+          'มี 15 ธรรมดา, Plus, Pro, Pro Max เลยค่า\n---\nสนใจตัวไหนคะ\n[ตัวเลือก: 15 | 15 Plus | 15 Pro | 15 Pro Max]',
+        confidence: 0.9,
+        toolsUsed: [],
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    });
+    await router.routeInbound(baseMsg as any);
+
+    const sent = adapter.sendMessage.mock.calls.map((c: any[]) => c[0]);
+    expect(sent).toHaveLength(2);
+    expect(sent[0].quickReplies).toBeUndefined();
+    expect(sent[1].text).toBe('สนใจตัวไหนคะ');
+    expect(sent[1].quickReplies).toEqual([
+      { label: '15', type: 'MESSAGE', message: '15' },
+      { label: '15 Plus', type: 'MESSAGE', message: '15 Plus' },
+      { label: '15 Pro', type: 'MESSAGE', message: '15 Pro' },
+      { label: '15 Pro Max', type: 'MESSAGE', message: '15 Pro Max' },
+    ]);
+  }, 10000);
+
   it('threads the replyToken into the after-hours reply', async () => {
     const { router, adapter } = makeRouter({ afterHours: true });
     await router.routeInbound(baseMsg as any);
@@ -77,18 +137,17 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
   });
 });
 
-// Issue #1332 — after the bot answers a not-found model question with the
-// standard rates (get_installment_rates), staff must still follow up with
-// the real price. The room flag comes from the ROUTER, post-send (so it can
-// never suppress the reply), NOT from inside the read-only tool and NOT
-// from a same-turn handoff_to_human (which would tank confidence to 0.3 and
-// silence the reply — the exact behavior being eliminated).
-describe('MessageRouterService — staff follow-up flag after rate reply (#1332)', () => {
-  it('auto-send whose toolsUsed includes get_installment_rates → sends AND flags the room for staff', async () => {
+// #1332 auto-flag REMOVED (2026-08-14): after pricing_templates got seeded,
+// get_installment_rates became the PRIMARY quoting tool — flagging (and thus
+// muting the bot) after every rate reply silenced it right after the first
+// quote. Handoff now happens at the right moment instead: capture_lead /
+// handoff_to_human set handoffMode themselves when the bot collects a lead.
+describe('MessageRouterService — rate reply must NOT mute the bot (#1332 removal)', () => {
+  it('auto-send whose toolsUsed includes get_installment_rates → sends WITHOUT flagging the room', async () => {
     const { router, adapter, handoffManager } = makeRouter({
       aiEligible: true,
       aiResult: {
-        reply: 'เรทผ่อนมาตรฐานดอกเบี้ยรวม 30% ดาวน์ขั้นต่ำ 20% ค่ะ เดี๋ยวทีมงานเช็คราคารุ่นนี้แล้วทักกลับนะคะ',
+        reply: 'เรทรุ่นนี้ ดาวน์ 1,900 ผ่อนเดือนละ 2,566 (12 เดือน) ค่ะ',
         confidence: 0.95,
         toolsUsed: ['search_products', 'get_installment_rates'],
         inputTokens: 1,
@@ -97,17 +156,10 @@ describe('MessageRouterService — staff follow-up flag after rate reply (#1332)
     });
     await router.routeInbound(baseMsg as any);
 
-    // Reply still goes out first…
     expect(adapter.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining('เรทผ่อน') }),
+      expect.objectContaining({ text: expect.stringContaining('เรท') }),
     );
-    // …and the room is flagged for the price follow-up.
-    expect(handoffManager.initiateHandoff).toHaveBeenCalledWith({
-      roomId: 'r1',
-      reason: 'บอทส่งเรทแล้ว — ตามราคารุ่นที่ลูกค้าต้องการ',
-      priority: 'normal',
-      summary: baseMsg.text,
-    });
+    expect(handoffManager.initiateHandoff).not.toHaveBeenCalled();
   });
 
   it('auto-send WITHOUT get_installment_rates → no staff follow-up flag', async () => {
@@ -141,6 +193,7 @@ function makeStaffSender() {
   const store = new Map<string, any>();
   let seq = 0;
   const roomManager = {
+    pauseAiIfActive: jest.fn().mockResolvedValue(false),
     findById: jest.fn().mockResolvedValue(room),
     findByClientMessageId: jest.fn(async (_roomId: string, token: string) => store.get(token) ?? null),
     saveMessage: jest.fn(async (p: any) => {
@@ -425,5 +478,59 @@ describe('MessageRouterService — ส่งรูปสินค้าตาม
     });
     await router.routeInbound(baseMsg as any);
     expect(adapter.sendMessage).toHaveBeenCalledTimes(3); // 1 text + 2 image
+  });
+});
+
+describe('MessageRouterService — รวมข้อความที่ลูกค้าพิมพ์รัว (coalesce)', () => {
+  // ย่อหน้าต่างรอเหลือ 30ms เฉพาะในเทส — ของจริง 3 วิ (โค้ดอ่าน env ตอนรัน)
+  const prevEnv = process.env.CHAT_COALESCE_MS;
+  beforeAll(() => {
+    process.env.CHAT_COALESCE_MS = '30';
+  });
+  afterAll(() => {
+    if (prevEnv === undefined) delete process.env.CHAT_COALESCE_MS;
+    else process.env.CHAT_COALESCE_MS = prevEnv;
+  });
+  const AI_REPLY = { reply: 'ตอบรวมให้ทีเดียวค่ะ', confidence: 0.95, toolsUsed: [], inputTokens: 1, outputTokens: 1 };
+
+  it('ลูกค้าส่ง 2 ข้อความติดกัน → บอทตอบครั้งเดียว (เทิร์นล่าสุดเป็นคนตอบ)', async () => {
+    const { router, adapter, aiAutoReply, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: AI_REPLY,
+    });
+    const msg = (text: string, mid: string) => ({
+      externalMessageId: mid,
+      externalUserId: 'U1',
+      channel: ChatChannel.LINE_SHOP,
+      type: 'TEXT',
+      text,
+    });
+    // ยิงติดกันแบบลูกค้าพิมพ์รัว — ไม่ await ตัวแรกก่อน
+    const first = router.routeInbound(msg('แล้วเครื่องจะออกก่อนไหม', 'm1') as any);
+    const second = router.routeInbound(msg('อีกตั้งครึ่งเดือน', 'm2') as any);
+    await Promise.all([first, second]);
+
+    // ข้อความลูกค้าทั้ง 2 ต้องถูกบันทึกครบ (ไม่หาย ขึ้น inbox ปกติ)
+    const savedCustomer = roomManager.saveMessage.mock.calls.filter(
+      (c: any[]) => c[0].role === MessageRole.CUSTOMER,
+    );
+    expect(savedCustomer).toHaveLength(2);
+    // แต่ AI ต้องถูกเรียกครั้งเดียว และส่งออกครั้งเดียว
+    expect(aiAutoReply.autoReply).toHaveBeenCalledTimes(1);
+    const sentTexts = adapter.sendMessage.mock.calls.map((c: any[]) => c[0].text);
+    expect(sentTexts).toEqual(['ตอบรวมให้ทีเดียวค่ะ']);
+  });
+
+  it('ข้อความเดียวธรรมดา → ตอบตามปกติ (ไม่ถูกกลืน)', async () => {
+    const { router, adapter, aiAutoReply } = makeRouter({ aiEligible: true, aiResult: AI_REPLY });
+    await router.routeInbound({
+      externalMessageId: 'm9',
+      externalUserId: 'U9',
+      channel: ChatChannel.LINE_SHOP,
+      type: 'TEXT',
+      text: 'สนใจ iPhone 15',
+    } as any);
+    expect(aiAutoReply.autoReply).toHaveBeenCalledTimes(1);
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
   });
 });

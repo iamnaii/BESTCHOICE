@@ -59,7 +59,8 @@ export function computeFeeTotals(payments: FeePaymentRow[]): {
   const totalLateFee = feePayments.reduce((s, p) => s + Number(p.lateFee), 0);
   const totalWaived = feePayments.reduce(
     (s, p) =>
-      s + (p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0),
+      s +
+      (p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0),
     0,
   );
   return { totalLateFee, totalWaived };
@@ -86,4 +87,73 @@ export function jesForReceipt<J extends JeRef>(r: ReceiptRef, journalEntries: J[
     return reversalJes.length ? reversalJes : paymentJes;
   }
   return paymentJes;
+}
+
+export interface ReceiptForLabel {
+  receiptNumber: string;
+  receiptType: string;
+  paymentId: string | null;
+}
+
+export interface JeForLabel {
+  id: string;
+  entryNumber: string;
+  paymentId: string | null;
+  tag: string | null;
+  flow: string | null;
+  originalEntryId: string | null;
+}
+
+export interface JeReceiptLabel {
+  receiptNumber: string;
+  /** ลำดับใบในงวด (1-based) */
+  seq: number;
+  /** จำนวนใบทั้งหมดของงวด */
+  total: number;
+}
+
+/**
+ * จับคู่ forward JE ของ payment เข้ากับใบเสร็จของมัน — ใช้ติดป้ายใน dialog JE
+ * ว่าแต่ละใบ JE เป็นของใบเสร็จใบไหน (กรณีแบ่งชำระ N ใบต่องวด ทุกใบแชร์
+ * paymentId เดียวกัน จึงเคยดูไม่ออกว่าค่าปรับลงใบไหน — คำสั่งเจ้าของ 2026-08-16).
+ *
+ * กลไก: JE metadata ไม่มี receiptId — จับคู่ตามลำดับเวลาแทน. ใบเสร็จแต่ละใบ
+ * โพสต์ forward JE หนึ่งใบ ณ ตอนออกใบ ดังนั้นเรียง receiptNumber (รันตามลำดับ
+ * ออกใบ) คู่กับ entryNumber (รันตามลำดับโพสต์) แบบ index ต่อ index จึงตรงกัน.
+ * REVERSAL mirrors (void) และแถว CREDIT_NOTE ไม่ใช่การเก็บเงิน — ถูกกรองออก.
+ * กรณี legacy (JE สะสมใบเดียวคลุมหลายใบเสร็จ — ก่อน PR-843) จำนวนไม่เท่ากัน →
+ * คืน map ว่าง (ไม่เดา ไม่ติดป้ายผิด).
+ */
+export function receiptLabelsForJes(
+  journalEntries: JeForLabel[],
+  receipts: ReceiptForLabel[],
+  paymentId: string | null,
+): Map<string, JeReceiptLabel> {
+  const labels = new Map<string, JeReceiptLabel>();
+  if (!paymentId) return labels;
+
+  const paymentReceipts = receipts
+    .filter((r) => r.paymentId === paymentId && r.receiptType !== 'CREDIT_NOTE')
+    .sort((a, b) => a.receiptNumber.localeCompare(b.receiptNumber));
+
+  const forwardJes = journalEntries
+    .filter(
+      (j) =>
+        j.paymentId === paymentId &&
+        j.originalEntryId === null &&
+        j.tag !== 'REVERSAL' &&
+        j.flow !== 'receipt-void',
+    )
+    .sort((a, b) => a.entryNumber.localeCompare(b.entryNumber));
+
+  if (paymentReceipts.length === 0 || paymentReceipts.length !== forwardJes.length) return labels;
+
+  forwardJes.forEach((je, i) => {
+    labels.set(je.id, {
+      receiptNumber: paymentReceipts[i].receiptNumber,
+      seq: i + 1,
+      total: paymentReceipts.length,
+    });
+  });
+  return labels;
 }

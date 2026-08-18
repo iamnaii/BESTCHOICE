@@ -515,6 +515,8 @@ export default function UnifiedInboxPage() {
             activeRoomId && transferMutation.mutate({ roomId: activeRoomId, staffId })
           }
           onResolve={() => activeRoomId && resolveMutation.mutate(activeRoomId)}
+          onReopen={() => activeRoomId && reopenMutation.mutate(activeRoomId)}
+          reopenPending={reopenMutation.isPending}
           onReturnToAI={() => activeRoomId && returnToAIMutation.mutate(activeRoomId)}
           currentUserId={user?.id ?? ''}
           onShowCustomerInfo={() => setCustomerPanelOpen(true)}

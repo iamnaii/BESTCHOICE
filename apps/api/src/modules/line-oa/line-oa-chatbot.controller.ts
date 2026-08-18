@@ -104,8 +104,36 @@ export class LineOaChatbotController {
   }
 
   private async processEvent(event: LineWebhookBody['events'][number]): Promise<void> {
-    // Owner-controlled kill switch — drop all events without reply when paused
+    // Owner-controlled kill switch — บอทไม่ตอบ แต่**ข้อความลูกค้าต้องเข้า inbox**
+    // (เดิม return เฉย ๆ = ข้อความหายเงียบ พนักงานไม่มีทางเห็น — ต่างจาก FB kill
+    // switch ที่ยังบันทึก+แจ้ง staff) — mirror อย่างเดียว ไม่ reply ไม่เรียก AI
     if (this.configService.get<string>('LINE_SHOP_BOT_DISABLED') === 'true') {
+      if (event.type === 'message') {
+        const m = event as LineMessageEvent;
+        try {
+          if (m.message.type === 'text') {
+            await this.mirrorText(m, m.message.text);
+          } else {
+            const mtype: string = m.message.type;
+            await this.messageRouter.mirrorInbound({
+              externalMessageId: m.message.id,
+              externalUserId: m.source.userId,
+              channel: ChatChannel.LINE_SHOP,
+              type: MessageType.TEXT,
+              text:
+                mtype === 'image'
+                  ? '[ลูกค้าส่งรูปภาพผ่าน LINE]'
+                  : mtype === 'sticker'
+                    ? '[ลูกค้าส่งสติกเกอร์ผ่าน LINE]'
+                    : `[ลูกค้าส่งข้อความ (${mtype}) ผ่าน LINE]`,
+            });
+          }
+        } catch (err) {
+          this.logger.warn(
+            `[SHOP mirror-only] ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
       return;
     }
 

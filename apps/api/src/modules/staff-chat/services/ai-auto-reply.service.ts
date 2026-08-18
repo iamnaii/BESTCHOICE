@@ -6,6 +6,7 @@ import { SalesBotService, SalesBotResult } from '../../sales-bot/sales-bot.servi
 import { LlmProviderRegistry } from '../../sales-bot/providers/llm-provider.registry';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
 import { PersonaService } from './persona.service';
+import { SalesStateService, type SalesState } from './sales-state.service';
 import {
   LLM_PROVIDERS,
   type AiAutoSettings,
@@ -26,6 +27,9 @@ export class AiAutoReplyService {
     @Optional()
     @Inject(forwardRef(() => MessageRouterService))
     private messageRouter?: MessageRouterService,
+    // Optional เพื่อไม่บังคับ mock ใน spec เก่า — prod module ลงทะเบียน provider ให้เสมอ
+    @Optional()
+    private salesState?: SalesStateService,
   ) {}
 
   async shouldAutoReply(session: any): Promise<boolean> {
@@ -77,6 +81,20 @@ export class AiAutoReplyService {
       this.logger.log(
         `[ShouldAutoReply] room=${session.id} skip=capHit24h sentCount=${sentCount} cap=${settings.aiAutoMaxRepliesPerSession}`,
       );
+      // ชนแคป = คุยเข้มข้นผิดปกติ/ลูป — ปักธงให้ห้องเด้งเข้าคิว "ต้องตอบ" หนึ่งครั้ง
+      // (ห้องที่ handoffMode แล้วถูกกรองไว้บนสุดของฟังก์ชัน — จึงไม่ปักซ้ำ)
+      try {
+        await this.prisma.chatRoom.update({
+          where: { id: session.id },
+          data: {
+            handoffMode: true,
+            handoffReason: 'บอทตอบครบโควต้า 24 ชม. — ส่งต่อพนักงาน',
+            handoffTaggedAt: new Date(),
+          },
+        });
+      } catch {
+        // best-effort — พลาดก็แค่ไม่มีธง log ยังอยู่
+      }
       return false;
     }
 
@@ -98,10 +116,32 @@ export class AiAutoReplyService {
     return true;
   }
 
+  /**
+   * สัญลักษณ์ "เริ่มแชทใหม่" — พิมพ์ในแชทแล้วบอทจะไม่เอาข้อความก่อนหน้านั้นมาประมวลผล
+   * (ใช้ทดสอบ/เปลี่ยนเรื่องแบบล้างบริบท — ประวัติในกล่องพนักงานยังอยู่ครบ)
+   */
+  private static readonly RESET_MARKERS = new Set(['#เริ่มใหม่', '#รีเซ็ต', '#reset', '/reset']);
+
+  private static isResetMarker(text: string | null | undefined): boolean {
+    return AiAutoReplyService.RESET_MARKERS.has((text ?? '').trim().toLowerCase());
+  }
+
   async autoReply(
     roomId: string,
     customerMessage: string,
   ): Promise<({ reply: string; confidence: number } & Partial<SalesBotResult>) | null> {
+    // สัญลักษณ์เริ่มใหม่ → ตอบยืนยันสั้น ๆ ไม่เรียก LLM; ข้อความก่อนหน้าจะถูกตัดออก
+    // จากบริบทของคำถามถัดไปโดย marker ที่ถูกบันทึกไว้ในห้องแล้ว
+    if (AiAutoReplyService.isResetMarker(customerMessage)) {
+      // #reset ล้างทั้งประวัติ (marker ตัด window) และสมุดสถานะการขาย
+      void this.salesState?.clear(roomId);
+      return {
+        reply: 'เริ่มแชทใหม่ให้แล้วค่ะ 😊 สอบถามได้เลยนะคะ',
+        confidence: 1,
+        toolsUsed: [],
+      };
+    }
+
     const settings = await this.getSettings();
     // Convert scale 0-100 → 0-1 for comparison with SalesBot confidence
     const threshold = settings.aiAutoConfidenceThreshold / 100;
@@ -109,15 +149,44 @@ export class AiAutoReplyService {
     // Fetch room context (customerId) + last 5 prior messages (duplicate of loadPrior pattern)
     const room = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
-      select: { customerId: true },
+      select: { customerId: true, aiSalesState: true },
     });
+    const prevState = ((room?.aiSalesState as SalesState | null) ?? null) || null;
+    // อายุสมุดสถานะ: >48 ชม. = ราคา/เรทในโน้ตอาจเก่า (ห้าม seed เป็น grounded — บังคับ
+    // เรียก tool ใหม่ก่อนทวนราคา) · >14 วัน = เหลือไว้แค่รุ่นที่สนใจ (งบ/เรทเก่าเกินกว่าจะเชื่อ)
+    const stateAgeMs = prevState?.updatedAt
+      ? Date.now() - new Date(prevState.updatedAt).getTime()
+      : 0;
+    const noteIsStale = stateAgeMs > 48 * 3_600_000;
+    const noteState =
+      prevState && stateAgeMs > 14 * 24 * 3_600_000
+        ? ({ interestModel: prevState.interestModel, updatedAt: prevState.updatedAt } as SalesState)
+        : prevState;
+    const sessionNote = this.salesState?.buildNote(noteState) ?? undefined;
 
-    const priorRows = await this.prisma.chatMessage.findMany({
-      where: { roomId, deletedAt: null, text: { not: null } },
+    // ดึงเผื่อ (40) แล้วตัดที่ marker เริ่มใหม่ล่าสุดก่อน ค่อยเหลือ 16 ข้อความหลัง marker
+    // 16 (เดิม 5): เทสจริง 2026-08-15 — window 5 ทำให้ "รุ่นที่ลูกค้าสนใจตอนแรก" หลุดความจำ
+    // หลังมีรูป/หลายเทิร์นคั่น ("ต่างกันยังไง" แล้วบอทถามกลับว่าเทียบกับอะไร) — บทสนทนาขาย
+    // เต็มเส้นยาว ~14-20 ข้อความ; ต้นทุน input ส่วนเพิ่มถูกเพราะ system+tools โดน cache แล้ว
+    const priorRowsRaw = await this.prisma.chatMessage.findMany({
+      // จำกัดอายุ 7 วัน: ลูกค้าเก่าหาย 3 เดือนแล้วทัก "สวัสดี" ไม่ควรเจอบทสนทนา
+      // เดือนพฤษภาเหมือนเพิ่งคุยเมื่อกี้ (ราคา/ดีลเก่าจะโดนลากมาทวน) — บริบทข้ามช่วง
+      // ให้สมุดสถานะ (sessionNote พร้อมอายุกำกับ) เป็นคนเล่าแทน
+      where: {
+        roomId,
+        deletedAt: null,
+        text: { not: null },
+        createdAt: { gte: new Date(Date.now() - 7 * 24 * 3_600_000) },
+      },
       orderBy: { createdAt: 'desc' },
-      take: 5,
+      take: 40,
       select: { role: true, text: true },
     });
+    const markerIdx = priorRowsRaw.findIndex((r) => AiAutoReplyService.isResetMarker(r.text));
+    const priorRows = (markerIdx >= 0 ? priorRowsRaw.slice(0, markerIdx) : priorRowsRaw).slice(
+      0,
+      16,
+    );
     const priorMessages = priorRows.reverse().map((r) => ({
       role: (r.role === MessageRole.BOT || r.role === MessageRole.STAFF
         ? 'assistant'
@@ -130,9 +199,14 @@ export class AiAutoReplyService {
       roomId,
       customerId: room?.customerId ?? null,
       priorMessages,
+      sessionNote,
+      sessionNoteStale: noteIsStale,
     });
 
     if (result.confidence < threshold) return null;
+
+    // จดสถานะการขายหลังตอบ — fire-and-forget (Haiku, ไม่ถ่วง latency ของคำตอบ)
+    void this.salesState?.extractAndSave(roomId, prevState, customerMessage, result.reply);
 
     return {
       reply: result.reply,
@@ -234,7 +308,7 @@ export class AiAutoReplyService {
   }> {
     const settings = await this.getSettings();
     const whitelist = (this.config.get<string>('FB_BOT_WHITELIST_PSIDS') ?? '')
-      .split(',')
+      .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean);
     return {

@@ -34,7 +34,22 @@ interface EditProductModalProps {
   setEditForm: React.Dispatch<React.SetStateAction<EditForm>>;
   onSubmit: (e: React.FormEvent) => void;
   isPending: boolean;
+  /** สถานะจริงปัจจุบันของสินค้า (ไม่ใช่ค่าในฟอร์ม) — ใช้ตัดสินว่าแก้สถานะมือได้ไหม */
+  currentStatus: string;
 }
+
+/**
+ * สถานะที่ระบบตั้งผ่าน flow ขาย/จอง/ยึดเครื่อง — แก้มือจากหน้านี้ไม่ได้
+ * ต้องตรงกับ SYSTEM_MANAGED_STATUSES ฝั่ง API (products/product-status.util.ts)
+ * ซึ่งเป็นตัวบังคับจริง — ฝั่งนี้แค่ไม่โชว์ตัวเลือกที่ยังไงก็โดนปฏิเสธ
+ */
+const SYSTEM_MANAGED_STATUSES = new Set([
+  'RESERVED',
+  'SOLD_CASH',
+  'SOLD_INSTALLMENT',
+  'SOLD_RESELL',
+  'REPOSSESSED',
+]);
 
 export default function EditProductModal({
   isOpen,
@@ -43,7 +58,9 @@ export default function EditProductModal({
   setEditForm,
   onSubmit,
   isPending,
+  currentStatus,
 }: EditProductModalProps) {
+  const statusLocked = SYSTEM_MANAGED_STATUSES.has(currentStatus);
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="แก้ไขข้อมูลสินค้า">
       <form onSubmit={onSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto">
@@ -76,12 +93,20 @@ export default function EditProductModal({
             <select
               value={editForm.status}
               onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm disabled:opacity-60"
+              disabled={statusLocked}
             >
-              {Object.entries(productStatusMap).map(([val, s]) => (
-                <option key={val} value={val}>{s.label}</option>
-              ))}
+              {Object.entries(productStatusMap)
+                .filter(([val]) => val === currentStatus || !SYSTEM_MANAGED_STATUSES.has(val))
+                .map(([val, s]) => (
+                  <option key={val} value={val}>{s.label}</option>
+                ))}
             </select>
+            {statusLocked && (
+              <p className="mt-1 text-xs text-muted-foreground leading-snug">
+                สถานะนี้ระบบจัดการผ่านรายการขาย/จอง/ยึดเครื่อง — แก้ผ่าน flow นั้นแทน
+              </p>
+            )}
           </div>
         </div>
 

@@ -98,6 +98,8 @@ interface ChatPanelProps {
   onAssign: (staffId: string) => void;
   onTransfer: (staffId: string) => void;
   onResolve: () => void;
+  onReopen?: () => void;
+  reopenPending?: boolean;
   onReturnToAI: () => void;
   currentUserId: string;
   onShowCustomerInfo?: () => void;
@@ -129,6 +131,8 @@ export default function ChatPanel({
   onAssign,
   onTransfer,
   onResolve,
+  onReopen,
+  reopenPending,
   onReturnToAI,
   currentUserId,
   onShowCustomerInfo,
@@ -348,7 +352,9 @@ export default function ChatPanel({
       if (distanceFromBottom > 150) return;
     }
     anchor.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, roomId]);
+    // pending/failed counts included so just-sent (or just-failed) ghosts —
+    // rendered below the saved messages — scroll into view immediately.
+  }, [messages.length, roomId, pendingSends?.length, failedSends?.length]);
 
   // Auto-grow the textarea to fit its content (capped). Runs on every inputText
   // change — typing, send-clear, draft load (Task 2), emoji/template insert —
@@ -507,8 +513,8 @@ export default function ChatPanel({
             <span className="w-2 h-2 rounded-full bg-primary/60 animate-pulse" />
           </div>
         </div>
-        <p className="text-sm font-semibold text-foreground/60 leading-snug">เลือกการสนทนา</p>
-        <p className="text-xs text-muted-foreground/60 mt-1.5 max-w-[200px] leading-relaxed">
+        <p className="text-sm font-semibold text-foreground/80 leading-snug">เลือกการสนทนา</p>
+        <p className="text-xs text-muted-foreground mt-1.5 max-w-[200px] leading-relaxed">
           เลือกแชทจากรายการด้านซ้ายเพื่อเริ่มตอบลูกค้า
         </p>
       </div>
@@ -525,7 +531,10 @@ export default function ChatPanel({
     session.customer?.lineAvatarUrl ||
     session.pictureUrl ||
     getGeneratedAvatarUrl(session.id);
-  const isResolved = session.sessionStatus === 'RESOLVED';
+  // Backend truth: resolve() sets status=IDLE + resolvedAt; an inbound customer
+  // message auto-reopens the room to ACTIVE (room-manager), so a resolved room
+  // can never trap an ongoing conversation behind this gate.
+  const isResolved = !!session.resolvedAt || session.status === 'IDLE';
 
   return (
     <div
@@ -563,7 +572,7 @@ export default function ChatPanel({
             )}
           </div>
           <div>
-            <h3 className="font-semibold text-[13px] text-foreground">{displayName}</h3>
+            <h3 className="font-semibold text-sm text-foreground">{displayName}</h3>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span
                 className={cn(
@@ -596,7 +605,11 @@ export default function ChatPanel({
                         : 'Web'}
               </span>
               <span className="w-px h-3 bg-border" />
-              <span className="text-[10px] text-muted-foreground/70 font-medium">{session.sessionStatus}</span>
+              {/* Backend exposes status: ACTIVE|IDLE + resolvedAt — the old
+                  session.sessionStatus field never existed on this endpoint. */}
+              <span className="text-[11px] text-muted-foreground font-medium leading-snug">
+                {session.resolvedAt || session.status === 'IDLE' ? 'ปิดแล้ว' : 'กำลังสนทนา'}
+              </span>
             </div>
           </div>
         </div>
@@ -696,8 +709,18 @@ export default function ChatPanel({
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3" role="log" aria-label="ประวัติข้อความ">
         {isLoadingMessages ? (
-          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
-            กำลังโหลดข้อความ...
+          <div className="space-y-3 py-4">
+            <span className="sr-only">กำลังโหลดข้อความ</span>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div key={i} aria-hidden className={cn('flex', i % 2 ? 'justify-end' : 'justify-start')}>
+                <div
+                  className={cn(
+                    'animate-pulse rounded-2xl bg-muted',
+                    i % 2 ? 'h-9 w-44 rounded-br-md' : 'h-12 w-56 rounded-bl-md',
+                  )}
+                />
+              </div>
+            ))}
           </div>
         ) : (
           <>
@@ -744,7 +767,6 @@ export default function ChatPanel({
                 <span className="text-[11px] text-muted-foreground leading-snug">{staffTypingName} กำลังพิมพ์…</span>
               </div>
             )}
-            <div ref={messagesEndRef} />
             {/* In-flight "sending" ghosts — keyed by clientMessageId; each drops when its saved row lands. */}
             {(pendingSends ?? [])
               .filter((p) => !messages.some((m: any) => m.clientMessageId === p.clientMessageId))
@@ -777,6 +799,9 @@ export default function ChatPanel({
                 </div>
               </div>
             ))}
+            {/* Scroll anchor stays LAST so jump-to-latest also reveals
+                sending/failed ghosts rendered below the saved messages. */}
+            <div ref={messagesEndRef} />
           </>
         )}
       </div>
@@ -806,7 +831,7 @@ export default function ChatPanel({
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploadingFile}
               aria-label="แนบไฟล์"
-              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="แนบไฟล์/รูปภาพ"
             >
               {isUploadingFile ? (
@@ -824,7 +849,7 @@ export default function ChatPanel({
                     'p-2 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-colors',
                     emojiOpen
                       ? 'text-primary bg-primary/10'
-                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted',
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted',
                   )}
                   title="Emoji / สติกเกอร์"
                 >
@@ -1025,7 +1050,7 @@ export default function ChatPanel({
               onClick={() => setShowProductPicker(true)}
               disabled={!session?.id}
               aria-label="ส่งข้อมูลสินค้า"
-              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ส่งข้อมูล/รูปสินค้า"
             >
               <Smartphone className="w-4 h-4" />
@@ -1035,7 +1060,7 @@ export default function ChatPanel({
               onClick={() => setShowTemplatePicker(true)}
               disabled={!session?.id}
               aria-label="ข้อความสำเร็จรูป"
-              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ข้อความสำเร็จรูป (Ctrl+K)"
             >
               <MessageSquareQuote className="w-4 h-4" />
@@ -1058,7 +1083,7 @@ export default function ChatPanel({
               placeholder="พิมพ์ข้อความ..."
               aria-label="พิมพ์ข้อความ"
               rows={1}
-              className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-colors placeholder:text-muted-foreground/40"
+              className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-colors placeholder:text-muted-foreground/70"
             />
             <button
               onClick={() => void handleSend()}
@@ -1078,9 +1103,33 @@ export default function ChatPanel({
               )}
             </button>
           </div>
-          <p className="hidden lg:block mt-1 px-1 text-[10px] leading-snug text-muted-foreground/40">
+          <p className="hidden lg:block mt-1 px-1 text-[11px] leading-snug text-muted-foreground/70">
             Enter ส่ง · Shift+Enter ขึ้นบรรทัด
           </p>
+        </div>
+      )}
+
+      {/* Resolved-room bar — replaces the composer; reopening restores it */}
+      {isResolved && (
+        <div className="border-t border-border/60 bg-muted/30 px-4 py-3 flex items-center justify-between gap-3">
+          <span className="text-[13px] text-muted-foreground leading-snug">
+            แชทนี้ปิดแล้ว — เปิดแชทใหม่เพื่อพิมพ์ข้อความ
+          </span>
+          {onReopen && (
+            <button
+              type="button"
+              onClick={onReopen}
+              disabled={reopenPending}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium leading-snug text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {reopenPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RotateCw className="size-3.5" />
+              )}
+              เปิดแชทใหม่
+            </button>
+          )}
         </div>
       )}
 

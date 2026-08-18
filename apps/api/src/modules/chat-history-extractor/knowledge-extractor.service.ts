@@ -154,9 +154,22 @@ export class KnowledgeExtractorService {
 
     const parsed = this.parseResponse(textBlock.text);
 
+    // แถวที่ active = ผ่านรีวิว/แต่งมือแล้ว — ห้ามทับด้วยข้อความสกัดใหม่ที่ไม่มีใครตรวจ
+    // (สกัดใหม่ลงได้เฉพาะแถวที่ยังปิดรอรีวิว หรือ intent ใหม่)
+    const activeRows = await this.prisma.chatKnowledgeBase.findMany({
+      where: { category: { in: ['EXTRACTED', 'EXTRACTED_OBJECTION'] }, active: true },
+      select: { id: true },
+    });
+    const activeIds = new Set(activeRows.map((r) => r.id));
+    let skippedActive = 0;
+
     let faqsSeeded = 0;
     for (const faq of parsed.faqs) {
       if (!this.isUsableFaq(faq)) continue;
+      if (activeIds.has(`extracted:${faq.intent}`)) {
+        skippedActive++;
+        continue;
+      }
       await this.prisma.chatKnowledgeBase.upsert({
         where: { id: `extracted:${faq.intent}` },
         create: {
@@ -192,6 +205,10 @@ export class KnowledgeExtractorService {
       if (!intent || !this.isUsableText(obj.bestResponse) || this.belowConfidence(obj.confidence)) {
         continue;
       }
+      if (activeIds.has(`extracted:${intent}`)) {
+        skippedActive++;
+        continue;
+      }
       await this.prisma.chatKnowledgeBase.upsert({
         where: { id: `extracted:${intent}` },
         create: {
@@ -225,7 +242,10 @@ export class KnowledgeExtractorService {
 
     this.logger.log(
       `Extracted ${parsed.faqs.length} FAQs / ${parsed.objections.length} objections from ${fitPairs.length} pairs ` +
-        `→ seeded ${faqsSeeded} FAQs, ${objectionsSeeded} objections (inactive, รอแอดมินรีวิว)`,
+        `→ seeded ${faqsSeeded} FAQs, ${objectionsSeeded} objections (inactive, รอแอดมินรีวิว)` +
+        (skippedActive > 0
+          ? ` · ไม่แตะ ${skippedActive} แถวที่เปิดใช้อยู่ (ผ่านรีวิวแล้ว — กันข้อความแต่งมือถูกทับ)`
+          : ''),
     );
 
     return { faqsSeeded, objectionsSeeded };

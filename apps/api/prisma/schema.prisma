@@ -5189,6 +5189,11 @@ model ChatRoom {
   displayName String? @map("display_name")
   pictureUrl  String? @map("picture_url")
 
+  /// สมุดสถานะการขายของบอท (slot memory — SalesStateService): รุ่นที่สนใจ/งบ/เรท/เอกสาร
+  /// จดโดย Haiku หลังบอทตอบแต่ละเทิร์น · อยู่ข้ามวัน (ลูกค้าเก่ากลับมา บอททักต่อจากเดิม)
+  /// ล้างเมื่อ #reset
+  aiSalesState Json? @map("ai_sales_state")
+
   // Pin
   pinnedAt   DateTime? @map("pinned_at")
   pinnedById String?   @map("pinned_by_id")

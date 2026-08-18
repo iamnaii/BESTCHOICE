@@ -4,7 +4,7 @@
 set -u
 cd "$(dirname "$0")/../.."
 
-PORT=15432
+PORT=${PORT:-15432}
 PROXY_LOG=$(mktemp "${TMPDIR:-/tmp}/sqlproxy.XXXXXX")
 PROXY_PID=""
 cleanup() { [ -n "$PROXY_PID" ] && kill "$PROXY_PID" 2>/dev/null; PROXY_PID=""; }

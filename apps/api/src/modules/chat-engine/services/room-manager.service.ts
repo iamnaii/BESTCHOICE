@@ -218,6 +218,22 @@ export class RoomManagerService {
   }
 
   /** Save a message and update room stats */
+  /**
+   * พนักงานพิมพ์เอง = takeover โดยพฤตินัย — หยุด AI ห้องนี้จนกว่าจะกด "คืนให้ AI"
+   * updateMany + เงื่อนไข aiPaused:false = idempotent (คืน true เฉพาะครั้งที่เปลี่ยนจริง)
+   */
+  async pauseAiIfActive(roomId: string, staffId?: string): Promise<boolean> {
+    const res = await this.prisma.chatRoom.updateMany({
+      where: { id: roomId, aiPaused: false },
+      data: {
+        aiPaused: true,
+        aiPausedAt: new Date(),
+        ...(staffId ? { aiPausedById: staffId } : {}),
+      },
+    });
+    return res.count > 0;
+  }
+
   async saveMessage(params: {
     roomId: string;
     externalMessageId?: string;

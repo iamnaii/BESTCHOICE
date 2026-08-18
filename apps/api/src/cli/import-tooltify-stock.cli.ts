@@ -135,18 +135,25 @@ async function main(): Promise<void> {
     }
 
     // ---- 2. parse sales files -> flat sold-barcode list ----
-    const salesDir = path.join(dir, 'ขาย');
-    const salesFiles = (await fs.readdir(salesDir)).filter((f) => f.endsWith('.xlsx')).sort();
-    if (salesFiles.length === 0) {
-      console.error(`ERROR: no .xlsx files found under ${salesDir}`);
-      process.exit(1);
-    }
+    // IMPORT_AS_IS=1 : the stock files ALREADY are the current on-hand list (owner's
+    // "สต๊อคคงเหลือ" export). Do NOT subtract sales — every stock row IS a unit in stock.
+    const asIs = process.env.IMPORT_AS_IS === '1';
     let soldBarcodes: string[] = [];
-    for (const f of salesFiles) {
-      const rows = await readXlsxRows(path.join(salesDir, f));
-      const parsed = parseSalesLineItems(rows, { importBatch: f });
-      console.log(`  [sales]  ${f}: ${parsed.length} line items`);
-      soldBarcodes = soldBarcodes.concat(parsed.map((p) => p.barcode));
+    if (asIs) {
+      console.log('  [AS-IS] IMPORT_AS_IS=1 — treating every stock row as current on-hand (no sales subtraction).');
+    } else {
+      const salesDir = path.join(dir, 'ขาย');
+      const salesFiles = (await fs.readdir(salesDir)).filter((f) => f.endsWith('.xlsx')).sort();
+      if (salesFiles.length === 0) {
+        console.error(`ERROR: no .xlsx files found under ${salesDir} (or set IMPORT_AS_IS=1 for an on-hand file)`);
+        process.exit(1);
+      }
+      for (const f of salesFiles) {
+        const rows = await readXlsxRows(path.join(salesDir, f));
+        const parsed = parseSalesLineItems(rows, { importBatch: f });
+        console.log(`  [sales]  ${f}: ${parsed.length} line items`);
+        soldBarcodes = soldBarcodes.concat(parsed.map((p) => p.barcode));
+      }
     }
 
     // ---- 3. reconstruct current stock ----

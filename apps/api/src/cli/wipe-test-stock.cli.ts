@@ -60,13 +60,18 @@ async function main() {
     // NOTE: a bare `NOT (legacy_product_code LIKE 'TTFY-%')` drops NULL-code rows in SQL
     // (NULL LIKE → NULL → excluded), and the seed/test products all have a NULL code — so we
     // must explicitly OR-in the NULL case, otherwise nothing matches.
-    const where: Prisma.ProductWhereInput = {
-      deletedAt: null,
-      OR: [
-        { legacyProductCode: null },
-        { legacyProductCode: { not: { startsWith: LEGACY_PREFIX } } },
-      ],
-    };
+    // INCLUDE_TTFY=1 : also clear the Tooltify-imported rows (used when re-importing a
+    // corrected on-hand list — wipe everything, then import the fresh set).
+    const includeTtfy = process.env.INCLUDE_TTFY === '1';
+    const where: Prisma.ProductWhereInput = includeTtfy
+      ? { deletedAt: null }
+      : {
+          deletedAt: null,
+          OR: [
+            { legacyProductCode: null },
+            { legacyProductCode: { not: { startsWith: LEGACY_PREFIX } } },
+          ],
+        };
 
     const total = await prisma.product.count({ where });
     const byCategory = await prisma.product.groupBy({

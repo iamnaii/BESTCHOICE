@@ -11,6 +11,7 @@ import { StructuredLoggerService } from '../../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReceiptsService } from '../../receipts/receipts.service';
+import { JE_ADVANCE_SPLIT_META } from '../../receipts/services/receipt-void.service';
 import { AuditService } from '../../audit/audit.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
@@ -329,12 +330,28 @@ export class PaymentReceiptOrchestrator {
         } else if (
           consumeAdvance &&
           d(amount).lt(remaining) &&
-          (paymentCase === undefined || paymentCase === 'NORMAL') &&
+          (paymentCase === undefined ||
+            paymentCase === 'NORMAL' ||
+            paymentCase === 'OVERPAY' ||
+            paymentCase === 'UNDERPAY') &&
           (beforeAdvance.gt(0) || (isLastInstallment && beforePark.gt(0)))
         ) {
-          // Auto-consume FIFO ONLY for default/NORMAL case AND when the cashier
-          // left "หักเครดิต" on (consumeAdvance, default true). PARTIAL/RESCHEDULE/
-          // EARLY_PAYOFF are explicit flows where the caller controls allocation.
+          // Auto-consume FIFO ONLY when the cashier left "หักเครดิต" on
+          // (consumeAdvance, default true). PARTIAL/RESCHEDULE/EARLY_PAYOFF are
+          // explicit flows where the caller controls allocation — those stay out.
+          //
+          // R-4 (re-review 2026-08-18): 'OVERPAY'/'UNDERPAY' are NOT such flows.
+          // They are the ≤1฿ ROUNDING variants of NORMAL (the wizard's `detectCase`
+          // emits them for |diff| ≤ 1), so excluding them here meant a cashier who
+          // typed a rounding-tolerance amount on a contract holding credit got the
+          // credit silently NOT consumed, a shortage of the full credit, and then a
+          // 400 telling them to pick case 'PARTIAL' — after the tolerance-approver
+          // dialog had already opened. Both directions land correctly once they are
+          // let in: a small UNDERPAY consumes slightly more credit, a small OVERPAY
+          // slightly less, and the residual ≤1฿ falls through to the existing
+          // tolerance handling below (which still decides approver/rounding on the
+          // real delta). This also fixes the same pre-existing dead-end on plain
+          // `advanceBalance`, which predates the park bucket.
           const gap = remaining.minus(d(amount));
           if (beforeAdvance.gt(0)) {
             advanceConsume = Prisma.Decimal.min(beforeAdvance, gap);
@@ -519,7 +536,7 @@ export class PaymentReceiptOrchestrator {
             // isFinalReceipt = !isPartialClear (the completing receipt closes it).
             // lateFee still forwarded so the Cr 42-1103 income leg is emitted.
             // Runs inside the same tx so a JE failure rolls back the Payment.update.
-            await this.paymentReceiptTemplate.execute(
+            const receiptPosted = await this.paymentReceiptTemplate.execute(
               {
                 installmentScheduleId: instSched.id,
                 delta: new Prisma.Decimal(amount.toString()),
@@ -552,6 +569,40 @@ export class PaymentReceiptOrchestrator {
               },
               tx,
             );
+
+            // I-2 (review 2026-08-16): the receipt JE folds the generic advance
+            // bucket and the last-installment park bucket into ONE `Dr 21-1103`
+            // line (same GL account — the split is application-level only).
+            // ReceiptVoidService restores that debit into a CONTRACT COLUMN, and
+            // without a split stamp it would put ALL of it back into the FIFO
+            // `advanceBalance` — laundering parked money into the bucket the
+            // owner's directive removed it from (void → re-pay is a supported
+            // wizard flow). Stamp the split so the void can restore each portion
+            // to its own column.
+            //
+            // FORWARD-ONLY BY DESIGN: a receipt JE WITHOUT this stamp restores
+            // wholly to `advanceBalance`, and that is CORRECT — no JE posted
+            // before this feature can contain park money (the column did not
+            // exist). Do NOT "fix" the unstamped branch to guess a split.
+            const totalConsumeStamped = advanceConsume.plus(parkConsume);
+            if (totalConsumeStamped.gt(0)) {
+              const postedJe = await tx.journalEntry.findUnique({
+                where: { entryNumber: receiptPosted.entryNo },
+                select: { id: true, metadata: true },
+              });
+              if (postedJe) {
+                await tx.journalEntry.update({
+                  where: { id: postedJe.id },
+                  data: {
+                    metadata: {
+                      ...((postedJe.metadata as Prisma.JsonObject | null) ?? {}),
+                      [JE_ADVANCE_SPLIT_META.generic]: advanceConsume.toFixed(2),
+                      [JE_ADVANCE_SPLIT_META.park]: parkConsume.toFixed(2),
+                    },
+                  },
+                });
+              }
+            }
 
             // VAT-60-day reversal (MANDATORY parity with the old 2B). The legacy
             // 2B template triggered Vat60dayReversalTemplate internally when the

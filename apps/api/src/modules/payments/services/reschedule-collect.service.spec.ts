@@ -18,8 +18,14 @@
  * BUSINESS_RULES defaults (tier1=50, tier2=100, minDays=3) — the 5-day-overdue
  * fixture below lands on tier2 (>=3 days), giving lateFee=100.
  */
+jest.mock('@sentry/nestjs', () => ({
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+}));
+
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { RescheduleCollectService } from './reschedule-collect.service';
 
 const D = (v: string | number) => new Prisma.Decimal(v);
@@ -81,7 +87,12 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
       installmentSchedule: {
         findUnique: jest.fn().mockResolvedValue({ id: 'sched-1' }),
       },
-      auditLog: { create: jest.fn().mockResolvedValue({ id: 'al-1' }) },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'al-1' }),
+        // M-3 idempotency probe: null = "this payment's fee has not been parked
+        // yet". Retry tests override it with an existing RESCHEDULE_ADVANCE_PARKED row.
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       // Late-fee + period-lock config keys → null (defaults / open period).
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
       companyInfo: { findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }) },
@@ -103,7 +114,22 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     service = new RescheduleCollectService(prisma, journalAuto, rescheduleService, receiptsService);
   });
 
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+
+  /** All RESCHEDULE_ADVANCE_PARKED audit payloads written during a test. */
+  const parkAudits = () =>
+    prisma.auditLog.create.mock.calls
+      .map((c: AnyObj) => c[0].data)
+      .filter((d2: AnyObj) => d2.action === 'RESCHEDULE_ADVANCE_PARKED');
+
+  /** Sentry warnings raised by the short-sweep guard (I-7). */
+  const shortSweepWarnings = () =>
+    (Sentry.captureMessage as jest.Mock).mock.calls.filter((c) =>
+      String(c[0]).includes('park sweep came up short'),
+    );
 
   it('quote(): 6a = fee 1044 + lateFee 100 → collect 1144', async () => {
     const q = await service.quote({
@@ -279,11 +305,16 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     expect(receiptsService.generateReceipt).not.toHaveBeenCalled();
     // Sweep gate reads the fresh balance (0 in this fixture) → nothing to move.
     expect(prisma.contract.update).not.toHaveBeenCalled();
-    expect(
-      prisma.auditLog.create.mock.calls
-        .map((c: AnyObj) => c[0].data)
-        .find((d2: AnyObj) => d2.action === 'RESCHEDULE_ADVANCE_PARKED'),
-    ).toBeUndefined();
+    expect(parkAudits()).toHaveLength(0);
+    // I-7: a ZERO sweep is the worst case (the fee stayed FIFO) and used to be
+    // completely silent — no audit row fires when sweep == 0, so Sentry is the
+    // ONLY signal that this contract's fee never reached the park bucket.
+    expect(shortSweepWarnings()).toHaveLength(1);
+    expect(shortSweepWarnings()[0][1].extra).toMatchObject({
+      expectedFee: '1044.00',
+      sweptAmount: '0.00',
+      genericBalanceAtSweep: '0.00',
+    });
 
     // Note stamped, but the orchestrator's lateFee stamp is preserved.
     const upd = prisma.payment.update.mock.calls[0][0];
@@ -353,6 +384,9 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     expect(sweepAudit.newValue.afterGenericBalance).toBe('200');
     expect(sweepAudit.newValue.source).toBe('RESCHEDULE_COLLECT_6B_FEE_SWEEP');
 
+    // I-7 negative control: a FULL sweep must not raise a false alarm.
+    expect(shortSweepWarnings()).toHaveLength(0);
+
     expect(result.success).toBe(true);
   });
 
@@ -379,6 +413,124 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     );
     expect(sweepCall[0].data.advanceBalance.decrement.toString()).toBe('500');
     expect(sweepCall[0].data.rescheduleAdvanceBalance.increment.toString()).toBe('500');
+
+    // I-7: 500 swept vs a 1044 fee → 544 of the fee stayed in the FIFO bucket
+    // (phase 1 committed in the controller; anything could have drained the
+    // generic bucket before phase 2 opened its own tx). Used to return success
+    // with zero signal.
+    expect(shortSweepWarnings()).toHaveLength(1);
+    expect(shortSweepWarnings()[0][1]).toMatchObject({
+      level: 'warning',
+      tags: { subsystem: 'reschedule-park' },
+      extra: expect.objectContaining({
+        contractId: 'ct-1',
+        paymentId: 'pay-1',
+        expectedFee: '1044.00',
+        sweptAmount: '500.00',
+      }),
+    });
+  });
+
+  it('M-3: retried 6b phase 2 (bundledPaid) does NOT sweep a second time — the RESCHEDULE_ADVANCE_PARKED audit row is the idempotency marker', async () => {
+    // Retry path: the controller skips phase 1 when the payment already reads
+    // PAID and calls phase 2 again. Before the guard this swept ANOTHER
+    // min(fee, generic) out of the customer's unrelated generic advance.
+    prisma.payment.findFirst.mockResolvedValue({ ...paymentRow, status: 'PAID' });
+    // The first (successful) run already moved 1044; 200 unrelated advance is
+    // all that survives — exactly the money a second sweep would steal.
+    prisma.contract.findUniqueOrThrow.mockResolvedValue({
+      advanceBalance: D('200'),
+      rescheduleAdvanceBalance: D('1044'),
+    });
+    // R-2: the probe is now a PAIR — a PARKED row and an UNPARKED row, newest
+    // wins — so the mock must answer per action. Only PARKED exists here (this
+    // receipt was never voided), so the sweep is still in effect.
+    prisma.auditLog.findFirst.mockImplementation((args: AnyObj) =>
+      Promise.resolve(
+        args?.where?.action === 'RESCHEDULE_ADVANCE_PARKED'
+          ? { id: 'al-parked-1', createdAt: new Date('2026-08-16T10:00:00Z'), newValue: {} }
+          : null,
+      ),
+    );
+
+    const result = await service.executeWithCollect({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SINGLE',
+      amount: 5616,
+      paymentMethod: 'CASH',
+      recordedById: 'user-1',
+      bundledPaid: true,
+    });
+
+    // Idempotency probe is scoped to this contract AND this payment.
+    expect(prisma.auditLog.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          action: 'RESCHEDULE_ADVANCE_PARKED',
+          entity: 'contract',
+          entityId: 'ct-1',
+          newValue: { path: ['paymentId'], equals: 'pay-1' },
+        }),
+      }),
+    );
+    // No balance move, no duplicate audit row.
+    expect(
+      prisma.contract.update.mock.calls.filter(
+        (c: AnyObj) => c[0].data.advanceBalance?.decrement !== undefined,
+      ),
+    ).toHaveLength(0);
+    expect(parkAudits()).toHaveLength(0);
+    // Not a short sweep — nothing was expected to move, so no false alarm.
+    expect(shortSweepWarnings()).toHaveLength(0);
+    // The rest of phase 2 (shift + audit) still runs — a retry must still
+    // converge on shifted due dates.
+    expect(rescheduleService.execute).toHaveBeenCalled();
+    expect(result.success).toBe(true);
+  });
+
+  it('R-2: void → re-pay sweeps AGAIN — an UNPARKED row newer than PARKED releases the idempotency guard', async () => {
+    // Voiding the 6b receipt takes the fee back out of the park bucket and writes
+    // RESCHEDULE_ADVANCE_UNPARKED (audit rows are immutable, so the reversal is a
+    // new row). The void reuses the SAME payment row, so probing for a PARKED row
+    // alone would find the stale one and refuse to re-park the fee on re-payment —
+    // silently reinstating the FIFO behaviour the owner directive removed.
+    prisma.payment.findFirst.mockResolvedValue({ ...paymentRow, status: 'PAID' });
+    prisma.contract.findUniqueOrThrow.mockResolvedValue({
+      advanceBalance: D('1244'),
+      rescheduleAdvanceBalance: D('0'),
+    });
+    prisma.auditLog.findFirst.mockImplementation((args: AnyObj) =>
+      Promise.resolve(
+        args?.where?.action === 'RESCHEDULE_ADVANCE_PARKED'
+          ? { id: 'al-parked-1', createdAt: new Date('2026-08-16T10:00:00Z'), newValue: {} }
+          : // The void happened AFTER the original sweep → guard released.
+            { id: 'al-unparked-1', createdAt: new Date('2026-08-17T10:00:00Z'), newValue: {} },
+      ),
+    );
+
+    const result = await service.executeWithCollect({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SINGLE',
+      amount: 5616,
+      paymentMethod: 'CASH',
+      recordedById: 'user-1',
+      bundledPaid: true,
+    });
+
+    // The fee is parked again: generic 1244 → park, bounded by the fee (1044).
+    const sweepUpdate = prisma.contract.update.mock.calls.find(
+      (c: AnyObj) => c[0].data.advanceBalance?.decrement !== undefined,
+    );
+    expect(sweepUpdate).toBeDefined();
+    expect(sweepUpdate[0].data.advanceBalance.decrement.toString()).toBe('1044');
+    expect(sweepUpdate[0].data.rescheduleAdvanceBalance.increment.toString()).toBe('1044');
+    expect(parkAudits()).toHaveLength(1);
+    expect(shortSweepWarnings()).toHaveLength(0);
+    expect(result.success).toBe(true);
   });
 
   it('bundledPaid with SPLIT → BadRequest (ใช้ได้เฉพาะ 6b)', async () => {

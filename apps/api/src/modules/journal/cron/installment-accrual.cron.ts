@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InstallmentAccrual2ATemplate } from '../cpa-templates/installment-accrual-2a.template';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { alarmResidualParkOnCompletion } from '../../payments/services/payment-helpers';
 
 // Per-tick cap to avoid one tick processing tens of thousands of legacy
 // records and blowing the Sentry/log budget. Anything beyond this rolls
@@ -88,7 +90,16 @@ export class InstallmentAccrualCron {
       orderBy: { dueDate: 'asc' },
       take: BACKFILL_CAP,
       include: {
-        contract: { select: { id: true, contractNumber: true, branch: { select: { companyId: true } } } },
+        contract: {
+          select: {
+            id: true,
+            contractNumber: true,
+            // R-5: needed to spot the LAST installment + its residual park money.
+            totalMonths: true,
+            rescheduleAdvanceBalance: true,
+            branch: { select: { companyId: true } },
+          },
+        },
       },
     });
 
@@ -129,6 +140,53 @@ export class InstallmentAccrualCron {
       try {
         const result = await this.template.execute(inst.id);
         if (result !== null) processed++;
+
+        // R-5 (re-review 2026-08-18): when the LAST installment is settled by the
+        // 2A park-consume JE, no orchestrator ever runs for this contract, so the
+        // residual-park alarm wired into `checkContractCompletion` never fires —
+        // and that is precisely the scenario it was written for (multi-reschedule
+        // contracts park more than one installment's worth, and 2A caps the relief
+        // at one installment, so the remainder is real customer money nobody would
+        // otherwise notice). Gated on the last installment so ordinary rows pay
+        // nothing for this.
+        //
+        // Deliberately alarm-only: flipping the contract to COMPLETED from a cron
+        // would also release product ownership and re-tier call recordings, which
+        // is a lifecycle change nobody asked for here. NOTE (pre-existing, wider
+        // than park): an installment fully settled by EITHER advance bucket at
+        // accrual leaves the contract un-flipped — that gap predates this feature
+        // and affects generic `advanceBalance` too. Tracked as a follow-up.
+        if (result !== null && inst.installmentNo === inst.contract.totalMonths) {
+          try {
+            const residual = new Prisma.Decimal(inst.contract.rescheduleAdvanceBalance ?? 0);
+            if (residual.gt(0)) {
+              const unpaid = await this.prisma.payment.count({
+                where: { contractId: inst.contract.id, status: { not: 'PAID' }, deletedAt: null },
+              });
+              if (unpaid === 0) {
+                // Re-read the bucket: the accrual above may have just consumed part of it.
+                const fresh = await this.prisma.contract.findUnique({
+                  where: { id: inst.contract.id },
+                  select: { contractNumber: true, rescheduleAdvanceBalance: true },
+                });
+                if (fresh) {
+                  await alarmResidualParkOnCompletion(
+                    this.prisma,
+                    this.logger,
+                    inst.contract.id,
+                    fresh,
+                  );
+                }
+              }
+            }
+          } catch (e) {
+            // Never let the alarm break the accrual cron (same rule as R-1).
+            Sentry.captureException(e, {
+              tags: { subsystem: 'reschedule-park' },
+              extra: { contractId: inst.contract.id, installmentScheduleId: inst.id },
+            });
+          }
+        }
       } catch (e) {
         failed++;
         Sentry.captureException(e, {

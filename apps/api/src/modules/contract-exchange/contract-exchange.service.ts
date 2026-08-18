@@ -758,6 +758,27 @@ export class ContractExchangeService {
       where: { id: oldContractId },
       select: { advanceBalance: true, creditBalance: true, rescheduleAdvanceBalance: true },
     });
+    // I-6 — OWNER DECISION PENDING (2026-08-17). This guard is KEPT AS-IS on purpose.
+    // Note the asymmetry between the buckets it blocks on: `advanceBalance` is a
+    // TRANSIENT block (the next 2A accrual FIFOs it into the following installment,
+    // so it clears itself within a month), whereas `rescheduleAdvanceBalance` (ถังพัก
+    // งวดสุดท้าย) is by design relieved ONLY at the last installment / JP4 / JP5 —
+    // there is NO staff-facing path to "ใช้หรือคืนเงิน" it mid-contract, which is
+    // exactly what the Thai message above tells the user to do. Consequence: from the
+    // moment a contract is rescheduled until its final installment, device swap on
+    // that contract is blocked outright — and reschedules are routine.
+    // Deliberately NOT auto-resolved here: every candidate resolution moves customer
+    // money and needs the owner (and probably CPA) to rule first. The owner must pick
+    // ONE of:
+    //   (a) carry the park balance over to the new contract (needs a transfer JE +
+    //       column move at finalize),
+    //   (b) net it into the buyback price of the swapped-in device (changes A.3 /
+    //       11-2107 arithmetic), or
+    //   (c) provide an explicit clear-out path (refund / income) staff can run before
+    //       the swap — the same refund-vs-income question as the I-5 residual alarm in
+    //       `payment-helpers.ts` (`RESIDUAL_PARK_TODO_TAG`).
+    // Until that ruling lands, blocking is the safe behaviour: it refuses to silently
+    // orphan the customer's parked money on a contract that is being swapped away.
     if (
       bal21_1103.gte('0.005') ||
       new Decimal(oldC.advanceBalance.toString()).gt(0) ||

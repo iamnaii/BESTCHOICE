@@ -232,6 +232,10 @@ export class ContractPaymentService {
       unpaidLateFees: (
         await this.computeUnbookedLateFees(this.prisma, contract, contract.payments)
       ).toString(),
+      // ถังพักงวดสุดท้ายที่ยอดปิดดูดซับจริง → ขา Dr 21-1103 (ขาเงินสดลดเท่ากัน)
+      // ต้องอยู่ทั้ง preview และตอน post ไม่งั้น preview ≠ posted (คำสั่งเจ้าของ
+      // 2026-08-16 §จุดหัก 3)
+      parkRelief: quote.rescheduleAdvanceApplied,
     });
 
     // Resolve all account names from CoA so preview shows real labels.
@@ -247,7 +251,8 @@ export class ContractPaymentService {
     // debit + credit, shared via computeEarlyPayoffJE — must match the posting;
     // the ledger words its descriptions differently and that's intentional.
     const epDescriptions: Record<string, string> = {
-      [epDepositCode]: `รับ ${je.totalCash.toFixed(2)} ฿ ปิดยอด`,
+      [epDepositCode]: `รับ ${je.cashReceived.toFixed(2)} ฿ ปิดยอด`,
+      '21-1103': `หักเงินพักปรับดิว ${je.parkRelief.toFixed(2)}`,
       '11-2106': `ยกเลิกค่าอนาคต ${je.remainingDeferredInterest.toFixed(2)}`,
       '21-2102': `ล้าง 21-2102 ${je.remainingDeferredVat.toFixed(2)}`,
       '52-1106': `ส่วนลดดอกเบี้ย ${discountPercent}%`,
@@ -294,6 +299,8 @@ export class ContractPaymentService {
       discountAmount: quote.discountAmount,
       unpaidLateFees: quote.unpaidLateFees,
       totalPayoff: quote.totalPayoff,
+      // ยอดถังพักที่ยอดปิดดูดซับจริง — earlyPayoff() ใช้ต่อเป็นขา Dr 21-1103
+      rescheduleAdvanceApplied: quote.rescheduleAdvanceApplied,
       journalPreview: {
         lines: jeLines,
         totalDebit: jeTotalDr.toFixed(2),
@@ -413,6 +420,27 @@ export class ContractPaymentService {
           // 2026-07-20). ใช้ unpaidPayments (สถานะก่อน flip PAID ข้างบน) + JE
           // history ใน tx — JE ปิดยอดของรอบนี้ยังไม่ post จึงไม่ปนเข้ามา
           const epLateFees = await this.computeUnbookedLateFees(tx, epContract, unpaidPayments);
+          // ถังพักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3): quote หักเงินก้อนนี้
+          // ออกจากยอดที่ลูกค้าต้องจ่ายแล้ว → ต้องปลดหนี้ 21-1103 จริงในบัญชีด้วย
+          // ไม่งั้น Dr เงินสด > เงินรับจริง + เครดิตผีค้างบนสัญญาที่ปิดไปแล้ว (บั๊ก C-3).
+          // clamp ด้วยยอดในถัง ณ ตอนอยู่ใน tx (quote อ่านนอก tx — อาจขยับระหว่างนั้น);
+          // computeEarlyPayoffJE clamp ต่อด้วย totalCash กันขาเงินสดติดลบ.
+          //
+          // R-3 (re-review 2026-08-18): clamp ด้วย **ยอด GL 21-1103 จริงของสัญญา** ด้วย
+          // — แบบเดียวกับที่ JP5 ทำ (`repossession-jp5.template.ts` → glBal('21-1103','cr')).
+          // คอลัมน์กับ GL หลุดจากกันได้ (เช่นเคส void ที่คืนเงินผิดถัง) ถ้า clamp ด้วย
+          // คอลัมน์อย่างเดียว JP4 จะ post `Dr 21-1103` ทับยอดที่ไม่มีอยู่จริง แล้วดันบัญชี
+          // ติดลบ. สองเส้นทางปิดสัญญาที่ payoff-parity-park.spec.ts บังคับให้เท่ากัน
+          // ต้องใช้กติกา clamp ชุดเดียวกัน.
+          const epParkGl = await glContractBalance(tx, epContract.id, '21-1103', 'cr');
+          const epParkRelief = Prisma.Decimal.max(
+            0,
+            Prisma.Decimal.min(
+              d(quote.rescheduleAdvanceApplied),
+              d(epContract.rescheduleAdvanceBalance ?? 0),
+              epParkGl,
+            ),
+          );
           const epJe = computeEarlyPayoffJE({
             depositAccountCode: effectiveDepositCode,
             financedAmount: epContract.financedAmount.toString(),
@@ -426,14 +454,16 @@ export class ContractPaymentService {
             // `discountPct * 100`); computeEarlyPayoffJE divides by 100 internally.
             interestDiscountPercent: quote.discountPct,
             unpaidLateFees: epLateFees.toString(),
+            parkRelief: epParkRelief,
           });
 
           // Ledger-side line descriptions (the preview words them differently —
           // only the money, shared via computeEarlyPayoffJE, must match).
           const epDescriptions: Record<string, string> = {
             [effectiveDepositCode]: dto.collectedByShop
-              ? `หน้าร้านรับ ${epJe.totalCash.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`
-              : `รับ ${epJe.totalCash.toFixed(2)} ฿ ปิดยอด`,
+              ? `หน้าร้านรับ ${epJe.cashReceived.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`
+              : `รับ ${epJe.cashReceived.toFixed(2)} ฿ ปิดยอด`,
+            '21-1103': 'หักเงินพักปรับดิว (ปิดสัญญาก่อนกำหนด)',
             '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
             '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
             '52-1106': 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด',
@@ -453,6 +483,7 @@ export class ContractPaymentService {
             discount: epJe.discount.toFixed(2),
             interestDiscountPercent: quote.discountPct,
             lateFees: epJe.lateFees.toFixed(2),
+            ...(epJe.parkRelief.gt(0) ? { parkRelief: epJe.parkRelief.toFixed(2) } : {}),
             ...(dto.collectedByShop ? { collectedByShop: true, shopReceivable: '11-2107' } : {}),
           };
 
@@ -475,6 +506,33 @@ export class ContractPaymentService {
             },
             tx,
           );
+
+          // ปลดถังพักงวดสุดท้ายให้ตรงกับขา Dr 21-1103 ที่เพิ่งลง — ต้องอยู่ใน tx
+          // เดียวกับ JE. ส่วนที่ยอดปิดดูดซับไม่หมด (ส่วนลดกินไปบางส่วน / ชน
+          // max(0,…)) คงค้างในถังตามเดิม ไม่ปลดเกินที่ลูกค้าได้ลดจริง.
+          if (epJe.parkRelief.gt(0)) {
+            await tx.contract.update({
+              where: { id },
+              data: { rescheduleAdvanceBalance: { decrement: epJe.parkRelief } },
+            });
+            await tx.auditLog.create({
+              data: {
+                userId,
+                action: 'RESCHEDULE_ADVANCE_CONSUMED',
+                entity: 'contract',
+                entityId: id,
+                newValue: {
+                  parkRelief: epJe.parkRelief.toFixed(2),
+                  beforeParkBalance: d(epContract.rescheduleAdvanceBalance ?? 0).toFixed(2),
+                  afterParkBalance: dSub(
+                    d(epContract.rescheduleAdvanceBalance ?? 0),
+                    epJe.parkRelief,
+                  ).toFixed(2),
+                  source: 'EARLY_PAYOFF_PARK_RELIEF',
+                },
+              },
+            });
+          }
 
           // AuditLog for shop-collect payoff path
           if (dto.collectedByShop) {

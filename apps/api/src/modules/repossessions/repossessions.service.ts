@@ -239,6 +239,14 @@ export class RepossessionsService {
     // กำไร/ขาดทุน = ราคากลาง − ยอดปิดสัญญา − เงินคืนลูกค้า (owner rule 2026-07-09:
     // บริษัทได้เครื่องมูลค่าราคากลาง แลกกับการปิดสัญญาที่ยอดหลังส่วนลด)
     const profitLoss = TWO_DP(marketValue.sub(closingAmount).sub(customerRefund));
+    // ถังพักงวดสุดท้ายที่ยอดปิด "ดูดซับจริง" — clamp ด้วยยอดในถังจริงอีกชั้น
+    const parkReliefPreview = Prisma.Decimal.max(
+      0,
+      Prisma.Decimal.min(
+        d(quote.rescheduleAdvanceApplied),
+        d(contract.rescheduleAdvanceBalance ?? 0),
+      ),
+    );
 
     // JOURNAL AUTO preview (owner 2026-07-20) — dry-run JP5 ผ่าน buildJe ตัวเดียว
     // กับตอน post จริงใน create() จึงตรงกันเสมอ. Mirror create(): repoValue =
@@ -256,6 +264,10 @@ export class RepossessionsService {
           repossessionValue: new Prisma.Decimal(options.appraisalPrice ?? 0),
           collectedByShop: options.collectedByShop === true,
           customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
+          // ถังพักงวดสุดท้ายที่ยอดปิดดูดซับจริง → Dr 21-1103 (คำสั่งเจ้าของ
+          // 2026-08-16 §จุดหัก 3). ต้องส่งทั้ง preview และ create ไม่งั้น
+          // preview ≠ posted
+          parkRelief: parkReliefPreview.gt(0) ? parkReliefPreview : undefined,
         });
       } catch (err) {
         this.logger.warn(
@@ -469,6 +481,17 @@ export class RepossessionsService {
         ? TWO_DP(Prisma.Decimal.max(0, marketValue.sub(closingAmount)))
         : new Prisma.Decimal(0);
       const profitLoss = TWO_DP(marketValue.sub(closingAmount).sub(customerRefund));
+      // ถังพักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3): ยอดปิดหักเงินก้อนนี้
+      // ให้ลูกค้าไปแล้ว → ต้องปลดหนี้ 21-1103 จริงใน JE ด้วย ไม่งั้นเครดิตผีค้าง
+      // บนสัญญาที่ยึดไปแล้ว + plug ขาดทุน/กำไรเพี้ยน (บั๊ก C-3). ยอดที่ปลด = ยอดที่
+      // ยอดปิดดูดซับจริง (ส่วนที่ส่วนลดกินไปคงค้างในถังตามเดิม), clamp ด้วยยอดในถัง
+      const parkRelief = Prisma.Decimal.max(
+        0,
+        Prisma.Decimal.min(
+          d(quote.rescheduleAdvanceApplied),
+          d(contract.rescheduleAdvanceBalance ?? 0),
+        ),
+      );
 
       // Create repossession
       const repossession = await tx.repossession.create({
@@ -536,9 +559,40 @@ export class RepossessionsService {
             collectedByShop: dto.collectedByShop === true,
             postedAt: paymentDate,
             customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
+            parkRelief: parkRelief.gt(0) ? parkRelief : undefined,
           },
           tx,
         );
+
+        // ปลดถังพักให้ตรงกับขา Dr 21-1103 ที่ JP5 ลงจริง (template clamp ด้วยยอด
+        // GL 21-1103 อีกชั้น จึงต้องอ่านค่าที่ลงจริงกลับมา ไม่ใช่ค่าที่ส่งเข้าไป)
+        // d() = defensive: a test double / older stub of the template may return
+        // only { entryNo }; 0 relief must never crash the repossession flow.
+        const postedParkRelief = d(jp5Result.parkRelief);
+        if (postedParkRelief.gt(0)) {
+          await tx.contract.update({
+            where: { id: dto.contractId },
+            data: { rescheduleAdvanceBalance: { decrement: postedParkRelief } },
+          });
+          await tx.auditLog.create({
+            data: {
+              userId,
+              action: 'RESCHEDULE_ADVANCE_CONSUMED',
+              entity: 'contract',
+              entityId: dto.contractId,
+              newValue: {
+                parkRelief: postedParkRelief.toFixed(2),
+                beforeParkBalance: d(contract.rescheduleAdvanceBalance ?? 0).toFixed(2),
+                afterParkBalance: dSub(
+                  d(contract.rescheduleAdvanceBalance ?? 0),
+                  postedParkRelief,
+                ).toFixed(2),
+                repossessionId: repossession.id,
+                source: 'REPOSSESSION_PARK_RELIEF',
+              },
+            },
+          });
+        }
 
         // Task 5 (2026-07-26, ECL-per-installment plan §2.4) — JP5 already
         // released any remaining 11-2102 GL balance for this contract back to

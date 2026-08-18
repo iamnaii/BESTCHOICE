@@ -106,4 +106,68 @@ describe('reconstructPriorCleared', () => {
     const reversed = await reconstructPriorCleared(reversedClient, 'is-1', INSTALLMENT_TOTAL);
     expect(reversed.priorPrincipalCleared.toString()).toBe('0');
   });
+
+  /**
+   * C-1 (final review 2026-08-16). InstallmentAccrual2ATemplate's
+   * last-installment park relief (ค่าปรับดิวพักงวดสุดท้าย) also stamps
+   * `tag:'2B'`, so it is SELECTED here — but before the fix only
+   * `advance-consume-on-accrual` was on the always-include branch, so a park
+   * consume equal to installmentTotal fell into the legacy full-clear rule and
+   * was DROPPED. The next receipt then re-cleared the whole installment →
+   * Σ(Cr 11-2103) = 2 × installmentTotal.
+   */
+  it('always includes reschedule-park-consume JEs — including a FULL clear (C-1)', async () => {
+    const client = clientWith([
+      {
+        metadata: {
+          tag: '2B',
+          flow: 'reschedule-park-consume',
+          installmentScheduleId: 'is-1',
+        },
+        // Cr == installmentTotal exactly: the case the legacy discriminator drops.
+        lines: [line('11-2103', '4472')],
+      },
+    ]);
+    const live = await reconstructPriorCleared(client, 'is-1', INSTALLMENT_TOTAL);
+    expect(live.priorPrincipalCleared.toString()).toBe('4472');
+
+    const reversedClient = clientWith([
+      {
+        metadata: {
+          tag: '2B',
+          flow: 'reschedule-park-consume',
+          installmentScheduleId: 'is-1',
+          reversed: true,
+        },
+        lines: [line('11-2103', '4472')],
+      },
+    ]);
+    const reversed = await reconstructPriorCleared(reversedClient, 'is-1', INSTALLMENT_TOTAL);
+    expect(reversed.priorPrincipalCleared.toString()).toBe('0');
+  });
+
+  it('counts BOTH 2A relief flows on the same installment (generic FIFO + last-installment park)', async () => {
+    const client = clientWith([
+      {
+        metadata: {
+          tag: '2B',
+          flow: 'advance-consume-on-accrual',
+          installmentScheduleId: 'is-1',
+        },
+        lines: [line('11-2103', '1000')],
+      },
+      {
+        metadata: {
+          tag: '2B',
+          flow: 'reschedule-park-consume',
+          installmentScheduleId: 'is-1',
+        },
+        lines: [line('11-2103', '3472')],
+      },
+    ]);
+
+    const r = await reconstructPriorCleared(client, 'is-1', INSTALLMENT_TOTAL);
+    // 1000 + 3472 == installmentTotal → the next receipt has nothing left to clear.
+    expect(r.priorPrincipalCleared.toString()).toBe('4472');
+  });
 });

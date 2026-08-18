@@ -271,6 +271,212 @@ describe('RepossessionJP5Template', () => {
     ).rejects.toThrow(/ไม่มียอด 11-2107/);
   });
 
+  /**
+   * finding C-3 — ถังพักงวดสุดท้าย (21-1103) ตอนยึดคืน.
+   *
+   * `computePayoffQuote` หักถังพักออกจากยอดปิดให้ลูกค้าแล้ว (ทั้ง JP4 และ JP5 ใช้
+   * ฟังก์ชันเดียวกัน) แต่ JP5 เดิมไม่มีขา 21-1103 เลย → เครดิตผีค้างบนสัญญาที่ยึด
+   * ไปแล้ว และ plug ขาดทุน/กำไรบวมเกินจริงเท่ายอดถังพัก.
+   *
+   * ขา `Dr 21-1103` ถูกวาง **ก่อน** คำนวณ plug (pattern เดียวกับ customerRefund /
+   * 21-1107) → plug ดูดซับให้เอง: ขาดทุนลด/กำไรเพิ่มเท่ายอดปลดหนี้พอดี ไม่มีสูตรใหม่.
+   */
+  describe('park relief (Dr 21-1103 · ถังพักงวดสุดท้าย · owner 2026-08-16)', () => {
+    /** JE จำลอง 6a: Dr เงินสด / Cr 21-1103 — เครดิตเข้าถังพักบนสัญญานี้ */
+    async function seedParkCredit(
+      journal: JournalAutoService,
+      contractId: string,
+      amount: Decimal,
+    ): Promise<void> {
+      await prisma.contract.update({
+        where: { id: contractId },
+        data: { rescheduleAdvanceBalance: amount },
+      });
+      await journal.createAndPost({
+        description: 'ค่าธรรมเนียมปรับดิว (6a) — พักงวดสุดท้าย',
+        reference: `${contractId}:reschedule-fee`,
+        metadata: { tag: '6a', flow: 'reschedule-fee', contractId },
+        lines: [
+          {
+            accountCode: '11-1101',
+            dr: amount,
+            cr: new Decimal(0),
+            description: 'รับค่าธรรมเนียม',
+          },
+          {
+            accountCode: '21-1103',
+            dr: new Decimal(0),
+            cr: amount,
+            description: 'เงินรับล่วงหน้างวดสุดท้าย',
+          },
+        ],
+      });
+    }
+
+    async function jp5LinesFor(contractId: string) {
+      const entries = await prisma.journalEntry.findMany({
+        where: {
+          AND: [
+            { metadata: { path: ['contractId'], equals: contractId } } as any,
+            { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+          ],
+        },
+        include: { lines: true },
+      });
+      expect(entries.length, 'expected exactly 1 repossession JE').toBe(1);
+      const lines = entries[0].lines.map((l) => ({
+        code: l.accountCode,
+        dr: new Decimal(l.debit.toString()),
+        cr: new Decimal(l.credit.toString()),
+      }));
+      return { entry: entries[0], lines };
+    }
+
+    it('ขาดทุน (loss branch): plug 51-1102 ลดลงเท่ายอดปลดหนี้ 354.00 เป๊ะ ๆ · Dr 21-1103 ปรากฏ · JE ยัง balanced', async () => {
+      const journal = await setup();
+      const tmpl = new RepossessionJP5Template(journal, prisma as any);
+      const activation = new ContractActivation1ATemplate(journal, prisma as any);
+
+      // A) ไม่มีถังพัก — baseline
+      const noPark = await seedStandard17k12m(prisma);
+      await activation.execute(noPark.id);
+      await tmpl.execute({
+        contractId: noPark.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: new Decimal('7000.00'),
+      });
+      const a = await jp5LinesFor(noPark.id);
+      const lossA = a.lines.find((l) => l.code === '51-1102')!.dr;
+      expect(
+        a.lines.find((l) => l.code === '21-1103'),
+        'ไม่มีถังพัก → ห้ามมีขา 21-1103',
+      ).toBe(undefined);
+
+      // B) ถังพัก 354 — สัญญาแยกใบ ข้อมูลอื่นเหมือนกันทุกอย่าง
+      const withPark = await seedStandard17k12m(prisma);
+      await activation.execute(withPark.id);
+      await seedParkCredit(journal, withPark.id, new Decimal('354.00'));
+      const res = await tmpl.execute({
+        contractId: withPark.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: new Decimal('7000.00'),
+        parkRelief: new Decimal('354.00'),
+      });
+      const b = await jp5LinesFor(withPark.id);
+
+      const park = b.lines.find((l) => l.code === '21-1103');
+      expect(park, 'ต้องมีขา Dr 21-1103').toBeDefined();
+      expect(park!.dr.toFixed(2)).toBe('354.00');
+      expect(park!.cr.toFixed(2)).toBe('0.00');
+      expect(res.parkRelief.toFixed(2)).toBe('354.00');
+      expect((b.entry.metadata as Record<string, unknown>).parkRelief).toBe('354.00');
+
+      // plug ดูดซับเอง: ขาดทุนลดลงเท่ายอดปลดหนี้พอดี (ไม่ใช่สูตรแยก)
+      const lossB = b.lines.find((l) => l.code === '51-1102')!.dr;
+      expect(lossA.minus(lossB).toFixed(2)).toBe('354.00');
+
+      // ขาอื่นทุกขาต้องเท่าเดิมทุกบาท — ที่ขยับมีแค่ 21-1103 (ใหม่) กับ 51-1102 (plug)
+      const sig = (lines: typeof a.lines) =>
+        lines
+          .filter((l) => l.code !== '21-1103' && l.code !== '51-1102')
+          .map((l) => `${l.code}:${l.dr.toFixed(2)}/${l.cr.toFixed(2)}`)
+          .sort();
+      expect(sig(b.lines)).toEqual(sig(a.lines));
+
+      const drB = b.lines.reduce((s, l) => s.plus(l.dr), new Decimal(0));
+      const crB = b.lines.reduce((s, l) => s.plus(l.cr), new Decimal(0));
+      expect(drB.toFixed(2)).toBe(crB.toFixed(2));
+
+      // 21-1103 ของสัญญานี้ต้องกลับมาเป็น 0 (เครดิต 354 ถูกปลดครบ)
+      const remaining = await prisma.journalLine.findMany({
+        where: {
+          accountCode: '21-1103',
+          journalEntry: {
+            metadata: { path: ['contractId'], equals: withPark.id },
+            status: 'POSTED',
+            deletedAt: null,
+          },
+        },
+        select: { debit: true, credit: true },
+      });
+      const bal = remaining.reduce(
+        (s, l) => s.plus(l.credit.toString()).minus(l.debit.toString()),
+        new Decimal(0),
+      );
+      expect(bal.toFixed(2), '21-1103 ของสัญญานี้ต้องถูกล้างหมด').toBe('0.00');
+    });
+
+    it('กำไร (gain branch): plug 41-1102 เพิ่มขึ้นเท่ายอดปลดหนี้เป๊ะ ๆ', async () => {
+      const journal = await setup();
+      const tmpl = new RepossessionJP5Template(journal, prisma as any);
+      const activation = new ContractActivation1ATemplate(journal, prisma as any);
+
+      const noPark = await seedStandard17k12m(prisma);
+      await activation.execute(noPark.id);
+      await tmpl.execute({
+        contractId: noPark.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: new Decimal('20000.00'),
+      });
+      const gainA = (await jp5LinesFor(noPark.id)).lines.find((l) => l.code === '41-1102')!.cr;
+
+      const withPark = await seedStandard17k12m(prisma);
+      await activation.execute(withPark.id);
+      await seedParkCredit(journal, withPark.id, new Decimal('354.00'));
+      await tmpl.execute({
+        contractId: withPark.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: new Decimal('20000.00'),
+        parkRelief: new Decimal('354.00'),
+      });
+      const b = await jp5LinesFor(withPark.id);
+      const gainB = b.lines.find((l) => l.code === '41-1102')!.cr;
+
+      expect(gainB.minus(gainA).toFixed(2)).toBe('354.00');
+      expect(b.lines.find((l) => l.code === '21-1103')!.dr.toFixed(2)).toBe('354.00');
+      const dr = b.lines.reduce((s, l) => s.plus(l.dr), new Decimal(0));
+      const cr = b.lines.reduce((s, l) => s.plus(l.cr), new Decimal(0));
+      expect(dr.toFixed(2)).toBe(cr.toFixed(2));
+    });
+
+    it('clamp ด้วยยอด GL 21-1103 จริง — ขอปลด 900 แต่มีเครดิตจริง 354 → ปลดได้ 354 ห้ามดัน 21-1103 ติดลบ', async () => {
+      const journal = await setup();
+      const c = await seedStandard17k12m(prisma);
+      await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+      await seedParkCredit(journal, c.id, new Decimal('354.00'));
+
+      const res = await new RepossessionJP5Template(journal, prisma as any).execute({
+        contractId: c.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: new Decimal('7000.00'),
+        parkRelief: new Decimal('900.00'),
+      });
+
+      expect(res.parkRelief.toFixed(2), 'clamp ที่ยอด GL จริง').toBe('354.00');
+      const b = await jp5LinesFor(c.id);
+      expect(b.lines.find((l) => l.code === '21-1103')!.dr.toFixed(2)).toBe('354.00');
+    });
+
+    it('parkRelief 0 / ไม่ส่ง → ไม่มีขา 21-1103 และ metadata ไม่มี parkRelief (JE เดิมไม่ขยับ)', async () => {
+      const journal = await setup();
+      const c = await seedStandard17k12m(prisma);
+      await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+      await seedParkCredit(journal, c.id, new Decimal('354.00'));
+
+      const res = await new RepossessionJP5Template(journal, prisma as any).execute({
+        contractId: c.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: new Decimal('7000.00'),
+        parkRelief: new Decimal('0'),
+      });
+
+      expect(res.parkRelief.toFixed(2)).toBe('0.00');
+      const b = await jp5LinesFor(c.id);
+      expect(b.lines.find((l) => l.code === '21-1103')).toBeUndefined();
+      expect((b.entry.metadata as Record<string, unknown>).parkRelief).toBeUndefined();
+    });
+  });
+
   it('throws when no unpaid installments remain', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);

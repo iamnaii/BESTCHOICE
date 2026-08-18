@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { RescheduleService } from '../../installments/reschedule.service';
@@ -15,6 +16,7 @@ import {
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { d } from '../../../utils/decimal.util';
 import { resolveUserDefaultCashAccount, resolveFinanceCompanyId } from './payment-helpers';
+import { RESCHEDULE_ADVANCE_UNPARKED } from '../../receipts/services/receipt-void.service';
 
 export interface RescheduleCollectInput {
   contractId: string;
@@ -397,40 +399,111 @@ export class RescheduleCollectService {
         // accrues next. Bounded by min() so any OTHER, unrelated generic advance
         // already sitting on the contract before phase 1 is left untouched.
         if (input.bundledPaid && q.rescheduleFee.gt(0)) {
-          const freshContract = await tx.contract.findUniqueOrThrow({
-            where: { id: contract.id },
-            select: { advanceBalance: true, rescheduleAdvanceBalance: true },
-          });
-          const beforeGeneric = new Prisma.Decimal(freshContract.advanceBalance.toString());
-          const beforePark = new Prisma.Decimal(freshContract.rescheduleAdvanceBalance.toString());
-          const sweep = Prisma.Decimal.min(q.rescheduleFee, beforeGeneric);
-          if (sweep.gt(0)) {
-            await tx.contract.update({
-              where: { id: contract.id },
-              data: {
-                advanceBalance: { decrement: sweep },
-                rescheduleAdvanceBalance: { increment: sweep },
-              },
-            });
-            await tx.auditLog.create({
-              data: {
-                action: 'RESCHEDULE_ADVANCE_PARKED',
+          // M-3 (review 2026-08-16): the sweep is NOT naturally idempotent —
+          // it moves min(fee, generic) with no marker of its own, so a retried
+          // phase-2 call (the controller SKIPS phase 1 when the payment already
+          // reads PAID, then calls here again) would sweep a SECOND fee-sized
+          // slice out of unrelated generic advance. Guard on the audit row this
+          // very block writes, keyed to (contract, payment): it is written in
+          // the SAME tx as the balance move, so "audit row exists" and "balances
+          // already moved" can never disagree — a stored marker column would add
+          // schema for a fact the audit trail already records. Scoped to the
+          // paymentId (not just the contract) so a LATER, genuinely different
+          // reschedule on another installment still parks its own fee.
+          //
+          // R-2 (re-review 2026-08-18): a VOID of the 6b receipt takes this sweep
+          // back out of the park bucket and records `RESCHEDULE_ADVANCE_UNPARKED`
+          // (audit rows are immutable, so the reversal is a new row rather than an
+          // edit). A void → re-pay cycle reuses the SAME payment row, so probing
+          // for a PARKED row alone would see the stale one and refuse to re-park
+          // the fee — silently reinstating the FIFO bug the owner directive
+          // removed. Whichever row is NEWER wins.
+          const probe = (action: string) =>
+            tx.auditLog.findFirst({
+              where: {
+                action,
                 entity: 'contract',
                 entityId: contract.id,
-                userId: input.recordedById,
-                newValue: {
+                newValue: { path: ['paymentId'], equals: payment.id },
+              } as Prisma.AuditLogWhereInput,
+              orderBy: { createdAt: 'desc' },
+              select: { id: true, createdAt: true },
+            });
+          const [parkedRow, unparkedRow] = await Promise.all([
+            probe('RESCHEDULE_ADVANCE_PARKED'),
+            probe(RESCHEDULE_ADVANCE_UNPARKED),
+          ]);
+          const alreadyParked =
+            parkedRow != null &&
+            (unparkedRow == null || parkedRow.createdAt > unparkedRow.createdAt);
+          if (alreadyParked) {
+            this.logger.warn(
+              `Reschedule 6b park sweep already applied for payment ${payment.id} (contract ${contract.id}) — skipping duplicate sweep`,
+            );
+          } else {
+            const freshContract = await tx.contract.findUniqueOrThrow({
+              where: { id: contract.id },
+              select: { advanceBalance: true, rescheduleAdvanceBalance: true },
+            });
+            const beforeGeneric = new Prisma.Decimal(freshContract.advanceBalance.toString());
+            const beforePark = new Prisma.Decimal(
+              freshContract.rescheduleAdvanceBalance.toString(),
+            );
+            const sweep = Prisma.Decimal.min(q.rescheduleFee, beforeGeneric);
+            if (sweep.gt(0)) {
+              await tx.contract.update({
+                where: { id: contract.id },
+                data: {
+                  advanceBalance: { decrement: sweep },
+                  rescheduleAdvanceBalance: { increment: sweep },
+                },
+              });
+              await tx.auditLog.create({
+                data: {
+                  action: 'RESCHEDULE_ADVANCE_PARKED',
+                  entity: 'contract',
+                  entityId: contract.id,
+                  userId: input.recordedById,
+                  newValue: {
+                    paymentId: payment.id,
+                    installmentNo: input.installmentNo,
+                    rescheduleFee: q.rescheduleFee.toString(),
+                    sweptAmount: sweep.toString(),
+                    beforeGenericBalance: beforeGeneric.toString(),
+                    afterGenericBalance: beforeGeneric.minus(sweep).toString(),
+                    beforeParkBalance: beforePark.toString(),
+                    afterParkBalance: beforePark.plus(sweep).toString(),
+                    source: 'RESCHEDULE_COLLECT_6B_FEE_SWEEP',
+                  },
+                },
+              });
+            }
+            // I-7 (review 2026-08-16): phase 1 commits in the controller and
+            // phase 2 opens its OWN tx, so the generic bucket can be drained in
+            // between (a 2A cron crossing a day boundary) — or never credited at
+            // all (a fee ≤1฿ falls under the D1 auto-route threshold). The sweep
+            // then silently comes up short and the fee stays FIFO: the exact bug
+            // this feature removes, reproduced with a success response. Degrading
+            // quietly is not acceptable; alarm without failing the reschedule
+            // (the money and the shifted due dates are already correct).
+            if (sweep.lt(q.rescheduleFee)) {
+              Sentry.captureMessage('Reschedule 6b fee park sweep came up short', {
+                level: 'warning',
+                tags: { subsystem: 'reschedule-park' },
+                extra: {
+                  contractId: contract.id,
+                  contractNumber: contract.contractNumber,
                   paymentId: payment.id,
                   installmentNo: input.installmentNo,
-                  rescheduleFee: q.rescheduleFee.toString(),
-                  sweptAmount: sweep.toString(),
-                  beforeGenericBalance: beforeGeneric.toString(),
-                  afterGenericBalance: beforeGeneric.minus(sweep).toString(),
-                  beforeParkBalance: beforePark.toString(),
-                  afterParkBalance: beforePark.plus(sweep).toString(),
-                  source: 'RESCHEDULE_COLLECT_6B_FEE_SWEEP',
+                  expectedFee: q.rescheduleFee.toFixed(2),
+                  sweptAmount: sweep.toFixed(2),
+                  genericBalanceAtSweep: beforeGeneric.toFixed(2),
                 },
-              },
-            });
+              });
+              this.logger.warn(
+                `Reschedule 6b park sweep short: contract ${contract.contractNumber} payment ${payment.id} — expected ${q.rescheduleFee.toFixed(2)}, swept ${sweep.toFixed(2)} (generic balance ${beforeGeneric.toFixed(2)})`,
+              );
+            }
           }
         }
 

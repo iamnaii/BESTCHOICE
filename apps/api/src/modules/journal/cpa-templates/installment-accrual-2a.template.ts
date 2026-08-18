@@ -5,6 +5,11 @@ import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
+import { feeNettedOutstanding } from '../compute-cn-breakdown';
+import {
+  ADVANCE_CONSUME_ON_ACCRUAL_FLOW,
+  RESCHEDULE_PARK_CONSUME_FLOW,
+} from '../reconstruct-prior';
 // EIR utility removed — CPA Policy A revert (#783) reverted to straight-line allocation.
 
 /**
@@ -226,10 +231,13 @@ export class InstallmentAccrual2ATemplate {
       await this.journal.createAndPost(
         {
           description: `หักเงินรับล่วงหน้าเข้างวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
-          reference: `${inst.id}:advance-consume-on-accrual`,
+          // Flow string + reference suffix come from the SAME constant
+          // reconstructPriorCleared's always-include allow-list is built from, so
+          // the reader and the writer can never drift (see reconstruct-prior.ts).
+          reference: `${inst.id}:${ADVANCE_CONSUME_ON_ACCRUAL_FLOW}`,
           metadata: {
             tag: '2B',
-            flow: 'advance-consume-on-accrual',
+            flow: ADVANCE_CONSUME_ON_ACCRUAL_FLOW,
             contractId: c.id,
             installmentScheduleId: inst.id,
             installmentNo: inst.installmentNo,
@@ -317,19 +325,76 @@ export class InstallmentAccrual2ATemplate {
     // the generic-advance block so its cap (installmentTotal minus whatever
     // the generic advance already cleared) reflects any generic consume that
     // happened above in this same tx.
-    if (inst.installmentNo === c.totalMonths) {
-      const parkBalance = new Decimal((c.rescheduleAdvanceBalance ?? 0).toString());
-      const remainingAfterGeneric = installmentTotal.minus(genericConsumed);
-      if (parkBalance.gt(0) && remainingAfterGeneric.gt(0)) {
-        const parkConsume = Decimal.min(parkBalance, remainingAfterGeneric);
+    const parkBalance = new Decimal((c.rescheduleAdvanceBalance ?? 0).toString());
+    const remainingAfterGeneric = installmentTotal.minus(genericConsumed);
+
+    // Both "nothing parked" and "generic advance already covered the whole
+    // installment" are decided BEFORE any Payment I/O: in either case
+    // `parkConsume` would be 0 no matter what the row says, so reading it would
+    // be a wasted query on every last-installment accrual of every contract that
+    // has no park bucket (the overwhelming majority). Keeping the short-circuit
+    // here also preserves the pre-park invariant that this branch performs zero
+    // Payment reads when there is no park balance to relieve.
+    if (inst.installmentNo === c.totalMonths && parkBalance.gt(0) && remainingAfterGeneric.gt(0)) {
+      // Payment row read UP FRONT (was: after the JE post) — it is now an INPUT to
+      // the cap, not just something to stamp afterwards. Reading it here is exactly
+      // as fresh: the generic block above already committed its own
+      // `payment.update` earlier in this same tx, and posting the park JE does not
+      // touch Payment rows.
+      const paymentForPark = await tx.payment.findFirst({
+        where: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          amountDue: true,
+          amountPaid: true,
+          lateFee: true,
+          lateFeeWaived: true,
+        },
+      });
+
+      // I-3 (final review 2026-08-16) — cap by what is ACTUALLY still owed on the
+      // row, not just by `installmentTotal − genericConsumed`.
+      //
+      // The last installment can legitimately be settled (or part-settled) BEFORE
+      // its own accrual runs — that is จุดหัก 2 of the park spec (wizard/orchestrator
+      // pays the last installment early and relieves the park bucket there). Without
+      // this cap the accrual relieves the park a SECOND time: `Payment.amountPaid`
+      // climbs above `amountDue` and 11-2103 goes NEGATIVE for the row.
+      //
+      // The remaining-balance formula is the house FEE-FIRST convention (PR #1313).
+      // It is IMPORTED from `feeNettedOutstanding` in
+      // `apps/api/src/modules/journal/compute-cn-breakdown.ts` — the single source of
+      // truth shared by ECL (DUE) and CN (ACCRUED) — rather than re-derived here, per
+      // that plan's Global Constraint that this formula must never exist in two
+      // places. (Repair round 2, 2026-08-17: was a verbatim local copy.)
+      // No Payment row at all → installment never touched → fully outstanding
+      // (same convention as computeInstallmentOutstanding's ACCRUED branch).
+      // NOTE: the GENERIC block above deliberately keeps its pre-existing
+      // (uncapped) behaviour — out of scope here.
+      const rowOutstanding = paymentForPark
+        ? feeNettedOutstanding(paymentForPark, installmentTotal)
+        : installmentTotal;
+      const parkCap = Decimal.min(remainingAfterGeneric, rowOutstanding);
+
+      // `parkBalance > 0` and `remainingAfterGeneric > 0` are already guaranteed by
+      // the outer guard; only the row-outstanding half of the cap can still zero it
+      // out (last installment already settled early — จุดหัก 2).
+      if (parkCap.gt(0)) {
+        const parkConsume = Decimal.min(parkBalance, parkCap);
 
         await this.journal.createAndPost(
           {
             description: `หักเงินพักปรับดิวเข้างวดสุดท้าย #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
-            reference: `${inst.id}:reschedule-park-consume`,
+            // Same constant reconstructPriorCleared's always-include allow-list is
+            // built from — see reconstruct-prior.ts (C-1).
+            reference: `${inst.id}:${RESCHEDULE_PARK_CONSUME_FLOW}`,
             metadata: {
               tag: '2B',
-              flow: 'reschedule-park-consume',
+              flow: RESCHEDULE_PARK_CONSUME_FLOW,
               contractId: c.id,
               installmentScheduleId: inst.id,
               installmentNo: inst.installmentNo,
@@ -361,16 +426,9 @@ export class InstallmentAccrual2ATemplate {
         });
 
         // Reflect the consume on the Payment row — same stamping shape as the
-        // generic consume above. Re-queried fresh (the generic block above may
-        // already have updated this exact row earlier in this same tx).
-        const paymentForPark = await tx.payment.findFirst({
-          where: {
-            contractId: c.id,
-            installmentNo: inst.installmentNo,
-            deletedAt: null,
-          },
-          select: { id: true, amountDue: true, amountPaid: true },
-        });
+        // generic consume above. Uses the row read UP FRONT for the cap (the
+        // generic block's own update already landed before that read, and posting
+        // the park JE does not touch Payment rows).
         if (paymentForPark) {
           const newAmountPaid = new Decimal(paymentForPark.amountPaid.toString()).plus(parkConsume);
           const due = new Decimal((paymentForPark.amountDue ?? installmentTotal).toString());

@@ -5,7 +5,11 @@ import { AccountRoleService } from '../../journal/account-role.service';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { splitReceipt } from '../../journal/split-receipt';
 import { buildReceiptLines } from '../../journal/build-receipt-lines';
-import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
+import {
+  reconstructPriorCleared,
+  ADVANCE_CONSUME_ON_ACCRUAL_FLOW,
+  RESCHEDULE_PARK_CONSUME_FLOW,
+} from '../../journal/reconstruct-prior';
 import {
   buildPreviewBlocks,
   PreviewTaggedLine,
@@ -168,7 +172,11 @@ export class PaymentJournalPreviewService {
             code: '21-1103',
             dr: zero,
             cr: feePortion,
-            description: 'เงินรับล่วงหน้า — ค่าธรรมเนียมปรับดิว (6a)',
+            // M-1: must match the POSTED line verbatim — RescheduleCollectService
+            // credits 21-1103 with 'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)'
+            // since the park-at-last-installment directive (2026-08-16). This file's
+            // contract is preview == posted.
+            description: 'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)',
           });
         }
         if (netLateFee.gt(zero)) {
@@ -486,7 +494,13 @@ export class PaymentJournalPreviewService {
           deletedAt: null,
           OR: [
             { entryNumber: inst.accrualJournalEntryId },
-            { referenceId: `${inst.id}:advance-consume-on-accrual` },
+            { referenceId: `${inst.id}:${ADVANCE_CONSUME_ON_ACCRUAL_FLOW}` },
+            // I-4 (final review 2026-08-16): the LAST installment can also carry a
+            // park-bucket relief JE (Dr 21-1103 / Cr 11-2103, ค่าปรับดิวพักงวดสุดท้าย).
+            // Omitting it made the 2A block show the receivable as fully outstanding
+            // when the GL had already cleared part/all of it. Reference suffixes come
+            // from the same constants InstallmentAccrual2ATemplate stamps.
+            { referenceId: `${inst.id}:${RESCHEDULE_PARK_CONSUME_FLOW}` },
           ],
         },
         include: { lines: { where: { deletedAt: null } } },

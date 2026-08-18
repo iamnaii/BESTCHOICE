@@ -18,6 +18,14 @@ export interface EarlyPayoffInput {
    * earlyPayoff() ใน contract-payment.service ซึ่ง net ให้เองแล้ว.
    */
   unpaidLateFees?: Decimal;
+  /**
+   * ยอดปลดหนี้ถังพักงวดสุดท้าย (21-1103) — ต้องเป็นยอดที่ยอดปิดสัญญาดูดซับจริง
+   * (`computePayoffQuote(...).rescheduleAdvanceApplied`). Omitted → 0 = ไม่มีขา
+   * 21-1103 และไม่แตะคอลัมน์ `Contract.rescheduleAdvanceBalance` เลย.
+   * หมายเหตุเดียวกับ unpaidLateFees: template นี้ไม่มี production caller —
+   * เส้นทางจริงคือ earlyPayoff() ใน contract-payment.service.
+   */
+  parkRelief?: Decimal;
 }
 
 /**
@@ -132,6 +140,7 @@ export class EarlyPayoffJP4Template {
       discount,
       settleVat,
       settlement,
+      parkRelief,
       lines: jeLines,
     } = computeEarlyPayoffJE({
       depositAccountCode: input.depositAccountCode,
@@ -143,6 +152,11 @@ export class EarlyPayoffJP4Template {
       unpaidCount: unpaid,
       interestDiscountPercent: input.interestDiscountPercent,
       unpaidLateFees: input.unpaidLateFees ?? null,
+      // clamp ด้วยยอดในถังจริงบนสัญญา — ห้ามปลดหนี้เกินกว่าที่มีอยู่จริง
+      parkRelief: Decimal.min(
+        new Decimal(input.parkRelief ?? 0),
+        new Decimal(c.rescheduleAdvanceBalance ?? 0),
+      ),
     });
 
     // Wrap JE post + Payment.create loop in a single atomic transaction.
@@ -152,6 +166,7 @@ export class EarlyPayoffJP4Template {
       // 52-1106 zero-discount guard) comes from the shared computeEarlyPayoffJE.
       const descriptions: Record<string, string> = {
         [input.depositAccountCode]: `รับ ${settlement.toFixed(2)} ฿ ปิดยอด`,
+        '21-1103': 'หักเงินพักปรับดิว (ปิดสัญญาก่อนกำหนด)',
         '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
         '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
         '52-1106': `ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด ${input.interestDiscountPercent}%`,
@@ -181,11 +196,21 @@ export class EarlyPayoffJP4Template {
             // Policy A — VAT ไม่ลดตามส่วนลด (CPA decision · vs ม.79+86/10)
             policy: 'A',
             settleVat: settleVat.toFixed(2),
+            ...(parkRelief.gt(0) ? { parkRelief: parkRelief.toFixed(2) } : {}),
           },
           lines,
         },
         tx,
       );
+
+      // ปลดถังพักงวดสุดท้ายให้ตรงกับขา Dr 21-1103 ที่เพิ่งลง — ต้องอยู่ใน tx
+      // เดียวกับ JE ไม่งั้นเครดิตผีค้างบนสัญญาที่ปิดไปแล้ว (บั๊ก C-3).
+      if (parkRelief.gt(0)) {
+        await tx.contract.update({
+          where: { id: c.id },
+          data: { rescheduleAdvanceBalance: { decrement: parkRelief } },
+        });
+      }
 
       // Create Payment rows for all unpaid installments (marks them as settled via EARLY_PAYOFF).
       // Each installment gets its own Payment row; total across all = settlementAmount.

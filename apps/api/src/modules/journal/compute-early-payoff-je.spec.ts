@@ -215,6 +215,84 @@ describe('computeEarlyPayoffJE (single-source early-payoff JE math)', () => {
     });
   });
 
+  // ── Park-relief leg (owner 2026-08-16 §จุดหัก 3 · review finding C-3) ────────
+  // ยอดปิดสัญญา (computePayoffQuote) หักถังพักงวดสุดท้ายให้ลูกค้าไปแล้ว แต่ JE เดิม
+  // ยัง Dr เงินสดเต็มจำนวน → เงินสดในบัญชีเกินเงินรับจริงเท่ายอดถังพัก + เครดิตผี
+  // ค้างใน 21-1103 บนสัญญาที่ปิดไปแล้ว. ขาปลดหนี้ Dr 21-1103 ปิดช่องนี้ โดย
+  // "ยอด Dr รวมเท่าเดิม" — ทุกขา Cr จึงไม่ขยับแม้แต่บาทเดียว.
+  describe('park-relief leg (Dr 21-1103 · ขาเงินสดลดเท่ากัน · ทุกขา Cr เท่าเดิม)', () => {
+    const base = {
+      depositAccountCode: '11-1101',
+      financedAmount: '10000',
+      storeCommission: '1000',
+      interestTotal: '6000',
+      vatAmount: '1190',
+      totalMonths: 12,
+      unpaidCount: 6,
+      interestDiscountPercent: '50',
+    };
+
+    it('parkRelief 354 → Dr เงินสด 7240.98 (7594.98 − 354) + Dr 21-1103 354.00, ยอดรวมและทุกขา Cr เท่าเดิมเป๊ะ', () => {
+      const golden = computeEarlyPayoffJE(base);
+      const r = computeEarlyPayoffJE({ ...base, parkRelief: '354' });
+
+      expect(drOf(r, '11-1101')).toBe('7240.98'); // 7594.98 − 354.00
+      expect(drOf(r, '21-1103')).toBe('354.00');
+      expect(r.parkRelief.toFixed(2)).toBe('354.00');
+      expect(r.cashReceived.toFixed(2)).toBe('7240.98');
+      // totalCash = ยอดปิดรวมก่อนหักถังพัก — ไม่เปลี่ยนความหมายเดิม
+      expect(r.totalCash.toFixed(2)).toBe('7594.98');
+
+      // ขาเงินสด + ขาปลดหนี้ = ขาเงินสดเดิมพอดี → ยอด Dr รวมเท่าเดิม
+      expect(r.cashReceived.plus(r.parkRelief).toFixed(2)).toBe(golden.totalCash.toFixed(2));
+      expect(totals(r).dr).toBe(totals(golden).dr);
+      expect(totals(r).cr).toBe(totals(golden).cr);
+      expect(totals(r).dr).toBe(totals(r).cr);
+
+      // ทุกขา Cr ต้องเหมือน golden ที่ไม่มีถังพัก byte-for-byte
+      const crLines = (x: ReturnType<typeof computeEarlyPayoffJE>) =>
+        x.lines.filter((l) => l.cr.gt(0)).map((l) => `${l.accountCode}:${l.cr.toFixed(2)}`);
+      expect(crLines(r)).toEqual(crLines(golden));
+    });
+
+    it('parkRelief 0 / omitted → ไม่มีบรรทัด 21-1103 เลย และ JE เท่า golden เดิมทุกไบต์', () => {
+      const golden = computeEarlyPayoffJE(base);
+      const rZero = computeEarlyPayoffJE({ ...base, parkRelief: '0' });
+      const rNull = computeEarlyPayoffJE({ ...base, parkRelief: null });
+
+      for (const r of [rZero, rNull]) {
+        expect(r.lines.find((l) => l.accountCode === '21-1103')).toBeUndefined();
+        expect(r.lines.map((l) => l.accountCode)).toEqual(golden.lines.map((l) => l.accountCode));
+        expect(r.lines.map((l) => `${l.dr.toFixed(2)}/${l.cr.toFixed(2)}`)).toEqual(
+          golden.lines.map((l) => `${l.dr.toFixed(2)}/${l.cr.toFixed(2)}`),
+        );
+        expect(r.parkRelief.toFixed(2)).toBe('0.00');
+        expect(r.cashReceived.toFixed(2)).toBe(golden.totalCash.toFixed(2));
+      }
+    });
+
+    it('parkRelief > totalCash → clamp ที่ totalCash: Dr เงินสด 0.00 ห้ามติดลบ, JE ยัง balanced', () => {
+      const r = computeEarlyPayoffJE({ ...base, parkRelief: '999999' });
+
+      expect(drOf(r, '11-1101')).toBe('0.00');
+      expect(r.cashReceived.isNegative()).toBe(false);
+      expect(drOf(r, '21-1103')).toBe('7594.98'); // = totalCash
+      expect(totals(r).dr).toBe(totals(r).cr);
+      expect(totals(r).dr).toBe('12690.00'); // เท่ากับ golden case-4 เดิม
+    });
+
+    it('อยู่ร่วมกับค่าปรับได้: parkRelief หักจาก totalCash (settlement + fee) ไม่ใช่ settlement เปล่า', () => {
+      const r = computeEarlyPayoffJE({ ...base, unpaidLateFees: '100', parkRelief: '354' });
+
+      expect(r.totalCash.toFixed(2)).toBe('7694.98'); // 7594.98 + 100
+      expect(drOf(r, '11-1101')).toBe('7340.98'); // 7694.98 − 354
+      expect(drOf(r, '21-1103')).toBe('354.00');
+      expect(crOf(r, '42-1103')).toBe('100.00'); // ค่าปรับยังลงเต็มก้อนเหมือนเดิม
+      expect(totals(r).dr).toBe('12790.00');
+      expect(totals(r).cr).toBe('12790.00');
+    });
+  });
+
   // ── Default derivations when storeCommission / vatAmount are null ────────────
   describe('null storeCommission / vatAmount defaults', () => {
     it('null storeCommission → financed × 10%', () => {

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ProductsService } from '../../products/products.service';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
@@ -127,6 +128,102 @@ export async function validateBranchAccessByPayment(
   }
 }
 
+/** Todo tag used for "ปิดสัญญาแล้วยังมีเงินพักปรับดิวเหลือ" follow-ups (I-5). */
+export const RESIDUAL_PARK_TODO_TAG = 'reschedule-park';
+
+/**
+ * I-5: alarm + MEDIUM Todo when a contract completes with a non-zero
+ * `rescheduleAdvanceBalance`. Mirrors the credit-note delivery-failure pattern
+ * (`credit-note-delivery.service.ts` — Sentry warning + deduped Todo created by
+ * the SYSTEM user), which is this codebase's established shape for "money needs
+ * a human, do not guess a JE".
+ *
+ * R-1 (re-review 2026-08-18) — **MUST run on the ROOT PrismaService, never on a
+ * money `tx` client, and must never be awaited by the completion path.**
+ *
+ * The earlier shape took `db = tx ?? prisma` and was awaited, so any failure of
+ * the three statements below (FK on `Todo.createdById` if the SYSTEM user row is
+ * removed, statement timeout, serialization failure under the Serializable
+ * isolation the receipt tx runs at) aborted the customer's payment — "customer
+ * paid, system says no". A `try/catch` alone does NOT fix that: once a statement
+ * errors inside a Postgres transaction the whole tx is poisoned and cannot
+ * commit, so the alarm has to be off the tx connection entirely.
+ *
+ * Accepted trade-off, deliberately chosen: because this fires before the caller's
+ * tx commits, a tx that later rolls back can leave one spurious Todo ("check this
+ * contract") which a human closes after seeing the contract is not COMPLETED. The
+ * dedup below caps that at one row. Rare, self-evident noise is strictly
+ * preferable to the inverse failure (rolling back money the customer really paid).
+ *
+ * Exported so it can be tested directly — the completion path fires it
+ * un-awaited, which is not a seam a test can assert against deterministically.
+ */
+export async function alarmResidualParkOnCompletion(
+  prisma: PrismaService,
+  logger: Logger,
+  contractId: string,
+  completed: { contractNumber: string; rescheduleAdvanceBalance: Prisma.Decimal | null },
+): Promise<void> {
+  const residual = new Prisma.Decimal(completed.rescheduleAdvanceBalance ?? 0);
+  if (!residual.gt(0)) return;
+
+  const amountText = residual.toFixed(2);
+  Sentry.captureMessage('Contract completed with residual reschedule park balance', {
+    level: 'warning',
+    tags: { subsystem: 'reschedule-park' },
+    extra: {
+      contractId,
+      contractNumber: completed.contractNumber,
+      rescheduleAdvanceBalance: amountText,
+    },
+  });
+
+  try {
+    const systemUser = await prisma.user.findFirst({
+      where: { isSystemUser: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!systemUser) {
+      logger.error(
+        `Residual park balance ${amountText} on completed contract ${completed.contractNumber} — no SYSTEM user, Todo skipped (Sentry-alarmed)`,
+      );
+      return;
+    }
+
+    // Dedup: a re-run of checkContractCompletion (or a void → re-pay cycle that
+    // completes the contract twice) must not spam a second Todo.
+    const existing = await prisma.todo.findFirst({
+      where: {
+        tags: { has: RESIDUAL_PARK_TODO_TAG },
+        title: { contains: completed.contractNumber },
+        status: { not: 'DONE' },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    await prisma.todo.create({
+      data: {
+        title: `สัญญา ${completed.contractNumber} ปิดครบงวดแล้ว แต่ยังมีเงินพักปรับดิวเหลือ ${amountText} บาท`,
+        description:
+          `ยอดพักงวดสุดท้าย (ค่าธรรมเนียมปรับดิว) คงเหลือ ${amountText} บาท ค้างอยู่ในบัญชี 21-1103 ` +
+          `หลังสัญญาปิดครบงวด — กรุณาตรวจสอบและดำเนินการคืนเงินลูกค้าหรือปรับปรุงบัญชีตามที่ผู้สอบบัญชีกำหนด ` +
+          `(ระบบไม่ตั้งรายการบัญชีอัตโนมัติ เพราะต้องให้ CPA ตัดสินก่อน) · contractId: ${contractId}`,
+        priority: 'MEDIUM',
+        tags: [RESIDUAL_PARK_TODO_TAG],
+        createdById: systemUser.id,
+      },
+    });
+  } catch (err) {
+    // Never rethrow — see the R-1 note above. Sentry already carries the residual.
+    logger.error(
+      `Residual park Todo failed for contract ${completed.contractNumber} (${amountText}): ${String(err)}`,
+    );
+    Sentry.captureException(err);
+  }
+}
+
 /**
  * Check if contract is fully paid → mark COMPLETED, bump call-log recording
  * lifecycle, release product ownership. tx-aware: callers inside a money $tx
@@ -152,8 +249,24 @@ export async function checkContractCompletion(
   const completed = await db.contract.update({
     where: { id: contractId },
     data: { status: 'COMPLETED' },
-    select: { productId: true },
+    select: { productId: true, contractNumber: true, rescheduleAdvanceBalance: true },
   });
+
+  // I-5 (review 2026-08-16): residual park money on a contract that ran to term.
+  // The park bucket (ค่าปรับดิวพักงวดสุดท้าย) is relieved ONLY at the last
+  // installment and is capped there at that installment's total — with several
+  // reschedules it routinely exceeds one installment, so a contract can complete
+  // with real customer money still sitting as a 21-1103 credit. A contract that
+  // simply runs to term NEVER touches JP4 (the payoff sweep the spec assumed),
+  // so nothing else would ever notice.
+  //
+  // Deliberately NO automatic refund/income JE here — which of the two it is, is
+  // a CPA call, not a code call. Alarm + a MEDIUM Todo so a human resolves it.
+  //
+  // R-1: fired on the ROOT client (`prisma`, NOT `db`) and NOT awaited, so it can
+  // neither poison nor roll back the caller's money tx. See the helper's JSDoc for
+  // why try/catch alone would be insufficient and what trade-off this accepts.
+  void alarmResidualParkOnCompletion(prisma, logger, contractId, completed);
 
   // Recording lifecycle: STANDARD → CLOSED so storage cron / GCS lifecycle
   // can transition recordings to a cheaper tier. Only bump rows still on

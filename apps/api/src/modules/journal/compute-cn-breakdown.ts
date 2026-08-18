@@ -114,8 +114,16 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * Shared verbatim by both selection paths of `computeInstallmentOutstanding`
  * (DUE for ECL, ACCRUED for CN) per the 2026-07-26 ECL-per-installment plan's
  * Global Constraints — this formula must never be re-derived independently.
+ *
+ * EXPORTED (2026-08-17) so out-of-module callers that need "how much is still
+ * owed on this Payment row" import it instead of copying it. Current external
+ * caller: `InstallmentAccrual2ATemplate`'s park-relief cap (I-3) — see
+ * `cpa-templates/installment-accrual-2a.template.ts`. The SQL twin in
+ * `dashboard-overview.service.ts` (getCashForecast) cannot import TS and is
+ * instead pinned to this function by the anti-drift integration test
+ * `dashboard/__tests__/cash-forecast-sql.integration.spec.ts`.
  */
-function feeNettedOutstanding(
+export function feeNettedOutstanding(
   payment: Pick<CnPaymentInput, 'amountDue' | 'amountPaid' | 'lateFee' | 'lateFeeWaived'>,
   installmentTotal: Decimal,
 ): Decimal {

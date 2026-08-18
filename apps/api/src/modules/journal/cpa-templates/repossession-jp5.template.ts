@@ -26,6 +26,17 @@ export interface RepossessionInput {
   postedAt?: Date;
   /** เงินคืนส่วนต่างลูกค้า — ตั้งหนี้ ณ วันยึด (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) */
   customerRefund?: Decimal;
+  /**
+   * ยอดปลดหนี้ถังพักงวดสุดท้าย (`Contract.rescheduleAdvanceBalance`, GL 21-1103)
+   * — ค่าธรรมเนียมปรับดิว (6a/6b) ที่ยอดปิดสัญญา (computePayoffQuote) หักให้
+   * ลูกค้าไปแล้ว (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3). ต้องเป็นยอดที่ยอดปิด
+   * **ดูดซับจริง** — caller ใช้ `quote.rescheduleAdvanceApplied`.
+   *
+   * วางเป็น `Dr 21-1103` ก่อนคำนวณ plug ขาดทุน/กำไร → plug ดูดซับให้เอง
+   * (ขาดทุนลด / กำไรเพิ่ม เท่ายอดปลดหนี้พอดี) — pattern เดียวกับ customerRefund
+   * (21-1107) ไม่มีสูตรใหม่.
+   */
+  parkRelief?: Decimal;
 }
 
 /**
@@ -286,6 +297,26 @@ export class RepossessionJP5Template {
       });
     }
 
+    // คำสั่งเจ้าของ 2026-08-16 (§จุดหัก 3): ถังพักงวดสุดท้าย — ยอดปิดสัญญาหักให้
+    // ลูกค้าไปแล้ว จึงต้องปลดหนี้ 21-1103 จริงในบัญชีด้วย ไม่งั้นเครดิตผีค้างอยู่
+    // บนสัญญาที่ยึดไปแล้ว (บั๊ก C-3). วางก่อน plug → ขาดทุนลด/กำไรเพิ่มอัตโนมัติ
+    // (pattern เดียวกับ customerRefund ด้านบน). clamp ด้วยยอด 21-1103 จริงของ
+    // สัญญานี้ — ห้ามดัน 21-1103 ติดลบไม่ว่ากรณีใด.
+    const parkReliefIn = input.parkRelief ?? zero;
+    let parkRelief = zero;
+    if (parkReliefIn.gt(0)) {
+      const bal21_1103 = await glBal('21-1103', 'cr');
+      parkRelief = Decimal.max(0, Decimal.min(parkReliefIn, bal21_1103));
+    }
+    if (parkRelief.gt(0)) {
+      lines.push({
+        accountCode: '21-1103',
+        dr: parkRelief,
+        cr: zero,
+        description: `หักเงินพักปรับดิว ${parkRelief.toFixed(2)} ฿ (ยึดคืน)`,
+      });
+    }
+
     // ---- Loss/gain from the balance equation (not a separately re-derived formula) ----
     // Every line above already sweeps its account to the GL balance; whatever
     // is left over to balance the JE IS the loss (Cr > Dr) or gain (Dr > Cr).
@@ -379,6 +410,7 @@ export class RepossessionJP5Template {
       // M1 clamp — never report a negative "released" amount in metadata,
       // even in the negative-provisionBalance GL-anomaly case above.
       releasedProvision: Decimal.max(0, release),
+      parkRelief,
       lines,
     };
   }
@@ -386,7 +418,7 @@ export class RepossessionJP5Template {
   async execute(
     input: RepossessionInput,
     tx?: Prisma.TransactionClient,
-  ): Promise<{ entryNo: string }> {
+  ): Promise<{ entryNo: string; parkRelief: Decimal }> {
     const client = tx ?? this.prisma;
     const built = await this.buildJe(input, client);
 
@@ -413,6 +445,9 @@ export class RepossessionJP5Template {
           // Task 5 (2026-07-26) — Bad Debt provision (11-2102) released back to
           // 51-1103 on this contract (0.00 when nothing was left to release).
           releasedProvision: built.releasedProvision.toFixed(2),
+          // ถังพักงวดสุดท้ายที่ปลดหนี้ไปกับ JE นี้ (คำสั่งเจ้าของ 2026-08-16) —
+          // stamp เฉพาะเมื่อมีจริง เพื่อไม่ให้ metadata ของสัญญาทั่วไปเปลี่ยนรูป
+          ...(built.parkRelief.gt(0) ? { parkRelief: built.parkRelief.toFixed(2) } : {}),
           ...(input.collectedByShop
             ? { collectedByShop: true, shopReceivable: input.depositAccountCode }
             : {}),
@@ -422,7 +457,9 @@ export class RepossessionJP5Template {
       tx,
     );
 
-    return { entryNo: result.entryNumber };
+    // parkRelief = ยอดที่ลงขา Dr 21-1103 จริง (หลัง clamp ด้วย GL) — caller ต้อง
+    // ใช้ค่านี้ตัดคอลัมน์ rescheduleAdvanceBalance ไม่ใช่ค่าที่ส่งเข้ามา
+    return { entryNo: result.entryNumber, parkRelief: built.parkRelief };
   }
 
   /**

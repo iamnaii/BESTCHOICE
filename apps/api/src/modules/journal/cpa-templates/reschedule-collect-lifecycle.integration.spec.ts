@@ -217,7 +217,8 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     await prisma.systemConfig.deleteMany({
       where: { key: { in: LATE_FEE_KEYS.map(([key]) => key) } },
     });
-    await prisma.$disconnect();
+    // NOTE: $disconnect() moved to the LAST suite's afterAll in this file — the
+    // C-1 suite below shares this PrismaClient and runs after this one.
   });
 
   it('6a executeWithCollect: Dr 11-1101 454.00 / Cr 21-1103 354 / Cr 42-1103 100.00, advance +354, lateFee reset, dates +7d, audit written', async () => {
@@ -495,5 +496,243 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
     const contractAfter = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
     expect(new Decimal(contractAfter.rescheduleAdvanceBalance.toString()).toFixed(2)).toBe('0.00');
     expect(new Decimal(contractAfter.advanceBalance.toString()).toFixed(2)).toBe('0.00');
+  });
+
+  /**
+   * I-1 (final review 2026-08-16) — RESTORED coverage.
+   *
+   * The pre-rewrite test 3 asserted that `reconstructPriorCleared` counts the
+   * 354 advance-consume so the following receipt clears only the REMAINDER.
+   * The rewrite moved the receipt to an installment that has NO consume, which
+   * made the "Σ(Cr 11-2103) exactly once" invariant vacuous — and left the
+   * park-consume-then-receipt interaction (the one C-1 breaks) untested.
+   *
+   * This is that interaction on the LAST installment (partial park coverage:
+   * park 354 < installmentTotal). The FULL-coverage variant — where the park
+   * consume equals installmentTotal, which is what C-1 actually breaks — is the
+   * dedicated suite at the bottom of this file.
+   */
+  it('receipt on installment #12 AFTER the park consume clears only the remainder — Σ(Cr 11-2103) counted exactly once', async () => {
+    const journal = new JournalAutoService(prisma as any);
+    const tpl = new PaymentReceiptTemplate(journal, prisma as any);
+    const sched12 = await prisma.installmentSchedule.findUniqueOrThrow({
+      where: { contractId_installmentNo: { contractId: c.id, installmentNo: 12 } },
+    });
+
+    // The receipt primitive's basis is the UN-residual-adjusted installmentTotal
+    // (1,515.83) — the 2A accrual's last-period residual adjustment (1,515.87)
+    // is a pre-existing, unrelated 4-satang asymmetry between the two bases.
+    // 1,515.83 − 354 (already cleared by the park consume) = 1,161.83.
+    const { split } = await tpl.execute({
+      installmentScheduleId: sched12.id,
+      delta: D('1161.83'),
+      debitAccountCode: '11-1201',
+      isFinalReceipt: true,
+    });
+    expect(split.principalCleared.toFixed(2)).toBe('1161.83');
+    expect(split.principalRemainingAfter.toFixed(2)).toBe('0.00');
+
+    // Σ over EVERY JE stamped with installment #12: the park consume's 354 and
+    // this receipt's 1,161.83 — together exactly ONE installmentTotal, never two.
+    const instEntries = await prisma.journalEntry.findMany({
+      where: {
+        metadata: { path: ['installmentScheduleId'], equals: sched12.id } as any,
+        deletedAt: null,
+      },
+      include: { lines: true },
+    });
+    const cr11 = instEntries
+      .flatMap((e) => e.lines)
+      .filter((l) => l.accountCode === '11-2103')
+      .reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+    expect(cr11.toFixed(2)).toBe('1515.83');
+    // Explicitly NOT the double-credit shape (354 + a full 1,515.83).
+    expect(cr11.toFixed(2)).not.toBe('1869.83');
+  });
+});
+
+/**
+ * C-1 regression (final review 2026-08-16) — the park-consume JE must be
+ * visible to `reconstructPriorCleared` even when it FULLY covers the
+ * installment.
+ *
+ * `InstallmentAccrual2ATemplate` stamps the park relief with `tag:'2B'`, so
+ * `reconstructPriorCleared` SELECTS it — but its discriminator only ever
+ * special-cased `flow === 'advance-consume-on-accrual'`. Everything else fell
+ * through to the legacy full-clear rule (`if (!entryCr11.lt(installmentTotal))
+ * continue;`), which DROPS an entry that cleared the whole installment. A later
+ * receipt on that installment then re-cleared the full amount →
+ * Σ(Cr 11-2103) = 2 × installmentTotal. This is verbatim the failure the file's
+ * own doc comment calls "FINAL-REVIEW BLOCKER 1".
+ *
+ * A full park consume is the FEATURE'S HEADLINE CASE, not an edge case: a
+ * contract rescheduled several times routinely parks more than one
+ * installment's worth (`min(park, installmentTotal)` then equals
+ * installmentTotal exactly).
+ *
+ * Separate suite (own contract + own wipe) because the lifecycle suite above
+ * drains its park bucket to 0 by design.
+ */
+describe('park consume == installmentTotal → a later receipt must NOT double-credit 11-2103 (C-1)', () => {
+  let c2: StandardContract;
+  let sched12Id: string;
+  let accruedInstallmentTotal: Decimal;
+
+  const sumFor = async (code: string, side: 'debit' | 'credit'): Promise<Decimal> => {
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        metadata: { path: ['installmentScheduleId'], equals: sched12Id } as any,
+        deletedAt: null,
+      },
+      include: { lines: true },
+    });
+    return entries
+      .flatMap((e) => e.lines)
+      .filter((l) => l.accountCode === code)
+      .reduce((s, l) => s.plus(new Decimal(l[side].toString())), new Decimal(0));
+  };
+
+  beforeAll(async () => {
+    await prisma.journalPostAuditLog.deleteMany({});
+    await prisma.journalLine.deleteMany({});
+    await prisma.journalEntry.deleteMany({});
+    await prisma.receipt.deleteMany({});
+    await prisma.payment.deleteMany({});
+    await prisma.installmentSchedule.deleteMany({});
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({
+      select: { contractId: true },
+    });
+    await prisma.contract.deleteMany({
+      where: { id: { notIn: woPoisoned.map((p) => p.contractId) } },
+    });
+
+    await seedFinanceCoa(prisma);
+    await ensureFinanceCompany();
+    await ensureSystemAdminUser();
+
+    const journal = new JournalAutoService(prisma as any);
+    c2 = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c2.id);
+
+    // Multi-reschedule contract: 2,500 parked — more than the last
+    // installment's total, so the 2A relief caps at installmentTotal exactly.
+    await prisma.contract.update({
+      where: { id: c2.id },
+      data: { rescheduleAdvanceBalance: '2500.00' },
+    });
+
+    const sched12 = await prisma.installmentSchedule.findUniqueOrThrow({
+      where: { contractId_installmentNo: { contractId: c2.id, installmentNo: 12 } },
+    });
+    sched12Id = sched12.id;
+
+    // Payment row with a large placeholder amountDue so the I-3 outstanding cap
+    // does not bind here — this suite is about the FULL-coverage park consume.
+    await prisma.payment.create({
+      data: {
+        contractId: c2.id,
+        installmentNo: 12,
+        dueDate: sched12.dueDate,
+        amountDue: '99999.99',
+        amountPaid: '0',
+        status: 'PENDING',
+      },
+    });
+
+    await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(sched12Id);
+
+    // Residual-adjusted installmentTotal read off the 2A JE itself (kept in ONE
+    // place — the template — rather than hardcoded here).
+    const accrualJe = await prisma.journalEntry.findFirstOrThrow({
+      where: {
+        AND: [
+          { metadata: { path: ['tag'], equals: '2A' } } as any,
+          { metadata: { path: ['installmentScheduleId'], equals: sched12Id } } as any,
+        ],
+        deletedAt: null,
+      },
+      include: { lines: true },
+    });
+    accruedInstallmentTotal = new Decimal(
+      accrualJe.lines.find((l) => l.accountCode === '11-2103')!.debit.toString(),
+    );
+  });
+
+  afterAll(async () => {
+    await prisma.journalLine.deleteMany({});
+    await prisma.journalEntry.deleteMany({});
+    await prisma.receipt.deleteMany({});
+    await prisma.payment.deleteMany({});
+    await prisma.installmentSchedule.deleteMany({});
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({
+      select: { contractId: true },
+    });
+    await prisma.contract.deleteMany({
+      where: { id: { notIn: woPoisoned.map((p) => p.contractId) } },
+    });
+    await prisma.$disconnect();
+  });
+
+  it('the park consume fully covers the last installment (consume == installmentTotal)', async () => {
+    const parkJe = await prisma.journalEntry.findFirstOrThrow({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } } as any,
+          { metadata: { path: ['installmentScheduleId'], equals: sched12Id } } as any,
+        ],
+        deletedAt: null,
+      },
+      include: { lines: true },
+    });
+    const parkConsume = new Decimal(
+      parkJe.lines.find((l) => l.accountCode === '21-1103')!.debit.toString(),
+    );
+    expect(parkConsume.toFixed(2)).toBe(accruedInstallmentTotal.toFixed(2));
+
+    const after = await prisma.contract.findUniqueOrThrow({ where: { id: c2.id } });
+    expect(new Decimal(after.rescheduleAdvanceBalance.toString()).toFixed(2)).toBe(
+      new Decimal('2500').minus(parkConsume).toFixed(2),
+    );
+  });
+
+  it('a subsequent full receipt on that SAME installment is refused — Σ(Cr 11-2103) stays at exactly one installmentTotal', async () => {
+    const journal = new JournalAutoService(prisma as any);
+    const tpl = new PaymentReceiptTemplate(journal, prisma as any);
+
+    const crBefore = await sumFor('11-2103', 'credit');
+    expect(crBefore.toFixed(2)).toBe(accruedInstallmentTotal.toFixed(2));
+
+    // Staff records a "full payment" on an installment the park bucket already
+    // settled. With the park flow registered in reconstructPriorCleared's
+    // always-include allow-list, priorPrincipalCleared == installmentTotal →
+    // principalRemaining == 0 → the whole delta becomes overpayRounding, which
+    // breaches the 1฿ tolerance and the primitive REFUSES to post.
+    // Without the fix the JE posts and credits 11-2103 a SECOND time.
+    let posted = false;
+    let thrown: unknown = null;
+    try {
+      await tpl.execute({
+        installmentScheduleId: sched12Id,
+        delta: D('1515.83'),
+        debitAccountCode: '11-1201',
+        isFinalReceipt: true,
+      });
+      posted = true;
+    } catch (err) {
+      thrown = err;
+    }
+
+    const crAfter = await sumFor('11-2103', 'credit');
+    const drAfter = await sumFor('11-2103', 'debit');
+
+    // The money invariant is the assertion that matters: one accrual Dr, one
+    // relief Cr — never a second Cr for the same installment.
+    expect(
+      crAfter.toFixed(2),
+      'Σ(Cr 11-2103) must stay at exactly ONE installmentTotal — a second credit means the park consume was invisible to reconstructPriorCleared (C-1)',
+    ).toBe(accruedInstallmentTotal.toFixed(2));
+    expect(crAfter.toFixed(2)).toBe(drAfter.toFixed(2)); // receivable nets to 0, not negative
+    expect(posted, 'the receipt must be refused, not posted').toBe(false);
+    expect(thrown).toBeTruthy();
   });
 });

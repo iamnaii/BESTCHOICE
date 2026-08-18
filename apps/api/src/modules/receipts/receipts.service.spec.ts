@@ -67,6 +67,12 @@ describe('ReceiptsService', () => {
       },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+        // R-2: the void path probes for a reschedule-6b park sweep on this payment
+        // (RESCHEDULE_ADVANCE_PARKED vs …_UNPARKED, newest wins). null = no sweep,
+        // which is correct for these fixtures: their Cr 21-1103 is an ordinary
+        // parked overpay-advance, not a 6b fee, so it restores to `advanceBalance`
+        // exactly as before.
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       // generateReceiptNumber (credit-note number) uses $executeRaw for the advisory
       // lock and $queryRaw for the last-number lookup (PR 3.1 — lock moved off $queryRaw).

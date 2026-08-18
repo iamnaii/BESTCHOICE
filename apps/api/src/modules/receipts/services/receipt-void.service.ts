@@ -9,6 +9,32 @@ import { ReceiptNumberService } from './receipt-number.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 
 /**
+ * Metadata keys `PaymentReceiptOrchestrator` stamps on a receipt JE whose
+ * `Dr 21-1103` line mixes the two application-level advance buckets:
+ *   - `genericConsume` → `Contract.advanceBalance`            (FIFO, next installment)
+ *   - `parkConsume`    → `Contract.rescheduleAdvanceBalance`  (พักงวดสุดท้าย, 6a/6b fee)
+ * Both post to the SAME GL account, so the ledger cannot tell them apart — only
+ * this stamp can. Declared here (the READER) rather than in the orchestrator so
+ * importing it never closes an import cycle receipts↔payments: this file imports
+ * nothing from the payments module.
+ */
+export const JE_ADVANCE_SPLIT_META = {
+  generic: 'genericConsume',
+  park: 'parkConsume',
+} as const;
+
+/**
+ * R-2: audit action written when a void takes a reschedule-6b fee back OUT of the
+ * park bucket. Pairs with `RESCHEDULE_ADVANCE_PARKED` (written by the phase-2
+ * sweep in RescheduleCollectService): whichever of the two is NEWER for a given
+ * (contract, payment) says whether the sweep is currently in effect. Audit rows
+ * are immutable here (DB trigger), so this pairing — not an UPDATE — is how the
+ * state is expressed, and it is what lets a void → re-pay cycle sweep again
+ * instead of being suppressed by the stale PARKED row.
+ */
+export const RESCHEDULE_ADVANCE_UNPARKED = 'RESCHEDULE_ADVANCE_UNPARKED';
+
+/**
  * Contract statuses whose closing transition already moved state that an
  * un-pay cannot safely unwind (ownership released, write-off posted,
  * exchange/cancellation reversal chains, ปพพ.386 termination). Voiding a
@@ -231,6 +257,12 @@ export class ReceiptVoidService {
       } | null = null;
       let voidedSiblingReceipts = 0;
       let advanceAdj = new Prisma.Decimal(0);
+      /**
+       * I-2 (review 2026-08-16): the park bucket's share of the reversed
+       * `Dr 21-1103`, restored to `Contract.rescheduleAdvanceBalance` instead of
+       * the FIFO `advanceBalance`. Read from the orchestrator's split stamp.
+       */
+      let parkAdj = new Prisma.Decimal(0);
       let creditAdj = new Prisma.Decimal(0);
 
       if (receipt.paymentId) {
@@ -268,6 +300,9 @@ export class ReceiptVoidService {
         const originalEntries = matchedEntries.filter(
           (e) => (e.metadata as any)?.reversed !== true,
         );
+        // R-2: total Cr 21-1103 across this receipt's JEs — the 6b park sweep is
+        // reconciled against it after the loop (see the block below).
+        let totalCr21 = new Prisma.Decimal(0);
         for (const originalEntry of originalEntries) {
           await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx);
           // Denormalized-balance restore: the reversal flips the 21-1103 /
@@ -279,24 +314,114 @@ export class ReceiptVoidService {
           // original Cr 21-1103 = overpay parked as advance (take it back).
           // Original Dr 21-5101 = credit consumed by applyCreditBalance
           // (give it back); matched tags never Cr 21-5101.
+          //
+          // I-2: the Dr 21-1103 of ONE receipt JE can mix both application-level
+          // buckets, so it is accumulated PER ENTRY and only then split — the
+          // stamp is per-JE and must not be applied to another JE's debit.
+          let entryDr21 = new Prisma.Decimal(0);
+          let entryCr21 = new Prisma.Decimal(0);
           for (const line of (originalEntry as any).lines ?? []) {
             if (line.accountCode === '21-1103') {
-              advanceAdj = advanceAdj
-                .plus(new Prisma.Decimal(line.debit ?? 0))
-                .minus(new Prisma.Decimal(line.credit ?? 0));
+              entryDr21 = entryDr21.plus(new Prisma.Decimal(line.debit ?? 0));
+              entryCr21 = entryCr21.plus(new Prisma.Decimal(line.credit ?? 0));
             } else if (line.accountCode === '21-5101') {
               creditAdj = creditAdj.plus(new Prisma.Decimal(line.debit ?? 0));
             }
           }
+          // UNSTAMPED JE → the whole debit is generic. That is CORRECT, not a
+          // gap: the park bucket is forward-only (owner directive 2026-08-16),
+          // so no JE posted before the feature shipped can hold park money.
+          // Do NOT "fix" this branch to guess a split.
+          const stampedPark = (originalEntry.metadata as Record<string, unknown> | null)?.[
+            JE_ADVANCE_SPLIT_META.park
+          ];
+          const parkPortion =
+            stampedPark == null
+              ? new Prisma.Decimal(0)
+              : // Clamp into [0, entryDr21]: a corrupt/edited stamp must never
+                // invent park money nor drive the generic restore negative.
+                Prisma.Decimal.max(
+                  0,
+                  Prisma.Decimal.min(new Prisma.Decimal(String(stampedPark)), entryDr21),
+                );
+          parkAdj = parkAdj.plus(parkPortion);
+          advanceAdj = advanceAdj.plus(entryDr21.minus(parkPortion)).minus(entryCr21);
+          totalCr21 = totalCr21.plus(entryCr21);
         }
         // Zero found (legacy no-JE payment) → graceful skip (unchanged behaviour).
 
-        if (!advanceAdj.isZero() || !creditAdj.isZero()) {
+        // R-2 (re-review 2026-08-18): the stamp split above covers the DEBIT
+        // direction only, but reschedule 6b parks its fee through the CREDIT
+        // direction — and that leg is deliberately unstamped, because when phase 1
+        // posts `Cr 21-1103 = fee` the money genuinely IS generic advance; only
+        // phase 2 (a SEPARATE tx, in RescheduleCollectService) sweeps it
+        // generic → park. Without this block a void of that receipt subtracts the
+        // whole credit from `advanceBalance` (driving it negative by the fee) while
+        // the same money stays stranded in `rescheduleAdvanceBalance` with no GL
+        // backing — phantom park money.
+        //
+        // The sweep writes its RESCHEDULE_ADVANCE_PARKED audit row in the SAME tx
+        // that moved the two columns, so that row is the authoritative record of
+        // how much of THIS payment's credit now sits in the park bucket. Pair it
+        // with an UNPARKED row written here: audit rows are immutable in this
+        // codebase (DB trigger), so "is the sweep still in effect?" is answered by
+        // whichever of the two is newer — which also lets a void → re-pay cycle
+        // sweep again instead of being suppressed by the stale PARKED row.
+        if (receipt.paymentId && totalCr21.gt(0)) {
+          const parkAudit = (action: string) =>
+            tx.auditLog.findFirst({
+              where: {
+                action,
+                entity: 'contract',
+                entityId: receipt.contractId,
+                newValue: { path: ['paymentId'], equals: receipt.paymentId },
+              } as Prisma.AuditLogWhereInput,
+              orderBy: { createdAt: 'desc' },
+              select: { id: true, createdAt: true, newValue: true },
+            });
+          const [parked, unparked] = await Promise.all([
+            parkAudit('RESCHEDULE_ADVANCE_PARKED'),
+            parkAudit(RESCHEDULE_ADVANCE_UNPARKED),
+          ]);
+          const sweepInEffect =
+            parked != null && (unparked == null || parked.createdAt > unparked.createdAt);
+          if (sweepInEffect) {
+            const swept = new Prisma.Decimal(
+              String((parked.newValue as Record<string, unknown> | null)?.sweptAmount ?? 0),
+            );
+            // Clamp into [0, totalCr21]: never take back more park than this
+            // receipt actually credited, whatever the audit payload claims.
+            const fromPark = Prisma.Decimal.max(0, Prisma.Decimal.min(swept, totalCr21));
+            if (fromPark.gt(0)) {
+              // Move that slice off the generic restore and onto the park restore.
+              advanceAdj = advanceAdj.plus(fromPark);
+              parkAdj = parkAdj.minus(fromPark);
+              await tx.auditLog.create({
+                data: {
+                  action: RESCHEDULE_ADVANCE_UNPARKED,
+                  entity: 'contract',
+                  entityId: receipt.contractId,
+                  userId: issuedById,
+                  newValue: {
+                    paymentId: receipt.paymentId,
+                    receiptId: receipt.id,
+                    unparkedAmount: fromPark.toString(),
+                    parkedAuditId: parked.id,
+                    source: 'RECEIPT_VOID_6B_FEE_UNPARK',
+                  },
+                },
+              });
+            }
+          }
+        }
+
+        if (!advanceAdj.isZero() || !creditAdj.isZero() || !parkAdj.isZero()) {
           const updatedContract = await tx.contract.update({
             where: { id: receipt.contractId },
             data: {
               ...(advanceAdj.isZero() ? {} : { advanceBalance: { increment: advanceAdj } }),
               ...(creditAdj.isZero() ? {} : { creditBalance: { increment: creditAdj } }),
+              ...(parkAdj.isZero() ? {} : { rescheduleAdvanceBalance: { increment: parkAdj } }),
             },
           });
           // A parked advance may have been consumed by ANOTHER installment
@@ -315,6 +440,24 @@ export class ReceiptVoidService {
                 receiptId: receipt.id,
                 advanceBalance: updatedContract.advanceBalance.toString(),
                 advanceAdj: advanceAdj.toString(),
+              },
+            });
+          }
+          // Same alarm for the park bucket: a park credit consumed by the LAST
+          // installment's 2A accrual before this void takes it back drives the
+          // column negative. Nothing crashes (every reader guards .gt(0)).
+          if (
+            updatedContract.rescheduleAdvanceBalance != null &&
+            new Prisma.Decimal(updatedContract.rescheduleAdvanceBalance).isNegative()
+          ) {
+            Sentry.captureMessage('Receipt void drove Contract.rescheduleAdvanceBalance negative', {
+              level: 'warning',
+              tags: { subsystem: 'reschedule-park' },
+              extra: {
+                contractId: receipt.contractId,
+                receiptId: receipt.id,
+                rescheduleAdvanceBalance: updatedContract.rescheduleAdvanceBalance.toString(),
+                parkAdj: parkAdj.toString(),
               },
             });
           }
@@ -443,6 +586,11 @@ export class ReceiptVoidService {
             voidedSiblingReceipts,
             advanceBalanceRestored: advanceAdj.isZero() ? null : advanceAdj.toString(),
             creditBalanceRestored: creditAdj.isZero() ? null : creditAdj.toString(),
+            // I-2: park bucket restored separately (พักงวดสุดท้าย) — a non-null
+            // value here means the voided receipt had consumed reschedule-fee
+            // money, which went back to `rescheduleAdvanceBalance`, NOT to the
+            // FIFO `advanceBalance`.
+            rescheduleAdvanceRestored: parkAdj.isZero() ? null : parkAdj.toString(),
           },
         },
       });

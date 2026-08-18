@@ -229,6 +229,139 @@ Schema: 3 nullable fields on `FixedAsset` (migration `20260926000000_asset_invoi
 
 ---
 
+## ค่าปรับดิวพักงวดสุดท้าย (Reschedule Fee Park — คำสั่งเจ้าของ 2026-08-16)
+
+Spec: `docs/superpowers/specs/2026-08-16-reschedule-fee-park-last-installment-design.md`
+Schema: `Contract.rescheduleAdvanceBalance Decimal @default(0) @db.Decimal(12, 2)`
+(@map `reschedule_advance_balance`, migration `20260992000000_reschedule_advance_balance` —
+additive `NOT NULL DEFAULT 0`, ไม่ rewrite ตาราง)
+
+**GL ไม่เปลี่ยน — ยังเป็น 21-1103 เงินรับล่วงหน้าเหมือนเดิม.** `rescheduleAdvanceBalance`
+เป็นถัง **ระดับ application เท่านั้น** ที่แยกเงินค่าธรรมเนียมปรับดิว (6a/6b) ออกจาก
+`Contract.advanceBalance` (ถังรวม FIFO เดิม) ทั้งสองถังโพสต์ลง 21-1103 บัญชีเดียวกัน ต่างกันที่
+**กติกาการหัก**: ถังรวมถูก 2A accrual หัก FIFO เข้างวดถัดไป ส่วนถังพัก **แตะได้เฉพาะงวดสุดท้าย**
+ตาม CPA CSV (`case-6a/6b-reschedule-*.csv`) ที่กำหนดว่าค่าธรรมเนียมปรับดิว = เงินจ่ายล่วงหน้า
+ของงวดสุดท้าย. เครดิตจากจ่ายเกินธรรมดา (D1) ยังหักงวดถัดไปเหมือนเดิม (คำตัดสิน 2026-06-25 คงอยู่).
+
+### จุดเครดิต (เงินเข้าถังพัก)
+
+| Flow | ที่ | หมายเหตุ |
+|---|---|---|
+| 6a (เก็บค่าธรรมเนียมแยกใบ) | `reschedule-collect.service.ts` — `rescheduleAdvanceBalance: { increment: fee }` | JE เดิม `Dr เงิน / Cr 21-1103` ไม่เปลี่ยน · description `'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)'` (preview ใช้สตริงเดียวกัน byte-identical) |
+| 6b (รวมกับค่างวด) | phase 1 เครดิตเข้าถังรวมตาม D1 ปกติ → phase 2 (`bundledPaid`) **sweep** `min(fee, advanceBalance)` ถังรวม → ถังพัก ใน tx เดียว | phase 1/2 เป็นคนละ transaction — sweep ที่ **สั้นกว่า fee** (รวมกรณี 0) ยิง Sentry warning `subsystem: 'reschedule-park'` (I-7) · idempotent ด้วย probe หา AuditLog `RESCHEDULE_ADVANCE_PARKED` ที่ผูก `(contract, paymentId)` ก่อน sweep (M-3) |
+
+### จุดหัก (เงินออกจากถังพัก) — มีแค่ 3 ทาง
+
+1. **2A accrual ของงวดสุดท้าย** (`inst.installmentNo === c.totalMonths`) —
+   `InstallmentAccrual2ATemplate` หักถังรวมตามเดิมก่อน แล้วจึงหักถังพักด้วย JE แยกใบ
+   `Dr 21-1103 / Cr 11-2103`, description `'หักเงินพักปรับดิวเข้างวดสุดท้าย'`,
+   `metadata.flow = 'reschedule-park-consume'`, `reference = '<installmentScheduleId>:reschedule-park-consume'`.
+   **งวดอื่นห้ามแตะถังพักเด็ดขาด.**
+   Cap สองชั้น: `min(installmentTotal − genericConsumed, rowOutstanding)` โดย `rowOutstanding`
+   ใช้สูตร FEE-FIRST ชุดเดียวกับ `feeNettedOutstanding` ใน `compute-cn-breakdown.ts`
+   (งวดสุดท้ายที่จ่ายไปแล้วก่อน accrual → หักซ้ำไม่ได้, `11-2103` ติดลบไม่ได้ — I-3).
+2. **จ่ายงวดสุดท้ายก่อน accrual** (wizard → `PaymentReceiptOrchestrator`) — auto-consume
+   หักถังรวมก่อน เหลือเท่าไรจึงหักถังพัก, gate ด้วย `installmentNo === contract.totalMonths`
+   ทั้ง 3 ชั้น (FE `computeNetReceiptDue` / preview / orchestrator) เป็น predicate เดียวกัน
+   ป้องกัน preview ≠ posted. ขา `Dr 21-1103` ของใบเสร็จรวมสองถังเป็นบรรทัดเดียว แต่ JE ถูก stamp
+   `metadata.genericConsume` / `metadata.parkConsume` (`JE_ADVANCE_SPLIT_META` ใน
+   `receipt-void.service.ts`) เพื่อให้ **void แยกคืนถูกถัง** — JE ที่ไม่มี stamp (ก่อนฟีเจอร์นี้)
+   คืนเข้าถังรวมทั้งก้อนโดยตั้งใจ เพราะถังพักเป็น forward-only จึงไม่มีทางมีเงินพักอยู่ในนั้น (I-2).
+3. **ปิดสัญญาก่อนกำหนด — JP4 + JP5 พร้อม relief leg** (ดูหัวข้อถัดไป).
+
+### JP4 / JP5 — relief leg `Dr 21-1103` (C-3, 2026-08-17)
+
+`computePayoffQuote` นับถังพักเป็นเครดิตลูกค้า (รวมเข้า `advancePayment`) ทำให้ยอดที่ลูกค้าจ่าย
+ลดลง — **ห้าม netting เฉยๆ โดยไม่ปลดหนี้ 21-1103** ไม่งั้น `Dr เงินสด` จะสูงกว่าเงินที่รับจริง
+เท่ากับยอดพัก และเหลือเครดิตผีค้างบนสัญญาที่ปิดไปแล้ว. รูปแบบที่ลงจริง:
+
+```
+Dr <cash>    = totalCash − parkRelief
+Dr 21-1103   = parkRelief          ← บรรทัดใหม่ (ไม่ออกเลยเมื่อ parkRelief = 0)
+```
+
+ยอดเดบิตรวมเท่าเดิม ⇒ **ทุกขา Cr เหมือนเดิมทุกไบต์ ⇒ golden JP4/JP5 เดิมไม่ขยับ**.
+
+| เรื่อง | กติกา |
+|---|---|
+| `parkRelief` คือเท่าไร | **ไม่ใช่ยอดถังพักทั้งก้อน** — คือส่วนที่ยอดปิดดูดซับจริง: `rescheduleAdvanceApplied = payoffBeforeLateFees(ไม่มีพัก) − payoffBeforeLateFees(มีพัก)` clamp `[0, park]` (ฟิลด์ใหม่บน `computePayoffQuote`, optional + `?? 0` ⇒ golden เดิม 95 เคสไม่ขยับ) |
+| ทำไมไม่ใช่ทั้งก้อน | ถังพักลด `remainingBalance` → ลด gross profit → **ลดส่วนลดดอกเบี้ย (52-1106)** ด้วย · เคส CPA prod: พัก 354 ที่ส่วนลด 50% ลดยอดลูกค้าจ่ายจริงแค่ **188.58** — ปลด 354 = สร้างบั๊กกลับด้าน (ขาเงินสดต่ำไป 165.42) · ส่วนที่เหลือค้างในคอลัมน์ = เคสของ alarm I-5 |
+| Clamp | JP4: `parkRelief ≤ totalCash` (ขาเงินสดติดลบไม่ได้) · JP5: clamp ด้วยยอด GL 21-1103 จริงของสัญญานั้น (`glContractBalance`) แล้ว `execute()` คืนยอดที่โพสต์จริงให้ caller ใช้ decrement คอลัมน์ |
+| JP5 วางบรรทัดตรงไหน | push `Dr 21-1103` **ก่อน** คำนวณ plug ขาดทุน/กำไร → plug ดูดซับเอง (pattern เดียวกับ `customerRefund`/21-1107 ไม่มีสูตรที่สอง) |
+| Decrement คอลัมน์ | อยู่ใน `$transaction` เดียวกับ JE เสมอ + AuditLog (ดูตารางล่าง) · preview (`getEarlyPayoffQuote`, `previewCalculation`) ใช้ `parkRelief` ตัวเดียวกัน ⇒ preview === posted |
+| Parity | `computePayoffQuote` ยังเป็นแหล่งเดียวของทั้งสองเส้นทาง — `payoff-parity-park.spec.ts` ปักว่า JP5 `closingAmount` === JP4 `totalPayoff` และ `parkRelief` ที่ทั้งสองใช้เป็นตัวเดียวกัน |
+
+**ยังไม่ตัดสิน (CPA-gated):** ยอดพักที่เหลือหลัง JP4/JP5 (residual) ระบบ **ไม่ตั้ง JE คืนเงิน/
+รับรู้รายได้ให้อัตโนมัติ** — ปล่อยค้างในคอลัมน์ + 21-1103 แล้วให้มนุษย์ตัดสิน. คำถาม
+"ถังพักควรลดฐานส่วนลดหรือไม่" ก็ยังเปิดอยู่ (ถ้าเจ้าของ/CPA สั่งว่า **ไม่ควรลด**
+`rescheduleAdvanceApplied` จะเท่ากับยอดพักเต็มโดยอัตโนมัติ แก้จุดเดียวใน `computePayoffQuote`).
+
+### Residual ตอนปิดครบงวด — alarm อย่างเดียว ไม่ตั้ง JE (I-5)
+
+สัญญาที่เดินครบงวดตามปกติ **ไม่เคยผ่าน JP4** จึงอาจปิดโดยยังมีเงินพักเหลือ (ปรับดิวหลายรอบ
+ถังพักอาจเกิน 1 งวด แต่ 2A cap ที่ `installmentTotal`). `checkContractCompletion`
+(`payment-helpers.ts`) จึงยิง `Sentry.captureMessage` level `warning`
+(`tags.subsystem = 'reschedule-park'`) + สร้าง **Todo MEDIUM** หนึ่งใบ (tag `reschedule-park`,
+`RESIDUAL_PARK_TODO_TAG`, ระบุเลขสัญญา + ยอด, dedup กัน void → re-pay สร้างซ้ำ) —
+pattern เดียวกับ `credit-note-delivery.service.ts`. **ไม่มี JE อัตโนมัติ** เพราะ
+"คืนเงินลูกค้า vs รับรู้เป็นรายได้" เป็นคำตัดสิน CPA (คลาสเดียวกับ opening-balance gap
+ใน interco spec §11). helper นี้ห้าม throw — alarm ต้องไม่ roll back เงินที่ลูกค้าจ่ายมาแล้ว.
+
+### Forward-only — ไม่มี backfill
+
+สัญญาที่ค่าธรรมเนียมปรับดิวถูกหักเข้างวดถัดไปไปแล้ว **ปล่อยตามนั้น** (คำตัดสินเจ้าของ
+2026-08-16). ไม่มีสคริปต์ backfill และไม่ต้องมี — คอลัมน์ default 0 ทำให้สัญญาเก่าทุกใบ
+เดินเส้นทางเดิมทุกประการ. ผลข้างเคียงที่ตั้งใจ: JE ก่อนฟีเจอร์นี้ไม่มี `metadata.parkConsume`
+stamp และ void ของมันคืนเข้าถังรวมทั้งก้อน — **ถูกต้องแล้ว ห้ามไป "แก้" ให้เดา split ย้อนหลัง**.
+
+### AuditLog action strings (M-4)
+
+`AuditLog.action` เป็น String ธรรมดา (ไม่มี Prisma enum) — action ใหม่ของรอบนี้:
+
+| Action | Entity | เขียนที่ | `newValue.source` |
+|---|---|---|---|
+| `RESCHEDULE_ADVANCE_PARKED` | `contract` | `reschedule-collect.service.ts` (6a เครดิตเข้าถัง / 6b phase-2 sweep) | `RESCHEDULE_COLLECT_6A_FEE`, `RESCHEDULE_COLLECT_6B_FEE_SWEEP` |
+| `RESCHEDULE_ADVANCE_CONSUMED` | `contract` | `payment-receipt-orchestrator.ts` (จ่ายงวดสุดท้าย), `contract-payment.service.ts` (JP4), `repossessions.service.ts` (JP5) | `RECORD_PAYMENT_LAST_INSTALLMENT_PARK_CONSUME`, `EARLY_PAYOFF_PARK_RELIEF`, `REPOSSESSION_PARK_RELIEF` |
+| `RESCHEDULE_ADVANCE_UNPARKED` | `contract` | `receipt-void.service.ts` (void ใบเสร็จ 6b ที่เคยถูก sweep) | `RECEIPT_VOID_6B_FEE_UNPARK` |
+
+**`RESCHEDULE_ADVANCE_UNPARKED` = คู่ตรงข้ามของ `PARKED` และเป็น "สถานะ" ของการ sweep (R-2).**
+6b ย้ายเงินเข้าถังพักผ่านขา **Cr** ซึ่ง**ไม่มี stamp** (ตอน phase 1 โพสต์ `Cr 21-1103` เงินก้อนนั้น
+ยังเป็นเครดิตธรรมดาจริงๆ — phase 2 คนละ tx ถึงค่อยกวาดเข้าถังพัก) ดังนั้น split-by-stamp ที่ใช้กับ
+ขา **Dr** ใช้ไม่ได้: ถ้าไม่ทำอะไรเลย void จะดึงเครดิตออกจากถังรวมทั้งก้อน (**`advanceBalance`
+ติดลบเท่าค่าธรรมเนียม**) แล้วปล่อยเงินก้อนเดียวกันค้างในถังพักโดยไม่มี GL หนุน. เนื่องจาก
+**AuditLog เป็น immutable (DB trigger)** จึงแก้แถวเดิมไม่ได้ — ใช้วิธี "แถวไหนใหม่กว่าชนะ" แทน:
+
+- `receipt-void.service.ts` อ่านคู่ (PARKED, UNPARKED) ของ `(contract, paymentId)` → ถ้า PARKED
+  ใหม่กว่า แปลว่า sweep ยังมีผล → ดึงเงินคืนจาก**ถังพัก** ไม่ใช่ถังรวม แล้วเขียน UNPARKED
+- `reschedule-collect.service.ts` probe ตัวเดิม (M-3 idempotency) **ต้องใช้ตรรกะเดียวกัน** —
+  void ใช้ payment row เดิม ถ้า probe หาแค่ PARKED มันจะเจอแถวเก่าแล้วปฏิเสธการ park ซ้ำ
+  ⇒ จ่ายรอบสองค่าธรรมเนียมจะไหลกลับไปเข้างวดถัดไป = **บั๊ก FIFO เดิมกลับมาแบบเงียบๆ**
+
+**กฎเหล็กของ alarm เงินพักคงเหลือ (R-1):** `alarmResidualParkOnCompletion` รับเฉพาะ
+`PrismaService` (root) — **ห้ามรับ tx client** และ **ห้าม await** จากเส้นทางการรับเงิน. เหตุผล:
+Postgres ทำให้ transaction เป็นพิษทันทีที่มี statement พัง ⇒ `try/catch` เพียงอย่างเดียว
+**ไม่พอ** (commit ไม่ผ่านอยู่ดี) — ตัว alarm ต้องไม่อยู่บน connection ของ tx เลย. ปัจจุบัน
+type system บังคับให้แล้ว (ส่ง `TransactionClient` เข้าไป = compile error) — อย่าคลายเป็น
+`Prisma.TransactionClient | PrismaService` เพื่อความสะดวก. ยิงจาก 2 จุด: `checkContractCompletion`
+(เส้นทาง orchestrator) และ cron 2A ตอน accrue งวดสุดท้ายแล้วไม่เหลืองวดค้าง (เคสที่ orchestrator
+ไม่เคยทำงาน — R-5).
+
+`newValue` ทุกใบมี `beforeParkBalance` / `afterParkBalance` (2dp string) เสมอ ⇒ ไล่ยอดถังจาก
+audit trail ได้ตรงๆ. 6b sweep เพิ่ม `before/afterGenericBalance` + `sweptAmount` ด้วย และ
+**AuditLog แถวนี้เองคือ idempotency marker ของ sweep** (เขียนใน tx เดียวกับการย้ายเงิน
+⇒ "มีแถว" กับ "ย้ายเงินแล้ว" ขัดกันไม่ได้ — ไม่ต้องเพิ่มคอลัมน์ marker).
+
+การ **void ใบเสร็จ** ไม่มี action string ใหม่ — ใช้ `RECEIPT_VOID` เดิม แต่เพิ่มฟิลด์
+`newValue.rescheduleAdvanceRestored` (null เมื่อไม่มีเงินพักถูกคืน) คู่กับ
+`advanceBalanceRestored` ที่มีอยู่แล้ว.
+
+**หมายเหตุสำหรับคนเขียน flow ใหม่:** JE ที่ปลด 21-1103 ด้วย `metadata.tag = '2B'` **ต้อง**
+ลงทะเบียนใน `ALWAYS_INCLUDED_2B_FLOWS` (`apps/api/src/modules/journal/reconstruct-prior.ts`)
+ไม่งั้น `reconstructPriorCleared` จะมองไม่เห็นตอนที่มันปลดเต็มจำนวนงวด แล้วใบเสร็จถัดไปจะ
+เครดิต `11-2103` ซ้ำเป็นสองเท่า (C-1 — เคส headline ของถังพักคือปลดเต็มงวดพอดี).
+
+---
+
 ## V15 — ACCRUAL ห้ามมี WHT (ม.50 ป.รัษฎากร)
 
 `ExpenseDocumentsService.post()` rejects the transition `DRAFT → ACCRUAL` whenever `withholdingTax > 0`. ป.รัษฎากร ม.50 says WHT arises "ขณะที่จ่ายเงินได้" — at payment, not at accrual. Booking WHT on the accrual leg would misfile the ภงด.3/53 period and incur เบี้ยปรับ. The settlement step (VENDOR_SETTLEMENT) is where WHT lands.

@@ -56,6 +56,20 @@ export interface ComputeEarlyPayoffJeInput {
    * เพิ่มทั้งก้อน / Cr 42-1103 ทั้งก้อน. Omitted/null → 0 (CPA case-4 เดิม).
    */
   unpaidLateFees?: DecimalInput | null;
+  /**
+   * ยอดปลดหนี้ถังพักงวดสุดท้าย (`Contract.rescheduleAdvanceBalance`, GL 21-1103)
+   * — ค่าธรรมเนียมปรับดิว (6a/6b) ที่ลูกค้า "จ่ายไปแล้ว" และยอดปิดสัญญาหักออก
+   * ให้แล้ว (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3).
+   *
+   * ต้องเป็นยอดที่ยอดปิดสัญญา **ดูดซับจริง** — caller ใช้
+   * `computePayoffQuote(...).rescheduleAdvanceApplied` (clamp ด้วยยอดในถังจริง
+   * ณ เวลาลงบัญชี) ส่งค่าถังเต็มจำนวนมาตรงๆ จะปลดหนี้เกินกว่าที่ลูกค้าได้ลด.
+   *
+   * ผลต่อ JE: `Dr เงินสด = totalCash − parkRelief` + `Dr 21-1103 = parkRelief`
+   * — ยอด Dr รวมเท่าเดิม ทุกขา Cr เหมือนเดิมทุกบาท JE จึงยัง balanced เสมอ.
+   * Omitted/null/0 → ไม่มีบรรทัด 21-1103 เลย (golden เดิมไม่ขยับแม้แต่ไบต์เดียว).
+   */
+  parkRelief?: DecimalInput | null;
 }
 
 /** One canonical JE line — money only (accountCode + dr + cr). Descriptions are
@@ -85,8 +99,12 @@ export interface ComputeEarlyPayoffJeResult {
   settlement: Decimal;
   /** ค่าปรับค้างชำระที่เก็บพร้อมปิดยอด (0 เมื่อไม่มี). */
   lateFees: Decimal;
-  /** เงินรับจริงทั้งหมด = settlement + lateFees — ตรงกับ Dr เงินสด/ธนาคาร. */
+  /** ยอดปิดรวมก่อนหักถังพัก = settlement + lateFees. */
   totalCash: Decimal;
+  /** ยอดปลดหนี้ถังพักที่ใช้จริง (clamp แล้วด้วย totalCash) — 0 เมื่อไม่มี. */
+  parkRelief: Decimal;
+  /** เงินสดที่ลูกค้าจ่ายจริง = totalCash − parkRelief — ตรงกับ Dr เงินสด/ธนาคาร. */
+  cashReceived: Decimal;
 }
 
 export function computeEarlyPayoffJE(
@@ -127,8 +145,15 @@ export function computeEarlyPayoffJE(
   const totalCash = settlement.plus(lateFees);
 
   const zero = new Decimal(0);
+
+  // ถังพักงวดสุดท้าย (21-1103) — ลูกค้าจ่ายเงินก้อนนี้ไปแล้ว ยอดปิดสัญญาจึงหัก
+  // ให้แล้ว: ขาเงินสดต้องลดลงเท่ากัน ไม่งั้น "Dr เงินสด" > เงินรับจริง (บั๊ก C-3).
+  // clamp ที่ totalCash — ขาเงินสดห้ามติดลบ (ส่วนเกินคงค้างใน 21-1103 ต่อไป).
+  const parkRelief = Decimal.max(0, Decimal.min(new Decimal(input.parkRelief ?? 0), totalCash));
+  const cashReceived = totalCash.minus(parkRelief);
+
   const lines: EarlyPayoffJeLine[] = [
-    { accountCode: input.depositAccountCode, dr: totalCash, cr: zero },
+    { accountCode: input.depositAccountCode, dr: cashReceived, cr: zero },
     { accountCode: '11-2106', dr: remainingDeferredInterest, cr: zero },
     { accountCode: '21-2102', dr: remainingDeferredVat, cr: zero },
   ];
@@ -137,6 +162,12 @@ export function computeEarlyPayoffJE(
   // matches the golden template + preview; a 0.00 line is a no-op).
   if (discount.gt(0)) {
     lines.push({ accountCode: '52-1106', dr: discount, cr: zero });
+  }
+
+  // Guard (same idiom): only emit the park-relief leg when there IS park to
+  // relieve — a 0.00 line would change every pre-existing golden for nothing.
+  if (parkRelief.gt(0)) {
+    lines.push({ accountCode: '21-1103', dr: parkRelief, cr: zero });
   }
 
   lines.push(
@@ -165,5 +196,7 @@ export function computeEarlyPayoffJE(
     settlement,
     lateFees,
     totalCash,
+    parkRelief,
+    cashReceived,
   };
 }

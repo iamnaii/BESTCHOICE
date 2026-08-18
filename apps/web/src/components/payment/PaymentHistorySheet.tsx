@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, FileText, X } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+} from '@/components/ui/dialog';
 import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import ReceiptVoidDialog from '@/components/payment/ReceiptVoidDialog';
@@ -40,6 +46,8 @@ interface ContractInfo {
   productName: string | null;
   totalMonths: number;
   advanceBalance: string;
+  /** พักงวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a/6b) parked for the LAST installment only. */
+  rescheduleAdvanceBalance: string;
 }
 interface PaymentsResponse {
   data: PaymentItem[];
@@ -135,9 +143,11 @@ interface Props {
 export default function PaymentHistorySheet({ contractId, onClose, onVoided }: Props) {
   const { user } = useAuth();
   const canVoid = VOID_ROLES.includes(user?.role ?? '');
-  const [voidTarget, setVoidTarget] = useState<
-    { id: string; receiptNumber: string; info: VoidedReceiptInfo } | null
-  >(null);
+  const [voidTarget, setVoidTarget] = useState<{
+    id: string;
+    receiptNumber: string;
+    info: VoidedReceiptInfo;
+  } | null>(null);
 
   const {
     data: pResp,
@@ -159,8 +169,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
   // (EARLY_PAYOFF receipt has paymentId null → matched by flow instead).
   const { data: journalEntries = [], isLoading: loadingJes } = useQuery<ContractJe[]>({
     queryKey: ['contract-journal-entries', contractId],
-    queryFn: async () =>
-      (await api.get(`/payments/contract/${contractId}/journal-entries`)).data,
+    queryFn: async () => (await api.get(`/payments/contract/${contractId}/journal-entries`)).data,
     enabled: !!contractId,
   });
   const isLoading = loadingPayments || loadingReceipts;
@@ -239,7 +248,12 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
         <DialogContent variant="fullscreen" className="p-0 gap-0">
           <DialogHeader className="px-5 py-4 border-b border-border mb-0 text-start">
             <DialogTitle className="leading-snug">
-              ประวัติการชำระ {contract ? <span className="text-primary font-mono">— {contract.contractNumber}</span> : ''}
+              ประวัติการชำระ{' '}
+              {contract ? (
+                <span className="text-primary font-mono">— {contract.contractNumber}</span>
+              ) : (
+                ''
+              )}
             </DialogTitle>
             {contract && (
               <div className="text-xs text-muted-foreground leading-snug mt-0.5">
@@ -262,19 +276,36 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
               <>
                 {/* ─── 4 summary cards ─── */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <SummaryCard label="งวดที่ชำระแล้ว" value={`${paidCount} / ${contract?.totalMonths ?? '-'}`} tone="success" />
+                  <SummaryCard
+                    label="งวดที่ชำระแล้ว"
+                    value={`${paidCount} / ${contract?.totalMonths ?? '-'}`}
+                    tone="success"
+                  />
                   <SummaryCard label="ยอดชำระสะสม" value={`${money(cumulativePaid)} ฿`} />
                   <SummaryCard
                     label="ค่าปรับ / อนุโลม"
                     value={`${money(totalLateFee)} / ${totalWaived > 0 ? `−${money(totalWaived)}` : '0.00'} ฿`}
                     tone="warning"
                   />
-                  <SummaryCard label="เครดิต (21-1103)" value={`${money(contract?.advanceBalance ?? 0)} ฿`} tone="info" />
+                  <SummaryCard
+                    label="เครดิต (21-1103)"
+                    value={`${money(contract?.advanceBalance ?? 0)} ฿`}
+                    tone="info"
+                  />
+                  {Number(contract?.rescheduleAdvanceBalance ?? 0) > 0 && (
+                    <SummaryCard
+                      label="พักงวดสุดท้าย"
+                      value={`${money(contract?.rescheduleAdvanceBalance ?? 0)} ฿`}
+                      tone="warning"
+                    />
+                  )}
                 </div>
 
                 {/* ─── Receipt-level table ─── */}
                 {rows.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm leading-snug">ไม่พบใบเสร็จ</div>
+                  <div className="text-center py-8 text-muted-foreground text-sm leading-snug">
+                    ไม่พบใบเสร็จ
+                  </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-border">
                     <table className="w-full text-sm">
@@ -299,7 +330,10 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                         {rows.map((r) => {
                           const p = r.paymentId ? paymentById.get(r.paymentId) : undefined;
                           const c = caseFor(r, p);
-                          const { lateFee, waived } = receiptFees.get(r.id) ?? { lateFee: 0, waived: 0 };
+                          const { lateFee, waived } = receiptFees.get(r.id) ?? {
+                            lateFee: 0,
+                            waived: 0,
+                          };
                           const recorder = p?.recordedBy?.name ?? r.issuedByName ?? '–';
                           return (
                             <tr
@@ -310,15 +344,22 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                               {/* ดิวชำระ = dueDate ของงวด — ใบเสร็จที่ไม่ผูกงวด (ดาวน์/ปิดยอด/CN) ไม่มีดิว */}
                               <Td>{p ? formatDateShort(p.dueDate) : '–'}</Td>
                               <Td>{formatDateShort(r.paidDate)}</Td>
-                              <Td>{r.installmentNo ?? '–'}{contract ? `/${contract.totalMonths}` : ''}</Td>
+                              <Td>
+                                {r.installmentNo ?? '–'}
+                                {contract ? `/${contract.totalMonths}` : ''}
+                              </Td>
                               <Td className="text-right">{p ? `${money(p.amountDue)}` : '–'}</Td>
                               <Td className="text-right">{money(r.amount)}</Td>
                               <Td>
                                 {lateFee > 0 ? (
                                   <div className="text-xs leading-snug">
                                     <div className="text-warning">{money(lateFee)}฿</div>
-                                    {waived > 0 && <div className="text-success">−อนุโลม {money(waived)}฿</div>}
-                                    <div className="text-foreground font-medium">สุทธิ {money(lateFee - waived)}฿</div>
+                                    {waived > 0 && (
+                                      <div className="text-success">−อนุโลม {money(waived)}฿</div>
+                                    )}
+                                    <div className="text-foreground font-medium">
+                                      สุทธิ {money(lateFee - waived)}฿
+                                    </div>
                                     {p?.waivedReason && (
                                       <div className="text-muted-foreground">{p.waivedReason}</div>
                                     )}
@@ -327,17 +368,27 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                   <span className="text-muted-foreground">0</span>
                                 )}
                               </Td>
-                              <Td><span className={`font-semibold ${c.cls}`}>{c.label}</span></Td>
+                              <Td>
+                                <span className={`font-semibold ${c.cls}`}>{c.label}</span>
+                              </Td>
                               <Td className="font-mono text-xs">{p?.depositAccountCode ?? '–'}</Td>
                               <Td>
                                 {r.isVoided ? (
-                                  <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">VOIDED</span>
+                                  <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">
+                                    VOIDED
+                                  </span>
                                 ) : (
-                                  <span className="px-2 py-0.5 rounded-full text-xs bg-success/10 text-success">● PAID</span>
+                                  <span className="px-2 py-0.5 rounded-full text-xs bg-success/10 text-success">
+                                    ● PAID
+                                  </span>
                                 )}
                               </Td>
                               <Td>{recorder}</Td>
-                              <Td className={p?.waivedApprovedByName ? 'text-primary' : 'text-muted-foreground'}>
+                              <Td
+                                className={
+                                  p?.waivedApprovedByName ? 'text-primary' : 'text-muted-foreground'
+                                }
+                              >
                                 {p?.waivedApprovedByName ?? '–'}
                               </Td>
                               <Td>
@@ -361,25 +412,26 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                       >
                                         <FileText className="size-3.5" />
                                       </button>
-                                      {canVoid && !UNVOIDABLE_RECEIPT_TYPES.includes(r.receiptType) && (
-                                        <button
-                                          onClick={() =>
-                                            setVoidTarget({
-                                              id: r.id,
-                                              receiptNumber: r.receiptNumber,
-                                              info: {
-                                                paymentId: r.paymentId,
-                                                contractNumber: contract?.contractNumber,
-                                              },
-                                            })
-                                          }
-                                          title="ยกเลิกใบเสร็จ (ออกใบลดหนี้)"
-                                          aria-label={`ยกเลิกใบเสร็จ ${r.receiptNumber}`}
-                                          className="p-1.5 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
-                                        >
-                                          <X className="size-3.5" />
-                                        </button>
-                                      )}
+                                      {canVoid &&
+                                        !UNVOIDABLE_RECEIPT_TYPES.includes(r.receiptType) && (
+                                          <button
+                                            onClick={() =>
+                                              setVoidTarget({
+                                                id: r.id,
+                                                receiptNumber: r.receiptNumber,
+                                                info: {
+                                                  paymentId: r.paymentId,
+                                                  contractNumber: contract?.contractNumber,
+                                                },
+                                              })
+                                            }
+                                            title="ยกเลิกใบเสร็จ (ออกใบลดหนี้)"
+                                            aria-label={`ยกเลิกใบเสร็จ ${r.receiptNumber}`}
+                                            className="p-1.5 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                                          >
+                                            <X className="size-3.5" />
+                                          </button>
+                                        )}
                                     </>
                                   )}
                                 </div>
@@ -408,19 +460,23 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
           <DialogHeader className="px-5 py-4 border-b border-border mb-0 text-start">
             <DialogTitle className="leading-snug">
               บันทึกบัญชี (JE){' '}
-              {jeTarget && <span className="text-primary font-mono">— {jeTarget.receiptNumber}</span>}
+              {jeTarget && (
+                <span className="text-primary font-mono">— {jeTarget.receiptNumber}</span>
+              )}
             </DialogTitle>
             {jeTarget && (
               <div className="text-xs text-muted-foreground leading-snug mt-0.5">
                 งวด {jeTarget.installmentNo ?? '–'}
-                {contract ? `/${contract.totalMonths}` : ''} · {formatDateShort(jeTarget.paidDate)} ·{' '}
-                {money(jeTarget.amount)} ฿
+                {contract ? `/${contract.totalMonths}` : ''} · {formatDateShort(jeTarget.paidDate)}{' '}
+                · {money(jeTarget.amount)} ฿
               </div>
             )}
           </DialogHeader>
           <DialogBody className="flex-1 overflow-auto px-5 py-4">
             {loadingJes ? (
-              <div className="text-sm text-muted-foreground leading-snug">กำลังโหลดบันทึกบัญชี...</div>
+              <div className="text-sm text-muted-foreground leading-snug">
+                กำลังโหลดบันทึกบัญชี...
+              </div>
             ) : jeTargetJes.length === 0 ? (
               <div className="text-sm text-muted-foreground leading-snug text-center py-8">
                 ไม่พบบันทึกบัญชี (JE) สำหรับรายการนี้
@@ -470,8 +526,8 @@ function JeBlock({
   const flowLabel = isVoidReversal
     ? 'กลับรายการ (VOID)'
     : je.flow === 'early-payoff'
-    ? 'JP4 — ปิดยอดก่อนกำหนด'
-    : 'รับชำระ (2B)';
+      ? 'JP4 — ปิดยอดก่อนกำหนด'
+      : 'รับชำระ (2B)';
   // ป้ายเฉพาะงวดแบ่งชำระ (>1 ใบ) — บอกว่า JE นี้เป็นของใบเสร็จใบไหน กันอ่านสับสน
   // ว่าค่าปรับไปลงใบหลัง (คำสั่งเจ้าของ 2026-08-16 — ค่าปรับลง "ใบแรก" เสมอ FEE-FIRST)
   const showReceiptTag = !isVoidReversal && receiptLabel && receiptLabel.total > 1;
@@ -492,7 +548,9 @@ function JeBlock({
               {isOpenedReceipt ? ' (ใบนี้)' : ''}
             </span>
           )}
-          <span className="text-muted-foreground">{formatDateShort(je.postedAt ?? je.entryDate)}</span>
+          <span className="text-muted-foreground">
+            {formatDateShort(je.postedAt ?? je.entryDate)}
+          </span>
           <span
             className={`px-1.5 py-0.5 rounded-full font-medium ${
               isVoidReversal ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
@@ -515,7 +573,8 @@ function JeBlock({
         <span
           className={`text-xs font-medium leading-snug ${je.isBalanced ? 'text-success' : 'text-destructive'}`}
         >
-          {money(je.totalDebit)} = {money(je.totalCredit)} {je.isBalanced ? 'BALANCED' : 'UNBALANCED'}
+          {money(je.totalDebit)} = {money(je.totalCredit)}{' '}
+          {je.isBalanced ? 'BALANCED' : 'UNBALANCED'}
         </span>
       </div>
       <div className="space-y-1">
@@ -547,9 +606,23 @@ function JeBlock({
   );
 }
 
-function SummaryCard({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'success' | 'warning' | 'info' }) {
+function SummaryCard({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'success' | 'warning' | 'info';
+}) {
   const valueCls =
-    tone === 'success' ? 'text-success' : tone === 'warning' ? 'text-warning' : tone === 'info' ? 'text-info' : 'text-foreground';
+    tone === 'success'
+      ? 'text-success'
+      : tone === 'warning'
+        ? 'text-warning'
+        : tone === 'info'
+          ? 'text-info'
+          : 'text-foreground';
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="text-xs text-muted-foreground leading-snug">{label}</div>
@@ -558,8 +631,16 @@ function SummaryCard({ label, value, tone = 'default' }: { label: string; value:
   );
 }
 function Th({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
-  return <th className={`px-3 py-2 font-medium whitespace-nowrap leading-snug ${className}`}>{children}</th>;
+  return (
+    <th className={`px-3 py-2 font-medium whitespace-nowrap leading-snug ${className}`}>
+      {children}
+    </th>
+  );
 }
 function Td({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-2 align-top whitespace-nowrap leading-snug ${className}`}>{children}</td>;
+  return (
+    <td className={`px-3 py-2 align-top whitespace-nowrap leading-snug ${className}`}>
+      {children}
+    </td>
+  );
 }

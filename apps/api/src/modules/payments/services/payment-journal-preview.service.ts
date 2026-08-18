@@ -5,7 +5,11 @@ import { AccountRoleService } from '../../journal/account-role.service';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { splitReceipt } from '../../journal/split-receipt';
 import { buildReceiptLines } from '../../journal/build-receipt-lines';
-import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
+import {
+  reconstructPriorCleared,
+  ADVANCE_CONSUME_ON_ACCRUAL_FLOW,
+  RESCHEDULE_PARK_CONSUME_FLOW,
+} from '../../journal/reconstruct-prior';
 import {
   buildPreviewBlocks,
   PreviewTaggedLine,
@@ -73,7 +77,12 @@ export class PaymentJournalPreviewService {
     dueDate?: string;
   }> {
     const inst = await this.prisma.installmentSchedule.findUnique({
-      where: { contractId_installmentNo: { contractId: input.contractId, installmentNo: input.installmentNo } },
+      where: {
+        contractId_installmentNo: {
+          contractId: input.contractId,
+          installmentNo: input.installmentNo,
+        },
+      },
       include: { contract: true },
     });
     if (!inst) throw new NotFoundException('ไม่พบงวดชำระ');
@@ -105,7 +114,12 @@ export class PaymentJournalPreviewService {
     const netLateFee = lateFeeAmount.minus(lateFeeWaivedAmount);
 
     // Build raw JE lines (code, dr, cr, description)
-    const rawLines: { code: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [];
+    const rawLines: {
+      code: string;
+      dr: Prisma.Decimal;
+      cr: Prisma.Decimal;
+      description: string;
+    }[] = [];
 
     // PARTIAL emits Cr 11-2103 directly — it assumes 2A has already accrued the
     // installment into 11-2103. If 2A is missing (paying ahead, cron lag), the JE
@@ -137,21 +151,41 @@ export class PaymentJournalPreviewService {
       const monthlyPayment = new Prisma.Decimal(c.monthlyPayment.toString());
       // Reschedule fee = installmentTotal / 30 × daysToShift, rounded UP to a whole
       // baht (owner policy 2026-06 — ปัดเศษขึ้นเต็มบาท). Matches RescheduleService.execute.
-      const rescheduleFee = days > 0
-        ? monthlyPayment.div(30).times(days).toDecimalPlaces(0, Prisma.Decimal.ROUND_UP)
-        : zero;
+      const rescheduleFee =
+        days > 0
+          ? monthlyPayment.div(30).times(days).toDecimalPlaces(0, Prisma.Decimal.ROUND_UP)
+          : zero;
 
       const isSplit = input.splitMode === 'SPLIT';
       const feePortion = isSplit ? rescheduleFee : zero;
       const collectTotal = feePortion.plus(netLateFee);
 
       if (collectTotal.gt(zero)) {
-        rawLines.push({ code: input.depositAccountCode, dr: collectTotal, cr: zero, description: 'รับเงินปรับดิว' });
+        rawLines.push({
+          code: input.depositAccountCode,
+          dr: collectTotal,
+          cr: zero,
+          description: 'รับเงินปรับดิว',
+        });
         if (feePortion.gt(zero)) {
-          rawLines.push({ code: '21-1103', dr: zero, cr: feePortion, description: 'เงินรับล่วงหน้า — ค่าธรรมเนียมปรับดิว (6a)' });
+          rawLines.push({
+            code: '21-1103',
+            dr: zero,
+            cr: feePortion,
+            // M-1: must match the POSTED line verbatim — RescheduleCollectService
+            // credits 21-1103 with 'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)'
+            // since the park-at-last-installment directive (2026-08-16). This file's
+            // contract is preview == posted.
+            description: 'เงินรับล่วงหน้างวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a)',
+          });
         }
         if (netLateFee.gt(zero)) {
-          rawLines.push({ code: '42-1103', dr: zero, cr: netLateFee, description: 'ค่าปรับชำระล่าช้า (เก็บตอนปรับดิว)' });
+          rawLines.push({
+            code: '42-1103',
+            dr: zero,
+            cr: netLateFee,
+            description: 'ค่าปรับชำระล่าช้า (เก็บตอนปรับดิว)',
+          });
         }
       }
 
@@ -241,7 +275,12 @@ export class PaymentJournalPreviewService {
         underpayCode: this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104',
       });
       for (const l of receiptLines) {
-        rawLines.push({ code: l.accountCode, dr: l.dr, cr: l.cr, description: l.description ?? '' });
+        rawLines.push({
+          code: l.accountCode,
+          dr: l.dr,
+          cr: l.cr,
+          description: l.description ?? '',
+        });
       }
 
       const codes = [...new Set(rawLines.map((l) => l.code))];
@@ -288,9 +327,10 @@ export class PaymentJournalPreviewService {
     } else {
       const todayMidnight = new Date();
       todayMidnight.setHours(0, 0, 0, 0);
-      accrualMode = inst.dueDate.getTime() > todayMidnight.getTime()
-        ? 'CONSOLIDATED_PAYING_AHEAD'
-        : 'CONSOLIDATED_BACKFILL';
+      accrualMode =
+        inst.dueDate.getTime() > todayMidnight.getTime()
+          ? 'CONSOLIDATED_PAYING_AHEAD'
+          : 'CONSOLIDATED_BACKFILL';
     }
 
     // Dr: cash/bank received. The wizard's amountReceived IS the full net cash — it
@@ -302,37 +342,72 @@ export class PaymentJournalPreviewService {
     // Owed = installment + NET late fee (gross − waived); the waived portion books to
     // Dr 52-1105, not collected in cash.
     const advanceBalance = new Prisma.Decimal((c.advanceBalance ?? 0).toString());
+    // Park-at-last-installment (owner directive 2026-08-16): Contract.
+    // rescheduleAdvanceBalance is a separate bucket relieved ONLY on the
+    // contract's LAST installment. Mirror the orchestrator's gate exactly so
+    // the preview never disagrees with what save() posts.
+    const parkBalance = new Prisma.Decimal((c.rescheduleAdvanceBalance ?? 0).toString());
+    const isLastInstallmentPreview = inst.installmentNo === c.totalMonths;
     const remaining = installmentTotal.plus(netLateFee); // net owed (no prevPaid in preview)
     const overage = amountReceived.minus(remaining);
     let previewAdvCredit = zero;
     let previewAdvConsume = zero;
+    let previewParkConsume = zero;
 
     if (overage.gt(new Prisma.Decimal('1.00')) && input.case === 'OVERPAY_ADVANCE') {
       previewAdvCredit = overage;
     } else if (
       (input.consumeAdvance ?? true) &&
       amountReceived.lt(remaining) &&
-      advanceBalance.gt(zero) &&
-      (input.case === undefined || input.case === 'NORMAL')
+      (input.case === undefined || input.case === 'NORMAL') &&
+      (advanceBalance.gt(zero) || (isLastInstallmentPreview && parkBalance.gt(zero)))
     ) {
       // Mirror orchestrator: only auto-consume when the credit checkbox is on.
       const gap = remaining.minus(amountReceived);
-      previewAdvConsume = Prisma.Decimal.min(advanceBalance, gap);
+      if (advanceBalance.gt(zero)) {
+        previewAdvConsume = Prisma.Decimal.min(advanceBalance, gap);
+      }
+      // Generic advance first, park bucket only for whatever gap remains — and
+      // only on the contract's last installment.
+      if (isLastInstallmentPreview && parkBalance.gt(zero)) {
+        const gapAfterGeneric = gap.minus(previewAdvConsume);
+        if (gapAfterGeneric.gt(zero)) {
+          previewParkConsume = Prisma.Decimal.min(parkBalance, gapAfterGeneric);
+        }
+      }
     }
+    // Generic + park both clear the SAME GL account (21-1103) — the split is an
+    // application-level bookkeeping distinction only, not a GL-level one.
+    const previewTotalConsume = previewAdvConsume.plus(previewParkConsume);
 
     // 1. Cash in (skip when 0 — full advance cover edge)
     if (totalReceived.gt(zero)) {
-      rawLines.push({ code: input.depositAccountCode, dr: totalReceived, cr: zero, description: 'รับชำระ' });
+      rawLines.push({
+        code: input.depositAccountCode,
+        dr: totalReceived,
+        cr: zero,
+        description: 'รับชำระ',
+      });
     }
 
-    // 2. Consume existing advance
-    if (previewAdvConsume.gt(zero)) {
-      rawLines.push({ code: '21-1103', dr: previewAdvConsume, cr: zero, description: 'หักเงินรับล่วงหน้า' });
+    // 2. Consume existing advance (generic + park bucket)
+    if (previewTotalConsume.gt(zero)) {
+      rawLines.push({
+        code: '21-1103',
+        dr: previewTotalConsume,
+        cr: zero,
+        description: 'หักเงินรับล่วงหน้า',
+      });
     }
 
     // 2b. Late-fee waiver discount (Dr 52-1105) — Cr 42-1103 below stays GROSS.
     if (lateFeeWaivedAmount.gt(zero)) {
-      rawLines.push({ code: '52-1105', dr: lateFeeWaivedAmount, cr: zero, description: 'ส่วนลดให้ลูกค้า — อนุโลมค่าปรับ' });
+      rawLines.push({
+        code: '52-1105',
+        dr: lateFeeWaivedAmount,
+        cr: zero,
+        description: 'ส่วนลดให้ลูกค้า — อนุโลมค่าปรับ',
+      });
     }
 
     // Preview mirrors the SAVE (QA #1347 follow-up): since PR-843/I2 the posting
@@ -341,36 +416,59 @@ export class PaymentJournalPreviewService {
     // (it accrues every dueDate<=today row regardless of PAID status). The old
     // consolidated branch here previewed lines that never post. `accrualMode`
     // below still tells the UI whether 2A already ran or the cron will backfill.
-    rawLines.push({ code: '11-2103', dr: zero, cr: installmentTotal, description: 'ล้างลูกหนี้ค้างชำระ' });
+    rawLines.push({
+      code: '11-2103',
+      dr: zero,
+      cr: installmentTotal,
+      description: 'ล้างลูกหนี้ค้างชำระ',
+    });
 
     // Late fee: Cr 42-1103 if > 0
     if (lateFeeAmount.gt(zero)) {
-      rawLines.push({ code: '42-1103', dr: zero, cr: lateFeeAmount, description: 'ค่าปรับชำระล่าช้า' });
+      rawLines.push({
+        code: '42-1103',
+        dr: zero,
+        cr: lateFeeAmount,
+        description: 'ค่าปรับชำระล่าช้า',
+      });
     }
 
     // 5. Park new advance (overpay → 21-1103)
     if (previewAdvCredit.gt(zero)) {
-      rawLines.push({ code: '21-1103', dr: zero, cr: previewAdvCredit, description: 'เงินรับล่วงหน้า' });
+      rawLines.push({
+        code: '21-1103',
+        dr: zero,
+        cr: previewAdvCredit,
+        description: 'เงินรับล่วงหน้า',
+      });
     }
 
     // 6. Rounding adjustment (≤1฿ tolerance) — must include for balanced preview
     // This mirrors PaymentReceipt2BTemplate's rounding logic.
     // Skipped for OVERPAY_ADVANCE / advance consume because those clear the diff via 21-1103.
-    if (previewAdvCredit.eq(zero) && previewAdvConsume.eq(zero)) {
+    if (previewAdvCredit.eq(zero) && previewTotalConsume.eq(zero)) {
       const roundingDiff = amountReceived.minus(installmentTotal.plus(netLateFee));
       const tolerance = new Prisma.Decimal('1.00');
       if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
         // D1.1.6.2 — resolve via AccountRoleService when available, otherwise
         // fall back to spec-default 53-1503 (matches the seed row).
-        const adjOverpayCode =
-          this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503';
-        rawLines.push({ code: adjOverpayCode, dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
+        const adjOverpayCode = this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503';
+        rawLines.push({
+          code: adjOverpayCode,
+          dr: zero,
+          cr: roundingDiff,
+          description: 'กำไรปัดเศษ (Policy C)',
+        });
       } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
         // D1.1.6.1 — resolve via AccountRoleService when available, otherwise
         // fall back to spec-default 52-1104 (matches the seed row).
-        const adjUnderpayCode =
-          this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104';
-        rawLines.push({ code: adjUnderpayCode, dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
+        const adjUnderpayCode = this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104';
+        rawLines.push({
+          code: adjUnderpayCode,
+          dr: roundingDiff.abs(),
+          cr: zero,
+          description: 'ส่วนลดเศษสตางค์ (Policy C)',
+        });
       }
     }
 
@@ -383,7 +481,12 @@ export class PaymentJournalPreviewService {
     // The mockup case has no consume JE → 2A = the clean 2,115.00 accrual.
     // NOTE (Phase 2): the live 2B leg still credits the full installmentTotal to
     // 11-2103; reconciling that against prior clears (reconstructPrior) is §4.1.
-    let accrualLineRows: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal; description: string | null }[] = [];
+    let accrualLineRows: {
+      accountCode: string;
+      debit: Prisma.Decimal;
+      credit: Prisma.Decimal;
+      description: string | null;
+    }[] = [];
     if (!isConsolidated && inst.accrualJournalEntryId) {
       const accrualEntries = await this.prisma.journalEntry.findMany({
         where: {
@@ -391,7 +494,13 @@ export class PaymentJournalPreviewService {
           deletedAt: null,
           OR: [
             { entryNumber: inst.accrualJournalEntryId },
-            { referenceId: `${inst.id}:advance-consume-on-accrual` },
+            { referenceId: `${inst.id}:${ADVANCE_CONSUME_ON_ACCRUAL_FLOW}` },
+            // I-4 (final review 2026-08-16): the LAST installment can also carry a
+            // park-bucket relief JE (Dr 21-1103 / Cr 11-2103, ค่าปรับดิวพักงวดสุดท้าย).
+            // Omitting it made the 2A block show the receivable as fully outstanding
+            // when the GL had already cleared part/all of it. Reference suffixes come
+            // from the same constants InstallmentAccrual2ATemplate stamps.
+            { referenceId: `${inst.id}:${RESCHEDULE_PARK_CONSUME_FLOW}` },
           ],
         },
         include: { lines: { where: { deletedAt: null } } },

@@ -113,4 +113,105 @@ describe('computePayoffQuote', () => {
       expect(q.remainingExVat).toBe(q.remainingBalance);
     });
   });
+
+  describe('park-at-last-installment (owner directive 2026-08-16)', () => {
+    it('omitting rescheduleAdvanceBalance behaves exactly as before (backward-compatible default 0)', () => {
+      const q = computePayoffQuote(prodCaseInput());
+      expect(q.advancePayment).toBe(0);
+      expect(q.totalPayoff).toBe(33411.96); // same golden as the base case above
+    });
+
+    it('nets rescheduleAdvanceBalance into advancePayment alongside creditBalance + PARTIALLY_PAID (customer credit — parked fee has nowhere left to relieve into once the contract closes)', () => {
+      const input = prodCaseInput();
+      input.payments[0].status = 'PARTIALLY_PAID';
+      input.payments[0].amountPaid = decimal(1000);
+      const q = computePayoffQuote({
+        ...input,
+        creditBalance: decimal(500),
+        rescheduleAdvanceBalance: decimal(354),
+      });
+
+      // 500 (creditBalance) + 1000 (PARTIALLY_PAID) + 354 (park) = 1854
+      expect(q.advancePayment).toBe(1854);
+      expect(q.remainingBalance).toBe(42198); // 44052 − 1854
+    });
+
+    it('does NOT double count when rescheduleAdvanceBalance is 0 (explicit zero == omitted)', () => {
+      const q1 = computePayoffQuote(prodCaseInput());
+      const q2 = computePayoffQuote({ ...prodCaseInput(), rescheduleAdvanceBalance: decimal(0) });
+      expect(q2.advancePayment).toBe(q1.advancePayment);
+      expect(q2.totalPayoff).toBe(q1.totalPayoff);
+    });
+  });
+
+  /**
+   * `rescheduleAdvanceApplied` = ยอดถังพักที่ยอดปิด "ดูดซับจริง" — JP4/JP5 ใช้
+   * เป็นขา `Dr 21-1103` (ปลดหนี้เงินพัก) เพื่อให้ขาเงินสดของ JE ขยับเท่ากับเงินที่
+   * ลูกค้าจ่ายจริงพอดี (บั๊ก C-3: quote หักให้ แต่ ledger ไม่ปลดหนี้ → Dr เงินสดเกิน)
+   */
+  describe('rescheduleAdvanceApplied (ยอดที่ยอดปิดดูดซับจริง — ฐานของขา Dr 21-1103)', () => {
+    it('เป็น 0 เมื่อไม่มีถังพัก', () => {
+      expect(computePayoffQuote(prodCaseInput()).rescheduleAdvanceApplied).toBe(0);
+      expect(
+        computePayoffQuote({ ...prodCaseInput(), rescheduleAdvanceBalance: decimal(0) })
+          .rescheduleAdvanceApplied,
+      ).toBe(0);
+    });
+
+    it('ส่วนลด 0% → ดูดซับเต็มจำนวนถัง (ลูกค้าจ่ายน้อยลงเท่ายอดในถังพอดี)', () => {
+      const withPark = computePayoffQuote({
+        ...prodCaseInput(),
+        discountPctInput: 0,
+        rescheduleAdvanceBalance: decimal(354),
+      });
+      const without = computePayoffQuote({ ...prodCaseInput(), discountPctInput: 0 });
+
+      expect(withPark.rescheduleAdvanceApplied).toBe(354);
+      // ยอดที่ลูกค้าจ่ายลดลงเท่ากับยอดที่ดูดซับเป๊ะ ๆ
+      expect(without.totalPayoff - withPark.totalPayoff).toBeCloseTo(354, 2);
+    });
+
+    it('ส่วนลด 50% → ดูดซับได้แค่บางส่วน (ถังพักลดฐานกำไร → ส่วนลดลดตาม) ที่เหลือค้างในถัง', () => {
+      const withPark = computePayoffQuote({
+        ...prodCaseInput(),
+        rescheduleAdvanceBalance: decimal(354),
+      });
+      const without = computePayoffQuote(prodCaseInput());
+
+      // 44052 − 354 = 43698 → ex-VAT 40839.25 → กำไร 21149.25 → ส่วนลด 10574.62
+      // payoffBeforeLateFees = 43698 − 10574.62 = 33123.38 (ไม่มีถัง: 33311.96)
+      expect(withPark.payoffBeforeLateFees).toBe(33123.38);
+      expect(without.payoffBeforeLateFees).toBe(33311.96);
+      expect(withPark.rescheduleAdvanceApplied).toBe(188.58); // 33311.96 − 33123.38
+      expect(without.totalPayoff - withPark.totalPayoff).toBeCloseTo(188.58, 2);
+      // ห้ามปลดหนี้ 21-1103 เกินกว่าที่ยอดปิดดูดซับ — ที่เหลือ 165.42 ค้างในถัง
+      expect(withPark.rescheduleAdvanceApplied).toBeLessThan(354);
+    });
+
+    it('ถังพักใหญ่กว่ายอดค้าง → clamp ที่ยอดที่ดูดซับได้จริง (ยอดปิดชน 0 ไม่ติดลบ)', () => {
+      const q = computePayoffQuote({
+        ...prodCaseInput(),
+        discountPctInput: 0,
+        rescheduleAdvanceBalance: decimal(100000),
+      });
+
+      expect(q.payoffBeforeLateFees).toBe(0); // max(0, …) — ไม่ติดลบ
+      expect(q.rescheduleAdvanceApplied).toBe(44052); // ยอดค้างทั้งหมด ไม่ใช่ 100000
+      expect(q.rescheduleAdvanceApplied).toBeLessThan(100000);
+    });
+
+    it('ไม่เคยเกินยอดในถัง แม้ creditBalance/PARTIALLY_PAID จะดันยอดปิดชน 0 อยู่แล้ว', () => {
+      const input = prodCaseInput();
+      input.payments[0].status = 'PARTIALLY_PAID';
+      input.payments[0].amountPaid = decimal(44052); // ปิดยอดหมดด้วย partial อยู่แล้ว
+      const q = computePayoffQuote({
+        ...input,
+        discountPctInput: 0,
+        rescheduleAdvanceBalance: decimal(354),
+      });
+
+      // ยอดปิดเป็น 0 อยู่แล้วก่อนมีถังพัก → ถังพักดูดซับอะไรไม่ได้เลย
+      expect(q.rescheduleAdvanceApplied).toBe(0);
+    });
+  });
 });

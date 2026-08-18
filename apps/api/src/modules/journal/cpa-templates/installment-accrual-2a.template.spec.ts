@@ -55,8 +55,12 @@ describe('Template 2A — Installment Accrual', () => {
     // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
     // contract written off via the real writeOffBadDebt() has a permanent
     // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
-    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
-    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({
+      select: { contractId: true },
+    });
+    await prisma.contract.deleteMany({
+      where: { id: { notIn: woPoisoned.map((p) => p.contractId) } },
+    });
     await seedFinanceCoa(prisma);
 
     const systemEmail = 'admin@bestchoice.com';
@@ -242,8 +246,12 @@ describe('Template 2A — Installment Accrual', () => {
       });
 
       // Dr 21-1103 = 500, Cr 11-2103 = 500
-      expect(consumeJE.lines.find((l) => l.accountCode === '21-1103')!.debit.toString()).toBe('500');
-      expect(consumeJE.lines.find((l) => l.accountCode === '11-2103')!.credit.toString()).toBe('500');
+      expect(consumeJE.lines.find((l) => l.accountCode === '21-1103')!.debit.toString()).toBe(
+        '500',
+      );
+      expect(consumeJE.lines.find((l) => l.accountCode === '11-2103')!.credit.toString()).toBe(
+        '500',
+      );
 
       const after = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
       expect(after.advanceBalance.toString()).toBe('0');
@@ -284,6 +292,390 @@ describe('Template 2A — Installment Accrual', () => {
       expect(payment.status).toBe('PAID');
       expect(payment.amountPaid.toString()).toBe('1515.83');
       expect(payment.paidDate).not.toBeNull();
+    });
+  });
+
+  describe('park-at-last-installment (owner directive 2026-08-16)', () => {
+    it('does NOT touch the park bucket on a non-last installment — generic advance still consumes exactly as before (regression)', async () => {
+      const c = await seedStandard17k12m(prisma);
+      const journal = new JournalAutoService(prisma as any);
+      await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+      // Both buckets funded — installment #1 is NOT the last (totalMonths=12).
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { advanceBalance: '500', rescheduleAdvanceBalance: '5000' },
+      });
+
+      const inst1 = await prisma.installmentSchedule.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: 1 },
+      });
+
+      const tmpl = new InstallmentAccrual2ATemplate(journal, prisma as any);
+      await tmpl.execute(inst1.id);
+
+      // Generic advance-consume JE posts exactly like the existing
+      // partial-cover regression test above (500 < installmentTotal 1515.83).
+      const consumeJE = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'advance-consume-on-accrual' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      expect(consumeJE.lines.find((l) => l.accountCode === '21-1103')!.debit.toString()).toBe(
+        '500',
+      );
+
+      // Park bucket completely untouched — no park-consume JE at all, balance unchanged.
+      const parkJE = await prisma.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+      });
+      expect(parkJE).toBeNull();
+
+      const after = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+      expect(after.advanceBalance.toString()).toBe('0'); // fully consumed by generic (unchanged behavior)
+      expect(after.rescheduleAdvanceBalance.toString()).toBe('5000'); // untouched
+    });
+
+    it('consumes the park bucket ONLY at the last installment — JE Dr 21-1103 / Cr 11-2103, Payment stamped', async () => {
+      const c = await seedStandard17k12m(prisma);
+      const journal = new JournalAutoService(prisma as any);
+      await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { rescheduleAdvanceBalance: '1000' }, // no generic advance
+      });
+
+      const instLast = await prisma.installmentSchedule.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: c.installmentCount },
+      });
+
+      // Pre-create a PENDING Payment row (mirrors the existing "flips PAID" test
+      // above) with a large placeholder amountDue so the exact residual-adjusted
+      // last-period installmentTotal doesn't need to be hardcoded here.
+      await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: c.installmentCount,
+          dueDate: instLast.dueDate,
+          amountDue: '99999.99',
+          amountPaid: '0',
+          status: 'PENDING',
+        },
+      });
+
+      const tmpl = new InstallmentAccrual2ATemplate(journal, prisma as any);
+      await tmpl.execute(instLast.id);
+
+      const parkJE = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      const dr = parkJE.lines.find((l) => l.accountCode === '21-1103')!;
+      const cr = parkJE.lines.find((l) => l.accountCode === '11-2103')!;
+      expect(dr.debit.toString()).toBe('1000');
+      expect(cr.credit.toString()).toBe('1000');
+      expect(dr.description).toBe('หักเงินพักปรับดิวเข้างวดสุดท้าย');
+      expect((parkJE.metadata as any).consumeAmount).toBe('1000.00');
+
+      const after = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+      expect(after.rescheduleAdvanceBalance.toString()).toBe('0');
+
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: c.installmentCount },
+      });
+      expect(payment.amountPaid.toString()).toBe('1000');
+      expect(payment.status).toBe('PARTIALLY_PAID'); // 1000 < placeholder amountDue 99999.99
+    });
+
+    it('caps combined generic+park consume at installmentTotal — leftover park stays parked for JP4/close to sweep', async () => {
+      const c = await seedStandard17k12m(prisma);
+      const journal = new JournalAutoService(prisma as any);
+      await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+      // Fund BOTH buckets generously so their sum exceeds the last installment's
+      // (residual-adjusted) installmentTotal — proves the cap.
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { advanceBalance: '1000', rescheduleAdvanceBalance: '1000' },
+      });
+
+      const instLast = await prisma.installmentSchedule.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: c.installmentCount },
+      });
+
+      const tmpl = new InstallmentAccrual2ATemplate(journal, prisma as any);
+      await tmpl.execute(instLast.id);
+
+      // Read the ACTUAL residual-adjusted installmentTotal off the 2A accrual
+      // JE itself (Dr 11-2103) — avoids hardcoding the last-period rounding
+      // residual math here (kept in ONE place: the template).
+      const accrualJE = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['tag'], equals: '2A' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      const installmentTotal = new Decimal(
+        accrualJE.lines.find((l) => l.accountCode === '11-2103')!.debit.toString(),
+      );
+
+      const genericConsumeJE = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'advance-consume-on-accrual' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      const genericConsumed = new Decimal(
+        genericConsumeJE.lines.find((l) => l.accountCode === '21-1103')!.debit.toString(),
+      );
+      expect(genericConsumed.toString()).toBe('1000'); // generic fully covered (1000 < installmentTotal)
+
+      const parkJE = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      const parkConsumed = new Decimal(
+        parkJE.lines.find((l) => l.accountCode === '21-1103')!.debit.toString(),
+      );
+      // Capped: park only covers whatever's left after generic, never the full 1000.
+      const expectedParkConsume = installmentTotal.minus(genericConsumed);
+      expect(parkConsumed.toString()).toBe(expectedParkConsume.toString());
+      expect(parkConsumed.lt('1000')).toBe(true);
+
+      const after = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+      expect(after.advanceBalance.toString()).toBe('0');
+      // Leftover stays parked — NOT swept here (JP4/close is where the leftover
+      // eventually gets credited back to the customer — see compute-payoff-quote.ts).
+      expect(after.rescheduleAdvanceBalance.toString()).toBe(
+        new Decimal('1000').minus(parkConsumed).toString(),
+      );
+    });
+  });
+
+  /**
+   * I-3 (final review 2026-08-16) — the park consume must be capped by what is
+   * STILL OWED on the Payment row, not only by `installmentTotal −
+   * genericConsumed`.
+   *
+   * The last installment can legitimately be settled (or part-settled) BEFORE
+   * its own accrual runs — that is จุดหัก 2 of the park spec (the wizard /
+   * orchestrator pays the last installment early and relieves the park bucket
+   * right there). If 2A then re-relieved the park against the FULL
+   * installmentTotal, the same money would be consumed twice:
+   * `Payment.amountPaid` climbs above `amountDue` and 11-2103 goes NEGATIVE for
+   * that row.
+   *
+   * Cap formula = the house FEE-FIRST convention (`feeNettedOutstanding` in
+   * compute-cn-breakdown.ts), NOT a locally invented one.
+   */
+  describe('park consume is capped by the row’s real outstanding (I-3)', () => {
+    /** Σ of one side of one account across every JE stamped with this installment. */
+    async function sumForInstallment(
+      installmentScheduleId: string,
+      code: string,
+      side: 'debit' | 'credit',
+    ): Promise<Decimal> {
+      const entries = await prisma.journalEntry.findMany({
+        where: {
+          metadata: { path: ['installmentScheduleId'], equals: installmentScheduleId } as any,
+          deletedAt: null,
+        },
+        include: { lines: true },
+      });
+      return entries
+        .flatMap((e) => e.lines)
+        .filter((l) => l.accountCode === code)
+        .reduce((s, l) => s.plus(new Decimal(l[side].toString())), new Decimal(0));
+    }
+
+    it('last installment already PAID before its accrual → consumes 0 park, 11-2103 never goes negative, amountPaid untouched', async () => {
+      const c = await seedStandard17k12m(prisma);
+      const journal = new JournalAutoService(prisma as any);
+      await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { rescheduleAdvanceBalance: '1000' },
+      });
+
+      const instLast = await prisma.installmentSchedule.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: c.installmentCount },
+      });
+
+      // Settled through the orchestrator path BEFORE accrual: amountPaid ==
+      // amountDue, status PAID. Nothing is owed on this row any more.
+      await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: c.installmentCount,
+          dueDate: instLast.dueDate,
+          amountDue: '1515.84',
+          amountPaid: '1515.84',
+          status: 'PAID',
+        },
+      });
+
+      await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(instLast.id);
+
+      // No park relief at all — there is nothing left to relieve.
+      const parkJE = await prisma.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+      });
+      expect(parkJE, 'no park-consume JE — the row is already settled').toBeNull();
+
+      const after = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+      expect(after.rescheduleAdvanceBalance.toString()).toBe('1000'); // still parked
+
+      // amountPaid never pushed above amountDue.
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: c.installmentCount },
+      });
+      expect(payment.amountPaid.toString()).toBe('1515.84');
+      expect(new Decimal(payment.amountPaid.toString()).gt(payment.amountDue!.toString())).toBe(
+        false,
+      );
+
+      // 11-2103 for this installment: only the 2A accrual Dr, no relief Cr →
+      // the account is positive (Dr ≥ Cr), never driven negative.
+      const dr = await sumForInstallment(instLast.id, '11-2103', 'debit');
+      const cr = await sumForInstallment(instLast.id, '11-2103', 'credit');
+      expect(cr.toFixed(2)).toBe('0.00');
+      expect(dr.gte(cr)).toBe(true);
+    });
+
+    it('last installment PARTIALLY paid before its accrual → park consume = the remaining balance only', async () => {
+      const c = await seedStandard17k12m(prisma);
+      const journal = new JournalAutoService(prisma as any);
+      await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { rescheduleAdvanceBalance: '1000' },
+      });
+
+      const instLast = await prisma.installmentSchedule.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: c.installmentCount },
+      });
+
+      await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: c.installmentCount,
+          dueDate: instLast.dueDate,
+          amountDue: '1515.84',
+          amountPaid: '1000.00',
+          status: 'PARTIALLY_PAID',
+        },
+      });
+
+      await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(instLast.id);
+
+      // Cap = 1515.84 − 1000.00 = 515.84 (NOT the full installmentTotal 1515.87,
+      // and NOT the whole 1000 park balance).
+      const parkJE = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      expect(parkJE.lines.find((l) => l.accountCode === '21-1103')!.debit.toString()).toBe(
+        '515.84',
+      );
+      expect(parkJE.lines.find((l) => l.accountCode === '11-2103')!.credit.toString()).toBe(
+        '515.84',
+      );
+
+      const after = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+      expect(after.rescheduleAdvanceBalance.toString()).toBe('484.16'); // 1000 − 515.84
+
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: c.installmentCount },
+      });
+      expect(payment.amountPaid.toString()).toBe('1515.84'); // exactly amountDue, never above
+      expect(payment.status).toBe('PAID');
+    });
+
+    it('FEE-FIRST: a fee-heavy partial payment does not understate what is still owed', async () => {
+      const c = await seedStandard17k12m(prisma);
+      const journal = new JournalAutoService(prisma as any);
+      await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { rescheduleAdvanceBalance: '1000' },
+      });
+
+      const instLast = await prisma.installmentSchedule.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: c.installmentCount },
+      });
+
+      // amountPaid is GROSS cash INCLUDING the 100 late fee (PR #1313 —
+      // `lateFee` is never reset after a partial receipt). Only 1,000 of the
+      // 1,100 actually paid down the installment base, so 515.84 is still owed
+      // — a naive `amountDue − amountPaid` would say 415.84 and under-relieve.
+      await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: c.installmentCount,
+          dueDate: instLast.dueDate,
+          amountDue: '1515.84',
+          amountPaid: '1100.00',
+          lateFee: '100.00',
+          status: 'PARTIALLY_PAID',
+        },
+      });
+
+      await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(instLast.id);
+
+      const parkJE = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'reschedule-park-consume' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      expect(parkJE.lines.find((l) => l.accountCode === '21-1103')!.debit.toString()).toBe(
+        '515.84',
+      );
+
+      const after = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+      expect(after.rescheduleAdvanceBalance.toString()).toBe('484.16');
     });
   });
 });

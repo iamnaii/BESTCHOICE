@@ -582,8 +582,8 @@ model Branch {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  isMainWarehouse Boolean   @default(false) @map("is_main_warehouse")
-  deletedAt       DateTime? @map("deleted_at")
+  isMainWarehouse     Boolean   @default(false) @map("is_main_warehouse")
+  deletedAt           DateTime? @map("deleted_at")
   shopCashAccountCode String?   @map("shop_cash_account_code")
 
   company                  CompanyInfo?              @relation(fields: [companyId], references: [id])
@@ -623,26 +623,26 @@ model Branch {
 }
 
 model User {
-  id                     String                @id @default(uuid())
-  email                  String                @unique
-  password               String
-  name                   String
-  role                   UserRole              @default(SALES)
-  branchId               String?               @map("branch_id")
-  isActive               Boolean               @default(true) @map("is_active")
-  isSystemUser           Boolean               @default(false) @map("is_system_user")
-  collectionsActive      Boolean               @default(true) @map("collections_active")
-  preferences            Json?                 @map("preferences")
-  savedSignature         String?               @map("saved_signature") @db.Text
-  employeeId             String?               @unique @map("employee_id")
-  nickname               String?               @map("nickname")
-  phone                  String?               @map("phone")
-  lineId                 String?               @map("line_id")
-  address                String?               @map("address") @db.Text
-  avatarUrl              String?               @map("avatar_url") @db.Text
-  startDate              DateTime?             @map("start_date")
-  nationalId             String?               @map("national_id")
-  birthDate              DateTime?             @map("birth_date")
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String
+  name              String
+  role              UserRole  @default(SALES)
+  branchId          String?   @map("branch_id")
+  isActive          Boolean   @default(true) @map("is_active")
+  isSystemUser      Boolean   @default(false) @map("is_system_user")
+  collectionsActive Boolean   @default(true) @map("collections_active")
+  preferences       Json?     @map("preferences")
+  savedSignature    String?   @map("saved_signature") @db.Text
+  employeeId        String?   @unique @map("employee_id")
+  nickname          String?   @map("nickname")
+  phone             String?   @map("phone")
+  lineId            String?   @map("line_id")
+  address           String?   @map("address") @db.Text
+  avatarUrl         String?   @map("avatar_url") @db.Text
+  startDate         DateTime? @map("start_date")
+  nationalId        String?   @map("national_id")
+  birthDate         DateTime? @map("birth_date")
 
   // Brute-force protection: incremented on failed login, reset on success.
   // When failedLoginAttempts >= LOCKOUT_THRESHOLD the account is locked
@@ -833,7 +833,7 @@ model User {
   employeeProfile EmployeeProfile?
 
   // PR-C — back-relation for PayrollLine.userId → User (FK lives on PayrollLine)
-  payrollLines    PayrollLine[]
+  payrollLines PayrollLine[]
 
   // Equity module — maker/approver of equity documents (CAP_INIT/CAP_INC/CAP_DEC/DRAW/DIV_DEC/DIV_PAY/PRIOR_ADJ)
   equityDocsMade     EquityDocument[] @relation("EquityDocMaker")
@@ -868,10 +868,10 @@ model EmployeeProfile {
 model Contact {
   id              String        @id @default(uuid())
   contactCode     String        @unique @map("contact_code") // P-00001 (internal)
-  peakContactCode String?       @map("peak_contact_code")    // C00790 (PEAK mapping, owner-filled)
+  peakContactCode String?       @map("peak_contact_code") // C00790 (PEAK mapping, owner-filled)
   name            String
-  taxId           String?       @map("tax_id")               // นิติบุคคล — natural key
-  nationalIdHash  String?       @map("national_id_hash")     // บุคคล — natural key (hashPII)
+  taxId           String?       @map("tax_id") // นิติบุคคล — natural key
+  nationalIdHash  String?       @map("national_id_hash") // บุคคล — natural key (hashPII)
   phone           String?
   email           String?
   address         String?
@@ -884,7 +884,7 @@ model Contact {
 
   customers              Customer[]
   suppliers              Supplier[]
-  tradeInsAsSeller       TradeIn[]                 @relation("TradeInSeller")
+  tradeInsAsSeller       TradeIn[]                @relation("TradeInSeller")
   externalFinanceCompany ExternalFinanceCompany[]
 
   @@index([nationalIdHash])
@@ -1047,30 +1047,33 @@ model Customer {
 }
 
 model Contract {
-  id               String         @id @default(uuid())
-  contractNumber   String         @unique @map("contract_number")
-  customerId       String         @map("customer_id")
-  productId        String         @map("product_id")
-  branchId         String         @map("branch_id")
-  salespersonId    String         @map("salesperson_id")
-  planType         PlanType       @map("plan_type")
-  sellingPrice     Decimal        @map("selling_price") @db.Decimal(12, 2)
-  downPayment      Decimal        @map("down_payment") @db.Decimal(12, 2)
-  interestRate     Decimal        @map("interest_rate") @db.Decimal(5, 4) // e.g. 0.0800
-  totalMonths      Int            @map("total_months")
-  interestTotal    Decimal        @map("interest_total") @db.Decimal(12, 2)
-  financedAmount   Decimal        @map("financed_amount") @db.Decimal(12, 2)
-  storeCommission  Decimal?       @map("store_commission") @db.Decimal(12, 2)
-  vatAmount        Decimal?       @map("vat_amount") @db.Decimal(12, 2)
-  vatPct           Decimal?       @map("vat_pct") @db.Decimal(5, 4)
-  monthlyPayment   Decimal        @map("monthly_payment") @db.Decimal(12, 2)
-  advanceBalance   Decimal        @default(0) @map("advance_balance") @db.Decimal(12, 2)
-  status           ContractStatus @default(DRAFT)
-  parentContractId String?        @map("parent_contract_id")
-  notes            String?
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
-  deletedAt        DateTime?      @map("deleted_at")
+  id                       String         @id @default(uuid())
+  contractNumber           String         @unique @map("contract_number")
+  customerId               String         @map("customer_id")
+  productId                String         @map("product_id")
+  branchId                 String         @map("branch_id")
+  salespersonId            String         @map("salesperson_id")
+  planType                 PlanType       @map("plan_type")
+  sellingPrice             Decimal        @map("selling_price") @db.Decimal(12, 2)
+  downPayment              Decimal        @map("down_payment") @db.Decimal(12, 2)
+  interestRate             Decimal        @map("interest_rate") @db.Decimal(5, 4) // e.g. 0.0800
+  totalMonths              Int            @map("total_months")
+  interestTotal            Decimal        @map("interest_total") @db.Decimal(12, 2)
+  financedAmount           Decimal        @map("financed_amount") @db.Decimal(12, 2)
+  storeCommission          Decimal?       @map("store_commission") @db.Decimal(12, 2)
+  vatAmount                Decimal?       @map("vat_amount") @db.Decimal(12, 2)
+  vatPct                   Decimal?       @map("vat_pct") @db.Decimal(5, 4)
+  monthlyPayment           Decimal        @map("monthly_payment") @db.Decimal(12, 2)
+  advanceBalance           Decimal        @default(0) @map("advance_balance") @db.Decimal(12, 2)
+  /// พักงวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a/6b) พักถึงงวดสุดท้ายเท่านั้น
+  /// แยกจาก advanceBalance (ถัง FIFO เดิม) — คำสั่งเจ้าของ 2026-08-16
+  rescheduleAdvanceBalance Decimal        @default(0) @map("reschedule_advance_balance") @db.Decimal(12, 2)
+  status                   ContractStatus @default(DRAFT)
+  parentContractId         String?        @map("parent_contract_id")
+  notes                    String?
+  createdAt                DateTime       @default(now()) @map("created_at")
+  updatedAt                DateTime       @updatedAt @map("updated_at")
+  deletedAt                DateTime?      @map("deleted_at")
 
   // Workflow: สองฝ่าย (ทำสัญญา vs ตรวจสอบ)
   workflowStatus ContractWorkflowStatus @default(CREATING) @map("workflow_status")
@@ -1575,8 +1578,8 @@ model PurchaseOrder {
   expectedDate        DateTime?       @map("expected_date")
   dueDate             DateTime?       @map("due_date")
   status              POStatus        @default(DRAFT)
-  orderedAt       DateTime? @map("ordered_at")
-  isDirectReceive Boolean   @default(false) @map("is_direct_receive")
+  orderedAt           DateTime?       @map("ordered_at")
+  isDirectReceive     Boolean         @default(false) @map("is_direct_receive")
   totalAmount         Decimal         @map("total_amount") @db.Decimal(12, 2)
   discount            Decimal         @default(0) @db.Decimal(12, 2) // ส่วนลดก่อน VAT
   discountAfterVat    Decimal         @default(0) @map("discount_after_vat") @db.Decimal(12, 2)
@@ -1899,7 +1902,7 @@ model GoodsReceivingItem {
   photos             String[]            @default([])
   status             ReceivingItemStatus
   rejectReason       String?             @map("reject_reason")
-  defectReason DefectReason? @map("defect_reason")
+  defectReason       DefectReason?       @map("defect_reason")
   batteryHealth      Int?                @map("battery_health")
   warrantyExpired    Boolean?            @map("warranty_expired")
   warrantyExpireDate DateTime?           @map("warranty_expire_date")
@@ -3942,20 +3945,20 @@ enum DocumentStatus {
 }
 
 model ExpenseDocument {
-  id           String       @id @default(uuid())
-  number       String       @unique
-  documentType DocumentType @map("document_type")
-  branchId     String       @map("branch_id")
-  documentDate DateTime     @map("document_date")
-  vendorName   String?      @map("vendor_name")
-  vendorTaxId  String?      @map("vendor_tax_id")
+  id               String       @id @default(uuid())
+  number           String       @unique
+  documentType     DocumentType @map("document_type")
+  branchId         String       @map("branch_id")
+  documentDate     DateTime     @map("document_date")
+  vendorName       String?      @map("vendor_name")
+  vendorTaxId      String?      @map("vendor_tax_id")
   /// Party-master link (Phase 3 P3) — durable FK to the provisioned Supplier
   /// behind `vendorName`. Nullable: several subtypes (payroll/custodian,
   /// template, credit-note, settlement) legitimately set vendorName as free
   /// text with no supplier, so no required-FK guard is enforced.
-  vendorSupplierId String?   @map("vendor_supplier_id")
-  taxInvoiceNo String?      @map("tax_invoice_no")
-  description  String?
+  vendorSupplierId String?      @map("vendor_supplier_id")
+  taxInvoiceNo     String?      @map("tax_invoice_no")
+  description      String?
 
   subtotal       Decimal  @db.Decimal(12, 2)
   vatAmount      Decimal  @default(0) @map("vat_amount") @db.Decimal(12, 2)
@@ -4072,7 +4075,7 @@ model ExpenseLine {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  supplier        Supplier?     @relation("ExpenseLineSupplier", fields: [supplierId], references: [id])
+  supplier Supplier? @relation("ExpenseLineSupplier", fields: [supplierId], references: [id])
 
   @@unique([expenseDetailId, lineNo])
   @@index([supplierId])
@@ -4473,13 +4476,13 @@ enum InterCoBatchStatus {
 /// (`intercompany.settle` ต่อรายการ + `shop-finance-settlement` ที่ไม่เคยต่อ UI).
 /// spec: docs/superpowers/specs/2026-07-30-interco-settlement-batch-design.md §3
 model InterCoSettlementBatch {
-  id             String             @id @default(uuid())
-  batchNumber    String             @unique @map("batch_number") // IC-YYYYMMDD-NNNN
-  status         InterCoBatchStatus @default(DRAFT)
-  transferDate   DateTime           @map("transfer_date") // วันโอนจริงตาม statement (โหมดย้อนหลังได้ — D2/D4)
-  postedAt       DateTime?          @map("posted_at") // วันที่ลงบัญชีจริง (ต่างจาก transferDate ได้ถ้างวดปิด — D4)
-  financeBankCode String            @map("finance_bank_code") // default '11-1201'
-  shopBankCode    String            @map("shop_bank_code") // default 'S11-1201'
+  id              String             @id @default(uuid())
+  batchNumber     String             @unique @map("batch_number") // IC-YYYYMMDD-NNNN
+  status          InterCoBatchStatus @default(DRAFT)
+  transferDate    DateTime           @map("transfer_date") // วันโอนจริงตาม statement (โหมดย้อนหลังได้ — D2/D4)
+  postedAt        DateTime?          @map("posted_at") // วันที่ลงบัญชีจริง (ต่างจาก transferDate ได้ถ้างวดปิด — D4)
+  financeBankCode String             @map("finance_bank_code") // default '11-1201'
+  shopBankCode    String             @map("shop_bank_code") // default 'S11-1201'
 
   totalFinanced    Decimal @map("total_financed") @db.Decimal(12, 2)
   totalCommission  Decimal @map("total_commission") @db.Decimal(12, 2)
@@ -4507,8 +4510,8 @@ model InterCoSettlementBatch {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  maker    User                     @relation("InterCoBatchMaker", fields: [makerId], references: [id])
-  approver User?                    @relation("InterCoBatchApprover", fields: [approverId], references: [id])
+  maker    User                    @relation("InterCoBatchMaker", fields: [makerId], references: [id])
+  approver User?                   @relation("InterCoBatchApprover", fields: [approverId], references: [id])
   items    InterCoSettlementItem[]
 
   @@index([status])
@@ -4547,7 +4550,7 @@ model InterCoSettlementItem {
   // onDelete: Restrict — ทั้ง batch และ contract ห้ามหายไปเงียบๆ ใต้ item ที่อ้างอิงอยู่
   // (item คือหลักฐานการจ่ายทางบัญชี ตาม v3 "Restrict on financial/evidence tables" policy).
   batch    InterCoSettlementBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  contract Contract              @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  contract Contract               @relation(fields: [contractId], references: [id], onDelete: Restrict)
 
   @@unique([batchId, contractId])
   @@index([contractId])
@@ -5262,7 +5265,7 @@ model ChatMessage {
   /// Frontend-generated correlation token for optimistic send — lets the client
   /// match its optimistic "sending" bubble to the saved row. NULL for inbound
   /// messages and for rows created before this column existed.
-  clientMessageId String? @map("client_message_id")
+  clientMessageId   String?  @map("client_message_id")
   roomId            String   @map("room_id")
   room              ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
@@ -6765,13 +6768,13 @@ model OtherIncome {
   // Reverse linkage (self-relation)
   // - on a -R doc:    reversesId points to the original (unique: one reversal per original)
   // - reversedBy is derived automatically by Prisma from the unique reversesId on the other side
-  reversesId    String?                   @unique @map("reverses_id")
-  reverseReason OtherIncomeReverseReason? @map("reverse_reason")
-  reverseNote   String?                   @map("reverse_note")
+  reversesId         String?                   @unique @map("reverses_id")
+  reverseReason      OtherIncomeReverseReason? @map("reverse_reason")
+  reverseNote        String?                   @map("reverse_note")
   /// InternalControlActionBar — human-readable label picked from the admin-
   /// managed `reverse_reasons` table. Stored alongside `reverseReason` so
   /// analytics can group by the real label rather than the coarse enum.
-  reverseReasonLabel String?              @map("reverse_reason_label")
+  reverseReasonLabel String?                   @map("reverse_reason_label")
 
   // Recurring
   copiedFromId String? @map("copied_from_id")
@@ -7392,10 +7395,10 @@ model ExternalFinanceCompany {
   deletedAt             DateTime? @map("deleted_at")
 
   // ── new master fields (PEAK-style, focused) ──
-  taxId          String?  @map("tax_id")
+  taxId          String? @map("tax_id")
   email          String?
-  lineOaId       String?  @map("line_oa_id")
-  creditTermDays Int?     @map("credit_term_days")
+  lineOaId       String? @map("line_oa_id")
+  creditTermDays Int?    @map("credit_term_days")
 
   commissions ExternalFinanceCommission[]
 
@@ -7460,20 +7463,20 @@ enum FinanceContactResult {
 }
 
 model FinanceCompanyContact {
-  id                       String   @id @default(uuid())
-  externalFinanceCompanyId String   @map("external_finance_company_id")
+  id                       String    @id @default(uuid())
+  externalFinanceCompanyId String    @map("external_finance_company_id")
   name                     String
   position                 String?
   department               String?
   phone                    String?
   email                    String?
-  lineId                   String?  @map("line_id")
+  lineId                   String?   @map("line_id")
   notes                    String?
-  isPrimary                Boolean  @default(false) @map("is_primary")
-  isActive                 Boolean  @default(true)  @map("is_active")
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt      @map("updated_at")
-  deletedAt                DateTime?                @map("deleted_at")
+  isPrimary                Boolean   @default(false) @map("is_primary")
+  isActive                 Boolean   @default(true) @map("is_active")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  deletedAt                DateTime? @map("deleted_at")
 
   company     ExternalFinanceCompany        @relation(fields: [externalFinanceCompanyId], references: [id])
   contactLogs FinanceReceivableContactLog[]
@@ -7497,7 +7500,7 @@ model FinanceReceivableContactLog {
   promisedBrokenAt         DateTime?             @map("promised_broken_at")
   promisedKeptAt           DateTime?             @map("promised_kept_at")
   createdAt                DateTime              @default(now()) @map("created_at")
-  updatedAt                DateTime              @updatedAt      @map("updated_at")
+  updatedAt                DateTime              @updatedAt @map("updated_at")
   deletedAt                DateTime?             @map("deleted_at")
 
   receivable  FinanceReceivable      @relation(fields: [financeReceivableId], references: [id])
@@ -7671,13 +7674,13 @@ model ContractExchangeRequest {
 /// ใช้ร่วม 3 modules: Other Income / Expense / Asset. แทน hardcoded enum + SystemConfig
 /// JSON ของเดิม. ปิดใช้งานแทนการลบ (audit-safe) — soft delete via deletedAt.
 model ReverseReason {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   /// ข้อความที่แสดงใน dropdown — เช่น "บันทึกผิดบัญชี"
   label     String
   /// ลำดับการแสดงผล (น้อย → มาก). drag-sort ใน Settings UI อัปเดต field นี้.
-  sortOrder Int      @default(0) @map("sort_order")
+  sortOrder Int     @default(0) @map("sort_order")
   /// false = ไม่แสดงใน dropdown แต่ยังเก็บไว้สำหรับ audit log ที่อ้างอิงเหตุผลเก่า
-  isActive  Boolean  @default(true) @map("is_active")
+  isActive  Boolean @default(true) @map("is_active")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

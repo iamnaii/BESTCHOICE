@@ -20,11 +20,14 @@ describe('ExchangeCloseOld21_1106Template', () => {
     template = mod.get(ExchangeCloseOld21_1106Template);
   });
 
-  it('LOSS branch: buyback 11,000 < (Gross 11,333.28 + VAT 793.36 = 12,126.64) → Dr 51-1102 1,126.64', async () => {
+  // วิธีสุทธิ (workbook 2026-08-19): diff = (buyback + unearned + deferredVat)
+  // − (gross + vatRec×2). Break-even buyback for this fixture =
+  // 12,920.00 − 3,460.00 = 9,460.00.
+  it('LOSS branch (วิธีสุทธิ): buyback 8,333.36 < break-even 9,460.00 → Dr 51-1102 1,126.64, no 41-1101 line', async () => {
     await template.execute({
       oldContractId: 'old',
       requestId: 'req-1',
-      buyback: new Decimal('11000'),
+      buyback: new Decimal('8333.36'),
       oldGrossOutstanding: new Decimal('11333.28'),
       oldVatReceivableOutstanding: new Decimal('793.36'),
       oldUnearnedInterestOutstanding: new Decimal('2666.64'),
@@ -37,17 +40,19 @@ describe('ExchangeCloseOld21_1106Template', () => {
     expect(loss.dr.toFixed(2)).toBe('1126.64');
     const gain = lines.find((l: any) => l.accountCode === '41-1102');
     expect(gain).toBeUndefined();
+    // วิธีสุทธิ: ไม่มีขา Cr 41-1101 อีกต่อไป (anti-regression, workbook 2026-08-19)
+    expect(lines.find((l: any) => l.accountCode === '41-1101')).toBeUndefined();
     // Balance
     const drSum = lines.reduce((s: Decimal, l: any) => s.plus(l.dr), new Decimal(0));
     const crSum = lines.reduce((s: Decimal, l: any) => s.plus(l.cr), new Decimal(0));
     expect(drSum.toFixed(2)).toBe(crSum.toFixed(2));
   });
 
-  it('GAIN branch: buyback 13,000 > 12,126.64 → Cr 41-1102 873.36', async () => {
+  it('GAIN branch (วิธีสุทธิ): buyback 10,333.36 > break-even 9,460.00 → Cr 41-1102 873.36', async () => {
     await template.execute({
       oldContractId: 'old',
       requestId: 'req-1',
-      buyback: new Decimal('13000'),
+      buyback: new Decimal('10333.36'),
       oldGrossOutstanding: new Decimal('11333.28'),
       oldVatReceivableOutstanding: new Decimal('793.36'),
       oldUnearnedInterestOutstanding: new Decimal('2666.64'),
@@ -59,11 +64,11 @@ describe('ExchangeCloseOld21_1106Template', () => {
     expect(lines.find((l: any) => l.accountCode === '51-1102')).toBeUndefined();
   });
 
-  it('PERFECT branch: buyback 12,126.64 == threshold → no P&L line', async () => {
+  it('PERFECT branch (วิธีสุทธิ): buyback 9,460.00 == break-even → no P&L line', async () => {
     await template.execute({
       oldContractId: 'old',
       requestId: 'req-1',
-      buyback: new Decimal('12126.64'),
+      buyback: new Decimal('9460.00'),
       oldGrossOutstanding: new Decimal('11333.28'),
       oldVatReceivableOutstanding: new Decimal('793.36'),
       oldUnearnedInterestOutstanding: new Decimal('2666.64'),
@@ -93,5 +98,7 @@ describe('ExchangeCloseOld21_1106Template', () => {
     const meta = journal.createAndPost.mock.calls[0][0].metadata;
     expect(meta.contractId).toBe('old');
     expect(meta.idempotencyKey).toBe('old:req-1');
+    // วิธีสุทธิ marker (workbook 2026-08-19) — แถวเก่าไม่มี key นี้ = gross
+    expect(meta.method).toBe('NET');
   });
 });

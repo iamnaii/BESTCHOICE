@@ -32,7 +32,8 @@ import { IntercoPendingService } from '../../interco-settlement/interco-pending.
  *      installments → finalize posts A.1-A.4; 21-1106 nets 0 across A.2/A.3
  *      (workbook CRITICAL CHECK); every old-contract receivable account nets 0;
  *      Cr 11-2101 = GL-true 11,333.36 (17,000 − 4×1,416.66), NOT the straight-line
- *      11,333.28 (1,416.66 × 8); loss plug 51-1102 = GL-derived 4,126.68.
+ *      11,333.28 (1,416.66 × 8); loss plug 51-1102 = GL-derived 126.68
+ *      (วิธีสุทธิ, workbook 2026-08-19 — A.2 no longer posts Cr 41-1101).
  *      A.3 (2026-08-03 owner order — SUPERSEDES D5 for this path) is now a
  *      2-line JE: Dr 11-2107 8,000 / Cr 21-1106 8,000 — NO cash leg, and
  *      21-1101/21-1102 are NOT cleared (they stay outstanding at 15,000 /
@@ -546,11 +547,13 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(sumSide(je2Lines, '11-2101', 'cr').toFixed(2)).toBe('11333.36');
       expect(sumSide(je2Lines, '11-2105', 'cr').toFixed(2)).toBe('793.32');
       expect(sumSide(je2Lines, '21-2101', 'cr').toFixed(2)).toBe('793.32');
-      expect(sumSide(je2Lines, '41-1101', 'cr').toFixed(2)).toBe('4000.00');
+      // วิธีสุทธิ (workbook 2026-08-19): A.2 ไม่ตั้งรายได้ 41-1101 อีกต่อไป
+      expect(sumSide(je2Lines, '41-1101', 'cr').toFixed(2)).toBe('0.00');
       expect(sumSide(je2Lines, '11-2106', 'dr').toFixed(2)).toBe('4000.00');
       expect(sumSide(je2Lines, '21-2102', 'dr').toFixed(2)).toBe('793.32');
-      // Loss plug = threshold (11,333.36 + 793.32) − buyback 8,000 = GL-true 4,126.68
-      expect(sumSide(je2Lines, '51-1102', 'dr').toFixed(2)).toBe('4126.68');
+      // Loss plug (วิธีสุทธิ) = (buyback 8,000 + unearned 4,000 + deferredVat 793.32)
+      // − (gross 11,333.36 + vatRec 793.32 ×2) = −126.68
+      expect(sumSide(je2Lines, '51-1102', 'dr').toFixed(2)).toBe('126.68');
 
       // --- A.3 (คำสั่งเจ้าของ 2026-08-03 — supersedes D5 for this path):
       // ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้าง 21-1106 เท่านั้น. EXACTLY 2 lines —

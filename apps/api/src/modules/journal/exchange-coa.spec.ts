@@ -37,3 +37,15 @@ describe('Device Swap CoA (spec §10) — 42-1106 / 42-1107 removed (CPA 2026-08
     expect(otherIncome).toEqual(['42-1102', '42-1103', '42-1104', '42-1105']);
   });
 });
+
+describe('S21-3001 เจ้าหนี้-FINANCE ค่าเครื่องรับคืน (workbook 2026-08-19)', () => {
+  it('shop-coa.csv มีบัญชี S21-3001 เป็นหนี้สิน ยอดปกติ Cr', () => {
+    const rows = loadCoaFromCsv(
+      path.join(__dirname, '__tests__/fixtures/cpa-cases/shop-coa.csv'),
+    );
+    const row = rows.find((r) => r.code === 'S21-3001');
+    expect(row).toBeDefined();
+    expect(row!.normalBalance).toBe('Cr');
+    expect(row!.name).toContain('FINANCE');
+  });
+});

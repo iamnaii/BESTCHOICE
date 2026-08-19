@@ -227,6 +227,38 @@ describe('ExchangeCancelService (spec §9)', () => {
     );
   });
 
+  // Workbook 2026-08-19 Phase 1 (Task 5): A.4 เขียนทับ product.costPrice เป็น
+  // ราคารับซื้อตอน finalize — cancel ต้อง restore กลับจาก snapshot
+  // request.previousCostPrice (Task 3/4)
+  it('previousCostPrice มีค่า → restore costPrice บนเครื่องเก่าตอน cancel', async () => {
+    requests.req1 = { ...makeFinalizedReq(5), previousCostPrice: new Decimal('7500.00') };
+
+    await svc.cancel('req1', 'ทดสอบ restore costPrice', user);
+
+    expect(txMock.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'oldP1' },
+        data: expect.objectContaining({
+          status: 'SOLD_INSTALLMENT',
+          ownedByCompanyId: 'finance-co-id',
+          costPrice: new Decimal('7500.00'),
+        }),
+      }),
+    );
+  });
+
+  it('previousCostPrice null (finalize ก่อนฟีเจอร์ — forward-only) → ไม่แตะ costPrice', async () => {
+    requests.req1 = { ...makeFinalizedReq(5), previousCostPrice: null };
+
+    await svc.cancel('req1', 'ทดสอบ legacy ไม่มี snapshot', user);
+
+    const oldProdCall = txMock.product.update.mock.calls.find(
+      ([arg]: [any]) => arg.where.id === 'oldP1',
+    );
+    expect(oldProdCall).toBeDefined();
+    expect('costPrice' in oldProdCall![0].data).toBe(false);
+  });
+
   it('FINALIZED แต่สัญญาใหม่ไม่ ACTIVE (COMPLETED) → BadRequest, ไม่หลุดไป PRE_FINALIZE ไม่แตะอะไร', async () => {
     // exchangedAt set = finalized จริง; newContract COMPLETED ต้องถูก REJECT —
     // ห้าม route ไป PRE_FINALIZE (จะ soft-delete สัญญาจริงโดยไม่มี reversal/paid-guard)

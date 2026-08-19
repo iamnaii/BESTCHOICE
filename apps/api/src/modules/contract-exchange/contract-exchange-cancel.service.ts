@@ -204,7 +204,13 @@ export class ExchangeCancelService {
       });
       await tx.product.update({
         where: { id: req.oldProductId },
-        data: { status: 'SOLD_INSTALLMENT', ownedByCompanyId: financeCompanyId } as any,
+        data: {
+          status: 'SOLD_INSTALLMENT',
+          ownedByCompanyId: financeCompanyId,
+          // Restore costPrice เดิมก่อน A.4 เขียนทับเป็นราคารับซื้อ (workbook 2026-08-19
+          // Phase 1) — null = finalize ก่อนฟีเจอร์นี้ ไม่แตะ (forward-only)
+          ...(req.previousCostPrice != null ? { costPrice: req.previousCostPrice } : {}),
+        } as any,
       });
       await tx.contract.update({
         where: { id: req.newContractId },

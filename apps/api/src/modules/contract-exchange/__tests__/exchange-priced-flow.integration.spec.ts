@@ -147,7 +147,12 @@ async function seedSwapFixture(
       storage: '128GB',
       imeiSerial: `EXCHTEST-${tag}-OLD`,
       category: 'PHONE_NEW',
-      costPrice: new Decimal('8000.00'),
+      // 7,500 ≠ buyback 8,000 โดยตั้งใจ (Task 5) — ให้ assertion "cancel restore
+      // costPrice" แยกแยะได้จริงระหว่างค่าเดิมกับค่าที่ A.4 เขียนทับ (ถ้าเท่ากัน
+      // การ restore ที่พังก็ยัง pass แบบบังเอิญ). ไม่มี golden อื่นอ้างค่านี้:
+      // สัญญาเก่า seed ตรงผ่าน prisma (ไม่ผ่าน activation → ไม่มี COGS/S50 JE)
+      // และ A.4 รูปใหม่ book ที่ราคารับซื้อ ไม่ใช่ costPrice.
+      costPrice: new Decimal('7500.00'),
       installmentPrice: new Decimal('12000.00'),
       branchId,
       status: 'SOLD_INSTALLMENT',
@@ -694,7 +699,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       // ของ SHOP รอบใหม่) และค่าเดิมถูก snapshot ไว้บน request row ให้ cancel restore
       expect(new Decimal(oldProduct.costPrice!.toString()).toFixed(2)).toBe('8000.00');
       expect(req.previousCostPrice).not.toBeNull();
-      expect(new Decimal(req.previousCostPrice!.toString()).toFixed(2)).toBe('8000.00');
+      expect(new Decimal(req.previousCostPrice!.toString()).toFixed(2)).toBe('7500.00');
     },
     120_000,
   );
@@ -774,8 +779,30 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       };
       expect(pre.gross.toFixed(2)).toBe('17000.00');
 
+      // costPrice เดิมของเครื่องเก่า (fixture = 7,500 ≠ buyback 8,000) — A.4 จะ
+      // เขียนทับตอน finalize และ cancel ต้อง restore กลับค่านี้ (scrutiny finding 3)
+      const originalCostPrice = new Decimal(
+        (
+          await prisma.product.findUniqueOrThrow({
+            where: { id: fix.oldProductId },
+            select: { costPrice: true },
+          })
+        ).costPrice!.toString(),
+      );
+
       const { newContract, request } = await seedNewContractAndRequest(fix, '100003', '8000');
       await activateAndFinalize(newContract.id, fix.newProductId);
+
+      // Precondition ของ assertion restore ด้านล่าง: A.4 เขียนทับ costPrice =
+      // ราคารับซื้อ (8,000) ซึ่งต้อง "ต่าง" จากค่าเดิม — ถ้าสองค่านี้เท่ากัน
+      // การ restore ที่พังจะ pass แบบบังเอิญ
+      const costAfterFinalize = await prisma.product.findUniqueOrThrow({
+        where: { id: fix.oldProductId },
+        select: { costPrice: true },
+      });
+      expect(new Decimal(costAfterFinalize.costPrice!.toString()).toFixed(2)).toBe('8000.00');
+      expect(originalCostPrice.toFixed(2)).toBe('7500.00');
+
       // F2 SHOP JEs are never stored on the request row (metadata-only
       // traceability) — look them up explicitly for the pair-completeness
       // check below (the sweep still finds + reverses them regardless).
@@ -906,6 +933,10 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       const oldProd = await prisma.product.findUniqueOrThrow({ where: { id: fix.oldProductId } });
       expect(oldProd.status).toBe('SOLD_INSTALLMENT');
       expect(oldProd.ownedByCompanyId).toBe(financeCompanyId);
+      // costPrice ของเครื่องเก่าต้องถูก restore กลับค่าก่อน finalize (scrutiny finding 3)
+      expect(new Decimal(oldProd.costPrice!.toString()).toFixed(2)).toBe(
+        originalCostPrice.toFixed(2),
+      );
       const newProd = await prisma.product.findUniqueOrThrow({ where: { id: fix.newProductId } });
       expect(newProd.status).toBe('IN_STOCK');
       expect(newProd.ownedByCompanyId).toBe(shopCompanyId);

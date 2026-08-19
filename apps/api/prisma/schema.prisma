@@ -7638,6 +7638,9 @@ model ContractExchangeRequest {
   // ===== Device Swap 2026-07 (priced exchange) =====
   mode               ExchangeMode          @default(PRICED) @map("mode")
   buybackPrice       Decimal?              @map("buyback_price") @db.Decimal(12, 2)
+  /// costPrice เดิมของเครื่องเก่า ก่อนถูกเขียนทับเป็นราคารับซื้อตอน A.4 finalize
+  /// (workbook 2026-08-19 Phase 1) — cancel ใช้ restore กลับ. null = finalize ก่อนฟีเจอร์นี้
+  previousCostPrice  Decimal?              @map("previous_cost_price") @db.Decimal(12, 2)
   deviceCondition    String?               @map("device_condition") // A-D → key เข้า TradeInValuation
   approvalTier       ExchangeApprovalTier? @map("approval_tier")
   ncvSnapshot        Decimal?              @map("ncv_snapshot") @db.Decimal(12, 2)

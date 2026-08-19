@@ -19,7 +19,7 @@
 | Workbook | ระบบปัจจุบัน |
 |---|---|
 | Flow A (Case 1) — รุ่นเดิมราคาเดิม ไม่มี JE | MEMO mode (`ContractExchangeService`) — เปลี่ยน productId + log, ไม่มี JE ✓ |
-| Flow B จุด 1A + จุด 2 — เปิดใหม่ + ปิดเก่าพัก 11-2107 | A.1 (`ContractActivation1ATemplate`) + A.2/A.3 — ระบบแยก 2 ใบผ่านบัญชีพัก 21-1106 แต่**ผลสุทธิเท่า workbook ทุกบาท** (Dr 11-2107 = ราคารับซื้อ; loss plug 51-1102; VAT ถึงกำหนดทันที ม.78/1) — **ตั้งใจไม่รวมเป็นใบเดียว** เพราะ golden fixtures มีอยู่แล้วและไม่มีผลทางบัญชี |
+| Flow B จุด 1A + จุด 2 — **โครงสร้าง/งบดุล** | A.1 (`ContractActivation1ATemplate`) + A.2/A.3 — ระบบแยก 2 ใบผ่านบัญชีพัก 21-1106 แต่**งบดุลสุทธิเท่า workbook ทุกบาท** (Dr 11-2107 = ราคารับซื้อ; VAT ถึงกำหนดทันที ม.78/1) — **ตั้งใจไม่รวมเป็นใบเดียว** เพราะ golden fixtures มีอยู่แล้วและไม่มีผลทางบัญชี ⚠️ ยกเว้น**วิธีรับรู้ P&L** — ดู Gap ข้อ 6 (scrutiny 2026-08-19) |
 | Flow D (Case 7) — ปิดยอด + ส่วนลด 52-1106 + หน้าร้านรับแทน Dr 11-2107 | `EarlyPayoffJP4Template` + `ShopCollectSettlementTemplate` ✓ (Policy A: VAT ไม่ลด ไม่ออกใบลดหนี้ — ตรงกันอยู่แล้ว) |
 | ECL ล้างในใบเดียวกัน (ยึด/write-off/swap) | consume-then-release pattern ใน JP5 / write-off / A.5 ✓ |
 
@@ -30,6 +30,7 @@
 3. **11-2107 หลายความหมาย**: ปัจจุบันแยกได้แค่ทาง `metadata.flow` โดยอ้อม — ต้องมี reference type ชัดเจน 3 ประเภท (workbook ระบุ 2 + ระบบมี SHOP_COLLECT อยู่แล้วเป็นประเภทที่ 3) + รายงานอายุหนี้แยกคอลัมน์ + alert เกิน 30 วัน
 4. **Validation suite**: 11-2107 = 0 หลังจบ workflow ต่อสัญญา, กระทบยอด inter-co รายเดือน + alert, ECL ต้องถูกล้างตอนยกเลิก (template ปัจจุบันไม่แตะ), guard งวดบัญชีปิด (มีแล้วผ่าน `JournalAutoService`)
 5. **IMEI guards**: `ProductStatus` enum ครบ 15 สถานะแล้ว — ขาด**ด่านตรวจ**: ห้ามเครื่องอยู่ 2 สัญญา active, ห้ามขายซ้ำโดยไม่ผ่านการคืน
+6. **A.2 ใช้วิธี gross — workbook สั่งวิธีสุทธิ** (พบจาก scrutiny 2026-08-19): `exchange-close-old-21-1106.template.ts` ปัจจุบันมีขา `Cr 41-1101 [unearned]` (รับรู้ดอกเบี้ยรอตัดที่เหลือเป็นรายได้) ทำให้ loss plug 51-1102 โตขึ้นเท่ากัน — กำไรสุทธิเท่ากัน แต่บรรทัด P&L พองเกินคู่กัน. Workbook Case 2A Verification: "P/L สุทธิ = ขาดทุน 126.64 (**วิธีสุทธิ ไม่ตั้งรายได้ 41-1101**)" + regression checklist "เคสรับคืนเครื่องใช้วิธีสุทธิ / เคสปิดยอดใช้ 52-1106 — ห้ามสลับกัน". ยืนยันแล้วว่า**ไม่มี CPA CSV golden ผูก** (ปักโดย integration spec ของโปรเจคเอง) → แก้ใน Phase 1 (§3.4)
 
 ## 2. บัญชี 11-2107 — Reference Types (3 ประเภท)
 
@@ -57,6 +58,7 @@
 ```
 - ความหมาย: SHOP ซื้อเครื่องมือสองคืนจาก FINANCE ที่ราคารับซื้อ → ตั้งเจ้าหนี้รอหักกลบรอบจ่าย
 - **อัปเดต `product.costPrice` = ราคารับซื้อ** ในตอน re-intake (tx เดียวกัน) — COGS ตอนขายซ้ำจะอ้างต้นทุนจริงของ SHOP
+- **Snapshot costPrice เดิมก่อน mutate** (เก็บบน `ContractExchangeRequest.previousCostPrice` — คอลัมน์ใหม่ nullable) และ **restore ใน cancel step "restore states"** (`contract-exchange-cancel.service.ts` ขั้นที่ 3) — มิฉะนั้น cancel จะ mirror GL กลับหมดแต่ costPrice ค้างเป็นราคารับซื้อ → COGS ผิดถ้าขายเครื่องภายหลัง (scrutiny finding 3)
 - Forward-only: JE A.4 เก่า (แบบ costPrice/Cr S50-1102) ปล่อยตามเดิม ไม่ backfill
 - **ผลข้างเคียงที่ตั้งใจ**: cancel-sweep ของ exchange จับ JE นี้ด้วย `metadata.contractId` เหมือนเดิม (mirror-reverse ล้าง S21-3001 กลับเอง) — จำนวน reversalJeIds ไม่เปลี่ยน
 - **หมายเหตุ CPA**: มูลค่าสต็อก re-intake เปลี่ยนจากต้นทุนเดิม → ราคารับซื้อ + เปิดบัญชี S21-3001 — ทำตามคำสั่งเจ้าของ 2026-08-19 (D2) แจ้ง CPA รับทราบ
@@ -64,6 +66,12 @@
 ### 3.3 Stamp reference types
 - A.3 template stamp `SWAP_CREDIT`; shop-collect paths stamp `SHOP_COLLECT`; (C-2 ใน Phase 3 stamp `PAYOUT_RECALL`)
 - `classifyShopReceivable()` + unit tests ครอบ legacy mapping
+
+### 3.4 A.2 เปลี่ยนเป็นวิธีสุทธิ (Gap ข้อ 6)
+- `exchange-close-old-21-1106.template.ts`: **ตัดขา `Cr 41-1101 [unearned]` ออก** — loss/gain plug คำนวณใหม่เองเป็น `buyback − มูลค่าตามบัญชีสุทธิรวม VAT` (ตัวเลข workbook: 8,000 − 8,126.64 = ขาดทุน 126.64 ไม่ใช่ 4,126.64)
+- Update assertions ใน `exchange-priced-flow.integration.spec.ts` (บรรทัดที่ปัก `Cr 41-1101 = 4,000.00` → ไม่มีบรรทัดนี้; loss 4,126.68 → 126.68 ตาม fixture เดิม) + template spec
+- Gain branch: **คง `Cr 41-1102` ไว้ตามเดิม** (unreachable ภายใต้ guard ราคารับซื้อ ≥ เจ้าหนี้ — นโยบายธุรกิจบอกไม่เกิด) — workbook ระบุ "กลุ่ม 42-xxxx" บันทึกไว้เป็นประเด็นแจ้ง CPA ถ้าจะย้ายค่อยทำตามคำสั่ง ไม่เดาตอนนี้
+- Cancel-sweep mirror ใบ A.2 ได้เหมือนเดิม (โครงสร้างบรรทัดเปลี่ยน แต่ mirror เป็น generic)
 
 ## 4. Phase 2 — จุดที่ 3: หักกลบในรอบจ่าย INTER-CO
 
@@ -77,6 +85,8 @@
 - แถว `SETTLEMENT`: สัญญาปกติ/สัญญา swap (swapCreditAmount > 0 เมื่อเป็น swap)
 - แถว `RECALL`: สัญญาที่ยกเลิกแบบ C-2 (เฉพาะ recallAmount, ยอดเจ้าหนี้ = 0)
 - `@@unique([batchId, contractId])` เดิมคงไว้ (สัญญาหนึ่งเข้า batch ได้แถวเดียว)
+- **นิยามยอดระดับ batch** (scrutiny finding 4): `totalAmount` คงความหมายเดิม = Σ เจ้าหนี้ (21-1101+21-1102) และเพิ่ม `netTransferAmount Decimal @default(0)` = เงินโอนจริง (`totalAmount − Σ swapCredit − Σ recall`) — ใบ FINANCE/SHOP ขาเงินสดใช้ `netTransferAmount`; `shopPostedAmount` เดิมยังคือยอดฝั่ง SHOP ที่ถูกล้าง (ไม่ใช่เงินสดอีกต่อไป — comment ในโค้ดให้ชัด)
+- `updateBatch` (ลบ-สร้าง item ใหม่ DRAFT-only) ต้อง re-snapshot คอลัมน์ใหม่ทุกตัวด้วย
 
 ### 4.3 JE ตอน approve (ตัวเลขตาม workbook Case 8: เจ้าหนี้ 10,000+1,000, รับซื้อ 8,000)
 ```
@@ -117,9 +127,10 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 - สัญญาที่เดินเกินนั้น → แนะนำเส้นทางยึดเครื่อง (JP5) ในข้อความ error
 - สัญญาอยู่ใน batch DRAFT/PENDING_APPROVAL → แจ้งให้ถอนออกจากรอบก่อน (drift guard ของ batch กันชนอยู่แล้ว แต่ให้ error ที่หน้ายกเลิกชัดกว่า)
 
-### 5.2 ยกเครื่อง `ContractCancellationTemplate` → sweep-reverse
-- จาก mirror-1A-ใบเดียว → **sweep ทุก JE POSTED ที่ `metadata.contractId` = สัญญานี้** (pattern เดียวกับ exchange-cancel) — เก็บ 2A accrual ที่เผลอเดินก่อนยกเลิกด้วย
-- **ล้าง ECL ใน tx เดียวกัน**: ถ้า GL 11-2102 ของสัญญามียอด → `Dr 11-2102 / Cr 51-1103` (มาตรฐานเดียวตาม CPA ruling A2.2) + REVERSE แถว `BadDebtProvision`
+### 5.2 ยกเครื่อง `ContractCancellationTemplate` → sweep-reverse (generalize ของที่มี)
+- จาก mirror-1A-ใบเดียว → sweep-reverse โดย **generalize `ExchangeCancelReversalTemplate`** (scrutiny finding 5) — ตัวนี้มี semantics ครบอยู่แล้ว: reverse ตาม id list + sweep `metadata.contractId` + ข้าม JE ที่ `reversed:true` และใบ reversal เอง — ห้ามเขียน sweep ตัวที่สอง
+- **Sweep ต้อง exclude `metadata.flow = 'provision'`** (scrutiny finding 2): JE ค่าเผื่อรายวัน stamp `contractId` เหมือนกัน — ถ้า sweep จับด้วย แล้วโพสต์ขา release แยกอีก 11-2102 จะติดลบเท่ายอดที่ล้าง. ใช้แบบ JP4 C1 แทน: **release ใบเดียวจาก live GL** — `glContractBalance(tx, contractId, '11-2102', 'cr')` → `Dr 11-2102 / Cr 51-1103` (`EclStageReverseTemplate` self-skip เมื่อ ≤ 0) + REVERSE แถว `BadDebtProvision`
+  - หมายเหตุ: exchange-cancel เดิมไม่ชนปัญหานี้เพราะ sweep ใช้ newContractId ส่วน provision อยู่บนสัญญาเก่า — แต่พอ generalize ให้สัญญาทั่วไป contractId เดียวกัน ต้อง exclude
 - deprecate ช่อง `refundAmount` (Dr 52-1106 / Cr ธนาคาร เดิม): ภายใต้ guard ใหม่ ลูกค้ายังไม่เคยจ่าย FINANCE → เงินคืนฝั่ง FINANCE = 0 เสมอ (คง field ที่ API เพื่อ back-compat, ต้องเป็น 0)
 
 ### 5.3 C-1 (ยังไม่ตัดจ่าย) — ตรง Case 3A กรณี 1
@@ -170,15 +181,17 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 ## 9. ประเด็นแจ้ง CPA (ทำก่อน แจ้งรับทราบ — ตามคำสั่งเจ้าของ D2)
 
 1. เปิด `S21-3001 เจ้าหนี้-FINANCE ค่าเครื่องรับคืน` ฝั่งสมุด SHOP (ปิดคำถาม asymmetry ใน interco spec §11 สำหรับเส้นทางเปลี่ยนเครื่อง)
-2. มูลค่าสต็อกเครื่อง re-intake = ราคารับซื้อ (แทน costPrice เดิม) — ต้นทุนจริงที่ SHOP ซื้อคืนจาก FINANCE
+2. มูลค่าสต็อกเครื่อง re-intake = ราคารับซื้อ (แทน costPrice เดิม) — ต้นทุนจริงที่ SHOP ซื้อคืนจาก FINANCE **และจังหวะ COGS-relief ฝั่ง SHOP เปลี่ยน**: เดิม Cr S50-1102 ทันทีวันเปลี่ยนเครื่อง → ใหม่ผลกระทบ COGS ไปออกตอนขายซ้ำผ่าน costPrice ใหม่
 3. การหักกลบเจ้าหนี้/ลูกหนี้ระหว่างกันในรอบจ่าย (จุดที่ 3) แทนการโอนเงิน 2 ขา
 4. PAYOUT_RECALL จากการยกเลิกสัญญาหลังตัดจ่าย
+5. A.2 เปลี่ยนวิธีรับรู้จาก gross → **สุทธิ** (ตัดขา Cr 41-1101, loss เหลือเฉพาะส่วนต่างราคารับซื้อ vs มูลค่าตามบัญชี) ตาม workbook — กำไรสุทธิไม่เปลี่ยน แต่บรรทัดรายได้ดอกเบี้ย/ขาดทุนรับคืนเครื่องในงบเล็กลงคู่กัน
+6. บัญชี gain กรณีราคารับซื้อ > มูลค่าตามบัญชี: โค้ดคง 41-1102 (unreachable ภายใต้ guard) — workbook ระบุกลุ่ม 42-xxxx ถ้า CPA ต้องการย้ายค่อยสั่ง
 
 ## 10. Testing ต่อเฟส
 
 | เฟส | เทสต์หลัก |
 |---|---|
-| 1 | template spec A.4 ใหม่ + `classifyShopReceivable` unit + update `exchange-priced-flow.integration.spec.ts` (S21-3001 ค้าง 8,000 หลัง finalize; cancel-sweep net 0 รวม S21-3001) |
+| 1 | template spec A.4 ใหม่ + A.2 วิธีสุทธิ (ไม่มีขา 41-1101, loss 126.68 ตาม fixture) + `classifyShopReceivable` unit + update `exchange-priced-flow.integration.spec.ts` (S21-3001 ค้าง 8,000 หลัง finalize; cancel-sweep net 0 รวม S21-3001 + restore costPrice) |
 | 2 | integration: batch ผสม (ปกติ + swap + recall) → JE สองสมุด balance, 11-2107/S21-3001 = 0 หลัง approve, guard ราคารับซื้อ ≥ เจ้าหนี้, ยอดสุทธิติดลบ, reverse กลับเข้าคิว |
 | 3 | integration C-1 (net 0 ทุกบัญชี) + C-2 (11-2107 recall ตั้งถูก, เจ้าหนี้ไม่ติดลบ, ECL ล้าง, เครื่องกลับสต็อก) + guard ใบเสร็จค้าง |
 | 4 | cron specs (aging/reconcile) + report endpoint spec |

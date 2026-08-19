@@ -17,6 +17,7 @@ describe('invalidatePaymentQueries', () => {
     // Existing invalidations preserved.
     expect(keys).toContain('pending-payments');
     expect(keys).toContain('daily-summary');
+    expect(keys).toContain('daily-summary-dates');
     // ชำระครบ tab must refresh when a payment posts (PENDING → PAID moves rows).
     expect(keys).toContain('paid-payments');
   });

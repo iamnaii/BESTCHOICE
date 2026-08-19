@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
@@ -642,6 +642,52 @@ export class PaymentQueryService {
       total,
       page,
       limit,
+    };
+  }
+
+  /**
+   * "วันไหนมีสมุดบ้าง" — days of one month that hold money receipts, powering the
+   * clickable date chips under the สรุปรายวัน picker (owner 2026-08-19: the bare
+   * date input forced the cashier to guess which days had data).
+   *
+   * Same universe as getDailySummary by construction (non-voided, non-CN),
+   * bucketed by the SAME server-local day boundary the per-day filter uses — a
+   * day listed here always renders a non-empty summary when clicked.
+   */
+  async getDailySummaryDates(month: string, branchId?: string) {
+    const m = /^(\d{4})-(\d{2})$/.exec(month);
+    const year = m ? Number(m[1]) : NaN;
+    const mon = m ? Number(m[2]) : NaN;
+    if (!m || mon < 1 || mon > 12) {
+      throw new BadRequestException('รูปแบบเดือนไม่ถูกต้อง (ต้องเป็น YYYY-MM)');
+    }
+
+    const receipts = await this.prisma.receipt.findMany({
+      where: {
+        paidDate: { gte: new Date(year, mon - 1, 1), lt: new Date(year, mon, 1) },
+        isVoided: false,
+        deletedAt: null,
+        receiptType: { not: 'CREDIT_NOTE' },
+        ...(branchId ? { contract: { branchId } } : {}),
+      },
+      select: { paidDate: true, amount: true },
+    });
+
+    const byDay = new Map<string, { count: number; total: Prisma.Decimal }>();
+    for (const r of receipts) {
+      const d = r.paidDate;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate(),
+      ).padStart(2, '0')}`;
+      const cur = byDay.get(key) ?? { count: 0, total: new Prisma.Decimal(0) };
+      byDay.set(key, { count: cur.count + 1, total: cur.total.plus(r.amount) });
+    }
+
+    return {
+      month,
+      days: [...byDay.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, v]) => ({ date, count: v.count, total: v.total.toDecimalPlaces(2).toNumber() })),
     };
   }
 

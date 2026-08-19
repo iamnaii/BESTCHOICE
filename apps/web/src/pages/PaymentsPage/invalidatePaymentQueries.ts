@@ -15,6 +15,8 @@ export function invalidatePaymentQueries(qc: QueryClient): void {
     'pending-payments',
     'paid-payments',
     'daily-summary',
+    // "วันที่มีรายการ" chips — a record/void can add or empty out a day.
+    'daily-summary-dates',
     'contract-payments',
     'contract-receipts',
     'contract-journal-entries',

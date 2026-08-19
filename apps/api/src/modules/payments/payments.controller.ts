@@ -111,6 +111,21 @@ export class PaymentsController {
     });
   }
 
+  /** วันไหนมีสมุดบ้าง — รายชื่อวันของเดือนที่มีใบเสร็จ (chips ใต้ date picker). */
+  @Get('daily-summary/dates')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getDailySummaryDates(
+    @Query('month') month: string,
+    @Query('branchId') branchId?: string,
+    @CurrentUser() user?: { role: string; branchId: string | null },
+  ) {
+    const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
+    return this.paymentsService.getDailySummaryDates(
+      month || new Date().toISOString().slice(0, 7),
+      effectiveBranchId,
+    );
+  }
+
   @Get('daily-summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getDailySummary(

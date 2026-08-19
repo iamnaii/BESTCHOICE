@@ -237,6 +237,7 @@ export class ShopCollectSettlementTemplate {
             amount: amountStr,
             depositAccountCode,
             ...(input.requestId ? { requestId: input.requestId } : {}),
+            shopReceivableType: 'SHOP_COLLECT',
             idempotencyKey: input.requestId
               ? `${contractId}:${input.requestId}`
               : `${contractId}:${amountStr}`,

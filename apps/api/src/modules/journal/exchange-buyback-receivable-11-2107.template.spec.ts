@@ -68,5 +68,6 @@ describe('ExchangeBuybackReceivable11_2107Template', () => {
     expect(meta.idempotencyKey).toBe('nc1');
     expect(meta.contractId).toBe('nc1');
     expect(meta.buyback).toBe('8000');
+    expect(meta.shopReceivableType).toBe('SWAP_CREDIT');
   });
 });

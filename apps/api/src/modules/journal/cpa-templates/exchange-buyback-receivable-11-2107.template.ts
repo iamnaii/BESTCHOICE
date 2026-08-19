@@ -79,6 +79,7 @@ export class ExchangeBuybackReceivable11_2107Template {
           contractId: input.newContractId,
           newContractId: input.newContractId,
           buyback: buyback.toString(),
+          shopReceivableType: 'SWAP_CREDIT',
         },
         lines: [
           {

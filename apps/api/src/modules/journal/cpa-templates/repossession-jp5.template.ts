@@ -449,7 +449,11 @@ export class RepossessionJP5Template {
           // stamp เฉพาะเมื่อมีจริง เพื่อไม่ให้ metadata ของสัญญาทั่วไปเปลี่ยนรูป
           ...(built.parkRelief.gt(0) ? { parkRelief: built.parkRelief.toFixed(2) } : {}),
           ...(input.collectedByShop
-            ? { collectedByShop: true, shopReceivable: input.depositAccountCode }
+            ? {
+                collectedByShop: true,
+                shopReceivable: input.depositAccountCode,
+                shopReceivableType: 'SHOP_COLLECT',
+              }
             : {}),
         },
         lines: built.lines,

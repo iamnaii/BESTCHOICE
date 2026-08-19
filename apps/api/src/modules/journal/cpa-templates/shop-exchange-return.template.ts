@@ -38,8 +38,9 @@ export interface ShopExchangeReturnInput {
  *
  * Idempotency: `metadata.flow = 'shop-exchange-return'` (ชื่อเดิม — ห้ามเปลี่ยน)
  * + `idempotencyKey = <oldProductId>:<oldContractId>:<requestId>`.
- * `metadata.contractId = oldContractId` เดิม — ExchangeCancelReversalTemplate
- * sweep จับใบนี้ผ่าน je4Id ที่เก็บบน request row อยู่แล้ว.
+ * `metadata.contractId = oldContractId` (key ใหม่ 2026-08-19 — ชี้สัญญาเดิม) —
+ * ExchangeCancelReversalTemplate reverse ใบนี้ผ่าน je4Id ที่เก็บบน request row
+ * (sweep ใช้ newContractId จึงไม่จับใบนี้ซ้ำ).
  */
 @Injectable()
 export class ShopExchangeReturnTemplate {

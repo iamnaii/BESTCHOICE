@@ -73,6 +73,14 @@ export class ExchangeCancelReversalTemplate {
             originalEntryId: je.id,
             reversesEntryId: je.id,
             contractId: (meta['contractId'] as string | undefined) ?? undefined,
+            // Carry the netting-lens type (final review 2026-08-19): a mirror
+            // of a stamped JE (A.3/A.4 SWAP_CREDIT) must net against the same
+            // type — otherwise the canceled swap leaves +SWAP_CREDIT/-UNKNOWN
+            // pairs on 11-2107/S21-3001 and the Phase 2 per-type sum sees a
+            // phantom balance while the real GL is 0.
+            ...(meta['shopReceivableType']
+              ? { shopReceivableType: meta['shopReceivableType'] as string }
+              : {}),
           },
           lines: reversedLines,
         },

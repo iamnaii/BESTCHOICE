@@ -1580,9 +1580,10 @@ Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` 
   (3) **11-2107/S21-3001 reference types** — `metadata.shopReceivableType`
   (`SWAP_CREDIT` | `PAYOUT_RECALL` | `SHOP_COLLECT`) stamp ทุก JE ใหม่; แถวเก่า classify
   ตอนอ่านผ่าน `classifyShopReceivable()` (`apps/api/src/modules/journal/shop-receivable-type.util.ts`).
-  จุดกำเนิด `SHOP_COLLECT` มี 3 ทาง: JP4 ปิดยอดหน้าร้านรับแทน, JP5 ยึดเครื่องหน้าร้านรับแทน
-  (`repossession-jp5.template.ts` — ค้นพบระหว่าง implement, stamp แล้ว), และใบ settle
-  (`shop-collect-settlement.template.ts`).
+  จุดกำเนิด `SHOP_COLLECT` มี 2 ทาง (ตรงตาราง spec §2): JP4 ปิดยอดหน้าร้านรับแทน และ
+  JP5 ยึดเครื่องหน้าร้านรับแทน (`repossession-jp5.template.ts` — ค้นพบระหว่าง implement,
+  stamp แล้ว). ส่วนใบ settle (`shop-collect-settlement.template.ts` — Dr cash / Cr 11-2107)
+  เป็น**จุดล้าง** ไม่ใช่จุดกำเนิด แต่ stamp `SHOP_COLLECT` ด้วย เพื่อให้ classify ครบทั้งสองขา.
 - Approval: AUTO (≥NCV + ≥basePrice×0.85) / REVIEW (BM) / ESCALATE (<70% NCV — OWNER) — `exchange-tier.util.ts`
 - Guards ก่อน finalize: GL 11-2103 = 0, ไม่มี advance/credit ค้าง
 - Cancellation: ยกเลิกได้ทุกเมื่อถ้าสัญญาใหม่ยังไม่มีการชำระ (owner ยกเลิก windows/ค่าปรับ 2026-07-31) — mirror-reverse ทุก JE รวม A.5 + A.1b SHOP-leg (สวีปตาม `metadata.contractId` ไม่ hardcode บัญชี — สวีปจับ SHOP JE ได้เองแม้ไม่มี id เก็บบน request row); 2A cron backfill เอง; **42-1107 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03 (คำสั่ง CPA/owner) — ไม่มีบัญชีรองรับค่าปรับยกเลิกอีกต่อไป**

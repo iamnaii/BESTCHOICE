@@ -853,6 +853,21 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(req.penaltyJeId).toBeNull();
       expect(req.penaltyAmount).toBeNull();
 
+      // --- Mirror JEs must carry shopReceivableType (final review 2026-08-19).
+      // A.3 + A.4 stamp SWAP_CREDIT; if their mirrors don't copy it, a canceled
+      // swap leaves +buyback SWAP_CREDIT and -buyback UNKNOWN on 11-2107/
+      // S21-3001 — the Phase 2 netting lens (sum per type) then sees a phantom
+      // SWAP_CREDIT balance even though the real GL nets 0.
+      for (const stampedId of [req.je3Id!, req.je4Id!]) {
+        const mirror = await prisma.journalEntry.findFirstOrThrow({
+          where: { metadata: { path: ['reversesEntryId'], equals: stampedId } as never },
+        });
+        expect(
+          (mirror.metadata as Record<string, unknown>).shopReceivableType,
+          `mirror of ${stampedId} must carry shopReceivableType`,
+        ).toBe('SWAP_CREDIT');
+      }
+
       // --- NO 42-1107 penalty JE anywhere in this spec's journal rows
       const anyPenaltyLine = await prisma.journalLine.findFirst({
         where: { accountCode: '42-1107' },

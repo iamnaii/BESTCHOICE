@@ -38,6 +38,9 @@ export interface PendingPayment {
   monthlyInterest: string | null;
   monthlyCommission: string | null;
   vatAmount: string | null;
+  /** ห้ามข้ามงวด (2026-08-19): true = สัญญานี้มีงวดก่อนหน้าที่ยังค้าง — ปุ่มรับชำระ
+   *  ถูกปิด (server ก็ reject ซ้ำอีกชั้น). Optional: แถวจาก endpoint อื่นไม่มี field นี้. */
+  hasEarlierUnpaid?: boolean;
   contract: {
     id: string;
     contractNumber: string;

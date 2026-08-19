@@ -21,7 +21,8 @@ describe('PaymentQueryService — getPendingPayments live late fee', () => {
     const findMany = jest.fn().mockResolvedValue(rows);
     const count = jest.fn().mockResolvedValue(rows.length);
     const systemConfig = { findUnique: jest.fn(BRACKET) };
-    const prisma = { payment: { findMany, count }, systemConfig };
+    const groupBy = jest.fn().mockResolvedValue([]);
+    const prisma = { payment: { findMany, count, groupBy }, systemConfig };
     return new PaymentQueryService(prisma as unknown as never);
   }
 

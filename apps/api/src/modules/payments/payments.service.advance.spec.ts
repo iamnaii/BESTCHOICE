@@ -285,6 +285,20 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     service = module.get<PaymentsService>(PaymentsService);
   });
 
+  /** Guard-aware Payment stub (ห้ามข้ามงวด, 2026-08-19): the orchestrator now
+   *  calls payment.findFirst TWICE — first to load the target row
+   *  (`installmentNo: N`), then inside assertSequentialInstallment with
+   *  `installmentNo: { lt: N }` asking "is any EARLIER installment unpaid?".
+   *  These single-installment scenarios all assume prior installments are paid,
+   *  so the guard query answers null; the load query answers the row. A plain
+   *  mockResolvedValue fed the same row to both, making the guard see the
+   *  target installment as its own unpaid predecessor. */
+  const stubPaymentRow = (row: ReturnType<typeof makePayment>) =>
+    prisma.payment.findFirst.mockImplementation(
+      ({ where }: { where: { installmentNo?: number | { lt: number } } }) =>
+        typeof where?.installmentNo === 'object' ? Promise.resolve(null) : Promise.resolve(row),
+    );
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Test 1: Overpay → Cr 21-1103 + Contract.advanceBalance += overage
   // ─────────────────────────────────────────────────────────────────────────────
@@ -292,7 +306,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     const overage = 50;
     const cashAmount = INST_TOTAL + overage; // 1050
 
-    prisma.payment.findFirst.mockResolvedValue(makePayment(1));
+    stubPaymentRow(makePayment(1));
 
     await service.recordPayment(
       'adv-contract-1',
@@ -332,7 +346,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     // Pay งวด 2 with cash = installmentTotal - 50 = 950 → consume 50 from advance
     const cashAmount = INST_TOTAL - 50; // 950
 
-    prisma.payment.findFirst.mockResolvedValue(makePayment(2));
+    stubPaymentRow(makePayment(2));
 
     const result = await service.recordPayment(
       'adv-contract-1',
@@ -367,7 +381,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   // ─────────────────────────────────────────────────────────────────────────────
   it('multi-overpay accumulates advance balance correctly', async () => {
     // First overpay +100
-    prisma.payment.findFirst.mockResolvedValue(makePayment(3));
+    stubPaymentRow(makePayment(3));
 
     await service.recordPayment(
       'adv-contract-1',
@@ -386,7 +400,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     expect(advanceBalance).toBeCloseTo(100, 2);
 
     // Second overpay +200 (contract.findUnique will return advanceBalance=100 at this point)
-    prisma.payment.findFirst.mockResolvedValue(makePayment(4));
+    stubPaymentRow(makePayment(4));
 
     await service.recordPayment(
       'adv-contract-1',
@@ -415,7 +429,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     // Pay งวด 5 with cash = 700 → consume 300 from advance → total = 1000 (paid in full)
     const cashAmount = INST_TOTAL - 300; // 700
 
-    prisma.payment.findFirst.mockResolvedValue(makePayment(5));
+    stubPaymentRow(makePayment(5));
 
     const result = await service.recordPayment(
       'adv-contract-1',
@@ -442,7 +456,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   // Use 5×INST_TOTAL (overage = 4000, ceiling = 2000) to trigger the guard.
   // ─────────────────────────────────────────────────────────────────────────────
   it('overpay ABOVE ceiling without OVERPAY_ADVANCE case throws BadRequestException (regression)', async () => {
-    prisma.payment.findFirst.mockResolvedValue(makePayment(6));
+    stubPaymentRow(makePayment(6));
 
     await expect(
       service.recordPayment(
@@ -461,7 +475,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   // ─────────────────────────────────────────────────────────────────────────────
   it('overpay within ceiling auto-parks as advance WITHOUT requiring OVERPAY_ADVANCE case', async () => {
     // INST_TOTAL = 1000, default ceiling = 2 × 1000 = 2000, overage = 50 < 2000
-    prisma.payment.findFirst.mockResolvedValue(makePayment(10));
+    stubPaymentRow(makePayment(10));
 
     await service.recordPayment(
       'adv-contract-1',
@@ -478,7 +492,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
   it('overpay ABOVE ceiling still throws without explicit OVERPAY_ADVANCE case (typo guard)', async () => {
     // INST_TOTAL = 1000, default ceiling = 2000, overage = 4000 → throw
-    prisma.payment.findFirst.mockResolvedValue(makePayment(11));
+    stubPaymentRow(makePayment(11));
 
     await expect(
       service.recordPayment(
@@ -494,7 +508,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
   it('overpay above ceiling WITH explicit OVERPAY_ADVANCE case is allowed', async () => {
     // INST_TOTAL = 1000, overage = 4000 > ceiling 2000, but explicit case bypasses guard
-    prisma.payment.findFirst.mockResolvedValue(makePayment(12));
+    stubPaymentRow(makePayment(12));
 
     await service.recordPayment(
       'adv-contract-1',
@@ -631,7 +645,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   describe('consumeAdvance flag (T4)', () => {
     it('consumeAdvance=false → no auto-consume; a net underpay hits the PARTIAL guard', async () => {
       advanceBalance = 50;
-      prisma.payment.findFirst.mockResolvedValue(makePayment(20));
+      stubPaymentRow(makePayment(20));
       await expect(
         service.recordPayment(
           'adv-contract-1',
@@ -653,7 +667,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     it('consumeAdvance=false + pays full → PAID, advance left intact', async () => {
       advanceBalance = 50;
-      prisma.payment.findFirst.mockResolvedValue(makePayment(21));
+      stubPaymentRow(makePayment(21));
       const result = await service.recordPayment(
         'adv-contract-1',
         21,
@@ -674,7 +688,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     it('consumeAdvance=true (default) → net underpay auto-consumes, balance to 0, PAID', async () => {
       advanceBalance = 50;
-      prisma.payment.findFirst.mockResolvedValue(makePayment(22));
+      stubPaymentRow(makePayment(22));
       const result = await service.recordPayment(
         'adv-contract-1',
         22,
@@ -702,7 +716,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   describe('park-at-last-installment (owner directive 2026-08-16)', () => {
     it('does NOT consume the park bucket on a non-last installment — shortage still requires case=PARTIAL', async () => {
       rescheduleAdvanceBalance = 500;
-      prisma.payment.findFirst.mockResolvedValue(makePayment(5));
+      stubPaymentRow(makePayment(5));
       prisma.contract.findUnique.mockImplementation(() =>
         Promise.resolve(
           makeContract({
@@ -734,7 +748,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     it('consumes the park bucket on the LAST installment when there is no generic advance', async () => {
       rescheduleAdvanceBalance = 500;
-      prisma.payment.findFirst.mockResolvedValue(makePayment(12));
+      stubPaymentRow(makePayment(12));
       prisma.contract.findUnique.mockImplementation(() =>
         Promise.resolve(
           makeContract({
@@ -778,7 +792,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     it('consumes generic advance FIRST, park only for the remaining gap, on the last installment', async () => {
       advanceBalance = 100;
       rescheduleAdvanceBalance = 500;
-      prisma.payment.findFirst.mockResolvedValue(makePayment(12));
+      stubPaymentRow(makePayment(12));
       prisma.contract.findUnique.mockImplementation(() =>
         Promise.resolve(
           makeContract({
@@ -808,7 +822,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     it('park bucket alone, on the last installment, still requires case=PARTIAL when it cannot cover the whole gap', async () => {
       rescheduleAdvanceBalance = 100; // less than the 300 gap
-      prisma.payment.findFirst.mockResolvedValue(makePayment(12));
+      stubPaymentRow(makePayment(12));
       prisma.contract.findUnique.mockImplementation(() =>
         Promise.resolve(
           makeContract({
@@ -843,7 +857,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   describe('backdated paidDate (T7)', () => {
     it('backdated paidDate is stamped on the Payment (full pay, future dueDate = no late fee)', async () => {
       const backdated = new Date('2026-03-15T00:00:00.000Z');
-      prisma.payment.findFirst.mockResolvedValue(makePayment(40)); // dueDate 2027 (future)
+      stubPaymentRow(makePayment(40)); // dueDate 2027 (future)
       await service.recordPayment(
         'adv-contract-1',
         40,
@@ -868,7 +882,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     it('future paidDate → BadRequestException', async () => {
       const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      prisma.payment.findFirst.mockResolvedValue(makePayment(41));
+      stubPaymentRow(makePayment(41));
       await expect(
         service.recordPayment(
           'adv-contract-1',
@@ -889,7 +903,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     });
 
     it('omitted paidDate → defaults to now, Payment marked PAID', async () => {
-      prisma.payment.findFirst.mockResolvedValue(makePayment(42));
+      stubPaymentRow(makePayment(42));
       const result = await service.recordPayment(
         'adv-contract-1',
         42,
@@ -907,7 +921,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     it('late fee is computed as of paidDate, not now (W5: backdated → fewer days overdue)', async () => {
       const dueDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
       const paidDate = new Date(dueDate.getTime() + 2 * 24 * 60 * 60 * 1000); // 2 days overdue AS OF paid date
-      prisma.payment.findFirst.mockResolvedValue(makePayment(43, { dueDate, lateFee: D(0) }));
+      stubPaymentRow(makePayment(43, { dueDate, lateFee: D(0) }));
       // Flat bracket (tier1=50, tier2=100, minDays=3): 2 days overdue (< minDays) → tier1
       // = 50. Were the code to (incorrectly) use "now" instead of paidDate, the
       // ~30-days-overdue figure would hit tier2 = 100 instead — that's the bug this
@@ -968,7 +982,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     it('golden: gross 50, waive 25 → cash 1025 closes; waivedAmount + FeeWaiverApproval + template lateFeeWaived', async () => {
       prisma.systemConfig.findUnique.mockImplementation(BRACKET_TIER1);
-      prisma.payment.findFirst.mockResolvedValue(
+      stubPaymentRow(
         makePayment(60, { dueDate: dueDate5(), lateFee: D(0) }),
       );
       prisma.user.findUnique.mockResolvedValue({
@@ -1025,7 +1039,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     });
 
     it('SoD: approver === recorder → ForbiddenException', async () => {
-      prisma.payment.findFirst.mockResolvedValue(makePayment(61, { dueDate: dueDate5() }));
+      stubPaymentRow(makePayment(61, { dueDate: dueDate5() }));
       await expect(
         service.recordPayment(
           'adv-contract-1',
@@ -1049,7 +1063,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     });
 
     it('waiver without approverId → BadRequestException', async () => {
-      prisma.payment.findFirst.mockResolvedValue(makePayment(62, { dueDate: dueDate5() }));
+      stubPaymentRow(makePayment(62, { dueDate: dueDate5() }));
       await expect(
         service.recordPayment(
           'adv-contract-1',
@@ -1074,7 +1088,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     it('waiver > gross late fee → BadRequestException', async () => {
       prisma.systemConfig.findUnique.mockImplementation(BRACKET_TIER1);
-      prisma.payment.findFirst.mockResolvedValue(
+      stubPaymentRow(
         makePayment(63, { dueDate: dueDate5(), lateFee: D(0) }),
       );
       prisma.user.findUnique.mockResolvedValue({
@@ -1111,7 +1125,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   // ─────────────────────────────────────────────────────────────────────────────
   describe('draft/post split (Phase 4)', () => {
     it('saveDraft stores params WITHOUT posting a JE (no money movement)', async () => {
-      prisma.payment.findFirst.mockResolvedValue(makePayment(70));
+      stubPaymentRow(makePayment(70));
       await service.saveDraft(
         'adv-contract-1',
         70,
@@ -1124,7 +1138,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     });
 
     it('saveDraft rejects a PAID installment', async () => {
-      prisma.payment.findFirst.mockResolvedValue(makePayment(71, { status: 'PAID' }));
+      stubPaymentRow(makePayment(71, { status: 'PAID' }));
       await expect(
         service.saveDraft(
           'adv-contract-1',
@@ -1154,7 +1168,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         createdById: 'maker-1', // recordedById = maker (preserves SoD vs approver)
       });
       prisma.payment.findUnique.mockResolvedValue(makePayment(9));
-      prisma.payment.findFirst.mockResolvedValue(makePayment(9));
+      stubPaymentRow(makePayment(9));
       prisma.installmentSchedule.findUnique.mockResolvedValue({
         id: 'sch-9',
         vat60dayJournalEntryId: null,

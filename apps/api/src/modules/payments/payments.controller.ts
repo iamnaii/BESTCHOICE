@@ -538,6 +538,10 @@ export class PaymentsController {
     // W1 fix: enforce branch access — class-level BranchGuard only fires
     // when the request carries branchId, partial-QR routes carry only id.
     await this.paymentsService.validateBranchAccessByPayment(id, user);
+    // ห้ามข้ามงวด — enforced HERE (refusal still safe) because the webhook that
+    // records the eventual payment bypasses the sequence guard (money already
+    // captured at the gateway by then).
+    await this.paymentsService.assertSequentialByPaymentId(id);
     return this.paySolutionsService.createPartialPaymentQR({
       paymentId: id,
       amount: dto.amount,

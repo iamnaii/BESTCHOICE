@@ -48,8 +48,16 @@ export default function PaymentTable({
         <input
           type="checkbox"
           checked={selectedIds.has(p.id)}
-          onChange={() => onToggleSelect(p.id)}
-          className="rounded border-input"
+          // ห้ามข้ามงวด — batch would post this row out of order and the server
+          // would reject it row-by-row; keep it unselectable instead. Guarded in
+          // the handler too, not just `disabled` (assistive tech / synthetic
+          // events can still dispatch change on a disabled input in some DOMs).
+          onChange={() => {
+            if (p.hasEarlierUnpaid !== true) onToggleSelect(p.id);
+          }}
+          disabled={p.hasEarlierUnpaid === true}
+          className="rounded border-input disabled:opacity-40 disabled:cursor-not-allowed"
+          title={p.hasEarlierUnpaid ? 'ต้องชำระตามลำดับงวด — มีงวดก่อนหน้าค้างอยู่' : undefined}
           aria-label={`เลือกงวดที่ ${p.installmentNo} ของสัญญา ${p.contract.contractNumber}`}
         />
       ),
@@ -139,7 +147,20 @@ export default function PaymentTable({
       render: (p: PendingPayment) => (
         <div className="flex gap-1">
           {!isPaidMode && (
-            <button onClick={() => onOpenPayModal(p)} className="px-2 py-1 text-xs bg-success text-success-foreground rounded hover:bg-success/90">
+            <button
+              onClick={() => onOpenPayModal(p)}
+              // ห้ามข้ามงวด (2026-08-19): recording is only allowed on the
+              // contract's earliest unpaid installment — the orchestrator
+              // enforces this server-side; the disabled button explains it
+              // before the cashier hits the error.
+              disabled={p.hasEarlierUnpaid === true}
+              title={
+                p.hasEarlierUnpaid
+                  ? 'ต้องชำระตามลำดับงวด — มีงวดก่อนหน้าค้างอยู่ (ข้ามงวดไม่ได้)'
+                  : undefined
+              }
+              className="px-2 py-1 text-xs bg-success text-success-foreground rounded hover:bg-success/90 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-success"
+            >
               รับชำระ
             </button>
           )}

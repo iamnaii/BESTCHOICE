@@ -454,6 +454,11 @@ export class PaymentsService {
   }
 
   // ─── Daily summary ────────────────────────────────────
+  /** ส่งออก Excel สรุปรายวันแบบช่วงวัน — ใบเสร็จทุกใบในช่วง (เลือกช่วงวันก่อนเสมอ). */
+  async getDailySummaryExport(from: string, to: string, branchId?: string) {
+    return this.services().query.getDailySummaryExport(from, to, branchId);
+  }
+
   /** วันไหนมีสมุดบ้าง — clickable date chips ใต้ตัวเลือกวันที่ของสรุปรายวัน. */
   async getDailySummaryDates(month: string, branchId?: string) {
     return this.services().query.getDailySummaryDates(month, branchId);

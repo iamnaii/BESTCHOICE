@@ -111,6 +111,22 @@ export class PaymentsController {
     });
   }
 
+  /** ส่งออก Excel สรุปรายวันแบบช่วงวัน — ต้องส่ง from/to เสมอ (คำสั่งเจ้าของ 2026-08-19). */
+  @Get('daily-summary/export')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getDailySummaryExport(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('branchId') branchId?: string,
+    @CurrentUser() user?: { role: string; branchId: string | null },
+  ) {
+    if (!from || !to) {
+      throw new BadRequestException('กรุณาเลือกช่วงวันก่อนส่งออก (from/to)');
+    }
+    const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
+    return this.paymentsService.getDailySummaryExport(from, to, effectiveBranchId);
+  }
+
   /** วันไหนมีสมุดบ้าง — รายชื่อวันของเดือนที่มีใบเสร็จ (chips ใต้ date picker). */
   @Get('daily-summary/dates')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')

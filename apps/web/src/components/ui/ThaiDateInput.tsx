@@ -42,6 +42,8 @@ interface ThaiDateInputProps {
   max?: string;
   /** Marks this input as the "custom start" target for DateRangeChips focus. */
   'data-date-range-custom-start'?: 'true';
+  /** Accessible name — reaches the inner input via the rest-spread. */
+  'aria-label'?: string;
 }
 
 export default function ThaiDateInput({

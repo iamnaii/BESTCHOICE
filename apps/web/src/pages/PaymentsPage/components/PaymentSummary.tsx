@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
+import { exportToExcel } from '@/utils/excel.util';
 import type { DailySummary, DailySummaryPayment } from '../types';
 import { methodLabels } from '../types';
 
@@ -60,11 +63,85 @@ export default function PaymentSummary({
       (await api.get(`/payments/daily-summary/dates?month=${summaryMonth}`)).data.days ?? [],
     staleTime: 60_000,
   });
+
+  // ส่งออก Excel แบบช่วงวัน (owner 2026-08-19: "ต้องเลือกช่วงวันก่อน") — the
+  // button stays disabled until BOTH bounds are chosen; rows come from the range
+  // endpoint (not the on-screen page) so a multi-day file is always complete.
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const handleExportRange = async () => {
+    if (!exportFrom || !exportTo) return;
+    if (exportTo < exportFrom) {
+      // YYYY-MM-DD compares correctly as a string — no Date parsing needed.
+      toast.error('ช่วงวันไม่ถูกต้อง — วันสิ้นสุดต้องไม่ก่อนวันเริ่มต้น');
+      return;
+    }
+    setExporting(true);
+    try {
+      const { data } = await api.get(
+        `/payments/daily-summary/export?from=${exportFrom}&to=${exportTo}`,
+      );
+      const rows = (data.rows ?? []) as Array<{
+        receiptNumber: string;
+        receiptType: string;
+        amount: string;
+        installmentNo: number | null;
+        paymentMethod: string | null;
+        paidDate: string;
+        issuedByName: string | null;
+        contract?: { contractNumber: string; customer?: { name: string }; branch?: { name: string } };
+      }>;
+      await exportToExcel({
+        columns: [
+          { header: 'วันที่รับเงิน', key: 'paidDate', width: 14 },
+          { header: 'เวลา', key: 'paidTime', width: 10 },
+          { header: 'เลขที่ใบเสร็จ', key: 'receiptNumber', width: 18 },
+          { header: 'สัญญา', key: 'contractNumber', width: 20 },
+          { header: 'ลูกค้า', key: 'customer', width: 22 },
+          { header: 'งวด/ประเภท', key: 'installment', width: 14 },
+          { header: 'ยอดรับจริง', key: 'amount', width: 14 },
+          { header: 'วิธี', key: 'method', width: 12 },
+          { header: 'ผู้บันทึก', key: 'issuedBy', width: 18 },
+          { header: 'สาขา', key: 'branch', width: 14 },
+        ],
+        data: rows.map((r) => ({
+          paidDate: new Date(r.paidDate).toLocaleDateString('th-TH'),
+          paidTime: new Date(r.paidDate).toLocaleTimeString('th-TH'),
+          receiptNumber: r.receiptNumber,
+          contractNumber: r.contract?.contractNumber ?? '—',
+          customer: r.contract?.customer?.name ?? '—',
+          // ใบที่ไม่ใช่เงินงวดแท้ (ดาวน์/ปิดยอด/ปรับดิว) label ด้วยชนิดเอกสาร
+          // แม้จะผูกเลขงวดไว้ — ยอดพวกนี้ไม่ใช่ค่างวดของงวดนั้นตรง ๆ.
+          installment:
+            RECEIPT_TYPE_LABELS[r.receiptType] ??
+            (r.installmentNo != null ? `งวดที่ ${r.installmentNo}` : '—'),
+          amount: Number(r.amount).toLocaleString(),
+          method: methodLabels[r.paymentMethod ?? ''] || r.paymentMethod || '—',
+          issuedBy: r.issuedByName ?? '—',
+          branch: r.contract?.branch?.name ?? '—',
+        })),
+        sheetName: 'สรุปรายวัน',
+        filename: `daily-summary-${exportFrom.replace(/-/g, '')}-${exportTo.replace(/-/g, '')}.xlsx`,
+      });
+      if (data.truncated) {
+        toast.warning(
+          `ส่งออกได้ ${rows.length.toLocaleString('th-TH')} รายการ (ครบเพดาน) — ปรับช่วงวันให้แคบลงเพื่อส่งออกครบ`,
+        );
+      } else {
+        toast.success('ส่งออก Excel สำเร็จ');
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err) || 'ส่งออก Excel ไม่สำเร็จ');
+    } finally {
+      setExporting(false);
+    }
+  };
   return (
     <div>
       {/* Date Selector + วันที่มีรายการ (owner 2026-08-19: เดิมต้องเดาวันเอง) */}
       <div className="mb-6 space-y-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <label className="text-sm font-medium text-foreground">วันที่:</label>
           <button
             type="button"
@@ -87,6 +164,40 @@ export default function PaymentSummary({
           >
             <ChevronRight className="size-4" />
           </button>
+
+          {/* ส่งออก Excel — ต้องเลือกช่วงวันก่อน (ปุ่ม disabled จนกว่าจะครบ from+to) */}
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <span className="text-xs text-muted-foreground leading-snug">ส่งออกช่วงวัน:</span>
+            <ThaiDateInput
+              value={exportFrom}
+              onChange={(e) => setExportFrom(e.target.value)}
+              aria-label="ตั้งแต่วันที่"
+              placeholder="ตั้งแต่"
+              className="px-2 py-1.5 text-sm w-32"
+            />
+            <span className="text-xs text-muted-foreground">-</span>
+            <ThaiDateInput
+              value={exportTo}
+              onChange={(e) => setExportTo(e.target.value)}
+              aria-label="ถึงวันที่"
+              placeholder="ถึง"
+              className="px-2 py-1.5 text-sm w-32"
+            />
+            <button
+              type="button"
+              onClick={handleExportRange}
+              disabled={!exportFrom || !exportTo || exporting}
+              title={!exportFrom || !exportTo ? 'เลือกช่วงวันก่อนส่งออก' : undefined}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              {exporting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="size-4" />
+              )}
+              ส่งออก Excel
+            </button>
+          </div>
         </div>
         {availableDays.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">

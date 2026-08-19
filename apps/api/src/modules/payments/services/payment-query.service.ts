@@ -691,6 +691,87 @@ export class PaymentQueryService {
     };
   }
 
+  /**
+   * ส่งออก Excel แบบช่วงวัน (owner 2026-08-19: "ต้องเลือกช่วงวันก่อน") — every
+   * money receipt of an INCLUSIVE from–to window in one call, for the client-side
+   * exceljs export. Same universe as getDailySummary (non-voided, non-CN) so the
+   * exported rows always reconcile with the on-screen daily totals.
+   *
+   * Caps: window <= 186 days (same convention as the PEAK journal export) and
+   * 10,000 rows (truncated flag — exceljs in the browser, not a data dump API).
+   */
+  async getDailySummaryExport(from: string, to: string, branchId?: string) {
+    const parse = (v: string) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+      if (!m) return null;
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const start = parse(from);
+    const endDay = parse(to);
+    if (!start || !endDay) {
+      throw new BadRequestException('รูปแบบวันที่ไม่ถูกต้อง (ต้องเป็น YYYY-MM-DD)');
+    }
+    if (endDay < start) {
+      throw new BadRequestException('ช่วงวันไม่ถูกต้อง — วันสิ้นสุดต้องไม่ก่อนวันเริ่มต้น');
+    }
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    if ((endDay.getTime() - start.getTime()) / DAY_MS > 186) {
+      throw new BadRequestException('ช่วงวันยาวเกิน 186 วัน — กรุณาแบ่งส่งออกเป็นช่วงสั้นลง');
+    }
+    // Inclusive end -> start of the NEXT day (same boundary math as the day view).
+    const end = new Date(endDay.getFullYear(), endDay.getMonth(), endDay.getDate() + 1);
+
+    const ROW_CAP = 10_000;
+    const receipts = await this.prisma.receipt.findMany({
+      where: {
+        paidDate: { gte: start, lt: end },
+        isVoided: false,
+        deletedAt: null,
+        receiptType: { not: 'CREDIT_NOTE' },
+        ...(branchId ? { contract: { branchId } } : {}),
+      },
+      select: {
+        id: true,
+        receiptNumber: true,
+        receiptType: true,
+        amount: true,
+        installmentNo: true,
+        paymentMethod: true,
+        paidDate: true,
+        issuedById: true,
+        contract: {
+          select: {
+            contractNumber: true,
+            customer: { select: { name: true } },
+            branch: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { paidDate: 'asc' },
+      take: ROW_CAP + 1,
+    });
+    const truncated = receipts.length > ROW_CAP;
+    const page = truncated ? receipts.slice(0, ROW_CAP) : receipts;
+
+    const issuerIds = [...new Set(page.map((r) => r.issuedById).filter(Boolean))];
+    const issuers = issuerIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: issuerIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const issuerName = new Map(issuers.map((u) => [u.id, u.name]));
+
+    return {
+      from,
+      to,
+      total: page.length,
+      truncated,
+      rows: page.map((r) => ({ ...r, issuedByName: issuerName.get(r.issuedById) ?? null })),
+    };
+  }
+
   // ─── Get credit balance for a contract ─────────────
   async getCreditBalance(contractId: string) {
     const contract = await this.prisma.contract.findUnique({

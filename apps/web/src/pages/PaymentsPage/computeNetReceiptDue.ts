@@ -33,16 +33,32 @@ export interface NetReceiptDueInput {
  * (amountDue) let a cashier confirm a payment that silently left the late fee
  * unpaid → the installment stuck at PARTIALLY_PAID with a phantom "ค้าง".
  */
-export function computeNetReceiptDue(input: NetReceiptDueInput): Decimal {
-  const amountDue = new Decimal(input.amountDue);
+/**
+ * What the customer STILL owes on the installment, BEFORE any advance/park
+ * deduction: `amountDue + (lateFee − waiver) − amountPaid`.
+ *
+ * This is the wizard's comparison base for CaseBadge / diff — the same
+ * `remaining` the server orchestrator computes before classifying a payment.
+ * Comparing cash against `amountDue + netLateFee` WITHOUT subtracting
+ * `amountPaid` (the pre-2026-08-18 rule) told a cashier paying off a
+ * partially-paid installment in full that they were จ่ายขาด by exactly the
+ * already-paid amount, while the server would have recorded a full clear.
+ */
+export function computeRemainingObligation(
+  input: Pick<NetReceiptDueInput, 'amountDue' | 'lateFee' | 'amountPaid' | 'waiver'>,
+): Decimal {
   const lateFee = new Decimal(input.lateFee);
-  const amountPaid = new Decimal(input.amountPaid);
-
   // Waiver reduces cash owed but can never exceed the gross late fee.
   const waiver = Decimal.min(new Decimal(input.waiver ?? 0), lateFee);
-  const netLateFee = lateFee.minus(waiver);
+  return new Decimal(input.amountDue)
+    .plus(lateFee.minus(waiver))
+    .minus(new Decimal(input.amountPaid));
+}
 
-  const owed = amountDue.plus(netLateFee).minus(amountPaid);
+export function computeNetReceiptDue(input: NetReceiptDueInput): Decimal {
+  // Single formula for "still owed" — the wizard's tiles (here, net of advance)
+  // and its CaseBadge (computeRemainingObligation directly) must never drift.
+  const owed = computeRemainingObligation(input);
 
   const advance = new Decimal(input.advanceBalance ?? 0);
   const consumeAdvance = input.consumeAdvance ?? true;

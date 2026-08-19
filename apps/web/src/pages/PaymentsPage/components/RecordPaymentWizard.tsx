@@ -39,7 +39,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useSlipUpload, SLIP_MIME_TYPES } from '@/hooks/useSlipUpload';
 import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
-import { computeNetReceiptDue } from '../computeNetReceiptDue';
+import { computeNetReceiptDue, computeRemainingObligation } from '../computeNetReceiptDue';
 import { computeWizardPrefill } from '../computeWizardPrefill';
 import {
   draftFingerprint,
@@ -950,11 +950,23 @@ export function RecordPaymentWizard({
 
   // Auto-detect case
   const receivedNum = parseFloat(amountReceived) || 0;
-  // Use NET late fee (gross − waiver) so detectCase classifies a correctly-entered
-  // net payment as NORMAL (not UNDERPAY) when a waiver is active.
+  // Comparison base for CaseBadge/diff = what the customer STILL owes:
+  // amountDue + (lateFee − waiver) − amountPaid — the same `remaining` the server
+  // orchestrator classifies against. Subtracting amountPaid matters on a
+  // partially-paid installment: without it, paying the ยอดเหลือ in full showed
+  // "จ่ายขาด <จ่ายแล้ว>" while the server recorded a full clear (prod
+  // TEST-20260802-001: 8,925 + 100 − 1,000 = 8,025 flagged as ขาด 1,000).
+  // NET late fee (gross − waiver) keeps a correctly-entered net payment NORMAL
+  // (not UNDERPAY) when a waiver is active.
   const expectedTotal = useMemo(
-    () => amountDueDecimal.plus(netLateFee),
-    [amountDueDecimal, netLateFee],
+    () =>
+      computeRemainingObligation({
+        amountDue: amountDueDecimal,
+        lateFee: currentLateFee,
+        amountPaid: amountPaidDecimal,
+        waiver: waiverDec,
+      }),
+    [amountDueDecimal, currentLateFee, amountPaidDecimal, waiverDec],
   );
   const detectedCase = useMemo(
     () =>
@@ -1914,7 +1926,7 @@ export function RecordPaymentWizard({
           open={showPartialConfirm}
           onOpenChange={setShowPartialConfirm}
           title="ยืนยันบันทึกบางส่วน"
-          description={`ค่างวด ${expectedTotal.toFixed(2)} ฿ • ลูกค้าจ่าย ${receivedNum.toFixed(2)} ฿ • ค้าง ${Math.abs(amountDiff).toFixed(2)} ฿. ลูกค้าจะค้างยอดนี้จนกว่าจะจ่ายเพิ่ม.`}
+          description={`ยอดค้างงวดนี้ ${expectedTotal.toFixed(2)} ฿ • ลูกค้าจ่าย ${receivedNum.toFixed(2)} ฿ • คงค้าง ${Math.abs(amountDiff).toFixed(2)} ฿. ลูกค้าจะค้างยอดนี้จนกว่าจะจ่ายเพิ่ม.`}
           confirmLabel="ยืนยันบันทึก"
           cancelLabel="ยกเลิก"
           onConfirm={actuallySubmit}

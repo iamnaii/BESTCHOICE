@@ -64,23 +64,16 @@ export default function PaymentSummary({
     staleTime: 60_000,
   });
 
-  // ส่งออก Excel แบบช่วงวัน (owner 2026-08-19: "ต้องเลือกช่วงวันก่อน") — the
-  // button stays disabled until BOTH bounds are chosen; rows come from the range
-  // endpoint (not the on-screen page) so a multi-day file is always complete.
-  const [exportFrom, setExportFrom] = useState('');
-  const [exportTo, setExportTo] = useState('');
+  // ส่งออก Excel — ยึดวันที่เลือกฝั่งซ้าย (owner 2026-08-19 รอบสอง: "เอาช่วงวันที่
+  // กรองฝั่งซ้ายอยู่แล้วก็ได้ ไม่ต้องกรองซ้ำอีกฝั่งขวา"). แท็บนี้มีตัวกรองวันเดียว —
+  // export ตามมัน ผ่าน range endpoint ด้วย from = to = วันนั้น (ได้ครบทุกใบของวัน
+  // ไม่ติด pagination ของหน้าจอ; ตัว endpoint ยังรองรับช่วงเผื่ออนาคต).
   const [exporting, setExporting] = useState(false);
   const handleExportRange = async () => {
-    if (!exportFrom || !exportTo) return;
-    if (exportTo < exportFrom) {
-      // YYYY-MM-DD compares correctly as a string — no Date parsing needed.
-      toast.error('ช่วงวันไม่ถูกต้อง — วันสิ้นสุดต้องไม่ก่อนวันเริ่มต้น');
-      return;
-    }
     setExporting(true);
     try {
       const { data } = await api.get(
-        `/payments/daily-summary/export?from=${exportFrom}&to=${exportTo}`,
+        `/payments/daily-summary/export?from=${summaryDate}&to=${summaryDate}`,
       );
       const rows = (data.rows ?? []) as Array<{
         receiptNumber: string;
@@ -122,7 +115,7 @@ export default function PaymentSummary({
           branch: r.contract?.branch?.name ?? '—',
         })),
         sheetName: 'สรุปรายวัน',
-        filename: `daily-summary-${exportFrom.replace(/-/g, '')}-${exportTo.replace(/-/g, '')}.xlsx`,
+        filename: `daily-summary-${summaryDate.replace(/-/g, '')}.xlsx`,
       });
       if (data.truncated) {
         toast.warning(
@@ -165,39 +158,21 @@ export default function PaymentSummary({
             <ChevronRight className="size-4" />
           </button>
 
-          {/* ส่งออก Excel — ต้องเลือกช่วงวันก่อน (ปุ่ม disabled จนกว่าจะครบ from+to) */}
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <span className="text-xs text-muted-foreground leading-snug">ส่งออกช่วงวัน:</span>
-            <ThaiDateInput
-              value={exportFrom}
-              onChange={(e) => setExportFrom(e.target.value)}
-              aria-label="ตั้งแต่วันที่"
-              placeholder="ตั้งแต่"
-              className="px-2 py-1.5 text-sm w-32"
-            />
-            <span className="text-xs text-muted-foreground">-</span>
-            <ThaiDateInput
-              value={exportTo}
-              onChange={(e) => setExportTo(e.target.value)}
-              aria-label="ถึงวันที่"
-              placeholder="ถึง"
-              className="px-2 py-1.5 text-sm w-32"
-            />
-            <button
-              type="button"
-              onClick={handleExportRange}
-              disabled={!exportFrom || !exportTo || exporting}
-              title={!exportFrom || !exportTo ? 'เลือกช่วงวันก่อนส่งออก' : undefined}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-            >
-              {exporting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <FileSpreadsheet className="size-4" />
-              )}
-              ส่งออก Excel
-            </button>
-          </div>
+          {/* ส่งออก Excel — ยึดวันที่ที่กรองอยู่ (ตัวกรองเดียว ไม่มี picker ซ้ำ) */}
+          <button
+            type="button"
+            onClick={handleExportRange}
+            disabled={exporting}
+            title={`ส่งออกใบเสร็จของวันที่เลือก`}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {exporting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="size-4" />
+            )}
+            ส่งออก Excel
+          </button>
         </div>
         {availableDays.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">

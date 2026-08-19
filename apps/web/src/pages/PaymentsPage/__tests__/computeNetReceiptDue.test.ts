@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeNetReceiptDue } from '../computeNetReceiptDue';
+import { computeNetReceiptDue, computeRemainingObligation } from '../computeNetReceiptDue';
 
 describe('computeNetReceiptDue', () => {
   it('includes the late fee in a fresh overdue installment (the bug: full must be full)', () => {
@@ -117,5 +117,46 @@ describe('computeNetReceiptDue', () => {
         consumeAdvance: true,
       }).toFixed(2),
     ).toBe('750.00');
+  });
+});
+
+/* ─── computeRemainingObligation ───────────────────────
+ * The wizard's CaseBadge/diff must compare cash against what the customer STILL
+ * owes (net of amountPaid) — the same `remaining` the server orchestrator uses.
+ * Before 2026-08-18 it compared against amountDue + netLateFee WITHOUT
+ * subtracting amountPaid: on prod TEST-20260802-001 (ค่างวด 8,925 + ค่าปรับ 100,
+ * จ่ายแล้ว 1,000) paying the ยอดเหลือ 8,025 in full showed
+ * "จ่ายขาด 1,000.00 ฿ — ลูกค้าค้าง 1,000.00 ฿ ต่อ" while the server would have
+ * recorded a full clear.
+ */
+describe('computeRemainingObligation', () => {
+  it('subtracts what was already paid (prod TEST-20260802-001 numbers)', () => {
+    const remaining = computeRemainingObligation({
+      amountDue: 8925,
+      lateFee: 100,
+      amountPaid: 1000,
+    });
+    expect(remaining.toFixed(2)).toBe('8025.00');
+  });
+
+  it('fresh installment (nothing paid) equals amountDue + lateFee', () => {
+    const remaining = computeRemainingObligation({ amountDue: 8925, lateFee: 100, amountPaid: 0 });
+    expect(remaining.toFixed(2)).toBe('9025.00');
+  });
+
+  it('waiver reduces the obligation, clamped to the gross fee', () => {
+    const remaining = computeRemainingObligation({
+      amountDue: 8925,
+      lateFee: 100,
+      amountPaid: 1000,
+      waiver: 250,
+    });
+    expect(remaining.toFixed(2)).toBe('7925.00');
+  });
+
+  it('is the pre-advance base of computeNetReceiptDue (single formula, no drift)', () => {
+    const input = { amountDue: 8925, lateFee: 100, amountPaid: 1000, waiver: 40 };
+    const viaNet = computeNetReceiptDue({ ...input, advanceBalance: 0 });
+    expect(computeRemainingObligation(input).toFixed(2)).toBe(viaNet.toFixed(2));
   });
 });

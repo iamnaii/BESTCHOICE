@@ -20,6 +20,7 @@ import { ProductsService } from '../../products/products.service';
 import { BadDebtService } from '../../accounting/bad-debt.service';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
+import { assertSequentialInstallment } from './installment-sequence.util';
 import { d, dAdd, dSub, dMul, dRound, dGte } from '../../../utils/decimal.util';
 import { loadLateFeeConfig, resolveLateFee } from '../../../utils/late-fee.util';
 import { PaymentCase } from '../dto/payment.dto';
@@ -104,6 +105,13 @@ export class PaymentReceiptOrchestrator {
     lateFeeWaiverAmount?: number,
     lateFeeWaiverReasonCode?: string,
     waiverApproverId?: string,
+    /**
+     * ต้องบันทึกชำระตามลำดับงวด — ห้ามข้าม (owner 2026-08-19). Gateway-driven
+     * recordings (PaySolutions webhook) pass `false`: by then the money has been
+     * captured and refusing to record it would strand real cash — the sequence
+     * is enforced at QR-SEND time for that path instead.
+     */
+    enforceSequence: boolean = true,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -240,6 +248,11 @@ export class PaymentReceiptOrchestrator {
         });
         if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
         if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
+        // ห้ามข้ามงวด — inside the serializable tx so two cashiers recording
+        // out of order concurrently cannot both pass the check.
+        if (enforceSequence) {
+          await assertSequentialInstallment(tx, contractId, installmentNo);
+        }
         capturedDueDate = payment.dueDate;
 
         // Auto-cancel any active partial-payment QR for this Payment so the

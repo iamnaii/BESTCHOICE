@@ -36,6 +36,7 @@ import { PaymentQueryService } from './services/payment-query.service';
 import { PaymentJournalPreviewService } from './services/payment-journal-preview.service';
 import { PaymentCsvImportService } from './services/payment-csv-import.service';
 import { PaymentPostCommitHooks } from './services/payment-post-commit-hooks';
+import { assertSequentialInstallment } from './services/installment-sequence.util';
 
 /**
  * Facade over the decomposed payments core (the regulated FINANCE money path).
@@ -242,6 +243,21 @@ export class PaymentsService {
     return validateBranchAccessByPaymentHelper(this.prisma, paymentId, user);
   }
 
+  /**
+   * ห้ามข้ามงวด — pre-check for the QR-send path (`POST /payments/:id/partial-qr`).
+   * The PaySolutions webhook bypasses the recording-time guard (money already
+   * captured at the gateway), so the sequence rule for the QR path is enforced
+   * HERE, where refusing is still safe (the customer has not paid yet).
+   */
+  async assertSequentialByPaymentId(paymentId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { contractId: true, installmentNo: true, deletedAt: true },
+    });
+    if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
+    await assertSequentialInstallment(this.prisma, payment.contractId, payment.installmentNo);
+  }
+
   // ─── Record a single payment (บังคับ upload หลักฐาน) ──
   async recordPayment(
     contractId: string,
@@ -260,6 +276,8 @@ export class PaymentsService {
     lateFeeWaiverAmount?: number,
     lateFeeWaiverReasonCode?: string,
     waiverApproverId?: string,
+    /** ห้ามข้ามงวด — PaySolutions webhook ส่ง false (เงินเข้า gateway แล้ว), ที่เหลือ default true. */
+    enforceSequence: boolean = true,
   ) {
     return this.services().orchestrator.recordPayment(
       contractId,
@@ -278,6 +296,7 @@ export class PaymentsService {
       lateFeeWaiverAmount,
       lateFeeWaiverReasonCode,
       waiverApproverId,
+      enforceSequence,
     );
   }
 

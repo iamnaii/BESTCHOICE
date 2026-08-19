@@ -517,6 +517,28 @@ amount: <ยอดของใบนั้น>, voidedReceiptId: <ใบนั�
 — ค่าปรับอยู่ระดับงวด ไม่ใช่ระดับใบเสร็จ จึงนับครั้งเดียวแม้งวดนั้นจะแบ่งจ่ายสองใบ. Index รองรับ:
 `receipts(paid_date, is_voided)` (migration `20260993000000_receipt_paid_date_index`).
 
+## ห้ามข้ามงวด — บันทึกชำระตามลำดับงวดเท่านั้น (คำสั่งเจ้าของ 2026-08-19)
+
+กติกา: **บันทึกรับชำระได้เฉพาะงวดค้างที่เก่าที่สุดของสัญญา** ("earliest unpaid") —
+ไม่ใช่ "งวดที่จ่ายล่าสุด + 1" ซึ่งต่างกันตอน void: void งวด 2 ขณะ 3-6 จ่ายแล้ว ⇒
+งวด 2 กลับเป็น earliest unpaid และจ่ายซ้ำได้ (flow "void → เปิด wizard งวดเดิม" พึ่งข้อนี้).
+
+Single source of truth: `assertSequentialInstallment` ใน
+`apps/api/src/modules/payments/services/installment-sequence.util.ts`
+(unpaid = `PENDING/OVERDUE/PARTIALLY_PAID` — งวดก่อนหน้าที่ PARTIALLY_PAID ต้องปิดก่อน).
+
+| จุดบังคับ | ที่ | หมายเหตุ |
+|---|---|---|
+| บันทึกชำระ (ทุกเส้นทาง) | `PaymentReceiptOrchestrator.recordPayment` — ในตัว serializable tx | ครอบ wizard / batch / draft-post / CSV import (ไฟล์ที่เรียงงวดมาแล้วผ่านปกติ แถวที่ข้ามงวด fail รายแถวพร้อมข้อความไทย) |
+| ส่ง QR | `POST /payments/:id/partial-qr` (`assertSequentialByPaymentId`) | กันตั้งแต่ตอนส่ง เพราะ… |
+| **Webhook PaySolutions** | **BYPASS** (`enforceSequence=false`) | เงินถูกตัดที่ gateway แล้ว — ปฏิเสธการบันทึก = เงินจริงค้างเติ่ง (handler ตอบ 200 ไม่ retry) จึงบังคับที่ตอนส่ง QR แทน |
+| UI คิวรอชำระ | `getPendingPayments` ส่ง `hasEarlierUnpaid` ต่อแถว (คำนวณจาก DB ทั้งสัญญา ไม่ใช่แค่หน้าที่เห็น — งวดค้างอาจอยู่นอก filter ช่วงวันที่) | ปุ่มรับชำระ + checkbox batch ถูก disable พร้อม tooltip |
+
+เส้นทางที่ **ไม่**เข้าข่ายโดยธรรมชาติ: `autoAllocatePayment` / `applyCreditBalance` (FIFO อยู่แล้ว),
+early payoff (JP4 — ปิดทุกงวด), reschedule (เลื่อนดิว ไม่ใช่บันทึกชำระ; 6b bundled จ่ายผ่าน
+orchestrator จึงโดน guard ตามปกติ). Tests: `installment-sequence.util.spec.ts`,
+`pending-sequence-flag.spec.ts`, `PaymentTable.sequence.test.tsx`.
+
 ## Document number convention (P2-3 — Fix Report v1.0)
 
 All accounting modules use the same convention:

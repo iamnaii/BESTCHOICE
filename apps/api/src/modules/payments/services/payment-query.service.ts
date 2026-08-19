@@ -342,9 +342,35 @@ export class PaymentQueryService {
       p.lateFeeWaived
         ? Prisma.Decimal.max(0, new Prisma.Decimal(p.lateFee).sub(p.waivedAmount ?? 0))
         : p.lateFee;
+    // ห้ามข้ามงวด (owner 2026-08-19): flag rows that are NOT their contract's
+    // earliest unpaid installment so the UI can disable รับชำระ up front.
+    // Computed against the DATABASE, not this page — a due-date window can show
+    // งวด 3 while the unpaid งวด 2 sits outside the filter. One groupBy over the
+    // page's contracts; the recording-time guard in the orchestrator remains the
+    // authoritative enforcement.
+    const contractIds = [...new Set(data.map((p) => p.contract.id))];
+    const minUnpaidByContract = new Map<string, number>();
+    if (contractIds.length > 0) {
+      const mins = await this.prisma.payment.groupBy({
+        by: ['contractId'],
+        where: {
+          contractId: { in: contractIds },
+          status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+          deletedAt: null,
+        },
+        _min: { installmentNo: true },
+      });
+      for (const m of mins) {
+        if (m._min.installmentNo != null) minUnpaidByContract.set(m.contractId, m._min.installmentNo);
+      }
+    }
+
     const withLiveFee = data.map((p) => ({
       ...p,
       lateFee: p.status === 'PAID' ? netStoredFee(p) : resolveLivePaymentLateFee(p, cfg, now),
+      hasEarlierUnpaid:
+        p.status !== 'PAID' &&
+        p.installmentNo > (minUnpaidByContract.get(p.contract.id) ?? p.installmentNo),
     }));
 
     return paginatedResponse(withLiveFee, total, page, limit);

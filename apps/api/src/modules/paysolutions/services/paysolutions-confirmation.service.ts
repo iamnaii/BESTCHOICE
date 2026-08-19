@@ -258,6 +258,16 @@ export class PaySolutionsConfirmationService {
         depositAccountCode,
         undefined, // toleranceApproverId
         'PARTIAL',
+        true, // consumeAdvance
+        undefined, // paidDate
+        undefined, // lateFeeWaiverAmount
+        undefined, // lateFeeWaiverReasonCode
+        undefined, // waiverApproverId
+        // ห้ามข้ามงวด — BYPASS here: the customer already paid at the gateway;
+        // refusing to record would strand real money (this handler returns 200 to
+        // PaySolutions with no retry). Sequence is enforced at QR-SEND time
+        // (POST /payments/:id/partial-qr) where refusal is still safe.
+        false,
       );
       this.logger.log(
         `Partial-payment auto-recorded: refno=${refno}, payment=${link.paymentId}, amount=${link.amount}`,

@@ -40,7 +40,7 @@
 |---|---|---|---|
 | `SWAP_CREDIT` | เครดิตราคารับซื้อจากรับคืนเครื่อง รอหักกลบรอบจ่าย (Flow B) | A.3 (`ExchangeBuybackReceivable11_2107Template`) | รอบจ่าย INTER-CO (Cr 11-2107 ในใบ FINANCE ของ batch) |
 | `PAYOUT_RECALL` | เงินที่ตัดจ่ายหน้าร้านแล้วต้องเรียกคืน จากยกเลิกสัญญา (Flow C-2) | ใบยกเลิก C-2 | หักกลบรอบจ่ายถัดไป **หรือ** รับเงินสดคืน (reuse `ShopCollectSettlementTemplate`) |
-| `SHOP_COLLECT` | เงินลูกค้าที่หน้าร้านรับแทน (ค่างวด/ปิดยอด — Flow D) | payment orchestrator / JP4 เส้นทาง shop-collect | `settleShopCollect` (Dr เงิน / Cr 11-2107) — **ไม่เข้ารอบจ่าย** |
+| `SHOP_COLLECT` | เงินลูกค้าที่หน้าร้านรับแทน (ค่างวด/ปิดยอด — Flow D) | JP4 payoff + JP5 repossession (เส้นทางหน้าร้านรับแทน) | `settleShopCollect` (Dr เงิน / Cr 11-2107) — **ไม่เข้ารอบจ่าย** |
 
 - util กลาง `classifyShopReceivable(je)`: อ่าน `metadata.shopReceivableType` ก่อน, แถวเก่า fallback map จาก `metadata.flow` (ตารางตายตัว: `exchange-buyback-receivable-11-2107` → SWAP_CREDIT, shop-collect flows → SHOP_COLLECT) — **ไม่ backfill DB**
 - ฝั่ง SHOP: `S21-3001` ใช้ stamp เดียวกัน (SWAP_CREDIT / PAYOUT_RECALL) เพื่อกระทบยอดสองสมุดแบบแยกประเภทได้

@@ -1567,7 +1567,22 @@ Auto-issues the ม.82/5 ใบลดหนี้ (Credit Note) receipt that doc
 Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` (D1-D5 owner decisions)
 
 - MEMO mode (รุ่นเดิม+ราคาเดิม): ไม่มี JE — เปลี่ยน `contract.productId` บนสัญญาเดิม (TFRS 9 modification, workbook Case 1). SP2 same-price + `case-8-same-price.csv` golden ถูก retire
-- PRICED mode: A.1 (1A สัญญาใหม่) → **A.1b SHOP-leg** (`ShopInventoryTransferTemplate`, ดูหัวข้อถัดไป) → A.2 (derecognize ผ่าน 21-1106, VAT due ทันที ม.78/1 ไม่ออก CN) → **A.3 (ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106 — ไม่มีขาเงินสด, ไม่แตะ 21-1101/21-1102 — คำสั่งเจ้าของ 2026-08-03 ยกเลิก D5 สำหรับเส้นทางนี้; เดิม "ตัดเจ้าหนี้ + ขาเงินสดโอนเพิ่ม/คืนลูกค้า D5 post ทันที")** → A.4 (SHOP re-intake) → A.5 (ECL reversal Dr 11-2102 / Cr 51-1103 — **CPA ruling 2026-08-01 (คำตอบข้อ A2.2 = ข): มาตรฐานเดียวทุกเส้นทาง**, was Cr 42-1106 per D2 — **บัญชี 42-1106 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03**; same account `EclStageReverseTemplate`/JP5/write-off already use — no more asymmetry)
+- PRICED mode: A.1 (1A สัญญาใหม่) → **A.1b SHOP-leg** (`ShopInventoryTransferTemplate`, ดูหัวข้อถัดไป) → A.2 (derecognize ผ่าน 21-1106, VAT due ทันที ม.78/1 ไม่ออก CN) → **A.3 (ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106 — ไม่มีขาเงินสด, ไม่แตะ 21-1101/21-1102 — คำสั่งเจ้าของ 2026-08-03 ยกเลิก D5 สำหรับเส้นทางนี้; เดิม "ตัดเจ้าหนี้ + ขาเงินสดโอนเพิ่ม/คืนลูกค้า D5 post ทันที")** → A.4 (SHOP ซื้อคืนที่ราคารับซื้อ — `Dr S11-2002 [buyback] / Cr S21-3001` ตั้งแต่ 2026-08-19, เดิม costPrice/Cr S50-1102) → A.5 (ECL reversal Dr 11-2102 / Cr 51-1103 — **CPA ruling 2026-08-01 (คำตอบข้อ A2.2 = ข): มาตรฐานเดียวทุกเส้นทาง**, was Cr 42-1106 per D2 — **บัญชี 42-1106 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03**; same account `EclStageReverseTemplate`/JP5/write-off already use — no more asymmetry)
+- **Workbook 2026-08-19 Phase 1** (spec `docs/superpowers/specs/2026-08-19-device-swap-netting-cancel-workbook-design.md`):
+  (1) **A.2 = วิธีสุทธิ** — ไม่ตั้ง Cr 41-1101 จาก unearned อีกต่อไป; loss/gain = ราคารับซื้อ
+  เทียบมูลค่าตามบัญชีสุทธิรวม VAT (ตัวเลข workbook: loss 126.64; fixture integration: 126.68 —
+  เดิม 4,126.68). `metadata.method = 'NET'` (แถวเก่าไม่มี key = gross, forward-only).
+  `expectedPl` ใน preview (`contract-exchange.service.ts`) ใช้สูตรสุทธิตัวเดียวกัน (preview === posted).
+  (2) **A.4 = ซื้อคืนที่ราคารับซื้อ** — `Dr S11-2002 [buyback] / Cr S21-3001` + caller set
+  `product.costPrice = buyback` และ snapshot `ContractExchangeRequest.previousCostPrice`
+  (cancel restore กลับ). S21-3001 คือขาคู่ฝั่ง SHOP ของ 11-2107 SWAP_CREDIT — รอหักกลบใน
+  รอบจ่าย INTER-CO (Phase 2). Prod ต้องรัน `seed:coa` หลัง deploy (บัญชีใหม่ S21-3001).
+  (3) **11-2107/S21-3001 reference types** — `metadata.shopReceivableType`
+  (`SWAP_CREDIT` | `PAYOUT_RECALL` | `SHOP_COLLECT`) stamp ทุก JE ใหม่; แถวเก่า classify
+  ตอนอ่านผ่าน `classifyShopReceivable()` (`apps/api/src/modules/journal/shop-receivable-type.util.ts`).
+  จุดกำเนิด `SHOP_COLLECT` มี 3 ทาง: JP4 ปิดยอดหน้าร้านรับแทน, JP5 ยึดเครื่องหน้าร้านรับแทน
+  (`repossession-jp5.template.ts` — ค้นพบระหว่าง implement, stamp แล้ว), และใบ settle
+  (`shop-collect-settlement.template.ts`).
 - Approval: AUTO (≥NCV + ≥basePrice×0.85) / REVIEW (BM) / ESCALATE (<70% NCV — OWNER) — `exchange-tier.util.ts`
 - Guards ก่อน finalize: GL 11-2103 = 0, ไม่มี advance/credit ค้าง
 - Cancellation: ยกเลิกได้ทุกเมื่อถ้าสัญญาใหม่ยังไม่มีการชำระ (owner ยกเลิก windows/ค่าปรับ 2026-07-31) — mirror-reverse ทุก JE รวม A.5 + A.1b SHOP-leg (สวีปตาม `metadata.contractId` ไม่ hardcode บัญชี — สวีปจับ SHOP JE ได้เองแม้ไม่มี id เก็บบน request row); 2A cron backfill เอง; **42-1107 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03 (คำสั่ง CPA/owner) — ไม่มีบัญชีรองรับค่าปรับยกเลิกอีกต่อไป**

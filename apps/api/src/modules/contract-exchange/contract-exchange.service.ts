@@ -334,7 +334,16 @@ export class ContractExchangeService {
         ? basePrice.times(new Decimal(100).minus(marketCheckPct).div(100)).toDecimalPlaces(2)
         : null;
       tier = computeExchangeTier({ buyback, ncv, basePrice, marketCheckPct });
-      expectedPl = buyback.minus(grossRemainingInclVat); // − = loss (Dr 51-1102), + = gain (Cr 41-1102)
+      // วิธีสุทธิ (A.2 NET method, workbook 2026-08-19) — mirror plug ของ
+      // ExchangeCloseOld21_1106Template: (buyback + unearned + deferredVat)
+      // − (gross + vatRec [Cr 11-2105] + vatRec [Cr 21-2101]).
+      // − = loss (Dr 51-1102), + = gain (Cr 41-1102)
+      expectedPl = buyback
+        .plus(outstanding.unearnedInterest)
+        .plus(outstanding.deferredVat)
+        .minus(outstanding.gross)
+        .minus(outstanding.vatReceivable)
+        .minus(outstanding.vatReceivable);
     }
 
     return {

@@ -562,6 +562,34 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
     expect(result.newContractId).toBeDefined();
     expect(result.newContractId).toBe('new-c');
   });
+
+  // Task 2 review fix (2026-08-19) — expectedPl ใน preview ต้องตรง plug วิธีสุทธิ
+  // ของ ExchangeCloseOld21_1106Template (A.2 NET method): diff = (buyback +
+  // unearned + deferredVat) − (gross + vatRec + vatRec). สูตร gross เดิม
+  // (buyback − grossInclVat) ทำให้ผู้อนุมัติเห็นขาดทุน 4,126.68 ขณะ JE จริงลง
+  // เพียง 126.68 (fixture Case 2A) — preview ≠ posted ขัด payoff-parity doctrine.
+  it('buildPreview expectedPl = plug วิธีสุทธิของ A.2 (Case 2A: −126.68 ไม่ใช่ −4,126.68)', async () => {
+    // Ledger สัญญาเดิม (ค่าชุดเดียวกับ Case 2A integration fixture):
+    // gross 11,333.36 / vatRec 793.32 / unearned 4,000.00 / deferredVat 793.32.
+    // buildPreview เรียก journalLine.findMany 3 ครั้ง: #1 computeOldOutstanding
+    // (fixture นี้), #2-#3 guard glContractBalance 11-2103/21-1103 (default []).
+    prisma.journalLine.findMany.mockResolvedValueOnce([
+      { accountCode: '11-2101', debit: '11333.36', credit: '0' },
+      { accountCode: '11-2105', debit: '793.32', credit: '0' },
+      { accountCode: '11-2106', debit: '0', credit: '4000.00' },
+      { accountCode: '21-2102', debit: '0', credit: '793.32' },
+    ]);
+
+    const result = await service.buildPreview(
+      { oldContractId: 'old-c', buybackPrice: '8000', deviceCondition: 'B' },
+      user,
+    );
+
+    // (8,000 + 4,000 + 793.32) − (11,333.36 + 793.32 + 793.32) = −126.68
+    expect(result.expectedPl).toBe('-126.68');
+    // สูตร gross เดิมคือ buyback − grossRemainingInclVat = 8,000 − 12,126.68 = −4,126.68
+    expect(result.grossRemainingInclVat).toBe('12126.68');
+  });
 });
 
 // ============================================================================

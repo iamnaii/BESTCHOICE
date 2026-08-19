@@ -418,9 +418,9 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
 
   afterAll(async () => {
     // Collect every JE this spec produced: (a) anything stamped
-    // metadata.contractId with one of our contracts (1A/2A/receipt-sims/A.1-A.3/
-    // A.5/penalty/provision-seed + their mirrors), (b) request-linked ids —
-    // covers A.4 (no metadata.contractId) and its reversal via reversalJeIds.
+    // metadata.contractId with one of our contracts (1A/2A/receipt-sims/A.1-A.5
+    // + their mirrors — A.4 stamps contractId = oldContractId since 2026-08-19),
+    // (b) request-linked ids + reversalJeIds as a belt-and-suspenders sweep.
     const jeIds = new Set<string>();
     for (const cid of createdContractIds) {
       const rows = await prisma.journalEntry.findMany({
@@ -566,14 +566,18 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       // ไม่มีบรรทัดเงินสด/ธนาคารใดๆ (11-11xx / 11-12xx) ในใบนี้
       expect(je3Lines.some((l) => /^11-1[12]0[123]$/.test(l.accountCode))).toBe(false);
 
-      // --- A.4: SHOP re-intake at costPrice, posted under SHOP company
+      // --- A.4 (workbook 2026-08-19): SHOP ซื้อเครื่องเดิมคืนที่ "ราคารับซื้อ"
+      // Dr S11-2002 [buyback] / Cr S21-3001 [buyback], posted under SHOP company.
+      // The old shape (Cr S50-1102 at costPrice) is retired — forward-only.
       const je4 = await prisma.journalEntry.findUniqueOrThrow({
         where: { id: req.je4Id! },
         include: { lines: true },
       });
       expect(je4.companyId).toBe(shopCompanyId);
       expect(sumSide(je4.lines, 'S11-2002', 'dr').toFixed(2)).toBe('8000.00');
-      expect(sumSide(je4.lines, 'S50-1102', 'cr').toFixed(2)).toBe('8000.00');
+      expect(sumSide(je4.lines, 'S50-1102', 'cr').toFixed(2)).toBe('0.00');
+      expect(sumSide(je4.lines, 'S21-3001', 'cr').toFixed(2)).toBe('8000.00');
+      expect((je4.metadata as Record<string, unknown>).shopReceivableType).toBe('SWAP_CREDIT');
 
       // --- F2 (CPA ตอบข้อ 3, 2026-08-01): the NEW contract also gets the
       // SHOP-side ShopInventoryTransferTemplate mirror a normal activation
@@ -632,6 +636,10 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(
         (await glContractBalance(prisma, newContractId, '11-2107', 'dr')).toFixed(2),
       ).toBe('8000.00');
+      // A.4 ใหม่ (workbook 2026-08-19): SHOP ตั้งเจ้าหนี้ FINANCE = ราคารับซื้อ รอหักกลบรอบจ่าย
+      expect(
+        (await glContractBalance(prisma, fix.oldContractId, 'S21-3001', 'cr')).toFixed(2),
+      ).toBe('8000.00');
       // ยืนยันว่าไม่มีเงินสด/ธนาคารขยับบนสัญญาใหม่เลยในวัน finalize
       expect(
         (await glContractBalance(prisma, newContractId, '11-1101', 'dr')).toFixed(2),
@@ -682,6 +690,11 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       });
       expect(oldProduct.status).toBe('REFURBISHED');
       expect(oldProduct.ownedByCompanyId).toBe(shopCompanyId);
+      // A.4 (workbook 2026-08-19): costPrice ถูกเขียนทับเป็นราคารับซื้อ (ต้นทุนจริง
+      // ของ SHOP รอบใหม่) และค่าเดิมถูก snapshot ไว้บน request row ให้ cancel restore
+      expect(new Decimal(oldProduct.costPrice!.toString()).toFixed(2)).toBe('8000.00');
+      expect(req.previousCostPrice).not.toBeNull();
+      expect(new Decimal(req.previousCostPrice!.toString()).toFixed(2)).toBe('8000.00');
     },
     120_000,
   );

@@ -14,36 +14,32 @@ export interface ShopExchangeReturnInput {
    * the same product+contract's second exchange attempt.
    */
   requestId: string;
-  /** Cost basis of the returning device (Product.costPrice). Must be > 0. */
-  cost: Decimal;
+  /** ราคารับซื้อเครื่องเดิม (= ยอดที่ A.2/A.3 ใช้). Must be > 0. */
+  buyback: Decimal;
 }
 
 /**
- * Exchange A.4 — SHOP re-intake of the returned (old) device.
+ * Exchange A.4 — SHOP ซื้อเครื่องเดิมคืนจาก FINANCE ที่ราคารับซื้อ
+ * (workbook เจ้าของ 2026-08-19 Phase 1 — spec 2026-08-19-device-swap-netting-
+ * cancel-workbook-design.md §3.2, คำตัดสินเจ้าของ D2)
  *
- * Inverse of `ShopInventoryTransferTemplate`'s COGS leg. When the customer
- * surrenders the old device in a same-price exchange, the device legally
- * moves back into SHOP's inventory (ownership flips FINANCE → SHOP in the
- * Product row), and the books need a mirror SHOP-side entry:
+ *   Dr S11-2002 (used inventory)                    [buyback]
+ *     Cr S21-3001 (เจ้าหนี้-FINANCE ค่าเครื่องรับคืน)  [buyback]
  *
- *   Dr S11-2002 (used inventory)   [costPrice]
- *     Cr S50-1102 (used-COGS)      [costPrice]
+ * เดิม (P3-SP5 → 2026-08-19): `Dr S11-2002 [costPrice] / Cr S50-1102 [costPrice]`
+ * — กลับรายการต้นทุนที่ราคาทุนเดิม. เปลี่ยนเพราะ: (1) ต้นทุนจริงของ SHOP คือ
+ * ราคาที่ซื้อคืนจาก FINANCE ไม่ใช่ costPrice เดิม (2) S21-3001 คือขาคู่ของ
+ * 11-2107 SWAP_CREDIT ฝั่ง FINANCE — รอหักกลบในรอบจ่าย INTER-CO (Phase 2).
+ * Forward-only: JE เก่ารูปแบบ costPrice/S50-1102 ปล่อยตามเดิม ไม่ backfill.
  *
- * The cost basis is the original Product.costPrice — the same value
- * `ShopInventoryTransferTemplate` debited to S50-1102 when the device first
- * left SHOP. Reversing at the same value keeps the COGS account net-zero for
- * the device's round trip (sold-then-returned).
+ * Caller (`finalizeAfterActivation`) เป็นคน: set `product.costPrice = buyback`
+ * + snapshot `request.previousCostPrice` (cancel restore ใช้) + flip
+ * status/ownership — template นี้แตะเฉพาะ GL.
  *
- * The Product.ownedByCompanyId flip is owner by the calling service, NOT
- * this template, because it touches a non-accounting column and the caller
- * already has a `tx.product.update` for the status change.
- *
- * Idempotency: `metadata.flow = 'shop-exchange-return'` + `metadata.idempotencyKey
- * = <oldProductId>:<oldContractId>:<requestId>` (one re-intake per product per
- * contract per exchange REQUEST — request-scoped since C1b so a canceled swap's
- * still-POSTED JE doesn't block a re-exchange). The
- * journal_entries_idempotency_idx partial unique index enforces this at
- * the DB level.
+ * Idempotency: `metadata.flow = 'shop-exchange-return'` (ชื่อเดิม — ห้ามเปลี่ยน)
+ * + `idempotencyKey = <oldProductId>:<oldContractId>:<requestId>`.
+ * `metadata.contractId = oldContractId` เดิม — ExchangeCancelReversalTemplate
+ * sweep จับใบนี้ผ่าน je4Id ที่เก็บบน request row อยู่แล้ว.
  */
 @Injectable()
 export class ShopExchangeReturnTemplate {
@@ -57,12 +53,12 @@ export class ShopExchangeReturnTemplate {
     input: ShopExchangeReturnInput,
     tx?: Prisma.TransactionClient,
   ): Promise<{ id: string; entryNumber: string }> {
-    const cost = new Decimal(input.cost.toString());
-    if (cost.lte(0)) {
+    const buyback = new Decimal(input.buyback.toString());
+    if (buyback.lte(0)) {
       // Defense in depth — the caller should have already rejected this with
       // a clearer Thai message. If we reach this branch it's a programmer error.
       throw new InternalServerErrorException(
-        'ShopExchangeReturn: cost must be > 0 (received ' + cost.toString() + ')',
+        'ShopExchangeReturn: buyback must be > 0 (received ' + buyback.toString() + ')',
       );
     }
     const zero = new Decimal(0);
@@ -71,7 +67,7 @@ export class ShopExchangeReturnTemplate {
 
     return this.journal.createAndPost(
       {
-        description: `Exchange A.4 — re-intake used device to SHOP inventory (product ${input.oldProductId})`,
+        description: `Exchange A.4 — SHOP ซื้อเครื่องเดิมคืนที่ราคารับซื้อ (product ${input.oldProductId})`,
         // requestId suffix (C1b): journal_entries has a unique (referenceType,
         // referenceId) constraint — the canceled lifecycle's still-POSTED A.4
         // keeps its reference slot, so round 2 must not reuse the same string.
@@ -81,22 +77,24 @@ export class ShopExchangeReturnTemplate {
           idempotencyKey,
           oldProductId: input.oldProductId,
           oldContractId: input.oldContractId,
+          contractId: input.oldContractId,
           companyCode: 'SHOP',
-          cost: cost.toFixed(2),
+          buyback: buyback.toFixed(2),
+          shopReceivableType: 'SWAP_CREDIT',
         },
         companyId: shopCompanyId,
         lines: [
           {
             accountCode: 'S11-2002',
-            dr: cost,
+            dr: buyback,
             cr: zero,
-            description: 'รับเครื่องเก่ากลับเข้าสต็อก SHOP (มือสอง)',
+            description: 'รับเครื่องเก่ากลับเข้าสต็อก SHOP (มือสอง — ราคารับซื้อ)',
           },
           {
-            accountCode: 'S50-1102',
+            accountCode: 'S21-3001',
             dr: zero,
-            cr: cost,
-            description: 'กลับรายการต้นทุนขาย (เครื่องเดิมคืนสต็อก)',
+            cr: buyback,
+            description: 'เจ้าหนี้-FINANCE ค่าเครื่องรับคืน (รอหักกลบรอบจ่าย INTER-CO)',
           },
         ],
       },

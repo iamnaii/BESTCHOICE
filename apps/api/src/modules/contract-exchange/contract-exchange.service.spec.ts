@@ -1577,14 +1577,31 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
     expect(templates.t1a.execute).toHaveBeenCalled();
   });
 
-  it('passes costPrice + requestId to A.4 template', async () => {
+  it('passes buyback + requestId to A.4 template and mutates/snapshots costPrice (workbook 2026-08-19)', async () => {
     tx.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: '12345.67' });
     await service.finalizeAfterActivation(newContract, tx);
     const t4Call = templates.t4.execute.mock.calls[0][0];
     expect(t4Call.oldProductId).toBe('old-p');
     expect(t4Call.oldContractId).toBe('old-c');
     expect(t4Call.requestId).toBe('r1'); // C1b idempotency re-key
-    expect(t4Call.cost.toString()).toBe('12345.67');
+    // A.4 books at the BUYBACK price (mocked request has no buybackPrice →
+    // legacy fallback financed 10,000 + commission 1,000), NOT the old costPrice
+    expect(t4Call.buyback.toString()).toBe('11000');
+    expect(t4Call.cost).toBeUndefined();
+    // Old product's costPrice is overwritten with the buyback price…
+    expect(tx.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'old-p' },
+        data: expect.objectContaining({ costPrice: expect.anything() }),
+      }),
+    );
+    const flipData = tx.product.update.mock.calls.find(
+      (c: any[]) => c[0].where.id === 'old-p',
+    )![0].data;
+    expect(flipData.costPrice.toString()).toBe('11000');
+    // …and the previous value is snapshotted on the request row (cancel restore)
+    const reqData = tx.contractExchangeRequest.update.mock.calls[0][0].data;
+    expect(reqData.previousCostPrice.toString()).toBe('12345.67');
     // A.2 carries the same request-scoped key input
     expect(templates.t2.execute.mock.calls[0][0].requestId).toBe('r1');
   });

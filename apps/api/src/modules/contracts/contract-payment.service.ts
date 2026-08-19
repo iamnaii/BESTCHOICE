@@ -485,7 +485,11 @@ export class ContractPaymentService {
             lateFees: epJe.lateFees.toFixed(2),
             ...(epJe.parkRelief.gt(0) ? { parkRelief: epJe.parkRelief.toFixed(2) } : {}),
             ...(dto.collectedByShop
-              ? { collectedByShop: true, shopReceivable: '11-2107', shopReceivableType: 'SHOP_COLLECT' }
+              ? {
+                  collectedByShop: true,
+                  shopReceivable: '11-2107',
+                  shopReceivableType: 'SHOP_COLLECT',
+                }
               : {}),
           };
 

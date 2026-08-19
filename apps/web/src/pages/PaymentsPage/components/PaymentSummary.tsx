@@ -1,7 +1,34 @@
+import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import api from '@/lib/api';
 import type { DailySummary, DailySummaryPayment } from '../types';
 import { methodLabels } from '../types';
+
+/** เลื่อนวันแบบ string ล้วน (YYYY-MM-DD) — สร้าง Date จาก parts เสมอ ไม่ parse
+ *  string ตรง ๆ (new Date('YYYY-MM-DD') ตีความเป็น UTC เที่ยงคืน ทำวันเพี้ยนบน
+ *  เครื่องโซน +07). ข้ามขอบเดือน/ปี Date จัดการเอง. */
+function shiftDay(date: string, delta: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const next = new Date(y, m - 1, d + delta);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(
+    next.getDate(),
+  ).padStart(2, '0')}`;
+}
+
+const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+/** '2026-08-16' → '16 ส.ค.' — ป้ายสั้นบน chip. */
+function chipLabel(date: string): string {
+  const [, m, d] = date.split('-').map(Number);
+  return `${d} ${THAI_MONTHS[m - 1]}`;
+}
+
+interface SummaryDay {
+  date: string;
+  count: number;
+  total: number;
+}
 
 /** ใบเสร็จที่ไม่ผูกงวด (ดาวน์ / ปิดยอด / ปรับดิว) — แสดงชนิดเอกสารแทนเลขงวด. */
 const RECEIPT_TYPE_LABELS: Record<string, string> = {
@@ -23,16 +50,64 @@ export default function PaymentSummary({
   summary,
   loadingSummary,
 }: PaymentSummaryProps) {
+  // "วันไหนมีสมุดบ้าง" — chips ของเดือนที่เลือก. keyed by month so stepping days
+  // within one month reuses the cache; invalidatePaymentQueries refreshes it
+  // after a void/record so the chips never go stale.
+  const summaryMonth = summaryDate.slice(0, 7);
+  const { data: availableDays = [] } = useQuery<SummaryDay[]>({
+    queryKey: ['daily-summary-dates', summaryMonth],
+    queryFn: async () =>
+      (await api.get(`/payments/daily-summary/dates?month=${summaryMonth}`)).data.days ?? [],
+    staleTime: 60_000,
+  });
   return (
     <div>
-      {/* Date Selector */}
-      <div className="flex items-center gap-3 mb-6">
-        <label className="text-sm font-medium text-foreground">วันที่:</label>
-        <ThaiDateInput
-          value={summaryDate}
-          onChange={(e) => onDateChange(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
-        />
+      {/* Date Selector + วันที่มีรายการ (owner 2026-08-19: เดิมต้องเดาวันเอง) */}
+      <div className="mb-6 space-y-2">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-foreground">วันที่:</label>
+          <button
+            type="button"
+            aria-label="วันก่อนหน้า"
+            onClick={() => onDateChange(shiftDay(summaryDate, -1))}
+            className="p-2 rounded-lg border border-input text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <ThaiDateInput
+            value={summaryDate}
+            onChange={(e) => onDateChange(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+          />
+          <button
+            type="button"
+            aria-label="วันถัดไป"
+            onClick={() => onDateChange(shiftDay(summaryDate, 1))}
+            className="p-2 rounded-lg border border-input text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+        {availableDays.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-muted-foreground leading-snug">วันที่มีรายการ:</span>
+            {availableDays.map((d) => (
+              <button
+                key={d.date}
+                type="button"
+                onClick={() => onDateChange(d.date)}
+                title={`${d.total.toLocaleString()} ฿`}
+                className={
+                  d.date === summaryDate
+                    ? 'px-2 py-0.5 rounded-full text-xs font-medium bg-primary text-primary-foreground'
+                    : 'px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors'
+                }
+              >
+                {chipLabel(d.date)} ({d.count} ใบ)
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {loadingSummary ? (

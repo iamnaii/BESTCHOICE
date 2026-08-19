@@ -454,6 +454,11 @@ export class PaymentsService {
   }
 
   // ─── Daily summary ────────────────────────────────────
+  /** วันไหนมีสมุดบ้าง — clickable date chips ใต้ตัวเลือกวันที่ของสรุปรายวัน. */
+  async getDailySummaryDates(month: string, branchId?: string) {
+    return this.services().query.getDailySummaryDates(month, branchId);
+  }
+
   async getDailySummary(date: string, branchId?: string, page = 1, limit = 50) {
     return this.services().query.getDailySummary(date, branchId, page, limit);
   }

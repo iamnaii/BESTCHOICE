@@ -1584,6 +1584,9 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
     expect(t4Call.oldProductId).toBe('old-p');
     expect(t4Call.oldContractId).toBe('old-c');
     expect(t4Call.requestId).toBe('r1'); // C1b idempotency re-key
+    // Phase 2 Task 1: A.4 must receive the NEW contract id — the SHOP netting
+    // lens (Task 3) queries S21-3001 by metadata.newContractId
+    expect(t4Call.newContractId).toBe('new-c');
     // A.4 books at the BUYBACK price (mocked request has no buybackPrice →
     // legacy fallback financed 10,000 + commission 1,000), NOT the old costPrice
     expect(t4Call.buyback.toString()).toBe('11000');

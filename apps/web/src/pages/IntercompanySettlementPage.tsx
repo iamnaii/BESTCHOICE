@@ -29,6 +29,7 @@ export default function IntercompanySettlementPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'pending' | 'batches'>('pending');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedRecallIds, setSelectedRecallIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<InterCoBatchStatus | undefined>(undefined);
@@ -60,7 +61,9 @@ export default function IntercompanySettlementPage() {
   };
 
   const pending = pendingQuery.data?.pending ?? [];
+  const recalls = pendingQuery.data?.recalls ?? [];
   const selectedContracts = pending.filter((p) => selectedIds.has(p.contractId));
+  const selectedRecalls = recalls.filter((r) => selectedRecallIds.has(r.contractId));
 
   const toggleSelect = (contractId: string) => {
     setSelectedIds((prev) => {
@@ -75,6 +78,15 @@ export default function IntercompanySettlementPage() {
     setSelectedIds((prev) =>
       prev.size === pending.length ? new Set() : new Set(pending.map((p) => p.contractId)),
     );
+  };
+
+  const toggleRecall = (contractId: string) => {
+    setSelectedRecallIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(contractId)) next.delete(contractId);
+      else next.add(contractId);
+      return next;
+    });
   };
 
   return (
@@ -94,6 +106,7 @@ export default function IntercompanySettlementPage() {
         <TabsContent value="pending">
           <PendingTab
             pending={pending}
+            recalls={recalls}
             reconcile={pendingQuery.data?.reconcile}
             isLoading={pendingQuery.isLoading}
             isError={pendingQuery.isError}
@@ -102,6 +115,8 @@ export default function IntercompanySettlementPage() {
             selectedIds={selectedIds}
             onToggle={toggleSelect}
             onToggleAll={toggleSelectAll}
+            selectedRecallIds={selectedRecallIds}
+            onToggleRecall={toggleRecall}
             onCreateClick={() => setCreateOpen(true)}
           />
         </TabsContent>
@@ -134,8 +149,10 @@ export default function IntercompanySettlementPage() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         selectedContracts={selectedContracts}
+        selectedRecalls={selectedRecalls}
         onCreated={(batchId) => {
           setSelectedIds(new Set());
+          setSelectedRecallIds(new Set());
           invalidateAll();
           // Jump straight to the new batch's detail — the maker's next step
           // is almost always "submit for approval" (or attach a slip first).

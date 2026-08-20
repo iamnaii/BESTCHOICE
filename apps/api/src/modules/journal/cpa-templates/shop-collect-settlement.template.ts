@@ -34,7 +34,15 @@ export interface ShopCollectSettlementInput {
  *
  * Guards:
  *   - depositAccountCode must be in CASH_ACCOUNT_CODES
- *   - outstanding 11-2107 (ΣDr − ΣCr over metadata.contractId) must be > 0
+ *   - outstanding 11-2107 (ΣDr − ΣCr over metadata.contractId, MINUS every
+ *     deduction already taken by a POSTED interco batch — batch netting JEs
+ *     deliberately carry no metadata.contractId, so "หักแล้ว" is read off
+ *     InterCoSettlementItem, never GL metadata) must be > 0
+ *   - rejected outright while the contract has a deduction row inside a
+ *     PENDING_APPROVAL interco batch (final review C1 ด่าน (ii) — the same
+ *     8,000 must not clear via cash here AND via the batch's netting leg;
+ *     DRAFT batches don't block: approve's drift guard covers that ordering
+ *     and the maker can still edit a DRAFT)
  *   - amount must be ≤ outstanding + 0.01 (over-settle rejected)
  *
  * Idempotency:
@@ -178,7 +186,42 @@ export class ShopCollectSettlementTemplate {
 
     const totalDr = lines.reduce((s, l) => s.plus(new Decimal(l.debit.toString())), new Decimal(0));
     const totalCr = lines.reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
-    const outstanding = totalDr.minus(totalCr);
+    const grossOutstanding = totalDr.minus(totalCr);
+
+    // ── กันหักซ้ำกับรอบจ่าย INTER-CO (final review C1 ด่าน (ii), 2026-08-20) ──
+    // Batch-netting JEs deliberately stamp NO metadata.contractId (architecture
+    // ruling "เลนส์ gross + item gate") — their Cr 11-2107 legs are invisible to
+    // the per-contract sum above. "หักแล้วหรือยัง" therefore lives on
+    // InterCoSettlementItem: subtract every POSTED batch's deduction for this
+    // contract, and refuse to settle while an open (PENDING_APPROVAL) batch
+    // still holds a deduction row for it — otherwise the same credit could be
+    // cleared twice (cash here + the batch's netting leg). Legacy/JP4/JP5
+    // shop-collect contracts have no deduction items at all → Σ = 0 → identical
+    // behavior to before.
+    const deductionItems = await client.interCoSettlementItem.findMany({
+      where: {
+        contractId,
+        deletedAt: null,
+        OR: [{ swapCreditAmount: { gt: 0 } }, { recallAmount: { gt: 0 } }],
+        batch: { status: { in: ['PENDING_APPROVAL', 'POSTED'] }, deletedAt: null },
+      },
+      select: {
+        swapCreditAmount: true,
+        recallAmount: true,
+        batch: { select: { status: true, batchNumber: true } },
+      },
+    });
+    const openDeduction = deductionItems.find((i) => i.batch.status === 'PENDING_APPROVAL');
+    if (openDeduction) {
+      throw new BadRequestException(
+        `สัญญานี้อยู่ในรอบจ่าย INTER-CO ${openDeduction.batch.batchNumber} ที่รอการอนุมัติและมียอดหักเครดิต — รอผลอนุมัติหรือถอนรอบก่อน`,
+      );
+    }
+    const postedDeductions = deductionItems.reduce(
+      (s, i) => s.plus(i.swapCreditAmount.toString()).plus(i.recallAmount.toString()),
+      new Decimal(0),
+    );
+    const outstanding = grossOutstanding.minus(postedDeductions);
 
     if (outstanding.lte(0)) {
       throw new BadRequestException(

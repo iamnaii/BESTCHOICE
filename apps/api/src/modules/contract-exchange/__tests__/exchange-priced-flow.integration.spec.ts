@@ -583,6 +583,10 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(sumSide(je4.lines, 'S50-1102', 'cr').toFixed(2)).toBe('0.00');
       expect(sumSide(je4.lines, 'S21-3001', 'cr').toFixed(2)).toBe('8000.00');
       expect((je4.metadata as Record<string, unknown>).shopReceivableType).toBe('SWAP_CREDIT');
+      // Phase 2 Task 1: batch item = สัญญาใหม่ — the SHOP netting lens (Task 3)
+      // queries S21-3001 by metadata.newContractId directly (no join through
+      // the request row in SQL), so A.4 must stamp the NEW contract id too.
+      expect((je4.metadata as Record<string, unknown>).newContractId).toBe(newContractId);
 
       // --- F2 (CPA ตอบข้อ 3, 2026-08-01): the NEW contract also gets the
       // SHOP-side ShopInventoryTransferTemplate mirror a normal activation
@@ -669,6 +673,17 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(pendingRow!.shopFinancedGl.toFixed(2)).toBe('15000.00');
       expect(pendingRow!.shopCommissionGl.toFixed(2)).toBe('1500.00');
       expect(pendingRow!.legacyNoShop).toBe(false);
+      // Netting lens tie-in (Phase 2 Task 6): through the REAL templates —
+      // A.3 (ExchangeBuybackReceivable11_2107Template stamps
+      // metadata.contractId = newContractId + shopReceivableType SWAP_CREDIT)
+      // and A.4 (ShopExchangeReturnTemplate stamps metadata.newContractId +
+      // SWAP_CREDIT) — the SAME pending row must carry the buyback on BOTH
+      // books and be eligible for netting in the settlement round. This is
+      // the end-to-end proof that the producer stamps and the lens SQL
+      // (interco-pending.service.ts) join up — not just synthetic seeds.
+      expect(pendingRow!.swapCreditGl.toFixed(2)).toBe('8000.00');
+      expect(pendingRow!.shopBuybackPayableGl.toFixed(2)).toBe('8000.00');
+      expect(pendingRow!.swapCreditEligible).toBe(true);
 
       // --- Old-contract GL: every receivable/deferral account nets EXACTLY 0
       for (const [code, side] of [
@@ -866,6 +881,13 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
           (mirror.metadata as Record<string, unknown>).shopReceivableType,
           `mirror of ${stampedId} must carry shopReceivableType`,
         ).toBe('SWAP_CREDIT');
+        // Phase 2 Task 1: mirrors must also carry newContractId — the SHOP
+        // lens sums S21-3001 per NEW contract, so a canceled swap's mirror
+        // without the key would leave a phantom per-contract balance.
+        expect(
+          (mirror.metadata as Record<string, unknown>).newContractId,
+          `mirror of ${stampedId} must carry newContractId`,
+        ).toBe(newContract.id);
       }
 
       // --- NO 42-1107 penalty JE anywhere in this spec's journal rows

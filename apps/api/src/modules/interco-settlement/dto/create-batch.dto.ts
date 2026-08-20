@@ -24,6 +24,12 @@ export class CreateBatchDto {
   @IsUUID('4', { each: true, message: 'contractId แต่ละรายการต้องเป็น UUID' })
   contractIds!: string[];
 
+  /** สัญญายกเลิก (C-2) ที่เลือกหักเรียกคืนในรอบนี้ — optional (Phase 2) */
+  @IsOptional()
+  @IsArray({ message: 'recallContractIds ต้องเป็น array' })
+  @IsUUID('4', { each: true, message: 'recallContractIds ต้องเป็น UUID' })
+  recallContractIds?: string[];
+
   /** วันโอนจริงตาม statement — โหมดย้อนหลังได้ (D2/D4) */
   @IsDateString({}, { message: 'วันที่โอนไม่ถูกต้อง' })
   transferDate!: string;

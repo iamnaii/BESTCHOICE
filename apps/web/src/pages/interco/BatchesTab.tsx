@@ -8,6 +8,7 @@ import {
   BATCH_STATUS_BADGE_VARIANT,
   BATCH_STATUS_LABEL,
   fmtMoney,
+  netAmountOf,
   type BatchListResponse,
   type InterCoBatchStatus,
 } from './types';
@@ -97,7 +98,9 @@ export function BatchesTab({
                   <tr>
                     <th className="text-left p-3 font-medium text-muted-foreground">เลขที่รอบ</th>
                     <th className="text-center p-3 font-medium text-muted-foreground">วันที่โอน</th>
-                    <th className="text-right p-3 font-medium text-muted-foreground">ยอดรวม</th>
+                    <th className="text-right p-3 font-medium text-muted-foreground">
+                      ยอดโอนสุทธิ
+                    </th>
                     <th className="text-center p-3 font-medium text-muted-foreground">
                       จำนวนสัญญา
                     </th>
@@ -125,7 +128,8 @@ export function BatchesTab({
                           {formatThaiDateShort(b.transferDate)}
                         </td>
                         <td className="p-3 text-right tabular-nums font-semibold">
-                          {fmtMoney(b.totalAmount)}
+                          {/* เงินโอนจริงของรอบ — batch ก่อน Phase 2 (null) helper คืน totalAmount เอง */}
+                          {fmtMoney(netAmountOf(b))}
                         </td>
                         <td className="p-3 text-center">{b._count.items}</td>
                         <td className="p-3 text-center">

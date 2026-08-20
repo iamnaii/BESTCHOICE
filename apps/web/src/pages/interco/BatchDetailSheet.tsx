@@ -15,6 +15,7 @@ import {
   fmtMoney,
   INTERCO_APPROVER_ROLES,
   INTERCO_MAKER_ROLES,
+  netAmountOf,
   type BatchDetail,
 } from './types';
 import { ApproveConfirmDialog } from './ApproveConfirmDialog';
@@ -126,8 +127,27 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                   label="วันที่ลงบัญชี"
                   value={batch.postedAt ? formatThaiDateTime(batch.postedAt) : '-'}
                 />
-                <InfoField label="ยอดรวม" value={`฿${fmtMoney(batch.totalAmount)}`} />
-                <InfoField label="ยอด SHOP รับจริง" value={`฿${fmtMoney(batch.shopPostedAmount)}`} />
+                <InfoField label="ยอดเจ้าหนี้รวม" value={`฿${fmtMoney(batch.totalAmount)}`} />
+                {/* รอบก่อน Phase 2 (netTransferAmount = null) — ไม่มี snapshot หัก
+                    จึงไม่โชว์บรรทัดหัก และยอดโอนสุทธิ = ยอดเต็ม (netAmountOf) */}
+                {batch.netTransferAmount !== null && (
+                  <InfoField
+                    label="หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน)"
+                    value={
+                      <span className={Number(batch.totalDeduction) > 0 ? 'text-warning' : ''}>
+                        −฿{fmtMoney(batch.totalDeduction)}
+                      </span>
+                    }
+                  />
+                )}
+                <InfoField
+                  label="ยอดโอนสุทธิ"
+                  value={<span className="font-bold">฿{fmtMoney(netAmountOf(batch))}</span>}
+                />
+                <InfoField
+                  label="ยอด SHOP รับจริง"
+                  value={`฿${fmtMoney(batch.shopNetAmount ?? batch.shopPostedAmount)}`}
+                />
                 <InfoField label="บัญชี FINANCE" value={batch.financeBankCode} />
                 <InfoField label="บัญชี SHOP" value={batch.shopBankCode} />
                 <InfoField label="เลขที่อ้างอิงโอน" value={batch.transferRef ?? '-'} />
@@ -145,11 +165,7 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                 />
                 <InfoField label="ผู้สร้างรอบ" value={batch.maker.name} />
                 <InfoField label="ผู้อนุมัติ" value={batch.approver?.name ?? '-'} />
-                <InfoField
-                  label="JE ฝั่ง FINANCE"
-                  value={batch.financeEntryNumber ?? '-'}
-                  mono
-                />
+                <InfoField label="JE ฝั่ง FINANCE" value={batch.financeEntryNumber ?? '-'} mono />
                 <InfoField label="JE ฝั่ง SHOP" value={batch.shopEntryNumber ?? '-'} mono />
                 {batch.note && <InfoField label="หมายเหตุ" value={batch.note} full />}
                 {batch.status === 'REVERSED' && batch.reverseReason && (
@@ -178,38 +194,66 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                         <th className="text-right p-2.5 font-medium text-muted-foreground">
                           SHOP-ค่าคอม
                         </th>
+                        <th className="text-right p-2.5 font-medium text-muted-foreground">หัก</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {batch.items.map((item) => (
-                        <tr key={item.id} className="border-t border-border">
-                          <td className="p-2.5">
-                            <div className="font-medium leading-snug flex items-center gap-1.5 flex-wrap">
-                              {item.contract.contractNumber}
-                              {item.legacyNoShop && (
-                                <Badge variant="warning" appearance="light" size="sm">
-                                  LEGACY
-                                </Badge>
+                      {batch.items.map((item) => {
+                        const isRecall = item.itemType === 'RECALL';
+                        // item รอบเก่า (ก่อน Phase 2) ไม่มีคอลัมน์หัก — Prisma default
+                        // ให้ "0.00" เสมอ แต่กันเผื่อ undefined จาก fixture/response เก่า
+                        const deduction = Number(
+                          (isRecall ? item.recallAmount : item.swapCreditAmount) ?? 0,
+                        );
+                        return (
+                          <tr key={item.id} className="border-t border-border">
+                            <td className="p-2.5">
+                              <div className="font-medium leading-snug flex items-center gap-1.5 flex-wrap">
+                                {item.contract.contractNumber}
+                                {isRecall && (
+                                  <Badge
+                                    variant="warning"
+                                    appearance="light"
+                                    size="sm"
+                                    title="ยกเลิกหลังตัดจ่าย (Flow C-2) — หักเงินคืนจากรอบนี้ ไม่มีเจ้าหนี้ของตัวเอง"
+                                  >
+                                    เรียกคืน
+                                  </Badge>
+                                )}
+                                {item.legacyNoShop && (
+                                  <Badge variant="warning" appearance="light" size="sm">
+                                    LEGACY
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground leading-snug">
+                                {item.contract.customer.name}
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-right tabular-nums">
+                              {isRecall ? '-' : fmtMoney(item.financedGl)}
+                            </td>
+                            <td className="p-2.5 text-right tabular-nums">
+                              {isRecall ? '-' : fmtMoney(item.commissionGl)}
+                            </td>
+                            <td className="p-2.5 text-right tabular-nums">
+                              {isRecall || item.legacyNoShop ? '-' : fmtMoney(item.shopFinancedGl)}
+                            </td>
+                            <td className="p-2.5 text-right tabular-nums">
+                              {isRecall || item.legacyNoShop
+                                ? '-'
+                                : fmtMoney(item.shopCommissionGl)}
+                            </td>
+                            <td className="p-2.5 text-right tabular-nums">
+                              {deduction > 0 ? (
+                                <span className="text-warning">−{fmtMoney(deduction)}</span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
                               )}
-                            </div>
-                            <div className="text-xs text-muted-foreground leading-snug">
-                              {item.contract.customer.name}
-                            </div>
-                          </td>
-                          <td className="p-2.5 text-right tabular-nums">
-                            {fmtMoney(item.financedGl)}
-                          </td>
-                          <td className="p-2.5 text-right tabular-nums">
-                            {fmtMoney(item.commissionGl)}
-                          </td>
-                          <td className="p-2.5 text-right tabular-nums">
-                            {item.legacyNoShop ? '-' : fmtMoney(item.shopFinancedGl)}
-                          </td>
-                          <td className="p-2.5 text-right tabular-nums">
-                            {item.legacyNoShop ? '-' : fmtMoney(item.shopCommissionGl)}
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -217,20 +261,24 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
 
               <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
                 {batch.status === 'DRAFT' && isMakerRole && isMakerOfBatch && (
-                  <Button onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
+                  <Button
+                    onClick={() => submitMutation.mutate()}
+                    disabled={submitMutation.isPending}
+                  >
                     {submitMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                     ส่งอนุมัติ
                   </Button>
                 )}
-                {(batch.status === 'DRAFT' || batch.status === 'PENDING_APPROVAL') && isMakerRole && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setCancelConfirmOpen(true)}
-                    disabled={cancelMutation.isPending}
-                  >
-                    ยกเลิกรอบ
-                  </Button>
-                )}
+                {(batch.status === 'DRAFT' || batch.status === 'PENDING_APPROVAL') &&
+                  isMakerRole && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setCancelConfirmOpen(true)}
+                      disabled={cancelMutation.isPending}
+                    >
+                      ยกเลิกรอบ
+                    </Button>
+                  )}
                 {batch.status === 'PENDING_APPROVAL' && isMakerRole && isMakerOfBatch && (
                   <Button
                     variant="outline"

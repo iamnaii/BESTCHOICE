@@ -37,6 +37,7 @@ describe('ShopExchangeReturnTemplate', () => {
       oldContractId: 'c-1',
       requestId: 'req-1',
       buyback,
+      newContractId: 'new-contract-1',
     });
     expect(result).toEqual({ id: 'je-id', entryNumber: 'JE-202605-00001' });
     expect(journal.createAndPost).toHaveBeenCalledTimes(1);
@@ -59,14 +60,26 @@ describe('ShopExchangeReturnTemplate', () => {
   });
 
   it('tags the JE with companyId=SHOP', async () => {
-    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', buyback });
+    await template.execute({
+      oldProductId: 'p-1',
+      oldContractId: 'c-1',
+      requestId: 'req-1',
+      buyback,
+      newContractId: 'new-contract-1',
+    });
     const call = journal.createAndPost.mock.calls[0][0];
     expect(call.companyId).toBe('shop-co-id');
     expect(companyResolver.getShopCompanyId).toHaveBeenCalled();
   });
 
   it('stamps request-scoped idempotencyKey = oldProductId:oldContractId:requestId on metadata (C1b)', async () => {
-    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', buyback });
+    await template.execute({
+      oldProductId: 'p-1',
+      oldContractId: 'c-1',
+      requestId: 'req-1',
+      buyback,
+      newContractId: 'new-contract-1',
+    });
     const call = journal.createAndPost.mock.calls[0][0];
     expect(call.metadata).toMatchObject({
       flow: 'shop-exchange-return',
@@ -80,10 +93,19 @@ describe('ShopExchangeReturnTemplate', () => {
       buyback: '12345.67',
       shopReceivableType: 'SWAP_CREDIT',
     });
+    // Phase 2 Task 1: the SHOP netting lens (Task 3) keys S21-3001 by the NEW
+    // contract — batch item = สัญญาใหม่ — so A.4 must stamp it directly.
+    expect((call.metadata as any).newContractId).toBe('new-contract-1');
   });
 
   it('sets a request-scoped contract reference for cross-linking from reports (C1b)', async () => {
-    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', buyback });
+    await template.execute({
+      oldProductId: 'p-1',
+      oldContractId: 'c-1',
+      requestId: 'req-1',
+      buyback,
+      newContractId: 'new-contract-1',
+    });
     const call = journal.createAndPost.mock.calls[0][0];
     // requestId suffix: (referenceType, referenceId) is DB-unique — round 2
     // after a cancel must not collide with the still-POSTED first A.4.
@@ -92,21 +114,36 @@ describe('ShopExchangeReturnTemplate', () => {
 
   it('throws InternalServerErrorException when buyback = 0', async () => {
     await expect(
-      template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', buyback: new Decimal(0) }),
+      template.execute({
+        oldProductId: 'p-1',
+        oldContractId: 'c-1',
+        requestId: 'req-1',
+        buyback: new Decimal(0),
+        newContractId: 'new-contract-1',
+      }),
     ).rejects.toThrow(InternalServerErrorException);
     expect(journal.createAndPost).not.toHaveBeenCalled();
   });
 
   it('throws InternalServerErrorException when buyback is negative', async () => {
     await expect(
-      template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', buyback: new Decimal(-1) }),
+      template.execute({
+        oldProductId: 'p-1',
+        oldContractId: 'c-1',
+        requestId: 'req-1',
+        buyback: new Decimal(-1),
+        newContractId: 'new-contract-1',
+      }),
     ).rejects.toThrow(InternalServerErrorException);
     expect(journal.createAndPost).not.toHaveBeenCalled();
   });
 
   it('propagates the outer transaction client when provided', async () => {
     const fakeTx = { __tag: 'tx' } as any;
-    await template.execute({ oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', buyback }, fakeTx);
+    await template.execute(
+      { oldProductId: 'p-1', oldContractId: 'c-1', requestId: 'req-1', buyback, newContractId: 'new-contract-1' },
+      fakeTx,
+    );
     expect(journal.createAndPost).toHaveBeenCalledWith(expect.anything(), fakeTx);
     expect(companyResolver.getShopCompanyId).toHaveBeenCalledWith(fakeTx);
   });

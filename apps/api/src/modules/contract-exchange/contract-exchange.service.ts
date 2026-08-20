@@ -901,7 +901,13 @@ export class ContractExchangeService {
     }
     const previousCostPrice = new Decimal(oldProduct.costPrice.toString());
     const je4 = await this.t4.execute(
-      { oldProductId: request.oldProductId, oldContractId, requestId: request.id, buyback },
+      {
+        oldProductId: request.oldProductId,
+        oldContractId,
+        requestId: request.id,
+        buyback,
+        newContractId: newContract.id,
+      },
       tx,
     );
 

@@ -25,6 +25,25 @@ export interface PendingContract {
   shopCommissionGl: string;
   /** true เมื่อ GL ฝั่ง SHOP (S11-3001/S11-3002) ของสัญญานี้ = 0 ทั้งคู่ */
   legacyNoShop: boolean;
+  /** เลนส์ 11-2107 SWAP_CREDIT — เครดิตเปลี่ยนเครื่องรอหักกลบ */
+  swapCreditGl: string;
+  /** เลนส์ S21-3001 — ขาคู่ฝั่ง SHOP */
+  shopBuybackPayableGl: string;
+  /** หักกลบได้ (สองสมุดมียอดเท่ากัน) — false บน swap ยุคก่อน Phase 1 */
+  swapCreditEligible: boolean;
+}
+
+/**
+ * แถวคิวหักเรียกคืน (Flow C-2 — ยกเลิกเปลี่ยนเครื่องหลังตัดจ่ายรอบไปแล้ว):
+ * 11-2107 [PAYOUT_RECALL] ค้าง — เลือกเป็น "แถวหัก" เข้ารอบจ่ายได้
+ * (ไม่มีเจ้าหนี้ 21-1101/21-1102 ของตัวเอง).
+ */
+export interface RecallCandidate {
+  contractId: string;
+  contractNumber: string;
+  customerName: string;
+  recallGl: string;
+  shopRecallGl: string;
 }
 
 export interface ReconcileTotals {
@@ -36,15 +55,11 @@ export interface ReconcileTotals {
 
 export interface PendingResponse {
   pending: PendingContract[];
+  recalls: RecallCandidate[];
   reconcile: ReconcileTotals;
 }
 
-export type InterCoBatchStatus =
-  | 'DRAFT'
-  | 'PENDING_APPROVAL'
-  | 'POSTED'
-  | 'REVERSED'
-  | 'CANCELLED';
+export type InterCoBatchStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'POSTED' | 'REVERSED' | 'CANCELLED';
 
 export interface BatchUserRef {
   id: string;
@@ -62,6 +77,12 @@ export interface BatchListItem {
   totalCommission: string;
   totalAmount: string;
   shopPostedAmount: string;
+  /** Σ swapCreditAmount + recallAmount ของทุก item (Phase 2 หักกลบ) — รอบเก่า = "0.00" */
+  totalDeduction: string;
+  /** เงินโอนจริงฝั่ง FINANCE = totalAmount − totalDeduction; null = รอบก่อน Phase 2 */
+  netTransferAmount: string | null;
+  /** เงินรับจริงฝั่ง SHOP = shopPostedAmount − totalDeduction; null = รอบก่อน Phase 2 */
+  shopNetAmount: string | null;
   transferRef: string | null;
   note: string | null;
   maker: BatchUserRef;
@@ -79,11 +100,17 @@ export interface BatchListResponse {
 export interface BatchItem {
   id: string;
   contractId: string;
+  /** SETTLEMENT = จ่ายเจ้าหนี้ตามปกติ; RECALL = แถวหักเรียกคืน (Flow C-2, ไม่มีเจ้าหนี้ของตัวเอง) */
+  itemType: 'SETTLEMENT' | 'RECALL';
   financedGl: string;
   commissionGl: string;
   shopFinancedGl: string;
   shopCommissionGl: string;
   legacyNoShop: boolean;
+  /** ยอดหักเครดิตเปลี่ยนเครื่อง (11-2107 SWAP_CREDIT) — "0.00" เมื่อไม่ใช่ swap/ไม่ eligible */
+  swapCreditAmount: string;
+  /** ยอดหักเรียกคืน (11-2107 PAYOUT_RECALL) — > 0 เฉพาะแถว itemType RECALL */
+  recallAmount: string;
   contract: {
     id: string;
     contractNumber: string;
@@ -129,6 +156,11 @@ export const BATCH_STATUS_BADGE_VARIANT: Record<
 export const INTERCO_MAKER_ROLES = ['ACCOUNTANT', 'FINANCE_MANAGER'];
 /** Roles allowed to approve/reverse (checker side — spec §6). */
 export const INTERCO_APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER'];
+
+/** เงินโอนจริงของรอบ — รอบก่อน Phase 2 (null) = totalAmount เต็ม */
+export function netAmountOf(b: Pick<BatchListItem, 'totalAmount' | 'netTransferAmount'>): string {
+  return b.netTransferAmount ?? b.totalAmount;
+}
 
 export function fmtMoney(v: string | number | null | undefined): string {
   if (v === null || v === undefined) return '0.00';

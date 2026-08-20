@@ -44,6 +44,7 @@ describe('IntercoSettlementController', () => {
     };
     pendingService = {
       getPendingContracts: jest.fn().mockResolvedValue([{ contractId: 'c-1' }]),
+      getPendingRecalls: jest.fn().mockResolvedValue([{ contractId: 'c-recall' }]),
       getReconcileTotals: jest.fn().mockResolvedValue({ pendingTotal: 0, drift: 0 }),
     };
     controller = new IntercoSettlementController(
@@ -92,12 +93,14 @@ describe('IntercoSettlementController', () => {
   });
 
   describe('pending()', () => {
-    it('combines getPendingContracts + getReconcileTotals into { pending, reconcile }', async () => {
+    it('combines getPendingContracts + getPendingRecalls + getReconcileTotals into { pending, recalls, reconcile }', async () => {
       const result = await controller.pending();
       expect(pendingService.getPendingContracts).toHaveBeenCalledTimes(1);
+      expect(pendingService.getPendingRecalls).toHaveBeenCalledTimes(1);
       expect(pendingService.getReconcileTotals).toHaveBeenCalledTimes(1);
       expect(result).toEqual({
         pending: [{ contractId: 'c-1' }],
+        recalls: [{ contractId: 'c-recall' }],
         reconcile: { pendingTotal: 0, drift: 0 },
       });
     });

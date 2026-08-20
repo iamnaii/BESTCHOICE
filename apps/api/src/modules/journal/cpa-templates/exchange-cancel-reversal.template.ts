@@ -81,6 +81,12 @@ export class ExchangeCancelReversalTemplate {
             ...(meta['shopReceivableType']
               ? { shopReceivableType: meta['shopReceivableType'] as string }
               : {}),
+            // Carry the SHOP-lens key (Phase 2 Task 1): S21-3001 is summed per
+            // NEW contract — a mirror without it would leave a phantom
+            // per-contract balance on a canceled swap while the real GL is 0.
+            ...(typeof meta['newContractId'] === 'string'
+              ? { newContractId: meta['newContractId'] }
+              : {}),
           },
           lines: reversedLines,
         },

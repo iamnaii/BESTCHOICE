@@ -10,6 +10,11 @@
  * | SWAP_CREDIT   | เครดิตราคารับซื้อจากรับคืนเครื่อง (Flow B / A.3+A.4) | รอบจ่าย INTER-CO (Phase 2) หรือ shop-collect |
  * | PAYOUT_RECALL | เงินตัดจ่ายแล้วต้องเรียกคืน จากยกเลิกสัญญา (Flow C-2) | รอบจ่ายถัดไป หรือรับเงินสดคืน (Phase 3) |
  * | SHOP_COLLECT  | เงินลูกค้าที่หน้าร้านรับแทน (Flow D)                  | settleShopCollect — ไม่เข้ารอบจ่าย |
+ *
+ * SQL twins: เงื่อนไข explicit-stamp/FLOW_MAP ของ SWAP_CREDIT + PAYOUT_RECALL
+ * ถูก reproduce เป็น raw SQL ใน `interco-settlement/interco-typed-balance.ts`
+ * และเลนส์ `IntercoPendingService` — แก้การ classify ที่นี่ต้องแก้ทั้งสองที่
+ * (anti-drift net: interco-netting.integration.spec.ts).
  */
 export type ShopReceivableType = 'SWAP_CREDIT' | 'PAYOUT_RECALL' | 'SHOP_COLLECT' | 'UNKNOWN';
 

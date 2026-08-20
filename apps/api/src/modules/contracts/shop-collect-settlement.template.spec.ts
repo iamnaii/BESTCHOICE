@@ -80,6 +80,11 @@ describe('ShopCollectSettlementTemplate — P2002 race handling', () => {
         // amount used by every test below so the over-settle guard passes.
         findMany: jest.fn().mockResolvedValue([{ debit: new Decimal('2500.00'), credit: new Decimal('0') }]),
       },
+      interCoSettlementItem: {
+        // No interco-batch deduction rows (final review C1 ด่าน (ii)) — the
+        // legacy shop-collect path these tests exercise has none.
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     template = new ShopCollectSettlementTemplate(journalMock as unknown as JournalAutoService, prismaMock);

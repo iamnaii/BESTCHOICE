@@ -25,10 +25,11 @@ import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-
 /**
  * Per-contract fold of the POSTED SETTLEMENT snapshot — the single C-2 detect
  * source (Phase 3 Task 7): shared by `approveCancellation` (isC2/settledTotal/
- * settledShopTotal for the template cross-checks) and
- * `listPendingCancellations` (settledInBatch badge + recallAmount forecast).
+ * settledShopTotal for the template cross-checks), `listPendingCancellations`
+ * (settledInBatch badge + recallAmount forecast), and the exchange-cancel path
+ * (`ExchangeCancelService` — same formula, ห้ามมีสำเนาที่สอง).
  */
-interface SettledPayout {
+export interface SettledPayout {
   /** Σ financedGl + commissionGl — gross เจ้าหนี้ที่ batch ล้างไป (= ยอด redirect 11-2107) */
   settledTotal: Decimal;
   /** Σ shopFinancedGl + shopCommissionGl — ฝั่ง SHOP (template cross-check S21-3001) */
@@ -38,6 +39,55 @@ interface SettledPayout {
   batchNumbers: string[];
 }
 
+/**
+ * C-2 detect (Phase 3 Task 3 — workbook Case 3A กรณี 2, refactored to a shared
+ * helper in Task 7; exported for the exchange-cancel path — pattern
+ * C2_REDIRECTS): Σ snapshot ของ item SETTLEMENT ใน batch POSTED ต่อสัญญา.
+ * RECALL item ไม่นับ — มันคือ "ถูกหักเรียกคืนไปแล้ว" ไม่ใช่ "ถูกจ่าย".
+ *
+ * `settledDeductions` = Σ(swapCreditAmount + recallAmount) ของ item ชุดเดียวกัน
+ * — เงินส่วนที่ถูกหักกลบในรอบ ไม่เคยโอนจริง ⇒ ยอดเรียกคืนสุทธิที่ C-2 จะเหลือ
+ * ให้ตามเก็บ = settledTotal − settledDeductions (นิยามเดียวกับ net ของ
+ * `IntercoPendingService.getPendingRecalls`). แถว SETTLEMENT มี recallAmount = 0
+ * โดยนิยาม — รวมไว้เพื่อให้สูตรตรงกับ totalDeduction ของ batch แบบไบต์ต่อไบต์.
+ */
+export async function settledPayoutByContract(
+  client: Prisma.TransactionClient,
+  contractIds: string[],
+): Promise<Map<string, SettledPayout>> {
+  if (contractIds.length === 0) return new Map();
+  const postedItems = await client.interCoSettlementItem.findMany({
+    where: {
+      contractId: { in: contractIds },
+      deletedAt: null,
+      itemType: 'SETTLEMENT',
+      batch: { status: 'POSTED', deletedAt: null },
+    },
+    include: { batch: { select: { batchNumber: true } } },
+  });
+  const map = new Map<string, SettledPayout>();
+  for (const item of postedItems) {
+    const entry = map.get(item.contractId) ?? {
+      settledTotal: new Decimal(0),
+      settledShopTotal: new Decimal(0),
+      settledDeductions: new Decimal(0),
+      batchNumbers: [] as string[],
+    };
+    entry.settledTotal = entry.settledTotal
+      .plus(item.financedGl.toString())
+      .plus(item.commissionGl.toString());
+    entry.settledShopTotal = entry.settledShopTotal
+      .plus(item.shopFinancedGl.toString())
+      .plus(item.shopCommissionGl.toString());
+    entry.settledDeductions = entry.settledDeductions
+      .plus(item.swapCreditAmount.toString())
+      .plus(item.recallAmount.toString());
+    entry.batchNumbers.push(item.batch.batchNumber);
+    map.set(item.contractId, entry);
+  }
+  return map;
+}
+
 @Injectable()
 export class ContractCancellationService {
   constructor(
@@ -45,53 +95,6 @@ export class ContractCancellationService {
     private getCancellationTemplate: () => ContractCancellationTemplate | undefined,
     private getCompanyResolver: () => CompanyResolverService | undefined = () => undefined,
   ) {}
-
-  /**
-   * C-2 detect (Phase 3 Task 3 — workbook Case 3A กรณี 2, refactored to a
-   * shared helper in Task 7): Σ snapshot ของ item SETTLEMENT ใน batch POSTED
-   * ต่อสัญญา. RECALL item ไม่นับ — มันคือ "ถูกหักเรียกคืนไปแล้ว" ไม่ใช่ "ถูกจ่าย".
-   *
-   * `settledDeductions` = Σ(swapCreditAmount + recallAmount) ของ item ชุดเดียวกัน
-   * — เงินส่วนที่ถูกหักกลบในรอบ ไม่เคยโอนจริง ⇒ ยอดเรียกคืนสุทธิที่ C-2 จะเหลือ
-   * ให้ตามเก็บ = settledTotal − settledDeductions (นิยามเดียวกับ net ของ
-   * `IntercoPendingService.getPendingRecalls`).
-   */
-  private async settledPayoutByContract(
-    client: Prisma.TransactionClient,
-    contractIds: string[],
-  ): Promise<Map<string, SettledPayout>> {
-    if (contractIds.length === 0) return new Map();
-    const postedItems = await client.interCoSettlementItem.findMany({
-      where: {
-        contractId: { in: contractIds },
-        deletedAt: null,
-        itemType: 'SETTLEMENT',
-        batch: { status: 'POSTED', deletedAt: null },
-      },
-      include: { batch: { select: { batchNumber: true } } },
-    });
-    const map = new Map<string, SettledPayout>();
-    for (const item of postedItems) {
-      const entry = map.get(item.contractId) ?? {
-        settledTotal: new Decimal(0),
-        settledShopTotal: new Decimal(0),
-        settledDeductions: new Decimal(0),
-        batchNumbers: [] as string[],
-      };
-      entry.settledTotal = entry.settledTotal
-        .plus(item.financedGl.toString())
-        .plus(item.commissionGl.toString());
-      entry.settledShopTotal = entry.settledShopTotal
-        .plus(item.shopFinancedGl.toString())
-        .plus(item.shopCommissionGl.toString());
-      entry.settledDeductions = entry.settledDeductions
-        .plus(item.swapCreditAmount.toString())
-        .plus(item.recallAmount.toString());
-      entry.batchNumbers.push(item.batch.batchNumber);
-      map.set(item.contractId, entry);
-    }
-    return map;
-  }
 
   /**
    * Request a cancellation for an existing contract.
@@ -253,9 +256,10 @@ export class ContractCancellationService {
       // listPendingCancellations, Task 7 refactor. ฝั่ง SHOP (Task 4 fold):
       // settledShopTotal ให้ template cross-check redirect S21-3001 แยกสมุด —
       // สัญญา legacyNoShop มี snapshot ฝั่ง SHOP = 0 → expected 0.)
-      const settled = (await this.settledPayoutByContract(tx, [contract.id])).get(contract.id);
+      const settled = (await settledPayoutByContract(tx, [contract.id])).get(contract.id);
       const settledTotal = settled?.settledTotal ?? new Decimal(0);
       const settledShopTotal = settled?.settledShopTotal ?? new Decimal(0);
+      const settledDeductions = settled?.settledDeductions ?? new Decimal(0);
       const isC2 = settledTotal.gt(0);
       const batchNumbers = settled?.batchNumbers ?? [];
 
@@ -335,7 +339,16 @@ export class ContractCancellationService {
             reversalCount: jeResult.reversalJeIds.length,
             reversalJeIds: jeResult.reversalJeIds,
             refundAmount: cancellation.refundAmount.toString(),
-            ...(isC2 ? { recallAmount: settledTotal.toFixed(2), batchNumbers } : {}),
+            // C-2: recallAmount = net เงินสดที่ FINANCE โอนจริง (settled gross −
+            // deductions ที่รอบหักไว้) — นิยามเดียวกับ exchange audit / list API /
+            // recall queue; settledTotal (gross) เก็บคู่กันไว้ตรวจย้อน redirect
+            ...(isC2
+              ? {
+                  settledTotal: settledTotal.toFixed(2),
+                  recallAmount: settledTotal.minus(settledDeductions).toFixed(2),
+                  batchNumbers,
+                }
+              : {}),
           },
         },
       });
@@ -427,7 +440,7 @@ export class ContractCancellationService {
       },
     });
 
-    const settledMap = await this.settledPayoutByContract(
+    const settledMap = await settledPayoutByContract(
       this.prisma as unknown as Prisma.TransactionClient,
       rows.map((r) => r.contractId),
     );

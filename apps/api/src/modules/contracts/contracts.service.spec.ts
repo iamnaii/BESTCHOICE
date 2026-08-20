@@ -1536,6 +1536,8 @@ describe('ContractsService', () => {
       // Task 4 fold: the service now also reads the SHOP snapshot columns
       // (shopFinancedGl/shopCommissionGl) to build settledShopTotal — the mock
       // item must carry them like a real InterCoSettlementItem row does.
+      // Batch หักเครดิตสวอป 2,000 ไว้แล้ว: gross 11,000 / net เงินโอนจริง 9,000
+      // — template ต้องได้ gross (cross-check redirect 11-2107), audit ต้องได้ net
       prisma.interCoSettlementItem.findMany = jest.fn().mockResolvedValue([
         {
           contractId: 'contract-1',
@@ -1543,7 +1545,7 @@ describe('ContractsService', () => {
           commissionGl: new Prisma.Decimal('1000.00'),
           shopFinancedGl: new Prisma.Decimal('10000.00'),
           shopCommissionGl: new Prisma.Decimal('1000.00'),
-          swapCreditAmount: new Prisma.Decimal(0),
+          swapCreditAmount: new Prisma.Decimal('2000.00'),
           recallAmount: new Prisma.Decimal(0),
           batch: { batchNumber: 'IC-20260820-0009' },
         },
@@ -1569,12 +1571,16 @@ describe('ContractsService', () => {
       // Task 4 fold: SHOP-book expected total forwarded for the S21-3001 cross-check
       expect(templateParams.settledShopTotal.toFixed(2)).toBe('11000.00');
 
+      // Audit (Task 7 review fix): recallAmount = NET (11,000 − 2,000 deduction)
+      // — aligned กับ exchange audit / list API / recall queue; gross เก็บใน
+      // settledTotal คู่กัน
       expect(prisma.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             action: 'CONTRACT_CANCELED_AFTER_PAYOUT',
             newValue: expect.objectContaining({
-              recallAmount: '11000.00',
+              settledTotal: '11000.00',
+              recallAmount: '9000.00',
               batchNumbers: ['IC-20260820-0009'],
             }),
           }),

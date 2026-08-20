@@ -18,6 +18,7 @@ import {
   C2_REDIRECT_STAMP,
   TYPED_LENS_ACCOUNTS,
 } from '../journal/cpa-templates/contract-cancellation.template';
+import { settledPayoutByContract } from '../contracts/services/contract-cancellation.service';
 
 /** Subset of request.user the cancel path needs (id + branch scoping — I7). */
 interface CancelRequestUser {
@@ -214,31 +215,18 @@ export class ExchangeCancelService {
       // เจ้าหนี้ 21-1101/21-1102 (และลูกหนี้ S11-3001/S11-3002) ถูก batch ล้าง
       // ไปแล้ว mirror ตรงจะทำติดลบ → redirect เป็นลูกหนี้เรียกคืน 11-2107
       // [PAYOUT_RECALL] / เจ้าหนี้ S21-3001 (ชุดเดียวกับ generic Task 3).
-      // settledDeductions = Σ swapCreditAmount ที่รอบนั้นหักไว้ — เงินที่
-      // FINANCE ไม่เคยจ่ายจริง จึงไม่ใช่ยอดเรียกคืน (net = settled − deductions).
-      const postedItems = await tx.interCoSettlementItem.findMany({
-        where: {
-          contractId: req.newContractId,
-          deletedAt: null,
-          itemType: 'SETTLEMENT',
-          batch: { status: 'POSTED', deletedAt: null },
-        },
-        include: { batch: { select: { batchNumber: true } } },
-      });
-      const settledTotal = postedItems.reduce(
-        (s, i) => s.plus(i.financedGl.toString()).plus(i.commissionGl.toString()),
-        new Decimal(0),
+      // settledDeductions = Σ(swapCreditAmount + recallAmount) ที่รอบนั้นหักไว้ —
+      // เงินที่ FINANCE ไม่เคยจ่ายจริง จึงไม่ใช่ยอดเรียกคืน (net = settled −
+      // deductions). สูตรทั้งชุดอยู่ใน `settledPayoutByContract` — helper
+      // เดียวกับ generic cancellation (Task 7 review fix: ห้ามมีสำเนาที่สอง).
+      const settled = (await settledPayoutByContract(tx, [req.newContractId])).get(
+        req.newContractId,
       );
-      const settledShopTotal = postedItems.reduce(
-        (s, i) => s.plus(i.shopFinancedGl.toString()).plus(i.shopCommissionGl.toString()),
-        new Decimal(0),
-      );
-      const settledDeductions = postedItems.reduce(
-        (s, i) => s.plus(i.swapCreditAmount.toString()),
-        new Decimal(0),
-      );
+      const settledTotal = settled?.settledTotal ?? new Decimal(0);
+      const settledShopTotal = settled?.settledShopTotal ?? new Decimal(0);
+      const settledDeductions = settled?.settledDeductions ?? new Decimal(0);
       const isC2 = settledTotal.gt(0);
-      const batchNumbers = postedItems.map((i) => i.batch.batchNumber);
+      const batchNumbers = settled?.batchNumbers ?? [];
 
       // 1) mirror-reverse ทุก JE (รวม A.5 ECL — GL 11-2102 คืนทันที, ECL cron delta เป็น no-op)
       const jeIds = [req.je1aId, req.je2Id, req.je3Id, req.je4Id, req.eclReversalJeId].filter(

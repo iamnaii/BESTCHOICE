@@ -868,7 +868,8 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     expect(recallRow!.recallGl.toFixed(2)).toBe('11000.00');
     expect(recallRow!.shopRecallGl.toFixed(2)).toBe('11000.00');
 
-    // ── AuditLog: action C-2 + recallAmount + batchNumbers
+    // ── AuditLog: action C-2 + settledTotal (gross) + recallAmount (net =
+    // gross − deductions; สัญญาปกติ deductions = 0 ⇒ สองค่าเท่ากัน) + batchNumbers
     const audit = await prisma.auditLog.findFirst({
       where: { action: 'CONTRACT_CANCELED_AFTER_PAYOUT', entityId: contractId },
       orderBy: { createdAt: 'desc' },
@@ -876,6 +877,7 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     expect(audit).toBeTruthy();
     expect(audit!.entity).toBe('contract');
     const newValue = audit!.newValue as Record<string, unknown>;
+    expect(newValue.settledTotal).toBe('11000.00');
     expect(newValue.recallAmount).toBe('11000.00');
     expect(newValue.batchNumbers).toEqual([batchNumber]);
     expect(newValue.reversalCount).toBe(3); // 1A + SHOP COGS + SHOP revenue

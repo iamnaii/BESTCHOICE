@@ -200,12 +200,25 @@ export class ContractCancellationService {
         (s, i) => s.plus(i.financedGl.toString()).plus(i.commissionGl.toString()),
         new Decimal(0),
       );
+      // ฝั่ง SHOP (Task 4 fold): Σ snapshot ลูกหนี้ร้านที่ batch ล้างไป — ให้
+      // template cross-check redirect S21-3001 แยกสมุด. สัญญา legacyNoShop มี
+      // snapshot ฝั่ง SHOP = 0 → expected 0 (ไม่มี SHOP JE ให้ redirect อยู่แล้ว).
+      const settledShopTotal = postedItems.reduce(
+        (s, i) => s.plus(i.shopFinancedGl.toString()).plus(i.shopCommissionGl.toString()),
+        new Decimal(0),
+      );
       const isC2 = settledTotal.gt(0);
       const batchNumbers = postedItems.map((i) => i.batch.batchNumber);
 
       // Post sweep reversal chain + ECL release (template — Phase 3 C-1/C-2)
       const jeResult = await template.execute(
-        { contractId: cancellation.contractId, cancellationId, isC2, settledTotal },
+        {
+          contractId: cancellation.contractId,
+          cancellationId,
+          isC2,
+          settledTotal,
+          settledShopTotal,
+        },
         tx,
       );
 

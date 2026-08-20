@@ -407,6 +407,49 @@ async function seedRecallMismatch(id: string) {
   });
 }
 
+/**
+ * Mirror synthetics ของ A.3/A.4 ตอนยกเลิก swap (C-2) — shape ตรง sweep engine
+ * จริง (`ExchangeCancelReversalTemplate`): mirror ของ JE ที่มี stamp SWAP_CREDIT
+ * carry stamp เดิมมาด้วย (final review 2026-08-19) ⇒ typed SWAP_CREDIT ของ
+ * สัญญา net เป็น 0 ทั้งสองสมุดหลังยกเลิก เหลือแต่ PAYOUT_RECALL gross จาก
+ * redirect. (Task 5 จะพิสูจน์ชุดนี้ซ้ำผ่าน flow exchange-cancel จริง)
+ */
+async function seedSwapCancelMirrors(id: string) {
+  // mirror ของ A.3: Cr 11-2107 [SWAP_CREDIT carry]
+  await journalAuto.createAndPost({
+    description: 'A.3 mirror synthetic (C-2 cancel)',
+    companyId: financeId,
+    metadata: {
+      tag: 'REVERSAL',
+      flow: 'test-c2-cancel-sweep',
+      idempotencyKey: `tc2m3:${id}`,
+      contractId: id,
+      shopReceivableType: 'SWAP_CREDIT',
+    },
+    lines: [
+      { accountCode: '21-1106', dr: dec('8000'), cr: zero },
+      { accountCode: '11-2107', dr: zero, cr: dec('8000') },
+    ],
+  });
+  // mirror ของ A.4 (SHOP): Dr S21-3001 [SWAP_CREDIT carry, key newContractId]
+  await journalAuto.createAndPost({
+    description: 'A.4 mirror synthetic (C-2 cancel)',
+    companyId: shopId,
+    metadata: {
+      tag: 'REVERSAL',
+      flow: 'test-c2-cancel-sweep-shop',
+      idempotencyKey: `tc2m4:${id}`,
+      contractId: `${id}-old`,
+      newContractId: id,
+      shopReceivableType: 'SWAP_CREDIT',
+    },
+    lines: [
+      { accountCode: 'S21-3001', dr: dec('8000'), cr: zero },
+      { accountCode: 'S11-2002', dr: zero, cr: dec('8000') },
+    ],
+  });
+}
+
 interface LineRow {
   accountCode: string;
   debit: { toString(): string };
@@ -1592,6 +1635,190 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
           requestId: randomUUID(),
         });
         expect(settled.deduped).toBe(false);
+      },
+      120_000,
+    );
+  });
+
+  // ===========================================================================
+  // Phase 3 Task 4 — recall สูตร NET of POSTED deductions (ปิด carry b)
+  //
+  // เลขทองของเฟส: swap ที่ถูกหักเครดิต 8,000 ในรอบเก่า (POSTED) แล้วถูกยกเลิก
+  // (C-2) มี typed PAYOUT_RECALL gross = 11,000 (redirect เต็มยอดที่ตัดจ่าย)
+  // แต่เงินที่ FINANCE โอนจริงในรอบนั้น = 3,000 ⇒ ยอดเรียกคืนจริง = 3,000.
+  // gross จะทำให้รอบถัดไปหักซ้ำ 8,000 (11-2107 ติดลบ, SHOP โดนหักสองเด้ง).
+  //
+  // Fixture ใช้ flow จริงถึงชั้น batch (create→submit→approve Phase 2 จริง);
+  // การยกเลิก swap เป็น synthetic redirect JEs shape ตรง producer C-2
+  // (Task 5 พิสูจน์ผ่าน exchange-cancel flow จริงซ้ำ).
+  // ===========================================================================
+  describe('recall สูตร net of POSTED deductions (Phase 3 Task 4 — carry b)', () => {
+    let cancelledSwapId: string;
+    let helperNormalId: string;
+    let firstBatchId: string;
+    let pre2107: Decimal;
+
+    beforeAll(async () => {
+      // Safety nets เดียวกับ Task 5 — บล็อกนี้ต้องรันแบบ -t filter เดี่ยวได้
+      await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+      await prisma.accountingPeriod.deleteMany({
+        where: { companyId: { in: [shopId, financeId] }, year: 2026, month: 8 },
+      });
+      pre2107 = await wholeAccountBalance('11-2107');
+
+      // (1) swap ปกติ → รอบจ่ายแรกหักเครดิต 8,000 → POSTED
+      cancelledSwapId = await seedBaseContract(50);
+      await seedSwapContract(cancelledSwapId);
+      const b1 = await settlementService.createBatch(
+        { contractIds: [cancelledSwapId], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(b1.id);
+      firstBatchId = b1.id;
+      await settlementService.submitBatch(b1.id, adminId);
+      await settlementService.approveBatch(b1.id, adminId);
+
+      // (2) ยกเลิก C-2 (synthetic): redirect PAYOUT_RECALL 11,000 ทั้งสองสมุด
+      // + mirror A.3/A.4 [SWAP_CREDIT carry] → swap type net 0
+      await seedRecallContract(cancelledSwapId);
+      await seedSwapCancelMirrors(cancelledSwapId);
+
+      helperNormalId = await seedBaseContract(51);
+      await seedNormalContract(helperNormalId);
+    }, 120_000);
+
+    it('recall queue: สัญญาที่เคยถูกหักเครดิตในรอบเก่า → ยอดเรียกคืน net (11,000 − 8,000 = 3,000) ทั้งสองสมุด', async () => {
+      const recalls = await pendingService.getPendingRecalls();
+      const r = recalls.find((x) => x.contractId === cancelledSwapId)!;
+      expect(r).toBeDefined();
+      expect(r.recallGl.toFixed(2)).toBe('3000.00');
+      expect(r.shopRecallGl.toFixed(2)).toBe('3000.00');
+
+      // typed lens ยังเป็น gross โดยสถาปัตยกรรม (batch JE ไม่ stamp contractId)
+      // — การ net เกิดที่คิว ไม่ใช่ที่ GL
+      expect((await recallFinanceBalance(prisma, cancelledSwapId)).toFixed(2)).toBe('11000.00');
+      expect((await recallShopBalance(prisma, cancelledSwapId)).toFixed(2)).toBe('11000.00');
+      // mirror carry stamp → SWAP_CREDIT net 0 ทั้งสองสมุด
+      expect((await swapCreditFinanceBalance(prisma, cancelledSwapId)).toFixed(2)).toBe('0.00');
+      expect((await swapCreditShopBalance(prisma, cancelledSwapId)).toFixed(2)).toBe('0.00');
+    });
+
+    it(
+      'recall net → batch รอบถัดไปหัก 3,000 → approve ผ่าน + 11-2107 ทั้งบัญชีกลับ 0 + residual alarm เงียบทั้งสองรอบ',
+      async () => {
+        const b2 = await settlementService.createBatch(
+          {
+            contractIds: [helperNormalId],
+            recallContractIds: [cancelledSwapId],
+            transferDate: '2026-08-20',
+          },
+          adminId,
+        );
+        createdBatchIds.push(b2.id);
+        expect(b2.totalDeduction.toFixed(2)).toBe('3000.00');
+        expect(b2.netTransferAmount!.toFixed(2)).toBe('8000.00'); // 11,000 − 3,000
+        expect(b2.shopNetAmount!.toFixed(2)).toBe('8000.00');
+        const recallItem = b2.items.find((i) => i.contractId === cancelledSwapId)!;
+        expect(recallItem.itemType).toBe('RECALL');
+        expect(recallItem.recallAmount.toFixed(2)).toBe('3000.00');
+
+        await settlementService.submitBatch(b2.id, adminId);
+        const posted = await settlementService.approveBatch(b2.id, adminId);
+        expect(posted.status).toBe('POSTED');
+
+        const je = await prisma.journalEntry.findUniqueOrThrow({
+          where: { id: posted.financeJournalEntryId! },
+          include: { lines: true },
+        });
+        expect(sumSide(je.lines, '11-2107', 'cr').toFixed(2)).toBe('3000.00');
+        expect(sumSide(je.lines, '11-1201', 'cr').toFixed(2)).toBe('8000.00');
+        const shopJe = await prisma.journalEntry.findUniqueOrThrow({
+          where: { id: posted.shopJournalEntryId! },
+          include: { lines: true },
+        });
+        expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('3000.00');
+        expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('8000.00');
+
+        // ทั้งบัญชี 11-2107 กลับเท่า baseline ก่อน fixture — Σ ทุกใบของ flow นี้
+        // (+8,000 A.3 − 8,000 รอบแรก + 11,000 redirect − 8,000 mirror − 3,000
+        // รอบ recall) = 0 พอดี. gross จะจบที่ −8,000 (หักซ้ำ)
+        expect((await wholeAccountBalance('11-2107')).minus(pre2107).toFixed(2)).toBe('0.00');
+
+        // สัญญาออกจากคิว recall (item POSTED + net เหลือ 0)
+        const recalls = await pendingService.getPendingRecalls();
+        expect(recalls.some((x) => x.contractId === cancelledSwapId)).toBe(false);
+
+        // residual alarm เงียบทั้งรอบ recall และรอบเก่า — สูตร combined ต่อสัญญา
+        // (carry b): สูตร per-type เดิม false-alarm บนรอบเก่าทันที
+        // (typed SWAP_CREDIT 0 − Σposted 11,000 = −11,000)
+        const svc = settlementService as unknown as {
+          alarmNettingResiduals(batchId: string): Promise<void>;
+        };
+        const captureMessage = vi.mocked(Sentry.captureMessage);
+        captureMessage.mockClear();
+        await svc.alarmNettingResiduals(b2.id);
+        await svc.alarmNettingResiduals(firstBatchId);
+        expect(
+          captureMessage.mock.calls.filter(
+            ([msg]) => msg === 'Interco netting: residual balance after approve',
+          ),
+        ).toHaveLength(0);
+      },
+      120_000,
+    );
+
+    it(
+      'drift RECALL สูตร net: JE แทรกทำ typed ขยับหลัง submit → net ≠ recallAmount → reject',
+      async () => {
+        // Fixture ชุดแยก (สัญญาแรกถูกใช้จน settle ไปแล้ว): swap → หัก 8,000
+        // POSTED → C-2 synthetics → recall net 3,000
+        const swap2 = await seedBaseContract(52);
+        await seedSwapContract(swap2);
+        const b1 = await settlementService.createBatch(
+          { contractIds: [swap2], transferDate: '2026-08-20' },
+          adminId,
+        );
+        createdBatchIds.push(b1.id);
+        await settlementService.submitBatch(b1.id, adminId);
+        await settlementService.approveBatch(b1.id, adminId);
+        await seedRecallContract(swap2);
+        await seedSwapCancelMirrors(swap2);
+
+        const normal2 = await seedBaseContract(53);
+        await seedNormalContract(normal2);
+        const b2 = await settlementService.createBatch(
+          { contractIds: [normal2], recallContractIds: [swap2], transferDate: '2026-08-20' },
+          adminId,
+        );
+        createdBatchIds.push(b2.id);
+        const item = b2.items.find((i) => i.contractId === swap2)!;
+        expect(item.recallAmount.toFixed(2)).toBe('3000.00'); // snapshot = net
+        await settlementService.submitBatch(b2.id, adminId);
+
+        // JE แทรก: PAYOUT_RECALL งอกอีก 500 → live net = 3,500 ≠ snapshot 3,000
+        await journalAuto.createAndPost({
+          description: 'C-2 recall drift synthetic (net)',
+          companyId: financeId,
+          metadata: {
+            flow: 'test-c2-recall',
+            idempotencyKey: `tc2driftnet:${swap2}`,
+            contractId: swap2,
+            shopReceivableType: 'PAYOUT_RECALL',
+          },
+          lines: [
+            { accountCode: '11-2107', dr: dec('500'), cr: zero },
+            { accountCode: '21-1103', dr: zero, cr: dec('500') },
+          ],
+        });
+
+        await expect(settlementService.approveBatch(b2.id, adminId)).rejects.toThrow(
+          /เปลี่ยนไปจากตอนสร้างรอบ/,
+        );
+        const after = await prisma.interCoSettlementBatch.findUniqueOrThrow({
+          where: { id: b2.id },
+        });
+        expect(after.status).toBe('PENDING_APPROVAL');
+        expect(after.financeJournalEntryId).toBeNull();
       },
       120_000,
     );

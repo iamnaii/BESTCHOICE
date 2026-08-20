@@ -931,6 +931,57 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
   }, 120_000);
 
   // -------------------------------------------------------------------------
+  it('C-2 SHOP cross-check (Task 4 fold): hand-JV ฝั่ง SHOP อย่างเดียว → reject ทั้งการยกเลิก', async () => {
+    const { contractId } = await seedBaseContract(12);
+    await seed1a(contractId);
+    await seedShopLegs(contractId);
+    await settleViaBatch(contractId);
+
+    // Hand-JV ฝั่ง SHOP เท่านั้น (Dr S11-3001 +500): เช็คฝั่ง FINANCE
+    // (redirect 11-2107 = settledTotal 11,000) ผ่านปกติเพราะสมุด FINANCE ไม่
+    // กระเทือน — ก่อน fold การยกเลิกจึงสำเร็จทั้งที่ redirect S21-3001 รวม
+    // 11,500 ≠ ยอดตัดจ่ายฝั่งร้าน 11,000 (สองสมุดเรียกคืนเพี้ยนเงียบๆ →
+    // guard "ยอดเรียกคืนสองสมุดไม่ตรงกัน" จะไปตายที่รอบจ่ายทีหลังแทน)
+    await journalAuto.createAndPost({
+      description: 'hand JV shop receivable synthetic (CANCELTEST)',
+      companyId: shopId,
+      metadata: {
+        flow: 'test-hand-jv-shop',
+        idempotencyKey: `ctjvs:${contractId}`,
+        contractId,
+      },
+      lines: [
+        { accountCode: 'S11-3001', dr: dec('500'), cr: zero },
+        { accountCode: 'S41-1101', dr: zero, cr: dec('500') },
+      ],
+    });
+
+    const err = await requestAndApprove(contractId).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err).toBeTruthy();
+    expect(err!.message).toContain('ยอดเรียกคืนฝั่งร้าน');
+    expect(err!.message).toContain('ไม่ตรงกับยอดที่ตัดจ่าย');
+
+    // Throw ใน tx → sweep ทั้งชุด rollback: ไม่มี reversal JE, ไม่มี
+    // PAYOUT_RECALL งอกทั้งสองสมุด, สัญญายัง ACTIVE
+    const reversals = await prisma.journalEntry.count({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'contract-cancellation' } } as never,
+          { metadata: { path: ['contractId'], equals: contractId } } as never,
+        ],
+      },
+    });
+    expect(reversals).toBe(0);
+    expect((await recallFinanceBalance(prisma, contractId)).toFixed(2)).toBe('0.00');
+    expect((await recallShopBalance(prisma, contractId)).toFixed(2)).toBe('0.00');
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.status).toBe('ACTIVE');
+  }, 120_000);
+
+  // -------------------------------------------------------------------------
   it('C-2 defensive: JE เดียวมีทั้งบรรทัด redirect source และบรรทัดบัญชี typed (11-2107) → reject ระบุ entryNumber', async () => {
     const { contractId } = await seedBaseContract(11);
     await seed1a(contractId);

@@ -18,7 +18,10 @@ import { glContractBalance } from '../gl-contract-balance';
  * already cleared those accounts, a straight mirror would drive them negative.
  * After the sweep, `redirectedTotals['11-2107']` is cross-checked against
  * `settledTotal` (±0.01) — a mismatch (hand-JV on a lens account outside the
- * batch) throws inside the tx so the whole sweep rolls back.
+ * batch) throws inside the tx so the whole sweep rolls back. Task 4 fold adds
+ * the SHOP-book twin: `redirectedTotals['S21-3001']` (Cr legs ⇒ negated)
+ * against `settledShopTotal` — a SHOP-only hand-JV passes the FINANCE check
+ * untouched, so each book must be verified independently.
  *
  * Reworked from the P4-SP4 mirror-1A-only version: instead of hand-mirroring
  * the single 1A activation JE, it delegates to the generalized cancel-sweep
@@ -119,6 +122,8 @@ export class ContractCancellationTemplate {
       isC2?: boolean;
       /** Σ financedGl + commissionGl จาก item SETTLEMENT ใน batch POSTED (service คำนวณใน tx) */
       settledTotal?: Decimal;
+      /** Σ shopFinancedGl + shopCommissionGl จาก item SETTLEMENT เดียวกัน — cross-check ฝั่ง SHOP (Task 4 fold) */
+      settledShopTotal?: Decimal;
     },
     tx?: Prisma.TransactionClient,
   ): Promise<{ entryNumber: string; reversalJeIds: string[] }> {
@@ -250,6 +255,22 @@ export class ContractCancellationTemplate {
       if (redirected.minus(settled).abs().gt('0.01')) {
         throw new BadRequestException(
           `ยอดเรียกคืน (${redirected.toFixed(2)}) ไม่ตรงกับยอดที่ตัดจ่ายใน batch POSTED (${settled.toFixed(2)}) — มีรายการเดินบัญชีผิดปกติ ตรวจสอบก่อนยกเลิก`,
+        );
+      }
+      // Cross-check ฝั่ง SHOP (Task 4 fold): hand-JV ที่แตะเฉพาะ S11-3001/
+      // S11-3002 ผ่านเช็ค 11-2107 ด้านบนได้ (สมุด FINANCE ไม่กระเทือน) แต่จะ
+      // ทำให้เจ้าหนี้เรียกคืนฝั่งร้าน (S21-3001 [PAYOUT_RECALL]) ไม่เท่ากับ
+      // ฝั่ง FINANCE → คิว recall สองสมุดเพี้ยนถาวร — ต้องเช็คแยกสมุด.
+      // redirect ฝั่ง SHOP เป็นขา **Cr** ⇒ `redirectedTotals` (Σ Dr−Cr) ติดลบ;
+      // ยอดเจ้าหนี้เรียกคืนที่ตั้งจริง = .neg(). เทียบกับ Σ(shopFinancedGl +
+      // shopCommissionGl) ของ item SETTLEMENT ใน batch POSTED — ค่านี้ survive
+      // legacyNoShop โดยโครงสร้าง: สัญญา legacy snapshot ฝั่ง SHOP = 0 →
+      // expected 0 และไม่มี SHOP JE ให้ redirect อยู่แล้ว → 0 = 0 ✓.
+      const redirectedShop = (redirectedTotals['S21-3001'] ?? new Decimal(0)).neg();
+      const settledShop = params.settledShopTotal ?? new Decimal(0);
+      if (redirectedShop.minus(settledShop).abs().gt('0.01')) {
+        throw new BadRequestException(
+          `ยอดเรียกคืนฝั่งร้าน (${redirectedShop.toFixed(2)}) ไม่ตรงกับยอดที่ตัดจ่ายฝั่งร้านใน batch POSTED (${settledShop.toFixed(2)}) — มีรายการเดินบัญชีผิดปกติ ตรวจสอบก่อนยกเลิก`,
         );
       }
     }

@@ -829,6 +829,11 @@ export class IntercoSettlementService {
         // ยังคุ้มยอดหักของ item นี้ ไม่งั้น approve จะ Cr 11-2107 เกินของจริง
         // (บัญชีติดลบ / SHOP ได้เงินสองเด้ง).
         const deduction = item.swapCreditAmount.plus(item.recallAmount);
+        // Σ deduction ที่ batch POSTED **อื่น** เคยหักไปแล้ว (ทุก itemType) —
+        // ใช้ร่วมกันทั้งด่าน (i) และเช็ค NET ของแถว RECALL ด้านล่าง. batch
+        // ปัจจุบันยัง PENDING_APPROVAL จึงไม่เข้า filter POSTED โดยสถานะอยู่แล้ว
+        // แต่ exclude ด้วย `batchId: { not: id }` ให้ชัดตาม pattern ด่าน (i).
+        let priorPostedDeductions = new Prisma.Decimal(0);
         if (deduction.gt(0)) {
           const [untypedBal, priorItems] = await Promise.all([
             glContractBalance(tx, item.contractId, '11-2107', 'dr'),
@@ -842,7 +847,7 @@ export class IntercoSettlementService {
               select: { swapCreditAmount: true, recallAmount: true },
             }),
           ]);
-          const priorPostedDeductions = priorItems.reduce(
+          priorPostedDeductions = priorItems.reduce(
             (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
             new Prisma.Decimal(0),
           );
@@ -853,15 +858,23 @@ export class IntercoSettlementService {
         }
         if (item.itemType === 'RECALL') {
           // RECALL rows have no payable/receivable snapshot of their own —
-          // both books' typed PAYOUT_RECALL balances must still equal the
-          // snapshotted recallAmount.
+          // both books' typed PAYOUT_RECALL balances, **net of deductions
+          // already posted in other batches**, must still equal the
+          // snapshotted recallAmount (สูตร NET — Phase 3 Task 4, carry b:
+          // snapshot จาก `getPendingRecalls` เป็น net อยู่แล้ว live จึงต้อง
+          // เทียบสูตรเดียวกัน). เคสหลักคือ swap ที่ถูกยกเลิกหลังเคยถูกหัก
+          // เครดิต 8,000 ในรอบเก่า: typed gross = 11,000 แต่ยอดเรียกคืนจริง
+          // (และ snapshot) = 3,000 — เทียบ gross ตรงๆ จะ reject รอบ recall
+          // ที่ถูกต้องตลอดกาล.
           const [recallFin, recallShop] = await Promise.all([
             recallFinanceBalance(tx, item.contractId),
             recallShopBalance(tx, item.contractId),
           ]);
+          const netFin = recallFin.minus(priorPostedDeductions);
+          const netShop = recallShop.minus(priorPostedDeductions);
           if (
-            recallFin.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE) ||
-            recallShop.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE)
+            netFin.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE) ||
+            netShop.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE)
           ) {
             driftedContractNumbers.push(item.contract.contractNumber);
           }
@@ -1064,6 +1077,16 @@ export class IntercoSettlementService {
    * ลด typed balance ต่อสัญญา — residual ที่แท้จริง = typed gross − Σ deduction
    * ของสัญญานั้นใน batch สถานะ POSTED ทั้งหมด. ค่าปกติ = 0 พอดี (เครดิตถูกหัก
    * ครบรอบเดียว); > 0 = เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
+   *
+   * สูตร COMBINED ต่อสัญญา (Phase 3 Task 4 — ปิด carry b): typed gross =
+   * SWAP_CREDIT + PAYOUT_RECALL **รวมสองประเภท** ต่อสมุด, เทียบกับ Σ deduction
+   * ทุก itemType ใน batch POSTED. เหตุผล: สัญญา swap ที่ถูกยกเลิก (C-2) มี
+   * ประวัติข้ามประเภทบนสัญญาเดียว — SWAP_CREDIT ถูก mirror ตอน cancel จน typed
+   * เหลือ 0 ขณะที่ deduction 8,000 ของมันยังค้างถาวรใน item table, ส่วน
+   * PAYOUT_RECALL ถือ gross 11,000 ของ redirect. เทียบทีละประเภทตาม itemType
+   * ของแถว (สูตรเดิม) จะ false-alarm ทันที (เช่น item swap รอบเก่า: 0 −
+   * Σposted 11,000 = −11,000 ทั้งที่ทุกอย่างถูกต้อง) — ระดับที่ invariant
+   * "= 0" ถือจริงคือระดับสัญญา ไม่ใช่ระดับประเภท.
    * Alarm-only — ห้าม throw (fire-and-forget จาก `approveBatch` หลัง tx commit).
    */
   private async alarmNettingResiduals(batchId: string): Promise<void> {
@@ -1075,16 +1098,14 @@ export class IntercoSettlementService {
     for (const item of batch.items) {
       const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
       if (deduction.lte(0)) continue;
-      const [fin, shop] =
-        item.itemType === 'RECALL'
-          ? await Promise.all([
-              recallFinanceBalance(this.prisma, item.contractId),
-              recallShopBalance(this.prisma, item.contractId),
-            ])
-          : await Promise.all([
-              swapCreditFinanceBalance(this.prisma, item.contractId),
-              swapCreditShopBalance(this.prisma, item.contractId),
-            ]);
+      const [swapFin, swapShop, recFin, recShop] = await Promise.all([
+        swapCreditFinanceBalance(this.prisma, item.contractId),
+        swapCreditShopBalance(this.prisma, item.contractId),
+        recallFinanceBalance(this.prisma, item.contractId),
+        recallShopBalance(this.prisma, item.contractId),
+      ]);
+      const fin = swapFin.plus(recFin);
+      const shop = swapShop.plus(recShop);
       // Σ deduction ของสัญญานี้ในทุก batch POSTED (รวมรอบนี้เอง)
       const postedItems = await this.prisma.interCoSettlementItem.findMany({
         where: {

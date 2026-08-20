@@ -1533,10 +1533,15 @@ describe('ContractsService', () => {
 
     it('C-2 (Task 3): POSTED settlement items → isC2 + settledTotal to template, audit CONTRACT_CANCELED_AFTER_PAYOUT', async () => {
       const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      // Task 4 fold: the service now also reads the SHOP snapshot columns
+      // (shopFinancedGl/shopCommissionGl) to build settledShopTotal — the mock
+      // item must carry them like a real InterCoSettlementItem row does.
       prisma.interCoSettlementItem.findMany = jest.fn().mockResolvedValue([
         {
           financedGl: new Prisma.Decimal('10000.00'),
           commissionGl: new Prisma.Decimal('1000.00'),
+          shopFinancedGl: new Prisma.Decimal('10000.00'),
+          shopCommissionGl: new Prisma.Decimal('1000.00'),
           batch: { batchNumber: 'IC-20260820-0009' },
         },
       ]);
@@ -1558,6 +1563,8 @@ describe('ContractsService', () => {
       );
       const [templateParams] = mockCancellationTemplate.execute.mock.calls[0];
       expect(templateParams.settledTotal.toFixed(2)).toBe('11000.00');
+      // Task 4 fold: SHOP-book expected total forwarded for the S21-3001 cross-check
+      expect(templateParams.settledShopTotal.toFixed(2)).toBe('11000.00');
 
       expect(prisma.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({

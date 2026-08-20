@@ -228,6 +228,46 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
     ).rejects.toThrow('ยอดเรียกคืน');
   });
 
+  it('C-2 SHOP cross-check (Task 4 fold): redirected S21-3001 (Cr ⇒ negative) ≠ settledShopTotal → reject; ตรงกัน → ผ่าน', async () => {
+    // SHOP-only hand-JV skew: FINANCE side matches (11,000 = 11,000) so the
+    // first check passes — only the per-book SHOP check can catch this.
+    sweepMock.reverse.mockResolvedValue({
+      reversalJeIds: ['je-rev-1'],
+      redirectedTotals: {
+        '11-2107': new Decimal('11000.00'),
+        'S21-3001': new Decimal('-11500.00'), // Cr legs accumulate as Dr−Cr < 0
+      },
+    });
+
+    await expect(
+      template.execute({
+        contractId: 'contract-1',
+        cancellationId: 'cancel-1',
+        isC2: true,
+        settledTotal: new Decimal('11000.00'),
+        settledShopTotal: new Decimal('11000.00'),
+      }),
+    ).rejects.toThrow('ยอดเรียกคืนฝั่งร้าน');
+
+    // matching books → passes (negation handled: -11,000 → 11,000)
+    sweepMock.reverse.mockResolvedValue({
+      reversalJeIds: ['je-rev-1'],
+      redirectedTotals: {
+        '11-2107': new Decimal('11000.00'),
+        'S21-3001': new Decimal('-11000.00'),
+      },
+    });
+    await expect(
+      template.execute({
+        contractId: 'contract-1',
+        cancellationId: 'cancel-1',
+        isC2: true,
+        settledTotal: new Decimal('11000.00'),
+        settledShopTotal: new Decimal('11000.00'),
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it('C-2 defensive: candidate JE mixing a redirect-source line with a typed 11-2107/S21-3001 line → reject naming entryNumber', async () => {
     prismaMock.journalEntry.findMany.mockResolvedValue([
       {

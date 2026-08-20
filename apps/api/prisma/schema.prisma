@@ -4474,6 +4474,14 @@ enum InterCoBatchStatus {
   CANCELLED
 }
 
+/// ประเภทแถวในรอบจ่าย (Phase 2 หักกลบ — workbook จุดที่ 3):
+/// SETTLEMENT = สัญญาปกติ/สัญญา swap (จ่ายเจ้าหนี้ อาจมีหักเครดิตเปลี่ยนเครื่อง)
+/// RECALL = สัญญายกเลิกหลังตัดจ่าย (Flow C-2) — หักเรียกคืนอย่างเดียว ไม่มีเจ้าหนี้
+enum InterCoItemType {
+  SETTLEMENT
+  RECALL
+}
+
 /// เอกสาร "รอบจ่าย" — FINANCE จ่ายยอดจัด+ค่าคอมให้ SHOP เป็นก้อนเดียว (หลายสัญญารวมยอดโอน
 /// เดียว) แล้วลงบัญชี 2 ฝั่ง atomic ตอนอนุมัติ (ผ่าน PairedJournalService). แทนที่เส้นจ่ายเก่า
 /// (`intercompany.settle` ต่อรายการ + `shop-finance-settlement` ที่ไม่เคยต่อ UI).
@@ -4493,6 +4501,13 @@ model InterCoSettlementBatch {
   /// รวมเฉพาะ item ที่ legacyNoShop=false — ส่วนต่างจาก totalAmount คือเงินที่ SHOP รับจริง
   /// แต่สมุด SHOP ไม่มีลูกหนี้รองรับ (สัญญา legacy/exchange) — ไม่เดาลงบัญชีแทน (spec §5.4, §11).
   shopPostedAmount Decimal @map("shop_posted_amount") @db.Decimal(12, 2)
+
+  /// Σ swapCreditAmount + recallAmount ของทุก item (Phase 2 หักกลบ)
+  totalDeduction Decimal @default(0) @map("total_deduction") @db.Decimal(12, 2)
+  /// เงินโอนจริงฝั่ง FINANCE = totalAmount − totalDeduction; null = รอบก่อน Phase 2 (= totalAmount)
+  netTransferAmount Decimal? @map("net_transfer_amount") @db.Decimal(12, 2)
+  /// เงินรับจริงฝั่ง SHOP = shopPostedAmount − totalDeduction; null = รอบก่อน Phase 2 (= shopPostedAmount)
+  shopNetAmount Decimal? @map("shop_net_amount") @db.Decimal(12, 2)
 
   transferRef String? @map("transfer_ref") // เลขอ้างอิงโอน/สลิป
   slipFileKey String? @map("slip_file_key") // S3 key (optional — รอบ backfill บางรอบอาจไม่มีสลิปเหลือ)
@@ -4545,6 +4560,12 @@ model InterCoSettlementItem {
   /// contract-exchange (device swap) ที่ยังไม่ wire SHOP-leg (spec F1/F2). รอบนี้จะไม่ post
   /// SHOP JE ให้สัญญานี้เลย — ไม่เดาลงบัญชีแทน (เป็นคำถาม opening balance ถึง CPA §11).
   legacyNoShop Boolean @default(false) @map("legacy_no_shop")
+
+  itemType InterCoItemType @default(SETTLEMENT) @map("item_type")
+  /// Snapshot เครดิตเปลี่ยนเครื่อง (11-2107 SWAP_CREDIT = S21-3001 ของสัญญานี้) — 0 เมื่อไม่ใช่ swap/ไม่ eligible
+  swapCreditAmount Decimal @default(0) @map("swap_credit_amount") @db.Decimal(12, 2)
+  /// Snapshot ยอดเรียกคืนจากยกเลิก (11-2107 PAYOUT_RECALL) — ใช้เฉพาะแถว RECALL
+  recallAmount Decimal @default(0) @map("recall_amount") @db.Decimal(12, 2)
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

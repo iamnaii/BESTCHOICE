@@ -87,14 +87,23 @@ const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12', 'S11-11', 'S11-12'];
  * C-2 (Phase 3 Task 3 — workbook Case 3A กรณี 2): เจ้าหนี้/ลูกหนี้รอบจ่ายที่ถูก
  * ตัดจ่ายผ่าน batch POSTED ไปแล้ว mirror ตรงกลับบัญชีเดิมไม่ได้ (จะติดลบ) —
  * redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / เจ้าหนี้ S21-3001 แทน.
+ *
+ * Exported (Phase 3 Task 5): เส้นทาง exchange-cancel (`ExchangeCancelService`)
+ * ใช้ redirect map/stamp ชุดเดียวกันเมื่อ swap ถูกยกเลิกหลังรอบจ่าย POSTED —
+ * ห้ามมีสำเนาที่สอง (drift ระหว่างสองเส้นทาง = คิว recall สองสมุดเพี้ยน).
  */
-const C2_REDIRECTS: Record<string, SweepRedirect> = {
+export const C2_REDIRECTS: Record<string, SweepRedirect> = {
   '21-1101': { to: '11-2107', description: 'ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ยอดจัดที่ตัดจ่ายแล้ว)' },
   '21-1102': { to: '11-2107', description: 'ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ค่าคอมที่ตัดจ่ายแล้ว)' },
   'S11-3001': { to: 'S21-3001', description: 'ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ยอดจัด)' },
   'S11-3002': { to: 'S21-3001', description: 'ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ค่าคอม)' },
 };
-const C2_REDIRECT_SOURCES = Object.keys(C2_REDIRECTS);
+export const C2_REDIRECT_SOURCES = Object.keys(C2_REDIRECTS);
+
+/** Stamp บน reversal JE ที่มี redirect leg — ใช้ร่วมกันทั้ง generic + exchange path */
+export const C2_REDIRECT_STAMP: Record<string, string> = {
+  shopReceivableType: 'PAYOUT_RECALL',
+};
 
 /**
  * บัญชี typed lens (Phase 2 หักกลบ). Defensive check (C-2 path เท่านั้น): JE ใด
@@ -102,9 +111,10 @@ const C2_REDIRECT_SOURCES = Object.keys(C2_REDIRECTS);
  * บนบัญชี typed (หรือ metadata.shopReceivableType เดิม) ในใบเดียวกัน — redirect
  * stamp `PAYOUT_RECALL` ทั้งใบจะทับความหมาย typed เดิมของบรรทัดนั้น (เลนส์ Phase 2
  * อ่าน type จาก metadata ระดับ JE) → hand-JV ผิดปกติ producer จริงไม่มีทางสร้าง
- * ต้อง reject ดังๆ แทนที่จะ stamp ทับเงียบๆ.
+ * ต้อง reject ดังๆ แทนที่จะ stamp ทับเงียบๆ. (Exported — Task 5: exchange path
+ * ทำ defensive check ชุดเดียวกัน.)
  */
-const TYPED_LENS_ACCOUNTS = ['11-2107', 'S21-3001'];
+export const TYPED_LENS_ACCOUNTS = ['11-2107', 'S21-3001'];
 
 @Injectable()
 export class ContractCancellationTemplate {
@@ -233,7 +243,7 @@ export class ContractCancellationTemplate {
         ...(isC2
           ? {
               redirects: C2_REDIRECTS,
-              redirectStamp: { shopReceivableType: 'PAYOUT_RECALL' },
+              redirectStamp: C2_REDIRECT_STAMP,
             }
           : {}),
       },

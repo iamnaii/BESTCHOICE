@@ -99,6 +99,14 @@ describe('ExchangeCancelService (spec §9)', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       badDebtProvision: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // Phase 3 Task 5 (C-2): open-batch guard (findFirst → null = ไม่มีรอบเปิด)
+      // + POSTED SETTLEMENT detect (findMany → [] = ไม่เคยตัดจ่าย ⇒ isC2 false —
+      // ทุกเทสเดิมในไฟล์นี้จึงเดินเส้น C-1 byte-เดิม รวม assertion ที่ปักว่า
+      // reverse ถูกเรียกโดย "ไม่มี" key redirects/redirectStamp)
+      interCoSettlementItem: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       product: {
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn().mockResolvedValue({

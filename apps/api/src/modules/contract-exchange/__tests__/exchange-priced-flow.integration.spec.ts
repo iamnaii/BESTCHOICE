@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
@@ -21,6 +21,15 @@ import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.c
 import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { IntercoPendingService } from '../../interco-settlement/interco-pending.service';
+import { PairedJournalService } from '../../journal/paired-journal.service';
+import { IntercoBatchNumberService } from '../../interco-settlement/interco-batch-number.service';
+import { IntercoSettlementService } from '../../interco-settlement/interco-settlement.service';
+import {
+  recallFinanceBalance,
+  recallShopBalance,
+  swapCreditFinanceBalance,
+  swapCreditShopBalance,
+} from '../../interco-settlement/interco-typed-balance';
 
 /**
  * Device Swap priced flow — workbook E2E against a REAL database (Task 14).
@@ -92,6 +101,21 @@ const cancelSvc = new ExchangeCancelService(
 );
 const accrualCron = new InstallmentAccrualCron(prisma as never, accrual2a);
 const intercoPending = new IntercoPendingService(prisma as never);
+// Interco batch flow (Task 5 — C-2): REAL IntercoSettlementService so the batch
+// POSTED state + JEs come from the production path (same wiring shape as
+// contract-cancellation.integration.spec.ts; StorageService stubbed — uploadSlip unused).
+const pairedJournal = new PairedJournalService(journal, prisma as never, companyResolver);
+const batchNumberService = new IntercoBatchNumberService(prisma as never);
+const storageStub = { upload: async () => undefined, delete: async () => undefined };
+const settlementService = new IntercoSettlementService(
+  prisma as never,
+  intercoPending,
+  batchNumberService,
+  pairedJournal,
+  companyResolver,
+  journal,
+  storageStub as never,
+);
 
 // ---------------------------------------------------------------------------
 // Tracked rows for SCOPED cleanup
@@ -100,6 +124,7 @@ const createdContractIds: string[] = [];
 const createdProductIds: string[] = [];
 const createdCustomerIds: string[] = [];
 const createdRequestIds: string[] = [];
+const createdBatchIds: string[] = [];
 let createdBranchId: string | null = null;
 
 let adminId: string;
@@ -234,10 +259,24 @@ async function seedSwapFixture(
  * Direct new-contract + APPROVED request seed (tests 2/3 — the full real
  * submit/approve path is exercised end-to-end in test 1; here the SEED is
  * simplified but finalize/cancel still run the REAL service code).
- * Plan mirrors computeExchangePlan(15,000, 12, 0.05):
+ * Default plan mirrors computeExchangePlan(15,000, 12, 0.05):
  *   financed 15,000 + commission 1,500 + interest 9,000, VAT 1,785, monthly 2,273.75
+ * Optional `plan` override (Task 5 golden ใช้ 10,000/1,000/6,000/1,190/1,515.83 —
+ * เจ้าหนี้ 11,000 ตรงเลขทอง Phase 2/3).
  */
-async function seedNewContractAndRequest(fix: SwapFixture, tag: string, buyback: string) {
+async function seedNewContractAndRequest(
+  fix: SwapFixture,
+  tag: string,
+  buyback: string,
+  plan?: { financed: string; commission: string; interest: string; vat: string; monthly: string },
+) {
+  const p = plan ?? {
+    financed: '15000.00',
+    commission: '1500.00',
+    interest: '9000.00',
+    vat: '1785.00',
+    monthly: '2273.75',
+  };
   const newContract = await prisma.contract.create({
     data: {
       contractNumber: `EXCHTEST-NEW-${tag}-${Date.now()}`,
@@ -246,16 +285,16 @@ async function seedNewContractAndRequest(fix: SwapFixture, tag: string, buyback:
       branchId,
       salespersonId: adminId,
       planType: 'STORE_WITH_INTEREST',
-      sellingPrice: new Decimal('15000.00'),
+      sellingPrice: new Decimal(p.financed),
       downPayment: new Decimal('0.00'),
-      financedAmount: new Decimal('15000.00'),
+      financedAmount: new Decimal(p.financed),
       interestRate: new Decimal('0.0500'),
       totalMonths: 12,
-      interestTotal: new Decimal('9000.00'),
-      storeCommission: new Decimal('1500.00'),
-      vatAmount: new Decimal('1785.00'),
+      interestTotal: new Decimal(p.interest),
+      storeCommission: new Decimal(p.commission),
+      vatAmount: new Decimal(p.vat),
       vatPct: new Decimal('0.0700'),
-      monthlyPayment: new Decimal('2273.75'),
+      monthlyPayment: new Decimal(p.monthly),
       status: 'ACTIVE',
       exchangedFromContractId: fix.oldContractId,
     },
@@ -274,10 +313,10 @@ async function seedNewContractAndRequest(fix: SwapFixture, tag: string, buyback:
       depositAccountCode: '11-1101',
       newTotalMonths: 12,
       newInterestRate: new Decimal('0.0500'),
-      newMonthlyPayment: new Decimal('2273.75'),
-      newInterestTotal: new Decimal('9000.00'),
-      newVatAmount: new Decimal('1785.00'),
-      newStoreCommission: new Decimal('1500.00'),
+      newMonthlyPayment: new Decimal(p.monthly),
+      newInterestTotal: new Decimal(p.interest),
+      newVatAmount: new Decimal(p.vat),
+      newStoreCommission: new Decimal(p.commission),
       requestedById: adminId,
       approvedById: adminId,
       approvedAt: new Date(),
@@ -328,6 +367,26 @@ async function postReceiptSim(contractId: string, installmentNo: number) {
       { accountCode: '11-2103', dr: zero, cr: amount, description: 'ล้างลูกหนี้ค้างชำระ' },
     ],
   });
+}
+
+/**
+ * Whole-account Σ(Dr−Cr) — NO metadata filter (same helper as the cancellation
+ * spec). C-2 assertions use DELTAS of this: the batch JE deliberately carries
+ * no metadata.contractId, so the per-contract lens cannot see "payable = 0
+ * after settlement" — only the account-level balance can prove "= 0 ก่อน
+ * cancel และไม่ติดลบหลัง redirect".
+ */
+async function wholeAccountBalance(code: string): Promise<Decimal> {
+  const rows = await prisma.$queryRaw<Array<{ balance: unknown }>>(Prisma.sql`
+    SELECT COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS balance
+    FROM journal_lines jl
+    JOIN journal_entries je ON je.id = jl.journal_entry_id
+    WHERE jl.account_code = ${code}
+      AND jl.deleted_at IS NULL
+      AND je.status = 'POSTED'
+      AND je.deleted_at IS NULL
+  `);
+  return new Decimal(String(rows[0]?.balance ?? 0));
 }
 
 interface LineRow {
@@ -419,6 +478,14 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       branchId = branch.id;
       createdBranchId = branch.id;
     }
+
+    // Safety nets for the REAL approveBatch path (Task 5 C-2 — same convention
+    // as contract-cancellation.integration.spec.ts): a leftover SoD flag or
+    // CLOSED 2026-08 period row from an aborted run must not fail approve.
+    await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+    await prisma.accountingPeriod.deleteMany({
+      where: { companyId: { in: [shopCompanyId, financeCompanyId] }, year: 2026, month: 8 },
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -443,6 +510,15 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       }
       r.reversalJeIds.forEach((id) => jeIds.add(id));
     }
+    // Batch JEs carry metadata.settlementBatchId — NOT contractId (architecture
+    // ruling) — sweep them by batch id like the cancellation spec (Task 5 C-2).
+    for (const bid of createdBatchIds) {
+      const rows = await prisma.journalEntry.findMany({
+        where: { metadata: { path: ['settlementBatchId'], equals: bid } as never },
+        select: { id: true },
+      });
+      rows.forEach((r) => jeIds.add(r.id));
+    }
     const jeIdList = [...jeIds];
 
     // JournalPostAuditLog FK-references journal_entries — clear first (a48fe1fe)
@@ -456,6 +532,10 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
     await prisma.installmentSchedule.deleteMany({
       where: { contractId: { in: createdContractIds } },
     });
+    // InterCoSettlementItem FK-references contracts with onDelete: Restrict —
+    // clear items + batches before the contracts they reference.
+    await prisma.interCoSettlementItem.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+    await prisma.interCoSettlementBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
     await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
     await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
     await prisma.customer.deleteMany({ where: { id: { in: createdCustomerIds } } });
@@ -1147,6 +1227,241 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       const newAfter = await prisma.contract.findUniqueOrThrow({ where: { id: newContract.id } });
       expect(newAfter.status).toBe('CANCELED');
       expect(newAfter.exchangedFromContractId).toBeNull();
+    },
+    120_000,
+  );
+
+  // ===========================================================================
+  // Phase 3 Task 5 — exchange-cancel C-2 (workbook §5.5): ยกเลิก swap หลังรอบจ่าย
+  // POSTED. เลขทองของเฟส: เจ้าหนี้ 11,000 (10,000+1,000) หักเครดิตสวอป 8,000
+  // → FINANCE โอนจริง 3,000 → recall net = 3,000.
+  // ===========================================================================
+  it(
+    'Task 5 (C-2): ยกเลิก swap หลังรอบจ่าย POSTED → PAYOUT_RECALL net 3,000 + GL ทุกบัญชีถูก',
+    async () => {
+      // Baselines BEFORE seeding — C-2 assertions are account-level DELTAS
+      // (batch JEs carry no metadata.contractId — per-contract lens can't see
+      // them; and glContractBalance ก็แยกไม่ออก เพราะ mirror ตรงของ A.1 ทำให้
+      // per-contract net = 0 เหมือนกันทั้งถูกและผิด — ระดับบัญชีเท่านั้นที่เห็น)
+      const payableCodes = ['21-1101', '21-1102', 'S11-3001', 'S11-3002'] as const;
+      const deltaCodes = [...payableCodes, '11-2107', 'S21-3001'] as const;
+      const preSeed: Record<string, Decimal> = {};
+      for (const code of deltaCodes) preSeed[code] = await wholeAccountBalance(code);
+
+      const fix = await seedSwapFixture('100007', { schedule: 'NONE' });
+      await act1a.execute(fix.oldContractId);
+
+      // New contract = เลขทอง: financed 10,000 + commission 1,000 (เจ้าหนี้ 11,000),
+      // interest 6,000 / VAT 1,190 (มาตรฐาน 17K), buyback 8,000
+      const { newContract, request } = await seedNewContractAndRequest(fix, '100007', '8000', {
+        financed: '10000.00',
+        commission: '1000.00',
+        interest: '6000.00',
+        vat: '1190.00',
+        monthly: '1515.83',
+      });
+      await activateAndFinalize(newContract.id, fix.newProductId);
+
+      // --- รอบจ่ายจริง (create → submit → approve): หักเครดิตสวอป 8,000 อัตโนมัติ
+      // (swapCreditEligible จาก A.3/A.4) → โอนสุทธิ 3,000
+      const batch = await settlementService.createBatch(
+        { contractIds: [newContract.id], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(batch.id);
+      const batchRow = await prisma.interCoSettlementBatch.findUniqueOrThrow({
+        where: { id: batch.id },
+      });
+      expect(new Decimal(batchRow.totalAmount.toString()).toFixed(2)).toBe('11000.00');
+      expect(new Decimal(batchRow.totalDeduction.toString()).toFixed(2)).toBe('8000.00');
+      expect(new Decimal(batchRow.netTransferAmount!.toString()).toFixed(2)).toBe('3000.00');
+      await settlementService.submitBatch(batch.id, adminId);
+      const posted = await settlementService.approveBatch(batch.id, adminId);
+      expect(posted.status).toBe('POSTED');
+
+      // หลัง approve: delta จาก preSeed = เจ้าหนี้ของสัญญา "เก่า" เท่านั้น
+      // (act1a ของสัญญาเก่า Cr 10,000/1,000 ค้างตลอดเทส — สัญญาเก่า seed ตรง
+      // ไม่มี SHOP legs ⇒ ฝั่ง S = 0). แปลว่าเจ้าหนี้ของสัญญาใหม่ถูก batch
+      // settle เป็น 0 แล้วจริง — จุดตั้งต้นของ "ไม่ติดลบหลัง redirect".
+      // (helper คิด Dr−Cr ⇒ เจ้าหนี้คงค้างเป็นค่าลบ)
+      expect((await wholeAccountBalance('21-1101')).minus(preSeed['21-1101']).toFixed(2)).toBe(
+        '-10000.00',
+      );
+      expect((await wholeAccountBalance('21-1102')).minus(preSeed['21-1102']).toFixed(2)).toBe(
+        '-1000.00',
+      );
+      expect((await wholeAccountBalance('S11-3001')).minus(preSeed['S11-3001']).toFixed(2)).toBe(
+        '0.00',
+      );
+      expect((await wholeAccountBalance('S11-3002')).minus(preSeed['S11-3002']).toFixed(2)).toBe(
+        '0.00',
+      );
+
+      // Snapshot จุดตั้งต้นก่อน cancel — ทุก assertion หลังจากนี้เป็น delta
+      // "ข้ามการ cancel" ล้วนๆ
+      const preCancel: Record<string, Decimal> = {};
+      for (const code of deltaCodes) preCancel[code] = await wholeAccountBalance(code);
+
+      // --- REAL cancel (C-2)
+      const result = await cancelSvc.cancel(
+        request.id,
+        'ทดสอบยกเลิกเปลี่ยนเครื่องหลังตัดจ่ายรอบจ่าย (Task 5 C-2)',
+        { id: adminId, role: 'OWNER', branchId: null },
+      );
+
+      // RED proof เดิม (ก่อน Task 5): mirror ตรงกลับ → delta ข้าม cancel ของ
+      // 21-1101 = +10,000 / 21-1102 = +1,000 (Dr งอกทั้งที่ batch ล้างไปแล้ว =
+      // เจ้าหนี้ติดลบเท่ายอดสัญญาใหม่ กลบเจ้าหนี้สัญญาเก่าจนบัญชีโชว์ 0) และ
+      // S11-3001/S11-3002 = −10,000/−1,000 ฝั่ง SHOP. C-2 ต้อง redirect ⇒ 0.
+      for (const code of payableCodes) {
+        expect(
+          (await wholeAccountBalance(code)).minus(preCancel[code]).toFixed(2),
+          `account ${code} must not move across a C-2 cancel (redirect, not mirror)`,
+        ).toBe('0.00');
+      }
+
+      // 11-2107 delta ข้าม cancel = +3,000 Dr (เงินที่ต้องเรียกคืนจริง):
+      // mirror A.3 −8,000 + redirect 11,000
+      expect((await wholeAccountBalance('11-2107')).minus(preCancel['11-2107']).toFixed(2)).toBe(
+        '3000.00',
+      );
+      // S21-3001 sym ฝั่ง SHOP: mirror A.4 +8,000 + redirect −11,000
+      // (helper คิด Dr−Cr ⇒ เจ้าหนี้สุทธิ 3,000 = −3,000)
+      expect((await wholeAccountBalance('S21-3001')).minus(preCancel['S21-3001']).toFixed(2)).toBe(
+        '-3000.00',
+      );
+
+      expect(result.cancelWindow).toBe('AFTER_PAYOUT');
+
+      // --- typed lenses: SWAP_CREDIT net 0 ทั้งสองสมุด (A.3/A.4 + mirror ของมัน),
+      // PAYOUT_RECALL gross 11,000 ทั้งสองสมุด (จาก redirect legs)
+      expect((await swapCreditFinanceBalance(prisma, newContract.id)).toFixed(2)).toBe('0.00');
+      expect((await swapCreditShopBalance(prisma, newContract.id)).toFixed(2)).toBe('0.00');
+      expect((await recallFinanceBalance(prisma, newContract.id)).toFixed(2)).toBe('11000.00');
+      expect((await recallShopBalance(prisma, newContract.id)).toFixed(2)).toBe('11000.00');
+
+      // --- คิวเรียกคืน (Task 4 net): gross 11,000 − Σ deduction POSTED 8,000 = 3,000
+      const recalls = await intercoPending.getPendingRecalls();
+      const recallRow = recalls.find((r) => r.contractId === newContract.id);
+      expect(recallRow, 'canceled swap must appear in the recall queue').toBeDefined();
+      expect(recallRow!.recallGl.toFixed(2)).toBe('3000.00');
+      expect(recallRow!.shopRecallGl.toFixed(2)).toBe('3000.00');
+
+      // --- Request row + redirect mirror ของ A.1
+      const req = await prisma.contractExchangeRequest.findUniqueOrThrow({
+        where: { id: request.id },
+      });
+      expect(req.status).toBe('CANCELED');
+      expect(req.cancelWindow).toBe('AFTER_PAYOUT');
+      // A.1 + A.2 + A.3 + A.4 + 2 F2 SHOP JEs (ไม่มี A.5/2A ในเคสนี้)
+      expect(req.reversalJeIds.length).toBe(6);
+      const a1Mirror = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['reversesEntryId'], equals: req.je1aId! } as never },
+        include: { lines: true },
+      });
+      expect((a1Mirror.metadata as Record<string, unknown>).shopReceivableType).toBe(
+        'PAYOUT_RECALL',
+      );
+      expect(sumSide(a1Mirror.lines, '11-2107', 'dr').toFixed(2)).toBe('11000.00');
+      expect(
+        a1Mirror.lines.some((l) => l.accountCode === '21-1101' || l.accountCode === '21-1102'),
+      ).toBe(false);
+
+      // --- Phase 1 restores ยังทำงานครบ: สัญญาเก่า ACTIVE, เครื่องเก่ากลับ
+      // FINANCE + costPrice restore (7,500 ≠ buyback 8,000 โดยตั้งใจ)
+      const oldAfter = await prisma.contract.findUniqueOrThrow({
+        where: { id: fix.oldContractId },
+      });
+      expect(oldAfter.status).toBe('ACTIVE');
+      expect(oldAfter.exchangedAt).toBeNull();
+      const oldProd = await prisma.product.findUniqueOrThrow({ where: { id: fix.oldProductId } });
+      expect(oldProd.status).toBe('SOLD_INSTALLMENT');
+      expect(oldProd.ownedByCompanyId).toBe(financeCompanyId);
+      expect(new Decimal(oldProd.costPrice!.toString()).toFixed(2)).toBe('7500.00');
+      const newAfter = await prisma.contract.findUniqueOrThrow({ where: { id: newContract.id } });
+      expect(newAfter.status).toBe('CANCELED');
+      expect(newAfter.exchangedFromContractId).toBeNull();
+      const newProd = await prisma.product.findUniqueOrThrow({ where: { id: fix.newProductId } });
+      expect(newProd.status).toBe('IN_STOCK');
+      expect(newProd.ownedByCompanyId).toBe(shopCompanyId);
+
+      // --- AuditLog: recallAmount = net เงินสดจริง (11,000 − 8,000) + AFTER_PAYOUT
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: 'EXCHANGE_CANCELED', entityId: request.id },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(audit).toBeTruthy();
+      const newValue = audit!.newValue as Record<string, unknown>;
+      expect(newValue.window).toBe('AFTER_PAYOUT');
+      expect(newValue.recallAmount).toBe('3000.00');
+      expect(newValue.batchNumbers).toEqual([batchRow.batchNumber]);
+    },
+    120_000,
+  );
+
+  // -------------------------------------------------------------------------
+  it(
+    'Task 5 guard: swap อยู่ใน batch DRAFT/PENDING_APPROVAL → reject บอกถอนรอบก่อน',
+    async () => {
+      const fix = await seedSwapFixture('100008', { schedule: 'NONE' });
+      await act1a.execute(fix.oldContractId);
+      const { newContract, request } = await seedNewContractAndRequest(fix, '100008', '8000');
+      await activateAndFinalize(newContract.id, fix.newProductId);
+
+      // Synthetic DRAFT batch + item (guard ไม่สน snapshot shape — pattern
+      // เดียวกับ guard test ใน contract-cancellation.integration.spec.ts)
+      const batch = await prisma.interCoSettlementBatch.create({
+        data: {
+          batchNumber: `IC-EXCHTEST-${Date.now()}`,
+          status: 'DRAFT',
+          transferDate: new Date(),
+          financeBankCode: '11-1201',
+          shopBankCode: 'S11-1201',
+          totalFinanced: new Decimal('15000.00'),
+          totalCommission: new Decimal('1500.00'),
+          totalAmount: new Decimal('16500.00'),
+          shopPostedAmount: new Decimal('16500.00'),
+          makerId: adminId,
+        },
+      });
+      createdBatchIds.push(batch.id);
+      await prisma.interCoSettlementItem.create({
+        data: {
+          batchId: batch.id,
+          contractId: newContract.id,
+          financedGl: new Decimal('15000.00'),
+          commissionGl: new Decimal('1500.00'),
+          shopFinancedGl: new Decimal('15000.00'),
+          shopCommissionGl: new Decimal('1500.00'),
+        },
+      });
+
+      const err = await cancelSvc
+        .cancel(request.id, 'ทดสอบ guard รอบจ่ายเปิด (Task 5)', {
+          id: adminId,
+          role: 'OWNER',
+          branchId: null,
+        })
+        .then(
+          () => null,
+          (e: Error) => e,
+        );
+      expect(err, 'cancel must be rejected while the batch is open').toBeTruthy();
+      expect(err!.message).toContain(batch.batchNumber);
+      expect(err!.message).toContain('ถอน/ยกเลิกรอบก่อน');
+
+      // Nothing changed: request still APPROVED, old still EXCHANGED, new still ACTIVE
+      const reqAfter = await prisma.contractExchangeRequest.findUniqueOrThrow({
+        where: { id: request.id },
+      });
+      expect(reqAfter.status).toBe('APPROVED');
+      expect(reqAfter.reversalJeIds.length).toBe(0);
+      const oldAfter = await prisma.contract.findUniqueOrThrow({
+        where: { id: fix.oldContractId },
+      });
+      expect(oldAfter.status).toBe('EXCHANGED');
+      const newAfter = await prisma.contract.findUniqueOrThrow({ where: { id: newContract.id } });
+      expect(newAfter.status).toBe('ACTIVE');
     },
     120_000,
   );

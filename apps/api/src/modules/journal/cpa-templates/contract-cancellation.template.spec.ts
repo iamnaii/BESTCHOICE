@@ -186,6 +186,103 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
     expect(sweepMock.reverse).toHaveBeenCalledTimes(1);
   });
 
+  // ─── Test 2c: C-2 — redirects + cross-check + defensive check ───────────
+
+  it('C-2: passes redirects (payable→11-2107, SHOP rec→S21-3001) + PAYOUT_RECALL stamp to the sweep', async () => {
+    sweepMock.reverse.mockResolvedValue({
+      reversalJeIds: ['je-rev-1'],
+      redirectedTotals: { '11-2107': new Decimal('11000.00') },
+    });
+
+    await template.execute({
+      contractId: 'contract-1',
+      cancellationId: 'cancel-1',
+      isC2: true,
+      settledTotal: new Decimal('11000.00'),
+    });
+
+    const [input] = sweepMock.reverse.mock.calls[0];
+    expect(input.redirects).toEqual({
+      '21-1101': { to: '11-2107', description: expect.stringContaining('ยอดจัดที่ตัดจ่ายแล้ว') },
+      '21-1102': { to: '11-2107', description: expect.stringContaining('ค่าคอมที่ตัดจ่ายแล้ว') },
+      'S11-3001': { to: 'S21-3001', description: expect.stringContaining('ยอดจัด') },
+      'S11-3002': { to: 'S21-3001', description: expect.stringContaining('ค่าคอม') },
+    });
+    // redirectStamp ห้ามมี reserved keys — ส่งแค่ shopReceivableType ตาม brief
+    expect(input.redirectStamp).toEqual({ shopReceivableType: 'PAYOUT_RECALL' });
+  });
+
+  it('C-2 cross-check: redirected 11-2107 total ≠ settledTotal → BadRequestException (in-tx → rollback)', async () => {
+    sweepMock.reverse.mockResolvedValue({
+      reversalJeIds: ['je-rev-1'],
+      redirectedTotals: { '11-2107': new Decimal('10500.00') }, // hand-JV skew
+    });
+
+    await expect(
+      template.execute({
+        contractId: 'contract-1',
+        cancellationId: 'cancel-1',
+        isC2: true,
+        settledTotal: new Decimal('11000.00'),
+      }),
+    ).rejects.toThrow('ยอดเรียกคืน');
+  });
+
+  it('C-2 defensive: candidate JE mixing a redirect-source line with a typed 11-2107/S21-3001 line → reject naming entryNumber', async () => {
+    prismaMock.journalEntry.findMany.mockResolvedValue([
+      {
+        id: 'je-mixed-1',
+        entryNumber: 'JE-202608-00888',
+        metadata: { flow: 'test-hand-jv-mixed', contractId: 'contract-1' },
+        lines: [
+          { accountCode: '21-1101', ...makeLine('300', '0') },
+          { accountCode: '11-2107', ...makeLine('0', '300') },
+        ],
+      },
+    ]);
+
+    await expect(
+      template.execute({
+        contractId: 'contract-1',
+        cancellationId: 'cancel-1',
+        isC2: true,
+        settledTotal: new Decimal('11000.00'),
+      }),
+    ).rejects.toThrow('JE-202608-00888');
+    expect(sweepMock.reverse).not.toHaveBeenCalled();
+  });
+
+  it('C-2 defensive: redirect-source line + PRE-EXISTING shopReceivableType stamp → reject; C-1 path ignores both', async () => {
+    const mixedCandidate = {
+      id: 'je-stamped-1',
+      entryNumber: 'JE-202608-00889',
+      metadata: {
+        flow: 'test-hand-jv-stamped',
+        contractId: 'contract-1',
+        shopReceivableType: 'SWAP_CREDIT',
+      },
+      lines: [{ accountCode: 'S11-3001', ...makeLine('0', '100') }],
+    };
+    prismaMock.journalEntry.findMany.mockResolvedValue([mixedCandidate]);
+
+    await expect(
+      template.execute({
+        contractId: 'contract-1',
+        cancellationId: 'cancel-1',
+        isC2: true,
+        settledTotal: new Decimal('0.00'),
+      }),
+    ).rejects.toThrow('JE-202608-00889');
+
+    // C-1 (isC2 absent): the defensive check must NOT fire — the same
+    // candidate sweeps normally (stamp carried over by the engine, no redirect)
+    sweepMock.reverse.mockClear();
+    await expect(
+      template.execute({ contractId: 'contract-1', cancellationId: 'cancel-1' }),
+    ).resolves.toBeDefined();
+    expect(sweepMock.reverse).toHaveBeenCalledTimes(1);
+  });
+
   // ─── Test 3: guards ─────────────────────────────────────────────────────
 
   it('throws BadRequestException when no activation 1A JE exists for contract', async () => {

@@ -15,7 +15,7 @@
  * reversalJournalEntryId).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
@@ -24,8 +24,16 @@ import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exch
 import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
 import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { PairedJournalService } from '../../journal/paired-journal.service';
 import { ContractCancellationService } from '../services/contract-cancellation.service';
 import { glContractBalance } from '../../journal/gl-contract-balance';
+import { IntercoPendingService } from '../../interco-settlement/interco-pending.service';
+import { IntercoBatchNumberService } from '../../interco-settlement/interco-batch-number.service';
+import { IntercoSettlementService } from '../../interco-settlement/interco-settlement.service';
+import {
+  recallFinanceBalance,
+  recallShopBalance,
+} from '../../interco-settlement/interco-typed-balance';
 
 const prisma = new PrismaClient();
 
@@ -41,6 +49,22 @@ const service = new ContractCancellationService(
   prisma as never,
   () => template,
   () => companyResolver,
+);
+// Interco batch flow (Task 3 — C-2): REAL IntercoSettlementService so the batch
+// POSTED state + JEs come from the production path (same wiring shape as
+// interco-netting.integration.spec.ts; StorageService stubbed — uploadSlip unused).
+const pendingService = new IntercoPendingService(prisma as never);
+const pairedJournal = new PairedJournalService(journalAuto, prisma as never, companyResolver);
+const batchNumberService = new IntercoBatchNumberService(prisma as never);
+const storageStub = { upload: async () => undefined, delete: async () => undefined };
+const settlementService = new IntercoSettlementService(
+  prisma as never,
+  pendingService,
+  batchNumberService,
+  pairedJournal,
+  companyResolver,
+  journalAuto,
+  storageStub as never,
 );
 
 // ---------------------------------------------------------------------------
@@ -274,6 +298,81 @@ async function net(contractId: string, code: string): Promise<string> {
   return (await glContractBalance(prisma, contractId, code, 'dr')).toFixed(2);
 }
 
+/**
+ * Whole-account Σ(Dr−Cr) — NO metadata filter (same helper as the netting
+ * spec). C-2 assertions use DELTAS of this: the batch JE deliberately carries
+ * no metadata.contractId, so the per-contract lens cannot see "payable = 0
+ * after settlement" — only the account-level balance can prove "= 0 ก่อน
+ * cancel และไม่ติดลบหลัง redirect".
+ */
+async function wholeAccountBalance(code: string): Promise<Decimal> {
+  const rows = await prisma.$queryRaw<Array<{ balance: unknown }>>(Prisma.sql`
+    SELECT COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS balance
+    FROM journal_lines jl
+    JOIN journal_entries je ON je.id = jl.journal_entry_id
+    WHERE jl.account_code = ${code}
+      AND jl.deleted_at IS NULL
+      AND je.status = 'POSTED'
+      AND je.deleted_at IS NULL
+  `);
+  return new Decimal(String(rows[0]?.balance ?? 0));
+}
+
+interface LineRow {
+  accountCode: string;
+  debit: { toString(): string };
+  credit: { toString(): string };
+}
+
+/** Σ of one side for a given account code over JE lines (netting-spec helper). */
+function sumSide(lines: LineRow[], code: string, side: 'dr' | 'cr'): Decimal {
+  return lines
+    .filter((l) => l.accountCode === code)
+    .reduce(
+      (s, l) => s.plus(side === 'dr' ? l.debit.toString() : l.credit.toString()),
+      new Decimal(0),
+    );
+}
+
+/**
+ * ตัดจ่ายสัญญาผ่านรอบจ่าย INTER-CO จริง (create → submit → approve) — Phase 2
+ * production path ทั้งเส้น เพื่อให้ item SETTLEMENT + batch JEs มี shape จริง.
+ */
+async function settleViaBatch(
+  contractId: string,
+): Promise<{ batchId: string; batchNumber: string }> {
+  const batch = await settlementService.createBatch(
+    { contractIds: [contractId], transferDate: '2026-08-20' },
+    adminId,
+  );
+  createdBatchIds.push(batch.id);
+  await settlementService.submitBatch(batch.id, adminId);
+  const posted = await settlementService.approveBatch(batch.id, adminId);
+  expect(posted.status).toBe('POSTED');
+  return { batchId: batch.id, batchNumber: batch.batchNumber };
+}
+
+/** JE เดียวของ flow synthetic หนึ่งบนสัญญา (helper for reversal lookups). */
+async function findJeByFlow(contractId: string, flow: string) {
+  return prisma.journalEntry.findFirstOrThrow({
+    where: {
+      AND: [
+        { metadata: { path: ['flow'], equals: flow } } as never,
+        { metadata: { path: ['contractId'], equals: contractId } } as never,
+      ],
+      deletedAt: null,
+    },
+  });
+}
+
+/** Reversal JE ที่ชี้กลับไปที่ JE เดิมผ่าน metadata.reversesEntryId (รวม lines). */
+async function findReversalOf(originalJeId: string) {
+  return prisma.journalEntry.findFirstOrThrow({
+    where: { metadata: { path: ['reversesEntryId'], equals: originalJeId } as never },
+    include: { lines: true },
+  });
+}
+
 async function requestAndApprove(contractId: string, refund = 0) {
   const cancellation = await service.requestCancellation(
     contractId,
@@ -316,6 +415,14 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
       branchId = branch.id;
       createdBranchId = branch.id;
     }
+
+    // Safety nets for the REAL approveBatch path (same convention as
+    // interco-netting.integration.spec.ts): a leftover SoD flag or CLOSED
+    // 2026-08 period row from an aborted run must not fail approve.
+    await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+    await prisma.accountingPeriod.deleteMany({
+      where: { companyId: { in: [shopId, financeId] }, year: 2026, month: 8 },
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -323,6 +430,15 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     for (const cid of createdContractIds) {
       const rows = await prisma.journalEntry.findMany({
         where: { metadata: { path: ['contractId'], equals: cid } as never },
+        select: { id: true },
+      });
+      rows.forEach((r) => jeIds.add(r.id));
+    }
+    // Batch JEs carry metadata.settlementBatchId — NOT contractId (architecture
+    // ruling) — sweep them by batch id like the netting spec.
+    for (const bid of createdBatchIds) {
+      const rows = await prisma.journalEntry.findMany({
+        where: { metadata: { path: ['settlementBatchId'], equals: bid } as never },
         select: { id: true },
       });
       rows.forEach((r) => jeIds.add(r.id));
@@ -667,4 +783,197 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
       'เฉพาะสัญญาสถานะ ACTIVE',
     );
   }, 30_000);
+
+  // ===========================================================================
+  // Phase 3 Task 3 — C-2 producer: redirect เจ้าหนี้ที่ตัดจ่ายแล้วเป็น PAYOUT_RECALL
+  // (workbook Case 3A กรณี 2). Batch POSTED มาจาก IntercoSettlementService จริง.
+  // ===========================================================================
+
+  it('C-2 (ตัดจ่ายแล้ว): redirect เจ้าหนี้เป็น PAYOUT_RECALL ตรง workbook Case 3A กรณี 2', async () => {
+    // Baselines BEFORE seeding — C-2 assertions are account-level DELTAS
+    // (batch JEs carry no metadata.contractId, per-contract lens can't see them)
+    const codes = ['21-1101', '21-1102', 'S11-3001', 'S11-3002'] as const;
+    const pre: Record<string, Decimal> = {};
+    for (const code of codes) pre[code] = await wholeAccountBalance(code);
+
+    const { contractId } = await seedBaseContract(9);
+    await seed1a(contractId);
+    await seedShopLegs(contractId);
+    const { batchNumber } = await settleViaBatch(contractId);
+
+    // หลัง approve รอบจ่าย: เจ้าหนี้/ลูกหนี้รอบจ่ายของสัญญา = 0 ระดับบัญชี
+    // (1A Cr + batch Dr หักกัน) — จุดตั้งต้นของ "ไม่ติดลบหลัง redirect"
+    for (const code of codes) {
+      expect(
+        (await wholeAccountBalance(code)).minus(pre[code]).toFixed(2),
+        `account ${code} must be settled to 0 before cancel`,
+      ).toBe('0.00');
+    }
+
+    const result = await requestAndApprove(contractId);
+    expect(result.status).toBe('APPROVED');
+
+    // ── FINANCE reversal ของ 1A: Dr 11-2107 11,000 [PAYOUT_RECALL] + Dr 11-2106
+    // 6,000 + Dr 21-2102 1,190 / Cr 11-2101 17,000 + Cr 11-2105 1,190 —
+    // ไม่มีขา 21-1101/21-1102 (ถูก redirect ทั้งคู่)
+    const oneA = await findJeByFlow(contractId, 'test-1a');
+    const finRev = await findReversalOf(oneA.id);
+    expect(sumSide(finRev.lines, '11-2107', 'dr').toFixed(2)).toBe('11000.00');
+    expect(sumSide(finRev.lines, '11-2106', 'dr').toFixed(2)).toBe('6000.00');
+    expect(sumSide(finRev.lines, '21-2102', 'dr').toFixed(2)).toBe('1190.00');
+    expect(sumSide(finRev.lines, '11-2101', 'cr').toFixed(2)).toBe('17000.00');
+    expect(sumSide(finRev.lines, '11-2105', 'cr').toFixed(2)).toBe('1190.00');
+    expect(
+      finRev.lines.some((l) => l.accountCode === '21-1101' || l.accountCode === '21-1102'),
+    ).toBe(false);
+    expect(((finRev.metadata ?? {}) as Record<string, unknown>).shopReceivableType).toBe(
+      'PAYOUT_RECALL',
+    );
+
+    // ── SHOP reversal ของ JE B (revenue/receivable): Cr S21-3001 11,000
+    // [PAYOUT_RECALL] แทน Cr S11-3001/S11-3002
+    const jeB = await findJeByFlow(contractId, 'test-shop-revenue');
+    const shopRev = await findReversalOf(jeB.id);
+    expect(sumSide(shopRev.lines, 'S21-3001', 'cr').toFixed(2)).toBe('11000.00');
+    expect(sumSide(shopRev.lines, 'S41-1101', 'dr').toFixed(2)).toBe('10000.00');
+    expect(sumSide(shopRev.lines, 'S41-1201', 'dr').toFixed(2)).toBe('1000.00');
+    expect(
+      shopRev.lines.some((l) => l.accountCode === 'S11-3001' || l.accountCode === 'S11-3002'),
+    ).toBe(false);
+    expect(((shopRev.metadata ?? {}) as Record<string, unknown>).shopReceivableType).toBe(
+      'PAYOUT_RECALL',
+    );
+
+    // ── GL: เจ้าหนี้/ลูกหนี้รอบจ่ายทั้ง 4 ยังอยู่ที่ 0 (ไม่ติดลบ!) หลัง cancel
+    for (const code of codes) {
+      expect(
+        (await wholeAccountBalance(code)).minus(pre[code]).toFixed(2),
+        `account ${code} must stay 0 (not negative) after C-2 cancel`,
+      ).toBe('0.00');
+    }
+
+    // ── typed PAYOUT_RECALL ทั้งสองสมุด = 11,000 (gross — Task 4 จะ net; เคสนี้
+    // เท่ากันเพราะ Σ deductions ของสัญญาปกติ = 0)
+    expect((await recallFinanceBalance(prisma, contractId)).toFixed(2)).toBe('11000.00');
+    expect((await recallShopBalance(prisma, contractId)).toFixed(2)).toBe('11000.00');
+
+    // ── คิวเรียกคืนเห็นสัญญา (SETTLEMENT item เก่าไม่ปิดคิว — gate กรองเฉพาะ RECALL)
+    const recalls = await pendingService.getPendingRecalls();
+    const recallRow = recalls.find((r) => r.contractId === contractId);
+    expect(recallRow).toBeDefined();
+    expect(recallRow!.recallGl.toFixed(2)).toBe('11000.00');
+    expect(recallRow!.shopRecallGl.toFixed(2)).toBe('11000.00');
+
+    // ── AuditLog: action C-2 + recallAmount + batchNumbers
+    const audit = await prisma.auditLog.findFirst({
+      where: { action: 'CONTRACT_CANCELED_AFTER_PAYOUT', entityId: contractId },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(audit).toBeTruthy();
+    expect(audit!.entity).toBe('contract');
+    const newValue = audit!.newValue as Record<string, unknown>;
+    expect(newValue.recallAmount).toBe('11000.00');
+    expect(newValue.batchNumbers).toEqual([batchNumber]);
+    expect(newValue.reversalCount).toBe(3); // 1A + SHOP COGS + SHOP revenue
+
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.status).toBe('CANCELED');
+  }, 120_000);
+
+  // -------------------------------------------------------------------------
+  it('C-2 cross-check: hand-JV ทำให้ redirect รวม ≠ Σ settled ของ batch POSTED → reject ทั้งการยกเลิก', async () => {
+    const { contractId } = await seedBaseContract(10);
+    await seed1a(contractId);
+    await seedShopLegs(contractId);
+    await settleViaBatch(contractId);
+
+    // Hand-JV แตะ 21-1101 (redirect source) โดยไม่ผ่านรอบจ่าย: mirror จะ redirect
+    // เป็น Cr 11-2107 500 → redirected รวม 10,500 ≠ settledTotal 11,000
+    await journalAuto.createAndPost({
+      description: 'hand JV payable synthetic (CANCELTEST)',
+      companyId: financeId,
+      metadata: {
+        flow: 'test-hand-jv-payable',
+        idempotencyKey: `ctjvp:${contractId}`,
+        contractId,
+      },
+      lines: [
+        { accountCode: '21-1101', dr: dec('500'), cr: zero },
+        { accountCode: '41-1102', dr: zero, cr: dec('500') },
+      ],
+    });
+
+    const err = await requestAndApprove(contractId).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err).toBeTruthy();
+    expect(err!.message).toContain('ยอดเรียกคืน');
+    expect(err!.message).toContain('ไม่ตรงกับยอดที่ตัดจ่าย');
+
+    // Cross-check throw ใน tx → sweep ทั้งชุด rollback: ไม่มี reversal JE,
+    // 1A ไม่ถูก stamp reversed, ไม่มี PAYOUT_RECALL งอก, สัญญายัง ACTIVE
+    const reversals = await prisma.journalEntry.count({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'contract-cancellation' } } as never,
+          { metadata: { path: ['contractId'], equals: contractId } } as never,
+        ],
+      },
+    });
+    expect(reversals).toBe(0);
+    const oneA = await findJeByFlow(contractId, 'test-1a');
+    expect(((oneA.metadata ?? {}) as Record<string, unknown>).reversed).toBeUndefined();
+    expect((await recallFinanceBalance(prisma, contractId)).toFixed(2)).toBe('0.00');
+    expect((await recallShopBalance(prisma, contractId)).toFixed(2)).toBe('0.00');
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.status).toBe('ACTIVE');
+  }, 120_000);
+
+  // -------------------------------------------------------------------------
+  it('C-2 defensive: JE เดียวมีทั้งบรรทัด redirect source และบรรทัดบัญชี typed (11-2107) → reject ระบุ entryNumber', async () => {
+    const { contractId } = await seedBaseContract(11);
+    await seed1a(contractId);
+    await seedShopLegs(contractId);
+    await settleViaBatch(contractId);
+
+    // Hand-JV ผิดปกติ: บรรทัด 21-1101 (redirect source) + บรรทัด 11-2107 (typed)
+    // ในใบเดียว — redirect stamp ทั้งใบจะทับความหมาย typed เดิม → ต้อง reject
+    const weird = await journalAuto.createAndPost({
+      description: 'hand JV mixed typed synthetic (CANCELTEST)',
+      companyId: financeId,
+      metadata: {
+        flow: 'test-hand-jv-mixed',
+        idempotencyKey: `ctjvm:${contractId}`,
+        contractId,
+      },
+      lines: [
+        { accountCode: '21-1101', dr: dec('300'), cr: zero },
+        { accountCode: '11-2107', dr: zero, cr: dec('300') },
+      ],
+    });
+    const weirdEntryNumber = (
+      await prisma.journalEntry.findUniqueOrThrow({ where: { id: weird.id } })
+    ).entryNumber;
+
+    const err = await requestAndApprove(contractId).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err).toBeTruthy();
+    expect(err!.message).toContain(weirdEntryNumber);
+
+    // Reject ก่อน sweep เริ่ม — ไม่มีใบไหนถูก mirror เลย + สัญญายัง ACTIVE
+    const reversals = await prisma.journalEntry.count({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'contract-cancellation' } } as never,
+          { metadata: { path: ['contractId'], equals: contractId } } as never,
+        ],
+      },
+    });
+    expect(reversals).toBe(0);
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.status).toBe('ACTIVE');
+  }, 120_000);
 });

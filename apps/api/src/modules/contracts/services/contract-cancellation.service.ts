@@ -8,7 +8,9 @@ import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-
 /**
  * ContractCancellationService — contract-cancellation workflow:
  * request / approve (guards + sweep-reversal $tx + restore) / reject /
- * list-pending. Phase 3 Task 2 (workbook 2026-08-19 spec §6, Flow C-1).
+ * list-pending. Phase 3 Tasks 2-3 (workbook 2026-08-19 spec §6, Flow C-1/C-2 —
+ * C-2 = ยกเลิกหลังตัดจ่ายรอบจ่าย INTER-CO: detect item SETTLEMENT ใน batch
+ * POSTED → template redirect เจ้าหนี้เป็นลูกหนี้เรียกคืน [PAYOUT_RECALL]).
  *
  * The cancellation template is read through a late-bound accessor
  * (`getCancellationTemplate`) supplied by the facade rather than captured at
@@ -179,9 +181,31 @@ export class ContractCancellationService {
         );
       }
 
-      // Post sweep reversal chain + ECL release (template — Phase 3 C-1)
+      // ── C-2 detect (Phase 3 Task 3 — workbook Case 3A กรณี 2): สัญญาที่ถูก
+      // ตัดจ่ายผ่านรอบจ่าย INTER-CO POSTED แล้ว — เจ้าหนี้ 21-1101/21-1102 (และ
+      // ลูกหนี้ S11-3001/S11-3002) ถูก batch ล้างไปแล้ว mirror ตรงจะทำติดลบ →
+      // template redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / S21-3001.
+      // settledTotal = Σ snapshot จาก item SETTLEMENT (RECALL item ไม่นับ —
+      // มันคือ "ถูกหักเรียกคืนไปแล้ว" ไม่ใช่ "ถูกจ่าย")
+      const postedItems = await tx.interCoSettlementItem.findMany({
+        where: {
+          contractId: contract.id,
+          deletedAt: null,
+          itemType: 'SETTLEMENT',
+          batch: { status: 'POSTED', deletedAt: null },
+        },
+        include: { batch: { select: { batchNumber: true } } },
+      });
+      const settledTotal = postedItems.reduce(
+        (s, i) => s.plus(i.financedGl.toString()).plus(i.commissionGl.toString()),
+        new Decimal(0),
+      );
+      const isC2 = settledTotal.gt(0);
+      const batchNumbers = postedItems.map((i) => i.batch.batchNumber);
+
+      // Post sweep reversal chain + ECL release (template — Phase 3 C-1/C-2)
       const jeResult = await template.execute(
-        { contractId: cancellation.contractId, cancellationId },
+        { contractId: cancellation.contractId, cancellationId, isC2, settledTotal },
         tx,
       );
 
@@ -231,11 +255,12 @@ export class ContractCancellationService {
         data: { status: 'CANCELED' },
       });
 
-      // Audit log — เก็บ reversal ทั้งชุด (count + ids + first entryNumber)
+      // Audit log — เก็บ reversal ทั้งชุด (count + ids + first entryNumber).
+      // C-2 ใช้ action แยก + บันทึกยอดเรียกคืนและรอบจ่ายที่เคยตัดจ่าย
       await tx.auditLog.create({
         data: {
           userId: approverId,
-          action: 'CONTRACT_CANCELED',
+          action: isC2 ? 'CONTRACT_CANCELED_AFTER_PAYOUT' : 'CONTRACT_CANCELED',
           entity: 'contract',
           entityId: cancellation.contractId,
           oldValue: {
@@ -248,6 +273,7 @@ export class ContractCancellationService {
             reversalCount: jeResult.reversalJeIds.length,
             reversalJeIds: jeResult.reversalJeIds,
             refundAmount: cancellation.refundAmount.toString(),
+            ...(isC2 ? { recallAmount: settledTotal.toFixed(2), batchNumbers } : {}),
           },
         },
       });

@@ -1,12 +1,24 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ExchangeCancelReversalTemplate } from './exchange-cancel-reversal.template';
+import { ExchangeCancelReversalTemplate, SweepRedirect } from './exchange-cancel-reversal.template';
 import { EclStageReverseTemplate } from './ecl-stage-reverse.template';
 import { glContractBalance } from '../gl-contract-balance';
 
 /**
- * Template — Contract Cancellation C-1 (Phase 3, workbook 2026-08-19 spec §6).
+ * Template — Contract Cancellation C-1 + C-2 (Phase 3, workbook 2026-08-19 spec §6).
+ *
+ * C-2 (Task 3 — ยกเลิกหลังตัดจ่ายรอบจ่าย INTER-CO แล้ว, workbook Case 3A กรณี 2):
+ * the service detects `Σ(financedGl+commissionGl)` over the contract's
+ * SETTLEMENT items in POSTED batches and passes `{ isC2, settledTotal }`. The
+ * sweep then REDIRECTS the mirror legs of 21-1101/21-1102 → 11-2107 and
+ * S11-3001/S11-3002 → S21-3001 (stamp `shopReceivableType: 'PAYOUT_RECALL'` on
+ * JEs carrying a redirect leg) instead of mirroring straight back — the batch
+ * already cleared those accounts, a straight mirror would drive them negative.
+ * After the sweep, `redirectedTotals['11-2107']` is cross-checked against
+ * `settledTotal` (±0.01) — a mismatch (hand-JV on a lens account outside the
+ * batch) throws inside the tx so the whole sweep rolls back.
  *
  * Reworked from the P4-SP4 mirror-1A-only version: instead of hand-mirroring
  * the single 1A activation JE, it delegates to the generalized cancel-sweep
@@ -68,6 +80,29 @@ const C1_EXCLUDED_FLOWS = [
 /** Cash/bank account prefixes (FINANCE 11-11xx/11-12xx + SHOP S11-11xx/S11-12xx). */
 const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12', 'S11-11', 'S11-12'];
 
+/**
+ * C-2 (Phase 3 Task 3 — workbook Case 3A กรณี 2): เจ้าหนี้/ลูกหนี้รอบจ่ายที่ถูก
+ * ตัดจ่ายผ่าน batch POSTED ไปแล้ว mirror ตรงกลับบัญชีเดิมไม่ได้ (จะติดลบ) —
+ * redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / เจ้าหนี้ S21-3001 แทน.
+ */
+const C2_REDIRECTS: Record<string, SweepRedirect> = {
+  '21-1101': { to: '11-2107', description: 'ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ยอดจัดที่ตัดจ่ายแล้ว)' },
+  '21-1102': { to: '11-2107', description: 'ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ค่าคอมที่ตัดจ่ายแล้ว)' },
+  'S11-3001': { to: 'S21-3001', description: 'ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ยอดจัด)' },
+  'S11-3002': { to: 'S21-3001', description: 'ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ค่าคอม)' },
+};
+const C2_REDIRECT_SOURCES = Object.keys(C2_REDIRECTS);
+
+/**
+ * บัญชี typed lens (Phase 2 หักกลบ). Defensive check (C-2 path เท่านั้น): JE ใด
+ * มีทั้งบรรทัดบน redirect source (21-1101/21-1102/S11-3001/S11-3002) และบรรทัด
+ * บนบัญชี typed (หรือ metadata.shopReceivableType เดิม) ในใบเดียวกัน — redirect
+ * stamp `PAYOUT_RECALL` ทั้งใบจะทับความหมาย typed เดิมของบรรทัดนั้น (เลนส์ Phase 2
+ * อ่าน type จาก metadata ระดับ JE) → hand-JV ผิดปกติ producer จริงไม่มีทางสร้าง
+ * ต้อง reject ดังๆ แทนที่จะ stamp ทับเงียบๆ.
+ */
+const TYPED_LENS_ACCOUNTS = ['11-2107', 'S21-3001'];
+
 @Injectable()
 export class ContractCancellationTemplate {
   constructor(
@@ -80,10 +115,14 @@ export class ContractCancellationTemplate {
     params: {
       contractId: string;
       cancellationId: string;
+      /** C-2 (Phase 3 Task 3): สัญญาถูกตัดจ่ายผ่าน batch POSTED แล้ว → redirect */
+      isC2?: boolean;
+      /** Σ financedGl + commissionGl จาก item SETTLEMENT ใน batch POSTED (service คำนวณใน tx) */
+      settledTotal?: Decimal;
     },
     tx?: Prisma.TransactionClient,
   ): Promise<{ entryNumber: string; reversalJeIds: string[] }> {
-    const { contractId, cancellationId } = params;
+    const { contractId, cancellationId, isC2 } = params;
     const client = tx ?? this.prisma;
 
     const contract = await client.contract.findUniqueOrThrow({
@@ -153,19 +192,45 @@ export class ContractCancellationTemplate {
             'ระบบไม่กลับรายการเงินสดอัตโนมัติ กรุณาตรวจสอบ/กลับรายการใบนี้ด้วยมือก่อนยกเลิกสัญญา',
         );
       }
+      // Defensive check (C-2 path เท่านั้น — Task 3): JE ที่มีทั้งบรรทัด redirect
+      // source และบรรทัดบัญชี typed (11-2107/S21-3001) หรือ shopReceivableType
+      // เดิมอยู่แล้ว — redirect stamp PAYOUT_RECALL ทั้งใบจะทับความหมาย typed
+      // เดิม (เลนส์อ่าน type ระดับ JE) → hand-JV ผิดปกติ reject ก่อน sweep เริ่ม.
+      if (isC2) {
+        const redirectSourceLine = je.lines.find((l) =>
+          C2_REDIRECT_SOURCES.includes(l.accountCode),
+        );
+        const typedLine = je.lines.find((l) => TYPED_LENS_ACCOUNTS.includes(l.accountCode));
+        const hasTypedStamp = typeof meta['shopReceivableType'] === 'string';
+        if (redirectSourceLine && (typedLine || hasTypedStamp)) {
+          throw new BadRequestException(
+            `ใบสำคัญ ${je.entryNumber} ของสัญญา ${contract.contractNumber} มีทั้งบรรทัดเจ้าหนี้/ลูกหนี้รอบจ่าย (${redirectSourceLine.accountCode}) ` +
+              'และบรรทัด/ประเภทบัญชีลูกหนี้เรียกคืน (11-2107/S21-3001) ในใบเดียวกัน — ' +
+              'ระบบ redirect เป็น PAYOUT_RECALL ให้ไม่ได้ (จะทับความหมายประเภทเดิม) กรุณาตรวจสอบ/กลับรายการใบนี้ด้วยมือก่อนยกเลิกสัญญา',
+          );
+        }
+      }
     }
 
     // C-1: sweep-reverse ทุก JE ของสัญญา ยกเว้น ECL flows (release แยกใบเดียว —
     // exclude กัน double: sweep mirror + release พร้อมกันจะทำ 11-2102 ติดลบ)
     // และ flows เงินสดจริง (shop-collect / down / reschedule-collect — ดู
     // C1_EXCLUDED_FLOWS + doc comment ด้านบน)
-    const { reversalJeIds } = await this.sweepTemplate.reverse(
+    const { reversalJeIds, redirectedTotals } = await this.sweepTemplate.reverse(
       {
         jeIds: [],
         newContractId: contractId, // ชื่อ param เดิมของ engine — คือ contractId ที่ sweep
         excludeFlows: C1_EXCLUDED_FLOWS,
         flowLabel: 'contract-cancellation',
         descriptionPrefix: '[ยกเลิกสัญญา]',
+        // C-2 เท่านั้น: redirect เจ้าหนี้/ลูกหนี้รอบจ่ายที่ตัดจ่ายแล้ว → ลูกหนี้
+        // เรียกคืน [PAYOUT_RECALL] (C-1 ห้ามมี key พวกนี้เลย — unit spec ปักไว้)
+        ...(isC2
+          ? {
+              redirects: C2_REDIRECTS,
+              redirectStamp: { shopReceivableType: 'PAYOUT_RECALL' },
+            }
+          : {}),
       },
       tx,
     );
@@ -173,6 +238,20 @@ export class ContractCancellationTemplate {
       throw new BadRequestException(
         `ไม่มีรายการบัญชีให้กลับรายการสำหรับสัญญา ${contract.contractNumber} — รายการอาจถูกกลับไปก่อนหน้านี้แล้ว`,
       );
+    }
+
+    // Cross-check (C-2 — carry (a) + กัน hand-JV): ยอดที่ redirect เข้า 11-2107
+    // ต้องเท่ากับ Σ settled จาก item SETTLEMENT ใน batch POSTED (±0.01). ไม่ตรง
+    // = มี JE แตะเจ้าหนี้รอบจ่ายนอกเหนือจากที่ batch ตัดจ่าย → throw ใน tx
+    // ให้ sweep ทั้งชุด rollback (ห้ามยกเลิกบนตัวเลขที่เพี้ยน).
+    if (isC2) {
+      const redirected = redirectedTotals['11-2107'] ?? new Decimal(0);
+      const settled = params.settledTotal ?? new Decimal(0);
+      if (redirected.minus(settled).abs().gt('0.01')) {
+        throw new BadRequestException(
+          `ยอดเรียกคืน (${redirected.toFixed(2)}) ไม่ตรงกับยอดที่ตัดจ่ายใน batch POSTED (${settled.toFixed(2)}) — มีรายการเดินบัญชีผิดปกติ ตรวจสอบก่อนยกเลิก`,
+        );
+      }
     }
 
     // ECL: release ใบเดียวจาก live GL (pattern JP4 C1) + flip provision rows

@@ -1389,9 +1389,13 @@ describe('ContractsService', () => {
         creditBalance: new Prisma.Decimal(0),
         rescheduleAdvanceBalance: new Prisma.Decimal(0),
       });
-      // Guard delegates (Phase 3): no paid payment, no open batch item, 0 balance
+      // Guard delegates (Phase 3): no paid payment, no open batch item, 0 balance.
+      // findMany = C-2 detect (Task 3) — default [] = C-1 (no POSTED settlement)
+      prisma.interCoSettlementItem = {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      };
       prisma.payment.findFirst = jest.fn().mockResolvedValue(null);
-      prisma.interCoSettlementItem = { findFirst: jest.fn().mockResolvedValue(null) };
       prisma.installmentSchedule = { updateMany: jest.fn().mockResolvedValue({ count: 0 }) };
       prisma.$queryRaw = jest.fn().mockResolvedValue([{ balance: '0' }]);
 
@@ -1409,10 +1413,18 @@ describe('ContractsService', () => {
 
       expect(result.status).toBe('APPROVED');
       expect(result.reversalCount).toBe(2);
+      // Task 3: template now receives the C-2 detection result — no POSTED
+      // settlement item → isC2 false + settledTotal 0
       expect(mockCancellationTemplate.execute).toHaveBeenCalledWith(
-        { contractId: 'contract-1', cancellationId: 'cancel-1' },
+        expect.objectContaining({
+          contractId: 'contract-1',
+          cancellationId: 'cancel-1',
+          isC2: false,
+        }),
         expect.anything(),
       );
+      const [templateParams] = mockCancellationTemplate.execute.mock.calls[0];
+      expect(templateParams.settledTotal.toFixed(2)).toBe('0.00');
       expect(prisma.contractCancellation.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'cancel-1' },
@@ -1517,6 +1529,47 @@ describe('ContractsService', () => {
         svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
       ).rejects.toThrow('IC-20260820-0001');
       expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('C-2 (Task 3): POSTED settlement items → isC2 + settledTotal to template, audit CONTRACT_CANCELED_AFTER_PAYOUT', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      prisma.interCoSettlementItem.findMany = jest.fn().mockResolvedValue([
+        {
+          financedGl: new Prisma.Decimal('10000.00'),
+          commissionGl: new Prisma.Decimal('1000.00'),
+          batch: { batchNumber: 'IC-20260820-0009' },
+        },
+      ]);
+
+      await svcWithTemplate.approveCancellation('cancel-1', 'approver-1');
+
+      // Detect query scopes to SETTLEMENT items in POSTED batches only
+      expect(prisma.interCoSettlementItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            itemType: 'SETTLEMENT',
+            batch: { status: 'POSTED', deletedAt: null },
+          }),
+        }),
+      );
+      expect(mockCancellationTemplate.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ contractId: 'contract-1', isC2: true }),
+        expect.anything(),
+      );
+      const [templateParams] = mockCancellationTemplate.execute.mock.calls[0];
+      expect(templateParams.settledTotal.toFixed(2)).toBe('11000.00');
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CONTRACT_CANCELED_AFTER_PAYOUT',
+            newValue: expect.objectContaining({
+              recallAmount: '11000.00',
+              batchNumbers: ['IC-20260820-0009'],
+            }),
+          }),
+        }),
+      );
     });
   });
 

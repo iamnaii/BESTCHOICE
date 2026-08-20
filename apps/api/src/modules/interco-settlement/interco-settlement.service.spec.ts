@@ -89,6 +89,10 @@ describe('IntercoSettlementService', () => {
       // to "no lines" (0 balance everywhere); approveBatch specs below
       // override per accountCode to match their item snapshot (no drift).
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+      // Phase 2 drift guard also reads the typed 11-2107/S21-3001 balances via
+      // interco-typed-balance's raw SQL — 0 everywhere matches the fixtures'
+      // swapCreditAmount/recallAmount = 0 (no drift).
+      $queryRaw: jest.fn().mockResolvedValue([{ balance: 0 }]),
       interCompanyTransaction: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       // approveBatch step 1b reads `interco_maker_checker_enabled` here.
       // Default = row absent → maker-checker OFF (owner 2026-08-03: approval is
@@ -560,14 +564,21 @@ describe('IntercoSettlementService', () => {
         totalCommission: new Prisma.Decimal(0),
         totalAmount: new Prisma.Decimal(100),
         shopPostedAmount: new Prisma.Decimal(100),
+        // Phase 2 snapshot totals (no deduction on this fixture)
+        totalDeduction: new Prisma.Decimal(0),
+        netTransferAmount: new Prisma.Decimal(100),
+        shopNetAmount: new Prisma.Decimal(100),
         items: [
           {
             contractId: 'c-1',
+            itemType: 'SETTLEMENT',
             financedGl: new Prisma.Decimal(100),
             commissionGl: new Prisma.Decimal(0),
             shopFinancedGl: new Prisma.Decimal(100),
             shopCommissionGl: new Prisma.Decimal(0),
             legacyNoShop: false,
+            swapCreditAmount: new Prisma.Decimal(0),
+            recallAmount: new Prisma.Decimal(0),
             contract: { contractNumber: 'CT-0001' },
           },
         ],
@@ -576,7 +587,6 @@ describe('IntercoSettlementService', () => {
 
     /** Wires tx.journalLine.findMany so glContractBalance reproduces the fixture's snapshot exactly (drift guard passes). */
     function noDriftJournalLineMock() {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tx.journalLine.findMany.mockImplementation(({ where }: { where: { accountCode: string } }) => {
         if (where.accountCode === '21-1101') {
           return Promise.resolve([{ debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(100) }]);

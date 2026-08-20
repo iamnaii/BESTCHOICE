@@ -17,6 +17,12 @@ import { PairedJournalService } from '../journal/paired-journal.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { JournalAutoService, JeLineInput } from '../journal/journal-auto.service';
 import { glContractBalance } from '../journal/gl-contract-balance';
+import {
+  recallFinanceBalance,
+  recallShopBalance,
+  swapCreditFinanceBalance,
+  swapCreditShopBalance,
+} from './interco-typed-balance';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { StorageService } from '../storage/storage.service';
 
@@ -722,9 +728,12 @@ export class IntercoSettlementService {
    *   5. post JE(s)
    *   6. best-effort mark matching `InterCompanyTransaction` rows RECONCILED
    *   7. batch → POSTED + audit `INTERCO_BATCH_APPROVED`
+   *   8. AFTER the tx commits: fire-and-forget `alarmNettingResiduals` (spec
+   *      §4.7 — alarm-only, never awaited/thrown on the money path; root
+   *      prisma, doctrine R-1)
    */
   async approveBatch(id: string, userId: string, postedAtOverride?: Date) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. load + status
       const batch = (await tx.interCoSettlementBatch.findUnique({
         where: { id },
@@ -762,11 +771,30 @@ export class IntercoSettlementService {
 
       const contractIds = batch.items.map((i) => i.contractId);
 
-      // 2. re-check no item's contract got grabbed by another PENDING_APPROVAL/POSTED batch
-      if (contractIds.length > 0) {
+      // 2. re-check no item's contract got grabbed by another PENDING_APPROVAL/POSTED batch.
+      //    Type-aware per item (Phase 2 — same split as submitBatch): a RECALL
+      //    row's contract BY DEFINITION carries a permanent SETTLEMENT item in
+      //    some old POSTED batch (Flow C-2 = ยกเลิกหลังตัดจ่าย) — counting that
+      //    as a clash would make every batch with a recall row structurally
+      //    unapprovable. RECALL rows clash only with other RECALL items;
+      //    SETTLEMENT rows keep the any-type clash (double-pay guard).
+      const clashSettlementIds = batch.items
+        .filter((i) => i.itemType !== 'RECALL')
+        .map((i) => i.contractId);
+      const clashRecallIds = batch.items
+        .filter((i) => i.itemType === 'RECALL')
+        .map((i) => i.contractId);
+      const clashConditions: Prisma.InterCoSettlementItemWhereInput[] = [];
+      if (clashSettlementIds.length > 0) {
+        clashConditions.push({ contractId: { in: clashSettlementIds } });
+      }
+      if (clashRecallIds.length > 0) {
+        clashConditions.push({ contractId: { in: clashRecallIds }, itemType: 'RECALL' });
+      }
+      if (clashConditions.length > 0) {
         const clashes = await tx.interCoSettlementItem.findMany({
           where: {
-            contractId: { in: contractIds },
+            OR: clashConditions,
             batchId: { not: id },
             deletedAt: null,
             batch: { status: { in: [...OPEN_BATCH_STATUSES] }, deletedAt: null },
@@ -781,20 +809,55 @@ export class IntercoSettlementService {
         }
       }
 
-      // 3. drift guard — live GL vs snapshot, ±0.01, per item
+      // 3. drift guard — live GL vs snapshot, ±0.01, per item (Phase 2: typed
+      //    11-2107/S21-3001 balances included — spec §5.1)
       const driftedContractNumbers: string[] = [];
       for (const item of batch.items) {
-        const [financedGl, commissionGl, shopFinancedGl, shopCommissionGl] = await Promise.all([
-          glContractBalance(tx, item.contractId, '21-1101', 'cr'),
-          glContractBalance(tx, item.contractId, '21-1102', 'cr'),
-          glContractBalance(tx, item.contractId, 'S11-3001', 'dr'),
-          glContractBalance(tx, item.contractId, 'S11-3002', 'dr'),
-        ]);
-        const drifted =
+        if (item.itemType === 'RECALL') {
+          // RECALL rows have no payable/receivable snapshot of their own —
+          // both books' typed PAYOUT_RECALL balances must still equal the
+          // snapshotted recallAmount.
+          const [recallFin, recallShop] = await Promise.all([
+            recallFinanceBalance(tx, item.contractId),
+            recallShopBalance(tx, item.contractId),
+          ]);
+          if (
+            recallFin.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE) ||
+            recallShop.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE)
+          ) {
+            driftedContractNumbers.push(item.contract.contractNumber);
+          }
+          continue;
+        }
+        const [financedGl, commissionGl, shopFinancedGl, shopCommissionGl, scFin, scShop] =
+          await Promise.all([
+            glContractBalance(tx, item.contractId, '21-1101', 'cr'),
+            glContractBalance(tx, item.contractId, '21-1102', 'cr'),
+            glContractBalance(tx, item.contractId, 'S11-3001', 'dr'),
+            glContractBalance(tx, item.contractId, 'S11-3002', 'dr'),
+            swapCreditFinanceBalance(tx, item.contractId),
+            swapCreditShopBalance(tx, item.contractId),
+          ]);
+        let drifted =
           financedGl.minus(item.financedGl).abs().gt(DRIFT_TOLERANCE) ||
           commissionGl.minus(item.commissionGl).abs().gt(DRIFT_TOLERANCE) ||
           shopFinancedGl.minus(item.shopFinancedGl).abs().gt(DRIFT_TOLERANCE) ||
           shopCommissionGl.minus(item.shopCommissionGl).abs().gt(DRIFT_TOLERANCE);
+        if (item.swapCreditAmount.gt(0)) {
+          // (ก) แถวที่หักเครดิต: live ทั้งสองสมุดต้องเท่ากับ snapshot ±0.01
+          if (
+            scFin.minus(item.swapCreditAmount).abs().gt(DRIFT_TOLERANCE) ||
+            scShop.minus(item.swapCreditAmount).abs().gt(DRIFT_TOLERANCE)
+          ) {
+            drifted = true;
+          }
+        } else if (scFin.gt(DRIFT_TOLERANCE)) {
+          // (ข) snapshot ไม่มีหัก (0) แต่ live มีเครดิตบน 11-2107 [SWAP_CREDIT]
+          // — เครดิตโผล่หลัง snapshot (legacy swap ที่เพิ่งได้ S21-3001 หรือ JE
+          // แทรก) = drift; จ่าย gross ทั้งที่มีเครดิตค้างจะทำให้เครดิตนั้นไม่มี
+          // เจ้าหนี้เหลือให้หักตลอดกาล
+          drifted = true;
+        }
         if (drifted) driftedContractNumbers.push(item.contract.contractNumber);
       }
       if (driftedContractNumbers.length > 0) {
@@ -811,12 +874,19 @@ export class IntercoSettlementService {
       await this.guardPeriodOpen(tx, postedAt, financeCompanyId, 'FINANCE');
       await this.guardPeriodOpen(tx, postedAt, shopCompanyId, 'SHOP');
 
-      // 5. post JE(s)
+      // 5. post JE(s) — metadata carries per-item type + deduction amounts, but
+      //    deliberately NO top-level contractId/shopReceivableType (architecture
+      //    ruling: batch JEs must never enter the typed per-contract lens —
+      //    settledness lives on InterCoSettlementItem, not the GL metadata).
       const itemsMetadata = batch.items.map((i) => ({
         contractId: i.contractId,
+        type: i.itemType,
         financed: i.financedGl.toFixed(2),
         commission: i.commissionGl.toFixed(2),
+        swapCredit: i.swapCreditAmount.toFixed(2),
+        recall: i.recallAmount.toFixed(2),
       }));
+      const netTransferMetadata = (batch.netTransferAmount ?? batch.totalAmount).toFixed(2);
       const financeDescription = `จ่ายให้หน้าร้าน รอบ ${batch.batchNumber} (โอนจริง ${this.formatBkkDate(batch.transferDate)})`;
       const shopLines = this.buildShopLines(batch);
       const financeLines = this.buildFinanceLines(batch, financeDescription);
@@ -838,6 +908,7 @@ export class IntercoSettlementService {
                   settlementBatchId: batch.id,
                   batchNumber: batch.batchNumber,
                   transferDate: batch.transferDate.toISOString(),
+                  netTransferAmount: netTransferMetadata,
                   items: itemsMetadata,
                 },
                 postedAt,
@@ -852,6 +923,7 @@ export class IntercoSettlementService {
                   settlementBatchId: batch.id,
                   batchNumber: batch.batchNumber,
                   transferDate: batch.transferDate.toISOString(),
+                  netTransferAmount: netTransferMetadata,
                   items: itemsMetadata,
                 },
                 postedAt,
@@ -873,6 +945,7 @@ export class IntercoSettlementService {
                 settlementBatchId: batch.id,
                 batchNumber: batch.batchNumber,
                 transferDate: batch.transferDate.toISOString(),
+                netTransferAmount: netTransferMetadata,
                 items: itemsMetadata,
               },
               postedAt,
@@ -933,6 +1006,72 @@ export class IntercoSettlementService {
 
       return posted;
     });
+
+    // spec §4.7 — alarm อย่างเดียว ห้าม throw/await บนเส้นทางเงิน (doctrine
+    // R-1: root prisma เท่านั้น — method ไม่รับ tx client โดยลายเซ็น)
+    void this.alarmNettingResiduals(id).catch((e) => Sentry.captureException(e));
+    return result;
+  }
+
+  /**
+   * ตรวจ residual หลัง approve (spec §4.7) — ภายใต้สถาปัตยกรรม "เลนส์ gross +
+   * item gate": batch JE ไม่ stamp contractId (กันรั่วเข้า payable lens) จึงไม่
+   * ลด typed balance ต่อสัญญา — residual ที่แท้จริง = typed gross − Σ deduction
+   * ของสัญญานั้นใน batch สถานะ POSTED ทั้งหมด. ค่าปกติ = 0 พอดี (เครดิตถูกหัก
+   * ครบรอบเดียว); > 0 = เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
+   * Alarm-only — ห้าม throw (fire-and-forget จาก `approveBatch` หลัง tx commit).
+   */
+  private async alarmNettingResiduals(batchId: string): Promise<void> {
+    const batch = await this.prisma.interCoSettlementBatch.findUnique({
+      where: { id: batchId },
+      include: { items: { where: { deletedAt: null } } },
+    });
+    if (!batch || batch.status !== 'POSTED') return;
+    for (const item of batch.items) {
+      const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
+      if (deduction.lte(0)) continue;
+      const [fin, shop] =
+        item.itemType === 'RECALL'
+          ? await Promise.all([
+              recallFinanceBalance(this.prisma, item.contractId),
+              recallShopBalance(this.prisma, item.contractId),
+            ])
+          : await Promise.all([
+              swapCreditFinanceBalance(this.prisma, item.contractId),
+              swapCreditShopBalance(this.prisma, item.contractId),
+            ]);
+      // Σ deduction ของสัญญานี้ในทุก batch POSTED (รวมรอบนี้เอง)
+      const postedItems = await this.prisma.interCoSettlementItem.findMany({
+        where: {
+          contractId: item.contractId,
+          deletedAt: null,
+          batch: { status: 'POSTED', deletedAt: null },
+        },
+        select: { swapCreditAmount: true, recallAmount: true },
+      });
+      const postedDeduction = postedItems.reduce(
+        (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
+        new Prisma.Decimal(0),
+      );
+      const finResidual = fin.minus(postedDeduction);
+      const shopResidual = shop.minus(postedDeduction);
+      if (finResidual.abs().gt('0.01') || shopResidual.abs().gt('0.01')) {
+        Sentry.captureMessage('Interco netting: residual balance after approve', {
+          level: 'warning',
+          tags: { subsystem: 'interco-netting' },
+          extra: {
+            batchId,
+            contractId: item.contractId,
+            itemType: item.itemType,
+            typedFinanceGross: fin.toFixed(2),
+            typedShopGross: shop.toFixed(2),
+            postedDeduction: postedDeduction.toFixed(2),
+            financeResidual: finResidual.toFixed(2),
+            shopResidual: shopResidual.toFixed(2),
+          },
+        });
+      }
+    }
   }
 
   /**
@@ -1044,11 +1183,19 @@ export class IntercoSettlementService {
     });
   }
 
-  /** Dr 21-1101 per-contract (always) + Dr 21-1102 per-contract (skip zero) + Cr bank total. */
+  /**
+   * Dr 21-1101 per SETTLEMENT contract (always) + Dr 21-1102 per contract
+   * (skip zero) + Cr 11-2107 per deduction (swap credit / recall — Phase 2
+   * หักกลบ, workbook จุดที่ 3) + Cr bank = netTransferAmount (skip when 0 —
+   * รอบที่หักจนเงินโอนจริงเป็นศูนย์ต้องไม่มีบรรทัดธนาคาร). RECALL rows carry
+   * no payable snapshot of their own — they contribute ONLY the Cr 11-2107
+   * leg (never a zero-amount Dr 21-1101 line).
+   */
   private buildFinanceLines(batch: BatchWithItems, description: string): JeLineInput[] {
     const zero = new Prisma.Decimal(0);
     const lines: JeLineInput[] = [];
     for (const item of batch.items) {
+      if (item.itemType === 'RECALL') continue;
       lines.push({
         accountCode: '21-1101',
         dr: item.financedGl,
@@ -1066,34 +1213,75 @@ export class IntercoSettlementService {
         });
       }
     }
-    lines.push({
-      accountCode: batch.financeBankCode,
-      dr: zero,
-      cr: batch.totalAmount,
-      description,
-    });
+    for (const item of batch.items) {
+      const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
+      if (deduction.gt(0)) {
+        lines.push({
+          accountCode: '11-2107',
+          dr: zero,
+          cr: deduction,
+          description:
+            item.itemType === 'RECALL'
+              ? `หักเรียกคืนจากยกเลิก ${item.contract.contractNumber}`
+              : `หักเครดิตเปลี่ยนเครื่อง ${item.contract.contractNumber}`,
+        });
+      }
+    }
+    // Pre-Phase 2 batches have no netTransferAmount snapshot — fall back to
+    // the gross total (identical: their totalDeduction is definitionally 0).
+    const netCash = batch.netTransferAmount ?? batch.totalAmount;
+    if (netCash.gt(0)) {
+      lines.push({
+        accountCode: batch.financeBankCode,
+        dr: zero,
+        cr: netCash,
+        description,
+      });
+    }
     return lines;
   }
 
   /**
-   * Dr shopBankCode (shopPostedAmount) + Cr S11-3001 per-contract (always) +
-   * Cr S11-3002 per-contract (skip zero) — ONLY over items with
-   * `legacyNoShop=false`. Empty array = no SHOP half at all (caller skips
-   * `postPaired` and posts FINANCE alone via `JournalAutoService`).
+   * Dr shopBankCode = shopNetAmount (skip when 0) + Dr S21-3001 per deduction
+   * row (ล้างเจ้าหนี้ FINANCE ฝั่ง SHOP — Phase 2 หักกลบ, ทั้ง SWAP_CREDIT ของ
+   * settlement items และ RECALL rows) + Cr S11-3001 per-contract (always) +
+   * Cr S11-3002 per-contract (skip zero) — settlement legs ONLY over
+   * SETTLEMENT items with `legacyNoShop=false`. Empty array = no SHOP half at
+   * all (caller skips `postPaired` and posts FINANCE alone via
+   * `JournalAutoService`).
    */
   private buildShopLines(batch: BatchWithItems): JeLineInput[] {
     const zero = new Prisma.Decimal(0);
-    const shopItems = batch.items.filter((i) => !i.legacyNoShop);
-    if (shopItems.length === 0) return [];
+    const shopItems = batch.items.filter((i) => i.itemType === 'SETTLEMENT' && !i.legacyNoShop);
+    const deductionItems = batch.items.filter((i) =>
+      (i.itemType === 'RECALL' ? i.recallAmount : i.swapCreditAmount).gt(0),
+    );
+    if (shopItems.length === 0 && deductionItems.length === 0) return [];
 
-    const lines: JeLineInput[] = [
-      {
+    const lines: JeLineInput[] = [];
+    // Pre-Phase 2 batches have no shopNetAmount snapshot — fall back to the
+    // gross posted amount (identical: their totalDeduction is definitionally 0).
+    const shopNet = batch.shopNetAmount ?? batch.shopPostedAmount;
+    if (shopNet.gt(0)) {
+      lines.push({
         accountCode: batch.shopBankCode,
-        dr: batch.shopPostedAmount,
+        dr: shopNet,
         cr: zero,
         description: `รับโอนจาก FINANCE รอบ ${batch.batchNumber}`,
-      },
-    ];
+      });
+    }
+    for (const item of deductionItems) {
+      const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
+      lines.push({
+        accountCode: 'S21-3001',
+        dr: deduction,
+        cr: zero,
+        description:
+          item.itemType === 'RECALL'
+            ? `ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก ${item.contract.contractNumber}`
+            : `ล้างเจ้าหนี้ FINANCE-ค่าเครื่องรับคืน ${item.contract.contractNumber}`,
+      });
+    }
     for (const item of shopItems) {
       lines.push({
         accountCode: 'S11-3001',

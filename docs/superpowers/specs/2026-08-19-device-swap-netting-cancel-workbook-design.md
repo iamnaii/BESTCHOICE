@@ -79,6 +79,13 @@
 - ต่อสัญญาเพิ่ม: `swapCreditGl` = Σ(Dr−Cr) 11-2107 ประเภท SWAP_CREDIT ของสัญญา (raw query แบบเดียวกับ 4 ยอดเดิม) + ฝั่ง SHOP `shopBuybackPayableGl` = Σ(Cr−Dr) S21-3001
 - เพิ่ม**คิวรายการหักอิสระ**: สัญญายกเลิก (C-2) ที่มี `PAYOUT_RECALL` ค้าง — แสดงเป็นแถวหักในหน้ารอบจ่าย
 - `SHOP_COLLECT` **ไม่เข้าเลนส์นี้** (ล้างผ่าน settleShopCollect ตามเดิม)
+- **[implemented]** ฟิลด์จริง: `PendingContract.swapCreditGl/shopBuybackPayableGl/swapCreditEligible`
+  (eligible = สองสมุด > 0 **และ** เท่ากัน ±0.01 — legacy swap §11.4 จึง false โดยโครงสร้าง);
+  คิวหัก = `getPendingRecalls()` → `RecallCandidate { recallGl, shopRecallGl }` (settled gate
+  กรอง `itemType: 'RECALL'` เท่านั้น — สัญญา C-2 มี SETTLEMENT item POSTED ถาวรโดยนิยาม);
+  `GET /interco-settlement/pending` คืน `{ pending, recalls, reconcile }` และ reconcile เพิ่ม
+  `glSwapCreditTotal/glRecallTotal/glShopBuybackTotal`. SQL twins ของ type filter อยู่ที่
+  `interco-typed-balance.ts` (helpers 4 ตัว) — แก้ที่ไหนต้องแก้ทั้งคู่
 
 ### 4.2 Model (additive migration)
 - `InterCoSettlementItem` เพิ่ม: `itemType` enum (`SETTLEMENT` | `RECALL`, default `SETTLEMENT`), `swapCreditAmount Decimal @default(0)`, `recallAmount Decimal @default(0)`
@@ -86,6 +93,13 @@
 - แถว `RECALL`: สัญญาที่ยกเลิกแบบ C-2 (เฉพาะ recallAmount, ยอดเจ้าหนี้ = 0)
 - `@@unique([batchId, contractId])` เดิมคงไว้ (สัญญาหนึ่งเข้า batch ได้แถวเดียว)
 - **นิยามยอดระดับ batch** (scrutiny finding 4): `totalAmount` คงความหมายเดิม = Σ เจ้าหนี้ (21-1101+21-1102) และเพิ่ม `netTransferAmount Decimal @default(0)` = เงินโอนจริง (`totalAmount − Σ swapCredit − Σ recall`) — ใบ FINANCE/SHOP ขาเงินสดใช้ `netTransferAmount`; `shopPostedAmount` เดิมยังคือยอดฝั่ง SHOP ที่ถูกล้าง (ไม่ใช่เงินสดอีกต่อไป — comment ในโค้ดให้ชัด)
+- **[implemented — เบี่ยงจากบรรทัดบน]** `netTransferAmount` เป็น **nullable** (`Decimal?` ไม่ใช่
+  `@default(0)`) — `null` = batch ก่อน Phase 2 = จ่ายเต็ม (ทุกจุดอ่าน fallback `?? totalAmount`);
+  และเพิ่มอีก 2 คอลัมน์: `totalDeduction Decimal @default(0)` (Σ swapCredit + recall) +
+  `shopNetAmount Decimal?` (= `shopPostedAmount − totalDeduction`, เงินรับจริงฝั่ง SHOP —
+  ขา Dr ธนาคารของใบ SHOP ใช้ตัวนี้; nullable ความหมายเดียวกัน)
+- **[implemented]** RECALL rows เลือกผ่าน `CreateBatchDto.recallContractIds` (แยกจาก `contractIds`;
+  สัญญาเดียวกันอยู่ทั้งสอง list → reject)
 - `updateBatch` (ลบ-สร้าง item ใหม่ DRAFT-only) ต้อง re-snapshot คอลัมน์ใหม่ทุกตัวด้วย
 
 ### 4.3 JE ตอน approve (ตัวเลขตาม workbook Case 8: เจ้าหนี้ 10,000+1,000, รับซื้อ 8,000)
@@ -102,6 +116,11 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 ```
 - แถว RECALL: FINANCE `Cr 11-2107 [PAYOUT_RECALL]` / SHOP `Dr S21-3001` — หักจากยอดโอนของรอบ
 - metadata `items[]` เพิ่ม `swapCredit`/`recall` ต่อรายการ; idempotency key เดิม (`interco:<batchId>:FINANCE|SHOP`)
+- **[implemented]** metadata จริง: `items[]` มี `type` (`SETTLEMENT|RECALL`) ต่อรายการด้วย +
+  top-level `netTransferAmount` (2dp string); **จงใจไม่ stamp** `contractId`/`shopReceivableType`
+  top-level บน batch JE (สถาปัตยกรรม "เลนส์ gross + item gate" — กัน batch JE รั่วเข้า lens ต่อสัญญา
+  ทุกตัว, ดู §4.7); บรรทัดธนาคารทั้งสองใบ **skip เมื่อยอดสุทธิ = 0**; แถว RECALL ไม่สร้างบรรทัด
+  `Dr 21-1101` ศูนย์ (มีเฉพาะขาหัก)
 
 ### 4.4 Guards
 - **ราคารับซื้อ ≥ เจ้าหนี้สัญญานั้น** → `BadRequestException` ตอน createBatch/submit (นโยบายธุรกิจบอกว่าไม่เกิด แต่ workbook สั่ง "คงสูตร IF เป็น guard ห้ามลบ")
@@ -109,6 +128,17 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 - **Drift guard** ใน approve ขยายคลุม 11-2107 (แยกประเภท) + S21-3001 (tolerance ±0.01 เท่าเดิม)
 - **ห้ามลงจุดที่ 3 ทันทีตอนเปลี่ยนเครื่อง**: เป็นจริงโดยโครงสร้างอยู่แล้ว (batch เป็น manual round) — ยืนยันใน test
 - legacyNoShop: สัญญา swap ตั้งแต่ F2 มี SHOP leg เสมอ → แถวหักบังคับ `legacyNoShop = false`; สัญญา legacy (ก่อน 2026-06-23) ไม่มีทางมี SWAP_CREDIT อยู่แล้ว
+- **[implemented — รายละเอียด guard จริง]** ทุก guard ยอดอยู่ที่ `buildSnapshot` (จับทั้ง createBatch
+  และ updateBatch; submit ไม่ re-snapshot — มันทำ clash re-check); เพิ่มจาก spec: (1) guard สองสมุด
+  ไม่ตรง — swap (`swapCreditGl > 0 && shopBuybackPayableGl > 0 && !eligible`) และ recall
+  (`|recallGl − shopRecallGl| > 0.01`) → reject ห้ามเดาหักข้างเดียว (legacy swap ที่ SHOP = 0
+  **ผ่านได้แบบไม่หัก** — ไม่เข้าเงื่อนไข); (2) W1 ขยาย — GL ติดลบใน 6 บัญชีเลนส์ → Sentry + reject;
+  (3) clash check ใน submit + approve เป็น **type-aware**: RECALL clash เฉพาะ RECALL item
+  (any-type จะทำให้รอบที่มี recall submit ไม่ได้ตลอดกาล — สัญญา C-2 มี SETTLEMENT item POSTED
+  ถาวรโดยนิยาม); (4) drift guard = **สองชั้น**: (ก) snapshot > 0 → live สองสมุดต้องตรง snapshot
+  ±0.01; (ข) snapshot = 0 แต่ live nettable **ทั้งสองสมุด** (scFin > 0.01 && scShop > 0.01) →
+  drift — เครดิตสมุดเดียว (legacy §11.4) จงใจไม่ใช่ drift มิฉะนั้นรอบที่มี legacy swap อนุมัติไม่ได้
+  ตลอดกาล (deadlock); แถว RECALL เทียบ typed PAYOUT_RECALL สองสมุดกับ `recallAmount`
 
 ### 4.5 Reverse batch
 - mirror ทั้งสองใบตามเดิม → 11-2107/S21-3001 กลับมาค้าง + สัญญา/รายการหักกลับเข้าคิวอัตโนมัติ (ตกจากนิยาม settled gate เดิม ไม่ต้องแก้เลนส์)
@@ -119,6 +149,15 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 
 ### 4.7 หลัง approve — validation
 - เช็ค per-contract: SWAP_CREDIT/PAYOUT_RECALL ที่อยู่ในรอบต้องเหลือ 0 → ไม่เป็น 0 ยิง `Sentry.captureMessage` (warning, `subsystem: 'interco-netting'`) — **alarm อย่างเดียว ไม่ throw** (doctrine R-1: ห้ามให้ alarm พังเส้นทางเงิน)
+- **[implemented — นิยาม residual เปลี่ยนจากบรรทัดบน]** batch JE ไม่ stamp `contractId` (กันรั่วเข้า
+  payable lens) ⇒ typed balance ต่อสัญญา**ไม่ลดหลัง approve โดยตั้งใจ** — "ต้องเหลือ 0" ตรงๆ ใช้
+  ไม่ได้ใต้สถาปัตยกรรม "เลนส์ gross + item gate" (settledness อยู่ที่ `InterCoSettlementItem`).
+  Residual จริง = `typed gross (สองสมุด แยกกัน) − Σ deduction ของสัญญานั้นใน batch POSTED ทั้งหมด`;
+  `|residual| > 0.01` → alarm (`alarmNettingResiduals` — fire-and-forget **หลัง tx commit**, root
+  prisma เท่านั้น). ค่าปกติ = 0; > 0 = เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
+  Carry → Phase 3/4: producer C-2 ต้องตั้ง PAYOUT_RECALL เฉพาะเมื่อ batch จ่ายเดิม POSTED; alarm
+  ควรแยก postedDeduction ตาม itemType เมื่อสัญญา swap ถูกยกเลิกภายหลัง (กัน false warning);
+  เครดิต A.3-only ที่งอกหลัง approve → จุด hook คือ reconcile cron (Phase 4)
 
 ## 5. Phase 3 — Flow C: ยกเลิกสัญญา C-1 / C-2
 

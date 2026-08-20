@@ -807,6 +807,16 @@ advisory-lock pattern as `RepairTicketDocNumberService` (max-via-`findFirst`-des
 `count()`, because a soft-deleted batch still occupies its number via the unique
 constraint).
 
+**Phase 2 additive columns (หักกลบ — workbook 2026-08-19):**
+`InterCoSettlementItem.itemType` (enum `InterCoItemType { SETTLEMENT RECALL }`, default
+`SETTLEMENT`) + `swapCreditAmount` / `recallAmount` (both `Decimal @default(0)`);
+`InterCoSettlementBatch.totalDeduction` (`@default(0)`) + `netTransferAmount` /
+`shopNetAmount` — the latter two are **nullable**: `null` = batch approved before Phase 2
+= จ่ายเต็ม (every reader falls back `?? totalAmount` / `?? shopPostedAmount`, identical
+because those batches' deduction is definitionally 0). `@@unique([batchId, contractId])`
+เดิมคงไว้ — สัญญาเดียวกันอยู่ทั้งรายการจ่ายและรายการเรียกคืนในรอบเดียวกันไม่ได้
+(`buildSnapshot` reject พร้อมข้อความไทยก่อนชน DB constraint).
+
 ### Lifecycle
 
 ```
@@ -825,10 +835,14 @@ DRAFT --submit--> PENDING_APPROVAL --approve--> POSTED --reverse--> REVERSED
   diverge from the ledger, e.g. `storeCommission = null` while the 1A JE already booked
   a 10% fallback commission on 21-1102). Any requested contractId not currently in the
   pending queue (never activated / soft-deleted / already settled in another open batch)
-  throws `BadRequestException` naming the contract number.
+  throws `BadRequestException` naming the contract number. Phase 2: `CreateBatchDto` also
+  accepts optional `recallContractIds` — snapshotted from
+  `IntercoPendingService.getPendingRecalls()` into `RECALL` item rows (ดูหัวข้อ
+  "หักกลบเครดิตเปลี่ยนเครื่อง + เรียกคืน" ด้านล่าง).
 - `submitBatch`: DRAFT → PENDING_APPROVAL, maker-only; re-checks none of the batch's
   contracts got grabbed by another `PENDING_APPROVAL`/`POSTED` batch since the snapshot
-  (closes the race window between two makers).
+  (closes the race window between two makers). Phase 2: clash check เป็น **type-aware**
+  (RECALL rows clash เฉพาะกับ RECALL items — ดูหัวข้อหักกลบ).
 - `withdrawBatch`: PENDING_APPROVAL → DRAFT, maker-only.
 - `cancelBatch`: DRAFT/PENDING_APPROVAL → CANCELLED — role-gated at the controller
   (`ACCOUNTANT`, `FINANCE_MANAGER`), not maker-restricted in the service itself.
@@ -865,10 +879,25 @@ A.3 ล้าง 21-1101/21-1102 ทันทีตอน finalize (D5) เล�
 ตั้ง S11-3001/S11-3002 ไว้ให้ SHOP half ของรอบจ่ายล้าง). พิสูจน์ที่
 `exchange-priced-flow.integration.spec.ts` Case 2A (assertion ตรงข้ามกับของเดิมทุกประการ).
 
+**Phase 2 typed lenses (หักกลบ)** — `PendingContract` gains 3 fields:
+`swapCreditGl` (Σ Dr−Cr of 11-2107 filtered to type `SWAP_CREDIT` — explicit
+`metadata.shopReceivableType` stamp OR legacy `metadata.flow =
+'exchange-buyback-receivable-11-2107'`), `shopBuybackPayableGl` (Σ Cr−Dr of S21-3001,
+keyed by `metadata.newContractId` — the A.4 stamp), and `swapCreditEligible` (ดู
+eligibility rule ในหัวข้อหักกลบด้านล่าง). `getPendingRecalls()` is a separate queue of
+`RecallCandidate { recallGl, shopRecallGl }` rows — contracts with 11-2107
+`PAYOUT_RECALL` > 0 (Flow C-2; producer lands in Phase 3, so this queue is empty on prod
+until then). `GET /interco-settlement/pending` now returns `{ pending, recalls,
+reconcile }`. `SHOP_COLLECT` deliberately never enters either lens (ล้างผ่าน
+`settleShopCollect` ตามเดิม — เงินลูกค้า ไม่ใช่เงินระหว่างกิจการ).
+
 **Settled gate**: a contract leaves the pending queue the instant it has an
 `InterCoSettlementItem` row inside a batch with status `PENDING_APPROVAL` or `POSTED`.
 `REVERSED`/`CANCELLED` items do **not** count — reversing a batch puts every one of its
-contracts straight back into the queue without touching the GL lens at all.
+contracts straight back into the queue without touching the GL lens at all. **The recall
+queue's gate filters `itemType: 'RECALL'` only** — a C-2 contract BY DEFINITION carries a
+permanent SETTLEMENT item in some old POSTED batch; an any-type gate would make the
+recall queue structurally empty forever.
 
 `activatedAt` shown on the pending list = `MIN(je.posted_at)` of the JEs counted in the
 lens — `Contract` has no reliable "date activated" field (`createdAt` is draft-creation
@@ -879,7 +908,10 @@ time, `updatedAt` moves on any unrelated edit).
 balance, no metadata filter) vs `glShopTotal` (S11-3001+S11-3002, no metadata filter). A
 nonzero `drift` (`pendingTotal − glFinanceTotal`) means a stray JE exists without
 `metadata.contractId` — almost certainly the old `inter-company-settlement` flow; the
-pre-flight check (below) confirms this is 0 in prod before go-live.
+pre-flight check (below) confirms this is 0 in prod before go-live. Phase 2 adds 3 typed
+whole-account totals: `glSwapCreditTotal` (11-2107 typed SWAP_CREDIT), `glRecallTotal`
+(11-2107 typed PAYOUT_RECALL), `glShopBuybackTotal` (S21-3001, no type filter — สองประเภท
+รวมกันต้องหนุนยอดบัญชีนี้).
 
 ### Approve — atomic paired JE (`approveBatch`, one `$transaction`)
 
@@ -907,7 +939,9 @@ Exact order as implemented in `interco-settlement.service.ts`:
    the acting `userId` — even when maker and approver are the same human.
 2. **Double-batch re-check** — re-runs the "another open batch already grabbed this
    contract" query inside the tx (same query `submitBatch` ran, closes the remaining
-   race window right up to the moment of posting).
+   race window right up to the moment of posting). Phase 2: **type-aware** — SETTLEMENT
+   rows keep the any-type clash (double-pay guard), RECALL rows clash only with other
+   RECALL items (ดูหัวข้อหักกลบ — เหตุผลเชิงโครงสร้าง).
 3. **Drift guard** — per item, reads the LIVE GL via `glContractBalance(tx, contractId,
    accountCode, side)` on all 4 lens accounts (`21-1101` cr, `21-1102` cr, `S11-3001` dr,
    `S11-3002` dr) and compares against the item's snapshot, tolerance `±0.01`. This
@@ -915,40 +949,64 @@ Exact order as implemented in `interco-settlement.service.ts`:
    service's own "settled" exclusion would hide this very batch's own
    `PENDING_APPROVAL` items from itself. Any drift → rejects the WHOLE batch, naming
    every drifted contract number, telling the maker to cancel and recreate (no partial
-   approve).
+   approve). Phase 2 extends this with typed 11-2107/S21-3001 checks — a **two-branch**
+   design (ดูหัวข้อหักกลบ): RECALL rows check both books' typed PAYOUT_RECALL balances
+   against `recallAmount` instead of the 4 lens accounts.
 4. **Period guard, both companies independently** —
    `validatePeriodOpen(tx, postedAt, financeCompanyId)` AND
    `validatePeriodOpen(tx, postedAt, shopCompanyId)` (SHOP has its own
    `AccountingPeriod` rows). `postedAt = postedAtOverride ?? batch.transferDate` (D4 —
    `ApproveBatchDto.postedAt` is the backdate override).
 5. **Post JE(s)**:
-   - If ≥1 item has `legacyNoShop = false` → `PairedJournalService.postPaired({ shop,
-     finance, batchRef: batch.id }, tx)` — both halves in one transaction,
-     balance-checked before either side posts.
-   - If **every** item is `legacyNoShop` → the SHOP half is empty, so approve skips
-     `postPaired` entirely and posts FINANCE alone via
+   - If `buildShopLines` returns ≥1 line (i.e. ≥1 SETTLEMENT item with
+     `legacyNoShop = false` **or** ≥1 deduction row — swap credit / recall) →
+     `PairedJournalService.postPaired({ shop, finance, batchRef: batch.id }, tx)` —
+     both halves in one transaction, balance-checked before either side posts.
+   - If the SHOP half is empty (every item `legacyNoShop` and no deduction rows) →
+     approve skips `postPaired` entirely and posts FINANCE alone via
      `JournalAutoService.createAndPost` — `shopJournalEntryId` stays `null`.
+   - A concurrent double-approve losing the DB idempotency-index race gets a Thai
+     `ConflictException` (409), not a raw 500 — the whole tx rolls back.
 6. **Mark `InterCompanyTransaction`** rows whose `contractId` is in this batch →
    `RECONCILED` (best-effort `updateMany`, no-op if none exist — does not block posting).
 7. **Batch → `POSTED`** + `financeJournalEntryId`/`shopJournalEntryId`/`approverId`/
    `postedAt` set + `AuditLog { action: 'INTERCO_BATCH_APPROVED', entity:
    'interco_settlement_batch' }`.
+8. **AFTER the tx commits** — fire-and-forget `alarmNettingResiduals(batchId)` (spec
+   §4.7): alarm-only, never awaited/thrown on the money path, root prisma only
+   (doctrine R-1 — same rule as `alarmResidualParkOnCompletion`). ดูหัวข้อหักกลบ.
 
-### JE structure (both halves — `buildFinanceLines`/`buildShopLines`)
+### JE structure (both halves — `buildFinanceLines`/`buildShopLines`, รูปหักกลบ Phase 2)
 
 FINANCE half (always posted):
 ```
-Dr 21-1101  financedGl      (ONE line PER contract, description "ล้างเจ้าหนี้ยอดจัด {contractNumber}")
+Dr 21-1101  financedGl      (ONE line PER SETTLEMENT contract, description "ล้างเจ้าหนี้ยอดจัด {contractNumber}")
 Dr 21-1102  commissionGl    (one line per contract WITH commissionGl > 0 — zero-commission contracts skip this line)
-   Cr <financeBankCode>  totalAmount     (default '11-1201')
+   Cr 11-2107  swapCreditAmount|recallAmount   (one line PER deduction row — description ระบุประเภท:
+                                                "หักเครดิตเปลี่ยนเครื่อง {no}" / "หักเรียกคืนจากยกเลิก {no}")
+   Cr <financeBankCode>  netTransferAmount     (default '11-1201'; line SKIPPED when 0 —
+                                                รอบที่หักจนเงินโอนจริงเป็นศูนย์ต้องไม่มีบรรทัดธนาคาร)
 ```
 
-SHOP half (only over items with `legacyNoShop = false`; the WHOLE half is omitted if none qualify):
+SHOP half (settlement legs over items with `legacyNoShop = false`; deduction legs over
+every deduction row; the WHOLE half is omitted only when BOTH sets are empty):
 ```
-Dr <shopBankCode>  shopPostedAmount   (default 'S11-1201' = ShopAccountResolver.SHOP_RECEIVING_BANK)
-   Cr S11-3001  shopFinancedGl      (one line per non-legacy contract)
+Dr <shopBankCode>  shopNetAmount            (default 'S11-1201' = ShopAccountResolver.SHOP_RECEIVING_BANK; skipped when 0)
+Dr S21-3001  swapCreditAmount|recallAmount  (one line per deduction row — "ล้างเจ้าหนี้ FINANCE-ค่าเครื่องรับคืน {no}" /
+                                             "ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก {no}")
+   Cr S11-3001  shopFinancedGl      (one line per non-legacy SETTLEMENT contract)
    Cr S11-3002  shopCommissionGl    (skips zero, same as the FINANCE half)
 ```
+
+RECALL rows contribute ONLY the `Cr 11-2107` / `Dr S21-3001` legs — never a zero-amount
+`Dr 21-1101` line. Pre-Phase 2 batches (`netTransferAmount`/`shopNetAmount` = `null`)
+fall back to `totalAmount`/`shopPostedAmount` — identical lines to the old shape.
+
+**ตัวอย่าง (golden ใน `interco-netting.integration.spec.ts` — 2 สัญญาปกติ/สวอป เจ้าหนี้
+11,000 ต่อสัญญา (10,000 + 1,000), เครดิตสวอป 8,000 + เรียกคืน 11,000):**
+`totalAmount = 22,000` / `totalDeduction = 19,000` / `netTransferAmount = shopNetAmount
+= 3,000` → FINANCE: `Cr 11-2107 = 19,000` + `Cr 11-1201 = 3,000`; SHOP: `Dr S21-3001 =
+19,000` + `Dr S11-1201 = 3,000`. หลัง approve บัญชี 11-2107 ทั้งบัญชีลดลง 19,000 จริง.
 
 **Metadata on BOTH JEs** (confirmed straight from `interco-settlement.service.ts` —
 these are the ACTUAL keys, do not assume the plan's shorthand `batchId` key name):
@@ -961,13 +1019,108 @@ these are the ACTUAL keys, do not assume the plan's shorthand `batchId` key name
                                       // own batchRef param, distinct from this metadata key
   batchNumber: batch.batchNumber,     // e.g. "IC-20260801-0001"
   transferDate: batch.transferDate.toISOString(),
-  items: [{ contractId, financed: '<2dp string>', commission: '<2dp string>' }, ...],
+  netTransferAmount: '<2dp string>',  // = totalAmount for pre-Phase 2 fallback
+  items: [{ contractId, type: 'SETTLEMENT'|'RECALL', financed: '<2dp string>',
+            commission: '<2dp string>', swapCredit: '<2dp string>',
+            recall: '<2dp string>' }, ...],
 }
 ```
+
+**Deliberately NO top-level `contractId`/`shopReceivableType`** on batch JEs — the
+architecture ruling (ดูหัวข้อหักกลบ) keeps them out of every per-contract lens.
 
 Idempotency: the usual partial unique index `journal_entries_idempotency_idx` covers
 `flow + idempotencyKey` — re-approving an already-POSTED batch is blocked at the status
 guard (step 1) long before idempotency would even matter.
+
+### หักกลบเครดิตเปลี่ยนเครื่อง + เรียกคืน (Phase 2 — workbook 2026-08-19)
+
+Spec: `docs/superpowers/specs/2026-08-19-device-swap-netting-cancel-workbook-design.md`
+§4. เปลี่ยนรอบจ่ายจาก "เงิน 2 ขา" (FINANCE จ่ายเต็ม → SHOP โอนราคารับซื้อกลับผ่าน
+shop-collect) เป็น **หักกลบเหลือโอนสุทธิขาเดียว**: เครดิตราคารับซื้อ (11-2107
+`SWAP_CREDIT` ↔ S21-3001) และยอดเรียกคืนจากยกเลิก C-2 (11-2107 `PAYOUT_RECALL` ↔
+S21-3001) ถูกหักออกจากเงินโอนของรอบ. Typed-balance helpers 4 ตัวอยู่ที่
+`interco-typed-balance.ts` (`swapCreditFinanceBalance` / `swapCreditShopBalance` — ฝั่ง
+SHOP key ด้วย `metadata.newContractId` ตาม A.4 stamp / `recallFinanceBalance` /
+`recallShopBalance` — key ด้วย `metadata.contractId`) — **SQL twins** ของเลนส์ใน
+`IntercoPendingService` และต้องสอดคล้อง `classifyShopReceivable`: แก้ที่ไหนต้องแก้ทั้งคู่.
+
+**สถาปัตยกรรม "เลนส์ typed = GROSS + settled ผ่าน item gate"** (คำตัดสินระหว่าง implement
+— บันทึกใน plan Task 5): batch JE **ไม่ stamp** top-level `contractId` /
+`shopReceivableType` (กันรั่วเข้า payable lens — คุณสมบัติเดิมตั้งแต่ C2) ⇒ ขา
+`Cr 11-2107`/`Dr S21-3001` ของ batch **ไม่ลด typed balance ต่อสัญญา** — typed lens อ่านได้
+เฉพาะขาตั้งหนี้ (gross) โดยตั้งใจ. "หักแล้วหรือยัง" อยู่ที่ `InterCoSettlementItem`
+(settled gate) ไม่ใช่ GL metadata. ผลตามมา: residual ที่แท้จริงของสัญญา = typed gross −
+Σ deduction ของสัญญานั้นใน batch สถานะ `POSTED` ทั้งหมด (ไม่ใช่ "typed balance ต้องเป็น 0
+หลัง approve" — ค่านั้นไม่มีวันเป็น 0 ใต้สถาปัตยกรรมนี้).
+
+**Eligibility rule** (`swapCreditEligible` ใน pending lens): หักได้เมื่อ **สองสมุดมียอด
+ทั้งคู่และเท่ากัน ±0.01** (`swapCreditGl > 0 && shopBuybackPayableGl > 0 && |diff| ≤
+0.01`). **Legacy swap** (finalize ก่อน Phase 1 — มี 11-2107 แต่ไม่มี S21-3001, spec §11.4)
+จึง `eligible = false` โดยโครงสร้าง → เข้ารอบจ่ายได้ตามปกติแต่**ไม่มีบรรทัดหัก** (จ่ายเต็ม)
+— เครดิต 11-2107 ของมันค้างไว้ล้างผ่าน shop-collect ตามเดิม. ห้ามหักฝั่งเดียว: ฝั่ง SHOP
+ไม่มี S21-3001 ให้ Dr → ใบ SHOP ไม่ balance.
+
+**Guards ตอน snapshot (`buildSnapshot` — createBatch/updateBatch, จับตอน submit/approve
+อีกทีผ่าน re-check/drift):**
+- สองสมุดมียอดทั้งคู่แต่ไม่เท่ากัน (`swapCreditGl > 0 && shopBuybackPayableGl > 0 &&
+  !eligible`) → reject "ยอดเครดิตเปลี่ยนเครื่องสองสมุดไม่ตรงกัน" — GL ผิดปกติ
+  ห้ามเดาหักข้างใดข้างหนึ่ง (legacy swap ที่ SHOP = 0 ไม่เข้าเงื่อนไขนี้).
+- **Workbook IF guard ("คงสูตร IF ห้ามลบ")**: `swapCreditAmount ≥ payable ของสัญญานั้น`
+  → reject (ราคารับซื้อต้องน้อยกว่าเจ้าหนี้ — นโยบายธุรกิจบอกว่าไม่เกิด).
+- **ยอดสุทธิ ≥ 0 ทั้งสองสมุด**: `netTransferAmount < 0 || shopNetAmount < 0` → reject
+  พร้อมแนะให้เลือกสัญญาเพิ่มหรือเรียกเงินสดคืนผ่านช่องทางรับโอนจากหน้าร้านแทน.
+- ยอดเรียกคืนสองสมุดไม่ตรงกัน (`|recallGl − shopRecallGl| > 0.01`) → reject.
+- W1 ขยาย: GL component ติดลบตัวใดตัวหนึ่งใน 6 บัญชีเลนส์ (เดิม 4 + 11-2107/S21-3001)
+  → Sentry warning (`subsystem: 'interco-settlement'`) + reject.
+
+**RECALL rows** (Flow C-2): เลือกผ่าน `CreateBatchDto.recallContractIds` → validate กับ
+`getPendingRecalls()`; แถวมี GL snapshot ทั้ง 4 = 0, `legacyNoShop = false`, มีเฉพาะ
+`recallAmount`. **Producer ของ JE `PAYOUT_RECALL` คือ Phase 3** — จนกว่าจะถึงตอนนั้นคิว
+recall ว่างบน prod (integration test ใช้ synthetic JE ตาม spec §5.4). ล้างได้ 2 ทาง:
+หักกลบรอบจ่าย (ทางนี้) หรือรับเงินสดคืนผ่าน `ShopCollectSettlementTemplate` (Phase 3).
+
+**Type-aware clash checks** (submit + approve step 2): แถว SETTLEMENT clash กับ item
+ทุกประเภทใน batch เปิดอื่น (กันจ่ายซ้ำ — พฤติกรรมเดิม); แถว RECALL clash **เฉพาะกับ RECALL
+item** — จำเป็นเชิงโครงสร้าง: สัญญา C-2 โดยนิยามมี SETTLEMENT item ถาวรใน batch POSTED
+เก่า (รอบที่เคยจ่ายมัน) — ถ้า clash any-type รอบที่มีแถว recall จะ submit/approve ไม่ได้
+ตลอดกาล. Mirror นิยามเดียวกับ settled gate ของ `getPendingRecalls`.
+
+**Drift guard สองชั้น (approve step 3, แถว SETTLEMENT):**
+- **(ก)** `swapCreditAmount > 0` → live typed balance **ทั้งสองสมุด** ต้องเท่ากับ snapshot
+  ±0.01 — ไม่ตรง = drift.
+- **(ข)** snapshot = 0 แต่ live มีเครดิต **nettable ทั้งสองสมุด** (`scFin > 0.01 && scShop
+  > 0.01`) → drift — เครดิตที่หักได้จริงงอกหลัง snapshot; จ่าย gross ทั้งที่มีเครดิต
+  nettable จะทำให้เครดิตนั้นไม่มีเจ้าหนี้เหลือให้หักตลอดกาล. **เงื่อนไข "สองสมุด" สำคัญ**:
+  เครดิตสมุดเดียว (`scFin > 0, scShop = 0` — legacy swap §11.4) จงใจ**ไม่ใช่ drift**
+  เพราะมันหักไม่ได้โดยโครงสร้างอยู่แล้ว — ถ้านับเป็น drift รอบที่มี legacy swap จะอนุมัติ
+  ไม่ได้ตลอดกาล (cancel → สร้างใหม่ก็ snapshot 0 เท่าเดิม = deadlock).
+- แถว RECALL: เทียบ live typed `PAYOUT_RECALL` ทั้งสองสมุดกับ `recallAmount` ±0.01.
+
+**Residual alarm (spec §4.7)** — `alarmNettingResiduals(batchId)`: fire-and-forget
+**หลัง tx commit** จาก `approveBatch` (root prisma เท่านั้น, doctrine R-1 — ห้าม
+throw/await บนเส้นทางเงิน). ต่อ item ที่มี deduction > 0: `residual = typed gross (ทั้งสอง
+สมุด แยกกัน) − Σ deduction ของสัญญานั้นใน batch POSTED ทั้งหมด`; `|residual| > 0.01` →
+`Sentry.captureMessage` warning `subsystem: 'interco-netting'` (extra: typedFinanceGross/
+typedShopGross/postedDeduction/financeResidual/shopResidual). ค่าปกติ = 0 พอดี; > 0 =
+เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
+
+**Reverse**: mirror สองใบตามเดิม (ไม่ต้องแก้อะไรเพิ่ม) — ขา mirror `Dr 11-2107 /
+Cr S21-3001` ทำให้เครดิตกลับมาค้าง และสัญญา/แถว recall กลับเข้าคิวเองโดยนิยาม settled
+gate (item หลุดจาก `POSTED`).
+
+**CI**: `deploy-gcp.yml` vitest step ครอบอยู่แล้วโดยไม่ต้องแก้ — `INTERCO_FILES=$(ls
+src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
+`interco-netting.integration.spec.ts` อัตโนมัติ และ step รันด้วย `--no-file-parallelism`
+อยู่แล้ว (integration specs แชร์ DB เดียวกัน).
+
+**รอ Phase 3/4 (carry — บันทึกไว้ อย่าลืม):**
+- (a) C-2 producer ต้องตั้ง `PAYOUT_RECALL` **เฉพาะเมื่อ batch ที่จ่ายสัญญานั้น POSTED
+  จริง** (ตรวจ `InterCoSettlementItem` ใน batch POSTED — spec §5.4).
+- (b) residual alarm ปัจจุบันรวม `postedDeduction` ทุกประเภทเป็นก้อนเดียว — เมื่อสัญญา
+  swap ถูกยกเลิกภายหลัง (C-2) ควรแยกตาม `itemType` กัน false warning.
+- (c) เครดิต A.3-only ที่งอก**หลัง** approve (drift guard จับได้เฉพาะก่อน approve) —
+  จุด hook คือ reconcile cron รายเดือน (Phase 4 — `interco-reconcile.cron`).
 
 ### `legacyNoShop` policy (F1/F2)
 
@@ -986,7 +1139,11 @@ is skipped entirely (`shopJournalEntryId` stays `null`).
 
 `batch.shopPostedAmount` only sums the non-legacy items, so it can be strictly less than
 `batch.totalAmount` — the gap is real money FINANCE wired to SHOP with no SHOP-side
-receivable on record to clear it against. **The system deliberately does not guess a JE
+receivable on record to clear it against. **Phase 2 note: `shopPostedAmount` keeps its
+original meaning — ยอดลูกหนี้ฝั่ง SHOP ที่ถูกล้าง (Σ Cr S11-3001 + S11-3002) — it is NO
+LONGER the cash figure once a batch has deductions; เงินรับจริงฝั่ง SHOP =
+`shopNetAmount` (= shopPostedAmount − totalDeduction).** Likewise `totalAmount` is still
+Σ เจ้าหนี้ (gross), never the wire amount — that's `netTransferAmount`. **The system deliberately does not guess a JE
 for that gap.** It is an open opening-balance question pending CPA ruling (spec §11):
 should the SHOP books get a retroactive opening balance for the May–22 Jun 2026 window
 (pre-SHOP-books era)? Do not invent a JE to close this gap without that ruling. (The
@@ -1576,7 +1733,11 @@ Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` 
   (2) **A.4 = ซื้อคืนที่ราคารับซื้อ** — `Dr S11-2002 [buyback] / Cr S21-3001` + caller set
   `product.costPrice = buyback` และ snapshot `ContractExchangeRequest.previousCostPrice`
   (cancel restore กลับ). S21-3001 คือขาคู่ฝั่ง SHOP ของ 11-2107 SWAP_CREDIT — รอหักกลบใน
-  รอบจ่าย INTER-CO (Phase 2). Prod ต้องรัน `seed:coa` หลัง deploy (บัญชีใหม่ S21-3001).
+  รอบจ่าย INTER-CO (Phase 2). A.4 (`ShopExchangeReturnTemplate`) stamp
+  `metadata.newContractId` (Phase 2 Task 1) — key ของเลนส์หักกลบ (`swapCreditShopBalance`
+  query S21-3001 ด้วย path นี้ตรงๆ ไม่ join ผ่าน request row) และ cancel mirror
+  (`exchange-cancel-reversal.template.ts`) copy key นี้ต่อ ให้เลนส์เห็นขากลับรายการด้วย.
+  Prod ต้องรัน `seed:coa` หลัง deploy (บัญชีใหม่ S21-3001).
   (3) **11-2107/S21-3001 reference types** — `metadata.shopReceivableType`
   (`SWAP_CREDIT` | `PAYOUT_RECALL` | `SHOP_COLLECT`) stamp ทุก JE ใหม่; แถวเก่า classify
   ตอนอ่านผ่าน `classifyShopReceivable()` (`apps/api/src/modules/journal/shop-receivable-type.util.ts`).

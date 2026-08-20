@@ -851,11 +851,18 @@ export class IntercoSettlementService {
           ) {
             drifted = true;
           }
-        } else if (scFin.gt(DRIFT_TOLERANCE)) {
-          // (ข) snapshot ไม่มีหัก (0) แต่ live มีเครดิตบน 11-2107 [SWAP_CREDIT]
-          // — เครดิตโผล่หลัง snapshot (legacy swap ที่เพิ่งได้ S21-3001 หรือ JE
-          // แทรก) = drift; จ่าย gross ทั้งที่มีเครดิตค้างจะทำให้เครดิตนั้นไม่มี
-          // เจ้าหนี้เหลือให้หักตลอดกาล
+        } else if (scFin.gt(DRIFT_TOLERANCE) && scShop.gt(DRIFT_TOLERANCE)) {
+          // (ข) snapshot ไม่มีหัก (0) แต่ live มีเครดิต NETTABLE — สองสมุดครบ
+          // (ทั้ง 11-2107 [SWAP_CREDIT] และ S21-3001) — เครดิตที่หักได้จริงโผล่
+          // หลัง snapshot (legacy swap ที่เพิ่งได้ S21-3001 หรือ JE แทรก) =
+          // drift; จ่าย gross ทั้งที่มีเครดิต nettable ค้างจะทำให้เครดิตนั้น
+          // ไม่มีเจ้าหนี้เหลือให้หักตลอดกาล.
+          // เครดิตสมุดเดียว (scFin > 0 แต่ scShop = 0 — swap ที่ finalize ก่อน
+          // Phase 1, spec §11.4) จงใจ **ไม่ใช่ drift**: มันหักไม่ได้โดยโครงสร้าง
+          // อยู่แล้ว (ฝั่ง SHOP ไม่มี S21-3001 ให้ Dr → ใบ SHOP ไม่ balance) —
+          // ต้องจ่ายเต็มในรอบปกติ แล้วปล่อย 11-2107 ล้างผ่าน shop-collect
+          // ตามเดิม. ถ้านับเป็น drift รอบที่มี legacy swap จะอนุมัติไม่ได้
+          // ตลอดกาล (cancel → สร้างใหม่ก็ snapshot 0 เท่าเดิม — deadlock).
           drifted = true;
         }
         if (drifted) driftedContractNumbers.push(item.contract.contractNumber);

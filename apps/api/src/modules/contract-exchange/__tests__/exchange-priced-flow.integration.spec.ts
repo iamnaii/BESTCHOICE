@@ -673,6 +673,17 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(pendingRow!.shopFinancedGl.toFixed(2)).toBe('15000.00');
       expect(pendingRow!.shopCommissionGl.toFixed(2)).toBe('1500.00');
       expect(pendingRow!.legacyNoShop).toBe(false);
+      // Netting lens tie-in (Phase 2 Task 6): through the REAL templates —
+      // A.3 (ExchangeBuybackReceivable11_2107Template stamps
+      // metadata.contractId = newContractId + shopReceivableType SWAP_CREDIT)
+      // and A.4 (ShopExchangeReturnTemplate stamps metadata.newContractId +
+      // SWAP_CREDIT) — the SAME pending row must carry the buyback on BOTH
+      // books and be eligible for netting in the settlement round. This is
+      // the end-to-end proof that the producer stamps and the lens SQL
+      // (interco-pending.service.ts) join up — not just synthetic seeds.
+      expect(pendingRow!.swapCreditGl.toFixed(2)).toBe('8000.00');
+      expect(pendingRow!.shopBuybackPayableGl.toFixed(2)).toBe('8000.00');
+      expect(pendingRow!.swapCreditEligible).toBe(true);
 
       // --- Old-contract GL: every receivable/deferral account nets EXACTLY 0
       for (const [code, side] of [

@@ -1148,7 +1148,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
     );
 
     it(
-      'drift guard (ข): snapshot ไม่มีหัก (swapCreditAmount = 0) แต่เครดิตงอกหลัง snapshot → reject',
+      'drift guard (ข): snapshot ไม่มีหัก (swapCreditAmount = 0) แต่เครดิต nettable (สองสมุดครบ) งอกหลัง snapshot → reject',
       async () => {
         const normalD = await seedBaseContract(24);
         await seedNormalContract(normalD);
@@ -1160,8 +1160,12 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         createdBatchIds.push(batch.id);
         await settlementService.submitBatch(batch.id, adminId);
 
-        // เครดิตโผล่หลัง snapshot บนสัญญาที่รอบนี้ไม่ได้หักอะไรไว้เลย
+        // เครดิต NETTABLE โผล่หลัง snapshot บนสัญญาที่รอบนี้ไม่ได้หักอะไรไว้เลย
+        // — ต้องครบทั้งสองสมุด (A.3 + A.4) ถึงนับเป็น drift; เครดิตสมุดเดียว
+        // (A.3 อย่างเดียว = legacy swap, spec §11.4) จ่ายเต็มผ่านได้ — พิสูจน์ใน
+        // เทส 'batch ไม่มี deduction (ปกติ + legacy swap §11.4)' ด้านล่าง
         await seedA3(normalD, '500');
+        await seedA4(normalD, '500');
 
         await expect(settlementService.approveBatch(batch.id, adminId)).rejects.toThrow(
           /เปลี่ยนไปจากตอนสร้างรอบ/,
@@ -1266,6 +1270,72 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('0.00');
         expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('11000.00');
         expect(shopJe.lines).toHaveLength(3);
+      },
+      120_000,
+    );
+
+    it(
+      'batch ไม่มี deduction (ปกติ + legacy swap §11.4) → JE รูปเดิมทุกบรรทัด, netTransferAmount = totalAmount, ไม่มีบรรทัด 11-2107/S21-3001',
+      async () => {
+        const normalP = await seedBaseContract(30);
+        await seedNormalContract(normalP);
+        // Legacy swap (finalize ก่อน Phase 1): มี 11-2107 [SWAP_CREDIT] 8,000
+        // แต่ไม่มี S21-3001 → ไม่ eligible → เข้ารอบแบบจ่ายเต็ม และ approve
+        // ต้องผ่าน ไม่ใช่ drift (spec §11.4: เครดิตของมันล้างผ่าน shop-collect
+        // ตามเดิม เงิน 2 ขา — การหักกลบใช้กับสัญญาหลัง Phase 1 เท่านั้น เพราะ
+        // ฝั่ง SHOP ไม่มี S21-3001 ให้ Dr). ถ้า guard ปฏิเสธ รอบที่มี legacy
+        // swap จะอนุมัติไม่ได้ตลอดกาล (cancel → สร้างใหม่ก็ snapshot 0 เท่าเดิม).
+        const legacyP = await seedBaseContract(31);
+        await seedLegacySwapContract(legacyP);
+
+        const batch = await settlementService.createBatch(
+          { contractIds: [normalP, legacyP], transferDate: '2026-08-20' },
+          adminId,
+        );
+        createdBatchIds.push(batch.id);
+        expect(batch.totalAmount.toFixed(2)).toBe('22000.00');
+        expect(batch.totalDeduction.toFixed(2)).toBe('0.00');
+        // กันถอยหลัง: ไม่มีรายการหัก → ยอดโอนสุทธิ = ยอดรวมเป๊ะ
+        expect(batch.netTransferAmount!.toFixed(2)).toBe('22000.00');
+
+        await settlementService.submitBatch(batch.id, adminId);
+        const posted = await settlementService.approveBatch(batch.id, adminId);
+        expect(posted.status).toBe('POSTED');
+
+        // FINANCE JE รูปเดิมทุกบรรทัด: Dr 21-1101 ×2 + Dr 21-1102 ×2 + Cr bank
+        // เต็มจำนวน — ไม่มีบรรทัด 11-2107 แม้ legacy swap มีเครดิตค้าง 8,000
+        const je = await prisma.journalEntry.findUniqueOrThrow({
+          where: { id: posted.financeJournalEntryId! },
+          include: { lines: true },
+        });
+        expect(sumSide(je.lines, '21-1101', 'dr').toFixed(2)).toBe('20000.00');
+        expect(sumSide(je.lines, '21-1102', 'dr').toFixed(2)).toBe('2000.00');
+        expect(sumSide(je.lines, '11-1201', 'cr').toFixed(2)).toBe('22000.00');
+        expect(je.lines.some((l) => l.accountCode === '11-2107')).toBe(false);
+        expect(je.lines).toHaveLength(5);
+
+        // SHOP JE (เฉพาะ non-legacy): Dr bank เต็ม / Cr S11-3001+S11-3002 —
+        // ไม่มีบรรทัด S21-3001
+        const shopJe = await prisma.journalEntry.findUniqueOrThrow({
+          where: { id: posted.shopJournalEntryId! },
+          include: { lines: true },
+        });
+        expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('11000.00');
+        expect(sumSide(shopJe.lines, 'S11-3001', 'cr').toFixed(2)).toBe('10000.00');
+        expect(sumSide(shopJe.lines, 'S11-3002', 'cr').toFixed(2)).toBe('1000.00');
+        expect(shopJe.lines.some((l) => l.accountCode === 'S21-3001')).toBe(false);
+        expect(shopJe.lines).toHaveLength(3);
+
+        // metadata ทั้งสองใบ: netTransferAmount = totalAmount (กันถอยหลัง)
+        for (const jeId of [posted.financeJournalEntryId!, posted.shopJournalEntryId!]) {
+          const meta = (await prisma.journalEntry.findUniqueOrThrow({ where: { id: jeId } }))
+            .metadata as { netTransferAmount?: string };
+          expect(meta.netTransferAmount).toBe(posted.totalAmount.toFixed(2));
+        }
+
+        // เครดิต 8,000 ของ legacy swap ยังค้างบน 11-2107 [SWAP_CREDIT] เต็มจำนวน
+        // — รอล้างผ่าน shop-collect (ไม่ถูกแตะโดยรอบนี้)
+        expect((await swapCreditFinanceBalance(prisma, legacyP)).toFixed(2)).toBe('8000.00');
       },
       120_000,
     );

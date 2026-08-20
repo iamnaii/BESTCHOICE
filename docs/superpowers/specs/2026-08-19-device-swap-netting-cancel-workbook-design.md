@@ -82,7 +82,9 @@
 - **[implemented]** ฟิลด์จริง: `PendingContract.swapCreditGl/shopBuybackPayableGl/swapCreditEligible`
   (eligible = สองสมุด > 0 **และ** เท่ากัน ±0.01 — legacy swap §11.4 จึง false โดยโครงสร้าง);
   คิวหัก = `getPendingRecalls()` → `RecallCandidate { recallGl, shopRecallGl }` (settled gate
-  กรอง `itemType: 'RECALL'` เท่านั้น — สัญญา C-2 มี SETTLEMENT item POSTED ถาวรโดยนิยาม);
+  กรอง `itemType: 'RECALL'` เท่านั้น — สัญญา C-2 มี SETTLEMENT item POSTED ถาวรโดยนิยาม;
+  **Phase 3 Task 4**: ยอดทั้งคู่เป็น **net** = typed PAYOUT_RECALL gross − Σ deduction ทุก
+  itemType ใน batch POSTED ของสัญญานั้น — เคสยกเลิก swap ที่เคยถูกหักเครดิต gross จะเสนอเกินจริง);
   `GET /interco-settlement/pending` คืน `{ pending, recalls, reconcile }` และ reconcile เพิ่ม
   `glSwapCreditTotal/glRecallTotal/glShopBuybackTotal`. SQL twins ของ type filter อยู่ที่
   `interco-typed-balance.ts` (helpers 4 ตัว) — แก้ที่ไหนต้องแก้ทั้งคู่
@@ -155,26 +157,57 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
   Residual จริง = `typed gross (สองสมุด แยกกัน) − Σ deduction ของสัญญานั้นใน batch POSTED ทั้งหมด`;
   `|residual| > 0.01` → alarm (`alarmNettingResiduals` — fire-and-forget **หลัง tx commit**, root
   prisma เท่านั้น). ค่าปกติ = 0; > 0 = เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
-  Carry → Phase 3/4: producer C-2 ต้องตั้ง PAYOUT_RECALL เฉพาะเมื่อ batch จ่ายเดิม POSTED; alarm
-  ควรแยก postedDeduction ตาม itemType เมื่อสัญญา swap ถูกยกเลิกภายหลัง (กัน false warning);
-  เครดิต A.3-only ที่งอกหลัง approve → จุด hook คือ reconcile cron (Phase 4)
+  **[implemented — Phase 3 Task 4 ปรับสูตรเพิ่ม]** typed gross ของ alarm = SWAP_CREDIT +
+  PAYOUT_RECALL **รวมสองประเภทต่อสมุด** (invariant "= 0" ถือจริงระดับสัญญา ไม่ใช่ระดับประเภท —
+  สัญญา swap ที่ถูกยกเลิก (C-2) มีประวัติข้ามประเภท: เทียบทีละประเภทจะ false-alarm) และ
+  recall lens/drift แถว RECALL เปลี่ยนเป็น **net of Σ POSTED deductions ทุก itemType**.
+  Carry → Phase 3/4 (สถานะหลัง Phase 3 2026-08-20): ~~producer C-2 ต้องตั้ง PAYOUT_RECALL
+  เฉพาะเมื่อ batch จ่ายเดิม POSTED~~ **ปิดแล้ว** — detection ของ C-2 คือ POSTED SETTLEMENT item
+  โดยนิยาม (Task 3/5); ~~alarm ควรแยก postedDeduction ตาม itemType~~ **ปิดแล้วด้วยทิศตรงข้าม**
+  — รวม typed สองประเภทแทน (Task 4, บรรทัดบน); คงเหลือ → Phase 4: เครดิต A.3-only ที่งอกหลัง
+  approve + TOCTOU settle-cash vs approveBatch + คิว recall กรอง net ฝั่ง FINANCE เท่านั้น —
+  จุด hook คือ reconcile cron (`interco-reconcile.cron`)
 
 ## 5. Phase 3 — Flow C: ยกเลิกสัญญา C-1 / C-2
+
+> **สถานะ: implemented 2026-08-20** (branch `feat/device-swap-cancel-phase3`, Tasks 1-8) —
+> จุดที่ของจริงต่างจาก spec ถูก annotate `[implemented]` ในแต่ละหัวข้อย่อยด้านล่าง.
+> สรุปฉบับ canonical อยู่ที่ `.claude/rules/accounting.md` → "ยกเลิกสัญญา (Flow C — Phase 3)".
 
 ### 5.1 Guard รวม (ทั้ง generic cancellation + exchange-cancel)
 - ยกเลิกได้เฉพาะ: สัญญา ACTIVE + **ไม่มีใบเสร็จค้าง** (เคยจ่ายต้อง void ก่อน — ใบลดหนี้ ม.86/10 ออกอัตโนมัติจาก receipt-void อยู่แล้ว)
 - สัญญาที่เดินเกินนั้น → แนะนำเส้นทางยึดเครื่อง (JP5) ในข้อความ error
 - สัญญาอยู่ใน batch DRAFT/PENDING_APPROVAL → แจ้งให้ถอนออกจากรอบก่อน (drift guard ของ batch กันชนอยู่แล้ว แต่ให้ error ที่หน้ายกเลิกชัดกว่า)
+- **[implemented — Tasks 2+5, guards เพิ่มจาก review]** ทุกข้อบนทำครบ (ACTIVE re-read **ใน tx**
+  กัน race JP5/termination; PAID = `status PAID` OR `amountPaid > 0`) + เพิ่ม: (1) **park 3 ถัง**
+  (`advanceBalance + creditBalance + rescheduleAdvanceBalance > 0` → reject — เงินสดจริงที่หลุด
+  guard PAID เช่น 6a fee), (2) **SHOP_COLLECT ค้าง** (`shopCollectTypedBalance ≠ 0` → reject —
+  sweep exclude flow เงินสดนี้จึงต้อง settle ก่อน), (3) `refundAmount > 0` → reject (deprecated —
+  เงินดาวน์คืนเป็นขั้น SHOP หลังยกเลิก), (4) **positive cash tripwire** — สแกน sweep candidates
+  บรรทัดแตะบัญชีเงินสด/ธนาคาร (prefix 11-11/11-12/S11-11/S11-12) → reject ระบุ entryNumber
 
 ### 5.2 ยกเครื่อง `ContractCancellationTemplate` → sweep-reverse (generalize ของที่มี)
 - จาก mirror-1A-ใบเดียว → sweep-reverse โดย **generalize `ExchangeCancelReversalTemplate`** (scrutiny finding 5) — ตัวนี้มี semantics ครบอยู่แล้ว: reverse ตาม id list + sweep `metadata.contractId` + ข้าม JE ที่ `reversed:true` และใบ reversal เอง — ห้ามเขียน sweep ตัวที่สอง
 - **Sweep ต้อง exclude `metadata.flow = 'provision'`** (scrutiny finding 2): JE ค่าเผื่อรายวัน stamp `contractId` เหมือนกัน — ถ้า sweep จับด้วย แล้วโพสต์ขา release แยกอีก 11-2102 จะติดลบเท่ายอดที่ล้าง. ใช้แบบ JP4 C1 แทน: **release ใบเดียวจาก live GL** — `glContractBalance(tx, contractId, '11-2102', 'cr')` → `Dr 11-2102 / Cr 51-1103` (`EclStageReverseTemplate` self-skip เมื่อ ≤ 0) + REVERSE แถว `BadDebtProvision`
   - หมายเหตุ: exchange-cancel เดิมไม่ชนปัญหานี้เพราะ sweep ใช้ newContractId ส่วน provision อยู่บนสัญญาเก่า — แต่พอ generalize ให้สัญญาทั่วไป contractId เดียวกัน ต้อง exclude
 - deprecate ช่อง `refundAmount` (Dr 52-1106 / Cr ธนาคาร เดิม): ภายใต้ guard ใหม่ ลูกค้ายังไม่เคยจ่าย FINANCE → เงินคืนฝั่ง FINANCE = 0 เสมอ (คง field ที่ API เพื่อ back-compat, ต้องเป็น 0)
+- **[implemented — Tasks 1+2, ต่างจาก spec 2 จุด]** (1) exclude list กว้างกว่า spec:
+  `C1_EXCLUDED_FLOWS = ['provision', 'stage-reverse', 'shop-collect-settlement',
+  'shop-down-payment', 'reschedule-collect']` — สามตัวหลังเป็น JE **เงินสดจริง** (พบใน review
+  Fix Round 1: mirror = fabricate การเคลื่อนไหวเงินที่ไม่เคยเกิด; down JE ไม่ mirror ⇒ S21-2001
+  ค้าง Cr downAmount เป็นเจ้าหนี้รอคืนลูกค้าโดยตั้งใจ — จ่ายจริงเป็นขั้น SHOP แยก) + tripwire
+  บวก (§5.1). (2) idempotency ของ template เปลี่ยนเป็น **DB-backed**: probe
+  `ContractCancellation.reversalJournalEntryId` (metadata probe เดิมมองไม่เห็น sweep output —
+  per-JE key ไม่มี cancellationId); engine options ใหม่ = excludeFlows/redirects/redirectStamp/
+  flowLabel/descriptionPrefix + คืน `redirectedTotals`, caller exchange เดิม byte-identical
 
 ### 5.3 C-1 (ยังไม่ตัดจ่าย) — ตรง Case 3A กรณี 1
 - sweep-reverse ตรงๆ ทุกใบ (รวม SHOP legs: revenue/COGS/ลูกหนี้ S11-3001/S11-3002/ดาวน์) — ตัวเลขเท่าเดิมสลับข้าง ไม่มีเงินสดเคลื่อนไหว
 - สัญญาออกจากคิวรอจ่ายเองโดยนิยามเลนส์ (`HAVING SUM > 0` ไม่เจอ)
+- **[implemented — Task 2]** ตามนี้ + restore ใน tx เดียวกัน: product → IN_STOCK + SHOP company,
+  soft-delete Payment/InstallmentSchedule, ECL release ใบเดียวจาก live GL + flip
+  `BadDebtProvision` → REVERSED; audit `CONTRACT_CANCELED`. Integration:
+  `contract-cancellation.integration.spec.ts` (net 0 ทุกบัญชีต่อสัญญา)
 
 ### 5.4 C-2 (ตัดจ่ายแล้ว) — ตรง Case 3A กรณี 2
 - ตรวจจับ: มี `InterCoSettlementItem` ใน batch `POSTED` (primary) + GL cross-check 21-1101/21-1102 ของสัญญา = 0
@@ -190,9 +223,39 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 - ดาวน์ (สัญญาทั่วไปที่มีดาวน์): mirror คืน S21-2001 → คืนเงินลูกค้าผ่าน pattern `ShopDownPaymentReversalTemplate`
 - ล้าง PAYOUT_RECALL: (a) หักกลบรอบถัดไป (Phase 2) หรือ (b) endpoint เรียกเงินสดคืน — reuse `ShopCollectSettlementTemplate` + stamp type
 - AuditLog: action ใหม่ `CONTRACT_CANCELED_AFTER_PAYOUT` (entity `contract`) ระบุยอด recall + batch อ้างอิง
+- **[implemented — Tasks 3+4+6, ต่างจาก spec 4 จุด]**
+  1. **Detection = POSTED SETTLEMENT item อย่างเดียว** (`settledPayoutByContract` — shared helper
+     3 จุดเรียก: approve/list/exchange) — ไม่มี pre-check "GL 21-1101/21-1102 = 0" แยกต่างหาก;
+     การยืนยัน GL ทำ **หลัง sweep** แทน: `redirectedTotals['11-2107']` ต้อง = `settledTotal`
+     ±0.01 **และ** `redirectedTotals['S21-3001'].neg()` = `settledShopTotal` (แยกสมุด — Task 4
+     fold; hand-JV สมุดเดียวต้องโดนจับ) — ไม่ตรง throw ใน tx ให้ sweep ทั้งชุด rollback
+  2. **ไม่ใช่ใบรวมใบเดียวตามตัวอย่างใน spec** — sweep mirror **ต่อ JE ต้นทาง** (ใบใครใบมัน)
+     โดย redirect เฉพาะ leg บน 4 บัญชีรอบจ่าย (map `C2_REDIRECTS`); JE ที่มี redirect leg ถูก
+     stamp `shopReceivableType: 'PAYOUT_RECALL'` ระดับใบ; ยอดรวม redirect = gross ที่ตัดจ่าย
+     (ตาม batch item — ตรง spec) + defensive check: JE ผสมบรรทัด redirect source กับบรรทัด/
+     ประเภท typed ในใบเดียว → reject (stamp จะทับความหมายเดิม)
+  3. **ดาวน์**: sweep คืน Cr S21-2001 **โดยโครงสร้าง** (mirror JE B ของ activation) — ไม่มี JE
+     คืนเงินอัตโนมัติ: ใบรับเงินดาวน์ (`shop-down-payment`) เป็นเงินสดจริงถูก exclude ⇒ S21-2001
+     ค้าง Cr downAmount เป็นเจ้าหนี้รอคืนลูกค้า; จ่ายคืนจริง = ขั้น SHOP แยก
+     (`ShopDownPaymentReversalTemplate` pre-activation / JV post-activation จนกว่าจะมี UI)
+  4. **ยอด recall ใน audit/คิว = net** (settledTotal − Σ(swapCreditAmount+recallAmount) ของ item
+     ชุดเดียวกัน — Task 4): `CONTRACT_CANCELED_AFTER_PAYOUT` เก็บทั้ง `settledTotal` (gross,
+     ตรวจย้อน redirect) + `recallAmount` (net) + `batchNumbers`; เลขทองของเฟส: หักเครดิต 8,000
+     จากเจ้าหนี้ 11,000 → redirect gross 11,000, recall net 3,000 (golden ผ่าน production chain
+     ใน `exchange-priced-flow.integration.spec.ts`). ข้อ (b) endpoint เงินสดคืน = Task 6:
+     `POST /interco-settlement/recalls/:contractId/settle-cash` (OWNER/FM, Serializable,
+     P2034/P2002 → 409) — FINANCE ผ่าน template + `typeStamp: 'PAYOUT_RECALL'` (default
+     `'SHOP_COLLECT'` ⇒ JP4 เดิม byte-identical), SHOP leg `Dr S21-3001 / Cr S-bank` ใน tx
+     เดียว; guards: amount ≤ net + สองสมุดตรง ±0.01 + block RECALL item ใน batch เปิด;
+     audit `INTERCO_RECALL_CASH_SETTLED`
 
 ### 5.5 exchange-cancel
 - เพิ่ม branch เดียวกัน: ถ้าสัญญาใหม่ของ swap ถูกตัดจ่ายแล้ว → C-2 semantics (แทนขาเจ้าหนี้/ลูกหนี้ SHOP ด้วย 11-2107/S21-3001) — ปัจจุบัน mirror ตรงๆ จะสร้างเจ้าหนี้ติดลบ
+- **[implemented — Task 5]** guard batch เปิด + detect/redirect/cross-check ชุดเดียวกับ generic
+  (import `C2_REDIRECTS`/`C2_REDIRECT_STAMP`/`settledPayoutByContract` — ห้ามสำเนาที่สอง) +
+  `cancelWindow: 'AFTER_PAYOUT'` (C-1 exchange ยัง `'FREE'`); audit `EXCHANGE_CANCELED` เพิ่ม
+  `recallAmount` (net) + `batchNumbers`; FINALIZED-path audit ย้ายไป**หลัง tx commit** (doctrine
+  R-1 — `AuditService.log` เปิด root-tx ซ้อน = P2028 pool starvation + phantom row บน rollback)
 
 ## 6. Phase 4 — รายงาน + Alerts + Validation
 

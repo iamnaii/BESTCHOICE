@@ -886,10 +886,15 @@ A.3 ล้าง 21-1101/21-1102 ทันทีตอน finalize (D5) เล�
 keyed by `metadata.newContractId` — the A.4 stamp), and `swapCreditEligible` (ดู
 eligibility rule ในหัวข้อหักกลบด้านล่าง). `getPendingRecalls()` is a separate queue of
 `RecallCandidate { recallGl, shopRecallGl }` rows — contracts with 11-2107
-`PAYOUT_RECALL` > 0 (Flow C-2; producer lands in Phase 3, so this queue is empty on prod
-until then). `GET /interco-settlement/pending` now returns `{ pending, recalls,
-reconcile }`. `SHOP_COLLECT` deliberately never enters either lens (ล้างผ่าน
-`settleShopCollect` ตามเดิม — เงินลูกค้า ไม่ใช่เงินระหว่างกิจการ).
+`PAYOUT_RECALL` ค้าง **สุทธิ** > 0 (Flow C-2; producer = C-2 redirect, live ตั้งแต่ Phase 3
+2026-08-20 — ดูหัวข้อ "ยกเลิกสัญญา (Flow C — Phase 3)"). **สูตร NET (Phase 3 Task 4 — ปิด
+carry b)**: `recallGl = typed PAYOUT_RECALL gross − Σ(swapCreditAmount + recallAmount)
+ของ item ทุกประเภทใน batch POSTED ของสัญญานั้น` (`shopRecallGl` สูตรเดียวกันฝั่ง SHOP;
+net ≤ 0.01 → หลุดคิว). เดิม (Phase 2) เขียนเป็น gross — ผิดสำหรับเคสยกเลิก swap ที่เคยถูก
+หักเครดิตในรอบเก่า: redirect gross 11,000 แต่เงินที่ FINANCE โอนจริง 3,000 — เสนอ gross
+จะหักซ้ำ 8,000 (11-2107 ติดลบ). `GET /interco-settlement/pending` now returns
+`{ pending, recalls, reconcile }`. `SHOP_COLLECT` deliberately never enters either lens
+(ล้างผ่าน `settleShopCollect` ตามเดิม — เงินลูกค้า ไม่ใช่เงินระหว่างกิจการ).
 
 **Settled gate**: a contract leaves the pending queue the instant it has an
 `InterCoSettlementItem` row inside a batch with status `PENDING_APPROVAL` or `POSTED`.
@@ -1079,9 +1084,11 @@ SHOP key ด้วย `metadata.newContractId` ตาม A.4 stamp / `recallFina
 
 **RECALL rows** (Flow C-2): เลือกผ่าน `CreateBatchDto.recallContractIds` → validate กับ
 `getPendingRecalls()`; แถวมี GL snapshot ทั้ง 4 = 0, `legacyNoShop = false`, มีเฉพาะ
-`recallAmount`. **Producer ของ JE `PAYOUT_RECALL` คือ Phase 3** — จนกว่าจะถึงตอนนั้นคิว
-recall ว่างบน prod (integration test ใช้ synthetic JE ตาม spec §5.4). ล้างได้ 2 ทาง:
-หักกลบรอบจ่าย (ทางนี้) หรือรับเงินสดคืนผ่าน `ShopCollectSettlementTemplate` (Phase 3).
+`recallAmount` (= ยอด **net** จากคิว — สูตร Phase 3 Task 4 ด้านบน). **Producer ของ JE
+`PAYOUT_RECALL` live แล้ว (Phase 3 2026-08-20)** — C-2 redirect ตอนยกเลิกสัญญาหลังตัดจ่าย
+(ดูหัวข้อ "ยกเลิกสัญญา (Flow C — Phase 3)"). ล้างได้ 2 ทาง: หักกลบรอบจ่าย (ทางนี้) หรือรับ
+เงินสดคืนผ่าน `POST /interco-settlement/recalls/:contractId/settle-cash` (Phase 3 Task 6 —
+reuse `ShopCollectSettlementTemplate` + `typeStamp: 'PAYOUT_RECALL'` + SHOP leg).
 
 **Type-aware clash checks** (submit + approve step 2): แถว SETTLEMENT clash กับ item
 ทุกประเภทใน batch เปิดอื่น (กันจ่ายซ้ำ — พฤติกรรมเดิม); แถว RECALL clash **เฉพาะกับ RECALL
@@ -1098,15 +1105,25 @@ item** — จำเป็นเชิงโครงสร้าง: สัญ�
   เครดิตสมุดเดียว (`scFin > 0, scShop = 0` — legacy swap §11.4) จงใจ**ไม่ใช่ drift**
   เพราะมันหักไม่ได้โดยโครงสร้างอยู่แล้ว — ถ้านับเป็น drift รอบที่มี legacy swap จะอนุมัติ
   ไม่ได้ตลอดกาล (cancel → สร้างใหม่ก็ snapshot 0 เท่าเดิม = deadlock).
-- แถว RECALL: เทียบ live typed `PAYOUT_RECALL` ทั้งสองสมุดกับ `recallAmount` ±0.01.
+- แถว RECALL (สูตร NET — Phase 3 Task 4, ปิด carry b): เทียบ live typed `PAYOUT_RECALL`
+  ทั้งสองสมุด **หักด้วย Σ deduction ที่ batch POSTED อื่นเคยหักไปแล้ว (ทุก itemType)** กับ
+  `recallAmount` ±0.01 — snapshot จาก `getPendingRecalls` เป็น net อยู่แล้ว live จึงต้อง
+  เทียบสูตรเดียวกัน (เทียบ gross ตรงๆ จะ reject รอบ recall ที่ถูกต้องตลอดกาลสำหรับ swap
+  ที่เคยถูกหักเครดิตในรอบเก่า).
 
 **Residual alarm (spec §4.7)** — `alarmNettingResiduals(batchId)`: fire-and-forget
 **หลัง tx commit** จาก `approveBatch` (root prisma เท่านั้น, doctrine R-1 — ห้าม
-throw/await บนเส้นทางเงิน). ต่อ item ที่มี deduction > 0: `residual = typed gross (ทั้งสอง
-สมุด แยกกัน) − Σ deduction ของสัญญานั้นใน batch POSTED ทั้งหมด`; `|residual| > 0.01` →
-`Sentry.captureMessage` warning `subsystem: 'interco-netting'` (extra: typedFinanceGross/
-typedShopGross/postedDeduction/financeResidual/shopResidual). ค่าปกติ = 0 พอดี; > 0 =
-เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
+throw/await บนเส้นทางเงิน). ต่อ item ที่มี deduction > 0 — **สูตร COMBINED ต่อสัญญา
+(Phase 3 Task 4 — ปิด carry b)**: `typed gross = SWAP_CREDIT + PAYOUT_RECALL รวมสองประเภท
+ต่อสมุด (แยกสมุด)`, `residual = typed gross − Σ deduction ทุก itemType ของสัญญานั้นใน
+batch POSTED ทั้งหมด`; `|residual| > 0.01` → `Sentry.captureMessage` warning
+`subsystem: 'interco-netting'` (extra: typedFinanceGross/typedShopGross/postedDeduction/
+financeResidual/shopResidual). เหตุที่ต้องรวมประเภท: สัญญา swap ที่ถูกยกเลิกภายหลัง (C-2)
+มีประวัติข้ามประเภทบนสัญญาเดียว — SWAP_CREDIT ถูก mirror ตอน cancel จน typed เหลือ 0 ขณะที่
+deduction 8,000 ยังค้างถาวรใน item table ส่วน PAYOUT_RECALL ถือ gross 11,000 ของ redirect;
+เทียบทีละประเภทตาม itemType ของแถว (สูตร Phase 2 เดิม) จะ false-alarm ทันที — invariant
+"= 0" ถือจริงที่**ระดับสัญญา** ไม่ใช่ระดับประเภท. ค่าปกติ = 0 พอดี; > 0 = เครดิตงอกหลัง
+snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
 
 **Reverse**: mirror สองใบตามเดิม (ไม่ต้องแก้อะไรเพิ่ม) — ขา mirror `Dr 11-2107 /
 Cr S21-3001` ทำให้เครดิตกลับมาค้าง และสัญญา/แถว recall กลับเข้าคิวเองโดยนิยาม settled
@@ -1117,13 +1134,26 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
 `interco-netting.integration.spec.ts` อัตโนมัติ และ step รันด้วย `--no-file-parallelism`
 อยู่แล้ว (integration specs แชร์ DB เดียวกัน).
 
-**รอ Phase 3/4 (carry — บันทึกไว้ อย่าลืม):**
-- (a) C-2 producer ต้องตั้ง `PAYOUT_RECALL` **เฉพาะเมื่อ batch ที่จ่ายสัญญานั้น POSTED
-  จริง** (ตรวจ `InterCoSettlementItem` ใน batch POSTED — spec §5.4).
-- (b) residual alarm ปัจจุบันรวม `postedDeduction` ทุกประเภทเป็นก้อนเดียว — เมื่อสัญญา
-  swap ถูกยกเลิกภายหลัง (C-2) ควรแยกตาม `itemType` กัน false warning.
+**รอ Phase 4 (carry — บันทึกไว้ อย่าลืม; (a)/(b) ปิดโดย Phase 3 2026-08-20):**
+- ~~(a) C-2 producer ต้องตั้ง `PAYOUT_RECALL` เฉพาะเมื่อ batch ที่จ่ายสัญญานั้น POSTED
+  จริง~~ — **ปิดแล้ว (Phase 3 Task 3/5)**: ตัว detection ของ C-2 เองคือ "มี
+  `InterCoSettlementItem` type SETTLEMENT ใน batch **POSTED**" (`settledPayoutByContract`)
+  — recall เกิดเฉพาะเมื่อจ่ายจริงแล้วโดยนิยาม; batch DRAFT/PENDING_APPROVAL ถูก guard
+  ให้ถอนก่อนยกเลิก.
+- ~~(b) residual alarm ควรแยก `postedDeduction` ตาม `itemType` กัน false warning~~ —
+  **ปิดแล้ว (Phase 3 Task 4) ด้วยทิศตรงข้าม**: invariant ถือจริงที่ระดับสัญญา ไม่ใช่ระดับ
+  ประเภท — alarm รวม typed สองประเภทต่อสมุดก่อนหัก Σ POSTED deductions (ดู "Residual
+  alarm" ด้านบน) และ recall lens/drift เปลี่ยนเป็นสูตร net.
 - (c) เครดิต A.3-only ที่งอก**หลัง** approve (drift guard จับได้เฉพาะก่อน approve) —
   จุด hook คือ reconcile cron รายเดือน (Phase 4 — `interco-reconcile.cron`).
+- (d) **TOCTOU settle-cash vs approveBatch** (Phase 3 Task 6 review): `settleRecallCash`
+  เป็น Serializable แต่ `approveBatch` เป็น default isolation — หน้าต่างแคบที่รอบ recall
+  ถูก approve พร้อมกับการรับเงินสดคืนบนสัญญาเดียวกันยังพึ่ง guard "RECALL item ใน batch
+  เปิด" + drift guard ฝั่ง approve เป็นหลัก ไม่ใช่ SSI ร่วมกัน — ตาข่ายสุดท้าย = reconcile
+  cron (Phase 4).
+- (e) **คิว recall กรอง net ฝั่ง FINANCE เท่านั้น** (`recallGl.lte(0.01) → continue`) —
+  shop-net mismatch ที่เกิดหลัง snapshot เงียบจนถึง residual alarm / guard สองสมุดตอนใช้
+  ยอดจริง — ขอบเขต reconcile cron (Phase 4).
 
 ### `legacyNoShop` policy (F1/F2)
 
@@ -1750,7 +1780,7 @@ Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` 
   เป็น**จุดล้าง** ไม่ใช่จุดกำเนิด แต่ stamp `SHOP_COLLECT` ด้วย เพื่อให้ classify ครบทั้งสองขา.
 - Approval: AUTO (≥NCV + ≥basePrice×0.85) / REVIEW (BM) / ESCALATE (<70% NCV — OWNER) — `exchange-tier.util.ts`
 - Guards ก่อน finalize: GL 11-2103 = 0, ไม่มี advance/credit ค้าง
-- Cancellation: ยกเลิกได้ทุกเมื่อถ้าสัญญาใหม่ยังไม่มีการชำระ (owner ยกเลิก windows/ค่าปรับ 2026-07-31) — mirror-reverse ทุก JE รวม A.5 + A.1b SHOP-leg (สวีปตาม `metadata.contractId` ไม่ hardcode บัญชี — สวีปจับ SHOP JE ได้เองแม้ไม่มี id เก็บบน request row); 2A cron backfill เอง; **42-1107 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03 (คำสั่ง CPA/owner) — ไม่มีบัญชีรองรับค่าปรับยกเลิกอีกต่อไป**
+- Cancellation: ยกเลิกได้ทุกเมื่อถ้าสัญญาใหม่ยังไม่มีการชำระ (owner ยกเลิก windows/ค่าปรับ 2026-07-31) — mirror-reverse ทุก JE รวม A.5 + A.1b SHOP-leg (สวีปตาม `metadata.contractId` ไม่ hardcode บัญชี — สวีปจับ SHOP JE ได้เองแม้ไม่มี id เก็บบน request row); 2A cron backfill เอง; **42-1107 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03 (คำสั่ง CPA/owner) — ไม่มีบัญชีรองรับค่าปรับยกเลิกอีกต่อไป**. **Phase 3 (2026-08-20): ยกเลิกหลังสัญญาใหม่ถูกตัดจ่ายรอบจ่าย INTER-CO POSTED แล้ว "ทำได้"** — ไม่ใช่ mirror ตรง (จะทำเจ้าหนี้ติดลบ) แต่ redirect ขาเจ้าหนี้/ลูกหนี้รอบจ่ายเป็นลูกหนี้เรียกคืน `PAYOUT_RECALL` + `cancelWindow: 'AFTER_PAYOUT'` — ดูหัวข้อ "ยกเลิกสัญญา (Flow C — Phase 3)" ด้านล่าง
 - **42-1106 + 42-1107 = ลบออกจากผังบัญชีแล้ว (2026-08-03, คำสั่ง CPA/owner)** — ทั้งคู่เปิดไว้แต่ไม่เคยมี `journal_lines` แม้แถวเดียว: 42-1106 ("รายได้จากการโอนกลับค่าเผื่อฯ", rename จาก orphan "รายได้บริการซ่อม" — runtime repair ใช้ S42-1101) ถูกแทนที่ด้วย Cr 51-1103 มาตรฐานเดียวทุกเส้นทาง; 42-1107 ("รายได้ค่าปรับยกเลิกเปลี่ยนเครื่อง") หมดความหมายเมื่อ owner ยกเลิกกติกาค่าปรับ swap ทั้งชุด 2026-07-31. ถอดออกจาก `finance-coa.csv` แล้ว (ผัง FINANCE เหลือ **110** บัญชี) + `exchange-coa.spec.ts` พลิกเป็น assert ว่า **ไม่มี** ทั้งสองรหัส กันเพิ่มกลับเงียบๆ. Prod: `docs/accounting/remove-42-1106-42-1107-2026-08.sql` (soft delete + guard "ถ้ามี journal_lines แม้แถวเดียว → ROLLBACK")
 - Integration E2E (DB จริง): `apps/api/src/modules/contract-exchange/__tests__/exchange-priced-flow.integration.spec.ts` — Case 2A (21-1106 net 0, Cr 11-2101 = GL-true 11,333.36 ไม่ใช่สูตรคูณ 11,333.28, loss plug 126.68 (วิธีสุทธิ 2026-08-19; เดิม 4,126.68 ตอน A.2 gross); A.3 = 2 บรรทัดพอดี Dr 11-2107 8,000 / Cr 21-1106 8,000 ไม่มีขาเงินสด; ค้างรอรอบจ่าย: 21-1101 15,000 / 21-1102 1,500 / S11-3001 15,000 / S11-3002 1,500, S11-1201 + เงินสด FINANCE = 0.00 ไม่ถูกแตะ; + F2 SHOP legs: S41-1101/S41-1201/S50-1101↔S11-2001 booked; อยู่ในคิวจ่าย INTER-CO ด้วย `legacyNoShop = false`), ECL 30.32 → 51-1103, cancel วันที่ 15 (reversalJeIds 6: A.1+A.2+A.3+A.4+2 SHOP legs) + วันที่ 45 (reversalJeIds 8: + 2 swept 2A accruals — ทั้งคู่ SUCCEED เหมือนกัน, ไม่มี window/penalty JE อีกต่อไป, owner ยกเลิก 2026-07-31 + mirror-reverse net 0 ทุกบัญชีรวม SHOP + 2A backfill), MEMO (JE count คงเดิม). CI: glob `src/modules/contract-exchange/__tests__/*.integration.spec.ts` ใน deploy-gcp.yml vitest step (jest มองไม่เห็นไฟล์ `*.integration.spec.ts` ตาม testPathIgnorePatterns)
 
@@ -1829,7 +1859,10 @@ FINANCE-side-only มาตลอด) — **ไม่ได้ประดิษ
 **Cancel:** mirror-reverse ตามเดิมทุกประการ (สวีปด้วย `metadata.contractId`) — A.3 ใบใหม่ถูก
 กลับรายการเหมือนกัน ทำให้ 11-2107 net = 0. จำนวน `reversalJeIds` **ลดลง 1 ใบ**
 (instant-settlement หายไป): cancel วันที่ 15 = **6** ใบ (เดิม 7), cancel วันที่ 45 = **8** ใบ
-(เดิม 9 — รวม 2A accrual ที่ถูกสวีป 2 ใบ).
+(เดิม 9 — รวม 2A accrual ที่ถูกสวีป 2 ใบ). ทั้งหมดนี้คือเคส **ยังไม่ถูกตัดจ่ายรอบจ่าย**
+(C-1 ของ exchange) — ถ้าสัญญาใหม่อยู่ใน batch POSTED แล้ว เส้นทาง cancel เดียวกันสลับเป็น
+**C-2 semantics** (redirect แทน mirror ตรงบน 4 บัญชีรอบจ่าย, `cancelWindow: 'AFTER_PAYOUT'`)
+— ดูหัวข้อ "ยกเลิกสัญญา (Flow C — Phase 3)".
 
 **`depositAccountCode`:** ไม่บังคับอีกต่อไปบนคำขอ PRICED และ **ไม่มีผลต่อ JE ใดๆ** —
 เหตุผลเดิมที่บังคับคือขาเงินสดของ A.3 (ถอด 2026-08-03) + penalty JE ตอน cancel
@@ -1837,3 +1870,210 @@ FINANCE-side-only มาตลอด) — **ไม่ได้ประดิษ
 และฟิลด์ใน DTO **ยังคงอยู่** (ข้อมูลย้อนหลัง + API back-compat) แต่ไม่มีผู้อ่านในเส้นทางนี้แล้ว;
 ช่องเลือกบัญชีบนหน้าจอส่งคำขอถูกถอดออก. `CASH_ACCOUNT_CODES` ที่ DTO import ถูกชี้กลับไปที่
 `constants/cash-account.constants.ts` (แหล่งกลางที่ DTO อื่นอีก 6 ตัวใช้อยู่แล้ว) แทน template ที่ถูกลบ.
+
+---
+
+## ยกเลิกสัญญา (Flow C — Phase 3, workbook 2026-08-19)
+
+Spec: `docs/superpowers/specs/2026-08-19-device-swap-netting-cancel-workbook-design.md` §5-6 ·
+Plan: `docs/superpowers/plans/2026-08-20-device-swap-workbook-phase3.md` ·
+Integration: `apps/api/src/modules/contracts/__tests__/contract-cancellation.integration.spec.ts` +
+Task 5 golden ใน `exchange-priced-flow.integration.spec.ts` + Task 4/6 ใน
+`interco-netting.integration.spec.ts`
+
+**กติกา D3 (คำตัดสินเจ้าของ 2026-08-19 — ปิดประเด็น อย่าเสนอซ้ำ):** ยกเลิกสัญญาได้เฉพาะ
+**ก่อนชำระงวดแรก** — เคยจ่ายแล้วต้อง void ใบเสร็จทั้งหมดก่อน (ใบลดหนี้ ม.86/10 ออกอัตโนมัติ
+จาก receipt-void); สัญญาที่เดินไปแล้วใช้เส้นทางยึดเครื่อง (JP5) ตามเดิม. สองเคส:
+
+| เคส | เงื่อนไข | พฤติกรรม |
+|---|---|---|
+| **C-1** | ยังไม่ถูกตัดจ่ายรอบจ่าย INTER-CO | sweep mirror-reverse ตรงทุกใบ — ทุกบัญชี net 0 ต่อสัญญา, สัญญาหลุดคิวจ่ายเองโดยนิยามเลนส์ (`HAVING SUM > 0` ไม่เจอ) |
+| **C-2** | มี `InterCoSettlementItem` type `SETTLEMENT` ใน batch **POSTED** (detect ผ่าน `settledPayoutByContract` — ไม่อ่าน field บนสัญญา) | sweep เหมือน C-1 แต่ **redirect** ขาเจ้าหนี้/ลูกหนี้รอบจ่าย (batch ล้างไปแล้ว mirror ตรงจะติดลบ) เป็นลูกหนี้เรียกคืน `PAYOUT_RECALL` |
+
+### สถาปัตยกรรม — sweep engine generalize (Task 1)
+
+`ExchangeCancelReversalTemplate.reverse` (`exchange-cancel-reversal.template.ts`) ได้
+options ใหม่ทั้งชุด: `excludeFlows` / `redirects: Record<account, {to, description}>` /
+`redirectStamp` (stamp **เฉพาะ JE ที่มี redirect leg** — วาง spread ท้ายสุดให้ชนะค่า copy
+จาก JE เดิม) / `flowLabel` / `descriptionPrefix` และคืน `redirectedTotals` (Σ Dr−Cr ของ
+mirror legs ที่ถูก redirect เข้าแต่ละบัญชีปลายทาง — caller ใช้ cross-check). **Caller
+exchange เดิมที่ส่งแค่ `{ jeIds, newContractId }` ได้พฤติกรรมเดิม byte-identical**
+(flow `'exchange-cancel'`, idempotencyKey `cancel:<jeId>`, prefix `'[ยกเลิกเปลี่ยนเครื่อง]'`).
+ห้ามเขียน sweep ตัวที่สอง — generic cancellation (`ContractCancellationTemplate`) delegate
+เข้า engine ตัวนี้ด้วย `flowLabel: 'contract-cancellation'` + prefix `'[ยกเลิกสัญญา]'`.
+
+### C-1 — `ContractCancellationTemplate` + `ContractCancellationService` (Task 2)
+
+ยกเครื่องจาก mirror-1A-ใบเดียว (P4-SP4) → sweep ทุก JE ที่ stamp `metadata.contractId`
+(1A + SHOP legs + 2A accruals + ฯลฯ). **JE refund เดิม (Dr 52-1106 / Cr 11-1201) ถูกลบ** —
+`refundAmount > 0` โดน reject (field คงไว้ที่ DTO เพื่อ back-compat).
+
+**`C1_EXCLUDED_FLOWS` — flows ที่ sweep ห้าม mirror (แชร์ constant เดียวกับ tripwire):**
+
+| Flow | เหตุผล |
+|---|---|
+| `provision` | ECL รายวัน — mirror + release พร้อมกัน = double-debit 11-2102 ติดลบ (release แยกใบเดียวแทน — ดูล่าง) |
+| `stage-reverse` | ขา release ของ ECL — คู่กับ provision ต้อง exclude ทั้งคู่ |
+| `shop-collect-settlement` | **เงินสดจริง** (Dr cash / Cr 11-2107) — service guard บังคับ settle ให้ครบก่อนยกเลิกอยู่แล้ว |
+| `shop-down-payment` | **เงินสดจริง** (Dr SHOP cash / Cr S21-2001) — mirror = fabricate การคืนเงินที่ยังไม่เกิด (ดู S21-2001 semantics ล่าง) |
+| `reschedule-collect` | **เงินสดจริง** (6a fee เข้าตู้จริง) — park guard บังคับเคลียร์ก่อนยกเลิก |
+
+**Positive cash tripwire** (นอกเหนือ deny-list): สแกน sweep candidates ชุดเดียวกับที่ engine
+จะ mirror (เงื่อนไข skip เดียวกัน) — บรรทัดใดแตะบัญชีเงินสด/ธนาคาร (prefix `11-11` / `11-12` /
+`S11-11` / `S11-12`) → `BadRequestException` ระบุ `entryNumber` — JE เงินสดที่ deny-list
+ไม่รู้จักต้องดังไม่ใช่ถูก mirror เงียบ.
+
+**ECL**: release **ใบเดียวจาก live GL** (pattern JP4 C1) — `glContractBalance(tx, id,
+'11-2102', 'cr')` > 0 → `EclStageReverseTemplate` (`Dr 11-2102 / Cr 51-1103`) + flip
+`BadDebtProvision` ACTIVE → REVERSED.
+
+**Guards ใน `approveCancellation` (ทั้งหมดใน `$transaction` เดียว, ก่อน JE ใบแรก):**
+1. Re-read contract **ใน tx** — ต้อง `ACTIVE` (กัน race กับ JP5/termination หลัง pre-tx read)
+2. ไม่มี `Payment` ที่ `PAID` หรือ `amountPaid > 0` — เคยจ่ายต้อง void ก่อน (D3)
+3. ไม่มี item ใน batch `DRAFT`/`PENDING_APPROVAL` — ถอน/ยกเลิกรอบก่อน (ระบุ batchNumber)
+4. `refundAmount > 0` → reject (deprecated)
+5. **Park 3 ถัง** (`advanceBalance + creditBalance + rescheduleAdvanceBalance > 0`) → reject
+   — เงินพวกนี้เข้ามาเป็นเงินสดจริง (เช่น 6a fee ไม่ set `amountPaid` — หลุด guard ข้อ 2)
+6. `shopCollectTypedBalance(tx, id)` ≠ 0 (typed lens ใหม่ใน `interco-typed-balance.ts` —
+   explicit stamp ชนะ flow fallback, จำเป็นเพราะใบ settle เส้นทาง recall-cash ใช้ flow
+   `'shop-collect-settlement'` เดิมแต่ stamp `PAYOUT_RECALL`) → reject
+
+**Restore (ใน tx เดียวกัน):** product → `IN_STOCK` + `ownedByCompanyId` = SHOP;
+soft-delete `Payment` + `InstallmentSchedule` ทุกแถว (cron/คิวเลิกเห็นสัญญา);
+cancellation → APPROVED + `reversalJournalEntryId`; contract → `CANCELED`.
+
+**S21-2001 semantics (ตั้งใจ — ไม่ใช่บั๊ก):** หลังยกเลิกสัญญาที่มีเงินดาวน์ S21-2001 ค้าง
+**Cr downAmount** — sweep mirror JE B ของ activation (ที่เคย `Dr S21-2001` ล้างดาวน์) คืน
+เจ้าหนี้เงินดาวน์กลับมา แต่ใบรับเงินดาวน์ (`shop-down-payment` — เงินสดจริง) ถูก exclude ⇒
+ยอดค้างคือ **เจ้าหนี้รอคืนเงินลูกค้า** — การจ่ายคืนจริงเป็นขั้นตอนฝั่ง SHOP แยกต่างหาก
+(`ShopDownPaymentReversalTemplate` เคสยังไม่ activate; JV มือเคสหลัง activate จนกว่าจะมี UI).
+
+**Idempotency (DB-backed):** probe `ContractCancellation.reversalJournalEntryId` (persist
+ใน tx เดียวกับ JEs) — ครอบทั้ง JE legacy P4-SP4 และ sweep ใหม่ (metadata probe เดิมมองไม่เห็น
+sweep output เพราะ per-JE key ไม่มี cancellationId). ชั้นสอง: engine stamp `reversed:true`
+ต่อใบ + DB idempotency index.
+
+### C-2 — redirect + cross-check (Task 3, fold Task 4)
+
+**Redirect map (`C2_REDIRECTS` — exported จาก `contract-cancellation.template.ts`,
+ห้ามมีสำเนาที่สอง — exchange path import ชุดเดียวกัน):**
+
+| บัญชีต้นทาง (mirror leg) | ปลายทาง | ความหมาย |
+|---|---|---|
+| 21-1101 (Dr mirror) | **11-2107** | ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ยอดจัดที่ตัดจ่ายแล้ว) |
+| 21-1102 (Dr mirror) | **11-2107** | ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ค่าคอมที่ตัดจ่ายแล้ว) |
+| S11-3001 (Cr mirror) | **S21-3001** | ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ยอดจัด) |
+| S11-3002 (Cr mirror) | **S21-3001** | ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ค่าคอม) |
+
+JE ที่มี redirect leg ถูก stamp `shopReceivableType: 'PAYOUT_RECALL'` (`C2_REDIRECT_STAMP`
+— ระดับ JE, ชนะค่า copy จากใบเดิม). ยอด redirect = **gross ตาม GL ของใบที่ mirror** —
+"หักไปแล้วเท่าไร" อ่านจาก item table ไม่ใช่ GL (สถาปัตยกรรม "เลนส์ gross + item gate").
+
+**Cross-check หลัง sweep (ปิด carry (a) + กัน hand-JV, ใน tx — throw = rollback ทั้งชุด):**
+`redirectedTotals['11-2107']` ต้อง = `settledTotal` (Σ financedGl+commissionGl ของ item
+SETTLEMENT ใน batch POSTED) ±0.01 **และ** `redirectedTotals['S21-3001'].neg()` ต้อง =
+`settledShopTotal` แยกสมุด — hand-JV ที่แตะเฉพาะสมุดเดียวผ่านเช็คสมุดเดียวได้ จึงต้องเช็ค
+ทั้งคู่ (สัญญา `legacyNoShop` snapshot ฝั่ง SHOP = 0 → expected 0 = 0 ✓ โดยโครงสร้าง).
+
+**Defensive check (C-2 เท่านั้น):** JE candidate ใดมีทั้งบรรทัดบน redirect source
+(21-1101/21-1102/S11-3001/S11-3002) และบรรทัดบัญชี typed (`TYPED_LENS_ACCOUNTS` =
+11-2107/S21-3001) หรือ `shopReceivableType` stamp เดิมในใบเดียวกัน → reject — redirect
+stamp ทั้งใบจะทับความหมาย typed เดิม (เลนส์ Phase 2 อ่าน type ระดับ JE); producer จริง
+ไม่มีทางสร้างใบแบบนี้ = hand-JV ผิดปกติ.
+
+### เลขทองของเฟส — ยกเลิก swap หลังหักเครดิต 8,000 → เรียกคืนสุทธิ 3,000
+
+สัญญาใหม่ของ swap: เจ้าหนี้ 11,000 (financed 10,000 + คอม 1,000), เครดิตสวอป 8,000 →
+รอบจ่ายหัก 8,000 โอนจริง **3,000**. ยกเลิกหลัง batch POSTED:
+
+- redirect เข้า 11-2107 = **11,000 gross** (= settledTotal — เจ้าหนี้ที่ batch ล้างไป)
+  ⇒ typed `PAYOUT_RECALL` ทั้งสองสมุด = 11,000; typed `SWAP_CREDIT` net 0 (A.3/A.4 + mirror)
+- delta ระดับบัญชีข้าม cancel: 11-2107 = **+3,000** (mirror A.3 −8,000 + redirect +11,000),
+  S21-3001 = −3,000 (mirror A.4 +8,000 + redirect −11,000); 21-1101/21-1102/S11-3001/
+  S11-3002 **ขยับ 0** (redirect ไม่ mirror ตรง — ไม่ติดลบ)
+- คิวเรียกคืน (สูตร net Task 4): `recallGl = 11,000 − Σ POSTED deductions 8,000 = 3,000`
+  = `shopRecallGl` — เลขเดียวสอดคล้องทุกชั้น: queue = drift RECALL = residual (0 หลังหัก) =
+  audit `recallAmount` = เพดาน cash settle (settle เต็ม 3,000 แล้วหลุดคิว)
+
+Golden ผ่าน production chain จริง (ไม่ synthetic): Task 5 spec ใน
+`exchange-priced-flow.integration.spec.ts` — create→submit→approve batch จริง → cancel จริง.
+Assertion ระดับบัญชีเป็น **delta** (batch JE ไม่ stamp `contractId` — per-contract lens
+มองไม่เห็นขาหักโดยสถาปัตยกรรม).
+
+### สูตร net ของ recall (ปิด carry (b) — แก้ Phase 2 ที่เขียนเป็น gross)
+
+`getPendingRecalls` / drift guard แถว RECALL / `alarmNettingResiduals` ทั้งสามจุดเปลี่ยนจาก
+gross → **net of Σ POSTED deductions (ทุก itemType)** — รายละเอียด+เหตุผลอยู่ในหัวข้อ
+"หักกลบเครดิตเปลี่ยนเครื่อง + เรียกคืน (Phase 2)" (อัปเดตแล้ว 2026-08-20). สาเหตุที่ต้องแก้:
+เคสยกเลิก swap ข้างบน — gross จะเสนอ 11,000 ให้หักซ้ำทั้งที่เงินจริงที่ต้องเรียกคืนคือ 3,000.
+
+### เส้นทางรับเงินสดคืน (Task 6) — `POST /interco-settlement/recalls/:contractId/settle-cash`
+
+Roles: `OWNER`/`FINANCE_MANAGER` (JE สองสมุดโพสต์ทันที ไม่มีชั้นเอกสาร/maker-checker —
+gate ระดับ checker เหมือน approve/reverse). DTO: `amount` + `financeDepositAccountCode`
+(FINANCE 6 บัญชี) + `shopPayoutAccountCode` (optional, default `S11-1201`) + `requestId`
+(UUID ต่อการเปิด dialog). สองใบใน **Serializable `$transaction` เดียว**:
+
+```
+FINANCE — reuse ShopCollectSettlementTemplate + typeStamp: 'PAYOUT_RECALL'
+  Dr <financeDepositAccountCode> / Cr 11-2107     (stamp shopReceivableType: 'PAYOUT_RECALL'
+                                                   + metadata.contractId ⇒ typed recall lens
+                                                   หักตรงประเภทต่อสัญญา — ต่างจากขา batch)
+SHOP — journalAuto.createAndPost ตรง (flow 'interco-recall-cash-shop')
+  Dr S21-3001 / Cr <shopPayoutAccountCode>        (stamp PAYOUT_RECALL เช่นกัน)
+```
+
+Guards ตามลำดับ: (0) idempotency `requestId` ก่อนทุกด่าน — retry หลัง settle เต็มจำนวน
+ต้องคืนผลเดิมไม่ใช่ reject; ยอดไม่ตรงกับใบเดิม → 409; requestId เคยใช้กับ shop-collect
+คนละเส้นทาง → 409 (กันใบขาเดียว); (1) มี RECALL item ใน batch `DRAFT`/`PENDING_APPROVAL`
+→ reject ระบุรอบ (กันเงินก้อนเดียวถูกรับสด+หักในรอบพร้อมกัน); (2) สัญญาต้องอยู่ในคิว
+`getPendingRecalls` (ยอด **net**); (3) สองสมุดตรงกัน ±0.01 (`recallGl` vs `shopRecallGl`
+— ห้ามโพสต์ข้างเดียว); (4) `amount ≤ recallGl net + 0.01`. Race: SSI abort (P2034) และ
+DB unique (P2002) แปลเป็น 409 ไทยทั้งคู่ — ไม่ใช่ raw 500. `typeStamp` default
+`'SHOP_COLLECT'` บน template ⇒ caller เดิม (JP4 shop-collect settle) byte-identical.
+
+### exchange-cancel C-2 (Task 5 — spec §5.5)
+
+`ExchangeCancelService.cancel` ได้ branch เดียวกัน: guard batch เปิด + detect ผ่าน
+`settledPayoutByContract(tx, [newContractId])` (helper เดียวกับ generic — export จาก
+`contract-cancellation.service.ts`) + defensive check + redirect (`C2_REDIRECTS`/
+`C2_REDIRECT_STAMP` import จาก generic template — ห้ามสำเนา) + cross-check สองสมุด +
+`cancelWindow: 'AFTER_PAYOUT'` (C-1 ของ exchange ยังเป็น `'FREE'`). **FINALIZED-path audit
+ย้ายไปหลัง tx commit** (doctrine R-1 — `AuditService.log` เปิด root-tx ซ้อน = P2028 pool
+starvation + phantom audit row บน rollback; MEMO/PRE_FINALIZE audits ไม่แตะ).
+
+### UI (Task 7)
+
+- `ContractCancellationPage` (`/finance/contract-cancellation`): badge C-1/C-2 ต่อแถวจาก
+  `listPendingCancellations` (`settledInBatch` + `recallAmount` **net** — สูตรเดียวกับ
+  approve ผ่าน `settledPayoutByContract`, ห้าม duplicate) + confirm dialog แยกข้อความตามเคส
+- `RecallCashDialog` (หน้า interco, `PendingTab` รายการเรียกคืน): default amount = net,
+  `requestId` UUID สร้างใหม่ต่อการเปิด dialog (ปิด-เปิดใหม่ = คำขอใหม่)
+
+### AuditLog actions (Phase 3 — String ธรรมดา ไม่มี Prisma enum)
+
+| Action | Entity | เขียนที่ | newValue ที่สำคัญ |
+|---|---|---|---|
+| `CONTRACT_CANCELED` | `contract` | `approveCancellation` (C-1) | reversalEntryNumber/Count/JeIds |
+| `CONTRACT_CANCELED_AFTER_PAYOUT` | `contract` | `approveCancellation` (C-2) | + `settledTotal` (**gross** — ตรวจย้อน redirect), `recallAmount` (**net** = settled − deductions), `batchNumbers` |
+| `EXCHANGE_CANCELED` | `contract_exchange_request` | `ExchangeCancelService` (action เดิม — C-2 เพิ่ม field) | `window: 'AFTER_PAYOUT'` + `recallAmount` (net) + `batchNumbers` เมื่อ C-2 |
+| `INTERCO_RECALL_CASH_SETTLED` | `contract` | `settleRecallCash` | amount, financeEntryNo/shopEntryNo, requestId, `recallNetBefore` |
+| `CANCELLATION_REJECTED` | `contract` | `rejectCancellation` (เดิม — ไม่เปลี่ยน) | reason |
+
+**นิยาม `recallAmount` = net เสมอ** (settledTotal − settledDeductions) ทุกจุดที่โผล่:
+audit ทั้งสอง action, `listPendingCancellations`, คิว recall — ตัวเลขเดียวกับเงินสดที่
+FINANCE โอนจริงในรอบที่ตัดจ่าย.
+
+### CI
+
+`deploy-gcp.yml` vitest step เพิ่ม glob `src/modules/contracts/__tests__/*.integration.spec.ts`
+(2026-08-20) — ไฟล์ `contract-cancellation.integration.spec.ts` อยู่ใต้ `__tests__/` ซึ่ง glob
+เดิม `src/modules/contracts/*.integration.spec.ts` ไม่ครอบ (บทเรียน jp5-vat-split: glob
+ไม่ recurse เอง — spec ใหม่ใน subdirectory ใหม่ต้องตรวจ glob ทุกครั้ง).
+
+### Carry → Phase 4
+
+carry (a)/(b) ของ Phase 2 **ปิดแล้ว** (detection = POSTED item; สูตร net/combined). ที่เหลือ
+— (c) เครดิต A.3-only งอกหลัง approve, (d) TOCTOU settle-cash vs approveBatch, (e) คิว
+recall กรอง net ฝั่ง FINANCE เท่านั้น — รวมรายการอยู่ที่หัวข้อ "รอ Phase 4 (carry)" ใน
+Inter-Co section ด้านบน; จุด hook ทั้งหมด = `interco-reconcile.cron` (Phase 4).

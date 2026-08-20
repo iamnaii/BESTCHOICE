@@ -10,6 +10,7 @@ import { CreateBatchDto } from './dto/create-batch.dto';
 import { PairedJournalService } from '../journal/paired-journal.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
 import { StorageService } from '../storage/storage.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
@@ -137,6 +138,8 @@ describe('IntercoSettlementService', () => {
         { provide: PairedJournalService, useValue: pairedJournal },
         { provide: CompanyResolverService, useValue: companyResolver },
         { provide: JournalAutoService, useValue: journalAuto },
+        // settleRecallCash (Phase 3 Task 6) dep — unused by these unit specs
+        { provide: ShopCollectSettlementTemplate, useValue: { execute: jest.fn() } },
         { provide: StorageService, useValue: storage },
       ],
     }).compile();

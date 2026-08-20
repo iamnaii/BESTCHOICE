@@ -23,6 +23,7 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
 import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
 import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
+import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { PairedJournalService } from '../../journal/paired-journal.service';
 import { ContractCancellationService } from '../services/contract-cancellation.service';
@@ -57,6 +58,8 @@ const pendingService = new IntercoPendingService(prisma as never);
 const pairedJournal = new PairedJournalService(journalAuto, prisma as never, companyResolver);
 const batchNumberService = new IntercoBatchNumberService(prisma as never);
 const storageStub = { upload: async () => undefined, delete: async () => undefined };
+// settleRecallCash (Phase 3 Task 6) dep — unused by this suite.
+const shopCollectTemplate = new ShopCollectSettlementTemplate(journalAuto, prisma as never);
 const settlementService = new IntercoSettlementService(
   prisma as never,
   pendingService,
@@ -65,6 +68,7 @@ const settlementService = new IntercoSettlementService(
   companyResolver,
   journalAuto,
   storageStub as never,
+  shopCollectTemplate,
 );
 
 // ---------------------------------------------------------------------------

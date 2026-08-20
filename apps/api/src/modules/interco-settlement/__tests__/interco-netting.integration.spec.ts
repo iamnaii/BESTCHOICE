@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Prisma, PrismaClient } from '@prisma/client';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import * as Sentry from '@sentry/nestjs';
 
@@ -27,7 +27,9 @@ import {
   swapCreditShopBalance,
   recallFinanceBalance,
   recallShopBalance,
+  shopCollectTypedBalance,
 } from '../interco-typed-balance';
+import { glContractBalance } from '../../journal/gl-contract-balance';
 
 /**
  * หักกลบ 11-2107 ในรอบจ่าย INTER-CO — เลนส์ + typed balances (Phase 2 Task 3,
@@ -67,6 +69,10 @@ const pairedJournal = new PairedJournalService(journalAuto, prisma as never, com
 const batchNumberService = new IntercoBatchNumberService(prisma as never);
 // uploadSlip (StorageService dep) unused by this suite — stub instead of real S3.
 const storageStub = { upload: async () => undefined, delete: async () => undefined };
+// Real template (not synthetic JE) — the double-clear tests below must prove
+// the PRODUCTION settle path and the netting path see each other (final review C1).
+// Also injected into the service for `settleRecallCash` (Phase 3 Task 6).
+const shopCollectTemplate = new ShopCollectSettlementTemplate(journalAuto, prisma as never);
 const settlementService = new IntercoSettlementService(
   prisma as never,
   pendingService,
@@ -75,10 +81,8 @@ const settlementService = new IntercoSettlementService(
   companyResolver,
   journalAuto,
   storageStub as never,
+  shopCollectTemplate,
 );
-// Real template (not synthetic JE) — the double-clear tests below must prove
-// the PRODUCTION settle path and the netting path see each other (final review C1).
-const shopCollectTemplate = new ShopCollectSettlementTemplate(journalAuto, prisma as never);
 
 // ---------------------------------------------------------------------------
 // Tracked rows for SCOPED cleanup
@@ -1819,6 +1823,303 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         });
         expect(after.status).toBe('PENDING_APPROVAL');
         expect(after.financeJournalEntryId).toBeNull();
+      },
+      120_000,
+    );
+  });
+
+  // ===========================================================================
+  // Phase 3 Task 6 — settleRecallCash: เส้นทางรับเงินสดคืน (spec §5.4 ทางเลือก
+  // ที่สองนอกจากหักกลบรอบจ่าย). FINANCE reuse ShopCollectSettlementTemplate
+  // ด้วย typeStamp 'PAYOUT_RECALL' (Dr <cash> / Cr 11-2107); SHOP โพสต์
+  // Dr S21-3001 / Cr <shopPayoutAccountCode> — สองใบใน tx เดียว.
+  // ===========================================================================
+  describe('settleRecallCash — รับเงินสดคืนจากหน้าร้าน (Phase 3 Task 6)', () => {
+    beforeAll(async () => {
+      // Safety nets เดียวกับ Task 5 — บล็อกนี้ต้องรันแบบ -t filter เดี่ยวได้
+      await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+      await prisma.accountingPeriod.deleteMany({
+        where: { companyId: { in: [shopId, financeId] }, year: 2026, month: 8 },
+      });
+    }, 60_000);
+
+    it(
+      'settle เต็ม net (pure recall 11,000) → JE สองสมุดถูก stamp + typed หลุดคิว + GL ต่อสัญญา = 0 + เลนส์ SHOP_COLLECT ไม่ติดลบ',
+      async () => {
+        const recallP = await seedBaseContract(60);
+        await seedRecallContract(recallP);
+        const requestId = randomUUID();
+
+        const result = await settlementService.settleRecallCash(
+          recallP,
+          { amount: 11000, financeDepositAccountCode: '11-1201', requestId },
+          adminId,
+        );
+        expect(result.deduped).toBe(false);
+
+        // FINANCE JE: Dr 11-1201 / Cr 11-2107 — stamp PAYOUT_RECALL บน flow
+        // 'shop-collect-settlement' เดิมของ template
+        const financeJe = await prisma.journalEntry.findFirstOrThrow({
+          where: { entryNumber: result.financeEntryNo },
+          include: { lines: true },
+        });
+        expect(sumSide(financeJe.lines, '11-1201', 'dr').toFixed(2)).toBe('11000.00');
+        expect(sumSide(financeJe.lines, '11-2107', 'cr').toFixed(2)).toBe('11000.00');
+        expect(financeJe.lines).toHaveLength(2);
+        expect(financeJe.companyId).toBe(financeId);
+        const finMeta = financeJe.metadata as Record<string, unknown>;
+        expect(finMeta.flow).toBe('shop-collect-settlement');
+        expect(finMeta.shopReceivableType).toBe('PAYOUT_RECALL');
+        expect(finMeta.contractId).toBe(recallP);
+
+        // SHOP JE: Dr S21-3001 / Cr S11-1201 (default) — flow ใหม่ + stamp
+        const shopJe = await prisma.journalEntry.findFirstOrThrow({
+          where: { entryNumber: result.shopEntryNo },
+          include: { lines: true },
+        });
+        expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('11000.00');
+        expect(sumSide(shopJe.lines, 'S11-1201', 'cr').toFixed(2)).toBe('11000.00');
+        expect(shopJe.lines).toHaveLength(2);
+        expect(shopJe.companyId).toBe(shopId);
+        const shopMeta = shopJe.metadata as Record<string, unknown>;
+        expect(shopMeta.flow).toBe('interco-recall-cash-shop');
+        expect(shopMeta.idempotencyKey).toBe(`${requestId}:SHOP`);
+        expect(shopMeta.shopReceivableType).toBe('PAYOUT_RECALL');
+        expect(shopMeta.contractId).toBe(recallP);
+
+        // typed lens: settle JE stamp PAYOUT_RECALL + contractId → หักใน typed
+        // ตรงๆ (ต่างจากขา batch ที่ไม่ stamp) — 11,000 − 11,000 = 0 ทั้งสองสมุด
+        expect((await recallFinanceBalance(prisma, recallP)).toFixed(2)).toBe('0.00');
+        expect((await recallShopBalance(prisma, recallP)).toFixed(2)).toBe('0.00');
+        const recalls = await pendingService.getPendingRecalls();
+        expect(recalls.some((x) => x.contractId === recallP)).toBe(false);
+
+        // GL untyped ต่อสัญญา = 0 ทั้งสองบัญชีจริง
+        expect((await glContractBalance(prisma, recallP, '11-2107', 'dr')).toFixed(2)).toBe('0.00');
+        expect((await glContractBalance(prisma, recallP, 'S21-3001', 'cr')).toFixed(2)).toBe(
+          '0.00',
+        );
+
+        // เลนส์ SHOP_COLLECT ต้องไม่นับใบ settle ที่ stamp PAYOUT_RECALL
+        // (explicit stamp ชนะ flow fallback — SQL twin ต้องตรง classifyShopReceivable)
+        expect((await shopCollectTypedBalance(prisma, recallP)).toFixed(2)).toBe('0.00');
+
+        // AuditLog
+        const audit = await prisma.auditLog.findFirst({
+          where: { action: 'INTERCO_RECALL_CASH_SETTLED', entityId: recallP },
+        });
+        expect(audit).toBeTruthy();
+        expect((audit!.newValue as Record<string, unknown>).amount).toBe('11000.00');
+      },
+      120_000,
+    );
+
+    it(
+      'settle เกิน net → reject; settle บางส่วน → ผ่าน + คิวเหลือ net ลดลง',
+      async () => {
+        const recallQ = await seedBaseContract(61);
+        await seedRecallContract(recallQ);
+
+        await expect(
+          settlementService.settleRecallCash(
+            recallQ,
+            { amount: 11000.02, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+            adminId,
+          ),
+        ).rejects.toThrow(/เกินยอดเรียกคืน/);
+
+        // บางส่วน 5,000 → ผ่าน, คิวเหลือ 6,000 ทั้งสองสมุด
+        const partial = await settlementService.settleRecallCash(
+          recallQ,
+          { amount: 5000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+          adminId,
+        );
+        expect(partial.deduped).toBe(false);
+        const recalls = await pendingService.getPendingRecalls();
+        const r = recalls.find((x) => x.contractId === recallQ)!;
+        expect(r).toBeDefined();
+        expect(r.recallGl.toFixed(2)).toBe('6000.00');
+        expect(r.shopRecallGl.toFixed(2)).toBe('6000.00');
+      },
+      120_000,
+    );
+
+    it(
+      'มี RECALL item ใน batch เปิด (PENDING/DRAFT) → reject ด้วยข้อความชี้รอบ; ยกเลิกรอบแล้ว settle ผ่าน (เลือกบัญชีจ่ายฝั่ง SHOP ได้)',
+      async () => {
+        const normalX = await seedBaseContract(62);
+        await seedNormalContract(normalX);
+        const recallX = await seedBaseContract(63);
+        await seedRecallContract(recallX);
+
+        const batch = await settlementService.createBatch(
+          {
+            contractIds: [normalX],
+            recallContractIds: [recallX],
+            transferDate: '2026-08-20',
+          },
+          adminId,
+        );
+        createdBatchIds.push(batch.id);
+        await settlementService.submitBatch(batch.id, adminId);
+
+        // PENDING_APPROVAL → reject (settled gate จับอยู่แล้ว แต่ต้องได้ข้อความชัด)
+        await expect(
+          settlementService.settleRecallCash(
+            recallX,
+            { amount: 11000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+            adminId,
+          ),
+        ).rejects.toThrow(/รอบจ่าย/);
+
+        // DRAFT ก็ block เช่นกัน (brief: เขียน guard ชัด รวม DRAFT)
+        await settlementService.withdrawBatch(batch.id, adminId);
+        await expect(
+          settlementService.settleRecallCash(
+            recallX,
+            { amount: 11000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+            adminId,
+          ),
+        ).rejects.toThrow(/รอบจ่าย/);
+
+        // ยกเลิกรอบ → settle ผ่าน (จ่ายจากเงินสดสาขา S11-1101 แทน default)
+        await settlementService.cancelBatch(batch.id, adminId);
+        const result = await settlementService.settleRecallCash(
+          recallX,
+          {
+            amount: 11000,
+            financeDepositAccountCode: '11-1201',
+            shopPayoutAccountCode: 'S11-1101',
+            requestId: randomUUID(),
+          },
+          adminId,
+        );
+        expect(result.deduped).toBe(false);
+        const shopJe = await prisma.journalEntry.findFirstOrThrow({
+          where: { entryNumber: result.shopEntryNo },
+          include: { lines: true },
+        });
+        expect(sumSide(shopJe.lines, 'S11-1101', 'cr').toFixed(2)).toBe('11000.00');
+        expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('11000.00');
+      },
+      120_000,
+    );
+
+    it(
+      'swap-cancelled (recall net 3,000 — เลขทองของเฟส) → settle 3,000 ผ่าน gate ของ template + ทุกบัญชีปิดศูนย์',
+      async () => {
+        // Baseline ก่อน seed fixture ทั้งชุด — วัด delta ของ flow นี้ล้วนๆ
+        const preFixture2107 = await wholeAccountBalance('11-2107');
+        const preFixtureS21 = await wholeAccountBalance('S21-3001');
+
+        // swap → รอบจ่ายหัก 8,000 POSTED → ยกเลิก C-2 (redirect 11,000 + mirrors)
+        const swapC = await seedBaseContract(64);
+        await seedSwapContract(swapC);
+        const b1 = await settlementService.createBatch(
+          { contractIds: [swapC], transferDate: '2026-08-20' },
+          adminId,
+        );
+        createdBatchIds.push(b1.id);
+        await settlementService.submitBatch(b1.id, adminId);
+        await settlementService.approveBatch(b1.id, adminId);
+        await seedRecallContract(swapC);
+        await seedSwapCancelMirrors(swapC);
+
+        // ยอดเรียกคืน net = 11,000 − 8,000 (ΣPOSTED deduction) = 3,000
+        let recalls = await pendingService.getPendingRecalls();
+        expect(recalls.find((x) => x.contractId === swapC)!.recallGl.toFixed(2)).toBe('3000.00');
+
+        // Template gate (ii): untyped ต่อสัญญา 11,000 − ΣPOSTED 8,000 = 3,000
+        // → settle 3,000 ต้องผ่านพอดี
+        const result = await settlementService.settleRecallCash(
+          swapC,
+          { amount: 3000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+          adminId,
+        );
+        expect(result.deduped).toBe(false);
+
+        // typed หลัง settle: fin = 11,000 − 3,000 = 8,000 → net = 8,000 −
+        // 8,000 (ΣPOSTED) = 0 → หลุดคิว (เลขตาม brief Task 6)
+        expect((await recallFinanceBalance(prisma, swapC)).toFixed(2)).toBe('8000.00');
+        expect((await recallShopBalance(prisma, swapC)).toFixed(2)).toBe('8000.00');
+        recalls = await pendingService.getPendingRecalls();
+        expect(recalls.some((x) => x.contractId === swapC)).toBe(false);
+
+        // ทั้งบัญชีจริง (untyped รวม batch legs) ปิดศูนย์ทั้งสองสมุด:
+        // 11-2107: +8,000(A.3) −8,000(batch) +11,000(redirect) −8,000(mirror) −3,000(settle) = 0
+        // S21-3001: −8,000(A.4) +8,000(batch) −11,000(redirect) +8,000(mirror) +3,000(settle) = 0
+        expect((await wholeAccountBalance('11-2107')).minus(preFixture2107).toFixed(2)).toBe(
+          '0.00',
+        );
+        expect((await wholeAccountBalance('S21-3001')).minus(preFixtureS21).toFixed(2)).toBe(
+          '0.00',
+        );
+      },
+      180_000,
+    );
+
+    it(
+      'ยอดเรียกคืนสองสมุดไม่ตรงกัน → reject (ห้ามโพสต์ข้างเดียว)',
+      async () => {
+        const id = await seedBaseContract(65);
+        await seedRecallMismatch(id); // FINANCE 11,000 / SHOP 10,000
+
+        await expect(
+          settlementService.settleRecallCash(
+            id,
+            { amount: 10000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+            adminId,
+          ),
+        ).rejects.toThrow(/สองสมุดไม่ตรงกัน/);
+      },
+      120_000,
+    );
+
+    it(
+      'idempotency: requestId เดิม retry → คืนผลเดิมไม่โพสต์ซ้ำ (แม้สัญญาหลุดคิวแล้ว); ยอดต่างกัน → 409',
+      async () => {
+        const recallI = await seedBaseContract(66);
+        await seedRecallContract(recallI);
+        const requestId = randomUUID();
+
+        const first = await settlementService.settleRecallCash(
+          recallI,
+          { amount: 11000, financeDepositAccountCode: '11-1201', requestId },
+          adminId,
+        );
+        expect(first.deduped).toBe(false);
+
+        // Retry หลัง settle เต็ม — สัญญาไม่อยู่ในคิวแล้ว แต่ idempotency ต้องมา
+        // ก่อน guard คิว → คืนผลเดิม ไม่ throw
+        const again = await settlementService.settleRecallCash(
+          recallI,
+          { amount: 11000, financeDepositAccountCode: '11-1201', requestId },
+          adminId,
+        );
+        expect(again.deduped).toBe(true);
+        expect(again.financeEntryNo).toBe(first.financeEntryNo);
+        expect(again.shopEntryNo).toBe(first.shopEntryNo);
+
+        // JE ไม่งอกซ้ำ (SHOP leg มีใบเดียว)
+        const shopJes = await prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['flow'], equals: 'interco-recall-cash-shop' } as never },
+              { metadata: { path: ['contractId'], equals: recallI } as never },
+            ],
+            deletedAt: null,
+          },
+        });
+        expect(shopJes).toHaveLength(1);
+
+        // requestId เดิมแต่ยอดใหม่ → 409 ห้ามกลืนเงียบ
+        await expect(
+          settlementService.settleRecallCash(
+            recallI,
+            { amount: 5000, financeDepositAccountCode: '11-1201', requestId },
+            adminId,
+          ),
+        ).rejects.toThrow(ConflictException);
       },
       120_000,
     );

@@ -19,6 +19,16 @@ export interface ShopCollectSettlementInput {
    * (contractId+amount) เพื่อ backward compat กับ caller เดิม.
    */
   requestId?: string;
+  /**
+   * ประเภทลูกหนี้ 11-2107 ที่ใบนี้ล้าง (Phase 3 Task 6 — เส้นทางรับเงินสดคืน):
+   * default `'SHOP_COLLECT'` — caller เดิม (JP4/shop-collect settle) ต้องได้
+   * พฤติกรรม byte-identical. `'PAYOUT_RECALL'` ใช้โดย
+   * `IntercoSettlementService.settleRecallCash` เท่านั้น — stamp ลง
+   * `metadata.shopReceivableType` ให้ typed recall lens หักยอดต่อสัญญาได้ตรงประเภท.
+   * Guards/idempotency/outstanding computation ไม่แตกต่างตามประเภท (untyped
+   * per-contract Σ − POSTED deductions เหมือนเดิมทุกเส้นทาง).
+   */
+  typeStamp?: 'SHOP_COLLECT' | 'PAYOUT_RECALL';
 }
 
 /**
@@ -114,6 +124,7 @@ export class ShopCollectSettlementTemplate {
     const { contractId, depositAccountCode } = input;
     const amount = new Decimal(input.amount.toString());
     const amountStr = amount.toFixed(2);
+    const typeStamp = input.typeStamp ?? 'SHOP_COLLECT';
 
     // ── Validate deposit account ──────────────────────────────────────────────
     if (!(CASH_ACCOUNT_CODES as readonly string[]).includes(depositAccountCode)) {
@@ -269,7 +280,10 @@ export class ShopCollectSettlementTemplate {
     try {
       const result = await this.journal.createAndPost(
         {
-          description: `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
+          description:
+            typeStamp === 'PAYOUT_RECALL'
+              ? `รับเงินคืนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107 เรียกคืน)`
+              : `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
           reference: input.requestId
             ? `${contractId}:shop-collect-settlement:${input.requestId}`
             : `${contractId}:shop-collect-settlement:${amountStr}`,
@@ -280,7 +294,7 @@ export class ShopCollectSettlementTemplate {
             amount: amountStr,
             depositAccountCode,
             ...(input.requestId ? { requestId: input.requestId } : {}),
-            shopReceivableType: 'SHOP_COLLECT',
+            shopReceivableType: typeStamp,
             idempotencyKey: input.requestId
               ? `${contractId}:${input.requestId}`
               : `${contractId}:${amountStr}`,
@@ -290,13 +304,19 @@ export class ShopCollectSettlementTemplate {
               accountCode: depositAccountCode,
               dr: amount,
               cr: zero,
-              description: `รับโอนจากหน้าร้าน ${amountStr} ฿`,
+              description:
+                typeStamp === 'PAYOUT_RECALL'
+                  ? `รับเงินคืนจากหน้าร้าน ${amountStr} ฿`
+                  : `รับโอนจากหน้าร้าน ${amountStr} ฿`,
             },
             {
               accountCode: '11-2107',
               dr: zero,
               cr: amount,
-              description: 'ล้างลูกหนี้-หน้าร้าน (shop-collect)',
+              description:
+                typeStamp === 'PAYOUT_RECALL'
+                  ? 'ล้างลูกหนี้-หน้าร้าน (เรียกคืนยกเลิก)'
+                  : 'ล้างลูกหนี้-หน้าร้าน (shop-collect)',
             },
           ],
         },

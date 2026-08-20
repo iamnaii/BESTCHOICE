@@ -17,6 +17,7 @@ import { ExchangeBuybackReceivable11_2107Template } from '../../journal/cpa-temp
 import { ShopExchangeReturnTemplate } from '../../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
+import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
 import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.cron';
 import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
@@ -107,6 +108,8 @@ const intercoPending = new IntercoPendingService(prisma as never);
 const pairedJournal = new PairedJournalService(journal, prisma as never, companyResolver);
 const batchNumberService = new IntercoBatchNumberService(prisma as never);
 const storageStub = { upload: async () => undefined, delete: async () => undefined };
+// settleRecallCash (Phase 3 Task 6) dep — unused by this suite.
+const shopCollectTemplate = new ShopCollectSettlementTemplate(journal, prisma as never);
 const settlementService = new IntercoSettlementService(
   prisma as never,
   intercoPending,
@@ -115,6 +118,7 @@ const settlementService = new IntercoSettlementService(
   companyResolver,
   journal,
   storageStub as never,
+  shopCollectTemplate,
 );
 
 // ---------------------------------------------------------------------------

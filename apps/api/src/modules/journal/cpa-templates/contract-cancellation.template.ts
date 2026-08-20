@@ -1,45 +1,62 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
-import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ExchangeCancelReversalTemplate } from './exchange-cancel-reversal.template';
+import { EclStageReverseTemplate } from './ecl-stage-reverse.template';
+import { glContractBalance } from '../gl-contract-balance';
 
 /**
- * Template — Contract Cancellation (P4-SP4).
+ * Template — Contract Cancellation C-1 (Phase 3, workbook 2026-08-19 spec §6).
  *
- * Reverses the 1A activation JE and, when refundAmount > 0, posts the refund:
+ * Reworked from the P4-SP4 mirror-1A-only version: instead of hand-mirroring
+ * the single 1A activation JE, it delegates to the generalized cancel-sweep
+ * engine (`ExchangeCancelReversalTemplate.reverse`) which mirror-reverses
+ * EVERY POSTED JE tagged `metadata.contractId` — 1A, SHOP legs
+ * (inventory-transfer COGS + revenue/receivable), 2A accruals, etc. — carrying
+ * companyId + metadata.contractId so every account nets to 0 per contract.
  *
- * Reversal (mirror of 1A, Dr/Cr swapped):
- *   Dr 21-1101 เจ้าหนี้-หน้าร้าน    (financedAmount)
- *   Dr 21-1102 เจ้าหนี้ค่าคอม       (commission)
- *   Dr 11-2106 รายได้รอตัดบัญชี-ดอกเบี้ย (interest)
- *   Dr 21-2102 ภาษีขายรอเรียกเก็บ   (vat)
- *     Cr 11-2101 ลูกหนี้ Gross
- *     Cr 11-2105 ลูกหนี้ภาษีขายรอเรียกเก็บ
+ * ECL is handled OUTSIDE the sweep (excludeFlows) with a single release JE:
+ * mirroring the provision JE AND posting a release would double-debit 11-2102
+ * (negative balance). Instead the live GL balance of 11-2102 is released in
+ * one `EclStageReverseTemplate` JE (pattern JP4 C1 — release from live GL),
+ * and the ACTIVE `BadDebtProvision` rows are flipped to REVERSED.
+ * 'shop-collect-settlement' is excluded too: those JEs move REAL customer
+ * cash (Dr cash / Cr 11-2107) — mirroring them would fabricate a cash
+ * reversal; the service guard rejects cancellation while any SHOP_COLLECT
+ * balance is outstanding instead.
  *
- * Refund (when refundAmount > 0):
- *   Dr 52-1106 ส่วนลดดอกเบี้ย-ปิดยอด (refundAmount)
- *     Cr 11-1201 ธนาคาร KBank         (refundAmount)
+ * The refund JE block (Dr 52-1106 / Cr 11-1201) was DELETED (Phase 3): the
+ * customer's down payment lives on the SHOP book — the sweep restores
+ * Cr S21-2001 structurally, and the actual cash refund is a separate SHOP
+ * step (ShopDownPaymentReversalTemplate pre-activation; JV post-activation
+ * until a dedicated UI exists). The service guard rejects refundAmount > 0.
  *
- * Idempotency: checks metadata.flow = 'contract-cancellation' + cancellationId
- * to prevent double-posting on retry.
+ * Idempotency (DB-backed, Phase 3 decision): probes
+ * `ContractCancellation.reversalJournalEntryId` — the FK the approve flow has
+ * always persisted in the same $transaction as the JEs. The old metadata
+ * probe (flow='contract-cancellation' + cancellationId) could not see the new
+ * sweep-produced reversals (they stamp per-JE idempotencyKey
+ * `contract-cancellation:<jeId>`, no cancellationId), while the FK covers
+ * both the legacy P4-SP4 JEs and the new sweep output. The sweep engine's own
+ * per-JE `reversed:true` stamp + DB idempotency index remain the second
+ * layer.
  */
 @Injectable()
 export class ContractCancellationTemplate {
   constructor(
-    private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    private readonly sweepTemplate: ExchangeCancelReversalTemplate,
+    private readonly eclStageReverse: EclStageReverseTemplate,
   ) {}
 
   async execute(
     params: {
       contractId: string;
       cancellationId: string;
-      refundAmount: Decimal;
     },
     tx?: Prisma.TransactionClient,
-  ): Promise<{ entryNumber: string; refundEntryNumber?: string }> {
-    const { contractId, cancellationId, refundAmount } = params;
+  ): Promise<{ entryNumber: string; reversalJeIds: string[] }> {
+    const { contractId, cancellationId } = params;
     const client = tx ?? this.prisma;
 
     const contract = await client.contract.findUniqueOrThrow({
@@ -47,7 +64,23 @@ export class ContractCancellationTemplate {
       select: { contractNumber: true },
     });
 
-    // Find the 1A activation JE tagged to this contract
+    // Idempotency (DB-backed): the approve flow persists the first reversal
+    // JE id onto the cancellation row inside the same $transaction — if it is
+    // already set, the reversal chain was fully posted before.
+    const cancellationRow = await client.contractCancellation.findUnique({
+      where: { id: cancellationId },
+      select: { reversalJournalEntryId: true },
+    });
+    if (cancellationRow?.reversalJournalEntryId) {
+      const existing = await client.journalEntry.findUniqueOrThrow({
+        where: { id: cancellationRow.reversalJournalEntryId },
+        select: { entryNumber: true },
+      });
+      return { entryNumber: existing.entryNumber, reversalJeIds: [] };
+    }
+
+    // Guard (kept from P4-SP4): a contract with no 1A activation JE has
+    // nothing on the books to cancel — reject instead of a silent no-op sweep.
     const activationJe = await (client.journalEntry as Prisma.JournalEntryDelegate).findFirst({
       where: {
         AND: [
@@ -57,103 +90,50 @@ export class ContractCancellationTemplate {
         status: 'POSTED',
         deletedAt: null,
       },
-      include: { lines: true },
+      select: { id: true },
     });
-
     if (!activationJe) {
       throw new BadRequestException(
         `ไม่พบรายการบัญชีเปิดสัญญา (1A) สำหรับสัญญา ${contract.contractNumber} — ไม่สามารถยกเลิกได้`,
       );
     }
 
-    // Idempotency check: ensure we haven't already posted the cancellation reversal
-    const existingReversal = await (client.journalEntry as Prisma.JournalEntryDelegate).findFirst({
-      where: {
-        AND: [
-          { metadata: { path: ['flow'], equals: 'contract-cancellation' } } as Prisma.JournalEntryWhereInput,
-          { metadata: { path: ['cancellationId'], equals: cancellationId } } as Prisma.JournalEntryWhereInput,
-        ],
-        deletedAt: null,
-      },
-    });
-
-    if (existingReversal) {
-      return { entryNumber: existingReversal.entryNumber };
-    }
-
-    // Build reversal lines (swap Dr/Cr from 1A)
-    const reversalLines = activationJe.lines.map((l) => ({
-      accountCode: l.accountCode,
-      dr: new Decimal(l.credit.toString()),
-      cr: new Decimal(l.debit.toString()),
-      description: `[ยกเลิกสัญญา] ${l.description ?? ''}`.trim(),
-    }));
-
-    const reversalResult = await this.journal.createAndPost(
+    // C-1: sweep-reverse ทุก JE ของสัญญา ยกเว้น ECL flows (release แยกใบเดียว —
+    // exclude กัน double: sweep mirror + release พร้อมกันจะทำ 11-2102 ติดลบ)
+    // และ shop-collect-settlement (เงินสดจริง — guard ฝั่ง service บล็อกก่อนแล้ว)
+    const { reversalJeIds } = await this.sweepTemplate.reverse(
       {
-        description: `ยกเลิกสัญญา ${contract.contractNumber} — ย้อนรายการ ${activationJe.entryNumber}`,
-        reference: contractId,
-        metadata: {
-          tag: 'CANCELLATION',
-          flow: 'contract-cancellation',
-          contractId,
-          cancellationId,
-          originalEntryId: activationJe.id,
-          originalEntryNumber: activationJe.entryNumber,
-        },
-        lines: reversalLines,
+        jeIds: [],
+        newContractId: contractId, // ชื่อ param เดิมของ engine — คือ contractId ที่ sweep
+        excludeFlows: ['provision', 'stage-reverse', 'shop-collect-settlement'],
+        flowLabel: 'contract-cancellation',
+        descriptionPrefix: '[ยกเลิกสัญญา]',
       },
       tx,
     );
-
-    // Mark original 1A as reversed
-    const meta = (activationJe.metadata ?? {}) as Prisma.InputJsonObject;
-    await client.journalEntry.update({
-      where: { id: activationJe.id },
-      data: {
-        metadata: {
-          ...meta,
-          reversed: true,
-          reversedByEntryNumber: reversalResult.entryNumber,
-          reversedByCancellationId: cancellationId,
-        },
-      },
-    });
-
-    // Refund JE (when refundAmount > 0)
-    let refundEntryNumber: string | undefined;
-    const zero = new Decimal(0);
-    if (refundAmount.greaterThan(zero)) {
-      const refundResult = await this.journal.createAndPost(
-        {
-          description: `คืนเงิน ${contract.contractNumber} — ยกเลิกสัญญา`,
-          reference: contractId,
-          metadata: {
-            tag: 'CANCELLATION_REFUND',
-            flow: 'contract-cancellation-refund',
-            contractId,
-            cancellationId,
-          },
-          lines: [
-            {
-              accountCode: '52-1106',
-              dr: refundAmount,
-              cr: zero,
-              description: 'ส่วนลดดอกเบี้ย-คืนเงินยกเลิกสัญญา',
-            },
-            {
-              accountCode: '11-1201',
-              dr: zero,
-              cr: refundAmount,
-              description: 'ธนาคาร KBank — จ่ายคืนลูกค้า',
-            },
-          ],
-        },
-        tx,
+    if (reversalJeIds.length === 0) {
+      throw new BadRequestException(
+        `ไม่มีรายการบัญชีให้กลับรายการสำหรับสัญญา ${contract.contractNumber} — รายการอาจถูกกลับไปก่อนหน้านี้แล้ว`,
       );
-      refundEntryNumber = refundResult.entryNumber;
     }
 
-    return { entryNumber: reversalResult.entryNumber, refundEntryNumber };
+    // ECL: release ใบเดียวจาก live GL (pattern JP4 C1) + flip provision rows
+    const eclBal = await glContractBalance(client, contractId, '11-2102', 'cr');
+    if (eclBal.greaterThan(0)) {
+      await this.eclStageReverse.execute(
+        { contractId, reverseAmount: eclBal, fromBucket: 'CANCEL', toBucket: 'CANCEL' },
+        tx,
+      );
+    }
+    await client.badDebtProvision.updateMany({
+      where: { contractId, status: 'ACTIVE', deletedAt: null },
+      data: { status: 'REVERSED' },
+    });
+
+    const firstJe = await client.journalEntry.findUniqueOrThrow({
+      where: { id: reversalJeIds[0] },
+      select: { entryNumber: true },
+    });
+    return { entryNumber: firstJe.entryNumber, reversalJeIds };
   }
 }

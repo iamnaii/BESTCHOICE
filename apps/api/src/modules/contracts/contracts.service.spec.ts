@@ -1331,15 +1331,21 @@ describe('ContractsService', () => {
   });
 
   describe('approveCancellation', () => {
-    it('posts JE + updates cancellation to APPROVED + updates contract to CANCELED', async () => {
+    /**
+     * Phase 3 (C-1): the approve tx now runs guards (paid payment / open
+     * interco batch / refundAmount / 11-2107 SHOP_COLLECT balance) and a
+     * restore block (product back to SHOP + soft-delete payments/schedules),
+     * so the tx mock needs those delegates + $queryRaw (typed-balance helper)
+     * and the facade needs a late-set companyResolver alongside the template.
+     */
+    const buildApproveHarness = async (refundAmount = '0') => {
       const mockCancellationTemplate = {
         execute: jest.fn().mockResolvedValue({
           entryNumber: 'JE-202601-00010',
-          refundEntryNumber: undefined,
+          reversalJeIds: ['je-rev-a', 'je-rev-b'],
         }),
       };
 
-      // Re-create service with template injected
       const moduleWithTemplate = await Test.createTestingModule({
         providers: [
           ContractsService,
@@ -1351,14 +1357,17 @@ describe('ContractsService', () => {
         ],
       }).compile();
       const svcWithTemplate = moduleWithTemplate.get<ContractsService>(ContractsService);
-      // Inject template via the Optional private property
+      // Inject template + company resolver via the Optional private properties
       (svcWithTemplate as any).cancellationTemplate = mockCancellationTemplate;
+      (svcWithTemplate as any).companyResolver = {
+        getShopCompanyId: jest.fn().mockResolvedValue('shop-company-1'),
+      };
 
       const mockCancellation = {
         id: 'cancel-1',
         contractId: 'contract-1',
         status: 'PENDING',
-        refundAmount: { toString: () => '0' },
+        refundAmount: { toString: () => refundAmount },
         deletedAt: null,
         contract: { ...mockContract, status: 'ACTIVE' },
       };
@@ -1367,25 +1376,33 @@ describe('ContractsService', () => {
         findUnique: jest.fn().mockResolvedValue(mockCancellation),
         update: jest.fn().mockResolvedValue({ ...mockCancellation, status: 'APPROVED' }),
       };
-
       prisma.journalEntry = {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'je-reversal-1' }),
       };
+      // Guard delegates (Phase 3): no paid payment, no open batch item, 0 balance
+      prisma.payment.findFirst = jest.fn().mockResolvedValue(null);
+      prisma.interCoSettlementItem = { findFirst: jest.fn().mockResolvedValue(null) };
+      prisma.installmentSchedule = { updateMany: jest.fn().mockResolvedValue({ count: 0 }) };
+      prisma.$queryRaw = jest.fn().mockResolvedValue([{ balance: '0' }]);
 
       prisma.$transaction = jest.fn().mockImplementation(async (fn: (tx: any) => Promise<any>) => {
-        return fn({
-          ...prisma,
-          contractCancellation: prisma.contractCancellation,
-          contract: prisma.contract,
-          journalEntry: prisma.journalEntry,
-          auditLog: prisma.auditLog,
-        });
+        return fn({ ...prisma });
       });
+
+      return { svcWithTemplate, mockCancellationTemplate };
+    };
+
+    it('runs guards + posts sweep + restores product + updates cancellation/contract', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
 
       const result = await svcWithTemplate.approveCancellation('cancel-1', 'approver-1');
 
       expect(result.status).toBe('APPROVED');
-      expect(mockCancellationTemplate.execute).toHaveBeenCalled();
+      expect(result.reversalCount).toBe(2);
+      expect(mockCancellationTemplate.execute).toHaveBeenCalledWith(
+        { contractId: 'contract-1', cancellationId: 'cancel-1' },
+        expect.anything(),
+      );
       expect(prisma.contractCancellation.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'cancel-1' },
@@ -1398,6 +1415,63 @@ describe('ContractsService', () => {
           data: expect.objectContaining({ status: 'CANCELED' }),
         }),
       );
+      // Restore: product back to SHOP stock + soft-delete schedule rows
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'product-1' },
+          data: expect.objectContaining({ status: 'IN_STOCK', ownedByCompanyId: 'shop-company-1' }),
+        }),
+      );
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contractId: 'contract-1', deletedAt: null }),
+        }),
+      );
+      expect(prisma.installmentSchedule.updateMany).toHaveBeenCalled();
+      // Audit carries the whole reversal set
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CONTRACT_CANCELED',
+            newValue: expect.objectContaining({
+              reversalCount: 2,
+              reversalEntryNumber: 'JE-202601-00010',
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('guard: rejects when a PAID payment exists (void first)', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      prisma.payment.findFirst = jest.fn().mockResolvedValue({ id: 'pay-1' });
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('void ใบเสร็จทั้งหมดก่อนยกเลิก');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('guard: rejects when refundAmount > 0 (deprecated — SHOP-side refund)', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness('500');
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('refundAmount ไม่รองรับแล้ว');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('guard: rejects when the contract sits in an open interco batch', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      prisma.interCoSettlementItem.findFirst = jest.fn().mockResolvedValue({
+        id: 'item-1',
+        batch: { batchNumber: 'IC-20260820-0001' },
+      });
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('IC-20260820-0001');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
     });
   });
 

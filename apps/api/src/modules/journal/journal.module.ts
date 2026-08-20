@@ -52,8 +52,10 @@ import { OutboxService } from './outbox.service';
 import { OutboxProcessorService } from './outbox-processor.service';
 import { OutboxProcessorCron } from './cron/outbox-processor.cron';
 import { ReconciliationCron } from './cron/reconciliation.cron';
-// P4-SP4 — Contract cancellation JE reversal
+// P4-SP4 — Contract cancellation JE reversal (Phase 3: delegates to the
+// cancel-sweep engine + ECL stage-reverse — both must be providable here)
 import { ContractCancellationTemplate } from './cpa-templates/contract-cancellation.template';
+import { ExchangeCancelReversalTemplate } from './cpa-templates/exchange-cancel-reversal.template';
 import { ReconcileController } from './reconcile.controller';
 // Section 2 Task 3 — shop-collect settlement
 import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-settlement.template';
@@ -117,8 +119,9 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     OutboxProcessorService,
     OutboxProcessorCron,
     ReconciliationCron,
-    // P4-SP4 — Contract cancellation
+    // P4-SP4 — Contract cancellation (Phase 3: needs the cancel-sweep engine)
     ContractCancellationTemplate,
+    ExchangeCancelReversalTemplate,
     // Section 2 Task 3 — shop-collect settlement
     ShopCollectSettlementTemplate,
     // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า
@@ -173,8 +176,9 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     // SP7.2 — Outbox + saga infrastructure
     OutboxService,
     OutboxProcessorService,
-    // P4-SP4 — Contract cancellation
+    // P4-SP4 — Contract cancellation (Phase 3: sweep engine exported too)
     ContractCancellationTemplate,
+    ExchangeCancelReversalTemplate,
     // Section 2 Task 3 — shop-collect settlement
     ShopCollectSettlementTemplate,
     // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — เงินคืนส่วนต่างลูกค้า

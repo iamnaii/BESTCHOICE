@@ -484,7 +484,13 @@ export class ContractPaymentService {
             interestDiscountPercent: quote.discountPct,
             lateFees: epJe.lateFees.toFixed(2),
             ...(epJe.parkRelief.gt(0) ? { parkRelief: epJe.parkRelief.toFixed(2) } : {}),
-            ...(dto.collectedByShop ? { collectedByShop: true, shopReceivable: '11-2107' } : {}),
+            ...(dto.collectedByShop
+              ? {
+                  collectedByShop: true,
+                  shopReceivable: '11-2107',
+                  shopReceivableType: 'SHOP_COLLECT',
+                }
+              : {}),
           };
 
           await this.journalAutoService.createAndPost(
@@ -544,6 +550,7 @@ export class ContractPaymentService {
                 entityId: id,
                 newValue: {
                   shopReceivable: '11-2107',
+                  shopReceivableType: 'SHOP_COLLECT',
                   settlement: epJe.settlement.toFixed(2),
                   lateFees: epJe.lateFees.toFixed(2),
                   totalCash: epJe.totalCash.toFixed(2),

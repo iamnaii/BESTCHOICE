@@ -617,6 +617,7 @@ export class RepossessionsService {
               entityId: dto.contractId,
               newValue: {
                 shopReceivable: '11-2107',
+                shopReceivableType: 'SHOP_COLLECT',
                 repossessionValue: repoValue.toFixed(2),
                 repossessionId: repossession.id,
               },

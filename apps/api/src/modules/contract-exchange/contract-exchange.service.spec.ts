@@ -562,6 +562,34 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
     expect(result.newContractId).toBeDefined();
     expect(result.newContractId).toBe('new-c');
   });
+
+  // Task 2 review fix (2026-08-19) — expectedPl ใน preview ต้องตรง plug วิธีสุทธิ
+  // ของ ExchangeCloseOld21_1106Template (A.2 NET method): diff = (buyback +
+  // unearned + deferredVat) − (gross + vatRec + vatRec). สูตร gross เดิม
+  // (buyback − grossInclVat) ทำให้ผู้อนุมัติเห็นขาดทุน 4,126.68 ขณะ JE จริงลง
+  // เพียง 126.68 (fixture Case 2A) — preview ≠ posted ขัด payoff-parity doctrine.
+  it('buildPreview expectedPl = plug วิธีสุทธิของ A.2 (Case 2A: −126.68 ไม่ใช่ −4,126.68)', async () => {
+    // Ledger สัญญาเดิม (ค่าชุดเดียวกับ Case 2A integration fixture):
+    // gross 11,333.36 / vatRec 793.32 / unearned 4,000.00 / deferredVat 793.32.
+    // buildPreview เรียก journalLine.findMany 3 ครั้ง: #1 computeOldOutstanding
+    // (fixture นี้), #2-#3 guard glContractBalance 11-2103/21-1103 (default []).
+    prisma.journalLine.findMany.mockResolvedValueOnce([
+      { accountCode: '11-2101', debit: '11333.36', credit: '0' },
+      { accountCode: '11-2105', debit: '793.32', credit: '0' },
+      { accountCode: '11-2106', debit: '0', credit: '4000.00' },
+      { accountCode: '21-2102', debit: '0', credit: '793.32' },
+    ]);
+
+    const result = await service.buildPreview(
+      { oldContractId: 'old-c', buybackPrice: '8000', deviceCondition: 'B' },
+      user,
+    );
+
+    // (8,000 + 4,000 + 793.32) − (11,333.36 + 793.32 + 793.32) = −126.68
+    expect(result.expectedPl).toBe('-126.68');
+    // สูตร gross เดิมคือ buyback − grossRemainingInclVat = 8,000 − 12,126.68 = −4,126.68
+    expect(result.grossRemainingInclVat).toBe('12126.68');
+  });
 });
 
 // ============================================================================
@@ -1549,14 +1577,31 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
     expect(templates.t1a.execute).toHaveBeenCalled();
   });
 
-  it('passes costPrice + requestId to A.4 template', async () => {
+  it('passes buyback + requestId to A.4 template and mutates/snapshots costPrice (workbook 2026-08-19)', async () => {
     tx.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: '12345.67' });
     await service.finalizeAfterActivation(newContract, tx);
     const t4Call = templates.t4.execute.mock.calls[0][0];
     expect(t4Call.oldProductId).toBe('old-p');
     expect(t4Call.oldContractId).toBe('old-c');
     expect(t4Call.requestId).toBe('r1'); // C1b idempotency re-key
-    expect(t4Call.cost.toString()).toBe('12345.67');
+    // A.4 books at the BUYBACK price (mocked request has no buybackPrice →
+    // legacy fallback financed 10,000 + commission 1,000), NOT the old costPrice
+    expect(t4Call.buyback.toString()).toBe('11000');
+    expect(t4Call.cost).toBeUndefined();
+    // Old product's costPrice is overwritten with the buyback price…
+    expect(tx.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'old-p' },
+        data: expect.objectContaining({ costPrice: expect.anything() }),
+      }),
+    );
+    const flipData = tx.product.update.mock.calls.find(
+      (c: any[]) => c[0].where.id === 'old-p',
+    )![0].data;
+    expect(flipData.costPrice.toString()).toBe('11000');
+    // …and the previous value is snapshotted on the request row (cancel restore)
+    const reqData = tx.contractExchangeRequest.update.mock.calls[0][0].data;
+    expect(reqData.previousCostPrice.toString()).toBe('12345.67');
     // A.2 carries the same request-scoped key input
     expect(templates.t2.execute.mock.calls[0][0].requestId).toBe('r1');
   });

@@ -113,7 +113,7 @@ export class ContractExchangeService {
     if (!newRaw) throw new NotFoundException('ไม่พบเครื่องใหม่');
     // I6 (final review 2026-07-29): the submitted oldProductId must be the
     // device actually on the contract — a mismatched id would return the WRONG
-    // device to SHOP stock at finalize (A.4 cost + product flips key off it).
+    // device to SHOP stock at finalize (A.4 + product flips key off it).
     if (oldContract.productId !== dto.oldProductId) {
       throw new BadRequestException('เครื่องเดิมไม่ตรงกับสัญญา');
     }
@@ -334,7 +334,16 @@ export class ContractExchangeService {
         ? basePrice.times(new Decimal(100).minus(marketCheckPct).div(100)).toDecimalPlaces(2)
         : null;
       tier = computeExchangeTier({ buyback, ncv, basePrice, marketCheckPct });
-      expectedPl = buyback.minus(grossRemainingInclVat); // − = loss (Dr 51-1102), + = gain (Cr 41-1102)
+      // วิธีสุทธิ (A.2 NET method, workbook 2026-08-19) — mirror plug ของ
+      // ExchangeCloseOld21_1106Template: (buyback + unearned + deferredVat)
+      // − (gross + vatRec [Cr 11-2105] + vatRec [Cr 21-2101]).
+      // − = loss (Dr 51-1102), + = gain (Cr 41-1102)
+      expectedPl = buyback
+        .plus(outstanding.unearnedInterest)
+        .plus(outstanding.deferredVat)
+        .minus(outstanding.gross)
+        .minus(outstanding.vatReceivable)
+        .minus(outstanding.vatReceivable);
     }
 
     return {
@@ -879,8 +888,8 @@ export class ContractExchangeService {
     // ยอดเดียวกับที่ A.2 พักไว้ที่ 21-1106 ดังนั้น 21-1106 net = 0 เสมอ.
     const je3 = await this.t3.execute({ newContractId: newContract.id, buyback }, tx);
 
-    // 7. JE A.4 — SHOP re-intake the old device.
-    // Old product must have a costPrice so the inventory line lands correctly.
+    // 7. JE A.4 — SHOP ซื้อเครื่องเดิมคืนที่ราคารับซื้อ (workbook 2026-08-19 Phase 1).
+    // costPrice เดิมยังต้องมี (data quality) และถูก snapshot ไว้ให้ cancel restore.
     const oldProduct = await tx.product.findUniqueOrThrow({
       where: { id: request.oldProductId },
       select: { id: true, costPrice: true },
@@ -890,9 +899,9 @@ export class ContractExchangeService {
         'ไม่พบ costPrice ของเครื่องเดิม — ตั้งค่าก่อน finalize เปลี่ยนเครื่อง',
       );
     }
-    const cost = new Decimal(oldProduct.costPrice.toString());
+    const previousCostPrice = new Decimal(oldProduct.costPrice.toString());
     const je4 = await this.t4.execute(
-      { oldProductId: request.oldProductId, oldContractId, requestId: request.id, cost },
+      { oldProductId: request.oldProductId, oldContractId, requestId: request.id, buyback },
       tx,
     );
 
@@ -912,7 +921,13 @@ export class ContractExchangeService {
     });
     await tx.product.update({
       where: { id: request.oldProductId },
-      data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,
+      // costPrice = ราคารับซื้อ (ต้นทุนจริงของ SHOP — COGS ตอนขายซ้ำใช้ค่านี้);
+      // ค่าเดิม snapshot ไว้ที่ request.previousCostPrice ให้ cancel restore
+      data: {
+        status: 'REFURBISHED',
+        ownedByCompanyId: shopCompanyId,
+        costPrice: buyback,
+      } as any,
     });
 
     // 9. Link the JE ids onto the request row for traceability
@@ -924,6 +939,7 @@ export class ContractExchangeService {
         je3Id: je3.id,
         je4Id: je4.id,
         eclReversalJeId: je5?.id ?? null,
+        previousCostPrice,
       },
     });
 
@@ -955,7 +971,8 @@ export class ContractExchangeService {
         oldContractId,
         jeId: je4.id,
         ownedByCompanyId: shopCompanyId,
-        cost: cost.toString(),
+        buyback: buyback.toString(),
+        previousCostPrice: previousCostPrice.toString(),
       },
     });
 

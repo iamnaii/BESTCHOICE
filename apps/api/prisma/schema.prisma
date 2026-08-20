@@ -7631,13 +7631,16 @@ model ContractExchangeRequest {
   je1aId        String?   @map("je_1a_id")
   je2Id         String?   @map("je_2_id")
   je3Id         String?   @map("je_3_id")
-  /// SHOP re-intake JE (Dr S11-2002 / Cr S50-1102) — back-ref so the
-  /// audit trail can pin the inventory return to its exchange request.
+  /// SHOP re-intake JE — ตั้งแต่ 2026-08-19: Dr S11-2002 [buyback] / Cr S21-3001
+  /// (เดิม: Dr S11-2002 / Cr S50-1102 ที่ costPrice — JE เก่าคงรูปเดิม forward-only)
   je4Id         String?   @map("je_4_id")
 
   // ===== Device Swap 2026-07 (priced exchange) =====
   mode               ExchangeMode          @default(PRICED) @map("mode")
   buybackPrice       Decimal?              @map("buyback_price") @db.Decimal(12, 2)
+  /// costPrice เดิมของเครื่องเก่า ก่อนถูกเขียนทับเป็นราคารับซื้อตอน A.4 finalize
+  /// (workbook 2026-08-19 Phase 1) — cancel ใช้ restore กลับ. null = finalize ก่อนฟีเจอร์นี้
+  previousCostPrice  Decimal?              @map("previous_cost_price") @db.Decimal(12, 2)
   deviceCondition    String?               @map("device_condition") // A-D → key เข้า TradeInValuation
   approvalTier       ExchangeApprovalTier? @map("approval_tier")
   ncvSnapshot        Decimal?              @map("ncv_snapshot") @db.Decimal(12, 2)

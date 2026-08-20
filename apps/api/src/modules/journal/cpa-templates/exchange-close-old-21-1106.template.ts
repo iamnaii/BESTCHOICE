@@ -24,18 +24,26 @@ export interface ExchangeCloseOldInput {
  * Exchange A.2 — Close old contract, clearing all outstanding balances via the
  * 21-1106 internal clearing account, with a plug-balance for any gain/loss.
  *
- * THRESHOLD = oldGrossOutstanding (11-2101) + oldVatReceivableOutstanding (11-2105)
- * diff      = buyback - threshold  (signed)
+ * วิธีสุทธิ (workbook เจ้าของ 2026-08-19 — spec 2026-08-19-device-swap-netting-
+ * cancel-workbook-design.md Gap ข้อ 6): ไม่ตั้งรายได้ 41-1101 จากดอกเบี้ยรอตัด
+ * ที่เหลือ — ขาดทุน/กำไร = ราคารับซื้อ เทียบมูลค่าตามบัญชีสุทธิรวม VAT เท่านั้น.
+ * (เดิมเป็นวิธี gross: Cr 41-1101 [unearned] + plug พองขึ้นเท่ากัน — กำไรสุทธิ
+ * เท่ากันแต่บรรทัด P&L พองเกินคู่ ซึ่ง workbook ระบุ "ห้ามสลับกัน" กับเคสปิดยอด
+ * ที่ใช้วิธี gross ผ่าน 52-1106.)
  *
- *   Dr 21-1106   [buyback]                         — clearing account (payable to old contract)
- *   Dr 11-2106   [oldUnearnedInterestOutstanding]  — reverse contra-asset (unearned interest)
+ *   diff = (buyback + unearned + deferredVat) − (gross + vatRec + vatRec)
+ *        (ติดลบ = ขาดทุน; ตัวเลข workbook Case 8: 8,000 − 8,126.64 = −126.64)
+ *
+ *   Dr 21-1106   [buyback]                         — clearing account
+ *   Dr 11-2106   [oldUnearnedInterestOutstanding]  — reverse contra-asset
  *   Dr 21-2102   [oldDeferredVatOutstanding]       — reverse deferred VAT
  *   Dr 51-1102   [|diff|]  if diff < 0 (LOSS)
  *     Cr 11-2101 [oldGrossOutstanding]             — clear HP receivable
  *     Cr 11-2105 [oldVatReceivableOutstanding]     — clear VAT receivable
  *     Cr 21-2101 [oldVatReceivableOutstanding]     — recognize VAT to ภ.พ.30
- *     Cr 41-1101 [oldUnearnedInterestOutstanding]  — recognize remaining interest
- *     Cr 41-1102 [diff]    if diff > 0 (GAIN)
+ *     Cr 41-1102 [diff]    if diff > 0 (GAIN — unreachable ภายใต้นโยบายธุรกิจ
+ *                          ราคารับซื้อ < เจ้าหนี้เสมอ; คงไว้เป็น guard ตาม workbook.
+ *                          workbook ระบุกลุ่ม 42-xxxx — คง 41-1102 จนกว่า CPA สั่งย้าย)
  */
 @Injectable()
 export class ExchangeCloseOld21_1106Template {
@@ -48,8 +56,15 @@ export class ExchangeCloseOld21_1106Template {
     input: ExchangeCloseOldInput,
     tx?: Prisma.TransactionClient,
   ): Promise<{ id: string; entryNumber: string }> {
+    // วิธีสุทธิ: plug = balancing figure ของบรรทัดคงที่ทั้งหมด (ไม่มีขา 41-1101)
     const threshold = input.oldGrossOutstanding.plus(input.oldVatReceivableOutstanding);
-    const diff = input.buyback.minus(threshold); // signed: negative = loss, positive = gain
+    const drFixed = input.buyback
+      .plus(input.oldUnearnedInterestOutstanding)
+      .plus(input.oldDeferredVatOutstanding);
+    const crFixed = input.oldGrossOutstanding
+      .plus(input.oldVatReceivableOutstanding) // Cr 11-2105
+      .plus(input.oldVatReceivableOutstanding); // Cr 21-2101
+    const diff = drFixed.minus(crFixed); // signed: negative = loss, positive = gain
     const zero = new Decimal(0);
 
     const lines: Array<{
@@ -113,12 +128,6 @@ export class ExchangeCloseOld21_1106Template {
         cr: input.oldVatReceivableOutstanding,
         description: 'รับรู้ภาษีขายเข้า ภ.พ.30',
       },
-      {
-        accountCode: '41-1101',
-        dr: zero,
-        cr: input.oldUnearnedInterestOutstanding,
-        description: 'รับรู้ดอกเบี้ยที่เหลือทั้งหมด',
-      },
     );
 
     return this.journal.createAndPost(
@@ -133,6 +142,7 @@ export class ExchangeCloseOld21_1106Template {
           oldContractId: input.oldContractId,
           buyback: input.buyback.toString(),
           threshold: threshold.toString(),
+          method: 'NET', // วิธีสุทธิ (workbook 2026-08-19) — แถวเก่าไม่มี key นี้ = gross
         },
         lines,
       },

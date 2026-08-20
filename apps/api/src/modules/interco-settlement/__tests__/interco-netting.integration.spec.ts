@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Prisma, PrismaClient } from '@prisma/client';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import * as Sentry from '@sentry/nestjs';
 
@@ -82,6 +82,31 @@ const settlementService = new IntercoSettlementService(
   journalAuto,
   storageStub as never,
   shopCollectTemplate,
+);
+
+// Second REAL Postgres connection + full service wiring for the
+// settleRecallCash concurrency test (Task 6 review fix) — mirrors the
+// shop-collect race test (shop-collect-settlement.integration.spec.ts item 3):
+// a single PrismaClient cannot truly overlap two Serializable interactive
+// transactions — the second fails P2028 ("unable to start a transaction in
+// the given time") at Prisma's ITX scheduler instead of ever racing at the
+// DB. Two independent connections make the SSI race real.
+const prisma2 = new PrismaClient();
+const journalAuto2 = new JournalAutoService(prisma2 as never);
+const pendingService2 = new IntercoPendingService(prisma2 as never);
+const companyResolver2 = new CompanyResolverService(prisma2 as never);
+const pairedJournal2 = new PairedJournalService(journalAuto2, prisma2 as never, companyResolver2);
+const batchNumberService2 = new IntercoBatchNumberService(prisma2 as never);
+const shopCollectTemplate2 = new ShopCollectSettlementTemplate(journalAuto2, prisma2 as never);
+const settlementService2 = new IntercoSettlementService(
+  prisma2 as never,
+  pendingService2,
+  batchNumberService2,
+  pairedJournal2,
+  companyResolver2,
+  journalAuto2,
+  storageStub as never,
+  shopCollectTemplate2,
 );
 
 // ---------------------------------------------------------------------------
@@ -636,6 +661,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
       }
     }
     await prisma.$disconnect();
+    await prisma2.$disconnect();
   }, 120_000);
 
   // -------------------------------------------------------------------------
@@ -1883,7 +1909,8 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         expect(shopJe.companyId).toBe(shopId);
         const shopMeta = shopJe.metadata as Record<string, unknown>;
         expect(shopMeta.flow).toBe('interco-recall-cash-shop');
-        expect(shopMeta.idempotencyKey).toBe(`${requestId}:SHOP`);
+        // สมมาตรกับ FINANCE leg (template key = `${contractId}:${requestId}`)
+        expect(shopMeta.idempotencyKey).toBe(`${recallP}:${requestId}:SHOP`);
         expect(shopMeta.shopReceivableType).toBe('PAYOUT_RECALL');
         expect(shopMeta.contractId).toBe(recallP);
 
@@ -2120,6 +2147,72 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
             adminId,
           ),
         ).rejects.toThrow(ConflictException);
+      },
+      120_000,
+    );
+
+    it(
+      'concurrency (2 REAL Postgres connections): สองคำขอพร้อมกัน**คนละ requestId** → settle ครั้งเดียว (Serializable) + GL ไม่ติดลบ',
+      async () => {
+        const recallC = await seedBaseContract(67);
+        await seedRecallContract(recallC);
+
+        // Warm up prisma2 ก่อนแข่ง (pattern เดียวกับ race test ของ shop-collect)
+        // — connection แรกของ client ใหม่จ่าย cost ตั้งต้นที่ทำให้ฝั่ง A ชนะ
+        // ก่อนที่ B จะยิง statement แรก = ไม่ได้ race จริง
+        await prisma2.$queryRaw`SELECT 1`;
+
+        // idempotency จับไม่ได้ (key ต่างกัน) — ภายใต้ READ COMMITTED ทั้งคู่
+        // จะผ่าน guard "amount ≤ net" แล้ว over-settle (typed ติดลบ, เงินสด
+        // เดบิตสองเด้ง). Serializable + SSI ต้องทำให้เหลือผู้ชนะรายเดียว.
+        const results = await Promise.allSettled([
+          settlementService.settleRecallCash(
+            recallC,
+            { amount: 11000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+            adminId,
+          ),
+          settlementService2.settleRecallCash(
+            recallC,
+            { amount: 11000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+            adminId,
+          ),
+        ]);
+        const fulfilled = results.filter((r) => r.status === 'fulfilled');
+        const rejected = results.filter(
+          (r): r is PromiseRejectedResult => r.status === 'rejected',
+        );
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+
+        // ผู้แพ้: ต้องเป็น HttpException สะอาดเสมอ (ห้าม raw Prisma/500) —
+        // 409 (SSI abort → P2034 → ConflictException จาก template หรือ catch
+        // ระดับ service ตอน commit) เมื่อ tx ทับซ้อนจริง, หรือ 400 (คิวว่าง/
+        // เกินยอด) เมื่อผู้ชนะ commit ก่อนผู้แพ้เริ่ม snapshot — ทั้งสองเส้นทาง
+        // ถูกต้อง: invariant ที่ปักคือเงิน settle ครั้งเดียวเท่านั้น
+        const loserErr = rejected[0].reason as unknown;
+        expect(
+          loserErr instanceof HttpException,
+          `Expected clean HttpException, got ${(loserErr as { constructor?: { name?: string } })?.constructor?.name}: ${(loserErr as Error)?.message}`,
+        ).toBe(true);
+        expect([400, 409]).toContain((loserErr as HttpException).getStatus());
+
+        // GL invariant: settle ครั้งเดียวพอดี — typed = 0 (ไม่ติดลบ), untyped
+        // ต่อสัญญา = 0, SHOP JE ใบเดียว
+        expect((await recallFinanceBalance(prisma, recallC)).toFixed(2)).toBe('0.00');
+        expect((await recallShopBalance(prisma, recallC)).toFixed(2)).toBe('0.00');
+        expect((await glContractBalance(prisma, recallC, '11-2107', 'dr')).toFixed(2)).toBe(
+          '0.00',
+        );
+        const shopJes = await prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['flow'], equals: 'interco-recall-cash-shop' } as never },
+              { metadata: { path: ['contractId'], equals: recallC } as never },
+            ],
+            deletedAt: null,
+          },
+        });
+        expect(shopJes).toHaveLength(1);
       },
       120_000,
     );

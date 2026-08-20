@@ -151,7 +151,7 @@ export class ShopCollectSettlementTemplate {
     // requestId can both pass this check (neither JE exists yet) and both
     // proceed to createAndPost below. The loser hits a raw Prisma unique
     // violation (P2002 on journal_entries_idempotency_idx / ..._ref_unique)
-    // there. Because the only production caller wraps this whole call in a
+    // there. Because both production callers wrap this whole call in a
     // Serializable `$transaction`, that P2002 has already aborted the tx —
     // there is no safe re-query left to run. The catch block around
     // createAndPost throws a clean ConflictException (409) instead of trying
@@ -331,8 +331,9 @@ export class ShopCollectSettlementTemplate {
       // Prisma unique violation (P2002 on journal_entries_idempotency_idx
       // or journal_entries_ref_unique) here.
       //
-      // The ONLY production caller (ContractPaymentService.shopCollectSettlement)
-      // always wraps this call in a Serializable `$transaction` — by the time
+      // Both production callers (ContractPaymentService.shopCollectSettlement
+      // and IntercoSettlementService.settleRecallCash — Phase 3 Task 6)
+      // always wrap this call in a Serializable `$transaction` — by the time
       // createAndPost throws P2002, Postgres has already aborted that
       // transaction (25P02 "current transaction is aborted, commands ignored
       // until end of transaction block"). ANY further query on the SAME
@@ -353,9 +354,9 @@ export class ShopCollectSettlementTemplate {
       }
 
       // Empirically observed 2026-08-08 via a live 2-Postgres-connection race
-      // test (shop-collect-settlement.integration.spec.ts): because the only
-      // production caller uses SERIALIZABLE isolation, two concurrent
-      // shopCollectSettlement calls on the SAME contract don't always collide
+      // test (shop-collect-settlement.integration.spec.ts): because both
+      // production callers use SERIALIZABLE isolation, two concurrent
+      // settlement calls on the SAME contract don't always collide
       // on the P2002 unique index first — Postgres SSI can detect the
       // read-write dependency (both transactions read the same 11-2107
       // journal_line predicate set, then one inserts a new row matching it)

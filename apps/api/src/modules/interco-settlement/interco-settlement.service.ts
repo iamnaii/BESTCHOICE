@@ -1296,7 +1296,14 @@ export class IntercoSettlementService {
     const shopPayoutAccountCode =
       dto.shopPayoutAccountCode ?? ShopAccountResolver.SHOP_RECEIVING_BANK;
 
-    return this.prisma.$transaction(async (tx) => {
+    // SERIALIZABLE — doctrine ของ template ตัวเดียวกัน (ดู comment ใน
+    // shop-collect-settlement.template.ts รอบ catch P2002/P2034): guard
+    // "amount ≤ net" อ่าน journal_lines แล้วค่อย insert แถวที่เปลี่ยนผล
+    // การอ่านนั้น — ภายใต้ READ COMMITTED สองคำขอพร้อมกัน**คนละ requestId**
+    // บนสัญญาเดียวจะผ่าน guard ทั้งคู่ (idempotency จับไม่ได้ — key ต่างกัน)
+    // ⇒ over-settle (typed recall ติดลบ, เงินสดเดบิตเกิน). SSI ทำให้ผู้แพ้
+    // ถูก abort ด้วย 40001 (Prisma P2034) — แปลเป็น 409 ใน catch ด้านล่าง.
+    const run = async (tx: Prisma.TransactionClient) => {
       // 0. idempotency — SHOP leg เป็น marker: สองใบโพสต์ใน tx เดียว ดังนั้น
       //    "มีใบ SHOP" ⇔ "มีใบ FINANCE" เสมอ. contractId เป็นส่วนหนึ่งของ
       //    เงื่อนไข (กัน requestId ชนข้ามสัญญา — pattern เดียวกับ template).
@@ -1407,7 +1414,10 @@ export class IntercoSettlementService {
             companyId: shopCompanyId,
             metadata: {
               flow: RECALL_CASH_SHOP_FLOW,
-              idempotencyKey: `${dto.requestId}:SHOP`,
+              // สมมาตรกับ FINANCE leg (template: `${contractId}:${requestId}`) —
+              // requestId reuse ข้ามสัญญาจะไม่ชน DB unique index ของสัญญาอื่น
+              // (โพสต์อิสระตาม semantics ของ template) แทนที่จะได้ 409 ผิดบริบท.
+              idempotencyKey: `${contractId}:${dto.requestId}:SHOP`,
               contractId,
               requestId: dto.requestId,
               amount: amountStr,
@@ -1463,7 +1473,24 @@ export class IntercoSettlementService {
       });
 
       return { financeEntryNo: finance.entryNo, shopEntryNo: shopJe.entryNumber, deduped: false };
-    });
+    };
+
+    try {
+      return await this.prisma.$transaction(run, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (err) {
+      // ผู้แพ้ SSI race (40001 → Prisma P2034) โผล่ได้ทั้งกลาง tx และตอน
+      // commit — แปลเป็น 409 ไทยให้ client ลองใหม่ได้ ไม่ใช่ raw 500
+      // (pattern เดียวกับ template's P2034 catch + W2). ConflictException/
+      // BadRequestException จากใน tx ผ่าน catch นี้ออกไปตามเดิม.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        throw new ConflictException(
+          'มีการบันทึกรายการนี้พร้อมกันจากอีกจุดหนึ่ง (write conflict) — กรุณาลองใหม่อีกครั้ง',
+        );
+      }
+      throw err;
+    }
   }
 
   /**

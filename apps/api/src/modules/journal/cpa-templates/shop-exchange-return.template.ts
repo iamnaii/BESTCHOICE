@@ -14,6 +14,8 @@ export interface ShopExchangeReturnInput {
    * the same product+contract's second exchange attempt.
    */
   requestId: string;
+  /** สัญญาใหม่ที่เกิดจาก swap — key สำหรับเลนส์หักกลบรอบจ่าย (Phase 2: S21-3001 query ด้วย newContractId) */
+  newContractId: string;
   /** ราคารับซื้อเครื่องเดิม (= ยอดที่ A.2/A.3 ใช้). Must be > 0. */
   buyback: Decimal;
 }
@@ -41,6 +43,11 @@ export interface ShopExchangeReturnInput {
  * `metadata.contractId = oldContractId` (key ใหม่ 2026-08-19 — ชี้สัญญาเดิม) —
  * ExchangeCancelReversalTemplate reverse ใบนี้ผ่าน je4Id ที่เก็บบน request row
  * (sweep ใช้ newContractId จึงไม่จับใบนี้ซ้ำ).
+ *
+ * `metadata.newContractId` (Phase 2 Task 1): key ของเลนส์หักกลบรอบจ่าย —
+ * batch item ของรอบจ่าย INTER-CO คือ "สัญญาใหม่" ดังนั้นเลนส์ฝั่ง SHOP (Task 3)
+ * query S21-3001 ด้วย path ['newContractId'] ตรงๆ ไม่ join ผ่าน request row.
+ * ไม่กระทบ cancel sweep — sweep match ที่ path ['contractId'] เท่านั้น.
  */
 @Injectable()
 export class ShopExchangeReturnTemplate {
@@ -79,6 +86,7 @@ export class ShopExchangeReturnTemplate {
           oldProductId: input.oldProductId,
           oldContractId: input.oldContractId,
           contractId: input.oldContractId,
+          newContractId: input.newContractId,
           companyCode: 'SHOP',
           buyback: buyback.toFixed(2),
           shopReceivableType: 'SWAP_CREDIT',

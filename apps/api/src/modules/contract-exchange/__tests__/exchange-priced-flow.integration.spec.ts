@@ -583,6 +583,10 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(sumSide(je4.lines, 'S50-1102', 'cr').toFixed(2)).toBe('0.00');
       expect(sumSide(je4.lines, 'S21-3001', 'cr').toFixed(2)).toBe('8000.00');
       expect((je4.metadata as Record<string, unknown>).shopReceivableType).toBe('SWAP_CREDIT');
+      // Phase 2 Task 1: batch item = สัญญาใหม่ — the SHOP netting lens (Task 3)
+      // queries S21-3001 by metadata.newContractId directly (no join through
+      // the request row in SQL), so A.4 must stamp the NEW contract id too.
+      expect((je4.metadata as Record<string, unknown>).newContractId).toBe(newContractId);
 
       // --- F2 (CPA ตอบข้อ 3, 2026-08-01): the NEW contract also gets the
       // SHOP-side ShopInventoryTransferTemplate mirror a normal activation
@@ -866,6 +870,13 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
           (mirror.metadata as Record<string, unknown>).shopReceivableType,
           `mirror of ${stampedId} must carry shopReceivableType`,
         ).toBe('SWAP_CREDIT');
+        // Phase 2 Task 1: mirrors must also carry newContractId — the SHOP
+        // lens sums S21-3001 per NEW contract, so a canceled swap's mirror
+        // without the key would leave a phantom per-contract balance.
+        expect(
+          (mirror.metadata as Record<string, unknown>).newContractId,
+          `mirror of ${stampedId} must carry newContractId`,
+        ).toBe(newContract.id);
       }
 
       // --- NO 42-1107 penalty JE anywhere in this spec's journal rows

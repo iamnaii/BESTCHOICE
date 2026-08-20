@@ -1379,6 +1379,16 @@ describe('ContractsService', () => {
       prisma.journalEntry = {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'je-reversal-1' }),
       };
+      // Fix Round 1: contract is re-read INSIDE the tx (race guard) — include
+      // the park-balance fields (all 0 by default so guards pass)
+      prisma.contract.findUniqueOrThrow = jest.fn().mockResolvedValue({
+        id: 'contract-1',
+        status: 'ACTIVE',
+        productId: 'product-1',
+        advanceBalance: new Prisma.Decimal(0),
+        creditBalance: new Prisma.Decimal(0),
+        rescheduleAdvanceBalance: new Prisma.Decimal(0),
+      });
       // Guard delegates (Phase 3): no paid payment, no open batch item, 0 balance
       prisma.payment.findFirst = jest.fn().mockResolvedValue(null);
       prisma.interCoSettlementItem = { findFirst: jest.fn().mockResolvedValue(null) };
@@ -1458,6 +1468,41 @@ describe('ContractsService', () => {
       await expect(
         svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
       ).rejects.toThrow('refundAmount ไม่รองรับแล้ว');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('guard: rejects when advance/credit/reschedule-park balance remains', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      prisma.contract.findUniqueOrThrow = jest.fn().mockResolvedValue({
+        id: 'contract-1',
+        status: 'ACTIVE',
+        productId: 'product-1',
+        advanceBalance: new Prisma.Decimal(0),
+        creditBalance: new Prisma.Decimal(0),
+        rescheduleAdvanceBalance: new Prisma.Decimal('50.00'), // ghost 6a park
+      });
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('มีเงินรับล่วงหน้า/เครดิตค้างบนสัญญา');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('guard: rejects when the tx re-read shows the contract is no longer ACTIVE (race)', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      // Pre-tx snapshot says ACTIVE, but the tx re-read sees TERMINATED (JP5 won the race)
+      prisma.contract.findUniqueOrThrow = jest.fn().mockResolvedValue({
+        id: 'contract-1',
+        status: 'TERMINATED',
+        productId: 'product-1',
+        advanceBalance: new Prisma.Decimal(0),
+        creditBalance: new Prisma.Decimal(0),
+        rescheduleAdvanceBalance: new Prisma.Decimal(0),
+      });
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('เฉพาะสัญญาสถานะ ACTIVE');
       expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
     });
 

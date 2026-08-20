@@ -104,7 +104,20 @@ export class ContractCancellationService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       // ── Phase 3 guards (C-1) — all inside the tx, before any JE posts ──
-      const contract = cancellation.contract;
+      // Re-read the contract INSIDE the tx (Fix Round 1 — Minor #5): the
+      // pre-tx snapshot could race a concurrent JP5/termination flipping the
+      // status between findUnique above and this transaction.
+      const contract = await tx.contract.findUniqueOrThrow({
+        where: { id: cancellation.contractId },
+        select: {
+          id: true,
+          status: true,
+          productId: true,
+          advanceBalance: true,
+          creditBalance: true,
+          rescheduleAdvanceBalance: true,
+        },
+      });
       if (contract.status !== 'ACTIVE') {
         throw new BadRequestException(
           'ยกเลิกได้เฉพาะสัญญาสถานะ ACTIVE — สัญญาที่เดินไปแล้วใช้เส้นทางยึดเครื่อง (JP5)',
@@ -142,6 +155,19 @@ export class ContractCancellationService {
       if (new Decimal(cancellation.refundAmount.toString()).gt(0)) {
         throw new BadRequestException(
           'refundAmount ไม่รองรับแล้ว — เงินคืนลูกค้า (เงินดาวน์) จัดการฝั่ง SHOP หลังยกเลิก',
+        );
+      }
+      // เงินรับล่วงหน้า/เครดิต/ถังพักปรับดิวค้างบนสัญญา (Fix Round 1 —
+      // Important #3, family เดียวกับ guard ของ exchange finalize): เงินพวกนี้
+      // เข้ามาเป็นเงินสดจริง (เช่น 6a fee ที่ไม่ set amountPaid — หลุด guard
+      // Payment PAID) — ยกเลิกทั้งที่ยังค้างจะทิ้ง ghost balance ไว้บนสัญญา
+      // CANCELED โดยไม่มีทางใช้/คืน
+      const parkTotal = new Decimal(contract.advanceBalance.toString())
+        .plus(contract.creditBalance.toString())
+        .plus(contract.rescheduleAdvanceBalance.toString());
+      if (parkTotal.gt(0)) {
+        throw new BadRequestException(
+          'มีเงินรับล่วงหน้า/เครดิตค้างบนสัญญา — ใช้หรือคืนเงินก่อนยกเลิก',
         );
       }
       // หน้าร้านถือเงินลูกค้าที่รับแทน (11-2107 SHOP_COLLECT) ยังไม่ settle —
@@ -213,7 +239,7 @@ export class ContractCancellationService {
           entity: 'contract',
           entityId: cancellation.contractId,
           oldValue: {
-            status: cancellation.contract.status,
+            status: contract.status, // tx-consistent re-read, not the pre-tx snapshot
             cancellationId,
           },
           newValue: {

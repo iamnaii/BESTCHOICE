@@ -183,6 +183,24 @@ async function seedShopLegs(id: string) {
   });
 }
 
+/** Down-payment synthetic — same shape/stamp as ShopDownPaymentTemplate (Dr cash / Cr S21-2001). */
+async function seedDownPayment(id: string) {
+  await journalAuto.createAndPost({
+    description: 'down payment synthetic (CANCELTEST)',
+    companyId: shopId,
+    metadata: {
+      flow: 'shop-down-payment',
+      idempotencyKey: `ctdown:${id}`,
+      contractId: id,
+      tag: 'SHOP_DOWN_PAYMENT',
+    },
+    lines: [
+      { accountCode: 'S11-1101', dr: dec('2000'), cr: zero },
+      { accountCode: 'S21-2001', dr: zero, cr: dec('2000') },
+    ],
+  });
+}
+
 /** 2A accrual synthetic — 1 installment of the 17,000/12 shape. */
 async function seed2a(id: string) {
   await journalAuto.createAndPost({
@@ -344,6 +362,7 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
   it('C-1: ยกเลิกก่อนตัดจ่าย → GL net 0 ทุกบัญชี + สัญญา CANCELED + product กลับ SHOP stock', async () => {
     const { contractId, productId } = await seedBaseContract(1);
     await seed1a(contractId);
+    await seedDownPayment(contractId);
     await seedShopLegs(contractId);
     await seed2a(contractId);
     const provisionJeId = await seedProvision(contractId);
@@ -390,6 +409,29 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     expect(stageReverses.length).toBe(1);
     const releaseDr = stageReverses[0].lines.find((l) => l.accountCode === '11-2102');
     expect(new Decimal(releaseDr!.debit.toString()).toFixed(2)).toBe('30.32');
+
+    // Fix Round 1 (Critical #1/#2): down JE (Dr cash / Cr S21-2001) ถูก exclude —
+    // เงินสด SHOP ต้องไม่ถูกแตะ และ S21-2001 ค้างเป็น Cr downAmount โดยตั้งใจ
+    // (เจ้าหนี้เงินดาวน์รอ SHOP จ่ายคืนลูกค้าจริง — ไม่ mirror เป็นเงินสดปลอม)
+    expect((await glContractBalance(prisma, contractId, 'S21-2001', 'cr')).toFixed(2)).toBe(
+      '2000.00',
+    );
+    expect((await glContractBalance(prisma, contractId, 'S11-1101', 'dr')).toFixed(2)).toBe(
+      '2000.00', // เฉพาะขา Dr ของใบดาวน์เดิม — ไม่มี mirror line ใหม่แตะเงินสด
+    );
+    const downJe = await prisma.journalEntry.findFirstOrThrow({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-down-payment' } } as never,
+          { metadata: { path: ['contractId'], equals: contractId } } as never,
+        ],
+      },
+    });
+    expect(((downJe.metadata ?? {}) as Record<string, unknown>).reversed).toBeUndefined();
+    const mirrorOfDown = await prisma.journalEntry.findFirst({
+      where: { metadata: { path: ['reversesEntryId'], equals: downJe.id } as never },
+    });
+    expect(mirrorOfDown).toBeNull();
 
     // JE provision เดิมไม่ถูก mirror (excludeFlows) — ไม่มี stamp reversed และ
     // ไม่มี reversal JE ที่ชี้กลับมา
@@ -534,6 +576,80 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     });
 
     await expect(requestAndApprove(contractId)).rejects.toThrow('หน้าร้านรับแทน');
+  }, 30_000);
+
+  // -------------------------------------------------------------------------
+  it('tripwire: JE เงินสดที่ไม่รู้จัก (hand-JV) → reject ดัง ระบุ entryNumber ไม่ยกเลิกเงียบๆ', async () => {
+    const { contractId } = await seedBaseContract(7);
+    await seed1a(contractId);
+    // Hand-JV synthetic: แตะเงินสด FINANCE (11-1101) โดย flow ไม่อยู่ใน deny-list
+    const handJv = await journalAuto.createAndPost({
+      description: 'hand JV cash synthetic (CANCELTEST)',
+      companyId: financeId,
+      metadata: { flow: 'test-hand-jv', idempotencyKey: `ctjv:${contractId}`, contractId },
+      lines: [
+        { accountCode: '11-1101', dr: dec('300'), cr: zero },
+        { accountCode: '41-1102', dr: zero, cr: dec('300') },
+      ],
+    });
+    const jvEntryNumber = (
+      await prisma.journalEntry.findUniqueOrThrow({ where: { id: handJv.id } })
+    ).entryNumber;
+
+    const err = await requestAndApprove(contractId).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err).toBeTruthy();
+    expect(err!.message).toContain(jvEntryNumber);
+    expect(err!.message).toContain('เงินสด');
+
+    // ห้ามมีใบไหนถูก mirror เลย — tripwire ต้องยิงก่อน sweep เริ่ม
+    const reversals = await prisma.journalEntry.count({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'contract-cancellation' } } as never,
+          { metadata: { path: ['contractId'], equals: contractId } } as never,
+        ],
+      },
+    });
+    expect(reversals).toBe(0);
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.status).toBe('ACTIVE');
+  }, 30_000);
+
+  // -------------------------------------------------------------------------
+  it('guard: เงินรับล่วงหน้า/เครดิต/ถังพักปรับดิวค้าง → reject ทุกถัง', async () => {
+    const { contractId } = await seedBaseContract(8);
+    const cancellation = await service.requestCancellation(
+      contractId,
+      adminId,
+      'ทดสอบ park guard',
+      0,
+    );
+    const expectParkReject = async () => {
+      await expect(service.approveCancellation(cancellation.id, adminId)).rejects.toThrow(
+        'มีเงินรับล่วงหน้า/เครดิตค้างบนสัญญา',
+      );
+    };
+
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: { advanceBalance: dec('100.00') },
+    });
+    await expectParkReject();
+
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: { advanceBalance: dec('0'), rescheduleAdvanceBalance: dec('50.00') },
+    });
+    await expectParkReject();
+
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: { rescheduleAdvanceBalance: dec('0'), creditBalance: dec('25.00') },
+    });
+    await expectParkReject();
   }, 30_000);
 
   // -------------------------------------------------------------------------

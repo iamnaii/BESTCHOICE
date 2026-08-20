@@ -51,6 +51,7 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
       },
       journalEntry: {
         findFirst: jest.fn().mockResolvedValue({ id: 'je-activation-1' }), // 1A guard
+        findMany: jest.fn().mockResolvedValue([]), // cash tripwire candidates
         findUniqueOrThrow: jest.fn().mockResolvedValue({ entryNumber: 'JE-202601-00010' }),
       },
       journalLine: {
@@ -81,7 +82,15 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
     expect(input).toEqual({
       jeIds: [],
       newContractId: 'contract-1',
-      excludeFlows: ['provision', 'stage-reverse', 'shop-collect-settlement'],
+      // Fix Round 1: real-cash flows excluded too — mirror of a cash JE
+      // would fabricate cash movement
+      excludeFlows: [
+        'provision',
+        'stage-reverse',
+        'shop-collect-settlement',
+        'shop-down-payment',
+        'reschedule-collect',
+      ],
       flowLabel: 'contract-cancellation',
       descriptionPrefix: '[ยกเลิกสัญญา]',
     });
@@ -120,6 +129,61 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
 
     expect(eclMock.execute).not.toHaveBeenCalled();
     expect(prismaMock.badDebtProvision.updateMany).toHaveBeenCalled();
+  });
+
+  // ─── Test 2b: positive cash tripwire ────────────────────────────────────
+
+  it('rejects loudly (naming entryNumber) when a sweep candidate touches a cash/bank account', async () => {
+    prismaMock.journalEntry.findMany.mockResolvedValue([
+      {
+        id: 'je-jv-1',
+        entryNumber: 'JE-202601-00777',
+        metadata: { flow: 'test-hand-jv', contractId: 'contract-1' },
+        lines: [
+          { accountCode: '11-1101', ...makeLine('300', '0') },
+          { accountCode: '41-1102', ...makeLine('0', '300') },
+        ],
+      },
+    ]);
+
+    await expect(
+      template.execute({ contractId: 'contract-1', cancellationId: 'cancel-1' }),
+    ).rejects.toThrow('JE-202601-00777');
+    expect(sweepMock.reverse).not.toHaveBeenCalled();
+  });
+
+  it('tripwire skips excluded-flow / reversed / REVERSAL-tag candidates with cash lines', async () => {
+    prismaMock.journalEntry.findMany.mockResolvedValue([
+      {
+        id: 'je-down-1',
+        entryNumber: 'JE-202601-00701',
+        metadata: { flow: 'shop-down-payment', contractId: 'contract-1' },
+        lines: [{ accountCode: 'S11-1101', ...makeLine('2000', '0') }],
+      },
+      {
+        id: 'je-collect-1',
+        entryNumber: 'JE-202601-00702',
+        metadata: { flow: 'shop-collect-settlement', contractId: 'contract-1' },
+        lines: [{ accountCode: '11-1101', ...makeLine('500', '0') }],
+      },
+      {
+        id: 'je-reversed-1',
+        entryNumber: 'JE-202601-00703',
+        metadata: { flow: 'test-x', contractId: 'contract-1', reversed: true },
+        lines: [{ accountCode: '11-1201', ...makeLine('100', '0') }],
+      },
+      {
+        id: 'je-rev-tag-1',
+        entryNumber: 'JE-202601-00704',
+        metadata: { tag: 'REVERSAL', flow: 'receipt-void', contractId: 'contract-1' },
+        lines: [{ accountCode: '11-1101', ...makeLine('0', '100') }],
+      },
+    ]);
+
+    await expect(
+      template.execute({ contractId: 'contract-1', cancellationId: 'cancel-1' }),
+    ).resolves.toBeDefined();
+    expect(sweepMock.reverse).toHaveBeenCalledTimes(1);
   });
 
   // ─── Test 3: guards ─────────────────────────────────────────────────────

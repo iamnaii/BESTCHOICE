@@ -20,16 +20,27 @@ import { glContractBalance } from '../gl-contract-balance';
  * (negative balance). Instead the live GL balance of 11-2102 is released in
  * one `EclStageReverseTemplate` JE (pattern JP4 C1 — release from live GL),
  * and the ACTIVE `BadDebtProvision` rows are flipped to REVERSED.
- * 'shop-collect-settlement' is excluded too: those JEs move REAL customer
- * cash (Dr cash / Cr 11-2107) — mirroring them would fabricate a cash
- * reversal; the service guard rejects cancellation while any SHOP_COLLECT
- * balance is outstanding instead.
+ *
+ * REAL-CASH flows are excluded too (Fix Round 1 — a mirror of a cash JE
+ * fabricates cash movement that never happened):
+ *   - 'shop-collect-settlement' (Dr cash / Cr 11-2107) — the service guard
+ *     rejects cancellation while any SHOP_COLLECT balance is outstanding.
+ *   - 'shop-down-payment' (Dr SHOP cash / Cr S21-2001) — the down JE is NOT
+ *     mirrored: after cancellation S21-2001 deliberately stays Cr downAmount
+ *     (เจ้าหนี้เงินดาวน์รอคืนลูกค้า) until SHOP actually refunds the cash
+ *     (ShopDownPaymentReversalTemplate pre-activation; JV post-activation
+ *     until a dedicated UI exists).
+ *   - 'reschedule-collect' (Dr cash / Cr 21-1103 + 42-1103) — 6a fee money
+ *     really entered the till; the service's park-balance guard blocks
+ *     cancellation while any advance/credit/park balance remains.
+ * On top of the deny-list, a POSITIVE tripwire scans every sweep candidate
+ * BEFORE reversing: any candidate line touching a cash/bank account (prefix
+ * 11-11 / 11-12 / S11-11 / S11-12) → loud BadRequestException naming the
+ * entryNumber — an unknown cash JE must never be silently mirror-reversed.
  *
  * The refund JE block (Dr 52-1106 / Cr 11-1201) was DELETED (Phase 3): the
- * customer's down payment lives on the SHOP book — the sweep restores
- * Cr S21-2001 structurally, and the actual cash refund is a separate SHOP
- * step (ShopDownPaymentReversalTemplate pre-activation; JV post-activation
- * until a dedicated UI exists). The service guard rejects refundAmount > 0.
+ * customer's down payment lives on the SHOP book as the S21-2001 payable
+ * described above. The service guard rejects refundAmount > 0.
  *
  * Idempotency (DB-backed, Phase 3 decision): probes
  * `ContractCancellation.reversalJournalEntryId` — the FK the approve flow has
@@ -41,6 +52,22 @@ import { glContractBalance } from '../gl-contract-balance';
  * per-JE `reversed:true` stamp + DB idempotency index remain the second
  * layer.
  */
+/**
+ * Flows the C-1 sweep must NEVER mirror — ECL (released separately) + flows
+ * whose JEs move REAL cash (mirror = fabricated cash movement). Shared by the
+ * sweep call AND the cash tripwire below so the two can never drift.
+ */
+const C1_EXCLUDED_FLOWS = [
+  'provision',
+  'stage-reverse',
+  'shop-collect-settlement',
+  'shop-down-payment',
+  'reschedule-collect',
+];
+
+/** Cash/bank account prefixes (FINANCE 11-11xx/11-12xx + SHOP S11-11xx/S11-12xx). */
+const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12', 'S11-11', 'S11-12'];
+
 @Injectable()
 export class ContractCancellationTemplate {
   constructor(
@@ -98,14 +125,45 @@ export class ContractCancellationTemplate {
       );
     }
 
+    // Positive tripwire (Fix Round 1 — Important #4): scan the EXACT sweep
+    // candidate set (same conditions the engine applies) BEFORE reversing.
+    // Any candidate touching a cash/bank account = an unknown cash JE the
+    // deny-list doesn't know about → reject loudly instead of silently
+    // fabricating a cash reversal.
+    const candidates = await (client.journalEntry as Prisma.JournalEntryDelegate).findMany({
+      where: {
+        metadata: { path: ['contractId'], equals: contractId } as never,
+        status: 'POSTED',
+        deletedAt: null,
+      },
+      include: { lines: true },
+    });
+    for (const je of candidates) {
+      const meta = (je.metadata ?? {}) as Record<string, unknown>;
+      if (meta['reversed'] === true) continue;
+      if (meta['flow'] === 'contract-cancellation') continue;
+      if (C1_EXCLUDED_FLOWS.includes(meta['flow'] as string)) continue;
+      if (meta['tag'] === 'REVERSAL') continue;
+      const cashLine = je.lines.find((l) =>
+        CASH_ACCOUNT_PREFIXES.some((p) => l.accountCode.startsWith(p)),
+      );
+      if (cashLine) {
+        throw new BadRequestException(
+          `ใบสำคัญ ${je.entryNumber} ของสัญญา ${contract.contractNumber} มีบรรทัดแตะบัญชีเงินสด/ธนาคาร (${cashLine.accountCode}) — ` +
+            'ระบบไม่กลับรายการเงินสดอัตโนมัติ กรุณาตรวจสอบ/กลับรายการใบนี้ด้วยมือก่อนยกเลิกสัญญา',
+        );
+      }
+    }
+
     // C-1: sweep-reverse ทุก JE ของสัญญา ยกเว้น ECL flows (release แยกใบเดียว —
     // exclude กัน double: sweep mirror + release พร้อมกันจะทำ 11-2102 ติดลบ)
-    // และ shop-collect-settlement (เงินสดจริง — guard ฝั่ง service บล็อกก่อนแล้ว)
+    // และ flows เงินสดจริง (shop-collect / down / reschedule-collect — ดู
+    // C1_EXCLUDED_FLOWS + doc comment ด้านบน)
     const { reversalJeIds } = await this.sweepTemplate.reverse(
       {
         jeIds: [],
         newContractId: contractId, // ชื่อ param เดิมของ engine — คือ contractId ที่ sweep
-        excludeFlows: ['provision', 'stage-reverse', 'shop-collect-settlement'],
+        excludeFlows: C1_EXCLUDED_FLOWS,
         flowLabel: 'contract-cancellation',
         descriptionPrefix: '[ยกเลิกสัญญา]',
       },

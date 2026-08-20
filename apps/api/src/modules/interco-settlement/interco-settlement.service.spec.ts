@@ -109,7 +109,10 @@ describe('IntercoSettlementService', () => {
       journalEntry: { findUnique: jest.fn() },
     };
 
-    pendingService = { getPendingContracts: jest.fn().mockResolvedValue([]) };
+    pendingService = {
+      getPendingContracts: jest.fn().mockResolvedValue([]),
+      getPendingRecalls: jest.fn().mockResolvedValue([]),
+    };
     batchNumberService = { next: jest.fn().mockResolvedValue('IC-20260801-0001') };
     // approveBatch/reverseBatch (Task 4) deps — unused by the create/update/
     // submit/withdraw/cancel specs below, just need to satisfy Nest DI.

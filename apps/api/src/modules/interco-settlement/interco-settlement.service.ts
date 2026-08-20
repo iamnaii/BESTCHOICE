@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { InterCoItemType, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntercoPendingService, PendingContract } from './interco-pending.service';
@@ -35,19 +35,32 @@ type BatchWithItems = Prisma.InterCoSettlementBatchGetPayload<{
   };
 }>;
 
+interface BuiltSnapshotItem {
+  contractId: string;
+  itemType: InterCoItemType;
+  financedGl: Prisma.Decimal;
+  commissionGl: Prisma.Decimal;
+  shopFinancedGl: Prisma.Decimal;
+  shopCommissionGl: Prisma.Decimal;
+  legacyNoShop: boolean;
+  /** Snapshot เครดิตเปลี่ยนเครื่อง (11-2107 SWAP_CREDIT) — 0 เมื่อไม่ใช่ swap/ไม่ eligible */
+  swapCreditAmount: Prisma.Decimal;
+  /** Snapshot ยอดเรียกคืน (11-2107 PAYOUT_RECALL) — ใช้เฉพาะแถว RECALL */
+  recallAmount: Prisma.Decimal;
+}
+
 interface BuiltSnapshot {
-  items: Array<{
-    contractId: string;
-    financedGl: Prisma.Decimal;
-    commissionGl: Prisma.Decimal;
-    shopFinancedGl: Prisma.Decimal;
-    shopCommissionGl: Prisma.Decimal;
-    legacyNoShop: boolean;
-  }>;
+  items: BuiltSnapshotItem[];
   totalFinanced: Prisma.Decimal;
   totalCommission: Prisma.Decimal;
   totalAmount: Prisma.Decimal;
   shopPostedAmount: Prisma.Decimal;
+  /** Σ swapCreditAmount + recallAmount ของทุก item (Phase 2 หักกลบ) */
+  totalDeduction: Prisma.Decimal;
+  /** เงินโอนจริงฝั่ง FINANCE = totalAmount − totalDeduction */
+  netTransferAmount: Prisma.Decimal;
+  /** เงินรับจริงฝั่ง SHOP = shopPostedAmount − totalDeduction */
+  shopNetAmount: Prisma.Decimal;
 }
 
 /**
@@ -86,10 +99,23 @@ export class IntercoSettlementService {
    * it doesn't exist, was never activated, or is already settled inside
    * another PENDING_APPROVAL/POSTED batch (pending engine excludes those by
    * construction — spec §4).
+   *
+   * Phase 2 (หักกลบ 11-2107 — spec §4.1/§5.1): the lens amounts stay GROSS —
+   * the snapshot captures them as-is and layers the deduction on top:
+   *   - SETTLEMENT items carry `swapCreditAmount` (= swapCreditGl when
+   *     eligible, else 0 — legacy/mixed-era swaps enter WITHOUT a deduction).
+   *   - RECALL rows (Flow C-2) come from `getPendingRecalls` and have no
+   *     payable/receivable of their own (all 4 GL snapshots = 0,
+   *     legacyNoShop = false) — only `recallAmount`.
+   *   - totals: totalDeduction = Σ(swapCredit + recall);
+   *     netTransferAmount = totalAmount − totalDeduction;
+   *     shopNetAmount = shopPostedAmount − totalDeduction — both must be ≥ 0
+   *     (เงินสดส่วนที่หักเกินต้องเรียกคืนผ่านช่องทางรับโอนจากหน้าร้าน ไม่ใช่รอบจ่าย).
    */
   private async buildSnapshot(
     tx: Prisma.TransactionClient,
     contractIds: string[],
+    recallContractIds?: string[],
   ): Promise<BuiltSnapshot> {
     if (new Set(contractIds).size !== contractIds.length) {
       throw new BadRequestException('มีสัญญาซ้ำในรายการที่เลือก');
@@ -108,13 +134,31 @@ export class IntercoSettlementService {
       );
     }
 
-    let totalFinanced = new Prisma.Decimal(0);
-    let totalCommission = new Prisma.Decimal(0);
-    let shopPostedAmount = new Prisma.Decimal(0);
+    const zero = new Prisma.Decimal(0);
+    let totalFinanced = zero;
+    let totalCommission = zero;
+    let shopPostedAmount = zero;
 
-    const items = contractIds.map((contractId) => {
+    const items: BuiltSnapshotItem[] = contractIds.map((contractId) => {
       const p = pendingByContractId.get(contractId)!;
       this.assertNonNegativeGl(p);
+      const payable = p.financedGl.plus(p.commissionGl);
+      // สองสมุดมียอดทั้งคู่แต่ไม่เท่ากัน (±0.01) — GL ผิดปกติ ห้ามหักเดาข้างใดข้างหนึ่ง
+      // (legacy swap ที่ SHOP = 0 ไม่เข้าเงื่อนไขนี้ — เข้ารอบได้แบบไม่หัก)
+      if (p.swapCreditGl.gt(0) && p.shopBuybackPayableGl.gt(0) && !p.swapCreditEligible) {
+        throw new BadRequestException(
+          `ยอดเครดิตเปลี่ยนเครื่องสองสมุดไม่ตรงกัน สัญญา ${p.contractNumber} ` +
+            `(FINANCE ${p.swapCreditGl.toFixed(2)} / SHOP ${p.shopBuybackPayableGl.toFixed(2)}) — ตรวจสอบ GL ก่อนสร้างรอบ`,
+        );
+      }
+      const swapCreditAmount = p.swapCreditEligible ? p.swapCreditGl : zero;
+      // Workbook guard ("คงสูตร IF ห้ามลบ"): ราคารับซื้อต้องน้อยกว่าเจ้าหนี้ของสัญญานั้น
+      if (swapCreditAmount.gte(payable) && swapCreditAmount.gt(0)) {
+        throw new BadRequestException(
+          `ราคารับซื้อ (${swapCreditAmount.toFixed(2)}) ต้องน้อยกว่าเจ้าหนี้สัญญา ${p.contractNumber} ` +
+            `(${payable.toFixed(2)}) — กรณีนี้ไม่เกิดตามนโยบายธุรกิจ ตรวจสอบ GL ก่อน`,
+        );
+      }
       totalFinanced = totalFinanced.plus(p.financedGl);
       totalCommission = totalCommission.plus(p.commissionGl);
       if (!p.legacyNoShop) {
@@ -122,20 +166,76 @@ export class IntercoSettlementService {
       }
       return {
         contractId,
+        itemType: 'SETTLEMENT' as const,
         financedGl: p.financedGl,
         commissionGl: p.commissionGl,
         shopFinancedGl: p.shopFinancedGl,
         shopCommissionGl: p.shopCommissionGl,
         legacyNoShop: p.legacyNoShop,
+        swapCreditAmount,
+        recallAmount: zero,
       };
     });
+
+    // RECALL rows (Flow C-2 — spec §4.1)
+    const recallIds = [...new Set(recallContractIds ?? [])];
+    if (recallIds.some((id) => contractIds.includes(id))) {
+      throw new BadRequestException('สัญญาเดียวกันอยู่ทั้งรายการจ่ายและรายการเรียกคืนไม่ได้');
+    }
+    if (recallIds.length > 0) {
+      const recalls = await this.pendingService.getPendingRecalls(tx);
+      const byId = new Map(recalls.map((r) => [r.contractId, r]));
+      for (const id of recallIds) {
+        const r = byId.get(id);
+        if (!r) {
+          const labels = await this.resolveContractLabels(tx, [id]);
+          throw new BadRequestException(
+            `สัญญา ${labels[0]} ไม่อยู่ในคิวเรียกคืน หรืออยู่ในรอบจ่ายอื่นแล้ว`,
+          );
+        }
+        if (r.recallGl.minus(r.shopRecallGl).abs().gt('0.01')) {
+          throw new BadRequestException(
+            `ยอดเรียกคืนสองสมุดไม่ตรงกัน สัญญา ${r.contractNumber} ` +
+              `(FINANCE ${r.recallGl.toFixed(2)} / SHOP ${r.shopRecallGl.toFixed(2)}) — ตรวจสอบ GL ก่อนสร้างรอบ`,
+          );
+        }
+        items.push({
+          contractId: id,
+          itemType: 'RECALL' as const,
+          financedGl: zero,
+          commissionGl: zero,
+          shopFinancedGl: zero,
+          shopCommissionGl: zero,
+          legacyNoShop: false,
+          swapCreditAmount: zero,
+          recallAmount: r.recallGl,
+        });
+      }
+    }
+
+    const totalAmount = totalFinanced.plus(totalCommission);
+    const totalDeduction = items.reduce(
+      (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
+      zero,
+    );
+    const netTransferAmount = totalAmount.minus(totalDeduction);
+    const shopNetAmount = shopPostedAmount.minus(totalDeduction);
+    if (netTransferAmount.lt(0) || shopNetAmount.lt(0)) {
+      throw new BadRequestException(
+        `ยอดหักรวม (${totalDeduction.toFixed(2)}) เกินยอดจ่ายของรอบ — ` +
+          'เลือกสัญญาเพิ่มให้ยอดพอ หรือเรียกเงินสดคืนผ่านช่องทางรับโอนจากหน้าร้านแทน',
+      );
+    }
 
     return {
       items,
       totalFinanced,
       totalCommission,
-      totalAmount: totalFinanced.plus(totalCommission),
+      totalAmount,
       shopPostedAmount,
+      totalDeduction,
+      netTransferAmount,
+      shopNetAmount,
     };
   }
 
@@ -154,6 +254,11 @@ export class IntercoSettlementService {
       { value: p.commissionGl, code: '21-1102' },
       { value: p.shopFinancedGl, code: 'S11-3001' },
       { value: p.shopCommissionGl, code: 'S11-3002' },
+      // Phase 2 lens components — a negative typed balance means an over-
+      // cleared/stray JV on the swap-credit pair; same alarm-and-reject
+      // posture as W1 (never let a wrong-sign amount reach a snapshot).
+      { value: p.swapCreditGl, code: '11-2107' },
+      { value: p.shopBuybackPayableGl, code: 'S21-3001' },
     ];
     for (const { value, code } of checks) {
       if (value.lt(0)) {
@@ -189,7 +294,7 @@ export class IntercoSettlementService {
 
   async createBatch(dto: CreateBatchDto, userId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const snapshot = await this.buildSnapshot(tx, dto.contractIds);
+      const snapshot = await this.buildSnapshot(tx, dto.contractIds, dto.recallContractIds);
       const batchNumber = await this.batchNumberService.next(tx);
 
       const batch = await tx.interCoSettlementBatch.create({
@@ -203,6 +308,9 @@ export class IntercoSettlementService {
           totalCommission: snapshot.totalCommission,
           totalAmount: snapshot.totalAmount,
           shopPostedAmount: snapshot.shopPostedAmount,
+          totalDeduction: snapshot.totalDeduction,
+          netTransferAmount: snapshot.netTransferAmount,
+          shopNetAmount: snapshot.shopNetAmount,
           transferRef: dto.transferRef,
           slipFileKey: dto.slipFileKey,
           note: dto.note,
@@ -221,8 +329,11 @@ export class IntercoSettlementService {
           newValue: {
             batchNumber: batch.batchNumber,
             contractIds: dto.contractIds,
+            recallContractIds: dto.recallContractIds ?? [],
             totalAmount: snapshot.totalAmount.toFixed(2),
             shopPostedAmount: snapshot.shopPostedAmount.toFixed(2),
+            totalDeduction: snapshot.totalDeduction.toFixed(2),
+            netTransferAmount: snapshot.netTransferAmount.toFixed(2),
           },
         },
       });
@@ -243,7 +354,7 @@ export class IntercoSettlementService {
         throw new BadRequestException('แก้ไขได้เฉพาะรอบสถานะร่าง (DRAFT) เท่านั้น');
       }
 
-      const snapshot = await this.buildSnapshot(tx, dto.contractIds);
+      const snapshot = await this.buildSnapshot(tx, dto.contractIds, dto.recallContractIds);
 
       // Hard delete (not soft) is deliberate here: (batchId, contractId) is a
       // plain (non-partial) unique index, so soft-deleting old items would
@@ -264,6 +375,9 @@ export class IntercoSettlementService {
           totalCommission: snapshot.totalCommission,
           totalAmount: snapshot.totalAmount,
           shopPostedAmount: snapshot.shopPostedAmount,
+          totalDeduction: snapshot.totalDeduction,
+          netTransferAmount: snapshot.netTransferAmount,
+          shopNetAmount: snapshot.shopNetAmount,
           transferRef: dto.transferRef,
           slipFileKey: dto.slipFileKey,
           note: dto.note,
@@ -281,7 +395,10 @@ export class IntercoSettlementService {
           newValue: {
             batchNumber: batch.batchNumber,
             contractIds: dto.contractIds,
+            recallContractIds: dto.recallContractIds ?? [],
             totalAmount: snapshot.totalAmount.toFixed(2),
+            totalDeduction: snapshot.totalDeduction.toFixed(2),
+            netTransferAmount: snapshot.netTransferAmount.toFixed(2),
           },
         },
       });
@@ -307,11 +424,31 @@ export class IntercoSettlementService {
       // Re-validate: none of this batch's contracts may have been grabbed by
       // another batch that is now PENDING_APPROVAL/POSTED since createBatch
       // snapshotted them (race between two makers).
-      const contractIds = batch.items.map((i) => i.contractId);
-      if (contractIds.length > 0) {
+      //
+      // Type-aware per item (Phase 2): a RECALL row's contract BY DEFINITION
+      // carries a permanent SETTLEMENT item in some old POSTED batch (Flow
+      // C-2 = ยกเลิกหลังตัดจ่าย) — counting that as a clash would make every
+      // batch with a recall row structurally unsubmittable. Mirror
+      // `getPendingRecalls`'s settled gate instead: RECALL rows clash only
+      // with other RECALL items; SETTLEMENT rows keep the any-type clash
+      // (same as `getPendingContracts`'s gate).
+      const settlementIds = batch.items
+        .filter((i) => i.itemType !== 'RECALL')
+        .map((i) => i.contractId);
+      const recallIds = batch.items
+        .filter((i) => i.itemType === 'RECALL')
+        .map((i) => i.contractId);
+      const clashConditions: Prisma.InterCoSettlementItemWhereInput[] = [];
+      if (settlementIds.length > 0) {
+        clashConditions.push({ contractId: { in: settlementIds } });
+      }
+      if (recallIds.length > 0) {
+        clashConditions.push({ contractId: { in: recallIds }, itemType: 'RECALL' });
+      }
+      if (clashConditions.length > 0) {
         const clashes = await tx.interCoSettlementItem.findMany({
           where: {
-            contractId: { in: contractIds },
+            OR: clashConditions,
             batchId: { not: id },
             deletedAt: null,
             batch: { status: { in: [...OPEN_BATCH_STATUSES] }, deletedAt: null },

@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 import { JournalAutoService } from '../../journal/journal-auto.service';
+import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { PairedJournalService } from '../../journal/paired-journal.service';
 import { IntercoPendingService } from '../interco-pending.service';
+import { IntercoBatchNumberService } from '../interco-batch-number.service';
+import { IntercoSettlementService } from '../interco-settlement.service';
 import {
   swapCreditFinanceBalance,
   swapCreditShopBalance,
@@ -45,6 +50,20 @@ const prisma = new PrismaClient();
 // ---------------------------------------------------------------------------
 const journalAuto = new JournalAutoService(prisma as never);
 const pendingService = new IntercoPendingService(prisma as never);
+const companyResolver = new CompanyResolverService(prisma as never);
+const pairedJournal = new PairedJournalService(journalAuto, prisma as never, companyResolver);
+const batchNumberService = new IntercoBatchNumberService(prisma as never);
+// uploadSlip (StorageService dep) unused by this suite — stub instead of real S3.
+const storageStub = { upload: async () => undefined, delete: async () => undefined };
+const settlementService = new IntercoSettlementService(
+  prisma as never,
+  pendingService,
+  batchNumberService,
+  pairedJournal,
+  companyResolver,
+  journalAuto,
+  storageStub as never,
+);
 
 // ---------------------------------------------------------------------------
 // Tracked rows for SCOPED cleanup
@@ -243,6 +262,132 @@ async function seedRecallContract(id: string) {
     lines: [
       { accountCode: 'S21-3001', dr: zero, cr: dec('11000') },
       { accountCode: 'S11-1201', dr: dec('11000'), cr: zero }, // ขาคู่ synthetic
+    ],
+  });
+}
+
+/** SHOP legs synthetic (S11-3001/S11-3002 receivable) — same shape as inside seedSwapContract. */
+async function seedShopLegs(id: string, financed: string, commission: string) {
+  await journalAuto.createAndPost({
+    description: 'SHOP legs synthetic',
+    companyId: shopId,
+    metadata: { flow: 'test-shop-legs', idempotencyKey: `tsl:${id}`, contractId: id },
+    lines: [
+      { accountCode: 'S11-3001', dr: dec(financed), cr: zero },
+      { accountCode: 'S11-3002', dr: dec(commission), cr: zero },
+      { accountCode: 'S41-1101', dr: zero, cr: dec(financed) },
+      { accountCode: 'S41-1201', dr: zero, cr: dec(commission) },
+    ],
+  });
+}
+
+/**
+ * Minimal balanced 1A-shaped payable (21-1101/21-1102 only — the lens reads
+ * nothing else) with a custom financed/commission split for guard fixtures.
+ */
+async function seed1aCustom(id: string, financed: string, commission: string) {
+  await journalAuto.createAndPost({
+    description: '1A synthetic (custom amounts)',
+    companyId: financeId,
+    metadata: { flow: 'test-1a', idempotencyKey: `t1a:${id}`, contractId: id, tag: '1A' },
+    lines: [
+      { accountCode: '11-2101', dr: dec(financed).plus(dec(commission)), cr: zero },
+      { accountCode: '21-1101', dr: zero, cr: dec(financed) },
+      { accountCode: '21-1102', dr: zero, cr: dec(commission) },
+    ],
+  });
+}
+
+/** สัญญาขายปกติ (ไม่ใช่ swap): payable 10,000+1,000 + SHOP legs เท่ากัน — ไม่มี 11-2107. */
+async function seedNormalContract(id: string) {
+  await seed1a(id);
+  await seedShopLegs(id, '10000', '1000');
+}
+
+/** A.3 synthetic (11-2107 [SWAP_CREDIT], explicit stamp — Phase 1 shape) ยอด custom. */
+async function seedA3(id: string, amount: string) {
+  await journalAuto.createAndPost({
+    description: 'A.3 synthetic',
+    companyId: financeId,
+    metadata: {
+      flow: 'exchange-buyback-receivable-11-2107',
+      idempotencyKey: `ta3:${id}`,
+      contractId: id,
+      shopReceivableType: 'SWAP_CREDIT',
+    },
+    lines: [
+      { accountCode: '11-2107', dr: dec(amount), cr: zero },
+      { accountCode: '21-1106', dr: zero, cr: dec(amount) },
+    ],
+  });
+}
+
+/** A.4 synthetic (S21-3001 [SWAP_CREDIT] keyed by metadata.newContractId) ยอด custom. */
+async function seedA4(id: string, amount: string) {
+  await journalAuto.createAndPost({
+    description: 'A.4 synthetic',
+    companyId: shopId,
+    metadata: {
+      flow: 'shop-exchange-return',
+      idempotencyKey: `ta4:${id}`,
+      contractId: `${id}-old`,
+      newContractId: id,
+      shopReceivableType: 'SWAP_CREDIT',
+    },
+    lines: [
+      { accountCode: 'S11-2002', dr: dec(amount), cr: zero },
+      { accountCode: 'S21-3001', dr: zero, cr: dec(amount) },
+    ],
+  });
+}
+
+/**
+ * Workbook IF-guard fixture: payable 4,000+1,000 = 5,000 แต่เครดิตรับซื้อ
+ * 8,000 (eligible ทั้งสองสมุด) — เครดิต ≥ เจ้าหนี้ ต้องถูก reject.
+ */
+async function seedOverCreditSwap(id: string) {
+  await seed1aCustom(id, '4000', '1000');
+  await seedShopLegs(id, '4000', '1000');
+  await seedA3(id, '8000');
+  await seedA4(id, '8000');
+}
+
+/** สองสมุดไม่ตรง: A.3 = 8,000 แต่ S21-3001 = 7,000 (ทั้งคู่ > 0 → mismatch, ไม่ใช่ legacy). */
+async function seedMismatchSwap(id: string) {
+  await seed1a(id);
+  await seedShopLegs(id, '10000', '1000');
+  await seedA3(id, '8000');
+  await seedA4(id, '7000');
+}
+
+/** ยอดเรียกคืนสองสมุดไม่ตรง: FINANCE 11,000 / SHOP 10,000. */
+async function seedRecallMismatch(id: string) {
+  await journalAuto.createAndPost({
+    description: 'C-2 recall synthetic (mismatch)',
+    companyId: financeId,
+    metadata: {
+      flow: 'test-c2-recall',
+      idempotencyKey: `tc2:${id}`,
+      contractId: id,
+      shopReceivableType: 'PAYOUT_RECALL',
+    },
+    lines: [
+      { accountCode: '11-2107', dr: dec('11000'), cr: zero },
+      { accountCode: '21-1103', dr: zero, cr: dec('11000') },
+    ],
+  });
+  await journalAuto.createAndPost({
+    description: 'C-2 recall SHOP synthetic (mismatch)',
+    companyId: shopId,
+    metadata: {
+      flow: 'test-c2-recall-shop',
+      idempotencyKey: `tc2s:${id}`,
+      contractId: id,
+      shopReceivableType: 'PAYOUT_RECALL',
+    },
+    lines: [
+      { accountCode: 'S21-3001', dr: zero, cr: dec('10000') },
+      { accountCode: 'S11-1201', dr: dec('10000'), cr: zero },
     ],
   });
 }
@@ -489,5 +634,244 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
     expect(recalls.some((x) => x.contractId === recall2Id)).toBe(false);
     // สัญญา recall อื่นที่ไม่มี item ยังอยู่ในคิวตามเดิม
     expect(recalls.some((x) => x.contractId === recallId)).toBe(true);
+  });
+
+  // ===========================================================================
+  // Task 4 — createBatch/updateBatch/submitBatch: snapshot + guards (spec §5.1)
+  //
+  // NOTE ordering: this nested block runs AFTER the lens/reconcile tests above,
+  // so its extra 11-2107/S21-3001 seeds cannot disturb the baseline-delta
+  // assertions. DRAFT batches never lock a contract out of either queue
+  // (OPEN_BATCH_STATUSES = PENDING_APPROVAL/POSTED), so fixtures are reusable
+  // across tests until a submitBatch happens.
+  // ===========================================================================
+  describe('createBatch/updateBatch/submitBatch — snapshot หักกลบ + guards', () => {
+    let normalId: string;
+
+    beforeAll(async () => {
+      normalId = await seedBaseContract(5);
+      await seedNormalContract(normalId);
+    }, 60_000);
+
+    it('createBatch: swap + recall → totals ถูก (workbook: 22,000 − 19,000 = 3,000)', async () => {
+      const batch = await settlementService.createBatch(
+        {
+          contractIds: [normalId, swapId],
+          recallContractIds: [recallId],
+          transferDate: '2026-08-20',
+        },
+        adminId,
+      );
+      createdBatchIds.push(batch.id);
+
+      expect(batch.totalAmount.toFixed(2)).toBe('22000.00'); // 11,000 + 11,000
+      expect(batch.totalDeduction.toFixed(2)).toBe('19000.00'); // 8,000 + 11,000
+      expect(batch.netTransferAmount!.toFixed(2)).toBe('3000.00');
+      expect(batch.shopNetAmount!.toFixed(2)).toBe('3000.00'); // shopPosted 22,000 − 19,000
+      expect(batch.shopPostedAmount.toFixed(2)).toBe('22000.00');
+      expect(batch.items).toHaveLength(3);
+
+      const recallItem = batch.items.find((i) => i.contractId === recallId)!;
+      expect(recallItem.itemType).toBe('RECALL');
+      expect(recallItem.recallAmount.toFixed(2)).toBe('11000.00');
+      expect(recallItem.swapCreditAmount.toFixed(2)).toBe('0.00');
+      // แถว RECALL ไม่มีเจ้าหนี้/ลูกหนี้ของตัวเอง + ไม่ใช่ legacy
+      expect(recallItem.financedGl.toFixed(2)).toBe('0.00');
+      expect(recallItem.commissionGl.toFixed(2)).toBe('0.00');
+      expect(recallItem.shopFinancedGl.toFixed(2)).toBe('0.00');
+      expect(recallItem.shopCommissionGl.toFixed(2)).toBe('0.00');
+      expect(recallItem.legacyNoShop).toBe(false);
+
+      const swapItem = batch.items.find((i) => i.contractId === swapId)!;
+      expect(swapItem.itemType).toBe('SETTLEMENT');
+      expect(swapItem.swapCreditAmount.toFixed(2)).toBe('8000.00');
+      expect(swapItem.recallAmount.toFixed(2)).toBe('0.00');
+
+      const normalItem = batch.items.find((i) => i.contractId === normalId)!;
+      expect(normalItem.itemType).toBe('SETTLEMENT');
+      expect(normalItem.swapCreditAmount.toFixed(2)).toBe('0.00');
+    });
+
+    it('guard: เครดิต ≥ เจ้าหนี้สัญญานั้น (workbook IF) → reject', async () => {
+      const id = await seedBaseContract(6);
+      await seedOverCreditSwap(id); // payable 5,000 / credit 8,000 (eligible)
+
+      await expect(
+        settlementService.createBatch(
+          { contractIds: [id], transferDate: '2026-08-20' },
+          adminId,
+        ),
+      ).rejects.toThrow(/ราคารับซื้อ/);
+    });
+
+    it('guard: ยอดสุทธิทั้งรอบติดลบ (มีแต่ recall ไม่มี settlement) → reject', async () => {
+      await expect(
+        settlementService.createBatch(
+          { contractIds: [], recallContractIds: [recallId], transferDate: '2026-08-20' },
+          adminId,
+        ),
+      ).rejects.toThrow(/เกินยอดจ่ายของรอบ/);
+    });
+
+    it('guard: เครดิตเปลี่ยนเครื่องสองสมุดไม่ตรง (A.3 8,000 / S21-3001 7,000) → reject', async () => {
+      const id = await seedBaseContract(7);
+      await seedMismatchSwap(id);
+
+      await expect(
+        settlementService.createBatch(
+          { contractIds: [id], transferDate: '2026-08-20' },
+          adminId,
+        ),
+      ).rejects.toThrow(/ไม่ตรงกัน/);
+    });
+
+    it('guard: ยอดเรียกคืนสองสมุดไม่ตรง → reject', async () => {
+      const id = await seedBaseContract(8);
+      await seedRecallMismatch(id); // FINANCE 11,000 / SHOP 10,000
+
+      await expect(
+        settlementService.createBatch(
+          { contractIds: [], recallContractIds: [id], transferDate: '2026-08-20' },
+          adminId,
+        ),
+      ).rejects.toThrow(/ยอดเรียกคืนสองสมุดไม่ตรงกัน/);
+    });
+
+    it('guard: สัญญาเดียวกันอยู่ทั้งรายการจ่ายและรายการเรียกคืน → reject', async () => {
+      await expect(
+        settlementService.createBatch(
+          { contractIds: [swapId], recallContractIds: [swapId], transferDate: '2026-08-20' },
+          adminId,
+        ),
+      ).rejects.toThrow(/ทั้งรายการจ่ายและรายการเรียกคืน/);
+    });
+
+    it('guard: recall id ที่ไม่อยู่ในคิวเรียกคืน → reject พร้อมเลขสัญญา', async () => {
+      await expect(
+        settlementService.createBatch(
+          { contractIds: [], recallContractIds: [normalId], transferDate: '2026-08-20' },
+          adminId,
+        ),
+      ).rejects.toThrow(/ไม่อยู่ในคิวเรียกคืน/);
+    });
+
+    it('legacy swap (ไม่ eligible) → เข้ารอบได้แบบไม่หัก (swapCreditAmount = 0)', async () => {
+      const batch = await settlementService.createBatch(
+        { contractIds: [legacySwapId], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(batch.id);
+
+      expect(batch.totalAmount.toFixed(2)).toBe('11000.00');
+      expect(batch.totalDeduction.toFixed(2)).toBe('0.00');
+      expect(batch.netTransferAmount!.toFixed(2)).toBe('11000.00');
+      // legacyNoShop → shopPosted 0, deduction 0 → shopNet 0 (ไม่ติดลบ)
+      expect(batch.shopNetAmount!.toFixed(2)).toBe('0.00');
+
+      const item = batch.items[0];
+      expect(item.itemType).toBe('SETTLEMENT');
+      expect(item.swapCreditAmount.toFixed(2)).toBe('0.00');
+      expect(item.legacyNoShop).toBe(true);
+    });
+
+    it('updateBatch: re-snapshot ทุก field ใหม่รวม recall rows + totals ใหม่', async () => {
+      const normalD = await seedBaseContract(9);
+      await seedNormalContract(normalD);
+      const recall5 = await seedBaseContract(10);
+      await seedRecallContract(recall5);
+
+      const batch = await settlementService.createBatch(
+        { contractIds: [normalD], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(batch.id);
+      expect(batch.totalDeduction.toFixed(2)).toBe('0.00');
+      expect(batch.netTransferAmount!.toFixed(2)).toBe('11000.00');
+
+      const updated = await settlementService.updateBatch(
+        batch.id,
+        {
+          contractIds: [normalD],
+          recallContractIds: [recall5],
+          transferDate: '2026-08-20',
+        },
+        adminId,
+      );
+
+      expect(updated.totalDeduction.toFixed(2)).toBe('11000.00');
+      expect(updated.netTransferAmount!.toFixed(2)).toBe('0.00'); // 11,000 − 11,000
+      expect(updated.shopNetAmount!.toFixed(2)).toBe('0.00');
+      expect(updated.items).toHaveLength(2);
+      const recallItem = updated.items.find((i) => i.contractId === recall5)!;
+      expect(recallItem.itemType).toBe('RECALL');
+      expect(recallItem.recallAmount.toFixed(2)).toBe('11000.00');
+    });
+
+    it('submitBatch: recall row ที่มี SETTLEMENT item เก่าใน batch POSTED (นิยาม Flow C-2) → submit ผ่าน', async () => {
+      const normalC = await seedBaseContract(11);
+      await seedNormalContract(normalC);
+      const recall3 = await seedBaseContract(12);
+      await seedRecallContract(recall3);
+
+      // Flow C-2 โดยนิยาม: สัญญาเคยถูกจ่ายในรอบ POSTED มาก่อน — มี SETTLEMENT
+      // item ถาวรค้างอยู่. Re-check ของ submit ต้องไม่นับ item นั้นเป็น clash
+      // ของแถว RECALL (mirror gate ของ getPendingRecalls) ไม่งั้นทุกรอบที่มี
+      // แถวหักเรียกคืนจริงจะ submit ไม่ได้ตลอดกาลโดยโครงสร้าง.
+      const hist = await seedBatch('POSTED', 3);
+      await prisma.interCoSettlementItem.create({
+        data: {
+          batchId: hist.id,
+          contractId: recall3,
+          itemType: 'SETTLEMENT',
+          financedGl: dec('10000.00'),
+          commissionGl: dec('1000.00'),
+          shopFinancedGl: dec('10000.00'),
+          shopCommissionGl: dec('1000.00'),
+        },
+      });
+
+      const batch = await settlementService.createBatch(
+        {
+          contractIds: [normalC],
+          recallContractIds: [recall3],
+          transferDate: '2026-08-20',
+        },
+        adminId,
+      );
+      createdBatchIds.push(batch.id);
+
+      const submitted = await settlementService.submitBatch(batch.id, adminId);
+      expect(submitted.status).toBe('PENDING_APPROVAL');
+    });
+
+    it('submitBatch: recall ถูก batch อื่นจับไป (PENDING_APPROVAL) ระหว่างทาง → reject', async () => {
+      const normalA = await seedBaseContract(13);
+      await seedNormalContract(normalA);
+      const normalB = await seedBaseContract(14);
+      await seedNormalContract(normalB);
+      const recall4 = await seedBaseContract(15);
+      await seedRecallContract(recall4);
+
+      // สอง maker แข่งกันจับ recall4 — DRAFT สร้างได้ทั้งคู่ (ไม่ lock)
+      const b1 = await settlementService.createBatch(
+        { contractIds: [normalA], recallContractIds: [recall4], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(b1.id);
+      const b2 = await settlementService.createBatch(
+        { contractIds: [normalB], recallContractIds: [recall4], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(b2.id);
+
+      await settlementService.submitBatch(b1.id, adminId); // จับ recall4 (PENDING_APPROVAL)
+
+      await expect(settlementService.submitBatch(b2.id, adminId)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(settlementService.submitBatch(b2.id, adminId)).rejects.toThrow(
+        /อยู่ในรอบจ่ายอื่นแล้ว/,
+      );
+    });
   });
 });

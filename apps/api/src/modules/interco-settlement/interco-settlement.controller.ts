@@ -52,15 +52,16 @@ export class IntercoSettlementController {
     private readonly pendingService: IntercoPendingService,
   ) {}
 
-  /** คิวรอจ่าย + reconcile totals ระดับบัญชี (spec §4/§8 แท็บ "รอจ่าย"). */
+  /** คิวรอจ่าย + คิวหักเรียกคืน (C-2) + reconcile totals ระดับบัญชี (spec §4/§8 แท็บ "รอจ่าย"). */
   @Get('pending')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async pending() {
-    const [pending, reconcile] = await Promise.all([
+    const [pending, recalls, reconcile] = await Promise.all([
       this.pendingService.getPendingContracts(),
+      this.pendingService.getPendingRecalls(),
       this.pendingService.getReconcileTotals(),
     ]);
-    return { pending, reconcile };
+    return { pending, recalls, reconcile };
   }
 
   @Get('batches')

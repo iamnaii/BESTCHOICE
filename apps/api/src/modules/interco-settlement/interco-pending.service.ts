@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { InterCoBatchStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -42,6 +42,27 @@ export interface PendingContract {
   /** true เมื่อ GL ฝั่ง SHOP (S11-3001/S11-3002) ของสัญญานี้ = 0 ทั้งคู่ —
    * สัญญาก่อน wiring 2026-06-23 หรือสัญญาจาก contract-exchange (F1/F2). */
   legacyNoShop: boolean;
+  /** เลนส์ 11-2107 SWAP_CREDIT — เครดิตเปลี่ยนเครื่องรอหักกลบ (0 = ไม่ใช่ swap) */
+  swapCreditGl: Prisma.Decimal;
+  /** เลนส์ S21-3001 (by newContractId) — ขาคู่ฝั่ง SHOP */
+  shopBuybackPayableGl: Prisma.Decimal;
+  /** หักกลบได้ = ทั้งสองสมุดมียอดและเท่ากัน ±0.01 (mixed-era spec §11.4: swap ก่อน Phase 1 → false) */
+  swapCreditEligible: boolean;
+}
+
+/**
+ * แถวคิวหักเรียกคืน (Flow C-2 — spec §4.1): สัญญายกเลิกหลังตัดจ่ายที่มี
+ * 11-2107 [PAYOUT_RECALL] ค้าง — แสดงเป็น "แถวหัก" ในหน้ารอบจ่าย
+ * (ไม่มีเจ้าหนี้ 21-1101/21-1102 ของตัวเอง).
+ */
+export interface RecallCandidate {
+  contractId: string;
+  contractNumber: string;
+  customerName: string;
+  /** 11-2107 PAYOUT_RECALL คงเหลือ */
+  recallGl: Prisma.Decimal;
+  /** S21-3001 PAYOUT_RECALL คงเหลือ (ต้อง = recallGl จึงหักได้) */
+  shopRecallGl: Prisma.Decimal;
 }
 
 export interface ReconcileTotals {
@@ -53,7 +74,16 @@ export interface ReconcileTotals {
   glShopTotal: Prisma.Decimal;
   /** pendingTotal − glFinanceTotal — เพี้ยน = มี JE แปลกปลอม/เส้นเก่าที่ไม่มี contractId */
   drift: Prisma.Decimal;
+  /** 11-2107 typed SWAP_CREDIT ทั้งบัญชี (Dr−Cr — explicit stamp หรือ legacy A.3 flow) */
+  glSwapCreditTotal: Prisma.Decimal;
+  /** 11-2107 typed PAYOUT_RECALL ทั้งบัญชี (Dr−Cr — explicit stamp เท่านั้น) */
+  glRecallTotal: Prisma.Decimal;
+  /** S21-3001 ทั้งบัญชี (Cr−Dr — ไม่กรอง type) */
+  glShopBuybackTotal: Prisma.Decimal;
 }
+
+/** "settled" gate statuses — item ใน batch สถานะเหล่านี้ทำให้สัญญาหลุดจากคิว */
+const OPEN_BATCH_STATUSES: InterCoBatchStatus[] = ['PENDING_APPROVAL', 'POSTED'];
 
 interface FinanceRow {
   contract_id: string | null;
@@ -147,6 +177,53 @@ export class IntercoPendingService {
       });
     }
 
+    // SWAP_CREDIT lenses (Phase 2 — spec §4.1). เงื่อนไข type ต้องสอดคล้อง
+    // `classifyShopReceivable` (shop-receivable-type.util.ts) และ SQL twin
+    // ใน interco-typed-balance.ts — แก้ที่ไหนต้องแก้ทั้งคู่:
+    //   - 11-2107 SWAP_CREDIT: explicit stamp OR legacy flow
+    //     'exchange-buyback-receivable-11-2107' (mirror ตอน cancel carry stamp
+    //     มาแล้วตั้งแต่ Phase 1 → net เป็นศูนย์เองในประเภทเดียวกัน)
+    //   - S21-3001 SWAP_CREDIT: key ด้วย metadata.newContractId (A.4 stamp
+    //     ตั้งแต่ Phase 2 Task 1)
+    const swapCreditRows = await client.$queryRaw<
+      Array<{ contract_id: string | null; credit: unknown }>
+    >`
+      SELECT je.metadata->>'contractId' AS contract_id,
+             COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS credit
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = '11-2107'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+        AND je.metadata->>'contractId' IS NOT NULL
+        AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
+             OR je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')
+      GROUP BY 1
+    `;
+    const swapCreditByContract = new Map<string, Prisma.Decimal>();
+    for (const row of swapCreditRows) {
+      if (!row.contract_id) continue;
+      swapCreditByContract.set(row.contract_id, new Prisma.Decimal(String(row.credit ?? 0)));
+    }
+
+    const shopBuybackRows = await client.$queryRaw<
+      Array<{ contract_id: string | null; payable: unknown }>
+    >`
+      SELECT je.metadata->>'newContractId' AS contract_id,
+             COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS payable
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = 'S21-3001'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+        AND je.metadata->>'newContractId' IS NOT NULL
+        AND je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
+      GROUP BY 1
+    `;
+    const shopBuybackByContract = new Map<string, Prisma.Decimal>();
+    for (const row of shopBuybackRows) {
+      if (!row.contract_id) continue;
+      shopBuybackByContract.set(row.contract_id, new Prisma.Decimal(String(row.payable ?? 0)));
+    }
+
     const contractIds = validFinanceRows.map((r) => r.contract_id);
 
     // "settled" gate — exclude contracts already carried by an in-flight or
@@ -157,7 +234,7 @@ export class IntercoPendingService {
       where: {
         contractId: { in: contractIds },
         deletedAt: null,
-        batch: { status: { in: ['PENDING_APPROVAL', 'POSTED'] }, deletedAt: null },
+        batch: { status: { in: OPEN_BATCH_STATUSES }, deletedAt: null },
       },
       select: { contractId: true },
     });
@@ -191,6 +268,15 @@ export class IntercoPendingService {
       const shopFinancedGl = shop?.financed ?? new Prisma.Decimal(0);
       const shopCommissionGl = shop?.commission ?? new Prisma.Decimal(0);
 
+      const swapCreditGl = swapCreditByContract.get(contractId) ?? new Prisma.Decimal(0);
+      const shopBuybackPayableGl = shopBuybackByContract.get(contractId) ?? new Prisma.Decimal(0);
+      // eligible = ทั้งสองสมุดมียอดและเท่ากัน ±0.01 — swap ยุคก่อน Phase 1
+      // (ไม่มี S21-3001) จึงเป็น false โดยโครงสร้าง (mixed-era, spec §11.4)
+      const swapCreditEligible =
+        swapCreditGl.gt(0) &&
+        shopBuybackPayableGl.gt(0) &&
+        swapCreditGl.minus(shopBuybackPayableGl).abs().lte('0.01');
+
       result.push({
         contractId,
         contractNumber: contract.contractNumber,
@@ -201,6 +287,110 @@ export class IntercoPendingService {
         shopFinancedGl,
         shopCommissionGl,
         legacyNoShop: shopFinancedGl.eq(0) && shopCommissionGl.eq(0),
+        swapCreditGl,
+        shopBuybackPayableGl,
+        swapCreditEligible,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * คิวรายการหักเรียกคืน (Flow C-2 — spec §4.1): สัญญาที่มี 11-2107
+   * [PAYOUT_RECALL] ค้าง > 0 และไม่อยู่ใน batch เปิด. producer ของ JE เหล่านี้
+   * คือ Phase 3 — จนกว่าจะถึงตอนนั้นคิวนี้ว่างบน prod (ทดสอบด้วย synthetic
+   * ตาม spec §5.4).
+   *
+   * Settled gate ของคิวนี้กรอง `itemType: 'RECALL'` เท่านั้น — สัญญา C-2
+   * โดยนิยามเคยถูกจ่ายในรอบ POSTED มาก่อน (มี item SETTLEMENT ถาวรอยู่แล้ว);
+   * ถ้า gate นับ item ทุกประเภทเหมือนคิวรอจ่าย คิว recall จะว่างตลอดกาล
+   * โดยโครงสร้าง.
+   */
+  async getPendingRecalls(tx?: Prisma.TransactionClient): Promise<RecallCandidate[]> {
+    const client = (tx ?? this.prisma) as Prisma.TransactionClient;
+
+    // FINANCE lens — 11-2107 [PAYOUT_RECALL] (explicit stamp เท่านั้น — type
+    // ใหม่ ไม่มี legacy; ต้องสอดคล้อง classifyShopReceivable + SQL twin ใน
+    // interco-typed-balance.ts)
+    const recallRows = await client.$queryRaw<
+      Array<{ contract_id: string | null; recall: unknown }>
+    >`
+      SELECT je.metadata->>'contractId' AS contract_id,
+             COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS recall
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = '11-2107'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+        AND je.metadata->>'contractId' IS NOT NULL
+        AND je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'
+      GROUP BY 1
+      HAVING SUM(jl.debit - jl.credit) > 0
+    `;
+    const validRecallRows = recallRows.filter(
+      (r): r is { contract_id: string; recall: unknown } => !!r.contract_id,
+    );
+    if (validRecallRows.length === 0) return [];
+
+    // SHOP lens — S21-3001 [PAYOUT_RECALL], key ด้วย metadata.contractId
+    // (ต่างจากขา SWAP_CREDIT ที่ key ด้วย newContractId)
+    const shopRecallRows = await client.$queryRaw<
+      Array<{ contract_id: string | null; recall: unknown }>
+    >`
+      SELECT je.metadata->>'contractId' AS contract_id,
+             COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS recall
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = 'S21-3001'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+        AND je.metadata->>'contractId' IS NOT NULL
+        AND je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'
+      GROUP BY 1
+    `;
+    const shopRecallByContract = new Map<string, Prisma.Decimal>();
+    for (const row of shopRecallRows) {
+      if (!row.contract_id) continue;
+      shopRecallByContract.set(row.contract_id, new Prisma.Decimal(String(row.recall ?? 0)));
+    }
+
+    const contractIds = validRecallRows.map((r) => r.contract_id);
+
+    // "settled" gate — เฉพาะ item RECALL ใน batch เปิด (ดู jsdoc ด้านบน)
+    const settledItems = await client.interCoSettlementItem.findMany({
+      where: {
+        contractId: { in: contractIds },
+        itemType: 'RECALL',
+        deletedAt: null,
+        batch: { status: { in: OPEN_BATCH_STATUSES }, deletedAt: null },
+      },
+      select: { contractId: true },
+    });
+    const settledContractIds = new Set(settledItems.map((i) => i.contractId));
+
+    const remainingIds = contractIds.filter((id) => !settledContractIds.has(id));
+    if (remainingIds.length === 0) return [];
+
+    const contracts = await client.contract.findMany({
+      where: { id: { in: remainingIds }, deletedAt: null },
+      select: {
+        id: true,
+        contractNumber: true,
+        customer: { select: { name: true } },
+      },
+    });
+    const contractById = new Map(contracts.map((c) => [c.id, c]));
+
+    const result: RecallCandidate[] = [];
+    for (const row of validRecallRows) {
+      const contract = contractById.get(row.contract_id);
+      if (!contract) continue; // settled, soft-deleted, or otherwise gone
+
+      result.push({
+        contractId: row.contract_id,
+        contractNumber: contract.contractNumber,
+        customerName: contract.customer.name,
+        recallGl: new Prisma.Decimal(String(row.recall ?? 0)),
+        shopRecallGl: shopRecallByContract.get(row.contract_id) ?? new Prisma.Decimal(0),
       });
     }
 
@@ -243,6 +433,54 @@ export class IntercoPendingService {
 
     const drift = pendingTotal.minus(glFinanceTotal);
 
-    return { pendingTotal, glFinanceTotal, glShopTotal, drift };
+    // Typed whole-account totals (Phase 2 — spec §4.1). เงื่อนไข type ชุด
+    // เดียวกับเลนส์ per-contract + interco-typed-balance.ts (SQL twins).
+    const swapCreditTotalRows = await this.prisma.$queryRaw<Array<{ balance: unknown }>>`
+      SELECT COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS balance
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = '11-2107'
+        AND jl.deleted_at IS NULL
+        AND je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
+             OR je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')
+    `;
+    const glSwapCreditTotal = new Prisma.Decimal(String(swapCreditTotalRows[0]?.balance ?? 0));
+
+    const recallTotalRows = await this.prisma.$queryRaw<Array<{ balance: unknown }>>`
+      SELECT COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS balance
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = '11-2107'
+        AND jl.deleted_at IS NULL
+        AND je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'
+    `;
+    const glRecallTotal = new Prisma.Decimal(String(recallTotalRows[0]?.balance ?? 0));
+
+    // S21-3001 ทั้งบัญชี — ไม่กรอง type (กระทบยอดรวมสองสมุด: SWAP_CREDIT +
+    // PAYOUT_RECALL รวมกันต้องหนุนยอดบัญชีนี้)
+    const shopBuybackTotalRows = await this.prisma.$queryRaw<Array<{ balance: unknown }>>`
+      SELECT COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS balance
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = 'S21-3001'
+        AND jl.deleted_at IS NULL
+        AND je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+    `;
+    const glShopBuybackTotal = new Prisma.Decimal(String(shopBuybackTotalRows[0]?.balance ?? 0));
+
+    return {
+      pendingTotal,
+      glFinanceTotal,
+      glShopTotal,
+      drift,
+      glSwapCreditTotal,
+      glRecallTotal,
+      glShopBuybackTotal,
+    };
   }
 }

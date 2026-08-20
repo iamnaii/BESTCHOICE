@@ -42,6 +42,9 @@ const pendingRow = (overrides: Partial<PendingContract> = {}): PendingContract =
   shopFinancedGl: new Prisma.Decimal(10000),
   shopCommissionGl: new Prisma.Decimal(1000),
   legacyNoShop: false,
+  swapCreditGl: new Prisma.Decimal(0),
+  shopBuybackPayableGl: new Prisma.Decimal(0),
+  swapCreditEligible: false,
   ...overrides,
 });
 

@@ -1538,10 +1538,13 @@ describe('ContractsService', () => {
       // item must carry them like a real InterCoSettlementItem row does.
       prisma.interCoSettlementItem.findMany = jest.fn().mockResolvedValue([
         {
+          contractId: 'contract-1',
           financedGl: new Prisma.Decimal('10000.00'),
           commissionGl: new Prisma.Decimal('1000.00'),
           shopFinancedGl: new Prisma.Decimal('10000.00'),
           shopCommissionGl: new Prisma.Decimal('1000.00'),
+          swapCreditAmount: new Prisma.Decimal(0),
+          recallAmount: new Prisma.Decimal(0),
           batch: { batchNumber: 'IC-20260820-0009' },
         },
       ]);
@@ -1609,6 +1612,93 @@ describe('ContractsService', () => {
       expect(prisma.contractCancellation.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'REJECTED' }),
+        }),
+      );
+    });
+  });
+
+  describe('listPendingCancellations', () => {
+    /**
+     * Phase 3 Task 7: each queue row exposes `settledInBatch` + `recallAmount`
+     * (forecast of the 11-2107 [PAYOUT_RECALL] net the C-2 approve will leave
+     * to claw back = settledTotal − settledDeductions) — computed from the
+     * SAME POSTED SETTLEMENT items query the C-2 detect in approveCancellation
+     * uses (shared helper, no second copy of the formula).
+     */
+    const pendingRow = (id: string, contractId: string) => ({
+      id,
+      contractId,
+      status: 'PENDING',
+      reason: 'ลูกค้าขอยกเลิก',
+      refundAmount: new Prisma.Decimal(0),
+      createdAt: new Date('2026-08-19T00:00:00Z'),
+      contract: {
+        id: contractId,
+        contractNumber: `BC-${contractId}`,
+        status: 'ACTIVE',
+        customer: { id: 'customer-1', name: 'สมชาย ใจดี', phone: '0891234567' },
+      },
+      requestedBy: { id: 'user-1', name: 'พนักงาน 1' },
+    });
+
+    it('exposes settledInBatch=false + recallAmount=null when no POSTED settlement exists (C-1)', async () => {
+      prisma.contractCancellation = {
+        findMany: jest.fn().mockResolvedValue([pendingRow('cancel-1', 'contract-1')]),
+      };
+      prisma.interCoSettlementItem = { findMany: jest.fn().mockResolvedValue([]) };
+
+      const rows = await service.listPendingCancellations();
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].settledInBatch).toBe(false);
+      expect(rows[0].recallAmount).toBeNull();
+      // base row shape preserved for the page
+      expect(rows[0].contract.contractNumber).toBe('BC-contract-1');
+      expect(rows[0].requestedBy.name).toBe('พนักงาน 1');
+    });
+
+    it('exposes settledInBatch=true + recallAmount = settledTotal − deductions (C-2 forecast, net)', async () => {
+      prisma.contractCancellation = {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            pendingRow('cancel-1', 'contract-1'),
+            pendingRow('cancel-2', 'contract-2'),
+          ]),
+      };
+      // contract-1 was paid out in a POSTED batch: gross 10,000 + 1,000 with a
+      // 2,000 swap-credit deduction → net cash wired = 9,000 = recall forecast
+      prisma.interCoSettlementItem = {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractId: 'contract-1',
+            financedGl: new Prisma.Decimal('10000.00'),
+            commissionGl: new Prisma.Decimal('1000.00'),
+            shopFinancedGl: new Prisma.Decimal('10000.00'),
+            shopCommissionGl: new Prisma.Decimal('1000.00'),
+            swapCreditAmount: new Prisma.Decimal('2000.00'),
+            recallAmount: new Prisma.Decimal(0),
+            batch: { batchNumber: 'IC-20260820-0009' },
+          },
+        ]),
+      };
+
+      const rows = await service.listPendingCancellations();
+
+      expect(rows[0].settledInBatch).toBe(true);
+      expect(rows[0].recallAmount).toBe('9000.00');
+      expect(rows[1].settledInBatch).toBe(false);
+      expect(rows[1].recallAmount).toBeNull();
+      // ONE batched query covering every queue contract (no N+1), same shape
+      // as the C-2 detect in approveCancellation
+      expect(prisma.interCoSettlementItem.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.interCoSettlementItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contractId: { in: ['contract-1', 'contract-2'] },
+            itemType: 'SETTLEMENT',
+            batch: { status: 'POSTED', deletedAt: null },
+          }),
         }),
       );
     });

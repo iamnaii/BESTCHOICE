@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
@@ -21,6 +22,22 @@ import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-
  * resolver (SHOP companyId for the product restore) uses the same accessor
  * pattern for the same reason.
  */
+/**
+ * Per-contract fold of the POSTED SETTLEMENT snapshot — the single C-2 detect
+ * source (Phase 3 Task 7): shared by `approveCancellation` (isC2/settledTotal/
+ * settledShopTotal for the template cross-checks) and
+ * `listPendingCancellations` (settledInBatch badge + recallAmount forecast).
+ */
+interface SettledPayout {
+  /** Σ financedGl + commissionGl — gross เจ้าหนี้ที่ batch ล้างไป (= ยอด redirect 11-2107) */
+  settledTotal: Decimal;
+  /** Σ shopFinancedGl + shopCommissionGl — ฝั่ง SHOP (template cross-check S21-3001) */
+  settledShopTotal: Decimal;
+  /** Σ swapCreditAmount + recallAmount — ส่วนที่ถูกหักกลบในรอบ (เงินไม่เคยโอนจริง) */
+  settledDeductions: Decimal;
+  batchNumbers: string[];
+}
+
 @Injectable()
 export class ContractCancellationService {
   constructor(
@@ -28,6 +45,53 @@ export class ContractCancellationService {
     private getCancellationTemplate: () => ContractCancellationTemplate | undefined,
     private getCompanyResolver: () => CompanyResolverService | undefined = () => undefined,
   ) {}
+
+  /**
+   * C-2 detect (Phase 3 Task 3 — workbook Case 3A กรณี 2, refactored to a
+   * shared helper in Task 7): Σ snapshot ของ item SETTLEMENT ใน batch POSTED
+   * ต่อสัญญา. RECALL item ไม่นับ — มันคือ "ถูกหักเรียกคืนไปแล้ว" ไม่ใช่ "ถูกจ่าย".
+   *
+   * `settledDeductions` = Σ(swapCreditAmount + recallAmount) ของ item ชุดเดียวกัน
+   * — เงินส่วนที่ถูกหักกลบในรอบ ไม่เคยโอนจริง ⇒ ยอดเรียกคืนสุทธิที่ C-2 จะเหลือ
+   * ให้ตามเก็บ = settledTotal − settledDeductions (นิยามเดียวกับ net ของ
+   * `IntercoPendingService.getPendingRecalls`).
+   */
+  private async settledPayoutByContract(
+    client: Prisma.TransactionClient,
+    contractIds: string[],
+  ): Promise<Map<string, SettledPayout>> {
+    if (contractIds.length === 0) return new Map();
+    const postedItems = await client.interCoSettlementItem.findMany({
+      where: {
+        contractId: { in: contractIds },
+        deletedAt: null,
+        itemType: 'SETTLEMENT',
+        batch: { status: 'POSTED', deletedAt: null },
+      },
+      include: { batch: { select: { batchNumber: true } } },
+    });
+    const map = new Map<string, SettledPayout>();
+    for (const item of postedItems) {
+      const entry = map.get(item.contractId) ?? {
+        settledTotal: new Decimal(0),
+        settledShopTotal: new Decimal(0),
+        settledDeductions: new Decimal(0),
+        batchNumbers: [] as string[],
+      };
+      entry.settledTotal = entry.settledTotal
+        .plus(item.financedGl.toString())
+        .plus(item.commissionGl.toString());
+      entry.settledShopTotal = entry.settledShopTotal
+        .plus(item.shopFinancedGl.toString())
+        .plus(item.shopCommissionGl.toString());
+      entry.settledDeductions = entry.settledDeductions
+        .plus(item.swapCreditAmount.toString())
+        .plus(item.recallAmount.toString());
+      entry.batchNumbers.push(item.batch.batchNumber);
+      map.set(item.contractId, entry);
+    }
+    return map;
+  }
 
   /**
    * Request a cancellation for an existing contract.
@@ -185,30 +249,15 @@ export class ContractCancellationService {
       // ตัดจ่ายผ่านรอบจ่าย INTER-CO POSTED แล้ว — เจ้าหนี้ 21-1101/21-1102 (และ
       // ลูกหนี้ S11-3001/S11-3002) ถูก batch ล้างไปแล้ว mirror ตรงจะทำติดลบ →
       // template redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / S21-3001.
-      // settledTotal = Σ snapshot จาก item SETTLEMENT (RECALL item ไม่นับ —
-      // มันคือ "ถูกหักเรียกคืนไปแล้ว" ไม่ใช่ "ถูกจ่าย")
-      const postedItems = await tx.interCoSettlementItem.findMany({
-        where: {
-          contractId: contract.id,
-          deletedAt: null,
-          itemType: 'SETTLEMENT',
-          batch: { status: 'POSTED', deletedAt: null },
-        },
-        include: { batch: { select: { batchNumber: true } } },
-      });
-      const settledTotal = postedItems.reduce(
-        (s, i) => s.plus(i.financedGl.toString()).plus(i.commissionGl.toString()),
-        new Decimal(0),
-      );
-      // ฝั่ง SHOP (Task 4 fold): Σ snapshot ลูกหนี้ร้านที่ batch ล้างไป — ให้
-      // template cross-check redirect S21-3001 แยกสมุด. สัญญา legacyNoShop มี
-      // snapshot ฝั่ง SHOP = 0 → expected 0 (ไม่มี SHOP JE ให้ redirect อยู่แล้ว).
-      const settledShopTotal = postedItems.reduce(
-        (s, i) => s.plus(i.shopFinancedGl.toString()).plus(i.shopCommissionGl.toString()),
-        new Decimal(0),
-      );
+      // (สูตรอยู่ใน settledPayoutByContract — helper เดียวกับ
+      // listPendingCancellations, Task 7 refactor. ฝั่ง SHOP (Task 4 fold):
+      // settledShopTotal ให้ template cross-check redirect S21-3001 แยกสมุด —
+      // สัญญา legacyNoShop มี snapshot ฝั่ง SHOP = 0 → expected 0.)
+      const settled = (await this.settledPayoutByContract(tx, [contract.id])).get(contract.id);
+      const settledTotal = settled?.settledTotal ?? new Decimal(0);
+      const settledShopTotal = settled?.settledShopTotal ?? new Decimal(0);
       const isC2 = settledTotal.gt(0);
-      const batchNumbers = postedItems.map((i) => i.batch.batchNumber);
+      const batchNumbers = settled?.batchNumbers ?? [];
 
       // Post sweep reversal chain + ECL release (template — Phase 3 C-1/C-2)
       const jeResult = await template.execute(
@@ -353,9 +402,16 @@ export class ContractCancellationService {
 
   /**
    * List all PENDING cancellation requests (for FM/OWNER approval queue).
+   *
+   * Phase 3 Task 7 — each row also exposes:
+   * - `settledInBatch`: สัญญาถูกตัดจ่ายผ่านรอบจ่าย INTER-CO POSTED แล้ว (= approve
+   *   จะเดินเส้นทาง C-2 ตั้งลูกหนี้เรียกคืน แทนการกลับรายการทั้งชุดแบบ C-1)
+   * - `recallAmount`: ยอดเรียกคืนสุทธิที่จะตั้ง (settledTotal − settledDeductions,
+   *   2dp string) — null เมื่อยังไม่ตัดจ่าย. สูตรเดียวกับ C-2 detect ใน
+   *   `approveCancellation` ผ่าน helper `settledPayoutByContract` (ห้าม duplicate).
    */
   async listPendingCancellations() {
-    return this.prisma.contractCancellation.findMany({
+    const rows = await this.prisma.contractCancellation.findMany({
       where: { status: 'PENDING', deletedAt: null },
       orderBy: { createdAt: 'asc' },
       include: {
@@ -369,6 +425,23 @@ export class ContractCancellationService {
         },
         requestedBy: { select: { id: true, name: true } },
       },
+    });
+
+    const settledMap = await this.settledPayoutByContract(
+      this.prisma as unknown as Prisma.TransactionClient,
+      rows.map((r) => r.contractId),
+    );
+
+    return rows.map((row) => {
+      const settled = settledMap.get(row.contractId);
+      const settledInBatch = !!settled && settled.settledTotal.gt(0);
+      return {
+        ...row,
+        settledInBatch,
+        recallAmount: settledInBatch
+          ? settled.settledTotal.minus(settled.settledDeductions).toFixed(2)
+          : null,
+      };
     });
   }
 }

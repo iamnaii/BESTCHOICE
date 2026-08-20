@@ -175,16 +175,24 @@ const batchDetailResponse = {
   ],
 };
 
-function setupApiGet() {
+function setupApiGet(pending: unknown = pendingResponse) {
   apiGet.mockImplementation((url: string) => {
     if (url === '/interco-settlement/pending') {
-      return Promise.resolve({ data: pendingResponse });
+      return Promise.resolve({ data: pending });
     }
     if (url === '/interco-settlement/batches') {
       return Promise.resolve({ data: batchesResponse });
     }
     if (url.startsWith('/interco-settlement/batches/')) {
       return Promise.resolve({ data: batchDetailResponse });
+    }
+    if (url.startsWith('/chart-of-accounts/by-codes')) {
+      return Promise.resolve({
+        data: [
+          { code: '11-1201', name: 'ธนาคาร KBank' },
+          { code: 'S11-1201', name: 'ธนาคาร KBank หน้าร้าน' },
+        ],
+      });
     }
     return Promise.resolve({ data: {} });
   });
@@ -389,5 +397,80 @@ describe('IntercompanySettlementPage', () => {
     expect(screen.getAllByText('ยอดโอนสุทธิ').length).toBeGreaterThanOrEqual(2);
     // ฿11,000.00 ปรากฏทั้งยอดเจ้าหนี้รวม + ยอดโอนสุทธิ (+ ยอด SHOP รับจริง fallback)
     expect(screen.getAllByText('฿11,000.00').length).toBeGreaterThanOrEqual(2);
+  });
+
+  // ── Phase 3 Task 7: ปุ่มรับเงินสดคืน (settle-cash) บน recall section ──────────
+
+  it('opens the recall cash dialog and POSTs settle-cash with defaults + a UUID requestId (Phase 3)', async () => {
+    asRole('OWNER');
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0009')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'รับเงินสดคืน' }));
+    const dialog = await screen.findByRole('dialog');
+
+    // ยอด default = net recallGl ของแถว
+    expect(within(dialog).getByLabelText(/ยอดรับเงินคืน/)).toHaveValue(500);
+
+    apiPost.mockResolvedValueOnce({
+      data: { financeEntryNo: 'JE-202608-00001', shopEntryNo: 'SJE-202608-00001', deduped: false },
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'บันทึกรับเงินคืน' }));
+
+    await waitFor(() =>
+      expect(apiPost).toHaveBeenCalledWith(
+        '/interco-settlement/recalls/r1/settle-cash',
+        expect.objectContaining({
+          amount: 500,
+          financeDepositAccountCode: '11-1201',
+          shopPayoutAccountCode: 'S11-1201',
+          requestId: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+          ),
+        }),
+      ),
+    );
+  });
+
+  it('blocks settle-cash when the amount exceeds the outstanding net recall', async () => {
+    asRole('FINANCE_MANAGER');
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0009')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'รับเงินสดคืน' }));
+    const dialog = await screen.findByRole('dialog');
+
+    const amountInput = within(dialog).getByLabelText(/ยอดรับเงินคืน/);
+    await user.clear(amountInput);
+    await user.type(amountInput, '600');
+
+    expect(within(dialog).getByText(/เกินยอดเรียกคืนคงเหลือ/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'บันทึกรับเงินคืน' })).toBeDisabled();
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('hides รับเงินสดคืน from maker-side roles (endpoint is OWNER/FM only)', async () => {
+    asRole('ACCOUNTANT', 'u1');
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0009')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'รับเงินสดคืน' })).not.toBeInTheDocument();
+  });
+
+  it('disables รับเงินสดคืน on a recall row whose two books mismatch', async () => {
+    asRole('OWNER');
+    setupApiGet({
+      ...pendingResponse,
+      recalls: [{ ...pendingResponse.recalls[0], shopRecallGl: '400.00' }],
+    });
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0009')).toBeInTheDocument());
+    expect(screen.getByText('ยอดสองสมุดไม่ตรง')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'รับเงินสดคืน' })).toBeDisabled();
   });
 });

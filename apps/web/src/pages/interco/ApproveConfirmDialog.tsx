@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatThaiDateShort, toLocalDateString } from '@/lib/date';
-import { fmtMoney, isClosedPeriodError, type BatchDetail } from './types';
+import { fmtMoney, isClosedPeriodError, netAmountOf, type BatchDetail } from './types';
 
 /**
  * เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — ยืนยันอนุมัติ พร้อม preview JE 2 ฝั่ง
@@ -73,34 +73,72 @@ export function ApproveConfirmDialog({
     },
   });
 
-  const nonLegacyItems = batch.items.filter((i) => !i.legacyNoShop);
-  const legacyItems = batch.items.filter((i) => i.legacyNoShop);
-  const financedTotal = batch.items.reduce((s, i) => s + Number(i.financedGl), 0);
-  const commissionTotal = batch.items.reduce((s, i) => s + Number(i.commissionGl), 0);
+  // Mirror `buildFinanceLines`/`buildShopLines` (Phase 2 หักกลบ): RECALL rows
+  // contribute ONLY the 11-2107/S21-3001 legs; settlement legs skip them.
+  // item รอบเก่าไม่มี itemType ใน fixture เก่า — `!== 'RECALL'` = SETTLEMENT
+  // (นิยามเดียวกับ server).
+  const settlementItems = batch.items.filter((i) => i.itemType !== 'RECALL');
+  const recallItems = batch.items.filter((i) => i.itemType === 'RECALL');
+  const nonLegacyItems = settlementItems.filter((i) => !i.legacyNoShop);
+  const legacyItems = settlementItems.filter((i) => i.legacyNoShop);
+  const financedTotal = settlementItems.reduce((s, i) => s + Number(i.financedGl), 0);
+  const commissionTotal = settlementItems.reduce((s, i) => s + Number(i.commissionGl), 0);
   const shopFinancedTotal = nonLegacyItems.reduce((s, i) => s + Number(i.shopFinancedGl), 0);
   const shopCommissionTotal = nonLegacyItems.reduce((s, i) => s + Number(i.shopCommissionGl), 0);
+  const swapCreditTotal = settlementItems.reduce((s, i) => s + Number(i.swapCreditAmount ?? 0), 0);
+  const recallTotal = recallItems.reduce((s, i) => s + Number(i.recallAmount ?? 0), 0);
+  const totalDeduction = swapCreditTotal + recallTotal;
+  // รอบก่อน Phase 2 (netTransferAmount = null) → เงินโอน = ยอดเต็ม (netAmountOf)
+  const netCash = Number(netAmountOf(batch));
+  const shopNetCash = Number(batch.shopNetAmount ?? batch.shopPostedAmount);
 
   const financeLines: PreviewLine[] = [
-    { label: `Dr 21-1101 ล้างเจ้าหนี้ยอดจัด (${batch.items.length} สัญญา)`, amount: financedTotal },
+    {
+      label: `Dr 21-1101 ล้างเจ้าหนี้ยอดจัด (${settlementItems.length} สัญญา)`,
+      amount: financedTotal,
+    },
     ...(commissionTotal > 0
       ? [{ label: 'Dr 21-1102 ล้างเจ้าหนี้ค่าคอม', amount: commissionTotal }]
       : []),
-    {
-      label: `Cr ${batch.financeBankCode} จ่ายให้หน้าร้าน`,
-      amount: Number(batch.totalAmount),
-    },
+    ...(swapCreditTotal > 0
+      ? [{ label: 'Cr 11-2107 หักเครดิตเปลี่ยนเครื่อง', amount: swapCreditTotal }]
+      : []),
+    ...(recallTotal > 0
+      ? [
+          {
+            label: `Cr 11-2107 หักเรียกคืนจากยกเลิก (${recallItems.length} สัญญา)`,
+            amount: recallTotal,
+          },
+        ]
+      : []),
+    // รอบที่หักจนเงินโอนจริงเป็นศูนย์ — server ไม่ออกบรรทัดธนาคารเลย
+    ...(netCash > 0
+      ? [{ label: `Cr ${batch.financeBankCode} จ่ายให้หน้าร้าน (สุทธิ)`, amount: netCash }]
+      : []),
   ];
 
   const shopLines: PreviewLine[] = [
-    { label: `Dr ${batch.shopBankCode} รับโอนจาก FINANCE`, amount: Number(batch.shopPostedAmount) },
-    {
-      label: `Cr S11-3001 ล้างลูกหนี้ยอดจัด (${nonLegacyItems.length} สัญญา)`,
-      amount: shopFinancedTotal,
-    },
+    ...(shopNetCash > 0
+      ? [{ label: `Dr ${batch.shopBankCode} รับโอนจาก FINANCE (สุทธิ)`, amount: shopNetCash }]
+      : []),
+    ...(totalDeduction > 0
+      ? [{ label: 'Dr S21-3001 ล้างเจ้าหนี้ FINANCE (หักกลบ)', amount: totalDeduction }]
+      : []),
+    ...(nonLegacyItems.length > 0
+      ? [
+          {
+            label: `Cr S11-3001 ล้างลูกหนี้ยอดจัด (${nonLegacyItems.length} สัญญา)`,
+            amount: shopFinancedTotal,
+          },
+        ]
+      : []),
     ...(shopCommissionTotal > 0
       ? [{ label: 'Cr S11-3002 ล้างลูกหนี้ค่าคอม', amount: shopCommissionTotal }]
       : []),
   ];
+
+  // SHOP half มีเมื่อมี settlement ที่ไม่ legacy หรือมีขาหัก (นิยามเดียวกับ buildShopLines)
+  const hasShopHalf = nonLegacyItems.length > 0 || totalDeduction > 0;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !approveMutation.isPending && onOpenChange(v)}>
@@ -150,9 +188,31 @@ export function ApproveConfirmDialog({
           </div>
         ) : (
           <div className="space-y-4">
+            <div className="rounded-md border border-border bg-muted/40 p-3 text-sm space-y-1">
+              <div className="flex items-center justify-between leading-snug">
+                <span className="text-muted-foreground">ยอดเจ้าหนี้รวม</span>
+                <span className="tabular-nums">฿{fmtMoney(batch.totalAmount)}</span>
+              </div>
+              {/* รอบก่อน Phase 2 (null) — ไม่มี snapshot หัก ไม่โชว์บรรทัดหัก */}
+              {batch.netTransferAmount !== null && (
+                <div className="flex items-center justify-between leading-snug">
+                  <span className="text-muted-foreground">
+                    หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน)
+                  </span>
+                  <span className="tabular-nums text-warning">
+                    −฿{fmtMoney(batch.totalDeduction)}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-border pt-1 leading-snug">
+                <span className="font-semibold">ยอดโอนสุทธิ</span>
+                <span className="tabular-nums font-bold">฿{fmtMoney(netAmountOf(batch))}</span>
+              </div>
+            </div>
+
             <JournalPreviewBlock title="FINANCE" lines={financeLines} />
 
-            {nonLegacyItems.length > 0 ? (
+            {hasShopHalf ? (
               <JournalPreviewBlock title="SHOP" lines={shopLines} />
             ) : (
               <p className="text-sm text-muted-foreground leading-snug rounded-md border border-border bg-muted p-3">

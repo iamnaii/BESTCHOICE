@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toLocalDateString } from '@/lib/date';
-import { fmtMoney, type PendingContract } from './types';
+import { fmtMoney, type PendingContract, type RecallCandidate } from './types';
 
 /**
  * เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — สร้างรอบจ่ายจากสัญญาที่เลือกในแท็บ "รอจ่าย".
@@ -67,6 +67,8 @@ interface CreateBatchDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedContracts: PendingContract[];
+  /** แถวหักเรียกคืน (Flow C-2) ที่เลือกจาก section "รายการเรียกคืน" ในแท็บรอจ่าย */
+  selectedRecalls: RecallCandidate[];
   onCreated: (batchId: string) => void;
 }
 
@@ -74,6 +76,7 @@ export function CreateBatchDialog({
   open,
   onOpenChange,
   selectedContracts,
+  selectedRecalls,
   onCreated,
 }: CreateBatchDialogProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -104,12 +107,24 @@ export function CreateBatchDialog({
   );
   const legacyCount = selectedContracts.filter((c) => c.legacyNoShop).length;
 
+  // Phase 2 หักกลบ — mirror ของ buildSnapshot ฝั่ง server (display เท่านั้น
+  // ตัวเลขจริง snapshot จาก GL ตอน POST): swap credit เฉพาะ eligible + เรียกคืน.
+  const swapCreditTotal = selectedContracts.reduce(
+    (sum, c) => sum + (c.swapCreditEligible ? Number(c.swapCreditGl) : 0),
+    0,
+  );
+  const recallTotal = selectedRecalls.reduce((sum, r) => sum + Number(r.recallGl), 0);
+  const totalDeduction = swapCreditTotal + recallTotal;
+  const netTransferAmount = totalAmount - totalDeduction;
+
   const createMutation = useMutation({
     mutationFn: async (values: CreateBatchFormValues) => {
       const { data: batch } = await api.post<{ id: string; batchNumber: string }>(
         '/interco-settlement/batches',
         {
           contractIds: selectedContracts.map((c) => c.contractId),
+          recallContractIds:
+            selectedRecalls.length > 0 ? selectedRecalls.map((r) => r.contractId) : undefined,
           transferDate: values.transferDate,
           financeBankCode: values.financeBankCode,
           shopBankCode: values.shopBankCode,
@@ -152,10 +167,13 @@ export function CreateBatchDialog({
         <DialogHeader>
           <DialogTitle>สร้างรอบจ่าย</DialogTitle>
           <DialogDescription className="leading-snug">
-            เลือกแล้ว {selectedContracts.length} สัญญา • รวม ฿{fmtMoney(totalAmount)}
+            เลือกแล้ว {selectedContracts.length} สัญญา
+            {selectedRecalls.length > 0 && <> + เรียกคืน {selectedRecalls.length} รายการ</>} • รวม ฿
+            {fmtMoney(totalAmount)}
             {legacyCount > 0 && (
               <span className="block mt-1 text-warning">
-                {legacyCount} สัญญาเป็น LEGACY (SHOP ไม่มียอดตั้งต้น) — ฝั่ง SHOP จะไม่ลงบัญชีให้สัญญากลุ่มนี้
+                {legacyCount} สัญญาเป็น LEGACY (SHOP ไม่มียอดตั้งต้น) — ฝั่ง SHOP
+                จะไม่ลงบัญชีให้สัญญากลุ่มนี้
               </span>
             )}
           </DialogDescription>
@@ -239,6 +257,25 @@ export function CreateBatchDialog({
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
             )}
+          </div>
+
+          <div className="rounded-md border border-border bg-muted/40 p-3 text-sm space-y-1">
+            <div className="flex items-center justify-between leading-snug">
+              <span className="text-muted-foreground">ยอดเจ้าหนี้รวม</span>
+              <span className="tabular-nums">฿{fmtMoney(totalAmount)}</span>
+            </div>
+            <div className="flex items-center justify-between leading-snug">
+              <span className="text-muted-foreground">
+                หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน)
+              </span>
+              <span className="tabular-nums text-warning">−฿{fmtMoney(totalDeduction)}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-border pt-1 leading-snug">
+              <span className="font-semibold">ยอดโอนสุทธิ</span>
+              <span className="tabular-nums font-bold text-base">
+                ฿{fmtMoney(netTransferAmount)}
+              </span>
+            </div>
           </div>
 
           <DialogFooter>

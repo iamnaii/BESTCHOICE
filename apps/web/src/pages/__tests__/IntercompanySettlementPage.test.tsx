@@ -54,6 +54,10 @@ const pendingResponse = {
       shopFinancedGl: '10000.00',
       shopCommissionGl: '1000.00',
       legacyNoShop: false,
+      // สัญญาเปลี่ยนเครื่อง Phase 2 — หักกลบได้
+      swapCreditGl: '2000.00',
+      shopBuybackPayableGl: '2000.00',
+      swapCreditEligible: true,
     },
     {
       contractId: 'c2',
@@ -65,6 +69,18 @@ const pendingResponse = {
       shopFinancedGl: '0.00',
       shopCommissionGl: '0.00',
       legacyNoShop: true,
+      swapCreditGl: '0.00',
+      shopBuybackPayableGl: '0.00',
+      swapCreditEligible: false,
+    },
+  ],
+  recalls: [
+    {
+      contractId: 'r1',
+      contractNumber: 'CT-0009',
+      customerName: 'ลูกค้า C',
+      recallGl: '500.00',
+      shopRecallGl: '500.00',
     },
   ],
   reconcile: {
@@ -87,11 +103,14 @@ const batchesResponse = {
       totalCommission: '1000.00',
       totalAmount: '11000.00',
       shopPostedAmount: '11000.00',
+      totalDeduction: '500.00',
+      netTransferAmount: '10500.00',
+      shopNetAmount: '10500.00',
       transferRef: null,
       note: null,
       maker: { id: 'u1', name: 'พนักงานบัญชี' },
       approver: null,
-      _count: { items: 1 },
+      _count: { items: 2 },
     },
   ],
   total: 1,
@@ -111,6 +130,9 @@ const batchDetailResponse = {
   totalCommission: '1000.00',
   totalAmount: '11000.00',
   shopPostedAmount: '11000.00',
+  totalDeduction: '500.00',
+  netTransferAmount: '10500.00',
+  shopNetAmount: '10500.00',
   transferRef: null,
   slipFileKey: null,
   note: null,
@@ -127,12 +149,28 @@ const batchDetailResponse = {
     {
       id: 'i1',
       contractId: 'c1',
+      itemType: 'SETTLEMENT',
       financedGl: '10000.00',
       commissionGl: '1000.00',
       shopFinancedGl: '10000.00',
       shopCommissionGl: '1000.00',
       legacyNoShop: false,
+      swapCreditAmount: '0.00',
+      recallAmount: '0.00',
       contract: { id: 'c1', contractNumber: 'CT-0001', customer: { name: 'ลูกค้า A' } },
+    },
+    {
+      id: 'i2',
+      contractId: 'r1',
+      itemType: 'RECALL',
+      financedGl: '0.00',
+      commissionGl: '0.00',
+      shopFinancedGl: '0.00',
+      shopCommissionGl: '0.00',
+      legacyNoShop: false,
+      swapCreditAmount: '0.00',
+      recallAmount: '500.00',
+      contract: { id: 'r1', contractNumber: 'CT-0009', customer: { name: 'ลูกค้า C' } },
     },
   ],
 };
@@ -159,7 +197,9 @@ beforeEach(() => {
 });
 
 function wrap(ui: ReactNode) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>{ui}</MemoryRouter>
@@ -212,9 +252,96 @@ describe('IntercompanySettlementPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'สร้างรอบจ่าย' }));
 
     expect(await within(dialog).findByText('กรุณาระบุวันที่โอน')).toBeInTheDocument();
-    expect(apiPost).not.toHaveBeenCalledWith(
-      '/interco-settlement/batches',
-      expect.anything(),
+    expect(apiPost).not.toHaveBeenCalledWith('/interco-settlement/batches', expect.anything());
+  });
+
+  it('shows the recall section, net summary, and sends recallContractIds on create (Phase 2)', async () => {
+    asRole('ACCOUNTANT', 'u1');
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0001')).toBeInTheDocument());
+
+    // Swap-credit deduction column on the eligible pending row (11-2107 lens).
+    expect(screen.getByText('−2,000.00')).toBeInTheDocument();
+
+    // Recall section (Flow C-2) renders with its own checkbox.
+    expect(screen.getByText(/รายการเรียกคืน \(ยกเลิกหลังตัดจ่าย\)/)).toBeInTheDocument();
+    expect(screen.getByText('CT-0009')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: 'เลือกสัญญา CT-0001' }));
+    await user.click(screen.getByRole('checkbox', { name: 'เลือกเรียกคืนสัญญา CT-0009' }));
+    await user.click(screen.getByRole('button', { name: 'สร้างรอบจ่าย' }));
+
+    const dialog = await screen.findByRole('dialog');
+    // 3-line summary: 11,000 gross − (2,000 swap credit + 500 recall) = 8,500 net.
+    expect(within(dialog).getByText('ยอดโอนสุทธิ')).toBeInTheDocument();
+    expect(within(dialog).getByText('฿8,500.00')).toBeInTheDocument();
+    expect(within(dialog).getByText('−฿2,500.00')).toBeInTheDocument();
+
+    apiPost.mockResolvedValueOnce({
+      data: { id: 'b9', batchNumber: 'IC-20260820-0001' },
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'สร้างรอบจ่าย' }));
+
+    await waitFor(() =>
+      expect(apiPost).toHaveBeenCalledWith(
+        '/interco-settlement/batches',
+        expect.objectContaining({
+          contractIds: ['c1'],
+          recallContractIds: ['r1'],
+        }),
+      ),
     );
+  });
+
+  it('renders Phase 2 batch detail with deduction line, net amount, and RECALL badge', async () => {
+    asRole('OWNER');
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await user.click(screen.getByRole('tab', { name: 'รอบจ่าย' }));
+    await waitFor(() => expect(screen.getByText('IC-20260801-0001')).toBeInTheDocument());
+    await user.click(screen.getByText('IC-20260801-0001'));
+    await waitFor(() => expect(screen.getByText(/รายการสัญญา/)).toBeInTheDocument());
+
+    expect(screen.getByText('ยอดโอนสุทธิ')).toBeInTheDocument();
+    expect(screen.getByText('−฿500.00')).toBeInTheDocument(); // หักรวม (InfoField)
+    expect(screen.getByText('−500.00')).toBeInTheDocument(); // ยอดหักของแถว RECALL ในตาราง items
+    expect(screen.getByText('เรียกคืน')).toBeInTheDocument(); // badge บนแถว RECALL
+    expect(screen.getByText('CT-0009')).toBeInTheDocument();
+  });
+
+  it('hides the deduction line for a pre-Phase 2 batch (netTransferAmount = null)', async () => {
+    asRole('OWNER');
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/interco-settlement/pending') return Promise.resolve({ data: pendingResponse });
+      if (url === '/interco-settlement/batches') return Promise.resolve({ data: batchesResponse });
+      if (url.startsWith('/interco-settlement/batches/')) {
+        return Promise.resolve({
+          data: {
+            ...batchDetailResponse,
+            totalDeduction: '0.00',
+            netTransferAmount: null,
+            shopNetAmount: null,
+            items: [batchDetailResponse.items[0]],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await user.click(screen.getByRole('tab', { name: 'รอบจ่าย' }));
+    await waitFor(() => expect(screen.getByText('IC-20260801-0001')).toBeInTheDocument());
+    await user.click(screen.getByText('IC-20260801-0001'));
+    await waitFor(() => expect(screen.getByText(/รายการสัญญา/)).toBeInTheDocument());
+
+    // netAmountOf(null) = totalAmount เต็ม — ไม่มีบรรทัดหัก
+    expect(screen.queryByText(/หักรวม/)).not.toBeInTheDocument();
+    expect(screen.getByText('ยอดโอนสุทธิ')).toBeInTheDocument();
+    // ฿11,000.00 ปรากฏทั้งยอดเจ้าหนี้รวม + ยอดโอนสุทธิ (+ ยอด SHOP รับจริง fallback)
+    expect(screen.getAllByText('฿11,000.00').length).toBeGreaterThanOrEqual(2);
   });
 });

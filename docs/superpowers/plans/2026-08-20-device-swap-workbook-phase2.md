@@ -588,11 +588,16 @@ it('approve → FINANCE JE ตรง workbook จุดที่ 3 + GL ล้�
   expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('3000.00');
   expect(sumSide(shopJe.lines, 'S11-3001', 'cr').toFixed(2)).toBe('20000.00');
   expect(sumSide(shopJe.lines, 'S11-3002', 'cr').toFixed(2)).toBe('2000.00');
-  // Residuals = 0 (spec §4.7 + workbook validation)
-  expect((await swapCreditFinanceBalance(prisma, swapId)).toFixed(2)).toBe('0.00');
-  expect((await swapCreditShopBalance(prisma, swapId)).toFixed(2)).toBe('0.00');
-  expect((await recallFinanceBalance(prisma, recallId)).toFixed(2)).toBe('0.00');
-  expect((await recallShopBalance(prisma, recallId)).toFixed(2)).toBe('0.00');
+  // ⚠️ สถาปัตยกรรม "เลนส์ gross + item gate" (สอดคล้องหลักเดิมของ module — batch JE
+  // ไม่ stamp contractId จึงไม่เข้า typed lens โดยตั้งใจ): typed balance ต่อสัญญา
+  // ยังคง GROSS หลัง approve; ความ settled อยู่ที่ InterCoSettlementItem POSTED.
+  expect((await swapCreditFinanceBalance(prisma, swapId)).toFixed(2)).toBe('8000.00'); // gross ไม่เปลี่ยน
+  // Residual ที่แท้จริง (spec §4.7) = typed gross − Σ deduction ใน batch POSTED ของสัญญานั้น = 0
+  const postedSwapDeduction = await sumPostedDeductions(prisma, swapId); // helper ใน spec: Σ swapCreditAmount+recallAmount ของ items ใน batch POSTED
+  expect((await swapCreditFinanceBalance(prisma, swapId)).minus(postedSwapDeduction).toFixed(2)).toBe('0.00');
+  const postedRecallDeduction = await sumPostedDeductions(prisma, recallId);
+  expect((await recallFinanceBalance(prisma, recallId)).minus(postedRecallDeduction).toFixed(2)).toBe('0.00');
+  // ระดับบัญชี (trial balance) ขา Cr ของ batch นับปกติ — ยอดทั้งบัญชี 11-2107 ลดลง 19,000 จริง
 });
 it('drift guard: JE แทรกบน 11-2107 SWAP_CREDIT หลัง submit → approve reject', async () => {});
 it('reverse → เครดิต/recall กลับเข้าคิวทั้งคู่', async () => {
@@ -717,7 +722,12 @@ it('metadata.items ระบุ type/swapCredit/recall + netTransferAmount', asy
 ```
 method ใหม่ (root prisma, ไม่รับ tx):
 ```ts
-  /** ตรวจ residual หลัง approve: เครดิต/recall ของ item ที่หักในรอบนี้ต้องเหลือ 0 ทั้งสองสมุด */
+  /**
+   * ตรวจ residual หลัง approve (spec §4.7) — ภายใต้สถาปัตยกรรม "เลนส์ gross + item gate":
+   * batch JE ไม่ stamp contractId (กันรั่วเข้า payable lens) จึงไม่ลด typed balance ต่อสัญญา —
+   * residual ที่แท้จริง = typed gross − Σ deduction ของสัญญานั้นใน batch สถานะ POSTED ทั้งหมด.
+   * ค่าปกติ = 0 พอดี (เครดิตถูกหักครบรอบเดียว); > 0 = เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
+   */
   private async alarmNettingResiduals(batchId: string): Promise<void> {
     const batch = await this.prisma.interCoSettlementBatch.findUnique({
       where: { id: batchId },
@@ -737,12 +747,29 @@ method ใหม่ (root prisma, ไม่รับ tx):
               swapCreditFinanceBalance(this.prisma, item.contractId),
               swapCreditShopBalance(this.prisma, item.contractId),
             ]);
-      if (fin.abs().gt('0.01') || shop.abs().gt('0.01')) {
+      // Σ deduction ของสัญญานี้ในทุก batch POSTED (รวมรอบนี้เอง)
+      const postedItems = await this.prisma.interCoSettlementItem.findMany({
+        where: {
+          contractId: item.contractId,
+          deletedAt: null,
+          batch: { status: 'POSTED', deletedAt: null },
+        },
+        select: { swapCreditAmount: true, recallAmount: true },
+      });
+      const postedDeduction = postedItems.reduce(
+        (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
+        new Prisma.Decimal(0),
+      );
+      const finResidual = fin.minus(postedDeduction);
+      const shopResidual = shop.minus(postedDeduction);
+      if (finResidual.abs().gt('0.01') || shopResidual.abs().gt('0.01')) {
         Sentry.captureMessage('Interco netting: residual balance after approve', {
           level: 'warning',
           tags: { subsystem: 'interco-netting' },
           extra: { batchId, contractId: item.contractId, itemType: item.itemType,
-            financeResidual: fin.toFixed(2), shopResidual: shop.toFixed(2) },
+            typedFinanceGross: fin.toFixed(2), typedShopGross: shop.toFixed(2),
+            postedDeduction: postedDeduction.toFixed(2),
+            financeResidual: finResidual.toFixed(2), shopResidual: shopResidual.toFixed(2) },
         });
       }
     }

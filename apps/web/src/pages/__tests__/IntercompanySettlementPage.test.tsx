@@ -295,6 +295,51 @@ describe('IntercompanySettlementPage', () => {
     );
   });
 
+  it('shows netAmountOf (ยอดโอนสุทธิ) — not gross totalAmount — in the batches list', async () => {
+    asRole('OWNER');
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await user.click(screen.getByRole('tab', { name: 'รอบจ่าย' }));
+    await waitFor(() => expect(screen.getByText('IC-20260801-0001')).toBeInTheDocument());
+
+    // Header relabeled + row shows net 10,500.00 (fixture: gross 11,000 − หัก 500).
+    expect(screen.getByText('ยอดโอนสุทธิ')).toBeInTheDocument();
+    expect(screen.getByText('10,500.00')).toBeInTheDocument();
+    expect(screen.queryByText('11,000.00')).not.toBeInTheDocument();
+  });
+
+  it('falls back to totalAmount in the batches list for a pre-Phase 2 batch (netTransferAmount = null)', async () => {
+    asRole('OWNER');
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/interco-settlement/pending') return Promise.resolve({ data: pendingResponse });
+      if (url === '/interco-settlement/batches') {
+        return Promise.resolve({
+          data: {
+            ...batchesResponse,
+            data: [
+              {
+                ...batchesResponse.data[0],
+                totalDeduction: '0.00',
+                netTransferAmount: null,
+                shopNetAmount: null,
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await user.click(screen.getByRole('tab', { name: 'รอบจ่าย' }));
+    await waitFor(() => expect(screen.getByText('IC-20260801-0001')).toBeInTheDocument());
+
+    // netAmountOf(null) = totalAmount เต็ม — รอบเก่าแสดงค่าเดิมโดยอัตโนมัติ
+    expect(screen.getByText('11,000.00')).toBeInTheDocument();
+  });
+
   it('renders Phase 2 batch detail with deduction line, net amount, and RECALL badge', async () => {
     asRole('OWNER');
     const user = userEvent.setup();
@@ -305,7 +350,8 @@ describe('IntercompanySettlementPage', () => {
     await user.click(screen.getByText('IC-20260801-0001'));
     await waitFor(() => expect(screen.getByText(/รายการสัญญา/)).toBeInTheDocument());
 
-    expect(screen.getByText('ยอดโอนสุทธิ')).toBeInTheDocument();
+    // ปรากฏ 2 ที่: header ตารางรอบจ่าย (IMPORTANT 2) + InfoField ในชีทรายละเอียด
+    expect(screen.getAllByText('ยอดโอนสุทธิ').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('−฿500.00')).toBeInTheDocument(); // หักรวม (InfoField)
     expect(screen.getByText('−500.00')).toBeInTheDocument(); // ยอดหักของแถว RECALL ในตาราง items
     expect(screen.getByText('เรียกคืน')).toBeInTheDocument(); // badge บนแถว RECALL
@@ -340,7 +386,7 @@ describe('IntercompanySettlementPage', () => {
 
     // netAmountOf(null) = totalAmount เต็ม — ไม่มีบรรทัดหัก
     expect(screen.queryByText(/หักรวม/)).not.toBeInTheDocument();
-    expect(screen.getByText('ยอดโอนสุทธิ')).toBeInTheDocument();
+    expect(screen.getAllByText('ยอดโอนสุทธิ').length).toBeGreaterThanOrEqual(2);
     // ฿11,000.00 ปรากฏทั้งยอดเจ้าหนี้รวม + ยอดโอนสุทธิ (+ ยอด SHOP รับจริง fallback)
     expect(screen.getAllByText('฿11,000.00').length).toBeGreaterThanOrEqual(2);
   });

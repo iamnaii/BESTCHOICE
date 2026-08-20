@@ -227,8 +227,15 @@ export class IntercoSettlementService {
     const netTransferAmount = totalAmount.minus(totalDeduction);
     const shopNetAmount = shopPostedAmount.minus(totalDeduction);
     if (netTransferAmount.lt(0) || shopNetAmount.lt(0)) {
+      // ระบุสมุดที่ติดลบ (final review minor 3): SHOP ติดลบฝ่ายเดียวเกิดได้เมื่อ
+      // รอบมีสัญญา legacyNoShop (shopPostedAmount < totalAmount).
+      const negativeBooks: string[] = [];
+      if (netTransferAmount.lt(0)) negativeBooks.push('ฝั่ง FINANCE');
+      if (shopNetAmount.lt(0)) {
+        negativeBooks.push('ฝั่ง SHOP — รอบมีสัญญา legacy ที่ไม่มีลูกหนี้ฝั่งร้าน');
+      }
       throw new BadRequestException(
-        `ยอดหักรวม (${totalDeduction.toFixed(2)}) เกินยอดจ่ายของรอบ — ` +
+        `ยอดหักรวม (${totalDeduction.toFixed(2)}) เกินยอดจ่ายของรอบ (${negativeBooks.join(' และ ')}) — ` +
           'เลือกสัญญาเพิ่มให้ยอดพอ หรือเรียกเงินสดคืนผ่านช่องทางรับโอนจากหน้าร้านแทน',
       );
     }
@@ -813,6 +820,37 @@ export class IntercoSettlementService {
       //    11-2107/S21-3001 balances included — spec §5.1)
       const driftedContractNumbers: string[] = [];
       for (const item of batch.items) {
+        // Final review C1 ด่าน (i) — กันหักซ้ำกับ settleShopCollect: JE settle
+        // เป็นประเภท SHOP_COLLECT ซึ่ง typed lens ด้านล่างกรองทิ้งโดยนิยาม แต่
+        // มันลดยอด 11-2107 จริงของสัญญา. เช็คด้วย UNTYPED balance (ตาม
+        // metadata.contractId, ไม่กรองประเภท) − Σ deduction ที่ batch POSTED
+        // อื่นหักไปแล้ว (batch JE ไม่ stamp contractId — "หักแล้ว" อ่านจาก item
+        // table ตาม architecture ruling, ไม่ใช่ GL metadata): ส่วนที่เหลือต้อง
+        // ยังคุ้มยอดหักของ item นี้ ไม่งั้น approve จะ Cr 11-2107 เกินของจริง
+        // (บัญชีติดลบ / SHOP ได้เงินสองเด้ง).
+        const deduction = item.swapCreditAmount.plus(item.recallAmount);
+        if (deduction.gt(0)) {
+          const [untypedBal, priorItems] = await Promise.all([
+            glContractBalance(tx, item.contractId, '11-2107', 'dr'),
+            tx.interCoSettlementItem.findMany({
+              where: {
+                contractId: item.contractId,
+                batchId: { not: id },
+                deletedAt: null,
+                batch: { status: 'POSTED', deletedAt: null },
+              },
+              select: { swapCreditAmount: true, recallAmount: true },
+            }),
+          ]);
+          const priorPostedDeductions = priorItems.reduce(
+            (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
+            new Prisma.Decimal(0),
+          );
+          if (untypedBal.minus(priorPostedDeductions).lt(deduction.minus(DRIFT_TOLERANCE))) {
+            driftedContractNumbers.push(item.contract.contractNumber);
+            continue;
+          }
+        }
         if (item.itemType === 'RECALL') {
           // RECALL rows have no payable/receivable snapshot of their own —
           // both books' typed PAYOUT_RECALL balances must still equal the

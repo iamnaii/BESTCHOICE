@@ -910,8 +910,11 @@ nonzero `drift` (`pendingTotal − glFinanceTotal`) means a stray JE exists with
 `metadata.contractId` — almost certainly the old `inter-company-settlement` flow; the
 pre-flight check (below) confirms this is 0 in prod before go-live. Phase 2 adds 3 typed
 whole-account totals: `glSwapCreditTotal` (11-2107 typed SWAP_CREDIT), `glRecallTotal`
-(11-2107 typed PAYOUT_RECALL), `glShopBuybackTotal` (S21-3001, no type filter — สองประเภท
-รวมกันต้องหนุนยอดบัญชีนี้).
+(11-2107 typed PAYOUT_RECALL), `glShopBuybackTotal` (S21-3001, no type filter). หมายเหตุ
+ตาม gross-lens ruling: สองตัวแรกเป็น typed **gross สะสม** — ขา Cr 11-2107 ของ batch JE
+ไม่ stamp type/contractId จึงไม่เคยลดตัวเลขนี้ — ส่วน `glShopBuybackTotal` เป็นยอดคงเหลือ
+จริงของบัญชี (ขา Dr S21-3001 ของ batch ลดจริง) ⇒ สามตัวนี้**เลิก tie กันตั้งแต่รอบแรกที่มี
+การหัก โดยตั้งใจ**; Σ สองประเภท = ยอด S21-3001 เฉพาะช่วงก่อนรอบหักแรกเท่านั้น.
 
 ### Approve — atomic paired JE (`approveBatch`, one `$transaction`)
 

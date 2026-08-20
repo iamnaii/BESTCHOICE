@@ -26,7 +26,7 @@ export class CreateBatchDto {
 
   /** สัญญายกเลิก (C-2) ที่เลือกหักเรียกคืนในรอบนี้ — optional (Phase 2) */
   @IsOptional()
-  @IsArray()
+  @IsArray({ message: 'recallContractIds ต้องเป็น array' })
   @IsUUID('4', { each: true, message: 'recallContractIds ต้องเป็น UUID' })
   recallContractIds?: string[];
 

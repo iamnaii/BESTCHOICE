@@ -12,9 +12,11 @@ vi.mock('@sentry/nestjs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@sentry/nestjs')>();
   return { ...actual, captureMessage: vi.fn(), captureException: vi.fn() };
 });
+import { randomUUID } from 'crypto';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 import { JournalAutoService } from '../../journal/journal-auto.service';
+import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { PairedJournalService } from '../../journal/paired-journal.service';
 import { IntercoPendingService } from '../interco-pending.service';
@@ -74,6 +76,9 @@ const settlementService = new IntercoSettlementService(
   journalAuto,
   storageStub as never,
 );
+// Real template (not synthetic JE) — the double-clear tests below must prove
+// the PRODUCTION settle path and the netting path see each other (final review C1).
+const shopCollectTemplate = new ShopCollectSettlementTemplate(journalAuto, prisma as never);
 
 // ---------------------------------------------------------------------------
 // Tracked rows for SCOPED cleanup
@@ -1455,6 +1460,138 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         expect((await wholeAccountBalance('11-2107')).minus(preReverse2107).toFixed(2)).toBe(
           '19000.00',
         );
+      },
+      120_000,
+    );
+  });
+
+  // ===========================================================================
+  // Final review C1 — กันหักซ้ำระหว่าง settleShopCollect กับ netting (สองด่าน)
+  //
+  // สาเหตุบั๊ก: ShopCollectSettlementTemplate คำนวณ outstanding แบบ type-blind
+  // ตาม metadata.contractId ขณะที่ batch netting ล้างด้วยใบที่ไม่มี contractId
+  // (สถาปัตยกรรม gross lens + item gate) และ drift guard อ่านเฉพาะ typed lens
+  // — สองระบบมองไม่เห็นกัน ⇒ เงิน 8,000 ก้อนเดียวเคลียร์ได้สองรอบทั้งสองลำดับ.
+  //
+  // ด่าน (i): approveBatch เช็ค untyped 11-2107 balance − Σ deduction ใน batch
+  //           POSTED อื่น ต้องยังคุ้มยอดหักของ item — ไม่คุ้ม = drift.
+  // ด่าน (ii): template หัก Σ deduction ใน batch POSTED ออกจาก outstanding และ
+  //           reject ทันทีเมื่อสัญญามีแถวหักใน batch PENDING_APPROVAL
+  //           (DRAFT จงใจไม่ block — ด่าน (i) กันขา approve และ maker แก้ร่างได้).
+  // ===========================================================================
+  describe('กันหักซ้ำ shop-collect ↔ netting (final review C1)', () => {
+    beforeAll(async () => {
+      // Safety nets เดียวกับ Task 5 — บล็อกนี้ต้องรันแบบ -t filter เดี่ยวได้
+      await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+      await prisma.accountingPeriod.deleteMany({
+        where: { companyId: { in: [shopId, financeId] }, year: 2026, month: 8 },
+      });
+    }, 60_000);
+
+    it(
+      '(a) SHOP โอนผ่าน settle จริงระหว่าง batch DRAFT → approve ต้อง reject (drift ด่าน i)',
+      async () => {
+        const swapX = await seedBaseContract(40);
+        await seedSwapContract(swapX);
+
+        const batch = await settlementService.createBatch(
+          { contractIds: [swapX], transferDate: '2026-08-20' },
+          adminId,
+        );
+        createdBatchIds.push(batch.id);
+        const item = batch.items.find((i) => i.contractId === swapX)!;
+        expect(item.swapCreditAmount.toFixed(2)).toBe('8000.00');
+
+        // SHOP โอนเงินสด 8,000 เข้ามาจริงระหว่าง batch ยัง DRAFT — เส้นทาง
+        // template จริง (ด่าน (ii) จงใจไม่ block DRAFT จึงต้องผ่าน)
+        const settled = await shopCollectTemplate.execute({
+          contractId: swapX,
+          depositAccountCode: '11-1201',
+          amount: 8000,
+          requestId: randomUUID(),
+        });
+        expect(settled.deduped).toBe(false);
+
+        await settlementService.submitBatch(batch.id, adminId);
+
+        // ก่อน fix: JE settle เป็นประเภท SHOP_COLLECT — typed SWAP_CREDIT lens
+        // ไม่ขยับ = snapshot → drift guard เดิมผ่าน → approve หักซ้ำ Cr 11-2107
+        // อีก 8,000 (บัญชีติดลบ, SHOP ได้สองเด้ง). หลัง fix: untyped balance
+        // (0) − prior POSTED deductions (0) < 8,000 − 0.01 → drift.
+        await expect(settlementService.approveBatch(batch.id, adminId)).rejects.toThrow(
+          /เปลี่ยนไปจากตอนสร้างรอบ/,
+        );
+        const after = await prisma.interCoSettlementBatch.findUniqueOrThrow({
+          where: { id: batch.id },
+        });
+        expect(after.status).toBe('PENDING_APPROVAL');
+        expect(after.financeJournalEntryId).toBeNull();
+      },
+      120_000,
+    );
+
+    it(
+      '(b) settle หลัง batch POSTED ที่หัก 8,000 ไปแล้ว → template reject ไม่มียอดค้าง (ด่าน ii)',
+      async () => {
+        const swapY = await seedBaseContract(41);
+        await seedSwapContract(swapY);
+
+        const batch = await settlementService.createBatch(
+          { contractIds: [swapY], transferDate: '2026-08-20' },
+          adminId,
+        );
+        createdBatchIds.push(batch.id);
+        await settlementService.submitBatch(batch.id, adminId);
+        const posted = await settlementService.approveBatch(batch.id, adminId);
+        expect(posted.status).toBe('POSTED');
+
+        // ก่อน fix: ขา Cr 11-2107 ของ batch ไม่มี metadata.contractId →
+        // outstanding ต่อสัญญาของ template ไม่เคยลด (ยังเห็น 8,000) → เก็บ
+        // เงินสดซ้ำจากยอดที่หักไปแล้วได้. หลัง fix: gross 8,000 − Σ deduction
+        // ใน batch POSTED (8,000) = 0 → reject.
+        await expect(
+          shopCollectTemplate.execute({
+            contractId: swapY,
+            depositAccountCode: '11-1201',
+            amount: 8000,
+            requestId: randomUUID(),
+          }),
+        ).rejects.toThrow(/ไม่มียอด 11-2107 ค้างชำระ/);
+      },
+      120_000,
+    );
+
+    it(
+      '(c) settle ระหว่าง batch PENDING_APPROVAL ที่มีแถวหัก → template reject ทันที (ด่าน ii)',
+      async () => {
+        const swapZ = await seedBaseContract(42);
+        await seedSwapContract(swapZ);
+
+        const batch = await settlementService.createBatch(
+          { contractIds: [swapZ], transferDate: '2026-08-20' },
+          adminId,
+        );
+        createdBatchIds.push(batch.id);
+        await settlementService.submitBatch(batch.id, adminId);
+
+        await expect(
+          shopCollectTemplate.execute({
+            contractId: swapZ,
+            depositAccountCode: '11-1201',
+            amount: 8000,
+            requestId: randomUUID(),
+          }),
+        ).rejects.toThrow(/รอผลอนุมัติหรือถอนรอบก่อน/);
+
+        // legacy path ต้องไม่พัง: ถอนรอบ (กลับ DRAFT — ไม่ block แล้ว) → settle ผ่าน
+        await settlementService.withdrawBatch(batch.id, adminId);
+        const settled = await shopCollectTemplate.execute({
+          contractId: swapZ,
+          depositAccountCode: '11-1201',
+          amount: 8000,
+          requestId: randomUUID(),
+        });
+        expect(settled.deduped).toBe(false);
       },
       120_000,
     );

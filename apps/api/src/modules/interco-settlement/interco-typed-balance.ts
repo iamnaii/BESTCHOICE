@@ -15,7 +15,10 @@ type Client = Prisma.TransactionClient | PrismaClient;
  * - S21-3001 PAYOUT_RECALL: key ด้วย metadata.contractId (C-2 producer ใน Phase 3)
  *
  * SQL twins ของเงื่อนไขชุดนี้อยู่ในเลนส์ `IntercoPendingService` (grouped
- * queries — interco-pending.service.ts) — แก้ที่ไหนต้องแก้ทั้งคู่;
+ * queries — interco-pending.service.ts) และรายงานอายุ (interco-aging.service.ts)
+ * — แก้ที่ไหนต้องแก้ทุกที่: เงื่อนไข SWAP_CREDIT ฝั่ง 11-2107 มี **4 จุด**
+ * (`swapCreditFinanceBalance` ที่นี่, เลนส์ต่อสัญญา + `glSwapCreditTotal` ใน
+ * pending service, `SWAP_COND` ใน aging service);
  * anti-drift net คือ interco-netting.integration.spec.ts.
  */
 async function sumTyped(

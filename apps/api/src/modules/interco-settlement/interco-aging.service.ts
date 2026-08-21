@@ -7,8 +7,12 @@ import { PrismaService } from '../../prisma/prisma.service';
  *
  * SQL ในไฟล์นี้เป็น grouped twins ของ helper ต่อสัญญาใน
  * `interco-typed-balance.ts` และเลนส์ใน `interco-pending.service.ts` —
- * เงื่อนไข type ต้องตรงกันทุกตัวอักษร (แก้ที่ไหนแก้ทุกที่):
- *   - 11-2107 SWAP_CREDIT   = explicit stamp OR legacy flow 'exchange-buyback-receivable-11-2107'
+ * เงื่อนไข type ต้องตรงกันทุกตัวอักษร (แก้ที่ไหนแก้ทุกที่ — เงื่อนไข SWAP_CREDIT
+ * ฝั่ง 11-2107 มี 4 จุด: swapCreditFinanceBalance, เลนส์ต่อสัญญา + glSwapCreditTotal
+ * ใน interco-pending.service.ts, และ SWAP_COND ในไฟล์นี้):
+ *   - 11-2107 SWAP_CREDIT   = explicit stamp **ชนะ**, flow เป็น fallback (ไม่ใช่ OR):
+ *                             stamp = SWAP_CREDIT, หรือไม่มี/ไม่รู้จัก stamp แล้ว
+ *                             flow = 'exchange-buyback-receivable-11-2107' (legacy A.3)
  *   - 11-2107 PAYOUT_RECALL = explicit stamp เท่านั้น (type ใหม่ ไม่มี legacy)
  *   - 11-2107 SHOP_COLLECT  = explicit stamp ชนะ; ไม่มี stamp → flow/collectedByShop fallback
  *   - S21-3001 SWAP_CREDIT  key ด้วย metadata.newContractId (A.4 stamp)

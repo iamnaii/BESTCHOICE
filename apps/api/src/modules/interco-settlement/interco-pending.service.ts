@@ -182,8 +182,10 @@ export class IntercoPendingService {
     }
 
     // SWAP_CREDIT lenses (Phase 2 — spec §4.1). เงื่อนไข type ต้องสอดคล้อง
-    // `classifyShopReceivable` (shop-receivable-type.util.ts) และ SQL twin
-    // ใน interco-typed-balance.ts — แก้ที่ไหนต้องแก้ทั้งคู่:
+    // `classifyShopReceivable` (shop-receivable-type.util.ts) และ SQL twins ใน
+    // interco-typed-balance.ts + interco-aging.service.ts — แก้ที่ไหนต้องแก้ทุกที่
+    // (เงื่อนไข SWAP_CREDIT ฝั่ง 11-2107 มี 4 จุด: swapCreditFinanceBalance,
+    // เลนส์ตัวนี้, glSwapCreditTotal ด้านล่าง, และ SWAP_COND ใน aging service):
     //   - 11-2107 SWAP_CREDIT: explicit stamp **ชนะ** flow fallback (Phase 4
     //     Task 6 — ตรง `EXPLICIT.has` ก่อน `FLOW_MAP`): stamp = SWAP_CREDIT,
     //     หรือไม่มี/ไม่รู้จัก stamp แล้ว flow = legacy A.3

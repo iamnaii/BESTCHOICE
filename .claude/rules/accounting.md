@@ -880,9 +880,13 @@ A.3 ล้าง 21-1101/21-1102 ทันทีตอน finalize (D5) เล�
 `exchange-priced-flow.integration.spec.ts` Case 2A (assertion ตรงข้ามกับของเดิมทุกประการ).
 
 **Phase 2 typed lenses (หักกลบ)** — `PendingContract` gains 3 fields:
-`swapCreditGl` (Σ Dr−Cr of 11-2107 filtered to type `SWAP_CREDIT` — explicit
-`metadata.shopReceivableType` stamp OR legacy `metadata.flow =
-'exchange-buyback-receivable-11-2107'`), `shopBuybackPayableGl` (Σ Cr−Dr of S21-3001,
+`swapCreditGl` (Σ Dr−Cr of 11-2107 filtered to type `SWAP_CREDIT` — **explicit
+`metadata.shopReceivableType` stamp ชนะ, flow เป็น fallback** ไม่ใช่ OR: stamp =
+`SWAP_CREDIT`, **หรือ** ไม่มี/ไม่รู้จัก stamp แล้ว `metadata.flow =
+'exchange-buyback-receivable-11-2107'` (legacy A.3). ข้อความเดิมที่เขียนว่า "stamp OR
+flow" **ผิด** — แก้ 2026-08-21 ตาม Phase 4 Task 6 ให้ตรง `classifyShopReceivable` ที่เช็ค
+`EXPLICIT.has(...)` ก่อน `FLOW_MAP` เสมอ; ถ้าเป็น OR จริง JE รูป A.3 ที่ stamp ประเภทอื่น
+จะถูกนับสองประเภทพร้อมกัน ⇒ `intercoNet` บวมเท่าตัว), `shopBuybackPayableGl` (Σ Cr−Dr of S21-3001,
 keyed by `metadata.newContractId` — the A.4 stamp), and `swapCreditEligible` (ดู
 eligibility rule ในหัวข้อหักกลบด้านล่าง). `getPendingRecalls()` is a separate queue of
 `RecallCandidate { recallGl, shopRecallGl }` rows — contracts with 11-2107
@@ -1051,7 +1055,19 @@ S21-3001) ถูกหักออกจากเงินโอนของร�
 `interco-typed-balance.ts` (`swapCreditFinanceBalance` / `swapCreditShopBalance` — ฝั่ง
 SHOP key ด้วย `metadata.newContractId` ตาม A.4 stamp / `recallFinanceBalance` /
 `recallShopBalance` — key ด้วย `metadata.contractId`) — **SQL twins** ของเลนส์ใน
-`IntercoPendingService` และต้องสอดคล้อง `classifyShopReceivable`: แก้ที่ไหนต้องแก้ทั้งคู่.
+`IntercoPendingService` และต้องสอดคล้อง `classifyShopReceivable`: **แก้ที่ไหนต้องแก้ทุกที่**
+(เงื่อนไข SWAP_CREDIT มี 4 จุด — ดูย่อหน้าถัดไป).
+
+**เงื่อนไข SWAP_CREDIT ฝั่ง 11-2107 = precedence ไม่ใช่ OR** (แก้ 2026-08-21, Phase 4
+Task 6 — ข้อความเดิม "explicit stamp **หรือ** legacy flow" อ่านเป็น OR ตรงๆ ซึ่งผิด):
+explicit stamp **ชนะ** เสมอ, flow เป็น **fallback เฉพาะเมื่อไม่มี stamp หรือ stamp เป็นค่าที่
+ไม่รู้จัก** — carve-out รูปเดียวกับ `shopCollectTypedBalance` (Phase 3 Task 6). สูตรนี้ถูก
+เขียนซ้ำใน **4 จุด** (ต้องแก้พร้อมกันทุกจุด): `swapCreditFinanceBalance`
+(`interco-typed-balance.ts`), เลนส์ต่อสัญญา + `glSwapCreditTotal` ทั้งสองตัวใน
+`interco-pending.service.ts`, และ `SWAP_COND` ใน `interco-aging.service.ts` (ตัวหลัง
+compose จาก `LEGACY_SWAP_COND` ซึ่งเป็น branch fallback ตัวเดียวกัน — ประกาศครั้งเดียว
+แล้วใช้ซ้ำ). **แถวเก่าให้ผลเท่าเดิมทุกบาท**: A.3 ยุค Phase 1+ เข้า branch แรก, A.3 ยุค
+legacy (ไม่มี stamp) เข้า fallback เหมือนเดิม.
 
 **สถาปัตยกรรม "เลนส์ typed = GROSS + settled ผ่าน item gate"** (คำตัดสินระหว่าง implement
 — บันทึกใน plan Task 5): batch JE **ไม่ stamp** top-level `contractId` /
@@ -1144,16 +1160,39 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   **ปิดแล้ว (Phase 3 Task 4) ด้วยทิศตรงข้าม**: invariant ถือจริงที่ระดับสัญญา ไม่ใช่ระดับ
   ประเภท — alarm รวม typed สองประเภทต่อสมุดก่อนหัก Σ POSTED deductions (ดู "Residual
   alarm" ด้านบน) และ recall lens/drift เปลี่ยนเป็นสูตร net.
-- (c) เครดิต A.3-only ที่งอก**หลัง** approve (drift guard จับได้เฉพาะก่อน approve) —
-  จุด hook คือ reconcile cron รายเดือน (Phase 4 — `interco-reconcile.cron`).
-- (d) **TOCTOU settle-cash vs approveBatch** (Phase 3 Task 6 review): `settleRecallCash`
-  เป็น Serializable แต่ `approveBatch` เป็น default isolation — หน้าต่างแคบที่รอบ recall
-  ถูก approve พร้อมกับการรับเงินสดคืนบนสัญญาเดียวกันยังพึ่ง guard "RECALL item ใน batch
-  เปิด" + drift guard ฝั่ง approve เป็นหลัก ไม่ใช่ SSI ร่วมกัน — ตาข่ายสุดท้าย = reconcile
-  cron (Phase 4).
-- (e) **คิว recall กรอง net ฝั่ง FINANCE เท่านั้น** (`recallGl.lte(0.01) → continue`) —
-  shop-net mismatch ที่เกิดหลัง snapshot เงียบจนถึง residual alarm / guard สองสมุดตอนใช้
-  ยอดจริง — ขอบเขต reconcile cron (Phase 4).
+- ~~(c) เครดิต A.3-only ที่งอก**หลัง** approve (drift guard จับได้เฉพาะก่อน approve)~~ —
+  **ปิดแล้ว (Phase 4 Task 4)**: `interco-reconcile.cron` finding kind
+  **`SWAP_CREDIT_ONE_BOOK`** จับสัญญาที่มี 11-2107 `SWAP_CREDIT` ค้างแต่ S21-3001 = 0
+  ทุกเดือน (กัน legacy ออกด้วย `getPhase2SwapContractIds()` — swap ยุคก่อน Phase 1 เป็น
+  สภาพปกติตาม spec §11.4). เครดิตที่งอกหลัง approve ไม่ว่าจะทางไหนจึงมีวันถูกเห็นเสมอ
+  แม้ drift guard ตอน approve จะผ่านไปแล้ว.
+- ~~(d) **TOCTOU settle-cash vs approveBatch**~~ — **ปิดแล้ว (Phase 4 Task 5 ที่ต้นเหตุ +
+  Task 4 เป็นตาข่าย)**: `approveBatch` เปลี่ยนเป็น **Serializable** แล้ว (SSI ต้องการให้
+  **ทั้งคู่** เป็น Serializable จึงจะเห็นกัน — writer ใต้ READ COMMITTED ไม่ลงทะเบียน
+  rw-conflict กับ SIRead lock ของใครเลย ⇒ ก่อนหน้านี้ Serializable ฝั่ง `settleRecallCash`
+  ฝ่ายเดียวไม่มีผล). ผู้แพ้ race ได้ **409 ไทย** (P2034 → `ConflictException` + log warn +
+  Sentry warning — `SentryExceptionFilter` จับเฉพาะ ≥500 จึงต้องยิงเอง) ไม่ใช่ raw 500.
+  ตาข่ายสุดท้ายคือ finding kind **`NEGATIVE_TYPED`** ของ reconcile cron ซึ่งอ่านจาก
+  `getNegativeTypedRows()` (คนละแหล่งกับรายงานหลักโดยเจตนา — เคสหักเกินแบบ**สมมาตร**
+  ทำให้สองสมุดติดลบเท่ากัน ⇒ `bookMismatch = false` และไม่มียอดบวก ⇒ ถ้าอ่านจากรายงานหลัก
+  detector จะไม่มีวันยิงเลย).
+- ~~(e) **คิว recall กรอง net ฝั่ง FINANCE เท่านั้น** (`recallGl.lte(0.01) → continue`)~~ —
+  **ปิดแล้ว (Phase 4 Task 4)**: finding kind **`BOOK_MISMATCH`** เทียบ `intercoNet` กับ
+  `shopMirrorNet` ต่อสัญญาทุกเดือนโดยไม่สนใจว่าอยู่ในคิวหรือไม่ (ไม่มี settled gate) —
+  shop-net mismatch ที่เกิดหลัง snapshot จึงไม่เงียบจนถึงตอนใช้ยอดจริงอีกต่อไป. แถว
+  `legacyOneBook` ถูกกันออกจาก detector นี้ (สองสมุดต่างกันโดยนิยาม — spec §11.4).
+
+**ยังเปิดอยู่ → Phase 5:**
+- **ค่าคอมโผล่สมุดเดียว (`COMMISSION_ONLY_GAP`)** — สัญญาที่ `storeCommission` ว่าง:
+  `ContractActivation1ATemplate` ตั้ง fallback 10% บน 21-1102 ส่วน
+  `ShopInventoryTransferTemplate` รับมาเป็น 0 (`contract.storeCommission ?? 0`) ⇒
+  `PAYABLE_PAIR_MISMATCH` ที่ต่างกันเฉพาะขาค่าคอม. reconcile cron **รายงานแล้วพร้อมป้าย
+  กำกับ** (ยุบเป็นบรรทัดสรุปเดียวใน Todo แต่ยังนับเต็มในยอดรวม + Sentry แยก counter) แต่
+  **ยังไม่แก้ที่ต้นเหตุ** — เป็นส่วนต่างจริงในบัญชี (opening-balance gap ตาม interco spec
+  §11) ที่ต้องให้เจ้าของ/CPA ตัดสินว่าจะ (ก) ให้ SHOP ตั้งลูกหนี้ค่าคอม fallback ให้ตรง
+  หรือ (ข) ให้ 1A เลิกตั้ง fallback. **ห้ามเดา JE ปิดช่องนี้เอง.**
+- **การจ่ายนำส่ง/opening balance ฝั่ง SHOP** (interco spec §11) — ยังรอ CPA เหมือนเดิม
+  ไม่ได้อยู่ในขอบเขต Phase 4.
 
 ### `legacyNoShop` policy (F1/F2)
 
@@ -2083,9 +2122,228 @@ FINANCE โอนจริงในรอบที่ตัดจ่าย.
 เดิม `src/modules/contracts/*.integration.spec.ts` ไม่ครอบ (บทเรียน jp5-vat-split: glob
 ไม่ recurse เอง — spec ใหม่ใน subdirectory ใหม่ต้องตรวจ glob ทุกครั้ง).
 
-### Carry → Phase 4
+### Carry → Phase 4 — **ปิดครบแล้ว (2026-08-21)**
 
-carry (a)/(b) ของ Phase 2 **ปิดแล้ว** (detection = POSTED item; สูตร net/combined). ที่เหลือ
-— (c) เครดิต A.3-only งอกหลัง approve, (d) TOCTOU settle-cash vs approveBatch, (e) คิว
-recall กรอง net ฝั่ง FINANCE เท่านั้น — รวมรายการอยู่ที่หัวข้อ "รอ Phase 4 (carry)" ใน
-Inter-Co section ด้านบน; จุด hook ทั้งหมด = `interco-reconcile.cron` (Phase 4).
+carry (a)/(b) ของ Phase 2 ปิดโดย Phase 3 (detection = POSTED item; สูตร net/combined).
+carry (c)/(d)/(e) **ปิดโดย Phase 4** — (c) → finding kind `SWAP_CREDIT_ONE_BOOK`,
+(d) → `approveBatch` เป็น Serializable ที่ต้นเหตุ + `NEGATIVE_TYPED` เป็นตาข่าย,
+(e) → `BOOK_MISMATCH`. รายละเอียดพร้อมเหตุผลอยู่ที่หัวข้อ "รอ Phase 4 (carry)" ใน Inter-Co
+section ด้านบน (ขีดฆ่าแล้วทั้งสามข้อ) และหัวข้อ **"การกระทบยอดระหว่างกิจการ (Phase 4)"**
+ท้ายไฟล์. สิ่งที่ **ยังเปิดอยู่** (ค่าคอมโผล่สมุดเดียว `COMMISSION_ONLY_GAP` — reconcile
+รายงานแล้วแต่ยังไม่แก้ต้นเหตุ เพราะเป็นความต่างจริงในบัญชีที่ต้องให้เจ้าของ/CPA ตัดสิน)
+ชี้ไป Phase 5.
+
+---
+
+## การกระทบยอดระหว่างกิจการ (Phase 4 — 2026-08-21)
+
+Spec: `docs/superpowers/specs/2026-08-19-device-swap-netting-cancel-workbook-design.md` §6 ·
+Plan: `docs/superpowers/plans/2026-08-21-interco-reconcile-phase4.md` ·
+Module: `apps/api/src/modules/interco-settlement/interco-aging.service.ts` +
+`crons/shop-receivable-aging.cron.ts` + `crons/interco-reconcile.cron.ts` ·
+UI: `apps/web/src/pages/interco/AgingTab.tsx`
+
+เฟสนี้ **ไม่เพิ่ม JE ใหม่แม้แต่ใบเดียว** — เป็นชั้น "มองเห็น" ล้วน (รายงานอายุ + แจ้งเตือน +
+กระทบยอด) บนบัญชี 11-2107 / S21-3001 ที่ Phase 1-3 สร้างขึ้น พร้อมปิด carry (c)/(d)/(e)
+ของ Phase 2.
+
+### ศัพท์ต่อสัญญา (ชื่อเดียวกันทุกชั้น: service → endpoint → UI → cron ทั้งสองตัว)
+
+| ฟิลด์ | นิยาม |
+|---|---|
+| `swapCreditGross` | 11-2107 typed `SWAP_CREDIT` Σ(Dr−Cr) ต่อสัญญา — **gross** (ขา Cr ของรอบจ่ายไม่ stamp จึงไม่ลดตัวนี้) |
+| `payoutRecallGross` | 11-2107 typed `PAYOUT_RECALL` Σ(Dr−Cr) ต่อสัญญา — gross เช่นกัน |
+| `settledDeduction` | Σ (`swapCreditAmount` + `recallAmount`) ของ `InterCoSettlementItem` **ทุก `itemType`** ใน batch `POSTED` ของสัญญานั้น |
+| `intercoNet` | `swapCreditGross + payoutRecallGross − settledDeduction` = **ยอดกลุ่มระหว่างกิจการคงเหลือจริง**. รวมสองประเภทก่อนหักโดยเจตนา — invariant ถือที่ **ระดับสัญญา ไม่ใช่ระดับประเภท** (สัญญา swap ที่ถูกยกเลิกภายหลังมีประวัติข้ามประเภท: SWAP_CREDIT ถูก mirror จนเหลือ 0 ขณะที่ deduction เดิมยังค้างถาวรใน item table ส่วน PAYOUT_RECALL ถือ gross ของ redirect) — เหตุผลเดียวกับสูตร combined ของ `alarmNettingResiduals` (Phase 3 Task 4) |
+| `shopCollect` | 11-2107 typed `SHOP_COLLECT` Σ(Dr−Cr) — **แยกคอลัมน์ ไม่ปนกลุ่ม interco** (เงินลูกค้าที่หน้าร้านรับแทน ไม่ใช่เงินระหว่างกิจการ; ล้างผ่าน `settleShopCollect` ตามเดิม) |
+| `shopMirrorGross` | S21-3001 Σ(Cr−Dr) **ก่อน**หัก deduction (conditional group key: `SWAP_CREDIT` → `metadata.newContractId`, ประเภทอื่น → `metadata.contractId`) — ใช้ตัดสิน "สมุดเดียว" ตรงๆ โดยไม่ให้ deduction ของรอบจ่ายมาบังตัวเลข (สัญญาที่ถูกหักครบพอดีมี `shopMirrorNet = 0` เหมือนกันแต่มีขาคู่ครบ ไม่ใช่ anomaly) |
+| `shopMirrorNet` | `shopMirrorGross − settledDeduction` — กระจกฝั่ง SHOP ของ `intercoNet` |
+| `bookMismatch` | `abs(intercoNet − shopMirrorNet) > 0.01` (`shopCollect` ไม่นับ — เป็น FINANCE-side-only โดยธรรมชาติ) |
+| `legacyOneBook` | มีบรรทัด 11-2107 ยุค legacy (flow A.3 โดย**ไม่มี** stamp) **และ** `shopMirrorGross = 0` = swap ยุคก่อน Phase 1 (spec §11.4). **เป็นสภาพปกติ ไม่ใช่ anomaly** — pending lens โมเดลมันเป็น `swapCreditEligible = false` อยู่แล้ว |
+
+**ทำไมรายงานเป็น 2 กลุ่ม (interco / shop-collect) ไม่ใช่ 3 คอลัมน์ล้วนตาม spec:** spec §6
+ข้อ 1 เขียนไว้ว่า "3 คอลัมน์ SWAP_CREDIT / PAYOUT_RECALL / SHOP_COLLECT" — implement จริง
+ยุบสองประเภทแรกเป็น `intercoNet` เพราะ `settledDeduction` **หักข้ามประเภทโดยไม่แยก**
+(item เก็บ `swapCreditAmount`/`recallAmount` แต่ยอดที่ต้องหักถือที่ระดับสัญญา) ⇒ ถ้าโชว์
+3 คอลัมน์ **สุทธิ** จะต้องเดาว่า deduction ไปหักประเภทไหน = ตัวเลขผิด. คอลัมน์ gross
+รายประเภทยังมีครบบนแถว (`swapCreditGross`/`payoutRecallGross`) เพียงแต่ยอด "คงเหลือจริง"
+มีตัวเดียวคือ `intercoNet`. `legacyOneBook` / `bookMismatch` / `shopMirror*` ก็ไม่ได้อยู่ใน
+spec เดิม — เพิ่มระหว่าง implement (ถ้าไม่มี `legacyOneBook` swap ยุคเก่าจะเตือนเท็จทุกวัน
+ตลอดไป).
+
+### Engine — `IntercoAgingService` (แหล่งเดียว ห้ามคำนวณเอง)
+
+- `getShopReceivableAging(asOf?, thresholdDays = 30)` → `{ rows, asOf, totals }`.
+  **จำนวน query คงที่ 4 ครั้ง ไม่ขึ้นกับจำนวนสัญญา** (Query A = 11-2107 typed sums 3
+  ประเภท + MIN(posted_at) 2 กลุ่ม ใน CASE เดียว, Query B = S21-3001 conditional key,
+  Query C = deductions groupBy, Query D = hydrate contract) — **ห้าม refactor กลับไปเรียก
+  helper ต่อสัญญาในลูป** (N×5).
+- **`asOf` มีผลกับการคำนวณ "อายุ" เท่านั้น — ยอดคงเหลือเป็นยอดปัจจุบันเสมอ** (ตรงกับ SQL
+  twins ที่ไม่มี date filter; deduction gate อ่านสถานะ batch ปัจจุบันซึ่ง time-travel
+  ไม่ได้อยู่แล้ว). UI จึง **ไม่มี date picker** โดยตั้งใจ — ให้ผู้ใช้เลือกวันที่จะสื่อผิดว่าเป็น
+  "ยอด ณ วันย้อนหลัง".
+- `totals.intercoNet` / `totals.shopCollect` / `totals.overdueCount` **ไม่รวมแถว
+  `legacyOneBook`** — คอลัมน์ typed ของแถว legacy โกหกเชิงประเภท (ค้าง +8,000/−8,000 บน
+  สัญญาที่ยอดจริงเป็น 0 หลัง settle ผ่าน shop-collect). หนี้ legacy ที่ยังค้างจริง**ไม่ถูก
+  ซ่อน** — รายงานแยกใน `totals.legacyOneBookNet` = Σ(`intercoNet` + `shopCollect`) ของแถว
+  legacy ซึ่ง **คือยอด 11-2107 จริงระดับสัญญา** (ยังไม่ล้าง = เต็ม, ล้างครบ = 0 พอดี).
+- Predicates ที่ export เป็น **single source** — cron ทั้งสองตัวเรียกตัวเดียวกับที่ service
+  ใช้ประกอบ `totals` (ปักด้วยเทสต์ anti-drift `flagged === totals.overdueCount`):
+  `overdueArms` / `isShopReceivableOverdue` (แขน `INTERCO` กับ `SHOP_COLLECT` แยกกัน; ยอด
+  ต้อง > 0.01 **คู่กับ** อายุถึงเกณฑ์ — แถวที่โผล่เพราะ `bookMismatch` แต่ยอดศูนย์ไม่ใช่
+  หนี้ค้าง), `isReportableAgingRow`, `sortAgingRows`, `negativeTypedFields`,
+  `isSwapCreditOneBook`. **การกันแถว `legacyOneBook` เป็นหน้าที่ของ caller** — predicate
+  เหล่านี้เป็นคณิตศาสตร์ล้วน ไม่รู้จักบริบท legacy โดยตั้งใจ.
+- `getNegativeTypedRows()` — **จงใจไม่อ่านจาก `getShopReceivableAging`**: รายงานหลักกรอง
+  ด้วย `isReportableAgingRow` (ยอดบวก หรือสองสมุดไม่ตรง) ⇒ เคสหักเกินแบบ **สมมาตร**
+  (`intercoNet = shopMirrorNet = ติดลบเท่ากัน` ⇒ `bookMismatch = false`, ไม่มียอดบวกเลย)
+  จะ **ไม่มีวันถูกเห็น**. เหตุที่ไม่ขยาย filter ของรายงานหลักให้เก็บค่าติดลบแทน: `totals`
+  เป็นผลรวมของ `rows` ⇒ แถวติดลบจะไป **หักล้างหนี้ค้างจริงของสัญญาอื่น** บนหัวแท็บ
+  (บั๊กคลาสเดียวกับ carry ก ของ Phase 3).
+- `getPayablePairing()` (เจ้าหนี้ 21-1101/21-1102 คู่กับลูกหนี้ SHOP S11-3001/S11-3002
+  ต่อสัญญา — **ไม่มี settled gate** เพราะขาล้างของ batch ไม่ stamp `contractId` ทั้งสองฝั่ง
+  ⇒ เลนส์ทั้งคู่ค้างที่ gross เท่ากันตลอดอายุสัญญา; ต่างกัน = มีมือมาแก้ข้างเดียว) ·
+  `getPhase2SwapContractIds()` · `getTypedAccountDrift()` · `getOpenBatchPayableGross()` —
+  ใช้โดย reconcile cron (ดูล่าง).
+
+### Endpoint + UI
+
+| Method | Path | Roles |
+|---|---|---|
+| GET | `/interco-settlement/shop-receivable-aging?asOf&thresholdDays` | OWNER, FINANCE_MANAGER, ACCOUNTANT |
+
+`asOf` = ISO date (รูปแบบผิด → 400 ไทย); `thresholdDays` = **จำนวนเต็ม 1-365** (นอกช่วง →
+400 ไทย) — ช่วงเดียวกับที่ cron รายวัน validate. UI = แท็บ **"อายุลูกหนี้หน้าร้าน"** ในหน้า
+จ่ายให้หน้าร้าน (INTER-CO): ไม่มี date picker, เกณฑ์วันตรึงที่ default 30, แถว
+`legacyOneBook` เป็น badge กลางๆ (ไม่ใช่สีแดง) + ไม่นับ overdue + ยอดแยกไปบรรทัด
+"ค้าง swap ยุคเก่า" (ตรงสูตร `legacyOneBookNet` ฝั่ง server ทุกประการ), ส่วน `bookMismatch`
+ที่ไม่ใช่ legacy = badge destructive.
+
+> **หมายเหตุเกณฑ์วัน:** cron รายวันอ่านเกณฑ์จาก SystemConfig ส่วนแท็บ UI ส่ง 30 ตายตัว —
+> ถ้าผู้ดูแลแก้ config เป็นเลขอื่น **ป้าย "ค้างเกินเกณฑ์" บนจอจะยังใช้ 30** จนกว่าจะส่ง
+> query ให้ตรงกัน (ยอด/อายุยังตรงกันเสมอเพราะมาจาก engine เดียว). ตราบใดที่ยังไม่มีใครแก้
+> config เลข 30 ตรงกันทุกชั้น.
+
+### Cron รายวัน — `shop-receivable-aging.cron.ts` (09:07 BKK)
+
+| SystemConfig key | Default | ความหมาย |
+|---|---|---|
+| `shop_receivable_aging_alerts_enabled` | `true` | kill switch (ไม่ seed — **missing = เปิด**, ต่างจาก opt-in flags อื่นในระบบที่ missing = ปิด) |
+| `shop_receivable_aging_alert_days` | `30` | เกณฑ์วันค้าง — **ไม่ใช่ clamp**: ค่านอกช่วง 1-365 → คืน fallback 30 (`readIntFlag`) |
+
+- แถวที่ค้างเกินเกณฑ์ → **Todo `MEDIUM` tag `interco-aging`**, dedup ต่อ **สัญญา** (tag +
+  `title` มีเลขสัญญา + ยังไม่ `DONE`) — **ต่างจาก spec §6 ข้อ 2 ที่เขียนว่า "dedup ต่อ
+  สัญญา+ประเภท"**: หนึ่งใบต่อสัญญาครอบทุกแขนที่ค้าง (แขนที่แก่ที่สุดขึ้นหัวเรื่อง, ราย
+  ละเอียดทั้งสองแขน + วิธีล้างอยู่ในคำอธิบาย) — สองใบต่อสัญญาเป็นเสียงซ้ำที่คนจะเลิกอ่าน
+  และ "ประเภท" ในรายงานนี้ยุบเป็น "แขน" อยู่แล้ว. Sentry warning ต่อแถว
+  (`subsystem: 'interco-netting'`, ข้อความ `Shop receivable aged past threshold`).
+  คำอธิบาย Todo ระบุ "ข้อมูล ณ <วันที่>" เสมอ เพราะ dedup ข้ามวันทำให้ยอด/อายุในใบแช่อยู่ที่
+  วันที่สร้าง.
+- **แถว `legacyOneBook` ไม่ alert รายแถว** (คำตัดสิน Task 3) — คอลัมน์ typed ของมันโกหก
+  เชิงประเภท และแขน `shopCollect` บนแถว legacy ก็เป็น (หนี้ shop-collect จริง − ขาล้าง
+  เครดิต legacy) ปนกัน ⇒ เตือนด้วยตัวเลขผิดคือทางลัดไปสู่การถูกเมิน. แต่หนี้จริง **ต้องมี
+  ช่องทาง push**: tick ยิง Sentry **รวมหนึ่งอีเวนต์ต่อรอบ** (`Legacy one-book shop
+  receivable outstanding`) + log warn เมื่อ `legacyOneBookNet > 0.01` — gate ด้วย
+  **ยอดจริง ไม่ใช่จำนวนแถว** (แถวที่ล้างครบ net = 0 จึงเงียบเอง ไม่มีบรรทัด "0.00 บาท"
+  รายวันให้คนชิน).
+- doctrine R-1: root `PrismaService` เท่านั้น, ไม่อยู่บนเส้นทางเงิน, **ห้าม throw ออกจาก
+  tick** (outer try/catch + per-row try/catch). ไม่มีผู้ใช้ SYSTEM → สร้าง Todo ไม่ได้ แต่
+  Sentry ยังยิงครบทุกแถว (pattern `alarmResidualParkOnCompletion`: alarm มาก่อน Todo).
+
+### Cron รายเดือน — `interco-reconcile.cron.ts` (วันที่ 1, 08:00 BKK)
+
+kill switch **`interco_reconcile_enabled`** (default `true`, ไม่ seed). ผลลัพธ์ = **Todo
+`HIGH` หนึ่งใบต่อเดือน** tag `interco-reconcile` (dedup ด้วย tag + `yyyy-mm` เวลาไทยใน
+title + ยังไม่ `DONE` ⇒ รันซ้ำ/รันมือในเดือนเดียวกันไม่สร้างใบซ้ำ) + Sentry warning หนึ่ง
+อีเวนต์พร้อม count แยกตาม kind.
+
+| Finding kind | จับอะไร | เกณฑ์แยก legacy |
+|---|---|---|
+| `BOOK_MISMATCH` | `intercoNet` ≠ `shopMirrorNet` ต่อสัญญา (**ปิด carry e**) | ข้ามแถว `legacyOneBook` (สองสมุดต่างกันโดยนิยาม) |
+| `SWAP_CREDIT_ONE_BOOK` | `swapCreditGross > 0` แต่ `shopMirrorGross = 0` (**ปิด carry c**) | นับ **เฉพาะ** สัญญาใน `getPhase2SwapContractIds()` (มี JE flow `shop-exchange-return` ที่ stamp `newContractId`) — swap ยุคก่อน Phase 1 ไม่เข้าเงื่อนไขโดยโครงสร้าง |
+| `PAYABLE_PAIR_MISMATCH` | 21-1101+21-1102 (Cr−Dr) ≠ S11-3001+S11-3002 (Dr−Cr) ต่อสัญญา | ข้ามสัญญา `legacyNoShop` (activate ก่อน 2026-06-23 — สมุด SHOP ยังไม่มีลูกหนี้) |
+| `NEGATIVE_TYPED` | ยอดติดลบ = ล้างเกิน (**ตาข่ายของ carry d**) | **ไม่ยกเว้น legacy** แต่วัดด้วย **ยอดรวมระดับสัญญา** (`intercoNet + shopCollect`) — แถว legacy มี `shopCollect` ติดลบเป็นปกติ (ล้างผ่านใบ shop-collect), เช็คทีละช่องคือ alert เท็จถาวร |
+| `ACCOUNT_DRIFT` | ระดับบัญชี: มีบรรทัดที่เลนส์ต่อสัญญามองไม่เห็น | — |
+
+- **`SWAP_CREDIT_ONE_BOOK` ชนะ `BOOK_MISMATCH`** บนสัญญาเดียวกัน (วินิจฉัยเฉพาะเจาะจงชนะ)
+  — ไม่รายงานซ้ำสองใบบนสัญญาเดียว.
+- **`ACCOUNT_DRIFT` ของคิวรอจ่ายต้อง "บวกกลับรอบที่ค้างอนุมัติ" ก่อนตัดสิน**: รอบ
+  `PENDING_APPROVAL` จองสัญญาไว้แล้ว (หลุดจาก `pendingTotal`) แต่ **ยังไม่โพสต์ JE** ⇒ ยอด
+  บัญชี 21-1101/21-1102 ยังเต็ม ⇒ `drift` ติดลบเท่ายอดรอบนั้นพอดี ซึ่งเป็น **สภาพปกติของ
+  กิจการที่มีรอบรออนุมัติ**. สูตร: `driftResidual = getReconcileTotals().drift +
+  getOpenBatchPayableGross()` — เป็น finding เฉพาะเมื่อ residual ยังเกิน 0.01; ถ้าอธิบาย
+  ได้ครบด้วยรอบค้าง = log บรรทัดเดียว ไม่เตือน (ไม่งั้นส่งคนไปตามหา JE ที่ไม่มีอยู่จริง
+  ทุกเดือนที่มีรอบค้าง).
+- **สมการของ `ACCOUNT_DRIFT` ระดับบัญชี**: `ยอดบัญชีจริง = Σ บรรทัดที่เลนส์ classify ได้ −
+  Σ deduction ของ batch POSTED`. ส่วนต่างคือบรรทัดที่ **ไม่มีเลนส์ไหนมองเห็น** — เช่น
+  mirror ตอนยกเลิก swap ยุค legacy ที่ต้นฉบับไม่มี stamp (mirror จึงไม่ copy อะไรเลย และ
+  flow เปลี่ยนเป็น `exchange-cancel`) หรือ JV มือ. เคสนั้นทำให้เลนส์รายงาน "ค้าง" ทั้งที่
+  บัญชีจริงเป็นศูนย์ — **จับได้ที่นี่ที่เดียว**.
+- **จัดลำดับก่อนตัดบรรทัด**: คำอธิบาย Todo ตัดที่ 20 บรรทัด แต่เรียงตามความรุนแรงก่อน
+  (`NEGATIVE_TYPED` → `ACCOUNT_DRIFT` → `SWAP_CREDIT_ONE_BOOK` → `BOOK_MISMATCH` →
+  `PAYABLE_PAIR_MISMATCH`) — ห้ามให้ความไม่ตรงเชิงโครงสร้างที่รู้สาเหตุแล้วมาดันเงินที่
+  เคลื่อนผิดตกไปอยู่ใน "และอีก N รายการ".
+- **`COMMISSION_ONLY_GAP` = pattern ที่รู้จัก** (`PAYABLE_PAIR_MISMATCH` ที่ต่างเฉพาะขา
+  ค่าคอม): ถูก **ยุบเป็นบรรทัดสรุปเดียวนอกโควตา 20 บรรทัด — ยังนับเต็มในยอดรวมบนหัวเรื่อง
+  และมี Sentry counter แยก ไม่ใช่ skip** (precedent: `legacyOneBookNet` ของ cron รายวัน).
+  สาเหตุ: สัญญาที่ `storeCommission` ว่าง — `ContractActivation1ATemplate` ตั้ง fallback
+  10% บน 21-1102 ส่วน `ShopInventoryTransferTemplate` รับมาเป็น 0
+  (`contract.storeCommission ?? 0`) ⇒ ค่าคอมโผล่สมุดเดียว. **เป็นความต่างจริงในบัญชี
+  (opening-balance gap ตาม interco spec §11) ไม่ใช่ artifact ของการอ่าน** — ยังเปิดอยู่
+  รอเจ้าของ/CPA (ดู "ยังเปิดอยู่ → Phase 5" ในหัวข้อ Inter-Co ด้านบน).
+- **ไม่ผูกกับเกณฑ์วันของ alert รายวัน** — reconcile ไม่อ่าน
+  `shop_receivable_aging_alert_days` เลย: สัญญาที่ผิดปกติแต่ยังไม่แก่พอ (หรือ operator ตั้ง
+  เกณฑ์ไว้สูงจนแท็บ UI กับ cron รายวันมองต่างกัน) ก็ยังโผล่ที่นี่ทุกเดือนเสมอ.
+
+### สิ่งที่ cron **ไม่ทำ** (doctrine — อย่าเสนอให้ทำ)
+
+- **ไม่แตะ GL แม้แต่บรรทัดเดียว** — ไม่ตั้ง JE ปรับปรุง ไม่กลับรายการ ไม่ปัดเศษให้ตรง.
+  ความไม่ตรงทุกแบบที่นี่ต้องให้ **มนุษย์/ผู้สอบบัญชี** ตัดสินว่าจะแก้ด้วย JV แบบไหน; การเดา
+  JE ปรับปรุงเองคือคลาสเดียวกับ opening-balance gap (interco spec §11) ที่ยังรอ CPA อยู่.
+  ข้อความปิดท้ายในทุกใบ Todo ระบุตรงๆ ว่า "ระบบไม่ตั้ง JE ปรับปรุงให้อัตโนมัติ — ต้องให้
+  ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้".
+- **ไม่คำนวณยอด typed/net เองในไฟล์ cron** — ทุกตัวเลขมาจาก `IntercoAgingService` +
+  `IntercoPendingService.getReconcileTotals()`; การตัดสิน "ผิดปกติหรือไม่" อยู่ใน predicate
+  ที่ service export หรือ flag ที่ service คำนวณมาแล้ว. cron ทำแค่ประกอบข้อความ ⇒ ยอดใน
+  กล่อง Todo กับบนแท็บ UI มาจากก้อนเดียวกันเสมอ.
+- **ไม่ throw ออกจาก tick** — DB/service ล่มทั้งก้อน = Sentry + log แล้วจบรอบ (scheduler
+  ต้องไม่ตาย; เดือนหน้าลองใหม่เอง และมนุษย์เปิดแท็บดูเองได้ทุกเมื่อ).
+
+### `approveBatch` = Serializable (Phase 4 — ปิด carry d ที่ต้นเหตุ)
+
+`settleRecallCash` เป็น Serializable มาตั้งแต่ Phase 3 แต่ **SSI ต้องการให้ทั้งคู่เป็น
+Serializable จึงจะเห็นกัน** — writer ใต้ READ COMMITTED ไม่ลงทะเบียน rw-conflict กับ SIRead
+lock ของใครเลย ⇒ ฝ่ายเดียวไม่มีผล. หน้าต่างที่ guard ปิดไม่ได้: คำขอรับเงินสดคืนเปิด tx ไว้
+**ก่อน** รอบจ่ายถูกสร้าง (ยังไม่มี item ให้ guard "RECALL item ใน batch เปิด" เห็น) แล้ว
+รอบจ่ายถูกสร้าง+ส่ง+อนุมัติจนจบในหน้าต่างนั้น — สองฝั่งอ่านยอดเรียกคืน net ก้อนเดียวกันแล้ว
+หักคนละครั้ง ⇒ 11-2107 ติดลบ. ต้นทุนแทบเป็นศูนย์ (อนุมัติรอบจ่ายเป็นงานมือไม่กี่ครั้งต่อ
+สัปดาห์) และด่านอื่นทั้งหมด (status guard / clash re-check / drift guard / period guard /
+DB idempotency index) ยังทำงานเหมือนเดิมทุกประการ — ชั้นนี้เป็นตาข่ายสุดท้าย.
+
+ผู้แพ้ race (Postgres `40001` → Prisma **`P2034`**) → **409 ไทย** พร้อม log warn + **Sentry
+warning ที่ยิงเอง** (`SentryExceptionFilter` จับเฉพาะ status ≥ 500 — 409 ใบนี้จะมองไม่เห็น
+จาก monitoring ถ้าไม่ยิง; จำเป็นเป็นพิเศษกับ Serializable ที่เพิ่งเปิดใช้ เพราะ spike ของ
+P2034 = lock contention จริงที่ต้องรู้ก่อนจะกวนงานอนุมัติของผู้ใช้ — pattern เดียวกับ
+`shop-collect-settlement.template.ts`). tx ทั้งก้อน roll back ⇒ ไม่มีทางอนุมัติซ้ำสองรอบ.
+
+เส้นทางคู่ขนาน: **`approveCancellation` แปลง `P2002` เป็น 409 ไทย** — ผู้แพ้ของ
+double-approve ที่อ่านสถานะ **ก่อน** คำขอแรก commit จะผ่าน guard "สัญญาต้อง ACTIVE" ที่อ่าน
+ใน tx แล้วไปชน partial unique index `journal_entries_idempotency_idx` (flow +
+idempotencyKey ของ mirror ใบเดียวกัน — sweep engine ตั้งคีย์ต่อ JE ต้นทาง) ⇒ เดิมหลุดออกไป
+เป็น raw 500.
+
+### Trial balance — ไม่ต้องแก้ (ยืนยันตาม spec §6 ข้อ 4)
+
+`S21-3001` เข้ารายงานเองผ่าน prefix `S21` ที่มีอยู่แล้วใน `SECTION_MAP`
+(`apps/api/src/modules/accounting/accounting-section-map.util.ts` — `'S21'` =
+`'หนี้สินหมุนเวียน (SHOP)'`). ไม่มีการแก้โค้ดรายงานในเฟสนี้.
+
+### CI
+
+`deploy-gcp.yml` **ไม่ต้องแก้ glob**: `interco-aging.integration.spec.ts` อยู่ใต้
+`src/modules/interco-settlement/__tests__/` จึงถูกครอบโดย `INTERCO_FILES` glob เดิม
+(`ls src/modules/interco-settlement/__tests__/*.integration.spec.ts`) และ step นั้นรันด้วย
+`--no-file-parallelism` อยู่แล้ว. cron specs ทั้งสองไฟล์ (`shop-receivable-aging.cron.spec.ts`
+/ `interco-reconcile.cron.spec.ts`) เป็น **jest mocked unit specs** ตามปกติ — jest
+`testRegex` `.*\.spec\.ts$` จับให้เอง (ignore เฉพาะ `*.integration.spec.ts`) จึงรันใน step
+"Test API" อยู่แล้วโดยไม่ต้องเพิ่มอะไร.

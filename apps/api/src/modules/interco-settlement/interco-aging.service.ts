@@ -82,6 +82,49 @@ export interface ShopReceivableAgingResult {
 const EPS = new Prisma.Decimal('0.01');
 const DAY_MS = 86_400_000;
 
+/** แขนของหนี้ที่แก่เกินเกณฑ์ — ใช้ตั้ง label/วิธีล้างใน alert (Task 3) */
+export type ShopReceivableOverdueArm = 'INTERCO' | 'SHOP_COLLECT';
+
+/** ฟิลด์ขั้นต่ำที่ predicate ต้องใช้ (รับได้ทั้งแถวเต็มและ subset ในเทสต์) */
+export type OverdueCheckable = Pick<
+  ShopReceivableAgingRow,
+  'intercoAgeDays' | 'intercoNet' | 'shopCollectAgeDays' | 'shopCollect'
+>;
+
+/**
+ * เกณฑ์ "ค้างเกินกำหนด" — **แหล่งเดียวของทั้งระบบ**: `totals.overdueCount` ของ
+ * service, cron แจ้งเตือนรายวัน (Task 3) และ reconcile cron (Task 4) ต้องเรียก
+ * ฟังก์ชันนี้เท่านั้น ห้าม inline สูตรซ้ำ (drift = เตือนไม่ตรงกับที่รายงานโชว์).
+ *
+ * แขนของหนี้แยกกัน: กลุ่มระหว่างกิจการ (`intercoNet`, อายุจากวันตั้งหนี้ typed
+ * SWAP_CREDIT/PAYOUT_RECALL) กับหน้าร้านรับเงินแทน (`shopCollect`) — ยอดต้อง
+ * มากกว่า 0.01 คู่กับอายุถึงเกณฑ์เสมอ (แถวที่โผล่เพราะ `bookMismatch` แต่ยอด
+ * เป็นศูนย์ ไม่ใช่หนี้ค้าง).
+ *
+ * **แถว `legacyOneBook` เป็นหน้าที่ของ caller ที่จะกันออก** — ฟังก์ชันนี้ไม่รู้จัก
+ * บริบท legacy โดยตั้งใจ (คณิตศาสตร์ล้วน) และทั้ง `totals` ที่นี่กับ cron
+ * กรอง `!legacyOneBook` ก่อนเรียกเหมือนกัน (spec §11.4 = สภาพปกติ ห้าม alert).
+ */
+export function overdueArms(row: OverdueCheckable, thresholdDays: number): ShopReceivableOverdueArm[] {
+  const arms: ShopReceivableOverdueArm[] = [];
+  if (row.intercoAgeDays !== null && row.intercoAgeDays >= thresholdDays && row.intercoNet.gt(EPS)) {
+    arms.push('INTERCO');
+  }
+  if (
+    row.shopCollectAgeDays !== null &&
+    row.shopCollectAgeDays >= thresholdDays &&
+    row.shopCollect.gt(EPS)
+  ) {
+    arms.push('SHOP_COLLECT');
+  }
+  return arms;
+}
+
+/** true = แถวนี้มีหนี้ค้างเกินเกณฑ์อย่างน้อยหนึ่งแขน (ดู jsdoc ของ `overdueArms`) */
+export function isShopReceivableOverdue(row: OverdueCheckable, thresholdDays: number): boolean {
+  return overdueArms(row, thresholdDays).length > 0;
+}
+
 // --- Typed conditions — VERBATIM twins ของ interco-typed-balance.ts ---------
 // (composed เป็น Prisma.sql fragment เพื่อใช้ซ้ำใน CASE หลายคอลัมน์ของ Query A)
 const SWAP_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
@@ -300,11 +343,9 @@ export class IntercoAgingService {
       (a, b) => effectiveAge(b) - effectiveAge(a) || a.contractNumber.localeCompare(b.contractNumber),
     );
 
-    const isOverdue = (r: ShopReceivableAgingRow) =>
-      (r.intercoAgeDays !== null && r.intercoAgeDays >= thresholdDays && r.intercoNet.gt(EPS)) ||
-      (r.shopCollectAgeDays !== null &&
-        r.shopCollectAgeDays >= thresholdDays &&
-        r.shopCollect.gt(EPS));
+    // เกณฑ์ overdue อยู่ที่ `isShopReceivableOverdue` (module scope) — cron
+    // Task 3/4 เรียกตัวเดียวกัน ห้ามมีสำเนาที่สอง
+    const isOverdue = (r: ShopReceivableAgingRow) => isShopReceivableOverdue(r, thresholdDays);
 
     // totals กันแถว legacyOneBook ออก (ดู jsdoc บน interface): typed columns
     // ของแถว legacy โกหกเชิงประเภท — หนี้ legacy จริงรายงานแยกใน

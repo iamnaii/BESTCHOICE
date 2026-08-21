@@ -147,3 +147,50 @@ describe('ProductsController — cost visibility by role', () => {
     expect(res.product).toHaveProperty('costPrice', '12000');
   });
 });
+
+/**
+ * Phase 5 Task 3 — `POST /products/:id/return-to-stock`
+ * (นำเครื่องมือสองที่รับคืนกลับเข้าคลังพร้อมขาย)
+ */
+describe('ProductsController.returnToStock — สิทธิ์ + การส่งต่อ userId/note', () => {
+  let controller: ProductsController;
+  let products: { returnToStock: jest.Mock };
+
+  beforeEach(async () => {
+    products = {
+      returnToStock: jest.fn().mockResolvedValue({ id: 'p-1', status: 'IN_STOCK' }),
+    };
+    const module = await Test.createTestingModule({
+      controllers: [ProductsController],
+      providers: [
+        { provide: ProductsService, useValue: products },
+        { provide: ProductsPricingService, useValue: {} },
+        { provide: ProductsStockService, useValue: {} },
+        { provide: ProductsOnlineListingService, useValue: {} },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(BranchGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+    controller = module.get(ProductsController);
+  });
+
+  it('ส่ง id + userId ของผู้กด + note ต่อให้ service (audit ต้องรู้ว่าใครยืนยัน)', async () => {
+    const res = await controller.returnToStock(
+      'p-1',
+      { note: 'ตรวจสภาพแล้ว' },
+      { id: 'user-9' },
+    );
+    expect(products.returnToStock).toHaveBeenCalledWith('p-1', 'user-9', 'ตรวจสภาพแล้ว');
+    expect(res).toHaveProperty('status', 'IN_STOCK');
+  });
+
+  it('เปิดให้เฉพาะ OWNER กับ BRANCH_MANAGER', () => {
+    const roles = Reflect.getMetadata('roles', ProductsController.prototype.returnToStock);
+    expect(roles).toEqual(['OWNER', 'BRANCH_MANAGER']);
+  });
+});

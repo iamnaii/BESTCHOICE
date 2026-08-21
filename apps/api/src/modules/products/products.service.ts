@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -6,7 +12,7 @@ import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
-import { assertManualStatusChangeAllowed } from './product-status.util';
+import { assertManualStatusChangeAllowed, productStatusLabel } from './product-status.util';
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 import { evaluateReadiness } from '../../utils/product-readiness.util';
@@ -22,6 +28,31 @@ const productInclude = {
 
 // Re-export for use by other services if needed
 export { productInclude };
+
+/** ค่าที่ "เป็นราคาจริง" — null/ว่าง/0/ติดลบ ถือว่ายังไม่ได้ตั้งราคา */
+function isPositiveAmount(v: Prisma.Decimal | string | number | null | undefined): boolean {
+  if (v === null || v === undefined || v === '') return false;
+  return new Prisma.Decimal(v.toString()).gt(0);
+}
+
+/**
+ * เครื่องนี้มีราคาขายแล้วหรือยัง (ใช้โดย `returnToStock`)
+ *
+ * ต่างจาก `evaluateReadiness` (product-readiness.util.ts) ที่ถามว่า "พร้อม**ขึ้นเว็บ**ไหม"
+ * — อันนั้นบังคับ cashPrice, gallery, แบรนด์ Apple, isOnlineVisible. ที่นี่ถามแค่ว่า
+ * "ขายหน้าร้านได้ไหม" ⇒ ราคาเงินสด **หรือ** ราคาผ่อนก็พอ และยอมรับ `prices[]` เป็น
+ * fallback สำหรับเครื่องเก่าที่ตั้งราคาไว้ก่อนยุคคอลัมน์ (B0 write-through)
+ */
+function hasSellingPrice(product: {
+  cashPrice?: Prisma.Decimal | string | null;
+  installmentPrice?: Prisma.Decimal | string | null;
+  prices?: Array<{ amount: Prisma.Decimal | string }>;
+}): boolean {
+  if (isPositiveAmount(product.cashPrice) || isPositiveAmount(product.installmentPrice)) {
+    return true;
+  }
+  return (product.prices ?? []).some((p) => isPositiveAmount(p.amount));
+}
 
 @Injectable()
 export class ProductsService {
@@ -253,6 +284,67 @@ export class ProductsService {
         });
       }
 
+      return tx.product.findUnique({ where: { id }, include: productInclude });
+    });
+  }
+
+  /**
+   * นำเครื่องมือสองที่รับคืนมา (ยึดเครื่อง / เปลี่ยนเครื่อง) กลับเข้าคลังพร้อมขาย
+   *
+   * คำตัดสินเจ้าของ 2026-08-21: **หน้าร้านกดเอง** — POS ยังขายเฉพาะ `IN_STOCK`
+   * ตามเดิม (`sale-writer.service.ts`) เพราะระหว่าง REFURBISHED กับพร้อมขายจริงมี
+   * จังหวะตรวจสภาพ/ตั้งราคา. endpoint นี้คือสะพานเดียวที่บันทึกร่องรอยว่าใครยืนยัน
+   * (เดิมทำได้ด้วย PATCH เปลี่ยนสถานะเงียบ ๆ — ตอนนี้ปิดทางนั้นแล้วใน
+   * `MANUAL_TRANSITION_DENY` ของ product-status.util.ts)
+   *
+   * ด่านราคาขาย = block ไม่ใช่ allow+flag: IN_STOCK คือ "ขายที่ POS ได้ทันที"
+   * ปล่อยเครื่องไม่มีราคาเข้าไปคือเปิดช่องขายราคา 0 ซึ่งเป็นสิ่งที่ขั้นตอนกดยืนยัน
+   * นี้ตั้งใจกันตั้งแต่แรก. เครื่องจากยึดเครื่องมีราคาอยู่แล้ว (`markReadyForSale`
+   * บังคับ resellPrice > 0) — ที่โดนด่านนี้จริงคือเครื่องจากเปลี่ยนเครื่อง (A.4 ตั้งแต่
+   * costPrice = ราคารับซื้อ แต่ไม่เคยตั้งราคาขาย) ซึ่งควรถูกบังคับให้ตั้งราคาอยู่แล้ว
+   *
+   * `stockInDate` ตั้งใหม่ทุกครั้ง: นิยามของคอลัมน์นี้คือ "วันที่เครื่องกลายเป็นสต็อกที่
+   * ขายได้" (PO receiving / `markReadyForSale` ก็ตั้งด้วยนิยามนี้) — พอปุ่มนี้กลายเป็น
+   * จังหวะจริงที่เครื่องขายได้ ค่าเดิมจึงต้องขยับตาม ไม่งั้นเครื่องจากเปลี่ยนเครื่องจะติด
+   * วันที่รับเข้าครั้งแรก (เก่าหลายเดือน) แล้วรายงานอายุสต็อกอ่านผิดทันที
+   */
+  async returnToStock(id: string, userId: string, note?: string) {
+    const product = await this.findOne(id);
+
+    if (product.status !== 'REFURBISHED') {
+      throw new BadRequestException(
+        `สินค้าอยู่สถานะ ${productStatusLabel(product.status)} — ปุ่มนี้ใช้ได้เฉพาะเครื่องมือสองที่รับคืนแล้ว ` +
+          '(สถานะ REFURBISHED (ซ่อมแล้ว)) เท่านั้น: เครื่องที่ขาย/จอง/ยึดอยู่ต้องจัดการผ่าน flow ของมันก่อน',
+      );
+    }
+
+    if (!hasSellingPrice(product)) {
+      throw new BadRequestException(
+        'ยังไม่ได้ตั้งราคาขายของเครื่องนี้ — ตั้งราคาขาย (เงินสด/ผ่อน) ก่อน แล้วค่อยนำเข้าคลังพร้อมขาย ' +
+          '(เครื่องที่อยู่ในคลังต้องขายที่ POS ได้ทันที)',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // updateMany + count===1 = ด่านกันแข่ง (double-click / สองคนกดพร้อมกัน): เงื่อนไข
+      // สถานะอยู่ใน WHERE เอง ⇒ ผู้กดคนที่สองไม่ได้แถว และไม่มี AuditLog ใบซ้ำตามมา
+      const locked = await tx.product.updateMany({
+        where: { id, status: 'REFURBISHED', deletedAt: null },
+        data: { status: 'IN_STOCK', stockInDate: new Date() },
+      });
+      if (locked.count !== 1) {
+        throw new ConflictException('สถานะสินค้าเปลี่ยนไปแล้ว — โหลดหน้าใหม่แล้วลองอีกครั้ง');
+      }
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'PRODUCT_RETURNED_TO_STOCK',
+          entity: 'product',
+          entityId: id,
+          oldValue: { status: product.status },
+          newValue: { status: 'IN_STOCK', note: note ?? null },
+        },
+      });
       return tx.product.findUnique({ where: { id }, include: productInclude });
     });
   }

@@ -51,6 +51,18 @@ const SYSTEM_MANAGED_STATUSES = new Set([
   'REPOSSESSED',
 ]);
 
+/**
+ * Phase 5 Task 3 — คู่ transition ที่มีปุ่มเฉพาะของมันแล้ว ห้ามแก้ตรงจากฟอร์มนี้
+ * ต้องตรงกับ `MANUAL_TRANSITION_DENY` ฝั่ง API (products/product-status.util.ts)
+ * ซึ่งเป็นตัวบังคับจริง — ฝั่งนี้แค่ไม่โชว์ตัวเลือกที่ยังไงก็โดนปฏิเสธ
+ */
+const DENIED_TARGETS_BY_STATUS: Record<string, { targets: Set<string>; hint: string }> = {
+  REFURBISHED: {
+    targets: new Set(['IN_STOCK']),
+    hint: 'เครื่องมือสองที่รับคืน ต้องใช้ปุ่ม "นำเข้าคลังพร้อมขาย" ด้านบน — จะได้ตรวจว่ามีราคาขายแล้วและบันทึกว่าใครยืนยัน',
+  },
+};
+
 export default function EditProductModal({
   isOpen,
   onClose,
@@ -61,6 +73,7 @@ export default function EditProductModal({
   currentStatus,
 }: EditProductModalProps) {
   const statusLocked = SYSTEM_MANAGED_STATUSES.has(currentStatus);
+  const deniedRule = DENIED_TARGETS_BY_STATUS[currentStatus];
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="แก้ไขข้อมูลสินค้า">
       <form onSubmit={onSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto">
@@ -97,7 +110,11 @@ export default function EditProductModal({
               disabled={statusLocked}
             >
               {Object.entries(productStatusMap)
-                .filter(([val]) => val === currentStatus || !SYSTEM_MANAGED_STATUSES.has(val))
+                .filter(
+                  ([val]) =>
+                    val === currentStatus ||
+                    (!SYSTEM_MANAGED_STATUSES.has(val) && !deniedRule?.targets.has(val)),
+                )
                 .map(([val, s]) => (
                   <option key={val} value={val}>{s.label}</option>
                 ))}
@@ -106,6 +123,9 @@ export default function EditProductModal({
               <p className="mt-1 text-xs text-muted-foreground leading-snug">
                 สถานะนี้ระบบจัดการผ่านรายการขาย/จอง/ยึดเครื่อง — แก้ผ่าน flow นั้นแทน
               </p>
+            )}
+            {!statusLocked && deniedRule && (
+              <p className="mt-1 text-xs text-muted-foreground leading-snug">{deniedRule.hint}</p>
             )}
           </div>
         </div>

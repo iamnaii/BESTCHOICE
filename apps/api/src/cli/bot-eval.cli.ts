@@ -166,8 +166,10 @@ function globalChecks(reply: string): string[] {
   }
   if (bubbles.length > 3) fails.push(`แตก ${bubbles.length} ก้อน (เพดาน 3)`);
 
-  // ตัวเลขต้องมีที่มา
-  const nums = [...reply.matchAll(/\d[\d,]{2,}/g)].map((m) => Number(m[0].replace(/,/g, ''))).filter((n) => n >= 500);
+  // ตัวเลขต้องมีที่มา — ตัดความจุ (512GB) และแบต% ออกก่อน ไม่ใช่ราคา
+  // (GroundingGuard ตัวจริงบน prod บังคับว่าต้องมีคำว่า "บาท/฿" ต่อท้ายอยู่แล้ว ไม่มีปัญหานี้)
+  const priceScrubbed = reply.replace(/\d+\s*(?:GB|TB|gb|tb)/g, 'ความจุSPEC');
+  const nums = [...priceScrubbed.matchAll(/\d[\d,]{2,}/g)].map((m) => Number(m[0].replace(/,/g, ''))).filter((n) => n >= 500);
   for (const n of nums) {
     if (!GROUNDED.some((g) => Math.abs(n - g) / g <= 0.05)) fails.push(`เลขไม่มีที่มา: ${n}`);
   }
@@ -204,6 +206,18 @@ const SCENARIOS: Scenario[] = [
     id: 'S4', name: 'ของมีในสต๊อก 2 สภาพ → เทียบด้วยดาวน์+งวด',
     turns: [
       { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], notContains: ['17,500', '19,900'], contains: ['ผ่อนเดือนละ'] },
+    ],
+  },
+  {
+    // เจ้าของสั่ง 2026-08-17: ลูกค้าขอความจุที่ร้านไม่มี (fixture มีแค่ 128/256GB)
+    // → ต้องบอกว่าไม่มี + เสนอความจุที่มี + เทียบเรทให้ดูในเทิร์นเดียว
+    id: 'S8', name: 'ความจุที่ลูกค้าอยากได้ไม่มี → บอกตรง ๆ + เทียบเรทที่มี',
+    turns: [
+      {
+        user: 'สนใจ iPhone 15 Plus 512GB',
+        expectTools: ['get_installment_rates'],
+        contains: ['512GB', 'ไม่มี', '128GB', '256GB', 'ผ่อนเดือนละ'],
+      },
     ],
   },
   {

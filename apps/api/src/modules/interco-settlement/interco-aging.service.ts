@@ -42,13 +42,41 @@ export interface ShopReceivableAgingRow {
   shopCollectAgeDays: number | null;
   /** |intercoNet − shopMirrorNet| > 0.01 — สองสมุดไม่ตรง (SHOP_COLLECT ไม่นับ: FINANCE-side-only) */
   bookMismatch: boolean;
+  /**
+   * Σ(Dr−Cr) ของบรรทัด 11-2107 ยุค legacy — flow
+   * 'exchange-buyback-receivable-11-2107' โดย **ไม่มี** explicit stamp
+   * (A.3 ก่อน Phase 1; ทุกใบยุค Phase 1+ รวม mirror มี stamp เสมอ).
+   */
+  legacySwapGross: Prisma.Decimal;
+  /**
+   * true = swap ยุค legacy สมุดเดียว (มีบรรทัด legacy ∧ S21-3001 = 0) —
+   * spec §11.4 ถือเป็น**สภาพปกติ** ไม่ใช่ anomaly (pending lens โมเดลเป็น
+   * `swapCreditEligible = false`): เครดิตของมันล้างผ่าน shop-collect ซึ่ง
+   * stamp SHOP_COLLECT ⇒ typed columns ของแถวนี้ค้าง +/− ถาวรแม้ยอดบัญชีจริง
+   * เป็น 0. `bookMismatch` ยังรายงานตามคณิตศาสตร์ (สองสมุดต่างกันจริง) —
+   * flag นี้คือตัวแยกบริบทให้ Tasks 3/4 ใช้ label/ระงับ alert แทนเตือนแดง.
+   */
+  legacyOneBook: boolean;
 }
 
 export interface ShopReceivableAgingResult {
   /** เฉพาะสัญญาที่ intercoNet > 0.01 หรือ shopCollect > 0.01 หรือ bookMismatch */
   rows: ShopReceivableAgingRow[];
   asOf: Date;
-  totals: { intercoNet: Prisma.Decimal; shopCollect: Prisma.Decimal; overdueCount: number };
+  /**
+   * intercoNet/shopCollect/overdueCount **ไม่รวมแถว `legacyOneBook`** —
+   * typed columns ของแถว legacy โกหกเชิงประเภท (แถวผี +8,000/−8,000 บนสัญญา
+   * ที่ยอดจริงเป็น 0 หลัง settle ผ่าน shop-collect) จึงห้ามปนกับหนี้ typed จริง.
+   * หนี้ legacy ที่ยังค้างจริงไม่ถูกซ่อน: รายงานแยกใน `legacyOneBookNet` =
+   * Σ(intercoNet + shopCollect) ต่อแถว legacy — สูตรนี้คือยอด 11-2107 จริง
+   * ระดับสัญญา (legacy ยังไม่ล้าง = ยอดเต็ม, ล้างครบแล้ว = 0 พอดี).
+   */
+  totals: {
+    intercoNet: Prisma.Decimal;
+    shopCollect: Prisma.Decimal;
+    overdueCount: number;
+    legacyOneBookNet: Prisma.Decimal;
+  };
 }
 
 const EPS = new Prisma.Decimal('0.01');
@@ -66,6 +94,13 @@ const SHOP_COLLECT_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'SHOP
              AND (je.metadata->>'collectedByShop' = 'true'
                   OR je.metadata->>'shopReceivable' = '11-2107'
                   OR je.metadata->>'flow' = 'shop-collect-settlement')))`;
+// บรรทัด legacy = flow A.3 เดิมโดย **ไม่มี** explicit stamp (subset ของ
+// SWAP_COND — ยุค Phase 1+ ทุกใบรวม mirror มี stamp เสมอ) — ใช้ตรวจจับ swap
+// ยุคก่อน Phase 1 เพื่อ flag `legacyOneBook` (Fix Round 1).
+const LEGACY_SWAP_COND = Prisma.sql`((je.metadata->>'shopReceivableType' IS NULL
+              OR je.metadata->>'shopReceivableType' NOT IN
+                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+         AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')`;
 
 // Group key ของ S21-3001 — แบบมีเงื่อนไข (jsdoc ด้านบน): SWAP_CREDIT key ด้วย
 // newContractId (A.4 stamp — contractId บนใบนั้นคือสัญญาเก่า), ประเภทอื่น key
@@ -80,6 +115,7 @@ interface FinanceAgingRow {
   swap_gross: unknown;
   recall_gross: unknown;
   shop_collect: unknown;
+  legacy_swap_gross: unknown;
   interco_oldest: Date | null;
   collect_oldest: Date | null;
 }
@@ -116,6 +152,7 @@ export class IntercoAgingService {
              COALESCE(SUM(CASE WHEN ${SWAP_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS swap_gross,
              COALESCE(SUM(CASE WHEN ${RECALL_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS recall_gross,
              COALESCE(SUM(CASE WHEN ${SHOP_COLLECT_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS shop_collect,
+             COALESCE(SUM(CASE WHEN ${LEGACY_SWAP_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS legacy_swap_gross,
              MIN(CASE WHEN jl.debit > 0 AND (${SWAP_COND} OR ${RECALL_COND}) THEN je.posted_at END) AS interco_oldest,
              MIN(CASE WHEN jl.debit > 0 AND ${SHOP_COLLECT_COND} THEN je.posted_at END) AS collect_oldest
       FROM journal_lines jl
@@ -174,6 +211,7 @@ export class IntercoAgingService {
           intercoNet: new Prisma.Decimal(0),
           shopCollect: new Prisma.Decimal(0),
           overdueCount: 0,
+          legacyOneBookNet: new Prisma.Decimal(0),
         },
       };
     }
@@ -220,12 +258,15 @@ export class IntercoAgingService {
       const swapCreditGross = new Prisma.Decimal(String(fin?.swap_gross ?? 0));
       const payoutRecallGross = new Prisma.Decimal(String(fin?.recall_gross ?? 0));
       const shopCollect = new Prisma.Decimal(String(fin?.shop_collect ?? 0));
+      const legacySwapGross = new Prisma.Decimal(String(fin?.legacy_swap_gross ?? 0));
       const settledDeduction = deductionByContract.get(contractId) ?? zero;
       const shopGross = shopByContract.get(contractId) ?? zero;
 
       const intercoNet = swapCreditGross.plus(payoutRecallGross).minus(settledDeduction);
       const shopMirrorNet = shopGross.minus(settledDeduction);
+      // ความหมายคณิตศาสตร์บริสุทธิ์ — legacy แยกบริบทด้วย flag ไม่ใช่แก้สูตร
       const bookMismatch = intercoNet.minus(shopMirrorNet).abs().gt(EPS);
+      const legacyOneBook = legacySwapGross.abs().gt(EPS) && shopGross.abs().lte(EPS);
 
       if (!intercoNet.gt(EPS) && !shopCollect.gt(EPS) && !bookMismatch) continue;
 
@@ -247,6 +288,8 @@ export class IntercoAgingService {
         shopCollectOldestPostedAt,
         shopCollectAgeDays: ageDays(shopCollectOldestPostedAt),
         bookMismatch,
+        legacySwapGross,
+        legacyOneBook,
       });
     }
 
@@ -263,13 +306,24 @@ export class IntercoAgingService {
         r.shopCollectAgeDays >= thresholdDays &&
         r.shopCollect.gt(EPS));
 
+    // totals กันแถว legacyOneBook ออก (ดู jsdoc บน interface): typed columns
+    // ของแถว legacy โกหกเชิงประเภท — หนี้ legacy จริงรายงานแยกใน
+    // legacyOneBookNet (= ยอด 11-2107 จริงระดับสัญญา ไม่ซ่อนหนี้). overdue ก็
+    // ไม่นับแถว legacy — เป็น label ไม่ใช่ alert (Tasks 3/4).
+    const nonLegacyRows = rows.filter((r) => !r.legacyOneBook);
+    const legacyRows = rows.filter((r) => r.legacyOneBook);
+
     return {
       rows,
       asOf,
       totals: {
-        intercoNet: rows.reduce((s, r) => s.plus(r.intercoNet), zero),
-        shopCollect: rows.reduce((s, r) => s.plus(r.shopCollect), zero),
-        overdueCount: rows.filter(isOverdue).length,
+        intercoNet: nonLegacyRows.reduce((s, r) => s.plus(r.intercoNet), zero),
+        shopCollect: nonLegacyRows.reduce((s, r) => s.plus(r.shopCollect), zero),
+        overdueCount: nonLegacyRows.filter(isOverdue).length,
+        legacyOneBookNet: legacyRows.reduce(
+          (s, r) => s.plus(r.intercoNet).plus(r.shopCollect),
+          zero,
+        ),
       },
     };
   }

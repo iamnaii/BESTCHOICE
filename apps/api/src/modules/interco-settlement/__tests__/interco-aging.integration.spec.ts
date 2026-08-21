@@ -220,6 +220,51 @@ async function seedRecallPair(id: string, financeAmount: string, shopAmount: str
   });
 }
 
+/**
+ * A.3 legacy synthetic — flow เดิม **ไม่มี explicit stamp** (swap ยุคก่อน
+ * Phase 1, spec §11.4). เลนส์นับเป็น SWAP_CREDIT ผ่าน flow fallback แต่คอลัมน์
+ * legacy_swap_gross ต้องจับมันแยกได้ (Fix Round 1).
+ */
+async function seedLegacyA3(id: string, amount: string, postedAt?: Date) {
+  await journalAuto.createAndPost({
+    description: 'A.3 legacy synthetic (no explicit stamp, aging)',
+    companyId: financeId,
+    postedAt,
+    metadata: {
+      flow: 'exchange-buyback-receivable-11-2107',
+      idempotencyKey: `agtl3:${id}`,
+      contractId: id,
+    },
+    lines: [
+      { accountCode: '11-2107', dr: dec(amount), cr: zero },
+      { accountCode: '21-1106', dr: zero, cr: dec(amount) },
+    ],
+  });
+}
+
+/**
+ * ใบ settle จาก settleShopCollect จริง — flow 'shop-collect-settlement' +
+ * stamp SHOP_COLLECT (typeStamp default ของ ShopCollectSettlementTemplate).
+ * นี่คือทางล้างของ legacy swap: ขา Cr ลงคอลัมน์ shopCollect ไม่ลด
+ * swapCreditGross — sub-case 2 ของ review.
+ */
+async function seedShopCollectSettle(id: string, amount: string) {
+  await journalAuto.createAndPost({
+    description: 'shop-collect settle synthetic (aging)',
+    companyId: financeId,
+    metadata: {
+      flow: 'shop-collect-settlement',
+      idempotencyKey: `agtscs:${id}`,
+      contractId: id,
+      shopReceivableType: 'SHOP_COLLECT',
+    },
+    lines: [
+      { accountCode: '11-1201', dr: dec(amount), cr: zero },
+      { accountCode: '11-2107', dr: zero, cr: dec(amount) },
+    ],
+  });
+}
+
 /** JP4 shop-collect synthetic — Dr 11-2107 [SHOP_COLLECT] (explicit stamp). */
 async function seedShopCollect(id: string, amount: string) {
   await journalAuto.createAndPost({
@@ -268,6 +313,8 @@ let shopCollectId: string; // (c) shop-collect ค้าง
 let settledId: string; // (d) settle ครบแล้ว
 let agedId: string; // อายุ 45 วัน
 let mismatchId: string; // สองสมุดไม่ตรง
+let legacyUnsettledId: string; // legacy swap ยังไม่ล้าง (flow-only, ไม่มี S21-3001)
+let legacySettledId: string; // legacy swap ที่ล้างแล้วผ่าน settleShopCollect (backdate 45 วัน)
 
 describe('IntercoAgingService — รายงานอายุลูกหนี้ 11-2107/S21-3001 (real DB)', () => {
   beforeAll(async () => {
@@ -363,6 +410,18 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     mismatchId = await seedBaseContract(6);
     await seedA3(mismatchId, '8000');
     await seedA4(mismatchId, '7500');
+
+    // (g) legacy swap ยังไม่ล้าง: A.3 flow เดิมไม่มี stamp, ไม่มี S21-3001 —
+    // spec §11.4 ถือเป็นสภาพปกติ (ล้างผ่าน shop-collect ทีหลัง) ไม่ใช่ anomaly
+    legacyUnsettledId = await seedBaseContract(7);
+    await seedLegacyA3(legacyUnsettledId, '8000');
+
+    // (h) legacy swap ที่ล้างครบแล้วผ่าน settleShopCollect: A.3 legacy backdate
+    // 45 วัน + ใบ settle [SHOP_COLLECT] — ยอด 11-2107 จริงของสัญญา = 0 แต่
+    // typed columns เห็น +8,000/−8,000 ค้างถาวร (sub-case 2 ของ review)
+    legacySettledId = await seedBaseContract(8);
+    await seedLegacyA3(legacySettledId, '8000', new Date(Date.now() - 45 * DAY_MS));
+    await seedShopCollectSettle(legacySettledId, '8000');
   }, 120_000);
 
   afterAll(async () => {
@@ -419,6 +478,10 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     expect(row.shopMirrorNet.toFixed(2)).toBe('8000.00');
     expect(row.bookMismatch).toBe(false);
     expect(row.shopCollect.toFixed(2)).toBe('0.00');
+
+    // สัญญายุคใหม่ (A.3 มี stamp) — ไม่ใช่ legacy
+    expect(row.legacySwapGross.toFixed(2)).toBe('0.00');
+    expect(row.legacyOneBook).toBe(false);
 
     // อายุกลุ่ม interco เพิ่งตั้งวันนี้
     expect(row.intercoOldestPostedAt).not.toBeNull();
@@ -489,11 +552,13 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
 
     // overdueCount: แถว aged เข้าเงื่อนไข (อายุ ≥ 30 + intercoNet > 0.01)
     expect(res.totals.overdueCount).toBeGreaterThanOrEqual(1);
-    // self-consistency กับนิยามที่ประกาศไว้
+    // self-consistency กับนิยามที่ประกาศไว้ (แถว legacyOneBook ไม่นับ —
+    // Fix Round 1: legacy = label ไม่ใช่ alert)
     const expected = res.rows.filter(
       (r) =>
-        (r.intercoAgeDays !== null && r.intercoAgeDays >= 30 && r.intercoNet.gt('0.01')) ||
-        (r.shopCollectAgeDays !== null && r.shopCollectAgeDays >= 30 && r.shopCollect.gt('0.01')),
+        !r.legacyOneBook &&
+        ((r.intercoAgeDays !== null && r.intercoAgeDays >= 30 && r.intercoNet.gt('0.01')) ||
+          (r.shopCollectAgeDays !== null && r.shopCollectAgeDays >= 30 && r.shopCollect.gt('0.01'))),
     ).length;
     expect(res.totals.overdueCount).toBe(expected);
 
@@ -520,14 +585,72 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     expect(row.shopMirrorNet.toFixed(2)).toBe('7500.00');
   });
 
-  it('totals สอดคล้องกับ rows + asOf ถูก echo', async () => {
+  it('legacyOneBook: legacy A.3 ไม่มี stamp + ไม่มี S21-3001 → flag true, mismatch ยัง true ตามนิยาม', async () => {
+    const res = await agingService.getShopReceivableAging();
+    const row = res.rows.find((r) => r.contractId === legacyUnsettledId)!;
+    expect(row).toBeDefined();
+
+    // เลนส์ยังนับเป็น SWAP_CREDIT ผ่าน flow fallback (สูตรเดิมห้ามขยับ)
+    expect(row.swapCreditGross.toFixed(2)).toBe('8000.00');
+    expect(row.intercoNet.toFixed(2)).toBe('8000.00');
+    expect(row.shopMirrorNet.toFixed(2)).toBe('0.00');
+    // bookMismatch คงความหมายคณิตศาสตร์บริสุทธิ์ — สองสมุดต่างกันจริง
+    expect(row.bookMismatch).toBe(true);
+    // flag แยกบริบท: มีบรรทัด legacy (flow-only ไม่มี stamp) + SHOP book = 0
+    expect(row.legacySwapGross.toFixed(2)).toBe('8000.00');
+    expect(row.legacyOneBook).toBe(true);
+  });
+
+  it('legacyOneBook: legacy ที่ล้างแล้วผ่าน shop-collect → แถวผีถูก flag แยก + ไม่นับ overdue', async () => {
+    const res = await agingService.getShopReceivableAging();
+    const row = res.rows.find((r) => r.contractId === legacySettledId)!;
+    expect(row).toBeDefined();
+
+    // Typed columns เห็นแถวผี: Dr legacy อยู่คอลัมน์ swap, Cr settle
+    // [SHOP_COLLECT] อยู่คอลัมน์ shopCollect — ยอดบัญชีจริงของสัญญา = 0
+    expect(row.swapCreditGross.toFixed(2)).toBe('8000.00');
+    expect(row.shopCollect.toFixed(2)).toBe('-8000.00');
+    expect(row.intercoNet.toFixed(2)).toBe('8000.00');
+    expect(row.bookMismatch).toBe(true);
+    expect(row.legacySwapGross.toFixed(2)).toBe('8000.00');
+    expect(row.legacyOneBook).toBe(true);
+    // ยอดสุทธิระดับสัญญา (interco + shopCollect) = 0 — ไม่มีหนี้จริง
+    expect(row.intercoNet.plus(row.shopCollect).toFixed(2)).toBe('0.00');
+
+    // แถวนี้แก่ 45 วัน + intercoNet > 0.01 — ถ้าไม่มี flag จะเป็น alert เท็จถาวร
+    expect(row.intercoAgeDays!).toBeGreaterThanOrEqual(44);
+    const wouldBeOverdue = res.rows.filter(
+      (r) =>
+        (r.intercoAgeDays !== null && r.intercoAgeDays >= 30 && r.intercoNet.gt('0.01')) ||
+        (r.shopCollectAgeDays !== null && r.shopCollectAgeDays >= 30 && r.shopCollect.gt('0.01')),
+    ).length;
+    // flag ตัดแถว legacy ออกจาก overdueCount จริง (ไม่ใช่แค่บังเอิญเท่ากัน)
+    expect(wouldBeOverdue).toBeGreaterThan(res.totals.overdueCount);
+  });
+
+  it('totals สอดคล้องกับ rows (กัน legacyOneBook ออก + รายงานแยก) + asOf ถูก echo', async () => {
     const asOf = new Date();
     const res = await agingService.getShopReceivableAging(asOf);
     expect(res.asOf.getTime()).toBe(asOf.getTime());
 
-    const sumInterco = res.rows.reduce((s, r) => s.plus(r.intercoNet), dec('0'));
-    const sumCollect = res.rows.reduce((s, r) => s.plus(r.shopCollect), dec('0'));
+    // totals หลักไม่รวมแถว legacyOneBook — ตัวเลขต้องไม่หลอกว่ามีหนี้ typed จริง
+    const nonLegacy = res.rows.filter((r) => !r.legacyOneBook);
+    const sumInterco = nonLegacy.reduce((s, r) => s.plus(r.intercoNet), dec('0'));
+    const sumCollect = nonLegacy.reduce((s, r) => s.plus(r.shopCollect), dec('0'));
     expect(res.totals.intercoNet.toFixed(2)).toBe(sumInterco.toFixed(2));
     expect(res.totals.shopCollect.toFixed(2)).toBe(sumCollect.toFixed(2));
+
+    // แถว legacy รายงานแยกเป็นยอดสุทธิระดับสัญญา (intercoNet + shopCollect):
+    // legacy ยังไม่ล้าง = หนี้จริง 8,000, legacy ล้างแล้ว = 0 — ไม่ซ่อนหนี้จริง
+    const legacyNet = res.rows
+      .filter((r) => r.legacyOneBook)
+      .reduce((s, r) => s.plus(r.intercoNet).plus(r.shopCollect), dec('0'));
+    expect(res.totals.legacyOneBookNet.toFixed(2)).toBe(legacyNet.toFixed(2));
+    // สองแถว legacy ของ run นี้: 8,000 (ยังไม่ล้าง) + 0 (ล้างแล้ว) — อย่างน้อย
+    // ต้องมี contribution 8,000 (leftover จาก suite อื่นอาจเพิ่ม จึง assert ผ่าน Σ)
+    const unsettledRow = res.rows.find((r) => r.contractId === legacyUnsettledId)!;
+    const settledRow = res.rows.find((r) => r.contractId === legacySettledId)!;
+    expect(unsettledRow.intercoNet.plus(unsettledRow.shopCollect).toFixed(2)).toBe('8000.00');
+    expect(settledRow.intercoNet.plus(settledRow.shopCollect).toFixed(2)).toBe('0.00');
   });
 });

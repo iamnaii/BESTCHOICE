@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IntercoAgingService } from './interco-aging.service';
 import { ShopReceivableAgingCron } from './crons/shop-receivable-aging.cron';
+import { IntercoReconcileCron } from './crons/interco-reconcile.cron';
 import { IntercoPendingService } from './interco-pending.service';
 import { IntercoBatchNumberService } from './interco-batch-number.service';
 import { IntercoSettlementService } from './interco-settlement.service';
@@ -27,6 +28,9 @@ import { StorageModule } from '../storage/storage.module';
     // Phase 4 Task 3 — cron แจ้งเตือนอายุลูกหนี้หน้าร้าน (ScheduleModule.forRoot
     // อยู่ที่ app.module แล้ว; ไม่ export เพราะไม่มีใครนอกโมดูลเรียก tick)
     ShopReceivableAgingCron,
+    // Phase 4 Task 4 — cron กระทบยอดระหว่างกิจการรายเดือน (รายงานอย่างเดียว
+    // ไม่แตะ GL); ไม่ export เพราะไม่มีใครนอกโมดูลเรียก tick
+    IntercoReconcileCron,
   ],
   exports: [
     IntercoPendingService,

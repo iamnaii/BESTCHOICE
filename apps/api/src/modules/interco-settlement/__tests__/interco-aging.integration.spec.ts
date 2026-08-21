@@ -283,6 +283,65 @@ async function seedShopCollect(id: string, amount: string) {
   });
 }
 
+/**
+ * mirror ตอนยกเลิก swap **ยุค legacy** — ต้นฉบับ (A.3 ก่อน Phase 1) ไม่มี
+ * explicit stamp ⇒ `ExchangeCancelReversalTemplate` ไม่มีอะไรให้ copy และ
+ * flow ของ mirror เปลี่ยนเป็น 'exchange-cancel' ⇒ บรรทัดนี้ **ไม่เข้าเลนส์
+ * typed ใดเลย** (ไม่ใช่ SWAP/RECALL/SHOP_COLLECT) — carry ข ของ Phase 4.
+ */
+async function seedUnstampedCancelMirror(id: string, amount: string) {
+  await journalAuto.createAndPost({
+    description: 'A.3 legacy mirror synthetic (no stamp — carry ข)',
+    companyId: financeId,
+    metadata: {
+      tag: 'REVERSAL',
+      flow: 'exchange-cancel',
+      idempotencyKey: `agtlm3:${id}`,
+      contractId: id,
+    },
+    lines: [
+      { accountCode: '21-1106', dr: dec(amount), cr: zero },
+      { accountCode: '11-2107', dr: zero, cr: dec(amount) },
+    ],
+  });
+}
+
+/** 1A synthetic — เจ้าหนี้หน้าร้าน Cr 21-1101 (+ 21-1102 ถ้ามีค่าคอม) */
+async function seedFinancePayable(id: string, financed: string, commission: string) {
+  const total = dec(financed).plus(dec(commission));
+  const lines = [
+    { accountCode: '11-2101', dr: total, cr: zero },
+    { accountCode: '21-1101', dr: zero, cr: dec(financed) },
+  ];
+  if (dec(commission).gt(0)) {
+    lines.push({ accountCode: '21-1102', dr: zero, cr: dec(commission) });
+  }
+  await journalAuto.createAndPost({
+    description: '1A synthetic (aging pairing)',
+    companyId: financeId,
+    metadata: { flow: 'agingtest-1a', idempotencyKey: `agt1a:${id}`, contractId: id },
+    lines,
+  });
+}
+
+/** JE B ฝั่ง SHOP synthetic — ลูกหนี้ FINANCE Dr S11-3001 (+ S11-3002 ถ้ามีค่าคอม) */
+async function seedShopReceivable(id: string, financed: string, commission: string) {
+  const total = dec(financed).plus(dec(commission));
+  const lines = [
+    { accountCode: 'S11-3001', dr: dec(financed), cr: zero },
+    { accountCode: 'S41-1101', dr: zero, cr: total },
+  ];
+  if (dec(commission).gt(0)) {
+    lines.push({ accountCode: 'S11-3002', dr: dec(commission), cr: zero });
+  }
+  await journalAuto.createAndPost({
+    description: 'JE B synthetic (aging pairing)',
+    companyId: shopId,
+    metadata: { flow: 'agingtest-shop-transfer', idempotencyKey: `agtjb:${id}`, contractId: id },
+    lines,
+  });
+}
+
 /** Minimal POSTED batch row for deduction items — no JE involved (item gate only). */
 async function seedPostedBatch(seq: number) {
   const batch = await prisma.interCoSettlementBatch.create({
@@ -315,6 +374,9 @@ let agedId: string; // อายุ 45 วัน
 let mismatchId: string; // สองสมุดไม่ตรง
 let legacyUnsettledId: string; // legacy swap ยังไม่ล้าง (flow-only, ไม่มี S21-3001)
 let legacySettledId: string; // legacy swap ที่ล้างแล้วผ่าน settleShopCollect (backdate 45 วัน)
+let pairOkId: string; // (i) เจ้าหนี้/ลูกหนี้รอบจ่ายตรงกันสองสมุด
+let pairMismatchId: string; // (j) สมุด SHOP ขาดค่าคอม 1,000
+let pairLegacyNoShopId: string; // (k) FINANCE อย่างเดียว (activate ก่อน 2026-06-23)
 
 describe('IntercoAgingService — รายงานอายุลูกหนี้ 11-2107/S21-3001 (real DB)', () => {
   beforeAll(async () => {
@@ -422,6 +484,20 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     legacySettledId = await seedBaseContract(8);
     await seedLegacyA3(legacySettledId, '8000', new Date(Date.now() - 45 * DAY_MS));
     await seedShopCollectSettle(legacySettledId, '8000');
+
+    // (i) คู่เจ้าหนี้/ลูกหนี้รอบจ่ายตรงกัน: 10,000 + 1,000 ทั้งสองสมุด
+    pairOkId = await seedBaseContract(9);
+    await seedFinancePayable(pairOkId, '10000', '1000');
+    await seedShopReceivable(pairOkId, '10000', '1000');
+
+    // (j) สมุด SHOP ขาดค่าคอม 1,000 — ไม่สมมาตร (มือมาแก้ข้างเดียว)
+    pairMismatchId = await seedBaseContract(10);
+    await seedFinancePayable(pairMismatchId, '10000', '1000');
+    await seedShopReceivable(pairMismatchId, '10000', '0');
+
+    // (k) legacyNoShop: FINANCE อย่างเดียว (สัญญาก่อน 2026-06-23) = สภาพปกติ
+    pairLegacyNoShopId = await seedBaseContract(11);
+    await seedFinancePayable(pairLegacyNoShopId, '19190', '0');
   }, 120_000);
 
   afterAll(async () => {
@@ -652,5 +728,106 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     const settledRow = res.rows.find((r) => r.contractId === legacySettledId)!;
     expect(unsettledRow.intercoNet.plus(unsettledRow.shopCollect).toFixed(2)).toBe('8000.00');
     expect(settledRow.intercoNet.plus(settledRow.shopCollect).toFixed(2)).toBe('0.00');
+  });
+
+  // --- Phase 4 Task 4 — วัตถุดิบของ reconcile cron รายเดือน ------------------
+
+  it('shopMirrorGross = ยอดดิบ S21-3001 ก่อนหัก deduction (ตัวชี้ขาด "สมุดเดียว")', async () => {
+    const res = await agingService.getShopReceivableAging();
+
+    // C-2 ที่ถูกหักไปแล้ว 8,000: net = 3,000 แต่ gross ยังเป็น 11,000 —
+    // ถ้า reconcile ใช้ net จะเข้าใจผิดว่า "ไม่มีขาคู่" ทั้งที่มีครบแล้วหัก
+    const c2 = res.rows.find((r) => r.contractId === c2Id)!;
+    expect(c2.shopMirrorGross.toFixed(2)).toBe('11000.00');
+    expect(c2.shopMirrorNet.toFixed(2)).toBe('3000.00');
+
+    // swap ยุค legacy: ไม่มีขาคู่จริง ๆ → gross = 0
+    const legacy = res.rows.find((r) => r.contractId === legacyUnsettledId)!;
+    expect(legacy.shopMirrorGross.toFixed(2)).toBe('0.00');
+  });
+
+  it('getPhase2SwapContractIds: จับเฉพาะ A.4 ที่ stamp newContractId (ยุค Phase 2+)', async () => {
+    const ids = await agingService.getPhase2SwapContractIds();
+
+    // สัญญาที่มี A.4 (seedA4 → flow shop-exchange-return + newContractId)
+    expect(ids.has(swapId)).toBe(true);
+    expect(ids.has(mismatchId)).toBe(true);
+    // legacy A.3 ล้วน — ไม่มี A.4 ยุคใหม่ ⇒ ต้องไม่อยู่ในเซต (spec §11.4)
+    expect(ids.has(legacyUnsettledId)).toBe(false);
+    expect(ids.has(legacySettledId)).toBe(false);
+    // สัญญาที่ไม่ใช่ swap เลย
+    expect(ids.has(shopCollectId)).toBe(false);
+  });
+
+  it('getPayablePairing: สองสมุดตรง / ขาดค่าคอมข้างเดียว = mismatch / legacyNoShop = ข้าม', async () => {
+    const pairs = await agingService.getPayablePairing();
+
+    const ok = pairs.find((p) => p.contractId === pairOkId)!;
+    expect(ok).toBeDefined();
+    expect(ok.financedGl.toFixed(2)).toBe('10000.00');
+    expect(ok.commissionGl.toFixed(2)).toBe('1000.00');
+    expect(ok.shopFinancedGl.toFixed(2)).toBe('10000.00');
+    expect(ok.shopCommissionGl.toFixed(2)).toBe('1000.00');
+    expect(ok.legacyNoShop).toBe(false);
+    expect(ok.diff.toFixed(2)).toBe('0.00');
+    expect(ok.mismatch).toBe(false);
+
+    const bad = pairs.find((p) => p.contractId === pairMismatchId)!;
+    expect(bad).toBeDefined();
+    expect(bad.diff.toFixed(2)).toBe('1000.00');
+    expect(bad.mismatch).toBe(true);
+    expect(bad.contractNumber.startsWith('AGINGTEST-')).toBe(true);
+
+    const legacyNoShop = pairs.find((p) => p.contractId === pairLegacyNoShopId)!;
+    expect(legacyNoShop).toBeDefined();
+    expect(legacyNoShop.legacyNoShop).toBe(true);
+    // ต่างกันเต็มยอดตามคณิตศาสตร์ แต่ไม่ใช่ anomaly → mismatch = false
+    expect(legacyNoShop.diff.toFixed(2)).toBe('19190.00');
+    expect(legacyNoShop.mismatch).toBe(false);
+
+    // ไม่มี HAVING/settled gate: สัญญาที่ไม่มีเจ้าหนี้เลยก็ไม่โผล่ (ทุกยอด 0)
+    expect(pairs.some((p) => p.contractId === shopCollectId)).toBe(false);
+  });
+
+  it('getTypedAccountDrift: สมการ drift = ยอดบัญชี − (เลนส์ − deduction) และ mismatch ตามนิยาม', async () => {
+    const drifts = await agingService.getTypedAccountDrift();
+
+    expect(drifts.map((d) => d.accountCode)).toEqual(['11-2107', 'S21-3001']);
+    for (const d of drifts) {
+      expect(d.expected.toFixed(2)).toBe(d.lensTotal.minus(d.settledDeduction).toFixed(2));
+      expect(d.drift.toFixed(2)).toBe(d.accountTotal.minus(d.expected).toFixed(2));
+      expect(d.mismatch).toBe(d.drift.abs().gt('0.01'));
+    }
+  });
+
+  // ต้องเป็นเทสต์ท้ายสุดของไฟล์ — seed ข้างในเทสต์ (ต้องวัด before/after ระดับ
+  // บัญชี ซึ่ง beforeAll ทำไม่ได้) และทิ้ง drift ค้างไว้ตลอดที่เหลือของ run
+  it('carry ข: mirror ของ swap ยุค legacy ที่ไม่มี stamp → เลนส์เห็นค้าง แต่บัญชีจริง 0 (จับได้ที่ drift เท่านั้น)', async () => {
+    const before = (await agingService.getTypedAccountDrift()).find(
+      (d) => d.accountCode === '11-2107',
+    )!;
+
+    const id = await seedBaseContract(12);
+    await seedLegacyA3(id, '8000');
+    await seedUnstampedCancelMirror(id, '8000');
+
+    const after = (await agingService.getTypedAccountDrift()).find(
+      (d) => d.accountCode === '11-2107',
+    )!;
+
+    // ยอดบัญชีจริงไม่ขยับ (ตั้ง 8,000 แล้วกลับรายการ 8,000)
+    expect(after.accountTotal.minus(before.accountTotal).toFixed(2)).toBe('0.00');
+    // แต่เลนส์ typed เห็น +8,000 (ขาตั้งเข้าเลนส์ผ่าน flow, ขากลับรายการไม่เข้าเลย)
+    expect(after.lensTotal.minus(before.lensTotal).toFixed(2)).toBe('8000.00');
+    expect(after.drift.minus(before.drift).toFixed(2)).toBe('-8000.00');
+    expect(after.mismatch).toBe(true);
+
+    // และแถวนี้เป็น legacyOneBook → alert รายวัน/BOOK_MISMATCH ข้ามโดยตั้งใจ
+    // (ถ้าไม่มี drift ระดับบัญชี ยอดผี 8,000 จะไม่มีใครเห็นเลย)
+    const row = (await agingService.getShopReceivableAging()).rows.find(
+      (r) => r.contractId === id,
+    )!;
+    expect(row.legacyOneBook).toBe(true);
+    expect(row.intercoNet.toFixed(2)).toBe('8000.00');
   });
 });

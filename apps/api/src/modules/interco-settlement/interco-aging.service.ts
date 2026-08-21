@@ -33,6 +33,14 @@ export interface ShopReceivableAgingRow {
   intercoNet: Prisma.Decimal;
   /** 11-2107 typed SHOP_COLLECT (Dr−Cr) — เงินลูกค้าที่หน้าร้านรับแทน แยกคอลัมน์ ไม่ปนกลุ่ม interco */
   shopCollect: Prisma.Decimal;
+  /**
+   * S21-3001 (Cr−Dr, conditional key) **ก่อนหัก deduction** — ยอดดิบของสมุด
+   * SHOP. ใช้ตัดสิน "สมุดเดียว" (S21-3001 = 0) ตรงๆ โดยไม่ให้ deduction ของ
+   * รอบจ่ายมาบังตัวเลข: `shopMirrorNet` ของสัญญาที่ถูกหักครบพอดีก็เป็น 0
+   * เหมือนกัน แต่นั่นคือ "หักแล้ว" ไม่ใช่ "ไม่เคยมีขาคู่" (reconcile cron
+   * Task 4 — SWAP_CREDIT_ONE_BOOK).
+   */
+  shopMirrorGross: Prisma.Decimal;
   /** S21-3001 (Cr−Dr, conditional key) − settledDeduction — กระจกฝั่ง SHOP ของ intercoNet */
   shopMirrorNet: Prisma.Decimal;
   /** MIN(posted_at) ของ JE ที่มีขา Dr บน 11-2107 typed (กลุ่ม interco) */
@@ -79,6 +87,71 @@ export interface ShopReceivableAgingResult {
   };
 }
 
+/**
+ * คู่เจ้าหนี้/ลูกหนี้รอบจ่ายต่อสัญญา (Phase 4 Task 4 — reconcile cron):
+ * FINANCE 21-1101+21-1102 (Cr−Dr) ต้องเท่ากับ SHOP S11-3001+S11-3002 (Dr−Cr)
+ * เสมอสำหรับสัญญายุคที่มีสมุด SHOP — รอบจ่ายล้างสองขาพร้อมกันด้วยยอดเดียวกัน
+ * และขาล้างของ batch **ไม่ stamp contractId** ทั้งคู่ ⇒ เลนส์ทั้งสองฝั่งค้าง
+ * ที่ยอด gross เหมือนกันตลอดอายุสัญญา (ต่างกัน = มีมือมาแก้ข้างเดียว).
+ */
+export interface PayablePairRow {
+  contractId: string;
+  contractNumber: string;
+  customerName: string;
+  /** 21-1101 (Cr−Dr) — เจ้าหนี้ยอดจัด */
+  financedGl: Prisma.Decimal;
+  /** 21-1102 (Cr−Dr) — เจ้าหนี้ค่าคอม */
+  commissionGl: Prisma.Decimal;
+  /** S11-3001 (Dr−Cr) — ลูกหนี้ FINANCE ยอดจัด ฝั่ง SHOP */
+  shopFinancedGl: Prisma.Decimal;
+  /** S11-3002 (Dr−Cr) — ลูกหนี้ FINANCE ค่าคอม ฝั่ง SHOP */
+  shopCommissionGl: Prisma.Decimal;
+  /** สมุด SHOP ว่างทั้งคู่ = สัญญา activate ก่อน 2026-06-23 (นิยามเดียวกับ pending lens) */
+  legacyNoShop: boolean;
+  /** (financedGl + commissionGl) − (shopFinancedGl + shopCommissionGl) */
+  diff: Prisma.Decimal;
+  /** true = ไม่ใช่ legacy และสองสมุดต่างกันเกิน 0.01 */
+  mismatch: boolean;
+}
+
+/**
+ * กระทบยอด **ระดับบัญชี** ของ 11-2107 / S21-3001 (Phase 4 Task 4).
+ *
+ * สถาปัตยกรรม gross-lens: ขาล้างของรอบจ่าย (`Cr 11-2107` / `Dr S21-3001`)
+ * **ไม่ stamp type/contractId** โดยตั้งใจ ⇒ เลนส์ต่อสัญญาเห็นแต่ขาตั้งหนี้.
+ * ดังนั้นสมการที่ต้องเป็นจริงเสมอคือ
+ *
+ *   ยอดบัญชีจริง = Σ บรรทัดที่เลนส์ classify ได้ − Σ deduction ของ batch POSTED
+ *
+ * ส่วนต่าง (`drift`) = บรรทัดที่ **ไม่มีเลนส์ไหนมองเห็น** — เช่น mirror ตอน
+ * ยกเลิก swap ยุค legacy ที่ต้นฉบับไม่มี stamp (mirror จึงไม่ได้ copy อะไรเลย
+ * และ flow เปลี่ยนเป็น 'exchange-cancel') หรือ hand-JV. เคสนั้นทำให้เลนส์
+ * รายงาน "ค้าง" ทั้งที่บัญชีจริงเป็นศูนย์ — จับได้ที่นี่ที่เดียว.
+ */
+export interface TypedAccountDriftRow {
+  accountCode: string;
+  label: string;
+  /** ยอดบัญชีจริงทั้งบัญชี (11-2107 = Dr−Cr, S21-3001 = Cr−Dr) */
+  accountTotal: Prisma.Decimal;
+  /** Σ บรรทัดที่เลนส์ typed classify ได้ (มี key สัญญา) */
+  lensTotal: Prisma.Decimal;
+  /** Σ (swapCreditAmount + recallAmount) ของ item ทุกใบใน batch POSTED */
+  settledDeduction: Prisma.Decimal;
+  /** lensTotal − settledDeduction */
+  expected: Prisma.Decimal;
+  /** accountTotal − expected */
+  drift: Prisma.Decimal;
+  /** |drift| > 0.01 */
+  mismatch: boolean;
+}
+
+/** ยอดที่ติดลบหนึ่งช่อง — ลูกหนี้ติดลบไม่ใช่สภาพปกติของยุคใดทั้งสิ้น */
+export interface NegativeTypedField {
+  field: string;
+  label: string;
+  value: Prisma.Decimal;
+}
+
 const EPS = new Prisma.Decimal('0.01');
 const DAY_MS = 86_400_000;
 
@@ -123,6 +196,75 @@ export function overdueArms(row: OverdueCheckable, thresholdDays: number): ShopR
 /** true = แถวนี้มีหนี้ค้างเกินเกณฑ์อย่างน้อยหนึ่งแขน (ดู jsdoc ของ `overdueArms`) */
 export function isShopReceivableOverdue(row: OverdueCheckable, thresholdDays: number): boolean {
   return overdueArms(row, thresholdDays).length > 0;
+}
+
+/** ฟิลด์ขั้นต่ำของ predicate ยอดติดลบ */
+export type NegativeCheckable = Pick<
+  ShopReceivableAgingRow,
+  'intercoNet' | 'shopCollect' | 'shopMirrorNet' | 'legacyOneBook'
+>;
+
+/**
+ * ช่องที่ยอดติดลบบนแถวหนึ่ง — **แหล่งเดียว** ของนิยาม "over-settle"
+ * (reconcile cron Task 4 เรียกตัวนี้ ห้ามเขียนสูตรซ้ำในไฟล์ cron).
+ *
+ * แถว `legacyOneBook` ใช้ **ยอดรวมระดับสัญญา** (`intercoNet + shopCollect`)
+ * ไม่ใช่ทีละช่อง: swap ยุคก่อน Phase 1 ตั้งหนี้ในคอลัมน์ SWAP_CREDIT แต่ล้าง
+ * ผ่านใบ shop-collect ซึ่ง stamp `SHOP_COLLECT` ⇒ ทุกแถว legacy ที่ล้างแล้ว
+ * มี `shopCollect` ติดลบเป็นปกติ (spec §11.4) — เช็คทีละช่องคือ alert เท็จ
+ * ถาวร. ยอดรวมของแถว legacy คือยอด 11-2107 จริงระดับสัญญา ติดลบเมื่อไร =
+ * ล้างเกินจริง (และนั่นคือตัวที่ไปหักล้างหนี้ค้างจริงในผลรวมรายวันของ
+ * `totals.legacyOneBookNet` จนเงียบ — carry ก ของ Task 3).
+ *
+ * แถวปกติเช็คทีละช่อง: `intercoNet` ติดลบ = หักในรอบจ่าย/รับเงินสดคืนเกิน,
+ * `shopMirrorNet` ติดลบ = สมุด SHOP ถูกล้างเกิน, `shopCollect` ติดลบ =
+ * เงินหน้าร้านรับแทนถูกรับคืนเกินยอดตั้ง (หรือใบ settle ไปล้างเครดิตคนละ
+ * ประเภทผ่านประตู shop-collect — `ShopCollectSettlementTemplate` วัดยอด
+ * ค้างจาก 11-2107 **ทั้งสัญญา** ไม่แยกประเภท จึงเกิดได้จริง).
+ */
+export function negativeTypedFields(row: NegativeCheckable): NegativeTypedField[] {
+  const neg = EPS.negated();
+  if (row.legacyOneBook) {
+    const combined = row.intercoNet.plus(row.shopCollect);
+    return combined.lt(neg)
+      ? [
+          {
+            field: 'legacyCombinedNet',
+            label: 'ยอด 11-2107 สุทธิของสัญญา (swap ยุคก่อน Phase 1)',
+            value: combined,
+          },
+        ]
+      : [];
+  }
+  const out: NegativeTypedField[] = [];
+  if (row.intercoNet.lt(neg)) {
+    out.push({ field: 'intercoNet', label: 'กลุ่มระหว่างกิจการ (11-2107)', value: row.intercoNet });
+  }
+  if (row.shopMirrorNet.lt(neg)) {
+    out.push({ field: 'shopMirrorNet', label: 'กระจกฝั่ง SHOP (S21-3001)', value: row.shopMirrorNet });
+  }
+  if (row.shopCollect.lt(neg)) {
+    out.push({ field: 'shopCollect', label: 'หน้าร้านรับเงินแทน (11-2107)', value: row.shopCollect });
+  }
+  return out;
+}
+
+/**
+ * true = เครดิตเปลี่ยนเครื่องค้างอยู่ **สมุดเดียว** ทั้งที่เป็นยุคที่ต้องมีสองสมุด.
+ *
+ * `isPhase2Era` มาจาก `getPhase2SwapContractIds()` (มี JE `shop-exchange-return`
+ * ที่ stamp `newContractId`) — swap ยุคก่อน Phase 1 (A.4 ลง `Cr S50-1102`
+ * ไม่มี stamp) เป็น **สภาพปกติ** ตาม spec §11.4 จึงต้องไม่เข้าเงื่อนไขนี้เลย
+ * (pending lens ก็โมเดลมันเป็น `swapCreditEligible = false` ไม่ใช่ error).
+ *
+ * ใช้ `shopMirrorGross` (ก่อนหัก deduction) — สัญญาที่ถูกหักครบพอดีมี
+ * `shopMirrorNet = 0` เหมือนกันแต่มีขาคู่ครบ ไม่ใช่ anomaly.
+ */
+export function isSwapCreditOneBook(
+  row: Pick<ShopReceivableAgingRow, 'swapCreditGross' | 'shopMirrorGross'>,
+  isPhase2Era: boolean,
+): boolean {
+  return isPhase2Era && row.swapCreditGross.gt(EPS) && row.shopMirrorGross.abs().lte(EPS);
 }
 
 // --- Typed conditions — VERBATIM twins ของ interco-typed-balance.ts ---------
@@ -325,6 +467,7 @@ export class IntercoAgingService {
         settledDeduction,
         intercoNet,
         shopCollect,
+        shopMirrorGross: shopGross,
         shopMirrorNet,
         intercoOldestPostedAt,
         intercoAgeDays: ageDays(intercoOldestPostedAt),
@@ -367,5 +510,192 @@ export class IntercoAgingService {
         ),
       },
     };
+  }
+
+  /**
+   * คู่เจ้าหนี้ FINANCE ↔ ลูกหนี้ SHOP ของรอบจ่าย ต่อสัญญา (Phase 4 Task 4).
+   *
+   * SQL เป็น twin ของสองเลนส์ใน `IntercoPendingService.getPendingContracts`
+   * (เงื่อนไข WHERE ชุดเดียวกันทุกตัวอักษร) ต่างกันจงใจสองข้อ:
+   *   1. **ไม่มี `HAVING SUM > 0`** — สัญญาที่ฝั่ง FINANCE ถูกล้างจนหมดแต่ฝั่ง
+   *      SHOP ยังค้าง (หรือกลับกัน) ต้องโผล่ ไม่งั้นความไม่สมมาตรที่อันตราย
+   *      ที่สุดคือสิ่งเดียวที่มองไม่เห็น
+   *   2. **ไม่มี settled gate** — การกระทบยอดไม่เกี่ยวกับว่าถูกจัดเข้ารอบจ่าย
+   *      แล้วหรือยัง (ขาล้างของ batch ไม่ stamp contractId ทั้งสองสมุด ⇒
+   *      เลนส์ทั้งคู่ค้างที่ gross เท่ากันตลอด)
+   *
+   * สัญญาที่หา row ไม่เจอ (ถูก soft-delete) **ไม่ถูกตัดทิ้ง** — ต่างจาก
+   * `getShopReceivableAging` (รายงานหนี้เพื่อไปตาม) เพราะที่นี่คือตาข่าย
+   * กระทบยอด: GL ที่ไม่มีสัญญารองรับคือสิ่งที่ต้องเห็น ไม่ใช่สิ่งที่ต้องซ่อน.
+   */
+  async getPayablePairing(): Promise<PayablePairRow[]> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        contract_id: string | null;
+        financed: unknown;
+        commission: unknown;
+        shop_financed: unknown;
+        shop_commission: unknown;
+      }>
+    >(Prisma.sql`
+      SELECT je.metadata->>'contractId' AS contract_id,
+             COALESCE(SUM(CASE WHEN jl.account_code = '21-1101' THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS financed,
+             COALESCE(SUM(CASE WHEN jl.account_code = '21-1102' THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS commission,
+             COALESCE(SUM(CASE WHEN jl.account_code = 'S11-3001' THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS shop_financed,
+             COALESCE(SUM(CASE WHEN jl.account_code = 'S11-3002' THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS shop_commission
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code IN ('21-1101', '21-1102', 'S11-3001', 'S11-3002')
+        AND jl.deleted_at IS NULL
+        AND je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND je.metadata->>'contractId' IS NOT NULL
+      GROUP BY 1
+    `);
+
+    const parsed = rows
+      .filter((r): r is typeof r & { contract_id: string } => !!r.contract_id)
+      .map((r) => ({
+        contractId: r.contract_id,
+        financedGl: new Prisma.Decimal(String(r.financed ?? 0)),
+        commissionGl: new Prisma.Decimal(String(r.commission ?? 0)),
+        shopFinancedGl: new Prisma.Decimal(String(r.shop_financed ?? 0)),
+        shopCommissionGl: new Prisma.Decimal(String(r.shop_commission ?? 0)),
+      }))
+      // ทุกยอดเป็นศูนย์ = ล้างครบทั้งสองสมุด ไม่มีอะไรให้กระทบยอด
+      .filter(
+        (r) =>
+          r.financedGl.abs().gt(EPS) ||
+          r.commissionGl.abs().gt(EPS) ||
+          r.shopFinancedGl.abs().gt(EPS) ||
+          r.shopCommissionGl.abs().gt(EPS),
+      );
+    if (parsed.length === 0) return [];
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { id: { in: parsed.map((r) => r.contractId) } },
+      select: { id: true, contractNumber: true, customer: { select: { name: true } } },
+    });
+    const contractById = new Map(contracts.map((c) => [c.id, c]));
+
+    return parsed.map((r) => {
+      const contract = contractById.get(r.contractId);
+      const legacyNoShop = r.shopFinancedGl.abs().lte(EPS) && r.shopCommissionGl.abs().lte(EPS);
+      const diff = r.financedGl
+        .plus(r.commissionGl)
+        .minus(r.shopFinancedGl)
+        .minus(r.shopCommissionGl);
+      return {
+        ...r,
+        contractNumber: contract?.contractNumber ?? '(ไม่พบสัญญา)',
+        customerName: contract?.customer.name ?? '',
+        legacyNoShop,
+        diff,
+        mismatch: !legacyNoShop && diff.abs().gt(EPS),
+      };
+    });
+  }
+
+  /**
+   * สัญญาใหม่ที่มี A.4 **ยุค Phase 2+** — JE `flow = 'shop-exchange-return'`
+   * ที่ stamp `metadata.newContractId` (stamp นี้เกิดพร้อมบัญชี S21-3001 ใน
+   * Phase 2 Task 1) ⇒ สัญญาในเซตนี้ **ต้อง** มีขาคู่ S21-3001 เสมอ.
+   *
+   * swap ยุคก่อน Phase 1 (A.4 ลง `Cr S50-1102` ไม่มี stamp) จะไม่อยู่ในเซตนี้
+   * โดยโครงสร้าง — เกณฑ์แยก legacy ของ reconcile cron (spec §11.4).
+   */
+  async getPhase2SwapContractIds(): Promise<Set<string>> {
+    const rows = await this.prisma.$queryRaw<Array<{ contract_id: string | null }>>(Prisma.sql`
+      SELECT DISTINCT je.metadata->>'newContractId' AS contract_id
+      FROM journal_entries je
+      WHERE je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND je.metadata->>'flow' = 'shop-exchange-return'
+        AND je.metadata->>'newContractId' IS NOT NULL
+    `);
+    return new Set(rows.map((r) => r.contract_id).filter((id): id is string => !!id));
+  }
+
+  /**
+   * กระทบยอดระดับบัญชี 11-2107 / S21-3001 (ดู jsdoc ของ `TypedAccountDriftRow`
+   * สำหรับสมการและเหตุผล). อ่านอย่างเดียว — ไม่มีการแตะ GL.
+   */
+  async getTypedAccountDrift(): Promise<TypedAccountDriftRow[]> {
+    // Σ deduction ของ item ทุกใบใน batch POSTED = ขาล้างที่ไม่ stamp ทั้งสองสมุด
+    // (ทุกแถวหักลง `Cr 11-2107` ฝั่ง FINANCE และ `Dr S21-3001` ฝั่ง SHOP ยอดเท่ากัน)
+    const agg = await this.prisma.interCoSettlementItem.aggregate({
+      where: { deletedAt: null, batch: { status: 'POSTED', deletedAt: null } },
+      _sum: { swapCreditAmount: true, recallAmount: true },
+    });
+    const settledDeduction = new Prisma.Decimal(agg._sum.swapCreditAmount ?? 0).plus(
+      agg._sum.recallAmount ?? 0,
+    );
+
+    const scalar = async (sql: Prisma.Sql): Promise<Prisma.Decimal> => {
+      const rows = await this.prisma.$queryRaw<Array<{ balance: unknown }>>(sql);
+      return new Prisma.Decimal(String(rows[0]?.balance ?? 0));
+    };
+
+    // 11-2107 (debit-normal): ยอดบัญชีทั้งหมด vs บรรทัดที่เลนส์ classify ได้
+    // (WHERE ชุดเดียวกับ Query A ของ getShopReceivableAging ทุกตัวอักษร)
+    const financeAccountTotal = await scalar(Prisma.sql`
+      SELECT COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS balance
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = '11-2107'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+    `);
+    const financeLensTotal = await scalar(Prisma.sql`
+      SELECT COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS balance
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = '11-2107'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+        AND je.metadata->>'contractId' IS NOT NULL
+        AND (${SWAP_COND} OR ${RECALL_COND} OR ${SHOP_COLLECT_COND})
+    `);
+
+    // S21-3001 (credit-normal): WHERE ชุดเดียวกับ Query B
+    const shopAccountTotal = await scalar(Prisma.sql`
+      SELECT COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS balance
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = 'S21-3001'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+    `);
+    const shopLensTotal = await scalar(Prisma.sql`
+      SELECT COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS balance
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = 'S21-3001'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+        AND je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL')
+        AND (${SHOP_KEY}) IS NOT NULL
+    `);
+
+    const build = (
+      accountCode: string,
+      label: string,
+      accountTotal: Prisma.Decimal,
+      lensTotal: Prisma.Decimal,
+    ): TypedAccountDriftRow => {
+      const expected = lensTotal.minus(settledDeduction);
+      const drift = accountTotal.minus(expected);
+      return {
+        accountCode,
+        label,
+        accountTotal,
+        lensTotal,
+        settledDeduction,
+        expected,
+        drift,
+        mismatch: drift.abs().gt(EPS),
+      };
+    };
+
+    return [
+      build('11-2107', 'ลูกหนี้-หน้าร้าน (FINANCE)', financeAccountTotal, financeLensTotal),
+      build('S21-3001', 'เจ้าหนี้ FINANCE-ค่าเครื่องรับคืน (SHOP)', shopAccountTotal, shopLensTotal),
+    ];
   }
 }

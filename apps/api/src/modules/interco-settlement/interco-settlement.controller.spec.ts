@@ -1,9 +1,11 @@
 import 'reflect-metadata';
+import { BadRequestException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { IntercoSettlementController } from './interco-settlement.controller';
 import { IntercoSettlementService } from './interco-settlement.service';
 import { IntercoPendingService } from './interco-pending.service';
+import { IntercoAgingService } from './interco-aging.service';
 
 /**
  * IntercoSettlementController — roles matrix (spec §6/§9 + plan Task 5 table)
@@ -19,6 +21,8 @@ describe('IntercoSettlementController', () => {
   let service: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pendingService: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let agingService: any;
   let controller: IntercoSettlementController;
 
   const methodRoles = (methodName: string): string[] | undefined => {
@@ -50,9 +54,17 @@ describe('IntercoSettlementController', () => {
       getPendingRecalls: jest.fn().mockResolvedValue([{ contractId: 'c-recall' }]),
       getReconcileTotals: jest.fn().mockResolvedValue({ pendingTotal: 0, drift: 0 }),
     };
+    agingService = {
+      getShopReceivableAging: jest.fn().mockResolvedValue({
+        rows: [],
+        asOf: new Date('2026-08-21T00:00:00Z'),
+        totals: { intercoNet: '0', shopCollect: '0', overdueCount: 0, legacyOneBookNet: '0' },
+      }),
+    };
     controller = new IntercoSettlementController(
       service as unknown as IntercoSettlementService,
       pendingService as unknown as IntercoPendingService,
+      agingService as unknown as IntercoAgingService,
     );
   });
 
@@ -70,6 +82,7 @@ describe('IntercoSettlementController', () => {
       ['reverse', ['OWNER', 'FINANCE_MANAGER']],
       ['uploadSlip', ['ACCOUNTANT', 'FINANCE_MANAGER']],
       ['settleRecallCash', ['OWNER', 'FINANCE_MANAGER']],
+      ['aging', ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']],
     ])('%s() exposes exactly the expected roles', (methodName, expectedRoles) => {
       const roles = methodRoles(methodName);
       expect(roles).toBeDefined();
@@ -78,7 +91,7 @@ describe('IntercoSettlementController', () => {
     });
 
     it('read endpoints (pending/list/getOne) do NOT allow SALES', () => {
-      for (const m of ['pending', 'list', 'getOne']) {
+      for (const m of ['pending', 'list', 'getOne', 'aging']) {
         expect(methodRoles(m)).not.toContain('SALES');
       }
     });
@@ -179,6 +192,40 @@ describe('IntercoSettlementController', () => {
       } as never;
       await controller.settleRecallCash('c-recall', dto, 'approver-1');
       expect(service.settleRecallCash).toHaveBeenCalledWith('c-recall', dto, 'approver-1');
+    });
+  });
+
+  describe('aging()', () => {
+    it('delegates with undefined params when no query given (service defaults: now / 30)', async () => {
+      await controller.aging(undefined, undefined);
+      expect(agingService.getShopReceivableAging).toHaveBeenCalledWith(undefined, undefined);
+    });
+
+    it('parses asOf to a Date and thresholdDays to a number', async () => {
+      await controller.aging('2026-08-21', '60');
+      expect(agingService.getShopReceivableAging).toHaveBeenCalledWith(new Date('2026-08-21'), 60);
+    });
+
+    it('rejects an invalid asOf with a Thai BadRequestException before touching the service', () => {
+      expect(() => controller.aging('ไม่ใช่วันที่', undefined)).toThrow(BadRequestException);
+      expect(() => controller.aging('2026-99-99', undefined)).toThrow(/asOf/);
+      expect(agingService.getShopReceivableAging).not.toHaveBeenCalled();
+    });
+
+    it.each(['0', '366', '1.5', 'abc', '-7'])(
+      'rejects thresholdDays=%s (ต้องเป็นจำนวนเต็ม 1-365)',
+      (bad) => {
+        expect(() => controller.aging(undefined, bad)).toThrow(BadRequestException);
+        expect(() => controller.aging(undefined, bad)).toThrow(/1-365/);
+        expect(agingService.getShopReceivableAging).not.toHaveBeenCalled();
+      },
+    );
+
+    it('accepts boundary thresholdDays 1 and 365', async () => {
+      await controller.aging(undefined, '1');
+      expect(agingService.getShopReceivableAging).toHaveBeenLastCalledWith(undefined, 1);
+      await controller.aging(undefined, '365');
+      expect(agingService.getShopReceivableAging).toHaveBeenLastCalledWith(undefined, 365);
     });
   });
 

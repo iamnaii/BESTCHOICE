@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   FileTypeValidator,
@@ -24,6 +25,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { IntercoSettlementService } from './interco-settlement.service';
 import { IntercoPendingService } from './interco-pending.service';
+import { IntercoAgingService } from './interco-aging.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { ApproveBatchDto } from './dto/approve-batch.dto';
 import { ReverseBatchDto } from './dto/reverse-batch.dto';
@@ -51,6 +53,7 @@ export class IntercoSettlementController {
   constructor(
     private readonly service: IntercoSettlementService,
     private readonly pendingService: IntercoPendingService,
+    private readonly agingService: IntercoAgingService,
   ) {}
 
   /** คิวรอจ่าย + คิวหักเรียกคืน (C-2) + reconcile totals ระดับบัญชี (spec §4/§8 แท็บ "รอจ่าย"). */
@@ -63,6 +66,33 @@ export class IntercoSettlementController {
       this.pendingService.getReconcileTotals(),
     ]);
     return { pending, recalls, reconcile };
+  }
+
+  /**
+   * รายงานอายุลูกหนี้-หน้าร้าน (11-2107 / S21-3001) แยกประเภท + อายุ ต่อสัญญา
+   * (Phase 4 — spec §6 ข้อ 1). `asOf` มีผลกับการคำนวณ "อายุ" เท่านั้น —
+   * ยอดคงเหลือเป็นยอดปัจจุบันเสมอ (ดู jsdoc ของ IntercoAgingService).
+   */
+  @Get('shop-receivable-aging')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  aging(@Query('asOf') asOf?: string, @Query('thresholdDays') thresholdDays?: string) {
+    let asOfDate: Date | undefined;
+    if (asOf !== undefined && asOf !== '') {
+      asOfDate = new Date(asOf);
+      if (Number.isNaN(asOfDate.getTime())) {
+        throw new BadRequestException(
+          'รูปแบบวันที่ (asOf) ไม่ถูกต้อง — ใช้รูปแบบ ISO เช่น 2026-08-21',
+        );
+      }
+    }
+    let threshold: number | undefined;
+    if (thresholdDays !== undefined && thresholdDays !== '') {
+      threshold = Number(thresholdDays);
+      if (!Number.isInteger(threshold) || threshold < 1 || threshold > 365) {
+        throw new BadRequestException('เกณฑ์วันค้าง (thresholdDays) ต้องเป็นจำนวนเต็ม 1-365');
+      }
+    }
+    return this.agingService.getShopReceivableAging(asOfDate, threshold);
   }
 
   @Get('batches')

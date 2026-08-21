@@ -286,7 +286,12 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 `NEGATIVE_TYPED` · (e) คิว recall กรอง net ฝั่ง FINANCE เท่านั้น → `BOOK_MISMATCH`.
 **ยังเปิด → Phase 5:** `COMMISSION_ONLY_GAP` (สัญญาที่ `storeCommission` ว่าง — 1A ตั้ง
 fallback 10% บน 21-1102 แต่ขา SHOP ตั้ง 0) — reconcile รายงานพร้อมป้ายกำกับแล้ว แต่ยังไม่แก้
-ต้นเหตุ เพราะเป็นความต่างจริงในบัญชี (opening-balance gap §11) ที่ต้องให้เจ้าของ/CPA ตัดสิน.
+ต้นเหตุ เพราะเป็นความต่างจริงในบัญชี (opening-balance gap §11) ที่ต้องให้เจ้าของ/CPA ตัดสิน ·
+**`approveCancellation` ยังเป็น READ COMMITTED** (Phase 4 ยกเฉพาะ `approveBatch`; เส้นทาง
+ยกเลิกได้แค่ `P2002 → 409`) · **`swapCreditShopBalance`/Query B ฝั่ง S21-3001 เป็น stamp-only
+ไม่มี flow fallback** ทั้งที่ `FLOW_MAP` map `shop-exchange-return → SWAP_CREDIT` — แคบกว่า
+`classifyShopReceivable` โดยตั้งใจ รอเคสจริง/CPA. รายละเอียดทั้งหมดอยู่ใน accounting.md
+หัวข้อ "รอ Phase 4 (carry)" → บล็อก "ยังเปิดอยู่ → Phase 5".
 
 ## 7. Phase 5 — IMEI Guards
 

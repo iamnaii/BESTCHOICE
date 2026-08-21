@@ -1164,8 +1164,11 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   **ปิดแล้ว (Phase 4 Task 4)**: `interco-reconcile.cron` finding kind
   **`SWAP_CREDIT_ONE_BOOK`** จับสัญญาที่มี 11-2107 `SWAP_CREDIT` ค้างแต่ S21-3001 = 0
   ทุกเดือน (กัน legacy ออกด้วย `getPhase2SwapContractIds()` — swap ยุคก่อน Phase 1 เป็น
-  สภาพปกติตาม spec §11.4). เครดิตที่งอกหลัง approve ไม่ว่าจะทางไหนจึงมีวันถูกเห็นเสมอ
-  แม้ drift guard ตอน approve จะผ่านไปแล้ว.
+  สภาพปกติตาม spec §11.4). เครดิตที่งอกหลัง approve **บนสัญญา swap ยุค Phase 2+** จึงถูก
+  เห็นทุกเดือน แม้ drift guard ตอน approve จะผ่านไปแล้ว. **ขอบเขตของ detector:** มันต้องการ
+  `isPhase2Era` (มี JE `shop-exchange-return` ที่ stamp `newContractId`) ⇒ สัญญาที่ไม่เคยมี
+  A.4 ยุค Phase 2 **ไม่เข้า detector นี้** — เห็นได้ทาง Sentry รวมของ cron รายวัน
+  (`legacyOneBookNet`) + แท็บอายุลูกหนี้เท่านั้น.
 - ~~(d) **TOCTOU settle-cash vs approveBatch**~~ — **ปิดแล้ว (Phase 4 Task 5 ที่ต้นเหตุ +
   Task 4 เป็นตาข่าย)**: `approveBatch` เปลี่ยนเป็น **Serializable** แล้ว (SSI ต้องการให้
   **ทั้งคู่** เป็น Serializable จึงจะเห็นกัน — writer ใต้ READ COMMITTED ไม่ลงทะเบียน
@@ -1191,6 +1194,19 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   **ยังไม่แก้ที่ต้นเหตุ** — เป็นส่วนต่างจริงในบัญชี (opening-balance gap ตาม interco spec
   §11) ที่ต้องให้เจ้าของ/CPA ตัดสินว่าจะ (ก) ให้ SHOP ตั้งลูกหนี้ค่าคอม fallback ให้ตรง
   หรือ (ข) ให้ 1A เลิกตั้ง fallback. **ห้ามเดา JE ปิดช่องนี้เอง.**
+- **`approveCancellation` ยังเป็น READ COMMITTED** — Phase 4 ยก **`approveBatch`** ขึ้นเป็น
+  Serializable (คู่กับ `settleRecallCash` ที่เป็นมาตั้งแต่ Phase 3) แต่ **เส้นทางยกเลิกสัญญา
+  ไม่ได้ถูกยกตาม** — ได้แค่ขา `P2002 → 409` (ดูหัวข้อ Phase 4 ท้ายไฟล์). อย่าอ่านแล้วสรุปว่า
+  "ทั้งตระกูลปรับเป็น Serializable แล้ว". ยังไม่ยกเพราะยังไม่มีเคส TOCTOU ที่พิสูจน์ได้บน
+  เส้นทางนี้ (guard "สัญญาต้อง ACTIVE" อ่านใน tx + DB idempotency index รับอยู่) — ถ้าเจอเคส
+  จริงให้ยกทั้งเส้นทาง อย่าปะเฉพาะจุด.
+- **`swapCreditShopBalance` / Query B ฝั่ง S21-3001 เป็น stamp-only ไม่มี flow fallback** —
+  ทั้งที่ `FLOW_MAP` map `'shop-exchange-return' → 'SWAP_CREDIT'` ⇒ SQL ฝั่ง SHOP **แคบกว่า
+  `classifyShopReceivable` โดยตั้งใจ** (asymmetry กับฝั่ง 11-2107 ที่มี fallback). ปลอดภัย
+  ตราบใดที่ A.4 ยุค Phase 2+ stamp ประเภทเสมอ (ซึ่งเป็นจริงตั้งแต่ Phase 2 Task 1) — JE
+  `shop-exchange-return` ที่ **ไม่มี** stamp จะถูก util จัดเป็น SWAP_CREDIT แต่เลนส์ SQL
+  มองไม่เห็น. รอเคสจริง/CPA ก่อนตัดสินว่าจะเติม fallback ให้สมมาตรหรือประกาศว่า stamp
+  บังคับถาวร — **ห้ามเติมข้างเดียวโดยไม่ตรวจว่ามีแถวแบบนั้นจริงบน prod**.
 - **การจ่ายนำส่ง/opening balance ฝั่ง SHOP** (interco spec §11) — ยังรอ CPA เหมือนเดิม
   ไม่ได้อยู่ในขอบเขต Phase 4.
 
@@ -2147,7 +2163,11 @@ UI: `apps/web/src/pages/interco/AgingTab.tsx`
 กระทบยอด) บนบัญชี 11-2107 / S21-3001 ที่ Phase 1-3 สร้างขึ้น พร้อมปิด carry (c)/(d)/(e)
 ของ Phase 2.
 
-### ศัพท์ต่อสัญญา (ชื่อเดียวกันทุกชั้น: service → endpoint → UI → cron ทั้งสองตัว)
+### ศัพท์ต่อสัญญา (**ชื่อตรงกัน**ทุกชั้น: service → endpoint → UI → cron ทั้งสองตัว)
+
+> "ชื่อตรงกัน" ไม่ได้แปลว่า "ฟิลด์ครบทุกชั้น" — FE type (`apps/web/src/pages/interco/types.ts`)
+> ตั้งใจรับเฉพาะฟิลด์ที่หน้าจอใช้ เช่น **`shopMirrorGross` ไม่มีใน FE** (ใช้ตัดสิน "สมุดเดียว"
+> ฝั่ง reconcile cron เท่านั้น). ฟิลด์ไหนมีทั้งสองฝั่ง **ต้องชื่อเดียวกันและหมายถึงสิ่งเดียวกัน**.
 
 | ฟิลด์ | นิยาม |
 |---|---|
@@ -2202,7 +2222,10 @@ spec เดิม — เพิ่มระหว่าง implement (ถ้า�
   (บั๊กคลาสเดียวกับ carry ก ของ Phase 3).
 - `getPayablePairing()` (เจ้าหนี้ 21-1101/21-1102 คู่กับลูกหนี้ SHOP S11-3001/S11-3002
   ต่อสัญญา — **ไม่มี settled gate** เพราะขาล้างของ batch ไม่ stamp `contractId` ทั้งสองฝั่ง
-  ⇒ เลนส์ทั้งคู่ค้างที่ gross เท่ากันตลอดอายุสัญญา; ต่างกัน = มีมือมาแก้ข้างเดียว) ·
+  ⇒ เลนส์ทั้งคู่ค้างที่ gross เท่ากันตลอดอายุสัญญา; ต่างกัน = มีมือมาแก้ข้างเดียว).
+  **`mismatch` เทียบ *ต่อขา* (`financedDiff` หรือ `commissionDiff` เกิน 0.01) ไม่ใช่ผลรวม** —
+  ห้าม "ทำให้ง่ายขึ้น" เป็น `diff` ก้อนเดียว: misclassification ที่ย้ายเงินระหว่าง 21-1101 กับ
+  21-1102 (หรือ S11-3001 กับ S11-3002) ทำให้ผลรวมเป็น 0 พอดีแล้วจุดบอดจะกลับมา ·
   `getPhase2SwapContractIds()` · `getTypedAccountDrift()` · `getOpenBatchPayableGross()` —
   ใช้โดย reconcile cron (ดูล่าง).
 
@@ -2219,10 +2242,14 @@ spec เดิม — เพิ่มระหว่าง implement (ถ้า�
 "ค้าง swap ยุคเก่า" (ตรงสูตร `legacyOneBookNet` ฝั่ง server ทุกประการ), ส่วน `bookMismatch`
 ที่ไม่ใช่ legacy = badge destructive.
 
-> **หมายเหตุเกณฑ์วัน:** cron รายวันอ่านเกณฑ์จาก SystemConfig ส่วนแท็บ UI ส่ง 30 ตายตัว —
-> ถ้าผู้ดูแลแก้ config เป็นเลขอื่น **ป้าย "ค้างเกินเกณฑ์" บนจอจะยังใช้ 30** จนกว่าจะส่ง
-> query ให้ตรงกัน (ยอด/อายุยังตรงกันเสมอเพราะมาจาก engine เดียว). ตราบใดที่ยังไม่มีใครแก้
-> config เลข 30 ตรงกันทุกชั้น.
+> **หมายเหตุเกณฑ์วัน:** cron รายวันอ่านเกณฑ์จาก SystemConfig ส่วน FE **ไม่ส่ง query param
+> เลย** (`api.get('/interco-settlement/shop-receivable-aging')` ไม่มี `thresholdDays`) ⇒
+> `totals.overdueCount` ที่ได้คิดจาก **default 30 ของ service** และ FE ใช้ค่าคงที่
+> `AGING_DEFAULT_THRESHOLD_DAYS = 30` (`interco/types.ts`) **เฉพาะทำป้ายบนแถว** เท่านั้น.
+> ผลคือ ถ้าผู้ดูแลแก้ `shop_receivable_aging_alert_days` เป็นเลขอื่น **cron จะเตือนตามเลขใหม่
+> แต่ทั้งตัวเลขและป้ายบนแท็บยังเป็น 30** จนกว่าจะส่ง query param ให้ตรงกัน (ยอด/อายุรายแถว
+> ยังตรงกันเสมอเพราะมาจาก engine เดียว — ต่างเฉพาะ "นับว่าเกินเกณฑ์ไหม"). ตราบใดที่ยังไม่มี
+> ใครแก้ config เลข 30 ตรงกันทุกชั้น.
 
 ### Cron รายวัน — `shop-receivable-aging.cron.ts` (09:07 BKK)
 
@@ -2261,7 +2288,7 @@ title + ยังไม่ `DONE` ⇒ รันซ้ำ/รันมือใ�
 |---|---|---|
 | `BOOK_MISMATCH` | `intercoNet` ≠ `shopMirrorNet` ต่อสัญญา (**ปิด carry e**) | ข้ามแถว `legacyOneBook` (สองสมุดต่างกันโดยนิยาม) |
 | `SWAP_CREDIT_ONE_BOOK` | `swapCreditGross > 0` แต่ `shopMirrorGross = 0` (**ปิด carry c**) | นับ **เฉพาะ** สัญญาใน `getPhase2SwapContractIds()` (มี JE flow `shop-exchange-return` ที่ stamp `newContractId`) — swap ยุคก่อน Phase 1 ไม่เข้าเงื่อนไขโดยโครงสร้าง |
-| `PAYABLE_PAIR_MISMATCH` | 21-1101+21-1102 (Cr−Dr) ≠ S11-3001+S11-3002 (Dr−Cr) ต่อสัญญา | ข้ามสัญญา `legacyNoShop` (activate ก่อน 2026-06-23 — สมุด SHOP ยังไม่มีลูกหนี้) |
+| `PAYABLE_PAIR_MISMATCH` | `financedDiff ≠ 0` **หรือ** `commissionDiff ≠ 0` ต่อสัญญา (21-1101 vs S11-3001 และ 21-1102 vs S11-3002) — **เทียบต่อขา ห้ามเทียบผลรวม**: misclassification ที่ย้ายเงินระหว่างยอดจัดกับค่าคอมทำให้ผลรวมเป็น 0 พอดี ⇒ เทียบผลรวมจะเงียบทั้งที่สองสมุดผูกกันผิดขา | ข้ามสัญญา `legacyNoShop` (activate ก่อน 2026-06-23 — สมุด SHOP ยังไม่มีลูกหนี้) |
 | `NEGATIVE_TYPED` | ยอดติดลบ = ล้างเกิน (**ตาข่ายของ carry d**) | **ไม่ยกเว้น legacy** แต่วัดด้วย **ยอดรวมระดับสัญญา** (`intercoNet + shopCollect`) — แถว legacy มี `shopCollect` ติดลบเป็นปกติ (ล้างผ่านใบ shop-collect), เช็คทีละช่องคือ alert เท็จถาวร |
 | `ACCOUNT_DRIFT` | ระดับบัญชี: มีบรรทัดที่เลนส์ต่อสัญญามองไม่เห็น | — |
 
@@ -2300,8 +2327,9 @@ title + ยังไม่ `DONE` ⇒ รันซ้ำ/รันมือใ�
 - **ไม่แตะ GL แม้แต่บรรทัดเดียว** — ไม่ตั้ง JE ปรับปรุง ไม่กลับรายการ ไม่ปัดเศษให้ตรง.
   ความไม่ตรงทุกแบบที่นี่ต้องให้ **มนุษย์/ผู้สอบบัญชี** ตัดสินว่าจะแก้ด้วย JV แบบไหน; การเดา
   JE ปรับปรุงเองคือคลาสเดียวกับ opening-balance gap (interco spec §11) ที่ยังรอ CPA อยู่.
-  ข้อความปิดท้ายในทุกใบ Todo ระบุตรงๆ ว่า "ระบบไม่ตั้ง JE ปรับปรุงให้อัตโนมัติ — ต้องให้
-  ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้".
+  ข้อความปิดท้าย**ในใบ Todo ของ reconcile** ระบุตรงๆ ว่า "ระบบไม่ตั้ง JE ปรับปรุงให้
+  อัตโนมัติ — ต้องให้ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้" (Todo ของ cron รายวันเป็นใบ
+  "ตามหนี้" จบที่ "ข้อมูล ณ <วันที่>" ไม่มีประโยคนี้ — แต่ doctrine ครอบทั้งสองตัวเท่ากัน).
 - **ไม่คำนวณยอด typed/net เองในไฟล์ cron** — ทุกตัวเลขมาจาก `IntercoAgingService` +
   `IntercoPendingService.getReconcileTotals()`; การตัดสิน "ผิดปกติหรือไม่" อยู่ใน predicate
   ที่ service export หรือ flag ที่ service คำนวณมาแล้ว. cron ทำแค่ประกอบข้อความ ⇒ ยอดใน

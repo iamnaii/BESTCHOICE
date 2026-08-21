@@ -91,7 +91,12 @@ const settlementService = new IntercoSettlementService(
 // transactions — the second fails P2028 ("unable to start a transaction in
 // the given time") at Prisma's ITX scheduler instead of ever racing at the
 // DB. Two independent connections make the SSI race real.
-const prisma2 = new PrismaClient();
+// `transactionOptions.timeout` 20s (ค่า default ของ Prisma = 5s): race test ของ
+// Task 5 เปิด tx ของ settle ค้างไว้ตลอด create→submit→approve — บน CI เย็นๆ 5s
+// เฉียดเกินไป. timeout จะ fail loud (P2028 = raw Prisma error ตกด่าน
+// "ผู้แพ้ต้องเป็น HttpException") ไม่ใช่ false green อยู่แล้ว แต่ margin นี้กัน
+// เทสแดงแบบไม่ใช่ regression จริง
+const prisma2 = new PrismaClient({ transactionOptions: { timeout: 20_000 } });
 const journalAuto2 = new JournalAutoService(prisma2 as never);
 const pendingService2 = new IntercoPendingService(prisma2 as never);
 const companyResolver2 = new CompanyResolverService(prisma2 as never);

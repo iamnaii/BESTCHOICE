@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -90,6 +91,8 @@ interface BuiltSnapshot {
  */
 @Injectable()
 export class IntercoSettlementService {
+  private readonly logger = new Logger(IntercoSettlementService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pendingService: IntercoPendingService,
@@ -1091,6 +1094,18 @@ export class IntercoSettlementService {
       // catch P2034 ของ `settleRecallCash` + P2002 ของขั้นตอนโพสต์ JE ด้านบน).
       // tx ทั้งก้อน roll back — รอบจ่ายไม่ถูก mark POSTED
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        this.logger.warn(
+          `[interco] write conflict (P2034) on batch ${id} — rejecting with 409, approver should retry`,
+        );
+        // `SentryExceptionFilter` จับเฉพาะ status >= 500 — 409 ใบนี้จึงมองไม่เห็น
+        // จากระบบ monitoring ถ้าไม่ยิงเอง. จำเป็นเป็นพิเศษสำหรับ Serializable ที่
+        // เพิ่งเปิดใช้: spike ของ P2034 = lock contention จริง (เช่นชนกับ cron ที่
+        // เขียน journal_lines) ที่ต้องรู้ก่อนจะกวนงานอนุมัติของผู้ใช้.
+        // pattern เดียวกับ `shop-collect-settlement.template.ts` catch P2034
+        Sentry.captureMessage('[interco] P2034 write-conflict translated to 409', {
+          level: 'warning',
+          extra: { batchId: id, userId },
+        });
         throw new ConflictException(
           'รอบจ่ายนี้ชนกับรายการอื่นที่กำลังบันทึกอยู่ (write conflict) — กรุณาตรวจสอบยอดแล้วลองอนุมัติอีกครั้ง',
         );

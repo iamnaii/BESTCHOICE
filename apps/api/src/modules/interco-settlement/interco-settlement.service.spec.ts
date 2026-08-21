@@ -726,6 +726,16 @@ describe('IntercoSettlementService', () => {
         /ชนกับรายการอื่นที่กำลังบันทึกอยู่/,
       );
       expect(tx.interCoSettlementBatch.update).not.toHaveBeenCalled();
+
+      // SentryExceptionFilter จับเฉพาะ status >= 500 — 409 ใบนี้ต้องถูกยิงเอง
+      // ไม่งั้น spike ของ lock contention จาก Serializable จะมองไม่เห็นเลย
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        '[interco] P2034 write-conflict translated to 409',
+        expect.objectContaining({
+          level: 'warning',
+          extra: expect.objectContaining({ batchId: 'batch-1', userId: 'approver-1' }),
+        }),
+      );
     });
   });
 });

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { IntercoAgingService } from './interco-aging.service';
 import { IntercoPendingService } from './interco-pending.service';
 import { IntercoBatchNumberService } from './interco-batch-number.service';
 import { IntercoSettlementService } from './interco-settlement.service';
@@ -17,7 +18,17 @@ import { StorageModule } from '../storage/storage.module';
 @Module({
   imports: [JournalModule, StorageModule],
   controllers: [IntercoSettlementController],
-  providers: [IntercoPendingService, IntercoBatchNumberService, IntercoSettlementService],
-  exports: [IntercoPendingService, IntercoBatchNumberService, IntercoSettlementService],
+  providers: [
+    IntercoPendingService,
+    IntercoBatchNumberService,
+    IntercoSettlementService,
+    IntercoAgingService,
+  ],
+  exports: [
+    IntercoPendingService,
+    IntercoBatchNumberService,
+    IntercoSettlementService,
+    IntercoAgingService,
+  ],
 })
 export class IntercoSettlementModule {}

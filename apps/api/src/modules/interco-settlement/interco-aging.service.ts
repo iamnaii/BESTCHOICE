@@ -435,6 +435,12 @@ export class IntercoAgingService {
    * เท่ากับยอดของรอบที่ค้างอยู่พอดี. นั่นคือ **สภาพปกติของกิจการที่มีรอบรออนุมัติ**
    * ไม่ใช่ "JE ที่ไม่ได้ stamp contractId" (รอบที่ POSTED ไปแล้วไม่มีปัญหานี้ —
    * ขา Dr ของ batch ลดยอดบัญชีจริงพร้อมกับที่ settled gate กันสัญญาออก).
+   *
+   * **แถว `RECALL` ไม่ถูกนับโดยตั้งใจ** (aggregate รวมทุก itemType ได้อย่างปลอดภัย
+   * เพราะแถว RECALL มี `financedGl`/`commissionGl` = 0 ตามนิยาม snapshot): แถวนั้น
+   * ไม่แตะ 21-1101/21-1102 เลย — มีแต่ขา 11-2107/S21-3001 — และ 21-1101+21-1102
+   * คือ **คู่บัญชีเดียว** ที่ drift ตัวนี้คำนวณจาก. ห้าม "แก้" ให้บวก `recallAmount`
+   * เข้ามา: จะกลายเป็นการบวกยอดของคนละบัญชีเข้าไปหักล้าง drift จนเพี้ยน.
    */
   async getOpenBatchPayableGross(): Promise<Prisma.Decimal> {
     const agg = await this.prisma.interCoSettlementItem.aggregate({
@@ -510,9 +516,13 @@ export class IntercoAgingService {
       financeByContract.set(row.contract_id, row as FinanceAgingRow & { contract_id: string });
     }
 
-    // Universe = สัญญาที่มี typed 11-2107 หรือ S21-3001 — สัญญาที่มีแต่
-    // deduction (ไม่มี gross ทั้งสองสมุด) net ติดลบเท่ากันสองสมุด → ไม่ผ่าน
-    // filter อยู่แล้ว จึงไม่ต้องรวม key จาก Query C.
+    // Universe = สัญญาที่มี typed gross ฝั่งใดฝั่งหนึ่ง (Query A/B) — **ไม่รวม key
+    // จาก Query C**. ผลที่ตามมาที่ต้องรู้: สัญญาที่ gross ถูกกลับรายการจนเหลือ 0
+    // ทั้งสองสมุดแต่ยังมี deduction ของ batch POSTED ค้าง จะ net ติดลบเท่ากัน
+    // สองสมุดและ **ไม่โผล่ทั้งในรายงานหลักและใน `getNegativeTypedRows`** —
+    // ตาข่ายของเคสนี้คือ drift ระดับบัญชี (`getTypedAccountDrift`) ซึ่งจับได้แต่
+    // **ไม่มีเลขสัญญา**. การขยาย universe ไปหา Query C เป็นงาน Phase 5 (ต้อง
+    // hydrate สัญญาเพิ่ม + นิยาม "หนี้" ของแถวที่ไม่มี gross ให้ชัดก่อน).
     const universeIds = [...new Set([...financeByContract.keys(), ...shopByContract.keys()])];
     if (universeIds.length === 0) return [];
 

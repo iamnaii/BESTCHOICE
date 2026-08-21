@@ -73,6 +73,13 @@ function formatAmount(value: Prisma.Decimal): string {
  * (แถวที่ล้างครบ net = 0 จึงเงียบเอง ไม่มีบรรทัด "0.00 บาท" รายวันให้คนชิน),
  * (3) reconcile cron รายเดือน (Task 4) เป็นตาข่ายสุดท้ายของความผิดปกติข้ามสมุด.
  *
+ * **Sentry รายแถว = alert ไม่ใช่ heartbeat (final review Phase 4):** `alarm()` ยิง
+ * เฉพาะตอน **สร้าง Todo ใบใหม่จริง** (หรือกรณีไม่มีผู้ใช้ SYSTEM ซึ่งไม่มีช่องทาง
+ * Todo เลย) — แถวที่ถูก dedup คือลูกหนี้ที่รอรอบจ่ายตามปกติ มี Todo ค้างอยู่แล้ว
+ * ตั้งแต่วันแรก การยิงทุกวันตลอดไปทำให้กราฟ Sentry กลายเป็นเส้นพื้นจนคนเลิกอ่าน
+ * (หลักเดียวกับ gate `legacyOneBookNet` ด้านบน). "ยังไม่หาย" มีช่องทางของตัวเอง:
+ * reconcile cron รายเดือน + แท็บอายุลูกหนี้.
+ *
  * doctrine R-1: root `PrismaService` เท่านั้น, ไม่อยู่บนเส้นทางเงิน, **ห้าม throw
  * ออกจาก tick** — outer try/catch + per-row try/catch (pattern `ap-due-alerts.cron.ts`).
  */
@@ -150,8 +157,9 @@ export class ShopReceivableAgingCron {
         return { enabled: true, flagged: 0, todosCreated: 0, skipped: 0 };
       }
 
-      // SYSTEM user ดึงครั้งเดียว — ไม่มี = สร้าง Todo ไม่ได้ แต่ Sentry ยังต้อง
-      // ยิงครบทุกแถว (pattern `alarmResidualParkOnCompletion`: alarm มาก่อน Todo)
+      // SYSTEM user ดึงครั้งเดียว — ไม่มี = สร้าง Todo ไม่ได้เลย จึงเป็น**ข้อยกเว้น
+      // เดียว**ที่ Sentry ยังยิงครบทุกแถว (ไม่มีช่องทางอื่นเหลือ); เคสปกติที่ Todo
+      // ใบเดิมยังค้าง (dedup) ไม่ยิงซ้ำ — ดูคอมเมนต์ในลูป
       const systemUser = await this.prisma.user.findFirst({
         where: { isSystemUser: true, deletedAt: null },
         select: { id: true },
@@ -168,9 +176,11 @@ export class ShopReceivableAgingCron {
       for (const row of overdue) {
         try {
           const views = this.buildArmViews(row, thresholdDays);
-          this.alarm(row, views, thresholdDays);
 
           if (!systemUser) {
+            // ไม่มีช่องทาง Todo เลย ⇒ Sentry คือช่องทางเดียวที่เหลือ — ต้องยิง
+            // (ต่างจากเคส dedup ด้านล่างที่ Todo ใบเดิมยังค้างให้คนเห็นอยู่)
+            this.alarm(row, views, thresholdDays);
             skipped++;
             continue;
           }
@@ -199,6 +209,12 @@ export class ShopReceivableAgingCron {
               createdById: systemUser.id,
             },
           });
+          // alarm **หลัง** dedup/สร้างจริง: ยิงเฉพาะตอนที่ "มีของใหม่" — ลูกหนี้ที่
+          // รอรอบจ่ายตามปกติมี Todo ค้างอยู่แล้วตั้งแต่วันแรก การยิงซ้ำทุกวัน
+          // ทำให้ Sentry กลายเป็น heartbeat จนคนเลิกอ่าน (หลักเดียวกับที่ไฟล์นี้
+          // ใช้กับ `legacyOneBookNet` — gate ด้วยของจริง ไม่ใช่การมีอยู่ของแถว).
+          // ช่องทาง "ยังไม่หาย" คือ reconcile cron รายเดือน + แท็บอายุลูกหนี้
+          this.alarm(row, views, thresholdDays);
           todosCreated++;
         } catch (err) {
           skipped++;

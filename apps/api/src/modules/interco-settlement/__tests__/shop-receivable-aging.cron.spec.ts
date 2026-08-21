@@ -404,4 +404,106 @@ describe('ShopReceivableAgingCron', () => {
 
     expect(aging.getShopReceivableAging).toHaveBeenCalledWith(expect.any(Date), 30);
   });
+
+  // ── final review Phase 4: Sentry ต้องเป็น alert ไม่ใช่ heartbeat รายวัน ──
+
+  it('dedup hit → ไม่ยิง Sentry รายแถวซ้ำ (ลูกหนี้ที่รอรอบจ่ายตามปกติต้องไม่เตือนทุกวัน)', async () => {
+    prisma.todo.findFirst.mockImplementation(
+      async ({ where }: { where: { title: { contains: string } } }) =>
+        where.title.contains === 'CT-INTERCO-OLD' ? { id: 'todo-existing' } : null,
+    );
+
+    const result = await cron.tick();
+
+    expect(result.todosCreated).toBe(1);
+    expect(result.skipped).toBe(1);
+    const rowAlerts = sentryCalls(ROW_ALERT_MSG);
+    expect(rowAlerts).toHaveLength(1);
+    const text = JSON.stringify(rowAlerts);
+    expect(text).not.toContain('CT-INTERCO-OLD');
+    expect(text).toContain('CT-COLLECT-OLD');
+  });
+
+  it('ทุกแถวถูก dedup → ไม่มี Sentry รายแถวเลย (reconcile รายเดือนเป็นช่องทาง "ยังไม่หาย")', async () => {
+    prisma.todo.findFirst.mockResolvedValue({ id: 'todo-existing' });
+
+    const result = await cron.tick();
+
+    expect(result.flagged).toBe(2);
+    expect(result.todosCreated).toBe(0);
+    expect(result.skipped).toBe(2);
+    expect(sentryCalls(ROW_ALERT_MSG)).toHaveLength(0);
+  });
+
+  // ── แขน SHOP_COLLECT: กลุ่มที่จะยิงก่อนจริงบน prod ──
+
+  it('แขน SHOP_COLLECT อย่างเดียว → flagged + Sentry ระบุแขน + วิธีล้างของแขนนั้น', async () => {
+    const row = makeRow({
+      contractId: 'c-collect-only',
+      contractNumber: 'CT-COLLECT-ONLY',
+      shopCollect: D('1771.00'),
+      shopCollectAgeDays: 31,
+      shopCollectOldestPostedAt: new Date('2026-07-21T00:00:00.000Z'),
+    });
+    aging.getShopReceivableAging.mockResolvedValue(buildResult([row], 30));
+
+    const result = await cron.tick();
+
+    expect(result.flagged).toBe(1);
+    expect(result.todosCreated).toBe(1);
+
+    const data = prisma.todo.create.mock.calls[0][0].data;
+    expect(data.title).toContain('CT-COLLECT-ONLY');
+    expect(data.title).toContain('หน้าร้านรับเงินแทน');
+    expect(data.title).toContain('ค้างเกิน 31 วัน');
+    expect(data.description).toContain('รับโอนจากหน้าร้าน');
+    // ไม่มีแขน interco → ห้ามแนะนำวิธีล้างของแขนที่ไม่ได้ค้าง
+    expect(data.description).not.toContain('หักกลบในรอบจ่าย');
+
+    const rowAlerts = sentryCalls(ROW_ALERT_MSG);
+    expect(rowAlerts).toHaveLength(1);
+    const opts = rowAlerts[0][1] as {
+      extra: { overdueArms: string; shopCollect: string; shopCollectAgeDays: number };
+    };
+    expect(opts.extra.overdueArms).toBe('SHOP_COLLECT');
+    expect(opts.extra.shopCollect).toBe('1771.00');
+    expect(opts.extra.shopCollectAgeDays).toBe(31);
+  });
+
+  it('แขน SHOP_COLLECT: อายุ = เกณฑ์พอดี → ค้าง, น้อยกว่าเกณฑ์ 1 วัน → ไม่ค้าง', async () => {
+    const atThreshold = makeRow({
+      contractId: 'c-at',
+      contractNumber: 'CT-COLLECT-AT',
+      shopCollect: D('1000.00'),
+      shopCollectAgeDays: 30,
+    });
+    aging.getShopReceivableAging.mockResolvedValue(buildResult([atThreshold], 30));
+    expect((await cron.tick()).flagged).toBe(1);
+
+    prisma.todo.create.mockClear();
+    const belowThreshold = makeRow({
+      contractId: 'c-below',
+      contractNumber: 'CT-COLLECT-BELOW',
+      shopCollect: D('1000.00'),
+      shopCollectAgeDays: 29,
+    });
+    aging.getShopReceivableAging.mockResolvedValue(buildResult([belowThreshold], 30));
+    expect((await cron.tick()).flagged).toBe(0);
+  });
+
+  it('แขน SHOP_COLLECT: ยอด 0 แม้อายุเกินเกณฑ์ → ไม่ค้าง (อายุอย่างเดียวไม่ใช่หนี้)', async () => {
+    const zeroAmount = makeRow({
+      contractId: 'c-collect-zero',
+      contractNumber: 'CT-COLLECT-ZERO',
+      shopCollect: D('0.00'),
+      shopCollectAgeDays: 120,
+    });
+    aging.getShopReceivableAging.mockResolvedValue(buildResult([zeroAmount], 30));
+
+    const result = await cron.tick();
+
+    expect(result.flagged).toBe(0);
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    expect(sentryCalls(ROW_ALERT_MSG)).toHaveLength(0);
+  });
 });

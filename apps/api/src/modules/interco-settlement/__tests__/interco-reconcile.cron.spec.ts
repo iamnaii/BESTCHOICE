@@ -570,7 +570,8 @@ describe('IntercoReconcileCron', () => {
     expect(bullets[0]).toContain('CT-REAL');
     // 25 ใบของรูปแบบที่รู้จักไม่กินโควตารายบรรทัด
     expect(bullets).toHaveLength(1);
-    expect(data.description).not.toContain('และอีก');
+    // ไม่มีการตัดบรรทัดรายการ (คนละอันกับ "และอีก N สัญญา" ของรายชื่อในบรรทัดสรุป)
+    expect(data.description).not.toMatch(/และอีก \d+ รายการ/);
     expect(data.description).toContain('รูปแบบสัญญาไม่ระบุค่าคอม: 25 สัญญา');
     expect(data.description).toContain('25,000.00');
 
@@ -773,5 +774,149 @@ describe('IntercoReconcileCron', () => {
     expect(prisma.$transaction).toBeUndefined();
     // อ่านเท่าที่จำเป็น: config + system user + todo เท่านั้น
     expect(Object.keys(prisma)).toEqual(['systemConfig', 'user', 'todo']);
+  });
+
+  // ── final review Phase 4: finding ต้อง actionable (คนเอาไปทำต่อได้จริง) ──
+
+  it('footer: มีเฉพาะ kind ที่อยู่บนแท็บ → ชี้แท็บอย่างเดียว ไม่มีคำเตือน "ไม่แสดงบนแท็บ"', async () => {
+    setup({
+      rows: [
+        makeRow({
+          contractId: 'c-mm',
+          contractNumber: 'CT-MM',
+          intercoNet: D('11000.00'),
+          shopMirrorGross: D('10500.00'),
+          shopMirrorNet: D('10500.00'),
+          bookMismatch: true,
+        }),
+      ],
+    });
+
+    await cron.tick();
+
+    const desc = prisma.todo.create.mock.calls[0][0].data.description as string;
+    expect(desc).toContain('ตรวจที่หน้าจ่ายให้หน้าร้าน');
+    expect(desc).not.toContain('ไม่แสดงบนแท็บ');
+  });
+
+  it('footer kind-aware: NEGATIVE_TYPED (over-settle สมมาตร) ถูกกรองออกจากแท็บ → ต้องบอกให้ใช้ข้อมูลในใบนี้', async () => {
+    setup({
+      negatives: [
+        makeRow({
+          contractId: 'c-neg',
+          contractNumber: 'CT-NEG',
+          intercoNet: D('-8000.00'),
+          shopMirrorNet: D('-8000.00'),
+        }),
+      ],
+    });
+
+    const result = await cron.tick();
+
+    expect(ofKind(result.findings, 'NEGATIVE_TYPED')).toHaveLength(2);
+    const desc = prisma.todo.create.mock.calls[0][0].data.description as string;
+    expect(desc).toContain('ไม่แสดงบนแท็บ');
+    expect(desc).toContain('ยอดติดลบ (ล้างเกิน)');
+    expect(desc).toContain('ใช้ข้อมูลในใบนี้');
+    // ไม่มี kind ที่อยู่บนแท็บเลย → ห้ามชี้แท็บให้คนไปหาของที่ไม่มี
+    expect(desc).not.toContain('ตรวจที่หน้าจ่ายให้หน้าร้าน');
+  });
+
+  it('footer kind-aware: PAYABLE_PAIR_MISMATCH ยังไม่มีหน้าจอ → ต้องอยู่ในรายการที่ไม่แสดงบนแท็บ', async () => {
+    setup({
+      pairs: [
+        makePair({
+          contractId: 'c-pair',
+          contractNumber: 'CT-PAIR',
+          financedGl: D('11000.00'),
+          commissionGl: D(0),
+          shopFinancedGl: D('10000.00'),
+          shopCommissionGl: D('1000.00'),
+          mismatch: true,
+        }),
+      ],
+    });
+
+    await cron.tick();
+
+    const desc = prisma.todo.create.mock.calls[0][0].data.description as string;
+    expect(desc).toContain('ไม่แสดงบนแท็บ');
+    expect(desc).toContain('เจ้าหนี้/ลูกหนี้รอบจ่ายไม่ตรงกัน');
+    expect(desc).not.toContain('ตรวจที่หน้าจ่ายให้หน้าร้าน');
+  });
+
+  it('footer kind-aware: ปนทั้งบนแท็บและนอกแท็บ → มีทั้งสองบรรทัด', async () => {
+    setup({
+      rows: [
+        makeRow({
+          contractId: 'c-mm',
+          contractNumber: 'CT-MM',
+          intercoNet: D('11000.00'),
+          shopMirrorGross: D('10500.00'),
+          shopMirrorNet: D('10500.00'),
+          bookMismatch: true,
+        }),
+      ],
+      pendingDrift: D('19190.00'),
+    });
+
+    await cron.tick();
+
+    const desc = prisma.todo.create.mock.calls[0][0].data.description as string;
+    expect(desc).toContain('ตรวจที่หน้าจ่ายให้หน้าร้าน');
+    expect(desc).toContain('ไม่แสดงบนแท็บ');
+    expect(desc).toContain('ยอดบัญชีอธิบายไม่ได้');
+  });
+
+  it('กลุ่มที่ยุบ (ค่าคอมสมุดเดียว): เลขสัญญาต้องไปถึงคน — บรรทัดสรุป 10 ตัวแรก + Sentry extra', async () => {
+    const pairs = Array.from({ length: 25 }, (_, i) =>
+      makePair({
+        contractId: `c-comm-${i}`,
+        contractNumber: `CT-COMM-${String(i).padStart(2, '0')}`,
+        financedGl: D('10000.00'),
+        commissionGl: D('1000.00'),
+        shopFinancedGl: D('10000.00'),
+        shopCommissionGl: D(0),
+      }),
+    );
+    setup({ pairs });
+
+    await cron.tick();
+
+    const desc = prisma.todo.create.mock.calls[0][0].data.description as string;
+    expect(desc).toContain('CT-COMM-00');
+    expect(desc).toContain('CT-COMM-09');
+    expect(desc).not.toContain('CT-COMM-10');
+    expect(desc).toContain('และอีก 15 สัญญา');
+    // บรรทัดสรุปห้ามชี้ไปแท็บที่ไม่มีข้อมูลกลุ่มนี้อีกต่อไป
+    expect(desc).not.toContain('ดูรายสัญญาที่แท็บ');
+
+    const opts = (Sentry.captureMessage as jest.Mock).mock.calls[0][1] as {
+      extra: Record<string, unknown>;
+    };
+    const numbers = opts.extra.patternCommissionOnlyContracts as string[];
+    expect(numbers).toHaveLength(25);
+    expect(numbers[0]).toBe('CT-COMM-00');
+    expect(numbers[24]).toBe('CT-COMM-24');
+  });
+
+  it('กลุ่มที่ยุบ: ไม่เกิน 10 สัญญา → ลงครบทุกเลข ไม่มีคำว่า "และอีก"', async () => {
+    const pairs = Array.from({ length: 3 }, (_, i) =>
+      makePair({
+        contractId: `c-comm-${i}`,
+        contractNumber: `CT-COMM-${i}`,
+        financedGl: D('10000.00'),
+        commissionGl: D('1000.00'),
+        shopFinancedGl: D('10000.00'),
+        shopCommissionGl: D(0),
+      }),
+    );
+    setup({ pairs });
+
+    await cron.tick();
+
+    const desc = prisma.todo.create.mock.calls[0][0].data.description as string;
+    expect(desc).toContain('CT-COMM-0, CT-COMM-1, CT-COMM-2');
+    expect(desc).not.toContain('และอีก');
   });
 });

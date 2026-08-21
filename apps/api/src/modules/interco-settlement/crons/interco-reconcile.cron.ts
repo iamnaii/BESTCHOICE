@@ -69,6 +69,10 @@ const PATTERN_LABEL: Record<ReconcileFindingPattern, string> = {
 
 /** จำนวนบรรทัดสูงสุดใน Todo ก่อนตัดเป็น "และอีก N รายการ" */
 const MAX_DESCRIPTION_LINES = 20;
+/** เลขสัญญาที่พิมพ์ลงบรรทัดสรุปของกลุ่มที่ถูกยุบ (ที่เหลือบอกเป็นจำนวน) */
+const MAX_PATTERN_CONTRACTS_IN_LINE = 10;
+/** เพดานรายชื่อใน Sentry `extra` — กันอีเวนต์บวมเมื่อรูปแบบเดียวมีหลายร้อยสัญญา */
+const MAX_PATTERN_CONTRACTS_IN_SENTRY = 50;
 const EPS = new Prisma.Decimal('0.01');
 
 const KIND_LABEL: Record<ReconcileFindingKind, string> = {
@@ -79,6 +83,24 @@ const KIND_LABEL: Record<ReconcileFindingKind, string> = {
   ACCOUNT_DRIFT: 'ยอดบัญชีอธิบายไม่ได้',
 };
 
+/**
+ * kind ที่ **ไม่ปรากฏบนแท็บ "อายุลูกหนี้หน้าร้าน"** — ใบ Todo (+ Sentry ของรอบนี้)
+ * คือแหล่งเดียวที่คนอ่านได้ จึงห้ามเขียน footer ชี้ไปแท็บอย่างเดียว:
+ *   - `NEGATIVE_TYPED` มาจาก `getNegativeTypedRows()` ซึ่งจงใจแยกจากรายงานหลัก —
+ *     แท็บกรองด้วย `isReportableAgingRow` (เก็บเฉพาะยอดบวก/สองสมุดไม่ตรง) ⇒
+ *     เคส over-settle **สมมาตร** (headline ของ carry d) ถูกกรองออกโดยโครงสร้าง
+ *   - `PAYABLE_PAIR_MISMATCH` มาจาก `getPayablePairing()` ซึ่งยังไม่มี
+ *     endpoint/หน้าจอเลย (รวมกลุ่มที่ถูกยุบเป็นบรรทัดสรุปด้วย)
+ *   - `ACCOUNT_DRIFT` เป็นระดับบัญชี ไม่ใช่ต่อสัญญา — แท็บไม่มีมุมนี้
+ * ที่เหลือ (`SWAP_CREDIT_ONE_BOOK` / `BOOK_MISMATCH`) มาจาก
+ * `getShopReceivableAging().rows` ตัวเดียวกับที่แท็บแสดง จึงชี้แท็บได้จริง.
+ */
+const OFF_TAB_KINDS: ReadonlySet<ReconcileFindingKind> = new Set<ReconcileFindingKind>([
+  'NEGATIVE_TYPED',
+  'PAYABLE_PAIR_MISMATCH',
+  'ACCOUNT_DRIFT',
+]);
+
 /** 8000 → "8,000.00" (ผ่าน Decimal.toFixed — ไม่แปลงเป็น Number ตามกติกาเงิน) */
 function formatAmount(value: Prisma.Decimal): string {
   const [intPart, decPart] = value.toFixed(2).split('.');
@@ -87,19 +109,35 @@ function formatAmount(value: Prisma.Decimal): string {
   return `${sign}${digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decPart}`;
 }
 
+interface PatternAggregate {
+  count: number;
+  total: Prisma.Decimal;
+  /** เลขสัญญาทุกใบในกลุ่ม — บรรทัดสรุปพิมพ์บางส่วน, Sentry เก็บถึงเพดาน */
+  contractNumbers: string[];
+}
+
 /**
- * รวมจำนวน + ยอดของ finding ตามรูปแบบที่รู้จัก. ยอด = Σ `commissionDiff`
- * (ค่าที่ service คำนวณมาแล้ว — ที่นี่แค่รวม ไม่ derive GL ใหม่).
+ * รวมจำนวน + ยอด + **เลขสัญญา** ของ finding ตามรูปแบบที่รู้จัก. ยอด = Σ
+ * `commissionDiff` (ค่าที่ service คำนวณมาแล้ว — ที่นี่แค่รวม ไม่ derive GL ใหม่).
+ *
+ * เลขสัญญาสำคัญเป็นพิเศษ: กลุ่มนี้ถูก **ยุบออกจากโควตารายบรรทัด** และไม่มีหน้าจอ
+ * ของตัวเอง ⇒ ถ้าไม่เก็บไว้ที่นี่ จะไม่มีที่ไหนที่คนอ่านเลขสัญญาของกลุ่มที่ใหญ่
+ * ที่สุดได้เลย (final review Phase 4).
  */
 function summarizePatterns(
   findings: ReconcileFinding[],
-): Partial<Record<ReconcileFindingPattern, { count: number; total: Prisma.Decimal }>> {
-  const out: Partial<Record<ReconcileFindingPattern, { count: number; total: Prisma.Decimal }>> = {};
+): Partial<Record<ReconcileFindingPattern, PatternAggregate>> {
+  const out: Partial<Record<ReconcileFindingPattern, PatternAggregate>> = {};
   for (const f of findings) {
     if (!f.pattern) continue;
-    const agg = out[f.pattern] ?? { count: 0, total: new Prisma.Decimal(0) };
+    const agg = out[f.pattern] ?? {
+      count: 0,
+      total: new Prisma.Decimal(0),
+      contractNumbers: [] as string[],
+    };
     agg.count += 1;
     agg.total = agg.total.plus(new Prisma.Decimal(f.amounts.commissionDiff ?? 0));
+    if (f.contractNumber) agg.contractNumbers.push(f.contractNumber);
     out[f.pattern] = agg;
   }
   return out;
@@ -189,6 +227,11 @@ export class IntercoReconcileCron {
           patternCommissionOnlyTotal: (
             patternSummary.COMMISSION_ONLY_GAP?.total ?? new Prisma.Decimal(0)
           ).toFixed(2),
+          // เลขสัญญาของกลุ่มที่ถูกยุบ — ช่องทางที่สองคู่กับบรรทัดสรุปใน Todo
+          // (กลุ่มนี้ไม่มีหน้าจอ ⇒ ถ้าไม่ส่งมาที่นี่ เลขสัญญาจะไม่ถึงคนเลย)
+          patternCommissionOnlyContracts: (
+            patternSummary.COMMISSION_ONLY_GAP?.contractNumbers ?? []
+          ).slice(0, MAX_PATTERN_CONTRACTS_IN_SENTRY),
         },
       });
 
@@ -449,8 +492,14 @@ export class IntercoReconcileCron {
     for (const f of unlabeled.slice(0, MAX_DESCRIPTION_LINES)) {
       lines.push(`• [${KIND_LABEL[f.kind]}] ${f.detail}`);
     }
-    if (unlabeled.length > MAX_DESCRIPTION_LINES) {
-      lines.push(`… และอีก ${unlabeled.length - MAX_DESCRIPTION_LINES} รายการ (ดูรายละเอียดที่แท็บ)`);
+    const truncated = unlabeled.slice(MAX_DESCRIPTION_LINES);
+    if (truncated.length > 0) {
+      // ชี้แท็บได้ต่อเมื่อ **ทุกรายการที่ถูกตัด** อยู่บนแท็บจริง — ไม่งั้นคนจะไป
+      // เปิดแท็บแล้วหาไม่เจอ (kind นอกแท็บมีที่เดียวคือใบนี้ + Sentry ของรอบนี้)
+      const where = truncated.every((f) => !OFF_TAB_KINDS.has(f.kind))
+        ? 'ดูรายละเอียดที่แท็บ'
+        : 'บางส่วนไม่แสดงบนแท็บ — ดู Sentry/log ของรอบนี้';
+      lines.push(`… และอีก ${truncated.length} รายการ (${where})`);
     }
 
     // รูปแบบที่รู้จัก: บรรทัดสรุปเดียวต่อรูปแบบ (ไม่ซ่อน — ยังนับในยอดรวมบนหัวเรื่อง)
@@ -459,14 +508,43 @@ export class IntercoReconcileCron {
       lines.push(
         `▪ ${PATTERN_LABEL[pattern as ReconcileFindingPattern]}: ${agg.count} สัญญา ` +
           `รวม ${formatAmount(agg.total)} บาท — ส่วนต่างจริงเชิงระบบ ` +
-          `(1A ตั้งค่าคอม 10% อัตโนมัติ แต่สมุด SHOP ตั้ง 0) ดูรายสัญญาที่แท็บ`,
+          `(1A ตั้งค่าคอม 10% อัตโนมัติ แต่สมุด SHOP ตั้ง 0)`,
       );
+      // เลขสัญญาต้องอยู่ในใบนี้: กลุ่มนี้ไม่มีหน้าจอของตัวเอง และไม่กินโควตา
+      // รายบรรทัด ⇒ ถ้าไม่พิมพ์ที่นี่ กลุ่มที่ใหญ่ที่สุดจะเป็นกลุ่มเดียวที่ไม่มี
+      // เลขสัญญาให้ตามต่อเลย (final review Phase 4)
+      const shown = agg.contractNumbers.slice(0, MAX_PATTERN_CONTRACTS_IN_LINE);
+      const rest = agg.contractNumbers.length - shown.length;
+      if (shown.length > 0) {
+        lines.push(
+          `   สัญญา: ${shown.join(', ')}` +
+            (rest > 0
+              ? ` และอีก ${rest} สัญญา (รายชื่อถึง ${MAX_PATTERN_CONTRACTS_IN_SENTRY} ` +
+                `รายการแรกอยู่ใน Sentry ของรอบนี้)`
+              : ''),
+        );
+      }
     }
 
     lines.push('');
+    // footer แบบ kind-aware: ชี้แท็บเฉพาะเมื่อมี kind ที่แท็บแสดงจริง และประกาศ
+    // ชัด ๆ ว่า kind ไหน "ไม่แสดงบนแท็บ" (ดู jsdoc `OFF_TAB_KINDS`) — เดิมชี้แท็บ
+    // อย่างเดียวทั้งที่เคส headline (ยอดติดลบสมมาตร) ถูกกรองออกจากแท็บโดยโครงสร้าง
+    const offTabKinds = [...new Set(findings.map((f) => f.kind))]
+      .filter((k) => OFF_TAB_KINDS.has(k))
+      .sort((a, b) => KIND_SEVERITY[a] - KIND_SEVERITY[b]);
+    if (offTabKinds.length > 0) {
+      lines.push(
+        `⚠ ไม่แสดงบนแท็บ: ${offTabKinds.map((k) => KIND_LABEL[k]).join(' · ')} — ` +
+          'แท็บ "อายุลูกหนี้หน้าร้าน" แสดงเฉพาะหนี้ค้างต่อสัญญา (ยอดบวก/สองสมุดไม่ตรง) ' +
+          'ให้ใช้ข้อมูลในใบนี้ (และ Sentry ของรอบนี้) เป็นหลัก',
+      );
+    }
+    if (findings.some((f) => !OFF_TAB_KINDS.has(f.kind))) {
+      lines.push('ตรวจที่หน้าจ่ายให้หน้าร้าน (INTER-CO) → แท็บ "อายุลูกหนี้หน้าร้าน"');
+    }
     lines.push(
-      'ตรวจที่หน้าจ่ายให้หน้าร้าน (INTER-CO) → แท็บ "อายุลูกหนี้หน้าร้าน" · ' +
-        'ระบบไม่ตั้ง JE ปรับปรุงให้อัตโนมัติ — ต้องให้ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้',
+      'ระบบไม่ตั้ง JE ปรับปรุงให้อัตโนมัติ — ต้องให้ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้',
     );
     return lines.join('\n');
   }

@@ -64,7 +64,9 @@ function makePair(partial: Partial<PayablePairRow>): PayablePairRow {
   const commissionGl = partial.commissionGl ?? D(0);
   const shopFinancedGl = partial.shopFinancedGl ?? D(0);
   const shopCommissionGl = partial.shopCommissionGl ?? D(0);
-  const diff = financedGl.plus(commissionGl).minus(shopFinancedGl).minus(shopCommissionGl);
+  const financedDiff = financedGl.minus(shopFinancedGl);
+  const commissionDiff = commissionGl.minus(shopCommissionGl);
+  const diff = financedDiff.plus(commissionDiff);
   const legacyNoShop =
     partial.legacyNoShop ?? (shopFinancedGl.abs().lte('0.01') && shopCommissionGl.abs().lte('0.01'));
   return {
@@ -76,6 +78,8 @@ function makePair(partial: Partial<PayablePairRow>): PayablePairRow {
     shopFinancedGl,
     shopCommissionGl,
     legacyNoShop,
+    financedDiff,
+    commissionDiff,
     diff,
     mismatch: !legacyNoShop && diff.abs().gt('0.01'),
     ...partial,
@@ -358,7 +362,34 @@ describe('IntercoReconcileCron', () => {
     expect(found[0].amounts.financeTotal).toBe('11000.00');
     expect(found[0].amounts.shopTotal).toBe('10000.00');
     expect(found[0].amounts.diff).toBe('1000.00');
+    // ต่างเฉพาะขาค่าคอม → ติดป้ายรูปแบบที่รู้จัก (สัญญาไม่ระบุค่าคอม: 1A ตั้ง 10%)
+    expect(found[0].amounts.financedDiff).toBe('0.00');
+    expect(found[0].amounts.commissionDiff).toBe('1000.00');
+    expect(found[0].detail).toContain('ต่างเฉพาะขาค่าคอม');
     expect(JSON.stringify(result.findings)).not.toContain('CT-LEGACY-NOSHOP');
+  });
+
+  it('PAYABLE_PAIR_MISMATCH: ต่างที่ขายอดจัด → ไม่ติดป้าย "ต่างเฉพาะขาค่าคอม"', async () => {
+    setup({
+      pairs: [
+        makePair({
+          contractId: 'c-pair-financed',
+          contractNumber: 'CT-PAIR-FIN',
+          financedGl: D('10000.00'),
+          commissionGl: D('1000.00'),
+          shopFinancedGl: D('9000.00'),
+          shopCommissionGl: D('1000.00'),
+        }),
+      ],
+    });
+
+    const result = await cron.tick();
+
+    const found = ofKind(result.findings, 'PAYABLE_PAIR_MISMATCH');
+    expect(found).toHaveLength(1);
+    expect(found[0].amounts.financedDiff).toBe('1000.00');
+    expect(found[0].amounts.commissionDiff).toBe('0.00');
+    expect(found[0].detail).not.toContain('ต่างเฉพาะขาค่าคอม');
   });
 
   it('NEGATIVE_TYPED: หักเกิน/รับซ้ำจนยอดติดลบ (ตาข่ายของ carry d)', async () => {

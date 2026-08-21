@@ -108,6 +108,19 @@ export interface PayablePairRow {
   shopCommissionGl: Prisma.Decimal;
   /** สมุด SHOP ว่างทั้งคู่ = สัญญา activate ก่อน 2026-06-23 (นิยามเดียวกับ pending lens) */
   legacyNoShop: boolean;
+  /** financedGl − shopFinancedGl (แยกขาเพื่อชี้ว่าความต่างอยู่ที่ยอดจัดหรือค่าคอม) */
+  financedDiff: Prisma.Decimal;
+  /**
+   * commissionGl − shopCommissionGl. **รูปแบบที่รู้จัก**: สัญญาที่
+   * `storeCommission` ว่าง — `ContractActivation1ATemplate` ตั้งค่าคอม
+   * fallback 10% ของยอดจัดบน 21-1102 ส่วน `ShopInventoryTransferTemplate`
+   * รับค่ามาเป็น 0 (`contract.storeCommission ?? 0`) ⇒ ค่าคอมโผล่สมุดเดียว.
+   * นี่คือ **ความต่างจริงในบัญชี** (เงินที่ FINANCE จ่ายให้หน้าร้านโดยสมุด
+   * SHOP ไม่เคยตั้งลูกหนี้ — opening-balance gap ตาม interco spec §11)
+   * ไม่ใช่ artifact ของการอ่าน จึงรายงานตามจริงพร้อมป้ายกำกับให้คนอ่านรู้ทันที
+   * ว่าเป็นรูปแบบไหน.
+   */
+  commissionDiff: Prisma.Decimal;
   /** (financedGl + commissionGl) − (shopFinancedGl + shopCommissionGl) */
   diff: Prisma.Decimal;
   /** true = ไม่ใช่ legacy และสองสมุดต่างกันเกิน 0.01 */
@@ -581,15 +594,16 @@ export class IntercoAgingService {
     return parsed.map((r) => {
       const contract = contractById.get(r.contractId);
       const legacyNoShop = r.shopFinancedGl.abs().lte(EPS) && r.shopCommissionGl.abs().lte(EPS);
-      const diff = r.financedGl
-        .plus(r.commissionGl)
-        .minus(r.shopFinancedGl)
-        .minus(r.shopCommissionGl);
+      const financedDiff = r.financedGl.minus(r.shopFinancedGl);
+      const commissionDiff = r.commissionGl.minus(r.shopCommissionGl);
+      const diff = financedDiff.plus(commissionDiff);
       return {
         ...r,
         contractNumber: contract?.contractNumber ?? '(ไม่พบสัญญา)',
         customerName: contract?.customer.name ?? '',
         legacyNoShop,
+        financedDiff,
+        commissionDiff,
         diff,
         mismatch: !legacyNoShop && diff.abs().gt(EPS),
       };

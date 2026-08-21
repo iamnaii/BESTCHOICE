@@ -219,6 +219,11 @@ export class IntercoReconcileCron {
       if (!pair.mismatch) continue;
       const financeTotal = pair.financedGl.plus(pair.commissionGl);
       const shopTotal = pair.shopFinancedGl.plus(pair.shopCommissionGl);
+      // รูปแบบที่รู้จัก: ต่างกันเฉพาะขาค่าคอม = สัญญาที่ storeCommission ว่าง
+      // (1A ตั้ง fallback 10% แต่ขา SHOP ตั้ง 0 — ดู jsdoc `commissionDiff`).
+      // ติดป้ายให้คนอ่านรู้ทันทีว่าเป็น gap เชิงระบบ ไม่ใช่ JV มือหลุด
+      const commissionOnly =
+        pair.commissionDiff.abs().gt(EPS) && pair.financedDiff.abs().lte(EPS);
       findings.push({
         kind: 'PAYABLE_PAIR_MISMATCH',
         contractId: pair.contractId,
@@ -226,10 +231,15 @@ export class IntercoReconcileCron {
         detail:
           `สัญญา ${pair.contractNumber}: เจ้าหนี้ FINANCE (21-1101+21-1102) ` +
           `${formatAmount(financeTotal)} บาท vs ลูกหนี้ SHOP (S11-3001+S11-3002) ` +
-          `${formatAmount(shopTotal)} บาท — ต่างกัน ${formatAmount(pair.diff)} บาท`,
+          `${formatAmount(shopTotal)} บาท — ต่างกัน ${formatAmount(pair.diff)} บาท` +
+          (commissionOnly
+            ? ' (ต่างเฉพาะขาค่าคอม — รูปแบบสัญญาที่ไม่ได้ระบุค่าคอม: 1A ตั้ง 10% อัตโนมัติ แต่สมุด SHOP ตั้ง 0)'
+            : ''),
         amounts: {
           financeTotal: financeTotal.toFixed(2),
           shopTotal: shopTotal.toFixed(2),
+          financedDiff: pair.financedDiff.toFixed(2),
+          commissionDiff: pair.commissionDiff.toFixed(2),
           diff: pair.diff.toFixed(2),
         },
       });

@@ -775,6 +775,9 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     const bad = pairs.find((p) => p.contractId === pairMismatchId)!;
     expect(bad).toBeDefined();
     expect(bad.diff.toFixed(2)).toBe('1000.00');
+    // แยกขา: ต่างเฉพาะค่าคอม = รูปแบบสัญญาที่ไม่ได้ระบุ storeCommission
+    expect(bad.financedDiff.toFixed(2)).toBe('0.00');
+    expect(bad.commissionDiff.toFixed(2)).toBe('1000.00');
     expect(bad.mismatch).toBe(true);
     expect(bad.contractNumber.startsWith('AGINGTEST-')).toBe(true);
 

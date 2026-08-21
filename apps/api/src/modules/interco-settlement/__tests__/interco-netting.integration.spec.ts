@@ -91,7 +91,12 @@ const settlementService = new IntercoSettlementService(
 // transactions — the second fails P2028 ("unable to start a transaction in
 // the given time") at Prisma's ITX scheduler instead of ever racing at the
 // DB. Two independent connections make the SSI race real.
-const prisma2 = new PrismaClient();
+// `transactionOptions.timeout` 20s (ค่า default ของ Prisma = 5s): race test ของ
+// Task 5 เปิด tx ของ settle ค้างไว้ตลอด create→submit→approve — บน CI เย็นๆ 5s
+// เฉียดเกินไป. timeout จะ fail loud (P2028 = raw Prisma error ตกด่าน
+// "ผู้แพ้ต้องเป็น HttpException") ไม่ใช่ false green อยู่แล้ว แต่ margin นี้กัน
+// เทสแดงแบบไม่ใช่ regression จริง
+const prisma2 = new PrismaClient({ transactionOptions: { timeout: 20_000 } });
 const journalAuto2 = new JournalAutoService(prisma2 as never);
 const pendingService2 = new IntercoPendingService(prisma2 as never);
 const companyResolver2 = new CompanyResolverService(prisma2 as never);
@@ -2213,6 +2218,232 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
           },
         });
         expect(shopJes).toHaveLength(1);
+      },
+      120_000,
+    );
+  });
+
+  // ===========================================================================
+  // Phase 4 Task 5 — approveBatch ↔ settleRecallCash: ปิด carry (d) ที่ต้นเหตุ
+  // (isolation) แทนที่จะพึ่ง guard "RECALL item ใน batch เปิด" อย่างเดียว.
+  //
+  // หน้าต่างจริงที่ guard ปิดไม่ได้: settle เปิด tx **ก่อน** รอบจ่ายถูกสร้าง
+  // (ตอนนั้นยังไม่มี item ให้ guard 1 เห็น) แล้วรอบจ่ายถูกสร้าง+ส่ง+อนุมัติ
+  // จนจบภายในหน้าต่างนั้น — ทั้งสองฝั่งจึงเห็นยอดเรียกคืน net เต็ม 11,000
+  // และหักคนละครั้ง = 11-2107 ติดลบ. `settleRecallCash` เป็น Serializable
+  // อยู่แล้ว แต่ SSI ต้องการให้ **ทั้งคู่** เป็น Serializable จึงจะเกิด
+  // rw-conflict (writer ที่เป็น READ COMMITTED ไม่ลงทะเบียน conflict กับ
+  // SIRead lock ของใคร) — approve ที่ยัง default isolation จึงลอยผ่านไป.
+  //
+  // รอบจ่ายในเทสนี้ลงบัญชีเดือน **กรกฎาคม** ผ่าน `postedAtOverride` (D4
+  // backdated round — ฟีเจอร์จริง) โดยตั้งใจ: เดือนเดียวกันจะชนเลขที่ใบสำคัญ
+  // (`nextEntryNumber` อ่าน MAX ใต้ snapshot เก่าของ settle → P2002) ซึ่งเป็น
+  // การ "รอด" โดยบังเอิญคนละกลไกกับที่เรากำลังพิสูจน์ และหายไปทันทีเมื่อสอง
+  // ฝั่งลงคนละเดือน — เทสจึงต้องแยกเดือนเพื่อวัด isolation ล้วนๆ
+  // ===========================================================================
+  describe('approveBatch ↔ settleRecallCash — race สองคอนเนกชัน (Phase 4 Task 5, carry d)', () => {
+    beforeAll(async () => {
+      // Safety nets เดียวกับบล็อกอื่น — ต้องรันแบบ -t filter เดี่ยวได้
+      await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+      await prisma.accountingPeriod.deleteMany({
+        where: { companyId: { in: [shopId, financeId] }, year: 2026, month: { in: [7, 8] } },
+      });
+      // Warm-up ทั้งสองคอนเนกชัน + query plans ของเส้นทาง create/submit/approve
+      // ก่อนเปิดหน้าต่างแข่ง — Prisma interactive tx มี timeout 5 วินาที และ
+      // การ compile ครั้งแรกกินเวลาพอที่จะทำให้ settle time-out (P2028) แทนที่
+      // จะได้แข่งจริง
+      await prisma2.$queryRaw`SELECT 1`;
+      const warmNormal = await seedBaseContract(80);
+      await seedNormalContract(warmNormal);
+      const warmBatch = await settlementService.createBatch(
+        { contractIds: [warmNormal], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(warmBatch.id);
+      await settlementService.submitBatch(warmBatch.id, adminId);
+      await settlementService.approveBatch(warmBatch.id, adminId, new Date(2026, 6, 15));
+    }, 120_000);
+
+    it(
+      'settle เปิด tx ค้างไว้ แล้วรอบจ่ายที่มีแถว recall ของสัญญาเดียวกัน create→submit→approve จนจบ → ต้องมีฝ่ายแพ้ + 11-2107 ไม่ติดลบ',
+      async () => {
+        const recallR = await seedBaseContract(81);
+        // baseline ก่อนตั้งหนี้เรียกคืน → delta ที่คาดหวังคือ +11,000 (ตั้งหนี้)
+        // − 11,000 (หักครั้งเดียว) = 0 พอดี; หักสองเด้งจะได้ −11,000
+        const pre2107 = await wholeAccountBalance('11-2107');
+        await seedRecallContract(recallR); // gross 11,000 ทั้งสองสมุด, ไม่มี deduction เดิม
+        const normalR = await seedBaseContract(82);
+        await seedNormalContract(normalR); // เจ้าหนี้ 10,000 + 1,000 → คุ้มยอดหัก 11,000
+
+        // Barrier: ค้าง settle ไว้หลังผ่าน guard ครบ (ก่อนโพสต์ใบแรก) — snapshot
+        // ของ tx ถูกจับไปแล้วตอนนั้น ซึ่งคือหัวใจของหน้าต่าง TOCTOU
+        let releaseGate!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          releaseGate = resolve;
+        });
+        let gateHit = false;
+        const realExecute = shopCollectTemplate2.execute.bind(shopCollectTemplate2);
+        const spy = vi
+          .spyOn(shopCollectTemplate2, 'execute')
+          .mockImplementation(async (input, outerTx) => {
+            gateHit = true;
+            await gate;
+            return realExecute(input, outerTx);
+          });
+
+        let settlePromise: Promise<unknown>;
+        let approveOutcome: { ok: boolean; err?: unknown };
+        try {
+          settlePromise = settlementService2.settleRecallCash(
+            recallR,
+            { amount: 11000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+            adminId,
+          );
+          settlePromise.catch(() => undefined); // กัน unhandled rejection ระหว่างรอ
+          const deadline = Date.now() + 4_000;
+          while (!gateHit && Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 10));
+          }
+          expect(gateHit, 'settle ต้องผ่าน guard และเปิด tx ค้างไว้ก่อนเริ่มรอบจ่าย').toBe(true);
+
+          const batch = await settlementService.createBatch(
+            {
+              contractIds: [normalR],
+              recallContractIds: [recallR],
+              transferDate: '2026-08-20',
+            },
+            adminId,
+          );
+          createdBatchIds.push(batch.id);
+          expect(
+            batch.items.find((i) => i.contractId === recallR)!.recallAmount.toFixed(2),
+          ).toBe('11000.00');
+          await settlementService.submitBatch(batch.id, adminId);
+          approveOutcome = await settlementService
+            .approveBatch(batch.id, adminId, new Date(2026, 6, 15))
+            .then(() => ({ ok: true }))
+            .catch((err: unknown) => ({ ok: false, err }));
+        } finally {
+          releaseGate!();
+          spy.mockRestore();
+        }
+
+        const settleOutcome = await settlePromise!
+          .then(() => ({ ok: true }) as { ok: boolean; err?: unknown })
+          .catch((err: unknown) => ({ ok: false, err }));
+
+        // ผู้แพ้ต้องเป็น HttpException สะอาด (409 SSI abort / 400 guard) — ห้าม
+        // raw Prisma error (P2028 tx timeout = หน้าต่างไม่ได้แข่งจริง ต้องดังไว้)
+        for (const outcome of [approveOutcome!, settleOutcome]) {
+          if (outcome.ok) continue;
+          const err = outcome.err;
+          expect(
+            err instanceof HttpException,
+            `ผู้แพ้ต้องเป็น HttpException: ${(err as { constructor?: { name?: string } })?.constructor?.name}: ${(err as Error)?.message}`,
+          ).toBe(true);
+          expect([400, 409]).toContain((err as HttpException).getStatus());
+        }
+
+        // invariant หลัก: หักได้ครั้งเดียวเท่านั้น
+        expect(
+          [approveOutcome!.ok, settleOutcome.ok].filter(Boolean),
+          'ทั้ง approve และ settle สำเร็จพร้อมกัน = หักซ้ำยอดเรียกคืนก้อนเดียว',
+        ).toHaveLength(1);
+
+        // เงิน: 11-2107 ทั้งบัญชี = +11,000 (ตั้งหนี้) − 11,000 (หักครั้งเดียว) = 0
+        // ถ้าหักสองเด้ง จะเป็น −11,000
+        expect((await wholeAccountBalance('11-2107')).minus(pre2107).toFixed(2)).toBe('0.00');
+      },
+      120_000,
+    );
+  });
+
+  // ===========================================================================
+  // Phase 4 Task 6 — precedence ของ typed lens: explicit stamp ต้องชนะ flow
+  // fallback ให้ตรง `classifyShopReceivable` (EXPLICIT ก่อน FLOW_MAP).
+  // เดิม `swapCreditFinanceBalance` + เลนส์ `swapCreditGl` + `glSwapCreditTotal`
+  // + `SWAP_COND` ของรายงานอายุ เขียนเป็น `OR flow = 'exchange-buyback-...'`
+  // แบบไม่ดู stamp ⇒ JE รูป A.3 ที่ stamp ประเภทอื่นถูกนับ **สองประเภทพร้อมกัน**
+  // (SWAP_CREDIT + PAYOUT_RECALL) — เป็นบั๊กแบบเดียวกับที่ `shopCollectTypedBalance`
+  // มี carve-out ปิดไปแล้วตั้งแต่ Phase 3 Task 6.
+  // ===========================================================================
+  describe('typed precedence — explicit stamp ชนะ flow fallback (Phase 4 Task 6)', () => {
+    it(
+      'JE flow A.3 ที่ stamp PAYOUT_RECALL → ไม่ถูกนับเป็น SWAP_CREDIT (helper + เลนส์ + ยอดทั้งบัญชี) และแถวเก่าทุกชนิดยอดเดิม',
+      async () => {
+        const beforeTotals = await pendingService.getReconcileTotals();
+
+        // (1) JE รูป A.3 (flow เดิม) แต่ stamp explicit เป็น PAYOUT_RECALL
+        const misStamped = await seedBaseContract(90);
+        await seed1a(misStamped);
+        await seedShopLegs(misStamped, '10000', '1000');
+        await journalAuto.createAndPost({
+          description: 'A.3 flow แต่ stamp PAYOUT_RECALL',
+          companyId: financeId,
+          metadata: {
+            flow: 'exchange-buyback-receivable-11-2107',
+            idempotencyKey: `ta3mis:${misStamped}`,
+            contractId: misStamped,
+            shopReceivableType: 'PAYOUT_RECALL',
+          },
+          lines: [
+            { accountCode: '11-2107', dr: dec('5000'), cr: zero },
+            { accountCode: '21-1103', dr: zero, cr: dec('5000') },
+          ],
+        });
+
+        // (2) JE รูป A.3 ที่ stamp เป็นค่าที่ไม่อยู่ในสามประเภท → ต้องตกไป
+        //     fallback เป็น SWAP_CREDIT เหมือนเดิม (ตรง EXPLICIT.has ที่ล้มเหลว
+        //     แล้วไปต่อที่ FLOW_MAP ใน classifyShopReceivable)
+        const oddStamped = await seedBaseContract(91);
+        await journalAuto.createAndPost({
+          description: 'A.3 flow แต่ stamp ค่าที่ไม่รู้จัก',
+          companyId: financeId,
+          metadata: {
+            flow: 'exchange-buyback-receivable-11-2107',
+            idempotencyKey: `ta3odd:${oddStamped}`,
+            contractId: oddStamped,
+            shopReceivableType: 'SOMETHING_ELSE',
+          },
+          lines: [
+            { accountCode: '11-2107', dr: dec('4000'), cr: zero },
+            { accountCode: '21-1106', dr: zero, cr: dec('4000') },
+          ],
+        });
+
+        // --- แถวที่แก้: ต้องเป็น PAYOUT_RECALL ล้วน ไม่ปนเป็น SWAP_CREDIT ---
+        expect((await swapCreditFinanceBalance(prisma, misStamped)).toFixed(2)).toBe('0.00');
+        expect((await recallFinanceBalance(prisma, misStamped)).toFixed(2)).toBe('5000.00');
+        const misRow = (await pendingService.getPendingContracts()).find(
+          (p) => p.contractId === misStamped,
+        )!;
+        expect(misRow).toBeDefined();
+        expect(misRow.swapCreditGl.toFixed(2)).toBe('0.00');
+        expect(misRow.swapCreditEligible).toBe(false);
+
+        // --- แถวเก่าทุกชนิดต้องให้ผลเดิมทุกบาท (regression) ---
+        // (ก) A.3 ยุค Phase 1+ (stamp SWAP_CREDIT + flow A.3) → branch explicit
+        expect((await swapCreditFinanceBalance(prisma, swapId)).toFixed(2)).toBe('8000.00');
+        // (ข) A.3 ยุค legacy (ไม่มี stamp เลย + flow A.3) → branch fallback
+        expect((await swapCreditFinanceBalance(prisma, legacySwapId)).toFixed(2)).toBe('8000.00');
+        // (ค) stamp ค่าที่ไม่รู้จัก + flow A.3 → branch fallback (เหมือน (ข))
+        expect((await swapCreditFinanceBalance(prisma, oddStamped)).toFixed(2)).toBe('4000.00');
+        const oddRow = (await pendingService.getPendingContracts()).find(
+          (p) => p.contractId === oddStamped,
+        );
+        // สัญญานี้ไม่มี 1A จึงไม่อยู่ในคิวรอจ่าย — เลนส์ต่อสัญญาตรวจผ่าน helper
+        // ข้างบนแล้ว; ยอดทั้งบัญชีด้านล่างเป็นตัวยืนยันฝั่งเลนส์ของ (ค)
+        expect(oddRow).toBeUndefined();
+
+        // --- ยอด typed ทั้งบัญชี (twin ตัวที่สามใน interco-pending.service) ---
+        const afterTotals = await pendingService.getReconcileTotals();
+        // เพิ่มเฉพาะ (ค) 4,000 — (1) 5,000 ต้องไม่เข้ากอง SWAP_CREDIT
+        expect(
+          afterTotals.glSwapCreditTotal.minus(beforeTotals.glSwapCreditTotal).toFixed(2),
+        ).toBe('4000.00');
+        expect(
+          afterTotals.glRecallTotal.minus(beforeTotals.glRecallTotal).toFixed(2),
+        ).toBe('5000.00');
       },
       120_000,
     );

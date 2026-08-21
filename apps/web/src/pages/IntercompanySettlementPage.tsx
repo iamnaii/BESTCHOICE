@@ -8,7 +8,14 @@ import { PendingTab } from './interco/PendingTab';
 import { BatchesTab } from './interco/BatchesTab';
 import { CreateBatchDialog } from './interco/CreateBatchDialog';
 import { BatchDetailSheet } from './interco/BatchDetailSheet';
-import type { BatchListResponse, InterCoBatchStatus, PendingResponse } from './interco/types';
+import { AgingTab } from './interco/AgingTab';
+import { AGING_DEFAULT_THRESHOLD_DAYS } from './interco/types';
+import type {
+  BatchListResponse,
+  InterCoBatchStatus,
+  PendingResponse,
+  ShopReceivableAgingResponse,
+} from './interco/types';
 
 /**
  * เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — รอบจ่าย batch (rebuild ของ
@@ -27,7 +34,7 @@ import type { BatchListResponse, InterCoBatchStatus, PendingResponse } from './i
  */
 export default function IntercompanySettlementPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'pending' | 'batches'>('pending');
+  const [tab, setTab] = useState<'pending' | 'batches' | 'aging'>('pending');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedRecallIds, setSelectedRecallIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
@@ -55,9 +62,18 @@ export default function IntercompanySettlementPage() {
     staleTime: 15_000,
   });
 
+  // ยอด/อายุเปลี่ยนตาม batch lifecycle (approve/reverse ล้าง-คืน deduction)
+  const agingQuery = useQuery<ShopReceivableAgingResponse>({
+    queryKey: ['interco-aging'],
+    queryFn: async () => (await api.get('/interco-settlement/shop-receivable-aging')).data,
+    enabled: tab === 'aging',
+    staleTime: 15_000,
+  });
+
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['interco-pending'] });
     queryClient.invalidateQueries({ queryKey: ['interco-batches'] });
+    queryClient.invalidateQueries({ queryKey: ['interco-aging'] });
   };
 
   const pending = pendingQuery.data?.pending ?? [];
@@ -97,10 +113,11 @@ export default function IntercompanySettlementPage() {
         icon={<ArrowRightLeft className="h-6 w-6" />}
       />
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'pending' | 'batches')}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'pending' | 'batches' | 'aging')}>
         <TabsList variant="line" size="md">
           <TabsTrigger value="pending">รอจ่าย</TabsTrigger>
           <TabsTrigger value="batches">รอบจ่าย</TabsTrigger>
+          <TabsTrigger value="aging">อายุลูกหนี้หน้าร้าน</TabsTrigger>
         </TabsList>
 
         <TabsContent value="pending">
@@ -141,6 +158,16 @@ export default function IntercompanySettlementPage() {
               setPage(1);
             }}
             onRowClick={setDetailBatchId}
+          />
+        </TabsContent>
+        <TabsContent value="aging">
+          <AgingTab
+            data={agingQuery.data}
+            thresholdDays={AGING_DEFAULT_THRESHOLD_DAYS}
+            isLoading={agingQuery.isLoading}
+            isError={agingQuery.isError}
+            error={agingQuery.error}
+            onRetry={() => agingQuery.refetch()}
           />
         </TabsContent>
       </Tabs>

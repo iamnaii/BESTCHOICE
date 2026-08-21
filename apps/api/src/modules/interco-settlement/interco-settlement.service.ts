@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -90,6 +91,8 @@ interface BuiltSnapshot {
  */
 @Injectable()
 export class IntercoSettlementService {
+  private readonly logger = new Logger(IntercoSettlementService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pendingService: IntercoPendingService,
@@ -745,7 +748,7 @@ export class IntercoSettlementService {
    *      prisma, doctrine R-1)
    */
   async approveBatch(id: string, userId: string, postedAtOverride?: Date) {
-    const result = await this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       // 1. load + status
       const batch = (await tx.interCoSettlementBatch.findUnique({
         where: { id },
@@ -1068,7 +1071,47 @@ export class IntercoSettlementService {
       });
 
       return posted;
-    });
+    };
+
+    // SERIALIZABLE (Phase 4 Task 5 — ปิด carry (d) ที่ต้นเหตุ). `settleRecallCash`
+    // เป็น Serializable มาตั้งแต่ Phase 3 แต่ SSI ต้องการให้ **ทั้งคู่** เป็น
+    // Serializable จึงจะเห็นกัน — writer ที่รันใต้ READ COMMITTED ไม่ลงทะเบียน
+    // rw-conflict กับ SIRead lock ของใครเลย. หน้าต่างที่ guard ปิดไม่ได้: คำขอ
+    // รับเงินสดคืนเปิด tx ไว้ **ก่อน** รอบจ่ายถูกสร้าง (ยังไม่มี item ให้ guard
+    // "RECALL item ใน batch เปิด" เห็น) แล้วรอบจ่ายถูกสร้าง+ส่ง+อนุมัติจนจบใน
+    // หน้าต่างนั้น — สองฝั่งอ่านยอดเรียกคืน net ก้อนเดียวกันแล้วหักคนละครั้ง
+    // ⇒ 11-2107 ติดลบ. ต้นทุนแทบเป็นศูนย์: อนุมัติรอบจ่ายเป็นงานมือไม่กี่ครั้ง
+    // ต่อสัปดาห์. ด่านอื่น (status guard / clash re-check / drift guard / DB
+    // idempotency index) ยังทำงานเหมือนเดิมทุกประการ — ชั้นนี้เป็นตาข่ายสุดท้าย.
+    let result: Awaited<ReturnType<typeof run>>;
+    try {
+      result = await this.prisma.$transaction(run, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (err) {
+      // ผู้แพ้ SSI race (40001 → Prisma P2034) โผล่ได้ทั้งกลาง tx และตอน commit
+      // — แปลเป็น 409 ไทยให้กดอนุมัติใหม่ได้ ไม่ใช่ raw 500 (pattern เดียวกับ
+      // catch P2034 ของ `settleRecallCash` + P2002 ของขั้นตอนโพสต์ JE ด้านบน).
+      // tx ทั้งก้อน roll back — รอบจ่ายไม่ถูก mark POSTED
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        this.logger.warn(
+          `[interco] write conflict (P2034) on batch ${id} — rejecting with 409, approver should retry`,
+        );
+        // `SentryExceptionFilter` จับเฉพาะ status >= 500 — 409 ใบนี้จึงมองไม่เห็น
+        // จากระบบ monitoring ถ้าไม่ยิงเอง. จำเป็นเป็นพิเศษสำหรับ Serializable ที่
+        // เพิ่งเปิดใช้: spike ของ P2034 = lock contention จริง (เช่นชนกับ cron ที่
+        // เขียน journal_lines) ที่ต้องรู้ก่อนจะกวนงานอนุมัติของผู้ใช้.
+        // pattern เดียวกับ `shop-collect-settlement.template.ts` catch P2034
+        Sentry.captureMessage('[interco] P2034 write-conflict translated to 409', {
+          level: 'warning',
+          extra: { batchId: id, userId },
+        });
+        throw new ConflictException(
+          'รอบจ่ายนี้ชนกับรายการอื่นที่กำลังบันทึกอยู่ (write conflict) — กรุณาตรวจสอบยอดแล้วลองอนุมัติอีกครั้ง',
+        );
+      }
+      throw err;
+    }
 
     // spec §4.7 — alarm อย่างเดียว ห้าม throw/await บนเส้นทางเงิน (doctrine
     // R-1: root prisma เท่านั้น — method ไม่รับ tx client โดยลายเซ็น)

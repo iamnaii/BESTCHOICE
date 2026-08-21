@@ -59,6 +59,53 @@ export interface PendingResponse {
   reconcile: ReconcileTotals;
 }
 
+/**
+ * แถวรายงานอายุลูกหนี้-หน้าร้าน (Phase 4 — `GET /interco-settlement/shop-receivable-aging`).
+ * Mirror ของ `ShopReceivableAgingRow` ฝั่ง API (Decimal → string, Date → ISO string).
+ */
+export interface ShopReceivableAgingRow {
+  contractId: string;
+  contractNumber: string;
+  customerName: string;
+  /** 11-2107 typed SWAP_CREDIT gross (Dr−Cr) */
+  swapCreditGross: string;
+  /** 11-2107 typed PAYOUT_RECALL gross (Dr−Cr) */
+  payoutRecallGross: string;
+  /** Σ (swapCreditAmount + recallAmount) ของ item ทุกประเภทใน batch POSTED */
+  settledDeduction: string;
+  /** กลุ่มระหว่างกิจการคงเหลือจริง = swapCreditGross + payoutRecallGross − settledDeduction */
+  intercoNet: string;
+  /** SHOP_COLLECT — เงินลูกค้าที่หน้าร้านรับแทน (คนละกลุ่มกับ interco) */
+  shopCollect: string;
+  /** กระจกฝั่ง SHOP (S21-3001 − deduction) — คู่เทียบของ intercoNet */
+  shopMirrorNet: string;
+  intercoOldestPostedAt: string | null;
+  intercoAgeDays: number | null;
+  shopCollectOldestPostedAt: string | null;
+  shopCollectAgeDays: number | null;
+  /** |intercoNet − shopMirrorNet| > 0.01 — คณิตศาสตร์ล้วน (แถว legacy ก็ true ได้) */
+  bookMismatch: boolean;
+  legacySwapGross: string;
+  /** swap ยุคก่อนระบบสองสมุด (spec §11.4) — สภาพปกติ ไม่ใช่ anomaly */
+  legacyOneBook: boolean;
+}
+
+export interface ShopReceivableAgingResponse {
+  rows: ShopReceivableAgingRow[];
+  /** วันที่ใช้คำนวณ "อายุ" เท่านั้น — ยอดคงเหลือเป็นปัจจุบันเสมอ */
+  asOf: string;
+  /** ไม่รวมแถว legacyOneBook — หนี้ legacy จริงรายงานแยกใน legacyOneBookNet */
+  totals: {
+    intercoNet: string;
+    shopCollect: string;
+    overdueCount: number;
+    legacyOneBookNet: string;
+  };
+}
+
+/** เกณฑ์วันค้าง default — ต้องตรงกับ default ของ IntercoAgingService (30) */
+export const AGING_DEFAULT_THRESHOLD_DAYS = 30;
+
 export type InterCoBatchStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'POSTED' | 'REVERSED' | 'CANCELLED';
 
 export interface BatchUserRef {

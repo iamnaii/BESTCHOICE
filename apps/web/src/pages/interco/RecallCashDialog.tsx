@@ -75,6 +75,7 @@ export function RecallCashDialog({ recall, onClose }: RecallCashDialogProps) {
           : `รับเงินสดคืนสำเร็จ — ใบสำคัญ ${data?.financeEntryNo ?? ''} / ${data?.shopEntryNo ?? ''}`,
       );
       queryClient.invalidateQueries({ queryKey: ['interco-pending'] });
+      queryClient.invalidateQueries({ queryKey: ['interco-aging'] });
       onClose();
     },
     onError: (err: unknown) => {

@@ -12,8 +12,12 @@
  * | SHOP_COLLECT  | เงินลูกค้าที่หน้าร้านรับแทน (Flow D)                  | settleShopCollect — ไม่เข้ารอบจ่าย |
  *
  * SQL twins: เงื่อนไข explicit-stamp/FLOW_MAP ของ SWAP_CREDIT + PAYOUT_RECALL
- * ถูก reproduce เป็น raw SQL ใน `interco-settlement/interco-typed-balance.ts`
- * และเลนส์ `IntercoPendingService` — แก้การ classify ที่นี่ต้องแก้ทั้งสองที่
+ * ถูก reproduce เป็น raw SQL ใน `interco-settlement/interco-typed-balance.ts`,
+ * เลนส์ `IntercoPendingService` และรายงานอายุ `IntercoAgingService` — แก้การ
+ * classify ที่นี่ต้องแก้ทุกที่ (เฉพาะ SWAP_CREDIT ฝั่ง 11-2107 มี **4 จุด**).
+ * NB: ฝั่ง S21-3001 SQL เป็น **stamp-only ไม่มี flow fallback** ทั้งที่ FLOW_MAP
+ * map 'shop-exchange-return' → SWAP_CREDIT — แคบกว่า util ตัวนี้โดยตั้งใจ
+ * (carry → Phase 5, ดู .claude/rules/accounting.md "ยังเปิดอยู่ → Phase 5")
  * (anti-drift net: interco-netting.integration.spec.ts).
  */
 export type ShopReceivableType = 'SWAP_CREDIT' | 'PAYOUT_RECALL' | 'SHOP_COLLECT' | 'UNKNOWN';

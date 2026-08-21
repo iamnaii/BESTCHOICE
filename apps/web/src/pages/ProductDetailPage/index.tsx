@@ -22,7 +22,7 @@ import QcResultsCard from './components/QcResultsCard';
 import SameModelCard from './components/SameModelCard';
 import ActivePromotionsCard from './components/ActivePromotionsCard';
 import CustomerSummaryActions from './components/CustomerSummaryActions';
-import ReturnToStockAction from './components/ReturnToStockAction';
+import ReturnToStockAction, { type ReturnToStockPayload } from './components/ReturnToStockAction';
 import { PRODUCT_READINESS_QUERY_KEY, useProductReadiness } from './hooks/useProductReadiness';
 import { useCustomerSummary } from './hooks/useCustomerSummary';
 import {
@@ -235,8 +235,8 @@ export default function ProductDetailPage() {
   // ใช้ชุด invalidate เดียวกับ editMutation เพราะเปลี่ยน `status` เหมือนกัน (ตารางสต็อก
   // + readiness อ่านสถานะ) — ต่างกันแค่ endpoint ที่บันทึก AuditLog ให้
   const returnToStockMutation = useMutation({
-    mutationFn: async (note?: string) =>
-      api.post(`/products/${id}/return-to-stock`, note ? { note } : {}),
+    mutationFn: async (payload: ReturnToStockPayload) =>
+      api.post(`/products/${id}/return-to-stock`, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -370,7 +370,11 @@ export default function ProductDetailPage() {
               status={product.status}
               canManage={isManager}
               isPending={returnToStockMutation.isPending}
-              onConfirm={(note) => returnToStockMutation.mutate(note)}
+              // ราคาที่ค้างบนเครื่อง = ราคาจากตอนขายครั้งก่อน — ใช้ display price ชุดเดียว
+              // กับการ์ดราคาบนหน้านี้ (คอลัมน์ก่อน ไม่มีค่อย fallback prices[])
+              currentCashPrice={displayCashPrice ?? null}
+              currentInstallmentPrice={displayInstallmentPrice ?? null}
+              onConfirm={(payload) => returnToStockMutation.mutate(payload)}
             />
             {isManager && (
               <button

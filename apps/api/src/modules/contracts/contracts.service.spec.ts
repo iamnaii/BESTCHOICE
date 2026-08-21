@@ -204,6 +204,8 @@ describe('ContractsService', () => {
     prisma = {
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
+        // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
+        findFirst: jest.fn().mockResolvedValue(mockProduct),
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -481,6 +483,8 @@ describe('ContractsService', () => {
             product: {
               ...prisma.product,
               findUnique: jest.fn().mockResolvedValue(mockProduct),
+              // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
+              findFirst: jest.fn().mockResolvedValue(mockProduct),
               update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
             },
             creditCheck: {
@@ -528,6 +532,8 @@ describe('ContractsService', () => {
             product: {
               ...prisma.product,
               findUnique: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
+              // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
+              findFirst: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
             },
             creditCheck: {
               findFirst: jest.fn().mockResolvedValue({
@@ -555,6 +561,8 @@ describe('ContractsService', () => {
             product: {
               ...prisma.product,
               findUnique: jest.fn().mockResolvedValue(mockProduct),
+              // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
+              findFirst: jest.fn().mockResolvedValue(mockProduct),
               update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
             },
             creditCheck: {
@@ -597,6 +605,8 @@ describe('ContractsService', () => {
             product: {
               ...prisma.product,
               findUnique: jest.fn().mockResolvedValue(mockProduct),
+              // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
+              findFirst: jest.fn().mockResolvedValue(mockProduct),
               update: jest.fn().mockImplementation((args: { data: { status: string } }) => {
                 if (args.data.status === 'RESERVED') productUpdateCalled = true;
                 return Promise.resolve({ ...mockProduct, status: 'RESERVED' });
@@ -627,7 +637,8 @@ describe('ContractsService', () => {
       async (fn: (tx: unknown) => Promise<unknown>) => {
         const txPrisma = {
           ...prisma,
-          product: { ...prisma.product, findUnique: jest.fn().mockResolvedValue(mockProduct), update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }) },
+          // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
+          product: { ...prisma.product, findUnique: jest.fn().mockResolvedValue(mockProduct), findFirst: jest.fn().mockResolvedValue(mockProduct), update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }) },
           creditCheck: { findFirst: jest.fn().mockResolvedValue({ id: 'cc-1', status: 'APPROVED', contractId: null }), update: jest.fn().mockResolvedValue({}) },
           customer: { findUnique: jest.fn().mockResolvedValue(mockCustomer) },
           contract: { create: jest.fn().mockResolvedValue(mockContract) },

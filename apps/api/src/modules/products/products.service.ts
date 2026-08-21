@@ -35,24 +35,40 @@ function isPositiveAmount(v: Prisma.Decimal | string | number | null | undefined
   return new Prisma.Decimal(v.toString()).gt(0);
 }
 
+/** number จาก DTO → Decimal เมื่อเป็นค่าบวกจริงเท่านั้น (ไม่งั้น null) */
+function positiveDecimalOrNull(v: number | null | undefined): Prisma.Decimal | null {
+  return isPositiveAmount(v) ? new Prisma.Decimal(v as number) : null;
+}
+
+interface ProductPriceShape {
+  cashPrice?: Prisma.Decimal | string | number | null;
+  installmentPrice?: Prisma.Decimal | string | number | null;
+  prices?: Array<{ amount: Prisma.Decimal | string | number; deletedAt?: Date | null }>;
+}
+
 /**
- * เครื่องนี้มีราคาขายแล้วหรือยัง (ใช้โดย `returnToStock`)
+ * เครื่องนี้มีราคาขายแล้วหรือยัง — **ด่านปลายทาง IN_STOCK** ของ `update()`
  *
  * ต่างจาก `evaluateReadiness` (product-readiness.util.ts) ที่ถามว่า "พร้อม**ขึ้นเว็บ**ไหม"
  * — อันนั้นบังคับ cashPrice, gallery, แบรนด์ Apple, isOnlineVisible. ที่นี่ถามแค่ว่า
  * "ขายหน้าร้านได้ไหม" ⇒ ราคาเงินสด **หรือ** ราคาผ่อนก็พอ และยอมรับ `prices[]` เป็น
  * fallback สำหรับเครื่องเก่าที่ตั้งราคาไว้ก่อนยุคคอลัมน์ (B0 write-through)
+ *
+ * Fix round 1 (minor): กรองแถว `prices[]` ที่ถูก soft-delete ออก — `productInclude.prices`
+ * ไม่ได้กรอง `deletedAt: null` ให้ (มันเป็น include ที่ผู้อ่านหลายตัวใช้ร่วมกัน) ⇒ ถ้าไม่กรอง
+ * ตรงนี้ ราคาที่ "ลบทิ้งไปแล้ว" จะยังนับเป็นราคาที่ใช้ได้
  */
-function hasSellingPrice(product: {
-  cashPrice?: Prisma.Decimal | string | null;
-  installmentPrice?: Prisma.Decimal | string | null;
-  prices?: Array<{ amount: Prisma.Decimal | string }>;
-}): boolean {
+function hasSellingPrice(product: ProductPriceShape): boolean {
   if (isPositiveAmount(product.cashPrice) || isPositiveAmount(product.installmentPrice)) {
     return true;
   }
-  return (product.prices ?? []).some((p) => isPositiveAmount(p.amount));
+  return (product.prices ?? []).some((r) => !r.deletedAt && isPositiveAmount(r.amount));
 }
+
+/** ข้อความเดียวของด่านราคา — ใช้ทั้งฝั่ง PATCH และฝั่งปุ่ม เพื่อไม่ให้กติกาแตกเป็นสองสำนวน */
+const NO_PRICE_MESSAGE =
+  'ยังไม่ได้ตั้งราคาขายของเครื่องนี้ — ตั้งราคาขาย (เงินสด/ผ่อน) ก่อนจึงจะนำเข้าคลังพร้อมขายได้ ' +
+  '(เครื่องที่อยู่ในคลังต้องขายที่ POS ได้ทันที)';
 
 @Injectable()
 export class ProductsService {
@@ -226,11 +242,38 @@ export class ProductsService {
     });
   }
 
-  async update(id: string, dto: UpdateProductDto) {
+  async update(id: string, dto: UpdateProductDto, actorUserId?: string) {
     const existing = await this.findOne(id);
     // สถานะขาย/จอง/ยึด ระบบตั้งผ่าน flow — ห้ามแก้ข้าม lifecycle จากหน้าแก้ไขสินค้า
     if (dto.status !== undefined) {
       assertManualStatusChangeAllowed(existing.status, dto.status);
+    }
+
+    /**
+     * Fix round 1 [Important 1] — **ด่านปลายทาง** ไม่ใช่ด่านราย transition
+     *
+     * `MANUAL_TRANSITION_DENY` ปิดได้แค่คู่ `REFURBISHED → IN_STOCK` ตรง ๆ; ผู้ใช้ที่
+     * เพิ่งโดนด่านราคาบล็อกจากปุ่ม สามารถ "ฟอกสถานะ" ผ่านสถานะกลาง
+     * (`REFURBISHED → QC_PENDING → IN_STOCK`) แล้วเข้าคลังได้ในสองคลิก — เดิมขาที่สอง
+     * ไม่มีเช็คราคา ไม่มี `stockInDate` ไม่มี AuditLog ⇒ ได้ผลลัพธ์ที่ "เงียบกว่า" ปุ่ม
+     *
+     * ตอนนี้ทุกเส้นทางที่ลงเอยที่ IN_STOCK ต้องผ่านกติกาเดียวกัน: มีราคาขาย +
+     * `stockInDate` ใหม่ + AuditLog `PRODUCT_RETURNED_TO_STOCK` ⇒ การฟอกสถานะไม่ได้
+     * ประโยชน์อะไรเลยนอกจากเสีย audit trail เพิ่มหนึ่งแถว
+     *
+     * เช็ค "ราคาหลังอัปเดต" ไม่ใช่ราคาปัจจุบัน — ผู้ใช้ตั้งราคาพร้อมเปลี่ยนสถานะในใบเดียวได้
+     */
+    const entersStock = dto.status === 'IN_STOCK' && existing.status !== 'IN_STOCK';
+    if (entersStock) {
+      const effective: ProductPriceShape = {
+        cashPrice: dto.cashPrice !== undefined ? dto.cashPrice : existing.cashPrice,
+        installmentPrice:
+          dto.installmentPrice !== undefined ? dto.installmentPrice : existing.installmentPrice,
+        prices: existing.prices,
+      };
+      if (!hasSellingPrice(effective)) {
+        throw new BadRequestException(NO_PRICE_MESSAGE);
+      }
     }
     // แก้ IMEI/Serial บนเครื่องที่ยังถูกถือครอง = ปลด IMEI เดิมให้ว่างโดยไม่ต้องลบ
     // (ช่องเดียวกับ remove() และเปิดกว้างกว่าเพราะ PATCH ให้สิทธิ์ถึง BRANCH_MANAGER)
@@ -263,6 +306,9 @@ export class ProductsService {
         where: { id },
         data: {
           ...data,
+          // เข้าคลังเมื่อไร = วันที่เครื่องกลายเป็นสต็อกที่ขายได้ (นิยามเดียวกับ PO receiving /
+          // markReadyForSale / ปุ่มนำเข้าคลัง) — เส้นทาง PATCH ต้องสตางค์ให้ตรงกัน
+          ...(entersStock ? { stockInDate: new Date() } : {}),
           ...(costPrice !== undefined ? { costPrice } : {}),
           ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
@@ -284,6 +330,21 @@ export class ProductsService {
         });
       }
 
+      // audit ชุดเดียวกับปุ่ม (action เดียวกัน) — `actorUserId` มาจาก controller เสมอ;
+      // ผู้เรียกภายในที่ไม่มีตัวตนผู้ใช้จะข้ามการเขียน audit แต่ยังได้ stockInDate
+      if (entersStock && actorUserId) {
+        await tx.auditLog.create({
+          data: {
+            userId: actorUserId,
+            action: 'PRODUCT_RETURNED_TO_STOCK',
+            entity: 'product',
+            entityId: id,
+            oldValue: { status: existing.status, via: 'PATCH' },
+            newValue: { status: 'IN_STOCK', via: 'PATCH' },
+          },
+        });
+      }
+
       return tx.product.findUnique({ where: { id }, include: productInclude });
     });
   }
@@ -293,22 +354,30 @@ export class ProductsService {
    *
    * คำตัดสินเจ้าของ 2026-08-21: **หน้าร้านกดเอง** — POS ยังขายเฉพาะ `IN_STOCK`
    * ตามเดิม (`sale-writer.service.ts`) เพราะระหว่าง REFURBISHED กับพร้อมขายจริงมี
-   * จังหวะตรวจสภาพ/ตั้งราคา. endpoint นี้คือสะพานเดียวที่บันทึกร่องรอยว่าใครยืนยัน
-   * (เดิมทำได้ด้วย PATCH เปลี่ยนสถานะเงียบ ๆ — ตอนนี้ปิดทางนั้นแล้วใน
-   * `MANUAL_TRANSITION_DENY` ของ product-status.util.ts)
+   * จังหวะตรวจสภาพ/ตั้งราคา. endpoint นี้คือจุดที่บันทึกว่าใครยืนยัน
    *
-   * ด่านราคาขาย = block ไม่ใช่ allow+flag: IN_STOCK คือ "ขายที่ POS ได้ทันที"
-   * ปล่อยเครื่องไม่มีราคาเข้าไปคือเปิดช่องขายราคา 0 ซึ่งเป็นสิ่งที่ขั้นตอนกดยืนยัน
-   * นี้ตั้งใจกันตั้งแต่แรก. เครื่องจากยึดเครื่องมีราคาอยู่แล้ว (`markReadyForSale`
-   * บังคับ resellPrice > 0) — ที่โดนด่านนี้จริงคือเครื่องจากเปลี่ยนเครื่อง (A.4 ตั้งแต่
-   * costPrice = ราคารับซื้อ แต่ไม่เคยตั้งราคาขาย) ซึ่งควรถูกบังคับให้ตั้งราคาอยู่แล้ว
+   * **ด่านราคา = บังคับ "ยืนยันราคา" ไม่ใช่แค่ "มีราคา" (fix round 1, Important 2).**
+   * รอบแรกเขียนด่านเป็น `hasSellingPrice(product)` ด้วยเหตุผลที่ **กลับด้านกับความจริง**:
+   * สำรวจแล้วพบว่า **ไม่มี flow ไหนล้าง `cashPrice`/`installmentPrice` เลย** — A.4
+   * (เปลี่ยนเครื่อง) เขียนแค่ `costPrice`, ยึดเครื่องเขียน `cashPrice` จาก resellPrice
+   * ⇒ เครื่องมือสองที่คืนมา **ยังถือราคาเครื่องใหม่ติดมาเต็ม ๆ** ด่านแบบเดิมจึงผ่านเสมอ
+   * และให้ความมั่นใจผิด ๆ ว่า "มีคนตั้งราคาแล้ว" ทั้งที่ราคาที่ค้างอยู่คือราคาเครื่องใหม่
+   * ⇒ เครื่องมือสองจะเข้าคลังไปขายที่ราคาเครื่องใหม่
+   *
+   * ตอนนี้ผู้กดต้องส่งราคาที่ยืนยัน (เงินสด และ/หรือ ผ่อน) มาด้วยเสมอ แล้วราคานั้นถูก
+   * **เขียนทับใน tx เดียวกับการเปลี่ยนสถานะ** + บันทึกราคาเก่า→ใหม่ลง AuditLog
+   * (UI เติมราคาปัจจุบันให้ล่วงหน้าพร้อมป้ายว่าเป็นราคาจากตอนขายครั้งก่อน — กดยืนยัน
+   * โดยไม่แก้ก็ได้ แต่ต้องผ่านตาคน ซึ่งคือเจตนา "มีจังหวะตรวจสภาพ/ตั้งราคาก่อนขาย")
    *
    * `stockInDate` ตั้งใหม่ทุกครั้ง: นิยามของคอลัมน์นี้คือ "วันที่เครื่องกลายเป็นสต็อกที่
-   * ขายได้" (PO receiving / `markReadyForSale` ก็ตั้งด้วยนิยามนี้) — พอปุ่มนี้กลายเป็น
-   * จังหวะจริงที่เครื่องขายได้ ค่าเดิมจึงต้องขยับตาม ไม่งั้นเครื่องจากเปลี่ยนเครื่องจะติด
-   * วันที่รับเข้าครั้งแรก (เก่าหลายเดือน) แล้วรายงานอายุสต็อกอ่านผิดทันที
+   * ขายได้" (PO receiving / `markReadyForSale` ก็ตั้งด้วยนิยามนี้) — ไม่งั้นเครื่องจาก
+   * เปลี่ยนเครื่องจะติดวันที่รับเข้าครั้งแรก (เก่าหลายเดือน) แล้วรายงานอายุสต็อกอ่านผิด
    */
-  async returnToStock(id: string, userId: string, note?: string) {
+  async returnToStock(
+    id: string,
+    userId: string,
+    input: { cashPrice?: number; installmentPrice?: number; note?: string },
+  ) {
     const product = await this.findOne(id);
 
     if (product.status !== 'REFURBISHED') {
@@ -318,33 +387,61 @@ export class ProductsService {
       );
     }
 
-    if (!hasSellingPrice(product)) {
+    const cashDecimal = positiveDecimalOrNull(input.cashPrice);
+    const installmentDecimal = positiveDecimalOrNull(input.installmentPrice);
+    if (!cashDecimal && !installmentDecimal) {
       throw new BadRequestException(
-        'ยังไม่ได้ตั้งราคาขายของเครื่องนี้ — ตั้งราคาขาย (เงินสด/ผ่อน) ก่อน แล้วค่อยนำเข้าคลังพร้อมขาย ' +
-          '(เครื่องที่อยู่ในคลังต้องขายที่ POS ได้ทันที)',
+        'กรุณายืนยันราคาขายของเครื่องนี้ก่อนนำเข้าคลัง (ราคาเงินสด และ/หรือ ราคาผ่อน ต้องมากกว่า 0) — ' +
+          'ราคาที่ค้างอยู่บนเครื่องคือราคาจากตอนขายครั้งก่อน ต้องให้คนตรวจก่อนขายซ้ำ',
       );
     }
+
+    const before = {
+      cashPrice: product.cashPrice?.toString() ?? null,
+      installmentPrice: product.installmentPrice?.toString() ?? null,
+    };
 
     return this.prisma.$transaction(async (tx) => {
       // updateMany + count===1 = ด่านกันแข่ง (double-click / สองคนกดพร้อมกัน): เงื่อนไข
       // สถานะอยู่ใน WHERE เอง ⇒ ผู้กดคนที่สองไม่ได้แถว และไม่มี AuditLog ใบซ้ำตามมา
       const locked = await tx.product.updateMany({
         where: { id, status: 'REFURBISHED', deletedAt: null },
-        data: { status: 'IN_STOCK', stockInDate: new Date() },
+        data: {
+          status: 'IN_STOCK',
+          stockInDate: new Date(),
+          // ไม่ส่งราคาไหนมา = ไม่แตะคอลัมน์นั้น (ไม่ล้างเป็น null)
+          ...(cashDecimal ? { cashPrice: cashDecimal } : {}),
+          ...(installmentDecimal ? { installmentPrice: installmentDecimal } : {}),
+          // ราคาที่มนุษย์ยืนยัน = เลิกเป็นราคาที่เติมอัตโนมัติ (badge ฝั่ง B1 อ่านฟิลด์นี้)
+          priceAutofilledAt: null,
+        },
       });
       if (locked.count !== 1) {
         throw new ConflictException('สถานะสินค้าเปลี่ยนไปแล้ว — โหลดหน้าใหม่แล้วลองอีกครั้ง');
       }
+
+      // write-through คอลัมน์ → แถว `ProductPrice` เหมือนเส้นทางแก้ราคาปกติ (B0 §2.1)
+      await syncPriceRowsFromColumns(tx, id, {
+        cashPrice: cashDecimal,
+        installmentPrice: installmentDecimal,
+      });
+
       await tx.auditLog.create({
         data: {
           userId,
           action: 'PRODUCT_RETURNED_TO_STOCK',
           entity: 'product',
           entityId: id,
-          oldValue: { status: product.status },
-          newValue: { status: 'IN_STOCK', note: note ?? null },
+          oldValue: { status: product.status, ...before },
+          newValue: {
+            status: 'IN_STOCK',
+            cashPrice: cashDecimal?.toString() ?? before.cashPrice,
+            installmentPrice: installmentDecimal?.toString() ?? before.installmentPrice,
+            note: input.note ?? null,
+          },
         },
       });
+
       return tx.product.findUnique({ where: { id }, include: productInclude });
     });
   }

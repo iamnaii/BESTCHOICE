@@ -18,6 +18,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: 'default' | 'destructive';
   loading?: boolean;
+  /** ปิดปุ่มยืนยันโดยไม่เปลี่ยนป้ายเป็น "กำลังดำเนินการ..." (ใช้ตอนฟอร์มใน children ยังไม่ครบ) */
+  confirmDisabled?: boolean;
   closeOnConfirm?: boolean;
   onConfirm: () => void;
   children?: ReactNode;
@@ -32,6 +34,7 @@ export function ConfirmDialog({
   cancelLabel = 'ยกเลิก',
   variant = 'default',
   loading = false,
+  confirmDisabled = false,
   closeOnConfirm = true,
   onConfirm,
   children,
@@ -51,10 +54,11 @@ export function ConfirmDialog({
           <Button
             variant={variant === 'destructive' ? 'destructive' : 'primary'}
             onClick={() => {
+              if (confirmDisabled) return;
               onConfirm();
               if (closeOnConfirm) onOpenChange(false);
             }}
-            disabled={loading}
+            disabled={loading || confirmDisabled}
           >
             {loading ? 'กำลังดำเนินการ...' : confirmLabel}
           </Button>

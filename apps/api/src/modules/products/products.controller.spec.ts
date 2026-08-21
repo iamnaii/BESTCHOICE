@@ -179,14 +179,35 @@ describe('ProductsController.returnToStock — สิทธิ์ + การส
     controller = module.get(ProductsController);
   });
 
-  it('ส่ง id + userId ของผู้กด + note ต่อให้ service (audit ต้องรู้ว่าใครยืนยัน)', async () => {
-    const res = await controller.returnToStock(
-      'p-1',
-      { note: 'ตรวจสภาพแล้ว' },
-      { id: 'user-9' },
-    );
-    expect(products.returnToStock).toHaveBeenCalledWith('p-1', 'user-9', 'ตรวจสภาพแล้ว');
+  it('ส่ง id + userId ของผู้กด + ราคาที่ยืนยัน + note ต่อให้ service (audit ต้องรู้ว่าใครยืนยันราคาเท่าไร)', async () => {
+    const dto = { cashPrice: 9900, installmentPrice: 11900, note: 'ตรวจสภาพแล้ว' };
+    const res = await controller.returnToStock('p-1', dto, { id: 'user-9' });
+    expect(products.returnToStock).toHaveBeenCalledWith('p-1', 'user-9', dto);
     expect(res).toHaveProperty('status', 'IN_STOCK');
+  });
+
+  it('PATCH /products/:id ส่ง userId ต่อให้ service ด้วย (ด่านปลายทาง IN_STOCK ต้องเขียน audit ได้)', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'p-1' });
+    const module = await Test.createTestingModule({
+      controllers: [ProductsController],
+      providers: [
+        { provide: ProductsService, useValue: { update } },
+        { provide: ProductsPricingService, useValue: {} },
+        { provide: ProductsStockService, useValue: {} },
+        { provide: ProductsOnlineListingService, useValue: {} },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(BranchGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+    const c = module.get(ProductsController);
+
+    await c.update('p-1', { status: 'IN_STOCK' }, { id: 'user-9' });
+    expect(update).toHaveBeenCalledWith('p-1', { status: 'IN_STOCK' }, 'user-9');
   });
 
   it('เปิดให้เฉพาะ OWNER กับ BRANCH_MANAGER', () => {

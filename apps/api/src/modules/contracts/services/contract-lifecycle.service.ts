@@ -150,8 +150,14 @@ export class ContractLifecycleService {
           }
           creditGateBypassed = !approvedCreditCheck && testModeOn;
 
-          // Verify product is still available inside transaction
-          const currentProduct = await tx.product.findUnique({ where: { id: dto.productId } });
+          // Verify product is still available inside transaction.
+          // Phase 5 fix round 1 [Important 3]: `deletedAt: null` ต้องอยู่ในด่านนี้ด้วย ให้ตรง
+          // กับด่านนอก tx ที่บรรทัด ~64 — asymmetry เดียวกับที่ `ContractWorkflowService.activate`
+          // เพิ่งแก้ (Task 2): การลบที่แทรกเข้ามาระหว่างสองด่านจะหลุดด่านใน tx ซึ่งเป็นตาข่าย
+          // สุดท้ายก่อนสร้างสัญญาบนเครื่องที่ IMEI หลุด unique index ไปแล้ว
+          const currentProduct = await tx.product.findFirst({
+            where: { id: dto.productId, deletedAt: null },
+          });
           if (!currentProduct || currentProduct.status !== 'IN_STOCK') {
             throw new BadRequestException('สินค้าไม่พร้อมขาย (อาจถูกจองแล้ว)');
           }

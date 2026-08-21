@@ -178,8 +178,13 @@ export class ProductsController {
 
   @Patch(':id')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
-    return this.productsService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    // userId ส่งเข้าไปเพื่อให้ด่านปลายทาง IN_STOCK เขียน AuditLog ได้ (fix round 1)
+    return this.productsService.update(id, dto, user.id);
   }
 
   @Patch(':id/online-listing')
@@ -207,7 +212,7 @@ export class ProductsController {
     @Body() dto: ReturnToStockDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.productsService.returnToStock(id, user.id, dto.note);
+    return this.productsService.returnToStock(id, user.id, dto);
   }
 
   @Delete(':id')

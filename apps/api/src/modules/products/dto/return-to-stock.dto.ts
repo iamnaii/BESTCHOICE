@@ -1,10 +1,27 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
  * Phase 5 Task 3 — body ของ `POST /products/:id/return-to-stock`
  * (นำเครื่องมือสองที่รับคืนกลับเข้าคลังพร้อมขาย)
+ *
+ * Fix round 1 [Important 2]: ต้องส่งราคาที่ยืนยันมาด้วย (อย่างน้อยหนึ่งช่อง > 0) —
+ * เครื่องที่คืนมาจากเปลี่ยนเครื่อง/ยึดยังถือ "ราคาเครื่องใหม่" ค้างอยู่เสมอ เพราะไม่มี
+ * flow ไหนล้างคอลัมน์ราคา การเช็คแค่ "มีราคาไหม" จึงผ่านตลอดและไม่ได้แปลว่ามีคนตรวจ
+ * กติกา "อย่างน้อยหนึ่งช่อง" บังคับใน service (ต้องมีข้อความไทยอธิบายเหตุผล)
  */
 export class ReturnToStockDto {
+  /** ราคาเงินสด (POS) ที่ยืนยันแล้ว */
+  @IsOptional()
+  @IsNumber({}, { message: 'ราคาเงินสดต้องเป็นตัวเลข' })
+  @Min(0, { message: 'ราคาเงินสดต้องไม่ติดลบ' })
+  cashPrice?: number;
+
+  /** ราคาผ่อนที่ยืนยันแล้ว (เครื่องที่ขายเฉพาะเงินผ่อนส่งเฉพาะช่องนี้ได้) */
+  @IsOptional()
+  @IsNumber({}, { message: 'ราคาผ่อนต้องเป็นตัวเลข' })
+  @Min(0, { message: 'ราคาผ่อนต้องไม่ติดลบ' })
+  installmentPrice?: number;
+
   /** บันทึกเหตุผล/ผลตรวจสภาพ — เก็บลง AuditLog.newValue.note */
   @IsOptional()
   @IsString({ message: 'หมายเหตุต้องเป็นข้อความ' })

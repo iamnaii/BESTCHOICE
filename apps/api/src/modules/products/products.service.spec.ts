@@ -484,18 +484,28 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
     name: 'iPhone 13 128GB',
     imeiSerial: '350000000000001',
     status: 'REFURBISHED',
+    // fix round 1 [Important 2]: เครื่องที่คืนมาจาก swap/ยึด **ยังถือราคาเครื่องใหม่**
+    // (ไม่มี flow ไหนล้างคอลัมน์ราคา) — ฟิกซ์เจอร์จึงมีราคาเก่าติดมาเสมอ
     cashPrice: '15900',
-    installmentPrice: null,
+    installmentPrice: '19900',
     prices: [],
     deletedAt: null,
     ...over,
   });
+
+  const dto = { cashPrice: 9900, note: 'ตรวจสภาพแล้ว' };
 
   beforeEach(async () => {
     tx = {
       product: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUnique: jest.fn().mockResolvedValue(productRow({ status: 'IN_STOCK' })),
+      },
+      productPrice: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'pr-new' }),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -510,33 +520,49 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
     service = module.get<ProductsService>(ProductsService);
   });
 
-  it('REFURBISHED → IN_STOCK สำเร็จ + เขียน AuditLog PRODUCT_RETURNED_TO_STOCK ใน tx เดียวกัน', async () => {
-    await service.returnToStock('p-1', 'user-1', 'ตรวจสภาพแล้ว ตั้งราคาใหม่');
+  it('เขียนราคาที่ยืนยัน + สถานะ + stockInDate ใน tx เดียว (ราคาเก่าถูกทับ ไม่ใช่แค่ผ่านด่าน)', async () => {
+    await service.returnToStock('p-1', 'user-1', { cashPrice: 9900, installmentPrice: 11900 });
 
-    // เงื่อนไขสถานะอยู่ใน WHERE เอง (ด่านกันแข่ง) ไม่ใช่แค่เช็คก่อนแล้วเขียนทับ
     expect(tx.product.updateMany).toHaveBeenCalledWith({
       where: { id: 'p-1', status: 'REFURBISHED', deletedAt: null },
       data: expect.objectContaining({ status: 'IN_STOCK' }),
     });
+    const data = tx.product.updateMany.mock.calls[0][0].data;
+    expect(data.cashPrice.toString()).toBe('9900');
+    expect(data.installmentPrice.toString()).toBe('11900');
+    expect(data.stockInDate).toBeInstanceOf(Date);
+    // ราคาที่มนุษย์ยืนยัน = ไม่ใช่ราคาที่เติมอัตโนมัติอีกต่อไป
+    expect(data.priceAutofilledAt).toBeNull();
+    // write-through ไปแถว prices[] เหมือนเส้นทางแก้ราคาปกติ
+    expect(tx.productPrice.findMany).toHaveBeenCalled();
+  });
+
+  it('AuditLog PRODUCT_RETURNED_TO_STOCK บันทึกราคาเก่า→ใหม่ (ตรวจย้อนได้ว่าใครตั้งราคาเท่าไร)', async () => {
+    await service.returnToStock('p-1', 'user-1', dto);
+
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         userId: 'user-1',
         action: 'PRODUCT_RETURNED_TO_STOCK',
         entity: 'product',
         entityId: 'p-1',
-        oldValue: expect.objectContaining({ status: 'REFURBISHED' }),
+        oldValue: expect.objectContaining({
+          status: 'REFURBISHED',
+          cashPrice: '15900',
+          installmentPrice: '19900',
+        }),
         newValue: expect.objectContaining({
           status: 'IN_STOCK',
-          note: 'ตรวจสภาพแล้ว ตั้งราคาใหม่',
+          cashPrice: '9900',
+          note: 'ตรวจสภาพแล้ว',
         }),
       }),
     });
-    // audit ต้องอยู่ใน tx เดียวกับการเปลี่ยนสถานะ — ห้ามใช้ prisma root
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('note เป็น optional — ไม่ส่งก็บันทึกได้ (newValue.note = null)', async () => {
-    await service.returnToStock('p-1', 'user-1');
+    await service.returnToStock('p-1', 'user-1', { cashPrice: 9900 });
 
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -545,13 +571,39 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
     });
   });
 
+  it('ไม่ส่งราคามาเลย → reject (บังคับให้ราคาผ่านตาคน ไม่ใช่แค่ "มีราคาเก่าค้างอยู่")', async () => {
+    await expect(service.returnToStock('p-1', 'user-1', {})).rejects.toThrow(BadRequestException);
+    await expect(service.returnToStock('p-1', 'user-1', {})).rejects.toThrow(/ยืนยันราคาขาย/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ส่งราคา 0/ติดลบ → reject เช่นกัน', async () => {
+    await expect(service.returnToStock('p-1', 'user-1', { cashPrice: 0 })).rejects.toThrow(
+      /ยืนยันราคาขาย/,
+    );
+    await expect(service.returnToStock('p-1', 'user-1', { installmentPrice: -1 })).rejects.toThrow(
+      /ยืนยันราคาขาย/,
+    );
+  });
+
+  it('ส่งเฉพาะราคาผ่อน (เครื่องขายผ่อนอย่างเดียว) → ผ่าน และไม่แตะคอลัมน์เงินสดเดิม', async () => {
+    await expect(
+      service.returnToStock('p-1', 'user-1', { installmentPrice: 11900 }),
+    ).resolves.toBeDefined();
+    const data = tx.product.updateMany.mock.calls[0][0].data;
+    expect(data.installmentPrice.toString()).toBe('11900');
+    expect(data.cashPrice).toBeUndefined();
+  });
+
   it.each(['IN_STOCK', 'SOLD_INSTALLMENT', 'DAMAGED', 'REPOSSESSED'])(
     'สถานะ %s → reject ภาษาไทย (บอกสถานะปัจจุบัน) และไม่แตะสถานะ',
     async (status) => {
       prisma.product.findUnique.mockResolvedValue(productRow({ status }));
 
-      await expect(service.returnToStock('p-1', 'user-1')).rejects.toThrow(BadRequestException);
-      await expect(service.returnToStock('p-1', 'user-1')).rejects.toThrow(
+      await expect(service.returnToStock('p-1', 'user-1', dto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.returnToStock('p-1', 'user-1', dto)).rejects.toThrow(
         new RegExp(status),
       );
       expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -561,45 +613,154 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
   it('สินค้าที่ถูกลบ → NotFound (ไม่มีทางปลุกเครื่องที่ลบแล้วกลับเข้าสต็อก)', async () => {
     prisma.product.findUnique.mockResolvedValue(productRow({ deletedAt: new Date() }));
 
-    await expect(service.returnToStock('p-1', 'user-1')).rejects.toThrow(NotFoundException);
+    await expect(service.returnToStock('p-1', 'user-1', dto)).rejects.toThrow(NotFoundException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
-
-  it('ไม่มีราคาขาย → block (กันเครื่องราคา 0 หลุดเข้า POS)', async () => {
-    prisma.product.findUnique.mockResolvedValue(
-      productRow({ cashPrice: null, installmentPrice: null, prices: [] }),
-    );
-
-    await expect(service.returnToStock('p-1', 'user-1')).rejects.toThrow(BadRequestException);
-    await expect(service.returnToStock('p-1', 'user-1')).rejects.toThrow(/ราคาขาย/);
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
-
-  it('ราคาคอลัมน์เป็น 0 ก็ถือว่ายังไม่มีราคา → block', async () => {
-    prisma.product.findUnique.mockResolvedValue(
-      productRow({ cashPrice: '0', installmentPrice: '0', prices: [] }),
-    );
-
-    await expect(service.returnToStock('p-1', 'user-1')).rejects.toThrow(/ราคาขาย/);
-  });
-
-  it('เครื่องเก่าที่มีราคาเฉพาะใน prices[] (ก่อนยุคคอลัมน์) → ผ่าน ไม่ block', async () => {
-    prisma.product.findUnique.mockResolvedValue(
-      productRow({
-        cashPrice: null,
-        installmentPrice: null,
-        prices: [{ id: 'pr-1', label: 'ราคาขายต่อ (Refurbished)', amount: '9900' }],
-      }),
-    );
-
-    await expect(service.returnToStock('p-1', 'user-1')).resolves.toBeDefined();
-    expect(tx.product.updateMany).toHaveBeenCalled();
   });
 
   it('มีคนกดพร้อมกัน (แถวถูกเปลี่ยนสถานะไปแล้ว) → 409 และไม่มี AuditLog ใบซ้ำ', async () => {
     tx.product.updateMany.mockResolvedValue({ count: 0 });
 
-    await expect(service.returnToStock('p-1', 'user-1')).rejects.toThrow(ConflictException);
+    await expect(service.returnToStock('p-1', 'user-1', dto)).rejects.toThrow(ConflictException);
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Fix round 1 [Important 1] — ปิด two-hop `REFURBISHED → QC_PENDING → IN_STOCK`
+ *
+ * deny-list ราย transition ปิดได้แค่คู่ตรง ๆ; ผู้ใช้ที่เพิ่งโดนด่านราคาบล็อกสามารถ
+ * "ฟอกสถานะ" ผ่านสถานะกลางแล้วเข้า IN_STOCK ได้ในสองคลิก โดยไม่มีเช็คราคา/stockInDate/audit
+ * ⇒ ย้ายด่านไปที่ **ปลายทาง**: ทุกการเปลี่ยนสถานะด้วยมือที่ลงเอยที่ IN_STOCK ต้องมีราคาขาย
+ * และต้องได้ stockInDate + AuditLog ชุดเดียวกับปุ่ม (ฟอกสถานะแล้วไม่ได้ผลลัพธ์ที่เงียบกว่า)
+ */
+describe('ProductsService.update — ด่านปลายทาง IN_STOCK (fix round 1)', () => {
+  let service: ProductsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tx: any;
+
+  const setProduct = (over: Record<string, unknown>) =>
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'p-1',
+      name: 'iPhone 13',
+      status: 'QC_PENDING',
+      imeiSerial: '350000000000001',
+      serialNumber: 'SN-001',
+      cashPrice: null,
+      installmentPrice: null,
+      prices: [],
+      deletedAt: null,
+      ...over,
+    });
+
+  beforeEach(async () => {
+    tx = {
+      product: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({ id: 'p-1', status: 'IN_STOCK' }),
+      },
+      productPrice: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'pr-1' }),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    prisma = {
+      product: { findUnique: jest.fn() },
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+      productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
+      onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      $transaction: jest.fn(async (fn: any) => fn(tx)),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('two-hop: QC_PENDING → IN_STOCK ที่ยังไม่มีราคาขาย → reject (ขาที่สองของการฟอกสถานะ)', async () => {
+    setProduct({ status: 'QC_PENDING' });
+
+    await expect(service.update('p-1', { status: 'IN_STOCK' })).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.update('p-1', { status: 'IN_STOCK' })).rejects.toThrow(/ราคาขาย/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(['PHOTO_PENDING', 'INSPECTION', 'DAMAGED', 'PO_RECEIVED'])(
+    'สถานะกลางอื่น (%s) → IN_STOCK ที่ยังไม่มีราคา ก็ถูกกันเหมือนกัน',
+    async (status) => {
+      setProduct({ status });
+
+      await expect(service.update('p-1', { status: 'IN_STOCK' })).rejects.toThrow(/ราคาขาย/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it('มีราคาขายอยู่แล้ว → ผ่าน แต่ต้องได้ stockInDate + AuditLog เหมือนกดปุ่ม', async () => {
+    setProduct({ status: 'QC_PENDING', cashPrice: '15900' });
+
+    await service.update('p-1', { status: 'IN_STOCK' }, 'user-9');
+
+    const data = tx.product.update.mock.calls[0][0].data;
+    expect(data.stockInDate).toBeInstanceOf(Date);
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'PRODUCT_RETURNED_TO_STOCK',
+        entity: 'product',
+        entityId: 'p-1',
+        oldValue: expect.objectContaining({ status: 'QC_PENDING' }),
+        newValue: expect.objectContaining({ status: 'IN_STOCK' }),
+      }),
+    });
+  });
+
+  it('ราคาที่อยู่ในแถว prices[] ที่ถูกลบไปแล้ว ไม่นับเป็น "มีราคา" (minor fix round 1)', async () => {
+    setProduct({
+      status: 'QC_PENDING',
+      prices: [{ id: 'pr-1', amount: '9900', deletedAt: new Date() }],
+    });
+
+    await expect(service.update('p-1', { status: 'IN_STOCK' })).rejects.toThrow(/ราคาขาย/);
+  });
+
+  it('แถว prices[] ที่ยังไม่ถูกลบ นับเป็นมีราคา → ผ่าน', async () => {
+    setProduct({
+      status: 'QC_PENDING',
+      prices: [{ id: 'pr-1', amount: '9900', deletedAt: null }],
+    });
+
+    await expect(service.update('p-1', { status: 'IN_STOCK' })).resolves.toBeDefined();
+  });
+
+  it('ตั้งราคาพร้อมเปลี่ยนสถานะในใบเดียว → ผ่าน (ด่านเช็คราคา "หลังอัปเดต")', async () => {
+    setProduct({ status: 'QC_PENDING', cashPrice: null });
+
+    await expect(
+      service.update('p-1', { status: 'IN_STOCK', cashPrice: 15900 }, 'user-9'),
+    ).resolves.toBeDefined();
+  });
+
+  it('ผู้เรียกภายในที่ไม่มีตัวตนผู้ใช้ → ยังได้ stockInDate แต่ข้ามการเขียน audit (ตั้งใจ)', async () => {
+    setProduct({ status: 'QC_PENDING', cashPrice: '15900' });
+
+    await service.update('p-1', { status: 'IN_STOCK' });
+
+    expect(tx.product.update.mock.calls[0][0].data.stockInDate).toBeInstanceOf(Date);
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('แก้ฟิลด์อื่นบนเครื่องที่ IN_STOCK อยู่แล้ว (ส่ง status เดิม) ไม่โดนด่านนี้', async () => {
+    setProduct({ status: 'IN_STOCK', cashPrice: null });
+
+    await expect(
+      service.update('p-1', { status: 'IN_STOCK', name: 'ชื่อใหม่' }, 'user-9'),
+    ).resolves.toBeDefined();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 });

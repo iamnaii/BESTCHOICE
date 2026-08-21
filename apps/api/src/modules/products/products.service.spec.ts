@@ -163,6 +163,12 @@ describe('ProductsService.remove — guard กันลบเครื่อง�
       contract: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      productReservation: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      onlineOrder: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
@@ -255,5 +261,185 @@ describe('ProductsService.remove — guard กันลบเครื่อง�
     await service.remove('p-1');
 
     expect(prisma.product.update).toHaveBeenCalled();
+  });
+});
+
+describe('ProductsService.remove — จอง/ออเดอร์ออนไลน์ (review fix I2: flow นี้ไม่แตะ product.status)', () => {
+  let service: ProductsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      product: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'p-1', name: 'iPhone 13', status: 'IN_STOCK', deletedAt: null }),
+        update: jest.fn().mockResolvedValue({ id: 'p-1' }),
+      },
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+      productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
+      onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('ลบไม่ได้เมื่อมีการจองบนเว็บที่ยัง ACTIVE (product ยัง IN_STOCK และไม่มีสัญญา)', async () => {
+    prisma.productReservation.findFirst.mockResolvedValue({
+      expiresAt: new Date('2026-09-01T00:00:00Z'),
+    });
+
+    await expect(service.remove('p-1')).rejects.toThrow(BadRequestException);
+    await expect(service.remove('p-1')).rejects.toThrow(/จอง/);
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  it('การจองที่หมดอายุแล้วไม่บล็อก — query กรอง status ACTIVE + expiresAt > now', async () => {
+    await service.remove('p-1');
+
+    const where = prisma.productReservation.findFirst.mock.calls[0][0].where;
+    expect(where).toMatchObject({ productId: 'p-1', status: 'ACTIVE' });
+    expect(where.expiresAt.gt).toBeInstanceOf(Date);
+    expect(prisma.product.update).toHaveBeenCalled();
+  });
+
+  it('ลบไม่ได้เมื่อมีออเดอร์ออนไลน์ที่ fulfilment ยังเปิด (เงินเข้าแล้วแต่ของยังไม่ถึงมือ)', async () => {
+    prisma.onlineOrder.findFirst.mockResolvedValue({
+      orderNumber: 'OO-20260101-0001',
+      status: 'PAID',
+    });
+
+    await expect(service.remove('p-1')).rejects.toThrow(BadRequestException);
+    await expect(service.remove('p-1')).rejects.toThrow(/OO-20260101-0001/);
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  it('ออเดอร์ใช้ exclude-list (notIn) — ยังไม่จ่าย/จบแล้ว ไม่บล็อก, PAID/PACKING/SHIPPED/รอตรวจสลิป บล็อก', async () => {
+    await service.remove('p-1');
+
+    const where = prisma.onlineOrder.findFirst.mock.calls[0][0].where;
+    expect(where).toMatchObject({ productId: 'p-1', deletedAt: null });
+    expect(where.status.notIn).toEqual(
+      expect.arrayContaining([
+        'DRAFT',
+        'PENDING_PAYMENT',
+        'DELIVERED',
+        'COMPLETED',
+        'CANCELLED',
+        'REFUNDED',
+        'PAYMENT_RECEIVED_UNFULFILLABLE',
+      ]),
+    );
+    for (const open of ['PAID', 'PACKING', 'SHIPPED', 'PENDING_BANK_REVIEW']) {
+      expect(where.status.notIn).not.toContain(open);
+    }
+  });
+});
+
+describe('ProductsService.update — กันแก้ IMEI/Serial บนเครื่องที่ยังถูกถือครอง (review fix I1)', () => {
+  let service: ProductsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const setProduct = (status: string) =>
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'p-1',
+      name: 'iPhone 13',
+      status,
+      imeiSerial: '350000000000001',
+      serialNumber: 'SN-001',
+      brand: 'Apple',
+      model: 'iPhone 13',
+      storage: '128GB',
+      category: 'PHONE_NEW',
+      deletedAt: null,
+    });
+
+  beforeEach(async () => {
+    prisma = {
+      product: { findUnique: jest.fn() },
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+      productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
+      onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+      // ไม่เรียก callback — เทสนี้สนใจแค่ "ผ่านด่านแล้วไปเขียนจริงหรือไม่"
+      $transaction: jest.fn().mockResolvedValue({ id: 'p-1' }),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('แก้ IMEI บนเครื่อง SOLD_INSTALLMENT → reject (ปลด IMEI ให้ว่างโดยไม่ต้องลบ)', async () => {
+    setProduct('SOLD_INSTALLMENT');
+
+    await expect(service.update('p-1', { imeiSerial: '350000000000999' })).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.update('p-1', { imeiSerial: '350000000000999' })).rejects.toThrow(/IMEI/);
+    await expect(service.update('p-1', { imeiSerial: '350000000000999' })).rejects.toThrow(
+      /ยกเลิกสัญญา/,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('แก้ serialNumber บนเครื่อง RESERVED → reject (ฟิลด์ระบุตัวเครื่องเหมือนกัน)', async () => {
+    setProduct('RESERVED');
+
+    await expect(service.update('p-1', { serialNumber: 'SN-999' })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ล้าง IMEI (ส่งค่าว่าง) บนเครื่องที่ถูกถือครอง → reject เช่นกัน', async () => {
+    setProduct('SOLD_INSTALLMENT');
+
+    await expect(service.update('p-1', { imeiSerial: '' })).rejects.toThrow(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('แก้ฟิลด์อื่น (ชื่อ/สี) บนเครื่องที่ถูกถือครอง → ยังทำได้', async () => {
+    setProduct('SOLD_INSTALLMENT');
+
+    await service.update('p-1', { name: 'iPhone 13 แก้ชื่อ', color: 'Midnight' });
+
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  it('ส่ง IMEI ค่าเดิม (no-op) บนเครื่องที่ถูกถือครอง → ผ่าน ไม่ยิงด่าน', async () => {
+    setProduct('SOLD_INSTALLMENT');
+
+    await service.update('p-1', { imeiSerial: '350000000000001' });
+
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('แก้ IMEI บนเครื่อง IN_STOCK ที่ว่างจริง → ทำได้', async () => {
+    setProduct('IN_STOCK');
+
+    await service.update('p-1', { imeiSerial: '350000000000999' });
+
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  it('แก้ IMEI บนเครื่อง IN_STOCK ที่ยังมีสัญญาเดินอยู่ → reject (สถานะเพี้ยน)', async () => {
+    setProduct('IN_STOCK');
+    prisma.contract.findFirst.mockResolvedValue({ contractNumber: 'CT-1', status: 'ACTIVE' });
+
+    await expect(service.update('p-1', { imeiSerial: '350000000000999' })).rejects.toThrow(/CT-1/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('แก้ IMEI บนเครื่อง IN_STOCK ที่ถูกจองบนเว็บ → reject', async () => {
+    setProduct('IN_STOCK');
+    prisma.productReservation.findFirst.mockResolvedValue({ expiresAt: new Date('2026-09-01') });
+
+    await expect(service.update('p-1', { imeiSerial: '350000000000999' })).rejects.toThrow(/จอง/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

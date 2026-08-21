@@ -15,9 +15,17 @@ import {
 export const AGING_TODO_TAG = 'interco-aging';
 
 const DEFAULT_THRESHOLD_DAYS = 30;
-/** clamp ของ readIntFlag — 1 วัน (เตือนทันที) ถึง 10 ปี */
+/**
+ * ช่วงที่ยอมรับของ `shop_receivable_aging_alert_days` — **ไม่ใช่ clamp**:
+ * `readIntFlag` คืน fallback (30) เมื่อค่านอกช่วง ไม่ได้ดึงเข้าขอบ.
+ * 1..365 ตรงกับที่ `GET /interco-settlement/shop-receivable-aging` validate
+ * (`thresholdDays` 1-365) — ถ้าที่นี่กว้างกว่า operator จะตั้งค่าที่ cron เตือนได้
+ * แต่เปิดแท็บดูมุมเดียวกันไม่ได้.
+ */
 const MIN_THRESHOLD_DAYS = 1;
-const MAX_THRESHOLD_DAYS = 3650;
+const MAX_THRESHOLD_DAYS = 365;
+/** ทศนิยมเงิน 2 ตำแหน่ง — ต่ำกว่านี้ถือว่าเป็นศูนย์ (นิยามเดียวกับ service) */
+const EPS = new Prisma.Decimal('0.01');
 
 interface ArmView {
   arm: ShopReceivableOverdueArm;
@@ -59,9 +67,11 @@ function formatAmount(value: Prisma.Decimal): string {
  * ผิด เพราะคอลัมน์นั้นบนแถว legacy คือ (หนี้ shop-collect จริง − ขาล้างเครดิต
  * legacy) ปนกัน — เตือนด้วยตัวเลขผิดคือทางลัดไปสู่การถูกเมิน. หนี้จริงของแถว
  * legacy **ไม่หายจากสายตาคน**: (1) แท็บ "อายุลูกหนี้หน้าร้าน" โชว์ทุกแถวรวม legacy
- * พร้อม `totals.legacyOneBookNet` = ยอด 11-2107 จริงระดับสัญญา, (2) tick นี้ log
- * warn สรุปจำนวนแถว legacy + ยอดรวมทุกวัน, (3) reconcile cron รายเดือน (Task 4)
- * เป็นตาข่ายสุดท้ายของความผิดปกติข้ามสมุด.
+ * พร้อม `totals.legacyOneBookNet` = ยอด 11-2107 จริงระดับสัญญา, (2) tick นี้ยิง
+ * Sentry warning **รวมหนึ่งอีเวนต์** (`Legacy one-book shop receivable outstanding`)
+ * + log warn เมื่อ `legacyOneBookNet > 0.01` — gate ด้วย**ยอดจริง** ไม่ใช่จำนวนแถว
+ * (แถวที่ล้างครบ net = 0 จึงเงียบเอง ไม่มีบรรทัด "0.00 บาท" รายวันให้คนชิน),
+ * (3) reconcile cron รายเดือน (Task 4) เป็นตาข่ายสุดท้ายของความผิดปกติข้ามสมุด.
  *
  * doctrine R-1: root `PrismaService` เท่านั้น, ไม่อยู่บนเส้นทางเงิน, **ห้าม throw
  * ออกจาก tick** — outer try/catch + per-row try/catch (pattern `ap-due-alerts.cron.ts`).
@@ -102,14 +112,28 @@ export class ShopReceivableAgingCron {
       // คืนมาเป็นเกณฑ์เดียวกับที่ลูปด้านล่างใช้เป๊ะ
       const result = await this.aging.getShopReceivableAging(new Date(), thresholdDays);
 
-      // แถว legacy: ไม่ alert (ดู jsdoc คลาส) แต่ log สรุปให้เห็นทุกวัน
+      // แถว legacy: ไม่ alert รายแถว (ดู jsdoc คลาส — คอลัมน์ typed โกหกเชิงประเภท)
+      // แต่ **หนี้จริงต้องมีช่องทาง push**: gate ด้วย `legacyOneBookNet` ซึ่งเป็นยอด
+      // 11-2107 จริงระดับสัญญาที่ service รับรอง (แถวที่ล้างครบ net = 0 จึงเงียบเอง
+      // ไม่พิมพ์ "0.00 บาท" ทุกวันจนคนเลิกอ่าน) แล้วยิง Sentry **รวมหนึ่งอีเวนต์**
+      // ต่อ tick — ไม่อ้างยอดรายประเภท ไม่มี false alarm รายแถว
       const legacyRows = result.rows.filter((r) => r.legacyOneBook);
-      if (legacyRows.length > 0) {
+      const legacyNet = result.totals.legacyOneBookNet;
+      if (legacyNet.gt(EPS)) {
         this.logger.warn(
           `[interco-aging] ข้าม ${legacyRows.length} สัญญา legacy สมุดเดียว (spec §11.4) — ` +
-            `ยอด 11-2107 คงเหลือรวม ${formatAmount(result.totals.legacyOneBookNet)} บาท ` +
+            `ยอด 11-2107 คงเหลือรวม ${formatAmount(legacyNet)} บาท ` +
             `(ดูรายละเอียดที่แท็บอายุลูกหนี้หน้าร้าน)`,
         );
+        Sentry.captureMessage('Legacy one-book shop receivable outstanding', {
+          level: 'warning',
+          tags: { subsystem: 'interco-netting' },
+          extra: {
+            legacyRows: legacyRows.length,
+            legacyOneBookNet: legacyNet.toFixed(2),
+            thresholdDays,
+          },
+        });
       }
 
       const overdue = result.rows.filter(
@@ -169,7 +193,7 @@ export class ShopReceivableAgingCron {
           await this.prisma.todo.create({
             data: {
               title: this.buildTitle(row, views),
-              description: this.buildDescription(row, views, thresholdDays),
+              description: this.buildDescription(row, views, thresholdDays, result.asOf),
               priority: 'MEDIUM',
               tags: [AGING_TODO_TAG],
               createdById: systemUser.id,
@@ -243,10 +267,16 @@ export class ShopReceivableAgingCron {
     );
   }
 
+  /** yyyy-mm-dd ตามเวลาไทย — pattern เดียวกับ `formatBkkDate` ใน interco-settlement.service.ts */
+  private bkkDate(date: Date): string {
+    return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  }
+
   private buildDescription(
     row: ShopReceivableAgingRow,
     views: ArmView[],
     thresholdDays: number,
+    asOf: Date,
   ): string {
     const lines: string[] = [
       `ลูกหนี้-หน้าร้าน (11-2107) ของสัญญา ${row.contractNumber} (${row.customerName}) ` +
@@ -276,6 +306,8 @@ export class ShopReceivableAgingCron {
     lines.push(
       `ดูรายละเอียดที่หน้าจ่ายให้หน้าร้าน → แท็บ "อายุลูกหนี้หน้าร้าน" · contractId: ${row.contractId}`,
     );
+    // Todo ถูก dedup ข้ามวัน ⇒ ยอด/อายุในใบนี้แช่อยู่ที่วันที่สร้าง — ระบุไว้ให้คนอ่านรู้
+    lines.push(`ข้อมูล ณ ${this.bkkDate(asOf)} (เวลาไทย) — ยอด/อายุปัจจุบันดูที่แท็บ`);
     return lines.join('\n');
   }
 

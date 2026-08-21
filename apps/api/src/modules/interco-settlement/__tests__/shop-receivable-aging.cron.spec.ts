@@ -18,6 +18,14 @@ import { ShopReceivableAgingCron, AGING_TODO_TAG } from '../crons/shop-receivabl
 
 const D = (v: string | number) => new Prisma.Decimal(v);
 
+const ROW_ALERT_MSG = 'Shop receivable aged past threshold';
+const LEGACY_ALERT_MSG = 'Legacy one-book shop receivable outstanding';
+
+/** แยกอีเวนต์ Sentry ตามข้อความ — alert รายแถว vs อีเวนต์รวมของ legacy */
+function sentryCalls(message: string): unknown[][] {
+  return (Sentry.captureMessage as jest.Mock).mock.calls.filter((c) => c[0] === message);
+}
+
 /** แถวเปล่า — เทสต์เติมเฉพาะฟิลด์ที่สนใจ (ยอด 0 / ไม่มีอายุ = ไม่ overdue) */
 function makeRow(partial: Partial<ShopReceivableAgingRow>): ShopReceivableAgingRow {
   return {
@@ -213,10 +221,14 @@ describe('ShopReceivableAgingCron', () => {
     expect(data.createdById).toBe('u-system');
     expect(data.description).toContain('contractId');
 
-    // Sentry warning หนึ่งใบต่อแถวที่เกินเกณฑ์
-    expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
-    const [msg, opts] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
-    expect(msg).toBe('Shop receivable aged past threshold');
+    // Sentry warning หนึ่งใบต่อแถวที่เกินเกณฑ์ (นับเฉพาะข้อความของ alert รายแถว)
+    const rowAlerts = sentryCalls(ROW_ALERT_MSG);
+    expect(rowAlerts).toHaveLength(2);
+    const opts = rowAlerts[0][1] as {
+      level: string;
+      tags: { subsystem: string };
+      extra: { contractNumber?: string };
+    };
     expect(opts.level).toBe('warning');
     expect(opts.tags.subsystem).toBe('interco-netting');
     expect(opts.extra.contractNumber).toBeDefined();
@@ -294,7 +306,7 @@ describe('ShopReceivableAgingCron', () => {
     expect(result.todosCreated).toBe(0);
     expect(result.skipped).toBe(2);
     expect(prisma.todo.create).not.toHaveBeenCalled();
-    expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+    expect(sentryCalls(ROW_ALERT_MSG)).toHaveLength(2);
   });
 
   it('Todo แถวเดียวพัง → นับ skipped + แถวอื่นยังทำงาน + ไม่ throw', async () => {
@@ -321,10 +333,8 @@ describe('ShopReceivableAgingCron', () => {
     expect(opts.tags.cron).toBe('shop-receivable-aging');
   });
 
-  it('ไม่มีแถวเกินเกณฑ์ → ไม่สร้าง Todo ไม่ยิง Sentry', async () => {
-    aging.getShopReceivableAging.mockResolvedValue(
-      buildResult([fixtureRows()[2], fixtureRows()[3]], 30),
-    );
+  it('ไม่มีแถวเกินเกณฑ์ (และไม่มีหนี้ legacy) → ไม่สร้าง Todo ไม่ยิง Sentry', async () => {
+    aging.getShopReceivableAging.mockResolvedValue(buildResult([fixtureRows()[2]], 30));
 
     const result = await cron.tick();
 
@@ -333,5 +343,64 @@ describe('ShopReceivableAgingCron', () => {
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
     // SYSTEM user ไม่ต้องถูก query เมื่อไม่มีงาน
     expect(prisma.user.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('legacy ที่ล้างครบ (net = 0) → เงียบสนิท ไม่มี Sentry', async () => {
+    // ขาล้างเครดิตอยู่คอลัมน์ SHOP_COLLECT ⇒ typed ค้าง +8,000/−8,000 แต่ net = 0
+    const settledLegacy = makeRow({
+      contractId: 'c-legacy-settled',
+      contractNumber: 'CT-LEGACY-SETTLED',
+      swapCreditGross: D('8000.00'),
+      intercoNet: D('8000.00'),
+      legacySwapGross: D('8000.00'),
+      legacyOneBook: true,
+      bookMismatch: true,
+      intercoAgeDays: 400,
+      shopCollect: D('-8000.00'),
+      shopCollectAgeDays: 400,
+    });
+    aging.getShopReceivableAging.mockResolvedValue(buildResult([settledLegacy], 30));
+
+    const result = await cron.tick();
+
+    expect(result).toEqual({ enabled: true, flagged: 0, todosCreated: 0, skipped: 0 });
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+  });
+
+  it('legacy ที่ยังค้างจริง (net > 0) → Sentry รวมหนึ่งอีเวนต์ ไม่มี Todo รายแถว', async () => {
+    // fixture มีแถว legacy ค้าง 8,000 + 1,771 = 9,771
+    const result = await cron.tick();
+
+    const legacyAlerts = sentryCalls(LEGACY_ALERT_MSG);
+    expect(legacyAlerts).toHaveLength(1); // หนึ่งอีเวนต์ต่อ tick ไม่ใช่ต่อแถว
+    const opts = legacyAlerts[0][1] as {
+      level: string;
+      tags: { subsystem: string };
+      extra: { legacyRows: number; legacyOneBookNet: string };
+    };
+    expect(opts.level).toBe('warning');
+    expect(opts.tags.subsystem).toBe('interco-netting');
+    expect(opts.extra.legacyRows).toBe(1);
+    expect(opts.extra.legacyOneBookNet).toBe('9771.00');
+
+    // ยังไม่มี Todo ของแถว legacy (Todo ที่สร้าง = 2 แถว non-legacy เท่านั้น)
+    expect(result.todosCreated).toBe(2);
+    expect(JSON.stringify(prisma.todo.create.mock.calls)).not.toContain('CT-LEGACY');
+  });
+
+  it('Todo description ระบุวันที่ข้อมูล (BKK)', async () => {
+    await cron.tick();
+
+    const desc = prisma.todo.create.mock.calls[0][0].data.description as string;
+    expect(desc).toContain('ข้อมูล ณ 2026-08-21');
+  });
+
+  it('threshold นอกช่วง 1-365 (ตรงกับ endpoint) → fallback 30', async () => {
+    configValues['shop_receivable_aging_alert_days'] = '400';
+
+    await cron.tick();
+
+    expect(aging.getShopReceivableAging).toHaveBeenCalledWith(expect.any(Date), 30);
   });
 });

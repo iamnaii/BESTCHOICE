@@ -2217,4 +2217,139 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
       120_000,
     );
   });
+
+  // ===========================================================================
+  // Phase 4 Task 5 — approveBatch ↔ settleRecallCash: ปิด carry (d) ที่ต้นเหตุ
+  // (isolation) แทนที่จะพึ่ง guard "RECALL item ใน batch เปิด" อย่างเดียว.
+  //
+  // หน้าต่างจริงที่ guard ปิดไม่ได้: settle เปิด tx **ก่อน** รอบจ่ายถูกสร้าง
+  // (ตอนนั้นยังไม่มี item ให้ guard 1 เห็น) แล้วรอบจ่ายถูกสร้าง+ส่ง+อนุมัติ
+  // จนจบภายในหน้าต่างนั้น — ทั้งสองฝั่งจึงเห็นยอดเรียกคืน net เต็ม 11,000
+  // และหักคนละครั้ง = 11-2107 ติดลบ. `settleRecallCash` เป็น Serializable
+  // อยู่แล้ว แต่ SSI ต้องการให้ **ทั้งคู่** เป็น Serializable จึงจะเกิด
+  // rw-conflict (writer ที่เป็น READ COMMITTED ไม่ลงทะเบียน conflict กับ
+  // SIRead lock ของใคร) — approve ที่ยัง default isolation จึงลอยผ่านไป.
+  //
+  // รอบจ่ายในเทสนี้ลงบัญชีเดือน **กรกฎาคม** ผ่าน `postedAtOverride` (D4
+  // backdated round — ฟีเจอร์จริง) โดยตั้งใจ: เดือนเดียวกันจะชนเลขที่ใบสำคัญ
+  // (`nextEntryNumber` อ่าน MAX ใต้ snapshot เก่าของ settle → P2002) ซึ่งเป็น
+  // การ "รอด" โดยบังเอิญคนละกลไกกับที่เรากำลังพิสูจน์ และหายไปทันทีเมื่อสอง
+  // ฝั่งลงคนละเดือน — เทสจึงต้องแยกเดือนเพื่อวัด isolation ล้วนๆ
+  // ===========================================================================
+  describe('approveBatch ↔ settleRecallCash — race สองคอนเนกชัน (Phase 4 Task 5, carry d)', () => {
+    beforeAll(async () => {
+      // Safety nets เดียวกับบล็อกอื่น — ต้องรันแบบ -t filter เดี่ยวได้
+      await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+      await prisma.accountingPeriod.deleteMany({
+        where: { companyId: { in: [shopId, financeId] }, year: 2026, month: { in: [7, 8] } },
+      });
+      // Warm-up ทั้งสองคอนเนกชัน + query plans ของเส้นทาง create/submit/approve
+      // ก่อนเปิดหน้าต่างแข่ง — Prisma interactive tx มี timeout 5 วินาที และ
+      // การ compile ครั้งแรกกินเวลาพอที่จะทำให้ settle time-out (P2028) แทนที่
+      // จะได้แข่งจริง
+      await prisma2.$queryRaw`SELECT 1`;
+      const warmNormal = await seedBaseContract(80);
+      await seedNormalContract(warmNormal);
+      const warmBatch = await settlementService.createBatch(
+        { contractIds: [warmNormal], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(warmBatch.id);
+      await settlementService.submitBatch(warmBatch.id, adminId);
+      await settlementService.approveBatch(warmBatch.id, adminId, new Date(2026, 6, 15));
+    }, 120_000);
+
+    it(
+      'settle เปิด tx ค้างไว้ แล้วรอบจ่ายที่มีแถว recall ของสัญญาเดียวกัน create→submit→approve จนจบ → ต้องมีฝ่ายแพ้ + 11-2107 ไม่ติดลบ',
+      async () => {
+        const recallR = await seedBaseContract(81);
+        // baseline ก่อนตั้งหนี้เรียกคืน → delta ที่คาดหวังคือ +11,000 (ตั้งหนี้)
+        // − 11,000 (หักครั้งเดียว) = 0 พอดี; หักสองเด้งจะได้ −11,000
+        const pre2107 = await wholeAccountBalance('11-2107');
+        await seedRecallContract(recallR); // gross 11,000 ทั้งสองสมุด, ไม่มี deduction เดิม
+        const normalR = await seedBaseContract(82);
+        await seedNormalContract(normalR); // เจ้าหนี้ 10,000 + 1,000 → คุ้มยอดหัก 11,000
+
+        // Barrier: ค้าง settle ไว้หลังผ่าน guard ครบ (ก่อนโพสต์ใบแรก) — snapshot
+        // ของ tx ถูกจับไปแล้วตอนนั้น ซึ่งคือหัวใจของหน้าต่าง TOCTOU
+        let releaseGate!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          releaseGate = resolve;
+        });
+        let gateHit = false;
+        const realExecute = shopCollectTemplate2.execute.bind(shopCollectTemplate2);
+        const spy = vi
+          .spyOn(shopCollectTemplate2, 'execute')
+          .mockImplementation(async (input, outerTx) => {
+            gateHit = true;
+            await gate;
+            return realExecute(input, outerTx);
+          });
+
+        let settlePromise: Promise<unknown>;
+        let approveOutcome: { ok: boolean; err?: unknown };
+        try {
+          settlePromise = settlementService2.settleRecallCash(
+            recallR,
+            { amount: 11000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+            adminId,
+          );
+          settlePromise.catch(() => undefined); // กัน unhandled rejection ระหว่างรอ
+          const deadline = Date.now() + 4_000;
+          while (!gateHit && Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 10));
+          }
+          expect(gateHit, 'settle ต้องผ่าน guard และเปิด tx ค้างไว้ก่อนเริ่มรอบจ่าย').toBe(true);
+
+          const batch = await settlementService.createBatch(
+            {
+              contractIds: [normalR],
+              recallContractIds: [recallR],
+              transferDate: '2026-08-20',
+            },
+            adminId,
+          );
+          createdBatchIds.push(batch.id);
+          expect(
+            batch.items.find((i) => i.contractId === recallR)!.recallAmount.toFixed(2),
+          ).toBe('11000.00');
+          await settlementService.submitBatch(batch.id, adminId);
+          approveOutcome = await settlementService
+            .approveBatch(batch.id, adminId, new Date(2026, 6, 15))
+            .then(() => ({ ok: true }))
+            .catch((err: unknown) => ({ ok: false, err }));
+        } finally {
+          releaseGate!();
+          spy.mockRestore();
+        }
+
+        const settleOutcome = await settlePromise!
+          .then(() => ({ ok: true }) as { ok: boolean; err?: unknown })
+          .catch((err: unknown) => ({ ok: false, err }));
+
+        // ผู้แพ้ต้องเป็น HttpException สะอาด (409 SSI abort / 400 guard) — ห้าม
+        // raw Prisma error (P2028 tx timeout = หน้าต่างไม่ได้แข่งจริง ต้องดังไว้)
+        for (const outcome of [approveOutcome!, settleOutcome]) {
+          if (outcome.ok) continue;
+          const err = outcome.err;
+          expect(
+            err instanceof HttpException,
+            `ผู้แพ้ต้องเป็น HttpException: ${(err as { constructor?: { name?: string } })?.constructor?.name}: ${(err as Error)?.message}`,
+          ).toBe(true);
+          expect([400, 409]).toContain((err as HttpException).getStatus());
+        }
+
+        // invariant หลัก: หักได้ครั้งเดียวเท่านั้น
+        expect(
+          [approveOutcome!.ok, settleOutcome.ok].filter(Boolean),
+          'ทั้ง approve และ settle สำเร็จพร้อมกัน = หักซ้ำยอดเรียกคืนก้อนเดียว',
+        ).toHaveLength(1);
+
+        // เงิน: 11-2107 ทั้งบัญชี = +11,000 (ตั้งหนี้) − 11,000 (หักครั้งเดียว) = 0
+        // ถ้าหักสองเด้ง จะเป็น −11,000
+        expect((await wholeAccountBalance('11-2107')).minus(pre2107).toFixed(2)).toBe('0.00');
+      },
+      120_000,
+    );
+  });
 });

@@ -1164,6 +1164,38 @@ export class IntercoSettlementService {
         throw new BadRequestException('ย้อนกลับได้เฉพาะรอบที่อนุมัติแล้ว (POSTED) เท่านั้น');
       }
 
+      // Final review Phase 3 (Important 1) — รอบที่มีสัญญาที่ถูกยกเลิกไปแล้ว
+      // (Flow C-1/C-2) ห้าม reverse อัตโนมัติ: mirror จะคืน payable ระดับบัญชี
+      // และ item หลุดจาก settled gate ⇒ สัญญา CANCELED (ไม่มีเครื่อง/ไม่มี
+      // financing) กลับเข้าคิวจ่ายเต็มยอด — pending lens hydration ไม่ filter
+      // status และ drift guard ผ่าน (GL ตรง snapshot) จึงเสนอจ่ายเงินจริงได้;
+      // แถว recall ก็บวมกลับเป็น gross ด้วย. ทางออกเดียวคือ JV มือ (doctrine
+      // เดิม — ห้ามเดา JE อัตโนมัติ). เช็คสองทาง (OR): status CANCELED ครอบ
+      // ทั้ง generic C-1/C-2 และ exchange-cancel (ซึ่งไม่สร้างแถว
+      // ContractCancellation); แถว ContractCancellation APPROVED เป็น
+      // belt-and-braces กันเคส status ถูกมือแก้กลับ (drift) หลังยกเลิก.
+      const itemRows = await tx.interCoSettlementItem.findMany({
+        where: { batchId: id, deletedAt: null },
+        select: { contractId: true },
+      });
+      const canceledContracts = await tx.contract.findMany({
+        where: {
+          id: { in: itemRows.map((i) => i.contractId) },
+          OR: [
+            { status: 'CANCELED' },
+            { cancellations: { some: { status: 'APPROVED', deletedAt: null } } },
+          ],
+        },
+        select: { contractNumber: true },
+      });
+      if (canceledContracts.length > 0) {
+        throw new BadRequestException(
+          `สัญญา ${canceledContracts.map((c) => c.contractNumber).join(', ')} ถูกยกเลิกแล้ว — ` +
+            'การย้อนรอบนี้ต้องทำ JV มือผ่านที่ปรึกษาบัญชี (ระบบไม่ย้อนอัตโนมัติ ' +
+            'เพราะจะพาสัญญาที่ถูกยกเลิกกลับเข้าคิวจ่าย)',
+        );
+      }
+
       const jeIds = [batch.financeJournalEntryId, batch.shopJournalEntryId].filter(
         (x): x is string => !!x,
       );

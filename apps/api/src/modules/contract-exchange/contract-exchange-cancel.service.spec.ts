@@ -83,7 +83,14 @@ describe('ExchangeCancelService (spec §9)', () => {
       productId: 'oldP1',
       exchangedAt: daysAgo(exchangedDaysAgo),
     },
-    newContract: { id: 'newC1', status: 'ACTIVE' },
+    newContract: {
+      id: 'newC1',
+      status: 'ACTIVE',
+      // Park guard 3 ถัง (final review Phase 3 — Important 2ก): ค่า 0 = ผ่าน
+      advanceBalance: new Decimal('0'),
+      creditBalance: new Decimal('0'),
+      rescheduleAdvanceBalance: new Decimal('0'),
+    },
   });
 
   beforeEach(async () => {
@@ -107,6 +114,9 @@ describe('ExchangeCancelService (spec §9)', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // Pre-sweep scan (final review Phase 3 — cash tripwire + C-2 defensive):
+      // [] = ไม่มี candidate ผิดปกติ ⇒ ทุกเทสเดิมเดินเส้นเดิม
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       product: {
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn().mockResolvedValue({

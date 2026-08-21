@@ -80,8 +80,14 @@ const C1_EXCLUDED_FLOWS = [
   'reschedule-collect',
 ];
 
-/** Cash/bank account prefixes (FINANCE 11-11xx/11-12xx + SHOP S11-11xx/S11-12xx). */
-const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12', 'S11-11', 'S11-12'];
+/**
+ * Cash/bank account prefixes (FINANCE 11-11xx/11-12xx + SHOP S11-11xx/S11-12xx).
+ * Exported (final review Phase 3 — Important 2ข): the exchange-cancel path
+ * (`ExchangeCancelService`) runs the SAME positive cash tripwire over its own
+ * sweep candidates — one constant, no second copy (drift = a cash JE one path
+ * trips on and the other silently mirrors).
+ */
+export const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12', 'S11-11', 'S11-12'];
 
 /**
  * C-2 (Phase 3 Task 3 — workbook Case 3A กรณี 2): เจ้าหนี้/ลูกหนี้รอบจ่ายที่ถูก

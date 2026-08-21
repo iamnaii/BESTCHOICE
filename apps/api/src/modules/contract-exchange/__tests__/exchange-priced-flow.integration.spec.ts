@@ -1471,6 +1471,123 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
   );
 
   // -------------------------------------------------------------------------
+  // Final review Phase 3 (Important 2ก): park guard 3 ถังบนสัญญาใหม่ — 6a fee
+  // เข้าถังพักโดยไม่ set amountPaid จึงหลุด paid-guard เดิม (reschedule บนสัญญา
+  // swap ที่ค้าง 45 วันคืองาน collections ปกติ). ยกเลิกทั้งที่เงินสดจริงยังค้าง
+  // = ghost balance บนสัญญา CANCELED โดยไม่มีทางใช้/คืน.
+  it(
+    'final review: สัญญาใหม่มีเงินพักปรับดิว (6a) ค้าง → cancel reject ก่อนแตะ JE',
+    async () => {
+      const fix = await seedSwapFixture('100009', { schedule: 'NONE' });
+      await act1a.execute(fix.oldContractId);
+      const { newContract, request } = await seedNewContractAndRequest(fix, '100009', '8000');
+      await activateAndFinalize(newContract.id, fix.newProductId);
+
+      // 6a fee sim: เงินเข้าถังพักปรับดิวโดยไม่มี Payment.amountPaid ใดๆ
+      await prisma.contract.update({
+        where: { id: newContract.id },
+        data: { rescheduleAdvanceBalance: new Decimal('100.00') },
+      });
+
+      const err = await cancelSvc
+        .cancel(request.id, 'ทดสอบ park guard บนสัญญาใหม่ (final review)', {
+          id: adminId,
+          role: 'OWNER',
+          branchId: null,
+        })
+        .then(
+          () => null,
+          (e: Error) => e,
+        );
+      expect(err, 'cancel must be rejected while park balances remain').toBeTruthy();
+      expect(err!.message).toContain('เงินรับล่วงหน้า');
+
+      // Reject ก่อน sweep — ไม่มี reversal JE, request ยัง APPROVED, สัญญาใหม่ยัง ACTIVE
+      const reversals = await prisma.journalEntry.count({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'exchange-cancel' } as never },
+            { metadata: { path: ['contractId'], equals: newContract.id } as never },
+          ],
+        },
+      });
+      expect(reversals).toBe(0);
+      const reqAfter = await prisma.contractExchangeRequest.findUniqueOrThrow({
+        where: { id: request.id },
+      });
+      expect(reqAfter.status).toBe('APPROVED');
+      const newAfter = await prisma.contract.findUniqueOrThrow({ where: { id: newContract.id } });
+      expect(newAfter.status).toBe('ACTIVE');
+    },
+    120_000,
+  );
+
+  // -------------------------------------------------------------------------
+  // Final review Phase 3 (Important 2ข): positive cash tripwire — hand-JV
+  // เงินสดที่ stamp metadata.contractId = สัญญาใหม่ อยู่ในชุด sweep candidates
+  // ที่ engine จะ mirror (fabricate เงินสด) → ต้อง reject ระบุ entryNumber.
+  // JE ปกติของ swap (A.1-A.5 / SHOP legs / 2A / provision) ไม่มีบัญชีเงินสด
+  // จึงไม่ trip — tripwire คือชั้นกันของที่ไม่รู้จักเท่านั้น.
+  it(
+    'final review tripwire: hand-JV เงินสด stamped สัญญาใหม่ → cancel reject ระบุ entryNumber',
+    async () => {
+      const fix = await seedSwapFixture('100010', { schedule: 'NONE' });
+      await act1a.execute(fix.oldContractId);
+      const { newContract, request } = await seedNewContractAndRequest(fix, '100010', '8000');
+      await activateAndFinalize(newContract.id, fix.newProductId);
+
+      const zero = new Decimal(0);
+      const jv = await journal.createAndPost({
+        description: 'hand JV cash synthetic (EXCHTEST)',
+        metadata: {
+          flow: 'test-hand-jv-cash',
+          idempotencyKey: `exjvc:${newContract.id}`,
+          contractId: newContract.id,
+        },
+        lines: [
+          { accountCode: '11-1101', dr: new Decimal('500'), cr: zero },
+          { accountCode: '41-1102', dr: zero, cr: new Decimal('500') },
+        ],
+      });
+      const jvEntryNumber = (
+        await prisma.journalEntry.findUniqueOrThrow({ where: { id: jv.id } })
+      ).entryNumber;
+
+      const err = await cancelSvc
+        .cancel(request.id, 'ทดสอบ tripwire เงินสด (final review)', {
+          id: adminId,
+          role: 'OWNER',
+          branchId: null,
+        })
+        .then(
+          () => null,
+          (e: Error) => e,
+        );
+      expect(err, 'cancel must trip on an unknown cash JE').toBeTruthy();
+      expect(err!.message).toContain(jvEntryNumber);
+      expect(err!.message).toContain('เงินสด');
+
+      // Reject ก่อน sweep เริ่ม — ไม่มีใบไหนถูก mirror เลย + request ยัง APPROVED
+      const reversals = await prisma.journalEntry.count({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'exchange-cancel' } as never },
+            { metadata: { path: ['contractId'], equals: newContract.id } as never },
+          ],
+        },
+      });
+      expect(reversals).toBe(0);
+      const jvAfter = await prisma.journalEntry.findUniqueOrThrow({ where: { id: jv.id } });
+      expect(((jvAfter.metadata ?? {}) as Record<string, unknown>).reversed).toBeUndefined();
+      const reqAfter = await prisma.contractExchangeRequest.findUniqueOrThrow({
+        where: { id: request.id },
+      });
+      expect(reqAfter.status).toBe('APPROVED');
+    },
+    120_000,
+  );
+
+  // -------------------------------------------------------------------------
   it(
     'MEMO: same model + price → zero new JEs, contract.productId swapped',
     async () => {

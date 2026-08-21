@@ -1199,6 +1199,18 @@ they're stamped `metadata.reversed = true` + `metadata.reversedByEntryNumber` an
 contracts to the pending queue — no GL-lens code path change needed, it falls out of the
 gate definition automatically.
 
+**Canceled-contract guard (final review Phase 3, 2026-08-21):** a batch containing ANY
+contract that is `CANCELED` (or has an APPROVED `ContractCancellation` row —
+belt-and-braces for hand-edited status drift) REFUSES to reverse with a Thai
+`BadRequestException` naming the contract numbers — reversing would resurrect the
+canceled contract into the pending queue at full gross (its 1A `Cr 21-1101/21-1102`
+still sits in the lens; only the settled gate hid it) AND inflate its recall row back
+to gross. The only path for such a round is a manual JV through the CPA. Defense in
+depth: `getPendingContracts`' contract hydration also filters
+`status: { not: 'CANCELED' }` so a canceled contract never re-enters the payable queue
+even if the gate opens through some other path (the recall queue deliberately does NOT
+filter — C-2 contracts are CANCELED by definition and must appear there).
+
 ### D4 — backdated / closed-period rounds
 
 `ApproveBatchDto.postedAt` (optional ISO date string) lets the checker pin the posted
@@ -2054,7 +2066,7 @@ starvation + phantom audit row บน rollback; MEMO/PRE_FINALIZE audits ไม�
 
 | Action | Entity | เขียนที่ | newValue ที่สำคัญ |
 |---|---|---|---|
-| `CONTRACT_CANCELED` | `contract` | `approveCancellation` (C-1) | reversalEntryNumber/Count/JeIds |
+| `CONTRACT_CANCELED` | `contract` | `approveCancellation` (C-1) | reversalEntryNumber/Count/JeIds, `refundAmount` (เขียนเสมอ — guard reject `> 0` จึงเป็น `"0.00"` ในทางปฏิบัติ) |
 | `CONTRACT_CANCELED_AFTER_PAYOUT` | `contract` | `approveCancellation` (C-2) | + `settledTotal` (**gross** — ตรวจย้อน redirect), `recallAmount` (**net** = settled − deductions), `batchNumbers` |
 | `EXCHANGE_CANCELED` | `contract_exchange_request` | `ExchangeCancelService` (action เดิม — C-2 เพิ่ม field) | `window: 'AFTER_PAYOUT'` + `recallAmount` (net) + `batchNumbers` เมื่อ C-2 |
 | `INTERCO_RECALL_CASH_SETTLED` | `contract` | `settleRecallCash` | amount, financeEntryNo/shopEntryNo, requestId, `recallNetBefore` |

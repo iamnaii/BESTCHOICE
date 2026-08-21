@@ -250,8 +250,17 @@ export class IntercoPendingService {
     // Deliberately select ONLY id/contractNumber/customer.name — never
     // financedAmount/storeCommission. GL is the sole source of truth for
     // amounts (spec §4, F4).
+    //
+    // Defense-in-depth (final review Phase 3 — Important 1): สัญญา CANCELED
+    // ห้ามโผล่คิวจ่ายไม่ว่าเส้นทางไหน — C-2 cancel redirect เจ้าหนี้เป็น
+    // 11-2107 [PAYOUT_RECALL] แต่ lens 21-1101/21-1102 ยังเห็น Cr ของ 1A
+    // เต็มยอด (batch JE ที่ล้างไม่ stamp contractId) สัญญาจึงถูกกันด้วย
+    // settled gate เพียงชั้นเดียว; ถ้า gate เปิด (เช่น batch ถูก REVERSED
+    // ด้วยเส้นทางก่อน guard ใน reverseBatch มีผล) สัญญาที่ไม่มีเครื่อง/ไม่มี
+    // หนี้จะกลับเข้าคิวเต็มยอด. คิว recall (getPendingRecalls) จงใจ **ไม่**
+    // filter แบบนี้ — สัญญา C-2 เป็น CANCELED โดยนิยามและต้องอยู่คิวนั้น.
     const contracts = await client.contract.findMany({
-      where: { id: { in: remainingIds }, deletedAt: null },
+      where: { id: { in: remainingIds }, deletedAt: null, status: { not: 'CANCELED' } },
       select: {
         id: true,
         contractNumber: true,
@@ -264,7 +273,7 @@ export class IntercoPendingService {
     for (const row of validFinanceRows) {
       const contractId = row.contract_id;
       const contract = contractById.get(contractId);
-      if (!contract) continue; // settled, soft-deleted, or otherwise gone
+      if (!contract) continue; // settled, soft-deleted, CANCELED, or otherwise gone
 
       const financedGl = new Prisma.Decimal(String(row.financed ?? 0));
       const commissionGl = new Prisma.Decimal(String(row.commission ?? 0));

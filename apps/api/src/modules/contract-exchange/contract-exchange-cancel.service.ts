@@ -16,6 +16,7 @@ import {
   C2_REDIRECTS,
   C2_REDIRECT_SOURCES,
   C2_REDIRECT_STAMP,
+  CASH_ACCOUNT_PREFIXES,
   TYPED_LENS_ACCOUNTS,
 } from '../journal/cpa-templates/contract-cancellation.template';
 import { settledPayoutByContract } from '../contracts/services/contract-cancellation.service';
@@ -193,6 +194,22 @@ export class ExchangeCancelService {
         );
       }
 
+      // ── Final review Phase 3 (Important 2ก) — park guard 3 ถังของสัญญาใหม่
+      // (family เดียวกับ generic cancellation Fix Round 1 Important #3): 6a fee
+      // เข้าถังพักโดยไม่ set amountPaid จึงหลุด paid-guard ด้านบน — reschedule
+      // บนสัญญา swap ที่ค้าง 45 วันคืองาน collections ปกติ. เงินพวกนี้เข้ามา
+      // เป็นเงินสดจริง — ยกเลิกทั้งที่ยังค้างจะทิ้ง ghost balance บนสัญญา
+      // CANCELED โดยไม่มีทางใช้/คืน (JE ของมัน — flow เงินสดจริง — ก็ห้าม mirror
+      // อยู่แล้ว ดู tripwire ด้านล่าง).
+      const parkTotal = new Decimal(req.newContract.advanceBalance.toString())
+        .plus(req.newContract.creditBalance.toString())
+        .plus(req.newContract.rescheduleAdvanceBalance.toString());
+      if (parkTotal.gt(0)) {
+        throw new BadRequestException(
+          'มีเงินรับล่วงหน้า/เครดิต/เงินพักปรับดิวค้างบนสัญญาใหม่ — ใช้หรือคืนเงินก่อนยกเลิกเปลี่ยนเครื่อง',
+        );
+      }
+
       // ── Phase 3 Task 5 (C-2, workbook §5.5) ──
       // Guard เปิด: สัญญาใหม่อยู่ใน batch DRAFT/PENDING_APPROVAL — snapshot ของ
       // รอบยังอ้างเจ้าหนี้ที่กำลังจะถูก sweep → ต้องถอน/ยกเลิกรอบก่อน
@@ -233,30 +250,49 @@ export class ExchangeCancelService {
         (x: string | null): x is string => !!x,
       );
 
-      // Defensive check (C-2 เท่านั้น — ชุดเดียวกับ generic template Task 3):
-      // สแกน sweep candidates ชุดเดียวกับที่ engine จะ mirror (explicit jeIds ∪
-      // metadata.contractId sweep, skip เงื่อนไขเดียวกับ engine) — JE ใดมีทั้ง
-      // บรรทัด redirect source (21-1101/21-1102/S11-3001/S11-3002) และบรรทัด/
-      // ประเภทบัญชี typed (11-2107/S21-3001) ในใบเดียว redirect stamp
-      // PAYOUT_RECALL ทั้งใบจะทับความหมาย typed เดิม (เลนส์ Phase 2 อ่าน type
-      // ระดับ JE) → hand-JV ผิดปกติ reject ก่อน sweep เริ่ม.
-      if (isC2) {
-        const candidates = await tx.journalEntry.findMany({
-          where: {
-            OR: [
-              { id: { in: jeIds } },
-              { metadata: { path: ['contractId'], equals: req.newContractId } as never },
-            ],
-            status: 'POSTED',
-            deletedAt: null,
-          },
-          include: { lines: true },
-        });
-        for (const je of candidates) {
-          const meta = (je.metadata ?? {}) as Record<string, unknown>;
-          if (meta['reversed'] === true) continue;
-          if (meta['flow'] === 'exchange-cancel') continue;
-          if (meta['tag'] === 'REVERSAL') continue;
+      // Pre-sweep scan — sweep candidates ชุดเดียวกับที่ engine จะ mirror
+      // (explicit jeIds ∪ metadata.contractId sweep, skip เงื่อนไขเดียวกับ
+      // engine) สองด่านในลูปเดียว:
+      //
+      // (1) Positive cash tripwire (final review Phase 3 — Important 2ข, ชุด
+      //     เดียวกับ generic template: `CASH_ACCOUNT_PREFIXES` import มา ห้าม
+      //     สำเนา): บรรทัดใดแตะบัญชีเงินสด/ธนาคาร → reject ระบุ entryNumber —
+      //     JE ปกติของ swap (A.1-A.5 / SHOP legs / 2A / provision) ไม่มีบัญชี
+      //     เงินสด จึงไม่ trip; ของที่รู้จัก (6a fee) ถูก park guard ด้านบน
+      //     reject ก่อนแล้ว — tripwire คือชั้นกันของที่ไม่รู้จัก (hand-JV
+      //     เงินสด) ไม่ให้ถูก mirror เป็นเงินสดปลอมเงียบๆ.
+      // (2) Defensive check (C-2 เท่านั้น — ชุดเดียวกับ generic template
+      //     Task 3): JE ใดมีทั้งบรรทัด redirect source (21-1101/21-1102/
+      //     S11-3001/S11-3002) และบรรทัด/ประเภทบัญชี typed (11-2107/S21-3001)
+      //     ในใบเดียว redirect stamp PAYOUT_RECALL ทั้งใบจะทับความหมาย typed
+      //     เดิม (เลนส์ Phase 2 อ่าน type ระดับ JE) → hand-JV ผิดปกติ reject
+      //     ก่อน sweep เริ่ม.
+      const candidates = await tx.journalEntry.findMany({
+        where: {
+          OR: [
+            { id: { in: jeIds } },
+            { metadata: { path: ['contractId'], equals: req.newContractId } as never },
+          ],
+          status: 'POSTED',
+          deletedAt: null,
+        },
+        include: { lines: true },
+      });
+      for (const je of candidates) {
+        const meta = (je.metadata ?? {}) as Record<string, unknown>;
+        if (meta['reversed'] === true) continue;
+        if (meta['flow'] === 'exchange-cancel') continue;
+        if (meta['tag'] === 'REVERSAL') continue;
+        const cashLine = je.lines.find((l) =>
+          CASH_ACCOUNT_PREFIXES.some((p) => l.accountCode.startsWith(p)),
+        );
+        if (cashLine) {
+          throw new BadRequestException(
+            `ใบสำคัญ ${je.entryNumber} ของสัญญาใหม่มีบรรทัดแตะบัญชีเงินสด/ธนาคาร (${cashLine.accountCode}) — ` +
+              'ระบบไม่กลับรายการเงินสดอัตโนมัติ กรุณาตรวจสอบ/กลับรายการใบนี้ด้วยมือก่อนยกเลิกเปลี่ยนเครื่อง',
+          );
+        }
+        if (isC2) {
           const redirectSourceLine = je.lines.find((l) =>
             C2_REDIRECT_SOURCES.includes(l.accountCode),
           );
@@ -272,6 +308,14 @@ export class ExchangeCancelService {
         }
       }
 
+      // จงใจ **ไม่** port `excludeFlows`/`C1_EXCLUDED_FLOWS` จาก generic
+      // cancellation มาที่ sweep นี้ (final review Phase 3): exchange path
+      // mirror provision JEs ของสัญญาใหม่โดยตั้งใจ — mirror ≡ release ที่นี่
+      // เพราะเส้นทางนี้ไม่มีใบ ECL release แยก (generic exclude 'provision'/
+      // 'stage-reverse' เพราะโพสต์ release ใบเดียวต่างหาก — mirror ซ้ำจะ
+      // double-debit 11-2102 ติดลบ). ส่วน flows เงินสดจริงก็ไม่ต้อง exclude:
+      // park guard + cash tripwire ด้านบน reject ทั้งการยกเลิกไปก่อนแล้ว —
+      // ของที่รอดมาถึง sweep จึงไม่มีบรรทัดเงินสดโดยพิสูจน์แล้ว.
       const { reversalJeIds, redirectedTotals } = await this.reversalTemplate.reverse(
         {
           jeIds,

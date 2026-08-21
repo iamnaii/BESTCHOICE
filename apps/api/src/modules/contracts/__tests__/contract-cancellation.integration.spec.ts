@@ -1033,4 +1033,90 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(contract.status).toBe('ACTIVE');
   }, 120_000);
+
+  // -------------------------------------------------------------------------
+  // Final review Phase 3 (Important 1): reverse batch ที่มีสัญญาที่ถูก C-2
+  // cancel ไปแล้ว ต้องถูกปฏิเสธ — mirror จะคืนเจ้าหนี้ระดับบัญชี + item หลุดจาก
+  // settled gate ⇒ สัญญา CANCELED (ไม่มีเครื่อง/ไม่มี financing) กลับเข้าคิวจ่าย
+  // เต็มยอด (pending lens hydration ไม่ filter status, drift guard ผ่านเพราะ GL
+  // ตรง snapshot) และแถว recall บวมกลับเป็น gross. ทางออกเดียว = JV มือ.
+  it('final review: C-2 cancel แล้ว reverse batch เดิม → reject ระบุเลขสัญญา + GL ไม่ขยับ', async () => {
+    const { contractId } = await seedBaseContract(20);
+    await seed1a(contractId);
+    await seedShopLegs(contractId);
+    const { batchId } = await settleViaBatch(contractId);
+
+    // C-2 cancel ผ่าน production path — สัญญา → CANCELED + recall ตั้งแล้ว
+    const result = await requestAndApprove(contractId);
+    expect(result.status).toBe('APPROVED');
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.status).toBe('CANCELED');
+
+    // Baselines ก่อนพยายาม reverse — ระดับบัญชี (batch JE ไม่ stamp contractId)
+    const codes = ['21-1101', '21-1102', 'S11-3001', 'S11-3002', '11-2107', 'S21-3001'] as const;
+    const pre: Record<string, Decimal> = {};
+    for (const code of codes) pre[code] = await wholeAccountBalance(code);
+    const reversalWhere = {
+      metadata: { path: ['flow'], equals: 'interco-settlement-batch-reverse' } as never,
+    };
+    const reversalCountBefore = await prisma.journalEntry.count({ where: reversalWhere });
+
+    const err = await settlementService
+      .reverseBatch(batchId, adminId, 'ทดสอบย้อนรอบหลังยกเลิกสัญญา C-2 (final review)')
+      .then(
+        () => null,
+        (e: Error) => e,
+      );
+    expect(err, 'reverseBatch must reject a batch containing a CANCELED contract').toBeTruthy();
+    expect(err!.message).toContain(contract.contractNumber);
+    expect(err!.message).toContain('ถูกยกเลิกแล้ว');
+    expect(err!.message).toContain('JV มือ');
+
+    // Batch ยัง POSTED — ไม่มี mirror JE งอก, GL ทุกบัญชีไม่ขยับ
+    const batch = await prisma.interCoSettlementBatch.findUniqueOrThrow({ where: { id: batchId } });
+    expect(batch.status).toBe('POSTED');
+    const reversalCountAfter = await prisma.journalEntry.count({ where: reversalWhere });
+    expect(reversalCountAfter).toBe(reversalCountBefore);
+    for (const code of codes) {
+      expect(
+        (await wholeAccountBalance(code)).minus(pre[code]).toFixed(2),
+        `account ${code} must not move on rejected reverse`,
+      ).toBe('0.00');
+    }
+
+    // Settled gate ยังปิด — สัญญา CANCELED ต้องไม่โผล่กลับเข้าคิวจ่าย
+    const pending = await pendingService.getPendingContracts();
+    expect(pending.find((p) => p.contractId === contractId)).toBeUndefined();
+
+    // Belt-and-braces (OR branch): แม้ status สัญญาถูกมือแก้กลับ (drift) —
+    // แถว ContractCancellation APPROVED ยังกัน reverse อยู่
+    await prisma.contract.update({ where: { id: contractId }, data: { status: 'ACTIVE' } });
+    const err2 = await settlementService
+      .reverseBatch(batchId, adminId, 'ทดสอบย้อนรอบหลัง status drift (final review)')
+      .then(
+        () => null,
+        (e: Error) => e,
+      );
+    expect(err2, 'APPROVED cancellation row must still block reverse').toBeTruthy();
+    expect(err2!.message).toContain('ถูกยกเลิกแล้ว');
+    await prisma.contract.update({ where: { id: contractId }, data: { status: 'CANCELED' } });
+
+    // Defense-in-depth (pending lens hydration filter): จำลอง gate เปิด —
+    // flip batch → REVERSED ตรงๆ (แทนเส้นทางใดก็ตามที่หลุด guard ข้างบน เช่น
+    // ข้อมูลที่ reverse ไปก่อน guard มีผล) — lens 21-1101/21-1102 ยังเห็น Cr
+    // ของ 1A เต็มยอด แต่สัญญา CANCELED ต้องไม่ hydrate กลับเข้าคิวจ่าย
+    await prisma.interCoSettlementBatch.update({
+      where: { id: batchId },
+      data: { status: 'REVERSED' },
+    });
+    const pendingAfterGateOpen = await pendingService.getPendingContracts();
+    expect(
+      pendingAfterGateOpen.find((p) => p.contractId === contractId),
+      'CANCELED contract must not re-enter the pending queue even with the gate open',
+    ).toBeUndefined();
+    await prisma.interCoSettlementBatch.update({
+      where: { id: batchId },
+      data: { status: 'POSTED' },
+    });
+  }, 120_000);
 });

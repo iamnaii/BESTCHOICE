@@ -155,6 +155,8 @@ describe('Contract Signing & Workflow', () => {
       },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockContract.product),
+        // Phase 5 Task 2: activate() ใช้ findFirst (+ deletedAt: null) แทน findUnique
+        findFirst: jest.fn().mockResolvedValue(mockContract.product),
         update: jest.fn().mockResolvedValue(mockContract.product),
       },
       payment: {
@@ -197,6 +199,8 @@ describe('Contract Signing & Workflow', () => {
       },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockContract.product),
+        // Phase 5 Task 2: activate() ใช้ findFirst (+ deletedAt: null) แทน findUnique
+        findFirst: jest.fn().mockResolvedValue(mockContract.product),
         update: jest.fn().mockResolvedValue(mockContract.product),
       },
       user: {
@@ -590,7 +594,7 @@ describe('Contract Signing & Workflow', () => {
 
     it('ACT-7: สินค้าถูกขายไปแล้ว → BadRequestException', async () => {
       prisma.contract.findUnique.mockResolvedValue(approvedContract());
-      prisma.product.findUnique.mockResolvedValue({
+      prisma.product.findFirst.mockResolvedValue({
         ...mockContract.product,
         status: 'SOLD_CASH',
       });

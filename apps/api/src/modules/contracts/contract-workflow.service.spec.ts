@@ -149,6 +149,8 @@ describe('ContractWorkflowService', () => {
       },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
+        // Phase 5 Task 2: activate() ใช้ findFirst (+ deletedAt: null) แทน findUnique
+        findFirst: jest.fn().mockResolvedValue(mockProduct),
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'SOLD_INSTALLMENT' }),
       },
       sale: {
@@ -409,6 +411,7 @@ describe('ContractWorkflowService', () => {
     beforeEach(() => {
       prisma.contract.findUnique.mockResolvedValue(shopContract);
       prisma.product.findUnique.mockResolvedValue(shopProduct);
+      prisma.product.findFirst.mockResolvedValue(shopProduct);
       // Default: down JE already exists → catch-up skipped.
       prisma.journalEntry.findFirst.mockResolvedValue({ id: 'down-je-1' });
     });

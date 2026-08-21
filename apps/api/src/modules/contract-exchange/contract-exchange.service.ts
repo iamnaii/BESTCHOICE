@@ -434,13 +434,22 @@ export class ContractExchangeService {
       }
       const req = await (tx as any).contractExchangeRequest.findUniqueOrThrow({
         where: { id },
-        include: { oldContract: true },
+        include: { oldContract: true, newProduct: true },
       });
       // Task 8 review fix 3: approval can happen days after submit — the old
       // contract may have closed (early payoff / repossession) in between.
       if (req.oldContract.status !== 'ACTIVE') {
         throw new BadRequestException(
           `สัญญาเดิมสถานะ ${req.oldContract.status} — เปลี่ยนเครื่องไม่ได้`,
+        );
+      }
+      // Phase 5 Task 2: เครื่องใหม่ต้องยังไม่ถูก soft-delete — การลบสินค้าไม่แตะ
+      // `product.status` ดังนั้นเช็คสถานะอย่างเดียวจับไม่ได้ และ approve ก็สั่ง
+      // `product.update` ตรง ๆ ได้สำเร็จบนแถวที่ถูกลบแล้ว (Prisma ไม่กรอง soft-delete ให้)
+      // ⇒ สัญญาจะผูกกับเครื่องที่หลุด partial unique index ของ IMEI ไปแล้ว
+      if (!req.newProduct || (req.newProduct as { deletedAt?: Date | null }).deletedAt) {
+        throw new BadRequestException(
+          'เครื่องใหม่ถูกลบออกจากระบบแล้ว — เปลี่ยนเครื่องไม่ได้ กรุณารับเครื่องเข้าสต็อกใหม่แล้วส่งคำขอใหม่',
         );
       }
       const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
@@ -508,6 +517,15 @@ export class ContractExchangeService {
         include: { oldContract: true, newProduct: true },
       });
       const old = req.oldContract;
+      // Phase 5 Task 2: เครื่องใหม่ต้องยังไม่ถูก soft-delete — การลบสินค้าไม่แตะ
+      // `product.status` ดังนั้นเช็คสถานะอย่างเดียวจับไม่ได้ และ approve ก็สั่ง
+      // `product.update` ตรง ๆ ได้สำเร็จบนแถวที่ถูกลบแล้ว (Prisma ไม่กรอง soft-delete ให้)
+      // ⇒ สัญญาจะผูกกับเครื่องที่หลุด partial unique index ของ IMEI ไปแล้ว
+      if (!req.newProduct || (req.newProduct as { deletedAt?: Date | null }).deletedAt) {
+        throw new BadRequestException(
+          'เครื่องใหม่ถูกลบออกจากระบบแล้ว — เปลี่ยนเครื่องไม่ได้ กรุณารับเครื่องเข้าสต็อกใหม่แล้วส่งคำขอใหม่',
+        );
+      }
 
       // 3. Installment plan for the new contract.
       //    Device Swap 2026-07: server-computed snapshot from submit() when

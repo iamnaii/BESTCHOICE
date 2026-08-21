@@ -384,8 +384,14 @@ export class ContractWorkflowService {
       }
     }
 
-    // Verify product is still reserved for this contract
-    const product = await this.prisma.product.findUnique({ where: { id: contract.productId } });
+    // Verify product is still reserved for this contract.
+    // Phase 5 Task 2: `deletedAt: null` เป็นส่วนหนึ่งของด่าน — สถานะสินค้ากับการถูกลบเป็นคนละ
+    // มิติกัน เครื่องที่ถูก soft-delete ยังค้างสถานะ RESERVED/IN_STOCK ได้ (ลบไม่ได้ล้างสถานะ)
+    // ⇒ `findUnique({ id })` เดิมปล่อยให้เปิดสัญญาบนเครื่องที่หลุด partial unique index
+    // `products_imei_serial_active_unique` ไปแล้ว = รับ IMEI เดิมเข้าสต็อกซ้ำแล้วขายซ้ำได้
+    const product = await this.prisma.product.findFirst({
+      where: { id: contract.productId, deletedAt: null },
+    });
     if (!product || (product.status !== 'RESERVED' && product.status !== 'IN_STOCK')) {
       throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
     }
@@ -424,7 +430,11 @@ export class ContractWorkflowService {
 
     await this.prisma.$transaction(async (tx) => {
       // Re-check product status inside transaction to prevent race condition
-      const prod = await tx.product.findUnique({ where: { id: contract.productId } });
+      // (เงื่อนไข `deletedAt: null` ต้องเหมือนด่านนอก tx เป๊ะ — ไม่งั้นการลบที่แทรกเข้ามา
+      // ระหว่างสองด่านจะหลุดผ่านด่านใน tx ซึ่งเป็นตาข่ายสุดท้ายก่อนเงิน/กรรมสิทธิ์ขยับ)
+      const prod = await tx.product.findFirst({
+        where: { id: contract.productId, deletedAt: null },
+      });
       if (!prod || (prod.status !== 'RESERVED' && prod.status !== 'IN_STOCK')) {
         throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
       }

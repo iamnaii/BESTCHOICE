@@ -30,7 +30,8 @@ const THAI: Partial<Record<ProductStatus, string>> = {
   [ProductStatus.REPOSSESSED]: 'ยึดเครื่องแล้ว',
 };
 
-function label(s: ProductStatus): string {
+/** `STATUS (ป้ายไทย)` สำหรับข้อความ error — ใช้ร่วมกับ guard ลบสินค้าใน ProductsService */
+export function productStatusLabel(s: ProductStatus): string {
   const th = THAI[s];
   return th ? `${s} (${th})` : s;
 }
@@ -52,13 +53,13 @@ export function assertManualStatusChangeAllowed(current: ProductStatus, next: st
 
   if (SYSTEM_MANAGED_STATUSES.has(current)) {
     throw new BadRequestException(
-      `สินค้าอยู่สถานะ ${label(current)} ซึ่งระบบจัดการผ่านรายการขาย/จอง/ยึดเครื่อง — ` +
+      `สินค้าอยู่สถานะ ${productStatusLabel(current)} ซึ่งระบบจัดการผ่านรายการขาย/จอง/ยึดเครื่อง — ` +
         'แก้ผ่าน flow นั้นแทน (เช่น ยกเลิกจอง ยกเลิกสัญญา) ไม่ใช่แก้สถานะตรงจากหน้าสินค้า',
     );
   }
   if (SYSTEM_MANAGED_STATUSES.has(target)) {
     throw new BadRequestException(
-      `เปลี่ยนเป็นสถานะ ${label(target)} ตรง ๆ ไม่ได้ — ระบบจะตั้งให้เองเมื่อบันทึกการขาย/จอง/ยึดเครื่องจริง`,
+      `เปลี่ยนเป็นสถานะ ${productStatusLabel(target)} ตรง ๆ ไม่ได้ — ระบบจะตั้งให้เองเมื่อบันทึกการขาย/จอง/ยึดเครื่องจริง`,
     );
   }
 }

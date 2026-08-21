@@ -1,12 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ContractStatus, Prisma, ProductStatus } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
-import { assertManualStatusChangeAllowed } from './product-status.util';
+import { assertManualStatusChangeAllowed, productStatusLabel } from './product-status.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 import { evaluateReadiness } from '../../utils/product-readiness.util';
 
@@ -21,6 +21,41 @@ const productInclude = {
 
 // Re-export for use by other services if needed
 export { productInclude };
+
+/**
+ * สถานะที่แปลว่า "เครื่องยังถูกถือครองอยู่" — ลบไม่ได้
+ *
+ * การลบ = soft-delete ซึ่งปลด IMEI ให้ว่างทันที (partial unique index
+ * `products_imei_serial_active_unique ... WHERE deleted_at IS NULL`) ⇒ รับเครื่อง
+ * IMEI เดิมเข้าสต็อกใหม่แล้วขาย/จัดไฟแนนซ์ซ้ำได้ทั้งที่รายการแรกยังเดินอยู่
+ *
+ * ค่าใน map คือ "ทางออก" ที่ต้องบอกผู้ใช้ — เก็บสถานะ+ทางออกไว้ตารางเดียว
+ * เพื่อไม่ให้ set กับข้อความ drift กัน
+ */
+const HELD_STATUS_REMEDY: Readonly<Partial<Record<ProductStatus, string>>> = {
+  [ProductStatus.RESERVED]: 'ยกเลิกจองก่อน (หรือปล่อยให้การจองหมดอายุ) แล้วค่อยลบ',
+  [ProductStatus.SOLD_INSTALLMENT]:
+    'จัดการผ่าน flow สัญญาก่อน — ยกเลิกสัญญา / ยึดเครื่อง / เปลี่ยนเครื่อง — แล้วค่อยลบ',
+  [ProductStatus.REPOSSESSED]:
+    'เครื่องยึดยังอยู่ในมือกิจการ — ตีราคาใหม่เข้าสต็อกหรือขายต่อให้เรียบร้อยก่อน แล้วค่อยลบ',
+};
+
+/**
+ * สถานะสัญญาที่ถือว่า "จบแล้ว" — สัญญาสถานะอื่นยังถือเครื่องอยู่ จึงห้ามลบสินค้า
+ *
+ * เจตนา: เขียนเป็น exclude list (notIn) ไม่ใช่ include list ของสถานะที่ยังเดิน
+ * — สถานะใหม่ที่เพิ่มใน ContractStatus วันหลังจะถูก "กัน" ไว้โดยปริยาย
+ * ไม่หลุด guard เงียบ ๆ. TERMINATED/DEFAULT ไม่อยู่ในนี้โดยตั้งใจ: บอกเลิกสัญญาแล้ว
+ * แต่เครื่องยังไม่ถูกยึดคืน (รอ JP5) จึงยังถือครองอยู่
+ */
+const FINISHED_CONTRACT_STATUSES: readonly ContractStatus[] = [
+  ContractStatus.COMPLETED,
+  ContractStatus.EARLY_PAYOFF,
+  ContractStatus.CANCELED,
+  ContractStatus.CLOSED_BAD_DEBT,
+  ContractStatus.EXCHANGED,
+  ContractStatus.DEFECT_EXCHANGED,
+];
 
 @Injectable()
 export class ProductsService {
@@ -251,7 +286,32 @@ export class ProductsService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const product = await this.findOne(id);
+
+    const remedy = HELD_STATUS_REMEDY[product.status];
+    if (remedy) {
+      throw new BadRequestException(
+        `สินค้าอยู่สถานะ ${productStatusLabel(product.status)} — ลบไม่ได้เพราะยังผูกกับรายการที่เดินอยู่ ` +
+          `(ลบแล้ว IMEI จะว่างและรับเครื่องเดิมเข้าสต็อกซ้ำได้): ${remedy}`,
+      );
+    }
+
+    // กันสถานะเพี้ยน: สินค้าอาจเป็น IN_STOCK ทั้งที่ยังมีสัญญาค้างอยู่ (ข้อมูลเก่า / แก้มือ)
+    const liveContract = await this.prisma.contract.findFirst({
+      where: {
+        productId: id,
+        deletedAt: null,
+        status: { notIn: [...FINISHED_CONTRACT_STATUSES] },
+      },
+      select: { contractNumber: true, status: true },
+    });
+    if (liveContract) {
+      throw new BadRequestException(
+        `สินค้ายังผูกกับสัญญา ${liveContract.contractNumber} (สถานะ ${liveContract.status}) — ` +
+          'ปิด/ยกเลิกสัญญา หรือยึดเครื่องให้เรียบร้อยก่อน จึงจะลบสินค้าได้',
+      );
+    }
+
     return this.prisma.product.update({
       where: { id },
       data: { deletedAt: new Date() },

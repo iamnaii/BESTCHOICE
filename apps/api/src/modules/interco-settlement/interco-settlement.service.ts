@@ -1174,8 +1174,16 @@ export class IntercoSettlementService {
       // ทั้ง generic C-1/C-2 และ exchange-cancel (ซึ่งไม่สร้างแถว
       // ContractCancellation); แถว ContractCancellation APPROVED เป็น
       // belt-and-braces กันเคส status ถูกมือแก้กลับ (drift) หลังยกเลิก.
+      //
+      // Scope เฉพาะแถว SETTLEMENT (fix round 2 — bug class เดียวกับ type-aware
+      // clash / recall-queue gate): สัญญาของแถว RECALL เป็น CANCELED **โดย
+      // นิยาม** (producer เดียวของ PAYOUT_RECALL คือ C-2 cancel) — guard แบบ
+      // any-type จะทำให้รอบที่มีแถว recall แม้แถวเดียว reverse ไม่ได้ตลอดกาล.
+      // reverse แถว RECALL ปลอดภัยและต้องทำได้: deduction หลุดจาก POSTED set
+      // → recall net กลับค่าเดิม → แถวกลับเข้าคิว recall เองตามนิยาม settled
+      // gate. อันตรายอยู่เฉพาะที่แถว SETTLEMENT ของสัญญาที่ถูกยกเลิกเท่านั้น.
       const itemRows = await tx.interCoSettlementItem.findMany({
-        where: { batchId: id, deletedAt: null },
+        where: { batchId: id, deletedAt: null, itemType: 'SETTLEMENT' },
         select: { contractId: true },
       });
       const canceledContracts = await tx.contract.findMany({

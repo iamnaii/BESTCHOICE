@@ -2066,7 +2066,7 @@ starvation + phantom audit row บน rollback; MEMO/PRE_FINALIZE audits ไม�
 
 | Action | Entity | เขียนที่ | newValue ที่สำคัญ |
 |---|---|---|---|
-| `CONTRACT_CANCELED` | `contract` | `approveCancellation` (C-1) | reversalEntryNumber/Count/JeIds, `refundAmount` (เขียนเสมอ — guard reject `> 0` จึงเป็น `"0.00"` ในทางปฏิบัติ) |
+| `CONTRACT_CANCELED` | `contract` | `approveCancellation` (C-1) | reversalEntryNumber/Count/JeIds, `refundAmount` (เขียนเสมอ — guard reject `> 0`; ค่าจริงคือ `cancellation.refundAmount.toString()` ซึ่ง Decimal normalize เป็น `"0"` ในทางปฏิบัติ) |
 | `CONTRACT_CANCELED_AFTER_PAYOUT` | `contract` | `approveCancellation` (C-2) | + `settledTotal` (**gross** — ตรวจย้อน redirect), `recallAmount` (**net** = settled − deductions), `batchNumbers` |
 | `EXCHANGE_CANCELED` | `contract_exchange_request` | `ExchangeCancelService` (action เดิม — C-2 เพิ่ม field) | `window: 'AFTER_PAYOUT'` + `recallAmount` (net) + `batchNumbers` เมื่อ C-2 |
 | `INTERCO_RECALL_CASH_SETTLED` | `contract` | `settleRecallCash` | amount, financeEntryNo/shopEntryNo, requestId, `recallNetBefore` |

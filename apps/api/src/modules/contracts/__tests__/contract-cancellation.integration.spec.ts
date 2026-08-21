@@ -1119,4 +1119,65 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
       data: { status: 'POSTED' },
     });
   }, 120_000);
+
+  // -------------------------------------------------------------------------
+  // Fix Round 2 (re-review): reverse guard ต้อง scope เฉพาะแถว SETTLEMENT —
+  // สัญญาของแถว RECALL เป็น CANCELED **โดยนิยาม** (producer เดียวของ
+  // PAYOUT_RECALL คือ C-2 cancel) ⇒ guard แบบ any-type จะทำให้รอบที่มีแถว
+  // recall แม้แถวเดียว reverse ไม่ได้ตลอดกาล. reverse รอบ recall ปลอดภัยและ
+  // ต้องทำได้: deduction หลุดจาก POSTED set → recall net กลับค่าเดิม →
+  // แถวกลับเข้าคิว recall เองตามนิยาม settled gate.
+  it('fix round 2: reverse รอบที่มีแถว RECALL (สัญญา CANCELED จริง) → สำเร็จ + recall กลับเข้าคิวที่ net เดิม', async () => {
+    // c1: settle ผ่านรอบจริง → C-2 cancel production path → CANCELED + recall ตั้ง
+    const { contractId: c1 } = await seedBaseContract(21);
+    await seed1a(c1);
+    await seedShopLegs(c1);
+    await settleViaBatch(c1);
+    await requestAndApprove(c1);
+    const c1Row = await prisma.contract.findUniqueOrThrow({ where: { id: c1 } });
+    expect(c1Row.status).toBe('CANCELED');
+
+    const recallBefore = (await pendingService.getPendingRecalls()).find(
+      (r) => r.contractId === c1,
+    );
+    expect(recallBefore, 'C-2 contract must be in the recall queue').toBeDefined();
+    const netBefore = recallBefore!.recallGl.toFixed(2);
+
+    // c2 (ACTIVE ปกติ, payable = recall net) → รอบ B2 = 1 SETTLEMENT + 1 RECALL
+    // หักจนเงินโอนสุทธิ = 0 (netTransferAmount 0 อนุญาต — บรรทัดธนาคาร skip)
+    const { contractId: c2 } = await seedBaseContract(22);
+    await seed1a(c2);
+    await seedShopLegs(c2);
+    const b2 = await settlementService.createBatch(
+      { contractIds: [c2], recallContractIds: [c1], transferDate: '2026-08-20' },
+      adminId,
+    );
+    createdBatchIds.push(b2.id);
+    await settlementService.submitBatch(b2.id, adminId);
+    const posted = await settlementService.approveBatch(b2.id, adminId);
+    expect(posted.status).toBe('POSTED');
+    // หลัง approve: หักครบ → c1 หลุดคิว recall
+    expect(
+      (await pendingService.getPendingRecalls()).find((r) => r.contractId === c1),
+    ).toBeUndefined();
+
+    // Reverse B2 — c1 เป็น CANCELED แต่อยู่ในรอบนี้ฐานะแถว RECALL เท่านั้น
+    // → guard (SETTLEMENT-scoped) ต้องปล่อยผ่าน ไม่ over-block
+    const reversed = await settlementService.reverseBatch(
+      b2.id,
+      adminId,
+      'ทดสอบย้อนรอบที่มีแถวเรียกคืน (fix round 2)',
+    );
+    expect(reversed.status).toBe('REVERSED');
+
+    // recall กลับเข้าคิวที่ยอด net เดิมทั้งสองสมุด + c2 กลับเข้าคิวจ่าย
+    const recallAfter = (await pendingService.getPendingRecalls()).find(
+      (r) => r.contractId === c1,
+    );
+    expect(recallAfter, 'recall row must re-enter the queue after reverse').toBeDefined();
+    expect(recallAfter!.recallGl.toFixed(2)).toBe(netBefore);
+    expect(recallAfter!.shopRecallGl.toFixed(2)).toBe(netBefore);
+    const pendingAfter = await pendingService.getPendingContracts();
+    expect(pendingAfter.find((p) => p.contractId === c2)).toBeDefined();
+  }, 120_000);
 });

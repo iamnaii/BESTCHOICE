@@ -803,6 +803,93 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     }
   });
 
+  it('C1 (Fix Round 1): หักเกินแบบสมมาตรสองสมุด → รายงานหลักกรองทิ้ง แต่ getNegativeTypedRows จับได้', async () => {
+    // carry (d) ของจริง: เรียกคืน 11,000 สองสมุด แล้วถูกหัก 11,000 ในรอบหนึ่ง
+    // + หักซ้ำอีก 3,000 ในอีกรอบ ⇒ ทั้งสองสมุดติดลบ **เท่ากัน** ⇒
+    // bookMismatch = false และยอดบวกไม่มี → row filter ของรายงานหลักทิ้งแถวนี้
+    const id = await seedBaseContract(13);
+    await seedRecallPair(id, '11000', '11000');
+    const b2 = await seedPostedBatch(2);
+    await prisma.interCoSettlementItem.create({
+      data: {
+        batchId: b2.id,
+        contractId: id,
+        itemType: 'RECALL',
+        financedGl: zero,
+        commissionGl: zero,
+        shopFinancedGl: zero,
+        shopCommissionGl: zero,
+        recallAmount: dec('11000.00'),
+      },
+    });
+    const b3 = await seedPostedBatch(3);
+    await prisma.interCoSettlementItem.create({
+      data: {
+        batchId: b3.id,
+        contractId: id,
+        itemType: 'RECALL',
+        financedGl: zero,
+        commissionGl: zero,
+        shopFinancedGl: zero,
+        shopCommissionGl: zero,
+        recallAmount: dec('3000.00'),
+      },
+    });
+
+    // รายงานหลัก (แท็บ/alert รายวัน) มองไม่เห็นโดยตั้งใจ — มันรายงาน "หนี้ที่ต้องไปตาม"
+    const res = await agingService.getShopReceivableAging();
+    expect(res.rows.some((r) => r.contractId === id)).toBe(false);
+
+    // ตาข่ายของ reconcile: สแกนแถวดิบ ไม่ผ่าน filter ของรายงาน
+    const negatives = await agingService.getNegativeTypedRows();
+    const row = negatives.find((r) => r.contractId === id)!;
+    expect(row).toBeDefined();
+    expect(row.intercoNet.toFixed(2)).toBe('-3000.00');
+    expect(row.shopMirrorNet.toFixed(2)).toBe('-3000.00');
+    // สองสมุดติดลบเท่ากัน ⇒ bookMismatch จับไม่ได้ (นี่คือเหตุผลที่ต้องมี detector แยก)
+    expect(row.bookMismatch).toBe(false);
+    expect(row.legacyOneBook).toBe(false);
+  });
+
+  it('getOpenBatchPayableGross: Σ เจ้าหนี้ของ item ในรอบที่ค้างอนุมัติ (ใช้อธิบาย drift)', async () => {
+    const before = await agingService.getOpenBatchPayableGross();
+
+    const id = await seedBaseContract(14);
+    await seedFinancePayable(id, '10000', '1000');
+    await seedShopReceivable(id, '10000', '1000');
+    const batch = await prisma.interCoSettlementBatch.create({
+      data: {
+        batchNumber: `IC-AGINGTEST-${RUN}-PA`,
+        status: 'PENDING_APPROVAL',
+        transferDate: new Date(),
+        financeBankCode: '11-1201',
+        shopBankCode: 'S11-1201',
+        totalFinanced: dec('10000.00'),
+        totalCommission: dec('1000.00'),
+        totalAmount: dec('11000.00'),
+        shopPostedAmount: dec('11000.00'),
+        makerId: adminId,
+      },
+    });
+    createdBatchIds.push(batch.id);
+    await prisma.interCoSettlementItem.create({
+      data: {
+        batchId: batch.id,
+        contractId: id,
+        itemType: 'SETTLEMENT',
+        financedGl: dec('10000.00'),
+        commissionGl: dec('1000.00'),
+        shopFinancedGl: dec('10000.00'),
+        shopCommissionGl: dec('1000.00'),
+      },
+    });
+
+    const after = await agingService.getOpenBatchPayableGross();
+    // รอบยังไม่โพสต์ JE — เลนส์คิวรอจ่ายกันสัญญานี้ออกแล้วแต่ GL ยังเต็ม
+    // ⇒ ยอดนี้คือตัวบวกกลับก่อนสรุปว่า drift ผิดปกติจริงหรือไม่
+    expect(after.minus(before).toFixed(2)).toBe('11000.00');
+  });
+
   // ต้องเป็นเทสต์ท้ายสุดของไฟล์ — seed ข้างในเทสต์ (ต้องวัด before/after ระดับ
   // บัญชี ซึ่ง beforeAll ทำไม่ได้) และทิ้ง drift ค้างไว้ตลอดที่เหลือของ run
   it('carry ข: mirror ของ swap ยุค legacy ที่ไม่มี stamp → เลนส์เห็นค้าง แต่บัญชีจริง 0 (จับได้ที่ drift เท่านั้น)', async () => {

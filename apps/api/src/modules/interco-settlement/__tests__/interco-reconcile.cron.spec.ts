@@ -129,12 +129,17 @@ describe('IntercoReconcileCron', () => {
   /** ตั้งข้อมูลของ tick หนึ่งรอบ (ค่า default = ทุกอย่างปกติ) */
   function setup(opts: {
     rows?: ShopReceivableAgingRow[];
+    /** แถวติดลบ — คนละแหล่งกับ `rows` โดยเจตนา (ดู getNegativeTypedRows) */
+    negatives?: ShopReceivableAgingRow[];
     pairs?: PayablePairRow[];
     phase2?: string[];
     drifts?: TypedAccountDriftRow[];
     pendingDrift?: Prisma.Decimal;
+    openBatchGross?: Prisma.Decimal;
   }) {
     aging.getShopReceivableAging.mockResolvedValue(makeAgingResult(opts.rows ?? []));
+    aging.getNegativeTypedRows.mockResolvedValue(opts.negatives ?? []);
+    aging.getOpenBatchPayableGross.mockResolvedValue(opts.openBatchGross ?? D(0));
     aging.getPayablePairing.mockResolvedValue(opts.pairs ?? []);
     aging.getPhase2SwapContractIds.mockResolvedValue(new Set(opts.phase2 ?? []));
     aging.getTypedAccountDrift.mockResolvedValue(
@@ -171,6 +176,8 @@ describe('IntercoReconcileCron', () => {
 
     aging = {
       getShopReceivableAging: jest.fn(),
+      getNegativeTypedRows: jest.fn(),
+      getOpenBatchPayableGross: jest.fn(),
       getPayablePairing: jest.fn(),
       getPhase2SwapContractIds: jest.fn(),
       getTypedAccountDrift: jest.fn(),
@@ -197,6 +204,7 @@ describe('IntercoReconcileCron', () => {
 
     expect(result).toEqual({ enabled: false, findings: [], todoCreated: false });
     expect(aging.getShopReceivableAging).not.toHaveBeenCalled();
+    expect(aging.getNegativeTypedRows).not.toHaveBeenCalled();
     expect(pending.getReconcileTotals).not.toHaveBeenCalled();
     expect(prisma.todo.create).not.toHaveBeenCalled();
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
@@ -392,9 +400,12 @@ describe('IntercoReconcileCron', () => {
     expect(found[0].detail).not.toContain('ต่างเฉพาะขาค่าคอม');
   });
 
-  it('NEGATIVE_TYPED: หักเกิน/รับซ้ำจนยอดติดลบ (ตาข่ายของ carry d)', async () => {
+  it('NEGATIVE_TYPED: หักเกินแบบสมมาตร อ่านจาก getNegativeTypedRows ไม่ใช่ rows (C1 — ตาข่ายของ carry d)', async () => {
     setup({
-      rows: [
+      // รายงานหลัก **ว่างเปล่า** — เคสหักเกินสมมาตรถูก isReportableAgingRow
+      // กรองทิ้งตั้งแต่ใน service (bookMismatch = false, ไม่มียอดบวก)
+      rows: [],
+      negatives: [
         makeRow({
           contractId: 'c-neg',
           contractNumber: 'CT-NEG',
@@ -417,7 +428,7 @@ describe('IntercoReconcileCron', () => {
 
   it('NEGATIVE_TYPED: แถว legacy ที่ล้างเกิน → จับด้วยยอดสุทธิรวม (carry ก — กันหักล้างในผลรวมรายวัน)', async () => {
     setup({
-      rows: [
+      negatives: [
         makeRow({
           contractId: 'c-legacy-over',
           contractNumber: 'CT-LEGACY-OVER',
@@ -462,7 +473,8 @@ describe('IntercoReconcileCron', () => {
     const found = ofKind(result.findings, 'ACCOUNT_DRIFT');
     expect(found).toHaveLength(2);
     expect(found.some((f) => f.detail.includes('11-2107'))).toBe(true);
-    expect(found.some((f) => f.amounts.drift === '19190.00')).toBe(true);
+    // ขาคิวรอจ่าย: ไม่มีรอบค้างอนุมัติ ⇒ residual = drift ดิบ
+    expect(found.some((f) => f.amounts.residual === '19190.00')).toBe(true);
     expect(found.some((f) => f.amounts.drift === '-8000.00')).toBe(true);
     // ระดับบัญชี — ไม่มี contractId
     expect(found.every((f) => f.contractId === undefined)).toBe(true);
@@ -492,6 +504,143 @@ describe('IntercoReconcileCron', () => {
       (c: [{ where: { key: string } }]) => c[0].where.key,
     );
     expect(readKeys).not.toContain('shop_receivable_aging_alert_days');
+  });
+
+  it('I2: drift ที่อธิบายได้ด้วยรอบค้างอนุมัติ → ไม่เป็น finding (สภาพปกติ ไม่ใช่ JE หาย)', async () => {
+    // รอบ PENDING_APPROVAL จองสัญญาไว้แล้ว (หลุดจาก pendingTotal) แต่ยังไม่โพสต์ JE
+    // ⇒ drift = −(ยอดของรอบนั้น) พอดี — เตือนคือเตือนเท็จ
+    setup({ pendingDrift: D('-11000.00'), openBatchGross: D('11000.00') });
+
+    const result = await cron.tick();
+
+    expect(result.findings).toEqual([]);
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('I2: drift ที่เหลือหลังบวกกลับรอบค้าง → เป็น finding พร้อมยอดที่บวกกลับ', async () => {
+    setup({ pendingDrift: D('-15000.00'), openBatchGross: D('11000.00') });
+
+    const result = await cron.tick();
+
+    const found = ofKind(result.findings, 'ACCOUNT_DRIFT');
+    expect(found).toHaveLength(1);
+    expect(found[0].amounts.openBatchGross).toBe('11000.00');
+    expect(found[0].amounts.residual).toBe('-4000.00');
+    expect(found[0].amounts.rawDrift).toBe('-15000.00');
+    expect(found[0].detail).toContain('รอบที่ค้างอนุมัติ');
+  });
+
+  it('I3: known-pattern (ค่าคอมสมุดเดียว) ยุบเป็นบรรทัดสรุปเดียว ไม่กินโควตา 20 บรรทัด', async () => {
+    const pairs = Array.from({ length: 25 }, (_, i) =>
+      makePair({
+        contractId: `c-comm-${i}`,
+        contractNumber: `CT-COMM-${String(i).padStart(2, '0')}`,
+        financedGl: D('10000.00'),
+        commissionGl: D('1000.00'),
+        shopFinancedGl: D('10000.00'),
+        shopCommissionGl: D(0),
+      }),
+    );
+    setup({
+      pairs,
+      rows: [
+        makeRow({
+          contractId: 'c-real',
+          contractNumber: 'CT-REAL',
+          intercoNet: D('11000.00'),
+          shopMirrorGross: D('10500.00'),
+          shopMirrorNet: D('10500.00'),
+          bookMismatch: true,
+        }),
+      ],
+    });
+
+    const result = await cron.tick();
+
+    // ยังนับเป็น finding ครบทุกใบ (ห้ามซ่อน — เป็นส่วนต่างจริงตาม F4/§11)
+    expect(result.findings).toHaveLength(26);
+    expect(ofKind(result.findings, 'PAYABLE_PAIR_MISMATCH')).toHaveLength(25);
+
+    const data = prisma.todo.create.mock.calls[0][0].data;
+    const bullets: string[] = data.description
+      .split('\n')
+      .filter((l: string) => l.trim().startsWith('•'));
+    // finding จริงต้องอยู่ในบรรทัดแรก ๆ ไม่ถูกดันไป "และอีก N"
+    expect(bullets[0]).toContain('CT-REAL');
+    // 25 ใบของรูปแบบที่รู้จักไม่กินโควตารายบรรทัด
+    expect(bullets).toHaveLength(1);
+    expect(data.description).not.toContain('และอีก');
+    expect(data.description).toContain('รูปแบบสัญญาไม่ระบุค่าคอม: 25 สัญญา');
+    expect(data.description).toContain('25,000.00');
+
+    // Sentry นับแยก ไม่ปนกับ kind ปกติ
+    const opts = (Sentry.captureMessage as jest.Mock).mock.calls[0][1] as {
+      extra: Record<string, unknown>;
+    };
+    expect(opts.extra.patternCommissionOnly).toBe(25);
+    expect(opts.extra.patternCommissionOnlyTotal).toBe('25000.00');
+  });
+
+  it('I3: เรียงตามความรุนแรงก่อนตัด (ยอดติดลบขึ้นก่อนสองสมุดไม่ตรง)', async () => {
+    setup({
+      rows: [
+        makeRow({
+          contractId: 'c-mm',
+          contractNumber: 'CT-MM',
+          intercoNet: D('11000.00'),
+          shopMirrorGross: D('10500.00'),
+          shopMirrorNet: D('10500.00'),
+          bookMismatch: true,
+        }),
+      ],
+      negatives: [
+        makeRow({
+          contractId: 'c-neg2',
+          contractNumber: 'CT-NEG2',
+          // ติดลบช่องเดียว → หนึ่ง finding ต่อแถว เทียบลำดับบรรทัดได้ตรงตัว
+          shopMirrorNet: D('-500.00'),
+        }),
+      ],
+    });
+
+    const result = await cron.tick();
+
+    const data = prisma.todo.create.mock.calls[0][0].data;
+    const bullets: string[] = data.description
+      .split('\n')
+      .filter((l: string) => l.trim().startsWith('•'));
+    expect(bullets[0]).toContain('CT-NEG2');
+    expect(bullets[1]).toContain('CT-MM');
+  });
+
+  it('minor fold: ย้ายเงินระหว่างขายอดจัด↔ค่าคอม (diff รวม = 0) ยังต้องเป็น finding', async () => {
+    setup({
+      pairs: [
+        makePair({
+          contractId: 'c-swapleg',
+          contractNumber: 'CT-SWAPLEG',
+          financedGl: D('11000.00'),
+          commissionGl: D(0),
+          shopFinancedGl: D('10000.00'),
+          shopCommissionGl: D('1000.00'),
+          // service คำนวณ mismatch ต่อขา — spec จำลองพฤติกรรมนั้น
+          mismatch: true,
+        }),
+      ],
+    });
+
+    const result = await cron.tick();
+
+    const found = ofKind(result.findings, 'PAYABLE_PAIR_MISMATCH');
+    expect(found).toHaveLength(1);
+    expect(found[0].amounts.diff).toBe('0.00');
+    expect(found[0].amounts.financedDiff).toBe('1000.00');
+    expect(found[0].amounts.commissionDiff).toBe('-1000.00');
+    // ไม่ใช่รูปแบบ "ค่าคอมสมุดเดียว" → ต้องไม่ถูกยุบเป็นบรรทัดสรุป
+    expect(found[0].detail).not.toContain('ต่างเฉพาะขาค่าคอม');
+    const data = prisma.todo.create.mock.calls[0][0].data;
+    expect(data.description).toContain('CT-SWAPLEG');
   });
 
   it('มี findings → Todo หนึ่งใบต่อเดือน HIGH + tag + Sentry warning สรุปต่อ kind', async () => {

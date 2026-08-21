@@ -211,6 +211,26 @@ export function isShopReceivableOverdue(row: OverdueCheckable, thresholdDays: nu
   return overdueArms(row, thresholdDays).length > 0;
 }
 
+/**
+ * แถวที่ **รายงานอายุลูกหนี้** จะแสดง = "หนี้ที่ต้องไปตาม": มียอดค้างฝั่งใดฝั่งหนึ่ง
+ * หรือสองสมุดไม่ตรงกัน. **แถวที่ทุกยอดเป็นศูนย์หรือติดลบล้วนถูกตัดออกโดยตั้งใจ** —
+ * ยอดติดลบไม่ใช่หนี้ และถ้าปล่อยเข้ามาจะไปหักล้าง `totals` บนหัวแท็บ (บั๊กคลาส
+ * เดียวกับ carry ก). ความผิดปกติเหล่านั้นมีช่องทางของตัวเองคือ
+ * `getNegativeTypedRows()` → reconcile cron รายเดือน.
+ */
+export function isReportableAgingRow(row: ShopReceivableAgingRow): boolean {
+  return row.intercoNet.gt(EPS) || row.shopCollect.gt(EPS) || row.bookMismatch;
+}
+
+/** เรียงอายุมากสุดก่อน (effective age = max ของสองกลุ่ม; ไม่มีวันที่ = ท้ายสุด) */
+export function sortAgingRows(rows: ShopReceivableAgingRow[]): void {
+  const effectiveAge = (r: ShopReceivableAgingRow) =>
+    Math.max(r.intercoAgeDays ?? -1, r.shopCollectAgeDays ?? -1);
+  rows.sort(
+    (a, b) => effectiveAge(b) - effectiveAge(a) || a.contractNumber.localeCompare(b.contractNumber),
+  );
+}
+
 /** ฟิลด์ขั้นต่ำของ predicate ยอดติดลบ */
 export type NegativeCheckable = Pick<
   ShopReceivableAgingRow,
@@ -341,6 +361,90 @@ export class IntercoAgingService {
     asOf: Date = new Date(),
     thresholdDays = 30,
   ): Promise<ShopReceivableAgingResult> {
+    const rows = (await this.buildAllRows(asOf)).filter(isReportableAgingRow);
+    sortAgingRows(rows);
+    const zero = new Prisma.Decimal(0);
+
+    // เกณฑ์ overdue อยู่ที่ `isShopReceivableOverdue` (module scope) — cron
+    // Task 3/4 เรียกตัวเดียวกัน ห้ามมีสำเนาที่สอง
+    const isOverdue = (r: ShopReceivableAgingRow) => isShopReceivableOverdue(r, thresholdDays);
+
+    // totals กันแถว legacyOneBook ออก (ดู jsdoc บน interface): typed columns
+    // ของแถว legacy โกหกเชิงประเภท — หนี้ legacy จริงรายงานแยกใน
+    // legacyOneBookNet (= ยอด 11-2107 จริงระดับสัญญา ไม่ซ่อนหนี้). overdue ก็
+    // ไม่นับแถว legacy — เป็น label ไม่ใช่ alert (Tasks 3/4).
+    const nonLegacyRows = rows.filter((r) => !r.legacyOneBook);
+    const legacyRows = rows.filter((r) => r.legacyOneBook);
+
+    return {
+      rows,
+      asOf,
+      totals: {
+        intercoNet: nonLegacyRows.reduce((s, r) => s.plus(r.intercoNet), zero),
+        shopCollect: nonLegacyRows.reduce((s, r) => s.plus(r.shopCollect), zero),
+        overdueCount: nonLegacyRows.filter(isOverdue).length,
+        legacyOneBookNet: legacyRows.reduce(
+          (s, r) => s.plus(r.intercoNet).plus(r.shopCollect),
+          zero,
+        ),
+      },
+    };
+  }
+
+  /**
+   * แถวที่มี **ยอดติดลบ** อย่างน้อยหนึ่งช่อง (นิยามใน `negativeTypedFields`) —
+   * ตาข่ายของ reconcile cron รายเดือน. **จงใจไม่ใช้ `getShopReceivableAging`**
+   * เพราะรายงานนั้นกรองด้วย `isReportableAgingRow` ซึ่งเก็บเฉพาะ "หนี้ที่ต้องไป
+   * ตาม" (ยอดบวก หรือสองสมุดไม่ตรง):
+   *
+   *   เคสหักเกินแบบ **สมมาตร** (carry d — settleRecallCash ชนกับรอบที่หักซ้ำ)
+   *   ทำให้ `intercoNet = shopMirrorNet = ติดลบเท่ากัน` ⇒ `bookMismatch = false`
+   *   และไม่มียอดบวกเลย ⇒ ถ้าอ่านจากรายงานหลัก detector จะ **ไม่มีวันยิงเลย**
+   *   (Fix Round 1 — พิสูจน์ด้วย integration test ระดับ DB).
+   *
+   * ทำไมไม่ขยาย filter ของรายงานหลักให้เก็บค่าติดลบด้วย: `totals.intercoNet` /
+   * `totals.shopCollect` เป็นผลรวมของ `rows` ⇒ แถวติดลบจะไป **หักล้างหนี้ค้างจริง
+   * ของสัญญาอื่น** บนหัวแท็บและใน log รายวัน — เป็นบั๊กคลาสเดียวกับ carry (ก)
+   * ที่เพิ่งปิดไปใน Task 3 (gate ผลรวมกลบแถวเดี่ยว). แยก method จึงได้ทั้งสองอย่าง:
+   * ตัวเลข "หนี้ที่ต้องตาม" ไม่ถูกความผิดปกติทำให้ดูดีขึ้น และความผิดปกติเองมี
+   * ช่องทางรายงานของตัวเองทุกเดือน.
+   */
+  async getNegativeTypedRows(asOf: Date = new Date()): Promise<ShopReceivableAgingRow[]> {
+    const rows = (await this.buildAllRows(asOf)).filter((r) => negativeTypedFields(r).length > 0);
+    sortAgingRows(rows);
+    return rows;
+  }
+
+  /**
+   * Σ (financedGl + commissionGl) ของ item ในรอบที่ **ค้างอนุมัติ**
+   * (`PENDING_APPROVAL`) — ยอดที่ใช้ "บวกกลับ" ก่อนสรุปว่า drift ของคิวรอจ่าย
+   * ผิดปกติจริงหรือไม่.
+   *
+   * เหตุผล: `getReconcileTotals().drift = pendingTotal − glFinanceTotal` โดย
+   * `pendingTotal` **กันสัญญาที่ถูกจองไว้ในรอบ `PENDING_APPROVAL` ออกแล้ว** แต่
+   * รอบนั้น **ยังไม่โพสต์ JE** ⇒ ยอดบัญชี 21-1101/21-1102 ยังเต็ม ⇒ drift ติดลบ
+   * เท่ากับยอดของรอบที่ค้างอยู่พอดี. นั่นคือ **สภาพปกติของกิจการที่มีรอบรออนุมัติ**
+   * ไม่ใช่ "JE ที่ไม่ได้ stamp contractId" (รอบที่ POSTED ไปแล้วไม่มีปัญหานี้ —
+   * ขา Dr ของ batch ลดยอดบัญชีจริงพร้อมกับที่ settled gate กันสัญญาออก).
+   */
+  async getOpenBatchPayableGross(): Promise<Prisma.Decimal> {
+    const agg = await this.prisma.interCoSettlementItem.aggregate({
+      where: {
+        deletedAt: null,
+        batch: { status: 'PENDING_APPROVAL', deletedAt: null },
+      },
+      _sum: { financedGl: true, commissionGl: true },
+    });
+    return new Prisma.Decimal(agg._sum.financedGl ?? 0).plus(agg._sum.commissionGl ?? 0);
+  }
+
+  /**
+   * สร้างแถวดิบทุกสัญญาในจักรวาล 11-2107/S21-3001 — **ไม่กรองอะไรทั้งสิ้น**
+   * (source เดียวของทั้ง `getShopReceivableAging` และ `getNegativeTypedRows`;
+   * ห้ามคัดลอก SQL ไปไว้ที่อื่น). ดู jsdoc ของ `getShopReceivableAging`
+   * เรื่องจำนวน query คงที่.
+   */
+  private async buildAllRows(asOf: Date): Promise<ShopReceivableAgingRow[]> {
     // Query A — 11-2107 ทั้งบัญชี group by metadata.contractId: typed sums
     // สามประเภท + MIN(posted_at) ของขา Dr (วันตั้งหนี้เก่าสุด) สองกลุ่ม.
     // WHERE กรองเฉพาะบรรทัดที่ classify ได้ (UNKNOWN ไม่เข้ารายงานนี้ —
@@ -401,18 +505,7 @@ export class IntercoAgingService {
     // deduction (ไม่มี gross ทั้งสองสมุด) net ติดลบเท่ากันสองสมุด → ไม่ผ่าน
     // filter อยู่แล้ว จึงไม่ต้องรวม key จาก Query C.
     const universeIds = [...new Set([...financeByContract.keys(), ...shopByContract.keys()])];
-    if (universeIds.length === 0) {
-      return {
-        rows: [],
-        asOf,
-        totals: {
-          intercoNet: new Prisma.Decimal(0),
-          shopCollect: new Prisma.Decimal(0),
-          overdueCount: 0,
-          legacyOneBookNet: new Prisma.Decimal(0),
-        },
-      };
-    }
+    if (universeIds.length === 0) return [];
 
     // Query C — Σ deduction ต่อสัญญาจาก batch POSTED (item ทุก itemType —
     // สูตร NET ระดับสัญญา, สถาปัตยกรรม gross-lens: "หักแล้วเท่าไร" อยู่ที่
@@ -466,8 +559,6 @@ export class IntercoAgingService {
       const bookMismatch = intercoNet.minus(shopMirrorNet).abs().gt(EPS);
       const legacyOneBook = legacySwapGross.abs().gt(EPS) && shopGross.abs().lte(EPS);
 
-      if (!intercoNet.gt(EPS) && !shopCollect.gt(EPS) && !bookMismatch) continue;
-
       const intercoOldestPostedAt = fin?.interco_oldest ?? null;
       const shopCollectOldestPostedAt = fin?.collect_oldest ?? null;
 
@@ -492,37 +583,7 @@ export class IntercoAgingService {
       });
     }
 
-    // เรียงอายุมากสุดก่อน (effective age = max ของสองกลุ่ม; ไม่มีวันที่ = ท้ายสุด)
-    const effectiveAge = (r: ShopReceivableAgingRow) =>
-      Math.max(r.intercoAgeDays ?? -1, r.shopCollectAgeDays ?? -1);
-    rows.sort(
-      (a, b) => effectiveAge(b) - effectiveAge(a) || a.contractNumber.localeCompare(b.contractNumber),
-    );
-
-    // เกณฑ์ overdue อยู่ที่ `isShopReceivableOverdue` (module scope) — cron
-    // Task 3/4 เรียกตัวเดียวกัน ห้ามมีสำเนาที่สอง
-    const isOverdue = (r: ShopReceivableAgingRow) => isShopReceivableOverdue(r, thresholdDays);
-
-    // totals กันแถว legacyOneBook ออก (ดู jsdoc บน interface): typed columns
-    // ของแถว legacy โกหกเชิงประเภท — หนี้ legacy จริงรายงานแยกใน
-    // legacyOneBookNet (= ยอด 11-2107 จริงระดับสัญญา ไม่ซ่อนหนี้). overdue ก็
-    // ไม่นับแถว legacy — เป็น label ไม่ใช่ alert (Tasks 3/4).
-    const nonLegacyRows = rows.filter((r) => !r.legacyOneBook);
-    const legacyRows = rows.filter((r) => r.legacyOneBook);
-
-    return {
-      rows,
-      asOf,
-      totals: {
-        intercoNet: nonLegacyRows.reduce((s, r) => s.plus(r.intercoNet), zero),
-        shopCollect: nonLegacyRows.reduce((s, r) => s.plus(r.shopCollect), zero),
-        overdueCount: nonLegacyRows.filter(isOverdue).length,
-        legacyOneBookNet: legacyRows.reduce(
-          (s, r) => s.plus(r.intercoNet).plus(r.shopCollect),
-          zero,
-        ),
-      },
-    };
+    return rows;
   }
 
   /**
@@ -605,7 +666,11 @@ export class IntercoAgingService {
         financedDiff,
         commissionDiff,
         diff,
-        mismatch: !legacyNoShop && diff.abs().gt(EPS),
+        // ต่อขา ไม่ใช่ผลรวม: misclassification ที่ย้ายเงินระหว่าง 21-1101 กับ
+        // 21-1102 (หรือ S11-3001 กับ S11-3002) ทำให้ diff รวมเป็น 0 พอดี —
+        // ถ้าเทียบผลรวมจะเงียบทั้งที่สองสมุดผูกกันผิดขา
+        mismatch:
+          !legacyNoShop && (financedDiff.abs().gt(EPS) || commissionDiff.abs().gt(EPS)),
       };
     });
   }

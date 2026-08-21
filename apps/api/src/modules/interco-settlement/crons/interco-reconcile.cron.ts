@@ -32,13 +32,40 @@ export interface ReconcileFinding {
   contractNumber?: string;
   detail: string;
   amounts: Record<string, string>;
+  /**
+   * รูปแบบที่ "รู้จักและอธิบายได้" — ยังนับเป็น finding เต็มใบ (ห้ามซ่อน:
+   * เป็นส่วนต่างจริงตาม F4 / interco spec §11) แต่ในกล่อง Todo จะถูก **ยุบเป็น
+   * บรรทัดสรุปเดียว** ไม่กินโควตารายบรรทัดของความผิดปกติที่ยังไม่มีคำอธิบาย
+   * (precedent: `legacyOneBookNet` ของ Task 3).
+   */
+  pattern?: ReconcileFindingPattern;
 }
+
+/** รูปแบบที่รู้จัก — ยุบเป็นบรรทัดสรุปในคำอธิบาย Todo */
+export type ReconcileFindingPattern = 'COMMISSION_ONLY_GAP';
 
 export interface ReconcileTickResult {
   enabled: boolean;
   findings: ReconcileFinding[];
   todoCreated: boolean;
 }
+
+/**
+ * ลำดับความรุนแรงสำหรับจัดเรียงก่อนตัดบรรทัด: เงินที่เคลื่อนผิด (ติดลบ) และ
+ * ยอดบัญชีที่อธิบายไม่ได้ ต้องอยู่บนสุดเสมอ — ห้ามให้ความไม่ตรงเชิงโครงสร้างที่
+ * รู้สาเหตุแล้วมาดันของจริงตกไปอยู่ใน "และอีก N รายการ".
+ */
+const KIND_SEVERITY: Record<ReconcileFindingKind, number> = {
+  NEGATIVE_TYPED: 0,
+  ACCOUNT_DRIFT: 1,
+  SWAP_CREDIT_ONE_BOOK: 2,
+  BOOK_MISMATCH: 3,
+  PAYABLE_PAIR_MISMATCH: 4,
+};
+
+const PATTERN_LABEL: Record<ReconcileFindingPattern, string> = {
+  COMMISSION_ONLY_GAP: 'รูปแบบสัญญาไม่ระบุค่าคอม',
+};
 
 /** จำนวนบรรทัดสูงสุดใน Todo ก่อนตัดเป็น "และอีก N รายการ" */
 const MAX_DESCRIPTION_LINES = 20;
@@ -58,6 +85,24 @@ function formatAmount(value: Prisma.Decimal): string {
   const sign = intPart.startsWith('-') ? '-' : '';
   const digits = sign ? intPart.slice(1) : intPart;
   return `${sign}${digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decPart}`;
+}
+
+/**
+ * รวมจำนวน + ยอดของ finding ตามรูปแบบที่รู้จัก. ยอด = Σ `commissionDiff`
+ * (ค่าที่ service คำนวณมาแล้ว — ที่นี่แค่รวม ไม่ derive GL ใหม่).
+ */
+function summarizePatterns(
+  findings: ReconcileFinding[],
+): Partial<Record<ReconcileFindingPattern, { count: number; total: Prisma.Decimal }>> {
+  const out: Partial<Record<ReconcileFindingPattern, { count: number; total: Prisma.Decimal }>> = {};
+  for (const f of findings) {
+    if (!f.pattern) continue;
+    const agg = out[f.pattern] ?? { count: 0, total: new Prisma.Decimal(0) };
+    agg.count += 1;
+    agg.total = agg.total.plus(new Prisma.Decimal(f.amounts.commissionDiff ?? 0));
+    out[f.pattern] = agg;
+  }
+  return out;
 }
 
 /**
@@ -130,10 +175,21 @@ export class IntercoReconcileCron {
             .map(([kind, n]) => `${KIND_LABEL[kind as ReconcileFindingKind]} ${n}`)
             .join(' · '),
       );
+      const patternSummary = summarizePatterns(findings);
       Sentry.captureMessage('Interco monthly reconcile mismatches', {
         level: 'warning',
         tags: { subsystem: 'interco-netting' },
-        extra: { period, total: findings.length, ...counts },
+        extra: {
+          period,
+          total: findings.length,
+          ...counts,
+          // นับแยกจาก kind: รูปแบบที่รู้จักจะบวมขึ้นเรื่อย ๆ ตามจำนวนสัญญา
+          // ถ้าปนกับ kind จะอ่านกราฟ Sentry ไม่ออกว่าของจริงเพิ่มหรือไม่
+          patternCommissionOnly: patternSummary.COMMISSION_ONLY_GAP?.count ?? 0,
+          patternCommissionOnlyTotal: (
+            patternSummary.COMMISSION_ONLY_GAP?.total ?? new Prisma.Decimal(0)
+          ).toFixed(2),
+        },
       });
 
       const todoCreated = await this.upsertMonthlyTodo(period, findings);
@@ -155,13 +211,19 @@ export class IntercoReconcileCron {
 
   /** อ่านทุกมุมจาก service แล้วแปลงเป็น findings (ไม่มีการคำนวณยอดที่นี่) */
   private async collectFindings(): Promise<ReconcileFinding[]> {
-    const [agingResult, pairs, phase2Ids, accountDrifts, reconcileTotals] = await Promise.all([
-      this.aging.getShopReceivableAging(),
-      this.aging.getPayablePairing(),
-      this.aging.getPhase2SwapContractIds(),
-      this.aging.getTypedAccountDrift(),
-      this.pending.getReconcileTotals(),
-    ]);
+    const [agingResult, negativeRows, pairs, phase2Ids, accountDrifts, openBatchGross, reconcileTotals] =
+      await Promise.all([
+        this.aging.getShopReceivableAging(),
+        // **คนละแหล่งกับ rows โดยเจตนา** — เคสหักเกินแบบสมมาตร (สองสมุดติดลบ
+        // เท่ากัน) ไม่ผ่าน filter ของรายงานหลัก ถ้าอ่านจาก rows detector นี้จะ
+        // ไม่มีวันยิงเลย (C1, Fix Round 1 — ดู jsdoc `getNegativeTypedRows`)
+        this.aging.getNegativeTypedRows(),
+        this.aging.getPayablePairing(),
+        this.aging.getPhase2SwapContractIds(),
+        this.aging.getTypedAccountDrift(),
+        this.aging.getOpenBatchPayableGross(),
+        this.pending.getReconcileTotals(),
+      ]);
 
     const findings: ReconcileFinding[] = [];
 
@@ -202,6 +264,9 @@ export class IntercoReconcileCron {
         });
       }
 
+    }
+
+    for (const row of negativeRows) {
       for (const neg of negativeTypedFields(row)) {
         findings.push({
           kind: 'NEGATIVE_TYPED',
@@ -242,22 +307,37 @@ export class IntercoReconcileCron {
           commissionDiff: pair.commissionDiff.toFixed(2),
           diff: pair.diff.toFixed(2),
         },
+        ...(commissionOnly ? { pattern: 'COMMISSION_ONLY_GAP' as const } : {}),
       });
     }
 
-    if (reconcileTotals.drift.abs().gt(EPS)) {
+    // drift ของคิวรอจ่าย: **ต้องบวกกลับรอบที่ค้างอนุมัติก่อน** — รอบ
+    // PENDING_APPROVAL จองสัญญาไว้แล้ว (หลุดจาก pendingTotal) แต่ยังไม่โพสต์ JE
+    // ⇒ ยอดบัญชียังเต็ม ⇒ drift ติดลบเท่ายอดรอบนั้นพอดี ซึ่งเป็น **สภาพปกติ**
+    // ไม่ใช่ "JE ที่ไม่ได้ stamp contractId". เตือนตรง ๆ = ส่งคนไปตามหา JE ที่
+    // ไม่มีอยู่จริงทุกเดือนที่มีรอบค้าง (I2, Fix Round 1)
+    const driftResidual = reconcileTotals.drift.plus(openBatchGross);
+    if (driftResidual.abs().gt(EPS)) {
       findings.push({
         kind: 'ACCOUNT_DRIFT',
         detail:
           `คิวรอจ่ายกับยอดบัญชีเจ้าหนี้ (21-1101+21-1102) ต่างกัน ` +
-          `${formatAmount(reconcileTotals.drift)} บาท — มี JE ที่ไม่ได้ stamp contractId ` +
-          `(เลนส์ต่อสัญญามองไม่เห็น)`,
+          `${formatAmount(reconcileTotals.drift)} บาท · บวกกลับรอบที่ค้างอนุมัติ ` +
+          `${formatAmount(openBatchGross)} บาทแล้วยังเหลือ ${formatAmount(driftResidual)} บาท — ` +
+          `ส่วนที่เหลือคือ JE ที่ไม่ได้ stamp contractId (เลนส์ต่อสัญญามองไม่เห็น)`,
         amounts: {
           pendingTotal: reconcileTotals.pendingTotal.toFixed(2),
           glFinanceTotal: reconcileTotals.glFinanceTotal.toFixed(2),
-          drift: reconcileTotals.drift.toFixed(2),
+          rawDrift: reconcileTotals.drift.toFixed(2),
+          openBatchGross: openBatchGross.toFixed(2),
+          residual: driftResidual.toFixed(2),
         },
       });
+    } else if (reconcileTotals.drift.abs().gt(EPS)) {
+      this.logger.log(
+        `[interco-reconcile] drift คิวรอจ่าย ${formatAmount(reconcileTotals.drift)} บาท ` +
+          `อธิบายได้ครบด้วยรอบที่ค้างอนุมัติ ${formatAmount(openBatchGross)} บาท — ไม่ใช่ความผิดปกติ`,
+      );
     }
 
     for (const drift of accountDrifts) {
@@ -361,11 +441,26 @@ export class IntercoReconcileCron {
       '',
     ];
 
-    for (const f of findings.slice(0, MAX_DESCRIPTION_LINES)) {
+    // เรียงความรุนแรงก่อนตัด และกัน finding รูปแบบที่รู้จักออกจากโควตารายบรรทัด
+    const unlabeled = findings
+      .filter((f) => !f.pattern)
+      .sort((a, b) => KIND_SEVERITY[a.kind] - KIND_SEVERITY[b.kind]);
+
+    for (const f of unlabeled.slice(0, MAX_DESCRIPTION_LINES)) {
       lines.push(`• [${KIND_LABEL[f.kind]}] ${f.detail}`);
     }
-    if (findings.length > MAX_DESCRIPTION_LINES) {
-      lines.push(`… และอีก ${findings.length - MAX_DESCRIPTION_LINES} รายการ (ดูรายละเอียดที่แท็บ)`);
+    if (unlabeled.length > MAX_DESCRIPTION_LINES) {
+      lines.push(`… และอีก ${unlabeled.length - MAX_DESCRIPTION_LINES} รายการ (ดูรายละเอียดที่แท็บ)`);
+    }
+
+    // รูปแบบที่รู้จัก: บรรทัดสรุปเดียวต่อรูปแบบ (ไม่ซ่อน — ยังนับในยอดรวมบนหัวเรื่อง)
+    const patternSummary = summarizePatterns(findings);
+    for (const [pattern, agg] of Object.entries(patternSummary)) {
+      lines.push(
+        `▪ ${PATTERN_LABEL[pattern as ReconcileFindingPattern]}: ${agg.count} สัญญา ` +
+          `รวม ${formatAmount(agg.total)} บาท — ส่วนต่างจริงเชิงระบบ ` +
+          `(1A ตั้งค่าคอม 10% อัตโนมัติ แต่สมุด SHOP ตั้ง 0) ดูรายสัญญาที่แท็บ`,
+      );
     }
 
     lines.push('');

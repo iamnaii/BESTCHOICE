@@ -205,7 +205,8 @@ const SCENARIOS: Scenario[] = [
   {
     id: 'S4', name: 'ของมีในสต๊อก 2 สภาพ → เทียบด้วยดาวน์+งวด',
     turns: [
-      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], notContains: ['17,500', '19,900'], contains: ['ผ่อนเดือนละ'] },
+      // ต้องบอกสีด้วย (เจ้าของสั่ง 2026-08-17) — fixture มี 2 เครื่อง: ชมพู กับ ฟ้า
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], notContains: ['17,500', '19,900'], contains: ['ผ่อนเดือนละ', 'ชมพู', 'ฟ้า'] },
     ],
   },
   {

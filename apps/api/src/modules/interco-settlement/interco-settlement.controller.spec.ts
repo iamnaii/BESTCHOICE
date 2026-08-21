@@ -41,6 +41,9 @@ describe('IntercoSettlementController', () => {
       approveBatch: jest.fn().mockResolvedValue({ id: 'b-1', status: 'POSTED' }),
       reverseBatch: jest.fn().mockResolvedValue({ id: 'b-1', status: 'REVERSED' }),
       uploadSlip: jest.fn().mockResolvedValue({ id: 'b-1', slipFileKey: 'interco-slips/b-1/x' }),
+      settleRecallCash: jest
+        .fn()
+        .mockResolvedValue({ financeEntryNo: 'JE-1', shopEntryNo: 'JE-2', deduped: false }),
     };
     pendingService = {
       getPendingContracts: jest.fn().mockResolvedValue([{ contractId: 'c-1' }]),
@@ -66,6 +69,7 @@ describe('IntercoSettlementController', () => {
       ['approve', ['OWNER', 'FINANCE_MANAGER']],
       ['reverse', ['OWNER', 'FINANCE_MANAGER']],
       ['uploadSlip', ['ACCOUNTANT', 'FINANCE_MANAGER']],
+      ['settleRecallCash', ['OWNER', 'FINANCE_MANAGER']],
     ])('%s() exposes exactly the expected roles', (methodName, expectedRoles) => {
       const roles = methodRoles(methodName);
       expect(roles).toBeDefined();
@@ -85,8 +89,8 @@ describe('IntercoSettlementController', () => {
       }
     });
 
-    it('checker endpoints (approve/reverse) do NOT allow ACCOUNTANT (maker role only)', () => {
-      for (const m of ['approve', 'reverse']) {
+    it('checker endpoints (approve/reverse/settleRecallCash) do NOT allow ACCOUNTANT (maker role only)', () => {
+      for (const m of ['approve', 'reverse', 'settleRecallCash']) {
         expect(methodRoles(m)).not.toContain('ACCOUNTANT');
       }
     });
@@ -163,6 +167,18 @@ describe('IntercoSettlementController', () => {
     it('passes id + userId + reason through', async () => {
       await controller.reverse('b-1', { reason: 'ยกเลิกเพราะยอดผิด' }, 'approver-1');
       expect(service.reverseBatch).toHaveBeenCalledWith('b-1', 'approver-1', 'ยกเลิกเพราะยอดผิด');
+    });
+  });
+
+  describe('settleRecallCash()', () => {
+    it('passes contractId + dto + userId through to the service', async () => {
+      const dto = {
+        amount: 3000,
+        financeDepositAccountCode: '11-1201',
+        requestId: '3f1a2b3c-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+      } as never;
+      await controller.settleRecallCash('c-recall', dto, 'approver-1');
+      expect(service.settleRecallCash).toHaveBeenCalledWith('c-recall', dto, 'approver-1');
     });
   });
 

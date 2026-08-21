@@ -70,6 +70,37 @@ export function swapCreditShopBalance(
   );
 }
 
+/**
+ * 11-2107 Σ(Dr−Cr) เฉพาะประเภท SHOP_COLLECT ของสัญญาหนึ่ง (Phase 3 Task 2 —
+ * guard ยกเลิกสัญญา C-1: หน้าร้านถือเงินลูกค้ายังไม่ settle → ห้ามยกเลิก).
+ * เงื่อนไข mirror `classifyShopReceivable`: explicit stamp ชนะเสมอ — fallback
+ * (legacy JP4/JP5 marker `collectedByShop` / `shopReceivable='11-2107'` และ
+ * flow ของใบ settle `shop-collect-settlement`) ใช้เฉพาะแถวที่ไม่มี explicit
+ * stamp ที่ valid. จำเป็นตั้งแต่ Phase 3 Task 6: ใบ settle เส้นทางรับเงินสดคืน
+ * ใช้ flow 'shop-collect-settlement' เดิมแต่ stamp 'PAYOUT_RECALL' — ถ้า OR
+ * flow แบบไม่ดู stamp ใบนั้นจะรั่วเข้าเลนส์นี้เป็นยอดติดลบ (ขัด precedence
+ * ของ classifyShopReceivable).
+ */
+export function shopCollectTypedBalance(
+  client: Client,
+  contractId: string,
+): Promise<Prisma.Decimal> {
+  return sumTyped(
+    client,
+    '11-2107',
+    'dr-cr',
+    Prisma.sql`
+    je.metadata->>'contractId' = ${contractId}
+    AND (je.metadata->>'shopReceivableType' = 'SHOP_COLLECT'
+         OR ((je.metadata->>'shopReceivableType' IS NULL
+              OR je.metadata->>'shopReceivableType' NOT IN
+                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+             AND (je.metadata->>'collectedByShop' = 'true'
+                  OR je.metadata->>'shopReceivable' = '11-2107'
+                  OR je.metadata->>'flow' = 'shop-collect-settlement')))`,
+  );
+}
+
 /** 11-2107 Σ(Dr−Cr) เฉพาะประเภท PAYOUT_RECALL (explicit stamp เท่านั้น) */
 export function recallFinanceBalance(client: Client, contractId: string): Promise<Prisma.Decimal> {
   return sumTyped(

@@ -10,6 +10,7 @@ import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { PairedJournalService } from '../../journal/paired-journal.service';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
 import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
 import { IntercoPendingService } from '../interco-pending.service';
 import { IntercoBatchNumberService } from '../interco-batch-number.service';
 import { IntercoSettlementService } from '../interco-settlement.service';
@@ -62,6 +63,8 @@ const batchNumberService = new IntercoBatchNumberService(prisma as never);
 // this approve/reverse-focused suite, stubbed out rather than wiring real
 // S3/GCS config just to satisfy the constructor.
 const storageStub = { upload: async () => undefined, delete: async () => undefined };
+// settleRecallCash (Phase 3 Task 6) dep — unused by this approve/reverse suite.
+const shopCollectTemplate = new ShopCollectSettlementTemplate(journal, prisma as never);
 const svc = new IntercoSettlementService(
   prisma as never,
   pendingService,
@@ -70,6 +73,7 @@ const svc = new IntercoSettlementService(
   companyResolver,
   journal,
   storageStub as never,
+  shopCollectTemplate,
 );
 
 // ---------------------------------------------------------------------------

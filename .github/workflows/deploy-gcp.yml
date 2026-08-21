@@ -172,7 +172,8 @@ jobs:
           JP5_FILES=$(ls src/modules/journal/cpa-templates/__tests__/*.spec.ts)
           EXCH_FILES=$(ls src/modules/contract-exchange/__tests__/*.integration.spec.ts)
           INTERCO_FILES=$(ls src/modules/interco-settlement/__tests__/*.integration.spec.ts)
-          CONTRACTS_FILES=$(ls src/modules/contracts/*.integration.spec.ts)
+          # + __tests__/ level added 2026-08-20 (Phase 3 contract-cancellation C-1)
+          CONTRACTS_FILES=$(ls src/modules/contracts/*.integration.spec.ts src/modules/contracts/__tests__/*.integration.spec.ts)
           JOURNAL_FILES="src/modules/journal/__tests__/scenario-helpers.spec.ts src/modules/journal/cron/installment-accrual.cron.spec.ts"
           OVERDUE_FILES=$(ls src/modules/overdue/*.integration.spec.ts src/modules/overdue/services/*.integration.spec.ts)
           PAYMENTS_FILES=$(ls src/modules/payments/services/*.integration.spec.ts)

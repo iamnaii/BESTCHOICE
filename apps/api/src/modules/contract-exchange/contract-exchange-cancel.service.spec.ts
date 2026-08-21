@@ -83,7 +83,14 @@ describe('ExchangeCancelService (spec §9)', () => {
       productId: 'oldP1',
       exchangedAt: daysAgo(exchangedDaysAgo),
     },
-    newContract: { id: 'newC1', status: 'ACTIVE' },
+    newContract: {
+      id: 'newC1',
+      status: 'ACTIVE',
+      // Park guard 3 ถัง (final review Phase 3 — Important 2ก): ค่า 0 = ผ่าน
+      advanceBalance: new Decimal('0'),
+      creditBalance: new Decimal('0'),
+      rescheduleAdvanceBalance: new Decimal('0'),
+    },
   });
 
   beforeEach(async () => {
@@ -99,6 +106,17 @@ describe('ExchangeCancelService (spec §9)', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       badDebtProvision: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // Phase 3 Task 5 (C-2): open-batch guard (findFirst → null = ไม่มีรอบเปิด)
+      // + POSTED SETTLEMENT detect (findMany → [] = ไม่เคยตัดจ่าย ⇒ isC2 false —
+      // ทุกเทสเดิมในไฟล์นี้จึงเดินเส้น C-1 byte-เดิม รวม assertion ที่ปักว่า
+      // reverse ถูกเรียกโดย "ไม่มี" key redirects/redirectStamp)
+      interCoSettlementItem: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      // Pre-sweep scan (final review Phase 3 — cash tripwire + C-2 defensive):
+      // [] = ไม่มี candidate ผิดปกติ ⇒ ทุกเทสเดิมเดินเส้นเดิม
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       product: {
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn().mockResolvedValue({

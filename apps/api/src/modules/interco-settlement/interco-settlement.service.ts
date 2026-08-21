@@ -12,7 +12,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { IntercoPendingService, PendingContract } from './interco-pending.service';
 import { IntercoBatchNumberService } from './interco-batch-number.service';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
 import { CreateBatchDto } from './dto/create-batch.dto';
+import { SettleRecallCashDto } from './dto/settle-recall-cash.dto';
 import { PairedJournalService } from '../journal/paired-journal.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { JournalAutoService, JeLineInput } from '../journal/journal-auto.service';
@@ -27,6 +29,8 @@ import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { StorageService } from '../storage/storage.service';
 
 const DEFAULT_FINANCE_BANK_CODE = '11-1201';
+/** SHOP leg ของเส้นทางรับเงินสดคืน (Phase 3 Task 6) — Dr S21-3001 / Cr เงินสด SHOP */
+const RECALL_CASH_SHOP_FLOW = 'interco-recall-cash-shop';
 /** Batch statuses that "lock" a contract out of the pending queue (spec §4). */
 const OPEN_BATCH_STATUSES = ['PENDING_APPROVAL', 'POSTED'] as const;
 /** Drift-guard tolerance on the 4 GL lens amounts (spec §5.1). */
@@ -94,6 +98,7 @@ export class IntercoSettlementService {
     private readonly companyResolver: CompanyResolverService,
     private readonly journalAuto: JournalAutoService,
     private readonly storage: StorageService,
+    private readonly shopCollectTemplate: ShopCollectSettlementTemplate,
   ) {}
 
   /**
@@ -829,6 +834,11 @@ export class IntercoSettlementService {
         // ยังคุ้มยอดหักของ item นี้ ไม่งั้น approve จะ Cr 11-2107 เกินของจริง
         // (บัญชีติดลบ / SHOP ได้เงินสองเด้ง).
         const deduction = item.swapCreditAmount.plus(item.recallAmount);
+        // Σ deduction ที่ batch POSTED **อื่น** เคยหักไปแล้ว (ทุก itemType) —
+        // ใช้ร่วมกันทั้งด่าน (i) และเช็ค NET ของแถว RECALL ด้านล่าง. batch
+        // ปัจจุบันยัง PENDING_APPROVAL จึงไม่เข้า filter POSTED โดยสถานะอยู่แล้ว
+        // แต่ exclude ด้วย `batchId: { not: id }` ให้ชัดตาม pattern ด่าน (i).
+        let priorPostedDeductions = new Prisma.Decimal(0);
         if (deduction.gt(0)) {
           const [untypedBal, priorItems] = await Promise.all([
             glContractBalance(tx, item.contractId, '11-2107', 'dr'),
@@ -842,7 +852,7 @@ export class IntercoSettlementService {
               select: { swapCreditAmount: true, recallAmount: true },
             }),
           ]);
-          const priorPostedDeductions = priorItems.reduce(
+          priorPostedDeductions = priorItems.reduce(
             (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
             new Prisma.Decimal(0),
           );
@@ -853,15 +863,23 @@ export class IntercoSettlementService {
         }
         if (item.itemType === 'RECALL') {
           // RECALL rows have no payable/receivable snapshot of their own —
-          // both books' typed PAYOUT_RECALL balances must still equal the
-          // snapshotted recallAmount.
+          // both books' typed PAYOUT_RECALL balances, **net of deductions
+          // already posted in other batches**, must still equal the
+          // snapshotted recallAmount (สูตร NET — Phase 3 Task 4, carry b:
+          // snapshot จาก `getPendingRecalls` เป็น net อยู่แล้ว live จึงต้อง
+          // เทียบสูตรเดียวกัน). เคสหลักคือ swap ที่ถูกยกเลิกหลังเคยถูกหัก
+          // เครดิต 8,000 ในรอบเก่า: typed gross = 11,000 แต่ยอดเรียกคืนจริง
+          // (และ snapshot) = 3,000 — เทียบ gross ตรงๆ จะ reject รอบ recall
+          // ที่ถูกต้องตลอดกาล.
           const [recallFin, recallShop] = await Promise.all([
             recallFinanceBalance(tx, item.contractId),
             recallShopBalance(tx, item.contractId),
           ]);
+          const netFin = recallFin.minus(priorPostedDeductions);
+          const netShop = recallShop.minus(priorPostedDeductions);
           if (
-            recallFin.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE) ||
-            recallShop.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE)
+            netFin.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE) ||
+            netShop.minus(item.recallAmount).abs().gt(DRIFT_TOLERANCE)
           ) {
             driftedContractNumbers.push(item.contract.contractNumber);
           }
@@ -1064,6 +1082,16 @@ export class IntercoSettlementService {
    * ลด typed balance ต่อสัญญา — residual ที่แท้จริง = typed gross − Σ deduction
    * ของสัญญานั้นใน batch สถานะ POSTED ทั้งหมด. ค่าปกติ = 0 พอดี (เครดิตถูกหัก
    * ครบรอบเดียว); > 0 = เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
+   *
+   * สูตร COMBINED ต่อสัญญา (Phase 3 Task 4 — ปิด carry b): typed gross =
+   * SWAP_CREDIT + PAYOUT_RECALL **รวมสองประเภท** ต่อสมุด, เทียบกับ Σ deduction
+   * ทุก itemType ใน batch POSTED. เหตุผล: สัญญา swap ที่ถูกยกเลิก (C-2) มี
+   * ประวัติข้ามประเภทบนสัญญาเดียว — SWAP_CREDIT ถูก mirror ตอน cancel จน typed
+   * เหลือ 0 ขณะที่ deduction 8,000 ของมันยังค้างถาวรใน item table, ส่วน
+   * PAYOUT_RECALL ถือ gross 11,000 ของ redirect. เทียบทีละประเภทตาม itemType
+   * ของแถว (สูตรเดิม) จะ false-alarm ทันที (เช่น item swap รอบเก่า: 0 −
+   * Σposted 11,000 = −11,000 ทั้งที่ทุกอย่างถูกต้อง) — ระดับที่ invariant
+   * "= 0" ถือจริงคือระดับสัญญา ไม่ใช่ระดับประเภท.
    * Alarm-only — ห้าม throw (fire-and-forget จาก `approveBatch` หลัง tx commit).
    */
   private async alarmNettingResiduals(batchId: string): Promise<void> {
@@ -1075,16 +1103,14 @@ export class IntercoSettlementService {
     for (const item of batch.items) {
       const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
       if (deduction.lte(0)) continue;
-      const [fin, shop] =
-        item.itemType === 'RECALL'
-          ? await Promise.all([
-              recallFinanceBalance(this.prisma, item.contractId),
-              recallShopBalance(this.prisma, item.contractId),
-            ])
-          : await Promise.all([
-              swapCreditFinanceBalance(this.prisma, item.contractId),
-              swapCreditShopBalance(this.prisma, item.contractId),
-            ]);
+      const [swapFin, swapShop, recFin, recShop] = await Promise.all([
+        swapCreditFinanceBalance(this.prisma, item.contractId),
+        swapCreditShopBalance(this.prisma, item.contractId),
+        recallFinanceBalance(this.prisma, item.contractId),
+        recallShopBalance(this.prisma, item.contractId),
+      ]);
+      const fin = swapFin.plus(recFin);
+      const shop = swapShop.plus(recShop);
       // Σ deduction ของสัญญานี้ในทุก batch POSTED (รวมรอบนี้เอง)
       const postedItems = await this.prisma.interCoSettlementItem.findMany({
         where: {
@@ -1136,6 +1162,46 @@ export class IntercoSettlementService {
       if (!batch || batch.deletedAt) throw new NotFoundException('ไม่พบรอบจ่าย');
       if (batch.status !== 'POSTED') {
         throw new BadRequestException('ย้อนกลับได้เฉพาะรอบที่อนุมัติแล้ว (POSTED) เท่านั้น');
+      }
+
+      // Final review Phase 3 (Important 1) — รอบที่มีสัญญาที่ถูกยกเลิกไปแล้ว
+      // (Flow C-1/C-2) ห้าม reverse อัตโนมัติ: mirror จะคืน payable ระดับบัญชี
+      // และ item หลุดจาก settled gate ⇒ สัญญา CANCELED (ไม่มีเครื่อง/ไม่มี
+      // financing) กลับเข้าคิวจ่ายเต็มยอด — pending lens hydration ไม่ filter
+      // status และ drift guard ผ่าน (GL ตรง snapshot) จึงเสนอจ่ายเงินจริงได้;
+      // แถว recall ก็บวมกลับเป็น gross ด้วย. ทางออกเดียวคือ JV มือ (doctrine
+      // เดิม — ห้ามเดา JE อัตโนมัติ). เช็คสองทาง (OR): status CANCELED ครอบ
+      // ทั้ง generic C-1/C-2 และ exchange-cancel (ซึ่งไม่สร้างแถว
+      // ContractCancellation); แถว ContractCancellation APPROVED เป็น
+      // belt-and-braces กันเคส status ถูกมือแก้กลับ (drift) หลังยกเลิก.
+      //
+      // Scope เฉพาะแถว SETTLEMENT (fix round 2 — bug class เดียวกับ type-aware
+      // clash / recall-queue gate): สัญญาของแถว RECALL เป็น CANCELED **โดย
+      // นิยาม** (producer เดียวของ PAYOUT_RECALL คือ C-2 cancel) — guard แบบ
+      // any-type จะทำให้รอบที่มีแถว recall แม้แถวเดียว reverse ไม่ได้ตลอดกาล.
+      // reverse แถว RECALL ปลอดภัยและต้องทำได้: deduction หลุดจาก POSTED set
+      // → recall net กลับค่าเดิม → แถวกลับเข้าคิว recall เองตามนิยาม settled
+      // gate. อันตรายอยู่เฉพาะที่แถว SETTLEMENT ของสัญญาที่ถูกยกเลิกเท่านั้น.
+      const itemRows = await tx.interCoSettlementItem.findMany({
+        where: { batchId: id, deletedAt: null, itemType: 'SETTLEMENT' },
+        select: { contractId: true },
+      });
+      const canceledContracts = await tx.contract.findMany({
+        where: {
+          id: { in: itemRows.map((i) => i.contractId) },
+          OR: [
+            { status: 'CANCELED' },
+            { cancellations: { some: { status: 'APPROVED', deletedAt: null } } },
+          ],
+        },
+        select: { contractNumber: true },
+      });
+      if (canceledContracts.length > 0) {
+        throw new BadRequestException(
+          `สัญญา ${canceledContracts.map((c) => c.contractNumber).join(', ')} ถูกยกเลิกแล้ว — ` +
+            'การย้อนรอบนี้ต้องทำ JV มือผ่านที่ปรึกษาบัญชี (ระบบไม่ย้อนอัตโนมัติ ' +
+            'เพราะจะพาสัญญาที่ถูกยกเลิกกลับเข้าคิวจ่าย)',
+        );
       }
 
       const jeIds = [batch.financeJournalEntryId, batch.shopJournalEntryId].filter(
@@ -1226,6 +1292,245 @@ export class IntercoSettlementService {
 
       return updated;
     });
+  }
+
+  /**
+   * เส้นทางรับเงินสดคืนจากยกเลิกสัญญา (Flow C-2 — Phase 3 Task 6, spec §5.4
+   * ทางเลือกที่สองนอกจากหักกลบรอบจ่าย): SHOP โอนเงินสดคืนยอดเรียกคืน แทนการ
+   * รอหักในรอบจ่ายถัดไป. โพสต์สองใบใน `$transaction` เดียว:
+   *
+   *   FINANCE — reuse `ShopCollectSettlementTemplate` + `typeStamp:
+   *   'PAYOUT_RECALL'` → `Dr <financeDepositAccountCode> / Cr 11-2107`
+   *   (stamp `shopReceivableType: 'PAYOUT_RECALL'` + `metadata.contractId`
+   *   ⇒ typed recall lens หักตรงประเภทต่อสัญญา — ต่างจากขา batch ที่ไม่
+   *   stamp; template gate (ii) เดิม (untyped − Σ POSTED deductions + block
+   *   PENDING deduction batch) เดินครบทุกด่านเหมือน caller เดิม)
+   *
+   *   SHOP — `Dr S21-3001 / Cr <shopPayoutAccountCode>` (default 'S11-1201')
+   *   ผ่าน `journalAuto.createAndPost` ตรงๆ (JE 2 บรรทัด — ไม่มี template
+   *   class ตาม brief; `PairedJournalService` ไม่จำเป็นเพราะสองใบอยู่ใน tx
+   *   เดียวอยู่แล้ว)
+   *
+   * Guards (ตามลำดับ):
+   *   0. idempotency requestId — เช็คก่อน guard คิวทั้งหมด: retry หลัง settle
+   *      เต็มจำนวน สัญญาหลุดคิวไปแล้ว ต้องคืนผลเดิมไม่ใช่ reject
+   *   1. ไม่มี RECALL item ใน batch เปิด (DRAFT/PENDING_APPROVAL) — settled
+   *      gate ของคิวจับ PENDING อยู่แล้ว แต่ต้องได้ข้อความไทยชี้รอบ + block
+   *      DRAFT ด้วย (กันเงินก้อนเดียวถูกรับสดที่นี่และหักในรอบพร้อมกัน)
+   *   2. สัญญาอยู่ในคิวเรียกคืน (`getPendingRecalls` — ยอด NET of POSTED
+   *      deductions ตาม Phase 3 Task 4)
+   *   3. ยอดเรียกคืนสองสมุดตรงกัน ±0.01 (mirror guard ของ `buildSnapshot` —
+   *      ห้ามโพสต์ข้างเดียวบนสมุดที่ยอดไม่หนุนกัน)
+   *   4. amount ≤ recallGl net + 0.01
+   */
+  async settleRecallCash(
+    contractId: string,
+    dto: SettleRecallCashDto,
+    userId: string,
+  ): Promise<{ financeEntryNo: string; shopEntryNo: string; deduped: boolean }> {
+    const amount = new Prisma.Decimal(String(dto.amount));
+    if (amount.lte(0)) {
+      throw new BadRequestException('ยอดรับเงินคืนต้องมากกว่า 0');
+    }
+    const amountStr = amount.toFixed(2);
+    const shopPayoutAccountCode =
+      dto.shopPayoutAccountCode ?? ShopAccountResolver.SHOP_RECEIVING_BANK;
+
+    // SERIALIZABLE — doctrine ของ template ตัวเดียวกัน (ดู comment ใน
+    // shop-collect-settlement.template.ts รอบ catch P2002/P2034): guard
+    // "amount ≤ net" อ่าน journal_lines แล้วค่อย insert แถวที่เปลี่ยนผล
+    // การอ่านนั้น — ภายใต้ READ COMMITTED สองคำขอพร้อมกัน**คนละ requestId**
+    // บนสัญญาเดียวจะผ่าน guard ทั้งคู่ (idempotency จับไม่ได้ — key ต่างกัน)
+    // ⇒ over-settle (typed recall ติดลบ, เงินสดเดบิตเกิน). SSI ทำให้ผู้แพ้
+    // ถูก abort ด้วย 40001 (Prisma P2034) — แปลเป็น 409 ใน catch ด้านล่าง.
+    const run = async (tx: Prisma.TransactionClient) => {
+      // 0. idempotency — SHOP leg เป็น marker: สองใบโพสต์ใน tx เดียว ดังนั้น
+      //    "มีใบ SHOP" ⇔ "มีใบ FINANCE" เสมอ. contractId เป็นส่วนหนึ่งของ
+      //    เงื่อนไข (กัน requestId ชนข้ามสัญญา — pattern เดียวกับ template).
+      const shopDupe = await tx.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: RECALL_CASH_SHOP_FLOW } } as Prisma.JournalEntryWhereInput,
+            { metadata: { path: ['requestId'], equals: dto.requestId } } as Prisma.JournalEntryWhereInput,
+            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+          ],
+          deletedAt: null,
+        },
+      });
+      if (shopDupe) {
+        const dupeMeta = shopDupe.metadata as Record<string, unknown> | null;
+        const bookedAmount = dupeMeta?.['amount'];
+        if (typeof bookedAmount !== 'string' || bookedAmount !== amountStr) {
+          throw new ConflictException(
+            `คำขอนี้ถูกบันทึกไปแล้วที่ยอด ${typeof bookedAmount === 'string' ? bookedAmount : 'ไม่ทราบยอด'} ฿ — ` +
+              'กรุณาปิดหน้าต่างรับเงินคืนแล้วเปิดใหม่ หากต้องการบันทึกยอดใหม่',
+          );
+        }
+        const financeDupe = await tx.journalEntry.findFirst({
+          where: {
+            AND: [
+              { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
+              { metadata: { path: ['requestId'], equals: dto.requestId } } as Prisma.JournalEntryWhereInput,
+              { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+            ],
+            deletedAt: null,
+          },
+        });
+        return {
+          financeEntryNo: financeDupe?.entryNumber ?? '',
+          shopEntryNo: shopDupe.entryNumber,
+          deduped: true,
+        };
+      }
+
+      // 1. RECALL item ใน batch เปิด → reject พร้อมชื่อรอบ
+      const openRecallItem = await tx.interCoSettlementItem.findFirst({
+        where: {
+          contractId,
+          itemType: 'RECALL',
+          deletedAt: null,
+          batch: { status: { in: ['DRAFT', 'PENDING_APPROVAL'] }, deletedAt: null },
+        },
+        include: { batch: { select: { batchNumber: true, status: true } } },
+      });
+      if (openRecallItem) {
+        throw new BadRequestException(
+          `สัญญานี้มีรายการเรียกคืนในรอบจ่าย ${openRecallItem.batch.batchNumber} ` +
+            `(สถานะ ${openRecallItem.batch.status}) — รอผลอนุมัติ ถอน หรือยกเลิกรอบก่อนรับเงินสดคืน`,
+        );
+      }
+
+      // 2. อยู่ในคิวเรียกคืน (ยอด net) + 3. สองสมุดตรงกัน + 4. ไม่เกิน net
+      const recalls = await this.pendingService.getPendingRecalls(tx);
+      const recall = recalls.find((r) => r.contractId === contractId);
+      if (!recall) {
+        throw new BadRequestException(
+          'สัญญานี้ไม่อยู่ในคิวเรียกคืน — ไม่มียอดเรียกคืนค้าง หรืออยู่ในรอบจ่ายอื่นแล้ว',
+        );
+      }
+      if (recall.recallGl.minus(recall.shopRecallGl).abs().gt('0.01')) {
+        throw new BadRequestException(
+          `ยอดเรียกคืนสองสมุดไม่ตรงกัน สัญญา ${recall.contractNumber} ` +
+            `(FINANCE ${recall.recallGl.toFixed(2)} / SHOP ${recall.shopRecallGl.toFixed(2)}) — ` +
+            'ตรวจสอบ GL ก่อนรับเงินคืน',
+        );
+      }
+      if (amount.gt(recall.recallGl.plus('0.01'))) {
+        throw new BadRequestException(
+          `ยอดรับเงินคืน ${amountStr} ฿ เกินยอดเรียกคืนคงเหลือ ${recall.recallGl.toFixed(2)} ฿ ไม่อนุญาต`,
+        );
+      }
+
+      // FINANCE leg — template เดิม + typeStamp (guards/idempotency ของ
+      // template เดินครบทุกด่าน รวม gate (ii) untyped − POSTED deductions)
+      const finance = await this.shopCollectTemplate.execute(
+        {
+          contractId,
+          depositAccountCode: dto.financeDepositAccountCode,
+          amount: dto.amount,
+          postedById: userId,
+          requestId: dto.requestId,
+          typeStamp: 'PAYOUT_RECALL',
+        },
+        tx,
+      );
+      if (finance.deduped) {
+        // SHOP pre-check (ด่าน 0) ไม่พบใบ แต่ template พบ requestId เดิม —
+        // แปลว่า requestId นี้ถูกใช้ไปแล้วกับ flow settleShopCollect (คนละ
+        // เส้นทาง): โพสต์ SHOP leg เดี่ยวต่อไปจะได้ใบขาเดียว — ห้าม.
+        throw new ConflictException(
+          'requestId นี้ถูกใช้ไปแล้วกับรายการรับโอนจากหน้าร้าน (shop-collect) — กรุณาสร้างคำขอใหม่',
+        );
+      }
+
+      // SHOP leg — Dr S21-3001 / Cr เงินสด/ธนาคาร SHOP
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+      let shopJe: { id: string; entryNumber: string };
+      try {
+        shopJe = await this.journalAuto.createAndPost(
+          {
+            description: `จ่ายเงินคืน FINANCE — เรียกคืนจากยกเลิกสัญญา ${recall.contractNumber}`,
+            reference: `${contractId}:${RECALL_CASH_SHOP_FLOW}:${dto.requestId}`,
+            companyId: shopCompanyId,
+            metadata: {
+              flow: RECALL_CASH_SHOP_FLOW,
+              // สมมาตรกับ FINANCE leg (template: `${contractId}:${requestId}`) —
+              // requestId reuse ข้ามสัญญาจะไม่ชน DB unique index ของสัญญาอื่น
+              // (โพสต์อิสระตาม semantics ของ template) แทนที่จะได้ 409 ผิดบริบท.
+              idempotencyKey: `${contractId}:${dto.requestId}:SHOP`,
+              contractId,
+              requestId: dto.requestId,
+              amount: amountStr,
+              shopPayoutAccountCode,
+              shopReceivableType: 'PAYOUT_RECALL',
+            },
+            lines: [
+              {
+                accountCode: 'S21-3001',
+                dr: amount,
+                cr: new Prisma.Decimal(0),
+                description: `ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก ${recall.contractNumber}`,
+              },
+              {
+                accountCode: shopPayoutAccountCode,
+                dr: new Prisma.Decimal(0),
+                cr: amount,
+                description: `จ่ายเงินคืน FINANCE ${amountStr} ฿`,
+              },
+            ],
+          },
+          tx,
+        );
+      } catch (err) {
+        // Race เดียวกับ W2: ผู้แพ้ของ double-submit ชน DB unique index
+        // (flow + idempotencyKey) — แปลงเป็น 409 ไทย ไม่ใช่ raw 500;
+        // tx ทั้งก้อน (รวมใบ FINANCE) roll back.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException(
+            'รายการนี้กำลังถูกบันทึกอยู่ (กดยืนยันซ้ำพร้อมกัน) — กรุณารอสักครู่ แล้วตรวจสอบรายการก่อนลองใหม่',
+          );
+        }
+        throw err;
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'INTERCO_RECALL_CASH_SETTLED',
+          entity: 'contract',
+          entityId: contractId,
+          newValue: {
+            contractNumber: recall.contractNumber,
+            amount: amountStr,
+            financeDepositAccountCode: dto.financeDepositAccountCode,
+            shopPayoutAccountCode,
+            requestId: dto.requestId,
+            financeEntryNo: finance.entryNo,
+            shopEntryNo: shopJe.entryNumber,
+            recallNetBefore: recall.recallGl.toFixed(2),
+          },
+        },
+      });
+
+      return { financeEntryNo: finance.entryNo, shopEntryNo: shopJe.entryNumber, deduped: false };
+    };
+
+    try {
+      return await this.prisma.$transaction(run, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (err) {
+      // ผู้แพ้ SSI race (40001 → Prisma P2034) โผล่ได้ทั้งกลาง tx และตอน
+      // commit — แปลเป็น 409 ไทยให้ client ลองใหม่ได้ ไม่ใช่ raw 500
+      // (pattern เดียวกับ template's P2034 catch + W2). ConflictException/
+      // BadRequestException จากใน tx ผ่าน catch นี้ออกไปตามเดิม.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        throw new ConflictException(
+          'มีการบันทึกรายการนี้พร้อมกันจากอีกจุดหนึ่ง (write conflict) — กรุณาลองใหม่อีกครั้ง',
+        );
+      }
+      throw err;
+    }
   }
 
   /**

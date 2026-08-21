@@ -19,6 +19,16 @@ export interface ShopCollectSettlementInput {
    * (contractId+amount) เพื่อ backward compat กับ caller เดิม.
    */
   requestId?: string;
+  /**
+   * ประเภทลูกหนี้ 11-2107 ที่ใบนี้ล้าง (Phase 3 Task 6 — เส้นทางรับเงินสดคืน):
+   * default `'SHOP_COLLECT'` — caller เดิม (JP4/shop-collect settle) ต้องได้
+   * พฤติกรรม byte-identical. `'PAYOUT_RECALL'` ใช้โดย
+   * `IntercoSettlementService.settleRecallCash` เท่านั้น — stamp ลง
+   * `metadata.shopReceivableType` ให้ typed recall lens หักยอดต่อสัญญาได้ตรงประเภท.
+   * Guards/idempotency/outstanding computation ไม่แตกต่างตามประเภท (untyped
+   * per-contract Σ − POSTED deductions เหมือนเดิมทุกเส้นทาง).
+   */
+  typeStamp?: 'SHOP_COLLECT' | 'PAYOUT_RECALL';
 }
 
 /**
@@ -114,6 +124,7 @@ export class ShopCollectSettlementTemplate {
     const { contractId, depositAccountCode } = input;
     const amount = new Decimal(input.amount.toString());
     const amountStr = amount.toFixed(2);
+    const typeStamp = input.typeStamp ?? 'SHOP_COLLECT';
 
     // ── Validate deposit account ──────────────────────────────────────────────
     if (!(CASH_ACCOUNT_CODES as readonly string[]).includes(depositAccountCode)) {
@@ -140,7 +151,7 @@ export class ShopCollectSettlementTemplate {
     // requestId can both pass this check (neither JE exists yet) and both
     // proceed to createAndPost below. The loser hits a raw Prisma unique
     // violation (P2002 on journal_entries_idempotency_idx / ..._ref_unique)
-    // there. Because the only production caller wraps this whole call in a
+    // there. Because both production callers wrap this whole call in a
     // Serializable `$transaction`, that P2002 has already aborted the tx —
     // there is no safe re-query left to run. The catch block around
     // createAndPost throws a clean ConflictException (409) instead of trying
@@ -269,7 +280,10 @@ export class ShopCollectSettlementTemplate {
     try {
       const result = await this.journal.createAndPost(
         {
-          description: `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
+          description:
+            typeStamp === 'PAYOUT_RECALL'
+              ? `รับเงินคืนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107 เรียกคืน)`
+              : `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
           reference: input.requestId
             ? `${contractId}:shop-collect-settlement:${input.requestId}`
             : `${contractId}:shop-collect-settlement:${amountStr}`,
@@ -280,7 +294,7 @@ export class ShopCollectSettlementTemplate {
             amount: amountStr,
             depositAccountCode,
             ...(input.requestId ? { requestId: input.requestId } : {}),
-            shopReceivableType: 'SHOP_COLLECT',
+            shopReceivableType: typeStamp,
             idempotencyKey: input.requestId
               ? `${contractId}:${input.requestId}`
               : `${contractId}:${amountStr}`,
@@ -290,13 +304,19 @@ export class ShopCollectSettlementTemplate {
               accountCode: depositAccountCode,
               dr: amount,
               cr: zero,
-              description: `รับโอนจากหน้าร้าน ${amountStr} ฿`,
+              description:
+                typeStamp === 'PAYOUT_RECALL'
+                  ? `รับเงินคืนจากหน้าร้าน ${amountStr} ฿`
+                  : `รับโอนจากหน้าร้าน ${amountStr} ฿`,
             },
             {
               accountCode: '11-2107',
               dr: zero,
               cr: amount,
-              description: 'ล้างลูกหนี้-หน้าร้าน (shop-collect)',
+              description:
+                typeStamp === 'PAYOUT_RECALL'
+                  ? 'ล้างลูกหนี้-หน้าร้าน (เรียกคืนยกเลิก)'
+                  : 'ล้างลูกหนี้-หน้าร้าน (shop-collect)',
             },
           ],
         },
@@ -311,8 +331,9 @@ export class ShopCollectSettlementTemplate {
       // Prisma unique violation (P2002 on journal_entries_idempotency_idx
       // or journal_entries_ref_unique) here.
       //
-      // The ONLY production caller (ContractPaymentService.shopCollectSettlement)
-      // always wraps this call in a Serializable `$transaction` — by the time
+      // Both production callers (ContractPaymentService.shopCollectSettlement
+      // and IntercoSettlementService.settleRecallCash — Phase 3 Task 6)
+      // always wrap this call in a Serializable `$transaction` — by the time
       // createAndPost throws P2002, Postgres has already aborted that
       // transaction (25P02 "current transaction is aborted, commands ignored
       // until end of transaction block"). ANY further query on the SAME
@@ -333,9 +354,9 @@ export class ShopCollectSettlementTemplate {
       }
 
       // Empirically observed 2026-08-08 via a live 2-Postgres-connection race
-      // test (shop-collect-settlement.integration.spec.ts): because the only
-      // production caller uses SERIALIZABLE isolation, two concurrent
-      // shopCollectSettlement calls on the SAME contract don't always collide
+      // test (shop-collect-settlement.integration.spec.ts): because both
+      // production callers use SERIALIZABLE isolation, two concurrent
+      // settlement calls on the SAME contract don't always collide
       // on the P2002 unique index first — Postgres SSI can detect the
       // read-write dependency (both transactions read the same 11-2107
       // journal_line predicate set, then one inserts a new row matching it)

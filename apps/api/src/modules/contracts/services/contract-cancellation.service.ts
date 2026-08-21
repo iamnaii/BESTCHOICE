@@ -1,24 +1,99 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
+import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-balance';
 
 /**
  * ContractCancellationService — contract-cancellation workflow:
- * request / approve (reversal-JE $tx) / reject / list-pending.
+ * request / approve (guards + sweep-reversal $tx + restore) / reject /
+ * list-pending. Phase 3 Tasks 2-3 (workbook 2026-08-19 spec §6, Flow C-1/C-2 —
+ * C-2 = ยกเลิกหลังตัดจ่ายรอบจ่าย INTER-CO: detect item SETTLEMENT ใน batch
+ * POSTED → template redirect เจ้าหนี้เป็นลูกหนี้เรียกคืน [PAYOUT_RECALL]).
  *
  * The cancellation template is read through a late-bound accessor
  * (`getCancellationTemplate`) supplied by the facade rather than captured at
  * construction time. This preserves the existing test hack where the spec
  * mutates the facade's private `cancellationTemplate` field AFTER the testing
  * module is built — the accessor resolves the field lazily inside
- * approveCancellation, so the late-set mock still applies.
+ * approveCancellation, so the late-set mock still applies. The company
+ * resolver (SHOP companyId for the product restore) uses the same accessor
+ * pattern for the same reason.
  */
+/**
+ * Per-contract fold of the POSTED SETTLEMENT snapshot — the single C-2 detect
+ * source (Phase 3 Task 7): shared by `approveCancellation` (isC2/settledTotal/
+ * settledShopTotal for the template cross-checks), `listPendingCancellations`
+ * (settledInBatch badge + recallAmount forecast), and the exchange-cancel path
+ * (`ExchangeCancelService` — same formula, ห้ามมีสำเนาที่สอง).
+ */
+export interface SettledPayout {
+  /** Σ financedGl + commissionGl — gross เจ้าหนี้ที่ batch ล้างไป (= ยอด redirect 11-2107) */
+  settledTotal: Decimal;
+  /** Σ shopFinancedGl + shopCommissionGl — ฝั่ง SHOP (template cross-check S21-3001) */
+  settledShopTotal: Decimal;
+  /** Σ swapCreditAmount + recallAmount — ส่วนที่ถูกหักกลบในรอบ (เงินไม่เคยโอนจริง) */
+  settledDeductions: Decimal;
+  batchNumbers: string[];
+}
+
+/**
+ * C-2 detect (Phase 3 Task 3 — workbook Case 3A กรณี 2, refactored to a shared
+ * helper in Task 7; exported for the exchange-cancel path — pattern
+ * C2_REDIRECTS): Σ snapshot ของ item SETTLEMENT ใน batch POSTED ต่อสัญญา.
+ * RECALL item ไม่นับ — มันคือ "ถูกหักเรียกคืนไปแล้ว" ไม่ใช่ "ถูกจ่าย".
+ *
+ * `settledDeductions` = Σ(swapCreditAmount + recallAmount) ของ item ชุดเดียวกัน
+ * — เงินส่วนที่ถูกหักกลบในรอบ ไม่เคยโอนจริง ⇒ ยอดเรียกคืนสุทธิที่ C-2 จะเหลือ
+ * ให้ตามเก็บ = settledTotal − settledDeductions (นิยามเดียวกับ net ของ
+ * `IntercoPendingService.getPendingRecalls`). แถว SETTLEMENT มี recallAmount = 0
+ * โดยนิยาม — รวมไว้เพื่อให้สูตรตรงกับ totalDeduction ของ batch แบบไบต์ต่อไบต์.
+ */
+export async function settledPayoutByContract(
+  client: Prisma.TransactionClient,
+  contractIds: string[],
+): Promise<Map<string, SettledPayout>> {
+  if (contractIds.length === 0) return new Map();
+  const postedItems = await client.interCoSettlementItem.findMany({
+    where: {
+      contractId: { in: contractIds },
+      deletedAt: null,
+      itemType: 'SETTLEMENT',
+      batch: { status: 'POSTED', deletedAt: null },
+    },
+    include: { batch: { select: { batchNumber: true } } },
+  });
+  const map = new Map<string, SettledPayout>();
+  for (const item of postedItems) {
+    const entry = map.get(item.contractId) ?? {
+      settledTotal: new Decimal(0),
+      settledShopTotal: new Decimal(0),
+      settledDeductions: new Decimal(0),
+      batchNumbers: [] as string[],
+    };
+    entry.settledTotal = entry.settledTotal
+      .plus(item.financedGl.toString())
+      .plus(item.commissionGl.toString());
+    entry.settledShopTotal = entry.settledShopTotal
+      .plus(item.shopFinancedGl.toString())
+      .plus(item.shopCommissionGl.toString());
+    entry.settledDeductions = entry.settledDeductions
+      .plus(item.swapCreditAmount.toString())
+      .plus(item.recallAmount.toString());
+    entry.batchNumbers.push(item.batch.batchNumber);
+    map.set(item.contractId, entry);
+  }
+  return map;
+}
+
 @Injectable()
 export class ContractCancellationService {
   constructor(
     private prisma: PrismaService,
     private getCancellationTemplate: () => ContractCancellationTemplate | undefined,
+    private getCompanyResolver: () => CompanyResolverService | undefined = () => undefined,
   ) {}
 
   /**
@@ -97,12 +172,105 @@ export class ContractCancellationService {
     const template = cancellationTemplate;
 
     const result = await this.prisma.$transaction(async (tx) => {
-      // Post reversal JE (+ optional refund JE)
+      // ── Phase 3 guards (C-1) — all inside the tx, before any JE posts ──
+      // Re-read the contract INSIDE the tx (Fix Round 1 — Minor #5): the
+      // pre-tx snapshot could race a concurrent JP5/termination flipping the
+      // status between findUnique above and this transaction.
+      const contract = await tx.contract.findUniqueOrThrow({
+        where: { id: cancellation.contractId },
+        select: {
+          id: true,
+          status: true,
+          productId: true,
+          advanceBalance: true,
+          creditBalance: true,
+          rescheduleAdvanceBalance: true,
+        },
+      });
+      if (contract.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          'ยกเลิกได้เฉพาะสัญญาสถานะ ACTIVE — สัญญาที่เดินไปแล้วใช้เส้นทางยึดเครื่อง (JP5)',
+        );
+      }
+      const paid = await tx.payment.findFirst({
+        where: {
+          contractId: contract.id,
+          deletedAt: null,
+          OR: [{ status: 'PAID' }, { amountPaid: { gt: 0 } }],
+        },
+        select: { id: true },
+      });
+      if (paid) {
+        throw new BadRequestException(
+          'มีการชำระเงินบนสัญญาแล้ว — ต้อง void ใบเสร็จทั้งหมดก่อนยกเลิก (ระบบออกใบลดหนี้ให้อัตโนมัติ)',
+        );
+      }
+      const openItem = await tx.interCoSettlementItem.findFirst({
+        where: {
+          contractId: contract.id,
+          deletedAt: null,
+          batch: { status: { in: ['DRAFT', 'PENDING_APPROVAL'] }, deletedAt: null },
+        },
+        include: { batch: { select: { batchNumber: true } } },
+      });
+      if (openItem) {
+        throw new BadRequestException(
+          `สัญญาอยู่ในรอบจ่าย ${openItem.batch.batchNumber} ที่ยังไม่อนุมัติ — ถอน/ยกเลิกรอบก่อนจึงจะยกเลิกสัญญาได้`,
+        );
+      }
+      // refundAmount deprecated (Phase 3): เงินคืนลูกค้า (เงินดาวน์) เป็นขั้นตอน
+      // ฝั่ง SHOP หลังยกเลิก — sweep คืน Cr S21-2001 โดยโครงสร้างอยู่แล้ว.
+      // DTO field คงไว้ (back-compat) แต่ approve ปฏิเสธค่า > 0.
+      if (new Decimal(cancellation.refundAmount.toString()).gt(0)) {
+        throw new BadRequestException(
+          'refundAmount ไม่รองรับแล้ว — เงินคืนลูกค้า (เงินดาวน์) จัดการฝั่ง SHOP หลังยกเลิก',
+        );
+      }
+      // เงินรับล่วงหน้า/เครดิต/ถังพักปรับดิวค้างบนสัญญา (Fix Round 1 —
+      // Important #3, family เดียวกับ guard ของ exchange finalize): เงินพวกนี้
+      // เข้ามาเป็นเงินสดจริง (เช่น 6a fee ที่ไม่ set amountPaid — หลุด guard
+      // Payment PAID) — ยกเลิกทั้งที่ยังค้างจะทิ้ง ghost balance ไว้บนสัญญา
+      // CANCELED โดยไม่มีทางใช้/คืน
+      const parkTotal = new Decimal(contract.advanceBalance.toString())
+        .plus(contract.creditBalance.toString())
+        .plus(contract.rescheduleAdvanceBalance.toString());
+      if (parkTotal.gt(0)) {
+        throw new BadRequestException(
+          'มีเงินรับล่วงหน้า/เครดิตค้างบนสัญญา — ใช้หรือคืนเงินก่อนยกเลิก',
+        );
+      }
+      // หน้าร้านถือเงินลูกค้าที่รับแทน (11-2107 SHOP_COLLECT) ยังไม่ settle —
+      // sweep จงใจ exclude flow นี้ (เงินสดจริง) จึงต้องเคลียร์ก่อนยกเลิก
+      const shopCollectBal = await shopCollectTypedBalance(tx, contract.id);
+      if (shopCollectBal.abs().gt('0.01')) {
+        throw new BadRequestException(
+          'มีเงินที่หน้าร้านรับแทนยัง settle ไม่ครบ (11-2107) — เคลียร์ก่อนยกเลิก',
+        );
+      }
+
+      // ── C-2 detect (Phase 3 Task 3 — workbook Case 3A กรณี 2): สัญญาที่ถูก
+      // ตัดจ่ายผ่านรอบจ่าย INTER-CO POSTED แล้ว — เจ้าหนี้ 21-1101/21-1102 (และ
+      // ลูกหนี้ S11-3001/S11-3002) ถูก batch ล้างไปแล้ว mirror ตรงจะทำติดลบ →
+      // template redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / S21-3001.
+      // (สูตรอยู่ใน settledPayoutByContract — helper เดียวกับ
+      // listPendingCancellations, Task 7 refactor. ฝั่ง SHOP (Task 4 fold):
+      // settledShopTotal ให้ template cross-check redirect S21-3001 แยกสมุด —
+      // สัญญา legacyNoShop มี snapshot ฝั่ง SHOP = 0 → expected 0.)
+      const settled = (await settledPayoutByContract(tx, [contract.id])).get(contract.id);
+      const settledTotal = settled?.settledTotal ?? new Decimal(0);
+      const settledShopTotal = settled?.settledShopTotal ?? new Decimal(0);
+      const settledDeductions = settled?.settledDeductions ?? new Decimal(0);
+      const isC2 = settledTotal.gt(0);
+      const batchNumbers = settled?.batchNumbers ?? [];
+
+      // Post sweep reversal chain + ECL release (template — Phase 3 C-1/C-2)
       const jeResult = await template.execute(
         {
           contractId: cancellation.contractId,
           cancellationId,
-          refundAmount: new Decimal(cancellation.refundAmount.toString()),
+          isC2,
+          settledTotal,
+          settledShopTotal,
         },
         tx,
       );
@@ -113,13 +281,36 @@ export class ContractCancellationService {
         select: { id: true },
       });
 
+      // ── Restore (pattern exchange-cancel): product back to SHOP stock +
+      // soft-delete schedule rows so crons/queues stop seeing the contract ──
+      const now = new Date();
+      const companyResolver = this.getCompanyResolver();
+      if (!companyResolver) {
+        throw new InternalServerErrorException(
+          'CompanyResolverService not available — check module wiring',
+        );
+      }
+      const shopCompanyId = await companyResolver.getShopCompanyId(tx);
+      await tx.product.update({
+        where: { id: contract.productId },
+        data: { status: 'IN_STOCK', ownedByCompanyId: shopCompanyId } as never,
+      });
+      await tx.payment.updateMany({
+        where: { contractId: contract.id, deletedAt: null },
+        data: { deletedAt: now },
+      });
+      await tx.installmentSchedule.updateMany({
+        where: { contractId: contract.id, deletedAt: null },
+        data: { deletedAt: now },
+      });
+
       // Update ContractCancellation → APPROVED
       await tx.contractCancellation.update({
         where: { id: cancellationId },
         data: {
           status: 'APPROVED',
           approvedById: approverId,
-          approvedAt: new Date(),
+          approvedAt: now,
           reversalJournalEntryId: reversalJE.id,
         },
       });
@@ -130,22 +321,34 @@ export class ContractCancellationService {
         data: { status: 'CANCELED' },
       });
 
-      // Audit log
+      // Audit log — เก็บ reversal ทั้งชุด (count + ids + first entryNumber).
+      // C-2 ใช้ action แยก + บันทึกยอดเรียกคืนและรอบจ่ายที่เคยตัดจ่าย
       await tx.auditLog.create({
         data: {
           userId: approverId,
-          action: 'CONTRACT_CANCELED',
+          action: isC2 ? 'CONTRACT_CANCELED_AFTER_PAYOUT' : 'CONTRACT_CANCELED',
           entity: 'contract',
           entityId: cancellation.contractId,
           oldValue: {
-            status: cancellation.contract.status,
+            status: contract.status, // tx-consistent re-read, not the pre-tx snapshot
             cancellationId,
           },
           newValue: {
             status: 'CANCELED',
             reversalEntryNumber: jeResult.entryNumber,
-            refundEntryNumber: jeResult.refundEntryNumber ?? null,
+            reversalCount: jeResult.reversalJeIds.length,
+            reversalJeIds: jeResult.reversalJeIds,
             refundAmount: cancellation.refundAmount.toString(),
+            // C-2: recallAmount = net เงินสดที่ FINANCE โอนจริง (settled gross −
+            // deductions ที่รอบหักไว้) — นิยามเดียวกับ exchange audit / list API /
+            // recall queue; settledTotal (gross) เก็บคู่กันไว้ตรวจย้อน redirect
+            ...(isC2
+              ? {
+                  settledTotal: settledTotal.toFixed(2),
+                  recallAmount: settledTotal.minus(settledDeductions).toFixed(2),
+                  batchNumbers,
+                }
+              : {}),
           },
         },
       });
@@ -154,7 +357,7 @@ export class ContractCancellationService {
         cancellationId,
         status: 'APPROVED',
         reversalEntryNumber: jeResult.entryNumber,
-        refundEntryNumber: jeResult.refundEntryNumber,
+        reversalCount: jeResult.reversalJeIds.length,
       };
     });
 
@@ -212,9 +415,16 @@ export class ContractCancellationService {
 
   /**
    * List all PENDING cancellation requests (for FM/OWNER approval queue).
+   *
+   * Phase 3 Task 7 — each row also exposes:
+   * - `settledInBatch`: สัญญาถูกตัดจ่ายผ่านรอบจ่าย INTER-CO POSTED แล้ว (= approve
+   *   จะเดินเส้นทาง C-2 ตั้งลูกหนี้เรียกคืน แทนการกลับรายการทั้งชุดแบบ C-1)
+   * - `recallAmount`: ยอดเรียกคืนสุทธิที่จะตั้ง (settledTotal − settledDeductions,
+   *   2dp string) — null เมื่อยังไม่ตัดจ่าย. สูตรเดียวกับ C-2 detect ใน
+   *   `approveCancellation` ผ่าน helper `settledPayoutByContract` (ห้าม duplicate).
    */
   async listPendingCancellations() {
-    return this.prisma.contractCancellation.findMany({
+    const rows = await this.prisma.contractCancellation.findMany({
       where: { status: 'PENDING', deletedAt: null },
       orderBy: { createdAt: 'asc' },
       include: {
@@ -228,6 +438,23 @@ export class ContractCancellationService {
         },
         requestedBy: { select: { id: true, name: true } },
       },
+    });
+
+    const settledMap = await settledPayoutByContract(
+      this.prisma as unknown as Prisma.TransactionClient,
+      rows.map((r) => r.contractId),
+    );
+
+    return rows.map((row) => {
+      const settled = settledMap.get(row.contractId);
+      const settledInBatch = !!settled && settled.settledTotal.gt(0);
+      return {
+        ...row,
+        settledInBatch,
+        recallAmount: settledInBatch
+          ? settled.settledTotal.minus(settled.settledDeductions).toFixed(2)
+          : null,
+      };
     });
   }
 }

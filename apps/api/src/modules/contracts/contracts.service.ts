@@ -11,6 +11,7 @@ import { ContractCancellationService } from './services/contract-cancellation.se
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopDownPaymentReversalTemplate } from '../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 export { BranchAccessUser };
 
@@ -47,12 +48,18 @@ export class ContractsService {
     @Optional() private cancellationTemplate?: ContractCancellationTemplate,
     @Optional() private testMode?: TestModeService,
     @Optional() private audit?: AuditService,
+    @Optional() private companyResolver?: CompanyResolverService,
   ) {
     this.query = new ContractQueryService(prisma, testMode);
     this.lifecycle = new ContractLifecycleService(prisma, this.query, shopDownPaymentTemplate, shopDownPaymentReversalTemplate, shopAccountResolver, warrantyService, audit);
-    // Late-bind the cancellation template via accessor so a post-construction
-    // mutation of `this.cancellationTemplate` (the unit-test hack) is honored.
-    this.cancellation = new ContractCancellationService(prisma, () => this.cancellationTemplate);
+    // Late-bind the cancellation template + company resolver via accessors so
+    // a post-construction mutation of the private fields (the unit-test hack)
+    // is honored.
+    this.cancellation = new ContractCancellationService(
+      prisma,
+      () => this.cancellationTemplate,
+      () => this.companyResolver,
+    );
   }
 
   // ─── Query ───────────────────────────────────────────────────────────────

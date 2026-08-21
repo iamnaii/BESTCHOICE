@@ -27,6 +27,7 @@ import { IntercoPendingService } from './interco-pending.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { ApproveBatchDto } from './dto/approve-batch.dto';
 import { ReverseBatchDto } from './dto/reverse-batch.dto';
+import { SettleRecallCashDto } from './dto/settle-recall-cash.dto';
 
 /**
  * เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — รอบจ่าย batch endpoints.
@@ -140,6 +141,22 @@ export class IntercoSettlementController {
     @CurrentUser('id') userId: string,
   ) {
     return this.service.reverseBatch(id, userId, dto.reason);
+  }
+
+  /**
+   * รับเงินสดคืนจากหน้าร้าน (Flow C-2 — Phase 3 Task 6): ล้างยอดเรียกคืนด้วย
+   * เงินสดแทนการหักในรอบจ่าย. เป็นการโพสต์ JE สองสมุดทันที (ไม่มี batch/
+   * maker-checker ชั้นเอกสาร) จึง gate ด้วย role ระดับ checker เหมือน
+   * approve/reverse.
+   */
+  @Post('recalls/:contractId/settle-cash')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  settleRecallCash(
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+    @Body() dto: SettleRecallCashDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.settleRecallCash(contractId, dto, userId);
   }
 
   /** แนบสลิป/หลักฐานโอน (optional, maker-only, DRAFT/PENDING_APPROVAL only — service enforces). */

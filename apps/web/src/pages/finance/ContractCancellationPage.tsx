@@ -17,14 +17,23 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
 import { formatDateMedium, formatNumberDecimal } from '@/utils/formatters';
 
 interface PendingCancellation {
   id: string;
   createdAt: string;
   reason: string;
+  /** @deprecated Phase 3 — เงินคืนลูกค้า (เงินดาวน์) จัดการฝั่ง SHOP หลังยกเลิก; approve ปฏิเสธค่า > 0 */
   refundAmount: number | string;
   status: 'PENDING';
+  /**
+   * Phase 3 (C-2 detect): สัญญาถูกตัดจ่ายผ่านรอบจ่าย INTER-CO POSTED แล้ว —
+   * approve จะตั้งลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] แทนการ mirror ตรง
+   */
+  settledInBatch: boolean;
+  /** ยอดเรียกคืนสุทธิที่จะตั้ง (2dp string) — null เมื่อยังไม่ตัดจ่าย (C-1) */
+  recallAmount: string | null;
   contract: {
     id: string;
     contractNumber: string;
@@ -45,6 +54,8 @@ type ActionTarget = {
   id: string;
   contractNumber: string;
   action: 'approve' | 'reject';
+  settledInBatch: boolean;
+  recallAmount: string | null;
 };
 
 export default function ContractCancellationPage() {
@@ -91,12 +102,24 @@ export default function ContractCancellationPage() {
   });
 
   const handleApprove = (item: PendingCancellation) => {
-    setTarget({ id: item.id, contractNumber: item.contract.contractNumber, action: 'approve' });
+    setTarget({
+      id: item.id,
+      contractNumber: item.contract.contractNumber,
+      action: 'approve',
+      settledInBatch: item.settledInBatch,
+      recallAmount: item.recallAmount,
+    });
   };
 
   const handleReject = (item: PendingCancellation) => {
     setRejectReason('');
-    setTarget({ id: item.id, contractNumber: item.contract.contractNumber, action: 'reject' });
+    setTarget({
+      id: item.id,
+      contractNumber: item.contract.contractNumber,
+      action: 'reject',
+      settledInBatch: item.settledInBatch,
+      recallAmount: item.recallAmount,
+    });
   };
 
   const handleApproveConfirm = () => {
@@ -153,8 +176,15 @@ export default function ContractCancellationPage() {
                       <th className="text-left p-3 font-medium text-muted-foreground">ลูกค้า</th>
                       <th className="text-left p-3 font-medium text-muted-foreground">ผู้ยื่นคำขอ</th>
                       <th className="text-left p-3 font-medium text-muted-foreground">เหตุผล</th>
-                      <th className="text-right p-3 font-medium text-muted-foreground">
-                        ยอดคืน (฿)
+                      <th className="text-left p-3 font-medium text-muted-foreground">
+                        ผลทางบัญชี
+                      </th>
+                      <th
+                        className="text-right p-3 font-medium text-muted-foreground"
+                        title="ฟิลด์เดิม (deprecated) — เงินคืนลูกค้า (เงินดาวน์) จัดการฝั่ง SHOP หลังยกเลิก ระบบปฏิเสธการอนุมัติเมื่อยอด > 0"
+                      >
+                        ยอดคืน (฿){' '}
+                        <span className="font-normal text-[10px] leading-snug">(เลิกใช้)</span>
                       </th>
                       <th className="text-center p-3 font-medium text-muted-foreground">
                         ดำเนินการ
@@ -184,6 +214,28 @@ export default function ContractCancellationPage() {
                         <td className="p-3 text-muted-foreground">{item.requestedBy.name}</td>
                         <td className="p-3 max-w-[240px]">
                           <span className="line-clamp-2 leading-snug">{item.reason}</span>
+                        </td>
+                        <td className="p-3">
+                          {item.settledInBatch ? (
+                            <Badge
+                              variant="warning"
+                              appearance="light"
+                              size="sm"
+                              title="สัญญาถูกตัดจ่ายผ่านรอบจ่าย INTER-CO แล้ว — อนุมัติแล้วระบบจะตั้งลูกหนี้เรียกคืนจากหน้าร้าน (11-2107) เพื่อหักในรอบจ่ายถัดไปหรือรับเงินสดคืน"
+                            >
+                              ตัดจ่ายแล้ว — จะตั้งเรียกคืน ฿
+                              {formatNumberDecimal(Number(item.recallAmount ?? 0), 2)}
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="secondary"
+                              appearance="light"
+                              size="sm"
+                              title="ยังไม่เคยถูกตัดจ่ายในรอบจ่าย INTER-CO — อนุมัติแล้วระบบกลับรายการบัญชีทั้งชุด (JE ทุกใบของสัญญา)"
+                            >
+                              ยังไม่ตัดจ่าย — กลับรายการทั้งชุด
+                            </Badge>
+                          )}
                         </td>
                         <td className="p-3 text-right tabular-nums font-semibold">
                           {formatNumberDecimal(Number(item.refundAmount), 2)} ฿
@@ -218,12 +270,20 @@ export default function ContractCancellationPage() {
         </Card>
       </QueryBoundary>
 
-      {/* Approve confirm dialog */}
+      {/* Approve confirm dialog — ระบุผลทางบัญชีตามกรณี C-1/C-2 (Phase 3) */}
       <ConfirmDialog
         open={target?.action === 'approve'}
         onOpenChange={(open) => !open && setTarget(null)}
         title="ยืนยันการอนุมัติยกเลิกสัญญา"
-        description={`อนุมัติการยกเลิกสัญญา ${target?.contractNumber ?? ''} ระบบจะบันทึกรายการย้อนกลับ JE อัตโนมัติ`}
+        description={
+          target?.settledInBatch
+            ? `อนุมัติการยกเลิกสัญญา ${target?.contractNumber ?? ''} — สัญญานี้ถูกตัดจ่ายผ่านรอบจ่าย INTER-CO แล้ว ` +
+              `ระบบจะกลับรายการบัญชีทั้งชุด และตั้งลูกหนี้เรียกคืนจากหน้าร้าน (11-2107) ` +
+              `฿${formatNumberDecimal(Number(target?.recallAmount ?? 0), 2)} ` +
+              `เพื่อหักในรอบจ่ายถัดไป หรือรับเงินสดคืนจากหน้าร้าน`
+            : `อนุมัติการยกเลิกสัญญา ${target?.contractNumber ?? ''} — สัญญายังไม่ถูกตัดจ่ายในรอบจ่าย INTER-CO ` +
+              `ระบบจะกลับรายการบัญชีทั้งชุด (JE ทุกใบของสัญญา) และคืนสินค้าเข้าสต็อกหน้าร้าน`
+        }
         confirmLabel="อนุมัติ"
         cancelLabel="ยกเลิก"
         variant="default"

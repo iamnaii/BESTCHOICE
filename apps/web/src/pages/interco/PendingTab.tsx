@@ -1,12 +1,16 @@
+import { useState } from 'react';
 import { AlertTriangle, ClipboardList, Undo2 } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { formatThaiDateShort } from '@/lib/date';
+import { RecallCashDialog } from './RecallCashDialog';
 import {
   fmtMoney,
+  INTERCO_APPROVER_ROLES,
   type PendingContract,
   type RecallCandidate,
   type ReconcileTotals,
@@ -63,6 +67,12 @@ export function PendingTab({
   onToggleRecall,
   onCreateClick,
 }: PendingTabProps) {
+  const { user } = useAuth();
+  // ปุ่มรับเงินสดคืนโพสต์ JE สองสมุดทันที — endpoint gate ที่ role ระดับ checker
+  // (OWNER/FINANCE_MANAGER) เหมือน approve/reverse จึงซ่อนจาก maker-side roles
+  const canSettleRecallCash = !!user && INTERCO_APPROVER_ROLES.includes(user.role);
+  const [cashRecall, setCashRecall] = useState<RecallCandidate | null>(null);
+
   const drift = Number(reconcile?.drift ?? 0);
   const hasDrift = Math.abs(drift) > DRIFT_TOLERANCE;
   const allSelected = pending.length > 0 && selectedIds.size === pending.length;
@@ -249,6 +259,11 @@ export function PendingTab({
                         <th className="text-right p-3 font-medium text-muted-foreground">
                           ฝั่ง SHOP (S21-3001)
                         </th>
+                        {canSettleRecallCash && (
+                          <th className="text-right p-3 font-medium text-muted-foreground">
+                            รับเงินสด
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -294,6 +309,27 @@ export function PendingTab({
                             <td className="p-3 text-right tabular-nums">
                               {fmtMoney(r.shopRecallGl)}
                             </td>
+                            {canSettleRecallCash && (
+                              <td
+                                className="p-3 text-right"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-3 text-xs"
+                                  disabled={mismatch}
+                                  title={
+                                    mismatch
+                                      ? 'ยอดสองสมุดไม่ตรงกัน — ตรวจสอบ GL ก่อนรับเงินคืน'
+                                      : 'รับเงินสดคืนจากหน้าร้านแทนการหักในรอบจ่าย'
+                                  }
+                                  onClick={() => setCashRecall(r)}
+                                >
+                                  รับเงินสดคืน
+                                </Button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -341,6 +377,8 @@ export function PendingTab({
           </Button>
         </div>
       )}
+
+      <RecallCashDialog recall={cashRecall} onClose={() => setCashRecall(null)} />
     </div>
   );
 }

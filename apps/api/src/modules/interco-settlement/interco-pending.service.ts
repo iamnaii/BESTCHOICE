@@ -59,9 +59,13 @@ export interface RecallCandidate {
   contractId: string;
   contractNumber: string;
   customerName: string;
-  /** 11-2107 PAYOUT_RECALL คงเหลือ */
+  /**
+   * ยอดเรียกคืน **สุทธิ** (Phase 3 Task 4 — carry b) = typed 11-2107
+   * [PAYOUT_RECALL] gross − Σ(swapCreditAmount + recallAmount) ของ item
+   * ทุกประเภทใน batch POSTED ของสัญญานั้น. ดู jsdoc `getPendingRecalls`.
+   */
   recallGl: Prisma.Decimal;
-  /** S21-3001 PAYOUT_RECALL คงเหลือ (ต้อง = recallGl จึงหักได้) */
+  /** S21-3001 PAYOUT_RECALL สุทธิด้วยสูตรเดียวกัน (ต้อง = recallGl จึงหักได้) */
   shopRecallGl: Prisma.Decimal;
 }
 
@@ -246,8 +250,17 @@ export class IntercoPendingService {
     // Deliberately select ONLY id/contractNumber/customer.name — never
     // financedAmount/storeCommission. GL is the sole source of truth for
     // amounts (spec §4, F4).
+    //
+    // Defense-in-depth (final review Phase 3 — Important 1): สัญญา CANCELED
+    // ห้ามโผล่คิวจ่ายไม่ว่าเส้นทางไหน — C-2 cancel redirect เจ้าหนี้เป็น
+    // 11-2107 [PAYOUT_RECALL] แต่ lens 21-1101/21-1102 ยังเห็น Cr ของ 1A
+    // เต็มยอด (batch JE ที่ล้างไม่ stamp contractId) สัญญาจึงถูกกันด้วย
+    // settled gate เพียงชั้นเดียว; ถ้า gate เปิด (เช่น batch ถูก REVERSED
+    // ด้วยเส้นทางก่อน guard ใน reverseBatch มีผล) สัญญาที่ไม่มีเครื่อง/ไม่มี
+    // หนี้จะกลับเข้าคิวเต็มยอด. คิว recall (getPendingRecalls) จงใจ **ไม่**
+    // filter แบบนี้ — สัญญา C-2 เป็น CANCELED โดยนิยามและต้องอยู่คิวนั้น.
     const contracts = await client.contract.findMany({
-      where: { id: { in: remainingIds }, deletedAt: null },
+      where: { id: { in: remainingIds }, deletedAt: null, status: { not: 'CANCELED' } },
       select: {
         id: true,
         contractNumber: true,
@@ -260,7 +273,7 @@ export class IntercoPendingService {
     for (const row of validFinanceRows) {
       const contractId = row.contract_id;
       const contract = contractById.get(contractId);
-      if (!contract) continue; // settled, soft-deleted, or otherwise gone
+      if (!contract) continue; // settled, soft-deleted, CANCELED, or otherwise gone
 
       const financedGl = new Prisma.Decimal(String(row.financed ?? 0));
       const commissionGl = new Prisma.Decimal(String(row.commission ?? 0));
@@ -298,9 +311,18 @@ export class IntercoPendingService {
 
   /**
    * คิวรายการหักเรียกคืน (Flow C-2 — spec §4.1): สัญญาที่มี 11-2107
-   * [PAYOUT_RECALL] ค้าง > 0 และไม่อยู่ใน batch เปิด. producer ของ JE เหล่านี้
-   * คือ Phase 3 — จนกว่าจะถึงตอนนั้นคิวนี้ว่างบน prod (ทดสอบด้วย synthetic
-   * ตาม spec §5.4).
+   * [PAYOUT_RECALL] ค้าง **สุทธิ** > 0 และไม่อยู่ใน batch เปิด. producer ของ
+   * JE เหล่านี้คือ C-2 redirect (Phase 3 Task 3 —
+   * contract-cancellation.template.ts).
+   *
+   * สูตร NET (Phase 3 Task 4 — ปิด carry b): ยอดเรียกคืน = typed PAYOUT_RECALL
+   * gross − Σ(swapCreditAmount + recallAmount) ของ item **ทุกประเภท** ใน batch
+   * POSTED ของสัญญานั้น. เหตุผล (เลขทองของเฟส): สัญญา swap ที่ถูกยกเลิกหลัง
+   * รอบจ่ายเคยหักเครดิต 8,000 มี redirect gross = 11,000 (เต็มยอดที่ตัดจ่าย)
+   * แต่เงินที่ FINANCE โอนจริงในรอบนั้น = 3,000 — เสนอ gross จะทำให้รอบถัดไป
+   * หักซ้ำ 8,000 (11-2107 ติดลบ). ภายใต้สถาปัตยกรรม "เลนส์ gross + item gate"
+   * ขาหักของ batch ไม่ stamp contractId — "หักไปแล้วเท่าไร" จึงอ่านจาก
+   * InterCoSettlementItem (POSTED เท่านั้น — REVERSED คืนยอดเอง) ไม่ใช่ GL.
    *
    * Settled gate ของคิวนี้กรอง `itemType: 'RECALL'` เท่านั้น — สัญญา C-2
    * โดยนิยามเคยถูกจ่ายในรอบ POSTED มาก่อน (มี item SETTLEMENT ถาวรอยู่แล้ว);
@@ -370,6 +392,27 @@ export class IntercoPendingService {
     const remainingIds = contractIds.filter((id) => !settledContractIds.has(id));
     if (remainingIds.length === 0) return [];
 
+    // Σ deductions ต่อสัญญาจาก batch POSTED (ทุก itemType — สูตร NET, ดู jsdoc):
+    // แถว SETTLEMENT ของรอบเก่าถือ swapCreditAmount ที่เคยหัก, แถว RECALL ของ
+    // รอบก่อนหน้าถือ recallAmount ที่เรียกคืนไปแล้ว — ทั้งสองก้อนคือเงินที่
+    // FINANCE ไม่เคยจ่ายจริง/ได้คืนแล้ว จึงหักออกจาก gross ทั้งคู่.
+    const postedDeductionItems = await client.interCoSettlementItem.findMany({
+      where: {
+        contractId: { in: remainingIds },
+        deletedAt: null,
+        batch: { status: 'POSTED', deletedAt: null },
+      },
+      select: { contractId: true, swapCreditAmount: true, recallAmount: true },
+    });
+    const postedDeductionByContract = new Map<string, Prisma.Decimal>();
+    for (const item of postedDeductionItems) {
+      const prev = postedDeductionByContract.get(item.contractId) ?? new Prisma.Decimal(0);
+      postedDeductionByContract.set(
+        item.contractId,
+        prev.plus(item.swapCreditAmount).plus(item.recallAmount),
+      );
+    }
+
     const contracts = await client.contract.findMany({
       where: { id: { in: remainingIds }, deletedAt: null },
       select: {
@@ -385,12 +428,21 @@ export class IntercoPendingService {
       const contract = contractById.get(row.contract_id);
       if (!contract) continue; // settled, soft-deleted, or otherwise gone
 
+      const postedDeduction =
+        postedDeductionByContract.get(row.contract_id) ?? new Prisma.Decimal(0);
+      const recallGl = new Prisma.Decimal(String(row.recall ?? 0)).minus(postedDeduction);
+      // net ≤ 0.01 = เรียกคืนครบแล้ว (หรือมีแต่ยอดที่เคยหักไว้) — ออกจากคิว
+      if (recallGl.lte('0.01')) continue;
+      const shopRecallGl = (
+        shopRecallByContract.get(row.contract_id) ?? new Prisma.Decimal(0)
+      ).minus(postedDeduction);
+
       result.push({
         contractId: row.contract_id,
         contractNumber: contract.contractNumber,
         customerName: contract.customer.name,
-        recallGl: new Prisma.Decimal(String(row.recall ?? 0)),
-        shopRecallGl: shopRecallByContract.get(row.contract_id) ?? new Prisma.Decimal(0),
+        recallGl,
+        shopRecallGl,
       });
     }
 

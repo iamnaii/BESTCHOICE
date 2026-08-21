@@ -1331,15 +1331,21 @@ describe('ContractsService', () => {
   });
 
   describe('approveCancellation', () => {
-    it('posts JE + updates cancellation to APPROVED + updates contract to CANCELED', async () => {
+    /**
+     * Phase 3 (C-1): the approve tx now runs guards (paid payment / open
+     * interco batch / refundAmount / 11-2107 SHOP_COLLECT balance) and a
+     * restore block (product back to SHOP + soft-delete payments/schedules),
+     * so the tx mock needs those delegates + $queryRaw (typed-balance helper)
+     * and the facade needs a late-set companyResolver alongside the template.
+     */
+    const buildApproveHarness = async (refundAmount = '0') => {
       const mockCancellationTemplate = {
         execute: jest.fn().mockResolvedValue({
           entryNumber: 'JE-202601-00010',
-          refundEntryNumber: undefined,
+          reversalJeIds: ['je-rev-a', 'je-rev-b'],
         }),
       };
 
-      // Re-create service with template injected
       const moduleWithTemplate = await Test.createTestingModule({
         providers: [
           ContractsService,
@@ -1351,14 +1357,17 @@ describe('ContractsService', () => {
         ],
       }).compile();
       const svcWithTemplate = moduleWithTemplate.get<ContractsService>(ContractsService);
-      // Inject template via the Optional private property
+      // Inject template + company resolver via the Optional private properties
       (svcWithTemplate as any).cancellationTemplate = mockCancellationTemplate;
+      (svcWithTemplate as any).companyResolver = {
+        getShopCompanyId: jest.fn().mockResolvedValue('shop-company-1'),
+      };
 
       const mockCancellation = {
         id: 'cancel-1',
         contractId: 'contract-1',
         status: 'PENDING',
-        refundAmount: { toString: () => '0' },
+        refundAmount: { toString: () => refundAmount },
         deletedAt: null,
         contract: { ...mockContract, status: 'ACTIVE' },
       };
@@ -1367,25 +1376,55 @@ describe('ContractsService', () => {
         findUnique: jest.fn().mockResolvedValue(mockCancellation),
         update: jest.fn().mockResolvedValue({ ...mockCancellation, status: 'APPROVED' }),
       };
-
       prisma.journalEntry = {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'je-reversal-1' }),
       };
+      // Fix Round 1: contract is re-read INSIDE the tx (race guard) — include
+      // the park-balance fields (all 0 by default so guards pass)
+      prisma.contract.findUniqueOrThrow = jest.fn().mockResolvedValue({
+        id: 'contract-1',
+        status: 'ACTIVE',
+        productId: 'product-1',
+        advanceBalance: new Prisma.Decimal(0),
+        creditBalance: new Prisma.Decimal(0),
+        rescheduleAdvanceBalance: new Prisma.Decimal(0),
+      });
+      // Guard delegates (Phase 3): no paid payment, no open batch item, 0 balance.
+      // findMany = C-2 detect (Task 3) — default [] = C-1 (no POSTED settlement)
+      prisma.interCoSettlementItem = {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      };
+      prisma.payment.findFirst = jest.fn().mockResolvedValue(null);
+      prisma.installmentSchedule = { updateMany: jest.fn().mockResolvedValue({ count: 0 }) };
+      prisma.$queryRaw = jest.fn().mockResolvedValue([{ balance: '0' }]);
 
       prisma.$transaction = jest.fn().mockImplementation(async (fn: (tx: any) => Promise<any>) => {
-        return fn({
-          ...prisma,
-          contractCancellation: prisma.contractCancellation,
-          contract: prisma.contract,
-          journalEntry: prisma.journalEntry,
-          auditLog: prisma.auditLog,
-        });
+        return fn({ ...prisma });
       });
+
+      return { svcWithTemplate, mockCancellationTemplate };
+    };
+
+    it('runs guards + posts sweep + restores product + updates cancellation/contract', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
 
       const result = await svcWithTemplate.approveCancellation('cancel-1', 'approver-1');
 
       expect(result.status).toBe('APPROVED');
-      expect(mockCancellationTemplate.execute).toHaveBeenCalled();
+      expect(result.reversalCount).toBe(2);
+      // Task 3: template now receives the C-2 detection result — no POSTED
+      // settlement item → isC2 false + settledTotal 0
+      expect(mockCancellationTemplate.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          cancellationId: 'cancel-1',
+          isC2: false,
+        }),
+        expect.anything(),
+      );
+      const [templateParams] = mockCancellationTemplate.execute.mock.calls[0];
+      expect(templateParams.settledTotal.toFixed(2)).toBe('0.00');
       expect(prisma.contractCancellation.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'cancel-1' },
@@ -1396,6 +1435,155 @@ describe('ContractsService', () => {
         expect.objectContaining({
           where: { id: 'contract-1' },
           data: expect.objectContaining({ status: 'CANCELED' }),
+        }),
+      );
+      // Restore: product back to SHOP stock + soft-delete schedule rows
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'product-1' },
+          data: expect.objectContaining({ status: 'IN_STOCK', ownedByCompanyId: 'shop-company-1' }),
+        }),
+      );
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contractId: 'contract-1', deletedAt: null }),
+        }),
+      );
+      expect(prisma.installmentSchedule.updateMany).toHaveBeenCalled();
+      // Audit carries the whole reversal set
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CONTRACT_CANCELED',
+            newValue: expect.objectContaining({
+              reversalCount: 2,
+              reversalEntryNumber: 'JE-202601-00010',
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('guard: rejects when a PAID payment exists (void first)', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      prisma.payment.findFirst = jest.fn().mockResolvedValue({ id: 'pay-1' });
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('void ใบเสร็จทั้งหมดก่อนยกเลิก');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('guard: rejects when refundAmount > 0 (deprecated — SHOP-side refund)', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness('500');
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('refundAmount ไม่รองรับแล้ว');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('guard: rejects when advance/credit/reschedule-park balance remains', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      prisma.contract.findUniqueOrThrow = jest.fn().mockResolvedValue({
+        id: 'contract-1',
+        status: 'ACTIVE',
+        productId: 'product-1',
+        advanceBalance: new Prisma.Decimal(0),
+        creditBalance: new Prisma.Decimal(0),
+        rescheduleAdvanceBalance: new Prisma.Decimal('50.00'), // ghost 6a park
+      });
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('มีเงินรับล่วงหน้า/เครดิตค้างบนสัญญา');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('guard: rejects when the tx re-read shows the contract is no longer ACTIVE (race)', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      // Pre-tx snapshot says ACTIVE, but the tx re-read sees TERMINATED (JP5 won the race)
+      prisma.contract.findUniqueOrThrow = jest.fn().mockResolvedValue({
+        id: 'contract-1',
+        status: 'TERMINATED',
+        productId: 'product-1',
+        advanceBalance: new Prisma.Decimal(0),
+        creditBalance: new Prisma.Decimal(0),
+        rescheduleAdvanceBalance: new Prisma.Decimal(0),
+      });
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('เฉพาะสัญญาสถานะ ACTIVE');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('guard: rejects when the contract sits in an open interco batch', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      prisma.interCoSettlementItem.findFirst = jest.fn().mockResolvedValue({
+        id: 'item-1',
+        batch: { batchNumber: 'IC-20260820-0001' },
+      });
+
+      await expect(
+        svcWithTemplate.approveCancellation('cancel-1', 'approver-1'),
+      ).rejects.toThrow('IC-20260820-0001');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('C-2 (Task 3): POSTED settlement items → isC2 + settledTotal to template, audit CONTRACT_CANCELED_AFTER_PAYOUT', async () => {
+      const { svcWithTemplate, mockCancellationTemplate } = await buildApproveHarness();
+      // Task 4 fold: the service now also reads the SHOP snapshot columns
+      // (shopFinancedGl/shopCommissionGl) to build settledShopTotal — the mock
+      // item must carry them like a real InterCoSettlementItem row does.
+      // Batch หักเครดิตสวอป 2,000 ไว้แล้ว: gross 11,000 / net เงินโอนจริง 9,000
+      // — template ต้องได้ gross (cross-check redirect 11-2107), audit ต้องได้ net
+      prisma.interCoSettlementItem.findMany = jest.fn().mockResolvedValue([
+        {
+          contractId: 'contract-1',
+          financedGl: new Prisma.Decimal('10000.00'),
+          commissionGl: new Prisma.Decimal('1000.00'),
+          shopFinancedGl: new Prisma.Decimal('10000.00'),
+          shopCommissionGl: new Prisma.Decimal('1000.00'),
+          swapCreditAmount: new Prisma.Decimal('2000.00'),
+          recallAmount: new Prisma.Decimal(0),
+          batch: { batchNumber: 'IC-20260820-0009' },
+        },
+      ]);
+
+      await svcWithTemplate.approveCancellation('cancel-1', 'approver-1');
+
+      // Detect query scopes to SETTLEMENT items in POSTED batches only
+      expect(prisma.interCoSettlementItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            itemType: 'SETTLEMENT',
+            batch: { status: 'POSTED', deletedAt: null },
+          }),
+        }),
+      );
+      expect(mockCancellationTemplate.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ contractId: 'contract-1', isC2: true }),
+        expect.anything(),
+      );
+      const [templateParams] = mockCancellationTemplate.execute.mock.calls[0];
+      expect(templateParams.settledTotal.toFixed(2)).toBe('11000.00');
+      // Task 4 fold: SHOP-book expected total forwarded for the S21-3001 cross-check
+      expect(templateParams.settledShopTotal.toFixed(2)).toBe('11000.00');
+
+      // Audit (Task 7 review fix): recallAmount = NET (11,000 − 2,000 deduction)
+      // — aligned กับ exchange audit / list API / recall queue; gross เก็บใน
+      // settledTotal คู่กัน
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CONTRACT_CANCELED_AFTER_PAYOUT',
+            newValue: expect.objectContaining({
+              settledTotal: '11000.00',
+              recallAmount: '9000.00',
+              batchNumbers: ['IC-20260820-0009'],
+            }),
+          }),
         }),
       );
     });
@@ -1430,6 +1618,93 @@ describe('ContractsService', () => {
       expect(prisma.contractCancellation.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'REJECTED' }),
+        }),
+      );
+    });
+  });
+
+  describe('listPendingCancellations', () => {
+    /**
+     * Phase 3 Task 7: each queue row exposes `settledInBatch` + `recallAmount`
+     * (forecast of the 11-2107 [PAYOUT_RECALL] net the C-2 approve will leave
+     * to claw back = settledTotal − settledDeductions) — computed from the
+     * SAME POSTED SETTLEMENT items query the C-2 detect in approveCancellation
+     * uses (shared helper, no second copy of the formula).
+     */
+    const pendingRow = (id: string, contractId: string) => ({
+      id,
+      contractId,
+      status: 'PENDING',
+      reason: 'ลูกค้าขอยกเลิก',
+      refundAmount: new Prisma.Decimal(0),
+      createdAt: new Date('2026-08-19T00:00:00Z'),
+      contract: {
+        id: contractId,
+        contractNumber: `BC-${contractId}`,
+        status: 'ACTIVE',
+        customer: { id: 'customer-1', name: 'สมชาย ใจดี', phone: '0891234567' },
+      },
+      requestedBy: { id: 'user-1', name: 'พนักงาน 1' },
+    });
+
+    it('exposes settledInBatch=false + recallAmount=null when no POSTED settlement exists (C-1)', async () => {
+      prisma.contractCancellation = {
+        findMany: jest.fn().mockResolvedValue([pendingRow('cancel-1', 'contract-1')]),
+      };
+      prisma.interCoSettlementItem = { findMany: jest.fn().mockResolvedValue([]) };
+
+      const rows = await service.listPendingCancellations();
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].settledInBatch).toBe(false);
+      expect(rows[0].recallAmount).toBeNull();
+      // base row shape preserved for the page
+      expect(rows[0].contract.contractNumber).toBe('BC-contract-1');
+      expect(rows[0].requestedBy.name).toBe('พนักงาน 1');
+    });
+
+    it('exposes settledInBatch=true + recallAmount = settledTotal − deductions (C-2 forecast, net)', async () => {
+      prisma.contractCancellation = {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            pendingRow('cancel-1', 'contract-1'),
+            pendingRow('cancel-2', 'contract-2'),
+          ]),
+      };
+      // contract-1 was paid out in a POSTED batch: gross 10,000 + 1,000 with a
+      // 2,000 swap-credit deduction → net cash wired = 9,000 = recall forecast
+      prisma.interCoSettlementItem = {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractId: 'contract-1',
+            financedGl: new Prisma.Decimal('10000.00'),
+            commissionGl: new Prisma.Decimal('1000.00'),
+            shopFinancedGl: new Prisma.Decimal('10000.00'),
+            shopCommissionGl: new Prisma.Decimal('1000.00'),
+            swapCreditAmount: new Prisma.Decimal('2000.00'),
+            recallAmount: new Prisma.Decimal(0),
+            batch: { batchNumber: 'IC-20260820-0009' },
+          },
+        ]),
+      };
+
+      const rows = await service.listPendingCancellations();
+
+      expect(rows[0].settledInBatch).toBe(true);
+      expect(rows[0].recallAmount).toBe('9000.00');
+      expect(rows[1].settledInBatch).toBe(false);
+      expect(rows[1].recallAmount).toBeNull();
+      // ONE batched query covering every queue contract (no N+1), same shape
+      // as the C-2 detect in approveCancellation
+      expect(prisma.interCoSettlementItem.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.interCoSettlementItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contractId: { in: ['contract-1', 'contract-2'] },
+            itemType: 'SETTLEMENT',
+            batch: { status: 'POSTED', deletedAt: null },
+          }),
         }),
       );
     });

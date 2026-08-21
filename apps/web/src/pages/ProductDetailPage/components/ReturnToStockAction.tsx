@@ -60,9 +60,19 @@ export default function ReturnToStockAction({
   const cashValue = parsePrice(cash);
   const installmentValue = parsePrice(installment);
   const hasPrice = cashValue !== undefined || installmentValue !== undefined;
-  const hadPreviousPrice =
-    (currentCashPrice != null && currentCashPrice > 0) ||
-    (currentInstallmentPrice != null && currentInstallmentPrice > 0);
+  const hadCash = currentCashPrice != null && currentCashPrice > 0;
+  const hadInstallment = currentInstallmentPrice != null && currentInstallmentPrice > 0;
+  const hadPreviousPrice = hadCash || hadInstallment;
+
+  /**
+   * Fix round 2 [Important 2]: ช่องที่ "เคยมีราคา" แล้วถูกล้างจนว่าง = ราคาเก่าจะค้างอยู่ใน
+   * คอลัมน์นั้นและยังเป็นแถวราคาตั้งต้นที่ POS อ่าน — server ปฏิเสธเคสนี้ ฝั่งนี้จึงบอกก่อน
+   * ตั้งแต่ยังไม่กด (endpoint นี้ "ยืนยันราคา" ไม่ใช่ "ล้างราคา" — ล้างทำที่หน้าแก้ราคาขาย)
+   */
+  const unconfirmed = [
+    hadCash && cashValue === undefined ? 'ราคาเงินสด' : null,
+    hadInstallment && installmentValue === undefined ? 'ราคาผ่อน' : null,
+  ].filter(Boolean) as string[];
 
   const inputClass =
     'w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug bg-background';
@@ -90,7 +100,7 @@ export default function ReturnToStockAction({
         description="ยืนยันว่าตรวจสภาพและราคาเรียบร้อยแล้ว — เครื่องจะพร้อมขายที่ POS ทันทีหลังกดยืนยัน และระบบจะบันทึกว่าใครยืนยันราคาเท่าไร"
         confirmLabel="ยืนยันนำเข้าคลัง"
         loading={isPending}
-        confirmDisabled={!hasPrice}
+        confirmDisabled={!hasPrice || unconfirmed.length > 0}
         onConfirm={() =>
           onConfirm({
             cashPrice: cashValue,
@@ -145,6 +155,12 @@ export default function ReturnToStockAction({
           {!hasPrice && (
             <p className="text-xs text-destructive leading-snug">
               ต้องระบุราคาอย่างน้อยหนึ่งช่อง (มากกว่า 0) ก่อนนำเข้าคลัง — เครื่องในคลังต้องขายที่ POS ได้ทันที
+            </p>
+          )}
+          {hasPrice && unconfirmed.length > 0 && (
+            <p className="text-xs text-destructive leading-snug">
+              ต้องยืนยัน {unconfirmed.join(' และ ')} ด้วย — ปล่อยว่างไว้ราคาเดิม (ราคาจากตอนขายครั้งก่อน)
+              จะยังค้างอยู่และกลายเป็นราคาตั้งต้นที่ POS; ถ้าต้องการยกเลิกราคานั้น ให้แก้ที่ &quot;แก้ราคาขาย&quot; ก่อน
             </p>
           )}
           <div className="space-y-1">

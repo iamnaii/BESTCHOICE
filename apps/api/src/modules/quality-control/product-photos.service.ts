@@ -4,6 +4,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = typeof ANGLES[number];
 
+import {
+  assertSellableOnEnterStock,
+  enterStockAuditData,
+} from '../products/product-enter-stock.util';
+
 const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'IN_STOCK', 'RESERVED'];
 
 @Injectable()
@@ -123,11 +128,30 @@ export class ProductPhotosService {
     };
   }
 
-  async completePhotos(productId: string) {
+  /**
+   * ยืนยันรูป 6 มุม — และเมื่อสถานะเป็น `PHOTO_PENDING` จะพาเครื่อง **เข้าคลังพร้อมขาย**
+   *
+   * Phase 5 fix round 2 [Important 1]: นี่คือประตูที่สามที่พาเครื่องเข้า `IN_STOCK`
+   * และเป็นเส้นทางที่ **เป็นธรรมชาติที่สุดของเครื่องมือสอง** (ถ่ายรูปก่อนขาย) —
+   * PATCH `REFURBISHED → PHOTO_PENDING` (deny-list ปิดแค่คู่ `REFURBISHED → IN_STOCK`)
+   * แล้วอัปโหลดรูป+กดยืนยัน ก็เข้าคลังได้เงียบ ๆ โดยไม่เช็คราคา ไม่มี audit แถม route
+   * นี้เปิดถึง `SALES` ขณะที่ปุ่ม/PATCH เป็น OWNER/BM
+   * ⇒ ต่อ helper ชุดเดียวกับอีกสองประตู (`product-enter-stock.util.ts`) ห้ามเขียนกติกาซ้ำ
+   */
+  async completePhotos(productId: string, userId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({
         where: { id: productId },
-        select: { id: true, status: true, category: true, deletedAt: true },
+        select: {
+          id: true,
+          status: true,
+          category: true,
+          deletedAt: true,
+          // ด่านราคาของการเข้าคลัง (เฉพาะกิ่ง PHOTO_PENDING → IN_STOCK ด้านล่าง)
+          cashPrice: true,
+          installmentPrice: true,
+          prices: { select: { amount: true, deletedAt: true } },
+        },
       });
       if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
 
@@ -157,10 +181,23 @@ export class ProductPhotosService {
 
       // If status is PHOTO_PENDING, advance to IN_STOCK
       if (product.status === 'PHOTO_PENDING') {
+        assertSellableOnEnterStock(product);
         await tx.product.update({
           where: { id: productId },
           data: { status: 'IN_STOCK', stockInDate: new Date() },
         });
+        // `userId` optional เพื่อไม่พังผู้เรียกภายใน — `AuditLog.userId` เป็น FK required
+        if (userId) {
+          await tx.auditLog.create({
+            data: enterStockAuditData({
+              productId,
+              userId,
+              fromStatus: product.status,
+              via: 'PHOTO_COMPLETE',
+              before: product,
+            }),
+          });
+        }
       }
 
       return {

@@ -493,7 +493,8 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
     ...over,
   });
 
-  const dto = { cashPrice: 9900, note: 'ตรวจสภาพแล้ว' };
+  // fix round 2 [Important 2]: ฟิกซ์เจอร์มีราคาเก่าทั้งสองช่อง ⇒ ต้องยืนยันครบทั้งคู่
+  const dto = { cashPrice: 9900, installmentPrice: 11900, note: 'ตรวจสภาพแล้ว' };
 
   beforeEach(async () => {
     tx = {
@@ -562,7 +563,7 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
   });
 
   it('note เป็น optional — ไม่ส่งก็บันทึกได้ (newValue.note = null)', async () => {
-    await service.returnToStock('p-1', 'user-1', { cashPrice: 9900 });
+    await service.returnToStock('p-1', 'user-1', { cashPrice: 9900, installmentPrice: 11900 });
 
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -586,13 +587,43 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
     );
   });
 
-  it('ส่งเฉพาะราคาผ่อน (เครื่องขายผ่อนอย่างเดียว) → ผ่าน และไม่แตะคอลัมน์เงินสดเดิม', async () => {
+  it('เครื่องที่ไม่มีราคาเงินสดเดิม → ยืนยันเฉพาะราคาผ่อนได้ และไม่แตะคอลัมน์เงินสด', async () => {
+    prisma.product.findUnique.mockResolvedValue(productRow({ cashPrice: null }));
+
     await expect(
       service.returnToStock('p-1', 'user-1', { installmentPrice: 11900 }),
     ).resolves.toBeDefined();
     const data = tx.product.updateMany.mock.calls[0][0].data;
     expect(data.installmentPrice.toString()).toBe('11900');
     expect(data.cashPrice).toBeUndefined();
+  });
+
+  /**
+   * fix round 2 [Important 2] — ยืนยันช่องเดียวแล้วปล่อยอีกช่องว่าง = ราคาเครื่องใหม่ค้าง
+   * ในคอลัมน์นั้น และ `syncPriceRowsFromColumns` ก็ข้ามฝั่งนั้น (`keepDefaultId` = null
+   * เมื่อมีแถว default เดิมอยู่) ⇒ **แถว default ที่ POS อ่านยังเป็นราคาเครื่องใหม่**
+   */
+  it('มีราคาเงินสดเก่าอยู่แต่ไม่ส่งมายืนยัน → reject พร้อมระบุยอดที่ค้าง', async () => {
+    await expect(
+      service.returnToStock('p-1', 'user-1', { installmentPrice: 11900 }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.returnToStock('p-1', 'user-1', { installmentPrice: 11900 }),
+    ).rejects.toThrow(/ราคาเงินสดเดิม 15900/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ทิศกลับกัน: มีราคาผ่อนเก่าอยู่แต่ยืนยันมาเฉพาะเงินสด → reject เช่นกัน', async () => {
+    await expect(service.returnToStock('p-1', 'user-1', { cashPrice: 9900 })).rejects.toThrow(
+      /ราคาผ่อนเดิม 19900/,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ส่งราคา 0 มาในช่องที่มีราคาเก่า = ยังไม่นับว่ายืนยัน → reject (ยกเลิกราคาทำที่หน้าแก้ราคา)', async () => {
+    await expect(
+      service.returnToStock('p-1', 'user-1', { cashPrice: 9900, installmentPrice: 0 }),
+    ).rejects.toThrow(/ราคาผ่อนเดิม 19900/);
   });
 
   it.each(['IN_STOCK', 'SOLD_INSTALLMENT', 'DAMAGED', 'REPOSSESSED'])(
@@ -709,13 +740,19 @@ describe('ProductsService.update — ด่านปลายทาง IN_STOCK 
 
     const data = tx.product.update.mock.calls[0][0].data;
     expect(data.stockInDate).toBeInstanceOf(Date);
+    // minor fix round 2: audit ฝั่ง PATCH ต้องมีราคาเก่า→ใหม่เหมือนฝั่งปุ่ม ไม่งั้นสูตร
+    // ตรวจ residual ("เข้าคลังโดยไม่ยืนยันราคา") แยกแยะแถวไม่ได้เลย
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'PRODUCT_RETURNED_TO_STOCK',
         entity: 'product',
         entityId: 'p-1',
-        oldValue: expect.objectContaining({ status: 'QC_PENDING' }),
-        newValue: expect.objectContaining({ status: 'IN_STOCK' }),
+        oldValue: expect.objectContaining({ status: 'QC_PENDING', cashPrice: '15900' }),
+        newValue: expect.objectContaining({
+          status: 'IN_STOCK',
+          via: 'PATCH',
+          cashPrice: '15900',
+        }),
       }),
     });
   });

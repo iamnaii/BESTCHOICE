@@ -134,6 +134,18 @@ export class StockAdjustmentsService {
 
       // Update product status based on reason
       if (dto.reason === 'FOUND') {
+        /**
+         * Phase 5 fix round 2 [Important 1]: `FOUND` = "พบของที่หายไป" ไม่ใช่
+         * "ซ่อมเสร็จพร้อมขาย" — เครื่องมือสองที่รับคืน (REFURBISHED) ต้องเข้าคลังผ่าน
+         * ปุ่ม "นำเข้าคลังพร้อมขาย" ที่บังคับยืนยันราคา ไม่ใช่ลัดผ่านการปรับสต็อก
+         * (ประตูอื่นของ FOUND ยังพึ่ง 4-eyes + แถว StockAdjustment เป็นหลักฐาน — carry)
+         */
+        if (product.status === 'REFURBISHED') {
+          throw new BadRequestException(
+            'เครื่องมือสองที่รับคืน (สถานะ REFURBISHED) นำเข้าคลังด้วยเหตุผล "พบของ" ไม่ได้ — ' +
+              'ใช้ปุ่ม "นำเข้าคลังพร้อมขาย" ที่หน้ารายละเอียดสินค้า เพื่อยืนยันราคาขายก่อน',
+          );
+        }
         const wasDamageRestore =
           product.status === 'DAMAGED' || product.status === 'WRITTEN_OFF';
         await tx.product.update({

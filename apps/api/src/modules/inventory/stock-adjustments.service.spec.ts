@@ -297,3 +297,69 @@ describe('StockAdjustmentsService.create — T5-C3 4-eyes', () => {
     });
   });
 });
+
+/**
+ * Phase 5 fix round 2 [Important 1] — `FOUND` เป็นอีกประตูที่ตั้ง `IN_STOCK` ตรง ๆ
+ * ("พบของหาย") — เครื่องมือสองที่รับคืน (REFURBISHED) ต้องไม่ลัดเข้าคลังทางนี้
+ * เพราะข้ามด่านยืนยันราคาของปุ่ม "นำเข้าคลังพร้อมขาย"
+ */
+describe('StockAdjustmentsService.create — FOUND ต้องไม่ปลุกเครื่อง REFURBISHED (Phase 5 fix round 2)', () => {
+  let service: StockAdjustmentsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const foundDto = {
+    productId: 'p1',
+    reason: 'FOUND' as const,
+    approverId: 'approver-bm',
+    notes: 'พบเครื่องในตู้เซฟ',
+  };
+
+  const setStatus = (status: string) =>
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'p1',
+      status,
+      branchId: 'branch-1',
+      costPrice: '10000',
+      deletedAt: status === 'REFURBISHED' ? null : new Date(),
+    });
+
+  beforeEach(async () => {
+    prisma = {
+      product: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
+      stockAdjustment: {
+        create: jest.fn().mockResolvedValue({ id: 'adj-1' }),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'approver-bm',
+          role: 'BRANCH_MANAGER',
+          isActive: true,
+          deletedAt: null,
+        }),
+      },
+      $transaction: jest.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [StockAdjustmentsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<StockAdjustmentsService>(StockAdjustmentsService);
+  });
+
+  it('FOUND บนเครื่อง REFURBISHED → reject + ชี้ไปที่ปุ่มนำเข้าคลังพร้อมขาย', async () => {
+    setStatus('REFURBISHED');
+
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/นำเข้าคลังพร้อมขาย/);
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  it('FOUND บนเครื่องที่หายไปจริง (LOST) → ยังทำได้ตามเดิม', async () => {
+    setStatus('LOST');
+
+    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'IN_STOCK' }) }),
+    );
+  });
+});

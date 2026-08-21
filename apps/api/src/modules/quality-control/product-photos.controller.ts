@@ -42,7 +42,9 @@ export class ProductPhotosController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   completePhotos(
     @Param('productId') productId: string,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.productPhotosService.completePhotos(productId);
+    // userId ส่งเข้าไปเพื่อให้ AuditLog ของการเข้าคลัง (PHOTO_PENDING → IN_STOCK) มีคนกด
+    return this.productPhotosService.completePhotos(productId, user.id);
   }
 }

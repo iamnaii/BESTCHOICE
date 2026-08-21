@@ -25,6 +25,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ContractWorkflowService } from '../contract-workflow.service';
+import { ContractLifecycleService } from '../services/contract-lifecycle.service';
 
 const prisma = new PrismaClient();
 
@@ -38,6 +39,21 @@ const service = new ContractWorkflowService(
   null as never, // shopInventoryTransferTemplate
   null as never, // shopDownPaymentTemplate
   null as never, // shopAccountResolver
+);
+
+/**
+ * Fix round 2 (minor) — เทสพฤติกรรมของด่านใน tx ฝั่ง `create()` (Important 3 ของรอบแรก
+ * มีแต่ RED ที่เป็น artifact ของ mock: พิสูจน์แค่ว่าบรรทัดถูกเดิน ไม่ได้พิสูจน์ว่ากันได้จริง)
+ *
+ * deps ที่ไม่ถูกแตะก่อนด่าน (JE templates / warranty / audit) ส่งเป็น null;
+ * `query.isTestModeEnabled` คืน true เพื่อข้ามด่านตรวจเครดิตที่อยู่ก่อนหน้าในทรานแซกชัน
+ */
+const lifecycleService = new ContractLifecycleService(
+  prisma as never,
+  { isTestModeEnabled: async () => true } as never,
+  null as never,
+  null as never,
+  null as never,
 );
 
 const dec = (s: string) => new Decimal(s);
@@ -257,6 +273,56 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
 
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(after.status).toBe('DRAFT');
+  }, 60_000);
+
+  it('สร้างสัญญา: สินค้าถูกลบแทรกหลังด่านนอก tx → ด่านใน tx ต้องจับได้ (Important 3)', async () => {
+    // เครื่องพร้อมขายจริง ๆ ตอนเริ่ม — ด่านนอก tx จึงผ่าน
+    const { productId } = await seedSignedDraftContract(6, { productDeleted: false });
+    await prisma.product.update({ where: { id: productId }, data: { status: 'IN_STOCK' } });
+    const customer = await prisma.customer.create({
+      data: {
+        name: `__PRODGUARD_C6_${RUN}__`,
+        phone: `094${RUN_NUM}6`,
+        nationalId: `PRODGUARD-C6-${RUN}`,
+      },
+    });
+    createdCustomerIds.push(customer.id);
+
+    // แทรกการลบ "ระหว่าง" ด่านนอก tx กับด่านใน tx — hook ที่ $transaction เพราะเป็น
+    // จุดสุดท้ายก่อน re-check (ด่านนอก tx อ่านไปแล้วตอนนั้น)
+    const origTx = prisma.$transaction.bind(prisma);
+    let intercepted = false;
+    const spy = vi.spyOn(prisma, '$transaction').mockImplementation((async (arg: never) => {
+      if (!intercepted) {
+        intercepted = true;
+        await prisma.product.update({ where: { id: productId }, data: { deletedAt: new Date() } });
+      }
+      return origTx(arg);
+    }) as never);
+
+    try {
+      await expect(
+        lifecycleService.create(
+          {
+            customerId: customer.id,
+            productId,
+            branchId,
+            sellingPrice: 12000,
+            downPayment: 3000,
+            totalMonths: 12,
+          } as never,
+          adminId,
+          'OWNER',
+        ),
+      ).rejects.toThrow('สินค้าไม่พร้อมขาย');
+      expect(intercepted).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // ไม่มีสัญญาใหม่ถูกสร้างบนเครื่องที่ถูกลบ
+    const created = await prisma.contract.findFirst({ where: { customerId: customer.id } });
+    expect(created).toBeNull();
   }, 60_000);
 
   it('ไม่ over-block: สินค้าปกติ (RESERVED, ยังไม่ถูกลบ) ผ่านด่านสินค้าไปต่อได้', async () => {

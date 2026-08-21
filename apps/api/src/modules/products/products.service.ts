@@ -13,6 +13,12 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 import { assertManualStatusChangeAllowed, productStatusLabel } from './product-status.util';
+import {
+  assertSellableOnEnterStock,
+  enterStockAuditData,
+  isPositiveAmount,
+  positiveDecimalOrNull,
+} from './product-enter-stock.util';
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 import { evaluateReadiness } from '../../utils/product-readiness.util';
@@ -28,47 +34,6 @@ const productInclude = {
 
 // Re-export for use by other services if needed
 export { productInclude };
-
-/** ค่าที่ "เป็นราคาจริง" — null/ว่าง/0/ติดลบ ถือว่ายังไม่ได้ตั้งราคา */
-function isPositiveAmount(v: Prisma.Decimal | string | number | null | undefined): boolean {
-  if (v === null || v === undefined || v === '') return false;
-  return new Prisma.Decimal(v.toString()).gt(0);
-}
-
-/** number จาก DTO → Decimal เมื่อเป็นค่าบวกจริงเท่านั้น (ไม่งั้น null) */
-function positiveDecimalOrNull(v: number | null | undefined): Prisma.Decimal | null {
-  return isPositiveAmount(v) ? new Prisma.Decimal(v as number) : null;
-}
-
-interface ProductPriceShape {
-  cashPrice?: Prisma.Decimal | string | number | null;
-  installmentPrice?: Prisma.Decimal | string | number | null;
-  prices?: Array<{ amount: Prisma.Decimal | string | number; deletedAt?: Date | null }>;
-}
-
-/**
- * เครื่องนี้มีราคาขายแล้วหรือยัง — **ด่านปลายทาง IN_STOCK** ของ `update()`
- *
- * ต่างจาก `evaluateReadiness` (product-readiness.util.ts) ที่ถามว่า "พร้อม**ขึ้นเว็บ**ไหม"
- * — อันนั้นบังคับ cashPrice, gallery, แบรนด์ Apple, isOnlineVisible. ที่นี่ถามแค่ว่า
- * "ขายหน้าร้านได้ไหม" ⇒ ราคาเงินสด **หรือ** ราคาผ่อนก็พอ และยอมรับ `prices[]` เป็น
- * fallback สำหรับเครื่องเก่าที่ตั้งราคาไว้ก่อนยุคคอลัมน์ (B0 write-through)
- *
- * Fix round 1 (minor): กรองแถว `prices[]` ที่ถูก soft-delete ออก — `productInclude.prices`
- * ไม่ได้กรอง `deletedAt: null` ให้ (มันเป็น include ที่ผู้อ่านหลายตัวใช้ร่วมกัน) ⇒ ถ้าไม่กรอง
- * ตรงนี้ ราคาที่ "ลบทิ้งไปแล้ว" จะยังนับเป็นราคาที่ใช้ได้
- */
-function hasSellingPrice(product: ProductPriceShape): boolean {
-  if (isPositiveAmount(product.cashPrice) || isPositiveAmount(product.installmentPrice)) {
-    return true;
-  }
-  return (product.prices ?? []).some((r) => !r.deletedAt && isPositiveAmount(r.amount));
-}
-
-/** ข้อความเดียวของด่านราคา — ใช้ทั้งฝั่ง PATCH และฝั่งปุ่ม เพื่อไม่ให้กติกาแตกเป็นสองสำนวน */
-const NO_PRICE_MESSAGE =
-  'ยังไม่ได้ตั้งราคาขายของเครื่องนี้ — ตั้งราคาขาย (เงินสด/ผ่อน) ก่อนจึงจะนำเข้าคลังพร้อมขายได้ ' +
-  '(เครื่องที่อยู่ในคลังต้องขายที่ POS ได้ทันที)';
 
 @Injectable()
 export class ProductsService {
@@ -257,23 +222,25 @@ export class ProductsService {
      * (`REFURBISHED → QC_PENDING → IN_STOCK`) แล้วเข้าคลังได้ในสองคลิก — เดิมขาที่สอง
      * ไม่มีเช็คราคา ไม่มี `stockInDate` ไม่มี AuditLog ⇒ ได้ผลลัพธ์ที่ "เงียบกว่า" ปุ่ม
      *
-     * ตอนนี้ทุกเส้นทางที่ลงเอยที่ IN_STOCK ต้องผ่านกติกาเดียวกัน: มีราคาขาย +
-     * `stockInDate` ใหม่ + AuditLog `PRODUCT_RETURNED_TO_STOCK` ⇒ การฟอกสถานะไม่ได้
-     * ประโยชน์อะไรเลยนอกจากเสีย audit trail เพิ่มหนึ่งแถว
+     * ตอนนี้ทุกประตูที่ "คนกด" ได้ ใช้ helper ชุดเดียวกัน (`product-enter-stock.util.ts`
+     * — ปุ่มนำเข้าคลัง / PATCH นี้ / ยืนยันรูป 6 มุม): มีราคาขาย + `stockInDate` ใหม่ +
+     * AuditLog `PRODUCT_RETURNED_TO_STOCK` ⇒ การฟอกสถานะไม่ได้ประโยชน์อะไรเลยนอกจาก
+     * เสีย audit trail เพิ่มหนึ่งแถว
+     *
+     * **ยังไม่ครบทุกประตู** (carry — ดูรายงาน Phase 5): `stock-adjustments` reason
+     * `FOUND` ตั้ง IN_STOCK ตรง ๆ (กันเฉพาะ REFURBISHED แล้ว, ที่เหลือพึ่ง 4-eyes +
+     * แถว StockAdjustment เป็นหลักฐาน) และ `po-receiving` (สายรับของใหม่ อัตโนมัติ)
      *
      * เช็ค "ราคาหลังอัปเดต" ไม่ใช่ราคาปัจจุบัน — ผู้ใช้ตั้งราคาพร้อมเปลี่ยนสถานะในใบเดียวได้
      */
     const entersStock = dto.status === 'IN_STOCK' && existing.status !== 'IN_STOCK';
     if (entersStock) {
-      const effective: ProductPriceShape = {
+      assertSellableOnEnterStock({
         cashPrice: dto.cashPrice !== undefined ? dto.cashPrice : existing.cashPrice,
         installmentPrice:
           dto.installmentPrice !== undefined ? dto.installmentPrice : existing.installmentPrice,
         prices: existing.prices,
-      };
-      if (!hasSellingPrice(effective)) {
-        throw new BadRequestException(NO_PRICE_MESSAGE);
-      }
+      });
     }
     // แก้ IMEI/Serial บนเครื่องที่ยังถูกถือครอง = ปลด IMEI เดิมให้ว่างโดยไม่ต้องลบ
     // (ช่องเดียวกับ remove() และเปิดกว้างกว่าเพราะ PATCH ให้สิทธิ์ถึง BRANCH_MANAGER)
@@ -334,14 +301,15 @@ export class ProductsService {
       // ผู้เรียกภายในที่ไม่มีตัวตนผู้ใช้จะข้ามการเขียน audit แต่ยังได้ stockInDate
       if (entersStock && actorUserId) {
         await tx.auditLog.create({
-          data: {
+          data: enterStockAuditData({
+            productId: id,
             userId: actorUserId,
-            action: 'PRODUCT_RETURNED_TO_STOCK',
-            entity: 'product',
-            entityId: id,
-            oldValue: { status: existing.status, via: 'PATCH' },
-            newValue: { status: 'IN_STOCK', via: 'PATCH' },
-          },
+            fromStatus: existing.status,
+            via: 'PATCH',
+            before: existing,
+            // ราคาที่ใบนี้เขียนจริง (ถ้ามี) — ไม่ส่ง = ไม่แตะ ⇒ helper จะ echo ราคาเดิม
+            after: { cashPrice: cashDecimal ?? null, installmentPrice: installmentDecimal ?? null },
+          }),
         });
       }
 
@@ -396,10 +364,31 @@ export class ProductsService {
       );
     }
 
-    const before = {
-      cashPrice: product.cashPrice?.toString() ?? null,
-      installmentPrice: product.installmentPrice?.toString() ?? null,
-    };
+    /**
+     * Fix round 2 [Important 2] — **ทุกคอลัมน์ที่มีราคาเก่าอยู่ ต้องถูกยืนยัน**
+     *
+     * ยืนยันมาช่องเดียวแล้วปล่อยอีกช่องว่างไว้ = คอลัมน์นั้นไม่ถูกแตะ ราคาเครื่องใหม่ค้างต่อ
+     * และ `syncPriceRowsFromColumns` ก็ข้ามฝั่งนั้น (`keepDefaultId` เป็น null เมื่อมีแถว
+     * default เดิมอยู่แล้ว) ⇒ **แถว default ที่ POS อ่านยังเป็นราคาเครื่องใหม่** ซึ่งคือ
+     * ความเสียหายที่ด่านยืนยันราคาตั้งใจกันพอดี
+     *
+     * endpoint นี้ "ยืนยันราคา" ไม่ใช่ "ล้างราคา" — การยกเลิกราคาช่องใดช่องหนึ่งทำที่หน้า
+     * แก้ราคาขาย (ซึ่งมี write-through/แถวราคาเป็นเจ้าของกติกาอยู่แล้ว) ไม่ใช่ที่นี่
+     */
+    const unconfirmed: string[] = [];
+    if (!cashDecimal && isPositiveAmount(product.cashPrice)) {
+      unconfirmed.push(`ราคาเงินสดเดิม ${product.cashPrice?.toString()}`);
+    }
+    if (!installmentDecimal && isPositiveAmount(product.installmentPrice)) {
+      unconfirmed.push(`ราคาผ่อนเดิม ${product.installmentPrice?.toString()}`);
+    }
+    if (unconfirmed.length > 0) {
+      throw new BadRequestException(
+        `${unconfirmed.join(' และ ')} ยังค้างอยู่บนเครื่อง — ยืนยันหรือแก้ราคาให้ครบทุกช่องก่อนนำเข้าคลัง ` +
+          '(ราคาที่ไม่ได้ยืนยันจะยังเป็นราคาจากตอนขายครั้งก่อนและกลายเป็นราคาตั้งต้นที่ POS; ' +
+          'ถ้าต้องการยกเลิกราคาช่องใด ให้แก้ที่ "แก้ราคาขาย" ก่อน)',
+      );
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // updateMany + count===1 = ด่านกันแข่ง (double-click / สองคนกดพร้อมกัน): เงื่อนไข
@@ -427,19 +416,15 @@ export class ProductsService {
       });
 
       await tx.auditLog.create({
-        data: {
+        data: enterStockAuditData({
+          productId: id,
           userId,
-          action: 'PRODUCT_RETURNED_TO_STOCK',
-          entity: 'product',
-          entityId: id,
-          oldValue: { status: product.status, ...before },
-          newValue: {
-            status: 'IN_STOCK',
-            cashPrice: cashDecimal?.toString() ?? before.cashPrice,
-            installmentPrice: installmentDecimal?.toString() ?? before.installmentPrice,
-            note: input.note ?? null,
-          },
-        },
+          fromStatus: product.status,
+          via: 'BUTTON',
+          before: product,
+          after: { cashPrice: cashDecimal, installmentPrice: installmentDecimal },
+          note: input.note,
+        }),
       });
 
       return tx.product.findUnique({ where: { id }, include: productInclude });

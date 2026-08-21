@@ -73,6 +73,48 @@ describe('ReturnToStockAction (Phase 5 T3 + fix round 1)', () => {
     });
   });
 
+  // fix round 2 [Important 2] — ล้างช่องที่ "เคยมีราคา" = ราคาเก่าค้างเป็น default ของ POS
+  it('ล้างเฉพาะช่องเงินสดที่มีราคาเก่า (อีกช่องมีค่า) → ปุ่มยืนยันกดไม่ได้ + บอกให้ยืนยันช่องนั้น', async () => {
+    const onConfirm = vi.fn();
+    render(
+      <ReturnToStockAction
+        {...base}
+        currentInstallmentPrice={19900}
+        onConfirm={onConfirm}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    await userEvent.clear(await screen.findByLabelText(/ราคาเงินสด/));
+
+    expect(await screen.findByText(/ต้องยืนยัน ราคาเงินสด/)).toBeTruthy();
+    const confirm = screen.getByRole('button', { name: CONFIRM });
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+    await userEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('ทิศกลับกัน: ล้างช่องผ่อนที่มีราคาเก่า → กดไม่ได้เหมือนกัน', async () => {
+    render(<ReturnToStockAction {...base} currentInstallmentPrice={19900} onConfirm={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    await userEvent.clear(await screen.findByLabelText(/ราคาผ่อน/));
+
+    expect(await screen.findByText(/ต้องยืนยัน ราคาผ่อน/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: CONFIRM }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('ช่องผ่อนที่ไม่เคยมีราคาเก่า ปล่อยว่างได้ → ยืนยันผ่าน', async () => {
+    const onConfirm = vi.fn();
+    render(<ReturnToStockAction {...base} onConfirm={onConfirm} />);
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    await userEvent.click(await screen.findByRole('button', { name: CONFIRM }));
+
+    expect(onConfirm).toHaveBeenCalledWith({
+      cashPrice: 15900,
+      installmentPrice: undefined,
+      note: undefined,
+    });
+  });
+
   it('ล้างราคาจนว่างทั้งสองช่อง → ปุ่มยืนยันกดไม่ได้ + บอกเหตุผล', async () => {
     const onConfirm = vi.fn();
     render(<ReturnToStockAction {...base} onConfirm={onConfirm} />);

@@ -302,8 +302,20 @@ export function isSwapCreditOneBook(
 
 // --- Typed conditions — VERBATIM twins ของ interco-typed-balance.ts ---------
 // (composed เป็น Prisma.sql fragment เพื่อใช้ซ้ำใน CASE หลายคอลัมน์ของ Query A)
+// บรรทัด legacy = flow A.3 เดิมโดย **ไม่มี** explicit stamp ที่ valid — ใช้ตรวจ
+// จับ swap ยุคก่อน Phase 1 เพื่อ flag `legacyOneBook` (Fix Round 1). ตั้งแต่
+// Phase 4 Task 6 มันคือ **branch fallback ของ SWAP_COND ตรงๆ** (ประกาศก่อนแล้ว
+// ประกอบเข้า SWAP_COND) — เขียนซ้ำสองที่เมื่อไหร่คือประตู drift.
+const LEGACY_SWAP_COND = Prisma.sql`((je.metadata->>'shopReceivableType' IS NULL
+              OR je.metadata->>'shopReceivableType' NOT IN
+                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+         AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')`;
+// explicit stamp **ชนะ** flow fallback (Phase 4 Task 6) — mirror
+// `classifyShopReceivable` ที่เช็ค EXPLICIT ก่อน FLOW_MAP เหมือนที่
+// SHOP_COLLECT_COND ทำอยู่แล้ว. ไม่งั้น JE รูป A.3 ที่ stamp ประเภทอื่นจะถูกนับ
+// ทั้ง swap_gross และ recall_gross/shop_collect พร้อมกัน ⇒ intercoNet บวมเท่าตัว
 const SWAP_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
-         OR je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')`;
+         OR ${LEGACY_SWAP_COND})`;
 const RECALL_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL')`;
 const SHOP_COLLECT_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'SHOP_COLLECT'
          OR ((je.metadata->>'shopReceivableType' IS NULL
@@ -312,13 +324,6 @@ const SHOP_COLLECT_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'SHOP
              AND (je.metadata->>'collectedByShop' = 'true'
                   OR je.metadata->>'shopReceivable' = '11-2107'
                   OR je.metadata->>'flow' = 'shop-collect-settlement')))`;
-// บรรทัด legacy = flow A.3 เดิมโดย **ไม่มี** explicit stamp (subset ของ
-// SWAP_COND — ยุค Phase 1+ ทุกใบรวม mirror มี stamp เสมอ) — ใช้ตรวจจับ swap
-// ยุคก่อน Phase 1 เพื่อ flag `legacyOneBook` (Fix Round 1).
-const LEGACY_SWAP_COND = Prisma.sql`((je.metadata->>'shopReceivableType' IS NULL
-              OR je.metadata->>'shopReceivableType' NOT IN
-                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
-         AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')`;
 
 // Group key ของ S21-3001 — แบบมีเงื่อนไข (jsdoc ด้านบน): SWAP_CREDIT key ด้วย
 // newContractId (A.4 stamp — contractId บนใบนั้นคือสัญญาเก่า), ประเภทอื่น key

@@ -2352,4 +2352,95 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
       120_000,
     );
   });
+
+  // ===========================================================================
+  // Phase 4 Task 6 — precedence ของ typed lens: explicit stamp ต้องชนะ flow
+  // fallback ให้ตรง `classifyShopReceivable` (EXPLICIT ก่อน FLOW_MAP).
+  // เดิม `swapCreditFinanceBalance` + เลนส์ `swapCreditGl` + `glSwapCreditTotal`
+  // + `SWAP_COND` ของรายงานอายุ เขียนเป็น `OR flow = 'exchange-buyback-...'`
+  // แบบไม่ดู stamp ⇒ JE รูป A.3 ที่ stamp ประเภทอื่นถูกนับ **สองประเภทพร้อมกัน**
+  // (SWAP_CREDIT + PAYOUT_RECALL) — เป็นบั๊กแบบเดียวกับที่ `shopCollectTypedBalance`
+  // มี carve-out ปิดไปแล้วตั้งแต่ Phase 3 Task 6.
+  // ===========================================================================
+  describe('typed precedence — explicit stamp ชนะ flow fallback (Phase 4 Task 6)', () => {
+    it(
+      'JE flow A.3 ที่ stamp PAYOUT_RECALL → ไม่ถูกนับเป็น SWAP_CREDIT (helper + เลนส์ + ยอดทั้งบัญชี) และแถวเก่าทุกชนิดยอดเดิม',
+      async () => {
+        const beforeTotals = await pendingService.getReconcileTotals();
+
+        // (1) JE รูป A.3 (flow เดิม) แต่ stamp explicit เป็น PAYOUT_RECALL
+        const misStamped = await seedBaseContract(90);
+        await seed1a(misStamped);
+        await seedShopLegs(misStamped, '10000', '1000');
+        await journalAuto.createAndPost({
+          description: 'A.3 flow แต่ stamp PAYOUT_RECALL',
+          companyId: financeId,
+          metadata: {
+            flow: 'exchange-buyback-receivable-11-2107',
+            idempotencyKey: `ta3mis:${misStamped}`,
+            contractId: misStamped,
+            shopReceivableType: 'PAYOUT_RECALL',
+          },
+          lines: [
+            { accountCode: '11-2107', dr: dec('5000'), cr: zero },
+            { accountCode: '21-1103', dr: zero, cr: dec('5000') },
+          ],
+        });
+
+        // (2) JE รูป A.3 ที่ stamp เป็นค่าที่ไม่อยู่ในสามประเภท → ต้องตกไป
+        //     fallback เป็น SWAP_CREDIT เหมือนเดิม (ตรง EXPLICIT.has ที่ล้มเหลว
+        //     แล้วไปต่อที่ FLOW_MAP ใน classifyShopReceivable)
+        const oddStamped = await seedBaseContract(91);
+        await journalAuto.createAndPost({
+          description: 'A.3 flow แต่ stamp ค่าที่ไม่รู้จัก',
+          companyId: financeId,
+          metadata: {
+            flow: 'exchange-buyback-receivable-11-2107',
+            idempotencyKey: `ta3odd:${oddStamped}`,
+            contractId: oddStamped,
+            shopReceivableType: 'SOMETHING_ELSE',
+          },
+          lines: [
+            { accountCode: '11-2107', dr: dec('4000'), cr: zero },
+            { accountCode: '21-1106', dr: zero, cr: dec('4000') },
+          ],
+        });
+
+        // --- แถวที่แก้: ต้องเป็น PAYOUT_RECALL ล้วน ไม่ปนเป็น SWAP_CREDIT ---
+        expect((await swapCreditFinanceBalance(prisma, misStamped)).toFixed(2)).toBe('0.00');
+        expect((await recallFinanceBalance(prisma, misStamped)).toFixed(2)).toBe('5000.00');
+        const misRow = (await pendingService.getPendingContracts()).find(
+          (p) => p.contractId === misStamped,
+        )!;
+        expect(misRow).toBeDefined();
+        expect(misRow.swapCreditGl.toFixed(2)).toBe('0.00');
+        expect(misRow.swapCreditEligible).toBe(false);
+
+        // --- แถวเก่าทุกชนิดต้องให้ผลเดิมทุกบาท (regression) ---
+        // (ก) A.3 ยุค Phase 1+ (stamp SWAP_CREDIT + flow A.3) → branch explicit
+        expect((await swapCreditFinanceBalance(prisma, swapId)).toFixed(2)).toBe('8000.00');
+        // (ข) A.3 ยุค legacy (ไม่มี stamp เลย + flow A.3) → branch fallback
+        expect((await swapCreditFinanceBalance(prisma, legacySwapId)).toFixed(2)).toBe('8000.00');
+        // (ค) stamp ค่าที่ไม่รู้จัก + flow A.3 → branch fallback (เหมือน (ข))
+        expect((await swapCreditFinanceBalance(prisma, oddStamped)).toFixed(2)).toBe('4000.00');
+        const oddRow = (await pendingService.getPendingContracts()).find(
+          (p) => p.contractId === oddStamped,
+        );
+        // สัญญานี้ไม่มี 1A จึงไม่อยู่ในคิวรอจ่าย — เลนส์ต่อสัญญาตรวจผ่าน helper
+        // ข้างบนแล้ว; ยอดทั้งบัญชีด้านล่างเป็นตัวยืนยันฝั่งเลนส์ของ (ค)
+        expect(oddRow).toBeUndefined();
+
+        // --- ยอด typed ทั้งบัญชี (twin ตัวที่สามใน interco-pending.service) ---
+        const afterTotals = await pendingService.getReconcileTotals();
+        // เพิ่มเฉพาะ (ค) 4,000 — (1) 5,000 ต้องไม่เข้ากอง SWAP_CREDIT
+        expect(
+          afterTotals.glSwapCreditTotal.minus(beforeTotals.glSwapCreditTotal).toFixed(2),
+        ).toBe('4000.00');
+        expect(
+          afterTotals.glRecallTotal.minus(beforeTotals.glRecallTotal).toFixed(2),
+        ).toBe('5000.00');
+      },
+      120_000,
+    );
+  });
 });

@@ -6,8 +6,10 @@ type Client = Prisma.TransactionClient | PrismaClient;
  * Typed GL balances สำหรับหักกลบรอบจ่าย (Phase 2 — spec §4).
  *
  * เงื่อนไข type ต้อง**สอดคล้อง**กับ `classifyShopReceivable` (shop-receivable-type.util.ts):
- * - SWAP_CREDIT ฝั่ง 11-2107: explicit stamp หรือ legacy flow 'exchange-buyback-receivable-11-2107'
- *   (mirror ตอน cancel carry stamp มาแล้วตั้งแต่ Phase 1 → net เป็นศูนย์เองในประเภทเดียวกัน)
+ * - SWAP_CREDIT ฝั่ง 11-2107: explicit stamp **ชนะ** flow fallback (Phase 4 Task 6) —
+ *   stamp = SWAP_CREDIT, หรือไม่มี/ไม่รู้จัก stamp แล้ว flow = legacy A.3
+ *   'exchange-buyback-receivable-11-2107' (mirror ตอน cancel carry stamp มาแล้ว
+ *   ตั้งแต่ Phase 1 → net เป็นศูนย์เองในประเภทเดียวกัน)
  * - PAYOUT_RECALL: explicit stamp เท่านั้น (type ใหม่ ไม่มี legacy)
  * - S21-3001 SWAP_CREDIT: key ด้วย metadata.newContractId (A.4 stamp ตั้งแต่ Phase 2 Task 1)
  * - S21-3001 PAYOUT_RECALL: key ด้วย metadata.contractId (C-2 producer ใน Phase 3)
@@ -39,7 +41,18 @@ async function sumTyped(
   return new Prisma.Decimal(String(rows[0]?.balance ?? 0));
 }
 
-/** 11-2107 Σ(Dr−Cr) เฉพาะประเภท SWAP_CREDIT (explicit stamp หรือ legacy A.3 flow) */
+/**
+ * 11-2107 Σ(Dr−Cr) เฉพาะประเภท SWAP_CREDIT — explicit stamp **ชนะ** flow
+ * fallback (Phase 4 Task 6): `classifyShopReceivable` เช็ค `EXPLICIT.has(...)`
+ * ก่อน `FLOW_MAP` เสมอ ⇒ JE รูป A.3 (flow เดิม) ที่ stamp ประเภทอื่นต้องไม่
+ * ถูกนับที่นี่ ไม่งั้นมันจะเข้าสองประเภทพร้อมกัน (SWAP_CREDIT + PAYOUT_RECALL)
+ * ทั้งในเลนส์ต่อสัญญาและรายงานอายุ. carve-out รูปเดียวกับ
+ * `shopCollectTypedBalance` (Phase 3 Task 6).
+ *
+ * แถวเก่าทุกชนิดให้ผลเท่าเดิมทุกบาท: A.3 ยุค Phase 1+ (stamp SWAP_CREDIT) เข้า
+ * branch แรก; A.3 ยุค legacy (ไม่มี stamp) และแถวที่ stamp ค่าที่ไม่รู้จัก เข้า
+ * branch fallback เหมือนเดิม (ตรงกับ `EXPLICIT.has` ที่ล้มเหลวแล้วไปต่อ FLOW_MAP).
+ */
 export function swapCreditFinanceBalance(
   client: Client,
   contractId: string,
@@ -51,7 +64,10 @@ export function swapCreditFinanceBalance(
     Prisma.sql`
     je.metadata->>'contractId' = ${contractId}
     AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
-         OR je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')`,
+         OR ((je.metadata->>'shopReceivableType' IS NULL
+              OR je.metadata->>'shopReceivableType' NOT IN
+                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+             AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107'))`,
   );
 }
 

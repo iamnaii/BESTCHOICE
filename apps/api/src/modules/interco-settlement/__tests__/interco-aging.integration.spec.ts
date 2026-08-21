@@ -890,6 +890,57 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     expect(after.minus(before).toFixed(2)).toBe('11000.00');
   });
 
+  // --- Phase 4 Task 6 — precedence ของ typed lens ---------------------------
+  // SWAP_COND ต้อง mirror `classifyShopReceivable` (explicit stamp ก่อน FLOW_MAP)
+  // เหมือนที่ SHOP_COLLECT_COND ทำอยู่แล้ว — ไม่งั้น JE รูป A.3 ที่ stamp
+  // ประเภทอื่นจะถูกนับสองคอลัมน์พร้อมกัน (swap_gross + recall_gross) ⇒
+  // intercoNet ของสัญญานั้นบวมเป็นสองเท่าและ legacyOneBook เพี้ยนตาม
+  it('precedence: JE flow A.3 ที่ stamp PAYOUT_RECALL → เข้าเฉพาะคอลัมน์ recall ไม่ปนคอลัมน์ swap', async () => {
+    const id = await seedBaseContract(15);
+    await journalAuto.createAndPost({
+      description: 'A.3 flow แต่ stamp PAYOUT_RECALL (aging)',
+      companyId: financeId,
+      metadata: {
+        flow: 'exchange-buyback-receivable-11-2107',
+        idempotencyKey: `agta3mis:${id}`,
+        contractId: id,
+        shopReceivableType: 'PAYOUT_RECALL',
+      },
+      lines: [
+        { accountCode: '11-2107', dr: dec('5000'), cr: zero },
+        { accountCode: '21-1103', dr: zero, cr: dec('5000') },
+      ],
+    });
+    await journalAuto.createAndPost({
+      description: 'ขาคู่ SHOP ของ recall (aging)',
+      companyId: shopId,
+      metadata: {
+        flow: 'agingtest-c2-recall-shop',
+        idempotencyKey: `agta3mis-s:${id}`,
+        contractId: id,
+        shopReceivableType: 'PAYOUT_RECALL',
+      },
+      lines: [
+        { accountCode: 'S21-3001', dr: zero, cr: dec('5000') },
+        { accountCode: 'S11-1201', dr: dec('5000'), cr: zero },
+      ],
+    });
+
+    const row = (await agingService.getShopReceivableAging()).rows.find(
+      (r) => r.contractId === id,
+    )!;
+    expect(row).toBeDefined();
+    expect(row.swapCreditGross.toFixed(2)).toBe('0.00');
+    expect(row.payoutRecallGross.toFixed(2)).toBe('5000.00');
+    // นับครั้งเดียว — เดิมนับสองคอลัมน์ ⇒ intercoNet = 10,000 (บวมเท่าตัว)
+    expect(row.intercoNet.toFixed(2)).toBe('5000.00');
+    expect(row.shopMirrorNet.toFixed(2)).toBe('5000.00');
+    expect(row.bookMismatch).toBe(false);
+    // ไม่ใช่ legacy: มี explicit stamp อยู่ (LEGACY_SWAP_COND ต้องไม่จับ)
+    expect(row.legacySwapGross.toFixed(2)).toBe('0.00');
+    expect(row.legacyOneBook).toBe(false);
+  });
+
   // ต้องเป็นเทสต์ท้ายสุดของไฟล์ — seed ข้างในเทสต์ (ต้องวัด before/after ระดับ
   // บัญชี ซึ่ง beforeAll ทำไม่ได้) และทิ้ง drift ค้างไว้ตลอดที่เหลือของ run
   it('carry ข: mirror ของ swap ยุค legacy ที่ไม่มี stamp → เลนส์เห็นค้าง แต่บัญชีจริง 0 (จับได้ที่ drift เท่านั้น)', async () => {

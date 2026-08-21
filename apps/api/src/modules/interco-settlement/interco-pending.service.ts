@@ -184,7 +184,9 @@ export class IntercoPendingService {
     // SWAP_CREDIT lenses (Phase 2 — spec §4.1). เงื่อนไข type ต้องสอดคล้อง
     // `classifyShopReceivable` (shop-receivable-type.util.ts) และ SQL twin
     // ใน interco-typed-balance.ts — แก้ที่ไหนต้องแก้ทั้งคู่:
-    //   - 11-2107 SWAP_CREDIT: explicit stamp OR legacy flow
+    //   - 11-2107 SWAP_CREDIT: explicit stamp **ชนะ** flow fallback (Phase 4
+    //     Task 6 — ตรง `EXPLICIT.has` ก่อน `FLOW_MAP`): stamp = SWAP_CREDIT,
+    //     หรือไม่มี/ไม่รู้จัก stamp แล้ว flow = legacy A.3
     //     'exchange-buyback-receivable-11-2107' (mirror ตอน cancel carry stamp
     //     มาแล้วตั้งแต่ Phase 1 → net เป็นศูนย์เองในประเภทเดียวกัน)
     //   - S21-3001 SWAP_CREDIT: key ด้วย metadata.newContractId (A.4 stamp
@@ -200,7 +202,10 @@ export class IntercoPendingService {
         AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
         AND je.metadata->>'contractId' IS NOT NULL
         AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
-             OR je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')
+             OR ((je.metadata->>'shopReceivableType' IS NULL
+                  OR je.metadata->>'shopReceivableType' NOT IN
+                     ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                 AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107'))
       GROUP BY 1
     `;
     const swapCreditByContract = new Map<string, Prisma.Decimal>();
@@ -496,7 +501,10 @@ export class IntercoPendingService {
         AND je.status = 'POSTED'
         AND je.deleted_at IS NULL
         AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
-             OR je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')
+             OR ((je.metadata->>'shopReceivableType' IS NULL
+                  OR je.metadata->>'shopReceivableType' NOT IN
+                     ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                 AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107'))
     `;
     const glSwapCreditTotal = new Prisma.Decimal(String(swapCreditTotalRows[0]?.balance ?? 0));
 

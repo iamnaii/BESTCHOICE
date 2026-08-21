@@ -1207,6 +1207,18 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   `shop-exchange-return` ที่ **ไม่มี** stamp จะถูก util จัดเป็น SWAP_CREDIT แต่เลนส์ SQL
   มองไม่เห็น. รอเคสจริง/CPA ก่อนตัดสินว่าจะเติม fallback ให้สมมาตรหรือประกาศว่า stamp
   บังคับถาวร — **ห้ามเติมข้างเดียวโดยไม่ตรวจว่ามีแถวแบบนั้นจริงบน prod**.
+- **P2034 translation บนเส้นทางรับชำระ** — `approveBatch` เป็น Serializable แล้วและ SIRead
+  lock ของมัน escalate ได้ (ดู "ผลข้างเคียงที่ต้องเฝ้า" ในหัวข้อ `approveBatch` ด้านล่าง) ⇒
+  writer Serializable ตัวอื่น (`payment-receipt-orchestrator` / `installment-accrual-2a` /
+  `repossessions` / `reschedule-collect` / `paysolutions-webhook`) กลายเป็นผู้แพ้ race ได้
+  และ **ไม่มีตัวไหนแปลง P2034** ⇒ raw 500. **ทริกเกอร์ที่ให้ลงมือ: spike ของ Sentry
+  `[interco] P2034 write-conflict translated to 409`** — อย่าเติมล่วงหน้าแบบเหวี่ยงแห
+  ให้เติมทั้งเส้นทางเมื่อเห็นสัญญาณจริง (pattern เดียวกับ `approveCancellation` ที่รอเคสจริง
+  ก่อนยก isolation).
+- **แถวผีของ swap ยุค legacy ที่ถูกยกเลิก** (mirror ไม่มี stamp) — วันนี้ = false alarm
+  รายวันใน `legacyOneBookNet` + `ACCOUNT_DRIFT` รายเดือนที่ไม่มีเลขสัญญา (ดูรายละเอียดใน
+  หัวข้อ "สมการของ `ACCOUNT_DRIFT` ระดับบัญชี"). ทางแก้ = backfill stamp ให้ mirror ยุคเก่า
+  **หรือ** ให้เลนส์รู้จัก flow `exchange-cancel` — ต้องนับจำนวนแถวจริงบน prod ก่อนตัดสิน.
 - **การจ่ายนำส่ง/opening balance ฝั่ง SHOP** (interco spec §11) — ยังรอ CPA เหมือนเดิม
   ไม่ได้อยู่ในขอบเขต Phase 4.
 
@@ -2263,9 +2275,13 @@ spec เดิม — เพิ่มระหว่าง implement (ถ้า�
   สัญญา+ประเภท"**: หนึ่งใบต่อสัญญาครอบทุกแขนที่ค้าง (แขนที่แก่ที่สุดขึ้นหัวเรื่อง, ราย
   ละเอียดทั้งสองแขน + วิธีล้างอยู่ในคำอธิบาย) — สองใบต่อสัญญาเป็นเสียงซ้ำที่คนจะเลิกอ่าน
   และ "ประเภท" ในรายงานนี้ยุบเป็น "แขน" อยู่แล้ว. Sentry warning ต่อแถว
-  (`subsystem: 'interco-netting'`, ข้อความ `Shop receivable aged past threshold`).
-  คำอธิบาย Todo ระบุ "ข้อมูล ณ <วันที่>" เสมอ เพราะ dedup ข้ามวันทำให้ยอด/อายุในใบแช่อยู่ที่
-  วันที่สร้าง.
+  (`subsystem: 'interco-netting'`, ข้อความ `Shop receivable aged past threshold`) —
+  **ยิงเฉพาะตอนสร้าง Todo ใบใหม่จริง ไม่ใช่ทุก tick** (final review Phase 4): `alarm()` อยู่
+  **หลัง** dedup probe เพราะแถวที่ถูก dedup คือลูกหนี้ที่รอรอบจ่ายตามปกติซึ่งมี Todo ค้างอยู่
+  แล้วตั้งแต่วันแรก — ยิงซ้ำทุกวันตลอดไปทำให้ Sentry เป็น heartbeat จนคนเลิกอ่าน (หลักเดียว
+  กับ gate `legacyOneBookNet` ข้อถัดไป). ช่องทาง "ยังไม่หาย" = reconcile cron รายเดือน +
+  แท็บอายุลูกหนี้. คำอธิบาย Todo ระบุ "ข้อมูล ณ <วันที่>" เสมอ เพราะ dedup ข้ามวันทำให้
+  ยอด/อายุในใบแช่อยู่ที่วันที่สร้าง.
 - **แถว `legacyOneBook` ไม่ alert รายแถว** (คำตัดสิน Task 3) — คอลัมน์ typed ของมันโกหก
   เชิงประเภท และแขน `shopCollect` บนแถว legacy ก็เป็น (หนี้ shop-collect จริง − ขาล้าง
   เครดิต legacy) ปนกัน ⇒ เตือนด้วยตัวเลขผิดคือทางลัดไปสู่การถูกเมิน. แต่หนี้จริง **ต้องมี
@@ -2274,8 +2290,9 @@ spec เดิม — เพิ่มระหว่าง implement (ถ้า�
   **ยอดจริง ไม่ใช่จำนวนแถว** (แถวที่ล้างครบ net = 0 จึงเงียบเอง ไม่มีบรรทัด "0.00 บาท"
   รายวันให้คนชิน).
 - doctrine R-1: root `PrismaService` เท่านั้น, ไม่อยู่บนเส้นทางเงิน, **ห้าม throw ออกจาก
-  tick** (outer try/catch + per-row try/catch). ไม่มีผู้ใช้ SYSTEM → สร้าง Todo ไม่ได้ แต่
-  Sentry ยังยิงครบทุกแถว (pattern `alarmResidualParkOnCompletion`: alarm มาก่อน Todo).
+  tick** (outer try/catch + per-row try/catch). ไม่มีผู้ใช้ SYSTEM → สร้าง Todo ไม่ได้เลย
+  จึงเป็น **ข้อยกเว้นเดียว** ที่ Sentry ยังยิงครบทุกแถว (ไม่มีช่องทางอื่นเหลือ — pattern
+  `alarmResidualParkOnCompletion`: alarm มาก่อน Todo); เคส dedup ปกติไม่ยิงซ้ำ (ดูด้านบน).
 
 ### Cron รายเดือน — `interco-reconcile.cron.ts` (วันที่ 1, 08:00 BKK)
 
@@ -2304,8 +2321,18 @@ title + ยังไม่ `DONE` ⇒ รันซ้ำ/รันมือใ�
 - **สมการของ `ACCOUNT_DRIFT` ระดับบัญชี**: `ยอดบัญชีจริง = Σ บรรทัดที่เลนส์ classify ได้ −
   Σ deduction ของ batch POSTED`. ส่วนต่างคือบรรทัดที่ **ไม่มีเลนส์ไหนมองเห็น** — เช่น
   mirror ตอนยกเลิก swap ยุค legacy ที่ต้นฉบับไม่มี stamp (mirror จึงไม่ copy อะไรเลย และ
-  flow เปลี่ยนเป็น `exchange-cancel`) หรือ JV มือ. เคสนั้นทำให้เลนส์รายงาน "ค้าง" ทั้งที่
-  บัญชีจริงเป็นศูนย์ — **จับได้ที่นี่ที่เดียว**.
+  flow เปลี่ยนเป็น `exchange-cancel`) หรือ JV มือ.
+  **อย่าอ่านว่า "จับได้แล้ว จบ" — เคสนี้ยังเปิดอยู่และมีต้นทุนรายวัน (ปรับถ้อยคำ
+  2026-08-21):** `ACCOUNT_DRIFT` จับได้เฉพาะ **ระดับบัญชี — ไม่มีเลขสัญญาติดมาด้วย** (สมการ
+  เป็นยอดรวมทั้งบัญชี) คนอ่านจึงรู้แค่ "11-2107 เพี้ยน 8,000" แล้วต้องไปไล่ JE เอง; และแถวผี
+  ของสัญญานั้น **ยังค้างอยู่ในรายงานอายุ** ด้วย `intercoNet = +8,000` ทั้งที่บัญชีจริงเป็น 0
+  — แถวเป็น `legacyOneBook` จึงไม่ alert รายแถว **แต่ไปบวกใน `legacyOneBookNet`** ⇒ cron
+  รายวันยิง Sentry `Legacy one-book shop receivable outstanding` **ทุกวันตลอดไป** และแท็บโชว์
+  ยอดผีในบรรทัด "ค้าง swap ยุคเก่า". สรุป: นี่คือ **false alarm รายวัน + finding รายเดือนที่
+  ไม่มีเลขสัญญา** ไม่ใช่แค่จุดบอดเงียบ ๆ. ทางแก้จริง (backfill stamp ให้ mirror ยุคเก่า หรือ
+  ให้เลนส์รู้จัก flow `exchange-cancel`) เป็นงาน Phase 5 — ต้องตรวจก่อนว่ามีแถวแบบนี้จริงบน
+  prod กี่ใบ. ปักพฤติกรรมไว้ที่ `interco-aging.integration.spec.ts` ("carry ข: mirror ของ
+  swap ยุค legacy ที่ไม่มี stamp").
 - **จัดลำดับก่อนตัดบรรทัด**: คำอธิบาย Todo ตัดที่ 20 บรรทัด แต่เรียงตามความรุนแรงก่อน
   (`NEGATIVE_TYPED` → `ACCOUNT_DRIFT` → `SWAP_CREDIT_ONE_BOOK` → `BOOK_MISMATCH` →
   `PAYABLE_PAIR_MISMATCH`) — ห้ามให้ความไม่ตรงเชิงโครงสร้างที่รู้สาเหตุแล้วมาดันเงินที่
@@ -2318,6 +2345,20 @@ title + ยังไม่ `DONE` ⇒ รันซ้ำ/รันมือใ�
   (`contract.storeCommission ?? 0`) ⇒ ค่าคอมโผล่สมุดเดียว. **เป็นความต่างจริงในบัญชี
   (opening-balance gap ตาม interco spec §11) ไม่ใช่ artifact ของการอ่าน** — ยังเปิดอยู่
   รอเจ้าของ/CPA (ดู "ยังเปิดอยู่ → Phase 5" ในหัวข้อ Inter-Co ด้านบน).
+- **footer ของ Todo เป็น kind-aware (final review Phase 4)** — `NEGATIVE_TYPED` /
+  `PAYABLE_PAIR_MISMATCH` / `ACCOUNT_DRIFT` **ไม่ปรากฏบนแท็บ "อายุลูกหนี้หน้าร้าน"** เลย
+  (แท็บกรองด้วย `isReportableAgingRow` = ยอดบวก/สองสมุดไม่ตรง ⇒ เคส over-settle **สมมาตร**
+  ซึ่งเป็น headline ของ carry d ถูกกรองออกโดยโครงสร้าง; pairing ยังไม่มี endpoint/หน้าจอ;
+  drift เป็นระดับบัญชี) ⇒ ใบ Todo ประกาศชัดว่า "ไม่แสดงบนแท็บ: <kind> — ใช้ข้อมูลในใบนี้"
+  และชี้แท็บเฉพาะเมื่อมี kind ที่แท็บแสดงจริง (`SWAP_CREDIT_ONE_BOOK` / `BOOK_MISMATCH`);
+  บรรทัด "และอีก N รายการ" ก็เลิกอ้างแท็บเมื่อรายการที่ถูกตัดมี kind นอกแท็บปน. แหล่งความ
+  จริงเดียวคือ `OFF_TAB_KINDS` ใน `interco-reconcile.cron.ts` — เพิ่ม kind ใหม่เมื่อไรต้อง
+  ตัดสินพร้อมกันว่ามันอยู่บนแท็บหรือไม่.
+- **กลุ่มที่ถูกยุบต้องมีเลขสัญญาถึงคน** — `COMMISSION_ONLY_GAP` ไม่กินโควตารายบรรทัดและไม่มี
+  หน้าจอของตัวเอง ⇒ บรรทัดสรุปพิมพ์ **10 เลขแรก + "และอีก N สัญญา"** และ Sentry `extra` มี
+  `patternCommissionOnlyContracts` (สูงสุด 50 เลข) คู่กับ counter เดิม. ก่อนหน้านี้กลุ่มที่มี
+  จำนวนมากที่สุดเป็นกลุ่มเดียวที่ไม่มีเลขสัญญาบันทึกไว้ที่ไหนเลย (บรรทัดสรุปชี้ไปแท็บที่ไม่มี
+  ข้อมูลกลุ่มนี้).
 - **ไม่ผูกกับเกณฑ์วันของ alert รายวัน** — reconcile ไม่อ่าน
   `shop_receivable_aging_alert_days` เลย: สัญญาที่ผิดปกติแต่ยังไม่แก่พอ (หรือ operator ตั้ง
   เกณฑ์ไว้สูงจนแท็บ UI กับ cron รายวันมองต่างกัน) ก็ยังโผล่ที่นี่ทุกเดือนเสมอ.
@@ -2353,6 +2394,25 @@ warning ที่ยิงเอง** (`SentryExceptionFilter` จับเฉ�
 จาก monitoring ถ้าไม่ยิง; จำเป็นเป็นพิเศษกับ Serializable ที่เพิ่งเปิดใช้ เพราะ spike ของ
 P2034 = lock contention จริงที่ต้องรู้ก่อนจะกวนงานอนุมัติของผู้ใช้ — pattern เดียวกับ
 `shop-collect-settlement.template.ts`). tx ทั้งก้อน roll back ⇒ ไม่มีทางอนุมัติซ้ำสองรอบ.
+
+**ผลข้างเคียงที่ต้องเฝ้า — SIRead lock ของ `approveBatch` กว้างกว่าที่คิด:** drift guard
+(ขั้นตอน 3) ยิง GL aggregate **6 ครั้งต่อแถว SETTLEMENT** (21-1101 / 21-1102 / S11-3001 /
+S11-3002 / typed swap สองสมุด) และ 2 ครั้งต่อแถว RECALL บวก Σ deduction ⇒ **รอบ 20 สัญญา ≈
+120-150 filtered scan บน `journal_lines` ภายใน tx เดียว**. ใต้ Serializable ทุก scan ทิ้ง
+SIRead lock ไว้ และ Postgres **escalate page → relation** เมื่อ lock ต่อ tx เยอะเกิน
+(`max_pred_locks_per_*`) ⇒ ช่วงที่ผู้อนุมัติกดปุ่ม writer Serializable **ตัวอื่น** ที่แตะ
+`journal_lines` กลายเป็นคู่ conflict ได้ทั้งที่ทำงานคนละสัญญากันเลย. ตัวที่เข้าข่าย (เป็น
+Serializable อยู่แล้วทั้งหมด): `payment-receipt-orchestrator.ts` ·
+`installment-accrual-2a.template.ts` (cron 00:01) · `repossessions.service.ts` ·
+`reschedule-collect.service.ts` · `paysolutions-webhook.service.ts` — และ **ไม่มีตัวไหนแปลง
+`P2034` เลย** (ตรวจแล้ว 2026-08-21: P2034 translation มีเฉพาะ interco / shop-collect /
+refund / sale-writer / po-receiving / reservation-preempt) ⇒ ผู้แพ้ฝั่งนั้นได้ **raw 500**
+ไม่ใช่ข้อความไทย และผู้ใช้จะเห็นเป็น "บันทึกชำระไม่ผ่าน" ลอย ๆ.
+
+สัญญาณที่ต้องเฝ้า: **spike ของ Sentry `[interco] P2034 write-conflict translated to 409`** —
+ถ้าขึ้นบ่อยแปลว่า lock contention จริงเกิดแล้ว และ**ถึงเวลาต้องเติม P2034 translation ที่
+เส้นทางรับชำระ** (รายการ Phase 5). ทางลดแรงกดที่ทำได้โดยไม่ลด isolation: อนุมัติรอบใหญ่ ๆ
+นอกเวลาที่ cron 2A ทำงาน หรือแบ่งรอบให้เล็กลง.
 
 เส้นทางคู่ขนาน: **`approveCancellation` แปลง `P2002` เป็น 409 ไทย** — ผู้แพ้ของ
 double-approve ที่อ่านสถานะ **ก่อน** คำขอแรก commit จะผ่าน guard "สัญญาต้อง ACTIVE" ที่อ่าน

@@ -46,9 +46,26 @@ export interface ReconcileFinding {
 export type ReconcileFindingPattern = 'COMMISSION_ONLY_GAP';
 
 export interface ReconcileTickResult {
+  /**
+   * `false` = kill switch `interco_reconcile_enabled` ปิดอยู่ ⇒ **ไม่ได้ตรวจ
+   * อะไรเลย** และวิธีแก้คือเปิดค่านั้น. ห้ามใช้ค่านี้แทน "พัง" (ดู `failed`) —
+   * ผลของ tick() ขับข้อความบนหน้าจอตั้งแต่ Phase 5 (ปุ่มสั่งรันกระทบยอด) การ
+   * คืน `enabled:false` ตอน crash จะส่งคนไปแก้ SystemConfig ที่ถูกอยู่แล้ว.
+   */
   enabled: boolean;
   findings: ReconcileFinding[];
   todoCreated: boolean;
+  /**
+   * `true` = รอบนี้ล้มเหลว (DB/service พัง) — ผลที่คืนมาจึง **ไม่ครบ** ไม่ใช่
+   * "ตรวจแล้วไม่เจออะไร". สาเหตุจริงอยู่ใน Sentry (`captureException` แท็ก
+   * `cron: 'interco-reconcile'`). ไม่ตั้งค่าเลยในรอบปกติ (undefined).
+   */
+  failed?: boolean;
+}
+
+/** ตัวเลือกของ `tick()` — `manual` = มาจากปุ่มสั่งรัน ไม่ใช่ scheduler รายเดือน */
+export interface ReconcileTickOptions {
+  manual?: boolean;
 }
 
 /**
@@ -202,9 +219,19 @@ export class IntercoReconcileCron {
     private readonly pending: IntercoPendingService,
   ) {}
 
-  /** เดือนละครั้ง วันที่ 1 เวลา 08:00 BKK (spec §6 ข้อ 3). */
+  /**
+   * เดือนละครั้ง วันที่ 1 เวลา 08:00 BKK (spec §6 ข้อ 3) — และเป็นตัวเดียวกับที่
+   * ปุ่ม "สั่งรันกระทบยอดตอนนี้" เรียก (`POST /interco-settlement/reconcile/run`,
+   * `manual: true`) เพื่อให้ dedup Todo / kill switch เป็นชุดเดียวกัน.
+   *
+   * `manual` เปลี่ยนอย่างเดียวคือ **เกณฑ์ยิง Sentry**: scheduler ยิงได้เสมอเพราะ
+   * เดือนละครั้ง แต่ปุ่มกดกี่ครั้งก็ได้ต่อวัน ⇒ ยิงเฉพาะตอนที่ "มีของใหม่" (สร้าง
+   * Todo ใบใหม่ได้จริง) ไม่งั้น Sentry กลายเป็น heartbeat จนคนเลิกอ่าน (หลัก
+   * เดียวกับ `alarm()` หลัง dedup ใน `shop-receivable-aging.cron.ts`).
+   */
   @Cron('0 8 1 * *', { timeZone: 'Asia/Bangkok' })
-  async tick(): Promise<ReconcileTickResult> {
+  async tick(options?: ReconcileTickOptions): Promise<ReconcileTickResult> {
+    const manual = options?.manual === true;
     try {
       const enabled = await readBoolFlag(this.prisma, 'interco_reconcile_enabled', true);
       if (!enabled) {
@@ -227,29 +254,34 @@ export class IntercoReconcileCron {
             .map(([kind, n]) => `${KIND_LABEL[kind as ReconcileFindingKind]} ${n}`)
             .join(' · '),
       );
-      const patternSummary = summarizePatterns(findings);
-      Sentry.captureMessage('Interco monthly reconcile mismatches', {
-        level: 'warning',
-        tags: { subsystem: 'interco-netting' },
-        extra: {
-          period,
-          total: findings.length,
-          ...counts,
-          // นับแยกจาก kind: รูปแบบที่รู้จักจะบวมขึ้นเรื่อย ๆ ตามจำนวนสัญญา
-          // ถ้าปนกับ kind จะอ่านกราฟ Sentry ไม่ออกว่าของจริงเพิ่มหรือไม่
-          patternCommissionOnly: patternSummary.COMMISSION_ONLY_GAP?.count ?? 0,
-          patternCommissionOnlyTotal: (
-            patternSummary.COMMISSION_ONLY_GAP?.total ?? new Prisma.Decimal(0)
-          ).toFixed(2),
-          // เลขสัญญาของกลุ่มที่ถูกยุบ — ช่องทางที่สองคู่กับบรรทัดสรุปใน Todo
-          // (กลุ่มนี้ไม่มีหน้าจอ ⇒ ถ้าไม่ส่งมาที่นี่ เลขสัญญาจะไม่ถึงคนเลย)
-          patternCommissionOnlyContracts: (
-            patternSummary.COMMISSION_ONLY_GAP?.contractNumbers ?? []
-          ).slice(0, MAX_PATTERN_CONTRACTS_IN_SENTRY),
-        },
-      });
-
       const todoCreated = await this.upsertMonthlyTodo(period, findings);
+
+      // scheduler: ยิงเสมอ (เดือนละครั้ง — และถ้า Todo สร้างไม่ได้ Sentry คือ
+      // ช่องทางเดียวที่เหลือ). manual: ยิงเฉพาะรอบที่ได้ Todo ใบใหม่จริง
+      if (!manual || todoCreated) {
+        const patternSummary = summarizePatterns(findings);
+        Sentry.captureMessage('Interco monthly reconcile mismatches', {
+          level: 'warning',
+          tags: { subsystem: 'interco-netting' },
+          extra: {
+            period,
+            total: findings.length,
+            ...counts,
+            // นับแยกจาก kind: รูปแบบที่รู้จักจะบวมขึ้นเรื่อย ๆ ตามจำนวนสัญญา
+            // ถ้าปนกับ kind จะอ่านกราฟ Sentry ไม่ออกว่าของจริงเพิ่มหรือไม่
+            patternCommissionOnly: patternSummary.COMMISSION_ONLY_GAP?.count ?? 0,
+            patternCommissionOnlyTotal: (
+              patternSummary.COMMISSION_ONLY_GAP?.total ?? new Prisma.Decimal(0)
+            ).toFixed(2),
+            // เลขสัญญาของกลุ่มที่ถูกยุบ — ช่องทางที่สองคู่กับบรรทัดสรุปใน Todo
+            // (กลุ่มนี้ไม่มีหน้าจอ ⇒ ถ้าไม่ส่งมาที่นี่ เลขสัญญาจะไม่ถึงคนเลย)
+            patternCommissionOnlyContracts: (
+              patternSummary.COMMISSION_ONLY_GAP?.contractNumbers ?? []
+            ).slice(0, MAX_PATTERN_CONTRACTS_IN_SENTRY),
+          },
+        });
+      }
+
       return { enabled: true, findings, todoCreated };
     } catch (outerErr) {
       // DB/service ล่มทั้งก้อน — ห้ามทำให้ scheduler ตาย, เดือนหน้าลองใหม่เอง
@@ -262,7 +294,11 @@ export class IntercoReconcileCron {
           outerErr instanceof Error ? outerErr.message : String(outerErr)
         }`,
       );
-      return { enabled: false, findings: [], todoCreated: false };
+      // **ห้ามคืน `enabled: false` ตรงนี้** — ค่านั้นมีความหมายเดียวคือ "สวิตช์
+      // ปิดอยู่ ยังไม่ได้ตรวจอะไรเลย" ซึ่งขับข้อความบนหน้าจอให้ไปแก้ SystemConfig
+      // ที่ถูกอยู่แล้ว. `failed` คือคำตอบที่ตรงความจริง: ตรวจไม่จบ ผลไม่ครบ
+      // สาเหตุอยู่ใน Sentry (ผู้ใช้ทำได้แค่ลองใหม่/แจ้งผู้ดูแล).
+      return { enabled: true, findings: [], todoCreated: false, failed: true };
     }
   }
 

@@ -1205,8 +1205,11 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   `approveCancellation` เป็น Serializable + แปลง **P2034 → 409 ไทย** (log warn + Sentry
   warning ที่ยิงเอง เพราะ `SentryExceptionFilter` จับเฉพาะ ≥500) — ขา `P2002 → 409` เดิม
   ยังอยู่ครบ. **หมายเหตุ**: การยกเลิกจึงกลายเป็น writer Serializable ตัวที่สี่ของตระกูลนี้
-  (คู่กับ `approveBatch`/`settleRecallCash`) — ผลข้างเคียง SIRead lock ให้ดูหัวข้อ
-  "ผลข้างเคียงที่ต้องเฝ้า" ท้ายไฟล์ (ยังไม่มีตัวไหนบนเส้นทางรับชำระแปลง P2034).
+  (คู่กับ `approveBatch`/`settleRecallCash`) และ SIRead lock ของมัน **ไม่ได้แคบแค่ระดับสัญญา**
+  — filter เป็นต่อสัญญา แต่ predicate lock เกิดตาม heap scan บน `journal_entries.metadata`
+  ที่ไม่มี index จึง escalate ถึงระดับ relation ได้เหมือน `approveBatch` (ต่างกันที่ความถี่
+  เท่านั้น) ⇒ ผลข้างเคียงให้ดูหัวข้อ "ผลข้างเคียงที่ต้องเฝ้า" ท้ายไฟล์
+  (ยังไม่มีตัวไหนบนเส้นทางรับชำระแปลง P2034).
 - **`swapCreditShopBalance` / Query B ฝั่ง S21-3001 เป็น stamp-only ไม่มี flow fallback** —
   ทั้งที่ `FLOW_MAP` map `'shop-exchange-return' → 'SWAP_CREDIT'` ⇒ SQL ฝั่ง SHOP **แคบกว่า
   `classifyShopReceivable` โดยตั้งใจ** (asymmetry กับฝั่ง 11-2107 ที่มี fallback). ปลอดภัย
@@ -1219,7 +1222,9 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   writer Serializable ตัวอื่น (`payment-receipt-orchestrator` / `installment-accrual-2a` /
   `repossessions` / `reschedule-collect` / `paysolutions-webhook`) กลายเป็นผู้แพ้ race ได้
   และ **ไม่มีตัวไหนแปลง P2034** ⇒ raw 500. **ทริกเกอร์ที่ให้ลงมือ: spike ของ Sentry
-  `[interco] P2034 write-conflict translated to 409`** — อย่าเติมล่วงหน้าแบบเหวี่ยงแห
+  `[interco] P2034 write-conflict translated to 409` หรือ `[cancellation] P2034 …`**
+  (ตั้งแต่ Phase 5 การยกเลิกสัญญาเป็น Serializable writer อีกตัว และ predicate lock ของมัน
+  ก็ escalate ได้เช่นกัน) — อย่าเติมล่วงหน้าแบบเหวี่ยงแห
   ให้เติมทั้งเส้นทางเมื่อเห็นสัญญาณจริง (pattern เดียวกับ `approveCancellation` ที่รอเคสจริง
   ก่อนยก isolation).
 - **แถวผีของ swap ยุค legacy ที่ถูกยกเลิก** (mirror ไม่มี stamp) — วันนี้ = false alarm
@@ -2489,8 +2494,20 @@ approveBatch เขียน ส่วน approveBatch อ่าน GL 21-1101/2
 เขียน ⇒ rw-conflict สองทิศ) และ **พิสูจน์แล้วว่าเคยสำเร็จพร้อมกันได้จริง** จนเจ้าหนี้ติดลบ
 (เทสสองคอนเนกชันใน `contract-cancellation.integration.spec.ts`). ผู้แพ้ได้ **409 ไทย** +
 Sentry `[cancellation] P2034 write-conflict translated to 409` — เฝ้าคู่กับตัว `[interco]`
-ด้วยเกณฑ์เดียวกัน. SIRead lock ที่เพิ่มมามีขอบเขตแค่ต่อสัญญา (sweep + glContractBalance ของ
-สัญญาเดียว) และการยกเลิกเป็นงานมืออนุมัติทีละใบ — แรงกดต่ำกว่า `approveBatch` มาก.
+ด้วยเกณฑ์เดียวกัน (สองสตริงนี้คือ trigger ชุดเดียวกันของงาน "เติม P2034 translation ที่
+เส้นทางรับชำระ" — spike ของตัวใดตัวหนึ่งก็นับ).
+
+**ขอบเขตของ SIRead lock ที่เพิ่มมา — filter ต่อสัญญา แต่ predicate ระดับ relation:** ตัวกรอง
+เชิงตรรกะเป็นต่อสัญญาจริง (sweep candidates + `glContractBalance` ของสัญญาเดียว) **แต่ SIRead
+lock เกิดตามสิ่งที่ scan จริง ไม่ใช่ตามเงื่อนไข WHERE**: ทั้งสอง query กรองด้วย
+`journal_entries.metadata->>'contractId'` ซึ่ง **ไม่มี index (GIN หรืออื่นใด) บน `metadata`**
+⇒ เป็น heap scan ที่ทิ้ง predicate lock กว้างบน `journal_entries`/`journal_lines` และ
+**escalate page → relation** ได้ด้วยกลไกเดียวกับที่บันทึกไว้ให้ `approveBatch` ("ผลข้างเคียง
+ที่ต้องเฝ้า" ท้ายไฟล์). คำตัดสิน "ยกเป็น Serializable" ยังถูก — แต่เหตุผลคือ **ความถี่**
+(งานมืออนุมัติทีละใบ ไม่กี่ครั้ง/สัปดาห์) ไม่ใช่ "lock แคบ". อย่าอ่านหัวข้อนี้แล้วสรุปว่าการ
+ยกเลิกสัญญาชนกับ writer อื่นไม่ได้: ระหว่างที่มันรัน `payment-receipt-orchestrator` /
+`installment-accrual-2a` (cron 00:01) และเพื่อน Serializable ตัวอื่นเป็นผู้แพ้ race ได้จริง
+และ **ยังไม่มีตัวไหนบนเส้นทางรับชำระแปลง P2034** ⇒ ผู้แพ้ฝั่งนั้นได้ raw 500.
 
 ### Trial balance — ไม่ต้องแก้ (ยืนยันตาม spec §6 ข้อ 4)
 

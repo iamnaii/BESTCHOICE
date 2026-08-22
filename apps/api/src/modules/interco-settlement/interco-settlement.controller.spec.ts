@@ -262,11 +262,32 @@ describe('IntercoSettlementController', () => {
     it('runReconcile() เรียก tick() ของ cron ตัวเดิม (dedup Todo ชุดเดียวกัน) + คืนสรุปตาม kind', async () => {
       const result = await controller.runReconcile();
       expect(reconcileCron.tick).toHaveBeenCalledTimes(1);
+      // manual = ปุ่มกดได้ไม่จำกัด ⇒ tick ต้องรู้ว่าอย่าทำ Sentry เป็น heartbeat
+      expect(reconcileCron.tick).toHaveBeenCalledWith({ manual: true });
       expect(result.enabled).toBe(true);
       expect(result.todoCreated).toBe(true);
       expect(result.total).toBe(2);
       expect(result.counts).toEqual({ NEGATIVE_TYPED: 1, ACCOUNT_DRIFT: 1 });
       expect(result.findings).toHaveLength(2);
+    });
+
+    // Phase 5 Task 6 (Task 5 review, Important A): หน้าจออ่าน `failed` เพื่อไม่
+    // ให้ข้อความ "ถูกปิดไว้ ให้ผู้ดูแลเปิดค่าใน DB" ไปทับสาเหตุจริงที่คือ crash
+    it('runReconcile() ส่งต่อ failed ของ tick() ให้หน้าจอ (พัง ≠ ถูกปิดไว้)', async () => {
+      reconcileCron.tick.mockResolvedValueOnce({
+        enabled: true,
+        todoCreated: false,
+        findings: [],
+        failed: true,
+      });
+      const result = await controller.runReconcile();
+      expect(result.failed).toBe(true);
+      expect(result.enabled).toBe(true);
+    });
+
+    it('runReconcile() รอบปกติ → ไม่มี failed (undefined) ไม่ใช่ true', async () => {
+      const result = await controller.runReconcile();
+      expect(result.failed).toBeUndefined();
     });
 
     it('runReconcile() เมื่อ kill switch ปิด → enabled=false, ไม่มี findings (tick เป็นคนตัดสิน)', async () => {

@@ -177,6 +177,84 @@ describe('ReconcileTab', () => {
     expect(screen.getByText(/มีใบงานค้างอยู่แล้ว/)).toBeInTheDocument();
   });
 
+  // Phase 5 Task 6 (Task 5 review, Important A): tick() คืน enabled=false เมื่อ
+  // crash ด้วย ⇒ ข้อความเดิมส่งคนไปแก้ SystemConfig ที่ถูกอยู่แล้ว
+  it('tick ล้มเหลว → บอกว่า "ตรวจไม่จบ" ไม่ใช่ "ถูกปิดไว้"', () => {
+    render(
+      <ReconcileTab
+        {...baseProps}
+        data={mkData()}
+        lastRun={{
+          enabled: true,
+          failed: true,
+          todoCreated: false,
+          total: 0,
+          counts: {},
+          findings: [],
+        }}
+      />,
+    );
+    expect(screen.getByText(/ตรวจไม่จบรอบ/)).toBeInTheDocument();
+    expect(screen.queryByText(/interco_reconcile_enabled/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ตรงทุกรายการ/)).not.toBeInTheDocument();
+  });
+
+  it('tick ล้มเหลวชนะทุกกรณี — แม้ enabled=false ก็ห้ามบอกว่าถูกปิดไว้', () => {
+    render(
+      <ReconcileTab
+        {...baseProps}
+        data={mkData()}
+        lastRun={{
+          enabled: false,
+          failed: true,
+          todoCreated: false,
+          total: 0,
+          counts: {},
+          findings: [],
+        }}
+      />,
+    );
+    expect(screen.getByText(/ตรวจไม่จบรอบ/)).toBeInTheDocument();
+    expect(screen.queryByText(/interco_reconcile_enabled/)).not.toBeInTheDocument();
+  });
+
+  // minor: บรรทัด "รายการระดับบัญชี" ถูกพิมพ์ทุกครั้งที่ total > 0 แม้ไม่มี
+  // ACCOUNT_DRIFT เลย (counts มีให้ใช้อยู่แล้ว)
+  it('ไม่มี ACCOUNT_DRIFT → ไม่พิมพ์บรรทัด "รายการระดับบัญชี"', () => {
+    render(
+      <ReconcileTab
+        {...baseProps}
+        data={mkData()}
+        lastRun={{
+          enabled: true,
+          todoCreated: true,
+          total: 2,
+          counts: { NEGATIVE_TYPED: 2 },
+          findings: [],
+        }}
+      />,
+    );
+    expect(screen.getByText(/พบ 2 รายการไม่ตรง/)).toBeInTheDocument();
+    expect(screen.queryByText(/รายการระดับบัญชี/)).not.toBeInTheDocument();
+  });
+
+  it('มี ACCOUNT_DRIFT → พิมพ์บรรทัด "รายการระดับบัญชี" (ไม่มีเลขสัญญาให้ดูบนแท็บ)', () => {
+    render(
+      <ReconcileTab
+        {...baseProps}
+        data={mkData()}
+        lastRun={{
+          enabled: true,
+          todoCreated: true,
+          total: 2,
+          counts: { NEGATIVE_TYPED: 1, ACCOUNT_DRIFT: 1 },
+          findings: [],
+        }}
+      />,
+    );
+    expect(screen.getByText(/รายการระดับบัญชี/)).toBeInTheDocument();
+  });
+
   it('รันแล้วตรงทุกรายการ → ข้อความยืนยันเชิงบวก', () => {
     render(
       <ReconcileTab

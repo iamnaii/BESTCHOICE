@@ -10,6 +10,7 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   IntercoAgingService,
+  MISSING_CONTRACT_LABEL,
   ShopReceivableAgingRow,
   ShopReceivableAgingResult,
   isShopReceivableOverdue,
@@ -295,6 +296,76 @@ describe('ShopReceivableAgingCron', () => {
     expect(dedupArgs.where.tags).toEqual({ has: AGING_TODO_TAG });
     expect(dedupArgs.where.status).toEqual({ not: 'DONE' });
     expect(dedupArgs.where.deletedAt).toBeNull();
+  });
+
+  // Phase 5 Task 6 (Task 5 review, minor): แถวที่ hydrate สัญญาไม่ได้ทุกแถวมี
+  // contractNumber เดียวกัน ('(ไม่พบสัญญา)') ⇒ dedup ที่ค้นด้วยเลขสัญญาตรง ๆ จะ
+  // ยุบแถวผีที่สองเข้ากับใบแรก และเพราะ alarm อยู่หลัง dedup probe (Phase 4)
+  // แถวที่ถูกยุบจะเงียบทั้ง Todo และ Sentry
+  it('แถวผี (ไม่พบสัญญา) หลายแถว → คนละใบงาน ไม่ยุบเข้ากัน (dedup ต้องแยกด้วย contractId)', async () => {
+    const ghost = (id: string) =>
+      makeRow({
+        contractId: id,
+        contractNumber: MISSING_CONTRACT_LABEL,
+        customerName: '',
+        payoutRecallGross: D('5000.00'),
+        intercoNet: D('5000.00'),
+        intercoOldestPostedAt: new Date('2026-01-01T00:00:00.000Z'),
+        intercoAgeDays: 200,
+      });
+    aging.getShopReceivableAging.mockImplementation(async (_asOf: Date, thresholdDays = 30) =>
+      buildResult([ghost('ghost-a'), ghost('ghost-b')], thresholdDays),
+    );
+
+    const result = await cron.tick();
+
+    expect(result.flagged).toBe(2);
+    expect(result.todosCreated).toBe(2);
+    expect(prisma.todo.create).toHaveBeenCalledTimes(2);
+    expect(sentryCalls(ROW_ALERT_MSG)).toHaveLength(2);
+
+    // คีย์ dedup ต้องแยกกันจริง (ไม่ใช่ '(ไม่พบสัญญา)' ทั้งคู่)
+    const probes = prisma.todo.findFirst.mock.calls.map(
+      (c: [{ where: { title: { contains: string } } }]) => c[0].where.title.contains,
+    );
+    expect(new Set(probes).size).toBe(2);
+    expect(probes[0]).toContain('ghost-a');
+    expect(probes[1]).toContain('ghost-b');
+
+    // และหัวเรื่องต้องแยกกันด้วย ไม่งั้นรอบถัดไป dedup ก็ยังหากันไม่เจอ
+    const titles = prisma.todo.create.mock.calls.map(
+      (c: [{ data: { title: string } }]) => c[0].data.title,
+    );
+    expect(new Set(titles).size).toBe(2);
+  });
+
+  it('แถวผีใบเดิมค้างอยู่ → รอบถัดไป dedup เจอ ไม่สร้างซ้ำ', async () => {
+    aging.getShopReceivableAging.mockImplementation(async (_asOf: Date, thresholdDays = 30) =>
+      buildResult(
+        [
+          makeRow({
+            contractId: 'ghost-a',
+            contractNumber: MISSING_CONTRACT_LABEL,
+            customerName: '',
+            payoutRecallGross: D('5000.00'),
+            intercoNet: D('5000.00'),
+            intercoOldestPostedAt: new Date('2026-01-01T00:00:00.000Z'),
+            intercoAgeDays: 200,
+          }),
+        ],
+        thresholdDays,
+      ),
+    );
+    prisma.todo.findFirst.mockImplementation(
+      async ({ where }: { where: { title: { contains: string } } }) =>
+        where.title.contains.includes('ghost-a') ? { id: 'todo-existing' } : null,
+    );
+
+    const result = await cron.tick();
+
+    expect(result.todosCreated).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(sentryCalls(ROW_ALERT_MSG)).toHaveLength(0);
   });
 
   it('ไม่มี SYSTEM user → log + ไม่ throw (Sentry ยังยิงเตือน)', async () => {

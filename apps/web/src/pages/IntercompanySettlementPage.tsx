@@ -91,7 +91,11 @@ export default function IntercompanySettlementPage() {
       (await api.post('/interco-settlement/reconcile/run')).data as ReconcileRunResponse,
     onSuccess: (data) => {
       setLastRun(data);
-      if (!data.enabled) {
+      // `failed` มาก่อน `enabled` เสมอ — tick() ไม่ throw (doctrine) จึงรายงาน
+      // ความล้มเหลวผ่านฟิลด์นี้ ไม่ใช่ผ่าน error path ของ mutation
+      if (data.failed) {
+        toast.error('กระทบยอดไม่สำเร็จ — ตรวจไม่จบรอบ ระบบบันทึกข้อผิดพลาดไว้แล้ว ลองใหม่อีกครั้ง');
+      } else if (!data.enabled) {
         toast.error('การกระทบยอดถูกปิดไว้ (interco_reconcile_enabled) — ยังไม่ได้ตรวจอะไรเลย');
       } else if (data.total === 0) {
         toast.success('กระทบยอดแล้ว — ตรงทุกรายการ');

@@ -6,6 +6,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { readBoolFlag, readIntFlag } from '../../../utils/config.util';
 import {
   IntercoAgingService,
+  MISSING_CONTRACT_LABEL,
   ShopReceivableAgingRow,
   ShopReceivableOverdueArm,
   overdueArms,
@@ -33,6 +34,22 @@ interface ArmView {
   amount: Prisma.Decimal;
   ageDays: number;
   howTo: string;
+}
+
+/**
+ * ป้ายที่ใช้ทั้งใน **หัวเรื่อง Todo และคีย์ dedup** — ต้องเป็นตัวเดียวกันเสมอ.
+ *
+ * แถวที่ hydrate สัญญาไม่ได้ (M1 — GL ค้างแต่ไม่มีแถวสัญญารองรับ) ทุกแถวมี
+ * `contractNumber` เท่ากันหมดคือ `'(ไม่พบสัญญา)'` ⇒ dedup ที่ค้นด้วย
+ * `title contains contractNumber` จะยุบแถวผีใบที่สองขึ้นไปเข้ากับใบแรก และเพราะ
+ * `alarm()` ถูกย้ายไป**หลัง** dedup probe ตั้งแต่ Phase 4 (กัน Sentry heartbeat)
+ * แถวที่ถูกยุบจึงเงียบทั้ง Todo และ Sentry = หายไปทั้งสองช่องทาง.
+ * ต่อ `contractId` ให้แถวผีจึงเป็นเงื่อนไขที่ทำให้ dedup แยกแถวออกจากกันได้.
+ */
+function contractLabel(row: ShopReceivableAgingRow): string {
+  return row.contractNumber === MISSING_CONTRACT_LABEL
+    ? `${MISSING_CONTRACT_LABEL} ${row.contractId}`
+    : row.contractNumber;
 }
 
 /** 8000 → "8,000.00" (ผ่าน Decimal.toFixed — ไม่แปลงเป็น Number ตามกติกาเงิน) */
@@ -189,7 +206,8 @@ export class ShopReceivableAgingCron {
           const existing = await this.prisma.todo.findFirst({
             where: {
               tags: { has: AGING_TODO_TAG },
-              title: { contains: row.contractNumber },
+              // ต้องเป็นสตริงเดียวกับที่ `buildTitle` เขียนลงหัวเรื่อง
+              title: { contains: contractLabel(row) },
               status: { not: 'DONE' },
               deletedAt: null,
             },
@@ -278,7 +296,7 @@ export class ShopReceivableAgingCron {
   private buildTitle(row: ShopReceivableAgingRow, views: ArmView[]): string {
     const primary = views[0];
     return (
-      `ลูกหนี้-หน้าร้าน ${row.contractNumber} ค้างเกิน ${primary.ageDays} วัน ` +
+      `ลูกหนี้-หน้าร้าน ${contractLabel(row)} ค้างเกิน ${primary.ageDays} วัน ` +
       `(${primary.label} ${formatAmount(primary.amount)} บาท)`
     );
   }
@@ -295,7 +313,7 @@ export class ShopReceivableAgingCron {
     asOf: Date,
   ): string {
     const lines: string[] = [
-      `ลูกหนี้-หน้าร้าน (11-2107) ของสัญญา ${row.contractNumber} (${row.customerName}) ` +
+      `ลูกหนี้-หน้าร้าน (11-2107) ของสัญญา ${contractLabel(row)} (${row.customerName}) ` +
         `ค้างเกินเกณฑ์ ${thresholdDays} วัน:`,
     ];
 

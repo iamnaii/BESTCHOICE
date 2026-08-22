@@ -287,6 +287,18 @@ export function ReconcileTab({
 
 /** สรุปผลการสั่งรันครั้งล่าสุดในหน้าจอนี้ (ไม่ใช่สถานะถาวร — refresh แล้วหาย) */
 function RunSummary({ result }: { result: ReconcileRunResponse }) {
+  // **เช็ค `failed` ก่อน `enabled` เสมอ** — tick() ไม่ throw ตาม doctrine จึง
+  // รายงาน crash ผ่านฟิลด์นี้; ถ้าตกไปเข้ากิ่ง `!enabled` หน้าจอจะสั่งให้ไปแก้
+  // SystemConfig ที่ถูกอยู่แล้ว ขณะที่สาเหตุจริงอยู่ใน Sentry เท่านั้น
+  if (result.failed) {
+    return (
+      <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive leading-snug">
+        กระทบยอด<strong>ไม่สำเร็จ</strong> — ระบบตรวจไม่จบรอบ ผลที่แสดงจึงไม่ครบ
+        (ยังไม่ได้สร้างใบงานของเดือนนี้) · ระบบบันทึกข้อผิดพลาดไว้ให้ผู้ดูแลแล้ว —
+        กด "สั่งรันกระทบยอดตอนนี้" อีกครั้ง ถ้ายังไม่สำเร็จให้แจ้งผู้ดูแลระบบพร้อมเวลาที่กด
+      </div>
+    );
+  }
   if (!result.enabled) {
     return (
       <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning leading-snug">
@@ -317,8 +329,13 @@ function RunSummary({ result }: { result: ReconcileRunResponse }) {
         {result.todoCreated
           ? 'สร้างใบงาน (Todo) ของเดือนนี้แล้ว — ดูรายละเอียดครบทุกรายการที่เมนูใบงาน'
           : 'เดือนนี้มีใบงานค้างอยู่แล้ว จึงไม่สร้างซ้ำ — เปิดใบเดิมที่เมนูใบงาน'}
-        {' · '}
-        รายการระดับบัญชี (ยอดบัญชีอธิบายไม่ได้) ไม่มีเลขสัญญา จึงดูได้ในใบงาน/Sentry เท่านั้น
+        {/* พิมพ์เฉพาะเมื่อมี kind นั้นจริง — counts บอกอยู่แล้ว */}
+        {!!result.counts.ACCOUNT_DRIFT && (
+          <>
+            {' · '}
+            รายการระดับบัญชี (ยอดบัญชีอธิบายไม่ได้) ไม่มีเลขสัญญา จึงดูได้ในใบงาน/Sentry เท่านั้น
+          </>
+        )}
       </div>
     </div>
   );

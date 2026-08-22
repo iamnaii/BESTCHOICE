@@ -27,6 +27,11 @@ const D = (v: string | number) => new Prisma.Decimal(v);
 
 const RECONCILE_MSG = 'Interco monthly reconcile mismatches';
 
+/** อีเวนต์ warning ของรอบกระทบยอด (ไม่รวม captureException ของ crash) */
+function sentryWarnings(): unknown[][] {
+  return (Sentry.captureMessage as jest.Mock).mock.calls.filter((c) => c[0] === RECONCILE_MSG);
+}
+
 function kinds(findings: ReconcileFinding[]): ReconcileFindingKind[] {
   return findings.map((f) => f.kind);
 }
@@ -761,8 +766,99 @@ describe('IntercoReconcileCron', () => {
 
     const result = await cron.tick();
 
-    expect(result).toEqual({ enabled: false, findings: [], todoCreated: false });
+    expect(result).toEqual({ enabled: true, findings: [], todoCreated: false, failed: true });
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  // Phase 5 Task 6 (Task 5 review, Important A): ผลลัพธ์ของ tick() ขับข้อความบน
+  // หน้าจอแล้ว (ปุ่มสั่งรัน) — "พัง" กับ "ถูกปิดไว้" ต้องแยกกันได้ ไม่งั้นระบบ
+  // ส่งคนไปแก้ SystemConfig ที่ถูกอยู่แล้ว ขณะที่สาเหตุจริงอยู่ใน Sentry เท่านั้น
+  it('แยก "พัง" ออกจาก "ถูกปิดไว้": failed=true เฉพาะตอน crash, kill switch ไม่มี failed', async () => {
+    configValues['interco_reconcile_enabled'] = 'false';
+    const disabled = await cron.tick();
+    expect(disabled.enabled).toBe(false);
+    expect(disabled.failed).toBeUndefined();
+
+    configValues['interco_reconcile_enabled'] = 'true';
+    aging.getShopReceivableAging.mockRejectedValue(new Error('sql exploded'));
+    const crashed = await cron.tick();
+    expect(crashed.failed).toBe(true);
+    // ห้ามคืน enabled:false ตอน crash — ค่านั้นแปลว่า "สวิตช์ปิด ไม่ได้ตรวจอะไรเลย"
+    expect(crashed.enabled).toBe(true);
+  });
+
+  // อ่าน kill switch พังเป็นคนละเรื่องกับ tick พัง: `readBoolFlag` กลืน DB error
+  // แล้วคืน fallback (= เปิด) โดยตั้งใจ ⇒ blip ของ SystemConfig ต้องไม่ทำให้
+  // ระบบรายงานว่า "ถูกปิดไว้" (ซึ่งจะพาคนไปแก้ค่าที่ถูกอยู่แล้ว) — ตรวจต่อตามปกติ
+  it('อ่าน kill switch ไม่ได้ (DB blip) → fallback เปิด + ตรวจต่อ ไม่ใช่ "ถูกปิดไว้"', async () => {
+    prisma.systemConfig.findFirst.mockRejectedValue(new Error('db blip'));
+
+    const result = await cron.tick();
+
+    expect(result.enabled).toBe(true);
+    expect(result.failed).toBeUndefined();
+    expect(aging.getShopReceivableAging).toHaveBeenCalled();
+  });
+
+  // Phase 4 หลักการเดิม: Sentry ต้องไม่กลายเป็น heartbeat. cron เดือนละครั้งยิงได้
+  // เสมอ แต่ปุ่มสั่งรันกดกี่ครั้งก็ได้ต่อวัน — ยิงเฉพาะตอน "มีของใหม่" (Todo ใบใหม่)
+  it('สั่งรันเอง: Todo ถูก dedup → ไม่ยิง Sentry ซ้ำ (ปุ่มกดกี่ครั้งก็ได้)', async () => {
+    setup({
+      rows: [
+        makeRow({
+          contractId: 'c-mm',
+          contractNumber: 'CT-MM',
+          intercoNet: D('100.00'),
+          shopMirrorNet: D('0.00'),
+          bookMismatch: true,
+        }),
+      ],
+    });
+    prisma.todo.findFirst.mockResolvedValue({ id: 'todo-existing' });
+
+    const result = await cron.tick({ manual: true });
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.todoCreated).toBe(false);
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('สั่งรันเอง: สร้าง Todo ใบใหม่ได้ → ยังยิง Sentry (ของใหม่จริง)', async () => {
+    setup({
+      rows: [
+        makeRow({
+          contractId: 'c-mm',
+          contractNumber: 'CT-MM',
+          intercoNet: D('100.00'),
+          shopMirrorNet: D('0.00'),
+          bookMismatch: true,
+        }),
+      ],
+    });
+
+    const result = await cron.tick({ manual: true });
+
+    expect(result.todoCreated).toBe(true);
+    expect(sentryWarnings()).toHaveLength(1);
+  });
+
+  it('cron รายเดือน (ไม่ manual): Todo ถูก dedup ก็ยังยิง Sentry (เดือนละครั้ง ไม่ใช่ heartbeat)', async () => {
+    setup({
+      rows: [
+        makeRow({
+          contractId: 'c-mm',
+          contractNumber: 'CT-MM',
+          intercoNet: D('100.00'),
+          shopMirrorNet: D('0.00'),
+          bookMismatch: true,
+        }),
+      ],
+    });
+    prisma.todo.findFirst.mockResolvedValue({ id: 'todo-existing' });
+
+    await cron.tick();
+
+    expect(sentryWarnings()).toHaveLength(1);
   });
 
   it('ไม่แตะ GL — ไม่มีการเรียก journal/$transaction ใดๆ (รายงานอย่างเดียว)', async () => {

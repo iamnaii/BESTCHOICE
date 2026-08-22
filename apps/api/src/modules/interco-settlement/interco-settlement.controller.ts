@@ -125,20 +125,24 @@ export class IntercoSettlementController {
    * (ปิดอยู่ = คืน `enabled: false` ไม่ทำอะไร — เจตนา: สวิตช์เดียวคุมทั้งสอง
    * ช่องทาง ไม่มีทางลัดข้ามสวิตช์).
    *
-   * `tick()` ไม่ throw ออกมาตาม doctrine (DB ล่ม = คืน enabled:false + Sentry)
-   * ⇒ endpoint นี้จึงไม่ต้องมี error path ของตัวเอง. Roles ระดับ checker
-   * (OWNER/FM) เพราะมันเขียน Todo + ยิง Sentry ให้ทั้งองค์กรเห็น.
+   * `tick()` ไม่ throw ออกมาตาม doctrine (DB ล่ม = คืน `failed: true` + Sentry)
+   * ⇒ endpoint นี้จึงไม่ต้องมี error path ของตัวเอง **แต่ต้องส่ง `failed` ต่อ**:
+   * หน้าจอใช้แยก "พัง" ออกจาก "ถูกปิดไว้" — สองอย่างนี้มีวิธีแก้คนละทางโดย
+   * สิ้นเชิง (ลองใหม่/แจ้งผู้ดูแล vs เปิดค่าใน SystemConfig).
+   * Roles ระดับ checker (OWNER/FM) เพราะมันเขียน Todo + ยิง Sentry ให้ทั้ง
+   * องค์กรเห็น.
    */
   @Post('reconcile/run')
   @Roles('OWNER', 'FINANCE_MANAGER')
   async runReconcile() {
-    const result = await this.reconcileCron.tick();
+    const result = await this.reconcileCron.tick({ manual: true });
     const counts: Partial<Record<ReconcileFindingKind, number>> = {};
     for (const f of result.findings as ReconcileFinding[]) {
       counts[f.kind] = (counts[f.kind] ?? 0) + 1;
     }
     return {
       enabled: result.enabled,
+      failed: result.failed,
       todoCreated: result.todoCreated,
       total: result.findings.length,
       counts,

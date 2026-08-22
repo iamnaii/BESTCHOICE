@@ -983,6 +983,14 @@ export class ContractExchangeService {
 
     // 10. Audit — one event for the finalize (umbrella), one for the SHOP
     // ownership flip so it's greppable independently.
+    //
+    // ⚠ ทั้งสองใบนี้อยู่ **ใน `tx`** และปลอดภัยได้เพราะ **ไม่มี `userId`** เท่านั้น:
+    // `AuditService.log` คืนค่าตั้งแต่บรรทัดแรก (`if (!entry.userId) return`) จึงไม่
+    // เคยเปิด root `$transaction` ซ้อน. **อย่า "เติม userId" ให้มันเฉย ๆ** — นั่นคือ
+    // P2028 ตัวเดียวกับที่ Phase 5 Task 5 ข้อ 0 เพิ่งไล่แก้ไป 5 จุด (nested root-tx
+    // ⇒ pool starvation + audit หายเงียบ/แถวผีตอน rollback). ถ้าจะให้สองใบนี้มี
+    // ผู้ใช้จริง ต้องย้ายไปเรียก **หลัง tx commit** (pattern เดียวกับ FINALIZED
+    // audit ของ `ExchangeCancelService`) ไม่ใช่ส่ง userId เข้ามาที่นี่.
     await this.audit.log({
       action: 'EXCHANGE_FINALIZED',
       entity: 'contract_exchange_request',

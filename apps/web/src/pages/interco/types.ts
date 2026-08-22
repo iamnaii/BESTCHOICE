@@ -172,6 +172,12 @@ export const RECONCILE_KIND_LABEL: Record<ReconcileFindingKind, string> = {
 export interface ReconcileRunResponse {
   /** false = kill switch `interco_reconcile_enabled` ปิดอยู่ — tick ไม่ทำอะไรเลย */
   enabled: boolean;
+  /**
+   * true = รอบนี้พัง (DB/service) ⇒ ผลไม่ครบ. **ต้องเช็คก่อน `enabled` เสมอ**:
+   * สองสถานะนี้มีวิธีแก้คนละทาง (ลองใหม่/แจ้งผู้ดูแล vs เปิดค่าใน SystemConfig)
+   * และการสลับกันจะส่งคนไปแก้ค่าที่ถูกอยู่แล้ว.
+   */
+  failed?: boolean;
   /** false = เดือนนี้มีใบงานค้างอยู่แล้ว (dedup) หรือไม่มีสิ่งผิดปกติ */
   todoCreated: boolean;
   total: number;

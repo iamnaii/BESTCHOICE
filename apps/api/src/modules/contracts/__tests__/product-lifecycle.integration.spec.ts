@@ -19,6 +19,8 @@
  *   3. `sale-writer.service.ts` — POS ขายได้เฉพาะ `IN_STOCK`
  *   4. `product-enter-stock.util.ts` — ประตูเข้า `IN_STOCK` ต้องยืนยันราคา + audit + stockInDate
  *   5. partial unique index `products_imei_serial_active_unique` — IMEI ซ้ำบนแถวที่ยังไม่ถูกลบ
+ *   6. `product-hold.util.ts` action `RESTORE_TO_CONTRACT` (final review I-1) — ยกเลิกเปลี่ยน
+ *      เครื่องต้องไม่ชุบชีวิตสัญญาเดิมบนเครื่องที่ถูกขาย/จองไปแล้ว
  *
  * Runner: vitest (jest ignore `*.integration.spec.ts`). ต้องมี DB จริง:
  *   cd apps/api && npx vitest run --no-file-parallelism \
@@ -40,6 +42,7 @@ import { ProductsService } from '../../products/products.service';
 import { SalesService } from '../../sales/sales.service';
 import { RepossessionsService } from '../../repossessions/repossessions.service';
 import { ContractExchangeService } from '../../contract-exchange/contract-exchange.service';
+import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { AuditService } from '../../audit/audit.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
@@ -97,6 +100,15 @@ const exchangeService = new ContractExchangeService(
   null as never, // shopAccountResolver — PRICED only
 );
 
+// ยกเลิกเปลี่ยนเครื่อง — เคส MEMO ไม่มี JE เลย จึงไม่ต้องมี reversal template
+// (`ExchangeCancelReversalTemplate` ถูกเรียกเฉพาะเส้น FINALIZED/PRICED)
+const exchangeCancelService = new ExchangeCancelService(
+  prisma as never,
+  audit,
+  companyResolver,
+  null as never, // reversalTemplate — PRICED/FINALIZED only
+);
+
 // ยึดเครื่อง: สัญญาที่ใช้ในเทสไม่มีแถว `Payment` ⇒ outstandingBalance = 0 ⇒ JP5 + ใบลดหนี้
 // ไม่ถูกเรียกเลย (`if (outstandingBalance.greaterThan(0))`) — deps เหล่านั้นจึงเป็น null
 const repossessionsService = new RepossessionsService(
@@ -116,6 +128,8 @@ const ACTIVATE_GUARD_MSG = 'สินค้าไม่พร้อมสำห�
 const POS_GUARD_MSG = 'สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว';
 const DELETE_GUARD_MSG = 'ลบไม่ได้';
 const IDENTITY_GUARD_MSG = 'แก้ IMEI ไม่ได้';
+// final review I-1 — ด่าน `RESTORE_TO_CONTRACT` ของ `product-hold.util.ts`
+const RESTORE_GUARD_MSG = 'ยกเลิกเปลี่ยนเครื่องไม่ได้';
 
 const PREFIX = 'LIFECYCLETEST-';
 const RUN = Date.now().toString(36).toUpperCase();
@@ -635,6 +649,79 @@ describe('State diagram ของเครื่อง — flow จริงบ�
       expect(
         (await prisma.repossession.findUniqueOrThrow({ where: { id: repossession.id } })).status,
       ).toBe('SOLD');
+    },
+    180_000,
+  );
+
+  // -------------------------------------------------------------------------
+  // Final review I-1 — รูข้าม task: Task 3 (ปุ่มนำเข้าคลัง) + คำตัดสินเจ้าของ 2026-07-31
+  // (ยกเลิก swap ได้ทุกเมื่อ) ต่อกันเป็นเส้นทางเดินได้จริงไปสู่ "เครื่องเดียวสองเจ้าของ"
+  // -------------------------------------------------------------------------
+  it(
+    'ยกเลิกเปลี่ยนเครื่อง (MEMO) หลังเครื่องเก่าถูกขายที่ POS ไปแล้ว → ถูกปฏิเสธ (ไม่ชุบชีวิตสัญญาบนเครื่องของคนอื่น)',
+    async () => {
+      const sameModel = { brand: `${PREFIX}Brand`, model: `${PREFIX}Model-F`, storage: '128GB' };
+      const oldProduct = await seedProduct('F1', {
+        ...sameModel,
+        cashPrice: '15900.00',
+        installmentPrice: '12000.00',
+      });
+      const newProduct = await seedProduct('F2', { ...sameModel, installmentPrice: '12000.00' });
+      const customer = await seedCustomer('F1');
+      const buyer = await seedCustomer('F2');
+      const contract = await seedSignedDraftContract('F1', customer.id, oldProduct.id);
+      await workflow.activate(contract.id);
+
+      const request = (await exchangeService.submit(
+        {
+          oldContractId: contract.id,
+          oldProductId: oldProduct.id,
+          newProductId: newProduct.id,
+          conditionNote: 'จอเสีย',
+        } as never,
+        OWNER_USER() as never,
+      )) as { id: string; mode: string };
+      createdRequestIds.push(request.id);
+      expect(request.mode).toBe('MEMO');
+
+      await exchangeService.approve(
+        request.id,
+        OWNER_USER() as never,
+        { memoAddendumSigned: true, memoMdmSwapped: true } as never,
+      );
+
+      // เส้นทางของ Task 3: เครื่องเก่า REFURBISHED → ยืนยันราคา → IN_STOCK → ขายที่ POS
+      await productsService.returnToStock(oldProduct.id, adminId, {
+        cashPrice: 8900,
+        installmentPrice: 10900,
+        note: 'ตรวจสภาพแล้ว เกรด B',
+      });
+      const sale = await posCashSale(buyer.id, oldProduct.id, 8900);
+      expect(sale.id).toBeTruthy();
+      expect(
+        (await prisma.product.findUniqueOrThrow({ where: { id: oldProduct.id } })).status,
+      ).toBe('SOLD_CASH');
+
+      // ยกเลิก swap ตอนนี้ = เอาสัญญาของลูกค้า A กลับมาเดินบนเครื่องที่ลูกค้า B ซื้อไปแล้ว
+      await expect(
+        exchangeCancelService.cancel(request.id, 'ลูกค้าขอเครื่องเดิมคืน', OWNER_USER()),
+      ).rejects.toThrow(RESTORE_GUARD_MSG);
+
+      // ไม่มีอะไรถูกแตะเลย — สัญญายังชี้เครื่องใหม่, เครื่องเก่ายังเป็นของลูกค้า B,
+      // คำขอยังอยู่สถานะ APPROVED (ไม่ถูก mark CANCELED ครึ่งทาง)
+      expect(
+        (await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).productId,
+      ).toBe(newProduct.id);
+      const oldAfter = await prisma.product.findUniqueOrThrow({ where: { id: oldProduct.id } });
+      expect(oldAfter.status).toBe('SOLD_CASH');
+      expect(
+        (await prisma.product.findUniqueOrThrow({ where: { id: newProduct.id } })).status,
+      ).toBe('SOLD_INSTALLMENT');
+      const reqAfter = await prisma.contractExchangeRequest.findUniqueOrThrow({
+        where: { id: request.id },
+      });
+      expect(reqAfter.status).toBe('APPROVED');
+      expect(reqAfter.canceledAt).toBeNull();
     },
     180_000,
   );

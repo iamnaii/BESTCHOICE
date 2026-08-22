@@ -1,5 +1,10 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExchangeCancelService, bkkDayDiff } from './contract-exchange-cancel.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -104,6 +109,8 @@ describe('ExchangeCancelService (spec §9)', () => {
         update: jest.fn().mockResolvedValue({}),
         // CAS soft-delete of the DRAFT contract (PRE_FINALIZE path)
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // restore guard ชั้น 2 — สัญญาที่ยังไม่จบซึ่งอ้างเครื่องเก่าอยู่
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       badDebtProvision: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       // Phase 3 Task 5 (C-2): open-batch guard (findFirst → null = ไม่มีรอบเปิด)
@@ -123,7 +130,17 @@ describe('ExchangeCancelService (spec §9)', () => {
           status: 'SOLD_INSTALLMENT',
           ownedByCompanyId: 'finance-co-id',
         }),
+        // Final review I-1: restore guard อ่านเครื่องเก่าก่อนชุบชีวิตสัญญา —
+        // ค่า default = สภาพหลัง swap ปกติ (อยู่บนชั้น ยังไม่ถูกผูกไปที่อื่น)
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'oldP1',
+          status: 'REFURBISHED',
+          deletedAt: null,
+        }),
       },
+      // ชั้น 2-4 ของ `assertProductNotHeld` (สัญญาที่ยังเดิน / จองบนเว็บ / ออเดอร์ค้าง)
+      productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
+      onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
       payment: {
         findFirst: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -589,5 +606,112 @@ describe('ExchangeCancelService (spec §9)', () => {
       branchId: 'br-1',
     });
     expect(r.cancelWindow).toBe('FREE');
+  });
+
+  // ==========================================================================
+  // Final review I-1 — ยกเลิกเปลี่ยนเครื่องต้องไม่ชุบชีวิตสัญญาบนเครื่องที่ถูกผูกไปที่อื่นแล้ว
+  //
+  // Phase 5 Task 3 ทำให้ REFURBISHED → IN_STOCK เป็นปุ่มชั้นหนึ่ง ⇒ ลำดับนี้เดินได้จริง:
+  //   finalize swap → เครื่องเก่า REFURBISHED → กดปุ่มนำเข้าคลัง → POS ขายให้ลูกค้า B
+  //   → มีคนยกเลิก swap → เครื่องเก่าถูก flip กลับเป็น SOLD_INSTALLMENT + สัญญาเก่า ACTIVE
+  // = เครื่องตัวเดียวมีทั้งใบขายของ B และสัญญาผ่อนที่ยังเดินของ A
+  // ==========================================================================
+  describe('I-1: restore guard บนเครื่องเก่า (ทั้ง FINALIZED และ MEMO)', () => {
+    it('FINALIZED: เครื่องเก่าถูกขายสดไปแล้ว → BadRequest, ไม่ reverse JE, ไม่แตะ state', async () => {
+      requests.req1 = makeFinalizedReq(5);
+      txMock.product.findUnique.mockResolvedValue({
+        id: 'oldP1',
+        status: 'SOLD_CASH',
+        deletedAt: null,
+      });
+
+      await expect(svc.cancel('req1', 'ยกเลิกหลังเครื่องเก่าถูกขายไปแล้ว', user)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(reversal.reverse).not.toHaveBeenCalled();
+      expect(txMock.contract.update).not.toHaveBeenCalled();
+      expect(txMock.product.update).not.toHaveBeenCalled();
+      expect(txMock.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('FINALIZED: เครื่องเก่าถูกลบไปแล้ว (deletedAt) → BadRequest (สัญญาจะชี้ไปแถวที่ถูกลบ)', async () => {
+      requests.req1 = makeFinalizedReq(5);
+      txMock.product.findUnique.mockResolvedValue({
+        id: 'oldP1',
+        status: 'REFURBISHED',
+        deletedAt: new Date(),
+      });
+
+      await expect(svc.cancel('req1', 'ยกเลิกหลังเครื่องเก่าถูกลบ', user)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(reversal.reverse).not.toHaveBeenCalled();
+      expect(txMock.product.update).not.toHaveBeenCalled();
+    });
+
+    it('FINALIZED: เครื่องเก่าถูกจองบนเว็บ (ไม่แตะ product.status) → BadRequest', async () => {
+      requests.req1 = makeFinalizedReq(5);
+      txMock.productReservation.findFirst.mockResolvedValue({
+        expiresAt: new Date(Date.now() + 86_400_000),
+      });
+
+      await expect(svc.cancel('req1', 'ยกเลิกขณะมีคนจองเครื่องเก่า', user)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(reversal.reverse).not.toHaveBeenCalled();
+      expect(txMock.product.update).not.toHaveBeenCalled();
+    });
+
+    it('MEMO: เครื่องเก่าถูกขายสดไปแล้ว → BadRequest, ไม่สลับ productId กลับ', async () => {
+      requests.memoReq = makeMemoReq();
+      txMock.product.findUnique.mockResolvedValue({
+        id: 'oldP1',
+        status: 'SOLD_CASH',
+        deletedAt: null,
+      });
+
+      await expect(
+        svc.cancel('memoReq', 'ยกเลิก MEMO หลังเครื่องเก่าถูกขายไปแล้ว', user),
+      ).rejects.toThrow(BadRequestException);
+      expect(txMock.contract.update).not.toHaveBeenCalled();
+      expect(txMock.product.update).not.toHaveBeenCalled();
+      expect(txMock.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('MEMO: เครื่องเก่าไปอยู่ในสัญญาผ่อนใบอื่นที่ยังเดิน → BadRequest (ชั้นสัญญา ไม่ใช่ชั้นสถานะ)', async () => {
+      requests.memoReq = makeMemoReq();
+      txMock.contract.findFirst.mockResolvedValue({
+        contractNumber: 'CT-OTHER-0001',
+        status: 'ACTIVE',
+      });
+
+      await expect(
+        svc.cancel('memoReq', 'ยกเลิก MEMO ขณะเครื่องเก่าอยู่ในสัญญาใบอื่น', user),
+      ).rejects.toThrow(BadRequestException);
+      expect(txMock.contract.update).not.toHaveBeenCalled();
+      expect(txMock.product.update).not.toHaveBeenCalled();
+    });
+
+    it('เครื่องเก่ายังอยู่บนชั้น (REFURBISHED / IN_STOCK / DAMAGED) → ยกเลิกได้ตามเดิม', async () => {
+      for (const status of ['REFURBISHED', 'IN_STOCK', 'DAMAGED']) {
+        requests.req1 = makeFinalizedReq(5);
+        txMock.product.findUnique.mockResolvedValue({ id: 'oldP1', status, deletedAt: null });
+
+        const r = await svc.cancel('req1', `ยกเลิกขณะเครื่องเก่าสถานะ ${status}`, user);
+        expect(r.cancelWindow).toBe('FREE');
+      }
+    });
+
+    it('เครื่องเก่าหายไปจากฐานข้อมูล (แถวไม่มีจริง) → NotFound ไม่ใช่ crash', async () => {
+      requests.req1 = makeFinalizedReq(5);
+      txMock.product.findUnique.mockResolvedValue(null);
+
+      await expect(svc.cancel('req1', 'ยกเลิกขณะไม่พบเครื่องเก่า', user)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(reversal.reverse).not.toHaveBeenCalled();
+    });
   });
 });

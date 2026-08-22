@@ -20,6 +20,7 @@ import {
   TYPED_LENS_ACCOUNTS,
 } from '../journal/cpa-templates/contract-cancellation.template';
 import { settledPayoutByContract } from '../contracts/services/contract-cancellation.service';
+import { assertProductNotHeld } from '../products/product-hold.util';
 
 /** Subset of request.user the cancel path needs (id + branch scoping — I7). */
 interface CancelRequestUser {
@@ -95,6 +96,9 @@ export class ExchangeCancelService {
             'สัญญาสถานะเปลี่ยนไป หรือเครื่องบนสัญญาไม่ตรงกับคำขอ — ยกเลิกแบบ MEMO ไม่ได้',
           );
         }
+        // Final review I-1: เครื่องเก่าต้องยังว่างพอจะรับสัญญากลับ (ดู
+        // `assertOldProductRestorable`) — MEMO ก็เอาสัญญากลับไปชี้เครื่องเก่าเหมือนกัน
+        await this.assertOldProductRestorable(tx, req.oldProductId);
         // Owner decision 2026-07-31: cancellation windows removed entirely —
         // MEMO cancel allowed at ANY time. `days` kept for audit context only.
         const days = bkkDayDiff(req.memoAppliedAt ?? req.approvedAt ?? req.createdAt, now);
@@ -214,6 +218,15 @@ export class ExchangeCancelService {
           'มีเงินรับล่วงหน้า/เครดิต/เงินพักปรับดิวค้างบนสัญญาใหม่ — ใช้หรือคืนเงินก่อนยกเลิกเปลี่ยนเครื่อง',
         );
       }
+
+      // ── Final review Phase 5 I-1 — เครื่องเก่าต้องยังไม่ถูกผูกไปที่อื่น ──
+      // Task 3 ทำให้ `REFURBISHED → IN_STOCK` เป็นปุ่มชั้นหนึ่ง ("นำเข้าคลังพร้อมขาย")
+      // ⇒ เครื่องที่รับคืนจากการเปลี่ยนเครื่องถูกขายที่ POS ได้จริงภายในไม่กี่คลิก
+      // และ (คำตัดสินเจ้าของ 2026-07-31) ยกเลิก swap ได้ทุกเมื่อ ⇒ ลำดับนี้เดินได้จริง:
+      //   finalize → เครื่องเก่า REFURBISHED → กดปุ่ม → IN_STOCK → POS ขายให้ลูกค้า B
+      //   → ยกเลิก swap → เครื่องเก่าถูก flip กลับเป็น SOLD_INSTALLMENT + สัญญาเก่า ACTIVE
+      // = เครื่องตัวเดียวมีทั้งใบขายของ B และสัญญาผ่อนที่ยังเดินของ A
+      await this.assertOldProductRestorable(tx, req.oldProductId);
 
       // ── Phase 3 Task 5 (C-2, workbook §5.5) ──
       // Guard เปิด: สัญญาใหม่อยู่ใน batch DRAFT/PENDING_APPROVAL — snapshot ของ
@@ -435,6 +448,31 @@ export class ExchangeCancelService {
     });
     if (pendingAudit) await this.audit.log(pendingAudit);
     return result;
+  }
+
+  /**
+   * เครื่องเก่ายัง "ว่างพอ" จะรับสัญญาเดิมกลับมาไหม (final review Phase 5 I-1)
+   *
+   * ใช้ **ด่านเดียวกับการลบ/แก้ IMEI** (`product-hold.util.ts`) ด้วย action
+   * `RESTORE_TO_CONTRACT` — คำถามเดียวกันเป๊ะ ("เครื่องนี้ถูกผูกไปที่อื่นแล้วหรือยัง")
+   * แค่คนละทิศ จึงห้ามเขียนกติกาชุดที่สอง. ที่ต้องได้จากด่านนั้นแบบฟรี ๆ คือ **ชั้น 2-4**:
+   * การจองบนเว็บ (`ProductReservation`) และออเดอร์ออนไลน์ที่ fulfilment ค้าง
+   * **ไม่แตะ `product.status` เลย** ⇒ เช็คสถานะอย่างเดียวมองไม่เห็น
+   *
+   * ที่ผ่านได้: `REFURBISHED` / `IN_STOCK` / `DAMAGED` — เครื่องยังอยู่บนชั้น
+   */
+  private async assertOldProductRestorable(
+    tx: Prisma.TransactionClient,
+    oldProductId: string,
+  ): Promise<void> {
+    const oldProduct = await tx.product.findUnique({
+      where: { id: oldProductId },
+      select: { id: true, status: true, deletedAt: true },
+    });
+    if (!oldProduct) {
+      throw new NotFoundException('ไม่พบเครื่องเก่าของคำขอเปลี่ยนเครื่อง — ยกเลิกไม่ได้');
+    }
+    await assertProductNotHeld(tx, oldProduct, 'RESTORE_TO_CONTRACT');
   }
 
   private async markCanceled(

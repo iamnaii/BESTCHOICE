@@ -29,3 +29,32 @@ export class PromoteListingPhotoDto {
   @IsOptional() @IsEnum(PHOTO_ANGLES)
   angle?: PhotoAngle;
 }
+
+/** ขอบเขตของการเปิด/ปิดแสดงบนเว็บแบบหลายเครื่อง */
+export const BULK_VISIBILITY_SCOPES = ['SELECTED', 'ALL_IN_STOCK'] as const;
+export type BulkVisibilityScope = (typeof BULK_VISIBILITY_SCOPES)[number];
+
+/**
+ * เปิด/ปิด "แสดงบนเว็บ" ทีเดียวหลายเครื่อง
+ *
+ * สวิตช์นี้ไม่ได้ตัดสินว่าเครื่องจะขึ้นเว็บจริงไหม — ตัวตัดสินคือ readiness
+ * fragment (ต้องมีราคาสด/รูป/เกรด) ดังนั้นเปิดยกล็อตได้อย่างปลอดภัย เครื่องที่
+ * ข้อมูลไม่ครบจะยังไม่โผล่หน้าเว็บ และ response จะบอกว่าเหลือกี่เครื่องขาดอะไร
+ */
+export class BulkOnlineVisibilityDto {
+  @IsBoolean()
+  isOnlineVisible!: boolean;
+
+  @IsEnum(BULK_VISIBILITY_SCOPES, {
+    message: 'ขอบเขตต้องเป็น SELECTED (เลือกเอง) หรือ ALL_IN_STOCK (ทุกเครื่องในสต็อก)',
+  })
+  scope!: BulkVisibilityScope;
+
+  /** ใช้เมื่อ scope=SELECTED เท่านั้น */
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique({ message: 'มีสินค้าซ้ำในรายการ' })
+  @ArrayMaxSize(500, { message: 'เลือกได้สูงสุด 500 เครื่องต่อครั้ง' })
+  @IsString({ each: true })
+  productIds?: string[];
+}

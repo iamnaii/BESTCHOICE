@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { ProductsPricingService } from './products-pricing.service';
@@ -6,7 +16,11 @@ import { ProductsStockService } from './products-stock.service';
 import { ProductsOnlineListingService } from './products-online-listing.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { UpdateOnlineListingDto, PromoteListingPhotoDto } from './dto/online-listing.dto';
+import {
+  UpdateOnlineListingDto,
+  PromoteListingPhotoDto,
+  BulkOnlineVisibilityDto,
+} from './dto/online-listing.dto';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
 import { TransferProductDto, DispatchTransferDto, BulkTransferDto } from './dto/transfer-product.dto';
 import { ReserveProductDto } from './dto/reserve-product.dto';
@@ -185,6 +199,20 @@ export class ProductsController {
   ) {
     // userId ส่งเข้าไปเพื่อให้ด่านปลายทาง IN_STOCK เขียน AuditLog ได้ (fix round 1)
     return this.productsService.update(id, dto, user.id);
+  }
+
+  /**
+   * ประกาศไว้ก่อน route ที่ขึ้นต้นด้วย ':id' — ไม่งั้น Nest จะจับ 'online-listing'
+   * เป็นค่า id แล้ววิ่งเข้า handler ผิดตัว
+   */
+  @Post('online-listing/bulk-visibility')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  bulkOnlineVisibility(
+    @Body() dto: BulkOnlineVisibilityDto,
+    // branchId ต้องมาด้วย — ผจก.สาขาแตะได้เฉพาะสาขาตัวเอง
+    @CurrentUser() user: { role?: string; branchId?: string | null },
+  ) {
+    return this.onlineListing.bulkSetVisibility(dto, user);
   }
 
   @Patch(':id/online-listing')

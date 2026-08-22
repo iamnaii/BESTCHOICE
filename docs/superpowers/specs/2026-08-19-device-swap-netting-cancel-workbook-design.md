@@ -259,10 +259,39 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 
 ## 6. Phase 4 — รายงาน + Alerts + Validation
 
-1. **รายงานอายุลูกหนี้หน้าร้าน (11-2107)**: endpoint `GET /interco-settlement/shop-receivable-aging` — ต่อสัญญา: ยอดต่อประเภท (3 คอลัมน์ SWAP_CREDIT / PAYOUT_RECALL / SHOP_COLLECT) + อายุ (วันจาก posted_at ของ JE ตั้งหนี้) + UI section ในหน้า interco
-2. **Cron รายวัน** (`shop-receivable-aging.cron`): ค้างเกิน 30 วัน → Todo MEDIUM (dedup ต่อ สัญญา+ประเภท) + Sentry warning (`subsystem: 'interco-netting'`)
-3. **Cron รายเดือน** (`interco-reconcile.cron`, วันที่ 1 08:00 BKK): เทียบ FINANCE (21-1101+21-1102 คงค้าง, 11-2107 ต่อประเภท) ↔ SHOP (S11-3001+S11-3002, S21-3001) — ไม่ตรง (นอกเหนือ legacy driftNote เดิม) → Todo + Sentry
-4. Trial balance: ไม่ต้องแก้ — S21-3001 เข้า SECTION_MAP อัตโนมัติผ่าน prefix S21
+> **สถานะ: `[implemented]` ครบทั้ง 4 ข้อ (2026-08-21)** — plan
+> `docs/superpowers/plans/2026-08-21-interco-reconcile-phase4.md`; เอกสารอ้างอิงที่เป็น
+> source of truth หลัง implement = `.claude/rules/accounting.md` หัวข้อ
+> **"การกระทบยอดระหว่างกิจการ (Phase 4)"**. ย่อหน้าด้านล่างคงข้อความ spec เดิมไว้ พร้อม
+> ระบุ **จุดที่ implement ต่างจาก spec จริง** — อย่าอ่าน spec ข้อนี้เดี่ยวๆ แล้วสรุปพฤติกรรม.
+
+1. **รายงานอายุลูกหนี้หน้าร้าน (11-2107)** `[implemented]`: endpoint `GET /interco-settlement/shop-receivable-aging` — ต่อสัญญา: ยอดต่อประเภท (3 คอลัมน์ SWAP_CREDIT / PAYOUT_RECALL / SHOP_COLLECT) + อายุ (วันจาก posted_at ของ JE ตั้งหนี้) + UI section ในหน้า interco
+   - **ต่างจาก spec — ยอด "คงเหลือจริง" เป็น 2 กลุ่ม ไม่ใช่ 3 คอลัมน์ล้วน**: SWAP_CREDIT + PAYOUT_RECALL ยุบเป็น `intercoNet` (= gross สองประเภท − `settledDeduction`) ส่วน SHOP_COLLECT แยกคอลัมน์. เหตุผล: `settledDeduction` หักที่ **ระดับสัญญา** ไม่แยกประเภท (สัญญา swap ที่ถูกยกเลิกภายหลังมีประวัติข้ามประเภท) ⇒ ถ้าโชว์ 3 คอลัมน์ **สุทธิ** ต้องเดาว่า deduction ไปหักประเภทไหน = ตัวเลขผิด. คอลัมน์ **gross** รายประเภทยังมีครบบนแถว (`swapCreditGross` / `payoutRecallGross`) — invariant เดียวกับสูตร combined ของ `alarmNettingResiduals` (Phase 3 Task 4)
+   - **เพิ่มจาก spec**: `shopMirrorGross`/`shopMirrorNet` (S21-3001 ต่อสัญญา, conditional group key), `bookMismatch`, และ **`legacyOneBook`** — flag แยก swap ยุคก่อน Phase 1 (§11.4) ออกจาก totals/overdue เพราะคอลัมน์ typed ของแถวนั้นค้าง +/− ถาวรแม้ยอดบัญชีจริงเป็น 0 (ล้างผ่าน shop-collect ซึ่ง stamp คนละประเภท) — ถ้าไม่มี flag นี้ระบบจะเตือนเท็จทุกวันตลอดไป. หนี้ legacy จริงรายงานแยกใน `totals.legacyOneBookNet`
+   - **`asOf` มีผลกับ "อายุ" เท่านั้น — ยอดคงเหลือเป็นยอดปัจจุบันเสมอ** (twins ไม่มี date filter; deduction gate อ่านสถานะ batch ปัจจุบัน) ⇒ UI **จงใจไม่มี date picker**
+2. **Cron รายวัน** (`shop-receivable-aging.cron`) `[implemented]`: ค้างเกิน 30 วัน → Todo MEDIUM (dedup ต่อ สัญญา+ประเภท) + Sentry warning (`subsystem: 'interco-netting'`)
+   - เวลาจริง **09:07 BKK**; kill switch `shop_receivable_aging_alerts_enabled` (default `true`) + เกณฑ์วัน `shop_receivable_aging_alert_days` (default 30, ช่วง 1-365 — นอกช่วงคืน fallback ไม่ clamp)
+   - **ต่างจาก spec — dedup ต่อ "สัญญา" ไม่ใช่ "สัญญา+ประเภท"**: หนึ่ง Todo ต่อสัญญาครอบทุกแขนที่ค้าง (แขนแก่สุดขึ้นหัวเรื่อง, รายละเอียดสองแขน + วิธีล้างอยู่ในคำอธิบาย) — สองใบต่อสัญญาเป็นเสียงซ้ำที่คนจะเลิกอ่าน และ "ประเภท" ยุบเป็น "แขน" (`INTERCO` / `SHOP_COLLECT`) ตามข้อ 1 อยู่แล้ว
+   - **ไม่ alert แถว `legacyOneBook` รายแถว** แต่ยิง Sentry **รวมหนึ่งอีเวนต์ต่อรอบ** เมื่อ `legacyOneBookNet > 0.01` (gate ด้วยยอดจริง ไม่ใช่จำนวนแถว)
+3. **Cron รายเดือน** (`interco-reconcile.cron`, วันที่ 1 08:00 BKK) `[implemented]`: เทียบ FINANCE (21-1101+21-1102 คงค้าง, 11-2107 ต่อประเภท) ↔ SHOP (S11-3001+S11-3002, S21-3001) — ไม่ตรง (นอกเหนือ legacy driftNote เดิม) → Todo + Sentry
+   - kill switch `interco_reconcile_enabled` (default `true`); Todo **HIGH หนึ่งใบต่อเดือน** tag `interco-reconcile` (dedup ด้วย `yyyy-mm` เวลาไทย)
+   - **5 finding kinds** (spec เดิมไม่ได้แจกแจง): `BOOK_MISMATCH` (ปิด carry e) · `SWAP_CREDIT_ONE_BOOK` (ปิด carry c) · `PAYABLE_PAIR_MISMATCH` · `NEGATIVE_TYPED` (ตาข่ายของ carry d) · `ACCOUNT_DRIFT` — แต่ละตัวมีเกณฑ์แยก legacy ของตัวเอง (ดูตารางใน accounting.md)
+   - **drift ของคิวรอจ่ายต้องบวกกลับรอบที่ค้างอนุมัติก่อนตัดสิน** — รอบ `PENDING_APPROVAL` จองสัญญาแล้วแต่ยังไม่โพสต์ JE ⇒ drift ติดลบเท่ายอดรอบนั้นพอดี = สภาพปกติ ไม่ใช่ anomaly
+   - **รายงานอย่างเดียว ไม่แตะ GL แม้แต่บรรทัดเดียว** — ไม่ตั้ง JE ปรับปรุงเอง (คลาสเดียวกับ opening-balance gap §11 ที่รอ CPA)
+4. Trial balance: ไม่ต้องแก้ — S21-3001 เข้า SECTION_MAP อัตโนมัติผ่าน prefix S21 `[verified 2026-08-21]` (`accounting-section-map.util.ts` มี `'S21': 'หนี้สินหมุนเวียน (SHOP)'` อยู่แล้ว — ไม่มีการแก้โค้ดรายงานในเฟสนี้)
+
+**Carry ที่ปิดไปในเฟสนี้:** (c) เครดิต A.3-only งอกหลัง approve → `SWAP_CREDIT_ONE_BOOK` ·
+(d) TOCTOU settle-cash vs approveBatch → **`approveBatch` เปลี่ยนเป็น Serializable ที่ต้นเหตุ**
+(SSI ต้องการให้ทั้งคู่เป็น Serializable จึงจะเห็นกัน) + P2034 → 409 ไทย, ตาข่าย =
+`NEGATIVE_TYPED` · (e) คิว recall กรอง net ฝั่ง FINANCE เท่านั้น → `BOOK_MISMATCH`.
+**ยังเปิด → Phase 5:** `COMMISSION_ONLY_GAP` (สัญญาที่ `storeCommission` ว่าง — 1A ตั้ง
+fallback 10% บน 21-1102 แต่ขา SHOP ตั้ง 0) — reconcile รายงานพร้อมป้ายกำกับแล้ว แต่ยังไม่แก้
+ต้นเหตุ เพราะเป็นความต่างจริงในบัญชี (opening-balance gap §11) ที่ต้องให้เจ้าของ/CPA ตัดสิน ·
+**`approveCancellation` ยังเป็น READ COMMITTED** (Phase 4 ยกเฉพาะ `approveBatch`; เส้นทาง
+ยกเลิกได้แค่ `P2002 → 409`) · **`swapCreditShopBalance`/Query B ฝั่ง S21-3001 เป็น stamp-only
+ไม่มี flow fallback** ทั้งที่ `FLOW_MAP` map `shop-exchange-return → SWAP_CREDIT` — แคบกว่า
+`classifyShopReceivable` โดยตั้งใจ รอเคสจริง/CPA. รายละเอียดทั้งหมดอยู่ใน accounting.md
+หัวข้อ "รอ Phase 4 (carry)" → บล็อก "ยังเปิดอยู่ → Phase 5".
 
 ## 7. Phase 5 — IMEI Guards
 

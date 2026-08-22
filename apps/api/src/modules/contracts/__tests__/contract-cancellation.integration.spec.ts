@@ -14,7 +14,8 @@
  * JournalEntry; ContractCancellation before JournalEntry — FK
  * reversalJournalEntryId).
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { ConflictException, HttpException } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
@@ -69,6 +70,27 @@ const settlementService = new IntercoSettlementService(
   journalAuto,
   storageStub as never,
   shopCollectTemplate,
+);
+
+// Second REAL Postgres connection + wiring for the concurrent double-approve
+// race (Phase 4 Task 6): a single PrismaClient cannot truly overlap two
+// interactive transactions — the second fails at Prisma's ITX scheduler
+// (P2028) instead of ever racing at the DB. Same pattern as the settleRecallCash
+// race test in interco-netting.integration.spec.ts.
+const prisma2 = new PrismaClient();
+const journalAuto2 = new JournalAutoService(prisma2 as never);
+const sweepTemplate2 = new ExchangeCancelReversalTemplate(journalAuto2, prisma2 as never);
+const eclStageReverse2 = new EclStageReverseTemplate(journalAuto2, prisma2 as never);
+const template2 = new ContractCancellationTemplate(
+  prisma2 as never,
+  sweepTemplate2,
+  eclStageReverse2,
+);
+const companyResolver2 = new CompanyResolverService(prisma2 as never);
+const service2 = new ContractCancellationService(
+  prisma2 as never,
+  () => template2,
+  () => companyResolver2,
 );
 
 // ---------------------------------------------------------------------------
@@ -187,8 +209,16 @@ async function seed1a(id: string) {
   });
 }
 
-/** SHOP legs synthetic — inventory-transfer shape (2 JEs: COGS + revenue/receivable). */
-async function seedShopLegs(id: string) {
+/**
+ * SHOP legs synthetic — inventory-transfer shape (2 JEs: COGS + revenue/receivable).
+ *
+ * `downAmount` (Phase 4 Task 6) ทำให้ JE B ตรงรูป `ShopInventoryTransferTemplate`
+ * จริงของสัญญาที่มีเงินดาวน์: `Dr S11-3001 + Dr S11-3002 + Dr S21-2001 [down] /
+ * Cr S41-1101 [salePrice = financed + down] + Cr S41-1201` — invariant
+ * `financedAmount + downAmount === salePrice` ของ template ยังถือ. ค่า default
+ * (ไม่ส่ง) = รูปเดิมทุกไบต์ ⇒ เทสอื่นไม่ขยับ.
+ */
+async function seedShopLegs(id: string, downAmount?: string) {
   await journalAuto.createAndPost({
     description: 'SHOP COGS synthetic (CANCELTEST)',
     companyId: shopId,
@@ -198,6 +228,7 @@ async function seedShopLegs(id: string) {
       { accountCode: 'S11-2001', dr: zero, cr: dec('6000') },
     ],
   });
+  const down = downAmount ? dec(downAmount) : zero;
   await journalAuto.createAndPost({
     description: 'SHOP revenue synthetic (CANCELTEST)',
     companyId: shopId,
@@ -205,7 +236,8 @@ async function seedShopLegs(id: string) {
     lines: [
       { accountCode: 'S11-3001', dr: dec('10000'), cr: zero },
       { accountCode: 'S11-3002', dr: dec('1000'), cr: zero },
-      { accountCode: 'S41-1101', dr: zero, cr: dec('10000') },
+      ...(down.gt(0) ? [{ accountCode: 'S21-2001', dr: down, cr: zero }] : []),
+      { accountCode: 'S41-1101', dr: zero, cr: dec('10000').plus(down) },
       { accountCode: 'S41-1201', dr: zero, cr: dec('1000') },
     ],
   });
@@ -476,6 +508,7 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
       }
     }
     await prisma.$disconnect();
+    await prisma2.$disconnect();
   }, 120_000);
 
   // -------------------------------------------------------------------------
@@ -793,7 +826,13 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
   // (workbook Case 3A กรณี 2). Batch POSTED มาจาก IntercoSettlementService จริง.
   // ===========================================================================
 
-  it('C-2 (ตัดจ่ายแล้ว): redirect เจ้าหนี้เป็น PAYOUT_RECALL ตรง workbook Case 3A กรณี 2', async () => {
+  // Phase 4 Task 6 — fixture นี้ถือ **เงินดาวน์** ด้วย (2,000): JE B จึงมีขา
+  // `Dr S21-2001` ตามรูป ShopInventoryTransferTemplate จริง และใบรับเงินดาวน์
+  // (flow 'shop-down-payment' — เงินสดจริง) อยู่ใน deny-list ของ sweep. ผลที่
+  // ต้องพิสูจน์: mirror ของ JE B ครบทุกขา (รวม `Cr S21-2001` ที่ไม่ถูก redirect),
+  // cross-check สองสมุดยังผ่าน (ขาดาวน์ไม่ใช่ redirect source), และ S21-2001
+  // ค้าง Cr = downAmount = เจ้าหนี้รอ SHOP จ่ายคืนลูกค้า (semantics ที่ documented)
+  it('C-2 (ตัดจ่ายแล้ว, สัญญามีเงินดาวน์): redirect เจ้าหนี้เป็น PAYOUT_RECALL ตรง workbook Case 3A กรณี 2 + S21-2001 ค้าง Cr เงินดาวน์', async () => {
     // Baselines BEFORE seeding — C-2 assertions are account-level DELTAS
     // (batch JEs carry no metadata.contractId, per-contract lens can't see them)
     const codes = ['21-1101', '21-1102', 'S11-3001', 'S11-3002'] as const;
@@ -802,7 +841,8 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
 
     const { contractId } = await seedBaseContract(9);
     await seed1a(contractId);
-    await seedShopLegs(contractId);
+    await seedDownPayment(contractId); // Dr S11-1101 / Cr S21-2001 2,000 (เงินสดจริง — sweep ข้าม)
+    await seedShopLegs(contractId, '2000'); // JE B มีขา Dr S21-2001 2,000 ล้างเจ้าหนี้เงินดาวน์
     const { batchNumber } = await settleViaBatch(contractId);
 
     // หลัง approve รอบจ่าย: เจ้าหนี้/ลูกหนี้รอบจ่ายของสัญญา = 0 ระดับบัญชี
@@ -839,8 +879,12 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     const jeB = await findJeByFlow(contractId, 'test-shop-revenue');
     const shopRev = await findReversalOf(jeB.id);
     expect(sumSide(shopRev.lines, 'S21-3001', 'cr').toFixed(2)).toBe('11000.00');
-    expect(sumSide(shopRev.lines, 'S41-1101', 'dr').toFixed(2)).toBe('10000.00');
+    expect(sumSide(shopRev.lines, 'S41-1101', 'dr').toFixed(2)).toBe('12000.00'); // salePrice = 10,000 + ดาวน์ 2,000
     expect(sumSide(shopRev.lines, 'S41-1201', 'dr').toFixed(2)).toBe('1000.00');
+    // ขาเงินดาวน์ของ JE B ถูก mirror ครบ (ไม่ใช่ redirect source) — ใบ mirror
+    // จึง balance ด้วยตัวเอง: Dr 13,000 = Cr 11,000 + 2,000
+    expect(sumSide(shopRev.lines, 'S21-2001', 'cr').toFixed(2)).toBe('2000.00');
+    expect(sumSide(shopRev.lines, 'S21-2001', 'dr').toFixed(2)).toBe('0.00');
     expect(
       shopRev.lines.some((l) => l.accountCode === 'S11-3001' || l.accountCode === 'S11-3002'),
     ).toBe(false);
@@ -861,6 +905,23 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     expect((await recallFinanceBalance(prisma, contractId)).toFixed(2)).toBe('11000.00');
     expect((await recallShopBalance(prisma, contractId)).toFixed(2)).toBe('11000.00');
 
+    // ── S21-2001 ค้าง Cr เท่าเงินดาวน์ (ตั้งใจ — ไม่ใช่บั๊ก): ใบรับเงินดาวน์ถูก
+    // exclude (เงินสดจริง ห้าม mirror = ห้ามปลอมการคืนเงิน) แต่ขา Dr ของ JE B
+    // ที่เคยล้างเจ้าหนี้เงินดาวน์ถูก mirror กลับ ⇒ เหลือ "เจ้าหนี้รอคืนเงินลูกค้า"
+    expect((await glContractBalance(prisma, contractId, 'S21-2001', 'cr')).toFixed(2)).toBe(
+      '2000.00',
+    );
+    // เงินสด SHOP ไม่ถูกแตะเลยจากการยกเลิก (ยอดคงเหลือ = ขา Dr ของใบดาวน์เดิม)
+    expect((await glContractBalance(prisma, contractId, 'S11-1101', 'dr')).toFixed(2)).toBe(
+      '2000.00',
+    );
+    const downJe = await findJeByFlow(contractId, 'shop-down-payment');
+    expect(
+      await prisma.journalEntry.findFirst({
+        where: { metadata: { path: ['reversesEntryId'], equals: downJe.id } as never },
+      }),
+    ).toBeNull();
+
     // ── คิวเรียกคืนเห็นสัญญา (SETTLEMENT item เก่าไม่ปิดคิว — gate กรองเฉพาะ RECALL)
     const recalls = await pendingService.getPendingRecalls();
     const recallRow = recalls.find((r) => r.contractId === contractId);
@@ -880,13 +941,106 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     expect(newValue.settledTotal).toBe('11000.00');
     expect(newValue.recallAmount).toBe('11000.00');
     expect(newValue.batchNumbers).toEqual([batchNumber]);
-    expect(newValue.reversalCount).toBe(3); // 1A + SHOP COGS + SHOP revenue
+    expect(newValue.reversalCount).toBe(3); // 1A + SHOP COGS + SHOP revenue (ใบดาวน์ถูก exclude)
 
     const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(contract.status).toBe('CANCELED');
   }, 120_000);
 
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Phase 4 Task 6 — ผู้แพ้ของ double-approve ต้องได้ 409 ไทย ไม่ใช่ raw 500.
+  // ด่านแรกคือ guard "สัญญาต้อง ACTIVE" ที่อ่านใน tx — แต่ถ้าคำขอที่สองอ่าน
+  // สถานะ **ก่อน** คำขอแรก commit มันจะผ่าน guard แล้วไปชนที่ DB partial unique
+  // index `journal_entries_idempotency_idx` (flow + idempotencyKey ของ mirror
+  // ใบเดียวกัน) ⇒ P2002 หลุดออกมาเป็น 500. Barrier ด้านล่างล็อกลำดับนั้นให้
+  // เกิดขึ้นแน่นอน: ค้างคำขอ A ไว้ "หลังโพสต์ JE แต่ยังไม่ commit" แล้วปล่อย B
+  // เข้าไปติดคิว (advisory lock ของเลขที่ใบสำคัญ) ก่อนจะปล่อย A commit
+  it('double-approve พร้อมกัน (2 คอนเนกชัน) → ผู้แพ้ได้ 409 ภาษาไทย ไม่ใช่ raw 500 (P2002)', async () => {
+    const { contractId } = await seedBaseContract(30);
+    await seed1a(contractId);
+    await seedShopLegs(contractId);
+
+    const cancellation = await service.requestCancellation(
+      contractId,
+      adminId,
+      'ทดสอบยกเลิกพร้อมกันสองคำขอ',
+      0,
+    );
+    await prisma2.$queryRaw`SELECT 1`; // warm-up คอนเนกชันที่สอง
+
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    let gateHit = false;
+    const realExecute = template.execute.bind(template);
+    const spy = vi.spyOn(template, 'execute').mockImplementation(async (...args) => {
+      const res = await realExecute(...(args as Parameters<typeof realExecute>));
+      gateHit = true;
+      await gate; // ค้าง A ไว้หลังโพสต์ JE ครบ แต่ยังไม่ commit
+      return res;
+    });
+
+    let bPromise: Promise<unknown>;
+    let aPromise: Promise<{ ok: boolean; err?: unknown }>;
+    try {
+      aPromise = service
+        .approveCancellation(cancellation.id, adminId)
+        .then(() => ({ ok: true }) as { ok: boolean; err?: unknown })
+        .catch((err: unknown) => ({ ok: false, err }));
+
+      let deadline = Date.now() + 4_000;
+      while (!gateHit && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+      expect(gateHit, 'คำขอ A ต้องโพสต์ JE เสร็จและค้าง tx ไว้').toBe(true);
+
+      // B เริ่มหลัง A ผ่าน guard แล้ว — จะอ่านสถานะสัญญาเป็น ACTIVE (A ยังไม่
+      // commit) แล้วไปติดคิวที่ advisory lock ของ nextEntryNumber
+      bPromise = service2.approveCancellation(cancellation.id, adminId);
+      bPromise.catch(() => undefined);
+
+      // รอจนเห็นว่ามี session รออยู่บน lock จริง (สัญญาณว่า B เข้าไปถึงขั้นโพสต์
+      // JE แล้ว) — แทนการ sleep แบบเดา
+      deadline = Date.now() + 6_000;
+      let waiters = 0;
+      while (Date.now() < deadline) {
+        const rows = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`
+          SELECT COUNT(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+        `);
+        waiters = rows[0]?.n ?? 0;
+        if (waiters > 0) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(waiters, 'คำขอ B ต้องเข้าไปติดคิวบน lock ก่อนปล่อย A commit').toBeGreaterThan(0);
+    } finally {
+      releaseGate!();
+      spy.mockRestore();
+    }
+    const aOutcome = await aPromise!;
+    expect(aOutcome.ok, `คำขอ A ต้องสำเร็จ: ${(aOutcome.err as Error)?.message}`).toBe(true);
+
+    const bOutcome = await bPromise!
+      .then(() => ({ ok: true }) as { ok: boolean; err?: unknown })
+      .catch((err: unknown) => ({ ok: false, err }));
+
+    expect(bOutcome.ok, 'ต้องอนุมัติสำเร็จได้ครั้งเดียว').toBe(false);
+    const err = bOutcome.err;
+    expect(
+      err instanceof HttpException,
+      `ผู้แพ้ต้องเป็น HttpException ไม่ใช่ raw Prisma error: ${(err as { constructor?: { name?: string } })?.constructor?.name}: ${(err as Error)?.message}`,
+    ).toBe(true);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as HttpException).getStatus()).toBe(409);
+    expect((err as Error).message).toMatch(/ยกเลิก/);
+
+    // สัญญาถูกยกเลิกครั้งเดียว + คำขอ APPROVED ครั้งเดียว
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.status).toBe('CANCELED');
+    const rows = await prisma.contractCancellation.findMany({ where: { contractId } });
+    expect(rows.filter((r) => r.status === 'APPROVED')).toHaveLength(1);
+  }, 120_000);
+
   it('C-2 cross-check: hand-JV ทำให้ redirect รวม ≠ Σ settled ของ batch POSTED → reject ทั้งการยกเลิก', async () => {
     const { contractId } = await seedBaseContract(10);
     await seed1a(contractId);

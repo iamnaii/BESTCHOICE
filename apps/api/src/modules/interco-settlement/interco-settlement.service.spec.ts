@@ -692,5 +692,50 @@ describe('IntercoSettlementService', () => {
       // the batch-status update (step 7) must never have been reached/committed.
       expect(tx.interCoSettlementBatch.update).not.toHaveBeenCalled();
     });
+
+    // --- Phase 4 Task 5 (carry d) -----------------------------------------
+    it('รันใต้ Serializable — SSI ต้องเห็น settleRecallCash ที่เป็น Serializable อยู่แล้ว', async () => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());
+      noDriftJournalLineMock();
+      pairedJournal.postPaired.mockResolvedValue({
+        financeJournalEntryId: 'je-f',
+        shopJournalEntryId: 'je-s',
+      });
+
+      await service.approveBatch('batch-1', 'approver-1');
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    });
+
+    it('P2034 (SSI abort) → ConflictException ไทย ไม่ใช่ raw 500 และไม่ mark POSTED', async () => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());
+      noDriftJournalLineMock();
+      pairedJournal.postPaired.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('write conflict', {
+          code: 'P2034',
+          clientVersion: 'x',
+        }),
+      );
+
+      await expect(service.approveBatch('batch-1', 'approver-1')).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.approveBatch('batch-1', 'approver-1')).rejects.toThrow(
+        /ชนกับรายการอื่นที่กำลังบันทึกอยู่/,
+      );
+      expect(tx.interCoSettlementBatch.update).not.toHaveBeenCalled();
+
+      // SentryExceptionFilter จับเฉพาะ status >= 500 — 409 ใบนี้ต้องถูกยิงเอง
+      // ไม่งั้น spike ของ lock contention จาก Serializable จะมองไม่เห็นเลย
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        '[interco] P2034 write-conflict translated to 409',
+        expect.objectContaining({
+          level: 'warning',
+          extra: expect.objectContaining({ batchId: 'batch-1', userId: 'approver-1' }),
+        }),
+      );
+    });
   });
 });

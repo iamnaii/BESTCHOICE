@@ -637,15 +637,22 @@ export class MessageRouterService {
     });
     // echo STAFF จากแอปอื่น (พนักงานตอบผ่าน Meta Business Suite/แอป Page มือถือ)
     // = takeover เช่นเดียวกับพิมพ์จาก inbox — หยุด AI ห้องนี้ กันบอทแทรก
+    // echo STAFF = ข้อความที่ถูกส่งออกจากนอกระบบเรา ซึ่งมีได้ 2 แบบ:
+    //   (ก) พนักงานตอบเองจาก Meta Business Suite/แอป Page → ควร pause AI (การแทรกจริง)
+    //   (ข) **ข้อความทักทายอัตโนมัติของเพจ** ที่ยิงทุกครั้งที่ลูกค้าทักครั้งแรก → ห้าม pause
+    // แยกด้วย "บอทเคยตอบในห้องนี้แล้วหรือยัง" — greeting มาก่อนบอทเสมอ
+    // (บั๊กจริง 2026-08-21: 633 ห้องโดนปิด AI หมดเพราะ auto-greeting ของเพจ
+    //  ถ้าเปิดทั้งเพจโดยไม่แก้ บอทจะไม่ได้ตอบใครเลยสักห้อง)
     if (params.role === MessageRole.STAFF && params.pauseAi) {
-      void this.roomManager
-        .pauseAiIfActive?.(room.id, params.staffId)
-        ?.then((paused) => {
-          if (paused) {
-            this.gateway?.emitRoomUpdate(room.id, { roomId: room.id, aiPaused: true });
-          }
-        })
-        ?.catch(() => undefined);
+      void (async () => {
+        try {
+          if (!(await this.roomManager.hasBotReplied?.(room.id))) return;
+          const paused = await this.roomManager.pauseAiIfActive?.(room.id, params.staffId);
+          if (paused) this.gateway?.emitRoomUpdate(room.id, { roomId: room.id, aiPaused: true });
+        } catch {
+          // best-effort
+        }
+      })();
     }
     try {
       await this.roomManager.saveMessage({

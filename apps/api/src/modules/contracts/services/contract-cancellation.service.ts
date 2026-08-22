@@ -171,7 +171,7 @@ export class ContractCancellationService {
 
     const template = cancellationTemplate;
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       // ── Phase 3 guards (C-1) — all inside the tx, before any JE posts ──
       // Re-read the contract INSIDE the tx (Fix Round 1 — Minor #5): the
       // pre-tx snapshot could race a concurrent JP5/termination flipping the
@@ -359,9 +359,23 @@ export class ContractCancellationService {
         reversalEntryNumber: jeResult.entryNumber,
         reversalCount: jeResult.reversalJeIds.length,
       };
-    });
+    };
 
-    return result;
+    try {
+      return await this.prisma.$transaction(run);
+    } catch (err) {
+      // ผู้แพ้ของ double-approve (Phase 4 Task 6): ด่านแรกคือ guard
+      // "สัญญาต้อง ACTIVE" ที่อ่านใน tx — แต่คำขอที่สองที่อ่านสถานะ **ก่อน**
+      // คำขอแรก commit จะผ่าน guard นั้นแล้วไปชน DB partial unique index
+      // `journal_entries_idempotency_idx` (flow + idempotencyKey ของ mirror
+      // ใบเดียวกัน — sweep engine ตั้งคีย์ต่อ JE ต้นทาง) ⇒ P2002 หลุดออกไป
+      // เป็น raw 500. แปลเป็น 409 ไทย; tx ทั้งก้อน roll back ⇒ ไม่มีทางอนุมัติ
+      // ซ้ำสองรอบ (pattern เดียวกับ W2 ของ `IntercoSettlementService`).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('คำขอยกเลิกนี้ถูกดำเนินการไปแล้ว (คำขอซ้ำ)');
+      }
+      throw err;
+    }
   }
 
   /**

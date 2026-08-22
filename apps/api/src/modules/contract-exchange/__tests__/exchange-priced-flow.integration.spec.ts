@@ -1640,6 +1640,20 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       });
       expect(req.status).toBe('APPROVED');
       expect(req.memoAppliedAt).not.toBeNull();
+
+      // Phase 5 Task 5 ข้อ 0 — audit ต้องมีแถวจริงใน DB. เดิม `audit.log` ถูก
+      // await **ข้างใน** `$transaction` ของ approveMemo ⇒ `AuditService.log`
+      // เปิด root-client `$transaction` ซ้อน ⇒ P2028 ⇒ log() กลืน error ทิ้ง
+      // ⇒ ย้ายกรรมสิทธิ์เครื่องสองตัว + เปลี่ยน productId บนสัญญาโดยไม่มี audit
+      // เลย (Task 4 พิสูจน์ไว้ว่า 0 แถวหลัง approve สำเร็จ 4 ครั้ง)
+      const memoAudit = await prisma.auditLog.findFirst({
+        where: { action: 'EXCHANGE_MEMO_APPLIED', entityId: submitted.id },
+      });
+      expect(memoAudit).toBeTruthy();
+      const memoAuditValue = memoAudit!.newValue as Record<string, unknown>;
+      expect(memoAuditValue.contractId).toBe(fix.oldContractId);
+      expect(memoAuditValue.oldProductId).toBe(fix.oldProductId);
+      expect(memoAuditValue.newProductId).toBe(fix.newProductId);
     },
     120_000,
   );

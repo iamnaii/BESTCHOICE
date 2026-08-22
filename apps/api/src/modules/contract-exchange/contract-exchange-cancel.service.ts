@@ -52,12 +52,13 @@ export class ExchangeCancelService {
   ) {}
 
   async cancel(id: string, reason: string, user: CancelRequestUser) {
-    // FINALIZED-path audit is deferred to AFTER the tx commits (Task 5):
+    // ทุกเส้นทาง (MEMO / PRE_FINALIZE / FINALIZED) เขียน audit AFTER commit:
     // `AuditService.log` opens its OWN root-client $transaction — awaiting it
     // while this tx still holds a pool connection is the nested-tx pattern
     // doctrine R-1 forbids (P2028 pool starvation under load), and an audit row
     // must describe a COMMITTED cancel anyway (inside-tx write + later rollback
-    // = phantom audit row). MEMO/PRE_FINALIZE audits are untouched.
+    // = phantom audit row). MEMO/PRE_FINALIZE ตามมาใน Phase 5 Task 5 ข้อ 0 —
+    // เดิมสองเส้นนั้น await ใน tx จึงไม่เคยมีแถว audit ออกมาเลย.
     let pendingAudit: AuditEntry | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       const req = await (tx as any).contractExchangeRequest.findUnique({
@@ -116,13 +117,16 @@ export class ExchangeCancelService {
         // MEMO: distinct window label for reporting — MEMO cancels never had a
         // penalty, and (owner decision 2026-07-31) no time cap either.
         await this.markCanceled(tx, id, user.id, reason, 'MEMO', null, [], now);
-        await this.audit.log({
+        // audit หลัง commit เช่นเดียวกับ FINALIZED path (Phase 5 Task 5 ข้อ 0):
+        // เดิม await ตรงนี้ = nested root-tx ⇒ P2028 ⇒ log() กลืน error ทิ้ง ⇒
+        // สลับกรรมสิทธิ์เครื่อง/สัญญากลับโดยไม่มีร่องรอย audit เลย
+        pendingAudit = {
           action: 'EXCHANGE_MEMO_CANCELED',
           entity: 'contract_exchange_request',
           entityId: id,
           userId: user.id,
           newValue: { reason, days },
-        });
+        };
         return { id, cancelWindow: 'MEMO', penaltyAmount: null };
       }
 
@@ -155,13 +159,14 @@ export class ExchangeCancelService {
           });
         }
         await this.markCanceled(tx, id, user.id, reason, 'PRE_FINALIZE', null, [], now);
-        await this.audit.log({
+        // audit หลัง commit — เหตุผลเดียวกับ MEMO/FINALIZED (P2028)
+        pendingAudit = {
           action: 'EXCHANGE_CANCELED',
           entity: 'contract_exchange_request',
           entityId: id,
           userId: user.id,
           newValue: { reason, window: 'PRE_FINALIZE' },
-        });
+        };
         return { id, cancelWindow: 'PRE_FINALIZE', penaltyAmount: null };
       }
 

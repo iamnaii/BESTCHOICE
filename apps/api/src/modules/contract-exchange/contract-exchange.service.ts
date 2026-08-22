@@ -9,7 +9,7 @@ import {
 import { Prisma, ProductCategory } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
+import { AuditService, AuditEntry } from '../audit/audit.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { ApproveExchangeRequestDto } from './dto/approve-exchange-request.dto';
@@ -419,7 +419,15 @@ export class ContractExchangeService {
         'ต้องยืนยัน checklist ก่อนอนุมัติ: บันทึกแนบท้ายสัญญา (ADDENDUM) + สลับ MDM เครื่องเก่า/ใหม่',
       );
     }
-    return this.prisma.$transaction(async (tx) => {
+    // audit หลัง commit (doctrine R-1 / pattern เดียวกับ FINALIZED path ของ
+    // `ExchangeCancelService`): `AuditService.log` เปิด `$transaction` ของ root
+    // client เอง (hash chain ต้อง atomic) — await มันขณะที่ tx นี้ยังถือ
+    // connection = nested root-tx ⇒ P2028 และ `log()` กลืน error ทิ้ง ⇒ ไม่มี
+    // แถว audit เลย (พิสูจน์ด้วย DB จริงใน Task 4: MEMO approve 4 ครั้ง → 0 แถว).
+    // แถม audit ต้องบรรยาย "งานที่ commit แล้ว" อยู่แล้ว — เขียนใน tx ที่อาจ
+    // roll back = phantom audit row.
+    let pendingAudit: AuditEntry | null = null;
+    const result = await this.prisma.$transaction(async (tx) => {
       const lock = await (tx as any).contractExchangeRequest.updateMany({
         where: { id, status: 'PENDING', deletedAt: null },
         data: {
@@ -478,7 +486,7 @@ export class ContractExchangeService {
         data: { productId: req.newProductId },
       });
 
-      await this.audit.log({
+      pendingAudit = {
         action: 'EXCHANGE_MEMO_APPLIED',
         entity: 'contract_exchange_request',
         entityId: id,
@@ -490,14 +498,18 @@ export class ContractExchangeService {
           checklist: { addendumSigned: true, mdmSwapped: true },
           note: 'Memo-only swap — no JE (workbook Case 1, TFRS 9 modification)',
         },
-      });
+      };
       return { id, newContractId: null as string | null, mode: 'MEMO' };
     });
+    if (pendingAudit) await this.audit.log(pendingAudit);
+    return result;
   }
 
   /** PRICED: เดิมคือ approve() ทั้งก้อน — เปลี่ยนเฉพาะที่มาของแผนผ่อน (Device Swap 2026-07) */
   private async approvePriced(id: string, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    // audit หลัง commit — เหตุผลเดียวกับ `approveMemo` (nested root-tx = P2028)
+    let pendingAudit: AuditEntry | null = null;
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Lock-acquire (race-safe via updateMany count===1)
       const lock = await (tx as any).contractExchangeRequest.updateMany({
         where: { id, status: 'PENDING', deletedAt: null },
@@ -694,8 +706,8 @@ export class ContractExchangeService {
         },
       });
 
-      // 7. Audit
-      await this.audit.log({
+      // 7. Audit (ยิงหลัง commit — ดูเหตุผลบนหัว method)
+      pendingAudit = {
         action: 'EXCHANGE_REQUEST_APPROVED',
         entity: 'contract_exchange_request',
         entityId: id,
@@ -712,7 +724,7 @@ export class ContractExchangeService {
           // the log understands no money has moved at this point.
           phase: 'awaiting-sign-then-activate',
         },
-      });
+      };
 
       return {
         id,
@@ -720,6 +732,8 @@ export class ContractExchangeService {
         mode: 'PRICED',
       };
     });
+    if (pendingAudit) await this.audit.log(pendingAudit);
+    return result;
   }
 
   /**
@@ -1013,7 +1027,9 @@ export class ContractExchangeService {
     if (reason.trim().length < 10) {
       throw new BadRequestException('เหตุผลปฏิเสธอย่างน้อย 10 ตัวอักษร');
     }
-    return this.prisma.$transaction(async (tx) => {
+    // audit หลัง commit — เหตุผลเดียวกับ `approveMemo` (nested root-tx = P2028)
+    let pendingAudit: AuditEntry | null = null;
+    const result = await this.prisma.$transaction(async (tx) => {
       const lock = await (tx as any).contractExchangeRequest.updateMany({
         where: { id, status: 'PENDING', deletedAt: null },
         data: {
@@ -1026,15 +1042,17 @@ export class ContractExchangeService {
       if (lock.count !== 1) {
         throw new ConflictException('คำขออาจถูกตอบกลับแล้ว');
       }
-      await this.audit.log({
+      pendingAudit = {
         action: 'EXCHANGE_REQUEST_REJECTED',
         entity: 'contract_exchange_request',
         entityId: id,
         userId,
         newValue: { reason },
-      });
+      };
       return (tx as any).contractExchangeRequest.findUniqueOrThrow({ where: { id } });
     });
+    if (pendingAudit) await this.audit.log(pendingAudit);
+    return result;
   }
 
   async listPending(user: RequestUser): Promise<any[]> {

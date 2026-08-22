@@ -425,6 +425,86 @@ describe('ExchangeCancelService (spec §9)', () => {
     );
   });
 
+  // ==========================================================================
+  // Phase 5 Task 5 ข้อ 0 — audit ของ MEMO/PRE_FINALIZE ถูกกลืนด้วย P2028
+  //
+  // FINALIZED path ย้าย audit ออกไปหลัง commit ตั้งแต่ Phase 3 (pendingAudit)
+  // แต่สองเส้นทางนี้ยัง `await this.audit.log(...)` อยู่ **ข้างใน** $transaction —
+  // `AuditService.log` เปิด root-client `$transaction` ของตัวเอง (hash chain)
+  // ⇒ nested root-tx ที่ doctrine R-1 ห้าม ⇒ P2028 และ log() กลืน error ทิ้ง
+  // ⇒ ไม่มีแถว audit เลยทั้งที่กรรมสิทธิ์เครื่อง/สัญญาถูกสลับกลับจริง.
+  // ==========================================================================
+  it('MEMO cancel: audit EXCHANGE_MEMO_CANCELED ต้องเขียนหลัง tx commit (ไม่ใช่ระหว่าง tx)', async () => {
+    requests.memoReq = makeMemoReq();
+    const auditInsideTx: boolean[] = [];
+    let inTx = false;
+    txMock.$transaction.mockImplementation(async (fn: any) => {
+      inTx = true;
+      try {
+        return await fn(txMock);
+      } finally {
+        inTx = false;
+      }
+    });
+    audit.log.mockImplementation(async () => {
+      auditInsideTx.push(inTx);
+    });
+
+    await svc.cancel('memoReq', 'ลูกค้าขอเครื่องเดิมคืน', user);
+
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    // audit ต้องถูกเรียกนอก $transaction (false = หลัง commit)
+    expect(auditInsideTx).toEqual([false]);
+  });
+
+  it('MEMO cancel: tx ล้มเหลว → ไม่เขียน audit (กัน phantom audit row)', async () => {
+    requests.memoReq = makeMemoReq();
+    txMock.contract.update.mockRejectedValueOnce(new Error('db exploded'));
+    await expect(svc.cancel('memoReq', 'ลูกค้าขอเครื่องเดิมคืน', user)).rejects.toThrow(
+      'db exploded',
+    );
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('PRE_FINALIZE cancel: audit EXCHANGE_CANCELED ต้องเขียนหลัง tx commit (ไม่ใช่ระหว่าง tx)', async () => {
+    requests.reqDraft = {
+      ...makeFinalizedReq(5),
+      id: 'reqDraft',
+      je1aId: null,
+      je2Id: null,
+      je3Id: null,
+      je4Id: null,
+      eclReversalJeId: null,
+      oldContract: {
+        id: 'oldC1',
+        status: 'EXCHANGED',
+        branchId: 'br-1',
+        productId: 'oldP1',
+        exchangedAt: null,
+      },
+      newContract: { id: 'newC1', status: 'DRAFT' },
+    };
+    const auditInsideTx: boolean[] = [];
+    let inTx = false;
+    txMock.$transaction.mockImplementation(async (fn: any) => {
+      inTx = true;
+      try {
+        return await fn(txMock);
+      } finally {
+        inTx = false;
+      }
+    });
+    audit.log.mockImplementation(async () => {
+      auditInsideTx.push(inTx);
+    });
+
+    await svc.cancel('reqDraft', 'ลูกค้าไม่มาเซ็นสัญญา', user);
+
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    // audit ต้องถูกเรียกนอก $transaction (false = หลัง commit)
+    expect(auditInsideTx).toEqual([false]);
+  });
+
   // Owner decision 2026-07-31: MEMO also lost its 30-day cap — cancel at day
   // 45 must succeed exactly like day 5, still with no JE and no penalty.
   it('MEMO cancel วันที่ 45 (เกินเพดานเดิม) → SUCCEEDS เหมือนวันที่ 5, ไม่มี JE, ไม่มี penalty', async () => {

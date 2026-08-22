@@ -2,9 +2,17 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { PromoteListingPhotoDto, UpdateOnlineListingDto } from './dto/online-listing.dto';
+import { BulkOnlineVisibilityDto, PromoteListingPhotoDto, UpdateOnlineListingDto } from './dto/online-listing.dto';
+import {
+  SHOP_BRAND,
+  SHOP_PHONE_CATEGORIES,
+  evaluateReadiness,
+} from '../../utils/product-readiness.util';
+import { getBranchScope } from '../auth/branch-access.util';
 
 const MAX_GALLERY = 8;
+/** ดึงมาประเมินความพร้อมได้สูงสุดกี่แถวต่อครั้ง — ร้านมีของหลักร้อย ไม่ใช่หลักแสน */
+const MAX_BULK_SCAN = 2000;
 const DATA_URL_RE = /^data:image\/(jpeg|png|webp|gif);base64,(.+)$/;
 const EXT_BY_MIME: Record<string, string> = { jpeg: 'jpg', png: 'png', webp: 'webp', gif: 'gif' };
 
@@ -88,5 +96,114 @@ export class ProductsOnlineListingService {
       select: { gallery: true },
     });
     return { gallery: updated.gallery };
+  }
+
+  /**
+   * เปิด/ปิด "แสดงบนเว็บ" ทีเดียวหลายเครื่อง
+   *
+   * ปลอดภัยที่จะเปิดยกล็อต เพราะสวิตช์นี้เป็นแค่ "ปิดจากเว็บ" — ตัวตัดสินว่า
+   * เครื่องจะโผล่จริงไหมคือ readiness fragment (ราคาสด/รูป/เกรด) ที่ฝั่งเว็บใช้
+   * กรองอยู่แล้ว เครื่องที่ข้อมูลไม่ครบจึงเปิดค้างไว้ได้โดยไม่หลุดขึ้นหน้าร้าน
+   *
+   * คืนสรุปตามจริงว่าเปิดไปกี่เครื่อง **และจะขึ้นเว็บจริงกี่เครื่อง** พร้อม
+   * รายการว่าที่เหลือติดอะไร — ตัวเลขสองอันนี้ไม่เท่ากันเป็นเรื่องปกติ
+   */
+  async bulkSetVisibility(
+    dto: BulkOnlineVisibilityDto,
+    user: { role?: string | null; branchId?: string | null } | undefined,
+  ) {
+    if (dto.scope === 'SELECTED' && (!dto.productIds || dto.productIds.length === 0)) {
+      throw new BadRequestException('เลือกอย่างน้อย 1 เครื่อง หรือเปลี่ยนเป็นทั้งสต็อก');
+    }
+
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+      brand: SHOP_BRAND,
+      category: { in: [...SHOP_PHONE_CATEGORIES] },
+      status: 'IN_STOCK',
+    };
+    if (dto.scope === 'SELECTED') where.id = { in: dto.productIds };
+
+    // ผจก.สาขาแตะได้เฉพาะสาขาตัวเอง — ใช้ util เดียวกับ read endpoint อื่น
+    const scope = getBranchScope(user);
+    if (!scope.all) {
+      if (!scope.branchId) {
+        throw new BadRequestException('บัญชีนี้ยังไม่ได้ผูกสาขา จึงยังส่งสินค้าขึ้นเว็บไม่ได้');
+      }
+      where.branchId = scope.branchId;
+    }
+
+    const rows = await this.prisma.product.findMany({
+      where,
+      take: MAX_BULK_SCAN,
+      select: {
+        id: true,
+        name: true,
+        brand: true,
+        category: true,
+        status: true,
+        cashPrice: true,
+        gallery: true,
+        conditionGrade: true,
+        isOnlineVisible: true,
+        deletedAt: true,
+      },
+    });
+
+    if (rows.length === 0) {
+      return {
+        matched: 0,
+        changed: 0,
+        alreadySet: 0,
+        willAppear: 0,
+        blockedBy: [] as Array<{ reason: string; count: number }>,
+      };
+    }
+
+    const toChange = rows.filter((r) => r.isOnlineVisible !== dto.isOnlineVisible);
+    if (toChange.length > 0) {
+      await this.prisma.product.updateMany({
+        where: { id: { in: toChange.map((r) => r.id) } },
+        data: { isOnlineVisible: dto.isOnlineVisible },
+      });
+    }
+
+    // สรุปตามจริงว่าหลังกดแล้วจะเห็นบนเว็บกี่เครื่อง — ใช้ evaluateReadiness ตัว
+    // เดียวกับเช็คลิสต์ในหน้าสินค้า จะได้ไม่มีกติกาชุดที่สอง
+    const blocked = new Map<string, number>();
+    let willAppear = 0;
+    for (const r of rows) {
+      const result = evaluateReadiness({
+        name: r.name,
+        brand: r.brand,
+        category: r.category,
+        status: r.status,
+        cashPrice: r.cashPrice,
+        gallery: r.gallery,
+        conditionGrade: r.conditionGrade,
+        // ประเมินบนค่าใหม่ที่เพิ่งเขียนลงไป ไม่ใช่ค่าเก่าที่อ่านมา
+        isOnlineVisible: dto.isOnlineVisible,
+        deletedAt: r.deletedAt,
+      });
+      if (result.ready) {
+        willAppear += 1;
+        continue;
+      }
+      for (const c of result.checks) {
+        if (c.severity === 'blocking' && !c.ok) {
+          blocked.set(c.label, (blocked.get(c.label) ?? 0) + 1);
+        }
+      }
+    }
+
+    return {
+      matched: rows.length,
+      changed: toChange.length,
+      alreadySet: rows.length - toChange.length,
+      willAppear,
+      blockedBy: [...blocked.entries()]
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count),
+    };
   }
 }

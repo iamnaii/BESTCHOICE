@@ -7,7 +7,21 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { statusLabels, categoryLabels } from '@/lib/constants';
-import { ArrowRightLeft, BarChart3, Check, Copy, Download, Eye, Plus, Printer } from 'lucide-react';
+import {
+  ArrowRightLeft,
+  BarChart3,
+  Check,
+  Copy,
+  Download,
+  Eye,
+  Globe,
+  Plus,
+  Printer,
+  X,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { useMutation } from '@tanstack/react-query';
+import api, { getErrorMessage } from '@/lib/api';
 import { getDisplayPrices } from '@/utils/getDisplayPrices';
 import { StockProduct } from './types';
 import { useStockProducts, useEditingProductSync } from './hooks/useStockProducts';
@@ -42,6 +56,14 @@ export default function StockProductsPage() {
     message: string;
     action: () => void;
   }>({ open: false, message: '', action: () => {} });
+
+  const [bulkResult, setBulkResult] = useState<{
+    matched: number;
+    changed: number;
+    alreadySet: number;
+    willAppear: number;
+    blockedBy: Array<{ reason: string; count: number }>;
+  } | null>(null);
 
   const products = useStockProducts();
   const {
@@ -91,6 +113,38 @@ export default function StockProductsPage() {
   useEditingProductSync(editingProduct, listProducts, setEditingProduct);
 
   const navigateToProduct = useCallback((id: string) => navigate(`/products/${id}`), [navigate]);
+
+  const publishMutation = useMutation({
+    mutationFn: async (vars: { scope: 'SELECTED' | 'ALL_IN_STOCK'; productIds?: string[] }) =>
+      (await api.post('/products/online-listing/bulk-visibility', { isOnlineVisible: true, ...vars }))
+        .data,
+    onSuccess: (res) => {
+      setBulkResult(res);
+      // ตัวเลขสองอันนี้ไม่เท่ากันเป็นเรื่องปกติ — สวิตช์เปิดได้ทุกเครื่อง แต่จะโผล่
+      // หน้าร้านเฉพาะเครื่องที่ข้อมูลครบ พูดให้ชัดตั้งแต่ toast
+      toast.success(
+        res.willAppear === res.matched
+          ? `ส่งขึ้นเว็บแล้ว ${res.matched} เครื่อง`
+          : `เปิดแสดงบนเว็บ ${res.matched} เครื่อง — ขึ้นหน้าร้านจริง ${res.willAppear} เครื่อง`,
+      );
+      listRefetch();
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const askPublish = (scope: 'SELECTED' | 'ALL_IN_STOCK') =>
+    setConfirmDialog({
+      open: true,
+      message:
+        (scope === 'SELECTED'
+          ? `ส่ง ${selectedIds.size} เครื่องที่เลือกขึ้นเว็บ?`
+          : 'ส่งสินค้าในสต็อกขึ้นเว็บทั้งหมด?') +
+        ' เครื่องที่ยังไม่มีราคาขายสดหรือยังไม่มีรูป จะถูกเปิดสวิตช์ไว้ให้แต่ยังไม่ขึ้นหน้าร้าน พอเติมข้อมูลครบจะขึ้นเอง',
+      action: () =>
+        publishMutation.mutate(
+          scope === 'SELECTED' ? { scope, productIds: Array.from(selectedIds) } : { scope },
+        ),
+    });
 
   const handleBulkTransfer = (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,7 +358,27 @@ export default function StockProductsPage() {
                   <Printer className="size-4" />
                   พิมพ์ ({selectedIds.size})
                 </Button>
+                <Button
+                  variant="outline"
+                  size="md"
+                  disabled={publishMutation.isPending}
+                  onClick={() => askPublish('SELECTED')}
+                >
+                  <Globe className="size-4" />
+                  ส่งขึ้นเว็บ ({selectedIds.size})
+                </Button>
               </>
+            )}
+            {isManager && selectedIds.size === 0 && (
+              <Button
+                variant="outline"
+                size="md"
+                disabled={publishMutation.isPending}
+                onClick={() => askPublish('ALL_IN_STOCK')}
+              >
+                <Globe className="size-4" />
+                {publishMutation.isPending ? 'กำลังส่ง...' : 'ส่งขึ้นเว็บทั้งสต็อก'}
+              </Button>
             )}
             {isManager && (
               <Button variant="outline" size="md" onClick={() => handleExport(listProducts)}>
@@ -321,6 +395,51 @@ export default function StockProductsPage() {
           </div>
         }
       />
+
+      {/* สรุปหลังกดส่งขึ้นเว็บ — บอกตรง ๆ ว่าเหลือกี่เครื่องที่ยังไม่โผล่ และติดอะไร
+          ถ้าไม่บอก เจ้าของจะนึกว่าเปิดแล้วต้องขึ้นครบ แล้วไปงงที่หน้าเว็บแทน */}
+      {bulkResult && (
+        <div className="mb-4 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-foreground leading-snug">
+                เปิดแสดงบนเว็บ {bulkResult.matched.toLocaleString()} เครื่อง — ขึ้นหน้าร้านจริง{' '}
+                <span className="text-primary">{bulkResult.willAppear.toLocaleString()}</span> เครื่อง
+              </p>
+              {bulkResult.alreadySet > 0 && (
+                <p className="text-xs text-muted-foreground leading-snug">
+                  ในจำนวนนี้เปิดไว้อยู่แล้ว {bulkResult.alreadySet.toLocaleString()} เครื่อง
+                </p>
+              )}
+              {bulkResult.blockedBy.length > 0 && (
+                <div className="pt-1">
+                  <p className="text-xs text-muted-foreground leading-snug">
+                    ที่ยังไม่ขึ้นหน้าร้าน เพราะยังขาด:
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {bulkResult.blockedBy.map((b) => (
+                      <li key={b.reason} className="text-xs text-foreground leading-snug">
+                        • {b.reason} — {b.count.toLocaleString()} เครื่อง
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5 text-xs text-muted-foreground leading-snug">
+                    เติมข้อมูลได้ที่หน้าสินค้า แท็บ “ขึ้นเว็บ” แล้วเครื่องจะขึ้นเองโดยไม่ต้องกดซ้ำ
+                  </p>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setBulkResult(null)}
+              aria-label="ปิดสรุป"
+              className="p-1 rounded hover:bg-accent shrink-0"
+            >
+              <X className="size-4 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <QueryBoundary
         isLoading={listLoading && !listResult}

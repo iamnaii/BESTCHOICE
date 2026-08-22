@@ -172,6 +172,15 @@ export interface NegativeTypedField {
 const EPS = new Prisma.Decimal('0.01');
 const DAY_MS = 86_400_000;
 
+/**
+ * ป้ายของแถวที่ hydrate สัญญาไม่ได้ — **ตัวเดียวกันทั้ง `buildAllRows` และ
+ * `getPayablePairing`** (Phase 5 Task 5 ข้อ 3 / M1). GL ที่ไม่มีสัญญารองรับคือ
+ * สิ่งที่ต้อง "เห็น" ไม่ใช่สิ่งที่ต้องซ่อน: ก่อนหน้านี้รายงานอายุ `continue`
+ * ทิ้งเงียบ ๆ ⇒ ยอดนั้นหายจากทั้ง rows / totals / `getNegativeTypedRows`
+ * เหลือช่องทางเดียวคือ drift ระดับบัญชี ซึ่ง **ไม่มีเลขสัญญา** ให้ตามต่อ.
+ */
+export const MISSING_CONTRACT_LABEL = '(ไม่พบสัญญา)';
+
 /** แขนของหนี้ที่แก่เกินเกณฑ์ — ใช้ตั้ง label/วิธีล้างใน alert (Task 3) */
 export type ShopReceivableOverdueArm = 'INTERCO' | 'SHOP_COLLECT';
 
@@ -548,9 +557,13 @@ export class IntercoAgingService {
 
     // Query D — hydrate contract. **ไม่กรอง status** — สัญญา CANCELED ต้องโผล่
     // ในรายงานอายุหนี้ (หัวใจของเคส C-2: สัญญายกเลิกหลังตัดจ่ายคือลูกหนี้
-    // เรียกคืนตัวจริง). กรองเฉพาะ soft-delete ตาม house rule.
+    // เรียกคืนตัวจริง). **ไม่กรอง soft-delete ด้วย** (Phase 5 M1 — นิยาม
+    // เดียวกับ `getPayablePairing`): นี่คือรายงานกระทบยอด ไม่ใช่คิวงาน —
+    // สัญญาที่ถูกลบทิ้งแต่ GL ยังค้างคือเคสที่ต้องเห็นที่สุด และการกรองมันออก
+    // ทำให้ยอดหายจากรายงานโดยที่บัญชียังมีจริง (เห็นได้แค่ drift ระดับบัญชี
+    // ที่ไม่มีเลขสัญญา). แถวที่หาไม่เจอจริง ๆ ใช้ป้าย MISSING_CONTRACT_LABEL.
     const contracts = await this.prisma.contract.findMany({
-      where: { id: { in: universeIds }, deletedAt: null },
+      where: { id: { in: universeIds } },
       select: { id: true, contractNumber: true, customer: { select: { name: true } } },
     });
     const contractById = new Map(contracts.map((c) => [c.id, c]));
@@ -561,8 +574,9 @@ export class IntercoAgingService {
 
     const rows: ShopReceivableAgingRow[] = [];
     for (const contractId of universeIds) {
+      // คีย์ผี (JV มือ / สัญญาที่ถูกลบถาวรจากยุคก่อน) — **แสดง ไม่ทิ้ง**
+      // (M1: สอดคล้องกับ getPayablePairing ที่ใช้ป้ายเดียวกัน)
       const contract = contractById.get(contractId);
-      if (!contract) continue; // soft-deleted / phantom key (เช่น สัญญาเก่าของ A.4) — ไม่มีอะไรให้รายงาน
 
       const fin = financeByContract.get(contractId);
       const swapCreditGross = new Prisma.Decimal(String(fin?.swap_gross ?? 0));
@@ -583,8 +597,8 @@ export class IntercoAgingService {
 
       rows.push({
         contractId,
-        contractNumber: contract.contractNumber,
-        customerName: contract.customer.name,
+        contractNumber: contract?.contractNumber ?? MISSING_CONTRACT_LABEL,
+        customerName: contract?.customer.name ?? '',
         swapCreditGross,
         payoutRecallGross,
         settledDeduction,
@@ -679,7 +693,7 @@ export class IntercoAgingService {
       const diff = financedDiff.plus(commissionDiff);
       return {
         ...r,
-        contractNumber: contract?.contractNumber ?? '(ไม่พบสัญญา)',
+        contractNumber: contract?.contractNumber ?? MISSING_CONTRACT_LABEL,
         customerName: contract?.customer.name ?? '',
         legacyNoShop,
         financedDiff,

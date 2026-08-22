@@ -77,7 +77,11 @@ const settlementService = new IntercoSettlementService(
 // interactive transactions — the second fails at Prisma's ITX scheduler
 // (P2028) instead of ever racing at the DB. Same pattern as the settleRecallCash
 // race test in interco-netting.integration.spec.ts.
-const prisma2 = new PrismaClient();
+// `transactionOptions.timeout` 20s (Prisma default = 5s): เทส TOCTOU ของ Phase 5
+// เปิด tx ของการอนุมัติยกเลิกค้างไว้ตลอด create→submit→approve ของรอบจ่าย —
+// บน CI เย็น ๆ 5s เฉียดเกินไป. เกินเวลาจะ fail loud (P2028 = raw Prisma error
+// ตกด่าน "ผู้แพ้ต้องเป็น HttpException") ไม่ใช่ false green อยู่แล้ว
+const prisma2 = new PrismaClient({ transactionOptions: { timeout: 20_000 } });
 const journalAuto2 = new JournalAutoService(prisma2 as never);
 const sweepTemplate2 = new ExchangeCancelReversalTemplate(journalAuto2, prisma2 as never);
 const eclStageReverse2 = new EclStageReverseTemplate(journalAuto2, prisma2 as never);
@@ -1333,5 +1337,107 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     expect(recallAfter!.shopRecallGl.toFixed(2)).toBe(netBefore);
     const pendingAfter = await pendingService.getPendingContracts();
     expect(pendingAfter.find((p) => p.contractId === c2)).toBeDefined();
+  }, 120_000);
+  // ===========================================================================
+  // Phase 5 Task 5 ข้อ 2 — approveCancellation ↔ approveBatch: TOCTOU ที่ guard
+  // ปิดไม่ได้ (isolation).
+  //
+  // การตัดสิน C-1 vs C-2 อ่าน `InterCoSettlementItem` + สถานะ batch ซึ่ง
+  // `approveBatch` เป็นคนเขียน. หน้าต่างจริง: คำขอยกเลิกผ่าน guard
+  // "ไม่มี item ใน batch DRAFT/PENDING_APPROVAL" ตอนที่ยัง**ไม่มีรอบจ่าย**
+  // (ไม่มีอะไรให้เห็น) แล้วรอบจ่ายถูก create→submit→approve จนจบในหน้าต่างนั้น
+  // ⇒ ยกเลิกเดินเส้น C-1 mirror-reverse เจ้าหนี้ 21-1101/21-1102 ที่รอบจ่าย
+  // เพิ่งล้างไปแล้ว = เจ้าหนี้ติดลบ + เงินที่ FINANCE โอนให้หน้าร้านไม่มีลูกหนี้
+  // เรียกคืน (C-2 ควรเป็นคนตั้ง).
+  //
+  // `approveBatch` เป็น Serializable ตั้งแต่ Phase 4 แต่ SSI ต้องการให้ **ทั้งคู่**
+  // เป็น Serializable จึงจะเกิด rw-conflict — writer ใต้ READ COMMITTED ไม่
+  // ลงทะเบียน conflict กับ SIRead lock ของใครเลย ⇒ ก่อนแก้ ทั้งสองฝั่งสำเร็จ
+  // พร้อมกันได้จริง (นี่คือเคส RED ของเทสนี้).
+  // ===========================================================================
+  it('TOCTOU: อนุมัติยกเลิก (คอนเนกชัน 2) ชนกับอนุมัติรอบจ่ายของสัญญาเดียวกัน → ต้องมีฝ่ายแพ้ + เจ้าหนี้ไม่ติดลบ', async () => {
+    const codes = ['21-1101', '21-1102', 'S11-3001', 'S11-3002'] as const;
+    const pre: Record<string, Decimal> = {};
+    for (const code of codes) pre[code] = await wholeAccountBalance(code);
+
+    const { contractId } = await seedBaseContract(31);
+    await seed1a(contractId);
+    await seedShopLegs(contractId);
+
+    const cancellation = await service2.requestCancellation(
+      contractId,
+      adminId,
+      'ทดสอบชนกับรอบจ่ายที่กำลังอนุมัติ',
+      0,
+    );
+    await prisma2.$queryRaw`SELECT 1`; // warm-up คอนเนกชันที่สอง
+
+    // Barrier: ค้างการยกเลิกไว้ **หลังผ่าน guard + C-2 detect ครบ** แต่ก่อนโพสต์
+    // ใบแรก — snapshot ของ tx ถูกจับไปแล้วตอนนั้น ซึ่งคือหัวใจของหน้าต่าง TOCTOU
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    let gateHit = false;
+    const realExecute = template2.execute.bind(template2);
+    const spy = vi.spyOn(template2, 'execute').mockImplementation(async (...args) => {
+      gateHit = true;
+      await gate;
+      return realExecute(...(args as Parameters<typeof realExecute>));
+    });
+
+    let cancelPromise: Promise<{ ok: boolean; err?: unknown }>;
+    let batchOutcome: { ok: boolean; err?: unknown };
+    try {
+      cancelPromise = service2
+        .approveCancellation(cancellation.id, adminId)
+        .then(() => ({ ok: true }) as { ok: boolean; err?: unknown })
+        .catch((err: unknown) => ({ ok: false, err }));
+
+      const deadline = Date.now() + 6_000;
+      while (!gateHit && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+      expect(gateHit, 'การยกเลิกต้องผ่าน guard และค้าง tx ไว้ก่อนเริ่มรอบจ่าย').toBe(true);
+
+      const batch = await settlementService.createBatch(
+        { contractIds: [contractId], transferDate: '2026-08-20' },
+        adminId,
+      );
+      createdBatchIds.push(batch.id);
+      await settlementService.submitBatch(batch.id, adminId);
+      batchOutcome = await settlementService
+        .approveBatch(batch.id, adminId)
+        .then(() => ({ ok: true }) as { ok: boolean; err?: unknown })
+        .catch((err: unknown) => ({ ok: false, err }));
+    } finally {
+      releaseGate!();
+      spy.mockRestore();
+    }
+    const cancelOutcome = await cancelPromise!;
+
+    // ผู้แพ้ต้องเป็น HttpException สะอาด (409 SSI abort / 400 guard) — ห้าม raw
+    // Prisma error (P2028 tx timeout = หน้าต่างไม่ได้แข่งจริง ต้องดังไว้)
+    for (const outcome of [cancelOutcome, batchOutcome!]) {
+      if (outcome.ok) continue;
+      const err = outcome.err;
+      expect(
+        err instanceof HttpException,
+        `ผู้แพ้ต้องเป็น HttpException: ${(err as { constructor?: { name?: string } })?.constructor?.name}: ${(err as Error)?.message}`,
+      ).toBe(true);
+      expect([400, 409]).toContain((err as HttpException).getStatus());
+    }
+
+    expect(
+      [cancelOutcome.ok, batchOutcome!.ok].filter(Boolean),
+      'ยกเลิก + อนุมัติรอบจ่ายสำเร็จพร้อมกัน = ล้างเจ้าหนี้ก้อนเดียวสองครั้ง',
+    ).toHaveLength(1);
+
+    // เงิน: ไม่ว่าใครชนะ เจ้าหนี้/ลูกหนี้รอบจ่ายต้องกลับมาที่ 0 พอดี
+    // (1A Cr 10,000 + ล้างครั้งเดียว Dr 10,000) — สองเด้งจะเป็น −10,000
+    for (const code of codes) {
+      expect(
+        (await wholeAccountBalance(code)).minus(pre[code]).toFixed(2),
+        `account ${code} ต้องไม่ติดลบหลังการแข่ง`,
+      ).toBe('0.00');
+    }
   }, 120_000);
 });

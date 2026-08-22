@@ -35,7 +35,25 @@ describe('unconfirmedLeftoverPrices — ราคาบวกที่ค้า�
     });
     expect(left.columns).toEqual([]);
     expect(left.rows).toEqual(['แถวราคา "ราคาขาย" 15900']);
-    expect(unconfirmedPriceMessage(left)).toMatch(/จัดการราคา/);
+
+    /**
+     * Fix round 4 [Important 2 ข] — ข้อความเดิมสั่งให้ "ลบหรือแก้แถวราคานั้น" ที่หน้า
+     * "จัดการราคา" แต่เคสนี้ (แถวเดียว) **ลบไม่ได้**: `removePrice` ปฏิเสธด้วย
+     * 'ต้องมีอย่างน้อย 1 ราคาขาย' ⇒ ทำตามคำแนะนำแล้วตัน. ทางออกที่ได้ผลจริงคือ
+     * ยืนยัน "ราคาเงินสด" ในฟอร์มเดียวกันนี้ ซึ่ง sync จะทับแถว default นั้นให้เอง
+     */
+    expect(left.cashConfirmAbsorbs).toBe(true);
+    const msg = unconfirmedPriceMessage(left)!;
+    expect(msg).toMatch(/ยืนยัน "ราคาเงินสด"/);
+    expect(msg).not.toContain('ลบ');
+  });
+
+  it('แถวที่ค้างอยู่จะถูกทับถ้ายืนยันราคาเงินสด → cashConfirmAbsorbs = true', () => {
+    const left = unconfirmedLeftoverPrices(
+      { cashPrice: null, installmentPrice: null, prices: [staleDefaultRow] },
+      { cashPrice: null, installmentPrice: null },
+    );
+    expect(left.cashConfirmAbsorbs).toBe(true);
   });
 
   it('ยืนยันราคาเงินสดแทน → sync จะทับแถว default นั้นเอง ⇒ ไม่มีอะไรค้าง', () => {
@@ -75,6 +93,11 @@ describe('unconfirmedLeftoverPrices — ราคาบวกที่ค้า�
       { cashPrice: D('9900'), installmentPrice: D('11900') },
     );
     expect(left.rows).toEqual(['แถวราคา "ราคาโปรโมชั่น" 12900']);
+
+    // fix round 4: ยืนยันเงินสดไปแล้วแต่แถวนี้ยังรอด ⇒ ทางออกอยู่ที่หน้า "จัดการราคา"
+    // (เครื่องมี 2 แถว จึงลบแถวโปรโมชั่นได้จริง — `removePrice` ต้องเหลืออย่างน้อย 1 แถว)
+    expect(left.cashConfirmAbsorbs).toBe(false);
+    expect(unconfirmedPriceMessage(left)).toMatch(/จัดการราคา/);
   });
 
   it('แถวที่ถูก soft-delete / ยอด 0 ไม่นับ (ตรงกับ hasSellingPrice)', () => {

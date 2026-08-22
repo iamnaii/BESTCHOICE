@@ -25,7 +25,20 @@ import { autofillProductPriceFromTemplate } from '../../utils/product-price-auto
 import { evaluateReadiness } from '../../utils/product-readiness.util';
 
 const productInclude = {
-  prices: { orderBy: { createdAt: 'asc' as const } },
+  /**
+   * Fix round 4 [Important 2 ก] — แถวราคาที่ถูก soft-delete **ห้ามหลุดออกไปกับ payload**
+   *
+   * เดิม include นี้ไม่กรอง `deletedAt` ⇒ ผู้อ่านฝั่งเว็บที่หยิบ `product.prices` ตรง ๆ
+   * (dropdown ราคาใน POS, ตัวเลือกราคาตอนเปิดสัญญา, `PriceManagementModal`,
+   * mirror ของด่านนำเข้าคลังใน `ReturnToStockAction`) เห็นแถวที่ถูกลบเหมือนแถวปกติ
+   * ขณะที่ฝั่ง API กรองเองใน `product-enter-stock.util` (`liveRows`) — asymmetry
+   * ตัวเดียวกับ Minor 3 แค่ย้ายฝั่ง: mirror บล็อกการนำเข้าคลังด้วยแถวที่ API ยอมรับไปแล้ว
+   *
+   * กรองที่ต้นทางแทนที่จะไล่กรองรายผู้อ่าน — ตรวจแล้วไม่มีผู้อ่านรายใดต้องการแถวที่ถูกลบ
+   * (`liveRows` คงไว้เป็น defense-in-depth ให้ผู้เรียกที่ `select` ชุดของตัวเอง เช่น
+   * `ProductPhotosService.completePhotos`)
+   */
+  prices: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' as const } },
   supplier: { select: { id: true, name: true } },
   branch: { select: { id: true, name: true } },
   po: { select: { id: true, poNumber: true } },

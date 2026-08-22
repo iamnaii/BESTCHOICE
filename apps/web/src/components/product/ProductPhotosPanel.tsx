@@ -18,6 +18,11 @@ interface PhotoData {
   isCompleted?: boolean;
   completedCount?: number;
   totalCount?: number;
+  /**
+   * กดยืนยันรูปซ้ำแล้วยังมีผลอยู่ไหม (= เครื่องยังไม่เข้าคลัง) — มาจาก server ทางเดียว
+   * ห้ามให้หน้าจอประกอบกติกาเองจากสถานะสินค้า (ดู `ProductPhotosService.getPhotos`)
+   */
+  pendingStockEntry?: boolean;
 }
 
 /** ผลของ `POST /products/:id/photos/complete` — ดู `ProductPhotosService.completePhotos` */
@@ -194,6 +199,18 @@ export default function ProductPhotosPanel({
   const isCompleted = data?.isCompleted || false;
   const completedCount = data?.completedCount || 0;
 
+  /**
+   * Fix round 4 [Important 1]: เดิมปุ่มขึ้นกับ `!isCompleted` อย่างเดียว ⇒ เมื่อ server
+   * (soft gate ของรอบ 3) บันทึกว่ารูปครบแล้วแต่ **ไม่เลื่อนเข้าคลังเพราะยังไม่มีราคา**
+   * ปุ่มจะหายถาวร ทั้งที่ toast บอกให้ "ตั้งราคาแล้วกดยืนยันอีกครั้ง" — คำแนะนำที่ทำ
+   * ตามไม่ได้ และเครื่องเทิร์นที่ autofill ราคาไม่ match ค้าง `PHOTO_PENDING` เงียบ ๆ
+   * (`SALES` ไปต่อไม่ได้เลย ซึ่งเป็น persona ที่ soft gate ตั้งใจปลดตั้งแต่แรก)
+   *
+   * เงื่อนไขที่ถูกคือ "รูปครบ **และ** ยังไม่เข้าคลัง" — พอเข้าคลังแล้วปุ่มหายตามเดิม
+   * เพราะยืนยันซ้ำไม่มีผลอะไร
+   */
+  const canConfirmPhotos = completedCount === 6 && (!isCompleted || !!data?.pendingStockEntry);
+
   return (
     <div className="bg-card rounded-lg border p-4 mb-4">
       <div className="flex items-center justify-between mb-2">
@@ -205,7 +222,7 @@ export default function ProductPhotosPanel({
             {isCompleted ? 'ครบแล้ว' : `${completedCount}/6`}
           </span>
         </div>
-        {canEdit && completedCount === 6 && !isCompleted && (
+        {canEdit && canConfirmPhotos && (
           <button
             onClick={() => completeMutation.mutate()}
             disabled={completeMutation.isPending}

@@ -80,6 +80,10 @@ describe('ProductPhotosService.completePhotos — ด่านเข้าคล
     expect(res.status).toBe('PHOTO_PENDING');
     expect(res.enteredStock).toBe(false);
     expect(res.message).toMatch(/ตั้งราคาขาย/);
+    // fix round 4 [Important 1]: `SALES` (คนกดปุ่มนี้) ตั้งราคาเองไม่ได้ — PATCH /products/:id
+    // และ POST /products/:id/prices เป็น OWNER/BM ⇒ ข้อความต้องบอกว่าให้ใครตั้งให้
+    // ไม่ใช่สั่งให้คนที่ทำไม่ได้ไปทำ (ทางออกที่ทำได้จริงเท่านั้น)
+    expect(res.message).toMatch(/ผู้จัดการสาขา|เจ้าของ/);
     expect(tx.product.update).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
@@ -147,5 +151,80 @@ describe('ProductPhotosService.completePhotos — ด่านเข้าคล
     expect(res.enteredStock).toBe(false);
     expect(tx.product.update).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Phase 5 fix round 4 [Important 1] — ปุ่ม "ยืนยันรูปครบ" ต้องไม่หายไปตราบใดที่เครื่อง
+ * **ยังไม่เข้าคลัง**
+ *
+ * รอบ 3 ทำให้ `completePhotos` เป็น soft gate (เซ็ต `isCompleted = true` ก่อนเช็คราคา)
+ * แต่หน้าจอ render ปุ่มด้วย `!isCompleted` ⇒ กดครั้งแรกแล้วปุ่มหายถาวร ขณะที่ข้อความบอกให้
+ * "ตั้งราคาแล้วกดยืนยันอีกครั้ง" — ชี้ทางออกที่ทำไม่ได้ (failure mode เดียวกับที่รอบ 3
+ * ตั้งใจปิด). `getPhotos` จึงต้องบอกหน้าจอตรง ๆ ว่า "ยืนยันซ้ำยังมีผล" — ห้ามให้หน้าจอ
+ * ประกอบกติกาเองจากสถานะสินค้า (กติกาชุดที่สอง)
+ */
+describe('ProductPhotosService.getPhotos — สัญญาณ "ยืนยันซ้ำยังมีผล" (fix round 4)', () => {
+  let service: ProductPhotosService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const photoRow = {
+    id: 'pp-1',
+    front: 'a',
+    back: 'b',
+    left: 'c',
+    right: 'd',
+    top: 'e',
+    bottom: 'f',
+    isCompleted: true,
+  };
+
+  beforeEach(async () => {
+    prisma = { product: { findUnique: jest.fn() } };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductPhotosService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductPhotosService>(ProductPhotosService);
+  });
+
+  it('รูปครบแล้ว (isCompleted) แต่ยังค้าง PHOTO_PENDING → pendingStockEntry = true (ปุ่มต้องยังอยู่)', async () => {
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'p-1',
+      status: 'PHOTO_PENDING',
+      category: 'PHONE_USED',
+      productPhotos: photoRow,
+    });
+
+    const res = await service.getPhotos('p-1');
+
+    expect(res.isCompleted).toBe(true);
+    expect(res.completedCount).toBe(6);
+    expect(res.pendingStockEntry).toBe(true);
+  });
+
+  it('เข้าคลังแล้ว (IN_STOCK) → pendingStockEntry = false (ยืนยันซ้ำไม่มีผล ปุ่มควรหาย)', async () => {
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'p-1',
+      status: 'IN_STOCK',
+      category: 'PHONE_USED',
+      productPhotos: photoRow,
+    });
+
+    expect((await service.getPhotos('p-1')).pendingStockEntry).toBe(false);
+  });
+
+  it('ยังไม่เคยอัปโหลดรูปเลย (ไม่มีแถว) ก็ต้องบอกสัญญาณเดียวกัน', async () => {
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'p-1',
+      status: 'PHOTO_PENDING',
+      category: 'PHONE_USED',
+      productPhotos: null,
+    });
+
+    const res = await service.getPhotos('p-1');
+
+    expect(res.isCompleted).toBe(false);
+    expect(res.pendingStockEntry).toBe(true);
   });
 });

@@ -206,3 +206,51 @@ describe('ReturnToStockAction (fix round 3)', () => {
     expect(screen.queryByText(/แก้ราคาขาย/)).toBeNull();
   });
 });
+
+/**
+ * Fix round 4 [Important 2 ข] — ข้อความของ **แถว** ที่ค้าง ต้องชี้ทางออกที่ทำได้จริง
+ *
+ * รอบ 3 เขียนว่า "ลบหรือแก้แถวราคานั้นที่หน้าสต็อก ปุ่มจัดการราคา" — แต่ `removePrice`
+ * เป็น soft delete ที่ปฏิเสธเมื่อเหลือแถวเดียว ('ต้องมีอย่างน้อย 1 ราคาขาย') ⇒ ในเคส
+ * headline (แถวเดียว) ทำตามแล้วตัน. ทางที่ได้ผลจริงคือยืนยัน "ราคาเงินสด" ในฟอร์มนี้เอง
+ */
+describe('ReturnToStockAction — ข้อความแถวค้างต้องชี้ทางที่ทำได้ (fix round 4)', () => {
+  const staleRow = { id: 'pr-1', label: 'ราคาขาย', amount: '15900', isDefault: true };
+
+  it('แถวเดียวที่ลบไม่ได้ → บอกให้ยืนยัน "ราคาเงินสด" ไม่ใช่บอกให้ไปลบแถว', async () => {
+    render(
+      <ReturnToStockAction
+        {...base}
+        currentCashPrice={null}
+        currentInstallmentPrice={null}
+        prices={[staleRow]}
+        onConfirm={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    await userEvent.type(await screen.findByLabelText(/ราคาผ่อน/), '11900');
+
+    expect(await screen.findByText(/ยืนยัน "ราคาเงินสด"/)).toBeTruthy();
+    expect(screen.queryByText(/ลบหรือแก้แถวราคา/)).toBeNull();
+  });
+
+  it('แถวโปรโมชั่นที่ยืนยันเงินสดแล้วก็ยังรอด → ชี้ไปหน้า "จัดการราคา" (ลบได้จริง เหลือ 2 แถว)', async () => {
+    render(
+      <ReturnToStockAction
+        {...base}
+        currentCashPrice={null}
+        currentInstallmentPrice={null}
+        prices={[
+          { id: 'pr-1', label: 'ราคาเงินสด', amount: '15900', isDefault: true },
+          { id: 'pr-2', label: 'ราคาโปรโมชั่น', amount: '12900', isDefault: false },
+        ]}
+        onConfirm={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    await userEvent.type(await screen.findByLabelText(/ราคาเงินสด/), '9900');
+
+    expect(await screen.findByText(/จัดการราคา/)).toBeTruthy();
+    expect(screen.queryByText(/ยืนยัน "ราคาเงินสด"/)).toBeNull();
+  });
+});

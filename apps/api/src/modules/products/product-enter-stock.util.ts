@@ -14,13 +14,20 @@ import { CASH_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.ut
  * 3. `ProductPhotosService.completePhotos` — ยืนยันรูป 6 มุม `PHOTO_PENDING → IN_STOCK`
  *    (soft gate: ไม่มีราคา = ไม่เลื่อนสถานะ ไม่ใช่ปฏิเสธงานทั้งใบ — ดู Minor 4 รอบ 3)
  *
- * ประตูที่ **ไม่** ผ่าน helper นี้โดยตั้งใจ:
+ * ประตูที่ **ไม่** ผ่าน helper นี้โดยตั้งใจ (ครบทุกจุดที่เขียน `status: 'IN_STOCK'`
+ * นอกเหนือจาก 3 ข้อบน — ตรวจซ้ำ 2026-08-22, fix round 4 Minor 3):
  * - `po-receiving` — สายรับ**ของใหม่** อัตโนมัติ (ตั้งราคาในใบเดียวกันอยู่แล้ว)
  * - `stock-adjustments` reason `FOUND` — มี allow-list ของตัวเอง (กู้ของหาย/ของเสีย
  *   เท่านั้น) + 4-eyes + แถว `StockAdjustment` เป็นหลักฐาน
  * - เส้นทาง **ยกเลิก** (`contract-cancellation.service.ts`,
  *   `contract-exchange-cancel.service.ts`) — เครื่องกลับมาพร้อมราคาของตัวเองและมี audit
  *   ของ flow นั้นเอง (เปิดไว้ถูกแล้ว ไม่ใช่ carry)
+ * - **ปลดจอง** `RESERVED → IN_STOCK` (`stock-reservation.service.ts` `unreserve`,
+ *   `contract-lifecycle.service.ts` ตอนยกเลิกสัญญาที่ยังจองอยู่) — benign โดยโครงสร้าง:
+ *   เครื่องต้องเป็น `IN_STOCK` (มีราคาแล้ว) มาก่อนจึงจะถูกจองได้ การปลดจองคือคืนสภาพเดิม
+ *   ไม่ใช่การพาเครื่องใหม่เข้าคลัง
+ * - **นำเข้าข้อมูลเก่า** `tooltify-stock-parser.ts` (ใช้โดย `import-tooltify-stock.cli`)
+ *   — งาน migration ที่อ่านราคามาจากชีตในแถวเดียวกัน ไม่ใช่ประตูที่คนกดในระบบ
  */
 
 export const ENTER_STOCK_AUDIT_ACTION = 'PRODUCT_RETURNED_TO_STOCK';
@@ -98,6 +105,17 @@ export interface UnconfirmedPrices {
   columns: string[];
   /** แถว `ProductPrice` ที่ `syncPriceRowsFromColumns` จะ **ไม่** ทับ ⇒ ราคาเก่ารอดต่อ */
   rows: string[];
+  /**
+   * Fix round 4 [Important 2 ข] — "ยืนยันราคาเงินสดเพิ่ม จะทับแถวที่ค้างอย่างน้อยหนึ่งแถว"
+   *
+   * ใช้เลือก **คำแนะนำที่ทำได้จริง**: รอบก่อนหน้าสั่งให้ "ลบหรือแก้แถวราคานั้น" ทุกกรณี
+   * แต่ `ProductsPricingService.removePrice` เป็น soft delete ที่ปฏิเสธเมื่อเหลือแถวเดียว
+   * (`'ต้องมีอย่างน้อย 1 ราคาขาย'`) ⇒ เคส headline (แถว default เดียวค้าง + ยืนยันเฉพาะ
+   * ราคาผ่อน) ทำตามคำแนะนำแล้วตัน ทั้งที่ทางออกอยู่ในฟอร์มเดียวกันนี้เอง
+   *
+   * `undefined` (ผู้เรียกที่ประกอบ object เอง เช่นเทสต์ข้อความ) = ถือว่าทับไม่ได้
+   */
+  cashConfirmAbsorbs?: boolean;
 }
 
 const INSTALLMENT_PREFIX = 'ราคาผ่อน';
@@ -130,26 +148,36 @@ export function unconfirmedLeftoverPrices(
   }
 
   const rows = liveRows(product);
+  // mirror ของ `syncPriceRowsFromColumns` phase 1 ฝั่งเงินสด (label ตรง → default row)
+  const cashTargetIndex = (() => {
+    const exact = rows.findIndex((r) => r.label === CASH_LABEL);
+    if (exact >= 0) return exact;
+    return rows.findIndex((r) => r.isDefault && !(r.label ?? '').startsWith(INSTALLMENT_PREFIX));
+  })();
+
   const overwritten = new Set<number>();
-  if (confirmed.cashPrice) {
-    // mirror ของ `syncPriceRowsFromColumns` phase 1 ฝั่งเงินสด (label ตรง → default row)
-    let idx = rows.findIndex((r) => r.label === CASH_LABEL);
-    if (idx < 0) {
-      idx = rows.findIndex((r) => r.isDefault && !(r.label ?? '').startsWith(INSTALLMENT_PREFIX));
-    }
-    if (idx >= 0) overwritten.add(idx);
-  }
+  if (confirmed.cashPrice && cashTargetIndex >= 0) overwritten.add(cashTargetIndex);
   if (confirmed.installmentPrice) {
     const idx = rows.findIndex((r) => r.label === INSTALLMENT_LABEL);
     if (idx >= 0) overwritten.add(idx);
   }
 
-  const leftoverRows = rows
+  const leftoverIndexes = rows
     .map((r, i) => ({ r, i }))
-    .filter(({ r, i }) => !overwritten.has(i) && isPositiveAmount(r.amount))
-    .map(({ r }) => 'แถวราคา "' + (r.label ?? '(ไม่มีชื่อ)') + '" ' + r.amount.toString());
+    .filter(({ r, i }) => !overwritten.has(i) && isPositiveAmount(r.amount));
 
-  return { columns, rows: leftoverRows };
+  // ยังไม่ได้ยืนยันเงินสด และแถวที่ค้างอยู่คือแถวที่การยืนยันเงินสดจะทับพอดี
+  // ⇒ ทางออกอยู่ในฟอร์มเดียวกันนี้ ไม่ต้องส่งไปหน้าจัดการราคา (ซึ่งลบแถวสุดท้ายไม่ได้)
+  const cashConfirmAbsorbs =
+    !confirmed.cashPrice && leftoverIndexes.some(({ i }) => i === cashTargetIndex);
+
+  return {
+    columns,
+    rows: leftoverIndexes.map(
+      ({ r }) => 'แถวราคา "' + (r.label ?? '(ไม่มีชื่อ)') + '" ' + r.amount.toString(),
+    ),
+    cashConfirmAbsorbs,
+  };
 }
 
 /**
@@ -161,7 +189,12 @@ export function unconfirmedLeftoverPrices(
  * ปฏิเสธ `<= 0`) ⇒ ส่งผู้ใช้ไปชนกำแพง. ความสามารถ "ล้างราคา" เป็น carry → Task 6
  * (ต้องยุ่งกับแถว `ProductPrice`/แถว default ซึ่งเป็นกติกาของหน้าแก้ราคา = กติกาชุดที่สอง)
  *
- * ส่วน **แถว** ราคาเก่า ชี้ไปที่ "จัดการราคา" ได้จริง — หน้านั้นลบ/แก้แถวได้
+ * Fix round 4 [Important 2 ข] — ส่วน **แถว** ก็ชี้ผิดเหมือนกัน: ของเดิมสั่งให้ "ลบหรือ
+ * แก้แถวราคานั้น" ที่หน้า "จัดการราคา" ทุกกรณี แต่ `removePrice` เป็น soft delete ที่
+ * ปฏิเสธเมื่อเหลือแถวเดียว (`'ต้องมีอย่างน้อย 1 ราคาขาย'`) ⇒ เคส headline (แถว default
+ * เดียวค้าง เพราะยืนยันมาแต่ราคาผ่อน) ทำตามแล้วตัน. ตอนนี้แยกสองทาง:
+ * - `cashConfirmAbsorbs` → บอกให้ยืนยัน "ราคาเงินสด" ในฟอร์มนี้เลย (sync จะทับแถวนั้นเอง)
+ * - นอกนั้น → หน้า "จัดการราคา" ซึ่งแก้ยอดได้เสมอ และลบได้เมื่อเหลือมากกว่า 1 แถว
  */
 export function unconfirmedPriceMessage(u: UnconfirmedPrices): string | null {
   const parts: string[] = [];
@@ -175,8 +208,12 @@ export function unconfirmedPriceMessage(u: UnconfirmedPrices): string | null {
   if (u.rows.length > 0) {
     parts.push(
       u.rows.join(' และ ') +
-        ' ยังค้างอยู่ และราคาที่ยืนยันจะไม่ทับแถวนี้ — ลบหรือแก้แถวราคานั้นที่หน้าสต็อก ' +
-        'ปุ่ม "จัดการราคา" ก่อน แล้วค่อยนำเข้าคลัง (แถวราคาตั้งต้นคือค่าที่ POS/บอทหยิบไปขาย)',
+        ' ยังค้างอยู่ และราคาที่ยืนยันจะไม่ทับแถวนี้ — ' +
+        (u.cashConfirmAbsorbs
+          ? 'ยืนยัน "ราคาเงินสด" ในฟอร์มนี้ด้วย ราคาที่ยืนยันจะถูกเขียนทับลงแถวนั้นให้เอง'
+          : 'แก้ยอดแถวนั้นให้เป็นราคาปัจจุบันที่หน้าสต็อก ปุ่ม "จัดการราคา" ก่อน ' +
+            '(ลบแถวได้เมื่อเครื่องมีราคามากกว่า 1 แถว)') +
+        ' (แถวราคาตั้งต้นคือค่าที่ POS/บอทหยิบไปขาย)',
     );
   }
   return parts.length > 0 ? parts.join(' · ') : null;

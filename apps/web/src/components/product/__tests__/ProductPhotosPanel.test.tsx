@@ -96,3 +96,55 @@ describe('ProductPhotosPanel — ยืนยันรูปครบ (fix round
     expect(toast.error).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Fix round 4 [Important 1] — ปุ่ม "ยืนยันรูปครบ" ต้องไม่หายไปตราบใดที่เครื่องยังไม่เข้าคลัง
+ *
+ * รอบ 3 ทำให้ server เซ็ต `isCompleted = true` **ก่อน** เช็คราคา (ตั้งใจ: งานบันทึกรูป
+ * ต้องสำเร็จเสมอ) แต่ปุ่มถูก render ด้วย `!isCompleted` ⇒ กดครั้งแรกแล้วปุ่มหายถาวร
+ * ขณะที่ toast บอกให้ "ตั้งราคาแล้วกดยืนยันอีกครั้ง" — คำแนะนำที่ทำตามไม่ได้
+ * (เครื่องเทิร์นที่ autofill ราคาไม่ match ค้าง PHOTO_PENDING เงียบ ๆ และ `SALES` ตัน)
+ *
+ * เงื่อนไขที่ถูกคือ "รูปครบ **และ** ยังไม่เข้าคลัง" — สัญญาณมาจาก server ทางเดียว
+ * (`pendingStockEntry`) ไม่ให้หน้าจอประกอบกติกาเองจากสถานะสินค้า
+ */
+describe('ProductPhotosPanel — ปุ่มยืนยันรูปครบไม่หายจนกว่าจะเข้าคลัง (fix round 4)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const photos = (over: Record<string, unknown>) => {
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        productId: 'p-1',
+        photos: ALL_SIX,
+        completedCount: 6,
+        totalCount: 6,
+        ...over,
+      },
+    });
+  };
+
+  it('รูปครบ + ยืนยันไปแล้ว แต่ยังค้าง PHOTO_PENDING → ปุ่มยังอยู่ (กดซ้ำได้หลังตั้งราคา)', async () => {
+    photos({ isCompleted: true, pendingStockEntry: true });
+
+    render(<ProductPhotosPanel productId="p-1" canEdit />, { wrapper });
+
+    expect(await screen.findByRole('button', { name: 'ยืนยันรูปครบ' })).toBeTruthy();
+  });
+
+  it('เข้าคลังแล้ว → ปุ่มหาย (ยืนยันซ้ำไม่มีผล)', async () => {
+    photos({ isCompleted: true, pendingStockEntry: false });
+
+    render(<ProductPhotosPanel productId="p-1" canEdit />, { wrapper });
+
+    await screen.findByText('ครบแล้ว');
+    expect(screen.queryByRole('button', { name: 'ยืนยันรูปครบ' })).toBeNull();
+  });
+
+  it('ยังไม่เคยยืนยัน → ปุ่มอยู่ตามเดิม (พฤติกรรมเดิมไม่เปลี่ยน)', async () => {
+    photos({ isCompleted: false, pendingStockEntry: true });
+
+    render(<ProductPhotosPanel productId="p-1" canEdit />, { wrapper });
+
+    expect(await screen.findByRole('button', { name: 'ยืนยันรูปครบ' })).toBeTruthy();
+  });
+});

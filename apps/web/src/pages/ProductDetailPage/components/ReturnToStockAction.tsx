@@ -46,25 +46,40 @@ const priceText = (v: number | null) => (v != null && v > 0 ? String(v) : '');
  * เฉพาะแถวที่ `syncPriceRowsFromColumns` เลือกเป็นเป้าหมาย (label ตรง → default row
  * ฝั่งเงินสด) แถวที่เหลือรอดต่อและยังเป็นราคาตั้งต้นที่ POS/บอทหยิบไปขาย
  * — ฝั่ง API เป็นตัวบังคับจริง อันนี้แค่บอกก่อนตั้งแต่ยังไม่กด
+ *
+ * Fix round 4 [Important 2 ก]: **ไม่ต้องกรอง `deletedAt` ที่นี่** — `productInclude.prices`
+ * ฝั่ง API กรองให้แล้วตั้งแต่ต้นทาง (`products.service.ts`) ⇒ `prices` ที่ไหลมาถึง
+ * คอมโพเนนต์นี้เป็นแถวที่ยังมีผลเสมอ เหมือนที่ `liveRows` เห็นฝั่ง API (เดิมสองฝั่ง
+ * มองคนละชุด mirror จึงบล็อกด้วยแถวที่ API ยอมรับไปแล้ว)
+ *
+ * Fix round 4 [Important 2 ข]: คืน `cashConfirmAbsorbs` ด้วย เพื่อเลือกคำแนะนำที่ทำได้จริง
  */
 function leftoverRows(
   rows: ReturnToStockPriceRow[],
   confirmed: { cash?: number; installment?: number },
-): string[] {
+): { labels: string[]; cashConfirmAbsorbs: boolean } {
+  const cashTargetIndex = (() => {
+    const exact = rows.findIndex((r) => r.label === CASH_LABEL);
+    if (exact >= 0) return exact;
+    return rows.findIndex((r) => r.isDefault && !r.label.startsWith('ราคาผ่อน'));
+  })();
+
   const overwritten = new Set<number>();
-  if (confirmed.cash !== undefined) {
-    let idx = rows.findIndex((r) => r.label === CASH_LABEL);
-    if (idx < 0) idx = rows.findIndex((r) => r.isDefault && !r.label.startsWith('ราคาผ่อน'));
-    if (idx >= 0) overwritten.add(idx);
-  }
+  if (confirmed.cash !== undefined && cashTargetIndex >= 0) overwritten.add(cashTargetIndex);
   if (confirmed.installment !== undefined) {
     const idx = rows.findIndex((r) => r.label === INSTALLMENT_LABEL);
     if (idx >= 0) overwritten.add(idx);
   }
-  return rows
+
+  const leftover = rows
     .map((r, i) => ({ r, i }))
-    .filter(({ r, i }) => !overwritten.has(i) && Number(r.amount) > 0)
-    .map(({ r }) => `แถวราคา "${r.label}" ${r.amount}`);
+    .filter(({ r, i }) => !overwritten.has(i) && Number(r.amount) > 0);
+
+  return {
+    labels: leftover.map(({ r }) => `แถวราคา "${r.label}" ${r.amount}`),
+    cashConfirmAbsorbs:
+      confirmed.cash === undefined && leftover.some(({ i }) => i === cashTargetIndex),
+  };
 }
 
 /**
@@ -115,7 +130,8 @@ export default function ReturnToStockAction({
   ].filter(Boolean) as string[];
 
   // Fix round 3 [Minor 3] — ราคาเก่าที่ค้างอยู่ในแถว `ProductPrice` (คอลัมน์อาจว่างทั้งคู่)
-  const staleRows = leftoverRows(prices, { cash: cashValue, installment: installmentValue });
+  const stale = leftoverRows(prices, { cash: cashValue, installment: installmentValue });
+  const staleRows = stale.labels;
 
   const inputClass =
     'w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug bg-background';
@@ -206,10 +222,18 @@ export default function ReturnToStockAction({
               จะยังค้างอยู่และกลายเป็นราคาตั้งต้นที่ POS; กดยืนยันราคาเดิมก็ได้ หรือพิมพ์ราคาใหม่ทับลงไป
             </p>
           )}
+          {/*
+            Fix round 4 [Important 2 ข]: ของเดิมสั่งให้ "ลบหรือแก้แถวราคานั้น" ทุกกรณี
+            แต่การลบแถวสุดท้ายถูกปฏิเสธ ("ต้องมีอย่างน้อย 1 ราคาขาย") ⇒ เคส headline
+            (แถว default เดียวค้าง) ทำตามแล้วตัน ทั้งที่ทางออกอยู่ในฟอร์มนี้เอง
+          */}
           {hasPrice && staleRows.length > 0 && (
             <p className="text-xs text-destructive leading-snug">
-              {staleRows.join(' และ ')} ยังค้างอยู่ และราคาที่ยืนยันจะไม่ทับแถวนี้ — ลบหรือแก้แถวราคานั้นที่หน้าสต็อก
-              ปุ่ม &quot;จัดการราคา&quot; ก่อน แล้วค่อยนำเข้าคลัง (แถวราคาตั้งต้นคือค่าที่ POS หยิบไปขาย)
+              {staleRows.join(' และ ')} ยังค้างอยู่ และราคาที่ยืนยันจะไม่ทับแถวนี้ —{' '}
+              {stale.cashConfirmAbsorbs
+                ? 'ยืนยัน "ราคาเงินสด" ในฟอร์มนี้ด้วย ราคาที่ยืนยันจะถูกเขียนทับลงแถวนั้นให้เอง'
+                : 'แก้ยอดแถวนั้นให้เป็นราคาปัจจุบันที่หน้าสต็อก ปุ่ม "จัดการราคา" ก่อน (ลบแถวได้เมื่อเครื่องมีราคามากกว่า 1 แถว)'}{' '}
+              (แถวราคาตั้งต้นคือค่าที่ POS หยิบไปขาย)
             </p>
           )}
           <div className="space-y-1">

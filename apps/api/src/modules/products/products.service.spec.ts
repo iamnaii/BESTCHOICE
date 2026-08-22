@@ -905,3 +905,51 @@ describe('ProductsService.returnToStock — ราคาค้างระดั
     ).rejects.not.toThrow(/แก้ราคาขาย/);
   });
 });
+
+/**
+ * Phase 5 fix round 4 [Important 2 ก] — payload ของสินค้าต้องไม่พาแถวราคาที่ถูกลบออกไป
+ *
+ * `productInclude.prices` เดิมไม่กรอง `deletedAt` ⇒ ทุกผู้อ่านฝั่งเว็บที่หยิบ
+ * `product.prices` ตรง ๆ (dropdown ราคาใน POS, ตัวเลือกราคาตอนเปิดสัญญา,
+ * `PriceManagementModal`, การ์ดราคาบนหน้าสินค้า, mirror ของด่านนำเข้าคลัง) เห็นแถวที่
+ * ถูกลบแล้วเหมือนแถวปกติ — ฝั่ง API กรองเองใน `product-enter-stock.util` (`liveRows`)
+ * จึงเกิด asymmetry: mirror ฝั่งเว็บบล็อกการนำเข้าคลังด้วยแถวที่ API ยอมรับไปแล้ว
+ *
+ * แก้ที่ต้นทาง (include) แทนที่จะไล่กรองรายผู้อ่าน — ไม่มีผู้อ่านรายใดต้องการแถวที่ถูกลบ
+ * (`liveRows` ยังอยู่เป็น defense-in-depth ให้ผู้เรียกที่ select เองต่างหาก)
+ */
+describe('ProductsService — แถวราคาที่ถูกลบต้องไม่หลุดออกไปกับ payload (fix round 4)', () => {
+  let service: ProductsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const ROWS = [
+    { id: 'live', label: 'ราคาเงินสด', amount: '15900', isDefault: true, deletedAt: null },
+    { id: 'dead', label: 'ราคาโปรเก่า', amount: '12900', isDefault: false, deletedAt: new Date() },
+  ];
+
+  beforeEach(async () => {
+    prisma = {
+      product: {
+        // fake ที่ **เคารพ where ของ include จริง** — ไม่ใช่ echo: ถ้า include ไม่กรอง
+        // `deletedAt` แถวที่ถูกลบจะหลุดออกไปเหมือนบน DB จริง
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        findUnique: jest.fn(async (args: any) => {
+          const where = args?.include?.prices?.where;
+          const rows = where?.deletedAt === null ? ROWS.filter((r) => !r.deletedAt) : ROWS;
+          return { id: 'p-1', status: 'IN_STOCK', deletedAt: null, prices: rows };
+        }),
+      },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('findOne ส่งเฉพาะแถวราคาที่ยังไม่ถูกลบ', async () => {
+    const product = await service.findOne('p-1');
+
+    expect((product.prices as { id: string }[]).map((r) => r.id)).toEqual(['live']);
+  });
+});

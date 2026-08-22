@@ -673,6 +673,7 @@ model User {
   contractsAsSalesperson      Contract[]                @relation("Salesperson")
   contractsReviewed           Contract[]                @relation("ContractReviewer")
   salesAsSalesperson          Sale[]                    @relation("SalesSalesperson")
+  voidedSales                 Sale[]                    @relation("SaleVoidedBy")
   paymentsRecorded            Payment[]                 @relation("RecordedBy")
   paymentDraftsCreated        PaymentDraft[]            @relation("PaymentDraftCreatedBy")
   inspections                 Inspection[]
@@ -2558,6 +2559,10 @@ model Sale {
   notes             String?
   saleSource        String?        @default("OFFLINE") @map("sale_source")
   onlineOrderId     String?        @unique @map("online_order_id")
+  /// ยกเลิกใบขาย (void-sale 2026-08-22): เวลาที่ยกเลิก = `deletedAt` ที่มีอยู่แล้ว
+  /// (ผู้อ่าน 10 จุดกรอง deletedAt: null อยู่แล้ว) — สองคอลัมน์นี้เก็บ "ทำไม" กับ "ใคร"
+  voidReason        String?        @map("void_reason")
+  voidedById        String?        @map("voided_by_id")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   deletedAt         DateTime?      @map("deleted_at")
@@ -2566,6 +2571,7 @@ model Sale {
   product                  Product                   @relation(fields: [productId], references: [id])
   branch                   Branch                    @relation(fields: [branchId], references: [id])
   salesperson              User                      @relation("SalesSalesperson", fields: [salespersonId], references: [id])
+  voidedBy                 User?                     @relation("SaleVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
   contract                 Contract?                 @relation(fields: [contractId], references: [id])
   financeReceivable        FinanceReceivable?
   interCompanyTransactions InterCompanyTransaction[]
@@ -2583,6 +2589,7 @@ model Sale {
   @@index([salespersonId])
   @@index([productId])
   @@index([deletedAt])
+  @@index([voidedById])
   @@map("sales")
 }
 

@@ -132,6 +132,47 @@ export interface PayablePairRow {
 }
 
 /**
+ * true = คู่เจ้าหนี้/ลูกหนี้รอบจ่ายต่างกัน **เฉพาะขาค่าคอม** — รูปแบบที่รู้จัก
+ * (สัญญาที่ไม่ได้ระบุ `storeCommission`: `ContractActivation1ATemplate` ตั้ง
+ * fallback 10% บน 21-1102 ส่วน `ShopInventoryTransferTemplate` รับมาเป็น 0).
+ *
+ * **แหล่งเดียว** ของนิยามนี้ — reconcile cron (ยุบเป็นบรรทัดสรุป + Sentry
+ * counter) และ endpoint/แท็บ "กระทบยอด" (ป้ายกำกับบนแถว) ต้องเรียกตัวนี้
+ * เท่านั้น ห้าม inline สูตรซ้ำ: ป้ายบนจอกับในใบ Todo drift กันเมื่อไหร่ คนอ่าน
+ * จะเชื่อคนละตัวเลข.
+ */
+export function isCommissionOnlyGap(
+  pair: Pick<PayablePairRow, 'financedDiff' | 'commissionDiff'>,
+): boolean {
+  return pair.commissionDiff.abs().gt(EPS) && pair.financedDiff.abs().lte(EPS);
+}
+
+/** แถวคู่เจ้าหนี้ที่ไม่ตรง + ป้ายรูปแบบที่รู้จัก (สำหรับแท็บ "กระทบยอด") */
+export interface PayablePairMismatchRow extends PayablePairRow {
+  /** ดู `isCommissionOnlyGap` — คำนวณฝั่ง server เสมอ ห้ามให้ FE เดาเอง */
+  commissionOnly: boolean;
+}
+
+/** แถวยอดติดลบ + ช่องที่ติดลบ (คำนวณด้วย `negativeTypedFields` ตัวเดียวกับ cron) */
+export interface NegativeTypedRow extends ShopReceivableAgingRow {
+  negativeFields: NegativeTypedField[];
+}
+
+/**
+ * findings ที่ **ไม่ปรากฏบนแท็บ "อายุลูกหนี้หน้าร้าน"** — แท็บนั้นกรองด้วย
+ * `isReportableAgingRow` (หนี้ที่ต้องไปตาม = ยอดบวก/สองสมุดไม่ตรง) ⇒ เคส
+ * over-settle **สมมาตร** ถูกกรองออกโดยโครงสร้าง และ pairing ไม่เคยมีหน้าจอเลย.
+ * ก่อน Phase 5 ใบ Todo รายเดือนจึงต้องเขียนว่า "ให้ใช้ข้อมูลในใบนี้" เพราะไม่มี
+ * ที่ให้ดู — endpoint นี้คือที่ให้ดู.
+ */
+export interface ReconcileFindingsResult {
+  /** ใช้คำนวณ "อายุ" ของแถวติดลบเท่านั้น — ยอดเป็นยอดปัจจุบันเสมอ */
+  asOf: Date;
+  pairMismatches: PayablePairMismatchRow[];
+  negativeRows: NegativeTypedRow[];
+}
+
+/**
  * กระทบยอด **ระดับบัญชี** ของ 11-2107 / S21-3001 (Phase 4 Task 4).
  *
  * สถาปัตยกรรม gross-lens: ขาล้างของรอบจ่าย (`Cr 11-2107` / `Dr S21-3001`)
@@ -171,6 +212,15 @@ export interface NegativeTypedField {
 
 const EPS = new Prisma.Decimal('0.01');
 const DAY_MS = 86_400_000;
+
+/**
+ * ป้ายของแถวที่ hydrate สัญญาไม่ได้ — **ตัวเดียวกันทั้ง `buildAllRows` และ
+ * `getPayablePairing`** (Phase 5 Task 5 ข้อ 3 / M1). GL ที่ไม่มีสัญญารองรับคือ
+ * สิ่งที่ต้อง "เห็น" ไม่ใช่สิ่งที่ต้องซ่อน: ก่อนหน้านี้รายงานอายุ `continue`
+ * ทิ้งเงียบ ๆ ⇒ ยอดนั้นหายจากทั้ง rows / totals / `getNegativeTypedRows`
+ * เหลือช่องทางเดียวคือ drift ระดับบัญชี ซึ่ง **ไม่มีเลขสัญญา** ให้ตามต่อ.
+ */
+export const MISSING_CONTRACT_LABEL = '(ไม่พบสัญญา)';
 
 /** แขนของหนี้ที่แก่เกินเกณฑ์ — ใช้ตั้ง label/วิธีล้างใน alert (Task 3) */
 export type ShopReceivableOverdueArm = 'INTERCO' | 'SHOP_COLLECT';
@@ -548,9 +598,13 @@ export class IntercoAgingService {
 
     // Query D — hydrate contract. **ไม่กรอง status** — สัญญา CANCELED ต้องโผล่
     // ในรายงานอายุหนี้ (หัวใจของเคส C-2: สัญญายกเลิกหลังตัดจ่ายคือลูกหนี้
-    // เรียกคืนตัวจริง). กรองเฉพาะ soft-delete ตาม house rule.
+    // เรียกคืนตัวจริง). **ไม่กรอง soft-delete ด้วย** (Phase 5 M1 — นิยาม
+    // เดียวกับ `getPayablePairing`): นี่คือรายงานกระทบยอด ไม่ใช่คิวงาน —
+    // สัญญาที่ถูกลบทิ้งแต่ GL ยังค้างคือเคสที่ต้องเห็นที่สุด และการกรองมันออก
+    // ทำให้ยอดหายจากรายงานโดยที่บัญชียังมีจริง (เห็นได้แค่ drift ระดับบัญชี
+    // ที่ไม่มีเลขสัญญา). แถวที่หาไม่เจอจริง ๆ ใช้ป้าย MISSING_CONTRACT_LABEL.
     const contracts = await this.prisma.contract.findMany({
-      where: { id: { in: universeIds }, deletedAt: null },
+      where: { id: { in: universeIds } },
       select: { id: true, contractNumber: true, customer: { select: { name: true } } },
     });
     const contractById = new Map(contracts.map((c) => [c.id, c]));
@@ -561,8 +615,9 @@ export class IntercoAgingService {
 
     const rows: ShopReceivableAgingRow[] = [];
     for (const contractId of universeIds) {
+      // คีย์ผี (JV มือ / สัญญาที่ถูกลบถาวรจากยุคก่อน) — **แสดง ไม่ทิ้ง**
+      // (M1: สอดคล้องกับ getPayablePairing ที่ใช้ป้ายเดียวกัน)
       const contract = contractById.get(contractId);
-      if (!contract) continue; // soft-deleted / phantom key (เช่น สัญญาเก่าของ A.4) — ไม่มีอะไรให้รายงาน
 
       const fin = financeByContract.get(contractId);
       const swapCreditGross = new Prisma.Decimal(String(fin?.swap_gross ?? 0));
@@ -583,8 +638,8 @@ export class IntercoAgingService {
 
       rows.push({
         contractId,
-        contractNumber: contract.contractNumber,
-        customerName: contract.customer.name,
+        contractNumber: contract?.contractNumber ?? MISSING_CONTRACT_LABEL,
+        customerName: contract?.customer.name ?? '',
         swapCreditGross,
         payoutRecallGross,
         settledDeduction,
@@ -679,7 +734,7 @@ export class IntercoAgingService {
       const diff = financedDiff.plus(commissionDiff);
       return {
         ...r,
-        contractNumber: contract?.contractNumber ?? '(ไม่พบสัญญา)',
+        contractNumber: contract?.contractNumber ?? MISSING_CONTRACT_LABEL,
         customerName: contract?.customer.name ?? '',
         legacyNoShop,
         financedDiff,
@@ -692,6 +747,39 @@ export class IntercoAgingService {
           !legacyNoShop && (financedDiff.abs().gt(EPS) || commissionDiff.abs().gt(EPS)),
       };
     });
+  }
+
+  /**
+   * findings สำหรับแท็บ "กระทบยอด" (Phase 5 Task 5 ข้อ 1) — คู่เจ้าหนี้ที่ไม่
+   * ตรงกัน + แถวที่ยอดติดลบ, สองมุมที่ reconcile cron รายงานแต่ไม่เคยมีหน้าจอ.
+   *
+   * **ไม่คำนวณยอดใหม่แม้แต่ตัวเดียว**: อ่านจาก `getPayablePairing()` /
+   * `getNegativeTypedRows()` แล้วติดป้ายด้วย predicate ตัวเดียวกับที่ cron ใช้
+   * (`isCommissionOnlyGap` / `negativeTypedFields`) ⇒ ตัวเลขบนจอ = ตัวเลขในใบ
+   * Todo เสมอ.
+   *
+   * เรียงความรุนแรงก่อน (ยอดต่างมากสุด/ติดลบมากสุดขึ้นก่อน) — หลักเดียวกับการ
+   * เรียง finding ในใบ Todo: ของที่เงินเคลื่อนผิดต้องไม่ตกไปท้ายตาราง.
+   */
+  async getReconcileFindings(asOf: Date = new Date()): Promise<ReconcileFindingsResult> {
+    const [pairs, negatives] = await Promise.all([
+      this.getPayablePairing(),
+      this.getNegativeTypedRows(asOf),
+    ]);
+
+    const pairMismatches = pairs
+      .filter((p) => p.mismatch)
+      .map((p) => ({ ...p, commissionOnly: isCommissionOnlyGap(p) }))
+      .sort(
+        (a, b) =>
+          b.diff.abs().comparedTo(a.diff.abs()) || a.contractNumber.localeCompare(b.contractNumber),
+      );
+
+    // `getNegativeTypedRows` เรียงตามอายุมาแล้ว (sortAgingRows) — คงลำดับนั้นไว้
+    // เพื่อให้ตรงกับรายงานอายุ ไม่สร้างลำดับที่สามให้คนงง
+    const negativeRows = negatives.map((r) => ({ ...r, negativeFields: negativeTypedFields(r) }));
+
+    return { asOf, pairMismatches, negativeRows };
   }
 
   /**

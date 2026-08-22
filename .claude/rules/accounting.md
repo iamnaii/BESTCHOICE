@@ -1194,12 +1194,22 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   **ยังไม่แก้ที่ต้นเหตุ** — เป็นส่วนต่างจริงในบัญชี (opening-balance gap ตาม interco spec
   §11) ที่ต้องให้เจ้าของ/CPA ตัดสินว่าจะ (ก) ให้ SHOP ตั้งลูกหนี้ค่าคอม fallback ให้ตรง
   หรือ (ข) ให้ 1A เลิกตั้ง fallback. **ห้ามเดา JE ปิดช่องนี้เอง.**
-- **`approveCancellation` ยังเป็น READ COMMITTED** — Phase 4 ยก **`approveBatch`** ขึ้นเป็น
-  Serializable (คู่กับ `settleRecallCash` ที่เป็นมาตั้งแต่ Phase 3) แต่ **เส้นทางยกเลิกสัญญา
-  ไม่ได้ถูกยกตาม** — ได้แค่ขา `P2002 → 409` (ดูหัวข้อ Phase 4 ท้ายไฟล์). อย่าอ่านแล้วสรุปว่า
-  "ทั้งตระกูลปรับเป็น Serializable แล้ว". ยังไม่ยกเพราะยังไม่มีเคส TOCTOU ที่พิสูจน์ได้บน
-  เส้นทางนี้ (guard "สัญญาต้อง ACTIVE" อ่านใน tx + DB idempotency index รับอยู่) — ถ้าเจอเคส
-  จริงให้ยกทั้งเส้นทาง อย่าปะเฉพาะจุด.
+- ~~**`approveCancellation` ยังเป็น READ COMMITTED**~~ — **ปิดแล้ว (Phase 5 Task 5 ข้อ 2,
+  2026-08-22)**: เคส TOCTOU ที่ "ยังไม่มีใครพิสูจน์ได้" **พิสูจน์ได้แล้ว** ด้วยเทสสอง
+  คอนเนกชัน (`contract-cancellation.integration.spec.ts` — "TOCTOU: อนุมัติยกเลิก … ชนกับ
+  อนุมัติรอบจ่าย"): การยกเลิกผ่าน guard "ไม่มี item ใน batch DRAFT/PENDING_APPROVAL" ตอนที่
+  **ยังไม่มีรอบจ่าย** แล้วรอบจ่ายถูก create→submit→approve จนจบในหน้าต่างนั้น ⇒ ยกเลิกเดิน
+  เส้น **C-1** mirror-reverse เจ้าหนี้ 21-1101/21-1102 ที่รอบจ่ายเพิ่งล้างไป = เจ้าหนี้ติดลบ
+  และเงินที่โอนให้หน้าร้านไม่มีลูกหนี้เรียกคืน (C-2 ควรตั้งให้). ก่อนแก้ **ทั้งสองฝั่ง commit
+  สำเร็จพร้อมกันจริง** เพราะ SSI ต้องการให้ทั้งคู่เป็น Serializable. ตอนนี้
+  `approveCancellation` เป็น Serializable + แปลง **P2034 → 409 ไทย** (log warn + Sentry
+  warning ที่ยิงเอง เพราะ `SentryExceptionFilter` จับเฉพาะ ≥500) — ขา `P2002 → 409` เดิม
+  ยังอยู่ครบ. **หมายเหตุ**: การยกเลิกจึงกลายเป็น writer Serializable ตัวที่สี่ของตระกูลนี้
+  (คู่กับ `approveBatch`/`settleRecallCash`) และ SIRead lock ของมัน **ไม่ได้แคบแค่ระดับสัญญา**
+  — filter เป็นต่อสัญญา แต่ predicate lock เกิดตาม heap scan บน `journal_entries.metadata`
+  ที่ไม่มี index จึง escalate ถึงระดับ relation ได้เหมือน `approveBatch` (ต่างกันที่ความถี่
+  เท่านั้น) ⇒ ผลข้างเคียงให้ดูหัวข้อ "ผลข้างเคียงที่ต้องเฝ้า" ท้ายไฟล์
+  (ยังไม่มีตัวไหนบนเส้นทางรับชำระแปลง P2034).
 - **`swapCreditShopBalance` / Query B ฝั่ง S21-3001 เป็น stamp-only ไม่มี flow fallback** —
   ทั้งที่ `FLOW_MAP` map `'shop-exchange-return' → 'SWAP_CREDIT'` ⇒ SQL ฝั่ง SHOP **แคบกว่า
   `classifyShopReceivable` โดยตั้งใจ** (asymmetry กับฝั่ง 11-2107 ที่มี fallback). ปลอดภัย
@@ -1212,7 +1222,9 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   writer Serializable ตัวอื่น (`payment-receipt-orchestrator` / `installment-accrual-2a` /
   `repossessions` / `reschedule-collect` / `paysolutions-webhook`) กลายเป็นผู้แพ้ race ได้
   และ **ไม่มีตัวไหนแปลง P2034** ⇒ raw 500. **ทริกเกอร์ที่ให้ลงมือ: spike ของ Sentry
-  `[interco] P2034 write-conflict translated to 409`** — อย่าเติมล่วงหน้าแบบเหวี่ยงแห
+  `[interco] P2034 write-conflict translated to 409` หรือ `[cancellation] P2034 …`**
+  (ตั้งแต่ Phase 5 การยกเลิกสัญญาเป็น Serializable writer อีกตัว และ predicate lock ของมัน
+  ก็ escalate ได้เช่นกัน) — อย่าเติมล่วงหน้าแบบเหวี่ยงแห
   ให้เติมทั้งเส้นทางเมื่อเห็นสัญญาณจริง (pattern เดียวกับ `approveCancellation` ที่รอเคสจริง
   ก่อนยก isolation).
 - **แถวผีของ swap ยุค legacy ที่ถูกยกเลิก** (mirror ไม่มี stamp) — วันนี้ = false alarm
@@ -1950,6 +1962,30 @@ FINANCE-side-only มาตลอด) — **ไม่ได้ประดิษ
 ช่องเลือกบัญชีบนหน้าจอส่งคำขอถูกถอดออก. `CASH_ACCOUNT_CODES` ที่ DTO import ถูกชี้กลับไปที่
 `constants/cash-account.constants.ts` (แหล่งกลางที่ DTO อื่นอีก 6 ตัวใช้อยู่แล้ว) แทน template ที่ถูกลบ.
 
+### AuditLog ของโมดูลนี้ = **เขียนหลัง tx commit เสมอ** (Phase 5 Task 5 ข้อ 0, 2026-08-22)
+
+`AuditService.log` เปิด `$transaction` ของ **root client** เอง (hash chain: `nextval` +
+อ่าน `prevRowHash` + insert ต้อง atomic) ⇒ การ `await` มันขณะที่ tx ของเรายังถือ connection
+คือ nested root-tx ที่ **doctrine R-1 ห้าม** ⇒ **P2028 ทุกครั้ง** และ `log()` **กลืน error
+ทิ้ง** (Sentry อย่างเดียว) ⇒ ไม่มีแถว audit เลยโดยที่ไม่มีใครรู้. Task 4 พิสูจน์บน DB จริง:
+MEMO approve สำเร็จ 4 ครั้ง → `EXCHANGE_MEMO_APPLIED` **0 แถว** (ขณะที่ action ที่เขียนผ่าน
+`tx.auditLog.create` ลงครบ) = ย้ายกรรมสิทธิ์เครื่องสองตัว + เปลี่ยน `contract.productId`
+โดยไม่มีร่องรอย.
+
+ตอนนี้ทุกเส้นทางในโมดูล exchange ใช้ pattern `pendingAudit` (จับ entry ไว้ใน tx → `await
+this.audit.log(...)` **หลัง** `$transaction` คืนค่า) เหมือนที่ FINALIZED path ของ
+`ExchangeCancelService` ทำมาตั้งแต่ Phase 3: `EXCHANGE_MEMO_APPLIED`,
+`EXCHANGE_REQUEST_APPROVED`, `EXCHANGE_REQUEST_REJECTED`, `EXCHANGE_MEMO_CANCELED`,
+`EXCHANGE_CANCELED` (PRE_FINALIZE). เลือก post-commit แทน `tx.auditLog.create` เพราะ
+(ก) รักษา hash chain ครบ — แถวที่เขียนผ่าน tx ตรง ๆ ได้ `rowHash = null` แล้ว `verifyChain`
+ข้าม, (ข) audit ต้องบรรยาย "งานที่ commit แล้ว" — เขียนใน tx ที่ roll back ได้ = phantom row.
+
+**ยังค้าง (ไม่ใช่คลาสเดียวกัน):** `finalizeAfterActivation` เรียก `audit.log` **โดยไม่มี
+`userId`** สองใบ (`EXCHANGE_FINALIZED`, `EXCHANGE_DEVICE_RETURNED_TO_SHOP`) ⇒
+`AuditService.log` `return` ทิ้งตั้งแต่บรรทัดแรก (`if (!entry.userId) return`) — เงียบเหมือนกัน
+แต่แก้ไม่ได้ที่จุดนั้น เพราะ `ContractWorkflowService.activate(id)` ทั้งเส้นทาง **ไม่มี actor
+ให้ส่งต่อเลย**. ต้อง plumb userId ผ่าน activate ก่อน (งานแยก แตะเส้นทางเปิดสัญญา).
+
 ---
 
 ## ยกเลิกสัญญา (Flow C — Phase 3, workbook 2026-08-19)
@@ -2246,6 +2282,8 @@ spec เดิม — เพิ่มระหว่าง implement (ถ้า�
 | Method | Path | Roles |
 |---|---|---|
 | GET | `/interco-settlement/shop-receivable-aging?asOf&thresholdDays` | OWNER, FINANCE_MANAGER, ACCOUNTANT |
+| GET | `/interco-settlement/reconcile-findings` (Phase 5) | OWNER, FINANCE_MANAGER, ACCOUNTANT |
+| POST | `/interco-settlement/reconcile/run` (Phase 5) | OWNER, FINANCE_MANAGER |
 
 `asOf` = ISO date (รูปแบบผิด → 400 ไทย); `thresholdDays` = **จำนวนเต็ม 1-365** (นอกช่วง →
 400 ไทย) — ช่วงเดียวกับที่ cron รายวัน validate. UI = แท็บ **"อายุลูกหนี้หน้าร้าน"** ในหน้า
@@ -2262,6 +2300,39 @@ spec เดิม — เพิ่มระหว่าง implement (ถ้า�
 > แต่ทั้งตัวเลขและป้ายบนแท็บยังเป็น 30** จนกว่าจะส่ง query param ให้ตรงกัน (ยอด/อายุรายแถว
 > ยังตรงกันเสมอเพราะมาจาก engine เดียว — ต่างเฉพาะ "นับว่าเกินเกณฑ์ไหม"). ตราบใดที่ยังไม่มี
 > ใครแก้ config เลข 30 ตรงกันทุกชั้น.
+
+### แท็บ "กระทบยอด" (Phase 5 Task 5 ข้อ 1+4 — 2026-08-22)
+
+`GET /interco-settlement/reconcile-findings` →
+`IntercoAgingService.getReconcileFindings()` คืน `{ asOf, pairMismatches, negativeRows }`:
+คู่เจ้าหนี้/ลูกหนี้รอบจ่ายที่ `mismatch` (ติดป้าย `commissionOnly` ด้วย **predicate เดียวกับ
+cron** — `isCommissionOnlyGap`) + แถวยอดติดลบพร้อม `negativeFields` (จาก
+`negativeTypedFields` ตัวเดียวกัน). **FE ห้ามคำนวณป้าย/ช่องติดลบเอง** — ป้ายบนจอกับในใบ
+Todo ต้องมาจากสูตรเดียว. ไม่มี query param โดยตั้งใจ (ยอดเป็นยอดปัจจุบันเสมอ เหมือนแท็บอายุ).
+
+ทำไมเป็นแท็บใหม่ ไม่ยัดรวมแท็บอายุ: แท็บอายุคือ "หนี้ที่ต้องไปตาม" — กรองด้วย
+`isReportableAgingRow` และ `totals` บนหัวแท็บเป็นผลรวมของแถวที่แสดง ⇒ เอาแถวติดลบไปปนจะไป
+**หักล้างหนี้ค้างจริงของสัญญาอื่น** (บั๊กคลาสเดียวกับ carry ก ที่ Phase 4 เพิ่งปิด). สอง
+มุมนี้คือ kind ที่ `KIND_TAB` map มาที่ `RECONCILE`.
+
+`POST /interco-settlement/reconcile/run` (OWNER/FM) เรียก **`IntercoReconcileCron.tick()`
+ตัวเดียวกับ cron รายเดือน** — ได้ dedup Todo ชุดเดิม (tag + yyyy-mm + ยังไม่ DONE), Sentry
+ชุดเดิม และ **kill switch `interco_reconcile_enabled` ตัวเดิม** (ปิดอยู่ = คืน
+`enabled: false` ไม่ทำอะไรเลย — เจตนา: สวิตช์เดียวคุมทั้งสองช่องทาง ไม่มีทางลัดข้ามสวิตช์;
+UI บอกตรง ๆ ว่า "ยังไม่ได้ตรวจอะไรเลย" + คีย์นี้ยังไม่มีหน้าจอตั้งค่า ต้องแก้ที่ DB).
+response = `{ enabled, failed, todoCreated, total, counts, findings }` (`counts` = นับตาม kind).
+**`failed` แยก "รันแล้วพัง" ออกจาก "ถูกปิดไว้"** — ทั้งสองกรณีคืน `findings: []` เหมือนกัน
+(tick ไม่ throw ตาม doctrine) ⇒ ถ้าไม่มีฟิลด์นี้ หน้าจอจะโชว์ "ไม่พบรายการผิดปกติ" ทั้งที่
+ยังไม่ได้ตรวจอะไรเลย. FE branch `failed` **ก่อน** `enabled` เพราะ tick ที่พังจะคืน
+`enabled: true` มาด้วย.
+`tick()` ไม่ throw ตาม doctrine ⇒ endpoint ไม่มี error path ของตัวเอง. **หน้าจอนี้ไม่มีปุ่ม
+แก้ GL** — doctrine "ไม่ตั้ง JE ปรับปรุงอัตโนมัติ" ยังเหมือนเดิมทุกประการ.
+
+**M1 (Phase 5 ข้อ 3):** `buildAllRows` เลิก `continue` ทิ้งแถวที่ hydrate สัญญาไม่ได้ —
+ใช้ป้าย `MISSING_CONTRACT_LABEL` (`'(ไม่พบสัญญา)'`) ตัวเดียวกับ `getPayablePairing` และ
+hydrate **ไม่กรอง `deletedAt`** เหมือนกันทั้งสองที่ (รายงานกระทบยอด ไม่ใช่คิวงาน: GL ที่ไม่มี
+สัญญารองรับคือสิ่งที่ต้องเห็น). เดิมยอดพวกนี้หายจากทั้ง `rows`/`totals`/`getNegativeTypedRows`
+เหลือช่องทางเดียวคือ drift ระดับบัญชีซึ่ง **ไม่มีเลขสัญญา** ให้ตามต่อ.
 
 ### Cron รายวัน — `shop-receivable-aging.cron.ts` (09:07 BKK)
 
@@ -2345,20 +2416,21 @@ title + ยังไม่ `DONE` ⇒ รันซ้ำ/รันมือใ�
   (`contract.storeCommission ?? 0`) ⇒ ค่าคอมโผล่สมุดเดียว. **เป็นความต่างจริงในบัญชี
   (opening-balance gap ตาม interco spec §11) ไม่ใช่ artifact ของการอ่าน** — ยังเปิดอยู่
   รอเจ้าของ/CPA (ดู "ยังเปิดอยู่ → Phase 5" ในหัวข้อ Inter-Co ด้านบน).
-- **footer ของ Todo เป็น kind-aware (final review Phase 4)** — `NEGATIVE_TYPED` /
-  `PAYABLE_PAIR_MISMATCH` / `ACCOUNT_DRIFT` **ไม่ปรากฏบนแท็บ "อายุลูกหนี้หน้าร้าน"** เลย
-  (แท็บกรองด้วย `isReportableAgingRow` = ยอดบวก/สองสมุดไม่ตรง ⇒ เคส over-settle **สมมาตร**
-  ซึ่งเป็น headline ของ carry d ถูกกรองออกโดยโครงสร้าง; pairing ยังไม่มี endpoint/หน้าจอ;
-  drift เป็นระดับบัญชี) ⇒ ใบ Todo ประกาศชัดว่า "ไม่แสดงบนแท็บ: <kind> — ใช้ข้อมูลในใบนี้"
-  และชี้แท็บเฉพาะเมื่อมี kind ที่แท็บแสดงจริง (`SWAP_CREDIT_ONE_BOOK` / `BOOK_MISMATCH`);
-  บรรทัด "และอีก N รายการ" ก็เลิกอ้างแท็บเมื่อรายการที่ถูกตัดมี kind นอกแท็บปน. แหล่งความ
-  จริงเดียวคือ `OFF_TAB_KINDS` ใน `interco-reconcile.cron.ts` — เพิ่ม kind ใหม่เมื่อไรต้อง
-  ตัดสินพร้อมกันว่ามันอยู่บนแท็บหรือไม่.
-- **กลุ่มที่ถูกยุบต้องมีเลขสัญญาถึงคน** — `COMMISSION_ONLY_GAP` ไม่กินโควตารายบรรทัดและไม่มี
-  หน้าจอของตัวเอง ⇒ บรรทัดสรุปพิมพ์ **10 เลขแรก + "และอีก N สัญญา"** และ Sentry `extra` มี
-  `patternCommissionOnlyContracts` (สูงสุด 50 เลข) คู่กับ counter เดิม. ก่อนหน้านี้กลุ่มที่มี
-  จำนวนมากที่สุดเป็นกลุ่มเดียวที่ไม่มีเลขสัญญาบันทึกไว้ที่ไหนเลย (บรรทัดสรุปชี้ไปแท็บที่ไม่มี
-  ข้อมูลกลุ่มนี้).
+- **footer ของ Todo เป็น kind-aware** — ชี้ **แท็บที่ถูกต้องต่อ kind** ไม่ใช่ชี้เหมารวม.
+  แหล่งความจริงเดียวคือ **`KIND_TAB`** ใน `interco-reconcile.cron.ts` (Phase 5 Task 5 ข้อ 1
+  แทน `OFF_TAB_KINDS` เดิมของ Phase 4 — ตอนนั้นสองใน kind เหล่านั้นยังไม่มีหน้าจอเลย):
+  `BOOK_MISMATCH`/`SWAP_CREDIT_ONE_BOOK` → แท็บ **"อายุลูกหนี้หน้าร้าน"**,
+  `NEGATIVE_TYPED`/`PAYABLE_PAIR_MISMATCH` → แท็บ **"กระทบยอด"** (ใหม่ Phase 5),
+  `ACCOUNT_DRIFT` → **ไม่มีหน้าจอ** (ระดับบัญชี ไม่มีเลขสัญญาให้แสดง) ⇒ ใบ Todo ยังประกาศ
+  "ไม่แสดงบนแท็บ: <kind> — ใช้ข้อมูลในใบนี้" เฉพาะ kind ที่ `KIND_TAB` = `null`. บรรทัด
+  "และอีก N รายการ" อ้างแท็บได้ต่อเมื่อรายการที่ถูกตัด **ทุกใบ** มีแท็บ. เพิ่ม kind ใหม่
+  เมื่อไรต้องตัดสินพร้อมกันว่ามันอยู่แท็บไหน/ไม่มีแท็บ.
+- **กลุ่มที่ถูกยุบต้องมีเลขสัญญาถึงคน** — `COMMISSION_ONLY_GAP` ไม่กินโควตารายบรรทัด ⇒
+  บรรทัดสรุปพิมพ์ **10 เลขแรก + "และอีก N สัญญา"** และ Sentry `extra` มี
+  `patternCommissionOnlyContracts` (สูงสุด 50 เลข) คู่กับ counter เดิม. ตั้งแต่ Phase 5 กลุ่ม
+  นี้ **มีหน้าจอแล้ว** (แท็บ "กระทบยอด" — ป้าย "ต่างเฉพาะค่าคอม" ต่อแถว) แต่เลขสัญญายังพิมพ์
+  ในใบ Todo ต่อไปโดยตั้งใจ: ใบ Todo คือ **snapshot ของรอบนั้น** ส่วนแท็บโชว์สถานะปัจจุบัน —
+  สองอย่างเสริมกัน ไม่ใช่ซ้ำกัน.
 - **ไม่ผูกกับเกณฑ์วันของ alert รายวัน** — reconcile ไม่อ่าน
   `shop_receivable_aging_alert_days` เลย: สัญญาที่ผิดปกติแต่ยังไม่แก่พอ (หรือ operator ตั้ง
   เกณฑ์ไว้สูงจนแท็บ UI กับ cron รายวันมองต่างกัน) ก็ยังโผล่ที่นี่ทุกเดือนเสมอ.
@@ -2420,11 +2492,41 @@ double-approve ที่อ่านสถานะ **ก่อน** คำข�
 idempotencyKey ของ mirror ใบเดียวกัน — sweep engine ตั้งคีย์ต่อ JE ต้นทาง) ⇒ เดิมหลุดออกไป
 เป็น raw 500.
 
+**อัปเดต Phase 5 (2026-08-22): `approveCancellation` เป็น Serializable แล้วด้วย** — มันคือ
+คู่ conflict ตัวจริงของ `approveBatch` (ตัดสิน C-1/C-2 จาก `InterCoSettlementItem` ที่
+approveBatch เขียน ส่วน approveBatch อ่าน GL 21-1101/21-1102/S11-3001/S11-3002 ที่การยกเลิก
+เขียน ⇒ rw-conflict สองทิศ) และ **พิสูจน์แล้วว่าเคยสำเร็จพร้อมกันได้จริง** จนเจ้าหนี้ติดลบ
+(เทสสองคอนเนกชันใน `contract-cancellation.integration.spec.ts`). ผู้แพ้ได้ **409 ไทย** +
+Sentry `[cancellation] P2034 write-conflict translated to 409` — เฝ้าคู่กับตัว `[interco]`
+ด้วยเกณฑ์เดียวกัน (สองสตริงนี้คือ trigger ชุดเดียวกันของงาน "เติม P2034 translation ที่
+เส้นทางรับชำระ" — spike ของตัวใดตัวหนึ่งก็นับ).
+
+**ขอบเขตของ SIRead lock ที่เพิ่มมา — filter ต่อสัญญา แต่ predicate ระดับ relation:** ตัวกรอง
+เชิงตรรกะเป็นต่อสัญญาจริง (sweep candidates + `glContractBalance` ของสัญญาเดียว) **แต่ SIRead
+lock เกิดตามสิ่งที่ scan จริง ไม่ใช่ตามเงื่อนไข WHERE**: ทั้งสอง query กรองด้วย
+`journal_entries.metadata->>'contractId'` ซึ่ง **ไม่มี index (GIN หรืออื่นใด) บน `metadata`**
+⇒ เป็น heap scan ที่ทิ้ง predicate lock กว้างบน `journal_entries`/`journal_lines` และ
+**escalate page → relation** ได้ด้วยกลไกเดียวกับที่บันทึกไว้ให้ `approveBatch` ("ผลข้างเคียง
+ที่ต้องเฝ้า" ท้ายไฟล์). คำตัดสิน "ยกเป็น Serializable" ยังถูก — แต่เหตุผลคือ **ความถี่**
+(งานมืออนุมัติทีละใบ ไม่กี่ครั้ง/สัปดาห์) ไม่ใช่ "lock แคบ". อย่าอ่านหัวข้อนี้แล้วสรุปว่าการ
+ยกเลิกสัญญาชนกับ writer อื่นไม่ได้: ระหว่างที่มันรัน `payment-receipt-orchestrator` /
+`installment-accrual-2a` (cron 00:01) และเพื่อน Serializable ตัวอื่นเป็นผู้แพ้ race ได้จริง
+และ **ยังไม่มีตัวไหนบนเส้นทางรับชำระแปลง P2034** ⇒ ผู้แพ้ฝั่งนั้นได้ raw 500.
+
 ### Trial balance — ไม่ต้องแก้ (ยืนยันตาม spec §6 ข้อ 4)
 
 `S21-3001` เข้ารายงานเองผ่าน prefix `S21` ที่มีอยู่แล้วใน `SECTION_MAP`
 (`apps/api/src/modules/accounting/accounting-section-map.util.ts` — `'S21'` =
 `'หนี้สินหมุนเวียน (SHOP)'`). ไม่มีการแก้โค้ดรายงานในเฟสนี้.
+
+### Phase 5 (IMEI guards) อยู่คนละไฟล์
+
+Phase 5 ของ workbook เดียวกัน (spec §7 — สถานะสินค้า/IMEI, guard การลบ, ปุ่มนำเข้าคลัง)
+**ไม่แตะ GL และไม่เพิ่ม JE แม้แต่ใบเดียว** จึงไปอยู่ที่ **`.claude/rules/database.md`
+หัวข้อ "สถานะสินค้า & IMEI (Phase 5)"** (partial unique index บน IMEI, `product-hold.util.ts`,
+`product-enter-stock.util.ts`, `FOUND_POLICY`, state diagram + carries ที่เหลือ).
+ส่วนที่ตกมาถึงไฟล์นี้มีสองข้อ: `approveCancellation` เป็น Serializable (ดูหัวข้อด้านบน)
+และ carry "P2034 ที่เส้นทางรับชำระ" ซึ่งยังรอ Sentry spike.
 
 ### CI
 

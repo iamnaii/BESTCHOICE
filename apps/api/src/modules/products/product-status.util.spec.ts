@@ -43,3 +43,44 @@ describe('assertManualStatusChangeAllowed', () => {
     );
   });
 });
+
+/**
+ * Phase 5 Task 3 — ปิดทางแก้มือเฉพาะ REFURBISHED → IN_STOCK
+ *
+ * ตัดสินใจใช้ deny-list ราย transition แทนการโยน REFURBISHED เข้า
+ * SYSTEM_MANAGED_STATUSES: REFURBISHED **ถูกตั้ง** โดย flow ระบบ (ยึดเครื่อง /
+ * เปลี่ยนเครื่อง) แต่ไม่มี flow ไหน **ปลด** มันเลย ⇒ ถ้าเหมารวมจะตัดเส้นทางแก้มือที่
+ * ไม่มีของทดแทน (เช่น REFURBISHED → DAMAGED ตอนตรวจแล้วเจอเสียเพิ่ม,
+ * DAMAGED → REFURBISHED หลังซ่อม) แล้วเครื่องจะค้างสถานะถาวร
+ */
+describe('assertManualStatusChangeAllowed — REFURBISHED → IN_STOCK ต้องผ่านปุ่ม (Phase 5 T3)', () => {
+  it('REFURBISHED → IN_STOCK แก้มือไม่ได้ — ข้อความบอกให้ใช้ปุ่มนำเข้าคลังพร้อมขาย', () => {
+    expect(() =>
+      assertManualStatusChangeAllowed(ProductStatus.REFURBISHED, 'IN_STOCK'),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      assertManualStatusChangeAllowed(ProductStatus.REFURBISHED, 'IN_STOCK'),
+    ).toThrow(/นำเข้าคลังพร้อมขาย/);
+  });
+
+  it('transition อื่นของ REFURBISHED ยังแก้มือได้ (ไม่เหมารวมทั้งสถานะ)', () => {
+    expect(() =>
+      assertManualStatusChangeAllowed(ProductStatus.REFURBISHED, 'DAMAGED'),
+    ).not.toThrow();
+    expect(() =>
+      assertManualStatusChangeAllowed(ProductStatus.REFURBISHED, 'WRITTEN_OFF'),
+    ).not.toThrow();
+  });
+
+  it('เข้าสู่ REFURBISHED ด้วยมือยังทำได้ (เช่น DAMAGED → REFURBISHED หลังซ่อม)', () => {
+    expect(() =>
+      assertManualStatusChangeAllowed(ProductStatus.DAMAGED, 'REFURBISHED'),
+    ).not.toThrow();
+  });
+
+  it('ส่งค่าเดิม REFURBISHED → REFURBISHED ยังผ่าน (ไม่ใช่การเปลี่ยนสถานะ)', () => {
+    expect(() =>
+      assertManualStatusChangeAllowed(ProductStatus.REFURBISHED, 'REFURBISHED'),
+    ).not.toThrow();
+  });
+});

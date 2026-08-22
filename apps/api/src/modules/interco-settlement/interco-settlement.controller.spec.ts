@@ -6,6 +6,7 @@ import { IntercoSettlementController } from './interco-settlement.controller';
 import { IntercoSettlementService } from './interco-settlement.service';
 import { IntercoPendingService } from './interco-pending.service';
 import { IntercoAgingService } from './interco-aging.service';
+import { IntercoReconcileCron } from './crons/interco-reconcile.cron';
 
 /**
  * IntercoSettlementController — roles matrix (spec §6/§9 + plan Task 5 table)
@@ -23,6 +24,8 @@ describe('IntercoSettlementController', () => {
   let pendingService: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let agingService: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let reconcileCron: any;
   let controller: IntercoSettlementController;
 
   const methodRoles = (methodName: string): string[] | undefined => {
@@ -60,11 +63,27 @@ describe('IntercoSettlementController', () => {
         asOf: new Date('2026-08-21T00:00:00Z'),
         totals: { intercoNet: '0', shopCollect: '0', overdueCount: 0, legacyOneBookNet: '0' },
       }),
+      getReconcileFindings: jest.fn().mockResolvedValue({
+        asOf: new Date('2026-08-21T00:00:00Z'),
+        pairMismatches: [{ contractId: 'c-pair' }],
+        negativeRows: [{ contractId: 'c-neg' }],
+      }),
+    };
+    reconcileCron = {
+      tick: jest.fn().mockResolvedValue({
+        enabled: true,
+        todoCreated: true,
+        findings: [
+          { kind: 'NEGATIVE_TYPED', detail: 'x', amounts: {} },
+          { kind: 'ACCOUNT_DRIFT', detail: 'y', amounts: {} },
+        ],
+      }),
     };
     controller = new IntercoSettlementController(
       service as unknown as IntercoSettlementService,
       pendingService as unknown as IntercoPendingService,
       agingService as unknown as IntercoAgingService,
+      reconcileCron as unknown as IntercoReconcileCron,
     );
   });
 
@@ -83,6 +102,8 @@ describe('IntercoSettlementController', () => {
       ['uploadSlip', ['ACCOUNTANT', 'FINANCE_MANAGER']],
       ['settleRecallCash', ['OWNER', 'FINANCE_MANAGER']],
       ['aging', ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']],
+      ['reconcileFindings', ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']],
+      ['runReconcile', ['OWNER', 'FINANCE_MANAGER']],
     ])('%s() exposes exactly the expected roles', (methodName, expectedRoles) => {
       const roles = methodRoles(methodName);
       expect(roles).toBeDefined();
@@ -91,7 +112,7 @@ describe('IntercoSettlementController', () => {
     });
 
     it('read endpoints (pending/list/getOne) do NOT allow SALES', () => {
-      for (const m of ['pending', 'list', 'getOne', 'aging']) {
+      for (const m of ['pending', 'list', 'getOne', 'aging', 'reconcileFindings']) {
         expect(methodRoles(m)).not.toContain('SALES');
       }
     });
@@ -226,6 +247,59 @@ describe('IntercoSettlementController', () => {
       expect(agingService.getShopReceivableAging).toHaveBeenLastCalledWith(undefined, 1);
       await controller.aging(undefined, '365');
       expect(agingService.getShopReceivableAging).toHaveBeenLastCalledWith(undefined, 365);
+    });
+  });
+
+  // Phase 5 Task 5 ข้อ 1+4 — หน้าจอของ finding ที่ยังไม่มีที่ให้ดู + สั่งรันเอง
+  describe('reconcileFindings() / runReconcile()', () => {
+    it('reconcileFindings() delegates ทั้งก้อนให้ service (controller ไม่คำนวณเอง)', async () => {
+      const result = await controller.reconcileFindings();
+      expect(agingService.getReconcileFindings).toHaveBeenCalledTimes(1);
+      expect(result.pairMismatches).toEqual([{ contractId: 'c-pair' }]);
+      expect(result.negativeRows).toEqual([{ contractId: 'c-neg' }]);
+    });
+
+    it('runReconcile() เรียก tick() ของ cron ตัวเดิม (dedup Todo ชุดเดียวกัน) + คืนสรุปตาม kind', async () => {
+      const result = await controller.runReconcile();
+      expect(reconcileCron.tick).toHaveBeenCalledTimes(1);
+      // manual = ปุ่มกดได้ไม่จำกัด ⇒ tick ต้องรู้ว่าอย่าทำ Sentry เป็น heartbeat
+      expect(reconcileCron.tick).toHaveBeenCalledWith({ manual: true });
+      expect(result.enabled).toBe(true);
+      expect(result.todoCreated).toBe(true);
+      expect(result.total).toBe(2);
+      expect(result.counts).toEqual({ NEGATIVE_TYPED: 1, ACCOUNT_DRIFT: 1 });
+      expect(result.findings).toHaveLength(2);
+    });
+
+    // Phase 5 Task 6 (Task 5 review, Important A): หน้าจออ่าน `failed` เพื่อไม่
+    // ให้ข้อความ "ถูกปิดไว้ ให้ผู้ดูแลเปิดค่าใน DB" ไปทับสาเหตุจริงที่คือ crash
+    it('runReconcile() ส่งต่อ failed ของ tick() ให้หน้าจอ (พัง ≠ ถูกปิดไว้)', async () => {
+      reconcileCron.tick.mockResolvedValueOnce({
+        enabled: true,
+        todoCreated: false,
+        findings: [],
+        failed: true,
+      });
+      const result = await controller.runReconcile();
+      expect(result.failed).toBe(true);
+      expect(result.enabled).toBe(true);
+    });
+
+    it('runReconcile() รอบปกติ → ไม่มี failed (undefined) ไม่ใช่ true', async () => {
+      const result = await controller.runReconcile();
+      expect(result.failed).toBeUndefined();
+    });
+
+    it('runReconcile() เมื่อ kill switch ปิด → enabled=false, ไม่มี findings (tick เป็นคนตัดสิน)', async () => {
+      reconcileCron.tick.mockResolvedValueOnce({
+        enabled: false,
+        todoCreated: false,
+        findings: [],
+      });
+      const result = await controller.runReconcile();
+      expect(result.enabled).toBe(false);
+      expect(result.total).toBe(0);
+      expect(result.counts).toEqual({});
     });
   });
 

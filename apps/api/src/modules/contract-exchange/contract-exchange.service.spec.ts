@@ -465,6 +465,8 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
           oldContractId: 'old-c',
           oldProductId: 'op',
           newProductId: 'np2',
+          // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+          newProduct: { id: 'np2', deletedAt: null },
           oldContract,
         }),
         update: jest.fn(),
@@ -701,6 +703,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldContractId: 'old-c',
       oldProductId: 'old-p',
       newProductId: 'new-p',
+      // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+      newProduct: { id: 'new-p', deletedAt: null },
       oldContract: makeOldContract(12, 4),
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -770,6 +774,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldContractId: 'old',
       oldProductId: 'op',
       newProductId: 'np',
+      // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+      newProduct: { id: 'np', deletedAt: null },
       oldContract: old,
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -816,6 +822,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldContractId: 'old',
       oldProductId: 'op',
       newProductId: 'np',
+      // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+      newProduct: { id: 'np', deletedAt: null },
       oldContract: old,
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -836,6 +844,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldContractId: 'old',
       oldProductId: 'op',
       newProductId: 'np',
+      // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+      newProduct: { id: 'np', deletedAt: null },
       oldContract: makeOldContract(12, 4),
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -854,6 +864,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldContractId: 'old',
       oldProductId: 'op',
       newProductId: 'np',
+      // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+      newProduct: { id: 'np', deletedAt: null },
       oldContract: makeOldContract(12, 12),
     });
     prisma.payment.count.mockResolvedValue(12);
@@ -871,6 +883,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldContractId: 'old',
       oldProductId: 'op',
       newProductId: 'np',
+      // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+      newProduct: { id: 'np', deletedAt: null },
       oldContract: makeOldContract(12, 4), // makeOldContract sets downPayment=4000
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -893,6 +907,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldContractId: 'old',
       oldProductId: 'op',
       newProductId: 'np',
+      // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+      newProduct: { id: 'np', deletedAt: null },
       oldContract: { ...makeOldContract(12, 4), vatAmount: null },
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -913,6 +929,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         oldContractId: 'old',
         oldProductId: 'op',
         newProductId: 'np',
+        // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
+        newProduct: { id: 'np', deletedAt: null },
         oldContract: makeOldContract(12, 4),
       });
       prisma.payment.count.mockResolvedValue(4);
@@ -1030,6 +1048,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         oldProductId: 'oldP1',
         newProductId: 'newP1',
         oldContract: { ...oldContract, id: 'oldC1' },
+        newProduct: { id: 'newP1', deletedAt: null },
       },
       // PRICED + REVIEW with full submit-time plan snapshot (Device Swap 2026-07)
       pricedReq: {
@@ -1243,6 +1262,80 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     );
   });
 
+  // ==========================================================================
+  // Phase 5 Task 5 ข้อ 0 — audit ที่ถูกกลืน (P2028)
+  //
+  // `AuditService.log` เปิด `$transaction` ของ **root client** เอง (hash chain:
+  // nextval + อ่าน prevRowHash + insert ต้อง atomic) การ await มันขณะที่ tx ของ
+  // เรายังถือ connection อยู่ = nested root-tx ที่ doctrine R-1 ห้าม ⇒ P2028
+  // และ `log()` กลืน error ทิ้ง (Sentry อย่างเดียว) ⇒ ไม่มีแถว audit เลยทั้งที่
+  // MEMO ย้ายกรรมสิทธิ์เครื่องสองตัว + เปลี่ยน productId บนสัญญา
+  // (พิสูจน์ด้วย DB จริงใน product-lifecycle.integration.spec.ts ของ Task 4:
+  // MEMO approve สำเร็จ 4 ครั้ง → audit 0 แถว).
+  //
+  // เทสนี้ปักว่า audit ถูกเรียก **หลัง** callback ของ $transaction คืนค่าแล้ว
+  // (pattern เดียวกับ FINALIZED path ของ ExchangeCancelService — pendingAudit).
+  // ==========================================================================
+  it('MEMO: audit EXCHANGE_MEMO_APPLIED ต้องเขียนหลัง tx commit (ไม่ใช่ระหว่าง tx — P2028 กลืนแถวทิ้ง)', async () => {
+    const auditInsideTx: boolean[] = [];
+    let inTx = false;
+    prisma.$transaction.mockImplementation(async (fn: any) => {
+      inTx = true;
+      try {
+        return await fn(prisma);
+      } finally {
+        inTx = false;
+      }
+    });
+    audit.log.mockImplementation(async () => {
+      auditInsideTx.push(inTx);
+    });
+
+    await service.approve(
+      'memoReq',
+      { id: 'u1', role: 'OWNER', branchId: null },
+      { memoAddendumSigned: true, memoMdmSwapped: true },
+    );
+
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    // audit ต้องถูกเรียกนอก $transaction (false = หลัง commit)
+    expect(auditInsideTx).toEqual([false]);
+  });
+
+  it('MEMO: tx ล้มเหลว → ไม่เขียน audit เลย (กัน phantom audit row ของงานที่ roll back)', async () => {
+    prisma.contract.update.mockRejectedValueOnce(new Error('db exploded'));
+    await expect(
+      service.approve(
+        'memoReq',
+        { id: 'u1', role: 'OWNER', branchId: null },
+        { memoAddendumSigned: true, memoMdmSwapped: true },
+      ),
+    ).rejects.toThrow('db exploded');
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('PRICED: audit EXCHANGE_REQUEST_APPROVED ต้องเขียนหลัง tx commit ด้วย (บั๊กตัวเดียวกัน)', async () => {
+    const auditInsideTx: boolean[] = [];
+    let inTx = false;
+    prisma.$transaction.mockImplementation(async (fn: any) => {
+      inTx = true;
+      try {
+        return await fn(prisma);
+      } finally {
+        inTx = false;
+      }
+    });
+    audit.log.mockImplementation(async () => {
+      auditInsideTx.push(inTx);
+    });
+
+    await service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {});
+
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    // audit ต้องถูกเรียกนอก $transaction (false = หลัง commit)
+    expect(auditInsideTx).toEqual([false]);
+  });
+
   it('MEMO: B5 — ตัด hold ของเว็บใน tx เดียวกับที่เครื่องใหม่ออกจาก IN_STOCK (dynamic status flip)', async () => {
     prisma.productReservation.updateMany.mockResolvedValue({ count: 1 });
 
@@ -1319,6 +1412,35 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {}),
     ).rejects.toThrow('เปลี่ยนไประหว่างรออนุมัติ');
     expect(prisma.contract.create).not.toHaveBeenCalled();
+  });
+
+  // Phase 5 Task 2 — เครื่องใหม่ถูก soft-delete ระหว่างรออนุมัติ (สถานะสินค้าไม่เปลี่ยนตอนลบ
+  // ⇒ เดิม approve เอา `newProductId` ไป `product.update` ตรง ๆ โดยไม่เคยอ่านแถวเลย
+  // = ผูกสัญญาเข้ากับเครื่องที่หลุด partial unique index ของ IMEI ไปแล้ว)
+  it('PRICED: เครื่องใหม่ถูกลบไปแล้ว → BadRequest, ไม่สร้างสัญญาใหม่', async () => {
+    requests.pricedReq.newProduct = {
+      id: 'new-p',
+      installmentPrice: { toString: () => '10000' },
+      deletedAt: new Date(),
+    };
+    await expect(
+      service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {}),
+    ).rejects.toThrow('เครื่องใหม่ถูกลบออกจากระบบแล้ว');
+    expect(prisma.contract.create).not.toHaveBeenCalled();
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  it('MEMO: เครื่องใหม่ถูกลบไปแล้ว → BadRequest, ไม่สลับเครื่องบนสัญญาเดิม', async () => {
+    requests.memoReq.newProduct = { id: 'newP1', deletedAt: new Date() };
+    await expect(
+      service.approve(
+        'memoReq',
+        { id: 'u1', role: 'OWNER', branchId: null },
+        { memoAddendumSigned: true, memoMdmSwapped: true },
+      ),
+    ).rejects.toThrow('เครื่องใหม่ถูกลบออกจากระบบแล้ว');
+    expect(prisma.contract.update).not.toHaveBeenCalled();
+    expect(prisma.product.update).not.toHaveBeenCalled();
   });
 
   // Task 8 review fix 3 — old-contract status re-check at approve time
@@ -1916,6 +2038,26 @@ describe('ContractExchangeService.reject', () => {
         action: 'EXCHANGE_REQUEST_REJECTED',
       }),
     );
+  });
+
+  // Phase 5 Task 5 ข้อ 0 — บั๊กตระกูลเดียวกับ MEMO/PRICED (audit ใน tx = P2028)
+  it('audit EXCHANGE_REQUEST_REJECTED ต้องเขียนหลัง tx commit', async () => {
+    prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+    const auditInsideTx: boolean[] = [];
+    let inTx = false;
+    prisma.$transaction.mockImplementation(async (fn: any) => {
+      inTx = true;
+      try {
+        return await fn(prisma);
+      } finally {
+        inTx = false;
+      }
+    });
+    audit.log.mockImplementation(async () => {
+      auditInsideTx.push(inTx);
+    });
+    await service.reject('r1', 'เหตุผลปฏิเสธชัดเจน', 'u1');
+    expect(auditInsideTx).toEqual([false]);
   });
 });
 

@@ -26,6 +26,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { IntercoSettlementService } from './interco-settlement.service';
 import { IntercoPendingService } from './interco-pending.service';
 import { IntercoAgingService } from './interco-aging.service';
+import {
+  IntercoReconcileCron,
+  type ReconcileFinding,
+  type ReconcileFindingKind,
+} from './crons/interco-reconcile.cron';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { ApproveBatchDto } from './dto/approve-batch.dto';
 import { ReverseBatchDto } from './dto/reverse-batch.dto';
@@ -54,6 +59,7 @@ export class IntercoSettlementController {
     private readonly service: IntercoSettlementService,
     private readonly pendingService: IntercoPendingService,
     private readonly agingService: IntercoAgingService,
+    private readonly reconcileCron: IntercoReconcileCron,
   ) {}
 
   /** คิวรอจ่าย + คิวหักเรียกคืน (C-2) + reconcile totals ระดับบัญชี (spec §4/§8 แท็บ "รอจ่าย"). */
@@ -93,6 +99,55 @@ export class IntercoSettlementController {
       }
     }
     return this.agingService.getShopReceivableAging(asOfDate, threshold);
+  }
+
+  /**
+   * finding ที่ **ไม่ปรากฏบนแท็บอายุลูกหนี้** (Phase 5 Task 5 ข้อ 1) — คู่เจ้าหนี้/
+   * ลูกหนี้รอบจ่ายที่ไม่ตรงกัน + แถวที่ยอด typed ติดลบ (ล้างเกิน). สองมุมนี้
+   * reconcile cron รายงานทุกเดือนแต่ก่อนหน้านี้ **ไม่มีที่ให้ดู** — ใบ Todo จึง
+   * ต้องเขียนว่า "ให้ใช้ข้อมูลในใบนี้"; endpoint นี้คือหน้าจอของมัน.
+   *
+   * ไม่มี query param โดยตั้งใจ: ยอดทุกตัวเป็นยอดปัจจุบันเสมอ (เหมือนรายงานอายุ
+   * — `asOf` มีผลกับ "อายุ" เท่านั้น) การเปิดให้เลือกวันที่จะสื่อผิดว่าเป็นยอด
+   * ย้อนหลัง. Roles เดียวกับรายงานอายุ: อ่านอย่างเดียว ไม่แตะ GL.
+   */
+  @Get('reconcile-findings')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  reconcileFindings() {
+    return this.agingService.getReconcileFindings();
+  }
+
+  /**
+   * สั่งรันกระทบยอดระหว่างกิจการ **เดี๋ยวนี้** (Phase 5 Task 5 ข้อ 4) — ไม่ต้อง
+   * รอ cron วันที่ 1. เรียก `tick()` ตัวเดียวกับ cron ⇒ ได้ทั้ง dedup Todo
+   * รายเดือนเดิม (tag + yyyy-mm + ยังไม่ DONE ⇒ รันซ้ำในเดือนเดียวกันไม่สร้าง
+   * ใบซ้ำ), Sentry ชุดเดิม และ kill switch `interco_reconcile_enabled` ตัวเดิม
+   * (ปิดอยู่ = คืน `enabled: false` ไม่ทำอะไร — เจตนา: สวิตช์เดียวคุมทั้งสอง
+   * ช่องทาง ไม่มีทางลัดข้ามสวิตช์).
+   *
+   * `tick()` ไม่ throw ออกมาตาม doctrine (DB ล่ม = คืน `failed: true` + Sentry)
+   * ⇒ endpoint นี้จึงไม่ต้องมี error path ของตัวเอง **แต่ต้องส่ง `failed` ต่อ**:
+   * หน้าจอใช้แยก "พัง" ออกจาก "ถูกปิดไว้" — สองอย่างนี้มีวิธีแก้คนละทางโดย
+   * สิ้นเชิง (ลองใหม่/แจ้งผู้ดูแล vs เปิดค่าใน SystemConfig).
+   * Roles ระดับ checker (OWNER/FM) เพราะมันเขียน Todo + ยิง Sentry ให้ทั้ง
+   * องค์กรเห็น.
+   */
+  @Post('reconcile/run')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async runReconcile() {
+    const result = await this.reconcileCron.tick({ manual: true });
+    const counts: Partial<Record<ReconcileFindingKind, number>> = {};
+    for (const f of result.findings as ReconcileFinding[]) {
+      counts[f.kind] = (counts[f.kind] ?? 0) + 1;
+    }
+    return {
+      enabled: result.enabled,
+      failed: result.failed,
+      todoCreated: result.todoCreated,
+      total: result.findings.length,
+      counts,
+      findings: result.findings,
+    };
   }
 
   @Get('batches')

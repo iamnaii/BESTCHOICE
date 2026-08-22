@@ -22,6 +22,7 @@ import QcResultsCard from './components/QcResultsCard';
 import SameModelCard from './components/SameModelCard';
 import ActivePromotionsCard from './components/ActivePromotionsCard';
 import CustomerSummaryActions from './components/CustomerSummaryActions';
+import ReturnToStockAction, { type ReturnToStockPayload } from './components/ReturnToStockAction';
 import { PRODUCT_READINESS_QUERY_KEY, useProductReadiness } from './hooks/useProductReadiness';
 import { useCustomerSummary } from './hooks/useCustomerSummary';
 import {
@@ -230,6 +231,24 @@ export default function ProductDetailPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // Phase 5 Task 3 — นำเครื่องมือสองที่รับคืนกลับเข้าคลังพร้อมขาย (REFURBISHED → IN_STOCK)
+  // ใช้ชุด invalidate เดียวกับ editMutation เพราะเปลี่ยน `status` เหมือนกัน (ตารางสต็อก
+  // + readiness อ่านสถานะ) — ต่างกันแค่ endpoint ที่บันทึก AuditLog ให้
+  const returnToStockMutation = useMutation({
+    mutationFn: async (payload: ReturnToStockPayload) =>
+      api.post(`/products/${id}/return-to-stock`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product', id] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-available'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-list'] });
+      queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(id) });
+      toast.success('นำเข้าคลังพร้อมขายแล้ว — ขายที่ POS ได้ทันที');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const openEditProduct = () => {
     if (!product) return;
     setEditForm({
@@ -346,6 +365,18 @@ export default function ProductDetailPage() {
               summaryText={summaryText}
               shareUrl={shareUrl}
               isReady={readiness.data?.isReady ?? false}
+            />
+            <ReturnToStockAction
+              status={product.status}
+              canManage={isManager}
+              isPending={returnToStockMutation.isPending}
+              // ราคาที่ค้างบนเครื่อง = ราคาจากตอนขายครั้งก่อน — ใช้ display price ชุดเดียว
+              // กับการ์ดราคาบนหน้านี้ (คอลัมน์ก่อน ไม่มีค่อย fallback prices[])
+              currentCashPrice={displayCashPrice ?? null}
+              currentInstallmentPrice={displayInstallmentPrice ?? null}
+              // แถวราคาที่ค้างอยู่ — ราคาที่ยืนยันไม่ได้ทับทุกแถว (fix round 3, Minor 3)
+              prices={product.prices}
+              onConfirm={(payload) => returnToStockMutation.mutate(payload)}
             />
             {isManager && (
               <button

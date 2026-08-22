@@ -377,6 +377,8 @@ let legacySettledId: string; // legacy swap ที่ล้างแล้วผ
 let pairOkId: string; // (i) เจ้าหนี้/ลูกหนี้รอบจ่ายตรงกันสองสมุด
 let pairMismatchId: string; // (j) สมุด SHOP ขาดค่าคอม 1,000
 let pairLegacyNoShopId: string; // (k) FINANCE อย่างเดียว (activate ก่อน 2026-06-23)
+let softDeletedId: string; // (l) M1 — สัญญาถูก soft-delete แต่ GL ยังค้าง
+let phantomId: string; // (m) M1 — contractId ที่ไม่มีแถวสัญญาเลย (JV มือ/คีย์ผี)
 
 describe('IntercoAgingService — รายงานอายุลูกหนี้ 11-2107/S21-3001 (real DB)', () => {
   beforeAll(async () => {
@@ -498,6 +500,23 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     // (k) legacyNoShop: FINANCE อย่างเดียว (สัญญาก่อน 2026-06-23) = สภาพปกติ
     pairLegacyNoShopId = await seedBaseContract(11);
     await seedFinancePayable(pairLegacyNoShopId, '19190', '0');
+
+    // (l) M1 — สัญญาถูก soft-delete แต่ GL 11-2107 ยังค้าง 6,000 สองสมุด
+    softDeletedId = await seedBaseContract(21);
+    await seedA3(softDeletedId, '6000');
+    await seedA4(softDeletedId, '6000');
+    await prisma.contract.update({
+      where: { id: softDeletedId },
+      data: { deletedAt: new Date() },
+    });
+
+    // (m) M1 — คีย์ผี: JE stamp contractId ที่ไม่มีแถวสัญญารองรับเลย
+    // (JV มือ / สัญญาถูก hard-delete จากยุคก่อน). push เข้า createdContractIds
+    // เพื่อให้ afterAll กวาด JE ของมันตามปกติ (contract.deleteMany จะไม่แมตช์)
+    phantomId = `AGINGTEST-PHANTOM-${RUN}`;
+    createdContractIds.push(phantomId);
+    await seedA3(phantomId, '5000');
+    await seedA4(phantomId, '5000');
   }, 120_000);
 
   afterAll(async () => {
@@ -614,6 +633,35 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
   it('(d) สัญญาที่ล้างครบ → ไม่อยู่ใน rows', async () => {
     const res = await agingService.getShopReceivableAging();
     expect(res.rows.some((r) => r.contractId === settledId)).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 5 Task 5 ข้อ 3 (M1) — แถวที่ hydrate สัญญาไม่ได้ต้อง "แสดง" ไม่ใช่ทิ้ง
+  //
+  // เดิม `buildAllRows` `continue` ทิ้งเงียบ ๆ ขณะที่ `getPayablePairing`
+  // แสดงเป็น '(ไม่พบสัญญา)' — GL ที่ไม่มีสัญญารองรับคือสิ่งที่ต้องเห็น
+  // (ตาข่ายกระทบยอด) ไม่ใช่สิ่งที่ต้องซ่อน: ยอดที่ถูกทิ้งไม่โผล่ทั้งในรายงาน
+  // อายุ ทั้งใน `getNegativeTypedRows` และไม่เข้า totals ⇒ เห็นได้แค่ที่ drift
+  // ระดับบัญชีซึ่ง**ไม่มีเลขสัญญา**ติดมาด้วย
+  // -------------------------------------------------------------------------
+  it('M1: สัญญาถูก soft-delete แต่ GL ค้าง → ยังอยู่ในรายงาน (เลขสัญญาจริง ไม่ถูกทิ้ง)', async () => {
+    const res = await agingService.getShopReceivableAging();
+    const row = res.rows.find((r) => r.contractId === softDeletedId);
+    expect(row).toBeDefined();
+    expect(row!.intercoNet.toFixed(2)).toBe('6000.00');
+    expect(row!.shopMirrorNet.toFixed(2)).toBe('6000.00');
+    // hydrate ไม่กรอง deletedAt (นิยามเดียวกับ getPayablePairing) — เลขสัญญาจริง
+    // มีประโยชน์กว่า '(ไม่พบสัญญา)' เมื่อแถวยังอยู่ใน DB
+    expect(row!.contractNumber).toMatch(/^AGINGTEST-/);
+  });
+
+  it('M1: contractId ผี (ไม่มีแถวสัญญา) → โผล่เป็น (ไม่พบสัญญา) เหมือน getPayablePairing', async () => {
+    const res = await agingService.getShopReceivableAging();
+    const row = res.rows.find((r) => r.contractId === phantomId);
+    expect(row).toBeDefined();
+    expect(row!.contractNumber).toBe('(ไม่พบสัญญา)');
+    expect(row!.customerName).toBe('');
+    expect(row!.intercoNet.toFixed(2)).toBe('5000.00');
   });
 
   it('อายุ: JE ตั้งหนี้ backdate 45 วัน → intercoAgeDays = 45 (±1) และนับ overdueCount เมื่อ threshold 30', async () => {
@@ -849,6 +897,35 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     // สองสมุดติดลบเท่ากัน ⇒ bookMismatch จับไม่ได้ (นี่คือเหตุผลที่ต้องมี detector แยก)
     expect(row.bookMismatch).toBe(false);
     expect(row.legacyOneBook).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 5 Task 5 ข้อ 1 — findings ที่ยังไม่มีหน้าจอ (endpoint เดียวสำหรับแท็บ
+  // "กระทบยอด"): คู่เจ้าหนี้ไม่ตรง + ยอดติดลบ. predicate เป็นตัวเดียวกับที่
+  // reconcile cron ใช้ (`isCommissionOnlyGap` / `negativeTypedFields`) —
+  // ห้าม FE คำนวณเอง ไม่งั้นตัวเลขบนจอกับในใบ Todo drift กันได้
+  // -------------------------------------------------------------------------
+  it('getReconcileFindings: คืนเฉพาะคู่ที่ mismatch + ติดป้ายรูปแบบค่าคอม และแนบช่องที่ติดลบมาให้', async () => {
+    const res = await agingService.getReconcileFindings();
+
+    // (1) คู่เจ้าหนี้: เฉพาะ mismatch — ok/legacyNoShop ต้องไม่ติดมา
+    expect(res.pairMismatches.some((p) => p.contractId === pairOkId)).toBe(false);
+    expect(res.pairMismatches.some((p) => p.contractId === pairLegacyNoShopId)).toBe(false);
+    const bad = res.pairMismatches.find((p) => p.contractId === pairMismatchId)!;
+    expect(bad).toBeDefined();
+    expect(bad.commissionDiff.toFixed(2)).toBe('1000.00');
+    // ต่างเฉพาะขาค่าคอม = รูปแบบที่รู้จัก (1A ตั้ง 10% อัตโนมัติ แต่สมุด SHOP ตั้ง 0)
+    expect(bad.commissionOnly).toBe(true);
+
+    // (2) ยอดติดลบ: แถวหักเกินแบบสมมาตรของเทส C1 ต้องอยู่ พร้อมช่องที่ติดลบ
+    const neg = res.negativeRows.find((r) => r.intercoNet.lt(0) && r.shopMirrorNet.lt(0));
+    expect(neg).toBeDefined();
+    expect(neg!.negativeFields.length).toBeGreaterThan(0);
+    expect(neg!.negativeFields.every((f) => f.value.lt(0))).toBe(true);
+    // ทุกแถวที่คืนมาต้องมีอย่างน้อยหนึ่งช่องติดลบ (นิยามเดียวกับ negativeTypedFields)
+    expect(res.negativeRows.every((r) => r.negativeFields.length > 0)).toBe(true);
+
+    expect(res.asOf).toBeInstanceOf(Date);
   });
 
   it('getOpenBatchPayableGross: Σ เจ้าหนี้ของ item ในรอบที่ค้างอนุมัติ (ใช้อธิบาย drift)', async () => {

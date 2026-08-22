@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { StockAdjustmentsService } from './stock-adjustments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -295,5 +297,215 @@ describe('StockAdjustmentsService.create — T5-C3 4-eyes', () => {
         }),
       );
     });
+  });
+});
+
+/**
+ * Phase 5 fix round 2 [Important 1] — `FOUND` เป็นอีกประตูที่ตั้ง `IN_STOCK` ตรง ๆ
+ * ("พบของหาย") — เครื่องมือสองที่รับคืน (REFURBISHED) ต้องไม่ลัดเข้าคลังทางนี้
+ * เพราะข้ามด่านยืนยันราคาของปุ่ม "นำเข้าคลังพร้อมขาย"
+ */
+describe('StockAdjustmentsService.create — FOUND ต้องไม่ปลุกเครื่อง REFURBISHED (Phase 5 fix round 2)', () => {
+  let service: StockAdjustmentsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const foundDto = {
+    productId: 'p1',
+    reason: 'FOUND' as const,
+    approverId: 'approver-bm',
+    notes: 'พบเครื่องในตู้เซฟ',
+  };
+
+  const setStatus = (status: string) =>
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'p1',
+      status,
+      branchId: 'branch-1',
+      costPrice: '10000',
+      deletedAt: status === 'REFURBISHED' ? null : new Date(),
+    });
+
+  beforeEach(async () => {
+    prisma = {
+      product: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
+      stockAdjustment: {
+        create: jest.fn().mockResolvedValue({ id: 'adj-1' }),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'approver-bm',
+          role: 'BRANCH_MANAGER',
+          isActive: true,
+          deletedAt: null,
+        }),
+      },
+      $transaction: jest.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [StockAdjustmentsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<StockAdjustmentsService>(StockAdjustmentsService);
+  });
+
+  it('FOUND บนเครื่อง REFURBISHED → reject + ชี้ไปที่ปุ่มนำเข้าคลังพร้อมขาย', async () => {
+    setStatus('REFURBISHED');
+
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/นำเข้าคลังพร้อมขาย/);
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  it('FOUND บนเครื่องที่หายไปจริง (LOST) → ยังทำได้ตามเดิม', async () => {
+    setStatus('LOST');
+
+    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'IN_STOCK' }) }),
+    );
+  });
+});
+
+/**
+ * Phase 5 fix round 3 [Important 1] — `FOUND` เป็น **allow-list** ไม่ใช่ deny ทีละสถานะ
+ *
+ * รอบ 2 ปฏิเสธเฉพาะ `REFURBISHED` แต่ `repossessions.service.ts` ตั้ง `REPOSSESSED`
+ * ตอนยึด (REFURBISHED มาทีหลังตอน markReadyForSale) ⇒ เครื่องยึดที่ยังถือราคาขายเดิม
+ * flip เข้า IN_STOCK ได้ด้วย "พบของ" โดยไม่เช็คราคา ไม่มี audit — ทั้งที่ปุ่มนำเข้าคลัง
+ * ปฏิเสธมัน. ผลพลอยได้: ปิด `SOLD_INSTALLMENT → IN_STOCK` ที่เปิดอยู่แต่เดิมด้วย
+ *
+ * `FOUND` = "พบของที่หายไป" ⇒ พา IN_STOCK ได้เฉพาะกลุ่มของหาย/ของเสีย
+ * (LOST / DAMAGED / WRITTEN_OFF) — สถานะอื่นที่ถูก soft-delete ยัง "กู้แถวคืน" ได้
+ * แต่กลับไปสถานะเดิมของมัน ไม่ใช่ IN_STOCK
+ */
+describe('StockAdjustmentsService.create — FOUND allow-list (Phase 5 fix round 3)', () => {
+  let service: StockAdjustmentsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const foundDto = {
+    productId: 'p1',
+    reason: 'FOUND' as const,
+    approverId: 'approver-owner',
+    notes: 'พบเครื่องในตู้เซฟ',
+  };
+
+  const setProduct = (status: string, deleted: boolean) =>
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'p1',
+      status,
+      branchId: 'branch-1',
+      costPrice: '10000',
+      deletedAt: deleted ? new Date() : null,
+    });
+
+  beforeEach(async () => {
+    prisma = {
+      product: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
+      stockAdjustment: { create: jest.fn().mockResolvedValue({ id: 'adj-1' }) },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'approver-owner',
+          role: 'OWNER',
+          isActive: true,
+          deletedAt: null,
+        }),
+      },
+      $transaction: jest.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [StockAdjustmentsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<StockAdjustmentsService>(StockAdjustmentsService);
+  });
+
+  it.each([
+    ['LOST', true],
+    ['DAMAGED', true],
+    ['WRITTEN_OFF', true],
+  ])('%s → พาเข้า IN_STOCK ได้ตามเดิม (กลุ่มของหาย/ของเสีย)', async (status, deleted) => {
+    setProduct(status, deleted as boolean);
+
+    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'IN_STOCK', deletedAt: null }),
+      }),
+    );
+  });
+
+  it('REPOSSESSED (ยึดมา ยังถือราคาขายเดิม) → reject ชี้ flow ยึดเครื่อง ไม่ flip เข้า IN_STOCK', async () => {
+    setProduct('REPOSSESSED', false);
+
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/ยึดเครื่อง/);
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  it('SOLD_INSTALLMENT → reject (เครื่องที่สัญญายังถืออยู่ ห้ามคืนเข้าสต็อกด้วย "พบของ")', async () => {
+    setProduct('SOLD_INSTALLMENT', false);
+
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['PO_RECEIVED', 'QC_PENDING', 'PHOTO_PENDING', 'INSPECTION', 'RESERVED', 'SOLD_CASH', 'SOLD_RESELL', 'DEFECT_RETURN'])(
+    '%s → reject (ไม่ใช่ของหาย/ของเสีย — มี flow ของตัวเอง)',
+    async (status) => {
+      setProduct(status, false);
+      await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('REFURBISHED (ยังไม่ถูกลบ) → reject ชี้ไปที่ปุ่มนำเข้าคลังพร้อมขาย (พฤติกรรมรอบ 2)', async () => {
+    setProduct('REFURBISHED', false);
+
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/นำเข้าคลังพร้อมขาย/);
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  /**
+   * nit รอบ 3 — allow-list จะปิดทางกู้เครื่อง REFURBISHED ที่ถูก soft-delete
+   * (ทางเดียวที่มีในระบบ) ⇒ กู้แถวคืนได้ แต่กลับไปสถานะเดิมของมัน ไม่ใช่ IN_STOCK
+   * (ยังต้องผ่านปุ่มนำเข้าคลังพร้อมขาย = ยืนยันราคา อยู่ดี)
+   */
+  it('REFURBISHED ที่ถูก soft-delete → กู้แถวคืนโดยไม่แตะสถานะ (ไม่ใช่ IN_STOCK, ไม่ตั้ง stockInDate)', async () => {
+    setProduct('REFURBISHED', true);
+
+    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
+    const data = prisma.product.update.mock.calls[0][0].data;
+    expect(data.deletedAt).toBeNull();
+    expect(data.status).toBeUndefined(); // ไม่แตะสถานะ = คงเป็น REFURBISHED ตามเดิม
+    expect(data.stockInDate).toBeUndefined();
+  });
+
+  it('SOLD_INSTALLMENT ที่ถูก soft-delete → กู้แถวคืนโดยไม่แตะสถานะ (ไม่ปลุกเข้าคลัง)', async () => {
+    setProduct('SOLD_INSTALLMENT', true);
+
+    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
+    const data = prisma.product.update.mock.calls[0][0].data;
+    expect(data.deletedAt).toBeNull();
+    expect(data.status).toBeUndefined(); // ไม่แตะสถานะ = คงเป็น SOLD_INSTALLMENT ตามเดิม
+  });
+
+  /**
+   * Final review M-4 — กู้แถว (`deletedAt: null`) พาเครื่องกลับเข้า partial unique index
+   * `products_imei_serial_active_unique` ⇒ ถ้ามีเครื่องอื่นรับ IMEI เดิมเข้าสต็อกไปแล้ว
+   * (พฤติกรรมที่ index นี้ **ตั้งใจ** อนุญาต — เครื่องเทิร์นกลับมาขายซ้ำได้) จะชน P2002
+   * ดิบ = 500 ที่หน้าจอ ทั้งที่สาเหตุอธิบายเป็นภาษาคนได้ตรง ๆ
+   */
+  it('M-4: กู้แถวแล้ว IMEI ชนกับเครื่องที่รับเข้ามาใหม่ → 409 ภาษาไทย ไม่ใช่ P2002 ดิบ', async () => {
+    setProduct('LOST', true);
+    prisma.product.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['imei_serial'] },
+      }),
+    );
+
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(ConflictException);
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/IMEI/);
   });
 });

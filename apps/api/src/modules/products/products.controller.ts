@@ -10,6 +10,7 @@ import { UpdateOnlineListingDto, PromoteListingPhotoDto } from './dto/online-lis
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
 import { TransferProductDto, DispatchTransferDto, BulkTransferDto } from './dto/transfer-product.dto';
 import { ReserveProductDto } from './dto/reserve-product.dto';
+import { ReturnToStockDto } from './dto/return-to-stock.dto';
 import { RejectTransferDto } from './dto/reject-transfer.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -177,8 +178,13 @@ export class ProductsController {
 
   @Patch(':id')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
-    return this.productsService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    // userId ส่งเข้าไปเพื่อให้ด่านปลายทาง IN_STOCK เขียน AuditLog ได้ (fix round 1)
+    return this.productsService.update(id, dto, user.id);
   }
 
   @Patch(':id/online-listing')
@@ -191,6 +197,22 @@ export class ProductsController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   promoteListingPhoto(@Param('id') id: string, @Body() dto: PromoteListingPhotoDto) {
     return this.onlineListing.promotePhoto(id, dto);
+  }
+
+  /**
+   * นำเครื่องมือสองที่รับคืน (ยึดเครื่อง/เปลี่ยนเครื่อง) กลับเข้าคลังพร้อมขาย
+   * REFURBISHED → IN_STOCK — คำตัดสินเจ้าของ 2026-08-21 ให้หน้าร้านกดยืนยันเอง
+   * (POS ยังขายเฉพาะ IN_STOCK) จึงเปิดถึง BRANCH_MANAGER เหมือน PATCH /products/:id
+   */
+  @Post(':id/return-to-stock')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  @ApiOperation({ summary: 'นำเครื่องมือสองที่รับคืนกลับเข้าคลังพร้อมขาย (REFURBISHED → IN_STOCK)' })
+  returnToStock(
+    @Param('id') id: string,
+    @Body() dto: ReturnToStockDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.productsService.returnToStock(id, user.id, dto);
   }
 
   @Delete(':id')

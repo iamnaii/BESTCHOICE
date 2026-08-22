@@ -142,6 +142,8 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
+        // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
+        findFirst: jest.fn().mockResolvedValue(mockProduct),
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -182,6 +184,8 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
+        // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
+        findFirst: jest.fn().mockResolvedValue(mockProduct),
       },
       interestConfig: {
         findFirst: jest.fn().mockResolvedValue(null),

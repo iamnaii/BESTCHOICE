@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
@@ -90,6 +91,8 @@ export async function settledPayoutByContract(
 
 @Injectable()
 export class ContractCancellationService {
+  private readonly logger = new Logger(ContractCancellationService.name);
+
   constructor(
     private prisma: PrismaService,
     private getCancellationTemplate: () => ContractCancellationTemplate | undefined,
@@ -361,9 +364,50 @@ export class ContractCancellationService {
       };
     };
 
+    // SERIALIZABLE (Phase 5 Task 5 ข้อ 2 — ปิด TOCTOU ข้ามโมดูลที่ guard ปิดไม่ได้).
+    //
+    // การตัดสิน C-1 vs C-2 อ่าน `InterCoSettlementItem` + สถานะ batch ซึ่ง
+    // `IntercoSettlementService.approveBatch` เป็นคนเขียน และ approveBatch เอง
+    // ก็อ่านยอด GL 21-1101/21-1102/S11-3001/S11-3002 ของสัญญาที่ **การยกเลิกนี้**
+    // เป็นคนเขียน ⇒ rw-conflict สองทิศ. หน้าต่างที่ guard ปิดไม่ได้: การยกเลิก
+    // ผ่าน guard "ไม่มี item ใน batch DRAFT/PENDING_APPROVAL" ตอนที่ยัง**ไม่มี
+    // รอบจ่าย** แล้วรอบจ่ายถูก create→submit→approve จนจบในหน้าต่างนั้น ⇒ ยกเลิก
+    // เดินเส้น C-1 mirror-reverse เจ้าหนี้ที่รอบจ่ายเพิ่งล้างไป = เจ้าหนี้ติดลบ
+    // และเงินที่ FINANCE โอนให้หน้าร้านไม่มีลูกหนี้เรียกคืน (C-2 ควรตั้งให้).
+    //
+    // `approveBatch` เป็น Serializable มาตั้งแต่ Phase 4 แต่ SSI ต้องการให้
+    // **ทั้งคู่** เป็น Serializable จึงจะเห็นกัน — writer ใต้ READ COMMITTED ไม่
+    // ลงทะเบียน rw-conflict กับ SIRead lock ของใครเลย. พิสูจน์ด้วยเทสสองคอนเนกชัน
+    // (contract-cancellation.integration.spec.ts "TOCTOU" — ก่อนแก้ ทั้งสองฝั่ง
+    // commit สำเร็จพร้อมกันจริง แล้วเจ้าหนี้ติดลบ). ต้นทุนต่ำ: ยกเลิกสัญญาเป็น
+    // งานมืออนุมัติทีละใบ ไม่ใช่เส้นทางรับเงินที่รันถี่; ด่านอื่นทั้งหมด (status /
+    // paid / open-batch guard / cross-check / DB idempotency index) ยังทำงาน
+    // เหมือนเดิมทุกประการ — ชั้นนี้เป็นตาข่ายสุดท้าย.
     try {
-      return await this.prisma.$transaction(run);
+      return await this.prisma.$transaction(run, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
     } catch (err) {
+      // ผู้แพ้ SSI race (Postgres 40001 → Prisma P2034) โผล่ได้ทั้งกลาง tx และ
+      // ตอน commit — แปลเป็น 409 ไทย ไม่ใช่ raw 500 (pattern เดียวกับ
+      // `approveBatch`/`settleRecallCash`). tx ทั้งก้อน roll back ⇒ ไม่มีทาง
+      // ยกเลิกซ้ำหรือลงบัญชีครึ่งทาง
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        this.logger.warn(
+          `[cancellation] write conflict (P2034) on cancellation ${cancellationId} — rejecting with 409, approver should retry`,
+        );
+        // `SentryExceptionFilter` จับเฉพาะ status >= 500 — 409 ใบนี้จึงมองไม่เห็น
+        // จาก monitoring ถ้าไม่ยิงเอง. จำเป็นเป็นพิเศษกับ Serializable ที่เพิ่ง
+        // เปิดใช้: spike ของ P2034 = lock contention จริงที่ต้องรู้ก่อนจะกวนงาน
+        // อนุมัติของผู้ใช้ (runbook เดียวกับ Phase 4)
+        Sentry.captureMessage('[cancellation] P2034 write-conflict translated to 409', {
+          level: 'warning',
+          extra: { cancellationId, approverId },
+        });
+        throw new ConflictException(
+          'คำขอยกเลิกนี้ชนกับรายการอื่นที่กำลังบันทึกอยู่ (write conflict) — ตรวจสอบที่หน้าจ่ายให้หน้าร้าน (INTER-CO) ว่าสัญญาถูกจัดเข้ารอบจ่ายไปแล้วหรือไม่ แล้วกดอนุมัติอีกครั้ง',
+        );
+      }
       // ผู้แพ้ของ double-approve (Phase 4 Task 6): ด่านแรกคือ guard
       // "สัญญาต้อง ACTIVE" ที่อ่านใน tx — แต่คำขอที่สองที่อ่านสถานะ **ก่อน**
       // คำขอแรก commit จะผ่าน guard นั้นแล้วไปชน DB partial unique index

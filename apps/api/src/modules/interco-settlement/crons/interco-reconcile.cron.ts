@@ -6,6 +6,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { readBoolFlag } from '../../../utils/config.util';
 import {
   IntercoAgingService,
+  isCommissionOnlyGap,
   isSwapCreditOneBook,
   negativeTypedFields,
 } from '../interco-aging.service';
@@ -45,9 +46,26 @@ export interface ReconcileFinding {
 export type ReconcileFindingPattern = 'COMMISSION_ONLY_GAP';
 
 export interface ReconcileTickResult {
+  /**
+   * `false` = kill switch `interco_reconcile_enabled` ปิดอยู่ ⇒ **ไม่ได้ตรวจ
+   * อะไรเลย** และวิธีแก้คือเปิดค่านั้น. ห้ามใช้ค่านี้แทน "พัง" (ดู `failed`) —
+   * ผลของ tick() ขับข้อความบนหน้าจอตั้งแต่ Phase 5 (ปุ่มสั่งรันกระทบยอด) การ
+   * คืน `enabled:false` ตอน crash จะส่งคนไปแก้ SystemConfig ที่ถูกอยู่แล้ว.
+   */
   enabled: boolean;
   findings: ReconcileFinding[];
   todoCreated: boolean;
+  /**
+   * `true` = รอบนี้ล้มเหลว (DB/service พัง) — ผลที่คืนมาจึง **ไม่ครบ** ไม่ใช่
+   * "ตรวจแล้วไม่เจออะไร". สาเหตุจริงอยู่ใน Sentry (`captureException` แท็ก
+   * `cron: 'interco-reconcile'`). ไม่ตั้งค่าเลยในรอบปกติ (undefined).
+   */
+  failed?: boolean;
+}
+
+/** ตัวเลือกของ `tick()` — `manual` = มาจากปุ่มสั่งรัน ไม่ใช่ scheduler รายเดือน */
+export interface ReconcileTickOptions {
+  manual?: boolean;
 }
 
 /**
@@ -84,22 +102,35 @@ const KIND_LABEL: Record<ReconcileFindingKind, string> = {
 };
 
 /**
- * kind ที่ **ไม่ปรากฏบนแท็บ "อายุลูกหนี้หน้าร้าน"** — ใบ Todo (+ Sentry ของรอบนี้)
- * คือแหล่งเดียวที่คนอ่านได้ จึงห้ามเขียน footer ชี้ไปแท็บอย่างเดียว:
- *   - `NEGATIVE_TYPED` มาจาก `getNegativeTypedRows()` ซึ่งจงใจแยกจากรายงานหลัก —
- *     แท็บกรองด้วย `isReportableAgingRow` (เก็บเฉพาะยอดบวก/สองสมุดไม่ตรง) ⇒
- *     เคส over-settle **สมมาตร** (headline ของ carry d) ถูกกรองออกโดยโครงสร้าง
- *   - `PAYABLE_PAIR_MISMATCH` มาจาก `getPayablePairing()` ซึ่งยังไม่มี
- *     endpoint/หน้าจอเลย (รวมกลุ่มที่ถูกยุบเป็นบรรทัดสรุปด้วย)
- *   - `ACCOUNT_DRIFT` เป็นระดับบัญชี ไม่ใช่ต่อสัญญา — แท็บไม่มีมุมนี้
- * ที่เหลือ (`SWAP_CREDIT_ONE_BOOK` / `BOOK_MISMATCH`) มาจาก
- * `getShopReceivableAging().rows` ตัวเดียวกับที่แท็บแสดง จึงชี้แท็บได้จริง.
+ * แท็บที่ finding แต่ละ kind "ไปดูได้จริง" บนหน้าจ่ายให้หน้าร้าน (INTER-CO) —
+ * `null` = ไม่มีหน้าจอ ใบ Todo (+ Sentry ของรอบนี้) เป็นแหล่งเดียว:
+ *   - `AGING` (แท็บ "อายุลูกหนี้หน้าร้าน") = แถวจาก
+ *     `getShopReceivableAging().rows` ตัวเดียวกับที่แท็บแสดง
+ *   - `RECONCILE` (แท็บ "กระทบยอด", Phase 5 Task 5 ข้อ 1) = สองมุมที่แท็บอายุ
+ *     กรองออกโดยโครงสร้าง: `NEGATIVE_TYPED` มาจาก `getNegativeTypedRows()`
+ *     (แท็บอายุกรองด้วย `isReportableAgingRow` ⇒ เคส over-settle **สมมาตร**
+ *     ไม่มีวันโผล่) และ `PAYABLE_PAIR_MISMATCH` มาจาก `getPayablePairing()`
+ *     ซึ่งก่อน Phase 5 ไม่มี endpoint/หน้าจอเลย
+ *   - `ACCOUNT_DRIFT` = ระดับบัญชี ไม่ใช่ต่อสัญญา — ยังไม่มีหน้าจอ (สมการ
+ *     เป็นยอดรวมทั้งบัญชี ไม่มีเลขสัญญาให้แสดง)
+ *
+ * เพิ่ม kind ใหม่เมื่อไหร่ **ต้องตัดสินพร้อมกัน** ว่ามันอยู่แท็บไหน/ไม่มีแท็บ —
+ * ข้อความ footer ของ Todo อ่านจากที่นี่ที่เดียว.
  */
-const OFF_TAB_KINDS: ReadonlySet<ReconcileFindingKind> = new Set<ReconcileFindingKind>([
-  'NEGATIVE_TYPED',
-  'PAYABLE_PAIR_MISMATCH',
-  'ACCOUNT_DRIFT',
-]);
+type ReconcileTab = 'AGING' | 'RECONCILE';
+
+const TAB_LABEL: Record<ReconcileTab, string> = {
+  AGING: 'อายุลูกหนี้หน้าร้าน',
+  RECONCILE: 'กระทบยอด',
+};
+
+const KIND_TAB: Record<ReconcileFindingKind, ReconcileTab | null> = {
+  BOOK_MISMATCH: 'AGING',
+  SWAP_CREDIT_ONE_BOOK: 'AGING',
+  NEGATIVE_TYPED: 'RECONCILE',
+  PAYABLE_PAIR_MISMATCH: 'RECONCILE',
+  ACCOUNT_DRIFT: null,
+};
 
 /** 8000 → "8,000.00" (ผ่าน Decimal.toFixed — ไม่แปลงเป็น Number ตามกติกาเงิน) */
 function formatAmount(value: Prisma.Decimal): string {
@@ -188,9 +219,19 @@ export class IntercoReconcileCron {
     private readonly pending: IntercoPendingService,
   ) {}
 
-  /** เดือนละครั้ง วันที่ 1 เวลา 08:00 BKK (spec §6 ข้อ 3). */
+  /**
+   * เดือนละครั้ง วันที่ 1 เวลา 08:00 BKK (spec §6 ข้อ 3) — และเป็นตัวเดียวกับที่
+   * ปุ่ม "สั่งรันกระทบยอดตอนนี้" เรียก (`POST /interco-settlement/reconcile/run`,
+   * `manual: true`) เพื่อให้ dedup Todo / kill switch เป็นชุดเดียวกัน.
+   *
+   * `manual` เปลี่ยนอย่างเดียวคือ **เกณฑ์ยิง Sentry**: scheduler ยิงได้เสมอเพราะ
+   * เดือนละครั้ง แต่ปุ่มกดกี่ครั้งก็ได้ต่อวัน ⇒ ยิงเฉพาะตอนที่ "มีของใหม่" (สร้าง
+   * Todo ใบใหม่ได้จริง) ไม่งั้น Sentry กลายเป็น heartbeat จนคนเลิกอ่าน (หลัก
+   * เดียวกับ `alarm()` หลัง dedup ใน `shop-receivable-aging.cron.ts`).
+   */
   @Cron('0 8 1 * *', { timeZone: 'Asia/Bangkok' })
-  async tick(): Promise<ReconcileTickResult> {
+  async tick(options?: ReconcileTickOptions): Promise<ReconcileTickResult> {
+    const manual = options?.manual === true;
     try {
       const enabled = await readBoolFlag(this.prisma, 'interco_reconcile_enabled', true);
       if (!enabled) {
@@ -213,29 +254,34 @@ export class IntercoReconcileCron {
             .map(([kind, n]) => `${KIND_LABEL[kind as ReconcileFindingKind]} ${n}`)
             .join(' · '),
       );
-      const patternSummary = summarizePatterns(findings);
-      Sentry.captureMessage('Interco monthly reconcile mismatches', {
-        level: 'warning',
-        tags: { subsystem: 'interco-netting' },
-        extra: {
-          period,
-          total: findings.length,
-          ...counts,
-          // นับแยกจาก kind: รูปแบบที่รู้จักจะบวมขึ้นเรื่อย ๆ ตามจำนวนสัญญา
-          // ถ้าปนกับ kind จะอ่านกราฟ Sentry ไม่ออกว่าของจริงเพิ่มหรือไม่
-          patternCommissionOnly: patternSummary.COMMISSION_ONLY_GAP?.count ?? 0,
-          patternCommissionOnlyTotal: (
-            patternSummary.COMMISSION_ONLY_GAP?.total ?? new Prisma.Decimal(0)
-          ).toFixed(2),
-          // เลขสัญญาของกลุ่มที่ถูกยุบ — ช่องทางที่สองคู่กับบรรทัดสรุปใน Todo
-          // (กลุ่มนี้ไม่มีหน้าจอ ⇒ ถ้าไม่ส่งมาที่นี่ เลขสัญญาจะไม่ถึงคนเลย)
-          patternCommissionOnlyContracts: (
-            patternSummary.COMMISSION_ONLY_GAP?.contractNumbers ?? []
-          ).slice(0, MAX_PATTERN_CONTRACTS_IN_SENTRY),
-        },
-      });
-
       const todoCreated = await this.upsertMonthlyTodo(period, findings);
+
+      // scheduler: ยิงเสมอ (เดือนละครั้ง — และถ้า Todo สร้างไม่ได้ Sentry คือ
+      // ช่องทางเดียวที่เหลือ). manual: ยิงเฉพาะรอบที่ได้ Todo ใบใหม่จริง
+      if (!manual || todoCreated) {
+        const patternSummary = summarizePatterns(findings);
+        Sentry.captureMessage('Interco monthly reconcile mismatches', {
+          level: 'warning',
+          tags: { subsystem: 'interco-netting' },
+          extra: {
+            period,
+            total: findings.length,
+            ...counts,
+            // นับแยกจาก kind: รูปแบบที่รู้จักจะบวมขึ้นเรื่อย ๆ ตามจำนวนสัญญา
+            // ถ้าปนกับ kind จะอ่านกราฟ Sentry ไม่ออกว่าของจริงเพิ่มหรือไม่
+            patternCommissionOnly: patternSummary.COMMISSION_ONLY_GAP?.count ?? 0,
+            patternCommissionOnlyTotal: (
+              patternSummary.COMMISSION_ONLY_GAP?.total ?? new Prisma.Decimal(0)
+            ).toFixed(2),
+            // เลขสัญญาของกลุ่มที่ถูกยุบ — ช่องทางที่สองคู่กับบรรทัดสรุปใน Todo
+            // (กลุ่มนี้ไม่มีหน้าจอ ⇒ ถ้าไม่ส่งมาที่นี่ เลขสัญญาจะไม่ถึงคนเลย)
+            patternCommissionOnlyContracts: (
+              patternSummary.COMMISSION_ONLY_GAP?.contractNumbers ?? []
+            ).slice(0, MAX_PATTERN_CONTRACTS_IN_SENTRY),
+          },
+        });
+      }
+
       return { enabled: true, findings, todoCreated };
     } catch (outerErr) {
       // DB/service ล่มทั้งก้อน — ห้ามทำให้ scheduler ตาย, เดือนหน้าลองใหม่เอง
@@ -248,7 +294,11 @@ export class IntercoReconcileCron {
           outerErr instanceof Error ? outerErr.message : String(outerErr)
         }`,
       );
-      return { enabled: false, findings: [], todoCreated: false };
+      // **ห้ามคืน `enabled: false` ตรงนี้** — ค่านั้นมีความหมายเดียวคือ "สวิตช์
+      // ปิดอยู่ ยังไม่ได้ตรวจอะไรเลย" ซึ่งขับข้อความบนหน้าจอให้ไปแก้ SystemConfig
+      // ที่ถูกอยู่แล้ว. `failed` คือคำตอบที่ตรงความจริง: ตรวจไม่จบ ผลไม่ครบ
+      // สาเหตุอยู่ใน Sentry (ผู้ใช้ทำได้แค่ลองใหม่/แจ้งผู้ดูแล).
+      return { enabled: true, findings: [], todoCreated: false, failed: true };
     }
   }
 
@@ -329,9 +379,9 @@ export class IntercoReconcileCron {
       const shopTotal = pair.shopFinancedGl.plus(pair.shopCommissionGl);
       // รูปแบบที่รู้จัก: ต่างกันเฉพาะขาค่าคอม = สัญญาที่ storeCommission ว่าง
       // (1A ตั้ง fallback 10% แต่ขา SHOP ตั้ง 0 — ดู jsdoc `commissionDiff`).
-      // ติดป้ายให้คนอ่านรู้ทันทีว่าเป็น gap เชิงระบบ ไม่ใช่ JV มือหลุด
-      const commissionOnly =
-        pair.commissionDiff.abs().gt(EPS) && pair.financedDiff.abs().lte(EPS);
+      // predicate อยู่ที่ service (`isCommissionOnlyGap`) — ตัวเดียวกับที่
+      // endpoint/แท็บ "กระทบยอด" ใช้ติดป้ายบนแถว ⇒ ป้ายบนจอ = ป้ายในใบนี้เสมอ
+      const commissionOnly = isCommissionOnlyGap(pair);
       findings.push({
         kind: 'PAYABLE_PAIR_MISMATCH',
         contractId: pair.contractId,
@@ -496,7 +546,7 @@ export class IntercoReconcileCron {
     if (truncated.length > 0) {
       // ชี้แท็บได้ต่อเมื่อ **ทุกรายการที่ถูกตัด** อยู่บนแท็บจริง — ไม่งั้นคนจะไป
       // เปิดแท็บแล้วหาไม่เจอ (kind นอกแท็บมีที่เดียวคือใบนี้ + Sentry ของรอบนี้)
-      const where = truncated.every((f) => !OFF_TAB_KINDS.has(f.kind))
+      const where = truncated.every((f) => KIND_TAB[f.kind] !== null)
         ? 'ดูรายละเอียดที่แท็บ'
         : 'บางส่วนไม่แสดงบนแท็บ — ดู Sentry/log ของรอบนี้';
       lines.push(`… และอีก ${truncated.length} รายการ (${where})`);
@@ -510,9 +560,9 @@ export class IntercoReconcileCron {
           `รวม ${formatAmount(agg.total)} บาท — ส่วนต่างจริงเชิงระบบ ` +
           `(1A ตั้งค่าคอม 10% อัตโนมัติ แต่สมุด SHOP ตั้ง 0)`,
       );
-      // เลขสัญญาต้องอยู่ในใบนี้: กลุ่มนี้ไม่มีหน้าจอของตัวเอง และไม่กินโควตา
-      // รายบรรทัด ⇒ ถ้าไม่พิมพ์ที่นี่ กลุ่มที่ใหญ่ที่สุดจะเป็นกลุ่มเดียวที่ไม่มี
-      // เลขสัญญาให้ตามต่อเลย (final review Phase 4)
+      // เลขสัญญายังพิมพ์ไว้ในใบนี้แม้ Phase 5 จะมีแท็บ "กระทบยอด" แล้ว: กลุ่มนี้
+      // ถูกยุบออกจากโควตารายบรรทัด และใบ Todo คือ snapshot ของรอบนั้น (แท็บโชว์
+      // สถานะปัจจุบัน) ⇒ สองอย่างเสริมกัน ไม่ใช่ซ้ำกัน (final review Phase 4)
       const shown = agg.contractNumbers.slice(0, MAX_PATTERN_CONTRACTS_IN_LINE);
       const rest = agg.contractNumbers.length - shown.length;
       if (shown.length > 0) {
@@ -527,21 +577,28 @@ export class IntercoReconcileCron {
     }
 
     lines.push('');
-    // footer แบบ kind-aware: ชี้แท็บเฉพาะเมื่อมี kind ที่แท็บแสดงจริง และประกาศ
-    // ชัด ๆ ว่า kind ไหน "ไม่แสดงบนแท็บ" (ดู jsdoc `OFF_TAB_KINDS`) — เดิมชี้แท็บ
-    // อย่างเดียวทั้งที่เคส headline (ยอดติดลบสมมาตร) ถูกกรองออกจากแท็บโดยโครงสร้าง
-    const offTabKinds = [...new Set(findings.map((f) => f.kind))]
-      .filter((k) => OFF_TAB_KINDS.has(k))
-      .sort((a, b) => KIND_SEVERITY[a] - KIND_SEVERITY[b]);
+    // footer แบบ kind-aware: ชี้ **แท็บที่ถูกต้องต่อ kind** (Phase 5 ข้อ 1 —
+    // NEGATIVE_TYPED/PAYABLE_PAIR_MISMATCH มีหน้าจอแล้วที่แท็บ "กระทบยอด") และ
+    // ประกาศชัด ๆ ว่า kind ไหนยังไม่มีหน้าจอเลย (ดู jsdoc `KIND_TAB`) — ชี้แท็บ
+    // ผิดหรือชี้แบบเหมารวมคือส่งคนไปเปิดหน้าจอแล้วหาของไม่เจอ
+    const kinds = [...new Set(findings.map((f) => f.kind))].sort(
+      (a, b) => KIND_SEVERITY[a] - KIND_SEVERITY[b],
+    );
+    const offTabKinds = kinds.filter((k) => KIND_TAB[k] === null);
     if (offTabKinds.length > 0) {
       lines.push(
         `⚠ ไม่แสดงบนแท็บ: ${offTabKinds.map((k) => KIND_LABEL[k]).join(' · ')} — ` +
-          'แท็บ "อายุลูกหนี้หน้าร้าน" แสดงเฉพาะหนี้ค้างต่อสัญญา (ยอดบวก/สองสมุดไม่ตรง) ' +
+          'เป็นยอดระดับบัญชี ไม่ใช่ต่อสัญญา จึงไม่มีหน้าจอแสดง ' +
           'ให้ใช้ข้อมูลในใบนี้ (และ Sentry ของรอบนี้) เป็นหลัก',
       );
     }
-    if (findings.some((f) => !OFF_TAB_KINDS.has(f.kind))) {
-      lines.push('ตรวจที่หน้าจ่ายให้หน้าร้าน (INTER-CO) → แท็บ "อายุลูกหนี้หน้าร้าน"');
+    for (const tab of ['AGING', 'RECONCILE'] as const) {
+      const onTab = kinds.filter((k) => KIND_TAB[k] === tab);
+      if (onTab.length === 0) continue;
+      lines.push(
+        `ตรวจที่หน้าจ่ายให้หน้าร้าน (INTER-CO) → แท็บ "${TAB_LABEL[tab]}": ` +
+          onTab.map((k) => KIND_LABEL[k]).join(' · '),
+      );
     }
     lines.push(
       'ระบบไม่ตั้ง JE ปรับปรุงให้อัตโนมัติ — ต้องให้ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้',

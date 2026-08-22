@@ -287,8 +287,10 @@ SHOP:     Dr S21-3001   8,000.00   (ต่อรายการหัก)
 **ยังเปิด → Phase 5:** `COMMISSION_ONLY_GAP` (สัญญาที่ `storeCommission` ว่าง — 1A ตั้ง
 fallback 10% บน 21-1102 แต่ขา SHOP ตั้ง 0) — reconcile รายงานพร้อมป้ายกำกับแล้ว แต่ยังไม่แก้
 ต้นเหตุ เพราะเป็นความต่างจริงในบัญชี (opening-balance gap §11) ที่ต้องให้เจ้าของ/CPA ตัดสิน ·
-**`approveCancellation` ยังเป็น READ COMMITTED** (Phase 4 ยกเฉพาะ `approveBatch`; เส้นทาง
-ยกเลิกได้แค่ `P2002 → 409`) · **`swapCreditShopBalance`/Query B ฝั่ง S21-3001 เป็น stamp-only
+~~**`approveCancellation` ยังเป็น READ COMMITTED**~~ **ปิดแล้วใน Phase 5 (2026-08-22)** —
+เคส TOCTOU พิสูจน์ได้ด้วยเทสสองคอนเนกชัน แล้วยก `approveCancellation` เป็น Serializable +
+`P2034 → 409` ไทย (ขา `P2002 → 409` เดิมยังอยู่); ดู `accounting.md` หัวข้อ "ยังเปิดอยู่ →
+Phase 5" · **`swapCreditShopBalance`/Query B ฝั่ง S21-3001 เป็น stamp-only
 ไม่มี flow fallback** ทั้งที่ `FLOW_MAP` map `shop-exchange-return → SWAP_CREDIT` — แคบกว่า
 `classifyShopReceivable` โดยตั้งใจ รอเคสจริง/CPA. รายละเอียดทั้งหมดอยู่ใน accounting.md
 หัวข้อ "รอ Phase 4 (carry)" → บล็อก "ยังเปิดอยู่ → Phase 5".
@@ -307,13 +309,22 @@ fallback 10% บน 21-1102 แต่ขา SHOP ตั้ง 0) — reconcile �
 | ข้อ 3 — ทำ state machine ให้ตรง diagram | ด่านที่มีอยู่ (`product-hold` / `product-enter-stock` / `MANUAL_TRANSITION_DENY` / `FOUND_POLICY`) **คือ** กติกาอยู่แล้ว — สร้าง state machine กลางจะเป็นกติกาชุดที่สองซ้อนกัน | Task 4: **พิสูจน์ด้วย integration test บน DB จริง** (`product-lifecycle.integration.spec.ts` 5 เคส) แทนการเขียนชั้นใหม่ |
 | ข้อ 4 — integration test สองสัญญา + ขายซ้ำ | ทำครบ + เกินสเปค (ห่วงโซ่ ลบ→รับ IMEI เดิม→ขายซ้ำ, MEMO exchange, ยึดเครื่องครบสาย) | `product-lifecycle.integration.spec.ts` + `product-guard.integration.spec.ts` |
 
+**รูข้าม task ที่ final review จับได้ (แก้แล้ว 2026-08-22):** ยกเลิกเปลี่ยนเครื่อง
+(`ExchangeCancelService`) restore เครื่องเก่าโดยไม่มี guard เลย — พอ Task 3 ทำให้
+`REFURBISHED → IN_STOCK` เป็นปุ่มชั้นหนึ่ง เส้นทาง "swap → นำเข้าคลัง → ขาย POS →
+ยกเลิก swap" จึงพาไปสู่เครื่องเดียวที่มีทั้งใบขายของลูกค้า B และสัญญาผ่อนที่ยังเดินของ
+ลูกค้า A. แก้ด้วย action ที่สามของด่านเดิม `product-hold.util.ts`
+(`RESTORE_TO_CONTRACT`) ไม่ใช่กติกาชุดใหม่ — รายละเอียดใน `.claude/rules/database.md`.
+
 **ของแถมที่พบระหว่างทาง (ไม่อยู่ในสเปค แต่แก้ไปแล้ว):** `audit.log` ใน `$transaction`
 เปิด root-tx ซ้อน ⇒ P2028 ⇒ audit หายเงียบ (แก้ 5 จุดใน contract-exchange, ที่เหลือเป็น
 carry) · `approveCancellation` ยกเป็น Serializable + P2034→409 · แท็บกระทบยอด + ปุ่ม
 สั่งรันเอง · แถวที่ hydrate สัญญาไม่ได้ต้องไม่หายจากรายงาน.
 
-**carries ที่ยังเปิด** (รวม "ฟอร์มปรับสต็อกตาย 400 เพราะไม่ส่ง `approverId`" ซึ่งทำให้
-`FOUND_POLICY` ยังไม่เคยถูกใช้จากหน้าจอ) — รายการเต็มอยู่ใน `.claude/rules/database.md`.
+**carries ที่ยังเปิด** — รายการเต็มอยู่ใน `.claude/rules/database.md` (หัวข้อ "carries
+ที่ยังเปิดอยู่" + "คำถามถึงเจ้าของ"). หมายเหตุ: "ฟอร์มปรับสต็อกตาย 400 เพราะไม่ส่ง
+`approverId`" **ปิดไปแล้ว** ใน final review — ที่เหลือของเส้นนั้นคือช่องแนบรูปของเหตุผล
+`DAMAGED` และการค้นหาเครื่องที่ถูก soft-delete.
 
 <details>
 <summary>ข้อความสเปคเดิม (เก็บไว้อ้างอิง — อย่าใช้เป็นคำสั่ง)</summary>

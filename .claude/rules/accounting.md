@@ -2320,7 +2320,11 @@ Todo ต้องมาจากสูตรเดียว. ไม่มี que
 ชุดเดิม และ **kill switch `interco_reconcile_enabled` ตัวเดิม** (ปิดอยู่ = คืน
 `enabled: false` ไม่ทำอะไรเลย — เจตนา: สวิตช์เดียวคุมทั้งสองช่องทาง ไม่มีทางลัดข้ามสวิตช์;
 UI บอกตรง ๆ ว่า "ยังไม่ได้ตรวจอะไรเลย" + คีย์นี้ยังไม่มีหน้าจอตั้งค่า ต้องแก้ที่ DB).
-response = `{ enabled, todoCreated, total, counts, findings }` (`counts` = นับตาม kind).
+response = `{ enabled, failed, todoCreated, total, counts, findings }` (`counts` = นับตาม kind).
+**`failed` แยก "รันแล้วพัง" ออกจาก "ถูกปิดไว้"** — ทั้งสองกรณีคืน `findings: []` เหมือนกัน
+(tick ไม่ throw ตาม doctrine) ⇒ ถ้าไม่มีฟิลด์นี้ หน้าจอจะโชว์ "ไม่พบรายการผิดปกติ" ทั้งที่
+ยังไม่ได้ตรวจอะไรเลย. FE branch `failed` **ก่อน** `enabled` เพราะ tick ที่พังจะคืน
+`enabled: true` มาด้วย.
 `tick()` ไม่ throw ตาม doctrine ⇒ endpoint ไม่มี error path ของตัวเอง. **หน้าจอนี้ไม่มีปุ่ม
 แก้ GL** — doctrine "ไม่ตั้ง JE ปรับปรุงอัตโนมัติ" ยังเหมือนเดิมทุกประการ.
 

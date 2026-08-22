@@ -66,8 +66,14 @@ export function positiveDecimalOrNull(v: number | null | undefined): Prisma.Deci
 }
 
 /**
- * แถวที่ยังมีผลจริง (ไม่ถูก soft-delete) — `productInclude.prices` ไม่กรอง
- * `deletedAt: null` ให้ (เป็น include ที่ผู้อ่านหลายตัวใช้ร่วมกัน) ⇒ ต้องกรองที่นี่
+ * แถวที่ยังมีผลจริง (ไม่ถูก soft-delete)
+ *
+ * **เหตุผลอัปเดต (final review M-3):** `productInclude.prices` กรอง `deletedAt: null`
+ * ให้แล้วตั้งแต่ fix round 4 (Important 2 ก — กรองที่ต้นทางแทนไล่กรองรายผู้อ่าน) ⇒
+ * ผู้เรียกทาง `ProductsService` ไม่ต้องพึ่งชั้นนี้อีก. ที่ยังต้องมีเพราะ **ผู้เรียกที่
+ * `select` ชุดของตัวเอง**: `ProductPhotosService.completePhotos`
+ * (`prices: { select: { amount, deletedAt } }` — ไม่มี `where`) ⇒ แถวที่ถูกลบยังไหลเข้ามา
+ * ที่นี่ได้จริง. defense-in-depth ของประตูอื่นด้วย — อย่าลบทิ้งเพราะ "ต้นทางกรองแล้ว"
  */
 function liveRows(product: EnterStockProduct): EnterStockPriceRow[] {
   return (product.prices ?? []).filter((r) => !r.deletedAt);

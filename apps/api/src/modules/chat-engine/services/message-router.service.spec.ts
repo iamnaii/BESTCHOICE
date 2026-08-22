@@ -534,3 +534,44 @@ describe('MessageRouterService — รวมข้อความที่ลู
     expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('MessageRouterService — echo จากนอกระบบ (กันข้อความทักทายอัตโนมัติปิด AI)', () => {
+  function makeEchoRouter(hasBotReplied: boolean) {
+    const roomManager = {
+      getOrCreateRoom: jest.fn().mockResolvedValue({ id: 'r1' }),
+      saveMessage: jest.fn().mockResolvedValue({ id: 'm1' }),
+      hasBotReplied: jest.fn().mockResolvedValue(hasBotReplied),
+      pauseAiIfActive: jest.fn().mockResolvedValue(true),
+    };
+    const router = new MessageRouterService(
+      roomManager as any,
+      { initiateHandoff: jest.fn() } as any,
+      { get: jest.fn() } as any,
+    );
+    return { router, roomManager };
+  }
+  const echo = {
+    externalUserId: 'U1',
+    channel: ChatChannel.FACEBOOK,
+    role: MessageRole.STAFF,
+    type: MessageType.TEXT,
+    text: 'สวัสดีค่ะคุณ Suttinee 😊 BESTCHOICE ยินดีให้บริการค่ะ',
+    externalMessageId: 'mid_greeting',
+    pauseAi: true,
+  };
+
+  it('บอทยังไม่เคยตอบในห้อง (= ข้อความทักทายอัตโนมัติ) → ห้ามปิด AI', async () => {
+    const { router, roomManager } = makeEchoRouter(false);
+    await router.mirrorOutbound(echo as any);
+    await new Promise((r) => setImmediate(r));
+    expect(roomManager.saveMessage).toHaveBeenCalled(); // ยังบันทึกเข้ากล่องปกติ
+    expect(roomManager.pauseAiIfActive).not.toHaveBeenCalled();
+  });
+
+  it('บอทเคยตอบแล้ว (= พนักงานแทรกจริง) → ปิด AI ตามเดิม', async () => {
+    const { router, roomManager } = makeEchoRouter(true);
+    await router.mirrorOutbound(echo as any);
+    await new Promise((r) => setImmediate(r));
+    expect(roomManager.pauseAiIfActive).toHaveBeenCalledWith('r1', undefined);
+  });
+});

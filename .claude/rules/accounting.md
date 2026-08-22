@@ -2515,6 +2515,15 @@ lock เกิดตามสิ่งที่ scan จริง ไม่ใ�
 (`apps/api/src/modules/accounting/accounting-section-map.util.ts` — `'S21'` =
 `'หนี้สินหมุนเวียน (SHOP)'`). ไม่มีการแก้โค้ดรายงานในเฟสนี้.
 
+### Phase 5 (IMEI guards) อยู่คนละไฟล์
+
+Phase 5 ของ workbook เดียวกัน (spec §7 — สถานะสินค้า/IMEI, guard การลบ, ปุ่มนำเข้าคลัง)
+**ไม่แตะ GL และไม่เพิ่ม JE แม้แต่ใบเดียว** จึงไปอยู่ที่ **`.claude/rules/database.md`
+หัวข้อ "สถานะสินค้า & IMEI (Phase 5)"** (partial unique index บน IMEI, `product-hold.util.ts`,
+`product-enter-stock.util.ts`, `FOUND_POLICY`, state diagram + carries ที่เหลือ).
+ส่วนที่ตกมาถึงไฟล์นี้มีสองข้อ: `approveCancellation` เป็น Serializable (ดูหัวข้อด้านบน)
+และ carry "P2034 ที่เส้นทางรับชำระ" ซึ่งยังรอ Sentry spike.
+
 ### CI
 
 `deploy-gcp.yml` **ไม่ต้องแก้ glob**: `interco-aging.integration.spec.ts` อยู่ใต้

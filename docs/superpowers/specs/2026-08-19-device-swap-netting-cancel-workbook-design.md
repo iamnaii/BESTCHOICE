@@ -293,13 +293,38 @@ fallback 10% บน 21-1102 แต่ขา SHOP ตั้ง 0) — reconcile �
 `classifyShopReceivable` โดยตั้งใจ รอเคสจริง/CPA. รายละเอียดทั้งหมดอยู่ใน accounting.md
 หัวข้อ "รอ Phase 4 (carry)" → บล็อก "ยังเปิดอยู่ → Phase 5".
 
-## 7. Phase 5 — IMEI Guards
+## 7. Phase 5 — IMEI Guards `[implemented 2026-08-22]`
+
+> **เอกสารที่เป็นความจริงวันนี้: `.claude/rules/database.md` หัวข้อ "สถานะสินค้า & IMEI (Phase 5)"**
+> (เฟสนี้ไม่แตะ GL และไม่เพิ่ม JE แม้แต่ใบเดียว จึงไม่อยู่ใน `accounting.md`)
+>
+> **⚠ ข้อสมมติของสเปคข้างล่างนี้ต่างจากความจริงในโค้ด — อ่านตารางก่อนใช้งานต่อ**
+
+| สเปคเดิม (ข้างล่าง) | ความจริงที่พบตอนลงมือ | ทำอะไรแทน |
+|---|---|---|
+| ข้อ 1 — ต้องเพิ่ม guard กัน "เครื่องเดียวสองสัญญา" ที่ระดับ IMEI | **กันอยู่แล้ว** ด้วย partial unique index `products_imei_serial_active_unique` (T5-C12, migration `20260525200000`) ⇒ IMEI ซ้ำสร้างไม่ได้อยู่แล้วตราบใดที่แถวยังไม่ถูกลบ. **รูจริงคนละที่**: (ก) `ProductsService.remove()` ไม่มี guard ⇒ ลบเครื่องที่สัญญา ACTIVE ถืออยู่ = **ปลด IMEI ให้ว่าง** แล้วรับเข้าใหม่/ขายซ้ำได้ (ข) `PATCH` แก้ IMEI ก็ปลด slot เดียวกันและ **ตัดสาย สัญญา↔เครื่อง** (MDM ล็อกผิดเครื่อง) — สิทธิ์กว้างกว่า DELETE ด้วย (ค) `activate()` / exchange finalize **ไม่เช็ค `deletedAt`** ⇒ เปิดสัญญาบนสินค้าที่ถูกลบไปแล้วได้ | Task 1: `product-hold.util.ts` — ด่าน 4 ชั้นเดียวใช้ทั้ง `remove()` และ `update()` · Task 2: activation/finalize + re-check ใน tx กรอง `deletedAt` |
+| ข้อ 2 — ขายได้เฉพาะ `IN_STOCK` **/ `REFURBISHED`** | POS (`sale-writer.service.ts:125`) รับ **`IN_STOCK` อย่างเดียว** — `REFURBISHED` ขายไม่ได้อยู่แล้ว. ปัญหาจริงกลับด้าน: เครื่องมือสองที่รับคืน **ถือราคาเครื่องใหม่ติดตัวมา** และระบบไม่มี flow ล้างราคา ⇒ ถ้าเปิดให้ขาย `REFURBISHED` ตรง ๆ จะขายเครื่องมือสองที่ราคาเครื่องใหม่ | **คำตัดสินเจ้าของ 2026-08-21**: คง POS = `IN_STOCK` เท่านั้น + เพิ่มปุ่ม "นำเข้าคลังพร้อมขาย" ที่ **บังคับยืนยันราคา** (Task 3) · ทุกประตูเข้า `IN_STOCK` ผ่าน `product-enter-stock.util.ts` · `FOUND_POLICY` allow-list ปิดทางลัดผ่าน stock adjustment |
+| ข้อ 3 — ทำ state machine ให้ตรง diagram | ด่านที่มีอยู่ (`product-hold` / `product-enter-stock` / `MANUAL_TRANSITION_DENY` / `FOUND_POLICY`) **คือ** กติกาอยู่แล้ว — สร้าง state machine กลางจะเป็นกติกาชุดที่สองซ้อนกัน | Task 4: **พิสูจน์ด้วย integration test บน DB จริง** (`product-lifecycle.integration.spec.ts` 5 เคส) แทนการเขียนชั้นใหม่ |
+| ข้อ 4 — integration test สองสัญญา + ขายซ้ำ | ทำครบ + เกินสเปค (ห่วงโซ่ ลบ→รับ IMEI เดิม→ขายซ้ำ, MEMO exchange, ยึดเครื่องครบสาย) | `product-lifecycle.integration.spec.ts` + `product-guard.integration.spec.ts` |
+
+**ของแถมที่พบระหว่างทาง (ไม่อยู่ในสเปค แต่แก้ไปแล้ว):** `audit.log` ใน `$transaction`
+เปิด root-tx ซ้อน ⇒ P2028 ⇒ audit หายเงียบ (แก้ 5 จุดใน contract-exchange, ที่เหลือเป็น
+carry) · `approveCancellation` ยกเป็น Serializable + P2034→409 · แท็บกระทบยอด + ปุ่ม
+สั่งรันเอง · แถวที่ hydrate สัญญาไม่ได้ต้องไม่หายจากรายงาน.
+
+**carries ที่ยังเปิด** (รวม "ฟอร์มปรับสต็อกตาย 400 เพราะไม่ส่ง `approverId`" ซึ่งทำให้
+`FOUND_POLICY` ยังไม่เคยถูกใช้จากหน้าจอ) — รายการเต็มอยู่ใน `.claude/rules/database.md`.
+
+<details>
+<summary>ข้อความสเปคเดิม (เก็บไว้อ้างอิง — อย่าใช้เป็นคำสั่ง)</summary>
 
 `ProductStatus` enum ครบแล้ว — เพิ่มด่านตรวจ:
 1. **Activation guard**: productId/imeiSerial ต้องไม่อยู่ในสัญญา ACTIVE อื่น (เช็คตอน activate + ตอน exchange finalize) → `ConflictException` ภาษาไทย
 2. **Sale guard**: ขาย (POS/สัญญาใหม่) ได้เฉพาะสถานะ `IN_STOCK` / `REFURBISHED` — ห้าม `SOLD_*`/`REPOSSESSED`/`DAMAGED`/`LOST`/`WRITTEN_OFF` โดยไม่ผ่านการคืน/refurb
 3. **Transition ตรวจสอบ**: exchange return → สถานะเครื่องเก่ากลับเข้าคลังหน้าร้าน (ตรวจ flow ปัจจุบันให้ตรง state diagram ของ workbook), repossession → `REPOSSESSED` → `REFURBISHED` → `SOLD_RESELL`
 4. รายงาน/เทสต์: integration test เครื่องเดียวกันสองสัญญา + ขายซ้ำ
+
+</details>
 
 ## 8. สิ่งที่ตั้งใจไม่ทำ
 

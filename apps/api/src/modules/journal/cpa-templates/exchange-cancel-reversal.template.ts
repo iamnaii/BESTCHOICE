@@ -99,8 +99,12 @@ export class ExchangeCancelReversalTemplate {
       include: { lines: true },
     });
     // ตัวเลือกการกวาด: sweepBy ชนะ → fallback เป็น contractId (พฤติกรรมเดิม) →
-    // ไม่มีทั้งคู่ = ไม่ยิง query กวาดเลย (ใช้เฉพาะ jeIds ที่ส่งมา) — ห้าม fallback
-    // เป็น `equals: undefined` เพราะ Prisma จะแปลว่า "ไม่ filter" แล้วกวาด JE ทั้งระบบ
+    // ไม่มีทั้งคู่ = ไม่ยิง query กวาดเลย (ใช้เฉพาะ jeIds ที่ส่งมา)
+    //
+    // ห้ามยิง query โดยที่ `equals` เป็น undefined: Prisma **โยน P2019**
+    // ("A JSON path cannot be set without a scalar filter" — ทดสอบกับ DB จริง 2026-08-22)
+    // ⇒ tx ของผู้เรียกจะ rollback ทั้งชุด ไม่ใช่ "ไม่ filter แล้วกวาด JE ทั้งระบบ"
+    // ตามที่คอมเมนต์เดิมเขียนไว้ผิด — เจตนาของ null-branch คงเดิม แต่เหตุผลต้องตรง
     const sweepBy: CancelSweepSelector | null =
       input.sweepBy ??
       (input.newContractId ? { path: 'contractId', value: input.newContractId } : null);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRightLeft } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,11 +10,14 @@ import { BatchesTab } from './interco/BatchesTab';
 import { CreateBatchDialog } from './interco/CreateBatchDialog';
 import { BatchDetailSheet } from './interco/BatchDetailSheet';
 import { AgingTab } from './interco/AgingTab';
+import { ReconcileTab } from './interco/ReconcileTab';
 import { AGING_DEFAULT_THRESHOLD_DAYS } from './interco/types';
 import type {
   BatchListResponse,
   InterCoBatchStatus,
   PendingResponse,
+  ReconcileFindingsResponse,
+  ReconcileRunResponse,
   ShopReceivableAgingResponse,
 } from './interco/types';
 
@@ -34,7 +38,8 @@ import type {
  */
 export default function IntercompanySettlementPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'pending' | 'batches' | 'aging'>('pending');
+  const [tab, setTab] = useState<'pending' | 'batches' | 'aging' | 'reconcile'>('pending');
+  const [lastRun, setLastRun] = useState<ReconcileRunResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedRecallIds, setSelectedRecallIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
@@ -70,10 +75,44 @@ export default function IntercompanySettlementPage() {
     staleTime: 15_000,
   });
 
+  // Phase 5 Task 5 ข้อ 1 — คู่เจ้าหนี้ไม่ตรง + ยอดติดลบ (สองมุมที่แท็บอายุกรองออก
+  // โดยโครงสร้าง จึงต้องมีหน้าจอของตัวเอง)
+  const reconcileQuery = useQuery<ReconcileFindingsResponse>({
+    queryKey: ['interco-reconcile-findings'],
+    queryFn: async () => (await api.get('/interco-settlement/reconcile-findings')).data,
+    enabled: tab === 'reconcile',
+    staleTime: 15_000,
+  });
+
+  // ข้อ 4 — สั่งรันกระทบยอดเอง (เรียก tick() ตัวเดียวกับ cron รายเดือน: dedup
+  // Todo ชุดเดิม + kill switch ตัวเดิม). ไม่แตะ GL — รายงานอย่างเดียว
+  const runReconcile = useMutation({
+    mutationFn: async () =>
+      (await api.post('/interco-settlement/reconcile/run')).data as ReconcileRunResponse,
+    onSuccess: (data) => {
+      setLastRun(data);
+      if (!data.enabled) {
+        toast.error('การกระทบยอดถูกปิดไว้ (interco_reconcile_enabled) — ยังไม่ได้ตรวจอะไรเลย');
+      } else if (data.total === 0) {
+        toast.success('กระทบยอดแล้ว — ตรงทุกรายการ');
+      } else {
+        toast.warning(`กระทบยอดแล้ว — พบ ${data.total} รายการไม่ตรง`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['interco-reconcile-findings'] });
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'สั่งรันกระทบยอดไม่สำเร็จ';
+      toast.error(message);
+    },
+  });
+
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['interco-pending'] });
     queryClient.invalidateQueries({ queryKey: ['interco-batches'] });
     queryClient.invalidateQueries({ queryKey: ['interco-aging'] });
+    queryClient.invalidateQueries({ queryKey: ['interco-reconcile-findings'] });
   };
 
   const pending = pendingQuery.data?.pending ?? [];
@@ -113,11 +152,15 @@ export default function IntercompanySettlementPage() {
         icon={<ArrowRightLeft className="h-6 w-6" />}
       />
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'pending' | 'batches' | 'aging')}>
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as 'pending' | 'batches' | 'aging' | 'reconcile')}
+      >
         <TabsList variant="line" size="md">
           <TabsTrigger value="pending">รอจ่าย</TabsTrigger>
           <TabsTrigger value="batches">รอบจ่าย</TabsTrigger>
           <TabsTrigger value="aging">อายุลูกหนี้หน้าร้าน</TabsTrigger>
+          <TabsTrigger value="reconcile">กระทบยอด</TabsTrigger>
         </TabsList>
 
         <TabsContent value="pending">
@@ -168,6 +211,18 @@ export default function IntercompanySettlementPage() {
             isError={agingQuery.isError}
             error={agingQuery.error}
             onRetry={() => agingQuery.refetch()}
+          />
+        </TabsContent>
+        <TabsContent value="reconcile">
+          <ReconcileTab
+            data={reconcileQuery.data}
+            isLoading={reconcileQuery.isLoading}
+            isError={reconcileQuery.isError}
+            error={reconcileQuery.error}
+            onRetry={() => reconcileQuery.refetch()}
+            onRun={() => runReconcile.mutate()}
+            isRunning={runReconcile.isPending}
+            lastRun={lastRun}
           />
         </TabsContent>
       </Tabs>

@@ -899,6 +899,35 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     expect(row.legacyOneBook).toBe(false);
   });
 
+  // -------------------------------------------------------------------------
+  // Phase 5 Task 5 ข้อ 1 — findings ที่ยังไม่มีหน้าจอ (endpoint เดียวสำหรับแท็บ
+  // "กระทบยอด"): คู่เจ้าหนี้ไม่ตรง + ยอดติดลบ. predicate เป็นตัวเดียวกับที่
+  // reconcile cron ใช้ (`isCommissionOnlyGap` / `negativeTypedFields`) —
+  // ห้าม FE คำนวณเอง ไม่งั้นตัวเลขบนจอกับในใบ Todo drift กันได้
+  // -------------------------------------------------------------------------
+  it('getReconcileFindings: คืนเฉพาะคู่ที่ mismatch + ติดป้ายรูปแบบค่าคอม และแนบช่องที่ติดลบมาให้', async () => {
+    const res = await agingService.getReconcileFindings();
+
+    // (1) คู่เจ้าหนี้: เฉพาะ mismatch — ok/legacyNoShop ต้องไม่ติดมา
+    expect(res.pairMismatches.some((p) => p.contractId === pairOkId)).toBe(false);
+    expect(res.pairMismatches.some((p) => p.contractId === pairLegacyNoShopId)).toBe(false);
+    const bad = res.pairMismatches.find((p) => p.contractId === pairMismatchId)!;
+    expect(bad).toBeDefined();
+    expect(bad.commissionDiff.toFixed(2)).toBe('1000.00');
+    // ต่างเฉพาะขาค่าคอม = รูปแบบที่รู้จัก (1A ตั้ง 10% อัตโนมัติ แต่สมุด SHOP ตั้ง 0)
+    expect(bad.commissionOnly).toBe(true);
+
+    // (2) ยอดติดลบ: แถวหักเกินแบบสมมาตรของเทส C1 ต้องอยู่ พร้อมช่องที่ติดลบ
+    const neg = res.negativeRows.find((r) => r.intercoNet.lt(0) && r.shopMirrorNet.lt(0));
+    expect(neg).toBeDefined();
+    expect(neg!.negativeFields.length).toBeGreaterThan(0);
+    expect(neg!.negativeFields.every((f) => f.value.lt(0))).toBe(true);
+    // ทุกแถวที่คืนมาต้องมีอย่างน้อยหนึ่งช่องติดลบ (นิยามเดียวกับ negativeTypedFields)
+    expect(res.negativeRows.every((r) => r.negativeFields.length > 0)).toBe(true);
+
+    expect(res.asOf).toBeInstanceOf(Date);
+  });
+
   it('getOpenBatchPayableGross: Σ เจ้าหนี้ของ item ในรอบที่ค้างอนุมัติ (ใช้อธิบาย drift)', async () => {
     const before = await agingService.getOpenBatchPayableGross();
 

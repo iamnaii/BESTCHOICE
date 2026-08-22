@@ -6,6 +6,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { readBoolFlag } from '../../../utils/config.util';
 import {
   IntercoAgingService,
+  isCommissionOnlyGap,
   isSwapCreditOneBook,
   negativeTypedFields,
 } from '../interco-aging.service';
@@ -84,22 +85,35 @@ const KIND_LABEL: Record<ReconcileFindingKind, string> = {
 };
 
 /**
- * kind ที่ **ไม่ปรากฏบนแท็บ "อายุลูกหนี้หน้าร้าน"** — ใบ Todo (+ Sentry ของรอบนี้)
- * คือแหล่งเดียวที่คนอ่านได้ จึงห้ามเขียน footer ชี้ไปแท็บอย่างเดียว:
- *   - `NEGATIVE_TYPED` มาจาก `getNegativeTypedRows()` ซึ่งจงใจแยกจากรายงานหลัก —
- *     แท็บกรองด้วย `isReportableAgingRow` (เก็บเฉพาะยอดบวก/สองสมุดไม่ตรง) ⇒
- *     เคส over-settle **สมมาตร** (headline ของ carry d) ถูกกรองออกโดยโครงสร้าง
- *   - `PAYABLE_PAIR_MISMATCH` มาจาก `getPayablePairing()` ซึ่งยังไม่มี
- *     endpoint/หน้าจอเลย (รวมกลุ่มที่ถูกยุบเป็นบรรทัดสรุปด้วย)
- *   - `ACCOUNT_DRIFT` เป็นระดับบัญชี ไม่ใช่ต่อสัญญา — แท็บไม่มีมุมนี้
- * ที่เหลือ (`SWAP_CREDIT_ONE_BOOK` / `BOOK_MISMATCH`) มาจาก
- * `getShopReceivableAging().rows` ตัวเดียวกับที่แท็บแสดง จึงชี้แท็บได้จริง.
+ * แท็บที่ finding แต่ละ kind "ไปดูได้จริง" บนหน้าจ่ายให้หน้าร้าน (INTER-CO) —
+ * `null` = ไม่มีหน้าจอ ใบ Todo (+ Sentry ของรอบนี้) เป็นแหล่งเดียว:
+ *   - `AGING` (แท็บ "อายุลูกหนี้หน้าร้าน") = แถวจาก
+ *     `getShopReceivableAging().rows` ตัวเดียวกับที่แท็บแสดง
+ *   - `RECONCILE` (แท็บ "กระทบยอด", Phase 5 Task 5 ข้อ 1) = สองมุมที่แท็บอายุ
+ *     กรองออกโดยโครงสร้าง: `NEGATIVE_TYPED` มาจาก `getNegativeTypedRows()`
+ *     (แท็บอายุกรองด้วย `isReportableAgingRow` ⇒ เคส over-settle **สมมาตร**
+ *     ไม่มีวันโผล่) และ `PAYABLE_PAIR_MISMATCH` มาจาก `getPayablePairing()`
+ *     ซึ่งก่อน Phase 5 ไม่มี endpoint/หน้าจอเลย
+ *   - `ACCOUNT_DRIFT` = ระดับบัญชี ไม่ใช่ต่อสัญญา — ยังไม่มีหน้าจอ (สมการ
+ *     เป็นยอดรวมทั้งบัญชี ไม่มีเลขสัญญาให้แสดง)
+ *
+ * เพิ่ม kind ใหม่เมื่อไหร่ **ต้องตัดสินพร้อมกัน** ว่ามันอยู่แท็บไหน/ไม่มีแท็บ —
+ * ข้อความ footer ของ Todo อ่านจากที่นี่ที่เดียว.
  */
-const OFF_TAB_KINDS: ReadonlySet<ReconcileFindingKind> = new Set<ReconcileFindingKind>([
-  'NEGATIVE_TYPED',
-  'PAYABLE_PAIR_MISMATCH',
-  'ACCOUNT_DRIFT',
-]);
+type ReconcileTab = 'AGING' | 'RECONCILE';
+
+const TAB_LABEL: Record<ReconcileTab, string> = {
+  AGING: 'อายุลูกหนี้หน้าร้าน',
+  RECONCILE: 'กระทบยอด',
+};
+
+const KIND_TAB: Record<ReconcileFindingKind, ReconcileTab | null> = {
+  BOOK_MISMATCH: 'AGING',
+  SWAP_CREDIT_ONE_BOOK: 'AGING',
+  NEGATIVE_TYPED: 'RECONCILE',
+  PAYABLE_PAIR_MISMATCH: 'RECONCILE',
+  ACCOUNT_DRIFT: null,
+};
 
 /** 8000 → "8,000.00" (ผ่าน Decimal.toFixed — ไม่แปลงเป็น Number ตามกติกาเงิน) */
 function formatAmount(value: Prisma.Decimal): string {
@@ -329,9 +343,9 @@ export class IntercoReconcileCron {
       const shopTotal = pair.shopFinancedGl.plus(pair.shopCommissionGl);
       // รูปแบบที่รู้จัก: ต่างกันเฉพาะขาค่าคอม = สัญญาที่ storeCommission ว่าง
       // (1A ตั้ง fallback 10% แต่ขา SHOP ตั้ง 0 — ดู jsdoc `commissionDiff`).
-      // ติดป้ายให้คนอ่านรู้ทันทีว่าเป็น gap เชิงระบบ ไม่ใช่ JV มือหลุด
-      const commissionOnly =
-        pair.commissionDiff.abs().gt(EPS) && pair.financedDiff.abs().lte(EPS);
+      // predicate อยู่ที่ service (`isCommissionOnlyGap`) — ตัวเดียวกับที่
+      // endpoint/แท็บ "กระทบยอด" ใช้ติดป้ายบนแถว ⇒ ป้ายบนจอ = ป้ายในใบนี้เสมอ
+      const commissionOnly = isCommissionOnlyGap(pair);
       findings.push({
         kind: 'PAYABLE_PAIR_MISMATCH',
         contractId: pair.contractId,
@@ -496,7 +510,7 @@ export class IntercoReconcileCron {
     if (truncated.length > 0) {
       // ชี้แท็บได้ต่อเมื่อ **ทุกรายการที่ถูกตัด** อยู่บนแท็บจริง — ไม่งั้นคนจะไป
       // เปิดแท็บแล้วหาไม่เจอ (kind นอกแท็บมีที่เดียวคือใบนี้ + Sentry ของรอบนี้)
-      const where = truncated.every((f) => !OFF_TAB_KINDS.has(f.kind))
+      const where = truncated.every((f) => KIND_TAB[f.kind] !== null)
         ? 'ดูรายละเอียดที่แท็บ'
         : 'บางส่วนไม่แสดงบนแท็บ — ดู Sentry/log ของรอบนี้';
       lines.push(`… และอีก ${truncated.length} รายการ (${where})`);
@@ -510,9 +524,9 @@ export class IntercoReconcileCron {
           `รวม ${formatAmount(agg.total)} บาท — ส่วนต่างจริงเชิงระบบ ` +
           `(1A ตั้งค่าคอม 10% อัตโนมัติ แต่สมุด SHOP ตั้ง 0)`,
       );
-      // เลขสัญญาต้องอยู่ในใบนี้: กลุ่มนี้ไม่มีหน้าจอของตัวเอง และไม่กินโควตา
-      // รายบรรทัด ⇒ ถ้าไม่พิมพ์ที่นี่ กลุ่มที่ใหญ่ที่สุดจะเป็นกลุ่มเดียวที่ไม่มี
-      // เลขสัญญาให้ตามต่อเลย (final review Phase 4)
+      // เลขสัญญายังพิมพ์ไว้ในใบนี้แม้ Phase 5 จะมีแท็บ "กระทบยอด" แล้ว: กลุ่มนี้
+      // ถูกยุบออกจากโควตารายบรรทัด และใบ Todo คือ snapshot ของรอบนั้น (แท็บโชว์
+      // สถานะปัจจุบัน) ⇒ สองอย่างเสริมกัน ไม่ใช่ซ้ำกัน (final review Phase 4)
       const shown = agg.contractNumbers.slice(0, MAX_PATTERN_CONTRACTS_IN_LINE);
       const rest = agg.contractNumbers.length - shown.length;
       if (shown.length > 0) {
@@ -527,21 +541,28 @@ export class IntercoReconcileCron {
     }
 
     lines.push('');
-    // footer แบบ kind-aware: ชี้แท็บเฉพาะเมื่อมี kind ที่แท็บแสดงจริง และประกาศ
-    // ชัด ๆ ว่า kind ไหน "ไม่แสดงบนแท็บ" (ดู jsdoc `OFF_TAB_KINDS`) — เดิมชี้แท็บ
-    // อย่างเดียวทั้งที่เคส headline (ยอดติดลบสมมาตร) ถูกกรองออกจากแท็บโดยโครงสร้าง
-    const offTabKinds = [...new Set(findings.map((f) => f.kind))]
-      .filter((k) => OFF_TAB_KINDS.has(k))
-      .sort((a, b) => KIND_SEVERITY[a] - KIND_SEVERITY[b]);
+    // footer แบบ kind-aware: ชี้ **แท็บที่ถูกต้องต่อ kind** (Phase 5 ข้อ 1 —
+    // NEGATIVE_TYPED/PAYABLE_PAIR_MISMATCH มีหน้าจอแล้วที่แท็บ "กระทบยอด") และ
+    // ประกาศชัด ๆ ว่า kind ไหนยังไม่มีหน้าจอเลย (ดู jsdoc `KIND_TAB`) — ชี้แท็บ
+    // ผิดหรือชี้แบบเหมารวมคือส่งคนไปเปิดหน้าจอแล้วหาของไม่เจอ
+    const kinds = [...new Set(findings.map((f) => f.kind))].sort(
+      (a, b) => KIND_SEVERITY[a] - KIND_SEVERITY[b],
+    );
+    const offTabKinds = kinds.filter((k) => KIND_TAB[k] === null);
     if (offTabKinds.length > 0) {
       lines.push(
         `⚠ ไม่แสดงบนแท็บ: ${offTabKinds.map((k) => KIND_LABEL[k]).join(' · ')} — ` +
-          'แท็บ "อายุลูกหนี้หน้าร้าน" แสดงเฉพาะหนี้ค้างต่อสัญญา (ยอดบวก/สองสมุดไม่ตรง) ' +
+          'เป็นยอดระดับบัญชี ไม่ใช่ต่อสัญญา จึงไม่มีหน้าจอแสดง ' +
           'ให้ใช้ข้อมูลในใบนี้ (และ Sentry ของรอบนี้) เป็นหลัก',
       );
     }
-    if (findings.some((f) => !OFF_TAB_KINDS.has(f.kind))) {
-      lines.push('ตรวจที่หน้าจ่ายให้หน้าร้าน (INTER-CO) → แท็บ "อายุลูกหนี้หน้าร้าน"');
+    for (const tab of ['AGING', 'RECONCILE'] as const) {
+      const onTab = kinds.filter((k) => KIND_TAB[k] === tab);
+      if (onTab.length === 0) continue;
+      lines.push(
+        `ตรวจที่หน้าจ่ายให้หน้าร้าน (INTER-CO) → แท็บ "${TAB_LABEL[tab]}": ` +
+          onTab.map((k) => KIND_LABEL[k]).join(' · '),
+      );
     }
     lines.push(
       'ระบบไม่ตั้ง JE ปรับปรุงให้อัตโนมัติ — ต้องให้ผู้มีอำนาจ/ผู้สอบบัญชีตัดสินก่อนแก้',

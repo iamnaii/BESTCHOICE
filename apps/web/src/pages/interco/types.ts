@@ -103,6 +103,82 @@ export interface ShopReceivableAgingResponse {
   };
 }
 
+/**
+ * แถวคู่เจ้าหนี้ FINANCE ↔ ลูกหนี้ SHOP ที่ **ไม่ตรงกัน** —
+ * `GET /interco-settlement/reconcile-findings` (Phase 5 Task 5 ข้อ 1).
+ * Mirror ของ `PayablePairMismatchRow` ฝั่ง API (Decimal → string).
+ */
+export interface PayablePairMismatchRow {
+  contractId: string;
+  contractNumber: string;
+  customerName: string;
+  /** 21-1101 (Cr−Dr) — เจ้าหนี้ยอดจัด */
+  financedGl: string;
+  /** 21-1102 (Cr−Dr) — เจ้าหนี้ค่าคอม */
+  commissionGl: string;
+  /** S11-3001 (Dr−Cr) — ลูกหนี้ FINANCE ยอดจัด ฝั่ง SHOP */
+  shopFinancedGl: string;
+  /** S11-3002 (Dr−Cr) — ลูกหนี้ FINANCE ค่าคอม ฝั่ง SHOP */
+  shopCommissionGl: string;
+  legacyNoShop: boolean;
+  financedDiff: string;
+  commissionDiff: string;
+  diff: string;
+  mismatch: boolean;
+  /**
+   * ต่างเฉพาะขาค่าคอม = รูปแบบที่รู้จัก (สัญญาไม่ระบุค่าคอม: 1A ตั้ง fallback
+   * 10% แต่สมุด SHOP ตั้ง 0). **คำนวณฝั่ง server** (`isCommissionOnlyGap`) —
+   * ตัวเดียวกับที่ใบ Todo รายเดือนใช้ยุบเป็นบรรทัดสรุป ห้ามคำนวณซ้ำที่นี่
+   */
+  commissionOnly: boolean;
+}
+
+/** ช่องที่ยอดติดลบหนึ่งช่อง (จาก predicate `negativeTypedFields` ฝั่ง server) */
+export interface NegativeTypedField {
+  field: string;
+  label: string;
+  value: string;
+}
+
+/** แถวยอดติดลบ = แถวรายงานอายุ + ช่องที่ติดลบซึ่ง server คำนวณมาให้ */
+export interface NegativeTypedRow extends ShopReceivableAgingRow {
+  negativeFields: NegativeTypedField[];
+}
+
+export interface ReconcileFindingsResponse {
+  asOf: string;
+  pairMismatches: PayablePairMismatchRow[];
+  negativeRows: NegativeTypedRow[];
+}
+
+/** kind ของ finding จาก reconcile cron — ตรงกับ `ReconcileFindingKind` ฝั่ง API */
+export type ReconcileFindingKind =
+  | 'BOOK_MISMATCH'
+  | 'SWAP_CREDIT_ONE_BOOK'
+  | 'PAYABLE_PAIR_MISMATCH'
+  | 'NEGATIVE_TYPED'
+  | 'ACCOUNT_DRIFT';
+
+/** ป้ายไทยของแต่ละ kind — ต้องตรงกับ KIND_LABEL ใน interco-reconcile.cron.ts */
+export const RECONCILE_KIND_LABEL: Record<ReconcileFindingKind, string> = {
+  BOOK_MISMATCH: 'สองสมุดไม่ตรงกัน',
+  SWAP_CREDIT_ONE_BOOK: 'เครดิตเปลี่ยนเครื่องค้างสมุดเดียว',
+  PAYABLE_PAIR_MISMATCH: 'เจ้าหนี้/ลูกหนี้รอบจ่ายไม่ตรงกัน',
+  NEGATIVE_TYPED: 'ยอดติดลบ (ล้างเกิน)',
+  ACCOUNT_DRIFT: 'ยอดบัญชีอธิบายไม่ได้',
+};
+
+/** ผลลัพธ์ `POST /interco-settlement/reconcile/run` (สั่งรันกระทบยอดเอง) */
+export interface ReconcileRunResponse {
+  /** false = kill switch `interco_reconcile_enabled` ปิดอยู่ — tick ไม่ทำอะไรเลย */
+  enabled: boolean;
+  /** false = เดือนนี้มีใบงานค้างอยู่แล้ว (dedup) หรือไม่มีสิ่งผิดปกติ */
+  todoCreated: boolean;
+  total: number;
+  counts: Partial<Record<ReconcileFindingKind, number>>;
+  findings: Array<{ kind: ReconcileFindingKind; contractNumber?: string; detail: string }>;
+}
+
 /** เกณฑ์วันค้าง default — ต้องตรงกับ default ของ IntercoAgingService (30) */
 export const AGING_DEFAULT_THRESHOLD_DAYS = 30;
 

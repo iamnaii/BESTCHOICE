@@ -106,6 +106,9 @@ export class MessageRouterService {
    * หลายลูกวิ่งขนาน → AI หลายเทิร์นซ้อนในห้องเดียว (ตอบสลับลำดับ, เทิร์นหลังไม่เห็น
    * คำตอบเทิร์นแรกใน history, จ่ายโทเคนคูณ) — จับเรียงเป็นลูกโซ่ต่อคีย์เดียวกัน
    */
+  /** ต้องตรงกับ AiAutoReplyService.RESET_MARKERS — คำสั่ง "คุยกับบอทใหม่" */
+  private static readonly RESET_MARKERS = new Set(['#เริ่มใหม่', '#รีเซ็ต', '#reset', '/reset']);
+
   private readonly inboundChains = new Map<string, Promise<unknown>>();
 
   /**
@@ -215,7 +218,13 @@ export class MessageRouterService {
     }
 
     // 3b. Check handoff mode — if staff is handling, don't run AI
-    if (room.handoffMode) {
+    // "#เริ่มใหม่/#reset" = คำสั่งกลับมาคุยกับบอท — ต้องทะลุด่านธงได้
+    // (ไม่งั้นห้องที่ปิดการขายแล้ว (lead_captured) หรือถูก takeover จะติดธงถาวร
+    //  พิมพ์ #reset ก็เงียบ — บอททำงานต่อไม่ได้เลย)
+    const isResetCommand = MessageRouterService.RESET_MARKERS.has(
+      (message.text ?? '').trim().toLowerCase(),
+    );
+    if (room.handoffMode && !isResetCommand) {
       this.logger.debug(`Room ${room.id} in handoff mode — skipping AI processing`);
       return;
     }
@@ -262,7 +271,13 @@ export class MessageRouterService {
         // ทับหลังพนักงานที่เพิ่งตอบไป (คำตอบไม่หาย — เก็บใน log autoSent=false)
         if (result !== null) {
           const fresh = await this.roomManager.findById(room.id);
-          if (fresh?.aiPaused || fresh?.handoffMode) {
+          // ธงที่ "บอทปักเอง" ระหว่างเทิร์นนี้ (capture_lead / handoff_to_human) ไม่ใช่การ
+          // takeover ของพนักงาน — ต้องส่งข้อความปิดท้ายให้ลูกค้าตามปกติ
+          // (บั๊กจริง 2026-08-20: ลูกค้าให้ชื่อ+เบอร์ → บอทเก็บ lead สำเร็จ + ปักธงเอง
+          //  → re-check เห็นธงตัวเอง เลยกลืนคำตอบทิ้ง ลูกค้าเจอความเงียบทั้งที่ปิดการขายได้)
+          const flaggedByBotThisTurn =
+            (result.toolsUsed ?? []).some((t) => t === 'capture_lead' || t === 'handoff_to_human');
+          if (!flaggedByBotThisTurn && (fresh?.aiPaused || fresh?.handoffMode)) {
             await this.aiAutoReplyService.logAutoReply({
               roomId: room.id,
               customerMessage,

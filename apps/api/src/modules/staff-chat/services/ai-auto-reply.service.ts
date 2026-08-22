@@ -135,6 +135,24 @@ export class AiAutoReplyService {
     if (AiAutoReplyService.isResetMarker(customerMessage)) {
       // #reset ล้างทั้งประวัติ (marker ตัด window) และสมุดสถานะการขาย
       void this.salesState?.clear(roomId);
+      // ...และปลดธงที่ทำให้บอทหยุดตอบด้วย — #reset คือ "เริ่มคุยกับบอทใหม่"
+      // (เดิม: ห้องที่ปิดการขายไปแล้ว (lead_captured) หรือถูก takeover จะติดธงถาวร
+      //  ลูกค้า/คนเทสพิมพ์ #reset ก็ไม่ได้อะไรกลับมาเลย)
+      try {
+        await this.prisma.chatRoom.update({
+          where: { id: roomId },
+          data: {
+            handoffMode: false,
+            handoffReason: null,
+            handoffTaggedAt: null,
+            aiPaused: false,
+            aiPausedAt: null,
+            aiPausedById: null,
+          },
+        });
+      } catch {
+        // best-effort — ถ้าปลดไม่ได้ก็ยังตอบข้อความยืนยันตามเดิม
+      }
       return {
         reply: 'เริ่มแชทใหม่ให้แล้วค่ะ 😊 สอบถามได้เลยนะคะ',
         confidence: 1,

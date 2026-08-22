@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 import { Prisma, ProductStatus, StockAdjustmentReason } from '@prisma/client';
@@ -218,19 +219,38 @@ export class StockAdjustmentsService {
         const entersStock = FOUND_TO_IN_STOCK.has(product.status);
         const wasDamageRestore =
           product.status === 'DAMAGED' || product.status === 'WRITTEN_OFF';
-        await tx.product.update({
-          where: { id: dto.productId },
-          data: {
-            // สถานะเดิมของเครื่องที่แค่ถูกลบไป (เช่น REFURBISHED) ต้องคงไว้ — การพาเข้าคลัง
-            // ยังต้องผ่านปุ่ม "นำเข้าคลังพร้อมขาย" ที่บังคับยืนยันราคาอยู่ดี
-            ...(entersStock ? { status: 'IN_STOCK' as const, stockInDate: new Date() } : {}),
-            deletedAt: null,
-            // T5-C8: stamp the restoration so sales can detect a recent
-            // damage-then-resurrect pattern. wasPreviouslyDamaged is already
-            // set from the prior DAMAGED adjustment — never flip it back.
-            restoredFromTerminalAt: wasDamageRestore ? new Date() : undefined,
-          },
-        });
+        try {
+          await tx.product.update({
+            where: { id: dto.productId },
+            data: {
+              // สถานะเดิมของเครื่องที่แค่ถูกลบไป (เช่น REFURBISHED) ต้องคงไว้ — การพาเข้าคลัง
+              // ยังต้องผ่านปุ่ม "นำเข้าคลังพร้อมขาย" ที่บังคับยืนยันราคาอยู่ดี
+              ...(entersStock ? { status: 'IN_STOCK' as const, stockInDate: new Date() } : {}),
+              deletedAt: null,
+              // T5-C8: stamp the restoration so sales can detect a recent
+              // damage-then-resurrect pattern. wasPreviouslyDamaged is already
+              // set from the prior DAMAGED adjustment — never flip it back.
+              restoredFromTerminalAt: wasDamageRestore ? new Date() : undefined,
+            },
+          });
+        } catch (err) {
+          // Final review M-4 — `deletedAt: null` พาแถวกลับเข้า partial unique index
+          // `products_imei_serial_active_unique` (ดู `.claude/rules/database.md`).
+          // การที่ IMEI เดิมถูกใช้ซ้ำได้หลังแถวเก่าถูกลบ **เป็นดีไซน์** (เครื่องเทิร์นกลับมา
+          // ขายซ้ำได้จริง) ⇒ การชนตรงนี้เป็นเหตุการณ์ปกติของธุรกิจ ไม่ใช่บั๊ก — ต้องอธิบาย
+          // เป็นภาษาคน ไม่ใช่ปล่อย P2002 ดิบขึ้นเป็น 500
+          if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === 'P2002'
+          ) {
+            throw new ConflictException(
+              `กู้เครื่องคืนไม่ได้ — IMEI/Serial ของเครื่องนี้ (${product.imeiSerial ?? '-'}) ` +
+                'มีเครื่องอื่นที่ยังไม่ถูกลบใช้อยู่แล้ว (รับเข้าสต็อกใหม่ไปหลังเครื่องนี้ถูกลบ) ' +
+                'ตรวจว่าเครื่องไหนคือตัวจริง แล้วลบ/แก้ IMEI ของแถวที่ซ้ำก่อนจึงจะกู้แถวนี้คืนได้',
+            );
+          }
+          throw err;
+        }
       } else if (['DAMAGED', 'LOST', 'WRITE_OFF'].includes(dto.reason)) {
         // DAMAGED, LOST, WRITE_OFF → update status and soft delete
         const statusMap: Record<string, 'DAMAGED' | 'LOST' | 'WRITTEN_OFF'> = { DAMAGED: 'DAMAGED', LOST: 'LOST', WRITE_OFF: 'WRITTEN_OFF' };

@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { StockAdjustmentsService } from './stock-adjustments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -485,5 +487,25 @@ describe('StockAdjustmentsService.create — FOUND allow-list (Phase 5 fix round
     const data = prisma.product.update.mock.calls[0][0].data;
     expect(data.deletedAt).toBeNull();
     expect(data.status).toBeUndefined(); // ไม่แตะสถานะ = คงเป็น SOLD_INSTALLMENT ตามเดิม
+  });
+
+  /**
+   * Final review M-4 — กู้แถว (`deletedAt: null`) พาเครื่องกลับเข้า partial unique index
+   * `products_imei_serial_active_unique` ⇒ ถ้ามีเครื่องอื่นรับ IMEI เดิมเข้าสต็อกไปแล้ว
+   * (พฤติกรรมที่ index นี้ **ตั้งใจ** อนุญาต — เครื่องเทิร์นกลับมาขายซ้ำได้) จะชน P2002
+   * ดิบ = 500 ที่หน้าจอ ทั้งที่สาเหตุอธิบายเป็นภาษาคนได้ตรง ๆ
+   */
+  it('M-4: กู้แถวแล้ว IMEI ชนกับเครื่องที่รับเข้ามาใหม่ → 409 ภาษาไทย ไม่ใช่ P2002 ดิบ', async () => {
+    setProduct('LOST', true);
+    prisma.product.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['imei_serial'] },
+      }),
+    );
+
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(ConflictException);
+    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/IMEI/);
   });
 });

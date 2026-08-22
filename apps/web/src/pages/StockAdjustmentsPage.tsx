@@ -49,6 +49,32 @@ interface Branch {
   name: string;
 }
 
+interface ApproverRow {
+  id: string;
+  name: string;
+  role: string;
+}
+
+/**
+ * 4-eyes ของการปรับสต็อก (`StockAdjustmentsService.create` T5-C3): ผู้อนุมัติต้องเป็น
+ * คนละคนกับผู้ทำรายการ **และ** ต้องเป็น manager-tier. `/users/approvers` คืน `ACCOUNTANT`
+ * มาด้วย (เป็น approver ของโมดูลอื่น) — ที่นี่ service ปฏิเสธ จึงกรองออกตั้งแต่หน้าจอ
+ * ไม่ใช่ปล่อยให้เลือกแล้วไปตาย 403
+ */
+const ADJUSTMENT_APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
+
+/**
+ * เหตุผล `DAMAGED` บังคับแนบรูปหลักฐานอย่างน้อย 1 รูปฝั่ง service (T5-C14) แต่หน้านี้
+ * **ยังไม่มีช่องแนบรูป** ⇒ เลือกได้ = ตาย 400 แน่นอน. ปิดไว้พร้อมบอกเหตุผลตรง ๆ
+ * (ห้ามชี้ทาง/เปิดทางที่ทำไม่ได้จริง) — carry: เพิ่มช่องแนบรูปแล้วค่อยเปิด
+ */
+const REASON_DISABLED_HINT: Record<string, string> = {
+  DAMAGED: 'ต้องแนบรูปหลักฐาน — ยังไม่มีช่องแนบรูปในหน้านี้',
+};
+
+/** เหตุผลตั้งต้น: บันทึกอย่างเดียว ไม่เปลี่ยนสถานะ/ไม่ลบของ (ปลอดภัยที่สุดเป็นค่า default) */
+const DEFAULT_REASON = 'CORRECTION';
+
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -67,7 +93,12 @@ export default function StockAdjustmentsPage() {
   const [page, setPage] = useState(1);
   useEffect(() => { setPage(1); }, [activeTab]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [form, setForm] = useState({ productId: '', reason: 'DAMAGED', notes: '' });
+  const [form, setForm] = useState({
+    productId: '',
+    reason: DEFAULT_REASON,
+    notes: '',
+    approverId: '',
+  });
   const [productSearch, setProductSearch] = useState('');
   const debouncedProductSearch = useDebounce(productSearch);
 
@@ -80,6 +111,26 @@ export default function StockAdjustmentsPage() {
       return data;
     },
   });
+
+  // ผู้อนุมัติ (4-eyes) — `/users/approvers` เป็น lookup ที่ไม่มี PII (GET /users เป็น
+  // OWNER-only) และเป็นตัวเดียวกับที่ ReceiptVoidDialog / ExpenseForm ใช้อยู่แล้ว
+  const {
+    data: approverRows = [],
+    isLoading: approversLoading,
+    isError: approversError,
+    refetch: refetchApprovers,
+  } = useQuery<ApproverRow[]>({
+    queryKey: ['stock-adjustment-approvers'],
+    queryFn: async () => {
+      const { data } = await api.get('/users/approvers');
+      return data ?? [];
+    },
+    enabled: showCreateModal,
+    staleTime: 60_000,
+  });
+  const approvers = approverRows.filter(
+    (a) => a.id !== user?.id && ADJUSTMENT_APPROVER_ROLES.includes(a.role),
+  );
 
   const { data: adjustmentsData, isLoading, isError, error, refetch } = useQuery<{
     data: StockAdjustment[];
@@ -122,11 +173,18 @@ export default function StockAdjustmentsPage() {
   // ---- Mutations ----
 
   const createMutation = useMutation({
-    mutationFn: async (data: { productId: string; reason: string; notes?: string }) => {
+    mutationFn: async (data: {
+      productId: string;
+      reason: string;
+      notes?: string;
+      approverId: string;
+    }) => {
       return api.post('/stock-adjustments', {
         productId: data.productId,
         reason: data.reason,
         notes: data.notes || undefined,
+        // เดิมไม่ส่งฟิลด์นี้เลย ⇒ `@IsNotEmpty` ตี 400 ทุกใบ ทุกเหตุผล
+        approverId: data.approverId,
       });
     },
     onSuccess: () => {
@@ -135,7 +193,7 @@ export default function StockAdjustmentsPage() {
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       toast.success('บันทึกการปรับสต็อกสำเร็จ');
       setShowCreateModal(false);
-      setForm({ productId: '', reason: 'DAMAGED', notes: '' });
+      setForm({ productId: '', reason: DEFAULT_REASON, notes: '', approverId: '' });
       setProductSearch('');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -407,7 +465,7 @@ export default function StockAdjustmentsPage() {
       {/* Create Adjustment Modal */}
       <Modal
         isOpen={showCreateModal}
-        onClose={() => { setShowCreateModal(false); setForm({ productId: '', reason: 'DAMAGED', notes: '' }); setProductSearch(''); }}
+        onClose={() => { setShowCreateModal(false); setForm({ productId: '', reason: DEFAULT_REASON, notes: '', approverId: '' }); setProductSearch(''); }}
         title="ปรับสต็อกสินค้า"
         size="md"
       >
@@ -416,6 +474,10 @@ export default function StockAdjustmentsPage() {
             e.preventDefault();
             if (!form.productId) {
               toast.error('กรุณาเลือกสินค้า');
+              return;
+            }
+            if (!form.approverId) {
+              toast.error('กรุณาเลือกผู้อนุมัติ (ต้องเป็นคนละคนกับผู้ทำรายการ)');
               return;
             }
             createMutation.mutate(form);
@@ -455,18 +517,23 @@ export default function StockAdjustmentsPage() {
 
           {/* Reason */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">สาเหตุ</label>
+            <label htmlFor="adjustment-reason" className="block text-sm font-medium text-foreground mb-1">สาเหตุ</label>
             <select
+              id="adjustment-reason"
               value={form.reason}
               onChange={(e) => setForm({ ...form, reason: e.target.value })}
               className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               {Object.entries(stockAdjustmentReasonMap).map(([key, cfg]) => (
-                <option key={key} value={key}>{cfg.label}</option>
+                <option key={key} value={key} disabled={!!REASON_DISABLED_HINT[key]}>
+                  {cfg.label}
+                  {REASON_DISABLED_HINT[key] ? ` (${REASON_DISABLED_HINT[key]})` : ''}
+                </option>
               ))}
             </select>
             <div className="mt-1 text-xs text-muted-foreground">
-              {form.reason === 'DAMAGED' && 'สินค้าเสียหาย — จะถูกลบออกจากสต็อก'}
+              {form.reason === 'DAMAGED' &&
+                'สินค้าเสียหาย — จะถูกลบออกจากสต็อก (ต้องแนบรูปหลักฐาน ซึ่งหน้านี้ยังไม่มีช่องแนบรูป)'}
               {form.reason === 'LOST' && 'สินค้าสูญหาย — จะถูกลบออกจากสต็อก'}
               {/*
                 fix round 3: FOUND เป็น allow-list — คืนเข้าสต็อกเฉพาะ LOST/DAMAGED/WRITTEN_OFF
@@ -481,6 +548,45 @@ export default function StockAdjustmentsPage() {
               {form.reason === 'WRITE_OFF' && 'ตัดจำหน่าย — จะถูกลบออกจากสต็อก'}
               {form.reason === 'OTHER' && 'อื่นๆ — บันทึกเท่านั้น ไม่เปลี่ยนสถานะ'}
             </div>
+          </div>
+
+          {/* Approver (4-eyes) */}
+          <div>
+            <label htmlFor="adjustment-approver" className="block text-sm font-medium text-foreground mb-1">
+              ผู้อนุมัติ <span className="text-destructive">*</span>
+            </label>
+            <select
+              id="adjustment-approver"
+              value={form.approverId}
+              onChange={(e) => setForm({ ...form, approverId: e.target.value })}
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+            >
+              <option value="">— เลือกผู้อนุมัติ —</option>
+              {approvers.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.role})
+                </option>
+              ))}
+            </select>
+            {approversLoading ? (
+              <p className="mt-1 text-xs text-muted-foreground leading-snug">กำลังโหลดรายชื่อผู้อนุมัติ...</p>
+            ) : approversError ? (
+              <p className="mt-1 text-xs text-destructive leading-snug">
+                โหลดรายชื่อผู้อนุมัติไม่สำเร็จ{' '}
+                <button type="button" onClick={() => refetchApprovers()} className="underline">
+                  ลองใหม่
+                </button>
+              </p>
+            ) : approvers.length === 0 ? (
+              <p className="mt-1 text-xs text-destructive leading-snug">
+                ไม่มีผู้อนุมัติที่ใช้ได้ — ต้องมีเจ้าของ / ผจก.สาขา / ผจก.การเงิน คนอื่นที่ไม่ใช่ตัวคุณเอง
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground leading-snug">
+                ผู้อนุมัติต้องเป็นคนละคนกับผู้ทำรายการ (Segregation of Duties) — กู้คืนของที่เสียหาย/ตัดจำหน่าย
+                และรายการเกิน 500,000 บาท ต้องให้เจ้าของอนุมัติเท่านั้น
+              </p>
+            )}
           </div>
 
           {/* Notes */}
@@ -498,14 +604,14 @@ export default function StockAdjustmentsPage() {
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={() => { setShowCreateModal(false); setForm({ productId: '', reason: 'DAMAGED', notes: '' }); setProductSearch(''); }}
+              onClick={() => { setShowCreateModal(false); setForm({ productId: '', reason: DEFAULT_REASON, notes: '', approverId: '' }); setProductSearch(''); }}
               className="px-4 py-2 text-sm text-muted-foreground"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
-              disabled={createMutation.isPending || !form.productId}
+              disabled={createMutation.isPending || !form.productId || !form.approverId}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}

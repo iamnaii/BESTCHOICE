@@ -45,7 +45,7 @@ describe('assertProductNotHeld — action RESTORE_TO_STOCK (ยกเลิก�
         },
         'RESTORE_TO_STOCK',
       ),
-    ).rejects.toThrow(/ยกเลิกใบขายไม่ได้/);
+    ).rejects.toThrow(/ยกเลิกใบขายไม่ได้[\s\S]*จัดการผ่าน flow สัญญาก่อน/);
   });
 
   it('บล็อกเมื่อสถานะไม่ตรงแม้เป็นสถานะที่ไม่ได้อยู่ในตารางกลาง — เครื่องถูกนำกลับเข้าสต็อกไปแล้ว', async () => {

@@ -226,7 +226,10 @@ export async function assertProductNotHeld(
       throw new BadRequestException(
         `สินค้าอยู่สถานะ ${productStatusLabel(product.status)} ` +
           `(รายการนี้ตั้งไว้เป็น ${productStatusLabel(product.expectedStatus)}) — ${verb} ` +
-          `(${risk}): มีรายการอื่นผูกเครื่องนี้ไปแล้ว จัดการรายการนั้นให้จบก่อน`,
+          `(${risk}): ${
+            HELD_STATUS_REMEDY[product.status] ??
+            'มีรายการอื่นผูกเครื่องนี้ไปแล้ว จัดการรายการนั้นให้จบก่อน'
+          }`,
       );
     }
     // สถานะตรง = ข้ามชั้นตารางกลาง ไปตรวจชั้นสัญญา/จอง/ออเดอร์ต่อ

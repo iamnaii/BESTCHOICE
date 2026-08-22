@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router';
-import { Search, SlidersHorizontal, ChevronRight, ChevronDown, X } from 'lucide-react';
+import { useSearchParams } from 'react-router';
+import { Search, SlidersHorizontal, ChevronDown, X } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
-import { FilterSidebar, type CatalogFilters } from '@/components/catalog/FilterSidebar';
+import {
+  FilterSidebar,
+  type CatalogFilters,
+  type ModelOption,
+} from '@/components/catalog/FilterSidebar';
+import { WaitlistCard } from '@/components/catalog/WaitlistCard';
 import {
   Container,
   Dialog,
@@ -26,28 +31,20 @@ interface CatalogResponse {
   total: number;
   page: number;
   limit: number;
-}
-
-interface ModelOption {
-  model: string;
-  count: number;
+  /** Floor for the down-payment slider — the API refuses to quote below it. */
+  minDownPct: number | null;
+  /** Tenures the rate table allows. */
+  monthsOptions: number[];
 }
 
 const CONDITIONS: Array<{ v: '' | 'NEW' | 'USED'; label: string }> = [
   { v: '', label: 'ทั้งหมด' },
-  { v: 'NEW', label: 'มือ 1 · ของใหม่' },
-  { v: 'USED', label: 'มือ 2 · มือสอง' },
-];
-
-const GRADES: Array<{ v: string; label: string }> = [
-  { v: '', label: 'ทุกเกรด' },
-  { v: 'A', label: 'A' },
-  { v: 'B', label: 'B' },
-  { v: 'C', label: 'C' },
+  { v: 'NEW', label: 'มือ 1' },
+  { v: 'USED', label: 'มือ 2' },
 ];
 
 const SORTS: Array<{ v: string; label: string }> = [
-  { v: 'popular', label: 'ยอดนิยม' },
+  { v: 'popular', label: 'รุ่นใหม่ → เก่า' },
   { v: 'newest', label: 'ใหม่ล่าสุด' },
   { v: 'price_asc', label: 'ราคา ต่ำ → สูง' },
   { v: 'price_desc', label: 'ราคา สูง → ต่ำ' },
@@ -66,10 +63,10 @@ function Pill({ active, onClick, children }: PillProps) {
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'px-4 py-1.5 text-[13px] rounded-full border transition-colors leading-snug whitespace-nowrap',
+        'px-4 py-1.5 text-[13px] rounded-full transition-colors leading-snug whitespace-nowrap',
         active
-          ? 'bg-foreground text-background border-foreground'
-          : 'bg-background text-foreground border-border hover:border-foreground/60',
+          ? 'bg-ink text-ink-foreground'
+          : 'bg-card text-muted-foreground ring-1 ring-inset ring-border hover:text-foreground',
       )}
     >
       {children}
@@ -90,7 +87,15 @@ export default function CatalogPage() {
     search: searchParams.get('search') ?? undefined,
   }));
   const [sort, setSort] = useState<string>('popular');
+  // null = "not chosen yet", so the first response's minimum can seed it without
+  // fighting a value the shopper actually picked.
+  const [downPct, setDownPct] = useState<number | null>(null);
+  const [months, setMonths] = useState<number | null>(null);
+  // The range input fires on every pixel of a drag; refetching that often would
+  // hammer the API for figures nobody reads. Commit shortly after they stop.
+  const [committedDown, setCommittedDown] = useState<number | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const sortBtnRef = useRef<HTMLButtonElement>(null);
   const track = useTrackEvent();
 
@@ -102,6 +107,11 @@ export default function CatalogPage() {
   useEffect(() => {
     track('ViewContent', { content_type: 'catalog' });
   }, [track]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setCommittedDown(downPct), 250);
+    return () => clearTimeout(t);
+  }, [downPct]);
 
   // The header search submits to /products?search=… — also while already on
   // this page, so keep listening to URL changes after the initial state.
@@ -149,7 +159,7 @@ export default function CatalogPage() {
 
   const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery<CatalogResponse>({
-      queryKey: ['shop', 'catalog', filters, sort],
+      queryKey: ['shop', 'catalog', filters, sort, committedDown, months],
       queryFn: ({ pageParam }) => {
         const params = new URLSearchParams();
         if (filters.condition) params.set('condition', filters.condition);
@@ -159,6 +169,8 @@ export default function CatalogPage() {
         if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
         if (filters.search) params.set('search', filters.search);
         params.set('sort', sort);
+        if (committedDown != null) params.set('downPct', String(committedDown));
+        if (months != null) params.set('months', String(months));
         params.set('page', String(pageParam));
         return api.get(`/api/shop/products?${params}`).then((r) => r.data);
       },
@@ -167,231 +179,244 @@ export default function CatalogPage() {
     });
 
   const groups = data?.pages.flatMap((p) => p.data);
-  const total = data?.pages[0]?.total ?? 0;
+  const first = data?.pages[0];
+  const total = first?.total ?? 0;
+  const minDownPct = first?.minDownPct ?? null;
+  const monthsOptions = first?.monthsOptions ?? [];
+
+  // Seed the slider from the API's floor the first time we learn it.
+  useEffect(() => {
+    if (minDownPct != null && downPct == null) {
+      setDownPct(minDownPct);
+      setCommittedDown(minDownPct);
+    }
+  }, [minDownPct, downPct]);
+
+  const plan =
+    minDownPct != null
+      ? {
+          downPct: downPct ?? minDownPct,
+          months,
+          minDownPct,
+          monthsOptions,
+          onDownPct: setDownPct,
+          onMonths: setMonths,
+        }
+      : undefined;
   const activeCondition = filters.condition ?? '';
-  const activeGrade = filters.conditionGrade ?? '';
   const activeSortLabel = SORTS.find((s) => s.v === sort)?.label ?? '';
-  const heroNoun = 'iPhone';
 
   return (
     <ShopLayout>
-      {/* Apple-minimal hero — center-aligned, generous breathing room */}
-      <section className="pt-16 md:pt-24 pb-12 md:pb-16 text-center">
-        <Container>
-          <p className="text-sm text-muted-foreground tracking-wide mb-3">
-            สินค้าทั้งหมด · พร้อมจัด {total > 0 && `${total} รุ่น`}
-          </p>
-          {/* Two spans so each language gets safe leading: tight (~0.92) for
-             the English noun + period, snug for Thai so สระบน/ไม้เอก are not
-             clipped. */}
-          <h1 className="font-display text-5xl sm:text-6xl md:text-7xl font-semibold tracking-tight text-foreground">
-            <span className="block leading-[0.92]">{heroNoun}.</span>
-            <span className="block text-primary leading-tight pt-1 md:pt-1.5">
-              ผ่อนได้บัตรเดียว.
-            </span>
-          </h1>
-          <p className="font-display text-xl md:text-2xl font-medium text-muted-foreground mt-5 md:mt-6 max-w-2xl mx-auto leading-tight">
-            เครื่องผ่านตรวจ 30 จุด รับประกันร้าน 30 วัน
-          </p>
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 mt-8 text-[15px]">
-            <a
-              href="#catalog"
-              className="text-primary hover:underline underline-offset-4 inline-flex items-center gap-1.5"
-            >
-              เริ่มเลือกเครื่อง
-              <ChevronRight className="size-4" aria-hidden />
-            </a>
-            <Link
-              to="/how-it-works"
-              className="text-foreground hover:underline underline-offset-4 inline-flex items-center gap-1.5"
-            >
-              ดูวิธีผ่อน
-              <ChevronRight className="size-4" aria-hidden />
-            </Link>
-          </div>
-        </Container>
-      </section>
-
-      {/* Sticky filter toolbar — Apple subtle bar */}
-      <div
-        id="catalog"
-        className="sticky top-[57px] z-20 bg-muted/70 backdrop-blur-md border-y border-border"
-      >
-        <Container>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-            <div className="flex flex-wrap gap-2">
-              {CONDITIONS.map((c) => (
-                <Pill
-                  key={c.v || 'all'}
-                  active={activeCondition === c.v}
-                  onClick={() =>
-                    updateFilters({
-                      ...filters,
-                      condition: c.v || undefined,
-                      // มือ 1 ไม่มีเกรดตำหนิ — ล้างตัวกรองเกรดทิ้ง
-                      conditionGrade: c.v === 'NEW' ? undefined : filters.conditionGrade,
-                    })
-                  }
-                >
-                  {c.label}
-                </Pill>
-              ))}
+      <Container className="py-4 md:py-6">
+        {/* Hero plate — a white card on the tinted canvas, same family as the
+            product cards rather than a full-bleed band. */}
+        <section className="rounded-[28px] md:rounded-[40px] bg-card px-6 py-8 md:px-10 md:py-11 shadow-md">
+          <div className="flex items-center gap-6 md:gap-10">
+            <div className="hidden sm:block shrink-0">
+              <svg width="112" height="112" viewBox="0 0 118 118" aria-hidden="true">
+                <rect x="30" y="10" width="58" height="98" rx="13" fill="var(--color-zinc-200)" />
+                <rect x="35" y="15" width="48" height="88" rx="9" fill="var(--color-zinc-100)" />
+                <rect x="41" y="21" width="21" height="21" rx="7" fill="var(--color-zinc-300)" />
+                <circle cx="47" cy="27" r="3.6" fill="var(--color-zinc-400)" />
+                <circle cx="56" cy="36" r="3.6" fill="var(--color-zinc-400)" />
+                <rect x="49" y="16.5" width="10" height="3.4" rx="1.7" fill="var(--color-zinc-300)" />
+                <path
+                  d="M41 84h36"
+                  stroke="var(--color-emerald-500)"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M41 92h22"
+                  stroke="var(--color-zinc-300)"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+              </svg>
             </div>
+            <div>
+              <h1 className="font-display text-[26px] sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground leading-snug">
+                รวม iPhone มือ 1 และมือสอง
+                <br />
+                <span className="text-primary">คัดแล้ว ผ่อนได้บัตรเดียว</span>
+              </h1>
+              <p className="mt-3 text-[13.5px] md:text-[15px] text-muted-foreground leading-snug">
+                ตรวจ 30 จุด · รับประกันร้าน 30 วัน · ไม่ติด iCloud ทุกเครื่อง
+              </p>
+            </div>
+          </div>
+        </section>
 
-            <select
-              aria-label="กรองตามรุ่น"
-              value={filters.model ?? ''}
-              onChange={(e) => updateFilters({ ...filters, model: e.target.value || undefined })}
-              className="px-3 py-1.5 text-[13px] rounded-full border border-border bg-background text-foreground leading-snug"
-            >
-              <option value="">ทุกรุ่น</option>
-              {models?.map((m) => (
-                <option key={m.model} value={m.model}>
-                  {m.model}
-                </option>
-              ))}
-            </select>
+        <div id="catalog" className="grid lg:grid-cols-4 gap-4 md:gap-6 mt-4 md:mt-6">
+          {/* Sidebar — sticky on desktop, replaced by a dialog on mobile. */}
+          <div className="hidden lg:flex lg:flex-col gap-4 lg:sticky lg:top-20 lg:self-start">
+            <FilterSidebar
+              filters={filters}
+              onChange={updateFilters}
+              models={models}
+              plan={plan}
+            />
+            <WaitlistCard />
+          </div>
 
-            <span className="hidden md:inline-block w-px h-5 bg-border mx-1" />
-
-            {activeCondition !== 'NEW' && (
-              <div className="flex flex-wrap gap-2">
-                {GRADES.map((g) => (
+          <div className="lg:col-span-3 min-w-0">
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <div className="flex lg:hidden gap-2">
+                {CONDITIONS.map((c) => (
                   <Pill
-                    key={g.v || 'all'}
-                    active={activeGrade === g.v}
-                    onClick={() => updateFilters({ ...filters, conditionGrade: g.v || undefined })}
+                    key={c.v || 'all'}
+                    active={activeCondition === c.v}
+                    onClick={() =>
+                      updateFilters({
+                        ...filters,
+                        condition: c.v || undefined,
+                        // มือ 1 ไม่มีเกรดตำหนิ — ล้างตัวกรองเกรดทิ้ง
+                        conditionGrade: c.v === 'NEW' ? undefined : filters.conditionGrade,
+                      })
+                    }
                   >
-                    {g.label}
+                    {c.label}
                   </Pill>
                 ))}
               </div>
-            )}
 
-            {filters.search && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] rounded-full bg-primary/10 text-primary hover:bg-primary/15 transition-colors leading-snug"
-              >
-                ค้นหา: “{filters.search}”
-                <X className="size-3.5" aria-label="ล้างคำค้นหา" />
-              </button>
-            )}
-
-            <div className="flex-1" />
-
-            {/* More filters */}
-            <Dialog>
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-[13px] border border-border rounded-full hover:border-foreground/60 transition-colors text-foreground bg-background leading-snug"
-                >
-                  <SlidersHorizontal className="size-3.5" />
-                  ตัวกรอง
-                </button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>ตัวกรองเพิ่มเติม</DialogTitle>
-                </DialogHeader>
-                <FilterSidebar filters={filters} onChange={updateFilters} />
-              </DialogContent>
-            </Dialog>
-
-            {/* Sort dropdown — listbox semantics for screen readers + ESC to
-               close (handled by effect). Outside-click closes via overlay. */}
-            <div className="relative">
-              <button
-                ref={sortBtnRef}
-                type="button"
-                aria-haspopup="listbox"
-                aria-expanded={sortOpen}
-                onClick={() => setSortOpen((o) => !o)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-[13px] border border-border rounded-full hover:border-foreground/60 transition-colors text-foreground bg-background leading-snug"
-              >
-                <span className="text-muted-foreground">เรียง:</span>
-                <span>{activeSortLabel}</span>
-                <ChevronDown className="size-3.5 text-muted-foreground" />
-              </button>
-              {sortOpen && (
-                <>
+              <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
+                <DialogTrigger asChild>
                   <button
                     type="button"
-                    aria-label="ปิดเมนูเรียง"
-                    tabIndex={-1}
-                    className="fixed inset-0 z-10"
-                    onClick={() => setSortOpen(false)}
-                  />
-                  <ul
-                    role="listbox"
-                    aria-label="เรียงโดย"
-                    className="absolute right-0 mt-2 w-52 bg-background border border-border rounded-xl shadow-lg z-20 py-1.5 overflow-hidden"
+                    className="lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 text-[13px] rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
                   >
-                    {SORTS.map((s) => {
-                      const selected = sort === s.v;
-                      return (
-                        <li key={s.v}>
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={selected}
-                            onClick={() => {
-                              setSort(s.v);
-                              setSortOpen(false);
-                              sortBtnRef.current?.focus();
-                            }}
-                            className={cn(
-                              'block w-full text-left px-3.5 py-2 text-[13px] leading-snug',
-                              selected
-                                ? 'text-primary font-medium bg-primary/5'
-                                : 'text-foreground hover:bg-muted',
-                            )}
-                          >
-                            {s.label}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
+                    <SlidersHorizontal className="size-3.5" aria-hidden />
+                    ตัวกรอง
+                  </button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>ตัวกรองสินค้า</DialogTitle>
+                  </DialogHeader>
+                  <FilterSidebar
+                    filters={filters}
+                    onChange={updateFilters}
+                    models={models}
+                    plan={plan}
+                    bare
+                  />
+                </DialogContent>
+              </Dialog>
+
+              {filters.search && (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
+                >
+                  ค้นหา: “{filters.search}”
+                  <X className="size-3.5" aria-label="ล้างคำค้นหา" />
+                </button>
               )}
+
+              <span className="hidden sm:block text-[13px] text-muted-foreground leading-snug">
+                {total > 0 ? `พร้อมจัด ${total} รุ่น` : ''}
+              </span>
+
+              <div className="flex-1" />
+
+              {/* Sort dropdown — listbox semantics for screen readers + ESC to
+                 close (handled by effect). Outside-click closes via overlay. */}
+              <div className="relative">
+                <button
+                  ref={sortBtnRef}
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={sortOpen}
+                  onClick={() => setSortOpen((o) => !o)}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
+                >
+                  <span className="text-muted-foreground">เรียง:</span>
+                  <span>{activeSortLabel}</span>
+                  <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+                </button>
+                {sortOpen && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="ปิดเมนูเรียง"
+                      tabIndex={-1}
+                      className="fixed inset-0 z-10"
+                      onClick={() => setSortOpen(false)}
+                    />
+                    <ul
+                      role="listbox"
+                      aria-label="เรียงโดย"
+                      className="absolute right-0 mt-2 w-52 bg-card border border-border rounded-2xl shadow-xl z-20 py-1.5 overflow-hidden"
+                    >
+                      {SORTS.map((s) => {
+                        const selected = sort === s.v;
+                        return (
+                          <li key={s.v}>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              onClick={() => {
+                                setSort(s.v);
+                                setSortOpen(false);
+                                sortBtnRef.current?.focus();
+                              }}
+                              className={cn(
+                                'block w-full text-left px-3.5 py-2 text-[13px] leading-snug',
+                                selected
+                                  ? 'text-emerald-700 font-medium bg-emerald-50'
+                                  : 'text-foreground hover:bg-muted',
+                              )}
+                            >
+                              {s.label}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <StatefulList<ProductGroup>
+              isLoading={isLoading}
+              isError={isError}
+              data={groups}
+              loadingVariant="card-grid"
+              onRetry={() => refetch()}
+              emptyState={{
+                icon: <Search className="size-12" />,
+                title: copy.catalog.emptyTitle,
+                description: copy.catalog.emptyDescription,
+              }}
+              wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-3"
+              renderItem={(p) => <ProductCard key={p.id} product={p} />}
+            />
+
+            {hasNextPage && (
+              <div className="flex justify-center mt-8 md:mt-10">
+                <button
+                  type="button"
+                  disabled={isFetchingNextPage}
+                  onClick={() => fetchNextPage()}
+                  className="h-11 px-8 rounded-full bg-card ring-1 ring-inset ring-border text-sm font-medium hover:ring-foreground/25 transition-shadow disabled:opacity-50 leading-snug"
+                >
+                  {isFetchingNextPage ? copy.common.loading : 'โหลดเพิ่ม'}
+                </button>
+              </div>
+            )}
+
+            {/* Mobile gets the waitlist block at the end of the list instead of
+                in a sidebar it does not have. */}
+            <div className="lg:hidden mt-6">
+              <WaitlistCard />
             </div>
           </div>
-        </Container>
-      </div>
-
-      {/* Product grid — Apple-style 3-col / mobile 2-col.
-         No <main> wrapper here: ShopLayout already provides one. */}
-      <Container>
-        <div className="py-12 md:py-16">
-          <StatefulList<ProductGroup>
-            isLoading={isLoading}
-            isError={isError}
-            data={groups}
-            loadingVariant="card-grid"
-            onRetry={() => refetch()}
-            emptyState={{
-              icon: <Search className="size-12" />,
-              title: copy.catalog.emptyTitle,
-              description: copy.catalog.emptyDescription,
-            }}
-            wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-10 lg:gap-x-8 lg:gap-y-12"
-            renderItem={(p) => <ProductCard key={p.id} product={p} />}
-          />
-          {hasNextPage && (
-            <div className="flex justify-center mt-10 md:mt-14">
-              <button
-                type="button"
-                disabled={isFetchingNextPage}
-                onClick={() => fetchNextPage()}
-                className="h-11 px-8 rounded-full border border-border text-sm font-medium hover:border-foreground/60 transition-colors disabled:opacity-50 leading-snug"
-              >
-                {isFetchingNextPage ? copy.common.loading : 'โหลดเพิ่ม'}
-              </button>
-            </div>
-          )}
         </div>
       </Container>
     </ShopLayout>

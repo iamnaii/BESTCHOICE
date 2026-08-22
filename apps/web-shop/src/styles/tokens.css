@@ -1,29 +1,39 @@
 /*
- * Shop v2 design tokens — Tailwind v4 @theme declarations.
+ * Shop design tokens — Tailwind v4 @theme declarations.
  * This file is the SINGLE source of truth for colors: Tailwind v4 ignores
  * tailwind.config.ts (no @config directive), so semantic tokens declared
  * only there never reach the built CSS — bg-background/text-primary/etc.
- * silently became no-op classes (transparent sticky header bug).
+ * silently became no-op classes (transparent sticky header bug). That dead
+ * config file was deleted in the 2026-08 redesign so nobody "fixes" a color
+ * in a file the build never reads.
+ *
+ * Palette source: apps/web/public/logo.svg. The BESTCHOICE mark is a single
+ * linear gradient #39F0CF -> #25BC93 -> #1DA579; those three stops ARE the
+ * brand. Everything here derives from them. Neutrals carry a slight green
+ * bias so they read as chosen rather than inherited.
  */
 
 @theme {
-  /* Semantic core (Minimal Zinc + Emerald) — every bg-/text-/border- token
-     utility the app uses must have its --color-* declared here. */
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(240 10% 3.9%);
-  --color-muted: hsl(240 4.8% 95.9%);
-  --color-muted-foreground: hsl(240 3.8% 46.1%);
-  --color-border: hsl(240 5.9% 90%);
-  /* Unified to the LINE-green brand emerald (was hsl(160 84% 39%) — a second
-     green shade drifting from --color-emerald-500 used everywhere else). */
-  --color-primary: #1DB446;
-  --color-primary-foreground: hsl(0 0% 100%);
-  --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(240 10% 3.9%);
-  --color-secondary: hsl(240 4.8% 95.9%);
-  --color-secondary-foreground: hsl(240 5.9% 10%);
-  --color-accent: hsl(240 4.8% 95.9%);
-  --color-accent-foreground: hsl(240 5.9% 10%);
+  /* Semantic core — every bg-/text-/border- token utility the app uses must
+     have its --color-* declared here. */
+  /* Canvas is deliberately NOT white: the glass product cards are white-ish
+     and would disappear on a white page. Card-vs-canvas separation is what
+     carries the whole look. */
+  --color-background: #F3F7F5;
+  --color-foreground: #0E211C;
+  --color-muted: #EDF2F0;
+  --color-muted-foreground: #5C716A;
+  --color-border: #E3ECE8;
+  /* Brand primary = the middle stop of the logo gradient. Was #1DB446 (LINE
+     green), which never matched the mark. */
+  --color-primary: #25BC93;
+  --color-primary-foreground: #FFFFFF;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #0E211C;
+  --color-secondary: #EDF2F0;
+  --color-secondary-foreground: #16302A;
+  --color-accent: #E4EEEA;
+  --color-accent-foreground: #16302A;
 
   /* CTA — the ONE warm attention color (Von Restorff isolation effect).
      Reserved for conversion moments only: reserve button, card "เลือกเครื่อง",
@@ -31,29 +41,38 @@
   --color-cta: #EA580C;
   --color-cta-foreground: #FFFFFF;
 
-  /* Emerald scale (brand primary) */
-  --color-emerald-50:  #ECFDF5;
-  --color-emerald-100: #D1FAE5;
-  --color-emerald-200: #A7F3D0;
-  --color-emerald-300: #6EE7B7;
-  --color-emerald-400: #34D399;
-  --color-emerald-500: #1DB446;
-  --color-emerald-600: #158C36;
-  --color-emerald-700: #0E6B29;
-  --color-emerald-800: #0A5423;
-  --color-emerald-900: #064E3B;
+  /* Emerald scale — anchored on the three logo gradient stops:
+     400 = #39F0CF (start), 500 = #25BC93 (middle), 600 = #1DA579 (end). */
+  --color-emerald-50:  #EAFAF4;
+  --color-emerald-100: #CDF3E7;
+  --color-emerald-200: #A3E9D6;
+  --color-emerald-300: #6FDCC0;
+  --color-emerald-400: #39F0CF;
+  --color-emerald-500: #25BC93;
+  --color-emerald-600: #1DA579;
+  --color-emerald-700: #157C61;
+  --color-emerald-800: #10604B;
+  --color-emerald-900: #0B4437;
 
-  /* Zinc neutrals */
-  --color-zinc-50:  #FAFAFA;
-  --color-zinc-100: #F4F4F5;
-  --color-zinc-200: #E4E4E7;
-  --color-zinc-300: #D4D4D8;
-  --color-zinc-400: #A1A1AA;
-  --color-zinc-500: #71717A;
-  --color-zinc-600: #52525B;
-  --color-zinc-700: #3F3F46;
-  --color-zinc-800: #27272A;
-  --color-zinc-900: #18181B;
+  /* Neutrals — kept under the zinc-* names so the ~90 existing utility
+     classes keep working, but re-tinted toward the brand green. A pure grey
+     next to this emerald reads as an accident. */
+  --color-zinc-50:  #F7FAF9;
+  --color-zinc-100: #EDF2F0;
+  --color-zinc-200: #E3ECE8;
+  --color-zinc-300: #CBD9D4;
+  --color-zinc-400: #91A69E;
+  --color-zinc-500: #6E837C;
+  --color-zinc-600: #5C716A;
+  --color-zinc-700: #3F534C;
+  --color-zinc-800: #24382F;
+  --color-zinc-900: #0E211C;
+
+  /* Ink — the near-black used for capsule CTAs on cards and the footer.
+     Distinct from --color-cta, which stays reserved for the single
+     highest-intent action (reserve). */
+  --color-ink: #14251F;
+  --color-ink-foreground: #FFFFFF;
 
   /* Sand — warm accent for local-shop sections */
   --color-sand-50:  #FDF9F3;
@@ -85,12 +104,16 @@
   --color-destructive: #DD2C00;
   --color-destructive-foreground: #FFFFFF;
 
-  /* Emerald-tinted shadow levels */
-  --shadow-sm:  0 1px 2px 0 rgb(29 180 70 / 0.04), 0 1px 2px -1px rgb(29 180 70 / 0.04);
-  --shadow-md:  0 2px 6px 0 rgb(29 180 70 / 0.06), 0 2px 4px -2px rgb(29 180 70 / 0.04);
-  --shadow-lg:  0 6px 16px 0 rgb(29 180 70 / 0.08), 0 4px 6px -4px rgb(29 180 70 / 0.04);
-  --shadow-xl:  0 12px 32px 0 rgb(29 180 70 / 0.10), 0 8px 16px -8px rgb(29 180 70 / 0.06);
-  --shadow-2xl: 0 24px 64px 0 rgb(29 180 70 / 0.14);
+  /* Neutral shadows. Green-tinted shadows read as a smudge under the glass
+     cards; the reference stacks plain black at low alpha. */
+  --shadow-sm:  0 1px 2px 0 rgb(14 33 28 / 0.04), 0 1px 2px -1px rgb(14 33 28 / 0.04);
+  --shadow-md:  0 2px 6px 0 rgb(14 33 28 / 0.06), 0 2px 4px -2px rgb(14 33 28 / 0.05);
+  --shadow-lg:  0 6px 16px 0 rgb(14 33 28 / 0.08), 0 4px 6px -4px rgb(14 33 28 / 0.05);
+  --shadow-xl:  0 8px 26px 0 rgb(14 33 28 / 0.09), 0 8px 16px -8px rgb(14 33 28 / 0.06);
+  --shadow-2xl: 0 24px 60px 0 rgb(14 33 28 / 0.14);
+
+  /* Type — keeps the `font-sans` utility in step with the body stack. */
+  --font-sans: 'Sukhumvit Set', 'Anuphan', 'IBM Plex Sans Thai', 'Noto Sans Thai', sans-serif;
 
   /* Motion durations */
   --duration-fast:   150ms;

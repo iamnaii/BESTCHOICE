@@ -2,14 +2,20 @@
 @import './styles/tokens.css';
 @import './styles/motion.css';
 
-/* Inter for English display + tabular numbers — paired with IBM Plex Sans Thai
-   for Thai text. Thai body text uses Plex; English headlines + numbers use
-   Inter at tighter tracking for an Apple-minimal feel. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+/* Typeface stack — see docs/design/SHOP-REDESIGN-2026-08.md §2b.
+   The reference storefront sets its Thai text in Sukhumvit Set. That face
+   ships with macOS/iOS as a system font (Cadson Demak, bundled by Apple), so
+   we NAME it rather than serve it — self-hosting it the way the reference
+   does is not something its licence allows. Anyone on an Apple device (a
+   large share of visitors to an iPhone shop) therefore gets the exact face.
+   Everyone else lands on Anuphan, the closest free relative: same foundry,
+   same loopless humanist construction. Fonts are loaded from the single
+   <link> in index.html, not an @import here, so they are not serialised
+   behind this stylesheet. */
 
 @layer base {
   body {
-    font-family: 'IBM Plex Sans Thai', Inter, sans-serif;
+    font-family: 'Sukhumvit Set', 'Anuphan', 'IBM Plex Sans Thai', 'Noto Sans Thai', sans-serif;
     line-height: 1.375; /* snug */
   }
   * {
@@ -18,18 +24,30 @@
 }
 
 @layer utilities {
-  /* Display = Inter with tight tracking for English headlines */
+  /* Headlines. Same Thai face as body — the reference sets its display type
+     in Sukhumvit too, so there is no separate Latin display face any more.
+     Tracking stays gentle: Thai vowel/tone marks sit above and below the
+     line and tight tracking collides them. */
   .font-display {
-    font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
-    letter-spacing: -0.03em;
+    font-family: 'Sukhumvit Set', 'Anuphan', 'IBM Plex Sans Thai', sans-serif;
+    letter-spacing: -0.01em;
   }
-  /* Tabular numbers in Inter — for prices, counts, money.
-     Thai fallbacks required: Inter has no Thai glyphs, so mixed strings like
-     "ผ่อน ฿1,305/เดือน" render tofu on systems without an implicit Thai fallback. */
+  /* Prices, counts, money. Thai-first so the ฿ sign matches the surrounding
+     text; Inter carries the digits wherever the Thai faces are unavailable.
+     'tnum' is a no-op on faces that lack it, which is fine — these are
+     right-aligned single figures, not columns of digits. */
   .num {
     font-family:
-      'Inter', 'IBM Plex Sans Thai', 'Noto Sans Thai', 'Leelawadee UI', 'Thonburi', sans-serif;
+      'Sukhumvit Set', 'Anuphan', 'Inter', 'IBM Plex Sans Thai', 'Noto Sans Thai', 'Leelawadee UI',
+      'Thonburi', sans-serif;
     font-feature-settings: 'tnum';
     letter-spacing: -0.01em;
+  }
+  /* Latin-only lockups: the BESTCHOICE wordmark and the GRADE badge. Kept on
+     Inter because both need weight 800, and Sukhumvit Set stops at 700 —
+     asking for 800 there makes the browser synthesise a smeared faux-bold. */
+  .font-brand {
+    font-family: 'Inter', 'Sukhumvit Set', sans-serif;
+    letter-spacing: -0.02em;
   }
 }

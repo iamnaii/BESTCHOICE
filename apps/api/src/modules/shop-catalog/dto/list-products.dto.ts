@@ -52,4 +52,28 @@ export class ListProductsDto {
   @IsOptional()
   @IsEnum(['popular', 'price_asc', 'price_desc', 'newest'])
   sort?: 'popular' | 'price_asc' | 'price_desc' | 'newest' = 'popular';
+
+  /**
+   * เงินดาวน์ที่ลูกค้าเลือก เป็น **เปอร์เซ็นต์เต็มจำนวน** (15 = 15%)
+   * ต่ำกว่าขั้นต่ำของหมวดจะถูกดันขึ้นให้เอง
+   *
+   * ⚠️ คนละหน่วยกับ `InstallmentPreviewDto.downPct` ของ /shop/installment-preview
+   * ที่รับเป็น **เศษส่วน** (0.15 = 15%) — ของเดิมเป็นแบบนั้นมาก่อนและหน้า
+   * รายละเอียดสินค้าส่งค่าแบบนั้นอยู่ ห้ามแก้ข้างนั้นโดยไม่แก้ผู้เรียกด้วย
+   * ที่นี่ใช้ `@IsInt()` จึงตกทันทีถ้ามีใครส่ง 0.15 มา (พังดังกว่าพังเงียบ)
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(90)
+  downPct?: number;
+
+  /** จำนวนงวดที่ลูกค้าเลือก — นอกตารางเรตจะตกไปใช้งวดยาวสุดตามเดิม */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(36)
+  months?: number;
 }

@@ -122,7 +122,9 @@ export default function ProductDetailPage() {
     (min, u) => (min == null || u.cashPrice < min.cashPrice ? u : min),
     undefined,
   );
-  const selectedUnit = flatUnits.find((u) => u.id === selectedUnitId) ?? cheapest;
+  // Falling back to `id` matters now that the grid lists second-hand stock one
+  // card per device: /products/<thatDeviceId> must open on THAT device.
+  const selectedUnit = flatUnits.find((u) => u.id === (selectedUnitId ?? id)) ?? cheapest;
 
   // Real "ผ่อนเริ่ม" figure from the pricing engine (12 งวด ดาวน์ 15% = default
   // shown in the calculator below) — never estimate with a made-up multiplier.

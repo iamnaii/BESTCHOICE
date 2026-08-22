@@ -219,6 +219,19 @@ export class RoomManagerService {
 
   /** Save a message and update room stats */
   /**
+   * ห้องนี้บอทเคยตอบไปแล้วหรือยัง — ใช้แยก "พนักงานแทรกกลางบทสนทนาที่บอทคุยอยู่"
+   * (ต้อง pause AI) ออกจาก "ข้อความทักทายอัตโนมัติของเพจตอนลูกค้าทักครั้งแรก"
+   * (ห้าม pause — ไม่งั้นทุกห้องใหม่โดนปิด AI ตั้งแต่ข้อความแรก)
+   */
+  async hasBotReplied(roomId: string): Promise<boolean> {
+    const row = await this.prisma.chatMessage.findFirst({
+      where: { roomId, role: MessageRole.BOT, deletedAt: null },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
+  /**
    * พนักงานพิมพ์เอง = takeover โดยพฤตินัย — หยุด AI ห้องนี้จนกว่าจะกด "คืนให้ AI"
    * updateMany + เงื่อนไข aiPaused:false = idempotent (คืน true เฉพาะครั้งที่เปลี่ยนจริง)
    */

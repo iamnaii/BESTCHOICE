@@ -21,7 +21,7 @@ export class ShopCatalogController {
       ...result,
       data: result.data.map((g) => ({
         ...g,
-        stock: this.catalogService.smartStockCount(g.stockCount),
+        stock: this.catalogService.stockLabelFor(g),
       })),
     };
   }
@@ -34,7 +34,7 @@ export class ShopCatalogController {
   @Get('products/:id/related')
   async related(@Param('id') id: string) {
     const groups = await this.catalogService.listRelated(id);
-    return groups.map((g) => ({ ...g, stock: this.catalogService.smartStockCount(g.stockCount) }));
+    return groups.map((g) => ({ ...g, stock: this.catalogService.stockLabelFor(g) }));
   }
 
   @Get('products/:id')

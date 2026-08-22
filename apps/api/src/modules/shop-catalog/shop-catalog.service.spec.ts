@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
 import { ShopCatalogService } from './shop-catalog.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
@@ -10,9 +11,12 @@ describe('ShopCatalogService', () => {
   beforeEach(async () => {
     prisma = {
       product: {
-        findMany: jest.fn(),
+        // Second-hand now lists one card per device, so listGroupedByModel
+        // always issues a findMany for PHONE_USED alongside the NEW groupBy.
+        // Tests that only care about the grouped half leave this empty.
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
-        groupBy: jest.fn(),
+        groupBy: jest.fn().mockResolvedValue([]),
         count: jest.fn(),
       },
       // readBoolFlag('shop_hide_demo_products') reads this — most tests don't care and leave it
@@ -77,14 +81,274 @@ describe('ShopCatalogService', () => {
       expect(where.category).toBe('PHONE_NEW');
     });
 
-    it('narrows category to PHONE_USED when condition=USED', async () => {
+    it('condition=USED ไม่แตะ groupBy เลย — ดึงรายเครื่องผ่าน findMany(PHONE_USED)', async () => {
       prisma.product.groupBy.mockResolvedValue([]);
       await service.listGroupedByModel({ condition: 'USED' });
-      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      // มือสองไม่จับกลุ่มอีกแล้ว (คำสั่งเจ้าของ 2026-08-21) — groupBy เป็นเส้นทางของมือ 1 เท่านั้น
+      expect(prisma.product.groupBy).not.toHaveBeenCalled();
+      const where = prisma.product.findMany.mock.calls[0][0].where;
       expect(where.category).toBe('PHONE_USED');
     });
 
-    it('groups by category so new+used of same model are separate cards, with condition + cashPrice', async () => {
+    it('condition=NEW ไม่แตะ findMany เลย — มือ 1 ยังจับกลุ่มตามรุ่น', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+      await service.listGroupedByModel({ condition: 'NEW' });
+      expect(prisma.product.findMany).not.toHaveBeenCalled();
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.category).toBe('PHONE_NEW');
+    });
+
+    it('เรียงตามรุ่นใหม่→เก่าเป็นค่าเริ่มต้น — เครื่องเข้าใหม่ของรุ่นเก่าไม่แซงรุ่นใหม่กว่า', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'old-but-fresh',
+          brand: 'Apple',
+          model: 'iPhone 12',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 7900,
+          installmentPrice: 9900,
+          conditionGrade: 'A',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-08-20T00:00:00Z'),
+        },
+        {
+          id: 'newer-model',
+          brand: 'Apple',
+          model: 'iPhone 16 Pro Max',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 39900,
+          installmentPrice: 41900,
+          conditionGrade: 'B',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+        },
+        {
+          id: 'mid',
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 15500,
+          installmentPrice: 17500,
+          conditionGrade: 'A',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-05-01T00:00:00Z'),
+        },
+      ]);
+
+      const result = await service.listGroupedByModel({});
+
+      // เข้าสต๊อกล่าสุดคือ iPhone 12 แต่ต้องอยู่ท้ายสุด เพราะเรียงตามรุ่น
+      expect(result.data.map((d) => d.model)).toEqual([
+        'iPhone 16 Pro Max',
+        'iPhone 15',
+        'iPhone 12',
+      ]);
+    });
+
+    it('sort=newest ยังเรียงตามวันที่เข้าสต๊อกเหมือนเดิม (ไม่โดนกฎเรียงตามรุ่นทับ)', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'old-but-fresh',
+          brand: 'Apple',
+          model: 'iPhone 12',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 7900,
+          installmentPrice: 9900,
+          conditionGrade: 'A',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-08-20T00:00:00Z'),
+        },
+        {
+          id: 'newer-model',
+          brand: 'Apple',
+          model: 'iPhone 16 Pro Max',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 39900,
+          installmentPrice: 41900,
+          conditionGrade: 'B',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+        },
+      ]);
+
+      const result = await service.listGroupedByModel({ sort: 'newest' });
+      expect(result.data.map((d) => d.model)).toEqual(['iPhone 12', 'iPhone 16 Pro Max']);
+    });
+
+    it('รุ่นเดียวกัน: เกรดดีกว่ามาก่อน แล้วราคาสูงกว่ามาก่อน', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'c-grade',
+          brand: 'Apple',
+          model: 'iPhone 15 Pro Max',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 21500,
+          installmentPrice: 23500,
+          conditionGrade: 'C',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-03-01T00:00:00Z'),
+        },
+        {
+          id: 'a-cheap',
+          brand: 'Apple',
+          model: 'iPhone 15 Pro Max',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 23000,
+          installmentPrice: 25000,
+          conditionGrade: 'A',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-03-01T00:00:00Z'),
+        },
+        {
+          id: 'a-dear',
+          brand: 'Apple',
+          model: 'iPhone 15 Pro Max',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 24900,
+          installmentPrice: 26900,
+          conditionGrade: 'A',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-03-01T00:00:00Z'),
+        },
+      ]);
+
+      const result = await service.listGroupedByModel({});
+      expect(result.data.map((d) => d.id)).toEqual(['a-dear', 'a-cheap', 'c-grade']);
+    });
+
+    describe('เงินดาวน์ที่ลูกค้าขยับเอง', () => {
+      const CONFIG = {
+        id: 'c1',
+        minDownPaymentPct: new Prisma.Decimal('0.15'),
+        storeCommissionPct: new Prisma.Decimal('0.10'),
+        vatPct: new Prisma.Decimal('0.07'),
+        minInstallmentMonths: 12,
+        maxInstallmentMonths: 12,
+        interestRate: new Prisma.Decimal('0.0417'),
+        rates: [{ months: 12, ratePct: new Prisma.Decimal('0.50'), deletedAt: null }],
+      };
+
+      beforeEach(() => {
+        prisma.interestConfig.findFirst.mockResolvedValue(CONFIG);
+        prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'u1',
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '128GB',
+          color: 'ดำ',
+          category: 'PHONE_USED',
+          cashPrice: 20000,
+          installmentPrice: 22000,
+          conditionGrade: 'A',
+          batteryHealth: null,
+          hasBox: null,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: null,
+          gallery: ['g'],
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+        },
+        ]);
+      });
+
+      it('ดาวน์เยอะขึ้น → ค่างวดลดลง และคืนยอดดาวน์เป็นบาทมาด้วย', async () => {
+        const low = await service.listGroupedByModel({ downPct: 15 });
+        const high = await service.listGroupedByModel({ downPct: 40 });
+
+        // installmentPrice = 22000 → ดาวน์ 15% = 3300, 40% = 8800
+        expect(low.data[0].downAmount).toBe(3300);
+        expect(high.data[0].downAmount).toBe(8800);
+        expect(high.data[0].monthlyPaymentFrom!).toBeLessThan(low.data[0].monthlyPaymentFrom!);
+        expect(low.data[0].installmentMonths).toBe(12);
+      });
+
+      it('ขอดาวน์ต่ำกว่าขั้นต่ำ → ดันขึ้นเป็นขั้นต่ำ ไม่เสนอแผนที่ไฟแนนซ์ไม่รับ', async () => {
+        const asked = await service.listGroupedByModel({ downPct: 5 });
+        const floor = await service.listGroupedByModel({ downPct: 15 });
+        expect(asked.data[0].downAmount).toBe(floor.data[0].downAmount);
+        expect(asked.data[0].monthlyPaymentFrom).toBe(floor.data[0].monthlyPaymentFrom);
+      });
+
+      it('คืนดาวน์ขั้นต่ำของหน้านั้นมาให้ UI ใช้ตั้ง min ของสไลเดอร์ (ไม่ต้อง hardcode)', async () => {
+        const res = await service.listGroupedByModel({});
+        expect(res.minDownPct).toBe(15);
+      });
+
+      it('ขอจำนวนงวดที่ไม่มีในตารางเรต → ตกไปใช้งวดยาวสุด ไม่พัง', async () => {
+        const res = await service.listGroupedByModel({ months: 99 });
+        expect(res.data[0].installmentMonths).toBe(12);
+        expect(res.data[0].monthlyPaymentFrom).not.toBeNull();
+      });
+    });
+
+    it('มือ 1 ได้การ์ดต่อรุ่น มือสองได้การ์ดต่อเครื่อง — รุ่นเดียวกันก็ไม่ยุบรวมกัน', async () => {
+      // มือ 1 สองเครื่องเหมือนกันเป๊ะ = การ์ดเดียว บอกว่ามี 3 เครื่อง
       prisma.product.groupBy.mockResolvedValue([
         {
           brand: 'Apple',
@@ -93,14 +357,48 @@ describe('ShopCatalogService', () => {
           category: 'PHONE_NEW',
           _min: { cashPrice: 29900, installmentPrice: null },
           _count: { id: 3 },
+          _max: { createdAt: new Date('2026-02-01T00:00:00Z') },
         },
+      ]);
+      // มือสองสองเครื่องรุ่นเดียวกัน แต่คนละเกรด คนละแบต คนละราคา = สองการ์ด
+      prisma.product.findMany.mockResolvedValue([
         {
+          id: 'u-new',
           brand: 'Apple',
           model: 'iPhone 16',
           storage: '128GB',
+          color: 'ดำ',
           category: 'PHONE_USED',
-          _min: { cashPrice: 19900, installmentPrice: null },
-          _count: { id: 2 },
+          cashPrice: 19900,
+          installmentPrice: null,
+          conditionGrade: 'A',
+          batteryHealth: 95,
+          hasBox: true,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: '350000000004218',
+          gallery: ['a'],
+          createdAt: new Date('2026-01-20T00:00:00Z'),
+        },
+        {
+          id: 'u-old',
+          brand: 'Apple',
+          model: 'iPhone 16',
+          storage: '128GB',
+          color: 'ขาว',
+          category: 'PHONE_USED',
+          cashPrice: 17900,
+          installmentPrice: null,
+          conditionGrade: 'C',
+          batteryHealth: 79,
+          hasBox: false,
+          warrantyExpireDate: null,
+          warrantyExpired: null,
+          stockInDate: null,
+          imeiSerial: '350000000009999',
+          gallery: ['b'],
+          createdAt: new Date('2026-01-10T00:00:00Z'),
         },
       ]);
       prisma.product.findFirst.mockResolvedValue({
@@ -111,11 +409,31 @@ describe('ShopCatalogService', () => {
 
       const result = await service.listGroupedByModel({});
 
-      expect(result.data).toHaveLength(2);
-      expect(result.data[0].condition).toBe('NEW');
-      expect(result.data[0].minPrice).toBe(29900);
-      expect(result.data[1].condition).toBe('USED');
-      expect(result.data[1].minPrice).toBe(19900);
+      expect(result.total).toBe(3);
+      // เรียงใหม่สุดก่อน: กลุ่มมือ 1 (ก.พ.) → เครื่องมือสองสองใบ (20 ม.ค., 10 ม.ค.)
+      expect(result.data.map((d) => d.kind)).toEqual(['GROUP', 'UNIT', 'UNIT']);
+
+      const [group, newer, older] = result.data;
+      expect(group.condition).toBe('NEW');
+      expect(group.stockCount).toBe(3);
+      expect(group.minPrice).toBe(29900);
+
+      // สองเครื่องนี้คือรุ่น/ความจุเดียวกัน แต่ต้องไม่ถูกยุบเป็นการ์ดเดียว
+      expect(newer.id).toBe('u-new');
+      expect(newer.stockCount).toBe(1);
+      expect(newer.displayNo).toBe('4218');
+      expect(newer.conditionGrade).toBe('A');
+      expect(newer.color).toBe('ดำ');
+      expect(newer.minPrice).toBe(19900);
+      expect(newer.tags).toEqual(expect.arrayContaining(['แบต 95%', 'ครบกล่อง']));
+
+      expect(older.id).toBe('u-old');
+      expect(older.displayNo).toBe('9999');
+      expect(older.conditionGrade).toBe('C');
+      expect(older.minPrice).toBe(17900);
+      // แบตต่ำกว่าเกณฑ์ + ไม่มีกล่อง → ไม่มีแท็กมาอวด
+      expect(older.tags).toEqual([]);
+
       expect(prisma.product.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ category: 'PHONE_NEW' }),

@@ -102,7 +102,7 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
       return { matches: [] };
     }
     case 'capture_lead':
-      return { customerId: 'eval-c1', promptPayQr: null, downAmount: Number(input.downAmount ?? 0), handoffMessage: 'ทางแอดมินจะส่ง QR ให้ในแชทนี้นะคะ' };
+      return { customerId: 'eval-c1', promptPayQr: null, downAmount: Number(input.downAmount ?? 0), handoffMessage: 'ทีมงานจะเช็คเอกสารแล้วติดต่อกลับไปนะคะ ยังไม่ต้องโอนอะไรทั้งนั้นค่ะ' };
     case 'handoff_to_human':
       return { ok: true };
     default:
@@ -118,7 +118,7 @@ type Turn = { user: string; expectTools?: string[]; forbidTools?: string[]; cont
 type Scenario = { id: string; name: string; turns: Turn[] };
 
 // 'เกรด' — คำสั่งเจ้าของ 2026-08-17: tool คืนเกรดมาได้ แต่ห้ามพิมพ์ให้ลูกค้า (บอก % แบตพอ)
-const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ', 'เกรด'];
+const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ', 'เกรด', 'QR', 'โอนมัดจำ', 'โอนดาวน์'];
 
 function globalChecks(reply: string): string[] {
   const fails: string[] = [];

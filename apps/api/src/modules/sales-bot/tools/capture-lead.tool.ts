@@ -1,7 +1,5 @@
 import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import generatePayload from 'promptpay-qr';
-import * as QRCode from 'qrcode';
 import {
   IChatGateway,
   CHAT_GATEWAY_TOKEN,
@@ -10,7 +8,7 @@ import {
 export const CAPTURE_LEAD_TOOL = {
   name: 'capture_lead',
   description:
-    'Call after customer confirms purchase (says "เอา/โอเค/สนใจ"). Captures lead, creates Customer draft, initiates handoff to staff for KYC verification + PromptPay QR delivery. ' +
+    'Call after customer confirms purchase (says "เอา/โอเค/สนใจ"). Captures lead, creates Customer draft, initiates handoff to staff for KYC verification. Never invites the customer to transfer money. ' +
     'Works for BOTH in-stock sales (pass productId + packageChoice from search_products/calculate_installment) ' +
     'AND order-taking of out-of-stock models (omit productId/packageChoice, pass productNote instead — never invent a productId).',
   input_schema: {
@@ -41,7 +39,7 @@ export const CAPTURE_LEAD_TOOL = {
         description:
           'กรณีรับออเดอร์ (ของไม่มีในสต็อก ไม่มี productId): รุ่น+ความจุ+มือ 1/มือสอง+เรทที่เลือก เช่น "iPhone 15 Plus 128GB มือสอง สั่งเข้า เรทร้าน"',
       },
-      downAmount: { type: 'number', description: 'ยอดดาวน์ที่จะส่ง QR (จากแพ็คหรือเรทที่ลูกค้าเลือก)' },
+      downAmount: { type: 'number', description: 'ยอดดาวน์ของเรท/แพ็คที่ลูกค้าเลือก (บันทึกไว้ให้ทีมงาน — ไม่ได้ใช้ส่ง QR)' },
     },
     required: ['customerName', 'phone', 'downAmount'],
   },
@@ -98,13 +96,12 @@ export class CaptureLeadTool {
 
     const configs = await this.prisma.systemConfig.findMany({
       where: {
-        key: { in: ['shop_bot_central_branch_id', 'shop_bot_promptpay_id'] },
+        key: { in: ['shop_bot_central_branch_id'] },
         deletedAt: null,
       },
     });
     const configMap = new Map(configs.map((c) => [c.key, c.value]));
     const branchId = configMap.get('shop_bot_central_branch_id');
-    const promptpayId = configMap.get('shop_bot_promptpay_id');
 
     // Validate central branch is configured — it's required downstream when
     // SALES converts this lead into a Contract (Contract.branchId is NOT NULL).
@@ -217,24 +214,16 @@ export class CaptureLeadTool {
       customerId,
     });
 
-    // Generate PromptPay QR if configured; fall back to lead-only otherwise
-    let promptPayQr: string | null = null;
+    // ปิดการขาย = ส่งต่อทีมงาน **ห้ามชวนลูกค้าโอนเงิน/ส่ง QR ในแชท** (คำสั่งเจ้าของ 2026-08-22)
+    // ลูกค้าต้องผ่านตรวจเอกสาร + เข้ามาดูเครื่องที่ร้านก่อนเสมอ ค่อยจ่ายดาวน์หน้าร้าน
+    // (เดิมโค้ดบังคับปิดท้ายว่า "จะส่ง QR ดาวน์ X บาทให้ในแชทนี้" ทุกครั้ง ซึ่งขัดกับ
+    //  คำสั่งสอนบอทเองที่เขียนว่า "ยังไม่ต้องโอนอะไรทั้งนั้น มาดูเครื่องก่อนได้ค่ะ")
+    const promptPayQr: string | null = null;
     // ประโยคท้าย = privacy notice ตาม พ.ร.บ.คุ้มครองข้อมูลฯ (ใช้ข้อมูลเพื่อคำสั่งซื้อนี้เท่านั้น)
     const pdpaNote = 'ข้อมูลชื่อ-เบอร์จะใช้ติดต่อเรื่องคำสั่งซื้อนี้เท่านั้นนะคะ';
-    let handoffMessage = `ทางแอดมินจะส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท ให้พี่ในแชทนี้นะคะ 🙏 ${pdpaNote}`;
-
-    if (promptpayId) {
-      try {
-        const payload = generatePayload(promptpayId, { amount: input.downAmount });
-        promptPayQr = await QRCode.toDataURL(payload);
-        handoffMessage = `ส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท แล้วนะคะ พอโอนเสร็จแอดมินจะติดต่อกลับเพื่อยืนยันสัญญาค่ะ 🙏 ${pdpaNote}`;
-      } catch (err) {
-        this.logger.error(
-          `PromptPay QR generation failed for room ${input.roomId}: ${err instanceof Error ? err.message : err}`,
-        );
-        // Fall through to lead-only mode
-      }
-    }
+    const handoffMessage =
+      `ทีมงานจะเช็คเอกสารแล้วติดต่อกลับไปนะคะ 🙏 ` +
+      `ยังไม่ต้องโอนอะไรทั้งนั้น แวะมาดูเครื่องที่ร้านก่อนได้เลยค่ะ ${pdpaNote}`;
 
     return {
       customerId,

@@ -77,7 +77,7 @@ describe('CaptureLeadTool', () => {
     expect(result.customerId).toBe('cust-1');
     expect(result.promptPayQr).toBeNull();
     expect(result.downAmount).toBe(2900);
-    expect(result.handoffMessage).toContain('แอดมิน');
+    expect(result.handoffMessage).toContain('ติดต่อกลับ');
   });
 
   it('matches existing Customer by phone + lineIdShop composite (sets AI_CHAT_RETURN)', async () => {
@@ -221,7 +221,7 @@ describe('CaptureLeadTool', () => {
     expect(txClient.customer.update).not.toHaveBeenCalled();
   });
 
-  it('generates PromptPay QR data URL when shop_bot_promptpay_id is configured', async () => {
+  it('ไม่ส่ง QR / ไม่ชวนโอน แม้ตั้ง shop_bot_promptpay_id ไว้', async () => {
     prisma.chatRoom.findUnique.mockResolvedValue({
       id: 'room-qr',
       lineUserId: 'line-qr-user',
@@ -244,8 +244,11 @@ describe('CaptureLeadTool', () => {
     });
 
     expect(result.customerId).toBe('cust-qr');
-    expect(result.promptPayQr).toMatch(/^data:image\/png;base64,/);
-    expect(result.handoffMessage).toContain('ส่ง QR ดาวน์');
-    expect(result.handoffMessage).toContain('2,900');
+    // ห้ามชวนโอน/ส่ง QR ในแชทเด็ดขาด แม้ตั้งเลขพร้อมเพย์ไว้ (คำสั่งเจ้าของ 2026-08-22)
+    expect(result.promptPayQr).toBeNull();
+    expect(result.handoffMessage).not.toContain('QR');
+    expect(result.handoffMessage).not.toContain('โอน' + 'เสร็จ');
+    expect(result.handoffMessage).toContain('ยังไม่ต้องโอน');
+    expect(result.handoffMessage).toContain('ติดต่อกลับ');
   });
 });

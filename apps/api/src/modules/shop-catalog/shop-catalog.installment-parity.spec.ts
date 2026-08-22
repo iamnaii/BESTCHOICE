@@ -9,6 +9,34 @@ import { PrismaService } from '../../prisma/prisma.service';
  * ถ้าใครแก้ config resolution หรือ input ของ calcBcInstallment ข้างใดข้างหนึ่ง
  * เทสต์นี้จะแดงทันที
  */
+/**
+ * Second-hand no longer groups (owner rule 2026-08-21) — it comes back from a
+ * findMany of individual devices. These specs are about the ผ่อน figure, so the
+ * shape moved but the assertions did not.
+ */
+function usedUnit(over: Record<string, unknown> = {}) {
+  return {
+    id: 'rep',
+    brand: 'Apple',
+    model: 'iPhone 14 Pro',
+    storage: '128GB',
+    color: 'ดำ',
+    category: 'PHONE_USED',
+    cashPrice: 17900,
+    installmentPrice: 19900,
+    conditionGrade: 'A',
+    batteryHealth: null,
+    hasBox: null,
+    warrantyExpireDate: null,
+    warrantyExpired: null,
+    stockInDate: null,
+    imeiSerial: null,
+    gallery: [],
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    ...over,
+  };
+}
+
 describe('ผ่อนเริ่มต้นหน้ารายการ === InstallmentPreviewService ที่ input เดียวกัน', () => {
   const INTEREST_CONFIG = {
     id: 'c1',
@@ -28,9 +56,12 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
   beforeEach(async () => {
     prisma = {
       product: {
-        findMany: jest.fn(),
+        // listGroupedByModel now issues BOTH a groupBy (new stock) and a
+        // findMany (second-hand devices) on every call — default each to empty
+        // so a test only has to mock the half it cares about.
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
-        groupBy: jest.fn(),
+        groupBy: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
       },
       interestConfig: { findFirst: jest.fn().mockResolvedValue(INTEREST_CONFIG) },
@@ -50,16 +81,7 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
   });
 
   it('คืนค่างวดจาก installmentPrice + InterestConfig (ไม่ใช่ rate ปลอม 0.0099)', async () => {
-    prisma.product.groupBy.mockResolvedValue([
-      {
-        brand: 'Apple',
-        model: 'iPhone 14 Pro',
-        storage: '128GB',
-        category: 'PHONE_USED',
-        _min: { cashPrice: 17900, installmentPrice: 19900 },
-        _count: { id: 2 },
-      },
-    ]);
+    prisma.product.findMany.mockResolvedValue([usedUnit()]);
     // Deviation from brief's literal mock: InstallmentPreviewService.preview() calls
     // prisma.product.findFirst (not findUnique — verified by reading the untouched service).
     // listGroupedByModel's "sample" lookup ALSO calls product.findFirst, so both consumers
@@ -98,16 +120,7 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
         { months: 12, ratePct: new Prisma.Decimal('0.50'), deletedAt: null },
       ],
     });
-    prisma.product.groupBy.mockResolvedValue([
-      {
-        brand: 'Apple',
-        model: 'iPhone 14 Pro',
-        storage: '128GB',
-        category: 'PHONE_USED',
-        _min: { cashPrice: 17900, installmentPrice: 19900 },
-        _count: { id: 2 },
-      },
-    ]);
+    prisma.product.findMany.mockResolvedValue([usedUnit()]);
     prisma.product.findFirst.mockResolvedValue({
       id: 'rep',
       gallery: [],
@@ -132,15 +145,8 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
   });
 
   it('คืน null เมื่อกลุ่มไม่มี installmentPrice (หน้าเว็บจะไม่แสดงบรรทัดผ่อน)', async () => {
-    prisma.product.groupBy.mockResolvedValue([
-      {
-        brand: 'Apple',
-        model: 'iPhone 12',
-        storage: '64GB',
-        category: 'PHONE_USED',
-        _min: { cashPrice: 9900, installmentPrice: null },
-        _count: { id: 1 },
-      },
+    prisma.product.findMany.mockResolvedValue([
+      usedUnit({ id: 'rep2', model: 'iPhone 12', storage: '64GB', cashPrice: 9900, installmentPrice: null, conditionGrade: 'B' }),
     ]);
     prisma.product.findFirst.mockResolvedValue({ id: 'rep2', gallery: [], conditionGrade: 'B' });
 
@@ -159,6 +165,7 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
         category: 'PHONE_NEW',
         _min: { cashPrice: 29900, installmentPrice: 32900 },
         _count: { id: 1 },
+        _max: { createdAt: new Date('2026-01-01T00:00:00Z') },
       },
     ]);
     prisma.product.findFirst.mockResolvedValue({ id: 'rep3', gallery: [], conditionGrade: null });
@@ -169,11 +176,9 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
 
   // final-review minor (T6): edge guards ใน monthlyFrom ถูกต้องแต่ไม่เคยมีเทสต์
   it('installmentPrice ติดลบ/ศูนย์ → monthlyPaymentFrom = null (ไม่ throw ไม่เดา)', async () => {
-    prisma.product.groupBy.mockResolvedValue([
-      { brand: 'Apple', model: 'X', storage: '64GB', category: 'PHONE_USED',
-        _min: { cashPrice: 100, installmentPrice: -5 }, _count: { id: 1 } },
-      { brand: 'Apple', model: 'Y', storage: '64GB', category: 'PHONE_USED',
-        _min: { cashPrice: 100, installmentPrice: 0 }, _count: { id: 1 } },
+    prisma.product.findMany.mockResolvedValue([
+      usedUnit({ id: 'x', model: 'X', storage: '64GB', cashPrice: 100, installmentPrice: -5 }),
+      usedUnit({ id: 'y', model: 'Y', storage: '64GB', cashPrice: 100, installmentPrice: 0 }),
     ]);
     prisma.product.findFirst.mockResolvedValue({ id: 'rep', gallery: [], conditionGrade: 'A' });
     const list = await catalog.listGroupedByModel({});
@@ -189,9 +194,8 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
       maxInstallmentMonths: 4,
       rates: [],
     });
-    prisma.product.groupBy.mockResolvedValue([
-      { brand: 'Apple', model: 'Z', storage: '64GB', category: 'PHONE_USED',
-        _min: { cashPrice: 100, installmentPrice: 19900 }, _count: { id: 1 } },
+    prisma.product.findMany.mockResolvedValue([
+      usedUnit({ id: 'z', model: 'Z', storage: '64GB', cashPrice: 100 }),
     ]);
     prisma.product.findFirst.mockResolvedValue({ id: 'rep', gallery: [], conditionGrade: 'A' });
     const list = await catalog.listGroupedByModel({});
@@ -199,23 +203,11 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
   });
 
   it('resolve InterestConfig ไม่เกิน 1 ครั้งต่อ category ต่อ 1 request', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      usedUnit({ id: 'a', model: 'A', cashPrice: 1 }),
+      usedUnit({ id: 'b', model: 'B', cashPrice: 2 }),
+    ]);
     prisma.product.groupBy.mockResolvedValue([
-      {
-        brand: 'Apple',
-        model: 'A',
-        storage: '128GB',
-        category: 'PHONE_USED',
-        _min: { cashPrice: 1, installmentPrice: 19900 },
-        _count: { id: 1 },
-      },
-      {
-        brand: 'Apple',
-        model: 'B',
-        storage: '128GB',
-        category: 'PHONE_USED',
-        _min: { cashPrice: 2, installmentPrice: 19900 },
-        _count: { id: 1 },
-      },
       {
         brand: 'Apple',
         model: 'C',
@@ -223,6 +215,7 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
         category: 'PHONE_NEW',
         _min: { cashPrice: 3, installmentPrice: 19900 },
         _count: { id: 1 },
+        _max: { createdAt: new Date('2026-01-02T00:00:00Z') },
       },
     ]);
     prisma.product.findFirst.mockResolvedValue({ id: 'rep', gallery: [], conditionGrade: 'A' });

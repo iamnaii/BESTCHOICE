@@ -24,6 +24,8 @@ export interface PreviewResult {
   months?: number;
   gfinSubmitPrice?: number;
   downDiscount?: number;
+  /** BC only — the minimum down payment, in percent. */
+  minDownPct?: number;
 }
 
 @Injectable()
@@ -78,13 +80,19 @@ export class InstallmentPreviewService {
       config: resolved.config!,
     });
 
+    // The floor travels with every BC answer — valid or not — so the UI can
+    // enforce it in the input instead of hardcoding a percentage that silently
+    // goes stale the day the owner edits the rate table.
+    const minDownPct = resolved.config!.minDownPct.mul(100).toNumber();
+
     if (!result.isValid) {
-      return { available: false, reason: 'invalid', errors: result.errors };
+      return { available: false, reason: 'invalid', errors: result.errors, minDownPct };
     }
 
     return {
       available: true,
       provider: 'BC',
+      minDownPct,
       monthlyPayment: result.monthlyPayment.toNumber(),
       downAmount: result.downAmount.toNumber(),
       totalWithVat: result.totalWithVat.toNumber(),

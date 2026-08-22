@@ -23,7 +23,9 @@ export function StatefulList<T>({
   loadingVariant = 'card-grid',
   wrapperClassName,
 }: StatefulListProps<T>) {
-  if (isLoading) return <LoadingState variant={loadingVariant} />;
+  // The skeleton reuses the caller's own grid classes so column counts match
+  // between loading and loaded — otherwise the grid reflows the moment data lands.
+  if (isLoading) return <LoadingState variant={loadingVariant} gridClassName={wrapperClassName} />;
   if (isError) return <ErrorState onRetry={onRetry} />;
   if (!data || data.length === 0) return <EmptyState {...emptyState} />;
   return <div className={wrapperClassName}>{data.map((item, i) => renderItem(item, i))}</div>;

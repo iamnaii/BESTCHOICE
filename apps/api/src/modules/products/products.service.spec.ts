@@ -801,3 +801,107 @@ describe('ProductsService.update — ด่านปลายทาง IN_STOCK 
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Fix round 3 [Minor 3] — ด่านยืนยันราคาเช็ค **คอลัมน์** แต่ POS/บอทอ่าน **แถว**
+ *
+ * เคสจริงที่เกิดได้: `cashPrice = null`, `installmentPrice = null` แต่มีแถว
+ * `{amount: 15900, isDefault: true}` ค้าง (จาก PATCH `cashPrice: null` หรือ
+ * `POST /products/:id/prices` ที่ตั้ง label เอง) → ยืนยันเฉพาะราคาผ่อน → `unconfirmed`
+ * ว่าง (สองคอลัมน์ไม่บวก) → `syncPriceRowsFromColumns` ได้ `keepDefaultId = null`
+ * ⇒ แถว 15,900 ยังเป็น default และ POS หยิบไปขาย
+ */
+describe('ProductsService.returnToStock — ราคาค้างระดับแถว (fix round 3)', () => {
+  let service: ProductsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tx: any;
+
+  const staleRowProduct = (over: Record<string, unknown> = {}) => ({
+    id: 'p-1',
+    name: 'iPhone 13 128GB',
+    status: 'REFURBISHED',
+    // คอลัมน์ว่างทั้งคู่ — ด่านเดิมจึงมองไม่เห็นอะไรเลย
+    cashPrice: null,
+    installmentPrice: null,
+    prices: [
+      { id: 'pr-old', label: 'ราคาขาย', amount: '15900', isDefault: true, deletedAt: null },
+    ],
+    deletedAt: null,
+    ...over,
+  });
+
+  beforeEach(async () => {
+    tx = {
+      product: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'p-1', status: 'IN_STOCK' }),
+      },
+      productPrice: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'pr-new' }),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    prisma = {
+      product: { findUnique: jest.fn().mockResolvedValue(staleRowProduct()) },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      $transaction: jest.fn(async (fn: any) => fn(tx)),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('ยืนยันเฉพาะราคาผ่อน ขณะมีแถว default เก่าค้าง → reject (แถวนั้นจะยังเป็นราคาที่ POS อ่าน)', async () => {
+    await expect(
+      service.returnToStock('p-1', 'user-1', { installmentPrice: 11900 }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.returnToStock('p-1', 'user-1', { installmentPrice: 11900 }),
+    ).rejects.toThrow(/แถวราคา "ราคาขาย" 15900/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ยืนยันราคาเงินสด → sync ทับแถว default นั้นเอง ⇒ ผ่านได้', async () => {
+    await expect(
+      service.returnToStock('p-1', 'user-1', { cashPrice: 9900 }),
+    ).resolves.toBeDefined();
+    expect(tx.product.updateMany).toHaveBeenCalled();
+  });
+
+  it('แถวเก่าถูก soft-delete แล้ว → ไม่ค้าง ยืนยันช่องไหนก็ผ่าน', async () => {
+    prisma.product.findUnique.mockResolvedValue(
+      staleRowProduct({
+        prices: [
+          { id: 'pr-old', label: 'ราคาขาย', amount: '15900', isDefault: true, deletedAt: new Date() },
+        ],
+      }),
+    );
+
+    await expect(
+      service.returnToStock('p-1', 'user-1', { installmentPrice: 11900 }),
+    ).resolves.toBeDefined();
+  });
+
+  /**
+   * Fix round 3 [Important 2] — ข้อความเดิมชี้ให้ไป "แก้ราคาขาย" เพื่อล้างคอลัมน์
+   * ทั้งที่ฟอร์มนั้นล้างคอลัมน์ไม่ได้ (ช่องว่าง ⇒ undefined ⇒ ไม่แตะคอลัมน์)
+   */
+  it('ข้อความของคอลัมน์ที่ค้าง ต้องไม่ชี้ไปหน้า "แก้ราคาขาย" (ทางออกที่ไม่มีจริง)', async () => {
+    prisma.product.findUnique.mockResolvedValue(
+      staleRowProduct({ cashPrice: '15900', installmentPrice: '19900', prices: [] }),
+    );
+
+    await expect(
+      service.returnToStock('p-1', 'user-1', { cashPrice: 9900 }),
+    ).rejects.toThrow(/ยืนยันราคาเดิมหรือพิมพ์ราคาใหม่ทับ/);
+    await expect(
+      service.returnToStock('p-1', 'user-1', { cashPrice: 9900 }),
+    ).rejects.not.toThrow(/แก้ราคาขาย/);
+  });
+});

@@ -1,15 +1,18 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { enterStockAuditData, hasSellingPrice } from '../products/product-enter-stock.util';
 
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = typeof ANGLES[number];
 
-import {
-  assertSellableOnEnterStock,
-  enterStockAuditData,
-} from '../products/product-enter-stock.util';
-
 const ALLOWED_UPLOAD_STATUSES = ['PHOTO_PENDING', 'IN_STOCK', 'RESERVED'];
+
+/** ข้อความที่ UI เอาไปโชว์ตรง ๆ — เส้นทางเดียว ไม่ให้หน้าจอเดาเองว่าเข้าคลังหรือยัง */
+const PHOTOS_DONE_ENTERED_STOCK = 'ยืนยันรูปครบแล้ว — สินค้าเข้าคลังพร้อมขายเรียบร้อย';
+const PHOTOS_DONE_NEEDS_PRICE =
+  'บันทึกรูปครบแล้ว แต่ยังไม่เข้าคลัง เพราะเครื่องนี้ยังไม่มีราคาขาย — ' +
+  'ตั้งราคาขาย (เงินสด/ผ่อน) แล้วกดยืนยันรูปอีกครั้ง เครื่องจะพร้อมขายที่ POS ทันที';
+const PHOTOS_DONE_ONLY = 'ยืนยันรูปครบแล้ว';
 
 @Injectable()
 export class ProductPhotosService {
@@ -137,6 +140,15 @@ export class ProductPhotosService {
    * แล้วอัปโหลดรูป+กดยืนยัน ก็เข้าคลังได้เงียบ ๆ โดยไม่เช็คราคา ไม่มี audit แถม route
    * นี้เปิดถึง `SALES` ขณะที่ปุ่ม/PATCH เป็น OWNER/BM
    * ⇒ ต่อ helper ชุดเดียวกับอีกสองประตู (`product-enter-stock.util.ts`) ห้ามเขียนกติกาซ้ำ
+   *
+   * Phase 5 fix round 3 [Minor 4]: ด่านนั้นเป็น **soft gate ไม่ใช่ hard block** —
+   * `trade-in` สร้างเครื่องรับซื้อเป็น `PHOTO_PENDING` โดย **ไม่มีราคาขาย** แล้ว autofill
+   * จากตารางราคากลางแบบ fail-soft (`trade-in-lifecycle.service.ts`) ⇒ template ไม่ match
+   * เมื่อไร พนักงาน `SALES` ที่อัปโหลดรูปครบจะได้ 400 และตั้งราคาเองไม่ได้ (PATCH และ
+   * `POST /products/:id/prices` เป็น OWNER/BM) = flow หน้าร้านตัน. งานของ endpoint นี้
+   * (บันทึกว่ารูปครบ) จึงต้องสำเร็จเสมอ ส่วนการ **เลื่อนเป็น IN_STOCK** เกิดเฉพาะเมื่อ
+   * ราคาผ่านด่าน — เครื่องค้างที่ `PHOTO_PENDING` พร้อมข้อความบอกว่าต้องตั้งราคาก่อน
+   * (invariant เดิมยังอยู่ครบ: ไม่มีเครื่องไหนเข้า `IN_STOCK` โดยไม่มีราคา)
    */
   async completePhotos(productId: string, userId?: string) {
     return this.prisma.$transaction(async (tx) => {
@@ -179,9 +191,9 @@ export class ProductPhotosService {
         data: { isCompleted: true },
       });
 
-      // If status is PHOTO_PENDING, advance to IN_STOCK
-      if (product.status === 'PHOTO_PENDING') {
-        assertSellableOnEnterStock(product);
+      // If status is PHOTO_PENDING, advance to IN_STOCK — เฉพาะเมื่อมีราคาขายแล้ว
+      const enterStock = product.status === 'PHOTO_PENDING' && hasSellingPrice(product);
+      if (enterStock) {
         await tx.product.update({
           where: { id: productId },
           data: { status: 'IN_STOCK', stockInDate: new Date() },
@@ -200,10 +212,19 @@ export class ProductPhotosService {
         }
       }
 
+      const needsPrice = product.status === 'PHOTO_PENDING' && !enterStock;
       return {
         productId,
         isCompleted: true,
-        status: product.status === 'PHOTO_PENDING' ? 'IN_STOCK' : product.status,
+        status: enterStock ? ('IN_STOCK' as const) : product.status,
+        /** UI ใช้ตัดสินข้อความ/ไอคอน — อย่าเดาจาก `status` ฝั่งหน้าจอเอง */
+        enteredStock: enterStock,
+        needsPrice,
+        message: enterStock
+          ? PHOTOS_DONE_ENTERED_STOCK
+          : needsPrice
+            ? PHOTOS_DONE_NEEDS_PRICE
+            : PHOTOS_DONE_ONLY,
       };
     });
   }

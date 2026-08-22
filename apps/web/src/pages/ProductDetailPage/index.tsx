@@ -374,6 +374,8 @@ export default function ProductDetailPage() {
               // กับการ์ดราคาบนหน้านี้ (คอลัมน์ก่อน ไม่มีค่อย fallback prices[])
               currentCashPrice={displayCashPrice ?? null}
               currentInstallmentPrice={displayInstallmentPrice ?? null}
+              // แถวราคาที่ค้างอยู่ — ราคาที่ยืนยันไม่ได้ทับทุกแถว (fix round 3, Minor 3)
+              prices={product.prices}
               onConfirm={(payload) => returnToStockMutation.mutate(payload)}
             />
             {isManager && (

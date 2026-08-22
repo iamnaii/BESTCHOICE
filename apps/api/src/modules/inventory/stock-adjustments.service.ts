@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { Prisma, StockAdjustmentReason } from '@prisma/client';
+import { Prisma, ProductStatus, StockAdjustmentReason } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
 
@@ -12,6 +12,71 @@ import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
 // be approved by an OWNER. Managers (BRANCH_MANAGER / FINANCE_MANAGER) cannot
 // rubber-stamp a write-off of a flagship-tier device.
 const OWNER_ONLY_ADJUSTMENT_THRESHOLD_THB = 500_000;
+
+/**
+ * Phase 5 fix round 3 [Important 1] — `FOUND` เป็น **allow-list** ไม่ใช่ deny ทีละสถานะ
+ *
+ * `FOUND` = "พบของที่หายไป" ⇒ มีความหมายเฉพาะกลุ่มของหาย/ของเสีย. รอบ 2 ปฏิเสธเฉพาะ
+ * `REFURBISHED` แต่ `repossessions.service.ts` ตั้ง `REPOSSESSED` ตอนยึด (REFURBISHED
+ * มาทีหลังตอน `markReadyForSale` ที่บังคับตีราคาใหม่) ⇒ เครื่องยึดที่ยังถือราคาขายเดิม
+ * flip เข้า `IN_STOCK` ได้ทางนี้ โดยไม่เช็คราคา ไม่มี AuditLog เข้าคลัง — ทั้งที่ปุ่ม
+ * "นำเข้าคลังพร้อมขาย" ปฏิเสธมัน. allow-list ปิดสถานะที่ยังไม่มีใครนึกถึงด้วย
+ * (`SOLD_INSTALLMENT → IN_STOCK` แย่กว่าเคส REPOSSESSED เสียอีก)
+ *
+ * `toInStock: true` = กลุ่มที่ "พบคืน" แล้วกลับมาขายได้จริง. สถานะอื่น **ยังกู้แถวที่ถูก
+ * soft-delete คืนได้** (`deletedAt: null`) แต่กลับไปสถานะเดิมของมัน ไม่ใช่ `IN_STOCK`
+ * — นี่คือทางกู้เครื่องที่ถูกลบทางเดียวที่ระบบมี จึงห้ามปิด แต่ก็ต้องไม่กลายเป็นประตูลัด
+ * เข้าคลัง (เครื่อง REFURBISHED ที่กู้คืนมายังต้องผ่านปุ่มยืนยันราคาอยู่ดี)
+ */
+const FOUND_POLICY = {
+  // ── พบคืนแล้วกลับเข้าคลังได้ ──
+  LOST: { toInStock: true, hint: '' }, // ความหมายตรงตัวของ "พบของที่หายไป"
+  DAMAGED: { toInStock: true, hint: '' }, // ของเสียที่กู้ได้ (ด่าน OWNER-only ด้านบนคุมอยู่)
+  WRITTEN_OFF: { toInStock: true, hint: '' }, // ตัดจำหน่ายแล้วเจอของ (OWNER-only เช่นกัน)
+
+  // ── ไม่ใช่ของหาย/ของเสีย: มี flow ของตัวเอง ──
+  REFURBISHED: {
+    toInStock: false,
+    hint: 'เครื่องมือสองที่รับคืน — ใช้ปุ่ม "นำเข้าคลังพร้อมขาย" ที่หน้ารายละเอียดสินค้า เพื่อยืนยันราคาขายก่อน',
+  },
+  REPOSSESSED: {
+    toInStock: false,
+    hint: 'เครื่องที่ยึดมา — ต้องผ่าน flow ยึดเครื่อง (ตีราคาขายต่อ/พร้อมขาย) ก่อน แล้วจึงกดปุ่ม "นำเข้าคลังพร้อมขาย"',
+  },
+  SOLD_INSTALLMENT: {
+    toInStock: false,
+    hint: 'เครื่องที่สัญญาผ่อนยังถืออยู่ — คืนเข้าสต็อกผ่านยกเลิกสัญญา / ยึดเครื่อง / เปลี่ยนเครื่องเท่านั้น',
+  },
+  SOLD_CASH: { toInStock: false, hint: 'เครื่องที่ขายไปแล้ว — คืนเข้าสต็อกผ่านการยกเลิกการขาย' },
+  SOLD_RESELL: { toInStock: false, hint: 'เครื่องที่ขายต่อไปแล้ว — คืนเข้าสต็อกผ่านการยกเลิกการขาย' },
+  RESERVED: { toInStock: false, hint: 'เครื่องที่ติดจองอยู่ — ปลดผ่านการยกเลิกจอง/ยกเลิกออเดอร์' },
+  PO_RECEIVED: { toInStock: false, hint: 'เครื่องที่เพิ่งรับเข้าจากใบสั่งซื้อ — เดินตามขั้นตอนรับของ/ตรวจ QC ตามปกติ' },
+  QC_PENDING: { toInStock: false, hint: 'เครื่องที่รอตรวจ QC — เข้าคลังเมื่อผ่าน QC ตามขั้นตอน' },
+  PHOTO_PENDING: {
+    toInStock: false,
+    hint: 'เครื่องที่รอถ่ายรูป 6 มุม — เข้าคลังโดยอัปโหลดรูปให้ครบแล้วกดยืนยันรูป (ต้องมีราคาขายก่อน)',
+  },
+  INSPECTION: { toInStock: false, hint: 'เครื่องที่อยู่ระหว่างตรวจสภาพ — เข้าคลังเมื่อตรวจเสร็จตามขั้นตอน' },
+  DEFECT_RETURN: { toInStock: false, hint: 'เครื่องเคลม/ส่งซ่อม — จัดการผ่านใบซ่อม/เปลี่ยนเครื่องชำรุด' },
+  IN_STOCK: { toInStock: false, hint: 'เครื่องนี้อยู่ในคลังอยู่แล้ว' },
+} satisfies Record<ProductStatus, { toInStock: boolean; hint: string }>;
+
+/** สถานะที่เหตุผล "พบของ" พาเข้า `IN_STOCK` ได้จริง */
+const FOUND_TO_IN_STOCK: ReadonlySet<ProductStatus> = new Set(
+  (Object.keys(FOUND_POLICY) as ProductStatus[]).filter((s) => FOUND_POLICY[s].toInStock),
+);
+
+/**
+ * ปฏิเสธ `FOUND` บนสถานะที่ไม่ใช่ของหาย/ของเสีย — ยกเว้นแถวที่ถูก soft-delete
+ * (กู้คืนได้ แต่กลับไปสถานะเดิม ไม่ใช่ `IN_STOCK`)
+ */
+function assertFoundAllowed(status: ProductStatus, deletedAt: Date | null): void {
+  if (FOUND_POLICY[status].toInStock || deletedAt) return;
+  throw new BadRequestException(
+    `สินค้าอยู่สถานะ ${status} — เหตุผล "พบของ" ใช้ได้เฉพาะเครื่องที่หาย/เสียหาย/ตัดจำหน่าย (LOST, DAMAGED, WRITTEN_OFF) ` +
+      `หรือเครื่องที่ถูกลบไปแล้วและต้องการกู้แถวคืน: ${FOUND_POLICY[status].hint}`,
+  );
+}
 
 @Injectable()
 export class StockAdjustmentsService {
@@ -68,6 +133,7 @@ export class StockAdjustmentsService {
         if (!product.deletedAt && product.status === 'IN_STOCK') {
           throw new BadRequestException('สินค้านี้อยู่ในสต๊อคอยู่แล้ว ไม่สามารถใช้เหตุผล "พบคืน" ได้');
         }
+        assertFoundAllowed(product.status, product.deletedAt);
         // T5-C8: restoring from DAMAGED/WRITTEN_OFF requires OWNER approver.
         // The generic 4-eyes allows BRANCH_MANAGER to approve — that's fine
         // for LOST→FOUND (missing phone reappears), but DAMAGED→FOUND is the
@@ -134,26 +200,18 @@ export class StockAdjustmentsService {
 
       // Update product status based on reason
       if (dto.reason === 'FOUND') {
-        /**
-         * Phase 5 fix round 2 [Important 1]: `FOUND` = "พบของที่หายไป" ไม่ใช่
-         * "ซ่อมเสร็จพร้อมขาย" — เครื่องมือสองที่รับคืน (REFURBISHED) ต้องเข้าคลังผ่าน
-         * ปุ่ม "นำเข้าคลังพร้อมขาย" ที่บังคับยืนยันราคา ไม่ใช่ลัดผ่านการปรับสต็อก
-         * (ประตูอื่นของ FOUND ยังพึ่ง 4-eyes + แถว StockAdjustment เป็นหลักฐาน — carry)
-         */
-        if (product.status === 'REFURBISHED') {
-          throw new BadRequestException(
-            'เครื่องมือสองที่รับคืน (สถานะ REFURBISHED) นำเข้าคลังด้วยเหตุผล "พบของ" ไม่ได้ — ' +
-              'ใช้ปุ่ม "นำเข้าคลังพร้อมขาย" ที่หน้ารายละเอียดสินค้า เพื่อยืนยันราคาขายก่อน',
-          );
-        }
+        // `assertFoundAllowed` (ข้างบน, ก่อนสร้างแถว) เป็นด่านเดียวของกติกา — ตรงนี้แค่
+        // เดินตามผลของมัน: กลุ่มของหาย/ของเสีย → IN_STOCK, ที่เหลือ = กู้แถวคืนเฉย ๆ
+        const entersStock = FOUND_TO_IN_STOCK.has(product.status);
         const wasDamageRestore =
           product.status === 'DAMAGED' || product.status === 'WRITTEN_OFF';
         await tx.product.update({
           where: { id: dto.productId },
           data: {
-            status: 'IN_STOCK',
+            // สถานะเดิมของเครื่องที่แค่ถูกลบไป (เช่น REFURBISHED) ต้องคงไว้ — การพาเข้าคลัง
+            // ยังต้องผ่านปุ่ม "นำเข้าคลังพร้อมขาย" ที่บังคับยืนยันราคาอยู่ดี
+            ...(entersStock ? { status: 'IN_STOCK' as const, stockInDate: new Date() } : {}),
             deletedAt: null,
-            stockInDate: new Date(),
             // T5-C8: stamp the restoration so sales can detect a recent
             // damage-then-resurrect pattern. wasPreviouslyDamaged is already
             // set from the prior DAMAGED adjustment — never flip it back.

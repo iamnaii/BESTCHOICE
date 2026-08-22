@@ -143,3 +143,66 @@ describe('ReturnToStockAction (Phase 5 T3 + fix round 1)', () => {
     expect(screen.queryByText(/ราคาจากตอนขายครั้งก่อน/)).toBeNull();
   });
 });
+
+/**
+ * Fix round 3 — mirror ของด่านฝั่ง API สองเรื่อง:
+ * [Minor 3] ราคาที่ค้างอยู่ใน **แถว** `prices[]` ก็ต้องถูกยืนยัน ไม่ใช่แค่คอลัมน์
+ * [Important 2] ข้อความต้องชี้ทางออกที่ทำได้จริง — ฟอร์ม "แก้ราคาขาย" ล้างคอลัมน์ไม่ได้
+ */
+describe('ReturnToStockAction (fix round 3)', () => {
+  const staleRow = { id: 'pr-1', label: 'ราคาขาย', amount: '15900', isDefault: true };
+
+  it('มีแถวราคาเก่าค้าง + ยืนยันเฉพาะราคาผ่อน → เตือน + ปุ่มยืนยันกดไม่ได้', async () => {
+    const onConfirm = vi.fn();
+    render(
+      <ReturnToStockAction
+        {...base}
+        currentCashPrice={null}
+        currentInstallmentPrice={null}
+        prices={[staleRow]}
+        onConfirm={onConfirm}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    await userEvent.type(await screen.findByLabelText(/ราคาผ่อน/), '11900');
+
+    expect(await screen.findByText(/แถวราคา "ราคาขาย" 15900/)).toBeTruthy();
+    const confirm = screen.getByRole('button', { name: CONFIRM });
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+    await userEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('ยืนยันราคาเงินสดแทน → แถว default นั้นจะถูกทับ ⇒ กดยืนยันได้', async () => {
+    const onConfirm = vi.fn();
+    render(
+      <ReturnToStockAction
+        {...base}
+        currentCashPrice={null}
+        currentInstallmentPrice={null}
+        prices={[staleRow]}
+        onConfirm={onConfirm}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    await userEvent.type(await screen.findByLabelText(/ราคาเงินสด/), '9900');
+
+    expect(screen.queryByText(/แถวราคา/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: CONFIRM }));
+    expect(onConfirm).toHaveBeenCalledWith({
+      cashPrice: 9900,
+      installmentPrice: undefined,
+      note: undefined,
+    });
+  });
+
+  it('ข้อความของช่องที่ค้าง ต้องไม่ชี้ไปหน้า "แก้ราคาขาย" (ล้างคอลัมน์ที่นั่นไม่ได้)', async () => {
+    render(<ReturnToStockAction {...base} onConfirm={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    await userEvent.clear(await screen.findByLabelText(/ราคาเงินสด/));
+    await userEvent.type(await screen.findByLabelText(/ราคาผ่อน/), '11900');
+
+    expect(await screen.findByText(/ต้องยืนยัน ราคาเงินสด/)).toBeTruthy();
+    expect(screen.queryByText(/แก้ราคาขาย/)).toBeNull();
+  });
+});

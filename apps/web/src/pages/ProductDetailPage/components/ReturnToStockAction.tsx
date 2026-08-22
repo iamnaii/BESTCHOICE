@@ -1,11 +1,19 @@
 import { useState } from 'react';
 import { PackageCheck } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { CASH_LABEL, INSTALLMENT_LABEL } from '@/utils/getDisplayPrices';
 
 export interface ReturnToStockPayload {
   cashPrice?: number;
   installmentPrice?: number;
   note?: string;
+}
+
+export interface ReturnToStockPriceRow {
+  id: string;
+  label: string;
+  amount: string;
+  isDefault: boolean;
 }
 
 interface Props {
@@ -17,6 +25,8 @@ interface Props {
   /** ราคาที่ค้างอยู่บนเครื่อง = ราคาจากตอนขายครั้งก่อน (ไม่มี flow ไหนล้างให้) */
   currentCashPrice: number | null;
   currentInstallmentPrice: number | null;
+  /** แถว `ProductPrice` ที่ยังมีผล — mirror ของด่านฝั่ง API (fix round 3, Minor 3) */
+  prices?: ReturnToStockPriceRow[];
   onConfirm: (payload: ReturnToStockPayload) => void;
 }
 
@@ -27,6 +37,35 @@ function parsePrice(raw: string): number | undefined {
 }
 
 const priceText = (v: number | null) => (v != null && v > 0 ? String(v) : '');
+
+/**
+ * Fix round 3 [Minor 3] — mirror ของ `unconfirmedLeftoverPrices`
+ * (`apps/api/src/modules/products/product-enter-stock.util.ts`) ฝั่งหน้าจอ
+ *
+ * ราคาเก่าอยู่ได้ทั้งใน **คอลัมน์** และใน **แถว** `ProductPrice`; การยืนยันราคาจะทับ
+ * เฉพาะแถวที่ `syncPriceRowsFromColumns` เลือกเป็นเป้าหมาย (label ตรง → default row
+ * ฝั่งเงินสด) แถวที่เหลือรอดต่อและยังเป็นราคาตั้งต้นที่ POS/บอทหยิบไปขาย
+ * — ฝั่ง API เป็นตัวบังคับจริง อันนี้แค่บอกก่อนตั้งแต่ยังไม่กด
+ */
+function leftoverRows(
+  rows: ReturnToStockPriceRow[],
+  confirmed: { cash?: number; installment?: number },
+): string[] {
+  const overwritten = new Set<number>();
+  if (confirmed.cash !== undefined) {
+    let idx = rows.findIndex((r) => r.label === CASH_LABEL);
+    if (idx < 0) idx = rows.findIndex((r) => r.isDefault && !r.label.startsWith('ราคาผ่อน'));
+    if (idx >= 0) overwritten.add(idx);
+  }
+  if (confirmed.installment !== undefined) {
+    const idx = rows.findIndex((r) => r.label === INSTALLMENT_LABEL);
+    if (idx >= 0) overwritten.add(idx);
+  }
+  return rows
+    .map((r, i) => ({ r, i }))
+    .filter(({ r, i }) => !overwritten.has(i) && Number(r.amount) > 0)
+    .map(({ r }) => `แถวราคา "${r.label}" ${r.amount}`);
+}
 
 /**
  * Phase 5 Task 3 — ปุ่ม "นำเข้าคลังพร้อมขาย" (REFURBISHED → IN_STOCK)
@@ -48,6 +87,7 @@ export default function ReturnToStockAction({
   isPending,
   currentCashPrice,
   currentInstallmentPrice,
+  prices = [],
   onConfirm,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -67,12 +107,15 @@ export default function ReturnToStockAction({
   /**
    * Fix round 2 [Important 2]: ช่องที่ "เคยมีราคา" แล้วถูกล้างจนว่าง = ราคาเก่าจะค้างอยู่ใน
    * คอลัมน์นั้นและยังเป็นแถวราคาตั้งต้นที่ POS อ่าน — server ปฏิเสธเคสนี้ ฝั่งนี้จึงบอกก่อน
-   * ตั้งแต่ยังไม่กด (endpoint นี้ "ยืนยันราคา" ไม่ใช่ "ล้างราคา" — ล้างทำที่หน้าแก้ราคาขาย)
+   * ตั้งแต่ยังไม่กด (endpoint นี้ "ยืนยันราคา" ไม่ใช่ "ล้างราคา")
    */
   const unconfirmed = [
     hadCash && cashValue === undefined ? 'ราคาเงินสด' : null,
     hadInstallment && installmentValue === undefined ? 'ราคาผ่อน' : null,
   ].filter(Boolean) as string[];
+
+  // Fix round 3 [Minor 3] — ราคาเก่าที่ค้างอยู่ในแถว `ProductPrice` (คอลัมน์อาจว่างทั้งคู่)
+  const staleRows = leftoverRows(prices, { cash: cashValue, installment: installmentValue });
 
   const inputClass =
     'w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug bg-background';
@@ -100,7 +143,7 @@ export default function ReturnToStockAction({
         description="ยืนยันว่าตรวจสภาพและราคาเรียบร้อยแล้ว — เครื่องจะพร้อมขายที่ POS ทันทีหลังกดยืนยัน และระบบจะบันทึกว่าใครยืนยันราคาเท่าไร"
         confirmLabel="ยืนยันนำเข้าคลัง"
         loading={isPending}
-        confirmDisabled={!hasPrice || unconfirmed.length > 0}
+        confirmDisabled={!hasPrice || unconfirmed.length > 0 || staleRows.length > 0}
         onConfirm={() =>
           onConfirm({
             cashPrice: cashValue,
@@ -160,7 +203,13 @@ export default function ReturnToStockAction({
           {hasPrice && unconfirmed.length > 0 && (
             <p className="text-xs text-destructive leading-snug">
               ต้องยืนยัน {unconfirmed.join(' และ ')} ด้วย — ปล่อยว่างไว้ราคาเดิม (ราคาจากตอนขายครั้งก่อน)
-              จะยังค้างอยู่และกลายเป็นราคาตั้งต้นที่ POS; ถ้าต้องการยกเลิกราคานั้น ให้แก้ที่ &quot;แก้ราคาขาย&quot; ก่อน
+              จะยังค้างอยู่และกลายเป็นราคาตั้งต้นที่ POS; กดยืนยันราคาเดิมก็ได้ หรือพิมพ์ราคาใหม่ทับลงไป
+            </p>
+          )}
+          {hasPrice && staleRows.length > 0 && (
+            <p className="text-xs text-destructive leading-snug">
+              {staleRows.join(' และ ')} ยังค้างอยู่ และราคาที่ยืนยันจะไม่ทับแถวนี้ — ลบหรือแก้แถวราคานั้นที่หน้าสต็อก
+              ปุ่ม &quot;จัดการราคา&quot; ก่อน แล้วค่อยนำเข้าคลัง (แถวราคาตั้งต้นคือค่าที่ POS หยิบไปขาย)
             </p>
           )}
           <div className="space-y-1">

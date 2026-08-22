@@ -20,6 +20,18 @@ interface PhotoData {
   totalCount?: number;
 }
 
+/** ผลของ `POST /products/:id/photos/complete` — ดู `ProductPhotosService.completePhotos` */
+interface CompletePhotosResult {
+  productId: string;
+  isCompleted: boolean;
+  status: string;
+  /** เลื่อนเป็น IN_STOCK ในรอบนี้จริงหรือไม่ */
+  enteredStock: boolean;
+  /** รูปครบแล้วแต่ยังเข้าคลังไม่ได้ เพราะยังไม่มีราคาขาย */
+  needsPrice: boolean;
+  message: string;
+}
+
 const ANGLE_LABELS: Record<string, string> = {
   front: 'ด้านหน้า',
   back: 'ด้านหลัง',
@@ -110,12 +122,24 @@ export default function ProductPhotosPanel({
 
   const completeMutation = useMutation({
     mutationFn: async () => {
-      return api.post(`/products/${productId}/photos/complete`);
+      const { data } = await api.post<CompletePhotosResult>(
+        `/products/${productId}/photos/complete`,
+      );
+      return data;
     },
-    onSuccess: () => {
+    /**
+     * Fix round 3 [Minor 4]: ยืนยันรูปครบ **ไม่ได้แปลว่าเข้าคลังเสมอไป** — เครื่องที่ยัง
+     * ไม่มีราคาขาย (เช่นเครื่องรับซื้อที่ autofill จากตารางราคากลางไม่ match) จะค้างที่
+     * `PHOTO_PENDING` โดยที่รูปถูกบันทึกแล้ว. ข้อความมาจาก server ทางเดียว — หน้าจอ
+     * ห้ามเดาเองว่าเข้าคลังหรือยัง (เดิม toast บอก "เข้าคลังเรียบร้อย" ทุกกรณี รวมทั้ง
+     * เครื่อง IN_STOCK/RESERVED ที่แค่ยืนยันรูปเฉย ๆ)
+     */
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['product-photos', productId] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
-      toast.success('ยืนยันรูปถ่ายครบแล้ว สินค้าเข้าคลังเรียบร้อย');
+      const message = data?.message ?? 'ยืนยันรูปครบแล้ว';
+      if (data?.needsPrice) toast.warning(message);
+      else toast.success(message);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });

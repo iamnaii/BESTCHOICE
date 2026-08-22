@@ -16,8 +16,9 @@ import { assertManualStatusChangeAllowed, productStatusLabel } from './product-s
 import {
   assertSellableOnEnterStock,
   enterStockAuditData,
-  isPositiveAmount,
   positiveDecimalOrNull,
+  unconfirmedLeftoverPrices,
+  unconfirmedPriceMessage,
 } from './product-enter-stock.util';
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
@@ -365,29 +366,31 @@ export class ProductsService {
     }
 
     /**
-     * Fix round 2 [Important 2] — **ทุกคอลัมน์ที่มีราคาเก่าอยู่ ต้องถูกยืนยัน**
+     * Fix round 2 [Important 2] — **ทุกราคาเก่าที่ค้างอยู่ ต้องถูกยืนยัน**
+     * Fix round 3 [Minor 3] — "ค้างอยู่" นับ **แถว `ProductPrice`** ด้วย ไม่ใช่แค่คอลัมน์
      *
      * ยืนยันมาช่องเดียวแล้วปล่อยอีกช่องว่างไว้ = คอลัมน์นั้นไม่ถูกแตะ ราคาเครื่องใหม่ค้างต่อ
      * และ `syncPriceRowsFromColumns` ก็ข้ามฝั่งนั้น (`keepDefaultId` เป็น null เมื่อมีแถว
      * default เดิมอยู่แล้ว) ⇒ **แถว default ที่ POS อ่านยังเป็นราคาเครื่องใหม่** ซึ่งคือ
-     * ความเสียหายที่ด่านยืนยันราคาตั้งใจกันพอดี
+     * ความเสียหายที่ด่านยืนยันราคาตั้งใจกันพอดี — และเคสเดียวกันเกิดได้ทั้งที่**คอลัมน์
+     * ว่างทั้งคู่** ถ้ามีแถวราคาเก่าค้าง จึงต้องเช็คทั้งสองที่ (ตรรกะอยู่ใน helper เดียวกับ
+     * `hasSellingPrice` ที่รู้จักแถวอยู่แล้ว — ห้ามแยกกติกา)
      *
-     * endpoint นี้ "ยืนยันราคา" ไม่ใช่ "ล้างราคา" — การยกเลิกราคาช่องใดช่องหนึ่งทำที่หน้า
-     * แก้ราคาขาย (ซึ่งมี write-through/แถวราคาเป็นเจ้าของกติกาอยู่แล้ว) ไม่ใช่ที่นี่
+     * **รู้ตัวและตั้งใจ:** ด่าน "ยืนยัน" นี้เข้มกว่าด่านของ `update()` (PATCH) ซึ่งบังคับแค่
+     * "มีราคา" ⇒ ผู้ที่โดนบล็อกตรงนี้ยังฟอกสถานะสองคลิก (`REFURBISHED → QC_PENDING →
+     * IN_STOCK`) เพื่อเลี่ยงได้ แต่จะได้ `stockInDate` + AuditLog ชุดเดียวกันเสมอ
+     * (ไม่ได้ผลลัพธ์ที่เงียบกว่า). การปิดขาดต้องใช้ provenance (เครื่องที่มีแถว
+     * `Repossession`/เป็น `oldProduct` ของ `ContractExchangeRequest` ห้าม PATCH เข้า
+     * IN_STOCK) — เป็น carry ของ Task 6 ตามรายงาน Phase 5 ไม่ใช่งานรอบนี้
      */
-    const unconfirmed: string[] = [];
-    if (!cashDecimal && isPositiveAmount(product.cashPrice)) {
-      unconfirmed.push(`ราคาเงินสดเดิม ${product.cashPrice?.toString()}`);
-    }
-    if (!installmentDecimal && isPositiveAmount(product.installmentPrice)) {
-      unconfirmed.push(`ราคาผ่อนเดิม ${product.installmentPrice?.toString()}`);
-    }
-    if (unconfirmed.length > 0) {
-      throw new BadRequestException(
-        `${unconfirmed.join(' และ ')} ยังค้างอยู่บนเครื่อง — ยืนยันหรือแก้ราคาให้ครบทุกช่องก่อนนำเข้าคลัง ` +
-          '(ราคาที่ไม่ได้ยืนยันจะยังเป็นราคาจากตอนขายครั้งก่อนและกลายเป็นราคาตั้งต้นที่ POS; ' +
-          'ถ้าต้องการยกเลิกราคาช่องใด ให้แก้ที่ "แก้ราคาขาย" ก่อน)',
-      );
+    const message = unconfirmedPriceMessage(
+      unconfirmedLeftoverPrices(product, {
+        cashPrice: cashDecimal,
+        installmentPrice: installmentDecimal,
+      }),
+    );
+    if (message) {
+      throw new BadRequestException(message);
     }
 
     return this.prisma.$transaction(async (tx) => {

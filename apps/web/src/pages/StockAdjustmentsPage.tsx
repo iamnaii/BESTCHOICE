@@ -468,7 +468,9 @@ export default function StockAdjustmentsPage() {
             <div className="mt-1 text-xs text-muted-foreground">
               {form.reason === 'DAMAGED' && 'สินค้าเสียหาย — จะถูกลบออกจากสต็อก'}
               {form.reason === 'LOST' && 'สินค้าสูญหาย — จะถูกลบออกจากสต็อก'}
-              {form.reason === 'FOUND' && 'พบสินค้าเพิ่ม — จะถูกคืนเข้าสต็อก'}
+              {/* fix round 3: FOUND เป็น allow-list — คืนเข้าสต็อกเฉพาะ LOST/DAMAGED/WRITTEN_OFF */}
+              {form.reason === 'FOUND' &&
+                'พบสินค้าคืน — ใช้ได้กับเครื่องที่หาย/เสียหาย/ตัดจำหน่าย (จะคืนเข้าสต็อก) หรือเครื่องที่ถูกลบไปแล้วและต้องการกู้คืน (กลับไปสถานะเดิม ไม่เข้าคลังเอง)'}
               {form.reason === 'CORRECTION' && 'แก้ไขข้อมูล — บันทึกเท่านั้น ไม่เปลี่ยนสถานะ'}
               {form.reason === 'WRITE_OFF' && 'ตัดจำหน่าย — จะถูกลบออกจากสต็อก'}
               {form.reason === 'OTHER' && 'อื่นๆ — บันทึกเท่านั้น ไม่เปลี่ยนสถานะ'}

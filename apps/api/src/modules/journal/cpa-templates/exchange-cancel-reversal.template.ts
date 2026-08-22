@@ -16,10 +16,30 @@ export interface SweepRedirect {
   description: string;
 }
 
+/** ตัวเลือกการกวาด — บอกว่าจะหา JE ด้วย metadata path ไหน = ค่าอะไร */
+export interface CancelSweepSelector {
+  /** ชื่อ key ใน `JournalEntry.metadata` (เช่น 'contractId', 'saleId') */
+  path: string;
+  /** ค่าที่ต้องตรงพอดี */
+  value: string;
+}
+
 export interface CancelSweepInput {
   jeIds: string[];
-  /** ชื่อเดิมคงไว้ — คือ contractId ที่ใช้ sweep (exchange ส่ง newContractId, generic ส่ง contractId) */
-  newContractId: string;
+  /**
+   * ชื่อเดิมคงไว้ — คือ contractId ที่ใช้ sweep (exchange ส่ง newContractId, generic ส่ง contractId)
+   *
+   * เป็น optional ตั้งแต่ 2026-08-22 (void-sale Task 2): ผู้เรียกที่กวาดด้วย path อื่น
+   * ให้ใช้ `sweepBy` แทน. ผู้เรียกเดิมที่ส่งค่านี้ได้พฤติกรรมเดิมทุกประการ
+   * (กวาดด้วย `metadata.contractId`).
+   */
+  newContractId?: string;
+  /**
+   * ตัวเลือกการกวาด — default = `{ path: 'contractId', value: newContractId }`
+   * **ไม่ส่งทั้งสองตัว = ไม่ยิง query กวาดเลย** ใช้เฉพาะ `jeIds` ที่ส่งมา
+   * (ส่งทั้งคู่ → `sweepBy` ชนะ)
+   */
+  sweepBy?: CancelSweepSelector;
   /** flows ที่ห้าม mirror (default [] — พฤติกรรม exchange เดิมไม่เปลี่ยน) */
   excludeFlows?: string[];
   /** map บัญชี → redirect ปลายทาง ใช้ใน C-2 (default undefined = mirror ตรง) */
@@ -46,6 +66,13 @@ export interface CancelSweepInput {
  * (flow 'exchange-cancel', idempotencyKey `cancel:<jeId>`, prefix
  * '[ยกเลิกเปลี่ยนเครื่อง]'). `redirectedTotals` คืน Σ(Dr−Cr) ของ mirror legs
  * ที่ถูก redirect เข้าแต่ละบัญชีปลายทาง — caller ใช้ cross-check กับ GL.
+ *
+ * 2026-08-22 (void-sale Task 2): ตัวเลือกการกวาดถูก generalize เป็น `sweepBy`
+ * (`{ path, value }` บน metadata) — ใบขายไม่มี `contractId` แต่มี `metadata.saleId`.
+ * เขียน mirror ตัวที่สองไม่ได้เพราะ invariant ของการ mirror (copy companyId,
+ * stamp `reversed: true` บนใบเดิม, idempotencyKey, reversesEntryId, carry metadata)
+ * จะ drift ทันทีที่รูปแบบ mirror เปลี่ยน. ผู้เรียกเดิมที่ส่ง `newContractId`
+ * ได้พฤติกรรมเดิมทุกประการ (default = `{ path: 'contractId', value: newContractId }`).
  */
 @Injectable()
 export class ExchangeCancelReversalTemplate {
@@ -71,14 +98,22 @@ export class ExchangeCancelReversalTemplate {
       where: { id: { in: input.jeIds }, status: 'POSTED', deletedAt: null },
       include: { lines: true },
     });
-    const swept = await client.journalEntry.findMany({
-      where: {
-        metadata: { path: ['contractId'], equals: input.newContractId } as any,
-        status: 'POSTED',
-        deletedAt: null,
-      },
-      include: { lines: true },
-    });
+    // ตัวเลือกการกวาด: sweepBy ชนะ → fallback เป็น contractId (พฤติกรรมเดิม) →
+    // ไม่มีทั้งคู่ = ไม่ยิง query กวาดเลย (ใช้เฉพาะ jeIds ที่ส่งมา) — ห้าม fallback
+    // เป็น `equals: undefined` เพราะ Prisma จะแปลว่า "ไม่ filter" แล้วกวาด JE ทั้งระบบ
+    const sweepBy: CancelSweepSelector | null =
+      input.sweepBy ??
+      (input.newContractId ? { path: 'contractId', value: input.newContractId } : null);
+    const swept = sweepBy
+      ? await client.journalEntry.findMany({
+          where: {
+            metadata: { path: [sweepBy.path], equals: sweepBy.value } as any,
+            status: 'POSTED',
+            deletedAt: null,
+          },
+          include: { lines: true },
+        })
+      : [];
     const all = new Map<string, (typeof byId)[number]>();
     for (const je of [...byId, ...swept]) all.set(je.id, je);
 

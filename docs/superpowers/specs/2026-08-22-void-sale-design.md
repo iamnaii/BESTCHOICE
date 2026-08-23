@@ -1,6 +1,8 @@
 # ยกเลิกใบขาย (Void Sale) — Design
 
-**วันที่:** 2026-08-22 · **สถานะ:** approved (เจ้าของอนุมัติดีไซน์ 2026-08-22)
+**วันที่:** 2026-08-22 · **สถานะ:** **[implemented]** 2026-08-23 บน branch `feat/void-sale`
+(approved โดยเจ้าของ 2026-08-22; ข้อที่ต่างจากดีไซน์ตอนลงมือถูกแก้ในเอกสารนี้แล้ว + สรุปใน
+`.claude/rules/accounting.md` หัวข้อ "ยกเลิกใบขาย (void sale)")
 **ที่มา:** final review ของ Phase 5 (device-swap workbook sprint) พบว่าหลังปิดช่อง `FOUND` แล้ว
 **ระบบไม่เหลือทางใดเลย**ที่จะแก้ "บันทึกขายผิด" — `SalesService` มีแค่ `findAll`/`findOne`/`create`
 (controller ไม่มี `@Patch`/`@Delete`) และ `SOLD_*` อยู่ใน `SYSTEM_MANAGED_STATUSES` จึงแก้สถานะ
@@ -8,7 +10,7 @@
 
 > **หมายเหตุการกลับคำตัดสิน:** 2026-08-22 เจ้าของเคยตอบ "ยอมรับช่องว่างไว้ก่อน" แล้วเปลี่ยนเป็น
 > "ทำให้ถูกเลยก็ได้" ในวันเดียวกัน ⇒ เอกสารนี้แทนที่ย่อหน้า "คำตัดสินเจ้าของ 2026-08-22" ใน
-> `.claude/rules/database.md` หัวข้อ "บันทึกขายผิด" (ต้องอัปเดตย่อหน้านั้นตอน implement)
+> `.claude/rules/database.md` หัวข้อ "บันทึกขายผิด" (อัปเดตแล้ว 2026-08-23 — Task 7)
 
 ---
 
@@ -58,7 +60,7 @@
 | **G4b** | **รอบจ่ายค่าคอม** (`CommissionPayout`) ที่ครอบค่าคอมใบนี้อยู่ในสถานะ `APPROVED`/`PAID` (**เพิ่ม 2026-08-23** — ดูหมายเหตุใต้ตาราง) | `markPayoutPaid` ไม่แตะ `SalesCommission.status` ⇒ G4 มองไม่เห็นเงินที่จ่ายผ่านรอบจ่าย | บอกตรง ๆ ว่ายังไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย ให้เจ้าของตัดสินใจ |
 | G5 | สินค้าถูกผูกไปที่อื่นแล้ว — reuse `assertProductNotHeld` (Phase 5) ด้วย action ใหม่ · **ตรวจทั้งสินค้าหลักและของแถมทุกชิ้น** ถ้าชิ้นใดชิ้นหนึ่งไม่ผ่าน = ยกเลิกทั้งใบไม่ได้ | เครื่องอาจถูกขายต่อ/จอง/เข้าสัญญาใหม่ไปแล้ว | ระบุ**ชื่อสินค้าและสถานะปัจจุบัน**ของชิ้นที่ติด + flow ที่ถูกต้อง |
 | G6 | ใบขายมาจากออเดอร์ออนไลน์ (`Sale.onlineOrderId != null`) | สถานะสองฝั่งจะเพี้ยน (order ยัง `PAID`/`DELIVERED` แต่ใบขายหาย) | ให้จัดการที่เมนูออเดอร์ออนไลน์ |
-| G7 | มีใบซ่อม/เคลมประกันอ้างอิงใบขายนี้ | ประกันอิงใบขาย (`repair-warranty.service.ts` อ่าน `Sale`) — ยกเลิกแล้วเคลมจะลอย | ให้ปิด/ยกเลิกใบซ่อมก่อน |
+| G7 | มีใบซ่อมที่ยังไม่ปิดบน**เครื่องของใบขายนี้** — `RepairTicket` **ไม่มี `saleId`** (มีแต่ `customerId`/`contractId`/`productId`) จึงตรวจ `productId ∈ {หลัก, ของแถม}` + `status notIn [CLOSED, CANCELLED, REPLACED]` (enum จริง `RepairStatus`; exclude-list) — **แก้ 2026-08-23 จากเดิมที่เขียนว่า "อ้างอิงใบขายนี้"** | ประกันอิงใบขาย (`repair-warranty.service.ts` อ่าน `Sale`) — ยกเลิกแล้วเคลมจะลอย | ให้ปิด/ยกเลิกใบซ่อมที่เมนู "รับซ่อม/รับประกัน" ก่อน |
 
 **G3 — ทำไมเลิกใช้ `status != PENDING` (แก้สเปค 2026-08-23):** `FinanceReceivableStatus`
 มี 5 ค่า และ **`DISPUTED` / `OVERDUE` แปลว่ายังไม่ได้เงิน** — โค้ดรายงานของระบบเองยืนยัน
@@ -137,15 +139,15 @@ audit หายเงียบ ซึ่ง Phase 5 เพิ่งพิสู�
 `deletedAt: null` อยู่แล้ว ⇒ ยอดขาย/สรุปรายวัน/กำไรขาดทุน/ประกัน/สิทธิ์รีวิว หักใบที่ยกเลิก
 ออกให้เองโดยไม่ต้องเดินแก้ทีละที่
 
-**แต่มีผู้อ่าน 8 จุดที่ยังไม่กรอง — ต้องไล่ตรวจและเติมให้ครบเป็นส่วนหนึ่งของงานนี้**
-(สำรวจ 2026-08-22; หน้าต่างตรวจ 6 บรรทัด อาจมี false positive ที่ `where` อยู่ไกลกว่านั้น —
-ตอน implement ต้องเปิดดูทีละจุด):
+**ตาราง "8 จุดที่ยังไม่กรอง" ที่สำรวจไว้ 2026-08-22 — ผลตรวจจริงตอน implement (Task 4, 2026-08-23):
+ส่วนใหญ่เป็น false positive** ของหน้าต่างสำรวจ 6 บรรทัด (`where` อยู่ไกลกว่านั้น). ของจริง:
 
-| ไฟล์:บรรทัด | ต้องกรองไหม |
+| จุด | ผลตรวจจริง |
 |---|---|
-| `accounting/transactional-report.service.ts:400` | **ต้องกรอง** — รายงานบัญชี |
-| `sales/services/sales-query.service.ts:63, 76, 77, 81, 139, 194` | **ต้องกรอง** — รายการขาย/สรุปรายวัน/สินค้าขายดี (ยกเว้นจุดที่ตั้งใจให้เห็นใบยกเลิกผ่าน flag `includeVoided`) |
-| `utils/sequence.util.ts:45` | **ห้ามกรอง** — สร้างเลขที่ใบขาย ต้องนับใบที่ยกเลิกด้วย ไม่งั้นเลขซ้ำ |
+| `sales-query.service.ts` `findAll` (6 บรรทัดที่สำรวจ) | **กรองอยู่แล้ว** — `where` ก้อนเดียวใช้ร่วม findMany/count/aggregate/groupBy; เพิ่ม opt-out `includeVoided` ที่จุดสร้าง `where` จุดเดียว (summary ของหน้ารายการตอนเปิดสวิตช์จึงรวมใบยกเลิกด้วย — UI ติดป้ายเตือน). สรุปรายวัน/สินค้าขายดีกรองอยู่แล้ว ไม่มี opt-out |
+| `sales-query.service.ts` `findOne` | ทิศ**กลับ** — เคย**บล็อก**ใบที่ `deletedAt` ด้วย NotFound ⇒ แก้ให้เปิดดูได้ + คืน `voidReason`/`voidedBy {id,name}` (ไม่มีผู้เรียกพึ่ง NotFound) |
+| `accounting/transactional-report.service.ts` `getMonthlyPLSummary` | **ต้องกรองจริง 2 จุด** (revenue ≈384 + COGS ≈400) — เติมแล้ว; `sale.aggregate` อีก 4 จุด (balance sheet / cash flow) กรองอยู่แล้ว |
+| `utils/sequence.util.ts` `generateSaleNumber` | **ห้ามกรอง** — ใบยกเลิกยังถือเลข ไม่งั้นเลขซ้ำ (คอมเมนต์กำกับในโค้ดแล้ว) |
 
 **หน้าประวัติการขาย** มีสวิตช์ "แสดงใบที่ยกเลิกแล้ว" (ส่ง `includeVoided=true`) เพื่อตรวจย้อนหลัง
 — ใบที่ยกเลิกแสดงป้ายชัดเจน + เหตุผล + คนกด + เวลา
@@ -170,8 +172,15 @@ apps/web/src/pages/
 สร้าง 3 แบบ, void = กลับรายการ) และไฟล์ writer ใหญ่อยู่แล้ว (~530 บรรทัด)
 
 **Migration:** additive 2 คอลัมน์บน `sales` — `void_reason TEXT NULL`,
-`voided_by_id UUID NULL` (FK → `users`, `onDelete: Restrict` ตามกติกาหลักฐานทางการเงิน)
-เวลาที่ยกเลิก = `deletedAt` ที่มีอยู่แล้ว ไม่เพิ่มคอลัมน์ซ้ำ
+`voided_by_id TEXT NULL` (**แก้ 2026-08-23 จาก `UUID`** — `users.id` เป็น TEXT ตาม init migration,
+ประกาศ UUID = FK สร้างไม่ผ่าน; FK ห่อ `DO $$` ให้รันซ้ำได้) + `@@index([voidedById])`, `onDelete:
+Restrict` ตามกติกาหลักฐานทางการเงิน (`20261000000000_sale_void_fields`). เวลาที่ยกเลิก = `deletedAt`
+ที่มีอยู่แล้ว ไม่เพิ่มคอลัมน์ซ้ำ. **เพิ่มระหว่าง review:** `CommissionPayout.generatedAt`
+(`20261000100000_commission_payout_generated_at`, nullable) สำหรับ G4b.
+
+**Branch scope (เพิ่มตอน Task 4 review):** `BranchGuard` ไม่ scope route `/:id` ⇒ service รับ
+`VoidSaleActor { id, role, branchId }` ทั้งก้อน และปฏิเสธ BM ที่สาขาไม่ตรง (BM ไม่มี `branchId` =
+fail-closed). ไม่เพิ่ม guard ใหม่.
 
 ---
 
@@ -200,12 +209,42 @@ apps/web/src/pages/
 
 ## 7. เอกสารที่ต้องอัปเดตตอน implement
 
-1. `.claude/rules/database.md` — ย่อหน้า "คำตัดสินเจ้าของ 2026-08-22: ยอมรับช่องว่างไว้ก่อน"
-   **ต้องเขียนใหม่** เป็น "ทำแล้ว ดู spec นี้" (เจ้าของกลับคำตัดสินในวันเดียวกัน)
-2. `.claude/CLAUDE.md` — กล่อง "⚠ WIRING STATUS — DEFERRED" ที่อ้างว่า `ShopCashSaleTemplate`
-   มี **ZERO production callers** ล้าสมัยแล้ว (`sale-writer.service.ts` เรียกจริงตั้งแต่เมื่อไร
-   ต้องหาจาก git history ตอน implement) — แก้ให้ตรง ไม่งั้นคนอ่านจะสรุปผิดว่าการขายสดไม่ลง JE
-3. `.claude/rules/accounting.md` — เพิ่ม `shop-cash-sale-void` เข้าตาราง flow ของ JE
+ทำแล้วทั้งหมด 2026-08-23 (Task 7):
+
+1. ✅ `.claude/rules/database.md` — ย่อหน้า "ยอมรับช่องว่างไว้ก่อน" เขียนใหม่ + เติม void-sale ใน
+   รายการยกเว้นของ `product-enter-stock.util`
+2. ✅ กล่อง "⚠ WIRING STATUS — DEFERRED" **อยู่ใน `.claude/rules/accounting.md`** (ไม่ใช่
+   `CLAUDE.md` — CLAUDE.md โหลด rules เข้ามาจึงเห็นรวมกัน) — เติม stale note #2:
+   `ShopCashSaleTemplate` มี caller ตั้งแต่ 2026-06-23 (`3a3fb03c2`, PR #1285); `CLAUDE.md` ได้
+   pointer หนึ่งบรรทัดใน Important Notes
+3. ✅ `.claude/rules/accounting.md` — หัวข้อ "ยกเลิกใบขาย (void sale)" ครบ: flow
+   `shop-cash-sale-void`, **F1** (บั๊ก production เดิม: JE ต่อชิ้นชน `journal_entries_ref_unique` —
+   ขายสด+ของแถมมีต้นทุนสร้างไม่ได้ตั้งแต่ 2026-06-23, แก้ `e8d9a5246` reference =
+   `sale:<saleId>:<productId>`), G4b + `generatedAt`, restore-reset DRAFT, AuditLog actions, carries
+4. ✅ `.claude/rules/security.md` — กติกา branch scope บน route `/:id` เป็นหน้าที่ของ service
+
+---
+
+## 9. ยังเปิดอยู่หลัง implement (carries — ไม่ block merge)
+
+- `assertProductNotHeld` overloads ให้ `expectedStatus` บังคับ compile-time เฉพาะ `RESTORE_TO_STOCK`
+  (~4 บรรทัด ไม่แตะ caller เดิม) — ยังไม่ทำ
+- ternary ข้อความ G4b: `PayoutStatus` ค่าใหม่จะได้คำว่า "อนุมัติแล้ว" (cosmetic)
+- `approvePayout` READ COMMITTED race กับ void — ปิดบางส่วนด้วย restore-reset เป็น DRAFT
+  (`eed8a68e6`); ยก isolation เมื่อมีสัญญาณจริง
+- ค่าคอม `CLAWED_BACK` ไม่คืนยอดให้รอบ `APPROVED`/`PAID` (ไม่มีทางเกิดวันนี้ — G4b บล็อก) —
+  ทบทวนเมื่อมีเมนูแก้ไข/ยกเลิกรอบจ่าย
+- **ไม่มีเมนูยกเลิก/แก้ไขรอบจ่ายค่าคอม** (`PayoutStatus.CANCELLED` ไม่มี endpoint ตั้งได้) ⇒ ใบขายที่
+  ค่าคอมถูกนับในรอบ `APPROVED`/`PAID` ยกเลิกไม่ได้จนกว่าจะมี — ทางแก้ที่ถูกคือทำปุ่มยกเลิกรอบ
+  ไม่ใช่ผ่อนด่าน
+- SALES เห็นใบยกเลิก + เหตุผล + คนกด ผ่าน `findAll?includeVoided=true` (API เปิดทุก role อยู่ก่อน —
+  pre-existing, ไม่มี PII ใหม่)
+- G6: ออเดอร์ออนไลน์ยังไม่มีเส้นทางล้างสองฝั่ง (ออเดอร์ + ใบขาย + สินค้า + JE) — ข้อความบอกให้เจ้าของ
+  ตรวจก่อน
+- G5 "เครื่องถูกเปิดสัญญาต่อ" ไม่มีเคส integration (ตั้งฉากไม่ได้โดยไม่เขียน `product.status` ตรง) —
+  ครอบด้วย unit + `product-lifecycle.integration.spec.ts`
+- F2 (test-only): G4b เทียบ `commission.createdAt` (Prisma engine) กับ `generatedAt` (Node) — เทส
+  ใส่ `sleep(150)` กัน timer quantum บน Windows; บน prod ช่องว่างเป็นนาที/วัน
 
 ---
 

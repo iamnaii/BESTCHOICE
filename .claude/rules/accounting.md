@@ -671,6 +671,16 @@ Currently only inventory transfer uses paired wrapping; the existing FINANCE tem
 > 2026-06-11 — was **deleted outright** on 2026-08-01 (Inter-Co Settlement Batch, C2); it is
 > removed from the list above rather than left as a dangling reference to a class that no
 > longer exists. See "Inter-Co Settlement Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below.
+>
+> **Stale note #2 (2026-08-23 — void-sale Task 7):** `ShopCashSaleTemplate` is **ALSO wired**
+> and has been since **2026-06-23** (commit `3a3fb03c2`, PR #1285 — `sale-writer.service.ts`
+> `createCashSale` calls `execute()` once per product in the sale, bundle-aware). Cash POS sales
+> DO post SHOP JEs; do not read this box as "the cash sale does not hit the ledger". That wiring
+> shipped with a latent bug (F1 — per-piece JEs sharing one `reference`) that made every cash
+> sale with a cost-bearing bundle item fail outright until 2026-08-23; see "ยกเลิกใบขาย (void
+> sale)" below. The remaining genuinely-unwired templates in this list are
+> `ShopDownPaymentTemplate` / `ShopDownPaymentReversalTemplate` / `ShopTradeInTemplate` /
+> `ShopExpenseTemplate` (not re-verified 2026-08-23 — verify callers before relying on this).
 
 All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent via `metadata.flow + metadata.idempotencyKey` (DB-level partial unique index since P3-SP5 DEEP fix W8 — `journal_entries_idempotency_idx`).
 
@@ -678,7 +688,7 @@ All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent vi
 
 | Template | Trigger | Companies | Notes |
 |---|---|---|---|
-| `ShopCashSaleTemplate` | Sale w/ method=CASH | SHOP only | Dr cash / Cr revenue + Dr COGS / Cr inventory. No FINANCE involvement. |
+| `ShopCashSaleTemplate` | Sale w/ `saleType=CASH` (**LIVE** since 2026-06-23, `sale-writer.service.ts`) | SHOP only | Dr cash / Cr revenue + Dr COGS / Cr inventory. No FINANCE involvement. **One JE per (sale, product)** — bundle items get their own JE (skipped when allocated revenue = 0, e.g. zero-cost freebie). `productId` is a REQUIRED input; `reference = sale:<saleId>:<productId>`, `idempotencyKey = shop-cash-sale:<saleId>:<productId>`, `metadata.saleId` stamped (the void sweep key). F1 fix 2026-08-23 — see "ยกเลิกใบขาย (void sale)". |
 | `ShopDownPaymentTemplate` | Customer pays down at contract creation | SHOP only | Dr cash / Cr S21-2001 (down payable). Cleared by `ShopInventoryTransferTemplate` at activation (NOT by settlement — that's the C1 bug fixed). |
 | `ShopDownPaymentReversalTemplate` (W2) | Contract canceled BEFORE activation | SHOP only | Dr S21-2001 / Cr cash. Stamps `metadata.reversedByIdempotencyKey` onto the original down JE. |
 | `ShopInventoryTransferTemplate` | Contract activated (ownership SHOP→FINANCE) | SHOP only* | Posts TWO JEs in one `$transaction` sharing `metadata.batchId`: (A) Dr S50-XXXX / Cr S11-200X (COGS); (B) Dr S11-3001 + Dr S11-3002 + Dr S21-2001 / Cr S41-XXXX + Cr S41-1201 (revenue + receivables + down clearance). ASSERTS `financedAmount + downAmount === salePrice`. |
@@ -779,6 +789,149 @@ The existing `/expenses/ledger/trial-balance` and `/expenses/ledger/profit-loss`
 - SHOP-side payroll/SSO (handled at FINANCE level for now)
 - Historical migration of past SHOP transactions (forward-only)
 - SHOP-side balance sheet (Trial Balance + P&L only in SP5)
+
+---
+
+## ยกเลิกใบขาย (void sale — 2026-08-23)
+
+Spec: `docs/superpowers/specs/2026-08-22-void-sale-design.md` · Plan:
+`docs/superpowers/plans/2026-08-22-void-sale.md` · Service:
+`apps/api/src/modules/sales/services/sale-void.service.ts` · Endpoint `POST /sales/:id/void`
+(`@Roles('OWNER','BRANCH_MANAGER')`, DTO `{ reason }` ≥10 ตัวอักษร) · Integration:
+`apps/api/src/modules/sales/__tests__/sale-void.integration.spec.ts` (CI glob `SALES_FILES`).
+
+ที่มา: final review Phase 5 I-2 — เจ้าของกลับคำตัดสิน "ยอมรับช่องว่างไว้ก่อน" เป็น "ทำให้ถูกเลย"
+ในวันเดียวกัน (2026-08-22). คำตัดสิน **D1** ครอบ `CASH` + `EXTERNAL_FINANCE` เท่านั้น
+(`INSTALLMENT` ใช้เส้นทางยกเลิกสัญญา C-1/C-2 ตามเดิม) · **D2** บล็อกเมื่อ "เงินขยับจริง"
+ไม่จำกัดวัน · **D3** ขั้นเดียว OWNER + BM ไม่มี maker-checker.
+
+### Flow `shop-cash-sale-void` (mirror ของ `shop-cash-sale`)
+
+ไม่มี template class ใหม่ — `SaleVoidService` เรียก **sweep engine เดิม**
+(`ExchangeCancelReversalTemplate.reverse`) ด้วย `sweepBy: { path: 'saleId', value }` +
+`flowLabel: 'shop-cash-sale-void'` + `descriptionPrefix: '[ยกเลิกใบขาย]'` (selector `sweepBy`
+เพิ่มเข้า engine ใน void-sale Task 2 — ผู้เรียกเดิมที่ส่ง `contractId` ได้พฤติกรรมเดิม byte-identical).
+
+| เรื่อง | ค่าจริง |
+|---|---|
+| ใบที่ถูกกวาด | ทุก `JournalEntry` ที่ `metadata.saleId = <saleId>` + `status: POSTED` + `deletedAt: null` (= JE ทุกใบที่ `ShopCashSaleTemplate` โพสต์ให้ใบขายนั้น — หนึ่งใบต่อชิ้น); ใบขาย `EXTERNAL_FINANCE` ไม่มี JE ⇒ `reversalEntryNumbers = []` ไม่ throw |
+| mirror | สลับ Dr/Cr ทุกบรรทัด, `companyId` เดิม (SHOP), **ลงวันที่วันที่ยกเลิก** (`createAndPost` default `entryDate = postedAt = now`) |
+| metadata ของ mirror | `flow: 'shop-cash-sale-void'`, `idempotencyKey: 'shop-cash-sale-void:<jeId ต้นทาง>'`, `reversesEntryId`, `tag: 'REVERSAL'`; **จงใจไม่ carry `saleId`** — กัน sweep รอบถัดไปไปเจอ mirror ของตัวเอง (engine ข้ามใบที่ `flow === flowLabel` อยู่อีกชั้น) |
+| ใบต้นทาง | คง `POSTED` + stamp `reversed: true` / `reversedByEntryNumber` (pattern เดียวกับ `reverseBatch`) |
+| period guard | `createAndPost` **ไม่มี** period guard ⇒ service เรียก `validatePeriodOpen(tx, now, companyId)` เองต่อทุก `companyId` ของใบที่จะกวาด (G2) — เป็น no-op เกือบตลอดเพราะโพสต์วันนี้เสมอ ทำงานจริงเฉพาะปลาย grace window |
+| Isolation | `$transaction` Serializable ใบเดียวทั้งด่าน+เขียน; P2034 → 409 ไทย + `Sentry.captureMessage` warning เอง (`SentryExceptionFilter` จับเฉพาะ ≥500) |
+
+**ไม่มีใบลดหนี้** — SHOP ไม่จด VAT (ไม่มีภาระ ม.86/10 ต่างจากใบเสร็จ FINANCE). ไม่มีเอกสารคืนเงินแยก
+— mirror พาเงินสดออกจากบัญชี SHOP ให้แล้ว การส่งเงินคืนลูกค้าเป็นการกระทำหน้าร้าน.
+
+### F1 — บั๊ก production เดิมที่พบระหว่างทำ (แก้แล้ว `e8d9a5246`, 2026-08-23)
+
+PR #1285 (2026-06-23) ทำให้ `ShopCashSaleTemplate` โพสต์ **JE ต่อชิ้น** (bundle-aware) แต่ทุกใบยัง
+ใช้ `reference: sale:<saleId>` เดียวกัน ⇒ ชน partial unique index `journal_entries_ref_unique`
+(`(reference_type, reference_id) WHERE deleted_at IS NULL`, migration `20260428010000`) ที่ใบที่สอง
+⇒ P2002 → `runSaleTransaction` retry 3 รอบชนซ้ำ → **ขายสด+ของแถมที่มีต้นทุน > 0 สร้างใบขายไม่ได้เลย
+(raw 500 ที่ POS) ตั้งแต่วันนั้น**. รอดเฉพาะของแถม `costPrice = 0` (allocation ตามต้นทุน → revenue
+ของชิ้นนั้น = 0 → caller `continue` ไม่เรียก template). unit spec mock prisma จึงไม่เคยเห็น (index
+อยู่ระดับ DB) และ integration เดิมขายทีละชิ้น.
+
+แก้: `reference = sale:<saleId>:<productId>` + `productId` เป็น **input บังคับ** ของ template
+(ไม่มีผู้อ่าน prefix `sale:` ที่ไหน — เป็น provenance เขียนอย่างเดียว). sweep ของ void ไม่กระทบเพราะกวาดด้วย
+`metadata.saleId` ไม่ใช่ reference. ปักด้วย integration (ขายสด + ของแถมมีต้นทุน → สำเร็จ + JE 2 ใบ).
+
+### ด่าน (guards) — อ่านครบทุกข้อใน tx ก่อนเขียนอะไรทั้งสิ้น
+
+| ด่าน | อ่านอะไร | หมายเหตุ |
+|---|---|---|
+| G1 | `Sale.deletedAt` | idempotency — ใบที่ยกเลิกแล้วปฏิเสธพร้อมเวลา |
+| Branch scope | `Sale.branchId` vs `user.branchId` | **BM ยกเลิกได้เฉพาะสาขาตัวเอง** — `BranchGuard` ไม่ scope route ที่มีแต่ `:id` จึงบังคับใน service (precedent `contract-exchange-cancel.service.ts`); BM ที่ไม่มี `branchId` = fail-closed. OWNER ข้ามสาขาได้ |
+| D1 | `saleType` | `INSTALLMENT` → ชี้ไปเส้นทางยกเลิกสัญญา; ชนิดที่ไม่รู้จัก → reject (exclude-list) |
+| ข้อมูลเพี้ยน | `contractId` บนใบ CASH/EXTERNAL_FINANCE | reject (เดินต่อ = ทิ้งสัญญาลอย) |
+| G6 | `onlineOrderId` | reject — **ยังไม่มีเส้นทางล้างสองฝั่ง** (`cancelOrder` ไม่แตะ Sale/product/JE; `markRefunded` รับเฉพาะ `PAYMENT_RECEIVED_UNFULFILLABLE` ซึ่งโดยนิยามไม่มีใบขาย) ⇒ ข้อความบอกให้เจ้าของตรวจก่อน ไม่ชี้ประตูที่ไม่มีจริง |
+| G7 | `RepairTicket` ที่ `productId ∈ {หลัก, ของแถม}` และ `status notIn [CLOSED, CANCELLED, REPLACED]` | **`RepairTicket` ไม่มี `saleId`** (spec เดิมเขียนว่า "อ้างอิงใบขายนี้") จึงตรวจผ่าน `productId`; enum จริงคือ `RepairStatus` |
+| G5 | `assertProductNotHeld(tx, { ...p, expectedStatus }, 'RESTORE_TO_STOCK')` ทุกชิ้น | action ที่ 4 บน helper เดิม (ห้ามมีด่านชุดที่สอง). `expectedStatus` = `SOLD_CASH` (CASH) / `SOLD_INSTALLMENT` (EXTERNAL_FINANCE หลัก) — **ของแถมเป็น `SOLD_CASH` เสมอ** (`markBundleProductsSold` hardcode) จึงใบ EXTERNAL_FINANCE มีสองสถานะในใบเดียว. นับจำนวน product **ก่อน** วนด่าน |
+| G3 | `FinanceReceivable` ของใบ (ไม่ผูก saleType) | บล็อกเมื่อ `status ∈ {RECEIVED, PARTIALLY_RECEIVED}` **หรือ** `receivedAmount > 0` — allow-list ตาม D2 (`DISPUTED`/`OVERDUE` = ยังไม่ได้เงิน; สเปคเดิม `status != PENDING` ล็อกใบถาวร) |
+| G4 | `SalesCommission.status` | `CLAWABLE_COMMISSION_STATUSES = [PENDING, APPROVED]` เป็นตัวตัดสินสองงาน: ไม่อยู่ในลิสต์ (PAID / PARTIALLY_CLAWED_BACK / ค่าใหม่) = บล็อก, อยู่ = flip `CLAWED_BACK` |
+| **G4b** | `CommissionPayout` คู่ `(salespersonId, period)` ของค่าคอมที่เจอ | ดูหัวข้อถัดไป |
+| G2 | `validatePeriodOpen(tx, now, companyId)` ต่อ JE ที่จะกวาด | เฉพาะใบที่มี JE |
+
+### G4b — รอบจ่ายค่าคอม + `CommissionPayout.generatedAt` (migration `20261000100000`)
+
+มีสองเส้นทางจ่ายเงินอิสระกัน: `POST /commissions/:id/pay` เขียน `SalesCommission.status = PAID`
+(G4 เห็น) แต่ `PATCH /commissions/payouts/:id/paid` เขียน **เฉพาะ `CommissionPayout`** ไม่แตะค่าคอม
+(G4 บอด) ⇒ พนักงานรับเงินจริงแล้วค่าคอมยัง `PENDING`. รอบจ่ายผูกกับ `@@unique([salespersonId,
+period])` ไม่ใช่ `saleId`.
+
+| สถานะรอบจ่าย (`PayoutStatus`) | พฤติกรรม |
+|---|---|
+| `DRAFT` | **ไม่บล็อก** (คำตัดสินเจ้าของ 2026-08-23) + **soft-delete ร่างใน tx เดียวกัน** + audit `COMMISSION_PAYOUT_DRAFT_VOIDED` (entity `commission_payout`, `newValue` ระบุ saleNumber ที่เป็นเหตุ) |
+| `CANCELLED` | ไม่บล็อก ไม่ลบ (ยังไม่มี endpoint ใดตั้งค่านี้ได้ — รองรับไว้ล่วงหน้า) |
+| `APPROVED` / `PAID` / ค่าใหม่ | บล็อก (`UNPAID_PAYOUT_STATUSES = [DRAFT, CANCELLED]` เป็น exclude list) |
+
+- **ทำไมลบร่าง ไม่ใช่หักยอด:** `generatePayouts` ข้ามรอบที่ยังอยู่ (`if (existing &&
+  existing.deletedAt === null) continue`) ⇒ ปล่อยร่างไว้ = ยอดค้างเกินจริงถูกอนุมัติ/จ่ายตามยอดเก่า.
+  ลบแล้วกดสร้างใหม่ ขา `upsert.update` ตั้ง `deletedAt: null` + คำนวณใหม่ (ตัด `CLAWED_BACK` เอง).
+  **ห้าม `totalCommission -= commissionAmount`** — รอบที่ generate **ก่อน** ค่าคอมใบนี้เกิดไม่เคยนับ
+  ใบนี้ ⇒ หักยอด = จ่ายพนักงานขาด (มีเทสปัก).
+- **นับเฉพาะรอบที่ครอบค่าคอมใบนี้จริง:** `commission.createdAt <= payout.generatedAt`.
+  `generatePayouts` stamp `generatedAt = new Date()` **ทั้งขา create และขา update** ของ upsert.
+  **ห้ามใช้ `payout.createdAt`** — ขา restore หลัง soft-delete คำนวณยอดใหม่แต่ `createdAt` ยังเป็น
+  ของรอบเดิม. `generatedAt = null` (แถวยุคก่อนคอลัมน์) = พิสูจน์ไม่ได้ ⇒ **ถือว่าครอบไว้ก่อน**
+  (fail-closed).
+- **ขา restore reset เป็น `DRAFT` เสมอ** (Task 4 carry, commit `eed8a68e6`): `upsert.update`
+  ตั้ง `status: 'DRAFT', approvedById: null, approvedAt: null, paidById: null, paidAt: null` —
+  ไม่งั้น `approvePayout` (READ COMMITTED) ที่ชนกับ void แล้ว generate ใหม่ จะทำให้รอบที่ฟื้นเป็น
+  `APPROVED` โดยไม่ผ่านอนุมัติซ้ำ. ปิด race ได้ **บางส่วน** (ดู "ยังเปิดอยู่").
+
+### สิ่งที่เขียน (หลังผ่านทุกด่าน, ลำดับในโค้ด)
+
+1. product หลัก + ของแถม → `IN_STOCK` (**จงใจไม่ผ่าน `product-enter-stock.util`** — คลาสยกเว้นเดียว
+   กับเส้นทางยกเลิกสัญญา/เปลี่ยนเครื่อง: ตอนขายบังคับ `IN_STOCK` มาก่อนและไม่มี flow แตะราคาระหว่างขาย;
+   ดู `.claude/rules/database.md`). คิวจองที่ `preemptReservationsInTx` ตัดตอนขาย **ไม่ถูกคืน** (ข้อจำกัด
+   ที่ยอมรับ spec §1)
+2. sweep JE (ด้านบน)
+3. `FinanceReceivable` → `deletedAt` (G3 การันตีว่ายังไม่มีเงินเข้า)
+4. `SalesCommission` → `CLAWED_BACK` · 4b. ร่างรอบจ่ายที่ครอบ → `deletedAt` + audit
+5. `Sale` → `deletedAt = now`, `voidReason`, `voidedById` (migration `20261000000000_sale_void_fields`;
+   `voided_by_id TEXT` เพราะ `users.id` เป็น TEXT) — ไม่มีสถานะ `VOIDED` แยก
+6. `AuditLog { action: 'SALE_VOIDED', entity: 'sale' }` ผ่าน `tx.auditLog.create` (atomic; ห้าม
+   `AuditService.log` ใน tx)
+
+### ผู้อ่าน `Sale` หลัง void (ใช้ `deletedAt` เป็นตัวกรอง)
+
+- `findAll` (`sales-query.service.ts`) กรอง `deletedAt: null` ที่จุดสร้าง `where` จุดเดียว (ครอบ
+  list/count/aggregate/groupBy ⇒ summary ด้วย) — opt-out ผ่าน `?includeVoided=true` (หน้าประวัติ
+  การขายมีสวิตช์ + ป้ายเตือนว่ายอดสรุปรวมใบยกเลิก). สรุปรายวัน/สินค้าขายดี **ไม่มี** opt-out.
+- `findOne` **เคยบล็อกใบที่ `deletedAt` ด้วย NotFound** → ตอนนี้เปิดดูได้ + คืน `voidReason`/
+  `voidedBy {id,name}` (ยืนยันแล้วไม่มีผู้เรียกพึ่ง NotFound).
+- `getMonthlyPLSummary` (`transactional-report.service.ts`) เติม `deletedAt: null` 2 จุด (revenue +
+  COGS); `sale.aggregate` ใน balance sheet / cash flow กรองอยู่แล้ว.
+- `generateSaleNumber` (`sequence.util.ts`) **ห้ามกรอง** — ใบที่ยกเลิกยังถือเลข ไม่งั้นเลขซ้ำ.
+- ตาราง "8 จุดที่ยังไม่กรอง" ใน spec §4 ส่วนใหญ่เป็น false positive ของหน้าต่างสำรวจ 6 บรรทัด —
+  ของจริงที่ต้องแก้คือ `findOne` (ทิศกลับ) + `getMonthlyPLSummary` 2 จุด.
+
+### AuditLog actions (String ธรรมดา)
+
+| Action | Entity | เขียนที่ | `newValue` |
+|---|---|---|---|
+| `SALE_VOIDED` | `sale` | `SaleVoidService.run` (ใน tx) | saleNumber, saleType, netAmount, reason, restoredProductIds, reversalEntryNumbers, commissionIds, financeReceivableId, voidedDraftPayoutIds |
+| `COMMISSION_PAYOUT_DRAFT_VOIDED` | `commission_payout` | เดียวกัน (หนึ่งแถวต่อร่างที่ถูกลบ) | period, salespersonId, saleId, saleNumber, reason |
+
+### ยังเปิดอยู่ (carries — ไม่ block merge)
+
+- `assertProductNotHeld` overloads เพื่อให้ `expectedStatus` บังคับระดับ compile-time เฉพาะ action
+  `RESTORE_TO_STOCK` โดยไม่แตะ caller เดิม (~4 บรรทัด) — ยังไม่ทำ
+- ternary ข้อความ G4b: `PayoutStatus` ค่าใหม่ในอนาคตจะได้คำว่า "อนุมัติแล้ว" (cosmetic)
+- `approvePayout` ยังเป็น READ COMMITTED — race กับ void ปิดได้บางส่วนด้วย restore-reset เท่านั้น
+  (รอสัญญาณจริงก่อนยก isolation — หลักเดียวกับ P2034 ที่เส้นทางรับชำระ)
+- ค่าคอม `CLAWED_BACK` ไม่คืนยอดให้รอบ `APPROVED`/`PAID` — ไม่มีทางเกิดวันนี้เพราะถูกบล็อก แต่ถ้ามี
+  เมนูแก้ไข/ยกเลิกรอบจ่ายในอนาคต ต้องทบทวนพร้อมกัน
+- ไม่มีเมนูยกเลิก/แก้ไขรอบจ่ายค่าคอม (`PayoutStatus.CANCELLED` ไม่มีใครตั้งได้) — ใบขายที่ค่าคอมถูกนับ
+  ในรอบ `APPROVED`/`PAID` ยกเลิกไม่ได้จนกว่าจะมี; ข้อความบอกความจริงข้อนี้ตรง ๆ
+- SALES เห็นใบยกเลิก + เหตุผล + คนกด ผ่าน `findAll?includeVoided=true` (API `findAll` เปิดทุก role
+  อยู่ก่อนแล้ว — pre-existing, ไม่มี PII ใหม่)
+- G6 ออเดอร์ออนไลน์ยังไม่มีเส้นทางล้างสองฝั่ง (ดูตารางด่าน)
+- G5 "เครื่องถูกเปิดสัญญาต่อ" ไม่มีเคสใน integration (ตั้งฉากได้ทางเดียวคือเขียน `product.status` ตรง
+  ซึ่งไฟล์ห้าม) — ครอบด้วย unit + `product-lifecycle.integration.spec.ts`
 
 ---
 

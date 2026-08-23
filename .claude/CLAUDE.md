@@ -364,6 +364,7 @@ scripts/                      # Existing project scripts
 
 ## Important Notes
 - `BranchReceivingPage.tsx` is superseded — `/stock/branch-receiving` redirects to `/stock/transfers?view=incoming`.
+- **ยกเลิกใบขาย (void sale, 2026-08-23)**: `POST /sales/:id/void` (OWNER / BM สาขาตัวเอง) สำหรับ `CASH` + `EXTERNAL_FINANCE` — กติกาเต็มใน `.claude/rules/accounting.md` หัวข้อ "ยกเลิกใบขาย (void sale)"; `ShopCashSaleTemplate` **มี production caller** (`sale-writer.service.ts` ตั้งแต่ 2026-06-23) — กล่อง "WIRING STATUS — DEFERRED" ใน accounting.md มี stale note กำกับแล้ว อย่าอ่านว่าการขายสดไม่ลง JE
 - **Environment variables**: see `.env.example` for full list
 - **CI/CD**: `.github/workflows/deploy.yml` — auto-deploy on push to `main`
 - **Database backups**: ใช้ Cloud SQL automated backups + PITR ของ GCP (managed, encrypted at rest). ไม่มี script-based backup แล้ว — `scripts/backup.sh` ลบไปใน 2026-04-09 เพราะเป็น legacy จากตอน self-hosted

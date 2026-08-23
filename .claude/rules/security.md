@@ -14,6 +14,18 @@
 - Reference: `apps/api/src/modules/auth/guards/` (JwtAuthGuard, RolesGuard)
 - Global guards อยู่ที่: `apps/api/src/guards/` (CsrfGuard, UserThrottlerGuard)
 
+## Branch scope บน route ที่มีแต่ `:id` — หน้าที่ของ service ไม่ใช่ guard
+
+`BranchGuard` (`apps/api/src/modules/auth/guards/branch.guard.ts`) ทำงาน**เฉพาะ** request ที่มี
+`branchId` ใน params/query/body — route รูป `/:id` (เช่น `GET /sales/:id`, `POST /sales/:id/void`)
+ไม่มีให้ตรวจ guard จึงปล่อยผ่านเสมอ (doc ของ guard เองระบุว่า "the service layer is expected to
+scope by `user.branchId`"). ⇒ mutating route ที่ BRANCH_MANAGER เข้าถึงได้ต้องบังคับขอบเขตสาขาใน
+service เอง: อ่าน `branchId` ของ entity ใน tx แล้ว `ForbiddenException` เมื่อ
+`role === 'BRANCH_MANAGER' && entity.branchId !== user.branchId` — BM ที่ไม่มี `branchId` ติดตัว
+= **fail-closed** (เข้าเงื่อนไขเดียวกัน). ส่ง `@CurrentUser()` ทั้งก้อนเข้า service (ไม่ใช่แค่ `id`).
+Precedent: `contract-exchange-cancel.service.ts`, `SaleVoidService` (`VoidSaleActor`, 2026-08-23).
+Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.ts`) ผ่านตามเดิม.
+
 ## Global Security (ห้ามปิดหรือ bypass)
 - **ThrottlerGuard** — จำกัด 200 req/sec
 - **CsrfGuard** — ป้องกัน CSRF สำหรับ mutating endpoints

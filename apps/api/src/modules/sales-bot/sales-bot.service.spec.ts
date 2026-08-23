@@ -7,6 +7,8 @@ import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool } from './tools/capture-lead.tool';
 import { GetInstallmentRatesTool } from './tools/get-installment-rates.tool';
 import { SearchKnowledgeBaseTool } from './tools/search-knowledge-base.tool';
+import { RecommendDevicesTool } from './tools/recommend-devices.tool';
+import { CompareDevicesTool } from './tools/compare-devices.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import { PersonaService } from '../staff-chat/services/persona.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
@@ -29,6 +31,8 @@ describe('SalesBotService', () => {
     const captureLead = { run: jest.fn() };
     const getInstallmentRates = { run: jest.fn() };
     const searchKnowledgeBase = { run: jest.fn() };
+    const recommendDevices = { run: jest.fn() };
+    const compareDevices = { run: jest.fn() };
     const persona = {
       getBase: jest.fn().mockResolvedValue('test-base'),
       getBotExtras: jest.fn().mockResolvedValue('-extras'),
@@ -48,6 +52,8 @@ describe('SalesBotService', () => {
         { provide: CaptureLeadTool, useValue: captureLead },
         { provide: GetInstallmentRatesTool, useValue: getInstallmentRates },
         { provide: SearchKnowledgeBaseTool, useValue: searchKnowledgeBase },
+        { provide: RecommendDevicesTool, useValue: recommendDevices },
+        { provide: CompareDevicesTool, useValue: compareDevices },
         { provide: PersonaService, useValue: persona },
         { provide: AiUsageService, useValue: aiUsage },
       ],
@@ -63,6 +69,8 @@ describe('SalesBotService', () => {
       captureLead,
       getInstallmentRates,
       searchKnowledgeBase,
+      recommendDevices,
+      compareDevices,
       aiUsage,
     };
   }
@@ -218,6 +226,8 @@ describe('SalesBotService', () => {
       {} as any,
       {} as any, // GetInstallmentRatesTool — unused by the private estimateConfidence path
       {} as any, // SearchKnowledgeBaseTool — unused by the private estimateConfidence path
+      {} as any, // RecommendDevicesTool — unused
+      {} as any, // CompareDevicesTool — unused
       {} as any, // PersonaService — unused by the private estimateConfidence path
       {} as any, // AiUsageService
     );

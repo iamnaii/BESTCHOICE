@@ -22,6 +22,8 @@ import { HANDOFF_TO_HUMAN_TOOL } from '../modules/sales-bot/tools/handoff-to-hum
 import { CAPTURE_LEAD_TOOL } from '../modules/sales-bot/tools/capture-lead.tool';
 import { GET_INSTALLMENT_RATES_TOOL } from '../modules/sales-bot/tools/get-installment-rates.tool';
 import { SEARCH_KNOWLEDGE_BASE_TOOL } from '../modules/sales-bot/tools/search-knowledge-base.tool';
+import { RECOMMEND_DEVICES_TOOL } from '../modules/sales-bot/tools/recommend-devices.tool';
+import { COMPARE_DEVICES_TOOL } from '../modules/sales-bot/tools/compare-devices.tool';
 
 const MODEL = process.env.EVAL_MODEL ?? 'claude-sonnet-5';
 const EFFORT = (process.env.EVAL_EFFORT ?? 'medium') as 'low' | 'medium' | 'high';
@@ -52,6 +54,43 @@ const RATES_15PLUS = {
       rate2: { downPayment: 3600, monthlyPrice: 3105, termMonths: 12 },
     },
   ],
+};
+
+// recommend_devices / compare_devices จำลอง: ลูกค้าใช้ iPhone 12 → แนะนำ 13/14 128GB มือสอง (นโยบายเทิร์น ≥12)
+// (ตัวเลขดาวน์/ผ่อนต้องอยู่ใน GROUNDED ด้านล่าง; สเปคประโยคเลียน compareDevices ของจริง)
+const TRADE_IN_11 = { model: 'iPhone 12', estimateThb: 3500, note: 'ราคาประมาณ ประเมินจริงหน้าร้าน สภาพมีผลต่อราคา' };
+const BETTER_11_TO_13 = ['ชิป A14 → A15 เร็วขึ้นอีกนิด', 'แบตนานขึ้น ~2 ชม.', 'อัปเดต iOS ได้อีกหลายปี'];
+const BETTER_11_TO_14 = ['ชิป A14 → A15 เร็วขึ้นอีกนิด', 'แบตนานขึ้น ~3 ชม.', 'อัปเดต iOS ได้อีกหลายปี'];
+const RECOMMEND_FROM_11 = {
+  current: { model: 'iPhone 12', recognized: true },
+  budget: { down: 3000, monthly: 2000 },
+  recommended: [
+    {
+      brand: 'Apple', model: 'iPhone 13', storage: '128GB', hasWarranty: false, condition: 'มือสอง',
+      rateLabel: 'เรทที่ 2', downPayment: 2500, monthlyPrice: 1758, termMonths: 12,
+      inStock: true, unitCount: 1,
+      sampleUnit: { productId: 'p13', batteryHealth: 89, color: 'ดำ', photoUrl: null },
+      betterThanCurrent: BETTER_11_TO_13, worseThanCurrent: [], generationGap: 1,
+    },
+    {
+      brand: 'Apple', model: 'iPhone 14', storage: '128GB', hasWarranty: false, condition: 'มือสอง',
+      rateLabel: 'เรทที่ 2', downPayment: 3000, monthlyPrice: 1980, termMonths: 12,
+      inStock: true, unitCount: 1,
+      sampleUnit: { productId: 'p14', batteryHealth: 90, color: 'ฟ้า', photoUrl: null },
+      betterThanCurrent: BETTER_11_TO_14, worseThanCurrent: [], generationGap: 2,
+    },
+  ],
+  nearMiss: [],
+  tradeIn: TRADE_IN_11,
+};
+const COMPARE_11_TO_15 = {
+  current: { model: 'iPhone 12', recognized: true },
+  candidate: { model: 'iPhone 15', recognized: true },
+  better: ['กล้องหลัก 12MP → 48MP คมชัดขึ้นมาก', 'ชิป A14 → A16 เร็วขึ้นชัดเจน', 'แบตนานขึ้น ~3 ชม.', 'อัปเดต iOS ได้ยาว ๆ อีกหลายปี'],
+  same: ['กล้องหลัง 2 ตัวเท่าเดิม', 'จอขนาด 6.1" เท่าเดิม'],
+  worse: [],
+  generationGap: 3,
+  tradeIn: TRADE_IN_11,
 };
 
 function group(units: (typeof UNITS)[keyof typeof UNITS][]) {
@@ -101,6 +140,13 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
       }
       return { matches: [] };
     }
+    case 'recommend_devices': {
+      const cur = String(input.currentModel ?? '');
+      const current = cur ? { model: 'iPhone 12', recognized: /12/.test(cur) } : null;
+      return { ...RECOMMEND_FROM_11, current, budget: { down: Number(input.downBudget ?? 0) || null, monthly: Number(input.monthlyBudget ?? 0) || null }, tradeIn: current?.recognized ? TRADE_IN_11 : null };
+    }
+    case 'compare_devices':
+      return COMPARE_11_TO_15;
     case 'capture_lead':
       return { customerId: 'eval-c1', promptPayQr: null, downAmount: Number(input.downAmount ?? 0), handoffMessage: 'ทีมงานจะเช็คเอกสารแล้วติดต่อกลับไปนะคะ ยังไม่ต้องโอนอะไรทั้งนั้นค่ะ' };
     case 'handoff_to_human':
@@ -111,7 +157,9 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
 }
 
 // เลขที่ "มีที่มา" — เลียนแบบ GroundingGuard: เลข >=500 ในคำตอบต้องอยู่ในชุดนี้ (±5%)
-const GROUNDED = [17500, 19900, 13900, 1750, 1578, 1990, 1790, 1390, 1245, 1900, 2566, 3400, 2905, 2766, 3600, 3105, 20686, 23470, 16330, 3000, 2000];
+const GROUNDED = [17500, 19900, 13900, 1750, 1578, 1990, 1790, 1390, 1245, 1900, 2566, 3400, 2905, 2766, 3600, 3105, 20686, 23470, 16330, 3000, 2000,
+  // recommend_devices / compare_devices fixtures (ดาวน์ 2,500 ผ่อน 1,758 / ดาวน์ 3,000 ผ่อน 1,980 / เทิร์น 4,000)
+  2500, 1758, 1980, 3500];
 
 // ───────────────────────── checks ─────────────────────────
 type Turn = { user: string; expectTools?: string[]; forbidTools?: string[]; contains?: string[]; notContains?: string[]; wantButtons?: boolean; noBigNumbers?: boolean };
@@ -160,7 +208,10 @@ function globalChecks(reply: string): string[] {
   const visible = reply.replace(/\n---\n/g, '').replace(/\[ตัวเลือก:[^\]]*\]/g, '').trim();
   // เทิร์นที่มีการ์ดเทียบ 2 ใบ (+สคริปต์บังคับบางเคส) ยาวกว่าโดยธรรมชาติ แต่ยังกวาดตาได้
   const totalCards = (reply.match(/ดาวน์[^\n]*ผ่อนเดือนละ/g) ?? []).length;
-  const totalCap = totalCards >= 2 ? 430 : 380;
+  // v5.2: เทิร์นแนะนำอัปเกรด = 2 การ์ด (4 บรรทัด) + เทิร์น 2 บรรทัด + คำถาม — แยก 3 ก้อนแล้วอ่านง่าย
+  // ยอมให้ 470 เฉพาะเมื่อมีบรรทัด "ดีกว่า ...:" (ไม่ใช่ผ่อนคลายเพดานทั่วไป)
+  const hasUpgradeLines = /^ดีกว่า .*:/m.test(reply);
+  const totalCap = totalCards >= 2 ? (hasUpgradeLines ? 470 : 430) : 380;
   if (visible.length > totalCap) {
     fails.push(`ทั้งเทิร์นยาว ${visible.length} ตัวอักษร (เพดาน ${totalCap})`);
   }
@@ -195,11 +246,28 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
-    id: 'S3', name: 'แนะนำตามงบ → การ์ดสั้น ไม่มีราคาเต็มนำ',
+    // v5.2 (เจ้าของสั่ง 2026-08-23): ขอแนะนำ → ถาม "รุ่นที่ใช้อยู่" ก่อนงบ → recommend_devices ครั้งเดียว
+    id: 'S3', name: 'แนะนำตามงบ → ถามรุ่นที่ใช้อยู่ก่อน → การ์ดสั้นจาก recommend_devices',
     turns: [
-      { user: 'แนะนำหน่อย ไม่รู้จะเอารุ่นไหน', noBigNumbers: true },
-      { user: 'ดาวน์ไม่เกิน 3000', noBigNumbers: true },
-      { user: 'ผ่อนเดือนละไม่เกิน 2000', expectTools: ['calculate_installment'], contains: ['ดาวน์', 'ผ่อนเดือนละ'], notContains: ['17,500', '19,900', '13,900'] },
+      { user: 'แนะนำหน่อย ไม่รู้จะเอารุ่นไหน', contains: ['รุ่นไหนอยู่'], noBigNumbers: true, forbidTools: ['recommend_devices'] },
+      { user: 'ใช้ 12 อยู่', noBigNumbers: true, forbidTools: ['recommend_devices'] },
+      { user: 'ดาวน์ไม่เกิน 3000 ผ่อนเดือนละไม่เกิน 2000', expectTools: ['recommend_devices'], forbidTools: ['search_products', 'calculate_installment'], contains: ['ดาวน์', 'ผ่อนเดือนละ', 'ดีกว่า'], notContains: ['17,500', '19,900', '13,900'] },
+    ],
+  },
+  {
+    // v5.2: การ์ดต้องบอก "ดีกว่าเครื่องเดิม" จาก tool + เสนอเทิร์นเป็น "ประมาณ" + "ประเมินจริงที่ร้าน"
+    id: 'S9', name: 'อัปเกรดจาก 12 → ดีกว่ายังไง (จาก tool) + เทิร์นเครื่องเดิมแบบ "ประมาณ"',
+    turns: [
+      { user: 'ตอนนี้ใช้ไอโฟน 12 อยู่ อยากเปลี่ยนเครื่อง งบดาวน์ 3000 ผ่อนไม่เกิน 2000', expectTools: ['recommend_devices'],
+        contains: ['ดีกว่า 12:', 'A15', 'เทิร์น', 'ประมาณ', 'ประเมินจริงที่ร้าน', '3,500', '2,500', '1,758'],
+        notContains: ['48MP', '120Hz', 'USB-C', 'Dynamic Island', '5G'] },
+    ],
+  },
+  {
+    // v5.2: ถาม "ดีกว่าที่ใช้อยู่ยังไง" กับรุ่นที่ระบุเอง → compare_devices (ห้ามเดาสเปคจากความจำ)
+    id: 'S10', name: 'เทียบรุ่นที่สนใจกับเครื่องที่ใช้อยู่ → compare_devices',
+    turns: [
+      { user: 'ใช้ 12 อยู่ ถ้าเปลี่ยนเป็น 15 ดีกว่ายังไงบ้าง', expectTools: ['compare_devices'], contains: ['48MP', 'A16'], notContains: ['ProMotion', '120Hz', 'ไทเทเนียม', '5G'] },
     ],
   },
   {
@@ -273,6 +341,7 @@ async function loadPersona(): Promise<string> {
 const TOOLS = [
   SEARCH_PRODUCTS_TOOL, CALCULATE_INSTALLMENT_TOOL, LIST_PROMOTIONS_TOOL,
   HANDOFF_TO_HUMAN_TOOL, CAPTURE_LEAD_TOOL, GET_INSTALLMENT_RATES_TOOL, SEARCH_KNOWLEDGE_BASE_TOOL,
+  RECOMMEND_DEVICES_TOOL, COMPARE_DEVICES_TOOL,
 ].map((t: { name: string; description: string; input_schema?: unknown; inputSchema?: unknown }) => ({
   name: t.name,
   description: t.description,
@@ -315,10 +384,11 @@ async function main() {
   console.log(`bot-eval: model=${MODEL} effort=${EFFORT} persona=${system.length.toLocaleString()} chars\n`);
   const client = new Anthropic();
   const only = process.env.EVAL_ONLY;
+  const onlyIds = only ? new Set(only.split(',').map((x) => x.trim())) : null;
   let totalChecks = 0, totalFails = 0;
 
   for (const sc of SCENARIOS) {
-    if (only && sc.id !== only) continue;
+    if (onlyIds && !onlyIds.has(sc.id)) continue;
     console.log(`━━ ${sc.id}: ${sc.name}`);
     // fidelity เท่ากับ prod: ประวัติข้ามเทิร์นเก็บเฉพาะ "ข้อความ" (ai-auto-reply สร้าง
     // priorMessages จาก chat_messages) — ผล tool ของเทิร์นก่อนหายไป บอทต้องเรียกใหม่เอง
@@ -343,7 +413,7 @@ async function main() {
         totalFails++;
         console.log(`  ✗ "${turn.user}" (tools: ${toolsUsed.join(',') || '-'})`);
         fails.forEach((f) => console.log(`      - ${f}`));
-        console.log(`      ↳ reply: ${text.replace(/\n/g, ' / ').slice(0, 300)}`);
+        console.log(`      ↳ reply: ${text.replace(/\n/g, ' / ').slice(0, 900)}`);
       } else {
         console.log(`  ✓ "${turn.user}" (tools: ${toolsUsed.join(',') || '-'})`);
       }

@@ -314,3 +314,47 @@ describe('CaptureLeadTool — ลูกค้าเดิมให้เบอ�
     }));
   });
 });
+
+describe('CaptureLeadTool — สวิตช์ช่วงทดสอบ shop_bot_lead_handoff_enabled', () => {
+  let tool: CaptureLeadTool;
+  let prisma: any;
+  let txClient: any;
+  beforeEach(async () => {
+    txClient = {
+      customer: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'c-new' }), update: jest.fn() },
+      chatRoom: { update: jest.fn() },
+      auditLog: { create: jest.fn() },
+    };
+    prisma = {
+      $transaction: jest.fn((fn) => fn(txClient)),
+      chatRoom: { findUnique: jest.fn().mockResolvedValue({ id: 'room-1', customerId: null, lineUserId: null, channel: 'FACEBOOK' }) },
+      systemConfig: { findMany: jest.fn() },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'sys' }) },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [CaptureLeadTool, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    tool = mod.get(CaptureLeadTool);
+  });
+  const input = { roomId: 'room-1', customerName: 'ฝน', phone: '0800000000', downAmount: 3200 } as any;
+
+  it("= 'false' → เก็บ lead + audit ตามปกติ แต่ไม่ปักธง handoff (บอทคุยต่อได้)", async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_central_branch_id', value: 'b1' },
+      { key: 'shop_bot_lead_handoff_enabled', value: 'false' },
+    ]);
+    await tool.run(input);
+    const data = txClient.chatRoom.update.mock.calls[0][0].data;
+    expect(data.customerId).toBe('c-new');
+    expect(data.handoffMode).toBeUndefined();
+    expect(txClient.auditLog.create).toHaveBeenCalled();
+  });
+
+  it('ไม่มีแถว → ปักธง handoff ตามดีไซน์ (ค่า go-live)', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([{ key: 'shop_bot_central_branch_id', value: 'b1' }]);
+    await tool.run(input);
+    const data = txClient.chatRoom.update.mock.calls[0][0].data;
+    expect(data.handoffMode).toBe(true);
+    expect(data.handoffReason).toBe('lead_captured');
+  });
+});

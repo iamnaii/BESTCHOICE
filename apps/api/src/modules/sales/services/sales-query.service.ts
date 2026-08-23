@@ -78,6 +78,9 @@ export class SalesQueryService {
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
           contract: { select: { id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true } },
+          // ชื่อผู้ยกเลิก — หน้ารายการแสดงบนแถวที่ถูกยกเลิกเมื่อเปิด includeVoided
+          // (deletedAt / voidReason เป็น scalar มากับ include อยู่แล้ว)
+          voidedBy: { select: { id: true, name: true } },
         },
       }),
       this.prisma.sale.count({ where }),

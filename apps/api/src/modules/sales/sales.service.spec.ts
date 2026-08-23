@@ -257,6 +257,12 @@ describe('SalesService', () => {
       expect(where.deletedAt).toBeUndefined();
     });
 
+    it('รายการดึง voidedBy มาด้วย ให้หน้าจอแสดงชื่อผู้ยกเลิกบนแถวที่เปิด includeVoided', async () => {
+      await service.findAll({ includeVoided: true });
+      const include = prisma.sale.findMany.mock.calls[0][0].include;
+      expect(include.voidedBy).toEqual({ select: { id: true, name: true } });
+    });
+
     it('filters by saleType when provided', async () => {
       await service.findAll({ saleType: 'CASH' });
       const where = prisma.sale.findMany.mock.calls[0][0].where;

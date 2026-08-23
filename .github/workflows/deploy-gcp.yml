@@ -43,7 +43,8 @@ jobs:
     # Fail fast if a DB-backed spec hangs (the suite normally finishes in
     # ~5 min) instead of burning the default 6h job limit then auto-cancelling.
     timeout-minutes: 25
-    if: github.event_name == 'pull_request'
+    # รันทั้งบน PR และบน push main — deploy ต้องผ่านด่านนี้ก่อนเสมอ (คำสั่งเจ้าของ 2026-08-23)
+    # เดิม `if: pull_request` ทำให้ merge แบบ admin ทั้งที่เทสแดงแล้ว deploy ขึ้น prod ได้ทันที
 
     services:
       postgres:
@@ -231,6 +232,7 @@ jobs:
   build-and-push-api:
     name: Build & Push API Image
     runs-on: ubuntu-latest
+    needs: lint-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     outputs:
@@ -384,6 +386,7 @@ jobs:
             --set-env-vars="\
           TZ=Asia/Bangkok,\
           NODE_ENV=production,\
+          LOG_FORMAT=json,\
           SMTP_HOST=smtp.resend.com,\
           SMTP_PORT=465,\
           SMTP_USER=resend,\
@@ -454,6 +457,7 @@ jobs:
   deploy-web:
     name: Deploy Web to Firebase Hosting
     runs-on: ubuntu-latest
+    needs: lint-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:

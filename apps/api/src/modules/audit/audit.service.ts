@@ -23,6 +23,36 @@ export class AuditService {
   constructor(private prisma: PrismaService) {}
 
   /**
+   * รูปแบบ hash รุ่น 2 — ขึ้นต้น `v2:` ใน rowHash.
+   *
+   * รุ่น 1 hash จาก `JSON.stringify(object ตอนเขียน)` แต่ Postgres jsonb เก็บ key เรียงใหม่
+   * (สั้นก่อน แล้วเรียงไบต์) ⇒ อ่านกลับมาแล้ว stringify ได้คนละสตริง ⇒ แถวที่มี JSON object
+   * ตรวจไม่ผ่านทั้งหมด (prod 2026-08-23: 1,752/2,865 แถว "broken" โดยไม่มีใครแก้อะไร
+   * และ cron ร้อง fatal ทุกคืนตั้งแต่ seq=1). รุ่น 2 จึง canonicalize ทั้งสองฝั่งด้วย
+   * `canonicalJson` (round-trip ผ่าน JSON ก่อนให้ Decimal/Date/undefined กลายเป็นรูปเดียวกับที่
+   * jsonb คืน แล้วเรียง key แบบคงที่) — แถวรุ่น 1 ที่มีอยู่ตรวจย้อนหลังไม่ได้โดยโครงสร้าง
+   * (รูปตอนเขียนหายไปแล้ว) verifier จึงนับแยกเป็น "legacy ตรวจไม่ได้" ไม่ใช่ "ถูกแก้"
+   */
+  static readonly HASH_VERSION_PREFIX = 'v2:';
+
+  /** JSON ที่เสถียรข้ามการเก็บใน jsonb: round-trip ก่อน แล้วเรียง key ทุกชั้น */
+  static canonicalJson(value: unknown): string {
+    const roundTripped: unknown = value === undefined ? null : JSON.parse(JSON.stringify(value));
+    const sortKeys = (v: unknown): unknown => {
+      if (Array.isArray(v)) return v.map(sortKeys);
+      if (v && typeof v === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const k of Object.keys(v as Record<string, unknown>).sort()) {
+          out[k] = sortKeys((v as Record<string, unknown>)[k]);
+        }
+        return out;
+      }
+      return v;
+    };
+    return JSON.stringify(sortKeys(roundTripped));
+  }
+
+  /**
    * Canonical hash input string used to seal a row into the chain.
    * Order matters — never reorder, never drop fields, or backfill breaks.
    */
@@ -45,15 +75,18 @@ export class AuditService {
       args.action,
       args.entity,
       args.entityId,
-      JSON.stringify(args.oldValue ?? null),
-      JSON.stringify(args.newValue ?? null),
+      AuditService.canonicalJson(args.oldValue ?? null),
+      AuditService.canonicalJson(args.newValue ?? null),
       args.createdAt.toISOString(),
       args.prevRowHash ?? '',
     ].join('|');
   }
 
   computeRowHash(args: Parameters<AuditService['buildHashPayload']>[0]): string {
-    return createHash('sha256').update(this.buildHashPayload(args)).digest('hex');
+    return (
+      AuditService.HASH_VERSION_PREFIX +
+      createHash('sha256').update(this.buildHashPayload(args)).digest('hex')
+    );
   }
 
   async log(entry: AuditEntry) {
@@ -134,6 +167,8 @@ export class AuditService {
   async verifyChain(options: { maxRows?: number } = {}): Promise<{
     ok: boolean;
     rowsChecked: number;
+    /** แถวรุ่น 1 (ไม่มี prefix v2:) — ตรวจ hash ย้อนหลังไม่ได้โดยโครงสร้าง ไม่นับเป็น mismatch */
+    legacyUnverifiable: number;
     firstMismatchSeq: bigint | null;
     firstMismatchId: string | null;
   }> {
@@ -158,16 +193,29 @@ export class AuditService {
     });
 
     let lastHash: string | null = null;
+    let lastSeq: bigint | null = null;
+    let legacyUnverifiable = 0;
     for (const r of rows) {
       if (r.sequenceNumber === null || r.rowHash === null) continue;
-      // prev linkage check
-      if ((r.prevRowHash ?? null) !== lastHash && lastHash !== null) {
+      // prev linkage check — เฉพาะเมื่อ seq ต่อเนื่องกันจริง: nextval() ของ tx ที่ rollback
+      // ทำให้ seq ข้ามได้ และแถวถัดไปหา prev ที่ seq-1 ไม่เจอจึงเก็บ prevRowHash=null ตามดีไซน์
+      // (ไม่ใช่การแก้ข้อมูล) — ช่องว่างแบบนั้นข้ามการเทียบ ไม่ใช่ mismatch
+      const contiguous = lastSeq !== null && r.sequenceNumber === lastSeq + BigInt(1);
+      if (contiguous && (r.prevRowHash ?? null) !== lastHash) {
         return {
           ok: false,
           rowsChecked: rows.indexOf(r),
+          legacyUnverifiable,
           firstMismatchSeq: r.sequenceNumber,
           firstMismatchId: r.id,
         };
+      }
+      lastHash = r.rowHash;
+      lastSeq = r.sequenceNumber;
+      if (!r.rowHash.startsWith(AuditService.HASH_VERSION_PREFIX)) {
+        // แถวรุ่น 1: รูป JSON ตอนเขียนถูก jsonb เรียง key ใหม่ไปแล้ว คำนวณซ้ำไม่ได้
+        legacyUnverifiable++;
+        continue;
       }
       const expected = this.computeRowHash({
         sequenceNumber: r.sequenceNumber,
@@ -185,14 +233,20 @@ export class AuditService {
         return {
           ok: false,
           rowsChecked: rows.indexOf(r),
+          legacyUnverifiable,
           firstMismatchSeq: r.sequenceNumber,
           firstMismatchId: r.id,
         };
       }
-      lastHash = r.rowHash;
     }
 
-    return { ok: true, rowsChecked: rows.length, firstMismatchSeq: null, firstMismatchId: null };
+    return {
+      ok: true,
+      rowsChecked: rows.length,
+      legacyUnverifiable,
+      firstMismatchSeq: null,
+      firstMismatchId: null,
+    };
   }
 
   async getAuditLogs(filters: {

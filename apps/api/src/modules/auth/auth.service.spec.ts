@@ -243,18 +243,39 @@ describe('AuthService', () => {
       expect((prisma as unknown as { $transaction: jest.Mock }).$transaction).toHaveBeenCalled();
     });
 
-    it('should throw on revoked refresh token', async () => {
+    it('should throw + revoke token family on revoked refresh token (replay นอกช่วงผ่อนผัน)', async () => {
       (prisma.refreshToken.findUnique as jest.Mock).mockResolvedValue({
         id: 'rt-1',
         token: 'revoked-token',
         userId: 'user-1',
         expiresAt: new Date(Date.now() + 86400000),
-        revokedAt: new Date(),
+        isRevoked: true,
+        revokedAt: new Date(Date.now() - 60_000),
       });
 
       await expect(service.refreshToken('revoked-token')).rejects.toThrow(
         UnauthorizedException,
       );
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 'user-1', isRevoked: false } }),
+      );
+    });
+
+    it('หลายแท็บ refresh พร้อมกัน: token ที่เพิ่งถูกหมุนไม่กี่วินาที → ออก token ใหม่ ไม่ revoke ครอบครัว', async () => {
+      (prisma.refreshToken.findUnique as jest.Mock).mockResolvedValue({
+        id: 'rt-1',
+        token: 'just-rotated-token',
+        userId: 'user-1',
+        expiresAt: new Date(Date.now() + 86400000),
+        isRevoked: true,
+        revokedAt: new Date(Date.now() - 1_500),
+      });
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+
+      const result = await service.refreshToken('just-rotated-token');
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
     });
 
     it('should throw on expired refresh token', async () => {

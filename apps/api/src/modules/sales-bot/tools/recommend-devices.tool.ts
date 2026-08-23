@@ -27,7 +27,9 @@ export const RECOMMEND_DEVICES_TOOL = {
     'Every recommended item carries the rate plan chosen (rateLabel เรทที่ 1/เรทที่ 2), its ' +
     'downPayment / monthlyPrice / termMonths in BAHT, condition (มือ 1 / มือสอง), whether it ' +
     'is inStock (with unitCount + a sampleUnit), and — when the current model is recognized — ' +
-    'betterThanCurrent / worseThanCurrent spec sentences in Thai. ONLY models NEWER than the ' +
+    'betterThanCurrent / worseThanCurrent spec sentences in Thai; when the current model is NOT ' +
+    'recognized (Android / unknown) those are empty — use each item\'s `highlights` instead and ' +
+    'never describe the customer\'s non-iPhone device from memory. ONLY models NEWER than the ' +
     'current one are returned. nearMiss (≤1) is the closest model that slightly exceeds the ' +
     'budget (overBy = how much over). tradeIn = estimated buy-back value of the current device ' +
     '(grade A, ราคาประมาณ). STRICT: quote numbers and spec sentences ONLY from this result — ' +
@@ -76,6 +78,8 @@ export interface RecommendedDevice {
   betterThanCurrent: string[];
   worseThanCurrent: string[];
   generationGap: number | null;
+  /** จุดเด่นของรุ่นนี้จากตารางสเปค (ใช้แทนบรรทัด "ดีกว่า" เมื่อลูกค้าใช้ยี่ห้ออื่น/ไม่รู้รุ่นเดิม) */
+  highlights: string[];
 }
 
 export interface NearMissDevice extends RecommendedDevice {
@@ -353,6 +357,7 @@ export class RecommendDevicesTool {
       betterThanCurrent: diff?.better ?? [],
       worseThanCurrent: diff?.worse ?? [],
       generationGap: diff?.generationGap ?? null,
+      highlights: c.spec?.highlights ?? [],
     };
   }
 }

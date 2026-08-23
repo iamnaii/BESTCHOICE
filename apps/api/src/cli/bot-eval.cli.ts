@@ -143,10 +143,18 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
     case 'recommend_devices': {
       const cur = String(input.currentModel ?? '');
       const current = cur ? { model: 'iPhone 12', recognized: /12/.test(cur) } : null;
-      return { ...RECOMMEND_FROM_11, current, budget: { down: Number(input.downBudget ?? 0) || null, monthly: Number(input.monthlyBudget ?? 0) || null }, tradeIn: current?.recognized ? TRADE_IN_11 : null };
+      const recognized = current?.recognized ?? false;
+      const HL: Record<string, string[]> = { 'iPhone 13': ['ชิป A15 แรงเกินพอ', 'แบตอึดกว่า 12 ชัดเจน', 'กล้องคู่มีโหมดภาพยนตร์'], 'iPhone 14': ['กล้องหน้าโฟกัสอัตโนมัติ', 'ระบบตรวจจับอุบัติเหตุ', 'ชิป A15 ลื่นทุกแอป'] };
+      const recommended = RECOMMEND_FROM_11.recommended.map((d) => ({ ...d, betterThanCurrent: recognized ? d.betterThanCurrent : [], worseThanCurrent: recognized ? d.worseThanCurrent : [], generationGap: recognized ? d.generationGap : null, highlights: HL[d.model] ?? [] }));
+      return { ...RECOMMEND_FROM_11, recommended, current, budget: { down: Number(input.downBudget ?? 0) || null, monthly: Number(input.monthlyBudget ?? 0) || null }, tradeIn: recognized ? TRADE_IN_11 : null };
     }
-    case 'compare_devices':
-      return COMPARE_11_TO_15;
+    case 'compare_devices': {
+      const cur = String(input.currentModel ?? '');
+      const known = /12/.test(cur);
+      return known
+        ? { ...COMPARE_11_TO_15, candidateHighlights: ['กล้องหลัก 48MP', 'Dynamic Island', 'USB-C'] }
+        : { ...COMPARE_11_TO_15, current: { model: cur, recognized: false }, candidateHighlights: ['กล้องหลัก 48MP', 'Dynamic Island', 'USB-C'], better: [], same: [], worse: [], generationGap: null, tradeIn: null };
+    }
     case 'capture_lead':
       return { customerId: 'eval-c1', promptPayQr: null, downAmount: Number(input.downAmount ?? 0), handoffMessage: 'ทีมงานจะเช็คเอกสารแล้วติดต่อกลับไปนะคะ ยังไม่ต้องโอนอะไรทั้งนั้นค่ะ' };
     case 'handoff_to_human':
@@ -252,6 +260,21 @@ const SCENARIOS: Scenario[] = [
       { user: 'แนะนำหน่อย ไม่รู้จะเอารุ่นไหน', contains: ['รุ่นไหนอยู่'], noBigNumbers: true, forbidTools: ['recommend_devices'] },
       { user: 'ใช้ 12 อยู่', noBigNumbers: true, forbidTools: ['recommend_devices'] },
       { user: 'ดาวน์ไม่เกิน 3000 ผ่อนเดือนละไม่เกิน 2000', expectTools: ['recommend_devices'], forbidTools: ['search_products', 'calculate_installment'], contains: ['ดาวน์', 'ผ่อนเดือนละ', 'ดีกว่า'], notContains: ['17,500', '19,900', '13,900'] },
+    ],
+  },
+  {
+    // ลูกค้าใช้แอนดรอยด์ — tool ไม่รู้จักรุ่น (recognized:false) ไม่มี diff/เทิร์น
+    id: 'S11', name: 'ใช้แอนดรอยด์อยู่ → แนะนำตามงบได้ ไม่มีบรรทัดดีกว่า/เทิร์น ไม่มั่วสเปค',
+    turns: [
+      { user: 'แนะนำหน่อย ไม่รู้จะเอารุ่นไหน', contains: ['รุ่นไหนอยู่'], noBigNumbers: true },
+      { user: 'ใช้ซัมซุง A54 อยู่', noBigNumbers: true },
+      { user: 'ดาวน์ 3000 ผ่อนไม่เกิน 2000', expectTools: ['recommend_devices'], contains: ['ดาวน์', 'ผ่อนเดือนละ', 'จุดเด่น'], notContains: ['ดีกว่า', 'เทิร์นได้ประมาณ', '3,500', 'A54:'] },
+    ],
+  },
+  {
+    id: 'S12', name: 'ใช้แอนดรอยด์ ถามว่า 15 ดีกว่ายังไง → ห้ามมั่วสเปคซัมซุง',
+    turns: [
+      { user: 'ใช้ Samsung S21 อยู่ ถ้าเปลี่ยนมา iPhone 15 ดีกว่ายังไง', expectTools: ['compare_devices'], contains: ['48MP'], notContains: ['Exynos', 'Snapdragon', 'เทิร์นได้ประมาณ', 'ลื่นกว่า'] },
     ],
   },
   {

@@ -202,7 +202,9 @@ export class SaleVoidService {
       productId === sale.productId ? mainStatus : BUNDLE_PRODUCT_STATUS;
     const products = await tx.product.findMany({
       where: { id: { in: productIds } },
-      select: { id: true, status: true, deletedAt: true },
+      // `name` ไม่ใช่ของประดับ: ใบขายที่มีของแถมตรวจหลายเครื่องในรอบเดียว ⇒ ข้อความ
+      // ต้องบอกว่า **ชิ้นไหน** ติด (สเปค §2 G5) ไม่ใช่แค่สถานะ
+      select: { id: true, name: true, status: true, deletedAt: true },
     });
     // ตรวจจำนวน **ก่อน** วนด่าน: แถวที่หายไปคือแถวที่ไม่มีใครตรวจ ถ้าวนก่อนแล้วค่อยนับ
     // เครื่องที่หายจะผ่านด่านไปเงียบ ๆ แล้วถูกคืนสถานะโดยไม่เคยถูกตรวจ

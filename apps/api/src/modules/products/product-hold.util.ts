@@ -177,6 +177,12 @@ export interface ProductHoldSubject {
    * `SOLD_INSTALLMENT` แปลว่ามีคนเอาเครื่องไปเปิดสัญญาผ่อนต่อแล้ว — ต้องบล็อก
    */
   expectedStatus?: ProductStatus;
+  /**
+   * ชื่อสินค้า — optional. ใส่มาเมื่อผู้เรียกตรวจ **หลายเครื่องในรอบเดียว**
+   * (ยกเลิกใบขายที่มีของแถม): สถานะอย่างเดียวไม่บอกว่าชิ้นไหนติด ผู้ใช้ต้องไล่เปิด
+   * ทีละเครื่องเอง. ไม่ใส่ = ข้อความคงรูปเดิมทุกตัวอักษร (ผู้เรียกเดิมไม่กระทบ)
+   */
+  name?: string | null;
 }
 
 /**
@@ -224,7 +230,8 @@ export async function assertProductNotHeld(
     }
     if (product.status !== product.expectedStatus) {
       throw new BadRequestException(
-        `สินค้าอยู่สถานะ ${productStatusLabel(product.status)} ` +
+        `${product.name ? `สินค้า "${product.name}" อยู่สถานะ` : 'สินค้าอยู่สถานะ'} ` +
+          `${productStatusLabel(product.status)} ` +
           `(รายการนี้ตั้งไว้เป็น ${productStatusLabel(product.expectedStatus)}) — ${verb} ` +
           `(${risk}): ${
             HELD_STATUS_REMEDY[product.status] ??

@@ -195,6 +195,19 @@ describe('SaleVoidService.voidSale', () => {
     expectNothingWritten();
   });
 
+  // สเปค §2 G5 สั่งให้ข้อความ "ระบุชื่อสินค้าและสถานะปัจจุบันของชิ้นที่ติด" — สถานะอย่างเดียว
+  // ไม่พอเมื่อใบขายมีของแถมหลายชิ้น (ผู้ใช้ไล่เปิดทีละเครื่องเองไม่ได้ว่าชิ้นไหนติด)
+  it('G5: ข้อความบอก **ชื่อ** ของชิ้นที่ติด ไม่ใช่แค่สถานะ (ใบขายมีหลายเครื่อง)', async () => {
+    tx.product.findMany.mockResolvedValue([
+      { id: 'p1', name: 'iPhone 15 128GB', status: 'SOLD_CASH', deletedAt: null },
+      { id: 'p2', name: 'หูฟัง AirPods ของแถม', status: 'SOLD_INSTALLMENT', deletedAt: null },
+    ]);
+    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(
+      /หูฟัง AirPods ของแถม/,
+    );
+    expectNothingWritten();
+  });
+
   // ── G5 regression: ของแถมเป็น SOLD_CASH เสมอ แม้ในใบขายผ่านไฟแนนซ์ภายนอก ──
   // `markBundleProductsSold` hardcode SOLD_CASH และถูกเรียกจากทั้งสองเส้นทาง ขณะที่
   // สินค้าหลักของ EXTERNAL_FINANCE เป็น SOLD_INSTALLMENT ⇒ ใบเดียวมีสองสถานะ

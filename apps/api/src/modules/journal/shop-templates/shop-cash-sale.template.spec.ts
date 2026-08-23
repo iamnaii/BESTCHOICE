@@ -25,6 +25,7 @@ describe('ShopCashSaleTemplate (unit)', () => {
     await template.execute({
       idempotencyKey: 'sale-1',
       saleId: 'sale-001',
+      productId: 'prod-001',
       cashAccountCode: 'S11-1101',
       revenueAccountCode: 'S41-1101',
       revenueAmount: new Prisma.Decimal(15000),
@@ -43,11 +44,46 @@ describe('ShopCashSaleTemplate (unit)', () => {
     expect(lines.find((l) => l.accountCode === 'S11-2001')!.cr.toFixed(2)).toBe('11000.00');
   });
 
+  // F1 regression (2026-08-23): journal_entries_ref_unique is a partial unique
+  // index on (reference_type, reference_id) — a shared per-sale reference made
+  // the SECOND JE of a bundle cash sale collide (P2002) and the whole POS sale
+  // fail. The reference must be unique per (sale, product).
+  it('reference is unique per (sale, product) — bundle JEs must not collide on journal_entries_ref_unique', async () => {
+    const { template, journal } = build();
+    const base = {
+      saleId: 'sale-009',
+      cashAccountCode: 'S11-1101',
+      revenueAccountCode: 'S41-1101',
+      cogsAccountCode: 'S50-1101',
+      inventoryAccountCode: 'S11-2001',
+    };
+    const refs: string[] = [];
+    for (const [productId, revenue, cost] of [
+      ['prod-main', 9400, 6000],
+      ['prod-freebie', 500, 500],
+    ] as const) {
+      await template.execute({
+        ...base,
+        idempotencyKey: `shop-cash-sale:sale-009:${productId}`,
+        productId,
+        revenueAmount: new Prisma.Decimal(revenue),
+        inventoryCost: new Prisma.Decimal(cost),
+      });
+      const input = (journal.service.createAndPost as jest.Mock).mock.calls.at(-1)![0] as {
+        reference?: string;
+      };
+      refs.push(input.reference!);
+    }
+    expect(refs).toEqual(['sale:sale-009:prod-main', 'sale:sale-009:prod-freebie']);
+    expect(new Set(refs).size).toBe(2);
+  });
+
   it('omits COGS pair when inventoryCost is zero (promo give-away)', async () => {
     const { template, journal } = build();
     await template.execute({
       idempotencyKey: 'sale-2',
       saleId: 'sale-002',
+      productId: 'prod-002',
       cashAccountCode: 'S11-1101',
       revenueAccountCode: 'S41-1103',
       revenueAmount: new Prisma.Decimal(500),
@@ -65,6 +101,7 @@ describe('ShopCashSaleTemplate (unit)', () => {
       template.execute({
         idempotencyKey: 'sale-3',
         saleId: 'sale-003',
+      productId: 'prod-003',
         cashAccountCode: 'S11-1101',
         revenueAccountCode: 'S41-1101',
         revenueAmount: new Prisma.Decimal(100),
@@ -81,6 +118,7 @@ describe('ShopCashSaleTemplate (unit)', () => {
       template.execute({
         idempotencyKey: 'sale-4',
         saleId: 'sale-004',
+      productId: 'prod-004',
         cashAccountCode: '11-1101',
         revenueAccountCode: 'S41-1101',
         revenueAmount: new Prisma.Decimal(100),
@@ -97,6 +135,7 @@ describe('ShopCashSaleTemplate (unit)', () => {
     const r = await template.execute({
       idempotencyKey: 'sale-5',
       saleId: 'sale-005',
+      productId: 'prod-005',
       cashAccountCode: 'S11-1101',
       revenueAccountCode: 'S41-1101',
       revenueAmount: new Prisma.Decimal(100),

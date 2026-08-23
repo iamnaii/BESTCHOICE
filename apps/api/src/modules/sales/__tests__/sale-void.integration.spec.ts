@@ -26,8 +26,9 @@
  *   7. G4b คีย์ขายหลังรอบ → void ได้ (generatedAt พิสูจน์ว่าไม่อยู่ในรอบ) + รอบเดิมไม่ถูกแตะ
  *   8. G1 ยกเลิกซ้ำ → ปฏิเสธ + ไม่มี JE ใบสอง
  *   9. Branch scope: BM ต่างสาขา → Forbidden + ไม่มีอะไรถูกเขียน; BM สาขาตัวเอง → ได้
- *   + FINDING pin: ขายสด+ของแถมที่มีต้นทุน สร้างใบขายไม่ได้ (JE reference ซ้ำ — บั๊ก
- *     production เดิมจาก PR #1285 ชน migration 20260428010000, ไม่ใช่ของ void-sale)
+ *   + F1 regression: ขายสด+ของแถมที่มีต้นทุน → JE ต่อชิ้น reference ไม่ชนกัน + void กวาด
+ *     ครบทุกใบ (บั๊ก production เดิมจาก PR #1285 ชน migration 20260428010000 — แก้แล้ว
+ *     ในคอมมิตนี้: reference = `sale:<saleId>:<productId>`)
  *
  * G5 (เครื่องถูกผูกต่อ) ไม่อยู่ในไฟล์นี้โดยตั้งใจ: การพาเครื่อง SOLD_CASH/SOLD_INSTALLMENT
  * ไปสถานะอื่น "ผ่าน service จริง" ถูกด่านของระบบเองกันไว้หมด (จะต้องตั้งฉากด้วย
@@ -460,37 +461,55 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
   }, 180_000);
 
   // -------------------------------------------------------------------------
-  // FINDING (บั๊ก production เดิม — ไม่ใช่ของ void-sale): ขายสดพ่วงของแถมที่ "มีต้นทุน"
-  // สร้างใบขายไม่ได้เลยตั้งแต่แรก — `ShopCashSaleTemplate` (PR #1285) โพสต์ JE ต่อชิ้น
-  // แต่ทุกใบใช้ `reference: sale:<saleId>` เดียวกัน ชน partial unique index
-  // `journal_entries_ref_unique` (migration 20260428010000) ⇒ P2002 → retry 3 รอบก็ชนซ้ำ
-  // → ทั้งใบล่ม. unit specs เดิม mock prisma จึงไม่เคยเห็น (index อยู่ระดับ DB).
-  // เทสนี้ปักพฤติกรรมปัจจุบันไว้ — วันที่มีคนแก้ต้นเหตุ เทสนี้จะแดงเพื่อบังคับให้อัปเดต
-  // (แล้วเคส 1 ควรกลับไปใช้ของแถมมีต้นทุนแทน)
+  // F1 regression (บั๊ก production เดิมจาก PR #1285 — แก้ในคอมมิตนี้): เดิม JE ต่อชิ้น
+  // ของขายสดพ่วงของแถม "ที่มีต้นทุน" ใช้ `reference: sale:<saleId>` ซ้ำกัน ชน partial
+  // unique `journal_entries_ref_unique` (migration 20260428010000) ⇒ P2002 ทั้งใบล่ม.
+  // ตอนนี้ reference = `sale:<saleId>:<productId>` (unique ต่อชิ้นโดยโครงสร้าง) —
+  // เทสนี้ปักทั้งการสร้างสำเร็จ + รูปแบบ reference + void กวาดครบทั้งสองใบ
   // -------------------------------------------------------------------------
   it(
-    'FINDING: ขายสด+ของแถมที่มีต้นทุน → JE ใบที่สองชน journal_entries_ref_unique — ทั้งใบล่มแบบ rollback ครบ',
+    'F1 regression: ขายสด+ของแถมที่มีต้นทุน → สร้างสำเร็จ, JE ต่อชิ้น reference ไม่ซ้ำ, void กวาดครบทุกใบสุทธิศูนย์',
     async () => {
       const main = await seedProduct('Z1', { costPrice: '6000.00' });
       const bundle = await seedProduct('Z2', { costPrice: '500.00' });
       const customer = await seedCustomer('Z1');
 
-      let err: unknown;
-      try {
-        await cashSale({
-          customerId: customer.id,
-          productId: main.id,
-          sellingPrice: 9900,
-          bundleProductIds: [bundle.id],
-        });
-      } catch (e) {
-        err = e;
-      }
-      expect(err, 'ถ้าบรรทัดนี้แดง = บั๊ก reference ซ้ำถูกแก้แล้ว — ย้ายของแถมมีต้นทุนกลับเข้าเคส 1').toBeDefined();
-      expect((err as { code?: string }).code).toBe('P2002');
+      const sale = await cashSale({
+        customerId: customer.id,
+        productId: main.id,
+        sellingPrice: 9900,
+        bundleProductIds: [bundle.id],
+      });
 
-      // ทั้ง tx ต้อง rollback หมดจด — ไม่มีใบขาย/JE ครึ่งทาง และเครื่องยังขายได้
-      expect(await prisma.sale.count({ where: { productId: main.id } })).toBe(0);
+      // JE ต่อชิ้น 2 ใบ + reference unique ต่อ (ใบขาย, ชิ้น) — regression surface ของ F1
+      const originals = await prisma.journalEntry.findMany({
+        where: { metadata: { path: ['saleId'], equals: sale.id } as never },
+        select: { id: true, referenceId: true },
+      });
+      expect(originals.length).toBe(2);
+      expect(new Set(originals.map((o) => o.referenceId)).size).toBe(2);
+      expect(originals.map((o) => o.referenceId).sort()).toEqual(
+        [`sale:${sale.id}:${main.id}`, `sale:${sale.id}:${bundle.id}`].sort(),
+      );
+
+      // void ต้องกวาด (metadata.saleId) เจอทั้งสองใบ — mirror ครบ + สุทธิศูนย์ทุกบัญชี
+      const res = await saleVoidService.voidSale(sale.id, OWNER(), 'คีย์ผิดรุ่น');
+      expect(res.reversalEntryNumbers.length).toBe(2);
+      const reversalJeIds = await reversalIdsOf(res.reversalEntryNumbers);
+      const { net, entries } = await netByAccount(sale.id, reversalJeIds);
+      expect(entries.length).toBe(4);
+      expect(Object.keys(net).length).toBeGreaterThan(0);
+      for (const [code, amount] of Object.entries(net)) {
+        expect(amount.toFixed(2), `บัญชี ${code} ต้องสุทธิเป็นศูนย์`).toBe('0.00');
+      }
+      // ใบเดิมทุกใบถูก stamp reversed (ไม่มีใบไหนหลุดการกวาด)
+      const stamped = await prisma.journalEntry.findMany({
+        where: { id: { in: originals.map((o) => o.id) } },
+        select: { metadata: true },
+      });
+      for (const je of stamped) {
+        expect((je.metadata as { reversed?: boolean }).reversed).toBe(true);
+      }
       expect(
         (await prisma.product.findUniqueOrThrow({ where: { id: main.id } })).status,
       ).toBe('IN_STOCK');
@@ -502,16 +521,12 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
   );
 
   // -------------------------------------------------------------------------
-  // ของแถมในเคสนี้ต้นทุน 0 (ของแจกโปรโมชัน — ตัวอย่างที่ template เองระบุว่า COGS ข้ามได้)
-  // เพื่อเลี่ยงบั๊ก reference ซ้ำใน FINDING ข้างบน: allocation ตามต้นทุนให้ revenue ของแถม = 0
-  // ⇒ JE 1 ใบ แต่เส้นทางคืนสต็อกของแถม (BUNDLE_PRODUCT_STATUS) ยังถูกพิสูจน์เต็ม
-  // -------------------------------------------------------------------------
   it(
     'เคส 1: ขายสด+ของแถม → ยกเลิก → คืนสต็อกทั้งคู่, JE สุทธิศูนย์ทุกบัญชี, ค่าคอม CLAWED_BACK, ขายเครื่องเดิมใหม่ได้',
     async () => {
       const s1 = await seedSalesperson('A0');
       const main = await seedProduct('A1', { costPrice: '6000.00', cashPrice: '9900.00' });
-      const bundle = await seedProduct('A2', { costPrice: '0.00' });
+      const bundle = await seedProduct('A2', { costPrice: '500.00' });
       const customer = await seedCustomer('A1');
       const buyer2 = await seedCustomer('A2');
 
@@ -523,8 +538,8 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
         salespersonId: s1.id,
       });
 
-      // ฉากตั้งโดย flow จริง: หลัก+ของแถม SOLD_CASH, JE 1 ใบ (ของแถมต้นทุน 0 → revenue 0
-      // → template ข้าม — ดูคอมเมนต์เหนือเคสนี้ + FINDING)
+      // ฉากตั้งโดย flow จริง: หลัก+ของแถม SOLD_CASH, JE 1 ใบต่อชิ้น (allocation ตามต้นทุน
+      // — เดินได้เพราะ F1 ถูกแก้: reference ต่อชิ้น ไม่ชน journal_entries_ref_unique)
       expect(
         (await prisma.product.findUniqueOrThrow({ where: { id: main.id } })).status,
       ).toBe('SOLD_CASH');
@@ -535,12 +550,12 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
         where: { metadata: { path: ['saleId'], equals: sale.id } as never },
         select: { id: true },
       });
-      expect(originals.length).toBe(1);
+      expect(originals.length).toBe(2);
 
       // ── ยกเลิก ──
       const res = await saleVoidService.voidSale(sale.id, OWNER(), 'คีย์ผิดรุ่น');
       expect(res.restoredProductIds.sort()).toEqual([main.id, bundle.id].sort());
-      expect(res.reversalEntryNumbers.length).toBe(1);
+      expect(res.reversalEntryNumbers.length).toBe(2);
 
       // สินค้าหลัก + ของแถมกลับ IN_STOCK
       expect(
@@ -553,7 +568,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
       // JE สุทธิเป็นศูนย์ทุกบัญชี — ต้องมี JE จริงก่อน (กันผ่านเพราะว่างเปล่า)
       const reversalJeIds = await reversalIdsOf(res.reversalEntryNumbers);
       const { net, entries } = await netByAccount(sale.id, reversalJeIds);
-      expect(entries.length).toBe(2); // ใบเดิม 1 + กลับรายการ 1
+      expect(entries.length).toBe(4); // ใบเดิม 2 + กลับรายการ 2
       expect(Object.keys(net).length).toBeGreaterThan(0);
       for (const [code, amount] of Object.entries(net)) {
         expect(amount.toFixed(2), `บัญชี ${code} ต้องสุทธิเป็นศูนย์`).toBe('0.00');

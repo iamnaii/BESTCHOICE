@@ -79,9 +79,13 @@ describe('SaleVoidService.voidSale', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       salesCommission: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'c1', status: 'PENDING', period: '2026-08' }]),
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'c1', status: 'PENDING', period: '2026-08', salespersonId: 'sp1' },
+        ]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      // รอบจ่ายค่าคอม (`CommissionPayout`) — default = ยังไม่มีรอบจ่ายของงวดนี้
+      commissionPayout: { findFirst: jest.fn().mockResolvedValue(null) },
       journalEntry: {
         findMany: jest
           .fn()
@@ -296,6 +300,78 @@ describe('SaleVoidService.voidSale', () => {
     expectNothingWritten();
   });
 
+  // ── G4b — รอบจ่ายค่าคอม (`CommissionPayout`) ────────────────────────────────
+  // `markPayoutPaid` (commission.service.ts) อัปเดต **เฉพาะแถว CommissionPayout**
+  // ไม่แตะ `SalesCommission.status` เลย ⇒ พนักงานรับเงินจริงไปแล้วแต่ค่าคอมยัง PENDING
+  // ⇒ ด่านที่ดูแค่ `SalesCommission.status` ปิดประตูเงินได้แค่บานเดียว
+  it('G4b: ค่าคอมอยู่ในรอบจ่ายที่จ่ายเงินแล้ว (SalesCommission ยัง PENDING) → ปฏิเสธ', async () => {
+    tx.commissionPayout.findFirst.mockResolvedValue({ period: '2026-08', status: 'PAID' });
+    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/รอบจ่าย/);
+    expectNothingWritten();
+  });
+
+  it('G4b: รอบจ่ายสถานะ DRAFT ก็บล็อก — ยอดในรอบจะค้างเกินจริง (generatePayouts ข้ามรอบที่มีอยู่แล้ว)', async () => {
+    tx.commissionPayout.findFirst.mockResolvedValue({ period: '2026-08', status: 'DRAFT' });
+    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expectNothingWritten();
+  });
+
+  it('G4b: ค้นรอบจ่ายด้วยคู่ (salespersonId, period) ของค่าคอมที่เจอ + exclude เฉพาะ CANCELLED', async () => {
+    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    expect(tx.commissionPayout.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          deletedAt: null,
+          status: { notIn: ['CANCELLED'] },
+          OR: [{ salespersonId: 'sp1', period: '2026-08' }],
+        }),
+      }),
+    );
+  });
+
+  it('G4b: ไม่มีค่าคอมเลย → ไม่ต้องไปถามรอบจ่าย', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([]);
+    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    expect(tx.commissionPayout.findFirst).not.toHaveBeenCalled();
+  });
+
+  // ── G4 — สถานะค่าคอมที่เงินออกไปแล้ว ────────────────────────────────────────
+  it('G4: PARTIALLY_CLAWED_BACK (เงินออกแล้ว เรียกคืนบางส่วน) → ปฏิเสธ ไม่ใช่ผ่านเงียบ ๆ', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([
+      { id: 'c1', status: 'PARTIALLY_CLAWED_BACK', period: '2026-08', salespersonId: 'sp1' },
+    ]);
+    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expectNothingWritten();
+  });
+
+  // สเปค §3 ข้อ 4: การเรียกคืนต้องครอบ **ทั้ง PENDING และ APPROVED**
+  it('ค่าคอมสถานะ APPROVED → เรียกคืนด้วย (ไม่ใช่แค่ PENDING)', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([
+      { id: 'c1', status: 'PENDING', period: '2026-08', salespersonId: 'sp1' },
+      { id: 'c2', status: 'APPROVED', period: '2026-08', salespersonId: 'sp1' },
+    ]);
+    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    expect(tx.salesCommission.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['c1', 'c2'] } },
+        data: { status: 'CLAWED_BACK' },
+      }),
+    );
+  });
+
+  // ── ชนิดการขายที่ยังไม่รู้จัก (ด่านกัน 500) ─────────────────────────────────
+  it('ชนิดการขายที่ยังไม่รู้จัก → ปฏิเสธเป็นข้อความไทย ไม่ปล่อยไปตาย 500 ที่ด่านสินค้า', async () => {
+    tx.sale.findUnique.mockResolvedValue({ ...CASH_SALE, saleType: 'CONSIGNMENT' });
+    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expectNothingWritten();
+  });
+
   // ── G2 ────────────────────────────────────────────────────────────────────
   //
   // mirror ลงวันที่ **วันนี้** เสมอ (`createAndPost` ตั้ง entryDate = postedAt = now)
@@ -363,7 +439,13 @@ describe('SaleVoidService.voidSale', () => {
     expect(tx.sale.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 's1' },
-        data: expect.objectContaining({ voidReason: 'คีย์ผิดรุ่น', voidedById: 'u1' }),
+        // `deletedAt` คือหัวใจของฟีเจอร์ — G1 idempotency และ "ใบที่ยกเลิกหายจากรายงาน"
+        // (สเปค §4) แขวนอยู่กับมันทั้งคู่ ⇒ ต้องปักไว้ ไม่ใช่ปล่อยให้ตัดออกแล้วเทสยังเขียว
+        data: expect.objectContaining({
+          voidReason: 'คีย์ผิดรุ่น',
+          voidedById: 'u1',
+          deletedAt: expect.any(Date),
+        }),
       }),
     );
     expect(tx.auditLog.create).toHaveBeenCalledWith(

@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ProductStatus, RepairStatus } from '@prisma/client';
+import { PayoutStatus, Prisma, ProductStatus, RepairStatus } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { assertProductNotHeld } from '../../products/product-hold.util';
@@ -59,8 +59,29 @@ const CLOSED_REPAIR_STATUSES: readonly RepairStatus[] = [
   RepairStatus.REPLACED,
 ];
 
-/** สถานะค่าคอมที่ยังเรียกคืนได้ (G4 บล็อก `PAID` ไปแล้ว จึงเหลือสองตัวนี้เข้ามาถึงขั้นเขียน) */
-const CLAWABLE_COMMISSION_STATUSES = ['PENDING', 'APPROVED'];
+/**
+ * สถานะค่าคอมที่ยัง "เรียกคืนได้" — เงินยังไม่ออกจากกระเป๋าพนักงาน
+ *
+ * ใช้เป็น **ตัวตัดสินสองงานพร้อมกัน**: สถานะที่ **ไม่อยู่** ในลิสต์นี้ = G4 บล็อก,
+ * ที่อยู่ในลิสต์ = flip เป็น `CLAWED_BACK` ตอนเขียน ⇒ ไม่มีสถานะไหนหลุดทั้งสองทาง
+ * (เดิมเป็น include-list ที่ใช้แค่ตอนเขียน ⇒ `PARTIALLY_CLAWED_BACK` ไม่ถูกบล็อก
+ * **และ** ไม่ถูกเรียกคืน = ผ่านฉลุยเงียบ ๆ ทั้งที่เงินออกไปแล้ว)
+ *
+ * ค่าใหม่ที่เพิ่มใน `CommissionStatus` วันหลังจะถูก **บล็อก** โดยปริยาย ไม่ใช่ผ่านเงียบ ๆ
+ * — เจตนาเดียวกับ `CLOSED_REPAIR_STATUSES` / `FINISHED_CONTRACT_STATUSES`
+ */
+const CLAWABLE_COMMISSION_STATUSES: readonly string[] = ['PENDING', 'APPROVED'];
+
+/**
+ * สถานะ **รอบจ่ายค่าคอม** (`CommissionPayout`) ที่ไม่ผูกเงินไว้ ⇒ ยกเลิกใบขายทับได้
+ *
+ * exclude list โดยเจตนา (ค่าจริงของ `PayoutStatus` = DRAFT / APPROVED / PAID / CANCELLED):
+ * `DRAFT` และ `APPROVED` **ก็บล็อก** ไม่ใช่แค่ `PAID` เพราะ `generatePayouts` ข้ามรอบที่มี
+ * อยู่แล้วทุกใบที่ยังไม่ถูก soft-delete (`if (existing && existing.deletedAt === null) continue`)
+ * ⇒ ยอดในรอบที่สร้างไปแล้ว **ไม่มีอะไรมาคำนวณใหม่ให้** การเรียกคืนค่าคอมทีหลังจึงทิ้งยอด
+ * ค้างเกินจริงไว้ในรอบ แล้วถูกอนุมัติ/จ่ายตามยอดเก่า
+ */
+const VOIDABLE_PAYOUT_STATUSES: readonly PayoutStatus[] = [PayoutStatus.CANCELLED];
 
 export interface VoidSaleResult {
   saleNumber: string;
@@ -190,7 +211,7 @@ export class SaleVoidService {
     if (openTicket) {
       throw new BadRequestException(
         `มีใบซ่อม ${openTicket.ticketNumber} (สถานะ ${openTicket.status}) ที่ยังไม่ปิดบนเครื่องของใบขายนี้ — ` +
-          'ปิดหรือยกเลิกใบซ่อมที่เมนู "ประกัน/ใบซ่อม" ก่อน แล้วจึงยกเลิกใบขาย ' +
+          'ปิดหรือยกเลิกใบซ่อมที่เมนู "รับซ่อม/รับประกัน" ก่อน แล้วจึงยกเลิกใบขาย ' +
           '(สิทธิ์ประกันอิงใบขาย ยกเลิกก่อนจะทำให้เคลมลอย)',
       );
     }
@@ -237,8 +258,10 @@ export class SaleVoidService {
       if (moneyMoved) {
         throw new BadRequestException(
           `ไฟแนนซ์ ${receivable.financeCompany} โอนเงินของใบขายนี้มาแล้ว (สถานะ ${receivable.status}) — ` +
-            'ต้องบันทึกคืนเงิน/ปรับรายการรับจากไฟแนนซ์ที่หน้าติดตามเงินรับจากไฟแนนซ์ (/finance-receivable) ' +
-            'ให้เรียบร้อยก่อน จึงจะยกเลิกใบขายได้',
+            'ต้องบันทึกคืนเงิน/ปรับรายการรับจากไฟแนนซ์ที่หน้าติดตามเงินรับจากไฟแนนซ์ ' +
+            '(/finance-receivable) ให้เรียบร้อยก่อน จึงจะยกเลิกใบขายได้ ' +
+            '(หน้านั้น ผจก.สาขาเปิดดูได้แต่แก้ไม่ได้ — การบันทึกรับเงิน/แก้ไขเป็นสิทธิ์ของ ' +
+            'เจ้าของ/ผจก.การเงิน/ฝ่ายบัญชี)',
         );
       }
     }
@@ -247,19 +270,48 @@ export class SaleVoidService {
     // อ่านครั้งเดียวใช้สองงาน: ตัดสิน G4 และเก็บรหัสที่จะเรียกคืนในขั้นเขียน
     const commissions = await tx.salesCommission.findMany({
       where: { saleId: sale.id, deletedAt: null },
-      select: { id: true, status: true, period: true },
+      select: { id: true, status: true, period: true, salespersonId: true },
     });
-    const paidCommission = commissions.find((c) => c.status === 'PAID');
-    if (paidCommission) {
+    const stuckCommission = commissions.find(
+      (c) => !CLAWABLE_COMMISSION_STATUSES.includes(c.status),
+    );
+    if (stuckCommission) {
       throw new BadRequestException(
-        `ค่าคอมของใบขายนี้จ่ายออกไปแล้ว (งวด ${paidCommission.period}) — ` +
-          'ต้องเรียกคืน/ปรับงวดค่าคอมให้เรียบร้อยก่อนจึงจะยกเลิกใบขายได้ ' +
-          '(หน้าค่าคอมมิชชันเปิดได้เฉพาะเจ้าของ/ผจก.การเงิน/พนักงานขาย — ผจก.สาขาต้องแจ้งเจ้าของ)',
+        `ค่าคอมของใบขายนี้อยู่สถานะ ${stuckCommission.status} (งวด ${stuckCommission.period}) ` +
+          '⇒ เงินออกไปแล้ว ยกเลิกใบขายไม่ได้ — ' +
+          'ระบบยังไม่มีเมนูเรียกคืนค่าคอมที่จ่ายแล้ว (หน้าค่าคอมมิชชันมีแค่ "อนุมัติ" กับ ' +
+          '"บันทึกจ่าย" ไม่มีปุ่มกลับรายการ) ⇒ ให้เจ้าของ/ผจก.การเงินตัดสินใจวิธีเรียกคืนก่อน',
       );
     }
-    const clawbackIds = commissions
-      .filter((c) => CLAWABLE_COMMISSION_STATUSES.includes(c.status))
-      .map((c) => c.id);
+
+    // ── G4b — รอบจ่ายค่าคอมที่ผูกเงินไว้แล้ว ────────────────────────────────
+    // `markPayoutPaid` อัปเดต **เฉพาะแถว `CommissionPayout`** ไม่แตะ `SalesCommission.status`
+    // ⇒ ด่าน G4 ข้างบน (ที่ดูสถานะค่าคอมอย่างเดียว) ปิดประตูเงินได้แค่บานเดียว:
+    // ขายสด → ค่าคอม PENDING → generate + approve + paid (พนักงานได้เงินจริง) → ค่าคอมยัง
+    // PENDING → G4 ผ่าน → flip CLAWED_BACK ทั้งที่เงินออกไปแล้ว. รอบจ่ายผูกกับคู่
+    // (salespersonId, period) ไม่ใช่ saleId จึงต้องค้นด้วยคู่นั้นของค่าคอมที่เจอ
+    if (commissions.length > 0) {
+      const lockedPayout = await tx.commissionPayout.findFirst({
+        where: {
+          deletedAt: null,
+          status: { notIn: [...VOIDABLE_PAYOUT_STATUSES] },
+          OR: commissions.map((c) => ({ salespersonId: c.salespersonId, period: c.period })),
+        },
+        select: { period: true, status: true },
+      });
+      if (lockedPayout) {
+        throw new BadRequestException(
+          `ค่าคอมของใบขายนี้ถูกรวมอยู่ในรอบจ่ายค่าคอมงวด ${lockedPayout.period} แล้ว ` +
+            `(สถานะ ${lockedPayout.status}) — ยกเลิกใบขายตอนนี้จะทำให้ยอดในรอบจ่ายค้างเกินจริง ` +
+            'เพราะระบบไม่คำนวณรอบที่สร้างไปแล้วใหม่ และยังไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย ' +
+            '⇒ ให้เจ้าของตัดสินใจก่อน (ถ้ารอบนั้นจ่ายเงินไปแล้ว = ต้องเรียกคืนจากพนักงาน)',
+        );
+      }
+    }
+
+    // ทุกแถวที่มาถึงบรรทัดนี้อยู่ใน `CLAWABLE_COMMISSION_STATUSES` แล้ว (ด่านข้างบนบล็อก
+    // ที่เหลือทั้งหมด) ⇒ เรียกคืนได้ทุกแถว ไม่ต้องกรองซ้ำ
+    const clawbackIds = commissions.map((c) => c.id);
 
     // ── G2 — งวดบัญชีของวันที่จะโพสต์กลับรายการ (เฉพาะใบที่มี JE) ─────────────
     const saleJes = await tx.journalEntry.findMany({
@@ -286,6 +338,15 @@ export class SaleVoidService {
 
     // 1. คืนเครื่องหลัก + ของแถมเข้าสต็อก (ตอนขายบังคับว่าต้องเป็น IN_STOCK มาก่อน
     //    ⇒ คืนที่เดิมถูกต้องตามนิยาม ไม่ต้องยืนยันราคาใหม่)
+    //
+    //    **จงใจไม่ผ่าน `product-enter-stock.util`** (ประตูที่บังคับยืนยันราคา) — คลาสยกเว้น
+    //    เดียวกับเส้นทางยกเลิกสัญญา/ยกเลิกเปลี่ยนเครื่อง: เครื่องกลับมาพร้อมราคาของตัวเอง
+    //    ที่ไม่มี flow ไหนแตะระหว่างขาย ต่างจากเครื่องมือสองที่รับคืนแล้วถือราคาเครื่องใหม่
+    //    ติดมา (สเปค §3 ข้อ 1 อนุญาตชัดเจน)
+    //
+    //    **ข้อจำกัดที่ยอมรับ (สเปค §1):** คิวจองบนเว็บที่ `preemptReservationsInTx` ตัดทิ้ง
+    //    ตอนขาย **ไม่ถูกคืน** — ลูกค้าที่ถูกตัดคิวอาจไปซื้อที่อื่น/ได้รับแจ้งไปแล้ว คืนคิวให้
+    //    เป็นการสัญญาสิ่งที่รักษาไม่ได้ ⇒ ไม่ใช่บั๊ก
     await tx.product.updateMany({
       where: { id: { in: productIds } },
       data: { status: ProductStatus.IN_STOCK },

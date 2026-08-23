@@ -96,12 +96,15 @@ export class CaptureLeadTool {
 
     const configs = await this.prisma.systemConfig.findMany({
       where: {
-        key: { in: ['shop_bot_central_branch_id'] },
+        key: { in: ['shop_bot_central_branch_id', 'shop_bot_lead_handoff_enabled'] },
         deletedAt: null,
       },
     });
     const configMap = new Map(configs.map((c) => [c.key, c.value]));
     const branchId = configMap.get('shop_bot_central_branch_id');
+    // สวิตช์ช่วงทดสอบ (คำสั่งเจ้าของ 2026-08-23 "อย่าเพิ่งติดสถานะ"): 'false' = เก็บ lead ตามปกติ
+    // แต่ไม่ปักธง handoff → บอทคุยต่อได้ไม่ต้อง #reset · ไม่มีแถว/ค่าอื่น = ปักธงตามดีไซน์ (go-live)
+    const handoffAfterLead = configMap.get('shop_bot_lead_handoff_enabled') !== 'false';
 
     // Validate central branch is configured — it's required downstream when
     // SALES converts this lead into a Contract (Contract.branchId is NOT NULL).
@@ -194,9 +197,9 @@ export class CaptureLeadTool {
         where: { id: input.roomId },
         data: {
           customerId: cId,
-          handoffMode: true,
-          handoffReason: 'lead_captured',
-          handoffTaggedAt: new Date(),
+          ...(handoffAfterLead
+            ? { handoffMode: true, handoffReason: 'lead_captured', handoffTaggedAt: new Date() }
+            : {}),
         },
       });
 
@@ -226,7 +229,7 @@ export class CaptureLeadTool {
     // light up in UnifiedInboxPage's ConversationList immediately.
     this.gateway?.emitRoomUpdate(input.roomId, {
       roomId: input.roomId,
-      handoffMode: true,
+      handoffMode: handoffAfterLead,
       customerId,
     });
 

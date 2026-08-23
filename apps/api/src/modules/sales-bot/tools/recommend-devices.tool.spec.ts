@@ -260,7 +260,8 @@ describe('RecommendDevicesTool.run', () => {
     const { tool, tradeInValuation } = build([tpl({ model: 'iPhone 13' })]);
     expect((await tool.run({ currentModel: 'iPhone 12', downBudget: 99_999, monthlyBudget: 99_999 })).tradeIn).toBeNull();
     expect((await tool.run({ currentModel: 'Samsung S20', downBudget: 99_999, monthlyBudget: 99_999 })).tradeIn).toBeNull();
-    // นโยบายร้านรับเทิร์น iPhone 12 ขึ้นไป → 11 ไม่เสนอราคาแม้มีแถว
+    // นโยบายร้านรับเทิร์น iPhone 12 ขึ้นไป → 11 ไม่เสนอราคาแม้มีแถว · ไม่รับ Mini
+    expect((await tool.run({ currentModel: 'iPhone 13 mini', downBudget: 99_999, monthlyBudget: 99_999 })).tradeIn).toBeNull();
     expect((await tool.run({ currentModel: 'iPhone 11', downBudget: 99_999, monthlyBudget: 99_999 })).tradeIn).toBeNull();
     expect((await tool.run({ downBudget: 99_999, monthlyBudget: 99_999 })).tradeIn).toBeNull();
     // ไม่รู้รุ่น → ไม่ยิง query เทิร์นเลย

@@ -17,6 +17,8 @@ import {
   SearchKnowledgeBaseTool,
   SEARCH_KNOWLEDGE_BASE_TOOL,
 } from './tools/search-knowledge-base.tool';
+import { RecommendDevicesTool, RECOMMEND_DEVICES_TOOL } from './tools/recommend-devices.tool';
+import { CompareDevicesTool, COMPARE_DEVICES_TOOL } from './tools/compare-devices.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import {
   LlmChatMessage,
@@ -99,6 +101,8 @@ export class SalesBotService {
     private readonly captureLead: CaptureLeadTool,
     private readonly getInstallmentRates: GetInstallmentRatesTool,
     private readonly searchKnowledgeBase: SearchKnowledgeBaseTool,
+    private readonly recommendDevices: RecommendDevicesTool,
+    private readonly compareDevices: CompareDevicesTool,
     private readonly persona: PersonaService,
     private readonly aiUsage: AiUsageService,
   ) {}
@@ -137,6 +141,8 @@ export class SalesBotService {
       CAPTURE_LEAD_TOOL,
       GET_INSTALLMENT_RATES_TOOL,
       SEARCH_KNOWLEDGE_BASE_TOOL,
+      RECOMMEND_DEVICES_TOOL,
+      COMPARE_DEVICES_TOOL,
     ].map(adaptTool);
 
     const messages: LlmChatMessage[] = [
@@ -347,6 +353,33 @@ export class SalesBotService {
         return this.getInstallmentRates.run(input);
       case 'search_knowledge_base':
         return this.searchKnowledgeBase.run({ query: String(input.query ?? '') });
+      case 'recommend_devices': {
+        // parse ให้ปลอดภัย — โมเดลอาจส่งเลขเป็น string ("3000") หรือส่ง null มา
+        const optStr = (v: unknown): string | undefined =>
+          v != null && String(v).trim() ? String(v).trim() : undefined;
+        const optNum = (v: unknown): number | undefined => {
+          if (v == null || v === '') return undefined;
+          if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+          // โมเดลอาจส่ง "3,000 บาท" / "3 พัน" / "5k" มาเป็น string
+          const raw = String(v).replace(/,/g, '').trim().toLowerCase();
+          const m = /(\d+(?:\.\d+)?)\s*(หมื่น|พัน|k)?/.exec(raw);
+          if (!m) return undefined;
+          const mult = m[2] === 'หมื่น' ? 10_000 : m[2] === 'พัน' || m[2] === 'k' ? 1_000 : 1;
+          const n = Number(m[1]) * mult;
+          return Number.isFinite(n) && n > 0 ? n : undefined;
+        };
+        return this.recommendDevices.run({
+          currentModel: optStr(input.currentModel),
+          downBudget: optNum(input.downBudget),
+          monthlyBudget: optNum(input.monthlyBudget),
+          preferStorage: optStr(input.preferStorage),
+        });
+      }
+      case 'compare_devices':
+        return this.compareDevices.run({
+          currentModel: String(input.currentModel ?? ''),
+          candidateModel: String(input.candidateModel ?? ''),
+        });
       default:
         return { error: 'unknown_tool' };
     }

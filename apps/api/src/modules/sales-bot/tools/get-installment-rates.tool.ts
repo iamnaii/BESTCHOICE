@@ -56,6 +56,16 @@ export interface GetInstallmentRatesResult {
   templates: PricingTemplateRateMatch[];
 }
 
+/**
+ * แถวเต็มจาก `listAllRates()` — shape ของ `run()` คงเดิม (ไม่มี category) เพื่อไม่กระทบ
+ * ผลลัพธ์ที่โมเดลเห็น/เทสต์ toEqual เดิม; ผู้เรียกภายใน (recommend_devices) ต้องรู้
+ * category เพื่อแปลงเป็น "มือ 1 / มือสอง" — `hasWarranty` **ไม่ใช่** ตัวบอกมือ 1
+ * (schema: true = มือสองที่ยังมีประกัน — ดู stickers.service.ts composeOne)
+ */
+export interface PricingTemplateRateRow extends PricingTemplateRateMatch {
+  category: string;
+}
+
 interface RateDefaults {
   rate1Down: number;
   rate1Term: number;
@@ -67,6 +77,7 @@ interface PricingTemplateRow {
   brand: string;
   model: string;
   storage: string;
+  category: string;
   hasWarranty: boolean;
   installmentBestchoicePrice: unknown;
   installmentFinancePrice: unknown;
@@ -123,6 +134,21 @@ export class GetInstallmentRatesTool {
     return {
       templates: candidates.slice(0, MAX_MATCHES).map((t) => this.toMatch(t, defaults)),
     };
+  }
+
+  /**
+   * ทุก template ที่ใช้งานอยู่ แปลงเป็น rate1/rate2 ด้วยสูตรเดียวกับ `run()`
+   * (toMatch + loadDefaults) — ให้ tool อื่น (recommend_devices) inject ใช้
+   * แทนการก๊อปสูตร sticker-parity ไปซ้ำอีกที่
+   */
+  async listAllRates(): Promise<PricingTemplateRateRow[]> {
+    const rows: PricingTemplateRow[] = await this.prisma.pricingTemplate.findMany({
+      where: { isActive: true, deletedAt: null },
+      orderBy: [{ brand: 'asc' }, { model: 'asc' }, { storage: 'asc' }, { hasWarranty: 'asc' }],
+    });
+    if (rows.length === 0) return [];
+    const defaults = await this.loadDefaults();
+    return rows.map((t) => ({ ...this.toMatch(t, defaults), category: String(t.category) }));
   }
 
   // Sticker-exact parity with StickersService.composeOne(): rate1 monthly =

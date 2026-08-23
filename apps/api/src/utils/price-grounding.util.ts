@@ -30,6 +30,10 @@ export const GROUNDED_PRICE_KEYS: ReadonlySet<string> = new Set([
   'installmentPriceThb',
   'cashPriceThb',
   'financedThb',
+  // recommend_devices / compare_devices — ราคารับซื้อโดยประมาณของเครื่องที่ลูกค้าใช้อยู่
+  // (TradeInValuation เกรด A) — บอทต้องพูดเลขเทิร์นได้โดยไม่โดน block
+  'estimateThb',
+  'down', // recommend_devices nearMiss.overBy.down ("เพิ่มดาวน์อีก 1,800 บาท")
 ]);
 
 /**

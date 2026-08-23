@@ -7,6 +7,8 @@ import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool } from './tools/capture-lead.tool';
 import { GetInstallmentRatesTool } from './tools/get-installment-rates.tool';
 import { SearchKnowledgeBaseTool } from './tools/search-knowledge-base.tool';
+import { RecommendDevicesTool } from './tools/recommend-devices.tool';
+import { CompareDevicesTool } from './tools/compare-devices.tool';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { ClaudeProvider } from './providers/claude.provider';
 import { GeminiProvider } from './providers/gemini.provider';
@@ -27,6 +29,8 @@ import { LlmProviderRegistry } from './providers/llm-provider.registry';
     CaptureLeadTool,
     GetInstallmentRatesTool,
     SearchKnowledgeBaseTool,
+    RecommendDevicesTool,
+    CompareDevicesTool,
     ClaudeProvider,
     GeminiProvider,
     LlmProviderRegistry,

@@ -16,6 +16,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface SalesState {
   interestModel?: string | null; // รุ่นหลักที่ลูกค้าต้องการ (รวมความจุ/มือ 1-มือสอง)
+  currentDevice?: string | null; // รุ่นที่ลูกค้าใช้อยู่ตอนนี้ (เช่น 'iPhone 11 128GB') — ฐานของการแนะนำอัปเกรด
   downBudget?: number | null;
   monthlyBudget?: number | null;
   chosenRate?: string | number | null; // "เรทที่ 1" | "เรทที่ 2" | ชื่อแพ็ค (ตัวจดบางทีคืนเลขดิบ — buildNote แปลงให้)
@@ -68,6 +69,7 @@ export class SalesStateService {
   buildNote(state: SalesState | null): string | null {
     if (!state) return null;
     const lines: string[] = [];
+    if (state.currentDevice) lines.push(`รุ่นที่ลูกค้าใช้อยู่ตอนนี้: ${state.currentDevice}`);
     if (state.interestModel) lines.push(`รุ่นที่ลูกค้าสนใจ/ตามหา: ${state.interestModel}`);
     if (state.downBudget) lines.push(`งบดาวน์ที่บอกไว้: ${state.downBudget.toLocaleString()} บาท`);
     if (state.monthlyBudget) lines.push(`งวด/เดือนที่ไหว: ${state.monthlyBudget.toLocaleString()} บาท`);
@@ -107,7 +109,7 @@ export class SalesStateService {
         max_tokens: 400,
         system:
           'คุณคือตัวจดสถานะการขายของร้านผ่อนมือถือ อ่านสถานะเดิมกับบทสนทนาเทิร์นล่าสุด แล้วคืนสถานะใหม่เป็น JSON ล้วน ๆ (ไม่มีข้อความอื่น)\n' +
-          'ฟิลด์: interestModel (รุ่นหลักที่ลูกค้าต้องการ รวมความจุ/มือ 1-มือสอง), downBudget (ตัวเลข), monthlyBudget (ตัวเลข), chosenRate (string เช่น "เรทที่ 1"), docsStatus, name, phone, offered (array รุ่นที่บอทเสนอเพิ่ม), note (เรื่องค้างสั้น ๆ)\n' +
+          'ฟิลด์: currentDevice (รุ่นที่ลูกค้าบอกว่า "ใช้อยู่" ตอนนี้ เช่น "iPhone 11" — คนละช่องกับรุ่นที่อยากได้), interestModel (รุ่นหลักที่ลูกค้าต้องการ รวมความจุ/มือ 1-มือสอง), downBudget (ตัวเลข), monthlyBudget (ตัวเลข), chosenRate (string เช่น "เรทที่ 1"), docsStatus, name, phone, offered (array รุ่นที่บอทเสนอเพิ่ม), note (เรื่องค้างสั้น ๆ)\n' +
           'กติกา: เริ่มจากสถานะเดิมแล้วอัปเดตเฉพาะที่มีข้อมูลใหม่ · ไม่รู้ = null · ห้ามเดา · ลูกค้าเปลี่ยนใจรุ่น = แทนที่ interestModel\n' +
           'สำคัญ: downBudget/monthlyBudget = ตัวเลขที่ "ลูกค้า" บอกเองว่าเป็นงบ/ไหวต่อเดือนเท่านั้น — ตัวเลขดาวน์/ค่างวดที่ "บอท" เสนอในแพ็ค ห้ามเอามาใส่สองช่องนี้ (ใส่ note แทนถ้าสำคัญ)',
         messages: [

@@ -260,6 +260,15 @@ export default function SalesHistoryPage() {
           { header: 'กำไร', key: 'profit', width: 14 },
         );
       }
+      // เปิดสวิตช์ = ไฟล์ปนใบยกเลิก ⇒ ต้องมีคอลัมน์แยกให้บัญชีเห็น; ปิดสวิตช์ = คอลัมน์เดิมทุกประการ
+      if (includeVoided) {
+        baseCols.push(
+          { header: 'สถานะใบ', key: 'voidStatus', width: 12 },
+          { header: 'ยกเลิกเมื่อ', key: 'voidedAt', width: 18 },
+          { header: 'เหตุผลยกเลิก', key: 'voidReason', width: 30 },
+          { header: 'ผู้ยกเลิก', key: 'voidedBy', width: 16 },
+        );
+      }
 
       const now = new Date();
       await exportToExcel({
@@ -291,6 +300,12 @@ export default function SalesHistoryPage() {
           if (isOwner) {
             row.costPrice = s.product.costPrice ? Number(s.product.costPrice) : '-';
             row.profit = s.product.costPrice ? Number(s.netAmount) - Number(s.product.costPrice) : '-';
+          }
+          if (includeVoided) {
+            row.voidStatus = s.deletedAt ? 'ยกเลิกแล้ว' : 'ใช้อยู่';
+            row.voidedAt = s.deletedAt ? formatDateTime(s.deletedAt) : '-';
+            row.voidReason = s.voidReason || '-';
+            row.voidedBy = s.voidedBy?.name || '-';
           }
           return row;
         }),

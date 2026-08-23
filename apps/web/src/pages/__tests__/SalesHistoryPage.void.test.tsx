@@ -24,6 +24,11 @@ vi.mock('sonner', () => ({
   },
 }));
 
+const exportToExcel = vi.fn();
+vi.mock('@/utils/excel.util', () => ({
+  exportToExcel: (...a: unknown[]) => exportToExcel(...a),
+}));
+
 const apiGet = vi.fn();
 const apiPost = vi.fn();
 vi.mock('@/lib/api', () => ({
@@ -114,6 +119,42 @@ beforeEach(() => {
   apiPost.mockReset();
   toastSuccess.mockReset();
   toastError.mockReset();
+  exportToExcel.mockReset();
+  exportToExcel.mockResolvedValue(undefined);
+});
+
+describe('SalesHistoryPage — Excel export กับใบที่ยกเลิก', () => {
+  const voidedRow = {
+    ...saleRow, id: 's2', saleNumber: 'SA-0002',
+    deletedAt: '2026-08-22T03:00:00Z', voidReason: 'คีย์ผิดรุ่นเครื่อง', voidedBy: { id: 'u9', name: 'สมชาย' },
+  };
+
+  it('ปิดสวิตช์ → ไฟล์ไม่มีคอลัมน์สถานะใบ (คอลัมน์เดิมทุกประการ)', async () => {
+    renderWithRole('OWNER');
+    await screen.findByText(/SA-0001/);
+    await userEvent.click(screen.getByRole('button', { name: /ส่งออก Excel/ }));
+    await waitFor(() => expect(exportToExcel).toHaveBeenCalled());
+    const headers = exportToExcel.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
+    expect(headers).not.toContain('สถานะใบ');
+  });
+
+  it('เปิดสวิตช์ → มีคอลัมน์สถานะใบ/ยกเลิกเมื่อ/เหตุผลยกเลิก และแถวยกเลิกได้ค่า "ยกเลิกแล้ว"', async () => {
+    renderWithRole('OWNER', [saleRow, voidedRow]);
+    await screen.findByText(/SA-0001/);
+    await userEvent.click(screen.getByLabelText(/แสดงใบที่ยกเลิกแล้ว/));
+    await userEvent.click(screen.getByRole('button', { name: /ส่งออก Excel/ }));
+    await waitFor(() => expect(exportToExcel).toHaveBeenCalled());
+    const arg = exportToExcel.mock.calls[0][0];
+    const headers = arg.columns.map((c: { header: string }) => c.header);
+    expect(headers).toEqual(expect.arrayContaining(['สถานะใบ', 'ยกเลิกเมื่อ', 'เหตุผลยกเลิก', 'ผู้ยกเลิก']));
+    const active = arg.data.find((r: { saleNumber: string }) => r.saleNumber === 'SA-0001');
+    const voided = arg.data.find((r: { saleNumber: string }) => r.saleNumber === 'SA-0002');
+    expect(active.voidStatus).toBe('ใช้อยู่');
+    expect(voided.voidStatus).toBe('ยกเลิกแล้ว');
+    expect(voided.voidReason).toBe('คีย์ผิดรุ่นเครื่อง');
+    expect(voided.voidedBy).toBe('สมชาย');
+    expect(voided.voidedAt).not.toBe('-');
+  });
 });
 
 describe('SalesHistoryPage — ยกเลิกใบขาย', () => {

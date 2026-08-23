@@ -53,6 +53,7 @@ describe('SaleVoidService.voidSale', () => {
     expect(tx.salesCommission.updateMany).not.toHaveBeenCalled();
     expect(tx.financeReceivable.updateMany).not.toHaveBeenCalled();
     expect(reversalTemplate.reverse).not.toHaveBeenCalled();
+    expect(tx.commissionPayout.updateMany).not.toHaveBeenCalled();
   };
 
   beforeEach(async () => {
@@ -80,12 +81,21 @@ describe('SaleVoidService.voidSale', () => {
       },
       salesCommission: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'c1', status: 'PENDING', period: '2026-08', salespersonId: 'sp1' },
+          {
+            id: 'c1',
+            status: 'PENDING',
+            period: '2026-08',
+            salespersonId: 'sp1',
+            createdAt: new Date('2026-08-10T00:00:00Z'),
+          },
         ]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       // รอบจ่ายค่าคอม (`CommissionPayout`) — default = ยังไม่มีรอบจ่ายของงวดนี้
-      commissionPayout: { findFirst: jest.fn().mockResolvedValue(null) },
+      commissionPayout: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       journalEntry: {
         findMany: jest
           .fn()
@@ -301,30 +311,81 @@ describe('SaleVoidService.voidSale', () => {
   });
 
   // ── G4b — รอบจ่ายค่าคอม (`CommissionPayout`) ────────────────────────────────
-  // `markPayoutPaid` (commission.service.ts) อัปเดต **เฉพาะแถว CommissionPayout**
-  // ไม่แตะ `SalesCommission.status` เลย ⇒ พนักงานรับเงินจริงไปแล้วแต่ค่าคอมยัง PENDING
-  // ⇒ ด่านที่ดูแค่ `SalesCommission.status` ปิดประตูเงินได้แค่บานเดียว
-  it('G4b: ค่าคอมอยู่ในรอบจ่ายที่จ่ายเงินแล้ว (SalesCommission ยัง PENDING) → ปฏิเสธ', async () => {
-    tx.commissionPayout.findFirst.mockResolvedValue({ period: '2026-08', status: 'PAID' });
+  // `markPayoutPaid` อัปเดต **เฉพาะแถว CommissionPayout** ไม่แตะ `SalesCommission.status`
+  // ⇒ ด่านที่ดูแค่สถานะค่าคอมปิดประตูเงินได้บานเดียว
+  const payout = (over: Record<string, unknown> = {}) => ({
+    id: 'po1',
+    period: '2026-08',
+    salespersonId: 'sp1',
+    status: 'PAID',
+    // สร้างรอบ "หลัง" ค่าคอมเกิด ⇒ รอบนี้ครอบค่าคอมใบนี้จริง
+    generatedAt: new Date('2026-08-20T00:00:00Z'),
+    ...over,
+  });
+
+  it('G4b: รอบจ่ายที่จ่ายเงินแล้ว (SalesCommission ยัง PENDING) → ปฏิเสธ', async () => {
+    tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'PAID' })]);
     await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/รอบจ่าย/);
     expectNothingWritten();
   });
 
-  it('G4b: รอบจ่ายสถานะ DRAFT ก็บล็อก — ยอดในรอบจะค้างเกินจริง (generatePayouts ข้ามรอบที่มีอยู่แล้ว)', async () => {
-    tx.commissionPayout.findFirst.mockResolvedValue({ period: '2026-08', status: 'DRAFT' });
+  it('G4b: รอบจ่ายสถานะ APPROVED → ปฏิเสธ (อนุมัติแล้ว รอจ่ายตามยอดเดิม)', async () => {
+    tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'APPROVED' })]);
     await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expectNothingWritten();
   });
 
-  it('G4b: ค้นรอบจ่ายด้วยคู่ (salespersonId, period) ของค่าคอมที่เจอ + exclude เฉพาะ CANCELLED', async () => {
+  // คำตัดสินเจ้าของ: "รอบที่ยังเป็นร่าง → ยกเลิกได้" — ไม่บล็อก แต่ต้องลบร่างทิ้ง
+  // เพราะ `generatePayouts` ไม่คำนวณรอบที่มีอยู่แล้วใหม่ ⇒ ปล่อยไว้ = ยอดค้างเกินจริง
+  it('G4b: ร่างรอบจ่าย (DRAFT) → ไม่บล็อก แต่ soft-delete ร่างใน tx เดียวกัน + audit', async () => {
+    tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'DRAFT' })]);
     await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
-    expect(tx.commissionPayout.findFirst).toHaveBeenCalledWith(
+    expect(tx.commissionPayout.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['po1'] } },
+        data: expect.objectContaining({ deletedAt: expect.any(Date) }),
+      }),
+    );
+    const actions = tx.auditLog.create.mock.calls.map(
+      (c: [{ data: { action: string } }]) => c[0].data.action,
+    );
+    expect(actions).toContain('COMMISSION_PAYOUT_DRAFT_VOIDED');
+    expect(tx.sale.update).toHaveBeenCalled();
+  });
+
+  // ห้ามหักยอด (totalCommission -= ...) แทนการลบร่าง: รอบที่ generate ก่อนค่าคอมเกิด
+  // ไม่เคยนับค่าคอมใบนี้ ⇒ หักยอด = จ่ายพนักงานขาด
+  it('G4b: รอบจ่ายที่สร้าง **ก่อน** ค่าคอมใบนี้เกิด → ไม่บล็อก ไม่ลบ (รอบนั้นไม่เคยนับใบนี้)', async () => {
+    tx.commissionPayout.findMany.mockResolvedValue([
+      payout({ status: 'PAID', generatedAt: new Date('2026-08-01T00:00:00Z') }),
+    ]);
+    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    expect(tx.commissionPayout.updateMany).not.toHaveBeenCalled();
+    expect(tx.sale.update).toHaveBeenCalled();
+  });
+
+  it('G4b: รอบจ่ายเก่าที่ไม่มี generatedAt (ก่อนมีคอลัมน์) → พิสูจน์ไม่ได้ = ถือว่าครอบ → บล็อก', async () => {
+    tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'PAID', generatedAt: null })]);
+    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expectNothingWritten();
+  });
+
+  it('G4b: รอบจ่ายที่ถูกยกเลิกแล้ว (CANCELLED) → ไม่บล็อก ไม่ลบ', async () => {
+    tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'CANCELLED' })]);
+    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    expect(tx.commissionPayout.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('G4b: ค้นรอบจ่ายด้วยคู่ (salespersonId, period) ของค่าคอมที่เจอ', async () => {
+    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    expect(tx.commissionPayout.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           deletedAt: null,
-          status: { notIn: ['CANCELLED'] },
           OR: [{ salespersonId: 'sp1', period: '2026-08' }],
         }),
       }),
@@ -334,7 +395,44 @@ describe('SaleVoidService.voidSale', () => {
   it('G4b: ไม่มีค่าคอมเลย → ไม่ต้องไปถามรอบจ่าย', async () => {
     tx.salesCommission.findMany.mockResolvedValue([]);
     await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
-    expect(tx.commissionPayout.findFirst).not.toHaveBeenCalled();
+    expect(tx.commissionPayout.findMany).not.toHaveBeenCalled();
+  });
+
+  // ── G3 — เฉพาะสถานะที่ "เงินเข้าจริง" เท่านั้นที่บล็อก (คำตัดสิน D2) ──────────
+  it.each(['DISPUTED', 'OVERDUE'])(
+    'G3: สถานะ %s = ยังไม่ได้เงิน → ไม่บล็อก (รายงานของระบบเองนับเป็นยอดค้างเต็มจำนวน)',
+    async (status) => {
+      tx.sale.findUnique.mockResolvedValue({ ...EXT_SALE });
+      tx.product.findMany.mockResolvedValue([
+        { id: 'p9', status: 'SOLD_INSTALLMENT', deletedAt: null },
+      ]);
+      tx.financeReceivable.findFirst.mockResolvedValue({
+        id: 'fr-1',
+        status,
+        receivedAmount: null,
+        financeCompany: 'KTC',
+      });
+      tx.salesCommission.findMany.mockResolvedValue([]);
+      tx.journalEntry.findMany.mockReset().mockResolvedValue([]);
+      await expect(service.voidSale('s2', 'u1', 'คีย์ผิดบริษัทไฟแนนซ์')).resolves.toBeDefined();
+    },
+  );
+
+  it.each(['RECEIVED', 'PARTIALLY_RECEIVED'])('G3: สถานะ %s → ปฏิเสธ', async (status) => {
+    tx.sale.findUnique.mockResolvedValue({ ...EXT_SALE });
+    tx.product.findMany.mockResolvedValue([
+      { id: 'p9', status: 'SOLD_INSTALLMENT', deletedAt: null },
+    ]);
+    tx.financeReceivable.findFirst.mockResolvedValue({
+      id: 'fr-1',
+      status,
+      receivedAmount: null,
+      financeCompany: 'KTC',
+    });
+    await expect(service.voidSale('s2', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expectNothingWritten();
   });
 
   // ── G4 — สถานะค่าคอมที่เงินออกไปแล้ว ────────────────────────────────────────
@@ -430,6 +528,7 @@ describe('SaleVoidService.voidSale', () => {
       expect.objectContaining({
         sweepBy: { path: 'saleId', value: 's1' },
         flowLabel: 'shop-cash-sale-void',
+        descriptionPrefix: '[ยกเลิกใบขาย]',
       }),
       tx,
     );

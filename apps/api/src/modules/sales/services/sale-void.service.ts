@@ -73,15 +73,39 @@ const CLOSED_REPAIR_STATUSES: readonly RepairStatus[] = [
 const CLAWABLE_COMMISSION_STATUSES: readonly string[] = ['PENDING', 'APPROVED'];
 
 /**
- * สถานะ **รอบจ่ายค่าคอม** (`CommissionPayout`) ที่ไม่ผูกเงินไว้ ⇒ ยกเลิกใบขายทับได้
+ * สถานะ **รอบจ่ายค่าคอม** (`CommissionPayout`) ที่ยังไม่ผูกเงิน ⇒ ยกเลิกใบขายทับได้
  *
- * exclude list โดยเจตนา (ค่าจริงของ `PayoutStatus` = DRAFT / APPROVED / PAID / CANCELLED):
- * `DRAFT` และ `APPROVED` **ก็บล็อก** ไม่ใช่แค่ `PAID` เพราะ `generatePayouts` ข้ามรอบที่มี
- * อยู่แล้วทุกใบที่ยังไม่ถูก soft-delete (`if (existing && existing.deletedAt === null) continue`)
- * ⇒ ยอดในรอบที่สร้างไปแล้ว **ไม่มีอะไรมาคำนวณใหม่ให้** การเรียกคืนค่าคอมทีหลังจึงทิ้งยอด
- * ค้างเกินจริงไว้ในรอบ แล้วถูกอนุมัติ/จ่ายตามยอดเก่า
+ * exclude list โดยเจตนา (ค่าจริง `PayoutStatus` = DRAFT / APPROVED / PAID / CANCELLED) —
+ * สถานะใหม่จะถูกนับว่า "ผูกเงินแล้ว" และบล็อกไว้ก่อน ไม่ใช่ผ่านเงียบ ๆ
+ *
+ * - `DRAFT` — **คำตัดสินเจ้าของ 2026-08-23: ร่างยกเลิกได้** ⇒ ไม่บล็อก แต่ต้อง
+ *   **soft-delete ร่างนั้นทิ้งใน tx เดียวกัน** เพราะ `generatePayouts` ข้ามรอบที่มีอยู่แล้ว
+ *   (`if (existing && existing.deletedAt === null) continue`) ⇒ ปล่อยร่างไว้ = ยอดค้างเกินจริง
+ *   แล้วถูกอนุมัติ/จ่ายตามยอดเก่า. ลบทิ้งแล้วกดสร้างใหม่ได้ยอดถูก เพราะขา `upsert.update`
+ *   ตั้ง `deletedAt: null` + คำนวณยอดใหม่ ซึ่งตัด `CLAWED_BACK` ออกเองอยู่แล้ว
+ * - `CANCELLED` — รอบถูกยกเลิก ไม่ผูกเงิน ⇒ ปล่อยผ่านเฉย ๆ ไม่ต้องลบ
+ *
+ * **ห้ามแก้เป็นการหักยอด** (`totalCommission -= commissionAmount`) แทนการลบร่าง:
+ * รอบที่ generate **ก่อน** ค่าคอมใบนี้เกิดไม่เคยนับใบนี้ ⇒ หักยอด = จ่ายพนักงานขาด
  */
-const VOIDABLE_PAYOUT_STATUSES: readonly PayoutStatus[] = [PayoutStatus.CANCELLED];
+const UNPAID_PAYOUT_STATUSES: readonly PayoutStatus[] = [
+  PayoutStatus.DRAFT,
+  PayoutStatus.CANCELLED,
+];
+
+/**
+ * สถานะลูกหนี้ไฟแนนซ์ที่แปลว่า **เงินเข้าจริงแล้ว** — allow-list ตามเจตนา D2
+ * ("บล็อกเมื่อเงินขยับจริง")
+ *
+ * `FinanceReceivableStatus` มี 5 ค่า แต่ `DISPUTED`/`OVERDUE` แปลว่า **ยังไม่ได้เงิน** —
+ * รายงานของระบบเองยืนยัน (`finance-receivable.service.ts` จัด DISPUTED เป็น
+ * `disputedAmount` เต็มจำนวน `netExpectedAmount` และ OVERDUE เป็นยอดค้าง) ⇒ การอ่าน
+ * `status !== 'PENDING'` ว่า "โอนมาแล้ว" เป็น false positive ที่ล็อกใบขายไว้ถาวร
+ * (ปุ่ม "แจ้งปัญหา" ตั้ง `DISPUTED` ได้ แต่ไม่มีคอนโทรลบน UI พากลับ `PENDING`)
+ *
+ * เคสเงินเข้าจริงถูกครอบอีกชั้นด้วย `receivedAmount > 0` อยู่แล้ว
+ */
+const RECEIVED_FINANCE_STATUSES: readonly string[] = ['RECEIVED', 'PARTIALLY_RECEIVED'];
 
 export interface VoidSaleResult {
   saleNumber: string;
@@ -188,9 +212,16 @@ export class SaleVoidService {
 
     // ── G6 — ออเดอร์ออนไลน์ ─────────────────────────────────────────────────
     if (sale.onlineOrderId) {
+      // ตรวจปลายทางจริงแล้ว (`shop-orders.service.ts`) — ทั้งสองทางที่เคยแนะนำใช้ไม่ได้:
+      // `markRefunded` บังคับ `status === 'PAYMENT_RECEIVED_UNFULFILLABLE'` ซึ่งโดยนิยาม
+      // แปลว่าไม่มีใบขาย ⇒ ออเดอร์ที่มีใบขาย (ประชากรเดียวที่มาถึงบรรทัดนี้) เข้าเงื่อนไข
+      // ไม่ได้ตลอดกาล · `cancelOrder` แตะแค่ `onlineOrder.status` + `productReservation`
+      // ไม่แตะ Sale / product.status / JE ⇒ ทำตามแล้วได้สถานะสองฝั่งไม่ตรงกันพอดี
       throw new BadRequestException(
-        `ใบขาย ${sale.saleNumber} มาจากออเดอร์ออนไลน์ — ให้ยกเลิก/คืนเงินที่หน้าออเดอร์ออนไลน์แทน ` +
-          'เพื่อไม่ให้สถานะสองฝั่งไม่ตรงกัน (ออเดอร์ยังค้างว่าจ่ายแล้ว/ส่งแล้ว แต่ใบขายหายไป)',
+        `ใบขาย ${sale.saleNumber} มาจากออเดอร์ออนไลน์ — ระบบยังไม่มีเส้นทางยกเลิกที่ล้างทั้ง` +
+          'ออเดอร์และใบขายพร้อมกัน (การยกเลิกออเดอร์ที่หน้าออเดอร์ออนไลน์ไม่ล้างใบขาย ' +
+          'สถานะสินค้า และรายการบัญชี ส่วนการบันทึกคืนเงินกดได้เฉพาะออเดอร์ที่อยู่ในคิวคืนเงิน) ' +
+          '⇒ ให้เจ้าของตรวจก่อน',
       );
     }
 
@@ -253,7 +284,7 @@ export class SaleVoidService {
     });
     if (receivable) {
       const moneyMoved =
-        receivable.status !== 'PENDING' ||
+        RECEIVED_FINANCE_STATUSES.includes(receivable.status) ||
         (!!receivable.receivedAmount && receivable.receivedAmount.greaterThan(0));
       if (moneyMoved) {
         throw new BadRequestException(
@@ -270,7 +301,7 @@ export class SaleVoidService {
     // อ่านครั้งเดียวใช้สองงาน: ตัดสิน G4 และเก็บรหัสที่จะเรียกคืนในขั้นเขียน
     const commissions = await tx.salesCommission.findMany({
       where: { saleId: sale.id, deletedAt: null },
-      select: { id: true, status: true, period: true, salespersonId: true },
+      select: { id: true, status: true, period: true, salespersonId: true, createdAt: true },
     });
     const stuckCommission = commissions.find(
       (c) => !CLAWABLE_COMMISSION_STATUSES.includes(c.status),
@@ -290,23 +321,50 @@ export class SaleVoidService {
     // ขายสด → ค่าคอม PENDING → generate + approve + paid (พนักงานได้เงินจริง) → ค่าคอมยัง
     // PENDING → G4 ผ่าน → flip CLAWED_BACK ทั้งที่เงินออกไปแล้ว. รอบจ่ายผูกกับคู่
     // (salespersonId, period) ไม่ใช่ saleId จึงต้องค้นด้วยคู่นั้นของค่าคอมที่เจอ
+    let draftPayoutsToVoid: { id: string; period: string; salespersonId: string }[] = [];
     if (commissions.length > 0) {
-      const lockedPayout = await tx.commissionPayout.findFirst({
+      const payouts = await tx.commissionPayout.findMany({
         where: {
           deletedAt: null,
-          status: { notIn: [...VOIDABLE_PAYOUT_STATUSES] },
           OR: commissions.map((c) => ({ salespersonId: c.salespersonId, period: c.period })),
         },
-        select: { period: true, status: true },
+        select: {
+          id: true,
+          period: true,
+          status: true,
+          salespersonId: true,
+          generatedAt: true,
+        },
       });
+
+      // รอบที่ "ครอบค่าคอมใบนี้จริง" เท่านั้นที่เกี่ยว — `generatePayouts` ไม่คำนวณรอบที่
+      // สร้างไปแล้วใหม่ ⇒ ค่าคอมที่เกิด **หลัง** กดสร้างรอบไม่เคยอยู่ในยอดของรอบนั้น
+      // (เคสจริง: สร้างรอบ 20 ส.ค. → คีย์ใบขายผิด 21 ส.ค. → ต้องยกเลิกได้)
+      // `generatedAt = null` = รอบยุคก่อนมีคอลัมน์ ⇒ พิสูจน์ไม่ได้ = ถือว่าครอบไว้ก่อน
+      const covering = payouts.filter((p) =>
+        commissions.some(
+          (c) =>
+            c.salespersonId === p.salespersonId &&
+            c.period === p.period &&
+            (p.generatedAt === null || c.createdAt <= p.generatedAt),
+        ),
+      );
+
+      const lockedPayout = covering.find((p) => !UNPAID_PAYOUT_STATUSES.includes(p.status));
       if (lockedPayout) {
         throw new BadRequestException(
-          `ค่าคอมของใบขายนี้ถูกรวมอยู่ในรอบจ่ายค่าคอมงวด ${lockedPayout.period} แล้ว ` +
-            `(สถานะ ${lockedPayout.status}) — ยกเลิกใบขายตอนนี้จะทำให้ยอดในรอบจ่ายค้างเกินจริง ` +
-            'เพราะระบบไม่คำนวณรอบที่สร้างไปแล้วใหม่ และยังไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย ' +
-            '⇒ ให้เจ้าของตัดสินใจก่อน (ถ้ารอบนั้นจ่ายเงินไปแล้ว = ต้องเรียกคืนจากพนักงาน)',
+          `ค่าคอมของใบขายนี้ถูกนับอยู่ในรอบจ่ายค่าคอมงวด ${lockedPayout.period} ` +
+            `ซึ่ง${lockedPayout.status === PayoutStatus.PAID ? 'จ่ายเงินไปแล้ว' : 'อนุมัติแล้ว รอจ่ายตามยอดเดิม'} — ` +
+            'ยกเลิกใบขายไม่ได้ เพราะระบบไม่คำนวณยอดของรอบที่สร้างไปแล้วใหม่ ' +
+            'และยังไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย ⇒ ให้เจ้าของ/ผจก.การเงินตัดสินใจก่อน ' +
+            '(ถ้ารอบนั้นจ่ายไปแล้ว = ต้องเรียกคืนจากพนักงาน)',
         );
       }
+
+      // ร่างที่ครอบใบนี้ → ลบทิ้งในขั้นเขียน (ไม่บล็อก ตามคำตัดสินเจ้าของ)
+      draftPayoutsToVoid = covering
+        .filter((p) => p.status === PayoutStatus.DRAFT)
+        .map((p) => ({ id: p.id, period: p.period, salespersonId: p.salespersonId }));
     }
 
     // ทุกแถวที่มาถึงบรรทัดนี้อยู่ใน `CLAWABLE_COMMISSION_STATUSES` แล้ว (ด่านข้างบนบล็อก
@@ -391,6 +449,33 @@ export class SaleVoidService {
       });
     }
 
+    // 4b. ร่างรอบจ่ายค่าคอมที่ครอบใบนี้ → soft-delete (ยอดในร่างรวมค่าคอมที่เพิ่งถูก
+    //     เรียกคืนไปแล้ว และ `generatePayouts` จะข้ามร่างที่ยังอยู่ ⇒ ปล่อยไว้ = ยอดเกินจริง
+    //     ลบแล้วกดสร้างใหม่ได้ยอดถูก เพราะขา `upsert.update` คำนวณใหม่ + ตัด CLAWED_BACK ออก)
+    if (draftPayoutsToVoid.length > 0) {
+      await tx.commissionPayout.updateMany({
+        where: { id: { in: draftPayoutsToVoid.map((p) => p.id) } },
+        data: { deletedAt: now },
+      });
+      for (const p of draftPayoutsToVoid) {
+        await tx.auditLog.create({
+          data: {
+            action: 'COMMISSION_PAYOUT_DRAFT_VOIDED',
+            entity: 'commission_payout',
+            entityId: p.id,
+            userId,
+            newValue: {
+              period: p.period,
+              salespersonId: p.salespersonId,
+              saleId: sale.id,
+              saleNumber: sale.saleNumber,
+              reason: `ลบร่างรอบจ่ายเพราะยกเลิกใบขาย ${sale.saleNumber}`,
+            },
+          },
+        });
+      }
+    }
+
     // 5. ใบขาย → ยกเลิก (เวลาที่ยกเลิก = `deletedAt` ⇒ ผู้อ่านที่กรอง deletedAt
     //    อยู่แล้วหักใบนี้ออกเองโดยไม่ต้องเดินแก้ทีละจุด)
     await tx.sale.update({
@@ -416,6 +501,7 @@ export class SaleVoidService {
           reversalEntryNumbers,
           commissionIds: clawbackIds,
           financeReceivableId: receivable?.id ?? null,
+          voidedDraftPayoutIds: draftPayoutsToVoid.map((p) => p.id),
         },
       },
     });

@@ -4703,6 +4703,12 @@ model CommissionPayout {
   commissionCount Int          @default(0) @map("commission_count")
   status          PayoutStatus @default(DRAFT)
   notes           String?
+  /// เวลาที่ยอดในรอบนี้ถูก "คำนวณจริง" (ตั้งทุกครั้งที่ `generatePayouts` เขียนแถวนี้ —
+  /// ทั้งขา create และขา update ที่ restore หลัง soft-delete) ⇒ ใช้พิสูจน์ว่าค่าคอมใบไหน
+  /// ถูกนับอยู่ในรอบนี้จริง (`commission.createdAt <= generatedAt`). ห้ามใช้ `createdAt`
+  /// แทน — ขา restore คำนวณยอดใหม่แต่ `createdAt` ยังเป็นของรอบเดิม
+  /// null = รอบที่สร้างก่อนคอลัมน์นี้มีอยู่ (พิสูจน์ไม่ได้ ⇒ ผู้อ่านต้องถือว่า "ครอบไว้ก่อน")
+  generatedAt     DateTime?    @map("generated_at")
 
   approvedById String?   @map("approved_by_id")
   approvedAt   DateTime? @map("approved_at")

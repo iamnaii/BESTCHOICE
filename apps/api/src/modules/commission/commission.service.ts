@@ -626,6 +626,9 @@ export class CommissionService {
           commissionCount: entry.count,
           status: 'DRAFT',
           notes: notes || null,
+          // ประทับเวลาที่ยอด "ถูกคำนวณจริง" — ผู้อ่าน (เช่นด่านยกเลิกใบขาย) ใช้พิสูจน์ว่า
+          // ค่าคอมใบไหนถูกนับอยู่ในรอบนี้ (`commission.createdAt <= generatedAt`)
+          generatedAt: new Date(),
         },
         update: {
           // restore if soft-deleted
@@ -634,6 +637,9 @@ export class CommissionService {
           totalCommission: entry.totalCommission,
           commissionCount: entry.count,
           notes: notes || null,
+          // ขานี้คำนวณยอดใหม่ ⇒ ต้องเลื่อน generatedAt ตาม (ใช้ `createdAt` แทนไม่ได้
+          // เพราะมันยังเป็นเวลาของรอบเดิมที่ถูกลบไป)
+          generatedAt: new Date(),
         },
       });
       created += 1;

@@ -37,6 +37,8 @@ export async function estimateTradeIn(
 ): Promise<TradeInEstimate | null> {
   if (!currentSpec) return null;
   if (currentSpec.generation < TRADE_IN_MIN_GENERATION) return null;
+  // นโยบายร้าน (KB extracted:trade_in บน prod): "ไม่รับรุ่น Mini"
+  if (currentSpec.variant === 'mini') return null;
   // ชื่อรุ่นในตารางราคากลาง prod (seed yellobe) ต่างจาก canonical บางรุ่น:
   // 'iPhone SE 2022' (ไม่มีวงเล็บ) / 'iPhone Xr' 'iPhone 12 Mini' (ตัวพิมพ์ — insensitive ครอบแล้ว)
   // ตรวจกับ prod 2026-08-23: iPhone 8..17 Pro Max, Xr/Xs/Xs Max, SE 2020/2022, 16e/17e, Air

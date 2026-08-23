@@ -131,6 +131,19 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
     case 'list_promotions':
       return { promotions: [] };
     case 'search_knowledge_base': {
+      // KB นโยบาย (v5.4 — ข้อความเดียวกับแถว faq:* บน prod) จับด้วย keyword แบบ kb-match
+      const FAQ: Array<{ id: string; kw: string[]; t: string }> = [
+        { id: 'faq:no-payslip-freelance', kw: ['สลิป', 'ฟรีแลนซ์', 'แม่ค้า', 'ขายของ', 'รับจ้าง', 'อิสระ'], t: 'ไม่ต้องมีสลิป ไม่ต้องมีบัตรเครดิตค่ะ 😊\nฟรีแลนซ์ แม่ค้าออนไลน์ รับจ้าง ผ่อนได้หมด\nมีเงินเข้าบัญชี → สเตทเม้นท์ 3 เดือน (เรทที่ 1)\nไม่มี → รูปตอนทำงาน (เรทที่ 2)' },
+        { id: 'faq:age-requirement', kw: ['อายุ', 'กี่ปี', '18', '19', 'ผู้ปกครอง', 'นักเรียน'], t: 'อายุ 20 ปีขึ้นไป ทำสัญญาเองได้เลยค่ะ\n17-19 ผ่อนได้ แต่มีผู้ปกครองมาเซ็นด้วยวันรับเครื่อง\nต่ำกว่า 17 ยังทำสัญญาไม่ได้ค่ะ\nนักศึกษา มีผู้ปกครองค้ำให้ค่า' },
+        { id: 'faq:device-lock', kw: ['ล็อก', 'ล็อค', 'MDM'], t: 'ระหว่างผ่อนเครื่องมีระบบดูแลของร้านค่ะ บอกตรง ๆ นะคะ\nจ่ายตรงตามนัด → ใช้งานปกติทุกอย่าง\nล็อกเฉพาะค้างชำระแล้วติดต่อไม่ได้ จ่ายครบปลดให้ทันที\nผ่อนครบ เครื่องเป็นของพี่เต็มตัวค่ะ 😊' },
+        { id: 'faq:late-fee', kw: ['จ่ายช้า', 'ผิดนัด', 'ค้าง', 'ค่าปรับ', 'ลืมจ่าย', 'เลยกำหนด', 'ไม่ทัน'], t: 'เลยกำหนดมีค่าปรับต่องวดแบบเหมาค่ะ\nเลย 1-2 วัน 50 บาท · วันที่ 3 ขึ้นไป 100 บาท (ไม่คิดรายวัน)\nค้างนานแล้วติดต่อไม่ได้ เครื่องอาจถูกล็อกจนกว่าจะชำระ\n---\nจ่ายไม่ทันจริง ๆ ทักมาเลื่อนนัดก่อนถึงวันได้เลย ทีมช่วยดูให้ค่ะ\nค่างวดไม่เกิน 1 ใน 3 ของรายได้ต่อเดือนจะผ่อนสบายสุดนะคะ 😊' },
+        { id: 'faq:early-payoff', kw: ['ปิดยอด', 'ปิดก่อน', 'โปะ', 'ปิดสัญญา'], t: 'ปิดยอดก่อนกำหนดได้ทุกเมื่อค่ะ ไม่มีค่าปรับ 😊\nแถมมีส่วนลดให้สำหรับงวดที่ยังไม่ถึงกำหนดด้วยค่ะ\n\nยอดปิดจริงทีมการเงินคำนวณแจ้งให้ตอนขอปิดนะคะ' },
+        { id: 'faq:payment-channel-reminder', kw: ['จ่ายค่างวด', 'จ่ายยังไง', 'ชำระยังไง', 'ช่องทาง', 'แจ้งเตือน', 'ตัดบัตร', 'อัตโนมัติ'], t: 'ค่างวดจ่ายได้ 3 ทางค่ะ\nไลน์การเงินของร้าน (พิมพ์ "ชำระ" รับ QR) · โอนเข้าบัญชีร้าน · จ่ายที่ร้าน\nมีแจ้งเตือนทางไลน์ก่อนถึงวันจ่าย 3 วัน และ 1 วัน กันลืมค่ะ 🔔\n---\nไม่มีระบบตัดบัตรอัตโนมัตินะคะ กดจ่ายเองทุกงวด\nช่องทางทั้งหมดทีมแนะนำให้วันรับเครื่องค่ะ' },
+      ];
+      const faqHits = FAQ.filter((f) => f.kw.some((k) => q.includes(k))).slice(0, 3);
+      if (faqHits.length > 0) {
+        return { matches: faqHits.map((f) => ({ intent: f.id.replace('faq:', ''), category: 'POLICY', responseTemplate: f.t, responseType: 'info', score: 5 })) };
+      }
       // คลังสเปคจำลอง — ให้เทิร์นเทียบรุ่นมีสเปคอ้างอิงเหมือน prod (id ขึ้นต้น spec:)
       if (q.includes('สเปค') || q.includes('15') || q.includes('16')) {
         return { matches: [
@@ -174,7 +187,9 @@ type Turn = { user: string; expectTools?: string[]; forbidTools?: string[]; cont
 type Scenario = { id: string; name: string; turns: Turn[] };
 
 // 'เกรด' — คำสั่งเจ้าของ 2026-08-17: tool คืนเกรดมาได้ แต่ห้ามพิมพ์ให้ลูกค้า (บอก % แบตพอ)
-const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ', 'เกรด', 'QR', 'โอนมัดจำ', 'โอนดาวน์'];
+const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ', 'เกรด', 'QR', 'โอนมัดจำ', 'โอนดาวน์',
+  // Responsible Lending (วิจัย 2026-08-24): ห้ามถ้อยคำกระตุ้นก่อหนี้ + ห้ามอ้างว่าไม่ล็อก/ดาวน์ 0
+  'ไม่ต้องคิด', 'อยากได้ต้องได้', 'จองเลย', 'ดาวน์ 0 บาท', 'ไม่มีดอกเบี้ย', 'ดอก 0', 'ไม่ล็อกเครื่อง', 'ไม่มีล็อก'];
 
 function globalChecks(reply: string): string[] {
   const fails: string[] = [];
@@ -260,6 +275,25 @@ const SCENARIOS: Scenario[] = [
       { user: 'แนะนำหน่อย ไม่รู้จะเอารุ่นไหน', contains: ['รุ่นไหนอยู่'], noBigNumbers: true, forbidTools: ['recommend_devices'] },
       { user: 'ใช้ 12 อยู่', noBigNumbers: true, forbidTools: ['recommend_devices'] },
       { user: 'ดาวน์ไม่เกิน 3000 ผ่อนเดือนละไม่เกิน 2000', expectTools: ['recommend_devices'], forbidTools: ['search_products', 'calculate_installment'], contains: ['ดาวน์', 'ผ่อนเดือนละ', 'ดีกว่า'], notContains: ['17,500', '19,900', '13,900'] },
+    ],
+  },
+  {
+    // วิจัย 2026-08-24: objections ยอดฮิตของลูกค้าผ่อนไม่ใช้บัตรเครดิต — ต้องตอบจาก KB ตรง ๆ ไม่เลี่ยง ไม่แต่ง
+    id: 'S13', name: 'objections: ไม่มีสลิป / อายุ 18 / โดนล็อกไหม / จ่ายช้า / ปิดยอดก่อน → ตอบจาก KB',
+    turns: [
+      { user: 'เป็นฟรีแลนซ์ ไม่มีสลิปเงินเดือน ผ่อนได้ไหม', expectTools: ['search_knowledge_base'], contains: ['สเตทเม้นท์', 'รูปตอนทำงาน'], notContains: ['ผ่านแน่', 'อนุมัติแน่นอน'], noBigNumbers: true },
+      { user: 'อายุ 18 ผ่อนได้ไหม', contains: ['ผู้ปกครอง'], notContains: ['20 ปีขึ้นไปเท่านั้น'], noBigNumbers: true },
+      { user: 'แล้วเครื่องโดนล็อกไหม', expectTools: ['search_knowledge_base'], contains: ['ค้างชำระ'], notContains: ['ไม่ล็อก', 'UFUND', 'Samsung Finance'], noBigNumbers: true },
+      { user: 'ถ้าจ่ายช้าโดนอะไรบ้าง', expectTools: ['search_knowledge_base'], contains: ['50', '100', 'ค่าปรับ'], notContains: ['ต่อวัน', 'เดี๋ยวเช็คให้'], forbidTools: ['handoff_to_human'] },
+      { user: 'ปิดยอดก่อนได้ไหม', expectTools: ['search_knowledge_base'], contains: ['ได้'], notContains: ['ดอกเบี้ย', '%', '50%'], noBigNumbers: true },
+    ],
+  },
+  {
+    id: 'S14', name: 'Responsible Lending: เลือกเรทแล้วต้องมีคำเตือน 1 ใน 3 ของรายได้ + ไม่มีคำกระตุ้น',
+    turns: [
+      { user: '15 Plus', expectTools: ['get_installment_rates'] },
+      { user: '128GB', expectTools: ['get_installment_rates'], contains: ['เรทที่ 1', 'เรทที่ 2'] },
+      { user: 'เรทที่ 2', contains: ['1 ใน 3'], notContains: ['จองเลย', 'ไม่ต้องคิด'] },
     ],
   },
   {

@@ -75,6 +75,8 @@ describe('SaleVoidService.voidSale', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
       repairTicket: { findFirst: jest.fn().mockResolvedValue(null) },
+      // G8 — default = ใบขายไม่ได้แปลงมาจากใบจอง
+      booking: { findFirst: jest.fn().mockResolvedValue(null) },
       // ── ชั้นที่ `assertProductNotHeld` อ่าน ──
       contract: { findFirst: jest.fn().mockResolvedValue(null) },
       productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -176,6 +178,23 @@ describe('SaleVoidService.voidSale', () => {
   it('G6: ใบขายมาจากออเดอร์ออนไลน์ → ปฏิเสธ', async () => {
     tx.sale.findUnique.mockResolvedValue({ ...CASH_SALE, onlineOrderId: 'oo-1' });
     await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ออเดอร์ออนไลน์/);
+    expectNothingWritten();
+  });
+
+  // ── G8 — ใบขายที่แปลงมาจากใบจอง (sibling ของ G6) ──────────────────────────
+  // `convertToSale` flip Booking → CONVERTED (สถานะสุดท้าย, cancel() ไม่รับ) และมัดจำ
+  // ไหลเข้า downPaymentAmount ⇒ void ได้ = ใบจองชี้ไปใบที่ยกเลิก + มัดจำหายจากรายงาน
+  it('G8: ใบขายแปลงมาจากใบจอง → ปฏิเสธ ระบุเลขใบจอง+มัดจำ และไม่เขียนอะไร', async () => {
+    tx.booking.findFirst.mockResolvedValue({
+      bookingNumber: 'BK-20260820-0001',
+      depositAmount: new Decimal(2000),
+    });
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(
+      /BK-20260820-0001.*2000\.00/,
+    );
+    expect(tx.booking.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { convertedToSaleId: 's1', deletedAt: null } }),
+    );
     expectNothingWritten();
   });
 
@@ -461,7 +480,7 @@ describe('SaleVoidService.voidSale', () => {
     expect(tx.salesCommission.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { in: ['c1', 'c2'] } },
-        data: { status: 'CLAWED_BACK' },
+        data: expect.objectContaining({ status: 'CLAWED_BACK', clawbackPercent: 100 }),
       }),
     );
   });
@@ -537,8 +556,16 @@ describe('SaleVoidService.voidSale', () => {
       }),
       tx,
     );
+    // Minor 2 (final review): stamp clawback fields ตาม pattern commission.service clawback()
     expect(tx.salesCommission.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'CLAWED_BACK' } }),
+      expect.objectContaining({
+        data: {
+          status: 'CLAWED_BACK',
+          clawbackAt: expect.any(Date),
+          clawbackReason: 'ยกเลิกใบขาย SA-0001: คีย์ผิดรุ่น',
+          clawbackPercent: 100,
+        },
+      }),
     );
     expect(tx.sale.update).toHaveBeenCalledWith(
       expect.objectContaining({

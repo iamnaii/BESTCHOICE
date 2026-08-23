@@ -797,7 +797,7 @@ The existing `/expenses/ledger/trial-balance` and `/expenses/ledger/profit-loss`
 Spec: `docs/superpowers/specs/2026-08-22-void-sale-design.md` · Plan:
 `docs/superpowers/plans/2026-08-22-void-sale.md` · Service:
 `apps/api/src/modules/sales/services/sale-void.service.ts` · Endpoint `POST /sales/:id/void`
-(`@Roles('OWNER','BRANCH_MANAGER')`, DTO `{ reason }` ≥10 ตัวอักษร) · Integration:
+(`@Roles('OWNER','BRANCH_MANAGER')`, DTO `{ reason }` 10-500 ตัวอักษร) · Integration:
 `apps/api/src/modules/sales/__tests__/sale-void.integration.spec.ts` (CI glob `SALES_FILES`).
 
 ที่มา: final review Phase 5 I-2 — เจ้าของกลับคำตัดสิน "ยอมรับช่องว่างไว้ก่อน" เป็น "ทำให้ถูกเลย"
@@ -847,6 +847,7 @@ PR #1285 (2026-06-23) ทำให้ `ShopCashSaleTemplate` โพสต์ **J
 | D1 | `saleType` | `INSTALLMENT` → ชี้ไปเส้นทางยกเลิกสัญญา; ชนิดที่ไม่รู้จัก → reject (exclude-list) |
 | ข้อมูลเพี้ยน | `contractId` บนใบ CASH/EXTERNAL_FINANCE | reject (เดินต่อ = ทิ้งสัญญาลอย) |
 | G6 | `onlineOrderId` | reject — **ยังไม่มีเส้นทางล้างสองฝั่ง** (`cancelOrder` ไม่แตะ Sale/product/JE; `markRefunded` รับเฉพาะ `PAYMENT_RECEIVED_UNFULFILLABLE` ซึ่งโดยนิยามไม่มีใบขาย) ⇒ ข้อความบอกให้เจ้าของตรวจก่อน ไม่ชี้ประตูที่ไม่มีจริง |
+| **G8** | `Booking` ที่ `convertedToSaleId = sale.id` + `deletedAt: null` (relation `SaleBooking` — FK อยู่ฝั่ง Booking, `Sale` ไม่มี bookingId) | reject (sibling ของ G6, final review 2026-08-23) — `convertToSale` ตั้ง `downPaymentAmount = depositAmount` (มัดจำรับจริง) และ flip Booking → `CONVERTED` (สถานะสุดท้าย, `cancel()` ไม่รับ) ⇒ void = ใบจองชี้ไปใบที่ยกเลิก + มัดจำหายจากรายงาน. ข้อความระบุเลขใบจอง+ยอดมัดจำ ให้เจ้าของตรวจก่อน. หมายเหตุ pre-existing: ใบขายจากใบจอง**ไม่โพสต์ SHOP JE** — แจ้ง CPA |
 | G7 | `RepairTicket` ที่ `productId ∈ {หลัก, ของแถม}` และ `status notIn [CLOSED, CANCELLED, REPLACED]` | **`RepairTicket` ไม่มี `saleId`** (spec เดิมเขียนว่า "อ้างอิงใบขายนี้") จึงตรวจผ่าน `productId`; enum จริงคือ `RepairStatus` |
 | G5 | `assertProductNotHeld(tx, { ...p, expectedStatus }, 'RESTORE_TO_STOCK')` ทุกชิ้น | action ที่ 4 บน helper เดิม (ห้ามมีด่านชุดที่สอง). `expectedStatus` = `SOLD_CASH` (CASH) / `SOLD_INSTALLMENT` (EXTERNAL_FINANCE หลัก) — **ของแถมเป็น `SOLD_CASH` เสมอ** (`markBundleProductsSold` hardcode) จึงใบ EXTERNAL_FINANCE มีสองสถานะในใบเดียว. นับจำนวน product **ก่อน** วนด่าน |
 | G3 | `FinanceReceivable` ของใบ (ไม่ผูก saleType) | บล็อกเมื่อ `status ∈ {RECEIVED, PARTIALLY_RECEIVED}` **หรือ** `receivedAmount > 0` — allow-list ตาม D2 (`DISPUTED`/`OVERDUE` = ยังไม่ได้เงิน; สเปคเดิม `status != PENDING` ล็อกใบถาวร) |
@@ -890,7 +891,9 @@ period])` ไม่ใช่ `saleId`.
    ที่ยอมรับ spec §1)
 2. sweep JE (ด้านบน)
 3. `FinanceReceivable` → `deletedAt` (G3 การันตีว่ายังไม่มีเงินเข้า)
-4. `SalesCommission` → `CLAWED_BACK` · 4b. ร่างรอบจ่ายที่ครอบ → `deletedAt` + audit
+4. `SalesCommission` → `CLAWED_BACK` + stamp `clawbackAt = now` / `clawbackReason = 'ยกเลิกใบขาย <saleNumber>: <reason>'`
+   / `clawbackPercent = 100` (pattern `commission.service.ts clawback()`; `clawbackAmount` ไม่ stamp เพราะ
+   `updateMany` ตั้งต่อแถวไม่ได้ และผู้อ่านตัดสินจาก `status`) · 4b. ร่างรอบจ่ายที่ครอบ → `deletedAt` + audit
 5. `Sale` → `deletedAt = now`, `voidReason`, `voidedById` (migration `20261000000000_sale_void_fields`;
    `voided_by_id TEXT` เพราะ `users.id` เป็น TEXT) — ไม่มีสถานะ `VOIDED` แยก
 6. `AuditLog { action: 'SALE_VOIDED', entity: 'sale' }` ผ่าน `tx.auditLog.create` (atomic; ห้าม

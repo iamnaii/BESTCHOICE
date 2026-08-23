@@ -248,6 +248,25 @@ export class SaleVoidService {
       );
     }
 
+    // ── G8 — ใบขายที่แปลงมาจากใบจอง (sibling ของ G6) ─────────────────────────
+    // `bookings.service.ts convertToSale` สร้างใบขายสดโดย `downPaymentAmount = มัดจำ`
+    // (เงินรับจริงแล้ว) และ flip Booking → `CONVERTED` ซึ่งเป็นสถานะสุดท้าย
+    // (`cancel()` รับเฉพาะ PENDING_DEPOSIT/PAID) ⇒ ยกเลิกใบนี้ได้ = ใบจอง CONVERTED ชี้ไป
+    // ใบขายที่ยกเลิก + มัดจำคืนผ่านเมนูไหนไม่ได้ + เงินมัดจำหายจากรายงานทั้งที่รับจริง.
+    // `Sale` ไม่เก็บ bookingId — FK อยู่ฝั่ง `Booking.convertedToSaleId` (relation SaleBooking)
+    const sourceBooking = await tx.booking.findFirst({
+      where: { convertedToSaleId: sale.id, deletedAt: null },
+      select: { bookingNumber: true, depositAmount: true },
+    });
+    if (sourceBooking) {
+      throw new BadRequestException(
+        `ใบขาย ${sale.saleNumber} แปลงมาจากใบจอง ${sourceBooking.bookingNumber} ` +
+          `(มัดจำ ${sourceBooking.depositAmount.toFixed(2)} บาท รับจริงแล้ว) — ` +
+          'ระบบยังไม่มีเส้นทางยกเลิกที่คืนสถานะใบจอง/มัดจำพร้อมกัน (ใบจองที่แปลงแล้ว ' +
+          'ยกเลิกที่เมนูจองไม่ได้ และยกเลิกที่นี่จะทำให้เงินมัดจำหายจากรายงาน) ⇒ ให้เจ้าของตรวจก่อน',
+      );
+    }
+
     // สินค้าหลัก + ของแถม — dedupe กันกรณีของแถมซ้ำกับสินค้าหลัก (จะทำให้
     // count check ด้านล่างเข้าใจผิดว่า "หาไม่ครบ")
     const productIds = [...new Set([sale.productId, ...sale.bundleProductIds])];
@@ -466,9 +485,17 @@ export class SaleVoidService {
     // 4. ค่าคอม → CLAWED_BACK (เรียกคืนตามรหัสที่อ่านไว้ในด่าน G4 — ไม่ยิงเมื่อไม่มี
     //    เพราะขายผ่านไฟแนนซ์ภายนอกไม่สร้างค่าคอมตั้งแต่แรก)
     if (clawbackIds.length > 0) {
+      //    stamp ฟิลด์ clawback ตาม pattern `commission.service.ts clawback()` — เรียกคืนเต็ม 100%
+      //    (`clawbackAmount` ไม่ stamp: updateMany ตั้งค่าต่อแถวไม่ได้ และผู้อ่านทุกตัว
+      //    (`generatePayouts`) ตัดสินจาก `status` เท่านั้น)
       await tx.salesCommission.updateMany({
         where: { id: { in: clawbackIds } },
-        data: { status: 'CLAWED_BACK' },
+        data: {
+          status: 'CLAWED_BACK',
+          clawbackAt: now,
+          clawbackReason: `ยกเลิกใบขาย ${sale.saleNumber}: ${reason}`,
+          clawbackPercent: 100,
+        },
       });
     }
 

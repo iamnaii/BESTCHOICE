@@ -61,6 +61,7 @@
 | G5 | สินค้าถูกผูกไปที่อื่นแล้ว — reuse `assertProductNotHeld` (Phase 5) ด้วย action ใหม่ · **ตรวจทั้งสินค้าหลักและของแถมทุกชิ้น** ถ้าชิ้นใดชิ้นหนึ่งไม่ผ่าน = ยกเลิกทั้งใบไม่ได้ | เครื่องอาจถูกขายต่อ/จอง/เข้าสัญญาใหม่ไปแล้ว | ระบุ**ชื่อสินค้าและสถานะปัจจุบัน**ของชิ้นที่ติด + flow ที่ถูกต้อง |
 | G6 | ใบขายมาจากออเดอร์ออนไลน์ (`Sale.onlineOrderId != null`) | สถานะสองฝั่งจะเพี้ยน (order ยัง `PAID`/`DELIVERED` แต่ใบขายหาย) | ให้จัดการที่เมนูออเดอร์ออนไลน์ |
 | G7 | มีใบซ่อมที่ยังไม่ปิดบน**เครื่องของใบขายนี้** — `RepairTicket` **ไม่มี `saleId`** (มีแต่ `customerId`/`contractId`/`productId`) จึงตรวจ `productId ∈ {หลัก, ของแถม}` + `status notIn [CLOSED, CANCELLED, REPLACED]` (enum จริง `RepairStatus`; exclude-list) — **แก้ 2026-08-23 จากเดิมที่เขียนว่า "อ้างอิงใบขายนี้"** | ประกันอิงใบขาย (`repair-warranty.service.ts` อ่าน `Sale`) — ยกเลิกแล้วเคลมจะลอย | ให้ปิด/ยกเลิกใบซ่อมที่เมนู "รับซ่อม/รับประกัน" ก่อน |
+| **G8** `[implemented]` | ใบขายแปลงมาจาก**ใบจอง** — `Booking.convertedToSaleId = sale.id` (relation `SaleBooking`; FK อยู่ฝั่ง Booking, `Sale` ไม่มี bookingId) + `deletedAt: null` (**เพิ่ม final review 2026-08-23** — sibling ของ G6) | `convertToSale` ตั้ง `downPaymentAmount = depositAmount` (มัดจำรับจริงแล้ว) และ flip Booking → `CONVERTED` ซึ่งเป็นสถานะสุดท้าย (`cancel()` รับเฉพาะ `PENDING_DEPOSIT`/`PAID`) ⇒ void ได้ = ใบจอง CONVERTED ชี้ไปใบที่ยกเลิก + มัดจำคืนผ่านเมนูไหนไม่ได้ + เงินมัดจำหายจากรายงานทั้งที่รับจริง | ระบุเลขใบจอง + ยอดมัดจำ, บอกตรง ๆ ว่ายังไม่มีเส้นทางคืนสถานะใบจอง/มัดจำพร้อมกัน ⇒ ให้เจ้าของตรวจก่อน |
 
 **G3 — ทำไมเลิกใช้ `status != PENDING` (แก้สเปค 2026-08-23):** `FinanceReceivableStatus`
 มี 5 ค่า และ **`DISPUTED` / `OVERDUE` แปลว่ายังไม่ได้เงิน** — โค้ดรายงานของระบบเองยืนยัน
@@ -241,6 +242,11 @@ fail-closed). ไม่เพิ่ม guard ใหม่.
   pre-existing, ไม่มี PII ใหม่)
 - G6: ออเดอร์ออนไลน์ยังไม่มีเส้นทางล้างสองฝั่ง (ออเดอร์ + ใบขาย + สินค้า + JE) — ข้อความบอกให้เจ้าของ
   ตรวจก่อน
+- G8: ใบขายจากใบจองยังไม่มีเส้นทางคืนสถานะใบจอง/มัดจำพร้อมกัน — บล็อกไว้ก่อนเหมือน G6
+- **Loyalty points ที่แลกตอนขายไม่ถูกคืน** เมื่อ void — วันนี้ถึงไม่ได้: POS ไม่ส่ง `loyaltyPointsRedeemed`
+  ผู้ส่งเดียวคือ online-order ซึ่ง G6 บล็อกอยู่แล้ว ⇒ ต้องทำเมื่อเปิด G6 หรือ POS เริ่มรับแต้ม
+- **ใบขายจากใบจองไม่โพสต์ SHOP JE** (`convertToSale` ไม่เรียก `ShopCashSaleTemplate`) — pre-existing
+  ไม่เกี่ยวกับ void แต่พบระหว่าง final review ⇒ แจ้ง CPA (รายได้/COGS/มัดจำของใบจองไม่อยู่ในสมุด SHOP)
 - G5 "เครื่องถูกเปิดสัญญาต่อ" ไม่มีเคส integration (ตั้งฉากไม่ได้โดยไม่เขียน `product.status` ตรง) —
   ครอบด้วย unit + `product-lifecycle.integration.spec.ts`
 - F2 (test-only): G4b เทียบ `commission.createdAt` (Prisma engine) กับ `generatedAt` (Node) — เทส

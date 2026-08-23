@@ -15,7 +15,10 @@ export const COMPARE_DEVICES_TOOL = {
     'value of the current device, ราคาประมาณ). This tool has NO device prices — do NOT quote ' +
     'prices in the same turn; the sales flow asks for storage/rate afterwards. STRICT: use spec ' +
     'sentences and numbers ONLY from this result — never invent specs from memory. If either ' +
-    'model is not recognized (recognized=false) the arrays are empty: ask the customer to ' +
+    'model is not recognized (recognized=false — e.g. the customer uses Samsung/Android) ' +
+    'better/same/worse are empty: use `candidateHighlights` (from the spec table) to describe ' +
+    'the iPhone, never describe the non-iPhone device from memory, and note the shop does NOT ' +
+    'take non-iPhone trade-ins (tradeIn is null). If the candidate is unrecognized ask the customer to ' +
     'confirm the model instead of guessing.',
   input_schema: {
     type: 'object',
@@ -36,6 +39,8 @@ export const COMPARE_DEVICES_TOOL = {
 export interface CompareDevicesResult {
   current: { model: string; recognized: boolean };
   candidate: { model: string; recognized: boolean };
+  /** จุดเด่นของรุ่นที่สนใจจากตารางสเปค — ใช้เมื่อเทียบข้ามยี่ห้อไม่ได้ (current ไม่รู้จัก) */
+  candidateHighlights: string[];
   better: string[];
   same: string[];
   worse: string[];
@@ -62,6 +67,7 @@ export class CompareDevicesTool {
         model: candidateSpec?.model ?? candidateText,
         recognized: candidateSpec !== null,
       },
+      candidateHighlights: candidateSpec?.highlights ?? [],
       better: diff?.better ?? [],
       same: diff?.same ?? [],
       worse: diff?.worse ?? [],

@@ -37,7 +37,7 @@ describe('CompareDevicesTool.run', () => {
       deletedAt: null,
     });
     expect(Object.keys(r).sort()).toEqual(
-      ['better', 'candidate', 'current', 'generationGap', 'same', 'tradeIn', 'worse'].sort(),
+      ['better', 'candidate', 'candidateHighlights', 'current', 'generationGap', 'same', 'tradeIn', 'worse'].sort(),
     );
   });
 

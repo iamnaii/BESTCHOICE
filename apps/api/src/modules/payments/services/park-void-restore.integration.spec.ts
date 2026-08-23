@@ -135,6 +135,46 @@ describe('void of a last-installment receipt restores park money to its OWN buck
     };
   };
 
+  /**
+   * บันทึกชำระ "งวดสุดท้าย" โดยข้ามด่านลำดับงวด (`enforceSequence: false`).
+   *
+   * ทำไมต้องข้าม: fixture ของสเปคนี้จงใจปล่อยงวด 11 ค้างไว้ เพื่อไม่ให้สัญญา
+   * ปิดครบตอนจ่ายงวด 12 (สัญญา COMPLETED จะ void ใบเสร็จไม่ได้ —
+   * UNPAY_BLOCKED_CONTRACT_STATUSES) และ `checkContractCompletion` นับจากแถว
+   * Payment ที่ status != PAID เท่านั้น ส่วน `PaymentStatus` มีแค่ 4 ค่า
+   * (PENDING/PAID/PARTIALLY_PAID/OVERDUE) ⇒ **ไม่มีสถานะไหนเลยที่ทำให้สัญญายัง
+   * ไม่ปิดพร้อมกับผ่านด่าน "ห้ามข้ามงวด" ไปด้วย** fixture นี้จึงอยู่ร่วมกับด่าน
+   * ไม่ได้ถ้าไม่ข้าม
+   *
+   * ทำไมข้ามแล้วยังซื่อสัตย์: สภาพแบบนี้ **เกิดได้จริงบนโปรดักชัน** ผ่าน webhook
+   * PaySolutions ซึ่งข้ามด่านเดียวกันด้วยเหตุผลเดียวกัน (เงินถูกตัดที่ gateway
+   * แล้ว ปฏิเสธการบันทึก = เงินจริงค้างเติ่ง) สเปคนี้ทดสอบ "เงินพักเข้าถังไหน
+   * ตอน void" ไม่ใช่ตัวด่าน — ด่านมีสเปคของตัวเองที่
+   * `installment-sequence.util.spec.ts` และ `pending-sequence-flag.spec.ts`
+   *
+   * ⚠️ ห้ามแก้ด้วยการปิด/ผ่อนด่านในโค้ดจริง — เป็นคำสั่งเจ้าของ 2026-08-19
+   */
+  const recordLastInstallment = (transactionRef: string) =>
+    orchestrator.recordPayment(
+      c.id,
+      12,
+      CASH,
+      'CASH',
+      recordedById,
+      undefined, // evidenceUrl
+      undefined, // notes
+      transactionRef,
+      '11-1101',
+      undefined, // toleranceApproverId
+      undefined, // paymentCase
+      undefined, // consumeAdvance → คงค่า default true
+      undefined, // paidDate
+      undefined, // lateFeeWaiverAmount
+      undefined, // lateFeeWaiverReasonCode
+      undefined, // waiverApproverId
+      false, // enforceSequence — ดูเหตุผลด้านบน
+    );
+
   /** Latest non-voided INSTALLMENT receipt for the payment under test. */
   const latestReceiptId = async () =>
     (
@@ -226,17 +266,7 @@ describe('void of a last-installment receipt restores park money to its OWN buck
   });
 
   it('receipt on the LAST installment consumes both buckets and stamps the split on its JE', async () => {
-    await orchestrator.recordPayment(
-      c.id,
-      12,
-      CASH,
-      'CASH',
-      recordedById,
-      undefined,
-      undefined,
-      'PARK-VOID-1',
-      '11-1101',
-    );
+    await recordLastInstallment('PARK-VOID-1');
 
     // Both buckets drained by the receipt.
     expect(await readBuckets()).toEqual({ generic: '0.00', park: '0.00' });
@@ -289,17 +319,7 @@ describe('void of a last-installment receipt restores park money to its OWN buck
 
   it('a receipt JE WITHOUT the split stamp still restores wholly to advanceBalance (forward-only legacy path)', async () => {
     // Re-pay the same installment (buckets are back at 200 / 354 after the void).
-    await orchestrator.recordPayment(
-      c.id,
-      12,
-      CASH,
-      'CASH',
-      recordedById,
-      undefined,
-      undefined,
-      'PARK-VOID-2',
-      '11-1101',
-    );
+    await recordLastInstallment('PARK-VOID-2');
     expect(await readBuckets()).toEqual({ generic: '0.00', park: '0.00' });
 
     // Simulate a JE posted BEFORE this feature shipped: strip the stamp.

@@ -922,9 +922,11 @@ describe('SalesController — POST /sales/:id/void', () => {
     };
     const controller = new SalesController({} as never, voidService as never);
 
-    await controller.voidSale('s1', { reason: 'คีย์ผิดรุ่นเครื่อง' }, { id: 'u1', role: 'OWNER' });
+    const user = { id: 'u1', role: 'OWNER', branchId: 'branch-1' };
+    await controller.voidSale('s1', { reason: 'คีย์ผิดรุ่นเครื่อง' }, user);
 
-    expect(voidService.voidSale).toHaveBeenCalledWith('s1', 'u1', 'คีย์ผิดรุ่นเครื่อง');
+    // ส่ง user ทั้งก้อน (id + role + branchId) — service ใช้ role/branchId ทำ branch scope
+    expect(voidService.voidSale).toHaveBeenCalledWith('s1', user, 'คีย์ผิดรุ่นเครื่อง');
   });
 
   it('จำกัดสิทธิ์ OWNER + BRANCH_MANAGER เท่านั้น (@Roles metadata)', () => {

@@ -103,8 +103,10 @@ export class SalesController {
   voidSale(
     @Param('id') id: string,
     @Body() dto: VoidSaleDto,
-    @CurrentUser() user: { id: string; role: string },
+    // ส่ง user ทั้งก้อน — service ใช้ role/branchId ทำ branch scope (BranchGuard
+    // ไม่ scope route ที่ไม่มี branchId ใน request)
+    @CurrentUser() user: { id: string; role: string; branchId?: string },
   ) {
-    return this.saleVoidService.voidSale(id, user.id, dto.reason);
+    return this.saleVoidService.voidSale(id, user, dto.reason);
   }
 }

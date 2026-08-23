@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { SaleVoidService } from './sale-void.service';
@@ -30,8 +30,12 @@ describe('SaleVoidService.voidSale', () => {
     contractId: null,
     onlineOrderId: null,
     deletedAt: null,
+    branchId: 'branch-1',
     netAmount: new Decimal(12000),
   };
+
+  /** ผู้กดยกเลิก default ของเทสเดิม — OWNER ข้ามสาขาได้ (CROSS_BRANCH_ROLES) */
+  const OWNER = { id: 'u1', role: 'OWNER' };
 
   const EXT_SALE = {
     id: 's2',
@@ -42,6 +46,7 @@ describe('SaleVoidService.voidSale', () => {
     contractId: null,
     onlineOrderId: null,
     deletedAt: null,
+    branchId: 'branch-1',
     netAmount: new Decimal(20000),
   };
 
@@ -134,7 +139,7 @@ describe('SaleVoidService.voidSale', () => {
   // ── ไม่พบใบขาย ────────────────────────────────────────────────────────────
   it('ไม่พบใบขาย → NotFound และไม่เขียนอะไร', async () => {
     tx.sale.findUnique.mockResolvedValue(null);
-    await expect(service.voidSale('nope', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('nope', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       NotFoundException,
     );
     expectNothingWritten();
@@ -143,34 +148,34 @@ describe('SaleVoidService.voidSale', () => {
   // ── G1 ────────────────────────────────────────────────────────────────────
   it('G1: ใบขายถูกยกเลิกไปแล้ว → ปฏิเสธ และไม่เขียนอะไร', async () => {
     tx.sale.findUnique.mockResolvedValue({ ...CASH_SALE, deletedAt: new Date('2026-08-01') });
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ยกเลิกไปแล้ว/);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ยกเลิกไปแล้ว/);
     expectNothingWritten();
   });
 
   // ── INSTALLMENT อยู่นอกขอบเขต ─────────────────────────────────────────────
   it('ใบขายผ่อนของเรา (INSTALLMENT) → ชี้ไปเส้นทางยกเลิกสัญญา ไม่ทำที่นี่', async () => {
     tx.sale.findUnique.mockResolvedValue({ ...CASH_SALE, saleType: 'INSTALLMENT' });
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ยกเลิกสัญญา/);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ยกเลิกสัญญา/);
     expectNothingWritten();
   });
 
   // ── ข้อมูลเพี้ยน ──────────────────────────────────────────────────────────
   it('ข้อมูลเพี้ยน: ใบขายสดมี contractId → ปฏิเสธ', async () => {
     tx.sale.findUnique.mockResolvedValue({ ...CASH_SALE, contractId: 'ct-1' });
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ผิดปกติ/);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ผิดปกติ/);
     expectNothingWritten();
   });
 
   it('ข้อมูลเพี้ยน: หาสินค้าของใบขายไม่ครบ → ปฏิเสธก่อนแตะ state', async () => {
     tx.product.findMany.mockResolvedValue([{ id: 'p1', status: 'SOLD_CASH', deletedAt: null }]);
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ผิดปกติ/);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ผิดปกติ/);
     expectNothingWritten();
   });
 
   // ── G6 ────────────────────────────────────────────────────────────────────
   it('G6: ใบขายมาจากออเดอร์ออนไลน์ → ปฏิเสธ', async () => {
     tx.sale.findUnique.mockResolvedValue({ ...CASH_SALE, onlineOrderId: 'oo-1' });
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ออเดอร์ออนไลน์/);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ออเดอร์ออนไลน์/);
     expectNothingWritten();
   });
 
@@ -180,12 +185,12 @@ describe('SaleVoidService.voidSale', () => {
       ticketNumber: 'RT-20260801-0001',
       status: 'IN_PROGRESS',
     });
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ใบซ่อม/);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ใบซ่อม/);
     expectNothingWritten();
   });
 
   it('G7: ตรวจใบซ่อมด้วย productId ของทั้งสินค้าหลักและของแถม + exclude สถานะที่ปิดแล้ว', async () => {
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     expect(tx.repairTicket.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -203,7 +208,7 @@ describe('SaleVoidService.voidSale', () => {
       { id: 'p1', status: 'SOLD_CASH', deletedAt: null },
       { id: 'p2', status: 'SOLD_INSTALLMENT', deletedAt: null },
     ]);
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expectNothingWritten();
@@ -216,7 +221,7 @@ describe('SaleVoidService.voidSale', () => {
       { id: 'p1', name: 'iPhone 15 128GB', status: 'SOLD_CASH', deletedAt: null },
       { id: 'p2', name: 'หูฟัง AirPods ของแถม', status: 'SOLD_INSTALLMENT', deletedAt: null },
     ]);
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(
       /หูฟัง AirPods ของแถม/,
     );
     expectNothingWritten();
@@ -241,7 +246,7 @@ describe('SaleVoidService.voidSale', () => {
     tx.salesCommission.findMany.mockResolvedValue([]);
     tx.journalEntry.findMany.mockReset().mockResolvedValue([]);
 
-    const res = await service.voidSale('s2', 'u1', 'คีย์ผิดบริษัทไฟแนนซ์');
+    const res = await service.voidSale('s2', OWNER, 'คีย์ผิดบริษัทไฟแนนซ์');
     expect(res.restoredProductIds).toEqual(['p9', 'p8']);
     expect(tx.product.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: { in: ['p9', 'p8'] } } }),
@@ -254,7 +259,7 @@ describe('SaleVoidService.voidSale', () => {
       { id: 'p9', status: 'SOLD_INSTALLMENT', deletedAt: null },
       { id: 'p8', status: 'SOLD_INSTALLMENT', deletedAt: null },
     ]);
-    await expect(service.voidSale('s2', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('s2', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expectNothingWritten();
@@ -267,7 +272,7 @@ describe('SaleVoidService.voidSale', () => {
     ]);
     tx.salesCommission.findMany.mockResolvedValue([]);
     tx.journalEntry.findMany.mockReset().mockResolvedValue([]);
-    await expect(service.voidSale('s2', 'u1', 'คีย์ผิดบริษัทไฟแนนซ์')).resolves.toBeDefined();
+    await expect(service.voidSale('s2', OWNER, 'คีย์ผิดบริษัทไฟแนนซ์')).resolves.toBeDefined();
   });
 
   // ── G3 ────────────────────────────────────────────────────────────────────
@@ -282,7 +287,7 @@ describe('SaleVoidService.voidSale', () => {
       receivedAmount: new Decimal(5000),
       financeCompany: 'KTC',
     });
-    await expect(service.voidSale('s2', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ไฟแนนซ์/);
+    await expect(service.voidSale('s2', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ไฟแนนซ์/);
     expectNothingWritten();
   });
 
@@ -297,7 +302,7 @@ describe('SaleVoidService.voidSale', () => {
       receivedAmount: new Decimal(1),
       financeCompany: 'KTC',
     });
-    await expect(service.voidSale('s2', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ไฟแนนซ์/);
+    await expect(service.voidSale('s2', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ไฟแนนซ์/);
     expectNothingWritten();
   });
 
@@ -306,7 +311,7 @@ describe('SaleVoidService.voidSale', () => {
     tx.salesCommission.findMany.mockResolvedValue([
       { id: 'c1', status: 'PAID', period: '2026-07' },
     ]);
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/ค่าคอม/);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ค่าคอม/);
     expectNothingWritten();
   });
 
@@ -325,13 +330,13 @@ describe('SaleVoidService.voidSale', () => {
 
   it('G4b: รอบจ่ายที่จ่ายเงินแล้ว (SalesCommission ยัง PENDING) → ปฏิเสธ', async () => {
     tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'PAID' })]);
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/รอบจ่าย/);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/รอบจ่าย/);
     expectNothingWritten();
   });
 
   it('G4b: รอบจ่ายสถานะ APPROVED → ปฏิเสธ (อนุมัติแล้ว รอจ่ายตามยอดเดิม)', async () => {
     tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'APPROVED' })]);
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expectNothingWritten();
@@ -341,7 +346,7 @@ describe('SaleVoidService.voidSale', () => {
   // เพราะ `generatePayouts` ไม่คำนวณรอบที่มีอยู่แล้วใหม่ ⇒ ปล่อยไว้ = ยอดค้างเกินจริง
   it('G4b: ร่างรอบจ่าย (DRAFT) → ไม่บล็อก แต่ soft-delete ร่างใน tx เดียวกัน + audit', async () => {
     tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'DRAFT' })]);
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     expect(tx.commissionPayout.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { in: ['po1'] } },
@@ -361,14 +366,14 @@ describe('SaleVoidService.voidSale', () => {
     tx.commissionPayout.findMany.mockResolvedValue([
       payout({ status: 'PAID', generatedAt: new Date('2026-08-01T00:00:00Z') }),
     ]);
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     expect(tx.commissionPayout.updateMany).not.toHaveBeenCalled();
     expect(tx.sale.update).toHaveBeenCalled();
   });
 
   it('G4b: รอบจ่ายเก่าที่ไม่มี generatedAt (ก่อนมีคอลัมน์) → พิสูจน์ไม่ได้ = ถือว่าครอบ → บล็อก', async () => {
     tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'PAID', generatedAt: null })]);
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expectNothingWritten();
@@ -376,12 +381,12 @@ describe('SaleVoidService.voidSale', () => {
 
   it('G4b: รอบจ่ายที่ถูกยกเลิกแล้ว (CANCELLED) → ไม่บล็อก ไม่ลบ', async () => {
     tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'CANCELLED' })]);
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     expect(tx.commissionPayout.updateMany).not.toHaveBeenCalled();
   });
 
   it('G4b: ค้นรอบจ่ายด้วยคู่ (salespersonId, period) ของค่าคอมที่เจอ', async () => {
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     expect(tx.commissionPayout.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -394,7 +399,7 @@ describe('SaleVoidService.voidSale', () => {
 
   it('G4b: ไม่มีค่าคอมเลย → ไม่ต้องไปถามรอบจ่าย', async () => {
     tx.salesCommission.findMany.mockResolvedValue([]);
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     expect(tx.commissionPayout.findMany).not.toHaveBeenCalled();
   });
 
@@ -414,7 +419,7 @@ describe('SaleVoidService.voidSale', () => {
       });
       tx.salesCommission.findMany.mockResolvedValue([]);
       tx.journalEntry.findMany.mockReset().mockResolvedValue([]);
-      await expect(service.voidSale('s2', 'u1', 'คีย์ผิดบริษัทไฟแนนซ์')).resolves.toBeDefined();
+      await expect(service.voidSale('s2', OWNER, 'คีย์ผิดบริษัทไฟแนนซ์')).resolves.toBeDefined();
     },
   );
 
@@ -429,7 +434,7 @@ describe('SaleVoidService.voidSale', () => {
       receivedAmount: null,
       financeCompany: 'KTC',
     });
-    await expect(service.voidSale('s2', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('s2', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expectNothingWritten();
@@ -440,7 +445,7 @@ describe('SaleVoidService.voidSale', () => {
     tx.salesCommission.findMany.mockResolvedValue([
       { id: 'c1', status: 'PARTIALLY_CLAWED_BACK', period: '2026-08', salespersonId: 'sp1' },
     ]);
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expectNothingWritten();
@@ -452,7 +457,7 @@ describe('SaleVoidService.voidSale', () => {
       { id: 'c1', status: 'PENDING', period: '2026-08', salespersonId: 'sp1' },
       { id: 'c2', status: 'APPROVED', period: '2026-08', salespersonId: 'sp1' },
     ]);
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     expect(tx.salesCommission.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { in: ['c1', 'c2'] } },
@@ -464,7 +469,7 @@ describe('SaleVoidService.voidSale', () => {
   // ── ชนิดการขายที่ยังไม่รู้จัก (ด่านกัน 500) ─────────────────────────────────
   it('ชนิดการขายที่ยังไม่รู้จัก → ปฏิเสธเป็นข้อความไทย ไม่ปล่อยไปตาย 500 ที่ด่านสินค้า', async () => {
     tx.sale.findUnique.mockResolvedValue({ ...CASH_SALE, saleType: 'CONSIGNMENT' });
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expectNothingWritten();
@@ -480,7 +485,7 @@ describe('SaleVoidService.voidSale', () => {
     try {
       tx.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
       tx.systemConfig.findUnique.mockResolvedValue({ value: '0' }); // grace 0 วัน
-      await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toThrow(/งวดที่ปิดแล้ว/);
+      await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/งวดที่ปิดแล้ว/);
       expectNothingWritten();
     } finally {
       jest.useRealTimers();
@@ -495,7 +500,7 @@ describe('SaleVoidService.voidSale', () => {
         { id: 'je-2', companyId: 'finance-co' },
       ])
       .mockResolvedValueOnce([{ entryNumber: 'JE-202608-0099' }]);
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     const checkedCompanies = tx.accountingPeriod.findUnique.mock.calls.map(
       (c: [{ where: { companyId_year_month: { companyId: string } } }]) =>
         c[0].where.companyId_year_month.companyId,
@@ -510,13 +515,13 @@ describe('SaleVoidService.voidSale', () => {
     ]);
     tx.salesCommission.findMany.mockResolvedValue([]);
     tx.journalEntry.findMany.mockReset().mockResolvedValue([]);
-    await service.voidSale('s2', 'u1', 'คีย์ผิดบริษัทไฟแนนซ์');
+    await service.voidSale('s2', OWNER, 'คีย์ผิดบริษัทไฟแนนซ์');
     expect(tx.accountingPeriod.findUnique).not.toHaveBeenCalled();
   });
 
   // ── สำเร็จ: ขายสด ─────────────────────────────────────────────────────────
   it('สำเร็จ: คืนสินค้าหลัก+ของแถมเป็น IN_STOCK, กลับรายการ JE, ค่าคอม CLAWED_BACK, เขียน audit ใน tx', async () => {
-    const res = await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
 
     expect(tx.product.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -563,7 +568,7 @@ describe('SaleVoidService.voidSale', () => {
   });
 
   it('สำเร็จ: audit เก็บเลขที่ใบกลับรายการ + รหัสค่าคอมที่เรียกคืน', async () => {
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     const audit = tx.auditLog.create.mock.calls[0][0].data.newValue;
     expect(audit.reversalEntryNumbers).toEqual(['JE-202608-0099']);
     expect(audit.commissionIds).toEqual(['c1']);
@@ -585,7 +590,7 @@ describe('SaleVoidService.voidSale', () => {
     tx.salesCommission.findMany.mockResolvedValue([]);
     tx.journalEntry.findMany.mockReset().mockResolvedValue([]);
 
-    const res = await service.voidSale('s2', 'u1', 'คีย์ผิดบริษัทไฟแนนซ์');
+    const res = await service.voidSale('s2', OWNER, 'คีย์ผิดบริษัทไฟแนนซ์');
 
     expect(tx.financeReceivable.updateMany).toHaveBeenCalled();
     expect(tx.salesCommission.updateMany).not.toHaveBeenCalled();
@@ -604,16 +609,60 @@ describe('SaleVoidService.voidSale', () => {
         clientVersion: 'test',
       }),
     );
-    await expect(service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
 
   it('ทรานแซกชันเป็น Serializable', async () => {
-    await service.voidSale('s1', 'u1', 'คีย์ผิดรุ่น');
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     expect(prisma.$transaction).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ isolationLevel: Prisma.TransactionIsolationLevel.Serializable }),
     );
+  });
+
+  // ── ขอบเขตสาขา (Task 4 review — Fix Round 1) ─────────────────────────────
+  // BranchGuard ทำงานเฉพาะ request ที่มี branchId ใน params/query/body —
+  // POST /sales/:id/void ไม่มี ⇒ ต้อง scope ที่ service (precedent:
+  // contract-exchange-cancel.service "ไม่สามารถยกเลิกคำขอของสาขาอื่นได้")
+  describe('ขอบเขตสาขา — BRANCH_MANAGER ยกเลิกได้เฉพาะใบขายสาขาตัวเอง', () => {
+    it('BM ต่างสาขา → Forbidden และไม่เขียนอะไร', async () => {
+      await expect(
+        service.voidSale(
+          's1',
+          { id: 'bm1', role: 'BRANCH_MANAGER', branchId: 'branch-2' },
+          'คีย์ผิดรุ่นเครื่อง',
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expectNothingWritten();
+    });
+
+    it('BM ไม่มี branchId (ข้อมูลผิดปกติ) → Forbidden — fail closed', async () => {
+      await expect(
+        service.voidSale('s1', { id: 'bm1', role: 'BRANCH_MANAGER' }, 'คีย์ผิดรุ่นเครื่อง'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expectNothingWritten();
+    });
+
+    it('BM สาขาเดียวกัน → ผ่าน', async () => {
+      await expect(
+        service.voidSale(
+          's1',
+          { id: 'bm1', role: 'BRANCH_MANAGER', branchId: 'branch-1' },
+          'คีย์ผิดรุ่นเครื่อง',
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('OWNER ต่างสาขา → ผ่าน (cross-branch role เดิมของระบบ)', async () => {
+      await expect(
+        service.voidSale(
+          's1',
+          { id: 'u1', role: 'OWNER', branchId: 'branch-2' },
+          'คีย์ผิดรุ่นเครื่อง',
+        ),
+      ).resolves.toBeDefined();
+    });
   });
 });

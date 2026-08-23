@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -113,6 +114,18 @@ export interface VoidSaleResult {
   reversalEntryNumbers: string[];
 }
 
+/**
+ * ผู้กดยกเลิก — ต้องส่งทั้งก้อน (ไม่ใช่แค่ id) เพราะ branch scope เป็นหน้าที่ของ
+ * service ชั้นนี้: `BranchGuard` ทำงานเฉพาะ request ที่มี `branchId` ใน
+ * params/query/body ซึ่ง `POST /sales/:id/void` ไม่มี (doc ของ guard เองระบุว่า
+ * "service layer is expected to scope")
+ */
+export interface VoidSaleActor {
+  id: string;
+  role: string;
+  branchId?: string | null;
+}
+
 @Injectable()
 export class SaleVoidService {
   private readonly logger = new Logger(SaleVoidService.name);
@@ -122,9 +135,9 @@ export class SaleVoidService {
     private reversalTemplate: ExchangeCancelReversalTemplate,
   ) {}
 
-  async voidSale(saleId: string, userId: string, reason: string): Promise<VoidSaleResult> {
+  async voidSale(saleId: string, user: VoidSaleActor, reason: string): Promise<VoidSaleResult> {
     try {
-      return await this.prisma.$transaction((tx) => this.run(tx, saleId, userId, reason), {
+      return await this.prisma.$transaction((tx) => this.run(tx, saleId, user, reason), {
         // Serializable — เท่ากับตอนสร้างการขาย (`sale-writer.service.ts`): ด่านทุกข้ออ่าน
         // แถวที่การเขียนของเราจะเปลี่ยนผลการอ่านนั้น (สถานะสินค้า/ค่าคอม/JE) ⇒ ใต้
         // READ COMMITTED สองคำขอพร้อมกันบนใบเดียวผ่านด่านได้ทั้งคู่
@@ -140,7 +153,7 @@ export class SaleVoidService {
         // monitoring ถ้าไม่ยิงเอง (pattern เดียวกับ `approveBatch` / shop-collect)
         Sentry.captureMessage('[sale-void] P2034 write-conflict translated to 409', {
           level: 'warning',
-          extra: { saleId, userId },
+          extra: { saleId, userId: user.id },
         });
         throw new ConflictException(
           'ใบขายนี้ชนกับรายการอื่นที่กำลังบันทึกอยู่ (write conflict) — กรุณาลองยกเลิกอีกครั้ง',
@@ -153,7 +166,7 @@ export class SaleVoidService {
   private async run(
     tx: Prisma.TransactionClient,
     saleId: string,
-    userId: string,
+    user: VoidSaleActor,
     reason: string,
   ): Promise<VoidSaleResult> {
     // ══ ด่านทั้งหมด (อ่านอย่างเดียว) ═══════════════════════════════════════════
@@ -169,6 +182,7 @@ export class SaleVoidService {
         contractId: true,
         onlineOrderId: true,
         deletedAt: true,
+        branchId: true,
         netAmount: true,
       },
     });
@@ -180,6 +194,15 @@ export class SaleVoidService {
         `ใบขาย ${sale.saleNumber} ถูกยกเลิกไปแล้วเมื่อ ${sale.deletedAt.toLocaleString('th-TH')} — ` +
           'ถ้าต้องแก้ไขข้อมูลการขาย ให้บันทึกใบขายใหม่แทน',
       );
+    }
+
+    // ── ขอบเขตสาขา — BM ยกเลิกได้เฉพาะใบขายสาขาตัวเอง ───────────────────────
+    // `BranchGuard` ปล่อย request ที่ไม่มี branchId ผ่านเสมอ (route นี้มีแต่ :id)
+    // จึงบังคับที่นี่ตาม precedent `contract-exchange-cancel.service.ts` —
+    // OWNER (+role ข้ามสาขาอื่นที่ได้สิทธิ์ route นี้) ข้ามสาขาได้ตามเดิม.
+    // BM ที่ไม่มี branchId ติดตัว (ข้อมูลผิดปกติ) = fail closed
+    if (user.role === 'BRANCH_MANAGER' && sale.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถยกเลิกใบขายของสาขาอื่นได้');
     }
 
     // ── นอกขอบเขต (D1) — ใบขายผ่อนของเรามีเส้นทางของตัวเอง ────────────────────
@@ -463,7 +486,7 @@ export class SaleVoidService {
             action: 'COMMISSION_PAYOUT_DRAFT_VOIDED',
             entity: 'commission_payout',
             entityId: p.id,
-            userId,
+            userId: user.id,
             newValue: {
               period: p.period,
               salespersonId: p.salespersonId,
@@ -480,7 +503,7 @@ export class SaleVoidService {
     //    อยู่แล้วหักใบนี้ออกเองโดยไม่ต้องเดินแก้ทีละจุด)
     await tx.sale.update({
       where: { id: sale.id },
-      data: { deletedAt: now, voidReason: reason, voidedById: userId },
+      data: { deletedAt: now, voidReason: reason, voidedById: user.id },
     });
 
     // 6. Audit — `tx.auditLog.create` ในทรานแซกชันเดียวกัน **ห้ามเรียก
@@ -491,7 +514,7 @@ export class SaleVoidService {
         action: 'SALE_VOIDED',
         entity: 'sale',
         entityId: sale.id,
-        userId,
+        userId: user.id,
         newValue: {
           saleNumber: sale.saleNumber,
           saleType: sale.saleType,

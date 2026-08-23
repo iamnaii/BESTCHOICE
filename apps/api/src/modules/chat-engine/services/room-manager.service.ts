@@ -97,9 +97,12 @@ export class RoomManagerService {
 
     if (existing) {
       const updateData: Prisma.ChatRoomUpdateInput = {};
-      // Reopen if IDLE
-      if (existing.status === ChatRoomStatus.IDLE) {
+      // Reopen if IDLE — ต้องล้าง resolvedAt ด้วย (ให้ตรงกับ assignment.reopen):
+      // หน้ากล่องข้อความถือ `!!resolvedAt || status === 'IDLE'` = ปิดแล้ว → ซ่อนช่องพิมพ์
+      // + โชว์ "แชทนี้ปิดแล้ว" ทั้งที่ลูกค้าเพิ่งทักกลับมา (พบ 26 ห้องบน prod 2026-08-23)
+      if (existing.status === ChatRoomStatus.IDLE || existing.resolvedAt) {
         updateData.status = ChatRoomStatus.ACTIVE;
+        updateData.resolvedAt = null;
       }
       // Backfill profile for legacy rooms — displayName and pictureUrl handled
       // INDEPENDENTLY so a room that already has a name (e.g. from the FB

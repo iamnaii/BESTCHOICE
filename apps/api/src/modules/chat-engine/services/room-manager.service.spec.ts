@@ -73,7 +73,7 @@ describe('RoomManagerService', () => {
 
       expect(prisma.chatRoom.update).toHaveBeenCalledWith({
         where: { id: 'room-1' },
-        data: { status: ChatRoomStatus.ACTIVE },
+        data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null },
       });
       expect(result.status).toBe(ChatRoomStatus.ACTIVE);
       expect(prisma.chatRoom.create).not.toHaveBeenCalled();

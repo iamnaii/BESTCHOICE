@@ -19,7 +19,6 @@ describe('AiRuntimeStatusStrip', () => {
           fbBotDisabled: true,
           fbWhitelistCount: 2,
           centralBranchSet: true,
-          promptpaySet: true,
           tiktokAdapterStub: true,
           financeBotSeparatePipeline: true,
         }}
@@ -36,7 +35,6 @@ describe('AiRuntimeStatusStrip', () => {
           fbBotDisabled: false,
           fbWhitelistCount: 0,
           centralBranchSet: false,
-          promptpaySet: false,
           tiktokAdapterStub: true,
           financeBotSeparatePipeline: true,
         }}
@@ -52,7 +50,6 @@ describe('AiRuntimeStatusStrip', () => {
           fbBotDisabled: false,
           fbWhitelistCount: 0,
           centralBranchSet: true,
-          promptpaySet: true,
           tiktokAdapterStub: true,
           financeBotSeparatePipeline: true,
         }}

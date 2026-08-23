@@ -31,12 +31,12 @@ describe('AuditService — Merkle hash chain (T2-C4 ext)', () => {
       args.action,
       args.entity,
       args.entityId,
-      JSON.stringify(args.oldValue ?? null),
-      JSON.stringify(args.newValue ?? null),
+      AuditService.canonicalJson(args.oldValue ?? null),
+      AuditService.canonicalJson(args.newValue ?? null),
       args.createdAt.toISOString(),
       args.prevRowHash ?? '',
     ].join('|');
-    return createHash('sha256').update(payload).digest('hex');
+    return AuditService.HASH_VERSION_PREFIX + createHash('sha256').update(payload).digest('hex');
   };
 
   beforeEach(async () => {
@@ -179,6 +179,37 @@ describe('AuditService — Merkle hash chain (T2-C4 ext)', () => {
       const result = await service.verifyChain();
       expect(result.ok).toBe(true);
       expect(result.rowsChecked).toBe(0);
+    });
+
+    it('jsonb เรียง key ใหม่ตอนอ่านกลับ → hash รุ่น 2 ยังตรง (เหตุที่ prod ร้อง broken ทุกคืน)', async () => {
+      // ตอนเขียน: key ตามลำดับ DTO · ตอนอ่านจาก jsonb: สั้นก่อน แล้วเรียงไบต์
+      const written = { negotiationResult: 'WILL_PAY', result: 'PROMISED', slots: [{ settlementAmount: 5000, settlementDate: '2026-08-23' }] };
+      const readBack = { slots: [{ settlementDate: '2026-08-23', settlementAmount: 5000 }], result: 'PROMISED', negotiationResult: 'WILL_PAY' };
+      const row1 = buildRow(1n, null, { newValue: written });
+      prisma.auditLog.findMany.mockResolvedValue([{ ...row1, newValue: readBack }]);
+
+      const result = await service.verifyChain();
+      expect(result.ok).toBe(true);
+    });
+
+    it('แถวรุ่น 1 (ไม่มี prefix v2:) นับเป็น legacyUnverifiable ไม่ใช่ mismatch — ไม่ร้อง fatal รายวัน', async () => {
+      const legacy = { ...buildRow(1n, null), rowHash: 'deadbeef'.repeat(8) };
+      const row2 = buildRow(2n, legacy.rowHash);
+      prisma.auditLog.findMany.mockResolvedValue([legacy, row2]);
+
+      const result = await service.verifyChain();
+      expect(result.ok).toBe(true);
+      expect(result.legacyUnverifiable).toBe(1);
+      expect(result.rowsChecked).toBe(2);
+    });
+
+    it('seq ข้าม (tx rollback กิน nextval) + prevRowHash=null ตามดีไซน์ → ไม่ใช่ linkage break', async () => {
+      const row1 = buildRow(1n, null);
+      const row3 = buildRow(3n, null); // seq 2 หายเพราะ rollback → หา prev ไม่เจอ → null
+      prisma.auditLog.findMany.mockResolvedValue([row1, row3]);
+
+      const result = await service.verifyChain();
+      expect(result.ok).toBe(true);
     });
   });
 });

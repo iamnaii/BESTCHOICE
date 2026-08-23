@@ -36,7 +36,12 @@ export class AuditChainVerifyCron {
           },
         );
       } else {
-        this.logger.log(`AuditLog chain verified — ${result.rowsChecked} row(s) OK`);
+        this.logger.log(
+          `AuditLog chain verified — ${result.rowsChecked} row(s) OK` +
+            (result.legacyUnverifiable > 0
+              ? ` (${result.legacyUnverifiable} legacy v1 row(s) skipped — hash รุ่นเก่าตรวจย้อนหลังไม่ได้)`
+              : ''),
+        );
       }
       return { ok: result.ok, rowsChecked: result.rowsChecked };
     } catch (err) {

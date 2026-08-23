@@ -225,6 +225,9 @@ export class AuthService {
     };
   }
 
+  /** ช่วงผ่อนผันให้ refresh token ที่เพิ่งถูกหมุนถูกใช้ซ้ำได้ (หลายแท็บ refresh พร้อมกัน) */
+  private static readonly REFRESH_REUSE_GRACE_MS = 10_000;
+
   async refreshToken(token: string) {
     const tokenHash = this.hashToken(token);
 
@@ -239,12 +242,25 @@ export class AuthService {
 
     // Replay attack detection: token was already revoked
     if (storedToken.isRevoked) {
-      this.logger.warn(
-        `Replay attack detected for user ${storedToken.userId} — revoking all tokens`,
+      // refresh token อยู่ใน httpOnly cookie ที่ทุกแท็บใช้ร่วมกัน — เปิดหลายแท็บแล้ว access token
+      // หมดอายุพร้อมกัน ⇒ หลาย request ยิง /auth/refresh ด้วย token เดิมภายในเสี้ยววินาที
+      // แท็บแรกหมุน token สำเร็จ แท็บถัดมาเจอ token ที่เพิ่งถูก revoke ⇒ เดิมถูกนับเป็น replay
+      // แล้ว revoke ทั้งครอบครัว = ผู้ใช้ถูกบังคับออกจากระบบวันละ 10-40 ครั้ง (prod 2026-08-23)
+      // ภายในช่วงผ่อนผันสั้น ๆ ถือเป็น concurrent refresh: ออก token ใหม่ให้ ไม่ revoke ครอบครัว
+      const revokedAgoMs = storedToken.revokedAt
+        ? Date.now() - storedToken.revokedAt.getTime()
+        : Number.POSITIVE_INFINITY;
+      if (revokedAgoMs > AuthService.REFRESH_REUSE_GRACE_MS) {
+        this.logger.warn(
+          `Replay attack detected for user ${storedToken.userId} — revoking all tokens`,
+        );
+        // Revoke ALL tokens for this user (token family invalidation)
+        await this.revokeAllUserTokens(storedToken.userId);
+        throw new UnauthorizedException('ตรวจพบการใช้งาน token ซ้ำ กรุณาเข้าสู่ระบบใหม่');
+      }
+      this.logger.debug(
+        `Concurrent refresh for user ${storedToken.userId} (${revokedAgoMs}ms after rotation) — issuing new pair`,
       );
-      // Revoke ALL tokens for this user (token family invalidation)
-      await this.revokeAllUserTokens(storedToken.userId);
-      throw new UnauthorizedException('ตรวจพบการใช้งาน token ซ้ำ กรุณาเข้าสู่ระบบใหม่');
     }
 
     // Token expired

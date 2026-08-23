@@ -27,6 +27,7 @@ import { SentryExceptionFilter } from './filters/sentry-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { validateEnv } from './utils/env-validation';
 import { AdminPrefixMiddleware } from './common/middleware/admin-prefix.middleware';
+import { GcpJsonLogger } from './common/logger/gcp-json.logger';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -34,7 +35,11 @@ async function bootstrap() {
   // Validate required environment variables before starting
   validateEnv();
 
-  const app = await NestFactory.create(AppModule);
+  // LOG_FORMAT=json (Cloud Run) → JSON + severity ให้ Cloud Logging จัดระดับได้จริง
+  const app = await NestFactory.create(
+    AppModule,
+    GcpJsonLogger.enabled() ? { logger: new GcpJsonLogger() } : {},
+  );
 
   // AdminPrefixMiddleware MUST run at Express level (not via MiddlewareConsumer)
   // so it executes before NestJS routing layer. Rewrites /api/admin/* → /api/*

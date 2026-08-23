@@ -194,7 +194,6 @@ type LlmProviderChoice = 'claude' | 'gemini';
 
 interface ShopBotConfig {
   shopBotCentralBranchId: string | null;
-  shopBotPromptpayId: string | null;
   shopBotTestUserId: string | null;
   llmProvider: LlmProviderChoice;
 }
@@ -202,7 +201,6 @@ interface ShopBotConfig {
 function ShopBotSetupForm() {
   const queryClient = useQueryClient();
   const [branchId, setBranchId] = useState('');
-  const [promptpayId, setPromptpayId] = useState('');
   const [testUserId, setTestUserId] = useState('');
   const [llmProvider, setLlmProvider] = useState<LlmProviderChoice>('claude');
 
@@ -217,7 +215,6 @@ function ShopBotSetupForm() {
         const provider: LlmProviderChoice = d.llmProvider === 'gemini' ? 'gemini' : 'claude';
         return {
           shopBotCentralBranchId: d.shopBotCentralBranchId ?? null,
-          shopBotPromptpayId: d.shopBotPromptpayId ?? null,
           shopBotTestUserId: d.shopBotTestUserId ?? null,
           llmProvider: provider,
         };
@@ -232,7 +229,6 @@ function ShopBotSetupForm() {
   useEffect(() => {
     if (!shopBotQuery.data) return;
     setBranchId(shopBotQuery.data.shopBotCentralBranchId ?? '');
-    setPromptpayId(shopBotQuery.data.shopBotPromptpayId ?? '');
     setTestUserId(shopBotQuery.data.shopBotTestUserId ?? '');
     setLlmProvider(shopBotQuery.data.llmProvider);
   }, [shopBotQuery.data]);
@@ -241,7 +237,6 @@ function ShopBotSetupForm() {
     mutationFn: () =>
       api.patch('/staff-chat/ai/settings', {
         shopBotCentralBranchId: branchId || null,
-        shopBotPromptpayId: promptpayId || null,
         shopBotTestUserId: testUserId || null,
         llmProvider,
       }),
@@ -295,16 +290,6 @@ function ShopBotSetupForm() {
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="space-y-2">
-          <Label className="leading-snug">
-            PromptPay ID (เบอร์มือถือ / เลข ปชช. / เลขผู้เสียภาษีนิติบุคคล)
-          </Label>
-          <Input
-            value={promptpayId}
-            onChange={(e) => setPromptpayId(e.target.value)}
-            placeholder="เช่น 0812345678"
-          />
         </div>
         <div className="space-y-2">
           <Label className="leading-snug">
@@ -413,7 +398,6 @@ export interface AiRuntimeStatus {
   fbBotDisabled: boolean;
   fbWhitelistCount: number;
   centralBranchSet: boolean;
-  promptpaySet: boolean;
   tiktokAdapterStub: boolean;
   financeBotSeparatePipeline: boolean;
 }
@@ -433,11 +417,6 @@ export function AiRuntimeStatusStrip({ status }: { status: AiRuntimeStatus }) {
         : 'ยังไม่ได้ตั้งสาขาศูนย์กลาง — บอทจะไม่ตอบช่อง LINE Shop / Facebook / เว็บ',
       ok: status.centralBranchSet,
       hint: 'ตั้งได้ในส่วน "SHOP Bot Setup" ด้านล่าง',
-    },
-    {
-      label: status.promptpaySet ? 'ตั้ง PromptPay แล้ว' : 'ยังไม่ได้ตั้ง PromptPay',
-      ok: status.promptpaySet,
-      hint: 'ใช้ตอนบอทออกคิวรับเงิน',
     },
   ];
 

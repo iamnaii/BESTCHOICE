@@ -118,11 +118,25 @@ export class CaptureLeadTool {
       // Branch 1: room already bound to a customer (SALES-linked OR prior capture)
       // → update that customer, never overwrite room.customerId
       if (room.customerId) {
+        // เบอร์ใหม่ที่ลูกค้าเพิ่งพิมพ์ต้องไม่ถูกทิ้ง (บั๊กจริง 2026-08-22: ลูกค้าให้เบอร์ใหม่
+        // บอทขอซ้ำ 2 รอบ แต่ customers.phone ยังเป็นเบอร์จาก capture รอบแรก)
+        // - ลูกค้าที่บอทสร้างเอง (AI_CHAT*) → อัปเดตเบอร์หลักได้เลย
+        // - ลูกค้าที่พนักงานผูกไว้ (มีสัญญา/ประวัติจริง) → ห้ามทับเบอร์หลัก เก็บเป็นเบอร์สำรองแทน
+        const bound = await tx.customer.findUnique({
+          where: { id: room.customerId },
+          select: { phone: true, phoneSecondary: true, acquisitionSource: true },
+        });
+        const phoneChanged = !!bound && bound.phone !== input.phone;
+        const aiOwned = bound?.acquisitionSource?.startsWith('AI_CHAT') ?? false;
         await tx.customer.update({
           where: { id: room.customerId },
           data: {
             name: input.customerName,
             acquisitionSource: 'AI_CHAT_RETURN',
+            ...(phoneChanged && aiOwned ? { phone: input.phone } : {}),
+            ...(phoneChanged && !aiOwned && !bound?.phoneSecondary
+              ? { phoneSecondary: input.phone }
+              : {}),
           },
         });
         cId = room.customerId;
@@ -193,6 +207,8 @@ export class CaptureLeadTool {
           entity: 'customer',
           entityId: cId,
           newValue: {
+            customerName: input.customerName,
+            phone: input.phone,
             productId: input.productId ?? null,
             packageChoice: input.packageChoice ?? null,
             productNote: input.productNote ?? null,

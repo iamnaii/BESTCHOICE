@@ -98,7 +98,7 @@ export class AiAutoReplyService {
       return false;
     }
 
-    // Fail-loud guard: SHOP channels require central branch + promptpay configured
+    // Fail-loud guard: SHOP channels require central branch configured
     const SHOP_CHANNELS = new Set(['LINE_SHOP', 'FACEBOOK', 'WEB']);
     if (SHOP_CHANNELS.has(session.channel)) {
       const cfg = await this.prisma.systemConfig.findMany({
@@ -320,7 +320,6 @@ export class AiAutoReplyService {
     fbBotDisabled: boolean;
     fbWhitelistCount: number;
     centralBranchSet: boolean;
-    promptpaySet: boolean;
     tiktokAdapterStub: boolean;
     financeBotSeparatePipeline: boolean;
   }> {
@@ -333,7 +332,6 @@ export class AiAutoReplyService {
       fbBotDisabled: this.config.get<string>('FB_BOT_DISABLED') === 'true',
       fbWhitelistCount: whitelist.length,
       centralBranchSet: !!settings.shopBotCentralBranchId,
-      promptpaySet: !!settings.shopBotPromptpayId,
       tiktokAdapterStub: true,
       financeBotSeparatePipeline: true,
     };

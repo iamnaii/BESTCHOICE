@@ -9,7 +9,7 @@ describe('CaptureLeadTool', () => {
 
   beforeEach(async () => {
     txClient = {
-      customer: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+      customer: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
       chatRoom: { update: jest.fn() },
       auditLog: { create: jest.fn() },
     };
@@ -250,5 +250,67 @@ describe('CaptureLeadTool', () => {
     expect(result.handoffMessage).not.toContain('โอน' + 'เสร็จ');
     expect(result.handoffMessage).toContain('ยังไม่ต้องโอน');
     expect(result.handoffMessage).toContain('ติดต่อกลับ');
+  });
+});
+
+describe('CaptureLeadTool — ลูกค้าเดิมให้เบอร์ใหม่ (Branch 1)', () => {
+  let tool: CaptureLeadTool;
+  let prisma: any;
+  let txClient: any;
+  const baseInput = {
+    roomId: 'room-1', customerName: 'ฝน', phone: '0800000000', downAmount: 3200,
+  } as any;
+
+  beforeEach(async () => {
+    txClient = {
+      customer: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+      chatRoom: { update: jest.fn() },
+      auditLog: { create: jest.fn() },
+    };
+    prisma = {
+      $transaction: jest.fn((fn) => fn(txClient)),
+      chatRoom: { findUnique: jest.fn().mockResolvedValue({ id: 'room-1', customerId: 'cust-1', lineUserId: null, channel: 'FACEBOOK' }) },
+      systemConfig: { findMany: jest.fn().mockResolvedValue([{ key: 'shop_bot_central_branch_id', value: 'branch-1' }]) },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'sys' }) },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [CaptureLeadTool, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    tool = mod.get(CaptureLeadTool);
+  });
+
+  it('ลูกค้าที่บอทสร้างเอง → อัปเดตเบอร์หลักเป็นเบอร์ใหม่', async () => {
+    txClient.customer.findUnique.mockResolvedValue({ phone: '0890000000', phoneSecondary: null, acquisitionSource: 'AI_CHAT' });
+    await tool.run(baseInput);
+    expect(txClient.customer.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'cust-1' },
+      data: expect.objectContaining({ phone: '0800000000' }),
+    }));
+  });
+
+  it('ลูกค้าที่พนักงานผูกไว้ → ไม่ทับเบอร์หลัก เก็บเป็นเบอร์สำรอง', async () => {
+    txClient.customer.findUnique.mockResolvedValue({ phone: '0811111111', phoneSecondary: null, acquisitionSource: 'WALK_IN' });
+    await tool.run(baseInput);
+    const data = txClient.customer.update.mock.calls[0][0].data;
+    expect(data.phone).toBeUndefined();
+    expect(data.phoneSecondary).toBe('0800000000');
+  });
+
+  it('เบอร์เดิม → ไม่แตะช่องเบอร์เลย', async () => {
+    txClient.customer.findUnique.mockResolvedValue({ phone: '0800000000', phoneSecondary: null, acquisitionSource: 'AI_CHAT' });
+    await tool.run(baseInput);
+    const data = txClient.customer.update.mock.calls[0][0].data;
+    expect(data.phone).toBeUndefined();
+    expect(data.phoneSecondary).toBeUndefined();
+  });
+
+  it('audit log ต้องมีชื่อ+เบอร์ล่าสุดเสมอ (ทีมโทรกลับจากตรงนี้)', async () => {
+    txClient.customer.findUnique.mockResolvedValue({ phone: '0890000000', phoneSecondary: null, acquisitionSource: 'AI_CHAT' });
+    await tool.run(baseInput);
+    expect(txClient.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        newValue: expect.objectContaining({ customerName: 'ฝน', phone: '0800000000' }),
+      }),
+    }));
   });
 });

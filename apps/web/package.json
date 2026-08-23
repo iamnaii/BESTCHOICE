@@ -1,6 +1,6 @@
 {
   "name": "@installment/web",
-  "version": "26.8.10",
+  "version": "26.8.11",
   "private": true,
   "type": "module",
   "scripts": {

@@ -553,20 +553,18 @@ describe('AiAutoReplyService.getRuntimeStatus', () => {
     expect(status.fbWhitelistCount).toBe(0);
   });
 
-  it('derives centralBranchSet/promptpaySet from SystemConfig (via getSettings)', async () => {
+  it('derives centralBranchSet from SystemConfig (via getSettings)', async () => {
     prisma.systemConfig.findMany.mockResolvedValue([
       { key: 'shop_bot_central_branch_id', value: 'branch-1' },
       { key: 'shop_bot_promptpay_id', value: '0812345678' },
     ]);
     const status = await svc.getRuntimeStatus();
     expect(status.centralBranchSet).toBe(true);
-    expect(status.promptpaySet).toBe(true);
   });
 
-  it('centralBranchSet/promptpaySet are false when SystemConfig rows are missing', async () => {
+  it('centralBranchSet is false when SystemConfig rows are missing', async () => {
     const status = await svc.getRuntimeStatus();
     expect(status.centralBranchSet).toBe(false);
-    expect(status.promptpaySet).toBe(false);
   });
 
   it('tiktokAdapterStub and financeBotSeparatePipeline are always true (architectural constants)', async () => {

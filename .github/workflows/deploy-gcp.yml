@@ -183,6 +183,9 @@ jobs:
           DASH_FILES=$(ls src/modules/dashboard/__tests__/*.integration.spec.ts)
           # Equity module E2E (2026-08-10) — same jest-invisible *.integration.spec.ts naming
           EQUITY_FILES=$(ls src/modules/equity/__tests__/*.integration.spec.ts)
+          # Void-sale E2E (2026-08-23) — same jest-invisible *.integration.spec.ts naming;
+          # new directory ⇒ new glob (บทเรียน jp5-vat-split: glob ไม่ recurse เอง)
+          SALES_FILES=$(ls src/modules/sales/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
@@ -195,7 +198,8 @@ jobs:
             $PAYMENTS_FILES \
             $EXPDOC_FILES \
             $DASH_FILES \
-            $EQUITY_FILES
+            $EQUITY_FILES \
+            $SALES_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

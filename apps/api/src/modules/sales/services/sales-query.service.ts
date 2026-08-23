@@ -20,12 +20,19 @@ export class SalesQueryService {
     paymentMethod?: string;
     salespersonId?: string;
     contractStatus?: string;
+    includeVoided?: boolean;
     page?: number;
     limit?: number;
     userRole?: string;
   }) {
-    const { saleType, branchId, search, startDate, endDate, paymentMethod, salespersonId, contractStatus, page = 1, limit = 50, userRole } = filters;
-    const where: Record<string, unknown> = { deletedAt: null };
+    const { saleType, branchId, search, startDate, endDate, paymentMethod, salespersonId, contractStatus, includeVoided, page = 1, limit = 50, userRole } = filters;
+    const where: Record<string, unknown> = {};
+    // ใบที่ยกเลิก (void = soft delete) ถูกซ่อนจากรายการ+ยอดสรุปโดย default —
+    // ส่ง includeVoided=true (opt-out เฉพาะหน้ารายการ) เพื่อเห็นทั้งหมด.
+    // ทุก query ในเมธอดนี้ (findMany/count/aggregate/groupBy) ใช้ `where` ก้อนเดียวกัน
+    // จึงคุมที่จุดสร้างจุดเดียว. รายงานอื่น (getDailySummary / getTopSellingProducts)
+    // ไม่มี opt-out โดยเจตนา — รายงานต้องไม่นับใบที่ยกเลิก.
+    if (!includeVoided) where.deletedAt = null;
 
     if (saleType) where.saleType = saleType;
     if (branchId) where.branchId = branchId;
@@ -135,6 +142,16 @@ export class SalesQueryService {
     });
   }
 
+  /**
+   * เปิดดูใบขายรายใบ — **ใบที่ยกเลิกแล้ว (void = soft delete) เปิดดูได้**
+   * พร้อมฟิลด์การยกเลิก (`deletedAt` / `voidReason` / `voidedBy`) ให้หน้าจอแสดง.
+   *
+   * เดิมเมธอดนี้ throw NotFound เมื่อ `sale.deletedAt` ⇒ เปิดดูใบที่ยกเลิกไม่ได้เลย.
+   * เปลี่ยนพฤติกรรมได้อย่างปลอดภัยเพราะผู้เรียกมีทางเดียว: `GET /sales/:id`
+   * (ผ่าน facade `SalesService.findOne`) — ไม่มี service อื่นพึ่ง NotFoundException
+   * ของใบที่ถูกลบ (ตรวจ 2026-08-23; `SaleVoidService` อ่าน Sale ตรงจาก tx เอง).
+   * ผู้เรียกใหม่ที่ต้องการ "ใบที่ยังไม่ยกเลิกเท่านั้น" ต้องเช็ค `deletedAt` เอง.
+   */
   async findOne(id: string) {
     const sale = await this.prisma.sale.findUnique({
       where: { id },
@@ -143,10 +160,11 @@ export class SalesQueryService {
         product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, costPrice: true } },
         branch: { select: { id: true, name: true } },
         salesperson: { select: { id: true, name: true } },
+        voidedBy: { select: { id: true, name: true } },
         contract: true,
       },
     });
-    if (!sale || sale.deletedAt) throw new NotFoundException('ไม่พบใบขาย');
+    if (!sale) throw new NotFoundException('ไม่พบใบขาย');
     return sale;
   }
 

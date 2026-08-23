@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { validate } from 'class-validator';
 import { SalesService } from './sales.service';
+import { SalesController } from './sales.controller';
+import { VoidSaleDto } from './dto/void-sale.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InterCompanyService } from '../inter-company/inter-company.service';
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
@@ -248,6 +251,12 @@ describe('SalesService', () => {
       expect(where.deletedAt).toBeNull();
     });
 
+    it('includeVoided=true → ไม่ใส่ตัวกรอง deletedAt (เห็นใบที่ยกเลิกด้วย)', async () => {
+      await service.findAll({ includeVoided: true });
+      const where = prisma.sale.findMany.mock.calls[0][0].where;
+      expect(where.deletedAt).toBeUndefined();
+    });
+
     it('filters by saleType when provided', async () => {
       await service.findAll({ saleType: 'CASH' });
       const where = prisma.sale.findMany.mock.calls[0][0].where;
@@ -336,9 +345,26 @@ describe('SalesService', () => {
       await expect(service.findOne('missing')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws NotFoundException when sale is soft-deleted', async () => {
-      prisma.sale.findUnique.mockResolvedValue({ ...mockSale, deletedAt: new Date() });
-      await expect(service.findOne('sale-1')).rejects.toBeInstanceOf(NotFoundException);
+    it('เปิดดูใบที่ยกเลิกแล้วได้ (ไม่ throw) พร้อมข้อมูลการยกเลิก', async () => {
+      const voidedAt = new Date();
+      prisma.sale.findUnique.mockResolvedValue({
+        ...mockSale,
+        deletedAt: voidedAt,
+        voidReason: 'คีย์ผิดรุ่นเครื่อง ลูกค้าไม่ได้ซื้อ',
+        voidedBy: { id: 'u-owner', name: 'เจ้าของร้าน' },
+      });
+      const result = await service.findOne('sale-1');
+      expect(result.deletedAt).toEqual(voidedAt);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((result as any).voidReason).toBe('คีย์ผิดรุ่นเครื่อง ลูกค้าไม่ได้ซื้อ');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((result as any).voidedBy).toEqual({ id: 'u-owner', name: 'เจ้าของร้าน' });
+    });
+
+    it('ดึง voidedBy (ชื่อผู้ยกเลิก) มากับใบขายเสมอ ให้หน้าจอแสดงได้', async () => {
+      await service.findOne('sale-1');
+      const include = prisma.sale.findUnique.mock.calls[0][0].include;
+      expect(include.voidedBy).toEqual({ select: { id: true, name: true } });
     });
   });
 
@@ -878,5 +904,50 @@ describe('SalesService', () => {
         ),
       ).rejects.not.toThrow(/previouslyDamagedAcknowledged|OWNER \/ FINANCE_MANAGER/);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SalesController — POST /sales/:id/void (Task 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SalesController — POST /sales/:id/void', () => {
+  it('ส่ง saleId + userId ของผู้กด + เหตุผล เข้า SaleVoidService', async () => {
+    const voidService = {
+      voidSale: jest.fn().mockResolvedValue({
+        saleNumber: 'SL000001',
+        restoredProductIds: ['product-1'],
+        reversalEntryNumbers: ['JE-1'],
+      }),
+    };
+    const controller = new SalesController({} as never, voidService as never);
+
+    await controller.voidSale('s1', { reason: 'คีย์ผิดรุ่นเครื่อง' }, { id: 'u1', role: 'OWNER' });
+
+    expect(voidService.voidSale).toHaveBeenCalledWith('s1', 'u1', 'คีย์ผิดรุ่นเครื่อง');
+  });
+
+  it('จำกัดสิทธิ์ OWNER + BRANCH_MANAGER เท่านั้น (@Roles metadata)', () => {
+    const roles = Reflect.getMetadata('roles', SalesController.prototype.voidSale);
+    expect(roles).toEqual(['OWNER', 'BRANCH_MANAGER']);
+  });
+});
+
+describe('VoidSaleDto — เหตุผลการยกเลิก', () => {
+  it('ปฏิเสธเหตุผลสั้นกว่า 10 ตัวอักษร ด้วยข้อความไทย', async () => {
+    const dto = new VoidSaleDto();
+    dto.reason = 'สั้นไป';
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(1);
+    expect(Object.values(errors[0].constraints ?? {})).toContain(
+      'กรุณาระบุเหตุผลอย่างน้อย 10 ตัวอักษร',
+    );
+  });
+
+  it('รับเหตุผลยาว ≥10 ตัวอักษร', async () => {
+    const dto = new VoidSaleDto();
+    dto.reason = 'คีย์ผิดรุ่นเครื่อง ลูกค้าไม่ได้ซื้อ';
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
   });
 });

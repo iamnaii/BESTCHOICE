@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
+import { SaleVoidService } from './services/sale-void.service';
 import { CreateSaleDto } from './dto/sale.dto';
+import { VoidSaleDto } from './dto/void-sale.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -13,7 +15,10 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @Controller('sales')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class SalesController {
-  constructor(private salesService: SalesService) {}
+  constructor(
+    private salesService: SalesService,
+    private saleVoidService: SaleVoidService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
@@ -26,6 +31,7 @@ export class SalesController {
     @Query('paymentMethod') paymentMethod?: string,
     @Query('salespersonId') salespersonId?: string,
     @Query('contractStatus') contractStatus?: string,
+    @Query('includeVoided') includeVoided?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @CurrentUser() user?: { id: string; role: string },
@@ -39,6 +45,7 @@ export class SalesController {
       paymentMethod,
       salespersonId,
       contractStatus,
+      includeVoided: includeVoided === 'true',
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
       userRole: user?.role,
@@ -89,5 +96,15 @@ export class SalesController {
     @CurrentUser() user: { id: string; role: string },
   ) {
     return this.salesService.create(dto, user.id, user.role);
+  }
+
+  @Post(':id/void')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  voidSale(
+    @Param('id') id: string,
+    @Body() dto: VoidSaleDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.saleVoidService.voidSale(id, user.id, dto.reason);
   }
 }

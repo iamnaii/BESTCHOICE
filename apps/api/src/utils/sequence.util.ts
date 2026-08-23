@@ -40,6 +40,10 @@ export async function generateContractNumber(tx: PrismaTx): Promise<string> {
 
 /**
  * Generate next sale number (SL000001, SL000002, ...)
+ *
+ * จงใจ **ไม่กรอง** `deletedAt` — เลขที่ใบขายต้องนับรวมใบที่ถูกยกเลิก (void = soft delete)
+ * ด้วย: ใบที่ยกเลิกยังถือเลขของมันอยู่ (เอกสารอ้างอิงย้อนหลัง + `saleNumber` unique)
+ * ถ้ากรองออก ใบขายใหม่จะได้เลขซ้ำกับใบที่เพิ่งยกเลิกไป — ห้ามเติม `deletedAt: null` ที่นี่
  */
 export async function generateSaleNumber(tx: PrismaTx): Promise<string> {
   const lastSale = await tx.sale.findFirst({

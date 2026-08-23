@@ -29,13 +29,27 @@ import { CompanyResolverService } from '../company-resolver.service';
  *   - Pick the matching S50-11XX COGS code and S11-20XX inventory code.
  *   - Compute costPrice from weighted-average or FIFO (out of scope for the
  *     template — the template just posts whatever the caller hands it).
- *   - Pass `idempotencyKey` (typically `sale-${saleId}`) so re-runs of the
- *     same Sale don't double-post.
+ *   - Pass `idempotencyKey` (per piece: `shop-cash-sale:${saleId}:${productId}`)
+ *     so re-runs of the same (Sale, product) don't double-post.
+ *
+ * One JE per (sale, product) — F1 fix (2026-08-23): the JE `reference` must be
+ * unique per JE because `journal_entries_ref_unique` (migration 20260428010000)
+ * is a partial unique index on (reference_type, reference_id). PR #1285 made
+ * this template bundle-aware (per-product JE) but left `reference` at
+ * `sale:<saleId>` — so ANY bundle cash sale whose freebie carried cost > 0
+ * collided on the second JE (P2002) and the whole POS sale failed. `productId`
+ * is therefore REQUIRED input: the reference is `sale:<saleId>:<productId>`,
+ * unique per piece by construction. (grep 2026-08-23: no reader parses the
+ * `sale:` reference prefix anywhere — it is write-only provenance, so the
+ * format change is safe; the void sweep matches `metadata.saleId`, not
+ * reference.)
  */
 export interface ShopCashSaleInput {
-  /** Idempotency anchor — usually `sale-${saleId}`. */
+  /** Idempotency anchor — per piece: `shop-cash-sale:${saleId}:${productId}`. */
   idempotencyKey: string;
   saleId: string;
+  /** The product this JE books (bundle-aware: one JE per piece) — makes the JE reference unique. */
+  productId: string;
   saleNumber?: string;
   /** Where the cash landed. S11-1101..1103 (per-branch cash) or S11-1201/1202 (bank). */
   cashAccountCode: string;
@@ -131,12 +145,15 @@ export class ShopCashSaleTemplate {
           description:
             input.description ??
             `ขายเงินสด ${input.saleNumber ?? input.saleId} (SHOP)`,
-          reference: `sale:${input.saleId}`,
+          // unique per (sale, product) — see interface doc (F1 fix): a shared
+          // per-sale reference collides with journal_entries_ref_unique on bundles
+          reference: `sale:${input.saleId}:${input.productId}`,
           metadata: {
             tag: 'SHOP_CASH_SALE',
             flow: 'shop-cash-sale',
             idempotencyKey: input.idempotencyKey,
             saleId: input.saleId,
+            productId: input.productId,
             saleNumber: input.saleNumber ?? null,
             companyCode: 'SHOP',
             revenueAmount: revenue.toFixed(2),

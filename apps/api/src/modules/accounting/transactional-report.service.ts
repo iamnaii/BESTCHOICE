@@ -382,7 +382,8 @@ export class TransactionalReportService {
 
     const [sales, payments, financeRecs, productSales] = await Promise.all([
       this.prisma.sale.findMany({
-        where: { createdAt: dateRange, ...branchFilter },
+        // deletedAt: null — ใบขายที่ยกเลิก (void) ต้องไม่นับเป็นรายได้
+        where: { createdAt: dateRange, deletedAt: null, ...branchFilter },
         select: { saleType: true, netAmount: true, downPaymentAmount: true, createdAt: true },
       }),
       this.prisma.payment.findMany({
@@ -398,7 +399,8 @@ export class TransactionalReportService {
         select: { receivedAmount: true, receivedDate: true },
       }),
       this.prisma.sale.findMany({
-        where: { createdAt: dateRange, ...branchFilter },
+        // deletedAt: null — ใบที่ยกเลิกต้องไม่นับ COGS ด้วย (คู่กับ query revenue ข้างบน)
+        where: { createdAt: dateRange, deletedAt: null, ...branchFilter },
         select: { createdAt: true, product: { select: { costPrice: true } } },
       }),
     ]);

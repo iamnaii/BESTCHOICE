@@ -232,6 +232,7 @@ export class SaleWriterService {
           {
             idempotencyKey: `shop-cash-sale:${sale.id}:${alloc.productId}`,
             saleId: sale.id,
+            productId: alloc.productId,
             cashAccountCode,
             revenueAccountCode: acc.revenueAccountCode,
             revenueAmount: alloc.revenue,

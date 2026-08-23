@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import { toast } from 'sonner';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
@@ -13,9 +13,18 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, saleTypeMap, contractStatusMap } from '@/lib/status-badges';
-import { Download, RotateCcw } from 'lucide-react';
-import { formatDateShort } from '@/utils/formatters';
+import { Download, RotateCcw, Ban } from 'lucide-react';
+import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch, SwitchWrapper } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+
+/** ตรงกับ `VoidSaleDto.reason` ฝั่ง API (MinLength 10) — กันยิงคำขอที่ 400 แน่ ๆ */
+const VOID_REASON_MIN = 10;
+/** ใบ INSTALLMENT ยกเลิกผ่านเส้นทางยกเลิกสัญญา — API ปฏิเสธอยู่แล้ว จึงซ่อนปุ่ม */
+const VOIDABLE_SALE_TYPES = new Set(['CASH', 'EXTERNAL_FINANCE']);
 
 interface Sale {
   id: string;
@@ -32,6 +41,10 @@ interface Sale {
   financeAmount: string | null;
   notes: string | null;
   createdAt: string;
+  /** เวลาที่ยกเลิก (void = soft delete) — null = ใบยังใช้อยู่ */
+  deletedAt?: string | null;
+  voidReason?: string | null;
+  voidedBy?: { id: string; name: string } | null;
   customer: { id: string; name: string; phone: string };
   product: { id: string; name: string; brand: string; model: string; imeiSerial: string | null; serialNumber: string | null; costPrice?: string };
   branch: { id: string; name: string };
@@ -90,9 +103,16 @@ export default function SalesHistoryPage() {
   const [salespersonFilter, setSalespersonFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
   const [contractStatusFilter, setContractStatusFilter] = useState('');
+  const [includeVoided, setIncludeVoided] = useState(false);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(searchInput, 400);
   const limit = 20;
+  const queryClient = useQueryClient();
+
+  // Void dialog state
+  const [voidTarget, setVoidTarget] = useState<Sale | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const voidReasonOk = voidReason.trim().length >= VOID_REASON_MIN;
 
   useEffect(() => {
     setSearch(debouncedSearch);
@@ -101,10 +121,11 @@ export default function SalesHistoryPage() {
   // Reset page when any filter changes
   useEffect(() => {
     setPage(1);
-  }, [search, saleTypeFilter, startDate, endDate, paymentMethodFilter, salespersonFilter, branchFilter, contractStatusFilter]);
+  }, [search, saleTypeFilter, startDate, endDate, paymentMethodFilter, salespersonFilter, branchFilter, contractStatusFilter, includeVoided]);
 
   const buildParams = (overrideLimit?: number) => {
     const params = new URLSearchParams();
+    if (includeVoided) params.set('includeVoided', 'true');
     if (saleTypeFilter) params.set('saleType', saleTypeFilter);
     if (search) params.set('search', search);
     if (startDate) params.set('startDate', startDate);
@@ -126,12 +147,35 @@ export default function SalesHistoryPage() {
     error,
     refetch,
   } = useQuery<SalesResponse>({
-    queryKey: ['sales-history', saleTypeFilter, search, startDate, endDate, paymentMethodFilter, salespersonFilter, branchFilter, contractStatusFilter, page],
+    queryKey: ['sales-history', saleTypeFilter, search, startDate, endDate, paymentMethodFilter, salespersonFilter, branchFilter, contractStatusFilter, includeVoided, page],
     queryFn: async () => {
       const { data } = await api.get(`/sales?${buildParams()}`);
       return data;
     },
   });
+
+  const voidMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const { data } = await api.post<{ saleNumber: string; restoredProductIds: string[]; reversalEntryNumbers: string[] }>(
+        `/sales/${id}/void`,
+        { reason },
+      );
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success(`ยกเลิกใบขาย ${data.saleNumber} แล้ว — คืนสินค้าเข้าสต็อก ${data.restoredProductIds.length} รายการ`);
+      setVoidTarget(null);
+      setVoidReason('');
+      queryClient.invalidateQueries({ queryKey: ['sales-history'] });
+    },
+    // ข้อความจาก server ชี้ทางออกของแต่ละด่านอยู่แล้ว — แสดงตรง ๆ ไม่เขียนทับ
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const openVoidDialog = (sale: Sale) => {
+    setVoidReason('');
+    setVoidTarget(sale);
+  };
 
   // Fetch salespersons for OWNER/BRANCH_MANAGER
   const { data: salespersons = [] } = useQuery<{ id: string; name: string }[]>({
@@ -216,6 +260,15 @@ export default function SalesHistoryPage() {
           { header: 'กำไร', key: 'profit', width: 14 },
         );
       }
+      // เปิดสวิตช์ = ไฟล์ปนใบยกเลิก ⇒ ต้องมีคอลัมน์แยกให้บัญชีเห็น; ปิดสวิตช์ = คอลัมน์เดิมทุกประการ
+      if (includeVoided) {
+        baseCols.push(
+          { header: 'สถานะใบ', key: 'voidStatus', width: 12 },
+          { header: 'ยกเลิกเมื่อ', key: 'voidedAt', width: 18 },
+          { header: 'เหตุผลยกเลิก', key: 'voidReason', width: 30 },
+          { header: 'ผู้ยกเลิก', key: 'voidedBy', width: 16 },
+        );
+      }
 
       const now = new Date();
       await exportToExcel({
@@ -248,6 +301,12 @@ export default function SalesHistoryPage() {
             row.costPrice = s.product.costPrice ? Number(s.product.costPrice) : '-';
             row.profit = s.product.costPrice ? Number(s.netAmount) - Number(s.product.costPrice) : '-';
           }
+          if (includeVoided) {
+            row.voidStatus = s.deletedAt ? 'ยกเลิกแล้ว' : 'ใช้อยู่';
+            row.voidedAt = s.deletedAt ? formatDateTime(s.deletedAt) : '-';
+            row.voidReason = s.voidReason || '-';
+            row.voidedBy = s.voidedBy?.name || '-';
+          }
           return row;
         }),
         sheetName: 'ประวัติการขาย',
@@ -271,7 +330,20 @@ export default function SalesHistoryPage() {
       key: 'saleNumber',
       label: 'เลขที่',
       render: (s: Sale) => (
-        <span className="font-mono text-sm text-primary font-medium">{s.saleNumber}</span>
+        <div className="space-y-1">
+          <span className={`font-mono text-sm font-medium ${s.deletedAt ? 'text-muted-foreground line-through' : 'text-primary'}`}>
+            {s.saleNumber}
+          </span>
+          {s.deletedAt && (
+            <div className="text-xs leading-snug space-y-0.5">
+              <Badge variant="destructive" size="sm">ยกเลิกแล้ว</Badge>
+              {s.voidReason && <div className="text-foreground">{s.voidReason}</div>}
+              <div className="text-muted-foreground">
+                โดย {s.voidedBy?.name ?? '-'} · {formatDateTime(s.deletedAt)}
+              </div>
+            </div>
+          )}
+        </div>
       ),
     },
     {
@@ -393,7 +465,32 @@ export default function SalesHistoryPage() {
       label: 'สาขา',
       render: (s: Sale) => <span className="text-xs">{s.branch.name}</span>,
     },
-  ], [navigate, salesData?.page, limit, isOwner]);
+    // Actions — OWNER/BRANCH_MANAGER only (API: @Roles('OWNER','BRANCH_MANAGER'))
+    ...(isOwnerOrManager ? [{
+      key: 'actions',
+      label: '',
+      render: (s: Sale) => {
+        if (s.deletedAt) return null;
+        if (!VOIDABLE_SALE_TYPES.has(s.saleType)) {
+          return (
+            <span className="text-2xs text-muted-foreground leading-snug" title="ใบขายผ่อนร้านยกเลิกผ่านหน้าสัญญา (ยกเลิกสัญญา) ไม่ใช่ที่นี่">
+              ยกเลิกผ่านสัญญา
+            </span>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); openVoidDialog(s); }}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors whitespace-nowrap"
+          >
+            <Ban className="w-3 h-3" />
+            ยกเลิกใบขาย
+          </button>
+        );
+      },
+    }] : []),
+  ], [navigate, salesData?.page, limit, isOwner, isOwnerOrManager]);
 
   const inputClass = 'px-3 py-2 border border-input rounded-lg text-sm bg-background';
 
@@ -537,9 +634,9 @@ export default function SalesHistoryPage() {
           </div>
         </div>
 
-        {/* Row 3: Salesperson + Branch (role-based) */}
+        {/* Row 3: Salesperson + Branch (role-based) + show-voided switch */}
         {isOwnerOrManager && (
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <select
               value={salespersonFilter}
               onChange={(e) => setSalespersonFilter(e.target.value)}
@@ -564,6 +661,26 @@ export default function SalesHistoryPage() {
             )}
           </div>
         )}
+
+        {/* Row 4: show voided sales */}
+        <div className="flex flex-wrap items-center gap-3 mt-3">
+          <SwitchWrapper className="gap-2">
+            <Switch
+              id="include-voided"
+              size="sm"
+              checked={includeVoided}
+              onCheckedChange={(v) => setIncludeVoided(v === true)}
+            />
+            <Label htmlFor="include-voided" className="text-sm leading-snug cursor-pointer">
+              แสดงใบที่ยกเลิกแล้ว
+            </Label>
+          </SwitchWrapper>
+          {includeVoided && (
+            <span className="text-xs text-warning leading-snug">
+              ยอดสรุปรวมใบที่ยกเลิกแล้วด้วย — ปิดสวิตช์เพื่อดูยอดเฉพาะใบที่ใช้อยู่
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Sales Table */}
@@ -588,6 +705,51 @@ export default function SalesHistoryPage() {
           } : undefined}
         />
       </QueryBoundary>
+
+      {/* Void sale dialog */}
+      <ConfirmDialog
+        open={!!voidTarget}
+        onOpenChange={(open) => { if (!open && !voidMutation.isPending) setVoidTarget(null); }}
+        title={`ยกเลิกใบขาย ${voidTarget?.saleNumber ?? ''}`}
+        description="การยกเลิกทำย้อนกลับไม่ได้ — ระบบจะบันทึกเหตุผลและผู้ยกเลิกไว้ในใบขาย"
+        confirmLabel="ยืนยันยกเลิกใบขาย"
+        variant="destructive"
+        loading={voidMutation.isPending}
+        confirmDisabled={!voidReasonOk}
+        closeOnConfirm={false}
+        onConfirm={() => {
+          if (!voidTarget) return;
+          voidMutation.mutate({ id: voidTarget.id, reason: voidReason.trim() });
+        }}
+      >
+        <div className="space-y-3">
+          <div className="rounded-md bg-muted p-3 text-xs leading-snug text-muted-foreground space-y-1">
+            <div className="font-medium text-foreground">สิ่งที่จะเกิดขึ้น</div>
+            <ul className="list-disc pl-4 space-y-0.5">
+              <li>สินค้าในใบ (รวมของแถม) กลับเข้าสต็อกพร้อมขาย</li>
+              <li>กลับรายการบัญชีฝั่ง SHOP (รายได้/ต้นทุน) ของใบนี้</li>
+              <li>เรียกคืนค่าคอมมิชชันของพนักงานขายจากใบนี้</li>
+              <li>ถ้ามีร่างรอบจ่ายค่าคอม (สถานะร่าง) ที่รวมใบนี้ ร่างนั้นจะถูกลบ — กดสร้างรอบใหม่ที่หน้าค่าคอมเพื่อได้ยอดที่ถูกต้อง</li>
+            </ul>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="void-reason" className="text-sm leading-snug">
+              เหตุผลในการยกเลิก (อย่างน้อย {VOID_REASON_MIN} ตัวอักษร)
+            </Label>
+            <Textarea
+              id="void-reason"
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+              placeholder="เช่น คีย์ผิดรุ่นเครื่อง ลูกค้าไม่ได้ซื้อ"
+              rows={3}
+              disabled={voidMutation.isPending}
+            />
+            <div className="text-2xs text-muted-foreground leading-snug">
+              {voidReason.trim().length}/{VOID_REASON_MIN} ตัวอักษร
+            </div>
+          </div>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

@@ -26,7 +26,9 @@ describe('CommissionService', () => {
       },
       commissionPayout: {
         findFirst: jest.fn(),
+        findUnique: jest.fn(),
         update: jest.fn(),
+        upsert: jest.fn(),
       },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'a1' }),
@@ -725,6 +727,62 @@ describe('CommissionService', () => {
       await service.approve('c1', 'manager-1');
       expect(prisma.commissionRule.findFirst).not.toHaveBeenCalled();
       expect(prisma.salesCommission.update).toHaveBeenCalled();
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // generatePayouts — restore หลัง void ต้องเริ่มวงจรอนุมัติใหม่ (Task 3 carry)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  describe('generatePayouts — restore รอบจ่ายที่ถูก soft-delete', () => {
+    beforeEach(() => {
+      prisma.salesCommission.findMany.mockResolvedValue([
+        {
+          salespersonId: 'sp1',
+          saleAmount: new Prisma.Decimal(10000),
+          commissionAmount: new Prisma.Decimal(300),
+          salesperson: { id: 'sp1', name: 'พนักงาน 1' },
+        },
+      ]);
+      prisma.commissionPayout.upsert.mockResolvedValue({ id: 'payout-1' });
+    });
+
+    it('ขา restore รีเซ็ตเป็น DRAFT + ล้างข้อมูลอนุมัติ/จ่ายเดิม (ยอดใหม่ต้องอนุมัติใหม่)', async () => {
+      // race แคบ: void ใบขาย soft-delete ร่าง → ระหว่างนั้น approvePayout ที่อ่านไปก่อน
+      // commit เขียนทับแถวเป็น APPROVED ⇒ แถวที่ถูกลบค้างสถานะ APPROVED. generate ใหม่
+      // ต้องไม่ฟื้นแถวด้วยยอดใหม่แต่สถานะอนุมัติเดิม (= ข้ามการอนุมัติ)
+      prisma.commissionPayout.findUnique.mockResolvedValue({
+        id: 'payout-1',
+        salespersonId: 'sp1',
+        period: '2026-08',
+        status: 'APPROVED',
+        approvedById: 'owner-1',
+        approvedAt: new Date(),
+        deletedAt: new Date(),
+      });
+
+      await service.generatePayouts({ period: '2026-08' });
+
+      const update = prisma.commissionPayout.upsert.mock.calls[0][0].update;
+      expect(update.status).toBe('DRAFT');
+      expect(update.approvedById).toBeNull();
+      expect(update.approvedAt).toBeNull();
+      expect(update.paidById).toBeNull();
+      expect(update.paidAt).toBeNull();
+      expect(update.deletedAt).toBeNull();
+    });
+
+    it('ยังข้าม (skip) รอบที่มีอยู่และไม่ถูกลบ — ไม่เขียนทับ', async () => {
+      prisma.commissionPayout.findUnique.mockResolvedValue({
+        id: 'payout-1',
+        deletedAt: null,
+        status: 'APPROVED',
+      });
+
+      const result = await service.generatePayouts({ period: '2026-08' });
+
+      expect(prisma.commissionPayout.upsert).not.toHaveBeenCalled();
+      expect(result.skipped).toBe(1);
     });
   });
 });

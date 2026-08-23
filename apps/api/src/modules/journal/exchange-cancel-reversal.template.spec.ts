@@ -170,6 +170,78 @@ describe('ExchangeCancelReversalTemplate (cancel — workbook Cases 3A/3B, spec 
     expect(createAndPost).toHaveBeenCalledTimes(2);
   });
 
+  // ─── Task 2 (void-sale 2026-08-22): sweepBy — กวาดด้วย metadata path อื่น ──
+
+  describe('sweepBy (generalized sweep selector)', () => {
+    it('sweepBy: กวาด JE ด้วย metadata path อื่น (saleId) แทน contractId', async () => {
+      findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+        makeJe({
+          id: 'sale-je',
+          entryNumber: 'JE-202608-0001',
+          companyId: 'shop-co',
+          metadata: { flow: 'shop-cash-sale', tag: 'SHOP_CASH_SALE', saleId: 'sale-1' },
+        }),
+      ]);
+      const result = await template.reverse({
+        jeIds: [],
+        sweepBy: { path: 'saleId', value: 'sale-1' },
+      });
+
+      expect(result.reversalJeIds).toHaveLength(1);
+      expect(findMany).toHaveBeenCalledTimes(2);
+      expect(findMany.mock.calls[1][0].where.metadata).toEqual({
+        path: ['saleId'],
+        equals: 'sale-1',
+      });
+      // mirror invariants ยังเหมือนเดิมทุกประการ (companyId ของใบเดิม = SHOP)
+      expect(createAndPost.mock.calls[0][0].companyId).toBe('shop-co');
+      expect(createAndPost.mock.calls[0][0].metadata.reversesEntryId).toBe('sale-je');
+    });
+
+    it('ไม่ส่งทั้ง newContractId และ sweepBy → ใช้เฉพาะ jeIds ไม่ยิง query กวาด', async () => {
+      findMany.mockResolvedValueOnce([makeJe()]);
+      const result = await template.reverse({ jeIds: ['je1'] });
+
+      expect(result.reversalJeIds).toHaveLength(1);
+      expect(findMany).toHaveBeenCalledTimes(1); // byId เท่านั้น — ไม่มี query กวาด
+      expect(findMany.mock.calls[0][0].where).toEqual(
+        expect.objectContaining({ id: { in: ['je1'] } }),
+      );
+    });
+
+    it('ผู้เรียกเดิมไม่เปลี่ยนพฤติกรรม — ส่ง newContractId อย่างเดียวยังกวาดด้วย contractId', async () => {
+      findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          makeJe({ id: 'accrual-je', metadata: { flow: 'installment-accrual-2a', contractId: 'new-c' } }),
+        ]);
+      const result = await template.reverse({ jeIds: [], newContractId: 'new-c' });
+
+      expect(result.reversalJeIds).toHaveLength(1);
+      expect(findMany).toHaveBeenCalledTimes(2);
+      expect(findMany.mock.calls[1][0].where).toEqual(
+        expect.objectContaining({
+          metadata: { path: ['contractId'], equals: 'new-c' },
+          status: 'POSTED',
+          deletedAt: null,
+        }),
+      );
+    });
+
+    it('ส่งทั้งคู่ → sweepBy ชนะ (newContractId ไม่ถูกใช้กวาด)', async () => {
+      findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      await template.reverse({
+        jeIds: [],
+        newContractId: 'new-c',
+        sweepBy: { path: 'saleId', value: 'sale-1' },
+      });
+      expect(findMany.mock.calls[1][0].where.metadata).toEqual({
+        path: ['saleId'],
+        equals: 'sale-1',
+      });
+    });
+  });
+
   // ─── Phase 3 Task 1: generalized sweep (excludeFlows / redirects / flowLabel) ──
 
   describe('generalized sweep options (Phase 3)', () => {

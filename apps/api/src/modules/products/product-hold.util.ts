@@ -19,6 +19,12 @@ import { productStatusLabel } from './product-status.util';
  * แล้ว การ restore = เครื่องตัวเดียวมีทั้งใบขายของลูกค้า B และสัญญาผ่อนที่ยังเดินของลูกค้า A
  * ⇒ ต้องผ่านด่านเดียวกัน **ไม่ใช่เขียนกติกาชุดที่สอง**
  *
+ * **การกระทำที่สี่: `RESTORE_TO_STOCK`** — "คืนเครื่องเข้าสต็อก" ตอนยกเลิกใบขาย. คำถามเดียวกัน
+ * อีกครั้ง แต่ต่างจากสามตัวแรกตรงที่เครื่องอยู่ในสถานะที่ **ใบขายใบนั้นตั้งไว้เอง** (`SOLD_CASH`
+ * สำหรับขายสด, `SOLD_INSTALLMENT` สำหรับขายผ่านไฟแนนซ์ภายนอก) ⇒ อ่านตารางสถานะไม่ได้เลย
+ * (`SOLD_INSTALLMENT` อยู่ใน `HELD_STATUS_REMEDY` จะบล็อกใบขายของตัวเองทุกครั้ง) จึงเทียบกับ
+ * `expectedStatus` ที่ผู้เรียกส่งมาแทน — ยังเป็นชั้นเดียวกันในไฟล์เดียวกัน ไม่ใช่ด่านชุดที่สอง
+ *
  * ต่างกันแค่ "สถานะไหนแปลว่าถูกผูกไปแล้ว" ซึ่งเป็นตารางต่อ action ในไฟล์นี้
  * (`RESTORE_ONLY_HELD_REMEDY`) ไม่ใช่ตรรกะคนละชุด: `SOLD_CASH`/`SOLD_RESELL` **จงใจ**
  * ไม่อยู่ใน `HELD_STATUS_REMEDY` (ลบ/แก้ IMEI ของเครื่องที่ขายสดจบแล้วทำได้) แต่สำหรับ
@@ -78,7 +84,11 @@ export const RELEASED_ONLINE_ORDER_STATUSES: readonly OnlineOrderStatus[] = [
 ];
 
 /** การกระทำที่ต้องผ่านด่านนี้ + ความเสี่ยงที่ต้องอธิบายในข้อความ */
-export type ProductHoldAction = 'DELETE' | 'CHANGE_IDENTITY' | 'RESTORE_TO_CONTRACT';
+export type ProductHoldAction =
+  | 'DELETE'
+  | 'CHANGE_IDENTITY'
+  | 'RESTORE_TO_CONTRACT'
+  | 'RESTORE_TO_STOCK';
 
 const ACTION_TEXT: Readonly<Record<ProductHoldAction, { verb: string; risk: string }>> = {
   DELETE: {
@@ -96,6 +106,12 @@ const ACTION_TEXT: Readonly<Record<ProductHoldAction, { verb: string; risk: stri
     risk:
       'ยกเลิกแล้วสัญญาเดิมจะกลับมาเดินบนเครื่องเก่าตัวนี้ ทั้งที่มีรายการอื่นถือเครื่องตัวเดียวกันอยู่ ' +
       'เท่ากับเครื่องเดียวมีทั้งใบขาย/ใบจองของอีกคน และสัญญาผ่อนที่ยังเดินอยู่',
+  },
+  RESTORE_TO_STOCK: {
+    verb: 'ยกเลิกใบขายไม่ได้',
+    risk:
+      'ยกเลิกแล้วเครื่องจะกลับเข้าสต็อกให้ขายใหม่ได้ ทั้งที่มีรายการอื่นถือเครื่องตัวเดียวกันอยู่ ' +
+      'เท่ากับเครื่องเดียวถูกขายสองครั้ง',
   },
 };
 
@@ -149,6 +165,24 @@ export interface ProductHoldSubject {
    * ที่อ่านเครื่องเก่าตรง ๆ จาก tx (Prisma ไม่กรอง soft-delete ให้)
    */
   deletedAt?: Date | null;
+  /**
+   * สถานะที่ "รายการต้นทางเป็นคนตั้งไว้เอง" — **บังคับ** และใช้เฉพาะ `RESTORE_TO_STOCK`
+   *
+   * ใบขายสดตั้ง `SOLD_CASH`, ใบขายผ่านไฟแนนซ์ภายนอกตั้ง `SOLD_INSTALLMENT` ⇒ ถ้าสถานะ
+   * ปัจจุบันยังตรงกับค่านี้แปลว่าไม่มีใครมาผูกต่อ (ข้ามชั้นตาราง `HELD_STATUS_REMEDY` ซึ่ง
+   * จะบล็อก `SOLD_INSTALLMENT` ทุกกรณี) แล้วไปตรวจชั้นสัญญา/จอง/ออเดอร์ต่อตามปกติ
+   * ถ้าไม่ตรง = มีรายการอื่นผูกเครื่องนี้ไปแล้ว ⇒ บล็อกทันที
+   *
+   * ทำไมไม่ยกเว้นเหมารวมทั้ง `SOLD_CASH` + `SOLD_INSTALLMENT`: ใบขายสดที่เครื่องกลายเป็น
+   * `SOLD_INSTALLMENT` แปลว่ามีคนเอาเครื่องไปเปิดสัญญาผ่อนต่อแล้ว — ต้องบล็อก
+   */
+  expectedStatus?: ProductStatus;
+  /**
+   * ชื่อสินค้า — optional. ใส่มาเมื่อผู้เรียกตรวจ **หลายเครื่องในรอบเดียว**
+   * (ยกเลิกใบขายที่มีของแถม): สถานะอย่างเดียวไม่บอกว่าชิ้นไหนติด ผู้ใช้ต้องไล่เปิด
+   * ทีละเครื่องเอง. ไม่ใส่ = ข้อความคงรูปเดิมทุกตัวอักษร (ผู้เรียกเดิมไม่กระทบ)
+   */
+  name?: string | null;
 }
 
 /**
@@ -182,14 +216,40 @@ export async function assertProductNotHeld(
     );
   }
 
-  const remedy =
-    (action === 'RESTORE_TO_CONTRACT' ? RESTORE_ONLY_HELD_REMEDY[product.status] : undefined) ??
-    HELD_STATUS_REMEDY[product.status];
-  if (remedy) {
-    throw new BadRequestException(
-      `สินค้าอยู่สถานะ ${productStatusLabel(product.status)} — ${verb}เพราะยังผูกกับรายการที่เดินอยู่ ` +
-        `(${risk}): ${remedy}`,
-    );
+  // ชั้น 1 — สถานะสินค้า
+  //
+  // `RESTORE_TO_STOCK` อ่านตารางกลางไม่ได้: ตอนยกเลิกใบขาย เครื่องอยู่ในสถานะที่ "ใบขายใบนั้น
+  // เป็นคนตั้งไว้เอง" ซึ่ง `SOLD_INSTALLMENT` (ขายผ่านไฟแนนซ์ภายนอก) อยู่ใน `HELD_STATUS_REMEDY`
+  // ⇒ ตารางกลางจะบล็อกใบขายของตัวเองทุกครั้ง. เทียบกับ `expectedStatus` ที่ผู้เรียกส่งมาแทน
+  // — ตรง = ยังไม่มีใครมาผูกต่อ, ไม่ตรง = มีรายการอื่นเข้ามาถือเครื่องแล้ว (รวมเคสที่เครื่องถูก
+  // นำกลับเข้าสต็อก/ขายใหม่ไปแล้ว ซึ่งตารางกลางมองไม่เห็นเพราะ `IN_STOCK`/`SOLD_CASH` ไม่อยู่ในนั้น)
+  if (action === 'RESTORE_TO_STOCK') {
+    if (!product.expectedStatus) {
+      // ผู้เรียกลืมส่ง — เป็นบั๊กของโค้ด ไม่ใช่ข้อผิดพลาดของผู้ใช้ (อย่าแปลงเป็นข้อความไทย)
+      throw new Error('RESTORE_TO_STOCK requires expectedStatus');
+    }
+    if (product.status !== product.expectedStatus) {
+      throw new BadRequestException(
+        `${product.name ? `สินค้า "${product.name}" อยู่สถานะ` : 'สินค้าอยู่สถานะ'} ` +
+          `${productStatusLabel(product.status)} ` +
+          `(รายการนี้ตั้งไว้เป็น ${productStatusLabel(product.expectedStatus)}) — ${verb} ` +
+          `(${risk}): ${
+            HELD_STATUS_REMEDY[product.status] ??
+            'มีรายการอื่นผูกเครื่องนี้ไปแล้ว จัดการรายการนั้นให้จบก่อน'
+          }`,
+      );
+    }
+    // สถานะตรง = ข้ามชั้นตารางกลาง ไปตรวจชั้นสัญญา/จอง/ออเดอร์ต่อ
+  } else {
+    const remedy =
+      (action === 'RESTORE_TO_CONTRACT' ? RESTORE_ONLY_HELD_REMEDY[product.status] : undefined) ??
+      HELD_STATUS_REMEDY[product.status];
+    if (remedy) {
+      throw new BadRequestException(
+        `สินค้าอยู่สถานะ ${productStatusLabel(product.status)} — ${verb}เพราะยังผูกกับรายการที่เดินอยู่ ` +
+          `(${risk}): ${remedy}`,
+      );
+    }
   }
 
   // กันสถานะเพี้ยน: สินค้าอาจเป็น IN_STOCK ทั้งที่ยังมีสัญญาค้างอยู่ (ข้อมูลเก่า / แก้มือ)

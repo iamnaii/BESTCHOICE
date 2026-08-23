@@ -54,6 +54,7 @@ export class SalesService {
     paymentMethod?: string;
     salespersonId?: string;
     contractStatus?: string;
+    includeVoided?: boolean;
     page?: number;
     limit?: number;
     userRole?: string;

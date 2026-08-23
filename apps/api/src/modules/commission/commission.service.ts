@@ -636,6 +636,16 @@ export class CommissionService {
           totalSales: entry.totalSales,
           totalCommission: entry.totalCommission,
           commissionCount: entry.count,
+          // ยอดถูกคำนวณใหม่ ⇒ วงจรอนุมัติต้องเริ่มใหม่เสมอ. ปิด race แคบ (Task 3 carry):
+          // approvePayout (READ COMMITTED) อาจเขียน APPROVED ทับแถวที่ void ใบขายเพิ่ง
+          // soft-delete ไป — ถ้าขานี้ไม่ reset การ restore จะฟื้นแถวด้วย "ยอดใหม่ +
+          // สถานะ APPROVED เดิม" = ข้ามการอนุมัติ. ปลอดภัยเพราะ writer ที่ลบร่างมีตัวเดียว
+          // (SaleVoidService) และลบเฉพาะ DRAFT โดยเจตนา
+          status: 'DRAFT',
+          approvedById: null,
+          approvedAt: null,
+          paidById: null,
+          paidAt: null,
           notes: notes || null,
           // ขานี้คำนวณยอดใหม่ ⇒ ต้องเลื่อน generatedAt ตาม (ใช้ `createdAt` แทนไม่ได้
           // เพราะมันยังเป็นเวลาของรอบเดิมที่ถูกลบไป)

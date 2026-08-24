@@ -47,3 +47,11 @@ backups/
 # UI audit tool outputs (generated artifacts)
 scripts/ui-audit/
 __pycache__/
+
+# ผลลัพธ์ที่ดัมพ์จาก production (preflight / enumerate SQL)
+# มี PII ของพนักงาน (ชื่อ + อีเมลส่วนตัว) และยอดเงินจริง — เก็บไว้ในเครื่องเท่านั้น
+# ห้าม commit ตาม .claude/rules/security.md ("ห้าม log ... PII")
+shop-preflight-*.txt
+shop-opening-balance-*.txt
+interco-preflight-*.txt
+*-preflight-[0-9]*.txt

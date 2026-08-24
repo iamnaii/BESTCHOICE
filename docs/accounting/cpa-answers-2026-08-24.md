@@ -299,7 +299,8 @@
 ## ลำดับที่แนะนำ
 
 ```
-1. ✅ รัน shop-books-preflight บน prod แล้ว (2026-08-24 → shop-preflight-20260824.txt)
+1. ✅ รัน shop-books-preflight บน prod แล้ว (2026-08-24 → shop-preflight-20260824.txt
+     — **ไฟล์อยู่ในเครื่องเท่านั้น ไม่ commit** เพราะมีชื่อ+อีเมลส่วนตัวของพนักงาน · gitignore แล้ว)
      └─ S21-3001 = 0 บรรทัด ⇒ B4 ไม่ต้อง migrate · พบ JE ลงผิดสมุด 4 ใบ (ดูล่าง)
 2. รัน shop-opening-balance-enumerate-2026-08.sql        ← ได้ตัวเลขประชากร A2
 3. ส่งคำถามรอบ 2 — `cpa-questions-round2-2026-08-24.html` (12 ข้อ)   ← บล็อกงานที่เหลือเกือบหมด

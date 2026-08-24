@@ -228,6 +228,11 @@ export class UsersService {
     const isNowBeingDeactivated =
       dto.isActive === false && user.isActive === true;
 
+    // เกณฑ์เดียวกับ `updateFull` — สอง endpoint นี้รับ `UpdateUserDto` ตัวเดียวกันและ
+    // ตั้งรหัสผ่านได้ทั้งคู่ (บรรทัด `if (dto.password) data.password = ...` ข้างล่าง)
+    // ปล่อยให้ต่างกันเมื่อไร = ความปลอดภัยขึ้นกับว่าผู้เรียกบังเอิญใช้ route ไหน
+    const mustRevokeSessions = isNowBeingDeactivated || !!dto.password;
+
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.role !== undefined) data.role = dto.role as UserRole;
@@ -269,14 +274,17 @@ export class UsersService {
       },
     });
 
-    if (isNowBeingDeactivated) {
+    if (mustRevokeSessions) {
       // Revoke every live refresh token so the just-deactivated user cannot
       // continue to mint new access tokens from cookies already issued to
       // their browser. Best-effort: never block the user update itself.
       try {
+        // รูปเดียวกับ `updateFull` + `AuthService.revokeAllUserTokens`: ต้องเขียน
+        // `isRevoked` ด้วย เพราะนั่นคือฟิลด์ที่ `refreshToken()` ใช้ตัดสิน — เขียนแต่
+        // `revokedAt` แถวจะยังอ่านว่าเป็น session ที่ยังไม่ถูกเพิกถอน
         await this.prisma.refreshToken.updateMany({
-          where: { userId: id, revokedAt: null },
-          data: { revokedAt: new Date() },
+          where: { userId: id, isRevoked: false },
+          data: { isRevoked: true, revokedAt: new Date() },
         });
       } catch {
         // Intentionally swallowed — tokens will also be rejected by the
@@ -292,6 +300,13 @@ export class UsersService {
     if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
 
     const isNowBeingDeactivated = dto.isActive === false && user.isActive === true;
+
+    // เพิกถอน session ทุกอันเมื่อปิดใช้งาน **หรือ** เปลี่ยนรหัสผ่าน (OWNER รีเซ็ตให้จาก
+    // /users). การเปลี่ยนรหัสอย่างเดียวไม่ทำให้ session เดิมตาย — refresh token อยู่ได้ถึง
+    // JWT_REFRESH_EXPIRATION (7 วัน) และ `refreshToken()` ไม่ได้เทียบรหัสผ่าน ⇒ คนที่รู้
+    // รหัสเก่ายังใช้ต่อได้ ซึ่งเป็นเหตุผลที่รีเซ็ตตั้งแต่แรก. เกณฑ์เดียวกับ
+    // `AuthService.resetPassword` (self-service) ที่ revoke ทั้งหมดเช่นกัน
+    const mustRevokeSessions = isNowBeingDeactivated || !!dto.password;
 
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
@@ -318,10 +333,14 @@ export class UsersService {
         await this.employees.upsertProfileTx(tx, id, dto.employee, actor);
       }
 
-      if (isNowBeingDeactivated) {
+      if (mustRevokeSessions) {
+        // ใช้รูปเดียวกับ `AuthService.revokeAllUserTokens` — เดิมกรอง/เขียนแค่ `revokedAt`
+        // ทำให้แถวยังมี `isRevoked = false` ซึ่งเป็นฟิลด์ที่ `refreshToken()` ใช้ตัดสิน
+        // (การปิดใช้งานรอดมาได้เพราะ refresh ตรวจ `user.isActive` ซ้ำอีกชั้น — แต่การ
+        // เปลี่ยนรหัสผ่านไม่มีตาข่ายนั้น จึงต้องเขียน `isRevoked` ให้ถูกต้อง)
         await tx.refreshToken.updateMany({
-          where: { userId: id, revokedAt: null },
-          data: { revokedAt: new Date() },
+          where: { userId: id, isRevoked: false },
+          data: { isRevoked: true, revokedAt: new Date() },
         });
       }
     });

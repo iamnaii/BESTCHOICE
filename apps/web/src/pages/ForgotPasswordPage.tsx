@@ -52,8 +52,16 @@ export default function ForgotPasswordPage() {
               </svg>
             </div>
             <p className="text-sm text-foreground font-medium mb-1">ตรวจสอบอีเมลของคุณ</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground leading-snug">
               หากอีเมล <strong>{email}</strong> มีอยู่ในระบบ คุณจะได้รับลิงก์สำหรับรีเซ็ตรหัสผ่าน
+            </p>
+            {/* คนที่ถูกเชิญแต่ยังไม่ลงทะเบียน "ยังไม่มีบัญชี" ให้รีเซ็ต — API จะส่งอีเมลเชิญใบใหม่
+                ให้แทน (AuthService.resendPendingInviteIfAny) ข้อความครอบทั้งสองกรณีโดยไม่บอกว่า
+                อีเมลนี้เข้ากรณีไหน จึงไม่รั่วว่ามีบัญชีอยู่จริงหรือไม่ */}
+            <p className="text-xs text-muted-foreground leading-snug mt-2">
+              ถ้าคุณได้รับคำเชิญเข้าใช้งาน<strong>ภายใน 24 ชั่วโมง</strong>ที่ผ่านมาและยังไม่ได้ตั้งรหัสผ่าน
+              จะได้รับ<strong>อีเมลเชิญใบใหม่</strong>แทน — ให้กดลิงก์ในอีเมลฉบับล่าสุดเสมอ
+              ถ้าคำเชิญเก่ากว่านั้น กรุณาติดต่อผู้ดูแลระบบเพื่อขอลิงก์ใหม่
             </p>
           </div>
         ) : (

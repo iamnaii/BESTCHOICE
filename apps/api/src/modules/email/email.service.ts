@@ -195,7 +195,7 @@ export class EmailService {
                 </tr>
               </table>
               <p style="margin:0 0 16px;color:#6b7280;font-size:14px;line-height:1.6;">
-                ลิงก์นี้จะหมดอายุใน <strong>72 ชั่วโมง</strong> หากคุณไม่ได้รับเชิญ กรุณาเพิกเฉยอีเมลนี้
+                ลิงก์นี้จะหมดอายุใน <strong>24 ชั่วโมง</strong> หากคุณไม่ได้รับเชิญ กรุณาเพิกเฉยอีเมลนี้
               </p>
               <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
               <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5;">

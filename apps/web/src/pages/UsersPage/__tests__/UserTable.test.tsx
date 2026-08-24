@@ -16,7 +16,8 @@ describe('UserTable HR column', () => {
     render(
       <MemoryRouter>
         <UserTable users={[baseUser]} branches={[]} isLoading={false} isError={false} error={null}
-          onRetry={() => {}} onEdit={vi.fn()} onToggleActive={() => {}} onBulkDeactivate={() => {}} />
+          onRetry={() => {}} onEdit={vi.fn()} onResetPassword={vi.fn()}
+          onToggleActive={() => {}} onBulkDeactivate={() => {}} />
       </MemoryRouter>,
     );
     expect(screen.getAllByText('พนักงานขาย').length).toBeGreaterThan(0);

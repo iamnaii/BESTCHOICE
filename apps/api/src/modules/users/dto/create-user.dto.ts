@@ -6,8 +6,10 @@ export class CreateUserDto {
   @IsEmail()
   email: string;
 
+  // 8 ตัวอักษร — ให้ตรงกับ RegisterInviteDto (เส้นทางที่พนักงานตั้งรหัสเอง)
+  // เดิม 6 ที่นี่/8 ที่นั่น = คนละมาตรฐานบนบัญชีชนิดเดียวกัน
   @IsString()
-  @MinLength(6)
+  @MinLength(8, { message: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' })
   password: string;
 
   @IsString()

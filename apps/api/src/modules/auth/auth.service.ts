@@ -16,6 +16,7 @@ import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { EmailService } from '../email/email.service';
 import { LoginAuditService, LoginFailureKind } from './login-audit.service';
 import { AuditService } from '../audit/audit.service';
+import { InviteService } from '../invite/invite.service';
 
 // Account lockout configuration. Tunable via env if needed later.
 const LOCKOUT_THRESHOLD = 5; // failures before lock
@@ -56,6 +57,7 @@ export class AuthService {
     private emailService: EmailService,
     private loginAudit: LoginAuditService,
     private audit: AuditService,
+    private inviteService: InviteService,
   ) {}
 
   /**
@@ -396,6 +398,16 @@ export class AuthService {
     });
 
     if (!user || user.deletedAt || !user.isActive) {
+      // ไม่มีบัญชี แต่ "อาจ" มีคำเชิญค้างอยู่ — เชิญแล้วยังไม่ลงทะเบียน = ยังไม่มีแถว User
+      // ให้รีเซ็ต ⇒ ส่งอีเมลเชิญใบใหม่แทน (ดู resendPendingInviteIfAny)
+      //
+      // เงื่อนไขแคบกว่า if ข้างนอกโดยตั้งใจ: กรณี "มีแถว User ที่ยังไม่ถูกลบ แต่ปิดใช้งานอยู่"
+      // ต้องไม่เข้าเส้นนี้ เพราะ `InviteService.resend` **ฆ่าคำเชิญเดิมก่อน** แล้วค่อยเรียก
+      // `create` ซึ่งจะโยน ConflictException('อีเมลนี้มีบัญชีอยู่แล้ว') ทันที ⇒ คำเชิญที่ยัง
+      // ใช้ได้ถูกทำลายทิ้งโดยไม่มีใบใหม่มาแทน และ error ถูกกลืน = ไม่มีใครรู้
+      if (!user || user.deletedAt) {
+        await this.resendPendingInviteIfAny(dto.email);
+      }
       return { message: successMessage };
     }
 
@@ -422,6 +434,60 @@ export class AuthService {
     this.logger.log(`Password reset token generated for user ${user.id}`);
 
     return { message: successMessage };
+  }
+
+  /**
+   * "ลืมรหัสผ่าน" ของอีเมลที่ถูกเชิญแต่ยังไม่ลงทะเบียน → ส่งอีเมลเชิญใบใหม่แทน.
+   *
+   * เชิญพนักงาน = สร้างแค่ `InviteToken` ยังไม่มีแถว `User` (User เกิดตอน
+   * `/invite/register`) ⇒ forgotPassword เดิม return เงียบ ๆ เพราะไม่มีบัญชีให้รีเซ็ต
+   * ผู้ใช้จึงเห็นข้อความ "ถ้ามีอีเมลนี้จะได้รับลิงก์" แล้วรอเก้อ (prod 2026-08-24:
+   * กด 6 ครั้งใน 3 นาที ไม่มีอะไรถูกส่งเลย).
+   *
+   * ข้อสัญญาเดิมยังอยู่ครบ: response/status/rate-limit เหมือนเดิมทุกกรณี — คนนอก
+   * ยังแยกไม่ได้ว่าอีเมลนั้นมีบัญชี มีคำเชิญ หรือไม่มีอะไรเลย.
+   *
+   * หมายเหตุ: `resend` ออก token ใหม่และ **ฆ่าลิงก์เดิมทิ้ง** (เก็บแต่ hash จึงส่ง
+   * ลิงก์เดิมซ้ำไม่ได้) — ยอมรับได้ เพราะคนที่มากดตรงนี้คือคนที่ใช้ลิงก์เดิมไม่ได้อยู่แล้ว
+   * และทุกครั้งที่หมุน token ระบบส่งอีเมลใบใหม่ตามไปเสมอ ⇒ ในกล่องจดหมายมีลิงก์ที่ใช้ได้เสมอ.
+   *
+   * ข้อจำกัดที่รู้ตัว: endpoint นี้ไม่ต้องล็อกอิน ⇒ ใครที่รู้อีเมลของคนที่ถูกเชิญก็หมุน
+   * token ของเขาได้ (จำกัดด้วย rate limit 3 ครั้ง/ชม./อีเมล ที่ตรวจไปแล้วก่อนถึงจุดนี้).
+   * ผลเสียจำกัดอยู่แค่ลิงก์เดิมใช้ไม่ได้ + อีเมลใบใหม่ถูกส่งหาเจ้าตัว — ไม่ได้เปิดทางให้ใคร
+   * เข้าถึงคำเชิญ เพราะ token ไปที่กล่องจดหมายของผู้ถูกเชิญเท่านั้น.
+   *
+   * ห้าม throw: 500 ที่นี่จะกลายเป็น enumeration oracle เสียเอง ("อีเมลนี้พังแปลว่ามีคำเชิญ").
+   */
+  private async resendPendingInviteIfAny(email: string): Promise<void> {
+    try {
+      const invite = await this.prisma.inviteToken.findFirst({
+        where: {
+          email,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+          // T7-C6: คำเชิญที่ผูก OTP ทาง SMS เป็นคำเชิญ "สองช่องทาง" — `InviteService.resend`
+          // สร้างใบใหม่โดย **ไม่ส่ง `phone` ต่อ** ⇒ ใบใหม่จะไม่มี `otpHash` และ `register`
+          // จะเลิกบังคับ OTP ทันที. ถ้าปล่อยให้เส้นทางที่ไม่ต้องล็อกอินนี้ทำได้ = ใครก็ได้ที่
+          // รู้อีเมลสามารถถอดช่องทางที่สองทิ้งได้ ซึ่งเป็นสิ่งเดียวที่ T7-C6 มีไว้กัน
+          // (กล่องจดหมายถูกยึด). ปล่อยให้ OWNER กด "ส่งซ้ำ" เองเท่านั้น
+          otpHash: null,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, invitedBy: true },
+      });
+
+      if (!invite) return;
+
+      await this.inviteService.resend(invite.id, invite.invitedBy);
+      this.logger.log(`Forgot-password hit a pending invite — invite re-sent (${invite.id})`);
+    } catch (err) {
+      // ไม่ log อีเมลดิบ (PII) — ระบุด้วย hash สั้น ๆ พอให้ตามรอยใน log ได้
+      this.logger.error(
+        `Failed to resend pending invite on forgot-password (email hash: ${this.hashToken(
+          email.toLowerCase(),
+        ).slice(0, 12)}): ${err}`,
+      );
+    }
   }
 
   /**

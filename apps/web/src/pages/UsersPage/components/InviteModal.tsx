@@ -94,7 +94,7 @@ export default function InviteModal({
               </div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Clock className="size-3.5" />
-                ลิงก์หมดอายุใน 72 ชั่วโมง
+                ลิงก์หมดอายุใน 24 ชั่วโมง
               </div>
             </div>
           ) : (

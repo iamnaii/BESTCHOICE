@@ -10,6 +10,7 @@ import { LoginAuditRetentionCron } from './login-audit-retention.cron';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAudienceGuard } from './guards/jwt-audience.guard';
 import { EmailModule } from '../email/email.module';
+import { InviteModule } from '../invite/invite.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
 
@@ -29,6 +30,7 @@ import { TestModeModule } from '../test-mode/test-mode.module';
       inject: [ConfigService],
     }),
     EmailModule,
+    InviteModule,
     forwardRef(() => LineOaModule),
     TestModeModule,
   ],

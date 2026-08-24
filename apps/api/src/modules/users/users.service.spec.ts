@@ -40,8 +40,22 @@ describe('UsersService.update — T7-C7 deactivation revokes refresh tokens', ()
     await service.update('u1', { isActive: false });
 
     expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
-      where: { userId: 'u1', revokedAt: null },
-      data: { revokedAt: expect.any(Date) },
+      where: { userId: 'u1', isRevoked: false },
+      data: { isRevoked: true, revokedAt: expect.any(Date) },
+    });
+  });
+
+  // เกณฑ์เดียวกับ updateFull — PATCH /users/:id รับ UpdateUserDto ตัวเดียวกันและตั้งรหัสผ่านได้
+  // ปล่อยให้ต่างกัน = ความปลอดภัยขึ้นกับว่าผู้เรียกบังเอิญใช้ route ไหน
+  it('revokes all refresh tokens when the password changes', async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: true });
+    prisma.user.update.mockResolvedValue({ id: 'u1', isActive: true });
+
+    await service.update('u1', { password: 'newpass1234' });
+
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', isRevoked: false },
+      data: { isRevoked: true, revokedAt: expect.any(Date) },
     });
   });
 

@@ -10,6 +10,6 @@ export class ResetPasswordDto {
   token: string;
 
   @IsString()
-  @MinLength(6, { message: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' })
+  @MinLength(8, { message: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' })
   newPassword: string;
 }

@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select';
 import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 import { formatDateShort, formatDateMedium } from '@/utils/formatters';
-import { MoreVertical, PowerOff, Power, Pencil, UserX } from 'lucide-react';
+import { MoreVertical, PowerOff, Power, Pencil, UserX, KeyRound, Info } from 'lucide-react';
 import {
   User,
   InviteToken,
@@ -49,6 +49,7 @@ interface UserTableProps {
   error: unknown;
   onRetry: () => void;
   onEdit: (user: User) => void;
+  onResetPassword: (user: User) => void;
   onToggleActive: (id: string, isActive: boolean, name: string) => void;
   onBulkDeactivate: (users: User[]) => void;
 }
@@ -69,6 +70,7 @@ export function UserTable({
   error,
   onRetry,
   onEdit,
+  onResetPassword,
   onToggleActive,
   onBulkDeactivate,
 }: UserTableProps) {
@@ -244,6 +246,10 @@ export function UserTable({
             <DropdownMenuItem onClick={() => onEdit(u)}>
               <Pencil className="size-4" />
               แก้ไข
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onResetPassword(u)}>
+              <KeyRound className="size-4" />
+              รีเซ็ตรหัสผ่าน
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -495,15 +501,37 @@ export function InviteTable({
   );
 
   return (
-    <DataTable
-      columns={inviteColumns}
-      data={filtered}
-      isLoading={isLoading}
-      searchable
-      searchPlaceholder="ค้นหาอีเมล..."
-      columnToggle
-      toolbar={statusFilterToolbar}
-      emptyMessage="ไม่พบคำเชิญที่ตรงกับเงื่อนไข"
-    />
+    <>
+      {/* prod 2026-08-24: เชิญพนักงานแล้วเขากด "ลืมรหัสผ่าน" 6 ครั้งโดยไม่มีอะไรเกิดขึ้น
+          เพราะคำเชิญยังไม่ได้สร้างบัญชี — อธิบายตรงจุดที่คนกำลังมองหาคำตอบ */}
+      <div className="mb-4 flex gap-2.5 rounded-lg border border-info/20 bg-info/5 p-3.5">
+        <Info className="size-4 shrink-0 text-info mt-0.5" />
+        <div className="text-xs leading-snug text-muted-foreground space-y-1">
+          <p>
+            <span className="font-medium text-foreground">คำเชิญยังไม่ใช่บัญชีผู้ใช้</span> —
+            พนักงานต้องกดลิงก์ในอีเมลเชิญเพื่อตั้งรหัสผ่านเองก่อน (อย่างน้อย 8 ตัวอักษร)
+            ชื่อจึงจะขึ้นในแท็บ "ผู้ใช้" และเข้าสู่ระบบได้
+          </p>
+          <p>
+            ถ้าเขาเผลอกด "ลืมรหัสผ่าน" ที่หน้าเข้าสู่ระบบ ระบบจะส่ง<span className="font-medium text-foreground">อีเมลเชิญใบใหม่</span>ให้แทน
+            — เฉพาะคำเชิญที่<span className="font-medium text-foreground">ยังไม่หมดอายุ</span> ถ้าเลย 24 ชม. ไปแล้วต้องกด "ส่งซ้ำ" ในตารางข้างล่างให้เอง
+          </p>
+          <p>
+            ลิงก์เชิญมีอายุ <span className="font-medium text-foreground">24 ชั่วโมง</span> — และทุกครั้งที่ออกลิงก์ใหม่
+            (กด "ส่งซ้ำ" หรือเขากด "ลืมรหัสผ่าน") <span className="font-medium text-foreground">ลิงก์เดิมจะใช้ไม่ได้ทันที</span>
+          </p>
+        </div>
+      </div>
+      <DataTable
+        columns={inviteColumns}
+        data={filtered}
+        isLoading={isLoading}
+        searchable
+        searchPlaceholder="ค้นหาอีเมล..."
+        columnToggle
+        toolbar={statusFilterToolbar}
+        emptyMessage="ไม่พบคำเชิญที่ตรงกับเงื่อนไข"
+      />
+    </>
   );
 }

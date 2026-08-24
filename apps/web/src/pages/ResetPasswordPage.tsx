@@ -23,8 +23,8 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      toast.error('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+    if (newPassword.length < 8) {
+      toast.error('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
       return;
     }
 
@@ -81,9 +81,9 @@ export default function ResetPasswordPage() {
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="รหัสผ่านใหม่ (อย่างน้อย 6 ตัวอักษร)"
+              placeholder="รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)"
               required
-              minLength={6}
+              minLength={8}
             />
           </div>
           <div>
@@ -95,7 +95,7 @@ export default function ResetPasswordPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="ยืนยันรหัสผ่านใหม่"
               required
-              minLength={6}
+              minLength={8}
             />
           </div>
           <Button

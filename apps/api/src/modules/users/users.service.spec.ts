@@ -40,8 +40,8 @@ describe('UsersService.update — T7-C7 deactivation revokes refresh tokens', ()
     await service.update('u1', { isActive: false });
 
     expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
-      where: { userId: 'u1', revokedAt: null },
-      data: { revokedAt: expect.any(Date) },
+      where: { userId: 'u1', isRevoked: false },
+      data: { isRevoked: true, revokedAt: expect.any(Date) },
     });
   });
 

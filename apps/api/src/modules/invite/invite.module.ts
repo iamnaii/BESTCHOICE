@@ -7,5 +7,8 @@ import { EmailModule } from '../email/email.module';
   imports: [EmailModule],
   controllers: [InviteController],
   providers: [InviteService],
+  // AuthModule ใช้ตอน forgot-password ของอีเมลที่ถูกเชิญแต่ยังไม่ลงทะเบียน
+  // (ทิศทางเดียว: Auth → Invite; InviteModule ไม่ import AuthModule จึงไม่เป็นวงกลม)
+  exports: [InviteService],
 })
 export class InviteModule {}

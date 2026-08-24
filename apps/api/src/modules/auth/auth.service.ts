@@ -16,6 +16,7 @@ import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { EmailService } from '../email/email.service';
 import { LoginAuditService, LoginFailureKind } from './login-audit.service';
 import { AuditService } from '../audit/audit.service';
+import { InviteService } from '../invite/invite.service';
 
 // Account lockout configuration. Tunable via env if needed later.
 const LOCKOUT_THRESHOLD = 5; // failures before lock
@@ -56,6 +57,7 @@ export class AuthService {
     private emailService: EmailService,
     private loginAudit: LoginAuditService,
     private audit: AuditService,
+    private inviteService: InviteService,
   ) {}
 
   /**
@@ -396,6 +398,9 @@ export class AuthService {
     });
 
     if (!user || user.deletedAt || !user.isActive) {
+      // ไม่มีบัญชี แต่ "อาจ" มีคำเชิญค้างอยู่ — เชิญแล้วยังไม่ลงทะเบียน = ยังไม่มีแถว User
+      // ให้รีเซ็ต ⇒ ส่งอีเมลเชิญใบใหม่แทน (ดู resendPendingInviteIfAny)
+      await this.resendPendingInviteIfAny(dto.email);
       return { message: successMessage };
     }
 
@@ -422,6 +427,39 @@ export class AuthService {
     this.logger.log(`Password reset token generated for user ${user.id}`);
 
     return { message: successMessage };
+  }
+
+  /**
+   * "ลืมรหัสผ่าน" ของอีเมลที่ถูกเชิญแต่ยังไม่ลงทะเบียน → ส่งอีเมลเชิญใบใหม่แทน.
+   *
+   * เชิญพนักงาน = สร้างแค่ `InviteToken` ยังไม่มีแถว `User` (User เกิดตอน
+   * `/invite/register`) ⇒ forgotPassword เดิม return เงียบ ๆ เพราะไม่มีบัญชีให้รีเซ็ต
+   * ผู้ใช้จึงเห็นข้อความ "ถ้ามีอีเมลนี้จะได้รับลิงก์" แล้วรอเก้อ (prod 2026-08-24:
+   * กด 6 ครั้งใน 3 นาที ไม่มีอะไรถูกส่งเลย).
+   *
+   * ข้อสัญญาเดิมยังอยู่ครบ: response/status/rate-limit เหมือนเดิมทุกกรณี — คนนอก
+   * ยังแยกไม่ได้ว่าอีเมลนั้นมีบัญชี มีคำเชิญ หรือไม่มีอะไรเลย.
+   *
+   * หมายเหตุ: `resend` ออก token ใหม่และ **ฆ่าลิงก์เดิมทิ้ง** (เก็บแต่ hash จึงส่ง
+   * ลิงก์เดิมซ้ำไม่ได้) — ยอมรับได้ เพราะคนที่มากดตรงนี้คือคนที่ใช้ลิงก์เดิมไม่ได้อยู่แล้ว.
+   *
+   * ห้าม throw: 500 ที่นี่จะกลายเป็น enumeration oracle เสียเอง ("อีเมลนี้พังแปลว่ามีคำเชิญ").
+   */
+  private async resendPendingInviteIfAny(email: string): Promise<void> {
+    try {
+      const invite = await this.prisma.inviteToken.findFirst({
+        where: { email, usedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, invitedBy: true },
+      });
+
+      if (!invite) return;
+
+      await this.inviteService.resend(invite.id, invite.invitedBy);
+      this.logger.log(`Forgot-password hit a pending invite — invite re-sent (${invite.id})`);
+    } catch (err) {
+      this.logger.error(`Failed to resend pending invite on forgot-password: ${err}`);
+    }
   }
 
   /**

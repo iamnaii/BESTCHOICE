@@ -12,7 +12,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ChevronLeft } from 'lucide-react';
 import { usersApi, userKeys, type EmploymentType } from '@/lib/api/users';
-import { roleLabels, inputClass, labelClass } from './types';
+import { roleLabels, inputClass, labelClass, MIN_PASSWORD_LENGTH } from './types';
 import PersonalFields, { type PersonalForm } from './components/PersonalFields';
 
 const EMPLOYMENT: { value: EmploymentType; label: string }[] = [
@@ -142,10 +142,15 @@ export default function UserDetailPage() {
         setTab('account');
         return toast.error('กรุณาระบุอีเมล');
       }
-      if (!account.password || account.password.length < 6) {
+      if (!account.password || account.password.length < MIN_PASSWORD_LENGTH) {
         setTab('account');
-        return toast.error('กรุณาระบุรหัสผ่านอย่างน้อย 6 ตัวอักษร');
+        return toast.error(`กรุณาระบุรหัสผ่านอย่างน้อย ${MIN_PASSWORD_LENGTH} ตัวอักษร`);
       }
+    }
+    // แก้ไขผู้ใช้เดิม: ปล่อยว่าง = ไม่เปลี่ยน แต่ถ้ากรอกมาต้องยาวพอ ไม่งั้น API ตีกลับ 400
+    if (!isNew && account.password && account.password.length < MIN_PASSWORD_LENGTH) {
+      setTab('account');
+      return toast.error(`รหัสผ่านใหม่ต้องมีอย่างน้อย ${MIN_PASSWORD_LENGTH} ตัวอักษร`);
     }
     save.mutate();
   }
@@ -201,8 +206,12 @@ export default function UserDetailPage() {
               </div>
               <div>
                 <label className={labelClass}>{isNew ? 'รหัสผ่าน *' : 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)'}</label>
-                <input className={inputClass} type="password" minLength={6} required={isNew}
+                <input className={inputClass} type="password" minLength={MIN_PASSWORD_LENGTH} required={isNew}
+                  autoComplete="new-password"
                   value={account.password} onChange={(e) => setAccount({ ...account, password: e.target.value })} />
+                <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                  อย่างน้อย {MIN_PASSWORD_LENGTH} ตัวอักษร{!isNew && ' — เปลี่ยนแล้วผู้ใช้จะถูกบังคับออกจากระบบทุกอุปกรณ์'}
+                </p>
               </div>
               <div>
                 <label className={labelClass}>บทบาท (สิทธิ์ระบบ) *</label>

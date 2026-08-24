@@ -47,17 +47,50 @@ describe('UsersService.updateFull', () => {
     );
   });
 
+  // Shape changed 2026-08-24: was `where: { revokedAt: null } / data: { revokedAt }`,
+  // which left `isRevoked = false`. `AuthService.refreshToken` gates on `isRevoked`,
+  // so those rows still read as live sessions (deactivation survived only because
+  // refresh ALSO re-checks `user.isActive`). Now canonical — same shape as
+  // `revokeAllUserTokens` — so the one statement is correct for both triggers.
   it('revokes refresh tokens on deactivate (true→false)', async () => {
     userFindUnique.mockResolvedValue({ id: 'u1', isActive: true });
     await svc.updateFull('u1', { isActive: false }, { userId: 'owner' });
-    expect(refreshUpdateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: 'u1', revokedAt: null } }),
-    );
+    expect(refreshUpdateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', isRevoked: false },
+      data: { isRevoked: true, revokedAt: expect.any(Date) },
+    });
   });
 
   it('does NOT touch employee profile when employee is null', async () => {
     userFindUnique.mockResolvedValue({ id: 'u1', isActive: true });
     await svc.updateFull('u1', { name: 'A', employee: null }, { userId: 'owner' });
     expect(upsertProfileTx).not.toHaveBeenCalled();
+  });
+
+  // OWNER-initiated password reset (/users → "รีเซ็ตรหัสผ่าน") flows through this
+  // same method. Changing the password without killing live sessions would leave
+  // whoever knows the OLD password logged in for up to JWT_REFRESH_EXPIRATION (7d)
+  // — the exact scenario the reset is meant to close. Mirrors the self-service
+  // `AuthService.resetPassword`, which revokes on the same grounds.
+  it('revokes refresh tokens when the password changes', async () => {
+    userFindUnique.mockResolvedValue({ id: 'u1', isActive: true });
+    await svc.updateFull('u1', { password: 'newpass1234' }, { userId: 'owner' });
+    expect(refreshUpdateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', isRevoked: false },
+      data: { isRevoked: true, revokedAt: expect.any(Date) },
+    });
+  });
+
+  it('does NOT revoke refresh tokens on a password-less profile save', async () => {
+    userFindUnique.mockResolvedValue({ id: 'u1', isActive: true });
+    await svc.updateFull('u1', { name: 'A', nickname: 'B' }, { userId: 'owner' });
+    expect(refreshUpdateMany).not.toHaveBeenCalled();
+  });
+
+  // Deactivate + password change in one save must not double-revoke.
+  it('revokes exactly once when deactivating AND changing password together', async () => {
+    userFindUnique.mockResolvedValue({ id: 'u1', isActive: true });
+    await svc.updateFull('u1', { isActive: false, password: 'newpass1234' }, { userId: 'owner' });
+    expect(refreshUpdateMany).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,6 +4,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { usersApi, userKeys } from '@/lib/api/users';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -13,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { User, InviteToken } from './types';
 import { UserTable, InviteTable } from './components/UserTable';
 import InviteModal from './components/InviteModal';
+import ResetPasswordDialog from './components/ResetPasswordDialog';
 
 export default function UsersPage() {
   useDocumentTitle('ผู้ใช้งาน');
@@ -28,6 +30,9 @@ export default function UsersPage() {
     message: string;
     action: () => void;
   }>({ open: false, message: '', action: () => {} });
+
+  // ผู้ใช้ที่กำลังถูกรีเซ็ตรหัสผ่าน (null = dialog ปิด)
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
 
   // Invite state
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -59,6 +64,21 @@ export default function UsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('อัพเดทสถานะสำเร็จ');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  // รีเซ็ตรหัสผ่านให้ผู้ใช้ที่ "มีบัญชีแล้ว" — ใช้ปลายทางเดียวกับหน้ารายละเอียดผู้ใช้
+  // (PUT /users/:id/profile) ซึ่งส่งเฉพาะ field ที่แนบไปเท่านั้น จึงไม่แตะข้อมูลอื่น
+  // ฝั่ง API จะเพิกถอน refresh token ทุกอันให้ด้วยเมื่อรหัสผ่านเปลี่ยน
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ id, password }: { id: string; password: string }) =>
+      usersApi.saveProfile(id, { password }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: userKeys.detail(variables.id) });
+      toast.success(`ตั้งรหัสผ่านใหม่ให้ "${resetTarget?.name ?? ''}" แล้ว — แจ้งรหัสใหม่ให้เขาด้วย`);
+      setResetTarget(null);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -308,6 +328,7 @@ export default function UsersPage() {
           error={error}
           onRetry={refetch}
           onEdit={openEdit}
+          onResetPassword={setResetTarget}
           onToggleActive={handleToggleActive}
           onBulkDeactivate={handleBulkDeactivate}
         />
@@ -334,6 +355,16 @@ export default function UsersPage() {
           onCopyUrl={copyToClipboard}
         />
       )}
+
+      <ResetPasswordDialog
+        user={resetTarget}
+        isSelf={!!resetTarget && resetTarget.id === currentUser?.id}
+        isPending={resetPasswordMutation.isPending}
+        onClose={() => setResetTarget(null)}
+        onSubmit={(password) =>
+          resetTarget && resetPasswordMutation.mutate({ id: resetTarget.id, password })
+        }
+      />
 
       <ConfirmDialog
         open={confirmDialog.open}

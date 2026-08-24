@@ -8,8 +8,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { LoginAuditService } from './login-audit.service';
 import { AuditService } from '../audit/audit.service';
+import { InviteService } from '../invite/invite.service';
 
 const mockEmailSender = { sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined) };
+const mockInviteService = { resend: jest.fn().mockResolvedValue({ id: 'inv-1' }) };
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -37,6 +39,8 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     mockEmailSender.sendPasswordResetEmail.mockClear();
+    mockInviteService.resend.mockClear();
+    mockInviteService.resend.mockResolvedValue({ id: 'inv-1' });
     loginAudit = { record: jest.fn().mockResolvedValue(undefined) };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({
@@ -60,6 +64,9 @@ describe('AuthService', () => {
             passwordResetToken: {
               create: jest.fn().mockResolvedValue({ id: 'prt-1' }),
               updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
+            inviteToken: {
+              findFirst: jest.fn().mockResolvedValue(null),
             },
             $transaction: jest.fn().mockImplementation((args) => {
               // Batch transaction: execute all promises in the array
@@ -100,6 +107,10 @@ describe('AuthService', () => {
         {
           provide: AuditService,
           useValue: audit,
+        },
+        {
+          provide: InviteService,
+          useValue: mockInviteService,
         },
       ],
     }).compile();
@@ -361,6 +372,87 @@ describe('AuthService', () => {
       // 4th should be suppressed regardless of casing
       await service.forgotPassword({ email: 'case@test.com' });
       expect(mockEmailSender.sendPasswordResetEmail).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  /**
+   * Prod 2026-08-24: two staff were invited, then pressed "ลืมรหัสผ่าน" six times
+   * over three minutes. Every call returned 201 with the generic message and sent
+   * NOTHING — an invite creates only an `InviteToken`, so there is no `User` row to
+   * reset a password on until they finish `/register`. Dead end with no signal.
+   *
+   * The fix keeps the enumeration-resistant contract intact (same message, same
+   * status, same rate limit) and simply routes the request to the thing that CAN
+   * help that email: a fresh invite mail.
+   */
+  describe('forgotPassword — pending-invite fallback', () => {
+    const pendingInvite = { id: 'inv-9', invitedBy: 'owner-1' };
+
+    it('resends the invite when the email has no account but a live invite', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+      (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue(pendingInvite);
+
+      const res = await service.forgotPassword({ email: 'invited@test.com' });
+
+      expect(mockInviteService.resend).toHaveBeenCalledWith('inv-9', 'owner-1');
+      expect(res).toEqual({ message: expect.any(String) });
+      // No account ⇒ no reset token and no reset mail, same as before
+      expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(mockEmailSender.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it('only considers unused, unexpired invites', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+      (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue(pendingInvite);
+
+      await service.forgotPassword({ email: 'invited@test.com' });
+
+      expect(prisma.inviteToken.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            email: 'invited@test.com',
+            usedAt: null,
+            expiresAt: { gt: expect.any(Date) },
+          }),
+        }),
+      );
+    });
+
+    it('stays silent when the email has neither an account nor an invite', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+      (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue(null);
+
+      const res = await service.forgotPassword({ email: 'nobody@test.com' });
+
+      expect(res).toEqual({ message: expect.any(String) });
+      expect(mockInviteService.resend).not.toHaveBeenCalled();
+    });
+
+    it('does NOT look for invites when a real account exists', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user-7',
+        name: 'Real User',
+        email: 'real@test.com',
+        isActive: true,
+        deletedAt: null,
+      });
+
+      await service.forgotPassword({ email: 'real@test.com' });
+
+      expect(mockEmailSender.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+      expect(mockInviteService.resend).not.toHaveBeenCalled();
+    });
+
+    // The endpoint must never leak a failure — a 500 here would itself be an
+    // enumeration oracle ("this email blew up ⇒ it has a pending invite").
+    it('swallows a resend failure and still returns the generic message', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+      (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue(pendingInvite);
+      mockInviteService.resend.mockRejectedValue(new Error('SMTP down'));
+
+      await expect(service.forgotPassword({ email: 'invited@test.com' })).resolves.toEqual({
+        message: expect.any(String),
+      });
     });
   });
 });

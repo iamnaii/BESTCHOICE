@@ -45,6 +45,13 @@ export interface InviteToken {
   inviter: { id: string; name: string } | null;
 }
 
+/**
+ * ความยาวรหัสผ่านขั้นต่ำของหน้าจอฝั่งพนักงาน — ต้องตรงกับ `@MinLength(8)` ของ
+ * `CreateUserDto` / `UpdateUserDto` / `RegisterInviteDto` ฝั่ง API
+ * (ก่อน 2026-08-24 หน้านี้บังคับ 6 แต่หน้าลงทะเบียนผ่านคำเชิญบังคับ 8)
+ */
+export const MIN_PASSWORD_LENGTH = 8;
+
 export const inputClass =
   'w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20';
 export const labelClass = 'block text-xs font-medium text-foreground mb-1.5';

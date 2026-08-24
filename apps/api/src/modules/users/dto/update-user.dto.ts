@@ -18,9 +18,10 @@ export class UpdateUserDto {
   @IsBoolean()
   isActive?: boolean;
 
+  // 8 ตัวอักษร — ให้ตรงกับ RegisterInviteDto / CreateUserDto
   @IsOptional()
   @IsString()
-  @MinLength(6)
+  @MinLength(8, { message: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' })
   password?: string;
 
   @IsOptional()

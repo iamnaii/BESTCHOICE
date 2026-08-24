@@ -258,6 +258,7 @@ const SCENARIOS: Scenario[] = [
       { user: 'สนใจ 15', contains: ['ธรรมดา', 'Plus', 'Pro Max', '[ตัวเลือก:'], notContains: ['พร้อมส่ง', 'มีของ'], noBigNumbers: true },
       { user: '15 Plus', contains: ['ไม่มีผลิต', '128GB', '256GB', '[ตัวเลือก:'], notContains: ['พร้อมส่ง'], noBigNumbers: true },
       // v3.9: เจ้าของสั่งตัดคำชวน "จอง" ทุกจุด — เทิร์นเรทเหลือบอกสถานะ "เข้ามา" เฉย ๆ
+      // 15 Plus = ไม่มีของ (โหมดรับออเดอร์) → ไม่ต้องถามแยกทาง เสนอเรทเลย (v5.5)
       { user: '128GB', expectTools: ['get_installment_rates'], contains: ['เรทที่ 1', 'เรทที่ 2', '1,900', '2,566', '3,400', '2,905', 'เข้ามา', 'สเตทเม้นท์', '---', '[ตัวเลือก:'] },
       { user: 'เรทที่ 1', contains: ['สเตทเม้นท์', 'แชทนี้'], notContains: ['อนุมัติแน่นอน'] },
     ],
@@ -331,7 +332,28 @@ const SCENARIOS: Scenario[] = [
     id: 'S4', name: 'ของมีในสต๊อก 2 สภาพ → เทียบด้วยดาวน์+งวด',
     turns: [
       // ต้องบอกสีด้วย (เจ้าของสั่ง 2026-08-17) — fixture มี 2 เครื่อง: ชมพู กับ ฟ้า
-      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], notContains: ['17,500', '19,900'], contains: ['ผ่อนเดือนละ', 'ชมพู', 'ฟ้า'] },
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], contains: ['เงินสด', 'ผ่อน'], noBigNumbers: true },
+      { user: 'ผ่อน', expectTools: ['calculate_installment'], notContains: ['17,500', '19,900'], contains: ['ผ่อนเดือนละ', 'ชมพู', 'ฟ้า'] },
+    ],
+  },
+  {
+    // เจ้าของสั่ง 2026-08-24: ลูกค้าซื้อสด ห้ามยิงเรทผ่อนใส่ — อ่านสัญญาณแล้วตอบราคาสดเลย
+    id: 'S15', name: 'สัญญาณซื้อสด → ตอบราคาเงินสด ห้ามยัดเยียดผ่อน',
+    turns: [
+      { user: 'iPhone 15 128GB มือสอง ซื้อสดเท่าไหร่', expectTools: ['search_products'], contains: ['เงินสด', '17,500'], notContains: ['ดาวน์', 'ผ่อนเดือนละ', 'งบดาวน์'], forbidTools: ['get_installment_rates'] },
+    ],
+  },
+  {
+    id: 'S16', name: 'ไม่มีสัญญาณ → ถามแยกทาง 1 คำถามก่อนบอกตัวเลข',
+    turns: [
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เงินสด', 'ผ่อน', '[ตัวเลือก:'], noBigNumbers: true },
+      { user: 'ผ่อน', expectTools: ['calculate_installment'], contains: ['ดาวน์', 'ผ่อนเดือนละ'] },
+    ],
+  },
+  {
+    id: 'S17', name: 'ซื้อสดแต่ไม่มีของ → บอกหาเข้ามาให้ + ทีมเช็คราคา ห้ามเดาราคา',
+    turns: [
+      { user: 'iPhone 15 Plus 128GB ราคาสดเท่าไหร่', contains: ['เช็ค'], notContains: ['สั่งเข้า', 'ดาวน์ 1,900', 'ผ่อนเดือนละ 2,566'], noBigNumbers: true },
     ],
   },
   {
@@ -352,7 +374,7 @@ const SCENARIOS: Scenario[] = [
     id: 'S7', name: 'บอกความต่างเรทไปแล้ว → ถามรุ่นใหม่ ห้ามอธิบายซ้ำ',
     turns: [
       { user: '15 Plus', expectTools: ['get_installment_rates'] },
-      // ครั้งแรก: ต้องอธิบายความต่างเรท (3 ก้อน) ตามปกติ
+      // ครั้งแรก: ต้องอธิบายความต่างเรท (3 ก้อน) — 15 Plus ไม่มีของ จึงไม่ถามแยกทาง
       { user: '128GB', expectTools: ['get_installment_rates'], contains: ['ต่างกันที่เอกสาร'] },
       // ครั้งที่สองในบทสนทนาเดียวกัน (ความจุอื่นของรุ่นเดิม) — ห้ามอธิบายความต่างซ้ำ
       { user: 'แล้ว 256GB ล่ะ', notContains: ['ต่างกันที่เอกสาร', 'ใช้แค่รูปตอนทำงาน'] },
@@ -371,7 +393,8 @@ const SCENARIOS: Scenario[] = [
     // — ด่านอ่านง่ายใน globalChecks จะจับตรงนี้เป็นหลัก
     id: 'S5', name: 'เทียบรุ่น (เทิร์นยาวสุดในโลกจริง) → ต้องอ่านง่าย',
     turns: [
-      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], contains: ['ผ่อนเดือนละ'] },
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เงินสด', 'ผ่อน'], noBigNumbers: true },
+      { user: 'ผ่อน', expectTools: ['calculate_installment'], contains: ['ผ่อนเดือนละ'] },
       { user: 'ต่างกับ 15 Plus ยังไง', contains: ['ผ่อนเดือนละ'] },
     ],
   },

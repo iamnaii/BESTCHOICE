@@ -44,6 +44,28 @@ export class BranchesService {
   async update(id: string, dto: UpdateBranchDto) {
     await this.findOne(id);
 
+    // DTO ตรวจได้แค่ "รูปแบบ" ของสองฟิลด์นี้ — ต้องยืนยันว่ามีอยู่จริงในฐานข้อมูลด้วย
+    // ไม่งั้นจะตั้งค่าที่ทำให้ flow ปลายทางพังตอนใช้งานจริงแทนที่จะพังตอนตั้งค่า
+    if (dto.companyId) {
+      const company = await this.prisma.companyInfo.findFirst({
+        where: { id: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!company) throw new NotFoundException('ไม่พบบริษัทที่ระบุ');
+    }
+
+    if (dto.shopCashAccountCode) {
+      const account = await this.prisma.chartOfAccount.findFirst({
+        where: { code: dto.shopCashAccountCode, status: 'ใช้งาน', deletedAt: null },
+        select: { code: true },
+      });
+      if (!account) {
+        throw new NotFoundException(
+          `ไม่พบบัญชี ${dto.shopCashAccountCode} ในผังบัญชี — ถ้าเพิ่งเพิ่มบัญชีใหม่ ให้รัน seed:coa ก่อน`,
+        );
+      }
+    }
+
     // If setting as main warehouse, unset any existing main warehouse first
     if (dto.isMainWarehouse) {
       await this.prisma.branch.updateMany({

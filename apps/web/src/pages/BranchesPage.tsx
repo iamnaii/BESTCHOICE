@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { CashAccountSelect, SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 
 interface Branch {
   id: string;
@@ -20,6 +21,8 @@ interface Branch {
   phone: string | null;
   isActive: boolean;
   isMainWarehouse: boolean;
+  /** ลิ้นชักเงินสดฝั่ง SHOP ของสาขา — ว่าง = ขายสดเงินสดไม่ได้ (fail-closed ฝั่ง API) */
+  shopCashAccountCode: string | null;
   _count: { users: number; products: number; contracts: number };
 }
 
@@ -29,7 +32,7 @@ export default function BranchesPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', isActive: true });
+  const [form, setForm] = useState({ name: '', phone: '', isActive: true, shopCashAccountCode: '' });
   const [address, setAddress] = useState<AddressData>(emptyAddress);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
@@ -48,17 +51,20 @@ export default function BranchesPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { name: string; phone: string; isActive: boolean; address: AddressData }) => {
+    mutationFn: async (data: { name: string; phone: string; isActive: boolean; shopCashAccountCode: string; address: AddressData }) => {
       const location = composeAddress(data.address) || undefined;
-      const payload: { name: string; location?: string; phone?: string; isActive?: boolean } = {
+      const payload: { name: string; location?: string; phone?: string; isActive?: boolean; shopCashAccountCode?: string } = {
         name: data.name,
         location,
         phone: data.phone || undefined,
       };
       if (editingBranch) {
         payload.isActive = data.isActive;
+        // ส่งเฉพาะเมื่อเลือกไว้ — API ไม่รับสตริงว่าง (regex บังคับรูปแบบ S11-XXXX)
+        if (data.shopCashAccountCode) payload.shopCashAccountCode = data.shopCashAccountCode;
         return api.patch(`/branches/${editingBranch.id}`, payload);
       }
+      // CreateBranchDto ยังไม่รับ shopCashAccountCode — สาขาใหม่ตั้งลิ้นชักได้ที่หน้าแก้ไข
       return api.post('/branches', payload);
     },
     onSuccess: () => {
@@ -73,14 +79,14 @@ export default function BranchesPage() {
 
   const openCreate = () => {
     setEditingBranch(null);
-    setForm({ name: '', phone: '', isActive: true });
+    setForm({ name: '', phone: '', isActive: true, shopCashAccountCode: '' });
     setAddress(emptyAddress);
     setIsModalOpen(true);
   };
 
   const openEdit = (branch: Branch) => {
     setEditingBranch(branch);
-    setForm({ name: branch.name, phone: branch.phone || '', isActive: branch.isActive });
+    setForm({ name: branch.name, phone: branch.phone || '', isActive: branch.isActive, shopCashAccountCode: branch.shopCashAccountCode || '' });
     setAddress(deserializeAddress(branch.location));
     setIsModalOpen(true);
   };
@@ -119,6 +125,16 @@ export default function BranchesPage() {
     },
     { key: 'location', label: 'ที่ตั้ง' },
     { key: 'phone', label: 'โทรศัพท์' },
+    {
+      key: 'shopCashAccountCode',
+      label: 'ลิ้นชักเงินสด',
+      render: (b: Branch) =>
+        b.shopCashAccountCode ? (
+          <span className="text-sm tabular-nums">{b.shopCashAccountCode}</span>
+        ) : (
+          <Badge variant="destructive">ยังไม่ตั้ง — ขายสดไม่ได้</Badge>
+        ),
+    },
     {
       key: 'isActive',
       label: 'สถานะ',
@@ -233,6 +249,29 @@ export default function BranchesPage() {
                         className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
+                    {editingBranch && (
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1.5">
+                          ลิ้นชักเงินสดของสาขา (ฝั่งหน้าร้าน)
+                        </label>
+                        <CashAccountSelect
+                          codes={SHOP_CASH_ACCOUNT_CODES}
+                          value={form.shopCashAccountCode || undefined}
+                          onChange={(code) => setForm({ ...form, shopCashAccountCode: code })}
+                          placeholder="เลือกบัญชีเงินสด/ธนาคารของสาขา"
+                        />
+                        {form.shopCashAccountCode ? (
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            ใช้ตอนขายสดรับเงินสด รับเงินดาวน์ และจ่ายค่ารับซื้อมือสอง
+                          </p>
+                        ) : (
+                          <p className="mt-1.5 text-xs text-destructive">
+                            ยังไม่ได้ตั้ง — สาขานี้จะ<strong>ขายสดด้วยเงินสดไม่ได้</strong> รับเทิร์นจ่ายสดไม่ได้
+                            และเปิดสัญญาผ่อนที่มีเงินดาวน์เป็นเงินสดไม่ได้
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {editingBranch && (
                       <label className="flex items-center justify-between gap-3 rounded-lg border border-input bg-muted/30 px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors">
                         <div>

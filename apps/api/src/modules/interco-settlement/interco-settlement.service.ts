@@ -30,7 +30,7 @@ import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { StorageService } from '../storage/storage.service';
 
 const DEFAULT_FINANCE_BANK_CODE = '11-1201';
-/** SHOP leg ของเส้นทางรับเงินสดคืน (Phase 3 Task 6) — Dr S21-3001 / Cr เงินสด SHOP */
+/** SHOP leg ของเส้นทางรับเงินสดคืน (Phase 3 Task 6) — Dr S21-1104 / Cr เงินสด SHOP */
 const RECALL_CASH_SHOP_FLOW = 'interco-recall-cash-shop';
 /** Batch statuses that "lock" a contract out of the pending queue (spec §4). */
 const OPEN_BATCH_STATUSES = ['PENDING_APPROVAL', 'POSTED'] as const;
@@ -279,7 +279,7 @@ export class IntercoSettlementService {
       // cleared/stray JV on the swap-credit pair; same alarm-and-reject
       // posture as W1 (never let a wrong-sign amount reach a snapshot).
       { value: p.swapCreditGl, code: '11-2107' },
-      { value: p.shopBuybackPayableGl, code: 'S21-3001' },
+      { value: p.shopBuybackPayableGl, code: 'S21-1104' },
     ];
     for (const { value, code } of checks) {
       if (value.lt(0)) {
@@ -825,7 +825,7 @@ export class IntercoSettlementService {
       }
 
       // 3. drift guard — live GL vs snapshot, ±0.01, per item (Phase 2: typed
-      //    11-2107/S21-3001 balances included — spec §5.1)
+      //    11-2107/S21-1104 balances included — spec §5.1)
       const driftedContractNumbers: string[] = [];
       for (const item of batch.items) {
         // Final review C1 ด่าน (i) — กันหักซ้ำกับ settleShopCollect: JE settle
@@ -912,13 +912,13 @@ export class IntercoSettlementService {
           }
         } else if (scFin.gt(DRIFT_TOLERANCE) && scShop.gt(DRIFT_TOLERANCE)) {
           // (ข) snapshot ไม่มีหัก (0) แต่ live มีเครดิต NETTABLE — สองสมุดครบ
-          // (ทั้ง 11-2107 [SWAP_CREDIT] และ S21-3001) — เครดิตที่หักได้จริงโผล่
-          // หลัง snapshot (legacy swap ที่เพิ่งได้ S21-3001 หรือ JE แทรก) =
+          // (ทั้ง 11-2107 [SWAP_CREDIT] และ S21-1104) — เครดิตที่หักได้จริงโผล่
+          // หลัง snapshot (legacy swap ที่เพิ่งได้ S21-1104 หรือ JE แทรก) =
           // drift; จ่าย gross ทั้งที่มีเครดิต nettable ค้างจะทำให้เครดิตนั้น
           // ไม่มีเจ้าหนี้เหลือให้หักตลอดกาล.
           // เครดิตสมุดเดียว (scFin > 0 แต่ scShop = 0 — swap ที่ finalize ก่อน
           // Phase 1, spec §11.4) จงใจ **ไม่ใช่ drift**: มันหักไม่ได้โดยโครงสร้าง
-          // อยู่แล้ว (ฝั่ง SHOP ไม่มี S21-3001 ให้ Dr → ใบ SHOP ไม่ balance) —
+          // อยู่แล้ว (ฝั่ง SHOP ไม่มี S21-1104 ให้ Dr → ใบ SHOP ไม่ balance) —
           // ต้องจ่ายเต็มในรอบปกติ แล้วปล่อย 11-2107 ล้างผ่าน shop-collect
           // ตามเดิม. ถ้านับเป็น drift รอบที่มี legacy swap จะอนุมัติไม่ได้
           // ตลอดกาล (cancel → สร้างใหม่ก็ snapshot 0 เท่าเดิม — deadlock).
@@ -1349,7 +1349,7 @@ export class IntercoSettlementService {
    *   stamp; template gate (ii) เดิม (untyped − Σ POSTED deductions + block
    *   PENDING deduction batch) เดินครบทุกด่านเหมือน caller เดิม)
    *
-   *   SHOP — `Dr S21-3001 / Cr <shopPayoutAccountCode>` (default 'S11-1201')
+   *   SHOP — `Dr S21-1104 / Cr <shopPayoutAccountCode>` (default 'S11-1201')
    *   ผ่าน `journalAuto.createAndPost` ตรงๆ (JE 2 บรรทัด — ไม่มี template
    *   class ตาม brief; `PairedJournalService` ไม่จำเป็นเพราะสองใบอยู่ใน tx
    *   เดียวอยู่แล้ว)
@@ -1486,7 +1486,7 @@ export class IntercoSettlementService {
         );
       }
 
-      // SHOP leg — Dr S21-3001 / Cr เงินสด/ธนาคาร SHOP
+      // SHOP leg — Dr S21-1104 / Cr เงินสด/ธนาคาร SHOP
       const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
       let shopJe: { id: string; entryNumber: string };
       try {
@@ -1509,7 +1509,7 @@ export class IntercoSettlementService {
             },
             lines: [
               {
-                accountCode: 'S21-3001',
+                accountCode: 'S21-1104',
                 dr: amount,
                 cr: new Prisma.Decimal(0),
                 description: `ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก ${recall.contractNumber}`,
@@ -1635,7 +1635,7 @@ export class IntercoSettlementService {
   }
 
   /**
-   * Dr shopBankCode = shopNetAmount (skip when 0) + Dr S21-3001 per deduction
+   * Dr shopBankCode = shopNetAmount (skip when 0) + Dr S21-1104 per deduction
    * row (ล้างเจ้าหนี้ FINANCE ฝั่ง SHOP — Phase 2 หักกลบ, ทั้ง SWAP_CREDIT ของ
    * settlement items และ RECALL rows) + Cr S11-3001 per-contract (always) +
    * Cr S11-3002 per-contract (skip zero) — settlement legs ONLY over
@@ -1666,7 +1666,7 @@ export class IntercoSettlementService {
     for (const item of deductionItems) {
       const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
       lines.push({
-        accountCode: 'S21-3001',
+        accountCode: 'S21-1104',
         dr: deduction,
         cr: zero,
         description:

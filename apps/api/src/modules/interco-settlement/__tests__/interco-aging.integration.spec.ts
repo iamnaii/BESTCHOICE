@@ -7,7 +7,7 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { IntercoAgingService } from '../interco-aging.service';
 
 /**
- * IntercoAgingService — รายงานอายุลูกหนี้ 11-2107 / S21-3001 (Phase 4 Task 1)
+ * IntercoAgingService — รายงานอายุลูกหนี้ 11-2107 / S21-1104 (Phase 4 Task 1)
  * against a REAL database.
  *
  * Synthetic seeds go through `JournalAutoService.createAndPost` (never direct
@@ -15,10 +15,10 @@ import { IntercoAgingService } from '../interco-aging.service';
  * convention as interco-netting.integration.spec.ts:
  *   - A.3 → 11-2107 [SWAP_CREDIT] (flow 'exchange-buyback-receivable-11-2107'
  *     + explicit stamp)
- *   - A.4 → S21-3001 [SWAP_CREDIT] keyed by metadata.newContractId
+ *   - A.4 → S21-1104 [SWAP_CREDIT] keyed by metadata.newContractId
  *     (contractId on that JE is the OLD contract — the conditional group key
  *     in Query B is what this suite guards)
- *   - C-2 redirect → 11-2107 + S21-3001 [PAYOUT_RECALL] keyed by
+ *   - C-2 redirect → 11-2107 + S21-1104 [PAYOUT_RECALL] keyed by
  *     metadata.contractId
  *   - JP4 shop-collect → 11-2107 [SHOP_COLLECT] (explicit stamp,
  *     repossession-jp5/JP4 shape)
@@ -131,7 +131,7 @@ async function seedA3(id: string, amount: string, postedAt?: Date) {
 }
 
 /**
- * A.4 synthetic — Cr S21-3001 [SWAP_CREDIT] keyed by metadata.newContractId;
+ * A.4 synthetic — Cr S21-1104 [SWAP_CREDIT] keyed by metadata.newContractId;
  * metadata.contractId is deliberately the OLD contract (`${id}-old`) exactly
  * like the real ShopExchangeReturnTemplate — the conditional group key trap.
  */
@@ -148,7 +148,7 @@ async function seedA4(id: string, amount: string) {
     },
     lines: [
       { accountCode: 'S11-2002', dr: dec(amount), cr: zero },
-      { accountCode: 'S21-3001', dr: zero, cr: dec(amount) },
+      { accountCode: 'S21-1104', dr: zero, cr: dec(amount) },
     ],
   });
 }
@@ -182,13 +182,13 @@ async function seedSwapCancelMirrors(id: string, amount: string) {
       shopReceivableType: 'SWAP_CREDIT',
     },
     lines: [
-      { accountCode: 'S21-3001', dr: dec(amount), cr: zero },
+      { accountCode: 'S21-1104', dr: dec(amount), cr: zero },
       { accountCode: 'S11-2002', dr: zero, cr: dec(amount) },
     ],
   });
 }
 
-/** C-2 redirect pair — 11-2107 + S21-3001 [PAYOUT_RECALL] keyed by metadata.contractId. */
+/** C-2 redirect pair — 11-2107 + S21-1104 [PAYOUT_RECALL] keyed by metadata.contractId. */
 async function seedRecallPair(id: string, financeAmount: string, shopAmount: string) {
   await journalAuto.createAndPost({
     description: 'C-2 recall synthetic (aging)',
@@ -214,7 +214,7 @@ async function seedRecallPair(id: string, financeAmount: string, shopAmount: str
       shopReceivableType: 'PAYOUT_RECALL',
     },
     lines: [
-      { accountCode: 'S21-3001', dr: zero, cr: dec(shopAmount) },
+      { accountCode: 'S21-1104', dr: zero, cr: dec(shopAmount) },
       { accountCode: 'S11-1201', dr: dec(shopAmount), cr: zero }, // ขาคู่ synthetic
     ],
   });
@@ -372,7 +372,7 @@ let shopCollectId: string; // (c) shop-collect ค้าง
 let settledId: string; // (d) settle ครบแล้ว
 let agedId: string; // อายุ 45 วัน
 let mismatchId: string; // สองสมุดไม่ตรง
-let legacyUnsettledId: string; // legacy swap ยังไม่ล้าง (flow-only, ไม่มี S21-3001)
+let legacyUnsettledId: string; // legacy swap ยังไม่ล้าง (flow-only, ไม่มี S21-1104)
 let legacySettledId: string; // legacy swap ที่ล้างแล้วผ่าน settleShopCollect (backdate 45 วัน)
 let pairOkId: string; // (i) เจ้าหนี้/ลูกหนี้รอบจ่ายตรงกันสองสมุด
 let pairMismatchId: string; // (j) สมุด SHOP ขาดค่าคอม 1,000
@@ -380,7 +380,7 @@ let pairLegacyNoShopId: string; // (k) FINANCE อย่างเดียว (a
 let softDeletedId: string; // (l) M1 — สัญญาถูก soft-delete แต่ GL ยังค้าง
 let phantomId: string; // (m) M1 — contractId ที่ไม่มีแถวสัญญาเลย (JV มือ/คีย์ผี)
 
-describe('IntercoAgingService — รายงานอายุลูกหนี้ 11-2107/S21-3001 (real DB)', () => {
+describe('IntercoAgingService — รายงานอายุลูกหนี้ 11-2107/S21-1104 (real DB)', () => {
   beforeAll(async () => {
     await seedFinanceCoa(prisma);
     await seedShopCoa(prisma);
@@ -475,7 +475,7 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     await seedA3(mismatchId, '8000');
     await seedA4(mismatchId, '7500');
 
-    // (g) legacy swap ยังไม่ล้าง: A.3 flow เดิมไม่มี stamp, ไม่มี S21-3001 —
+    // (g) legacy swap ยังไม่ล้าง: A.3 flow เดิมไม่มี stamp, ไม่มี S21-1104 —
     // spec §11.4 ถือเป็นสภาพปกติ (ล้างผ่าน shop-collect ทีหลัง) ไม่ใช่ anomaly
     legacyUnsettledId = await seedBaseContract(7);
     await seedLegacyA3(legacyUnsettledId, '8000');
@@ -597,7 +597,7 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     expect(row).toBeDefined();
 
     // SWAP_CREDIT net 0 (A.3 + mirror), PAYOUT_RECALL gross 11,000 —
-    // สัญญาเดียวมีทั้งสองประเภท = ด่านจับ conditional group key ของ S21-3001
+    // สัญญาเดียวมีทั้งสองประเภท = ด่านจับ conditional group key ของ S21-1104
     expect(row.swapCreditGross.toFixed(2)).toBe('0.00');
     expect(row.payoutRecallGross.toFixed(2)).toBe('11000.00');
     expect(row.settledDeduction.toFixed(2)).toBe('8000.00');
@@ -698,7 +698,7 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     expect(agedIdx).toBeLessThan(freshIdx);
   });
 
-  it('bookMismatch: ตั้ง S21-3001 ฝั่ง SHOP ขาดไป 500 → bookMismatch = true และแถวโผล่แม้ intercoNet เท่าเดิม', async () => {
+  it('bookMismatch: ตั้ง S21-1104 ฝั่ง SHOP ขาดไป 500 → bookMismatch = true และแถวโผล่แม้ intercoNet เท่าเดิม', async () => {
     const res = await agingService.getShopReceivableAging();
     const row = res.rows.find((r) => r.contractId === mismatchId)!;
     expect(row).toBeDefined();
@@ -709,7 +709,7 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     expect(row.shopMirrorNet.toFixed(2)).toBe('7500.00');
   });
 
-  it('legacyOneBook: legacy A.3 ไม่มี stamp + ไม่มี S21-3001 → flag true, mismatch ยัง true ตามนิยาม', async () => {
+  it('legacyOneBook: legacy A.3 ไม่มี stamp + ไม่มี S21-1104 → flag true, mismatch ยัง true ตามนิยาม', async () => {
     const res = await agingService.getShopReceivableAging();
     const row = res.rows.find((r) => r.contractId === legacyUnsettledId)!;
     expect(row).toBeDefined();
@@ -780,7 +780,7 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
 
   // --- Phase 4 Task 4 — วัตถุดิบของ reconcile cron รายเดือน ------------------
 
-  it('shopMirrorGross = ยอดดิบ S21-3001 ก่อนหัก deduction (ตัวชี้ขาด "สมุดเดียว")', async () => {
+  it('shopMirrorGross = ยอดดิบ S21-1104 ก่อนหัก deduction (ตัวชี้ขาด "สมุดเดียว")', async () => {
     const res = await agingService.getShopReceivableAging();
 
     // C-2 ที่ถูกหักไปแล้ว 8,000: net = 3,000 แต่ gross ยังเป็น 11,000 —
@@ -843,7 +843,7 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
   it('getTypedAccountDrift: สมการ drift = ยอดบัญชี − (เลนส์ − deduction) และ mismatch ตามนิยาม', async () => {
     const drifts = await agingService.getTypedAccountDrift();
 
-    expect(drifts.map((d) => d.accountCode)).toEqual(['11-2107', 'S21-3001']);
+    expect(drifts.map((d) => d.accountCode)).toEqual(['11-2107', 'S21-1104']);
     for (const d of drifts) {
       expect(d.expected.toFixed(2)).toBe(d.lensTotal.minus(d.settledDeduction).toFixed(2));
       expect(d.drift.toFixed(2)).toBe(d.accountTotal.minus(d.expected).toFixed(2));
@@ -998,7 +998,7 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
         shopReceivableType: 'PAYOUT_RECALL',
       },
       lines: [
-        { accountCode: 'S21-3001', dr: zero, cr: dec('5000') },
+        { accountCode: 'S21-1104', dr: zero, cr: dec('5000') },
         { accountCode: 'S11-1201', dr: dec('5000'), cr: zero },
       ],
     });

@@ -249,7 +249,7 @@ export class ExchangeCancelService {
       // Detect C-2: สัญญาใหม่ถูกตัดจ่ายผ่านรอบจ่าย INTER-CO POSTED แล้ว —
       // เจ้าหนี้ 21-1101/21-1102 (และลูกหนี้ S11-3001/S11-3002) ถูก batch ล้าง
       // ไปแล้ว mirror ตรงจะทำติดลบ → redirect เป็นลูกหนี้เรียกคืน 11-2107
-      // [PAYOUT_RECALL] / เจ้าหนี้ S21-3001 (ชุดเดียวกับ generic Task 3).
+      // [PAYOUT_RECALL] / เจ้าหนี้ S21-1104 (ชุดเดียวกับ generic Task 3).
       // settledDeductions = Σ(swapCreditAmount + recallAmount) ที่รอบนั้นหักไว้ —
       // เงินที่ FINANCE ไม่เคยจ่ายจริง จึงไม่ใช่ยอดเรียกคืน (net = settled −
       // deductions). สูตรทั้งชุดอยู่ใน `settledPayoutByContract` — helper
@@ -281,7 +281,7 @@ export class ExchangeCancelService {
       //     เงินสด) ไม่ให้ถูก mirror เป็นเงินสดปลอมเงียบๆ.
       // (2) Defensive check (C-2 เท่านั้น — ชุดเดียวกับ generic template
       //     Task 3): JE ใดมีทั้งบรรทัด redirect source (21-1101/21-1102/
-      //     S11-3001/S11-3002) และบรรทัด/ประเภทบัญชี typed (11-2107/S21-3001)
+      //     S11-3001/S11-3002) และบรรทัด/ประเภทบัญชี typed (11-2107/S21-1104)
       //     ในใบเดียว redirect stamp PAYOUT_RECALL ทั้งใบจะทับความหมาย typed
       //     เดิม (เลนส์ Phase 2 อ่าน type ระดับ JE) → hand-JV ผิดปกติ reject
       //     ก่อน sweep เริ่ม.
@@ -319,7 +319,7 @@ export class ExchangeCancelService {
           if (redirectSourceLine && (typedLine || hasTypedStamp)) {
             throw new BadRequestException(
               `ใบสำคัญ ${je.entryNumber} ของสัญญาใหม่มีทั้งบรรทัดเจ้าหนี้/ลูกหนี้รอบจ่าย (${redirectSourceLine.accountCode}) ` +
-                'และบรรทัด/ประเภทบัญชีลูกหนี้เรียกคืน (11-2107/S21-3001) ในใบเดียวกัน — ' +
+                'และบรรทัด/ประเภทบัญชีลูกหนี้เรียกคืน (11-2107/S21-1104) ในใบเดียวกัน — ' +
                 'ระบบ redirect เป็น PAYOUT_RECALL ให้ไม่ได้ (จะทับความหมายประเภทเดิม) กรุณาตรวจสอบ/กลับรายการใบนี้ด้วยมือก่อนยกเลิกเปลี่ยนเครื่อง',
             );
           }
@@ -362,7 +362,7 @@ export class ExchangeCancelService {
         }
         // ฝั่ง SHOP: redirect เป็นขา Cr ⇒ redirectedTotals (Σ Dr−Cr) ติดลบ —
         // ยอดเจ้าหนี้เรียกคืนที่ตั้งจริง = .neg()
-        const redirectedShop = (redirectedTotals['S21-3001'] ?? new Decimal(0)).neg();
+        const redirectedShop = (redirectedTotals['S21-1104'] ?? new Decimal(0)).neg();
         if (redirectedShop.minus(settledShopTotal).abs().gt('0.01')) {
           throw new BadRequestException(
             `ยอดเรียกคืนฝั่งร้าน (${redirectedShop.toFixed(2)}) ไม่ตรงกับยอดที่ตัดจ่ายฝั่งร้านใน batch POSTED (${settledShopTotal.toFixed(2)}) — มีรายการเดินบัญชีผิดปกติ ตรวจสอบก่อนยกเลิก`,

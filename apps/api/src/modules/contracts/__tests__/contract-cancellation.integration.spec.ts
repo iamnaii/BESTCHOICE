@@ -878,11 +878,11 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
       'PAYOUT_RECALL',
     );
 
-    // ── SHOP reversal ของ JE B (revenue/receivable): Cr S21-3001 11,000
+    // ── SHOP reversal ของ JE B (revenue/receivable): Cr S21-1104 11,000
     // [PAYOUT_RECALL] แทน Cr S11-3001/S11-3002
     const jeB = await findJeByFlow(contractId, 'test-shop-revenue');
     const shopRev = await findReversalOf(jeB.id);
-    expect(sumSide(shopRev.lines, 'S21-3001', 'cr').toFixed(2)).toBe('11000.00');
+    expect(sumSide(shopRev.lines, 'S21-1104', 'cr').toFixed(2)).toBe('11000.00');
     expect(sumSide(shopRev.lines, 'S41-1101', 'dr').toFixed(2)).toBe('12000.00'); // salePrice = 10,000 + ดาวน์ 2,000
     expect(sumSide(shopRev.lines, 'S41-1201', 'dr').toFixed(2)).toBe('1000.00');
     // ขาเงินดาวน์ของ JE B ถูก mirror ครบ (ไม่ใช่ redirect source) — ใบ mirror
@@ -1103,7 +1103,7 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
 
     // Hand-JV ฝั่ง SHOP เท่านั้น (Dr S11-3001 +500): เช็คฝั่ง FINANCE
     // (redirect 11-2107 = settledTotal 11,000) ผ่านปกติเพราะสมุด FINANCE ไม่
-    // กระเทือน — ก่อน fold การยกเลิกจึงสำเร็จทั้งที่ redirect S21-3001 รวม
+    // กระเทือน — ก่อน fold การยกเลิกจึงสำเร็จทั้งที่ redirect S21-1104 รวม
     // 11,500 ≠ ยอดตัดจ่ายฝั่งร้าน 11,000 (สองสมุดเรียกคืนเพี้ยนเงียบๆ →
     // guard "ยอดเรียกคืนสองสมุดไม่ตรงกัน" จะไปตายที่รอบจ่ายทีหลังแทน)
     await journalAuto.createAndPost({
@@ -1211,7 +1211,7 @@ describe('Contract cancellation C-1 — guards + sweep + ECL + restore (real DB)
     expect(contract.status).toBe('CANCELED');
 
     // Baselines ก่อนพยายาม reverse — ระดับบัญชี (batch JE ไม่ stamp contractId)
-    const codes = ['21-1101', '21-1102', 'S11-3001', 'S11-3002', '11-2107', 'S21-3001'] as const;
+    const codes = ['21-1101', '21-1102', 'S11-3001', 'S11-3002', '11-2107', 'S21-1104'] as const;
     const pre: Record<string, Decimal> = {};
     for (const code of codes) pre[code] = await wholeAccountBalance(code);
     const reversalWhere = {

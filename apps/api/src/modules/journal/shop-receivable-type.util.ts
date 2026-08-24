@@ -1,5 +1,5 @@
 /**
- * 11-2107 / S21-3001 reference types (workbook เจ้าของ 2026-08-19, spec §2).
+ * 11-2107 / S21-1104 reference types (workbook เจ้าของ 2026-08-19, spec §2).
  *
  * ทุก JE ใหม่ที่แตะสองบัญชีนี้ stamp `metadata.shopReceivableType` ตรงๆ;
  * แถวเก่า (ก่อน Phase 1) classify ตอนอ่านจาก `metadata.flow` /
@@ -15,7 +15,7 @@
  * ถูก reproduce เป็น raw SQL ใน `interco-settlement/interco-typed-balance.ts`,
  * เลนส์ `IntercoPendingService` และรายงานอายุ `IntercoAgingService` — แก้การ
  * classify ที่นี่ต้องแก้ทุกที่ (เฉพาะ SWAP_CREDIT ฝั่ง 11-2107 มี **4 จุด**).
- * NB: ฝั่ง S21-3001 SQL เป็น **stamp-only ไม่มี flow fallback** ทั้งที่ FLOW_MAP
+ * NB: ฝั่ง S21-1104 SQL เป็น **stamp-only ไม่มี flow fallback** ทั้งที่ FLOW_MAP
  * map 'shop-exchange-return' → SWAP_CREDIT — แคบกว่า util ตัวนี้โดยตั้งใจ
  * (carry → Phase 5, ดู .claude/rules/accounting.md "ยังเปิดอยู่ → Phase 5")
  * (anti-drift net: interco-netting.integration.spec.ts).
@@ -27,7 +27,7 @@ const EXPLICIT: ReadonlySet<string> = new Set(['SWAP_CREDIT', 'PAYOUT_RECALL', '
 /** Legacy flow → type (ตารางตายตัว — เพิ่มได้ ห้ามแก้ความหมายเดิม) */
 const FLOW_MAP: Readonly<Record<string, ShopReceivableType>> = {
   'exchange-buyback-receivable-11-2107': 'SWAP_CREDIT',
-  'shop-exchange-return': 'SWAP_CREDIT', // ขาคู่ S21-3001 ฝั่ง SHOP
+  'shop-exchange-return': 'SWAP_CREDIT', // ขาคู่ S21-1104 ฝั่ง SHOP
   'shop-collect-settlement': 'SHOP_COLLECT',
 };
 

@@ -13,6 +13,42 @@ Do NOT reference old A.0-A.3 JE templates, chart codes, or journal service metho
 
 ---
 
+## ⚖️ คำวินิจฉัยผู้สอบบัญชี รอบ 2026-08-24 — อ่านก่อนแตะเรื่องที่เคยเขียนว่า "รอ CPA"
+
+**บันทึกฉบับเต็ม: `docs/accounting/cpa-answers-2026-08-24.md`** (คำถาม:
+`docs/accounting/cpa-questions-2026-08-24.html`) — 13 ข้อ, ตรวจผลกระทบกับโค้ดจริงแล้ว
+
+> ⚠️ **สถานะการทำตามคำวินิจฉัย (2026-08-24)**
+> - ✅ **B4 เท่านั้นที่แก้โค้ดแล้ว** — `S21-3001` → `S21-1104` ทั้ง CSV + 194 จุดใน 34 ไฟล์
+>   (type-check ผ่านทั้ง api/web). **ยังไม่ได้รันอะไรบน prod** — ต้อง deploy → `seed:coa` →
+>   `docs/accounting/retire-S21-3001-to-S21-1104-2026-08.sql` ตามลำดับ
+> - ✅ **C1 แก้โค้ดแล้ว** — `resolveStoreCommission` helper เดียวแทนสูตร 10% ที่เคยมี 6 สำเนา
+>   ⇒ สองสมุดตั้งค่าคอมตรงกันโดยโครงสร้าง (forward-only — สัญญาเก่ายังต้องมีรายการแก้ย้อนหลัง
+>   ซึ่ง **ยังรอผู้สอบชี้บัญชีคู่**)
+> - ⏳ **ข้ออื่นยังไม่แก้โค้ด** — หัวข้ออื่นของไฟล์นี้ยังบรรยาย **พฤติกรรมปัจจุบันของระบบ**
+>   ซึ่งถูกต้องตามที่เป็นอยู่ อย่าอ่านว่าทำตามคำวินิจฉัยแล้ว
+
+| ข้อ | คำวินิจฉัย | กระทบอะไรในไฟล์นี้ |
+|---|---|---|
+| **A1 + B4 + C5** | เปิดบัญชี **`S21-1104` เจ้าหนี้ FINANCE** ฝั่ง SHOP · **`S21-3001` ผิด ต้องเปลี่ยนมาใช้ตัวนี้** ✅ *(โค้ดเปลี่ยนแล้ว, prod ยังไม่ได้รัน)* | หัวข้อ Device Swap (A.4), หักกลบรอบจ่าย Phase 2, Flow C-2, รายงานอายุ Phase 4, Payroll "จ่ายรวมฝั่งเดียว" |
+| **A2** | **ต้องตั้ง** ยอดยกมาฝั่ง SHOP ย้อนหลัง (สัญญาก่อน 2026-06-23) | `legacyNoShop` policy · interco spec §11 opening-balance gap |
+| **A3** | ผู้สอบ**ไม่ให้ตัวเลข** — ให้ทำคู่มือ/หน้าจอบันทึกยอดตั้งต้นเอง | Equity rollout ข้อ 3 (CAP_INIT backfill) |
+| **A4** | ปล่อยไว้ (สัญญาทดสอบ) | ใบลดหนี้ RT-202608-00006 — forward-only ตามเดิม |
+| **B1 B2 B3 C3** | **ยืนยันว่าถูกต้อง** — ตรวจแล้วโค้ดตรงตามที่รายงานไป | ไม่ต้องแก้ (B2 วิธีถูก แต่รหัสบัญชีเปลี่ยนตาม B4) |
+| **C1** | SHOP **ต้องตั้ง**ค่าคอมให้ตรง FINANCE เพราะเป็นรายได้หน้าร้าน `S41-1201` | ปิดทางเลือก (ข) ของ `COMMISSION_ONLY_GAP` — เลือก (ก) |
+| **C2** | เงินพักที่เหลือตอนปิดสัญญาก่อนกำหนด → ลดยอดค้าง + **รับรู้เป็นรายได้** | "ยังไม่ตัดสิน (CPA-gated)" ของ residual ถังพัก |
+| **C4** | ใบขายจากใบจอง — **แก้ไปข้างหน้าอย่างเดียว** | หมายเหตุ "แจ้ง CPA" ที่ด่าน G8 |
+
+**❓ ยังบล็อกอยู่ 6 ข้อ — ต้องถามผู้สอบรอบ 2 ก่อนเขียนโค้ด** (รายละเอียดในบันทึกฉบับเต็ม):
+ย้ายรายการเก่า S21-3001 → S21-1104 หรือไม่ · C5 อ่านว่า "แยกจ่าย" หรือ "แยกบันทึก" ·
+C1 รายการแก้ย้อนหลัง `Dr ธนาคาร` หรือ `Dr ลูกหนี้` · C2 ลงบัญชีรายได้ตัวไหน (ยังไม่มีในผัง) ·
+A2 ลงเฉพาะงบดุลหรือรื้อ P&L + คู่บัญชี S32/S33 · C4 ขามัดจำบันทึกตอนไหน
+
+**กติกาเดิมยังใช้: ห้ามเดา JE ปิดช่องว่างเอง** — คำวินิจฉัยที่ยังไม่ครบพอให้ลงรายการได้
+ถือว่ายังบล็อกอยู่เหมือนเดิม
+
+---
+
 ## Chart of Accounts (111 accounts ณ 2026-08-08 — FINANCE only)
 
 Full list lives in `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv`.
@@ -291,6 +327,14 @@ Dr 21-1103   = parkRelief          ← บรรทัดใหม่ (ไม่
 | Decrement คอลัมน์ | อยู่ใน `$transaction` เดียวกับ JE เสมอ + AuditLog (ดูตารางล่าง) · preview (`getEarlyPayoffQuote`, `previewCalculation`) ใช้ `parkRelief` ตัวเดียวกัน ⇒ preview === posted |
 | Parity | `computePayoffQuote` ยังเป็นแหล่งเดียวของทั้งสองเส้นทาง — `payoff-parity-park.spec.ts` ปักว่า JP5 `closingAmount` === JP4 `totalPayoff` และ `parkRelief` ที่ทั้งสองใช้เป็นตัวเดียวกัน |
 
+> **⚖️ CPA ตอบแล้ว 2026-08-24 (ข้อ C2) — ยังไม่แก้โค้ด:** *"กรณีปิดสัญญาก่อน นำมาคำนวนเป็น
+> ชำระล่วงหน้า เพื่อลดยอดค้างชำระ และบันทึกทางบัญชีเป็นรายได้ (เหมือนชำระค่างวดล่วงหน้า)"*
+> ⇒ ครึ่งแรก (ลดยอดค้าง) โค้ดทำอยู่แล้วผ่าน `rescheduleAdvanceApplied`; ครึ่งหลัง (รับรู้ residual
+> เป็นรายได้) **ยังไม่มี** และ **ยังลงมือไม่ได้** เพราะผู้สอบยังไม่ได้ระบุบัญชีรายได้ — ผังปัจจุบัน
+> **ไม่มีบัญชีค่าธรรมเนียมปรับดิว** เลย (ตัวเลือก: 41-1101 / 42-1103 / เปิด 42-11XX ใหม่) และยังไม่ตอบ
+> เรื่อง VAT / กรณีผ่อนครบงวด / กรณีตัดหนี้สูญ. ดู `docs/accounting/cpa-answers-2026-08-24.md`
+> ข้อ C2. **ย่อหน้าถัดไปคือพฤติกรรมปัจจุบัน ซึ่งยังเป็นจริงทุกประการ**
+
 **ยังไม่ตัดสิน (CPA-gated):** ยอดพักที่เหลือหลัง JP4/JP5 (residual) ระบบ **ไม่ตั้ง JE คืนเงิน/
 รับรู้รายได้ให้อัตโนมัติ** — ปล่อยค้างในคอลัมน์ + 21-1103 แล้วให้มนุษย์ตัดสิน. คำถาม
 "ถังพักควรลดฐานส่วนลดหรือไม่" ก็ยังเปิดอยู่ (ถ้าเจ้าของ/CPA สั่งว่า **ไม่ควรลด**
@@ -423,8 +467,11 @@ E2E: `apps/api/src/modules/expense-documents/__tests__/payroll-shop-flow.integra
     + Dr <sso_employer> / Cr <cash ฝั่งนั้น>`, PND1 `Dr <wht_payroll> / Cr <cash>`;
     ยอด = Σ PayrollLine ของใบ POSTED ในงวด+ฝั่ง (ตรงแบบยื่น), guard GL คุ้มยอด +
     idempotency `sso-remit:<scope>:<period>` / `pnd1-remit:...` + period-open ที่วันจ่าย.
-    จ่ายรวมฝั่งเดียว = ต้องมีบัญชี interco ฝั่ง SHOP → **รอ CPA** (คำถามเดียวกับ
-    interco spec §11) — ห้ามเดา JE. Endpoints `POST /tax/payroll-remit/{sso,pnd1}`
+    จ่ายรวมฝั่งเดียว = ต้องมีบัญชี interco ฝั่ง SHOP → **CPA ตอบแล้ว 2026-08-24 (ข้อ A1+C5):
+    เปิด `S21-1104` เจ้าหนี้ FINANCE + "ต้องแยกบันทึก เพราะเป็นค่าใช้จ่าย SHOP"** (ยังไม่แก้โค้ด).
+    ⚠️ คำตอบ C5 อ่านได้ 2 ทาง — (ก) ห้ามจ่ายรวม ต้องแยกจ่าย vs (ข) จ่ายรวมได้ แต่ค่าใช้จ่าย
+    ต้องลงสมุด SHOP โดยมี S21-1104 เป็นสะพาน. เราอ่านว่า (ข) ("แยก**บันทึก**" ไม่ใช่ "แยก**จ่าย**")
+    **แต่ต้องยืนยันก่อนเขียนโค้ด** เพราะถ้าเป็น (ก) แปลว่าไม่ต้องแก้อะไรเลย — ห้ามเดา JE. Endpoints `POST /tax/payroll-remit/{sso,pnd1}`
     (OWNER/FM), UI ปุ่มนำส่งบน `/finance/sso-report`.
   - **สปส.1-10**: `GET /tax/sso-1-10-preview` + XLSX `form=SSO110` + หน้า
     `/finance/sso-report` (เฉพาะแถว ssoEmployee > 0, นายจ้าง = ลูกจ้างตามกฎหมาย).
@@ -450,7 +497,9 @@ E2E: `apps/api/src/modules/expense-documents/__tests__/payroll-shop-flow.integra
   - PDPA retention `payroll_lines` — **ไม่ลบทิ้ง** (เจ้าของ: เก็บถาวร; สอดคล้อง
     พ.ร.บ.การบัญชี เก็บเอกสาร ≥5 ปี — ไม่ต้องสร้าง retention cron)
 - **ยังค้างจริง**: กท.20ก แบบฟอร์มเต็ม (มี annualWageTotal อ้างอิงแล้ว),
-  จ่ายนำส่งรวมฝั่งเดียว (รอ CPA — บัญชี interco ฝั่ง SHOP, interco spec §11).
+  จ่ายนำส่งรวมฝั่งเดียว (**CPA ตอบแล้ว 2026-08-24 ข้อ A1+C5 — เปิด `S21-1104` เจ้าหนี้ FINANCE +
+  "ต้องแยกบันทึก เพราะเป็นค่าใช้จ่าย SHOP"; ยังไม่แก้โค้ด และยังต้องยืนยันว่า C5 หมายถึง
+  "แยกจ่าย" หรือ "แยกบันทึก"** — ดู `docs/accounting/cpa-answers-2026-08-24.md`).
 
 ## SSO accounts (P0-3 — Fix Report v1.0)
 
@@ -610,7 +659,8 @@ SHOP accounts live in the same `chart_of_accounts` table as FINANCE accounts but
 | Bank | 11-1201..1203 | S11-1201..1202 |
 | Inventory | 11-3101 (repo) | S11-2001 (new mobile), S11-2002 (used), S11-2003 (accessory), S11-2004 (pending eval) |
 | Inter-co receivable | n/a | S11-3001 (FINANCE owes ยอดจัด), S11-3002 (FINANCE owes commission), S11-3003 (FINANCE ตีคืน) |
-| AP | 21-1101..1104 | S21-1101 (supplier mobile), S21-1102 (supplier accessory), S21-1103 (สาขาค่าใช้จ่ายค้าง) |
+| AP | 21-1101..1104 | S21-1101 (supplier mobile), S21-1102 (supplier accessory), S21-1103 (สาขาค่าใช้จ่ายค้าง), **S21-1104** (เจ้าหนี้ FINANCE — หนี้ระหว่างกิจการ **ทุกประเภท** ตามคู่สัญญา; แทน S21-3001 เดิมที่ตั้งตามวัตถุประสงค์ — CPA 2026-08-24 ข้อ A1+B4) |
+| เงินกู้ยืม | n/a | **S21-4101** (เงินกู้ยืมกรรมการ — บุคคลที่เกี่ยวข้องกัน ต้องเปิดเผยแยกในหมายเหตุงบ; เปิด 2026-08-24 รองรับยอดยกมา SHOP) |
 | Customer down-payment | n/a | S21-2001 (down-payment payable), S21-2002 (deposit) |
 | Equity | 31-1101, 32-1101, 33-1101 | S31-1101, S32-1101, S33-1101 |
 | Revenue | 41-1101..1102 | S41-1101 (new mobile), S41-1102 (used), S41-1103 (accessory), S41-1201 (commission from FINANCE), S41-1202 (manufacturer promo) |
@@ -620,6 +670,34 @@ SHOP accounts live in the same `chart_of_accounts` table as FINANCE accounts but
 The full list lives in `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/shop-coa.csv` (~50 accounts). Seeded by `apps/api/prisma/seed-coa-shop.ts`.
 
 The unique constraint on `chart_of_accounts.code` is safe because the `S` prefix guarantees no overlap with FINANCE codes. When Phase 3 SP7 splits the entities into separate legal companies + separate DBs, the SHOP DB can drop the `S` prefix internally — until then it is the partition key.
+
+### ⛔ ห้ามลง JV มือในบัญชีที่เลนส์ inter-co อ่านต่อสัญญา (2026-08-24)
+
+Spec: `docs/superpowers/specs/2026-08-24-shop-opening-balance-design.md`
+
+บัญชีกลุ่มนี้ถูกอ่านโดยเลนส์/cron ที่จับคู่ยอด **ต่อสัญญา** ผ่าน `metadata.contractId` /
+`metadata.newContractId` — JV มือ (ยอดยกมา, รายการปรับปรุง) ไม่มีเลขสัญญาผูกอยู่ จึงมองไม่เห็น
+จากเลนส์ แต่ **เห็นจากยอดรวมทั้งบัญชี** ⇒ สร้างส่วนต่างถาวรที่ตามหาต้นตอไม่ได้:
+
+| บัญชี | ใครอ่าน | ลง JV มือแล้วเกิดอะไร |
+|---|---|---|
+| `11-2107` · `S21-1104` | `getTypedAccountDrift()` (`interco-aging.service.ts`) เทียบยอดทั้งบัญชี vs ยอดที่เลนส์ classify ได้ | finding **`ACCOUNT_DRIFT`** + Todo `HIGH` **ทุกเดือนตลอดไป** โดยไม่มีเลขสัญญาให้ตามต่อ |
+| `S11-3001` · `S11-3002` | `getReconcileTotals()` (`interco-pending.service.ts`) — `glShopTotal` นับ**ทั้งบัญชี ไม่กรอง metadata** ส่วน `pendingTotal` นับเฉพาะสัญญาที่มี `contractId` | สองตัวเลขบนหน้าจอกระทบยอดห่างกันเท่ายอด JV ตลอดไป · และรอบจ่ายจะ**ไม่มีวันล้างยอดนั้น** เพราะสัญญาเก่ายังเป็น `legacyNoShop = true` ⇒ `buildShopLines` ข้ามไม่สร้างบรรทัด SHOP ให้ |
+| `21-1101` · `21-1102` | เลนส์คิวรอจ่ายฝั่ง FINANCE (`HAVING SUM > 0` ต่อ `contractId`) | เข้าคิวจ่ายไม่ได้ + ทำ `drift` ของ `getReconcileTotals()` เพี้ยน |
+
+**กติกา:** ยอดยกมา/รายการปรับปรุงที่ครอบหลายสัญญา ให้ตกที่ **ส่วนของเจ้าของ** (`S32-1101`)
+แล้วเขียนหมายเหตุประกอบงบ — **ห้ามยัดลงบัญชีระหว่างกิจการเพื่อให้งบดูครบ** ถ้าจำเป็นต้องรับรู้
+รายการระหว่างกิจการจริง ต้องแตกเป็น JE **ต่อสัญญา** พร้อม stamp `metadata.contractId` ซึ่งจะ
+เปลี่ยนพฤติกรรมรอบจ่ายด้วย — เป็นการตัดสินใจที่ต้องผ่านเจ้าของ/CPA ก่อน
+
+บัญชีที่ **ปลอดภัย** สำหรับ JV มือ (ไม่มีเลนส์ไหนอ่าน): เงินสด/ธนาคาร `S11-11xx`/`S11-12xx` ·
+สินค้าคงเหลือ `S11-200x` · เจ้าหนี้การค้า `S21-1101/1102/1103` · เงินรับล่วงหน้า `S21-2001/2002` ·
+เงินกู้ยืมกรรมการ `S21-4101` · ส่วนของเจ้าของ `S31/S32/S33-1101`
+
+> **หมายเหตุ:** `POST /journal` **ไม่ตรวจ**ว่ารหัสบัญชีตรงกับ `companyId` ที่ผูกไว้
+> (`journal.service.ts` — *"no companyId scoping"*) ⇒ ใบที่ใช้รหัส `S` แต่ผูก FINANCE จะ
+> **หายจากทั้งสองรายงานโดยงบทดลองยังสมดุล** (รายงานกรอง `companyId` เมื่อ `scope != ALL`)
+> ตรวจก่อน post เสมอ — ใบสร้างเป็น `DRAFT` และ DRAFT ไม่เข้างบทดลอง จึงมีจังหวะให้ตรวจอยู่แล้ว
 
 ### CSV loader regex
 
@@ -847,7 +925,7 @@ PR #1285 (2026-06-23) ทำให้ `ShopCashSaleTemplate` โพสต์ **J
 | D1 | `saleType` | `INSTALLMENT` → ชี้ไปเส้นทางยกเลิกสัญญา; ชนิดที่ไม่รู้จัก → reject (exclude-list) |
 | ข้อมูลเพี้ยน | `contractId` บนใบ CASH/EXTERNAL_FINANCE | reject (เดินต่อ = ทิ้งสัญญาลอย) |
 | G6 | `onlineOrderId` | reject — **ยังไม่มีเส้นทางล้างสองฝั่ง** (`cancelOrder` ไม่แตะ Sale/product/JE; `markRefunded` รับเฉพาะ `PAYMENT_RECEIVED_UNFULFILLABLE` ซึ่งโดยนิยามไม่มีใบขาย) ⇒ ข้อความบอกให้เจ้าของตรวจก่อน ไม่ชี้ประตูที่ไม่มีจริง |
-| **G8** | `Booking` ที่ `convertedToSaleId = sale.id` + `deletedAt: null` (relation `SaleBooking` — FK อยู่ฝั่ง Booking, `Sale` ไม่มี bookingId) | reject (sibling ของ G6, final review 2026-08-23) — `convertToSale` ตั้ง `downPaymentAmount = depositAmount` (มัดจำรับจริง) และ flip Booking → `CONVERTED` (สถานะสุดท้าย, `cancel()` ไม่รับ) ⇒ void = ใบจองชี้ไปใบที่ยกเลิก + มัดจำหายจากรายงาน. ข้อความระบุเลขใบจอง+ยอดมัดจำ ให้เจ้าของตรวจก่อน. หมายเหตุ pre-existing: ใบขายจากใบจอง**ไม่โพสต์ SHOP JE** — แจ้ง CPA |
+| **G8** | `Booking` ที่ `convertedToSaleId = sale.id` + `deletedAt: null` (relation `SaleBooking` — FK อยู่ฝั่ง Booking, `Sale` ไม่มี bookingId) | reject (sibling ของ G6, final review 2026-08-23) — `convertToSale` ตั้ง `downPaymentAmount = depositAmount` (มัดจำรับจริง) และ flip Booking → `CONVERTED` (สถานะสุดท้าย, `cancel()` ไม่รับ) ⇒ void = ใบจองชี้ไปใบที่ยกเลิก + มัดจำหายจากรายงาน. ข้อความระบุเลขใบจอง+ยอดมัดจำ ให้เจ้าของตรวจก่อน. หมายเหตุ pre-existing: ใบขายจากใบจอง**ไม่โพสต์ SHOP JE** — **CPA ตอบแล้ว 2026-08-24 (ข้อ C4): แก้ไปข้างหน้าอย่างเดียว ไม่บันทึกย้อนหลัง** (ยังไม่แก้โค้ด). ตรวจเพิ่มแล้วพบว่ากว้างกว่านั้น: โมดูล `bookings` **ไม่โพสต์ JE เลยแม้แต่ใบเดียว** ⇒ เงินมัดจำที่รับจริงก็ไม่เคยขึ้นสมุด และ `S21-2002` ไม่มีผู้สร้างรายการที่ไหนเลย. **สำคัญ: ถ้าแก้ให้โพสต์ JE ด่าน G8 นี้จะยิ่งจำเป็น ไม่ใช่เลิกจำเป็น** — เพราะ void จะกลับรายการเป็น `Cr เงินสด` ทั้งที่ไม่มีเมนูคืนมัดจำจริง. ดู `docs/accounting/cpa-answers-2026-08-24.md` ข้อ C4 |
 | G7 | `RepairTicket` ที่ `productId ∈ {หลัก, ของแถม}` และ `status notIn [CLOSED, CANCELLED, REPLACED]` | **`RepairTicket` ไม่มี `saleId`** (spec เดิมเขียนว่า "อ้างอิงใบขายนี้") จึงตรวจผ่าน `productId`; enum จริงคือ `RepairStatus` |
 | G5 | `assertProductNotHeld(tx, { ...p, expectedStatus }, 'RESTORE_TO_STOCK')` ทุกชิ้น | action ที่ 4 บน helper เดิม (ห้ามมีด่านชุดที่สอง). `expectedStatus` = `SOLD_CASH` (CASH) / `SOLD_INSTALLMENT` (EXTERNAL_FINANCE หลัก) — **ของแถมเป็น `SOLD_CASH` เสมอ** (`markBundleProductsSold` hardcode) จึงใบ EXTERNAL_FINANCE มีสองสถานะในใบเดียว. นับจำนวน product **ก่อน** วนด่าน |
 | G3 | `FinanceReceivable` ของใบ (ไม่ผูก saleType) | บล็อกเมื่อ `status ∈ {RECEIVED, PARTIALLY_RECEIVED}` **หรือ** `receivedAmount > 0` — allow-list ตาม D2 (`DISPUTED`/`OVERDUE` = ยังไม่ได้เงิน; สเปคเดิม `status != PENDING` ล็อกใบถาวร) |
@@ -1042,7 +1120,7 @@ A.3 ล้าง 21-1101/21-1102 ทันทีตอน finalize (D5) เล�
 'exchange-buyback-receivable-11-2107'` (legacy A.3). ข้อความเดิมที่เขียนว่า "stamp OR
 flow" **ผิด** — แก้ 2026-08-21 ตาม Phase 4 Task 6 ให้ตรง `classifyShopReceivable` ที่เช็ค
 `EXPLICIT.has(...)` ก่อน `FLOW_MAP` เสมอ; ถ้าเป็น OR จริง JE รูป A.3 ที่ stamp ประเภทอื่น
-จะถูกนับสองประเภทพร้อมกัน ⇒ `intercoNet` บวมเท่าตัว), `shopBuybackPayableGl` (Σ Cr−Dr of S21-3001,
+จะถูกนับสองประเภทพร้อมกัน ⇒ `intercoNet` บวมเท่าตัว), `shopBuybackPayableGl` (Σ Cr−Dr of S21-1104,
 keyed by `metadata.newContractId` — the A.4 stamp), and `swapCreditEligible` (ดู
 eligibility rule ในหัวข้อหักกลบด้านล่าง). `getPendingRecalls()` is a separate queue of
 `RecallCandidate { recallGl, shopRecallGl }` rows — contracts with 11-2107
@@ -1075,11 +1153,11 @@ nonzero `drift` (`pendingTotal − glFinanceTotal`) means a stray JE exists with
 `metadata.contractId` — almost certainly the old `inter-company-settlement` flow; the
 pre-flight check (below) confirms this is 0 in prod before go-live. Phase 2 adds 3 typed
 whole-account totals: `glSwapCreditTotal` (11-2107 typed SWAP_CREDIT), `glRecallTotal`
-(11-2107 typed PAYOUT_RECALL), `glShopBuybackTotal` (S21-3001, no type filter). หมายเหตุ
+(11-2107 typed PAYOUT_RECALL), `glShopBuybackTotal` (S21-1104, no type filter). หมายเหตุ
 ตาม gross-lens ruling: สองตัวแรกเป็น typed **gross สะสม** — ขา Cr 11-2107 ของ batch JE
 ไม่ stamp type/contractId จึงไม่เคยลดตัวเลขนี้ — ส่วน `glShopBuybackTotal` เป็นยอดคงเหลือ
-จริงของบัญชี (ขา Dr S21-3001 ของ batch ลดจริง) ⇒ สามตัวนี้**เลิก tie กันตั้งแต่รอบแรกที่มี
-การหัก โดยตั้งใจ**; Σ สองประเภท = ยอด S21-3001 เฉพาะช่วงก่อนรอบหักแรกเท่านั้น.
+จริงของบัญชี (ขา Dr S21-1104 ของ batch ลดจริง) ⇒ สามตัวนี้**เลิก tie กันตั้งแต่รอบแรกที่มี
+การหัก โดยตั้งใจ**; Σ สองประเภท = ยอด S21-1104 เฉพาะช่วงก่อนรอบหักแรกเท่านั้น.
 
 ### Approve — atomic paired JE (`approveBatch`, one `$transaction`)
 
@@ -1117,7 +1195,7 @@ Exact order as implemented in `interco-settlement.service.ts`:
    service's own "settled" exclusion would hide this very batch's own
    `PENDING_APPROVAL` items from itself. Any drift → rejects the WHOLE batch, naming
    every drifted contract number, telling the maker to cancel and recreate (no partial
-   approve). Phase 2 extends this with typed 11-2107/S21-3001 checks — a **two-branch**
+   approve). Phase 2 extends this with typed 11-2107/S21-1104 checks — a **two-branch**
    design (ดูหัวข้อหักกลบ): RECALL rows check both books' typed PAYOUT_RECALL balances
    against `recallAmount` instead of the 4 lens accounts.
 4. **Period guard, both companies independently** —
@@ -1160,20 +1238,20 @@ SHOP half (settlement legs over items with `legacyNoShop = false`; deduction leg
 every deduction row; the WHOLE half is omitted only when BOTH sets are empty):
 ```
 Dr <shopBankCode>  shopNetAmount            (default 'S11-1201' = ShopAccountResolver.SHOP_RECEIVING_BANK; skipped when 0)
-Dr S21-3001  swapCreditAmount|recallAmount  (one line per deduction row — "ล้างเจ้าหนี้ FINANCE-ค่าเครื่องรับคืน {no}" /
+Dr S21-1104  swapCreditAmount|recallAmount  (one line per deduction row — "ล้างเจ้าหนี้ FINANCE-ค่าเครื่องรับคืน {no}" /
                                              "ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก {no}")
    Cr S11-3001  shopFinancedGl      (one line per non-legacy SETTLEMENT contract)
    Cr S11-3002  shopCommissionGl    (skips zero, same as the FINANCE half)
 ```
 
-RECALL rows contribute ONLY the `Cr 11-2107` / `Dr S21-3001` legs — never a zero-amount
+RECALL rows contribute ONLY the `Cr 11-2107` / `Dr S21-1104` legs — never a zero-amount
 `Dr 21-1101` line. Pre-Phase 2 batches (`netTransferAmount`/`shopNetAmount` = `null`)
 fall back to `totalAmount`/`shopPostedAmount` — identical lines to the old shape.
 
 **ตัวอย่าง (golden ใน `interco-netting.integration.spec.ts` — 2 สัญญาปกติ/สวอป เจ้าหนี้
 11,000 ต่อสัญญา (10,000 + 1,000), เครดิตสวอป 8,000 + เรียกคืน 11,000):**
 `totalAmount = 22,000` / `totalDeduction = 19,000` / `netTransferAmount = shopNetAmount
-= 3,000` → FINANCE: `Cr 11-2107 = 19,000` + `Cr 11-1201 = 3,000`; SHOP: `Dr S21-3001 =
+= 3,000` → FINANCE: `Cr 11-2107 = 19,000` + `Cr 11-1201 = 3,000`; SHOP: `Dr S21-1104 =
 19,000` + `Dr S11-1201 = 3,000`. หลัง approve บัญชี 11-2107 ทั้งบัญชีลดลง 19,000 จริง.
 
 **Metadata on BOTH JEs** (confirmed straight from `interco-settlement.service.ts` —
@@ -1206,8 +1284,8 @@ guard (step 1) long before idempotency would even matter.
 Spec: `docs/superpowers/specs/2026-08-19-device-swap-netting-cancel-workbook-design.md`
 §4. เปลี่ยนรอบจ่ายจาก "เงิน 2 ขา" (FINANCE จ่ายเต็ม → SHOP โอนราคารับซื้อกลับผ่าน
 shop-collect) เป็น **หักกลบเหลือโอนสุทธิขาเดียว**: เครดิตราคารับซื้อ (11-2107
-`SWAP_CREDIT` ↔ S21-3001) และยอดเรียกคืนจากยกเลิก C-2 (11-2107 `PAYOUT_RECALL` ↔
-S21-3001) ถูกหักออกจากเงินโอนของรอบ. Typed-balance helpers 4 ตัวอยู่ที่
+`SWAP_CREDIT` ↔ S21-1104) และยอดเรียกคืนจากยกเลิก C-2 (11-2107 `PAYOUT_RECALL` ↔
+S21-1104) ถูกหักออกจากเงินโอนของรอบ. Typed-balance helpers 4 ตัวอยู่ที่
 `interco-typed-balance.ts` (`swapCreditFinanceBalance` / `swapCreditShopBalance` — ฝั่ง
 SHOP key ด้วย `metadata.newContractId` ตาม A.4 stamp / `recallFinanceBalance` /
 `recallShopBalance` — key ด้วย `metadata.contractId`) — **SQL twins** ของเลนส์ใน
@@ -1228,7 +1306,7 @@ legacy (ไม่มี stamp) เข้า fallback เหมือนเดิ
 **สถาปัตยกรรม "เลนส์ typed = GROSS + settled ผ่าน item gate"** (คำตัดสินระหว่าง implement
 — บันทึกใน plan Task 5): batch JE **ไม่ stamp** top-level `contractId` /
 `shopReceivableType` (กันรั่วเข้า payable lens — คุณสมบัติเดิมตั้งแต่ C2) ⇒ ขา
-`Cr 11-2107`/`Dr S21-3001` ของ batch **ไม่ลด typed balance ต่อสัญญา** — typed lens อ่านได้
+`Cr 11-2107`/`Dr S21-1104` ของ batch **ไม่ลด typed balance ต่อสัญญา** — typed lens อ่านได้
 เฉพาะขาตั้งหนี้ (gross) โดยตั้งใจ. "หักแล้วหรือยัง" อยู่ที่ `InterCoSettlementItem`
 (settled gate) ไม่ใช่ GL metadata. ผลตามมา: residual ที่แท้จริงของสัญญา = typed gross −
 Σ deduction ของสัญญานั้นใน batch สถานะ `POSTED` ทั้งหมด (ไม่ใช่ "typed balance ต้องเป็น 0
@@ -1236,10 +1314,10 @@ legacy (ไม่มี stamp) เข้า fallback เหมือนเดิ
 
 **Eligibility rule** (`swapCreditEligible` ใน pending lens): หักได้เมื่อ **สองสมุดมียอด
 ทั้งคู่และเท่ากัน ±0.01** (`swapCreditGl > 0 && shopBuybackPayableGl > 0 && |diff| ≤
-0.01`). **Legacy swap** (finalize ก่อน Phase 1 — มี 11-2107 แต่ไม่มี S21-3001, spec §11.4)
+0.01`). **Legacy swap** (finalize ก่อน Phase 1 — มี 11-2107 แต่ไม่มี S21-1104, spec §11.4)
 จึง `eligible = false` โดยโครงสร้าง → เข้ารอบจ่ายได้ตามปกติแต่**ไม่มีบรรทัดหัก** (จ่ายเต็ม)
 — เครดิต 11-2107 ของมันค้างไว้ล้างผ่าน shop-collect ตามเดิม. ห้ามหักฝั่งเดียว: ฝั่ง SHOP
-ไม่มี S21-3001 ให้ Dr → ใบ SHOP ไม่ balance.
+ไม่มี S21-1104 ให้ Dr → ใบ SHOP ไม่ balance.
 
 **Guards ตอน snapshot (`buildSnapshot` — createBatch/updateBatch, จับตอน submit/approve
 อีกทีผ่าน re-check/drift):**
@@ -1251,7 +1329,7 @@ legacy (ไม่มี stamp) เข้า fallback เหมือนเดิ
 - **ยอดสุทธิ ≥ 0 ทั้งสองสมุด**: `netTransferAmount < 0 || shopNetAmount < 0` → reject
   พร้อมแนะให้เลือกสัญญาเพิ่มหรือเรียกเงินสดคืนผ่านช่องทางรับโอนจากหน้าร้านแทน.
 - ยอดเรียกคืนสองสมุดไม่ตรงกัน (`|recallGl − shopRecallGl| > 0.01`) → reject.
-- W1 ขยาย: GL component ติดลบตัวใดตัวหนึ่งใน 6 บัญชีเลนส์ (เดิม 4 + 11-2107/S21-3001)
+- W1 ขยาย: GL component ติดลบตัวใดตัวหนึ่งใน 6 บัญชีเลนส์ (เดิม 4 + 11-2107/S21-1104)
   → Sentry warning (`subsystem: 'interco-settlement'`) + reject.
 
 **RECALL rows** (Flow C-2): เลือกผ่าน `CreateBatchDto.recallContractIds` → validate กับ
@@ -1298,7 +1376,7 @@ deduction 8,000 ยังค้างถาวรใน item table ส่วน 
 snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
 
 **Reverse**: mirror สองใบตามเดิม (ไม่ต้องแก้อะไรเพิ่ม) — ขา mirror `Dr 11-2107 /
-Cr S21-3001` ทำให้เครดิตกลับมาค้าง และสัญญา/แถว recall กลับเข้าคิวเองโดยนิยาม settled
+Cr S21-1104` ทำให้เครดิตกลับมาค้าง และสัญญา/แถว recall กลับเข้าคิวเองโดยนิยาม settled
 gate (item หลุดจาก `POSTED`).
 
 **CI**: `deploy-gcp.yml` vitest step ครอบอยู่แล้วโดยไม่ต้องแก้ — `INTERCO_FILES=$(ls
@@ -1318,7 +1396,7 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   alarm" ด้านบน) และ recall lens/drift เปลี่ยนเป็นสูตร net.
 - ~~(c) เครดิต A.3-only ที่งอก**หลัง** approve (drift guard จับได้เฉพาะก่อน approve)~~ —
   **ปิดแล้ว (Phase 4 Task 4)**: `interco-reconcile.cron` finding kind
-  **`SWAP_CREDIT_ONE_BOOK`** จับสัญญาที่มี 11-2107 `SWAP_CREDIT` ค้างแต่ S21-3001 = 0
+  **`SWAP_CREDIT_ONE_BOOK`** จับสัญญาที่มี 11-2107 `SWAP_CREDIT` ค้างแต่ S21-1104 = 0
   ทุกเดือน (กัน legacy ออกด้วย `getPhase2SwapContractIds()` — swap ยุคก่อน Phase 1 เป็น
   สภาพปกติตาม spec §11.4). เครดิตที่งอกหลัง approve **บนสัญญา swap ยุค Phase 2+** จึงถูก
   เห็นทุกเดือน แม้ drift guard ตอน approve จะผ่านไปแล้ว. **ขอบเขตของ detector:** มันต้องการ
@@ -1350,6 +1428,40 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   **ยังไม่แก้ที่ต้นเหตุ** — เป็นส่วนต่างจริงในบัญชี (opening-balance gap ตาม interco spec
   §11) ที่ต้องให้เจ้าของ/CPA ตัดสินว่าจะ (ก) ให้ SHOP ตั้งลูกหนี้ค่าคอม fallback ให้ตรง
   หรือ (ข) ให้ 1A เลิกตั้ง fallback. **ห้ามเดา JE ปิดช่องนี้เอง.**
+
+  > **⚖️ CPA ตอบแล้ว 2026-08-24 (ข้อ C1) — เลือกทางเลือก (ก) · แก้โค้ดแล้ว 2026-08-24**
+  > *"ทำไมต้องตั้ง เพราะเป็นรายได้ หน้าร้าน S41-1201 รายได้ - ค่าคอมจาก FINANCE"*
+  > ⇒ SHOP ต้องตั้งค่าคอมให้ตรงกับ FINANCE. ทางเลือก (ข) ตกไป.
+  > **สิ่งที่ยังบล็อก:** รายการแก้ย้อนหลังของสัญญาที่จ่ายรอบจ่ายไปแล้ว — FINANCE เครดิตธนาคาร
+  > `ยอดจัด + ค่าคอม` แต่ SHOP เดบิตแค่ `ยอดจัด` ⇒ SHOP ต่ำไปทั้งเงินสดและรายได้ ⇒ ต้องให้ผู้สอบ
+  > ชี้ว่าเป็น `Dr S11-1201 ธนาคาร / Cr S41-1201` หรือ `Dr S11-3002 ลูกหนี้ / Cr S41-1201`
+  > (เปลี่ยนว่าสินทรัพย์ตัวไหนถูกแสดง).
+  > **สิ่งที่ทำไปแล้ว (2026-08-24):** สูตร fallback 10% เคยมี **6 สำเนา** (ไม่ใช่ 4 อย่างที่
+  > สำรวจรอบแรกคิด) — ยุบเป็น helper เดียว **`resolveStoreCommission`**
+  > (`apps/api/src/utils/store-commission.util.ts`) ใช้ร่วมกันทั้ง 6 จุด:
+  > `contract-activation-1a.template.ts` · `exchange-new-contract-1a.template.ts` ·
+  > `compute-installment-breakdown.ts` · `contract-workflow.service.ts` (SHOP leg) ·
+  > `contract-exchange.service.ts` (SHOP leg) · `exchange-plan.util.ts` (ใช้ค่าคงที่
+  > `STORE_COMMISSION_FALLBACK_RATE`). ปักด้วยเทส 15 ตัวที่ util + 2 ตัวที่
+  > `contract-workflow.service.spec.ts` (ไม่ระบุค่าคอม → SHOP ได้ 1800 ไม่ใช่ 0 · ระบุ 0 → คง 0)
+  >
+  > **สองกับดักที่เจอระหว่างแก้ (อย่ารื้อ):**
+  > 1. `newCommission` ที่ `contract-exchange.service.ts` ถูกใช้ **สองที่** — ส่งเข้า SHOP template
+  >    และเป็น fallback **ราคารับซื้อ** (`buyback = buybackPrice ?? financed + commission`)
+  >    ⇒ แยกเป็น `newCommissionRaw` (ราคารับซื้อ ไม่เติม fallback) กับ `newCommissionBooked`
+  >    (ลงบัญชี เติม fallback). ผู้สอบตัดสินเรื่อง *การลงบัญชี* ไม่ได้ตัดสิน *ราคาซื้อขาย*
+  > 2. สาขา legacy fallback ของ `approvePriced` เขียน `storeCommission: Decimal(0)` เมื่อสัญญาเดิม
+  >    เป็น null — **จงใจ ห้ามเปลี่ยนเป็น null** (ต่างจาก `vatAmount` บรรทัดถัดไปที่ต้อง pass null
+  >    through): สาขานั้น clone `monthlyPayment` แล้วถอดหลังหา `interestTotal` ⇒
+  >    `grossExclVat = financed + commission + interest` จะเท่ากับยอดที่ลูกค้าผ่อนจริงก็ต่อเมื่อ
+  >    commission = 0 · ปล่อย fallback ทำงาน = ลูกหนี้เกินยอดผ่อนจริง 10%
+  >
+  > **ยังบล็อก (รายการแก้ย้อนหลัง):** สัญญาที่จ่ายรอบจ่ายไปแล้ว — FINANCE เครดิตธนาคาร
+  > `ยอดจัด + ค่าคอม` แต่ SHOP เดบิตแค่ `ยอดจัด` ⇒ SHOP ต่ำไปทั้งเงินสดและรายได้ ⇒ ต้องให้ผู้สอบ
+  > ชี้ว่าเป็น `Dr S11-1201 ธนาคาร / Cr S41-1201` หรือ `Dr S11-3002 ลูกหนี้ / Cr S41-1201`
+  > (เปลี่ยนว่าสินทรัพย์ตัวไหนถูกแสดง) · และ **สัญญาเก่ายังถูก `COMMISSION_ONLY_GAP` จับต่อไป**
+  > จนกว่าจะทำรายการแก้ — การแก้โค้ดนี้เป็น forward-only.
+  > ดู `docs/accounting/cpa-answers-2026-08-24.md` ข้อ C1
 - ~~**`approveCancellation` ยังเป็น READ COMMITTED**~~ — **ปิดแล้ว (Phase 5 Task 5 ข้อ 2,
   2026-08-22)**: เคส TOCTOU ที่ "ยังไม่มีใครพิสูจน์ได้" **พิสูจน์ได้แล้ว** ด้วยเทสสอง
   คอนเนกชัน (`contract-cancellation.integration.spec.ts` — "TOCTOU: อนุมัติยกเลิก … ชนกับ
@@ -1366,7 +1478,7 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   ที่ไม่มี index จึง escalate ถึงระดับ relation ได้เหมือน `approveBatch` (ต่างกันที่ความถี่
   เท่านั้น) ⇒ ผลข้างเคียงให้ดูหัวข้อ "ผลข้างเคียงที่ต้องเฝ้า" ท้ายไฟล์
   (ยังไม่มีตัวไหนบนเส้นทางรับชำระแปลง P2034).
-- **`swapCreditShopBalance` / Query B ฝั่ง S21-3001 เป็น stamp-only ไม่มี flow fallback** —
+- **`swapCreditShopBalance` / Query B ฝั่ง S21-1104 เป็น stamp-only ไม่มี flow fallback** —
   ทั้งที่ `FLOW_MAP` map `'shop-exchange-return' → 'SWAP_CREDIT'` ⇒ SQL ฝั่ง SHOP **แคบกว่า
   `classifyShopReceivable` โดยตั้งใจ** (asymmetry กับฝั่ง 11-2107 ที่มี fallback). ปลอดภัย
   ตราบใดที่ A.4 ยุค Phase 2+ stamp ประเภทเสมอ (ซึ่งเป็นจริงตั้งแต่ Phase 2 Task 1) — JE
@@ -1387,7 +1499,10 @@ src/modules/interco-settlement/__tests__/*.integration.spec.ts)` glob จับ
   รายวันใน `legacyOneBookNet` + `ACCOUNT_DRIFT` รายเดือนที่ไม่มีเลขสัญญา (ดูรายละเอียดใน
   หัวข้อ "สมการของ `ACCOUNT_DRIFT` ระดับบัญชี"). ทางแก้ = backfill stamp ให้ mirror ยุคเก่า
   **หรือ** ให้เลนส์รู้จัก flow `exchange-cancel` — ต้องนับจำนวนแถวจริงบน prod ก่อนตัดสิน.
-- **การจ่ายนำส่ง/opening balance ฝั่ง SHOP** (interco spec §11) — ยังรอ CPA เหมือนเดิม
+- **การจ่ายนำส่ง/opening balance ฝั่ง SHOP** (interco spec §11) — **CPA ตอบแล้ว 2026-08-24:**
+  opening balance = ข้อ A2 "ต้องตั้ง" · บัญชีเจ้าหนี้ฝั่ง SHOP = ข้อ A1 `S21-1104` ·
+  จ่ายนำส่งรวม = ข้อ C5 "ต้องแยกบันทึก". **ยังไม่แก้โค้ด** และแต่ละข้อยังมีคำถามค้างที่ต้องถาม
+  รอบ 2 ก่อนลงมือ — ดู `docs/accounting/cpa-answers-2026-08-24.md`
   ไม่ได้อยู่ในขอบเขต Phase 4.
 
 ### `legacyNoShop` policy (F1/F2)
@@ -1412,9 +1527,19 @@ original meaning — ยอดลูกหนี้ฝั่ง SHOP ที่�
 LONGER the cash figure once a batch has deductions; เงินรับจริงฝั่ง SHOP =
 `shopNetAmount` (= shopPostedAmount − totalDeduction).** Likewise `totalAmount` is still
 Σ เจ้าหนี้ (gross), never the wire amount — that's `netTransferAmount`. **The system deliberately does not guess a JE
-for that gap.** It is an open opening-balance question pending CPA ruling (spec §11):
+for that gap.** It was an open opening-balance question pending CPA ruling (spec §11):
 should the SHOP books get a retroactive opening balance for the May–22 Jun 2026 window
-(pre-SHOP-books era)? Do not invent a JE to close this gap without that ruling. (The
+(pre-SHOP-books era)?
+
+> **⚖️ CPA ตอบแล้ว 2026-08-24 (ข้อ A2): "ต้องตั้ง"** — ยอดยกมาฝั่ง SHOP ต้องบันทึกย้อนหลัง
+> **ยังไม่แก้โค้ด และยังลงมือไม่ได้** เพราะผู้สอบยังไม่ได้ตอบ: ลงเฉพาะงบดุลหรือรื้อ P&L ด้วย ·
+> คู่บัญชีเป็น S32-1101 (กำไรสะสม) หรือ S33-1101 (กำไรปีปัจจุบัน) · ค่าคอมใช้ตัวเลข GL หรือฟิลด์สัญญา ·
+> ลงวันที่อะไร · รวมเงินดาวน์ลูกค้า/สินค้าคงเหลือ/เจ้าหนี้ซัพพลายเออร์ด้วยไหม (สามอย่างหลังไม่ได้อยู่ใน
+> คำถามที่ถามไป แต่เป็นรูในหน้าต่างเดียวกัน). คิวรีนับประชากรอ่านอย่างเดียว:
+> `docs/accounting/shop-opening-balance-enumerate-2026-08.sql` · รายละเอียด:
+> `docs/accounting/cpa-answers-2026-08-24.md` ข้อ A2
+
+**จนกว่าจะได้คำตอบครบ — do not invent a JE to close this gap.** (The
 sibling question "should device-swap contracts get a SHOP leg wired at all?" is **ANSWERED
 — yes**, F2 2026-08-01; those contracts are no longer part of this gap.)
 
@@ -1780,8 +1905,14 @@ Module: `apps/api/src/modules/equity/` · หน้า: `/finance/equity`, `/fin
 - งบ Equity เดิมเพิ่ม `capitalStatus` (authorized/paidUp/unpaid/premium) + caveat เป็น conditional ตามสถานะปิดปี
 - AuditLog: `EQUITY_CREATED/UPDATED/DELETED/SUBMITTED/WITHDRAWN/POSTED/REVERSED` (entity `equity_document`)
 - **Prod rollout**: (1) รัน `seed:coa` หลัง deploy (บัญชีใหม่ 11-1310) (2) สร้างทะเบียนผู้ถือหุ้นตาม บอจ.5
-  (3) **CAP_INIT backfill = CPA-gated** — ยอดยกมาทั้งชุด (ทุน+เงินสด+กำไรสะสม) ต้องให้ CPA เคาะก่อน
-  ห้ามโพสต์ขา Dr ธนาคารเงียบๆ (opening-balance gap เดียวกับ interco spec §11)
+  (3) **CAP_INIT backfill** — **CPA ตอบแล้ว 2026-08-24 (ข้อ A3): ไม่ให้ตัวเลข** แต่สั่งว่า
+  *"ทำเป็นคู่มือให้ไปตั้งต้นเอง / หรือทำให้สามารถไปบันทึกค่าเริ่มต้นเอง"* ⇒ กลายเป็น **งานระบบ**
+  ไม่ใช่คำวินิจฉัยบัญชี. ข้อจำกัดที่ตรวจแล้ว: `CAP_INIT` สร้างได้แค่ขาทุน/ค่าหุ้นค้างชำระ —
+  ยอดยกมาเต็มชุดต้องมีเงินสด/ธนาคาร + กำไรสะสม + ยอดคงเหลืออื่นด้วย และโมดูล Equity เป็น
+  **FINANCE-only โดยโครงสร้าง** (ฝั่ง SHOP ใช้ไม่ได้เลย) ⇒ ทางที่เหมาะคือหน้าบันทึกรายการ
+  ปรับปรุงทั่วไป (JV) + คู่มือ ครอบทั้งสองสมุด. ยังต้องตัดสิน: FINANCE อย่างเดียวหรือทั้งสองสมุด ·
+  ลงวันไหน · เปิดหน้า JV ถาวรหรือครั้งเดียวปิดด้วย flag. ดู `docs/accounting/cpa-answers-2026-08-24.md`
+  ข้อ A3. **ยังห้ามโพสต์ขา Dr ธนาคารเงียบๆ**
 - Deferred: Capital Call (รับชำระค่าหุ้นค้างภายหลัง — Dr เงิน / Cr 11-1310), แบบยื่น ภ.ง.ด.2 ทางการ,
   การเคลียร์ 22-1102 (DRAW) — ต้องทำ JV/PRIOR_ADJ มือไปก่อน, ภ.ง.ด.54
 
@@ -2004,21 +2135,21 @@ Auto-issues the ม.82/5 ใบลดหนี้ (Credit Note) receipt that doc
 Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` (D1-D5 owner decisions)
 
 - MEMO mode (รุ่นเดิม+ราคาเดิม): ไม่มี JE — เปลี่ยน `contract.productId` บนสัญญาเดิม (TFRS 9 modification, workbook Case 1). SP2 same-price + `case-8-same-price.csv` golden ถูก retire
-- PRICED mode: A.1 (1A สัญญาใหม่) → **A.1b SHOP-leg** (`ShopInventoryTransferTemplate`, ดูหัวข้อถัดไป) → A.2 (derecognize ผ่าน 21-1106, VAT due ทันที ม.78/1 ไม่ออก CN) → **A.3 (ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106 — ไม่มีขาเงินสด, ไม่แตะ 21-1101/21-1102 — คำสั่งเจ้าของ 2026-08-03 ยกเลิก D5 สำหรับเส้นทางนี้; เดิม "ตัดเจ้าหนี้ + ขาเงินสดโอนเพิ่ม/คืนลูกค้า D5 post ทันที")** → A.4 (SHOP ซื้อคืนที่ราคารับซื้อ — `Dr S11-2002 [buyback] / Cr S21-3001` ตั้งแต่ 2026-08-19, เดิม costPrice/Cr S50-1102) → A.5 (ECL reversal Dr 11-2102 / Cr 51-1103 — **CPA ruling 2026-08-01 (คำตอบข้อ A2.2 = ข): มาตรฐานเดียวทุกเส้นทาง**, was Cr 42-1106 per D2 — **บัญชี 42-1106 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03**; same account `EclStageReverseTemplate`/JP5/write-off already use — no more asymmetry)
+- PRICED mode: A.1 (1A สัญญาใหม่) → **A.1b SHOP-leg** (`ShopInventoryTransferTemplate`, ดูหัวข้อถัดไป) → A.2 (derecognize ผ่าน 21-1106, VAT due ทันที ม.78/1 ไม่ออก CN) → **A.3 (ตั้งลูกหนี้-หน้าร้าน 11-2107 ล้างบัญชีพัก 21-1106 — ไม่มีขาเงินสด, ไม่แตะ 21-1101/21-1102 — คำสั่งเจ้าของ 2026-08-03 ยกเลิก D5 สำหรับเส้นทางนี้; เดิม "ตัดเจ้าหนี้ + ขาเงินสดโอนเพิ่ม/คืนลูกค้า D5 post ทันที")** → A.4 (SHOP ซื้อคืนที่ราคารับซื้อ — `Dr S11-2002 [buyback] / Cr S21-1104` ตั้งแต่ 2026-08-19, เดิม costPrice/Cr S50-1102) → A.5 (ECL reversal Dr 11-2102 / Cr 51-1103 — **CPA ruling 2026-08-01 (คำตอบข้อ A2.2 = ข): มาตรฐานเดียวทุกเส้นทาง**, was Cr 42-1106 per D2 — **บัญชี 42-1106 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03**; same account `EclStageReverseTemplate`/JP5/write-off already use — no more asymmetry)
 - **Workbook 2026-08-19 Phase 1** (spec `docs/superpowers/specs/2026-08-19-device-swap-netting-cancel-workbook-design.md`):
   (1) **A.2 = วิธีสุทธิ** — ไม่ตั้ง Cr 41-1101 จาก unearned อีกต่อไป; loss/gain = ราคารับซื้อ
   เทียบมูลค่าตามบัญชีสุทธิรวม VAT (ตัวเลข workbook: loss 126.64; fixture integration: 126.68 —
   เดิม 4,126.68). `metadata.method = 'NET'` (แถวเก่าไม่มี key = gross, forward-only).
   `expectedPl` ใน preview (`contract-exchange.service.ts`) ใช้สูตรสุทธิตัวเดียวกัน (preview === posted).
-  (2) **A.4 = ซื้อคืนที่ราคารับซื้อ** — `Dr S11-2002 [buyback] / Cr S21-3001` + caller set
+  (2) **A.4 = ซื้อคืนที่ราคารับซื้อ** — `Dr S11-2002 [buyback] / Cr S21-1104` + caller set
   `product.costPrice = buyback` และ snapshot `ContractExchangeRequest.previousCostPrice`
-  (cancel restore กลับ). S21-3001 คือขาคู่ฝั่ง SHOP ของ 11-2107 SWAP_CREDIT — รอหักกลบใน
+  (cancel restore กลับ). S21-1104 คือขาคู่ฝั่ง SHOP ของ 11-2107 SWAP_CREDIT — รอหักกลบใน
   รอบจ่าย INTER-CO (Phase 2). A.4 (`ShopExchangeReturnTemplate`) stamp
   `metadata.newContractId` (Phase 2 Task 1) — key ของเลนส์หักกลบ (`swapCreditShopBalance`
-  query S21-3001 ด้วย path นี้ตรงๆ ไม่ join ผ่าน request row) และ cancel mirror
+  query S21-1104 ด้วย path นี้ตรงๆ ไม่ join ผ่าน request row) และ cancel mirror
   (`exchange-cancel-reversal.template.ts`) copy key นี้ต่อ ให้เลนส์เห็นขากลับรายการด้วย.
-  Prod ต้องรัน `seed:coa` หลัง deploy (บัญชีใหม่ S21-3001).
-  (3) **11-2107/S21-3001 reference types** — `metadata.shopReceivableType`
+  Prod ต้องรัน `seed:coa` หลัง deploy (บัญชีใหม่ S21-1104).
+  (3) **11-2107/S21-1104 reference types** — `metadata.shopReceivableType`
   (`SWAP_CREDIT` | `PAYOUT_RECALL` | `SHOP_COLLECT`) stamp ทุก JE ใหม่; แถวเก่า classify
   ตอนอ่านผ่าน `classifyShopReceivable()` (`apps/api/src/modules/journal/shop-receivable-type.util.ts`).
   จุดกำเนิด `SHOP_COLLECT` มี 2 ทาง (ตรงตาราง spec §2): JP4 ปิดยอดหน้าร้านรับแทน และ
@@ -2100,7 +2231,19 @@ buyback 8,000):**
 ดังนั้นสมุด SHOP **ไม่มีขาคู่ของ 11-2107** — SHOP ไม่ได้บันทึกว่าตัวเองติดหนี้ FINANCE
 เท่าราคารับซื้อ. นี่เป็นพฤติกรรมเดียวกับเส้นทาง shop-collect ที่มีอยู่เดิม (11-2107 เป็น
 FINANCE-side-only มาตลอด) — **ไม่ได้ประดิษฐ์บัญชีใหม่ และไม่ได้เดา JE ปิดช่องนี้**.
-รอ CPA ตัดสินว่าจะเปิดบัญชีเจ้าหนี้ฝั่ง SHOP (คู่กับ S11-3001/S11-3002 ที่เป็นลูกหนี้) หรือไม่
+> **⚖️ CPA ตอบแล้ว 2026-08-24 (ข้อ A1): "ต้องมี ตั้งรหัส S21-1104 เจ้าหนี้ FINANCE"**
+> **สถานะ: เปลี่ยนรหัสในโค้ดแล้ว 2026-08-24** (`S21-3001` → `S21-1104` ทั้ง CSV + 194 จุดใน 34 ไฟล์)
+> — แต่ **ความไม่สมมาตรที่บรรยายไว้ข้างบนยังไม่ถูกปิด**: บัญชีมีแล้วก็จริง แต่ยังไม่มีใครโพสต์ขาคู่
+> ให้ 11-2107 ประเภท `SHOP_COLLECT` (JP4/JP5 ที่หน้าร้านรับเงินแทน) — นั่นเป็นงานคนละชิ้น
+> `S21-1104` เป็นบัญชีตาม **คู่สัญญา**
+> (ติดหนี้ FINANCE) ไม่ใช่ตาม **วัตถุประสงค์** (ค่าเครื่องรับคืน) จึงรับหนี้ระหว่างกันได้ทุกประเภท
+> รวมถึงการจ่าย ปกส./ภาษีหัก ณ ที่จ่าย แทนกัน (ข้อ C5).
+> **ยังบล็อก:** ย้ายรายการเก่าบน prod หรือ forward-only (SQL เตรียมไว้แล้วที่
+> `docs/accounting/retire-S21-3001-to-S21-1104-2026-08.sql` — บล็อกย้ายยัง comment ไว้ รอผู้สอบสั่ง) ·
+> S21-1104 รับทุกประเภทเลยไหม (ต้องมี metadata แยกประเภทหรือไม่) · ชื่อบัญชีเป๊ะ ๆ ·
+> ขาคู่ของ `SHOP_COLLECT`. ดู `docs/accounting/cpa-answers-2026-08-24.md` ข้อ A1+B4+C5
+
+~~รอ CPA ตัดสินว่าจะเปิดบัญชีเจ้าหนี้ฝั่ง SHOP (คู่กับ S11-3001/S11-3002 ที่เป็นลูกหนี้) หรือไม่~~ **ตอบแล้ว — เปิด `S21-1104`**
 — เป็นคำถามเดียวกับ opening-balance gap ใน interco spec §11.
 
 **Cancel:** mirror-reverse ตามเดิมทุกประการ (สวีปด้วย `metadata.contractId`) — A.3 ใบใหม่ถูก
@@ -2233,8 +2376,8 @@ sweep output เพราะ per-JE key ไม่มี cancellationId). ชั�
 |---|---|---|
 | 21-1101 (Dr mirror) | **11-2107** | ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ยอดจัดที่ตัดจ่ายแล้ว) |
 | 21-1102 (Dr mirror) | **11-2107** | ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ค่าคอมที่ตัดจ่ายแล้ว) |
-| S11-3001 (Cr mirror) | **S21-3001** | ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ยอดจัด) |
-| S11-3002 (Cr mirror) | **S21-3001** | ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ค่าคอม) |
+| S11-3001 (Cr mirror) | **S21-1104** | ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ยอดจัด) |
+| S11-3002 (Cr mirror) | **S21-1104** | ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ค่าคอม) |
 
 JE ที่มี redirect leg ถูก stamp `shopReceivableType: 'PAYOUT_RECALL'` (`C2_REDIRECT_STAMP`
 — ระดับ JE, ชนะค่า copy จากใบเดิม). ยอด redirect = **gross ตาม GL ของใบที่ mirror** —
@@ -2242,13 +2385,13 @@ JE ที่มี redirect leg ถูก stamp `shopReceivableType: 'PAYOUT_REC
 
 **Cross-check หลัง sweep (ปิด carry (a) + กัน hand-JV, ใน tx — throw = rollback ทั้งชุด):**
 `redirectedTotals['11-2107']` ต้อง = `settledTotal` (Σ financedGl+commissionGl ของ item
-SETTLEMENT ใน batch POSTED) ±0.01 **และ** `redirectedTotals['S21-3001'].neg()` ต้อง =
+SETTLEMENT ใน batch POSTED) ±0.01 **และ** `redirectedTotals['S21-1104'].neg()` ต้อง =
 `settledShopTotal` แยกสมุด — hand-JV ที่แตะเฉพาะสมุดเดียวผ่านเช็คสมุดเดียวได้ จึงต้องเช็ค
 ทั้งคู่ (สัญญา `legacyNoShop` snapshot ฝั่ง SHOP = 0 → expected 0 = 0 ✓ โดยโครงสร้าง).
 
 **Defensive check (C-2 เท่านั้น):** JE candidate ใดมีทั้งบรรทัดบน redirect source
 (21-1101/21-1102/S11-3001/S11-3002) และบรรทัดบัญชี typed (`TYPED_LENS_ACCOUNTS` =
-11-2107/S21-3001) หรือ `shopReceivableType` stamp เดิมในใบเดียวกัน → reject — redirect
+11-2107/S21-1104) หรือ `shopReceivableType` stamp เดิมในใบเดียวกัน → reject — redirect
 stamp ทั้งใบจะทับความหมาย typed เดิม (เลนส์ Phase 2 อ่าน type ระดับ JE); producer จริง
 ไม่มีทางสร้างใบแบบนี้ = hand-JV ผิดปกติ.
 
@@ -2260,7 +2403,7 @@ stamp ทั้งใบจะทับความหมาย typed เดิ�
 - redirect เข้า 11-2107 = **11,000 gross** (= settledTotal — เจ้าหนี้ที่ batch ล้างไป)
   ⇒ typed `PAYOUT_RECALL` ทั้งสองสมุด = 11,000; typed `SWAP_CREDIT` net 0 (A.3/A.4 + mirror)
 - delta ระดับบัญชีข้าม cancel: 11-2107 = **+3,000** (mirror A.3 −8,000 + redirect +11,000),
-  S21-3001 = −3,000 (mirror A.4 +8,000 + redirect −11,000); 21-1101/21-1102/S11-3001/
+  S21-1104 = −3,000 (mirror A.4 +8,000 + redirect −11,000); 21-1101/21-1102/S11-3001/
   S11-3002 **ขยับ 0** (redirect ไม่ mirror ตรง — ไม่ติดลบ)
 - คิวเรียกคืน (สูตร net Task 4): `recallGl = 11,000 − Σ POSTED deductions 8,000 = 3,000`
   = `shopRecallGl` — เลขเดียวสอดคล้องทุกชั้น: queue = drift RECALL = residual (0 หลังหัก) =
@@ -2291,7 +2434,7 @@ FINANCE — reuse ShopCollectSettlementTemplate + typeStamp: 'PAYOUT_RECALL'
                                                    + metadata.contractId ⇒ typed recall lens
                                                    หักตรงประเภทต่อสัญญา — ต่างจากขา batch)
 SHOP — journalAuto.createAndPost ตรง (flow 'interco-recall-cash-shop')
-  Dr S21-3001 / Cr <shopPayoutAccountCode>        (stamp PAYOUT_RECALL เช่นกัน)
+  Dr S21-1104 / Cr <shopPayoutAccountCode>        (stamp PAYOUT_RECALL เช่นกัน)
 ```
 
 Guards ตามลำดับ: (0) idempotency `requestId` ก่อนทุกด่าน — retry หลัง settle เต็มจำนวน
@@ -2364,7 +2507,7 @@ Module: `apps/api/src/modules/interco-settlement/interco-aging.service.ts` +
 UI: `apps/web/src/pages/interco/AgingTab.tsx`
 
 เฟสนี้ **ไม่เพิ่ม JE ใหม่แม้แต่ใบเดียว** — เป็นชั้น "มองเห็น" ล้วน (รายงานอายุ + แจ้งเตือน +
-กระทบยอด) บนบัญชี 11-2107 / S21-3001 ที่ Phase 1-3 สร้างขึ้น พร้อมปิด carry (c)/(d)/(e)
+กระทบยอด) บนบัญชี 11-2107 / S21-1104 ที่ Phase 1-3 สร้างขึ้น พร้อมปิด carry (c)/(d)/(e)
 ของ Phase 2.
 
 ### ศัพท์ต่อสัญญา (**ชื่อตรงกัน**ทุกชั้น: service → endpoint → UI → cron ทั้งสองตัว)
@@ -2380,7 +2523,7 @@ UI: `apps/web/src/pages/interco/AgingTab.tsx`
 | `settledDeduction` | Σ (`swapCreditAmount` + `recallAmount`) ของ `InterCoSettlementItem` **ทุก `itemType`** ใน batch `POSTED` ของสัญญานั้น |
 | `intercoNet` | `swapCreditGross + payoutRecallGross − settledDeduction` = **ยอดกลุ่มระหว่างกิจการคงเหลือจริง**. รวมสองประเภทก่อนหักโดยเจตนา — invariant ถือที่ **ระดับสัญญา ไม่ใช่ระดับประเภท** (สัญญา swap ที่ถูกยกเลิกภายหลังมีประวัติข้ามประเภท: SWAP_CREDIT ถูก mirror จนเหลือ 0 ขณะที่ deduction เดิมยังค้างถาวรใน item table ส่วน PAYOUT_RECALL ถือ gross ของ redirect) — เหตุผลเดียวกับสูตร combined ของ `alarmNettingResiduals` (Phase 3 Task 4) |
 | `shopCollect` | 11-2107 typed `SHOP_COLLECT` Σ(Dr−Cr) — **แยกคอลัมน์ ไม่ปนกลุ่ม interco** (เงินลูกค้าที่หน้าร้านรับแทน ไม่ใช่เงินระหว่างกิจการ; ล้างผ่าน `settleShopCollect` ตามเดิม) |
-| `shopMirrorGross` | S21-3001 Σ(Cr−Dr) **ก่อน**หัก deduction (conditional group key: `SWAP_CREDIT` → `metadata.newContractId`, ประเภทอื่น → `metadata.contractId`) — ใช้ตัดสิน "สมุดเดียว" ตรงๆ โดยไม่ให้ deduction ของรอบจ่ายมาบังตัวเลข (สัญญาที่ถูกหักครบพอดีมี `shopMirrorNet = 0` เหมือนกันแต่มีขาคู่ครบ ไม่ใช่ anomaly) |
+| `shopMirrorGross` | S21-1104 Σ(Cr−Dr) **ก่อน**หัก deduction (conditional group key: `SWAP_CREDIT` → `metadata.newContractId`, ประเภทอื่น → `metadata.contractId`) — ใช้ตัดสิน "สมุดเดียว" ตรงๆ โดยไม่ให้ deduction ของรอบจ่ายมาบังตัวเลข (สัญญาที่ถูกหักครบพอดีมี `shopMirrorNet = 0` เหมือนกันแต่มีขาคู่ครบ ไม่ใช่ anomaly) |
 | `shopMirrorNet` | `shopMirrorGross − settledDeduction` — กระจกฝั่ง SHOP ของ `intercoNet` |
 | `bookMismatch` | `abs(intercoNet − shopMirrorNet) > 0.01` (`shopCollect` ไม่นับ — เป็น FINANCE-side-only โดยธรรมชาติ) |
 | `legacyOneBook` | มีบรรทัด 11-2107 ยุค legacy (flow A.3 โดย**ไม่มี** stamp) **และ** `shopMirrorGross = 0` = swap ยุคก่อน Phase 1 (spec §11.4). **เป็นสภาพปกติ ไม่ใช่ anomaly** — pending lens โมเดลมันเป็น `swapCreditEligible = false` อยู่แล้ว |
@@ -2399,7 +2542,7 @@ spec เดิม — เพิ่มระหว่าง implement (ถ้า�
 
 - `getShopReceivableAging(asOf?, thresholdDays = 30)` → `{ rows, asOf, totals }`.
   **จำนวน query คงที่ 4 ครั้ง ไม่ขึ้นกับจำนวนสัญญา** (Query A = 11-2107 typed sums 3
-  ประเภท + MIN(posted_at) 2 กลุ่ม ใน CASE เดียว, Query B = S21-3001 conditional key,
+  ประเภท + MIN(posted_at) 2 กลุ่ม ใน CASE เดียว, Query B = S21-1104 conditional key,
   Query C = deductions groupBy, Query D = hydrate contract) — **ห้าม refactor กลับไปเรียก
   helper ต่อสัญญาในลูป** (N×5).
 - **`asOf` มีผลกับการคำนวณ "อายุ" เท่านั้น — ยอดคงเหลือเป็นยอดปัจจุบันเสมอ** (ตรงกับ SQL
@@ -2671,7 +2814,7 @@ lock เกิดตามสิ่งที่ scan จริง ไม่ใ�
 
 ### Trial balance — ไม่ต้องแก้ (ยืนยันตาม spec §6 ข้อ 4)
 
-`S21-3001` เข้ารายงานเองผ่าน prefix `S21` ที่มีอยู่แล้วใน `SECTION_MAP`
+`S21-1104` เข้ารายงานเองผ่าน prefix `S21` ที่มีอยู่แล้วใน `SECTION_MAP`
 (`apps/api/src/modules/accounting/accounting-section-map.util.ts` — `'S21'` =
 `'หนี้สินหมุนเวียน (SHOP)'`). ไม่มีการแก้โค้ดรายงานในเฟสนี้.
 

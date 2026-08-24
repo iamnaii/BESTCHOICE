@@ -4569,7 +4569,7 @@ model InterCoSettlementItem {
   legacyNoShop Boolean @default(false) @map("legacy_no_shop")
 
   itemType InterCoItemType @default(SETTLEMENT) @map("item_type")
-  /// Snapshot เครดิตเปลี่ยนเครื่อง (11-2107 SWAP_CREDIT = S21-3001 ของสัญญานี้) — 0 เมื่อไม่ใช่ swap/ไม่ eligible
+  /// Snapshot เครดิตเปลี่ยนเครื่อง (11-2107 SWAP_CREDIT = S21-1104 ของสัญญานี้) — 0 เมื่อไม่ใช่ swap/ไม่ eligible
   swapCreditAmount Decimal @default(0) @map("swap_credit_amount") @db.Decimal(12, 2)
   /// Snapshot ยอดเรียกคืนจากยกเลิก (11-2107 PAYOUT_RECALL) — ใช้เฉพาะแถว RECALL
   recallAmount Decimal @default(0) @map("recall_amount") @db.Decimal(12, 2)
@@ -7665,7 +7665,7 @@ model ContractExchangeRequest {
   je1aId        String?   @map("je_1a_id")
   je2Id         String?   @map("je_2_id")
   je3Id         String?   @map("je_3_id")
-  /// SHOP re-intake JE — ตั้งแต่ 2026-08-19: Dr S11-2002 [buyback] / Cr S21-3001
+  /// SHOP re-intake JE — ตั้งแต่ 2026-08-19: Dr S11-2002 [buyback] / Cr S21-1104
   /// (เดิม: Dr S11-2002 / Cr S50-1102 ที่ costPrice — JE เก่าคงรูปเดิม forward-only)
   je4Id         String?   @map("je_4_id")
 

@@ -66,7 +66,7 @@ function mkNegative(overrides: Partial<NegativeTypedRow> = {}): NegativeTypedRow
     legacyOneBook: false,
     negativeFields: [
       { field: 'intercoNet', label: 'กลุ่มระหว่างกิจการ (11-2107)', value: '-3000.00' },
-      { field: 'shopMirrorNet', label: 'กระจกฝั่ง SHOP (S21-3001)', value: '-3000.00' },
+      { field: 'shopMirrorNet', label: 'กระจกฝั่ง SHOP (S21-1104)', value: '-3000.00' },
     ],
     ...overrides,
   };
@@ -124,7 +124,7 @@ describe('ReconcileTab', () => {
 
     expect(screen.getByText('CT-2026-0013')).toBeInTheDocument();
     expect(screen.getByText(/กลุ่มระหว่างกิจการ \(11-2107\): -3,000.00/)).toBeInTheDocument();
-    expect(screen.getByText(/กระจกฝั่ง SHOP \(S21-3001\): -3,000.00/)).toBeInTheDocument();
+    expect(screen.getByText(/กระจกฝั่ง SHOP \(S21-1104\): -3,000.00/)).toBeInTheDocument();
   });
 
   it('ไม่มีอะไรผิดปกติ → ข้อความว่างของทั้งสองส่วน', () => {

@@ -16,7 +16,7 @@ import { IntercoPendingService } from '../interco-pending.service';
 export const RECONCILE_TODO_TAG = 'interco-reconcile';
 
 export type ReconcileFindingKind =
-  /** สองสมุดไม่ตรงกันต่อสัญญา (11-2107 vs S21-3001) — carry e ของ Phase 2 */
+  /** สองสมุดไม่ตรงกันต่อสัญญา (11-2107 vs S21-1104) — carry e ของ Phase 2 */
   | 'BOOK_MISMATCH'
   /** เครดิตเปลี่ยนเครื่องค้างสมุดเดียวทั้งที่เป็นยุคที่ต้องมีสองสมุด — carry c */
   | 'SWAP_CREDIT_ONE_BOOK'
@@ -192,7 +192,7 @@ function summarizePatterns(
  * **เกณฑ์แยก legacy (สำคัญ — ห้าม alert เท็จ):**
  *   - `SWAP_CREDIT_ONE_BOOK` นับเฉพาะสัญญาที่มี A.4 ยุค Phase 2+
  *     (`getPhase2SwapContractIds` — JE `shop-exchange-return` ที่ stamp
- *     `newContractId`). swap ยุคก่อน Phase 1 ที่มี 11-2107 แต่ไม่มี S21-3001
+ *     `newContractId`). swap ยุคก่อน Phase 1 ที่มี 11-2107 แต่ไม่มี S21-1104
  *     เป็น **สภาพปกติ** ตาม spec §11.4 → ข้าม
  *   - `BOOK_MISMATCH` ข้ามแถว `legacyOneBook` ด้วยเหตุผลเดียวกัน (แถวเหล่านั้น
  *     สองสมุดต่างกันโดยนิยาม ตราบใดที่ยังไม่มีขาคู่ฝั่ง SHOP)
@@ -330,7 +330,7 @@ export class IntercoReconcileCron {
           contractNumber: row.contractNumber,
           detail:
             `สัญญา ${row.contractNumber}: เครดิตเปลี่ยนเครื่อง (11-2107) ` +
-            `${formatAmount(row.swapCreditGross)} บาท แต่สมุด SHOP (S21-3001) เป็น 0 ` +
+            `${formatAmount(row.swapCreditGross)} บาท แต่สมุด SHOP (S21-1104) เป็น 0 ` +
             `ทั้งที่เป็น swap ยุคที่ต้องมีขาคู่ — หักกลบในรอบจ่ายไม่ได้จนกว่าจะตั้งขา SHOP`,
           amounts: {
             swapCreditGross: row.swapCreditGross.toFixed(2),
@@ -346,7 +346,7 @@ export class IntercoReconcileCron {
           contractNumber: row.contractNumber,
           detail:
             `สัญญา ${row.contractNumber}: ฝั่ง FINANCE (11-2107) ` +
-            `${formatAmount(row.intercoNet)} บาท vs ฝั่ง SHOP (S21-3001) ` +
+            `${formatAmount(row.intercoNet)} บาท vs ฝั่ง SHOP (S21-1104) ` +
             `${formatAmount(row.shopMirrorNet)} บาท — ห้ามหักกลบ/รับเงินจนกว่าจะตรงกัน`,
           amounts: {
             intercoNet: row.intercoNet.toFixed(2),

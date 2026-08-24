@@ -77,7 +77,7 @@ function formatAmount(value: Prisma.Decimal): string {
  * เพราะมาจาก engine เดียว). ตราบใดที่ยังไม่มีใครแก้ config เลข 30 ตรงกันทุกชั้น.
  *
  * **แถว `legacyOneBook` ถูกกันออกทั้งแถว (คำตัดสิน Task 3):** swap ยุคก่อน Phase 1
- * มี 11-2107 แต่ไม่มีขาคู่ S21-3001 และ "ล้าง" ผ่าน shop-collect ซึ่ง stamp
+ * มี 11-2107 แต่ไม่มีขาคู่ S21-1104 และ "ล้าง" ผ่าน shop-collect ซึ่ง stamp
  * `SHOP_COLLECT` ⇒ คอลัมน์ typed ของแถวนั้นค้าง +8,000 / −8,000 ถาวรแม้ยอดบัญชี
  * จริงเป็น 0 (spec §11.4 = **สภาพปกติ ไม่ใช่ anomaly**). ถ้า alert ตามคอลัมน์
  * typed จะเตือนเท็จทุกวันตลอดไป และถ้า alert เฉพาะแขน `shopCollect` ก็ยังบอกยอด
@@ -332,7 +332,7 @@ export class ShopReceivableAgingCron {
     if (row.bookMismatch) {
       lines.push(
         `⚠ สองสมุดไม่ตรงกัน: ฝั่ง FINANCE ${formatAmount(row.intercoNet)} บาท vs ` +
-          `ฝั่ง SHOP (S21-3001) ${formatAmount(row.shopMirrorNet)} บาท — ` +
+          `ฝั่ง SHOP (S21-1104) ${formatAmount(row.shopMirrorNet)} บาท — ` +
           `ตรวจก่อนหักกลบ/รับเงิน (ห้ามโพสต์ข้างเดียว)`,
       );
     }

@@ -27,7 +27,7 @@ export interface PendingContract {
   legacyNoShop: boolean;
   /** เลนส์ 11-2107 SWAP_CREDIT — เครดิตเปลี่ยนเครื่องรอหักกลบ */
   swapCreditGl: string;
-  /** เลนส์ S21-3001 — ขาคู่ฝั่ง SHOP */
+  /** เลนส์ S21-1104 — ขาคู่ฝั่ง SHOP */
   shopBuybackPayableGl: string;
   /** หักกลบได้ (สองสมุดมียอดเท่ากัน) — false บน swap ยุคก่อน Phase 1 */
   swapCreditEligible: boolean;
@@ -77,7 +77,7 @@ export interface ShopReceivableAgingRow {
   intercoNet: string;
   /** SHOP_COLLECT — เงินลูกค้าที่หน้าร้านรับแทน (คนละกลุ่มกับ interco) */
   shopCollect: string;
-  /** กระจกฝั่ง SHOP (S21-3001 − deduction) — คู่เทียบของ intercoNet */
+  /** กระจกฝั่ง SHOP (S21-1104 − deduction) — คู่เทียบของ intercoNet */
   shopMirrorNet: string;
   intercoOldestPostedAt: string | null;
   intercoAgeDays: number | null;

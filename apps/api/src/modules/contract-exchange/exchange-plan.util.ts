@@ -1,4 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import { STORE_COMMISSION_FALLBACK_RATE } from '../../utils/store-commission.util';
 
 export interface ExchangePlan {
   financedAmount: Decimal;
@@ -23,7 +24,11 @@ export function computeExchangePlan(input: {
   monthlyRate: Decimal;
 }): ExchangePlan {
   const financedAmount = input.newPrice.toDecimalPlaces(2);
-  const storeCommission = financedAmount.times('0.10').toDecimalPlaces(2);
+  // สำเนาที่ 4 ของสูตร fallback เดิม — ใช้ค่าคงที่กลางแทน hardcode
+  // (สาขานี้ 'ไม่ระบุ' เสมอ จึงเรียกอัตราตรง ๆ ไม่ผ่าน resolveStoreCommission)
+  const storeCommission = financedAmount
+    .times(STORE_COMMISSION_FALLBACK_RATE)
+    .toDecimalPlaces(2);
   const interestTotal = financedAmount
     .times(input.monthlyRate)
     .times(input.months)

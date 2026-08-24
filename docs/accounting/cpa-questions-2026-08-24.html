@@ -1,0 +1,513 @@
+<title>คำถามถึงผู้สอบบัญชี — BESTCHOICE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #f7f7f6;
+    --surface: #ffffff;
+    --surface-2: #fbfbfa;
+    --ink: #1c1c1a;
+    --ink-2: #55554f;
+    --ink-3: #86867c;
+    --line: #e3e3df;
+    --line-2: #d1d1cb;
+    --accent: #0f766e;
+    --accent-soft: #e6f2f0;
+    --a: #b45309;
+    --a-soft: #fdf3e3;
+    --b: #0f766e;
+    --b-soft: #e6f2f0;
+    --c: #57534e;
+    --c-soft: #f0efec;
+    --focus: #0f766e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16161a;
+      --surface: #1e1e23;
+      --surface-2: #24242a;
+      --ink: #ecece8;
+      --ink-2: #b6b6ae;
+      --ink-3: #85857c;
+      --line: #33333b;
+      --line-2: #43434d;
+      --accent: #5eead4;
+      --accent-soft: #10302d;
+      --a: #fbbf24;
+      --a-soft: #33270f;
+      --b: #5eead4;
+      --b-soft: #10302d;
+      --c: #a8a29e;
+      --c-soft: #2a2a2f;
+      --focus: #5eead4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16161a;
+    --surface: #1e1e23;
+    --surface-2: #24242a;
+    --ink: #ecece8;
+    --ink-2: #b6b6ae;
+    --ink-3: #85857c;
+    --line: #33333b;
+    --line-2: #43434d;
+    --accent: #5eead4;
+    --accent-soft: #10302d;
+    --a: #fbbf24;
+    --a-soft: #33270f;
+    --b: #5eead4;
+    --b-soft: #10302d;
+    --c: #a8a29e;
+    --c-soft: #2a2a2f;
+    --focus: #5eead4;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 820px; margin: 0 auto; padding: 40px 20px 96px; }
+
+  /* ── header ─────────────────────────────────── */
+  header { margin-bottom: 40px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px;
+  }
+  h1 {
+    font-size: clamp(26px, 4.4vw, 36px); font-weight: 700;
+    line-height: 1.3; margin: 0 0 14px; letter-spacing: -.01em;
+  }
+  .lede { color: var(--ink-2); font-size: 17px; margin: 0 0 20px; max-width: 62ch; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 8px 20px;
+    font-size: 13.5px; color: var(--ink-3);
+    padding-top: 18px; border-top: 1px solid var(--line);
+  }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+
+  /* ── how-to ─────────────────────────────────── */
+  .howto {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px 20px; margin: 28px 0 40px;
+  }
+  .howto h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .howto p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+  .howto p + p { margin-top: 8px; }
+
+  /* ── group ──────────────────────────────────── */
+  .group { margin-bottom: 48px; }
+  .group-head { margin-bottom: 20px; }
+  .badge {
+    display: inline-block; font-size: 12px; font-weight: 700;
+    letter-spacing: .06em; padding: 4px 10px; border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .badge.a { background: var(--a-soft); color: var(--a); }
+  .badge.b { background: var(--b-soft); color: var(--b); }
+  .badge.c { background: var(--c-soft); color: var(--c); }
+  .group h2 { font-size: 20px; font-weight: 700; margin: 0 0 6px; letter-spacing: -.005em; }
+  .group-note { font-size: 14.5px; color: var(--ink-3); margin: 0; }
+
+  /* ── question card ──────────────────────────── */
+  .q {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 22px 22px 20px; margin-bottom: 16px;
+    border-left: 3px solid var(--line-2);
+  }
+  .q.ga { border-left-color: var(--a); }
+  .q.gb { border-left-color: var(--b); }
+  .q.gc { border-left-color: var(--c); }
+
+  .q-head { display: flex; gap: 12px; align-items: baseline; margin-bottom: 12px; }
+  .q-id {
+    font-size: 13px; font-weight: 700; color: var(--ink-3);
+    font-variant-numeric: tabular-nums; flex-shrink: 0; padding-top: 2px;
+  }
+  .q-title { font-size: 17.5px; font-weight: 600; margin: 0; line-height: 1.45; }
+
+  .q-body { font-size: 15px; color: var(--ink-2); }
+  .q-body p { margin: 0 0 10px; }
+  .q-body p:last-child { margin-bottom: 0; }
+  .q-body code {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: .88em; background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px;
+    white-space: nowrap;
+  }
+  .q-body strong { color: var(--ink); font-weight: 600; }
+
+  .ask {
+    margin-top: 14px; padding: 12px 14px;
+    background: var(--accent-soft); border-radius: 9px;
+    font-size: 15px; color: var(--ink); font-weight: 500;
+  }
+  .ask::before {
+    content: 'คำถาม'; display: block; font-size: 11.5px; font-weight: 700;
+    letter-spacing: .08em; color: var(--accent); margin-bottom: 4px;
+  }
+
+  .opts { margin: 12px 0 0; padding-left: 20px; font-size: 14.5px; color: var(--ink-2); }
+  .opts li { margin-bottom: 5px; }
+
+  /* ── answer ─────────────────────────────────── */
+  .ans { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--line-2); }
+  .ans label {
+    display: block; font-size: 12.5px; font-weight: 600;
+    color: var(--ink-3); margin-bottom: 7px; letter-spacing: .02em;
+  }
+  textarea {
+    width: 100%; min-height: 78px; resize: vertical;
+    font-family: inherit; font-size: 15px; line-height: 1.6; color: var(--ink);
+    background: var(--surface-2); border: 1px solid var(--line-2);
+    border-radius: 9px; padding: 11px 13px;
+  }
+  textarea:focus { outline: 2px solid var(--focus); outline-offset: 1px; border-color: transparent; }
+  textarea::placeholder { color: var(--ink-3); }
+
+  /* ── toolbar ────────────────────────────────── */
+  .toolbar {
+    position: sticky; bottom: 0; margin-top: 40px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px 18px;
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 -2px 20px rgba(0,0,0,.06);
+  }
+  .progress { font-size: 14px; color: var(--ink-2); }
+  .progress b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .btns { display: flex; gap: 9px; flex-wrap: wrap; }
+  button {
+    font-family: inherit; font-size: 14.5px; font-weight: 600;
+    padding: 9px 16px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--line-2); background: var(--surface-2); color: var(--ink);
+  }
+  button:hover { border-color: var(--ink-3); }
+  button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.primary:hover { filter: brightness(1.08); }
+
+  .saved-note { font-size: 13px; color: var(--ink-3); margin-top: 10px; }
+
+  @media (max-width: 560px) {
+    .wrap { padding: 28px 14px 90px; }
+    .q { padding: 18px 16px 16px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .btns button { flex: 1; }
+  }
+
+  @media print {
+    .toolbar, .howto { display: none; }
+    body { background: #fff; }
+    .q { break-inside: avoid; box-shadow: none; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">BESTCHOICE · เอกสารสอบถามทางบัญชี</div>
+  <h1>คำถามถึงผู้สอบบัญชี</h1>
+  <p class="lede">
+    รวมประเด็นบัญชีที่ค้างการวินิจฉัย จากการปรับปรุงระบบช่วง พ.ค.–ส.ค. 2569
+    — เรื่องเปลี่ยนเครื่องระหว่างผ่อน การหักกลบระหว่างกิจการ และการยกเลิกใบขาย
+  </p>
+  <div class="meta">
+    <span><b>วันที่</b> 24 สิงหาคม 2569</span>
+    <span><b>ผู้ถาม</b> BESTCHOICE (SHOP + FINANCE)</span>
+    <span><b>จำนวน</b> 13 ข้อ · 3 กลุ่ม</span>
+  </div>
+</header>
+
+<div class="howto">
+  <h2>วิธีตอบ</h2>
+  <p>พิมพ์คำตอบในช่องใต้แต่ละข้อได้เลย ระบบจะเก็บร่างไว้ในเบราว์เซอร์ของท่านเอง ปิดแล้วเปิดใหม่ข้อความยังอยู่</p>
+  <p>ตอบครบแล้วกด <b>“คัดลอกคำตอบทั้งหมด”</b> ด้านล่าง แล้ววางส่งกลับทาง LINE หรืออีเมลได้ทันที — คำตอบไม่ถูกส่งเข้าระบบโดยอัตโนมัติ</p>
+</div>
+
+<!-- ══ กลุ่ม A ══ -->
+<section class="group">
+  <div class="group-head">
+    <span class="badge a">กลุ่ม A · เร่ง</span>
+    <h2>ต้องตอบก่อนปิดงบ / ยื่นภาษี</h2>
+    <p class="group-note">สี่ข้อนี้ค้างการบันทึกบัญชีอยู่จริง ยังไม่ลงระบบเพราะรอคำวินิจฉัย</p>
+  </div>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A1</span>
+      <h3 class="q-title">สมุด SHOP ควรมีบัญชี “เจ้าหนี้ FINANCE” คู่กับลูกหนี้ <code>11-2107</code> หรือไม่</h3>
+    </div>
+    <div class="q-body">
+      <p>เมื่อลูกค้าเปลี่ยนเครื่องระหว่างผ่อน FINANCE รับซื้อเครื่องเก่าคืนแล้วส่งให้หน้าร้าน จึงตั้ง <strong>ลูกหนี้-หน้าร้าน <code>11-2107</code></strong> เท่ากับราคารับซื้อไว้ในสมุด FINANCE</p>
+      <p>แต่ผังบัญชีฝั่ง SHOP <strong>ไม่มีบัญชีเจ้าหนี้คู่กัน</strong> ⇒ สมุด SHOP รับสินค้าเข้าคลังโดยไม่ได้บันทึกว่าตนเองติดหนี้ FINANCE เท่าราคารับซื้อ</p>
+      <p>ลักษณะนี้มีมาตั้งแต่ต้น (บัญชี <code>11-2107</code> เป็นฝั่ง FINANCE ด้านเดียวเสมอ) ระบบ<strong>จงใจไม่ตั้งรายการปิดช่องนี้เอง</strong> เพราะเป็นการสร้างบัญชีใหม่โดยไม่ผ่านผู้สอบบัญชี</p>
+      <div class="ask">ควรเปิดบัญชีเจ้าหนี้ฝั่ง SHOP คู่กัน หรือยอมรับความไม่สมมาตรนี้ต่อไป? ถ้าเปิด ขอชื่อบัญชีและหมวดที่เหมาะสม</div>
+    </div>
+    <div class="ans"><label for="a1">คำตอบ</label><textarea id="a1" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A2</span>
+      <h3 class="q-title">ยอดยกมาของสมุด SHOP ช่วง พ.ค. – 22 มิ.ย. 2569</h3>
+    </div>
+    <div class="q-body">
+      <p>ก่อนวันที่ 23 มิ.ย. 2569 ระบบยังไม่ได้ตั้งลูกหนี้ฝั่ง SHOP สำหรับสัญญาผ่อน</p>
+      <p>ผลคือ สัญญาในช่วงนั้น FINANCE โอนเงินให้หน้าร้านจริง แต่<strong>ไม่มีลูกหนี้ฝั่ง SHOP ให้ล้าง</strong> ⇒ เกิดผลต่างค้างอยู่</p>
+      <div class="ask">ต้องตั้งยอดยกมาย้อนหลังให้สมุด SHOP สำหรับช่วงดังกล่าวหรือไม่ หรือปล่อยเป็นผลต่างถาวรพร้อมหมายเหตุ?</div>
+    </div>
+    <div class="ans"><label for="a2">คำตอบ</label><textarea id="a2" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A3</span>
+      <h3 class="q-title">ยอดยกมาตอนตั้งทุน (ตาม บอจ.5)</h3>
+    </div>
+    <div class="q-body">
+      <p>ระบบบันทึกธุรกรรมส่วนของผู้ถือหุ้นพร้อมใช้งานแล้ว แต่<strong>ยังไม่ได้ลงยอดตั้งต้น</strong> เพราะเป็นยอดยกมาทั้งชุดที่ต้องให้ผู้สอบบัญชีเคาะก่อน</p>
+      <div class="ask">ขอตัวเลขยอดยกมา ณ วันตั้งต้น</div>
+      <ul class="opts">
+        <li>ทุนจดทะเบียน / ทุนที่ชำระแล้ว / ส่วนเกินมูลค่าหุ้น (ถ้ามี)</li>
+        <li>เงินสดและเงินฝากธนาคาร</li>
+        <li>กำไร (ขาดทุน) สะสม</li>
+        <li>ค่าหุ้นค้างชำระ (ถ้ามี)</li>
+      </ul>
+    </div>
+    <div class="ans"><label for="a3">คำตอบ</label><textarea id="a3" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A4</span>
+      <h3 class="q-title">ใบลดหนี้ย้อนหลัง 1 ฉบับ</h3>
+    </div>
+    <div class="q-body">
+      <p>ใบเสร็จ <code>RT-202608-00006</code> ยอด 1,771 บาท ถูกยกเลิกก่อนที่ระบบจะออกใบลดหนี้อัตโนมัติ ⇒ <strong>ขาดใบลดหนี้คู่</strong> (เป็นสัญญาทดสอบ <code>TEST-20260809-004</code>)</p>
+      <p>รายการทางบัญชีกลับรายการครบแล้ว ขาดเฉพาะ<strong>ตัวเอกสาร</strong></p>
+      <div class="ask">ออกใบลดหนี้ย้อนหลังได้หรือไม่ (ถือเป็นการออกเอกสารภาษีใหม่) หรือปล่อยไว้พร้อมบันทึกเหตุผลประกอบ?</div>
+    </div>
+    <div class="ans"><label for="a4">คำตอบ</label><textarea id="a4" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+</section>
+
+<!-- ══ กลุ่ม B ══ -->
+<section class="group">
+  <div class="group-head">
+    <span class="badge b">กลุ่ม B · ขอยืนยัน</span>
+    <h2>วิธีที่ปรับใช้ไปแล้ว</h2>
+    <p class="group-note">เจ้าของอนุมัติและใช้งานจริงแล้ว ขอให้ผู้สอบบัญชีรับรองว่าถูกต้อง หากไม่เห็นชอบยังแก้ไปข้างหน้าได้</p>
+  </div>
+
+  <article class="q gb">
+    <div class="q-head"><span class="q-id">B1</span>
+      <h3 class="q-title">เปลี่ยนวิธีตัดบัญชีสัญญาเดิมตอนเปลี่ยนเครื่อง เป็น “วิธีสุทธิ”</h3>
+    </div>
+    <div class="q-body">
+      <p><strong>วิธีเดิม:</strong> โอนดอกเบี้ยรอตัดบัญชีกลับเป็นรายได้ แล้วตั้งผลขาดทุนเต็มจำนวน</p>
+      <p><strong>วิธีใหม่:</strong> เทียบราคารับซื้อกับมูลค่าตามบัญชีสุทธิ (รวม VAT) แล้วรับรู้เฉพาะผลต่าง</p>
+      <p>ผลต่อกรณีตัวอย่างเดียวกัน: ผลขาดทุนลดจาก <strong>4,126.68</strong> เหลือ <strong>126.68</strong> บาท (งบดุลสุทธิเท่ากันทั้งสองวิธี ต่างกันที่การแสดงรายได้/ค่าใช้จ่าย)</p>
+      <div class="ask">วิธีสุทธิถูกต้องตามที่ควรหรือไม่?</div>
+    </div>
+    <div class="ans"><label for="b1">คำตอบ</label><textarea id="b1" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q gb">
+    <div class="q-head"><span class="q-id">B2</span>
+      <h3 class="q-title">เครื่องที่รับคืน ลงสต็อกที่ “ราคารับซื้อ” ไม่ใช่ต้นทุนเดิม</h3>
+    </div>
+    <div class="q-body">
+      <p>เครื่องเก่าที่รับคืนจากลูกค้าตอนเปลี่ยนเครื่อง บันทึกเข้าสินค้าคงเหลือมือสองด้วย<strong>ราคาที่ตกลงรับซื้อ</strong> (เดิมใช้ราคาทุนเดิมของเครื่อง)</p>
+      <div class="ask">ใช้ราคารับซื้อเป็นราคาทุนของสินค้ามือสองถูกต้องหรือไม่?</div>
+    </div>
+    <div class="ans"><label for="b2">คำตอบ</label><textarea id="b2" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q gb">
+    <div class="q-head"><span class="q-id">B3</span>
+      <h3 class="q-title">รอบจ่ายเงินให้หน้าร้าน เปลี่ยนเป็นหักกลบ</h3>
+    </div>
+    <div class="q-body">
+      <p><strong>เดิม:</strong> FINANCE โอนยอดจัด + ค่าคอมเต็มจำนวนให้หน้าร้าน แล้วหน้าร้านโอนราคารับซื้อเครื่องเก่ากลับมา (เงินวิ่งสองขา)</p>
+      <p><strong>ปัจจุบัน:</strong> หักกลบกันก่อน เหลือโอนสุทธิขาเดียว</p>
+      <p>ทั้งสองฝ่ายเป็นนิติบุคคลเดียวกัน แยกเป็นสองส่วนธุรกิจ</p>
+      <div class="ask">การหักกลบระหว่างกันแบบนี้ยอมรับได้หรือไม่ มีข้อควรระวังด้านภาษีหรือหลักฐานการจ่ายหรือไม่?</div>
+    </div>
+    <div class="ans"><label for="b3">คำตอบ</label><textarea id="b3" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q gb">
+    <div class="q-head"><span class="q-id">B4</span>
+      <h3 class="q-title">บัญชีใหม่ <code>S21-3001</code> เจ้าหนี้-FINANCE ค่าเครื่องรับคืน</h3>
+    </div>
+    <div class="q-body">
+      <p>เปิดบัญชีนี้ในผังฝั่ง SHOP เพื่อรองรับการรับคืนเครื่องจากการเปลี่ยนเครื่อง และใช้เป็นขาหักกลบในรอบจ่าย</p>
+      <div class="ask">ขอยืนยันชื่อบัญชีและหมวดที่ใช้ ว่าเหมาะสมหรือควรปรับ</div>
+    </div>
+    <div class="ans"><label for="b4">คำตอบ</label><textarea id="b4" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+</section>
+
+<!-- ══ กลุ่ม C ══ -->
+<section class="group">
+  <div class="group-head">
+    <span class="badge c">กลุ่ม C · เชิงนโยบาย</span>
+    <h2>ตัดสินใจได้ตามสะดวก</h2>
+    <p class="group-note">ยังไม่กระทบการปิดงบงวดนี้ แต่ค้างอยู่และอยากได้แนวทาง</p>
+  </div>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C1</span>
+      <h3 class="q-title">ค่าคอมมิชชันปรากฏในสมุดเดียว</h3>
+    </div>
+    <div class="q-body">
+      <p>สัญญาที่ไม่ได้ระบุค่าคอมไว้ ฝั่ง FINANCE จะ<strong>ตั้งเจ้าหนี้ค่าคอมอัตโนมัติ 10%</strong> ของยอดจัด แต่ฝั่ง SHOP ตั้งเป็น 0</p>
+      <p>ผลคือสองสมุดต่างกันจริงเฉพาะขาค่าคอม (ไม่ใช่ความผิดพลาดของการอ่านรายงาน)</p>
+      <div class="ask">ควรแก้ทางใด</div>
+      <ul class="opts">
+        <li>ให้ SHOP ตั้งลูกหนี้ค่าคอมอัตโนมัติให้ตรงกับ FINANCE</li>
+        <li>ให้ FINANCE เลิกตั้งค่าคอมอัตโนมัติ ใช้เฉพาะที่ระบุจริง</li>
+      </ul>
+    </div>
+    <div class="ans"><label for="c1">คำตอบ</label><textarea id="c1" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C2</span>
+      <h3 class="q-title">เงินค่าธรรมเนียมเลื่อนงวดที่เหลือค้างหลังปิดสัญญา</h3>
+    </div>
+    <div class="q-body">
+      <p>ลูกค้าจ่ายค่าธรรมเนียมเลื่อนงวดไว้ล่วงหน้า (บันทึกเป็นเงินรับล่วงหน้า <code>21-1103</code>) แล้วปิดสัญญาก่อนใช้หมด ⇒ มีเงินเหลือค้าง</p>
+      <p>ปัจจุบันระบบ<strong>แจ้งเตือนอย่างเดียว ไม่ตั้งรายการให้เอง</strong> เพราะเป็นการตัดสินใจทางบัญชี</p>
+      <div class="ask">ควรคืนลูกค้า หรือรับรู้เป็นรายได้? ถ้ารับรู้เป็นรายได้ ควรลงบัญชีใด</div>
+    </div>
+    <div class="ans"><label for="c2">คำตอบ</label><textarea id="c2" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C3</span>
+      <h3 class="q-title">เงินค่าธรรมเนียมเลื่อนงวด ควรลดฐานคำนวณส่วนลดปิดยอดก่อนกำหนดหรือไม่</h3>
+    </div>
+    <div class="q-body">
+      <p>ปัจจุบันเงินส่วนนี้<strong>ลดยอดคงเหลือ</strong> ⇒ ส่วนลดดอกเบี้ยที่ลูกค้าได้ตอนปิดยอดก่อนกำหนดจะน้อยลงตามไปด้วย</p>
+      <p>ตัวอย่างจริง: เงินพัก 354 บาท ที่อัตราส่วนลด 50% ทำให้ยอดที่ลูกค้าจ่ายจริงลดลงเพียง 188.58 บาท</p>
+      <div class="ask">ถูกต้องแล้ว หรือควรแยกออกจากฐานคำนวณส่วนลด?</div>
+    </div>
+    <div class="ans"><label for="c3">คำตอบ</label><textarea id="c3" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C4</span>
+      <h3 class="q-title">ใบขายที่แปลงมาจากใบจอง ไม่ได้ลงบัญชีฝั่ง SHOP</h3>
+    </div>
+    <div class="q-body">
+      <p>การขายสดผ่านหน้าร้านตามปกติลงรายการบัญชีครบ (รายได้ / ต้นทุน / ตัดสต็อก) แต่การขายที่<strong>แปลงมาจากใบจอง ไม่ลงรายการเลย</strong></p>
+      <p>เป็นลักษณะที่มีมาก่อน ไม่ได้เกิดจากการปรับปรุงรอบนี้ — พบระหว่างตรวจสอบ</p>
+      <div class="ask">ต้องบันทึกย้อนหลังให้ครบหรือไม่ หรือแก้ไปข้างหน้าอย่างเดียวพร้อมหมายเหตุ?</div>
+    </div>
+    <div class="ans"><label for="c4">คำตอบ</label><textarea id="c4" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C5</span>
+      <h3 class="q-title">การนำส่งประกันสังคม / ภาษีหัก ณ ที่จ่าย แบบจ่ายรวมจากบัญชีเดียว</h3>
+    </div>
+    <div class="q-body">
+      <p>ปัจจุบันต้อง<strong>แยกนำส่งสองฝั่ง</strong> (SHOP และ FINANCE) เพราะไม่มีบัญชีระหว่างกันฝั่ง SHOP รองรับการจ่ายแทนกัน</p>
+      <p>เป็นคำถามเดียวกับข้อ A1 — หากเปิดบัญชีเจ้าหนี้ฝั่ง SHOP ข้อนี้จะทำได้ทันที</p>
+      <div class="ask">ยืนยันว่าการจ่ายนำส่งรวมจากบัญชีเดียวทำได้หรือไม่ และควรบันทึกรายการระหว่างกันอย่างไร</div>
+    </div>
+    <div class="ans"><label for="c5">คำตอบ</label><textarea id="c5" placeholder="พิมพ์คำตอบ…"></textarea></div>
+  </article>
+</section>
+
+<div class="toolbar">
+  <div class="progress">ตอบแล้ว <b><span id="done">0</span> / 13</b> ข้อ</div>
+  <div class="btns">
+    <button type="button" id="clear">ล้างคำตอบ</button>
+    <button type="button" id="print">พิมพ์</button>
+    <button type="button" class="primary" id="copy">คัดลอกคำตอบทั้งหมด</button>
+  </div>
+</div>
+<p class="saved-note" id="note">ร่างคำตอบถูกเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น</p>
+
+</div>
+
+<script>
+(function () {
+  var KEY = 'bestchoice-cpa-answers-v1';
+  var areas = Array.prototype.slice.call(document.querySelectorAll('textarea'));
+  var doneEl = document.getElementById('done');
+  var note = document.getElementById('note');
+
+  function read() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  function write(obj) {
+    try { localStorage.setItem(KEY, JSON.stringify(obj)); } catch (e) {}
+  }
+  function count() {
+    var n = areas.filter(function (t) { return t.value.trim().length > 0; }).length;
+    doneEl.textContent = String(n);
+  }
+
+  var saved = read();
+  areas.forEach(function (t) {
+    if (saved[t.id]) t.value = saved[t.id];
+    t.addEventListener('input', function () {
+      var cur = read();
+      if (t.value.trim()) { cur[t.id] = t.value; } else { delete cur[t.id]; }
+      write(cur);
+      count();
+    });
+  });
+  count();
+
+  function label(t) {
+    var card = t.closest('.q');
+    var id = card.querySelector('.q-id').textContent.trim();
+    var title = card.querySelector('.q-title').textContent.trim().replace(/\s+/g, ' ');
+    return id + '. ' + title;
+  }
+
+  document.getElementById('copy').addEventListener('click', function () {
+    var lines = ['คำตอบจากผู้สอบบัญชี — BESTCHOICE', 'วันที่ตอบ: ' + new Date().toLocaleDateString('th-TH'), ''];
+    areas.forEach(function (t) {
+      var v = t.value.trim();
+      lines.push(label(t));
+      lines.push(v ? v : '(ยังไม่ได้ตอบ)');
+      lines.push('');
+    });
+    var text = lines.join('\n');
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(fallback);
+    } else { fallback(); }
+    note.textContent = 'คัดลอกแล้ว — วางส่งกลับทาง LINE หรืออีเมลได้เลย';
+    setTimeout(function () { note.textContent = 'ร่างคำตอบถูกเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น'; }, 4000);
+  });
+
+  document.getElementById('print').addEventListener('click', function () { window.print(); });
+
+  document.getElementById('clear').addEventListener('click', function () {
+    if (!window.confirm('ล้างคำตอบทั้งหมดในเครื่องนี้?')) return;
+    areas.forEach(function (t) { t.value = ''; });
+    write({});
+    count();
+  });
+})();
+</script>

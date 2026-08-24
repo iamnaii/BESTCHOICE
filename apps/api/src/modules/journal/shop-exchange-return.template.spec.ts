@@ -31,7 +31,7 @@ describe('ShopExchangeReturnTemplate', () => {
 
   const buyback = new Decimal('12345.67');
 
-  it('posts Dr S11-2002 / Cr S21-3001 at the supplied buyback price (workbook 2026-08-19)', async () => {
+  it('posts Dr S11-2002 / Cr S21-1104 at the supplied buyback price (workbook 2026-08-19)', async () => {
     const result = await template.execute({
       oldProductId: 'p-1',
       oldContractId: 'c-1',
@@ -48,7 +48,7 @@ describe('ShopExchangeReturnTemplate', () => {
         dr: buyback,
       }),
       expect.objectContaining({
-        accountCode: 'S21-3001',
+        accountCode: 'S21-1104',
         cr: buyback,
       }),
     ]);
@@ -87,13 +87,13 @@ describe('ShopExchangeReturnTemplate', () => {
       oldProductId: 'p-1',
       oldContractId: 'c-1',
       // 2026-08-19: contractId (= old contract) so glContractBalance sees the
-      // S21-3001 leg; SWAP_CREDIT pairs it with 11-2107 on the FINANCE side.
+      // S21-1104 leg; SWAP_CREDIT pairs it with 11-2107 on the FINANCE side.
       contractId: 'c-1',
       companyCode: 'SHOP',
       buyback: '12345.67',
       shopReceivableType: 'SWAP_CREDIT',
     });
-    // Phase 2 Task 1: the SHOP netting lens (Task 3) keys S21-3001 by the NEW
+    // Phase 2 Task 1: the SHOP netting lens (Task 3) keys S21-1104 by the NEW
     // contract — batch item = สัญญาใหม่ — so A.4 must stamp it directly.
     expect((call.metadata as any).newContractId).toBe('new-contract-1');
   });

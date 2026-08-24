@@ -44,7 +44,7 @@ export interface PendingContract {
   legacyNoShop: boolean;
   /** เลนส์ 11-2107 SWAP_CREDIT — เครดิตเปลี่ยนเครื่องรอหักกลบ (0 = ไม่ใช่ swap) */
   swapCreditGl: Prisma.Decimal;
-  /** เลนส์ S21-3001 (by newContractId) — ขาคู่ฝั่ง SHOP */
+  /** เลนส์ S21-1104 (by newContractId) — ขาคู่ฝั่ง SHOP */
   shopBuybackPayableGl: Prisma.Decimal;
   /** หักกลบได้ = ทั้งสองสมุดมียอดและเท่ากัน ±0.01 (mixed-era spec §11.4: swap ก่อน Phase 1 → false) */
   swapCreditEligible: boolean;
@@ -65,7 +65,7 @@ export interface RecallCandidate {
    * ทุกประเภทใน batch POSTED ของสัญญานั้น. ดู jsdoc `getPendingRecalls`.
    */
   recallGl: Prisma.Decimal;
-  /** S21-3001 PAYOUT_RECALL สุทธิด้วยสูตรเดียวกัน (ต้อง = recallGl จึงหักได้) */
+  /** S21-1104 PAYOUT_RECALL สุทธิด้วยสูตรเดียวกัน (ต้อง = recallGl จึงหักได้) */
   shopRecallGl: Prisma.Decimal;
 }
 
@@ -82,7 +82,7 @@ export interface ReconcileTotals {
   glSwapCreditTotal: Prisma.Decimal;
   /** 11-2107 typed PAYOUT_RECALL ทั้งบัญชี (Dr−Cr — explicit stamp เท่านั้น) */
   glRecallTotal: Prisma.Decimal;
-  /** S21-3001 ทั้งบัญชี (Cr−Dr — ไม่กรอง type) */
+  /** S21-1104 ทั้งบัญชี (Cr−Dr — ไม่กรอง type) */
   glShopBuybackTotal: Prisma.Decimal;
 }
 
@@ -191,7 +191,7 @@ export class IntercoPendingService {
     //     หรือไม่มี/ไม่รู้จัก stamp แล้ว flow = legacy A.3
     //     'exchange-buyback-receivable-11-2107' (mirror ตอน cancel carry stamp
     //     มาแล้วตั้งแต่ Phase 1 → net เป็นศูนย์เองในประเภทเดียวกัน)
-    //   - S21-3001 SWAP_CREDIT: key ด้วย metadata.newContractId (A.4 stamp
+    //   - S21-1104 SWAP_CREDIT: key ด้วย metadata.newContractId (A.4 stamp
     //     ตั้งแต่ Phase 2 Task 1)
     const swapCreditRows = await client.$queryRaw<
       Array<{ contract_id: string | null; credit: unknown }>
@@ -223,7 +223,7 @@ export class IntercoPendingService {
              COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS payable
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
-      WHERE jl.account_code = 'S21-3001'
+      WHERE jl.account_code = 'S21-1104'
         AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
         AND je.metadata->>'newContractId' IS NOT NULL
         AND je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
@@ -291,7 +291,7 @@ export class IntercoPendingService {
       const swapCreditGl = swapCreditByContract.get(contractId) ?? new Prisma.Decimal(0);
       const shopBuybackPayableGl = shopBuybackByContract.get(contractId) ?? new Prisma.Decimal(0);
       // eligible = ทั้งสองสมุดมียอดและเท่ากัน ±0.01 — swap ยุคก่อน Phase 1
-      // (ไม่มี S21-3001) จึงเป็น false โดยโครงสร้าง (mixed-era, spec §11.4)
+      // (ไม่มี S21-1104) จึงเป็น false โดยโครงสร้าง (mixed-era, spec §11.4)
       const swapCreditEligible =
         swapCreditGl.gt(0) &&
         shopBuybackPayableGl.gt(0) &&
@@ -361,7 +361,7 @@ export class IntercoPendingService {
     );
     if (validRecallRows.length === 0) return [];
 
-    // SHOP lens — S21-3001 [PAYOUT_RECALL], key ด้วย metadata.contractId
+    // SHOP lens — S21-1104 [PAYOUT_RECALL], key ด้วย metadata.contractId
     // (ต่างจากขา SWAP_CREDIT ที่ key ด้วย newContractId)
     const shopRecallRows = await client.$queryRaw<
       Array<{ contract_id: string | null; recall: unknown }>
@@ -370,7 +370,7 @@ export class IntercoPendingService {
              COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS recall
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
-      WHERE jl.account_code = 'S21-3001'
+      WHERE jl.account_code = 'S21-1104'
         AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
         AND je.metadata->>'contractId' IS NOT NULL
         AND je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'
@@ -522,13 +522,13 @@ export class IntercoPendingService {
     `;
     const glRecallTotal = new Prisma.Decimal(String(recallTotalRows[0]?.balance ?? 0));
 
-    // S21-3001 ทั้งบัญชี — ไม่กรอง type (กระทบยอดรวมสองสมุด: SWAP_CREDIT +
+    // S21-1104 ทั้งบัญชี — ไม่กรอง type (กระทบยอดรวมสองสมุด: SWAP_CREDIT +
     // PAYOUT_RECALL รวมกันต้องหนุนยอดบัญชีนี้)
     const shopBuybackTotalRows = await this.prisma.$queryRaw<Array<{ balance: unknown }>>`
       SELECT COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS balance
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
-      WHERE jl.account_code = 'S21-3001'
+      WHERE jl.account_code = 'S21-1104'
         AND jl.deleted_at IS NULL
         AND je.status = 'POSTED'
         AND je.deleted_at IS NULL

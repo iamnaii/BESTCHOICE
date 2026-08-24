@@ -656,7 +656,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(je3Lines.some((l) => /^11-1[12]0[123]$/.test(l.accountCode))).toBe(false);
 
       // --- A.4 (workbook 2026-08-19): SHOP ซื้อเครื่องเดิมคืนที่ "ราคารับซื้อ"
-      // Dr S11-2002 [buyback] / Cr S21-3001 [buyback], posted under SHOP company.
+      // Dr S11-2002 [buyback] / Cr S21-1104 [buyback], posted under SHOP company.
       // The old shape (Cr S50-1102 at costPrice) is retired — forward-only.
       const je4 = await prisma.journalEntry.findUniqueOrThrow({
         where: { id: req.je4Id! },
@@ -665,10 +665,10 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(je4.companyId).toBe(shopCompanyId);
       expect(sumSide(je4.lines, 'S11-2002', 'dr').toFixed(2)).toBe('8000.00');
       expect(sumSide(je4.lines, 'S50-1102', 'cr').toFixed(2)).toBe('0.00');
-      expect(sumSide(je4.lines, 'S21-3001', 'cr').toFixed(2)).toBe('8000.00');
+      expect(sumSide(je4.lines, 'S21-1104', 'cr').toFixed(2)).toBe('8000.00');
       expect((je4.metadata as Record<string, unknown>).shopReceivableType).toBe('SWAP_CREDIT');
       // Phase 2 Task 1: batch item = สัญญาใหม่ — the SHOP netting lens (Task 3)
-      // queries S21-3001 by metadata.newContractId directly (no join through
+      // queries S21-1104 by metadata.newContractId directly (no join through
       // the request row in SQL), so A.4 must stamp the NEW contract id too.
       expect((je4.metadata as Record<string, unknown>).newContractId).toBe(newContractId);
 
@@ -731,7 +731,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       ).toBe('8000.00');
       // A.4 ใหม่ (workbook 2026-08-19): SHOP ตั้งเจ้าหนี้ FINANCE = ราคารับซื้อ รอหักกลบรอบจ่าย
       expect(
-        (await glContractBalance(prisma, fix.oldContractId, 'S21-3001', 'cr')).toFixed(2),
+        (await glContractBalance(prisma, fix.oldContractId, 'S21-1104', 'cr')).toFixed(2),
       ).toBe('8000.00');
       // ยืนยันว่าไม่มีเงินสด/ธนาคารขยับบนสัญญาใหม่เลยในวัน finalize
       expect(
@@ -955,7 +955,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       // --- Mirror JEs must carry shopReceivableType (final review 2026-08-19).
       // A.3 + A.4 stamp SWAP_CREDIT; if their mirrors don't copy it, a canceled
       // swap leaves +buyback SWAP_CREDIT and -buyback UNKNOWN on 11-2107/
-      // S21-3001 — the Phase 2 netting lens (sum per type) then sees a phantom
+      // S21-1104 — the Phase 2 netting lens (sum per type) then sees a phantom
       // SWAP_CREDIT balance even though the real GL nets 0.
       for (const stampedId of [req.je3Id!, req.je4Id!]) {
         const mirror = await prisma.journalEntry.findFirstOrThrow({
@@ -966,7 +966,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
           `mirror of ${stampedId} must carry shopReceivableType`,
         ).toBe('SWAP_CREDIT');
         // Phase 2 Task 1: mirrors must also carry newContractId — the SHOP
-        // lens sums S21-3001 per NEW contract, so a canceled swap's mirror
+        // lens sums S21-1104 per NEW contract, so a canceled swap's mirror
         // without the key would leave a phantom per-contract balance.
         expect(
           (mirror.metadata as Record<string, unknown>).newContractId,
@@ -1248,7 +1248,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       // them; and glContractBalance ก็แยกไม่ออก เพราะ mirror ตรงของ A.1 ทำให้
       // per-contract net = 0 เหมือนกันทั้งถูกและผิด — ระดับบัญชีเท่านั้นที่เห็น)
       const payableCodes = ['21-1101', '21-1102', 'S11-3001', 'S11-3002'] as const;
-      const deltaCodes = [...payableCodes, '11-2107', 'S21-3001'] as const;
+      const deltaCodes = [...payableCodes, '11-2107', 'S21-1104'] as const;
       const preSeed: Record<string, Decimal> = {};
       for (const code of deltaCodes) preSeed[code] = await wholeAccountBalance(code);
 
@@ -1329,9 +1329,9 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect((await wholeAccountBalance('11-2107')).minus(preCancel['11-2107']).toFixed(2)).toBe(
         '3000.00',
       );
-      // S21-3001 sym ฝั่ง SHOP: mirror A.4 +8,000 + redirect −11,000
+      // S21-1104 sym ฝั่ง SHOP: mirror A.4 +8,000 + redirect −11,000
       // (helper คิด Dr−Cr ⇒ เจ้าหนี้สุทธิ 3,000 = −3,000)
-      expect((await wholeAccountBalance('S21-3001')).minus(preCancel['S21-3001']).toFixed(2)).toBe(
+      expect((await wholeAccountBalance('S21-1104')).minus(preCancel['S21-1104']).toFixed(2)).toBe(
         '-3000.00',
       );
 

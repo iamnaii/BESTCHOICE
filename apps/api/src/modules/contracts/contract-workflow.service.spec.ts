@@ -435,6 +435,36 @@ describe('ContractWorkflowService', () => {
       expect(shopInventoryTransferTemplate.execute.mock.calls[0][1]).toBeDefined();
     });
 
+    // ── C1 (คำวินิจฉัยผู้สอบบัญชี 2026-08-24) ────────────────────────────────
+    // "ทำไมต้องตั้ง เพราะเป็นรายได้ หน้าร้าน S41-1201 รายได้ - ค่าคอมจาก FINANCE"
+    // สัญญาที่ไม่ระบุค่าคอม: FINANCE (1A) ตั้งเจ้าหนี้ 21-1102 = 10% ของยอดจัด
+    // ส่วน SHOP เดิมตั้ง 0 ⇒ ค่าคอมโผล่สมุดเดียว (COMMISSION_ONLY_GAP)
+    it('สัญญาไม่ระบุค่าคอม → SHOP ตั้ง fallback 10% ให้ตรง FINANCE (ไม่ใช่ 0)', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...shopContract,
+        storeCommission: null,
+      });
+
+      await service.activate('c-1');
+
+      const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
+      // 18000 × 10% = 1800 — ตัวเลขเดียวกับที่ ContractActivation1ATemplate ตั้งบน 21-1102
+      expect(input.commission.toString()).toBe('1800');
+      expect(input.commission.toString()).not.toBe('0');
+    });
+
+    it('ค่าคอม 0 ที่ระบุมาจริง → คง 0 ไม่ถูกยัด fallback', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...shopContract,
+        storeCommission: new Prisma.Decimal(0),
+      });
+
+      await service.activate('c-1');
+
+      const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
+      expect(input.commission.toString()).toBe('0');
+    });
+
     it('posts a catch-up ShopDownPayment for in-flight contract with down but no down JE', async () => {
       // No prior down JE → pre-Task-6 in-flight contract → catch-up fires
       prisma.journalEntry.findFirst.mockResolvedValue(null);

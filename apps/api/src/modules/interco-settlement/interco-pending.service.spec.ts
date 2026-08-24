@@ -22,7 +22,7 @@ describe('IntercoPendingService.getPendingContracts', () => {
 
   /**
    * Service $queryRaw order in getPendingContracts: FINANCE lens → SHOP lens
-   * → SWAP_CREDIT lens (11-2107) → shop-buyback lens (S21-3001, Phase 2).
+   * → SWAP_CREDIT lens (11-2107) → shop-buyback lens (S21-1104, Phase 2).
    */
   const queueLenses = (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -253,7 +253,7 @@ describe('IntercoPendingService.getPendingContracts', () => {
       expect(swapSql).toContain("je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107'");
 
       const buybackSql = (prisma.$queryRaw.mock.calls[3][0] as unknown as string[]).join('');
-      expect(buybackSql).toContain('S21-3001');
+      expect(buybackSql).toContain('S21-1104');
       expect(buybackSql).toContain("je.metadata->>'newContractId'");
       expect(buybackSql).toContain("je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'");
       // ขา SWAP_CREDIT ฝั่ง SHOP ห้าม fallback ตาม flow (มี stamp ตั้งแต่ Phase 2 Task 1)
@@ -279,7 +279,7 @@ describe('IntercoPendingService.getPendingRecalls', () => {
     service = mod.get(IntercoPendingService);
   });
 
-  /** $queryRaw order: 11-2107 recall lens first, S21-3001 shop recall lens second. */
+  /** $queryRaw order: 11-2107 recall lens first, S21-1104 shop recall lens second. */
   const queueRecallLenses = (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recallRows: any[],
@@ -317,7 +317,7 @@ describe('IntercoPendingService.getPendingRecalls', () => {
     expect(financeSql).toContain('HAVING SUM(jl.debit - jl.credit) > 0');
 
     const shopSql = (prisma.$queryRaw.mock.calls[1][0] as unknown as string[]).join('');
-    expect(shopSql).toContain('S21-3001');
+    expect(shopSql).toContain('S21-1104');
     expect(shopSql).toContain("je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'");
     // ขา recall ฝั่ง SHOP key ด้วย contractId (ต่างจากขา SWAP_CREDIT ที่ใช้ newContractId)
     expect(shopSql).toContain("je.metadata->>'contractId'");
@@ -426,8 +426,8 @@ describe('IntercoPendingService.getReconcileTotals', () => {
     const recallSql = sqlAt(4);
     expect(recallSql).toContain("je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'");
     expect(recallSql).not.toContain('contractId');
-    // S21-3001 ทั้งบัญชี — ไม่กรอง type เลย
-    expect(sqlAt(5)).toContain('S21-3001');
+    // S21-1104 ทั้งบัญชี — ไม่กรอง type เลย
+    expect(sqlAt(5)).toContain('S21-1104');
     expect(sqlAt(5)).not.toContain('metadata');
   });
 });

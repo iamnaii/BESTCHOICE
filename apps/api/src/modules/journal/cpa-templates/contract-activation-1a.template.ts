@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { resolveStoreCommission } from '../../../utils/store-commission.util';
 
 /**
  * Template 1A — Contract Activation (fires once when contract activates).
@@ -43,11 +44,13 @@ export class ContractActivation1ATemplate {
     const financed = new Decimal(c.financedAmount.toString());
     const interest = new Decimal(c.interestTotal.toString());
 
-    // commission: use storeCommission if set, else derive as 10% of financedAmount
-    const commission =
-      c.storeCommission != null
-        ? new Decimal(c.storeCommission.toString())
-        : financed.times('0.10').toDecimalPlaces(2);
+    // commission: use storeCommission if set, else derive as 10% of financedAmount.
+    // Shared with the SHOP side (ShopInventoryTransferTemplate callers) via this helper —
+    // CPA ruling C1 2026-08-24 requires both books to book the SAME number.
+    const commission = resolveStoreCommission({
+      storeCommission: c.storeCommission,
+      financedAmount: financed,
+    });
 
     const grossExclVat = financed.plus(commission).plus(interest);
 

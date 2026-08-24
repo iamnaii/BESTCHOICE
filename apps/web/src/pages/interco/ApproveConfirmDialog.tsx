@@ -74,7 +74,7 @@ export function ApproveConfirmDialog({
   });
 
   // Mirror `buildFinanceLines`/`buildShopLines` (Phase 2 หักกลบ): RECALL rows
-  // contribute ONLY the 11-2107/S21-3001 legs; settlement legs skip them.
+  // contribute ONLY the 11-2107/S21-1104 legs; settlement legs skip them.
   // item รอบเก่าไม่มี itemType ใน fixture เก่า — `!== 'RECALL'` = SETTLEMENT
   // (นิยามเดียวกับ server).
   const settlementItems = batch.items.filter((i) => i.itemType !== 'RECALL');
@@ -122,7 +122,7 @@ export function ApproveConfirmDialog({
       ? [{ label: `Dr ${batch.shopBankCode} รับโอนจาก FINANCE (สุทธิ)`, amount: shopNetCash }]
       : []),
     ...(totalDeduction > 0
-      ? [{ label: 'Dr S21-3001 ล้างเจ้าหนี้ FINANCE (หักกลบ)', amount: totalDeduction }]
+      ? [{ label: 'Dr S21-1104 ล้างเจ้าหนี้ FINANCE (หักกลบ)', amount: totalDeduction }]
       : []),
     ...(nonLegacyItems.length > 0
       ? [

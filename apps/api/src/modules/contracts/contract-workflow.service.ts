@@ -15,6 +15,7 @@ import { buildInstallmentScheduleRows } from '../../utils/installment-schedule.u
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { resolveStoreCommission } from '../../utils/store-commission.util';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ProductsService } from '../products/products.service';
@@ -567,9 +568,13 @@ export class ContractWorkflowService {
             salePrice: downAmount.plus(financedAmt),
             downAmount,
             financedAmount: financedAmt,
-            commission: contract.storeCommission
-              ? new Decimal(contract.storeCommission.toString())
-              : new Decimal(0),
+            // CPA ruling C1 (2026-08-24): SHOP ต้องตั้งค่าคอมให้ตรง FINANCE เพราะเป็น
+            // รายได้หน้าร้าน S41-1201 — เดิมตรงนี้ตั้ง 0 ขณะที่ 1A ตั้ง fallback 10%
+            // ⇒ ค่าคอมโผล่สมุดเดียว (COMMISSION_ONLY_GAP). helper เดียวกับ 1A
+            commission: resolveStoreCommission({
+              storeCommission: contract.storeCommission,
+              financedAmount: financedAmt,
+            }),
           },
           tx,
         );

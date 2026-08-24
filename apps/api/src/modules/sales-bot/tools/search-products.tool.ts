@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { parseDeviceQuery, normalizeStorage } from '../../../utils/device-query-normalize.util';
-import { DEMO_NAME_PREFIX } from '../../../utils/product-readiness.util';
+import { SHOP_PHONE_CATEGORIES, DEMO_NAME_PREFIX } from '../../../utils/product-readiness.util';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
 import { readBoolFlag } from '../../../utils/config.util';
 
@@ -129,13 +129,23 @@ export class SearchProductsTool {
         { brand: { contains: t, mode: 'insensitive' as const } },
         { model: { contains: t, mode: 'insensitive' as const } },
       ]),
+      // เฉพาะมือถือ — อุปกรณ์เสริมชื่อ "ฟิล์ม iPhone 15" ก็ contains ผ่าน และ prod มี 575 ชิ้น
+      // ราคา 0 ⇒ orderBy cashPrice asc + take 40 ทำให้อุปกรณ์เสริมกินโควตาจนมือถือหลุดหมด
+      // (ตรวจ prod 2026-08-24: ค้น "iPhone 15" ได้อุปกรณ์เสริม 40/40 ชิ้น → บอทตอบ "ไม่มีของ"
+      //  ทุกครั้งทั้งที่มีเครื่องจริง 29 เครื่อง) · ลูกค้าถามอุปกรณ์เสริมตอบผ่าน KB แยกอยู่แล้ว
+      category: { in: [...SHOP_PHONE_CATEGORIES] },
       AND: [
-        // มือสองต้องผ่าน QC (มีเกรด) ถึงจะเสนอลูกค้าได้ — ห่อใน AND เพราะ OR
-        // ระดับบนสุดถูกใช้เป็นคำค้นไปแล้ว
+        // มือสองต้องผ่าน QC ถึงจะเสนอลูกค้าได้ — ห่อใน AND เพราะ OR ระดับบนสุดถูกใช้เป็นคำค้นไปแล้ว
+        // "ผ่าน QC" = มีเกรด **หรือ** มีผลตรวจแบต% (ทั้งคู่แปลว่ามีคนตรวจเครื่องแล้ว)
+        // เดิมบังคับเกรดอย่างเดียว → มือสองบน prod 27/27 เครื่องไม่มีเกรด (ย้ายมาจาก Tooltify
+        // ซึ่งเก็บ IMEI+แบต% แต่ไม่มีช่องเกรด) ถูกซ่อนหมด ทั้งที่ตรวจแล้วและตั้งราคาขายแล้ว
+        // เจ้าของสั่งไว้ตั้งแต่ 2026-08-17 ว่าห้ามพูดคำว่า "เกรด" กับลูกค้า ให้บอกแบต% แทน
+        // ⇒ แบต% คือหลักฐาน QC ที่ใช้จริงในการขาย · เครื่องที่ไม่มีทั้งสองอย่างยังถูกกันไว้เหมือนเดิม
         {
           OR: [
             { category: { not: 'PHONE_USED' } },
             { AND: [{ conditionGrade: { not: null } }, { conditionGrade: { not: '' } }] },
+            { batteryHealth: { not: null } },
           ],
         },
       ],
@@ -192,7 +202,14 @@ export class SearchProductsTool {
     const base = shopBaseUrl();
     const groups = new Map<string, SearchProductGroup>();
     for (const r of inBudget) {
-      const condition = r.conditionGrade && r.conditionGrade.trim() ? r.conditionGrade : 'NEW';
+      // ⚠️ category เป็นตัวตัดสินมือ 1/มือสองเสมอ — ห้ามใช้ "ไม่มีเกรด = NEW"
+      // (prod 2026-08-24: มือสอง 27/27 เครื่องไม่มีเกรด → เคยถูกป้ายเป็นมือ 1 = บอกลูกค้าผิดประเภท)
+      const condition =
+        r.category === 'PHONE_USED'
+          ? r.conditionGrade && r.conditionGrade.trim()
+            ? r.conditionGrade
+            : 'USED'
+          : 'NEW';
       const storage = r.storage ? normalizeStorage(r.storage) : null;
       const key = `${r.brand}|${r.model}|${storage ?? ''}|${condition}`;
       const priceThb = Number(r.cashPrice);
@@ -240,6 +257,17 @@ export class SearchProductsTool {
       }
     }
 
+    // รุ่นที่ลูกค้าถามต้องมาก่อนเสมอ — เดิมเรียงราคาถูก→แพงล้วน ทำให้ถาม "iPhone 15"
+    // แล้วได้ 12/13/14 ที่ถูกกว่ามาเต็ม 5 กลุ่ม ส่วน 15 ที่มีของจริงหลุดหาย (prod 2026-08-24)
+    // relevance: ตรงรุ่นที่ parse ได้ = 0, ตระกูลเดียวกัน (ขึ้นต้นด้วยรุ่นนั้น) = 1, อื่น ๆ = 2
+    const wanted = (parsed.model ?? '').toLowerCase().trim();
+    const relevance = (model: string): number => {
+      if (!wanted) return 0;
+      const m = model.toLowerCase().trim();
+      if (m === wanted) return 0;
+      if (m.startsWith(wanted) || wanted.startsWith(m)) return 1;
+      return 2;
+    };
     const sorted = [...groups.values()]
       .map((g) => ({
         ...g,
@@ -248,7 +276,7 @@ export class SearchProductsTool {
           .sort((a, b) => Number(a.reserved) - Number(b.reserved) || a.priceThb - b.priceThb)
           .slice(0, MAX_UNITS_PER_GROUP),
       }))
-      .sort((a, b) => a.minPrice - b.minPrice)
+      .sort((a, b) => relevance(a.model) - relevance(b.model) || a.minPrice - b.minPrice)
       .slice(0, MAX_GROUPS);
 
     return {

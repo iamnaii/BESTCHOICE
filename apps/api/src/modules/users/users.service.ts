@@ -228,6 +228,11 @@ export class UsersService {
     const isNowBeingDeactivated =
       dto.isActive === false && user.isActive === true;
 
+    // เกณฑ์เดียวกับ `updateFull` — สอง endpoint นี้รับ `UpdateUserDto` ตัวเดียวกันและ
+    // ตั้งรหัสผ่านได้ทั้งคู่ (บรรทัด `if (dto.password) data.password = ...` ข้างล่าง)
+    // ปล่อยให้ต่างกันเมื่อไร = ความปลอดภัยขึ้นกับว่าผู้เรียกบังเอิญใช้ route ไหน
+    const mustRevokeSessions = isNowBeingDeactivated || !!dto.password;
+
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.role !== undefined) data.role = dto.role as UserRole;
@@ -269,7 +274,7 @@ export class UsersService {
       },
     });
 
-    if (isNowBeingDeactivated) {
+    if (mustRevokeSessions) {
       // Revoke every live refresh token so the just-deactivated user cannot
       // continue to mint new access tokens from cookies already issued to
       // their browser. Best-effort: never block the user update itself.

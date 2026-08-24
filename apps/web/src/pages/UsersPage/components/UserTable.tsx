@@ -514,6 +514,7 @@ export function InviteTable({
           </p>
           <p>
             ถ้าเขาเผลอกด "ลืมรหัสผ่าน" ที่หน้าเข้าสู่ระบบ ระบบจะส่ง<span className="font-medium text-foreground">อีเมลเชิญใบใหม่</span>ให้แทน
+            — เฉพาะคำเชิญที่<span className="font-medium text-foreground">ยังไม่หมดอายุ</span> ถ้าเลย 24 ชม. ไปแล้วต้องกด "ส่งซ้ำ" ในตารางข้างล่างให้เอง
           </p>
           <p>
             ลิงก์เชิญมีอายุ <span className="font-medium text-foreground">24 ชั่วโมง</span> — และทุกครั้งที่ออกลิงก์ใหม่

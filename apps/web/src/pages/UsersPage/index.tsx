@@ -74,10 +74,12 @@ export default function UsersPage() {
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ id, password }: { id: string; password: string }) =>
       usersApi.saveProfile(id, { password }),
-    onSuccess: (_data, variables) => {
+    onSuccess: (saved, variables) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: userKeys.detail(variables.id) });
-      toast.success(`ตั้งรหัสผ่านใหม่ให้ "${resetTarget?.name ?? ''}" แล้ว — แจ้งรหัสใหม่ให้เขาด้วย`);
+      // ใช้ชื่อจาก response ไม่ใช่ `resetTarget` — ถ้าผู้ใช้ปิด dialog (Esc / คลิกนอกกล่อง)
+      // ระหว่างที่ยังบันทึกไม่เสร็จ resetTarget จะเป็น null แล้ว toast จะขึ้นชื่อว่าง
+      toast.success(`ตั้งรหัสผ่านใหม่ให้ "${saved.name}" แล้ว — แจ้งรหัสใหม่ให้เขาด้วย`);
       setResetTarget(null);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

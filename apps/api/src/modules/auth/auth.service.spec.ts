@@ -401,7 +401,7 @@ describe('AuthService', () => {
       expect(mockEmailSender.sendPasswordResetEmail).not.toHaveBeenCalled();
     });
 
-    it('only considers unused, unexpired invites', async () => {
+    it('only considers unused, unexpired, single-channel invites', async () => {
       (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
       (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue(pendingInvite);
 
@@ -413,9 +413,62 @@ describe('AuthService', () => {
             email: 'invited@test.com',
             usedAt: null,
             expiresAt: { gt: expect.any(Date) },
+            // T7-C6: `InviteService.resend` ไม่ส่ง `phone` ต่อ ⇒ ใบใหม่จะไม่มี otpHash และ
+            // `register` เลิกบังคับ OTP. เส้นทางที่ไม่ต้องล็อกอินนี้ต้องถอดช่องทางที่สอง
+            // ของใครไม่ได้ — คำเชิญที่ผูก OTP ไว้ต้องให้ OWNER กด "ส่งซ้ำ" เองเท่านั้น
+            otpHash: null,
           }),
         }),
       );
+    });
+
+    // มีแถว User ที่ยังไม่ถูกลบ (แค่ปิดใช้งาน) + มีคำเชิญค้าง = กับดัก: `resend` ฆ่าคำเชิญเดิม
+    // ก่อน แล้ว `create` โยน Conflict ('อีเมลนี้มีบัญชีอยู่แล้ว') ⇒ คำเชิญที่ใช้ได้หายไปเฉย ๆ
+    // โดยไม่มีใบใหม่ และ error ถูกกลืน ⇒ ต้องไม่แตะเส้นทางคำเชิญเลยในกรณีนี้
+    it('ไม่แตะคำเชิญเมื่อมีแถวผู้ใช้อยู่จริงแต่ถูกปิดใช้งาน', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user-8',
+        name: 'ปิดใช้งานอยู่',
+        email: 'inactive@test.com',
+        isActive: false,
+        deletedAt: null,
+      });
+
+      const res = await service.forgotPassword({ email: 'inactive@test.com' });
+
+      expect(res).toEqual({ message: expect.any(String) });
+      expect(prisma.inviteToken.findFirst).not.toHaveBeenCalled();
+      expect(mockInviteService.resend).not.toHaveBeenCalled();
+      expect(mockEmailSender.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    // หัวใจของทั้งฟีเจอร์: สี่กรณีต้องแยกจากกันไม่ได้จากภายนอก การเผลอทำให้ขาคำเชิญ
+    // ตอบข้อความที่ "ช่วยเหลือกว่า" = เปิด account-enumeration oracle บน endpoint สาธารณะ
+    it('ทุกกรณีคืนข้อความเดียวกันเป๊ะ (กัน account enumeration)', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user-9',
+        name: 'มีบัญชีจริง',
+        email: 'real@test.com',
+        isActive: true,
+        deletedAt: null,
+      });
+      const withAccount = await service.forgotPassword({ email: 'real@test.com' });
+
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+      (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue(pendingInvite);
+      const withInvite = await service.forgotPassword({ email: 'invited@test.com' });
+
+      (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue(null);
+      const withNothing = await service.forgotPassword({ email: 'nobody@test.com' });
+
+      // กรณีที่สี่: โดน rate limit (ครั้งที่ 4 ของอีเมลเดิมภายในชั่วโมงเดียวกัน)
+      await service.forgotPassword({ email: 'nobody@test.com' });
+      await service.forgotPassword({ email: 'nobody@test.com' });
+      const rateLimited = await service.forgotPassword({ email: 'nobody@test.com' });
+
+      expect(withInvite.message).toBe(withAccount.message);
+      expect(withNothing.message).toBe(withAccount.message);
+      expect(rateLimited.message).toBe(withAccount.message);
     });
 
     it('stays silent when the email has neither an account nor an invite', async () => {

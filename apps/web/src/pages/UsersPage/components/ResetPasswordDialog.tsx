@@ -102,15 +102,19 @@ export default function ResetPasswordDialog({
         <div className="flex gap-2 rounded-lg border border-warning/20 bg-warning/5 p-3">
           <KeyRound className="size-4 shrink-0 text-warning mt-0.5" />
           <p className="text-[11px] leading-snug text-muted-foreground">
+            {/* ถ้อยคำต้องตรงกับที่ระบบทำจริง: การรีเซ็ตเพิกถอน refresh token ทันที แต่
+                access token ที่ค้างอยู่ในหน้าจอยังใช้ได้จนหมดอายุ (JWT_EXPIRATION = 15 นาที)
+                จึงเขียนว่า "ทันที" ไม่ได้ */}
             {isSelf ? (
               <>
-                นี่คือบัญชีของคุณเอง — เมื่อบันทึกแล้ว
-                <span className="font-medium text-foreground">คุณจะถูกออกจากระบบทันที</span>
-                และต้องเข้าสู่ระบบใหม่ด้วยรหัสผ่านที่เพิ่งตั้ง
+                นี่คือบัญชีของคุณเอง — เมื่อบันทึกแล้วหน้าจอที่เปิดค้างอยู่จะใช้ต่อได้
+                <span className="font-medium text-foreground">อีกไม่เกิน 15 นาที</span>
+                จากนั้นต้องเข้าสู่ระบบใหม่ด้วยรหัสผ่านที่เพิ่งตั้ง
               </>
             ) : (
               <>
-                เมื่อบันทึกแล้ว ผู้ใช้คนนี้จะถูกบังคับออกจากระบบทุกอุปกรณ์
+                เมื่อบันทึกแล้ว อุปกรณ์ทุกเครื่องที่ผู้ใช้คนนี้ค้างไว้จะหลุดจากระบบ
+                <span className="font-medium text-foreground">ภายใน 15 นาที</span>
                 และต้องเข้าสู่ระบบใหม่ด้วยรหัสผ่านที่ตั้งให้ — อย่าลืมแจ้งรหัสใหม่ให้เขาทราบ
               </>
             )}

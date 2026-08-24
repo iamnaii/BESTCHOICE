@@ -11,6 +11,7 @@ import { CreditNoteDocumentService } from '../receipts/services/credit-note-docu
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import * as periodLockUtil from '../../utils/period-lock.util';
+import { bkkYearMonth } from '../../utils/date.util';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -598,9 +599,16 @@ describe('RepossessionsService', () => {
     });
 
     it('create() ปฏิเสธ paymentDate เดือนก่อนหน้า (ห้ามข้ามเดือน — คำสั่งเจ้าของ 2026-08-08 ข้อ 3)', async () => {
-      const prevMonth = new Date();
-      prevMonth.setDate(1);
-      prevMonth.setDate(0); // วันสุดท้ายของเดือนก่อน
+      // ต้องสร้าง "วันสุดท้ายของเดือนก่อน" บนปฏิทิน **เวลาไทย** ให้ตรงกับ `bkkYearMonth`
+      // ที่ service ใช้ตัดสิน — เดิมใช้ `new Date()` + setDate ซึ่งเป็นเวลาเครื่อง ⇒ บน CI
+      // (TZ=UTC) วันที่ได้จะเป็น "วันสุดท้ายของเดือนก่อน เวลา <เวลาปัจจุบัน> UTC" ซึ่งเมื่อ
+      // แปลงเป็นเวลาไทย (+7) จะข้ามไปเป็นวันที่ 1 ของเดือนปัจจุบันทันทีที่รันหลัง 17:00 UTC
+      // (= หลังเที่ยงคืนเวลาไทย) ⇒ guard ไม่ยิง แล้วโค้ดไหลไปตกที่ 'ไม่พบสัญญา' แทน
+      // (เทสล้มจริงบน CI 2026-08-23 17:57Z, ผ่านตอน 14:10Z — ดู bkkYearMonth ใน date.util)
+      // ตรึงเวลาไว้เที่ยงวันไทยเพื่อให้ห่างจากขอบเดือนทั้งสองฝั่ง ไม่ว่าเครื่องจะอยู่ TZ ไหน
+      const [y, m] = bkkYearMonth(new Date()).split('-').map(Number);
+      const prevMonth = new Date(Date.UTC(y, m - 1, 1, 5, 0, 0)); // 12:00 ไทย ของวันที่ 1 เดือนนี้
+      prevMonth.setUTCDate(0); // ถอย 1 วัน → วันสุดท้ายของเดือนก่อน (ยังเป็นเที่ยงวันไทย)
       await expect(
         service.create(
           {

@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>คำถามถึงผู้สอบบัญชี รอบ 2 — BESTCHOICE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f7f7f6; --surface: #ffffff; --surface-2: #fbfbfa;
+    --ink: #1c1c1a; --ink-2: #55554f; --ink-3: #86867c;
+    --line: #e3e3df; --line-2: #d1d1cb;
+    --accent: #0f766e; --accent-soft: #e6f2f0;
+    --a: #b45309; --a-soft: #fdf3e3;
+    --b: #0f766e; --b-soft: #e6f2f0;
+    --c: #57534e; --c-soft: #f0efec;
+    --focus: #0f766e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16161a; --surface: #1e1e23; --surface-2: #24242a;
+      --ink: #ecece8; --ink-2: #b6b6ae; --ink-3: #85857c;
+      --line: #33333b; --line-2: #43434d;
+      --accent: #5eead4; --accent-soft: #10302d;
+      --a: #fbbf24; --a-soft: #33270f;
+      --b: #5eead4; --b-soft: #10302d;
+      --c: #a8a29e; --c-soft: #2a2a2f;
+      --focus: #5eead4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16161a; --surface: #1e1e23; --surface-2: #24242a;
+    --ink: #ecece8; --ink-2: #b6b6ae; --ink-3: #85857c;
+    --line: #33333b; --line-2: #43434d;
+    --accent: #5eead4; --accent-soft: #10302d;
+    --a: #fbbf24; --a-soft: #33270f;
+    --b: #5eead4; --b-soft: #10302d;
+    --c: #a8a29e; --c-soft: #2a2a2f;
+    --focus: #5eead4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 40px 20px 96px; }
+  header { margin-bottom: 40px; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
+  h1 { font-size: clamp(26px, 4.4vw, 36px); font-weight: 700; line-height: 1.3; margin: 0 0 14px; letter-spacing: -.01em; }
+  .lede { color: var(--ink-2); font-size: 17px; margin: 0 0 20px; max-width: 62ch; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13.5px; color: var(--ink-3); padding-top: 18px; border-top: 1px solid var(--line); }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+  .howto { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin: 28px 0 40px; }
+  .howto h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .howto p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+  .howto p + p { margin-top: 8px; }
+  .group { margin-bottom: 48px; }
+  .group-head { margin-bottom: 20px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
+  .badge.a { background: var(--a-soft); color: var(--a); }
+  .badge.b { background: var(--b-soft); color: var(--b); }
+  .badge.c { background: var(--c-soft); color: var(--c); }
+  .group h2 { font-size: 20px; font-weight: 700; margin: 0 0 6px; letter-spacing: -.005em; }
+  .group-note { font-size: 14.5px; color: var(--ink-3); margin: 0; }
+  .q { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px 22px 20px; margin-bottom: 16px; border-left: 3px solid var(--line-2); }
+  .q.ga { border-left-color: var(--a); }
+  .q.gb { border-left-color: var(--b); }
+  .q.gc { border-left-color: var(--c); }
+  .q-head { display: flex; gap: 12px; align-items: baseline; margin-bottom: 12px; }
+  .q-id { font-size: 13px; font-weight: 700; color: var(--ink-3); font-variant-numeric: tabular-nums; flex-shrink: 0; padding-top: 2px; }
+  .q-title { font-size: 17.5px; font-weight: 600; margin: 0; line-height: 1.45; }
+  .q-body { font-size: 15px; color: var(--ink-2); }
+  .q-body p { margin: 0 0 10px; }
+  .q-body p:last-child { margin-bottom: 0; }
+  .q-body code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: .88em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
+  .q-body strong { color: var(--ink); font-weight: 600; }
+  .prev { margin: 0 0 12px; padding: 10px 12px; background: var(--surface-2); border-left: 2px solid var(--line-2); border-radius: 0 7px 7px 0; font-size: 14px; color: var(--ink-2); }
+  .prev b { color: var(--ink); }
+  .ask { margin-top: 14px; padding: 12px 14px; background: var(--accent-soft); border-radius: 9px; font-size: 15px; color: var(--ink); font-weight: 500; }
+  .ask::before { content: 'คำถาม'; display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .08em; color: var(--accent); margin-bottom: 4px; }
+  .opts { margin: 12px 0 0; padding-left: 20px; font-size: 14.5px; color: var(--ink-2); }
+  .opts li { margin-bottom: 5px; }
+  .ans { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--line-2); }
+  .ans label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin-bottom: 7px; letter-spacing: .02em; }
+  textarea { width: 100%; min-height: 78px; resize: vertical; font-family: inherit; font-size: 15px; line-height: 1.6; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 9px; padding: 11px 13px; }
+  textarea:focus { outline: 2px solid var(--focus); outline-offset: 1px; border-color: transparent; }
+  textarea::placeholder { color: var(--ink-3); }
+  .toolbar { position: sticky; bottom: 0; margin-top: 40px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; box-shadow: 0 -2px 20px rgba(0,0,0,.06); }
+  .progress { font-size: 14px; color: var(--ink-2); }
+  .progress b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .btns { display: flex; gap: 9px; flex-wrap: wrap; }
+  button { font-family: inherit; font-size: 14.5px; font-weight: 600; padding: 9px 16px; border-radius: 9px; cursor: pointer; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--ink); }
+  button:hover { border-color: var(--ink-3); }
+  button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.primary:hover { filter: brightness(1.08); }
+  .saved-note { font-size: 13px; color: var(--ink-3); margin-top: 10px; }
+  @media (max-width: 560px) {
+    .wrap { padding: 28px 14px 90px; }
+    .q { padding: 18px 16px 16px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .btns button { flex: 1; }
+  }
+  @media print {
+    .toolbar, .howto { display: none; }
+    body { background: #fff; }
+    .q { break-inside: avoid; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">BESTCHOICE · เอกสารสอบถามทางบัญชี รอบ 2</div>
+  <h1>คำถามต่อเนื่องจากคำตอบวันที่ 24 สิงหาคม</h1>
+  <p class="lede">
+    ขอบพระคุณสำหรับคำตอบทั้ง 13 ข้อครับ — ได้นำไปตรวจกับระบบจริงแล้ว
+    ทำตามได้ทันที 2 ข้อ (เปลี่ยนรหัสบัญชีเป็น S21-1104 และให้หน้าร้านตั้งค่าคอมให้ตรงกัน)
+    ส่วนที่เหลือติดอยู่ตรงรายละเอียดที่ยังไม่ได้ระบุ จึงขอเรียนถามเพิ่มครับ
+  </p>
+  <p class="lede" style="margin-top:-6px">
+    <strong>ข้อ A4 และ A6 เร่งเป็นพิเศษ</strong> — ทางร้านกำหนดตัดยอดตั้งต้นสมุดหน้าร้าน
+    <strong>วันเสาร์ที่ 29 สิงหาคม</strong> (นับสต็อก/เงินสดจริงแล้วเริ่มบันทึกขายในระบบ)
+    จึงต้องทราบวิธีลงบัญชีก่อนวันนั้นครับ
+  </p>
+  <div class="meta">
+    <span><b>วันที่</b> 24 สิงหาคม 2569</span>
+    <span><b>ต่อเนื่องจาก</b> คำตอบ 13 ข้อ รอบเดียวกัน</span>
+    <span><b>จำนวน</b> 13 ข้อ · 3 กลุ่ม</span>
+    <span><b>เร่งที่สุด</b> ข้อ A4 + A6 (ใช้ตั้งยอดยกมา 29 ส.ค.)</span>
+  </div>
+</header>
+
+<section class="howto">
+  <h2>วิธีตอบ</h2>
+  <p>พิมพ์คำตอบในช่องใต้แต่ละข้อได้เลย ระบบจะเก็บร่างไว้ในเบราว์เซอร์ของท่านเอง ปิดแล้วเปิดใหม่ข้อความยังอยู่</p>
+  <p>ตอบครบแล้วกด “คัดลอกคำตอบทั้งหมด” ด้านล่าง แล้ววางส่งกลับทาง LINE หรืออีเมลได้ทันที — คำตอบไม่ถูกส่งเข้าระบบโดยอัตโนมัติ</p>
+</section>
+
+<!-- ══════════ กลุ่ม A ══════════ -->
+<section class="group">
+  <div class="group-head">
+    <span class="badge a">กลุ่ม A · บล็อกอยู่</span>
+    <h2>ต้องได้คำตอบก่อนจึงจะลงบัญชีได้</h2>
+    <p class="group-note">ห้าข้อนี้ทราบแล้วว่า “ต้องทำ” แต่ยังไม่ทราบว่า “ลงบัญชีตัวไหน / อย่างไร” จึงยังบันทึกไม่ได้</p>
+  </div>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A1</span><h3 class="q-title">รายการเดิมที่ลงบัญชี S21-3001 ไปแล้ว — ย้ายหรือปล่อยไว้</h3></div>
+    <div class="q-body">
+      <p class="prev"><b>ท่านตอบข้อ B4 ว่า:</b> “ผิด ใช้ S21-1104 เจ้าหนี้ FINANCE” — เปลี่ยนในระบบเรียบร้อยแล้วครับ</p>
+      <p>บัญชีเดิม <code>S21-3001</code> เปิดใช้เมื่อ 19 สิงหาคม (5 วันก่อนหน้า) จึงอาจมีรายการลงไปแล้วบางส่วน</p>
+      <p>การย้ายรหัสบัญชีของรายการที่ลงไปแล้ว เท่ากับแก้สมุดของงวดที่อาจปิดไปแล้ว ทางเราจึง<strong>ไม่ดำเนินการเองโดยพลการ</strong></p>
+      <div class="ask">ควรย้ายรายการเดิมมาที่ S21-1104 ให้ยอดรวมอยู่บัญชีเดียว หรือปล่อยรายการเดิมไว้ที่ S21-3001 แล้วเริ่มใช้บัญชีใหม่ตั้งแต่วันนี้เป็นต้นไป?</div>
+      <ul class="opts">
+        <li>ถ้าย้าย — ต้องการให้ลงวันที่ย้ายเป็นวันใด และต้องแจ้งในหมายเหตุประกอบงบหรือไม่</li>
+        <li>ถ้าไม่ย้าย — บัญชีเดิมจะยังคงค้างยอดอยู่ ต้องแสดงแยกบรรทัดในงบหรือไม่</li>
+      </ul>
+    </div>
+    <div class="ans"><label for="a1">คำตอบ</label><textarea id="a1" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A2</span><h3 class="q-title">ค่าธรรมเนียมเลื่อนงวดที่เหลือ — ลงบัญชีรายได้ตัวไหน</h3></div>
+    <div class="q-body">
+      <p class="prev"><b>ท่านตอบข้อ C2 ว่า:</b> “กรณีปิดสัญญาก่อน นำมาคำนวนเป็นชำระล่วงหน้า เพื่อลดยอดค้างชำระ และบันทึกทางบัญชีเป็นรายได้ (เหมือนชำระค่างวดล่วงหน้า)”</p>
+      <p>ส่วนแรก (ลดยอดค้างชำระ) ระบบทำอยู่แล้วครับ แต่ส่วนที่<strong>เหลือ</strong>หลังปิดสัญญายังลงรายได้ไม่ได้ เพราะ<strong>ผังบัญชีปัจจุบันไม่มีบัญชีค่าธรรมเนียมเลื่อนงวด</strong></p>
+      <p>ตัวอย่างจริงที่เคยเรียนท่านไป: เงินพัก 354 บาท ถูกใช้ลดยอดปิดจริง 188.58 บาท <strong>เหลือ 165.42 บาท</strong> ที่ยังค้างอยู่</p>
+      <div class="ask">เงินส่วนที่เหลือควรรับรู้เข้าบัญชีรายได้ตัวใด?</div>
+      <ul class="opts">
+        <li><code>41-1101</code> รายได้ดอกเบี้ย (อยู่ในระบบภาษีมูลค่าเพิ่ม)</li>
+        <li><code>42-1103</code> ค่าปรับชำระล่าช้า (ไม่มีภาษีมูลค่าเพิ่ม — แต่ชื่อบัญชีคนละเรื่อง)</li>
+        <li>เปิดบัญชีใหม่ในกลุ่ม 42-11XX — ขอชื่อบัญชีที่เหมาะสมด้วยครับ</li>
+      </ul>
+      <p style="margin-top:12px">คำถามพ่วง: เงินก้อนนี้ต้องเสียภาษีมูลค่าเพิ่มหรือไม่ (ตอนรับเงินเข้ามาไม่ได้ตั้งภาษีไว้) · กรณีลูกค้า<strong>ผ่อนครบงวด</strong>แล้วยังมีเงินพักเหลือ ใช้วิธีเดียวกันหรือไม่ · กรณี<strong>ตัดหนี้สูญ</strong> เงินที่ลูกค้าจ่ายล่วงหน้าไว้นำมาหักกลบหนี้ที่ตัดไปแล้วได้หรือไม่</p>
+    </div>
+    <div class="ans"><label for="a2">คำตอบ</label><textarea id="a2" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A3</span><h3 class="q-title">ค่าคอมที่ขาดไปของสัญญาเก่า — ลงคู่กับบัญชีใด</h3></div>
+    <div class="q-body">
+      <p class="prev"><b>ท่านตอบข้อ C1 ว่า:</b> “ทำไมต้องตั้ง เพราะเป็นรายได้ หน้าร้าน S41-1201 รายได้ - ค่าคอมจาก FINANCE” — แก้ระบบให้ตั้งตรงกันทั้งสองฝั่งแล้วครับ (มีผลกับสัญญาใหม่ตั้งแต่นี้ไป)</p>
+      <p>ปัญหาอยู่ที่<strong>สัญญาเก่าที่จ่ายเงินให้หน้าร้านไปแล้ว</strong> — ฝั่งไฟแนนซ์จ่ายเงินออกไปเท่ากับ <em>ยอดจัด + ค่าคอม</em> แต่ฝั่งหน้าร้านบันทึกรับเงินเข้าแค่ <em>ยอดจัด</em></p>
+      <p>ผลคือหน้าร้านบันทึก<strong>ต่ำกว่าความจริงทั้งเงินสดและรายได้</strong> เท่ากับค่าคอมที่ขาดไป</p>
+      <div class="ask">รายการปรับปรุงย้อนหลังควรเป็นรูปแบบใด?</div>
+      <ul class="opts">
+        <li>เดบิต <strong>ธนาคาร</strong> / เครดิต S41-1201 — รับรู้รายได้คู่กับเงินที่รับมาจริง</li>
+        <li>เดบิต <strong>ลูกหนี้ระหว่างกัน</strong> / เครดิต S41-1201 — ตั้งเป็นลูกหนี้ (แต่เงินรับไปแล้ว)</li>
+      </ul>
+      <p style="margin-top:12px">และควรลงในงวดใด — เดือนที่เปิดสัญญาเดิม (ต้องเปิดงวดที่ปิดไปแล้ว) หรือลงในงวดปัจจุบัน?</p>
+    </div>
+    <div class="ans"><label for="a3">คำตอบ</label><textarea id="a3" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A4</span><h3 class="q-title">ยอดยกมาของหน้าร้าน (ตัดยอด 29 ส.ค.) — ขอบเขต ตัวปิด และรายการระหว่างกัน</h3></div>
+    <div class="q-body">
+      <p class="prev"><b>ท่านตอบข้อ A2 ว่า:</b> “ต้องตั้ง”</p>
+      <p><strong>บริบทที่เปลี่ยนไปตั้งแต่ส่งคำถามรอบแรก:</strong> ทางร้านตัดสินใจตั้งยอดตั้งต้นสมุดหน้าร้าน
+        ทั้งชุดในวัน<strong>เสาร์ที่ 29 สิงหาคม</strong> โดยนับสต็อก เงินสด และสรุปเจ้าหนี้ค่าสินค้าจริง
+        แล้วบันทึกเป็นรายการปรับปรุงใบเดียว ก่อนเริ่มให้พนักงานคีย์ใบขายในระบบ</p>
+      <p>ส่วนที่<strong>ยังไม่กล้าลง</strong>คือรายการระหว่างกันสองกลุ่ม — ลูกหนี้ที่ไฟแนนซ์ค้างจ่ายหน้าร้าน
+        และเจ้าหนี้ที่หน้าร้านค้างไฟแนนซ์ — เพราะระบบอ่านยอดพวกนี้<strong>รายสัญญา</strong>
+        แต่ยอดยกมาเป็นก้อนรวมไม่มีเลขสัญญากำกับ ถ้าลงไปจะขึ้นเป็นรายการผิดปกติในรายงานกระทบยอดทุกเดือนตลอดไป</p>
+      <p>แผนปัจจุบันจึง<strong>เว้นสองกลุ่มนี้ไว้ก่อน</strong> แล้วเขียนกำกับในหมายเหตุประกอบงบว่า
+        “ยังไม่รับรู้ลูกหนี้/เจ้าหนี้ระหว่างกิจการ ณ วันยกมา” — ผลคือส่วนของเจ้าของฝั่งหน้าร้าน
+        จะ<strong>ต่ำกว่าความจริง</strong>เท่ายอดระหว่างกันสุทธิ</p>
+      <div class="ask">ขอความชัดเจน 4 เรื่องครับ</div>
+      <ul class="opts">
+        <li><strong>วิธีเว้นไว้ก่อนแบบข้างต้น ยอมรับได้หรือไม่</strong> — หรือต้องลงให้ครบตั้งแต่วันยกมา
+          (ถ้าต้องลง ขอวิธีอ้างอิงให้ระบบตามรายสัญญาได้ด้วยครับ)</li>
+        <li><strong>ขอบเขต</strong> — ลงเฉพาะรายการในงบดุล หรือให้ลงรายได้และต้นทุนของช่วง พ.ค.–มิ.ย. ด้วย</li>
+        <li><strong>ตัวปิดรายการ</strong> — ควรใช้ตัวใดใน 3 ตัวนี้:
+          <code>S31-1101</code> ทุน · <code>S32-1101</code> กำไรสะสม · <code>S33-1101</code> กำไรปีปัจจุบัน
+          <em>(ช่วงที่กระทบอยู่ในปีบัญชีปัจจุบัน แต่เป็นยอดก่อนเปิดสมุด จึงไม่แน่ใจว่าเข้าตัวไหน)</em></li>
+        <li><strong>วันที่</strong> — ลงวันตัดยอดวันเดียว (29 ส.ค.) หรือย้อนไปวันเปิดสัญญาจริงของแต่ละใบ</li>
+      </ul>
+    </div>
+    <div class="ans"><label for="a4">คำตอบ</label><textarea id="a4" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A5</span><h3 class="q-title">เงินมัดจำใบจอง — บันทึกตอนรับเงิน หรือตอนแปลงเป็นใบขาย</h3></div>
+    <div class="q-body">
+      <p class="prev"><b>ท่านตอบข้อ C4 ว่า:</b> “แก้ไขไปข้างหน้าอย่างเดียว” — รับทราบเรื่องไม่บันทึกย้อนหลังครับ</p>
+      <p>ระหว่างเตรียมแก้ไข พบว่าเรื่องกว้างกว่าที่เรียนท่านไปตอนแรก: ระบบใบจอง<strong>ไม่ได้บันทึกบัญชีเลยแม้แต่รายการเดียว</strong> ไม่ใช่แค่ตอนแปลงเป็นใบขาย</p>
+      <p>แปลว่า<strong>เงินมัดจำที่รับจากลูกค้าจริงก็ไม่เคยขึ้นสมุดบัญชี</strong> และใบจองที่ยกเลิกแล้วคืนเงินก็ไม่มีรายการเงินออก</p>
+      <div class="ask">เมื่อแก้ไปข้างหน้า ควรบันทึกเงินมัดจำอย่างไร?</div>
+      <ul class="opts">
+        <li><strong>บันทึกตอนรับเงินมัดจำ</strong> — เดบิตเงินสด / เครดิตเงินรับล่วงหน้า แล้วล้างตอนแปลงเป็นใบขาย (ตรงตามหลักการ แต่ต้องมีบัญชีรองรับกรณีริบมัดจำเมื่อลูกค้าไม่มารับของ ซึ่ง<strong>ยังไม่มีในผังบัญชี</strong> — ขอชื่อบัญชีด้วยครับ)</li>
+        <li><strong>บันทึกครั้งเดียวตอนแปลงเป็นใบขาย</strong> — ง่ายกว่า แต่ระหว่างที่ยังไม่แปลง เงินสดที่รับมาจริงจะไม่ปรากฏในบัญชี</li>
+      </ul>
+      <p style="margin-top:12px">และ “ไปข้างหน้า” ให้เริ่มนับจากวันใด — วันที่ปรับปรุงระบบเสร็จ หรือวันเริ่มงวดบัญชีถัดไป</p>
+    </div>
+    <div class="ans"><label for="a5">คำตอบ</label><textarea id="a5" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q ga">
+    <div class="q-head"><span class="q-id">A6</span><h3 class="q-title">เงินที่เจ้าของออกให้หน้าร้าน — ตั้งเป็นหนี้หรือเป็นทุน</h3></div>
+    <div class="q-body">
+      <p>ระหว่างเตรียมยอดตั้งต้น (ข้อ A4) พบว่าเงินทุนหมุนเวียนของหน้าร้านส่วนหนึ่งมาจาก<strong>เจ้าของออกให้เอง</strong>
+        โดยตั้งใจว่าจะคืนเมื่อกิจการมีสภาพคล่อง ไม่ได้ตั้งใจให้เป็นการลงทุนเพิ่ม</p>
+      <p>ทางเราเข้าใจว่าควรตั้งเป็น<strong>หนี้สิน</strong> (ไม่ใช่ทุน) และเป็น<strong>รายการกับบุคคลที่เกี่ยวข้องกัน</strong>
+        ที่ต้องเปิดเผยแยกในหมายเหตุประกอบงบ จึงเตรียมเปิดบัญชีใหม่ไว้:</p>
+      <p><code>S21-4101</code> <strong>เงินกู้ยืมกรรมการ - SHOP</strong> — หมวดหนี้สิน ยอดปกติด้านเครดิต
+        แยกจากเจ้าหนี้การค้า (<code>S21-11XX</code>) และแยกจากเจ้าหนี้ระหว่างกิจการ (<code>S21-1104</code>)
+        เพราะเป็นคู่สัญญาคนละราย</p>
+      <div class="ask">ขอความเห็น 3 เรื่องครับ</div>
+      <ul class="opts">
+        <li><strong>ตั้งเป็นหนี้สินถูกต้องหรือไม่</strong> — หรือควรถือเป็นส่วนของเจ้าของ (เพิ่มทุน)</li>
+        <li><strong>ชื่อและรหัสบัญชีที่เสนอเหมาะสมหรือไม่</strong> — ขอชื่อที่ท่านต้องการใช้ในงบครับ
+          (ต้องตั้งในระบบก่อน 27 ส.ค. จึงจะทันลงรายการวันที่ 29)</li>
+        <li><strong>ต้องแยกระยะสั้น/ระยะยาว หรือคิดดอกเบี้ยหรือไม่</strong> — ปัจจุบันไม่มีกำหนดชำระคืนและไม่คิดดอกเบี้ย</li>
+      </ul>
+      <p style="margin-top:12px">ส่วนตัวเลขยอดคงเหลือ ทางเราจะสรุปให้ก่อนวันตัดยอดครับ</p>
+    </div>
+    <div class="ans"><label for="a6">คำตอบ</label><textarea id="a6" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+</section>
+
+<!-- ══════════ กลุ่ม B ══════════ -->
+<section class="group">
+  <div class="group-head">
+    <span class="badge b">กลุ่ม B · ขอความชัดเจน</span>
+    <h2>ตีความคำตอบเดิมได้มากกว่าหนึ่งทาง</h2>
+    <p class="group-note">ทางเราตีความไว้ทางหนึ่งแล้ว แต่ขอยืนยันก่อนลงมือ เพราะถ้าเข้าใจผิดจะแก้ยาก</p>
+  </div>
+
+  <article class="q gb">
+    <div class="q-head"><span class="q-id">B1</span><h3 class="q-title">“ต้องแยกบันทึก” หมายถึงแยกการบันทึก หรือแยกการจ่ายเงิน</h3></div>
+    <div class="q-body">
+      <p class="prev"><b>ท่านตอบข้อ C5 ว่า:</b> “ต้องแยกบันทึก เพราะเป็นค่าใช้จ่าย SHOP”</p>
+      <p>คำถามเดิมคือ ประกันสังคมและภาษีหัก ณ ที่จ่าย ของพนักงานทั้งสองส่วน จ่ายรวมจากบัญชีธนาคารเดียวได้หรือไม่</p>
+      <div class="ask">ขอยืนยันว่าท่านหมายถึงข้อใดครับ</div>
+      <ul class="opts">
+        <li><strong>(ก)</strong> ห้ามจ่ายรวม — ต้องแยกจ่ายจากบัญชีธนาคารของแต่ละส่วน</li>
+        <li><strong>(ข)</strong> จ่ายรวมจากบัญชีเดียวได้ แต่<strong>ค่าใช้จ่ายต้องบันทึกอยู่ในสมุดของหน้าร้าน</strong> โดยมีบัญชีเจ้าหนี้ระหว่างกัน (S21-1104) เป็นตัวเชื่อม</li>
+      </ul>
+      <p style="margin-top:12px">ทางเราเข้าใจว่าเป็นข้อ (ข) เพราะท่านใช้คำว่า “แยก<strong>บันทึก</strong>” และให้เหตุผลว่า “เป็นค่าใช้จ่าย SHOP” ซึ่งเป็นเรื่องการจัดประเภทค่าใช้จ่าย ไม่ใช่เรื่องช่องทางจ่ายเงิน — แต่ขอยืนยันครับ เพราะถ้าเป็นข้อ (ก) แปลว่าไม่ต้องแก้ระบบเลย</p>
+    </div>
+    <div class="ans"><label for="b1">คำตอบ</label><textarea id="b1" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q gb">
+    <div class="q-head"><span class="q-id">B2</span><h3 class="q-title">บัญชี S21-1104 รับหนี้ระหว่างกันได้ทุกประเภทหรือไม่</h3></div>
+    <div class="q-body">
+      <p>ตามคำตอบข้อ A1 และ C5 ทางเราเข้าใจว่าบัญชีนี้ตั้งตาม<strong>คู่สัญญา</strong> (หนี้ที่หน้าร้านติดไฟแนนซ์) ไม่ได้ตั้งตาม<strong>วัตถุประสงค์</strong> จึงรับหนี้ได้ทุกประเภท</p>
+      <p>ปัจจุบันจะมีอย่างน้อย 3 ประเภทมารวมกันในบัญชีเดียว: ค่าเครื่องที่รับคืนจากการเปลี่ยนเครื่อง · เงินเรียกคืนจากการยกเลิกสัญญา · ประกันสังคม/ภาษีที่จ่ายแทนกัน</p>
+      <div class="ask">ถูกต้องหรือไม่ครับ และต้องแยกแสดงแต่ละประเภทในรายงานอายุหนี้ด้วยหรือไม่</div>
+      <p style="margin-top:12px">ถ้าต้องแยก ทางเราจะติดรหัสประเภทกำกับไว้ในแต่ละรายการตั้งแต่ต้น — <strong>ต้องตัดสินก่อนบันทึกรายการแรก</strong> เพราะถ้าบันทึกไปแล้วค่อยแยกทีหลังจะย้อนไม่ได้</p>
+      <p>อีกข้อหนึ่ง: ขอ<strong>ชื่อบัญชีที่ถูกต้อง</strong>ครับ — ท่านเขียนว่า “เจ้าหนี้ FINANCE” ส่วนบัญชีข้างเคียงในผังใช้รูปแบบ “เจ้าหนี้ - ซัพพลายเออร์มือถือ” ควรใช้ชื่อใด</p>
+    </div>
+    <div class="ans"><label for="b2">คำตอบ</label><textarea id="b2" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q gb">
+    <div class="q-head"><span class="q-id">B3</span><h3 class="q-title">ยอดตั้งต้นฝั่งไฟแนนซ์ตาม บอจ.5 — ลงเมื่อไร ด้วยวิธีใด</h3></div>
+    <div class="q-body">
+      <p class="prev"><b>ท่านตอบข้อ A3 ว่า:</b> “ทำเป็นคู่มือให้ไปตั้งต้นเอง / หรือทำให้สามารถไปบันทึกค่าเริ่มต้นเอง”</p>
+      <p>รับทราบครับ — <strong>ฝั่งหน้าร้าน</strong>จะใช้เมนูบันทึกรายการปรับปรุงที่มีอยู่แล้วลงมือวันที่ 29 ส.ค. (ข้อ A4)
+        จึงไม่ต้องรอทำหน้าจอใหม่</p>
+      <p>ที่ยังค้างคือ<strong>ฝั่งไฟแนนซ์</strong> — ยอดตั้งต้นตาม บอจ.5 (ทุนจดทะเบียน ทุนชำระแล้ว
+        ส่วนเกินมูลค่าหุ้น ค่าหุ้นค้างชำระ) รวมถึงเงินฝากธนาคารและกำไรสะสม</p>
+      <div class="ask">ยอดตั้งต้นฝั่งไฟแนนซ์ ต้องการให้ลงเมื่อไรและด้วยวิธีใดครับ</div>
+      <ul class="opts">
+        <li>ลงพร้อมกันกับหน้าร้าน (29 ส.ค.) หรือแยกรอบ</li>
+        <li>บันทึกทุนจดทะเบียนผ่านเมนูส่วนของผู้ถือหุ้นที่มีอยู่ หรือรวมเป็นรายการปรับปรุงใบเดียวกับยอดอื่น
+          <em>(ถ้าลงสองทางต้องระวังบันทึกทุนซ้ำ)</em></li>
+        <li>ทางร้านต้องเตรียมเอกสารอะไรให้ท่านบ้างก่อนลงรายการ</li>
+      </ul>
+    </div>
+    <div class="ans"><label for="b3">คำตอบ</label><textarea id="b3" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+</section>
+
+<!-- ══════════ กลุ่ม C ══════════ -->
+<section class="group">
+  <div class="group-head">
+    <span class="badge c">กลุ่ม C · พบเพิ่ม</span>
+    <h2>เรื่องที่พบระหว่างตรวจสอบระบบ</h2>
+    <p class="group-note">ไม่ได้อยู่ในคำถามรอบแรก แต่เป็นเรื่องเดียวกัน จึงขอเรียนถามไปพร้อมกัน</p>
+  </div>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C1</span><h3 class="q-title">การขายผ่านไฟแนนซ์ภายนอกไม่ได้บันทึกบัญชีหน้าร้านเลย</h3></div>
+    <div class="q-body">
+      <p>ระหว่างตรวจเรื่องใบจอง (คำถามรอบแรกข้อ C4) พบช่องว่างแบบเดียวกันที่<strong>มีจำนวนรายการมากกว่า</strong></p>
+      <p>การขายที่จัดไฟแนนซ์ผ่านบริษัทภายนอก ปัจจุบัน<strong>ไม่บันทึกรายได้ ต้นทุนขาย หรือตัดสินค้าคงเหลือ</strong>ในสมุดหน้าร้านเลย (ต่างจากการขายสดหน้าร้านซึ่งบันทึกครบ)</p>
+      <div class="ask">ขอแนวทางเดียวกับที่ท่านตอบเรื่องใบจอง (แก้ไปข้างหน้าอย่างเดียว) หรือไม่ครับ</div>
+      <p style="margin-top:12px">ถ้าจำนวนเงินสะสมมีนัยสำคัญ ควรตั้งยอดยกมาย้อนหลังพร้อมกับข้อ A4 หรือไม่ (ทางเรากำลังนับจำนวนและยอดรวมอยู่ จะส่งตัวเลขให้ท่านเมื่อได้)</p>
+    </div>
+    <div class="ans"><label for="c1">คำตอบ</label><textarea id="c1" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C2</span><h3 class="q-title">ค่าคอมอัตราสำรอง 10% — ควรมีต่อไปหรือบังคับให้ระบุทุกสัญญา</h3></div>
+    <div class="q-body">
+      <p>สัญญาที่ไม่ได้ระบุค่าคอมไว้ ระบบจะคำนวณให้อัตโนมัติที่ 10% ของยอดจัด</p>
+      <p>ตามคำตอบข้อ C1 ตอนนี้ทั้งสองสมุดใช้ตัวเลขเดียวกันแล้ว — แต่เป็นตัวเลขที่<strong>ระบบกำหนดเอง ไม่ได้มาจากข้อตกลงจริง</strong></p>
+      <div class="ask">ควรคงอัตราสำรองนี้ไว้ หรือควรบังคับให้ผู้ทำสัญญาระบุค่าคอมทุกใบ?</div>
+      <p style="margin-top:12px">มุมมองทางเรา: การบังคับระบุจะตรงความจริงมากกว่า แต่จะทำให้เปิดสัญญาไม่ได้ถ้าพนักงานยังไม่ทราบตัวเลข จึงขอความเห็นท่านครับ</p>
+    </div>
+    <div class="ans"><label for="c2">คำตอบ</label><textarea id="c2" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C3</span><h3 class="q-title">ตัวเลขผลขาดทุนในข้อ B1 ต่างกัน 4 สตางค์</h3></div>
+    <div class="q-body">
+      <p class="prev"><b>ท่านตอบข้อ B1 ว่า:</b> “ถูกต้อง” — ขอบพระคุณครับ</p>
+      <p>ขอเรียนให้ทราบเพื่อความครบถ้วน: ตัวเลขในกระดาษทำการที่เรียนท่านคือ <strong>126.64</strong> บาท ส่วนที่ระบบคำนวณจริงคือ <strong>126.68</strong> บาท</p>
+      <p>ต่างกัน 4 สตางค์ เพราะกระดาษทำการคำนวณแบบเส้นตรง ส่วนระบบล้างลูกหนี้ตามยอดคงเหลือจริงในบัญชี</p>
+      <div class="ask">รับทราบและใช้ตัวเลขของระบบได้หรือไม่ครับ หรือต้องการให้ปรับวิธีคำนวณให้ตรงกับกระดาษทำการ</div>
+    </div>
+    <div class="ans"><label for="c3">คำตอบ</label><textarea id="c3" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+
+  <article class="q gc">
+    <div class="q-head"><span class="q-id">C4</span><h3 class="q-title">รายการ 4 ใบลงผิดสมุด — แก้อย่างไร</h3></div>
+    <div class="q-body">
+      <p>ตรวจข้อมูลจริงก่อนตั้งยอดยกมาแล้วพบว่ามีรายการ <strong>4 ใบ</strong> ที่บันทึกไว้ใน<strong>สมุดหน้าร้าน</strong>
+        แต่ใช้<strong>รหัสบัญชีของฝั่งไฟแนนซ์</strong></p>
+      <ul class="opts">
+        <li><code>JE-202605-00003</code> · 11 พ.ค. · 107 บาท</li>
+        <li><code>JE-202605-00005</code> · 11 พ.ค. · 214 บาท</li>
+        <li><code>JE-202607-00041</code> · 9 ก.ค. · 107 บาท</li>
+        <li><code>JE-202607-00054</code> · 23 ก.ค. · 214 บาท</li>
+      </ul>
+      <p style="margin-top:12px">ทั้งหมดเป็นการบันทึกจ่ายค่าใช้จ่าย (เงินสด 642 บาท + ภาษีซื้อ 42 บาท)</p>
+      <p>สาเหตุ: ระบบตรวจแค่ว่ารหัสบัญชีมีอยู่จริง <strong>แต่ไม่ได้ตรวจว่ารหัสตรงกับบริษัทที่ผูกไว้</strong>
+        ⇒ รายการพวกนี้<strong>หายไปจากรายงานทั้งสองฝั่ง</strong> โดยงบทดลองยังสมดุลตามปกติ จึงไม่มีสัญญาณเตือน</p>
+      <div class="ask">ควรแก้ด้วยวิธีใดครับ</div>
+      <ul class="opts">
+        <li><strong>ย้ายใบไปผูกกับฝั่งไฟแนนซ์</strong> — รายการเดิมถูกอยู่แล้ว แค่ระบุบริษัทผิด</li>
+        <li><strong>กลับรายการแล้วบันทึกใหม่</strong>ด้วยรหัสบัญชีฝั่งหน้าร้าน — ถ้าถือว่าเป็นค่าใช้จ่ายของหน้าร้านจริง</li>
+      </ul>
+      <p style="margin-top:12px">รายการอยู่ในเดือน พ.ค. และ ก.ค. ซึ่งอาจปิดงวดไปแล้ว — ถ้าต้องเปิดงวดย้อนหลังขอทราบด้วยครับ</p>
+    </div>
+    <div class="ans"><label for="c4">คำตอบ</label><textarea id="c4" placeholder="พิมพ์คำตอบที่นี่"></textarea></div>
+  </article>
+</section>
+
+<div class="toolbar">
+  <div class="progress">ตอบแล้ว <b id="done">0</b> / 13 ข้อ</div>
+  <div class="btns">
+    <button id="clear" type="button">ล้างคำตอบ</button>
+    <button id="print" type="button">พิมพ์</button>
+    <button id="copy" class="primary" type="button">คัดลอกคำตอบทั้งหมด</button>
+  </div>
+</div>
+<p class="saved-note" id="note">ร่างคำตอบถูกเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น</p>
+
+</div>
+
+<script>
+(function () {
+  var KEY = 'bestchoice-cpa-answers-round2-v1';
+  var areas = Array.prototype.slice.call(document.querySelectorAll('textarea'));
+  var doneEl = document.getElementById('done');
+  var note = document.getElementById('note');
+
+  function read() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  function write(obj) {
+    try { localStorage.setItem(KEY, JSON.stringify(obj)); } catch (e) {}
+  }
+  function count() {
+    var n = areas.filter(function (t) { return t.value.trim().length > 0; }).length;
+    doneEl.textContent = String(n);
+  }
+
+  var saved = read();
+  areas.forEach(function (t) {
+    if (saved[t.id]) t.value = saved[t.id];
+    t.addEventListener('input', function () {
+      var cur = read();
+      if (t.value.trim()) { cur[t.id] = t.value; } else { delete cur[t.id]; }
+      write(cur);
+      count();
+    });
+  });
+  count();
+
+  function label(t) {
+    var card = t.closest('.q');
+    var id = card.querySelector('.q-id').textContent.trim();
+    var title = card.querySelector('.q-title').textContent.trim().replace(/\s+/g, ' ');
+    return id + '. ' + title;
+  }
+
+  document.getElementById('copy').addEventListener('click', function () {
+    var lines = ['คำตอบจากผู้สอบบัญชี รอบ 2 — BESTCHOICE', 'วันที่ตอบ: ' + new Date().toLocaleDateString('th-TH'), ''];
+    areas.forEach(function (t) {
+      var v = t.value.trim();
+      lines.push(label(t));
+      lines.push(v ? v : '(ยังไม่ได้ตอบ)');
+      lines.push('');
+    });
+    var text = lines.join('\n');
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(fallback);
+    } else { fallback(); }
+    note.textContent = 'คัดลอกแล้ว — วางส่งกลับทาง LINE หรืออีเมลได้เลย';
+    setTimeout(function () { note.textContent = 'ร่างคำตอบถูกเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น'; }, 4000);
+  });
+
+  document.getElementById('print').addEventListener('click', function () { window.print(); });
+
+  document.getElementById('clear').addEventListener('click', function () {
+    if (!window.confirm('ล้างคำตอบทั้งหมดในเครื่องนี้?')) return;
+    areas.forEach(function (t) { t.value = ''; });
+    write({});
+    count();
+  });
+})();
+</script>
+</body>
+</html>

@@ -1579,7 +1579,7 @@ describe('ContractsService', () => {
       );
       const [templateParams] = mockCancellationTemplate.execute.mock.calls[0];
       expect(templateParams.settledTotal.toFixed(2)).toBe('11000.00');
-      // Task 4 fold: SHOP-book expected total forwarded for the S21-3001 cross-check
+      // Task 4 fold: SHOP-book expected total forwarded for the S21-1104 cross-check
       expect(templateParams.settledShopTotal.toFixed(2)).toBe('11000.00');
 
       // Audit (Task 7 review fix): recallAmount = NET (11,000 − 2,000 deduction)

@@ -13,13 +13,13 @@ import { glContractBalance } from '../gl-contract-balance';
  * the service detects `Σ(financedGl+commissionGl)` over the contract's
  * SETTLEMENT items in POSTED batches and passes `{ isC2, settledTotal }`. The
  * sweep then REDIRECTS the mirror legs of 21-1101/21-1102 → 11-2107 and
- * S11-3001/S11-3002 → S21-3001 (stamp `shopReceivableType: 'PAYOUT_RECALL'` on
+ * S11-3001/S11-3002 → S21-1104 (stamp `shopReceivableType: 'PAYOUT_RECALL'` on
  * JEs carrying a redirect leg) instead of mirroring straight back — the batch
  * already cleared those accounts, a straight mirror would drive them negative.
  * After the sweep, `redirectedTotals['11-2107']` is cross-checked against
  * `settledTotal` (±0.01) — a mismatch (hand-JV on a lens account outside the
  * batch) throws inside the tx so the whole sweep rolls back. Task 4 fold adds
- * the SHOP-book twin: `redirectedTotals['S21-3001']` (Cr legs ⇒ negated)
+ * the SHOP-book twin: `redirectedTotals['S21-1104']` (Cr legs ⇒ negated)
  * against `settledShopTotal` — a SHOP-only hand-JV passes the FINANCE check
  * untouched, so each book must be verified independently.
  *
@@ -92,7 +92,7 @@ export const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12', 'S11-11', 'S11-12'];
 /**
  * C-2 (Phase 3 Task 3 — workbook Case 3A กรณี 2): เจ้าหนี้/ลูกหนี้รอบจ่ายที่ถูก
  * ตัดจ่ายผ่าน batch POSTED ไปแล้ว mirror ตรงกลับบัญชีเดิมไม่ได้ (จะติดลบ) —
- * redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / เจ้าหนี้ S21-3001 แทน.
+ * redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / เจ้าหนี้ S21-1104 แทน.
  *
  * Exported (Phase 3 Task 5): เส้นทาง exchange-cancel (`ExchangeCancelService`)
  * ใช้ redirect map/stamp ชุดเดียวกันเมื่อ swap ถูกยกเลิกหลังรอบจ่าย POSTED —
@@ -101,8 +101,8 @@ export const CASH_ACCOUNT_PREFIXES = ['11-11', '11-12', 'S11-11', 'S11-12'];
 export const C2_REDIRECTS: Record<string, SweepRedirect> = {
   '21-1101': { to: '11-2107', description: 'ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ยอดจัดที่ตัดจ่ายแล้ว)' },
   '21-1102': { to: '11-2107', description: 'ตั้งลูกหนี้เรียกคืน-หน้าร้าน (ค่าคอมที่ตัดจ่ายแล้ว)' },
-  'S11-3001': { to: 'S21-3001', description: 'ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ยอดจัด)' },
-  'S11-3002': { to: 'S21-3001', description: 'ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ค่าคอม)' },
+  'S11-3001': { to: 'S21-1104', description: 'ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ยอดจัด)' },
+  'S11-3002': { to: 'S21-1104', description: 'ตั้งเจ้าหนี้ FINANCE-เรียกคืน (ค่าคอม)' },
 };
 export const C2_REDIRECT_SOURCES = Object.keys(C2_REDIRECTS);
 
@@ -120,7 +120,7 @@ export const C2_REDIRECT_STAMP: Record<string, string> = {
  * ต้อง reject ดังๆ แทนที่จะ stamp ทับเงียบๆ. (Exported — Task 5: exchange path
  * ทำ defensive check ชุดเดียวกัน.)
  */
-export const TYPED_LENS_ACCOUNTS = ['11-2107', 'S21-3001'];
+export const TYPED_LENS_ACCOUNTS = ['11-2107', 'S21-1104'];
 
 @Injectable()
 export class ContractCancellationTemplate {
@@ -214,7 +214,7 @@ export class ContractCancellationTemplate {
         );
       }
       // Defensive check (C-2 path เท่านั้น — Task 3): JE ที่มีทั้งบรรทัด redirect
-      // source และบรรทัดบัญชี typed (11-2107/S21-3001) หรือ shopReceivableType
+      // source และบรรทัดบัญชี typed (11-2107/S21-1104) หรือ shopReceivableType
       // เดิมอยู่แล้ว — redirect stamp PAYOUT_RECALL ทั้งใบจะทับความหมาย typed
       // เดิม (เลนส์อ่าน type ระดับ JE) → hand-JV ผิดปกติ reject ก่อน sweep เริ่ม.
       if (isC2) {
@@ -226,7 +226,7 @@ export class ContractCancellationTemplate {
         if (redirectSourceLine && (typedLine || hasTypedStamp)) {
           throw new BadRequestException(
             `ใบสำคัญ ${je.entryNumber} ของสัญญา ${contract.contractNumber} มีทั้งบรรทัดเจ้าหนี้/ลูกหนี้รอบจ่าย (${redirectSourceLine.accountCode}) ` +
-              'และบรรทัด/ประเภทบัญชีลูกหนี้เรียกคืน (11-2107/S21-3001) ในใบเดียวกัน — ' +
+              'และบรรทัด/ประเภทบัญชีลูกหนี้เรียกคืน (11-2107/S21-1104) ในใบเดียวกัน — ' +
               'ระบบ redirect เป็น PAYOUT_RECALL ให้ไม่ได้ (จะทับความหมายประเภทเดิม) กรุณาตรวจสอบ/กลับรายการใบนี้ด้วยมือก่อนยกเลิกสัญญา',
           );
         }
@@ -275,14 +275,14 @@ export class ContractCancellationTemplate {
       }
       // Cross-check ฝั่ง SHOP (Task 4 fold): hand-JV ที่แตะเฉพาะ S11-3001/
       // S11-3002 ผ่านเช็ค 11-2107 ด้านบนได้ (สมุด FINANCE ไม่กระเทือน) แต่จะ
-      // ทำให้เจ้าหนี้เรียกคืนฝั่งร้าน (S21-3001 [PAYOUT_RECALL]) ไม่เท่ากับ
+      // ทำให้เจ้าหนี้เรียกคืนฝั่งร้าน (S21-1104 [PAYOUT_RECALL]) ไม่เท่ากับ
       // ฝั่ง FINANCE → คิว recall สองสมุดเพี้ยนถาวร — ต้องเช็คแยกสมุด.
       // redirect ฝั่ง SHOP เป็นขา **Cr** ⇒ `redirectedTotals` (Σ Dr−Cr) ติดลบ;
       // ยอดเจ้าหนี้เรียกคืนที่ตั้งจริง = .neg(). เทียบกับ Σ(shopFinancedGl +
       // shopCommissionGl) ของ item SETTLEMENT ใน batch POSTED — ค่านี้ survive
       // legacyNoShop โดยโครงสร้าง: สัญญา legacy snapshot ฝั่ง SHOP = 0 →
       // expected 0 และไม่มี SHOP JE ให้ redirect อยู่แล้ว → 0 = 0 ✓.
-      const redirectedShop = (redirectedTotals['S21-3001'] ?? new Decimal(0)).neg();
+      const redirectedShop = (redirectedTotals['S21-1104'] ?? new Decimal(0)).neg();
       const settledShop = params.settledShopTotal ?? new Decimal(0);
       if (redirectedShop.minus(settledShop).abs().gt('0.01')) {
         throw new BadRequestException(

@@ -33,7 +33,7 @@ import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-
 export interface SettledPayout {
   /** Σ financedGl + commissionGl — gross เจ้าหนี้ที่ batch ล้างไป (= ยอด redirect 11-2107) */
   settledTotal: Decimal;
-  /** Σ shopFinancedGl + shopCommissionGl — ฝั่ง SHOP (template cross-check S21-3001) */
+  /** Σ shopFinancedGl + shopCommissionGl — ฝั่ง SHOP (template cross-check S21-1104) */
   settledShopTotal: Decimal;
   /** Σ swapCreditAmount + recallAmount — ส่วนที่ถูกหักกลบในรอบ (เงินไม่เคยโอนจริง) */
   settledDeductions: Decimal;
@@ -254,10 +254,10 @@ export class ContractCancellationService {
       // ── C-2 detect (Phase 3 Task 3 — workbook Case 3A กรณี 2): สัญญาที่ถูก
       // ตัดจ่ายผ่านรอบจ่าย INTER-CO POSTED แล้ว — เจ้าหนี้ 21-1101/21-1102 (และ
       // ลูกหนี้ S11-3001/S11-3002) ถูก batch ล้างไปแล้ว mirror ตรงจะทำติดลบ →
-      // template redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / S21-3001.
+      // template redirect เป็นลูกหนี้เรียกคืน 11-2107 [PAYOUT_RECALL] / S21-1104.
       // (สูตรอยู่ใน settledPayoutByContract — helper เดียวกับ
       // listPendingCancellations, Task 7 refactor. ฝั่ง SHOP (Task 4 fold):
-      // settledShopTotal ให้ template cross-check redirect S21-3001 แยกสมุด —
+      // settledShopTotal ให้ template cross-check redirect S21-1104 แยกสมุด —
       // สัญญา legacyNoShop มี snapshot ฝั่ง SHOP = 0 → expected 0.)
       const settled = (await settledPayoutByContract(tx, [contract.id])).get(contract.id);
       const settledTotal = settled?.settledTotal ?? new Decimal(0);

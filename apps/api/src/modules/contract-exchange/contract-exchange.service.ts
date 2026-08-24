@@ -19,6 +19,7 @@ import { ExchangeBuybackReceivable11_2107Template } from '../journal/cpa-templat
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { resolveStoreCommission } from '../../utils/store-commission.util';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
@@ -606,6 +607,15 @@ export class ContractExchangeService {
         }
         const monthlyPayment = new Decimal(old.monthlyPayment.toString());
         const newFinanced = new Decimal(old.financedAmount.toString());
+        // ⚠️ `Decimal(0)` ตรงนี้ **จงใจ ห้ามเปลี่ยนเป็น null เพื่อให้ fallback 10% ทำงาน**
+        // (ต่างจาก `vatAmount` สองบรรทัดล่างที่ต้อง pass null through)
+        // เหตุผล: สาขานี้ clone `monthlyPayment` จากสัญญาเดิมแล้ว **ถอดหลัง** หา
+        // `interestTotal = monthlyPayment × remainingMonths − financed` ⇒ กติกา
+        // `grossExclVat = financed + commission + interest` ของ 1A จะเท่ากับ
+        // `monthlyPayment × remainingMonths` พอดีก็ต่อเมื่อ commission = 0.
+        // ถ้าปล่อยให้ fallback 10% ทำงาน ลูกหนี้ที่ตั้งจะเกินยอดที่ลูกค้าผ่อนจริง
+        // อยู่ 10% ของยอดจัด — ผูกกันไม่ได้อีกต่อไป
+        // (คนละเรื่องกับ CPA ข้อ C1 ซึ่งพูดถึงสัญญาที่ commission เป็นส่วนหนึ่งของค่างวดจริง)
         const newCommission = old.storeCommission
           ? new Decimal(old.storeCommission.toString())
           : new Decimal(0);
@@ -834,12 +844,26 @@ export class ContractExchangeService {
 
     // 3. Outstanding from the real ledger (not straight-line proration).
     const newFinanced = new Decimal(newContract.financedAmount.toString());
-    const newCommission = newContract.storeCommission
+    // ── ค่าคอมมีสองความหมายในบล็อกนี้ อย่ายุบเป็นตัวเดียว ──────────────────
+    // (ก) `newCommissionRaw` — ค่าคอม **ตามที่ระบุในสัญญาเท่านั้น** ไม่เติม fallback.
+    //     ใช้เฉพาะเป็น fallback ของ *ราคารับซื้อ* เครื่องเก่าด้านล่าง ซึ่งเป็น
+    //     **ราคาซื้อขายจริง ไม่ใช่การอนุมานทางบัญชี** — ผู้สอบบัญชีตัดสินเรื่องการ
+    //     *ลงบัญชี* ค่าคอม (ข้อ C1) ไม่ได้ตัดสินเรื่อง *ราคารับซื้อ* ⇒ ถ้าเอา fallback
+    //     10% มาใส่ตรงนี้ ราคารับซื้อของสัญญาที่ไม่ระบุค่าคอมจะขยับจาก `financed`
+    //     เป็น `financed × 1.10` เงียบ ๆ แล้วไหลต่อไปที่ 11-2107 / S21-1104
+    //     และยอดหักกลบรอบจ่าย
+    // (ข) `newCommissionBooked` — ตัวเลขที่ **ลงบัญชี** ต้องตรงกับที่ 1A ตั้งเจ้าหนี้
+    //     21-1102 ไว้ (CPA ข้อ C1 2026-08-24: SHOP ต้องตั้งให้ตรง FINANCE)
+    const newCommissionRaw = newContract.storeCommission
       ? new Decimal(newContract.storeCommission.toString())
       : new Decimal(0);
+    const newCommissionBooked = resolveStoreCommission({
+      storeCommission: newContract.storeCommission,
+      financedAmount: newFinanced,
+    });
     const buyback = request.buybackPrice
       ? new Decimal(request.buybackPrice.toString())
-      : newFinanced.plus(newCommission); // legacy same-price fallback
+      : newFinanced.plus(newCommissionRaw); // legacy same-price fallback
     const oldOutstanding = await this.computeOldOutstanding(tx, oldContractId);
 
     // 4. JE A.1 — open new HP receivable
@@ -893,7 +917,7 @@ export class ContractExchangeService {
         salePrice: newDownAmount.plus(newFinanced),
         downAmount: newDownAmount,
         financedAmount: newFinanced,
-        commission: newCommission,
+        commission: newCommissionBooked,
       },
       tx,
     );

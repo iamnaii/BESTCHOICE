@@ -90,7 +90,7 @@ describe('IntercoSettlementService', () => {
       // to "no lines" (0 balance everywhere); approveBatch specs below
       // override per accountCode to match their item snapshot (no drift).
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
-      // Phase 2 drift guard also reads the typed 11-2107/S21-3001 balances via
+      // Phase 2 drift guard also reads the typed 11-2107/S21-1104 balances via
       // interco-typed-balance's raw SQL — 0 everywhere matches the fixtures'
       // swapCreditAmount/recallAmount = 0 (no drift).
       $queryRaw: jest.fn().mockResolvedValue([{ balance: 0 }]),

@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { resolveStoreCommission } from '../../../utils/store-commission.util';
 
 /**
  * Exchange A.1 — New-contract activation JE for same-price exchange.
@@ -40,11 +41,12 @@ export class ExchangeNewContract1ATemplate {
     const financed = new Decimal(c.financedAmount.toString());
     const interest = new Decimal(c.interestTotal.toString());
 
-    // commission: use storeCommission if set, else derive as 10% of financedAmount
-    const commission =
-      c.storeCommission != null
-        ? new Decimal(c.storeCommission.toString())
-        : financed.times('0.10').toDecimalPlaces(2);
+    // commission: helper เดียวกับ ContractActivation1ATemplate + SHOP legs
+    // (CPA ข้อ C1 2026-08-24 — สองสมุดต้องได้ตัวเลขเดียวกัน)
+    const commission = resolveStoreCommission({
+      storeCommission: c.storeCommission,
+      financedAmount: financed,
+    });
 
     const grossExclVat = financed.plus(commission).plus(interest);
 

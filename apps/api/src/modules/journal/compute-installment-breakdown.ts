@@ -1,4 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import { resolveStoreCommission } from '../../utils/store-commission.util';
 
 /**
  * Single source of truth for the per-installment money breakdown of a FINANCE
@@ -58,10 +59,11 @@ export function computeInstallmentBreakdown(
   const total = new Decimal(input.totalMonths);
 
   const financed = new Decimal(input.financedAmount);
-  const commission =
-    input.storeCommission != null
-      ? new Decimal(input.storeCommission)
-      : financed.times('0.10').toDecimalPlaces(2);
+  // helper เดียวกับ 1A / SHOP legs — CPA ข้อ C1 2026-08-24 (ห้ามเขียนสูตรซ้ำ)
+  const commission = resolveStoreCommission({
+    storeCommission: input.storeCommission,
+    financedAmount: financed,
+  });
   const interest = new Decimal(input.interestTotal);
   const grossExclVat = financed.plus(commission).plus(interest);
   const vat =

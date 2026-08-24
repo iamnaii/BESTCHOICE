@@ -99,7 +99,7 @@ export function RecallCashDialog({ recall, onClose }: RecallCashDialogProps) {
           <DialogTitle>รับเงินสดคืนจากหน้าร้าน</DialogTitle>
           <DialogDescription className="leading-snug">
             สัญญา <span className="font-semibold">{recall?.contractNumber ?? ''}</span> — ล้างยอด
-            เรียกคืนด้วยเงินสด (FINANCE: Dr เงินสด/ธนาคาร / Cr 11-2107 · SHOP: Dr S21-3001 / Cr
+            เรียกคืนด้วยเงินสด (FINANCE: Dr เงินสด/ธนาคาร / Cr 11-2107 · SHOP: Dr S21-1104 / Cr
             เงินสด/ธนาคาร) ยอดคงเหลือสุทธิ{' '}
             <span className="font-semibold tabular-nums">฿{fmtMoney(recall?.recallGl)}</span>
           </DialogDescription>

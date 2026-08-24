@@ -11,8 +11,8 @@ type Client = Prisma.TransactionClient | PrismaClient;
  *   'exchange-buyback-receivable-11-2107' (mirror ตอน cancel carry stamp มาแล้ว
  *   ตั้งแต่ Phase 1 → net เป็นศูนย์เองในประเภทเดียวกัน)
  * - PAYOUT_RECALL: explicit stamp เท่านั้น (type ใหม่ ไม่มี legacy)
- * - S21-3001 SWAP_CREDIT: key ด้วย metadata.newContractId (A.4 stamp ตั้งแต่ Phase 2 Task 1)
- * - S21-3001 PAYOUT_RECALL: key ด้วย metadata.contractId (C-2 producer ใน Phase 3)
+ * - S21-1104 SWAP_CREDIT: key ด้วย metadata.newContractId (A.4 stamp ตั้งแต่ Phase 2 Task 1)
+ * - S21-1104 PAYOUT_RECALL: key ด้วย metadata.contractId (C-2 producer ใน Phase 3)
  *
  * SQL twins ของเงื่อนไขชุดนี้อยู่ในเลนส์ `IntercoPendingService` (grouped
  * queries — interco-pending.service.ts) และรายงานอายุ (interco-aging.service.ts)
@@ -74,14 +74,14 @@ export function swapCreditFinanceBalance(
   );
 }
 
-/** S21-3001 Σ(Cr−Dr) เฉพาะ SWAP_CREDIT — key ด้วย metadata.newContractId (A.4) */
+/** S21-1104 Σ(Cr−Dr) เฉพาะ SWAP_CREDIT — key ด้วย metadata.newContractId (A.4) */
 export function swapCreditShopBalance(
   client: Client,
   newContractId: string,
 ): Promise<Prisma.Decimal> {
   return sumTyped(
     client,
-    'S21-3001',
+    'S21-1104',
     'cr-dr',
     Prisma.sql`
     je.metadata->>'newContractId' = ${newContractId}
@@ -132,11 +132,11 @@ export function recallFinanceBalance(client: Client, contractId: string): Promis
   );
 }
 
-/** S21-3001 Σ(Cr−Dr) เฉพาะ PAYOUT_RECALL — key ด้วย metadata.contractId (C-2) */
+/** S21-1104 Σ(Cr−Dr) เฉพาะ PAYOUT_RECALL — key ด้วย metadata.contractId (C-2) */
 export function recallShopBalance(client: Client, contractId: string): Promise<Prisma.Decimal> {
   return sumTyped(
     client,
-    'S21-3001',
+    'S21-1104',
     'cr-dr',
     Prisma.sql`
     je.metadata->>'contractId' = ${contractId}

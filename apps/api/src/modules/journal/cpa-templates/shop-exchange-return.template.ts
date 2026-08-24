@@ -14,7 +14,7 @@ export interface ShopExchangeReturnInput {
    * the same product+contract's second exchange attempt.
    */
   requestId: string;
-  /** สัญญาใหม่ที่เกิดจาก swap — key สำหรับเลนส์หักกลบรอบจ่าย (Phase 2: S21-3001 query ด้วย newContractId) */
+  /** สัญญาใหม่ที่เกิดจาก swap — key สำหรับเลนส์หักกลบรอบจ่าย (Phase 2: S21-1104 query ด้วย newContractId) */
   newContractId: string;
   /** ราคารับซื้อเครื่องเดิม (= ยอดที่ A.2/A.3 ใช้). Must be > 0. */
   buyback: Decimal;
@@ -26,11 +26,11 @@ export interface ShopExchangeReturnInput {
  * cancel-workbook-design.md §3.2, คำตัดสินเจ้าของ D2)
  *
  *   Dr S11-2002 (used inventory)                    [buyback]
- *     Cr S21-3001 (เจ้าหนี้-FINANCE ค่าเครื่องรับคืน)  [buyback]
+ *     Cr S21-1104 (เจ้าหนี้ FINANCE)  [buyback]
  *
  * เดิม (P3-SP5 → 2026-08-19): `Dr S11-2002 [costPrice] / Cr S50-1102 [costPrice]`
  * — กลับรายการต้นทุนที่ราคาทุนเดิม. เปลี่ยนเพราะ: (1) ต้นทุนจริงของ SHOP คือ
- * ราคาที่ซื้อคืนจาก FINANCE ไม่ใช่ costPrice เดิม (2) S21-3001 คือขาคู่ของ
+ * ราคาที่ซื้อคืนจาก FINANCE ไม่ใช่ costPrice เดิม (2) S21-1104 คือขาคู่ของ
  * 11-2107 SWAP_CREDIT ฝั่ง FINANCE — รอหักกลบในรอบจ่าย INTER-CO (Phase 2).
  * Forward-only: JE เก่ารูปแบบ costPrice/S50-1102 ปล่อยตามเดิม ไม่ backfill.
  *
@@ -46,7 +46,7 @@ export interface ShopExchangeReturnInput {
  *
  * `metadata.newContractId` (Phase 2 Task 1): key ของเลนส์หักกลบรอบจ่าย —
  * batch item ของรอบจ่าย INTER-CO คือ "สัญญาใหม่" ดังนั้นเลนส์ฝั่ง SHOP (Task 3)
- * query S21-3001 ด้วย path ['newContractId'] ตรงๆ ไม่ join ผ่าน request row.
+ * query S21-1104 ด้วย path ['newContractId'] ตรงๆ ไม่ join ผ่าน request row.
  * ไม่กระทบ cancel sweep — sweep match ที่ path ['contractId'] เท่านั้น.
  */
 @Injectable()
@@ -100,7 +100,7 @@ export class ShopExchangeReturnTemplate {
             description: 'รับเครื่องเก่ากลับเข้าสต็อก SHOP (มือสอง — ราคารับซื้อ)',
           },
           {
-            accountCode: 'S21-3001',
+            accountCode: 'S21-1104',
             dr: zero,
             cr: buyback,
             description: 'เจ้าหนี้-FINANCE ค่าเครื่องรับคืน (รอหักกลบรอบจ่าย INTER-CO)',

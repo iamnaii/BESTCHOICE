@@ -10,7 +10,7 @@ import {
  * `POST /interco-settlement/recalls/:contractId/settle-cash`.
  *
  * FINANCE: `Dr <financeDepositAccountCode> / Cr 11-2107` (stamp PAYOUT_RECALL)
- * SHOP:    `Dr S21-3001 / Cr <shopPayoutAccountCode>` — สองใบใน tx เดียว.
+ * SHOP:    `Dr S21-1104 / Cr <shopPayoutAccountCode>` — สองใบใน tx เดียว.
  */
 export class SettleRecallCashDto {
   /** ยอดรับคืน (฿) — ต้องมากกว่า 0 และไม่เกินยอดเรียกคืนสุทธิคงเหลือของสัญญา */

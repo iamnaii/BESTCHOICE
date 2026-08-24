@@ -188,7 +188,7 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
 
   // ─── Test 2c: C-2 — redirects + cross-check + defensive check ───────────
 
-  it('C-2: passes redirects (payable→11-2107, SHOP rec→S21-3001) + PAYOUT_RECALL stamp to the sweep', async () => {
+  it('C-2: passes redirects (payable→11-2107, SHOP rec→S21-1104) + PAYOUT_RECALL stamp to the sweep', async () => {
     sweepMock.reverse.mockResolvedValue({
       reversalJeIds: ['je-rev-1'],
       redirectedTotals: { '11-2107': new Decimal('11000.00') },
@@ -205,8 +205,8 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
     expect(input.redirects).toEqual({
       '21-1101': { to: '11-2107', description: expect.stringContaining('ยอดจัดที่ตัดจ่ายแล้ว') },
       '21-1102': { to: '11-2107', description: expect.stringContaining('ค่าคอมที่ตัดจ่ายแล้ว') },
-      'S11-3001': { to: 'S21-3001', description: expect.stringContaining('ยอดจัด') },
-      'S11-3002': { to: 'S21-3001', description: expect.stringContaining('ค่าคอม') },
+      'S11-3001': { to: 'S21-1104', description: expect.stringContaining('ยอดจัด') },
+      'S11-3002': { to: 'S21-1104', description: expect.stringContaining('ค่าคอม') },
     });
     // redirectStamp ห้ามมี reserved keys — ส่งแค่ shopReceivableType ตาม brief
     expect(input.redirectStamp).toEqual({ shopReceivableType: 'PAYOUT_RECALL' });
@@ -228,14 +228,14 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
     ).rejects.toThrow('ยอดเรียกคืน');
   });
 
-  it('C-2 SHOP cross-check (Task 4 fold): redirected S21-3001 (Cr ⇒ negative) ≠ settledShopTotal → reject; ตรงกัน → ผ่าน', async () => {
+  it('C-2 SHOP cross-check (Task 4 fold): redirected S21-1104 (Cr ⇒ negative) ≠ settledShopTotal → reject; ตรงกัน → ผ่าน', async () => {
     // SHOP-only hand-JV skew: FINANCE side matches (11,000 = 11,000) so the
     // first check passes — only the per-book SHOP check can catch this.
     sweepMock.reverse.mockResolvedValue({
       reversalJeIds: ['je-rev-1'],
       redirectedTotals: {
         '11-2107': new Decimal('11000.00'),
-        'S21-3001': new Decimal('-11500.00'), // Cr legs accumulate as Dr−Cr < 0
+        'S21-1104': new Decimal('-11500.00'), // Cr legs accumulate as Dr−Cr < 0
       },
     });
 
@@ -254,7 +254,7 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
       reversalJeIds: ['je-rev-1'],
       redirectedTotals: {
         '11-2107': new Decimal('11000.00'),
-        'S21-3001': new Decimal('-11000.00'),
+        'S21-1104': new Decimal('-11000.00'),
       },
     });
     await expect(
@@ -268,7 +268,7 @@ describe('ContractCancellationTemplate (Phase 3 C-1 — sweep + ECL release)', (
     ).resolves.toBeDefined();
   });
 
-  it('C-2 defensive: candidate JE mixing a redirect-source line with a typed 11-2107/S21-3001 line → reject naming entryNumber', async () => {
+  it('C-2 defensive: candidate JE mixing a redirect-source line with a typed 11-2107/S21-1104 line → reject naming entryNumber', async () => {
     prismaMock.journalEntry.findMany.mockResolvedValue([
       {
         id: 'je-mixed-1',

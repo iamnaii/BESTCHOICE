@@ -41,10 +41,10 @@ import { glContractBalance } from '../../journal/gl-contract-balance';
  *   - SHOP legs synthetic→ S11-3001/S11-3002 receivable (metadata.contractId)
  *   - A.3 synthetic      → 11-2107 [SWAP_CREDIT] (flow
  *     'exchange-buyback-receivable-11-2107' + explicit stamp — Phase 1 shape)
- *   - A.4 synthetic      → S21-3001 [SWAP_CREDIT] keyed by metadata.newContractId
+ *   - A.4 synthetic      → S21-1104 [SWAP_CREDIT] keyed by metadata.newContractId
  *     (ShopExchangeReturnTemplate stamp since Phase 2 Task 1)
  *   - C-2 recall synthetic (spec §5.4 shape — the real producer lands in
- *     Phase 3) → 11-2107 + S21-3001 [PAYOUT_RECALL] keyed by metadata.contractId
+ *     Phase 3) → 11-2107 + S21-1104 [PAYOUT_RECALL] keyed by metadata.contractId
  *
  * The legacy-swap case posts A.3 with NO explicit stamp — proving the lens's
  * flow-fallback condition matches `classifyShopReceivable`'s FLOW_MAP
@@ -214,7 +214,7 @@ async function seed1a(id: string) {
 /**
  * สัญญา swap ตาม workbook Case 8: payable 10,000+1,000 / SHOP legs เท่ากัน /
  * credit 8,000 — A.3 stamps SWAP_CREDIT explicitly (Phase 1 shape), A.4 keys
- * S21-3001 by metadata.newContractId (Phase 2 Task 1 stamp).
+ * S21-1104 by metadata.newContractId (Phase 2 Task 1 stamp).
  */
 async function seedSwapContract(id: string) {
   await seed1a(id);
@@ -255,13 +255,13 @@ async function seedSwapContract(id: string) {
     },
     lines: [
       { accountCode: 'S11-2002', dr: dec('8000'), cr: zero },
-      { accountCode: 'S21-3001', dr: zero, cr: dec('8000') },
+      { accountCode: 'S21-1104', dr: zero, cr: dec('8000') },
     ],
   });
 }
 
 /**
- * สัญญา swap ยุคก่อน Phase 1: A.3 อย่างเดียว (ไม่มี A.4/S21-3001) และ **ไม่มี
+ * สัญญา swap ยุคก่อน Phase 1: A.3 อย่างเดียว (ไม่มี A.4/S21-1104) และ **ไม่มี
  * explicit stamp** — เลนส์ต้อง classify จาก flow (FLOW_MAP fallback ใน
  * shop-receivable-type.util.ts) และ eligibility ต้องเป็น false (mixed-era,
  * spec §11.4).
@@ -309,7 +309,7 @@ async function seedRecallContract(id: string) {
       shopReceivableType: 'PAYOUT_RECALL',
     },
     lines: [
-      { accountCode: 'S21-3001', dr: zero, cr: dec('11000') },
+      { accountCode: 'S21-1104', dr: zero, cr: dec('11000') },
       { accountCode: 'S11-1201', dr: dec('11000'), cr: zero }, // ขาคู่ synthetic
     ],
   });
@@ -371,7 +371,7 @@ async function seedA3(id: string, amount: string) {
   });
 }
 
-/** A.4 synthetic (S21-3001 [SWAP_CREDIT] keyed by metadata.newContractId) ยอด custom. */
+/** A.4 synthetic (S21-1104 [SWAP_CREDIT] keyed by metadata.newContractId) ยอด custom. */
 async function seedA4(id: string, amount: string) {
   await journalAuto.createAndPost({
     description: 'A.4 synthetic',
@@ -385,7 +385,7 @@ async function seedA4(id: string, amount: string) {
     },
     lines: [
       { accountCode: 'S11-2002', dr: dec(amount), cr: zero },
-      { accountCode: 'S21-3001', dr: zero, cr: dec(amount) },
+      { accountCode: 'S21-1104', dr: zero, cr: dec(amount) },
     ],
   });
 }
@@ -401,7 +401,7 @@ async function seedOverCreditSwap(id: string) {
   await seedA4(id, '8000');
 }
 
-/** สองสมุดไม่ตรง: A.3 = 8,000 แต่ S21-3001 = 7,000 (ทั้งคู่ > 0 → mismatch, ไม่ใช่ legacy). */
+/** สองสมุดไม่ตรง: A.3 = 8,000 แต่ S21-1104 = 7,000 (ทั้งคู่ > 0 → mismatch, ไม่ใช่ legacy). */
 async function seedMismatchSwap(id: string) {
   await seed1a(id);
   await seedShopLegs(id, '10000', '1000');
@@ -435,7 +435,7 @@ async function seedRecallMismatch(id: string) {
       shopReceivableType: 'PAYOUT_RECALL',
     },
     lines: [
-      { accountCode: 'S21-3001', dr: zero, cr: dec('10000') },
+      { accountCode: 'S21-1104', dr: zero, cr: dec('10000') },
       { accountCode: 'S11-1201', dr: dec('10000'), cr: zero },
     ],
   });
@@ -465,7 +465,7 @@ async function seedSwapCancelMirrors(id: string) {
       { accountCode: '11-2107', dr: zero, cr: dec('8000') },
     ],
   });
-  // mirror ของ A.4 (SHOP): Dr S21-3001 [SWAP_CREDIT carry, key newContractId]
+  // mirror ของ A.4 (SHOP): Dr S21-1104 [SWAP_CREDIT carry, key newContractId]
   await journalAuto.createAndPost({
     description: 'A.4 mirror synthetic (C-2 cancel)',
     companyId: shopId,
@@ -478,7 +478,7 @@ async function seedSwapCancelMirrors(id: string) {
       shopReceivableType: 'SWAP_CREDIT',
     },
     lines: [
-      { accountCode: 'S21-3001', dr: dec('8000'), cr: zero },
+      { accountCode: 'S21-1104', dr: dec('8000'), cr: zero },
       { accountCode: 'S11-2002', dr: zero, cr: dec('8000') },
     ],
   });
@@ -691,7 +691,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
     expect(pending.some((p) => p.contractId === recallId)).toBe(false);
   });
 
-  it('สัญญา swap ยุคก่อน Phase 1 (ไม่มี S21-3001, A.3 ไม่มี explicit stamp) → ไม่ eligible', async () => {
+  it('สัญญา swap ยุคก่อน Phase 1 (ไม่มี S21-1104, A.3 ไม่มี explicit stamp) → ไม่ eligible', async () => {
     const pending = await pendingService.getPendingContracts();
     const row = pending.find((p) => p.contractId === legacySwapId)!;
     expect(row).toBeDefined();
@@ -740,7 +740,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
     ).toBe('16000.00');
     // recall ×2 (11,000 each)
     expect(totals.glRecallTotal.minus(baselineTotals.glRecallTotal).toFixed(2)).toBe('22000.00');
-    // S21-3001 ไม่กรอง type: A.4 8,000 + recall SHOP ×2 (11,000 each)
+    // S21-1104 ไม่กรอง type: A.4 8,000 + recall SHOP ×2 (11,000 each)
     expect(
       totals.glShopBuybackTotal.minus(baselineTotals.glShopBuybackTotal).toFixed(2),
     ).toBe('30000.00');
@@ -794,7 +794,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
   // Task 4 — createBatch/updateBatch/submitBatch: snapshot + guards (spec §5.1)
   //
   // NOTE ordering: this nested block runs AFTER the lens/reconcile tests above,
-  // so its extra 11-2107/S21-3001 seeds cannot disturb the baseline-delta
+  // so its extra 11-2107/S21-1104 seeds cannot disturb the baseline-delta
   // assertions. DRAFT batches never lock a contract out of either queue
   // (OPEN_BATCH_STATUSES = PENDING_APPROVAL/POSTED), so fixtures are reusable
   // across tests until a submitBatch happens.
@@ -867,7 +867,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
       ).rejects.toThrow(/เกินยอดจ่ายของรอบ/);
     });
 
-    it('guard: เครดิตเปลี่ยนเครื่องสองสมุดไม่ตรง (A.3 8,000 / S21-3001 7,000) → reject', async () => {
+    it('guard: เครดิตเปลี่ยนเครื่องสองสมุดไม่ตรง (A.3 8,000 / S21-1104 7,000) → reject', async () => {
       const id = await seedBaseContract(7);
       await seedMismatchSwap(id);
 
@@ -1101,13 +1101,13 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
           where: { id: goldenShopJeId },
           include: { lines: true },
         });
-        expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('19000.00');
+        expect(sumSide(shopJe.lines, 'S21-1104', 'dr').toFixed(2)).toBe('19000.00');
         expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('3000.00');
         expect(sumSide(shopJe.lines, 'S11-3001', 'cr').toFixed(2)).toBe('20000.00');
         expect(sumSide(shopJe.lines, 'S11-3002', 'cr').toFixed(2)).toBe('2000.00');
         expect(shopJe.lines).toHaveLength(7);
-        // ขา Dr S21-3001 แยก description ตามประเภทรายการหัก
-        const s213001 = shopJe.lines.filter((l) => l.accountCode === 'S21-3001');
+        // ขา Dr S21-1104 แยก description ตามประเภทรายการหัก
+        const s213001 = shopJe.lines.filter((l) => l.accountCode === 'S21-1104');
         expect(s213001.some((l) => l.description?.includes('ค่าเครื่องรับคืน'))).toBe(true);
         expect(s213001.some((l) => l.description?.includes('เรียกคืนยกเลิก'))).toBe(true);
 
@@ -1338,7 +1338,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         expect(posted.status).toBe('POSTED');
 
         // net 0: ไม่มีบรรทัดธนาคารเลย — FINANCE 3 บรรทัด (Dr 21-1101/21-1102,
-        // Cr 11-2107), SHOP 3 บรรทัด (Dr S21-3001, Cr S11-3001/S11-3002)
+        // Cr 11-2107), SHOP 3 บรรทัด (Dr S21-1104, Cr S11-3001/S11-3002)
         const je = await prisma.journalEntry.findUniqueOrThrow({
           where: { id: posted.financeJournalEntryId! },
           include: { lines: true },
@@ -1351,22 +1351,22 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
           include: { lines: true },
         });
         expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('0.00');
-        expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('11000.00');
+        expect(sumSide(shopJe.lines, 'S21-1104', 'dr').toFixed(2)).toBe('11000.00');
         expect(shopJe.lines).toHaveLength(3);
       },
       120_000,
     );
 
     it(
-      'batch ไม่มี deduction (ปกติ + legacy swap §11.4) → JE รูปเดิมทุกบรรทัด, netTransferAmount = totalAmount, ไม่มีบรรทัด 11-2107/S21-3001',
+      'batch ไม่มี deduction (ปกติ + legacy swap §11.4) → JE รูปเดิมทุกบรรทัด, netTransferAmount = totalAmount, ไม่มีบรรทัด 11-2107/S21-1104',
       async () => {
         const normalP = await seedBaseContract(30);
         await seedNormalContract(normalP);
         // Legacy swap (finalize ก่อน Phase 1): มี 11-2107 [SWAP_CREDIT] 8,000
-        // แต่ไม่มี S21-3001 → ไม่ eligible → เข้ารอบแบบจ่ายเต็ม และ approve
+        // แต่ไม่มี S21-1104 → ไม่ eligible → เข้ารอบแบบจ่ายเต็ม และ approve
         // ต้องผ่าน ไม่ใช่ drift (spec §11.4: เครดิตของมันล้างผ่าน shop-collect
         // ตามเดิม เงิน 2 ขา — การหักกลบใช้กับสัญญาหลัง Phase 1 เท่านั้น เพราะ
-        // ฝั่ง SHOP ไม่มี S21-3001 ให้ Dr). ถ้า guard ปฏิเสธ รอบที่มี legacy
+        // ฝั่ง SHOP ไม่มี S21-1104 ให้ Dr). ถ้า guard ปฏิเสธ รอบที่มี legacy
         // swap จะอนุมัติไม่ได้ตลอดกาล (cancel → สร้างใหม่ก็ snapshot 0 เท่าเดิม).
         const legacyP = await seedBaseContract(31);
         await seedLegacySwapContract(legacyP);
@@ -1398,7 +1398,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         expect(je.lines).toHaveLength(5);
 
         // SHOP JE (เฉพาะ non-legacy): Dr bank เต็ม / Cr S11-3001+S11-3002 —
-        // ไม่มีบรรทัด S21-3001
+        // ไม่มีบรรทัด S21-1104
         const shopJe = await prisma.journalEntry.findUniqueOrThrow({
           where: { id: posted.shopJournalEntryId! },
           include: { lines: true },
@@ -1406,7 +1406,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('11000.00');
         expect(sumSide(shopJe.lines, 'S11-3001', 'cr').toFixed(2)).toBe('10000.00');
         expect(sumSide(shopJe.lines, 'S11-3002', 'cr').toFixed(2)).toBe('1000.00');
-        expect(shopJe.lines.some((l) => l.accountCode === 'S21-3001')).toBe(false);
+        expect(shopJe.lines.some((l) => l.accountCode === 'S21-1104')).toBe(false);
         expect(shopJe.lines).toHaveLength(3);
 
         // metadata ทั้งสองใบ: netTransferAmount = totalAmount (กันถอยหลัง)
@@ -1509,7 +1509,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         expect(pending.some((p) => p.contractId === goldenSwapId)).toBe(true);
 
         // Mirror generic ครอบบรรทัดใหม่เอง (brief Step 5c): reversal FINANCE มี
-        // Dr 11-2107 19,000 / Dr 11-1201 3,000; reversal SHOP มี Cr S21-3001 19,000
+        // Dr 11-2107 19,000 / Dr 11-1201 3,000; reversal SHOP มี Cr S21-1104 19,000
         const reversals = await prisma.journalEntry.findMany({
           where: {
             metadata: { path: ['flow'], equals: 'interco-settlement-batch-reverse' } as never,
@@ -1529,7 +1529,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
           (je) => (je.metadata as { reversesEntryId?: string }).reversesEntryId === goldenShopJeId,
         )!;
         expect(revShop).toBeDefined();
-        expect(sumSide(revShop.lines, 'S21-3001', 'cr').toFixed(2)).toBe('19000.00');
+        expect(sumSide(revShop.lines, 'S21-1104', 'cr').toFixed(2)).toBe('19000.00');
         expect(sumSide(revShop.lines, 'S11-1201', 'cr').toFixed(2)).toBe('3000.00');
 
         // ระดับบัญชี: mirror คืน Dr 11-2107 เต็มยอดหัก 19,000 ของรอบ golden —
@@ -1771,7 +1771,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
           where: { id: posted.shopJournalEntryId! },
           include: { lines: true },
         });
-        expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('3000.00');
+        expect(sumSide(shopJe.lines, 'S21-1104', 'dr').toFixed(2)).toBe('3000.00');
         expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('8000.00');
 
         // ทั้งบัญชี 11-2107 กลับเท่า baseline ก่อน fixture — Σ ทุกใบของ flow นี้
@@ -1863,7 +1863,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
   // Phase 3 Task 6 — settleRecallCash: เส้นทางรับเงินสดคืน (spec §5.4 ทางเลือก
   // ที่สองนอกจากหักกลบรอบจ่าย). FINANCE reuse ShopCollectSettlementTemplate
   // ด้วย typeStamp 'PAYOUT_RECALL' (Dr <cash> / Cr 11-2107); SHOP โพสต์
-  // Dr S21-3001 / Cr <shopPayoutAccountCode> — สองใบใน tx เดียว.
+  // Dr S21-1104 / Cr <shopPayoutAccountCode> — สองใบใน tx เดียว.
   // ===========================================================================
   describe('settleRecallCash — รับเงินสดคืนจากหน้าร้าน (Phase 3 Task 6)', () => {
     beforeAll(async () => {
@@ -1903,12 +1903,12 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
         expect(finMeta.shopReceivableType).toBe('PAYOUT_RECALL');
         expect(finMeta.contractId).toBe(recallP);
 
-        // SHOP JE: Dr S21-3001 / Cr S11-1201 (default) — flow ใหม่ + stamp
+        // SHOP JE: Dr S21-1104 / Cr S11-1201 (default) — flow ใหม่ + stamp
         const shopJe = await prisma.journalEntry.findFirstOrThrow({
           where: { entryNumber: result.shopEntryNo },
           include: { lines: true },
         });
-        expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('11000.00');
+        expect(sumSide(shopJe.lines, 'S21-1104', 'dr').toFixed(2)).toBe('11000.00');
         expect(sumSide(shopJe.lines, 'S11-1201', 'cr').toFixed(2)).toBe('11000.00');
         expect(shopJe.lines).toHaveLength(2);
         expect(shopJe.companyId).toBe(shopId);
@@ -1928,7 +1928,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
 
         // GL untyped ต่อสัญญา = 0 ทั้งสองบัญชีจริง
         expect((await glContractBalance(prisma, recallP, '11-2107', 'dr')).toFixed(2)).toBe('0.00');
-        expect((await glContractBalance(prisma, recallP, 'S21-3001', 'cr')).toFixed(2)).toBe(
+        expect((await glContractBalance(prisma, recallP, 'S21-1104', 'cr')).toFixed(2)).toBe(
           '0.00',
         );
 
@@ -2032,7 +2032,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
           include: { lines: true },
         });
         expect(sumSide(shopJe.lines, 'S11-1101', 'cr').toFixed(2)).toBe('11000.00');
-        expect(sumSide(shopJe.lines, 'S21-3001', 'dr').toFixed(2)).toBe('11000.00');
+        expect(sumSide(shopJe.lines, 'S21-1104', 'dr').toFixed(2)).toBe('11000.00');
       },
       120_000,
     );
@@ -2042,7 +2042,7 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
       async () => {
         // Baseline ก่อน seed fixture ทั้งชุด — วัด delta ของ flow นี้ล้วนๆ
         const preFixture2107 = await wholeAccountBalance('11-2107');
-        const preFixtureS21 = await wholeAccountBalance('S21-3001');
+        const preFixtureS21 = await wholeAccountBalance('S21-1104');
 
         // swap → รอบจ่ายหัก 8,000 POSTED → ยกเลิก C-2 (redirect 11,000 + mirrors)
         const swapC = await seedBaseContract(64);
@@ -2079,11 +2079,11 @@ describe('Interco netting lens — swapCreditGl + recall queue + typed balances 
 
         // ทั้งบัญชีจริง (untyped รวม batch legs) ปิดศูนย์ทั้งสองสมุด:
         // 11-2107: +8,000(A.3) −8,000(batch) +11,000(redirect) −8,000(mirror) −3,000(settle) = 0
-        // S21-3001: −8,000(A.4) +8,000(batch) −11,000(redirect) +8,000(mirror) +3,000(settle) = 0
+        // S21-1104: −8,000(A.4) +8,000(batch) −11,000(redirect) +8,000(mirror) +3,000(settle) = 0
         expect((await wholeAccountBalance('11-2107')).minus(preFixture2107).toFixed(2)).toBe(
           '0.00',
         );
-        expect((await wholeAccountBalance('S21-3001')).minus(preFixtureS21).toFixed(2)).toBe(
+        expect((await wholeAccountBalance('S21-1104')).minus(preFixtureS21).toFixed(2)).toBe(
           '0.00',
         );
       },

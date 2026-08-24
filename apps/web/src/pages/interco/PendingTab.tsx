@@ -257,7 +257,7 @@ export function PendingTab({
                           ยอดเรียกคืน (11-2107)
                         </th>
                         <th className="text-right p-3 font-medium text-muted-foreground">
-                          ฝั่ง SHOP (S21-3001)
+                          ฝั่ง SHOP (S21-1104)
                         </th>
                         {canSettleRecallCash && (
                           <th className="text-right p-3 font-medium text-muted-foreground">
@@ -293,7 +293,7 @@ export function PendingTab({
                                     variant="warning"
                                     appearance="light"
                                     size="sm"
-                                    title="ยอด 11-2107 กับ S21-3001 ไม่เท่ากัน — GL ผิดปกติ ตรวจสอบก่อนจึงจะหักเข้ารอบได้"
+                                    title="ยอด 11-2107 กับ S21-1104 ไม่เท่ากัน — GL ผิดปกติ ตรวจสอบก่อนจึงจะหักเข้ารอบได้"
                                   >
                                     ยอดสองสมุดไม่ตรง
                                   </Badge>

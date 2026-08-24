@@ -148,7 +148,7 @@ describe('IntercoReconcileCron', () => {
     aging.getPayablePairing.mockResolvedValue(opts.pairs ?? []);
     aging.getPhase2SwapContractIds.mockResolvedValue(new Set(opts.phase2 ?? []));
     aging.getTypedAccountDrift.mockResolvedValue(
-      opts.drifts ?? [cleanDrift('11-2107'), cleanDrift('S21-3001')],
+      opts.drifts ?? [cleanDrift('11-2107'), cleanDrift('S21-1104')],
     );
     pending.getReconcileTotals.mockResolvedValue({
       pendingTotal: D('11000.00'),
@@ -282,7 +282,7 @@ describe('IntercoReconcileCron', () => {
     expect(found[0].detail).toContain('CT-MISMATCH');
   });
 
-  it('SWAP_CREDIT_ONE_BOOK: A.4 ยุค Phase 2 (มี newContractId) แต่ S21-3001 = 0 (carry c)', async () => {
+  it('SWAP_CREDIT_ONE_BOOK: A.4 ยุค Phase 2 (มี newContractId) แต่ S21-1104 = 0 (carry c)', async () => {
     setup({
       rows: [
         makeRow({
@@ -469,7 +469,7 @@ describe('IntercoReconcileCron', () => {
           drift: D('-8000.00'),
           mismatch: true,
         },
-        cleanDrift('S21-3001'),
+        cleanDrift('S21-1104'),
       ],
     });
 

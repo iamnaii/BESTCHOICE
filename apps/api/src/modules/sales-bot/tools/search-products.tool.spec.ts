@@ -194,7 +194,7 @@ describe('SearchProductsTool.run', () => {
     expect(r.groups.flatMap((g) => g.units).map((u) => u.id)).toEqual(['cheap']);
   });
 
-  it('where ที่ยิงเข้า Prisma: RESERVED/IN_STOCK + มือสองต้องมีเกรด + ไม่บังคับรูป + [DEMO] ไม่ถูกกรองเมื่อ flag ปิด (default)', async () => {
+  it('where ที่ยิงเข้า Prisma: RESERVED/IN_STOCK + เฉพาะมือถือ + QC(เกรดหรือแบต%) + ไม่บังคับรูป + [DEMO] ไม่ถูกกรองเมื่อ flag ปิด (default)', async () => {
     const prisma = makePrisma([]); // configValue=null → shop_hide_demo_products fallback false (เหมือนเว็บ)
     const tool = new SearchProductsTool(prisma);
     await tool.run({ query: 'iPhone 15' });
@@ -205,10 +205,14 @@ describe('SearchProductsTool.run', () => {
     // review round 2 [QA blocker]: flag ปิด/ไม่มีแถว → ต้อง "ไม่กรอง" [DEMO] เหมือนเว็บ
     // (shop-catalog.service.ts default excludeDemo=false) — ห้ามมี NOT ของ [DEMO] เลย
     expect(where.NOT).toBeUndefined();
+    // มือถือเท่านั้น — อุปกรณ์เสริมชื่อ "ฟิล์ม iPhone 15" ห้ามกินโควตา candidate (prod 2026-08-24)
+    expect(where.category).toEqual({ in: ['PHONE_NEW', 'PHONE_USED'] });
+    // QC ผ่านได้ด้วยเกรด **หรือ** ผลตรวจแบต% (มือสองที่ย้ายมาจาก Tooltify ไม่มีช่องเกรด)
     expect(where.AND).toContainEqual({
       OR: [
         { category: { not: 'PHONE_USED' } },
         { AND: [{ conditionGrade: { not: null } }, { conditionGrade: { not: '' } }] },
+        { batteryHealth: { not: null } },
       ],
     });
     // ไม่มีเงื่อนไข gallery ที่ไหนเลย — บอทต้องเห็นเครื่องที่ยังไม่มีรูป

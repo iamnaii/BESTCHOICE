@@ -127,9 +127,41 @@ chat_rooms.attribution_id → ads_attributions.contract_id → contracts
 `TRUNCATE ads_attributions CASCADE` ทำงาน มันจะลบ `chat_rooms` **และ `chat_messages`
 (`onDelete: Cascade`)** ทั้งหมด = **ประวัติแชทที่เจ้าของสั่งให้เก็บหายเกลี้ยงแบบเงียบ ๆ**
 
-แก้ด้วย `PRE_TRUNCATE_NULLIFY` — NULL `chat_rooms.attribution_id` ก่อน TRUNCATE
-(คอลัมน์ nullable อยู่แล้ว) เสียแค่สายโยงว่าแชทนี้มาจากโฆษณาตัวไหน ซึ่งผูกกับ
-**สัญญาทดสอบ**ที่กำลังจะล้างอยู่แล้ว
+#### ⛔ ทางแก้แรกที่คิดไว้ **ใช้ไม่ได้** — และอันตรายกว่าไม่ทำอะไรเลย
+
+เวอร์ชันแรกใช้ `PRE_TRUNCATE_NULLIFY`: SET `chat_rooms.attribution_id = NULL` ก่อน TRUNCATE
+ด้วยความเข้าใจว่า "ไม่มีแถวชี้แล้ว CASCADE ก็ลามไม่ได้" — **ผิด**
+
+`TRUNCATE ... CASCADE` ลามตาม **การมีอยู่ของ FK constraint** ไม่สแกนแถวเลย
+(เอกสาร PostgreSQL: *"Checking validity in such cases would require table scans,
+and the whole point is not to do one"*)
+
+พิสูจน์บน production จริง — สองคำสั่งใน `BEGIN ... ROLLBACK`:
+
+```
+BEGIN; TRUNCATE ads_attributions; ROLLBACK;
+  ERROR: cannot truncate a table referenced in a foreign key constraint
+  DETAIL: Table "chat_rooms" references "ads_attributions".
+
+BEGIN; UPDATE chat_rooms SET attribution_id=NULL WHERE attribution_id IS NOT NULL;
+       TRUNCATE ads_attributions; ROLLBACK;
+  UPDATE 0                    ← เป็น NULL อยู่แล้วทุกแถวตั้งแต่แรก
+  ERROR: (ข้อความเดิมเป๊ะ)
+```
+
+ร้ายที่สุด: **guard 3 ยกเว้น FK ที่อยู่ในลิสต์ NULLIFY** ⇒ "ทางแก้" ที่ไม่ทำงานไป**ปิดปาก
+ด่านที่ควรหยุดก่อนเขียน** เหลือแค่ด่านตรวจหลัง commit = ชันสูตรหลังตาย · และ DRY_RUN
+ก็ผ่านฉลุยพร้อมพิมพ์ `chat_rooms 7,551` ในคอลัมน์ "เก็บไว้" = ใบรับรองเท็จ
+
+#### ✅ ทางแก้ที่ใช้จริง — `FK_DROP_RECREATE`
+
+ถอด FK constraint จริงก่อน TRUNCATE แล้วสร้างกลับ **ในทรานแซกชันเดียวกัน**
+(PostgreSQL ทำ DDL ใน transaction ได้ ⇒ พลาดกลางทาง constraint กลับมาเองครบ)
+นิยาม constraint **อ่านสดจาก `pg_get_constraintdef()` ไม่ hardcode**
+
+ทำไมทางอื่นไม่รอด: `ads_attributions.contract_id → contracts` ⇒ ต่อให้ย้าย
+`ads_attributions` ไปฝั่งเก็บ หรือใช้ `DELETE` แทน `TRUNCATE` ก็ยังโดน
+`TRUNCATE contracts CASCADE` ลามมาถึง `chat_rooms` อยู่ดี — **ถอด constraint คือทางเดียว**
 
 อีก 3 เคสที่จับได้:
 
@@ -205,6 +237,28 @@ EXTERNAL_FINANCE 1,554 · INSTALLMENT 1,344 · CASH 505
 ⇒ เราเก็บ `accounting_periods` ไว้ตามคำสั่ง ดังนั้น **งวดสิงหาคมที่ปิดอยู่จะบล็อก
 การบันทึกรายการจริง** ต้องเปิดงวดก่อนผ่าน `POST /expenses/periods/reopen` (OWNER)
 หรือรอขึ้นเดือนใหม่ (กันยายนไม่มีแถว = ไม่ล็อก)
+
+### ลูกค้าทดสอบ 12 รายจะรอดจากการล้าง
+
+`customers` อยู่ฝั่งเก็บทั้งตารางตามคำสั่งเจ้าของ ⇒ ลูกค้าที่ `seed-test-contracts.cli.ts`
+สร้างขึ้นก็รอดไปด้วย ตรวจบน prod 2026-08-25:
+
+```
+ยังใช้งาน 41 ราย  →  ติด marker 'ข้อมูลทดสอบระบบ — ลบได้'  12 ราย
+ถูกลบไปแล้ว 30 ราย →  ติด marker ครบทั้ง 30
+```
+
+แก้ด้วยเครื่องมือที่มีอยู่แล้ว (soft-delete, dry-run เป็นค่าเริ่มต้น ⇒ ทำย้อนหลังได้ทุกเมื่อ):
+
+```bash
+# ดูก่อน
+EXPECTED_DB_NAME=bestchoice npm --prefix apps/api run cleanup:test-contracts
+# ลบจริง
+CONFIRM_CLEANUP=YES_I_AM_SURE ALLOW_PROD_CLEANUP=YES_I_AM_SURE NODE_ENV=production   EXPECTED_DB_NAME=bestchoice npm --prefix apps/api run cleanup:test-contracts
+```
+
+**จงใจไม่ยัดเข้า factory reset** — คนละกติกาการเลือก (marker ข้อความ vs ตาราง) และ
+เป็น soft-delete ที่ตรวจสอบง่ายกว่าเมื่อแยกขั้น
 
 ### หมายเหตุ: สินค้าที่ถูก soft-delete ไปแล้ว 542 เครื่อง
 
@@ -300,15 +354,35 @@ CONFIRM_FACTORY_RESET=YES_I_AM_SURE \
   npm --prefix apps/api run factory:reset
 ```
 
-มี **หน่วง 10 วินาที** ให้กด Ctrl+C ยกเลิกได้ · สคริปต์ตรวจผลเอง **สองทาง**:
-ทุกตารางที่ล้างต้องเป็น 0 **และ** ทุกตารางที่เก็บต้องยังมีข้อมูล (กัน CASCADE เล็ดลอด)
+มี **หน่วง 10 วินาที** ให้กด Ctrl+C ยกเลิกได้
+
+**ทุกขั้นอยู่ในทรานแซกชันเดียว** (ถอด FK → TRUNCATE → สร้าง FK กลับ → คืนสถานะสินค้า →
+ตรวจผล) `timeout` 30 นาที · ด่านตรวจอยู่**ใน**ทรานแซกชันและ `throw` ⇒ ไม่ผ่านเมื่อไร
+**roll back ทั้งก้อน** ไม่ใช่รายงานว่าสายไปแล้ว
+
+ตรวจ **สองทาง**: ทุกตารางที่ล้างต้องเป็น 0 **และ** ทุกตารางที่เก็บต้องยังมีข้อมูล
+(ด่านหลังคือตัวจับ CASCADE เล็ดลอด)
+
+### ②.5 ซ้อมจริง — รันทั้งทรานแซกชันแล้ว roll back
+
+```bash
+REHEARSE=1 EXPECTED_DB_NAME=bestchoice   DATABASE_URL="postgresql://<user>@127.0.0.1:15432/bestchoice"   npm --prefix apps/api run factory:reset
+```
+
+TRUNCATE จริงบนข้อมูลจริง ผ่านด่านครบ แล้วโยนสัญญาณให้ roll back — **ไม่ commit อะไรเลย**
+ต่างจาก DRY_RUN ตรงที่มันพิสูจน์ว่า FK ถอด/สร้างกลับได้จริง และ CASCADE ไม่กินตารางที่เก็บ
+
+ผลรอบนี้ (2026-08-25): ถอด `chat_sessions_attribution_id_fkey` → TRUNCATE 131 ตาราง →
+สร้าง FK กลับ → ด่านสองทางผ่าน → roll back · ตรวจหลังจบ: `chat_messages` 104,632 ครบ
+`imported_sales` 3,403 ครบ FK นิยามเดิมเป๊ะ
 
 ### ④ หลังล้าง
 
 | # | ทำอะไร | ไม่ทำแล้วเกิดอะไร |
 |---|---|---|
 | 1 | **ตั้งยอดยกมา**: สินค้าคงเหลือ · เงินสด/ธนาคาร · เจ้าหนี้ | ขายแล้วสินค้าคงเหลือติดลบ · งบไม่ตรงของจริง |
-| 2 | ตรวจสถานะสินค้าที่ไม่ได้คืนอัตโนมัติ (`REPOSSESSED`/`REFURBISHED`/`SOLD_RESELL`) | เครื่องค้างขายไม่ได้ |
+| 2 | **ล้างลูกค้าทดสอบที่รอดมา** — `npm --prefix apps/api run cleanup:test-contracts` | ทะเบียนลูกค้าจริงมีลูกค้าทดสอบปนอยู่ **12 ราย** |
+| 2b | ตรวจสถานะสินค้าที่ไม่ได้คืนอัตโนมัติ (`REPOSSESSED`/`REFURBISHED`/`SOLD_RESELL`) | เครื่องค้างขายไม่ได้ |
 | 3 | เปิดงวดบัญชีของเดือนที่จะเริ่มใช้จริง | โพสต์ JE ติดด่านงวดปิด |
 | 4 | รัน `docs/accounting/shop-books-preflight-2026-08.sql` | ไม่รู้ว่าพร้อมจริงหรือยัง |
 

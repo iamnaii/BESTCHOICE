@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InterCompanyService } from '../inter-company/inter-company.service';
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { ShopExternalFinanceSaleTemplate } from '../journal/cpa-templates/shop-external-finance-sale.template';
 
 /**
  * SalesService unit tests.
@@ -233,6 +234,11 @@ describe('SalesService', () => {
         {
           provide: ShopAccountResolver,
           useValue: { resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) },
+        },
+        {
+          // C1 — ข้ามเองถ้าผังยังไม่มี S11-3101/S51-1106 (รอคำวินิจฉัยผู้สอบ)
+          provide: ShopExternalFinanceSaleTemplate,
+          useValue: { execute: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();

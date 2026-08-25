@@ -14,6 +14,7 @@ import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch
 import { generateContractNumber, generateSaleNumber } from '../../../utils/sequence.util';
 import { InterCompanyService } from '../../inter-company/inter-company.service';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
+import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { allocateCashSaleByCost } from '../shop-cash-sale-allocation.util';
 import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
@@ -37,6 +38,7 @@ export class SaleWriterService {
     private interCompanyService: InterCompanyService,
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
+    private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
   ) {}
 
   /**
@@ -508,9 +510,40 @@ export class SaleWriterService {
       // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน
       await preemptReservationsInTx(tx, [dto.productId]);
 
-      // W-007: COGS tracked via sale.product.costPrice relationship.
-      // P&L report captures product cost by joining Sale → Product.costPrice.
-      // TODO: Implement perpetual inventory journal for real-time COGS ledger entries.
+      // ── ลงบัญชีฝั่ง SHOP (C1 — คำวินิจฉัยผู้สอบ 2026-08-25 "แก้ไปข้างหน้า") ────
+      // เดิมจุดนี้เป็นแค่ TODO ⇒ ส่งมอบเครื่องจริง รับดาวน์จริง ตั้งลูกหนี้จริง
+      // แต่ไม่มีอะไรขึ้นสมุด SHOP เลย (ต่างจากขายสดที่โพสต์ครบตั้งแต่ 2026-06-23)
+      //
+      // ⛔ template จะ **ข้ามเงียบ ๆ (คืน null)** จนกว่าผังจะมี S11-3101 + S51-1106
+      //    ซึ่งยังรอคำวินิจฉัยผู้สอบ (คำถามรอบ 3 ข้อ 3) — ไม่ throw เพราะการขาย
+      //    ต้องไม่ล่มเพราะเรื่องผังบัญชี ลูกค้ายืนรออยู่หน้าเคาน์เตอร์
+      const extProduct = await tx.product.findUnique({ where: { id: dto.productId } });
+      if (extProduct) {
+        const extCash = await this.shopAccountResolver.resolveInflowCashAccount(
+          dto.branchId,
+          dto.paymentMethod as PaymentMethod,
+          tx,
+        );
+        const extAcc = this.shopAccountResolver.resolveProductAccounts(extProduct.category);
+        await this.shopExternalFinanceSaleTemplate.execute(
+          {
+            idempotencyKey: `shop-ext-finance-sale:${sale.id}`,
+            saleId: sale.id,
+            saleNumber,
+            productId: dto.productId,
+            cashAccountCode: extCash,
+            inventoryAccountCode: extAcc.inventoryAccountCode,
+            cogsAccountCode: extAcc.cogsAccountCode,
+            revenueAccountCode: extAcc.revenueAccountCode,
+            downPayment: new Prisma.Decimal(downPayment.toString()),
+            financeAmount: new Prisma.Decimal(financeAmount.toString()),
+            netAmount: new Prisma.Decimal(netAmount.toString()),
+            inventoryCost: new Prisma.Decimal((extProduct.costPrice ?? 0).toString()),
+            financeCompany: dto.financeCompany ?? undefined,
+          },
+          tx,
+        );
+      }
 
       // Auto-create FinanceReceivable to track money from finance company
       const expectedDate = new Date();

@@ -7,6 +7,7 @@ import { SaleWriterService } from './services/sale-writer.service';
 import { SaleCreationService } from './services/sale-creation.service';
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { ShopExternalFinanceSaleTemplate } from '../journal/cpa-templates/shop-external-finance-sale.template';
 
 /**
  * SalesService — facade over the decomposed sales sub-services.
@@ -34,6 +35,7 @@ export class SalesService {
     private interCompanyService: InterCompanyService,
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
+    private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
   ) {
     this.query = new SalesQueryService(this.prisma);
     this.writer = new SaleWriterService(
@@ -41,6 +43,7 @@ export class SalesService {
       this.interCompanyService,
       this.shopCashSaleTemplate,
       this.shopAccountResolver,
+      this.shopExternalFinanceSaleTemplate,
     );
     this.creation = new SaleCreationService(this.prisma, this.writer, this.interCompanyService);
   }

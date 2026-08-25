@@ -59,6 +59,7 @@ import { FinanceReceivableService } from '../../finance-receivable/finance-recei
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
 
@@ -78,6 +79,8 @@ const salesService = new SalesService(
   null as never,
   new ShopCashSaleTemplate(journal, prisma as never, companyResolver),
   shopAccountResolver,
+  // C1 — ข้ามเองถ้าผังยังไม่มี S11-3101/S51-1106 (รอคำวินิจฉัยผู้สอบ)
+  new ShopExternalFinanceSaleTemplate(journal, prisma as never, companyResolver),
 );
 
 const saleVoidService = new SaleVoidService(

@@ -116,7 +116,25 @@ export const KEEP_TABLES: ReadonlySet<string> = new Set([
 
   // ── อื่น ๆ ──────────────────────────────────────────────────────
   'filter_presets',                 // ตัวกรองที่ผู้ใช้บันทึกไว้เอง
+
   'webhook_subscriptions',          // ปลายทาง webhook + secret
+
+  // ── ประวัติขายที่นำเข้าจากระบบเดิม (Tooltify) ──────────────────────
+  // ⚠️ **ไม่ใช่ข้อมูลทดสอบ** — ตรวจบน prod 2026-08-25: 3,403 รายการ ช่วงวันขาย
+  // 2026-01-05 ถึง 2026-08-18 นำเข้า 3 batch เมื่อ 2026-08-18 ผ่าน
+  // `import-tooltify.cli.ts` (EXTERNAL_FINANCE 1,554 / INSTALLMENT 1,344 / CASH 505)
+  // คือประวัติขาย 7 เดือนครึ่งของกิจการจริง ที่เจ้าของสั่งให้ "ดึงจากระบบเดิม"
+  // ล้างแล้วต้องนำเข้าใหม่ทั้งหมด · standalone ไม่มี FK ออก จึงเก็บได้ปลอดภัย
+  'imported_sales',
+
+  // ── ไม่อยู่ใน schema.prisma แต่มีจริงบน DB ─────────────────────────
+  // สร้างโดย migration ตรง ๆ (`CREATE TABLE ... AS SELECT`) ⇒ Prisma มองไม่เห็น
+  // แต่ `pg_tables` เห็น — ด่าน "ตารางที่ยังไม่จำแนก" จับได้ตอน DRY_RUN รอบแรก
+  // (ดีไซน์เดิมที่ล้างทุกอย่างนอก keep list จะลบตารางสำรองนี้ทิ้งเงียบ ๆ)
+  //
+  // สำรอง `product_prices` ก่อน dedupe (migration 20260985000000) — เป็นตัว rollback
+  // ของตารางที่เก็บไว้ จึงต้องเก็บคู่กัน ไม่งั้นย้อนกลับไม่ได้ถ้า dedupe ผิด
+  '_b0_default_price_dedupe_backup',
 ]);
 
 /**
@@ -187,9 +205,18 @@ export const PRODUCT_STATUS_REPORT_ONLY: ReadonlyArray<string> = [
  * เพื่อบังคับให้มีคนตัดสินใจ แทนที่จะเดาแล้วล้างของที่กู้ไม่ได้ทิ้ง
  */
 export const WIPE_TABLES: ReadonlySet<string> = new Set([
+  // ── ไม่อยู่ใน schema.prisma แต่มีจริงบน DB (สร้างโดย migration ตรง ๆ) ──
+  '_b5_active_hold_dedupe_backup',  // สำรอง product_reservations ก่อน dedupe — ต้นฉบับก็ล้าง
+  'quotes',                         // ใบเสนอราคา SP5 (migration 20260940000000) — model ถูกถอด
+  'quote_items',                    // ออกจาก schema.prisma แล้ว เหลือแต่ตาราง = schema drift
+
   'ads_attributions',  // ชี้ต่อไปที่ contracts — ดู PRE_TRUNCATE_NULLIFY
   'ads_campaigns',  // ลูกค้าของ ads_attributions ที่กำลังล้าง
   'ai_auto_reply_logs',
+  // คำสั่งเจ้าของ 2026-08-25: "ไม่ลง AI TRAINING" ⇒ ล้าง
+  // (94,583 แถวบน prod ทั้งหมดเป็น SYSTEM_EXTRACT สกัดจากแชทที่เก็บไว้ ไม่มีแถวที่
+  //  คนนั่งกำกับเอง ⇒ สร้างใหม่ได้ด้วย chat-history-extractor แต่ต้องรัน embedding ใหม่
+  //  74,968 แถว — เจ้าของรับทราบและเลือกล้าง)
   'ai_training_pairs',
   'ai_usage_logs',
   'asset_transfer_history',
@@ -243,7 +270,6 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'fixed_assets',
   'goods_receiving_items',
   'goods_receivings',  // ใบรับของ — ชี้ไป purchase_orders ที่เก็บไว้ ล้างได้ไม่ลาม
-  'imported_sales',
   'installment_schedules',
   'inter_co_settlement_batches',
   'inter_co_settlement_items',  // FK Restrict ทั้งสองขา — ต้องล้างพร้อม batches

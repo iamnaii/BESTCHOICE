@@ -79,6 +79,10 @@ export interface ShopReceivableAgingRow {
   shopCollect: string;
   /** กระจกฝั่ง SHOP (S21-1104 − deduction) — คู่เทียบของ intercoNet */
   shopMirrorNet: string;
+  /** S21-1104 เฉพาะ SWAP_CREDIT — คู่กระจกของ swapCreditGross (B2 2026-08-25) */
+  shopMirrorSwapGross: string;
+  /** S21-1104 เฉพาะ PAYOUT_RECALL — คู่กระจกของ payoutRecallGross (B2 2026-08-25) */
+  shopMirrorRecallGross: string;
   intercoOldestPostedAt: string | null;
   intercoAgeDays: number | null;
   shopCollectOldestPostedAt: string | null;

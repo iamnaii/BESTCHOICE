@@ -16,7 +16,10 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30 -> 60 (2026-08-25): งบ 30 นาทีเดิม "ไม่เคยถูกทดสอบ" เพราะ job ตายที่ boot
+    # ตั้งแต่นาทีที่ 5 มาตลอด (seed ล้าง account_role_map — แก้ใน PR #1483) พอเทส
+    # ได้รันจริงครั้งแรก shard 1 ทำได้ 24m43s แล้วโดน cancel ที่ 30m15s ยังไม่จบ
+    timeout-minutes: 60
 
     services:
       postgres:
@@ -36,11 +39,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Shard E2E tests across 2 parallel runners (was 4) — halves the
-        # setup overhead (npm ci + Prisma generate + build × shards) which
-        # is the dominant cost. Tests still run in parallel so wall time is
-        # only marginally longer.
-        shard: [1, 2]
+        # 2 -> 4 shards (2026-08-25). คอมเมนต์เดิมบอกว่า setup คือต้นทุนหลักและ
+        # "เวลารวมยาวขึ้นเล็กน้อยเท่านั้น" — ข้อสรุปนั้นตั้งอยู่บนข้อมูลที่ผิด เพราะตอนนั้น
+        # เทสไม่เคยได้รันเลย (API บูตไม่ขึ้น ตายที่นาทีที่ 5 ทุกครั้ง) พอรันจริงพบว่า
+        # setup ~5.5 นาที แต่การรันเทสกินเกิน 24 นาทีต่อ shard และยังไม่จบ
+        # ⇒ ต้นทุนหลักคือ "รันเทส" ไม่ใช่ setup
+        #
+        # เลือกเพิ่ม shard แทนการเพิ่ม `workers` ของ Playwright (ยังคง workers: 1)
+        # เพราะทุกเทสใช้ API + Postgres ตัวเดียวกันต่อ runner — รันขนานในเครื่องเดียว
+        # เสี่ยงกวนสถานะกันเอง ส่วนการเพิ่ม shard ได้ DB คนละชุดต่อ runner
+        shard: [1, 2, 3, 4]
 
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
@@ -100,7 +108,10 @@ jobs:
         run: npx wait-on http://localhost:5173 --timeout 15000
 
       - name: Run E2E tests (shard ${{ matrix.shard }}/2)
-        run: npx playwright test --project=chromium --shard=${{ matrix.shard }}/2
+        # ตัวหารมาจาก `strategy.job-total` (จำนวน job ที่ matrix สร้างจริง) ไม่ใช่เลขที่พิมพ์มือ
+        # — ตอนเพิ่ม matrix 2->4 รอบแรกลืมแก้เลข 2 ตรงนี้ ทำให้ shard 3 กลายเป็น
+        # `--shard=3/2` ซึ่งไม่ถูกต้อง shard 3 กับ 4 จึงตายทันที ผูกกับ matrix แล้วจะไม่หลุดอีก
+        run: npx playwright test --project=chromium --shard=${{ matrix.shard }}/${{ strategy.job-total }}
         working-directory: apps/web
 
       - name: Upload test results

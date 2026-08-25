@@ -55,3 +55,7 @@ shop-preflight-*.txt
 shop-opening-balance-*.txt
 interco-preflight-*.txt
 *-preflight-[0-9]*.txt
+
+# ไฟล์ล็อกชั่วคราวของ Microsoft Office (สร้างขณะเปิดเอกสารค้างไว้)
+# เช่น docs/guides/~$aff-test-script-muay-pop-2026-08.docx
+~$*

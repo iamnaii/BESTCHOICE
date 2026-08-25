@@ -158,26 +158,68 @@ export async function loginViaAPI(page: Page) {
 const roleTokenCache: Partial<Record<TestRole, { token: string; timestamp: number }>> = {};
 const ROLE_TOKEN_MAX_AGE_MS = 10 * 60 * 1000; // 10 min (JWT expires at 15 min)
 
+/**
+ * เขียน token ที่เพิ่ง login ได้กลับเข้าไฟล์ร่วม (ไฟล์เดียวกับที่ global-setup.ts สร้าง)
+ *
+ * ทำไมต้องเขียนกลับ: `roleTokenCache` อยู่ในหน่วยความจำของ worker process และ Playwright
+ * **ทิ้ง worker ทุกครั้งที่เทสตกแล้ว retry** ⇒ cache หายทุกครั้งที่มีเทสตก ส่วนไฟล์จาก
+ * global-setup ก็ถือว่าหมดอายุที่ 10 นาที ขณะที่ shard หนึ่งรัน 24-42 นาที (CI 2026-08-25)
+ * ⇒ ตั้งแต่นาทีที่ 10 เป็นต้นไป แทบทุกเทสยิง /auth/login ใหม่ ซึ่งถูก throttle ที่ 10 ครั้ง/นาที
+ * → HTTP 429 (125 ครั้งจาก 208 ที่ตกในรอบนั้น) เขียนกลับแล้ว worker ที่เกิดใหม่ใช้ต่อได้เลย
+ *
+ * ไฟล์นี้อยู่บน runner ของ shard ตัวเอง (แต่ละ shard คนละเครื่อง) จึงไม่มีการแย่งเขียนข้าม shard
+ */
+function persistRoleToken(role: TestRole, token: string): void {
+  try {
+    let tokens: Record<string, string> = {};
+    if (fs.existsSync(ROLE_AUTH_FILE)) {
+      const existing = JSON.parse(fs.readFileSync(ROLE_AUTH_FILE, 'utf-8')) as {
+        tokens?: Record<string, string>;
+      };
+      tokens = existing.tokens ?? {};
+    }
+    tokens[role] = token;
+    fs.writeFileSync(ROLE_AUTH_FILE, JSON.stringify({ tokens, timestamp: Date.now() }));
+  } catch {
+    // เขียนไม่ได้ก็ไม่เป็นไร — cache ในหน่วยความจำยังใช้ได้ ห้ามทำให้เทสล้มเพราะเรื่องนี้
+  }
+}
+
 async function apiLoginRole(page: Page, role: TestRole): Promise<string> {
   const account = ROLE_ACCOUNTS[role];
   const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
-  const response = await page.request.post(`${apiURL}/api/auth/login`, {
-    data: { email: account.email, password: account.password },
-    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-  });
 
-  if (!response.ok()) {
-    throw new Error(`loginAsRole(${role}) failed: HTTP ${response.status()}`);
+  // /auth/login ถูก throttle ที่ 10 ครั้ง/นาที/IP — ใน CI ทุกเทสมาจาก IP เดียวกัน
+  // ถ้าบังเอิญชนกันให้รอแล้วลองใหม่ ดีกว่าให้เทสตกทั้งใบด้วยเหตุผลที่ไม่เกี่ยวกับสิ่งที่มันทดสอบ
+  const RETRY_DELAYS_MS = [6000, 12000, 20000];
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const response = await page.request.post(`${apiURL}/api/auth/login`, {
+      data: { email: account.email, password: account.password },
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+
+    if (response.ok()) {
+      const data = unwrapResponse(await response.json());
+      if (!data.accessToken) {
+        throw new Error(`loginAsRole(${role}): no accessToken in response`);
+      }
+
+      const token = data.accessToken as string;
+      roleTokenCache[role] = { token, timestamp: Date.now() };
+      persistRoleToken(role, token);
+      return token;
+    }
+
+    lastStatus = response.status();
+    // ลองใหม่เฉพาะ 429 เท่านั้น — 401/500 ลองกี่ครั้งก็ได้ผลเดิม และการรอเปล่า ๆ
+    // ทำให้เห็นสาเหตุจริงช้าลง
+    if (lastStatus !== 429 || attempt === RETRY_DELAYS_MS.length) break;
+    await page.waitForTimeout(RETRY_DELAYS_MS[attempt]);
   }
 
-  const data = unwrapResponse(await response.json());
-  if (!data.accessToken) {
-    throw new Error(`loginAsRole(${role}): no accessToken in response`);
-  }
-
-  const token = data.accessToken as string;
-  roleTokenCache[role] = { token, timestamp: Date.now() };
-  return token;
+  throw new Error(`loginAsRole(${role}) failed: HTTP ${lastStatus}`);
 }
 
 /**

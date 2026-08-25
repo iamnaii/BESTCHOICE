@@ -33,6 +33,25 @@ function isBenign(text: string): boolean {
   return BENIGN_PATTERNS.some((p) => text.includes(p));
 }
 
+/**
+ * โฮสต์ที่ playwright.config.ts จงใจตัดขาดเอง ด้วย
+ * `--host-resolver-rules=MAP fonts.googleapis.com 127.0.0.1,MAP fonts.gstatic.com 127.0.0.1`
+ * (กัน timeout เวลารันในเครื่องที่ออกเน็ตไม่ได้) — พอ 127.0.0.1:80 ไม่มีอะไรฟังอยู่
+ * Chrome ก็ log `Failed to load resource: net::ERR_FAILED` ทุกหน้าที่โหลดฟอนต์ = แทบทุกหน้า
+ * ⇒ เทสนี้ตกเพราะเครื่องมือทดสอบเอง ไม่ใช่เพราะแอปพัง (CI 2026-08-25: 139 จาก 208 ครั้งที่ตก)
+ */
+const SELF_BLOCKED_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
+
+/**
+ * กรองด้วย "URL ของทรัพยากรที่โหลดไม่ขึ้น" ไม่ใช่ด้วยข้อความ — ข้อความของ error ชนิดนี้คือ
+ * `Failed to load resource: net::ERR_FAILED` เฉย ๆ ไม่มี URL อยู่ในนั้น ถ้าเติมสตริงนี้ลง
+ * BENIGN_PATTERNS ตรง ๆ จะกลบ API ที่ล้มจริงไปด้วยทั้งหมด ซึ่งเป็นสิ่งที่เทสนี้มีไว้จับ
+ */
+function isSelfBlockedResource(msg: ConsoleMessage): boolean {
+  const url = msg.location()?.url ?? '';
+  return SELF_BLOCKED_HOSTS.some((host) => url.includes(host));
+}
+
 interface HealthRoute {
   url: string;
   name: string;
@@ -170,7 +189,7 @@ for (const [role, pages] of Object.entries(ROLE_PAGES) as [TestRole, HealthRoute
 
         // Collect console errors
         page.on('console', (msg: ConsoleMessage) => {
-          if (msg.type() === 'error' && !isBenign(msg.text())) {
+          if (msg.type() === 'error' && !isBenign(msg.text()) && !isSelfBlockedResource(msg)) {
             consoleErrors.push(msg.text());
           }
         });

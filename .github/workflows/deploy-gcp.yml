@@ -116,8 +116,14 @@ jobs:
         env:
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
 
+      # eslint ของ apps/api เป็น type-aware (parserOptions.project) บน ~1,980 ไฟล์ TS
+      # ⇒ ต้องสร้าง TS program ทั้งโปรเจกต์ในหน่วยความจำ. เพดาน heap default ของ node
+      # (~2GB) ไม่พออีกต่อไป — ตายด้วย "Ineffective mark-compacts near heap limit"
+      # (exit 134) 2 ครั้งติดบน ddb45f89 หลังผ่านติดกันมา 12 รอบ. runner มี RAM 16GB
       - name: Lint API
         run: npm run lint --workspace=apps/api
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Lint Web
         run: npm run lint --workspace=apps/web

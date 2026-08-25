@@ -20,6 +20,8 @@ import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { ConvertBookingDto } from './dto/convert-booking.dto';
 import { ShopBookingDepositTemplate } from '../journal/cpa-templates/shop-booking-deposit.template';
 import { ShopBookingForfeitTemplate } from '../journal/cpa-templates/shop-booking-forfeit.template';
+import { ShopBookingDepositAppliedTemplate } from '../journal/cpa-templates/shop-booking-deposit-applied.template';
+import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 
 type RequestUser = { id: string; role: string; branchId?: string | null };
@@ -54,6 +56,8 @@ export class BookingsService {
     private prisma: PrismaService,
     private readonly shopBookingDepositTemplate: ShopBookingDepositTemplate,
     private readonly shopBookingForfeitTemplate: ShopBookingForfeitTemplate,
+    private readonly shopBookingDepositAppliedTemplate: ShopBookingDepositAppliedTemplate,
+    private readonly shopCashSaleTemplate: ShopCashSaleTemplate,
     private readonly shopAccountResolver: ShopAccountResolver,
   ) {}
 
@@ -675,6 +679,53 @@ export class BookingsService {
       });
       // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (แปลงใบจองเป็นการขาย)
       await preemptReservationsInTx(tx, [firstItem.productId]);
+
+      // ── ลงบัญชีการขาย + ล้างมัดจำ (A5 ผู้สอบ 2026-08-25) ────────────────────
+      // เดิมเส้นทางนี้สร้าง Sale ด้วย tx.sale.create ตรง ๆ ไม่ผ่าน sale-writer
+      // จึงไม่เคยโพสต์ JE เลย (ต่างจากขายสดหน้าร้านที่โพสต์ครบตั้งแต่ 2026-06-23)
+      //
+      // โพสต์สองใบ: (1) ใบขายตามปกติ เดบิตเงินสดเต็มยอด
+      //             (2) ล้างมัดจำ Dr S21-2002 / Cr เงินสด — เพราะมัดจำเดบิตเงินสด
+      //                 ไปแล้วตั้งแต่วันจอง ถ้าไม่ปรับจะนับเงินสดซ้ำ
+      const saleCashAccount = await this.shopAccountResolver.resolveInflowCashAccount(
+        booking.branchId,
+        ((dto.paymentMethod as Prisma.SaleCreateInput['paymentMethod']) ??
+          booking.depositMethod ??
+          'CASH') as Parameters<
+          typeof this.shopAccountResolver.resolveInflowCashAccount
+        >[1],
+        tx,
+      );
+      const shopAcc = this.shopAccountResolver.resolveProductAccounts(product.category);
+      await this.shopCashSaleTemplate.execute(
+        {
+          idempotencyKey: `shop-cash-sale:${sale.id}:${product.id}`,
+          saleId: sale.id,
+          saleNumber,
+          productId: product.id,
+          cashAccountCode: saleCashAccount,
+          inventoryAccountCode: shopAcc.inventoryAccountCode,
+          cogsAccountCode: shopAcc.cogsAccountCode,
+          revenueAccountCode: shopAcc.revenueAccountCode,
+          revenueAmount: totalAmount,
+          inventoryCost: new Prisma.Decimal((product.costPrice ?? 0).toString()),
+        },
+        tx,
+      );
+      if (depositAmount.gt(0)) {
+        await this.shopBookingDepositAppliedTemplate.execute(
+          {
+            idempotencyKey: `booking-deposit-applied:${booking.id}`,
+            bookingId: booking.id,
+            bookingNumber: booking.bookingNumber ?? undefined,
+            saleId: sale.id,
+            saleNumber,
+            cashAccountCode: saleCashAccount,
+            depositAmount,
+          },
+          tx,
+        );
+      }
 
       // 5. Auto-create sales commission (read from CommissionRule, fallback 3%).
       const nowCommission = new Date();

@@ -218,8 +218,24 @@ EXTERNAL_FINANCE 1,554 · INSTALLMENT 1,344 · CASH 505
 
 ### ① ก่อนเริ่ม — ยืนยันจุดกู้คืน ⚠️ ห้ามข้าม
 
-Cloud SQL มี automated backup + PITR (`.claude/CLAUDE.md`) — **ยืนยันว่ามีจุดกู้คืนที่ใช้ได้จริง
-ก่อนรันอะไรทั้งสิ้น** ถ้าล้างผิดแล้วไม่มี backup คือจบ
+> 🔴 **ตรวจแล้ว 2026-08-25: PITR ของ instance นี้ *ปิดอยู่*** — คีย์
+> `pointInTimeRecoveryEnabled` ไม่ปรากฏใน `gcloud sql instances describe bestchoice-db`
+> เลย (`transactionLogRetentionDays=7` ที่ตั้งไว้ **ไม่ได้แปลว่าเปิด**) เอกสารเดิมทั้ง
+> `.claude/CLAUDE.md` และ runbook ฉบับนี้เขียนว่ามี PITR ซึ่ง**ไม่จริง** — แก้แล้ว
+>
+> ⇒ จุดกู้คืนที่มีจริง = **backup รายวัน 03:00 UTC (10:00 น. ไทย) เก็บ 7 ชุด**
+> กู้แล้วเสียข้อมูลทุกอย่างที่เขียนหลังเวลานั้น
+
+**ต้องสร้าง on-demand backup ก่อนรันเสมอ** แล้วรอจนขึ้น `SUCCESSFUL`:
+
+```bash
+gcloud sql backups create --instance=bestchoice-db   --description="ก่อน factory-reset $(date +%F)"
+
+gcloud sql backups list --instance=bestchoice-db --limit=2   --format="table(id,windowStartTime,type,status)"
+```
+
+ทำแล้วสำหรับรอบนี้: **backup `1787658688625` · `ON_DEMAND` · `SUCCESSFUL` ·
+2026-08-25T11:51:28 UTC (18:51 น. ไทย)**
 
 ### ①.5 ปลดล็อกเครื่องที่ MDM + หยุด API ⚠️ ห้ามข้าม
 
@@ -333,7 +349,9 @@ CONFIRM_FACTORY_RESET=YES_I_AM_SURE \
 ## ถ้าล้างผิด
 
 1. หยุดใช้งานระบบทันที (ยิ่งเขียนข้อมูลใหม่ ยิ่งกู้ยาก)
-2. กู้ผ่าน **Cloud SQL PITR** ไปยังเวลาก่อนรันสคริปต์
+2. กู้จาก **backup ON_DEMAND ที่สร้างไว้ก่อนรัน** (ดูขั้น ①) —
+   `gcloud sql backups restore <BACKUP_ID> --restore-instance=bestchoice-db`
+   ⚠️ **ไม่มี PITR** จึงเลือกเวลากู้เองไม่ได้ ได้แค่ ณ จุดที่ backup ถูกสร้าง
 3. ตรวจว่าข้อมูลกลับครบก่อนเปิดใช้งาน
 
 **สคริปต์ไม่มีปุ่ม undo** — จุดกู้คืนใน ① คือทางเดียว

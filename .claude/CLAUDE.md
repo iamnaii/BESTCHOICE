@@ -367,7 +367,8 @@ scripts/                      # Existing project scripts
 - **ยกเลิกใบขาย (void sale, 2026-08-23)**: `POST /sales/:id/void` (OWNER / BM สาขาตัวเอง) สำหรับ `CASH` + `EXTERNAL_FINANCE` — กติกาเต็มใน `.claude/rules/accounting.md` หัวข้อ "ยกเลิกใบขาย (void sale)"; `ShopCashSaleTemplate` **มี production caller** (`sale-writer.service.ts` ตั้งแต่ 2026-06-23) — กล่อง "WIRING STATUS — DEFERRED" ใน accounting.md มี stale note กำกับแล้ว อย่าอ่านว่าการขายสดไม่ลง JE
 - **Environment variables**: see `.env.example` for full list
 - **CI/CD**: `.github/workflows/deploy.yml` — auto-deploy on push to `main`
-- **Database backups**: ใช้ Cloud SQL automated backups + PITR ของ GCP (managed, encrypted at rest). ไม่มี script-based backup แล้ว — `scripts/backup.sh` ลบไปใน 2026-04-09 เพราะเป็น legacy จากตอน self-hosted
+- **Database backups**: ใช้ Cloud SQL automated backups ของ GCP (managed, encrypted at rest). ไม่มี script-based backup แล้ว — `scripts/backup.sh` ลบไปใน 2026-04-09 เพราะเป็น legacy จากตอน self-hosted
+  > ⚠️ **PITR ปิดอยู่** (ตรวจ 2026-08-25: `settings.backupConfiguration.pointInTimeRecoveryEnabled` **ไม่มีคีย์นี้เลย**ใน `gcloud sql instances describe bestchoice-db`) — บรรทัดนี้เคยเขียนว่า "automated backups + PITR" ซึ่ง**ไม่จริง** ⇒ จุดกู้คืนที่มีจริงคือ **backup รายวัน 03:00 UTC เก็บ 7 ชุด** เท่านั้น (เสียข้อมูลได้ถึง 24 ชม.) · ก่อนงานที่แก้ข้อมูลเยอะให้สร้าง on-demand ก่อนเสมอ: `gcloud sql backups create --instance=bestchoice-db --description="..."` · `transactionLogRetentionDays=7` ที่ตั้งไว้ **ไม่ได้แปลว่า PITR เปิด**
 
 ## Hardening History (ultraplan v1, v2, v3)
 

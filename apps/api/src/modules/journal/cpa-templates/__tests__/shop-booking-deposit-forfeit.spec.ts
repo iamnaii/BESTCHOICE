@@ -3,6 +3,8 @@ import { BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ShopBookingDepositTemplate } from '../shop-booking-deposit.template';
 import { ShopBookingForfeitTemplate } from '../shop-booking-forfeit.template';
+import { ShopBookingRefundTemplate } from '../shop-booking-refund.template';
+import { ShopBookingDepositAppliedTemplate } from '../shop-booking-deposit-applied.template';
 
 /**
  * A5 (คำวินิจฉัยผู้สอบบัญชี 2026-08-25) — ใบจองต้องลงบัญชี
@@ -207,6 +209,112 @@ describe('A5 — เงินมัดจำใบจอง (รับเงิ�
       // ถ้าโพสต์ จะเครดิตรายได้ทั้งที่ไม่มีหนี้สินให้ปลด ⇒ S21-2002 ติดลบถาวร
       expect(r).toBeNull();
       expect(journal.createAndPost).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ปลายทางของมัดจำ — ทั้ง 3 ทางต้องล้าง S21-2002 หมดพอดี', () => {
+    const txWithDepositJe = () => ({
+      journalEntry: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 'je-deposit' }),
+      },
+    });
+
+    it('คืนเงิน — Dr S21-2002 / Cr เงินสด (เงินออกจริง)', async () => {
+      const journal = makeJournal();
+      const t = new ShopBookingRefundTemplate(
+        journal as never,
+        {} as never,
+        makeCompanyResolver() as never,
+      );
+
+      await t.execute(
+        {
+          idempotencyKey: 'booking-refund:bk-r',
+          bookingId: 'bk-r',
+          bookingNumber: 'BK-R',
+          cashAccountCode: 'S11-1101',
+          depositAmount: d('2000'),
+          cancelReason: 'ลูกค้าเปลี่ยนใจ',
+        },
+        txWithDepositJe() as never,
+      );
+
+      const arg = journal.createAndPost.mock.calls[0][0];
+      expect(
+        arg.lines.find((l: { accountCode: string }) => l.accountCode === 'S21-2002').dr.toFixed(2),
+      ).toBe('2000.00');
+      expect(
+        arg.lines.find((l: { accountCode: string }) => l.accountCode === 'S11-1101').cr.toFixed(2),
+      ).toBe('2000.00');
+      expect(arg.metadata.flow).toBe('shop-booking-refund');
+      expect(arg.metadata.cancelReason).toBe('ลูกค้าเปลี่ยนใจ');
+    });
+
+    it('ล้างเข้าการขาย — บรรทัดเหมือนคืนเงิน แต่คนละ flow (แยกรายงานได้)', async () => {
+      const journal = makeJournal();
+      const t = new ShopBookingDepositAppliedTemplate(
+        journal as never,
+        {} as never,
+        makeCompanyResolver() as never,
+      );
+
+      await t.execute(
+        {
+          idempotencyKey: 'booking-deposit-applied:bk-a',
+          bookingId: 'bk-a',
+          saleId: 'sale-1',
+          saleNumber: 'SA-001',
+          cashAccountCode: 'S11-1101',
+          depositAmount: d('2000'),
+        },
+        txWithDepositJe() as never,
+      );
+
+      const arg = journal.createAndPost.mock.calls[0][0];
+      expect(arg.metadata.flow).toBe('shop-booking-deposit-applied');
+      // stamp saleId ไว้ให้การยกเลิกใบขายกวาดเจอ
+      expect(arg.metadata.saleId).toBe('sale-1');
+      expect(
+        arg.lines.find((l: { accountCode: string }) => l.accountCode === 'S21-2002').dr.toFixed(2),
+      ).toBe('2000.00');
+    });
+
+    it('ทั้ง 3 ทางเดบิต S21-2002 เท่ายอดมัดจำเสมอ — บัญชีล้างหมด ไม่ค้าง', async () => {
+      // สร้างทีละตัวเพื่อเก็บ journal mock แยกกัน
+      const jRefund = makeJournal();
+      const jApplied = makeJournal();
+      const jForfeit = makeJournal();
+
+      await new ShopBookingRefundTemplate(jRefund as never, {} as never, makeCompanyResolver() as never)
+        .execute(
+          { idempotencyKey: 'k1', bookingId: 'b1', cashAccountCode: 'S11-1101', depositAmount: d('750') },
+          txWithDepositJe() as never,
+        );
+      await new ShopBookingDepositAppliedTemplate(jApplied as never, {} as never, makeCompanyResolver() as never)
+        .execute(
+          { idempotencyKey: 'k2', bookingId: 'b2', saleId: 's2', cashAccountCode: 'S11-1101', depositAmount: d('750') },
+          txWithDepositJe() as never,
+        );
+      await new ShopBookingForfeitTemplate(jForfeit as never, {} as never, makeCompanyResolver() as never)
+        .execute(
+          { idempotencyKey: 'k3', bookingId: 'b3', depositAmount: d('750') },
+          txWithDepositJe() as never,
+        );
+
+      for (const j of [jRefund, jApplied, jForfeit]) {
+        const arg = j.createAndPost.mock.calls[0][0];
+        const clearing = arg.lines.find(
+          (l: { accountCode: string }) => l.accountCode === 'S21-2002',
+        );
+        expect(clearing.dr.toFixed(2)).toBe('750.00');
+        // ต้องสมดุลในตัวเอง
+        const totalDr = arg.lines.reduce((a: number, l: { dr: { toNumber(): number } }) => a + l.dr.toNumber(), 0);
+        const totalCr = arg.lines.reduce((a: number, l: { cr: { toNumber(): number } }) => a + l.cr.toNumber(), 0);
+        expect(totalDr).toBeCloseTo(totalCr, 2);
+      }
     });
   });
 });

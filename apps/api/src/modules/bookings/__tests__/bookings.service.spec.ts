@@ -13,6 +13,7 @@ import { ShopBookingForfeitTemplate } from '../../journal/cpa-templates/shop-boo
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopBookingDepositAppliedTemplate } from '../../journal/cpa-templates/shop-booking-deposit-applied.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
+import { ShopBookingRefundTemplate } from '../../journal/cpa-templates/shop-booking-refund.template';
 
 // Mock sequence util so tests don't need a real `booking` delegate
 jest.mock('../../../utils/sequence.util', () => ({
@@ -31,6 +32,7 @@ describe('BookingsService', () => {
   let shopAccountResolver: { resolveInflowCashAccount: jest.Mock; resolveProductAccounts: jest.Mock };
   let shopBookingDepositAppliedTemplate: { execute: jest.Mock };
   let shopCashSaleTemplate: { execute: jest.Mock };
+  let shopBookingRefundTemplate: { execute: jest.Mock };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
 
@@ -142,6 +144,7 @@ describe('BookingsService', () => {
     };
     shopBookingDepositAppliedTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-A', journalEntryId: 'je-a' }) };
     shopCashSaleTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-S', journalEntryId: 'je-s' }) };
+    shopBookingRefundTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-R', journalEntryId: 'je-r' }) };
 
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -152,6 +155,7 @@ describe('BookingsService', () => {
         { provide: ShopAccountResolver, useValue: shopAccountResolver },
         { provide: ShopBookingDepositAppliedTemplate, useValue: shopBookingDepositAppliedTemplate },
         { provide: ShopCashSaleTemplate, useValue: shopCashSaleTemplate },
+        { provide: ShopBookingRefundTemplate, useValue: shopBookingRefundTemplate },
       ],
     }).compile();
     service = mod.get(BookingsService);

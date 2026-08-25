@@ -22,6 +22,7 @@ import { ShopBookingDepositTemplate } from '../journal/cpa-templates/shop-bookin
 import { ShopBookingForfeitTemplate } from '../journal/cpa-templates/shop-booking-forfeit.template';
 import { ShopBookingDepositAppliedTemplate } from '../journal/cpa-templates/shop-booking-deposit-applied.template';
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
+import { ShopBookingRefundTemplate } from '../journal/cpa-templates/shop-booking-refund.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 
 type RequestUser = { id: string; role: string; branchId?: string | null };
@@ -58,6 +59,7 @@ export class BookingsService {
     private readonly shopBookingForfeitTemplate: ShopBookingForfeitTemplate,
     private readonly shopBookingDepositAppliedTemplate: ShopBookingDepositAppliedTemplate,
     private readonly shopCashSaleTemplate: ShopCashSaleTemplate,
+    private readonly shopBookingRefundTemplate: ShopBookingRefundTemplate,
     private readonly shopAccountResolver: ShopAccountResolver,
   ) {}
 
@@ -495,6 +497,9 @@ export class BookingsService {
       expireDate: true,
       depositAmount: true,
       depositPaidAt: true,
+      // A5 — ต้องใช้ลงบัญชีคืนเงินมัดจำ
+      depositMethod: true,
+      bookingNumber: true,
     });
     if (!booking) throw new NotFoundException('ไม่พบใบจอง');
     if (booking.status !== 'PENDING_DEPOSIT' && booking.status !== 'PAID') {
@@ -526,6 +531,31 @@ export class BookingsService {
       });
       if (claim.count !== 1) {
         throw new ConflictException('ใบจองนี้ถูกเปลี่ยนสถานะไปแล้ว');
+      }
+
+      // ── คืนเงินมัดจำ (A5 ผู้สอบ 2026-08-25) ─────────────────────────────────
+      // โพสต์เฉพาะใบที่ "รับมัดจำแล้วจริง" — PENDING_DEPOSIT ยังไม่มีเงินเข้า
+      // จึงไม่มีอะไรให้คืน · template ข้ามเองถ้าไม่มี JE ตั้งหนี้ (ยุคก่อนฟีเจอร์)
+      const refundAmount = new Prisma.Decimal((booking.depositAmount ?? 0).toString());
+      if (fromStatus === 'PAID' && refundAmount.gt(0)) {
+        const refundCashAccount = await this.shopAccountResolver.resolveInflowCashAccount(
+          booking.branchId,
+          (booking.depositMethod ?? 'CASH') as Parameters<
+            typeof this.shopAccountResolver.resolveInflowCashAccount
+          >[1],
+          tx,
+        );
+        await this.shopBookingRefundTemplate.execute(
+          {
+            idempotencyKey: `booking-refund:${id}`,
+            bookingId: id,
+            bookingNumber: booking.bookingNumber ?? undefined,
+            cashAccountCode: refundCashAccount,
+            depositAmount: refundAmount,
+            cancelReason: dto.cancelReason,
+          },
+          tx,
+        );
       }
 
       const updated = await tx.booking.findFirst({

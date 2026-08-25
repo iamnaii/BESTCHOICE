@@ -16,6 +16,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { resolveStoreCommission } from '../../utils/store-commission.util';
+import { loadInstallmentConfig } from '../../utils/config.util';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ProductsService } from '../products/products.service';
@@ -516,6 +517,29 @@ export class ContractWorkflowService {
         // audit Wave 1 P0 W-1 (ปพพ.386 termination atomicity) which the prior
         // fire-and-forget pattern violated by leaving contracts ACTIVE without
         // any ledger entry when the JE failed.
+        // ── ค่าคอมสำรอง: resolve จาก config ครั้งเดียว แล้ว "ตรึง" ลงสัญญา ──────
+        // (คำวินิจฉัยผู้สอบ C2 รอบ 2, 2026-08-25 — "ตั้งอัตราสำรองได้ แก้ไขได้")
+        //
+        // ต้องทำ **ก่อน** 1A เพราะ 1A อ่าน `contract.storeCommission` เอง ส่วนขา SHOP
+        // ด้านล่างรับค่าจาก caller ⇒ ถ้าปล่อยให้ต่างฝ่ายต่าง fallback แล้วอัตราถูกแก้
+        // คั่นกลาง สองสมุดจะได้ค่าคอมคนละตัว = COMMISSION_ONLY_GAP กลับมา
+        //
+        // เขียนกลับลงสัญญาเพื่อให้ replay ได้ผลเดิมเสมอ แม้อัตราใน config จะเปลี่ยนภายหลัง
+        if (contract.storeCommission == null) {
+          const { storeCommissionPct } = await loadInstallmentConfig(this.prisma);
+          const resolved = resolveStoreCommission({
+            storeCommission: null,
+            financedAmount: new Decimal(contract.financedAmount.toString()),
+            fallbackRate: storeCommissionPct,
+          });
+          await tx.contract.update({
+            where: { id: contract.id },
+            data: { storeCommission: resolved },
+          });
+          // ให้ object ในหน่วยความจำตรงกับ DB — ขา SHOP ด้านล่างอ่านจากตัวนี้
+          contract.storeCommission = resolved;
+        }
+
         await this.contractActivation1ATemplate.execute(contract.id, tx);
 
         // SHOP-side: post inventory transfer (COGS + revenue + receivables + down clearance),

@@ -36,18 +36,27 @@
  *   CONFIRM_FACTORY_RESET=YES_I_AM_SURE EXPECTED_DB_NAME=<db> \
  *     [ALLOW_PROD_RESET=YES_I_AM_SURE] npm --prefix apps/api run factory:reset
  *
- * ⚠️ **ก่อนรันบน production ต้องยืนยันจุด PITR/backup ของ Cloud SQL ก่อนเสมอ**
+ * ⚠️ **ก่อนรันบน production ต้องสร้าง on-demand backup ก่อนเสมอ**
+ *    (PITR ของ instance นี้ **ปิดอยู่** — ตรวจ 2026-08-25 ⇒ กู้ได้แค่ ณ จุดที่ backup ถูกสร้าง)
+ *    `gcloud sql backups create --instance=bestchoice-db --description="..."`
  */
 import { PrismaClient } from '@prisma/client';
 import {
   KEEP_TABLES,
   WIPE_TABLES,
-  PRE_TRUNCATE_NULLIFY,
+  FK_DROP_RECREATE,
   PRODUCT_STATUS_RESTORE,
   PRODUCT_STATUS_REPORT_ONLY,
 } from './factory-reset-tables';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
+
+/** สัญญาณจบการซ้อม — ไม่ใช่ความผิดพลาด ใช้บังคับให้ทรานแซกชัน roll back */
+class RehearsalComplete extends Error {
+  constructor() {
+    super('REHEARSAL_COMPLETE');
+  }
+}
 
 async function countRows(prisma: PrismaClient, table: string): Promise<number> {
   const [{ count }] = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
@@ -58,15 +67,20 @@ async function countRows(prisma: PrismaClient, table: string): Promise<number> {
 
 async function main(): Promise<void> {
   const dryRun = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
+  // โหมดซ้อม: รันทั้งทรานแซกชันจริงบนข้อมูลจริง ผ่านด่านตรวจครบ แล้ว roll back
+  // ⇒ พิสูจน์ว่าของจริงจะทำงาน (FK ถอด/สร้างกลับได้ · TRUNCATE ไม่ติด · ด่านผ่าน)
+  // โดยไม่ commit อะไรเลย · ต้องหยุด API ก่อนเพราะถือ ACCESS EXCLUSIVE lock ระหว่างรัน
+  const rehearse = process.env.REHEARSE === '1' || process.env.REHEARSE === 'true';
 
-  if (!dryRun && process.env.CONFIRM_FACTORY_RESET !== REQUIRED_CONSENT) {
+  if (!dryRun && !rehearse && process.env.CONFIRM_FACTORY_RESET !== REQUIRED_CONSENT) {
     console.error(`ERROR: ต้องมี CONFIRM_FACTORY_RESET=${REQUIRED_CONSENT} ถึงจะรันได้`);
     console.error('');
     console.error(`สคริปต์นี้ TRUNCATE ${WIPE_TABLES.size} ตาราง (สัญญา ใบขาย ใบเสร็จ`);
     console.error('รายการบัญชี ค่าคอม ใบเบิกจ่าย log ทั้งหมด) — หายถาวร');
     console.error(`เก็บไว้ ${KEEP_TABLES.size} ตาราง: ตั้งค่า เทมเพลต ลูกค้า สินค้า แชท`);
     console.error('');
-    console.error('ก่อนรันบน production ต้องยืนยันจุด PITR/backup ของ Cloud SQL ก่อน');
+    console.error('ก่อนรันบน production ต้องสร้าง on-demand backup ก่อน (PITR ปิดอยู่):');
+    console.error('  gcloud sql backups create --instance=bestchoice-db --description="..."');
     console.error('');
     console.error('ลองดูก่อนว่าจะลบอะไร (ไม่เขียนอะไรเลย):');
     console.error('  DRY_RUN=1 EXPECTED_DB_NAME=<db> npm --prefix apps/api run factory:reset');
@@ -75,6 +89,7 @@ async function main(): Promise<void> {
 
   if (
     !dryRun &&
+    !rehearse &&
     process.env.NODE_ENV === 'production' &&
     process.env.ALLOW_PROD_RESET !== REQUIRED_CONSENT
   ) {
@@ -141,11 +156,11 @@ async function main(): Promise<void> {
     // ด่านนี้จับของจริงมาแล้ว 4 เคสตอนออกแบบ — เคสร้ายที่สุดคือ
     // `chat_rooms → ads_attributions` ซึ่งจะพา `chat_messages` (onDelete: Cascade)
     // หายไปทั้งหมด = ประวัติแชทที่เจ้าของสั่งให้เก็บหายเกลี้ยง
-    // (แก้ด้วย PRE_TRUNCATE_NULLIFY ด้านล่าง)
+    // (แก้ด้วย FK_DROP_RECREATE ด้านล่าง — ถอด constraint จริง ไม่ใช่ NULL ค่า)
     //
     // ตรวจ **สดทุกครั้งที่รัน** ไม่พึ่งการตรวจครั้งเดียว — FK ใหม่ที่เพิ่มวันหลัง
     // จะเปิดช่องนี้ทันทีโดยไม่มีใครรู้
-    const nullified = new Set(PRE_TRUNCATE_NULLIFY.map((n) => `${n.table}.${n.column}`));
+    const bridged = new Set(FK_DROP_RECREATE.map((n) => `${n.table}.${n.column}`));
     const outboundFks = await prisma.$queryRawUnsafe<
       Array<{ src: string; col: string; dst: string; constraint: string }>
     >(
@@ -164,7 +179,7 @@ async function main(): Promise<void> {
     `,
       kept,
     );
-    const unhandled = outboundFks.filter((fk) => !nullified.has(`${fk.src}.${fk.col}`));
+    const unhandled = outboundFks.filter((fk) => !bridged.has(`${fk.src}.${fk.col}`));
     if (unhandled.length > 0) {
       console.error('ERROR: ตารางที่จะเก็บมี FK ชี้ไปตารางที่จะล้าง —');
       console.error('       TRUNCATE ... CASCADE จะลบตารางที่ตั้งใจเก็บไปด้วย');
@@ -172,8 +187,10 @@ async function main(): Promise<void> {
         console.error(`  ${fk.src}.${fk.col} -> ${fk.dst}  (${fk.constraint})`);
       }
       console.error('');
-      console.error('ทางเลือก: ย้ายปลายทางเข้า KEEP_TABLES หรือ (ถ้าคอลัมน์ nullable)');
-      console.error('เพิ่มเข้า PRE_TRUNCATE_NULLIFY — ยกเลิก');
+      console.error('ทางเลือก: ย้ายปลายทางเข้า KEEP_TABLES หรือ — ถ้าคอลัมน์เป็น nullable —');
+      console.error('เพิ่มเข้า FK_DROP_RECREATE (ถอด constraint แล้วสร้างกลับ) — ยกเลิก');
+      console.error('⚠️ การ SET NULL เฉย ๆ ไม่ช่วย: TRUNCATE CASCADE ลามตาม constraint');
+      console.error('   ไม่ใช่ตามข้อมูล — พิสูจน์บน prod แล้ว ดู FK_DROP_RECREATE');
       await prisma.$disconnect();
       process.exit(1);
     }
@@ -235,70 +252,164 @@ async function main(): Promise<void> {
     }
 
     console.error('');
-    console.error(`*** กำลังจะ TRUNCATE ${toWipe.length} ตารางบน "${actualDb}" ***`);
-    console.error('กด Ctrl+C ภายใน 10 วินาทีเพื่อยกเลิก');
-    await new Promise((r) => setTimeout(r, 10_000));
-
-    // ① ตัดสาย FK ที่จะทำให้ CASCADE ลามเข้าชุดที่เก็บ (ต้องทำ **ก่อน** TRUNCATE)
-    for (const n of PRE_TRUNCATE_NULLIFY) {
-      const affected = await prisma.$executeRawUnsafe(
-        `UPDATE "${n.table}" SET "${n.column}" = NULL WHERE "${n.column}" IS NOT NULL`,
-      );
-      console.log(`[factory-reset] NULL ${n.table}.${n.column} — ${affected} แถว (${n.why})`);
-    }
-
-    // ② TRUNCATE ทุกตารางในคำสั่งเดียว — PostgreSQL จัดลำดับ FK ให้เอง
-    //    ไม่มีสถานะกลางที่ล้างไปครึ่งเดียว · RESTART IDENTITY รีเซ็ต sequence
-    const quoted = toWipe.map((t) => `"${t}"`).join(', ');
-    console.log('[factory-reset] กำลังล้าง...');
-    await prisma.$executeRawUnsafe(`TRUNCATE ${quoted} RESTART IDENTITY CASCADE`);
-    console.log(`[factory-reset] ล้าง ${toWipe.length} ตารางเรียบร้อย`);
-
-    // ③ คืนสถานะสินค้า + กรรมสิทธิ์กลับ SHOP
-    //    เหตุผลว่าทำไมคืนแค่ 3 สถานะ ดู PRODUCT_STATUS_RESTORE ใน factory-reset-tables.ts
-    const restored = await prisma.$executeRawUnsafe(
-      `UPDATE "products" SET status = 'IN_STOCK'
-       WHERE status::text = ANY($1::text[]) AND deleted_at IS NULL`,
-      PRODUCT_STATUS_RESTORE as string[],
-    );
-    console.log(`[factory-reset] คืนสถานะสินค้าเป็น IN_STOCK — ${restored} เครื่อง`);
-
-    // กรรมสิทธิ์ย้ายไป FINANCE ตอนเปิดสัญญาผ่อน — สัญญาถูกล้างแล้ว ต้องคืนให้ SHOP
-    const shop = await prisma.companyInfo.findFirst({
-      where: { companyCode: 'SHOP' },
-      select: { id: true },
-    });
-    if (shop) {
-      const reowned = await prisma.$executeRawUnsafe(
-        `UPDATE "products" SET owned_by_company_id = $1
-         WHERE owned_by_company_id IS DISTINCT FROM $1 AND deleted_at IS NULL`,
-        shop.id,
-      );
-      console.log(`[factory-reset] คืนกรรมสิทธิ์สินค้าให้ SHOP — ${reowned} เครื่อง`);
+    if (rehearse) {
+      console.error(`*** โหมดซ้อม — จะ TRUNCATE จริงแล้ว ROLL BACK ทั้งหมด (ไม่ commit) ***`);
     } else {
-      console.warn('[factory-reset] ⚠️ ไม่พบ CompanyInfo companyCode=SHOP — ข้ามการคืนกรรมสิทธิ์');
+      console.error(`*** กำลังจะ TRUNCATE ${toWipe.length} ตารางบน "${actualDb}" ***`);
+      console.error('กด Ctrl+C ภายใน 10 วินาทีเพื่อยกเลิก');
+      await new Promise((r) => setTimeout(r, 10_000));
     }
 
-    // ④ ตรวจผล — ทุกตารางที่ล้างต้องเป็น 0
-    const leftovers: string[] = [];
-    for (const t of toWipe) {
-      const n = await countRows(prisma, t);
-      if (n > 0) leftovers.push(`${t}=${n}`);
-    }
-    if (leftovers.length > 0) {
-      console.error(`ERROR: ยังมีข้อมูลเหลือหลังล้าง: ${leftovers.join(', ')}`);
-      process.exit(1);
+    // ── ทุกอย่างอยู่ใน transaction เดียว ────────────────────────────────
+    //
+    // PostgreSQL ทำ **DDL ใน transaction ได้** และ **TRUNCATE roll back ได้**
+    // (ต่างจาก MySQL) ⇒ ถอด FK / ล้าง / คืนสถานะ / ตรวจผล อยู่ในก้อนเดียวกันได้จริง
+    // ถ้าอะไรพลาดกลางทาง (proxy หลุด, ตรวจผลไม่ผ่าน) ทุกอย่างกลับสภาพเดิมครบ
+    // รวมถึง FK constraint ที่ถอดออกไป
+    //
+    // timeout ต้องยาว: TRUNCATE ~130 ตาราง + นับแถวอีก ~200 รอบผ่าน cloud-sql-proxy
+    // ค่า default ของ Prisma (timeout 5s / maxWait 2s) ชน P2028 แน่นอน
+    let rehearsalOk = false;
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          // ① ถอด FK ที่เชื่อมชุดเก็บ↔ชุดล้าง — จำนิยามสดไว้สร้างกลับ
+          //    ห้าม hardcode นิยาม: อ่านจาก pg_get_constraintdef() ตอนรัน
+          //    ⇒ สร้างกลับตรงต้นฉบับเสมอแม้ ON DELETE/ON UPDATE เปลี่ยนวันหลัง
+          const dropped: Array<{ table: string; name: string; def: string }> = [];
+          for (const fk of FK_DROP_RECREATE) {
+            const rows = await tx.$queryRawUnsafe<Array<{ name: string; def: string }>>(
+              `SELECT con.conname AS name, pg_get_constraintdef(con.oid) AS def
+               FROM pg_constraint con
+               JOIN pg_class rel ON rel.oid = con.conrelid
+               JOIN pg_attribute att ON att.attrelid = con.conrelid
+                                    AND att.attnum = ANY(con.conkey)
+               WHERE con.contype = 'f' AND rel.relname = $1 AND att.attname = $2`,
+              fk.table,
+              fk.column,
+            );
+            if (rows.length === 0) {
+              console.warn(
+                `[factory-reset] ⚠️ ไม่พบ FK บน ${fk.table}.${fk.column} — ข้าม (อาจถูกถอดไปแล้ว)`,
+              );
+              continue;
+            }
+            for (const r of rows) {
+              await tx.$executeRawUnsafe(
+                `ALTER TABLE "${fk.table}" DROP CONSTRAINT "${r.name}"`,
+              );
+              dropped.push({ table: fk.table, name: r.name, def: r.def });
+              console.log(`[factory-reset] ถอด FK ${r.name} (${fk.why})`);
+            }
+          }
+
+          // ② TRUNCATE ทุกตารางในคำสั่งเดียว — PostgreSQL จัดลำดับ FK ให้เอง
+          //    RESTART IDENTITY รีเซ็ต sequence ที่ผูกกับคอลัมน์
+          const quoted = toWipe.map((t) => `"${t}"`).join(', ');
+          console.log('[factory-reset] กำลังล้าง...');
+          await tx.$executeRawUnsafe(`TRUNCATE ${quoted} RESTART IDENTITY CASCADE`);
+          console.log(`[factory-reset] ล้าง ${toWipe.length} ตารางเรียบร้อย`);
+
+          // ③ ล้างค่าที่ห้อยอยู่ แล้วสร้าง FK กลับด้วยนิยามเดิมเป๊ะ
+          //
+          //    ตารางปลายทางว่างแล้วหลัง TRUNCATE ⇒ ค่าที่เหลือในคอลัมน์นี้ชี้ไปแถวที่ไม่มีอยู่
+          //    ถ้าไม่ล้างก่อน `ADD CONSTRAINT` จะ validate ไม่ผ่านแล้ว roll back ทั้งก้อน
+          //    (บน prod 2026-08-25 คอลัมน์นี้เป็น NULL หมดอยู่แล้ว — `UPDATE 0` — แต่กันไว้
+          //     สำหรับ FK ตัวอื่นที่อาจเพิ่มเข้าลิสต์วันหลัง)
+          for (const fk of FK_DROP_RECREATE) {
+            const cleared = await tx.$executeRawUnsafe(
+              `UPDATE "${fk.table}" SET "${fk.column}" = NULL WHERE "${fk.column}" IS NOT NULL`,
+            );
+            if (cleared > 0) {
+              console.log(`[factory-reset] ล้างค่าห้อย ${fk.table}.${fk.column} — ${cleared} แถว`);
+            }
+          }
+          for (const d of dropped) {
+            await tx.$executeRawUnsafe(
+              `ALTER TABLE "${d.table}" ADD CONSTRAINT "${d.name}" ${d.def}`,
+            );
+            console.log(`[factory-reset] สร้าง FK ${d.name} กลับแล้ว`);
+          }
+
+          // ④ คืนสถานะสินค้า + กรรมสิทธิ์กลับ SHOP
+          //    เหตุผลว่าทำไมคืนแค่ 3 สถานะ ดู PRODUCT_STATUS_RESTORE
+          const restored = await tx.$executeRawUnsafe(
+            `UPDATE "products" SET status = 'IN_STOCK'
+             WHERE status::text = ANY($1::text[]) AND deleted_at IS NULL`,
+            PRODUCT_STATUS_RESTORE as string[],
+          );
+          console.log(`[factory-reset] คืนสถานะสินค้าเป็น IN_STOCK — ${restored} เครื่อง`);
+
+          const shop = await tx.companyInfo.findFirst({
+            where: { companyCode: 'SHOP' },
+            select: { id: true },
+          });
+          if (shop) {
+            const reowned = await tx.$executeRawUnsafe(
+              `UPDATE "products" SET owned_by_company_id = $1
+               WHERE owned_by_company_id IS DISTINCT FROM $1 AND deleted_at IS NULL`,
+              shop.id,
+            );
+            console.log(`[factory-reset] คืนกรรมสิทธิ์สินค้าให้ SHOP — ${reowned} เครื่อง`);
+          } else {
+            console.warn('[factory-reset] ⚠️ ไม่พบ CompanyInfo companyCode=SHOP — ข้าม');
+          }
+
+          // ⑤ ตรวจผลใน tx เดียวกัน — throw = roll back ทั้งก้อน ไม่ใช่ชันสูตรหลังตาย
+          const leftovers: string[] = [];
+          for (const t of toWipe) {
+            const [{ count }] = await tx.$queryRawUnsafe<{ count: bigint }[]>(
+              `SELECT COUNT(*)::bigint AS count FROM "${t}"`,
+            );
+            if (Number(count) > 0) leftovers.push(`${t}=${Number(count)}`);
+          }
+          if (leftovers.length > 0) {
+            throw new Error(`ยังมีข้อมูลเหลือหลังล้าง: ${leftovers.join(', ')} — ยกเลิกทั้งหมด`);
+          }
+
+          // ⑥ ของที่สั่งให้เก็บต้องยังอยู่ครบ — ด่านนี้คือตัวจับ CASCADE เล็ดลอด
+          //    และตอนนี้มันหยุดได้จริง (roll back) ไม่ใช่แค่รายงานว่าสายไปแล้ว
+          const vanished: string[] = [];
+          for (const c of keptCounts) {
+            if (c.rows === 0) continue;
+            const [{ count }] = await tx.$queryRawUnsafe<{ count: bigint }[]>(
+              `SELECT COUNT(*)::bigint AS count FROM "${c.table}"`,
+            );
+            if (Number(count) === 0) vanished.push(c.table);
+          }
+          if (vanished.length > 0) {
+            throw new Error(
+              `ตารางที่สั่งให้เก็บกลับว่าง: ${vanished.join(', ')} — CASCADE เล็ดลอด ยกเลิกทั้งหมด`,
+            );
+          }
+
+          // โหมดซ้อม: ผ่านด่านครบแล้ว — โยนทิ้งเพื่อบังคับ roll back
+          if (rehearse) {
+            throw new RehearsalComplete();
+          }
+        },
+        { timeout: 30 * 60_000, maxWait: 2 * 60_000 },
+      );
+    } catch (e) {
+      if (e instanceof RehearsalComplete) {
+        rehearsalOk = true;
+      } else {
+        throw e;
+      }
     }
 
-    // ⑤ ตรวจว่าของที่สั่งให้เก็บยังอยู่ครบ (กัน CASCADE เล็ดลอด)
-    const vanished: string[] = [];
-    for (const c of keptCounts) {
-      if (c.rows > 0 && (await countRows(prisma, c.table)) === 0) vanished.push(c.table);
-    }
-    if (vanished.length > 0) {
-      console.error(`ERROR: ตารางที่สั่งให้เก็บกลับว่างหลังล้าง: ${vanished.join(', ')}`);
-      console.error('CASCADE เล็ดลอด — ต้องกู้จาก PITR ทันที');
-      process.exit(1);
+    if (rehearse) {
+      console.log('');
+      if (!rehearsalOk) {
+        console.error('ERROR: โหมดซ้อมจบโดยไม่ได้โยนสัญญาณ — ตรวจโค้ด');
+        process.exit(1);
+      }
+      console.log('*** ซ้อมผ่าน — roll back เรียบร้อย ไม่มีอะไรถูก commit ***');
+      console.log('ทุกด่านผ่านบนข้อมูลจริง: ถอด/สร้าง FK · TRUNCATE · คืนสถานะ · ตรวจสองทาง');
+      console.log('');
+      console.log('รันจริงด้วย: CONFIRM_FACTORY_RESET=YES_I_AM_SURE ...');
+      await prisma.$disconnect();
+      return;
     }
 
     console.log('');

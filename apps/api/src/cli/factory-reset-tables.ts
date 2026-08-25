@@ -138,17 +138,52 @@ export const KEEP_TABLES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * คอลัมน์ที่ต้อง **NULL ทิ้งก่อน TRUNCATE** — ไม่งั้น CASCADE ลามมาลบตารางที่เก็บ
+ * FK ที่ต้อง **ถอด constraint ก่อน TRUNCATE แล้วสร้างกลับ** — ไม่ใช่แค่ NULL ค่า
  *
- * `ChatRoom.attributionId → AdsAttribution → Contract` คือโซ่ที่อันตรายที่สุดในงานนี้:
- * เก็บ `ads_attributions` ไม่ได้ (มันชี้ต่อไปที่ `contracts` ซึ่งต้องล้าง) แต่ถ้าปล่อยให้
- * `TRUNCATE ads_attributions CASCADE` ทำงาน มันจะลบ `chat_rooms` **และ `chat_messages`
- * (onDelete: Cascade)** ทั้งหมด = ประวัติแชทที่เจ้าของสั่งให้เก็บหายเกลี้ยงแบบเงียบ ๆ
+ * ## บทเรียนที่แลกมาเกือบแพง (2026-08-25)
  *
- * คอลัมน์เป็น nullable อยู่แล้ว ⇒ NULL ทิ้งได้โดยไม่เสียห้องแชท เสียแค่สายโยงว่าแชทนี้
- * มาจากโฆษณาตัวไหน ซึ่งผูกอยู่กับ**สัญญาทดสอบ**ที่กำลังจะล้างอยู่แล้ว
+ * เวอร์ชันแรกของไฟล์นี้มี `PRE_TRUNCATE_NULLIFY` ที่ SET คอลัมน์เป็น NULL ก่อน TRUNCATE
+ * ด้วยความเข้าใจว่า "ไม่มีแถวชี้แล้ว CASCADE ก็ลามไม่ได้" — **ผิด**
+ *
+ * `TRUNCATE ... CASCADE` ของ PostgreSQL ลามตาม **การมีอยู่ของ FK constraint**
+ * ไม่ใช่ตามว่ามีแถวชี้จริงหรือไม่ (เอกสาร PostgreSQL: *"Checking validity in such cases
+ * would require table scans, and the whole point is not to do one"*)
+ *
+ * พิสูจน์บน production จริงแล้ว — สองคำสั่งใน `BEGIN ... ROLLBACK`:
+ *
+ * ```
+ * BEGIN; TRUNCATE ads_attributions; ROLLBACK;
+ *   ERROR: cannot truncate a table referenced in a foreign key constraint
+ *   DETAIL: Table "chat_rooms" references "ads_attributions".
+ *
+ * BEGIN; UPDATE chat_rooms SET attribution_id=NULL WHERE attribution_id IS NOT NULL;
+ *        TRUNCATE ads_attributions; ROLLBACK;
+ *   UPDATE 0                    ← เป็น NULL อยู่แล้วทุกแถวตั้งแต่แรก
+ *   ERROR: cannot truncate a table referenced in a foreign key constraint   ← error เดิมเป๊ะ
+ * ```
+ *
+ * ⇒ ถ้ารันจริงพร้อม `CASCADE` มันจะลบ `chat_rooms` (7,551) แล้วลามต่อไป `chat_messages`
+ * (104,632 แถว, `onDelete: Cascade`) `chat_notes` `chat_snoozes` `chat_side_messages`
+ * `chat_feedbacks` `conversation_tags` = **ประวัติแชทที่เจ้าของสั่งให้เก็บ หายทั้งหมด**
+ *
+ * ร้ายกว่านั้น: guard 3 ใน CLI ยกเว้น FK ที่อยู่ในลิสต์ NULLIFY ⇒ **"ทางแก้" ที่ไม่ทำงาน
+ * ไปปิดปากด่านที่ควรหยุดเราก่อนเขียน** เหลือแค่ด่านตรวจหลัง commit = ชันสูตรหลังตาย
+ *
+ * ## ทางแก้ที่ถูก
+ *
+ * ถอด FK constraint จริง ๆ ก่อน TRUNCATE แล้วสร้างกลับ **ในทรานแซกชันเดียวกัน**
+ * (PostgreSQL ทำ DDL ใน transaction ได้ ⇒ ถ้าล้มกลางทาง constraint กลับมาเองครบ)
+ *
+ * นิยาม constraint **อ่านสดจาก `pg_get_constraintdef()` ตอนรัน ไม่ hardcode** —
+ * สร้างกลับได้ตรงต้นฉบับเสมอแม้ `ON DELETE`/`ON UPDATE` เปลี่ยนวันหลัง
+ *
+ * ค่าจริงบน prod ณ 2026-08-25 (เอาไว้เทียบ ไม่ได้ใช้ในโค้ด):
+ *   `chat_sessions_attribution_id_fkey` บน `chat_rooms`
+ *   `FOREIGN KEY (attribution_id) REFERENCES ads_attributions(id)
+ *    ON UPDATE CASCADE ON DELETE SET NULL`
+ *   (ชื่อยังเป็น `chat_sessions_*` จากยุคที่ตารางชื่อ `chat_sessions`)
  */
-export const PRE_TRUNCATE_NULLIFY: ReadonlyArray<{
+export const FK_DROP_RECREATE: ReadonlyArray<{
   table: string;
   column: string;
   why: string;
@@ -156,7 +191,7 @@ export const PRE_TRUNCATE_NULLIFY: ReadonlyArray<{
   {
     table: 'chat_rooms',
     column: 'attribution_id',
-    why: 'กัน TRUNCATE ads_attributions CASCADE ลบห้องแชท+ข้อความทั้งหมด',
+    why: 'กัน TRUNCATE ads_attributions CASCADE ลบห้องแชท + ข้อความทั้งหมด',
   },
 ];
 
@@ -210,7 +245,7 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'quotes',                         // ใบเสนอราคา SP5 (migration 20260940000000) — model ถูกถอด
   'quote_items',                    // ออกจาก schema.prisma แล้ว เหลือแต่ตาราง = schema drift
 
-  'ads_attributions',  // ชี้ต่อไปที่ contracts — ดู PRE_TRUNCATE_NULLIFY
+  'ads_attributions',  // ชี้ต่อไปที่ contracts — ดู FK_DROP_RECREATE
   'ads_campaigns',  // ลูกค้าของ ads_attributions ที่กำลังล้าง
   'ai_auto_reply_logs',
   // คำสั่งเจ้าของ 2026-08-25: "ไม่ลง AI TRAINING" ⇒ ล้าง

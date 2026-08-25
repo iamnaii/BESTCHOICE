@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { visibleCategories } from './settings-access';
+import { settingsNavEntries } from './settings-access';
 import type { SettingsRole } from './settings-registry';
 import {
   ShoppingCart,
@@ -57,6 +57,7 @@ import {
   ArrowLeftRight,
   Mail,
   // Unified contact party-master — สมุดผู้ติดต่อ
+  ArrowLeft,
   BookUser,
 } from 'lucide-react';
 
@@ -100,7 +101,9 @@ export interface BottomNavItem {
   path: string;
   icon: LucideIcon;
   badgeKey?: MenuBadgeKey;  // promoted from inline 'chat-unread' literal
-  action?: 'sidebar';
+  /** 'sidebar' = เปิดลิ้นชักเมนู, 'exit-settings' = ออกจากโหมดตั้งค่า (สลับโซน + navigate)
+   *  ทั้งคู่ไม่ใช่ลิงก์ — `path` เป็นแค่ sentinel ที่ไม่มีใคร navigate ไป */
+  action?: 'sidebar' | 'exit-settings';
 }
 
 export interface RoleMenuConfig {
@@ -821,6 +824,8 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       // config shortcuts (users/entities/branches/ตั้งค่า) that duplicate the settings
       // submenu. Full settings nav via เพิ่มเติม → drawer (รายชื่อผู้ติดต่อ + 9 หมวด).
       settings: [
+        // ทางออกต้องอยู่บนบาร์ล่าง ไม่ใช่ซ่อนในลิ้นชัก — บนมือถือลิ้นชักคือที่ที่ต้องเปิดก่อนถึงจะเห็น
+        { label: 'ออกจากตั้งค่า', path: '#exit-settings', icon: ArrowLeft, action: 'exit-settings' },
         { label: 'ผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
@@ -858,6 +863,8 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       ],
       fin: FINANCE_MANAGER_CONFIG.bottomNav,
       settings: [
+        // ทางออกต้องอยู่บนบาร์ล่าง ไม่ใช่ซ่อนในลิ้นชัก — บนมือถือลิ้นชักคือที่ที่ต้องเปิดก่อนถึงจะเห็น
+        { label: 'ออกจากตั้งค่า', path: '#exit-settings', icon: ArrowLeft, action: 'exit-settings' },
         { label: 'ผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
@@ -883,6 +890,8 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       shop: [],
       fin: ACCOUNTANT_CONFIG.bottomNav,
       settings: [
+        // ทางออกต้องอยู่บนบาร์ล่าง ไม่ใช่ซ่อนในลิ้นชัก — บนมือถือลิ้นชักคือที่ที่ต้องเปิดก่อนถึงจะเห็น
+        { label: 'ออกจากตั้งค่า', path: '#exit-settings', icon: ArrowLeft, action: 'exit-settings' },
         { label: 'ผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
@@ -905,17 +914,16 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
  *  "รายชื่อผู้ติดต่อ" (the /contacts party-master page) sits as the first item inside
  *  the "ตั้งค่าระบบ" submenu, above the registry categories. */
 function buildSettingsZoneSections(role: string): MenuSection[] {
-  const cats = visibleCategories(role as SettingsRole);
-  if (cats.length === 0) return [];
+  // ลำดับ + เนื้อหามาจาก settingsNavEntries ชุดเดียวกับที่ Sidebar ใช้วาดเมนูจัดกลุ่ม
+  // (/contacts มาก่อน แล้วตามด้วยหมวดตาม registry) — แก้ที่เดียว ไม่มีทางเรียงไม่ตรงกัน
+  const entries = settingsNavEntries(role as SettingsRole);
+  if (entries.length === 0) return [];
   const settings: MenuSection = {
     key: 'settings',
     label: 'ตั้งค่าระบบ',
     icon: Settings,
     zone: 'settings' as const,
-    items: [
-      { label: 'รายชื่อผู้ติดต่อ', path: '/contacts', icon: BookUser },
-      ...cats.map((c) => ({ label: c.label, path: `/settings/${c.id}`, icon: c.icon })),
-    ],
+    items: entries.map((e) => ({ label: e.label, path: e.path, icon: e.icon })),
   };
   return [settings];
 }
@@ -977,7 +985,32 @@ export const ZONE_LANDING: Record<Zone, string> = {
 export function getLandingPathForRole(role: string): string {
   const config = ZONE_CONFIG[role];
   if (!config) return '/';
-  return ZONE_LANDING[config.defaultZone];
+  // ผ่าน getZoneEntryPathForRole ไม่ใช่ ZONE_LANDING ตรง ๆ — ACCOUNTANT/VIEWER มี
+  // defaultZone = 'fin' แต่ไม่มี '/finance-portfolio' ในเมนูตัวเอง ⇒ ล็อกอินเสร็จเจอ
+  // toast 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วถูกเด้งกลับ '/' ทั้งที่ router อนุญาต
+  return getZoneEntryPathForRole(role, config.defaultZone);
+}
+
+/**
+ * Paths ที่ทุก role เข้าถึงได้และไม่สังกัดโซนไหน (Dashboard) — ใช้ร่วมกันระหว่าง
+ * MainLayout (กัน toast "ไม่มีสิทธิ์" ผี) และ getZoneEntryPathForRole (เลือกปลายทางที่ปลอดภัย).
+ * ต้องเป็นแหล่งเดียว ไม่งั้นสองที่เชื่อคนละเรื่องแล้วผู้ใช้โดนเด้ง.
+ */
+export const COMMON_PATHS = new Set<string>(['/']);
+
+/**
+ * ปลายทางที่ "ปลอดภัย" เมื่อพา role กลับเข้าโซนหนึ่ง.
+ *
+ * ห้ามใช้ ZONE_LANDING ตรง ๆ: ACCOUNTANT มี defaultZone = 'fin' แต่ '/finance-portfolio'
+ * ไม่ได้อยู่ในเมนูของ ACCOUNTANT ⇒ resolveZoneForPath คืน null, role อื่นมีหน้านี้
+ * ⇒ MainLayout ยิง toast 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วเด้งกลับ '/' ทั้งที่ router
+ * อนุญาตจริง. เลือกจากเมนูของ role เองแทนเมื่อ landing ใช้ไม่ได้.
+ */
+export function getZoneEntryPathForRole(role: string, zone: Zone): string {
+  const landing = ZONE_LANDING[zone];
+  if (COMMON_PATHS.has(landing) || resolveZoneForPath(role, landing) === zone) return landing;
+  const first = getSidebarForRole(role, zone)[0]?.items[0];
+  return first ? first.path.split('#')[0] : landing;
 }
 
 /* ── Chat visibility per role ──────────────────────── */

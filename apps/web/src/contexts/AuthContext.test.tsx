@@ -247,6 +247,33 @@ describe('<AuthProvider />', () => {
       expect(setAccessTokenMock).toHaveBeenCalledWith(null);
       expect(setUserMock).toHaveBeenCalledWith(null);
     });
+
+    it('ล้างโซนที่ค้างไว้ — คนถัดไปที่ล็อกอินบนเครื่องนี้ต้องไม่เปิดมาอยู่โหมดตั้งค่าของคนก่อน', async () => {
+      localStorage.setItem('bc.sidebar.lastZone', 'settings');
+      getAccessTokenMock.mockReturnValue('token-abc');
+      apiGetMock.mockResolvedValueOnce({
+        data: {
+          id: 'user-5',
+          email: 'e@example.com',
+          name: 'E',
+          role: 'OWNER',
+          branchId: null,
+          branch: null,
+        },
+      });
+      apiPostMock.mockResolvedValueOnce({ data: {} });
+
+      renderHarness();
+      await waitFor(() => {
+        expect(screen.getByTestId('auth')).toHaveTextContent('yes');
+      });
+
+      await userEvent.click(screen.getByText('logout'));
+
+      await waitFor(() => {
+        expect(localStorage.getItem('bc.sidebar.lastZone')).toBeNull();
+      });
+    });
   });
 
   describe('canReverseOverride propagation (reverse-permission CUSTOM mode)', () => {

@@ -41,6 +41,8 @@ import { LateFeeSettingsCard } from '@/pages/SettingsPage/components/LateFeeSett
 
 export type SettingsRole = 'OWNER' | 'FINANCE_MANAGER' | 'ACCOUNTANT';
 export type SettingsItemKind = 'inline' | 'route' | 'external';
+/** กลุ่มหัวข้อในเมนูตั้งค่า (ใช้จัดคอลัมน์ซ้ายเท่านั้น ไม่กระทบ routing) */
+export type SettingsGroupId = 'org' | 'money' | 'sales' | 'system';
 
 export interface SettingsItem {
   id: string;
@@ -57,6 +59,8 @@ export interface SettingsCategory {
   label: string;
   icon: LucideIcon;
   roles: SettingsRole[];
+  /** กลุ่มในเมนูซ้าย — ไม่ระบุ = ตกไปกลุ่ม 'system' (กันหมวดใหม่หายจากเมนู) */
+  group?: SettingsGroupId;
   items: SettingsItem[];
 }
 
@@ -64,7 +68,7 @@ const ALL: SettingsRole[] = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
 
 export const settingsRegistry: SettingsCategory[] = [
   {
-    id: 'company', label: 'บริษัท & สาขา', icon: Building2, roles: ['OWNER'],
+    id: 'company', label: 'บริษัท & สาขา', icon: Building2, roles: ['OWNER'], group: 'org',
     items: [
       { id: 'company-info', label: 'ข้อมูลบริษัท', group: 'บริษัท', roles: ['OWNER'], kind: 'inline', component: CompanyTab, keywords: ['ที่อยู่', 'โลโก้', 'ผู้เซ็น', 'tax id'] },
       { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'route', component: CompanySettingsPage, path: '/settings/company/entities' },
@@ -72,7 +76,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'access', label: 'ผู้ใช้ & สิทธิ์', icon: Users, roles: ['OWNER'],
+    id: 'access', label: 'ผู้ใช้ & สิทธิ์', icon: Users, roles: ['OWNER'], group: 'org',
     items: [
       { id: 'users', label: 'ผู้ใช้ / พนักงาน', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'external', path: '/users' },
       { id: 'account-roles', label: 'บัญชีตาม Role', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'route', component: AccountRolesPage, path: '/settings/access/account-roles' },
@@ -84,7 +88,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'accounting', label: 'บัญชี & ภาษี', icon: BarChart3, roles: ALL,
+    id: 'accounting', label: 'บัญชี & ภาษี', icon: BarChart3, roles: ALL, group: 'money',
     items: [
       { id: 'vat', label: 'VAT', group: 'ภาษี', roles: ['OWNER'], kind: 'inline', component: VatTab, keywords: ['ภาษี', '7%', 'มูลค่าเพิ่ม'] },
       { id: 'periods', label: 'งวดบัญชี', group: 'บัญชี', roles: ['OWNER'], kind: 'inline', component: PeriodsTab, keywords: ['ปิดงวด', 'period'] },
@@ -96,7 +100,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'finance', label: 'การเงิน & สินเชื่อ', icon: Wallet, roles: ['OWNER', 'FINANCE_MANAGER'],
+    id: 'finance', label: 'การเงิน & สินเชื่อ', icon: Wallet, roles: ['OWNER', 'FINANCE_MANAGER'], group: 'money',
     items: [
       { id: 'interest', label: 'ดอกเบี้ย', roles: ['OWNER'], kind: 'route', component: InterestConfigPage, path: '/settings/finance/interest' },
       { id: 'late-fee', label: 'ค่าปรับ & เงื่อนไขผ่อน', roles: ['OWNER'], kind: 'inline', component: LateFeeSettingsCard, keywords: ['ค่าปรับ', 'late fee', 'เบี้ยปรับ', 'ปรับล่าช้า', 'ขั้นบันได', 'bracket', 'งวด', 'overdue', 'ติดตามหนี้', 'ปิดก่อนกำหนด'] },
@@ -105,7 +109,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'products', label: 'สินค้า & การขาย', icon: Smartphone, roles: ['OWNER'],
+    id: 'products', label: 'สินค้า & การขาย', icon: Smartphone, roles: ['OWNER'], group: 'sales',
     items: [
       { id: 'pricing', label: 'ตั้งราคา', roles: ['OWNER'], kind: 'route', component: PricingTemplatesPage, path: '/settings/products/pricing' },
       { id: 'stickers', label: 'สติกเกอร์ฉลาก', roles: ['OWNER'], kind: 'route', component: StickersSettingsPage, path: '/settings/products/stickers' },
@@ -114,7 +118,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'comms', label: 'สื่อสารลูกค้า', icon: MessageSquare, roles: ['OWNER', 'FINANCE_MANAGER'],
+    id: 'comms', label: 'สื่อสารลูกค้า', icon: MessageSquare, roles: ['OWNER', 'FINANCE_MANAGER'], group: 'sales',
     items: [
       { id: 'line-oa', label: 'LINE OA', roles: ['OWNER'], kind: 'route', component: LineOaSettingsPage, path: '/settings/comms/line-oa' },
       { id: 'rich-menu', label: 'Rich Menu', roles: ['OWNER'], kind: 'external', path: '/settings/rich-menu' },
@@ -126,7 +130,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'ai', label: 'AI', icon: Sparkles, roles: ['OWNER'],
+    id: 'ai', label: 'AI', icon: Sparkles, roles: ['OWNER'], group: 'sales',
     items: [
       { id: 'admin', label: 'AI Admin', roles: ['OWNER'], kind: 'route', component: AiAdminPage, path: '/settings/ai/admin' },
       { id: 'persona', label: 'AI Persona', roles: ['OWNER'], kind: 'route', component: AiPersonaPage, path: '/settings/ai/persona' },
@@ -136,14 +140,14 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'integrations', label: 'เชื่อมต่อ', icon: Plug, roles: ['OWNER', 'ACCOUNTANT'],
+    id: 'integrations', label: 'เชื่อมต่อ', icon: Plug, roles: ['OWNER', 'ACCOUNTANT'], group: 'system',
     items: [
       { id: 'hub', label: 'การเชื่อมต่อ', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: IntegrationHubPage, path: '/settings/integrations/hub' },
       { id: 'mdm', label: 'MDM', roles: ['OWNER'], kind: 'route', component: MdmTestPage, path: '/settings/integrations/mdm' },
     ],
   },
   {
-    id: 'system', label: 'ระบบ & ความปลอดภัย', icon: ShieldCheck, roles: ['OWNER'],
+    id: 'system', label: 'ระบบ & ความปลอดภัย', icon: ShieldCheck, roles: ['OWNER'], group: 'system',
     items: [
       { id: 'test-mode', label: 'โหมดทดสอบ', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: TestModeToggle, keywords: ['test', 'otp', '2fa', 'เครดิต'] },
       { id: 'pdpa', label: 'PDPA', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: PdpaTab, keywords: ['pdpa', 'ข้อมูลส่วนบุคคล', 'encryption'] },

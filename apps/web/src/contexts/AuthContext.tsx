@@ -75,6 +75,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     setUser(null);
     setSentryUser(null);
+    try {
+      // โซนที่ค้างไว้เป็นของ session ก่อน — ถ้าไม่ล้าง คนถัดไปที่ล็อกอินบนเครื่องนี้
+      // จะเปิดมาอยู่โหมดตั้งค่าของคนอื่น (และ role ที่ไม่มีเฟืองจะเจอเมนูว่างหนึ่งเฟรม)
+      localStorage.removeItem('bc.sidebar.lastZone');
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const fetchMe = useCallback(async (): Promise<User | null> => {

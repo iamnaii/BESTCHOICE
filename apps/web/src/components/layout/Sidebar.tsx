@@ -1,6 +1,6 @@
 import { useMemo, useCallback, memo, useState, useEffect } from 'react';
 import { useUnreadChat } from '@/hooks/useUnreadChat';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
@@ -33,7 +33,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useLayout } from './LayoutContext';
-import { getSidebarForRole, getZoneConfigForRole } from '@/config/menu';
+import { getSidebarForRole, getZoneConfigForRole, getZoneEntryPathForRole } from '@/config/menu';
 import type { MenuSection, MenuBadgeKey, Zone } from '@/config/menu';
 import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
@@ -42,6 +42,7 @@ import { useOnlineOrdersPendingCount } from '@/hooks/useOnlineOrdersPendingCount
 import { VersionBadge } from './VersionBadge';
 import { PillSwitcher } from './PillSwitcher';
 import { GearButton } from './GearButton';
+import { ExitSettingsBar, SettingsNavList, SettingsZoneHeader, useSettingsZone } from './SettingsNav';
 
 /* ── NavBullet — small dot in place of leaf-item icons ──
  * Owner directive: ลด icon รก — เก็บ icon เฉพาะที่ section header (top-level group);
@@ -169,6 +170,8 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   const { pathname, hash } = useLocation();
   const [openPopover, setOpenPopover] = useState<string | null>(null);
   const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
+  const { enter: enterSettings } = useSettingsZone();
+  const navigate = useNavigate();
 
   const sections = useRoleMenu(role, currentZone);
 
@@ -236,7 +239,13 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => setCurrentZone(zone)}
+                        onClick={() => {
+                          if (zone === currentZone) return;
+                          // สลับโซนต้อง navigate ด้วยเสมอ (เหมือน PillSwitcher) — ถ้าเปลี่ยนแต่
+                          // โซน เมนูจะเปลี่ยนแต่เนื้อหาค้างหน้าเดิม และ MainLayout จงใจไม่แก้ให้
+                          setCurrentZone(zone);
+                          navigate(getZoneEntryPathForRole(role, zone));
+                        }}
                         aria-label={label}
                         aria-pressed={active}
                         className={cn(
@@ -372,16 +381,11 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={() =>
-                    setCurrentZone(currentZone === 'settings' ? zoneConfig.defaultZone : 'settings')
-                  }
+                  onClick={enterSettings}
                   aria-label="ตั้งค่ากลาง"
-                  aria-pressed={currentZone === 'settings'}
                   className={cn(
                     'flex items-center justify-center size-9 rounded-lg transition-all duration-200',
-                    currentZone === 'settings'
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground/70 hover:text-foreground hover:bg-sidebar-hover',
+                    'text-muted-foreground/70 hover:text-foreground hover:bg-sidebar-hover',
                   )}
                 >
                   <Settings className="size-4" />
@@ -443,6 +447,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
   const { pathname, hash } = useLocation();
   const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
+  const { inSettings, enter: enterSettings } = useSettingsZone();
 
   const matchPath = useCallback(
     (path: string): boolean =>
@@ -497,8 +502,19 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         </div>
       )}
 
+      {/* ── โหมดตั้งค่า: ทางออกอยู่บนสุด แทนที่ตำแหน่งของ PillSwitcher ที่ถูกซ่อน ── */}
+      {inSettings ? (
+        <>
+          <ExitSettingsBar />
+          <SettingsZoneHeader />
+          <ScrollArea className="flex-1 pb-4 px-3">
+            <SettingsNavList />
+          </ScrollArea>
+        </>
+      ) : (
+      <>
       {/* ── PillSwitcher (only if role has 2+ zones AND not in settings mode) ── */}
-      {zoneConfig && zoneConfig.zones.length >= 2 && currentZone !== 'settings' && (
+      {zoneConfig && zoneConfig.zones.length >= 2 && (
         <PillSwitcher
           zones={zoneConfig.zones}
           current={currentZone}
@@ -558,18 +574,15 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         </AccordionMenu>
       </ScrollArea>
 
-      {/* ── GearButton (only if role has showSettingsGear) ── */}
-      {zoneConfig?.showSettingsGear && (
-        <GearButton
-          active={currentZone === 'settings'}
-          onClick={() =>
-            setCurrentZone(currentZone === 'settings' ? zoneConfig.defaultZone : 'settings')
-          }
-        />
+      {/* ── GearButton = ทางเข้าเท่านั้น; ในโหมดตั้งค่าใช้แถบด้านบนออก
+           (ปุ่มเดียวทำสองหน้าที่ + ไฮไลต์เขียวตอน active = อ่านเป็นป้ายบอกตำแหน่ง ไม่ใช่ปุ่มออก) ── */}
+      {zoneConfig?.showSettingsGear && <GearButton onClick={enterSettings} />}
+      </>
       )}
 
       {/* ── Footer (collapse toggle + logout) ───────── */}
       <div className="px-4 py-3 border-t border-sidebar-border shrink-0 flex items-center justify-between">
+        {!inSettings && (
         <button
           onClick={onToggle}
           className="flex items-center justify-center size-8 rounded-lg text-muted-foreground/70 hover:text-foreground hover:bg-sidebar-hover dark:text-muted-foreground/85 transition-all duration-200"
@@ -577,6 +590,10 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         >
           <ChevronsLeft className="size-4" />
         </button>
+        )}
+        {/* ที่ว่างแทนปุ่มย่อ — footer เป็น justify-between 3 ช่อง ถ้าหายไปเฉย ๆ
+            VersionBadge จะกระโดดไปชิดซ้ายทุกครั้งที่เข้า/ออกโหมดตั้งค่า */}
+        {inSettings && <span className="size-8 shrink-0" aria-hidden="true" />}
         <VersionBadge />
         <button
           onClick={logout}
@@ -595,6 +612,7 @@ function MobileSidebarContent() {
   const { user, logout } = useAuth();
   const { pathname, hash } = useLocation();
   const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
+  const { inSettings, enter: enterSettings } = useSettingsZone();
 
   const matchPath = useCallback(
     (path: string): boolean =>
@@ -644,8 +662,19 @@ function MobileSidebarContent() {
         </div>
       )}
 
+      {/* โหมดตั้งค่า: ทางออกอยู่บนสุด (บาร์ล่างมีปุ่มออกอีกทาง สำหรับคนที่ไม่เปิดลิ้นชัก) */}
+      {inSettings ? (
+        <>
+          <ExitSettingsBar testId="exit-settings-mobile" />
+          <SettingsZoneHeader />
+          <ScrollArea className="flex-1 pb-4 px-3">
+            <SettingsNavList testIdPrefix="settings-nav-mobile" />
+          </ScrollArea>
+        </>
+      ) : (
+      <>
       {/* PillSwitcher (only if role has 2+ zones AND not in settings mode) */}
-      {zoneConfig && zoneConfig.zones.length >= 2 && currentZone !== 'settings' && (
+      {zoneConfig && zoneConfig.zones.length >= 2 && (
         <PillSwitcher
           zones={zoneConfig.zones}
           current={currentZone}
@@ -708,14 +737,9 @@ function MobileSidebarContent() {
         </AccordionMenu>
       </ScrollArea>
 
-      {/* GearButton (only if role has showSettingsGear) */}
-      {zoneConfig?.showSettingsGear && (
-        <GearButton
-          active={currentZone === 'settings'}
-          onClick={() =>
-            setCurrentZone(currentZone === 'settings' ? zoneConfig.defaultZone : 'settings')
-          }
-        />
+      {/* GearButton = ทางเข้าเท่านั้น (ทางออกอยู่แถบบน + บาร์ล่าง) */}
+      {zoneConfig?.showSettingsGear && <GearButton onClick={enterSettings} />}
+      </>
       )}
 
       {/* Footer (logout) */}
@@ -746,7 +770,7 @@ export function ChatUnreadBadge({ className }: { className?: string }) {
 
 /* ─── Main Sidebar Component ─────────────────────── */
 function Sidebar({ mobile = false }: { mobile?: boolean }) {
-  const { sidebarCollapse, setSidebarCollapse } = useLayout();
+  const { sidebarCollapse, setSidebarCollapse, effectiveSidebarCollapse } = useLayout();
 
   if (mobile) {
     return <MobileSidebarContent />;
@@ -754,7 +778,9 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
 
   const handleToggle = () => setSidebarCollapse(!sidebarCollapse);
 
-  return sidebarCollapse ? (
+  // โหมดตั้งค่าบังคับกาง — 10 หมวดที่ไอคอนหน้าตาใกล้กัน (Wallet/BarChart3/Smartphone)
+  // แยกด้วยไอคอนล้วนไม่ออก และ tooltip ต้อง hover ซึ่งจอสัมผัสไม่มี
+  return effectiveSidebarCollapse ? (
     <CollapsedSidebar onToggle={handleToggle} />
   ) : (
     <ExpandedSidebar onToggle={handleToggle} />

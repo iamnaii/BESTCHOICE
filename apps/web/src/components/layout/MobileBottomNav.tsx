@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import { Link, useLocation } from 'react-router';
 import { cn } from '@/lib/utils';
 import { useLayout } from './LayoutContext';
+import { useSettingsZone } from './SettingsNav';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUnreadChat } from '@/hooks/useUnreadChat';
 import { getZoneConfigForRole } from '@/config/menu';
@@ -11,6 +12,7 @@ import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollections
 function MobileBottomNav() {
   const { pathname } = useLocation();
   const { setMobileSidebarOpen, currentZone } = useLayout();
+  const { exit: exitSettings } = useSettingsZone();
   const { user } = useAuth();
 
   const { enabled: collectionsEnabled } = useCollectionsFlag();
@@ -35,7 +37,27 @@ function MobileBottomNav() {
     >
       <div className="flex items-stretch h-[56px]">
         {tabs.map((tab) => {
-          const active = tab.action !== 'sidebar' && isActive(tab.path);
+          const active = !tab.action && isActive(tab.path);
+
+          if (tab.action === 'exit-settings') {
+            // ต้องเป็นปุ่ม ไม่ใช่ <Link> — ออกจากโหมดต้องสลับโซนด้วย ไม่ใช่แค่เปลี่ยน path
+            return (
+              <button
+                key={tab.label}
+                onClick={exitSettings}
+                data-testid="exit-settings-bottomnav"
+                className={cn(
+                  'flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
+                  'text-muted-foreground/60 hover:text-muted-foreground',
+                  'active:scale-90 transition-all duration-150 focus-visible:outline-hidden',
+                )}
+                aria-label="ออกจากตั้งค่า"
+              >
+                <tab.icon className="size-[22px]" strokeWidth={1.75} />
+                <span className="text-[10px] font-medium leading-snug">{tab.label}</span>
+              </button>
+            );
+          }
 
           if (tab.action === 'sidebar') {
             return (

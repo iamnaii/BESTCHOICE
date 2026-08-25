@@ -154,6 +154,35 @@ chat_rooms.attribution_id → ads_attributions.contract_id → contracts
 Cloud SQL มี automated backup + PITR (`.claude/CLAUDE.md`) — **ยืนยันว่ามีจุดกู้คืนที่ใช้ได้จริง
 ก่อนรันอะไรทั้งสิ้น** ถ้าล้างผิดแล้วไม่มี backup คือจบ
 
+### ①.5 ปลดล็อกเครื่องที่ MDM + หยุด API ⚠️ ห้ามข้าม
+
+**ก) ปลดล็อกเครื่องที่สั่งล็อกไว้ตอนทดสอบ — ทำ *ก่อน* ล้าง**
+
+`mdm_lock_requests` เป็นบันทึกฝั่งเรา ส่วนคำสั่งล็อกจริงอยู่ที่ **PJ-Soft** ⇒ ล้างแล้ว
+เครื่องยัง **ล็อกค้างอยู่ที่ผู้ให้บริการ** และระบบไม่มีบันทึกว่าเคยล็อกเครื่องไหนไว้
+= ปลดไม่ได้ ตามไม่เจอ
+
+```sql
+-- ดูว่ามีเครื่องไหนถูกล็อกค้างอยู่บ้าง (รันก่อนล้าง)
+SELECT id, contract_id, imei, status, created_at
+FROM mdm_lock_requests
+WHERE status NOT IN ('UNLOCKED', 'FAILED', 'CANCELLED')
+ORDER BY created_at DESC;
+```
+
+มีแถว → ปลดล็อกผ่านหน้าจอ MDM ให้หมดก่อน แล้วค่อยล้าง
+
+**ข) หยุด API ก่อนล้าง**
+
+cron เขียนข้อมูลตลอดเวลา (00:01 ตั้งค้างรับรายวัน · 00:30 ECL · 02:00 VAT 60 วัน ·
+09:07 อายุลูกหนี้ · 09:15 ออกจดหมาย ฯลฯ) ถ้ารันทับตอนล้าง จะได้ข้อมูลผีที่เกิดหลัง
+TRUNCATE และด่านตรวจผล "ทุกตารางต้องเป็น 0" จะ fail
+
+```bash
+gcloud run services update bestchoice-api --region asia-southeast1 --min-instances=0 --max-instances=0
+# ล้างเสร็จแล้วค่อยเปิดกลับ
+```
+
 ### ② ดูก่อนว่าจะลบอะไร (ไม่เขียนอะไรเลย)
 
 ```bash
@@ -209,7 +238,13 @@ CONFIRM_FACTORY_RESET=YES_I_AM_SURE \
 
 ## สิ่งที่ **ไม่** ถูกล้าง (อยู่นอก DB)
 
-- **ไฟล์ใน S3** (สลิป รูปสินค้า เอกสารสัญญา ลายเซ็น) — แถวใน DB หายแต่ไฟล์ยังอยู่
+- **ไฟล์ใน S3** (สลิป เอกสารสัญญา ลายเซ็น ใบเบิกจ่าย) — แถวใน DB หายแต่ไฟล์ค้างเป็นขยะถาวร
+  (`e_documents.fileUrl` · `contract_documents.fileUrl` · `contract_letters.fileUrl` ฯลฯ)
+  **รูปสินค้าไม่กระทบ** เพราะ `product_photos` ถูกเก็บไว้
+- **คำสั่งล็อกเครื่องที่ PJ-Soft** — ดูขั้น ①.5 ต้องปลดก่อนล้าง
+- **`audit_logs_seq`** — เป็น standalone sequence (`CREATE SEQUENCE`, migration 20260525100000)
+  ไม่ได้ผูกกับคอลัมน์ ⇒ `TRUNCATE ... RESTART IDENTITY` **ไม่รีเซ็ตให้** เลขจะเดินต่อจากเดิม
+  ไม่พังอะไร (แค่เลขไม่เริ่มจาก 1) — ถ้าอยากรีเซ็ต: `ALTER SEQUENCE audit_logs_seq RESTART WITH 1;`
 - **ข้อความ LINE ที่ส่งไปแล้ว** — ลูกค้ายังเห็นในแชท
 - **เอกสารที่พิมพ์ออกไปแล้ว** (ใบเสร็จ ใบกำกับภาษี สัญญา)
 - **แบบภาษีที่ยื่นไปแล้ว** ถ้าเคยยื่น

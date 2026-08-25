@@ -30,16 +30,40 @@ async function main() {
   // - ไม่ fire row-level DELETE trigger (audit_logs immutable ใช้กับ prod;
   //   ไฟล์นี้คือ dev reset เท่านั้น — prod ใช้ seed-production.ts)
   // - model ใหม่ในอนาคตถูกล้างอัตโนมัติ ไม่ต้องตามมาเติมอีก
-  const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
+  //
+  // ยกเว้นตาราง "ข้อมูลอ้างอิงที่ migration เป็นเจ้าของ" (PRESERVED_TABLES ด้านล่าง):
+  // migration INSERT แถวให้ตอน `migrate deploy` และ **ไม่มี seeder ตัวไหนสร้างคืน**
+  // ⇒ ล้างทิ้งแล้วไม่มีอะไรเติมกลับ. `account_role_map` ทำให้ API บูตไม่ขึ้นเลย
+  // (`AccountRoleService.onModuleInit` โยน "required role(s) missing" เมื่อไม่มีแถว)
+  // ซึ่งเป็นเหตุที่ workflow `E2E Tests` แดงทุก branch — ทุก job ตายที่ "Wait for API"
+  // ตารางที่ seeder สร้างเองอยู่แล้ว (chart_of_accounts, company_info, system_config,
+  // supplier_payment_methods) **ไม่อยู่ในลิสต์** เพราะต้องถูกล้างก่อน ไม่งั้นชน unique
+  const PRESERVED_TABLES = [
+    'account_role_map', // migration 20260919000000 + 20260990000000
+    'notification_templates',
+    'payment_method_configs',
+    'template_categories',
+    'sso_config',
+    'reverse_reasons',
+    'bank_accounts',
+  ];
+
+  const allTables = await prisma.$queryRaw<Array<{ tablename: string }>>`
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
   `;
+  // กรองฝั่ง JS ไม่ใช่ใน SQL — เลี่ยงการพึ่งพฤติกรรมการแปลง JS array เป็น text[]
+  // ของ Prisma tagged template ซึ่งไม่การันตี
+  const tables = allTables.filter((t) => !PRESERVED_TABLES.includes(t.tablename));
   if (tables.length > 0) {
     await prisma.$executeRawUnsafe(
       `TRUNCATE TABLE ${tables.map((t) => `"${t.tablename}"`).join(', ')} CASCADE`,
     );
   }
-  console.log(`All data deleted (${tables.length} tables truncated).`);
+  console.log(
+    `All data deleted (${tables.length} tables truncated, ` +
+      `${PRESERVED_TABLES.length} migration-owned reference tables preserved).`,
+  );
 
   // ============================================================
   // STEP 1: CompanyInfo

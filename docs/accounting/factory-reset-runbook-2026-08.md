@@ -268,6 +268,26 @@ CONFIRM_CLEANUP=YES_I_AM_SURE ALLOW_PROD_CLEANUP=YES_I_AM_SURE NODE_ENV=producti
 
 ---
 
+## ผลตรวจทานแบบ adversarial (2026-08-25) — 50 agent
+
+5 เลนส์หา finding แล้วให้ agent อีกชุดพยายาม**หักล้าง**ทีละข้อ (ภาระพิสูจน์อยู่ที่ข้อเสนอ —
+ไม่แน่ใจ = ถือว่าหักล้างได้) เจอ 29 ข้อ **หักล้างตกไป 16 ข้อ · รอด 13 ข้อ**
+
+| ระดับ | เรื่อง | จัดการแล้วอย่างไร |
+|---|---|---|
+| **CRITICAL** ×2 | `TRUNCATE CASCADE` ลามตาม FK constraint ⇒ `PRE_TRUNCATE_NULLIFY` ใช้ไม่ได้ + ปิดปาก guard 3 | แก้เป็น `FK_DROP_RECREATE` · พิสูจน์บน prod · ซ้อมผ่าน 2 รอบ |
+| **CRITICAL** (ข้อเดียวกัน) | ขั้นล้างไม่มี `$transaction` ครอบ ⇒ ด่านตรวจเป็นชันสูตรหลังตาย | ครอบ tx timeout 30 นาที · ด่านตรวจ `throw` ⇒ roll back ได้ |
+| **HIGH** | `saving_plans`/`saving_plan_payments` = หลักฐานเดียวของเงินลูกค้า (ไม่มี Payment/JE/ใบเสร็จคู่) | prod = **0 แถว** ⇒ ไม่กระทบ · เพิ่มด่าน `IRREPLACEABLE_IF_NONEMPTY` กันรันซ้ำในอนาคต |
+| **MEDIUM** | `todos`/`todo_comments` — พนักงานสร้างเอง มีไฟล์แนบ S3 ไม่มี seed | prod = **0 แถว** ⇒ ไม่กระทบ |
+| **LOW** | ลูกค้าทดสอบ 12 รายรอดเพราะ `customers` เก็บทั้งตาราง | เพิ่มขั้น `cleanup:test-contracts` หลังล้าง |
+| LOW/NONE ×8 | `po_items` `customer_tags` `contacts` `external_finance_companies` `chat_kb_suggestions` `audit_logs` `quotes` ฯลฯ | ยืนยันว่าจำแนกถูกแล้ว — ไม่ต้องแก้ |
+
+**ข้อสังเกต:** เลนส์สองตัวเจอบั๊ก CASCADE โดยอิสระกัน และทั้งคู่ชี้ว่า *ทางแก้เดิมทำให้แย่ลง*
+ไม่ใช่แค่ไม่พอ — ถ้ารันตามแผนเดิม `chat_messages` 104,632 แถวจะหายโดย DRY_RUN ยังพิมพ์ว่า
+"เก็บไว้" อยู่
+
+---
+
 ## ขั้นตอน
 
 ### ① ก่อนเริ่ม — ยืนยันจุดกู้คืน ⚠️ ห้ามข้าม

@@ -378,3 +378,35 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'website_sessions',
   'website_visits',
 ]);
+
+/**
+ * ตารางในฝั่ง **ล้าง** ที่ถือหลักฐานซึ่งประกอบกลับจากที่อื่นไม่ได้
+ *
+ * ถ้าตารางกลุ่มนี้ **มีข้อมูล** สคริปต์จะ **หยุด** และบังคับให้มนุษย์ตัดสินใจ
+ * (ข้ามได้ด้วย `ACK_IRREPLACEABLE=<ชื่อตาราง,คั่นด้วยจุลภาค>`)
+ *
+ * ## ที่มา — audit 2026-08-25 (finding ระดับ HIGH)
+ *
+ * `saving_plans` / `saving_plan_payments` คือ **หลักฐานเดียว**ของเงินที่ลูกค้าจ่ายเข้ามา
+ * จริงผ่าน QR PromptPay: `paysolutions-confirmation.service.ts` ทั้งทรานแซกชันมีแค่
+ * `savingPlanPayment.create` + `savingPlan.update({ totalSaved })` — **ไม่มี `Payment`
+ * ไม่มี `JournalEntry` ไม่มี `Receipt`** ⇒ ล้างแล้วไม่เหลืออะไรให้ประกอบกลับเลย
+ * ต่างจากธุรกรรมอื่นทุกตัวที่มีคู่ในสมุดบัญชี
+ *
+ * ณ 2026-08-25 บน prod ทั้งสองตารางเป็น **0 แถว** ⇒ รอบนี้ด่านนี้เป็น no-op
+ * แต่ถ้าวันหน้ามีลูกค้าใช้แผนออมจริงแล้วมีคนรันสคริปต์นี้ซ้ำ ด่านนี้จะหยุดให้
+ *
+ * FK closure เอื้อให้ย้ายไปฝั่งเก็บได้ทันทีถ้าตัดสินใจแบบนั้น (ตรวจแล้ว: ปลายทางทุกตัว
+ * — `customers` `products` — อยู่ฝั่งเก็บ และ `payment_links` ที่ชี้มาเป็น**ลูก**
+ * จึงลามย้อนขึ้นไม่ได้)
+ */
+export const IRREPLACEABLE_IF_NONEMPTY: ReadonlyArray<{ table: string; why: string }> = [
+  {
+    table: 'saving_plans',
+    why: 'ยอดเงินออมของลูกค้า — ไม่มีคู่ในสมุดบัญชี ล้างแล้วประกอบกลับไม่ได้',
+  },
+  {
+    table: 'saving_plan_payments',
+    why: 'รายการรับเงินออมจริงผ่าน QR — ไม่มี Payment/JE/ใบเสร็จคู่กัน',
+  },
+];

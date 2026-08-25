@@ -47,6 +47,7 @@ import {
   FK_DROP_RECREATE,
   PRODUCT_STATUS_RESTORE,
   PRODUCT_STATUS_REPORT_ONLY,
+  IRREPLACEABLE_IF_NONEMPTY,
 } from './factory-reset-tables';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
@@ -191,6 +192,28 @@ async function main(): Promise<void> {
       console.error('เพิ่มเข้า FK_DROP_RECREATE (ถอด constraint แล้วสร้างกลับ) — ยกเลิก');
       console.error('⚠️ การ SET NULL เฉย ๆ ไม่ช่วย: TRUNCATE CASCADE ลามตาม constraint');
       console.error('   ไม่ใช่ตามข้อมูล — พิสูจน์บน prod แล้ว ดู FK_DROP_RECREATE');
+      await prisma.$disconnect();
+      process.exit(1);
+    }
+
+    // ── ด่าน 4: ตารางที่ถือหลักฐานซึ่งประกอบกลับไม่ได้ ต้องว่างเปล่า ──────────
+    // ข้ามได้ด้วย ACK_IRREPLACEABLE=<ชื่อตาราง,...> เมื่อมีคนตัดสินใจแล้วจริง ๆ
+    const acked = new Set(
+      (process.env.ACK_IRREPLACEABLE ?? '').split(',').map((x) => x.trim()).filter(Boolean),
+    );
+    const blocking: string[] = [];
+    for (const item of IRREPLACEABLE_IF_NONEMPTY) {
+      if (acked.has(item.table) || !all.includes(item.table)) continue;
+      const n = await countRows(prisma, item.table);
+      if (n > 0) blocking.push(`  ${item.table} (${n} แถว) — ${item.why}`);
+    }
+    if (blocking.length > 0) {
+      console.error('ERROR: มีตารางที่ถือหลักฐานซึ่งประกอบกลับจากที่อื่นไม่ได้ และยังมีข้อมูลอยู่:');
+      for (const b of blocking) console.error(b);
+      console.error('');
+      console.error('ต้องตัดสินใจก่อนว่าจะเก็บหรือทิ้ง — ทางเลือก:');
+      console.error('  ก) ย้ายเข้า KEEP_TABLES ใน factory-reset-tables.ts (FK closure รองรับแล้ว)');
+      console.error('  ข) ยืนยันว่าทิ้งได้ด้วย ACK_IRREPLACEABLE=<ชื่อตาราง,คั่นด้วยจุลภาค>');
       await prisma.$disconnect();
       process.exit(1);
     }

@@ -461,7 +461,15 @@ export class AccountRoleService implements OnModuleInit {
     if (missing.length > 0) {
       throw new Error(
         `AccountRoleService: required role(s) missing from account_role_map: ${missing.join(', ')}. ` +
-          'Run the seed (npm run seed:account-roles) or update the table.',
+          // ห้ามชี้ไปคำสั่งที่ไม่มีจริง — ก่อนหน้านี้บอกให้รัน `npm run seed:account-roles`
+          // ซึ่งไม่เคยมีใน package.json เลย. แถวชุดนี้ถูก INSERT โดย migration
+          // 20260919000000_add_account_role_map (+ 20260990000000 ฝั่ง SHOP) ⇒ ทางแก้จริงคือ
+          // ตรวจว่า migration รันครบ หรือเติมแถวเองที่หน้า /settings/access/account-roles
+          'แถวชุดนี้มาจาก migration (20260919000000_add_account_role_map) — ' +
+          'ตรวจว่า `npx prisma migrate deploy` รันครบแล้ว และไม่มีอะไรล้างตาราง ' +
+          '(prisma/seed.ts เคย TRUNCATE ทิ้ง — ดู PRESERVED_TABLES) ' +
+          'หรือเพิ่ม/เปิดใช้งานแถวเองที่หน้า ตั้งค่า → ผู้ใช้ & สิทธิ์ → บัญชีตาม Role ' +
+          '(/settings/access/account-roles, OWNER เท่านั้น)',
       );
     }
   }

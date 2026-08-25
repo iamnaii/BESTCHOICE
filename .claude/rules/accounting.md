@@ -336,7 +336,7 @@ Dr 21-1103   = parkRelief          ← บรรทัดใหม่ (ไม่
 | เรื่อง | กติกา |
 |---|---|
 | `parkRelief` คือเท่าไร | **ไม่ใช่ยอดถังพักทั้งก้อน** — คือส่วนที่ยอดปิดดูดซับจริง: `rescheduleAdvanceApplied = payoffBeforeLateFees(ไม่มีพัก) − payoffBeforeLateFees(มีพัก)` clamp `[0, park]` (ฟิลด์ใหม่บน `computePayoffQuote`, optional + `?? 0` ⇒ golden เดิม 95 เคสไม่ขยับ) |
-| ทำไมไม่ใช่ทั้งก้อน | ถังพักลด `remainingBalance` → ลด gross profit → **ลดส่วนลดดอกเบี้ย (52-1106)** ด้วย · เคส CPA prod: พัก 354 ที่ส่วนลด 50% ลดยอดลูกค้าจ่ายจริงแค่ **188.58** — ปลด 354 = สร้างบั๊กกลับด้าน (ขาเงินสดต่ำไป 165.42) · ส่วนที่เหลือค้างในคอลัมน์ = เคสของ alarm I-5 |
+| ทำไมไม่ใช่ทั้งก้อน | ถังพักลด `remainingBalance` → ลด gross profit → **ลดส่วนลดดอกเบี้ย (52-1106)** ด้วย · เคสตัวอย่างคำนวณ (ไม่ใช่สัญญาบน prod — ที่มาคือ fixture ใน `contract-payment.early-payoff-park.spec.ts`): พัก 354 ที่ส่วนลด 50% ลดยอดลูกค้าจ่ายจริงแค่ **188.58** (354 ÷ 1.07 × 50% = 165.42 คือส่วนลดที่หายไป) — ปลด 354 = สร้างบั๊กกลับด้าน (ขาเงินสดต่ำไป 165.42) · ส่วนที่เหลือค้างในคอลัมน์ = เคสของ alarm I-5 |
 | Clamp | JP4: `parkRelief ≤ totalCash` (ขาเงินสดติดลบไม่ได้) · JP5: clamp ด้วยยอด GL 21-1103 จริงของสัญญานั้น (`glContractBalance`) แล้ว `execute()` คืนยอดที่โพสต์จริงให้ caller ใช้ decrement คอลัมน์ |
 | JP5 วางบรรทัดตรงไหน | push `Dr 21-1103` **ก่อน** คำนวณ plug ขาดทุน/กำไร → plug ดูดซับเอง (pattern เดียวกับ `customerRefund`/21-1107 ไม่มีสูตรที่สอง) |
 | Decrement คอลัมน์ | อยู่ใน `$transaction` เดียวกับ JE เสมอ + AuditLog (ดูตารางล่าง) · preview (`getEarlyPayoffQuote`, `previewCalculation`) ใช้ `parkRelief` ตัวเดียวกัน ⇒ preview === posted |

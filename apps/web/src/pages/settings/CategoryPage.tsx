@@ -55,12 +55,12 @@ export function CategoryPage({ categoryId }: { categoryId: string }) {
     else groups.push({ name: item.group, items: [item] });
   }
 
+  // ชื่อหมวดอยู่บน PageHeader ของ SettingsLayout แล้ว — เดิมโชว์ซ้ำสองที่ติดกัน
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-foreground leading-snug mb-4">{cat.label}</h2>
       {groups.map((g, gi) => (
         <section key={`${g.name ?? ''}-${gi}`} className="space-y-4">
-          {g.name && <h3 className={groupLabelClass}>{g.name}</h3>}
+          {g.name && <h2 className={groupLabelClass}>{g.name}</h2>}
           {g.items.map((item) => (
             <ItemSection key={item.id} item={item} categoryId={cat.id} />
           ))}

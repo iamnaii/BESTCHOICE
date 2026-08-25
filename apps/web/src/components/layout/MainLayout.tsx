@@ -15,7 +15,8 @@ import MobileBottomNav from './MobileBottomNav';
 import { SkipLink } from './SkipLink';
 import TestModeBanner from './TestModeBanner';
 import { InboundCallPopup } from '@/components/InboundCallPopup';
-import { getZoneConfigForRole, resolveZoneForPath } from '@/config/menu';
+import { getZoneConfigForRole, resolveZoneForPath, COMMON_PATHS } from '@/config/menu';
+import type { NonSettingsZone } from './LayoutContext';
 
 /* ── Sidebar widths — keep in sync with Sidebar.tsx ── */
 const SIDEBAR_EXPANDED_W = 264;  // px
@@ -23,12 +24,6 @@ const SIDEBAR_COLLAPSED_W = 70;  // px
 
 /* ── Zone resolution helpers (Task 15) ────────────── */
 const ALL_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT'];
-
-/** Paths shared across every authenticated role — never treat as access-denied
- * even if a role's menu config forgets to list them. Defense-in-depth against
- * the bug pattern where a role omits a universal route (e.g. `/`) and the
- * auto-zone resolver bogusly fires the "no permission" toast. */
-const COMMON_PATHS = new Set<string>(['/']);
 
 /* ── Mobile Sheet Sidebar ─────────────────────────── */
 function MobileSidebar() {
@@ -61,8 +56,8 @@ const FULL_BLEED_ROUTES = ['/inbox', '/chat'];
 
 function MainContent() {
   const isMobile = useIsMobile();
-  const { sidebarCollapse, currentZone, setCurrentZone } = useLayout();
-  const { pathname } = useLocation();
+  const { effectiveSidebarCollapse, currentZone, setCurrentZone, enterSettings } = useLayout();
+  const { pathname, search, hash } = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showKeyboardShortcuts } = useUiFlags();
@@ -77,6 +72,9 @@ function MainContent() {
      back to whatever zone owns the current path. Track previous pathname
      via a ref and skip when only the zone changed. */
   const prevPathnameRef = useRef<string | null>(null);
+  // เก็บ location เต็ม (พร้อม query/hash) ของหน้าก่อนหน้า ไว้ใช้เป็น "ที่ที่จากมา"
+  // เมื่อผู้ใช้เข้าตั้งค่าโดยไม่ผ่านปุ่มเฟือง (เมนูอวตารบน TopBar, Ctrl+K, ลิงก์ในหน้า)
+  const prevFullPathRef = useRef<string | null>(null);
   useEffect(() => {
     const role = user?.role ?? '';
     if (!role) return;
@@ -85,7 +83,9 @@ function MainContent() {
     // Skip if only `currentZone` changed (pill click) — preserve manual intent.
     const isFirstRun = prevPathnameRef.current === null;
     const pathChanged = prevPathnameRef.current !== pathname;
+    const prevFullPath = prevFullPathRef.current;
     prevPathnameRef.current = pathname;
+    prevFullPathRef.current = pathname + search + hash;
     if (!isFirstRun && !pathChanged) return;
 
     const targetZone = resolveZoneForPath(role, pathname);
@@ -96,7 +96,16 @@ function MainContent() {
       // COMMON_PATHS short-circuits the check for universally-accessible routes
       // (e.g. `/` Dashboard) to prevent bogus access-denied toasts when a role's
       // menu config omits them.
-      if (COMMON_PATHS.has(pathname)) return;
+      if (COMMON_PATHS.has(pathname)) {
+        // Dashboard ไม่สังกัดโซนไหน — แต่ถ้าค้างอยู่โหมดตั้งค่าต้องพากลับโซนปกติ
+        // ไม่งั้นคลิกโลโก้/breadcrumb "หน้าหลัก" แล้วได้หน้า Dashboard ที่ยังโชว์
+        // เมนูตั้งค่าอยู่ข้าง ๆ และไม่มีทางออกให้เห็น (อาการที่เจ้าของรายงาน)
+        if (currentZone === 'settings') {
+          const cfg = getZoneConfigForRole(role);
+          if (cfg) setCurrentZone(cfg.defaultZone);
+        }
+        return;
+      }
       const anyRoleHasIt = ALL_ROLES.some(
         (r) => r !== role && resolveZoneForPath(r, pathname) !== null
       );
@@ -112,9 +121,16 @@ function MainContent() {
 
     // Path lives in role's sidebar — switch the pill if needed.
     if (targetZone !== currentZone) {
-      setCurrentZone(targetZone);
+      // เข้าตั้งค่าโดยไม่ผ่านปุ่มเฟือง (TopBar › ตั้งค่าระบบ, Ctrl+K, ลิงก์ในหน้า, bookmark)
+      // ต้องจำที่ที่จากมาให้เหมือนกัน ไม่งั้นปุ่ม "ออกจากตั้งค่า" จะพากลับ defaultZone
+      // ซึ่งไม่ใช่โซนที่ผู้ใช้ทำงานอยู่ — เป็นอาการเดิมที่งานนี้ตั้งใจแก้
+      if (targetZone === 'settings' && currentZone !== 'settings' && prevFullPath) {
+        enterSettings({ zone: currentZone as NonSettingsZone, path: prevFullPath });
+      } else {
+        setCurrentZone(targetZone);
+      }
     }
-  }, [pathname, user?.role, currentZone, setCurrentZone, navigate]);
+  }, [pathname, search, hash, user?.role, currentZone, setCurrentZone, enterSettings, navigate]);
 
   // D1.4.1.2 — when OWNER disables `show_keyboard_shortcuts`, the Shift+?
   // help-dialog binding becomes a no-op AND the overlay is never rendered.
@@ -128,7 +144,7 @@ function MainContent() {
      shifts correctly when sidebar collapses / expands. */
   const sidebarOffset = isMobile
     ? 0
-    : sidebarCollapse
+    : effectiveSidebarCollapse
       ? SIDEBAR_COLLAPSED_W
       : SIDEBAR_EXPANDED_W;
 

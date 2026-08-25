@@ -163,14 +163,22 @@ Cloud SQL มี automated backup + PITR (`.claude/CLAUDE.md`) — **ยืน�
 = ปลดไม่ได้ ตามไม่เจอ
 
 ```sql
--- ดูว่ามีเครื่องไหนถูกล็อกค้างอยู่บ้าง (รันก่อนล้าง)
-SELECT id, contract_id, imei, status, created_at
-FROM mdm_lock_requests
-WHERE status NOT IN ('UNLOCKED', 'FAILED', 'CANCELLED')
-ORDER BY created_at DESC;
+-- ดูว่ามีเครื่องไหนถูกสั่งล็อกไปแล้วและยังไม่ปลด (รันก่อนล้าง)
+-- EXECUTED_MANUAL / EXECUTED_API = ส่งคำสั่งไปที่ PJ-Soft แล้วจริง
+-- (PENDING / APPROVED ยังไม่ได้ส่ง · REJECTED / FAILED / UNLOCKED ไม่ได้ล็อกอยู่)
+SELECT m.id, c.contract_number, p.imei_serial, p.model, m.status, m.proposed_at
+FROM mdm_lock_requests m
+JOIN contracts c ON c.id = m.contract_id
+LEFT JOIN products p ON p.id = c.product_id
+WHERE m.status IN ('EXECUTED_MANUAL', 'EXECUTED_API')
+  AND m.deleted_at IS NULL
+ORDER BY m.proposed_at DESC;
 ```
 
-มีแถว → ปลดล็อกผ่านหน้าจอ MDM ให้หมดก่อน แล้วค่อยล้าง
+มีแถว → ปลดล็อกผ่านหน้าจอ MDM (`/settings/integrations/mdm`) ให้หมดก่อน แล้วค่อยล้าง
+
+> เก็บผลคิวรีนี้ไว้เป็นไฟล์ก่อนล้างด้วย — หลัง TRUNCATE ทั้ง `mdm_lock_requests`,
+> `contracts` และเลข IMEI ที่ผูกกันจะหายพร้อมกัน ตามย้อนไม่ได้
 
 **ข) หยุด API ก่อนล้าง**
 

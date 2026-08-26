@@ -627,7 +627,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
 
   // -------------------------------------------------------------------------
   it(
-    'เคส 2: ขายผ่านไฟแนนซ์ภายนอก (+ของแถม) → ยกเลิก → receivable ถูกยกเลิก, ไม่มี JE ให้กลับ (ไม่ throw), ไม่แตะค่าคอม',
+    'เคส 2: ขายผ่านไฟแนนซ์ภายนอก (+ของแถม) → ยกเลิก → JE ถูกกลับรายการ, receivable ถูกยกเลิก, ไม่แตะค่าคอม',
     async () => {
       const main = await seedProduct('B1');
       const bundle = await seedProduct('B2', { costPrice: '400.00' });
@@ -641,27 +641,58 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
       });
 
       // ฉากจาก flow จริง: หลัก SOLD_INSTALLMENT / ของแถม SOLD_CASH (สองสถานะในใบเดียว —
-      // พิสูจน์ BUNDLE_PRODUCT_STATUS ของด่าน G5 บนข้อมูลจริง), ไม่มี JE, ไม่มีค่าคอม
+      // พิสูจน์ BUNDLE_PRODUCT_STATUS ของด่าน G5 บนข้อมูลจริง)
       expect(
         (await prisma.product.findUniqueOrThrow({ where: { id: main.id } })).status,
       ).toBe('SOLD_INSTALLMENT');
       expect(
         (await prisma.product.findUniqueOrThrow({ where: { id: bundle.id } })).status,
       ).toBe('SOLD_CASH');
-      expect(
-        await prisma.journalEntry.count({
-          where: { metadata: { path: ['saleId'], equals: sale.id } as never },
-        }),
-      ).toBe(0);
+
+      // เดิมเคสนี้ปักว่า "ไม่มี JE" ซึ่งจริงตอนที่ผัง SHOP ยังไม่มี S11-3101/S51-1106
+      // ตั้งแต่ 2026-08-26 บัญชีเข้าผังแล้ว ⇒ การขายผ่านไฟแนนซ์ภายนอกโพสต์ JE จริง
+      // (หนึ่งใบต่อใบขาย รวมขาตัดสต็อกของแถมไว้ในใบเดียวกัน)
+      const saleJes = await prisma.journalEntry.findMany({
+        where: { metadata: { path: ['saleId'], equals: sale.id } as never, deletedAt: null },
+        include: { lines: true },
+      });
+      expect(saleJes).toHaveLength(1);
+      const saleLines = saleJes[0].lines;
+      // ลูกหนี้ไฟแนนซ์ภายนอกถูกตั้ง
+      expect(saleLines.some((l) => l.accountCode === 'S11-3101')).toBe(true);
+      // ของแถมต้นทุน 400 ถูกตัดสต็อกด้วย — จุดที่เคยหลุด (สินค้าคงเหลือสูงเกินจริง)
+      const bundleRelief = saleLines
+        .filter((l) => l.accountCode.startsWith('S11-20'))
+        .reduce((sum, l) => sum + Number(l.credit), 0);
+      expect(bundleRelief).toBeGreaterThanOrEqual(400);
+
       expect(await prisma.salesCommission.count({ where: { saleId: sale.id } })).toBe(0);
       const receivable = await prisma.financeReceivable.findFirstOrThrow({
         where: { saleId: sale.id },
       });
       expect(receivable.status).toBe('PENDING');
 
-      // ── ยกเลิก — ไม่มี JE ให้กลับรายการ ต้องไม่ throw ──
+      // ── ยกเลิก — sweep ต้องจับ JE ใหม่ได้เองผ่าน metadata.saleId ──
       const res = await saleVoidService.voidSale(sale.id, OWNER(), 'ไฟแนนซ์ไม่อนุมัติ');
-      expect(res.reversalEntryNumbers).toEqual([]);
+      expect(res.reversalEntryNumbers).toHaveLength(1);
+
+      // ผลรวมทุกบัญชีของใบขายนี้ต้องเป็นศูนย์หลังกลับรายการ (รวมขาของแถม)
+      const afterLines = await prisma.journalLine.findMany({
+        where: { journalEntry: { OR: [
+          { metadata: { path: ['saleId'], equals: sale.id } as never },
+          { metadata: { path: ['reversesEntryId'], equals: saleJes[0].id } as never },
+        ], deletedAt: null } },
+      });
+      const netByAccount = new Map<string, number>();
+      for (const l of afterLines) {
+        netByAccount.set(
+          l.accountCode,
+          (netByAccount.get(l.accountCode) ?? 0) + Number(l.debit) - Number(l.credit),
+        );
+      }
+      for (const [code, net] of netByAccount) {
+        expect({ code, net: Math.round(net * 100) / 100 }).toEqual({ code, net: 0 });
+      }
 
       expect(
         (await prisma.product.findUniqueOrThrow({ where: { id: main.id } })).status,

@@ -155,6 +155,70 @@ describe('C1 — ขายผ่านไฟแนนซ์ภายนอก', 
       ).toBe('20000.00');
     });
 
+    it('ของแถมถูกตัดสต็อกด้วย — แยกบัญชีตามหมวดของแต่ละชิ้น', async () => {
+      const journal = makeJournal();
+      const t = new ShopExternalFinanceSaleTemplate(
+        journal as never,
+        {} as never,
+        makeCompanyResolver() as never,
+      );
+
+      await t.execute(
+        {
+          ...saleInput,
+          bundleCosts: [
+            // อุปกรณ์เสริม — คนละหมวดกับเครื่องหลัก (S11-2001)
+            {
+              productId: 'gift-1',
+              cogsAccountCode: 'S50-1103',
+              inventoryAccountCode: 'S11-2003',
+              cost: d('450'),
+            },
+            // ของแถมต้นทุน 0 — ไม่มีอะไรให้ตัด ต้องไม่ออกบรรทัด
+            {
+              productId: 'gift-2',
+              cogsAccountCode: 'S50-1103',
+              inventoryAccountCode: 'S11-2003',
+              cost: d(0),
+            },
+          ],
+        },
+        txAccountsReady() as never,
+      );
+
+      const arg = journal.createAndPost.mock.calls[0][0];
+      const lines = arg.lines as Array<{ accountCode: string; dr: Decimal; cr: Decimal }>;
+
+      // เครื่องหลักยังตัดที่บัญชีของตัวเอง
+      expect(lines.find((l) => l.accountCode === 'S11-2001')?.cr.toFixed(2)).toBe('15000.00');
+      // ของแถมตัดที่บัญชีอุปกรณ์เสริม ไม่ใช่บัญชีเครื่อง
+      expect(lines.find((l) => l.accountCode === 'S11-2003')?.cr.toFixed(2)).toBe('450.00');
+      expect(lines.find((l) => l.accountCode === 'S50-1103')?.dr.toFixed(2)).toBe('450.00');
+      // ต้นทุน 0 ไม่สร้างบรรทัดเพิ่ม — บัญชีอุปกรณ์เสริมต้องมีขาละใบเดียว
+      expect(lines.filter((l) => l.accountCode === 'S11-2003')).toHaveLength(1);
+
+      // ยังสมดุล
+      const dr = lines.reduce((a, l) => a + l.dr.toNumber(), 0);
+      const cr = lines.reduce((a, l) => a + l.cr.toNumber(), 0);
+      expect(dr).toBeCloseTo(cr, 2);
+    });
+
+    it('ไม่ส่ง bundleCosts → พฤติกรรมเดิมทุกไบต์ (ไม่มีบรรทัดเพิ่ม)', async () => {
+      const journal = makeJournal();
+      const t = new ShopExternalFinanceSaleTemplate(
+        journal as never,
+        {} as never,
+        makeCompanyResolver() as never,
+      );
+
+      await t.execute(saleInput, txAccountsReady() as never);
+
+      const lines = journal.createAndPost.mock.calls[0][0].lines as Array<{
+        accountCode: string;
+      }>;
+      expect(lines).toHaveLength(5); // เงินสด + ลูกหนี้ + รายได้ + ต้นทุน + สต็อก
+    });
+
     it('ดาวน์ + ยอดไฟแนนซ์ ไม่เท่ายอดขาย → ปฏิเสธ (ไม่เชื่อ DTO)', async () => {
       const t = new ShopExternalFinanceSaleTemplate(
         makeJournal() as never,

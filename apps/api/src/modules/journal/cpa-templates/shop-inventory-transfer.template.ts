@@ -81,6 +81,21 @@ export interface ShopInventoryTransferInput {
   revenueAccountCode: string;
   /** Cost basis from weighted-average / FIFO at activation time. */
   costPrice: Decimal;
+  /**
+   * ของแถมที่แถมไปกับเครื่องหลัก — ไม่มีรายได้ของตัวเอง (รวมอยู่ในราคาเครื่องแล้ว)
+   * แต่ **ต้องตัดสต็อกทุกครั้ง** (คำสั่งเจ้าของ 2026-08-26) ⇒ เพิ่มคู่
+   * `Dr ต้นทุนขาย / Cr สินค้าคงเหลือ` เข้า JE A แยกบัญชีตามหมวดของแต่ละชิ้น
+   * (ของแถมอาจเป็นอุปกรณ์เสริม S11-2003 ขณะที่เครื่องหลักเป็น S11-2001)
+   *
+   * ⚠️ เดิมตกหล่น — ของแถมถูก flip เป็น `SOLD_CASH` โดย `markBundleProductsSold`
+   * แต่ต้นทุนค้างอยู่ในสต็อกถาวร ทำให้สินค้าคงเหลือสูงเกินจริง
+   */
+  bundleCosts?: Array<{
+    productId: string;
+    cogsAccountCode: string;
+    inventoryAccountCode: string;
+    cost: Decimal;
+  }>;
   /** Total sale price = downAmount + financedAmount. Asserted. */
   salePrice: Decimal;
   /** Down already paid into SHOP via ShopDownPaymentTemplate. */
@@ -171,6 +186,28 @@ export class ShopInventoryTransferTemplate {
         description: 'ตัดสต็อก โอนกรรมสิทธิ์ → FINANCE',
       },
     ];
+
+      // ของแถม: ตัดสต็อกอย่างเดียว ไม่มีขารายได้ (รายได้รวมในราคาเครื่องหลักแล้ว)
+      // คำสั่งเจ้าของ 2026-08-26: "ของแถมต้องตัดสต๊อคทุกครั้ง"
+      // กรรมสิทธิ์ของแถมไม่ได้โอนไป FINANCE — เป็นการขายขาดจากหน้าร้าน
+      // ⚠️ เดิมตกหล่น: markBundleProductsSold พลิกสถานะเป็น SOLD_CASH แต่ต้นทุน
+      //    ค้างในสต็อกถาวร ⇒ สินค้าคงเหลือสูงเกินจริง
+      for (const b of input.bundleCosts ?? []) {
+        const bCost = new Decimal(b.cost.toString());
+        if (!bCost.gt(zero)) continue;
+        cogsLines.push({
+          accountCode: b.cogsAccountCode,
+          dr: bCost,
+          cr: zero,
+          description: 'ต้นทุนของแถม (ผ่อน)',
+        });
+        cogsLines.push({
+          accountCode: b.inventoryAccountCode,
+          dr: zero,
+          cr: bCost,
+          description: 'ตัดสต็อกของแถม',
+        });
+      }
 
     // ── JE B: revenue + receivables + down clearance ────────────────────
     const revenueLines: JeLineInput[] = [];

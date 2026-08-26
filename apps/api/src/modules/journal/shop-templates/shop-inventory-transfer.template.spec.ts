@@ -65,6 +65,78 @@ describe('ShopInventoryTransferTemplate (unit — C2 redesign)', () => {
     expect(revLines.find((l) => l.accountCode === 'S41-1201')!.cr.toFixed(2)).toBe('1500.00');
   });
 
+  it('ของแถมถูกตัดสต็อกด้วย — แยกบัญชีตามหมวด, ไม่แตะขารายได้', async () => {
+    const { template, journal } = build();
+    await template.execute({
+      idempotencyKey: 'inv-bundle-1',
+      contractId: 'c-bundle',
+      productId: 'p1',
+      inventoryAccountCode: 'S11-2001',
+      cogsAccountCode: 'S50-1101',
+      revenueAccountCode: 'S41-1101',
+      costPrice: new Prisma.Decimal(11000),
+      salePrice: new Prisma.Decimal(15000),
+      downAmount: new Prisma.Decimal(3000),
+      financedAmount: new Prisma.Decimal(12000),
+      commission: new Prisma.Decimal(1500),
+      bundleCosts: [
+        // อุปกรณ์เสริม — คนละบัญชีกับเครื่องหลัก
+        {
+          productId: 'gift-1',
+          cogsAccountCode: 'S50-1103',
+          inventoryAccountCode: 'S11-2003',
+          cost: new Prisma.Decimal(450),
+        },
+        // ของแถมต้นทุน 0 — ไม่มีอะไรให้ตัด ต้องไม่ออกบรรทัด
+        {
+          productId: 'gift-2',
+          cogsAccountCode: 'S50-1103',
+          inventoryAccountCode: 'S11-2003',
+          cost: new Prisma.Decimal(0),
+        },
+      ],
+    });
+
+    // mock เก็บแค่ lastInput — ใบแรก (JE A) ต้องดึงจาก mock.calls โดยตรง
+    const cogsLines = journal.service.createAndPost.mock.calls[0][0].lines as Array<{
+      accountCode: string;
+      dr: Prisma.Decimal;
+      cr: Prisma.Decimal;
+    }>;
+    expect(cogsLines.find((l) => l.accountCode === 'S11-2001')!.cr.toFixed(2)).toBe('11000.00');
+    expect(cogsLines.find((l) => l.accountCode === 'S11-2003')!.cr.toFixed(2)).toBe('450.00');
+    expect(cogsLines.find((l) => l.accountCode === 'S50-1103')!.dr.toFixed(2)).toBe('450.00');
+    // ต้นทุน 0 ไม่สร้างบรรทัดซ้ำ
+    expect(cogsLines.filter((l) => l.accountCode === 'S11-2003')).toHaveLength(1);
+    // ใบ COGS ยังสมดุล
+    const dr = cogsLines.reduce((s, l) => s.plus(l.dr), new Prisma.Decimal(0));
+    const cr = cogsLines.reduce((s, l) => s.plus(l.cr), new Prisma.Decimal(0));
+    expect(dr.toFixed(2)).toBe(cr.toFixed(2));
+
+    // ขารายได้ต้องไม่ถูกแตะ — ของแถมไม่มีรายได้ของตัวเอง
+    const revLines = journal.state.lastInput!.lines;
+    expect(revLines.find((l) => l.accountCode === 'S41-1101')!.cr.toFixed(2)).toBe('15000.00');
+    expect(revLines.some((l) => l.accountCode === 'S11-2003')).toBe(false);
+  });
+
+  it('ไม่ส่ง bundleCosts → JE A เหมือนเดิมทุกไบต์ (2 บรรทัด)', async () => {
+    const { template, journal } = build();
+    await template.execute({
+      idempotencyKey: 'inv-nobundle',
+      contractId: 'c-nb',
+      productId: 'p1',
+      inventoryAccountCode: 'S11-2001',
+      cogsAccountCode: 'S50-1101',
+      revenueAccountCode: 'S41-1101',
+      costPrice: new Prisma.Decimal(11000),
+      salePrice: new Prisma.Decimal(15000),
+      downAmount: new Prisma.Decimal(3000),
+      financedAmount: new Prisma.Decimal(12000),
+      commission: new Prisma.Decimal(1500),
+    });
+    expect(journal.service.createAndPost.mock.calls[0][0].lines).toHaveLength(2);
+  });
+
   it('CRITICAL — throws when financed + down !== salePrice', async () => {
     const { template, journal } = build();
     await expect(

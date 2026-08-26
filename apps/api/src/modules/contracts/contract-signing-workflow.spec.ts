@@ -172,6 +172,9 @@ describe('Contract Signing & Workflow', () => {
       },
       sale: {
         create: jest.fn().mockResolvedValue({ id: 'sale-1' }),
+        // ตอน activate ต้องหาของแถมจากใบขาย (Sale.bundleProductIds) เพื่อตัดสต็อก
+        // ค่าเริ่มต้น = ไม่มีใบขาย ⇒ ไม่มีของแถม ⇒ JE A เหมือนเดิมทุกไบต์
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'finance-1' }),

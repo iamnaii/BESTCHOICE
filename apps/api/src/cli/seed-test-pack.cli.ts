@@ -13,6 +13,7 @@
  */
 import { PrismaService } from '../prisma/prisma.service';
 import { bkkDateStr, bkkMidnight, resolveRefs } from './test-pack/_context';
+import { runPreflight } from './test-pack/_preflight';
 import { ALL_DOMAINS, selectDomains } from './test-pack/_registry';
 import type { DomainSeeder, SeedContext } from './test-pack/_types';
 
@@ -79,6 +80,19 @@ async function main(): Promise<void> {
   try {
     const now = new Date();
     const refs = await resolveRefs(prisma);
+
+    const drive = process.env.DRIVE === '1';
+    const postDate = process.env.POST_DATE
+      ? new Date(`${process.env.POST_DATE}T00:00:00.000Z`)
+      : bkkMidnight(now);
+    const pre = await runPreflight(prisma, refs, { drive, postDate });
+    if (!pre.ok) {
+      console.error('[seed-test-pack] PREFLIGHT ไม่ผ่าน:');
+      for (const p of pre.problems) console.error(`  ✗ ${p}`);
+      await prisma.$disconnect();
+      process.exit(1);
+    }
+
     const ctx: SeedContext = {
       prisma,
       refs,

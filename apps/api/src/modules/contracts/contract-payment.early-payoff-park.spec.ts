@@ -23,10 +23,13 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  *   ไม่มีถังพัก:  JE settlement = 10800 − 450 + 756 = 11106.00
  *                 quote.totalPayoff = 11556 − 450       = 11106.00   ← ตรงกันพอดี
  *   ถังพัก 354:   quote → remainingBalance 11202 → exVat 10469.16 → กำไร 569.16
- *                 → ส่วนลด 284.58 → totalPayoff 10917.42
- *                 ยอดที่ดูดซับจริง = 11106.00 − 10917.42 = 188.58
+ *                 คำวินิจฉัยผู้สอบบัญชี 2026-08-26: ถังพัก **ไม่ลดฐานส่วนลด**
+ *                 สูตร `ยอดปิดยอดจริง = ยอดปิดยอดปกติ − 21-1103 คงเหลือ`
+ *                 → ยอดปิดยอดปกติ 11106.00 − ถังพัก 354 = 10752.00
+ *                 (เดิมถังพักไปลดกำไรขั้นต้น → ลดส่วนลดตาม → ดูดซับได้แค่ 188.58
+ *                  เหลือเศษ 165.42 ค้างถาวร ซึ่งผู้สอบตอบว่า "ไม่ควรมียอดค้าง")
  *                 (ไม่ใช่ 354 เต็ม เพราะถังพักลดฐานกำไร ส่วนลดจึงลดตาม —
- *                  ส่วนที่เหลือ 165.42 ต้องค้างในถัง ห้ามปลดหนี้เกิน)
+ *                  หักเต็ม 354 ⇒ ถังพักเหลือ 0 ไม่มีเศษค้าง)
  */
 describe('ContractPaymentService.earlyPayoff — ถังพักงวดสุดท้าย (Dr 21-1103, finding C-3)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -196,26 +199,26 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     cr: je.lines.reduce((s, l) => s.plus(l.cr), new Prisma.Decimal(0)).toFixed(2),
   });
 
-  it('ถังพัก 354 → Dr เงินสด = ยอดที่ลูกค้าจ่ายจริง (10,917.42) + Dr 21-1103 = 188.58 · JE ยัง balanced', async () => {
+  it('ถังพัก 354 → Dr เงินสด = ยอดที่ลูกค้าจ่ายจริง (10,752.00) + Dr 21-1103 = 354.00 · JE ยัง balanced', async () => {
     const h = build('354');
     const quote = await h.service.getEarlyPayoffQuote('contract-ep-park-1');
-    expect(quote.totalPayoff).toBe(10917.42);
-    expect(quote.rescheduleAdvanceApplied).toBe(188.58);
+    expect(quote.totalPayoff).toBe(10752);
+    expect(quote.rescheduleAdvanceApplied).toBe(354);
 
     await h.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);
     const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
 
     // C-3 หัวใจ: ขาเงินสดต้องเท่าเงินที่ลูกค้าหยิบมาจ่ายจริง (fixture นี้ตั้งให้
     // ฐานเงินสดของ JE = ยอดปิดของ quote พอดี จึงเทียบตรง ๆ ได้)
-    expect(lineFor(je, '11-1201')!.dr.toFixed(2)).toBe('10917.42');
+    expect(lineFor(je, '11-1201')!.dr.toFixed(2)).toBe('10752.00');
     expect(lineFor(je, '11-1201')!.dr.toFixed(2)).toBe(quote.totalPayoff.toFixed(2));
 
     // ขาปลดหนี้ถังพัก
-    expect(lineFor(je, '21-1103')!.dr.toFixed(2)).toBe('188.58');
+    expect(lineFor(je, '21-1103')!.dr.toFixed(2)).toBe('354.00');
     expect(lineFor(je, '21-1103')!.cr.toFixed(2)).toBe('0.00');
-    expect(je.metadata.parkRelief).toBe('188.58');
+    expect(je.metadata.parkRelief).toBe('354.00');
 
-    // ยอด Dr รวมเท่าเดิม (10917.42 + 188.58 = 11106.00) → balanced เหมือนเดิม
+    // ยอด Dr รวมเท่าเดิม (10752.00 + 354.00 = 11106.00) → balanced เหมือนเดิม
     expect(totals(je).dr).toBe(totals(je).cr);
     expect(totals(je).dr).toBe('13212.00');
   });
@@ -236,7 +239,7 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     // ขาเงินสดลดลงเท่ากับยอดปลดหนี้เป๊ะ ๆ (invariant เชิงส่วนเพิ่มของ C-3)
     const cashWith = lineFor(jeWith, '11-1201')!.dr;
     const cashWithout = lineFor(jeWithout, '11-1201')!.dr;
-    expect(cashWithout.minus(cashWith).toFixed(2)).toBe('188.58');
+    expect(cashWithout.minus(cashWith).toFixed(2)).toBe('354.00');
     expect(lineFor(jeWithout, '21-1103')).toBeUndefined();
   });
 
@@ -248,17 +251,17 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     expect(parkUpdate).toBeDefined();
     expect(
       (parkUpdate!.rescheduleAdvanceBalance as { decrement: Prisma.Decimal }).decrement.toFixed(2),
-    ).toBe('188.58');
+    ).toBe('354.00');
 
-    // ส่วนที่ยอดปิดดูดซับไม่หมด (354 − 188.58 = 165.42) ต้องค้างในถังตามเดิม
+    // หักเต็มจำนวน ⇒ ถังพักเหลือ 0 ไม่มีเศษค้าง (คำวินิจฉัยผู้สอบ 2026-08-26)
     const audit = h.auditRows.find((r) => r.action === 'RESCHEDULE_ADVANCE_CONSUMED');
     expect(audit).toBeDefined();
     expect(audit!.entity).toBe('contract');
     expect(audit!.entityId).toBe('contract-ep-park-1');
     const newValue = audit!.newValue as Record<string, string>;
-    expect(newValue.parkRelief).toBe('188.58');
+    expect(newValue.parkRelief).toBe('354.00');
     expect(newValue.beforeParkBalance).toBe('354.00');
-    expect(newValue.afterParkBalance).toBe('165.42');
+    expect(newValue.afterParkBalance).toBe('0.00');
     expect(newValue.source).toBe('EARLY_PAYOFF_PARK_RELIEF');
 
     // สัญญายังถูกปิดตามปกติ (ขา update เดิมไม่หาย)
@@ -282,9 +285,9 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     const quote = await h.service.getEarlyPayoffQuote('contract-ep-park-1');
 
     const previewPark = quote.journalPreview.lines.find((l) => l.accountCode === '21-1103');
-    expect(previewPark?.debit).toBe('188.58');
+    expect(previewPark?.debit).toBe('354.00');
     const previewCash = quote.journalPreview.lines.find((l) => l.accountCode === '11-1201');
-    expect(previewCash?.debit).toBe('10917.42');
+    expect(previewCash?.debit).toBe('10752.00');
     expect(quote.journalPreview.isBalanced).toBe(true);
 
     await h.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);

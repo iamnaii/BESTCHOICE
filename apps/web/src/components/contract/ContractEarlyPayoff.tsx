@@ -24,6 +24,8 @@ export interface EarlyPayoffQuote {
   remainingMonths: number;
   totalRemaining: number;
   advancePayment: number;
+  /** ค่าปรับดิวที่ลูกค้าจ่ายล่วงหน้าไว้ (21-1103) — หักเต็มจำนวนจากยอดปิด */
+  rescheduleAdvanceApplied: number;
   remainingBalance: number;
   remainingExVat: number;
   remainingCost: number;
@@ -345,6 +347,13 @@ export function EarlyPayoffOverlay({
                 value={`-${formatNumber(quote.discountAmount)} บาท`}
                 success
               />
+              {quote.rescheduleAdvanceApplied > 0 && (
+                <Row
+                  label="หักค่าปรับดิวที่จ่ายล่วงหน้าไว้"
+                  value={`-${formatNumber(quote.rescheduleAdvanceApplied)} บาท`}
+                  success
+                />
+              )}
               {quote.unpaidLateFees > 0 && (
                 <Row
                   label="ค่าปรับค้างชำระ"

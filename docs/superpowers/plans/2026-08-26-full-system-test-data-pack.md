@@ -1,0 +1,3529 @@
+# Full-System Test Data Pack — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** สร้างชุดข้อมูลทดสอบที่ครอบ 19 โดเมน (~55 แถว) ให้ทุกหน้าใน 182 route มีของให้กด พร้อมโหมดเดินเรื่องที่ทำให้สมุดบัญชีมีตัวเลขจริง และ cleanup ที่กวาดคืนได้หมด
+
+**Architecture:** orchestrator CLI 2 ตัว (`seed-test-pack` / `cleanup-test-pack`) + โมดูลต่อโดเมนที่ implement `DomainSeeder` interface เดียวกัน แต่ละโมดูลถือทั้ง `seed` และ `cleanup` ไว้ในไฟล์เดียวกัน ทำงาน 3 เฟส — เฟส 1-2 เขียน Prisma ตรง (ไม่มีผลบัญชี) เฟส 3 เรียก service จริงผ่าน `TestPackModule` ที่ไม่มี cron
+
+**Tech Stack:** NestJS 11 · Prisma 6 · TypeScript 5.6 · jest 29 (unit, ไม่แตะ DB) · tsx สำหรับรัน CLI
+
+---
+
+## Global Constraints
+
+ทุก task อยู่ใต้ข้อบังคับเหล่านี้ — ละเมิดข้อไหนคือ implementation ผิด ไม่ใช่แค่ไม่สวย
+(ที่มา: `docs/superpowers/specs/2026-08-26-full-system-test-data-pack-design.md` §3)
+
+- **R1 — seeder ห้ามเขียน `JournalEntry` / `JournalLine` เอง** ไม่ว่ากรณีใด JE ทุกใบต้องมาจาก template จริงผ่าน service จริงในเฟส 3 เท่านั้น
+- **R2 — เฟส 1-2 ต้องหยุดที่สถานะสุดท้าย "ก่อนเงินขยับ"** ห้าม seed `Booking.status='PAID'`, `FinanceReceivable.receivedAmount>0`, `TradeIn.status='ACCEPTED'`, `ExpenseDocument.status` เป็น `ACCRUAL`/`POSTED`, `OtherIncome.status='POSTED'`, `EquityDocument.status='POSTED'`, `FixedAsset.status='POSTED'`
+- **R3 — ห้าม import `AppModule`** ในโค้ดใด ๆ ของ test-pack (มี `ScheduleModule.forRoot()` ที่จะลงทะเบียน cron ทั้งหมด) เฟส 3 ใช้ `TestPackModule` เท่านั้น
+- **Marker บังคับ 3 ชั้น** — เลขเอกสารที่เราคุมเอง = prefix `TEST-` · เลขที่ `DocNumberService` คุม (`EX-` `OI-` `EQ-` `ASSET-` `RT-`) = **ห้ามแตะเลข** ให้ marker อยู่ที่ฟิลด์ข้อความ ขึ้นต้น `[ทดสอบระบบ]` · ทะเบียนหลัก = ชื่อขึ้นต้น `ทดสอบระบบ`
+- **Guard shape** ต้องเหมือน `seed-test-contracts.cli.ts` ทุกประการ — `EXPECTED_DB_NAME` เทียบ `SELECT current_database()` · dry-run เป็น default · `CONFIRM_SEED` / `CONFIRM_CLEANUP` = `YES_I_AM_SURE` · `NODE_ENV=production` ต้องมี `ALLOW_PROD_SEED` / `ALLOW_PROD_CLEANUP` เพิ่ม
+- **Re-run safe บังคับ** — ทุกโดเมนต้องเช็ค marker ก่อนสร้าง รันซ้ำแล้วต้องไม่เกิดแถวซ้ำ
+- **Money = `Decimal`** ห้ามใช้ `Number()` กับจำนวนเงิน (`.claude/rules/database.md`)
+- **ข้อความ user-facing เป็นภาษาไทย** รวม log ที่ผู้ใช้อ่าน
+- **Prettier**: `semi: true, singleQuote: true, printWidth: 100, tabWidth: 2`
+- **เทสเป็น jest unit spec ที่ไม่แตะ DB** — ทดสอบ pure function ที่ export ออกมา (pattern เดียวกับ `backfill-employee-profiles.cli.spec.ts`) ไฟล์ `*.spec.ts` ใต้ `src/` ถูกจับโดย `testRegex: ".*\\.spec\\.ts$"` อัตโนมัติ
+
+---
+
+## File Structure
+
+| ไฟล์ | หน้าที่ |
+|---|---|
+| `apps/api/src/cli/test-pack/_types.ts` | `DomainSeeder` · `SeedContext` · `SeedRefs` · `PlanRow` · `SeedStat` · `CleanupStat` — ไม่มี logic |
+| `apps/api/src/cli/test-pack/_context.ts` | marker constants · `testNote()` · `testName()` · `bkkDateStr()` · `resolveRefs()` |
+| `apps/api/src/cli/test-pack/_registry.ts` | รวม DomainSeeder ทุกตัวเป็น array + `selectDomains()` + `orderForCleanup()` |
+| `apps/api/src/cli/test-pack/_registry.spec.ts` | unit test ของ `selectDomains` / `orderForCleanup` |
+| `apps/api/src/cli/test-pack/_context.spec.ts` | unit test ของ `testNote` / `testName` / `bkkDateStr` |
+| `apps/api/src/cli/test-pack/_preflight.ts` | ตรวจ 4 ข้อก่อนเริ่ม (Task 11) |
+| `apps/api/src/cli/test-pack/_module.ts` | `TestPackModule` — import เฉพาะ feature module ที่เฟส 3 ใช้ (Task 12) |
+| `apps/api/src/cli/test-pack/_drive.ts` | แผนเดินเรื่อง 6 ก้าว (Task 12) |
+| `apps/api/src/cli/test-pack/<domain>.seed.ts` × 19 | หนึ่งไฟล์ต่อโดเมน ถือทั้ง `plan` `seed` `cleanup` |
+| `apps/api/src/cli/seed-test-pack.cli.ts` | orchestrator ขาสร้าง |
+| `apps/api/src/cli/cleanup-test-pack.cli.ts` | orchestrator ขาล้าง |
+| `apps/api/package.json` | เพิ่ม 4 script: `seed:test-pack` `seed:test-pack:help` `cleanup:test-pack` `cleanup:test-pack:help` |
+| `docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md` | generate จาก registry (Task 13) |
+
+**ไม่แตะ:** `seed-test-contracts.cli.ts` และ `cleanup-test-contracts.cli.ts` — Task 3 ห่อมันผ่าน export ที่มีอยู่แล้วเท่านั้น
+
+---
+
+### Task 1: Framework + โดเมนแรก (`todos`)
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/_types.ts`
+- Create: `apps/api/src/cli/test-pack/_context.ts`
+- Create: `apps/api/src/cli/test-pack/_registry.ts`
+- Create: `apps/api/src/cli/test-pack/todos.seed.ts`
+- Create: `apps/api/src/cli/seed-test-pack.cli.ts`
+- Modify: `apps/api/package.json` (scripts block)
+- Test: `apps/api/src/cli/test-pack/_context.spec.ts`
+- Test: `apps/api/src/cli/test-pack/_registry.spec.ts`
+
+**Interfaces:**
+- Consumes: `PrismaService` จาก `../../prisma/prisma.service`
+- Produces: `DomainSeeder` · `SeedContext` · `SeedRefs` · `PlanRow` · `SeedStat` · `CleanupStat` (จาก `_types.ts`) · `TEST_NOTE_MARKER` · `TEST_NAME_PREFIX` · `TEST_DOC_PREFIX` · `testNote(what: string): string` · `testName(what: string): string` · `bkkDateStr(now: Date): string` · `bkkMidnight(now: Date): Date` · `resolveRefs(prisma: PrismaService): Promise<SeedRefs>` (จาก `_context.ts`) · `ALL_DOMAINS: DomainSeeder[]` · `selectDomains(all: DomainSeeder[], csv: string | undefined): DomainSeeder[]` · `orderForCleanup(domains: DomainSeeder[]): DomainSeeder[]` (จาก `_registry.ts`) · `todosSeeder: DomainSeeder`
+
+- [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_context.spec.ts`**
+
+```ts
+import { bkkDateStr, bkkMidnight, testName, testNote, TEST_NAME_PREFIX, TEST_NOTE_MARKER } from './_context';
+
+describe('marker helpers', () => {
+  it('testNote ขึ้นต้นด้วย marker เสมอ — cleanup ค้นด้วย startsWith', () => {
+    expect(testNote('ค่าเช่าร้าน')).toBe(`${TEST_NOTE_MARKER} ค่าเช่าร้าน`);
+    expect(testNote('x').startsWith(TEST_NOTE_MARKER)).toBe(true);
+  });
+
+  it('testName ขึ้นต้นด้วยคำว่าทดสอบระบบ', () => {
+    expect(testName('ซัพพลายเออร์ 1')).toBe(`${TEST_NAME_PREFIX} ซัพพลายเออร์ 1`);
+  });
+});
+
+describe('bkk date helpers', () => {
+  // 2026-08-26T18:30:00Z = 2026-08-27 01:30 เวลาไทย → ต้องได้วันที่ 27 ไม่ใช่ 26
+  const lateUtc = new Date('2026-08-26T18:30:00.000Z');
+
+  it('bkkDateStr คืนวันที่ตามเวลาไทย ไม่ใช่ UTC', () => {
+    expect(bkkDateStr(lateUtc)).toBe('20260827');
+  });
+
+  it('bkkMidnight คืนเที่ยงคืนของวันไทยวันนั้น', () => {
+    const m = bkkMidnight(lateUtc);
+    expect(m.getUTCFullYear()).toBe(2026);
+    expect(m.getUTCMonth()).toBe(7); // สิงหาคม = 7
+    expect(m.getUTCDate()).toBe(27);
+    expect(m.getUTCHours()).toBe(0);
+  });
+});
+```
+
+- [ ] **Step 2: เขียนเทสที่ยังไม่ผ่าน — `_registry.spec.ts`**
+
+```ts
+import { orderForCleanup, selectDomains } from './_registry';
+import type { DomainSeeder } from './_types';
+
+const stub = (key: string): DomainSeeder =>
+  ({ key, label: key, routes: [], markerDoc: '', plan: async () => [], seed: async () => ({ created: 0, skipped: 0, notes: [] }), cleanup: async () => ({ removed: {}, warnings: [] }) });
+
+const all = [stub('contracts'), stub('assets'), stub('equity')];
+
+describe('selectDomains', () => {
+  it('ไม่ระบุ DOMAINS = เอาทุกโดเมนตามลำดับเดิม', () => {
+    expect(selectDomains(all, undefined).map((d) => d.key)).toEqual(['contracts', 'assets', 'equity']);
+  });
+
+  it('เลือกได้ตาม csv และคงลำดับของ registry ไม่ใช่ลำดับที่พิมพ์', () => {
+    expect(selectDomains(all, 'equity,contracts').map((d) => d.key)).toEqual(['contracts', 'equity']);
+  });
+
+  it('ตัดช่องว่างและตัวพิมพ์ใหญ่ให้', () => {
+    expect(selectDomains(all, ' Assets , EQUITY ').map((d) => d.key)).toEqual(['assets', 'equity']);
+  });
+
+  it('ชื่อที่ไม่รู้จัก = โยน พร้อมบอกรายชื่อที่มี', () => {
+    expect(() => selectDomains(all, 'assets,ไม่มีอยู่')).toThrow(/ไม่มีอยู่/);
+  });
+});
+
+describe('orderForCleanup', () => {
+  it('ล้างย้อนลำดับการสร้าง เพราะโดเมนหลังพึ่ง FK ของโดเมนหน้า', () => {
+    expect(orderForCleanup(all).map((d) => d.key)).toEqual(['equity', 'assets', 'contracts']);
+  });
+
+  it('ไม่แก้ array ต้นฉบับ', () => {
+    orderForCleanup(all);
+    expect(all.map((d) => d.key)).toEqual(['contracts', 'assets', 'equity']);
+  });
+});
+```
+
+- [ ] **Step 3: รันเทสให้เห็นว่าไม่ผ่าน**
+
+Run: `npm --prefix apps/api test -- test-pack`
+Expected: FAIL — `Cannot find module './_context'` และ `Cannot find module './_registry'`
+
+- [ ] **Step 4: เขียน `_types.ts`**
+
+```ts
+import type { PrismaService } from '../../prisma/prisma.service';
+
+/** ข้อมูลอ้างอิงที่ทุกโดเมนใช้ร่วมกัน — resolve ครั้งเดียวตอนเริ่ม */
+export interface SeedRefs {
+  branchId: string;
+  branchName: string;
+  /** สาขาที่สอง — ใช้กับโอนย้ายสต็อก; null เมื่อมีสาขาเดียว (โดเมนนั้นจะข้ามเอง) */
+  secondBranchId: string | null;
+  salespersonId: string;
+  /** OWNER หรือ BRANCH_MANAGER — ผู้บันทึก/ผู้ตรวจทั่วไป */
+  reviewerId: string;
+  /** OWNER เท่านั้น — ใช้เป็นผู้อนุมัติที่ต้องต่างจากผู้บันทึก */
+  ownerId: string;
+  shopCompanyId: string | null;
+  financeCompanyId: string | null;
+}
+
+export interface SeedContext {
+  prisma: PrismaService;
+  refs: SeedRefs;
+  dryRun: boolean;
+  /** เที่ยงคืนของวันไทยวันนี้ */
+  today: Date;
+  /** YYYYMMDD ตามเวลาไทย — ใช้ประกอบเลขเอกสาร TEST- */
+  dateStr: string;
+}
+
+/** หนึ่งบรรทัดที่ dry-run พิมพ์ออกมา */
+export interface PlanRow {
+  label: string;
+  detail: string;
+}
+
+export interface SeedStat {
+  created: number;
+  skipped: number;
+  /** ข้อความไทยที่ orchestrator พิมพ์ใต้ชื่อโดเมน เช่น เหตุผลที่ข้าม */
+  notes: string[];
+}
+
+export interface CleanupStat {
+  /** ชื่อสิ่งที่ลบ → จำนวน เช่น { 'ใบค่าใช้จ่าย': 4 } */
+  removed: Record<string, number>;
+  /** คำเตือนที่ต้องเด้งให้คนกดเห็น เช่น ตารางที่รอดข้าม factory reset */
+  warnings: string[];
+}
+
+export interface DomainSeeder {
+  /** ชื่อสั้นสำหรับ DOMAINS= — ตัวพิมพ์เล็ก ขีดกลาง */
+  key: string;
+  /** ชื่อไทยสำหรับพิมพ์บนหน้าจอ */
+  label: string;
+  /** route ที่โดเมนนี้ปลดล็อก — Task 13 ใช้ generate ตารางใน README */
+  routes: string[];
+  /** วิธีที่ cleanup ค้นแถวของโดเมนนี้ (ข้อความไทย) — Task 13 ใช้ generate ตาราง KEEP/WIPE */
+  markerDoc: string;
+  /** dry-run: บอกว่าจะสร้างอะไร ห้ามเขียน DB */
+  plan(ctx: SeedContext): Promise<PlanRow[]>;
+  seed(ctx: SeedContext): Promise<SeedStat>;
+  cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat>;
+}
+```
+
+- [ ] **Step 5: เขียน `_context.ts`**
+
+```ts
+import type { PrismaService } from '../../prisma/prisma.service';
+import type { SeedRefs } from './_types';
+
+/** marker ของเอกสารที่เลขถูก DocNumberService คุม — อยู่ในฟิลด์ข้อความ ห้ามไปแตะเลข */
+export const TEST_NOTE_MARKER = '[ทดสอบระบบ]';
+/** marker ของทะเบียนหลัก — อยู่ที่ชื่อ */
+export const TEST_NAME_PREFIX = 'ทดสอบระบบ';
+/** marker ของเลขเอกสารที่ seeder สร้างเอง */
+export const TEST_DOC_PREFIX = 'TEST-';
+
+export const testNote = (what: string): string => `${TEST_NOTE_MARKER} ${what}`;
+export const testName = (what: string): string => `${TEST_NAME_PREFIX} ${what}`;
+
+const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/** YYYYMMDD ตามเวลาไทย — ไม่ขึ้นกับ TZ ของ runtime (Cloud Run Job เป็น UTC) */
+export function bkkDateStr(now: Date): string {
+  const t = new Date(now.getTime() + BKK_OFFSET_MS);
+  return `${t.getUTCFullYear()}${String(t.getUTCMonth() + 1).padStart(2, '0')}${String(t.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** เที่ยงคืนของวันไทยวันนั้น (เก็บเป็น UTC midnight ของวันเดียวกัน — พอสำหรับวันครบกำหนด) */
+export function bkkMidnight(now: Date): Date {
+  const t = new Date(now.getTime() + BKK_OFFSET_MS);
+  return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+}
+
+export async function resolveRefs(prisma: PrismaService): Promise<SeedRefs> {
+  const [branches, sales, reviewer, owner, shopCo, financeCo] = await Promise.all([
+    prisma.branch.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { createdAt: 'asc' }, take: 2 }),
+    prisma.user.findFirst({ where: { role: 'SALES', deletedAt: null }, select: { id: true } }),
+    prisma.user.findFirst({ where: { role: { in: ['OWNER', 'BRANCH_MANAGER'] }, deletedAt: null }, select: { id: true } }),
+    prisma.user.findFirst({ where: { role: 'OWNER', deletedAt: null }, select: { id: true } }),
+    prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } }),
+    prisma.companyInfo.findFirst({ where: { companyCode: 'FINANCE', deletedAt: null }, select: { id: true } }),
+  ]);
+
+  const missing: string[] = [];
+  if (!branches.length) missing.push('สาขา');
+  if (!sales) missing.push('ผู้ใช้ role SALES');
+  if (!reviewer) missing.push('ผู้ใช้ role OWNER หรือ BRANCH_MANAGER');
+  if (!owner) missing.push('ผู้ใช้ role OWNER');
+  if (missing.length) {
+    throw new Error(`สร้างข้อมูลทดสอบไม่ได้ — ขาดข้อมูลอ้างอิง: ${missing.join(', ')}`);
+  }
+
+  return {
+    branchId: branches[0].id,
+    branchName: branches[0].name,
+    secondBranchId: branches[1]?.id ?? null,
+    salespersonId: sales!.id,
+    reviewerId: reviewer!.id,
+    ownerId: owner!.id,
+    shopCompanyId: shopCo?.id ?? null,
+    financeCompanyId: financeCo?.id ?? null,
+  };
+}
+```
+
+- [ ] **Step 6: เขียน `_registry.ts`**
+
+```ts
+import type { DomainSeeder } from './_types';
+import { todosSeeder } from './todos.seed';
+
+/**
+ * ลำดับใน array นี้ = ลำดับการสร้าง (โดเมนหลังพึ่ง FK ของโดเมนหน้าได้)
+ * cleanup เดินย้อนลำดับนี้เสมอ
+ */
+export const ALL_DOMAINS: DomainSeeder[] = [todosSeeder];
+
+export function selectDomains(all: DomainSeeder[], csv: string | undefined): DomainSeeder[] {
+  if (!csv || !csv.trim()) return [...all];
+  const want = new Set(csv.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const known = new Set(all.map((d) => d.key));
+  const unknown = [...want].filter((k) => !known.has(k));
+  if (unknown.length) {
+    throw new Error(`ไม่รู้จักโดเมน: ${unknown.join(', ')} — ที่มีให้เลือก: ${all.map((d) => d.key).join(', ')}`);
+  }
+  return all.filter((d) => want.has(d.key));
+}
+
+export function orderForCleanup(domains: DomainSeeder[]): DomainSeeder[] {
+  return [...domains].reverse();
+}
+```
+
+- [ ] **Step 7: เขียน `todos.seed.ts`**
+
+```ts
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+import { TEST_NOTE_MARKER, testNote } from './_context';
+
+/** 3 สถานะหลักของกระดานงาน + หนึ่งใบเลยกำหนดเพื่อดูป้ายเตือน */
+const ROWS: Array<{ title: string; status: 'TODO' | 'DOING' | 'REVIEW'; priority: 'LOW' | 'MEDIUM' | 'HIGH'; dueInDays: number }> = [
+  { title: 'ตรวจสลิปลูกค้าค้างชำระ', status: 'TODO', priority: 'HIGH', dueInDays: -2 },
+  { title: 'ตามเอกสารซัพพลายเออร์', status: 'DOING', priority: 'MEDIUM', dueInDays: 3 },
+  { title: 'สรุปยอดขายประจำสัปดาห์', status: 'REVIEW', priority: 'LOW', dueInDays: 7 },
+];
+
+const titleOf = (t: string) => testNote(t);
+
+export const todosSeeder: DomainSeeder = {
+  key: 'todos',
+  label: 'กระดานงาน (Todo)',
+  routes: ['/todos'],
+  markerDoc: `Todo.title ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({ label: titleOf(r.title), detail: `${r.status} · ${r.priority} · ครบกำหนดใน ${r.dueInDays} วัน` }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    for (const r of ROWS) {
+      const title = titleOf(r.title);
+      const exists = await ctx.prisma.todo.findFirst({ where: { title, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.todo.create({
+        data: {
+          title,
+          description: testNote('ใบงานสำหรับทดสอบระบบ — ลบได้'),
+          status: r.status,
+          priority: r.priority,
+          dueDate: new Date(ctx.today.getTime() + r.dueInDays * 24 * 60 * 60 * 1000),
+          createdById: ctx.refs.reviewerId,
+          assigneeId: ctx.refs.salespersonId,
+          branchId: ctx.refs.branchId,
+          tags: ['ทดสอบระบบ'],
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const where = { title: { startsWith: TEST_NOTE_MARKER }, deletedAt: null } as const;
+    const rows = await ctx.prisma.todo.findMany({ where, select: { id: true, title: true } });
+    if (!dryRun && rows.length) {
+      await ctx.prisma.todo.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    }
+    return { removed: { 'ใบงาน': rows.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 8: เขียน `seed-test-pack.cli.ts`**
+
+```ts
+/**
+ * สร้างชุดข้อมูลทดสอบทั้งระบบ — orchestrator ของ test-pack
+ *
+ * Spec: docs/superpowers/specs/2026-08-26-full-system-test-data-pack-design.md
+ *
+ * เฟส 1-2 (โดเมนทั้งหมดใน registry) เขียน Prisma ตรง — ไม่มี JE
+ * เฟส 3 (DRIVE=1) เรียก service จริง — เพิ่มใน Task 12
+ *
+ * Dry-run:  EXPECTED_DB_NAME=<db> npm --prefix apps/api run seed:test-pack
+ * Live:     CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=<db> \
+ *           [ALLOW_PROD_SEED=YES_I_AM_SURE NODE_ENV=production] [DOMAINS=a,b] \
+ *           npm --prefix apps/api run seed:test-pack
+ */
+import { PrismaService } from '../prisma/prisma.service';
+import { bkkDateStr, bkkMidnight, resolveRefs } from './test-pack/_context';
+import { ALL_DOMAINS, selectDomains } from './test-pack/_registry';
+import type { SeedContext } from './test-pack/_types';
+
+const REQUIRED_CONSENT = 'YES_I_AM_SURE';
+
+async function main(): Promise<void> {
+  const expectedDb = process.env.EXPECTED_DB_NAME;
+  if (!expectedDb) {
+    console.error('ERROR: EXPECTED_DB_NAME required');
+    console.error('Re-run with: EXPECTED_DB_NAME=<db-name> npm --prefix apps/api run seed:test-pack');
+    process.exit(1);
+  }
+
+  const dryRun = process.env.CONFIRM_SEED !== REQUIRED_CONSENT;
+  if (dryRun) {
+    console.log('[seed-test-pack] DRY-RUN mode (default). To create, re-run with:');
+    console.log(`  CONFIRM_SEED=${REQUIRED_CONSENT} EXPECTED_DB_NAME=<db> [ALLOW_PROD_SEED=${REQUIRED_CONSENT}] npm --prefix apps/api run seed:test-pack`);
+    console.log('');
+  }
+  if (!dryRun && process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_SEED !== REQUIRED_CONSENT) {
+    console.error(`ERROR: Refusing to seed in NODE_ENV=production without ALLOW_PROD_SEED=${REQUIRED_CONSENT}`);
+    process.exit(1);
+  }
+
+  let domains;
+  try {
+    domains = selectDomains(ALL_DOMAINS, process.env.DOMAINS);
+  } catch (err) {
+    console.error(`ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+
+  const prisma = new PrismaService();
+  const [{ current_database: actualDb }] = await (prisma as any).$queryRaw<{ current_database: string }[]>`SELECT current_database()`;
+  if (actualDb !== expectedDb) {
+    console.error(`ERROR: DB mismatch: connected="${actualDb}" expected="${expectedDb}". Aborting.`);
+    await prisma.$disconnect();
+    process.exit(1);
+  }
+
+  console.log(`[seed-test-pack] DB: "${actualDb}" | mode: ${dryRun ? 'DRY-RUN' : 'LIVE'} | โดเมน: ${domains.length}`);
+  console.log('');
+
+  const failures: string[] = [];
+  let totalCreated = 0;
+  let totalSkipped = 0;
+
+  try {
+    const now = new Date();
+    const refs = await resolveRefs(prisma);
+    const ctx: SeedContext = { prisma, refs, dryRun, today: bkkMidnight(now), dateStr: bkkDateStr(now) };
+
+    for (const d of domains) {
+      console.log(`── ${d.label} (${d.key})`);
+      try {
+        if (dryRun) {
+          const rows = await d.plan(ctx);
+          for (const r of rows) console.log(`   • ${r.label} — ${r.detail}`);
+          console.log(`   รวม ${rows.length} แถว`);
+        } else {
+          const stat = await d.seed(ctx);
+          totalCreated += stat.created;
+          totalSkipped += stat.skipped;
+          for (const n of stat.notes) console.log(`   ℹ ${n}`);
+          console.log(`   สร้าง ${stat.created} · ข้าม ${stat.skipped} (มีอยู่แล้ว)`);
+        }
+      } catch (err) {
+        // โดเมนหนึ่งพังต้องไม่ล้มทั้งชุด — บันทึกไว้แล้วเดินต่อ
+        const msg = err instanceof Error ? err.message : String(err);
+        failures.push(`${d.key}: ${msg}`);
+        console.log(`   ✗ ล้มเหลว — ${msg}`);
+      }
+      console.log('');
+    }
+
+    console.log('[seed-test-pack] ===== SUMMARY =====');
+    if (dryRun) {
+      console.log('  DRY-RUN — ไม่ได้เขียนอะไรลง DB');
+    } else {
+      console.log(`  สร้างทั้งหมด : ${totalCreated} แถว`);
+      console.log(`  ข้าม        : ${totalSkipped} แถว (รันซ้ำ)`);
+    }
+    if (failures.length) {
+      console.log(`  ล้มเหลว     : ${failures.length} โดเมน`);
+      for (const f of failures) console.log(`    - ${f}`);
+    }
+    console.log('');
+    console.log('  ล้างข้อมูล : npm --prefix apps/api run cleanup:test-pack');
+  } finally {
+    await prisma.$disconnect();
+  }
+
+  if (failures.length) process.exit(1);
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('[seed-test-pack] FATAL:', err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}
+```
+
+- [ ] **Step 9: เพิ่ม npm scripts**
+
+แก้ `apps/api/package.json` — เพิ่มต่อจากบรรทัด `"cleanup:test-contracts:help": ...`:
+
+```json
+    "seed:test-pack": "npx -y tsx src/cli/seed-test-pack.cli.ts",
+    "seed:test-pack:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run seed:test-pack. To write: CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_SEED=YES_I_AM_SURE NODE_ENV=production] [DOMAINS=assets,equity] [DRIVE=1] npm --prefix apps/api run seed:test-pack'",
+```
+
+> ใช้ `tsx` ไม่ใช่ `node dist/...` เพราะ Task 12 ต้อง resolve NestJS decorator metadata — `factory:reset` ใช้ pattern เดียวกันอยู่แล้ว
+
+- [ ] **Step 10: รันเทสให้ผ่าน**
+
+Run: `npm --prefix apps/api test -- test-pack`
+Expected: PASS — 6 เทสใน 2 ไฟล์
+
+- [ ] **Step 11: ตรวจ TypeScript**
+
+Run: `npx tsc --noEmit -p apps/api/tsconfig.json`
+Expected: ไม่มี error
+
+- [ ] **Step 12: ลอง dry-run จริง**
+
+Run: `EXPECTED_DB_NAME=<ชื่อ db ที่ต่ออยู่> npm --prefix apps/api run seed:test-pack`
+Expected: พิมพ์หัวข้อ `── กระดานงาน (Todo) (todos)` ตามด้วย 3 บรรทัด และปิดท้ายว่า `DRY-RUN — ไม่ได้เขียนอะไรลง DB`
+
+- [ ] **Step 13: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack apps/api/src/cli/seed-test-pack.cli.ts apps/api/package.json
+git commit -m "feat(test-pack): โครง DomainSeeder + orchestrator ขาสร้าง + โดเมน todos"
+```
+
+---
+
+### Task 2: Orchestrator ขาล้าง
+
+**Files:**
+- Create: `apps/api/src/cli/cleanup-test-pack.cli.ts`
+- Modify: `apps/api/package.json` (scripts block)
+
+**Interfaces:**
+- Consumes: `ALL_DOMAINS` · `selectDomains` · `orderForCleanup` (Task 1) · `resolveRefs` · `bkkMidnight` · `bkkDateStr` (Task 1) · `DomainSeeder.cleanup(ctx, dryRun): Promise<CleanupStat>` (Task 1)
+- Produces: ไม่มี export ที่ task อื่นใช้ (เป็น entry point)
+
+- [ ] **Step 1: เขียน `cleanup-test-pack.cli.ts`**
+
+```ts
+/**
+ * ล้างชุดข้อมูลทดสอบทั้งระบบ — คู่กับ seed-test-pack.cli.ts
+ *
+ * เดิน cleanup ของแต่ละโดเมน "ย้อนลำดับการสร้าง" เพราะโดเมนหลังถือ FK ของโดเมนหน้า
+ * พิมพ์รายการที่จะลบทั้งสองโหมด — dry-run คือด่านสุดท้ายของคนกดก่อนยืนยัน
+ *
+ * Dry-run:  EXPECTED_DB_NAME=<db> npm --prefix apps/api run cleanup:test-pack
+ * Live:     CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> \
+ *           [ALLOW_PROD_CLEANUP=YES_I_AM_SURE NODE_ENV=production] [DOMAINS=a,b] \
+ *           npm --prefix apps/api run cleanup:test-pack
+ */
+import { PrismaService } from '../prisma/prisma.service';
+import { bkkDateStr, bkkMidnight, resolveRefs } from './test-pack/_context';
+import { ALL_DOMAINS, orderForCleanup, selectDomains } from './test-pack/_registry';
+import type { SeedContext } from './test-pack/_types';
+
+const REQUIRED_CONSENT = 'YES_I_AM_SURE';
+
+async function main(): Promise<void> {
+  const expectedDb = process.env.EXPECTED_DB_NAME;
+  if (!expectedDb) {
+    console.error('ERROR: EXPECTED_DB_NAME required');
+    console.error('Re-run with: EXPECTED_DB_NAME=<db-name> npm --prefix apps/api run cleanup:test-pack');
+    process.exit(1);
+  }
+
+  const dryRun = process.env.CONFIRM_CLEANUP !== REQUIRED_CONSENT;
+  if (dryRun) {
+    console.log('[cleanup-test-pack] DRY-RUN mode (default). To remove, re-run with:');
+    console.log(`  CONFIRM_CLEANUP=${REQUIRED_CONSENT} EXPECTED_DB_NAME=<db> [ALLOW_PROD_CLEANUP=${REQUIRED_CONSENT}] npm --prefix apps/api run cleanup:test-pack`);
+    console.log('');
+  }
+  if (!dryRun && process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_CLEANUP !== REQUIRED_CONSENT) {
+    console.error(`ERROR: Refusing to clean up in NODE_ENV=production without ALLOW_PROD_CLEANUP=${REQUIRED_CONSENT}`);
+    process.exit(1);
+  }
+
+  let domains;
+  try {
+    domains = orderForCleanup(selectDomains(ALL_DOMAINS, process.env.DOMAINS));
+  } catch (err) {
+    console.error(`ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+
+  const prisma = new PrismaService();
+  const [{ current_database: actualDb }] = await (prisma as any).$queryRaw<{ current_database: string }[]>`SELECT current_database()`;
+  if (actualDb !== expectedDb) {
+    console.error(`ERROR: DB mismatch: connected="${actualDb}" expected="${expectedDb}". Aborting.`);
+    await prisma.$disconnect();
+    process.exit(1);
+  }
+
+  console.log(`[cleanup-test-pack] DB: "${actualDb}" | mode: ${dryRun ? 'DRY-RUN' : 'LIVE'} | โดเมน: ${domains.length}`);
+  console.log('');
+
+  const failures: string[] = [];
+  const allWarnings: string[] = [];
+  const grandTotal: Record<string, number> = {};
+
+  try {
+    const now = new Date();
+    const refs = await resolveRefs(prisma);
+    const ctx: SeedContext = { prisma, refs, dryRun, today: bkkMidnight(now), dateStr: bkkDateStr(now) };
+
+    for (const d of domains) {
+      console.log(`── ${d.label} (${d.key})`);
+      try {
+        const stat = await d.cleanup(ctx, dryRun);
+        const entries = Object.entries(stat.removed).filter(([, n]) => n > 0);
+        if (!entries.length) {
+          console.log('   ไม่พบข้อมูลทดสอบ');
+        } else {
+          for (const [what, n] of entries) {
+            console.log(`   ${dryRun ? 'จะลบ' : 'ลบแล้ว'} ${what}: ${n}`);
+            grandTotal[what] = (grandTotal[what] ?? 0) + n;
+          }
+        }
+        for (const w of stat.warnings) {
+          console.log(`   ⚠️  ${w}`);
+          allWarnings.push(`${d.label}: ${w}`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        failures.push(`${d.key}: ${msg}`);
+        console.log(`   ✗ ล้มเหลว — ${msg}`);
+      }
+      console.log('');
+    }
+
+    console.log('[cleanup-test-pack] ===== SUMMARY =====');
+    const total = Object.values(grandTotal).reduce((a, b) => a + b, 0);
+    console.log(`  ${dryRun ? 'จะลบทั้งหมด' : 'ลบแล้วทั้งหมด'} : ${total} แถว`);
+    for (const [what, n] of Object.entries(grandTotal)) console.log(`    ${what}: ${n}`);
+    if (allWarnings.length) {
+      console.log('');
+      console.log('  ⚠️  คำเตือน:');
+      for (const w of allWarnings) console.log(`    - ${w}`);
+    }
+    if (failures.length) {
+      console.log(`  ล้มเหลว : ${failures.length} โดเมน`);
+      for (const f of failures) console.log(`    - ${f}`);
+    }
+    console.log('');
+    console.log('  ของที่ล้างไม่ได้โดยธรรมชาติ: audit_logs (immutable) · ช่องว่างของเลขเอกสาร');
+    if (dryRun) {
+      console.log('');
+      console.log(`  ตรวจรายการข้างบนแล้วค่อยรันจริงด้วย CONFIRM_CLEANUP=${REQUIRED_CONSENT}`);
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
+
+  if (failures.length) process.exit(1);
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('[cleanup-test-pack] FATAL:', err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}
+```
+
+- [ ] **Step 2: เพิ่ม npm scripts**
+
+แก้ `apps/api/package.json` — เพิ่มต่อจาก `seed:test-pack:help`:
+
+```json
+    "cleanup:test-pack": "npx -y tsx src/cli/cleanup-test-pack.cli.ts",
+    "cleanup:test-pack:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run cleanup:test-pack. To remove: CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_CLEANUP=YES_I_AM_SURE NODE_ENV=production] [DOMAINS=assets] npm --prefix apps/api run cleanup:test-pack'",
+```
+
+- [ ] **Step 3: ตรวจ TypeScript**
+
+Run: `npx tsc --noEmit -p apps/api/tsconfig.json`
+Expected: ไม่มี error
+
+- [ ] **Step 4: พิสูจน์ round-trip บน DB จริง**
+
+```bash
+DB=<ชื่อ db>
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB npm --prefix apps/api run seed:test-pack
+EXPECTED_DB_NAME=$DB npm --prefix apps/api run cleanup:test-pack
+CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=$DB npm --prefix apps/api run cleanup:test-pack
+EXPECTED_DB_NAME=$DB npm --prefix apps/api run cleanup:test-pack
+```
+Expected: รอบสร้าง `สร้างทั้งหมด : 3 แถว` · dry-run แรก `จะลบทั้งหมด : 3` · รันจริง `ลบแล้วทั้งหมด : 3` · dry-run สุดท้าย `ไม่พบข้อมูลทดสอบ`
+
+- [ ] **Step 5: พิสูจน์ re-run safe**
+
+```bash
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB npm --prefix apps/api run seed:test-pack
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB npm --prefix apps/api run seed:test-pack
+```
+Expected: รอบแรก `สร้าง 3 · ข้าม 0` · รอบสอง `สร้าง 0 · ข้าม 3`
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/api/src/cli/cleanup-test-pack.cli.ts apps/api/package.json
+git commit -m "feat(test-pack): orchestrator ขาล้าง + พิสูจน์ round-trip กับโดเมน todos"
+```
+
+---
+
+### Task 3: โดเมน `contracts` (ห่อ seeder เดิม)
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/contracts.seed.ts`
+- Modify: `apps/api/src/cli/test-pack/_registry.ts` (เพิ่มเข้า `ALL_DOMAINS` เป็นตัว**แรก**)
+
+**Interfaces:**
+- Consumes: `seedTestContracts(prisma, refs, opts)` · `cleanupTestContracts(prisma, opts)` · `TEST_CONTRACT_PREFIX` · `TEST_CUSTOMER_ADDRESS` · `TEST_IMEI_PREFIX` จาก `../seed-test-contracts.cli` และ `../cleanup-test-contracts.cli` (มีอยู่แล้ว ห้ามแก้)
+- Produces: `contractsSeeder: DomainSeeder`
+
+> `seedTestContracts` ต้องการ `Refs` รูปของมันเอง (`branchId` `branchName` `salespersonId` `reviewerId` `interestConfigId` `shopCompanyId` `financeCompanyId`) ซึ่ง**ต่างจาก `SeedRefs` ของ test-pack** — ตัว adapter อยู่ในไฟล์นี้ ไม่ไปแก้ของเดิม
+
+- [ ] **Step 1: เขียน `contracts.seed.ts`**
+
+```ts
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+import { cleanupTestContracts } from '../cleanup-test-contracts.cli';
+import { TEST_CONTRACT_PREFIX, TEST_CUSTOMER_ADDRESS, TEST_IMEI_PREFIX, seedTestContracts } from '../seed-test-contracts.cli';
+
+/** จำนวน scenario ของ seeder เดิม — ตรงกับ SCENARIOS.length ใน seed-test-contracts.cli.ts */
+const CONTRACT_COUNT = 7;
+
+/**
+ * seedTestContracts ต้องการ Refs รูปของตัวเอง (มี interestConfigId ที่ SeedRefs ไม่มี)
+ * แปลงตรงนี้ที่เดียว — ไม่ไปแก้ไฟล์เดิมซึ่งยังต้องรันด้วยตัวเองได้อยู่
+ */
+async function adaptRefs(ctx: SeedContext) {
+  const ic = await ctx.prisma.interestConfig.findFirst({ select: { id: true } });
+  return {
+    branchId: ctx.refs.branchId,
+    branchName: ctx.refs.branchName,
+    salespersonId: ctx.refs.salespersonId,
+    reviewerId: ctx.refs.reviewerId,
+    interestConfigId: ic?.id ?? null,
+    shopCompanyId: ctx.refs.shopCompanyId,
+    financeCompanyId: ctx.refs.financeCompanyId,
+  };
+}
+
+export const contractsSeeder: DomainSeeder = {
+  key: 'contracts',
+  label: 'สัญญาผ่อน + เครื่องว่าง + ลูกค้าเปล่า',
+  routes: ['/payments', '/contracts', '/contracts/:id', '/overdue', '/collections', '/letters', '/repossessions', '/early-payoff', '/pos', '/receipts', '/finance/contract-cancellation'],
+  markerDoc: `Contract.contractNumber ขึ้นต้น "${TEST_CONTRACT_PREFIX}" · Customer.addressCurrent = "${TEST_CUSTOMER_ADDRESS}" · Product.imeiSerial ขึ้นต้น "${TEST_IMEI_PREFIX}" (สัญญาที่เปิดผ่าน UI ระหว่างเทสจะได้เลขจริง BCP- แต่ถูกกวาดตามลูกค้า/เครื่อง)`,
+
+  async plan(ctx: SeedContext): Promise<PlanRow[]> {
+    const refs = await adaptRefs(ctx);
+    await seedTestContracts(ctx.prisma, refs, { count: CONTRACT_COUNT, dryRun: true });
+    return [
+      { label: `สัญญาทดสอบ ${CONTRACT_COUNT} ใบ`, detail: 'ครบกำหนดวันนี้ · ค้าง 1/2/3 งวด · งวดอนาคต · TERMINATED รอยึด · ใกล้ปิดยอด (รายละเอียดพิมพ์ด้านบนจาก seeder เดิม)' },
+      { label: 'เครื่องว่าง 3 เครื่อง', detail: 'มือถือใหม่ · มือสอง · หูฟัง (IN_STOCK)' },
+      { label: 'ลูกค้าเปล่า 2 คน', detail: 'ไม่มีสัญญา — สำหรับลูกค้าใหม่ / trade-in / จอง' },
+    ];
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const refs = await adaptRefs(ctx);
+    const r = await seedTestContracts(ctx.prisma, refs, { count: CONTRACT_COUNT, dryRun: false });
+    return {
+      created: r.created + r.productsCreated + r.blankCustomersCreated,
+      skipped: 0,
+      notes: [`เลขสัญญา: ${r.contractNumbers[0] ?? '-'} .. ${r.contractNumbers[r.contractNumbers.length - 1] ?? '-'}`],
+    };
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const r = await cleanupTestContracts(ctx.prisma, { dryRun });
+    return {
+      removed: {
+        'สัญญา': r.contracts,
+        'งวดชำระ': r.payments,
+        'ตารางงวด': r.installmentSchedules,
+        'ใบเสร็จ': r.receipts,
+        'รายการบัญชี (ลบถาวร)': r.journalEntries,
+        'ใบขาย': r.sales,
+        'ลูกหนี้ไฟแนนซ์': r.financeReceivables,
+        'ค่าคอม': r.salesCommissions,
+        'รับซื้อมือสอง': r.tradeIns,
+        'รายการยึด': r.repossessions,
+        'หนังสือทวง': r.letters,
+        'คำขอยกเลิกสัญญา': r.cancellations,
+        'เครื่องทดสอบ': r.products,
+        'ลูกค้าทดสอบ': r.customers,
+      },
+      warnings: [],
+    };
+  },
+};
+```
+
+- [ ] **Step 2: เพิ่มเข้า registry เป็นตัวแรก**
+
+แก้ `_registry.ts`:
+
+```ts
+import type { DomainSeeder } from './_types';
+import { contractsSeeder } from './contracts.seed';
+import { todosSeeder } from './todos.seed';
+
+export const ALL_DOMAINS: DomainSeeder[] = [contractsSeeder, todosSeeder];
+```
+
+- [ ] **Step 3: ตรวจ TypeScript**
+
+Run: `npx tsc --noEmit -p apps/api/tsconfig.json`
+Expected: ไม่มี error
+
+- [ ] **Step 4: ตรวจว่า dry-run ไม่เขียน DB**
+
+Run: `EXPECTED_DB_NAME=$DB npm --prefix apps/api run seed:test-pack`
+แล้วนับสัญญา: `SELECT count(*) FROM contracts WHERE contract_number LIKE 'TEST-%';`
+Expected: ตัวเลขเท่าเดิมก่อนรัน (seeder เดิม dry-run แค่พิมพ์)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack/contracts.seed.ts apps/api/src/cli/test-pack/_registry.ts
+git commit -m "feat(test-pack): ห่อ seed/cleanup-test-contracts เดิมเป็นโดเมน contracts"
+```
+
+---
+
+### Task 4: `_helpers.ts` + โดเมน `expenses` + `payroll`
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/_helpers.ts`
+- Create: `apps/api/src/cli/test-pack/_helpers.spec.ts`
+- Create: `apps/api/src/cli/test-pack/expenses.seed.ts`
+- Create: `apps/api/src/cli/test-pack/payroll.seed.ts`
+- Modify: `apps/api/src/cli/test-pack/_registry.ts`
+
+**Interfaces:**
+- Consumes: `SeedContext` · `DomainSeeder` (Task 1) · `testNote` · `TEST_NOTE_MARKER` (Task 1)
+- Produces: `nextDocNumber(prisma, prefixLetters, dateStr, width?): Promise<string>` · `sumLine(unitPrice: number, qty: number, vatPct: number): { amountBeforeVat: number; vatAmount: number; total: number }` (จาก `_helpers.ts`) · `expensesSeeder: DomainSeeder` · `payrollSeeder: DomainSeeder`
+
+**เลขเอกสาร — ทำไมถึง mirror ไม่ใช่เรียก service:** `DocNumberService.next()` ต้องการ DI ของ `SettingsService`
+ซึ่งจะลาก Nest เข้ามาในเฟส 2 ที่ตั้งใจให้เขียน Prisma ตรง ๆ `nextDocNumber` จึงคัดเฉพาะแกนของมัน
+(`findFirst({ where: { number: { startsWith } }, orderBy: { number: 'desc' } })` แล้ว +1 — **ไม่กรอง `deletedAt`
+เหมือนกัน** จึงไม่มีทางเกิดเลขซ้ำหลัง cleanup) ความเสี่ยงเดียวคือ OWNER เปลี่ยน format ผ่าน SystemConfig
+แล้ว prefix ต่างกัน — ซึ่งทำให้ **ไม่ชนกัน** ไม่ใช่ชนกัน
+
+- [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_helpers.spec.ts`**
+
+```ts
+import { nextNumberFrom, sumLine } from './_helpers';
+
+describe('nextNumberFrom', () => {
+  it('เริ่มที่ 0001 เมื่อยังไม่มีเลขในวันนั้น', () => {
+    expect(nextNumberFrom('EX-20260826-', null)).toBe('EX-20260826-0001');
+  });
+
+  it('เดินต่อจากเลขล่าสุด (max+1 ไม่ใช่ count+1)', () => {
+    expect(nextNumberFrom('EX-20260826-', 'EX-20260826-0042')).toBe('EX-20260826-0043');
+  });
+
+  it('เลขเสียกลับไปเริ่มที่ 0001 แทนที่จะได้ NaN', () => {
+    expect(nextNumberFrom('EX-20260826-', 'EX-20260826-abcd')).toBe('EX-20260826-0001');
+  });
+
+  it('รองรับความกว้างอื่น เช่น RT- ที่ใช้ 5 หลัก', () => {
+    expect(nextNumberFrom('RT-202608-', 'RT-202608-00007', 5)).toBe('RT-202608-00008');
+  });
+});
+
+describe('sumLine', () => {
+  it('คิดยอดก่อน VAT และ VAT แยกกัน ปัด 2 ตำแหน่ง', () => {
+    expect(sumLine(1000, 3, 7)).toEqual({ amountBeforeVat: 3000, vatAmount: 210, total: 3210 });
+  });
+
+  it('VAT 0 = ไม่มีภาษี (ฝั่ง SHOP ไม่จด VAT)', () => {
+    expect(sumLine(1500, 2, 0)).toEqual({ amountBeforeVat: 3000, vatAmount: 0, total: 3000 });
+  });
+
+  it('ปัดเศษ VAT แบบ 2 ตำแหน่ง ไม่ปล่อยทศนิยมลอย', () => {
+    expect(sumLine(333.33, 1, 7)).toEqual({ amountBeforeVat: 333.33, vatAmount: 23.33, total: 356.66 });
+  });
+});
+```
+
+- [ ] **Step 2: รันเทสให้เห็นว่าไม่ผ่าน**
+
+Run: `npm --prefix apps/api test -- _helpers`
+Expected: FAIL — `Cannot find module './_helpers'`
+
+- [ ] **Step 3: เขียน `_helpers.ts`**
+
+```ts
+import type { PrismaService } from '../../prisma/prisma.service';
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** คำนวณยอดต่อบรรทัด — ราคาต่อหน่วยเป็นราคาก่อน VAT เสมอ (EXCLUSIVE) */
+export function sumLine(unitPrice: number, qty: number, vatPct: number) {
+  const amountBeforeVat = round2(unitPrice * qty);
+  const vatAmount = round2((amountBeforeVat * vatPct) / 100);
+  return { amountBeforeVat, vatAmount, total: round2(amountBeforeVat + vatAmount) };
+}
+
+/**
+ * เลขถัดไปจากเลขล่าสุด — pure จึงเทสได้โดยไม่ต้องแตะ DB
+ * mirror แกนของ DocNumberService.next(): max+1 ไม่ใช่ count+1
+ */
+export function nextNumberFrom(prefix: string, lastNumber: string | null, width = 4): string {
+  const lastSeq = lastNumber ? parseInt(lastNumber.slice(prefix.length), 10) || 0 : 0;
+  return `${prefix}${String(lastSeq + 1).padStart(width, '0')}`;
+}
+
+/**
+ * เลขเอกสารถัดไปของ ExpenseDocument (EX- / PR-) — mirror DocNumberService.next()
+ * โดยไม่ต้องลาก DI เข้าเฟส 2 · **ไม่กรอง deletedAt เหมือนของจริง** จึงไม่มีทางเกิดเลขซ้ำหลัง cleanup
+ * โมเดลอื่น (OtherIncome / EquityDocument / FixedAsset) ทำ findFirst ของตัวเองแล้วส่งเข้า nextNumberFrom
+ */
+export async function nextDocNumber(
+  prisma: PrismaService,
+  prefixLetters: string,
+  dateStr: string,
+  width = 4,
+): Promise<string> {
+  const prefix = `${prefixLetters}-${dateStr}-`;
+  const last = await prisma.expenseDocument.findFirst({
+    where: { number: { startsWith: prefix } },
+    orderBy: { number: 'desc' },
+    select: { number: true },
+  });
+  return nextNumberFrom(prefix, last?.number ?? null, width);
+}
+```
+
+- [ ] **Step 4: รันเทสให้ผ่าน**
+
+Run: `npm --prefix apps/api test -- _helpers`
+Expected: PASS — 7 เทส (nextNumberFrom 4 + sumLine 3)
+
+- [ ] **Step 5: เขียน `expenses.seed.ts`**
+
+```ts
+import { TEST_NOTE_MARKER, testNote } from './_context';
+import { nextDocNumber, sumLine } from './_helpers';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/**
+ * R2 — เพดานคือ PENDING_APPROVAL เท่านั้น
+ * ACCRUAL/POSTED โพสต์ JE ⇒ ต้องให้ผู้ทดสอบกด post เองในหน้าจอ
+ */
+const ROWS: Array<{
+  key: string;
+  status: 'DRAFT' | 'PENDING_APPROVAL';
+  vendorName: string;
+  category: string;
+  unitPrice: number;
+  qty: number;
+  vatPct: number;
+  whtPct: number;
+  desc: string;
+}> = [
+  { key: 'rent', status: 'DRAFT', vendorName: 'ทดสอบระบบ ผู้ให้เช่าอาคาร', category: 'ค่าเช่า', unitPrice: 25000, qty: 1, vatPct: 7, whtPct: 5, desc: 'ค่าเช่าร้าน (ร่าง — มี VAT + หัก ณ ที่จ่าย 5%)' },
+  { key: 'utility', status: 'DRAFT', vendorName: 'ทดสอบระบบ การไฟฟ้า', category: 'ค่าสาธารณูปโภค', unitPrice: 3800, qty: 1, vatPct: 7, whtPct: 0, desc: 'ค่าไฟฟ้า (ร่าง — มี VAT ไม่มี WHT)' },
+  { key: 'approval', status: 'PENDING_APPROVAL', vendorName: 'ทดสอบระบบ ร้านวัสดุ', category: 'ค่าซ่อมแซม', unitPrice: 12500, qty: 1, vatPct: 7, whtPct: 3, desc: 'ค่าซ่อมแซมร้าน (รออนุมัติ — ทดสอบสิทธิ์ผู้อนุมัติ)' },
+  { key: 'zero', status: 'DRAFT', vendorName: 'ทดสอบระบบ ผู้ขายรายย่อย', category: 'ค่าใช้จ่ายเบ็ดเตล็ด', unitPrice: 0, qty: 1, vatPct: 0, whtPct: 0, desc: 'เคสขอบ — ยอด 0 บาท ไม่มี VAT' },
+];
+
+const noteOf = (key: string) => testNote(`ค่าใช้จ่าย/${key}`);
+
+export const expensesSeeder: DomainSeeder = {
+  key: 'expenses',
+  label: 'ค่าใช้จ่าย',
+  routes: ['/expenses', '/expenses/:id', '/expenses/new', '/expenses/:id/voucher', '/expenses/ap-aging', '/expenses/daily-summary', '/expenses/favorites'],
+  markerDoc: `ExpenseDocument.note ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (เลข EX- ปล่อยตามลำดับจริง ห้ามใส่ TEST- เพราะจะพัง sequence)`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => {
+      const s = sumLine(r.unitPrice, r.qty, r.vatPct);
+      return { label: `EX ${r.key}`, detail: `${r.status} · ${r.desc} · ยอดรวม ฿${s.total.toLocaleString('th-TH')}` };
+    });
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    for (const r of ROWS) {
+      const note = noteOf(r.key);
+      const exists = await ctx.prisma.expenseDocument.findFirst({ where: { note, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      const s = sumLine(r.unitPrice, r.qty, r.vatPct);
+      const whtAmount = Math.round(s.amountBeforeVat * r.whtPct) / 100;
+      const number = await nextDocNumber(ctx.prisma, 'EX', ctx.dateStr);
+      await ctx.prisma.expenseDocument.create({
+        data: {
+          number,
+          documentType: 'EXPENSE',
+          branchId: ctx.refs.branchId,
+          documentDate: ctx.today,
+          vendorName: r.vendorName,
+          description: r.desc,
+          subtotal: s.amountBeforeVat,
+          vatAmount: s.vatAmount,
+          withholdingTax: whtAmount,
+          whtFormType: r.whtPct > 0 ? 'PND3' : null,
+          totalAmount: s.total,
+          netPayment: Math.round((s.total - whtAmount) * 100) / 100,
+          status: r.status,
+          note,
+          createdById: ctx.refs.reviewerId,
+          expenseDetail: {
+            create: {
+              lines: {
+                create: [
+                  {
+                    lineNo: 1,
+                    category: r.category,
+                    description: r.desc,
+                    quantity: r.qty,
+                    unitPrice: r.unitPrice,
+                    vatPercent: r.vatPct,
+                    whtPercent: r.whtPct,
+                    whtFormType: r.whtPct > 0 ? 'PND3' : null,
+                    supplierName: r.vendorName,
+                    amountBeforeVat: s.amountBeforeVat,
+                    vatAmount: s.vatAmount,
+                    whtAmount,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const docs = await ctx.prisma.expenseDocument.findMany({
+      where: { note: { startsWith: TEST_NOTE_MARKER }, documentType: 'EXPENSE', deletedAt: null },
+      select: { id: true, number: true, journalEntryId: true },
+    });
+    const jeIds = docs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
+    for (const d of docs) console.log(`     ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    if (!dryRun && docs.length) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (jeIds.length) {
+          // FK sweep ก่อน hard-delete JE — Postgres default FK = NO ACTION จะ abort ทั้ง tx
+          await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.expenseDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { journalEntryId: null } });
+          await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+        }
+        await tx.expenseDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { deletedAt: new Date() } });
+      });
+    }
+    return { removed: { 'ใบค่าใช้จ่าย': docs.length, 'รายการบัญชีของใบค่าใช้จ่าย (ลบถาวร)': jeIds.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 6: เขียน `payroll.seed.ts`**
+
+```ts
+import { TEST_NOTE_MARKER, testNote } from './_context';
+import { nextDocNumber } from './_helpers';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/**
+ * ใบเงินเดือน 1 ใบต่อฝั่ง — SHOP (พนักงานสาขา) และ FINANCE (ส่วนกลาง)
+ * ตาม .claude/rules/accounting.md หัวข้อ Payroll: entityScope เป็นตัวเลือกผังบัญชี
+ * R2 — DRAFT เท่านั้น (POSTED โพสต์ JE เงินเดือน + ปกส. + ภ.ง.ด.1)
+ */
+const SCOPES: Array<{ scope: 'SHOP' | 'FINANCE'; label: string; lines: Array<{ name: string; base: number; sso: number; wht: number }> }> = [
+  {
+    scope: 'SHOP',
+    label: 'พนักงานสาขา',
+    lines: [
+      { name: 'ทดสอบระบบ พนักงานขาย ก', base: 15000, sso: 750, wht: 0 },
+      { name: 'ทดสอบระบบ พนักงานขาย ข', base: 13000, sso: 650, wht: 0 },
+    ],
+  },
+  {
+    scope: 'FINANCE',
+    label: 'ส่วนกลาง',
+    lines: [{ name: 'ทดสอบระบบ พนักงานบัญชี', base: 28000, sso: 750, wht: 420 }],
+  },
+];
+
+const noteOf = (scope: string) => testNote(`เงินเดือน/${scope}`);
+/** งวดเงินเดือนของเดือนปัจจุบัน — YYYY-MM */
+const periodOf = (today: Date) => `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
+
+export const payrollSeeder: DomainSeeder = {
+  key: 'payroll',
+  label: 'เงินเดือน',
+  routes: ['/finance/sso-report', '/finance/wht-report', '/finance/wht-annual'],
+  markerDoc: `ExpenseDocument.note ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" และ documentType = PAYROLL`,
+
+  async plan(ctx: SeedContext): Promise<PlanRow[]> {
+    return SCOPES.map((s) => ({
+      label: `PR ${s.scope}`,
+      detail: `DRAFT · ${s.label} ${s.lines.length} คน · งวด ${periodOf(ctx.today)} · รวม ฿${s.lines.reduce((a, l) => a + l.base, 0).toLocaleString('th-TH')}`,
+    }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const period = periodOf(ctx.today);
+    for (const s of SCOPES) {
+      const note = noteOf(s.scope);
+      const exists = await ctx.prisma.expenseDocument.findFirst({ where: { note, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      const gross = s.lines.reduce((a, l) => a + l.base, 0);
+      const totalSso = s.lines.reduce((a, l) => a + l.sso, 0);
+      const totalWht = s.lines.reduce((a, l) => a + l.wht, 0);
+      const number = await nextDocNumber(ctx.prisma, 'PR', ctx.dateStr);
+      await ctx.prisma.expenseDocument.create({
+        data: {
+          number,
+          documentType: 'PAYROLL',
+          branchId: ctx.refs.branchId,
+          documentDate: ctx.today,
+          description: `เงินเดือน ${s.label} งวด ${period}`,
+          subtotal: gross,
+          vatAmount: 0,
+          withholdingTax: totalWht,
+          totalAmount: gross,
+          netPayment: gross - totalSso - totalWht,
+          status: 'DRAFT',
+          note,
+          createdById: ctx.refs.reviewerId,
+          payroll: {
+            create: {
+              payrollPeriod: period,
+              entityScope: s.scope,
+              lines: {
+                create: s.lines.map((l) => ({
+                  employeeName: l.name,
+                  baseSalary: l.base,
+                  ssoEmployee: l.sso,
+                  whtAmount: l.wht,
+                  netPaid: l.base - l.sso - l.wht,
+                })),
+              },
+            },
+          },
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const docs = await ctx.prisma.expenseDocument.findMany({
+      where: { note: { startsWith: TEST_NOTE_MARKER }, documentType: 'PAYROLL', deletedAt: null },
+      select: { id: true, number: true, journalEntryId: true },
+    });
+    const jeIds = docs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
+    for (const d of docs) console.log(`     ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    if (!dryRun && docs.length) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (jeIds.length) {
+          await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.expenseDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { journalEntryId: null } });
+          await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+        }
+        await tx.expenseDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { deletedAt: new Date() } });
+      });
+    }
+    return { removed: { 'ใบเงินเดือน': docs.length, 'รายการบัญชีของใบเงินเดือน (ลบถาวร)': jeIds.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 7: ยืนยันชื่อฟิลด์ของ `PayrollLine`**
+
+Run: `awk '/^model PayrollLine /,/^}/' apps/api/prisma/schema.prisma`
+Expected (ตรวจแล้วตอนเขียนแผน): `employeeName` · `baseSalary` · `ssoEmployee` · **`whtAmount`** (ไม่ใช่ `withholdingTax` — ชื่อนั้นอยู่บน `ExpenseDocument` ระดับใบ) · `netPaid`
+`userId` เป็น optional และมี `@@unique([payroll_id, user_id])` — ปล่อย null ได้หลายแถวเพราะ Postgres ถือว่า NULL ต่างกันเสมอ
+
+- [ ] **Step 8: เพิ่มเข้า registry**
+
+แก้ `_registry.ts` — เพิ่ม import และใส่ต่อจาก `contractsSeeder`:
+
+```ts
+export const ALL_DOMAINS: DomainSeeder[] = [contractsSeeder, expensesSeeder, payrollSeeder, todosSeeder];
+```
+
+- [ ] **Step 9: ตรวจ TypeScript + รันเทส**
+
+Run: `npx tsc --noEmit -p apps/api/tsconfig.json && npm --prefix apps/api test -- test-pack`
+Expected: ไม่มี error · เทสผ่านทั้งหมด
+
+- [ ] **Step 10: พิสูจน์ round-trip เฉพาะสองโดเมนนี้**
+
+```bash
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=expenses,payroll npm --prefix apps/api run seed:test-pack
+CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=expenses,payroll npm --prefix apps/api run cleanup:test-pack
+```
+Expected: สร้าง 6 แถว (4 ค่าใช้จ่าย + 2 เงินเดือน) แล้วลบครบ 6
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack
+git commit -m "feat(test-pack): โดเมนค่าใช้จ่าย + เงินเดือน (DRAFT/รออนุมัติ เท่านั้น ตาม R2)"
+```
+
+---
+
+### Task 5: โดเมน `other-income` + `assets`
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/other-income.seed.ts`
+- Create: `apps/api/src/cli/test-pack/assets.seed.ts`
+- Modify: `apps/api/src/cli/test-pack/_registry.ts`
+
+**Interfaces:**
+- Consumes: `nextNumberFrom` · `sumLine` (Task 4) · `testNote` · `TEST_NOTE_MARKER` (Task 1)
+- Produces: `otherIncomeSeeder: DomainSeeder` · `assetsSeeder: DomainSeeder`
+
+**ข้อจำกัดที่ต้องเคารพ:** `OtherIncome.companyId` บังคับ ⇒ ถ้า `ctx.refs.financeCompanyId` เป็น null ให้คืน
+`SeedStat` ที่ `created: 0` พร้อม note ภาษาไทย **ห้าม throw** (โดเมนอื่นต้องเดินต่อได้)
+`FixedAsset.assetCode` และ `docNo` เป็น `@unique` ทั้งคู่ ⇒ ต้องกันซ้ำด้วย max+1 เหมือนกัน
+
+- [ ] **Step 1: เขียน `other-income.seed.ts`**
+
+```ts
+import { TEST_NOTE_MARKER, testNote } from './_context';
+import { nextNumberFrom, sumLine } from './_helpers';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/** R2 — เพดานคือ READY (POSTED โพสต์ JE + ออกใบเสร็จ RT-) */
+const ROWS: Array<{
+  key: string;
+  status: 'DRAFT' | 'READY';
+  accountCode: string;
+  accountName: string;
+  counterparty: string;
+  unitAmount: number;
+  vatPct: number;
+  whtPct: number;
+}> = [
+  { key: 'bank-interest', status: 'DRAFT', accountCode: '42-1102', accountName: 'ดอกเบี้ยเงินฝาก', counterparty: 'ทดสอบระบบ ธนาคาร', unitAmount: 1250, vatPct: 0, whtPct: 15 },
+  { key: 'late-fee', status: 'DRAFT', accountCode: '42-1103', accountName: 'ค่าปรับชำระล่าช้า', counterparty: 'ทดสอบระบบ ลูกค้าจ่ายค่าปรับอย่างเดียว', unitAmount: 100, vatPct: 0, whtPct: 0 },
+  { key: 'ready', status: 'READY', accountCode: '42-1105', accountName: 'กำไรจากการจำหน่ายสินทรัพย์', counterparty: 'ทดสอบระบบ ผู้ซื้อทรัพย์สิน', unitAmount: 8000, vatPct: 7, whtPct: 0 },
+];
+
+const noteOf = (key: string) => testNote(`รายได้อื่น/${key}`);
+
+export const otherIncomeSeeder: DomainSeeder = {
+  key: 'other-income',
+  label: 'รายได้อื่น',
+  routes: ['/other-income', '/other-income/:id', '/other-income/new', '/other-income/:id/edit', '/other-income/daily-sheet', '/other-income/pending-approval', '/other-income/templates'],
+  markerDoc: `OtherIncome.customerNote ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (เลข OI- ปล่อยตามลำดับจริง)`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => {
+      const s = sumLine(r.unitAmount, 1, r.vatPct);
+      return { label: `OI ${r.key}`, detail: `${r.status} · ${r.accountCode} ${r.accountName} · ฿${s.total.toLocaleString('th-TH')}${r.whtPct ? ` · หัก ณ ที่จ่าย ${r.whtPct}%` : ''}` };
+    });
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    if (!ctx.refs.financeCompanyId) {
+      stat.notes.push('ข้ามทั้งโดเมน — ไม่พบนิติบุคคล FINANCE (OtherIncome.companyId บังคับ)');
+      return stat;
+    }
+    for (const r of ROWS) {
+      const customerNote = noteOf(r.key);
+      const exists = await ctx.prisma.otherIncome.findFirst({ where: { customerNote, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      const s = sumLine(r.unitAmount, 1, r.vatPct);
+      const whtAmount = Math.round(s.amountBeforeVat * r.whtPct) / 100;
+      const prefix = `OI-${ctx.dateStr}-`;
+      const last = await ctx.prisma.otherIncome.findFirst({ where: { docNumber: { startsWith: prefix } }, orderBy: { docNumber: 'desc' }, select: { docNumber: true } });
+      await ctx.prisma.otherIncome.create({
+        data: {
+          docNumber: nextNumberFrom(prefix, last?.docNumber ?? null),
+          companyId: ctx.refs.financeCompanyId,
+          status: r.status,
+          issueDate: ctx.today,
+          priceType: 'EXCLUSIVE',
+          counterpartyName: r.counterparty,
+          paymentAccountCode: '11-1101',
+          incomeGross: s.amountBeforeVat,
+          vatAmount: s.vatAmount,
+          whtAmount,
+          totalAmount: s.total,
+          netReceived: Math.round((s.total - whtAmount) * 100) / 100,
+          customerNote,
+          createdById: ctx.refs.reviewerId,
+          items: {
+            create: [
+              {
+                lineNo: 1,
+                accountCode: r.accountCode,
+                accountName: r.accountName,
+                description: r.accountName,
+                quantity: 1,
+                unitAmount: r.unitAmount,
+                vatPct: r.vatPct,
+                whtPct: r.whtPct,
+                amountBeforeVat: s.amountBeforeVat,
+                vatAmount: s.vatAmount,
+                whtAmount,
+              },
+            ],
+          },
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const docs = await ctx.prisma.otherIncome.findMany({
+      where: { customerNote: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+      select: { id: true, docNumber: true, journalEntryId: true },
+    });
+    const jeIds = docs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
+    for (const d of docs) console.log(`     ${d.docNumber}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    if (!dryRun && docs.length) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (jeIds.length) {
+          await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.otherIncome.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { journalEntryId: null } });
+          await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+        }
+        await tx.otherIncome.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { deletedAt: new Date() } });
+      });
+    }
+    return { removed: { 'ใบรายได้อื่น': docs.length, 'รายการบัญชีของรายได้อื่น (ลบถาวร)': jeIds.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 2: เขียน `assets.seed.ts`**
+
+```ts
+import { TEST_NOTE_MARKER, testNote } from './_context';
+import { nextNumberFrom, sumLine } from './_helpers';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/**
+ * R2 — DRAFT เท่านั้น (POSTED โพสต์ JE ซื้อทรัพย์สิน แล้วเข้าคิวค่าเสื่อมรายเดือน)
+ * แถวที่สองตั้ง vatAccount = 11-4102 เพื่อทดสอบ flow "ใบกำกับมาถึงแล้ว"
+ * (.claude/rules/accounting.md — Asset VAT 11-4102 deferred → 11-4101 transfer)
+ */
+const ROWS: Array<{
+  key: string;
+  name: string;
+  category: 'EQUIPMENT' | 'FURNITURE' | 'VEHICLE' | 'IMPROVEMENT';
+  basePrice: number;
+  months: number;
+  hasVat: boolean;
+  vatAccount: string | null;
+  coaCost: string;
+  coaDepr: string;
+  coaExpense: string;
+}> = [
+  { key: 'aircon', name: 'ทดสอบระบบ เครื่องปรับอากาศสาขา', category: 'EQUIPMENT', basePrice: 32000, months: 60, hasVat: true, vatAccount: '11-4101', coaCost: '12-2101', coaDepr: '12-2102', coaExpense: '53-1601' },
+  { key: 'shelf', name: 'ทดสอบระบบ ชั้นวางสินค้า (ใบกำกับยังไม่มา)', category: 'FURNITURE', basePrice: 18000, months: 60, hasVat: true, vatAccount: '11-4102', coaCost: '12-2103', coaDepr: '12-2104', coaExpense: '53-1602' },
+  { key: 'novat', name: 'ทดสอบระบบ ป้ายหน้าร้าน (ไม่มี VAT)', category: 'IMPROVEMENT', basePrice: 9500, months: 36, hasVat: false, vatAccount: null, coaCost: '12-2105', coaDepr: '12-2106', coaExpense: '53-1603' },
+];
+
+const descOf = (key: string) => testNote(`ทรัพย์สิน/${key}`);
+
+export const assetsSeeder: DomainSeeder = {
+  key: 'assets',
+  label: 'ทรัพย์สินถาวร',
+  routes: ['/assets', '/assets/:id', '/assets/new', '/assets/:id/edit', '/assets/register', '/assets/depreciation', '/assets/transfers', '/assets/:id/dispose', '/assets/audit', '/assets/:id/audit', '/assets/period-close', '/assets/journal', '/assets/summary-report', '/assets/:id/schedule'],
+  markerDoc: `FixedAsset.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (assetCode/docNo ปล่อยตามลำดับจริง)`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => {
+      const s = sumLine(r.basePrice, 1, r.hasVat ? 7 : 0);
+      return { label: `ASSET ${r.key}`, detail: `DRAFT · ${r.name} · ฿${r.basePrice.toLocaleString('th-TH')} · ${r.months} เดือน${r.vatAccount === '11-4102' ? ' · VAT รอใบกำกับ (11-4102)' : ''} · รวม VAT ฿${s.total.toLocaleString('th-TH')}` };
+    });
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    // ASSET-YYMM-NNNN ตามรูปแบบในคอมเมนต์ของ schema
+    const ym = `${String(ctx.today.getUTCFullYear()).slice(2)}${String(ctx.today.getUTCMonth() + 1).padStart(2, '0')}`;
+    const docPrefix = `ASSET-${ym}-`;
+    const codePrefix = 'TESTASSET-';
+    for (const r of ROWS) {
+      const description = descOf(r.key);
+      const exists = await ctx.prisma.fixedAsset.findFirst({ where: { description, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      const [lastDoc, lastCode] = await Promise.all([
+        ctx.prisma.fixedAsset.findFirst({ where: { docNo: { startsWith: docPrefix } }, orderBy: { docNo: 'desc' }, select: { docNo: true } }),
+        ctx.prisma.fixedAsset.findFirst({ where: { assetCode: { startsWith: codePrefix } }, orderBy: { assetCode: 'desc' }, select: { assetCode: true } }),
+      ]);
+      const vat = r.hasVat ? Math.round(r.basePrice * 7) / 100 : 0;
+      const monthlyDepr = Math.round((r.basePrice / r.months) * 10000) / 10000;
+      await ctx.prisma.fixedAsset.create({
+        data: {
+          assetCode: nextNumberFrom(codePrefix, lastCode?.assetCode ?? null, 3),
+          docNo: nextNumberFrom(docPrefix, lastDoc?.docNo ?? null),
+          name: r.name,
+          description,
+          category: r.category,
+          branchId: ctx.refs.branchId,
+          basePrice: r.basePrice,
+          hasVat: r.hasVat,
+          vatAmount: vat,
+          vatAccount: r.vatAccount,
+          purchaseCost: r.basePrice,
+          usefulLifeMonths: r.months,
+          monthlyDepr,
+          dailyDepr: Math.round((r.basePrice / ((r.months / 12) * 365)) * 10000) / 10000,
+          netBookValue: r.basePrice,
+          coaCostAccount: r.coaCost,
+          coaDeprAccount: r.coaDepr,
+          coaExpenseAccount: r.coaExpense,
+          purchaseDate: ctx.today,
+          supplierName: 'ทดสอบระบบ ผู้ขายทรัพย์สิน',
+          status: 'DRAFT',
+          createdById: ctx.refs.reviewerId,
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.fixedAsset.findMany({
+      where: { description: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+      select: { id: true, assetCode: true, docNo: true, invoiceTransferJournalEntryId: true },
+    });
+    const jeIds = rows.map((r) => r.invoiceTransferJournalEntryId).filter((x): x is string => !!x);
+    for (const r of rows) console.log(`     ${r.docNo} (${r.assetCode})${r.invoiceTransferJournalEntryId ? ' (มี JE โอน VAT)' : ''}`);
+    if (!dryRun && rows.length) {
+      await ctx.prisma.$transaction(async (tx) => {
+        // ค่าเสื่อมที่ cron เคยลงให้ต้องออกก่อน ไม่งั้น FK ค้าง
+        await tx.depreciationEntry.deleteMany({ where: { assetId: { in: rows.map((r) => r.id) } } });
+        if (jeIds.length) {
+          await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.fixedAsset.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { invoiceTransferJournalEntryId: null } });
+          await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+        }
+        await tx.fixedAsset.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+      });
+    }
+    return { removed: { 'ทรัพย์สิน': rows.length, 'รายการบัญชีโอน VAT ทรัพย์สิน (ลบถาวร)': jeIds.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 3: ยืนยันชื่อ relation ของค่าเสื่อม**
+
+Run: `awk '/^model DepreciationEntry /,/^}/' apps/api/prisma/schema.prisma | grep -E 'assetId|journalEntryId'`
+Expected: มี `assetId` — ถ้าชื่อต่างให้แก้ `cleanup` ตามชื่อจริง และถ้ามี `journalEntryId` บังคับ (ไม่ optional)
+ให้เพิ่มการกวาด JE ของค่าเสื่อมด้วยรูปแบบเดียวกับ `jeIds` ข้างบน
+
+- [ ] **Step 4: เพิ่มเข้า registry**
+
+```ts
+export const ALL_DOMAINS: DomainSeeder[] = [contractsSeeder, expensesSeeder, payrollSeeder, otherIncomeSeeder, assetsSeeder, todosSeeder];
+```
+
+- [ ] **Step 5: ตรวจ TypeScript**
+
+Run: `npx tsc --noEmit -p apps/api/tsconfig.json`
+Expected: ไม่มี error
+
+- [ ] **Step 6: พิสูจน์ round-trip**
+
+```bash
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=other-income,assets npm --prefix apps/api run seed:test-pack
+CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=other-income,assets npm --prefix apps/api run cleanup:test-pack
+```
+Expected: สร้าง 6 แถว แล้วลบครบ 6
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack
+git commit -m "feat(test-pack): โดเมนรายได้อื่น + ทรัพย์สินถาวร (DRAFT/READY ตาม R2)"
+```
+
+---
+
+### Task 6: โดเมน `equity` (ผู้ถือหุ้น + เอกสารส่วนของผู้ถือหุ้น)
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/equity.seed.ts`
+- Modify: `apps/api/src/cli/test-pack/_registry.ts`
+
+**Interfaces:**
+- Consumes: `nextNumberFrom` (Task 4) · `testName` · `testNote` · `TEST_NAME_PREFIX` · `TEST_NOTE_MARKER` (Task 1)
+- Produces: `equitySeeder: DomainSeeder`
+
+**คำเตือนบังคับ:** `shareholders` อยู่ใน `KEEP_TABLES` ของ factory reset ⇒ `cleanup` ต้อง**คืน warning เสมอ**
+เมื่อพบผู้ถือหุ้นทดสอบ เพราะถ้าลืมล้าง มันจะรอดข้าม factory reset ไปปนทะเบียน บอจ.5 จริงในวัน go-live
+
+- [ ] **Step 1: เขียน `equity.seed.ts`**
+
+```ts
+import { TEST_NAME_PREFIX, TEST_NOTE_MARKER, testName, testNote } from './_context';
+import { nextNumberFrom } from './_helpers';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+const SHAREHOLDERS: Array<{ name: string; shares: number; pct: number; type: 'INDIVIDUAL' | 'JURISTIC_TH' | 'JURISTIC_FOREIGN' }> = [
+  { name: 'ผู้ถือหุ้นบุคคล ก', shares: 6000, pct: 60, type: 'INDIVIDUAL' },
+  { name: 'ผู้ถือหุ้นบุคคล ข', shares: 3000, pct: 30, type: 'INDIVIDUAL' },
+  { name: 'ผู้ถือหุ้นนิติบุคคลไทย', shares: 1000, pct: 10, type: 'JURISTIC_TH' },
+];
+
+/** R2 — เพดานคือ READY (POSTED โพสต์ JE ทุนจดทะเบียน/ปันผล) */
+const DOCS: Array<{ key: string; txnType: 'CAP_INC' | 'DIV_DEC'; status: 'DRAFT' | 'READY'; desc: string }> = [
+  { key: 'cap-inc', txnType: 'CAP_INC', status: 'DRAFT', desc: 'เพิ่มทุนจดทะเบียน (ร่าง)' },
+  { key: 'div-dec', txnType: 'DIV_DEC', status: 'READY', desc: 'ประกาศจ่ายเงินปันผล (รออนุมัติ)' },
+];
+
+const descOf = (key: string) => testNote(`ส่วนของผู้ถือหุ้น/${key}`);
+
+export const equitySeeder: DomainSeeder = {
+  key: 'equity',
+  label: 'ส่วนของผู้ถือหุ้น',
+  routes: ['/finance/equity', '/finance/equity/new', '/finance/equity/:id', '/finance/equity/:id/edit', '/finance/dividend-register', '/finance/equity-statement'],
+  markerDoc: `EquityDocument.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" · Shareholder.name ขึ้นต้นด้วย "${TEST_NAME_PREFIX}" (⚠️ shareholders เป็น KEEP table — factory reset ไม่ล้างให้)`,
+
+  async plan(): Promise<PlanRow[]> {
+    return [
+      ...SHAREHOLDERS.map((s) => ({ label: testName(s.name), detail: `${s.shares.toLocaleString('th-TH')} หุ้น · ${s.pct}% · ${s.type}` })),
+      ...DOCS.map((d) => ({ label: `EQ ${d.key}`, detail: `${d.status} · ${d.txnType} · ${d.desc}` })),
+    ];
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    if (!ctx.refs.financeCompanyId) {
+      stat.notes.push('ข้ามเอกสาร — ไม่พบนิติบุคคล FINANCE (EquityDocument.companyId บังคับ)');
+    }
+
+    for (const s of SHAREHOLDERS) {
+      const name = testName(s.name);
+      const exists = await ctx.prisma.shareholder.findFirst({ where: { name, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.shareholder.create({
+        data: { name, shares: s.shares, sharePct: s.pct, type: s.type, note: testNote('ผู้ถือหุ้นสำหรับทดสอบ — ลบก่อนใช้จริง') },
+      });
+      stat.created += 1;
+    }
+
+    if (!ctx.refs.financeCompanyId) return stat;
+
+    const prefix = `EQ-${ctx.dateStr}-`;
+    for (const d of DOCS) {
+      const description = descOf(d.key);
+      const exists = await ctx.prisma.equityDocument.findFirst({ where: { description, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      const last = await ctx.prisma.equityDocument.findFirst({ where: { docNumber: { startsWith: prefix } }, orderBy: { docNumber: 'desc' }, select: { docNumber: true } });
+      await ctx.prisma.equityDocument.create({
+        data: {
+          docNumber: nextNumberFrom(prefix, last?.docNumber ?? null),
+          companyId: ctx.refs.financeCompanyId,
+          txnType: d.txnType,
+          status: d.status,
+          txnDate: ctx.today,
+          description,
+          resolutionNo: `TEST-MTG-${ctx.dateStr}`,
+          resolutionDate: ctx.today,
+          paymentAccountCode: '11-1201',
+          makerId: ctx.refs.reviewerId,
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const docs = await ctx.prisma.equityDocument.findMany({
+      where: { description: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+      select: { id: true, docNumber: true, journalEntryId: true, reverseJournalEntryId: true },
+    });
+    const holders = await ctx.prisma.shareholder.findMany({
+      where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    const jeIds = docs.flatMap((d) => [d.journalEntryId, d.reverseJournalEntryId]).filter((x): x is string => !!x);
+    for (const d of docs) console.log(`     ${d.docNumber}`);
+    for (const h of holders) console.log(`     ผู้ถือหุ้น "${h.name}"`);
+
+    if (!dryRun && (docs.length || holders.length)) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (docs.length) {
+          await tx.equityShareholderLine.deleteMany({ where: { equityDocumentId: { in: docs.map((d) => d.id) } } });
+          if (jeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+            await tx.equityDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { journalEntryId: null, reverseJournalEntryId: null } });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+          }
+          await tx.equityDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { deletedAt: new Date() } });
+        }
+        if (holders.length) {
+          await tx.shareholder.updateMany({ where: { id: { in: holders.map((h) => h.id) } }, data: { deletedAt: new Date() } });
+        }
+      });
+    }
+
+    return {
+      removed: { 'เอกสารส่วนของผู้ถือหุ้น': docs.length, 'ผู้ถือหุ้นทดสอบ': holders.length, 'รายการบัญชีส่วนของผู้ถือหุ้น (ลบถาวร)': jeIds.length },
+      warnings: holders.length
+        ? ['ตาราง shareholders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้ ผู้ถือหุ้นทดสอบจะรอดข้าม factory reset ไปปนทะเบียน บอจ.5 จริง']
+        : [],
+    };
+  },
+};
+```
+
+- [ ] **Step 2: ยืนยันชื่อ FK ของ `EquityShareholderLine`**
+
+Run: `awk '/^model EquityShareholderLine /,/^}/' apps/api/prisma/schema.prisma | grep -E 'equityDocument|shareholder'`
+Expected: มีคอลัมน์ที่ชี้ไป `EquityDocument` — ถ้าชื่อไม่ใช่ `equityDocumentId` ให้แก้ `cleanup` ตามชื่อจริง
+
+- [ ] **Step 3: เพิ่มเข้า registry (ต่อจาก `assetsSeeder`)**
+
+```ts
+export const ALL_DOMAINS: DomainSeeder[] = [contractsSeeder, expensesSeeder, payrollSeeder, otherIncomeSeeder, assetsSeeder, equitySeeder, todosSeeder];
+```
+
+- [ ] **Step 4: ตรวจ TypeScript + round-trip**
+
+```bash
+npx tsc --noEmit -p apps/api/tsconfig.json
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=equity npm --prefix apps/api run seed:test-pack
+EXPECTED_DB_NAME=$DB DOMAINS=equity npm --prefix apps/api run cleanup:test-pack
+```
+Expected: สร้าง 5 แถว (3 ผู้ถือหุ้น + 2 เอกสาร) · dry-run cleanup แสดง **⚠️ คำเตือนเรื่อง KEEP_TABLES**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack
+git commit -m "feat(test-pack): โดเมนส่วนของผู้ถือหุ้น + คำเตือน shareholders รอดข้าม factory reset"
+```
+
+---
+
+### Task 7: โดเมน `suppliers-po` + `stock-ops`
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/suppliers-po.seed.ts`
+- Create: `apps/api/src/cli/test-pack/stock-ops.seed.ts`
+- Modify: `apps/api/src/cli/test-pack/_registry.ts`
+
+**Interfaces:**
+- Consumes: `nextNumberFrom` (Task 4) · `testName` · `testNote` · `TEST_NAME_PREFIX` · `TEST_NOTE_MARKER` · `TEST_DOC_PREFIX` (Task 1)
+- Produces: `suppliersPoSeeder: DomainSeeder` · `stockOpsSeeder: DomainSeeder`
+
+**ทั้งสองโดเมนไม่โพสต์ JE เลย** (ตรวจแล้วใน spec §3 R2) ⇒ seed สถานะไหนก็ได้
+**คำเตือนบังคับ:** `suppliers` และ `purchase_orders` อยู่ใน `KEEP_TABLES` ⇒ `cleanup` ต้องคืน warning
+**เครื่องที่ใช้:** ทั้งสองโดเมนต้องมี `Product` ที่ IMEI ขึ้นต้น `TEST-` ⇒ ต้องรัน `contracts` ก่อน
+(registry เรียงให้แล้ว) ถ้าไม่พบ ให้ข้ามพร้อม note ไม่ throw
+
+- [ ] **Step 1: เขียน `suppliers-po.seed.ts`**
+
+```ts
+import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, TEST_NOTE_MARKER, testName, testNote } from './_context';
+import { nextNumberFrom } from './_helpers';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+const SUPPLIERS: Array<{ name: string; phone: string; isRepairCenter: boolean }> = [
+  { name: 'ซัพพลายเออร์มือถือ', phone: '021110001', isRepairCenter: false },
+  { name: 'ศูนย์ซ่อมพันธมิตร', phone: '021110002', isRepairCenter: true },
+];
+
+/** ใบสั่งซื้อ 2 ใบ — รอรับของ กับ รับบางส่วนแล้ว */
+const POS: Array<{ key: string; status: string; qty: number; unitPrice: number; note: string }> = [
+  { key: 'pending', status: 'PENDING', qty: 5, unitPrice: 12000, note: 'ใบสั่งซื้อรอรับของ' },
+  { key: 'partial', status: 'PARTIAL', qty: 3, unitPrice: 21000, note: 'ใบสั่งซื้อรับของบางส่วนแล้ว' },
+];
+
+export const suppliersPoSeeder: DomainSeeder = {
+  key: 'suppliers-po',
+  label: 'ซัพพลายเออร์ + ใบสั่งซื้อ',
+  routes: ['/suppliers', '/suppliers/:id', '/purchase-orders', '/purchase-orders/qc'],
+  markerDoc: `Supplier.name ขึ้นต้น "${TEST_NAME_PREFIX}" · PurchaseOrder.poNumber ขึ้นต้น "${TEST_DOC_PREFIX}" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้)`,
+
+  async plan(): Promise<PlanRow[]> {
+    return [
+      ...SUPPLIERS.map((s) => ({ label: testName(s.name), detail: s.isRepairCenter ? 'ศูนย์ซ่อม (isRepairCenter = true)' : 'ซัพพลายเออร์ทั่วไป' })),
+      ...POS.map((p) => ({ label: `${TEST_DOC_PREFIX}PO ${p.key}`, detail: `${p.status} · ${p.qty} ชิ้น × ฿${p.unitPrice.toLocaleString('th-TH')}` })),
+    ];
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const supplierIds: string[] = [];
+
+    for (const s of SUPPLIERS) {
+      const name = testName(s.name);
+      const found = await ctx.prisma.supplier.findFirst({ where: { name, deletedAt: null }, select: { id: true } });
+      if (found) {
+        supplierIds.push(found.id);
+        stat.skipped += 1;
+        continue;
+      }
+      const created = await ctx.prisma.supplier.create({
+        data: { name, phone: s.phone, isRepairCenter: s.isRepairCenter, notes: testNote('ซัพพลายเออร์สำหรับทดสอบ — ลบได้') },
+        select: { id: true },
+      });
+      supplierIds.push(created.id);
+      stat.created += 1;
+    }
+
+    const prefix = `${TEST_DOC_PREFIX}PO-${ctx.dateStr}-`;
+    for (const p of POS) {
+      const poNumber = `${prefix}${p.key}`;
+      const exists = await ctx.prisma.purchaseOrder.findFirst({ where: { poNumber, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.purchaseOrder.create({
+        data: {
+          poNumber,
+          supplierId: supplierIds[0],
+          orderDate: ctx.today,
+          totalAmount: p.qty * p.unitPrice,
+          status: p.status as never,
+          notes: testNote(p.note),
+          createdById: ctx.refs.reviewerId,
+          items: { create: [{ quantity: p.qty, unitPrice: p.unitPrice, brand: 'ทดสอบระบบ', model: 'รุ่นทดสอบ' }] },
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const pos = await ctx.prisma.purchaseOrder.findMany({
+      where: { poNumber: { startsWith: `${TEST_DOC_PREFIX}PO-` }, deletedAt: null },
+      select: { id: true, poNumber: true },
+    });
+    const suppliers = await ctx.prisma.supplier.findMany({
+      where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    for (const p of pos) console.log(`     ${p.poNumber}`);
+    for (const s of suppliers) console.log(`     ซัพพลายเออร์ "${s.name}"`);
+
+    if (!dryRun && (pos.length || suppliers.length)) {
+      const now = new Date();
+      await ctx.prisma.$transaction(async (tx) => {
+        if (pos.length) {
+          const poIds = pos.map((p) => p.id);
+          const grs = await tx.goodsReceiving.findMany({ where: { poId: { in: poIds } }, select: { id: true } });
+          if (grs.length) {
+            await tx.goodsReceivingItem.deleteMany({ where: { receivingId: { in: grs.map((g) => g.id) } } });
+            await tx.goodsReceiving.deleteMany({ where: { id: { in: grs.map((g) => g.id) } } });
+          }
+          await tx.pOItem.deleteMany({ where: { poId: { in: poIds } } });
+          await tx.purchaseOrder.updateMany({ where: { id: { in: poIds } }, data: { deletedAt: now } });
+        }
+        if (suppliers.length) {
+          await tx.supplier.updateMany({ where: { id: { in: suppliers.map((s) => s.id) } }, data: { deletedAt: now } });
+        }
+      });
+    }
+
+    return {
+      removed: { 'ใบสั่งซื้อ': pos.length, 'ซัพพลายเออร์ทดสอบ': suppliers.length },
+      warnings: suppliers.length
+        ? ['ตาราง suppliers + purchase_orders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้ามไปปนทะเบียนจริง']
+        : [],
+    };
+  },
+};
+```
+
+- [ ] **Step 2: ยืนยันสถานะที่ `PurchaseOrder.status` รับได้ + ฟิลด์ของ `POItem`**
+
+Run:
+```bash
+awk '/^model PurchaseOrder /,/^}/' apps/api/prisma/schema.prisma | grep -E 'status|items'
+awk '/^model POItem /,/^}/' apps/api/prisma/schema.prisma | grep -E '^\s+[a-zA-Z]+\s'
+```
+Expected: ถ้า `status` เป็น enum ให้ใช้ค่าที่มีจริงแทน `'PENDING'`/`'PARTIAL'` และลบ `as never` ออก
+ถ้า `POItem` ไม่มี `brand`/`model` ให้ตัดออกและใส่เฉพาะฟิลด์บังคับ (`poId` `quantity` `unitPrice`)
+
+- [ ] **Step 3: เขียน `stock-ops.seed.ts`**
+
+```ts
+import { TEST_DOC_PREFIX, TEST_IMEI_PREFIX_FALLBACK, TEST_NOTE_MARKER, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/**
+ * ไม่โพสต์ JE — seed สถานะไหนก็ได้
+ * ใช้เครื่องทดสอบที่โดเมน contracts สร้างไว้ (IMEI ขึ้นต้น TEST-) เท่านั้น
+ * ห้ามแตะเครื่องจริง เพราะการโอนย้าย/ปรับสต็อกเปลี่ยน branchId และ status ของเครื่อง
+ */
+export const stockOpsSeeder: DomainSeeder = {
+  key: 'stock-ops',
+  label: 'งานสต็อก (โอนย้าย · นับ · ปรับปรุง)',
+  routes: ['/stock', '/stock/products', '/stock/transfers', '/stock/count', '/stock/adjustments', '/stock/alerts', '/stock/workflow', '/inventory'],
+  markerDoc: `StockCount.countNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · StockTransfer/StockAdjustment ผูกกับ Product ที่ IMEI ขึ้นต้น "TEST-"`,
+
+  async plan(ctx: SeedContext): Promise<PlanRow[]> {
+    const products = await ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null }, select: { id: true }, take: 2 });
+    const rows: PlanRow[] = [];
+    if (!products.length) {
+      rows.push({ label: 'ข้าม', detail: 'ยังไม่มีเครื่องทดสอบ IN_STOCK — รันโดเมน contracts ก่อน' });
+      return rows;
+    }
+    rows.push({ label: `${TEST_DOC_PREFIX}COUNT`, detail: 'ใบนับสต็อกที่กำลังนับ (มีรายการรอกระทบยอด)' });
+    if (ctx.refs.secondBranchId) rows.push({ label: 'โอนย้ายสาขา', detail: 'PENDING 1 เครื่อง (รอสาขาปลายทางรับ)' });
+    else rows.push({ label: 'ข้ามโอนย้าย', detail: 'มีสาขาเดียว — โอนย้ายต้องมี 2 สาขา' });
+    return rows;
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const products = await ctx.prisma.product.findMany({
+      where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null },
+      select: { id: true, status: true },
+      take: 2,
+    });
+    if (!products.length) {
+      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มีเครื่องทดสอบสถานะ IN_STOCK (รันโดเมน contracts ก่อน)');
+      return stat;
+    }
+
+    // 1) ใบนับสต็อก
+    const countNumber = `${TEST_DOC_PREFIX}COUNT-${ctx.dateStr}`;
+    const countExists = await ctx.prisma.stockCount.findFirst({ where: { countNumber }, select: { id: true } });
+    if (countExists) {
+      stat.skipped += 1;
+    } else {
+      await ctx.prisma.stockCount.create({
+        data: {
+          countNumber,
+          branchId: ctx.refs.branchId,
+          countedById: ctx.refs.salespersonId,
+          notes: testNote('ใบนับสต็อกสำหรับทดสอบ'),
+          items: { create: products.map((p) => ({ productId: p.id, expectedStatus: p.status })) },
+        },
+      });
+      stat.created += 1;
+    }
+
+    // 2) โอนย้ายสาขา — ต้องมีสาขาที่สอง
+    if (!ctx.refs.secondBranchId) {
+      stat.notes.push('ข้ามการโอนย้ายสาขา — ระบบมีสาขาเดียว');
+    } else {
+      const exists = await ctx.prisma.stockTransfer.findFirst({
+        where: { productId: products[0].id, notes: { startsWith: TEST_NOTE_MARKER } },
+        select: { id: true },
+      });
+      if (exists) {
+        stat.skipped += 1;
+      } else {
+        await ctx.prisma.stockTransfer.create({
+          data: {
+            productId: products[0].id,
+            fromBranchId: ctx.refs.branchId,
+            toBranchId: ctx.refs.secondBranchId,
+            transferredBy: ctx.refs.reviewerId,
+            status: 'PENDING',
+            notes: testNote('โอนย้ายสาขาสำหรับทดสอบ — รอสาขาปลายทางรับ'),
+          },
+        });
+        stat.created += 1;
+      }
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const counts = await ctx.prisma.stockCount.findMany({
+      where: { countNumber: { startsWith: `${TEST_DOC_PREFIX}COUNT-` } },
+      select: { id: true, countNumber: true },
+    });
+    const transfers = await ctx.prisma.stockTransfer.findMany({
+      where: { notes: { startsWith: TEST_NOTE_MARKER } },
+      select: { id: true },
+    });
+    for (const c of counts) console.log(`     ${c.countNumber}`);
+
+    if (!dryRun && (counts.length || transfers.length)) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (counts.length) {
+          await tx.stockCountItem.deleteMany({ where: { stockCountId: { in: counts.map((c) => c.id) } } });
+          await tx.stockCount.deleteMany({ where: { id: { in: counts.map((c) => c.id) } } });
+        }
+        if (transfers.length) {
+          await tx.stockTransfer.deleteMany({ where: { id: { in: transfers.map((t) => t.id) } } });
+        }
+      });
+    }
+    return { removed: { 'ใบนับสต็อก': counts.length, 'ใบโอนย้ายสาขา': transfers.length }, warnings: [] };
+  },
+};
+```
+
+> `StockCount` และ `StockTransfer` ไม่มี `deletedAt` (เป็น log ของการปฏิบัติงาน) ⇒ cleanup ใช้ **hard delete**
+> ตรวจก่อนเขียน: `awk '/^model StockCount /,/^}/' apps/api/prisma/schema.prisma | grep deletedAt` — ถ้ามี ให้เปลี่ยนเป็น soft delete
+
+- [ ] **Step 4: ลบ import ที่ไม่ได้ใช้**
+
+`stock-ops.seed.ts` ข้างบนอ้าง `TEST_IMEI_PREFIX_FALLBACK` ซึ่ง **ไม่มีอยู่จริง** — ลบออกจากบรรทัด import
+ให้เหลือ `import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';`
+
+- [ ] **Step 5: เพิ่มเข้า registry (ต่อจาก `equitySeeder`)**
+
+```ts
+export const ALL_DOMAINS: DomainSeeder[] = [
+  contractsSeeder, expensesSeeder, payrollSeeder, otherIncomeSeeder, assetsSeeder, equitySeeder,
+  suppliersPoSeeder, stockOpsSeeder, todosSeeder,
+];
+```
+
+- [ ] **Step 6: ตรวจ TypeScript + round-trip**
+
+```bash
+npx tsc --noEmit -p apps/api/tsconfig.json
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=contracts,suppliers-po,stock-ops npm --prefix apps/api run seed:test-pack
+EXPECTED_DB_NAME=$DB DOMAINS=suppliers-po,stock-ops npm --prefix apps/api run cleanup:test-pack
+```
+Expected: cleanup dry-run แสดงคำเตือน KEEP_TABLES ของ suppliers
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack
+git commit -m "feat(test-pack): โดเมนซัพพลายเออร์/ใบสั่งซื้อ + งานสต็อก"
+```
+
+---
+
+### Task 8: โดเมน `bookings` + `online-orders` + `applications`
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/bookings.seed.ts`
+- Create: `apps/api/src/cli/test-pack/online-orders.seed.ts`
+- Create: `apps/api/src/cli/test-pack/applications.seed.ts`
+- Modify: `apps/api/src/cli/test-pack/_registry.ts`
+
+**Interfaces:**
+- Consumes: `TEST_DOC_PREFIX` · `testNote` · `TEST_NOTE_MARKER` (Task 1)
+- Produces: `bookingsSeeder` · `onlineOrdersSeeder` · `applicationsSeeder` (ทั้งหมดเป็น `DomainSeeder`)
+
+**เพดานสถานะที่ห้ามข้าม (R2):**
+- `Booking` → `PENDING_DEPOSIT` เท่านั้น (`PAID` โพสต์ `ShopBookingDepositTemplate` ⇒ `S21-2002`)
+- `OnlineOrder` → `PENDING_PAYMENT` / `PENDING_BANK_REVIEW` (`PAID` เดินต่อไปสร้าง `Sale` ซึ่งโพสต์ JE)
+- `OnlineInstallmentApplication` → สถานะไหนก็ได้ (ไม่โพสต์ JE)
+
+- [ ] **Step 1: เขียน `bookings.seed.ts`**
+
+```ts
+import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** R2 — PENDING_DEPOSIT เท่านั้น · ใบที่สองเลยกำหนดเพื่อทดสอบ cron ตัดใบจองหมดอายุ */
+const ROWS: Array<{ key: string; deposit: number; total: number; expiresInDays: number; note: string }> = [
+  { key: 'normal', deposit: 2000, total: 25900, expiresInDays: 5, note: 'ใบจองปกติ รอรับมัดจำ' },
+  { key: 'expired', deposit: 1000, total: 9900, expiresInDays: -3, note: 'ใบจองเลยวันหมดอายุ — รอ cron ตัดเป็น EXPIRED' },
+];
+
+export const bookingsSeeder: DomainSeeder = {
+  key: 'bookings',
+  label: 'ใบจอง',
+  routes: ['/bookings'],
+  markerDoc: `Booking.bookingNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({
+      label: `${TEST_DOC_PREFIX}BK ${r.key}`,
+      detail: `PENDING_DEPOSIT · มัดจำ ฿${r.deposit.toLocaleString('th-TH')} / รวม ฿${r.total.toLocaleString('th-TH')} · ${r.note}`,
+    }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const customer = await ctx.prisma.customer.findFirst({
+      where: { name: { startsWith: 'ทดสอบระบบ ลูกค้าใหม่' }, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) {
+      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มีลูกค้าทดสอบ (รันโดเมน contracts ก่อน)');
+      return stat;
+    }
+
+    for (const r of ROWS) {
+      const bookingNumber = `${TEST_DOC_PREFIX}BK-${ctx.dateStr}-${r.key}`;
+      const exists = await ctx.prisma.booking.findFirst({ where: { bookingNumber, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.booking.create({
+        data: {
+          bookingNumber,
+          customerId: customer.id,
+          branchId: ctx.refs.branchId,
+          status: 'PENDING_DEPOSIT',
+          depositAmount: r.deposit,
+          totalAmount: r.total,
+          expireDate: new Date(ctx.today.getTime() + r.expiresInDays * DAY),
+          notes: testNote(r.note),
+          createdById: ctx.refs.salespersonId,
+          items: { create: [{ description: 'ทดสอบระบบ สินค้าที่จอง', unitPrice: r.total, amount: r.total }] },
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.booking.findMany({
+      where: { bookingNumber: { startsWith: `${TEST_DOC_PREFIX}BK-` }, deletedAt: null },
+      select: { id: true, bookingNumber: true, convertedToSaleId: true },
+    });
+    for (const r of rows) console.log(`     ${r.bookingNumber}${r.convertedToSaleId ? ' ⚠️ แปลงเป็นใบขายแล้ว' : ''}`);
+
+    // JE ของใบจอง (รับมัดจำ / ริบ / คืน) stamp metadata.bookingId — ไม่มี FK บนตาราง
+    const jes = rows.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: { OR: rows.map((r) => ({ metadata: { path: ['bookingId'], equals: r.id } as never })) },
+          select: { id: true },
+        })
+      : [];
+
+    if (!dryRun && rows.length) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (jes.length) {
+          const jeIds = jes.map((j) => j.id);
+          await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+        }
+        await tx.bookingItem.deleteMany({ where: { bookingId: { in: rows.map((r) => r.id) } } });
+        await tx.booking.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+      });
+    }
+    return {
+      removed: { 'ใบจอง': rows.length, 'รายการบัญชีมัดจำใบจอง (ลบถาวร)': jes.length },
+      warnings: rows.some((r) => r.convertedToSaleId)
+        ? ['มีใบจองที่ถูกแปลงเป็นใบขายแล้ว — ยกเลิกใบขายนั้นก่อนล้าง ไม่งั้นใบขายจะชี้ไปใบจองที่ถูกลบ']
+        : [],
+    };
+  },
+};
+```
+
+- [ ] **Step 2: เขียน `online-orders.seed.ts`**
+
+```ts
+import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** R2 — หยุดก่อน PAID เพราะ PAID เดินต่อไปสร้าง Sale ซึ่งโพสต์ JE */
+const ROWS: Array<{ key: string; status: 'PENDING_PAYMENT' | 'PENDING_BANK_REVIEW'; shipping: 'BRANCH_PICKUP' | 'KERRY'; channel: 'PROMPTPAY_QR' | 'BANK_TRANSFER'; note: string }> = [
+  { key: 'await-pay', status: 'PENDING_PAYMENT', shipping: 'BRANCH_PICKUP', channel: 'PROMPTPAY_QR', note: 'รอลูกค้าชำระ (รับที่สาขา)' },
+  { key: 'slip-review', status: 'PENDING_BANK_REVIEW', shipping: 'KERRY', channel: 'BANK_TRANSFER', note: 'แนบสลิปแล้ว รอตรวจสลิป — ใช้ทดสอบ /slip-review' },
+];
+
+export const onlineOrdersSeeder: DomainSeeder = {
+  key: 'online-orders',
+  label: 'ออเดอร์ออนไลน์ + การจองเครื่อง',
+  routes: ['/online-orders', '/product-holds', '/slip-review'],
+  markerDoc: `OnlineOrder.orderNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · ProductReservation.sessionId ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}ORD ${r.key}`, detail: `${r.status} · ${r.shipping} · ${r.channel} · ${r.note}` }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const [customer, products] = await Promise.all([
+      ctx.prisma.customer.findFirst({ where: { name: { startsWith: 'ทดสอบระบบ ลูกค้าใหม่' }, deletedAt: null }, select: { id: true } }),
+      ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null }, select: { id: true, cashPrice: true }, take: 2 }),
+    ]);
+    if (!customer || products.length < ROWS.length) {
+      stat.notes.push(`ข้ามทั้งโดเมน — ต้องมีลูกค้าทดสอบ 1 คน + เครื่องทดสอบ IN_STOCK ${ROWS.length} เครื่อง (รันโดเมน contracts ก่อน)`);
+      return stat;
+    }
+
+    for (const [i, r] of ROWS.entries()) {
+      const orderNumber = `${TEST_DOC_PREFIX}ORD-${ctx.dateStr}-${r.key}`;
+      const exists = await ctx.prisma.onlineOrder.findFirst({ where: { orderNumber }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      const price = Number(products[i].cashPrice ?? 0);
+      const reservation = await ctx.prisma.productReservation.create({
+        data: {
+          productId: products[i].id,
+          customerId: customer.id,
+          sessionId: `${TEST_DOC_PREFIX}SESSION-${ctx.dateStr}-${r.key}`,
+          expiresAt: new Date(ctx.today.getTime() + 2 * DAY),
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+      await ctx.prisma.onlineOrder.create({
+        data: {
+          orderNumber,
+          customerId: customer.id,
+          productId: products[i].id,
+          reservationId: reservation.id,
+          productPrice: price,
+          totalAmount: price,
+          shippingMethod: r.shipping,
+          paymentChannel: r.channel,
+          status: r.status,
+          ...(r.status === 'PENDING_BANK_REVIEW' ? { bankSlipUrl: 'https://example.invalid/test-slip.jpg' } : {}),
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const orders = await ctx.prisma.onlineOrder.findMany({
+      where: { orderNumber: { startsWith: `${TEST_DOC_PREFIX}ORD-` } },
+      select: { id: true, orderNumber: true, reservationId: true },
+    });
+    const reservations = await ctx.prisma.productReservation.findMany({
+      where: { sessionId: { startsWith: `${TEST_DOC_PREFIX}SESSION-` } },
+      select: { id: true },
+    });
+    for (const o of orders) console.log(`     ${o.orderNumber}`);
+
+    if (!dryRun && (orders.length || reservations.length)) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (orders.length) await tx.onlineOrder.deleteMany({ where: { id: { in: orders.map((o) => o.id) } } });
+        if (reservations.length) await tx.productReservation.deleteMany({ where: { id: { in: reservations.map((r) => r.id) } } });
+      });
+    }
+    return { removed: { 'ออเดอร์ออนไลน์': orders.length, 'การจองเครื่อง': reservations.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 3: เขียน `applications.seed.ts`**
+
+```ts
+import { TEST_DOC_PREFIX } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/** ไม่โพสต์ JE — seed สถานะไหนก็ได้ */
+const ROWS: Array<{ key: string; fullName: string; down: number; months: number; monthly: number }> = [
+  { key: 'new', fullName: 'ทดสอบระบบ ผู้สมัครผ่อน 1', down: 3000, months: 10, monthly: 2590 },
+  { key: 'review', fullName: 'ทดสอบระบบ ผู้สมัครผ่อน 2', down: 5000, months: 12, monthly: 1890 },
+];
+
+export const applicationsSeeder: DomainSeeder = {
+  key: 'applications',
+  label: 'ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต',
+  routes: ['/installment-applications', '/customer-intake'],
+  markerDoc: `OnlineInstallmentApplication.applicationNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}APP ${r.key}`, detail: `${r.fullName} · ดาวน์ ฿${r.down.toLocaleString('th-TH')} · ${r.months} งวด × ฿${r.monthly.toLocaleString('th-TH')}` }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const products = await ctx.prisma.product.findMany({
+      where: { imeiSerial: { startsWith: 'TEST-' }, deletedAt: null },
+      select: { id: true },
+      take: 1,
+    });
+    if (!products.length) {
+      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มีเครื่องทดสอบ (รันโดเมน contracts ก่อน)');
+      return stat;
+    }
+    for (const [i, r] of ROWS.entries()) {
+      const applicationNumber = `${TEST_DOC_PREFIX}APP-${ctx.dateStr}-${r.key}`;
+      const exists = await ctx.prisma.onlineInstallmentApplication.findFirst({ where: { applicationNumber }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.onlineInstallmentApplication.create({
+        data: {
+          applicationNumber,
+          productId: products[0].id,
+          fullName: r.fullName,
+          phone: `0891000${String(i + 1).padStart(3, '0')}`,
+          nationalId: `0000000000${String(i + 1).padStart(3, '0')}`,
+          proposedDownPayment: r.down,
+          proposedTotalMonths: r.months,
+          proposedMonthlyPayment: r.monthly,
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.onlineInstallmentApplication.findMany({
+      where: { applicationNumber: { startsWith: `${TEST_DOC_PREFIX}APP-` } },
+      select: { id: true, applicationNumber: true },
+    });
+    for (const r of rows) console.log(`     ${r.applicationNumber}`);
+    if (!dryRun && rows.length) {
+      await ctx.prisma.onlineInstallmentApplication.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+    }
+    return { removed: { 'ใบสมัครผ่อนออนไลน์': rows.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 4: ยืนยันฟิลด์ที่อาจไม่ตรง**
+
+Run:
+```bash
+awk '/^model OnlineInstallmentApplication /,/^}/' apps/api/prisma/schema.prisma | grep -E 'nationalId|status|deletedAt'
+awk '/^model BookingItem /,/^}/' apps/api/prisma/schema.prisma | grep -E '^\s+[a-zA-Z]+\s'
+awk '/^model OnlineOrder /,/^}/' apps/api/prisma/schema.prisma | grep deletedAt
+```
+Expected: ถ้าโมเดลไหนมี `deletedAt` ให้เปลี่ยน cleanup จาก hard delete เป็น soft delete
+`BookingItem` ต้องมี `description` `unitPrice` `amount` — ถ้ามี `productId` บังคับด้วย ให้ผูกเครื่องทดสอบเข้าไป
+
+- [ ] **Step 5: เพิ่มเข้า registry (ต่อจาก `stockOpsSeeder`)**
+
+```ts
+  suppliersPoSeeder, stockOpsSeeder, bookingsSeeder, onlineOrdersSeeder, applicationsSeeder, todosSeeder,
+```
+
+- [ ] **Step 6: ตรวจ TypeScript + round-trip**
+
+```bash
+npx tsc --noEmit -p apps/api/tsconfig.json
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=contracts,bookings,online-orders,applications npm --prefix apps/api run seed:test-pack
+CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=bookings,online-orders,applications npm --prefix apps/api run cleanup:test-pack
+```
+Expected: สร้าง 6 แถว (2 ใบจอง + 2 ออเดอร์ + 2 ใบสมัคร) + 2 การจองเครื่อง แล้วลบครบ
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack
+git commit -m "feat(test-pack): โดเมนใบจอง + ออเดอร์ออนไลน์ + ใบสมัครผ่อน (หยุดก่อนเงินขยับ)"
+```
+
+---
+
+### Task 9: โดเมน `repair` + `inspections` + `device-swap`
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/repair.seed.ts`
+- Create: `apps/api/src/cli/test-pack/inspections.seed.ts`
+- Create: `apps/api/src/cli/test-pack/device-swap.seed.ts`
+- Modify: `apps/api/src/cli/test-pack/_registry.ts`
+
+**Interfaces:**
+- Consumes: `TEST_DOC_PREFIX` · `testNote` · `TEST_NOTE_MARKER` (Task 1)
+- Produces: `repairSeeder` · `inspectionsSeeder` · `deviceSwapSeeder` (ทั้งหมดเป็น `DomainSeeder`)
+
+**เพดาน:** `RepairTicket` ปิดที่ `READY_FOR_PICKUP` (การปิดใบ `CLOSED` สร้าง `ExpenseDocument`/`OtherIncome` อัตโนมัติ
+— ให้ผู้ทดสอบกดเอง) · `ContractExchangeRequest` = รออนุมัติเท่านั้น (finalize โพสต์ JE ทั้งชุด A.1-A.5)
+**Prerequisite:** `Inspection.templateId` บังคับ ⇒ ถ้าไม่มี `InspectionTemplate` ให้ข้ามพร้อม note
+
+- [ ] **Step 1: เขียน `repair.seed.ts`**
+
+```ts
+import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/** R2 — ปิดที่ READY_FOR_PICKUP · CLOSED สร้างเอกสารบัญชีอัตโนมัติ ให้คนกดเอง */
+const ROWS: Array<{ key: string; status: 'OPEN' | 'IN_PROGRESS' | 'READY_FOR_PICKUP'; payer: 'SHOP' | 'CUSTOMER'; warranty: 'IN_SHOP_WARRANTY' | 'OUT_OF_WARRANTY' | 'WALK_IN'; defect: string; cost: number }> = [
+  { key: 'open', status: 'OPEN', payer: 'SHOP', warranty: 'IN_SHOP_WARRANTY', defect: 'จอไม่ติด — รับเครื่องเข้าระบบแล้ว', cost: 0 },
+  { key: 'inprogress', status: 'IN_PROGRESS', payer: 'CUSTOMER', warranty: 'OUT_OF_WARRANTY', defect: 'แบตเสื่อม — ส่งศูนย์ซ่อมแล้ว', cost: 1200 },
+  { key: 'ready', status: 'READY_FOR_PICKUP', payer: 'SHOP', warranty: 'WALK_IN', defect: 'เปลี่ยนกระจกหลัง — ซ่อมเสร็จรอลูกค้ามารับ', cost: 850 },
+];
+
+export const repairSeeder: DomainSeeder = {
+  key: 'repair',
+  label: 'ใบซ่อม / ประกัน',
+  routes: ['/insurance', '/insurance/:id', '/insurance/new', '/insurance/warranty-check', '/insurance/exchange-requests'],
+  markerDoc: `RepairTicket.ticketNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}RT ${r.key}`, detail: `${r.status} · ผู้จ่าย ${r.payer} · ${r.warranty} · ${r.defect}` }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const customer = await ctx.prisma.customer.findFirst({
+      where: { name: { startsWith: 'ทดสอบ' }, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) {
+      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มีลูกค้าทดสอบ (รันโดเมน contracts ก่อน)');
+      return stat;
+    }
+    const repairSupplier = await ctx.prisma.supplier.findFirst({
+      where: { isRepairCenter: true, deletedAt: null },
+      select: { id: true },
+    });
+
+    for (const r of ROWS) {
+      const ticketNumber = `${TEST_DOC_PREFIX}RT-${ctx.dateStr}-${r.key}`;
+      const exists = await ctx.prisma.repairTicket.findFirst({ where: { ticketNumber }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.repairTicket.create({
+        data: {
+          ticketNumber,
+          status: r.status,
+          customerId: customer.id,
+          deviceBrand: 'ทดสอบระบบ',
+          deviceModel: 'รุ่นทดสอบ',
+          deviceImei: `TEST-RT-${r.key}`,
+          defectDescription: r.defect,
+          warrantyStatus: r.warranty,
+          repairSupplierId: repairSupplier?.id ?? null,
+          estimatedCost: r.cost || null,
+          actualCost: r.status === 'READY_FOR_PICKUP' ? r.cost : null,
+          payer: r.payer,
+          notes: testNote('ใบซ่อมสำหรับทดสอบ'),
+          branchId: ctx.refs.branchId,
+          createdById: ctx.refs.salespersonId,
+          ...(r.status !== 'OPEN' ? { sentToRepairAt: ctx.today } : {}),
+          ...(r.status === 'READY_FOR_PICKUP' ? { repairedAt: ctx.today } : {}),
+        },
+      });
+      stat.created += 1;
+    }
+    if (!repairSupplier) stat.notes.push('ไม่พบซัพพลายเออร์ที่เป็นศูนย์ซ่อม — ใบซ่อมถูกสร้างโดยไม่ผูกศูนย์ซ่อม (รันโดเมน suppliers-po ก่อนถ้าต้องการ)');
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.repairTicket.findMany({
+      where: { ticketNumber: { startsWith: `${TEST_DOC_PREFIX}RT-` } },
+      select: { id: true, ticketNumber: true, expenseDocumentId: true, otherIncomeId: true },
+    });
+    for (const r of rows) {
+      const extra = [r.expenseDocumentId ? 'มีใบค่าใช้จ่าย' : '', r.otherIncomeId ? 'มีใบรายได้อื่น' : ''].filter(Boolean).join(' + ');
+      console.log(`     ${r.ticketNumber}${extra ? ` (${extra})` : ''}`);
+    }
+    if (!dryRun && rows.length) {
+      await ctx.prisma.$transaction(async (tx) => {
+        await tx.repairStatusLog.deleteMany({ where: { ticketId: { in: rows.map((r) => r.id) } } });
+        await tx.repairTicket.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+      });
+    }
+    return {
+      removed: { 'ใบซ่อม': rows.length },
+      warnings: rows.some((r) => r.expenseDocumentId || r.otherIncomeId)
+        ? ['ใบซ่อมบางใบสร้างเอกสารบัญชีไว้แล้ว (ตอนปิดใบ) — เอกสารนั้นถูกล้างโดยโดเมน expenses/other-income ถ้ามี marker ไม่งั้นต้องยกเลิกในหน้าจอเอง']
+        : [],
+    };
+  },
+};
+```
+
+- [ ] **Step 2: เขียน `inspections.seed.ts`**
+
+```ts
+import { TEST_NOTE_MARKER, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+export const inspectionsSeeder: DomainSeeder = {
+  key: 'inspections',
+  label: 'ใบตรวจสภาพเครื่อง',
+  routes: ['/inspections', '/inspections/:id'],
+  markerDoc: `Inspection.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
+
+  async plan(ctx: SeedContext): Promise<PlanRow[]> {
+    const template = await ctx.prisma.inspectionTemplate.findFirst({ where: { deletedAt: null }, select: { id: true, name: true } });
+    if (!template) return [{ label: 'ข้าม', detail: 'ยังไม่มี InspectionTemplate ในระบบ (Inspection.templateId บังคับ)' }];
+    return [
+      { label: 'ใบตรวจ 1', detail: `ใช้เทมเพลต "${template.name}" — รอตรวจ` },
+      { label: 'ใบตรวจ 2', detail: `ใช้เทมเพลต "${template.name}" — ตรวจแล้ว` },
+    ];
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const [template, products] = await Promise.all([
+      ctx.prisma.inspectionTemplate.findFirst({ where: { deletedAt: null }, select: { id: true } }),
+      ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: 'TEST-' }, deletedAt: null }, select: { id: true }, take: 2 }),
+    ]);
+    if (!template) {
+      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มี InspectionTemplate (Inspection.templateId บังคับ) สร้างเทมเพลตในหน้าตั้งค่าก่อน');
+      return stat;
+    }
+    if (products.length < 2) {
+      stat.notes.push('ข้ามทั้งโดเมน — ต้องมีเครื่องทดสอบอย่างน้อย 2 เครื่อง (รันโดเมน contracts ก่อน)');
+      return stat;
+    }
+    for (const [i, p] of products.entries()) {
+      const notes = testNote(`ใบตรวจสภาพ/${i + 1}`);
+      const exists = await ctx.prisma.inspection.findFirst({ where: { notes, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.inspection.create({
+        data: { productId: p.id, templateId: template.id, inspectorId: ctx.refs.salespersonId, notes },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.inspection.findMany({
+      where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+      select: { id: true },
+    });
+    if (!dryRun && rows.length) {
+      await ctx.prisma.$transaction(async (tx) => {
+        await tx.inspectionResult.deleteMany({ where: { inspectionId: { in: rows.map((r) => r.id) } } });
+        await tx.inspection.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+      });
+    }
+    return { removed: { 'ใบตรวจสภาพ': rows.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 3: เขียน `device-swap.seed.ts`**
+
+```ts
+import { TEST_NOTE_MARKER, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/**
+ * คำขอเปลี่ยนเครื่อง 1 ใบ สถานะรออนุมัติ
+ * R2 — ห้าม finalize (finalize โพสต์ JE ชุด A.1-A.5 + SHOP leg)
+ */
+export const deviceSwapSeeder: DomainSeeder = {
+  key: 'device-swap',
+  label: 'คำขอเปลี่ยนเครื่อง',
+  routes: ['/defect-exchange', '/insurance/exchange-requests', '/insurance/exchange-request/new'],
+  markerDoc: `ContractExchangeRequest.reason ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
+
+  async plan(ctx: SeedContext): Promise<PlanRow[]> {
+    const contract = await ctx.prisma.contract.findFirst({
+      where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
+      select: { contractNumber: true },
+    });
+    return contract
+      ? [{ label: 'คำขอเปลี่ยนเครื่อง', detail: `รออนุมัติ · สัญญา ${contract.contractNumber}` }]
+      : [{ label: 'ข้าม', detail: 'ยังไม่มีสัญญาทดสอบสถานะ ACTIVE (รันโดเมน contracts ก่อน)' }];
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const contract = await ctx.prisma.contract.findFirst({
+      where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
+      select: { id: true, productId: true },
+    });
+    const newProduct = await ctx.prisma.product.findFirst({
+      where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null },
+      select: { id: true },
+    });
+    if (!contract?.productId || !newProduct) {
+      stat.notes.push('ข้ามทั้งโดเมน — ต้องมีสัญญาทดสอบ ACTIVE ที่ผูกเครื่อง + เครื่องทดสอบ IN_STOCK 1 เครื่อง');
+      return stat;
+    }
+    const reason = testNote('คำขอเปลี่ยนเครื่องสำหรับทดสอบ — เครื่องเดิมมีตำหนิ');
+    const exists = await ctx.prisma.contractExchangeRequest.findFirst({ where: { reason, deletedAt: null }, select: { id: true } });
+    if (exists) {
+      stat.skipped += 1;
+      return stat;
+    }
+    await ctx.prisma.contractExchangeRequest.create({
+      data: {
+        oldContractId: contract.id,
+        oldProductId: contract.productId,
+        newProductId: newProduct.id,
+        requestedById: ctx.refs.salespersonId,
+        reason,
+      },
+    });
+    stat.created += 1;
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.contractExchangeRequest.findMany({
+      where: { reason: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+      select: { id: true },
+    });
+    if (!dryRun && rows.length) {
+      await ctx.prisma.contractExchangeRequest.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    }
+    return { removed: { 'คำขอเปลี่ยนเครื่อง': rows.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 4: ยืนยันฟิลด์ที่อาจไม่ตรง**
+
+Run:
+```bash
+awk '/^model ContractExchangeRequest /,/^}/' apps/api/prisma/schema.prisma | grep -E 'reason|status|deletedAt'
+awk '/^model Inspection /,/^}/' apps/api/prisma/schema.prisma | grep -E 'notes|deletedAt'
+awk '/^model RepairTicket /,/^}/' apps/api/prisma/schema.prisma | grep deletedAt
+```
+Expected: ถ้า `ContractExchangeRequest` ไม่มีฟิลด์ `reason` ให้เปลี่ยน marker ไปที่ฟิลด์ข้อความที่มีจริง
+และปรับ `markerDoc` ให้ตรง · ถ้า `RepairTicket` มี `deletedAt` ให้ soft delete แทน hard delete
+
+- [ ] **Step 5: เพิ่มเข้า registry (ต่อจาก `applicationsSeeder`)**
+
+```ts
+  bookingsSeeder, onlineOrdersSeeder, applicationsSeeder, inspectionsSeeder, repairSeeder, deviceSwapSeeder, todosSeeder,
+```
+
+- [ ] **Step 6: ตรวจ TypeScript + round-trip**
+
+```bash
+npx tsc --noEmit -p apps/api/tsconfig.json
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=contracts,suppliers-po,inspections,repair,device-swap npm --prefix apps/api run seed:test-pack
+CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=inspections,repair,device-swap npm --prefix apps/api run cleanup:test-pack
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack
+git commit -m "feat(test-pack): โดเมนใบซ่อม + ใบตรวจสภาพ + คำขอเปลี่ยนเครื่อง"
+```
+
+---
+
+### Task 10: โดเมน `commissions` + `external-finance` + `saving-plans` + `trade-in`
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/commissions.seed.ts`
+- Create: `apps/api/src/cli/test-pack/external-finance.seed.ts`
+- Create: `apps/api/src/cli/test-pack/saving-plans.seed.ts`
+- Create: `apps/api/src/cli/test-pack/trade-in.seed.ts`
+- Modify: `apps/api/src/cli/test-pack/_registry.ts`
+
+**Interfaces:**
+- Consumes: `TEST_DOC_PREFIX` · `TEST_NAME_PREFIX` · `TEST_NOTE_MARKER` · `testName` · `testNote` (Task 1)
+- Produces: `commissionsSeeder` · `externalFinanceSeeder` · `savingPlansSeeder` · `tradeInSeeder`
+
+**เพดาน:** `TradeIn` หยุดที่ `APPRAISED` (`ACCEPTED` โพสต์ JE ผ่าน `trade-in-lifecycle.service.ts`) ·
+`external-finance` สร้าง**เฉพาะทะเบียนบริษัท** — ใบขาย+ลูกหนี้ให้เฟส 3 เป็นคนสร้างผ่าน service จริง
+
+- [ ] **Step 1: เขียน `commissions.seed.ts`**
+
+```ts
+import { TEST_NOTE_MARKER, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/** ไม่โพสต์ JE — ครอบ 3 สถานะที่ด่านยกเลิกใบขาย (G4) ใช้ตัดสิน */
+const ROWS: Array<{ key: string; status: 'PENDING' | 'APPROVED' | 'PAID'; saleAmount: number; rate: number }> = [
+  { key: 'pending', status: 'PENDING', saleAmount: 25900, rate: 0.02 },
+  { key: 'approved', status: 'APPROVED', saleAmount: 34900, rate: 0.02 },
+  { key: 'paid', status: 'PAID', saleAmount: 18900, rate: 0.03 },
+];
+
+const periodOf = (today: Date) => `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
+
+export const commissionsSeeder: DomainSeeder = {
+  key: 'commissions',
+  label: 'ค่าคอมมิชชั่น',
+  routes: ['/commissions'],
+  markerDoc: `SalesCommission.note ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (ถ้าโมเดลไม่มี note ให้ใช้ period = "TEST-YYYY-MM")`,
+
+  async plan(ctx: SeedContext): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({
+      label: `ค่าคอม ${r.key}`,
+      detail: `${r.status} · ยอดขาย ฿${r.saleAmount.toLocaleString('th-TH')} × ${(r.rate * 100).toFixed(0)}% = ฿${Math.round(r.saleAmount * r.rate).toLocaleString('th-TH')} · งวด ${periodOf(ctx.today)}`,
+    }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const period = `TEST-${periodOf(ctx.today)}`;
+    for (const r of ROWS) {
+      const exists = await ctx.prisma.salesCommission.findFirst({
+        where: { period, salespersonId: ctx.refs.salespersonId, commissionAmount: Math.round(r.saleAmount * r.rate), deletedAt: null },
+        select: { id: true },
+      });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.salesCommission.create({
+        data: {
+          salespersonId: ctx.refs.salespersonId,
+          period,
+          saleAmount: r.saleAmount,
+          commissionRate: r.rate,
+          commissionAmount: Math.round(r.saleAmount * r.rate),
+          status: r.status,
+        },
+      });
+      stat.created += 1;
+    }
+
+    // รอบจ่ายร่าง 1 ใบ — ทดสอบด่าน G4b ของการยกเลิกใบขาย
+    const payoutExists = await ctx.prisma.commissionPayout.findFirst({
+      where: { salespersonId: ctx.refs.salespersonId, period, deletedAt: null },
+      select: { id: true },
+    });
+    if (payoutExists) {
+      stat.skipped += 1;
+    } else {
+      const totalSales = ROWS.reduce((a, r) => a + r.saleAmount, 0);
+      await ctx.prisma.commissionPayout.create({
+        data: {
+          salespersonId: ctx.refs.salespersonId,
+          period,
+          totalSales,
+          totalCommission: ROWS.reduce((a, r) => a + Math.round(r.saleAmount * r.rate), 0),
+          status: 'DRAFT',
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const period = { startsWith: 'TEST-' } as const;
+    const [commissions, payouts] = await Promise.all([
+      ctx.prisma.salesCommission.findMany({ where: { period, deletedAt: null }, select: { id: true } }),
+      ctx.prisma.commissionPayout.findMany({ where: { period, deletedAt: null }, select: { id: true } }),
+    ]);
+    if (!dryRun) {
+      const now = new Date();
+      await ctx.prisma.$transaction(async (tx) => {
+        if (commissions.length) await tx.salesCommission.updateMany({ where: { id: { in: commissions.map((c) => c.id) } }, data: { deletedAt: now } });
+        if (payouts.length) await tx.commissionPayout.updateMany({ where: { id: { in: payouts.map((p) => p.id) } }, data: { deletedAt: now } });
+      });
+    }
+    return { removed: { 'ค่าคอม': commissions.length, 'รอบจ่ายค่าคอม': payouts.length }, warnings: [] };
+  },
+};
+```
+
+> **marker ของโดเมนนี้อยู่ที่ `period` ไม่ใช่ฟิลด์ข้อความ** — `period` เป็น String อิสระ (เช่น `2026-08`)
+> การใส่ `TEST-` นำหน้าทำให้ค้นได้เป๊ะและแยกจากงวดจริงเด็ดขาด · แก้ `markerDoc` ให้ตรงตามนี้ตอนเขียนจริง
+
+- [ ] **Step 2: เขียน `external-finance.seed.ts`**
+
+```ts
+import { TEST_NAME_PREFIX, testName, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/**
+ * สร้างเฉพาะ "ทะเบียนบริษัทไฟแนนซ์ภายนอก"
+ * ใบขาย + FinanceReceivable ต้องเกิดจาก SaleWriterService ในเฟส 3 เท่านั้น (R2)
+ * เพราะการขายผ่านไฟแนนซ์ภายนอกโพสต์ Dr S11-3101 และการรับเงินโพสต์ Dr S51-1106
+ */
+const ROWS: Array<{ name: string; rate: number }> = [
+  { name: 'ไฟแนนซ์ภายนอก ก', rate: 0.05 },
+  { name: 'ไฟแนนซ์ภายนอก ข', rate: 0.08 },
+];
+
+export const externalFinanceSeeder: DomainSeeder = {
+  key: 'external-finance',
+  label: 'บริษัทไฟแนนซ์ภายนอก',
+  routes: ['/external-finance-companies/:id', '/finance-receivable'],
+  markerDoc: `ExternalFinanceCompany.name ขึ้นต้น "${TEST_NAME_PREFIX}"`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({ label: testName(r.name), detail: `ค่าธรรมเนียมตั้งต้น ${(r.rate * 100).toFixed(0)}% — ลูกหนี้จะเกิดตอนขายจริงในเฟส 3` }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    for (const r of ROWS) {
+      const name = testName(r.name);
+      const exists = await ctx.prisma.externalFinanceCompany.findFirst({ where: { name, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.externalFinanceCompany.create({
+        data: { name, defaultCommissionRate: r.rate, contactPhone: '021230000', notes: testNote('บริษัทไฟแนนซ์สำหรับทดสอบ — ลบได้') },
+      });
+      stat.created += 1;
+    }
+    stat.notes.push('ลูกหนี้ไฟแนนซ์ (/finance-receivable) จะมีของก็ต่อเมื่อรันด้วย DRIVE=1 หรือขายผ่านหน้าจอ POS เอง');
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.externalFinanceCompany.findMany({
+      where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    for (const r of rows) console.log(`     "${r.name}"`);
+    if (!dryRun && rows.length) {
+      await ctx.prisma.externalFinanceCompany.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    }
+    return {
+      removed: { 'บริษัทไฟแนนซ์ภายนอก': rows.length },
+      warnings: rows.length ? ['ตาราง external_finance_companies อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างจะรอดข้ามไปปนทะเบียนจริง'] : [],
+    };
+  },
+};
+```
+
+- [ ] **Step 3: เขียน `saving-plans.seed.ts`**
+
+```ts
+import { TEST_DOC_PREFIX } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** ไม่โพสต์ JE */
+const ROWS: Array<{ key: string; status: 'ACTIVE' | 'COMPLETED'; target: number; monthly: number; months: number; saved: number }> = [
+  { key: 'active', status: 'ACTIVE', target: 25900, monthly: 2590, months: 10, saved: 5180 },
+  { key: 'done', status: 'COMPLETED', target: 9900, monthly: 1650, months: 6, saved: 9900 },
+];
+
+export const savingPlansSeeder: DomainSeeder = {
+  key: 'saving-plans',
+  label: 'แผนออมเครื่อง',
+  routes: ['/saving-plans'],
+  markerDoc: `SavingPlan.planNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}SP ${r.key}`, detail: `${r.status} · เป้า ฿${r.target.toLocaleString('th-TH')} · ออมแล้ว ฿${r.saved.toLocaleString('th-TH')}` }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const customer = await ctx.prisma.customer.findFirst({ where: { name: { startsWith: 'ทดสอบระบบ ลูกค้าใหม่' }, deletedAt: null }, select: { id: true } });
+    if (!customer) {
+      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มีลูกค้าทดสอบ (รันโดเมน contracts ก่อน)');
+      return stat;
+    }
+    for (const r of ROWS) {
+      const planNumber = `${TEST_DOC_PREFIX}SP-${ctx.dateStr}-${r.key}`;
+      const exists = await ctx.prisma.savingPlan.findFirst({ where: { planNumber, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      const installments = Math.round(r.saved / r.monthly);
+      await ctx.prisma.savingPlan.create({
+        data: {
+          planNumber,
+          customerId: customer.id,
+          targetProductModel: 'ทดสอบระบบ รุ่นเป้าหมาย',
+          targetAmount: r.target,
+          monthlyAmount: r.monthly,
+          durationMonths: r.months,
+          totalSaved: r.saved,
+          status: r.status,
+          startedAt: new Date(ctx.today.getTime() - installments * 30 * DAY),
+          nextPaymentDueAt: r.status === 'ACTIVE' ? new Date(ctx.today.getTime() + 7 * DAY) : null,
+          completedAt: r.status === 'COMPLETED' ? ctx.today : null,
+          payments: {
+            create: Array.from({ length: installments }, (_, i) => ({
+              amount: r.monthly,
+              paidAt: new Date(ctx.today.getTime() - (installments - i) * 30 * DAY),
+              paymentMethod: 'CASH',
+            })),
+          },
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.savingPlan.findMany({
+      where: { planNumber: { startsWith: `${TEST_DOC_PREFIX}SP-` }, deletedAt: null },
+      select: { id: true, planNumber: true },
+    });
+    for (const r of rows) console.log(`     ${r.planNumber}`);
+    if (!dryRun && rows.length) {
+      await ctx.prisma.$transaction(async (tx) => {
+        await tx.savingPlanPayment.deleteMany({ where: { savingPlanId: { in: rows.map((r) => r.id) } } });
+        await tx.savingPlan.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+      });
+    }
+    return { removed: { 'แผนออมเครื่อง': rows.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 4: เขียน `trade-in.seed.ts`**
+
+```ts
+import { TEST_NOTE_MARKER, testNote } from './_context';
+import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/**
+ * R2 — หยุดที่ APPRAISED
+ * ACCEPTED โพสต์ JE รับซื้อผ่าน trade-in-lifecycle.service.ts ⇒ ให้ผู้ทดสอบกดรับซื้อเอง
+ */
+const ROWS: Array<{ key: string; status: 'PENDING_APPRAISAL' | 'APPRAISED'; brand: string; model: string; estimated: number; offered: number | null }> = [
+  { key: 'pending', status: 'PENDING_APPRAISAL', brand: 'ทดสอบระบบ', model: 'รุ่นเทิร์น A', estimated: 4500, offered: null },
+  { key: 'appraised', status: 'APPRAISED', brand: 'ทดสอบระบบ', model: 'รุ่นเทิร์น B', estimated: 7200, offered: 6800 },
+];
+
+export const tradeInSeeder: DomainSeeder = {
+  key: 'trade-in',
+  label: 'รับซื้อเครื่องมือสอง',
+  routes: ['/trade-in'],
+  markerDoc: `TradeIn.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
+
+  async plan(): Promise<PlanRow[]> {
+    return ROWS.map((r) => ({ label: `เทิร์น ${r.key}`, detail: `${r.status} · ${r.model} · ประเมิน ฿${r.estimated.toLocaleString('th-TH')}${r.offered ? ` · เสนอ ฿${r.offered.toLocaleString('th-TH')}` : ''}` }));
+  },
+
+  async seed(ctx: SeedContext): Promise<SeedStat> {
+    const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
+    const customer = await ctx.prisma.customer.findFirst({ where: { name: { startsWith: 'ทดสอบระบบ ลูกค้าใหม่' }, deletedAt: null }, select: { id: true } });
+    for (const r of ROWS) {
+      const notes = testNote(`รับซื้อมือสอง/${r.key}`);
+      const exists = await ctx.prisma.tradeIn.findFirst({ where: { notes, deletedAt: null }, select: { id: true } });
+      if (exists) {
+        stat.skipped += 1;
+        continue;
+      }
+      await ctx.prisma.tradeIn.create({
+        data: {
+          customerId: customer?.id ?? null,
+          branchId: ctx.refs.branchId,
+          deviceBrand: r.brand,
+          deviceModel: r.model,
+          deviceStorage: '128GB',
+          deviceCondition: 'B',
+          imei: `TEST-TRADEIN-${r.key}`,
+          estimatedValue: r.estimated,
+          offeredPrice: r.offered,
+          status: r.status,
+          appraisedById: r.status === 'APPRAISED' ? ctx.refs.reviewerId : null,
+          sellerName: 'ทดสอบระบบ ผู้ขายมือสอง',
+          sellerPhone: '0895550001',
+          notes,
+        },
+      });
+      stat.created += 1;
+    }
+    return stat;
+  },
+
+  async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    const rows = await ctx.prisma.tradeIn.findMany({
+      where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+      select: { id: true },
+    });
+    if (!dryRun && rows.length) {
+      await ctx.prisma.tradeIn.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    }
+    return { removed: { 'รายการรับซื้อมือสอง': rows.length }, warnings: [] };
+  },
+};
+```
+
+- [ ] **Step 5: ยืนยันฟิลด์ที่อาจไม่ตรง**
+
+Run:
+```bash
+awk '/^model SalesCommission /,/^}/' apps/api/prisma/schema.prisma | grep -E 'period|note|deletedAt'
+awk '/^model SavingPlanPayment /,/^}/' apps/api/prisma/schema.prisma | grep -E 'paymentMethod|deletedAt'
+awk '/^model TradeIn /,/^}/' apps/api/prisma/schema.prisma | grep deletedAt
+```
+Expected: `SavingPlanPayment.paymentMethod` เป็น `String` (ไม่ใช่ enum) จึงใส่ `'CASH'` ได้ —
+ถ้าเป็น enum ให้ใช้ค่าจาก `PaymentMethod` (`CASH` มีอยู่แล้ว) · ถ้าโมเดลไหนไม่มี `deletedAt` ให้เปลี่ยนเป็น hard delete
+
+- [ ] **Step 6: เพิ่มเข้า registry — ครบ 19 โดเมน**
+
+```ts
+export const ALL_DOMAINS: DomainSeeder[] = [
+  contractsSeeder,
+  expensesSeeder, payrollSeeder, otherIncomeSeeder, assetsSeeder, equitySeeder,
+  suppliersPoSeeder, stockOpsSeeder,
+  bookingsSeeder, onlineOrdersSeeder, applicationsSeeder,
+  inspectionsSeeder, repairSeeder, deviceSwapSeeder,
+  commissionsSeeder, externalFinanceSeeder, savingPlansSeeder, tradeInSeeder,
+  todosSeeder,
+];
+```
+
+- [ ] **Step 7: ตรวจ TypeScript + รันเต็มชุด**
+
+```bash
+npx tsc --noEmit -p apps/api/tsconfig.json
+EXPECTED_DB_NAME=$DB npm --prefix apps/api run seed:test-pack
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB npm --prefix apps/api run seed:test-pack
+EXPECTED_DB_NAME=$DB npm --prefix apps/api run cleanup:test-pack
+```
+Expected: dry-run แสดงครบ 19 โดเมน · live สร้าง ~55 แถว · cleanup dry-run เห็นครบทุกโดเมน
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack
+git commit -m "feat(test-pack): โดเมนค่าคอม + ไฟแนนซ์ภายนอก + แผนออม + รับซื้อมือสอง — ครบ 19 โดเมน"
+```
+
+---
+
+### Task 11: Preflight
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/_preflight.ts`
+- Create: `apps/api/src/cli/test-pack/_preflight.spec.ts`
+- Modify: `apps/api/src/cli/seed-test-pack.cli.ts` (เรียก preflight ก่อนวนโดเมน)
+
+**Interfaces:**
+- Consumes: `PrismaService` · `SeedRefs` (Task 1)
+- Produces: `DRIVE_REQUIRED_ACCOUNTS: string[]` · `missingAccounts(required: string[], present: string[]): string[]` · `runPreflight(prisma, refs, opts): Promise<{ ok: boolean; problems: string[] }>`
+
+**บัญชีที่เฟส 3 ต้องมี** (ตรวจจาก `shop-coa.csv` แล้วว่ามีจริงทั้งหมด ณ 2026-08-26 — ผัง SHOP 72 บัญชี):
+`S11-3101` ลูกหนี้บริษัทไฟแนนซ์ภายนอก · `S51-1106` ค่าธรรมเนียมบริษัทไฟแนนซ์ · `S21-2002` เงินมัดจำ ·
+`S11-3001` · `S11-3002` · `S41-1101` · `S50-1101` · `S11-2001` · `11-2101` · `21-1101` · `21-1102` ·
+`11-2106` · `21-2102` · `11-1101` · `11-2103` · `21-2101`
+ถ้าขาดตัวใดตัวหนึ่ง = **prod ยังไม่ได้รัน `seed:coa` หลัง deploy** ซึ่งเป็นสาเหตุที่พบซ้ำ ๆ ในโปรเจคนี้
+
+- [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_preflight.spec.ts`**
+
+```ts
+import { DRIVE_REQUIRED_ACCOUNTS, missingAccounts } from './_preflight';
+
+describe('missingAccounts', () => {
+  it('คืนรหัสที่ขาด เรียงตามลำดับที่ต้องการ', () => {
+    expect(missingAccounts(['S11-3101', 'S51-1106', 'S21-2002'], ['S21-2002'])).toEqual(['S11-3101', 'S51-1106']);
+  });
+
+  it('มีครบ = คืน array ว่าง', () => {
+    expect(missingAccounts(['11-1101'], ['11-1101', '11-2101'])).toEqual([]);
+  });
+});
+
+describe('DRIVE_REQUIRED_ACCOUNTS', () => {
+  it('มีบัญชีใหม่สามตัวที่ prod ต้องรัน seed:coa ถึงจะมี', () => {
+    expect(DRIVE_REQUIRED_ACCOUNTS).toEqual(expect.arrayContaining(['S11-3101', 'S51-1106', 'S21-2002']));
+  });
+
+  it('ไม่มีรหัสซ้ำ', () => {
+    expect(new Set(DRIVE_REQUIRED_ACCOUNTS).size).toBe(DRIVE_REQUIRED_ACCOUNTS.length);
+  });
+});
+```
+
+- [ ] **Step 2: รันเทสให้เห็นว่าไม่ผ่าน**
+
+Run: `npm --prefix apps/api test -- _preflight`
+Expected: FAIL — `Cannot find module './_preflight'`
+
+- [ ] **Step 3: เขียน `_preflight.ts`**
+
+```ts
+import type { PrismaService } from '../../prisma/prisma.service';
+import type { SeedRefs } from './_types';
+
+/** บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa */
+export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
+  '11-1101', '11-2101', '11-2103', '11-2106', '21-1101', '21-1102', '21-2101', '21-2102',
+  'S11-1101', 'S11-2001', 'S11-3001', 'S11-3002', 'S11-3101', 'S21-2002', 'S41-1101', 'S50-1101', 'S51-1106',
+];
+
+export function missingAccounts(required: string[], present: string[]): string[] {
+  const have = new Set(present);
+  return required.filter((c) => !have.has(c));
+}
+
+export async function runPreflight(
+  prisma: PrismaService,
+  refs: SeedRefs,
+  opts: { drive: boolean; postDate: Date },
+): Promise<{ ok: boolean; problems: string[] }> {
+  const problems: string[] = [];
+
+  // ข้อ 2 — ข้อมูลอ้างอิง (resolveRefs โยนไปแล้วถ้าขาด branch/user; ที่นี่ตรวจนิติบุคคล)
+  if (!refs.shopCompanyId) problems.push('ไม่พบนิติบุคคล SHOP ใน company_info');
+  if (!refs.financeCompanyId) problems.push('ไม่พบนิติบุคคล FINANCE ใน company_info');
+
+  if (!opts.drive) return { ok: problems.length === 0, problems };
+
+  // ข้อ 3 — ผังบัญชีครบไหม
+  const rows = await prisma.chartOfAccount.findMany({
+    where: { code: { in: DRIVE_REQUIRED_ACCOUNTS }, deletedAt: null },
+    select: { code: true },
+  });
+  const missing = missingAccounts(DRIVE_REQUIRED_ACCOUNTS, rows.map((r) => r.code));
+  if (missing.length) {
+    problems.push(
+      `ผังบัญชีขาด ${missing.length} รหัส: ${missing.join(', ')} — รัน "npm --prefix apps/api run seed:coa" ก่อน แล้วค่อยรันใหม่`,
+    );
+  }
+
+  // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องเปิดทั้งสองฝั่ง
+  const year = opts.postDate.getUTCFullYear();
+  const month = opts.postDate.getUTCMonth() + 1;
+  for (const [name, companyId] of [['SHOP', refs.shopCompanyId], ['FINANCE', refs.financeCompanyId]] as const) {
+    if (!companyId) continue;
+    const period = await prisma.accountingPeriod.findFirst({
+      where: { companyId, year, month },
+      select: { status: true },
+    });
+    if (period && period.status !== 'OPEN') {
+      problems.push(
+        `งวดบัญชี ${year}-${String(month).padStart(2, '0')} ของ ${name} สถานะ ${period.status} — เปิดงวดก่อน หรือใช้ POST_DATE=YYYY-MM-DD ชี้ไปเดือนที่ยังเปิด`,
+      );
+    }
+  }
+
+  return { ok: problems.length === 0, problems };
+}
+```
+
+- [ ] **Step 4: รันเทสให้ผ่าน**
+
+Run: `npm --prefix apps/api test -- _preflight`
+Expected: PASS — 4 เทส
+
+- [ ] **Step 5: ยืนยันชื่อฟิลด์ของ `AccountingPeriod`**
+
+Run: `awk '/^model AccountingPeriod /,/^}/' apps/api/prisma/schema.prisma | grep -E 'year|month|status|companyId'`
+Expected: มี `year` `month` `status` `companyId` — ถ้าเก็บเป็น `periodStart` แทน ให้แก้ query ตามจริง
+
+- [ ] **Step 6: เรียก preflight จาก orchestrator**
+
+แก้ `seed-test-pack.cli.ts` — หลัง `const refs = await resolveRefs(prisma);` และก่อน `for (const d of domains)`:
+
+```ts
+    const drive = process.env.DRIVE === '1';
+    const postDate = process.env.POST_DATE ? new Date(`${process.env.POST_DATE}T00:00:00.000Z`) : bkkMidnight(now);
+    const pre = await runPreflight(prisma, refs, { drive, postDate });
+    if (!pre.ok) {
+      console.error('[seed-test-pack] PREFLIGHT ไม่ผ่าน:');
+      for (const p of pre.problems) console.error(`  ✗ ${p}`);
+      await prisma.$disconnect();
+      process.exit(1);
+    }
+```
+
+เพิ่ม import: `import { runPreflight } from './test-pack/_preflight';`
+
+- [ ] **Step 7: ตรวจ TypeScript + ลอง preflight ล้ม**
+
+```bash
+npx tsc --noEmit -p apps/api/tsconfig.json
+EXPECTED_DB_NAME=$DB DRIVE=1 POST_DATE=2020-01-01 npm --prefix apps/api run seed:test-pack
+```
+Expected: ออกด้วย exit 1 พร้อมข้อความว่างวด 2020-01 ปิดอยู่ หรือผังบัญชีขาด (แล้วแต่สภาพ DB)
+ถ้างวดปี 2020 ไม่มีแถวเลย preflight จะผ่าน (ไม่มีแถว = ยังไม่เคยปิด) — ให้ลองเดือนที่ปิดจริงแทน
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack apps/api/src/cli/seed-test-pack.cli.ts
+git commit -m "feat(test-pack): preflight ตรวจผังบัญชี + งวดเปิด ก่อนเดินเรื่อง"
+```
+
+---
+
+### Task 12: โหมดเดินเรื่อง (เฟส 3)
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/_module.ts`
+- Create: `apps/api/src/cli/test-pack/_drive.ts`
+- Modify: `apps/api/src/cli/seed-test-pack.cli.ts` (เรียก `runDrive` หลังวนโดเมนจบ เมื่อ `DRIVE=1`)
+
+**Interfaces:**
+- Consumes: `SeedContext` (Task 1) · `runPreflight` (Task 11) · service จริงจาก feature modules
+- Produces: `TestPackModule` (class) · `runDrive(ctx: SeedContext): Promise<DriveResult>` · `DriveResult { steps: Array<{ name: string; ok: boolean; detail: string }> }`
+
+**R3 บังคับ:** `_module.ts` **ห้าม import `AppModule`** — import เฉพาะ feature module ที่ต้องใช้
+ถ้า Nest บ่นว่า provider ตัวไหน resolve ไม่ได้ ให้เพิ่ม **module ต้นทางของ provider นั้น** เข้ามา
+**ห้ามแก้ด้วยการ import `AppModule` เพื่อความสะดวก** (จะลากทั้ง `ScheduleModule.forRoot()` เข้ามา)
+
+- [ ] **Step 1: อ่านลายเซ็นจริงของ service ที่จะเรียก**
+
+Run:
+```bash
+sed -n '341,350p' apps/api/src/modules/contracts/contract-workflow.service.ts
+sed -n '91,112p' apps/api/src/modules/payments/services/payment-receipt-orchestrator.ts
+sed -n '175,182p;471,478p' apps/api/src/modules/sales/services/sale-writer.service.ts
+sed -n '386,396p' apps/api/src/modules/bookings/bookings.service.ts
+grep -rn "async post(" apps/api/src/modules/expense-documents/*.service.ts apps/api/src/modules/other-income/*.service.ts apps/api/src/modules/assets/*.service.ts apps/api/src/modules/equity/*.service.ts
+```
+Expected (ตรวจแล้วตอนเขียนแผน):
+- `ContractWorkflowService.activate(id: string)` — **ไม่มีพารามิเตอร์ผู้กระทำ** (ข้อจำกัดที่รู้อยู่แล้ว ดู accounting.md)
+- `PaymentReceiptOrchestrator.recordPayment(contractId, installmentNo, amount, paymentMethod, recordedById, evidenceUrl?, notes?, transactionRef?, depositAccountCode?, ...)` — positional ล้วน
+- `SaleWriterService.createCashSale(dto, salespersonId, netAmount, discount)` และ `createExternalFinanceSale(dto, salespersonId, netAmount, discount)`
+- `BookingsService.payDeposit(id, dto, user)` — `user` เป็นออบเจกต์ผู้ใช้ที่ guard ปกติใส่มาให้ ⇒ ต้องประกอบเอง
+จดลายเซ็นของ `post()` ทั้ง 4 โมดูลไว้ใช้ใน Step 3
+
+- [ ] **Step 2: เขียน `_module.ts`**
+
+```ts
+import { Module } from '@nestjs/common';
+import { PrismaModule } from '../../prisma/prisma.module';
+import { ContractsModule } from '../../modules/contracts/contracts.module';
+import { PaymentsModule } from '../../modules/payments/payments.module';
+import { SalesModule } from '../../modules/sales/sales.module';
+import { BookingsModule } from '../../modules/bookings/bookings.module';
+import { ExpenseDocumentsModule } from '../../modules/expense-documents/expense-documents.module';
+import { OtherIncomeModule } from '../../modules/other-income/other-income.module';
+import { AssetsModule } from '../../modules/assets/assets.module';
+import { EquityModule } from '../../modules/equity/equity.module';
+
+/**
+ * โมดูลสำหรับโหมดเดินเรื่องเท่านั้น
+ *
+ * R3 — ห้าม import AppModule เด็ดขาด: app.module.ts มี ScheduleModule.forRoot()
+ * ซึ่งจะลงทะเบียน cron ทั้งหมด (2A accrual 00:01, ECL 00:30, VAT 60 วัน 02:00)
+ * ตอนที่ createApplicationContext เรียก onApplicationBootstrap
+ *
+ * ScheduleModule.forRoot() อยู่ที่ app.module.ts ที่เดียว และ BullModule.forRoot()
+ * อยู่ที่ notifications/notification-queue.module.ts ที่เดียว ⇒ ตราบใดที่ไม่ import
+ * สองตัวนี้ จะไม่มี cron และไม่มี worker เกิดขึ้น
+ */
+@Module({
+  imports: [
+    PrismaModule,
+    ContractsModule,
+    PaymentsModule,
+    SalesModule,
+    BookingsModule,
+    ExpenseDocumentsModule,
+    OtherIncomeModule,
+    AssetsModule,
+    EquityModule,
+  ],
+})
+export class TestPackModule {}
+```
+
+- [ ] **Step 3: ลองสร้าง context ให้ผ่านก่อนเขียน `_drive.ts`**
+
+สร้างไฟล์ชั่วคราว `apps/api/src/cli/test-pack/_smoke.ts`:
+
+```ts
+import { NestFactory } from '@nestjs/core';
+import { TestPackModule } from './_module';
+
+async function main() {
+  const app = await NestFactory.createApplicationContext(TestPackModule, { logger: ['error', 'warn'] });
+  console.log('TestPackModule bootstrap OK');
+  await app.close();
+}
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
+```
+
+Run: `npx -y tsx apps/api/src/cli/test-pack/_smoke.ts`
+Expected: `TestPackModule bootstrap OK` และ **process จบเอง**
+ถ้าค้างไม่จบ = มี worker/cron ติดมา ⇒ ไล่หา import ที่ลาก `NotificationsModule` หรือ `ScheduleModule` เข้ามา
+ถ้า Nest บ่น `Nest can't resolve dependencies of X` ⇒ เพิ่ม module ต้นทางของ X เข้า `imports`
+เมื่อผ่านแล้ว **ลบ `_smoke.ts` ทิ้ง**
+
+- [ ] **Step 4: เขียน `_drive.ts`**
+
+```ts
+import { NestFactory } from '@nestjs/core';
+import { ContractWorkflowService } from '../../modules/contracts/contract-workflow.service';
+import { PaymentReceiptOrchestrator } from '../../modules/payments/services/payment-receipt-orchestrator';
+import { TestPackModule } from './_module';
+import type { SeedContext } from './_types';
+
+export interface DriveStep {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+export interface DriveResult {
+  steps: DriveStep[];
+}
+
+/**
+ * เฟส 3 — เดินเรื่องผ่าน service จริง เพื่อให้ JE มาจากโค้ด production (R1)
+ *
+ * แต่ละก้าวจับ error ของตัวเอง: ก้าวหนึ่งพังต้องไม่ล้มก้าวถัดไป และไม่ล้มเฟส 1-2
+ * ที่ commit ไปแล้ว
+ */
+export async function runDrive(ctx: SeedContext): Promise<DriveResult> {
+  const steps: DriveStep[] = [];
+  const app = await NestFactory.createApplicationContext(TestPackModule, { logger: ['error', 'warn'] });
+
+  const run = async (name: string, fn: () => Promise<string>) => {
+    try {
+      steps.push({ name, ok: true, detail: await fn() });
+    } catch (err) {
+      steps.push({ name, ok: false, detail: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  try {
+    // ── ก้าว 1: เปิดสัญญาผ่อน 1 ใบ → JE 1A + SHOP leg → คิวรอจ่าย INTER-CO มีของ
+    const workflow = app.get(ContractWorkflowService);
+    await run('เปิดสัญญาผ่อน', async () => {
+      const c = await ctx.prisma.contract.findFirst({
+        where: { contractNumber: { startsWith: 'TEST-' }, status: 'DRAFT', deletedAt: null },
+        select: { id: true, contractNumber: true },
+      });
+      if (!c) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ DRAFT ให้เปิด';
+      await workflow.activate(c.id);
+      return `เปิดสัญญา ${c.contractNumber} แล้ว — ตรวจคิวที่ /accounting/intercompany`;
+    });
+
+    // ── ก้าว 2: รับชำระ 2 งวด → JE 2B + ใบเสร็จ
+    const orchestrator = app.get(PaymentReceiptOrchestrator);
+    await run('รับชำระค่างวด', async () => {
+      const c = await ctx.prisma.contract.findFirst({
+        where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
+        select: { id: true, contractNumber: true },
+      });
+      if (!c) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE';
+      // ต้องบันทึกตามลำดับงวด (คำสั่งเจ้าของ 2026-08-19) ⇒ ไล่จากงวดค้างที่เก่าที่สุด
+      const due = await ctx.prisma.payment.findMany({
+        where: { contractId: c.id, status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, deletedAt: null },
+        orderBy: { installmentNo: 'asc' },
+        select: { installmentNo: true, amountDue: true, lateFee: true },
+        take: 2,
+      });
+      if (!due.length) return 'ข้าม — ไม่มีงวดค้างให้รับชำระ';
+      let n = 0;
+      for (const p of due) {
+        const amount = Number(p.amountDue) + Number(p.lateFee ?? 0);
+        await orchestrator.recordPayment(c.id, p.installmentNo, amount, 'CASH', ctx.refs.reviewerId, undefined, '[ทดสอบระบบ] รับชำระจากโหมดเดินเรื่อง', undefined, '11-1101');
+        n += 1;
+      }
+      return `รับชำระ ${n} งวดของสัญญา ${c.contractNumber} — ตรวจใบเสร็จที่ /receipts`;
+    });
+
+    // ── ก้าว 3-6: ขายสด · ขายผ่านไฟแนนซ์ภายนอก · รับมัดจำใบจอง · post เอกสารบัญชี 4 ใบ
+    // เขียนตามลายเซ็นที่จดไว้จาก Step 1 — โครงเดียวกับสองก้าวข้างบน:
+    //   await run('<ชื่อก้าว>', async () => { ...หาแถวที่ seed ไว้... ; await service.method(...); return '<สรุปไทย>'; });
+    // ก้าวที่หาแถวไม่เจอให้ return ข้อความขึ้นต้นว่า "ข้าม — " ไม่ใช่ throw
+  } finally {
+    await app.close();
+  }
+
+  return { steps };
+}
+```
+
+- [ ] **Step 5: เติมก้าว 3-6 ให้ครบตามลายเซ็นที่จดไว้**
+
+ก้าวที่ต้องเพิ่ม (ทั้งหมดใช้ `run(...)` แบบเดียวกับก้าว 1-2):
+
+| ก้าว | หาแถวจากอะไร | เรียกอะไร | สรุปที่ return |
+|---|---|---|---|
+| ขายสด POS | `Product` ที่ IMEI ขึ้นต้น `TEST-` และ `status = 'IN_STOCK'` | `SaleWriterService.createCashSale(dto, ctx.refs.salespersonId, netAmount, 0)` | `ขายสดแล้ว <saleNumber> — ตรวจที่ /sales และ /shop/accounting` |
+| ขายผ่านไฟแนนซ์ภายนอก | เครื่อง `TEST-` อีกเครื่อง + `ExternalFinanceCompany` ที่ชื่อขึ้นต้น `ทดสอบระบบ` | `SaleWriterService.createExternalFinanceSale(dto, ctx.refs.salespersonId, netAmount, 0)` | `ขายผ่านไฟแนนซ์แล้ว — ลูกหนี้ S11-3101 ตรวจที่ /finance-receivable` |
+| รับมัดจำใบจอง | `Booking` ที่เลขขึ้นต้น `TEST-BK-` และ `status = 'PENDING_DEPOSIT'` (เลือกใบ `normal` ไม่ใช่ใบ `expired`) | `BookingsService.payDeposit(id, dto, user)` | `รับมัดจำใบจอง <bookingNumber> — S21-2002 ตรวจที่ /shop/accounting` |
+| post เอกสารบัญชี | ใบที่ marker `[ทดสอบระบบ]` ของ expense / other-income / asset / equity อย่างละ 1 ใบ | `post()` ของแต่ละโมดูล | `ลงบัญชีแล้ว <docNumber>` ต่อใบ |
+
+`user` ที่ `BookingsService.payDeposit` ต้องการ ให้ประกอบจากผู้ใช้จริง:
+
+```ts
+const actor = await ctx.prisma.user.findUnique({
+  where: { id: ctx.refs.ownerId },
+  select: { id: true, role: true, branchId: true },
+});
+```
+แล้วส่ง `actor` เข้าไป — ถ้า type ไม่ตรง ให้ดูว่า controller ส่งอะไรเข้ามา (`@CurrentUser()`) แล้วประกอบให้เหมือน
+
+- [ ] **Step 6: ต่อ `runDrive` เข้า orchestrator**
+
+แก้ `seed-test-pack.cli.ts` — หลังลูปโดเมนจบ ก่อน `console.log('[seed-test-pack] ===== SUMMARY =====')`:
+
+```ts
+    if (!dryRun && drive) {
+      console.log('── เฟส 3: เดินเรื่องผ่าน service จริง');
+      const { steps } = await runDrive(ctx);
+      for (const s of steps) console.log(`   ${s.ok ? '✓' : '✗'} ${s.name} — ${s.detail}`);
+      console.log('');
+    } else if (dryRun && drive) {
+      console.log('── เฟส 3 ถูกข้ามใน DRY-RUN (เดินเรื่องจริงต้องเขียน DB)');
+      console.log('');
+    }
+```
+
+เพิ่ม import: `import { runDrive } from './test-pack/_drive';`
+
+- [ ] **Step 7: ตรวจ TypeScript + รันเต็มพร้อมเดินเรื่อง**
+
+```bash
+npx tsc --noEmit -p apps/api/tsconfig.json
+CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DRIVE=1 npm --prefix apps/api run seed:test-pack
+```
+Expected: เห็นบล็อก `── เฟส 3` พร้อม ✓ ทุกก้าว (หรือ `ข้าม —` ที่อธิบายเหตุผล) และ **process จบเอง ไม่ค้าง**
+
+- [ ] **Step 8: พิสูจน์ว่าสมุดมีตัวเลขจริงและสมดุลทั้งสองฝั่ง**
+
+เปิด `/finance/general-journal` แล้ว `/shop/accounting` แท็บงบทดลอง หรือยิง API:
+```
+GET /expenses/ledger/trial-balance?scope=ALL
+```
+Expected: `isAllBalanced = true` และ **ทั้ง `perScope.shop` และ `perScope.finance` มียอดไม่เป็นศูนย์**
+(ถ้ายังเป็นศูนย์ทั้งคู่ = เฟส 3 ไม่ได้ทำงานจริง ไม่ใช่ "ผ่าน")
+
+- [ ] **Step 9: พิสูจน์ว่า cleanup กวาด JE ของเฟส 3 คืนได้**
+
+```bash
+CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=$DB npm --prefix apps/api run cleanup:test-pack
+```
+แล้วเรียก `GET /expenses/ledger/trial-balance?scope=ALL` อีกครั้ง
+Expected: ทุกบัญชีกลับเป็น 0.00 · ถ้ามีบัญชีค้าง ให้ดูว่า JE ใบไหนไม่ถูกกวาด แล้วเติมทางกวาดในโดเมนที่เป็นเจ้าของ
+**ห้ามแก้ด้วยการลบ JE แบบเหวี่ยงแห**
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack apps/api/src/cli/seed-test-pack.cli.ts
+git commit -m "feat(test-pack): โหมดเดินเรื่องผ่าน service จริง (TestPackModule ไม่มี cron)"
+```
+
+---
+
+### Task 13: เอกสาร checklist ที่ generate จาก registry
+
+**Files:**
+- Create: `apps/api/src/cli/test-pack/_docgen.ts`
+- Modify: `apps/api/src/cli/seed-test-pack.cli.ts` (รองรับ `DOCGEN=1`)
+- Create: `docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md` (ผลลัพธ์จากการรัน)
+
+**Interfaces:**
+- Consumes: `ALL_DOMAINS` (Task 1) — ใช้ `key` `label` `routes` `markerDoc`
+- Produces: `renderChecklistReadme(domains: DomainSeeder[], allRoutes: string[]): string`
+
+**เหตุผล:** MD ข้อ 6-7 สั่งให้มีตาราง route + ตารางวิธีลบ ถ้าเขียนมือ มันจะล้าสมัยทันทีที่เพิ่มโดเมน
+generate จาก registry แทน ⇒ เอกสารกับโค้ดหลุดกันไม่ได้
+
+- [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_docgen.spec.ts`**
+
+```ts
+import { renderChecklistReadme } from './_docgen';
+import type { DomainSeeder } from './_types';
+
+const stub = (key: string, routes: string[]): DomainSeeder =>
+  ({ key, label: `ป้าย ${key}`, routes, markerDoc: `marker ของ ${key}`, plan: async () => [], seed: async () => ({ created: 0, skipped: 0, notes: [] }), cleanup: async () => ({ removed: {}, warnings: [] }) });
+
+describe('renderChecklistReadme', () => {
+  const domains = [stub('assets', ['/assets']), stub('todos', ['/todos'])];
+
+  it('มีทุกโดเมนพร้อม markerDoc', () => {
+    const md = renderChecklistReadme(domains, ['/assets', '/todos', '/login']);
+    expect(md).toContain('marker ของ assets');
+    expect(md).toContain('marker ของ todos');
+  });
+
+  it('ลิสต์ route ที่ไม่มีโดเมนไหนครอบ เพื่อไม่ให้ตกสำรวจ', () => {
+    const md = renderChecklistReadme(domains, ['/assets', '/todos', '/login']);
+    expect(md).toContain('/login');
+    expect(md).toContain('ไม่มีโดเมน seed ครอบ');
+  });
+
+  it('route ที่มีโดเมนครอบแล้วไม่ไปโผล่ในลิสต์ที่ไม่ครอบ', () => {
+    const md = renderChecklistReadme(domains, ['/assets']);
+    const section = md.split('ไม่มีโดเมน seed ครอบ')[1] ?? '';
+    expect(section).not.toContain('/assets');
+  });
+});
+```
+
+- [ ] **Step 2: รันเทสให้เห็นว่าไม่ผ่าน**
+
+Run: `npm --prefix apps/api test -- _docgen`
+Expected: FAIL — `Cannot find module './_docgen'`
+
+- [ ] **Step 3: เขียน `_docgen.ts`**
+
+```ts
+import type { DomainSeeder } from './_types';
+
+/** สร้าง README ของ checklist จาก registry — เอกสารกับโค้ดจึงหลุดกันไม่ได้ */
+export function renderChecklistReadme(domains: DomainSeeder[], allRoutes: string[]): string {
+  const covered = new Set(domains.flatMap((d) => d.routes));
+  const uncovered = allRoutes.filter((r) => !covered.has(r)).sort();
+
+  const domainRows = domains
+    .map((d) => `| \`${d.key}\` | ${d.label} | ${d.routes.length} | ${d.markerDoc} |`)
+    .join('\n');
+
+  const routeRows = domains
+    .flatMap((d) => d.routes.map((r) => `| \`${r}\` | ${d.label} (\`${d.key}\`) |`))
+    .join('\n');
+
+  return `# คู่มือทดสอบทั้งระบบ — ตารางครอบคลุม
+
+> **ไฟล์นี้ generate จากโค้ด อย่าแก้ด้วยมือ**
+> สร้างใหม่ด้วย: \`DOCGEN=1 npm --prefix apps/api run seed:test-pack\`
+> แหล่งข้อมูล: \`apps/api/src/cli/test-pack/_registry.ts\` (\`routes\` + \`markerDoc\` ของแต่ละโดเมน)
+
+## 1. โดเมนและวิธีล้าง
+
+| โดเมน | ชื่อ | จำนวน route | วิธีที่ cleanup ค้นแถว |
+|---|---|---|---|
+${domainRows}
+
+ล้างทั้งหมด: \`CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cleanup:test-pack\`
+ล้างรายโดเมน: เพิ่ม \`DOMAINS=<key>\`
+
+## 2. route → โดเมนที่ทำให้มีข้อมูล
+
+| route | โดเมน |
+|---|---|
+${routeRows}
+
+## 3. route ที่ไม่มีโดเมน seed ครอบ (${uncovered.length} route)
+
+ต้องทดสอบด้วยการ **ทำจริงบนหน้าจอ** หรือเป็นรายงาน/หน้าสาธารณะที่ไม่มีข้อมูลของตัวเอง
+
+${uncovered.map((r) => `- \`${r}\``).join('\n')}
+`;
+}
+```
+
+- [ ] **Step 4: รันเทสให้ผ่าน**
+
+Run: `npm --prefix apps/api test -- _docgen`
+Expected: PASS — 3 เทส
+
+- [ ] **Step 5: ต่อ `DOCGEN=1` เข้า orchestrator**
+
+แก้ `seed-test-pack.cli.ts` — ใส่ **ก่อน** การเช็ค `EXPECTED_DB_NAME` (docgen ไม่แตะ DB):
+
+```ts
+  if (process.env.DOCGEN === '1') {
+    const { writeFileSync, mkdirSync } = await import('fs');
+    const { renderChecklistReadme } = await import('./test-pack/_docgen');
+    const { readFileSync } = await import('fs');
+    const appTsx = readFileSync('apps/web/src/App.tsx', 'utf8');
+    const routes = [...new Set([...appTsx.matchAll(/path="([^"]*)"/g)].map((m) => m[1]))]
+      .filter((r) => r && r !== '*' && !r.startsWith('/settings') && r !== ':itemId');
+    mkdirSync('docs/guides/FULL-SYSTEM-TEST-CHECKLIST', { recursive: true });
+    writeFileSync('docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md', renderChecklistReadme(ALL_DOMAINS, routes), 'utf8');
+    console.log(`[seed-test-pack] เขียน docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md แล้ว (${routes.length} route)`);
+    return;
+  }
+```
+
+- [ ] **Step 6: รัน docgen จริง**
+
+Run: `DOCGEN=1 npm --prefix apps/api run seed:test-pack`
+Expected: พิมพ์ว่าเขียนไฟล์แล้วพร้อมจำนวน route ประมาณ 180 (213 ลบ `/settings/**` 31 ลบ `*` และ `:itemId`)
+เปิดไฟล์ตรวจว่าตารางครบ 19 โดเมน และหัวข้อ 3 มีเฉพาะ route ที่ไม่มีโดเมนครอบจริง ๆ
+
+- [ ] **Step 7: ตรวจ TypeScript**
+
+Run: `npx tsc --noEmit -p apps/api/tsconfig.json`
+Expected: ไม่มี error
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add apps/api/src/cli/test-pack apps/api/src/cli/seed-test-pack.cli.ts docs/guides/FULL-SYSTEM-TEST-CHECKLIST
+git commit -m "feat(test-pack): generate ตารางครอบคลุม route + วิธีล้าง จาก registry"
+```
+
+---
+
+## Self-Review
+
+**1. Spec coverage**
+
+| spec § | task ที่ทำ |
+|---|---|
+| §2 D1 ขยายครบทุกโดเมน | Task 3-10 (19 โดเมน) |
+| §2 D2 สถานะกลาง | เพดานสถานะระบุในทุก task ของโดเมน |
+| §2 D3 ไม่แตะแชท | ไม่มีโดเมนแชทใน registry · Task 13 หัวข้อ 3 ลิสต์ route แชทเป็น "ไม่มีโดเมนครอบ" |
+| §2 D4 2-3 แถว/โดเมน | ทุก `ROWS` ยาว 2-4 |
+| §2 D5 modular | Task 1 (`DomainSeeder`) |
+| §2 D6 โหมดเดินเรื่อง | Task 12 |
+| §3 R1 ห้ามเขียน JE เอง | Global Constraints + ไม่มี task ไหนเรียก `journalEntry.create` |
+| §3 R2 เพดานก่อนเงินขยับ | Task 5/8/10 ระบุเพดานพร้อมเหตุผลต่อโดเมน |
+| §3 R3 ห้าม AppModule | Task 12 Step 2-3 (มี smoke test พิสูจน์ว่า process จบเอง) |
+| §4 โครงสร้าง | Task 1 · File Structure |
+| §5 3 เฟส | Task 1-10 = เฟส 1-2 · Task 12 = เฟส 3 |
+| §6 ตารางโดเมน | Task 3-10 |
+| §7 แผนเดินเรื่อง | Task 12 Step 4-5 |
+| §8 preflight 4 ข้อ | Task 11 |
+| §9 marker 3 ชั้น | Task 1 `_context.ts` + `markerDoc` ทุกโดเมน |
+| §10 cleanup + FK sweep | Task 2 + `cleanup` ทุกโดเมน · คำเตือน KEEP_TABLES ที่ equity / suppliers-po / external-finance |
+| §12 นอกขอบเขต | Task 13 หัวข้อ 3 |
+| §13 ความเสี่ยง | Task 12 Step 9 (พิสูจน์ล้าง JE คืน) · ทุกโดเมน re-run safe |
+| §14 checklist README | Task 13 |
+
+**2. Placeholder scan** — ทุก step ที่แก้โค้ดมีโค้ดจริง ยกเว้น Task 12 Step 5 ซึ่งเป็น **ตารางสั่งงานที่ระบุ
+service · พารามิเตอร์ · ข้อความ return ครบ** โดยตั้งใจ เพราะลายเซ็นของ DTO ทั้งสี่ต้องอ่านจากโค้ดจริง
+ใน Step 1 ก่อน (การเดา DTO ลงไปในแผนจะกลายเป็นโค้ดผิดที่ดูเหมือนถูก)
+
+**3. Type consistency** — `DomainSeeder` · `SeedContext` · `SeedRefs` · `PlanRow` · `SeedStat` ·
+`CleanupStat` ใช้ชื่อเดียวกันทุก task · `nextNumberFrom` ประกาศใน Task 4 ใช้ต่อใน Task 5-6 ·
+`ctx.refs.secondBranchId` ประกาศใน Task 1 ใช้ใน Task 7 · `TEST_DOC_PREFIX` / `TEST_NAME_PREFIX` /
+`TEST_NOTE_MARKER` ประกาศใน Task 1 ใช้ทุก task
+
+**จุดที่แผนสั่งให้ตรวจ schema ก่อนเขียน (ไม่ใช่ placeholder — เป็นการกันโค้ดผิด):** Task 4 Step 7 ·
+Task 5 Step 3 · Task 6 Step 2 · Task 7 Step 2 · Task 8 Step 4 · Task 9 Step 4 · Task 10 Step 5 ·
+Task 11 Step 5 · Task 12 Step 1 — ทั้งหมดมีคำสั่ง `awk` ที่รันได้จริงพร้อมสิ่งที่คาดหวัง

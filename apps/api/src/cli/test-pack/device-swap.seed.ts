@@ -83,27 +83,36 @@ export const deviceSwapSeeder: DomainSeeder = {
       where: { conditionNote: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
       select: { id: true, status: true, newContractId: true },
     });
-    // ใบที่ถูกอนุมัติแล้วมีสัญญาใหม่ EXCH- (ไม่มี marker) เกาะอยู่ — soft delete คำขอตอนนี้
+    // ใบที่ถูกอนุมัติแล้วมีสัญญาใหม่ EXCH- (ไม่มี marker) เกาะอยู่ — soft delete คำขอตอนนั้น
     // จะตัดเส้นทางยกเลิกเปลี่ยนเครื่องของหน้าจอ (ExchangeCancelService หา request ไม่เจอ)
-    // ทิ้งสัญญา EXCH- ค้างถาวร ⇒ ข้ามใบพวกนี้พร้อมเตือน ให้คนกดยกเลิกในหน้าจอก่อนแล้วล้างซ้ำ
-    const blocked = rows.filter((r) => r.newContractId);
-    const sweepable = rows.filter((r) => !r.newContractId);
+    // ทิ้งสัญญา EXCH- ค้างถาวร ⇒ ข้ามเฉพาะใบที่สัญญาใหม่ยัง "ไม่ถูกยกเลิก".
+    // การยกเลิกในหน้าจอ (markCanceled — contract-exchange-cancel.service.ts:489-501) เขียน
+    // status: 'CANCELED' + canceledAt/canceledById/cancelReason/cancelWindow แต่ **ไม่เคย
+    // null `newContractId`** ⇒ ห้ามใช้ newContractId เดี่ยว ๆ เป็นเงื่อนไขข้าม (ใบที่ยกเลิก
+    // แล้วจะถูกข้ามซ้ำ + เตือนซ้ำตลอดกาล — คำเตือนกลายเป็นทางตัน). ใบ CANCELED ล้างได้
+    // เพราะเหตุผลเดิมของการข้าม (รักษาเส้นทางยกเลิกของหน้าจอ) หมดไปแล้ว: flow ยกเลิก
+    // จัดการสัญญา EXCH- เรียบร้อย (FINALIZED → status CANCELED, PRE_FINALIZE → soft delete)
+    const blocked = rows.filter((r) => r.newContractId && r.status !== 'CANCELED');
+    const sweepable = rows.filter((r) => !r.newContractId || r.status === 'CANCELED');
     // ตั้งชื่อสัญญา EXCH- ด้วยเลขสัญญาจริง (ไม่กรอง deletedAt — ใช้รายงานเท่านั้น)
-    const blockedContracts = blocked.length
+    const withNewContract = rows.filter((r) => r.newContractId);
+    const namedContracts = withNewContract.length
       ? await ctx.prisma.contract.findMany({
           where: {
-            id: { in: blocked.map((r) => r.newContractId).filter((x): x is string => !!x) },
+            id: { in: withNewContract.map((r) => r.newContractId).filter((x): x is string => !!x) },
           },
           select: { id: true, contractNumber: true },
         })
       : [];
     const contractName = (id: string | null) =>
-      blockedContracts.find((c) => c.id === id)?.contractNumber ?? id ?? '(ไม่ทราบ)';
+      namedContracts.find((c) => c.id === id)?.contractNumber ?? id ?? '(ไม่ทราบ)';
     for (const r of rows)
       console.log(
         `     คำขอ ${r.id} [${r.status}]${
           r.newContractId
-            ? ` — มีสัญญาใหม่ ${contractName(r.newContractId)} เกาะอยู่ (ข้าม ไม่ล้าง)`
+            ? r.status === 'CANCELED'
+              ? ` — ยกเลิกในหน้าจอแล้ว (สัญญา ${contractName(r.newContractId)} ถูกปิดโดย flow ยกเลิก) ⇒ ล้างได้`
+              : ` — มีสัญญาใหม่ ${contractName(r.newContractId)} เกาะอยู่ (ข้าม ไม่ล้าง)`
             : ''
         }`,
       );
@@ -116,17 +125,20 @@ export const deviceSwapSeeder: DomainSeeder = {
     return {
       removed: { คำขอเปลี่ยนเครื่อง: sweepable.length },
       warnings: [
-        // ใบที่อนุมัติแล้ว = ข้ามเสมอ — soft delete คำขอจะตัดเส้นทางยกเลิกของหน้าจอ (ดูคอมเมนต์บน)
+        // ข้ามเฉพาะใบที่สัญญาใหม่ยังไม่ถูกยกเลิก (ดูคอมเมนต์บน) — หลังกดยกเลิกในหน้าจอ
+        // newContractId ยังค้างบนคำขอ (markCanceled ไม่ null ให้) แต่สถานะเป็น CANCELED
+        // ⇒ cleanup รอบถัดไปกวาดใบนั้นให้เอง — ข้อความต้องสัญญาเท่าที่เป็นจริงเท่านั้น
         ...blocked.map(
           (r) =>
-            `คำขอ ${r.id} ถูกอนุมัติไปแล้ว (สัญญาใหม่ ${contractName(r.newContractId)}) — ไม่ล้างให้ เพราะสัญญา EXCH- ไม่มี marker ทดสอบ: กดยกเลิกเปลี่ยนเครื่องในหน้าจอก่อน แล้วรัน cleanup ซ้ำ`,
+            `คำขอ ${r.id} ถูกอนุมัติแล้วและสัญญาใหม่ ${contractName(r.newContractId)} ยังไม่ถูกยกเลิก — ไม่ล้างให้ เพราะคำขอใบนี้คือเส้นทางเดียวที่หน้าจอใช้ยกเลิกสัญญา EXCH- (ซึ่งไม่มี marker ทดสอบ): กดยกเลิกเปลี่ยนเครื่องในหน้าจอก่อน (คำขอจะกลายเป็น CANCELED และ flow ยกเลิกจัดการสัญญา EXCH- ให้เอง) แล้วรัน cleanup ซ้ำ — รอบถัดไปจะล้างคำขอที่ยกเลิกแล้วให้อัตโนมัติ`,
         ),
         // approvePriced โคลน PDPAConsent ให้สัญญาใหม่ (contract-exchange.service.ts:654) —
         // pdpa_consents อยู่ใน KEEP_TABLES ของ factory reset เพราะเป็นหลักฐานความยินยอมตาม
-        // กฎหมาย ⇒ ห้ามให้เครื่องมือ cleanup ลบเอง เตือนให้คนตรวจแทน
-        ...(blocked.length
+        // กฎหมาย ⇒ ห้ามให้เครื่องมือ cleanup ลบเอง เตือนให้คนตรวจแทน — การยกเลิกเปลี่ยน
+        // เครื่องก็ไม่ลบแถวโคลนนี้ จึงต้องเตือนรวมสัญญาของใบที่ยกเลิกแล้ว (sweepable) ด้วย
+        ...(withNewContract.length
           ? [
-              `สัญญาใหม่จากการอนุมัติ (${blocked
+              `สัญญาใหม่จากการอนุมัติ (${withNewContract
                 .map((r) => contractName(r.newContractId))
                 .join(
                   ', ',

@@ -101,9 +101,11 @@ export const inspectionsSeeder: DomainSeeder = {
     if (!dryRun && rows.length) {
       const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
-        // InspectionResult มี deletedAt เหมือนกัน ⇒ soft ทั้งคู่
+        // InspectionResult มี deletedAt เหมือนกัน ⇒ soft ทั้งคู่ — กรอง deletedAt: null
+        // ให้ตรงกับ findMany ที่ใช้รายงานข้างบน (ไม่งั้น re-stamp แถวที่ผู้ทดสอบลบผ่าน
+        // หน้าจอไปแล้ว และตัวเลขที่รายงานไม่ตรงกับแถวที่เปลี่ยนจริง)
         await tx.inspectionResult.updateMany({
-          where: { inspectionId: { in: rows.map((r) => r.id) } },
+          where: { inspectionId: { in: rows.map((r) => r.id) }, deletedAt: null },
           data: { deletedAt: now },
         });
         await tx.inspection.updateMany({

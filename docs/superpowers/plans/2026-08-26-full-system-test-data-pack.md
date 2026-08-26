@@ -3452,7 +3452,7 @@ export const repairSeeder: DomainSeeder = {
 > เลขเอกสารต้องพิมพ์ทั้ง dry-run และ live — เป็นช่องทางเดียวที่ผู้รันเห็นมัน (ไม่มี marker).
 > **ผู้ที่คัดลอกบล็อกเวอร์ชันก่อนหน้า (ไม่มี sweep นี้) จะเปิดรูเดิมกลับมา.**
 
-- [ ] **Step 2: เขียน `inspections.seed.ts`**
+- [ ] **Step 2: เขียน `inspections.seed.ts`** *(บล็อกนี้ sync กับโค้ดที่ commit แล้ว — fix round 2, 2026-08-26)*
 
 ```ts
 import { TEST_NOTE_MARKER, testNote } from './_context';
@@ -3465,37 +3465,73 @@ export const inspectionsSeeder: DomainSeeder = {
   markerDoc: `Inspection.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
-    const template = await ctx.prisma.inspectionTemplate.findFirst({ where: { deletedAt: null }, select: { id: true, name: true } });
-    if (!template) return [{ label: 'ข้าม', detail: 'ยังไม่มี InspectionTemplate ในระบบ (Inspection.templateId บังคับ)' }];
+    const template = await ctx.prisma.inspectionTemplate.findFirst({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!template)
+      return [
+        {
+          label: 'ข้าม',
+          detail: 'ยังไม่มี InspectionTemplate ในระบบ (Inspection.templateId บังคับ)',
+        },
+      ];
     return [
       { label: 'ใบตรวจ 1', detail: `ใช้เทมเพลต "${template.name}" — รอตรวจ` },
-      { label: 'ใบตรวจ 2', detail: `ใช้เทมเพลต "${template.name}" — ตรวจแล้ว` },
+      { label: 'ใบตรวจ 2', detail: `ใช้เทมเพลต "${template.name}" — ตรวจแล้ว (เกรด B)` },
     ];
   },
 
   async seed(ctx: SeedContext): Promise<SeedStat> {
     const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
     const [template, products] = await Promise.all([
-      ctx.prisma.inspectionTemplate.findFirst({ where: { deletedAt: null }, select: { id: true } }),
-      ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: 'TEST-' }, deletedAt: null }, select: { id: true }, take: 2 }),
+      ctx.prisma.inspectionTemplate.findFirst({
+        where: { deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      ctx.prisma.product.findMany({
+        where: { imeiSerial: { startsWith: 'TEST-' }, deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+        take: 2,
+      }),
     ]);
     if (!template) {
-      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มี InspectionTemplate (Inspection.templateId บังคับ) สร้างเทมเพลตในหน้าตั้งค่าก่อน');
+      stat.notes.push(
+        'ข้ามทั้งโดเมน — ยังไม่มี InspectionTemplate (Inspection.templateId บังคับ) สร้างเทมเพลตในหน้าตั้งค่าก่อน',
+      );
       return stat;
     }
     if (products.length < 2) {
-      stat.notes.push('ข้ามทั้งโดเมน — ต้องมีเครื่องทดสอบอย่างน้อย 2 เครื่อง (รันโดเมน contracts ก่อน)');
+      stat.notes.push(
+        'ข้ามทั้งโดเมน — ต้องมีเครื่องทดสอบอย่างน้อย 2 เครื่อง (รันโดเมน contracts ก่อน)',
+      );
       return stat;
     }
     for (const [i, p] of products.entries()) {
       const notes = testNote(`ใบตรวจสภาพ/${i + 1}`);
-      const exists = await ctx.prisma.inspection.findFirst({ where: { notes, deletedAt: null }, select: { id: true } });
+      const exists = await ctx.prisma.inspection.findFirst({
+        where: { notes, deletedAt: null },
+        select: { id: true },
+      });
       if (exists) {
         stat.skipped += 1;
         continue;
       }
+      // ใบที่สอง = ตรวจเสร็จแล้ว (ให้ตรงกับ plan) — Inspection ไม่โพสต์อะไร สถานะไหนก็ได้
+      const done = i === 1;
       await ctx.prisma.inspection.create({
-        data: { productId: p.id, templateId: template.id, inspectorId: ctx.refs.salespersonId, notes },
+        data: {
+          productId: p.id,
+          templateId: template.id,
+          inspectorId: ctx.refs.salespersonId,
+          notes,
+          ...(done
+            ? { isCompleted: true, inspectedAt: ctx.today, overallGrade: 'B' as const }
+            : {}),
+        },
       });
       stat.created += 1;
     }
@@ -3505,22 +3541,42 @@ export const inspectionsSeeder: DomainSeeder = {
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.inspection.findMany({
       where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
-      select: { id: true },
+      select: { id: true, notes: true },
     });
+    // ผลตรวจรายข้อเกิดตอนผู้ทดสอบกรอกผลผ่านหน้าจอ — ไม่มี marker ติดตัว ตามได้จาก FK
+    // inspectionId เท่านั้น ⇒ พิมพ์ identity ให้คนสั่งล้างเห็น (ทั้ง dry-run และของจริง)
+    const results = rows.length
+      ? await ctx.prisma.inspectionResult.findMany({
+          where: { inspectionId: { in: rows.map((r) => r.id) }, deletedAt: null },
+          select: { id: true, inspectionId: true },
+        })
+      : [];
+    for (const r of rows) {
+      const n = results.filter((x) => x.inspectionId === r.id).length;
+      console.log(`     ${r.notes ?? r.id}${n ? ` (ผลตรวจรายข้อ ${n} ข้อ)` : ''}`);
+    }
     if (!dryRun && rows.length) {
       const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
-        // InspectionResult มี deletedAt เหมือนกัน ⇒ soft ทั้งคู่
-        await tx.inspectionResult.updateMany({ where: { inspectionId: { in: rows.map((r) => r.id) } }, data: { deletedAt: now } });
-        await tx.inspection.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: now } });
+        // InspectionResult มี deletedAt เหมือนกัน ⇒ soft ทั้งคู่ — กรอง deletedAt: null
+        // ให้ตรงกับ findMany ที่ใช้รายงานข้างบน (ไม่งั้น re-stamp แถวที่ผู้ทดสอบลบผ่าน
+        // หน้าจอไปแล้ว และตัวเลขที่รายงานไม่ตรงกับแถวที่เปลี่ยนจริง)
+        await tx.inspectionResult.updateMany({
+          where: { inspectionId: { in: rows.map((r) => r.id) }, deletedAt: null },
+          data: { deletedAt: now },
+        });
+        await tx.inspection.updateMany({
+          where: { id: { in: rows.map((r) => r.id) } },
+          data: { deletedAt: now },
+        });
       });
     }
-    return { removed: { 'ใบตรวจสภาพ': rows.length }, warnings: [] };
+    return { removed: { ใบตรวจสภาพ: rows.length, ผลตรวจรายข้อ: results.length }, warnings: [] };
   },
 };
 ```
 
-- [ ] **Step 3: เขียน `device-swap.seed.ts`**
+- [ ] **Step 3: เขียน `device-swap.seed.ts`** *(บล็อกนี้ sync กับโค้ดที่ commit แล้ว — fix round 2, 2026-08-26)*
 
 ```ts
 import { TEST_NOTE_MARKER, testNote } from './_context';
@@ -3529,6 +3585,11 @@ import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from '
 /**
  * คำขอเปลี่ยนเครื่อง 1 ใบ สถานะรออนุมัติ
  * R2 — ห้าม finalize (finalize โพสต์ JE ชุด A.1-A.5 + SHOP leg)
+ *
+ * ใบที่ seed ไม่ระบุ mode ⇒ default PRICED โดยไม่มี snapshot แผนผ่อน — ตรงกับรูป
+ * "legacy in-flight PENDING" ที่ approvePriced รองรับอยู่แล้ว (`usedSnapshot =
+ * req.newTotalMonths != null` เป็น false ⇒ clone งวดคงเหลือจากสัญญาเดิม) จึงกดอนุมัติ
+ * จากหน้าจอได้จริงโดยไม่ crash
  */
 export const deviceSwapSeeder: DomainSeeder = {
   key: 'device-swap',
@@ -3543,6 +3604,7 @@ export const deviceSwapSeeder: DomainSeeder = {
     const contract = await ctx.prisma.contract.findFirst({
       where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
       select: { contractNumber: true },
+      orderBy: { contractNumber: 'asc' },
     });
     return contract
       ? [{ label: 'คำขอเปลี่ยนเครื่อง', detail: `รออนุมัติ · สัญญา ${contract.contractNumber}` }]
@@ -3554,17 +3616,31 @@ export const deviceSwapSeeder: DomainSeeder = {
     const contract = await ctx.prisma.contract.findFirst({
       where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
       select: { id: true, productId: true },
+      orderBy: { contractNumber: 'asc' },
     });
+    // เครื่องปลายทางของ swap ต้องเป็นมือถือ ไม่ใช่หูฟังทดสอบ (เครื่องว่างของโดเมน contracts
+    // มี ACCESSORY ปนอยู่) + orderBy ให้ได้เครื่องเดิมทุกรอบ
     const newProduct = await ctx.prisma.product.findFirst({
-      where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null },
+      where: {
+        imeiSerial: { startsWith: 'TEST-' },
+        status: 'IN_STOCK',
+        category: { in: ['PHONE_NEW', 'PHONE_USED'] },
+        deletedAt: null,
+      },
       select: { id: true },
+      orderBy: { createdAt: 'asc' },
     });
     if (!contract?.productId || !newProduct) {
-      stat.notes.push('ข้ามทั้งโดเมน — ต้องมีสัญญาทดสอบ ACTIVE ที่ผูกเครื่อง + เครื่องทดสอบ IN_STOCK 1 เครื่อง');
+      stat.notes.push(
+        'ข้ามทั้งโดเมน — ต้องมีสัญญาทดสอบ ACTIVE ที่ผูกเครื่อง + มือถือทดสอบ IN_STOCK 1 เครื่อง (รันโดเมน contracts ก่อน)',
+      );
       return stat;
     }
     const conditionNote = testNote('คำขอเปลี่ยนเครื่องสำหรับทดสอบ — เครื่องเดิมมีตำหนิ');
-    const exists = await ctx.prisma.contractExchangeRequest.findFirst({ where: { conditionNote, deletedAt: null }, select: { id: true } });
+    const exists = await ctx.prisma.contractExchangeRequest.findFirst({
+      where: { conditionNote, deletedAt: null },
+      select: { id: true },
+    });
     if (exists) {
       stat.skipped += 1;
       return stat;
@@ -3588,27 +3664,36 @@ export const deviceSwapSeeder: DomainSeeder = {
       where: { conditionNote: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
       select: { id: true, status: true, newContractId: true },
     });
-    // ใบที่ถูกอนุมัติแล้วมีสัญญาใหม่ EXCH- (ไม่มี marker) เกาะอยู่ — soft delete คำขอตอนนี้
+    // ใบที่ถูกอนุมัติแล้วมีสัญญาใหม่ EXCH- (ไม่มี marker) เกาะอยู่ — soft delete คำขอตอนนั้น
     // จะตัดเส้นทางยกเลิกเปลี่ยนเครื่องของหน้าจอ (ExchangeCancelService หา request ไม่เจอ)
-    // ทิ้งสัญญา EXCH- ค้างถาวร ⇒ ข้ามใบพวกนี้พร้อมเตือน ให้คนกดยกเลิกในหน้าจอก่อนแล้วล้างซ้ำ
-    const blocked = rows.filter((r) => r.newContractId);
-    const sweepable = rows.filter((r) => !r.newContractId);
+    // ทิ้งสัญญา EXCH- ค้างถาวร ⇒ ข้ามเฉพาะใบที่สัญญาใหม่ยัง "ไม่ถูกยกเลิก".
+    // การยกเลิกในหน้าจอ (markCanceled — contract-exchange-cancel.service.ts:489-501) เขียน
+    // status: 'CANCELED' + canceledAt/canceledById/cancelReason/cancelWindow แต่ **ไม่เคย
+    // null `newContractId`** ⇒ ห้ามใช้ newContractId เดี่ยว ๆ เป็นเงื่อนไขข้าม (ใบที่ยกเลิก
+    // แล้วจะถูกข้ามซ้ำ + เตือนซ้ำตลอดกาล — คำเตือนกลายเป็นทางตัน). ใบ CANCELED ล้างได้
+    // เพราะเหตุผลเดิมของการข้าม (รักษาเส้นทางยกเลิกของหน้าจอ) หมดไปแล้ว: flow ยกเลิก
+    // จัดการสัญญา EXCH- เรียบร้อย (FINALIZED → status CANCELED, PRE_FINALIZE → soft delete)
+    const blocked = rows.filter((r) => r.newContractId && r.status !== 'CANCELED');
+    const sweepable = rows.filter((r) => !r.newContractId || r.status === 'CANCELED');
     // ตั้งชื่อสัญญา EXCH- ด้วยเลขสัญญาจริง (ไม่กรอง deletedAt — ใช้รายงานเท่านั้น)
-    const blockedContracts = blocked.length
+    const withNewContract = rows.filter((r) => r.newContractId);
+    const namedContracts = withNewContract.length
       ? await ctx.prisma.contract.findMany({
           where: {
-            id: { in: blocked.map((r) => r.newContractId).filter((x): x is string => !!x) },
+            id: { in: withNewContract.map((r) => r.newContractId).filter((x): x is string => !!x) },
           },
           select: { id: true, contractNumber: true },
         })
       : [];
     const contractName = (id: string | null) =>
-      blockedContracts.find((c) => c.id === id)?.contractNumber ?? id ?? '(ไม่ทราบ)';
+      namedContracts.find((c) => c.id === id)?.contractNumber ?? id ?? '(ไม่ทราบ)';
     for (const r of rows)
       console.log(
         `     คำขอ ${r.id} [${r.status}]${
           r.newContractId
-            ? ` — มีสัญญาใหม่ ${contractName(r.newContractId)} เกาะอยู่ (ข้าม ไม่ล้าง)`
+            ? r.status === 'CANCELED'
+              ? ` — ยกเลิกในหน้าจอแล้ว (สัญญา ${contractName(r.newContractId)} ถูกปิดโดย flow ยกเลิก) ⇒ ล้างได้`
+              : ` — มีสัญญาใหม่ ${contractName(r.newContractId)} เกาะอยู่ (ข้าม ไม่ล้าง)`
             : ''
         }`,
       );
@@ -3621,17 +3706,20 @@ export const deviceSwapSeeder: DomainSeeder = {
     return {
       removed: { คำขอเปลี่ยนเครื่อง: sweepable.length },
       warnings: [
-        // ใบที่อนุมัติแล้ว = ข้ามเสมอ — soft delete คำขอจะตัดเส้นทางยกเลิกของหน้าจอ (ดูคอมเมนต์บน)
+        // ข้ามเฉพาะใบที่สัญญาใหม่ยังไม่ถูกยกเลิก (ดูคอมเมนต์บน) — หลังกดยกเลิกในหน้าจอ
+        // newContractId ยังค้างบนคำขอ (markCanceled ไม่ null ให้) แต่สถานะเป็น CANCELED
+        // ⇒ cleanup รอบถัดไปกวาดใบนั้นให้เอง — ข้อความต้องสัญญาเท่าที่เป็นจริงเท่านั้น
         ...blocked.map(
           (r) =>
-            `คำขอ ${r.id} ถูกอนุมัติไปแล้ว (สัญญาใหม่ ${contractName(r.newContractId)}) — ไม่ล้างให้ เพราะสัญญา EXCH- ไม่มี marker ทดสอบ: กดยกเลิกเปลี่ยนเครื่องในหน้าจอก่อน แล้วรัน cleanup ซ้ำ`,
+            `คำขอ ${r.id} ถูกอนุมัติแล้วและสัญญาใหม่ ${contractName(r.newContractId)} ยังไม่ถูกยกเลิก — ไม่ล้างให้ เพราะคำขอใบนี้คือเส้นทางเดียวที่หน้าจอใช้ยกเลิกสัญญา EXCH- (ซึ่งไม่มี marker ทดสอบ): กดยกเลิกเปลี่ยนเครื่องในหน้าจอก่อน (คำขอจะกลายเป็น CANCELED และ flow ยกเลิกจัดการสัญญา EXCH- ให้เอง) แล้วรัน cleanup ซ้ำ — รอบถัดไปจะล้างคำขอที่ยกเลิกแล้วให้อัตโนมัติ`,
         ),
         // approvePriced โคลน PDPAConsent ให้สัญญาใหม่ (contract-exchange.service.ts:654) —
         // pdpa_consents อยู่ใน KEEP_TABLES ของ factory reset เพราะเป็นหลักฐานความยินยอมตาม
-        // กฎหมาย ⇒ ห้ามให้เครื่องมือ cleanup ลบเอง เตือนให้คนตรวจแทน
-        ...(blocked.length
+        // กฎหมาย ⇒ ห้ามให้เครื่องมือ cleanup ลบเอง เตือนให้คนตรวจแทน — การยกเลิกเปลี่ยน
+        // เครื่องก็ไม่ลบแถวโคลนนี้ จึงต้องเตือนรวมสัญญาของใบที่ยกเลิกแล้ว (sweepable) ด้วย
+        ...(withNewContract.length
           ? [
-              `สัญญาใหม่จากการอนุมัติ (${blocked
+              `สัญญาใหม่จากการอนุมัติ (${withNewContract
                 .map((r) => contractName(r.newContractId))
                 .join(
                   ', ',
@@ -3651,6 +3739,14 @@ export const deviceSwapSeeder: DomainSeeder = {
 > (`contract-exchange.service.ts:654`) — `pdpa_consents` อยู่ใน KEEP_TABLES ของ factory reset
 > เพราะเป็นหลักฐานความยินยอมตามกฎหมาย ⇒ **ห้ามลบอัตโนมัติ** เตือนให้คนตรวจก่อนลบเองเท่านั้น.
 > **ผู้ที่คัดลอกบล็อกเวอร์ชันก่อนหน้า (soft delete ทุกใบ ไม่มี warning) จะเปิดรูเดิมกลับมา.**
+
+> **หมายเหตุ (fix round 2, 2026-08-26) — ใบที่ยกเลิกแล้วต้องล้างได้:** การยกเลิกในหน้าจอ
+> (`markCanceled` — `contract-exchange-cancel.service.ts:489-501`) เขียน `status: 'CANCELED'` +
+> `canceledAt/canceledById/cancelReason/cancelWindow` แต่**ไม่เคย null `newContractId`** ⇒ เงื่อนไขข้าม
+> ที่ดูแค่ `newContractId` จะข้ามใบเดิมซ้ำ + เตือนซ้ำตลอดกาล (คำเตือน "กดยกเลิกแล้วรันซ้ำ" กลายเป็นทางตัน).
+> ใบ CANCELED ล้างได้ เพราะเหตุผลเดิมของการข้าม (รักษาเส้นทางยกเลิกของหน้าจอ) หมดไปแล้ว —
+> flow ยกเลิกจัดการสัญญา EXCH- เรียบร้อย (FINALIZED → CANCELED, PRE_FINALIZE → soft delete)
+> ⇒ ข้ามเฉพาะ `newContractId && status !== 'CANCELED'`. **ผู้ที่คัดลอกบล็อกเวอร์ชันก่อนหน้าจะเปิดทางตันเดิมกลับมา.**
 
 - [ ] **Step 4: ยืนยันฟิลด์ที่อาจไม่ตรง**
 

@@ -2018,6 +2018,17 @@ git commit -m "feat(test-pack): โดเมนส่วนของผู้ถ
 **เครื่องที่ใช้:** ทั้งสองโดเมนต้องมี `Product` ที่ IMEI ขึ้นต้น `TEST-` ⇒ ต้องรัน `contracts` ก่อน
 (registry เรียงให้แล้ว) ถ้าไม่พบ ให้ข้ามพร้อม note ไม่ throw
 
+**กวาดแถวที่หลุด marker (fix round 1, 2026-08-26 — ห้ามตัดสองบล็อกนี้ออกจาก `cleanup`):**
+การใช้งานเอกสารทดสอบสร้างแถวลูกที่**ไม่มี marker ติดตัว** 2 จุด — (1) QC รับของบน PO ทดสอบสร้าง
+`Product` (`po-receiving.service.ts` — ถ้าไม่กวาดคือ**สต็อกผี**ที่แยกไม่ออกจากของจริง) และ
+(2) ยืนยันรับโอนสร้าง `BranchReceiving` + `BranchReceivingItem` (`branch-receiving.service.ts`).
+ทั้งคู่ตามได้ด้วย FK ตรง ไม่ต้องเดา marker: `Product.poId → PurchaseOrder.id` และ
+`BranchReceiving.transferId → StockTransfer.id` (`@unique`) / `BranchReceivingItem.receivingId`.
+ทุกตารางมี `deletedAt` ⇒ soft delete ล้วน. เครื่องที่กวาดต้องพิมพ์ IMEI+ชื่อออกจอเสมอ (ทั้ง dry-run
+และของจริง — มันไม่มี marker ให้ผู้สั่งล้างตรวจเองทีหลัง) และเครื่องที่ไม่ใช่ `IN_STOCK` แล้ว
+ต้องเด้ง warning ให้คนตัดสินก่อน. หมายเหตุ: `GoodsReceiving`/`GoodsReceivingItem` ไม่ใช่รูที่สาม —
+`GoodsReceiving.poId` ชี้ PO ตรง ๆ และบล็อก `grs` ใน cleanup กวาดอยู่แล้ว
+
 - [ ] **Step 1: เขียน `suppliers-po.seed.ts`**
 
 ```ts
@@ -2116,12 +2127,30 @@ export const suppliersPoSeeder: DomainSeeder = {
       where: { poNumber: { startsWith: `${TEST_DOC_PREFIX}PO-` }, deletedAt: null },
       select: { id: true, poNumber: true },
     });
+    // เครื่องที่ QC รับเข้าจาก PO ทดสอบ (po-receiving.service.ts) ไม่มี marker ติดตัว —
+    // ตามได้จาก FK ตรง Product.poId เท่านั้น ถ้าไม่กวาดตรงนี้จะเหลือเป็นสต็อกผีถาวร
+    const products = pos.length
+      ? await ctx.prisma.product.findMany({
+          where: { poId: { in: pos.map((p) => p.id) }, deletedAt: null },
+          select: { id: true, imeiSerial: true, name: true, status: true },
+        })
+      : [];
     const suppliers = await ctx.prisma.supplier.findMany({
       where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
       select: { id: true, name: true },
     });
     for (const p of pos) console.log(`     ${p.poNumber}`);
+    // เครื่องพวกนี้ไม่มี marker — บรรทัดนี้คือโอกาสเดียวที่ผู้สั่งล้าง (ทั้ง dry-run และของจริง)
+    // จะเห็นว่ากำลังจะลบเครื่องไหนบ้าง
+    for (const p of products)
+      console.log(
+        `     เครื่องจาก PO ทดสอบ: ${p.imeiSerial ?? '(ไม่มี IMEI)'} "${p.name}" [${p.status}]`,
+      );
     for (const s of suppliers) console.log(`     ซัพพลายเออร์ "${s.name}"`);
+
+    // เครื่องที่ไม่ใช่ IN_STOCK แล้ว = ผู้ทดสอบเอาไปขาย/จอง/เปิดสัญญาต่อ — อาจมีเอกสารอื่นชี้อยู่
+    // ต้องเด้งเตือนให้คนตัดสิน ไม่ใช่ลบเงียบ ๆ
+    const movedProducts = products.filter((p) => p.status !== 'IN_STOCK');
 
     if (!dryRun && (pos.length || suppliers.length)) {
       const now = new Date();
@@ -2129,25 +2158,58 @@ export const suppliersPoSeeder: DomainSeeder = {
         if (pos.length) {
           const poIds = pos.map((p) => p.id);
           // ทุกตารางในสายนี้มี deletedAt ⇒ soft delete ทั้งหมด (กฎ .claude/rules/database.md)
-          const grs = await tx.goodsReceiving.findMany({ where: { poId: { in: poIds } }, select: { id: true } });
+          const grs = await tx.goodsReceiving.findMany({
+            where: { poId: { in: poIds } },
+            select: { id: true },
+          });
           if (grs.length) {
-            await tx.goodsReceivingItem.updateMany({ where: { receivingId: { in: grs.map((g) => g.id) } }, data: { deletedAt: now } });
-            await tx.goodsReceiving.updateMany({ where: { id: { in: grs.map((g) => g.id) } }, data: { deletedAt: now } });
+            await tx.goodsReceivingItem.updateMany({
+              where: { receivingId: { in: grs.map((g) => g.id) } },
+              data: { deletedAt: now },
+            });
+            await tx.goodsReceiving.updateMany({
+              where: { id: { in: grs.map((g) => g.id) } },
+              data: { deletedAt: now },
+            });
+          }
+          // เครื่องที่รับเข้าจาก PO ทดสอบ — soft delete พร้อมใบในทรานแซกชันเดียวกัน
+          // (ไม่มี hard delete ในสายนี้ จึงไม่มีปัญหาลำดับ FK)
+          if (products.length) {
+            await tx.product.updateMany({
+              where: { id: { in: products.map((pr) => pr.id) } },
+              data: { deletedAt: now },
+            });
           }
           await tx.pOItem.updateMany({ where: { poId: { in: poIds } }, data: { deletedAt: now } });
-          await tx.purchaseOrder.updateMany({ where: { id: { in: poIds } }, data: { deletedAt: now } });
+          await tx.purchaseOrder.updateMany({
+            where: { id: { in: poIds } },
+            data: { deletedAt: now },
+          });
         }
         if (suppliers.length) {
-          await tx.supplier.updateMany({ where: { id: { in: suppliers.map((s) => s.id) } }, data: { deletedAt: now } });
+          await tx.supplier.updateMany({
+            where: { id: { in: suppliers.map((s) => s.id) } },
+            data: { deletedAt: now },
+          });
         }
       });
     }
 
+    const warnings: string[] = movedProducts.map(
+      (p) =>
+        `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK แล้ว (สถานะปัจจุบัน: ${p.status}) — อาจมีใบขาย/สัญญา/การจองชี้อยู่ ตรวจก่อนยืนยันการล้าง`,
+    );
+    if (pos.length || suppliers.length)
+      warnings.push(
+        'ตาราง suppliers + purchase_orders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้ามไปปนทะเบียนจริง',
+      );
     return {
-      removed: { 'ใบสั่งซื้อ': pos.length, 'ซัพพลายเออร์ทดสอบ': suppliers.length },
-      warnings: suppliers.length
-        ? ['ตาราง suppliers + purchase_orders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้ามไปปนทะเบียนจริง']
-        : [],
+      removed: {
+        ใบสั่งซื้อ: pos.length,
+        เครื่องรับเข้าจากใบสั่งซื้อ: products.length,
+        ซัพพลายเออร์ทดสอบ: suppliers.length,
+      },
+      warnings,
     };
   },
 };
@@ -2308,13 +2370,43 @@ export const stockOpsSeeder: DomainSeeder = {
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const alertModel = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
     const [counts, transfers, adjustments, rps] = await Promise.all([
-      ctx.prisma.stockCount.findMany({ where: { countNumber: { startsWith: `${TEST_DOC_PREFIX}COUNT-` }, deletedAt: null }, select: { id: true, countNumber: true } }),
-      ctx.prisma.stockTransfer.findMany({ where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null }, select: { id: true } }),
-      ctx.prisma.stockAdjustment.findMany({ where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null }, select: { id: true } }),
-      ctx.prisma.reorderPoint.findMany({ where: { model: alertModel, deletedAt: null }, select: { id: true } }),
+      ctx.prisma.stockCount.findMany({
+        where: { countNumber: { startsWith: `${TEST_DOC_PREFIX}COUNT-` }, deletedAt: null },
+        select: { id: true, countNumber: true },
+      }),
+      ctx.prisma.stockTransfer.findMany({
+        where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+        select: { id: true },
+      }),
+      ctx.prisma.stockAdjustment.findMany({
+        where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+        select: { id: true },
+      }),
+      ctx.prisma.reorderPoint.findMany({
+        where: { model: alertModel, deletedAt: null },
+        select: { id: true },
+      }),
     ]);
     const alerts = rps.length
-      ? await ctx.prisma.stockAlert.findMany({ where: { reorderPointId: { in: rps.map((r) => r.id) }, deletedAt: null }, select: { id: true } })
+      ? await ctx.prisma.stockAlert.findMany({
+          where: { reorderPointId: { in: rps.map((r) => r.id) }, deletedAt: null },
+          select: { id: true },
+        })
+      : [];
+    // ใบตรวจรับสาขาที่เกิดจากการกดยืนยันรับโอนของทดสอบ (branch-receiving.service.ts)
+    // ไม่มี marker ติดตัว — ตามได้จาก FK ตรง BranchReceiving.transferId (@unique) เท่านั้น
+    // ถ้าไม่กวาดตรงนี้จะเหลือใบตรวจรับค้างชี้ไปที่ใบโอนที่ถูกลบไปแล้ว
+    const receivings = transfers.length
+      ? await ctx.prisma.branchReceiving.findMany({
+          where: { transferId: { in: transfers.map((t) => t.id) }, deletedAt: null },
+          select: { id: true },
+        })
+      : [];
+    const receivingItems = receivings.length
+      ? await ctx.prisma.branchReceivingItem.findMany({
+          where: { receivingId: { in: receivings.map((r) => r.id) }, deletedAt: null },
+          select: { id: true },
+        })
       : [];
     for (const c of counts) console.log(`     ${c.countNumber}`);
 
@@ -2322,18 +2414,59 @@ export const stockOpsSeeder: DomainSeeder = {
       const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
         if (counts.length) {
-          await tx.stockCountItem.updateMany({ where: { stockCountId: { in: counts.map((c) => c.id) } }, data: { deletedAt: now } });
-          await tx.stockCount.updateMany({ where: { id: { in: counts.map((c) => c.id) } }, data: { deletedAt: now } });
+          await tx.stockCountItem.updateMany({
+            where: { stockCountId: { in: counts.map((c) => c.id) } },
+            data: { deletedAt: now },
+          });
+          await tx.stockCount.updateMany({
+            where: { id: { in: counts.map((c) => c.id) } },
+            data: { deletedAt: now },
+          });
         }
-        if (transfers.length) await tx.stockTransfer.updateMany({ where: { id: { in: transfers.map((t) => t.id) } }, data: { deletedAt: now } });
-        if (adjustments.length) await tx.stockAdjustment.updateMany({ where: { id: { in: adjustments.map((a) => a.id) } }, data: { deletedAt: now } });
+        // ลูก → แม่ → ใบโอน (soft delete ทั้งหมด — ไม่มี FK abort แต่คงลำดับให้อ่านตรงกับโครงสร้าง)
+        if (receivingItems.length)
+          await tx.branchReceivingItem.updateMany({
+            where: { id: { in: receivingItems.map((i) => i.id) } },
+            data: { deletedAt: now },
+          });
+        if (receivings.length)
+          await tx.branchReceiving.updateMany({
+            where: { id: { in: receivings.map((r) => r.id) } },
+            data: { deletedAt: now },
+          });
+        if (transfers.length)
+          await tx.stockTransfer.updateMany({
+            where: { id: { in: transfers.map((t) => t.id) } },
+            data: { deletedAt: now },
+          });
+        if (adjustments.length)
+          await tx.stockAdjustment.updateMany({
+            where: { id: { in: adjustments.map((a) => a.id) } },
+            data: { deletedAt: now },
+          });
         // แจ้งเตือนต้องออกก่อนจุดสั่งซื้อ — reorderPointId เป็น FK บังคับ
-        if (alerts.length) await tx.stockAlert.updateMany({ where: { id: { in: alerts.map((a) => a.id) } }, data: { deletedAt: now } });
-        if (rps.length) await tx.reorderPoint.updateMany({ where: { id: { in: rps.map((r) => r.id) } }, data: { deletedAt: now } });
+        if (alerts.length)
+          await tx.stockAlert.updateMany({
+            where: { id: { in: alerts.map((a) => a.id) } },
+            data: { deletedAt: now },
+          });
+        if (rps.length)
+          await tx.reorderPoint.updateMany({
+            where: { id: { in: rps.map((r) => r.id) } },
+            data: { deletedAt: now },
+          });
       });
     }
     return {
-      removed: { 'ใบนับสต็อก': counts.length, 'ใบโอนย้ายสาขา': transfers.length, 'ใบปรับปรุงสต็อก': adjustments.length, 'แจ้งเตือนสต็อก': alerts.length, 'จุดสั่งซื้อ': rps.length },
+      removed: {
+        ใบนับสต็อก: counts.length,
+        ใบโอนย้ายสาขา: transfers.length,
+        ใบตรวจรับสาขา: receivings.length,
+        รายการตรวจรับสาขา: receivingItems.length,
+        ใบปรับปรุงสต็อก: adjustments.length,
+        แจ้งเตือนสต็อก: alerts.length,
+        จุดสั่งซื้อ: rps.length,
+      },
       warnings: [],
     };
   },

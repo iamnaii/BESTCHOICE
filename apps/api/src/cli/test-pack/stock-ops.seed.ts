@@ -8,7 +8,9 @@ import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from '
  * ห้ามแตะเครื่องจริง เพราะการโอนย้าย/ปรับสต็อกเปลี่ยน branchId และ status ของเครื่อง
  *
  * ทุกตารางในโดเมนนี้ (StockCount · StockCountItem · StockTransfer · StockAdjustment ·
- * StockAlert · ReorderPoint) **มี deletedAt ทั้งหมด** ⇒ cleanup ใช้ soft delete ล้วน
+ * StockAlert · ReorderPoint · BranchReceiving · BranchReceivingItem) **มี deletedAt ทั้งหมด**
+ * ⇒ cleanup ใช้ soft delete ล้วน (BranchReceiving เกิดตอนผู้ทดสอบกดยืนยันรับโอน — ไม่มี marker
+ * แต่ตามได้จาก FK ตรง transferId)
  */
 export const stockOpsSeeder: DomainSeeder = {
   key: 'stock-ops',
@@ -248,6 +250,21 @@ export const stockOpsSeeder: DomainSeeder = {
           select: { id: true },
         })
       : [];
+    // ใบตรวจรับสาขาที่เกิดจากการกดยืนยันรับโอนของทดสอบ (branch-receiving.service.ts)
+    // ไม่มี marker ติดตัว — ตามได้จาก FK ตรง BranchReceiving.transferId (@unique) เท่านั้น
+    // ถ้าไม่กวาดตรงนี้จะเหลือใบตรวจรับค้างชี้ไปที่ใบโอนที่ถูกลบไปแล้ว
+    const receivings = transfers.length
+      ? await ctx.prisma.branchReceiving.findMany({
+          where: { transferId: { in: transfers.map((t) => t.id) }, deletedAt: null },
+          select: { id: true },
+        })
+      : [];
+    const receivingItems = receivings.length
+      ? await ctx.prisma.branchReceivingItem.findMany({
+          where: { receivingId: { in: receivings.map((r) => r.id) }, deletedAt: null },
+          select: { id: true },
+        })
+      : [];
     for (const c of counts) console.log(`     ${c.countNumber}`);
 
     if (!dryRun) {
@@ -263,6 +280,17 @@ export const stockOpsSeeder: DomainSeeder = {
             data: { deletedAt: now },
           });
         }
+        // ลูก → แม่ → ใบโอน (soft delete ทั้งหมด — ไม่มี FK abort แต่คงลำดับให้อ่านตรงกับโครงสร้าง)
+        if (receivingItems.length)
+          await tx.branchReceivingItem.updateMany({
+            where: { id: { in: receivingItems.map((i) => i.id) } },
+            data: { deletedAt: now },
+          });
+        if (receivings.length)
+          await tx.branchReceiving.updateMany({
+            where: { id: { in: receivings.map((r) => r.id) } },
+            data: { deletedAt: now },
+          });
         if (transfers.length)
           await tx.stockTransfer.updateMany({
             where: { id: { in: transfers.map((t) => t.id) } },
@@ -290,6 +318,8 @@ export const stockOpsSeeder: DomainSeeder = {
       removed: {
         ใบนับสต็อก: counts.length,
         ใบโอนย้ายสาขา: transfers.length,
+        ใบตรวจรับสาขา: receivings.length,
+        รายการตรวจรับสาขา: receivingItems.length,
         ใบปรับปรุงสต็อก: adjustments.length,
         แจ้งเตือนสต็อก: alerts.length,
         จุดสั่งซื้อ: rps.length,

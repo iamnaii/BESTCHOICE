@@ -135,12 +135,30 @@ export const suppliersPoSeeder: DomainSeeder = {
       where: { poNumber: { startsWith: `${TEST_DOC_PREFIX}PO-` }, deletedAt: null },
       select: { id: true, poNumber: true },
     });
+    // เครื่องที่ QC รับเข้าจาก PO ทดสอบ (po-receiving.service.ts) ไม่มี marker ติดตัว —
+    // ตามได้จาก FK ตรง Product.poId เท่านั้น ถ้าไม่กวาดตรงนี้จะเหลือเป็นสต็อกผีถาวร
+    const products = pos.length
+      ? await ctx.prisma.product.findMany({
+          where: { poId: { in: pos.map((p) => p.id) }, deletedAt: null },
+          select: { id: true, imeiSerial: true, name: true, status: true },
+        })
+      : [];
     const suppliers = await ctx.prisma.supplier.findMany({
       where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
       select: { id: true, name: true },
     });
     for (const p of pos) console.log(`     ${p.poNumber}`);
+    // เครื่องพวกนี้ไม่มี marker — บรรทัดนี้คือโอกาสเดียวที่ผู้สั่งล้าง (ทั้ง dry-run และของจริง)
+    // จะเห็นว่ากำลังจะลบเครื่องไหนบ้าง
+    for (const p of products)
+      console.log(
+        `     เครื่องจาก PO ทดสอบ: ${p.imeiSerial ?? '(ไม่มี IMEI)'} "${p.name}" [${p.status}]`,
+      );
     for (const s of suppliers) console.log(`     ซัพพลายเออร์ "${s.name}"`);
+
+    // เครื่องที่ไม่ใช่ IN_STOCK แล้ว = ผู้ทดสอบเอาไปขาย/จอง/เปิดสัญญาต่อ — อาจมีเอกสารอื่นชี้อยู่
+    // ต้องเด้งเตือนให้คนตัดสิน ไม่ใช่ลบเงียบ ๆ
+    const movedProducts = products.filter((p) => p.status !== 'IN_STOCK');
 
     if (!dryRun && (pos.length || suppliers.length)) {
       const now = new Date();
@@ -162,6 +180,14 @@ export const suppliersPoSeeder: DomainSeeder = {
               data: { deletedAt: now },
             });
           }
+          // เครื่องที่รับเข้าจาก PO ทดสอบ — soft delete พร้อมใบในทรานแซกชันเดียวกัน
+          // (ไม่มี hard delete ในสายนี้ จึงไม่มีปัญหาลำดับ FK)
+          if (products.length) {
+            await tx.product.updateMany({
+              where: { id: { in: products.map((pr) => pr.id) } },
+              data: { deletedAt: now },
+            });
+          }
           await tx.pOItem.updateMany({ where: { poId: { in: poIds } }, data: { deletedAt: now } });
           await tx.purchaseOrder.updateMany({
             where: { id: { in: poIds } },
@@ -177,14 +203,21 @@ export const suppliersPoSeeder: DomainSeeder = {
       });
     }
 
+    const warnings: string[] = movedProducts.map(
+      (p) =>
+        `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK แล้ว (สถานะปัจจุบัน: ${p.status}) — อาจมีใบขาย/สัญญา/การจองชี้อยู่ ตรวจก่อนยืนยันการล้าง`,
+    );
+    if (pos.length || suppliers.length)
+      warnings.push(
+        'ตาราง suppliers + purchase_orders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้ามไปปนทะเบียนจริง',
+      );
     return {
-      removed: { ใบสั่งซื้อ: pos.length, ซัพพลายเออร์ทดสอบ: suppliers.length },
-      warnings:
-        pos.length || suppliers.length
-          ? [
-              'ตาราง suppliers + purchase_orders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้ามไปปนทะเบียนจริง',
-            ]
-          : [],
+      removed: {
+        ใบสั่งซื้อ: pos.length,
+        เครื่องรับเข้าจากใบสั่งซื้อ: products.length,
+        ซัพพลายเออร์ทดสอบ: suppliers.length,
+      },
+      warnings,
     };
   },
 };

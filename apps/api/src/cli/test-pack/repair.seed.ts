@@ -145,11 +145,39 @@ export const repairSeeder: DomainSeeder = {
           select: { id: true, ticketId: true },
         })
       : [];
+    // ปิดใบซ่อม (CLOSED) สร้าง ExpenseDocument (payer SHOP) / OtherIncome (payer CUSTOMER)
+    // โดยไม่มี marker ทดสอบ — โดเมน expenses/other-income กรองด้วย note marker จึงมองไม่เห็น
+    // ⇒ ตามจาก FK ตรงบนใบซ่อม (expenseDocumentId/otherIncomeId — @unique ทั้งคู่) แล้วกวาด
+    // ด้วยลำดับเดียวกับสองโดเมนนั้นเป๊ะ (JE hard-delete ก่อน แล้วค่อย soft-delete เอกสาร)
+    const expenseIds = rows.map((r) => r.expenseDocumentId).filter((x): x is string => !!x);
+    const otherIncomeIds = rows.map((r) => r.otherIncomeId).filter((x): x is string => !!x);
+    const expenseDocs = expenseIds.length
+      ? await ctx.prisma.expenseDocument.findMany({
+          where: { id: { in: expenseIds }, deletedAt: null },
+          select: { id: true, number: true, journalEntryId: true },
+        })
+      : [];
+    const oiMarked = otherIncomeIds.length
+      ? await ctx.prisma.otherIncome.findMany({
+          where: { id: { in: otherIncomeIds }, deletedAt: null },
+          select: { id: true, docNumber: true, journalEntryId: true },
+        })
+      : [];
+    // mirror other-income.seed.ts: ใบกลับรายการ (-R) เขียนทับ customerNote ⇒ ตามด้วย FK reversesId
+    const oiReversals = oiMarked.length
+      ? await ctx.prisma.otherIncome.findMany({
+          where: { reversesId: { in: oiMarked.map((d) => d.id) }, deletedAt: null },
+          select: { id: true, docNumber: true, journalEntryId: true },
+        })
+      : [];
+    const oiDocs = [...oiMarked, ...oiReversals];
+    const expenseJeIds = expenseDocs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
+    const oiJeIds = oiDocs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
     for (const r of rows) {
       const logCount = logs.filter((l) => l.ticketId === r.id).length;
       const extra = [
-        r.expenseDocumentId ? 'มีใบค่าใช้จ่าย' : '',
-        r.otherIncomeId ? 'มีใบรายได้อื่น' : '',
+        r.expenseDocumentId ? 'มีใบค่าใช้จ่าย (กวาดด้วย)' : '',
+        r.otherIncomeId ? 'มีใบรายได้อื่น (กวาดด้วย)' : '',
         r.replacementContractId ? 'มีสัญญาทดแทน' : '',
         logCount ? `log สถานะ ${logCount} รายการ (ลบถาวร)` : '',
       ]
@@ -157,8 +185,51 @@ export const repairSeeder: DomainSeeder = {
         .join(' + ');
       console.log(`     ${r.ticketNumber}${extra ? ` (${extra})` : ''}`);
     }
+    // เอกสารพวกนี้ไม่มี marker — บรรทัดนี้คือช่องทางเดียวที่ผู้รันเห็นเลขเอกสารก่อนมันถูกกวาด
+    // ⇒ พิมพ์เสมอทั้ง dry-run และ live
+    for (const d of expenseDocs)
+      console.log(`     ใบค่าใช้จ่ายจากใบซ่อม ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    for (const d of oiDocs)
+      console.log(`     ใบรายได้อื่นจากใบซ่อม ${d.docNumber}${d.journalEntryId ? ' (มี JE)' : ''}`);
     if (!dryRun && rows.length) {
       await ctx.prisma.$transaction(async (tx) => {
+        // FK expenseDocumentId/otherIncomeId อยู่ฝั่ง repair_tickets (ON DELETE SET NULL) และ
+        // เอกสารถูก soft delete เท่านั้น ⇒ constraint ไม่มีวันทำงาน — คง FK บนใบซ่อมไว้เป็น
+        // ร่องรอยตรวจย้อน (ใบซ่อมเองก็ถูก soft delete ในรอบเดียวกัน)
+        if (expenseDocs.length) {
+          if (expenseJeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: expenseJeIds } },
+            });
+            await tx.expenseDocument.updateMany({
+              where: { id: { in: expenseDocs.map((d) => d.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: expenseJeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: expenseJeIds } } });
+          }
+          await tx.expenseDocument.updateMany({
+            where: { id: { in: expenseDocs.map((d) => d.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+        if (oiDocs.length) {
+          if (oiJeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: oiJeIds } },
+            });
+            await tx.otherIncome.updateMany({
+              where: { id: { in: oiDocs.map((d) => d.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: oiJeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: oiJeIds } } });
+          }
+          await tx.otherIncome.updateMany({
+            where: { id: { in: oiDocs.map((d) => d.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
         // RepairStatusLog ไม่มี deletedAt (เป็น log) ⇒ hard · RepairTicket มี ⇒ soft
         await tx.repairStatusLog.deleteMany({ where: { ticketId: { in: rows.map((r) => r.id) } } });
         await tx.repairTicket.updateMany({
@@ -168,10 +239,16 @@ export const repairSeeder: DomainSeeder = {
       });
     }
     return {
-      removed: { ใบซ่อม: rows.length, 'log สถานะใบซ่อม (ลบถาวร)': logs.length },
-      warnings: rows.some((r) => r.expenseDocumentId || r.otherIncomeId || r.replacementContractId)
+      removed: {
+        ใบซ่อม: rows.length,
+        'log สถานะใบซ่อม (ลบถาวร)': logs.length,
+        'ใบค่าใช้จ่ายจากใบซ่อม (ไม่มี marker — ตามจาก FK)': expenseDocs.length,
+        'ใบรายได้อื่นจากใบซ่อม (ไม่มี marker — ตามจาก FK)': oiDocs.length,
+        'รายการบัญชีของเอกสารใบซ่อม (ลบถาวร)': expenseJeIds.length + oiJeIds.length,
+      },
+      warnings: rows.some((r) => r.replacementContractId)
         ? [
-            'ใบซ่อมบางใบสร้างเอกสารบัญชี/สัญญาทดแทนไว้แล้ว (ตอนปิดใบหรือเปลี่ยนเครื่อง) — เอกสารเหล่านั้นไม่มี marker ทดสอบ ต้องยกเลิกในหน้าจอเอง',
+            'ใบซ่อมบางใบผูกสัญญาทดแทน (replacementContractId) จาก flow เปลี่ยนเครื่อง — สัญญานั้นไม่มี marker ทดสอบและ cleanup นี้ไม่แตะ ต้องยกเลิกในหน้าจอเอง',
           ]
         : [],
     };

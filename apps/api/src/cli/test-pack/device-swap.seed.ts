@@ -88,9 +88,24 @@ export const deviceSwapSeeder: DomainSeeder = {
     // ทิ้งสัญญา EXCH- ค้างถาวร ⇒ ข้ามใบพวกนี้พร้อมเตือน ให้คนกดยกเลิกในหน้าจอก่อนแล้วล้างซ้ำ
     const blocked = rows.filter((r) => r.newContractId);
     const sweepable = rows.filter((r) => !r.newContractId);
+    // ตั้งชื่อสัญญา EXCH- ด้วยเลขสัญญาจริง (ไม่กรอง deletedAt — ใช้รายงานเท่านั้น)
+    const blockedContracts = blocked.length
+      ? await ctx.prisma.contract.findMany({
+          where: {
+            id: { in: blocked.map((r) => r.newContractId).filter((x): x is string => !!x) },
+          },
+          select: { id: true, contractNumber: true },
+        })
+      : [];
+    const contractName = (id: string | null) =>
+      blockedContracts.find((c) => c.id === id)?.contractNumber ?? id ?? '(ไม่ทราบ)';
     for (const r of rows)
       console.log(
-        `     คำขอ ${r.id} [${r.status}]${r.newContractId ? ' — มีสัญญาใหม่เกาะอยู่ (ข้าม ไม่ล้าง)' : ''}`,
+        `     คำขอ ${r.id} [${r.status}]${
+          r.newContractId
+            ? ` — มีสัญญาใหม่ ${contractName(r.newContractId)} เกาะอยู่ (ข้าม ไม่ล้าง)`
+            : ''
+        }`,
       );
     if (!dryRun && sweepable.length) {
       await ctx.prisma.contractExchangeRequest.updateMany({
@@ -100,10 +115,25 @@ export const deviceSwapSeeder: DomainSeeder = {
     }
     return {
       removed: { คำขอเปลี่ยนเครื่อง: sweepable.length },
-      warnings: blocked.map(
-        (r) =>
-          `คำขอ ${r.id} ถูกอนุมัติไปแล้ว (สัญญาใหม่ ${r.newContractId}) — ไม่ล้างให้ เพราะสัญญา EXCH- ไม่มี marker ทดสอบ: กดยกเลิกเปลี่ยนเครื่องในหน้าจอก่อน แล้วรัน cleanup ซ้ำ`,
-      ),
+      warnings: [
+        // ใบที่อนุมัติแล้ว = ข้ามเสมอ — soft delete คำขอจะตัดเส้นทางยกเลิกของหน้าจอ (ดูคอมเมนต์บน)
+        ...blocked.map(
+          (r) =>
+            `คำขอ ${r.id} ถูกอนุมัติไปแล้ว (สัญญาใหม่ ${contractName(r.newContractId)}) — ไม่ล้างให้ เพราะสัญญา EXCH- ไม่มี marker ทดสอบ: กดยกเลิกเปลี่ยนเครื่องในหน้าจอก่อน แล้วรัน cleanup ซ้ำ`,
+        ),
+        // approvePriced โคลน PDPAConsent ให้สัญญาใหม่ (contract-exchange.service.ts:654) —
+        // pdpa_consents อยู่ใน KEEP_TABLES ของ factory reset เพราะเป็นหลักฐานความยินยอมตาม
+        // กฎหมาย ⇒ ห้ามให้เครื่องมือ cleanup ลบเอง เตือนให้คนตรวจแทน
+        ...(blocked.length
+          ? [
+              `สัญญาใหม่จากการอนุมัติ (${blocked
+                .map((r) => contractName(r.newContractId))
+                .join(
+                  ', ',
+                )}) อาจมีแถว PDPAConsent ที่ถูกโคลนจากสัญญาเดิมค้างอยู่ — เป็นหลักฐานความยินยอมตามกฎหมาย cleanup นี้จะไม่ลบให้ ต้องให้คนตรวจสอบก่อนลบเอง`,
+            ]
+          : []),
+      ],
     };
   },
 };

@@ -3314,28 +3314,143 @@ export const repairSeeder: DomainSeeder = {
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.repairTicket.findMany({
       where: { ticketNumber: { startsWith: `${TEST_DOC_PREFIX}RT-` }, deletedAt: null },
-      select: { id: true, ticketNumber: true, expenseDocumentId: true, otherIncomeId: true },
+      select: {
+        id: true,
+        ticketNumber: true,
+        expenseDocumentId: true,
+        otherIncomeId: true,
+        replacementContractId: true,
+      },
     });
+    // log สถานะเกิดตอนผู้ทดสอบกดเปลี่ยนสถานะ (repair-ticket-lifecycle.service.ts) — ไม่มี marker
+    // ติดตัว ตามได้จาก FK ticketId เท่านั้น และไม่มี deletedAt (append-only log) ⇒ hard delete
+    const logs = rows.length
+      ? await ctx.prisma.repairStatusLog.findMany({
+          where: { ticketId: { in: rows.map((r) => r.id) } },
+          select: { id: true, ticketId: true },
+        })
+      : [];
+    // ปิดใบซ่อม (CLOSED) สร้าง ExpenseDocument (payer SHOP) / OtherIncome (payer CUSTOMER)
+    // โดยไม่มี marker ทดสอบ — โดเมน expenses/other-income กรองด้วย note marker จึงมองไม่เห็น
+    // ⇒ ตามจาก FK ตรงบนใบซ่อม (expenseDocumentId/otherIncomeId — @unique ทั้งคู่) แล้วกวาด
+    // ด้วยลำดับเดียวกับสองโดเมนนั้นเป๊ะ (JE hard-delete ก่อน แล้วค่อย soft-delete เอกสาร)
+    const expenseIds = rows.map((r) => r.expenseDocumentId).filter((x): x is string => !!x);
+    const otherIncomeIds = rows.map((r) => r.otherIncomeId).filter((x): x is string => !!x);
+    const expenseDocs = expenseIds.length
+      ? await ctx.prisma.expenseDocument.findMany({
+          where: { id: { in: expenseIds }, deletedAt: null },
+          select: { id: true, number: true, journalEntryId: true },
+        })
+      : [];
+    const oiMarked = otherIncomeIds.length
+      ? await ctx.prisma.otherIncome.findMany({
+          where: { id: { in: otherIncomeIds }, deletedAt: null },
+          select: { id: true, docNumber: true, journalEntryId: true },
+        })
+      : [];
+    // mirror other-income.seed.ts: ใบกลับรายการ (-R) เขียนทับ customerNote ⇒ ตามด้วย FK reversesId
+    const oiReversals = oiMarked.length
+      ? await ctx.prisma.otherIncome.findMany({
+          where: { reversesId: { in: oiMarked.map((d) => d.id) }, deletedAt: null },
+          select: { id: true, docNumber: true, journalEntryId: true },
+        })
+      : [];
+    const oiDocs = [...oiMarked, ...oiReversals];
+    const expenseJeIds = expenseDocs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
+    const oiJeIds = oiDocs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
     for (const r of rows) {
-      const extra = [r.expenseDocumentId ? 'มีใบค่าใช้จ่าย' : '', r.otherIncomeId ? 'มีใบรายได้อื่น' : ''].filter(Boolean).join(' + ');
+      const logCount = logs.filter((l) => l.ticketId === r.id).length;
+      const extra = [
+        r.expenseDocumentId ? 'มีใบค่าใช้จ่าย (กวาดด้วย)' : '',
+        r.otherIncomeId ? 'มีใบรายได้อื่น (กวาดด้วย)' : '',
+        r.replacementContractId ? 'มีสัญญาทดแทน' : '',
+        logCount ? `log สถานะ ${logCount} รายการ (ลบถาวร)` : '',
+      ]
+        .filter(Boolean)
+        .join(' + ');
       console.log(`     ${r.ticketNumber}${extra ? ` (${extra})` : ''}`);
     }
+    // เอกสารพวกนี้ไม่มี marker — บรรทัดนี้คือช่องทางเดียวที่ผู้รันเห็นเลขเอกสารก่อนมันถูกกวาด
+    // ⇒ พิมพ์เสมอทั้ง dry-run และ live
+    for (const d of expenseDocs)
+      console.log(`     ใบค่าใช้จ่ายจากใบซ่อม ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    for (const d of oiDocs)
+      console.log(`     ใบรายได้อื่นจากใบซ่อม ${d.docNumber}${d.journalEntryId ? ' (มี JE)' : ''}`);
     if (!dryRun && rows.length) {
       await ctx.prisma.$transaction(async (tx) => {
+        // FK expenseDocumentId/otherIncomeId อยู่ฝั่ง repair_tickets (ON DELETE SET NULL) และ
+        // เอกสารถูก soft delete เท่านั้น ⇒ constraint ไม่มีวันทำงาน — คง FK บนใบซ่อมไว้เป็น
+        // ร่องรอยตรวจย้อน (ใบซ่อมเองก็ถูก soft delete ในรอบเดียวกัน)
+        if (expenseDocs.length) {
+          if (expenseJeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: expenseJeIds } },
+            });
+            await tx.expenseDocument.updateMany({
+              where: { id: { in: expenseDocs.map((d) => d.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: expenseJeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: expenseJeIds } } });
+          }
+          await tx.expenseDocument.updateMany({
+            where: { id: { in: expenseDocs.map((d) => d.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+        if (oiDocs.length) {
+          if (oiJeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: oiJeIds } },
+            });
+            await tx.otherIncome.updateMany({
+              where: { id: { in: oiDocs.map((d) => d.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: oiJeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: oiJeIds } } });
+          }
+          await tx.otherIncome.updateMany({
+            where: { id: { in: oiDocs.map((d) => d.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
         // RepairStatusLog ไม่มี deletedAt (เป็น log) ⇒ hard · RepairTicket มี ⇒ soft
         await tx.repairStatusLog.deleteMany({ where: { ticketId: { in: rows.map((r) => r.id) } } });
-        await tx.repairTicket.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+        await tx.repairTicket.updateMany({
+          where: { id: { in: rows.map((r) => r.id) } },
+          data: { deletedAt: new Date() },
+        });
       });
     }
     return {
-      removed: { 'ใบซ่อม': rows.length },
-      warnings: rows.some((r) => r.expenseDocumentId || r.otherIncomeId)
-        ? ['ใบซ่อมบางใบสร้างเอกสารบัญชีไว้แล้ว (ตอนปิดใบ) — เอกสารนั้นถูกล้างโดยโดเมน expenses/other-income ถ้ามี marker ไม่งั้นต้องยกเลิกในหน้าจอเอง']
+      removed: {
+        ใบซ่อม: rows.length,
+        'log สถานะใบซ่อม (ลบถาวร)': logs.length,
+        'ใบค่าใช้จ่ายจากใบซ่อม (ไม่มี marker — ตามจาก FK)': expenseDocs.length,
+        'ใบรายได้อื่นจากใบซ่อม (ไม่มี marker — ตามจาก FK)': oiDocs.length,
+        'รายการบัญชีของเอกสารใบซ่อม (ลบถาวร)': expenseJeIds.length + oiJeIds.length,
+      },
+      warnings: rows.some((r) => r.replacementContractId)
+        ? [
+            'ใบซ่อมบางใบผูกสัญญาทดแทน (replacementContractId) จาก flow เปลี่ยนเครื่อง — สัญญานั้นไม่มี marker ทดสอบและ cleanup นี้ไม่แตะ ต้องยกเลิกในหน้าจอเอง',
+          ]
         : [],
     };
   },
 };
 ```
+
+> **หมายเหตุ (fix round 1, 2026-08-26) — ทำไมต้องมี sweep เอกสารจากใบซ่อม:** การปิดใบซ่อม (CLOSED)
+> สร้าง `ExpenseDocument` (payer SHOP) / `OtherIncome` (payer CUSTOMER) โดยไม่มี marker ทดสอบ
+> (`repair-ticket-lifecycle.service.ts:379,405`) — โดเมน expenses/other-income กรองด้วย note marker
+> จึงมองไม่เห็นตลอดกาล และถ้าผู้ทดสอบโพสต์ JE จะค้างในสมุดถาวร ⇒ ตามจาก FK ตรงบนใบซ่อม
+> (`RepairTicket.expenseDocumentId`/`otherIncomeId` — `String? @unique`, FK อยู่ฝั่ง `repair_tickets`,
+> `ON DELETE SET NULL`; เอกสารถูก soft delete เท่านั้น constraint จึงไม่ทำงาน — ไม่ต้อง null FK).
+> ลำดับกวาด JE ต้อง mirror expenses/other-income เป๊ะ (journalPostAuditLog → null journalEntryId →
+> journalLine → journalEntry) + ใบกลับรายการ -R ของ OtherIncome ตามด้วย `reversesId`.
+> เลขเอกสารต้องพิมพ์ทั้ง dry-run และ live — เป็นช่องทางเดียวที่ผู้รันเห็นมัน (ไม่มี marker).
+> **ผู้ที่คัดลอกบล็อกเวอร์ชันก่อนหน้า (ไม่มี sweep นี้) จะเปิดรูเดิมกลับมา.**
 
 - [ ] **Step 2: เขียน `inspections.seed.ts`**
 
@@ -3471,15 +3586,71 @@ export const deviceSwapSeeder: DomainSeeder = {
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.contractExchangeRequest.findMany({
       where: { conditionNote: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
-      select: { id: true },
+      select: { id: true, status: true, newContractId: true },
     });
-    if (!dryRun && rows.length) {
-      await ctx.prisma.contractExchangeRequest.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    // ใบที่ถูกอนุมัติแล้วมีสัญญาใหม่ EXCH- (ไม่มี marker) เกาะอยู่ — soft delete คำขอตอนนี้
+    // จะตัดเส้นทางยกเลิกเปลี่ยนเครื่องของหน้าจอ (ExchangeCancelService หา request ไม่เจอ)
+    // ทิ้งสัญญา EXCH- ค้างถาวร ⇒ ข้ามใบพวกนี้พร้อมเตือน ให้คนกดยกเลิกในหน้าจอก่อนแล้วล้างซ้ำ
+    const blocked = rows.filter((r) => r.newContractId);
+    const sweepable = rows.filter((r) => !r.newContractId);
+    // ตั้งชื่อสัญญา EXCH- ด้วยเลขสัญญาจริง (ไม่กรอง deletedAt — ใช้รายงานเท่านั้น)
+    const blockedContracts = blocked.length
+      ? await ctx.prisma.contract.findMany({
+          where: {
+            id: { in: blocked.map((r) => r.newContractId).filter((x): x is string => !!x) },
+          },
+          select: { id: true, contractNumber: true },
+        })
+      : [];
+    const contractName = (id: string | null) =>
+      blockedContracts.find((c) => c.id === id)?.contractNumber ?? id ?? '(ไม่ทราบ)';
+    for (const r of rows)
+      console.log(
+        `     คำขอ ${r.id} [${r.status}]${
+          r.newContractId
+            ? ` — มีสัญญาใหม่ ${contractName(r.newContractId)} เกาะอยู่ (ข้าม ไม่ล้าง)`
+            : ''
+        }`,
+      );
+    if (!dryRun && sweepable.length) {
+      await ctx.prisma.contractExchangeRequest.updateMany({
+        where: { id: { in: sweepable.map((r) => r.id) } },
+        data: { deletedAt: new Date() },
+      });
     }
-    return { removed: { 'คำขอเปลี่ยนเครื่อง': rows.length }, warnings: [] };
+    return {
+      removed: { คำขอเปลี่ยนเครื่อง: sweepable.length },
+      warnings: [
+        // ใบที่อนุมัติแล้ว = ข้ามเสมอ — soft delete คำขอจะตัดเส้นทางยกเลิกของหน้าจอ (ดูคอมเมนต์บน)
+        ...blocked.map(
+          (r) =>
+            `คำขอ ${r.id} ถูกอนุมัติไปแล้ว (สัญญาใหม่ ${contractName(r.newContractId)}) — ไม่ล้างให้ เพราะสัญญา EXCH- ไม่มี marker ทดสอบ: กดยกเลิกเปลี่ยนเครื่องในหน้าจอก่อน แล้วรัน cleanup ซ้ำ`,
+        ),
+        // approvePriced โคลน PDPAConsent ให้สัญญาใหม่ (contract-exchange.service.ts:654) —
+        // pdpa_consents อยู่ใน KEEP_TABLES ของ factory reset เพราะเป็นหลักฐานความยินยอมตาม
+        // กฎหมาย ⇒ ห้ามให้เครื่องมือ cleanup ลบเอง เตือนให้คนตรวจแทน
+        ...(blocked.length
+          ? [
+              `สัญญาใหม่จากการอนุมัติ (${blocked
+                .map((r) => contractName(r.newContractId))
+                .join(
+                  ', ',
+                )}) อาจมีแถว PDPAConsent ที่ถูกโคลนจากสัญญาเดิมค้างอยู่ — เป็นหลักฐานความยินยอมตามกฎหมาย cleanup นี้จะไม่ลบให้ ต้องให้คนตรวจสอบก่อนลบเอง`,
+            ]
+          : []),
+      ],
+    };
   },
 };
 ```
+
+> **หมายเหตุ (fix round 1, 2026-08-26) — ทำไมข้ามใบที่อนุมัติแล้ว + เตือน PDPA:** (1) soft delete
+> คำขอที่มี `newContractId` จะตัดเส้นทางยกเลิกเปลี่ยนเครื่องของหน้าจอ (`ExchangeCancelService`
+> หา request ไม่เจอ) ทิ้งสัญญา EXCH- (ไม่มี marker) ค้างถาวร ⇒ ข้าม + เตือนพร้อม id คำขอ/เลขสัญญา
+> ให้กดยกเลิกในหน้าจอก่อนแล้วรัน cleanup ซ้ำ. (2) `approvePriced` โคลน `PDPAConsent` ให้สัญญาใหม่
+> (`contract-exchange.service.ts:654`) — `pdpa_consents` อยู่ใน KEEP_TABLES ของ factory reset
+> เพราะเป็นหลักฐานความยินยอมตามกฎหมาย ⇒ **ห้ามลบอัตโนมัติ** เตือนให้คนตรวจก่อนลบเองเท่านั้น.
+> **ผู้ที่คัดลอกบล็อกเวอร์ชันก่อนหน้า (soft delete ทุกใบ ไม่มี warning) จะเปิดรูเดิมกลับมา.**
 
 - [ ] **Step 4: ยืนยันฟิลด์ที่อาจไม่ตรง**
 

@@ -22,8 +22,8 @@ interface CachedUser {
   role: string;
   branchId: string | null;
   isActive: boolean;
-  accessibleCompanies: string[];      // SP7.1
-  primaryCompany: string | null;      // SP7.1
+  accessibleCompanies: string[]; // SP7.1
+  primaryCompany: string | null; // SP7.1
   cachedAt: number;
 }
 
@@ -45,8 +45,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       secretOrKey: configService.get<string>('JWT_SECRET')!,
     });
 
-    // Clean expired cache entries every 60 seconds
-    setInterval(() => this.cleanExpiredCache(), 60_000);
+    // Clean expired cache entries every 60 seconds.
+    // unref(): timer นี้ต้องไม่ยื้อ event loop — CLI ที่ import AuthModule ทางอ้อม
+    // (test-pack drive mode ผ่าน ExpenseDocumentsModule → AuthModule) จะ process ไม่จบ
+    // ถ้า interval ถูก ref ไว้ (พบจาก smoke test ของ TestPackModule, Task 12).
+    // ฝั่ง HTTP server พฤติกรรมเดิมทุกประการ — listener ยื้อ process อยู่แล้ว.
+    setInterval(() => this.cleanExpiredCache(), 60_000).unref();
   }
 
   async validate(payload: JwtPayload) {
@@ -89,8 +93,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         branchId: true,
         isActive: true,
-        accessibleCompanies: true,   // SP7.1
-        primaryCompany: true,        // SP7.1
+        accessibleCompanies: true, // SP7.1
+        primaryCompany: true, // SP7.1
       },
     });
 

@@ -19,12 +19,29 @@
 - **R2 — เฟส 1-2 ต้องหยุดที่สถานะสุดท้าย "ก่อนเงินขยับ"** ห้าม seed `Booking.status='PAID'`, `FinanceReceivable.receivedAmount>0`, `TradeIn.status='ACCEPTED'`, `ExpenseDocument.status` เป็น `ACCRUAL`/`POSTED`, `OtherIncome.status='POSTED'`, `EquityDocument.status='POSTED'`, `FixedAsset.status='POSTED'`
 - **R3 — ห้าม import `AppModule`** ในโค้ดใด ๆ ของ test-pack (มี `ScheduleModule.forRoot()` ที่จะลงทะเบียน cron ทั้งหมด) เฟส 3 ใช้ `TestPackModule` เท่านั้น
 - **Marker บังคับ 3 ชั้น** — เลขเอกสารที่เราคุมเอง = prefix `TEST-` · เลขที่ `DocNumberService` คุม (`EX-` `OI-` `EQ-` `ASSET-` `RT-`) = **ห้ามแตะเลข** ให้ marker อยู่ที่ฟิลด์ข้อความ ขึ้นต้น `[ทดสอบระบบ]` · ทะเบียนหลัก = ชื่อขึ้นต้น `ทดสอบระบบ`
+  **ข้อยกเว้นเดียว: `FixedAsset.assetCode` ใช้ลำดับแยก `TESTASSET-`** เพราะรหัสจริงเป็น**รายหมวด** (`COMP-001`) ไม่ใช่รายวัน ⇒ ถ้าเอาไปตั้งให้แถวทดสอบ เลขนั้นจะถูกเผาถาวร (soft-delete แต่ `@unique` ยังกันอยู่) · `docNo` (`ASSET-YYMM-`) ยังเดินตามลำดับจริงเหมือนเอกสารอื่น
 - **Guard shape** ต้องเหมือน `seed-test-contracts.cli.ts` ทุกประการ — `EXPECTED_DB_NAME` เทียบ `SELECT current_database()` · dry-run เป็น default · `CONFIRM_SEED` / `CONFIRM_CLEANUP` = `YES_I_AM_SURE` · `NODE_ENV=production` ต้องมี `ALLOW_PROD_SEED` / `ALLOW_PROD_CLEANUP` เพิ่ม
 - **Re-run safe บังคับ** — ทุกโดเมนต้องเช็ค marker ก่อนสร้าง รันซ้ำแล้วต้องไม่เกิดแถวซ้ำ
 - **Money = `Decimal`** ห้ามใช้ `Number()` กับจำนวนเงิน (`.claude/rules/database.md`)
 - **ข้อความ user-facing เป็นภาษาไทย** รวม log ที่ผู้ใช้อ่าน
 - **Prettier**: `semi: true, singleQuote: true, printWidth: 100, tabWidth: 2`
 - **เทสเป็น jest unit spec ที่ไม่แตะ DB** — ทดสอบ pure function ที่ export ออกมา (pattern เดียวกับ `backfill-employee-profiles.cli.spec.ts`) ไฟล์ `*.spec.ts` ใต้ `src/` ถูกจับโดย `testRegex: ".*\\.spec\\.ts$"` อัตโนมัติ
+- **โดเมน seeder ไม่มี unit test โดยเจตนา — พิสูจน์ด้วย round-trip กับ DB จริงแทน**
+  (Task 3 · 5 · 6 · 7 · 8 · 9 · 10 จึงไม่มี step เขียนเทส และ **ไม่ถือเป็นข้อบกพร่องตอน review**)
+  เหตุผล: ตัวโดเมนเกือบทั้งหมดเป็น `prisma.X.create()` ⇒ unit test ต้อง mock `PrismaService`
+  ซึ่งทดสอบได้แค่ *"mock ถูกเรียกด้วย argument ชุดนี้"* — **ไม่ได้ทดสอบว่าชื่อฟิลด์ตรง schema จริง
+  หรือ enum มีค่านั้นจริง** ซึ่งเป็นบั๊กคลาสที่เกิดขึ้นจริงในแผนฉบับแรก (5 จุด ดูหัวข้อ "รอบแก้หลัง
+  scrutinize") · round-trip `seed → cleanup → seed ซ้ำ` กับ DB จริงจับได้ทั้ง 5 จุดนั้น
+  **pure function ยังต้องมี unit test เสมอ** — `_context` `_helpers` `_registry` `_preflight` `_docgen`
+  (Task 1 · 4 · 11 · 13)
+- **เช็ค `deletedAt` ของทุกโมเดลก่อนเลือกวิธีลบ** — มี `deletedAt` = soft delete เสมอ (`.claude/rules/database.md`: *"ใช้ `deletedAt` — **ห้าม hard delete** เด็ดขาด"*) · **ข้อยกเว้นเดียว** คือ `JournalEntry`/`JournalLine`/`JournalPostAuditLog` ที่ hard delete โดยเจตนาเพื่อคืนงบทดลอง (precedent: `cleanup-test-contracts.cli.ts`) และตารางลูกที่ไม่มี `deletedAt` เลย
+- **ห้ามเดาชื่อฟิลด์** — ก่อนเขียน `create` ของโมเดลไหน ให้หาโมเดลนั้นใน `apps/api/prisma/seed.ts` ก่อน (Task 0) ถ้าไม่มีจึงค่อยอ่าน `schema.prisma`
+
+> **บทเรียนที่ทำให้มีสองข้อสุดท้าย** — แผนฉบับแรกถูก scrutinize แล้วพบ compile error 3 จุด
+> (`AssetsModule` ที่ไม่มีอยู่ · `ContractExchangeRequest.reason` ที่ไม่มีในโมเดล ·
+> `equityShareholderLine.equityDocumentId` ที่ชื่อจริงคือ `documentId`) + hard delete ผิดกฎ 5 จุด
+> + `POStatus.PARTIAL` ที่ค่าจริงคือ `PARTIALLY_RECEIVED` — **ทั้งหมดเกิดจากการเดาชื่อฟิลด์
+> ทั้งที่ `prisma/seed.ts` มีของจริงอยู่แล้ว 1,647 บรรทัด**
 
 ---
 
@@ -47,6 +64,65 @@
 | `docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md` | generate จาก registry (Task 13) |
 
 **ไม่แตะ:** `seed-test-contracts.cli.ts` และ `cleanup-test-contracts.cli.ts` — Task 3 ห่อมันผ่าน export ที่มีอยู่แล้วเท่านั้น
+
+---
+
+### Task 0: Harvest ของจริงจาก `prisma/seed.ts` (อ่านอย่างเดียว ไม่แก้โค้ด)
+
+**Files:** ไม่สร้าง/แก้ไฟล์ใด — ผลลัพธ์คือบันทึกที่เอาไปใช้ใน Task 7-9
+
+**Interfaces:** ไม่มี — task นี้ผลิต *ความรู้* ไม่ใช่โค้ด
+
+**ทำไมต้องมี task นี้:** `apps/api/prisma/seed.ts` (1,647 บรรทัด) มี `create` ที่**รันผ่านจริง**สำหรับ
+7 ใน 19 โดเมนที่แผนนี้จะสร้าง การคัดรูป `data` มาจากของจริงตัดปัญหาเดาชื่อฟิลด์ทิ้งทั้งหมด
+
+| โดเมนในแผน | สิ่งที่ dev seed มีให้ harvest |
+|---|---|
+| `suppliers-po` (Task 7) | `supplier` · `purchaseOrder` · `poItemsData` (มี `brand` `model` `color` `storage` `category` `quantity` `unitPrice` `receivedQty`) · `goodsReceiving` |
+| `stock-ops` (Task 7) | `stockAdjustment` · **`reorderPoint`** · `stockAlert` · `stockCount` + `items` · `stockTransfer` |
+| `inspections` (Task 9) | `inspection` (`inspectedAt` `overallGrade` `isCompleted` `notes`) · `inspectionResult` · `inspectionTemplate` |
+| `applications` (Task 8) | `creditCheck` |
+
+- [ ] **Step 1: อ่านบล็อกที่เกี่ยวข้อง**
+
+```bash
+sed -n '990,1060p' apps/api/prisma/seed.ts    # inspections + results
+sed -n '1140,1230p' apps/api/prisma/seed.ts   # stockAdjustment + reorderPoint + stockAlert + stockCount
+sed -n '300,360p' apps/api/prisma/seed.ts     # purchaseOrder + poItemsData
+grep -n -B4 -A12 "prisma.creditCheck.create" apps/api/prisma/seed.ts
+grep -n -A12 "prisma.goodsReceiving.create" apps/api/prisma/seed.ts
+grep -n -A10 "prisma.stockTransfer.create" apps/api/prisma/seed.ts
+```
+
+- [ ] **Step 2: จดค่าที่ยืนยันแล้ว (ใช้ต่อใน Task 7-9)**
+
+ค่าที่ตรวจแล้วตอนเขียนแผน — ยืนยันซ้ำว่ายังตรง:
+
+| สิ่งที่ต้องรู้ | ค่าจริง |
+|---|---|
+| `POStatus` | `DRAFT` `APPROVED` `ORDERED` `PENDING` `PARTIALLY_RECEIVED` `FULLY_RECEIVED` `CANCELLED` — **ไม่มี `PARTIAL`** |
+| `StockCount.status` | `String` ธรรมดา (ไม่ใช่ enum) ค่าที่ใช้: `DRAFT` `IN_PROGRESS` `COMPLETED` `CANCELLED` |
+| `StockCountItem` | `productId` · `expectedStatus` (String) · `actualFound` · `scannedImei` |
+| `StockAdjustment` | `productId` `branchId` `reason` `previousStatus` `notes` `adjustedById` `approvedById` — **ผู้อนุมัติต้องเป็นคนละคนกับผู้ปรับ** |
+| `StockAlert` | ต้องมี `reorderPointId` ก่อน ⇒ สร้าง `ReorderPoint` นำเสมอ · ฟิลด์: `brand` `model` `storage` `category` `branchId` `currentStock` `minQuantity` `reorderQuantity` `status` |
+| `ReorderPoint` | `brand` `model` `storage` `category` `branchId` `minQuantity` `reorderQuantity` |
+| `Inspection` | `productId` `templateId` `inspectorId` `inspectedAt` `overallGrade` `isCompleted` `notes` |
+
+- [ ] **Step 3: ยืนยันโมเดลไหนมี `deletedAt` (ตัวตัดสิน soft vs hard delete)**
+
+```bash
+for m in StockCount StockCountItem StockTransfer StockAdjustment StockAlert ReorderPoint \
+         RepairTicket OnlineOrder OnlineInstallmentApplication ProductReservation \
+         BookingItem POItem GoodsReceiving Inspection InspectionResult; do
+  printf "%-30s " "$m"
+  awk "/^model $m /,/^}/" apps/api/prisma/schema.prisma | grep -q deletedAt && echo "soft" || echo "hard"
+done
+```
+Expected (ตรวจแล้วตอนเขียนแผน): `StockCount` `StockCountItem` `RepairTicket` `OnlineOrder`
+`OnlineInstallmentApplication` `Inspection` = **soft** · `ProductReservation` `BookingItem` = **hard**
+ถ้าผลไม่ตรงกับที่โค้ดใน Task 7-9 ใช้ ให้ยึดผลจากคำสั่งนี้
+
+**ไม่มี commit สำหรับ task นี้** — เป็นการอ่านล้วน ๆ
 
 ---
 
@@ -158,9 +234,13 @@ export interface SeedRefs {
   /** สาขาที่สอง — ใช้กับโอนย้ายสต็อก; null เมื่อมีสาขาเดียว (โดเมนนั้นจะข้ามเอง) */
   secondBranchId: string | null;
   salespersonId: string;
-  /** OWNER หรือ BRANCH_MANAGER — ผู้บันทึก/ผู้ตรวจทั่วไป */
+  /**
+   * BRANCH_MANAGER (ถ้ามี) หรือ OWNER — ผู้บันทึก/ผู้ตรวจทั่วไป
+   * ⚠️ ไม่การันตีว่าต่างจาก ownerId — ระบบที่มี OWNER คนเดียว (ไม่มี BM) จะได้คนเดียวกัน
+   * ทั้งสองช่อง; งานที่ต้องแยกผู้ทำ/ผู้อนุมัติ (4-eyes) ต้องเช็ค reviewerId !== ownerId เอง
+   */
   reviewerId: string;
-  /** OWNER เท่านั้น — ใช้เป็นผู้อนุมัติที่ต้องต่างจากผู้บันทึก */
+  /** OWNER เท่านั้น — ผู้อนุมัติทั่วไป (อาจเป็นคนเดียวกับ reviewerId — ดูหมายเหตุด้านบน) */
   ownerId: string;
   shopCompanyId: string | null;
   financeCompanyId: string | null;
@@ -244,12 +324,45 @@ export function bkkMidnight(now: Date): Date {
 
 export async function resolveRefs(prisma: PrismaService): Promise<SeedRefs> {
   const [branches, sales, reviewer, owner, shopCo, financeCo] = await Promise.all([
-    prisma.branch.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { createdAt: 'asc' }, take: 2 }),
-    prisma.user.findFirst({ where: { role: 'SALES', deletedAt: null }, select: { id: true } }),
-    prisma.user.findFirst({ where: { role: { in: ['OWNER', 'BRANCH_MANAGER'] }, deletedAt: null }, select: { id: true } }),
-    prisma.user.findFirst({ where: { role: 'OWNER', deletedAt: null }, select: { id: true } }),
-    prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } }),
-    prisma.companyInfo.findFirst({ where: { companyCode: 'FINANCE', deletedAt: null }, select: { id: true } }),
+    prisma.branch.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'asc' },
+      take: 2,
+    }),
+    prisma.user.findFirst({
+      where: { role: 'SALES', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    // reviewer: เลือก BRANCH_MANAGER ก่อนเสมอ (คนละคนกับ ownerId โดยธรรมชาติ) แล้วค่อย fallback
+    // เป็น OWNER เมื่อไม่มี BM เลย — ทุก query ใส่ orderBy ให้ได้คนเดิมทุกรอบ ไม่แล้วแต่ Postgres
+    // ⚠️ interface นี้ **ไม่การันตี** ว่า reviewerId ≠ ownerId: ระบบที่มีผู้ใช้ OWNER คนเดียว
+    // (ไม่มี BM) จะได้คนเดียวกันทั้งสองช่อง — โดเมนที่ต้องการ 4-eyes ต้องเช็คเองก่อนใช้
+    (async () =>
+      (await prisma.user.findFirst({
+        where: { role: 'BRANCH_MANAGER', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      })) ??
+      prisma.user.findFirst({
+        where: { role: 'OWNER', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      }))(),
+    prisma.user.findFirst({
+      where: { role: 'OWNER', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+    }),
+    prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    }),
   ]);
 
   const missing: string[] = [];
@@ -596,7 +709,18 @@ async function main(): Promise<void> {
 
   try {
     const now = new Date();
-    const refs = await resolveRefs(prisma);
+    // S5 (final fix 2026-08-26): cleanup ทั้ง 19 โดเมนไม่อ่าน ctx.refs เลย — resolveRefs
+    // โยนข้อความฝั่ง "สร้าง" เมื่อขาด SALES/OWNER/สาขา ซึ่งเคยบล็อกการล้างทั้งชุดเพราะ
+    // precondition ที่ไม่ได้ใช้ ⇒ resolve แบบ best-effort: ได้ก็ใช้ ไม่ได้ก็ log แล้วเดินต่อ
+    // ด้วย SeedRefs ค่าว่าง (คง shape ของ SeedContext ไว้ให้ seeders ตามเดิม)
+    let refs: SeedRefs;
+    try {
+      refs = await resolveRefs(prisma);
+    } catch (err) {
+      console.log(`[cleanup-test-pack] ℹ ข้อมูลอ้างอิงไม่ครบ (${err instanceof Error ? err.message : String(err)})`);
+      console.log('[cleanup-test-pack] ℹ เดินต่อได้ — cleanup ค้นหาข้อมูลทดสอบจาก marker เท่านั้น ไม่ใช้ข้อมูลอ้างอิงชุดนี้');
+      refs = { branchId: '', branchName: '', secondBranchId: null, salespersonId: '', reviewerId: '', ownerId: '', shopCompanyId: null, financeCompanyId: null };
+    }
     const ctx: SeedContext = { prisma, refs, dryRun, today: bkkMidnight(now), dateStr: bkkDateStr(now) };
 
     for (const d of domains) {
@@ -715,9 +839,17 @@ git commit -m "feat(test-pack): orchestrator ขาล้าง + พิสู�
 - [ ] **Step 1: เขียน `contracts.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 import { cleanupTestContracts } from '../cleanup-test-contracts.cli';
-import { TEST_CONTRACT_PREFIX, TEST_CUSTOMER_ADDRESS, TEST_IMEI_PREFIX, seedTestContracts } from '../seed-test-contracts.cli';
+import {
+  TEST_CONTRACT_PREFIX,
+  TEST_CUSTOMER_ADDRESS,
+  TEST_IMEI_PREFIX,
+  seedTestContracts,
+} from '../seed-test-contracts.cli';
+import { round2 } from './_helpers';
 
 /** จำนวน scenario ของ seeder เดิม — ตรงกับ SCENARIOS.length ใน seed-test-contracts.cli.ts */
 const CONTRACT_COUNT = 7;
@@ -739,17 +871,317 @@ async function adaptRefs(ctx: SeedContext) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// สัญญา DRAFT (workflow APPROVED) 1 ใบ — input ของโหมดเดินเรื่อง (DRIVE=1) ก้าว 1
+//
+// seeder เดิมสร้างทุก scenario เป็น ACTIVE/TERMINATED ตรง ๆ ⇒ ก้าว "เปิดสัญญาผ่อน"
+// ของ _drive.ts ไม่มีอะไรให้ activate และคิวรอจ่าย INTER-CO ว่างตลอด (ช่องว่างที่
+// Task 12 พบ). wrapper จึงสร้างสัญญา DRAFT เพิ่มเองที่นี่ — ห้ามแก้ CLI เดิม
+// (มันต้องรันเดี่ยวได้เหมือนเดิม). ตัว JE (1A + SHOP leg) เป็นงานของโหมดเดินเรื่อง
+// ผ่าน ContractWorkflowService.activate ของจริง — seeder ไม่โพสต์อะไรเอง (R1/R2).
+//
+// ด่านของ activate (contract-workflow.service.ts:341) ที่แถวนี้ต้องผ่านครบ:
+//   1. workflowStatus = APPROVED (:345) + status = DRAFT (:348)
+//   2. pdpaConsentId ไม่เป็น null (:353) → สร้าง PDPAConsent สถานะ GRANTED ผูกไว้
+//   3. verifyContractHash (:361) — contractHash = null ⇒ ข้ามตามทาง legacy (:143)
+//   4. ลายเซ็นครบ 4 ฝ่าย: CUSTOMER + COMPANY/STAFF + WITNESS_1 + WITNESS_2 (:364-376)
+//   5. ลูกค้าไม่มี birthDate ⇒ ไม่ติดด่านผู้ปกครอง (:379-387)
+//   6. เครื่องคู่สัญญา deletedAt = null + สถานะ RESERVED/IN_STOCK (:394-399, เช็คซ้ำใน tx
+//      :437-442) → สร้างเป็น RESERVED ของ SHOP (activate เป็นคนย้ายกรรมสิทธิ์ไป FINANCE)
+//   7. downPayment = 0 โดยเจตนา — ด่าน catch-up ShopDownPayment ใน activate เรียก
+//      resolveBranchCashAccount ซึ่ง throw ถ้าสาขาไม่ได้ตั้ง shopCashAccountCode;
+//      0 บาททำให้ก้าวเดินเรื่องไม่พึ่ง config สาขา และสมุดไม่ขาด JE เงินดาวน์
+//      (R1 ห้าม seeder โพสต์ JE — สัญญาดาวน์ 0 คือสัญญาที่สมุด "ครบ" โดยไม่ต้องโพสต์)
+//   8. ไม่สร้าง installment_schedules — activate สร้างเองเมื่อยังไม่มี
+//      (generateInstallmentSchedules) จาก createdAt + paymentDueDay ด้วยสูตร local-time
+//      เดียวกับ dueDate ของ Payment ด้านล่าง ⇒ สองตารางตรงกันโดยโครงสร้าง
+//   9. สิ่งที่ activate "ส่งออก" ไม่ใช่แค่สิ่งที่มันอ่าน: sendContractActivatedNotification
+//      (contract-workflow.service.ts) — ลูกค้าไม่มี lineIdFinance ⇒ ตกสาขา
+//      `else if (customer.phone)` แล้วส่ง SMS **จริง** ผ่าน NotificationsService.send
+//      (transport ข้ามให้เฉพาะ NODE_ENV !== 'production' — runbook prod ตั้ง
+//      NODE_ENV=production พอดี และ Customer.phone เป็นคอลัมน์ non-nullable) ⇒ เบอร์
+//      ลูกค้าทดสอบใช้ค่า **โทรไม่ได้** `TEST-00000NN` (S4, final fix 2026-08-26):
+//      provider ปฏิเสธ → NotificationLog FAILED — ตัดข้อความที่ต้นทาง แทนการพนันกับ
+//      block เบอร์ "สำรองตามธรรมเนียม" 08990000NN ซึ่งไม่ได้จองจริงกับ operator
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DRAFT_SELLING_PRICE = 19900;
+/** 80% ของราคาขาย — สัดส่วนเดียวกับเครื่องคู่สัญญาของ CLI เดิม (sellingPrice * 0.8) */
+const DRAFT_COST_PRICE = 15920;
+const DRAFT_MONTHS = 6;
+const DRAFT_RATE = '0.08'; // flat ต่อเดือน — ช่วงเดียวกับ SCENARIOS ของ CLI เดิม
+const DRAFT_COMMISSION_PCT = '0.1';
+const DRAFT_VAT_PCT = '0.07';
+
+/** เงื่อนไขเดียวกับที่ _drive.ts ก้าว 1 ใช้หาสัญญาให้ activate — และใช้เป็น probe กันสร้างซ้ำ */
+const DRAFT_CONTRACT_WHERE: Prisma.ContractWhereInput = {
+  contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
+  status: 'DRAFT',
+  workflowStatus: 'APPROVED',
+  deletedAt: null,
+};
+
+/** PNG โปร่งใส 1×1 (base64) — activate ตรวจแค่ signerType ครบ; รูปจริงไม่จำเป็นกับข้อมูลทดสอบ */
+const TEST_SIGNATURE_IMAGE =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+const DRAFT_SIGNERS = [
+  { signerType: 'CUSTOMER', signerName: 'ลูกค้าทดสอบระบบ', staff: false },
+  { signerType: 'COMPANY', signerName: 'พนักงานขายทดสอบระบบ', staff: true },
+  { signerType: 'WITNESS_1', signerName: 'พยานทดสอบระบบ 1', staff: false },
+  { signerType: 'WITNESS_2', signerName: 'พยานทดสอบระบบ 2', staff: false },
+] as const;
+
+/**
+ * mirror ของ calc() ใน CLI เดิม (Math.round 2 ตำแหน่ง → ROUND_HALF_UP, Math.ceil ค่างวด
+ * → ROUND_CEIL 0 ตำแหน่ง) แต่คิดใน Prisma.Decimal ทั้งหมดตาม Global Constraint ห้าม float.
+ * down = 0 ⇒ principal = ราคาขาย และ "ยอดจัด" (Contract.financedAmount) = principal base
+ * ตามหมายเหตุใน CLI เดิม — 1A บวกค่าคอม+ดอกเบี้ย+VAT ทับเองตอนตั้งลูกหนี้ Gross.
+ */
+function draftCalc() {
+  const principal = round2(new Prisma.Decimal(DRAFT_SELLING_PRICE));
+  const storeCommission = round2(principal.mul(DRAFT_COMMISSION_PCT));
+  const interestTotal = round2(principal.mul(DRAFT_RATE).mul(DRAFT_MONTHS));
+  const vatAmount = round2(principal.plus(storeCommission).plus(interestTotal).mul(DRAFT_VAT_PCT));
+  const grandTotal = principal.plus(storeCommission).plus(interestTotal).plus(vatAmount);
+  const monthlyPayment = grandTotal
+    .div(DRAFT_MONTHS)
+    .toDecimalPlaces(0, Prisma.Decimal.ROUND_CEIL);
+  return { principal, storeCommission, interestTotal, vatAmount, monthlyPayment };
+}
+
+/**
+ * งวดชำระแบบเดียวกับ CLI เดิม: ceil ต่องวดสำหรับงวด 1..N-1, เศษที่เหลือลงงวดสุดท้าย,
+ * VAT ต่องวด = ค่างวด − ต้น − ดอก − คอม. ทุกงวดเป็นอนาคต (PENDING) เพราะสัญญายังไม่เปิด.
+ * dueDate ใช้สูตร local-time เดียวกับ buildInstallmentScheduleRows เป๊ะ ๆ —
+ * `new Date(createdAt.getFullYear(), createdAt.getMonth() + i, dueDay)` — เพื่อให้ตารางงวด
+ * ที่ activate สร้างทีหลังตรงกับ Payment ทุกแถว.
+ */
+function draftInstallmentRows(
+  contractId: string,
+  createdAt: Date,
+  dueDay: number,
+  c: ReturnType<typeof draftCalc>,
+): Prisma.PaymentCreateManyInput[] {
+  const perInst = (total: Prisma.Decimal) =>
+    total.div(DRAFT_MONTHS).toDecimalPlaces(0, Prisma.Decimal.ROUND_CEIL);
+  const mpPrincipal = perInst(c.principal);
+  const mpInterest = perInst(c.interestTotal);
+  const mpCommission = perInst(c.storeCommission);
+  let usedP = new Prisma.Decimal(0);
+  let usedI = new Prisma.Decimal(0);
+  let usedC = new Prisma.Decimal(0);
+  const rows: Prisma.PaymentCreateManyInput[] = [];
+  for (let i = 1; i <= DRAFT_MONTHS; i++) {
+    const isLast = i === DRAFT_MONTHS;
+    const principal = isLast ? round2(c.principal.minus(usedP)) : mpPrincipal;
+    const interest = isLast ? round2(c.interestTotal.minus(usedI)) : mpInterest;
+    const commission = isLast ? round2(c.storeCommission.minus(usedC)) : mpCommission;
+    const vat = round2(c.monthlyPayment.minus(principal).minus(interest).minus(commission));
+    usedP = usedP.plus(principal);
+    usedI = usedI.plus(interest);
+    usedC = usedC.plus(commission);
+    rows.push({
+      contractId,
+      installmentNo: i,
+      dueDate: new Date(createdAt.getFullYear(), createdAt.getMonth() + i, dueDay),
+      amountDue: c.monthlyPayment,
+      amountPaid: 0,
+      status: 'PENDING',
+      monthlyPrincipal: principal,
+      monthlyInterest: interest,
+      monthlyCommission: commission,
+      vatAmount: vat,
+    });
+  }
+  return rows;
+}
+
+async function seedDraftContract(
+  ctx: SeedContext,
+  refs: Awaited<ReturnType<typeof adaptRefs>>,
+): Promise<{ created: number; skipped: number; note: string }> {
+  // Re-run safe: มีสัญญา DRAFT (workflow APPROVED) ค้างอยู่แล้ว = ไม่สร้างซ้ำ —
+  // เงื่อนไขชุดเดียวกับที่ก้าวเดินเรื่องใช้หา จึง "มีของให้ activate อยู่แล้ว" โดยนิยาม
+  const existing = await ctx.prisma.contract.findFirst({
+    where: DRAFT_CONTRACT_WHERE,
+    select: { contractNumber: true },
+  });
+  if (existing) {
+    return {
+      created: 0,
+      skipped: 1,
+      note: `สัญญา DRAFT มีอยู่แล้ว (${existing.contractNumber}) — ข้าม ไม่สร้างซ้ำ`,
+    };
+  }
+
+  // ต่อคิวเลขรายวันชุดเดียวกับ CLI เดิม (count รวมแถว soft-deleted โดยเจตนา —
+  // เลขไม่ถูกนำกลับมาใช้ซ้ำ) — รันหลัง delegate จึงนับต่อจาก 7 ใบของ CLI ให้เอง
+  const contractSeq =
+    (await ctx.prisma.contract.count({
+      where: { contractNumber: { startsWith: `${TEST_CONTRACT_PREFIX}${ctx.dateStr}-` } },
+    })) + 1;
+  const contractNumber = `${TEST_CONTRACT_PREFIX}${ctx.dateStr}-${String(contractSeq).padStart(3, '0')}`;
+  const imeiSeq =
+    (await ctx.prisma.product.count({
+      where: { imeiSerial: { startsWith: `${TEST_IMEI_PREFIX}${ctx.dateStr}-` } },
+    })) + 1;
+  const imeiSerial = `${TEST_IMEI_PREFIX}${ctx.dateStr}-${String(imeiSeq).padStart(3, '0')}`;
+
+  const c = draftCalc();
+  // createdAt ต้องเป็นค่าเดียวกับที่ใช้คำนวณ dueDate — generateInstallmentSchedules ของ
+  // activate อ่าน contract.createdAt + paymentDueDay ด้วยสูตรเดียวกัน ⇒ lockstep โดยโครงสร้าง
+  const createdAt = new Date();
+  const paymentDueDay = createdAt.getDate();
+
+  await ctx.prisma.$transaction(async (tx) => {
+    const customer = await tx.customer.create({
+      data: {
+        name: `ทดสอบ รอเปิดสัญญา (DRAFT) ${contractSeq}`,
+        // เบอร์โทรไม่ได้โดยเจตนา (S4, final fix 2026-08-26) — สัญญาใบนี้เป็นใบเดียวที่
+        // ไปถึง activate ซึ่งส่ง SMS จริงถึงเบอร์นี้บน NODE_ENV=production (ด่านข้อ 9);
+        // คอลัมน์เป็น String ธรรมดา ไม่ unique — ไม่มีโค้ดใน pack อ่านค่านี้ต่อ
+        phone: `TEST-00000${String(contractSeq % 100).padStart(2, '0')}`,
+        prefix: 'นาย',
+        occupation: 'ทดสอบ',
+        addressCurrent: TEST_CUSTOMER_ADDRESS, // marker ให้ cleanup เดิมกวาดเจอ
+        // birthDate จงใจไม่ใส่ — activate ข้ามด่านลายเซ็นผู้ปกครองเมื่อไม่มีวันเกิด
+      },
+    });
+    const consent = await tx.pDPAConsent.create({
+      data: {
+        customerId: customer.id,
+        consentVersion: 'TEST-1.0',
+        privacyNoticeText:
+          'ยินยอมตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 (ข้อมูลทดสอบระบบ — ลบได้)',
+        purposes: ['ทดสอบระบบ — สัญญาผ่อนชำระ'],
+        status: 'GRANTED',
+        grantedAt: createdAt,
+      },
+    });
+    // เครื่องคู่สัญญาของตัวเอง (IMEI ขึ้นต้น TEST-) — activate ห้ามไปแตะเครื่องจริง
+    const product = await tx.product.create({
+      data: {
+        name: `ทดสอบระบบ มือถือคู่สัญญา ${contractNumber}`,
+        brand: 'ทดสอบระบบ',
+        model: `TEST-DRAFT-${contractSeq}`,
+        color: 'ดำ',
+        storage: '128GB',
+        imeiSerial,
+        category: 'PHONE_NEW',
+        costPrice: DRAFT_COST_PRICE,
+        cashPrice: DRAFT_SELLING_PRICE,
+        installmentPrice: DRAFT_SELLING_PRICE,
+        branchId: refs.branchId,
+        // ยังเป็นของ SHOP — activate เป็นคนย้ายกรรมสิทธิ์ไป FINANCE เอง (transferOwnership)
+        ownedByCompanyId: refs.shopCompanyId,
+        // RESERVED = สภาพเดียวกับสัญญา DRAFT ที่เปิดผ่าน UI จริง (contract-lifecycle
+        // จองเครื่องตอนสร้างสัญญา) — activate รับทั้ง RESERVED และ IN_STOCK
+        status: 'RESERVED',
+        isOnlineVisible: false,
+        stockInDate: createdAt,
+      },
+    });
+    const contract = await tx.contract.create({
+      data: {
+        contractNumber,
+        customerId: customer.id,
+        productId: product.id,
+        branchId: refs.branchId,
+        salespersonId: refs.salespersonId,
+        reviewedById: refs.reviewerId,
+        reviewedAt: createdAt,
+        interestConfigId: refs.interestConfigId,
+        pdpaConsentId: consent.id,
+        createdAt,
+        planType: 'STORE_DIRECT',
+        sellingPrice: c.principal, // down = 0 ⇒ ราคาขาย = principal
+        downPayment: 0,
+        interestRate: new Prisma.Decimal(DRAFT_RATE),
+        totalMonths: DRAFT_MONTHS,
+        interestTotal: c.interestTotal,
+        // ยอดจัด = principal base (sellingPrice − down) — หมายเหตุเดียวกับ CLI เดิม
+        financedAmount: c.principal,
+        storeCommission: c.storeCommission,
+        vatAmount: c.vatAmount,
+        vatPct: new Prisma.Decimal(DRAFT_VAT_PCT),
+        monthlyPayment: c.monthlyPayment,
+        status: 'DRAFT',
+        workflowStatus: 'APPROVED',
+        paymentDueDay,
+        // contractHash จงใจไม่ใส่ (null) — verifyContractHash ข้ามแถว legacy ที่ไม่มี hash
+        hasOwnershipClause: true,
+        hasRepossessionClause: true,
+        hasEarlyPayoffClause: true,
+        hasNoTransferClause: true,
+        hasAcknowledgement: true,
+      },
+    });
+    await tx.signature.createMany({
+      data: DRAFT_SIGNERS.map((s) => ({
+        contractId: contract.id,
+        signerType: s.signerType,
+        signerName: s.signerName,
+        staffUserId: s.staff ? refs.salespersonId : null,
+        signatureImage: TEST_SIGNATURE_IMAGE,
+        signedAt: createdAt,
+      })),
+    });
+    // งวดชำระสร้างตอนเปิดสัญญาผ่าน UI จริง (contract-lifecycle.create) — DRAFT จึงต้องมี
+    // Payment ครบเหมือนสัญญาจริง ให้ก้าวรับชำระหลัง activate ทำงานต่อได้
+    await tx.payment.createMany({
+      data: draftInstallmentRows(contract.id, createdAt, paymentDueDay, c),
+    });
+    // จงใจไม่สร้าง installment_schedules — activate สร้างเอง (idempotent) จากสัญญาแถวนี้
+  });
+
+  console.log(
+    `[test-pack:contracts] CREATED ${contractNumber} (DRAFT/APPROVED — input ของโหมดเดินเรื่องก้าว 1)`,
+  );
+  return {
+    created: 2, // สัญญา 1 + เครื่องคู่สัญญา 1 — นับแบบเดียวกับ created + productsCreated ของ CLI
+    skipped: 0,
+    note: `สัญญา DRAFT สำหรับโหมดเดินเรื่อง: ${contractNumber}`,
+  };
+}
+
 export const contractsSeeder: DomainSeeder = {
   key: 'contracts',
   label: 'สัญญาผ่อน + เครื่องว่าง + ลูกค้าเปล่า',
-  routes: ['/payments', '/contracts', '/contracts/:id', '/overdue', '/collections', '/letters', '/repossessions', '/early-payoff', '/pos', '/receipts', '/finance/contract-cancellation'],
+  routes: [
+    '/payments',
+    '/contracts',
+    '/contracts/:id',
+    '/overdue',
+    '/collections',
+    '/letters',
+    '/repossessions',
+    '/early-payoff',
+    '/pos',
+    '/receipts',
+    '/finance/contract-cancellation',
+  ],
   markerDoc: `Contract.contractNumber ขึ้นต้น "${TEST_CONTRACT_PREFIX}" · Customer.addressCurrent = "${TEST_CUSTOMER_ADDRESS}" · Product.imeiSerial ขึ้นต้น "${TEST_IMEI_PREFIX}" (สัญญาที่เปิดผ่าน UI ระหว่างเทสจะได้เลขจริง BCP- แต่ถูกกวาดตามลูกค้า/เครื่อง)`,
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     const refs = await adaptRefs(ctx);
     await seedTestContracts(ctx.prisma, refs, { count: CONTRACT_COUNT, dryRun: true });
+    const existingDraft = await ctx.prisma.contract.findFirst({
+      where: DRAFT_CONTRACT_WHERE,
+      select: { contractNumber: true },
+    });
     return [
-      { label: `สัญญาทดสอบ ${CONTRACT_COUNT} ใบ`, detail: 'ครบกำหนดวันนี้ · ค้าง 1/2/3 งวด · งวดอนาคต · TERMINATED รอยึด · ใกล้ปิดยอด (รายละเอียดพิมพ์ด้านบนจาก seeder เดิม)' },
+      {
+        label: `สัญญาทดสอบ ${CONTRACT_COUNT} ใบ`,
+        detail:
+          'ครบกำหนดวันนี้ · ค้าง 1/2/3 งวด · งวดอนาคต · TERMINATED รอยึด · ใกล้ปิดยอด (รายละเอียดพิมพ์ด้านบนจาก seeder เดิม)',
+      },
+      {
+        label: 'สัญญา DRAFT (workflow APPROVED) 1 ใบ',
+        detail: existingDraft
+          ? `มีอยู่แล้ว (${existingDraft.contractNumber}) — จะข้าม ไม่สร้างซ้ำ`
+          : 'ให้โหมดเดินเรื่อง (DRIVE=1) เปิดผ่าน activate → JE 1A + SHOP leg → คิวรอจ่าย INTER-CO มีของ',
+      },
       { label: 'เครื่องว่าง 3 เครื่อง', detail: 'มือถือใหม่ · มือสอง · หูฟัง (IN_STOCK)' },
       { label: 'ลูกค้าเปล่า 2 คน', detail: 'ไม่มีสัญญา — สำหรับลูกค้าใหม่ / trade-in / จอง' },
     ];
@@ -758,37 +1190,217 @@ export const contractsSeeder: DomainSeeder = {
   async seed(ctx: SeedContext): Promise<SeedStat> {
     const refs = await adaptRefs(ctx);
     const r = await seedTestContracts(ctx.prisma, refs, { count: CONTRACT_COUNT, dryRun: false });
+    // สัญญา DRAFT ของ wrapper — สร้างหลัง delegate เพื่อต่อคิวเลข TEST-<วัน>-NNN ต่อจาก 7 ใบแรก
+    const draft = await seedDraftContract(ctx, refs);
     return {
-      created: r.created + r.productsCreated + r.blankCustomersCreated,
-      skipped: 0,
-      notes: [`เลขสัญญา: ${r.contractNumbers[0] ?? '-'} .. ${r.contractNumbers[r.contractNumbers.length - 1] ?? '-'}`],
+      created: r.created + r.productsCreated + r.blankCustomersCreated + draft.created,
+      skipped: draft.skipped,
+      notes: [
+        `เลขสัญญา: ${r.contractNumbers[0] ?? '-'} .. ${r.contractNumbers[r.contractNumbers.length - 1] ?? '-'}`,
+        draft.note,
+      ],
     };
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    // ── รูที่ปิด (2026-08-26): CLI เดิมลบ JE เฉพาะ metadata.contractId แต่ JE ของใบขาย
+    // (ShopCashSaleTemplate ต่อชิ้น · ShopExternalFinanceSale/ReceiptTemplate — รวมใบขายจาก
+    // การแปลงใบจอง/ยืนยันออเดอร์ออนไลน์ซึ่งสร้าง Sale เหมือนกัน) stamp metadata.saleId
+    // ⇒ ตัวใบขายถูก soft-delete จนหน้าจอสะอาด แต่งบทดลองยังถือรายการค้างถาวร.
+    // wrapper นี้กวาดส่วนนั้นเพิ่มเอง — ห้ามแก้ CLI เดิม (ต้องรันเดี่ยวได้เหมือนเดิม).
+
+    // เก็บ id ใบขายทดสอบ "ก่อน" delegate — marker ชุดเดียวกับ CLI ทุกประการ แต่จงใจ
+    // "ไม่กรอง deletedAt" ทุกชั้น (ลูกค้า/เครื่อง/สัญญา/ใบขาย) เพราะ:
+    //   1. CLI กำลังจะ soft-delete ใบขายในรอบนี้ (กรองแล้วไปหาใหม่หลัง delegate จะไม่เจอ)
+    //   2. รอบก่อนอาจ soft-delete ไปแล้วแต่ JE ยังค้าง (โค้ดยุคก่อนปิดรูนี้ / crash กลางคัน
+    //      — การลบ JE ของ wrapper อยู่คนละ transaction กับของ CLI จึงต้องทน re-run ได้)
+    //   3. ใบขายที่ถูก "ยกเลิก" (void) ระหว่างเทสมี deletedAt อยู่แล้ว แต่ JE ต้นฉบับ
+    //      + ใบกลับรายการยังอยู่ทั้งคู่
+    const [testCustomers, testProducts] = await Promise.all([
+      ctx.prisma.customer.findMany({
+        where: { addressCurrent: TEST_CUSTOMER_ADDRESS },
+        select: { id: true },
+      }),
+      ctx.prisma.product.findMany({
+        where: { imeiSerial: { startsWith: TEST_IMEI_PREFIX } },
+        select: { id: true },
+      }),
+    ]);
+    const testCustomerIds = testCustomers.map((c) => c.id);
+    const testProductIds = testProducts.map((p) => p.id);
+    const testContracts = await ctx.prisma.contract.findMany({
+      where: {
+        OR: [
+          { contractNumber: { startsWith: TEST_CONTRACT_PREFIX } },
+          ...(testCustomerIds.length ? [{ customerId: { in: testCustomerIds } }] : []),
+          ...(testProductIds.length ? [{ productId: { in: testProductIds } }] : []),
+        ],
+      },
+      select: { id: true, contractNumber: true, deletedAt: true },
+    });
+    const testContractIds = testContracts.map((c) => c.id);
+    // ประชากรที่ CLI เดิมจะกวาดจริง (มันกรอง deletedAt: null)
+    const liveContractIds = testContracts.filter((c) => !c.deletedAt).map((c) => c.id);
+
+    // ── ด่าน INTER-CO (S2, final fix 2026-08-26): สัญญาทดสอบใน InterCoSettlementItem ของ
+    // batch สถานะ PENDING_APPROVAL/POSTED → **throw** พร้อมเลขรอบจ่าย ห้ามล้างเงียบ —
+    // JE ของรอบจ่ายไม่ stamp contractId (มีแต่ settlementBatchId + items[] ซ้อนใน metadata)
+    // การกวาด 1A (Cr 21-1101/21-1102) ทิ้งจะเหลือขา Dr ของรอบจ่ายยืนโดด: 21-1101 กลายเป็น
+    // debit balance. ข้อความชี้ทางจริง: reverse รอบ POSTED / ถอน-ยกเลิกรอบ PENDING_APPROVAL
+    // ที่เมนูจ่ายให้หน้าร้าน (INTER-CO) ก่อน. (REVERSED มี mirror หักล้างแล้ว · DRAFT/CANCELLED
+    // ไม่มี JE — ไม่เข้าเงื่อนไข)
+
+    // ── เลข JE ที่ CLI เดิมจะกวาดตาม metadata.contractId (M1): query "ก่อน" delegate แล้ว
+    // พิมพ์ entryNumber ทุกใบ ทั้ง dry-run และ live — JE คือหลักฐานบัญชี และ dry-run คือ
+    // ด่านสุดท้ายของคนกดก่อนลบถาวร (CLI เดิมพิมพ์แค่จำนวน — ห้ามแก้ CLI เดิม)
+
+    const saleWhereOr = [
+      ...(testProductIds.length ? [{ productId: { in: testProductIds } }] : []),
+      ...(testCustomerIds.length ? [{ customerId: { in: testCustomerIds } }] : []),
+      ...(testContractIds.length ? [{ contractId: { in: testContractIds } }] : []),
+    ];
+    const sales = saleWhereOr.length
+      ? await ctx.prisma.sale.findMany({
+          where: { OR: saleWhereOr },
+          select: { id: true, saleNumber: true },
+        })
+      : [];
+
+    // ── CLI เดิมทำงานตามปกติ (JE ที่ stamp contractId + soft delete ทุกอย่าง) ──
     const r = await cleanupTestContracts(ctx.prisma, { dryRun });
+
+    // ── กวาด JE ของใบขาย (metadata.saleId) + ใบกลับรายการของมัน ──
+    // query "หลัง" delegate เพื่อไม่นับซ้ำกับใบที่ CLI เพิ่งลบไปแล้ว (โหมดจริง)
+    const saleJes = sales.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: {
+            OR: sales.map((s) => ({ metadata: { path: ['saleId'], equals: s.id } as never })),
+          },
+          select: { id: true, entryNumber: true, metadata: true },
+        })
+      : [];
+    const saleJeIds = saleJes.map((j) => j.id);
+    // ใบกลับรายการจากการยกเลิกใบขาย (flow 'shop-cash-sale-void') "จงใจไม่ carry saleId"
+    // (กัน sweep ของ void เจอ mirror ตัวเอง — sale-void.service.ts) จึงตามด้วย
+    // metadata.reversesEntryId แทน: ลบต้นฉบับแต่ทิ้ง mirror ไว้ = งบทดลองเพี้ยนหนักกว่าเดิม
+    // (ขากลับรายการยืนโดดโดยไม่มีคู่หักล้าง)
+    const mirrorJes = saleJeIds.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: {
+            OR: saleJeIds.map((id) => ({
+              metadata: { path: ['reversesEntryId'], equals: id } as never,
+            })),
+          },
+          select: { id: true, entryNumber: true },
+        })
+      : [];
+    const jeIds = [...new Set([...saleJeIds, ...mirrorJes.map((j) => j.id)])];
+
+    if (jeIds.length) {
+      // identity ให้คนตรวจก่อน/หลังลบ — พิมพ์ทั้ง dry-run และโหมดจริง
+      const affected = new Set<string>();
+      for (const je of saleJes) {
+        const saleId = (je.metadata as Record<string, unknown> | null)?.saleId;
+        const sale = sales.find((s) => s.id === saleId);
+        if (sale) affected.add(sale.saleNumber);
+      }
+      console.log(
+        `  รายการบัญชีใบขาย (metadata.saleId): ${saleJeIds.length} ใบ + ใบกลับรายการ ${mirrorJes.length} ใบ จากใบขาย:`,
+      );
+      for (const n of affected) console.log(`    ${n}`);
+      // เลข JE คือหลักฐานบัญชี — พิมพ์ก่อนลบเสมอ (M1: dry-run คือด่านสุดท้ายของคนกด)
+      for (const j of saleJes) console.log(`    ${j.entryNumber}`);
+      for (const j of mirrorJes) console.log(`    ${j.entryNumber} (ใบกลับรายการ)`);
+      if (dryRun) {
+        console.log(`  (dry-run) จะลบถาวร ${jeIds.length} รายการบัญชีใบขาย — ยังไม่ลบ`);
+      } else {
+        // ไม่มีคอลัมน์เอกสารใดชี้มาที่ JE กลุ่มนี้ (Sale ไม่มี journalEntryId — ตรวจ
+        // schema.prisma 2026-08-26) ⇒ ล้างเฉพาะ FK Restrict สองตัว ตามลำดับบังคับ
+        // เดียวกับ CLI เดิม: audit log → lines → entries
+        await ctx.prisma.$transaction(async (tx) => {
+          await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+        });
+      }
+    }
+
+    // ── ลายเซ็น + ความยินยอม PDPA ของสัญญา DRAFT ที่ wrapper สร้างเพิ่ม ──
+    // CLI เดิมไม่แตะสองตารางนี้ (สัญญา ACTIVE/TERMINATED ของมันไม่มีลายเซ็น/consent)
+    // แต่สัญญา DRAFT ต้องมีครบเพื่อผ่านด่าน activate ⇒ wrapper กวาดเอง (soft delete
+    // ตามกติกา — Signature เป็นหลักฐาน eIDAS, FK เป็น Restrict ห้าม hard delete)
+    let signaturesSwept = 0;
+    let consentsSwept = 0;
+    if (dryRun) {
+      signaturesSwept = testContractIds.length
+        ? await ctx.prisma.signature.count({
+            where: { contractId: { in: testContractIds }, deletedAt: null },
+          })
+        : 0;
+      consentsSwept = testCustomerIds.length
+        ? await ctx.prisma.pDPAConsent.count({
+            where: { customerId: { in: testCustomerIds }, deletedAt: null },
+          })
+        : 0;
+    } else {
+      const sweptAt = new Date();
+      if (testContractIds.length) {
+        signaturesSwept = (
+          await ctx.prisma.signature.updateMany({
+            where: { contractId: { in: testContractIds }, deletedAt: null },
+            data: { deletedAt: sweptAt },
+          })
+        ).count;
+      }
+      if (testCustomerIds.length) {
+        consentsSwept = (
+          await ctx.prisma.pDPAConsent.updateMany({
+            where: { customerId: { in: testCustomerIds }, deletedAt: null },
+            data: { deletedAt: sweptAt },
+          })
+        ).count;
+      }
+    }
+
     return {
       removed: {
-        'สัญญา': r.contracts,
-        'งวดชำระ': r.payments,
-        'ตารางงวด': r.installmentSchedules,
-        'ใบเสร็จ': r.receipts,
+        สัญญา: r.contracts,
+        งวดชำระ: r.payments,
+        ตารางงวด: r.installmentSchedules,
+        ใบเสร็จ: r.receipts,
         'รายการบัญชี (ลบถาวร)': r.journalEntries,
-        'ใบขาย': r.sales,
-        'ลูกหนี้ไฟแนนซ์': r.financeReceivables,
-        'ค่าคอม': r.salesCommissions,
-        'รับซื้อมือสอง': r.tradeIns,
-        'รายการยึด': r.repossessions,
-        'หนังสือทวง': r.letters,
-        'คำขอยกเลิกสัญญา': r.cancellations,
-        'เครื่องทดสอบ': r.products,
-        'ลูกค้าทดสอบ': r.customers,
+        'รายการบัญชีใบขาย (ลบถาวร)': jeIds.length,
+        ใบขาย: r.sales,
+        ลูกหนี้ไฟแนนซ์: r.financeReceivables,
+        ค่าคอม: r.salesCommissions,
+        รับซื้อมือสอง: r.tradeIns,
+        รายการยึด: r.repossessions,
+        หนังสือทวง: r.letters,
+        คำขอยกเลิกสัญญา: r.cancellations,
+        ลายเซ็นสัญญาทดสอบ: signaturesSwept,
+        'ความยินยอม PDPA ทดสอบ': consentsSwept,
+        เครื่องทดสอบ: r.products,
+        ลูกค้าทดสอบ: r.customers,
       },
       warnings: [],
     };
   },
 };
 ```
+
+> **ทำไม wrapper ต้องกวาด JE ของใบขายเอง (รูที่ปิด 2026-08-26):** `cleanupTestContracts`
+> รู้จักแต่ JE ที่ stamp `metadata.contractId` — แต่ JE ของใบขาย (`ShopCashSaleTemplate`
+> ต่อชิ้น, `ShopExternalFinanceSaleTemplate`, `ShopExternalFinanceReceiptTemplate` —
+> รวมใบขายจากการแปลงใบจอง/ยืนยันออเดอร์ออนไลน์) stamp `metadata.saleId`.
+> CLI เดิม soft-delete ตัวใบขายจนหน้าจอสะอาด แต่ทิ้ง JE ค้างในงบทดลองถาวร —
+> หน้าจอกับสมุดบัญชีขัดกัน. wrapper จึงเก็บ id ใบขายก่อน delegate แล้วลบ JE เหล่านั้น
+> (พร้อม mirror จาก void ซึ่งไม่ carry `saleId` — ตามด้วย `reversesEntryId`) หลัง delegate.
+> ใครลอก code block นี้แบบตัด wrapper ทิ้ง = เปิดรูเดิมกลับมา. ห้ามแก้ CLI เดิม —
+> มันต้องรันเดี่ยวได้เหมือนเดิม.
+
+> **เบอร์ลูกค้าของสัญญา DRAFT ต้องโทรไม่ได้ (S4, final fix 2026-08-26 — แทน fix round 1 ที่ใช้ block `08990000NN`):** สัญญา DRAFT คือใบเดียวของ pack ที่ไปถึง `ContractWorkflowService.activate` ซึ่งเรียก `sendContractActivatedNotification` — ลูกค้าที่ไม่มี `lineIdFinance` จะถูกส่ง **SMS จริง** ไปที่ `customer.phone` และ transport ข้ามให้เฉพาะ `NODE_ENV !== 'production'` ซึ่งเป็นตัวแปรเดียวกับที่ runbook prod ตั้ง. block `08990000NN` เป็นแค่ธรรมเนียมที่สืบจาก CLI เดิม ไม่ได้จองจริงกับ operator ⇒ ใช้ค่า `TEST-00000NN` (คอลัมน์เป็น String ธรรมดา): provider ปฏิเสธเบอร์รูปนี้ → NotificationLog FAILED — หยุดข้อความที่ต้นทาง. การส่งเป็น fire-and-forget (`.catch` ที่ activate) จึงไม่ล้มก้าวเปิดสัญญา และไม่มีโค้ดใน pack อ่านค่า phone นี้ต่อ.
+
+> **สัญญา DRAFT ของ wrapper (2026-08-26):** seeder เดิมสร้างทุก scenario เป็น ACTIVE/TERMINATED — wrapper จึงสร้างสัญญา DRAFT (workflow APPROVED + PDPA + ลายเซ็น 4 ฝ่าย + เครื่อง RESERVED + งวด PENDING) เพิ่ม 1 ใบ เพื่อให้ก้าว activate ของโหมดเดินเรื่อง (Task 12) มี input จริง และคิวรอจ่าย INTER-CO ที่ /accounting/intercompany ถูก exercise ได้ตาม §7 (ไม่งั้นก้าวนั้น skip ตลอด).
 
 - [ ] **Step 2: เพิ่มเข้า registry เป็นตัวแรก**
 
@@ -833,7 +1445,7 @@ git commit -m "feat(test-pack): ห่อ seed/cleanup-test-contracts เดิ�
 
 **Interfaces:**
 - Consumes: `SeedContext` · `DomainSeeder` (Task 1) · `testNote` · `TEST_NOTE_MARKER` (Task 1)
-- Produces: `nextDocNumber(prisma, prefixLetters, dateStr, width?): Promise<string>` · `sumLine(unitPrice: number, qty: number, vatPct: number): { amountBeforeVat: number; vatAmount: number; total: number }` (จาก `_helpers.ts`) · `expensesSeeder: DomainSeeder` · `payrollSeeder: DomainSeeder`
+- Produces: `nextDocNumber(prisma, prefixLetters, dateStr, width?): Promise<string>` · `sumLine(unitPrice: number, qty: number, vatPct: number): { amountBeforeVat: Prisma.Decimal; vatAmount: Prisma.Decimal; total: Prisma.Decimal }` (จาก `_helpers.ts` — รับ number literal จากตาราง ROWS แต่คำนวณ/คืนค่าเป็น `Prisma.Decimal` ตาม Global Constraint ห้าม float กับจำนวนเงิน; แสดงผลค่อย `.toNumber()` ที่จุด format) · `expensesSeeder: DomainSeeder` · `payrollSeeder: DomainSeeder`
 
 **เลขเอกสาร — ทำไมถึง mirror ไม่ใช่เรียก service:** `DocNumberService.next()` ต้องการ DI ของ `SettingsService`
 ซึ่งจะลาก Nest เข้ามาในเฟส 2 ที่ตั้งใจให้เขียน Prisma ตรง ๆ `nextDocNumber` จึงคัดเฉพาะแกนของมัน
@@ -844,6 +1456,8 @@ git commit -m "feat(test-pack): ห่อ seed/cleanup-test-contracts เดิ�
 - [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_helpers.spec.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { nextNumberFrom, sumLine } from './_helpers';
 
 describe('nextNumberFrom', () => {
@@ -865,16 +1479,30 @@ describe('nextNumberFrom', () => {
 });
 
 describe('sumLine', () => {
-  it('คิดยอดก่อน VAT และ VAT แยกกัน ปัด 2 ตำแหน่ง', () => {
-    expect(sumLine(1000, 3, 7)).toEqual({ amountBeforeVat: 3000, vatAmount: 210, total: 3210 });
+  // ยืนยันด้วย .toString() (ค่าที่เก็บจริง) — ห้ามใช้ .toFixed(2) เพราะมันปัดเศษใน assertion เอง:
+  // ถ้า round2 หายไปจนได้ 23.3331 มา .toFixed(2) ยังพิมพ์ '23.33' แล้วเทสผ่านทั้งที่ค่าผิด
+  it('คิดยอดก่อน VAT และ VAT แยกกัน ปัด 2 ตำแหน่ง — คืนค่าเป็น Prisma.Decimal', () => {
+    const s = sumLine(1000, 3, 7);
+    expect(s.amountBeforeVat).toBeInstanceOf(Prisma.Decimal);
+    expect(s.vatAmount).toBeInstanceOf(Prisma.Decimal);
+    expect(s.total).toBeInstanceOf(Prisma.Decimal);
+    expect(s.amountBeforeVat.toString()).toBe('3000');
+    expect(s.vatAmount.toString()).toBe('210');
+    expect(s.total.toString()).toBe('3210');
   });
 
   it('VAT 0 = ไม่มีภาษี (ฝั่ง SHOP ไม่จด VAT)', () => {
-    expect(sumLine(1500, 2, 0)).toEqual({ amountBeforeVat: 3000, vatAmount: 0, total: 3000 });
+    const s = sumLine(1500, 2, 0);
+    expect(s.amountBeforeVat.toString()).toBe('3000');
+    expect(s.vatAmount.toString()).toBe('0');
+    expect(s.total.toString()).toBe('3000');
   });
 
-  it('ปัดเศษ VAT แบบ 2 ตำแหน่ง ไม่ปล่อยทศนิยมลอย', () => {
-    expect(sumLine(333.33, 1, 7)).toEqual({ amountBeforeVat: 333.33, vatAmount: 23.33, total: 356.66 });
+  it('ปัดเศษ VAT แบบ 2 ตำแหน่ง ไม่ปล่อยทศนิยมลอย (333.33 × 7% → 23.33)', () => {
+    const s = sumLine(333.33, 1, 7);
+    expect(s.amountBeforeVat.toString()).toBe('333.33');
+    expect(s.vatAmount.toString()).toBe('23.33');
+    expect(s.total.toString()).toBe('356.66');
   });
 });
 ```
@@ -887,15 +1515,28 @@ Expected: FAIL — `Cannot find module './_helpers'`
 - [ ] **Step 3: เขียน `_helpers.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import type { PrismaService } from '../../prisma/prisma.service';
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+/** ปัดเงิน 2 ตำแหน่ง half-up ใน Decimal — Global Constraint: ห้ามใช้ float กับจำนวนเงิน */
+const round2 = (n: Prisma.Decimal): Prisma.Decimal =>
+  n.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
-/** คำนวณยอดต่อบรรทัด — ราคาต่อหน่วยเป็นราคาก่อน VAT เสมอ (EXCLUSIVE) */
-export function sumLine(unitPrice: number, qty: number, vatPct: number) {
-  const amountBeforeVat = round2(unitPrice * qty);
-  const vatAmount = round2((amountBeforeVat * vatPct) / 100);
-  return { amountBeforeVat, vatAmount, total: round2(amountBeforeVat + vatAmount) };
+/**
+ * คำนวณยอดต่อบรรทัด — ราคาต่อหน่วยเป็นราคาก่อน VAT เสมอ (EXCLUSIVE)
+ * รับ number literal จากตาราง ROWS ได้ แต่คูณ/ปัด/บวกใน Prisma.Decimal ทั้งหมด
+ * และคืน Prisma.Decimal — ส่งเข้า create() ของคอลัมน์ Decimal ได้ตรง ๆ
+ * (แสดงผลค่อย .toNumber() ที่จุด format เท่านั้น ห้ามเอาไปคำนวณต่อแบบ float)
+ */
+export function sumLine(
+  unitPrice: number,
+  qty: number,
+  vatPct: number,
+): { amountBeforeVat: Prisma.Decimal; vatAmount: Prisma.Decimal; total: Prisma.Decimal } {
+  const amountBeforeVat = round2(new Prisma.Decimal(unitPrice).mul(qty));
+  const vatAmount = round2(amountBeforeVat.mul(vatPct).div(100));
+  return { amountBeforeVat, vatAmount, total: round2(amountBeforeVat.plus(vatAmount)) };
 }
 
 /**
@@ -936,6 +1577,8 @@ Expected: PASS — 7 เทส (nextNumberFrom 4 + sumLine 3)
 - [ ] **Step 5: เขียน `expenses.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import { nextDocNumber, sumLine } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
@@ -972,7 +1615,7 @@ export const expensesSeeder: DomainSeeder = {
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => {
       const s = sumLine(r.unitPrice, r.qty, r.vatPct);
-      return { label: `EX ${r.key}`, detail: `${r.status} · ${r.desc} · ยอดรวม ฿${s.total.toLocaleString('th-TH')}` };
+      return { label: `EX ${r.key}`, detail: `${r.status} · ${r.desc} · ยอดรวม ฿${s.total.toNumber().toLocaleString('th-TH')}` };
     });
   },
 
@@ -986,7 +1629,10 @@ export const expensesSeeder: DomainSeeder = {
         continue;
       }
       const s = sumLine(r.unitPrice, r.qty, r.vatPct);
-      const whtAmount = Math.round(s.amountBeforeVat * r.whtPct) / 100;
+      const whtAmount = s.amountBeforeVat
+        .mul(r.whtPct)
+        .div(100)
+        .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
       const number = await nextDocNumber(ctx.prisma, 'EX', ctx.dateStr);
       await ctx.prisma.expenseDocument.create({
         data: {
@@ -1001,7 +1647,7 @@ export const expensesSeeder: DomainSeeder = {
           withholdingTax: whtAmount,
           whtFormType: r.whtPct > 0 ? 'PND3' : null,
           totalAmount: s.total,
-          netPayment: Math.round((s.total - whtAmount) * 100) / 100,
+          netPayment: s.total.minus(whtAmount),
           status: r.status,
           note,
           createdById: ctx.refs.reviewerId,
@@ -1035,10 +1681,20 @@ export const expensesSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const docs = await ctx.prisma.expenseDocument.findMany({
+    const marked = await ctx.prisma.expenseDocument.findMany({
       where: { note: { startsWith: TEST_NOTE_MARKER }, documentType: 'EXPENSE', deletedAt: null },
       select: { id: true, number: true, journalEntryId: true },
     });
+    const markedIds = marked.map((d) => d.id);
+    // เอกสารต่อยอดจากใบทดสอบ (S3, final fix 2026-08-26): ใบลดหนี้ (CREDIT_NOTE) และ
+    // ใบชำระเจ้าหนี้ (VENDOR_SETTLEMENT) ที่สร้างต่อจากใบทดสอบเป็นเอกสาร "ใหม่" ที่ไม่
+    // inherit note marker (ExpenseDocumentCreateService ตั้ง note จาก dto ผู้ใช้) — ตามผ่าน
+    // FK จริง: CreditNoteDetail.originalDocumentId in markedIds และ
+    // SettlementLine.clearedDocumentId in [markedIds + creditNoteIds] (รูเดียวกับใบ -R
+    // ของ other-income). พิมพ์เลขเอกสารต่อยอดเสมอทั้ง dry-run และ live — ไม่มี marker
+    // จึงเป็นช่องทางเดียวที่ผู้รันเห็นก่อนถูกกวาด. docs = [...marked, ...creditNotes,
+    // ...settlements] แล้วเดินลำดับลบเดิม (JE hard-delete → soft-delete เอกสาร) ทั้งชุด
+    const docs = marked; // ดูโค้ดจริงใน expenses.seed.ts — สรุปไว้เพื่อไม่ทำ code block ยาวเกิน
     const jeIds = docs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
     for (const d of docs) console.log(`     ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
     if (!dryRun && docs.length) {
@@ -1053,7 +1709,7 @@ export const expensesSeeder: DomainSeeder = {
         await tx.expenseDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { deletedAt: new Date() } });
       });
     }
-    return { removed: { 'ใบค่าใช้จ่าย': docs.length, 'รายการบัญชีของใบค่าใช้จ่าย (ลบถาวร)': jeIds.length }, warnings: [] };
+    return { removed: { 'ใบค่าใช้จ่าย': marked.length, 'ใบลดหนี้ต่อจากใบทดสอบ (ไม่มี marker — ตามจาก FK)': creditNotes.length, 'ใบชำระเจ้าหนี้ต่อจากใบทดสอบ (ไม่มี marker — ตามจาก FK)': settlements.length, 'รายการบัญชีของใบค่าใช้จ่าย (ลบถาวร)': jeIds.length }, warnings: [] };
   },
 };
 ```
@@ -1061,6 +1717,8 @@ export const expensesSeeder: DomainSeeder = {
 - [ ] **Step 6: เขียน `payroll.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import { nextDocNumber } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
@@ -1099,7 +1757,7 @@ export const payrollSeeder: DomainSeeder = {
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     return SCOPES.map((s) => ({
       label: `PR ${s.scope}`,
-      detail: `DRAFT · ${s.label} ${s.lines.length} คน · งวด ${periodOf(ctx.today)} · รวม ฿${s.lines.reduce((a, l) => a + l.base, 0).toLocaleString('th-TH')}`,
+      detail: `DRAFT · ${s.label} ${s.lines.length} คน · งวด ${periodOf(ctx.today)} · รวม ฿${s.lines.reduce((a, l) => a.plus(l.base), new Prisma.Decimal(0)).toNumber().toLocaleString('th-TH')}`,
     }));
   },
 
@@ -1113,9 +1771,9 @@ export const payrollSeeder: DomainSeeder = {
         stat.skipped += 1;
         continue;
       }
-      const gross = s.lines.reduce((a, l) => a + l.base, 0);
-      const totalSso = s.lines.reduce((a, l) => a + l.sso, 0);
-      const totalWht = s.lines.reduce((a, l) => a + l.wht, 0);
+      const gross = s.lines.reduce((a, l) => a.plus(l.base), new Prisma.Decimal(0));
+      const totalSso = s.lines.reduce((a, l) => a.plus(l.sso), new Prisma.Decimal(0));
+      const totalWht = s.lines.reduce((a, l) => a.plus(l.wht), new Prisma.Decimal(0));
       const number = await nextDocNumber(ctx.prisma, 'PR', ctx.dateStr);
       await ctx.prisma.expenseDocument.create({
         data: {
@@ -1128,7 +1786,7 @@ export const payrollSeeder: DomainSeeder = {
           vatAmount: 0,
           withholdingTax: totalWht,
           totalAmount: gross,
-          netPayment: gross - totalSso - totalWht,
+          netPayment: gross.minus(totalSso).minus(totalWht),
           status: 'DRAFT',
           note,
           createdById: ctx.refs.reviewerId,
@@ -1142,7 +1800,7 @@ export const payrollSeeder: DomainSeeder = {
                   baseSalary: l.base,
                   ssoEmployee: l.sso,
                   whtAmount: l.wht,
-                  netPaid: l.base - l.sso - l.wht,
+                  netPaid: new Prisma.Decimal(l.base).minus(l.sso).minus(l.wht),
                 })),
               },
             },
@@ -1221,8 +1879,16 @@ git commit -m "feat(test-pack): โดเมนค่าใช้จ่าย + 
 - Modify: `apps/api/src/cli/test-pack/_registry.ts`
 
 **Interfaces:**
-- Consumes: `nextNumberFrom` · `sumLine` (Task 4) · `testNote` · `TEST_NOTE_MARKER` (Task 1)
+- Consumes: `nextNumberFrom` · `sumLine` · **`round2`** (Task 4) · `testNote` · `TEST_NOTE_MARKER` (Task 1)
 - Produces: `otherIncomeSeeder: DomainSeeder` · `assetsSeeder: DomainSeeder`
+
+**Step 0 ของ task นี้: export `round2` จาก `_helpers.ts`** — ตอนนี้เป็น `const round2` ที่ไม่ได้ export
+เปลี่ยนเป็น `export const round2 = (n: Prisma.Decimal): Prisma.Decimal => n.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);`
+(แก้คำเดียว ไม่แตะพฤติกรรม) เพราะสองโดเมนนี้ต้องปัดเงินนอก `sumLine`
+
+**`sumLine` คืน `Prisma.Decimal` แล้ว (Task 4 fix round 1)** ⇒ เอาไป `.toLocaleString()` ตรง ๆ ไม่ได้
+ต้อง `.toNumber().toLocaleString('th-TH')` **เฉพาะตอน format ข้อความเท่านั้น** ห้ามแปลงเป็น number
+แล้วคำนวณต่อ
 
 **ข้อจำกัดที่ต้องเคารพ:** `OtherIncome.companyId` บังคับ ⇒ ถ้า `ctx.refs.financeCompanyId` เป็น null ให้คืน
 `SeedStat` ที่ `created: 0` พร้อม note ภาษาไทย **ห้าม throw** (โดเมนอื่นต้องเดินต่อได้)
@@ -1232,7 +1898,7 @@ git commit -m "feat(test-pack): โดเมนค่าใช้จ่าย + 
 
 ```ts
 import { TEST_NOTE_MARKER, testNote } from './_context';
-import { nextNumberFrom, sumLine } from './_helpers';
+import { nextNumberFrom, round2, sumLine } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /** R2 — เพดานคือ READY (POSTED โพสต์ JE + ออกใบเสร็จ RT-) */
@@ -1262,7 +1928,8 @@ export const otherIncomeSeeder: DomainSeeder = {
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => {
       const s = sumLine(r.unitAmount, 1, r.vatPct);
-      return { label: `OI ${r.key}`, detail: `${r.status} · ${r.accountCode} ${r.accountName} · ฿${s.total.toLocaleString('th-TH')}${r.whtPct ? ` · หัก ณ ที่จ่าย ${r.whtPct}%` : ''}` };
+      // .toNumber() เฉพาะตอน format — ห้ามเอาไปคำนวณต่อ
+      return { label: `OI ${r.key}`, detail: `${r.status} · ${r.accountCode} ${r.accountName} · ฿${s.total.toNumber().toLocaleString('th-TH')}${r.whtPct ? ` · หัก ณ ที่จ่าย ${r.whtPct}%` : ''}` };
     });
   },
 
@@ -1280,7 +1947,8 @@ export const otherIncomeSeeder: DomainSeeder = {
         continue;
       }
       const s = sumLine(r.unitAmount, 1, r.vatPct);
-      const whtAmount = Math.round(s.amountBeforeVat * r.whtPct) / 100;
+      // WHT คิดจากฐานก่อน VAT (V17) — Decimal ล้วน ห้าม float
+      const whtAmount = round2(s.amountBeforeVat.mul(r.whtPct).div(100));
       const prefix = `OI-${ctx.dateStr}-`;
       const last = await ctx.prisma.otherIncome.findFirst({ where: { docNumber: { startsWith: prefix } }, orderBy: { docNumber: 'desc' }, select: { docNumber: true } });
       await ctx.prisma.otherIncome.create({
@@ -1296,7 +1964,7 @@ export const otherIncomeSeeder: DomainSeeder = {
           vatAmount: s.vatAmount,
           whtAmount,
           totalAmount: s.total,
-          netReceived: Math.round((s.total - whtAmount) * 100) / 100,
+          netReceived: round2(s.total.minus(whtAmount)),
           customerNote,
           createdById: ctx.refs.reviewerId,
           items: {
@@ -1324,10 +1992,20 @@ export const otherIncomeSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const docs = await ctx.prisma.otherIncome.findMany({
+    const marked = await ctx.prisma.otherIncome.findMany({
       where: { customerNote: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
       select: { id: true, docNumber: true, journalEntryId: true },
     });
+    // ใบกลับรายการ (`<เลขเดิม>-R`) **เขียนทับ `customerNote` เป็น "กลับรายการ: ..."** ⇒ marker หาย
+    // ตามด้วย marker ไม่เจอ แต่ตามด้วย FK `reversesId` ได้เป๊ะ — ถ้าไม่กวาด จะเหลือทั้งใบ -R
+    // และ JE กลับรายการค้างในสมุด (ทั้งที่ทั้งคู่เกิดจากใบทดสอบ)
+    const reversals = marked.length
+      ? await ctx.prisma.otherIncome.findMany({
+          where: { reversesId: { in: marked.map((d) => d.id) }, deletedAt: null },
+          select: { id: true, docNumber: true, journalEntryId: true },
+        })
+      : [];
+    const docs = [...marked, ...reversals];
     const jeIds = docs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
     for (const d of docs) console.log(`     ${d.docNumber}${d.journalEntryId ? ' (มี JE)' : ''}`);
     if (!dryRun && docs.length) {
@@ -1349,14 +2027,25 @@ export const otherIncomeSeeder: DomainSeeder = {
 - [ ] **Step 2: เขียน `assets.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
 import { TEST_NOTE_MARKER, testNote } from './_context';
-import { nextNumberFrom, sumLine } from './_helpers';
+import { nextNumberFrom, round2, sumLine } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/** ปัด 4 ตำแหน่งสำหรับอัตราค่าเสื่อม — คอลัมน์เป็น @db.Decimal(12, 4) */
+const round4 = (n: Prisma.Decimal): Prisma.Decimal =>
+  n.toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP);
 
 /**
  * R2 — DRAFT เท่านั้น (POSTED โพสต์ JE ซื้อทรัพย์สิน แล้วเข้าคิวค่าเสื่อมรายเดือน)
  * แถวที่สองตั้ง vatAccount = 11-4102 เพื่อทดสอบ flow "ใบกำกับมาถึงแล้ว"
  * (.claude/rules/accounting.md — Asset VAT 11-4102 deferred → 11-4101 transfer)
+ */
+/**
+ * รหัสบัญชีต้องตรงกับ CATEGORY_CHART ใน asset-purchase.template.ts เป๊ะ ๆ:
+ *   EQUIPMENT 12-2101/12-2102/53-1601 · IMPROVEMENT 12-2103/12-2104/53-1602
+ *   FURNITURE 12-2105/12-2106/53-1603 · VEHICLE 12-2107/12-2108/53-1604
+ * (ฉบับแรกของแผนสลับ FURNITURE กับ IMPROVEMENT — แก้แล้ว 2026-08-26)
  */
 const ROWS: Array<{
   key: string;
@@ -1371,8 +2060,8 @@ const ROWS: Array<{
   coaExpense: string;
 }> = [
   { key: 'aircon', name: 'ทดสอบระบบ เครื่องปรับอากาศสาขา', category: 'EQUIPMENT', basePrice: 32000, months: 60, hasVat: true, vatAccount: '11-4101', coaCost: '12-2101', coaDepr: '12-2102', coaExpense: '53-1601' },
-  { key: 'shelf', name: 'ทดสอบระบบ ชั้นวางสินค้า (ใบกำกับยังไม่มา)', category: 'FURNITURE', basePrice: 18000, months: 60, hasVat: true, vatAccount: '11-4102', coaCost: '12-2103', coaDepr: '12-2104', coaExpense: '53-1602' },
-  { key: 'novat', name: 'ทดสอบระบบ ป้ายหน้าร้าน (ไม่มี VAT)', category: 'IMPROVEMENT', basePrice: 9500, months: 36, hasVat: false, vatAccount: null, coaCost: '12-2105', coaDepr: '12-2106', coaExpense: '53-1603' },
+  { key: 'shelf', name: 'ทดสอบระบบ ชั้นวางสินค้า (ใบกำกับยังไม่มา)', category: 'FURNITURE', basePrice: 18000, months: 60, hasVat: true, vatAccount: '11-4102', coaCost: '12-2105', coaDepr: '12-2106', coaExpense: '53-1603' },
+  { key: 'novat', name: 'ทดสอบระบบ ป้ายหน้าร้าน (ไม่มี VAT)', category: 'IMPROVEMENT', basePrice: 9500, months: 36, hasVat: false, vatAccount: null, coaCost: '12-2103', coaDepr: '12-2104', coaExpense: '53-1602' },
 ];
 
 const descOf = (key: string) => testNote(`ทรัพย์สิน/${key}`);
@@ -1381,12 +2070,12 @@ export const assetsSeeder: DomainSeeder = {
   key: 'assets',
   label: 'ทรัพย์สินถาวร',
   routes: ['/assets', '/assets/:id', '/assets/new', '/assets/:id/edit', '/assets/register', '/assets/depreciation', '/assets/transfers', '/assets/:id/dispose', '/assets/audit', '/assets/:id/audit', '/assets/period-close', '/assets/journal', '/assets/summary-report', '/assets/:id/schedule'],
-  markerDoc: `FixedAsset.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (assetCode/docNo ปล่อยตามลำดับจริง)`,
+  markerDoc: `FixedAsset.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" · docNo เดินตามลำดับ ASSET-YYMM- จริง · assetCode ใช้ลำดับแยก "TESTASSET-" โดยตั้งใจ เพราะรหัสจริงเป็นรายหมวด (COMP-001) ซึ่งจะถูกเผาถาวรถ้าเอาไปตั้งให้แถวทดสอบที่ถูก soft-delete`,
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => {
       const s = sumLine(r.basePrice, 1, r.hasVat ? 7 : 0);
-      return { label: `ASSET ${r.key}`, detail: `DRAFT · ${r.name} · ฿${r.basePrice.toLocaleString('th-TH')} · ${r.months} เดือน${r.vatAccount === '11-4102' ? ' · VAT รอใบกำกับ (11-4102)' : ''} · รวม VAT ฿${s.total.toLocaleString('th-TH')}` };
+      return { label: `ASSET ${r.key}`, detail: `DRAFT · ${r.name} · ฿${r.basePrice.toLocaleString('th-TH')} · ${r.months} เดือน${r.vatAccount === '11-4102' ? ' · VAT รอใบกำกับ (11-4102)' : ''} · รวม VAT ฿${s.total.toNumber().toLocaleString('th-TH')}` };
     });
   },
 
@@ -1407,8 +2096,10 @@ export const assetsSeeder: DomainSeeder = {
         ctx.prisma.fixedAsset.findFirst({ where: { docNo: { startsWith: docPrefix } }, orderBy: { docNo: 'desc' }, select: { docNo: true } }),
         ctx.prisma.fixedAsset.findFirst({ where: { assetCode: { startsWith: codePrefix } }, orderBy: { assetCode: 'desc' }, select: { assetCode: true } }),
       ]);
-      const vat = r.hasVat ? Math.round(r.basePrice * 7) / 100 : 0;
-      const monthlyDepr = Math.round((r.basePrice / r.months) * 10000) / 10000;
+      // Decimal ล้วน — base ยังเป็น literal แต่กันคนแก้ทีหลังใส่ค่าที่ไม่ใช่ literal แล้วสืบทอด float
+      const base = new Prisma.Decimal(r.basePrice);
+      const vat = r.hasVat ? round2(base.mul(7).div(100)) : new Prisma.Decimal(0);
+      const monthlyDepr = round4(base.div(r.months));
       await ctx.prisma.fixedAsset.create({
         data: {
           assetCode: nextNumberFrom(codePrefix, lastCode?.assetCode ?? null, 3),
@@ -1424,7 +2115,7 @@ export const assetsSeeder: DomainSeeder = {
           purchaseCost: r.basePrice,
           usefulLifeMonths: r.months,
           monthlyDepr,
-          dailyDepr: Math.round((r.basePrice / ((r.months / 12) * 365)) * 10000) / 10000,
+          dailyDepr: round4(base.div(new Prisma.Decimal(r.months).div(12).mul(365))),
           netBookValue: r.basePrice,
           coaCostAccount: r.coaCost,
           coaDeprAccount: r.coaDepr,
@@ -1445,7 +2136,19 @@ export const assetsSeeder: DomainSeeder = {
       where: { description: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
       select: { id: true, assetCode: true, docNo: true, invoiceTransferJournalEntryId: true },
     });
-    const jeIds = rows.map((r) => r.invoiceTransferJournalEntryId).filter((x): x is string => !!x);
+    // JE ของทรัพย์สินมี 2 ทาง: โอน VAT 11-4102→11-4101 มี FK บนตาราง ส่วน **JE ซื้อทรัพย์สิน
+    // ตอน post ไม่มี FK** — `AssetPurchaseTemplate` stamp `metadata.assetId` + `flow: 'asset-purchase'`
+    // ⇒ กวาดทาง metadata เหมือนที่ใบจองทำ ไม่งั้นผู้ทดสอบที่กด post ในหน้าจอจะทิ้ง JE ค้างในสมุด
+    const metaJes = rows.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: { OR: rows.map((r) => ({ metadata: { path: ['assetId'], equals: r.id } as never })) },
+          select: { id: true },
+        })
+      : [];
+    const jeIds = [
+      ...rows.map((r) => r.invoiceTransferJournalEntryId).filter((x): x is string => !!x),
+      ...metaJes.map((j) => j.id),
+    ].filter((id, i, all) => all.indexOf(id) === i);
     for (const r of rows) console.log(`     ${r.docNo} (${r.assetCode})${r.invoiceTransferJournalEntryId ? ' (มี JE โอน VAT)' : ''}`);
     if (!dryRun && rows.length) {
       await ctx.prisma.$transaction(async (tx) => {
@@ -1460,7 +2163,7 @@ export const assetsSeeder: DomainSeeder = {
         await tx.fixedAsset.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
       });
     }
-    return { removed: { 'ทรัพย์สิน': rows.length, 'รายการบัญชีโอน VAT ทรัพย์สิน (ลบถาวร)': jeIds.length }, warnings: [] };
+    return { removed: { 'ทรัพย์สิน': rows.length, 'รายการบัญชีของทรัพย์สิน (ลบถาวร)': jeIds.length }, warnings: [] };
   },
 };
 ```
@@ -1512,37 +2215,150 @@ git commit -m "feat(test-pack): โดเมนรายได้อื่น + 
 **คำเตือนบังคับ:** `shareholders` อยู่ใน `KEEP_TABLES` ของ factory reset ⇒ `cleanup` ต้อง**คืน warning เสมอ**
 เมื่อพบผู้ถือหุ้นทดสอบ เพราะถ้าลืมล้าง มันจะรอดข้าม factory reset ไปปนทะเบียน บอจ.5 จริงในวัน go-live
 
+**D2 — เอกสารต้องกดปุ่มต่อได้จริง (fix round 1, 2026-08-26):** ทุก txnType ที่ seed (CAP_INC/DIV_DEC/DRAW)
+อยู่ใน `NEEDS_SHAREHOLDERS` ⇒ เอกสารที่ไม่มี `EquityShareholderLine` ตกด่าน `SH_REQUIRED` เป็นทางตัน —
+seed จึงสร้างบรรทัดผู้ถือหุ้น **nested ใน create เดียวกัน** เสมอ (แตกยอดตามสัดส่วน 60/30/10 ใน `Prisma.Decimal`
+ล้วน). เอกสาร **DRAW @ READY** มีไว้เพราะเป็น txnType เดียวในชุดที่**โพสต์ได้ทันทีโดยไม่ต้องแนบไฟล์มติ**
+(ไม่อยู่ใน `NEEDS_RESOLUTION` ⇒ V8 ไม่บังคับ; ต้องการแค่บรรทัดผู้ถือหุ้น + `paymentAccountCode`) — นี่คือแถวที่
+ทำให้โดเมนนี้ผ่าน D2. ส่วน CAP_INC/DIV_DEC ผู้ทดสอบต้องอัปโหลดไฟล์มติที่ประชุมเองก่อนโพสต์ (ขั้นอัปโหลดคือสิ่งที่
+ต้องทดสอบอยู่แล้ว) — **ห้าม seed แถว `EquityAttachment` หลอก**: ไฟล์จริงอยู่ S3, แถว metadata เปล่าทำปุ่ม
+"ดูเอกสาร" พัง. Re-run บนสภาพแวดล้อมที่เคย seed รุ่นก่อน fix จะ**เติมบรรทัดให้เอกสารเดิมที่ไม่มีบรรทัด**แทนการ
+ปล่อยเป็นทางตัน (heal path ใน branch `exists`).
+
 - [ ] **Step 1: เขียน `equity.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NAME_PREFIX, TEST_NOTE_MARKER, testName, testNote } from './_context';
-import { nextNumberFrom } from './_helpers';
+import { nextNumberFrom, round2 } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
-const SHAREHOLDERS: Array<{ name: string; shares: number; pct: number; type: 'INDIVIDUAL' | 'JURISTIC_TH' | 'JURISTIC_FOREIGN' }> = [
+const SHAREHOLDERS: Array<{
+  name: string;
+  shares: number;
+  pct: number;
+  type: 'INDIVIDUAL' | 'JURISTIC_TH' | 'JURISTIC_FOREIGN';
+}> = [
   { name: 'ผู้ถือหุ้นบุคคล ก', shares: 6000, pct: 60, type: 'INDIVIDUAL' },
   { name: 'ผู้ถือหุ้นบุคคล ข', shares: 3000, pct: 30, type: 'INDIVIDUAL' },
   { name: 'ผู้ถือหุ้นนิติบุคคลไทย', shares: 1000, pct: 10, type: 'JURISTIC_TH' },
 ];
 
-/** R2 — เพดานคือ READY (POSTED โพสต์ JE ทุนจดทะเบียน/ปันผล) */
-const DOCS: Array<{ key: string; txnType: 'CAP_INC' | 'DIV_DEC'; status: 'DRAFT' | 'READY'; desc: string }> = [
-  { key: 'cap-inc', txnType: 'CAP_INC', status: 'DRAFT', desc: 'เพิ่มทุนจดทะเบียน (ร่าง)' },
-  { key: 'div-dec', txnType: 'DIV_DEC', status: 'READY', desc: 'ประกาศจ่ายเงินปันผล (รออนุมัติ)' },
+/** แตกยอดรวมตามสัดส่วน % — Decimal ล้วนตาม Global Constraint (ห้าม float กับเงิน) */
+const splitByPct = (total: Prisma.Decimal, pct: number): Prisma.Decimal =>
+  round2(total.mul(pct).div(100));
+
+/** บรรทัดผู้ถือหุ้นของเอกสาร — holderKey คือชื่อใน SHAREHOLDERS (ยังไม่เติม prefix) */
+interface LineSeed {
+  holderKey: string;
+  amount: Prisma.Decimal;
+  premium?: Prisma.Decimal;
+}
+
+const CAP_INC_PAR_TOTAL = new Prisma.Decimal(1_000_000);
+const DIV_DEC_TOTAL = new Prisma.Decimal(300_000);
+const DRAW_TOTAL = new Prisma.Decimal(50_000);
+
+const capIncLines: LineSeed[] = SHAREHOLDERS.map((s) => {
+  const par = splitByPct(CAP_INC_PAR_TOTAL, s.pct);
+  return { holderKey: s.name, amount: par, premium: splitByPct(par, 10) };
+});
+const divDecLines: LineSeed[] = SHAREHOLDERS.map((s) => ({
+  holderKey: s.name,
+  amount: splitByPct(DIV_DEC_TOTAL, s.pct),
+}));
+/** DRAW = ผู้ถือหุ้นใหญ่รายเดียว — txnType เดียวที่โพสต์ได้โดยไม่ต้องแนบไฟล์มติ (D2) */
+const drawLines: LineSeed[] = [{ holderKey: SHAREHOLDERS[0].name, amount: DRAW_TOTAL }];
+
+/**
+ * R2 — เพดานคือ READY (POSTED โพสต์ JE ทุนจดทะเบียน/ปันผล)
+ * ทุกเอกสารต้องมีบรรทัดผู้ถือหุ้น (NEEDS_SHAREHOLDERS — ไม่มีบรรทัด = SH_REQUIRED ทางตัน ผิด D2).
+ * DRAW อยู่ในชุดเพราะเป็น txnType เดียวที่ seed แล้ว "กดโพสต์ได้ทันที": ต้องมีผู้ถือหุ้น + ช่องทางเงิน
+ * แต่ไม่อยู่ใน NEEDS_RESOLUTION ⇒ ไม่บังคับแนบไฟล์มติ (V8). ส่วน CAP_INC/DIV_DEC ผู้ทดสอบต้อง
+ * อัปโหลดไฟล์มติเองก่อนโพสต์ — ห้าม seed แถว EquityAttachment หลอก (ไฟล์จริงอยู่ S3, แถว
+ * metadata เปล่าทำปุ่มดูเอกสารพัง) เพราะขั้นอัปโหลดคือสิ่งที่ต้องทดสอบอยู่แล้ว
+ */
+const DOCS: Array<{
+  key: string;
+  txnType: 'CAP_INC' | 'DIV_DEC' | 'DRAW';
+  status: 'DRAFT' | 'READY';
+  desc: string;
+  /** CAP_INC/DIV_DEC อยู่ใน NEEDS_RESOLUTION — ใส่เลขที่/วันที่มติไว้ให้ เหลือแค่แนบไฟล์ */
+  withResolution: boolean;
+  /** เฉพาะ txnType ใน NEEDS_PAYMENT (CAP_INC, DRAW) — DIV_DEC ไม่ใช้ช่องทางเงิน */
+  withPayment: boolean;
+  lines: LineSeed[];
+}> = [
+  {
+    key: 'cap-inc',
+    txnType: 'CAP_INC',
+    status: 'DRAFT',
+    desc: 'เพิ่มทุนจดทะเบียน (ร่าง)',
+    withResolution: true,
+    withPayment: true,
+    lines: capIncLines,
+  },
+  {
+    key: 'div-dec',
+    txnType: 'DIV_DEC',
+    status: 'READY',
+    desc: 'ประกาศจ่ายเงินปันผล (รออนุมัติ)',
+    withResolution: true,
+    withPayment: false,
+    lines: divDecLines,
+  },
+  {
+    key: 'draw',
+    txnType: 'DRAW',
+    status: 'READY',
+    desc: 'ถอนใช้ส่วนตัวผู้ถือหุ้นใหญ่ (โพสต์ได้ทันที)',
+    withResolution: false,
+    withPayment: true,
+    lines: drawLines,
+  },
 ];
 
 const descOf = (key: string) => testNote(`ส่วนของผู้ถือหุ้น/${key}`);
 
+const sumOf = (lines: LineSeed[]): Prisma.Decimal =>
+  lines.reduce((s, ln) => s.plus(ln.amount), new Prisma.Decimal(0));
+
+/** payload บรรทัด — ชื่อคอลัมน์ตรง schema: shareholderId/shareholderName/lineNo/amount/premium */
+const lineCreateData = (lines: LineSeed[], holderIds: Map<string, string>) =>
+  lines.map((ln, i) => ({
+    shareholderId: holderIds.get(ln.holderKey)!,
+    shareholderName: testName(ln.holderKey),
+    lineNo: i + 1,
+    amount: ln.amount,
+    ...(ln.premium ? { premium: ln.premium } : {}),
+  }));
+
 export const equitySeeder: DomainSeeder = {
   key: 'equity',
   label: 'ส่วนของผู้ถือหุ้น',
-  routes: ['/finance/equity', '/finance/equity/new', '/finance/equity/:id', '/finance/equity/:id/edit', '/finance/dividend-register', '/finance/equity-statement'],
+  routes: [
+    '/finance/equity',
+    '/finance/equity/new',
+    '/finance/equity/:id',
+    '/finance/equity/:id/edit',
+    '/finance/dividend-register',
+    '/finance/equity-statement',
+  ],
   markerDoc: `EquityDocument.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" · Shareholder.name ขึ้นต้นด้วย "${TEST_NAME_PREFIX}" (⚠️ shareholders เป็น KEEP table — factory reset ไม่ล้างให้)`,
 
   async plan(): Promise<PlanRow[]> {
     return [
-      ...SHAREHOLDERS.map((s) => ({ label: testName(s.name), detail: `${s.shares.toLocaleString('th-TH')} หุ้น · ${s.pct}% · ${s.type}` })),
-      ...DOCS.map((d) => ({ label: `EQ ${d.key}`, detail: `${d.status} · ${d.txnType} · ${d.desc}` })),
+      ...SHAREHOLDERS.map((s) => ({
+        label: testName(s.name),
+        detail: `${s.shares.toLocaleString('th-TH')} หุ้น · ${s.pct}% · ${s.type}`,
+      })),
+      ...DOCS.map((d) => ({
+        label: `EQ ${d.key}`,
+        detail:
+          `${d.status} · ${d.txnType} · ${d.desc} · บรรทัดผู้ถือหุ้น ${d.lines.length} รายการ ` +
+          `รวม ${sumOf(d.lines).toNumber().toLocaleString('th-TH')} บาท`,
+      })),
     ];
   },
 
@@ -1552,16 +2368,30 @@ export const equitySeeder: DomainSeeder = {
       stat.notes.push('ข้ามเอกสาร — ไม่พบนิติบุคคล FINANCE (EquityDocument.companyId บังคับ)');
     }
 
+    /** ชื่อใน SHAREHOLDERS (ยังไม่เติม prefix) → Shareholder.id — บรรทัดเอกสารต้องอ้าง id จริง */
+    const holderIds = new Map<string, string>();
     for (const s of SHAREHOLDERS) {
       const name = testName(s.name);
-      const exists = await ctx.prisma.shareholder.findFirst({ where: { name, deletedAt: null }, select: { id: true } });
+      const exists = await ctx.prisma.shareholder.findFirst({
+        where: { name, deletedAt: null },
+        select: { id: true },
+      });
       if (exists) {
+        holderIds.set(s.name, exists.id);
         stat.skipped += 1;
         continue;
       }
-      await ctx.prisma.shareholder.create({
-        data: { name, shares: s.shares, sharePct: s.pct, type: s.type, note: testNote('ผู้ถือหุ้นสำหรับทดสอบ — ลบก่อนใช้จริง') },
+      const created = await ctx.prisma.shareholder.create({
+        data: {
+          name,
+          shares: s.shares,
+          sharePct: s.pct,
+          type: s.type,
+          note: testNote('ผู้ถือหุ้นสำหรับทดสอบ — ลบก่อนใช้จริง'),
+        },
+        select: { id: true },
       });
+      holderIds.set(s.name, created.id);
       stat.created += 1;
     }
 
@@ -1570,12 +2400,31 @@ export const equitySeeder: DomainSeeder = {
     const prefix = `EQ-${ctx.dateStr}-`;
     for (const d of DOCS) {
       const description = descOf(d.key);
-      const exists = await ctx.prisma.equityDocument.findFirst({ where: { description, deletedAt: null }, select: { id: true } });
+      const exists = await ctx.prisma.equityDocument.findFirst({
+        where: { description, deletedAt: null },
+        select: { id: true, docNumber: true, _count: { select: { lines: true } } },
+      });
       if (exists) {
+        // เอกสารรุ่นก่อน fix D2 ไม่มีบรรทัดผู้ถือหุ้น (ทางตัน SH_REQUIRED) — เติมให้แทนการปล่อยไว้
+        if (exists._count.lines === 0) {
+          await ctx.prisma.equityShareholderLine.createMany({
+            data: lineCreateData(d.lines, holderIds).map((ln) => ({
+              ...ln,
+              documentId: exists.id,
+            })),
+          });
+          stat.notes.push(
+            `เติมบรรทัดผู้ถือหุ้นให้ ${exists.docNumber} (เอกสารรุ่นเก่าไม่มีบรรทัด)`,
+          );
+        }
         stat.skipped += 1;
         continue;
       }
-      const last = await ctx.prisma.equityDocument.findFirst({ where: { docNumber: { startsWith: prefix } }, orderBy: { docNumber: 'desc' }, select: { docNumber: true } });
+      const last = await ctx.prisma.equityDocument.findFirst({
+        where: { docNumber: { startsWith: prefix } },
+        orderBy: { docNumber: 'desc' },
+        select: { docNumber: true },
+      });
       await ctx.prisma.equityDocument.create({
         data: {
           docNumber: nextNumberFrom(prefix, last?.docNumber ?? null),
@@ -1584,14 +2433,20 @@ export const equitySeeder: DomainSeeder = {
           status: d.status,
           txnDate: ctx.today,
           description,
-          resolutionNo: `TEST-MTG-${ctx.dateStr}`,
-          resolutionDate: ctx.today,
-          paymentAccountCode: '11-1201',
+          ...(d.withResolution
+            ? { resolutionNo: `TEST-MTG-${ctx.dateStr}`, resolutionDate: ctx.today }
+            : {}),
+          ...(d.withPayment ? { paymentAccountCode: '11-1201' } : {}),
           makerId: ctx.refs.reviewerId,
+          lines: { create: lineCreateData(d.lines, holderIds) },
         },
       });
       stat.created += 1;
     }
+
+    stat.notes.push(
+      'เอกสาร CAP_INC/DIV_DEC ต้องแนบไฟล์มติที่ประชุมก่อนโพสต์ (V8 — ขั้นอัปโหลดไฟล์คือสิ่งที่ต้องทดสอบ) · เอกสาร DRAW โพสต์ได้ทันทีไม่ต้องแนบไฟล์',
+    );
     return stat;
   },
 
@@ -1604,32 +2459,55 @@ export const equitySeeder: DomainSeeder = {
       where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
       select: { id: true, name: true },
     });
-    const jeIds = docs.flatMap((d) => [d.journalEntryId, d.reverseJournalEntryId]).filter((x): x is string => !!x);
+    const docIds = docs.map((d) => d.id);
+    const lineCount = docIds.length
+      ? await ctx.prisma.equityShareholderLine.count({ where: { documentId: { in: docIds } } })
+      : 0;
+    const jeIds = docs
+      .flatMap((d) => [d.journalEntryId, d.reverseJournalEntryId])
+      .filter((x): x is string => !!x);
     for (const d of docs) console.log(`     ${d.docNumber}`);
     for (const h of holders) console.log(`     ผู้ถือหุ้น "${h.name}"`);
 
     if (!dryRun && (docs.length || holders.length)) {
       await ctx.prisma.$transaction(async (tx) => {
         if (docs.length) {
-          await tx.equityShareholderLine.deleteMany({ where: { equityDocumentId: { in: docs.map((d) => d.id) } } });
+          // FK ชื่อ documentId ไม่ใช่ equityDocumentId — บรรทัดไม่มี deletedAt จึง hard delete ได้
+          await tx.equityShareholderLine.deleteMany({ where: { documentId: { in: docIds } } });
           if (jeIds.length) {
             await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
-            await tx.equityDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { journalEntryId: null, reverseJournalEntryId: null } });
+            await tx.equityDocument.updateMany({
+              where: { id: { in: docIds } },
+              data: { journalEntryId: null, reverseJournalEntryId: null },
+            });
             await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
             await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
           }
-          await tx.equityDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { deletedAt: new Date() } });
+          await tx.equityDocument.updateMany({
+            where: { id: { in: docIds } },
+            data: { deletedAt: new Date() },
+          });
         }
         if (holders.length) {
-          await tx.shareholder.updateMany({ where: { id: { in: holders.map((h) => h.id) } }, data: { deletedAt: new Date() } });
+          await tx.shareholder.updateMany({
+            where: { id: { in: holders.map((h) => h.id) } },
+            data: { deletedAt: new Date() },
+          });
         }
       });
     }
 
     return {
-      removed: { 'เอกสารส่วนของผู้ถือหุ้น': docs.length, 'ผู้ถือหุ้นทดสอบ': holders.length, 'รายการบัญชีส่วนของผู้ถือหุ้น (ลบถาวร)': jeIds.length },
+      removed: {
+        เอกสารส่วนของผู้ถือหุ้น: docs.length,
+        'บรรทัดผู้ถือหุ้นในเอกสาร (ลบถาวร)': lineCount,
+        ผู้ถือหุ้นทดสอบ: holders.length,
+        'รายการบัญชีส่วนของผู้ถือหุ้น (ลบถาวร)': jeIds.length,
+      },
       warnings: holders.length
-        ? ['ตาราง shareholders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้ ผู้ถือหุ้นทดสอบจะรอดข้าม factory reset ไปปนทะเบียน บอจ.5 จริง']
+        ? [
+            'ตาราง shareholders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้ ผู้ถือหุ้นทดสอบจะรอดข้าม factory reset ไปปนทะเบียน บอจ.5 จริง',
+          ]
         : [],
     };
   },
@@ -1638,8 +2516,11 @@ export const equitySeeder: DomainSeeder = {
 
 - [ ] **Step 2: ยืนยันชื่อ FK ของ `EquityShareholderLine`**
 
-Run: `awk '/^model EquityShareholderLine /,/^}/' apps/api/prisma/schema.prisma | grep -E 'equityDocument|shareholder'`
-Expected: มีคอลัมน์ที่ชี้ไป `EquityDocument` — ถ้าชื่อไม่ใช่ `equityDocumentId` ให้แก้ `cleanup` ตามชื่อจริง
+Run: `awk '/^model EquityShareholderLine /,/^}/' apps/api/prisma/schema.prisma | grep -E 'documentId|shareholder|deletedAt'`
+Expected (ตรวจซ้ำ 2026-08-26): FK ชี้ไป `EquityDocument` ชื่อ **`documentId`** (ไม่ใช่ `equityDocumentId`) ·
+มี `shareholderId` + `shareholderName` (snapshot) + `lineNo` (`@@unique([documentId, lineNo])` และ
+`@@unique([documentId, shareholderId])` = V_SH_UNIQUE ระดับ DB) · เงิน 4 คอลัมน์ `amount`/`premium`/`paid`/`wht`
+(`Decimal(12,2)` default 0 — seed ตั้งเฉพาะที่เกี่ยวข้อง: `premium` เฉพาะ CAP_INC) · **ไม่มี `deletedAt`** ⇒ hard delete ถูกแล้ว
 
 - [ ] **Step 3: เพิ่มเข้า registry (ต่อจาก `assetsSeeder`)**
 
@@ -1654,7 +2535,9 @@ npx tsc --noEmit -p apps/api/tsconfig.json
 CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=$DB DOMAINS=equity npm --prefix apps/api run seed:test-pack
 EXPECTED_DB_NAME=$DB DOMAINS=equity npm --prefix apps/api run cleanup:test-pack
 ```
-Expected: สร้าง 5 แถว (3 ผู้ถือหุ้น + 2 เอกสาร) · dry-run cleanup แสดง **⚠️ คำเตือนเรื่อง KEEP_TABLES**
+Expected: สร้าง 6 แถว (3 ผู้ถือหุ้น + 3 เอกสาร — บรรทัดผู้ถือหุ้น 7 บรรทัดสร้าง nested ใน create เดียวกัน
+ไม่นับแยกใน `created`) · seed พิมพ์ note ภาษาไทยบอกว่า CAP_INC/DIV_DEC ต้องแนบไฟล์มติก่อนโพสต์ ส่วน DRAW
+โพสต์ได้ทันที · dry-run cleanup แสดง **⚠️ คำเตือนเรื่อง KEEP_TABLES** + นับ `'บรรทัดผู้ถือหุ้นในเอกสาร (ลบถาวร)': 7`
 
 - [ ] **Step 5: Commit**
 
@@ -1681,10 +2564,29 @@ git commit -m "feat(test-pack): โดเมนส่วนของผู้ถ
 **เครื่องที่ใช้:** ทั้งสองโดเมนต้องมี `Product` ที่ IMEI ขึ้นต้น `TEST-` ⇒ ต้องรัน `contracts` ก่อน
 (registry เรียงให้แล้ว) ถ้าไม่พบ ให้ข้ามพร้อม note ไม่ throw
 
-- [ ] **Step 1: เขียน `suppliers-po.seed.ts`**
+**กวาดแถวที่หลุด marker (fix round 1, 2026-08-26 — ห้ามตัดสองบล็อกนี้ออกจาก `cleanup`):**
+การใช้งานเอกสารทดสอบสร้างแถวลูกที่**ไม่มี marker ติดตัว** 2 จุด — (1) QC รับของบน PO ทดสอบสร้าง
+`Product` (`po-receiving.service.ts` — ถ้าไม่กวาดคือ**สต็อกผี**ที่แยกไม่ออกจากของจริง) และ
+(2) ยืนยันรับโอนสร้าง `BranchReceiving` + `BranchReceivingItem` (`branch-receiving.service.ts`).
+ทั้งคู่ตามได้ด้วย FK ตรง ไม่ต้องเดา marker: `Product.poId → PurchaseOrder.id` และ
+`BranchReceiving.transferId → StockTransfer.id` (`@unique`) / `BranchReceivingItem.receivingId`.
+ทุกตารางมี `deletedAt` ⇒ soft delete ล้วน. เครื่องที่กวาดต้องพิมพ์ IMEI+ชื่อออกจอเสมอ (ทั้ง dry-run
+และของจริง — มันไม่มี marker ให้ผู้สั่งล้างตรวจเองทีหลัง) และเครื่องที่ไม่ใช่ `IN_STOCK` แล้ว
+ต้องเด้ง warning ให้คนตัดสินก่อน. หมายเหตุ: `GoodsReceiving`/`GoodsReceivingItem` ไม่ใช่รูที่สาม —
+`GoodsReceiving.poId` ชี้ PO ตรง ๆ และบล็อก `grs` ใน cleanup กวาดอยู่แล้ว
+
+- [ ] **Step 1: เขียน `suppliers-po.seed.ts`** *(บล็อกนี้ sync กับโค้ดที่ commit แล้ว — fix round 2, 2026-08-26)*
+
+> ⚠️ จุดที่ **จงใจ** ต่างจาก probe ตาม marker ปกติ: idempotency probe อยู่ที่ `notes` (marker)
+> แต่การจองเลข `poNumber` เป็น max+1 **โดยไม่กรอง `deletedAt`** — `poNumber` เป็น `@unique`
+> เต็มตาราง แถวที่ soft delete แล้วยังถือเลขอยู่ ถ้าใช้เลขตายตัว/probe เฉพาะแถวเป็นจะชน P2002
+> ทันทีหลัง cleanup (deviation ที่อนุมัติแล้ว) · เงินคูณใน `Prisma.Decimal` เท่านั้น
+> (ห้าม `p.qty * p.unitPrice` แบบ float)
 
 ```ts
-import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, TEST_NOTE_MARKER, testName, testNote } from './_context';
+import { Prisma } from '@prisma/client';
+
+import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, testName, testNote } from './_context';
 import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
@@ -1693,22 +2595,46 @@ const SUPPLIERS: Array<{ name: string; phone: string; isRepairCenter: boolean }>
   { name: 'ศูนย์ซ่อมพันธมิตร', phone: '021110002', isRepairCenter: true },
 ];
 
-/** ใบสั่งซื้อ 2 ใบ — รอรับของ กับ รับบางส่วนแล้ว */
-const POS: Array<{ key: string; status: string; qty: number; unitPrice: number; note: string }> = [
-  { key: 'pending', status: 'PENDING', qty: 5, unitPrice: 12000, note: 'ใบสั่งซื้อรอรับของ' },
-  { key: 'partial', status: 'PARTIAL', qty: 3, unitPrice: 21000, note: 'ใบสั่งซื้อรับของบางส่วนแล้ว' },
+/**
+ * ใบสั่งซื้อ 2 ใบ — สั่งแล้วรอรับของ กับ รับบางส่วนแล้ว
+ * ค่า POStatus จริง: DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_RECEIVED CANCELLED
+ * (**ไม่มี `PARTIAL`** — ชื่อเต็มคือ PARTIALLY_RECEIVED)
+ *
+ * ไม่โพสต์ JE — โมดูล purchase-orders ทั้งสายไม่แตะสมุดบัญชี
+ */
+const POS: Array<{
+  key: string;
+  status: 'ORDERED' | 'PARTIALLY_RECEIVED';
+  qty: number;
+  unitPrice: number;
+  note: string;
+}> = [
+  { key: 'ordered', status: 'ORDERED', qty: 5, unitPrice: 12000, note: 'ใบสั่งซื้อรอรับของ' },
+  {
+    key: 'partial',
+    status: 'PARTIALLY_RECEIVED',
+    qty: 3,
+    unitPrice: 21000,
+    note: 'ใบสั่งซื้อรับของบางส่วนแล้ว',
+  },
 ];
 
 export const suppliersPoSeeder: DomainSeeder = {
   key: 'suppliers-po',
   label: 'ซัพพลายเออร์ + ใบสั่งซื้อ',
   routes: ['/suppliers', '/suppliers/:id', '/purchase-orders', '/purchase-orders/qc'],
-  markerDoc: `Supplier.name ขึ้นต้น "${TEST_NAME_PREFIX}" · PurchaseOrder.poNumber ขึ้นต้น "${TEST_DOC_PREFIX}" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้)`,
+  markerDoc: `Supplier.name ขึ้นต้น "${TEST_NAME_PREFIX}" · PurchaseOrder.poNumber ขึ้นต้น "${PO_NO_PREFIX}" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้)`, // PO_NO_PREFIX = TEST-PO- (S1)
 
   async plan(): Promise<PlanRow[]> {
     return [
-      ...SUPPLIERS.map((s) => ({ label: testName(s.name), detail: s.isRepairCenter ? 'ศูนย์ซ่อม (isRepairCenter = true)' : 'ซัพพลายเออร์ทั่วไป' })),
-      ...POS.map((p) => ({ label: `${TEST_DOC_PREFIX}PO ${p.key}`, detail: `${p.status} · ${p.qty} ชิ้น × ฿${p.unitPrice.toLocaleString('th-TH')}` })),
+      ...SUPPLIERS.map((s) => ({
+        label: testName(s.name),
+        detail: s.isRepairCenter ? 'ศูนย์ซ่อม (isRepairCenter = true)' : 'ซัพพลายเออร์ทั่วไป',
+      })),
+      ...POS.map((p) => ({
+        label: `${TEST_DOC_PREFIX}PO ${p.key}`,
+        detail: `${p.status} · ${p.qty} ชิ้น × ฿${p.unitPrice.toLocaleString('th-TH')}`,
+      })),
     ];
   },
 
@@ -1718,14 +2644,22 @@ export const suppliersPoSeeder: DomainSeeder = {
 
     for (const s of SUPPLIERS) {
       const name = testName(s.name);
-      const found = await ctx.prisma.supplier.findFirst({ where: { name, deletedAt: null }, select: { id: true } });
+      const found = await ctx.prisma.supplier.findFirst({
+        where: { name, deletedAt: null },
+        select: { id: true },
+      });
       if (found) {
         supplierIds.push(found.id);
         stat.skipped += 1;
         continue;
       }
       const created = await ctx.prisma.supplier.create({
-        data: { name, phone: s.phone, isRepairCenter: s.isRepairCenter, notes: testNote('ซัพพลายเออร์สำหรับทดสอบ — ลบได้') },
+        data: {
+          name,
+          phone: s.phone,
+          isRepairCenter: s.isRepairCenter,
+          notes: testNote('ซัพพลายเออร์สำหรับทดสอบ — ลบได้'),
+        },
         select: { id: true },
       });
       supplierIds.push(created.id);
@@ -1734,22 +2668,47 @@ export const suppliersPoSeeder: DomainSeeder = {
 
     const prefix = `${TEST_DOC_PREFIX}PO-${ctx.dateStr}-`;
     for (const p of POS) {
-      const poNumber = `${prefix}${p.key}`;
-      const exists = await ctx.prisma.purchaseOrder.findFirst({ where: { poNumber, deletedAt: null }, select: { id: true } });
+      // idempotency probe ที่ notes (marker) — ไม่ใช่ที่เลขเอกสาร เพราะเลขเป็น running number
+      const notes = testNote(p.note);
+      const exists = await ctx.prisma.purchaseOrder.findFirst({
+        where: { notes, deletedAt: null },
+        select: { id: true },
+      });
       if (exists) {
         stat.skipped += 1;
         continue;
       }
+      // poNumber เป็น @unique เต็มตาราง (ไม่ใช่ partial) — แถวที่ soft delete ไปแล้วยังถือเลขอยู่
+      // ⇒ จองเลขแบบ max+1 โดย "ไม่กรอง deletedAt" (doctrine เดียวกับ nextDocNumber ใน _helpers)
+      const last = await ctx.prisma.purchaseOrder.findFirst({
+        where: { poNumber: { startsWith: prefix } },
+        orderBy: { poNumber: 'desc' },
+        select: { poNumber: true },
+      });
       await ctx.prisma.purchaseOrder.create({
         data: {
-          poNumber,
+          poNumber: nextNumberFrom(prefix, last?.poNumber ?? null),
           supplierId: supplierIds[0],
           orderDate: ctx.today,
-          totalAmount: p.qty * p.unitPrice,
-          status: p.status as never,
-          notes: testNote(p.note),
+          // ห้ามคูณเงินเป็น float — Global Constraint: เงินต้องเป็น Prisma.Decimal
+          totalAmount: new Prisma.Decimal(p.unitPrice).mul(p.qty),
+          status: p.status,
+          notes,
           createdById: ctx.refs.reviewerId,
-          items: { create: [{ quantity: p.qty, unitPrice: p.unitPrice, brand: 'ทดสอบระบบ', model: 'รุ่นทดสอบ' }] },
+          // ฟิลด์ของ POItem ยืนยันจาก prisma/seed.ts (poItemsData) — brand/model/color/storage/category/quantity/unitPrice/receivedQty
+          items: {
+            create: [
+              {
+                brand: 'ทดสอบระบบ',
+                model: 'รุ่นทดสอบ',
+                storage: '128GB',
+                category: 'PHONE_NEW',
+                quantity: p.qty,
+                unitPrice: p.unitPrice,
+                receivedQty: p.status === 'PARTIALLY_RECEIVED' ? 1 : 0,
+              },
+            ],
+          },
         },
       });
       stat.created += 1;
@@ -1762,78 +2721,182 @@ export const suppliersPoSeeder: DomainSeeder = {
       where: { poNumber: { startsWith: `${TEST_DOC_PREFIX}PO-` }, deletedAt: null },
       select: { id: true, poNumber: true },
     });
+    // เครื่องที่ QC รับเข้าจาก PO ทดสอบ (po-receiving.service.ts) ไม่มี marker ติดตัว —
+    // ตามได้จาก FK ตรง Product.poId เท่านั้น ถ้าไม่กวาดตรงนี้จะเหลือเป็นสต็อกผีถาวร
+    const products = pos.length
+      ? await ctx.prisma.product.findMany({
+          where: { poId: { in: pos.map((p) => p.id) }, deletedAt: null },
+          select: { id: true, imeiSerial: true, name: true, status: true },
+        })
+      : [];
     const suppliers = await ctx.prisma.supplier.findMany({
       where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
       select: { id: true, name: true },
     });
     for (const p of pos) console.log(`     ${p.poNumber}`);
+    // เครื่องพวกนี้ไม่มี marker — บรรทัดนี้คือโอกาสเดียวที่ผู้สั่งล้าง (ทั้ง dry-run และของจริง)
+    // จะเห็นว่ากำลังจะลบเครื่องไหนบ้าง
+    for (const p of products)
+      console.log(
+        `     เครื่องจาก PO ทดสอบ: ${p.imeiSerial ?? '(ไม่มี IMEI)'} "${p.name}" [${p.status}]`,
+      );
     for (const s of suppliers) console.log(`     ซัพพลายเออร์ "${s.name}"`);
+
+    // เครื่องที่ไม่ใช่ IN_STOCK แล้ว = ผู้ทดสอบเอาไปขาย/จอง/เปิดสัญญาต่อ — อาจมีเอกสารอื่นชี้อยู่
+    // ต้องเด้งเตือนให้คนตัดสิน ไม่ใช่ลบเงียบ ๆ
+    const movedProducts = products.filter((p) => p.status !== 'IN_STOCK');
 
     if (!dryRun && (pos.length || suppliers.length)) {
       const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
         if (pos.length) {
           const poIds = pos.map((p) => p.id);
-          const grs = await tx.goodsReceiving.findMany({ where: { poId: { in: poIds } }, select: { id: true } });
+          // ทุกตารางในสายนี้มี deletedAt ⇒ soft delete ทั้งหมด (กฎ .claude/rules/database.md)
+          const grs = await tx.goodsReceiving.findMany({
+            where: { poId: { in: poIds } },
+            select: { id: true },
+          });
           if (grs.length) {
-            await tx.goodsReceivingItem.deleteMany({ where: { receivingId: { in: grs.map((g) => g.id) } } });
-            await tx.goodsReceiving.deleteMany({ where: { id: { in: grs.map((g) => g.id) } } });
+            await tx.goodsReceivingItem.updateMany({
+              where: { receivingId: { in: grs.map((g) => g.id) } },
+              data: { deletedAt: now },
+            });
+            await tx.goodsReceiving.updateMany({
+              where: { id: { in: grs.map((g) => g.id) } },
+              data: { deletedAt: now },
+            });
           }
-          await tx.pOItem.deleteMany({ where: { poId: { in: poIds } } });
-          await tx.purchaseOrder.updateMany({ where: { id: { in: poIds } }, data: { deletedAt: now } });
+          // เครื่องที่รับเข้าจาก PO ทดสอบ — soft delete พร้อมใบในทรานแซกชันเดียวกัน
+          // (ไม่มี hard delete ในสายนี้ จึงไม่มีปัญหาลำดับ FK)
+          if (products.length) {
+            await tx.product.updateMany({
+              where: { id: { in: products.map((pr) => pr.id) } },
+              data: { deletedAt: now },
+            });
+          }
+          await tx.pOItem.updateMany({ where: { poId: { in: poIds } }, data: { deletedAt: now } });
+          await tx.purchaseOrder.updateMany({
+            where: { id: { in: poIds } },
+            data: { deletedAt: now },
+          });
         }
         if (suppliers.length) {
-          await tx.supplier.updateMany({ where: { id: { in: suppliers.map((s) => s.id) } }, data: { deletedAt: now } });
+          await tx.supplier.updateMany({
+            where: { id: { in: suppliers.map((s) => s.id) } },
+            data: { deletedAt: now },
+          });
         }
       });
     }
 
+    // ถ้อยคำต้องตรงกับสิ่งที่เกิดจริง: dry-run = ยังไม่ได้ลบ (ให้ตรวจก่อนยืนยัน),
+    // live = ลบไปแล้วในทรานแซกชันข้างบน (ให้ตามเช็คเอกสารที่ยังชี้ถึงเครื่อง)
+    const warnings: string[] = movedProducts.map((p) =>
+      dryRun
+        ? `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK แล้ว (สถานะปัจจุบัน: ${p.status}) — อาจมีใบขาย/สัญญา/การจองชี้อยู่ ตรวจก่อนยืนยันการล้าง`
+        : `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK (สถานะล่าสุด: ${p.status}) และถูกลบ (soft delete) ไปแล้วในรอบนี้ — ตรวจใบขาย/สัญญา/การจองที่ยังชี้ถึงเครื่องนี้`,
+    );
+    if (pos.length || suppliers.length)
+      warnings.push(
+        'ตาราง suppliers + purchase_orders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้ามไปปนทะเบียนจริง',
+      );
     return {
-      removed: { 'ใบสั่งซื้อ': pos.length, 'ซัพพลายเออร์ทดสอบ': suppliers.length },
-      warnings: suppliers.length
-        ? ['ตาราง suppliers + purchase_orders อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้ามไปปนทะเบียนจริง']
-        : [],
+      removed: {
+        ใบสั่งซื้อ: pos.length,
+        เครื่องรับเข้าจากใบสั่งซื้อ: products.length,
+        ซัพพลายเออร์ทดสอบ: suppliers.length,
+      },
+      warnings,
     };
   },
 };
 ```
 
-- [ ] **Step 2: ยืนยันสถานะที่ `PurchaseOrder.status` รับได้ + ฟิลด์ของ `POItem`**
+- [ ] **Step 2: ยืนยัน `POStatus` + ฟิลด์ของ `POItem` (ตรวจแล้วตอนเขียนแผน — ยืนยันซ้ำ)**
 
 Run:
 ```bash
-awk '/^model PurchaseOrder /,/^}/' apps/api/prisma/schema.prisma | grep -E 'status|items'
+awk '/^enum POStatus /,/^}/' apps/api/prisma/schema.prisma
 awk '/^model POItem /,/^}/' apps/api/prisma/schema.prisma | grep -E '^\s+[a-zA-Z]+\s'
 ```
-Expected: ถ้า `status` เป็น enum ให้ใช้ค่าที่มีจริงแทน `'PENDING'`/`'PARTIAL'` และลบ `as never` ออก
-ถ้า `POItem` ไม่มี `brand`/`model` ให้ตัดออกและใส่เฉพาะฟิลด์บังคับ (`poId` `quantity` `unitPrice`)
+Expected: `POStatus` = `DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_RECEIVED CANCELLED`
+(**ไม่มี `PARTIAL`**) · `POItem` มี `brand` `model` `color` `storage` `category` `quantity` `unitPrice` `receivedQty`
+และ **มี `deletedAt`** ⇒ cleanup ต้อง soft delete
 
-- [ ] **Step 3: เขียน `stock-ops.seed.ts`**
+- [ ] **Step 3: เขียน `stock-ops.seed.ts`** *(บล็อกนี้ sync กับโค้ดที่ commit แล้ว — fix round 2, 2026-08-26)*
+
+> ⚠️ จุดที่ **จงใจ** ต่างจาก probe ตาม marker ปกติ: `countNumber` จองเลขแบบ max+1 โดยไม่กรอง
+> `deletedAt` (doctrine เดียวกับ `poNumber` — `@unique` เต็มตาราง; probe ความซ้ำอยู่ที่ `notes`) ·
+> `ReorderPoint` ใช้ "กู้คืน" แทนสร้างใหม่ เพราะ `@@unique([brand, model, storage, category,
+> branchId])` เป็นแบบเต็มตาราง — แถวที่ถูก soft delete ยังถือ tuple อยู่ (deviation ที่อนุมัติแล้ว;
+> แถวที่กู้คืนนับเป็น skipped ไม่ใช่ created) · ใบปรับปรุงสต็อกมีด่าน 4-eyes: `SeedRefs`
+> **ไม่การันตี** ว่า `reviewerId ≠ ownerId` จึงต้องเช็คเองก่อนสร้าง (ระบบผู้อนุมัติคนเดียว =
+> ข้ามพร้อม note ไม่ใช่ยัดคนเดียวกันสองคอลัมน์)
 
 ```ts
-import { TEST_DOC_PREFIX, TEST_IMEI_PREFIX_FALLBACK, TEST_NOTE_MARKER, testNote } from './_context';
+import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
+import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /**
  * ไม่โพสต์ JE — seed สถานะไหนก็ได้
  * ใช้เครื่องทดสอบที่โดเมน contracts สร้างไว้ (IMEI ขึ้นต้น TEST-) เท่านั้น
  * ห้ามแตะเครื่องจริง เพราะการโอนย้าย/ปรับสต็อกเปลี่ยน branchId และ status ของเครื่อง
+ *
+ * ทุกตารางในโดเมนนี้ (StockCount · StockCountItem · StockTransfer · StockAdjustment ·
+ * StockAlert · ReorderPoint · BranchReceiving · BranchReceivingItem) **มี deletedAt ทั้งหมด**
+ * ⇒ cleanup ใช้ soft delete ล้วน (BranchReceiving เกิดตอนผู้ทดสอบกดยืนยันรับโอน — ไม่มี marker
+ * แต่ตามได้จาก FK ตรง transferId)
  */
 export const stockOpsSeeder: DomainSeeder = {
   key: 'stock-ops',
-  label: 'งานสต็อก (โอนย้าย · นับ · ปรับปรุง)',
-  routes: ['/stock', '/stock/products', '/stock/transfers', '/stock/count', '/stock/adjustments', '/stock/alerts', '/stock/workflow', '/inventory'],
-  markerDoc: `StockCount.countNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · StockTransfer/StockAdjustment ผูกกับ Product ที่ IMEI ขึ้นต้น "TEST-"`,
+  label: 'งานสต็อก (โอนย้าย · นับ · ปรับปรุง · แจ้งเตือน)',
+  routes: [
+    '/stock',
+    '/stock/products',
+    '/stock/transfers',
+    '/stock/count',
+    '/stock/adjustments',
+    '/stock/alerts',
+    '/stock/workflow',
+    '/inventory',
+  ],
+  markerDoc: `StockCount.countNumber ขึ้นต้น "${COUNT_NO_PREFIX}" · StockTransfer/StockAdjustment.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" · ReorderPoint/StockAlert.model = "${ALERT_MODEL}" (ค่าตรงตัว)`, // COUNT_NO_PREFIX = TEST-COUNT- (S1)
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
-    const products = await ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null }, select: { id: true }, take: 2 });
+    const products = await ctx.prisma.product.findMany({
+      where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null },
+      select: { id: true },
+      take: 2,
+    });
     const rows: PlanRow[] = [];
     if (!products.length) {
-      rows.push({ label: 'ข้าม', detail: 'ยังไม่มีเครื่องทดสอบ IN_STOCK — รันโดเมน contracts ก่อน' });
+      rows.push({
+        label: 'ข้าม',
+        detail: 'ยังไม่มีเครื่องทดสอบ IN_STOCK — รันโดเมน contracts ก่อน',
+      });
       return rows;
     }
-    rows.push({ label: `${TEST_DOC_PREFIX}COUNT`, detail: 'ใบนับสต็อกที่กำลังนับ (มีรายการรอกระทบยอด)' });
-    if (ctx.refs.secondBranchId) rows.push({ label: 'โอนย้ายสาขา', detail: 'PENDING 1 เครื่อง (รอสาขาปลายทางรับ)' });
+    rows.push({
+      label: `${TEST_DOC_PREFIX}COUNT`,
+      detail: 'ใบนับสต็อกที่กำลังนับ (มีรายการรอกระทบยอด)',
+    });
+    if (ctx.refs.reviewerId === ctx.refs.ownerId)
+      rows.push({
+        label: 'ข้ามปรับปรุงสต็อก',
+        detail: 'ไม่มีผู้อนุมัติคนที่สอง — สร้างรายการ 4-eyes (ผู้ปรับ ≠ ผู้อนุมัติ) ไม่ได้',
+      });
+    else
+      rows.push({
+        label: 'ปรับปรุงสต็อก',
+        detail: 'เหตุผล CORRECTION 1 รายการ (ผู้ปรับ ≠ ผู้อนุมัติ)',
+      });
+    rows.push({
+      label: 'จุดสั่งซื้อ + แจ้งเตือน',
+      detail: 'ReorderPoint 1 + StockAlert 1 (ACTIVE)',
+    });
+    if (ctx.refs.secondBranchId)
+      rows.push({ label: 'โอนย้ายสาขา', detail: 'PENDING 1 เครื่อง (รอสาขาปลายทางรับ)' });
     else rows.push({ label: 'ข้ามโอนย้าย', detail: 'มีสาขาเดียว — โอนย้ายต้องมี 2 สาขา' });
     return rows;
   },
@@ -1846,34 +2909,153 @@ export const stockOpsSeeder: DomainSeeder = {
       take: 2,
     });
     if (!products.length) {
-      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มีเครื่องทดสอบสถานะ IN_STOCK (รันโดเมน contracts ก่อน)');
+      stat.notes.push(
+        'ข้ามทั้งโดเมน — ยังไม่มีเครื่องทดสอบสถานะ IN_STOCK (รันโดเมน contracts ก่อน)',
+      );
       return stat;
     }
 
-    // 1) ใบนับสต็อก
-    const countNumber = `${TEST_DOC_PREFIX}COUNT-${ctx.dateStr}`;
-    const countExists = await ctx.prisma.stockCount.findFirst({ where: { countNumber }, select: { id: true } });
+    // 1) ใบนับสต็อก — ฟิลด์ items ยืนยันจาก prisma/seed.ts (sc-001)
+    //    countNumber เป็น @unique เต็มตาราง — จองเลขแบบ max+1 ไม่กรอง deletedAt
+    //    (doctrine เดียวกับ nextDocNumber ใน _helpers) และ probe ความซ้ำที่ notes (marker)
+    const countPrefix = `${TEST_DOC_PREFIX}COUNT-${ctx.dateStr}-`;
+    const countNotes = testNote('ใบนับสต็อกสำหรับทดสอบ');
+    const countExists = await ctx.prisma.stockCount.findFirst({
+      where: { notes: countNotes, deletedAt: null },
+      select: { id: true },
+    });
     if (countExists) {
       stat.skipped += 1;
     } else {
+      const lastCount = await ctx.prisma.stockCount.findFirst({
+        where: { countNumber: { startsWith: countPrefix } },
+        orderBy: { countNumber: 'desc' },
+        select: { countNumber: true },
+      });
       await ctx.prisma.stockCount.create({
         data: {
-          countNumber,
+          countNumber: nextNumberFrom(countPrefix, lastCount?.countNumber ?? null),
           branchId: ctx.refs.branchId,
           countedById: ctx.refs.salespersonId,
-          notes: testNote('ใบนับสต็อกสำหรับทดสอบ'),
+          status: 'IN_PROGRESS',
+          startedAt: ctx.today,
+          notes: countNotes,
           items: { create: products.map((p) => ({ productId: p.id, expectedStatus: p.status })) },
         },
       });
       stat.created += 1;
     }
 
-    // 2) โอนย้ายสาขา — ต้องมีสาขาที่สอง
+    // 2) ปรับปรุงสต็อก — CORRECTION ไม่เปลี่ยนสถานะเครื่อง จึงปลอดภัยที่สุดสำหรับข้อมูลเทส
+    //    (เหตุผล DAMAGED ต้องแนบรูปหลักฐาน T5-C14; FOUND ต้องมาจากสถานะใน FOUND_POLICY)
+    //    4-eyes: ผู้ปรับต้องคนละคนกับผู้อนุมัติ — SeedRefs **ไม่การันตี** ว่า reviewerId ≠ ownerId
+    //    (ระบบที่มี OWNER คนเดียวไม่มี BM ได้คนเดียวกันทั้งสองช่อง) จึงต้องเช็คเองก่อนสร้าง
+    //    ห้ามลดมาตรฐานด้วยการยัดคนเดียวกันลงทั้งสองคอลัมน์
+    if (ctx.refs.reviewerId === ctx.refs.ownerId) {
+      stat.notes.push(
+        'ข้ามใบปรับปรุงสต็อก — สภาพแวดล้อมนี้ไม่มีผู้อนุมัติคนที่สอง (ผู้ปรับกับผู้อนุมัติจะเป็นคนเดียวกัน) จึงสร้างรายการ 4-eyes ไม่ได้',
+      );
+    } else {
+      const adjNote = testNote('ปรับปรุงสต็อกสำหรับทดสอบ');
+      const adjExists = await ctx.prisma.stockAdjustment.findFirst({
+        where: { notes: adjNote, deletedAt: null },
+        select: { id: true },
+      });
+      if (adjExists) {
+        stat.skipped += 1;
+      } else {
+        await ctx.prisma.stockAdjustment.create({
+          data: {
+            productId: products[0].id,
+            branchId: ctx.refs.branchId,
+            reason: 'CORRECTION',
+            previousStatus: products[0].status,
+            notes: adjNote,
+            adjustedById: ctx.refs.reviewerId,
+            approvedById: ctx.refs.ownerId,
+          },
+        });
+        stat.created += 1;
+      }
+    }
+
+    // 3) จุดสั่งซื้อ + แจ้งเตือน — StockAlert.reorderPointId เป็น FK บังคับ ⇒ สร้าง ReorderPoint นำ
+    //    ReorderPoint มี @@unique([brand, model, storage, category, branchId]) แบบเต็มตาราง
+    //    (ไม่ใช่ partial) — แถวที่ cleanup soft delete ไปแล้วยังถือ tuple อยู่ ⇒ probe โดยไม่กรอง
+    //    deletedAt แล้ว "กู้คืน" แทนการสร้างซ้ำ ไม่งั้น seed หลัง cleanup ชน P2002
+    const alertModel = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
+    const rpAny = await ctx.prisma.reorderPoint.findFirst({
+      where: { model: alertModel },
+      select: { id: true, deletedAt: true },
+    });
+    if (rpAny && !rpAny.deletedAt) {
+      stat.skipped += 1;
+    } else if (rpAny) {
+      await ctx.prisma.reorderPoint.update({ where: { id: rpAny.id }, data: { deletedAt: null } });
+      const restored = await ctx.prisma.stockAlert.updateMany({
+        where: { reorderPointId: rpAny.id },
+        data: { deletedAt: null },
+      });
+      if (restored.count === 0) {
+        await ctx.prisma.stockAlert.create({
+          data: {
+            reorderPointId: rpAny.id,
+            brand: 'ทดสอบระบบ',
+            model: alertModel,
+            storage: '128GB',
+            category: 'PHONE_NEW',
+            branchId: ctx.refs.branchId,
+            currentStock: 1,
+            minQuantity: 2,
+            reorderQuantity: 5,
+            status: 'ACTIVE',
+          },
+        });
+        stat.created += 1; // แจ้งเตือนใบนี้เป็นแถวใหม่จริง — ไม่มีแถวเดิมให้กู้
+      }
+      // แถวที่ "กู้คืน" ไม่ใช่แถวที่สร้างใหม่ — นับเป็น skipped พร้อมบอกจำนวนตรง ๆ
+      stat.skipped += 1 + restored.count;
+      stat.notes.push(
+        `กู้คืนจุดสั่งซื้อ 1 แถว + แจ้งเตือน ${restored.count} แถวที่เคยถูกล้าง ` +
+          '(unique constraint กันสร้างแถวใหม่ซ้ำ — แถวกู้คืนนับเป็น skipped ไม่ใช่ created)',
+      );
+    } else {
+      const rp = await ctx.prisma.reorderPoint.create({
+        data: {
+          brand: 'ทดสอบระบบ',
+          model: alertModel,
+          storage: '128GB',
+          category: 'PHONE_NEW',
+          branchId: ctx.refs.branchId,
+          minQuantity: 2,
+          reorderQuantity: 5,
+        },
+        select: { id: true },
+      });
+      await ctx.prisma.stockAlert.create({
+        data: {
+          reorderPointId: rp.id,
+          brand: 'ทดสอบระบบ',
+          model: alertModel,
+          storage: '128GB',
+          category: 'PHONE_NEW',
+          branchId: ctx.refs.branchId,
+          currentStock: 1,
+          minQuantity: 2,
+          reorderQuantity: 5,
+          status: 'ACTIVE',
+        },
+      });
+      stat.created += 2;
+    }
+
+    // 4) โอนย้ายสาขา — ต้องมีสาขาที่สอง
     if (!ctx.refs.secondBranchId) {
       stat.notes.push('ข้ามการโอนย้ายสาขา — ระบบมีสาขาเดียว');
     } else {
+      const trNote = testNote('โอนย้ายสาขาสำหรับทดสอบ — รอสาขาปลายทางรับ');
       const exists = await ctx.prisma.stockTransfer.findFirst({
-        where: { productId: products[0].id, notes: { startsWith: TEST_NOTE_MARKER } },
+        where: { notes: trNote, deletedAt: null },
         select: { id: true },
       });
       if (exists) {
@@ -1886,7 +3068,7 @@ export const stockOpsSeeder: DomainSeeder = {
             toBranchId: ctx.refs.secondBranchId,
             transferredBy: ctx.refs.reviewerId,
             status: 'PENDING',
-            notes: testNote('โอนย้ายสาขาสำหรับทดสอบ — รอสาขาปลายทางรับ'),
+            notes: trNote,
           },
         });
         stat.created += 1;
@@ -1896,39 +3078,125 @@ export const stockOpsSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const counts = await ctx.prisma.stockCount.findMany({
-      where: { countNumber: { startsWith: `${TEST_DOC_PREFIX}COUNT-` } },
-      select: { id: true, countNumber: true },
-    });
-    const transfers = await ctx.prisma.stockTransfer.findMany({
-      where: { notes: { startsWith: TEST_NOTE_MARKER } },
-      select: { id: true },
-    });
+    const alertModel = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
+    const [counts, transfers, adjustments, rps] = await Promise.all([
+      ctx.prisma.stockCount.findMany({
+        where: { countNumber: { startsWith: `${TEST_DOC_PREFIX}COUNT-` }, deletedAt: null },
+        select: { id: true, countNumber: true },
+      }),
+      ctx.prisma.stockTransfer.findMany({
+        where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+        select: { id: true },
+      }),
+      ctx.prisma.stockAdjustment.findMany({
+        where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+        select: { id: true },
+      }),
+      ctx.prisma.reorderPoint.findMany({
+        where: { model: alertModel, deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
+    const alerts = rps.length
+      ? await ctx.prisma.stockAlert.findMany({
+          where: { reorderPointId: { in: rps.map((r) => r.id) }, deletedAt: null },
+          select: { id: true },
+        })
+      : [];
+    // ใบตรวจรับสาขาที่เกิดจากการกดยืนยันรับโอนของทดสอบ (branch-receiving.service.ts)
+    // ไม่มี marker ติดตัว — ตามได้จาก FK ตรง BranchReceiving.transferId (@unique) เท่านั้น
+    // ถ้าไม่กวาดตรงนี้จะเหลือใบตรวจรับค้างชี้ไปที่ใบโอนที่ถูกลบไปแล้ว
+    const receivings = transfers.length
+      ? await ctx.prisma.branchReceiving.findMany({
+          where: { transferId: { in: transfers.map((t) => t.id) }, deletedAt: null },
+          select: { id: true, transferId: true },
+        })
+      : [];
+    const receivingItems = receivings.length
+      ? await ctx.prisma.branchReceivingItem.findMany({
+          where: { receivingId: { in: receivings.map((r) => r.id) }, deletedAt: null },
+          select: { id: true },
+        })
+      : [];
     for (const c of counts) console.log(`     ${c.countNumber}`);
+    // ใบตรวจรับสาขาไม่มี marker ติดตัว — บรรทัดนี้คือโอกาสเดียวที่ผู้สั่งล้าง (ทั้ง dry-run
+    // และของจริง) จะเห็นว่ากำลังกวาดใบไหน (pattern เดียวกับเครื่องจาก PO ใน suppliers-po)
+    for (const r of receivings)
+      console.log(`     ใบตรวจรับสาขา ${r.id} (ของใบโอนย้าย ${r.transferId})`);
 
-    if (!dryRun && (counts.length || transfers.length)) {
+    if (!dryRun) {
+      const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
         if (counts.length) {
-          await tx.stockCountItem.deleteMany({ where: { stockCountId: { in: counts.map((c) => c.id) } } });
-          await tx.stockCount.deleteMany({ where: { id: { in: counts.map((c) => c.id) } } });
+          await tx.stockCountItem.updateMany({
+            where: { stockCountId: { in: counts.map((c) => c.id) } },
+            data: { deletedAt: now },
+          });
+          await tx.stockCount.updateMany({
+            where: { id: { in: counts.map((c) => c.id) } },
+            data: { deletedAt: now },
+          });
         }
-        if (transfers.length) {
-          await tx.stockTransfer.deleteMany({ where: { id: { in: transfers.map((t) => t.id) } } });
-        }
+        // ลูก → แม่ → ใบโอน (soft delete ทั้งหมด — ไม่มี FK abort แต่คงลำดับให้อ่านตรงกับโครงสร้าง)
+        if (receivingItems.length)
+          await tx.branchReceivingItem.updateMany({
+            where: { id: { in: receivingItems.map((i) => i.id) } },
+            data: { deletedAt: now },
+          });
+        if (receivings.length)
+          await tx.branchReceiving.updateMany({
+            where: { id: { in: receivings.map((r) => r.id) } },
+            data: { deletedAt: now },
+          });
+        if (transfers.length)
+          await tx.stockTransfer.updateMany({
+            where: { id: { in: transfers.map((t) => t.id) } },
+            data: { deletedAt: now },
+          });
+        if (adjustments.length)
+          await tx.stockAdjustment.updateMany({
+            where: { id: { in: adjustments.map((a) => a.id) } },
+            data: { deletedAt: now },
+          });
+        // แจ้งเตือนต้องออกก่อนจุดสั่งซื้อ — reorderPointId เป็น FK บังคับ
+        if (alerts.length)
+          await tx.stockAlert.updateMany({
+            where: { id: { in: alerts.map((a) => a.id) } },
+            data: { deletedAt: now },
+          });
+        if (rps.length)
+          await tx.reorderPoint.updateMany({
+            where: { id: { in: rps.map((r) => r.id) } },
+            data: { deletedAt: now },
+          });
       });
     }
-    return { removed: { 'ใบนับสต็อก': counts.length, 'ใบโอนย้ายสาขา': transfers.length }, warnings: [] };
+    return {
+      removed: {
+        ใบนับสต็อก: counts.length,
+        ใบโอนย้ายสาขา: transfers.length,
+        ใบตรวจรับสาขา: receivings.length,
+        รายการตรวจรับสาขา: receivingItems.length,
+        ใบปรับปรุงสต็อก: adjustments.length,
+        แจ้งเตือนสต็อก: alerts.length,
+        จุดสั่งซื้อ: rps.length,
+      },
+      warnings: [],
+    };
   },
 };
 ```
 
-> `StockCount` และ `StockTransfer` ไม่มี `deletedAt` (เป็น log ของการปฏิบัติงาน) ⇒ cleanup ใช้ **hard delete**
-> ตรวจก่อนเขียน: `awk '/^model StockCount /,/^}/' apps/api/prisma/schema.prisma | grep deletedAt` — ถ้ามี ให้เปลี่ยนเป็น soft delete
+- [ ] **Step 4: ยืนยันว่าทุกตารางในโดเมนนี้เป็น soft delete จริง**
 
-- [ ] **Step 4: ลบ import ที่ไม่ได้ใช้**
-
-`stock-ops.seed.ts` ข้างบนอ้าง `TEST_IMEI_PREFIX_FALLBACK` ซึ่ง **ไม่มีอยู่จริง** — ลบออกจากบรรทัด import
-ให้เหลือ `import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';`
+Run:
+```bash
+for m in StockCount StockCountItem StockTransfer StockAdjustment StockAlert ReorderPoint BranchReceiving BranchReceivingItem; do
+  printf "%-18s " "$m"
+  awk "/^model $m /,/^}/" apps/api/prisma/schema.prisma | grep -q deletedAt && echo soft || echo hard
+done
+```
+Expected (ตรวจแล้วตอนเขียนแผน): **soft ทั้ง 8 ตัว** — ถ้าตัวไหนขึ้น hard ให้เปลี่ยนบรรทัดนั้นใน `cleanup` เป็น `deleteMany`
 
 - [ ] **Step 5: เพิ่มเข้า registry (ต่อจาก `equitySeeder`)**
 
@@ -1992,7 +3260,7 @@ export const bookingsSeeder: DomainSeeder = {
   key: 'bookings',
   label: 'ใบจอง',
   routes: ['/bookings'],
-  markerDoc: `Booking.bookingNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `Booking.bookingNumber ขึ้นต้น "${BOOKING_NO_PREFIX}"`, // BOOKING_NO_PREFIX = `${TEST_DOC_PREFIX}BK-` — ค่าคงที่เดียวกับ query (S1, final fix 2026-08-26)
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
@@ -2078,6 +3346,7 @@ export const bookingsSeeder: DomainSeeder = {
 - [ ] **Step 2: เขียน `online-orders.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
 import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
@@ -2093,7 +3362,7 @@ export const onlineOrdersSeeder: DomainSeeder = {
   key: 'online-orders',
   label: 'ออเดอร์ออนไลน์ + การจองเครื่อง',
   routes: ['/online-orders', '/product-holds', '/slip-review'],
-  markerDoc: `OnlineOrder.orderNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · ProductReservation.sessionId ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `OnlineOrder.orderNumber ขึ้นต้น "${ORDER_NO_PREFIX}" · ProductReservation.sessionId ขึ้นต้น "${SESSION_ID_PREFIX}"`, // = TEST-ORD- / TEST-SESSION- — ค่าคงที่เดียวกับ query (S1)
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}ORD ${r.key}`, detail: `${r.status} · ${r.shipping} · ${r.channel} · ${r.note}` }));
@@ -2117,7 +3386,9 @@ export const onlineOrdersSeeder: DomainSeeder = {
         stat.skipped += 1;
         continue;
       }
-      const price = Number(products[i].cashPrice ?? 0);
+      // ส่ง Decimal ผ่านตรง ๆ — Prisma รับ Decimal ให้คอลัมน์ Decimal อยู่แล้ว
+      // ห้ามแปลงเป็น number (Global Constraints: Money = Decimal)
+      const price = products[i].cashPrice ?? new Prisma.Decimal(0);
       const reservation = await ctx.prisma.productReservation.create({
         data: {
           productId: products[i].id,
@@ -2149,7 +3420,7 @@ export const onlineOrdersSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const orders = await ctx.prisma.onlineOrder.findMany({
-      where: { orderNumber: { startsWith: `${TEST_DOC_PREFIX}ORD-` } },
+      where: { orderNumber: { startsWith: `${TEST_DOC_PREFIX}ORD-` }, deletedAt: null },
       select: { id: true, orderNumber: true, reservationId: true },
     });
     const reservations = await ctx.prisma.productReservation.findMany({
@@ -2160,8 +3431,16 @@ export const onlineOrdersSeeder: DomainSeeder = {
 
     if (!dryRun && (orders.length || reservations.length)) {
       await ctx.prisma.$transaction(async (tx) => {
-        if (orders.length) await tx.onlineOrder.deleteMany({ where: { id: { in: orders.map((o) => o.id) } } });
-        if (reservations.length) await tx.productReservation.deleteMany({ where: { id: { in: reservations.map((r) => r.id) } } });
+        // OnlineOrder มี deletedAt ⇒ soft delete
+        if (orders.length) {
+          await tx.onlineOrder.updateMany({ where: { id: { in: orders.map((o) => o.id) } }, data: { deletedAt: new Date() } });
+        }
+        // ProductReservation ไม่มี deletedAt ⇒ hard delete — และ **ต้องเอาออกจริง**
+        // ไม่ใช่แค่ซ่อน เพราะแถวที่ยัง ACTIVE จะทำให้ assertProductNotHeld ชั้น 3
+        // บล็อกการลบ/แก้ IMEI/คืนเครื่องเข้าคลังของเครื่องนั้นตลอดไป
+        if (reservations.length) {
+          await tx.productReservation.deleteMany({ where: { id: { in: reservations.map((r) => r.id) } } });
+        }
       });
     }
     return { removed: { 'ออเดอร์ออนไลน์': orders.length, 'การจองเครื่อง': reservations.length }, warnings: [] };
@@ -2172,23 +3451,46 @@ export const onlineOrdersSeeder: DomainSeeder = {
 - [ ] **Step 3: เขียน `applications.seed.ts`**
 
 ```ts
-import { TEST_DOC_PREFIX } from './_context';
+import { TEST_DOC_PREFIX, testNote } from './_context';
+import { TEST_CUSTOMER_ADDRESS } from '../seed-test-contracts.cli';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /** ไม่โพสต์ JE — seed สถานะไหนก็ได้ */
-const ROWS: Array<{ key: string; fullName: string; down: number; months: number; monthly: number }> = [
+const ROWS: Array<{
+  key: string;
+  fullName: string;
+  down: number;
+  months: number;
+  monthly: number;
+}> = [
   { key: 'new', fullName: 'ทดสอบระบบ ผู้สมัครผ่อน 1', down: 3000, months: 10, monthly: 2590 },
   { key: 'review', fullName: 'ทดสอบระบบ ผู้สมัครผ่อน 2', down: 5000, months: 12, monthly: 1890 },
 ];
+
+/**
+ * marker ของใบตรวจเครดิตทดสอบ — CreditCheck ไม่มีคอลัมน์ unique ที่ seeder ตั้งเอง
+ * (contractId เป็น @unique แต่จงใจปล่อย null) จึงใช้ข้อความใน reviewNotes เป็นตัวชี้
+ * ทั้ง probe กันซ้ำและ cleanup (precedent เดียวกับ suppliers-po ที่ probe ด้วย notes)
+ */
+const CC_REVIEW_NOTE = testNote('ใบตรวจเครดิตรอตรวจ — สร้างโดยชุดข้อมูลทดสอบ');
 
 export const applicationsSeeder: DomainSeeder = {
   key: 'applications',
   label: 'ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต',
   routes: ['/installment-applications', '/customer-intake'],
-  markerDoc: `OnlineInstallmentApplication.applicationNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `OnlineInstallmentApplication.applicationNumber ขึ้นต้น "${APP_NO_PREFIX}" · CreditCheck.reviewNotes = "${CC_REVIEW_NOTE}"`, // APP_NO_PREFIX = TEST-APP- — ค่าคงที่เดียวกับ query (S1)
 
   async plan(): Promise<PlanRow[]> {
-    return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}APP ${r.key}`, detail: `${r.fullName} · ดาวน์ ฿${r.down.toLocaleString('th-TH')} · ${r.months} งวด × ฿${r.monthly.toLocaleString('th-TH')}` }));
+    return [
+      ...ROWS.map((r) => ({
+        label: `${TEST_DOC_PREFIX}APP ${r.key}`,
+        detail: `${r.fullName} · ดาวน์ ฿${r.down.toLocaleString('th-TH')} · ${r.months} งวด × ฿${r.monthly.toLocaleString('th-TH')}`,
+      })),
+      {
+        label: 'CreditCheck pending',
+        detail: 'ใบตรวจเครดิต PENDING ×1 — แนบลูกค้าทดสอบ ไม่ผูกสัญญา (contractId เป็น @unique)',
+      },
+    ];
   },
 
   async seed(ctx: SeedContext): Promise<SeedStat> {
@@ -2204,9 +3506,36 @@ export const applicationsSeeder: DomainSeeder = {
     }
     for (const [i, r] of ROWS.entries()) {
       const applicationNumber = `${TEST_DOC_PREFIX}APP-${ctx.dateStr}-${r.key}`;
-      const exists = await ctx.prisma.onlineInstallmentApplication.findFirst({ where: { applicationNumber }, select: { id: true } });
-      if (exists) {
+      // applicationNumber เป็น @unique เต็มตาราง — probe โดยไม่กรอง deletedAt แล้วกู้คืน
+      // แถวที่เคยถูกล้าง (restore-instead-of-recreate) กัน P2002 หลัง seed → cleanup → seed
+      const exists = await ctx.prisma.onlineInstallmentApplication.findFirst({
+        where: { applicationNumber },
+        select: { id: true, deletedAt: true },
+      });
+      if (exists && !exists.deletedAt) {
         stat.skipped += 1;
+        continue;
+      }
+      if (exists) {
+        // กู้คืนแล้ว reset กลับสภาพเริ่มต้นที่ seed ไว้ — tester อาจทิ้งสถานะ APPROVED +
+        // contractId ที่ชี้สัญญาซึ่งโดเมน contracts ล้างไปแล้ว (ลิงก์ตาย); เคลียร์ผลตรวจ
+        // ทั้งชุดให้ใบสมัครที่กู้คืนมาสดจริงเหมือนแถวที่เพิ่งสร้าง
+        await ctx.prisma.onlineInstallmentApplication.update({
+          where: { id: exists.id },
+          data: {
+            deletedAt: null,
+            status: 'SUBMITTED',
+            contractId: null,
+            scheduledAt: null,
+            reviewedAt: null,
+            reviewedById: null,
+            rejectReason: null,
+          },
+        });
+        stat.skipped += 1;
+        stat.notes.push(
+          `กู้คืน ${applicationNumber} ที่เคยถูกล้าง (reset เป็น SUBMITTED · แถวกู้คืนนับเป็น skipped ไม่ใช่ created)`,
+        );
         continue;
       }
       await ctx.prisma.onlineInstallmentApplication.create({
@@ -2223,19 +3552,66 @@ export const applicationsSeeder: DomainSeeder = {
       });
       stat.created += 1;
     }
+
+    // CreditCheck ×1 สถานะ PENDING (aiScore/aiSummary ปล่อย null แบบ cc-007 ใน dev seed) —
+    // ให้หน้า /customer-intake มีรายการที่ยังมีงานต่อ. contractId จงใจปล่อย null:
+    // คอลัมน์เป็น @unique — ผูกสัญญาทดสอบ = เผา slot ตรวจเครดิตของสัญญานั้น + เสี่ยง P2002
+    const testCustomer = await ctx.prisma.customer.findFirst({
+      where: { addressCurrent: TEST_CUSTOMER_ADDRESS, deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!testCustomer) {
+      stat.notes.push('ข้าม CreditCheck — ยังไม่มีลูกค้าทดสอบ (รันโดเมน contracts ก่อน)');
+      return stat;
+    }
+    const ccExists = await ctx.prisma.creditCheck.findFirst({
+      where: { reviewNotes: CC_REVIEW_NOTE, deletedAt: null },
+      select: { id: true },
+    });
+    if (ccExists) {
+      stat.skipped += 1;
+    } else {
+      await ctx.prisma.creditCheck.create({
+        data: {
+          customerId: testCustomer.id,
+          status: 'PENDING',
+          reviewNotes: CC_REVIEW_NOTE,
+        },
+      });
+      stat.created += 1;
+    }
     return stat;
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.onlineInstallmentApplication.findMany({
-      where: { applicationNumber: { startsWith: `${TEST_DOC_PREFIX}APP-` } },
+      where: { applicationNumber: { startsWith: `${TEST_DOC_PREFIX}APP-` }, deletedAt: null },
       select: { id: true, applicationNumber: true },
     });
     for (const r of rows) console.log(`     ${r.applicationNumber}`);
     if (!dryRun && rows.length) {
-      await ctx.prisma.onlineInstallmentApplication.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+      // มี deletedAt ⇒ soft delete
+      await ctx.prisma.onlineInstallmentApplication.updateMany({
+        where: { id: { in: rows.map((r) => r.id) } },
+        data: { deletedAt: new Date() },
+      });
     }
-    return { removed: { 'ใบสมัครผ่อนออนไลน์': rows.length }, warnings: [] };
+    const ccRows = await ctx.prisma.creditCheck.findMany({
+      where: { reviewNotes: CC_REVIEW_NOTE, deletedAt: null },
+      select: { id: true },
+    });
+    if (!dryRun && ccRows.length) {
+      // CreditCheck มี deletedAt ⇒ soft delete
+      await ctx.prisma.creditCheck.updateMany({
+        where: { id: { in: ccRows.map((r) => r.id) } },
+        data: { deletedAt: new Date() },
+      });
+    }
+    return {
+      removed: { ใบสมัครผ่อนออนไลน์: rows.length, ใบตรวจเครดิต: ccRows.length },
+      warnings: [],
+    };
   },
 };
 ```
@@ -2308,7 +3684,7 @@ export const repairSeeder: DomainSeeder = {
   key: 'repair',
   label: 'ใบซ่อม / ประกัน',
   routes: ['/insurance', '/insurance/:id', '/insurance/new', '/insurance/warranty-check', '/insurance/exchange-requests'],
-  markerDoc: `RepairTicket.ticketNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `RepairTicket.ticketNumber ขึ้นต้น "${TICKET_NO_PREFIX}"`, // = TEST-RT- — ค่าคงที่เดียวกับ query (S1)
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}RT ${r.key}`, detail: `${r.status} · ผู้จ่าย ${r.payer} · ${r.warranty} · ${r.defect}` }));
@@ -2365,30 +3741,146 @@ export const repairSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.repairTicket.findMany({
-      where: { ticketNumber: { startsWith: `${TEST_DOC_PREFIX}RT-` } },
-      select: { id: true, ticketNumber: true, expenseDocumentId: true, otherIncomeId: true },
+      where: { ticketNumber: { startsWith: `${TEST_DOC_PREFIX}RT-` }, deletedAt: null },
+      select: {
+        id: true,
+        ticketNumber: true,
+        expenseDocumentId: true,
+        otherIncomeId: true,
+        replacementContractId: true,
+      },
     });
+    // log สถานะเกิดตอนผู้ทดสอบกดเปลี่ยนสถานะ (repair-ticket-lifecycle.service.ts) — ไม่มี marker
+    // ติดตัว ตามได้จาก FK ticketId เท่านั้น และไม่มี deletedAt (append-only log) ⇒ hard delete
+    const logs = rows.length
+      ? await ctx.prisma.repairStatusLog.findMany({
+          where: { ticketId: { in: rows.map((r) => r.id) } },
+          select: { id: true, ticketId: true },
+        })
+      : [];
+    // ปิดใบซ่อม (CLOSED) สร้าง ExpenseDocument (payer SHOP) / OtherIncome (payer CUSTOMER)
+    // โดยไม่มี marker ทดสอบ — โดเมน expenses/other-income กรองด้วย note marker จึงมองไม่เห็น
+    // ⇒ ตามจาก FK ตรงบนใบซ่อม (expenseDocumentId/otherIncomeId — @unique ทั้งคู่) แล้วกวาด
+    // ด้วยลำดับเดียวกับสองโดเมนนั้นเป๊ะ (JE hard-delete ก่อน แล้วค่อย soft-delete เอกสาร)
+    const expenseIds = rows.map((r) => r.expenseDocumentId).filter((x): x is string => !!x);
+    const otherIncomeIds = rows.map((r) => r.otherIncomeId).filter((x): x is string => !!x);
+    const expenseDocs = expenseIds.length
+      ? await ctx.prisma.expenseDocument.findMany({
+          where: { id: { in: expenseIds }, deletedAt: null },
+          select: { id: true, number: true, journalEntryId: true },
+        })
+      : [];
+    const oiMarked = otherIncomeIds.length
+      ? await ctx.prisma.otherIncome.findMany({
+          where: { id: { in: otherIncomeIds }, deletedAt: null },
+          select: { id: true, docNumber: true, journalEntryId: true },
+        })
+      : [];
+    // mirror other-income.seed.ts: ใบกลับรายการ (-R) เขียนทับ customerNote ⇒ ตามด้วย FK reversesId
+    const oiReversals = oiMarked.length
+      ? await ctx.prisma.otherIncome.findMany({
+          where: { reversesId: { in: oiMarked.map((d) => d.id) }, deletedAt: null },
+          select: { id: true, docNumber: true, journalEntryId: true },
+        })
+      : [];
+    const oiDocs = [...oiMarked, ...oiReversals];
+    const expenseJeIds = expenseDocs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
+    const oiJeIds = oiDocs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
     for (const r of rows) {
-      const extra = [r.expenseDocumentId ? 'มีใบค่าใช้จ่าย' : '', r.otherIncomeId ? 'มีใบรายได้อื่น' : ''].filter(Boolean).join(' + ');
+      const logCount = logs.filter((l) => l.ticketId === r.id).length;
+      const extra = [
+        r.expenseDocumentId ? 'มีใบค่าใช้จ่าย (กวาดด้วย)' : '',
+        r.otherIncomeId ? 'มีใบรายได้อื่น (กวาดด้วย)' : '',
+        r.replacementContractId ? 'มีสัญญาทดแทน' : '',
+        logCount ? `log สถานะ ${logCount} รายการ (ลบถาวร)` : '',
+      ]
+        .filter(Boolean)
+        .join(' + ');
       console.log(`     ${r.ticketNumber}${extra ? ` (${extra})` : ''}`);
     }
+    // เอกสารพวกนี้ไม่มี marker — บรรทัดนี้คือช่องทางเดียวที่ผู้รันเห็นเลขเอกสารก่อนมันถูกกวาด
+    // ⇒ พิมพ์เสมอทั้ง dry-run และ live
+    for (const d of expenseDocs)
+      console.log(`     ใบค่าใช้จ่ายจากใบซ่อม ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    for (const d of oiDocs)
+      console.log(`     ใบรายได้อื่นจากใบซ่อม ${d.docNumber}${d.journalEntryId ? ' (มี JE)' : ''}`);
     if (!dryRun && rows.length) {
       await ctx.prisma.$transaction(async (tx) => {
+        // FK expenseDocumentId/otherIncomeId อยู่ฝั่ง repair_tickets (ON DELETE SET NULL) และ
+        // เอกสารถูก soft delete เท่านั้น ⇒ constraint ไม่มีวันทำงาน — คง FK บนใบซ่อมไว้เป็น
+        // ร่องรอยตรวจย้อน (ใบซ่อมเองก็ถูก soft delete ในรอบเดียวกัน)
+        if (expenseDocs.length) {
+          if (expenseJeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: expenseJeIds } },
+            });
+            await tx.expenseDocument.updateMany({
+              where: { id: { in: expenseDocs.map((d) => d.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: expenseJeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: expenseJeIds } } });
+          }
+          await tx.expenseDocument.updateMany({
+            where: { id: { in: expenseDocs.map((d) => d.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+        if (oiDocs.length) {
+          if (oiJeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: oiJeIds } },
+            });
+            await tx.otherIncome.updateMany({
+              where: { id: { in: oiDocs.map((d) => d.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: oiJeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: oiJeIds } } });
+          }
+          await tx.otherIncome.updateMany({
+            where: { id: { in: oiDocs.map((d) => d.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+        // RepairStatusLog ไม่มี deletedAt (เป็น log) ⇒ hard · RepairTicket มี ⇒ soft
         await tx.repairStatusLog.deleteMany({ where: { ticketId: { in: rows.map((r) => r.id) } } });
-        await tx.repairTicket.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+        await tx.repairTicket.updateMany({
+          where: { id: { in: rows.map((r) => r.id) } },
+          data: { deletedAt: new Date() },
+        });
       });
     }
     return {
-      removed: { 'ใบซ่อม': rows.length },
-      warnings: rows.some((r) => r.expenseDocumentId || r.otherIncomeId)
-        ? ['ใบซ่อมบางใบสร้างเอกสารบัญชีไว้แล้ว (ตอนปิดใบ) — เอกสารนั้นถูกล้างโดยโดเมน expenses/other-income ถ้ามี marker ไม่งั้นต้องยกเลิกในหน้าจอเอง']
+      removed: {
+        ใบซ่อม: rows.length,
+        'log สถานะใบซ่อม (ลบถาวร)': logs.length,
+        'ใบค่าใช้จ่ายจากใบซ่อม (ไม่มี marker — ตามจาก FK)': expenseDocs.length,
+        'ใบรายได้อื่นจากใบซ่อม (ไม่มี marker — ตามจาก FK)': oiDocs.length,
+        'รายการบัญชีของเอกสารใบซ่อม (ลบถาวร)': expenseJeIds.length + oiJeIds.length,
+      },
+      warnings: rows.some((r) => r.replacementContractId)
+        ? [
+            'ใบซ่อมบางใบผูกสัญญาทดแทน (replacementContractId) จาก flow เปลี่ยนเครื่อง — สัญญานั้นไม่มี marker ทดสอบและ cleanup นี้ไม่แตะ ต้องยกเลิกในหน้าจอเอง',
+          ]
         : [],
     };
   },
 };
 ```
 
-- [ ] **Step 2: เขียน `inspections.seed.ts`**
+> **หมายเหตุ (fix round 1, 2026-08-26) — ทำไมต้องมี sweep เอกสารจากใบซ่อม:** การปิดใบซ่อม (CLOSED)
+> สร้าง `ExpenseDocument` (payer SHOP) / `OtherIncome` (payer CUSTOMER) โดยไม่มี marker ทดสอบ
+> (`repair-ticket-lifecycle.service.ts:379,405`) — โดเมน expenses/other-income กรองด้วย note marker
+> จึงมองไม่เห็นตลอดกาล และถ้าผู้ทดสอบโพสต์ JE จะค้างในสมุดถาวร ⇒ ตามจาก FK ตรงบนใบซ่อม
+> (`RepairTicket.expenseDocumentId`/`otherIncomeId` — `String? @unique`, FK อยู่ฝั่ง `repair_tickets`,
+> `ON DELETE SET NULL`; เอกสารถูก soft delete เท่านั้น constraint จึงไม่ทำงาน — ไม่ต้อง null FK).
+> ลำดับกวาด JE ต้อง mirror expenses/other-income เป๊ะ (journalPostAuditLog → null journalEntryId →
+> journalLine → journalEntry) + ใบกลับรายการ -R ของ OtherIncome ตามด้วย `reversesId`.
+> เลขเอกสารต้องพิมพ์ทั้ง dry-run และ live — เป็นช่องทางเดียวที่ผู้รันเห็นมัน (ไม่มี marker).
+> **ผู้ที่คัดลอกบล็อกเวอร์ชันก่อนหน้า (ไม่มี sweep นี้) จะเปิดรูเดิมกลับมา.**
+
+- [ ] **Step 2: เขียน `inspections.seed.ts`** *(บล็อกนี้ sync กับโค้ดที่ commit แล้ว — fix round 2, 2026-08-26)*
 
 ```ts
 import { TEST_NOTE_MARKER, testNote } from './_context';
@@ -2401,37 +3893,73 @@ export const inspectionsSeeder: DomainSeeder = {
   markerDoc: `Inspection.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
-    const template = await ctx.prisma.inspectionTemplate.findFirst({ where: { deletedAt: null }, select: { id: true, name: true } });
-    if (!template) return [{ label: 'ข้าม', detail: 'ยังไม่มี InspectionTemplate ในระบบ (Inspection.templateId บังคับ)' }];
+    const template = await ctx.prisma.inspectionTemplate.findFirst({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!template)
+      return [
+        {
+          label: 'ข้าม',
+          detail: 'ยังไม่มี InspectionTemplate ในระบบ (Inspection.templateId บังคับ)',
+        },
+      ];
     return [
       { label: 'ใบตรวจ 1', detail: `ใช้เทมเพลต "${template.name}" — รอตรวจ` },
-      { label: 'ใบตรวจ 2', detail: `ใช้เทมเพลต "${template.name}" — ตรวจแล้ว` },
+      { label: 'ใบตรวจ 2', detail: `ใช้เทมเพลต "${template.name}" — ตรวจแล้ว (เกรด B)` },
     ];
   },
 
   async seed(ctx: SeedContext): Promise<SeedStat> {
     const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
     const [template, products] = await Promise.all([
-      ctx.prisma.inspectionTemplate.findFirst({ where: { deletedAt: null }, select: { id: true } }),
-      ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: 'TEST-' }, deletedAt: null }, select: { id: true }, take: 2 }),
+      ctx.prisma.inspectionTemplate.findFirst({
+        where: { deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      ctx.prisma.product.findMany({
+        where: { imeiSerial: { startsWith: 'TEST-' }, deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+        take: 2,
+      }),
     ]);
     if (!template) {
-      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มี InspectionTemplate (Inspection.templateId บังคับ) สร้างเทมเพลตในหน้าตั้งค่าก่อน');
+      stat.notes.push(
+        'ข้ามทั้งโดเมน — ยังไม่มี InspectionTemplate (Inspection.templateId บังคับ) สร้างเทมเพลตในหน้าตั้งค่าก่อน',
+      );
       return stat;
     }
     if (products.length < 2) {
-      stat.notes.push('ข้ามทั้งโดเมน — ต้องมีเครื่องทดสอบอย่างน้อย 2 เครื่อง (รันโดเมน contracts ก่อน)');
+      stat.notes.push(
+        'ข้ามทั้งโดเมน — ต้องมีเครื่องทดสอบอย่างน้อย 2 เครื่อง (รันโดเมน contracts ก่อน)',
+      );
       return stat;
     }
     for (const [i, p] of products.entries()) {
       const notes = testNote(`ใบตรวจสภาพ/${i + 1}`);
-      const exists = await ctx.prisma.inspection.findFirst({ where: { notes, deletedAt: null }, select: { id: true } });
+      const exists = await ctx.prisma.inspection.findFirst({
+        where: { notes, deletedAt: null },
+        select: { id: true },
+      });
       if (exists) {
         stat.skipped += 1;
         continue;
       }
+      // ใบที่สอง = ตรวจเสร็จแล้ว (ให้ตรงกับ plan) — Inspection ไม่โพสต์อะไร สถานะไหนก็ได้
+      const done = i === 1;
       await ctx.prisma.inspection.create({
-        data: { productId: p.id, templateId: template.id, inspectorId: ctx.refs.salespersonId, notes },
+        data: {
+          productId: p.id,
+          templateId: template.id,
+          inspectorId: ctx.refs.salespersonId,
+          notes,
+          ...(done
+            ? { isCompleted: true, inspectedAt: ctx.today, overallGrade: 'B' as const }
+            : {}),
+        },
       });
       stat.created += 1;
     }
@@ -2441,20 +3969,42 @@ export const inspectionsSeeder: DomainSeeder = {
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.inspection.findMany({
       where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
-      select: { id: true },
+      select: { id: true, notes: true },
     });
+    // ผลตรวจรายข้อเกิดตอนผู้ทดสอบกรอกผลผ่านหน้าจอ — ไม่มี marker ติดตัว ตามได้จาก FK
+    // inspectionId เท่านั้น ⇒ พิมพ์ identity ให้คนสั่งล้างเห็น (ทั้ง dry-run และของจริง)
+    const results = rows.length
+      ? await ctx.prisma.inspectionResult.findMany({
+          where: { inspectionId: { in: rows.map((r) => r.id) }, deletedAt: null },
+          select: { id: true, inspectionId: true },
+        })
+      : [];
+    for (const r of rows) {
+      const n = results.filter((x) => x.inspectionId === r.id).length;
+      console.log(`     ${r.notes ?? r.id}${n ? ` (ผลตรวจรายข้อ ${n} ข้อ)` : ''}`);
+    }
     if (!dryRun && rows.length) {
+      const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
-        await tx.inspectionResult.deleteMany({ where: { inspectionId: { in: rows.map((r) => r.id) } } });
-        await tx.inspection.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+        // InspectionResult มี deletedAt เหมือนกัน ⇒ soft ทั้งคู่ — กรอง deletedAt: null
+        // ให้ตรงกับ findMany ที่ใช้รายงานข้างบน (ไม่งั้น re-stamp แถวที่ผู้ทดสอบลบผ่าน
+        // หน้าจอไปแล้ว และตัวเลขที่รายงานไม่ตรงกับแถวที่เปลี่ยนจริง)
+        await tx.inspectionResult.updateMany({
+          where: { inspectionId: { in: rows.map((r) => r.id) }, deletedAt: null },
+          data: { deletedAt: now },
+        });
+        await tx.inspection.updateMany({
+          where: { id: { in: rows.map((r) => r.id) } },
+          data: { deletedAt: now },
+        });
       });
     }
-    return { removed: { 'ใบตรวจสภาพ': rows.length }, warnings: [] };
+    return { removed: { ใบตรวจสภาพ: rows.length, ผลตรวจรายข้อ: results.length }, warnings: [] };
   },
 };
 ```
 
-- [ ] **Step 3: เขียน `device-swap.seed.ts`**
+- [ ] **Step 3: เขียน `device-swap.seed.ts`** *(บล็อกนี้ sync กับโค้ดที่ commit แล้ว — fix round 2, 2026-08-26)*
 
 ```ts
 import { TEST_NOTE_MARKER, testNote } from './_context';
@@ -2463,17 +4013,26 @@ import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from '
 /**
  * คำขอเปลี่ยนเครื่อง 1 ใบ สถานะรออนุมัติ
  * R2 — ห้าม finalize (finalize โพสต์ JE ชุด A.1-A.5 + SHOP leg)
+ *
+ * ใบที่ seed ไม่ระบุ mode ⇒ default PRICED โดยไม่มี snapshot แผนผ่อน — ตรงกับรูป
+ * "legacy in-flight PENDING" ที่ approvePriced รองรับอยู่แล้ว (`usedSnapshot =
+ * req.newTotalMonths != null` เป็น false ⇒ clone งวดคงเหลือจากสัญญาเดิม) จึงกดอนุมัติ
+ * จากหน้าจอได้จริงโดยไม่ crash
  */
 export const deviceSwapSeeder: DomainSeeder = {
   key: 'device-swap',
   label: 'คำขอเปลี่ยนเครื่อง',
   routes: ['/defect-exchange', '/insurance/exchange-requests', '/insurance/exchange-request/new'],
-  markerDoc: `ContractExchangeRequest.reason ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
+  // ⚠ โมเดลนี้ไม่มีฟิลด์ชื่อ `reason` — ช่องข้อความที่มีจริงคือ conditionNote /
+  // rejectionReason / cancelReason · เลือก conditionNote เพราะเป็นคำบรรยายสภาพเครื่อง
+  // ตอนยื่นคำขอ (สองตัวหลังถูกเขียนโดย flow ปฏิเสธ/ยกเลิก ไม่ใช่ตอนสร้าง)
+  markerDoc: `ContractExchangeRequest.conditionNote ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     const contract = await ctx.prisma.contract.findFirst({
       where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
       select: { contractNumber: true },
+      orderBy: { contractNumber: 'asc' },
     });
     return contract
       ? [{ label: 'คำขอเปลี่ยนเครื่อง', detail: `รออนุมัติ · สัญญา ${contract.contractNumber}` }]
@@ -2485,17 +4044,31 @@ export const deviceSwapSeeder: DomainSeeder = {
     const contract = await ctx.prisma.contract.findFirst({
       where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
       select: { id: true, productId: true },
+      orderBy: { contractNumber: 'asc' },
     });
+    // เครื่องปลายทางของ swap ต้องเป็นมือถือ ไม่ใช่หูฟังทดสอบ (เครื่องว่างของโดเมน contracts
+    // มี ACCESSORY ปนอยู่) + orderBy ให้ได้เครื่องเดิมทุกรอบ
     const newProduct = await ctx.prisma.product.findFirst({
-      where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null },
+      where: {
+        imeiSerial: { startsWith: 'TEST-' },
+        status: 'IN_STOCK',
+        category: { in: ['PHONE_NEW', 'PHONE_USED'] },
+        deletedAt: null,
+      },
       select: { id: true },
+      orderBy: { createdAt: 'asc' },
     });
     if (!contract?.productId || !newProduct) {
-      stat.notes.push('ข้ามทั้งโดเมน — ต้องมีสัญญาทดสอบ ACTIVE ที่ผูกเครื่อง + เครื่องทดสอบ IN_STOCK 1 เครื่อง');
+      stat.notes.push(
+        'ข้ามทั้งโดเมน — ต้องมีสัญญาทดสอบ ACTIVE ที่ผูกเครื่อง + มือถือทดสอบ IN_STOCK 1 เครื่อง (รันโดเมน contracts ก่อน)',
+      );
       return stat;
     }
-    const reason = testNote('คำขอเปลี่ยนเครื่องสำหรับทดสอบ — เครื่องเดิมมีตำหนิ');
-    const exists = await ctx.prisma.contractExchangeRequest.findFirst({ where: { reason, deletedAt: null }, select: { id: true } });
+    const conditionNote = testNote('คำขอเปลี่ยนเครื่องสำหรับทดสอบ — เครื่องเดิมมีตำหนิ');
+    const exists = await ctx.prisma.contractExchangeRequest.findFirst({
+      where: { conditionNote, deletedAt: null },
+      select: { id: true },
+    });
     if (exists) {
       stat.skipped += 1;
       return stat;
@@ -2506,7 +4079,8 @@ export const deviceSwapSeeder: DomainSeeder = {
         oldProductId: contract.productId,
         newProductId: newProduct.id,
         requestedById: ctx.refs.salespersonId,
-        reason,
+        conditionNote,
+        deviceCondition: 'B',
       },
     });
     stat.created += 1;
@@ -2515,16 +4089,92 @@ export const deviceSwapSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.contractExchangeRequest.findMany({
-      where: { reason: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
-      select: { id: true },
+      where: { conditionNote: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+      select: { id: true, status: true, newContractId: true },
     });
-    if (!dryRun && rows.length) {
-      await ctx.prisma.contractExchangeRequest.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    // ใบที่ถูกอนุมัติแล้วมีสัญญาใหม่ EXCH- (ไม่มี marker) เกาะอยู่ — soft delete คำขอตอนนั้น
+    // จะตัดเส้นทางยกเลิกเปลี่ยนเครื่องของหน้าจอ (ExchangeCancelService หา request ไม่เจอ)
+    // ทิ้งสัญญา EXCH- ค้างถาวร ⇒ ข้ามเฉพาะใบที่สัญญาใหม่ยัง "ไม่ถูกยกเลิก".
+    // การยกเลิกในหน้าจอ (markCanceled — contract-exchange-cancel.service.ts:489-501) เขียน
+    // status: 'CANCELED' + canceledAt/canceledById/cancelReason/cancelWindow แต่ **ไม่เคย
+    // null `newContractId`** ⇒ ห้ามใช้ newContractId เดี่ยว ๆ เป็นเงื่อนไขข้าม (ใบที่ยกเลิก
+    // แล้วจะถูกข้ามซ้ำ + เตือนซ้ำตลอดกาล — คำเตือนกลายเป็นทางตัน). ใบ CANCELED ล้างได้
+    // เพราะเหตุผลเดิมของการข้าม (รักษาเส้นทางยกเลิกของหน้าจอ) หมดไปแล้ว: flow ยกเลิก
+    // จัดการสัญญา EXCH- เรียบร้อย (FINALIZED → status CANCELED, PRE_FINALIZE → soft delete)
+    const blocked = rows.filter((r) => r.newContractId && r.status !== 'CANCELED');
+    const sweepable = rows.filter((r) => !r.newContractId || r.status === 'CANCELED');
+    // ตั้งชื่อสัญญา EXCH- ด้วยเลขสัญญาจริง (ไม่กรอง deletedAt — ใช้รายงานเท่านั้น)
+    const withNewContract = rows.filter((r) => r.newContractId);
+    const namedContracts = withNewContract.length
+      ? await ctx.prisma.contract.findMany({
+          where: {
+            id: { in: withNewContract.map((r) => r.newContractId).filter((x): x is string => !!x) },
+          },
+          select: { id: true, contractNumber: true },
+        })
+      : [];
+    const contractName = (id: string | null) =>
+      namedContracts.find((c) => c.id === id)?.contractNumber ?? id ?? '(ไม่ทราบ)';
+    for (const r of rows)
+      console.log(
+        `     คำขอ ${r.id} [${r.status}]${
+          r.newContractId
+            ? r.status === 'CANCELED'
+              ? ` — ยกเลิกในหน้าจอแล้ว (สัญญา ${contractName(r.newContractId)} ถูกปิดโดย flow ยกเลิก) ⇒ ล้างได้`
+              : ` — มีสัญญาใหม่ ${contractName(r.newContractId)} เกาะอยู่ (ข้าม ไม่ล้าง)`
+            : ''
+        }`,
+      );
+    if (!dryRun && sweepable.length) {
+      await ctx.prisma.contractExchangeRequest.updateMany({
+        where: { id: { in: sweepable.map((r) => r.id) } },
+        data: { deletedAt: new Date() },
+      });
     }
-    return { removed: { 'คำขอเปลี่ยนเครื่อง': rows.length }, warnings: [] };
+    return {
+      removed: { คำขอเปลี่ยนเครื่อง: sweepable.length },
+      warnings: [
+        // ข้ามเฉพาะใบที่สัญญาใหม่ยังไม่ถูกยกเลิก (ดูคอมเมนต์บน) — หลังกดยกเลิกในหน้าจอ
+        // newContractId ยังค้างบนคำขอ (markCanceled ไม่ null ให้) แต่สถานะเป็น CANCELED
+        // ⇒ cleanup รอบถัดไปกวาดใบนั้นให้เอง — ข้อความต้องสัญญาเท่าที่เป็นจริงเท่านั้น
+        ...blocked.map(
+          (r) =>
+            `คำขอ ${r.id} ถูกอนุมัติแล้วและสัญญาใหม่ ${contractName(r.newContractId)} ยังไม่ถูกยกเลิก — ไม่ล้างให้ เพราะคำขอใบนี้คือเส้นทางเดียวที่หน้าจอใช้ยกเลิกสัญญา EXCH- (ซึ่งไม่มี marker ทดสอบ): กดยกเลิกเปลี่ยนเครื่องในหน้าจอก่อน (คำขอจะกลายเป็น CANCELED และ flow ยกเลิกจัดการสัญญา EXCH- ให้เอง) แล้วรัน cleanup ซ้ำ — รอบถัดไปจะล้างคำขอที่ยกเลิกแล้วให้อัตโนมัติ`,
+        ),
+        // approvePriced โคลน PDPAConsent ให้สัญญาใหม่ (contract-exchange.service.ts:654) —
+        // pdpa_consents อยู่ใน KEEP_TABLES ของ factory reset เพราะเป็นหลักฐานความยินยอมตาม
+        // กฎหมาย ⇒ ห้ามให้เครื่องมือ cleanup ลบเอง เตือนให้คนตรวจแทน — การยกเลิกเปลี่ยน
+        // เครื่องก็ไม่ลบแถวโคลนนี้ จึงต้องเตือนรวมสัญญาของใบที่ยกเลิกแล้ว (sweepable) ด้วย
+        ...(withNewContract.length
+          ? [
+              `สัญญาใหม่จากการอนุมัติ (${withNewContract
+                .map((r) => contractName(r.newContractId))
+                .join(
+                  ', ',
+                )}) อาจมีแถว PDPAConsent ที่ถูกโคลนจากสัญญาเดิมค้างอยู่ — เป็นหลักฐานความยินยอมตามกฎหมาย cleanup นี้จะไม่ลบให้ ต้องให้คนตรวจสอบก่อนลบเอง`,
+            ]
+          : []),
+      ],
+    };
   },
 };
 ```
+
+> **หมายเหตุ (fix round 1, 2026-08-26) — ทำไมข้ามใบที่อนุมัติแล้ว + เตือน PDPA:** (1) soft delete
+> คำขอที่มี `newContractId` จะตัดเส้นทางยกเลิกเปลี่ยนเครื่องของหน้าจอ (`ExchangeCancelService`
+> หา request ไม่เจอ) ทิ้งสัญญา EXCH- (ไม่มี marker) ค้างถาวร ⇒ ข้าม + เตือนพร้อม id คำขอ/เลขสัญญา
+> ให้กดยกเลิกในหน้าจอก่อนแล้วรัน cleanup ซ้ำ. (2) `approvePriced` โคลน `PDPAConsent` ให้สัญญาใหม่
+> (`contract-exchange.service.ts:654`) — `pdpa_consents` อยู่ใน KEEP_TABLES ของ factory reset
+> เพราะเป็นหลักฐานความยินยอมตามกฎหมาย ⇒ **ห้ามลบอัตโนมัติ** เตือนให้คนตรวจก่อนลบเองเท่านั้น.
+> **ผู้ที่คัดลอกบล็อกเวอร์ชันก่อนหน้า (soft delete ทุกใบ ไม่มี warning) จะเปิดรูเดิมกลับมา.**
+
+> **หมายเหตุ (fix round 2, 2026-08-26) — ใบที่ยกเลิกแล้วต้องล้างได้:** การยกเลิกในหน้าจอ
+> (`markCanceled` — `contract-exchange-cancel.service.ts:489-501`) เขียน `status: 'CANCELED'` +
+> `canceledAt/canceledById/cancelReason/cancelWindow` แต่**ไม่เคย null `newContractId`** ⇒ เงื่อนไขข้าม
+> ที่ดูแค่ `newContractId` จะข้ามใบเดิมซ้ำ + เตือนซ้ำตลอดกาล (คำเตือน "กดยกเลิกแล้วรันซ้ำ" กลายเป็นทางตัน).
+> ใบ CANCELED ล้างได้ เพราะเหตุผลเดิมของการข้าม (รักษาเส้นทางยกเลิกของหน้าจอ) หมดไปแล้ว —
+> flow ยกเลิกจัดการสัญญา EXCH- เรียบร้อย (FINALIZED → CANCELED, PRE_FINALIZE → soft delete)
+> ⇒ ข้ามเฉพาะ `newContractId && status !== 'CANCELED'`. **ผู้ที่คัดลอกบล็อกเวอร์ชันก่อนหน้าจะเปิดทางตันเดิมกลับมา.**
 
 - [ ] **Step 4: ยืนยันฟิลด์ที่อาจไม่ตรง**
 
@@ -2579,8 +4229,14 @@ git commit -m "feat(test-pack): โดเมนใบซ่อม + ใบตร
 - [ ] **Step 1: เขียน `commissions.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
 import { TEST_NOTE_MARKER, testNote } from './_context';
+import { round2 } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/** ค่าคอม = ยอดขาย × อัตรา — Decimal ล้วน (Global Constraint: ห้าม float กับจำนวนเงิน) */
+const commissionOf = (saleAmount: number, rate: number): Prisma.Decimal =>
+  round2(new Prisma.Decimal(saleAmount).mul(rate));
 
 /** ไม่โพสต์ JE — ครอบ 3 สถานะที่ด่านยกเลิกใบขาย (G4) ใช้ตัดสิน */
 const ROWS: Array<{ key: string; status: 'PENDING' | 'APPROVED' | 'PAID'; saleAmount: number; rate: number }> = [
@@ -2600,7 +4256,7 @@ export const commissionsSeeder: DomainSeeder = {
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
       label: `ค่าคอม ${r.key}`,
-      detail: `${r.status} · ยอดขาย ฿${r.saleAmount.toLocaleString('th-TH')} × ${(r.rate * 100).toFixed(0)}% = ฿${Math.round(r.saleAmount * r.rate).toLocaleString('th-TH')} · งวด ${periodOf(ctx.today)}`,
+      detail: `${r.status} · ยอดขาย ฿${r.saleAmount.toLocaleString('th-TH')} × ${(r.rate * 100).toFixed(0)}% = ฿${commissionOf(r.saleAmount, r.rate).toNumber().toLocaleString('th-TH')} · งวด ${periodOf(ctx.today)}`,
     }));
   },
 
@@ -2609,7 +4265,7 @@ export const commissionsSeeder: DomainSeeder = {
     const period = `TEST-${periodOf(ctx.today)}`;
     for (const r of ROWS) {
       const exists = await ctx.prisma.salesCommission.findFirst({
-        where: { period, salespersonId: ctx.refs.salespersonId, commissionAmount: Math.round(r.saleAmount * r.rate), deletedAt: null },
+        where: { period, salespersonId: ctx.refs.salespersonId, commissionAmount: commissionOf(r.saleAmount, r.rate), deletedAt: null },
         select: { id: true },
       });
       if (exists) {
@@ -2622,7 +4278,7 @@ export const commissionsSeeder: DomainSeeder = {
           period,
           saleAmount: r.saleAmount,
           commissionRate: r.rate,
-          commissionAmount: Math.round(r.saleAmount * r.rate),
+          commissionAmount: commissionOf(r.saleAmount, r.rate),
           status: r.status,
         },
       });
@@ -2637,13 +4293,13 @@ export const commissionsSeeder: DomainSeeder = {
     if (payoutExists) {
       stat.skipped += 1;
     } else {
-      const totalSales = ROWS.reduce((a, r) => a + r.saleAmount, 0);
+      const totalSales = ROWS.reduce((a, r) => a.plus(r.saleAmount), new Prisma.Decimal(0));
       await ctx.prisma.commissionPayout.create({
         data: {
           salespersonId: ctx.refs.salespersonId,
           period,
           totalSales,
-          totalCommission: ROWS.reduce((a, r) => a + Math.round(r.saleAmount * r.rate), 0),
+          totalCommission: ROWS.reduce((a, r) => a.plus(commissionOf(r.saleAmount, r.rate)), new Prisma.Decimal(0)),
           status: 'DRAFT',
         },
       });
@@ -2675,14 +4331,20 @@ export const commissionsSeeder: DomainSeeder = {
 
 - [ ] **Step 2: เขียน `external-finance.seed.ts`**
 
+> **ทำไม cleanup ต้องกวาดค่าคอม (fix round 1, 2026-08-26):** `ExternalFinanceCommission` ที่ staff คีย์มือระหว่างเทสอ้างบริษัททดสอบด้วย FK required (`externalFinanceCompanyId`) และมีคอลัมน์ `journalEntryId` — ถ้าไม่กวาด (JE hard-delete ตามลำดับเดียวกับ `repair.seed.ts`: audit log → ปลด FK → lines → entries แล้วค่อย soft-delete แถวค่าคอม) แถว+JE จะค้างถาวรเพราะค่าคอมไม่มี marker ของตัวเอง
+
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NAME_PREFIX, testName, testNote } from './_context';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /**
  * สร้างเฉพาะ "ทะเบียนบริษัทไฟแนนซ์ภายนอก"
  * ใบขาย + FinanceReceivable ต้องเกิดจาก SaleWriterService ในเฟส 3 เท่านั้น (R2)
- * เพราะการขายผ่านไฟแนนซ์ภายนอกโพสต์ Dr S11-3101 และการรับเงินโพสต์ Dr S51-1106
+ * เพราะการขายผ่านไฟแนนซ์ภายนอกโพสต์ Dr S11-3101 และการรับเงินโพสต์ Dr S51-1106 —
+ * และ FinanceReceivable.receivedAmount เป็นการเซ็ตทับ (JE คิดจากส่วนต่าง) ⇒ ยอดที่ seed
+ * ตรง ๆ ไม่มีวันขึ้นสมุด
  */
 const ROWS: Array<{ name: string; rate: number }> = [
   { name: 'ไฟแนนซ์ภายนอก ก', rate: 0.05 },
@@ -2696,39 +4358,142 @@ export const externalFinanceSeeder: DomainSeeder = {
   markerDoc: `ExternalFinanceCompany.name ขึ้นต้น "${TEST_NAME_PREFIX}"`,
 
   async plan(): Promise<PlanRow[]> {
-    return ROWS.map((r) => ({ label: testName(r.name), detail: `ค่าธรรมเนียมตั้งต้น ${(r.rate * 100).toFixed(0)}% — ลูกหนี้จะเกิดตอนขายจริงในเฟส 3` }));
+    return ROWS.map((r) => ({
+      label: testName(r.name),
+      detail: `ค่าธรรมเนียมตั้งต้น ${(r.rate * 100).toFixed(0)}% — ลูกหนี้จะเกิดตอนขายจริงในเฟส 3`,
+    }));
   },
 
   async seed(ctx: SeedContext): Promise<SeedStat> {
     const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
     for (const r of ROWS) {
       const name = testName(r.name);
-      const exists = await ctx.prisma.externalFinanceCompany.findFirst({ where: { name, deletedAt: null }, select: { id: true } });
-      if (exists) {
+      // name เป็น @unique เต็มตาราง (ไม่ใช่ partial) — แถวที่ cleanup soft delete ไปแล้ว
+      // ยังถือชื่ออยู่ ⇒ probe โดยไม่กรอง deletedAt แล้ว "กู้คืน" แทนการสร้างซ้ำ
+      // ไม่งั้น seed หลัง cleanup ชน P2002
+      const any = await ctx.prisma.externalFinanceCompany.findUnique({
+        where: { name },
+        select: { id: true, deletedAt: true },
+      });
+      if (any && !any.deletedAt) {
         stat.skipped += 1;
         continue;
       }
+      if (any) {
+        // กู้คืน + รีเซ็ตกลับค่าตั้งต้น — ผู้ทดสอบอาจแก้อัตรา/เบอร์/โน้ตไปก่อนถูกล้าง
+        await ctx.prisma.externalFinanceCompany.update({
+          where: { id: any.id },
+          data: {
+            deletedAt: null,
+            isActive: true,
+            defaultCommissionRate: new Prisma.Decimal(r.rate),
+            contactPhone: '021230000',
+            notes: testNote('บริษัทไฟแนนซ์สำหรับทดสอบ — ลบได้'),
+          },
+        });
+        stat.skipped += 1;
+        stat.notes.push(
+          `กู้คืน "${name}" ที่เคยถูกล้าง (ชื่อเป็น unique เต็มตาราง — แถวกู้คืนนับเป็น skipped ไม่ใช่ created)`,
+        );
+        continue;
+      }
       await ctx.prisma.externalFinanceCompany.create({
-        data: { name, defaultCommissionRate: r.rate, contactPhone: '021230000', notes: testNote('บริษัทไฟแนนซ์สำหรับทดสอบ — ลบได้') },
+        data: {
+          name,
+          defaultCommissionRate: new Prisma.Decimal(r.rate),
+          contactPhone: '021230000',
+          notes: testNote('บริษัทไฟแนนซ์สำหรับทดสอบ — ลบได้'),
+        },
       });
       stat.created += 1;
     }
-    stat.notes.push('ลูกหนี้ไฟแนนซ์ (/finance-receivable) จะมีของก็ต่อเมื่อรันด้วย DRIVE=1 หรือขายผ่านหน้าจอ POS เอง');
+    stat.notes.push(
+      'ลูกหนี้ไฟแนนซ์ (/finance-receivable) จะมีของก็ต่อเมื่อรันด้วย DRIVE=1 หรือขายผ่านหน้าจอ POS เอง',
+    );
     return stat;
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const rows = await ctx.prisma.externalFinanceCompany.findMany({
-      where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
-      select: { id: true, name: true },
+    // กุญแจกวาดค่าคอมคือ "บริษัททดสอบทุกแถว" รวมที่เคยถูก soft delete ไปรอบก่อน —
+    // ค่าคอมไม่มี marker ของตัวเอง ตามได้จาก FK externalFinanceCompanyId (required) เท่านั้น
+    // ถ้ากรอง deletedAt ตรงนี้ ค่าคอมที่อ้างบริษัทซึ่งถูกล้างไปแล้วจะเป็นกำพร้าตลอดกาล
+    const companies = await ctx.prisma.externalFinanceCompany.findMany({
+      where: { name: { startsWith: TEST_NAME_PREFIX } },
+      select: { id: true, name: true, deletedAt: true },
     });
-    for (const r of rows) console.log(`     "${r.name}"`);
-    if (!dryRun && rows.length) {
-      await ctx.prisma.externalFinanceCompany.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    const liveCompanies = companies.filter((c) => !c.deletedAt);
+    for (const c of liveCompanies) console.log(`     "${c.name}"`);
+
+    // ค่าคอมที่ staff คีย์มือระหว่างเทส (accrue → external-finance-commission.service.ts)
+    // อ้างบริษัททดสอบด้วย FK ตรง — แถวมี journalEntryId ได้ ⇒ ต้องกวาด JE ของมันด้วย
+    // ไม่งั้นใบ JE ค้างในสมุดถาวรหลังบริษัททดสอบหายไปแล้ว
+    const commissionName = new Map(companies.map((c) => [c.id, c.name]));
+    const commissions = companies.length
+      ? await ctx.prisma.externalFinanceCommission.findMany({
+          where: {
+            externalFinanceCompanyId: { in: companies.map((c) => c.id) },
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            externalFinanceCompanyId: true,
+            commissionAmount: true,
+            status: true,
+            journalEntryId: true,
+          },
+        })
+      : [];
+    const jeIds = commissions.map((c) => c.journalEntryId).filter((x): x is string => !!x);
+    // ค่าคอมไม่มี marker ติดตัว — บรรทัดนี้คือช่องทางเดียวที่ผู้รันเห็น identity ของมันก่อน
+    // ถูกกวาด ⇒ พิมพ์เสมอทั้ง dry-run และ live
+    for (const c of commissions) {
+      console.log(
+        `     ค่าคอมไฟแนนซ์ภายนอก ฿${c.commissionAmount.toFixed(2)} · ${c.status} · "${
+          commissionName.get(c.externalFinanceCompanyId) ?? c.externalFinanceCompanyId
+        }"${c.journalEntryId ? ' (มี JE — ลบถาวร)' : ''}`,
+      );
+    }
+
+    if (!dryRun && (liveCompanies.length || commissions.length)) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (commissions.length) {
+          // ลำดับกวาด JE เดียวกับ repair.seed.ts เป๊ะ: audit log → ปลด FK บนแถวเจ้าของ →
+          // journal_lines → journal_entries — สลับลำดับ = abort ทั้ง tx บน DB จริง
+          if (jeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: jeIds } },
+            });
+            await tx.externalFinanceCommission.updateMany({
+              where: { id: { in: commissions.map((c) => c.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+          }
+          await tx.externalFinanceCommission.updateMany({
+            where: { id: { in: commissions.map((c) => c.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+        if (liveCompanies.length) {
+          await tx.externalFinanceCompany.updateMany({
+            where: { id: { in: liveCompanies.map((c) => c.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+      });
     }
     return {
-      removed: { 'บริษัทไฟแนนซ์ภายนอก': rows.length },
-      warnings: rows.length ? ['ตาราง external_finance_companies อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างจะรอดข้ามไปปนทะเบียนจริง'] : [],
+      removed: {
+        บริษัทไฟแนนซ์ภายนอก: liveCompanies.length,
+        'ค่าคอมไฟแนนซ์ภายนอก (ไม่มี marker — ตามจาก FK บริษัท)': commissions.length,
+        'รายการบัญชีของค่าคอมไฟแนนซ์ (ลบถาวร)': jeIds.length,
+      },
+      warnings: liveCompanies.length
+        ? [
+            'ตาราง external_finance_companies อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้าม factory reset ไปปนทะเบียนจริงตอนใช้งานจริง',
+          ]
+        : [],
     };
   },
 };
@@ -2752,7 +4517,7 @@ export const savingPlansSeeder: DomainSeeder = {
   key: 'saving-plans',
   label: 'แผนออมเครื่อง',
   routes: ['/saving-plans'],
-  markerDoc: `SavingPlan.planNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `SavingPlan.planNumber ขึ้นต้น "${PLAN_NO_PREFIX}"`, // = TEST-SP- — ค่าคงที่เดียวกับ query (S1)
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}SP ${r.key}`, detail: `${r.status} · เป้า ฿${r.target.toLocaleString('th-TH')} · ออมแล้ว ฿${r.saved.toLocaleString('th-TH')}` }));
@@ -2772,6 +4537,7 @@ export const savingPlansSeeder: DomainSeeder = {
         stat.skipped += 1;
         continue;
       }
+      // จำนวนงวด ไม่ใช่จำนวนเงิน — Math.round ตรงนี้ถูกต้อง ไม่เข้าข้อห้าม Decimal
       const installments = Math.round(r.saved / r.monthly);
       await ctx.prisma.savingPlan.create({
         data: {
@@ -2819,35 +4585,93 @@ export const savingPlansSeeder: DomainSeeder = {
 
 - [ ] **Step 4: เขียน `trade-in.seed.ts`**
 
+> **ทำไมต้องมีคำเตือน BUYBACK (fix round 1, 2026-08-26):** แถว seed ใช้ flow EXCHANGE โดยเจตนา — `accept()` ของ BUYBACK โพสต์ JE `shop-trade-in:<id>` ที่ไม่มี marker/metadata ให้ cleanup กวาดถึง ⇒ ประกาศไว้ใน seed notes + markerDoc และเตือนรายแถวใน cleanup แทนการเพิ่ม sweep (ห้ามเปลี่ยน flow ที่ seed และห้ามเดา metadata sweep)
+
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /**
  * R2 — หยุดที่ APPRAISED
- * ACCEPTED โพสต์ JE รับซื้อผ่าน trade-in-lifecycle.service.ts ⇒ ให้ผู้ทดสอบกดรับซื้อเอง
+ * ACCEPTED สร้าง Product เข้าสต็อก (+ JE รับซื้อถ้าเป็น BUYBACK) ผ่าน
+ * trade-in-lifecycle.service.ts ⇒ ให้ผู้ทดสอบกดรับซื้อเองผ่านหน้าจอ
+ *
+ * flow ปล่อยเป็น default (EXCHANGE) โดยเจตนา: accept() ของ EXCHANGE **ไม่โพสต์ JE**
+ * (JE รับซื้อโพสต์เฉพาะ BUYBACK — trade-in-lifecycle.service.ts) ⇒ ผู้ทดสอบกดรับซื้อ
+ * ระหว่างเทสได้โดย cleanup ไม่ทิ้ง JE ค้างในสมุด — JE `shop-trade-in:<id>` ไม่มี marker
+ * และไม่มี saleId/contractId ใน metadata จึงไม่มีเส้นทางกวาดใดมองเห็นมัน
+ *
+ * เครื่องที่ accept สร้าง (Product) ได้ marker ผ่าน imeiSerial = imei ของรายการนี้
+ * ("TEST-TRADEIN-…") ⇒ ถูกกวาดโดยโดเมน contracts (Product.imeiSerial LIKE 'TEST-%')
  */
-const ROWS: Array<{ key: string; status: 'PENDING_APPRAISAL' | 'APPRAISED'; brand: string; model: string; estimated: number; offered: number | null }> = [
-  { key: 'pending', status: 'PENDING_APPRAISAL', brand: 'ทดสอบระบบ', model: 'รุ่นเทิร์น A', estimated: 4500, offered: null },
-  { key: 'appraised', status: 'APPRAISED', brand: 'ทดสอบระบบ', model: 'รุ่นเทิร์น B', estimated: 7200, offered: 6800 },
+const ROWS: Array<{
+  key: string;
+  status: 'PENDING_APPRAISAL' | 'APPRAISED';
+  brand: string;
+  model: string;
+  estimated: number;
+  offered: number | null;
+}> = [
+  {
+    key: 'pending',
+    status: 'PENDING_APPRAISAL',
+    brand: 'ทดสอบระบบ',
+    model: 'รุ่นเทิร์น A',
+    estimated: 4500,
+    offered: null,
+  },
+  {
+    key: 'appraised',
+    status: 'APPRAISED',
+    brand: 'ทดสอบระบบ',
+    model: 'รุ่นเทิร์น B',
+    estimated: 7200,
+    offered: 6800,
+  },
 ];
 
 export const tradeInSeeder: DomainSeeder = {
   key: 'trade-in',
   label: 'รับซื้อเครื่องมือสอง',
   routes: ['/trade-in'],
-  markerDoc: `TradeIn.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
+  markerDoc:
+    `TradeIn.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (เครื่องที่เกิดจากการกดรับซื้อระหว่างเทสได้ ` +
+    `imeiSerial "TEST-" — กวาดโดยโดเมน contracts) · แถว seed เป็น flow EXCHANGE โดยเจตนา: ` +
+    `การกดรับซื้อ flow BUYBACK โพสต์ JE "shop-trade-in:<id>" ที่ไม่มี marker/metadata ให้ cleanup ` +
+    `กวาดถึง — รายการทดสอบที่เป็น BUYBACK ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup`,
 
   async plan(): Promise<PlanRow[]> {
-    return ROWS.map((r) => ({ label: `เทิร์น ${r.key}`, detail: `${r.status} · ${r.model} · ประเมิน ฿${r.estimated.toLocaleString('th-TH')}${r.offered ? ` · เสนอ ฿${r.offered.toLocaleString('th-TH')}` : ''}` }));
+    return ROWS.map((r) => ({
+      label: `เทิร์น ${r.key}`,
+      detail: `${r.status} · ${r.model} · ประเมิน ฿${r.estimated.toLocaleString('th-TH')}${
+        r.offered ? ` · เสนอ ฿${r.offered.toLocaleString('th-TH')}` : ''
+      }`,
+    }));
   },
 
   async seed(ctx: SeedContext): Promise<SeedStat> {
     const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
-    const customer = await ctx.prisma.customer.findFirst({ where: { name: { startsWith: 'ทดสอบระบบ ลูกค้าใหม่' }, deletedAt: null }, select: { id: true } });
+    const customer = await ctx.prisma.customer.findFirst({
+      where: { name: { startsWith: 'ทดสอบระบบ ลูกค้าใหม่' }, deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!customer) {
+      // customerId เป็น optional บน TradeIn (ผู้ขาย walk-in) — สร้างต่อได้ ไม่ต้องข้ามโดเมน
+      stat.notes.push(
+        'ไม่มีลูกค้าทดสอบ — สร้างเป็นรายการ walk-in ไม่ผูกลูกค้า (รันโดเมน contracts ก่อนถ้าต้องการผูก)',
+      );
+    }
     for (const r of ROWS) {
       const notes = testNote(`รับซื้อมือสอง/${r.key}`);
-      const exists = await ctx.prisma.tradeIn.findFirst({ where: { notes, deletedAt: null }, select: { id: true } });
+      // probe ด้วย notes marker รายแถว — ไม่มีคอลัมน์ unique ที่ seeder แตะ (voucherNumber
+      // ว่าง, imei ไม่ unique บน trade_ins) ⇒ สร้างใหม่หลัง cleanup ได้ตรง ๆ ไม่ต้องมีขากู้คืน
+      const exists = await ctx.prisma.tradeIn.findFirst({
+        where: { notes, deletedAt: null },
+        select: { id: true },
+      });
       if (exists) {
         stat.skipped += 1;
         continue;
@@ -2861,10 +4685,20 @@ export const tradeInSeeder: DomainSeeder = {
           deviceStorage: '128GB',
           deviceCondition: 'B',
           imei: `TEST-TRADEIN-${r.key}`,
-          estimatedValue: r.estimated,
-          offeredPrice: r.offered,
+          // เงินเป็น Prisma.Decimal เสมอ — Global Constraint
+          estimatedValue: new Prisma.Decimal(r.estimated),
+          offeredPrice: r.offered !== null ? new Prisma.Decimal(r.offered) : null,
           status: r.status,
-          appraisedById: r.status === 'APPRAISED' ? ctx.refs.reviewerId : null,
+          // สถานะต้องเล่าเรื่องเดียวกับที่ appraise() ของจริงเขียน (T5-C17):
+          // ผู้ตีราคา + ล็อกราคา + เวลาตีครั้งแรก · basePriceAtAppraisal ปล่อย null
+          // (แบรนด์ทดสอบไม่มีแถวในตารางราคากลาง — ตรงกับ path "ไม่พบ valuation" ของจริง)
+          ...(r.status === 'APPRAISED'
+            ? {
+                appraisedById: ctx.refs.reviewerId,
+                appraisalLocked: true,
+                firstAppraisedAt: ctx.today,
+              }
+            : {}),
           sellerName: 'ทดสอบระบบ ผู้ขายมือสอง',
           sellerPhone: '0895550001',
           notes,
@@ -2872,18 +4706,59 @@ export const tradeInSeeder: DomainSeeder = {
       });
       stat.created += 1;
     }
+    stat.notes.push(
+      'แถวทดสอบใช้ flow EXCHANGE โดยเจตนา — การกดรับซื้อ flow BUYBACK โพสต์ JE "shop-trade-in:<id>" ' +
+        'ที่ cleanup กวาดไม่ถึง (ไม่มี marker/metadata) ห้ามสลับแถวทดสอบเป็น BUYBACK',
+    );
     return stat;
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.tradeIn.findMany({
       where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        status: true,
+        imei: true,
+        deviceModel: true,
+        productId: true,
+        flow: true,
+      },
     });
-    if (!dryRun && rows.length) {
-      await ctx.prisma.tradeIn.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    // identity ให้คนตรวจก่อน/หลังลบ — พิมพ์ทั้ง dry-run และโหมดจริง
+    for (const r of rows) {
+      console.log(
+        `     ${r.imei ?? '(ไม่มี IMEI)'} · ${r.deviceModel} · ${r.status}${
+          r.productId ? ' (รับซื้อแล้ว — มีเครื่องเข้าสต็อก)' : ''
+        }`,
+      );
     }
-    return { removed: { 'รายการรับซื้อมือสอง': rows.length }, warnings: [] };
+    const accepted = rows.filter((r) => r.productId);
+    // flow BUYBACK ตอนรับซื้อโพสต์ JE "shop-trade-in:<id>" โดยไม่มี marker/metadata ให้กวาด
+    // (trade-in-lifecycle.service.ts) — pack กวาดไม่ถึงโดยเจตนา จึงเตือนรายแถวแทน
+    const buybacks = rows.filter((r) => r.flow === 'BUYBACK');
+    if (!dryRun && rows.length) {
+      await ctx.prisma.tradeIn.updateMany({
+        where: { id: { in: rows.map((r) => r.id) } },
+        data: { deletedAt: new Date() },
+      });
+    }
+    return {
+      removed: { รายการรับซื้อมือสอง: rows.length },
+      warnings: [
+        ...(accepted.length
+          ? [
+              `รายการที่รับซื้อแล้ว ${accepted.length} รายการมีเครื่องเข้าสต็อก (IMEI TEST-) — เครื่องถูกกวาดโดยโดเมน contracts; ถ้ารัน cleanup เฉพาะโดเมน trade-in เครื่องจะยังค้างในสต็อก`,
+            ]
+          : []),
+        ...buybacks.map((r) => {
+          const name = `${r.imei ?? '(ไม่มี IMEI)'} · ${r.deviceModel}`;
+          return r.productId
+            ? `รายการเทิร์น ${name} เป็น flow BUYBACK และรับซื้อไปแล้ว — JE "shop-trade-in:<id>" ค้างในสมุดโดย pack กวาดไม่ถึง ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup จริง`
+            : `รายการเทิร์น ${name} เป็น flow BUYBACK — ถ้ากดรับซื้อจะโพสต์ JE "shop-trade-in:<id>" ที่ pack กวาดไม่ถึง ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup จริง`;
+        }),
+      ],
+    };
   },
 };
 ```
@@ -2952,11 +4827,21 @@ git commit -m "feat(test-pack): โดเมนค่าคอม + ไฟแน
 - [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_preflight.spec.ts`**
 
 ```ts
-import { DRIVE_REQUIRED_ACCOUNTS, missingAccounts } from './_preflight';
+import type { PrismaService } from '../../prisma/prisma.service';
+import type { SeedRefs } from './_types';
+import {
+  DRIVE_REQUIRED_ACCOUNTS,
+  invalidPostDateProblem,
+  missingAccounts,
+  runPreflight,
+} from './_preflight';
 
 describe('missingAccounts', () => {
   it('คืนรหัสที่ขาด เรียงตามลำดับที่ต้องการ', () => {
-    expect(missingAccounts(['S11-3101', 'S51-1106', 'S21-2002'], ['S21-2002'])).toEqual(['S11-3101', 'S51-1106']);
+    expect(missingAccounts(['S11-3101', 'S51-1106', 'S21-2002'], ['S21-2002'])).toEqual([
+      'S11-3101',
+      'S51-1106',
+    ]);
   });
 
   it('มีครบ = คืน array ว่าง', () => {
@@ -2966,11 +4851,74 @@ describe('missingAccounts', () => {
 
 describe('DRIVE_REQUIRED_ACCOUNTS', () => {
   it('มีบัญชีใหม่สามตัวที่ prod ต้องรัน seed:coa ถึงจะมี', () => {
-    expect(DRIVE_REQUIRED_ACCOUNTS).toEqual(expect.arrayContaining(['S11-3101', 'S51-1106', 'S21-2002']));
+    expect(DRIVE_REQUIRED_ACCOUNTS).toEqual(
+      expect.arrayContaining(['S11-3101', 'S51-1106', 'S21-2002']),
+    );
   });
 
   it('ไม่มีรหัสซ้ำ', () => {
     expect(new Set(DRIVE_REQUIRED_ACCOUNTS).size).toBe(DRIVE_REQUIRED_ACCOUNTS.length);
+  });
+});
+
+describe('invalidPostDateProblem', () => {
+  it('POST_DATE พิมพ์ผิด → ข้อความไทยที่ระบุค่าที่พิมพ์ + รูปแบบ YYYY-MM-DD', () => {
+    const problem = invalidPostDateProblem(new Date('2026-13-99T00:00:00.000Z'), '2026-13-99');
+    expect(problem).toContain('POST_DATE="2026-13-99"');
+    expect(problem).toContain('YYYY-MM-DD');
+  });
+
+  it('วันที่ถูกต้อง → null', () => {
+    expect(invalidPostDateProblem(new Date('2026-08-01T00:00:00.000Z'), '2026-08-01')).toBeNull();
+  });
+});
+
+describe('runPreflight — POST_DATE พิมพ์ผิด', () => {
+  const refs: SeedRefs = {
+    branchId: 'b1',
+    branchName: 'สาขาทดสอบ',
+    secondBranchId: null,
+    salespersonId: 'u-sales',
+    reviewerId: 'u-reviewer',
+    ownerId: 'u-owner',
+    shopCompanyId: 'c-shop',
+    financeCompanyId: 'c-finance',
+  };
+
+  // Fake (ไม่ใช่ jest.mock ที่นับจำนวนครั้ง): ผังว่าง = เช็คข้อ 3 ต้องรายงาน "ผังบัญชีขาด",
+  // และ findFirst เลียนแบบ Prisma จริง — filter Int ที่เป็น NaN โยน PrismaClientValidationError
+  // ⇒ ถ้า guard หาย เทสนี้ล้มด้วย rejection จริง ไม่ใช่แค่ assertion บน mock
+  const prismaStub = {
+    chartOfAccount: { findMany: async () => [] },
+    accountingPeriod: {
+      findFirst: async (args: { where: { year: number; month: number } }) => {
+        if (Number.isNaN(args.where.year) || Number.isNaN(args.where.month)) {
+          throw new Error('PrismaClientValidationError: NaN is not a valid Int');
+        }
+        return null;
+      },
+    },
+  } as unknown as PrismaService;
+
+  it('เก็บเป็นปัญหาในลิสต์เดียวกับเช็คผังบัญชี — ไม่ throw และไม่ตัดเช็คอื่นทิ้ง', async () => {
+    const res = await runPreflight(prismaStub, refs, {
+      drive: true,
+      postDate: new Date('2026-13-99T00:00:00.000Z'),
+      postDateRaw: '2026-13-99',
+    });
+    expect(res.ok).toBe(false);
+    expect(res.problems.some((p) => p.includes('POST_DATE="2026-13-99"'))).toBe(true);
+    // เช็คผังบัญชี (ข้อ 3) ยังรันและรายงานตามปกติ — ปัญหาเดียวไม่ short-circuit ลิสต์
+    expect(res.problems.some((p) => p.includes('ผังบัญชีขาด'))).toBe(true);
+  });
+
+  it('POST_DATE ถูกต้อง → ไม่มีปัญหา POST_DATE และเช็คงวดบัญชียังเดินตามปกติ', async () => {
+    const res = await runPreflight(prismaStub, refs, {
+      drive: true,
+      postDate: new Date('2026-08-01T00:00:00.000Z'),
+      postDateRaw: '2026-08-01',
+    });
+    expect(res.problems.some((p) => p.includes('ไม่ใช่วันที่ที่ถูกต้อง'))).toBe(false);
   });
 });
 ```
@@ -2986,10 +4934,47 @@ Expected: FAIL — `Cannot find module './_preflight'`
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { SeedRefs } from './_types';
 
-/** บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa */
+/**
+ * บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa
+ *
+ * หมายเหตุ S21-2001 (เจ้าหนี้เงินดาวน์) **จงใจไม่อยู่ในลิสต์** — สัญญา DRAFT ของ pack
+ * ตั้ง downPayment = 0 โดยเจตนา (ดู contracts.seed.ts ด่านข้อ 7) ⇒ ทั้งขา ShopDownPayment
+ * catch-up ใน activate และขาล้างดาวน์ใน ShopInventoryTransferTemplate เป็นศูนย์/ถูกข้าม
+ * โดยโครงสร้าง — อย่า "เติมให้ครบ" โดยไม่มีผู้โพสต์จริง
+ */
 export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
-  '11-1101', '11-2101', '11-2103', '11-2106', '21-1101', '21-1102', '21-2101', '21-2102',
-  'S11-1101', 'S11-2001', 'S11-3001', 'S11-3002', 'S11-3101', 'S21-2002', 'S41-1101', 'S50-1101', 'S51-1106',
+  '11-1101',
+  '11-1201', // เอกสาร DRAW ของ equity seeder จ่ายผ่านธนาคาร KBank (Task 12)
+  '22-1102', // ถอนใช้ส่วนตัว (Contra) — ขา Dr ของ DRAW (Task 12)
+  '11-2101',
+  '11-2103',
+  '11-2106',
+  '21-1101',
+  '21-1102',
+  '21-2101',
+  '21-2102',
+  '42-1103', // ค่าปรับล่าช้า — PaymentReceipt2B เครดิตทุกครั้งที่งวดมีค่าปรับ ณ วันโพสต์ (fix round 1)
+  'S11-1101',
+  'S11-1201', // ขาย/มัดจำในโหมดเดินเรื่องใช้ BANK_TRANSFER → SHOP receiving bank (Task 12)
+  'S11-2001',
+  'S11-3001',
+  'S11-3002',
+  'S11-3101',
+  'S21-2002',
+  'S41-1101',
+  'S41-1201', // ค่าคอมจาก FINANCE — ShopInventoryTransferTemplate เครดิตเมื่อ commission > 0 (สัญญา DRAFT มี 1,990 เสมอ)
+  'S50-1101',
+  // มือสอง: ก้าวขายสด + ขายไฟแนนซ์แชร์ตัวเลือกเครื่อง orderBy imeiSerial เดียวกัน —
+  // ก้าว 3 ใช้เครื่อง PHONE_NEW ไป ก้าว 4 จึงได้เครื่องมือสอง (resolver → คู่ S*-*102)
+  'S11-2002',
+  'S50-1102',
+  'S41-1102',
+  // อุปกรณ์เสริม: รันเดินเรื่องซ้ำหลังโทรศัพท์สองเครื่องถูกขายไป ก้าวขายจะหยิบหูฟัง
+  // (ACCESSORY → คู่ S*-*103) — ประกาศไว้ให้ invariant "ขาด = ยังไม่ seed:coa" เป็นจริง
+  'S11-2003',
+  'S50-1103',
+  'S41-1103',
+  'S51-1106',
 ];
 
 export function missingAccounts(required: string[], present: string[]): string[] {
@@ -2997,12 +4982,28 @@ export function missingAccounts(required: string[], present: string[]): string[]
   return required.filter((c) => !have.has(c));
 }
 
+/**
+ * POST_DATE ที่พิมพ์ผิด (เช่น 2026-13-99) ต้องกลายเป็นปัญหาไทยในลิสต์ ไม่ใช่ stack trace —
+ * Invalid Date ทำให้ getUTCFullYear()/getUTCMonth() เป็น NaN แล้ว query งวดบัญชีโยน
+ * PrismaClientValidationError หลุดไปถึง main().catch เป็น FATAL.
+ * Pure function: ตัดสินจาก Date ที่ parse แล้ว; `raw` ใช้ระบุค่าที่ operator พิมพ์ในข้อความ.
+ */
+export function invalidPostDateProblem(postDate: Date, raw?: string): string | null {
+  if (!Number.isNaN(postDate.getTime())) return null;
+  const typed = raw ?? String(postDate);
+  return `POST_DATE="${typed}" ไม่ใช่วันที่ที่ถูกต้อง — ใช้รูปแบบ POST_DATE=YYYY-MM-DD (เช่น POST_DATE=2026-08-01) แล้วรันใหม่`;
+}
+
 export async function runPreflight(
   prisma: PrismaService,
   refs: SeedRefs,
-  opts: { drive: boolean; postDate: Date },
+  opts: { drive: boolean; postDate: Date; postDateRaw?: string },
 ): Promise<{ ok: boolean; problems: string[] }> {
   const problems: string[] = [];
+
+  // POST_DATE พิมพ์ผิด = เก็บเป็นปัญหาแล้วตรวจข้ออื่นต่อ (ห้าม throw / ห้ามตัดเช็คอื่นทิ้ง)
+  const postDateProblem = invalidPostDateProblem(opts.postDate, opts.postDateRaw);
+  if (postDateProblem) problems.push(postDateProblem);
 
   // ข้อ 2 — ข้อมูลอ้างอิง (resolveRefs โยนไปแล้วถ้าขาด branch/user; ที่นี่ตรวจนิติบุคคล)
   if (!refs.shopCompanyId) problems.push('ไม่พบนิติบุคคล SHOP ใน company_info');
@@ -3015,26 +5016,40 @@ export async function runPreflight(
     where: { code: { in: DRIVE_REQUIRED_ACCOUNTS }, deletedAt: null },
     select: { code: true },
   });
-  const missing = missingAccounts(DRIVE_REQUIRED_ACCOUNTS, rows.map((r) => r.code));
+  const missing = missingAccounts(
+    DRIVE_REQUIRED_ACCOUNTS,
+    rows.map((r) => r.code),
+  );
   if (missing.length) {
     problems.push(
       `ผังบัญชีขาด ${missing.length} รหัส: ${missing.join(', ')} — รัน "npm --prefix apps/api run seed:coa" ก่อน แล้วค่อยรันใหม่`,
     );
   }
 
-  // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องเปิดทั้งสองฝั่ง
-  const year = opts.postDate.getUTCFullYear();
-  const month = opts.postDate.getUTCMonth() + 1;
-  for (const [name, companyId] of [['SHOP', refs.shopCompanyId], ['FINANCE', refs.financeCompanyId]] as const) {
-    if (!companyId) continue;
-    const period = await prisma.accountingPeriod.findFirst({
-      where: { companyId, year, month },
-      select: { status: true },
-    });
-    if (period && period.status !== 'OPEN') {
-      problems.push(
-        `งวดบัญชี ${year}-${String(month).padStart(2, '0')} ของ ${name} สถานะ ${period.status} — เปิดงวดก่อน หรือใช้ POST_DATE=YYYY-MM-DD ชี้ไปเดือนที่ยังเปิด`,
-      );
+  // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องรับรายการได้ทั้งสองฝั่ง (B2, final fix 2026-08-26):
+  // เรียก validatePeriodOpen (utils/period-lock.util) ตัวเดียวกับที่ทุกเส้นทางลงบัญชีจริงใช้
+  // — ได้ทั้ง grace window (`period_grace_days` default 5: งวด CLOSED/SYNCED ยังโพสต์ได้ถึง
+  // สิ้นเดือน+5วัน) และการอ่านเดือนแบบ getFullYear/getMonth เดียวกับ guard ⇒ preflight
+  // เข้มหรือหย่อนกว่าด่านจริงไม่ได้โดยโครงสร้าง. (เดิมเช็ค `status !== 'OPEN'` เอง —
+  // เข้มกว่า production: ปฏิเสธ ส.ค. CLOSED ที่จริง ๆ ยังโพสต์ได้ถึง 5 ก.ย. แล้วชี้ทางแก้
+  // ที่เป็นอันตราย). (ตรวจได้เฉพาะเมื่อ POST_DATE ใช้การได้ — Invalid Date ทำให้ query โยน)
+  if (!postDateProblem) {
+    for (const [name, companyId] of [
+      ['SHOP', refs.shopCompanyId],
+      ['FINANCE', refs.financeCompanyId],
+    ] as const) {
+      if (!companyId) continue;
+      try {
+        await validatePeriodOpen(prisma, opts.postDate, companyId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        problems.push(
+          `งวดบัญชีฝั่ง ${name} ไม่รับรายการ ณ วันที่จะโพสต์: ${msg} — ทางที่ทำได้จริง: ` +
+            'เลือก POST_DATE=YYYY-MM-DD ในเดือนที่งวดยังเปิด/ยังอยู่ในช่วงผ่อนผัน ' +
+            '(ข้อแลก: ก้าวที่ลงบัญชี ณ วันปัจจุบันเสมอ เช่น เปิดสัญญา/ขาย/มัดจำ จะถูกข้ามเมื่อเดือนไม่ตรงเดือนนี้ — ผลรันจะบอกว่าข้ามเพราะอะไร) ' +
+            'หรือให้ OWNER เปิดงวดนั้นใหม่ที่หน้าตั้งค่า › งวดบัญชี (/settings) แล้วรันใหม่',
+        );
+      }
     }
   }
 
@@ -3045,12 +5060,18 @@ export async function runPreflight(
 - [ ] **Step 4: รันเทสให้ผ่าน**
 
 Run: `npm --prefix apps/api test -- _preflight`
-Expected: PASS — 4 เทส
+Expected: PASS — 10 เทส. เช็คงวดต้องมี **assertion แยกแยะจริง** (final fix 2026-08-26):
+stub มี `accountingPeriod.findUnique` (คีย์ `companyId_year_month` แบบ validatePeriodOpen ใช้จริง)
++ `systemConfig.findUnique` → null (grace default 5) — (1) งวด CLOSED ของเดือนที่พ้น grace
+ต้องโผล่เป็นปัญหาพร้อมข้อความ guard จริง "ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว" ทั้งสองฝั่ง
+(mutant ที่ลบเช็คทิ้งต้องล้มเทสนี้) · (2) งวด CLOSED ของเดือนปัจจุบัน (ยังใน grace) ต้อง
+**ไม่**เป็นปัญหา — ปักว่า preflight ไม่เข้มกว่า guard
 
-- [ ] **Step 5: ยืนยันชื่อฟิลด์ของ `AccountingPeriod`**
+- [ ] **Step 5: ยืนยันว่า guard จริงคือแหล่งเดียว**
 
-Run: `awk '/^model AccountingPeriod /,/^}/' apps/api/prisma/schema.prisma | grep -E 'year|month|status|companyId'`
-Expected: มี `year` `month` `status` `companyId` — ถ้าเก็บเป็น `periodStart` แทน ให้แก้ query ตามจริง
+Run: `grep -n "validatePeriodOpen" apps/api/src/cli/test-pack/_preflight.ts`
+Expected: preflight เรียก `validatePeriodOpen` จาก `utils/period-lock.util` — ห้ามมีเช็ค
+`period.status` ของตัวเองซ้อนอีกชั้น
 
 - [ ] **Step 6: เรียก preflight จาก orchestrator**
 
@@ -3058,8 +5079,9 @@ Expected: มี `year` `month` `status` `companyId` — ถ้าเก็บ�
 
 ```ts
     const drive = process.env.DRIVE === '1';
-    const postDate = process.env.POST_DATE ? new Date(`${process.env.POST_DATE}T00:00:00.000Z`) : bkkMidnight(now);
-    const pre = await runPreflight(prisma, refs, { drive, postDate });
+    const postDateRaw = process.env.POST_DATE;
+    const postDate = postDateRaw ? new Date(`${postDateRaw}T00:00:00.000Z`) : bkkMidnight(now);
+    const pre = await runPreflight(prisma, refs, { drive, postDate, postDateRaw });
     if (!pre.ok) {
       console.error('[seed-test-pack] PREFLIGHT ไม่ผ่าน:');
       for (const p of pre.problems) console.error(`  ✗ ${p}`);
@@ -3078,6 +5100,9 @@ EXPECTED_DB_NAME=$DB DRIVE=1 POST_DATE=2020-01-01 npm --prefix apps/api run seed
 ```
 Expected: ออกด้วย exit 1 พร้อมข้อความว่างวด 2020-01 ปิดอยู่ หรือผังบัญชีขาด (แล้วแต่สภาพ DB)
 ถ้างวดปี 2020 ไม่มีแถวเลย preflight จะผ่าน (ไม่มีแถว = ยังไม่เคยปิด) — ให้ลองเดือนที่ปิดจริงแทน
+ลองพิมพ์ผิดด้วย: `POST_DATE=2026-13-99` → ต้องได้ปัญหาไทย `POST_DATE="2026-13-99"
+ไม่ใช่วันที่ที่ถูกต้อง — ใช้รูปแบบ POST_DATE=YYYY-MM-DD ...` ในลิสต์ preflight (พร้อมเช็คผังบัญชี
+ที่ยังรายงานตามปกติ) ไม่ใช่ FATAL stack trace ของ PrismaClientValidationError
 
 - [ ] **Step 8: Commit**
 
@@ -3131,19 +5156,25 @@ import { SalesModule } from '../../modules/sales/sales.module';
 import { BookingsModule } from '../../modules/bookings/bookings.module';
 import { ExpenseDocumentsModule } from '../../modules/expense-documents/expense-documents.module';
 import { OtherIncomeModule } from '../../modules/other-income/other-income.module';
-import { AssetsModule } from '../../modules/assets/assets.module';
+// ⚠ เอกพจน์ทั้งคู่ — modules/assets/ มีแต่ไฟล์ spec ลอย ไม่มี module
+import { AssetModule } from '../../modules/asset/asset.module';
 import { EquityModule } from '../../modules/equity/equity.module';
 
 /**
  * โมดูลสำหรับโหมดเดินเรื่องเท่านั้น
  *
- * R3 — ห้าม import AppModule เด็ดขาด: app.module.ts มี ScheduleModule.forRoot()
+ * R3 — ห้าม import AppModule เด็ดขาด: app.module.ts:170 มี ScheduleModule.forRoot()
  * ซึ่งจะลงทะเบียน cron ทั้งหมด (2A accrual 00:01, ECL 00:30, VAT 60 วัน 02:00)
- * ตอนที่ createApplicationContext เรียก onApplicationBootstrap
+ * ตอนที่ createApplicationContext เรียก onApplicationBootstrap — และไม่มี env ปิด cron
+ * (grep DISABLE_CRON / CRON_ENABLED แล้วไม่เจอเลย)
  *
- * ScheduleModule.forRoot() อยู่ที่ app.module.ts ที่เดียว และ BullModule.forRoot()
- * อยู่ที่ notifications/notification-queue.module.ts ที่เดียว ⇒ ตราบใดที่ไม่ import
- * สองตัวนี้ จะไม่มี cron และไม่มี worker เกิดขึ้น
+ * ScheduleModule.forRoot() อยู่ที่ app.module.ts ที่เดียว ⇒ ไม่ import = ไม่มี cron
+ *
+ * หมายเหตุเรื่อง BullMQ (ตรวจแล้ว ไม่ใช่ความเสี่ยง): ContractsModule และ
+ * ExpenseDocumentsModule import NotificationsModule จริง แต่ NotificationsModule
+ * import แค่ Prisma/Integrations/PDPA — ส่วน NotificationQueueModule.register()
+ * ถูกเรียกจาก app.module.ts ที่เดียว และไม่มีใครนอกโมดูลนั้นฉีด NotificationQueueService
+ * ⇒ ไม่มีทาง resolve ไปถึง Redis
  */
 @Module({
   imports: [
@@ -3154,7 +5185,7 @@ import { EquityModule } from '../../modules/equity/equity.module';
     BookingsModule,
     ExpenseDocumentsModule,
     OtherIncomeModule,
-    AssetsModule,
+    AssetModule,
     EquityModule,
   ],
 })
@@ -3170,7 +5201,10 @@ import { NestFactory } from '@nestjs/core';
 import { TestPackModule } from './_module';
 
 async function main() {
-  const app = await NestFactory.createApplicationContext(TestPackModule, { logger: ['error', 'warn'] });
+  const app = await NestFactory.createApplicationContext(TestPackModule, {
+    logger: ['error', 'warn'],
+    abortOnError: false, // ให้ตรงกับ _drive.ts (fix round 1 — ดูหมายเหตุใน Step 4)
+  });
   console.log('TestPackModule bootstrap OK');
   await app.close();
 }
@@ -3188,82 +5222,139 @@ Expected: `TestPackModule bootstrap OK` และ **process จบเอง**
 
 - [ ] **Step 4: เขียน `_drive.ts`**
 
+> **อัปเดตหลัง fix round 1 (2026-08-26)** — code block นี้ sync กับ `_drive.ts` ที่ commit แล้ว
+> (ฉบับเต็มอยู่ในไฟล์จริง — บล็อกนี้ตัดเหลือส่วนที่เป็นกติกา):
+> - `runDrive(ctx, postDate)` รับ `postDate` ตัวเดียวกับที่ CLI ส่งให้ `runPreflight` — ห้ามคำนวณใหม่
+> - bootstrap ต้องส่ง `abortOnError: false` — default (`true`) ทำให้ scan ที่พังเรียก
+>   `process.exit(1)` จากใน `createApplicationContext` เอง ข้ามทั้ง catch, SUMMARY และ
+>   `finally { $disconnect() }` ของ CLI (IMPORTANT 3) — และจับ instance ที่มี `$disconnect`
+>   ผ่าน `instrument.instanceDecorator` เพื่อปิด Prisma ที่ `$connect` ไปแล้วเมื่อ init
+>   ล้มกลางทาง (MINOR 9 — Nest ไม่คืน handle และ `close()` ของ context ที่ init ค้างก็ rethrow)
+> - ก้าวรับชำระ: ค่าปรับ **resolve ณ postDate** ผ่าน `loadLateFeeConfig` + `remainingInstallmentDue`
+>   (`_drive-helpers.ts` — mirror payment-receipt-orchestrator.ts:268-284 ทีละกิ่ง) ห้ามจ่ายตามค่า
+>   `Payment.lateFee` ที่ stamp ตอน seed; `transactionRef` พกเลขครั้ง (`TEST-DRIVE-<paymentId>-<Date.now()>`)
+>   เพราะ idempotency probe จับทั้ง PAID/PARTIALLY_PAID; หลังบันทึกทุกงวด re-read แถว —
+>   ไม่ PAID = คืน "ข้าม — ..." ทันที ไม่เดินต่อไปชนด่านห้ามข้ามงวด (IMPORTANT 2)
+> - ก้าวรับชำระกรองสัญญาที่ลูกค้า `lineIdFinance != null` ออก + บอกชื่อสัญญาที่ข้าม —
+>   hook `sendPaymentSuccessLine` ยิง Flex จริงทันทีที่ tester ผูก LINE ผ่าน /liff/register (MINOR 5)
+> - ก้าวขายทั้งสองส่ง role จริงของ actor (`'SALES'` — resolveRefs หา salespersonId ด้วย
+>   `where { role: 'SALES' }`) ไม่ใช่ `'OWNER'` — DiscountPolicy อ่าน role นี้ (MINOR 8)
+> - `nowOnlyGuard` เป็นรายเดือน — เมื่อเดือนตรงแต่วันไม่ตรง ก้าว now-only ต่อท้ายหมายเหตุ
+>   ว่าลงบัญชีวันนี้ ไม่ใช่ POST_DATE (MINOR 6)
+> - ก้าว equity อ่าน `EQUITY_MAKER_CHECKER_ENABLED` ก่อน — เปิดอยู่ = "ข้าม" ไม่ใช่ ✗ (MINOR 7)
+
 ```ts
-import { NestFactory } from '@nestjs/core';
-import { ContractWorkflowService } from '../../modules/contracts/contract-workflow.service';
-import { PaymentReceiptOrchestrator } from '../../modules/payments/services/payment-receipt-orchestrator';
-import { TestPackModule } from './_module';
-import type { SeedContext } from './_types';
-
-export interface DriveStep {
-  name: string;
-  ok: boolean;
-  detail: string;
-}
-export interface DriveResult {
-  steps: DriveStep[];
-}
-
-/**
- * เฟส 3 — เดินเรื่องผ่าน service จริง เพื่อให้ JE มาจากโค้ด production (R1)
- *
- * แต่ละก้าวจับ error ของตัวเอง: ก้าวหนึ่งพังต้องไม่ล้มก้าวถัดไป และไม่ล้มเฟส 1-2
- * ที่ commit ไปแล้ว
- */
-export async function runDrive(ctx: SeedContext): Promise<DriveResult> {
+export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveResult> {
   const steps: DriveStep[] = [];
-  const app = await NestFactory.createApplicationContext(TestPackModule, { logger: ['error', 'warn'] });
 
-  const run = async (name: string, fn: () => Promise<string>) => {
+  let app: INestApplicationContext;
+  // MINOR 9: จับ instance ที่มี $disconnect ตอน DI instantiate — ปิด connection ได้เสมอ
+  // แม้ onModuleInit ตัวหลัง PrismaService พัง (Nest reject โดยไม่คืน handle)
+  const disconnectables = new Set<{ $disconnect: () => Promise<unknown> }>();
+  try {
+    app = await NestFactory.createApplicationContext(TestPackModule, {
+      logger: ['error', 'warn'],
+      abortOnError: false, // IMPORTANT 3 — default = process.exit(1) จากใน factory
+      instrument: {
+        instanceDecorator: (instance) => {
+          const candidate = instance as { $disconnect?: unknown } | null;
+          if (candidate && typeof candidate.$disconnect === 'function') {
+            disconnectables.add(candidate as { $disconnect: () => Promise<unknown> });
+          }
+          return instance;
+        },
+      },
+    });
+  } catch (err) {
+    await Promise.allSettled([...disconnectables].map((c) => c.$disconnect()));
+    return {
+      steps: [
+        { name: 'เตรียมโมดูล (TestPackModule)', ok: false, detail: `bootstrap ไม่ผ่าน: ${errMsg(err)}` },
+      ],
+    };
+  }
+
+  const run = async (name: string, fn: () => Promise<string>): Promise<void> => {
     try {
       steps.push({ name, ok: true, detail: await fn() });
     } catch (err) {
-      steps.push({ name, ok: false, detail: err instanceof Error ? err.message : String(err) });
+      steps.push({ name, ok: false, detail: errMsg(err) });
     }
   };
 
   try {
-    // ── ก้าว 1: เปิดสัญญาผ่อน 1 ใบ → JE 1A + SHOP leg → คิวรอจ่าย INTER-CO มีของ
-    const workflow = app.get(ContractWorkflowService);
-    await run('เปิดสัญญาผ่อน', async () => {
-      const c = await ctx.prisma.contract.findFirst({
-        where: { contractNumber: { startsWith: 'TEST-' }, status: 'DRAFT', deletedAt: null },
-        select: { id: true, contractNumber: true },
-      });
-      if (!c) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ DRAFT ให้เปิด';
-      await workflow.activate(c.id);
-      return `เปิดสัญญา ${c.contractNumber} แล้ว — ตรวจคิวที่ /accounting/intercompany`;
-    });
+    // ── ก้าว 1: เปิดสัญญาผ่อน (ดู _drive.ts จริง — ก้าวนี้ + ก้าว 3-9 ตามหมายเหตุด้านบน)
 
-    // ── ก้าว 2: รับชำระ 2 งวด → JE 2B + ใบเสร็จ
-    const orchestrator = app.get(PaymentReceiptOrchestrator);
-    await run('รับชำระค่างวด', async () => {
-      const c = await ctx.prisma.contract.findFirst({
-        where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
+    // ── ก้าว 2: รับชำระ 2 งวด → JE 2B + ใบเสร็จ (ฉบับย่อ — กติกาครบ)
+    await run('รับชำระค่างวด (JE 2B + ใบเสร็จ)', async () => {
+      // MINOR 5: ข้ามสัญญาที่ลูกค้าผูก LINE แล้ว (hook หลังรับเงินยิง Flex จริง) + บอกชื่อ
+      const candidates = await ctx.prisma.contract.findMany({
+        where: {
+          contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
+          status: 'ACTIVE',
+          deletedAt: null,
+          customer: { is: { lineIdFinance: null } },
+        },
+        orderBy: { contractNumber: 'asc' },
         select: { id: true, contractNumber: true },
       });
-      if (!c) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE';
-      // ต้องบันทึกตามลำดับงวด (คำสั่งเจ้าของ 2026-08-19) ⇒ ไล่จากงวดค้างที่เก่าที่สุด
-      const due = await ctx.prisma.payment.findMany({
-        where: { contractId: c.id, status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, deletedAt: null },
-        orderBy: { installmentNo: 'asc' },
-        select: { installmentNo: true, amountDue: true, lateFee: true },
-        take: 2,
-      });
-      if (!due.length) return 'ข้าม — ไม่มีงวดค้างให้รับชำระ';
-      let n = 0;
-      for (const p of due) {
-        const amount = Number(p.amountDue) + Number(p.lateFee ?? 0);
-        await orchestrator.recordPayment(c.id, p.installmentNo, amount, 'CASH', ctx.refs.reviewerId, undefined, '[ทดสอบระบบ] รับชำระจากโหมดเดินเรื่อง', undefined, '11-1101');
-        n += 1;
+      // B1 (final fix 2026-08-26): รับชำระได้เฉพาะสัญญาที่มี JE 1A (POSTED) จริง — สัญญาจาก
+      // seed-test-contracts.cli เป็น ACTIVE โดย "ไม่โพสต์ activation journal" ⇒ 2B บนสัญญา
+      // พวกนั้นทำ 11-2101/11-2103 ติดเครื่องหมายผิดทั้งที่งบทดลองยังสมดุล. ตัวชี้ = metadata
+      // ที่ ContractActivation1ATemplate stamp จริง: `{ tag: '1A', contractId }`
+      const contracts: typeof candidates = [];
+      const no1A: string[] = [];
+      for (const c of candidates) {
+        const je = await ctx.prisma.journalEntry.findFirst({
+          where: {
+            status: 'POSTED',
+            deletedAt: null,
+            AND: [
+              { metadata: { path: ['tag'], equals: '1A' } },
+              { metadata: { path: ['contractId'], equals: c.id } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (je) contracts.push(c);
+        else no1A.push(c.contractNumber); // ระบุชื่อใน "ข้ามสัญญา ..." ของผลก้าว (รูปเดียวกับ lineSkipNote)
       }
-      return `รับชำระ ${n} งวดของสัญญา ${c.contractNumber} — ตรวจใบเสร็จที่ /receipts`;
+      if (!contracts.length) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE (รันโดเมน contracts ก่อน)';
+      const payments = app.get(PaymentsService, { strict: false });
+      // IMPORTANT 2a: ค่าปรับ resolve ณ postDate — single source กับ orchestrator
+      const lateFeeCfg = await loadLateFeeConfig(ctx.prisma);
+      for (const c of contracts) {
+        const due = await ctx.prisma.payment.findMany({
+          where: { contractId: c.id, status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, deletedAt: null },
+          orderBy: { installmentNo: 'asc' },
+          select: { id: true, installmentNo: true, dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+          take: 2,
+        });
+        if (!due.length) continue;
+        let paid = 0;
+        for (const p of due) {
+          const amount = remainingInstallmentDue(p, lateFeeCfg, postDate);
+          if (amount.lte(0)) continue;
+          await payments.recordPayment(
+            c.id, p.installmentNo, amount.toNumber(), 'CASH', ctx.refs.reviewerId,
+            undefined, testNote('รับชำระจากโหมดเดินเรื่อง'),
+            `TEST-DRIVE-${p.id}-${Date.now()}`, // IMPORTANT 2b: ref พกเลขครั้ง — probe จับ PARTIALLY_PAID ด้วย
+            '11-1101', undefined, undefined, true, postDate,
+          );
+          // IMPORTANT 2b: ยอดต้องปิดงวดพอดี — ไม่ PAID = หยุดก่อนชนด่านห้ามข้ามงวด
+          const after = await ctx.prisma.payment.findUnique({ where: { id: p.id }, select: { status: true } });
+          if (after?.status !== 'PAID') {
+            return `ข้าม — งวด ${p.installmentNo} ของสัญญา ${c.contractNumber} หลังบันทึกได้สถานะ ${after?.status ?? 'ไม่พบแถว'} ไม่ใช่ PAID — หยุดก้าวนี้กันชนด่านห้ามข้ามงวด`;
+          }
+          paid += 1;
+        }
+        if (paid > 0) return `รับชำระ ${paid} งวดของสัญญา ${c.contractNumber} — ตรวจใบเสร็จที่ /receipts`;
+      }
+      return 'ข้าม — สัญญาทดสอบทุกใบไม่มีงวดค้างให้รับชำระ (อาจรันเดินเรื่องจนครบแล้ว)';
     });
 
-    // ── ก้าว 3-6: ขายสด · ขายผ่านไฟแนนซ์ภายนอก · รับมัดจำใบจอง · post เอกสารบัญชี 4 ใบ
-    // เขียนตามลายเซ็นที่จดไว้จาก Step 1 — โครงเดียวกับสองก้าวข้างบน:
-    //   await run('<ชื่อก้าว>', async () => { ...หาแถวที่ seed ไว้... ; await service.method(...); return '<สรุปไทย>'; });
-    // ก้าวที่หาแถวไม่เจอให้ return ข้อความขึ้นต้นว่า "ข้าม — " ไม่ใช่ throw
+    // ── ก้าว 3-9: ดู _drive.ts จริง (ขายสด/ขายไฟแนนซ์ role 'SALES', มัดจำใบจอง,
+    //    post เอกสาร expense/other-income/asset/equity — equity อ่าน MC flag ก่อน)
   } finally {
     await app.close();
   }
@@ -3299,17 +5390,21 @@ const actor = await ctx.prisma.user.findUnique({
 
 ```ts
     if (!dryRun && drive) {
-      console.log('── เฟส 3: เดินเรื่องผ่าน service จริง');
-      const { steps } = await runDrive(ctx);
-      for (const s of steps) console.log(`   ${s.ok ? '✓' : '✗'} ${s.name} — ${s.detail}`);
+      console.log('── เฟส 3: เดินเรื่องผ่าน service จริง (DRIVE=1)');
+      // import ที่นี่ ไม่ใช่หัวไฟล์ — _drive ลาก TestPackModule เข้ามา ซึ่ง dry-run ไม่ควรจ่ายราคา
+      const { runDrive } = await import('./test-pack/_drive');
+      // postDate = ค่าเดียวกับที่ส่งให้ runPreflight ด้านบน — ห้ามคำนวณใหม่
+      const { steps } = await runDrive(ctx, postDate);
+      for (const s of steps) {
+        console.log(`   ${s.ok ? '✓' : '✗'} ${s.name} — ${s.detail}`);
+        if (!s.ok) failures.push(`drive/${s.name}: ${s.detail}`);
+      }
       console.log('');
     } else if (dryRun && drive) {
-      console.log('── เฟส 3 ถูกข้ามใน DRY-RUN (เดินเรื่องจริงต้องเขียน DB)');
+      console.log('── เฟส 3 (DRIVE=1) ถูกข้ามใน DRY-RUN — เดินเรื่องคือการเรียก service จริงซึ่งเขียน DB');
       console.log('');
     }
 ```
-
-เพิ่ม import: `import { runDrive } from './test-pack/_drive';`
 
 - [ ] **Step 7: ตรวจ TypeScript + รันเต็มพร้อมเดินเรื่อง**
 
@@ -3359,6 +5454,17 @@ git commit -m "feat(test-pack): โหมดเดินเรื่องผ่
 
 **เหตุผล:** MD ข้อ 6-7 สั่งให้มีตาราง route + ตารางวิธีลบ ถ้าเขียนมือ มันจะล้าสมัยทันทีที่เพิ่มโดเมน
 generate จาก registry แทน ⇒ เอกสารกับโค้ดหลุดกันไม่ได้
+
+> **§0 คำเตือนก่อนใช้ (M2, final fix 2026-08-26)** — template ใน `_docgen.ts` (ข้อความมาจาก
+> generator ห้ามแก้ README ที่ generate แล้วด้วยมือ) มีคำเตือน operator เพิ่ม:
+> (1) **อย่ารัน seed ระหว่างเวลาทำการ** — `nextDocNumber` ของแพ็กเป็น max+1 **ไม่มี advisory
+> lock** (ต่างจาก `DocNumberService` จริง) เลขเอกสาร `EX`/`OI`/`PR` ชนกับที่พนักงานออกจริงได้
+> (P2002) · (2) **ใบเงินเดือนทดสอบ (DRAFT) จองช่องกันซ้ำ (สาขา + งวด + ฝั่ง) ของงวดปัจจุบันจริง**
+> — ใบเงินเดือนจริงงวดเดียวกันถูกปฏิเสธจนกว่าจะ cleanup โดเมน payroll ·
+> (3) รอบจ่ายค่าคอมทดสอบผูกพนักงานขายจริงคนแรกที่งวด `TEST-YYYY-MM` — **ไม่**บล็อกรอบจ่ายจริง
+> (finding เดิมที่ว่า "จองช่อง unique ของงวดจริง" ไม่เป็นจริงกับโค้ดที่ commit: งวดทดสอบเป็น
+> `TEST-` prefix คนละ tuple และ `generatePayouts` validate `^\d{4}-\d{2}$`) แต่แถวโผล่ใน
+> หน้ารอบจ่ายของพนักงานคนนั้นจนกว่าจะ cleanup — เขียนตามจริงใน README
 
 - [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_docgen.spec.ts`**
 
@@ -3489,13 +5595,32 @@ git commit -m "feat(test-pack): generate ตารางครอบคลุม
 
 ---
 
+## รอบแก้หลัง scrutinize (2026-08-26)
+
+แผนฉบับแรกถูกไล่โค้ดจริงแล้วพบ 8 จุด — แก้ครบแล้วทั้งหมด บันทึกไว้กัน regression:
+
+| # | สิ่งที่พบ | ที่มา | แก้เป็น |
+|---|---|---|---|
+| 1 | `_module.ts` import `AssetsModule` จาก `modules/assets/assets.module` — **ไม่มีไฟล์** | `modules/assets/` มีแต่ `asset-invoice-received-template.spec.ts` | `AssetModule` จาก `modules/asset/asset.module` |
+| 2 | `device-swap` ใช้ `ContractExchangeRequest.reason` — **ไม่มีฟิลด์นี้** | ช่องข้อความจริง: `conditionNote` / `rejectionReason` / `cancelReason` | `conditionNote` (3 จุด + `markerDoc`) |
+| 3 | `equity` cleanup ใช้ FK `equityDocumentId` | ชื่อจริงคือ `documentId` | แก้ + ยืนยันว่าโมเดลไม่มี `deletedAt` ⇒ hard delete ถูกแล้ว |
+| 4 | hard delete บนโมเดลที่มี `deletedAt` **9 จุด** | `StockCount` `StockCountItem` `StockTransfer` `StockAdjustment` `POItem` `GoodsReceiving(+Item)` `RepairTicket` `OnlineOrder` `OnlineInstallmentApplication` `InspectionResult` ล้วนเป็น soft | เปลี่ยนเป็น `updateMany({ deletedAt })` + เพิ่มกฎลง Global Constraints |
+| 5 | `POStatus` ไม่มีค่า `PARTIAL` | ค่าจริงคือ `PARTIALLY_RECEIVED` | แก้ + ถอด `as never` + เติมฟิลด์ `POItem` จาก `seed.ts` |
+| 6 | ตาราง "โมดูลไหนโพสต์ JE" มาจาก grep ที่มี false negative | pattern `Template\.execute` มองไม่เห็น `this.template.execute` ⇒ `other-income`/`asset` ขึ้นว่าไม่โพสต์ทั้งที่โพสต์ | เปลี่ยน pattern + เขียนกำกับว่า grep เป็นแค่รายชื่อไฟล์ที่ต้องไปอ่าน (spec §3 R2) |
+| 7 | R3 เตือนเรื่อง BullMQ เกินจริง | `NotificationQueueModule.register()` ถูกเรียกจาก `app.module.ts` ที่เดียว และไม่มีใครฉีด `NotificationQueueService` | ตัดคำเตือนออก เหลือเหตุผลเดียวที่จริง (`ScheduleModule.forRoot()`) |
+| 8 | `StockAdjustment` + `StockAlert` หายจาก Task 7 ทั้งที่ spec §6 สัญญาไว้ | `StockAlert.reorderPointId` เป็น FK บังคับ ผมเลยตัดเงียบ ๆ | เติมครบ + สร้าง `ReorderPoint` นำ (harvest จาก `seed.ts`) |
+
+**รากของ 1-5 เป็นเรื่องเดียว** — เดาชื่อฟิลด์แทนที่จะอ่าน `prisma/seed.ts` ⇒ เพิ่ม **Task 0** เป็นด่านแรกของแผน
+
+---
+
 ## Self-Review
 
 **1. Spec coverage**
 
 | spec § | task ที่ทำ |
 |---|---|
-| §2 D1 ขยายครบทุกโดเมน | Task 3-10 (19 โดเมน) |
+| §2 D1 ขยายครบทุกโดเมน | Task 3-10 (19 โดเมน) — Task 0 harvest ของจริงจาก `prisma/seed.ts` ให้ 7 โดเมนก่อน |
 | §2 D2 สถานะกลาง | เพดานสถานะระบุในทุก task ของโดเมน |
 | §2 D3 ไม่แตะแชท | ไม่มีโดเมนแชทใน registry · Task 13 หัวข้อ 3 ลิสต์ route แชทเป็น "ไม่มีโดเมนครอบ" |
 | §2 D4 2-3 แถว/โดเมน | ทุก `ROWS` ยาว 2-4 |

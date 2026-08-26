@@ -60,6 +60,7 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
+import { ShopExternalFinanceReceiptTemplate } from '../../journal/cpa-templates/shop-external-finance-receipt.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
 
@@ -89,7 +90,10 @@ const saleVoidService = new SaleVoidService(
 );
 
 const commissionService = new CommissionService(prisma as never);
-const financeReceivableService = new FinanceReceivableService(prisma as never);
+const financeReceivableService = new FinanceReceivableService(
+  prisma as never,
+  new ShopExternalFinanceReceiptTemplate(journal, prisma as never, companyResolver),
+);
 
 // ---------------------------------------------------------------------------
 const PREFIX = 'VOIDTEST-';

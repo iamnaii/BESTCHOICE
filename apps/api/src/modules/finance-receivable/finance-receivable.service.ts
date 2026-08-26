@@ -7,11 +7,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StructuredLoggerService } from '../../common/logger';
 import { FinanceReceivableStatus, Prisma } from '@prisma/client';
 import { RecordReceiveDto, UpdateFinanceReceivableDto } from './dto/finance-receivable.dto';
+import { ShopExternalFinanceReceiptTemplate } from '../journal/cpa-templates/shop-external-finance-receipt.template';
 
 @Injectable()
 export class FinanceReceivableService {
   private readonly structuredLogger = new StructuredLoggerService(FinanceReceivableService.name);
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private shopExternalFinanceReceiptTemplate: ShopExternalFinanceReceiptTemplate,
+  ) {}
 
   async findAll(filters: {
     status?: FinanceReceivableStatus;
@@ -120,6 +124,23 @@ export class FinanceReceivableService {
 
     const status: FinanceReceivableStatus = receivedAmount.gte(netExpected) ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
 
+    // ── ลงบัญชีฝั่ง SHOP เมื่อไฟแนนซ์ **ภายนอก** โอนเงินมา (C1) ──────────────
+    //
+    // `receivedAmount` เป็นการ **เซ็ตทับ** ไม่ใช่บวกสะสม ⇒ JE ต้องลงเฉพาะ **ส่วนต่าง**
+    // ไม่งั้นการบันทึกรับเงินรอบสอง (บางส่วน → ครบ) จะนับเงินซ้ำทั้งก้อน
+    //
+    // ค่าธรรมเนียมลงเมื่อ **ปิดยอดครบ** เท่านั้น — ลงตอนรับบางส่วนจะล้างลูกหนี้เกินสัดส่วน
+    // (template ล้าง `received + fee` ออกจาก S11-3101 เสมอ)
+    //
+    // ลูกหนี้ภายในเครือ (BESTCHOICE FINANCE) ล้างผ่านรอบจ่าย INTER-CO อยู่แล้ว
+    // ⇒ ห้ามโพสต์ใบนี้ให้ ไม่งั้นล้างซ้ำสองทาง (template throw ถ้าเผลอเรียก)
+    const isExternal =
+      record.externalFinanceCompanyId != null && record.financeCompany !== 'BESTCHOICE FINANCE';
+    const prevReceived = record.receivedAmount ?? new Prisma.Decimal(0);
+    const deltaReceived = receivedAmount.minus(prevReceived);
+    const feeThisTime =
+      status === 'RECEIVED' ? (record.commissionAmount ?? new Prisma.Decimal(0)) : new Prisma.Decimal(0);
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.financeReceivable.update({
         where: { id },
@@ -149,6 +170,25 @@ export class FinanceReceivableService {
         },
         data: { promisedKeptAt: receivedDate },
       });
+
+      // โพสต์ JE ใน tx เดียวกับการบันทึกรับเงิน — ล้มก็ไม่มีสถานะครึ่ง ๆ
+      // คืน null เงียบ ๆ เมื่อผังยังไม่มีบัญชี S11-3101/S51-1106 (การรับเงินต้องไม่ล่ม)
+      if (isExternal && (deltaReceived.gt(0) || feeThisTime.gt(0))) {
+        await this.shopExternalFinanceReceiptTemplate.execute(
+          {
+            idempotencyKey: `shop-ext-finance-receipt:${id}:${prevReceived.toFixed(2)}->${receivedAmount.toFixed(2)}`,
+            financeReceivableId: id,
+            saleId: record.saleId,
+            isExternal: true,
+            depositAccountCode: dto.depositAccountCode ?? 'S11-1201',
+            receivedAmount: deltaReceived.gt(0) ? deltaReceived : new Prisma.Decimal(0),
+            feeAmount: feeThisTime,
+            financeCompany: record.financeCompany,
+            postedAt: receivedDate,
+          },
+          tx,
+        );
+      }
 
       return result;
     });

@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { FinanceReceivableService } from './finance-receivable.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ShopExternalFinanceReceiptTemplate } from '../journal/cpa-templates/shop-external-finance-receipt.template';
 
 describe('FinanceReceivableService', () => {
   let service: FinanceReceivableService;
@@ -27,6 +28,9 @@ describe('FinanceReceivableService', () => {
       providers: [
         FinanceReceivableService,
         { provide: PrismaService, useValue: prisma },
+        // เทสชุดนี้เป็นลูกหนี้ภายในเครือทั้งหมด (ไม่มี externalFinanceCompanyId)
+        // ⇒ ไม่มีทางเรียก template นี้ · mock ไว้เพื่อให้ DI ประกอบได้
+        { provide: ShopExternalFinanceReceiptTemplate, useValue: { execute: jest.fn() } },
       ],
     }).compile();
 

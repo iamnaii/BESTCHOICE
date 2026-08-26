@@ -1,11 +1,13 @@
 import type { DomainSeeder } from './_types';
+import { contractsSeeder } from './contracts.seed';
 import { todosSeeder } from './todos.seed';
 
 /**
  * ลำดับใน array นี้ = ลำดับการสร้าง (โดเมนหลังพึ่ง FK ของโดเมนหน้าได้)
  * cleanup เดินย้อนลำดับนี้เสมอ
+ * contracts ต้องเป็นตัวแรก — โดเมนถัดไปพึ่งลูกค้าทดสอบ/เครื่องทดสอบที่มันสร้าง
  */
-export const ALL_DOMAINS: DomainSeeder[] = [todosSeeder];
+export const ALL_DOMAINS: DomainSeeder[] = [contractsSeeder, todosSeeder];
 
 export function selectDomains(all: DomainSeeder[], csv: string | undefined): DomainSeeder[] {
   if (!csv || !csv.trim()) return [...all];

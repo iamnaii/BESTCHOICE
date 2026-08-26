@@ -9,6 +9,7 @@ import {
 } from 'react';
 import * as Sentry from '@sentry/react';
 import api, { setAccessToken } from '@/lib/api';
+import { currentLocation, isPublicPage } from '@/lib/public-routes';
 
 interface User {
   id: string;
@@ -120,20 +121,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   useEffect(() => {
-    // Skip auth on customer subdomain entirely — no cookies, no auth needed
-    const host = window.location.hostname;
-    const isCustomerSubdomain = host.startsWith('customer.') || host.startsWith('liff.');
-    const path = window.location.pathname;
-    const search = window.location.search;
-    const isLiffRedirect = search.includes('liff.state');
-    const isPublicPage =
-      isCustomerSubdomain ||
-      isLiffRedirect ||
-      path.startsWith('/liff/') ||
-      path.startsWith('/pay/') ||
-      path.startsWith('/customer-access/') ||
-      path.startsWith('/verify/');
-    if (isPublicPage) {
+    // ข้าม /auth/me บนหน้าสาธารณะ — ไม่มี session ให้ถามอยู่แล้ว และ 401 ที่ตอบกลับมา
+    // จะทำให้ interceptor เด้งออกจากหน้าไป /login (รายการอยู่ที่ lib/public-routes.ts ที่เดียว)
+    if (isPublicPage(currentLocation())) {
       setIsLoading(false);
       return;
     }

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_URL } from '@/lib/env';
+import { currentLocation, shouldSkipLoginRedirect } from '@/lib/public-routes';
 
 // In-memory token storage — not accessible via XSS unlike localStorage
 let accessToken: string | null = null;
@@ -111,14 +112,11 @@ api.interceptors.response.use(
   },
 );
 
-/** Check if current page is public (LIFF, payment, customer subdomain) — don't redirect to login */
+/** Check if current page is public (LIFF, payment, customer subdomain) — don't redirect to login.
+ *  รายการหน้าสาธารณะอยู่ที่ lib/public-routes.ts ที่เดียว — เดิมคัดลอกไว้ที่นี่ด้วยแล้วหลุดกับ
+ *  AuthContext จนลิงก์รีเซ็ตรหัสผ่าน/ลิงก์เชิญในอีเมลถูกเด้งทิ้งทั้งหมด */
 function isPublicOrLiffPage(): boolean {
-  const host = window.location.hostname;
-  if (host.startsWith('customer.') || host.startsWith('liff.')) return true;
-  const path = window.location.pathname;
-  const search = window.location.search;
-  if (search.includes('liff.state')) return true;
-  return path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/') || path.startsWith('/cn/');
+  return shouldSkipLoginRedirect(currentLocation());
 }
 
 // Response interceptor: handle 401 with token refresh

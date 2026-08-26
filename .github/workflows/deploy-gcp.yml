@@ -54,6 +54,14 @@ jobs:
     # ทั้ง 3 job ปลายทางใช้ `needs.lint-and-test.result != 'failure'` จึงเดินต่อเมื่อ skipped
     if: inputs.skip_tests != true
 
+    # โปรเจกต์โตจนงาน node ใน job นี้ข้ามเพดาน heap default (~2GB) แล้ว — ตายด้วย
+    # exit 134 ทั้ง `Lint API` (eslint type-aware ~1,980 ไฟล์ ⇒ TS program ทั้งโปรเจกต์)
+    # และ `Test API` (jest --runInBand ⇒ ทุก suite สะสมในโปรเซสเดียว) บน c3d27d87
+    # ตั้งที่ระดับ job ไม่ใช่รายขั้น เพราะเป็นเพดานร่วมของทุกงาน node ที่นี่ —
+    # ไล่แก้ทีละขั้นคือรอให้ขั้นถัดไปตายแล้วค่อยตามแก้ทีหลัง. runner มี RAM 16GB
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -116,6 +124,7 @@ jobs:
         env:
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
 
+      # heap ที่ยกให้ อยู่ที่ `env` ระดับ job ด้านบน (ใช้ร่วมกับ Test API)
       - name: Lint API
         run: npm run lint --workspace=apps/api
 

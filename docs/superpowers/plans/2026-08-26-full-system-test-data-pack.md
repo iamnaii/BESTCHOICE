@@ -320,12 +320,45 @@ export function bkkMidnight(now: Date): Date {
 
 export async function resolveRefs(prisma: PrismaService): Promise<SeedRefs> {
   const [branches, sales, reviewer, owner, shopCo, financeCo] = await Promise.all([
-    prisma.branch.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { createdAt: 'asc' }, take: 2 }),
-    prisma.user.findFirst({ where: { role: 'SALES', deletedAt: null }, select: { id: true } }),
-    prisma.user.findFirst({ where: { role: { in: ['OWNER', 'BRANCH_MANAGER'] }, deletedAt: null }, select: { id: true } }),
-    prisma.user.findFirst({ where: { role: 'OWNER', deletedAt: null }, select: { id: true } }),
-    prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } }),
-    prisma.companyInfo.findFirst({ where: { companyCode: 'FINANCE', deletedAt: null }, select: { id: true } }),
+    prisma.branch.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'asc' },
+      take: 2,
+    }),
+    prisma.user.findFirst({
+      where: { role: 'SALES', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    // reviewer: เลือก BRANCH_MANAGER ก่อนเสมอ (คนละคนกับ ownerId โดยธรรมชาติ) แล้วค่อย fallback
+    // เป็น OWNER เมื่อไม่มี BM เลย — ทุก query ใส่ orderBy ให้ได้คนเดิมทุกรอบ ไม่แล้วแต่ Postgres
+    // ⚠️ interface นี้ **ไม่การันตี** ว่า reviewerId ≠ ownerId: ระบบที่มีผู้ใช้ OWNER คนเดียว
+    // (ไม่มี BM) จะได้คนเดียวกันทั้งสองช่อง — โดเมนที่ต้องการ 4-eyes ต้องเช็คเองก่อนใช้
+    (async () =>
+      (await prisma.user.findFirst({
+        where: { role: 'BRANCH_MANAGER', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      })) ??
+      prisma.user.findFirst({
+        where: { role: 'OWNER', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      }))(),
+    prisma.user.findFirst({
+      where: { role: 'OWNER', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+    }),
+    prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    }),
   ]);
 
   const missing: string[] = [];
@@ -2029,10 +2062,18 @@ git commit -m "feat(test-pack): โดเมนส่วนของผู้ถ
 ต้องเด้ง warning ให้คนตัดสินก่อน. หมายเหตุ: `GoodsReceiving`/`GoodsReceivingItem` ไม่ใช่รูที่สาม —
 `GoodsReceiving.poId` ชี้ PO ตรง ๆ และบล็อก `grs` ใน cleanup กวาดอยู่แล้ว
 
-- [ ] **Step 1: เขียน `suppliers-po.seed.ts`**
+- [ ] **Step 1: เขียน `suppliers-po.seed.ts`** *(บล็อกนี้ sync กับโค้ดที่ commit แล้ว — fix round 2, 2026-08-26)*
+
+> ⚠️ จุดที่ **จงใจ** ต่างจาก probe ตาม marker ปกติ: idempotency probe อยู่ที่ `notes` (marker)
+> แต่การจองเลข `poNumber` เป็น max+1 **โดยไม่กรอง `deletedAt`** — `poNumber` เป็น `@unique`
+> เต็มตาราง แถวที่ soft delete แล้วยังถือเลขอยู่ ถ้าใช้เลขตายตัว/probe เฉพาะแถวเป็นจะชน P2002
+> ทันทีหลัง cleanup (deviation ที่อนุมัติแล้ว) · เงินคูณใน `Prisma.Decimal` เท่านั้น
+> (ห้าม `p.qty * p.unitPrice` แบบ float)
 
 ```ts
-import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, TEST_NOTE_MARKER, testName, testNote } from './_context';
+import { Prisma } from '@prisma/client';
+
+import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, testName, testNote } from './_context';
 import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
@@ -2045,10 +2086,24 @@ const SUPPLIERS: Array<{ name: string; phone: string; isRepairCenter: boolean }>
  * ใบสั่งซื้อ 2 ใบ — สั่งแล้วรอรับของ กับ รับบางส่วนแล้ว
  * ค่า POStatus จริง: DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_RECEIVED CANCELLED
  * (**ไม่มี `PARTIAL`** — ชื่อเต็มคือ PARTIALLY_RECEIVED)
+ *
+ * ไม่โพสต์ JE — โมดูล purchase-orders ทั้งสายไม่แตะสมุดบัญชี
  */
-const POS: Array<{ key: string; status: 'ORDERED' | 'PARTIALLY_RECEIVED'; qty: number; unitPrice: number; note: string }> = [
+const POS: Array<{
+  key: string;
+  status: 'ORDERED' | 'PARTIALLY_RECEIVED';
+  qty: number;
+  unitPrice: number;
+  note: string;
+}> = [
   { key: 'ordered', status: 'ORDERED', qty: 5, unitPrice: 12000, note: 'ใบสั่งซื้อรอรับของ' },
-  { key: 'partial', status: 'PARTIALLY_RECEIVED', qty: 3, unitPrice: 21000, note: 'ใบสั่งซื้อรับของบางส่วนแล้ว' },
+  {
+    key: 'partial',
+    status: 'PARTIALLY_RECEIVED',
+    qty: 3,
+    unitPrice: 21000,
+    note: 'ใบสั่งซื้อรับของบางส่วนแล้ว',
+  },
 ];
 
 export const suppliersPoSeeder: DomainSeeder = {
@@ -2059,8 +2114,14 @@ export const suppliersPoSeeder: DomainSeeder = {
 
   async plan(): Promise<PlanRow[]> {
     return [
-      ...SUPPLIERS.map((s) => ({ label: testName(s.name), detail: s.isRepairCenter ? 'ศูนย์ซ่อม (isRepairCenter = true)' : 'ซัพพลายเออร์ทั่วไป' })),
-      ...POS.map((p) => ({ label: `${TEST_DOC_PREFIX}PO ${p.key}`, detail: `${p.status} · ${p.qty} ชิ้น × ฿${p.unitPrice.toLocaleString('th-TH')}` })),
+      ...SUPPLIERS.map((s) => ({
+        label: testName(s.name),
+        detail: s.isRepairCenter ? 'ศูนย์ซ่อม (isRepairCenter = true)' : 'ซัพพลายเออร์ทั่วไป',
+      })),
+      ...POS.map((p) => ({
+        label: `${TEST_DOC_PREFIX}PO ${p.key}`,
+        detail: `${p.status} · ${p.qty} ชิ้น × ฿${p.unitPrice.toLocaleString('th-TH')}`,
+      })),
     ];
   },
 
@@ -2070,14 +2131,22 @@ export const suppliersPoSeeder: DomainSeeder = {
 
     for (const s of SUPPLIERS) {
       const name = testName(s.name);
-      const found = await ctx.prisma.supplier.findFirst({ where: { name, deletedAt: null }, select: { id: true } });
+      const found = await ctx.prisma.supplier.findFirst({
+        where: { name, deletedAt: null },
+        select: { id: true },
+      });
       if (found) {
         supplierIds.push(found.id);
         stat.skipped += 1;
         continue;
       }
       const created = await ctx.prisma.supplier.create({
-        data: { name, phone: s.phone, isRepairCenter: s.isRepairCenter, notes: testNote('ซัพพลายเออร์สำหรับทดสอบ — ลบได้') },
+        data: {
+          name,
+          phone: s.phone,
+          isRepairCenter: s.isRepairCenter,
+          notes: testNote('ซัพพลายเออร์สำหรับทดสอบ — ลบได้'),
+        },
         select: { id: true },
       });
       supplierIds.push(created.id);
@@ -2086,20 +2155,32 @@ export const suppliersPoSeeder: DomainSeeder = {
 
     const prefix = `${TEST_DOC_PREFIX}PO-${ctx.dateStr}-`;
     for (const p of POS) {
-      const poNumber = `${prefix}${p.key}`;
-      const exists = await ctx.prisma.purchaseOrder.findFirst({ where: { poNumber, deletedAt: null }, select: { id: true } });
+      // idempotency probe ที่ notes (marker) — ไม่ใช่ที่เลขเอกสาร เพราะเลขเป็น running number
+      const notes = testNote(p.note);
+      const exists = await ctx.prisma.purchaseOrder.findFirst({
+        where: { notes, deletedAt: null },
+        select: { id: true },
+      });
       if (exists) {
         stat.skipped += 1;
         continue;
       }
+      // poNumber เป็น @unique เต็มตาราง (ไม่ใช่ partial) — แถวที่ soft delete ไปแล้วยังถือเลขอยู่
+      // ⇒ จองเลขแบบ max+1 โดย "ไม่กรอง deletedAt" (doctrine เดียวกับ nextDocNumber ใน _helpers)
+      const last = await ctx.prisma.purchaseOrder.findFirst({
+        where: { poNumber: { startsWith: prefix } },
+        orderBy: { poNumber: 'desc' },
+        select: { poNumber: true },
+      });
       await ctx.prisma.purchaseOrder.create({
         data: {
-          poNumber,
+          poNumber: nextNumberFrom(prefix, last?.poNumber ?? null),
           supplierId: supplierIds[0],
           orderDate: ctx.today,
-          totalAmount: p.qty * p.unitPrice,
+          // ห้ามคูณเงินเป็น float — Global Constraint: เงินต้องเป็น Prisma.Decimal
+          totalAmount: new Prisma.Decimal(p.unitPrice).mul(p.qty),
           status: p.status,
-          notes: testNote(p.note),
+          notes,
           createdById: ctx.refs.reviewerId,
           // ฟิลด์ของ POItem ยืนยันจาก prisma/seed.ts (poItemsData) — brand/model/color/storage/category/quantity/unitPrice/receivedQty
           items: {
@@ -2195,9 +2276,12 @@ export const suppliersPoSeeder: DomainSeeder = {
       });
     }
 
-    const warnings: string[] = movedProducts.map(
-      (p) =>
-        `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK แล้ว (สถานะปัจจุบัน: ${p.status}) — อาจมีใบขาย/สัญญา/การจองชี้อยู่ ตรวจก่อนยืนยันการล้าง`,
+    // ถ้อยคำต้องตรงกับสิ่งที่เกิดจริง: dry-run = ยังไม่ได้ลบ (ให้ตรวจก่อนยืนยัน),
+    // live = ลบไปแล้วในทรานแซกชันข้างบน (ให้ตามเช็คเอกสารที่ยังชี้ถึงเครื่อง)
+    const warnings: string[] = movedProducts.map((p) =>
+      dryRun
+        ? `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK แล้ว (สถานะปัจจุบัน: ${p.status}) — อาจมีใบขาย/สัญญา/การจองชี้อยู่ ตรวจก่อนยืนยันการล้าง`
+        : `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK (สถานะล่าสุด: ${p.status}) และถูกลบ (soft delete) ไปแล้วในรอบนี้ — ตรวจใบขาย/สัญญา/การจองที่ยังชี้ถึงเครื่องนี้`,
     );
     if (pos.length || suppliers.length)
       warnings.push(
@@ -2226,10 +2310,19 @@ Expected: `POStatus` = `DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_
 (**ไม่มี `PARTIAL`**) · `POItem` มี `brand` `model` `color` `storage` `category` `quantity` `unitPrice` `receivedQty`
 และ **มี `deletedAt`** ⇒ cleanup ต้อง soft delete
 
-- [ ] **Step 3: เขียน `stock-ops.seed.ts`**
+- [ ] **Step 3: เขียน `stock-ops.seed.ts`** *(บล็อกนี้ sync กับโค้ดที่ commit แล้ว — fix round 2, 2026-08-26)*
+
+> ⚠️ จุดที่ **จงใจ** ต่างจาก probe ตาม marker ปกติ: `countNumber` จองเลขแบบ max+1 โดยไม่กรอง
+> `deletedAt` (doctrine เดียวกับ `poNumber` — `@unique` เต็มตาราง; probe ความซ้ำอยู่ที่ `notes`) ·
+> `ReorderPoint` ใช้ "กู้คืน" แทนสร้างใหม่ เพราะ `@@unique([brand, model, storage, category,
+> branchId])` เป็นแบบเต็มตาราง — แถวที่ถูก soft delete ยังถือ tuple อยู่ (deviation ที่อนุมัติแล้ว;
+> แถวที่กู้คืนนับเป็น skipped ไม่ใช่ created) · ใบปรับปรุงสต็อกมีด่าน 4-eyes: `SeedRefs`
+> **ไม่การันตี** ว่า `reviewerId ≠ ownerId` จึงต้องเช็คเองก่อนสร้าง (ระบบผู้อนุมัติคนเดียว =
+> ข้ามพร้อม note ไม่ใช่ยัดคนเดียวกันสองคอลัมน์)
 
 ```ts
 import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
+import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /**
@@ -2238,25 +2331,59 @@ import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from '
  * ห้ามแตะเครื่องจริง เพราะการโอนย้าย/ปรับสต็อกเปลี่ยน branchId และ status ของเครื่อง
  *
  * ทุกตารางในโดเมนนี้ (StockCount · StockCountItem · StockTransfer · StockAdjustment ·
- * StockAlert · ReorderPoint) **มี deletedAt ทั้งหมด** ⇒ cleanup ใช้ soft delete ล้วน
+ * StockAlert · ReorderPoint · BranchReceiving · BranchReceivingItem) **มี deletedAt ทั้งหมด**
+ * ⇒ cleanup ใช้ soft delete ล้วน (BranchReceiving เกิดตอนผู้ทดสอบกดยืนยันรับโอน — ไม่มี marker
+ * แต่ตามได้จาก FK ตรง transferId)
  */
 export const stockOpsSeeder: DomainSeeder = {
   key: 'stock-ops',
   label: 'งานสต็อก (โอนย้าย · นับ · ปรับปรุง · แจ้งเตือน)',
-  routes: ['/stock', '/stock/products', '/stock/transfers', '/stock/count', '/stock/adjustments', '/stock/alerts', '/stock/workflow', '/inventory'],
+  routes: [
+    '/stock',
+    '/stock/products',
+    '/stock/transfers',
+    '/stock/count',
+    '/stock/adjustments',
+    '/stock/alerts',
+    '/stock/workflow',
+    '/inventory',
+  ],
   markerDoc: `StockCount.countNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · StockTransfer/StockAdjustment.notes และ ReorderPoint/StockAlert.model ขึ้นต้นด้วย marker ทดสอบ`,
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
-    const products = await ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null }, select: { id: true }, take: 2 });
+    const products = await ctx.prisma.product.findMany({
+      where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null },
+      select: { id: true },
+      take: 2,
+    });
     const rows: PlanRow[] = [];
     if (!products.length) {
-      rows.push({ label: 'ข้าม', detail: 'ยังไม่มีเครื่องทดสอบ IN_STOCK — รันโดเมน contracts ก่อน' });
+      rows.push({
+        label: 'ข้าม',
+        detail: 'ยังไม่มีเครื่องทดสอบ IN_STOCK — รันโดเมน contracts ก่อน',
+      });
       return rows;
     }
-    rows.push({ label: `${TEST_DOC_PREFIX}COUNT`, detail: 'ใบนับสต็อกที่กำลังนับ (มีรายการรอกระทบยอด)' });
-    rows.push({ label: 'ปรับปรุงสต็อก', detail: 'เหตุผล CORRECTION 1 รายการ (ผู้ปรับ ≠ ผู้อนุมัติ)' });
-    rows.push({ label: 'จุดสั่งซื้อ + แจ้งเตือน', detail: 'ReorderPoint 1 + StockAlert 1 (ACTIVE)' });
-    if (ctx.refs.secondBranchId) rows.push({ label: 'โอนย้ายสาขา', detail: 'PENDING 1 เครื่อง (รอสาขาปลายทางรับ)' });
+    rows.push({
+      label: `${TEST_DOC_PREFIX}COUNT`,
+      detail: 'ใบนับสต็อกที่กำลังนับ (มีรายการรอกระทบยอด)',
+    });
+    if (ctx.refs.reviewerId === ctx.refs.ownerId)
+      rows.push({
+        label: 'ข้ามปรับปรุงสต็อก',
+        detail: 'ไม่มีผู้อนุมัติคนที่สอง — สร้างรายการ 4-eyes (ผู้ปรับ ≠ ผู้อนุมัติ) ไม่ได้',
+      });
+    else
+      rows.push({
+        label: 'ปรับปรุงสต็อก',
+        detail: 'เหตุผล CORRECTION 1 รายการ (ผู้ปรับ ≠ ผู้อนุมัติ)',
+      });
+    rows.push({
+      label: 'จุดสั่งซื้อ + แจ้งเตือน',
+      detail: 'ReorderPoint 1 + StockAlert 1 (ACTIVE)',
+    });
+    if (ctx.refs.secondBranchId)
+      rows.push({ label: 'โอนย้ายสาขา', detail: 'PENDING 1 เครื่อง (รอสาขาปลายทางรับ)' });
     else rows.push({ label: 'ข้ามโอนย้าย', detail: 'มีสาขาเดียว — โอนย้ายต้องมี 2 สาขา' });
     return rows;
   },
@@ -2269,24 +2396,37 @@ export const stockOpsSeeder: DomainSeeder = {
       take: 2,
     });
     if (!products.length) {
-      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มีเครื่องทดสอบสถานะ IN_STOCK (รันโดเมน contracts ก่อน)');
+      stat.notes.push(
+        'ข้ามทั้งโดเมน — ยังไม่มีเครื่องทดสอบสถานะ IN_STOCK (รันโดเมน contracts ก่อน)',
+      );
       return stat;
     }
 
     // 1) ใบนับสต็อก — ฟิลด์ items ยืนยันจาก prisma/seed.ts (sc-001)
-    const countNumber = `${TEST_DOC_PREFIX}COUNT-${ctx.dateStr}`;
-    const countExists = await ctx.prisma.stockCount.findFirst({ where: { countNumber, deletedAt: null }, select: { id: true } });
+    //    countNumber เป็น @unique เต็มตาราง — จองเลขแบบ max+1 ไม่กรอง deletedAt
+    //    (doctrine เดียวกับ nextDocNumber ใน _helpers) และ probe ความซ้ำที่ notes (marker)
+    const countPrefix = `${TEST_DOC_PREFIX}COUNT-${ctx.dateStr}-`;
+    const countNotes = testNote('ใบนับสต็อกสำหรับทดสอบ');
+    const countExists = await ctx.prisma.stockCount.findFirst({
+      where: { notes: countNotes, deletedAt: null },
+      select: { id: true },
+    });
     if (countExists) {
       stat.skipped += 1;
     } else {
+      const lastCount = await ctx.prisma.stockCount.findFirst({
+        where: { countNumber: { startsWith: countPrefix } },
+        orderBy: { countNumber: 'desc' },
+        select: { countNumber: true },
+      });
       await ctx.prisma.stockCount.create({
         data: {
-          countNumber,
+          countNumber: nextNumberFrom(countPrefix, lastCount?.countNumber ?? null),
           branchId: ctx.refs.branchId,
           countedById: ctx.refs.salespersonId,
           status: 'IN_PROGRESS',
           startedAt: ctx.today,
-          notes: testNote('ใบนับสต็อกสำหรับทดสอบ'),
+          notes: countNotes,
           items: { create: products.map((p) => ({ productId: p.id, expectedStatus: p.status })) },
         },
       });
@@ -2295,34 +2435,88 @@ export const stockOpsSeeder: DomainSeeder = {
 
     // 2) ปรับปรุงสต็อก — CORRECTION ไม่เปลี่ยนสถานะเครื่อง จึงปลอดภัยที่สุดสำหรับข้อมูลเทส
     //    (เหตุผล DAMAGED ต้องแนบรูปหลักฐาน T5-C14; FOUND ต้องมาจากสถานะใน FOUND_POLICY)
-    const adjNote = testNote('ปรับปรุงสต็อกสำหรับทดสอบ');
-    const adjExists = await ctx.prisma.stockAdjustment.findFirst({ where: { notes: adjNote, deletedAt: null }, select: { id: true } });
-    if (adjExists) {
-      stat.skipped += 1;
+    //    4-eyes: ผู้ปรับต้องคนละคนกับผู้อนุมัติ — SeedRefs **ไม่การันตี** ว่า reviewerId ≠ ownerId
+    //    (ระบบที่มี OWNER คนเดียวไม่มี BM ได้คนเดียวกันทั้งสองช่อง) จึงต้องเช็คเองก่อนสร้าง
+    //    ห้ามลดมาตรฐานด้วยการยัดคนเดียวกันลงทั้งสองคอลัมน์
+    if (ctx.refs.reviewerId === ctx.refs.ownerId) {
+      stat.notes.push(
+        'ข้ามใบปรับปรุงสต็อก — สภาพแวดล้อมนี้ไม่มีผู้อนุมัติคนที่สอง (ผู้ปรับกับผู้อนุมัติจะเป็นคนเดียวกัน) จึงสร้างรายการ 4-eyes ไม่ได้',
+      );
     } else {
-      await ctx.prisma.stockAdjustment.create({
-        data: {
-          productId: products[0].id,
-          branchId: ctx.refs.branchId,
-          reason: 'CORRECTION',
-          previousStatus: products[0].status,
-          notes: adjNote,
-          adjustedById: ctx.refs.reviewerId,
-          // ผู้อนุมัติต้องคนละคนกับผู้ปรับ — SeedRefs แยก ownerId ไว้ให้แล้ว
-          approvedById: ctx.refs.ownerId,
-        },
+      const adjNote = testNote('ปรับปรุงสต็อกสำหรับทดสอบ');
+      const adjExists = await ctx.prisma.stockAdjustment.findFirst({
+        where: { notes: adjNote, deletedAt: null },
+        select: { id: true },
       });
-      stat.created += 1;
+      if (adjExists) {
+        stat.skipped += 1;
+      } else {
+        await ctx.prisma.stockAdjustment.create({
+          data: {
+            productId: products[0].id,
+            branchId: ctx.refs.branchId,
+            reason: 'CORRECTION',
+            previousStatus: products[0].status,
+            notes: adjNote,
+            adjustedById: ctx.refs.reviewerId,
+            approvedById: ctx.refs.ownerId,
+          },
+        });
+        stat.created += 1;
+      }
     }
 
     // 3) จุดสั่งซื้อ + แจ้งเตือน — StockAlert.reorderPointId เป็น FK บังคับ ⇒ สร้าง ReorderPoint นำ
+    //    ReorderPoint มี @@unique([brand, model, storage, category, branchId]) แบบเต็มตาราง
+    //    (ไม่ใช่ partial) — แถวที่ cleanup soft delete ไปแล้วยังถือ tuple อยู่ ⇒ probe โดยไม่กรอง
+    //    deletedAt แล้ว "กู้คืน" แทนการสร้างซ้ำ ไม่งั้น seed หลัง cleanup ชน P2002
     const alertModel = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
-    const rpExists = await ctx.prisma.reorderPoint.findFirst({ where: { model: alertModel, deletedAt: null }, select: { id: true } });
-    if (rpExists) {
+    const rpAny = await ctx.prisma.reorderPoint.findFirst({
+      where: { model: alertModel },
+      select: { id: true, deletedAt: true },
+    });
+    if (rpAny && !rpAny.deletedAt) {
       stat.skipped += 1;
+    } else if (rpAny) {
+      await ctx.prisma.reorderPoint.update({ where: { id: rpAny.id }, data: { deletedAt: null } });
+      const restored = await ctx.prisma.stockAlert.updateMany({
+        where: { reorderPointId: rpAny.id },
+        data: { deletedAt: null },
+      });
+      if (restored.count === 0) {
+        await ctx.prisma.stockAlert.create({
+          data: {
+            reorderPointId: rpAny.id,
+            brand: 'ทดสอบระบบ',
+            model: alertModel,
+            storage: '128GB',
+            category: 'PHONE_NEW',
+            branchId: ctx.refs.branchId,
+            currentStock: 1,
+            minQuantity: 2,
+            reorderQuantity: 5,
+            status: 'ACTIVE',
+          },
+        });
+        stat.created += 1; // แจ้งเตือนใบนี้เป็นแถวใหม่จริง — ไม่มีแถวเดิมให้กู้
+      }
+      // แถวที่ "กู้คืน" ไม่ใช่แถวที่สร้างใหม่ — นับเป็น skipped พร้อมบอกจำนวนตรง ๆ
+      stat.skipped += 1 + restored.count;
+      stat.notes.push(
+        `กู้คืนจุดสั่งซื้อ 1 แถว + แจ้งเตือน ${restored.count} แถวที่เคยถูกล้าง ` +
+          '(unique constraint กันสร้างแถวใหม่ซ้ำ — แถวกู้คืนนับเป็น skipped ไม่ใช่ created)',
+      );
     } else {
       const rp = await ctx.prisma.reorderPoint.create({
-        data: { brand: 'ทดสอบระบบ', model: alertModel, storage: '128GB', category: 'PHONE_NEW', branchId: ctx.refs.branchId, minQuantity: 2, reorderQuantity: 5 },
+        data: {
+          brand: 'ทดสอบระบบ',
+          model: alertModel,
+          storage: '128GB',
+          category: 'PHONE_NEW',
+          branchId: ctx.refs.branchId,
+          minQuantity: 2,
+          reorderQuantity: 5,
+        },
         select: { id: true },
       });
       await ctx.prisma.stockAlert.create({
@@ -2347,7 +2541,10 @@ export const stockOpsSeeder: DomainSeeder = {
       stat.notes.push('ข้ามการโอนย้ายสาขา — ระบบมีสาขาเดียว');
     } else {
       const trNote = testNote('โอนย้ายสาขาสำหรับทดสอบ — รอสาขาปลายทางรับ');
-      const exists = await ctx.prisma.stockTransfer.findFirst({ where: { notes: trNote, deletedAt: null }, select: { id: true } });
+      const exists = await ctx.prisma.stockTransfer.findFirst({
+        where: { notes: trNote, deletedAt: null },
+        select: { id: true },
+      });
       if (exists) {
         stat.skipped += 1;
       } else {
@@ -2399,7 +2596,7 @@ export const stockOpsSeeder: DomainSeeder = {
     const receivings = transfers.length
       ? await ctx.prisma.branchReceiving.findMany({
           where: { transferId: { in: transfers.map((t) => t.id) }, deletedAt: null },
-          select: { id: true },
+          select: { id: true, transferId: true },
         })
       : [];
     const receivingItems = receivings.length
@@ -2409,6 +2606,10 @@ export const stockOpsSeeder: DomainSeeder = {
         })
       : [];
     for (const c of counts) console.log(`     ${c.countNumber}`);
+    // ใบตรวจรับสาขาไม่มี marker ติดตัว — บรรทัดนี้คือโอกาสเดียวที่ผู้สั่งล้าง (ทั้ง dry-run
+    // และของจริง) จะเห็นว่ากำลังกวาดใบไหน (pattern เดียวกับเครื่องจาก PO ใน suppliers-po)
+    for (const r of receivings)
+      console.log(`     ใบตรวจรับสาขา ${r.id} (ของใบโอนย้าย ${r.transferId})`);
 
     if (!dryRun) {
       const now = new Date();
@@ -2477,12 +2678,12 @@ export const stockOpsSeeder: DomainSeeder = {
 
 Run:
 ```bash
-for m in StockCount StockCountItem StockTransfer StockAdjustment StockAlert ReorderPoint; do
+for m in StockCount StockCountItem StockTransfer StockAdjustment StockAlert ReorderPoint BranchReceiving BranchReceivingItem; do
   printf "%-18s " "$m"
   awk "/^model $m /,/^}/" apps/api/prisma/schema.prisma | grep -q deletedAt && echo soft || echo hard
 done
 ```
-Expected (ตรวจแล้วตอนเขียนแผน): **soft ทั้ง 6 ตัว** — ถ้าตัวไหนขึ้น hard ให้เปลี่ยนบรรทัดนั้นใน `cleanup` เป็น `deleteMany`
+Expected (ตรวจแล้วตอนเขียนแผน): **soft ทั้ง 8 ตัว** — ถ้าตัวไหนขึ้น hard ให้เปลี่ยนบรรทัดนั้นใน `cleanup` เป็น `deleteMany`
 
 - [ ] **Step 5: เพิ่มเข้า registry (ต่อจาก `equitySeeder`)**
 

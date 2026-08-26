@@ -35,12 +35,31 @@ export async function resolveRefs(prisma: PrismaService): Promise<SeedRefs> {
       orderBy: { createdAt: 'asc' },
       take: 2,
     }),
-    prisma.user.findFirst({ where: { role: 'SALES', deletedAt: null }, select: { id: true } }),
     prisma.user.findFirst({
-      where: { role: { in: ['OWNER', 'BRANCH_MANAGER'] }, deletedAt: null },
+      where: { role: 'SALES', deletedAt: null },
       select: { id: true },
+      orderBy: { createdAt: 'asc' },
     }),
-    prisma.user.findFirst({ where: { role: 'OWNER', deletedAt: null }, select: { id: true } }),
+    // reviewer: เลือก BRANCH_MANAGER ก่อนเสมอ (คนละคนกับ ownerId โดยธรรมชาติ) แล้วค่อย fallback
+    // เป็น OWNER เมื่อไม่มี BM เลย — ทุก query ใส่ orderBy ให้ได้คนเดิมทุกรอบ ไม่แล้วแต่ Postgres
+    // ⚠️ interface นี้ **ไม่การันตี** ว่า reviewerId ≠ ownerId: ระบบที่มีผู้ใช้ OWNER คนเดียว
+    // (ไม่มี BM) จะได้คนเดียวกันทั้งสองช่อง — โดเมนที่ต้องการ 4-eyes ต้องเช็คเองก่อนใช้
+    (async () =>
+      (await prisma.user.findFirst({
+        where: { role: 'BRANCH_MANAGER', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      })) ??
+      prisma.user.findFirst({
+        where: { role: 'OWNER', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      }))(),
+    prisma.user.findFirst({
+      where: { role: 'OWNER', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    }),
     prisma.companyInfo.findFirst({
       where: { companyCode: 'SHOP', deletedAt: null },
       select: { id: true },

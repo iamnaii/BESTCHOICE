@@ -45,10 +45,16 @@ export const stockOpsSeeder: DomainSeeder = {
       label: `${TEST_DOC_PREFIX}COUNT`,
       detail: 'ใบนับสต็อกที่กำลังนับ (มีรายการรอกระทบยอด)',
     });
-    rows.push({
-      label: 'ปรับปรุงสต็อก',
-      detail: 'เหตุผล CORRECTION 1 รายการ (ผู้ปรับ ≠ ผู้อนุมัติ)',
-    });
+    if (ctx.refs.reviewerId === ctx.refs.ownerId)
+      rows.push({
+        label: 'ข้ามปรับปรุงสต็อก',
+        detail: 'ไม่มีผู้อนุมัติคนที่สอง — สร้างรายการ 4-eyes (ผู้ปรับ ≠ ผู้อนุมัติ) ไม่ได้',
+      });
+    else
+      rows.push({
+        label: 'ปรับปรุงสต็อก',
+        detail: 'เหตุผล CORRECTION 1 รายการ (ผู้ปรับ ≠ ผู้อนุมัติ)',
+      });
     rows.push({
       label: 'จุดสั่งซื้อ + แจ้งเตือน',
       detail: 'ReorderPoint 1 + StockAlert 1 (ACTIVE)',
@@ -106,27 +112,35 @@ export const stockOpsSeeder: DomainSeeder = {
 
     // 2) ปรับปรุงสต็อก — CORRECTION ไม่เปลี่ยนสถานะเครื่อง จึงปลอดภัยที่สุดสำหรับข้อมูลเทส
     //    (เหตุผล DAMAGED ต้องแนบรูปหลักฐาน T5-C14; FOUND ต้องมาจากสถานะใน FOUND_POLICY)
-    const adjNote = testNote('ปรับปรุงสต็อกสำหรับทดสอบ');
-    const adjExists = await ctx.prisma.stockAdjustment.findFirst({
-      where: { notes: adjNote, deletedAt: null },
-      select: { id: true },
-    });
-    if (adjExists) {
-      stat.skipped += 1;
+    //    4-eyes: ผู้ปรับต้องคนละคนกับผู้อนุมัติ — SeedRefs **ไม่การันตี** ว่า reviewerId ≠ ownerId
+    //    (ระบบที่มี OWNER คนเดียวไม่มี BM ได้คนเดียวกันทั้งสองช่อง) จึงต้องเช็คเองก่อนสร้าง
+    //    ห้ามลดมาตรฐานด้วยการยัดคนเดียวกันลงทั้งสองคอลัมน์
+    if (ctx.refs.reviewerId === ctx.refs.ownerId) {
+      stat.notes.push(
+        'ข้ามใบปรับปรุงสต็อก — สภาพแวดล้อมนี้ไม่มีผู้อนุมัติคนที่สอง (ผู้ปรับกับผู้อนุมัติจะเป็นคนเดียวกัน) จึงสร้างรายการ 4-eyes ไม่ได้',
+      );
     } else {
-      await ctx.prisma.stockAdjustment.create({
-        data: {
-          productId: products[0].id,
-          branchId: ctx.refs.branchId,
-          reason: 'CORRECTION',
-          previousStatus: products[0].status,
-          notes: adjNote,
-          adjustedById: ctx.refs.reviewerId,
-          // ผู้อนุมัติต้องคนละคนกับผู้ปรับ — SeedRefs แยก ownerId ไว้ให้แล้ว
-          approvedById: ctx.refs.ownerId,
-        },
+      const adjNote = testNote('ปรับปรุงสต็อกสำหรับทดสอบ');
+      const adjExists = await ctx.prisma.stockAdjustment.findFirst({
+        where: { notes: adjNote, deletedAt: null },
+        select: { id: true },
       });
-      stat.created += 1;
+      if (adjExists) {
+        stat.skipped += 1;
+      } else {
+        await ctx.prisma.stockAdjustment.create({
+          data: {
+            productId: products[0].id,
+            branchId: ctx.refs.branchId,
+            reason: 'CORRECTION',
+            previousStatus: products[0].status,
+            notes: adjNote,
+            adjustedById: ctx.refs.reviewerId,
+            approvedById: ctx.refs.ownerId,
+          },
+        });
+        stat.created += 1;
+      }
     }
 
     // 3) จุดสั่งซื้อ + แจ้งเตือน — StockAlert.reorderPointId เป็น FK บังคับ ⇒ สร้าง ReorderPoint นำ
@@ -161,10 +175,13 @@ export const stockOpsSeeder: DomainSeeder = {
             status: 'ACTIVE',
           },
         });
+        stat.created += 1; // แจ้งเตือนใบนี้เป็นแถวใหม่จริง — ไม่มีแถวเดิมให้กู้
       }
-      stat.created += 2;
+      // แถวที่ "กู้คืน" ไม่ใช่แถวที่สร้างใหม่ — นับเป็น skipped พร้อมบอกจำนวนตรง ๆ
+      stat.skipped += 1 + restored.count;
       stat.notes.push(
-        'กู้คืนจุดสั่งซื้อ + แจ้งเตือนที่เคยถูกล้าง (unique constraint กันสร้างแถวใหม่ซ้ำ)',
+        `กู้คืนจุดสั่งซื้อ 1 แถว + แจ้งเตือน ${restored.count} แถวที่เคยถูกล้าง ` +
+          '(unique constraint กันสร้างแถวใหม่ซ้ำ — แถวกู้คืนนับเป็น skipped ไม่ใช่ created)',
       );
     } else {
       const rp = await ctx.prisma.reorderPoint.create({
@@ -256,7 +273,7 @@ export const stockOpsSeeder: DomainSeeder = {
     const receivings = transfers.length
       ? await ctx.prisma.branchReceiving.findMany({
           where: { transferId: { in: transfers.map((t) => t.id) }, deletedAt: null },
-          select: { id: true },
+          select: { id: true, transferId: true },
         })
       : [];
     const receivingItems = receivings.length
@@ -266,6 +283,10 @@ export const stockOpsSeeder: DomainSeeder = {
         })
       : [];
     for (const c of counts) console.log(`     ${c.countNumber}`);
+    // ใบตรวจรับสาขาไม่มี marker ติดตัว — บรรทัดนี้คือโอกาสเดียวที่ผู้สั่งล้าง (ทั้ง dry-run
+    // และของจริง) จะเห็นว่ากำลังกวาดใบไหน (pattern เดียวกับเครื่องจาก PO ใน suppliers-po)
+    for (const r of receivings)
+      console.log(`     ใบตรวจรับสาขา ${r.id} (ของใบโอนย้าย ${r.transferId})`);
 
     if (!dryRun) {
       const now = new Date();

@@ -7,9 +7,13 @@ export interface SeedRefs {
   /** สาขาที่สอง — ใช้กับโอนย้ายสต็อก; null เมื่อมีสาขาเดียว (โดเมนนั้นจะข้ามเอง) */
   secondBranchId: string | null;
   salespersonId: string;
-  /** OWNER หรือ BRANCH_MANAGER — ผู้บันทึก/ผู้ตรวจทั่วไป */
+  /**
+   * BRANCH_MANAGER (ถ้ามี) หรือ OWNER — ผู้บันทึก/ผู้ตรวจทั่วไป
+   * ⚠️ ไม่การันตีว่าต่างจาก ownerId — ระบบที่มี OWNER คนเดียว (ไม่มี BM) จะได้คนเดียวกัน
+   * ทั้งสองช่อง; งานที่ต้องแยกผู้ทำ/ผู้อนุมัติ (4-eyes) ต้องเช็ค reviewerId !== ownerId เอง
+   */
   reviewerId: string;
-  /** OWNER เท่านั้น — ใช้เป็นผู้อนุมัติที่ต้องต่างจากผู้บันทึก */
+  /** OWNER เท่านั้น — ผู้อนุมัติทั่วไป (อาจเป็นคนเดียวกับ reviewerId — ดูหมายเหตุด้านบน) */
   ownerId: string;
   shopCompanyId: string | null;
   financeCompanyId: string | null;

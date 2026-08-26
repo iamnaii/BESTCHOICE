@@ -203,9 +203,12 @@ export const suppliersPoSeeder: DomainSeeder = {
       });
     }
 
-    const warnings: string[] = movedProducts.map(
-      (p) =>
-        `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK แล้ว (สถานะปัจจุบัน: ${p.status}) — อาจมีใบขาย/สัญญา/การจองชี้อยู่ ตรวจก่อนยืนยันการล้าง`,
+    // ถ้อยคำต้องตรงกับสิ่งที่เกิดจริง: dry-run = ยังไม่ได้ลบ (ให้ตรวจก่อนยืนยัน),
+    // live = ลบไปแล้วในทรานแซกชันข้างบน (ให้ตามเช็คเอกสารที่ยังชี้ถึงเครื่อง)
+    const warnings: string[] = movedProducts.map((p) =>
+      dryRun
+        ? `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK แล้ว (สถานะปัจจุบัน: ${p.status}) — อาจมีใบขาย/สัญญา/การจองชี้อยู่ ตรวจก่อนยืนยันการล้าง`
+        : `เครื่อง ${p.imeiSerial ?? p.name} จาก PO ทดสอบไม่ได้อยู่สถานะ IN_STOCK (สถานะล่าสุด: ${p.status}) และถูกลบ (soft delete) ไปแล้วในรอบนี้ — ตรวจใบขาย/สัญญา/การจองที่ยังชี้ถึงเครื่องนี้`,
     );
     if (pos.length || suppliers.length)
       warnings.push(

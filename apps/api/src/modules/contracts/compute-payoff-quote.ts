@@ -103,9 +103,13 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
     input.payments.filter((p) => p.status === 'PARTIALLY_PAID').map((p) => d(p.amountPaid)),
   );
   const park = d(input.rescheduleAdvanceBalance ?? 0);
-  const advancePayment = round2(dAdd(dAdd(d(input.creditBalance), park), partialPaid));
-  /** ยอดชำระล่วงหน้าถ้า "ไม่มีถังพัก" — ใช้วัดว่ายอดปิดดูดซับถังพักไปเท่าไรจริง */
   const advancePaymentNoPark = round2(dAdd(d(input.creditBalance), partialPaid));
+  // ⚠️ **ไม่รวมถังพัก** ตั้งแต่ 2026-08-26 (คำวินิจฉัยผู้สอบ) — ถังพักถูกหักเป็น
+  // บรรทัดแยกที่ท้ายสุด ไม่ใช่ยอดชำระล่วงหน้าที่ไปลดฐานส่วนลด
+  // ถ้ารวมไว้ที่นี่ ตัวเลขบนหน้าจอจะไม่ลงตัว: UI คิด
+  // `คงเหลือยอดค้าง = รวมค้างชำระ − ยอดชำระล่วงหน้า` ซึ่ง remainingBalance
+  // ไม่หักถังพักแล้ว · ยอดถังพักดูที่ `rescheduleAdvanceApplied`
+  const advancePayment = advancePaymentNoPark;
 
   // (5) ต้นทุนยอดค้าง = ยอดจัดจริง + commission (ไม่ขึ้นกับยอดชำระล่วงหน้า)
   const truePrincipal = dSub(input.sellingPrice, input.downPayment);
@@ -145,24 +149,34 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
     return { remainingBalance, remainingExVat, grossProfit, discountAmount, payoffBeforeLateFees };
   };
 
-  const main = tail(advancePayment);
-  const { remainingBalance, remainingExVat, grossProfit, discountAmount, payoffBeforeLateFees } =
-    main;
+  // ── คำวินิจฉัยผู้สอบบัญชี 2026-08-26 — เงินพักไม่ลดฐานส่วนลด ────────────
+  //
+  // สูตรที่ผู้สอบให้: `ยอดปิดยอดจริง = ยอดปิดยอดปกติ − 21-1103 คงเหลือ`
+  // โดย "ยอดปิดยอดปกติ" = คำนวณเหมือนสัญญาที่ไม่เคยปรับดิว
+  // ⇒ ถังพักถูกหัก **เต็มจำนวน** ตอนท้าย ไม่ใช่ไหลผ่านฐานส่วนลด
+  //
+  // เดิม: ถังพักรวมใน advancePayment → ลด remainingBalance → ลดกำไรขั้นต้น →
+  // **ลดส่วนลดดอกเบี้ยไปด้วย** ⇒ ยอดที่ลูกค้าจ่ายลดน้อยกว่ายอดพัก เหลือเศษค้าง
+  // ในถัง (เคสตัวอย่าง: พัก 354 ลดจริง 188.58 เหลือ 165.42)
+  // ผู้สอบตอบว่า "ไม่ควรมียอดค้าง" ⇒ เศษนั้นไม่ควรเกิดตั้งแต่แรก
+  //
+  // หลักการ: 21-1103 คือ **หนี้สินที่ค้างลูกค้า** ปิดยอดก่อนกำหนดต้องคืนเต็มจำนวน
+  // ไม่ใช่เอาไปลดฐานคำนวณส่วนลดซึ่งทำให้คืนได้ไม่ครบ
+  const main = tail(advancePaymentNoPark);
+  const { remainingBalance, remainingExVat, grossProfit, discountAmount } = main;
+
+  // หักถังพักเต็มจำนวน — clamp ไม่ให้ยอดที่ลูกค้าจ่ายติดลบ
+  // (ส่วนเกินคงค้างใน 21-1103 ต่อไป · JE clamp ด้วย totalCash อีกชั้น)
+  const rescheduleAdvanceApplied = Math.min(round2(park), main.payoffBeforeLateFees);
+  const payoffBeforeLateFees = round2(
+    dSub(main.payoffBeforeLateFees, rescheduleAdvanceApplied),
+  );
 
   // (8) ยอดชำระปิดยอด — ค่าปรับบวกทั้งก้อน (ไม่คิด VAT ไม่ลด ตามนโยบาย)
   const unpaidLateFees = dSum(
     input.payments.filter((p) => p.status !== 'PAID' && !p.lateFeeWaived).map((p) => d(p.lateFee)),
   ).toNumber();
   const totalPayoff = round2(dAdd(payoffBeforeLateFees, unpaidLateFees));
-
-  // ยอดที่ถังพักดูดซับจริง — ค่าปรับเท่ากันทั้งสองรอบ จึงเทียบที่
-  // payoffBeforeLateFees ได้ตรง ๆ. clamp [0, ยอดในถัง] กันเคสมุม (ถังพัก 0,
-  // ส่วนลดชนขอบ, remainingBalance ติดลบจนโดน max(0,…))
-  const noPark = park.gt(0) ? tail(advancePaymentNoPark) : main;
-  const rescheduleAdvanceApplied = Math.min(
-    Math.max(0, round2(dSub(noPark.payoffBeforeLateFees, payoffBeforeLateFees))),
-    round2(park),
-  );
 
   return {
     totalRemaining,

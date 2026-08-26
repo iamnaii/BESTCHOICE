@@ -1,5 +1,7 @@
 import type { DomainSeeder } from './_types';
 import { contractsSeeder } from './contracts.seed';
+import { expensesSeeder } from './expenses.seed';
+import { payrollSeeder } from './payroll.seed';
 import { todosSeeder } from './todos.seed';
 
 /**
@@ -7,7 +9,12 @@ import { todosSeeder } from './todos.seed';
  * cleanup เดินย้อนลำดับนี้เสมอ
  * contracts ต้องเป็นตัวแรก — โดเมนถัดไปพึ่งลูกค้าทดสอบ/เครื่องทดสอบที่มันสร้าง
  */
-export const ALL_DOMAINS: DomainSeeder[] = [contractsSeeder, todosSeeder];
+export const ALL_DOMAINS: DomainSeeder[] = [
+  contractsSeeder,
+  expensesSeeder,
+  payrollSeeder,
+  todosSeeder,
+];
 
 export function selectDomains(all: DomainSeeder[], csv: string | undefined): DomainSeeder[] {
   if (!csv || !csv.trim()) return [...all];

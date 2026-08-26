@@ -1330,8 +1330,16 @@ git commit -m "feat(test-pack): โดเมนค่าใช้จ่าย + 
 - Modify: `apps/api/src/cli/test-pack/_registry.ts`
 
 **Interfaces:**
-- Consumes: `nextNumberFrom` · `sumLine` (Task 4) · `testNote` · `TEST_NOTE_MARKER` (Task 1)
+- Consumes: `nextNumberFrom` · `sumLine` · **`round2`** (Task 4) · `testNote` · `TEST_NOTE_MARKER` (Task 1)
 - Produces: `otherIncomeSeeder: DomainSeeder` · `assetsSeeder: DomainSeeder`
+
+**Step 0 ของ task นี้: export `round2` จาก `_helpers.ts`** — ตอนนี้เป็น `const round2` ที่ไม่ได้ export
+เปลี่ยนเป็น `export const round2 = (n: Prisma.Decimal): Prisma.Decimal => n.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);`
+(แก้คำเดียว ไม่แตะพฤติกรรม) เพราะสองโดเมนนี้ต้องปัดเงินนอก `sumLine`
+
+**`sumLine` คืน `Prisma.Decimal` แล้ว (Task 4 fix round 1)** ⇒ เอาไป `.toLocaleString()` ตรง ๆ ไม่ได้
+ต้อง `.toNumber().toLocaleString('th-TH')` **เฉพาะตอน format ข้อความเท่านั้น** ห้ามแปลงเป็น number
+แล้วคำนวณต่อ
 
 **ข้อจำกัดที่ต้องเคารพ:** `OtherIncome.companyId` บังคับ ⇒ ถ้า `ctx.refs.financeCompanyId` เป็น null ให้คืน
 `SeedStat` ที่ `created: 0` พร้อม note ภาษาไทย **ห้าม throw** (โดเมนอื่นต้องเดินต่อได้)
@@ -1340,8 +1348,9 @@ git commit -m "feat(test-pack): โดเมนค่าใช้จ่าย + 
 - [ ] **Step 1: เขียน `other-income.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
 import { TEST_NOTE_MARKER, testNote } from './_context';
-import { nextNumberFrom, sumLine } from './_helpers';
+import { nextNumberFrom, round2, sumLine } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /** R2 — เพดานคือ READY (POSTED โพสต์ JE + ออกใบเสร็จ RT-) */
@@ -1371,7 +1380,8 @@ export const otherIncomeSeeder: DomainSeeder = {
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => {
       const s = sumLine(r.unitAmount, 1, r.vatPct);
-      return { label: `OI ${r.key}`, detail: `${r.status} · ${r.accountCode} ${r.accountName} · ฿${s.total.toLocaleString('th-TH')}${r.whtPct ? ` · หัก ณ ที่จ่าย ${r.whtPct}%` : ''}` };
+      // .toNumber() เฉพาะตอน format — ห้ามเอาไปคำนวณต่อ
+      return { label: `OI ${r.key}`, detail: `${r.status} · ${r.accountCode} ${r.accountName} · ฿${s.total.toNumber().toLocaleString('th-TH')}${r.whtPct ? ` · หัก ณ ที่จ่าย ${r.whtPct}%` : ''}` };
     });
   },
 
@@ -1389,7 +1399,8 @@ export const otherIncomeSeeder: DomainSeeder = {
         continue;
       }
       const s = sumLine(r.unitAmount, 1, r.vatPct);
-      const whtAmount = Math.round(s.amountBeforeVat * r.whtPct) / 100;
+      // WHT คิดจากฐานก่อน VAT (V17) — Decimal ล้วน ห้าม float
+      const whtAmount = round2(s.amountBeforeVat.mul(r.whtPct).div(100));
       const prefix = `OI-${ctx.dateStr}-`;
       const last = await ctx.prisma.otherIncome.findFirst({ where: { docNumber: { startsWith: prefix } }, orderBy: { docNumber: 'desc' }, select: { docNumber: true } });
       await ctx.prisma.otherIncome.create({
@@ -1405,7 +1416,7 @@ export const otherIncomeSeeder: DomainSeeder = {
           vatAmount: s.vatAmount,
           whtAmount,
           totalAmount: s.total,
-          netReceived: Math.round((s.total - whtAmount) * 100) / 100,
+          netReceived: round2(s.total.minus(whtAmount)),
           customerNote,
           createdById: ctx.refs.reviewerId,
           items: {
@@ -1458,9 +1469,14 @@ export const otherIncomeSeeder: DomainSeeder = {
 - [ ] **Step 2: เขียน `assets.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
 import { TEST_NOTE_MARKER, testNote } from './_context';
-import { nextNumberFrom, sumLine } from './_helpers';
+import { nextNumberFrom, round2, sumLine } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/** ปัด 4 ตำแหน่งสำหรับอัตราค่าเสื่อม — คอลัมน์เป็น @db.Decimal(12, 4) */
+const round4 = (n: Prisma.Decimal): Prisma.Decimal =>
+  n.toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP);
 
 /**
  * R2 — DRAFT เท่านั้น (POSTED โพสต์ JE ซื้อทรัพย์สิน แล้วเข้าคิวค่าเสื่อมรายเดือน)
@@ -1495,7 +1511,7 @@ export const assetsSeeder: DomainSeeder = {
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => {
       const s = sumLine(r.basePrice, 1, r.hasVat ? 7 : 0);
-      return { label: `ASSET ${r.key}`, detail: `DRAFT · ${r.name} · ฿${r.basePrice.toLocaleString('th-TH')} · ${r.months} เดือน${r.vatAccount === '11-4102' ? ' · VAT รอใบกำกับ (11-4102)' : ''} · รวม VAT ฿${s.total.toLocaleString('th-TH')}` };
+      return { label: `ASSET ${r.key}`, detail: `DRAFT · ${r.name} · ฿${r.basePrice.toLocaleString('th-TH')} · ${r.months} เดือน${r.vatAccount === '11-4102' ? ' · VAT รอใบกำกับ (11-4102)' : ''} · รวม VAT ฿${s.total.toNumber().toLocaleString('th-TH')}` };
     });
   },
 
@@ -1516,8 +1532,10 @@ export const assetsSeeder: DomainSeeder = {
         ctx.prisma.fixedAsset.findFirst({ where: { docNo: { startsWith: docPrefix } }, orderBy: { docNo: 'desc' }, select: { docNo: true } }),
         ctx.prisma.fixedAsset.findFirst({ where: { assetCode: { startsWith: codePrefix } }, orderBy: { assetCode: 'desc' }, select: { assetCode: true } }),
       ]);
-      const vat = r.hasVat ? Math.round(r.basePrice * 7) / 100 : 0;
-      const monthlyDepr = Math.round((r.basePrice / r.months) * 10000) / 10000;
+      // Decimal ล้วน — base ยังเป็น literal แต่กันคนแก้ทีหลังใส่ค่าที่ไม่ใช่ literal แล้วสืบทอด float
+      const base = new Prisma.Decimal(r.basePrice);
+      const vat = r.hasVat ? round2(base.mul(7).div(100)) : new Prisma.Decimal(0);
+      const monthlyDepr = round4(base.div(r.months));
       await ctx.prisma.fixedAsset.create({
         data: {
           assetCode: nextNumberFrom(codePrefix, lastCode?.assetCode ?? null, 3),
@@ -1533,7 +1551,7 @@ export const assetsSeeder: DomainSeeder = {
           purchaseCost: r.basePrice,
           usefulLifeMonths: r.months,
           monthlyDepr,
-          dailyDepr: Math.round((r.basePrice / ((r.months / 12) * 365)) * 10000) / 10000,
+          dailyDepr: round4(base.div(new Prisma.Decimal(r.months).div(12).mul(365))),
           netBookValue: r.basePrice,
           coaCostAccount: r.coaCost,
           coaDeprAccount: r.coaDepr,
@@ -2793,8 +2811,14 @@ git commit -m "feat(test-pack): โดเมนใบซ่อม + ใบตร
 - [ ] **Step 1: เขียน `commissions.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
 import { TEST_NOTE_MARKER, testNote } from './_context';
+import { round2 } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+
+/** ค่าคอม = ยอดขาย × อัตรา — Decimal ล้วน (Global Constraint: ห้าม float กับจำนวนเงิน) */
+const commissionOf = (saleAmount: number, rate: number): Prisma.Decimal =>
+  round2(new Prisma.Decimal(saleAmount).mul(rate));
 
 /** ไม่โพสต์ JE — ครอบ 3 สถานะที่ด่านยกเลิกใบขาย (G4) ใช้ตัดสิน */
 const ROWS: Array<{ key: string; status: 'PENDING' | 'APPROVED' | 'PAID'; saleAmount: number; rate: number }> = [
@@ -2814,7 +2838,7 @@ export const commissionsSeeder: DomainSeeder = {
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
       label: `ค่าคอม ${r.key}`,
-      detail: `${r.status} · ยอดขาย ฿${r.saleAmount.toLocaleString('th-TH')} × ${(r.rate * 100).toFixed(0)}% = ฿${Math.round(r.saleAmount * r.rate).toLocaleString('th-TH')} · งวด ${periodOf(ctx.today)}`,
+      detail: `${r.status} · ยอดขาย ฿${r.saleAmount.toLocaleString('th-TH')} × ${(r.rate * 100).toFixed(0)}% = ฿${commissionOf(r.saleAmount, r.rate).toNumber().toLocaleString('th-TH')} · งวด ${periodOf(ctx.today)}`,
     }));
   },
 
@@ -2823,7 +2847,7 @@ export const commissionsSeeder: DomainSeeder = {
     const period = `TEST-${periodOf(ctx.today)}`;
     for (const r of ROWS) {
       const exists = await ctx.prisma.salesCommission.findFirst({
-        where: { period, salespersonId: ctx.refs.salespersonId, commissionAmount: Math.round(r.saleAmount * r.rate), deletedAt: null },
+        where: { period, salespersonId: ctx.refs.salespersonId, commissionAmount: commissionOf(r.saleAmount, r.rate), deletedAt: null },
         select: { id: true },
       });
       if (exists) {
@@ -2836,7 +2860,7 @@ export const commissionsSeeder: DomainSeeder = {
           period,
           saleAmount: r.saleAmount,
           commissionRate: r.rate,
-          commissionAmount: Math.round(r.saleAmount * r.rate),
+          commissionAmount: commissionOf(r.saleAmount, r.rate),
           status: r.status,
         },
       });
@@ -2851,13 +2875,13 @@ export const commissionsSeeder: DomainSeeder = {
     if (payoutExists) {
       stat.skipped += 1;
     } else {
-      const totalSales = ROWS.reduce((a, r) => a + r.saleAmount, 0);
+      const totalSales = ROWS.reduce((a, r) => a.plus(r.saleAmount), new Prisma.Decimal(0));
       await ctx.prisma.commissionPayout.create({
         data: {
           salespersonId: ctx.refs.salespersonId,
           period,
           totalSales,
-          totalCommission: ROWS.reduce((a, r) => a + Math.round(r.saleAmount * r.rate), 0),
+          totalCommission: ROWS.reduce((a, r) => a.plus(commissionOf(r.saleAmount, r.rate)), new Prisma.Decimal(0)),
           status: 'DRAFT',
         },
       });
@@ -2986,6 +3010,7 @@ export const savingPlansSeeder: DomainSeeder = {
         stat.skipped += 1;
         continue;
       }
+      // จำนวนงวด ไม่ใช่จำนวนเงิน — Math.round ตรงนี้ถูกต้อง ไม่เข้าข้อห้าม Decimal
       const installments = Math.round(r.saved / r.monthly);
       await ctx.prisma.savingPlan.create({
         data: {

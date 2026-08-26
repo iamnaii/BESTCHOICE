@@ -1445,10 +1445,20 @@ export const otherIncomeSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const docs = await ctx.prisma.otherIncome.findMany({
+    const marked = await ctx.prisma.otherIncome.findMany({
       where: { customerNote: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
       select: { id: true, docNumber: true, journalEntryId: true },
     });
+    // ใบกลับรายการ (`<เลขเดิม>-R`) **เขียนทับ `customerNote` เป็น "กลับรายการ: ..."** ⇒ marker หาย
+    // ตามด้วย marker ไม่เจอ แต่ตามด้วย FK `reversesId` ได้เป๊ะ — ถ้าไม่กวาด จะเหลือทั้งใบ -R
+    // และ JE กลับรายการค้างในสมุด (ทั้งที่ทั้งคู่เกิดจากใบทดสอบ)
+    const reversals = marked.length
+      ? await ctx.prisma.otherIncome.findMany({
+          where: { reversesId: { in: marked.map((d) => d.id) }, deletedAt: null },
+          select: { id: true, docNumber: true, journalEntryId: true },
+        })
+      : [];
+    const docs = [...marked, ...reversals];
     const jeIds = docs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
     for (const d of docs) console.log(`     ${d.docNumber}${d.journalEntryId ? ' (มี JE)' : ''}`);
     if (!dryRun && docs.length) {

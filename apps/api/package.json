@@ -27,6 +27,8 @@
     "backfill:external-finance": "tsx scripts/backfill-external-finance-fk.ts",
     "backfill:contacts": "node dist/src/cli/backfill-contacts.cli.js",
     "backfill:contacts:help": "echo 'Cloud Run Job (prod) / node dist: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] npm --prefix apps/api run backfill:contacts  (runs node dist/src/cli/backfill-contacts.cli.js)'",
+    "factory:reset": "npx -y tsx src/cli/factory-reset.cli.ts",
+    "factory:reset:help": "echo 'ดูก่อน: DRY_RUN=1 EXPECTED_DB_NAME=<db> npm --prefix apps/api run factory:reset | รันจริง: CONFIRM_FACTORY_RESET=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_RESET=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run factory:reset — ล้างทุกตารางยกเว้น company_info/branches/users/_prisma_migrations'",
     "wipe:accounting": "node dist/src/cli/wipe-accounting.cli.js",
     "wipe:accounting:help": "echo 'Usage: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:accounting'",
     "ecl:dry-run": "node dist/src/cli/ecl-dry-run.cli.js",

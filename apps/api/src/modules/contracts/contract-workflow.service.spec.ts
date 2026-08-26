@@ -159,6 +159,11 @@ describe('ContractWorkflowService', () => {
       payment: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      // C2 (ผู้สอบ รอบ 2, 2026-08-25): activate() อ่านอัตราค่าคอมสำรองจาก config
+      // เมื่อสัญญาไม่ได้ระบุค่าคอม — ว่างเปล่า = ใช้ค่าตั้งต้น 10%
+      systemConfig: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       journalEntry: {
         // Default: a prior down JE exists → catch-up skipped in existing tests.
         findFirst: jest.fn().mockResolvedValue({ id: 'down-je-1' }),
@@ -451,6 +456,41 @@ describe('ContractWorkflowService', () => {
       // 18000 × 10% = 1800 — ตัวเลขเดียวกับที่ ContractActivation1ATemplate ตั้งบน 21-1102
       expect(input.commission.toString()).toBe('1800');
       expect(input.commission.toString()).not.toBe('0');
+    });
+
+    // C2 (ผู้สอบ รอบ 2): "ตั้งอัตราสำรอง (แก้ไขได้)"
+    it('อัตราสำรองอ่านจาก config — ตั้ง 5% แล้ว SHOP ได้ 900 ไม่ใช่ 1800', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...shopContract,
+        storeCommission: null,
+      });
+      prisma.systemConfig.findMany.mockResolvedValue([
+        { key: 'store_commission_pct', value: '0.05' },
+      ]);
+
+      await service.activate('c-1');
+
+      // 18000 × 5% = 900
+      const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
+      expect(input.commission.toString()).toBe('900');
+    });
+
+    it('ค่าคอมที่ resolve ได้ถูกเขียนกลับลงสัญญา — replay แล้วได้เลขเดิมเสมอ', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...shopContract,
+        storeCommission: null,
+      });
+
+      await service.activate('c-1');
+
+      // ต้องมี update ที่เซ็ต storeCommission ก่อน 1A จะอ่าน
+      // (ไม่งั้นอัตราถูกแก้วันหลัง = สองสมุดคำนวณใหม่ได้คนละตัว)
+      // makeTxMock ส่ง `prisma` ตัวเดียวกันเข้าไปเป็น tx
+      const pinned = prisma.contract.update.mock.calls.find(
+        (c: [{ data?: { storeCommission?: unknown } }]) => c[0]?.data?.storeCommission != null,
+      );
+      expect(pinned).toBeDefined();
+      expect(pinned![0].data.storeCommission.toString()).toBe('1800');
     });
 
     it('ค่าคอม 0 ที่ระบุมาจริง → คง 0 ไม่ถูกยัด fallback', async () => {

@@ -51,6 +51,11 @@ jobs:
         shard: [1, 2, 3, 4]
 
     env:
+      # เพดาน heap ระดับ job — ขั้น "Build API" ตาย OOM ทั้ง 4 shard (2026-08-26)
+      # เป็นอาการเดียวกับที่ #1488/#1489 แก้ให้ deploy-gcp.yml เมื่อ 2026-08-25
+      # แต่ตกหล่น workflow นี้ · ตั้งที่ระดับ job ตามเหตุผลเดิม: เป็นเพดานร่วมของ
+      # ทุกงาน node ที่นี่ ไล่แก้ทีละขั้นคือรอให้ขั้นถัดไปตายแล้วค่อยตามแก้ทีหลัง
+      NODE_OPTIONS: --max-old-space-size=6144
       DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
       JWT_SECRET: test-secret
       JWT_REFRESH_SECRET: test-refresh-secret

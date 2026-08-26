@@ -18,6 +18,12 @@ import { UpdateBookingDto } from './dto/update-booking.dto';
 import { PayDepositDto } from './dto/pay-deposit.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { ConvertBookingDto } from './dto/convert-booking.dto';
+import { ShopBookingDepositTemplate } from '../journal/cpa-templates/shop-booking-deposit.template';
+import { ShopBookingForfeitTemplate } from '../journal/cpa-templates/shop-booking-forfeit.template';
+import { ShopBookingDepositAppliedTemplate } from '../journal/cpa-templates/shop-booking-deposit-applied.template';
+import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
+import { ShopBookingRefundTemplate } from '../journal/cpa-templates/shop-booking-refund.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 
 type RequestUser = { id: string; role: string; branchId?: string | null };
 
@@ -47,7 +53,15 @@ const BOOKING_EXPIRE_DAYS_KEY = 'booking_expire_days';
 export class BookingsService {
   private readonly logger = new Logger(BookingsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly shopBookingDepositTemplate: ShopBookingDepositTemplate,
+    private readonly shopBookingForfeitTemplate: ShopBookingForfeitTemplate,
+    private readonly shopBookingDepositAppliedTemplate: ShopBookingDepositAppliedTemplate,
+    private readonly shopCashSaleTemplate: ShopCashSaleTemplate,
+    private readonly shopBookingRefundTemplate: ShopBookingRefundTemplate,
+    private readonly shopAccountResolver: ShopAccountResolver,
+  ) {}
 
   // ───────────────────────────────────────────────────────────────────────
   // Branch scoping helpers (mirror QuotesService pattern — keep them
@@ -375,6 +389,9 @@ export class BookingsService {
       status: true,
       branchId: true,
       expireDate: true,
+      // A5 — ต้องใช้ลงบัญชีเงินมัดจำตอนรับเงิน
+      depositAmount: true,
+      bookingNumber: true,
     });
     if (!booking) throw new NotFoundException('ไม่พบใบจอง');
     if (booking.status !== 'PENDING_DEPOSIT') {
@@ -409,6 +426,32 @@ export class BookingsService {
       });
       if (claim.count !== 1) {
         throw new ConflictException('ใบจองนี้หมดอายุ ถูกบันทึกมัดจำ หรือเปลี่ยนสถานะไปแล้ว');
+      }
+
+      // ── ลงบัญชีเงินมัดจำ "ตอนรับเงิน" (คำวินิจฉัยผู้สอบ A5, 2026-08-25) ──────
+      // เดิมโมดูลนี้ไม่โพสต์ JE เลย ⇒ เงินสดที่รับจริงไม่เคยขึ้นสมุด SHOP
+      //
+      // บัญชีเงินสด **ไม่ได้ใช้ `dto.depositAccountCode`** เพราะฟิลด์นั้นบังคับรหัส
+      // ฝั่ง FINANCE (regex /^11-1[12]0[123]$/) ทั้งที่เงินเข้าลิ้นชักหน้าร้าน —
+      // ใช้ resolver ที่ map ตามสาขา+วิธีรับเงินแทน (fail-closed ถ้าสาขายังไม่ตั้งบัญชี)
+      const deposit = new Prisma.Decimal((booking.depositAmount ?? 0).toString());
+      if (deposit.gt(0)) {
+        const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(
+          booking.branchId,
+          dto.depositMethod,
+          tx,
+        );
+        await this.shopBookingDepositTemplate.execute(
+          {
+            idempotencyKey: `booking-deposit:${id}`,
+            bookingId: id,
+            bookingNumber: booking.bookingNumber ?? undefined,
+            cashAccountCode,
+            depositAmount: deposit,
+            postedAt: now,
+          },
+          tx,
+        );
       }
 
       const updated = await tx.booking.findFirst({
@@ -454,6 +497,9 @@ export class BookingsService {
       expireDate: true,
       depositAmount: true,
       depositPaidAt: true,
+      // A5 — ต้องใช้ลงบัญชีคืนเงินมัดจำ
+      depositMethod: true,
+      bookingNumber: true,
     });
     if (!booking) throw new NotFoundException('ไม่พบใบจอง');
     if (booking.status !== 'PENDING_DEPOSIT' && booking.status !== 'PAID') {
@@ -485,6 +531,31 @@ export class BookingsService {
       });
       if (claim.count !== 1) {
         throw new ConflictException('ใบจองนี้ถูกเปลี่ยนสถานะไปแล้ว');
+      }
+
+      // ── คืนเงินมัดจำ (A5 ผู้สอบ 2026-08-25) ─────────────────────────────────
+      // โพสต์เฉพาะใบที่ "รับมัดจำแล้วจริง" — PENDING_DEPOSIT ยังไม่มีเงินเข้า
+      // จึงไม่มีอะไรให้คืน · template ข้ามเองถ้าไม่มี JE ตั้งหนี้ (ยุคก่อนฟีเจอร์)
+      const refundAmount = new Prisma.Decimal((booking.depositAmount ?? 0).toString());
+      if (fromStatus === 'PAID' && refundAmount.gt(0)) {
+        const refundCashAccount = await this.shopAccountResolver.resolveInflowCashAccount(
+          booking.branchId,
+          (booking.depositMethod ?? 'CASH') as Parameters<
+            typeof this.shopAccountResolver.resolveInflowCashAccount
+          >[1],
+          tx,
+        );
+        await this.shopBookingRefundTemplate.execute(
+          {
+            idempotencyKey: `booking-refund:${id}`,
+            bookingId: id,
+            bookingNumber: booking.bookingNumber ?? undefined,
+            cashAccountCode: refundCashAccount,
+            depositAmount: refundAmount,
+            cancelReason: dto.cancelReason,
+          },
+          tx,
+        );
       }
 
       const updated = await tx.booking.findFirst({
@@ -639,6 +710,53 @@ export class BookingsService {
       // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (แปลงใบจองเป็นการขาย)
       await preemptReservationsInTx(tx, [firstItem.productId]);
 
+      // ── ลงบัญชีการขาย + ล้างมัดจำ (A5 ผู้สอบ 2026-08-25) ────────────────────
+      // เดิมเส้นทางนี้สร้าง Sale ด้วย tx.sale.create ตรง ๆ ไม่ผ่าน sale-writer
+      // จึงไม่เคยโพสต์ JE เลย (ต่างจากขายสดหน้าร้านที่โพสต์ครบตั้งแต่ 2026-06-23)
+      //
+      // โพสต์สองใบ: (1) ใบขายตามปกติ เดบิตเงินสดเต็มยอด
+      //             (2) ล้างมัดจำ Dr S21-2002 / Cr เงินสด — เพราะมัดจำเดบิตเงินสด
+      //                 ไปแล้วตั้งแต่วันจอง ถ้าไม่ปรับจะนับเงินสดซ้ำ
+      const saleCashAccount = await this.shopAccountResolver.resolveInflowCashAccount(
+        booking.branchId,
+        ((dto.paymentMethod as Prisma.SaleCreateInput['paymentMethod']) ??
+          booking.depositMethod ??
+          'CASH') as Parameters<
+          typeof this.shopAccountResolver.resolveInflowCashAccount
+        >[1],
+        tx,
+      );
+      const shopAcc = this.shopAccountResolver.resolveProductAccounts(product.category);
+      await this.shopCashSaleTemplate.execute(
+        {
+          idempotencyKey: `shop-cash-sale:${sale.id}:${product.id}`,
+          saleId: sale.id,
+          saleNumber,
+          productId: product.id,
+          cashAccountCode: saleCashAccount,
+          inventoryAccountCode: shopAcc.inventoryAccountCode,
+          cogsAccountCode: shopAcc.cogsAccountCode,
+          revenueAccountCode: shopAcc.revenueAccountCode,
+          revenueAmount: totalAmount,
+          inventoryCost: new Prisma.Decimal((product.costPrice ?? 0).toString()),
+        },
+        tx,
+      );
+      if (depositAmount.gt(0)) {
+        await this.shopBookingDepositAppliedTemplate.execute(
+          {
+            idempotencyKey: `booking-deposit-applied:${booking.id}`,
+            bookingId: booking.id,
+            bookingNumber: booking.bookingNumber ?? undefined,
+            saleId: sale.id,
+            saleNumber,
+            cashAccountCode: saleCashAccount,
+            depositAmount,
+          },
+          tx,
+        );
+      }
+
       // 5. Auto-create sales commission (read from CommissionRule, fallback 3%).
       const nowCommission = new Date();
       const period = `${nowCommission.getFullYear()}-${String(
@@ -791,6 +909,24 @@ export class BookingsService {
             data: { status: 'EXPIRED' },
           });
           if (claim.count !== 1) return;
+
+          // ── ริบมัดจำเข้ารายได้ (ผู้สอบอนุมัติ S41-1203 ไม่มี VAT, 2026-08-25) ──
+          // Dr S21-2002 / Cr S41-1203 — ไม่แตะเงินสด เพราะเงินเข้าลิ้นชักไปแล้ว
+          // ตอนวางมัดจำ · template ข้ามเองถ้าใบจองนั้นไม่มี JE ตั้งหนี้ (ยุคก่อนฟีเจอร์)
+          const forfeitAmount = new Prisma.Decimal((candidate.depositAmount ?? 0).toString());
+          if (forfeitAmount.gt(0)) {
+            await this.shopBookingForfeitTemplate.execute(
+              {
+                idempotencyKey: `booking-forfeit:${candidate.id}`,
+                bookingId: candidate.id,
+                bookingNumber: candidate.bookingNumber ?? undefined,
+                depositAmount: forfeitAmount,
+                postedAt: now,
+              },
+              tx,
+            );
+          }
+
           await tx.auditLog.create({
             data: {
               action: 'BOOKING_AUTO_EXPIRED',

@@ -1,12 +1,4 @@
-import {
-  IsString,
-  IsOptional,
-  IsNumber,
-  IsEnum,
-  IsDateString,
-  Min,
-  Max,
-} from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsDateString, Min, Max, Matches } from 'class-validator';
 import { FinanceReceivableStatus } from '@prisma/client';
 
 export class RecordReceiveDto {
@@ -24,6 +16,15 @@ export class RecordReceiveDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  /**
+   * บัญชีฝั่ง SHOP ที่เงินเข้าจริง (ต้องขึ้นต้น S) — ไม่ระบุ = S11-1201 ธนาคารรับเงินหน้าร้าน
+   * ใช้เป็นขา Dr ของ JE ตอนไฟแนนซ์ภายนอกโอนเงินมา
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^S\d{2}-\d{4}$/, { message: 'บัญชีเงินเข้าต้องเป็นรหัสฝั่งหน้าร้าน เช่น S11-1201' })
+  depositAccountCode?: string;
 }
 
 export class UpdateFinanceReceivableDto {

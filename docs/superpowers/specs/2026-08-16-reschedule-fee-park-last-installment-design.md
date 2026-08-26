@@ -82,7 +82,7 @@ accrual cron หัก **FIFO เข้างวดถัดไป** (`installme
    **decrement `Contract.rescheduleAdvanceBalance` ใน `$transaction` เดียวกับ JE** + AuditLog
    `RESCHEDULE_ADVANCE_CONSUMED`. `parkRelief` = `computePayoffQuote.rescheduleAdvanceApplied`
    = **ส่วนที่ยอดปิดดูดซับจริง ไม่ใช่ยอดถังทั้งก้อน** (ถังพักลด gross profit ⇒ ลดส่วนลด 52-1106
-   ไปด้วย; เคส CPA พัก 354 ที่ส่วนลด 50% ดูดซับจริงแค่ 188.58) clamp เพิ่มอีกสองชั้น —
+   ไปด้วย; เคสตัวอย่างคำนวณ พัก 354 ที่ส่วนลด 50% ดูดซับจริงแค่ 188.58 — ไม่ใช่สัญญาจริงบน prod) clamp เพิ่มอีกสองชั้น —
    JP4 `≤ totalCash` (เงินสดติดลบไม่ได้), JP5 `≤` ยอด GL 21-1103 จริงของสัญญา และ `execute()`
    คืนยอดที่โพสต์จริงให้ caller ใช้ decrement. preview ใช้ค่าเดียวกัน ⇒ preview === posted.
    คำถามที่ยัง**เปิด**: ถังพักควรลดฐานส่วนลดหรือไม่ (ถ้าเจ้าของ/CPA สั่งว่าไม่ควร →

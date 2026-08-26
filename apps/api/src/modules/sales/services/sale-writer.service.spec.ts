@@ -7,6 +7,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { InterCompanyService } from '../../inter-company/inter-company.service';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
 
 // ─── module-level mocks ───────────────────────────────────────────────────────
 
@@ -104,6 +105,11 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         { provide: InterCompanyService, useValue: { createFromSaleInTx: jest.fn() } },
         { provide: ShopCashSaleTemplate, useValue: shopCashSaleTemplate },
         { provide: ShopAccountResolver, useValue: shopAccountResolver },
+        {
+          // C1 — ข้ามเองถ้าผังยังไม่มี S11-3101/S51-1106 (รอคำวินิจฉัยผู้สอบ)
+          provide: ShopExternalFinanceSaleTemplate,
+          useValue: { execute: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
 

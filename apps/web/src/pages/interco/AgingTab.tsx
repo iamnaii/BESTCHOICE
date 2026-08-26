@@ -165,11 +165,26 @@ export function AgingTab({
                                 {r.customerName}
                               </div>
                             </td>
+                            {/* B2 (ผู้สอบ 2026-08-25) "ต้องแยกแสดง" — โชว์ยอดทั้งสองสมุด
+                                คู่กันต่อประเภท บรรทัดบน = FINANCE (11-2107)
+                                บรรทัดล่าง = SHOP (S21-1104) ⇒ เห็นทันทีว่าประเภทไหนไม่ตรง */}
                             <td className="p-3 text-right tabular-nums">
-                              {fmtMoney(r.swapCreditGross)}
+                              <div>{fmtMoney(r.swapCreditGross)}</div>
+                              <div
+                                className="text-xs text-muted-foreground leading-snug"
+                                title="ยอดฝั่งหน้าร้าน (S21-1104) ประเภทเครดิตเปลี่ยนเครื่อง"
+                              >
+                                หน้าร้าน {fmtMoney(r.shopMirrorSwapGross)}
+                              </div>
                             </td>
                             <td className="p-3 text-right tabular-nums">
-                              {fmtMoney(r.payoutRecallGross)}
+                              <div>{fmtMoney(r.payoutRecallGross)}</div>
+                              <div
+                                className="text-xs text-muted-foreground leading-snug"
+                                title="ยอดฝั่งหน้าร้าน (S21-1104) ประเภทเรียกคืนจากยกเลิก"
+                              >
+                                หน้าร้าน {fmtMoney(r.shopMirrorRecallGross)}
+                              </div>
                             </td>
                             <td className="p-3 text-right tabular-nums">
                               {Number(r.settledDeduction) > 0 ? (

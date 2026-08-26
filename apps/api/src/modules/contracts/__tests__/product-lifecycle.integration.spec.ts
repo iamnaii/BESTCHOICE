@@ -49,6 +49,7 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
 import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
+import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 
@@ -83,6 +84,8 @@ const salesService = new SalesService(
   null as never,
   new ShopCashSaleTemplate(journal, prisma as never, companyResolver),
   shopAccountResolver,
+  // C1 — ข้ามเองถ้าผังยังไม่มี S11-3101/S51-1106 (รอคำวินิจฉัยผู้สอบ)
+  new ShopExternalFinanceSaleTemplate(journal, prisma as never, companyResolver),
 );
 
 // เปลี่ยนเครื่องโหมด MEMO: ไม่มี JE เลย (workbook Case 1) — เทมเพลตทั้ง 5 + SHOP legs

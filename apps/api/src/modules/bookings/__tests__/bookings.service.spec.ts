@@ -8,6 +8,12 @@ import {
 import { Prisma } from '@prisma/client';
 import { BookingsService } from '../bookings.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ShopBookingDepositTemplate } from '../../journal/cpa-templates/shop-booking-deposit.template';
+import { ShopBookingForfeitTemplate } from '../../journal/cpa-templates/shop-booking-forfeit.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { ShopBookingDepositAppliedTemplate } from '../../journal/cpa-templates/shop-booking-deposit-applied.template';
+import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
+import { ShopBookingRefundTemplate } from '../../journal/cpa-templates/shop-booking-refund.template';
 
 // Mock sequence util so tests don't need a real `booking` delegate
 jest.mock('../../../utils/sequence.util', () => ({
@@ -21,6 +27,12 @@ const SALES_BR2 = { id: 'u-sales-other', role: 'SALES', branchId: 'br-2' };
 
 describe('BookingsService', () => {
   let service: BookingsService;
+  let shopBookingDepositTemplate: { execute: jest.Mock };
+  let shopBookingForfeitTemplate: { execute: jest.Mock };
+  let shopAccountResolver: { resolveInflowCashAccount: jest.Mock; resolveProductAccounts: jest.Mock };
+  let shopBookingDepositAppliedTemplate: { execute: jest.Mock };
+  let shopCashSaleTemplate: { execute: jest.Mock };
+  let shopBookingRefundTemplate: { execute: jest.Mock };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
 
@@ -116,8 +128,35 @@ describe('BookingsService', () => {
       },
     };
 
+    // A5 (ผู้สอบ 2026-08-25): payDeposit/autoExpire โพสต์ JE ฝั่ง SHOP แล้ว
+    // เทสชุดนี้ตรวจ logic ใบจอง ไม่ใช่ตัว JE (มี spec แยกที่
+    // journal/cpa-templates/__tests__/shop-booking-deposit-forfeit.spec.ts)
+    // จึง mock ให้ผ่าน ๆ แต่ยัง assert ได้ว่าถูกเรียกด้วยยอดที่ถูกต้อง
+    shopBookingDepositTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-D', journalEntryId: 'je-d' }) };
+    shopBookingForfeitTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-F', journalEntryId: 'je-f' }) };
+    shopAccountResolver = {
+      resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1101'),
+      resolveProductAccounts: jest.fn().mockReturnValue({
+        inventoryAccountCode: 'S11-2001',
+        cogsAccountCode: 'S50-1101',
+        revenueAccountCode: 'S41-1101',
+      }),
+    };
+    shopBookingDepositAppliedTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-A', journalEntryId: 'je-a' }) };
+    shopCashSaleTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-S', journalEntryId: 'je-s' }) };
+    shopBookingRefundTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-R', journalEntryId: 'je-r' }) };
+
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [BookingsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        BookingsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ShopBookingDepositTemplate, useValue: shopBookingDepositTemplate },
+        { provide: ShopBookingForfeitTemplate, useValue: shopBookingForfeitTemplate },
+        { provide: ShopAccountResolver, useValue: shopAccountResolver },
+        { provide: ShopBookingDepositAppliedTemplate, useValue: shopBookingDepositAppliedTemplate },
+        { provide: ShopCashSaleTemplate, useValue: shopCashSaleTemplate },
+        { provide: ShopBookingRefundTemplate, useValue: shopBookingRefundTemplate },
+      ],
     }).compile();
     service = mod.get(BookingsService);
   });

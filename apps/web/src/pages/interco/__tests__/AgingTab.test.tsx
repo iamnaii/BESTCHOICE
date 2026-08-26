@@ -26,6 +26,8 @@ function mkRow(overrides: Partial<ShopReceivableAgingRow> = {}): ShopReceivableA
     intercoNet: '8000.00',
     shopCollect: '0.00',
     shopMirrorNet: '8000.00',
+    shopMirrorSwapGross: '0',
+    shopMirrorRecallGross: '0',
     intercoOldestPostedAt: '2026-08-01T00:00:00.000Z',
     intercoAgeDays: 20,
     shopCollectOldestPostedAt: null,

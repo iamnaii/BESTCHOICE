@@ -45,6 +45,10 @@ export interface ShopReceivableAgingRow {
    * Task 4 — SWAP_CREDIT_ONE_BOOK).
    */
   shopMirrorGross: Prisma.Decimal;
+  /** S21-1104 เฉพาะ SWAP_CREDIT (Cr−Dr) — คู่กระจกของ `swapCreditGross` (B2 2026-08-25) */
+  shopMirrorSwapGross: Prisma.Decimal;
+  /** S21-1104 เฉพาะ PAYOUT_RECALL (Cr−Dr) — คู่กระจกของ `payoutRecallGross` (B2 2026-08-25) */
+  shopMirrorRecallGross: Prisma.Decimal;
   /** S21-1104 (Cr−Dr, conditional key) − settledDeduction — กระจกฝั่ง SHOP ของ intercoNet */
   shopMirrorNet: Prisma.Decimal;
   /** MIN(posted_at) ของ JE ที่มีขา Dr บน 11-2107 typed (กลุ่ม interco) */
@@ -537,10 +541,19 @@ export class IntercoAgingService {
     // อื่น → contractId), Σ(Cr−Dr). WHERE จำกัดสองประเภท = union ของ twins
     // `swapCreditShopBalance` + `recallShopBalance` ตรงตัว.
     const shopRows = await this.prisma.$queryRaw<
-      Array<{ contract_id: string | null; mirror_gross: unknown }>
+      Array<{
+        contract_id: string | null;
+        mirror_gross: unknown;
+        mirror_swap: unknown;
+        mirror_recall: unknown;
+      }>
     >(Prisma.sql`
       SELECT ${SHOP_KEY} AS contract_id,
-             COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS mirror_gross
+             COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS mirror_gross,
+             COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
+                          THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_swap,
+             COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'
+                          THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_recall
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
       WHERE jl.account_code = 'S21-1104'
@@ -552,9 +565,19 @@ export class IntercoAgingService {
       GROUP BY 1
     `);
     const shopByContract = new Map<string, Prisma.Decimal>();
+    // B2 (ผู้สอบ 2026-08-25): "ต้องแยกแสดง" — ฝั่ง 11-2107 แยก 3 ประเภทมานานแล้ว
+    // แต่ฝั่ง S21-1104 เคยรวมเป็นก้อนเดียว ⇒ แยกให้ตรงกันทั้งสองสมุด
+    //
+    // ปลอดภัยเพราะ JE ที่ติด stamp แต่ละใบมีประเภทเดียวเสมอ (A.4 = SWAP_CREDIT,
+    // C-2 redirect = PAYOUT_RECALL, settleRecallCash = PAYOUT_RECALL) ส่วนใบรอบจ่าย
+    // ที่ผสมสองประเภทในใบเดียว **ไม่ stamp โดยตั้งใจ** จึงไม่เข้า WHERE ของคิวรีนี้อยู่แล้ว
+    const shopSwapByContract = new Map<string, Prisma.Decimal>();
+    const shopRecallByContract = new Map<string, Prisma.Decimal>();
     for (const row of shopRows) {
       if (!row.contract_id) continue;
       shopByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_gross ?? 0)));
+      shopSwapByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_swap ?? 0)));
+      shopRecallByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_recall ?? 0)));
     }
 
     const financeByContract = new Map<
@@ -646,6 +669,8 @@ export class IntercoAgingService {
         intercoNet,
         shopCollect,
         shopMirrorGross: shopGross,
+        shopMirrorSwapGross: shopSwapByContract.get(contractId) ?? zero,
+        shopMirrorRecallGross: shopRecallByContract.get(contractId) ?? zero,
         shopMirrorNet,
         intercoOldestPostedAt,
         intercoAgeDays: ageDays(intercoOldestPostedAt),

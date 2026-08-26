@@ -4,6 +4,7 @@
  */
 import { PrismaService } from '../prisma/prisma.service';
 import { DEFAULT_VAT_DECIMAL, parseVatValue } from './vat-rate.util';
+import { STORE_COMMISSION_FALLBACK_RATE } from './store-commission.util';
 
 /**
  * Minimal shape of a Prisma-compatible client for SystemConfig reads.
@@ -183,7 +184,8 @@ const DEFAULTS: InstallmentConfig = {
   minDownPaymentPct: 0.15,
   minInstallmentMonths: 6,
   maxInstallmentMonths: 12,
-  storeCommissionPct: 0.10,
+  // แหล่งเดียวกับ fallback ของ resolveStoreCommission — เลื่อนออกจากกันไม่ได้
+  storeCommissionPct: Number(STORE_COMMISSION_FALLBACK_RATE),
   vatPct: 0.07,
 };
 

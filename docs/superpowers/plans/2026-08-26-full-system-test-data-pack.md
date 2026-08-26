@@ -25,6 +25,14 @@
 - **ข้อความ user-facing เป็นภาษาไทย** รวม log ที่ผู้ใช้อ่าน
 - **Prettier**: `semi: true, singleQuote: true, printWidth: 100, tabWidth: 2`
 - **เทสเป็น jest unit spec ที่ไม่แตะ DB** — ทดสอบ pure function ที่ export ออกมา (pattern เดียวกับ `backfill-employee-profiles.cli.spec.ts`) ไฟล์ `*.spec.ts` ใต้ `src/` ถูกจับโดย `testRegex: ".*\\.spec\\.ts$"` อัตโนมัติ
+- **โดเมน seeder ไม่มี unit test โดยเจตนา — พิสูจน์ด้วย round-trip กับ DB จริงแทน**
+  (Task 3 · 5 · 6 · 7 · 8 · 9 · 10 จึงไม่มี step เขียนเทส และ **ไม่ถือเป็นข้อบกพร่องตอน review**)
+  เหตุผล: ตัวโดเมนเกือบทั้งหมดเป็น `prisma.X.create()` ⇒ unit test ต้อง mock `PrismaService`
+  ซึ่งทดสอบได้แค่ *"mock ถูกเรียกด้วย argument ชุดนี้"* — **ไม่ได้ทดสอบว่าชื่อฟิลด์ตรง schema จริง
+  หรือ enum มีค่านั้นจริง** ซึ่งเป็นบั๊กคลาสที่เกิดขึ้นจริงในแผนฉบับแรก (5 จุด ดูหัวข้อ "รอบแก้หลัง
+  scrutinize") · round-trip `seed → cleanup → seed ซ้ำ` กับ DB จริงจับได้ทั้ง 5 จุดนั้น
+  **pure function ยังต้องมี unit test เสมอ** — `_context` `_helpers` `_registry` `_preflight` `_docgen`
+  (Task 1 · 4 · 11 · 13)
 - **เช็ค `deletedAt` ของทุกโมเดลก่อนเลือกวิธีลบ** — มี `deletedAt` = soft delete เสมอ (`.claude/rules/database.md`: *"ใช้ `deletedAt` — **ห้าม hard delete** เด็ดขาด"*) · **ข้อยกเว้นเดียว** คือ `JournalEntry`/`JournalLine`/`JournalPostAuditLog` ที่ hard delete โดยเจตนาเพื่อคืนงบทดลอง (precedent: `cleanup-test-contracts.cli.ts`) และตารางลูกที่ไม่มี `deletedAt` เลย
 - **ห้ามเดาชื่อฟิลด์** — ก่อนเขียน `create` ของโมเดลไหน ให้หาโมเดลนั้นใน `apps/api/prisma/seed.ts` ก่อน (Task 0) ถ้าไม่มีจึงค่อยอ่าน `schema.prisma`
 
@@ -2231,6 +2239,7 @@ export const bookingsSeeder: DomainSeeder = {
 - [ ] **Step 2: เขียน `online-orders.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
 import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
@@ -2270,7 +2279,9 @@ export const onlineOrdersSeeder: DomainSeeder = {
         stat.skipped += 1;
         continue;
       }
-      const price = Number(products[i].cashPrice ?? 0);
+      // ส่ง Decimal ผ่านตรง ๆ — Prisma รับ Decimal ให้คอลัมน์ Decimal อยู่แล้ว
+      // ห้ามแปลงเป็น number (Global Constraints: Money = Decimal)
+      const price = products[i].cashPrice ?? new Prisma.Decimal(0);
       const reservation = await ctx.prisma.productReservation.create({
         data: {
           productId: products[i].id,
@@ -3365,6 +3376,7 @@ Expected: `TestPackModule bootstrap OK` และ **process จบเอง**
 
 ```ts
 import { NestFactory } from '@nestjs/core';
+import { Prisma } from '@prisma/client';
 import { ContractWorkflowService } from '../../modules/contracts/contract-workflow.service';
 import { PaymentReceiptOrchestrator } from '../../modules/payments/services/payment-receipt-orchestrator';
 import { TestPackModule } from './_module';
@@ -3428,7 +3440,10 @@ export async function runDrive(ctx: SeedContext): Promise<DriveResult> {
       if (!due.length) return 'ข้าม — ไม่มีงวดค้างให้รับชำระ';
       let n = 0;
       for (const p of due) {
-        const amount = Number(p.amountDue) + Number(p.lateFee ?? 0);
+        // Decimal arithmetic — ห้าม Number() (Global Constraints: Money = Decimal)
+        // recordPayment รับ amount เป็น number ⇒ แปลงเป็น number ที่ขอบสุดท้ายเท่านั้น
+        // หลังบวกด้วย Decimal แล้ว (ไม่ใช่แปลงก่อนบวก ซึ่งเสีย precision)
+        const amount = new Prisma.Decimal(p.amountDue).plus(p.lateFee ?? 0).toNumber();
         await orchestrator.recordPayment(c.id, p.installmentNo, amount, 'CASH', ctx.refs.reviewerId, undefined, '[ทดสอบระบบ] รับชำระจากโหมดเดินเรื่อง', undefined, '11-1101');
         n += 1;
       }

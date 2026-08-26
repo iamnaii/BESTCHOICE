@@ -78,20 +78,82 @@ export const externalFinanceSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const rows = await ctx.prisma.externalFinanceCompany.findMany({
-      where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
-      select: { id: true, name: true },
+    // กุญแจกวาดค่าคอมคือ "บริษัททดสอบทุกแถว" รวมที่เคยถูก soft delete ไปรอบก่อน —
+    // ค่าคอมไม่มี marker ของตัวเอง ตามได้จาก FK externalFinanceCompanyId (required) เท่านั้น
+    // ถ้ากรอง deletedAt ตรงนี้ ค่าคอมที่อ้างบริษัทซึ่งถูกล้างไปแล้วจะเป็นกำพร้าตลอดกาล
+    const companies = await ctx.prisma.externalFinanceCompany.findMany({
+      where: { name: { startsWith: TEST_NAME_PREFIX } },
+      select: { id: true, name: true, deletedAt: true },
     });
-    for (const r of rows) console.log(`     "${r.name}"`);
-    if (!dryRun && rows.length) {
-      await ctx.prisma.externalFinanceCompany.updateMany({
-        where: { id: { in: rows.map((r) => r.id) } },
-        data: { deletedAt: new Date() },
+    const liveCompanies = companies.filter((c) => !c.deletedAt);
+    for (const c of liveCompanies) console.log(`     "${c.name}"`);
+
+    // ค่าคอมที่ staff คีย์มือระหว่างเทส (accrue → external-finance-commission.service.ts)
+    // อ้างบริษัททดสอบด้วย FK ตรง — แถวมี journalEntryId ได้ ⇒ ต้องกวาด JE ของมันด้วย
+    // ไม่งั้นใบ JE ค้างในสมุดถาวรหลังบริษัททดสอบหายไปแล้ว
+    const commissionName = new Map(companies.map((c) => [c.id, c.name]));
+    const commissions = companies.length
+      ? await ctx.prisma.externalFinanceCommission.findMany({
+          where: {
+            externalFinanceCompanyId: { in: companies.map((c) => c.id) },
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            externalFinanceCompanyId: true,
+            commissionAmount: true,
+            status: true,
+            journalEntryId: true,
+          },
+        })
+      : [];
+    const jeIds = commissions.map((c) => c.journalEntryId).filter((x): x is string => !!x);
+    // ค่าคอมไม่มี marker ติดตัว — บรรทัดนี้คือช่องทางเดียวที่ผู้รันเห็น identity ของมันก่อน
+    // ถูกกวาด ⇒ พิมพ์เสมอทั้ง dry-run และ live
+    for (const c of commissions) {
+      console.log(
+        `     ค่าคอมไฟแนนซ์ภายนอก ฿${c.commissionAmount.toFixed(2)} · ${c.status} · "${
+          commissionName.get(c.externalFinanceCompanyId) ?? c.externalFinanceCompanyId
+        }"${c.journalEntryId ? ' (มี JE — ลบถาวร)' : ''}`,
+      );
+    }
+
+    if (!dryRun && (liveCompanies.length || commissions.length)) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (commissions.length) {
+          // ลำดับกวาด JE เดียวกับ repair.seed.ts เป๊ะ: audit log → ปลด FK บนแถวเจ้าของ →
+          // journal_lines → journal_entries — สลับลำดับ = abort ทั้ง tx บน DB จริง
+          if (jeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: jeIds } },
+            });
+            await tx.externalFinanceCommission.updateMany({
+              where: { id: { in: commissions.map((c) => c.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+          }
+          await tx.externalFinanceCommission.updateMany({
+            where: { id: { in: commissions.map((c) => c.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+        if (liveCompanies.length) {
+          await tx.externalFinanceCompany.updateMany({
+            where: { id: { in: liveCompanies.map((c) => c.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
       });
     }
     return {
-      removed: { บริษัทไฟแนนซ์ภายนอก: rows.length },
-      warnings: rows.length
+      removed: {
+        บริษัทไฟแนนซ์ภายนอก: liveCompanies.length,
+        'ค่าคอมไฟแนนซ์ภายนอก (ไม่มี marker — ตามจาก FK บริษัท)': commissions.length,
+        'รายการบัญชีของค่าคอมไฟแนนซ์ (ลบถาวร)': jeIds.length,
+      },
+      warnings: liveCompanies.length
         ? [
             'ตาราง external_finance_companies อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้าม factory reset ไปปนทะเบียนจริงตอนใช้งานจริง',
           ]

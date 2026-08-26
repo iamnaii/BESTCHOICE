@@ -46,7 +46,11 @@ export const tradeInSeeder: DomainSeeder = {
   key: 'trade-in',
   label: 'รับซื้อเครื่องมือสอง',
   routes: ['/trade-in'],
-  markerDoc: `TradeIn.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (เครื่องที่เกิดจากการกดรับซื้อระหว่างเทสได้ imeiSerial "TEST-" — กวาดโดยโดเมน contracts)`,
+  markerDoc:
+    `TradeIn.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (เครื่องที่เกิดจากการกดรับซื้อระหว่างเทสได้ ` +
+    `imeiSerial "TEST-" — กวาดโดยโดเมน contracts) · แถว seed เป็น flow EXCHANGE โดยเจตนา: ` +
+    `การกดรับซื้อ flow BUYBACK โพสต์ JE "shop-trade-in:<id>" ที่ไม่มี marker/metadata ให้ cleanup ` +
+    `กวาดถึง — รายการทดสอบที่เป็น BUYBACK ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup`,
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
@@ -112,13 +116,24 @@ export const tradeInSeeder: DomainSeeder = {
       });
       stat.created += 1;
     }
+    stat.notes.push(
+      'แถวทดสอบใช้ flow EXCHANGE โดยเจตนา — การกดรับซื้อ flow BUYBACK โพสต์ JE "shop-trade-in:<id>" ' +
+        'ที่ cleanup กวาดไม่ถึง (ไม่มี marker/metadata) ห้ามสลับแถวทดสอบเป็น BUYBACK',
+    );
     return stat;
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.tradeIn.findMany({
       where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
-      select: { id: true, status: true, imei: true, deviceModel: true, productId: true },
+      select: {
+        id: true,
+        status: true,
+        imei: true,
+        deviceModel: true,
+        productId: true,
+        flow: true,
+      },
     });
     // identity ให้คนตรวจก่อน/หลังลบ — พิมพ์ทั้ง dry-run และโหมดจริง
     for (const r of rows) {
@@ -129,6 +144,9 @@ export const tradeInSeeder: DomainSeeder = {
       );
     }
     const accepted = rows.filter((r) => r.productId);
+    // flow BUYBACK ตอนรับซื้อโพสต์ JE "shop-trade-in:<id>" โดยไม่มี marker/metadata ให้กวาด
+    // (trade-in-lifecycle.service.ts) — pack กวาดไม่ถึงโดยเจตนา จึงเตือนรายแถวแทน
+    const buybacks = rows.filter((r) => r.flow === 'BUYBACK');
     if (!dryRun && rows.length) {
       await ctx.prisma.tradeIn.updateMany({
         where: { id: { in: rows.map((r) => r.id) } },
@@ -137,11 +155,19 @@ export const tradeInSeeder: DomainSeeder = {
     }
     return {
       removed: { รายการรับซื้อมือสอง: rows.length },
-      warnings: accepted.length
-        ? [
-            `รายการที่รับซื้อแล้ว ${accepted.length} รายการมีเครื่องเข้าสต็อก (IMEI TEST-) — เครื่องถูกกวาดโดยโดเมน contracts; ถ้ารัน cleanup เฉพาะโดเมน trade-in เครื่องจะยังค้างในสต็อก`,
-          ]
-        : [],
+      warnings: [
+        ...(accepted.length
+          ? [
+              `รายการที่รับซื้อแล้ว ${accepted.length} รายการมีเครื่องเข้าสต็อก (IMEI TEST-) — เครื่องถูกกวาดโดยโดเมน contracts; ถ้ารัน cleanup เฉพาะโดเมน trade-in เครื่องจะยังค้างในสต็อก`,
+            ]
+          : []),
+        ...buybacks.map((r) => {
+          const name = `${r.imei ?? '(ไม่มี IMEI)'} · ${r.deviceModel}`;
+          return r.productId
+            ? `รายการเทิร์น ${name} เป็น flow BUYBACK และรับซื้อไปแล้ว — JE "shop-trade-in:<id>" ค้างในสมุดโดย pack กวาดไม่ถึง ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup จริง`
+            : `รายการเทิร์น ${name} เป็น flow BUYBACK — ถ้ากดรับซื้อจะโพสต์ JE "shop-trade-in:<id>" ที่ pack กวาดไม่ถึง ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup จริง`;
+        }),
+      ],
     };
   },
 };

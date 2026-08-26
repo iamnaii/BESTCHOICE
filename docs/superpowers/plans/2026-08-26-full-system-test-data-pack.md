@@ -3903,14 +3903,20 @@ export const commissionsSeeder: DomainSeeder = {
 
 - [ ] **Step 2: เขียน `external-finance.seed.ts`**
 
+> **ทำไม cleanup ต้องกวาดค่าคอม (fix round 1, 2026-08-26):** `ExternalFinanceCommission` ที่ staff คีย์มือระหว่างเทสอ้างบริษัททดสอบด้วย FK required (`externalFinanceCompanyId`) และมีคอลัมน์ `journalEntryId` — ถ้าไม่กวาด (JE hard-delete ตามลำดับเดียวกับ `repair.seed.ts`: audit log → ปลด FK → lines → entries แล้วค่อย soft-delete แถวค่าคอม) แถว+JE จะค้างถาวรเพราะค่าคอมไม่มี marker ของตัวเอง
+
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NAME_PREFIX, testName, testNote } from './_context';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /**
  * สร้างเฉพาะ "ทะเบียนบริษัทไฟแนนซ์ภายนอก"
  * ใบขาย + FinanceReceivable ต้องเกิดจาก SaleWriterService ในเฟส 3 เท่านั้น (R2)
- * เพราะการขายผ่านไฟแนนซ์ภายนอกโพสต์ Dr S11-3101 และการรับเงินโพสต์ Dr S51-1106
+ * เพราะการขายผ่านไฟแนนซ์ภายนอกโพสต์ Dr S11-3101 และการรับเงินโพสต์ Dr S51-1106 —
+ * และ FinanceReceivable.receivedAmount เป็นการเซ็ตทับ (JE คิดจากส่วนต่าง) ⇒ ยอดที่ seed
+ * ตรง ๆ ไม่มีวันขึ้นสมุด
  */
 const ROWS: Array<{ name: string; rate: number }> = [
   { name: 'ไฟแนนซ์ภายนอก ก', rate: 0.05 },
@@ -3924,39 +3930,142 @@ export const externalFinanceSeeder: DomainSeeder = {
   markerDoc: `ExternalFinanceCompany.name ขึ้นต้น "${TEST_NAME_PREFIX}"`,
 
   async plan(): Promise<PlanRow[]> {
-    return ROWS.map((r) => ({ label: testName(r.name), detail: `ค่าธรรมเนียมตั้งต้น ${(r.rate * 100).toFixed(0)}% — ลูกหนี้จะเกิดตอนขายจริงในเฟส 3` }));
+    return ROWS.map((r) => ({
+      label: testName(r.name),
+      detail: `ค่าธรรมเนียมตั้งต้น ${(r.rate * 100).toFixed(0)}% — ลูกหนี้จะเกิดตอนขายจริงในเฟส 3`,
+    }));
   },
 
   async seed(ctx: SeedContext): Promise<SeedStat> {
     const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
     for (const r of ROWS) {
       const name = testName(r.name);
-      const exists = await ctx.prisma.externalFinanceCompany.findFirst({ where: { name, deletedAt: null }, select: { id: true } });
-      if (exists) {
+      // name เป็น @unique เต็มตาราง (ไม่ใช่ partial) — แถวที่ cleanup soft delete ไปแล้ว
+      // ยังถือชื่ออยู่ ⇒ probe โดยไม่กรอง deletedAt แล้ว "กู้คืน" แทนการสร้างซ้ำ
+      // ไม่งั้น seed หลัง cleanup ชน P2002
+      const any = await ctx.prisma.externalFinanceCompany.findUnique({
+        where: { name },
+        select: { id: true, deletedAt: true },
+      });
+      if (any && !any.deletedAt) {
         stat.skipped += 1;
         continue;
       }
+      if (any) {
+        // กู้คืน + รีเซ็ตกลับค่าตั้งต้น — ผู้ทดสอบอาจแก้อัตรา/เบอร์/โน้ตไปก่อนถูกล้าง
+        await ctx.prisma.externalFinanceCompany.update({
+          where: { id: any.id },
+          data: {
+            deletedAt: null,
+            isActive: true,
+            defaultCommissionRate: new Prisma.Decimal(r.rate),
+            contactPhone: '021230000',
+            notes: testNote('บริษัทไฟแนนซ์สำหรับทดสอบ — ลบได้'),
+          },
+        });
+        stat.skipped += 1;
+        stat.notes.push(
+          `กู้คืน "${name}" ที่เคยถูกล้าง (ชื่อเป็น unique เต็มตาราง — แถวกู้คืนนับเป็น skipped ไม่ใช่ created)`,
+        );
+        continue;
+      }
       await ctx.prisma.externalFinanceCompany.create({
-        data: { name, defaultCommissionRate: r.rate, contactPhone: '021230000', notes: testNote('บริษัทไฟแนนซ์สำหรับทดสอบ — ลบได้') },
+        data: {
+          name,
+          defaultCommissionRate: new Prisma.Decimal(r.rate),
+          contactPhone: '021230000',
+          notes: testNote('บริษัทไฟแนนซ์สำหรับทดสอบ — ลบได้'),
+        },
       });
       stat.created += 1;
     }
-    stat.notes.push('ลูกหนี้ไฟแนนซ์ (/finance-receivable) จะมีของก็ต่อเมื่อรันด้วย DRIVE=1 หรือขายผ่านหน้าจอ POS เอง');
+    stat.notes.push(
+      'ลูกหนี้ไฟแนนซ์ (/finance-receivable) จะมีของก็ต่อเมื่อรันด้วย DRIVE=1 หรือขายผ่านหน้าจอ POS เอง',
+    );
     return stat;
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const rows = await ctx.prisma.externalFinanceCompany.findMany({
-      where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
-      select: { id: true, name: true },
+    // กุญแจกวาดค่าคอมคือ "บริษัททดสอบทุกแถว" รวมที่เคยถูก soft delete ไปรอบก่อน —
+    // ค่าคอมไม่มี marker ของตัวเอง ตามได้จาก FK externalFinanceCompanyId (required) เท่านั้น
+    // ถ้ากรอง deletedAt ตรงนี้ ค่าคอมที่อ้างบริษัทซึ่งถูกล้างไปแล้วจะเป็นกำพร้าตลอดกาล
+    const companies = await ctx.prisma.externalFinanceCompany.findMany({
+      where: { name: { startsWith: TEST_NAME_PREFIX } },
+      select: { id: true, name: true, deletedAt: true },
     });
-    for (const r of rows) console.log(`     "${r.name}"`);
-    if (!dryRun && rows.length) {
-      await ctx.prisma.externalFinanceCompany.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    const liveCompanies = companies.filter((c) => !c.deletedAt);
+    for (const c of liveCompanies) console.log(`     "${c.name}"`);
+
+    // ค่าคอมที่ staff คีย์มือระหว่างเทส (accrue → external-finance-commission.service.ts)
+    // อ้างบริษัททดสอบด้วย FK ตรง — แถวมี journalEntryId ได้ ⇒ ต้องกวาด JE ของมันด้วย
+    // ไม่งั้นใบ JE ค้างในสมุดถาวรหลังบริษัททดสอบหายไปแล้ว
+    const commissionName = new Map(companies.map((c) => [c.id, c.name]));
+    const commissions = companies.length
+      ? await ctx.prisma.externalFinanceCommission.findMany({
+          where: {
+            externalFinanceCompanyId: { in: companies.map((c) => c.id) },
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            externalFinanceCompanyId: true,
+            commissionAmount: true,
+            status: true,
+            journalEntryId: true,
+          },
+        })
+      : [];
+    const jeIds = commissions.map((c) => c.journalEntryId).filter((x): x is string => !!x);
+    // ค่าคอมไม่มี marker ติดตัว — บรรทัดนี้คือช่องทางเดียวที่ผู้รันเห็น identity ของมันก่อน
+    // ถูกกวาด ⇒ พิมพ์เสมอทั้ง dry-run และ live
+    for (const c of commissions) {
+      console.log(
+        `     ค่าคอมไฟแนนซ์ภายนอก ฿${c.commissionAmount.toFixed(2)} · ${c.status} · "${
+          commissionName.get(c.externalFinanceCompanyId) ?? c.externalFinanceCompanyId
+        }"${c.journalEntryId ? ' (มี JE — ลบถาวร)' : ''}`,
+      );
+    }
+
+    if (!dryRun && (liveCompanies.length || commissions.length)) {
+      await ctx.prisma.$transaction(async (tx) => {
+        if (commissions.length) {
+          // ลำดับกวาด JE เดียวกับ repair.seed.ts เป๊ะ: audit log → ปลด FK บนแถวเจ้าของ →
+          // journal_lines → journal_entries — สลับลำดับ = abort ทั้ง tx บน DB จริง
+          if (jeIds.length) {
+            await tx.journalPostAuditLog.deleteMany({
+              where: { journalEntryId: { in: jeIds } },
+            });
+            await tx.externalFinanceCommission.updateMany({
+              where: { id: { in: commissions.map((c) => c.id) } },
+              data: { journalEntryId: null },
+            });
+            await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+            await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+          }
+          await tx.externalFinanceCommission.updateMany({
+            where: { id: { in: commissions.map((c) => c.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+        if (liveCompanies.length) {
+          await tx.externalFinanceCompany.updateMany({
+            where: { id: { in: liveCompanies.map((c) => c.id) } },
+            data: { deletedAt: new Date() },
+          });
+        }
+      });
     }
     return {
-      removed: { 'บริษัทไฟแนนซ์ภายนอก': rows.length },
-      warnings: rows.length ? ['ตาราง external_finance_companies อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างจะรอดข้ามไปปนทะเบียนจริง'] : [],
+      removed: {
+        บริษัทไฟแนนซ์ภายนอก: liveCompanies.length,
+        'ค่าคอมไฟแนนซ์ภายนอก (ไม่มี marker — ตามจาก FK บริษัท)': commissions.length,
+        'รายการบัญชีของค่าคอมไฟแนนซ์ (ลบถาวร)': jeIds.length,
+      },
+      warnings: liveCompanies.length
+        ? [
+            'ตาราง external_finance_companies อยู่ใน KEEP_TABLES ของ factory reset — ถ้าไม่ล้างตอนนี้จะรอดข้าม factory reset ไปปนทะเบียนจริงตอนใช้งานจริง',
+          ]
+        : [],
     };
   },
 };
@@ -4048,35 +4157,93 @@ export const savingPlansSeeder: DomainSeeder = {
 
 - [ ] **Step 4: เขียน `trade-in.seed.ts`**
 
+> **ทำไมต้องมีคำเตือน BUYBACK (fix round 1, 2026-08-26):** แถว seed ใช้ flow EXCHANGE โดยเจตนา — `accept()` ของ BUYBACK โพสต์ JE `shop-trade-in:<id>` ที่ไม่มี marker/metadata ให้ cleanup กวาดถึง ⇒ ประกาศไว้ใน seed notes + markerDoc และเตือนรายแถวใน cleanup แทนการเพิ่ม sweep (ห้ามเปลี่ยน flow ที่ seed และห้ามเดา metadata sweep)
+
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /**
  * R2 — หยุดที่ APPRAISED
- * ACCEPTED โพสต์ JE รับซื้อผ่าน trade-in-lifecycle.service.ts ⇒ ให้ผู้ทดสอบกดรับซื้อเอง
+ * ACCEPTED สร้าง Product เข้าสต็อก (+ JE รับซื้อถ้าเป็น BUYBACK) ผ่าน
+ * trade-in-lifecycle.service.ts ⇒ ให้ผู้ทดสอบกดรับซื้อเองผ่านหน้าจอ
+ *
+ * flow ปล่อยเป็น default (EXCHANGE) โดยเจตนา: accept() ของ EXCHANGE **ไม่โพสต์ JE**
+ * (JE รับซื้อโพสต์เฉพาะ BUYBACK — trade-in-lifecycle.service.ts) ⇒ ผู้ทดสอบกดรับซื้อ
+ * ระหว่างเทสได้โดย cleanup ไม่ทิ้ง JE ค้างในสมุด — JE `shop-trade-in:<id>` ไม่มี marker
+ * และไม่มี saleId/contractId ใน metadata จึงไม่มีเส้นทางกวาดใดมองเห็นมัน
+ *
+ * เครื่องที่ accept สร้าง (Product) ได้ marker ผ่าน imeiSerial = imei ของรายการนี้
+ * ("TEST-TRADEIN-…") ⇒ ถูกกวาดโดยโดเมน contracts (Product.imeiSerial LIKE 'TEST-%')
  */
-const ROWS: Array<{ key: string; status: 'PENDING_APPRAISAL' | 'APPRAISED'; brand: string; model: string; estimated: number; offered: number | null }> = [
-  { key: 'pending', status: 'PENDING_APPRAISAL', brand: 'ทดสอบระบบ', model: 'รุ่นเทิร์น A', estimated: 4500, offered: null },
-  { key: 'appraised', status: 'APPRAISED', brand: 'ทดสอบระบบ', model: 'รุ่นเทิร์น B', estimated: 7200, offered: 6800 },
+const ROWS: Array<{
+  key: string;
+  status: 'PENDING_APPRAISAL' | 'APPRAISED';
+  brand: string;
+  model: string;
+  estimated: number;
+  offered: number | null;
+}> = [
+  {
+    key: 'pending',
+    status: 'PENDING_APPRAISAL',
+    brand: 'ทดสอบระบบ',
+    model: 'รุ่นเทิร์น A',
+    estimated: 4500,
+    offered: null,
+  },
+  {
+    key: 'appraised',
+    status: 'APPRAISED',
+    brand: 'ทดสอบระบบ',
+    model: 'รุ่นเทิร์น B',
+    estimated: 7200,
+    offered: 6800,
+  },
 ];
 
 export const tradeInSeeder: DomainSeeder = {
   key: 'trade-in',
   label: 'รับซื้อเครื่องมือสอง',
   routes: ['/trade-in'],
-  markerDoc: `TradeIn.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
+  markerDoc:
+    `TradeIn.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (เครื่องที่เกิดจากการกดรับซื้อระหว่างเทสได้ ` +
+    `imeiSerial "TEST-" — กวาดโดยโดเมน contracts) · แถว seed เป็น flow EXCHANGE โดยเจตนา: ` +
+    `การกดรับซื้อ flow BUYBACK โพสต์ JE "shop-trade-in:<id>" ที่ไม่มี marker/metadata ให้ cleanup ` +
+    `กวาดถึง — รายการทดสอบที่เป็น BUYBACK ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup`,
 
   async plan(): Promise<PlanRow[]> {
-    return ROWS.map((r) => ({ label: `เทิร์น ${r.key}`, detail: `${r.status} · ${r.model} · ประเมิน ฿${r.estimated.toLocaleString('th-TH')}${r.offered ? ` · เสนอ ฿${r.offered.toLocaleString('th-TH')}` : ''}` }));
+    return ROWS.map((r) => ({
+      label: `เทิร์น ${r.key}`,
+      detail: `${r.status} · ${r.model} · ประเมิน ฿${r.estimated.toLocaleString('th-TH')}${
+        r.offered ? ` · เสนอ ฿${r.offered.toLocaleString('th-TH')}` : ''
+      }`,
+    }));
   },
 
   async seed(ctx: SeedContext): Promise<SeedStat> {
     const stat: SeedStat = { created: 0, skipped: 0, notes: [] };
-    const customer = await ctx.prisma.customer.findFirst({ where: { name: { startsWith: 'ทดสอบระบบ ลูกค้าใหม่' }, deletedAt: null }, select: { id: true } });
+    const customer = await ctx.prisma.customer.findFirst({
+      where: { name: { startsWith: 'ทดสอบระบบ ลูกค้าใหม่' }, deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!customer) {
+      // customerId เป็น optional บน TradeIn (ผู้ขาย walk-in) — สร้างต่อได้ ไม่ต้องข้ามโดเมน
+      stat.notes.push(
+        'ไม่มีลูกค้าทดสอบ — สร้างเป็นรายการ walk-in ไม่ผูกลูกค้า (รันโดเมน contracts ก่อนถ้าต้องการผูก)',
+      );
+    }
     for (const r of ROWS) {
       const notes = testNote(`รับซื้อมือสอง/${r.key}`);
-      const exists = await ctx.prisma.tradeIn.findFirst({ where: { notes, deletedAt: null }, select: { id: true } });
+      // probe ด้วย notes marker รายแถว — ไม่มีคอลัมน์ unique ที่ seeder แตะ (voucherNumber
+      // ว่าง, imei ไม่ unique บน trade_ins) ⇒ สร้างใหม่หลัง cleanup ได้ตรง ๆ ไม่ต้องมีขากู้คืน
+      const exists = await ctx.prisma.tradeIn.findFirst({
+        where: { notes, deletedAt: null },
+        select: { id: true },
+      });
       if (exists) {
         stat.skipped += 1;
         continue;
@@ -4090,10 +4257,20 @@ export const tradeInSeeder: DomainSeeder = {
           deviceStorage: '128GB',
           deviceCondition: 'B',
           imei: `TEST-TRADEIN-${r.key}`,
-          estimatedValue: r.estimated,
-          offeredPrice: r.offered,
+          // เงินเป็น Prisma.Decimal เสมอ — Global Constraint
+          estimatedValue: new Prisma.Decimal(r.estimated),
+          offeredPrice: r.offered !== null ? new Prisma.Decimal(r.offered) : null,
           status: r.status,
-          appraisedById: r.status === 'APPRAISED' ? ctx.refs.reviewerId : null,
+          // สถานะต้องเล่าเรื่องเดียวกับที่ appraise() ของจริงเขียน (T5-C17):
+          // ผู้ตีราคา + ล็อกราคา + เวลาตีครั้งแรก · basePriceAtAppraisal ปล่อย null
+          // (แบรนด์ทดสอบไม่มีแถวในตารางราคากลาง — ตรงกับ path "ไม่พบ valuation" ของจริง)
+          ...(r.status === 'APPRAISED'
+            ? {
+                appraisedById: ctx.refs.reviewerId,
+                appraisalLocked: true,
+                firstAppraisedAt: ctx.today,
+              }
+            : {}),
           sellerName: 'ทดสอบระบบ ผู้ขายมือสอง',
           sellerPhone: '0895550001',
           notes,
@@ -4101,18 +4278,59 @@ export const tradeInSeeder: DomainSeeder = {
       });
       stat.created += 1;
     }
+    stat.notes.push(
+      'แถวทดสอบใช้ flow EXCHANGE โดยเจตนา — การกดรับซื้อ flow BUYBACK โพสต์ JE "shop-trade-in:<id>" ' +
+        'ที่ cleanup กวาดไม่ถึง (ไม่มี marker/metadata) ห้ามสลับแถวทดสอบเป็น BUYBACK',
+    );
     return stat;
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.tradeIn.findMany({
       where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        status: true,
+        imei: true,
+        deviceModel: true,
+        productId: true,
+        flow: true,
+      },
     });
-    if (!dryRun && rows.length) {
-      await ctx.prisma.tradeIn.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+    // identity ให้คนตรวจก่อน/หลังลบ — พิมพ์ทั้ง dry-run และโหมดจริง
+    for (const r of rows) {
+      console.log(
+        `     ${r.imei ?? '(ไม่มี IMEI)'} · ${r.deviceModel} · ${r.status}${
+          r.productId ? ' (รับซื้อแล้ว — มีเครื่องเข้าสต็อก)' : ''
+        }`,
+      );
     }
-    return { removed: { 'รายการรับซื้อมือสอง': rows.length }, warnings: [] };
+    const accepted = rows.filter((r) => r.productId);
+    // flow BUYBACK ตอนรับซื้อโพสต์ JE "shop-trade-in:<id>" โดยไม่มี marker/metadata ให้กวาด
+    // (trade-in-lifecycle.service.ts) — pack กวาดไม่ถึงโดยเจตนา จึงเตือนรายแถวแทน
+    const buybacks = rows.filter((r) => r.flow === 'BUYBACK');
+    if (!dryRun && rows.length) {
+      await ctx.prisma.tradeIn.updateMany({
+        where: { id: { in: rows.map((r) => r.id) } },
+        data: { deletedAt: new Date() },
+      });
+    }
+    return {
+      removed: { รายการรับซื้อมือสอง: rows.length },
+      warnings: [
+        ...(accepted.length
+          ? [
+              `รายการที่รับซื้อแล้ว ${accepted.length} รายการมีเครื่องเข้าสต็อก (IMEI TEST-) — เครื่องถูกกวาดโดยโดเมน contracts; ถ้ารัน cleanup เฉพาะโดเมน trade-in เครื่องจะยังค้างในสต็อก`,
+            ]
+          : []),
+        ...buybacks.map((r) => {
+          const name = `${r.imei ?? '(ไม่มี IMEI)'} · ${r.deviceModel}`;
+          return r.productId
+            ? `รายการเทิร์น ${name} เป็น flow BUYBACK และรับซื้อไปแล้ว — JE "shop-trade-in:<id>" ค้างในสมุดโดย pack กวาดไม่ถึง ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup จริง`
+            : `รายการเทิร์น ${name} เป็น flow BUYBACK — ถ้ากดรับซื้อจะโพสต์ JE "shop-trade-in:<id>" ที่ pack กวาดไม่ถึง ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup จริง`;
+        }),
+      ],
+    };
   },
 };
 ```

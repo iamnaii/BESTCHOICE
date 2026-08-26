@@ -1,12 +1,25 @@
+import { Prisma } from '@prisma/client';
+
 import type { PrismaService } from '../../prisma/prisma.service';
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+/** ปัดเงิน 2 ตำแหน่ง half-up ใน Decimal — Global Constraint: ห้ามใช้ float กับจำนวนเงิน */
+const round2 = (n: Prisma.Decimal): Prisma.Decimal =>
+  n.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
-/** คำนวณยอดต่อบรรทัด — ราคาต่อหน่วยเป็นราคาก่อน VAT เสมอ (EXCLUSIVE) */
-export function sumLine(unitPrice: number, qty: number, vatPct: number) {
-  const amountBeforeVat = round2(unitPrice * qty);
-  const vatAmount = round2((amountBeforeVat * vatPct) / 100);
-  return { amountBeforeVat, vatAmount, total: round2(amountBeforeVat + vatAmount) };
+/**
+ * คำนวณยอดต่อบรรทัด — ราคาต่อหน่วยเป็นราคาก่อน VAT เสมอ (EXCLUSIVE)
+ * รับ number literal จากตาราง ROWS ได้ แต่คูณ/ปัด/บวกใน Prisma.Decimal ทั้งหมด
+ * และคืน Prisma.Decimal — ส่งเข้า create() ของคอลัมน์ Decimal ได้ตรง ๆ
+ * (แสดงผลค่อย .toNumber() ที่จุด format เท่านั้น ห้ามเอาไปคำนวณต่อแบบ float)
+ */
+export function sumLine(
+  unitPrice: number,
+  qty: number,
+  vatPct: number,
+): { amountBeforeVat: Prisma.Decimal; vatAmount: Prisma.Decimal; total: Prisma.Decimal } {
+  const amountBeforeVat = round2(new Prisma.Decimal(unitPrice).mul(qty));
+  const vatAmount = round2(amountBeforeVat.mul(vatPct).div(100));
+  return { amountBeforeVat, vatAmount, total: round2(amountBeforeVat.plus(vatAmount)) };
 }
 
 /**

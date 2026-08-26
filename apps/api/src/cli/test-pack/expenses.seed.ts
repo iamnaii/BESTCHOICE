@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import { nextDocNumber, sumLine } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
@@ -84,7 +86,7 @@ export const expensesSeeder: DomainSeeder = {
       const s = sumLine(r.unitPrice, r.qty, r.vatPct);
       return {
         label: `EX ${r.key}`,
-        detail: `${r.status} · ${r.desc} · ยอดรวม ฿${s.total.toLocaleString('th-TH')}`,
+        detail: `${r.status} · ${r.desc} · ยอดรวม ฿${s.total.toNumber().toLocaleString('th-TH')}`,
       };
     });
   },
@@ -102,7 +104,10 @@ export const expensesSeeder: DomainSeeder = {
         continue;
       }
       const s = sumLine(r.unitPrice, r.qty, r.vatPct);
-      const whtAmount = Math.round(s.amountBeforeVat * r.whtPct) / 100;
+      const whtAmount = s.amountBeforeVat
+        .mul(r.whtPct)
+        .div(100)
+        .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
       const number = await nextDocNumber(ctx.prisma, 'EX', ctx.dateStr);
       await ctx.prisma.expenseDocument.create({
         data: {
@@ -117,7 +122,7 @@ export const expensesSeeder: DomainSeeder = {
           withholdingTax: whtAmount,
           whtFormType: r.whtPct > 0 ? 'PND3' : null,
           totalAmount: s.total,
-          netPayment: Math.round((s.total - whtAmount) * 100) / 100,
+          netPayment: s.total.minus(whtAmount),
           status: r.status,
           note,
           createdById: ctx.refs.reviewerId,

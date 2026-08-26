@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { nextNumberFrom, sumLine } from './_helpers';
 
 describe('nextNumberFrom', () => {
@@ -19,19 +21,27 @@ describe('nextNumberFrom', () => {
 });
 
 describe('sumLine', () => {
-  it('คิดยอดก่อน VAT และ VAT แยกกัน ปัด 2 ตำแหน่ง', () => {
-    expect(sumLine(1000, 3, 7)).toEqual({ amountBeforeVat: 3000, vatAmount: 210, total: 3210 });
+  it('คิดยอดก่อน VAT และ VAT แยกกัน ปัด 2 ตำแหน่ง — คืนค่าเป็น Prisma.Decimal', () => {
+    const s = sumLine(1000, 3, 7);
+    expect(s.amountBeforeVat).toBeInstanceOf(Prisma.Decimal);
+    expect(s.vatAmount).toBeInstanceOf(Prisma.Decimal);
+    expect(s.total).toBeInstanceOf(Prisma.Decimal);
+    expect(s.amountBeforeVat.toFixed(2)).toBe('3000.00');
+    expect(s.vatAmount.toFixed(2)).toBe('210.00');
+    expect(s.total.toFixed(2)).toBe('3210.00');
   });
 
   it('VAT 0 = ไม่มีภาษี (ฝั่ง SHOP ไม่จด VAT)', () => {
-    expect(sumLine(1500, 2, 0)).toEqual({ amountBeforeVat: 3000, vatAmount: 0, total: 3000 });
+    const s = sumLine(1500, 2, 0);
+    expect(s.amountBeforeVat.toFixed(2)).toBe('3000.00');
+    expect(s.vatAmount.toFixed(2)).toBe('0.00');
+    expect(s.total.toFixed(2)).toBe('3000.00');
   });
 
-  it('ปัดเศษ VAT แบบ 2 ตำแหน่ง ไม่ปล่อยทศนิยมลอย', () => {
-    expect(sumLine(333.33, 1, 7)).toEqual({
-      amountBeforeVat: 333.33,
-      vatAmount: 23.33,
-      total: 356.66,
-    });
+  it('ปัดเศษ VAT แบบ 2 ตำแหน่ง ไม่ปล่อยทศนิยมลอย (333.33 × 7% → 23.33)', () => {
+    const s = sumLine(333.33, 1, 7);
+    expect(s.amountBeforeVat.toFixed(2)).toBe('333.33');
+    expect(s.vatAmount.toFixed(2)).toBe('23.33');
+    expect(s.total.toFixed(2)).toBe('356.66');
   });
 });

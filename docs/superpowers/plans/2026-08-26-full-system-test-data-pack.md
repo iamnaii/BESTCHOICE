@@ -908,7 +908,7 @@ git commit -m "feat(test-pack): ห่อ seed/cleanup-test-contracts เดิ�
 
 **Interfaces:**
 - Consumes: `SeedContext` · `DomainSeeder` (Task 1) · `testNote` · `TEST_NOTE_MARKER` (Task 1)
-- Produces: `nextDocNumber(prisma, prefixLetters, dateStr, width?): Promise<string>` · `sumLine(unitPrice: number, qty: number, vatPct: number): { amountBeforeVat: number; vatAmount: number; total: number }` (จาก `_helpers.ts`) · `expensesSeeder: DomainSeeder` · `payrollSeeder: DomainSeeder`
+- Produces: `nextDocNumber(prisma, prefixLetters, dateStr, width?): Promise<string>` · `sumLine(unitPrice: number, qty: number, vatPct: number): { amountBeforeVat: Prisma.Decimal; vatAmount: Prisma.Decimal; total: Prisma.Decimal }` (จาก `_helpers.ts` — รับ number literal จากตาราง ROWS แต่คำนวณ/คืนค่าเป็น `Prisma.Decimal` ตาม Global Constraint ห้าม float กับจำนวนเงิน; แสดงผลค่อย `.toNumber()` ที่จุด format) · `expensesSeeder: DomainSeeder` · `payrollSeeder: DomainSeeder`
 
 **เลขเอกสาร — ทำไมถึง mirror ไม่ใช่เรียก service:** `DocNumberService.next()` ต้องการ DI ของ `SettingsService`
 ซึ่งจะลาก Nest เข้ามาในเฟส 2 ที่ตั้งใจให้เขียน Prisma ตรง ๆ `nextDocNumber` จึงคัดเฉพาะแกนของมัน
@@ -919,6 +919,8 @@ git commit -m "feat(test-pack): ห่อ seed/cleanup-test-contracts เดิ�
 - [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_helpers.spec.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { nextNumberFrom, sumLine } from './_helpers';
 
 describe('nextNumberFrom', () => {
@@ -940,16 +942,28 @@ describe('nextNumberFrom', () => {
 });
 
 describe('sumLine', () => {
-  it('คิดยอดก่อน VAT และ VAT แยกกัน ปัด 2 ตำแหน่ง', () => {
-    expect(sumLine(1000, 3, 7)).toEqual({ amountBeforeVat: 3000, vatAmount: 210, total: 3210 });
+  it('คิดยอดก่อน VAT และ VAT แยกกัน ปัด 2 ตำแหน่ง — คืนค่าเป็น Prisma.Decimal', () => {
+    const s = sumLine(1000, 3, 7);
+    expect(s.amountBeforeVat).toBeInstanceOf(Prisma.Decimal);
+    expect(s.vatAmount).toBeInstanceOf(Prisma.Decimal);
+    expect(s.total).toBeInstanceOf(Prisma.Decimal);
+    expect(s.amountBeforeVat.toFixed(2)).toBe('3000.00');
+    expect(s.vatAmount.toFixed(2)).toBe('210.00');
+    expect(s.total.toFixed(2)).toBe('3210.00');
   });
 
   it('VAT 0 = ไม่มีภาษี (ฝั่ง SHOP ไม่จด VAT)', () => {
-    expect(sumLine(1500, 2, 0)).toEqual({ amountBeforeVat: 3000, vatAmount: 0, total: 3000 });
+    const s = sumLine(1500, 2, 0);
+    expect(s.amountBeforeVat.toFixed(2)).toBe('3000.00');
+    expect(s.vatAmount.toFixed(2)).toBe('0.00');
+    expect(s.total.toFixed(2)).toBe('3000.00');
   });
 
-  it('ปัดเศษ VAT แบบ 2 ตำแหน่ง ไม่ปล่อยทศนิยมลอย', () => {
-    expect(sumLine(333.33, 1, 7)).toEqual({ amountBeforeVat: 333.33, vatAmount: 23.33, total: 356.66 });
+  it('ปัดเศษ VAT แบบ 2 ตำแหน่ง ไม่ปล่อยทศนิยมลอย (333.33 × 7% → 23.33)', () => {
+    const s = sumLine(333.33, 1, 7);
+    expect(s.amountBeforeVat.toFixed(2)).toBe('333.33');
+    expect(s.vatAmount.toFixed(2)).toBe('23.33');
+    expect(s.total.toFixed(2)).toBe('356.66');
   });
 });
 ```
@@ -962,15 +976,28 @@ Expected: FAIL — `Cannot find module './_helpers'`
 - [ ] **Step 3: เขียน `_helpers.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import type { PrismaService } from '../../prisma/prisma.service';
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+/** ปัดเงิน 2 ตำแหน่ง half-up ใน Decimal — Global Constraint: ห้ามใช้ float กับจำนวนเงิน */
+const round2 = (n: Prisma.Decimal): Prisma.Decimal =>
+  n.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
-/** คำนวณยอดต่อบรรทัด — ราคาต่อหน่วยเป็นราคาก่อน VAT เสมอ (EXCLUSIVE) */
-export function sumLine(unitPrice: number, qty: number, vatPct: number) {
-  const amountBeforeVat = round2(unitPrice * qty);
-  const vatAmount = round2((amountBeforeVat * vatPct) / 100);
-  return { amountBeforeVat, vatAmount, total: round2(amountBeforeVat + vatAmount) };
+/**
+ * คำนวณยอดต่อบรรทัด — ราคาต่อหน่วยเป็นราคาก่อน VAT เสมอ (EXCLUSIVE)
+ * รับ number literal จากตาราง ROWS ได้ แต่คูณ/ปัด/บวกใน Prisma.Decimal ทั้งหมด
+ * และคืน Prisma.Decimal — ส่งเข้า create() ของคอลัมน์ Decimal ได้ตรง ๆ
+ * (แสดงผลค่อย .toNumber() ที่จุด format เท่านั้น ห้ามเอาไปคำนวณต่อแบบ float)
+ */
+export function sumLine(
+  unitPrice: number,
+  qty: number,
+  vatPct: number,
+): { amountBeforeVat: Prisma.Decimal; vatAmount: Prisma.Decimal; total: Prisma.Decimal } {
+  const amountBeforeVat = round2(new Prisma.Decimal(unitPrice).mul(qty));
+  const vatAmount = round2(amountBeforeVat.mul(vatPct).div(100));
+  return { amountBeforeVat, vatAmount, total: round2(amountBeforeVat.plus(vatAmount)) };
 }
 
 /**
@@ -1011,6 +1038,8 @@ Expected: PASS — 7 เทส (nextNumberFrom 4 + sumLine 3)
 - [ ] **Step 5: เขียน `expenses.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import { nextDocNumber, sumLine } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
@@ -1047,7 +1076,7 @@ export const expensesSeeder: DomainSeeder = {
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => {
       const s = sumLine(r.unitPrice, r.qty, r.vatPct);
-      return { label: `EX ${r.key}`, detail: `${r.status} · ${r.desc} · ยอดรวม ฿${s.total.toLocaleString('th-TH')}` };
+      return { label: `EX ${r.key}`, detail: `${r.status} · ${r.desc} · ยอดรวม ฿${s.total.toNumber().toLocaleString('th-TH')}` };
     });
   },
 
@@ -1061,7 +1090,10 @@ export const expensesSeeder: DomainSeeder = {
         continue;
       }
       const s = sumLine(r.unitPrice, r.qty, r.vatPct);
-      const whtAmount = Math.round(s.amountBeforeVat * r.whtPct) / 100;
+      const whtAmount = s.amountBeforeVat
+        .mul(r.whtPct)
+        .div(100)
+        .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
       const number = await nextDocNumber(ctx.prisma, 'EX', ctx.dateStr);
       await ctx.prisma.expenseDocument.create({
         data: {
@@ -1076,7 +1108,7 @@ export const expensesSeeder: DomainSeeder = {
           withholdingTax: whtAmount,
           whtFormType: r.whtPct > 0 ? 'PND3' : null,
           totalAmount: s.total,
-          netPayment: Math.round((s.total - whtAmount) * 100) / 100,
+          netPayment: s.total.minus(whtAmount),
           status: r.status,
           note,
           createdById: ctx.refs.reviewerId,
@@ -1136,6 +1168,8 @@ export const expensesSeeder: DomainSeeder = {
 - [ ] **Step 6: เขียน `payroll.seed.ts`**
 
 ```ts
+import { Prisma } from '@prisma/client';
+
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import { nextDocNumber } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
@@ -1174,7 +1208,7 @@ export const payrollSeeder: DomainSeeder = {
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     return SCOPES.map((s) => ({
       label: `PR ${s.scope}`,
-      detail: `DRAFT · ${s.label} ${s.lines.length} คน · งวด ${periodOf(ctx.today)} · รวม ฿${s.lines.reduce((a, l) => a + l.base, 0).toLocaleString('th-TH')}`,
+      detail: `DRAFT · ${s.label} ${s.lines.length} คน · งวด ${periodOf(ctx.today)} · รวม ฿${s.lines.reduce((a, l) => a.plus(l.base), new Prisma.Decimal(0)).toNumber().toLocaleString('th-TH')}`,
     }));
   },
 
@@ -1188,9 +1222,9 @@ export const payrollSeeder: DomainSeeder = {
         stat.skipped += 1;
         continue;
       }
-      const gross = s.lines.reduce((a, l) => a + l.base, 0);
-      const totalSso = s.lines.reduce((a, l) => a + l.sso, 0);
-      const totalWht = s.lines.reduce((a, l) => a + l.wht, 0);
+      const gross = s.lines.reduce((a, l) => a.plus(l.base), new Prisma.Decimal(0));
+      const totalSso = s.lines.reduce((a, l) => a.plus(l.sso), new Prisma.Decimal(0));
+      const totalWht = s.lines.reduce((a, l) => a.plus(l.wht), new Prisma.Decimal(0));
       const number = await nextDocNumber(ctx.prisma, 'PR', ctx.dateStr);
       await ctx.prisma.expenseDocument.create({
         data: {
@@ -1203,7 +1237,7 @@ export const payrollSeeder: DomainSeeder = {
           vatAmount: 0,
           withholdingTax: totalWht,
           totalAmount: gross,
-          netPayment: gross - totalSso - totalWht,
+          netPayment: gross.minus(totalSso).minus(totalWht),
           status: 'DRAFT',
           note,
           createdById: ctx.refs.reviewerId,
@@ -1217,7 +1251,7 @@ export const payrollSeeder: DomainSeeder = {
                   baseSalary: l.base,
                   ssoEmployee: l.sso,
                   whtAmount: l.wht,
-                  netPaid: l.base - l.sso - l.wht,
+                  netPaid: new Prisma.Decimal(l.base).minus(l.sso).minus(l.wht),
                 })),
               },
             },

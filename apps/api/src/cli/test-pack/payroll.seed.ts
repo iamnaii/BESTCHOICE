@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import { nextDocNumber } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
@@ -42,7 +44,8 @@ export const payrollSeeder: DomainSeeder = {
     return SCOPES.map((s) => ({
       label: `PR ${s.scope}`,
       detail: `DRAFT · ${s.label} ${s.lines.length} คน · งวด ${periodOf(ctx.today)} · รวม ฿${s.lines
-        .reduce((a, l) => a + l.base, 0)
+        .reduce((a, l) => a.plus(l.base), new Prisma.Decimal(0))
+        .toNumber()
         .toLocaleString('th-TH')}`,
     }));
   },
@@ -60,9 +63,9 @@ export const payrollSeeder: DomainSeeder = {
         stat.skipped += 1;
         continue;
       }
-      const gross = s.lines.reduce((a, l) => a + l.base, 0);
-      const totalSso = s.lines.reduce((a, l) => a + l.sso, 0);
-      const totalWht = s.lines.reduce((a, l) => a + l.wht, 0);
+      const gross = s.lines.reduce((a, l) => a.plus(l.base), new Prisma.Decimal(0));
+      const totalSso = s.lines.reduce((a, l) => a.plus(l.sso), new Prisma.Decimal(0));
+      const totalWht = s.lines.reduce((a, l) => a.plus(l.wht), new Prisma.Decimal(0));
       const number = await nextDocNumber(ctx.prisma, 'PR', ctx.dateStr);
       await ctx.prisma.expenseDocument.create({
         data: {
@@ -75,7 +78,7 @@ export const payrollSeeder: DomainSeeder = {
           vatAmount: 0,
           withholdingTax: totalWht,
           totalAmount: gross,
-          netPayment: gross - totalSso - totalWht,
+          netPayment: gross.minus(totalSso).minus(totalWht),
           status: 'DRAFT',
           note,
           createdById: ctx.refs.reviewerId,
@@ -89,7 +92,7 @@ export const payrollSeeder: DomainSeeder = {
                   baseSalary: l.base,
                   ssoEmployee: l.sso,
                   whtAmount: l.wht,
-                  netPaid: l.base - l.sso - l.wht,
+                  netPaid: new Prisma.Decimal(l.base).minus(l.sso).minus(l.wht),
                 })),
               },
             },

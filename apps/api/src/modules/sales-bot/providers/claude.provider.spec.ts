@@ -143,15 +143,37 @@ describe('ClaudeProvider', () => {
       {
         type: 'text',
         text: 'persona',
-        cache_control: { type: 'ephemeral' },
+        cache_control: { type: 'ephemeral', ttl: '1h' },
       },
     ]);
     // เฉพาะ tool ตัวสุดท้ายถูกปัก cache_control
     expect(call.tools[0].cache_control).toBeUndefined();
-    expect(call.tools[1].cache_control).toEqual({ type: 'ephemeral' });
+    expect(call.tools[1].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
   });
 
-  it('inputTokens = billing-equivalent (cache read ×0.1, cache write ×1.25) — cost ตรงบิลจริง', async () => {
+  it('inputTokens = billing-equivalent per-TTL (read ×0.1, write 5m ×1.25, write 1h ×2)', async () => {
+    createMock.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: {
+        input_tokens: 300,
+        output_tokens: 20,
+        cache_read_input_tokens: 9000,
+        cache_creation_input_tokens: 500,
+        cache_creation: {
+          ephemeral_5m_input_tokens: 100,
+          ephemeral_1h_input_tokens: 400,
+        },
+      },
+    });
+    const resp = await provider.chat({
+      systemPrompt: 'persona',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    // 300 + 9000×0.1 + 100×1.25 + 400×2 = 300 + 900 + 125 + 800 = 2125
+    expect(resp.inputTokens).toBe(2125);
+  });
+
+  it('ไม่มี cache_creation breakdown → ถือว่า write ทั้งก้อนเป็น 1h (×2 — ประเมินแพงไว้ก่อน)', async () => {
     createMock.mockResolvedValue({
       content: [{ type: 'text', text: 'ok' }],
       usage: {
@@ -165,9 +187,8 @@ describe('ClaudeProvider', () => {
       systemPrompt: 'persona',
       messages: [{ role: 'user', content: 'hi' }],
     });
-    // 300 + 9000×0.1 + 500×1.25 = 300 + 900 + 625 = 1825
-    // (เดิมรวมดิบ 9800 → costUsd โชว์แพงเกินจริง ~5 เท่าเพราะ cache read จ่ายแค่ 0.1×)
-    expect(resp.inputTokens).toBe(1825);
+    // 300 + 9000×0.1 + 500×2 = 2200
+    expect(resp.inputTokens).toBe(2200);
   });
 
   it('parses tool_use blocks → LlmToolCall[]', async () => {

@@ -9,7 +9,8 @@ describe('SalesStateService', () => {
         update: jest.fn().mockResolvedValue({}),
       },
     };
-    const svc = new SalesStateService(prisma as any);
+    const aiUsage = { record: jest.fn().mockResolvedValue(undefined) };
+    const svc = new SalesStateService(prisma as any, aiUsage as any);
     const create = jest.fn();
     // ยัด client ปลอมแทน lazy `new Anthropic()` — spec ห้ามยิง API จริง
     (svc as any)._client = { messages: { create } };
@@ -92,6 +93,7 @@ describe('SalesStateService', () => {
             text: 'นี่คือสถานะ:\n{"interestModel":"iPhone 15 Plus 128GB","downBudget":3000}',
           },
         ],
+        usage: { input_tokens: 1, output_tokens: 1 },
       });
       await svc.extractAndSave('r1', { interestModel: 'iPhone 15 Plus' }, 'งบ 3000', 'รับทราบค่ะ');
       expect(prisma.chatRoom.update).toHaveBeenCalledTimes(1);
@@ -107,7 +109,7 @@ describe('SalesStateService', () => {
 
     it('Haiku ไม่คืน JSON → ไม่บันทึกอะไร ไม่ throw', async () => {
       const { svc, prisma, create } = build();
-      create.mockResolvedValue({ content: [{ type: 'text', text: 'ขอโทษค่ะ ตอบไม่ได้' }] });
+      create.mockResolvedValue({ content: [{ type: 'text', text: 'ขอโทษค่ะ ตอบไม่ได้' }], usage: { input_tokens: 1, output_tokens: 1 } });
       await expect(svc.extractAndSave('r1', null, 'x', 'y')).resolves.toBeUndefined();
       expect(prisma.chatRoom.update).not.toHaveBeenCalled();
     });

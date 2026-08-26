@@ -51,15 +51,20 @@ export class ClaudeProvider implements ILlmProvider {
   async chat(req: LlmChatRequest): Promise<LlmChatResponse> {
     const { model, effort } = await this.resolveModelAndEffort();
 
-    // Prompt caching: tools + system prompt เป็น prefix คงที่ (~9k tokens) ที่ทุกห้อง
+    // Prompt caching: tools + system prompt เป็น prefix คงที่ (~41k tokens) ที่ทุกห้อง
     // ทุกข้อความ และทุกยกของ tool loop ใช้ร่วมกัน — ปัก cache_control ที่ tool ตัวสุดท้าย
     // กับ system block เพื่อให้ Anthropic cache ทั้ง prefix (cache read = 0.1x ราคา input)
+    //
+    // ttl 1h (write = 2x แทน 1.25x ของ 5m): จากข้อมูลจริง 7 วัน (139 calls) ~40% ของ
+    // turn มาหลัง cache 5m หมดอายุ → จ่าย cache write ซ้ำเต็มๆ (52% ของต้นทุนทั้งหมด)
+    // ช่องว่างข้อความลูกค้าส่วนใหญ่อยู่ที่ 5-60 นาที — ttl 1h ครอบช่วงนี้พอดี:
+    // จ่าย write แพงขึ้น 60% แต่แลกกับ read 0.1x แทน write 1.25x ในทุก turn ที่ตามมา
     const tools: Anthropic.Tool[] | undefined = req.tools?.map((t, i, arr) => ({
       name: t.name,
       description: t.description,
       input_schema: t.inputSchema as Anthropic.Tool['input_schema'],
       ...(i === arr.length - 1
-        ? { cache_control: { type: 'ephemeral' as const } }
+        ? { cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } }
         : {}),
     }));
 
@@ -72,7 +77,7 @@ export class ClaudeProvider implements ILlmProvider {
         {
           type: 'text' as const,
           text: req.systemPrompt,
-          cache_control: { type: 'ephemeral' as const },
+          cache_control: { type: 'ephemeral' as const, ttl: '1h' as const },
         },
       ],
       ...(tools ? { tools } : {}),
@@ -102,18 +107,24 @@ export class ClaudeProvider implements ILlmProvider {
     }
 
     // inputTokens = "billing-equivalent tokens": cache read จ่ายจริง 0.1×, cache write
-    // 1.25× ของราคา input ปกติ — ถ่วงน้ำหนักก่อนส่งให้ computeCostUsd (ซึ่งคิดเรทเดียว)
-    // เพื่อให้ costUsd ใน dashboard/AiBudgetCron ตรงบิล Anthropic จริง
+    // คิดตาม ttl จริง (5m = 1.25×, 1h = 2×) — ถ่วงน้ำหนักก่อนส่งให้ computeCostUsd
+    // (ซึ่งคิดเรทเดียว) เพื่อให้ costUsd ใน dashboard/AiBudgetCron ตรงบิล Anthropic จริง
     // (เดิมรวมดิบทั้งก้อน → โชว์แพงเกิน ~5-7 เท่า + budget alarm เด้งก่อนเวลา)
     // volume ดิบยังดูได้จาก log บรรทัดล่างนี้
     const usage = resp.usage;
     const cacheRead = usage.cache_read_input_tokens ?? 0;
     const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+    // usage.cache_creation แยก write ตาม ttl; ถ้า API ไม่ส่ง breakdown มา (null)
+    // ให้ถือว่าก้อนรวมทั้งหมดเป็น 1h (เราขอ ttl 1h ทุกจุด — ประเมินแพงไว้ก่อน ไม่ประเมินถูก)
+    const write5m = usage.cache_creation?.ephemeral_5m_input_tokens ?? 0;
+    const write1h =
+      usage.cache_creation?.ephemeral_1h_input_tokens ??
+      (usage.cache_creation ? 0 : cacheWrite);
     this.logger.log(
-      `[TokenUsage] in=${usage.input_tokens} cacheRead=${cacheRead} cacheWrite=${cacheWrite} out=${usage.output_tokens}`,
+      `[TokenUsage] in=${usage.input_tokens} cacheRead=${cacheRead} cacheWrite5m=${write5m} cacheWrite1h=${write1h} out=${usage.output_tokens}`,
     );
     const billingEquivalentIn = Math.round(
-      usage.input_tokens + cacheRead * 0.1 + cacheWrite * 1.25,
+      usage.input_tokens + cacheRead * 0.1 + write5m * 1.25 + write1h * 2,
     );
 
     return {

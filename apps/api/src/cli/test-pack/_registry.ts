@@ -1,8 +1,11 @@
 import type { DomainSeeder } from './_types';
+import { applicationsSeeder } from './applications.seed';
 import { assetsSeeder } from './assets.seed';
+import { bookingsSeeder } from './bookings.seed';
 import { contractsSeeder } from './contracts.seed';
 import { equitySeeder } from './equity.seed';
 import { expensesSeeder } from './expenses.seed';
+import { onlineOrdersSeeder } from './online-orders.seed';
 import { otherIncomeSeeder } from './other-income.seed';
 import { payrollSeeder } from './payroll.seed';
 import { stockOpsSeeder } from './stock-ops.seed';
@@ -23,6 +26,9 @@ export const ALL_DOMAINS: DomainSeeder[] = [
   equitySeeder,
   suppliersPoSeeder,
   stockOpsSeeder,
+  bookingsSeeder,
+  onlineOrdersSeeder,
+  applicationsSeeder,
   todosSeeder,
 ];
 

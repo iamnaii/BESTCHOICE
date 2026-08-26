@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 
 /**
  * สมุดสถานะการขายประจำห้อง (slot memory) — ความจำ 3 ชั้นของบอทขาย (2026-08-15):
@@ -36,7 +37,10 @@ export class SalesStateService {
   private readonly logger = new Logger(SalesStateService.name);
   private _client: Anthropic | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiUsage: AiUsageService,
+  ) {}
 
   private get client(): Anthropic {
     if (!this._client) this._client = new Anthropic();
@@ -121,6 +125,16 @@ export class SalesStateService {
             content: `สถานะเดิม: ${JSON.stringify(prev ?? {})}\nลูกค้า: ${customerMessage}\nบอท: ${botReply}`,
           },
         ],
+      });
+      // จดต้นทุน extractor ลง ai_usage_logs — เดิมสายนี้ไม่ถูกวัดเลย (~5% ของต้นทุนบอท)
+      // await ใน chain เดียวกัน (ห้าม fire-and-forget — cpu-throttling บน Cloud Run)
+      await this.aiUsage.record({
+        service: 'sales-bot',
+        method: 'extractSalesState',
+        model: EXTRACT_MODEL,
+        inputTokens: resp.usage.input_tokens,
+        outputTokens: resp.usage.output_tokens,
+        status: 'success',
       });
       const text = resp.content.find((c): c is Anthropic.TextBlock => c.type === 'text')?.text ?? '';
       const jsonMatch = text.match(/\{[\s\S]*\}/);

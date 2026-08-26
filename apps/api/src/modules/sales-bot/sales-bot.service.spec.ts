@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { SalesBotService } from './sales-bot.service';
+import { SalesBotService, redactMediaUrls } from './sales-bot.service';
 import { SearchProductsTool } from './tools/search-products.tool';
 import { CalculateInstallmentTool } from './tools/calculate-installment.tool';
 import { ListPromotionsTool } from './tools/list-promotions.tool';
@@ -1071,5 +1071,30 @@ describe('SalesBotService', () => {
       const req = chat.mock.calls[0][0];
       expect(req.messages).toEqual([{ role: 'user', content: 'สวัสดีครับ' }]);
     });
+  });
+});
+
+describe('redactMediaUrls', () => {
+  it('ตัด photoUrl/webUrl ทุกระดับความลึก แต่ไม่แตะฟิลด์อื่น', () => {
+    const result = {
+      units: [
+        { model: 'iPhone 15', priceThb: 17500, photoUrl: 'https://x/p.jpg', webUrl: 'https://x/w' },
+        { model: 'iPhone 14', priceThb: 13900, photoUrl: null },
+      ],
+      note: 'ok',
+    };
+    const redacted = redactMediaUrls(result) as any;
+    expect(redacted.units[0]).toEqual({ model: 'iPhone 15', priceThb: 17500 });
+    expect(redacted.units[1]).toEqual({ model: 'iPhone 14', priceThb: 13900 });
+    expect(redacted.note).toBe('ok');
+    // ต้นฉบับต้องไม่ถูกแก้ — collectAttachmentsFromToolResult ใช้ result ดิบ
+    expect(result.units[0].photoUrl).toBe('https://x/p.jpg');
+    expect(result.units[0].webUrl).toBe('https://x/w');
+  });
+
+  it('ค่า primitive/array ผ่านตรง ๆ', () => {
+    expect(redactMediaUrls('x')).toBe('x');
+    expect(redactMediaUrls([1, 2])).toEqual([1, 2]);
+    expect(redactMediaUrls(null)).toBeNull();
   });
 });

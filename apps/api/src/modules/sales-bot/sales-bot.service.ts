@@ -63,6 +63,25 @@ export interface SalesBotResult {
   attachments?: SalesBotAttachment[]; // ← ใหม่ (optional = ผู้เรียกเดิมไม่พัง)
 }
 
+/**
+ * ตัด photoUrl/webUrl ออกจากก้อน JSON ที่ส่งให้โมเดล (ยาว ~100-900 tokens/ครั้ง
+ * ที่ search_products คืน 5 เครื่อง) — โมเดลไม่เคยใช้ URL พวกนี้ (ห้ามพ่น URL ใส่ลูกค้า
+ * อยู่แล้ว) ส่วนการ์ดรูป/ลิงก์ที่ลูกค้าเห็นมาจาก collectAttachmentsFromToolResult
+ * ซึ่งอ่านจาก result ดิบ ไม่ใช่ก้อนนี้
+ */
+export function redactMediaUrls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactMediaUrls);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === 'photoUrl' || k === 'webUrl') continue;
+      out[k] = redactMediaUrls(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 // 4 (เดิม 3): เผื่อทางเดิน self-correct ของ GroundingGuard — search(hop0) →
 // คำตอบโดนบล็อก+retry(hop1) → โมเดลเรียก calculate/rates เพิ่ม(hop2) → ตอบจริง(hop3)
 const MAX_TOOL_HOPS = 4;
@@ -107,12 +126,15 @@ export class SalesBotService {
     private readonly aiUsage: AiUsageService,
   ) {}
 
-  private recordUsage(
+  // ต้อง await เสมอ — Cloud Run ตั้ง cpu-throttling=true: หลังจบ awaited chain ของ
+  // webhook เบื้องหลัง CPU ถูกตัด ทำให้ promise ที่ไม่มีใคร await ค้างและตายเงียบ
+  // (ai_usage_logs ไม่มีแถวใหม่เลยตั้งแต่ 23 ส.ค. ทั้งที่โค้ดถูก — insert ~5ms รอได้)
+  private async recordUsage(
     modelUsed: string,
     inputTokens: number,
     outputTokens: number,
-  ): void {
-    void this.aiUsage.record({
+  ): Promise<void> {
+    await this.aiUsage.record({
       service: 'sales-bot',
       method: 'generateReply',
       model: modelUsed || 'unknown',
@@ -228,7 +250,7 @@ export class SalesBotService {
               });
               continue;
             }
-            this.recordUsage(modelUsed, totalIn, totalOut);
+            await this.recordUsage(modelUsed, totalIn, totalOut);
             return {
               reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
               confidence: 0.3,
@@ -238,7 +260,7 @@ export class SalesBotService {
               modelUsed,
             };
           }
-          this.recordUsage(modelUsed, totalIn, totalOut);
+          await this.recordUsage(modelUsed, totalIn, totalOut);
           return {
             reply: resp.text,
             confidence: this.estimateConfidence(resp.text, toolsUsed),
@@ -283,7 +305,7 @@ export class SalesBotService {
           toolResults.push({
             role: 'tool',
             toolCallId: tc.id,
-            content: JSON.stringify(result),
+            content: JSON.stringify(redactMediaUrls(result)),
           });
         }
 
@@ -296,7 +318,7 @@ export class SalesBotService {
         messages.push(...toolResults);
       }
 
-      this.recordUsage(modelUsed, totalIn, totalOut);
+      await this.recordUsage(modelUsed, totalIn, totalOut);
       return {
         reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
         confidence: 0.3,
@@ -306,7 +328,7 @@ export class SalesBotService {
         modelUsed,
       };
     } catch (error) {
-      void this.aiUsage.record({
+      await this.aiUsage.record({
         service: 'sales-bot',
         method: 'generateReply',
         model: modelUsed || 'unknown',

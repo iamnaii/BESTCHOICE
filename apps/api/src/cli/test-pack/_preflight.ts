@@ -1,4 +1,5 @@
 import type { PrismaService } from '../../prisma/prisma.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 import type { SeedRefs } from './_types';
 
 /**
@@ -93,23 +94,28 @@ export async function runPreflight(
     );
   }
 
-  // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องเปิดทั้งสองฝั่ง
-  // (ตรวจได้เฉพาะเมื่อ POST_DATE ใช้การได้ — year/month ที่เป็น NaN จะทำให้ query โยน)
+  // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องรับรายการได้ทั้งสองฝั่ง (B2, 2026-08-26):
+  // เรียก validatePeriodOpen ตัวเดียวกับที่ทุกเส้นทางลงบัญชีจริงใช้ — ได้ทั้ง grace window
+  // (`period_grace_days`, default 5 วันหลังสิ้นเดือน: งวด CLOSED/SYNCED ยังโพสต์ได้) และ
+  // การอ่านเดือนแบบ getFullYear/getMonth เดียวกับ guard ⇒ preflight เข้มหรือหย่อนกว่า
+  // ด่านจริงไม่ได้โดยโครงสร้าง. เดิมเช็ค `status !== 'OPEN'` เอง ซึ่งปฏิเสธงวด CLOSED
+  // ที่ยังอยู่ในช่วงผ่อนผัน — เข้มกว่า production แล้วชี้ทางแก้ที่เป็นอันตราย (สั่งเปิดงวด
+  // ทั้งที่ไม่จำเป็น). (ตรวจได้เฉพาะเมื่อ POST_DATE ใช้การได้ — Invalid Date ทำให้ query โยน)
   if (!postDateProblem) {
-    const year = opts.postDate.getUTCFullYear();
-    const month = opts.postDate.getUTCMonth() + 1;
     for (const [name, companyId] of [
       ['SHOP', refs.shopCompanyId],
       ['FINANCE', refs.financeCompanyId],
     ] as const) {
       if (!companyId) continue;
-      const period = await prisma.accountingPeriod.findFirst({
-        where: { companyId, year, month },
-        select: { status: true },
-      });
-      if (period && period.status !== 'OPEN') {
+      try {
+        await validatePeriodOpen(prisma, opts.postDate, companyId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         problems.push(
-          `งวดบัญชี ${year}-${String(month).padStart(2, '0')} ของ ${name} สถานะ ${period.status} — เปิดงวดก่อน หรือใช้ POST_DATE=YYYY-MM-DD ชี้ไปเดือนที่ยังเปิด`,
+          `งวดบัญชีฝั่ง ${name} ไม่รับรายการ ณ วันที่จะโพสต์: ${msg} — ทางที่ทำได้จริง: ` +
+            'เลือก POST_DATE=YYYY-MM-DD ในเดือนที่งวดยังเปิด/ยังอยู่ในช่วงผ่อนผัน ' +
+            '(ข้อแลก: ก้าวที่ลงบัญชี ณ วันปัจจุบันเสมอ เช่น เปิดสัญญา/ขาย/มัดจำ จะถูกข้ามเมื่อเดือนไม่ตรงเดือนนี้ — ผลรันจะบอกว่าข้ามเพราะอะไร) ' +
+            'หรือให้ OWNER เปิดงวดนั้นใหม่ที่หน้าตั้งค่า › งวดบัญชี (/settings) แล้วรันใหม่',
         );
       }
     }

@@ -4,6 +4,14 @@ import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, testName, testNote } from './_contex
 import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
+/**
+ * prefix จริงของเลขใบสั่งซื้อทดสอบ — ค่าคงที่เดียวใช้ทั้ง `markerDoc` และ query ของ
+ * seed/cleanup ⇒ เอกสารกับโค้ด drift กันไม่ได้อีก (S1, 2026-08-26). สำคัญเป็นพิเศษ
+ * ที่โดเมนนี้: Supplier/PurchaseOrder เป็นตาราง KEEP — แถวที่ marker ผิดจนกวาดไม่เจอ
+ * จะค้างถาวรบน prod (factory reset ไม่ล้างให้)
+ */
+const PO_NO_PREFIX = `${TEST_DOC_PREFIX}PO-`;
+
 const SUPPLIERS: Array<{ name: string; phone: string; isRepairCenter: boolean }> = [
   { name: 'ซัพพลายเออร์มือถือ', phone: '021110001', isRepairCenter: false },
   { name: 'ศูนย์ซ่อมพันธมิตร', phone: '021110002', isRepairCenter: true },
@@ -37,7 +45,7 @@ export const suppliersPoSeeder: DomainSeeder = {
   key: 'suppliers-po',
   label: 'ซัพพลายเออร์ + ใบสั่งซื้อ',
   routes: ['/suppliers', '/suppliers/:id', '/purchase-orders', '/purchase-orders/qc'],
-  markerDoc: `Supplier.name ขึ้นต้น "${TEST_NAME_PREFIX}" · PurchaseOrder.poNumber ขึ้นต้น "${TEST_DOC_PREFIX}" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้)`,
+  markerDoc: `Supplier.name ขึ้นต้น "${TEST_NAME_PREFIX}" · PurchaseOrder.poNumber ขึ้นต้น "${PO_NO_PREFIX}" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้)`,
 
   async plan(): Promise<PlanRow[]> {
     return [
@@ -80,7 +88,7 @@ export const suppliersPoSeeder: DomainSeeder = {
       stat.created += 1;
     }
 
-    const prefix = `${TEST_DOC_PREFIX}PO-${ctx.dateStr}-`;
+    const prefix = `${PO_NO_PREFIX}${ctx.dateStr}-`;
     for (const p of POS) {
       // idempotency probe ที่ notes (marker) — ไม่ใช่ที่เลขเอกสาร เพราะเลขเป็น running number
       const notes = testNote(p.note);
@@ -132,7 +140,7 @@ export const suppliersPoSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const pos = await ctx.prisma.purchaseOrder.findMany({
-      where: { poNumber: { startsWith: `${TEST_DOC_PREFIX}PO-` }, deletedAt: null },
+      where: { poNumber: { startsWith: PO_NO_PREFIX }, deletedAt: null },
       select: { id: true, poNumber: true },
     });
     // เครื่องที่ QC รับเข้าจาก PO ทดสอบ (po-receiving.service.ts) ไม่มี marker ติดตัว —

@@ -12,7 +12,7 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { bkkDateStr, bkkMidnight, resolveRefs } from './test-pack/_context';
 import { ALL_DOMAINS, orderForCleanup, selectDomains } from './test-pack/_registry';
-import type { DomainSeeder, SeedContext } from './test-pack/_types';
+import type { DomainSeeder, SeedContext, SeedRefs } from './test-pack/_types';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -76,7 +76,32 @@ async function main(): Promise<void> {
 
   try {
     const now = new Date();
-    const refs = await resolveRefs(prisma);
+    // S5 (2026-08-26): cleanup ทั้ง 19 โดเมนไม่อ่าน ctx.refs เลย (ยืนยันด้วย sweep ทุกไฟล์)
+    // — resolveRefs โยนข้อความฝั่ง "สร้าง" เมื่อขาด SALES/OWNER/สาขา ซึ่งเคยบล็อกการล้าง
+    // ทั้งชุดเพราะ precondition ที่มันไม่ได้ใช้ (เช่น ปิดบัญชีผู้ใช้ SALES ทดสอบไปแล้ว).
+    // จึง resolve แบบ best-effort: ได้ก็ใช้ ไม่ได้ก็เดินต่อด้วยค่าว่าง.
+    // ⚠️ ถ้าวันหนึ่ง cleanup ของโดเมนไหนต้องอ่าน refs จริง ต้องเช็คค่าว่างเองก่อนใช้
+    let refs: SeedRefs;
+    try {
+      refs = await resolveRefs(prisma);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`[cleanup-test-pack] ℹ ข้อมูลอ้างอิงไม่ครบ (${msg})`);
+      console.log(
+        '[cleanup-test-pack] ℹ เดินต่อได้ — cleanup ค้นหาข้อมูลทดสอบจาก marker เท่านั้น ไม่ใช้ข้อมูลอ้างอิงชุดนี้',
+      );
+      console.log('');
+      refs = {
+        branchId: '',
+        branchName: '',
+        secondBranchId: null,
+        salespersonId: '',
+        reviewerId: '',
+        ownerId: '',
+        shopCompanyId: null,
+        financeCompanyId: null,
+      };
+    }
     const ctx: SeedContext = {
       prisma,
       refs,

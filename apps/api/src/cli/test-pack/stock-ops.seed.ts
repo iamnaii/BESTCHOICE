@@ -3,6 +3,15 @@ import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /**
+ * marker จริงของโดเมนนี้ — ค่าคงที่เดียวใช้ทั้ง `markerDoc` และ query ของ seed/cleanup
+ * ⇒ เอกสารกับโค้ด drift กันไม่ได้อีก (S1, 2026-08-26). หมายเหตุ ALERT_MODEL เป็น
+ * "ค่าตรงตัว" (equality) ไม่ใช่ prefix — ReorderPoint/StockAlert ที่สร้างมือด้วย model
+ * ชื่ออื่นจะไม่ถูกกวาด
+ */
+const COUNT_NO_PREFIX = `${TEST_DOC_PREFIX}COUNT-`;
+const ALERT_MODEL = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
+
+/**
  * ไม่โพสต์ JE — seed สถานะไหนก็ได้
  * ใช้เครื่องทดสอบที่โดเมน contracts สร้างไว้ (IMEI ขึ้นต้น TEST-) เท่านั้น
  * ห้ามแตะเครื่องจริง เพราะการโอนย้าย/ปรับสต็อกเปลี่ยน branchId และ status ของเครื่อง
@@ -25,7 +34,7 @@ export const stockOpsSeeder: DomainSeeder = {
     '/stock/workflow',
     '/inventory',
   ],
-  markerDoc: `StockCount.countNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · StockTransfer/StockAdjustment.notes และ ReorderPoint/StockAlert.model ขึ้นต้นด้วย marker ทดสอบ`,
+  markerDoc: `StockCount.countNumber ขึ้นต้น "${COUNT_NO_PREFIX}" · StockTransfer/StockAdjustment.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" · ReorderPoint/StockAlert.model = "${ALERT_MODEL}" (ค่าตรงตัว)`,
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     const products = await ctx.prisma.product.findMany({
@@ -82,7 +91,7 @@ export const stockOpsSeeder: DomainSeeder = {
     // 1) ใบนับสต็อก — ฟิลด์ items ยืนยันจาก prisma/seed.ts (sc-001)
     //    countNumber เป็น @unique เต็มตาราง — จองเลขแบบ max+1 ไม่กรอง deletedAt
     //    (doctrine เดียวกับ nextDocNumber ใน _helpers) และ probe ความซ้ำที่ notes (marker)
-    const countPrefix = `${TEST_DOC_PREFIX}COUNT-${ctx.dateStr}-`;
+    const countPrefix = `${COUNT_NO_PREFIX}${ctx.dateStr}-`;
     const countNotes = testNote('ใบนับสต็อกสำหรับทดสอบ');
     const countExists = await ctx.prisma.stockCount.findFirst({
       where: { notes: countNotes, deletedAt: null },
@@ -147,7 +156,7 @@ export const stockOpsSeeder: DomainSeeder = {
     //    ReorderPoint มี @@unique([brand, model, storage, category, branchId]) แบบเต็มตาราง
     //    (ไม่ใช่ partial) — แถวที่ cleanup soft delete ไปแล้วยังถือ tuple อยู่ ⇒ probe โดยไม่กรอง
     //    deletedAt แล้ว "กู้คืน" แทนการสร้างซ้ำ ไม่งั้น seed หลัง cleanup ชน P2002
-    const alertModel = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
+    const alertModel = ALERT_MODEL;
     const rpAny = await ctx.prisma.reorderPoint.findFirst({
       where: { model: alertModel },
       select: { id: true, deletedAt: true },
@@ -242,10 +251,10 @@ export const stockOpsSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const alertModel = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
+    const alertModel = ALERT_MODEL;
     const [counts, transfers, adjustments, rps] = await Promise.all([
       ctx.prisma.stockCount.findMany({
-        where: { countNumber: { startsWith: `${TEST_DOC_PREFIX}COUNT-` }, deletedAt: null },
+        where: { countNumber: { startsWith: COUNT_NO_PREFIX }, deletedAt: null },
         select: { id: true, countNumber: true },
       }),
       ctx.prisma.stockTransfer.findMany({

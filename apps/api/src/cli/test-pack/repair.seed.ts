@@ -4,6 +4,12 @@ import { TEST_DOC_PREFIX, testNote } from './_context';
 import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
+/**
+ * prefix จริงของเลขใบซ่อมทดสอบ — ค่าคงที่เดียวใช้ทั้ง `markerDoc` และ query ของ
+ * seed/cleanup ⇒ เอกสารกับโค้ด drift กันไม่ได้อีก (S1, 2026-08-26)
+ */
+const TICKET_NO_PREFIX = `${TEST_DOC_PREFIX}RT-`;
+
 /** R2 — ปิดที่ READY_FOR_PICKUP · CLOSED สร้างเอกสารบัญชีอัตโนมัติ ให้คนกดเอง */
 const ROWS: Array<{
   key: string;
@@ -49,7 +55,7 @@ export const repairSeeder: DomainSeeder = {
     '/insurance/warranty-check',
     '/insurance/exchange-requests',
   ],
-  markerDoc: `RepairTicket.ticketNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `RepairTicket.ticketNumber ขึ้นต้น "${TICKET_NO_PREFIX}"`,
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
@@ -79,7 +85,7 @@ export const repairSeeder: DomainSeeder = {
     // ยังถือเลขอยู่ ⇒ จองเลขแบบ max+1 โดย "ไม่กรอง deletedAt" (doctrine เดียวกับ nextDocNumber)
     // และ probe ความซ้ำที่ notes marker รายใบแทนเลขเอกสาร — brief เดิมใช้เลขตายตัวต่อ key
     // ซึ่งชนแถว soft-deleted ถ้า seed ซ้ำวันเดียวกันหลัง cleanup
-    const prefix = `${TEST_DOC_PREFIX}RT-${ctx.dateStr}-`;
+    const prefix = `${TICKET_NO_PREFIX}${ctx.dateStr}-`;
     for (const r of ROWS) {
       const notes = testNote(`ใบซ่อมสำหรับทดสอบ/${r.key}`);
       const exists = await ctx.prisma.repairTicket.findFirst({
@@ -128,7 +134,7 @@ export const repairSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.repairTicket.findMany({
-      where: { ticketNumber: { startsWith: `${TEST_DOC_PREFIX}RT-` }, deletedAt: null },
+      where: { ticketNumber: { startsWith: TICKET_NO_PREFIX }, deletedAt: null },
       select: {
         id: true,
         ticketNumber: true,

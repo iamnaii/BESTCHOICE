@@ -21,11 +21,17 @@ const ROWS: Array<{
  */
 const CC_REVIEW_NOTE = testNote('ใบตรวจเครดิตรอตรวจ — สร้างโดยชุดข้อมูลทดสอบ');
 
+/**
+ * prefix จริงของเลขใบสมัครทดสอบ — ค่าคงที่เดียวใช้ทั้ง `markerDoc` และ query ของ
+ * seed/cleanup ⇒ เอกสารกับโค้ด drift กันไม่ได้อีก (S1, 2026-08-26)
+ */
+const APP_NO_PREFIX = `${TEST_DOC_PREFIX}APP-`;
+
 export const applicationsSeeder: DomainSeeder = {
   key: 'applications',
   label: 'ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต',
   routes: ['/installment-applications', '/customer-intake'],
-  markerDoc: `OnlineInstallmentApplication.applicationNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · CreditCheck.reviewNotes = "${CC_REVIEW_NOTE}"`,
+  markerDoc: `OnlineInstallmentApplication.applicationNumber ขึ้นต้น "${APP_NO_PREFIX}" · CreditCheck.reviewNotes = "${CC_REVIEW_NOTE}"`,
 
   async plan(): Promise<PlanRow[]> {
     return [
@@ -52,7 +58,7 @@ export const applicationsSeeder: DomainSeeder = {
       return stat;
     }
     for (const [i, r] of ROWS.entries()) {
-      const applicationNumber = `${TEST_DOC_PREFIX}APP-${ctx.dateStr}-${r.key}`;
+      const applicationNumber = `${APP_NO_PREFIX}${ctx.dateStr}-${r.key}`;
       // applicationNumber เป็น @unique เต็มตาราง — probe โดยไม่กรอง deletedAt แล้วกู้คืน
       // แถวที่เคยถูกล้าง (restore-instead-of-recreate) กัน P2002 หลัง seed → cleanup → seed
       const exists = await ctx.prisma.onlineInstallmentApplication.findFirst({
@@ -133,7 +139,7 @@ export const applicationsSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.onlineInstallmentApplication.findMany({
-      where: { applicationNumber: { startsWith: `${TEST_DOC_PREFIX}APP-` }, deletedAt: null },
+      where: { applicationNumber: { startsWith: APP_NO_PREFIX }, deletedAt: null },
       select: { id: true, applicationNumber: true },
     });
     for (const r of rows) console.log(`     ${r.applicationNumber}`);

@@ -190,7 +190,15 @@ export const assetsSeeder: DomainSeeder = {
       );
     }
     if (jeIds.length) {
-      console.log(`     กวาดรายการบัญชีที่ผูกกับทรัพย์สินทดสอบทั้งหมด ${jeIds.length} ใบ`);
+      console.log(`     กวาดรายการบัญชีที่ผูกกับทรัพย์สินทดสอบทั้งหมด ${jeIds.length} ใบ:`);
+      // เลข JE คือหลักฐานบัญชี และครึ่งหนึ่งของ sweep นี้มาจาก JSON path (metadata.assetId)
+      // — พิมพ์ให้คนกดเห็นก่อนลบถาวรเสมอ ทั้ง dry-run และ live (M1, 2026-08-26)
+      const jeNumbers = await ctx.prisma.journalEntry.findMany({
+        where: { id: { in: jeIds } },
+        select: { entryNumber: true },
+        orderBy: { entryNumber: 'asc' },
+      });
+      for (const j of jeNumbers) console.log(`       ${j.entryNumber}`);
     }
     if (!dryRun && rows.length) {
       await ctx.prisma.$transaction(async (tx) => {

@@ -32,11 +32,18 @@ const ROWS: Array<{
 /** สถานะที่กู้คืนออเดอร์ที่ถูกล้างได้อย่างปลอดภัย — ยังไม่มีเงินขยับ/ยังไม่มีใบขาย */
 const RESTORABLE_STATUSES = ['PENDING_PAYMENT', 'PENDING_BANK_REVIEW', 'CANCELLED', 'DRAFT'];
 
+/**
+ * prefix จริงของออเดอร์/การจองทดสอบ — ค่าคงที่เดียวใช้ทั้ง `markerDoc` และ query ของ
+ * seed/cleanup ⇒ เอกสารกับโค้ด drift กันไม่ได้อีก (S1, 2026-08-26)
+ */
+const ORDER_NO_PREFIX = `${TEST_DOC_PREFIX}ORD-`;
+const SESSION_ID_PREFIX = `${TEST_DOC_PREFIX}SESSION-`;
+
 export const onlineOrdersSeeder: DomainSeeder = {
   key: 'online-orders',
   label: 'ออเดอร์ออนไลน์ + การจองเครื่อง',
   routes: ['/online-orders', '/product-holds', '/slip-review'],
-  markerDoc: `OnlineOrder.orderNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · ProductReservation.sessionId ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `OnlineOrder.orderNumber ขึ้นต้น "${ORDER_NO_PREFIX}" · ProductReservation.sessionId ขึ้นต้น "${SESSION_ID_PREFIX}"`,
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
@@ -66,7 +73,7 @@ export const onlineOrdersSeeder: DomainSeeder = {
     }
 
     for (const [i, r] of ROWS.entries()) {
-      const orderNumber = `${TEST_DOC_PREFIX}ORD-${ctx.dateStr}-${r.key}`;
+      const orderNumber = `${ORDER_NO_PREFIX}${ctx.dateStr}-${r.key}`;
       // orderNumber เป็น @unique เต็มตาราง — probe โดยไม่กรอง deletedAt แล้ว "กู้คืน"
       // แทนการสร้างซ้ำ (restore-instead-of-recreate ตาม stock-ops) ไม่งั้น
       // seed → cleanup → seed จะชน P2002 หรือข้ามเงียบจนผู้ทดสอบไม่มีออเดอร์ให้ใช้
@@ -126,7 +133,7 @@ export const onlineOrdersSeeder: DomainSeeder = {
           data: {
             productId: products[i].id,
             customerId: customer.id,
-            sessionId: `${TEST_DOC_PREFIX}SESSION-${ctx.dateStr}-${r.key}`,
+            sessionId: `${SESSION_ID_PREFIX}${ctx.dateStr}-${r.key}`,
             expiresAt: new Date(ctx.today.getTime() + 2 * DAY),
             status: 'ACTIVE',
           },
@@ -156,11 +163,11 @@ export const onlineOrdersSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const orders = await ctx.prisma.onlineOrder.findMany({
-      where: { orderNumber: { startsWith: `${TEST_DOC_PREFIX}ORD-` }, deletedAt: null },
+      where: { orderNumber: { startsWith: ORDER_NO_PREFIX }, deletedAt: null },
       select: { id: true, orderNumber: true, reservationId: true, saleId: true },
     });
     const reservations = await ctx.prisma.productReservation.findMany({
-      where: { sessionId: { startsWith: `${TEST_DOC_PREFIX}SESSION-` } },
+      where: { sessionId: { startsWith: SESSION_ID_PREFIX } },
       select: { id: true, status: true },
     });
     for (const o of orders)

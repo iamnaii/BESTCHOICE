@@ -4,6 +4,12 @@ import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from '
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * prefix จริงของเลขใบจองทดสอบ — ค่าคงที่เดียวใช้ทั้ง `markerDoc` (ที่ README generate ไป
+ * บอก operator) และ query ของ seed/cleanup ⇒ เอกสารกับโค้ด drift กันไม่ได้อีก (S1, 2026-08-26)
+ */
+const BOOKING_NO_PREFIX = `${TEST_DOC_PREFIX}BK-`;
+
 /** R2 — PENDING_DEPOSIT เท่านั้น · ใบที่สองเลยกำหนดเพื่อทดสอบ cron ตัดใบจองหมดอายุ */
 const ROWS: Array<{
   key: string;
@@ -26,7 +32,7 @@ export const bookingsSeeder: DomainSeeder = {
   key: 'bookings',
   label: 'ใบจอง',
   routes: ['/bookings'],
-  markerDoc: `Booking.bookingNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `Booking.bookingNumber ขึ้นต้น "${BOOKING_NO_PREFIX}"`,
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
@@ -46,7 +52,7 @@ export const bookingsSeeder: DomainSeeder = {
       return stat;
     }
 
-    const prefix = `${TEST_DOC_PREFIX}BK-${ctx.dateStr}-`;
+    const prefix = `${BOOKING_NO_PREFIX}${ctx.dateStr}-`;
     for (const r of ROWS) {
       // idempotency probe ที่ notes (marker) — ไม่ใช่ที่เลขเอกสาร: bookingNumber เป็น @unique
       // เต็มตาราง (ไม่ใช่ partial) แถวที่ cleanup soft delete ไปแล้วยังถือเลขอยู่
@@ -93,7 +99,7 @@ export const bookingsSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.booking.findMany({
-      where: { bookingNumber: { startsWith: `${TEST_DOC_PREFIX}BK-` }, deletedAt: null },
+      where: { bookingNumber: { startsWith: BOOKING_NO_PREFIX }, deletedAt: null },
       select: { id: true, bookingNumber: true, convertedToSaleId: true },
     });
     for (const r of rows)
@@ -106,9 +112,12 @@ export const bookingsSeeder: DomainSeeder = {
           where: {
             OR: rows.map((r) => ({ metadata: { path: ['bookingId'], equals: r.id } as never })),
           },
-          select: { id: true },
+          select: { id: true, entryNumber: true },
         })
       : [];
+    // เลข JE คือหลักฐานบัญชี และ query เป็น JSON path — พิมพ์ให้คนกดเห็นก่อนลบถาวรเสมอ
+    // ทั้ง dry-run และ live (M1, 2026-08-26)
+    for (const j of jes) console.log(`     รายการบัญชีมัดจำใบจอง ${j.entryNumber} (ลบถาวร)`);
 
     if (!dryRun && rows.length) {
       await ctx.prisma.$transaction(async (tx) => {

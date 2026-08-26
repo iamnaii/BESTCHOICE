@@ -177,7 +177,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         status: 'ACTIVE',
         deletedAt: null,
       };
-      const contracts = await ctx.prisma.contract.findMany({
+      const candidates = await ctx.prisma.contract.findMany({
         where: { ...activeWhere, customer: { is: { lineIdFinance: null } } },
         orderBy: { contractNumber: 'asc' },
         select: { id: true, contractNumber: true },
@@ -190,10 +190,38 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
       const lineSkipNote = lineLinked.length
         ? ` · ข้ามสัญญา ${lineLinked.map((r) => r.contractNumber).join(', ')} — ลูกค้าผูก LINE (lineIdFinance) แล้ว รับชำระจะยิง Flex ถึงลูกค้าจริง`
         : '';
+      // B1 (2026-08-26): รับชำระได้เฉพาะสัญญาที่มี JE 1A (POSTED) จริงเท่านั้น — สัญญาจาก
+      // seed-test-contracts.cli ถูกสร้างเป็น ACTIVE ตรง ๆ โดย "ไม่โพสต์ activation journal"
+      // (docblock ของ CLI เดิม) ⇒ 2B บนสัญญาพวกนั้นเครดิต 11-2101/11-2103 + ล้าง 21-2102
+      // ที่ไม่เคยถูกตั้ง — ทุกบรรทัดในใบ balance กันเอง งบทดลองจึงยังสมดุลทั้งที่บัญชีจริง
+      // ติดเครื่องหมายผิด (11-2101 ติดลบ). ตัวชี้ = metadata ที่ ContractActivation1ATemplate
+      // stamp จริง: `{ tag: '1A', contractId }` (contract-activation-1a.template.ts)
+      const contracts: typeof candidates = [];
+      const no1A: string[] = [];
+      for (const c of candidates) {
+        const je = await ctx.prisma.journalEntry.findFirst({
+          where: {
+            status: 'POSTED',
+            deletedAt: null,
+            AND: [
+              { metadata: { path: ['tag'], equals: '1A' } },
+              { metadata: { path: ['contractId'], equals: c.id } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (je) contracts.push(c);
+        else no1A.push(c.contractNumber);
+      }
+      const no1ASkipNote = no1A.length
+        ? ` · ข้ามสัญญา ${no1A.join(', ')} — ไม่มี JE 1A ในสมุด (seed สร้างเป็น ACTIVE ตรงโดยไม่ผ่าน activate) รับชำระจะทำ 11-2101/11-2103 ติดเครื่องหมายผิดทั้งที่งบทดลองยังสมดุล`
+        : '';
+      const skipNotes = no1ASkipNote + lineSkipNote;
       if (!contracts.length) {
-        return lineLinked.length
-          ? `ข้าม — สัญญาทดสอบ ACTIVE ทุกใบผูก LINE แล้ว (${lineLinked.map((r) => r.contractNumber).join(', ')}) — รับชำระผ่านโหมดเดินเรื่องจะยิง Flex ถึงลูกค้าจริง จึงไม่แตะ`
-          : 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE (รันโดเมน contracts ก่อน)';
+        if (no1A.length || lineLinked.length) {
+          return `ข้าม — ไม่มีสัญญาทดสอบ ACTIVE ที่รับชำระได้${skipNotes}`;
+        }
+        return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE (รันโดเมน contracts ก่อน)';
       }
       const payments = app.get(PaymentsService, { strict: false });
       // ค่าปรับต้อง resolve ณ postDate แบบเดียวกับ orchestrator (single source —
@@ -256,7 +284,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
               `ข้าม — งวด ${p.installmentNo} ของสัญญา ${c.contractNumber} หลังบันทึกได้สถานะ ` +
               `${after?.status ?? 'ไม่พบแถว'} ไม่ใช่ PAID (ยอดที่คำนวณไม่ตรงกับที่ service ตัดจริง) — ` +
               'หยุดก้าวนี้กันชนด่านห้ามข้ามงวด · รันเดินเรื่องซ้ำได้ ระบบจะจ่ายส่วนที่เหลือของงวดนี้ต่อเอง' +
-              lineSkipNote
+              skipNotes
             );
           }
           paid += 1;
@@ -264,11 +292,11 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         if (paid > 0) {
           return (
             `รับชำระ ${paid} งวดของสัญญา ${c.contractNumber} — ตรวจใบเสร็จที่ /receipts และสมุดที่ /finance/general-journal` +
-            lineSkipNote
+            skipNotes
           );
         }
       }
-      return `ข้าม — สัญญาทดสอบทุกใบไม่มีงวดค้างให้รับชำระ (อาจรันเดินเรื่องจนครบแล้ว)${lineSkipNote}`;
+      return `ข้าม — สัญญาทดสอบทุกใบไม่มีงวดค้างให้รับชำระ (อาจรันเดินเรื่องจนครบแล้ว)${skipNotes}`;
     });
 
     // ── ก้าว 3: ขายสดหน้าร้าน → SHOP JE (รายได้ + COGS) ─────────────────────────

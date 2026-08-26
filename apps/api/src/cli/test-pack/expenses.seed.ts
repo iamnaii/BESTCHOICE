@@ -156,12 +156,51 @@ export const expensesSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const docs = await ctx.prisma.expenseDocument.findMany({
+    const marked = await ctx.prisma.expenseDocument.findMany({
       where: { note: { startsWith: TEST_NOTE_MARKER }, documentType: 'EXPENSE', deletedAt: null },
       select: { id: true, number: true, journalEntryId: true },
     });
+    const markedIds = marked.map((d) => d.id);
+    // เอกสารต่อยอดจากใบทดสอบ (S3, 2026-08-26): ExpenseDocumentCreateService สร้างใบลดหนี้
+    // (CREDIT_NOTE) และใบชำระเจ้าหนี้ (VENDOR_SETTLEMENT) เป็นเอกสาร "ใหม่" ที่ตั้ง note จาก
+    // dto ของผู้ใช้ — ไม่ inherit marker ⇒ filter documentType EXPENSE มองไม่เห็น และ JE ของมัน
+    // จะค้างถาวร (รูเดียวกับใบ -R ของ other-income). ตามผ่าน FK จริงใน schema:
+    // CreditNoteDetail.originalDocumentId / SettlementLine.clearedDocumentId
+    const creditNotes = markedIds.length
+      ? await ctx.prisma.expenseDocument.findMany({
+          where: {
+            documentType: 'CREDIT_NOTE',
+            deletedAt: null,
+            creditNote: { is: { originalDocumentId: { in: markedIds } } },
+          },
+          select: { id: true, number: true, journalEntryId: true },
+        })
+      : [];
+    // settlement ตามได้ทั้งจากใบทดสอบตรง ๆ และจากใบลดหนี้ที่ต่อยอดมาอีกชั้น
+    const settleTargets = [...markedIds, ...creditNotes.map((d) => d.id)];
+    const settlements = settleTargets.length
+      ? await ctx.prisma.expenseDocument.findMany({
+          where: {
+            documentType: 'VENDOR_SETTLEMENT',
+            deletedAt: null,
+            settlement: {
+              is: { settlementLines: { some: { clearedDocumentId: { in: settleTargets } } } },
+            },
+          },
+          select: { id: true, number: true, journalEntryId: true },
+        })
+      : [];
+    const docs = [...marked, ...creditNotes, ...settlements];
     const jeIds = docs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
-    for (const d of docs) console.log(`     ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    for (const d of marked) console.log(`     ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    // เอกสารต่อยอดไม่มี marker — บรรทัดนี้คือช่องทางเดียวที่ผู้รันเห็นเลขก่อนถูกกวาด
+    // ⇒ พิมพ์เสมอทั้ง dry-run และ live (pattern เดียวกับ repair.seed.ts)
+    for (const d of creditNotes)
+      console.log(`     ใบลดหนี้ต่อจากใบทดสอบ ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
+    for (const d of settlements)
+      console.log(
+        `     ใบชำระเจ้าหนี้ต่อจากใบทดสอบ ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`,
+      );
     if (!dryRun && docs.length) {
       await ctx.prisma.$transaction(async (tx) => {
         if (jeIds.length) {
@@ -182,7 +221,9 @@ export const expensesSeeder: DomainSeeder = {
     }
     return {
       removed: {
-        ใบค่าใช้จ่าย: docs.length,
+        ใบค่าใช้จ่าย: marked.length,
+        'ใบลดหนี้ต่อจากใบทดสอบ (ไม่มี marker — ตามจาก FK)': creditNotes.length,
+        'ใบชำระเจ้าหนี้ต่อจากใบทดสอบ (ไม่มี marker — ตามจาก FK)': settlements.length,
         'รายการบัญชีของใบค่าใช้จ่าย (ลบถาวร)': jeIds.length,
       },
       warnings: [],

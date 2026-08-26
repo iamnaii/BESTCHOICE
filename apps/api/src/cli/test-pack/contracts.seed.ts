@@ -55,11 +55,15 @@ async function adaptRefs(ctx: SeedContext) {
 //      (generateInstallmentSchedules) จาก createdAt + paymentDueDay ด้วยสูตร local-time
 //      เดียวกับ dueDate ของ Payment ด้านล่าง ⇒ สองตารางตรงกันโดยโครงสร้าง
 //   9. สิ่งที่ activate "ส่งออก" ไม่ใช่แค่สิ่งที่มันอ่าน: sendContractActivatedNotification
-//      (contract-workflow.service.ts:713-735) — ลูกค้าไม่มี lineIdFinance ⇒ ตกสาขา
+//      (contract-workflow.service.ts) — ลูกค้าไม่มี lineIdFinance ⇒ ตกสาขา
 //      `else if (customer.phone)` แล้วส่ง SMS **จริง** ผ่าน NotificationsService.send
-//      (Customer.phone เป็นคอลัมน์ non-nullable — เว้นว่างไม่ได้) ⇒ เบอร์ลูกค้าทดสอบ
-//      ต้องอยู่ใน block สำรอง 08990000NN เดียวกับลูกค้าเปล่าของ CLI เดิม
-//      (seed-test-contracts.cli.ts:255) — ห้ามใช้ 09xxxxxxxx ที่ route ถึงคนจริงได้
+//      (transport ข้ามให้เฉพาะ NODE_ENV !== 'production' — runbook prod ตั้ง
+//      NODE_ENV=production พอดี และ Customer.phone เป็นคอลัมน์ non-nullable เว้นว่างไม่ได้)
+//      ⇒ เบอร์ลูกค้าทดสอบใช้ค่า **โทรไม่ได้** `TEST-00000NN` (คอลัมน์เป็น String ธรรมดา):
+//      provider ปฏิเสธเบอร์รูปนี้ → ความพยายามส่งลง NotificationLog เป็น FAILED —
+//      ตัดข้อความที่ต้นทาง แทนการพนันกับ block เบอร์ "สำรองตามธรรมเนียม" 08990000NN
+//      ซึ่งไม่ได้จองจริงกับ operator (S4, 2026-08-26). การส่งเป็น fire-and-forget
+//      (.catch ที่ activate) จึงไม่ล้มก้าวเปิดสัญญา
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DRAFT_SELLING_PRICE = 19900;
@@ -193,10 +197,10 @@ async function seedDraftContract(
     const customer = await tx.customer.create({
       data: {
         name: `ทดสอบ รอเปิดสัญญา (DRAFT) ${contractSeq}`,
-        // block สำรอง 08990000NN (convention เดียวกับลูกค้าเปล่าของ CLI เดิม) — สัญญาใบนี้
-        // เป็นใบเดียวที่ไปถึง activate ซึ่งส่ง SMS จริงถึงเบอร์นี้ (ดูด่านข้อ 9 ด้านบน);
-        // ชนกับลูกค้าเปล่า (NN=01,02) ได้ ไม่เป็นไร — คอลัมน์ phone ไม่ unique
-        phone: `08990000${String(contractSeq % 100).padStart(2, '0')}`,
+        // เบอร์โทรไม่ได้โดยเจตนา (S4) — สัญญาใบนี้เป็นใบเดียวที่ไปถึง activate ซึ่งส่ง
+        // SMS จริงถึงเบอร์นี้บน NODE_ENV=production (ดูด่านข้อ 9 ด้านบน); คอลัมน์เป็น
+        // String ธรรมดา ไม่ unique — ไม่มีโค้ดใน pack อ่านค่านี้ต่อ (ตรวจ 2026-08-26)
+        phone: `TEST-00000${String(contractSeq % 100).padStart(2, '0')}`,
         prefix: 'นาย',
         occupation: 'ทดสอบ',
         addressCurrent: TEST_CUSTOMER_ADDRESS, // marker ให้ cleanup เดิมกวาดเจอ
@@ -391,9 +395,65 @@ export const contractsSeeder: DomainSeeder = {
           ...(testProductIds.length ? [{ productId: { in: testProductIds } }] : []),
         ],
       },
-      select: { id: true },
+      select: { id: true, contractNumber: true, deletedAt: true },
     });
     const testContractIds = testContracts.map((c) => c.id);
+    // ประชากรที่ CLI เดิมจะกวาดจริง (มันกรอง deletedAt: null) — ใช้ทั้งด่าน INTER-CO
+    // และการพิมพ์เลข JE ล่วงหน้า
+    const liveContractIds = testContracts.filter((c) => !c.deletedAt).map((c) => c.id);
+
+    // ── ด่าน INTER-CO (S2, 2026-08-26): สัญญาทดสอบที่อยู่ในรอบจ่าย PENDING_APPROVAL/POSTED
+    // ห้ามล้างเงียบ ๆ — JE ของรอบจ่าย "จงใจไม่ stamp contractId" (stamp แค่ settlementBatchId
+    // + items[] ซ้อนใน metadata ตาม .claude/rules/accounting.md) การกวาด 1A (Cr 21-1101/21-1102)
+    // ทิ้งจะเหลือขา Dr ของรอบจ่ายยืนโดด: 21-1101 กลายเป็น debit balance และขาเครดิตธนาคาร
+    // ไม่มีเจ้าหนี้ที่มันเคยล้าง. FK ของ item เป็น Restrict แต่สัญญาถูก soft delete เท่านั้น
+    // จึงไม่มีอะไร abort — ต้อง refuse เองพร้อมชื่อรอบจ่าย (สถานะอื่น: REVERSED มี mirror
+    // หักล้างกันเองแล้ว / CANCELLED-DRAFT ไม่มี JE — ไม่เข้าเงื่อนไข)
+    const settledItems = liveContractIds.length
+      ? await ctx.prisma.interCoSettlementItem.findMany({
+          where: {
+            contractId: { in: liveContractIds },
+            batch: { is: { status: { in: ['PENDING_APPROVAL', 'POSTED'] } } },
+          },
+          select: {
+            contract: { select: { contractNumber: true } },
+            batch: { select: { batchNumber: true, status: true } },
+          },
+        })
+      : [];
+    if (settledItems.length) {
+      const batchNos = [...new Set(settledItems.map((i) => i.batch.batchNumber))];
+      const contractNos = [...new Set(settledItems.map((i) => i.contract.contractNumber))];
+      throw new Error(
+        `ล้างโดเมน contracts ไม่ได้ — สัญญาทดสอบ ${contractNos.join(', ')} อยู่ในรอบจ่าย INTER-CO ` +
+          `${batchNos.join(', ')} (สถานะ PENDING_APPROVAL/POSTED): JE ของรอบจ่ายไม่ stamp contractId ` +
+          'การกวาด JE 1A ของสัญญาทิ้งจะเหลือขาเดบิตของรอบจ่ายยืนโดดใน 21-1101/21-1102 — ' +
+          'ให้กลับรายการ (reverse) รอบ POSTED หรือถอน/ยกเลิกรอบ PENDING_APPROVAL ' +
+          'ที่เมนูจ่ายให้หน้าร้าน (INTER-CO) ก่อน แล้วค่อยรัน cleanup ใหม่',
+      );
+    }
+
+    // ── เลข JE ที่ CLI เดิมจะกวาดตาม metadata.contractId (M1, 2026-08-26): CLI พิมพ์แค่
+    // จำนวน แต่ JE คือหลักฐานบัญชีและ query เป็น JSON path — dry-run คือด่านสุดท้ายของคน
+    // กดก่อนลบถาวร จึงพิมพ์เลขใบให้เห็นก่อนเสมอ (ต้อง query "ก่อน" delegate — โหมดจริง
+    // delegate ลบทิ้งในขั้นถัดไปแล้ว)
+    const contractJes = liveContractIds.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: {
+            OR: liveContractIds.map((id) => ({
+              metadata: { path: ['contractId'], equals: id } as never,
+            })),
+          },
+          select: { entryNumber: true },
+          orderBy: { entryNumber: 'asc' },
+        })
+      : [];
+    if (contractJes.length) {
+      console.log(
+        `  รายการบัญชีที่จะถูกกวาดตาม metadata.contractId (${contractJes.length} ใบ — ลบถาวร):`,
+      );
+      for (const j of contractJes) console.log(`    ${j.entryNumber}`);
+    }
     const saleWhereOr = [
       ...(testProductIds.length ? [{ productId: { in: testProductIds } }] : []),
       ...(testCustomerIds.length ? [{ customerId: { in: testCustomerIds } }] : []),
@@ -416,7 +476,7 @@ export const contractsSeeder: DomainSeeder = {
           where: {
             OR: sales.map((s) => ({ metadata: { path: ['saleId'], equals: s.id } as never })),
           },
-          select: { id: true, metadata: true },
+          select: { id: true, entryNumber: true, metadata: true },
         })
       : [];
     const saleJeIds = saleJes.map((j) => j.id);
@@ -431,7 +491,7 @@ export const contractsSeeder: DomainSeeder = {
               metadata: { path: ['reversesEntryId'], equals: id } as never,
             })),
           },
-          select: { id: true },
+          select: { id: true, entryNumber: true },
         })
       : [];
     const jeIds = [...new Set([...saleJeIds, ...mirrorJes.map((j) => j.id)])];
@@ -448,6 +508,9 @@ export const contractsSeeder: DomainSeeder = {
         `  รายการบัญชีใบขาย (metadata.saleId): ${saleJeIds.length} ใบ + ใบกลับรายการ ${mirrorJes.length} ใบ จากใบขาย:`,
       );
       for (const n of affected) console.log(`    ${n}`);
+      // เลข JE คือหลักฐานบัญชี — พิมพ์ก่อนลบเสมอ (M1: dry-run คือด่านสุดท้ายของคนกด)
+      for (const j of saleJes) console.log(`    ${j.entryNumber}`);
+      for (const j of mirrorJes) console.log(`    ${j.entryNumber} (ใบกลับรายการ)`);
       if (dryRun) {
         console.log(`  (dry-run) จะลบถาวร ${jeIds.length} รายการบัญชีใบขาย — ยังไม่ลบ`);
       } else {

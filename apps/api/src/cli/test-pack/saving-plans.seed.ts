@@ -5,6 +5,12 @@ import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from '
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * prefix จริงของเลขแผนออมทดสอบ — ค่าคงที่เดียวใช้ทั้ง `markerDoc` และ query ของ
+ * seed/cleanup ⇒ เอกสารกับโค้ด drift กันไม่ได้อีก (S1, 2026-08-26)
+ */
+const PLAN_NO_PREFIX = `${TEST_DOC_PREFIX}SP-`;
+
 /** ไม่โพสต์ JE — แผนออม/รายการรับเงินออมไม่มีคู่ในสมุดบัญชีเลยโดยธรรมชาติ */
 const ROWS: Array<{
   key: string;
@@ -22,7 +28,7 @@ export const savingPlansSeeder: DomainSeeder = {
   key: 'saving-plans',
   label: 'แผนออมเครื่อง',
   routes: ['/saving-plans'],
-  markerDoc: `SavingPlan.planNumber ขึ้นต้น "${TEST_DOC_PREFIX}" (SavingPlanPayment ไม่มี marker — ตามจาก FK savingPlanId และไม่มี deletedAt จึงลบถาวร)`,
+  markerDoc: `SavingPlan.planNumber ขึ้นต้น "${PLAN_NO_PREFIX}" (SavingPlanPayment ไม่มี marker — ตามจาก FK savingPlanId และไม่มี deletedAt จึงลบถาวร)`,
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
@@ -43,7 +49,7 @@ export const savingPlansSeeder: DomainSeeder = {
       return stat;
     }
     for (const r of ROWS) {
-      const planNumber = `${TEST_DOC_PREFIX}SP-${ctx.dateStr}-${r.key}`;
+      const planNumber = `${PLAN_NO_PREFIX}${ctx.dateStr}-${r.key}`;
       // จำนวนงวด ไม่ใช่จำนวนเงิน — Math.round ตรงนี้ถูกต้อง ไม่เข้าข้อห้าม Decimal
       const installments = Math.round(r.saved / r.monthly);
       const startedAt = new Date(ctx.today.getTime() - installments * 30 * DAY);
@@ -121,7 +127,7 @@ export const savingPlansSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.savingPlan.findMany({
-      where: { planNumber: { startsWith: `${TEST_DOC_PREFIX}SP-` }, deletedAt: null },
+      where: { planNumber: { startsWith: PLAN_NO_PREFIX }, deletedAt: null },
       select: { id: true, planNumber: true },
     });
     // รายการรับเงินออมไม่มี marker (ตามจาก FK) และไม่มี deletedAt ⇒ ลบถาวร — นับก่อนลบ

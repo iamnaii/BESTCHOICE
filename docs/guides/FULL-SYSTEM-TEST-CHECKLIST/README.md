@@ -16,6 +16,17 @@
   backup รายวัน): `gcloud sql backups create --instance=bestchoice-db --description="before-test-pack"`
 - ตอน cleanup ให้อ่าน **warnings** ที่พิมพ์ออกมาเสมอ — แถวในตารางข้อ 2 ที่มี ⚠️ คือตาราง
   KEEP ที่ factory reset ไม่ล้างให้ ต้องพึ่ง cleanup ของแพ็กนี้เท่านั้น
+- **อย่ารัน seed ระหว่างเวลาทำการ** — ตัวจองเลขเอกสารของแพ็ก (`nextDocNumber`) เป็น
+  max+1 แบบ**ไม่มี advisory lock** (ต่างจาก `DocNumberService` ของจริง): รัน seed พร้อมกับ
+  ที่พนักงานกำลังออกเอกสาร `EX`/`OI`/`PR` จริง เลขเอกสารอาจชนกัน — ฝั่งใดฝั่งหนึ่งพัง
+  ด้วยเลขซ้ำ (P2002) โดยไม่มีข้อความอธิบายว่าทำไม
+- **ใบเงินเดือนทดสอบ (DRAFT) จองช่องกันซ้ำของงวดจริง** — ด่านกันซ้ำของ payroll คือ
+  (สาขา + งวด + ฝั่ง) และใบทดสอบใช้งวดเดือนปัจจุบันจริง ⇒ สร้างใบเงินเดือนจริงของ
+  สาขา/งวด/ฝั่งเดียวกันจะถูกปฏิเสธ **จนกว่าจะ cleanup โดเมน `payroll` ก่อน**
+- รอบจ่ายค่าคอมทดสอบผูกกับ**พนักงานขายจริงคนแรกในระบบ** ที่งวด `TEST-YYYY-MM` —
+  ไม่บล็อกรอบจ่ายจริง (งวดจริงรูป `YYYY-MM` เป็นคนละ tuple ใน
+  `@@unique([salespersonId, period])` และ `generatePayouts` รับเฉพาะรูปแบบจริง)
+  แต่แถวทดสอบจะโผล่ในหน้ารอบจ่ายของพนักงานคนนั้นจนกว่าจะ cleanup
 - ชื่อฐานข้อมูลบน prod คือ `bestchoice` (ไม่ใช่ `bestchoice_prod` ตามที่ runbook เก่า
   บางฉบับเขียน)
 
@@ -72,17 +83,17 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 | `other-income` | รายได้อื่น | 7 | OtherIncome.customerNote ขึ้นต้นด้วย "[ทดสอบระบบ]" (เลข OI- ปล่อยตามลำดับจริง) |
 | `assets` | ทรัพย์สินถาวร | 14 | FixedAsset.description ขึ้นต้นด้วย "[ทดสอบระบบ]" · docNo เดินตามลำดับ ASSET-YYMM- จริง · assetCode ใช้ลำดับแยก "TESTASSET-" โดยตั้งใจ เพราะรหัสจริงเป็นรายหมวด (COMP-001) ซึ่งจะถูกเผาถาวรถ้าเอาไปตั้งให้แถวทดสอบที่ถูก soft-delete |
 | `equity` | ส่วนของผู้ถือหุ้น | 6 | EquityDocument.description ขึ้นต้นด้วย "[ทดสอบระบบ]" · Shareholder.name ขึ้นต้นด้วย "ทดสอบระบบ" (⚠️ shareholders เป็น KEEP table — factory reset ไม่ล้างให้) |
-| `suppliers-po` | ซัพพลายเออร์ + ใบสั่งซื้อ | 4 | Supplier.name ขึ้นต้น "ทดสอบระบบ" · PurchaseOrder.poNumber ขึ้นต้น "TEST-" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้) |
-| `stock-ops` | งานสต็อก (โอนย้าย · นับ · ปรับปรุง · แจ้งเตือน) | 8 | StockCount.countNumber ขึ้นต้น "TEST-" · StockTransfer/StockAdjustment.notes และ ReorderPoint/StockAlert.model ขึ้นต้นด้วย marker ทดสอบ |
-| `bookings` | ใบจอง | 1 | Booking.bookingNumber ขึ้นต้น "TEST-" |
-| `online-orders` | ออเดอร์ออนไลน์ + การจองเครื่อง | 3 | OnlineOrder.orderNumber ขึ้นต้น "TEST-" · ProductReservation.sessionId ขึ้นต้น "TEST-" |
-| `applications` | ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต | 2 | OnlineInstallmentApplication.applicationNumber ขึ้นต้น "TEST-" · CreditCheck.reviewNotes = "[ทดสอบระบบ] ใบตรวจเครดิตรอตรวจ — สร้างโดยชุดข้อมูลทดสอบ" |
+| `suppliers-po` | ซัพพลายเออร์ + ใบสั่งซื้อ | 4 | Supplier.name ขึ้นต้น "ทดสอบระบบ" · PurchaseOrder.poNumber ขึ้นต้น "TEST-PO-" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้) |
+| `stock-ops` | งานสต็อก (โอนย้าย · นับ · ปรับปรุง · แจ้งเตือน) | 8 | StockCount.countNumber ขึ้นต้น "TEST-COUNT-" · StockTransfer/StockAdjustment.notes ขึ้นต้นด้วย "[ทดสอบระบบ]" · ReorderPoint/StockAlert.model = "TEST-รุ่นแจ้งเตือน" (ค่าตรงตัว) |
+| `bookings` | ใบจอง | 1 | Booking.bookingNumber ขึ้นต้น "TEST-BK-" |
+| `online-orders` | ออเดอร์ออนไลน์ + การจองเครื่อง | 3 | OnlineOrder.orderNumber ขึ้นต้น "TEST-ORD-" · ProductReservation.sessionId ขึ้นต้น "TEST-SESSION-" |
+| `applications` | ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต | 2 | OnlineInstallmentApplication.applicationNumber ขึ้นต้น "TEST-APP-" · CreditCheck.reviewNotes = "[ทดสอบระบบ] ใบตรวจเครดิตรอตรวจ — สร้างโดยชุดข้อมูลทดสอบ" |
 | `inspections` | ใบตรวจสภาพเครื่อง | 2 | Inspection.notes ขึ้นต้นด้วย "[ทดสอบระบบ]" |
-| `repair` | ใบซ่อม / ประกัน | 5 | RepairTicket.ticketNumber ขึ้นต้น "TEST-" |
+| `repair` | ใบซ่อม / ประกัน | 5 | RepairTicket.ticketNumber ขึ้นต้น "TEST-RT-" |
 | `device-swap` | คำขอเปลี่ยนเครื่อง | 3 | ContractExchangeRequest.conditionNote ขึ้นต้นด้วย "[ทดสอบระบบ]" |
 | `commissions` | ค่าคอมมิชชั่น | 1 | SalesCommission.period และ CommissionPayout.period ขึ้นต้น "TEST-" (เช่น TEST-2026-08 — period เป็น String อิสระ จึงแยกจากงวดจ่ายจริงเด็ดขาด และ generatePayouts ของจริงรับเฉพาะ YYYY-MM จึงมองไม่เห็นงวดทดสอบ) |
 | `external-finance` | บริษัทไฟแนนซ์ภายนอก | 2 | ExternalFinanceCompany.name ขึ้นต้น "ทดสอบระบบ" |
-| `saving-plans` | แผนออมเครื่อง | 1 | SavingPlan.planNumber ขึ้นต้น "TEST-" (SavingPlanPayment ไม่มี marker — ตามจาก FK savingPlanId และไม่มี deletedAt จึงลบถาวร) |
+| `saving-plans` | แผนออมเครื่อง | 1 | SavingPlan.planNumber ขึ้นต้น "TEST-SP-" (SavingPlanPayment ไม่มี marker — ตามจาก FK savingPlanId และไม่มี deletedAt จึงลบถาวร) |
 | `trade-in` | รับซื้อเครื่องมือสอง | 1 | TradeIn.notes ขึ้นต้นด้วย "[ทดสอบระบบ]" (เครื่องที่เกิดจากการกดรับซื้อระหว่างเทสได้ imeiSerial "TEST-" — กวาดโดยโดเมน contracts) · แถว seed เป็น flow EXCHANGE โดยเจตนา: การกดรับซื้อ flow BUYBACK โพสต์ JE "shop-trade-in:<id>" ที่ไม่มี marker/metadata ให้ cleanup กวาดถึง — รายการทดสอบที่เป็น BUYBACK ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup |
 | `todos` | กระดานงาน (Todo) | 1 | Todo.title ขึ้นต้นด้วย "[ทดสอบระบบ]" |
 

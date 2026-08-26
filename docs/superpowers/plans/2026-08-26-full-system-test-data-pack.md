@@ -709,7 +709,18 @@ async function main(): Promise<void> {
 
   try {
     const now = new Date();
-    const refs = await resolveRefs(prisma);
+    // S5 (final fix 2026-08-26): cleanup ทั้ง 19 โดเมนไม่อ่าน ctx.refs เลย — resolveRefs
+    // โยนข้อความฝั่ง "สร้าง" เมื่อขาด SALES/OWNER/สาขา ซึ่งเคยบล็อกการล้างทั้งชุดเพราะ
+    // precondition ที่ไม่ได้ใช้ ⇒ resolve แบบ best-effort: ได้ก็ใช้ ไม่ได้ก็ log แล้วเดินต่อ
+    // ด้วย SeedRefs ค่าว่าง (คง shape ของ SeedContext ไว้ให้ seeders ตามเดิม)
+    let refs: SeedRefs;
+    try {
+      refs = await resolveRefs(prisma);
+    } catch (err) {
+      console.log(`[cleanup-test-pack] ℹ ข้อมูลอ้างอิงไม่ครบ (${err instanceof Error ? err.message : String(err)})`);
+      console.log('[cleanup-test-pack] ℹ เดินต่อได้ — cleanup ค้นหาข้อมูลทดสอบจาก marker เท่านั้น ไม่ใช้ข้อมูลอ้างอิงชุดนี้');
+      refs = { branchId: '', branchName: '', secondBranchId: null, salespersonId: '', reviewerId: '', ownerId: '', shopCompanyId: null, financeCompanyId: null };
+    }
     const ctx: SeedContext = { prisma, refs, dryRun, today: bkkMidnight(now), dateStr: bkkDateStr(now) };
 
     for (const d of domains) {
@@ -885,11 +896,13 @@ async function adaptRefs(ctx: SeedContext) {
 //      (generateInstallmentSchedules) จาก createdAt + paymentDueDay ด้วยสูตร local-time
 //      เดียวกับ dueDate ของ Payment ด้านล่าง ⇒ สองตารางตรงกันโดยโครงสร้าง
 //   9. สิ่งที่ activate "ส่งออก" ไม่ใช่แค่สิ่งที่มันอ่าน: sendContractActivatedNotification
-//      (contract-workflow.service.ts:713-735) — ลูกค้าไม่มี lineIdFinance ⇒ ตกสาขา
+//      (contract-workflow.service.ts) — ลูกค้าไม่มี lineIdFinance ⇒ ตกสาขา
 //      `else if (customer.phone)` แล้วส่ง SMS **จริง** ผ่าน NotificationsService.send
-//      (Customer.phone เป็นคอลัมน์ non-nullable — เว้นว่างไม่ได้) ⇒ เบอร์ลูกค้าทดสอบ
-//      ต้องอยู่ใน block สำรอง 08990000NN เดียวกับลูกค้าเปล่าของ CLI เดิม
-//      (seed-test-contracts.cli.ts:255) — ห้ามใช้ 09xxxxxxxx ที่ route ถึงคนจริงได้
+//      (transport ข้ามให้เฉพาะ NODE_ENV !== 'production' — runbook prod ตั้ง
+//      NODE_ENV=production พอดี และ Customer.phone เป็นคอลัมน์ non-nullable) ⇒ เบอร์
+//      ลูกค้าทดสอบใช้ค่า **โทรไม่ได้** `TEST-00000NN` (S4, final fix 2026-08-26):
+//      provider ปฏิเสธ → NotificationLog FAILED — ตัดข้อความที่ต้นทาง แทนการพนันกับ
+//      block เบอร์ "สำรองตามธรรมเนียม" 08990000NN ซึ่งไม่ได้จองจริงกับ operator
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DRAFT_SELLING_PRICE = 19900;
@@ -1025,10 +1038,10 @@ async function seedDraftContract(
     const customer = await tx.customer.create({
       data: {
         name: `ทดสอบ รอเปิดสัญญา (DRAFT) ${contractSeq}`,
-        // block สำรอง 08990000NN (convention เดียวกับลูกค้าเปล่าของ CLI เดิม) — สัญญาใบนี้
-        // เป็นใบเดียวที่ไปถึง activate ซึ่งส่ง SMS จริงถึงเบอร์นี้ (ดูด่านข้อ 9 ด้านบน);
-        // ชนกับลูกค้าเปล่า (NN=01,02) ได้ ไม่เป็นไร — คอลัมน์ phone ไม่ unique
-        phone: `08990000${String(contractSeq % 100).padStart(2, '0')}`,
+        // เบอร์โทรไม่ได้โดยเจตนา (S4, final fix 2026-08-26) — สัญญาใบนี้เป็นใบเดียวที่
+        // ไปถึง activate ซึ่งส่ง SMS จริงถึงเบอร์นี้บน NODE_ENV=production (ด่านข้อ 9);
+        // คอลัมน์เป็น String ธรรมดา ไม่ unique — ไม่มีโค้ดใน pack อ่านค่านี้ต่อ
+        phone: `TEST-00000${String(contractSeq % 100).padStart(2, '0')}`,
         prefix: 'นาย',
         occupation: 'ทดสอบ',
         addressCurrent: TEST_CUSTOMER_ADDRESS, // marker ให้ cleanup เดิมกวาดเจอ
@@ -1223,9 +1236,24 @@ export const contractsSeeder: DomainSeeder = {
           ...(testProductIds.length ? [{ productId: { in: testProductIds } }] : []),
         ],
       },
-      select: { id: true },
+      select: { id: true, contractNumber: true, deletedAt: true },
     });
     const testContractIds = testContracts.map((c) => c.id);
+    // ประชากรที่ CLI เดิมจะกวาดจริง (มันกรอง deletedAt: null)
+    const liveContractIds = testContracts.filter((c) => !c.deletedAt).map((c) => c.id);
+
+    // ── ด่าน INTER-CO (S2, final fix 2026-08-26): สัญญาทดสอบใน InterCoSettlementItem ของ
+    // batch สถานะ PENDING_APPROVAL/POSTED → **throw** พร้อมเลขรอบจ่าย ห้ามล้างเงียบ —
+    // JE ของรอบจ่ายไม่ stamp contractId (มีแต่ settlementBatchId + items[] ซ้อนใน metadata)
+    // การกวาด 1A (Cr 21-1101/21-1102) ทิ้งจะเหลือขา Dr ของรอบจ่ายยืนโดด: 21-1101 กลายเป็น
+    // debit balance. ข้อความชี้ทางจริง: reverse รอบ POSTED / ถอน-ยกเลิกรอบ PENDING_APPROVAL
+    // ที่เมนูจ่ายให้หน้าร้าน (INTER-CO) ก่อน. (REVERSED มี mirror หักล้างแล้ว · DRAFT/CANCELLED
+    // ไม่มี JE — ไม่เข้าเงื่อนไข)
+
+    // ── เลข JE ที่ CLI เดิมจะกวาดตาม metadata.contractId (M1): query "ก่อน" delegate แล้ว
+    // พิมพ์ entryNumber ทุกใบ ทั้ง dry-run และ live — JE คือหลักฐานบัญชี และ dry-run คือ
+    // ด่านสุดท้ายของคนกดก่อนลบถาวร (CLI เดิมพิมพ์แค่จำนวน — ห้ามแก้ CLI เดิม)
+
     const saleWhereOr = [
       ...(testProductIds.length ? [{ productId: { in: testProductIds } }] : []),
       ...(testCustomerIds.length ? [{ customerId: { in: testCustomerIds } }] : []),
@@ -1248,7 +1276,7 @@ export const contractsSeeder: DomainSeeder = {
           where: {
             OR: sales.map((s) => ({ metadata: { path: ['saleId'], equals: s.id } as never })),
           },
-          select: { id: true, metadata: true },
+          select: { id: true, entryNumber: true, metadata: true },
         })
       : [];
     const saleJeIds = saleJes.map((j) => j.id);
@@ -1263,7 +1291,7 @@ export const contractsSeeder: DomainSeeder = {
               metadata: { path: ['reversesEntryId'], equals: id } as never,
             })),
           },
-          select: { id: true },
+          select: { id: true, entryNumber: true },
         })
       : [];
     const jeIds = [...new Set([...saleJeIds, ...mirrorJes.map((j) => j.id)])];
@@ -1280,6 +1308,9 @@ export const contractsSeeder: DomainSeeder = {
         `  รายการบัญชีใบขาย (metadata.saleId): ${saleJeIds.length} ใบ + ใบกลับรายการ ${mirrorJes.length} ใบ จากใบขาย:`,
       );
       for (const n of affected) console.log(`    ${n}`);
+      // เลข JE คือหลักฐานบัญชี — พิมพ์ก่อนลบเสมอ (M1: dry-run คือด่านสุดท้ายของคนกด)
+      for (const j of saleJes) console.log(`    ${j.entryNumber}`);
+      for (const j of mirrorJes) console.log(`    ${j.entryNumber} (ใบกลับรายการ)`);
       if (dryRun) {
         console.log(`  (dry-run) จะลบถาวร ${jeIds.length} รายการบัญชีใบขาย — ยังไม่ลบ`);
       } else {
@@ -1367,7 +1398,7 @@ export const contractsSeeder: DomainSeeder = {
 > ใครลอก code block นี้แบบตัด wrapper ทิ้ง = เปิดรูเดิมกลับมา. ห้ามแก้ CLI เดิม —
 > มันต้องรันเดี่ยวได้เหมือนเดิม.
 
-> **เบอร์ลูกค้าของสัญญา DRAFT ต้องอยู่ใน block สำรอง `08990000NN` (fix round 1, 2026-08-26):** สัญญา DRAFT คือใบเดียวของ pack ที่ไปถึง `ContractWorkflowService.activate` ซึ่งเรียก `sendContractActivatedNotification` — ลูกค้าที่ไม่มี `lineIdFinance` จะถูกส่ง **SMS จริง** ไปที่ `customer.phone` (คอลัมน์ non-nullable เว้นว่างไม่ได้). เบอร์รูป `09xxxxxxxx` เดิม route ถึงคนจริงได้ จึงต้องใช้ block เดียวกับลูกค้าเปล่าของ CLI เดิม (`seed-test-contracts.cli.ts:255`).
+> **เบอร์ลูกค้าของสัญญา DRAFT ต้องโทรไม่ได้ (S4, final fix 2026-08-26 — แทน fix round 1 ที่ใช้ block `08990000NN`):** สัญญา DRAFT คือใบเดียวของ pack ที่ไปถึง `ContractWorkflowService.activate` ซึ่งเรียก `sendContractActivatedNotification` — ลูกค้าที่ไม่มี `lineIdFinance` จะถูกส่ง **SMS จริง** ไปที่ `customer.phone` และ transport ข้ามให้เฉพาะ `NODE_ENV !== 'production'` ซึ่งเป็นตัวแปรเดียวกับที่ runbook prod ตั้ง. block `08990000NN` เป็นแค่ธรรมเนียมที่สืบจาก CLI เดิม ไม่ได้จองจริงกับ operator ⇒ ใช้ค่า `TEST-00000NN` (คอลัมน์เป็น String ธรรมดา): provider ปฏิเสธเบอร์รูปนี้ → NotificationLog FAILED — หยุดข้อความที่ต้นทาง. การส่งเป็น fire-and-forget (`.catch` ที่ activate) จึงไม่ล้มก้าวเปิดสัญญา และไม่มีโค้ดใน pack อ่านค่า phone นี้ต่อ.
 
 > **สัญญา DRAFT ของ wrapper (2026-08-26):** seeder เดิมสร้างทุก scenario เป็น ACTIVE/TERMINATED — wrapper จึงสร้างสัญญา DRAFT (workflow APPROVED + PDPA + ลายเซ็น 4 ฝ่าย + เครื่อง RESERVED + งวด PENDING) เพิ่ม 1 ใบ เพื่อให้ก้าว activate ของโหมดเดินเรื่อง (Task 12) มี input จริง และคิวรอจ่าย INTER-CO ที่ /accounting/intercompany ถูก exercise ได้ตาม §7 (ไม่งั้นก้าวนั้น skip ตลอด).
 
@@ -1650,10 +1681,20 @@ export const expensesSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const docs = await ctx.prisma.expenseDocument.findMany({
+    const marked = await ctx.prisma.expenseDocument.findMany({
       where: { note: { startsWith: TEST_NOTE_MARKER }, documentType: 'EXPENSE', deletedAt: null },
       select: { id: true, number: true, journalEntryId: true },
     });
+    const markedIds = marked.map((d) => d.id);
+    // เอกสารต่อยอดจากใบทดสอบ (S3, final fix 2026-08-26): ใบลดหนี้ (CREDIT_NOTE) และ
+    // ใบชำระเจ้าหนี้ (VENDOR_SETTLEMENT) ที่สร้างต่อจากใบทดสอบเป็นเอกสาร "ใหม่" ที่ไม่
+    // inherit note marker (ExpenseDocumentCreateService ตั้ง note จาก dto ผู้ใช้) — ตามผ่าน
+    // FK จริง: CreditNoteDetail.originalDocumentId in markedIds และ
+    // SettlementLine.clearedDocumentId in [markedIds + creditNoteIds] (รูเดียวกับใบ -R
+    // ของ other-income). พิมพ์เลขเอกสารต่อยอดเสมอทั้ง dry-run และ live — ไม่มี marker
+    // จึงเป็นช่องทางเดียวที่ผู้รันเห็นก่อนถูกกวาด. docs = [...marked, ...creditNotes,
+    // ...settlements] แล้วเดินลำดับลบเดิม (JE hard-delete → soft-delete เอกสาร) ทั้งชุด
+    const docs = marked; // ดูโค้ดจริงใน expenses.seed.ts — สรุปไว้เพื่อไม่ทำ code block ยาวเกิน
     const jeIds = docs.map((d) => d.journalEntryId).filter((x): x is string => !!x);
     for (const d of docs) console.log(`     ${d.number}${d.journalEntryId ? ' (มี JE)' : ''}`);
     if (!dryRun && docs.length) {
@@ -1668,7 +1709,7 @@ export const expensesSeeder: DomainSeeder = {
         await tx.expenseDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { deletedAt: new Date() } });
       });
     }
-    return { removed: { 'ใบค่าใช้จ่าย': docs.length, 'รายการบัญชีของใบค่าใช้จ่าย (ลบถาวร)': jeIds.length }, warnings: [] };
+    return { removed: { 'ใบค่าใช้จ่าย': marked.length, 'ใบลดหนี้ต่อจากใบทดสอบ (ไม่มี marker — ตามจาก FK)': creditNotes.length, 'ใบชำระเจ้าหนี้ต่อจากใบทดสอบ (ไม่มี marker — ตามจาก FK)': settlements.length, 'รายการบัญชีของใบค่าใช้จ่าย (ลบถาวร)': jeIds.length }, warnings: [] };
   },
 };
 ```
@@ -2582,7 +2623,7 @@ export const suppliersPoSeeder: DomainSeeder = {
   key: 'suppliers-po',
   label: 'ซัพพลายเออร์ + ใบสั่งซื้อ',
   routes: ['/suppliers', '/suppliers/:id', '/purchase-orders', '/purchase-orders/qc'],
-  markerDoc: `Supplier.name ขึ้นต้น "${TEST_NAME_PREFIX}" · PurchaseOrder.poNumber ขึ้นต้น "${TEST_DOC_PREFIX}" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้)`,
+  markerDoc: `Supplier.name ขึ้นต้น "${TEST_NAME_PREFIX}" · PurchaseOrder.poNumber ขึ้นต้น "${PO_NO_PREFIX}" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้)`, // PO_NO_PREFIX = TEST-PO- (S1)
 
   async plan(): Promise<PlanRow[]> {
     return [
@@ -2820,7 +2861,7 @@ export const stockOpsSeeder: DomainSeeder = {
     '/stock/workflow',
     '/inventory',
   ],
-  markerDoc: `StockCount.countNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · StockTransfer/StockAdjustment.notes และ ReorderPoint/StockAlert.model ขึ้นต้นด้วย marker ทดสอบ`,
+  markerDoc: `StockCount.countNumber ขึ้นต้น "${COUNT_NO_PREFIX}" · StockTransfer/StockAdjustment.notes ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" · ReorderPoint/StockAlert.model = "${ALERT_MODEL}" (ค่าตรงตัว)`, // COUNT_NO_PREFIX = TEST-COUNT- (S1)
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     const products = await ctx.prisma.product.findMany({
@@ -3219,7 +3260,7 @@ export const bookingsSeeder: DomainSeeder = {
   key: 'bookings',
   label: 'ใบจอง',
   routes: ['/bookings'],
-  markerDoc: `Booking.bookingNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `Booking.bookingNumber ขึ้นต้น "${BOOKING_NO_PREFIX}"`, // BOOKING_NO_PREFIX = `${TEST_DOC_PREFIX}BK-` — ค่าคงที่เดียวกับ query (S1, final fix 2026-08-26)
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
@@ -3321,7 +3362,7 @@ export const onlineOrdersSeeder: DomainSeeder = {
   key: 'online-orders',
   label: 'ออเดอร์ออนไลน์ + การจองเครื่อง',
   routes: ['/online-orders', '/product-holds', '/slip-review'],
-  markerDoc: `OnlineOrder.orderNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · ProductReservation.sessionId ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `OnlineOrder.orderNumber ขึ้นต้น "${ORDER_NO_PREFIX}" · ProductReservation.sessionId ขึ้นต้น "${SESSION_ID_PREFIX}"`, // = TEST-ORD- / TEST-SESSION- — ค่าคงที่เดียวกับ query (S1)
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}ORD ${r.key}`, detail: `${r.status} · ${r.shipping} · ${r.channel} · ${r.note}` }));
@@ -3437,7 +3478,7 @@ export const applicationsSeeder: DomainSeeder = {
   key: 'applications',
   label: 'ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต',
   routes: ['/installment-applications', '/customer-intake'],
-  markerDoc: `OnlineInstallmentApplication.applicationNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · CreditCheck.reviewNotes = "${CC_REVIEW_NOTE}"`,
+  markerDoc: `OnlineInstallmentApplication.applicationNumber ขึ้นต้น "${APP_NO_PREFIX}" · CreditCheck.reviewNotes = "${CC_REVIEW_NOTE}"`, // APP_NO_PREFIX = TEST-APP- — ค่าคงที่เดียวกับ query (S1)
 
   async plan(): Promise<PlanRow[]> {
     return [
@@ -3643,7 +3684,7 @@ export const repairSeeder: DomainSeeder = {
   key: 'repair',
   label: 'ใบซ่อม / ประกัน',
   routes: ['/insurance', '/insurance/:id', '/insurance/new', '/insurance/warranty-check', '/insurance/exchange-requests'],
-  markerDoc: `RepairTicket.ticketNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `RepairTicket.ticketNumber ขึ้นต้น "${TICKET_NO_PREFIX}"`, // = TEST-RT- — ค่าคงที่เดียวกับ query (S1)
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}RT ${r.key}`, detail: `${r.status} · ผู้จ่าย ${r.payer} · ${r.warranty} · ${r.defect}` }));
@@ -4476,7 +4517,7 @@ export const savingPlansSeeder: DomainSeeder = {
   key: 'saving-plans',
   label: 'แผนออมเครื่อง',
   routes: ['/saving-plans'],
-  markerDoc: `SavingPlan.planNumber ขึ้นต้น "${TEST_DOC_PREFIX}"`,
+  markerDoc: `SavingPlan.planNumber ขึ้นต้น "${PLAN_NO_PREFIX}"`, // = TEST-SP- — ค่าคงที่เดียวกับ query (S1)
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({ label: `${TEST_DOC_PREFIX}SP ${r.key}`, detail: `${r.status} · เป้า ฿${r.target.toLocaleString('th-TH')} · ออมแล้ว ฿${r.saved.toLocaleString('th-TH')}` }));
@@ -4985,23 +5026,28 @@ export async function runPreflight(
     );
   }
 
-  // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องเปิดทั้งสองฝั่ง
-  // (ตรวจได้เฉพาะเมื่อ POST_DATE ใช้การได้ — year/month ที่เป็น NaN จะทำให้ query โยน)
+  // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องรับรายการได้ทั้งสองฝั่ง (B2, final fix 2026-08-26):
+  // เรียก validatePeriodOpen (utils/period-lock.util) ตัวเดียวกับที่ทุกเส้นทางลงบัญชีจริงใช้
+  // — ได้ทั้ง grace window (`period_grace_days` default 5: งวด CLOSED/SYNCED ยังโพสต์ได้ถึง
+  // สิ้นเดือน+5วัน) และการอ่านเดือนแบบ getFullYear/getMonth เดียวกับ guard ⇒ preflight
+  // เข้มหรือหย่อนกว่าด่านจริงไม่ได้โดยโครงสร้าง. (เดิมเช็ค `status !== 'OPEN'` เอง —
+  // เข้มกว่า production: ปฏิเสธ ส.ค. CLOSED ที่จริง ๆ ยังโพสต์ได้ถึง 5 ก.ย. แล้วชี้ทางแก้
+  // ที่เป็นอันตราย). (ตรวจได้เฉพาะเมื่อ POST_DATE ใช้การได้ — Invalid Date ทำให้ query โยน)
   if (!postDateProblem) {
-    const year = opts.postDate.getUTCFullYear();
-    const month = opts.postDate.getUTCMonth() + 1;
     for (const [name, companyId] of [
       ['SHOP', refs.shopCompanyId],
       ['FINANCE', refs.financeCompanyId],
     ] as const) {
       if (!companyId) continue;
-      const period = await prisma.accountingPeriod.findFirst({
-        where: { companyId, year, month },
-        select: { status: true },
-      });
-      if (period && period.status !== 'OPEN') {
+      try {
+        await validatePeriodOpen(prisma, opts.postDate, companyId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         problems.push(
-          `งวดบัญชี ${year}-${String(month).padStart(2, '0')} ของ ${name} สถานะ ${period.status} — เปิดงวดก่อน หรือใช้ POST_DATE=YYYY-MM-DD ชี้ไปเดือนที่ยังเปิด`,
+          `งวดบัญชีฝั่ง ${name} ไม่รับรายการ ณ วันที่จะโพสต์: ${msg} — ทางที่ทำได้จริง: ` +
+            'เลือก POST_DATE=YYYY-MM-DD ในเดือนที่งวดยังเปิด/ยังอยู่ในช่วงผ่อนผัน ' +
+            '(ข้อแลก: ก้าวที่ลงบัญชี ณ วันปัจจุบันเสมอ เช่น เปิดสัญญา/ขาย/มัดจำ จะถูกข้ามเมื่อเดือนไม่ตรงเดือนนี้ — ผลรันจะบอกว่าข้ามเพราะอะไร) ' +
+            'หรือให้ OWNER เปิดงวดนั้นใหม่ที่หน้าตั้งค่า › งวดบัญชี (/settings) แล้วรันใหม่',
         );
       }
     }
@@ -5014,13 +5060,18 @@ export async function runPreflight(
 - [ ] **Step 4: รันเทสให้ผ่าน**
 
 Run: `npm --prefix apps/api test -- _preflight`
-Expected: PASS — 8 เทส (4 เทสเดิม + guard POST_DATE: 2 เทส pure function + 2 เทส
-runPreflight ผ่าน fake prisma ที่โยนเมื่อ year/month เป็น NaN แบบเดียวกับ Prisma จริง)
+Expected: PASS — 10 เทส. เช็คงวดต้องมี **assertion แยกแยะจริง** (final fix 2026-08-26):
+stub มี `accountingPeriod.findUnique` (คีย์ `companyId_year_month` แบบ validatePeriodOpen ใช้จริง)
++ `systemConfig.findUnique` → null (grace default 5) — (1) งวด CLOSED ของเดือนที่พ้น grace
+ต้องโผล่เป็นปัญหาพร้อมข้อความ guard จริง "ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว" ทั้งสองฝั่ง
+(mutant ที่ลบเช็คทิ้งต้องล้มเทสนี้) · (2) งวด CLOSED ของเดือนปัจจุบัน (ยังใน grace) ต้อง
+**ไม่**เป็นปัญหา — ปักว่า preflight ไม่เข้มกว่า guard
 
-- [ ] **Step 5: ยืนยันชื่อฟิลด์ของ `AccountingPeriod`**
+- [ ] **Step 5: ยืนยันว่า guard จริงคือแหล่งเดียว**
 
-Run: `awk '/^model AccountingPeriod /,/^}/' apps/api/prisma/schema.prisma | grep -E 'year|month|status|companyId'`
-Expected: มี `year` `month` `status` `companyId` — ถ้าเก็บเป็น `periodStart` แทน ให้แก้ query ตามจริง
+Run: `grep -n "validatePeriodOpen" apps/api/src/cli/test-pack/_preflight.ts`
+Expected: preflight เรียก `validatePeriodOpen` จาก `utils/period-lock.util` — ห้ามมีเช็ค
+`period.status` ของตัวเองซ้อนอีกชั้น
 
 - [ ] **Step 6: เรียก preflight จาก orchestrator**
 
@@ -5237,7 +5288,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
     // ── ก้าว 2: รับชำระ 2 งวด → JE 2B + ใบเสร็จ (ฉบับย่อ — กติกาครบ)
     await run('รับชำระค่างวด (JE 2B + ใบเสร็จ)', async () => {
       // MINOR 5: ข้ามสัญญาที่ลูกค้าผูก LINE แล้ว (hook หลังรับเงินยิง Flex จริง) + บอกชื่อ
-      const contracts = await ctx.prisma.contract.findMany({
+      const candidates = await ctx.prisma.contract.findMany({
         where: {
           contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
           status: 'ACTIVE',
@@ -5247,6 +5298,27 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         orderBy: { contractNumber: 'asc' },
         select: { id: true, contractNumber: true },
       });
+      // B1 (final fix 2026-08-26): รับชำระได้เฉพาะสัญญาที่มี JE 1A (POSTED) จริง — สัญญาจาก
+      // seed-test-contracts.cli เป็น ACTIVE โดย "ไม่โพสต์ activation journal" ⇒ 2B บนสัญญา
+      // พวกนั้นทำ 11-2101/11-2103 ติดเครื่องหมายผิดทั้งที่งบทดลองยังสมดุล. ตัวชี้ = metadata
+      // ที่ ContractActivation1ATemplate stamp จริง: `{ tag: '1A', contractId }`
+      const contracts: typeof candidates = [];
+      const no1A: string[] = [];
+      for (const c of candidates) {
+        const je = await ctx.prisma.journalEntry.findFirst({
+          where: {
+            status: 'POSTED',
+            deletedAt: null,
+            AND: [
+              { metadata: { path: ['tag'], equals: '1A' } },
+              { metadata: { path: ['contractId'], equals: c.id } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (je) contracts.push(c);
+        else no1A.push(c.contractNumber); // ระบุชื่อใน "ข้ามสัญญา ..." ของผลก้าว (รูปเดียวกับ lineSkipNote)
+      }
       if (!contracts.length) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE (รันโดเมน contracts ก่อน)';
       const payments = app.get(PaymentsService, { strict: false });
       // IMPORTANT 2a: ค่าปรับ resolve ณ postDate — single source กับ orchestrator
@@ -5382,6 +5454,17 @@ git commit -m "feat(test-pack): โหมดเดินเรื่องผ่
 
 **เหตุผล:** MD ข้อ 6-7 สั่งให้มีตาราง route + ตารางวิธีลบ ถ้าเขียนมือ มันจะล้าสมัยทันทีที่เพิ่มโดเมน
 generate จาก registry แทน ⇒ เอกสารกับโค้ดหลุดกันไม่ได้
+
+> **§0 คำเตือนก่อนใช้ (M2, final fix 2026-08-26)** — template ใน `_docgen.ts` (ข้อความมาจาก
+> generator ห้ามแก้ README ที่ generate แล้วด้วยมือ) มีคำเตือน operator เพิ่ม:
+> (1) **อย่ารัน seed ระหว่างเวลาทำการ** — `nextDocNumber` ของแพ็กเป็น max+1 **ไม่มี advisory
+> lock** (ต่างจาก `DocNumberService` จริง) เลขเอกสาร `EX`/`OI`/`PR` ชนกับที่พนักงานออกจริงได้
+> (P2002) · (2) **ใบเงินเดือนทดสอบ (DRAFT) จองช่องกันซ้ำ (สาขา + งวด + ฝั่ง) ของงวดปัจจุบันจริง**
+> — ใบเงินเดือนจริงงวดเดียวกันถูกปฏิเสธจนกว่าจะ cleanup โดเมน payroll ·
+> (3) รอบจ่ายค่าคอมทดสอบผูกพนักงานขายจริงคนแรกที่งวด `TEST-YYYY-MM` — **ไม่**บล็อกรอบจ่ายจริง
+> (finding เดิมที่ว่า "จองช่อง unique ของงวดจริง" ไม่เป็นจริงกับโค้ดที่ commit: งวดทดสอบเป็น
+> `TEST-` prefix คนละ tuple และ `generatePayouts` validate `^\d{4}-\d{2}$`) แต่แถวโผล่ใน
+> หน้ารอบจ่ายของพนักงานคนนั้นจนกว่าจะ cleanup — เขียนตามจริงใน README
 
 - [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_docgen.spec.ts`**
 

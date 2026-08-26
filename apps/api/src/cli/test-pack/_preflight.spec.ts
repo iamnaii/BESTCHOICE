@@ -44,7 +44,7 @@ describe('invalidPostDateProblem', () => {
   });
 });
 
-describe('runPreflight — POST_DATE พิมพ์ผิด', () => {
+describe('runPreflight — POST_DATE + งวดบัญชี (ผ่าน validatePeriodOpen ตัวจริง)', () => {
   const refs: SeedRefs = {
     branchId: 'b1',
     branchName: 'สาขาทดสอบ',
@@ -57,22 +57,29 @@ describe('runPreflight — POST_DATE พิมพ์ผิด', () => {
   };
 
   // Fake (ไม่ใช่ jest.mock ที่นับจำนวนครั้ง): ผังว่าง = เช็คข้อ 3 ต้องรายงาน "ผังบัญชีขาด",
-  // และ findFirst เลียนแบบ Prisma จริง — filter Int ที่เป็น NaN โยน PrismaClientValidationError
-  // ⇒ ถ้า guard หาย เทสนี้ล้มด้วย rejection จริง ไม่ใช่แค่ assertion บน mock
-  const prismaStub = {
-    chartOfAccount: { findMany: async () => [] },
-    accountingPeriod: {
-      findFirst: async (args: { where: { year: number; month: number } }) => {
-        if (Number.isNaN(args.where.year) || Number.isNaN(args.where.month)) {
-          throw new Error('PrismaClientValidationError: NaN is not a valid Int');
-        }
-        return null;
+  // และ findUnique เลียนแบบ Prisma จริง — filter Int ที่เป็น NaN โยน PrismaClientValidationError
+  // ⇒ ถ้า guard หาย เทสนี้ล้มด้วย rejection จริง ไม่ใช่แค่ assertion บน mock.
+  // periodStatus = สถานะงวดที่ findUnique จะคืนให้ทุก (company, year, month) ที่ถาม —
+  // null = ไม่มีแถวงวด (validatePeriodOpen ถือว่าไม่ล็อก)
+  const makeStub = (periodStatus: string | null) =>
+    ({
+      chartOfAccount: { findMany: async () => [] },
+      systemConfig: { findUnique: async () => null }, // period_grace_days → default 5
+      accountingPeriod: {
+        findUnique: async (args: {
+          where: { companyId_year_month: { companyId: string; year: number; month: number } };
+        }) => {
+          const { year, month } = args.where.companyId_year_month;
+          if (Number.isNaN(year) || Number.isNaN(month)) {
+            throw new Error('PrismaClientValidationError: NaN is not a valid Int');
+          }
+          return periodStatus ? { status: periodStatus } : null;
+        },
       },
-    },
-  } as unknown as PrismaService;
+    }) as unknown as PrismaService;
 
   it('เก็บเป็นปัญหาในลิสต์เดียวกับเช็คผังบัญชี — ไม่ throw และไม่ตัดเช็คอื่นทิ้ง', async () => {
-    const res = await runPreflight(prismaStub, refs, {
+    const res = await runPreflight(makeStub(null), refs, {
       drive: true,
       postDate: new Date('2026-13-99T00:00:00.000Z'),
       postDateRaw: '2026-13-99',
@@ -83,12 +90,42 @@ describe('runPreflight — POST_DATE พิมพ์ผิด', () => {
     expect(res.problems.some((p) => p.includes('ผังบัญชีขาด'))).toBe(true);
   });
 
-  it('POST_DATE ถูกต้อง → ไม่มีปัญหา POST_DATE และเช็คงวดบัญชียังเดินตามปกติ', async () => {
-    const res = await runPreflight(prismaStub, refs, {
+  it('POST_DATE ถูกต้อง + งวดเปิด → ไม่มีปัญหา POST_DATE และไม่มีปัญหางวดบัญชี', async () => {
+    const res = await runPreflight(makeStub('OPEN'), refs, {
       drive: true,
-      postDate: new Date('2026-08-01T00:00:00.000Z'),
-      postDateRaw: '2026-08-01',
+      postDate: new Date(),
+      postDateRaw: undefined,
     });
     expect(res.problems.some((p) => p.includes('ไม่ใช่วันที่ที่ถูกต้อง'))).toBe(false);
+    expect(res.problems.some((p) => p.includes('งวดบัญชี'))).toBe(false);
+  });
+
+  // assertion แยกแยะจริง (B2): mutant ที่ลบเช็คงวดทิ้งทั้งก้อนต้องล้มเทสนี้ —
+  // งวด CLOSED ของเดือนที่พ้นช่วงผ่อนผันไปนานแล้ว ต้องโผล่เป็นปัญหาพร้อมข้อความไทย
+  // ของ guard ตัวจริง (validatePeriodOpen) ครบทั้งสองฝั่งนิติบุคคล
+  it('งวด CLOSED ที่พ้น grace แล้ว → ปัญหางวดบัญชีทั้งฝั่ง SHOP และ FINANCE พร้อมข้อความของ guard จริง', async () => {
+    const res = await runPreflight(makeStub('CLOSED'), refs, {
+      drive: true,
+      postDate: new Date('2020-01-15T00:00:00.000Z'), // ม.ค. 2020 — grace (สิ้นเดือน+5วัน) พ้นไปนานแล้ว
+      postDateRaw: '2020-01-15',
+    });
+    expect(res.ok).toBe(false);
+    const periodProblems = res.problems.filter((p) =>
+      p.includes('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว'),
+    );
+    expect(periodProblems.some((p) => p.includes('ฝั่ง SHOP'))).toBe(true);
+    expect(periodProblems.some((p) => p.includes('ฝั่ง FINANCE'))).toBe(true);
+  });
+
+  // preflight ห้ามเข้มกว่าด่านจริง: งวด CLOSED ของ "เดือนปัจจุบัน" ยังอยู่ในช่วงผ่อนผัน
+  // (สิ้นเดือน + period_grace_days ≥ วันนี้เสมอ) — validatePeriodOpen ปล่อยผ่าน ⇒
+  // preflight ต้องไม่รายงานปัญหางวด (เคสจริงบน prod: ส.ค. CLOSED แต่โพสต์ได้ถึง 5 ก.ย.)
+  it('งวด CLOSED ของเดือนปัจจุบัน (ยังใน grace) → ไม่เป็นปัญหา — ตรงกับที่ production guard ปล่อยผ่าน', async () => {
+    const res = await runPreflight(makeStub('CLOSED'), refs, {
+      drive: true,
+      postDate: new Date(),
+      postDateRaw: undefined,
+    });
+    expect(res.problems.some((p) => p.includes('งวดบัญชี'))).toBe(false);
   });
 });

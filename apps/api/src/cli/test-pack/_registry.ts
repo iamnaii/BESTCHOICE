@@ -5,6 +5,8 @@ import { equitySeeder } from './equity.seed';
 import { expensesSeeder } from './expenses.seed';
 import { otherIncomeSeeder } from './other-income.seed';
 import { payrollSeeder } from './payroll.seed';
+import { stockOpsSeeder } from './stock-ops.seed';
+import { suppliersPoSeeder } from './suppliers-po.seed';
 import { todosSeeder } from './todos.seed';
 
 /**
@@ -19,6 +21,8 @@ export const ALL_DOMAINS: DomainSeeder[] = [
   otherIncomeSeeder,
   assetsSeeder,
   equitySeeder,
+  suppliersPoSeeder,
+  stockOpsSeeder,
   todosSeeder,
 ];
 

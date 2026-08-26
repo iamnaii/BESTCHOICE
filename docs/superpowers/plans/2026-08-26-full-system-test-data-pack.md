@@ -1350,7 +1350,6 @@ git commit -m "feat(test-pack): โดเมนค่าใช้จ่าย + 
 - [ ] **Step 1: เขียน `other-income.seed.ts`**
 
 ```ts
-import { Prisma } from '@prisma/client';
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import { nextNumberFrom, round2, sumLine } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';

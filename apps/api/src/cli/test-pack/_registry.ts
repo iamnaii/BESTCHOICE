@@ -1,6 +1,8 @@
 import type { DomainSeeder } from './_types';
+import { assetsSeeder } from './assets.seed';
 import { contractsSeeder } from './contracts.seed';
 import { expensesSeeder } from './expenses.seed';
+import { otherIncomeSeeder } from './other-income.seed';
 import { payrollSeeder } from './payroll.seed';
 import { todosSeeder } from './todos.seed';
 
@@ -13,6 +15,8 @@ export const ALL_DOMAINS: DomainSeeder[] = [
   contractsSeeder,
   expensesSeeder,
   payrollSeeder,
+  otherIncomeSeeder,
+  assetsSeeder,
   todosSeeder,
 ];
 

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 /** ปัดเงิน 2 ตำแหน่ง half-up ใน Decimal — Global Constraint: ห้ามใช้ float กับจำนวนเงิน */
-const round2 = (n: Prisma.Decimal): Prisma.Decimal =>
+export const round2 = (n: Prisma.Decimal): Prisma.Decimal =>
   n.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
 /**

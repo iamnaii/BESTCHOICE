@@ -152,9 +152,14 @@ describe('ContractWorkflowService', () => {
         // Phase 5 Task 2: activate() ใช้ findFirst (+ deletedAt: null) แทน findUnique
         findFirst: jest.fn().mockResolvedValue(mockProduct),
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'SOLD_INSTALLMENT' }),
+        // ดึงของแถมมาตัดสต็อกตอน activate — ค่าเริ่มต้น = ไม่มีของแถม
+        findMany: jest.fn().mockResolvedValue([]),
       },
       sale: {
         create: jest.fn().mockResolvedValue({ id: 'sale-1' }),
+        // ตอน activate ต้องหาของแถมจากใบขาย (Sale.bundleProductIds) เพื่อตัดสต็อก
+        // ค่าเริ่มต้น = ไม่มีใบขาย ⇒ ไม่มีของแถม ⇒ JE A เหมือนเดิมทุกไบต์
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       payment: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -438,6 +443,38 @@ describe('ContractWorkflowService', () => {
       });
       // Called with the outer tx as second argument (atomicity guarantee)
       expect(shopInventoryTransferTemplate.execute.mock.calls[0][1]).toBeDefined();
+    });
+
+    // ── ของแถมต้องตัดสต็อกทุกครั้ง (คำสั่งเจ้าของ 2026-08-26) ────────────────
+    // เดิม markBundleProductsSold พลิกของแถมเป็น SOLD_CASH ตอนสร้างใบขาย
+    // แต่ไม่มีใครตัดต้นทุนออกจากสต็อก ⇒ สินค้าคงเหลือสูงเกินจริงถาวร
+    it('ของแถมในใบขายถูกส่งเข้า template เพื่อตัดสต็อก — แยกบัญชีตามหมวด', async () => {
+      prisma.sale.findFirst.mockResolvedValue({ bundleProductIds: ['gift-1', 'gift-2'] });
+      prisma.product.findMany.mockResolvedValue([
+        { id: 'gift-1', category: 'ACCESSORY', costPrice: new Prisma.Decimal(450) },
+        { id: 'gift-2', category: 'MOBILE_NEW', costPrice: new Prisma.Decimal(0) },
+      ]);
+
+      await service.activate('c-1');
+
+      const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
+      expect(input.bundleCosts).toHaveLength(2);
+      const gift1 = input.bundleCosts.find((b: { productId: string }) => b.productId === 'gift-1');
+      expect(gift1.cost.toString()).toBe('450');
+      // บัญชีของแถมต้อง resolve จาก **หมวดของชิ้นนั้น** ไม่ใช่หมวดเครื่องหลัก
+      // (resolver ถูก mock ให้คืนค่าเดียว จึงปักที่ argument แทนค่าที่คืนมา)
+      expect(shopAccountResolver.resolveProductAccounts).toHaveBeenCalledWith('ACCESSORY');
+      // ค้นด้วย contractId ของสัญญานี้ และไม่เอาใบขายที่ถูกลบ
+      expect(prisma.sale.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { contractId: 'c-1', deletedAt: null } }),
+      );
+    });
+
+    it('ไม่มีใบขาย/ไม่มีของแถม → bundleCosts ว่าง (พฤติกรรมเดิม)', async () => {
+      await service.activate('c-1');
+      expect(shopInventoryTransferTemplate.execute.mock.calls[0][0].bundleCosts).toEqual([]);
+      // ไม่มีของแถม = ไม่ต้องไปดึงสินค้าเลย
+      expect(prisma.product.findMany).not.toHaveBeenCalled();
     });
 
     // ── C1 (คำวินิจฉัยผู้สอบบัญชี 2026-08-24) ────────────────────────────────

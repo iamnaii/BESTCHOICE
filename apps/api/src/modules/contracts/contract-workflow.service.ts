@@ -579,9 +579,35 @@ export class ContractWorkflowService {
         }
 
         const acc = this.shopAccountResolver.resolveProductAccounts(contract.product.category);
+
+        // ของแถมต้องตัดสต็อกทุกครั้ง (คำสั่งเจ้าของ 2026-08-26)
+        // ของแถมผูกกับ **ใบขาย** ไม่ใช่สัญญา — Sale.bundleProductIds เก็บถาวร
+        // และ Sale.contractId ชี้กลับมาที่สัญญานี้ ⇒ หาได้ตอน activate
+        // เดิมตกหล่น: markBundleProductsSold พลิกสถานะเป็น SOLD_CASH ตอนสร้างใบขาย
+        // แต่ไม่มีใครตัดต้นทุนออกจากสต็อก ⇒ สินค้าคงเหลือสูงเกินจริงถาวร
+        const saleForBundles = await tx.sale.findFirst({
+          where: { contractId: contract.id, deletedAt: null },
+          select: { bundleProductIds: true },
+        });
+        const bundleProducts = saleForBundles?.bundleProductIds?.length
+          ? await tx.product.findMany({
+              where: { id: { in: saleForBundles.bundleProductIds } },
+              select: { id: true, category: true, costPrice: true },
+            })
+          : [];
+
         await this.shopInventoryTransferTemplate.execute(
           {
             idempotencyKey: `shop-inventory-transfer:${contract.id}`,
+            bundleCosts: bundleProducts.map((bp) => {
+              const bAcc = this.shopAccountResolver.resolveProductAccounts(bp.category);
+              return {
+                productId: bp.id,
+                cogsAccountCode: bAcc.cogsAccountCode,
+                inventoryAccountCode: bAcc.inventoryAccountCode,
+                cost: new Decimal((bp.costPrice ?? 0).toString()),
+              };
+            }),
             contractId: contract.id,
             contractNumber: contract.contractNumber,
             productId: contract.productId,

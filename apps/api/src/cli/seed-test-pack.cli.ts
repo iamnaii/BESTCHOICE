@@ -82,10 +82,9 @@ async function main(): Promise<void> {
     const refs = await resolveRefs(prisma);
 
     const drive = process.env.DRIVE === '1';
-    const postDate = process.env.POST_DATE
-      ? new Date(`${process.env.POST_DATE}T00:00:00.000Z`)
-      : bkkMidnight(now);
-    const pre = await runPreflight(prisma, refs, { drive, postDate });
+    const postDateRaw = process.env.POST_DATE;
+    const postDate = postDateRaw ? new Date(`${postDateRaw}T00:00:00.000Z`) : bkkMidnight(now);
+    const pre = await runPreflight(prisma, refs, { drive, postDate, postDateRaw });
     if (!pre.ok) {
       console.error('[seed-test-pack] PREFLIGHT ไม่ผ่าน:');
       for (const p of pre.problems) console.error(`  ✗ ${p}`);

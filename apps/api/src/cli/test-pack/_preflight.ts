@@ -27,12 +27,28 @@ export function missingAccounts(required: string[], present: string[]): string[]
   return required.filter((c) => !have.has(c));
 }
 
+/**
+ * POST_DATE ที่พิมพ์ผิด (เช่น 2026-13-99) ต้องกลายเป็นปัญหาไทยในลิสต์ ไม่ใช่ stack trace —
+ * Invalid Date ทำให้ getUTCFullYear()/getUTCMonth() เป็น NaN แล้ว query งวดบัญชีโยน
+ * PrismaClientValidationError หลุดไปถึง main().catch เป็น FATAL.
+ * Pure function: ตัดสินจาก Date ที่ parse แล้ว; `raw` ใช้ระบุค่าที่ operator พิมพ์ในข้อความ.
+ */
+export function invalidPostDateProblem(postDate: Date, raw?: string): string | null {
+  if (!Number.isNaN(postDate.getTime())) return null;
+  const typed = raw ?? String(postDate);
+  return `POST_DATE="${typed}" ไม่ใช่วันที่ที่ถูกต้อง — ใช้รูปแบบ POST_DATE=YYYY-MM-DD (เช่น POST_DATE=2026-08-01) แล้วรันใหม่`;
+}
+
 export async function runPreflight(
   prisma: PrismaService,
   refs: SeedRefs,
-  opts: { drive: boolean; postDate: Date },
+  opts: { drive: boolean; postDate: Date; postDateRaw?: string },
 ): Promise<{ ok: boolean; problems: string[] }> {
   const problems: string[] = [];
+
+  // POST_DATE พิมพ์ผิด = เก็บเป็นปัญหาแล้วตรวจข้ออื่นต่อ (ห้าม throw / ห้ามตัดเช็คอื่นทิ้ง)
+  const postDateProblem = invalidPostDateProblem(opts.postDate, opts.postDateRaw);
+  if (postDateProblem) problems.push(postDateProblem);
 
   // ข้อ 2 — ข้อมูลอ้างอิง (resolveRefs โยนไปแล้วถ้าขาด branch/user; ที่นี่ตรวจนิติบุคคล)
   if (!refs.shopCompanyId) problems.push('ไม่พบนิติบุคคล SHOP ใน company_info');
@@ -56,21 +72,24 @@ export async function runPreflight(
   }
 
   // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องเปิดทั้งสองฝั่ง
-  const year = opts.postDate.getUTCFullYear();
-  const month = opts.postDate.getUTCMonth() + 1;
-  for (const [name, companyId] of [
-    ['SHOP', refs.shopCompanyId],
-    ['FINANCE', refs.financeCompanyId],
-  ] as const) {
-    if (!companyId) continue;
-    const period = await prisma.accountingPeriod.findFirst({
-      where: { companyId, year, month },
-      select: { status: true },
-    });
-    if (period && period.status !== 'OPEN') {
-      problems.push(
-        `งวดบัญชี ${year}-${String(month).padStart(2, '0')} ของ ${name} สถานะ ${period.status} — เปิดงวดก่อน หรือใช้ POST_DATE=YYYY-MM-DD ชี้ไปเดือนที่ยังเปิด`,
-      );
+  // (ตรวจได้เฉพาะเมื่อ POST_DATE ใช้การได้ — year/month ที่เป็น NaN จะทำให้ query โยน)
+  if (!postDateProblem) {
+    const year = opts.postDate.getUTCFullYear();
+    const month = opts.postDate.getUTCMonth() + 1;
+    for (const [name, companyId] of [
+      ['SHOP', refs.shopCompanyId],
+      ['FINANCE', refs.financeCompanyId],
+    ] as const) {
+      if (!companyId) continue;
+      const period = await prisma.accountingPeriod.findFirst({
+        where: { companyId, year, month },
+        select: { status: true },
+      });
+      if (period && period.status !== 'OPEN') {
+        problems.push(
+          `งวดบัญชี ${year}-${String(month).padStart(2, '0')} ของ ${name} สถานะ ${period.status} — เปิดงวดก่อน หรือใช้ POST_DATE=YYYY-MM-DD ชี้ไปเดือนที่ยังเปิด`,
+        );
+      }
     }
   }
 

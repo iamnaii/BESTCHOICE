@@ -4399,11 +4399,21 @@ git commit -m "feat(test-pack): โดเมนค่าคอม + ไฟแน
 - [ ] **Step 1: เขียนเทสที่ยังไม่ผ่าน — `_preflight.spec.ts`**
 
 ```ts
-import { DRIVE_REQUIRED_ACCOUNTS, missingAccounts } from './_preflight';
+import type { PrismaService } from '../../prisma/prisma.service';
+import type { SeedRefs } from './_types';
+import {
+  DRIVE_REQUIRED_ACCOUNTS,
+  invalidPostDateProblem,
+  missingAccounts,
+  runPreflight,
+} from './_preflight';
 
 describe('missingAccounts', () => {
   it('คืนรหัสที่ขาด เรียงตามลำดับที่ต้องการ', () => {
-    expect(missingAccounts(['S11-3101', 'S51-1106', 'S21-2002'], ['S21-2002'])).toEqual(['S11-3101', 'S51-1106']);
+    expect(missingAccounts(['S11-3101', 'S51-1106', 'S21-2002'], ['S21-2002'])).toEqual([
+      'S11-3101',
+      'S51-1106',
+    ]);
   });
 
   it('มีครบ = คืน array ว่าง', () => {
@@ -4413,11 +4423,74 @@ describe('missingAccounts', () => {
 
 describe('DRIVE_REQUIRED_ACCOUNTS', () => {
   it('มีบัญชีใหม่สามตัวที่ prod ต้องรัน seed:coa ถึงจะมี', () => {
-    expect(DRIVE_REQUIRED_ACCOUNTS).toEqual(expect.arrayContaining(['S11-3101', 'S51-1106', 'S21-2002']));
+    expect(DRIVE_REQUIRED_ACCOUNTS).toEqual(
+      expect.arrayContaining(['S11-3101', 'S51-1106', 'S21-2002']),
+    );
   });
 
   it('ไม่มีรหัสซ้ำ', () => {
     expect(new Set(DRIVE_REQUIRED_ACCOUNTS).size).toBe(DRIVE_REQUIRED_ACCOUNTS.length);
+  });
+});
+
+describe('invalidPostDateProblem', () => {
+  it('POST_DATE พิมพ์ผิด → ข้อความไทยที่ระบุค่าที่พิมพ์ + รูปแบบ YYYY-MM-DD', () => {
+    const problem = invalidPostDateProblem(new Date('2026-13-99T00:00:00.000Z'), '2026-13-99');
+    expect(problem).toContain('POST_DATE="2026-13-99"');
+    expect(problem).toContain('YYYY-MM-DD');
+  });
+
+  it('วันที่ถูกต้อง → null', () => {
+    expect(invalidPostDateProblem(new Date('2026-08-01T00:00:00.000Z'), '2026-08-01')).toBeNull();
+  });
+});
+
+describe('runPreflight — POST_DATE พิมพ์ผิด', () => {
+  const refs: SeedRefs = {
+    branchId: 'b1',
+    branchName: 'สาขาทดสอบ',
+    secondBranchId: null,
+    salespersonId: 'u-sales',
+    reviewerId: 'u-reviewer',
+    ownerId: 'u-owner',
+    shopCompanyId: 'c-shop',
+    financeCompanyId: 'c-finance',
+  };
+
+  // Fake (ไม่ใช่ jest.mock ที่นับจำนวนครั้ง): ผังว่าง = เช็คข้อ 3 ต้องรายงาน "ผังบัญชีขาด",
+  // และ findFirst เลียนแบบ Prisma จริง — filter Int ที่เป็น NaN โยน PrismaClientValidationError
+  // ⇒ ถ้า guard หาย เทสนี้ล้มด้วย rejection จริง ไม่ใช่แค่ assertion บน mock
+  const prismaStub = {
+    chartOfAccount: { findMany: async () => [] },
+    accountingPeriod: {
+      findFirst: async (args: { where: { year: number; month: number } }) => {
+        if (Number.isNaN(args.where.year) || Number.isNaN(args.where.month)) {
+          throw new Error('PrismaClientValidationError: NaN is not a valid Int');
+        }
+        return null;
+      },
+    },
+  } as unknown as PrismaService;
+
+  it('เก็บเป็นปัญหาในลิสต์เดียวกับเช็คผังบัญชี — ไม่ throw และไม่ตัดเช็คอื่นทิ้ง', async () => {
+    const res = await runPreflight(prismaStub, refs, {
+      drive: true,
+      postDate: new Date('2026-13-99T00:00:00.000Z'),
+      postDateRaw: '2026-13-99',
+    });
+    expect(res.ok).toBe(false);
+    expect(res.problems.some((p) => p.includes('POST_DATE="2026-13-99"'))).toBe(true);
+    // เช็คผังบัญชี (ข้อ 3) ยังรันและรายงานตามปกติ — ปัญหาเดียวไม่ short-circuit ลิสต์
+    expect(res.problems.some((p) => p.includes('ผังบัญชีขาด'))).toBe(true);
+  });
+
+  it('POST_DATE ถูกต้อง → ไม่มีปัญหา POST_DATE และเช็คงวดบัญชียังเดินตามปกติ', async () => {
+    const res = await runPreflight(prismaStub, refs, {
+      drive: true,
+      postDate: new Date('2026-08-01T00:00:00.000Z'),
+      postDateRaw: '2026-08-01',
+    });
+    expect(res.problems.some((p) => p.includes('ไม่ใช่วันที่ที่ถูกต้อง'))).toBe(false);
   });
 });
 ```
@@ -4435,8 +4508,23 @@ import type { SeedRefs } from './_types';
 
 /** บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa */
 export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
-  '11-1101', '11-2101', '11-2103', '11-2106', '21-1101', '21-1102', '21-2101', '21-2102',
-  'S11-1101', 'S11-2001', 'S11-3001', 'S11-3002', 'S11-3101', 'S21-2002', 'S41-1101', 'S50-1101', 'S51-1106',
+  '11-1101',
+  '11-2101',
+  '11-2103',
+  '11-2106',
+  '21-1101',
+  '21-1102',
+  '21-2101',
+  '21-2102',
+  'S11-1101',
+  'S11-2001',
+  'S11-3001',
+  'S11-3002',
+  'S11-3101',
+  'S21-2002',
+  'S41-1101',
+  'S50-1101',
+  'S51-1106',
 ];
 
 export function missingAccounts(required: string[], present: string[]): string[] {
@@ -4444,12 +4532,28 @@ export function missingAccounts(required: string[], present: string[]): string[]
   return required.filter((c) => !have.has(c));
 }
 
+/**
+ * POST_DATE ที่พิมพ์ผิด (เช่น 2026-13-99) ต้องกลายเป็นปัญหาไทยในลิสต์ ไม่ใช่ stack trace —
+ * Invalid Date ทำให้ getUTCFullYear()/getUTCMonth() เป็น NaN แล้ว query งวดบัญชีโยน
+ * PrismaClientValidationError หลุดไปถึง main().catch เป็น FATAL.
+ * Pure function: ตัดสินจาก Date ที่ parse แล้ว; `raw` ใช้ระบุค่าที่ operator พิมพ์ในข้อความ.
+ */
+export function invalidPostDateProblem(postDate: Date, raw?: string): string | null {
+  if (!Number.isNaN(postDate.getTime())) return null;
+  const typed = raw ?? String(postDate);
+  return `POST_DATE="${typed}" ไม่ใช่วันที่ที่ถูกต้อง — ใช้รูปแบบ POST_DATE=YYYY-MM-DD (เช่น POST_DATE=2026-08-01) แล้วรันใหม่`;
+}
+
 export async function runPreflight(
   prisma: PrismaService,
   refs: SeedRefs,
-  opts: { drive: boolean; postDate: Date },
+  opts: { drive: boolean; postDate: Date; postDateRaw?: string },
 ): Promise<{ ok: boolean; problems: string[] }> {
   const problems: string[] = [];
+
+  // POST_DATE พิมพ์ผิด = เก็บเป็นปัญหาแล้วตรวจข้ออื่นต่อ (ห้าม throw / ห้ามตัดเช็คอื่นทิ้ง)
+  const postDateProblem = invalidPostDateProblem(opts.postDate, opts.postDateRaw);
+  if (postDateProblem) problems.push(postDateProblem);
 
   // ข้อ 2 — ข้อมูลอ้างอิง (resolveRefs โยนไปแล้วถ้าขาด branch/user; ที่นี่ตรวจนิติบุคคล)
   if (!refs.shopCompanyId) problems.push('ไม่พบนิติบุคคล SHOP ใน company_info');
@@ -4462,7 +4566,10 @@ export async function runPreflight(
     where: { code: { in: DRIVE_REQUIRED_ACCOUNTS }, deletedAt: null },
     select: { code: true },
   });
-  const missing = missingAccounts(DRIVE_REQUIRED_ACCOUNTS, rows.map((r) => r.code));
+  const missing = missingAccounts(
+    DRIVE_REQUIRED_ACCOUNTS,
+    rows.map((r) => r.code),
+  );
   if (missing.length) {
     problems.push(
       `ผังบัญชีขาด ${missing.length} รหัส: ${missing.join(', ')} — รัน "npm --prefix apps/api run seed:coa" ก่อน แล้วค่อยรันใหม่`,
@@ -4470,18 +4577,24 @@ export async function runPreflight(
   }
 
   // ข้อ 4 — งวดบัญชีของวันที่จะโพสต์ต้องเปิดทั้งสองฝั่ง
-  const year = opts.postDate.getUTCFullYear();
-  const month = opts.postDate.getUTCMonth() + 1;
-  for (const [name, companyId] of [['SHOP', refs.shopCompanyId], ['FINANCE', refs.financeCompanyId]] as const) {
-    if (!companyId) continue;
-    const period = await prisma.accountingPeriod.findFirst({
-      where: { companyId, year, month },
-      select: { status: true },
-    });
-    if (period && period.status !== 'OPEN') {
-      problems.push(
-        `งวดบัญชี ${year}-${String(month).padStart(2, '0')} ของ ${name} สถานะ ${period.status} — เปิดงวดก่อน หรือใช้ POST_DATE=YYYY-MM-DD ชี้ไปเดือนที่ยังเปิด`,
-      );
+  // (ตรวจได้เฉพาะเมื่อ POST_DATE ใช้การได้ — year/month ที่เป็น NaN จะทำให้ query โยน)
+  if (!postDateProblem) {
+    const year = opts.postDate.getUTCFullYear();
+    const month = opts.postDate.getUTCMonth() + 1;
+    for (const [name, companyId] of [
+      ['SHOP', refs.shopCompanyId],
+      ['FINANCE', refs.financeCompanyId],
+    ] as const) {
+      if (!companyId) continue;
+      const period = await prisma.accountingPeriod.findFirst({
+        where: { companyId, year, month },
+        select: { status: true },
+      });
+      if (period && period.status !== 'OPEN') {
+        problems.push(
+          `งวดบัญชี ${year}-${String(month).padStart(2, '0')} ของ ${name} สถานะ ${period.status} — เปิดงวดก่อน หรือใช้ POST_DATE=YYYY-MM-DD ชี้ไปเดือนที่ยังเปิด`,
+        );
+      }
     }
   }
 
@@ -4492,7 +4605,8 @@ export async function runPreflight(
 - [ ] **Step 4: รันเทสให้ผ่าน**
 
 Run: `npm --prefix apps/api test -- _preflight`
-Expected: PASS — 4 เทส
+Expected: PASS — 8 เทส (4 เทสเดิม + guard POST_DATE: 2 เทส pure function + 2 เทส
+runPreflight ผ่าน fake prisma ที่โยนเมื่อ year/month เป็น NaN แบบเดียวกับ Prisma จริง)
 
 - [ ] **Step 5: ยืนยันชื่อฟิลด์ของ `AccountingPeriod`**
 
@@ -4505,8 +4619,9 @@ Expected: มี `year` `month` `status` `companyId` — ถ้าเก็บ�
 
 ```ts
     const drive = process.env.DRIVE === '1';
-    const postDate = process.env.POST_DATE ? new Date(`${process.env.POST_DATE}T00:00:00.000Z`) : bkkMidnight(now);
-    const pre = await runPreflight(prisma, refs, { drive, postDate });
+    const postDateRaw = process.env.POST_DATE;
+    const postDate = postDateRaw ? new Date(`${postDateRaw}T00:00:00.000Z`) : bkkMidnight(now);
+    const pre = await runPreflight(prisma, refs, { drive, postDate, postDateRaw });
     if (!pre.ok) {
       console.error('[seed-test-pack] PREFLIGHT ไม่ผ่าน:');
       for (const p of pre.problems) console.error(`  ✗ ${p}`);
@@ -4525,6 +4640,9 @@ EXPECTED_DB_NAME=$DB DRIVE=1 POST_DATE=2020-01-01 npm --prefix apps/api run seed
 ```
 Expected: ออกด้วย exit 1 พร้อมข้อความว่างวด 2020-01 ปิดอยู่ หรือผังบัญชีขาด (แล้วแต่สภาพ DB)
 ถ้างวดปี 2020 ไม่มีแถวเลย preflight จะผ่าน (ไม่มีแถว = ยังไม่เคยปิด) — ให้ลองเดือนที่ปิดจริงแทน
+ลองพิมพ์ผิดด้วย: `POST_DATE=2026-13-99` → ต้องได้ปัญหาไทย `POST_DATE="2026-13-99"
+ไม่ใช่วันที่ที่ถูกต้อง — ใช้รูปแบบ POST_DATE=YYYY-MM-DD ...` ในลิสต์ preflight (พร้อมเช็คผังบัญชี
+ที่ยังรายงานตามปกติ) ไม่ใช่ FATAL stack trace ของ PrismaClientValidationError
 
 - [ ] **Step 8: Commit**
 

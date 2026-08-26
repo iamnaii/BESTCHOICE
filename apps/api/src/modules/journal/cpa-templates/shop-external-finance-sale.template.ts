@@ -38,9 +38,14 @@ import {
  *
  * ## หนึ่ง JE ต่อใบขาย (ต่างจากขายสด)
  *
- * `ShopCashSaleTemplate` โพสต์ **หนึ่ง JE ต่อ (ใบขาย, สินค้า)** เพราะขายสดมีของแถม
- * ที่ต้องปันรายได้ตามต้นทุน แต่เส้นทางนี้มีสินค้าหลักตัวเดียวที่ตั้งลูกหนี้ได้
- * (ของแถมถูก flip เป็น `SOLD_CASH` แยกและไม่มีราคาขายของตัวเอง) จึงเป็นใบเดียว
+ * `ShopCashSaleTemplate` โพสต์ **หนึ่ง JE ต่อ (ใบขาย, สินค้า)** เพราะขายสดปันรายได้
+ * ตามต้นทุนให้ของแถมด้วย แต่เส้นทางนี้มีสินค้าหลักตัวเดียวที่ตั้งลูกหนี้ได้ จึงเป็นใบเดียว
+ *
+ * **ของแถมไม่มีรายได้ของตัวเอง แต่มีต้นทุนที่ต้องตัดสต็อก** — `bundleCosts` รับมาเป็น
+ * คู่ `Dr ต้นทุนขาย / Cr สินค้าคงเหลือ` เพิ่มในใบเดียวกัน แยกบัญชีตามหมวดของแต่ละชิ้น
+ * (ของแถมอาจเป็นอุปกรณ์เสริม `S11-2003` ขณะที่เครื่องหลักเป็น `S11-2001`)
+ * ⚠️ รอบแรกตกหล่นข้อนี้ — ของแถมถูก flip เป็น `SOLD_CASH` แต่ต้นทุนค้างอยู่ในสต็อก
+ * ทำให้สินค้าคงเหลือสูงเกินจริงถาวร (ตรวจพบ 2026-08-26 ก่อนขึ้น prod)
  * `reference = sale:<saleId>:external-finance` — ไม่ชนกับรูป `sale:<saleId>:<productId>`
  * ของขายสด (บทเรียนบั๊ก F1 เรื่อง partial unique index `journal_entries_ref_unique`)
  */
@@ -62,6 +67,16 @@ export interface ShopExternalFinanceSaleInput {
   /** ยอดขายสุทธิ = downPayment + financeAmount */
   netAmount: Decimal;
   inventoryCost: Decimal;
+  /**
+   * ของแถมในใบขายเดียวกัน — ไม่มีรายได้ของตัวเอง มีแต่ต้นทุนที่ต้องตัดสต็อก
+   * แยกบัญชีต่อชิ้นเพราะหมวดสินค้าต่างกันได้ · ชิ้นที่ต้นทุน 0 ส่งมาได้ (ข้ามให้เอง)
+   */
+  bundleCosts?: Array<{
+    productId: string;
+    cogsAccountCode: string;
+    inventoryAccountCode: string;
+    cost: Decimal;
+  }>;
   financeCompany?: string;
   postedAt?: Date;
 }
@@ -175,6 +190,24 @@ export class ShopExternalFinanceSaleTemplate {
           dr: zero,
           cr: cost,
           description: `ตัดสินค้าคงเหลือ — ใบขาย ${label}`,
+        });
+      }
+
+      // ของแถม: ตัดสต็อกอย่างเดียว ไม่มีขารายได้ (รายได้รวมอยู่ในราคาเครื่องหลักแล้ว)
+      for (const b of input.bundleCosts ?? []) {
+        const bCost = new Decimal(b.cost.toString());
+        if (!bCost.gt(zero)) continue;
+        lines.push({
+          accountCode: b.cogsAccountCode,
+          dr: bCost,
+          cr: zero,
+          description: `ต้นทุนของแถม — ใบขาย ${label}`,
+        });
+        lines.push({
+          accountCode: b.inventoryAccountCode,
+          dr: zero,
+          cr: bCost,
+          description: `ตัดสินค้าคงเหลือ (ของแถม) — ใบขาย ${label}`,
         });
       }
 

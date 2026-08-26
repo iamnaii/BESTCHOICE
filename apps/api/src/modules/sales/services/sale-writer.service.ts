@@ -518,6 +518,9 @@ export class SaleWriterService {
       //    ซึ่งยังรอคำวินิจฉัยผู้สอบ (คำถามรอบ 3 ข้อ 3) — ไม่ throw เพราะการขาย
       //    ต้องไม่ล่มเพราะเรื่องผังบัญชี ลูกค้ายืนรออยู่หน้าเคาน์เตอร์
       const extProduct = await tx.product.findUnique({ where: { id: dto.productId } });
+      const extBundleProducts = dto.bundleProductIds?.length
+        ? await tx.product.findMany({ where: { id: { in: dto.bundleProductIds } } })
+        : [];
       if (extProduct) {
         const extCash = await this.shopAccountResolver.resolveInflowCashAccount(
           dto.branchId,
@@ -539,6 +542,18 @@ export class SaleWriterService {
             financeAmount: new Prisma.Decimal(financeAmount.toString()),
             netAmount: new Prisma.Decimal(netAmount.toString()),
             inventoryCost: new Prisma.Decimal((extProduct.costPrice ?? 0).toString()),
+            // ของแถมถูก flip เป็น SOLD_CASH ไปแล้วด้านบน (markBundleProductsSold)
+            // แต่ต้นทุนยังค้างในสต็อก ⇒ ต้องส่งมาตัดด้วย ไม่งั้นสินค้าคงเหลือสูงเกินจริง
+            // ถาวร · แยกบัญชีต่อชิ้นเพราะหมวดต่างกันได้ (อุปกรณ์เสริม vs เครื่อง)
+            bundleCosts: extBundleProducts.map((bp) => {
+              const bAcc = this.shopAccountResolver.resolveProductAccounts(bp.category);
+              return {
+                productId: bp.id,
+                cogsAccountCode: bAcc.cogsAccountCode,
+                inventoryAccountCode: bAcc.inventoryAccountCode,
+                cost: new Prisma.Decimal((bp.costPrice ?? 0).toString()),
+              };
+            }),
             financeCompany: dto.financeCompany ?? undefined,
           },
           tx,

@@ -3,11 +3,14 @@ import { applicationsSeeder } from './applications.seed';
 import { assetsSeeder } from './assets.seed';
 import { bookingsSeeder } from './bookings.seed';
 import { contractsSeeder } from './contracts.seed';
+import { deviceSwapSeeder } from './device-swap.seed';
 import { equitySeeder } from './equity.seed';
 import { expensesSeeder } from './expenses.seed';
+import { inspectionsSeeder } from './inspections.seed';
 import { onlineOrdersSeeder } from './online-orders.seed';
 import { otherIncomeSeeder } from './other-income.seed';
 import { payrollSeeder } from './payroll.seed';
+import { repairSeeder } from './repair.seed';
 import { stockOpsSeeder } from './stock-ops.seed';
 import { suppliersPoSeeder } from './suppliers-po.seed';
 import { todosSeeder } from './todos.seed';
@@ -29,6 +32,9 @@ export const ALL_DOMAINS: DomainSeeder[] = [
   bookingsSeeder,
   onlineOrdersSeeder,
   applicationsSeeder,
+  inspectionsSeeder,
+  repairSeeder,
+  deviceSwapSeeder,
   todosSeeder,
 ];
 

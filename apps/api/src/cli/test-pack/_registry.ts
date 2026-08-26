@@ -2,18 +2,22 @@ import type { DomainSeeder } from './_types';
 import { applicationsSeeder } from './applications.seed';
 import { assetsSeeder } from './assets.seed';
 import { bookingsSeeder } from './bookings.seed';
+import { commissionsSeeder } from './commissions.seed';
 import { contractsSeeder } from './contracts.seed';
 import { deviceSwapSeeder } from './device-swap.seed';
 import { equitySeeder } from './equity.seed';
 import { expensesSeeder } from './expenses.seed';
+import { externalFinanceSeeder } from './external-finance.seed';
 import { inspectionsSeeder } from './inspections.seed';
 import { onlineOrdersSeeder } from './online-orders.seed';
 import { otherIncomeSeeder } from './other-income.seed';
 import { payrollSeeder } from './payroll.seed';
 import { repairSeeder } from './repair.seed';
+import { savingPlansSeeder } from './saving-plans.seed';
 import { stockOpsSeeder } from './stock-ops.seed';
 import { suppliersPoSeeder } from './suppliers-po.seed';
 import { todosSeeder } from './todos.seed';
+import { tradeInSeeder } from './trade-in.seed';
 
 /**
  * ลำดับใน array นี้ = ลำดับการสร้าง (โดเมนหลังพึ่ง FK ของโดเมนหน้าได้)
@@ -35,6 +39,10 @@ export const ALL_DOMAINS: DomainSeeder[] = [
   inspectionsSeeder,
   repairSeeder,
   deviceSwapSeeder,
+  commissionsSeeder,
+  externalFinanceSeeder,
+  savingPlansSeeder,
+  tradeInSeeder,
   todosSeeder,
 ];
 

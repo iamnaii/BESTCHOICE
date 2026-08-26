@@ -879,7 +879,77 @@ export const contractsSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
+    // ⚠️ ห้ามลดรูปกลับเป็น delegate เปล่า ๆ — ดูหมายเหตุ "ทำไม wrapper ต้องกวาด JE
+    // ของใบขายเอง" ใต้ code block นี้
+    // เก็บ id ใบขายทดสอบ "ก่อน" delegate — marker ชุดเดียวกับ CLI แต่ไม่กรอง deletedAt
+    // (CLI กำลังจะ soft-delete ในรอบนี้ / รอบก่อนอาจลบไปแล้วแต่ JE ค้าง / ใบขายที่ถูก
+    // void มี deletedAt อยู่แล้ว)
+    const [testCustomers, testProducts] = await Promise.all([
+      ctx.prisma.customer.findMany({ where: { addressCurrent: TEST_CUSTOMER_ADDRESS }, select: { id: true } }),
+      ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: TEST_IMEI_PREFIX } }, select: { id: true } }),
+    ]);
+    const testCustomerIds = testCustomers.map((c) => c.id);
+    const testProductIds = testProducts.map((p) => p.id);
+    const testContracts = await ctx.prisma.contract.findMany({
+      where: {
+        OR: [
+          { contractNumber: { startsWith: TEST_CONTRACT_PREFIX } },
+          ...(testCustomerIds.length ? [{ customerId: { in: testCustomerIds } }] : []),
+          ...(testProductIds.length ? [{ productId: { in: testProductIds } }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+    const saleWhereOr = [
+      ...(testProductIds.length ? [{ productId: { in: testProductIds } }] : []),
+      ...(testCustomerIds.length ? [{ customerId: { in: testCustomerIds } }] : []),
+      ...(testContracts.length ? [{ contractId: { in: testContracts.map((c) => c.id) } }] : []),
+    ];
+    const sales = saleWhereOr.length
+      ? await ctx.prisma.sale.findMany({ where: { OR: saleWhereOr }, select: { id: true, saleNumber: true } })
+      : [];
+
     const r = await cleanupTestContracts(ctx.prisma, { dryRun });
+
+    // กวาด JE ของใบขาย (metadata.saleId) + ใบกลับรายการของมัน (metadata.reversesEntryId
+    // — mirror จาก void sale "จงใจไม่ carry saleId") — query หลัง delegate กันนับซ้ำ
+    const saleJes = sales.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: { OR: sales.map((s) => ({ metadata: { path: ['saleId'], equals: s.id } as never })) },
+          select: { id: true, metadata: true },
+        })
+      : [];
+    const saleJeIds = saleJes.map((j) => j.id);
+    const mirrorJes = saleJeIds.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: { OR: saleJeIds.map((id) => ({ metadata: { path: ['reversesEntryId'], equals: id } as never })) },
+          select: { id: true },
+        })
+      : [];
+    const jeIds = [...new Set([...saleJeIds, ...mirrorJes.map((j) => j.id)])];
+
+    if (jeIds.length) {
+      const affected = new Set<string>();
+      for (const je of saleJes) {
+        const saleId = (je.metadata as Record<string, unknown> | null)?.saleId;
+        const sale = sales.find((s) => s.id === saleId);
+        if (sale) affected.add(sale.saleNumber);
+      }
+      console.log(`  รายการบัญชีใบขาย (metadata.saleId): ${saleJeIds.length} ใบ + ใบกลับรายการ ${mirrorJes.length} ใบ จากใบขาย:`);
+      for (const n of affected) console.log(`    ${n}`);
+      if (dryRun) {
+        console.log(`  (dry-run) จะลบถาวร ${jeIds.length} รายการบัญชีใบขาย — ยังไม่ลบ`);
+      } else {
+        // Sale ไม่มีคอลัมน์ journalEntryId (ตรวจ schema 2026-08-26) ⇒ ล้างเฉพาะ
+        // FK Restrict สองตัวตามลำดับบังคับเดียวกับ CLI เดิม
+        await ctx.prisma.$transaction(async (tx) => {
+          await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+        });
+      }
+    }
+
     return {
       removed: {
         'สัญญา': r.contracts,
@@ -887,6 +957,7 @@ export const contractsSeeder: DomainSeeder = {
         'ตารางงวด': r.installmentSchedules,
         'ใบเสร็จ': r.receipts,
         'รายการบัญชี (ลบถาวร)': r.journalEntries,
+        'รายการบัญชีใบขาย (ลบถาวร)': jeIds.length,
         'ใบขาย': r.sales,
         'ลูกหนี้ไฟแนนซ์': r.financeReceivables,
         'ค่าคอม': r.salesCommissions,
@@ -902,6 +973,16 @@ export const contractsSeeder: DomainSeeder = {
   },
 };
 ```
+
+> **ทำไม wrapper ต้องกวาด JE ของใบขายเอง (รูที่ปิด 2026-08-26):** `cleanupTestContracts`
+> รู้จักแต่ JE ที่ stamp `metadata.contractId` — แต่ JE ของใบขาย (`ShopCashSaleTemplate`
+> ต่อชิ้น, `ShopExternalFinanceSaleTemplate`, `ShopExternalFinanceReceiptTemplate` —
+> รวมใบขายจากการแปลงใบจอง/ยืนยันออเดอร์ออนไลน์) stamp `metadata.saleId`.
+> CLI เดิม soft-delete ตัวใบขายจนหน้าจอสะอาด แต่ทิ้ง JE ค้างในงบทดลองถาวร —
+> หน้าจอกับสมุดบัญชีขัดกัน. wrapper จึงเก็บ id ใบขายก่อน delegate แล้วลบ JE เหล่านั้น
+> (พร้อม mirror จาก void ซึ่งไม่ carry `saleId` — ตามด้วย `reversesEntryId`) หลัง delegate.
+> ใครลอก code block นี้แบบตัด wrapper ทิ้ง = เปิดรูเดิมกลับมา. ห้ามแก้ CLI เดิม —
+> มันต้องรันเดี่ยวได้เหมือนเดิม.
 
 - [ ] **Step 2: เพิ่มเข้า registry เป็นตัวแรก**
 

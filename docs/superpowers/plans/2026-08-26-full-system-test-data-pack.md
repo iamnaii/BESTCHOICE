@@ -19,6 +19,7 @@
 - **R2 — เฟส 1-2 ต้องหยุดที่สถานะสุดท้าย "ก่อนเงินขยับ"** ห้าม seed `Booking.status='PAID'`, `FinanceReceivable.receivedAmount>0`, `TradeIn.status='ACCEPTED'`, `ExpenseDocument.status` เป็น `ACCRUAL`/`POSTED`, `OtherIncome.status='POSTED'`, `EquityDocument.status='POSTED'`, `FixedAsset.status='POSTED'`
 - **R3 — ห้าม import `AppModule`** ในโค้ดใด ๆ ของ test-pack (มี `ScheduleModule.forRoot()` ที่จะลงทะเบียน cron ทั้งหมด) เฟส 3 ใช้ `TestPackModule` เท่านั้น
 - **Marker บังคับ 3 ชั้น** — เลขเอกสารที่เราคุมเอง = prefix `TEST-` · เลขที่ `DocNumberService` คุม (`EX-` `OI-` `EQ-` `ASSET-` `RT-`) = **ห้ามแตะเลข** ให้ marker อยู่ที่ฟิลด์ข้อความ ขึ้นต้น `[ทดสอบระบบ]` · ทะเบียนหลัก = ชื่อขึ้นต้น `ทดสอบระบบ`
+  **ข้อยกเว้นเดียว: `FixedAsset.assetCode` ใช้ลำดับแยก `TESTASSET-`** เพราะรหัสจริงเป็น**รายหมวด** (`COMP-001`) ไม่ใช่รายวัน ⇒ ถ้าเอาไปตั้งให้แถวทดสอบ เลขนั้นจะถูกเผาถาวร (soft-delete แต่ `@unique` ยังกันอยู่) · `docNo` (`ASSET-YYMM-`) ยังเดินตามลำดับจริงเหมือนเอกสารอื่น
 - **Guard shape** ต้องเหมือน `seed-test-contracts.cli.ts` ทุกประการ — `EXPECTED_DB_NAME` เทียบ `SELECT current_database()` · dry-run เป็น default · `CONFIRM_SEED` / `CONFIRM_CLEANUP` = `YES_I_AM_SURE` · `NODE_ENV=production` ต้องมี `ALLOW_PROD_SEED` / `ALLOW_PROD_CLEANUP` เพิ่ม
 - **Re-run safe บังคับ** — ทุกโดเมนต้องเช็ค marker ก่อนสร้าง รันซ้ำแล้วต้องไม่เกิดแถวซ้ำ
 - **Money = `Decimal`** ห้ามใช้ `Number()` กับจำนวนเงิน (`.claude/rules/database.md`)
@@ -1523,7 +1524,7 @@ export const assetsSeeder: DomainSeeder = {
   key: 'assets',
   label: 'ทรัพย์สินถาวร',
   routes: ['/assets', '/assets/:id', '/assets/new', '/assets/:id/edit', '/assets/register', '/assets/depreciation', '/assets/transfers', '/assets/:id/dispose', '/assets/audit', '/assets/:id/audit', '/assets/period-close', '/assets/journal', '/assets/summary-report', '/assets/:id/schedule'],
-  markerDoc: `FixedAsset.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (assetCode/docNo ปล่อยตามลำดับจริง)`,
+  markerDoc: `FixedAsset.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" · docNo เดินตามลำดับ ASSET-YYMM- จริง · assetCode ใช้ลำดับแยก "TESTASSET-" โดยตั้งใจ เพราะรหัสจริงเป็นรายหมวด (COMP-001) ซึ่งจะถูกเผาถาวรถ้าเอาไปตั้งให้แถวทดสอบที่ถูก soft-delete`,
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => {
@@ -1616,7 +1617,7 @@ export const assetsSeeder: DomainSeeder = {
         await tx.fixedAsset.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
       });
     }
-    return { removed: { 'ทรัพย์สิน': rows.length, 'รายการบัญชีโอน VAT ทรัพย์สิน (ลบถาวร)': jeIds.length }, warnings: [] };
+    return { removed: { 'ทรัพย์สิน': rows.length, 'รายการบัญชีของทรัพย์สิน (ลบถาวร)': jeIds.length }, warnings: [] };
   },
 };
 ```

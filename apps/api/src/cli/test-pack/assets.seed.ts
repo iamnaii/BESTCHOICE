@@ -85,7 +85,7 @@ export const assetsSeeder: DomainSeeder = {
     '/assets/summary-report',
     '/assets/:id/schedule',
   ],
-  markerDoc: `FixedAsset.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" (assetCode/docNo ปล่อยตามลำดับจริง)`,
+  markerDoc: `FixedAsset.description ขึ้นต้นด้วย "${TEST_NOTE_MARKER}" · docNo เดินตามลำดับ ASSET-YYMM- จริง · assetCode ใช้ลำดับแยก "TESTASSET-" โดยตั้งใจ เพราะรหัสจริงเป็นรายหมวด (COMP-001) ซึ่งจะถูกเผาถาวรถ้าเอาไปตั้งให้แถวทดสอบที่ถูก soft-delete`,
 
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => {

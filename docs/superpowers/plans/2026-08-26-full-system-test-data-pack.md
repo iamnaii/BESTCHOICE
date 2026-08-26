@@ -25,6 +25,14 @@
 - **ข้อความ user-facing เป็นภาษาไทย** รวม log ที่ผู้ใช้อ่าน
 - **Prettier**: `semi: true, singleQuote: true, printWidth: 100, tabWidth: 2`
 - **เทสเป็น jest unit spec ที่ไม่แตะ DB** — ทดสอบ pure function ที่ export ออกมา (pattern เดียวกับ `backfill-employee-profiles.cli.spec.ts`) ไฟล์ `*.spec.ts` ใต้ `src/` ถูกจับโดย `testRegex: ".*\\.spec\\.ts$"` อัตโนมัติ
+- **เช็ค `deletedAt` ของทุกโมเดลก่อนเลือกวิธีลบ** — มี `deletedAt` = soft delete เสมอ (`.claude/rules/database.md`: *"ใช้ `deletedAt` — **ห้าม hard delete** เด็ดขาด"*) · **ข้อยกเว้นเดียว** คือ `JournalEntry`/`JournalLine`/`JournalPostAuditLog` ที่ hard delete โดยเจตนาเพื่อคืนงบทดลอง (precedent: `cleanup-test-contracts.cli.ts`) และตารางลูกที่ไม่มี `deletedAt` เลย
+- **ห้ามเดาชื่อฟิลด์** — ก่อนเขียน `create` ของโมเดลไหน ให้หาโมเดลนั้นใน `apps/api/prisma/seed.ts` ก่อน (Task 0) ถ้าไม่มีจึงค่อยอ่าน `schema.prisma`
+
+> **บทเรียนที่ทำให้มีสองข้อสุดท้าย** — แผนฉบับแรกถูก scrutinize แล้วพบ compile error 3 จุด
+> (`AssetsModule` ที่ไม่มีอยู่ · `ContractExchangeRequest.reason` ที่ไม่มีในโมเดล ·
+> `equityShareholderLine.equityDocumentId` ที่ชื่อจริงคือ `documentId`) + hard delete ผิดกฎ 5 จุด
+> + `POStatus.PARTIAL` ที่ค่าจริงคือ `PARTIALLY_RECEIVED` — **ทั้งหมดเกิดจากการเดาชื่อฟิลด์
+> ทั้งที่ `prisma/seed.ts` มีของจริงอยู่แล้ว 1,647 บรรทัด**
 
 ---
 
@@ -47,6 +55,65 @@
 | `docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md` | generate จาก registry (Task 13) |
 
 **ไม่แตะ:** `seed-test-contracts.cli.ts` และ `cleanup-test-contracts.cli.ts` — Task 3 ห่อมันผ่าน export ที่มีอยู่แล้วเท่านั้น
+
+---
+
+### Task 0: Harvest ของจริงจาก `prisma/seed.ts` (อ่านอย่างเดียว ไม่แก้โค้ด)
+
+**Files:** ไม่สร้าง/แก้ไฟล์ใด — ผลลัพธ์คือบันทึกที่เอาไปใช้ใน Task 7-9
+
+**Interfaces:** ไม่มี — task นี้ผลิต *ความรู้* ไม่ใช่โค้ด
+
+**ทำไมต้องมี task นี้:** `apps/api/prisma/seed.ts` (1,647 บรรทัด) มี `create` ที่**รันผ่านจริง**สำหรับ
+7 ใน 19 โดเมนที่แผนนี้จะสร้าง การคัดรูป `data` มาจากของจริงตัดปัญหาเดาชื่อฟิลด์ทิ้งทั้งหมด
+
+| โดเมนในแผน | สิ่งที่ dev seed มีให้ harvest |
+|---|---|
+| `suppliers-po` (Task 7) | `supplier` · `purchaseOrder` · `poItemsData` (มี `brand` `model` `color` `storage` `category` `quantity` `unitPrice` `receivedQty`) · `goodsReceiving` |
+| `stock-ops` (Task 7) | `stockAdjustment` · **`reorderPoint`** · `stockAlert` · `stockCount` + `items` · `stockTransfer` |
+| `inspections` (Task 9) | `inspection` (`inspectedAt` `overallGrade` `isCompleted` `notes`) · `inspectionResult` · `inspectionTemplate` |
+| `applications` (Task 8) | `creditCheck` |
+
+- [ ] **Step 1: อ่านบล็อกที่เกี่ยวข้อง**
+
+```bash
+sed -n '990,1060p' apps/api/prisma/seed.ts    # inspections + results
+sed -n '1140,1230p' apps/api/prisma/seed.ts   # stockAdjustment + reorderPoint + stockAlert + stockCount
+sed -n '300,360p' apps/api/prisma/seed.ts     # purchaseOrder + poItemsData
+grep -n -B4 -A12 "prisma.creditCheck.create" apps/api/prisma/seed.ts
+grep -n -A12 "prisma.goodsReceiving.create" apps/api/prisma/seed.ts
+grep -n -A10 "prisma.stockTransfer.create" apps/api/prisma/seed.ts
+```
+
+- [ ] **Step 2: จดค่าที่ยืนยันแล้ว (ใช้ต่อใน Task 7-9)**
+
+ค่าที่ตรวจแล้วตอนเขียนแผน — ยืนยันซ้ำว่ายังตรง:
+
+| สิ่งที่ต้องรู้ | ค่าจริง |
+|---|---|
+| `POStatus` | `DRAFT` `APPROVED` `ORDERED` `PENDING` `PARTIALLY_RECEIVED` `FULLY_RECEIVED` `CANCELLED` — **ไม่มี `PARTIAL`** |
+| `StockCount.status` | `String` ธรรมดา (ไม่ใช่ enum) ค่าที่ใช้: `DRAFT` `IN_PROGRESS` `COMPLETED` `CANCELLED` |
+| `StockCountItem` | `productId` · `expectedStatus` (String) · `actualFound` · `scannedImei` |
+| `StockAdjustment` | `productId` `branchId` `reason` `previousStatus` `notes` `adjustedById` `approvedById` — **ผู้อนุมัติต้องเป็นคนละคนกับผู้ปรับ** |
+| `StockAlert` | ต้องมี `reorderPointId` ก่อน ⇒ สร้าง `ReorderPoint` นำเสมอ · ฟิลด์: `brand` `model` `storage` `category` `branchId` `currentStock` `minQuantity` `reorderQuantity` `status` |
+| `ReorderPoint` | `brand` `model` `storage` `category` `branchId` `minQuantity` `reorderQuantity` |
+| `Inspection` | `productId` `templateId` `inspectorId` `inspectedAt` `overallGrade` `isCompleted` `notes` |
+
+- [ ] **Step 3: ยืนยันโมเดลไหนมี `deletedAt` (ตัวตัดสิน soft vs hard delete)**
+
+```bash
+for m in StockCount StockCountItem StockTransfer StockAdjustment StockAlert ReorderPoint \
+         RepairTicket OnlineOrder OnlineInstallmentApplication ProductReservation \
+         BookingItem POItem GoodsReceiving Inspection InspectionResult; do
+  printf "%-30s " "$m"
+  awk "/^model $m /,/^}/" apps/api/prisma/schema.prisma | grep -q deletedAt && echo "soft" || echo "hard"
+done
+```
+Expected (ตรวจแล้วตอนเขียนแผน): `StockCount` `StockCountItem` `RepairTicket` `OnlineOrder`
+`OnlineInstallmentApplication` `Inspection` = **soft** · `ProductReservation` `BookingItem` = **hard**
+ถ้าผลไม่ตรงกับที่โค้ดใน Task 7-9 ใช้ ให้ยึดผลจากคำสั่งนี้
+
+**ไม่มี commit สำหรับ task นี้** — เป็นการอ่านล้วน ๆ
 
 ---
 
@@ -1611,7 +1678,8 @@ export const equitySeeder: DomainSeeder = {
     if (!dryRun && (docs.length || holders.length)) {
       await ctx.prisma.$transaction(async (tx) => {
         if (docs.length) {
-          await tx.equityShareholderLine.deleteMany({ where: { equityDocumentId: { in: docs.map((d) => d.id) } } });
+          // FK ชื่อ documentId ไม่ใช่ equityDocumentId — บรรทัดไม่มี deletedAt จึง hard delete ได้
+          await tx.equityShareholderLine.deleteMany({ where: { documentId: { in: docs.map((d) => d.id) } } });
           if (jeIds.length) {
             await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
             await tx.equityDocument.updateMany({ where: { id: { in: docs.map((d) => d.id) } }, data: { journalEntryId: null, reverseJournalEntryId: null } });
@@ -1638,8 +1706,9 @@ export const equitySeeder: DomainSeeder = {
 
 - [ ] **Step 2: ยืนยันชื่อ FK ของ `EquityShareholderLine`**
 
-Run: `awk '/^model EquityShareholderLine /,/^}/' apps/api/prisma/schema.prisma | grep -E 'equityDocument|shareholder'`
-Expected: มีคอลัมน์ที่ชี้ไป `EquityDocument` — ถ้าชื่อไม่ใช่ `equityDocumentId` ให้แก้ `cleanup` ตามชื่อจริง
+Run: `awk '/^model EquityShareholderLine /,/^}/' apps/api/prisma/schema.prisma | grep -E 'documentId|shareholder|deletedAt'`
+Expected (ตรวจแล้วตอนเขียนแผน): FK ชี้ไป `EquityDocument` ชื่อ **`documentId`** (ไม่ใช่ `equityDocumentId`) ·
+มี `shareholderId` + `shareholderName` (snapshot) · **ไม่มี `deletedAt`** ⇒ hard delete ถูกแล้ว
 
 - [ ] **Step 3: เพิ่มเข้า registry (ต่อจาก `assetsSeeder`)**
 
@@ -1693,10 +1762,14 @@ const SUPPLIERS: Array<{ name: string; phone: string; isRepairCenter: boolean }>
   { name: 'ศูนย์ซ่อมพันธมิตร', phone: '021110002', isRepairCenter: true },
 ];
 
-/** ใบสั่งซื้อ 2 ใบ — รอรับของ กับ รับบางส่วนแล้ว */
-const POS: Array<{ key: string; status: string; qty: number; unitPrice: number; note: string }> = [
-  { key: 'pending', status: 'PENDING', qty: 5, unitPrice: 12000, note: 'ใบสั่งซื้อรอรับของ' },
-  { key: 'partial', status: 'PARTIAL', qty: 3, unitPrice: 21000, note: 'ใบสั่งซื้อรับของบางส่วนแล้ว' },
+/**
+ * ใบสั่งซื้อ 2 ใบ — สั่งแล้วรอรับของ กับ รับบางส่วนแล้ว
+ * ค่า POStatus จริง: DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_RECEIVED CANCELLED
+ * (**ไม่มี `PARTIAL`** — ชื่อเต็มคือ PARTIALLY_RECEIVED)
+ */
+const POS: Array<{ key: string; status: 'ORDERED' | 'PARTIALLY_RECEIVED'; qty: number; unitPrice: number; note: string }> = [
+  { key: 'ordered', status: 'ORDERED', qty: 5, unitPrice: 12000, note: 'ใบสั่งซื้อรอรับของ' },
+  { key: 'partial', status: 'PARTIALLY_RECEIVED', qty: 3, unitPrice: 21000, note: 'ใบสั่งซื้อรับของบางส่วนแล้ว' },
 ];
 
 export const suppliersPoSeeder: DomainSeeder = {
@@ -1746,10 +1819,23 @@ export const suppliersPoSeeder: DomainSeeder = {
           supplierId: supplierIds[0],
           orderDate: ctx.today,
           totalAmount: p.qty * p.unitPrice,
-          status: p.status as never,
+          status: p.status,
           notes: testNote(p.note),
           createdById: ctx.refs.reviewerId,
-          items: { create: [{ quantity: p.qty, unitPrice: p.unitPrice, brand: 'ทดสอบระบบ', model: 'รุ่นทดสอบ' }] },
+          // ฟิลด์ของ POItem ยืนยันจาก prisma/seed.ts (poItemsData) — brand/model/color/storage/category/quantity/unitPrice/receivedQty
+          items: {
+            create: [
+              {
+                brand: 'ทดสอบระบบ',
+                model: 'รุ่นทดสอบ',
+                storage: '128GB',
+                category: 'PHONE_NEW',
+                quantity: p.qty,
+                unitPrice: p.unitPrice,
+                receivedQty: p.status === 'PARTIALLY_RECEIVED' ? 1 : 0,
+              },
+            ],
+          },
         },
       });
       stat.created += 1;
@@ -1774,12 +1860,13 @@ export const suppliersPoSeeder: DomainSeeder = {
       await ctx.prisma.$transaction(async (tx) => {
         if (pos.length) {
           const poIds = pos.map((p) => p.id);
+          // ทุกตารางในสายนี้มี deletedAt ⇒ soft delete ทั้งหมด (กฎ .claude/rules/database.md)
           const grs = await tx.goodsReceiving.findMany({ where: { poId: { in: poIds } }, select: { id: true } });
           if (grs.length) {
-            await tx.goodsReceivingItem.deleteMany({ where: { receivingId: { in: grs.map((g) => g.id) } } });
-            await tx.goodsReceiving.deleteMany({ where: { id: { in: grs.map((g) => g.id) } } });
+            await tx.goodsReceivingItem.updateMany({ where: { receivingId: { in: grs.map((g) => g.id) } }, data: { deletedAt: now } });
+            await tx.goodsReceiving.updateMany({ where: { id: { in: grs.map((g) => g.id) } }, data: { deletedAt: now } });
           }
-          await tx.pOItem.deleteMany({ where: { poId: { in: poIds } } });
+          await tx.pOItem.updateMany({ where: { poId: { in: poIds } }, data: { deletedAt: now } });
           await tx.purchaseOrder.updateMany({ where: { id: { in: poIds } }, data: { deletedAt: now } });
         }
         if (suppliers.length) {
@@ -1798,32 +1885,36 @@ export const suppliersPoSeeder: DomainSeeder = {
 };
 ```
 
-- [ ] **Step 2: ยืนยันสถานะที่ `PurchaseOrder.status` รับได้ + ฟิลด์ของ `POItem`**
+- [ ] **Step 2: ยืนยัน `POStatus` + ฟิลด์ของ `POItem` (ตรวจแล้วตอนเขียนแผน — ยืนยันซ้ำ)**
 
 Run:
 ```bash
-awk '/^model PurchaseOrder /,/^}/' apps/api/prisma/schema.prisma | grep -E 'status|items'
+awk '/^enum POStatus /,/^}/' apps/api/prisma/schema.prisma
 awk '/^model POItem /,/^}/' apps/api/prisma/schema.prisma | grep -E '^\s+[a-zA-Z]+\s'
 ```
-Expected: ถ้า `status` เป็น enum ให้ใช้ค่าที่มีจริงแทน `'PENDING'`/`'PARTIAL'` และลบ `as never` ออก
-ถ้า `POItem` ไม่มี `brand`/`model` ให้ตัดออกและใส่เฉพาะฟิลด์บังคับ (`poId` `quantity` `unitPrice`)
+Expected: `POStatus` = `DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_RECEIVED CANCELLED`
+(**ไม่มี `PARTIAL`**) · `POItem` มี `brand` `model` `color` `storage` `category` `quantity` `unitPrice` `receivedQty`
+และ **มี `deletedAt`** ⇒ cleanup ต้อง soft delete
 
 - [ ] **Step 3: เขียน `stock-ops.seed.ts`**
 
 ```ts
-import { TEST_DOC_PREFIX, TEST_IMEI_PREFIX_FALLBACK, TEST_NOTE_MARKER, testNote } from './_context';
+import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
 /**
  * ไม่โพสต์ JE — seed สถานะไหนก็ได้
  * ใช้เครื่องทดสอบที่โดเมน contracts สร้างไว้ (IMEI ขึ้นต้น TEST-) เท่านั้น
  * ห้ามแตะเครื่องจริง เพราะการโอนย้าย/ปรับสต็อกเปลี่ยน branchId และ status ของเครื่อง
+ *
+ * ทุกตารางในโดเมนนี้ (StockCount · StockCountItem · StockTransfer · StockAdjustment ·
+ * StockAlert · ReorderPoint) **มี deletedAt ทั้งหมด** ⇒ cleanup ใช้ soft delete ล้วน
  */
 export const stockOpsSeeder: DomainSeeder = {
   key: 'stock-ops',
-  label: 'งานสต็อก (โอนย้าย · นับ · ปรับปรุง)',
+  label: 'งานสต็อก (โอนย้าย · นับ · ปรับปรุง · แจ้งเตือน)',
   routes: ['/stock', '/stock/products', '/stock/transfers', '/stock/count', '/stock/adjustments', '/stock/alerts', '/stock/workflow', '/inventory'],
-  markerDoc: `StockCount.countNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · StockTransfer/StockAdjustment ผูกกับ Product ที่ IMEI ขึ้นต้น "TEST-"`,
+  markerDoc: `StockCount.countNumber ขึ้นต้น "${TEST_DOC_PREFIX}" · StockTransfer/StockAdjustment.notes และ ReorderPoint/StockAlert.model ขึ้นต้นด้วย marker ทดสอบ`,
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     const products = await ctx.prisma.product.findMany({ where: { imeiSerial: { startsWith: 'TEST-' }, status: 'IN_STOCK', deletedAt: null }, select: { id: true }, take: 2 });
@@ -1833,6 +1924,8 @@ export const stockOpsSeeder: DomainSeeder = {
       return rows;
     }
     rows.push({ label: `${TEST_DOC_PREFIX}COUNT`, detail: 'ใบนับสต็อกที่กำลังนับ (มีรายการรอกระทบยอด)' });
+    rows.push({ label: 'ปรับปรุงสต็อก', detail: 'เหตุผล CORRECTION 1 รายการ (ผู้ปรับ ≠ ผู้อนุมัติ)' });
+    rows.push({ label: 'จุดสั่งซื้อ + แจ้งเตือน', detail: 'ReorderPoint 1 + StockAlert 1 (ACTIVE)' });
     if (ctx.refs.secondBranchId) rows.push({ label: 'โอนย้ายสาขา', detail: 'PENDING 1 เครื่อง (รอสาขาปลายทางรับ)' });
     else rows.push({ label: 'ข้ามโอนย้าย', detail: 'มีสาขาเดียว — โอนย้ายต้องมี 2 สาขา' });
     return rows;
@@ -1850,9 +1943,9 @@ export const stockOpsSeeder: DomainSeeder = {
       return stat;
     }
 
-    // 1) ใบนับสต็อก
+    // 1) ใบนับสต็อก — ฟิลด์ items ยืนยันจาก prisma/seed.ts (sc-001)
     const countNumber = `${TEST_DOC_PREFIX}COUNT-${ctx.dateStr}`;
-    const countExists = await ctx.prisma.stockCount.findFirst({ where: { countNumber }, select: { id: true } });
+    const countExists = await ctx.prisma.stockCount.findFirst({ where: { countNumber, deletedAt: null }, select: { id: true } });
     if (countExists) {
       stat.skipped += 1;
     } else {
@@ -1861,6 +1954,8 @@ export const stockOpsSeeder: DomainSeeder = {
           countNumber,
           branchId: ctx.refs.branchId,
           countedById: ctx.refs.salespersonId,
+          status: 'IN_PROGRESS',
+          startedAt: ctx.today,
           notes: testNote('ใบนับสต็อกสำหรับทดสอบ'),
           items: { create: products.map((p) => ({ productId: p.id, expectedStatus: p.status })) },
         },
@@ -1868,14 +1963,61 @@ export const stockOpsSeeder: DomainSeeder = {
       stat.created += 1;
     }
 
-    // 2) โอนย้ายสาขา — ต้องมีสาขาที่สอง
+    // 2) ปรับปรุงสต็อก — CORRECTION ไม่เปลี่ยนสถานะเครื่อง จึงปลอดภัยที่สุดสำหรับข้อมูลเทส
+    //    (เหตุผล DAMAGED ต้องแนบรูปหลักฐาน T5-C14; FOUND ต้องมาจากสถานะใน FOUND_POLICY)
+    const adjNote = testNote('ปรับปรุงสต็อกสำหรับทดสอบ');
+    const adjExists = await ctx.prisma.stockAdjustment.findFirst({ where: { notes: adjNote, deletedAt: null }, select: { id: true } });
+    if (adjExists) {
+      stat.skipped += 1;
+    } else {
+      await ctx.prisma.stockAdjustment.create({
+        data: {
+          productId: products[0].id,
+          branchId: ctx.refs.branchId,
+          reason: 'CORRECTION',
+          previousStatus: products[0].status,
+          notes: adjNote,
+          adjustedById: ctx.refs.reviewerId,
+          // ผู้อนุมัติต้องคนละคนกับผู้ปรับ — SeedRefs แยก ownerId ไว้ให้แล้ว
+          approvedById: ctx.refs.ownerId,
+        },
+      });
+      stat.created += 1;
+    }
+
+    // 3) จุดสั่งซื้อ + แจ้งเตือน — StockAlert.reorderPointId เป็น FK บังคับ ⇒ สร้าง ReorderPoint นำ
+    const alertModel = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
+    const rpExists = await ctx.prisma.reorderPoint.findFirst({ where: { model: alertModel, deletedAt: null }, select: { id: true } });
+    if (rpExists) {
+      stat.skipped += 1;
+    } else {
+      const rp = await ctx.prisma.reorderPoint.create({
+        data: { brand: 'ทดสอบระบบ', model: alertModel, storage: '128GB', category: 'PHONE_NEW', branchId: ctx.refs.branchId, minQuantity: 2, reorderQuantity: 5 },
+        select: { id: true },
+      });
+      await ctx.prisma.stockAlert.create({
+        data: {
+          reorderPointId: rp.id,
+          brand: 'ทดสอบระบบ',
+          model: alertModel,
+          storage: '128GB',
+          category: 'PHONE_NEW',
+          branchId: ctx.refs.branchId,
+          currentStock: 1,
+          minQuantity: 2,
+          reorderQuantity: 5,
+          status: 'ACTIVE',
+        },
+      });
+      stat.created += 2;
+    }
+
+    // 4) โอนย้ายสาขา — ต้องมีสาขาที่สอง
     if (!ctx.refs.secondBranchId) {
       stat.notes.push('ข้ามการโอนย้ายสาขา — ระบบมีสาขาเดียว');
     } else {
-      const exists = await ctx.prisma.stockTransfer.findFirst({
-        where: { productId: products[0].id, notes: { startsWith: TEST_NOTE_MARKER } },
-        select: { id: true },
-      });
+      const trNote = testNote('โอนย้ายสาขาสำหรับทดสอบ — รอสาขาปลายทางรับ');
+      const exists = await ctx.prisma.stockTransfer.findFirst({ where: { notes: trNote, deletedAt: null }, select: { id: true } });
       if (exists) {
         stat.skipped += 1;
       } else {
@@ -1886,7 +2028,7 @@ export const stockOpsSeeder: DomainSeeder = {
             toBranchId: ctx.refs.secondBranchId,
             transferredBy: ctx.refs.reviewerId,
             status: 'PENDING',
-            notes: testNote('โอนย้ายสาขาสำหรับทดสอบ — รอสาขาปลายทางรับ'),
+            notes: trNote,
           },
         });
         stat.created += 1;
@@ -1896,39 +2038,50 @@ export const stockOpsSeeder: DomainSeeder = {
   },
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
-    const counts = await ctx.prisma.stockCount.findMany({
-      where: { countNumber: { startsWith: `${TEST_DOC_PREFIX}COUNT-` } },
-      select: { id: true, countNumber: true },
-    });
-    const transfers = await ctx.prisma.stockTransfer.findMany({
-      where: { notes: { startsWith: TEST_NOTE_MARKER } },
-      select: { id: true },
-    });
+    const alertModel = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
+    const [counts, transfers, adjustments, rps] = await Promise.all([
+      ctx.prisma.stockCount.findMany({ where: { countNumber: { startsWith: `${TEST_DOC_PREFIX}COUNT-` }, deletedAt: null }, select: { id: true, countNumber: true } }),
+      ctx.prisma.stockTransfer.findMany({ where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null }, select: { id: true } }),
+      ctx.prisma.stockAdjustment.findMany({ where: { notes: { startsWith: TEST_NOTE_MARKER }, deletedAt: null }, select: { id: true } }),
+      ctx.prisma.reorderPoint.findMany({ where: { model: alertModel, deletedAt: null }, select: { id: true } }),
+    ]);
+    const alerts = rps.length
+      ? await ctx.prisma.stockAlert.findMany({ where: { reorderPointId: { in: rps.map((r) => r.id) }, deletedAt: null }, select: { id: true } })
+      : [];
     for (const c of counts) console.log(`     ${c.countNumber}`);
 
-    if (!dryRun && (counts.length || transfers.length)) {
+    if (!dryRun) {
+      const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
         if (counts.length) {
-          await tx.stockCountItem.deleteMany({ where: { stockCountId: { in: counts.map((c) => c.id) } } });
-          await tx.stockCount.deleteMany({ where: { id: { in: counts.map((c) => c.id) } } });
+          await tx.stockCountItem.updateMany({ where: { stockCountId: { in: counts.map((c) => c.id) } }, data: { deletedAt: now } });
+          await tx.stockCount.updateMany({ where: { id: { in: counts.map((c) => c.id) } }, data: { deletedAt: now } });
         }
-        if (transfers.length) {
-          await tx.stockTransfer.deleteMany({ where: { id: { in: transfers.map((t) => t.id) } } });
-        }
+        if (transfers.length) await tx.stockTransfer.updateMany({ where: { id: { in: transfers.map((t) => t.id) } }, data: { deletedAt: now } });
+        if (adjustments.length) await tx.stockAdjustment.updateMany({ where: { id: { in: adjustments.map((a) => a.id) } }, data: { deletedAt: now } });
+        // แจ้งเตือนต้องออกก่อนจุดสั่งซื้อ — reorderPointId เป็น FK บังคับ
+        if (alerts.length) await tx.stockAlert.updateMany({ where: { id: { in: alerts.map((a) => a.id) } }, data: { deletedAt: now } });
+        if (rps.length) await tx.reorderPoint.updateMany({ where: { id: { in: rps.map((r) => r.id) } }, data: { deletedAt: now } });
       });
     }
-    return { removed: { 'ใบนับสต็อก': counts.length, 'ใบโอนย้ายสาขา': transfers.length }, warnings: [] };
+    return {
+      removed: { 'ใบนับสต็อก': counts.length, 'ใบโอนย้ายสาขา': transfers.length, 'ใบปรับปรุงสต็อก': adjustments.length, 'แจ้งเตือนสต็อก': alerts.length, 'จุดสั่งซื้อ': rps.length },
+      warnings: [],
+    };
   },
 };
 ```
 
-> `StockCount` และ `StockTransfer` ไม่มี `deletedAt` (เป็น log ของการปฏิบัติงาน) ⇒ cleanup ใช้ **hard delete**
-> ตรวจก่อนเขียน: `awk '/^model StockCount /,/^}/' apps/api/prisma/schema.prisma | grep deletedAt` — ถ้ามี ให้เปลี่ยนเป็น soft delete
+- [ ] **Step 4: ยืนยันว่าทุกตารางในโดเมนนี้เป็น soft delete จริง**
 
-- [ ] **Step 4: ลบ import ที่ไม่ได้ใช้**
-
-`stock-ops.seed.ts` ข้างบนอ้าง `TEST_IMEI_PREFIX_FALLBACK` ซึ่ง **ไม่มีอยู่จริง** — ลบออกจากบรรทัด import
-ให้เหลือ `import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';`
+Run:
+```bash
+for m in StockCount StockCountItem StockTransfer StockAdjustment StockAlert ReorderPoint; do
+  printf "%-18s " "$m"
+  awk "/^model $m /,/^}/" apps/api/prisma/schema.prisma | grep -q deletedAt && echo soft || echo hard
+done
+```
+Expected (ตรวจแล้วตอนเขียนแผน): **soft ทั้ง 6 ตัว** — ถ้าตัวไหนขึ้น hard ให้เปลี่ยนบรรทัดนั้นใน `cleanup` เป็น `deleteMany`
 
 - [ ] **Step 5: เพิ่มเข้า registry (ต่อจาก `equitySeeder`)**
 
@@ -2149,7 +2302,7 @@ export const onlineOrdersSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const orders = await ctx.prisma.onlineOrder.findMany({
-      where: { orderNumber: { startsWith: `${TEST_DOC_PREFIX}ORD-` } },
+      where: { orderNumber: { startsWith: `${TEST_DOC_PREFIX}ORD-` }, deletedAt: null },
       select: { id: true, orderNumber: true, reservationId: true },
     });
     const reservations = await ctx.prisma.productReservation.findMany({
@@ -2160,8 +2313,16 @@ export const onlineOrdersSeeder: DomainSeeder = {
 
     if (!dryRun && (orders.length || reservations.length)) {
       await ctx.prisma.$transaction(async (tx) => {
-        if (orders.length) await tx.onlineOrder.deleteMany({ where: { id: { in: orders.map((o) => o.id) } } });
-        if (reservations.length) await tx.productReservation.deleteMany({ where: { id: { in: reservations.map((r) => r.id) } } });
+        // OnlineOrder มี deletedAt ⇒ soft delete
+        if (orders.length) {
+          await tx.onlineOrder.updateMany({ where: { id: { in: orders.map((o) => o.id) } }, data: { deletedAt: new Date() } });
+        }
+        // ProductReservation ไม่มี deletedAt ⇒ hard delete — และ **ต้องเอาออกจริง**
+        // ไม่ใช่แค่ซ่อน เพราะแถวที่ยัง ACTIVE จะทำให้ assertProductNotHeld ชั้น 3
+        // บล็อกการลบ/แก้ IMEI/คืนเครื่องเข้าคลังของเครื่องนั้นตลอดไป
+        if (reservations.length) {
+          await tx.productReservation.deleteMany({ where: { id: { in: reservations.map((r) => r.id) } } });
+        }
       });
     }
     return { removed: { 'ออเดอร์ออนไลน์': orders.length, 'การจองเครื่อง': reservations.length }, warnings: [] };
@@ -2228,12 +2389,13 @@ export const applicationsSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.onlineInstallmentApplication.findMany({
-      where: { applicationNumber: { startsWith: `${TEST_DOC_PREFIX}APP-` } },
+      where: { applicationNumber: { startsWith: `${TEST_DOC_PREFIX}APP-` }, deletedAt: null },
       select: { id: true, applicationNumber: true },
     });
     for (const r of rows) console.log(`     ${r.applicationNumber}`);
     if (!dryRun && rows.length) {
-      await ctx.prisma.onlineInstallmentApplication.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+      // มี deletedAt ⇒ soft delete
+      await ctx.prisma.onlineInstallmentApplication.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
     }
     return { removed: { 'ใบสมัครผ่อนออนไลน์': rows.length }, warnings: [] };
   },
@@ -2365,7 +2527,7 @@ export const repairSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.repairTicket.findMany({
-      where: { ticketNumber: { startsWith: `${TEST_DOC_PREFIX}RT-` } },
+      where: { ticketNumber: { startsWith: `${TEST_DOC_PREFIX}RT-` }, deletedAt: null },
       select: { id: true, ticketNumber: true, expenseDocumentId: true, otherIncomeId: true },
     });
     for (const r of rows) {
@@ -2374,8 +2536,9 @@ export const repairSeeder: DomainSeeder = {
     }
     if (!dryRun && rows.length) {
       await ctx.prisma.$transaction(async (tx) => {
+        // RepairStatusLog ไม่มี deletedAt (เป็น log) ⇒ hard · RepairTicket มี ⇒ soft
         await tx.repairStatusLog.deleteMany({ where: { ticketId: { in: rows.map((r) => r.id) } } });
-        await tx.repairTicket.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+        await tx.repairTicket.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
       });
     }
     return {
@@ -2444,9 +2607,11 @@ export const inspectionsSeeder: DomainSeeder = {
       select: { id: true },
     });
     if (!dryRun && rows.length) {
+      const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
-        await tx.inspectionResult.deleteMany({ where: { inspectionId: { in: rows.map((r) => r.id) } } });
-        await tx.inspection.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: new Date() } });
+        // InspectionResult มี deletedAt เหมือนกัน ⇒ soft ทั้งคู่
+        await tx.inspectionResult.updateMany({ where: { inspectionId: { in: rows.map((r) => r.id) } }, data: { deletedAt: now } });
+        await tx.inspection.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { deletedAt: now } });
       });
     }
     return { removed: { 'ใบตรวจสภาพ': rows.length }, warnings: [] };
@@ -2468,7 +2633,10 @@ export const deviceSwapSeeder: DomainSeeder = {
   key: 'device-swap',
   label: 'คำขอเปลี่ยนเครื่อง',
   routes: ['/defect-exchange', '/insurance/exchange-requests', '/insurance/exchange-request/new'],
-  markerDoc: `ContractExchangeRequest.reason ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
+  // ⚠ โมเดลนี้ไม่มีฟิลด์ชื่อ `reason` — ช่องข้อความที่มีจริงคือ conditionNote /
+  // rejectionReason / cancelReason · เลือก conditionNote เพราะเป็นคำบรรยายสภาพเครื่อง
+  // ตอนยื่นคำขอ (สองตัวหลังถูกเขียนโดย flow ปฏิเสธ/ยกเลิก ไม่ใช่ตอนสร้าง)
+  markerDoc: `ContractExchangeRequest.conditionNote ขึ้นต้นด้วย "${TEST_NOTE_MARKER}"`,
 
   async plan(ctx: SeedContext): Promise<PlanRow[]> {
     const contract = await ctx.prisma.contract.findFirst({
@@ -2494,8 +2662,8 @@ export const deviceSwapSeeder: DomainSeeder = {
       stat.notes.push('ข้ามทั้งโดเมน — ต้องมีสัญญาทดสอบ ACTIVE ที่ผูกเครื่อง + เครื่องทดสอบ IN_STOCK 1 เครื่อง');
       return stat;
     }
-    const reason = testNote('คำขอเปลี่ยนเครื่องสำหรับทดสอบ — เครื่องเดิมมีตำหนิ');
-    const exists = await ctx.prisma.contractExchangeRequest.findFirst({ where: { reason, deletedAt: null }, select: { id: true } });
+    const conditionNote = testNote('คำขอเปลี่ยนเครื่องสำหรับทดสอบ — เครื่องเดิมมีตำหนิ');
+    const exists = await ctx.prisma.contractExchangeRequest.findFirst({ where: { conditionNote, deletedAt: null }, select: { id: true } });
     if (exists) {
       stat.skipped += 1;
       return stat;
@@ -2506,7 +2674,8 @@ export const deviceSwapSeeder: DomainSeeder = {
         oldProductId: contract.productId,
         newProductId: newProduct.id,
         requestedById: ctx.refs.salespersonId,
-        reason,
+        conditionNote,
+        deviceCondition: 'B',
       },
     });
     stat.created += 1;
@@ -2515,7 +2684,7 @@ export const deviceSwapSeeder: DomainSeeder = {
 
   async cleanup(ctx: SeedContext, dryRun: boolean): Promise<CleanupStat> {
     const rows = await ctx.prisma.contractExchangeRequest.findMany({
-      where: { reason: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
+      where: { conditionNote: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
       select: { id: true },
     });
     if (!dryRun && rows.length) {
@@ -3131,19 +3300,25 @@ import { SalesModule } from '../../modules/sales/sales.module';
 import { BookingsModule } from '../../modules/bookings/bookings.module';
 import { ExpenseDocumentsModule } from '../../modules/expense-documents/expense-documents.module';
 import { OtherIncomeModule } from '../../modules/other-income/other-income.module';
-import { AssetsModule } from '../../modules/assets/assets.module';
+// ⚠ เอกพจน์ทั้งคู่ — modules/assets/ มีแต่ไฟล์ spec ลอย ไม่มี module
+import { AssetModule } from '../../modules/asset/asset.module';
 import { EquityModule } from '../../modules/equity/equity.module';
 
 /**
  * โมดูลสำหรับโหมดเดินเรื่องเท่านั้น
  *
- * R3 — ห้าม import AppModule เด็ดขาด: app.module.ts มี ScheduleModule.forRoot()
+ * R3 — ห้าม import AppModule เด็ดขาด: app.module.ts:170 มี ScheduleModule.forRoot()
  * ซึ่งจะลงทะเบียน cron ทั้งหมด (2A accrual 00:01, ECL 00:30, VAT 60 วัน 02:00)
- * ตอนที่ createApplicationContext เรียก onApplicationBootstrap
+ * ตอนที่ createApplicationContext เรียก onApplicationBootstrap — และไม่มี env ปิด cron
+ * (grep DISABLE_CRON / CRON_ENABLED แล้วไม่เจอเลย)
  *
- * ScheduleModule.forRoot() อยู่ที่ app.module.ts ที่เดียว และ BullModule.forRoot()
- * อยู่ที่ notifications/notification-queue.module.ts ที่เดียว ⇒ ตราบใดที่ไม่ import
- * สองตัวนี้ จะไม่มี cron และไม่มี worker เกิดขึ้น
+ * ScheduleModule.forRoot() อยู่ที่ app.module.ts ที่เดียว ⇒ ไม่ import = ไม่มี cron
+ *
+ * หมายเหตุเรื่อง BullMQ (ตรวจแล้ว ไม่ใช่ความเสี่ยง): ContractsModule และ
+ * ExpenseDocumentsModule import NotificationsModule จริง แต่ NotificationsModule
+ * import แค่ Prisma/Integrations/PDPA — ส่วน NotificationQueueModule.register()
+ * ถูกเรียกจาก app.module.ts ที่เดียว และไม่มีใครนอกโมดูลนั้นฉีด NotificationQueueService
+ * ⇒ ไม่มีทาง resolve ไปถึง Redis
  */
 @Module({
   imports: [
@@ -3154,7 +3329,7 @@ import { EquityModule } from '../../modules/equity/equity.module';
     BookingsModule,
     ExpenseDocumentsModule,
     OtherIncomeModule,
-    AssetsModule,
+    AssetModule,
     EquityModule,
   ],
 })
@@ -3489,13 +3664,32 @@ git commit -m "feat(test-pack): generate ตารางครอบคลุม
 
 ---
 
+## รอบแก้หลัง scrutinize (2026-08-26)
+
+แผนฉบับแรกถูกไล่โค้ดจริงแล้วพบ 8 จุด — แก้ครบแล้วทั้งหมด บันทึกไว้กัน regression:
+
+| # | สิ่งที่พบ | ที่มา | แก้เป็น |
+|---|---|---|---|
+| 1 | `_module.ts` import `AssetsModule` จาก `modules/assets/assets.module` — **ไม่มีไฟล์** | `modules/assets/` มีแต่ `asset-invoice-received-template.spec.ts` | `AssetModule` จาก `modules/asset/asset.module` |
+| 2 | `device-swap` ใช้ `ContractExchangeRequest.reason` — **ไม่มีฟิลด์นี้** | ช่องข้อความจริง: `conditionNote` / `rejectionReason` / `cancelReason` | `conditionNote` (3 จุด + `markerDoc`) |
+| 3 | `equity` cleanup ใช้ FK `equityDocumentId` | ชื่อจริงคือ `documentId` | แก้ + ยืนยันว่าโมเดลไม่มี `deletedAt` ⇒ hard delete ถูกแล้ว |
+| 4 | hard delete บนโมเดลที่มี `deletedAt` **9 จุด** | `StockCount` `StockCountItem` `StockTransfer` `StockAdjustment` `POItem` `GoodsReceiving(+Item)` `RepairTicket` `OnlineOrder` `OnlineInstallmentApplication` `InspectionResult` ล้วนเป็น soft | เปลี่ยนเป็น `updateMany({ deletedAt })` + เพิ่มกฎลง Global Constraints |
+| 5 | `POStatus` ไม่มีค่า `PARTIAL` | ค่าจริงคือ `PARTIALLY_RECEIVED` | แก้ + ถอด `as never` + เติมฟิลด์ `POItem` จาก `seed.ts` |
+| 6 | ตาราง "โมดูลไหนโพสต์ JE" มาจาก grep ที่มี false negative | pattern `Template\.execute` มองไม่เห็น `this.template.execute` ⇒ `other-income`/`asset` ขึ้นว่าไม่โพสต์ทั้งที่โพสต์ | เปลี่ยน pattern + เขียนกำกับว่า grep เป็นแค่รายชื่อไฟล์ที่ต้องไปอ่าน (spec §3 R2) |
+| 7 | R3 เตือนเรื่อง BullMQ เกินจริง | `NotificationQueueModule.register()` ถูกเรียกจาก `app.module.ts` ที่เดียว และไม่มีใครฉีด `NotificationQueueService` | ตัดคำเตือนออก เหลือเหตุผลเดียวที่จริง (`ScheduleModule.forRoot()`) |
+| 8 | `StockAdjustment` + `StockAlert` หายจาก Task 7 ทั้งที่ spec §6 สัญญาไว้ | `StockAlert.reorderPointId` เป็น FK บังคับ ผมเลยตัดเงียบ ๆ | เติมครบ + สร้าง `ReorderPoint` นำ (harvest จาก `seed.ts`) |
+
+**รากของ 1-5 เป็นเรื่องเดียว** — เดาชื่อฟิลด์แทนที่จะอ่าน `prisma/seed.ts` ⇒ เพิ่ม **Task 0** เป็นด่านแรกของแผน
+
+---
+
 ## Self-Review
 
 **1. Spec coverage**
 
 | spec § | task ที่ทำ |
 |---|---|
-| §2 D1 ขยายครบทุกโดเมน | Task 3-10 (19 โดเมน) |
+| §2 D1 ขยายครบทุกโดเมน | Task 3-10 (19 โดเมน) — Task 0 harvest ของจริงจาก `prisma/seed.ts` ให้ 7 โดเมนก่อน |
 | §2 D2 สถานะกลาง | เพดานสถานะระบุในทุก task ของโดเมน |
 | §2 D3 ไม่แตะแชท | ไม่มีโดเมนแชทใน registry · Task 13 หัวข้อ 3 ลิสต์ route แชทเป็น "ไม่มีโดเมนครอบ" |
 | §2 D4 2-3 แถว/โดเมน | ทุก `ROWS` ยาว 2-4 |

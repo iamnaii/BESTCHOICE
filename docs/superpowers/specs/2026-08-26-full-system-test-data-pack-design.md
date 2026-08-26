@@ -51,7 +51,22 @@ JE ทุกใบต้องมาจาก template จริงผ่าน 
 
 | โพสต์ JE | ไม่โพสต์ JE |
 |---|---|
-| `bookings` · `finance-receivable` · `sales` · `trade-in` (ตอน `ACCEPTED`) · `assets` · `expense-documents` · `other-income` · `equity` · `contracts` | `purchase-orders` · `stock-transfers` · `stock` · `commissions` · `saving-plans` · `repair-tickets` · `inspections` · `online-orders` |
+| `bookings` · `finance-receivable` · `sales` · `trade-in` (ตอน `ACCEPTED`) · `asset` · `expense-documents` · `other-income` · `equity` · `contracts` · `payments` | `purchase-orders` · `stock-transfers` · `stock` · `commissions` · `saving-plans` · `repair-tickets` · `inspections` · `online-orders` · `todos` |
+
+> **วิธีตรวจที่ใช้ได้จริง — อย่าใช้ pattern แคบ** ตารางนี้เคยสำรวจด้วย
+> `grep -rlE 'Template\.execute|journalAuto\.createAndPost|postPaired'` ซึ่ง **มี false negative**:
+> มันจับได้เฉพาะตอนที่ตัวแปรลงท้ายว่า `Template` ⇒ `other-income` (ฉีดเป็น
+> `private readonly template: OtherIncomeTemplate` แล้วเรียก `this.template.execute(...)`)
+> และ `asset` ขึ้นว่า "ไม่โพสต์" ทั้งที่โพสต์จริงทั้งคู่
+>
+> ใช้อันนี้แทน แล้ว **เปิดไฟล์ยืนยันทุกครั้ง**:
+> ```bash
+> grep -rlE "from '.*journal|JournalAutoService|PairedJournalService|\.template\.execute" \
+>   apps/api/src/modules/<domain>/ --include=*.ts | grep -v spec
+> ```
+> pattern นี้มี **false positive** ด้วย — `purchase-orders` ติดมาเพราะ
+> `autofillProductPriceFromTemplate` ซึ่งเป็น *เทมเพลตราคา ไม่ใช่เทมเพลตบัญชี*
+> ⇒ ผลลัพธ์ grep เป็นแค่รายชื่อไฟล์ที่ต้องไปอ่าน ไม่ใช่คำตอบ
 
 **เคสที่พิสูจน์ว่ากฎนี้จำเป็น** — `bookings.service.ts:444` เรียก `ShopBookingDepositTemplate` ตอนรับมัดจำ
 ถ้า seeder เขียน `Booking.status = 'PAID'` ตรง ๆ โดยไม่มี JE จะได้ใบจองที่บอกว่ารับเงินแล้วแต่
@@ -67,13 +82,19 @@ JE ทุกใบต้องมาจาก template จริงผ่าน 
 `CRON_ENABLED` แล้วไม่เจอเลย) ⇒ `NestFactory.createApplicationContext(AppModule)` จะลงทะเบียน cron
 ทั้งหมดรวม 2A accrual (00:01), ECL (00:30), VAT 60 วัน (02:00)
 
-ตรวจแล้วว่า `ScheduleModule.forRoot()` อยู่ที่ **`app.module.ts` ที่เดียว** และ BullMQ
-(`BullModule.forRoot`) อยู่ที่ `notifications/notification-queue.module.ts` ที่เดียว
+ตรวจแล้วว่า `ScheduleModule.forRoot()` อยู่ที่ **`app.module.ts` ที่เดียว**
 ⇒ **สร้าง `TestPackModule` ของตัวเอง** ที่ import เฉพาะ feature module ที่ต้องใช้:
-ได้ DI ครบเหมือน production แต่ไม่มี cron ไม่มี worker
+ได้ DI ครบเหมือน production แต่ไม่มี cron
 
-> ถ้าโมดูลไหน import `NotificationsModule` มาโดยอ้อมจนดึง BullMQ ติดมา ให้ override provider นั้น
-> ด้วย no-op ใน `TestPackModule` แทนการปล่อยให้ต่อ Redis จริง
+> **BullMQ ไม่ใช่ความเสี่ยง (ตรวจแล้ว 2026-08-26)** — `ContractsModule` และ
+> `ExpenseDocumentsModule` import `NotificationsModule` จริง แต่ `NotificationsModule`
+> import แค่ `PrismaModule` `IntegrationsModule` `PDPAModule` ส่วน
+> `NotificationQueueModule.register()` ถูกเรียกจาก **`app.module.ts:216` ที่เดียว**
+> และ **ไม่มีใครนอกโมดูลนั้นฉีด `NotificationQueueService`** ⇒ ไม่มีทาง resolve ไปถึง Redis
+> (ฉบับแรกของสเปคเขียนว่าต้อง override provider เป็น no-op — **ไม่จำเป็น** ตัดทิ้งได้)
+>
+> **ชื่อโมดูลที่ต้องระวัง:** ทรัพย์สินคือ `AssetModule` ที่ `modules/asset/asset.module.ts`
+> (**เอกพจน์**) — `modules/assets/` มีแต่ไฟล์ spec ลอยอยู่ไฟล์เดียว ไม่มี module
 
 ---
 

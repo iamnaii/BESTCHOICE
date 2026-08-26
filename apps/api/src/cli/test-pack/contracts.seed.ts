@@ -54,6 +54,12 @@ async function adaptRefs(ctx: SeedContext) {
 //   8. ไม่สร้าง installment_schedules — activate สร้างเองเมื่อยังไม่มี
 //      (generateInstallmentSchedules) จาก createdAt + paymentDueDay ด้วยสูตร local-time
 //      เดียวกับ dueDate ของ Payment ด้านล่าง ⇒ สองตารางตรงกันโดยโครงสร้าง
+//   9. สิ่งที่ activate "ส่งออก" ไม่ใช่แค่สิ่งที่มันอ่าน: sendContractActivatedNotification
+//      (contract-workflow.service.ts:713-735) — ลูกค้าไม่มี lineIdFinance ⇒ ตกสาขา
+//      `else if (customer.phone)` แล้วส่ง SMS **จริง** ผ่าน NotificationsService.send
+//      (Customer.phone เป็นคอลัมน์ non-nullable — เว้นว่างไม่ได้) ⇒ เบอร์ลูกค้าทดสอบ
+//      ต้องอยู่ใน block สำรอง 08990000NN เดียวกับลูกค้าเปล่าของ CLI เดิม
+//      (seed-test-contracts.cli.ts:255) — ห้ามใช้ 09xxxxxxxx ที่ route ถึงคนจริงได้
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DRAFT_SELLING_PRICE = 19900;
@@ -95,9 +101,7 @@ function draftCalc() {
   const interestTotal = round2(principal.mul(DRAFT_RATE).mul(DRAFT_MONTHS));
   const vatAmount = round2(principal.plus(storeCommission).plus(interestTotal).mul(DRAFT_VAT_PCT));
   const grandTotal = principal.plus(storeCommission).plus(interestTotal).plus(vatAmount);
-  const monthlyPayment = grandTotal
-    .div(DRAFT_MONTHS)
-    .toDecimalPlaces(0, Prisma.Decimal.ROUND_CEIL);
+  const monthlyPayment = grandTotal.div(DRAFT_MONTHS).toDecimalPlaces(0, Prisma.Decimal.ROUND_CEIL);
   return { principal, storeCommission, interestTotal, vatAmount, monthlyPayment };
 }
 
@@ -189,7 +193,10 @@ async function seedDraftContract(
     const customer = await tx.customer.create({
       data: {
         name: `ทดสอบ รอเปิดสัญญา (DRAFT) ${contractSeq}`,
-        phone: `09${String(10000000 + contractSeq).slice(-8)}`,
+        // block สำรอง 08990000NN (convention เดียวกับลูกค้าเปล่าของ CLI เดิม) — สัญญาใบนี้
+        // เป็นใบเดียวที่ไปถึง activate ซึ่งส่ง SMS จริงถึงเบอร์นี้ (ดูด่านข้อ 9 ด้านบน);
+        // ชนกับลูกค้าเปล่า (NN=01,02) ได้ ไม่เป็นไร — คอลัมน์ phone ไม่ unique
+        phone: `08990000${String(contractSeq % 100).padStart(2, '0')}`,
         prefix: 'นาย',
         occupation: 'ทดสอบ',
         addressCurrent: TEST_CUSTOMER_ADDRESS, // marker ให้ cleanup เดิมกวาดเจอ

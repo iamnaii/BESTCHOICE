@@ -884,6 +884,12 @@ async function adaptRefs(ctx: SeedContext) {
 //   8. ไม่สร้าง installment_schedules — activate สร้างเองเมื่อยังไม่มี
 //      (generateInstallmentSchedules) จาก createdAt + paymentDueDay ด้วยสูตร local-time
 //      เดียวกับ dueDate ของ Payment ด้านล่าง ⇒ สองตารางตรงกันโดยโครงสร้าง
+//   9. สิ่งที่ activate "ส่งออก" ไม่ใช่แค่สิ่งที่มันอ่าน: sendContractActivatedNotification
+//      (contract-workflow.service.ts:713-735) — ลูกค้าไม่มี lineIdFinance ⇒ ตกสาขา
+//      `else if (customer.phone)` แล้วส่ง SMS **จริง** ผ่าน NotificationsService.send
+//      (Customer.phone เป็นคอลัมน์ non-nullable — เว้นว่างไม่ได้) ⇒ เบอร์ลูกค้าทดสอบ
+//      ต้องอยู่ใน block สำรอง 08990000NN เดียวกับลูกค้าเปล่าของ CLI เดิม
+//      (seed-test-contracts.cli.ts:255) — ห้ามใช้ 09xxxxxxxx ที่ route ถึงคนจริงได้
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DRAFT_SELLING_PRICE = 19900;
@@ -1019,7 +1025,10 @@ async function seedDraftContract(
     const customer = await tx.customer.create({
       data: {
         name: `ทดสอบ รอเปิดสัญญา (DRAFT) ${contractSeq}`,
-        phone: `09${String(10000000 + contractSeq).slice(-8)}`,
+        // block สำรอง 08990000NN (convention เดียวกับลูกค้าเปล่าของ CLI เดิม) — สัญญาใบนี้
+        // เป็นใบเดียวที่ไปถึง activate ซึ่งส่ง SMS จริงถึงเบอร์นี้ (ดูด่านข้อ 9 ด้านบน);
+        // ชนกับลูกค้าเปล่า (NN=01,02) ได้ ไม่เป็นไร — คอลัมน์ phone ไม่ unique
+        phone: `08990000${String(contractSeq % 100).padStart(2, '0')}`,
         prefix: 'นาย',
         occupation: 'ทดสอบ',
         addressCurrent: TEST_CUSTOMER_ADDRESS, // marker ให้ cleanup เดิมกวาดเจอ
@@ -1357,6 +1366,8 @@ export const contractsSeeder: DomainSeeder = {
 > (พร้อม mirror จาก void ซึ่งไม่ carry `saleId` — ตามด้วย `reversesEntryId`) หลัง delegate.
 > ใครลอก code block นี้แบบตัด wrapper ทิ้ง = เปิดรูเดิมกลับมา. ห้ามแก้ CLI เดิม —
 > มันต้องรันเดี่ยวได้เหมือนเดิม.
+
+> **เบอร์ลูกค้าของสัญญา DRAFT ต้องอยู่ใน block สำรอง `08990000NN` (fix round 1, 2026-08-26):** สัญญา DRAFT คือใบเดียวของ pack ที่ไปถึง `ContractWorkflowService.activate` ซึ่งเรียก `sendContractActivatedNotification` — ลูกค้าที่ไม่มี `lineIdFinance` จะถูกส่ง **SMS จริง** ไปที่ `customer.phone` (คอลัมน์ non-nullable เว้นว่างไม่ได้). เบอร์รูป `09xxxxxxxx` เดิม route ถึงคนจริงได้ จึงต้องใช้ block เดียวกับลูกค้าเปล่าของ CLI เดิม (`seed-test-contracts.cli.ts:255`).
 
 > **สัญญา DRAFT ของ wrapper (2026-08-26):** seeder เดิมสร้างทุก scenario เป็น ACTIVE/TERMINATED — wrapper จึงสร้างสัญญา DRAFT (workflow APPROVED + PDPA + ลายเซ็น 4 ฝ่าย + เครื่อง RESERVED + งวด PENDING) เพิ่ม 1 ใบ เพื่อให้ก้าว activate ของโหมดเดินเรื่อง (Task 12) มี input จริง และคิวรอจ่าย INTER-CO ที่ /accounting/intercompany ถูก exercise ได้ตาม §7 (ไม่งั้นก้าวนั้น skip ตลอด).
 
@@ -4882,9 +4893,18 @@ Expected: FAIL — `Cannot find module './_preflight'`
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { SeedRefs } from './_types';
 
-/** บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa */
+/**
+ * บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa
+ *
+ * หมายเหตุ S21-2001 (เจ้าหนี้เงินดาวน์) **จงใจไม่อยู่ในลิสต์** — สัญญา DRAFT ของ pack
+ * ตั้ง downPayment = 0 โดยเจตนา (ดู contracts.seed.ts ด่านข้อ 7) ⇒ ทั้งขา ShopDownPayment
+ * catch-up ใน activate และขาล้างดาวน์ใน ShopInventoryTransferTemplate เป็นศูนย์/ถูกข้าม
+ * โดยโครงสร้าง — อย่า "เติมให้ครบ" โดยไม่มีผู้โพสต์จริง
+ */
 export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
   '11-1101',
+  '11-1201', // เอกสาร DRAW ของ equity seeder จ่ายผ่านธนาคาร KBank (Task 12)
+  '22-1102', // ถอนใช้ส่วนตัว (Contra) — ขา Dr ของ DRAW (Task 12)
   '11-2101',
   '11-2103',
   '11-2106',
@@ -4892,14 +4912,27 @@ export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
   '21-1102',
   '21-2101',
   '21-2102',
+  '42-1103', // ค่าปรับล่าช้า — PaymentReceipt2B เครดิตทุกครั้งที่งวดมีค่าปรับ ณ วันโพสต์ (fix round 1)
   'S11-1101',
+  'S11-1201', // ขาย/มัดจำในโหมดเดินเรื่องใช้ BANK_TRANSFER → SHOP receiving bank (Task 12)
   'S11-2001',
   'S11-3001',
   'S11-3002',
   'S11-3101',
   'S21-2002',
   'S41-1101',
+  'S41-1201', // ค่าคอมจาก FINANCE — ShopInventoryTransferTemplate เครดิตเมื่อ commission > 0 (สัญญา DRAFT มี 1,990 เสมอ)
   'S50-1101',
+  // มือสอง: ก้าวขายสด + ขายไฟแนนซ์แชร์ตัวเลือกเครื่อง orderBy imeiSerial เดียวกัน —
+  // ก้าว 3 ใช้เครื่อง PHONE_NEW ไป ก้าว 4 จึงได้เครื่องมือสอง (resolver → คู่ S*-*102)
+  'S11-2002',
+  'S50-1102',
+  'S41-1102',
+  // อุปกรณ์เสริม: รันเดินเรื่องซ้ำหลังโทรศัพท์สองเครื่องถูกขายไป ก้าวขายจะหยิบหูฟัง
+  // (ACCESSORY → คู่ S*-*103) — ประกาศไว้ให้ invariant "ขาด = ยังไม่ seed:coa" เป็นจริง
+  'S11-2003',
+  'S50-1103',
+  'S41-1103',
   'S51-1106',
 ];
 
@@ -5117,7 +5150,10 @@ import { NestFactory } from '@nestjs/core';
 import { TestPackModule } from './_module';
 
 async function main() {
-  const app = await NestFactory.createApplicationContext(TestPackModule, { logger: ['error', 'warn'] });
+  const app = await NestFactory.createApplicationContext(TestPackModule, {
+    logger: ['error', 'warn'],
+    abortOnError: false, // ให้ตรงกับ _drive.ts (fix round 1 — ดูหมายเหตุใน Step 4)
+  });
   console.log('TestPackModule bootstrap OK');
   await app.close();
 }
@@ -5135,86 +5171,118 @@ Expected: `TestPackModule bootstrap OK` และ **process จบเอง**
 
 - [ ] **Step 4: เขียน `_drive.ts`**
 
+> **อัปเดตหลัง fix round 1 (2026-08-26)** — code block นี้ sync กับ `_drive.ts` ที่ commit แล้ว
+> (ฉบับเต็มอยู่ในไฟล์จริง — บล็อกนี้ตัดเหลือส่วนที่เป็นกติกา):
+> - `runDrive(ctx, postDate)` รับ `postDate` ตัวเดียวกับที่ CLI ส่งให้ `runPreflight` — ห้ามคำนวณใหม่
+> - bootstrap ต้องส่ง `abortOnError: false` — default (`true`) ทำให้ scan ที่พังเรียก
+>   `process.exit(1)` จากใน `createApplicationContext` เอง ข้ามทั้ง catch, SUMMARY และ
+>   `finally { $disconnect() }` ของ CLI (IMPORTANT 3) — และจับ instance ที่มี `$disconnect`
+>   ผ่าน `instrument.instanceDecorator` เพื่อปิด Prisma ที่ `$connect` ไปแล้วเมื่อ init
+>   ล้มกลางทาง (MINOR 9 — Nest ไม่คืน handle และ `close()` ของ context ที่ init ค้างก็ rethrow)
+> - ก้าวรับชำระ: ค่าปรับ **resolve ณ postDate** ผ่าน `loadLateFeeConfig` + `remainingInstallmentDue`
+>   (`_drive-helpers.ts` — mirror payment-receipt-orchestrator.ts:268-284 ทีละกิ่ง) ห้ามจ่ายตามค่า
+>   `Payment.lateFee` ที่ stamp ตอน seed; `transactionRef` พกเลขครั้ง (`TEST-DRIVE-<paymentId>-<Date.now()>`)
+>   เพราะ idempotency probe จับทั้ง PAID/PARTIALLY_PAID; หลังบันทึกทุกงวด re-read แถว —
+>   ไม่ PAID = คืน "ข้าม — ..." ทันที ไม่เดินต่อไปชนด่านห้ามข้ามงวด (IMPORTANT 2)
+> - ก้าวรับชำระกรองสัญญาที่ลูกค้า `lineIdFinance != null` ออก + บอกชื่อสัญญาที่ข้าม —
+>   hook `sendPaymentSuccessLine` ยิง Flex จริงทันทีที่ tester ผูก LINE ผ่าน /liff/register (MINOR 5)
+> - ก้าวขายทั้งสองส่ง role จริงของ actor (`'SALES'` — resolveRefs หา salespersonId ด้วย
+>   `where { role: 'SALES' }`) ไม่ใช่ `'OWNER'` — DiscountPolicy อ่าน role นี้ (MINOR 8)
+> - `nowOnlyGuard` เป็นรายเดือน — เมื่อเดือนตรงแต่วันไม่ตรง ก้าว now-only ต่อท้ายหมายเหตุ
+>   ว่าลงบัญชีวันนี้ ไม่ใช่ POST_DATE (MINOR 6)
+> - ก้าว equity อ่าน `EQUITY_MAKER_CHECKER_ENABLED` ก่อน — เปิดอยู่ = "ข้าม" ไม่ใช่ ✗ (MINOR 7)
+
 ```ts
-import { NestFactory } from '@nestjs/core';
-import { Prisma } from '@prisma/client';
-import { ContractWorkflowService } from '../../modules/contracts/contract-workflow.service';
-import { PaymentReceiptOrchestrator } from '../../modules/payments/services/payment-receipt-orchestrator';
-import { TestPackModule } from './_module';
-import type { SeedContext } from './_types';
-
-export interface DriveStep {
-  name: string;
-  ok: boolean;
-  detail: string;
-}
-export interface DriveResult {
-  steps: DriveStep[];
-}
-
-/**
- * เฟส 3 — เดินเรื่องผ่าน service จริง เพื่อให้ JE มาจากโค้ด production (R1)
- *
- * แต่ละก้าวจับ error ของตัวเอง: ก้าวหนึ่งพังต้องไม่ล้มก้าวถัดไป และไม่ล้มเฟส 1-2
- * ที่ commit ไปแล้ว
- */
-export async function runDrive(ctx: SeedContext): Promise<DriveResult> {
+export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveResult> {
   const steps: DriveStep[] = [];
-  const app = await NestFactory.createApplicationContext(TestPackModule, { logger: ['error', 'warn'] });
 
-  const run = async (name: string, fn: () => Promise<string>) => {
+  let app: INestApplicationContext;
+  // MINOR 9: จับ instance ที่มี $disconnect ตอน DI instantiate — ปิด connection ได้เสมอ
+  // แม้ onModuleInit ตัวหลัง PrismaService พัง (Nest reject โดยไม่คืน handle)
+  const disconnectables = new Set<{ $disconnect: () => Promise<unknown> }>();
+  try {
+    app = await NestFactory.createApplicationContext(TestPackModule, {
+      logger: ['error', 'warn'],
+      abortOnError: false, // IMPORTANT 3 — default = process.exit(1) จากใน factory
+      instrument: {
+        instanceDecorator: (instance) => {
+          const candidate = instance as { $disconnect?: unknown } | null;
+          if (candidate && typeof candidate.$disconnect === 'function') {
+            disconnectables.add(candidate as { $disconnect: () => Promise<unknown> });
+          }
+          return instance;
+        },
+      },
+    });
+  } catch (err) {
+    await Promise.allSettled([...disconnectables].map((c) => c.$disconnect()));
+    return {
+      steps: [
+        { name: 'เตรียมโมดูล (TestPackModule)', ok: false, detail: `bootstrap ไม่ผ่าน: ${errMsg(err)}` },
+      ],
+    };
+  }
+
+  const run = async (name: string, fn: () => Promise<string>): Promise<void> => {
     try {
       steps.push({ name, ok: true, detail: await fn() });
     } catch (err) {
-      steps.push({ name, ok: false, detail: err instanceof Error ? err.message : String(err) });
+      steps.push({ name, ok: false, detail: errMsg(err) });
     }
   };
 
   try {
-    // ── ก้าว 1: เปิดสัญญาผ่อน 1 ใบ → JE 1A + SHOP leg → คิวรอจ่าย INTER-CO มีของ
-    const workflow = app.get(ContractWorkflowService);
-    await run('เปิดสัญญาผ่อน', async () => {
-      const c = await ctx.prisma.contract.findFirst({
-        where: { contractNumber: { startsWith: 'TEST-' }, status: 'DRAFT', deletedAt: null },
-        select: { id: true, contractNumber: true },
-      });
-      if (!c) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ DRAFT ให้เปิด';
-      await workflow.activate(c.id);
-      return `เปิดสัญญา ${c.contractNumber} แล้ว — ตรวจคิวที่ /accounting/intercompany`;
-    });
+    // ── ก้าว 1: เปิดสัญญาผ่อน (ดู _drive.ts จริง — ก้าวนี้ + ก้าว 3-9 ตามหมายเหตุด้านบน)
 
-    // ── ก้าว 2: รับชำระ 2 งวด → JE 2B + ใบเสร็จ
-    const orchestrator = app.get(PaymentReceiptOrchestrator);
-    await run('รับชำระค่างวด', async () => {
-      const c = await ctx.prisma.contract.findFirst({
-        where: { contractNumber: { startsWith: 'TEST-' }, status: 'ACTIVE', deletedAt: null },
+    // ── ก้าว 2: รับชำระ 2 งวด → JE 2B + ใบเสร็จ (ฉบับย่อ — กติกาครบ)
+    await run('รับชำระค่างวด (JE 2B + ใบเสร็จ)', async () => {
+      // MINOR 5: ข้ามสัญญาที่ลูกค้าผูก LINE แล้ว (hook หลังรับเงินยิง Flex จริง) + บอกชื่อ
+      const contracts = await ctx.prisma.contract.findMany({
+        where: {
+          contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
+          status: 'ACTIVE',
+          deletedAt: null,
+          customer: { is: { lineIdFinance: null } },
+        },
+        orderBy: { contractNumber: 'asc' },
         select: { id: true, contractNumber: true },
       });
-      if (!c) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE';
-      // ต้องบันทึกตามลำดับงวด (คำสั่งเจ้าของ 2026-08-19) ⇒ ไล่จากงวดค้างที่เก่าที่สุด
-      const due = await ctx.prisma.payment.findMany({
-        where: { contractId: c.id, status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, deletedAt: null },
-        orderBy: { installmentNo: 'asc' },
-        select: { installmentNo: true, amountDue: true, lateFee: true },
-        take: 2,
-      });
-      if (!due.length) return 'ข้าม — ไม่มีงวดค้างให้รับชำระ';
-      let n = 0;
-      for (const p of due) {
-        // Decimal arithmetic — ห้าม Number() (Global Constraints: Money = Decimal)
-        // recordPayment รับ amount เป็น number ⇒ แปลงเป็น number ที่ขอบสุดท้ายเท่านั้น
-        // หลังบวกด้วย Decimal แล้ว (ไม่ใช่แปลงก่อนบวก ซึ่งเสีย precision)
-        const amount = new Prisma.Decimal(p.amountDue).plus(p.lateFee ?? 0).toNumber();
-        await orchestrator.recordPayment(c.id, p.installmentNo, amount, 'CASH', ctx.refs.reviewerId, undefined, '[ทดสอบระบบ] รับชำระจากโหมดเดินเรื่อง', undefined, '11-1101');
-        n += 1;
+      if (!contracts.length) return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE (รันโดเมน contracts ก่อน)';
+      const payments = app.get(PaymentsService, { strict: false });
+      // IMPORTANT 2a: ค่าปรับ resolve ณ postDate — single source กับ orchestrator
+      const lateFeeCfg = await loadLateFeeConfig(ctx.prisma);
+      for (const c of contracts) {
+        const due = await ctx.prisma.payment.findMany({
+          where: { contractId: c.id, status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, deletedAt: null },
+          orderBy: { installmentNo: 'asc' },
+          select: { id: true, installmentNo: true, dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+          take: 2,
+        });
+        if (!due.length) continue;
+        let paid = 0;
+        for (const p of due) {
+          const amount = remainingInstallmentDue(p, lateFeeCfg, postDate);
+          if (amount.lte(0)) continue;
+          await payments.recordPayment(
+            c.id, p.installmentNo, amount.toNumber(), 'CASH', ctx.refs.reviewerId,
+            undefined, testNote('รับชำระจากโหมดเดินเรื่อง'),
+            `TEST-DRIVE-${p.id}-${Date.now()}`, // IMPORTANT 2b: ref พกเลขครั้ง — probe จับ PARTIALLY_PAID ด้วย
+            '11-1101', undefined, undefined, true, postDate,
+          );
+          // IMPORTANT 2b: ยอดต้องปิดงวดพอดี — ไม่ PAID = หยุดก่อนชนด่านห้ามข้ามงวด
+          const after = await ctx.prisma.payment.findUnique({ where: { id: p.id }, select: { status: true } });
+          if (after?.status !== 'PAID') {
+            return `ข้าม — งวด ${p.installmentNo} ของสัญญา ${c.contractNumber} หลังบันทึกได้สถานะ ${after?.status ?? 'ไม่พบแถว'} ไม่ใช่ PAID — หยุดก้าวนี้กันชนด่านห้ามข้ามงวด`;
+          }
+          paid += 1;
+        }
+        if (paid > 0) return `รับชำระ ${paid} งวดของสัญญา ${c.contractNumber} — ตรวจใบเสร็จที่ /receipts`;
       }
-      return `รับชำระ ${n} งวดของสัญญา ${c.contractNumber} — ตรวจใบเสร็จที่ /receipts`;
+      return 'ข้าม — สัญญาทดสอบทุกใบไม่มีงวดค้างให้รับชำระ (อาจรันเดินเรื่องจนครบแล้ว)';
     });
 
-    // ── ก้าว 3-6: ขายสด · ขายผ่านไฟแนนซ์ภายนอก · รับมัดจำใบจอง · post เอกสารบัญชี 4 ใบ
-    // เขียนตามลายเซ็นที่จดไว้จาก Step 1 — โครงเดียวกับสองก้าวข้างบน:
-    //   await run('<ชื่อก้าว>', async () => { ...หาแถวที่ seed ไว้... ; await service.method(...); return '<สรุปไทย>'; });
-    // ก้าวที่หาแถวไม่เจอให้ return ข้อความขึ้นต้นว่า "ข้าม — " ไม่ใช่ throw
+    // ── ก้าว 3-9: ดู _drive.ts จริง (ขายสด/ขายไฟแนนซ์ role 'SALES', มัดจำใบจอง,
+    //    post เอกสาร expense/other-income/asset/equity — equity อ่าน MC flag ก่อน)
   } finally {
     await app.close();
   }
@@ -5250,17 +5318,21 @@ const actor = await ctx.prisma.user.findUnique({
 
 ```ts
     if (!dryRun && drive) {
-      console.log('── เฟส 3: เดินเรื่องผ่าน service จริง');
-      const { steps } = await runDrive(ctx);
-      for (const s of steps) console.log(`   ${s.ok ? '✓' : '✗'} ${s.name} — ${s.detail}`);
+      console.log('── เฟส 3: เดินเรื่องผ่าน service จริง (DRIVE=1)');
+      // import ที่นี่ ไม่ใช่หัวไฟล์ — _drive ลาก TestPackModule เข้ามา ซึ่ง dry-run ไม่ควรจ่ายราคา
+      const { runDrive } = await import('./test-pack/_drive');
+      // postDate = ค่าเดียวกับที่ส่งให้ runPreflight ด้านบน — ห้ามคำนวณใหม่
+      const { steps } = await runDrive(ctx, postDate);
+      for (const s of steps) {
+        console.log(`   ${s.ok ? '✓' : '✗'} ${s.name} — ${s.detail}`);
+        if (!s.ok) failures.push(`drive/${s.name}: ${s.detail}`);
+      }
       console.log('');
     } else if (dryRun && drive) {
-      console.log('── เฟส 3 ถูกข้ามใน DRY-RUN (เดินเรื่องจริงต้องเขียน DB)');
+      console.log('── เฟส 3 (DRIVE=1) ถูกข้ามใน DRY-RUN — เดินเรื่องคือการเรียก service จริงซึ่งเขียน DB');
       console.log('');
     }
 ```
-
-เพิ่ม import: `import { runDrive } from './test-pack/_drive';`
 
 - [ ] **Step 7: ตรวจ TypeScript + รันเต็มพร้อมเดินเรื่อง**
 

@@ -11,8 +11,15 @@ import { ExpenseDocumentsService } from '../../modules/expense-documents/expense
 import { OtherIncomeService } from '../../modules/other-income/other-income.service';
 import { AssetService } from '../../modules/asset/asset.service';
 import { EquityService } from '../../modules/equity/equity.service';
+import { loadLateFeeConfig } from '../../utils/late-fee.util';
 import { TEST_CONTRACT_PREFIX, TEST_IMEI_PREFIX } from '../seed-test-contracts.cli';
-import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
+import {
+  TEST_DOC_PREFIX,
+  TEST_NAME_PREFIX,
+  TEST_NOTE_MARKER,
+  bkkDateStr,
+  testNote,
+} from './_context';
 import { bkkMonthKey, remainingInstallmentDue } from './_drive-helpers';
 import { TestPackModule } from './_module';
 import type { SeedContext } from './_types';
@@ -48,8 +55,10 @@ const errMsg = (err: unknown): string => {
  * วันไทยวันนี้) — ห้ามคำนวณใหม่ในไฟล์นี้ ไม่งั้นด่านตรวจงวดบัญชีของ preflight คุ้มครอง
  * คนละเดือนกับที่โพสต์จริง. การใช้:
  *   - รับชำระค่างวด: ส่งเป็น paidDate ตรง ๆ (recordPayment รองรับ backdate — D4)
+ *     และค่าปรับต้อง resolve ณ postDate ให้ตรงกับที่ orchestrator จะคิด (fix round 1)
  *   - ก้าวที่ service ลงบัญชี ณ เวลาปัจจุบันเสมอ (activate / ขาย / มัดจำใบจอง — ไม่มี
- *     พารามิเตอร์วันที่): เดินได้เฉพาะเมื่อ postDate อยู่เดือนไทยเดียวกับวันนี้ ไม่งั้นข้าม
+ *     พารามิเตอร์วันที่): เดินได้เฉพาะเมื่อ postDate อยู่เดือนไทยเดียวกับวันนี้ ไม่งั้นข้าม;
+ *     ถ้าเดือนตรงแต่วันไม่ตรง เดินต่อได้ (งวดเดิม) แต่ต้องบอกในผลลัพธ์ว่าลงคนละวัน
  *   - ก้าว post เอกสาร: JE ลงตามวันที่บนเอกสาร (documentDate/issueDate/purchaseDate/
  *     txnDate) — เดินได้เฉพาะเมื่อวันที่เอกสารอยู่เดือนเดียวกับ postDate ไม่งั้นข้าม
  *
@@ -61,11 +70,33 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
   const steps: DriveStep[] = [];
 
   let app: INestApplicationContext;
+  // MINOR 9: ถ้า onModuleInit ตัวที่วิ่งหลัง PrismaService พัง (เคสจริง: ยังไม่รัน seed:coa
+  // — ExpenseDocumentsService/AccountRoleService validate CoA ตอน boot) Nest reject โดย
+  // ไม่คืน handle และ close() ของ context ที่ init ค้างก็ rethrow initializationPromise —
+  // จึงจับ instance ที่มี $disconnect (PrismaService/PrismaFinanceService) ตอน DI
+  // instantiate ผ่าน instrument.instanceDecorator (public API — วิ่งก่อน init hook ทุกตัว)
+  // เพื่อให้ปิด connection ได้เสมอไม่ว่า bootstrap จะล้มที่ชั้นไหน
+  const disconnectables = new Set<{ $disconnect: () => Promise<unknown> }>();
   try {
     app = await NestFactory.createApplicationContext(TestPackModule, {
       logger: ['error', 'warn'],
+      // IMPORTANT 3: default abortOnError=true ทำให้ scan ที่พัง (โมดูลขาด/DI ผิด — คลาส
+      // ความพังที่น่าจะเจอบ่อยสุด) เรียก DEFAULT_TEARDOWN = process.exit(1) จากใน
+      // createApplicationContext เอง — catch ด้านล่าง, SUMMARY ของ CLI และ
+      // finally { $disconnect() } ของ orchestrator จะไม่ได้ทำงานเลย; false = rejection ปกติ
+      abortOnError: false,
+      instrument: {
+        instanceDecorator: (instance) => {
+          const candidate = instance as { $disconnect?: unknown } | null;
+          if (candidate && typeof candidate.$disconnect === 'function') {
+            disconnectables.add(candidate as { $disconnect: () => Promise<unknown> });
+          }
+          return instance;
+        },
+      },
     });
   } catch (err) {
+    await Promise.allSettled([...disconnectables].map((c) => c.$disconnect()));
     return {
       steps: [
         {
@@ -93,6 +124,17 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
       ? null
       : `ข้าม — POST_DATE ชี้เดือน ${postMonth} แต่ service นี้ลงบัญชี ณ วันปัจจุบัน (เดือน ${nowMonth}) เสมอ — ` +
         'เดินต่อจะโพสต์คนละเดือนกับที่ preflight ตรวจงวดไว้';
+  const postDayStr = bkkDateStr(postDate);
+  const nowDayStr = bkkDateStr(new Date());
+  /**
+   * เดือนตรง (nowOnlyGuard ผ่าน) แต่วันไม่ตรง — ก้าว now-only โพสต์ "วันนี้" ส่วนก้าว
+   * รับชำระโพสต์ POST_DATE ⇒ สมุดมีสองวันที่ในรันเดียว. งวดบัญชีเป็นรายเดือนจึงยังถูก
+   * ด่าน preflight คุ้มครอง แต่ต้องบอกคนอ่านตัวเลข ไม่ปล่อยให้ต่างกันเงียบ ๆ (MINOR 6)
+   */
+  const nowOnlyDayNote =
+    !nowOnlyGuard && postDayStr !== nowDayStr
+      ? ` · หมายเหตุ: ก้าวนี้ลงบัญชีวันนี้ (${nowDayStr}) ไม่ใช่ POST_DATE (${postDayStr}) — เดือนไทยเดียวกัน งวดบัญชีที่ preflight ตรวจยังคุ้มครอง`
+      : '';
   /** ก้าว post เอกสาร — JE ลงตามวันที่บนเอกสาร */
   const docDateGuard = (docDate: Date, what: string): string | null =>
     bkkMonthKey(docDate) === postMonth
@@ -121,24 +163,44 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
       }
       const workflow = app.get(ContractWorkflowService, { strict: false });
       await workflow.activate(c.id);
-      return `เปิดสัญญา ${c.contractNumber} แล้ว — ตรวจคิวรอจ่ายที่เมนูจ่ายให้หน้าร้าน (INTER-CO)`;
+      return `เปิดสัญญา ${c.contractNumber} แล้ว — ตรวจคิวรอจ่ายที่เมนูจ่ายให้หน้าร้าน (INTER-CO)${nowOnlyDayNote}`;
     });
 
     // ── ก้าว 2: รับชำระ 2 งวด → JE 2B + ใบเสร็จ ─────────────────────────────────
     await run('รับชำระค่างวด (JE 2B + ใบเสร็จ)', async () => {
+      // กันส่ง LINE push จริง (MINOR 5): hook หลังรับเงิน (sendPaymentSuccessLine) เช็คแค่
+      // customer.lineIdFinance + notifReceipt — ไม่มีเงื่อนไข "ข้อมูลทดสอบ" ใด ๆ. สัญญา
+      // ทดสอบที่ tester ผูก LINE ผ่าน /liff/register (สคริปต์เทสของ pack เองแนะนำให้ทำ)
+      // จึงต้องถูกข้ามทั้งใบ พร้อมบอกชื่อสัญญาที่ข้าม
+      const activeWhere: Prisma.ContractWhereInput = {
+        contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
+        status: 'ACTIVE',
+        deletedAt: null,
+      };
       const contracts = await ctx.prisma.contract.findMany({
-        where: {
-          contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
-          status: 'ACTIVE',
-          deletedAt: null,
-        },
+        where: { ...activeWhere, customer: { is: { lineIdFinance: null } } },
         orderBy: { contractNumber: 'asc' },
         select: { id: true, contractNumber: true },
       });
+      const lineLinked = await ctx.prisma.contract.findMany({
+        where: { ...activeWhere, customer: { is: { lineIdFinance: { not: null } } } },
+        orderBy: { contractNumber: 'asc' },
+        select: { contractNumber: true },
+      });
+      const lineSkipNote = lineLinked.length
+        ? ` · ข้ามสัญญา ${lineLinked.map((r) => r.contractNumber).join(', ')} — ลูกค้าผูก LINE (lineIdFinance) แล้ว รับชำระจะยิง Flex ถึงลูกค้าจริง`
+        : '';
       if (!contracts.length) {
-        return 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE (รันโดเมน contracts ก่อน)';
+        return lineLinked.length
+          ? `ข้าม — สัญญาทดสอบ ACTIVE ทุกใบผูก LINE แล้ว (${lineLinked.map((r) => r.contractNumber).join(', ')}) — รับชำระผ่านโหมดเดินเรื่องจะยิง Flex ถึงลูกค้าจริง จึงไม่แตะ`
+          : 'ข้าม — ไม่พบสัญญาทดสอบสถานะ ACTIVE (รันโดเมน contracts ก่อน)';
       }
       const payments = app.get(PaymentsService, { strict: false });
+      // ค่าปรับต้อง resolve ณ postDate แบบเดียวกับ orchestrator (single source —
+      // loadLateFeeConfig + resolveLateFee ชุดเดียวกับ service ผ่าน _drive-helpers):
+      // จ่ายตามค่าที่ stamp ตอน seed จะขาด/เกิน 50-100฿ ทันทีที่ POST_DATE คนละวันกับ
+      // วัน seed แล้วงวดค้าง PARTIALLY_PAID ทั้งที่ใบเสร็จสั้นออกไปแล้ว (fix round 1)
+      const lateFeeCfg = await loadLateFeeConfig(ctx.prisma);
       for (const c of contracts) {
         // ห้ามข้ามงวด (คำสั่งเจ้าของ 2026-08-19) — ไล่จากงวดค้างที่เก่าที่สุดเสมอ
         const due = await ctx.prisma.payment.findMany({
@@ -151,6 +213,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
           select: {
             id: true,
             installmentNo: true,
+            dueDate: true,
             amountDue: true,
             amountPaid: true,
             lateFee: true,
@@ -161,7 +224,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         if (!due.length) continue;
         let paid = 0;
         for (const p of due) {
-          const amount = remainingInstallmentDue(p);
+          const amount = remainingInstallmentDue(p, lateFeeCfg, postDate);
           if (amount.lte(0)) continue;
           await payments.recordPayment(
             c.id,
@@ -172,22 +235,40 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
             ctx.refs.reviewerId,
             undefined, // evidenceUrl
             testNote('รับชำระจากโหมดเดินเรื่อง'),
-            // recordPayment บังคับหลักฐาน (evidenceUrl หรือ transactionRef) —
-            // ref ต่อแถวงวดจึง unique ต่อการรันซ้ำ (idempotency guard ฝั่ง service)
-            `TEST-DRIVE-${p.id}`,
+            // recordPayment บังคับหลักฐาน (evidenceUrl หรือ transactionRef) — ref ต้องพก
+            // เลขครั้ง (Date.now) ด้วย: idempotency probe ของ service จับทั้ง PAID และ
+            // PARTIALLY_PAID ⇒ ref คงที่ต่อแถวจะล็อกงวดที่เคยจ่ายพร่องไว้ถาวร รันซ้ำไม่ได้
+            `TEST-DRIVE-${p.id}-${Date.now()}`,
             '11-1101', // depositAccountCode — เงินสดฝั่ง FINANCE (อยู่ใน DRIVE_REQUIRED_ACCOUNTS)
             undefined, // toleranceApproverId
             undefined, // paymentCase
             true, // consumeAdvance
             postDate, // paidDate = วันเดียวกับที่ preflight ตรวจงวด (carry จาก Task 11)
           );
+          // ยอดที่ส่งต้องปิดงวดพอดี — ถ้าไม่ PAID (ยอดเราไม่ตรงกับที่ service ตัดจริง)
+          // ต้องหยุดก่อนงวดถัดไปชนด่านห้ามข้ามงวด แล้วรายงานเป็นข้ามที่อธิบายตัวเอง
+          const after = await ctx.prisma.payment.findUnique({
+            where: { id: p.id },
+            select: { status: true },
+          });
+          if (after?.status !== 'PAID') {
+            return (
+              `ข้าม — งวด ${p.installmentNo} ของสัญญา ${c.contractNumber} หลังบันทึกได้สถานะ ` +
+              `${after?.status ?? 'ไม่พบแถว'} ไม่ใช่ PAID (ยอดที่คำนวณไม่ตรงกับที่ service ตัดจริง) — ` +
+              'หยุดก้าวนี้กันชนด่านห้ามข้ามงวด · รันเดินเรื่องซ้ำได้ ระบบจะจ่ายส่วนที่เหลือของงวดนี้ต่อเอง' +
+              lineSkipNote
+            );
+          }
           paid += 1;
         }
         if (paid > 0) {
-          return `รับชำระ ${paid} งวดของสัญญา ${c.contractNumber} — ตรวจใบเสร็จที่ /receipts และสมุดที่ /finance/general-journal`;
+          return (
+            `รับชำระ ${paid} งวดของสัญญา ${c.contractNumber} — ตรวจใบเสร็จที่ /receipts และสมุดที่ /finance/general-journal` +
+            lineSkipNote
+          );
         }
       }
-      return 'ข้าม — สัญญาทดสอบทุกใบไม่มีงวดค้างให้รับชำระ (อาจรันเดินเรื่องจนครบแล้ว)';
+      return `ข้าม — สัญญาทดสอบทุกใบไม่มีงวดค้างให้รับชำระ (อาจรันเดินเรื่องจนครบแล้ว)${lineSkipNote}`;
     });
 
     // ── ก้าว 3: ขายสดหน้าร้าน → SHOP JE (รายได้ + COGS) ─────────────────────────
@@ -224,12 +305,15 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         paymentMethod: 'BANK_TRANSFER',
         notes: testNote('ขายสดจากโหมดเดินเรื่อง'),
       };
-      const sale = await sales.create(dto, ctx.refs.salespersonId, 'OWNER');
+      // role จริงของ actor — resolveRefs หา salespersonId ด้วย where { role: 'SALES' }.
+      // ห้ามส่ง OWNER: DiscountPolicy ใช้ role คู่นี้ตัดสินเพดานส่วนลด/ผู้อนุมัติคนที่สอง/
+      // cost floor — ส่ง role เกินจริง = มอบอำนาจ OWNER ให้พนักงานขายทันทีที่ใครเติม discount
+      const sale = await sales.create(dto, ctx.refs.salespersonId, 'SALES');
       const row = await ctx.prisma.sale.findUnique({
         where: { id: sale.id },
         select: { saleNumber: true },
       });
-      return `ขายสดแล้ว ${row?.saleNumber ?? sale.id} (${product.name}) — ตรวจที่ /sales และงบทดลอง SHOP ที่ /shop/accounting`;
+      return `ขายสดแล้ว ${row?.saleNumber ?? sale.id} (${product.name}) — ตรวจที่ /sales และงบทดลอง SHOP ที่ /shop/accounting${nowOnlyDayNote}`;
     });
 
     // ── ก้าว 4: ขายผ่านไฟแนนซ์ภายนอก → Dr S11-3101 + FinanceReceivable ─────────
@@ -279,12 +363,13 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         financeRefNumber: `TEST-DRIVE-EXTFIN-${ctx.dateStr}`,
         notes: testNote('ขายผ่านไฟแนนซ์ภายนอกจากโหมดเดินเรื่อง'),
       };
-      const sale = await sales.create(dto, ctx.refs.salespersonId, 'OWNER');
+      // role จริงของ actor (เหตุผลเดียวกับก้าวขายสด — DiscountPolicy อ่าน role นี้)
+      const sale = await sales.create(dto, ctx.refs.salespersonId, 'SALES');
       const row = await ctx.prisma.sale.findUnique({
         where: { id: sale.id },
         select: { saleNumber: true },
       });
-      return `ขายผ่านไฟแนนซ์แล้ว ${row?.saleNumber ?? sale.id} (${financeCo.name}) — ลูกหนี้ S11-3101 ตรวจที่ /finance-receivable`;
+      return `ขายผ่านไฟแนนซ์แล้ว ${row?.saleNumber ?? sale.id} (${financeCo.name}) — ลูกหนี้ S11-3101 ตรวจที่ /finance-receivable${nowOnlyDayNote}`;
     });
 
     // ── ก้าว 5: รับมัดจำใบจอง → Dr เงิน / Cr S21-2002 (คำวินิจฉัยผู้สอบ A5) ──────
@@ -320,7 +405,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         },
         actor,
       );
-      return `รับมัดจำใบจอง ${booking.bookingNumber} — ตรวจ S21-2002 ในงบทดลอง SHOP ที่ /shop/accounting`;
+      return `รับมัดจำใบจอง ${booking.bookingNumber} — ตรวจ S21-2002 ในงบทดลอง SHOP ที่ /shop/accounting${nowOnlyDayNote}`;
     });
 
     // ── ก้าว 6: ลงบัญชีใบค่าใช้จ่าย (DRAFT → ACCRUAL) ───────────────────────────
@@ -381,6 +466,20 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
 
     // ── ก้าว 9: ลงบัญชีเอกสารส่วนของผู้ถือหุ้น (DRAW — โพสต์ได้ทันทีตาม seeder) ──
     await run('ลงบัญชีเอกสารส่วนของผู้ถือหุ้น (DRAW)', async () => {
+      // MINOR 7: environment ที่เปิด Maker-Checker คือระบบที่ตั้งค่าถูกต้อง ไม่ใช่ความพัง —
+      // EquityService.post จะ 409 เมื่อเอกสารไม่ READY และ 403 เมื่อ maker = ผู้โพสต์
+      // (seeder สร้างเอกสารด้วย ownerId คนเดียวกับที่ก้าวนี้ใช้โพสต์) ⇒ อ่าน flag ก่อน
+      // แล้วข้ามอย่างมีคำอธิบาย แทนที่จะรายงานเป็น ✗ ล้มเหลว
+      const mc = await ctx.prisma.systemConfig.findUnique({
+        where: { key: 'EQUITY_MAKER_CHECKER_ENABLED' },
+        select: { value: true },
+      });
+      if (mc?.value === 'true') {
+        return (
+          'ข้าม — Maker-Checker ของเอกสารส่วนของผู้ถือหุ้นเปิดอยู่ (EQUITY_MAKER_CHECKER_ENABLED=true) — ' +
+          'ต้องส่งอนุมัติแล้วให้ผู้อนุมัติคนละคนกดลงบัญชีผ่านหน้า /finance/equity เอง'
+        );
+      }
       const doc = await ctx.prisma.equityDocument.findFirst({
         where: {
           description: { startsWith: TEST_NOTE_MARKER },

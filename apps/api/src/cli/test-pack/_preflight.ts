@@ -1,7 +1,14 @@
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { SeedRefs } from './_types';
 
-/** บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa */
+/**
+ * บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa
+ *
+ * หมายเหตุ S21-2001 (เจ้าหนี้เงินดาวน์) **จงใจไม่อยู่ในลิสต์** — สัญญา DRAFT ของ pack
+ * ตั้ง downPayment = 0 โดยเจตนา (ดู contracts.seed.ts ด่านข้อ 7) ⇒ ทั้งขา ShopDownPayment
+ * catch-up ใน activate และขาล้างดาวน์ใน ShopInventoryTransferTemplate เป็นศูนย์/ถูกข้าม
+ * โดยโครงสร้าง — อย่า "เติมให้ครบ" โดยไม่มีผู้โพสต์จริง
+ */
 export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
   '11-1101',
   '11-1201', // เอกสาร DRAW ของ equity seeder จ่ายผ่านธนาคาร KBank (Task 12)
@@ -13,6 +20,7 @@ export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
   '21-1102',
   '21-2101',
   '21-2102',
+  '42-1103', // ค่าปรับล่าช้า — PaymentReceipt2B เครดิตทุกครั้งที่งวดมีค่าปรับ ณ วันโพสต์ (fix round 1)
   'S11-1101',
   'S11-1201', // ขาย/มัดจำในโหมดเดินเรื่องใช้ BANK_TRANSFER → SHOP receiving bank (Task 12)
   'S11-2001',
@@ -21,7 +29,18 @@ export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
   'S11-3101',
   'S21-2002',
   'S41-1101',
+  'S41-1201', // ค่าคอมจาก FINANCE — ShopInventoryTransferTemplate เครดิตเมื่อ commission > 0 (สัญญา DRAFT มี 1,990 เสมอ)
   'S50-1101',
+  // มือสอง: ก้าวขายสด + ขายไฟแนนซ์แชร์ตัวเลือกเครื่อง orderBy imeiSerial เดียวกัน —
+  // ก้าว 3 ใช้เครื่อง PHONE_NEW ไป ก้าว 4 จึงได้เครื่องมือสอง (resolver → คู่ S*-*102)
+  'S11-2002',
+  'S50-1102',
+  'S41-1102',
+  // อุปกรณ์เสริม: รันเดินเรื่องซ้ำหลังโทรศัพท์สองเครื่องถูกขายไป ก้าวขายจะหยิบหูฟัง
+  // (ACCESSORY → คู่ S*-*103) — ประกาศไว้ให้ invariant "ขาด = ยังไม่ seed:coa" เป็นจริง
+  'S11-2003',
+  'S50-1103',
+  'S41-1103',
   'S51-1106',
 ];
 

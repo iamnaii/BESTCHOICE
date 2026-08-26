@@ -13,6 +13,8 @@
  * Live:     CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=<db> \
  *           [ALLOW_PROD_SEED=YES_I_AM_SURE NODE_ENV=production] [DOMAINS=a,b] \
  *           npm --prefix apps/api run seed:test-pack
+ * Docgen:   DOCGEN=1 npm --prefix apps/api run seed:test-pack
+ *           (generate docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md — ไม่แตะ DB)
  */
 import { PrismaService } from '../prisma/prisma.service';
 import { bkkDateStr, bkkMidnight, resolveRefs } from './test-pack/_context';
@@ -23,6 +25,31 @@ import type { DomainSeeder, SeedContext } from './test-pack/_types';
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
 async function main(): Promise<void> {
+  // DOCGEN=1 — generate docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md จาก registry
+  // ต้องมาก่อนด่าน EXPECTED_DB_NAME และห้ามแตะ DB — doc generator ที่ต้องมีฐานข้อมูล
+  // คือ doc generator ที่ไม่มีใครรัน
+  if (process.env.DOCGEN === '1') {
+    const { mkdirSync, readFileSync, writeFileSync } = await import('fs');
+    const { join } = await import('path');
+    const { renderChecklistReadme } = await import('./test-pack/_docgen');
+    // cwd ของ `npm --prefix apps/api run ...` คือ apps/api — resolve จาก __dirname
+    // (apps/api/src/cli) ขึ้นไปหา repo root แทน จะได้รันจากที่ไหนก็ได้
+    const repoRoot = join(__dirname, '..', '..', '..', '..');
+    const appTsx = readFileSync(join(repoRoot, 'apps', 'web', 'src', 'App.tsx'), 'utf8');
+    // route ทั้งหมดของแอป ยกเว้น /settings (นอกขอบเขต mission) และ artefact ที่ไม่ใช่
+    // route จริง: `*` (catch-all) กับ `:itemId` (fragment ลูกของ /settings)
+    const routes = [...new Set([...appTsx.matchAll(/path="([^"]*)"/g)].map((m) => m[1]))].filter(
+      (r) => r && r !== '*' && r !== ':itemId' && !r.startsWith('/settings'),
+    );
+    const outDir = join(repoRoot, 'docs', 'guides', 'FULL-SYSTEM-TEST-CHECKLIST');
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(join(outDir, 'README.md'), renderChecklistReadme(ALL_DOMAINS, routes), 'utf8');
+    console.log(
+      `[seed-test-pack] เขียน docs/guides/FULL-SYSTEM-TEST-CHECKLIST/README.md แล้ว (${routes.length} route จาก App.tsx)`,
+    );
+    return;
+  }
+
   const expectedDb = process.env.EXPECTED_DB_NAME;
   if (!expectedDb) {
     console.error('ERROR: EXPECTED_DB_NAME required');

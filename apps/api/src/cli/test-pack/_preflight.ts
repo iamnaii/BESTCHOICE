@@ -4,6 +4,8 @@ import type { SeedRefs } from './_types';
 /** บัญชีที่แผนเดินเรื่อง (เฟส 3) แตะ — ขาดตัวใดตัวหนึ่ง = ยังไม่ได้รัน seed:coa */
 export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
   '11-1101',
+  '11-1201', // เอกสาร DRAW ของ equity seeder จ่ายผ่านธนาคาร KBank (Task 12)
+  '22-1102', // ถอนใช้ส่วนตัว (Contra) — ขา Dr ของ DRAW (Task 12)
   '11-2101',
   '11-2103',
   '11-2106',
@@ -12,6 +14,7 @@ export const DRIVE_REQUIRED_ACCOUNTS: string[] = [
   '21-2101',
   '21-2102',
   'S11-1101',
+  'S11-1201', // ขาย/มัดจำในโหมดเดินเรื่องใช้ BANK_TRANSFER → SHOP receiving bank (Task 12)
   'S11-2001',
   'S11-3001',
   'S11-3002',

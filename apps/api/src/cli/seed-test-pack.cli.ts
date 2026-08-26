@@ -4,7 +4,10 @@
  * Spec: docs/superpowers/specs/2026-08-26-full-system-test-data-pack-design.md
  *
  * เฟส 1-2 (โดเมนทั้งหมดใน registry) เขียน Prisma ตรง — ไม่มี JE
- * เฟส 3 (DRIVE=1) เรียก service จริง — เพิ่มใน Task 12
+ * เฟส 3 (DRIVE=1) เรียก service จริงผ่าน TestPackModule (_drive.ts) — JE ทุกใบมาจาก
+ * โค้ด production เท่านั้น (R1) · CLI นี้ต้องรันด้วย ts-node ไม่ใช่ tsx: Nest DI ต้องการ
+ * emitDecoratorMetadata ซึ่ง tsx (esbuild) ไม่รองรับ — bootstrap ใต้ tsx จะล้มด้วย
+ * "Nest can't resolve dependencies ... at index [0]" ทุก service
  *
  * Dry-run:  EXPECTED_DB_NAME=<db> npm --prefix apps/api run seed:test-pack
  * Live:     CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=<db> \
@@ -120,6 +123,29 @@ async function main(): Promise<void> {
         failures.push(`${d.key}: ${msg}`);
         console.log(`   ✗ ล้มเหลว — ${msg}`);
       }
+      console.log('');
+    }
+
+    if (!dryRun && drive) {
+      console.log('── เฟส 3: เดินเรื่องผ่าน service จริง (DRIVE=1)');
+      // import ที่นี่ ไม่ใช่หัวไฟล์ — _drive ลาก TestPackModule (กราฟ feature module
+      // เกือบทั้งแอป) เข้ามา ซึ่ง dry-run / DRIVE=0 ไม่ควรต้องจ่ายราคา require ทั้งก้อน
+      const { runDrive } = await import('./test-pack/_drive');
+      // postDate = ค่าเดียวกับที่ส่งให้ runPreflight ด้านบน — ห้ามคำนวณใหม่ ไม่งั้น
+      // ด่านตรวจงวดบัญชีของ preflight คุ้มครองคนละเดือนกับที่เฟส 3 โพสต์จริง
+      const { steps } = await runDrive(ctx, postDate);
+      for (const s of steps) {
+        console.log(`   ${s.ok ? '✓' : '✗'} ${s.name} — ${s.detail}`);
+        if (!s.ok) failures.push(`drive/${s.name}: ${s.detail}`);
+      }
+      console.log('');
+    } else if (dryRun && drive) {
+      console.log(
+        '── เฟส 3 (DRIVE=1) ถูกข้ามใน DRY-RUN — เดินเรื่องคือการเรียก service จริงซึ่งเขียน DB',
+      );
+      console.log(
+        `   รันจริง: CONFIRM_SEED=${REQUIRED_CONSENT} EXPECTED_DB_NAME=<db> DRIVE=1 npm --prefix apps/api run seed:test-pack`,
+      );
       console.log('');
     }
 

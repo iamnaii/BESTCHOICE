@@ -169,11 +169,28 @@ export const assetsSeeder: DomainSeeder = {
       where: { description: { startsWith: TEST_NOTE_MARKER }, deletedAt: null },
       select: { id: true, assetCode: true, docNo: true, invoiceTransferJournalEntryId: true },
     });
-    const jeIds = rows.map((r) => r.invoiceTransferJournalEntryId).filter((x): x is string => !!x);
+    // JE ของทรัพย์สินมี 2 ทาง: โอน VAT 11-4102→11-4101 มี FK บนตาราง ส่วน **JE ซื้อทรัพย์สิน
+    // ตอน post ไม่มี FK** — `AssetPurchaseTemplate` stamp `metadata.assetId` + `flow: 'asset-purchase'`
+    // ⇒ กวาดทาง metadata เหมือนที่ใบจองทำ ไม่งั้นผู้ทดสอบที่กด post ในหน้าจอจะทิ้ง JE ค้างในสมุด
+    const metaJes = rows.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: {
+            OR: rows.map((r) => ({ metadata: { path: ['assetId'], equals: r.id } as never })),
+          },
+          select: { id: true },
+        })
+      : [];
+    const jeIds = [
+      ...rows.map((r) => r.invoiceTransferJournalEntryId).filter((x): x is string => !!x),
+      ...metaJes.map((j) => j.id),
+    ].filter((id, i, all) => all.indexOf(id) === i);
     for (const r of rows) {
       console.log(
         `     ${r.docNo} (${r.assetCode})${r.invoiceTransferJournalEntryId ? ' (มี JE โอน VAT)' : ''}`,
       );
+    }
+    if (jeIds.length) {
+      console.log(`     กวาดรายการบัญชีที่ผูกกับทรัพย์สินทดสอบทั้งหมด ${jeIds.length} ใบ`);
     }
     if (!dryRun && rows.length) {
       await ctx.prisma.$transaction(async (tx) => {
@@ -199,7 +216,7 @@ export const assetsSeeder: DomainSeeder = {
     return {
       removed: {
         ทรัพย์สิน: rows.length,
-        'รายการบัญชีโอน VAT ทรัพย์สิน (ลบถาวร)': jeIds.length,
+        'รายการบัญชีของทรัพย์สิน (ลบถาวร)': jeIds.length,
       },
       warnings: [],
     };

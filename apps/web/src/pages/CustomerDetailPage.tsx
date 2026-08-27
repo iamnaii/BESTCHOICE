@@ -25,6 +25,7 @@ import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 import CustomerTierBadge from '@/components/customer/CustomerTierBadge';
+import LineLinkInvite from '@/components/customer/LineLinkInvite';
 import type { CustomerTierResponse } from '@/types/customer-tier';
 import { CallButton } from '@/components/CallButton';
 
@@ -937,6 +938,11 @@ export default function CustomerDetailPage() {
 
         {/* ─── Purchases Tab (ขายสด / ไฟแนนซ์นอก) ───────────────────────── */}
         <TabsContent value="purchases">
+          {/* ประกัน/แจ้งเตือนทางไลน์ใช้ `lineIdShop` เป็นตัวระบุ — ลูกค้าที่ยังไม่ผูก
+              จะไม่ได้รับอะไรเลย จึงชวนผูกตรงจุดที่พนักงานกำลังคุยเรื่องเครื่องกับลูกค้าพอดี */}
+          <div className="mb-4">
+            <LineLinkInvite lineIdShop={customer.lineIdShop} customerName={customer.name} />
+          </div>
           <div className="mb-6">
             <DataTable
               columns={saleColumns}

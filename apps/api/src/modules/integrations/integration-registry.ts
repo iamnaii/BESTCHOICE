@@ -68,6 +68,15 @@ export const INTEGRATIONS: IntegrationDef[] = [
         required: false,
         envVar: 'VITE_LIFF_ID',
       },
+      {
+        // ใช้สร้าง QR "เพิ่มเพื่อน" ให้พนักงานยื่นจอให้ลูกค้าสแกนที่หน้าร้าน
+        // (ดูที่ `GET /line-oa/link-invite`) — เป็นข้อมูลสาธารณะ อยู่บนป้ายร้านอยู่แล้ว
+        key: 'oaBasicId',
+        label: 'LINE OA ID (เช่น @bestchoice)',
+        sensitive: false,
+        required: false,
+        envVar: 'LINE_OA_BASIC_ID',
+      },
     ],
   },
   {

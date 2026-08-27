@@ -5,6 +5,7 @@ import { LineOaPaymentController } from './line-oa-payment.controller';
 import { LineOaCampaignController } from './line-oa-campaign.controller';
 import { LiffApiController } from './liff-api.controller';
 import { LiffWarrantyController } from './liff-warranty.controller';
+import { LineLinkInviteController } from './link-invite.controller';
 import { LiffWarrantyService } from './liff-warranty.service';
 import { LineLoginController } from './line-login.controller';
 import { BroadcastController } from './broadcast.controller';
@@ -43,7 +44,7 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
     // wrap with forwardRef to break the cycle.
     forwardRef(() => StaffChatModule),
   ],
-  controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LiffWarrantyController, LineLoginController, BroadcastController],
+  controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LiffWarrantyController, LineLinkInviteController, LineLoginController, BroadcastController],
   providers: [
     LineOaService,
     LiffApiService,

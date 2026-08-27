@@ -1,8 +1,26 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+
+/**
+ * กลุ่มผู้รับของ broadcast = ลูกค้าที่ผูก LINE **ช่องร้าน** ไว้แล้ว
+ *
+ * เดิมดึงผู้รับจากตาราง `CustomerLineLink` โดยไม่กรอง channel แล้วส่งด้วย token ของ
+ * `line-shop` (ดู `getValue('line-shop', 'channelToken')` ในเมธอดส่ง) — ตารางนั้นมีแต่แถว
+ * ช่อง FINANCE (ตัวเดียวที่เขียนคือ OTP ของ chatbot-finance ซึ่ง hardcode FINANCE)
+ * ⇒ ยิง userId ของ OA ไฟแนนซ์ด้วย token ของ OA ร้าน = ผิด OA เชิงโครงสร้าง
+ *
+ * ตัวตนฝั่งร้านอยู่ที่คอลัมน์ `customer.lineIdShop` (เขียนโดย
+ * `LineCustomerLinkService.selfLinkByPhone` ตอนลูกค้าพิมพ์เบอร์โทรคุยกับ OA ร้าน)
+ * — แหล่งเดียวกับที่ `SavingPlanReminderCron` และการแจ้งประกันใช้
+ */
+const SHOP_LINKED = {
+  deletedAt: null,
+  lineIdShop: { not: null },
+} satisfies Prisma.CustomerWhereInput;
 
 type LineMessage =
   | { type: 'text'; text: string }
@@ -42,34 +60,30 @@ export class BroadcastService {
     new: number;
   }> {
     const [allCount, existingCount, overdueCount] = await Promise.all([
-      // ALL — unique customers with any LINE link
-      this.prisma.customerLineLink.count({
-        where: { deletedAt: null, unlinkedAt: null },
-      }),
-      // EXISTING — customers with at least one active/overdue/default contract
+      // ALL — ลูกค้าที่ผูก LINE ร้านไว้แล้ว
+      this.prisma.customer.count({ where: SHOP_LINKED }),
+      // EXISTING — มีสัญญา active/overdue/default อย่างน้อยหนึ่งใบ
       this.prisma.customer.count({
         where: {
-          deletedAt: null,
+          ...SHOP_LINKED,
           contracts: {
             some: {
               deletedAt: null,
               status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
             },
           },
-          lineLinks: { some: { deletedAt: null, unlinkedAt: null } },
         },
       }),
-      // OVERDUE — customers with OVERDUE or DEFAULT contracts
+      // OVERDUE — มีสัญญาค้างชำระ
       this.prisma.customer.count({
         where: {
-          deletedAt: null,
+          ...SHOP_LINKED,
           contracts: {
             some: {
               deletedAt: null,
               status: { in: ['OVERDUE', 'DEFAULT'] },
             },
           },
-          lineLinks: { some: { deletedAt: null, unlinkedAt: null } },
         },
       }),
     ]);
@@ -87,67 +101,41 @@ export class BroadcastService {
     if (audience === 'ALL') return []; // use broadcast API instead
 
     if (audience === 'OVERDUE') {
-      const links = await this.prisma.customerLineLink.findMany({
-        where: {
-          deletedAt: null,
-          unlinkedAt: null,
-          customer: {
-            deletedAt: null,
-            contracts: {
-              some: { deletedAt: null, status: { in: ['OVERDUE', 'DEFAULT'] } },
-            },
-          },
-        },
-        select: { lineUserId: true },
-        distinct: ['lineUserId'],
+      return this.shopLineIds({
+        contracts: { some: { deletedAt: null, status: { in: ['OVERDUE', 'DEFAULT'] } } },
       });
-      return links.map((l) => l.lineUserId);
     }
 
     if (audience === 'EXISTING') {
-      const links = await this.prisma.customerLineLink.findMany({
-        where: {
-          deletedAt: null,
-          unlinkedAt: null,
-          customer: {
-            deletedAt: null,
-            contracts: {
-              some: {
-                deletedAt: null,
-                status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
-              },
-            },
-          },
+      return this.shopLineIds({
+        contracts: {
+          some: { deletedAt: null, status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } },
         },
-        select: { lineUserId: true },
-        distinct: ['lineUserId'],
       });
-      return links.map((l) => l.lineUserId);
     }
 
     if (audience === 'NEW') {
-      // NEW = has LINE link but NO active/overdue/default contracts
-      const links = await this.prisma.customerLineLink.findMany({
-        where: {
-          deletedAt: null,
-          unlinkedAt: null,
-          customer: {
-            deletedAt: null,
-            contracts: {
-              none: {
-                deletedAt: null,
-                status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
-              },
-            },
-          },
+      // NEW = ผูก LINE ร้านแล้วแต่ยังไม่มีสัญญา active/overdue/default
+      // (ลูกค้าซื้อเงินสด/ไฟแนนซ์นอกอยู่กลุ่มนี้)
+      return this.shopLineIds({
+        contracts: {
+          none: { deletedAt: null, status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } },
         },
-        select: { lineUserId: true },
-        distinct: ['lineUserId'],
       });
-      return links.map((l) => l.lineUserId);
     }
 
     return [];
+  }
+
+  /** ดึง LINE userId ของช่องร้านตามเงื่อนไขลูกค้าที่ให้มา */
+  private async shopLineIds(extraWhere: Prisma.CustomerWhereInput): Promise<string[]> {
+    const rows = await this.prisma.customer.findMany({
+      where: { ...SHOP_LINKED, ...extraWhere },
+      select: { lineIdShop: true },
+    });
+    return rows
+      .map((r) => r.lineIdShop)
+      .filter((id): id is string => !!id);
   }
 
   // ─── Send / Approve / Reject ─────────────────────────────────────────────

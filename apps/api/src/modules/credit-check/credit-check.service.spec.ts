@@ -26,6 +26,8 @@ describe('CreditCheckService override audit', () => {
     prisma = {
       customer: {
         findUnique: jest.fn().mockResolvedValue({ id: 'cust-1', deletedAt: null }),
+        // override sync สถานะบนตัวลูกค้าใน tx เดียวกับ CreditCheck
+        update: jest.fn((args) => Promise.resolve({ id: 'cust-1', ...args.data })),
       },
       creditCheck: {
         findUnique: jest.fn().mockResolvedValue(baseCheck),
@@ -273,6 +275,36 @@ describe('CreditCheckService override audit', () => {
           }),
         }),
       );
+    });
+
+    // REGRESSION: override เดิมแตะแค่ตาราง CreditCheck ⇒ ผู้จัดการอนุมัติในคิวแล้ว
+    // แต่หน้าลูกค้ายังขึ้น "รอผู้จัดการตรวจ" ตลอดไป (runPreCheck เขียนสองตารางพร้อมกัน
+    // ตอนตรวจ แต่ตอน override ไม่ได้เขียน)
+    it.each([
+      ['PRE', 'APPROVED', 'PRE_CHECK_PASSED'],
+      ['FULL', 'APPROVED', 'FULL_CHECK_PASSED'],
+      ['PRE', 'REJECTED', 'REJECTED'],
+      ['PRE', 'MANUAL_REVIEW', 'UNDER_REVIEW'],
+    ])('sync สถานะลูกค้า: %s + %s → %s', async (checkType, status, expected) => {
+      prisma.creditCheck.findUnique.mockResolvedValue({
+        ...baseCheck,
+        id: 'cc-sync',
+        customerId: 'cust-9',
+        checkType,
+        status: status === 'MANUAL_REVIEW' ? 'APPROVED' : 'MANUAL_REVIEW',
+      });
+
+      await service.overrideById(
+        'cc-sync',
+        { status, overrideReason: validReason, attachmentIds: [] },
+        'u-owner',
+        'OWNER',
+      );
+
+      expect(prisma.customer.update).toHaveBeenCalledWith({
+        where: { id: 'cust-9' },
+        data: { creditCheckStatus: expected },
+      });
     });
 
     it('allows empty attachmentIds (informational) but still writes audit log', async () => {

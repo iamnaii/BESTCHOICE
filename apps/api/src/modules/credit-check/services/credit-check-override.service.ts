@@ -15,6 +15,25 @@ import { OverrideCreditCheckDto } from '../dto/credit-check.dto';
 export class CreditCheckOverrideService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * ผลตรวจเครดิต → สถานะบนตัวลูกค้า
+   *
+   * ต้องอัปเดตคู่กันเสมอ ไม่งั้น "อนุมัติในคิวตรวจเครดิตแล้ว แต่หน้าลูกค้ายังขึ้นว่า
+   * รอผู้จัดการตรวจ" — ซึ่งเป็นอาการที่เจ้าของเจอจริง เพราะ `runPreCheck` เขียนสองตาราง
+   * พร้อมกันตอนตรวจ แต่ตอน override เดิมแตะแค่ตาราง CreditCheck
+   *
+   * แยก PRE / FULL เพราะ `CustomerCreditCheckStatus` มีสองค่าสำหรับ "ผ่าน"
+   */
+  private customerStatusFor(
+    checkType: string,
+    status: string,
+  ): 'PRE_CHECK_PASSED' | 'FULL_CHECK_PASSED' | 'REJECTED' | 'UNDER_REVIEW' | null {
+    if (status === 'APPROVED') return checkType === 'FULL' ? 'FULL_CHECK_PASSED' : 'PRE_CHECK_PASSED';
+    if (status === 'REJECTED') return 'REJECTED';
+    if (status === 'MANUAL_REVIEW') return 'UNDER_REVIEW';
+    return null;
+  }
+
   async overrideById(
     creditCheckId: string,
     dto: OverrideCreditCheckDto,
@@ -28,6 +47,8 @@ export class CreditCheckOverrideService {
 
     // T4-C4: wrap update + audit-log write in one transaction so the
     // evidence trail never drifts out of sync with the status change.
+    const customerStatus = this.customerStatusFor(creditCheck.checkType, dto.status);
+
     const [updated] = await this.prisma.$transaction([
       this.prisma.creditCheck.update({
         where: { id: creditCheckId },
@@ -49,6 +70,15 @@ export class CreditCheckOverrideService {
           checkedBy: { select: { id: true, name: true } },
         },
       }),
+      // sync สถานะบนตัวลูกค้าใน tx เดียวกัน — สองตารางนี้ต้องไม่หลุดจากกัน
+      ...(customerStatus
+        ? [
+            this.prisma.customer.update({
+              where: { id: creditCheck.customerId },
+              data: { creditCheckStatus: customerStatus },
+            }),
+          ]
+        : []),
       this.prisma.auditLog.create({
         data: {
           userId,
@@ -64,6 +94,7 @@ export class CreditCheckOverrideService {
             overrideReason: dto.overrideReason,
             attachmentIds: dto.attachmentIds ?? [],
             userRole,
+            customerCreditCheckStatus: customerStatus,
           },
         },
       }),

@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { PurchaseOrder, PODetail, ReceivingUnitForm, DirectReceiveLineForm } from '../types';
 import { defaultChecklist } from '../constants';
 import { PurchasingSummary } from '../summaryStrip';
+import { buildReceiveResultMessage } from '../receiveResultMessage';
 
 export function buildDirectReceiveItem(i: ReceivingUnitForm) {
   const isUsed = i.category === 'PHONE_USED';
@@ -109,7 +110,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   });
   // Backend returns the bare object; tolerate a { data } envelope defensively.
   const summary: PurchasingSummary | undefined = summaryRes
-    ? ('pendingApproval' in summaryRes ? summaryRes : (summaryRes as { data?: PurchasingSummary }).data)
+    ? 'pendingApproval' in summaryRes
+      ? summaryRes
+      : (summaryRes as { data?: PurchasingSummary }).data
     : undefined;
 
   type PayableData = {
@@ -263,10 +266,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
-      const data = res.data;
-      toast.success(
-        `รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → รอ QC ที่คลัง ${data.mainWarehouse}`,
-      );
+      toast.success(buildReceiveResultMessage(res.data));
       setIsReceiveModalOpen(false);
       setIsDetailModalOpen(false);
     },
@@ -294,10 +294,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
-      const d = res.data;
-      toast.success(
-        `รับเข้าตรงสำเร็จ (${d.poNumber}): ผ่าน ${d.passed} ชิ้น, ไม่ผ่าน ${d.rejected} ชิ้น → รอ QC ที่คลัง ${d.mainWarehouse}`,
-      );
+      toast.success(buildReceiveResultMessage(res.data));
       setIsDirectReceiveOpen(false);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

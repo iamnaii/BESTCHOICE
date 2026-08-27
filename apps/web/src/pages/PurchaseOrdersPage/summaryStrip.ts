@@ -78,7 +78,7 @@ export const SUMMARY_CARDS: SummaryCardDef[] = [
   },
   {
     key: 'waitingQc',
-    label: 'รอตรวจ QC',
+    label: 'รอเข้าคลัง',
     icon: ClipboardCheck,
     tone: 'warning',
     action: { panel: 'qc' },

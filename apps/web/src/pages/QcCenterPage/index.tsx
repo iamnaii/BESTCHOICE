@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ClipboardCheck, Check, X, Search, Image as ImageIcon } from 'lucide-react';
+import { ClipboardCheck, Check, X, Search, Camera, Image as ImageIcon } from 'lucide-react';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -22,6 +23,7 @@ interface Branch {
 
 export default function QcCenterPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   // BranchGuard 403s a branch-scoped role (BRANCH_MANAGER) that passes another
   // branch's id. Only cross-branch roles (here: OWNER) may pick a branch; BM
   // sends no branchId and sees the queue exactly as the legacy panel did
@@ -70,14 +72,23 @@ export default function QcCenterPage() {
     });
   const clearSelection = () => setSelected(new Set());
 
+  // `POST /qc-confirm` รับเฉพาะ QC_PENDING (po-receiving.service.ts:501) — ยิงแถว
+  // PHOTO_PENDING เข้าไปได้ 400 เสมอ และถูกแล้ว เพราะทางออกของมันคือถ่ายรูปครบ 6 มุม
+  const statusById = useMemo(() => new Map(visible.map((p) => [p.id, p.status])), [visible]);
+  const confirmableIds = selectedVisible.filter((id) => statusById.get(id) === 'QC_PENDING');
+  const needPhotoCount = selectedVisible.length - confirmableIds.length;
+
   const onConfirm = () => {
-    if (selectedVisible.length === 0) return;
-    confirmMutation.mutate(selectedVisible, { onSuccess: clearSelection });
+    if (confirmableIds.length === 0) {
+      toast.error('เครื่องที่เลือกต้องถ่ายรูป 6 มุมก่อน — กด "ไปถ่ายรูป" ที่แถวนั้น');
+      return;
+    }
+    confirmMutation.mutate(confirmableIds, { onSuccess: clearSelection });
   };
   const onRejectConfirm = () => {
     if (selectedVisible.length === 0) return;
     if (!rejectReason.trim()) {
-      toast.error('กรุณาระบุเหตุผลที่ไม่ผ่าน QC');
+      toast.error('กรุณาระบุเหตุผลที่ไม่รับเข้าคลัง');
       return;
     }
     rejectMutation.mutate(
@@ -95,8 +106,8 @@ export default function QcCenterPage() {
   return (
     <div className="pb-24">
       <PageHeader
-        title="ศูนย์ตรวจ QC"
-        subtitle="ยืนยันหรือปฏิเสธสินค้าที่รอตรวจคุณภาพก่อนเข้าคลัง"
+        title="รอถ่ายรูป/ตรวจสภาพ"
+        subtitle="ของที่รับเข้าคลังแล้วแต่ยังขึ้นขายไม่ได้ — ปกติคือมือถือมือสองที่ต้องถ่ายรูป 6 มุมก่อน · มือถือใหม่ แท็บเล็ต และอุปกรณ์เสริม เข้าคลังพร้อมขายตั้งแต่ตอนกดรับของ ไม่ผ่านหน้านี้"
         icon={<ClipboardCheck className="size-5" />}
         badge={
           total > 0 ? (
@@ -140,14 +151,18 @@ export default function QcCenterPage() {
         isError={isError}
         error={error}
         onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดรายการรอตรวจ QC ได้"
+        errorTitle="ไม่สามารถโหลดรายการรอเข้าคลังได้"
       >
         {visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <ClipboardCheck className="size-10 text-muted-foreground/40 mb-3" />
-            <p className="text-sm font-medium text-foreground leading-snug">ไม่มีสินค้ารอตรวจ QC</p>
-            <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              {debouncedSearch || branchId ? 'ลองล้างตัวกรอง' : 'รายการที่รับเข้าจะปรากฏที่นี่'}
+            <p className="text-sm font-medium text-foreground leading-snug">
+              ไม่มีของรอถ่ายรูป/ตรวจสภาพ
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-md leading-snug">
+              {debouncedSearch || branchId
+                ? 'ลองล้างตัวกรอง'
+                : 'ปกติจะมีแต่มือถือมือสองที่รับเข้ามารอถ่ายรูปที่นี่ — มือถือใหม่ แท็บเล็ต และอุปกรณ์เสริม เข้าคลังพร้อมขายตั้งแต่ตอนกดรับของแล้ว'}
             </p>
           </div>
         ) : (
@@ -212,14 +227,24 @@ export default function QcCenterPage() {
                       </div>
                     </div>
                     <div className={`flex gap-2 ${isMobile ? 'w-full' : 'shrink-0'}`}>
-                      <button
-                        onClick={() =>
-                          confirmMutation.mutate([p.id], { onSuccess: () => toggle(p.id) })
-                        }
-                        className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-success text-success-foreground hover:bg-success/90 transition-colors ${isMobile ? 'flex-1' : ''}`}
-                      >
-                        <Check className="size-3.5" /> ผ่าน
-                      </button>
+                      {p.status === 'PHOTO_PENDING' ? (
+                        <button
+                          onClick={() => navigate(`/products/${p.id}`)}
+                          title="เครื่องนี้ต้องถ่ายรูปครบ 6 มุมก่อน จึงจะขึ้นขายได้"
+                          className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors ${isMobile ? 'flex-1' : ''}`}
+                        >
+                          <Camera className="size-3.5" /> ไปถ่ายรูป
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() =>
+                            confirmMutation.mutate([p.id], { onSuccess: () => toggle(p.id) })
+                          }
+                          className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-success text-success-foreground hover:bg-success/90 transition-colors ${isMobile ? 'flex-1' : ''}`}
+                        >
+                          <Check className="size-3.5" /> ยืนยัน
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           setSelected(new Set([p.id]));
@@ -243,6 +268,11 @@ export default function QcCenterPage() {
         <div className="fixed bottom-0 left-0 right-0 lg:left-[var(--sidebar-w,264px)] z-30 border-t border-border bg-card/95 backdrop-blur px-4 py-3 flex items-center justify-between gap-3">
           <span className="text-sm font-medium text-foreground leading-snug">
             เลือก {selectedVisible.length} ชิ้น
+            {needPhotoCount > 0 && (
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                ({needPhotoCount} ชิ้นต้องถ่ายรูปก่อน)
+              </span>
+            )}
           </span>
           <div className="flex gap-2">
             <button
@@ -254,10 +284,14 @@ export default function QcCenterPage() {
             </button>
             <button
               onClick={onConfirm}
-              disabled={confirmMutation.isPending}
+              disabled={confirmMutation.isPending || confirmableIds.length === 0}
+              title={
+                confirmableIds.length === 0 ? 'เครื่องที่เลือกต้องถ่ายรูป 6 มุมก่อน' : undefined
+              }
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-success text-success-foreground hover:bg-success/90 transition-colors disabled:opacity-50"
             >
-              <Check className="size-4" /> ยืนยันผ่านทั้งหมด
+              <Check className="size-4" /> ยืนยันเข้าคลัง
+              {confirmableIds.length > 0 ? ` (${confirmableIds.length})` : ''}
             </button>
           </div>
         </div>
@@ -270,7 +304,7 @@ export default function QcCenterPage() {
           setRejectOpen(open);
           if (!open) setRejectReason('');
         }}
-        title={`ไม่ผ่าน QC (${selectedVisible.length} ชิ้น)`}
+        title={`ไม่รับเข้าคลัง (${selectedVisible.length} ชิ้น)`}
         description="ระบุเหตุผลที่ไม่ผ่าน — สินค้าจะถูกตัดออกจากคลัง"
         variant="destructive"
         confirmLabel="บันทึกไม่ผ่าน"

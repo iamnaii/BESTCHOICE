@@ -1,7 +1,10 @@
 import type { QcPendingProduct } from './useQcCenter';
 
+// ป้ายบอกว่า "ติดอยู่ที่ด่านไหน" ของแต่ละแถว — บอกสิ่งที่ต้องทำต่อ ไม่ใช่ที่มา
+// เพราะ QC_PENDING ตั้งมือได้จากหน้าแก้ไขสินค้า (ไม่อยู่ใน SYSTEM_MANAGED_STATUSES)
+// จึงมาได้ทุกหมวด ไม่ใช่เฉพาะเครื่องที่ผ่านการตรวจสภาพ
 export const qcStatusLabels: Record<string, string> = {
-  QC_PENDING: 'รอตรวจ QC',
+  QC_PENDING: 'รอยืนยันเข้าคลัง',
   PHOTO_PENDING: 'รอถ่ายรูป',
 };
 

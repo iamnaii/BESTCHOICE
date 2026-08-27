@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { addDays, isPast, differenceInDays } from 'date-fns';
+import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from './shop-warranty-policy';
 
 interface WarrantyStatus {
   manufacturer: {
@@ -74,22 +75,14 @@ export class WarrantyService {
 
       const product = contract.product;
 
-      // PHONE_USED category = used/second-hand phone (schema: ProductCategory enum)
-      const isUsed = product.category === 'PHONE_USED';
-
-      // Only set shop warranty for used phones that have shopWarrantyDays configured,
-      // or any PHONE_USED product (default 60 days)
-      if (!isUsed && !product.shopWarrantyDays) return;
-
-      // Get warranty days: SystemConfig override → product field → default 60
-      let warrantyDays = product.shopWarrantyDays ?? 60;
-
+      // สูตรจำนวนวันย้ายไป shop-warranty-policy.ts แล้ว — ใบขาย (ขายสด/ไฟแนนซ์นอก)
+      // ใช้สูตรเดียวกันนี้ ห้ามคำนวณแยก ไม่งั้นลูกค้าคนเดียวกันได้ประกันไม่เท่ากัน
+      // แล้วแต่ว่าซื้อแบบผ่อนหรือสด
       const configDays = await this.prisma.systemConfig.findUnique({
-        where: { key: 'warranty.shopWarrantyDays' },
+        where: { key: SHOP_WARRANTY_DAYS_CONFIG_KEY },
       });
-      if (configDays?.value) {
-        warrantyDays = parseInt(configDays.value, 10) || 60;
-      }
+      const warrantyDays = resolveShopWarrantyDays(product, configDays?.value);
+      if (warrantyDays === null) return;
 
       const startDate = contract.createdAt;
       const endDate = addDays(startDate, warrantyDays);

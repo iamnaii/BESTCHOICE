@@ -181,6 +181,32 @@ export class RepairWarrantyService {
         where: { customerId: dto.customerId, deletedAt: null, ...branchScope },
         include: { product: true, customer: true },
       });
+
+      // ขายสด/ไฟแนนซ์นอกไม่มีสัญญา — ประกันร้านอยู่บนใบขาย (migration 20261000200000)
+      // ก่อนหน้านี้เส้นนี้ query แต่ตาราง contracts ⇒ ลูกค้าเงินสดได้ devices: [] เสมอ
+      // เหมือนไม่เคยซื้ออะไร. ปั้นให้เป็นแถว "รูปสัญญา" เพื่อให้ตัว map ด้านล่างใช้ซ้ำได้ทั้งก้อน
+      // — ไม่มี `id` ⇒ forExchange เป็น false เอง (สิทธิ์เปลี่ยนเครื่อง 7 วันผูกกับสัญญาเท่านั้น)
+      const contractlessSales = await this.prisma.sale.findMany({
+        where: {
+          customerId: dto.customerId,
+          contractId: null,
+          deletedAt: null,
+          ...branchScope,
+        },
+        include: { product: true, customer: true },
+      });
+      contracts.push(
+        ...contractlessSales.map((s) => ({
+          product: s.product,
+          customer: s.customer,
+          deviceReceivedAt: null,
+          shopWarrantyEndDate: s.shopWarrantyEndDate,
+          status: 'NO_CONTRACT',
+          saleId: s.id,
+          saleType: s.saleType,
+          purchasedAt: s.createdAt,
+        })),
+      );
     } else if (dto.imei || dto.serial) {
       const search = dto.imei ?? dto.serial!;
       // C3: exact-match lookup — throw NotFoundException when the device doesn't exist at all
@@ -318,6 +344,8 @@ export class RepairWarrantyService {
         id: true,
         saleType: true,
         createdAt: true,
+        // ประกันร้านของขายสด/ไฟแนนซ์นอกอยู่บนใบขาย (ขาผ่อนอยู่บน contract ตามเดิม)
+        shopWarrantyEndDate: true,
         customer: { select: { id: true, name: true, phone: true } },
         contract: {
           select: {
@@ -336,6 +364,7 @@ export class RepairWarrantyService {
     // discipline in detect-warranty-status.ts.
     const warrantyStatus = detectWarrantyStatus({
       contract: sale?.contract ?? null,
+      sale: sale ?? null,
       product,
     });
 
@@ -362,7 +391,7 @@ export class RepairWarrantyService {
       daysRemainingIn7Day: this.computeDaysRemainingIn7Day(sale?.contract),
       // วันที่ซื้อ + วันที่หมดประกัน (both warranties when present)
       purchasedAt: sale?.createdAt ?? null,
-      shopWarrantyEndDate: sale?.contract?.shopWarrantyEndDate ?? null,
+      shopWarrantyEndDate: sale?.contract?.shopWarrantyEndDate ?? sale?.shopWarrantyEndDate ?? null,
       manufacturerWarrantyEndDate: product.warrantyExpireDate ?? null,
     } as const;
   }

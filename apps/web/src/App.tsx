@@ -43,6 +43,7 @@ const ProductDetailPage = lazy(() => import('@/pages/ProductDetailPage'));
 
 const StickerPrintPage = lazy(() => import('@/pages/StickerPrintPage'));
 const CustomersPage = lazy(() => import('@/pages/CustomersPage'));
+const CreditChecksPage = lazy(() => import('@/pages/CreditChecksPage'));
 const CustomerDetailPage = lazy(() => import('@/pages/CustomerDetailPage'));
 const ContactsPage = lazy(() => import('@/pages/ContactsPage'));
 const ContactDetailPage = lazy(() => import('@/pages/ContactDetailPage'));
@@ -126,6 +127,7 @@ const LiffEarlyPayoff = lazy(() => import('@/pages/liff/LiffEarlyPayoff'));
 const LiffFinanceVerify = lazy(() => import('@/pages/liff/LiffFinanceVerify'));
 const LiffBranches = lazy(() => import('@/pages/liff/LiffBranches'));
 const LiffReceipts = lazy(() => import('@/pages/liff/LiffReceipts'));
+const LiffWarranty = lazy(() => import('@/pages/liff/LiffWarranty'));
 const LiffNotificationSettings = lazy(() => import('@/pages/liff/LiffNotificationSettings'));
 // LineOaSettingsPage moved to settings-registry (P2b comms migration)
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
@@ -324,6 +326,8 @@ function App() {
         <Route path="/liff/finance-verify" element={<LiffFinanceVerify />} />
         <Route path="/liff/branches" element={<LiffBranches />} />
         <Route path="/liff/receipts" element={<LiffReceipts />} />
+        {/* ประกันของฉัน — ลูกค้าเปิดจาก LINE OA ร้าน (ช่อง SHOP) ครอบทั้งขายสด/ไฟแนนซ์นอก/ผ่อน */}
+        <Route path="/liff/warranty" element={<LiffWarranty />} />
         <Route path="/liff/notifications" element={<LiffNotificationSettings />} />
         <Route path="/liff/debug" element={<div style={{padding:20,fontFamily:'monospace'}}>
           <h2>LIFF Debug</h2>
@@ -517,6 +521,17 @@ function App() {
           <Route path="/chatbot-finance/knowledge" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceKnowledgePage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/learning" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceLearningPage /></ProtectedRoute>} />
           <Route path="/customers" element={<CustomersPage />} />
+          {/* คิวผลตรวจเครดิต — roles ตรงกับ 4 บทบาทที่มีเมนูพาไป (ฝ่ายบัญชีไม่มีเมนู
+              จึงไม่ใส่ ไม่งั้นเป็น route ที่เข้าได้แต่หาทางเข้าไม่เจอ และถ้าพิมพ์ URL เองก็โดน
+              MainLayout เด้ง). ตัดสินผลได้เฉพาะ OWNER/BM/FM — หน้าซ่อนปุ่มเองตาม role */}
+          <Route
+            path="/credit-checks"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
+                <CreditChecksPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/contacts" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ContactsPage /></ProtectedRoute>} />
           <Route path="/contacts/:id" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ContactDetailPage /></ProtectedRoute>} />

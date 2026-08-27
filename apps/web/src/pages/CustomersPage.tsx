@@ -16,6 +16,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { maskNationalId, formatNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import { customerSchema, type CustomerFormData } from '@/lib/schemas';
+import {
+  applyCreditFilter,
+  CREDIT_CHECK_OPTIONS,
+  CUSTOMER_CREDIT_OPTIONS,
+} from '@/lib/customer-credit-filter';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -30,7 +35,9 @@ import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -149,6 +156,8 @@ export default function CustomersPage() {
   const isOwner = user?.role === 'OWNER';
   const isOwnerOrManager = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
   const canViewSalary = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
+  // ต้องตรงกับ `@Roles` ของ `POST /customers` + `POST /customers/pre-check/:id/complete`
+  const canCreateCustomer = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -222,7 +231,7 @@ export default function CustomersPage() {
       if (debouncedSearch) params.search = debouncedSearch;
       if (contractStatusFilter) params.contractStatus = contractStatusFilter;
       if (hasOverdueFilter) params.hasOverdue = 'true';
-      if (creditStatusFilter) params.creditCheckStatus = creditStatusFilter;
+      applyCreditFilter(params, creditStatusFilter);
       if (branchFilter) params.branchId = branchFilter;
       if (tierFilter) params.tier = tierFilter;
       if (sortBy) params.sortBy = sortBy;
@@ -508,7 +517,7 @@ export default function CustomersPage() {
       if (debouncedSearch) params.search = debouncedSearch;
       if (contractStatusFilter) params.contractStatus = contractStatusFilter;
       if (hasOverdueFilter) params.hasOverdue = 'true';
-      if (creditStatusFilter) params.creditCheckStatus = creditStatusFilter;
+      applyCreditFilter(params, creditStatusFilter);
       if (branchFilter) params.branchId = branchFilter;
       params.limit = '10000';
       const { data: allData } = await api.get<CustomersResponse>('/customers', { params });
@@ -727,9 +736,15 @@ export default function CustomersPage() {
                 ส่งออก Excel
               </button>
             )}
-            <button onClick={() => navigate('/customer-intake')} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
-              + เพิ่มลูกค้าใหม่
-            </button>
+            {/* ซ่อนจากบทบาทที่ `POST /customers` ไม่รับ (ผจก.การเงิน / ฝ่ายบัญชี) —
+                พวกเขาเปิดทะเบียนลูกค้าได้ (มาจากปุ่มในหน้าแชท) แต่สร้างลูกค้าไม่ได้
+                ⇒ ถ้าโชว์ปุ่มไว้ กดแล้วจะโดน MainLayout เด้งกลับ Dashboard
+                ปักไว้ที่ config/__tests__/cta-reachability.test.ts */}
+            {canCreateCustomer && (
+              <button onClick={() => navigate('/customer-intake')} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
+                + เพิ่มลูกค้าใหม่
+              </button>
+            )}
           </div>
         }
       />
@@ -812,13 +827,22 @@ export default function CustomersPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">ทุกสถานะเครดิต</SelectItem>
-              <SelectItem value="UNDER_REVIEW">รอผู้จัดการตรวจ</SelectItem>
-              <SelectItem value="PRE_CHECK_PASSED">ผ่าน pre-check</SelectItem>
-              <SelectItem value="FULL_CHECK_PASSED">ผ่านเต็ม</SelectItem>
-              <SelectItem value="APPROVED">ผ่าน</SelectItem>
-              <SelectItem value="REJECTED">ไม่ผ่าน</SelectItem>
-              <SelectItem value="PENDING">รอตรวจ</SelectItem>
-              <SelectItem value="MANUAL_REVIEW">รอตรวจสอบด้วยตนเอง</SelectItem>
+              <SelectGroup>
+                <SelectLabel>สถานะเครดิตของลูกค้า</SelectLabel>
+                {CUSTOMER_CREDIT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>สถานะใบตรวจล่าสุด</SelectLabel>
+                {CREDIT_CHECK_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
           <Select

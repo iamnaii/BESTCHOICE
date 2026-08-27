@@ -1,11 +1,20 @@
-import { Injectable, NotFoundException, Optional } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { CreditCheckStatus, CustomerCreditCheckStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { decryptPII, isEncrypted } from '../../../utils/crypto.util';
 import { decryptReferencesJson } from '../../../utils/pii.util';
 import { CustomerTierService } from '../customer-tier.service';
 import { CustomerPiiService } from '../customer-pii.service';
+
+/** อ่านจาก enum ที่ Prisma generate — เพิ่มค่าใน schema แล้วรายการนี้ตามเองโดยไม่ต้องแก้ */
+const CREDIT_CHECK_STATUSES = Object.values(CreditCheckStatus) as string[];
+const CUSTOMER_CREDIT_CHECK_STATUSES = Object.values(CustomerCreditCheckStatus) as string[];
+
+function assertEnumValue(value: string, allowed: string[], label: string): void {
+  if (allowed.includes(value)) return;
+  throw new BadRequestException(`${label}ไม่ถูกต้อง: "${value}" (ค่าที่รับได้: ${allowed.join(', ')})`);
+}
 
 /**
  * Read-path slice of the decomposed CustomersService.
@@ -57,13 +66,21 @@ export class CustomerQueryService {
       where.contracts = { some: { branchId, deletedAt: null } };
     }
 
-    // Credit status filter (on CreditCheck relation)
+    // สองตัวกรองนี้อ่านคนละฟิลด์และคนละ enum — ห้ามสลับกัน:
+    //   creditStatus      → CreditCheck.status        (PENDING/APPROVED/REJECTED/MANUAL_REVIEW)
+    //   creditCheckStatus → Customer.creditCheckStatus (NONE/PRE_CHECK_PASSED/
+    //                                                   FULL_CHECK_PASSED/REJECTED/UNDER_REVIEW)
+    // ค่าที่ไม่ใช่สมาชิกของ enum ปลายทางทำให้ Prisma โยน validation error = HTTP 500
+    // (ก่อนหน้านี้หน้าจอลูกค้าส่ง APPROVED/PENDING/MANUAL_REVIEW เข้า `creditCheckStatus`
+    // ซึ่งเป็นสมาชิกของ CreditCheckStatus ไม่ใช่ CustomerCreditCheckStatus) — ตรวจก่อน
+    // เพื่อให้ได้ 400 พร้อมข้อความไทยแทน
     if (creditStatus) {
+      assertEnumValue(creditStatus, CREDIT_CHECK_STATUSES, 'สถานะใบตรวจเครดิต');
       where.creditChecks = { some: { status: creditStatus } };
     }
 
-    // Phase 3 credit check status filter (on Customer.creditCheckStatus field)
     if (creditCheckStatus) {
+      assertEnumValue(creditCheckStatus, CUSTOMER_CREDIT_CHECK_STATUSES, 'สถานะเครดิตของลูกค้า');
       where.creditCheckStatus = creditCheckStatus;
     }
 
@@ -204,6 +221,24 @@ export class CustomerQueryService {
             totalMonths: true,
             createdAt: true,
             product: { select: { id: true, name: true, brand: true, model: true } },
+            branch: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        // ประวัติการซื้อที่ **ไม่ผ่านสัญญาผ่อน** (ขายสด / ไฟแนนซ์นอก) — ก่อนหน้านี้ไม่มี
+        // ที่ไหนแสดงเลย ลูกค้าเงินสดจึงเปิดโปรไฟล์มาเห็น "สัญญา (0)" เหมือนไม่เคยซื้ออะไร
+        // ทั้งที่แถว Sale มีอยู่ (คำสั่งเจ้าของ 2026-08-27 "เก็บประวัติไว้")
+        // กรอง contractId: null กันใบขายของสัญญาผ่อนโผล่ซ้ำกับแท็บสัญญา
+        sales: {
+          where: { contractId: null, deletedAt: null },
+          select: {
+            id: true,
+            saleNumber: true,
+            saleType: true,
+            netAmount: true,
+            createdAt: true,
+            shopWarrantyEndDate: true,
+            product: { select: { id: true, brand: true, model: true, imeiSerial: true } },
             branch: { select: { id: true, name: true } },
           },
           orderBy: { createdAt: 'desc' },

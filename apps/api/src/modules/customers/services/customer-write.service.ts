@@ -9,6 +9,16 @@ import { ContactResolverService } from '../../contacts/contact-resolver.service'
 import { CustomerQueryService } from './customer-query.service';
 
 /**
+ * ชื่อ sentinel ของแถวที่ `findOrCreatePrecheckCustomer` สร้างไว้ก่อนผู้ใช้กรอกข้อมูลเต็ม.
+ *
+ * `CustomerPreCheckService` ใช้ตัวนี้ตัดสินว่าแถวยัง "ลบทิ้งได้ / เขียนต่อได้" ไหม —
+ * เดิมเป็น literal คนละชุดสองที่ (ตัวเขียนกับตัวตรวจ) ซึ่งเป็นความเสี่ยงแบบเดียวกับที่ทำให้
+ * `abandonPreCheck` เคยตรวจสถานะไม่ครบ. **แก้ค่านี้ = แถวเก่าที่สร้างด้วยชื่อเดิมจะหลุด
+ * ด่านทันที** (ไม่มี migration ตามให้) — ถ้าจะเปลี่ยนต้อง backfill ชื่อในตาราง customers ด้วย
+ */
+export const PLACEHOLDER_CUSTOMER_NAME = 'ลูกค้าใหม่ (Pre-check)';
+
+/**
  * Write-path slice of the decomposed CustomersService.
  *
  * Owns create / findOrCreatePrecheckCustomer (both hold a $transaction —
@@ -333,7 +343,6 @@ export class CustomerWriteService {
     nationalId: string;
     phone: string;
   }): Promise<{ id: string; isNew: boolean }> {
-    const PLACEHOLDER_NAME = 'ลูกค้าใหม่ (Pre-check)';
     const normalizedNid = this.normalizeNationalId(input.nationalId);
     const normalizedPhone = this.normalizePhone(input.phone) ?? input.phone;
     const nidHash = hashPII(normalizedNid, this.hashSalt);
@@ -371,7 +380,7 @@ export class CustomerWriteService {
 
     return this.prisma.$transaction(async (tx) => {
       const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
-        name: PLACEHOLDER_NAME,
+        name: PLACEHOLDER_CUSTOMER_NAME,
         taxId: null,
         nationalIdHash,
         phone: normalizedPhone,
@@ -379,7 +388,7 @@ export class CustomerWriteService {
       });
       const data = {
         nationalId: normalizedNid,
-        name: PLACEHOLDER_NAME,
+        name: PLACEHOLDER_CUSTOMER_NAME,
         phone: normalizedPhone,
         ...(piiEncrypted as Partial<Prisma.CustomerCreateInput>),
         creditCheckStatus: 'UNDER_REVIEW' as const,

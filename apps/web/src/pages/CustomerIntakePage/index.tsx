@@ -11,15 +11,15 @@ import PreCheckResultStep from './components/PreCheckResultStep';
 import FullIntakeStep from './components/FullIntakeStep';
 
 export default function CustomerIntakePage() {
-  useDocumentTitle('เช็คเครดิตลูกค้าใหม่');
+  useDocumentTitle('เพิ่มลูกค้าใหม่');
   const navigate = useNavigate();
   const intake = useCustomerIntake();
 
   return (
     <div>
       <PageHeader
-        title="เช็คเครดิตลูกค้า + รับข้อมูล"
-        subtitle="scan บัตร → อัพ statement → เช็คเครดิต → กรอกข้อมูลเต็ม"
+        title="เพิ่มลูกค้าใหม่"
+        subtitle="อ่านบัตร → อัปโหลด statement → เช็คเครดิต → กรอกข้อมูลเต็ม"
         action={
           <button
             onClick={() => {
@@ -65,6 +65,7 @@ export default function CustomerIntakePage() {
         <FullIntakeStep
           customerId={intake.state.preCheckResult.customerId}
           initial={intake.state.fullForm}
+          isNewCustomer={intake.state.preCheckResult.isNewCustomer}
           onDone={() => intake.goTo('done')}
         />
       )}
@@ -84,6 +85,12 @@ export default function CustomerIntakePage() {
               }
             >
               สร้างสัญญาเลย
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/customers/${intake.state.preCheckResult!.customerId}`)}
+            >
+              ดูข้อมูลลูกค้า
             </Button>
             <Button variant="outline" onClick={intake.reset}>
               รับลูกค้าคนต่อไป

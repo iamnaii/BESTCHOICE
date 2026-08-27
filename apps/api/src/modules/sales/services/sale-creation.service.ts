@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -9,6 +10,7 @@ import { CreateSaleDto } from '../dto/sale.dto';
 import { InterCompanyService } from '../../inter-company/inter-company.service';
 import { DiscountPolicy } from './discount-policy.util';
 import { SaleWriterService } from './sale-writer.service';
+import { SaleWarrantyNotifierService } from './sale-warranty-notifier.service';
 
 /**
  * Sale-creation orchestrator extracted from SalesService.create.
@@ -22,10 +24,13 @@ import { SaleWriterService } from './sale-writer.service';
  * resolution changed (discount → DiscountPolicy, create*Sale → writer).
  */
 export class SaleCreationService {
+  private readonly logger = new Logger(SaleCreationService.name);
+
   constructor(
     private prisma: PrismaService,
     private writer: SaleWriterService,
     private interCompanyService: InterCompanyService,
+    private warrantyNotifier: SaleWarrantyNotifierService,
   ) {}
 
   async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES') {
@@ -143,6 +148,17 @@ export class SaleCreationService {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (sale as any)._loyaltyRedemptionFailed = err instanceof Error ? err.message : String(err);
       }
+    }
+
+    // แจ้งประกันทาง LINE OA ร้าน — fire-and-forget **หลัง** tx ของการขาย commit แล้ว
+    // (pattern เดียวกับใบลดหนี้). ห้าม await: LINE ช้า/ล่ม ต้องไม่ทำให้หน้า POS ค้าง
+    // และ notifier ไม่ throw ออกมาอยู่แล้ว — `.catch` เป็นตาข่ายชั้นสุดท้ายเผื่อ throw
+    // แบบ synchronous ก่อนเข้า try ข้างใน. ขาผ่อน (INSTALLMENT) ไม่เข้าเพราะประกัน
+    // ผูกกับสัญญาและมีเส้นทางแจ้งของตัวเอง
+    if (dto.saleType === 'CASH' || dto.saleType === 'EXTERNAL_FINANCE') {
+      void this.warrantyNotifier
+        .notify(sale.id)
+        .catch((err) => this.logger.error(`[warranty-line] notify ไม่ถูกเรียก: ${String(err)}`));
     }
 
     return sale;

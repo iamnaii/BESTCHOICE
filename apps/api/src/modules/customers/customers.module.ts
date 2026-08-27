@@ -11,9 +11,12 @@ import { CustomerPiiModule } from './customer-pii.module';
 import { OverdueModule } from '../overdue/overdue.module';
 import { ContactsModule } from '../contacts/contacts.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
+import { CreditCheckModule } from '../credit-check/credit-check.module';
 
 @Module({
-  imports: [OverdueModule, CustomerPiiModule, ContactsModule, TestModeModule],
+  // CreditCheckModule — pre-check เรียกตัวอ่าน statement ด้วย AI (โมดูลนั้น import แค่
+  // IntegrationsModule จึงไม่มี cycle กลับมาหา customers)
+  imports: [OverdueModule, CustomerPiiModule, ContactsModule, TestModeModule, CreditCheckModule],
   controllers: [CustomersController],
   providers: [
     CustomersService,

@@ -18,6 +18,11 @@ import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/sho
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { allocateCashSaleByCost } from '../shop-cash-sale-allocation.util';
 import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
+import { addDays } from 'date-fns';
+import {
+  resolveShopWarrantyDays,
+  SHOP_WARRANTY_DAYS_CONFIG_KEY,
+} from '../../warranty/shop-warranty-policy';
 
 /**
  * Per-sale-type transactional writers extracted from SalesService.
@@ -144,6 +149,30 @@ export class SaleWriterService {
     return product;
   }
 
+  /**
+   * วันประกันร้านของ "เครื่องหลัก" ในใบขาย — คืน `{}` เมื่อสินค้าชิ้นนี้ไม่ได้ประกันร้าน
+   * (spread ลง `sale.create` ได้เลย ⇒ คอลัมน์คงเป็น NULL เหมือนใบขายเก่า)
+   *
+   * ใช้เฉพาะ CASH / EXTERNAL_FINANCE — ขาผ่อนไม่ต้อง เพราะสัญญาได้ประกันจาก
+   * `WarrantyService.setShopWarranty(contractId)` ตอน activate อยู่แล้ว ถ้าเขียนที่นี่ด้วย
+   * จะกลายเป็นสองแหล่งบนใบเดียวกันแล้วต้องมาตัดสินว่าอันไหนชนะ
+   *
+   * `startDate` = เวลาที่ขาย (ส่งมอบเครื่องหน้าร้าน) ต่างจากขาสัญญาที่ใช้ `contract.createdAt`
+   * ซึ่งเป็นวันเปิดสัญญา — ทั้งคู่คือ "วันที่ลูกค้าได้เครื่องไป" ของเส้นทางตัวเอง
+   */
+  private async resolveSaleShopWarranty(
+    tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
+    product: { category: string; shopWarrantyDays: number | null },
+    soldAt: Date,
+  ): Promise<{ shopWarrantyStartDate?: Date; shopWarrantyEndDate?: Date }> {
+    const config = await tx.systemConfig.findUnique({
+      where: { key: SHOP_WARRANTY_DAYS_CONFIG_KEY },
+    });
+    const days = resolveShopWarrantyDays(product, config?.value);
+    if (days === null) return {};
+    return { shopWarrantyStartDate: soldAt, shopWarrantyEndDate: addDays(soldAt, days) };
+  }
+
   /** Mark bundle (freebie) products as SOLD_CASH */
   private async markBundleProductsSold(
     tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
@@ -176,13 +205,15 @@ export class SaleWriterService {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
     return this.runSaleTransaction(async (tx) => {
-      await this.verifyProductInStock(tx, dto.productId);
+      const mainProduct = await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
+      const warranty = await this.resolveSaleShopWarranty(tx, mainProduct, new Date());
 
       // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย
       const sale = await tx.sale.create({
         data: {
+          ...warranty,
           saleNumber,
           saleType: 'CASH',
           customerId: dto.customerId,
@@ -475,13 +506,15 @@ export class SaleWriterService {
     const financeAmount = dto.financeAmount || (netAmount - downPayment);
 
     return this.runSaleTransaction(async (tx) => {
-      await this.verifyProductInStock(tx, dto.productId);
+      const mainProduct = await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
+      const warranty = await this.resolveSaleShopWarranty(tx, mainProduct, new Date());
 
       // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย
       const sale = await tx.sale.create({
         data: {
+          ...warranty,
           saleNumber,
           saleType: 'EXTERNAL_FINANCE',
           customerId: dto.customerId,

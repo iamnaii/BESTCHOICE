@@ -328,7 +328,7 @@ export function PODetailModal({
                             return (
                               <div className="flex flex-col items-end gap-0.5">
                                 {qc.qcPending > 0 && (
-                                  <Badge variant="warning" appearance="light" className="text-[10px]">รอ QC {qc.qcPending}</Badge>
+                                  <Badge variant="warning" appearance="light" className="text-[10px]">รอเข้าคลัง {qc.qcPending}</Badge>
                                 )}
                                 {qc.inStock > 0 && (
                                   <Badge variant="success" appearance="light" className="text-[10px]">เข้าสต็อก {qc.inStock}</Badge>

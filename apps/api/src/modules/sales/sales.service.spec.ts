@@ -10,6 +10,7 @@ import { InterCompanyService } from '../inter-company/inter-company.service';
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ShopExternalFinanceSaleTemplate } from '../journal/cpa-templates/shop-external-finance-sale.template';
+import { SaleWarrantyNotifierService } from './services/sale-warranty-notifier.service';
 
 /**
  * SalesService unit tests.
@@ -207,6 +208,9 @@ describe('SalesService', () => {
       },
       systemConfig: {
         findMany: jest.fn().mockResolvedValue([]),
+        // resolveSaleShopWarranty อ่านคีย์ warranty.shopWarrantyDays ตอนสร้างใบขาย
+        // ไม่มีแถว = ไม่ override ⇒ ใช้ค่าตามชนิดสินค้า
+        findUnique: jest.fn().mockResolvedValue(null),
       },
       $transaction: jest.fn().mockImplementation(
         async (fnOrArray: unknown, _opts?: unknown) => {
@@ -239,6 +243,11 @@ describe('SalesService', () => {
           // C1 — ข้ามเองถ้าผังยังไม่มี S11-3101/S51-1106 (รอคำวินิจฉัยผู้สอบ)
           provide: ShopExternalFinanceSaleTemplate,
           useValue: { execute: jest.fn().mockResolvedValue(null) },
+        },
+        {
+          // แจ้งประกันทาง LINE เป็น fire-and-forget หลัง commit — ไฟล์นี้ไม่ตรวจการส่ง
+          provide: SaleWarrantyNotifierService,
+          useValue: { notify: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();

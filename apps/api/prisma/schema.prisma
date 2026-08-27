@@ -2559,6 +2559,13 @@ model Sale {
   notes             String?
   saleSource        String?        @default("OFFLINE") @map("sale_source")
   onlineOrderId     String?        @unique @map("online_order_id")
+  /// ประกันร้านของ "เครื่องหลัก" (`productId`) ในใบขายนี้ — คู่ขนานกับคอลัมน์ชื่อเดียวกัน
+  /// บน `Contract`. มีไว้เพราะขายสด/ไฟแนนซ์นอกไม่มีสัญญา จึงไม่เคยมีที่เก็บวันประกันเลย
+  /// (คำสั่งเจ้าของ 2026-08-27). ของแถวใน `bundleProductIds` **ไม่มีประกันแยก** ตามคำตัดสิน
+  /// เดียวกัน — ถ้าวันหลังต้องมี ต้องสร้างตาราง SaleItem ก่อน ไม่ใช่เพิ่มคอลัมน์ที่นี่
+  /// สูตรจำนวนวันใช้ร่วมกับขาสัญญาที่ `modules/warranty/shop-warranty-policy.ts`
+  shopWarrantyStartDate DateTime? @map("shop_warranty_start_date")
+  shopWarrantyEndDate   DateTime? @map("shop_warranty_end_date")
   /// ยกเลิกใบขาย (void-sale 2026-08-22): เวลาที่ยกเลิก = `deletedAt` ที่มีอยู่แล้ว
   /// (ผู้อ่าน 10 จุดกรอง deletedAt: null อยู่แล้ว) — สองคอลัมน์นี้เก็บ "ทำไม" กับ "ใคร"
   voidReason        String?        @map("void_reason")

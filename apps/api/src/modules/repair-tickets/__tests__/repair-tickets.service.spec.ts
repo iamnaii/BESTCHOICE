@@ -1186,6 +1186,8 @@ describe('RepairTicketsService.warrantyLookup', () => {
       findUnique: jest.fn().mockResolvedValue(null),
       findFirst: jest.fn().mockResolvedValue(null),
     };
+    // ค้นด้วยลูกค้าเดินสองตาราง: contracts (ผ่อน) + sales ที่ไม่มีสัญญา (ขายสด/ไฟแนนซ์นอก)
+    prisma.sale = { findMany: jest.fn().mockResolvedValue([]) };
     svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
   });
 
@@ -1224,6 +1226,43 @@ describe('RepairTicketsService.warrantyLookup', () => {
     expect(result.devices[0].warrantyWindows.sevenDayDefect).toBeLessThanOrEqual(5);
     expect(result.devices[0].eligibility.forExchange).toBe(true);
     expect(result.devices[0].eligibility.forRepair).toBe(true);
+  });
+
+  // ประกันร้านของขายสด/ไฟแนนซ์นอก (คำสั่งเจ้าของ 2026-08-27) — ก่อนหน้านี้เส้นค้นด้วย
+  // ลูกค้าอ่านแต่ตาราง contracts ⇒ ลูกค้าเงินสดได้ devices: [] เสมอ เหมือนไม่เคยซื้ออะไร
+  it('ลูกค้าซื้อเงินสด (ไม่มีสัญญา) ต้องเห็นเครื่อง + ประกันร้านจากใบขาย', async () => {
+    const customer = { id: 'c-9', name: 'นาย เงินสด', phone: '0800000000' };
+    const product = {
+      id: 'p-9',
+      brand: 'Samsung',
+      model: 'A16',
+      imeiSerial: 'IMEI-CASH',
+      category: 'PHONE_USED',
+      warrantyExpireDate: null,
+    };
+    prisma.customer.findUnique.mockResolvedValue(customer);
+    prisma.contract.findMany.mockResolvedValue([]); // ไม่มีสัญญาสักใบ
+    prisma.sale.findMany.mockResolvedValue([
+      {
+        id: 's-9',
+        saleType: 'CASH',
+        createdAt: new Date(),
+        shopWarrantyEndDate: new Date(Date.now() + 30 * 86_400_000),
+        product,
+        customer,
+      },
+    ]);
+
+    const result = await svc.warrantyLookup({ customerId: 'c-9' }, SALES_USER);
+
+    expect(result.devices).toHaveLength(1);
+    expect(result.devices[0].product?.imeiSerial).toBe('IMEI-CASH');
+    // วันประกันร้านมาจากใบขาย ไม่ใช่สัญญา (ไม่มีสัญญาเลยสักใบ)
+    expect(result.devices[0].warrantyWindows.shopWarranty).toBeGreaterThanOrEqual(29);
+    expect(result.devices[0].warrantyWindows.shopWarranty).toBeLessThanOrEqual(30);
+    expect(result.devices[0].contract).toBeNull();
+    // สิทธิ์เปลี่ยนเครื่อง 7 วันผูกกับสัญญา — ใบขายไม่มี id สัญญา จึงต้องเป็น false
+    expect(result.devices[0].eligibility.forExchange).toBe(false);
   });
 
   // Test 2: lookup by IMEI returns single device

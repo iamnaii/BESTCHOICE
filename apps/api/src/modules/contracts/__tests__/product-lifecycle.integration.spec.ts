@@ -86,6 +86,9 @@ const salesService = new SalesService(
   shopAccountResolver,
   // C1 — ข้ามเองถ้าผังยังไม่มี S11-3101/S51-1106 (รอคำวินิจฉัยผู้สอบ)
   new ShopExternalFinanceSaleTemplate(journal, prisma as never, companyResolver),
+  // ประกันทาง LINE เป็น fire-and-forget หลัง commit — ไฟล์นี้ไม่ตรวจการส่ง
+  // ใส่ตัวปลอมที่ไม่ทำอะไร กันไม่ให้ยิงออกเน็ตจริงตอนรันเทสต์
+  { notify: async () => {} } as never,
 );
 
 // เปลี่ยนเครื่องโหมด MEMO: ไม่มี JE เลย (workbook Case 1) — เทมเพลตทั้ง 5 + SHOP legs

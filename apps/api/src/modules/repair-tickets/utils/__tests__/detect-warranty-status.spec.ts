@@ -102,3 +102,58 @@ describe('defaultPayer', () => {
     expect(defaultPayer('IN_MANUFACTURER')).toBe('SHOP');
   });
 });
+
+/**
+ * ประกันร้านจาก **ใบขาย** — ขายสด/ไฟแนนซ์นอกไม่มีสัญญา จึงไม่เคยมีประกันร้านเลยก่อนหน้านี้
+ * (คำสั่งเจ้าของ 2026-08-27, คอลัมน์บน Sale จาก migration 20261000200000)
+ */
+describe('detectWarrantyStatus — ประกันร้านจากใบขาย (ขายสด / ไฟแนนซ์นอก)', () => {
+  const future = new Date(Date.now() + 30 * 86400_000);
+  const past = new Date(Date.now() - 30 * 86400_000);
+
+  it('ใบขายมีประกันร้านที่ยังไม่หมด → IN_SHOP_WARRANTY (ไม่มีสัญญาเลย)', () => {
+    expect(detectWarrantyStatus({ sale: { shopWarrantyEndDate: future }, product: {} })).toBe(
+      'IN_SHOP_WARRANTY',
+    );
+  });
+
+  it('ใบขายประกันหมดแล้ว แต่ประกันศูนย์ยังอยู่ → IN_MANUFACTURER', () => {
+    expect(
+      detectWarrantyStatus({
+        sale: { shopWarrantyEndDate: past },
+        product: { warrantyExpireDate: future },
+      }),
+    ).toBe('IN_MANUFACTURER');
+  });
+
+  it('เครื่องใหม่ขายสด (ใบขายไม่มีประกันร้าน) → ใช้ประกันศูนย์', () => {
+    // ตรงกับคำตัดสินเจ้าของ: เครื่องใหม่ไม่ให้ประกันร้าน ใช้ประกันศูนย์อย่างเดียว
+    expect(
+      detectWarrantyStatus({
+        sale: { shopWarrantyEndDate: null },
+        product: { warrantyExpireDate: future },
+      }),
+    ).toBe('IN_MANUFACTURER');
+  });
+
+  it('มีใบขายแต่ไม่มีประกันอะไรเหลือ → OUT_OF_WARRANTY ไม่ใช่ WALK_IN', () => {
+    // ลูกค้าที่ซื้อกับเรามีประวัติ — ไม่ใช่คนเดินเข้ามาเฉย ๆ
+    expect(detectWarrantyStatus({ sale: { shopWarrantyEndDate: past }, product: {} })).toBe(
+      'OUT_OF_WARRANTY',
+    );
+  });
+
+  it('ไม่มีทั้งสัญญา ใบขาย และสินค้า → WALK_IN (พฤติกรรมเดิมไม่เปลี่ยน)', () => {
+    expect(detectWarrantyStatus({})).toBe('WALK_IN');
+  });
+
+  it('มีทั้งสัญญาและใบขาย → สัญญาชนะ (เอกสารที่ลูกค้าเซ็น)', () => {
+    expect(
+      detectWarrantyStatus({
+        contract: { deviceReceivedAt: null, shopWarrantyEndDate: past },
+        sale: { shopWarrantyEndDate: future },
+        product: {},
+      }),
+    ).toBe('OUT_OF_WARRANTY');
+  });
+});

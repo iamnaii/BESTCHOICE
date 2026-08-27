@@ -5,6 +5,7 @@ import { InterCompanyService } from '../inter-company/inter-company.service';
 import { SalesQueryService } from './services/sales-query.service';
 import { SaleWriterService } from './services/sale-writer.service';
 import { SaleCreationService } from './services/sale-creation.service';
+import { SaleWarrantyNotifierService } from './services/sale-warranty-notifier.service';
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ShopExternalFinanceSaleTemplate } from '../journal/cpa-templates/shop-external-finance-sale.template';
@@ -36,6 +37,7 @@ export class SalesService {
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
+    private warrantyNotifier: SaleWarrantyNotifierService,
   ) {
     this.query = new SalesQueryService(this.prisma);
     this.writer = new SaleWriterService(
@@ -45,7 +47,12 @@ export class SalesService {
       this.shopAccountResolver,
       this.shopExternalFinanceSaleTemplate,
     );
-    this.creation = new SaleCreationService(this.prisma, this.writer, this.interCompanyService);
+    this.creation = new SaleCreationService(
+      this.prisma,
+      this.writer,
+      this.interCompanyService,
+      this.warrantyNotifier,
+    );
   }
 
   async findAll(filters: {

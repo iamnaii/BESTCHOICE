@@ -49,12 +49,18 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       sale: {
         create: jest.fn().mockResolvedValue(mockSale),
       },
+      // resolveSaleShopWarranty อ่านคีย์ warranty.shopWarrantyDays ใน tx เดียวกัน
+      // ไม่มีแถว = ไม่ override ⇒ ใช้ค่าตามชนิดสินค้า
+      systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
       product: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'p1',
           status: 'IN_STOCK',
           deletedAt: null,
           wasPreviouslyDamaged: false,
+          // เครื่องใหม่ไม่ได้ตั้งวันประกันร้าน → ไม่มีประกันร้าน (คำตัดสินเจ้าของ)
+          category: 'PHONE_NEW',
+          shopWarrantyDays: null,
         }),
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),

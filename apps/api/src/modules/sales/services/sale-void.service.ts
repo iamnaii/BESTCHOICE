@@ -528,6 +528,11 @@ export class SaleVoidService {
 
     // 5. ใบขาย → ยกเลิก (เวลาที่ยกเลิก = `deletedAt` ⇒ ผู้อ่านที่กรอง deletedAt
     //    อยู่แล้วหักใบนี้ออกเองโดยไม่ต้องเดินแก้ทีละจุด)
+    //
+    //    **จงใจไม่ล้าง `shopWarrantyStartDate`/`shopWarrantyEndDate`** — ผู้อ่านประกัน
+    //    ทุกตัวกรอง `deletedAt: null` อยู่แล้ว (repair-warranty.service ทั้งเส้น IMEI และ
+    //    เส้นค้นด้วยลูกค้า) ⇒ ประกันของใบที่ยกเลิกไม่มีทางโผล่ ส่วนตัวเลขที่ค้างไว้คือ
+    //    หลักฐานว่าเคยให้ประกันอะไรลูกค้าไว้ ล้างทิ้ง = ทำลายหลักฐานโดยไม่ได้อะไรเพิ่ม
     await tx.sale.update({
       where: { id: sale.id },
       data: { deletedAt: now, voidReason: reason, voidedById: user.id },

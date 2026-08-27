@@ -2,7 +2,8 @@ import { Test } from '@nestjs/testing';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
-import { CustomerPreCheckService } from './customer-precheck.service';
+import { CustomerPreCheckService, FULL_EDIT_ROLES } from './customer-precheck.service';
+import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
@@ -165,5 +166,32 @@ describe('CustomersController PII (Phase 5)', () => {
       );
       expect(result.decision).toBe('REVIEW');
     });
+  });
+});
+
+/**
+ * กติกาสิทธิ์ของโมดูลนี้กระจายอยู่ 2 ที่ที่ TypeScript ผูกให้ไม่ได้:
+ *   - `@Roles(...)` บน controller (metadata ตอน runtime)
+ *   - `FULL_EDIT_ROLES` ใน customer-precheck.service.ts (ตรรกะใน service)
+ * เทสนี้อ่านของจริงมาเทียบ เพื่อไม่ให้คอมเมนต์ "ต้องตรงกัน" เป็นสัญญาลอย ๆ
+ */
+describe('CustomersController — สิทธิ์ต้องไม่หลุดจากกัน', () => {
+  const rolesOf = (method: string): string[] =>
+    Reflect.getMetadata(ROLES_KEY, CustomersController.prototype[method as never]) ?? [];
+
+  it('completePreCheck ต้องมีสิทธิ์เท่ากับ POST /customers เป๊ะ', () => {
+    // เส้นนี้เรียก customersService.update() ตัวเดียวกับ PATCH ⇒ ถ้ากว้างกว่า
+    // `create` เมื่อไร มันจะกลายเป็นทางอ้อมสร้างลูกค้าให้บทบาทที่ถูกตัดออกตั้งใจ
+    expect(rolesOf('completePreCheck').sort()).toEqual(rolesOf('create').sort());
+  });
+
+  it('FULL_EDIT_ROLES ต้องตรงกับ @Roles ของ PATCH /customers/:id', () => {
+    expect([...FULL_EDIT_ROLES].sort()).toEqual(rolesOf('update').sort());
+  });
+
+  it('completePreCheck ต้องแคบกว่าหรือเท่ากับ pre-check เสมอ', () => {
+    const complete = rolesOf('completePreCheck');
+    const precheck = rolesOf('preCheck');
+    for (const r of complete) expect(precheck).toContain(r);
   });
 });

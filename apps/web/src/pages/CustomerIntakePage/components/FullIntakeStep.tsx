@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, Save } from 'lucide-react';
+import { Loader2, Save, Info } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import AddressForm, {
@@ -39,13 +41,23 @@ const ADDRESS_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
 const selectClass =
   'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring';
 
+/** ต้องตรงกับ FULL_EDIT_ROLES ใน customer-precheck.service.ts (ฝั่งเซิร์ฟเวอร์คือด่านจริง) */
+const FULL_EDIT_ROLES = ['OWNER', 'BRANCH_MANAGER'];
+
 interface Props {
   customerId: string;
   initial: FullIntakeForm;
+  /** pre-check เจอลูกค้าเดิมหรือเพิ่งสร้างแถวใหม่ — ตัดสินว่าบันทึกได้ไหมสำหรับบทบาทนี้ */
+  isNewCustomer: boolean;
   onDone: () => void;
 }
 
-export default function FullIntakeStep({ customerId, initial, onDone }: Props) {
+export default function FullIntakeStep({ customerId, initial, isNewCustomer, onDone }: Props) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  // ลูกค้าเดิม + ไม่ใช่ผู้จัดการ = เซิร์ฟเวอร์จะปฏิเสธตอนกดบันทึก — บอกตั้งแต่ต้น
+  // ดีกว่าปล่อยให้กรอกฟอร์มยาวแล้วเจอ error ตอนท้าย
+  const blockedExistingCustomer = !isNewCustomer && !FULL_EDIT_ROLES.includes(user?.role ?? '');
   const [form, setForm] = useState<FullIntakeForm>(initial);
   const [addressIdCard, setAddressIdCard] = useState<AddressData>(() =>
     deserializeAddress(initial.addressIdCard),
@@ -105,7 +117,11 @@ export default function FullIntakeStep({ customerId, initial, onDone }: Props) {
 
       const validRefs = form.references.filter((r) => r.firstName || r.lastName || r.phone);
       if (validRefs.length > 0) payload.references = validRefs;
-      await api.patch(`/customers/${customerId}`, payload);
+      // ไม่ใช่ PATCH /customers/:id — เส้นนั้นเป็น @Roles('OWNER','BRANCH_MANAGER')
+      // ทั้งที่ pre-check เปิดถึง SALES ⇒ พนักงานขายกรอกครบแล้วโดน 403 ที่ปุ่มนี้ทุกครั้ง
+      // และทิ้งแถว placeholder ไว้. endpoint นี้สิทธิ์เท่า pre-check แต่แก้ได้เฉพาะแถวที่
+      // ยังเป็น placeholder ของ session ตัวเอง (ลูกค้าเดิมยังต้องเป็นผู้จัดการเหมือนเดิม)
+      await api.post(`/customers/pre-check/${customerId}/complete`, payload);
     },
     onSuccess: () => {
       toast.success('บันทึกข้อมูลลูกค้าสำเร็จ');
@@ -118,6 +134,32 @@ export default function FullIntakeStep({ customerId, initial, onDone }: Props) {
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
+      {blockedExistingCustomer && (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <Info className="size-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="text-sm text-foreground leading-snug">
+              <p className="font-semibold">ลูกค้ารายนี้มีข้อมูลในระบบอยู่แล้ว</p>
+              <p className="text-muted-foreground mt-0.5">
+                ข้อมูลด้านล่างบันทึกทับไม่ได้ (ต้องให้ผู้จัดการแก้จากหน้าข้อมูลลูกค้า) แต่ผลเช็คเครดิตบันทึกไว้แล้ว —
+                ทำสัญญาต่อได้เลย
+              </p>
+            </div>
+          </div>
+          {/* ปุ่มสองตัวนี้คือ "ทางที่ทำได้จริง" ของสถานะนี้ — ห้ามเอาออกโดยไม่หาทางอื่นมาแทน
+              เพราะปุ่มบันทึกถูก disable และปุ่ม "สร้างสัญญาเลย" อยู่ในขั้น done ซึ่งเข้าได้
+              ทางเดียวคือบันทึกสำเร็จ ⇒ ถ้าไม่มีสองปุ่มนี้ หน้าจอจะตันสนิท */}
+          <div className="flex flex-wrap gap-2 pl-8">
+            <Button variant="primary" onClick={() => navigate(`/contracts/create?customerId=${customerId}`)}>
+              ทำสัญญาต่อ
+            </Button>
+            <Button variant="outline" onClick={() => navigate(`/customers/${customerId}`)}>
+              ดูข้อมูลลูกค้า
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
         <h3 className="text-sm font-semibold text-foreground">ข้อมูลส่วนตัว</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -345,7 +387,7 @@ export default function FullIntakeStep({ customerId, initial, onDone }: Props) {
           variant="primary"
           size="lg"
           onClick={() => saveMut.mutate()}
-          disabled={!canSave || saveMut.isPending}
+          disabled={!canSave || saveMut.isPending || blockedExistingCustomer}
         >
           {saveMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
           บันทึก

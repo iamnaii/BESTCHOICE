@@ -74,6 +74,17 @@ interface CustomerDetail {
     product: { id: string; name: string; brand: string; model: string };
     branch: { id: string; name: string };
   }[];
+  /** การซื้อที่ไม่ผ่านสัญญาผ่อน — ขายสด / ไฟแนนซ์นอก (API กรอง contractId: null มาให้แล้ว) */
+  sales?: {
+    id: string;
+    saleNumber: string;
+    saleType: string;
+    netAmount: string;
+    createdAt: string;
+    shopWarrantyEndDate: string | null;
+    product: { id: string; brand: string; model: string; imeiSerial: string | null } | null;
+    branch: { id: string; name: string } | null;
+  }[];
 }
 
 interface RiskFlag {
@@ -463,6 +474,64 @@ export default function CustomerDetailPage() {
     { key: 'branch', label: 'สาขา', render: (c: CustomerDetail['contracts'][0]) => <span className="text-xs">{c.branch.name}</span> },
   ];
 
+  type SaleRow = NonNullable<CustomerDetail['sales']>[number];
+  const purchases = customer.sales ?? [];
+  const saleColumns = [
+    {
+      key: 'saleNumber',
+      label: 'เลขที่ใบขาย',
+      render: (s: SaleRow) => <span className="font-mono text-sm tabular-nums">{s.saleNumber}</span>,
+    },
+    {
+      key: 'product',
+      label: 'สินค้า',
+      render: (s: SaleRow) => (
+        <div className="min-w-0">
+          <div className="text-sm text-foreground leading-snug">
+            {s.product ? `${s.product.brand} ${s.product.model}` : '—'}
+          </div>
+          {s.product?.imeiSerial && (
+            <div className="text-xs text-muted-foreground tabular-nums">{s.product.imeiSerial}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'saleType',
+      label: 'ประเภท',
+      render: (s: SaleRow) => (
+        <Badge variant={s.saleType === 'CASH' ? 'success' : 'info'} appearance="light" size="sm">
+          {s.saleType === 'CASH' ? 'เงินสด' : 'ไฟแนนซ์นอก'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'netAmount',
+      label: 'ยอดสุทธิ',
+      render: (s: SaleRow) => (
+        <span className="text-sm tabular-nums font-mono">
+          {parseFloat(s.netAmount).toLocaleString()} ฿
+        </span>
+      ),
+    },
+    {
+      key: 'warranty',
+      label: 'ประกันร้าน',
+      render: (s: SaleRow) =>
+        s.shopWarrantyEndDate ? (
+          <span className="text-sm">ถึง {formatDateShort(s.shopWarrantyEndDate)}</span>
+        ) : (
+          // เครื่องใหม่ใช้ประกันศูนย์อย่างเดียวตามนโยบาย — ไม่ใช่ข้อมูลขาด
+          <span className="text-xs text-muted-foreground">ประกันศูนย์</span>
+        ),
+    },
+    {
+      key: 'createdAt',
+      label: 'วันที่ซื้อ',
+      render: (s: SaleRow) => <span className="text-sm">{formatDateShort(s.createdAt)}</span>,
+    },
+  ];
+
   const callableContract = customer.contracts?.find((c) =>
     ['OVERDUE', 'DEFAULT', 'ACTIVE'].includes(c.status),
   );
@@ -586,6 +655,7 @@ export default function CustomerDetailPage() {
           <TabsTrigger value="work">งาน & อ้างอิง ({refs?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="credit">เครดิต ({creditChecks.length})</TabsTrigger>
           <TabsTrigger value="contracts">สัญญา ({customer.contracts.length})</TabsTrigger>
+          <TabsTrigger value="purchases">การซื้อ ({purchases.length})</TabsTrigger>
           <TabsTrigger value="loyalty">
             แต้มสะสม
             {loyaltyPoints && loyaltyPoints.balance > 0 && (
@@ -863,6 +933,17 @@ export default function CustomerDetailPage() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        {/* ─── Purchases Tab (ขายสด / ไฟแนนซ์นอก) ───────────────────────── */}
+        <TabsContent value="purchases">
+          <div className="mb-6">
+            <DataTable
+              columns={saleColumns}
+              data={purchases}
+              emptyMessage="ยังไม่มีการซื้อแบบเงินสด/ไฟแนนซ์นอก"
+            />
+          </div>
         </TabsContent>
 
         {/* ─── Loyalty Tab ────────────────────────────────────────────── */}

@@ -12,6 +12,14 @@ const ROWS: Array<{
   key: string;
   status: 'DRAFT' | 'PENDING_APPROVAL';
   vendorName: string;
+  /**
+   * **รหัสบัญชีฝั่ง FINANCE เท่านั้น (`5x-xxxx`) — ห้ามใส่ชื่อบัญชี**
+   * `ExpenseLine.category` ถูกอ่านเป็น accountCode โดยตรงที่
+   * `expense-accrual.template.ts:89` ⇒ lookup CoA ไม่เจอ = throw ตอนโพสต์
+   * (เกิดจริงบน prod 2026-08-27: `Account code not found in CoA: ค่าสาธารณูปโภค`)
+   * seeder เขียนผ่าน prisma.create ตรง ๆ จึงข้าม regex ของ DTO
+   * (`expense-line-input.dto.ts:13-16`) ที่เคยกันความผิดนี้ไว้
+   */
   category: string;
   unitPrice: number;
   qty: number;
@@ -20,21 +28,25 @@ const ROWS: Array<{
   desc: string;
 }> = [
   {
-    key: 'rent',
+    // เดิมเป็น "ค่าเช่าร้าน" — เปลี่ยนเพราะ **ผัง FINANCE ไม่มีบัญชีค่าเช่าเลย**
+    // (มีแต่ S52-1101 ค่าเช่าสาขา ฝั่ง SHOP ซึ่ง DTO ของโมดูลนี้ไม่รับ — regex ^5\d-\d{4}$)
+    // จุดประสงค์ของแถวนี้คือ "ใบที่มีทั้ง VAT และ WHT" ซึ่งค่าบริการบัญชีทำหน้าที่เดียวกัน
+    // (WHT ค่าบริการ = 3% ตามกฎหมาย — ค่าเช่า 5% ใช้กับบัญชีค่าเช่าเท่านั้น)
+    key: 'service',
     status: 'DRAFT',
-    vendorName: 'ทดสอบระบบ ผู้ให้เช่าอาคาร',
-    category: 'ค่าเช่า',
+    vendorName: 'ทดสอบระบบ สำนักงานบัญชี',
+    category: '53-1401',
     unitPrice: 25000,
     qty: 1,
     vatPct: 7,
-    whtPct: 5,
-    desc: 'ค่าเช่าร้าน (ร่าง — มี VAT + หัก ณ ที่จ่าย 5%)',
+    whtPct: 3,
+    desc: 'ค่าบริการบัญชี (ร่าง — มี VAT + หัก ณ ที่จ่าย 3%)',
   },
   {
     key: 'utility',
     status: 'DRAFT',
     vendorName: 'ทดสอบระบบ การไฟฟ้า',
-    category: 'ค่าสาธารณูปโภค',
+    category: '53-1302',
     unitPrice: 3800,
     qty: 1,
     vatPct: 7,
@@ -45,7 +57,7 @@ const ROWS: Array<{
     key: 'approval',
     status: 'PENDING_APPROVAL',
     vendorName: 'ทดสอบระบบ ร้านวัสดุ',
-    category: 'ค่าซ่อมแซม',
+    category: '53-1305',
     unitPrice: 12500,
     qty: 1,
     vatPct: 7,
@@ -56,7 +68,7 @@ const ROWS: Array<{
     key: 'zero',
     status: 'DRAFT',
     vendorName: 'ทดสอบระบบ ผู้ขายรายย่อย',
-    category: 'ค่าใช้จ่ายเบ็ดเตล็ด',
+    category: '53-1201',
     unitPrice: 0,
     qty: 1,
     vatPct: 0,

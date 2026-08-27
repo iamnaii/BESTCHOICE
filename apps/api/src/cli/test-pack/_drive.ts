@@ -39,8 +39,28 @@ const errMsg = (err: unknown): string => {
     // NestJS HttpException — ข้อความไทยจริงอยู่ใน response.message
     const resp = (err as { getResponse?: () => unknown }).getResponse?.();
     if (resp && typeof resp === 'object' && 'message' in (resp as Record<string, unknown>)) {
-      const m = (resp as Record<string, unknown>).message;
-      return Array.isArray(m) ? m.join(' · ') : String(m);
+      const r = resp as Record<string, unknown>;
+      const m = r.message;
+      const head = Array.isArray(m) ? m.join(' · ') : String(m);
+      // โมดูลที่ validate เป็นชุด (other-income / expense-documents) โยน
+      // BadRequestException({ message, errors }) — `message` เป็นสรุปกว้าง ๆ
+      // (เช่น "ไม่ผ่านการตรวจสอบก่อน POST") ส่วนเหตุผลจริงอยู่ใน `errors`.
+      // ไม่ดึงมาด้วย = คนอ่าน log ไม่รู้ว่าตกกฎข้อไหน
+      // (เสียเวลาไล่จริงตอน DRIVE ล้มบน prod 2026-08-27)
+      const details = r.errors;
+      if (Array.isArray(details) && details.length) {
+        const lines = details.map((d) => {
+          if (d && typeof d === 'object') {
+            const o = d as Record<string, unknown>;
+            const rule = o.rule ?? o.code ?? o.field;
+            const text = o.message ?? o.detail ?? JSON.stringify(o);
+            return rule ? `[${String(rule)}] ${String(text)}` : String(text);
+          }
+          return String(d);
+        });
+        return `${head}: ${lines.join(' · ')}`;
+      }
+      return head;
     }
     return err.message;
   }
@@ -108,7 +128,25 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
     };
   }
 
+  /**
+   * `DRIVE_STEPS=<คำ,คำ>` — รันเฉพาะก้าวที่ชื่อ**มี**คำเหล่านี้ (ว่าง = รันทุกก้าว — พฤติกรรมเดิม)
+   *
+   * มีไว้เพราะ **ก้าวส่วนใหญ่ไม่ idempotent**: ก้าวรับชำระจะจ่ายงวดถัดไปเพิ่ม
+   * ก้าวขายจะออกใบขายใบใหม่ ⇒ รัน runDrive ซ้ำทั้งชุดเพื่อแก้ก้าวที่ล้ม = สร้าง JE เกินจริง
+   * (เจอจริงบน prod 2026-08-27 — 3 ก้าวล้มจาก 9 แต่รันซ้ำไม่ได้เพราะอีก 6 ก้าวจะทำซ้ำ)
+   *
+   * ก้าวที่ไม่ถูกเลือก **ไม่โผล่ในสรุปเลย** (ไม่ใช่ "ข้าม") — ผู้อ่านจะได้เห็นเฉพาะ
+   * ก้าวที่ตั้งใจรัน ไม่ปนกับก้าวที่ข้ามเพราะเงื่อนไขของข้อมูลไม่ครบ
+   */
+  const stepTokens = (process.env.DRIVE_STEPS ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const stepSelected = (name: string): boolean =>
+    stepTokens.length === 0 || stepTokens.some((t) => name.includes(t));
+
   const run = async (name: string, fn: () => Promise<string>): Promise<void> => {
+    if (!stepSelected(name)) return;
     try {
       steps.push({ name, ok: true, detail: await fn() });
     } catch (err) {

@@ -113,6 +113,13 @@ export const otherIncomeSeeder: DomainSeeder = {
           whtAmount,
           totalAmount: s.total,
           netReceived: round2(s.total.minus(whtAmount)),
+          // V10 (other-income validation.service.ts:180-192) บังคับว่า
+          // amountReceived ต้องเท่า netReceived ไม่งั้นต้องมีบัญชีปรับผลต่าง.
+          // คอลัมน์นี้ @default(0) (schema.prisma:6783) ⇒ ไม่ใส่ = 0 ⇒ diff เท่า
+          // ยอดเต็ม ⇒ POST ไม่ผ่าน. เส้นทางจริงไม่เจอเพราะ create() ของ service
+          // บังคับค่านี้จาก DTO เสมอ — seeder ที่เขียน prisma ตรงจึงเป็นทางเดียวที่หลุด
+          // (พบจริงตอนรัน DRIVE บน prod 2026-08-27)
+          amountReceived: round2(s.total.minus(whtAmount)),
           customerNote,
           createdById: ctx.refs.reviewerId,
           items: {

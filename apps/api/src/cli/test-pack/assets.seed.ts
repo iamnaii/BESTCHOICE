@@ -155,6 +155,13 @@ export const assetsSeeder: DomainSeeder = {
           coaExpenseAccount: r.coaExpense,
           purchaseDate: ctx.today,
           supplierName: 'ทดสอบระบบ ผู้ขายทรัพย์สิน',
+          // นับเป็น optional ที่ schema (FixedAsset.paymentAccount String?) แต่
+          // **บังคับตอนโพสต์** — asset-purchase.template.ts:98 throw ถ้าว่าง
+          // (ใช้เป็นขา Cr เงินสด/ธนาคาร = purchaseCost + VAT − WHT).
+          // ฟอร์มจริงส่ง '11-1201' เสมอ (AssetEntryPage.tsx:59) seeder จึงเป็น
+          // เส้นทางเดียวที่สร้างเอกสารที่โพสต์ไม่ได้ — พบจริงตอนรัน DRIVE บน prod 2026-08-27.
+          // ทรัพย์สินชุดนี้เป็นฝั่ง FINANCE (ผัง 12-21xx/53-16xx ไม่มี S นำหน้า)
+          paymentAccount: '11-1201',
           status: 'DRAFT',
           createdById: ctx.refs.reviewerId,
         },

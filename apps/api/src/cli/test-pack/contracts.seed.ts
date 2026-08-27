@@ -8,7 +8,7 @@ import {
   TEST_IMEI_PREFIX,
   seedTestContracts,
 } from '../seed-test-contracts.cli';
-import { round2 } from './_helpers';
+import { round2, sweepBadDebtProvisions } from './_helpers';
 
 /** จำนวน scenario ของ seeder เดิม — ตรงกับ SCENARIOS.length ใน seed-test-contracts.cli.ts */
 const CONTRACT_COUNT = 7;
@@ -562,6 +562,11 @@ export const contractsSeeder: DomainSeeder = {
       }
     }
 
+    // ── ค่าเผื่อหนี้สงสัยจะสูญ (ECL) ที่ cron รายคืนสร้างบนสัญญาทดสอบ ──
+    // CLI เดิมไม่แตะตารางนี้ และ cron ก็ reverse เองไม่ได้หลังสัญญาถูก soft delete
+    // — เหตุผลเต็ม รวมถึงเหตุที่ต้องตั้ง status ไม่ใช่แค่ deletedAt อยู่ที่ jsdoc ของ helper
+    const provisionsSwept = await sweepBadDebtProvisions(ctx.prisma, testContractIds, dryRun);
+
     return {
       removed: {
         สัญญา: r.contracts,
@@ -570,6 +575,7 @@ export const contractsSeeder: DomainSeeder = {
         ใบเสร็จ: r.receipts,
         'รายการบัญชี (ลบถาวร)': r.journalEntries,
         'รายการบัญชีใบขาย (ลบถาวร)': jeIds.length,
+        'ค่าเผื่อหนี้สงสัยจะสูญ (ECL)': provisionsSwept,
         ใบขาย: r.sales,
         ลูกหนี้ไฟแนนซ์: r.financeReceivables,
         ค่าคอม: r.salesCommissions,

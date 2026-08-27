@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 
-import { nextNumberFrom, sumLine } from './_helpers';
+import { nextNumberFrom, sumLine, sweepBadDebtProvisions } from './_helpers';
 
 describe('nextNumberFrom', () => {
   it('เริ่มที่ 0001 เมื่อยังไม่มีเลขในวันนั้น', () => {
@@ -45,5 +45,53 @@ describe('sumLine', () => {
     expect(s.amountBeforeVat.toString()).toBe('333.33');
     expect(s.vatAmount.toString()).toBe('23.33');
     expect(s.total.toString()).toBe('356.66');
+  });
+});
+
+describe('sweepBadDebtProvisions', () => {
+  const makePrisma = () => ({
+    badDebtProvision: {
+      count: jest.fn().mockResolvedValue(3),
+      updateMany: jest.fn().mockResolvedValue({ count: 3 }),
+    },
+  });
+
+  it('ไม่มีสัญญาทดสอบ → คืน 0 โดยไม่แตะ DB เลย', async () => {
+    const prisma = makePrisma();
+    await expect(sweepBadDebtProvisions(prisma as never, [], false)).resolves.toBe(0);
+    expect(prisma.badDebtProvision.count).not.toHaveBeenCalled();
+    expect(prisma.badDebtProvision.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('dry-run นับอย่างเดียว ห้ามเขียน', async () => {
+    const prisma = makePrisma();
+    await expect(sweepBadDebtProvisions(prisma as never, ['c1', 'c2'], true)).resolves.toBe(3);
+    expect(prisma.badDebtProvision.updateMany).not.toHaveBeenCalled();
+    expect(prisma.badDebtProvision.count).toHaveBeenCalledWith({
+      where: { contractId: { in: ['c1', 'c2'] }, status: 'ACTIVE', deletedAt: null },
+    });
+  });
+
+  // เทสหลักของบล็อกนี้: งบดุลบรรทัด "1229 ค่าเผื่อหนี้สงสัยจะสูญ"
+  // (transactional-report.service.ts) aggregate ด้วย { status: 'ACTIVE' } โดย
+  // **ไม่กรอง deletedAt** ⇒ ถ้าใครแก้ให้ตั้งแค่ deletedAt ค่าเผื่อผีจะกลับมาโชว์บนงบ
+  it('โหมดจริงต้องตั้ง status = REVERSED (ไม่ใช่แค่ deletedAt) ไม่งั้นงบดุลยังนับ', async () => {
+    const prisma = makePrisma();
+    await expect(sweepBadDebtProvisions(prisma as never, ['c1'], false)).resolves.toBe(3);
+    expect(prisma.badDebtProvision.count).not.toHaveBeenCalled();
+    const arg = prisma.badDebtProvision.updateMany.mock.calls[0][0];
+    expect(arg.data.status).toBe('REVERSED');
+    expect(arg.data.deletedAt).toBeInstanceOf(Date);
+  });
+
+  it('แตะเฉพาะแถว ACTIVE ที่ยังไม่ถูกลบ ของสัญญาที่ระบุเท่านั้น', async () => {
+    const prisma = makePrisma();
+    await sweepBadDebtProvisions(prisma as never, ['c1', 'c2'], false);
+    const arg = prisma.badDebtProvision.updateMany.mock.calls[0][0];
+    expect(arg.where).toEqual({
+      contractId: { in: ['c1', 'c2'] },
+      status: 'ACTIVE',
+      deletedAt: null,
+    });
   });
 });

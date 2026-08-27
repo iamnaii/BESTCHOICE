@@ -50,3 +50,41 @@ export async function nextDocNumber(
   });
   return nextNumberFrom(prefix, last?.number ?? null, width);
 }
+
+/**
+ * กวาดค่าเผื่อหนี้สงสัยจะสูญ (ECL) ของสัญญาทดสอบ — คืนจำนวนแถวที่ถูก/จะถูกกวาด
+ *
+ * ทำไมต้องมี: cron ECL (00:30 ทุกคืน) สร้าง `BadDebtProvision` ให้สัญญาค้างชำระเอง
+ * รวมถึงสัญญาทดสอบ. CLI ล้างข้อมูลเดิมไม่แตะตารางนี้ และ **cron ล้างเองไม่ได้**
+ * หลังสัญญาถูก soft delete — `calculateProvisions` reverse เฉพาะ `contractIdsInScope`
+ * (bad-debt.service.ts:539-541) ซึ่ง scope กรอง `contract.deletedAt: null` ⇒
+ * สัญญาที่ถูกลบหลุด scope ถาวร แถวค้างเป็น ACTIVE ตลอดกาล ขณะที่ JE ของมันถูกลบ
+ * ไปแล้ว (stamp `metadata.contractId`) ⇒ รายงานกับ GL ไม่ตรงกันแบบเงียบ ๆ
+ *
+ * **ต้องตั้ง `status: 'REVERSED'` ไม่ใช่แค่ `deletedAt`** — งบดุลบรรทัด
+ * "1229 ค่าเผื่อหนี้สงสัยจะสูญ" (transactional-report.service.ts:636-638) aggregate
+ * ด้วย `{ status: 'ACTIVE' }` **โดยไม่กรอง `deletedAt`** ⇒ soft delete อย่างเดียว
+ * ยังโชว์ค่าเผื่อผีบนงบดุล. ส่วน `getProvisionSummary` (bad-debt.service.ts:644-645)
+ * กรองทั้งสองอยู่แล้ว จึงหายทั้งคู่เมื่อตั้งครบ.
+ *
+ * `contractIds` ควรเป็นชุด "ไม่กรอง deletedAt" ด้วยเหตุผลเดียวกับการกวาด JE ของใบขาย:
+ * รอบก่อนอาจ soft-delete สัญญาไปแล้วแต่ crash ก่อนกวาดค่าเผื่อ — re-run ต้องเก็บตกได้
+ */
+export async function sweepBadDebtProvisions(
+  prisma: PrismaService,
+  contractIds: string[],
+  dryRun: boolean,
+): Promise<number> {
+  if (!contractIds.length) return 0;
+  const where = {
+    contractId: { in: contractIds },
+    status: 'ACTIVE',
+    deletedAt: null,
+  };
+  if (dryRun) return prisma.badDebtProvision.count({ where });
+  const { count } = await prisma.badDebtProvision.updateMany({
+    where,
+    data: { status: 'REVERSED', deletedAt: new Date() },
+  });
+  return count;
+}

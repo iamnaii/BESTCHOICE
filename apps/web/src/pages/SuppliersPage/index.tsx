@@ -10,10 +10,12 @@ import { emptyAddress, serializeAddress, deserializeAddress } from '@/components
 import type { AddressData } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { Building2, Download, Plus, Search } from 'lucide-react';
 import SupplierTable from './components/SupplierTable';
 import type { Supplier, PaymentMethod } from './components/SupplierTable';
-import SupplierForm, { emptyForm, emptyPaymentMethod } from './components/SupplierForm';
+import SupplierForm, { emptyForm } from './components/SupplierForm';
 import type { SupplierFormData } from './components/SupplierForm';
 
 export default function SuppliersPage() {
@@ -37,11 +39,23 @@ export default function SuppliersPage() {
 
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
+  const statusFilters: { value: string; label: string }[] = [
+    { value: 'all', label: 'ทั้งหมด' },
+    { value: 'true', label: 'เปิดใช้งาน' },
+    { value: 'false', label: 'ปิดใช้งาน' },
+  ];
+
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, filterActive]);
 
-  const { data: result, isLoading, isError, error, refetch } = useQuery<{
+  const {
+    data: result,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<{
     data: Supplier[];
     total: number;
     page: number;
@@ -129,7 +143,9 @@ export default function SuppliersPage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(variables.isActive ? 'เปิดใช้งานผู้จัดจำหน่ายสำเร็จ' : 'ปิดใช้งานผู้จัดจำหน่ายสำเร็จ');
+      toast.success(
+        variables.isActive ? 'เปิดใช้งานผู้จัดจำหน่ายสำเร็จ' : 'ปิดใช้งานผู้จัดจำหน่ายสำเร็จ',
+      );
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -194,13 +210,38 @@ export default function SuppliersPage() {
     });
   };
 
+  const handleExport = async () => {
+    try {
+      await exportToExcel({
+        columns: [
+          { header: 'ชื่อผู้จัดจำหน่าย', key: 'name', width: 25 },
+          { header: 'เบอร์โทร', key: 'phone', width: 15 },
+          { header: 'LINE ID', key: 'lineId', width: 20 },
+          { header: 'ที่อยู่', key: 'address', width: 30 },
+          { header: 'สถานะ', key: 'status', width: 12 },
+        ],
+        data: suppliers.map((s) => ({
+          name: s.name,
+          phone: s.phone,
+          lineId: s.lineId || '-',
+          address: s.address || '-',
+          status: s.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน',
+        })),
+        sheetName: 'ผู้จัดจำหน่าย',
+        filename: `suppliers_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      });
+      toast.success('ส่งออก Excel สำเร็จ');
+    } catch {
+      toast.error('ไม่สามารถส่งออก Excel ได้');
+    }
+  };
+
   const handleToggleActive = (supplier: Supplier) => {
     const action = supplier.isActive ? 'ปิด' : 'เปิด';
     setConfirmDialog({
       open: true,
       message: `ต้องการ${action}ใช้งานผู้จัดจำหน่าย "${supplier.name}" ?`,
-      action: () =>
-        toggleActiveMutation.mutate({ id: supplier.id, isActive: !supplier.isActive }),
+      action: () => toggleActiveMutation.mutate({ id: supplier.id, isActive: !supplier.isActive }),
     });
   };
 
@@ -209,72 +250,24 @@ export default function SuppliersPage() {
       <PageHeader
         title="จัดการผู้จัดจำหน่าย"
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
+        icon={<Building2 className="size-5" />}
         action={
           <div className="flex gap-2">
             {suppliers.length > 0 && (
-              <button
-                onClick={async () => {
-                  try {
-                    await exportToExcel({
-                      columns: [
-                        { header: 'ชื่อผู้จัดจำหน่าย', key: 'name', width: 25 },
-                        { header: 'เบอร์โทร', key: 'phone', width: 15 },
-                        { header: 'อีเมล', key: 'lineId', width: 20 },
-                        { header: 'ที่อยู่', key: 'address', width: 30 },
-                        { header: 'สถานะ', key: 'status', width: 12 },
-                      ],
-                      data: suppliers.map((s) => ({
-                        name: s.name,
-                        phone: s.phone,
-                        lineId: s.lineId || '-',
-                        address: s.address || '-',
-                        status: s.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน',
-                      })),
-                      sheetName: 'ผู้จัดจำหน่าย',
-                      filename: `suppliers_${new Date().toISOString().slice(0, 10)}.xlsx`,
-                    });
-                    toast.success('ส่งออก Excel สำเร็จ');
-                  } catch {
-                    toast.error('ไม่สามารถส่งออก Excel ได้');
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
-              >
-                <Download className="size-4" />
+              <Button variant="outline" size="md" onClick={handleExport}>
+                <Download />
                 ส่งออก Excel
-              </button>
+              </Button>
             )}
             {isManager && (
-              <button
-                onClick={openCreate}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-              >
-                + เพิ่มผู้จัดจำหน่าย
-              </button>
+              <Button variant="primary" size="md" onClick={openCreate}>
+                <Plus />
+                เพิ่มผู้จัดจำหน่าย
+              </Button>
             )}
           </div>
         }
       />
-
-      {/* Search & Filter */}
-      <div className="flex gap-3 mb-5">
-        <input
-          type="text"
-          placeholder="ค้นหาชื่อ, ผู้ติดต่อ, ชื่อเล่น, เบอร์โทร, Tax ID..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-        />
-        <select
-          value={filterActive}
-          onChange={(e) => setFilterActive(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-        >
-          <option value="all">ทั้งหมด</option>
-          <option value="true">เปิดใช้งาน</option>
-          <option value="false">ปิดใช้งาน</option>
-        </select>
-      </div>
 
       <SupplierTable
         result={result}
@@ -287,6 +280,49 @@ export default function SuppliersPage() {
         onEdit={openEdit}
         onToggleActive={handleToggleActive}
         onPageChange={setPage}
+        pendingToggleId={
+          toggleActiveMutation.isPending ? (toggleActiveMutation.variables?.id ?? null) : null
+        }
+        toolbar={
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 sm:max-w-md">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                placeholder="ค้นหาชื่อ, ผู้ติดต่อ, ชื่อเล่น, เบอร์โทร, Tax ID..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="ค้นหาผู้จัดจำหน่าย"
+                className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
+              />
+            </div>
+            <div
+              className="inline-flex w-fit shrink-0 items-center rounded-lg bg-muted p-1"
+              role="group"
+              aria-label="กรองตามสถานะการใช้งาน"
+            >
+              {statusFilters.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setFilterActive(f.value)}
+                  aria-pressed={filterActive === f.value}
+                  className={cn(
+                    'cursor-pointer whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors',
+                    filterActive === f.value
+                      ? 'bg-background font-medium text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        }
       />
 
       {isModalOpen && (

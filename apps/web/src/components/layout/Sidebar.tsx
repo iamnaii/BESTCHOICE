@@ -159,9 +159,31 @@ function useZoneValidator() {
 }
 
 // path ที่มี hash (เช่น '/settings/accounting#vat') ต้อง match ทั้ง pathname + hash
-function hashAwareActive(path: string, pathname: string, hash: string): boolean {
+// ขอบท้ายต้องเป็น '/' ไม่งั้น '/products' จะกินหน้า '/products-foo' ไปด้วย
+function pathMatches(path: string, pathname: string, hash: string): boolean {
   if (path.includes('#')) return path === pathname + hash;
   return path === pathname || (path.length > 1 && pathname.startsWith(path + '/'));
+}
+
+/**
+ * เมนูที่เจาะจงที่สุดชนะ — เมนูซ้อน path กัน ('/purchase-orders' กับ '/purchase-orders/qc')
+ * เข้าเงื่อนไข match พร้อมกันทั้งคู่; ถ้าไฮไลต์ทุกตัวที่ match ผู้ใช้จะเห็นแถบเขียวสองอัน
+ * แล้วบอกไม่ได้ว่าอยู่หน้าไหน จึงเลือกเฉพาะตัวที่ path ยาวที่สุดเพียงตัวเดียว
+ */
+export function resolveActivePath(paths: string[], pathname: string, hash: string): string | null {
+  let best: string | null = null;
+  for (const p of paths) {
+    if (!pathMatches(p, pathname, hash)) continue;
+    if (best === null || p.length > best.length) best = p;
+  }
+  return best;
+}
+
+/** ทุก path ที่เมนูชุดนี้เสนอ (รวมเมนูย่อย) — ใช้ตัดสินว่าใครเจาะจงที่สุด */
+function collectMenuPaths(sections: MenuSection[]): string[] {
+  return sections.flatMap((s) =>
+    s.items.flatMap((item) => [item.path, ...(item.children ?? []).map((c) => c.path)]),
+  );
 }
 
 /* ─── Collapsed Icon Rail (70px wide) ────────────── */
@@ -175,20 +197,23 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
 
   const sections = useRoleMenu(role, currentZone);
 
-  const isSectionActive = useCallback(
-    (section: MenuSection): boolean =>
-      section.items.some(
-        (item) =>
-          hashAwareActive(item.path, pathname, hash) ||
-          (item.children ?? []).some((child) => hashAwareActive(child.path, pathname, hash)),
-      ),
-    [pathname, hash],
+  const activePath = useMemo(
+    () => resolveActivePath(collectMenuPaths(sections), pathname, hash),
+    [sections, pathname, hash],
   );
 
-  const isItemActive = useCallback(
-    (path: string): boolean => hashAwareActive(path, pathname, hash),
-    [pathname, hash],
+  const isSectionActive = useCallback(
+    (section: MenuSection): boolean =>
+      activePath !== null &&
+      section.items.some(
+        (item) =>
+          item.path === activePath ||
+          (item.children ?? []).some((child) => child.path === activePath),
+      ),
+    [activePath],
   );
+
+  const isItemActive = useCallback((path: string): boolean => path === activePath, [activePath]);
 
   const roleInfo = roleBadgeMap[role];
 
@@ -449,15 +474,14 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
   const { inSettings, enter: enterSettings } = useSettingsZone();
 
-  const matchPath = useCallback(
-    (path: string): boolean =>
-      path.includes('#')
-        ? path === pathname + hash
-        : path === pathname || (path.length > 1 && pathname.startsWith(path)),
-    [pathname, hash],
-  );
-
   const sections = useRoleMenu(role, currentZone);
+
+  // เจาะจงที่สุดชนะ — กันแถบไฮไลต์ขึ้นสองอันเวลาเมนูซ้อน path กัน
+  const activePath = useMemo(
+    () => resolveActivePath(collectMenuPaths(sections), pathname, hash),
+    [sections, pathname, hash],
+  );
+  const matchPath = useCallback((path: string): boolean => path === activePath, [activePath]);
   const roleInfo = roleBadgeMap[role];
 
   return (
@@ -614,15 +638,14 @@ function MobileSidebarContent() {
   const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
   const { inSettings, enter: enterSettings } = useSettingsZone();
 
-  const matchPath = useCallback(
-    (path: string): boolean =>
-      path.includes('#')
-        ? path === pathname + hash
-        : path === pathname || (path.length > 1 && pathname.startsWith(path)),
-    [pathname, hash],
-  );
-
   const sections = useRoleMenu(role, currentZone);
+
+  // เจาะจงที่สุดชนะ — กันแถบไฮไลต์ขึ้นสองอันเวลาเมนูซ้อน path กัน
+  const activePath = useMemo(
+    () => resolveActivePath(collectMenuPaths(sections), pathname, hash),
+    [sections, pathname, hash],
+  );
+  const matchPath = useCallback((path: string): boolean => path === activePath, [activePath]);
   const roleInfo = roleBadgeMap[role];
 
   return (

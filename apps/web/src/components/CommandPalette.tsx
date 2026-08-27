@@ -80,10 +80,34 @@ const pages: NavEntry[] = [
   { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins, keywords: 'dividend ปันผล ภงด2 pnd2 wht', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
 ];
 
-const quickActions: NavEntry[] = [
+/**
+ * รายการที่ **ไม่ใส่ `roles`** จะโชว์ให้ทุกบทบาท (`filterByRole` ปล่อยผ่าน) ⇒ ปลายทางต้อง
+ * เข้าได้ทุกบทบาทจริง ๆ ไม่งั้นกดแล้วโดน MainLayout เด้งกลับ Dashboard พร้อม toast
+ * "ไม่มีสิทธิ์". `/contracts/create` กับ `/payments` เข้าได้ทุกบทบาทจึงเว้นว่างได้
+ * ปักกติกานี้ไว้ที่ __tests__/command-palette-reachability.test.ts
+ */
+export const quickActions: NavEntry[] = [
   { label: 'สร้างสัญญาใหม่', path: '/contracts/create', icon: Plus, keywords: 'new contract สร้าง สัญญา' },
-  { label: 'เพิ่มลูกค้าใหม่', path: '/customers?action=new', icon: Plus, keywords: 'new customer เพิ่ม ลูกค้า' },
-  { label: 'ขายสินค้า (POS)', path: '/pos', icon: ShoppingCart, keywords: 'sell ขาย pos' },
+  // ปลายทางคือ wizard รับลูกค้าใหม่ (เช็คเครดิต → กรอกข้อมูลเต็ม) — ที่เดียวกับปุ่ม
+  // "+ เพิ่มลูกค้าใหม่" บนหน้า /customers. เดิมชี้ `/customers?action=new` ซึ่ง
+  // CustomersPage ไม่เคยอ่าน (มันอ่าน `?new=1`) ⇒ กดแล้วได้หน้ารายชื่อเปล่า ๆ ไม่มีอะไรเปิด
+  // roles = @Roles ของ POST /customers (ผจก.การเงิน/ฝ่ายบัญชี สร้างลูกค้าไม่ได้)
+  {
+    label: 'เพิ่มลูกค้าใหม่',
+    path: '/customer-intake',
+    icon: Plus,
+    keywords: 'new customer เพิ่ม ลูกค้า เครดิต',
+    roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'],
+  },
+  // pre-existing: ไม่เคยมี roles มาก่อน ⇒ ผจก.การเงิน/ฝ่ายบัญชี กดแล้วเด้งมาตลอด
+  // (/pos อยู่ใน sidebar ของ OWNER/BM/SALES เท่านั้น)
+  {
+    label: 'ขายสินค้า (POS)',
+    path: '/pos',
+    icon: ShoppingCart,
+    keywords: 'sell ขาย pos',
+    roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'],
+  },
   { label: 'บันทึกชำระเงิน', path: '/payments', icon: DollarSign, keywords: 'record payment บันทึก ชำระ' },
 ];
 

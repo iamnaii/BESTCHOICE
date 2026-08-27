@@ -159,7 +159,8 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
+        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
+        { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
       ],
     },
@@ -225,7 +226,8 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
+        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
+        { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
@@ -239,13 +241,16 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       label: 'คลัง & จัดซื้อ',
       icon: Warehouse,
       zone: 'shop',
+      // ลำดับเดียวกับ owner-inventory: 'ภาพรวมคลัง' บนสุด แล้วค่อยไล่ตาม flow
+      // (เดิมเรียงกลับหัว คือเอาปลายทาง คลัง/สติกเกอร์ ขึ้นก่อนต้นทาง PO/ผู้จัดจำหน่าย)
+      // ผจก.สาขาไม่มี 'รับซื้อมือสอง' ตรงนี้ — อยู่ในหมวด "ขาย" ของ role นี้
       items: [
         { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
+        { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
+        { label: 'รอถ่ายรูป/ตรวจสภาพ', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
-        { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
-        { label: 'ศูนย์ตรวจ QC', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
-        { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
       ],
     },
     {
@@ -314,6 +319,18 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        // ผจก.การเงินเข้า /inbox ได้ (App.tsx roles) และปุ่ม "สร้างลูกค้าจากแชทนี้" พาไป
+        // /customers — ถ้าไม่มีรายการนี้ `resolveZoneForPath` คืน null แล้ว MainLayout
+        // เด้งกลับ Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่ API เปิดให้ FM อยู่แล้ว
+        // (customers.controller.ts @Roles มี FINANCE_MANAGER). ปักไว้ที่
+        // __tests__/cta-reachability.test.ts
+        //
+        // **ไม่ใส่ `/customer-intake` ให้ FM โดยตั้งใจ** — `POST /customers` และ
+        // `POST /customers/pre-check/:id/complete` ไม่รับ FM ⇒ ให้เข้า wizard ไปก็ตัน
+        // ที่ปุ่มบันทึก. ปุ่ม "+ เพิ่มลูกค้าใหม่" บนหน้าทะเบียนถูกซ่อนจาก FM แทน
+        // (CustomersPage `canCreateCustomer`) ⇒ FM อ่านทะเบียนได้ ไม่มีปุ่มที่กดแล้วเด้ง
+        { label: 'ลูกค้า', path: '/customers', icon: Users },
+        { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
       ],
     },
     {
@@ -513,12 +530,17 @@ const OWNER_CONFIG: RoleMenuConfig = {
       label: 'คลัง & จัดซื้อ',
       icon: Warehouse,
       zone: 'shop',
+      // 'ภาพรวมคลัง' อยู่บนสุดเสมอ (คำสั่งเจ้าของ) — เป็นหน้าที่เปิดบ่อยที่สุดของหมวดนี้
+      // ที่เหลือเรียงตาม flow ของจริง: ตั้งคู่ค้า → ของเข้า 2 ทาง → ด่านก่อนขึ้นขาย → ของในคลัง
+      // 'รอถ่ายรูป/ตรวจสภาพ' ต้องอยู่ "หลัง" ทั้ง PO และรับซื้อมือสอง เพราะเป็นปลายทาง
+      // ร่วมของทั้งสองทาง (po-receiving.service.ts:185 และ trade-in-lifecycle.service.ts:432
+      // ต่างก็เขียนสถานะ PHOTO_PENDING) — อย่าย้ายไปแทรกกลาง
       items: [
+        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
-        { label: 'ศูนย์ตรวจ QC', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
-        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        { label: 'รอถ่ายรูป/ตรวจสภาพ', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
       ],
@@ -532,7 +554,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         // CustomersPage's "+ เพิ่มลูกค้าใหม่" navigates here — without this entry the
         // MainLayout zone guard treats it as another role's page and bounces OWNER.
-        { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
+        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
+        { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },

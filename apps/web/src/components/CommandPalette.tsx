@@ -88,13 +88,12 @@ const pages: NavEntry[] = [
  */
 export const quickActions: NavEntry[] = [
   { label: 'สร้างสัญญาใหม่', path: '/contracts/create', icon: Plus, keywords: 'new contract สร้าง สัญญา' },
-  // ปลายทางคือ wizard รับลูกค้าใหม่ (เช็คเครดิต → กรอกข้อมูลเต็ม) — ที่เดียวกับปุ่ม
-  // "+ เพิ่มลูกค้าใหม่" บนหน้า /customers. เดิมชี้ `/customers?action=new` ซึ่ง
-  // CustomersPage ไม่เคยอ่าน (มันอ่าน `?new=1`) ⇒ กดแล้วได้หน้ารายชื่อเปล่า ๆ ไม่มีอะไรเปิด
+  // `?new=1` คือพารามิเตอร์เดียวที่ CustomersPage อ่านเพื่อเปิดโมดัลเพิ่มลูกค้า
+  // (อย่าเปลี่ยนเป็น `?action=new` — เคยผิดมาแล้ว กดแล้วได้หน้ารายชื่อเปล่า ๆ)
   // roles = @Roles ของ POST /customers (ผจก.การเงิน/ฝ่ายบัญชี สร้างลูกค้าไม่ได้)
   {
     label: 'เพิ่มลูกค้าใหม่',
-    path: '/customer-intake',
+    path: '/customers?new=1',
     icon: Plus,
     keywords: 'new customer เพิ่ม ลูกค้า เครดิต',
     roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'],

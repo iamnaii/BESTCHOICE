@@ -741,7 +741,7 @@ export default function CustomersPage() {
                 ⇒ ถ้าโชว์ปุ่มไว้ กดแล้วจะโดน MainLayout เด้งกลับ Dashboard
                 ปักไว้ที่ config/__tests__/cta-reachability.test.ts */}
             {canCreateCustomer && (
-              <button onClick={() => navigate('/customer-intake')} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
+              <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
                 + เพิ่มลูกค้าใหม่
               </button>
             )}

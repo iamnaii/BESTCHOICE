@@ -38,7 +38,6 @@ import {
   Send,
   LayoutGrid,
   CheckSquare,
-  UserSearch,
   ShoppingBag,
   ClipboardCheck,
   PiggyBank,
@@ -159,7 +158,6 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
       ],
@@ -174,7 +172,6 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
-        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
       ],
     },
     {
@@ -226,14 +223,12 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
-        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
       ],
     },
     {
@@ -325,10 +320,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // (customers.controller.ts @Roles มี FINANCE_MANAGER). ปักไว้ที่
         // __tests__/cta-reachability.test.ts
         //
-        // **ไม่ใส่ `/customer-intake` ให้ FM โดยตั้งใจ** — `POST /customers` และ
-        // `POST /customers/pre-check/:id/complete` ไม่รับ FM ⇒ ให้เข้า wizard ไปก็ตัน
-        // ที่ปุ่มบันทึก. ปุ่ม "+ เพิ่มลูกค้าใหม่" บนหน้าทะเบียนถูกซ่อนจาก FM แทน
-        // (CustomersPage `canCreateCustomer`) ⇒ FM อ่านทะเบียนได้ ไม่มีปุ่มที่กดแล้วเด้ง
+        // ปุ่ม "+ เพิ่มลูกค้าใหม่" บนหน้าทะเบียนถูกซ่อนจาก FM (CustomersPage
+        // `canCreateCustomer`) เพราะ `POST /customers` ไม่รับ FM ⇒ FM อ่านทะเบียนได้
+        // แต่ไม่มีปุ่มที่กดแล้วเด้ง
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
       ],
@@ -552,9 +546,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        // CustomersPage's "+ เพิ่มลูกค้าใหม่" navigates here — without this entry the
-        // MainLayout zone guard treats it as another role's page and bounces OWNER.
-        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
@@ -568,11 +559,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
-        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
         { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
-        // คำสั่งเจ้าของ 2026-08-08: ยึดคืนต้องเห็นจาก zone หน้าร้านด้วย (duplicate กับ
-        // owner-fin-revenue โดยตั้งใจ — OWNER เห็นได้จากทั้งสอง zone เหมือน overdue/mdm)
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        // คำสั่งเจ้าของ 2026-08-29: ยึดคืนอยู่ zone ไฟแนนซ์ที่เดียว (owner-fin-revenue)
+        // — กลับคำสั่งเดิม 2026-08-08 ที่ให้ duplicate ไว้ทั้งสอง zone.
+        // OWNER ยังเข้าถึงได้ปกติ: resolveZoneForPath เจอ /repossessions ใน zone fin
+        // แล้ว MainLayout สลับ sidebar ให้เอง (ไม่เด้ง — เด้งเฉพาะตอนไม่เจอเลยสัก zone)
       ],
     },
     /* ── FIN zone restructure (per owner CSV) ───────────────────

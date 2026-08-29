@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Search, Wrench, ShieldCheck } from 'lucide-react';
+import { Plus, Search, Wrench } from 'lucide-react';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { formatDateShort, formatNumber } from '@/utils/formatters';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { RepairStatusBadge, type RepairStatus } from './insurance/components/RepairStatusBadge';
+import WarrantyCheckTab from './insurance/WarrantyCheckTab';
 
 interface RepairTicket {
   id: string;
@@ -235,28 +237,54 @@ function InsuranceListContent() {
   );
 }
 
+/** แท็บผูกกับ `?tab=` เพื่อให้ลิงก์ตรงเข้าแท็บได้ (และรองรับ redirect จาก
+ *  /insurance/warranty-check เดิม). ค่าที่ไม่รู้จักตกกลับมาที่ใบซ่อม */
+const TABS = ['tickets', 'warranty'] as const;
+type InsuranceTab = (typeof TABS)[number];
+
 export default function InsurancePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const raw = searchParams.get('tab');
+  const tab: InsuranceTab = TABS.includes(raw as InsuranceTab) ? (raw as InsuranceTab) : 'tickets';
 
   return (
     <div className="space-y-4 p-4 md:p-6">
       <PageHeader
         title="รับซ่อม/รับประกัน"
         action={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate('/insurance/warranty-check')}>
-              <ShieldCheck className="mr-2 h-4 w-4" />
-              เช็คประกัน
-            </Button>
+          // เฉพาะแท็บใบซ่อมเท่านั้นที่ "รับเครื่องเข้าซ่อม" เป็น action ถัดไปตามธรรมชาติ —
+          // ในแท็บเช็คประกัน ปุ่มส่งซ่อมอยู่ที่ผลค้นหาแต่ละเครื่อง (พร้อม context ของเครื่องนั้น)
+          tab === 'tickets' ? (
             <Button onClick={() => navigate('/insurance/new')}>
               <Plus className="mr-2 h-4 w-4" />
               รับเครื่องเข้าซ่อม
             </Button>
-          </div>
+          ) : undefined
         }
       />
 
-      <InsuranceListContent />
+      <Tabs
+        value={tab}
+        onValueChange={(v) => {
+          const next = new URLSearchParams(searchParams);
+          if (v === 'tickets') next.delete('tab');
+          else next.set('tab', v);
+          setSearchParams(next, { replace: true });
+        }}
+      >
+        <TabsList variant="line" size="lg" className="mb-4">
+          <TabsTrigger value="tickets">ใบซ่อม</TabsTrigger>
+          <TabsTrigger value="warranty">เช็คประกัน</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="tickets">
+          <InsuranceListContent />
+        </TabsContent>
+        <TabsContent value="warranty">
+          <WarrantyCheckTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

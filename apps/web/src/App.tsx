@@ -86,7 +86,6 @@ const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
 const CreateInsuranceWizardPage = lazy(() => import('@/pages/insurance/CreateInsuranceWizardPage'));
-const WarrantyCheckPage = lazy(() => import('@/pages/insurance/WarrantyCheckPage'));
 const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
 const ExchangeRequestForm = lazy(() => import('@/pages/insurance/ExchangeRequestForm'));
 const ExchangeRequestsPage = lazy(() => import('@/pages/insurance/ExchangeRequestsPage'));
@@ -227,7 +226,6 @@ const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 // LineGreetingPage moved to settings-registry (P2b comms migration)
-const CustomerIntakePage = lazy(() => import('@/pages/CustomerIntakePage'));
 const OnlineOrdersPage = lazy(() => import('@/pages/OnlineOrdersPage'));
 const ProductHoldsPage = lazy(() => import('@/pages/ProductHoldsPage'));
 const InstallmentApplicationsPage = lazy(() => import('@/pages/InstallmentApplicationsPage'));
@@ -535,7 +533,9 @@ function App() {
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/contacts" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ContactsPage /></ProtectedRoute>} />
           <Route path="/contacts/:id" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ContactDetailPage /></ProtectedRoute>} />
-          <Route path="/customer-intake" element={<CustomerIntakePage />} />
+          {/* วิซาร์ดรับลูกค้าถูกถอดออก — ทับซ้อนกับโมดัล "เพิ่มลูกค้าใหม่" ใน /customers
+              + การตรวจเครดิตที่ /credit-checks. คง redirect ไว้กันลิงก์เก่าตาย */}
+          <Route path="/customer-intake" element={<Navigate to="/customers?new=1" replace />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route
             path="/contracts/create"
@@ -731,16 +731,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/insurance/warranty-check"
-            element={
-              <ProtectedRoute
-                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
-              >
-                <WarrantyCheckPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* หน้าเช็คประกันถูกยุบเป็นแท็บใน /insurance — คง path เดิมไว้กันลิงก์เก่าตาย */}
+          <Route path="/insurance/warranty-check" element={<Navigate to="/insurance?tab=warranty" replace />} />
           <Route
             path="/insurance/:id"
             element={

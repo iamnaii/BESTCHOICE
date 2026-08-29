@@ -44,16 +44,10 @@ const RENDERED_CTAS: Array<{ where: string; label: string; path: string; roles: 
     roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'],
   },
   {
-    where: 'CustomersPage.tsx — gate ด้วย `canCreateCustomer`',
+    where: 'CustomersPage.tsx — gate ด้วย `canCreateCustomer` (เปิดโมดัลในหน้าเดียวกัน)',
     label: '+ เพิ่มลูกค้าใหม่',
-    path: '/customer-intake',
-    // = @Roles ของ POST /customers และ POST /customers/pre-check/:id/complete
-    roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'],
-  },
-  {
-    where: 'CustomerIntakePage/components/FullIntakeStep.tsx — แถบลูกค้าเดิม',
-    label: 'ทำสัญญาต่อ',
-    path: '/contracts/create',
+    path: '/customers',
+    // = @Roles ของ POST /customers
     roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'],
   },
 ];
@@ -77,12 +71,13 @@ describe('ปุ่มในหน้าจอต้องพาไปหน้�
     },
   );
 
-  it('บทบาทที่สร้างลูกค้าไม่ได้ ต้องไม่มี /customer-intake ในเมนู', () => {
-    // ถ้ามีในเมนู = มีทางเข้า wizard ที่ตันที่ปุ่มบันทึก (API ปฏิเสธ)
-    for (const role of ['FINANCE_MANAGER', 'ACCOUNTANT']) {
+  // วิซาร์ด /customer-intake ถูกถอดออก 2026-08-29 (ทับซ้อนกับโมดัลใน /customers
+  // + การตรวจเครดิตที่ /credit-checks) เหลือไว้แค่ redirect — ห้ามกลับมาอยู่ในเมนู
+  it('ไม่มีบทบาทไหนมี /customer-intake ในเมนูแล้ว', () => {
+    for (const role of ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']) {
       expect(
         resolveZoneForPath(role, '/customer-intake'),
-        `${role} ไม่ควรมี /customer-intake ในเมนู — API ไม่ให้สร้างลูกค้า`,
+        `${role} ยังมี /customer-intake ในเมนู — วิซาร์ดถูกถอดออกแล้ว`,
       ).toBeNull();
     }
   });

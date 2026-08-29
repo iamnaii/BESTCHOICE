@@ -8,7 +8,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RefreshCw, Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { RefreshCw, Plus, Search, X } from 'lucide-react';
 import QuickBuyModal from '@/components/trade-in/QuickBuyModal';
 import TradeInTable from './components/TradeInTable';
 import AppraisalModal from './components/AppraisalModal';
@@ -28,6 +29,81 @@ import { EMPTY_ACCEPT_FORM } from './types';
 
 type SourceFilter = 'ALL' | TradeInSubmissionSource;
 type FlowFilter = 'ALL' | TradeInFlow;
+
+/**
+ * Segmented control — one visual container with an inset active pill, instead of
+ * loose pills that read as N independent buttons.
+ * Radio semantics (not tabs): each group is "pick one of N", and the panels these
+ * drive aren't wired as tabpanels.
+ */
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  size = 'md',
+  label,
+  ariaLabel,
+}: {
+  value: T;
+  options: readonly (readonly [T, string])[];
+  onChange: (value: T) => void;
+  size?: 'sm' | 'md';
+  /** Visible caption to the left of the group. */
+  label?: string;
+  /** Accessible name when there is no visible caption. */
+  ariaLabel?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {label && <span className="text-xs leading-snug text-muted-foreground">{label}</span>}
+      <div
+        role="radiogroup"
+        aria-label={ariaLabel ?? label}
+        className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5"
+      >
+        {options.map(([key, text]) => {
+          const active = value === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(key)}
+              className={cn(
+                'rounded-md leading-snug whitespace-nowrap transition-colors',
+                size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3.5 py-1.5 text-sm',
+                active
+                  ? 'bg-card font-medium text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {text}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const TAB_OPTIONS = [
+  ['list', 'รายการรับซื้อ'],
+  ['valuations', 'ตารางราคากลาง'],
+  ['questions', 'แบบประเมินออนไลน์'],
+] as const;
+
+const SOURCE_OPTIONS = [
+  ['ALL', 'ทั้งหมด'],
+  ['ONLINE', 'ออนไลน์'],
+  ['OFFLINE', 'หน้าร้าน'],
+] as const;
+
+const FLOW_OPTIONS = [
+  ['ALL', 'ทั้งหมด'],
+  ['EXCHANGE', 'เทิร์นเครื่อง'],
+  ['BUYBACK', 'รับซื้อ'],
+] as const;
 
 export default function TradeInPage() {
   useDocumentTitle('รับซื้อเครื่อง');
@@ -163,6 +239,16 @@ export default function TradeInPage() {
     }
   }
 
+  const hasActiveFilters =
+    sourceFilter !== 'ALL' || flowFilter !== 'ALL' || searchInput.trim() !== '';
+
+  function clearFilters() {
+    setSourceFilter('ALL');
+    setFlowFilter('ALL');
+    setSearchInput('');
+    setPage(1);
+  }
+
   function handleCloseAppraise() {
     setAppraiseModal(null);
     setAppraiseValue('');
@@ -203,26 +289,13 @@ export default function TradeInPage() {
       />
 
       {canManage && (
-        <div className="flex items-center gap-1.5 mb-4">
-          {(
-            [
-              ['list', 'รายการรับซื้อ'],
-              ['valuations', 'ตารางราคากลาง'],
-              ['questions', 'แบบประเมินออนไลน์'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`px-3 py-1.5 rounded-md text-sm leading-snug transition-colors ${
-                tab === key
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-accent'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="mb-4">
+          <Segmented
+            value={tab}
+            options={TAB_OPTIONS}
+            onChange={setTab}
+            ariaLabel="มุมมองหน้ารับซื้อเครื่อง"
+          />
         </div>
       )}
       {tab === 'valuations' && <ValuationsTab />}
@@ -230,54 +303,49 @@ export default function TradeInPage() {
 
       {tab === 'list' && (
         <>
-          <div className="flex flex-wrap items-center gap-4 mb-4">
-            <Input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="ค้นหา ชื่อ/เบอร์ผู้ขาย, IMEI, รุ่น, เลขใบสำคัญ..."
-              className="h-8 w-full sm:w-72"
-            />
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground leading-snug">ที่มา:</span>
-              {(['ALL', 'ONLINE', 'OFFLINE'] as const).map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => {
-                    setSourceFilter(opt);
-                    setPage(1);
-                  }}
-                  className={`px-2.5 py-1 rounded-md text-xs leading-snug transition-colors ${
-                    sourceFilter === opt
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:bg-accent'
-                  }`}
-                >
-                  {opt === 'ALL' ? 'ทั้งหมด' : opt === 'ONLINE' ? 'ออนไลน์' : 'หน้าร้าน'}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground leading-snug">ประเภท:</span>
-              {(['ALL', 'EXCHANGE', 'BUYBACK'] as const).map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => {
-                    setFlowFilter(opt);
-                    setPage(1);
-                  }}
-                  className={`px-2.5 py-1 rounded-md text-xs leading-snug transition-colors ${
-                    flowFilter === opt
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:bg-accent'
-                  }`}
-                >
-                  {opt === 'ALL' ? 'ทั้งหมด' : opt === 'EXCHANGE' ? 'เทิร์นเครื่อง' : 'รับซื้อ'}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <TradeInTable
+            /* Filters live in the table's own toolbar so the list reads as one
+               surface instead of three stacked bars. */
+            filters={
+              <>
+                <div className="relative w-full sm:w-72">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    placeholder="ค้นหา ชื่อ/เบอร์ผู้ขาย, IMEI, รุ่น, เลขใบสำคัญ..."
+                    className="h-8 w-full pl-9"
+                    aria-label="ค้นหารายการรับซื้อ"
+                  />
+                </div>
+                <Segmented
+                  label="ที่มา"
+                  size="sm"
+                  value={sourceFilter}
+                  options={SOURCE_OPTIONS}
+                  onChange={(v) => {
+                    setSourceFilter(v);
+                    setPage(1);
+                  }}
+                />
+                <Segmented
+                  label="ประเภท"
+                  size="sm"
+                  value={flowFilter}
+                  options={FLOW_OPTIONS}
+                  onChange={(v) => {
+                    setFlowFilter(v);
+                    setPage(1);
+                  }}
+                />
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters}>
+                    <X className="size-3.5" />
+                    ล้างตัวกรอง
+                  </Button>
+                )}
+              </>
+            }
             data={data?.data}
             total={data?.total}
             page={page}

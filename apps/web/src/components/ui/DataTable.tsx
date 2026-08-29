@@ -41,6 +41,24 @@ export interface Column<T> {
   sortable?: boolean;
   hideable?: boolean;
   render?: (item: T, col: Column<T>, index: number) => ReactNode;
+  /**
+   * Fixed column width (any CSS length, e.g. `'120px'`).
+   * Setting it on ANY column switches the table to `table-fixed` + `<colgroup>`,
+   * so widths become authoritative instead of "whatever the content wants".
+   * Columns left without a width share the remaining space equally.
+   */
+  width?: string;
+  /** Header + cell text alignment. Default `'left'`. */
+  align?: 'left' | 'right' | 'center';
+  /** Extra classes on the `<td>`. */
+  className?: string;
+  /** Extra classes on the `<th>`. */
+  headerClassName?: string;
+  /**
+   * Pin this column to the right edge while the table scrolls horizontally.
+   * Use for the action column so it never scrolls out of reach.
+   */
+  stickyRight?: boolean;
 }
 
 interface PaginationInfo {
@@ -77,15 +95,40 @@ interface DataTableProps<T> {
   columnToggle?: boolean;
   /** Toolbar content (rendered between search and column toggle) */
   toolbar?: ReactNode;
-  /** Density: compact (py-2), default (py-3), spacious (py-4) */
+  /** Cell padding. `compact` also tightens horizontal padding to buy column width. */
   density?: 'compact' | 'default' | 'spacious';
+  /**
+   * Minimum table width before the horizontal scroller kicks in.
+   * Raise it for wide tables so fixed columns aren't crushed on small screens.
+   */
+  minWidth?: string;
 }
 
 const densityPadding = {
-  compact: 'py-2',
-  default: 'py-3',
-  spacious: 'py-4',
+  compact: 'px-3 py-2.5',
+  default: 'px-5 py-3',
+  spacious: 'px-6 py-4',
 };
+
+// Compact tables carry many columns, so the body drops to 13px — still above the
+// 12px readability floor, and it buys real width back for long values.
+const densityText = {
+  compact: 'text-[13px]',
+  default: 'text-sm',
+  spacious: 'text-sm',
+};
+
+const alignClass = {
+  left: 'text-left',
+  right: 'text-right',
+  center: 'text-center',
+} as const;
+
+const alignFlex = {
+  left: 'justify-start',
+  right: 'justify-end',
+  center: 'justify-center',
+} as const;
 
 function DataTable<T extends { id: string }>({
   columns,
@@ -104,6 +147,7 @@ function DataTable<T extends { id: string }>({
   columnToggle = false,
   toolbar,
   density = 'default',
+  minWidth = '640px',
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -196,31 +240,22 @@ function DataTable<T extends { id: string }>({
   const clearSelection = useCallback(() => setRowSelection({}), []);
 
   const cellPadding = densityPadding[density];
+  const cellText = densityText[density];
 
-  if (isLoading) {
-    return (
-      <div className="bg-card rounded-xl border border-border/60 overflow-hidden shadow-card" role="status" aria-label="กำลังโหลดข้อมูล">
-        <div className="p-1">
-          <div className="space-y-0">
-            <div className="flex gap-4 px-5 py-3.5 bg-muted/50">
-              {columns.map((col) => (
-                <Skeleton key={col.key} className="h-3 flex-1 rounded" />
-              ))}
-            </div>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex gap-4 px-5 py-3.5 border-t border-border">
-                {columns.map((col) => (
-                  <Skeleton key={col.key} className="h-4 flex-1 rounded" />
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Column layout lookup — tanstack only knows ids, we need the source config back.
+  const columnByKey = useMemo(
+    () => new Map(columns.map((c) => [c.key, c])),
+    [columns],
+  );
+  // Any explicit width opts the whole table into fixed layout, otherwise browsers
+  // treat <col width> as a hint and long cells still blow the column out.
+  const isFixedLayout = useMemo(() => columns.some((c) => c.width), [columns]);
+  // A pinned column needs an opaque surface to scroll under, so the translucent
+  // header/hover tints get swapped for solid ones on these tables only.
+  const hasStickyColumn = useMemo(() => columns.some((c) => c.stickyRight), [columns]);
 
   const rows = table.getRowModel().rows;
+  const visibleColumnCount = table.getVisibleLeafColumns().length;
   const hasToolbar = searchable || columnToggle || toolbar || (selectable && selectedRows.length > 0);
 
   return (
@@ -318,29 +353,57 @@ function DataTable<T extends { id: string }>({
       )}
 
       <div className="overflow-x-auto" data-testid="data-table">
-        <table className="w-full min-w-[640px]">
+        <table className={cn('w-full', isFixedLayout && 'table-fixed')} style={{ minWidth }}>
+          {isFixedLayout && (
+            <colgroup>
+              {table.getVisibleLeafColumns().map((leaf) => (
+                <col
+                  key={leaf.id}
+                  style={{
+                    width:
+                      leaf.id === '_select' ? '40px' : columnByKey.get(leaf.id)?.width,
+                  }}
+                />
+              ))}
+            </colgroup>
+          )}
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="bg-muted/40 border-b border-border/60">
+              <tr
+                key={headerGroup.id}
+                className={cn(
+                  'border-b border-border/60',
+                  hasStickyColumn ? 'bg-muted' : 'bg-muted/40',
+                )}
+              >
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sorted = header.column.getIsSorted();
                   const isSelect = header.id === '_select';
+                  const src = columnByKey.get(header.id);
+                  const align = src?.align ?? 'left';
                   return (
                     <th
                       key={header.id}
                       className={cn(
-                        'px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap',
+                        cellPadding,
+                        'text-xs font-semibold text-muted-foreground uppercase tracking-wider',
+                        alignClass[align],
                         canSort && 'cursor-pointer select-none hover:text-foreground transition-colors',
                         isSelect && 'w-10 px-3',
+                        src?.stickyRight &&
+                          'sticky right-0 z-20 bg-muted border-l border-border/60 shadow-[-6px_0_10px_-6px_rgb(0_0_0/0.10)]',
+                        src?.headerClassName,
                       )}
                       onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                     >
                       {header.isPlaceholder ? null : (
-                        <div className="flex items-center gap-1.5">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
+                        <div className={cn('flex items-center gap-1.5 min-w-0', alignFlex[align])}>
+                          <span className="min-w-0 truncate">
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </span>
                           {canSort && (
-                            <span className="inline-flex">
+                            <span className="inline-flex shrink-0">
                               {sorted === 'asc' ? (
                                 <ArrowUp className="h-3.5 w-3.5 text-primary" />
                               ) : sorted === 'desc' ? (
@@ -358,8 +421,20 @@ function DataTable<T extends { id: string }>({
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-border/60">
-            {rows.length === 0 ? (
+          <tbody className="divide-y divide-border/60" aria-busy={isLoading || undefined}>
+            {isLoading ? (
+              // Skeleton lives inside the real table so the toolbar, headers and
+              // column widths stay put instead of the whole card blinking away.
+              [0, 1, 2, 3, 4].map((i) => (
+                <tr key={`skeleton-${i}`}>
+                  {Array.from({ length: visibleColumnCount }).map((_, c) => (
+                    <td key={c} className={cn(cellText, cellPadding)}>
+                      <Skeleton className="h-4 rounded" />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={table.getVisibleLeafColumns().length}>
                   <EmptyState
@@ -375,25 +450,35 @@ function DataTable<T extends { id: string }>({
                 <tr
                   key={row.id}
                   className={cn(
-                    'transition-colors hover:bg-muted/50 even:bg-muted/20',
+                    'group/row transition-colors even:bg-muted/20',
+                    hasStickyColumn ? 'hover:bg-accent' : 'hover:bg-muted/50',
                     (onRowClick || onRowDoubleClick) && 'cursor-pointer',
                     row.getIsSelected() && 'bg-primary/5 border-l-2 border-l-primary',
                   )}
                   onClick={() => onRowClick?.(row.original)}
                   onDoubleClick={() => onRowDoubleClick?.(row.original)}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      className={cn(
-                        'px-5 text-sm text-foreground',
-                        cellPadding,
-                        cell.column.id === '_select' && 'w-10 px-3',
-                      )}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const src = columnByKey.get(cell.column.id);
+                    return (
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          'text-foreground',
+                          cellText,
+                          cellPadding,
+                          alignClass[src?.align ?? 'left'],
+                          cell.column.id === '_select' && 'w-10 px-3',
+                          // Opaque surface: the pinned rail has scrolling cells passing under it.
+                          src?.stickyRight &&
+                            'sticky right-0 z-10 bg-card border-l border-border/60 shadow-[-6px_0_10px_-6px_rgb(0_0_0/0.10)] group-hover/row:bg-accent',
+                          src?.className,
+                        )}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             )}

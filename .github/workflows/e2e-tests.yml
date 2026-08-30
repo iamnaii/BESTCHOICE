@@ -59,7 +59,21 @@ jobs:
       DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
       JWT_SECRET: test-secret
       JWT_REFRESH_SECRET: test-refresh-secret
-      JWT_EXPIRATION: 15m
+      # อายุ JWT ยาวเป็นพิเศษเฉพาะ E2E — ไม่ใช่ค่าโปรดักชัน (ค่าจริงคือ 15m)
+      #
+      # เหตุ: helper ของเทส (e2e/helpers/auth.ts) แคช token จาก globalSetup แล้วใช้ซ้ำ
+      # พอถือว่า "เก่า" มันจะ login ใหม่ต่อเทส แต่ POST /auth/login ถูก throttle ไว้
+      # 10 ครั้ง/นาที/IP (auth.controller.ts) ⇒ shard ที่รันนานกว่าอายุ token จะเริ่ม
+      # โดน 429 แล้วล้มต่อเนื่อง
+      #
+      # วัดจาก run 33292524642 (อัตราล้มต่อช่วง 5 นาที): จุดหักอยู่ที่นาที 10-15 ตรงกับ
+      # เกณฑ์เดิม 12 นาทีพอดี — shard 3 จบใน 13 นาที อัตราล้มนิ่งที่ 3-5% ตลอด
+      # ส่วน shard 1/2/4 ที่รันยาวกว่าพุ่งเป็น 38% / 83% / 90-100%
+      #
+      # ตั้ง 2h ให้ยาวกว่า shard ที่ช้าที่สุด (44 นาที) แบบมีระยะเผื่อ และตั้ง
+      # E2E_TOKEN_MAX_AGE_MS ให้ต่ำกว่าเสมอ — สองค่านี้ต้องขยับพร้อมกัน
+      JWT_EXPIRATION: 2h
+      E2E_TOKEN_MAX_AGE_MS: 5400000 # 90 นาที — ต้อง < JWT_EXPIRATION เสมอ
       JWT_REFRESH_EXPIRATION: 7d
       ENCRYPTION_KEY: test-encryption-key-for-ci
       PORT: 3000

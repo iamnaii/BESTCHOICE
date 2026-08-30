@@ -28,8 +28,20 @@ export const ROLE_ACCOUNTS: Record<TestRole, { email: string; password: string; 
 const AUTH_FILE = path.join(__dirname, '../../.playwright-auth.json');
 const ROLE_AUTH_FILE = path.join(__dirname, '../../.playwright-roles-auth.json');
 
-// JWT expiry is 15m — treat token as stale after 12 min to be safe
-const TOKEN_MAX_AGE_MS = 12 * 60 * 1000;
+/**
+ * อายุที่ยอมให้ token ที่แคชไว้ถูกใช้ซ้ำ — **ต้องน้อยกว่า JWT_EXPIRATION ของ API เสมอ**
+ *
+ * ค่าเริ่มต้น 12 นาที คู่กับ JWT_EXPIRATION ปกติ (15m) สำหรับรันในเครื่อง
+ * ส่วน CI ตั้ง JWT_EXPIRATION=2h + E2E_TOKEN_MAX_AGE_MS=90m ให้ยาวกว่า shard ที่ช้าที่สุด
+ *
+ * ทำไมต้องคู่กัน: พอ token ถือว่าเก่า getToken() จะ login ใหม่ ซึ่ง POST /auth/login
+ * ถูก throttle 10 ครั้ง/นาที/IP ⇒ shard ที่รันนานกว่าอายุ token จะโดน 429 แล้วล้ม
+ * ต่อเนื่องจนจบ (วัดแล้วใน run 33292524642: อัตราล้มพุ่งตรงนาที 10-15 ซึ่งตรงกับ 12
+ * นาทีพอดี ส่วน shard ที่จบใน 13 นาทีอัตราล้มนิ่งที่ 3-5%)
+ *
+ * ⚠️ ยกค่านี้อย่างเดียวโดยไม่ยก JWT_EXPIRATION = แจก token ที่หมดอายุแล้ว
+ */
+const TOKEN_MAX_AGE_MS = Number(process.env.E2E_TOKEN_MAX_AGE_MS) || 12 * 60 * 1000;
 
 /**
  * Read the token saved by global-setup.ts.

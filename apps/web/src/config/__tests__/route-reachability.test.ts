@@ -30,30 +30,8 @@ import { resolveZoneForPath, COMMON_PATHS } from '../menu';
 const ALL_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT'];
 
 /** A: route อนุญาต role นี้ แต่ไม่มีในเมนูของ role นี้ ⇒ โดน MainLayout เด้ง */
-const KNOWN_GAPS_ROUTE_ALLOWS_MENU_MISSING = [
-  'ACCOUNTANT /bookings',
-  'ACCOUNTANT /finance-portfolio',
-  'ACCOUNTANT /finance/aging-report',
-  'ACCOUNTANT /finance/bad-debt-report',
-  'ACCOUNTANT /finance/balance-sheet',
-  'ACCOUNTANT /finance/contract-cancellation',
-  'ACCOUNTANT /finance/e-receipt-auto',
-  'ACCOUNTANT /finance/general-journal',
-  'ACCOUNTANT /finance/intercompany-report',
-  'ACCOUNTANT /insurance',
-  'ACCOUNTANT /stock/products',
-  'BRANCH_MANAGER /assets',
-  'BRANCH_MANAGER /insurance/exchange-requests',
-  'BRANCH_MANAGER /profit-loss',
-  'BRANCH_MANAGER /shop/accounting',
-  'FINANCE_MANAGER /bookings',
-  'FINANCE_MANAGER /crm',
-  'FINANCE_MANAGER /insurance',
-  'FINANCE_MANAGER /insurance/exchange-requests',
-  'FINANCE_MANAGER /stock/products',
-  'OWNER /chat',
-  'OWNER /crm',
-  'SALES /insurance/exchange-requests',
+const KNOWN_GAPS_ROUTE_ALLOWS_MENU_MISSING: string[] = [
+  // ว่าง — ทิศนี้แก้หมดแล้ว (2026-08-30). บรรทัดใหม่ที่โผล่มา = กำลังปล่อยบั๊กเข้าไป
 ];
 
 /** B: เมนูมี path นี้ แต่ ProtectedRoute ไม่อนุญาต role นี้ ⇒ กดแล้วโดนปฏิเสธ */

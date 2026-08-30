@@ -176,6 +176,8 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
     },
     {
@@ -216,6 +218,9 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'Dashboard', path: '/', icon: Home },
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
+        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
     },
     {
@@ -233,6 +238,8 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
     },
     {
@@ -253,6 +260,8 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         // route อนุญาต BRANCH_MANAGER อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ
         // Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (ปักที่ route-reachability.test.ts)
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'สินทรัพย์ถาวร', path: '/assets', icon: Landmark },
       ],
     },
     {
@@ -350,6 +359,11 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
         // Standardized label + icon across all 4 role configs.
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
+        { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
       ],
     },
     {
@@ -362,6 +376,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
       ],
     },
     /* ── โซนบัญชีของ ผจก.การเงิน — ยกผังเดียวกับ OWNER (fin zone) มาใช้ ────────
@@ -496,12 +512,18 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: HandCoins,
       zone: 'fin',
       items: [
+        { label: 'Dashboard การเงิน', path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
+        { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: Receipt },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
@@ -516,6 +538,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
       ],
     },
     {
@@ -530,6 +554,10 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
         // P3-SP5 — SHOP-side accounting reports
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: BarChart3 },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: BarChart3 },
+        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: BarChart3 },
       ],
     },
     assetMenuSection,
@@ -577,6 +605,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
         { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: Landmark },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
       ],
     },
     {
@@ -647,6 +678,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
       ],
     },
     {
@@ -807,6 +840,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'Ads & ROI', path: '/ads', icon: Target },
         { label: 'Broadcast', path: '/broadcast', icon: Send },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
       ],
     },
     {
@@ -1096,9 +1131,11 @@ export const ZONE_LANDING: Record<Zone, string> = {
 export function getLandingPathForRole(role: string): string {
   const config = ZONE_CONFIG[role];
   if (!config) return '/';
-  // ผ่าน getZoneEntryPathForRole ไม่ใช่ ZONE_LANDING ตรง ๆ — ACCOUNTANT/VIEWER มี
-  // defaultZone = 'fin' แต่ไม่มี '/finance-portfolio' ในเมนูตัวเอง ⇒ ล็อกอินเสร็จเจอ
-  // toast 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วถูกเด้งกลับ '/' ทั้งที่ router อนุญาต
+  // ผ่าน getZoneEntryPathForRole ไม่ใช่ ZONE_LANDING ตรง ๆ — VIEWER มี defaultZone = 'fin'
+  // แต่ไม่มี '/finance-portfolio' ในเมนูตัวเอง (และ route ก็ไม่อนุญาต) ⇒ ล็อกอินเสร็จจะเจอ
+  // toast 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วถูกเด้งกลับ '/'
+  // ACCOUNTANT เคยมีอาการเดียวกันแต่แก้ที่ต้นเหตุแล้ว (เพิ่ม /finance-portfolio เข้าเมนู
+  // acc-daily) — route อนุญาต ACC อยู่แล้ว ทางเลี่ยงนี้จึงเหลือไว้เพื่อ VIEWER
   return getZoneEntryPathForRole(role, config.defaultZone);
 }
 

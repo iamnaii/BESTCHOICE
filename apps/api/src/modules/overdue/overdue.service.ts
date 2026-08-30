@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  Inject,
-  forwardRef,
-} from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { DunningEngineService } from './dunning-engine.service';
@@ -63,10 +58,7 @@ export class OverdueService {
     // Build Analytics first — ContactLog + Governance depend on it.
     this.analytics = new OverdueAnalyticsService(this.prisma);
     this.queries = new OverdueQueriesService(this.prisma, this.promiseService);
-    this.lifecycleCron = new OverdueLifecycleCronService(
-      this.prisma,
-      this.consecutiveMissed,
-    );
+    this.lifecycleCron = new OverdueLifecycleCronService(this.prisma, this.consecutiveMissed);
     this.governance = new DunningGovernanceService(
       this.prisma,
       this.letterService,
@@ -119,6 +111,39 @@ export class OverdueService {
     return this.queries.getCollectionPipelineStats(userRole, userBranchId);
   }
 
+  /**
+   * สรุปสั้นสำหรับการ์ด "ภาพรวมติดตามหนี้" บน Dashboard ของ FINANCE_MANAGER
+   * (`DashboardFinanceOverview` ฝั่งเว็บ)
+   *
+   * ทำไมต้องมีเมธอดนี้แทนที่จะให้หน้าจอเรียกสองเส้นทางเอง:
+   * - `totalOutstanding` ต้องเป็น **ยอดค้างจริง** (`amountDue - amountPaid`) เพราะการ์ด
+   *   เขียนกำกับว่า "ยอดค้างชำระรวม" — ห้ามใช้ `totalAmount` ของ pipeline ซึ่งเป็น
+   *   Σ `financedAmount` (ยอดจัดตั้งต้น) คนละความหมายทางบัญชี
+   * - สูตรยอดค้างมีอยู่ที่เดียวคือ `OverdueKpiService` ⇒ เรียกใช้ ไม่คัดลอกสูตร
+   * - จำนวนสัญญาต่อระดับเตือนก็ใช้คิวรีเดิมของ pipeline ไม่เขียน groupBy ซ้ำ
+   *
+   * รูปแบบที่คืนถูกกำหนดโดยหน้าจอที่มีอยู่แล้ว (stages เป็น object ไม่ใช่ array และ
+   * ไม่รวม `NONE` เพราะการ์ดมีแค่ 4 ระดับ)
+   */
+  async getDashboardStats(userRole: string, userBranchId: string | null) {
+    const [pipeline, kpi] = await Promise.all([
+      this.queries.getCollectionPipelineStats(userRole, userBranchId ?? undefined),
+      this.kpiService.getKpi({ range: '7d', userRole, userBranchId }),
+    ]);
+
+    const countOf = (stage: string) => pipeline.stages.find((s) => s.stage === stage)?.count ?? 0;
+
+    return {
+      totalOutstanding: kpi.totalOutstanding,
+      stages: {
+        REMINDER: countOf('REMINDER'),
+        NOTICE: countOf('NOTICE'),
+        FINAL_WARNING: countOf('FINAL_WARNING'),
+        LEGAL_ACTION: countOf('LEGAL_ACTION'),
+      },
+    };
+  }
+
   getCollectionsFlag(): Promise<boolean> {
     return this.queries.getCollectionsFlag();
   }
@@ -169,21 +194,11 @@ export class OverdueService {
     return this.governance.approveDunningEscalation(contractId, userId, userRole);
   }
 
-  rejectDunningEscalation(
-    contractId: string,
-    userId: string,
-    userRole: string,
-    reason: string,
-  ) {
+  rejectDunningEscalation(contractId: string, userId: string, userRole: string, reason: string) {
     return this.governance.rejectDunningEscalation(contractId, userId, userRole, reason);
   }
 
-  holdAutoEscalation(
-    contractId: string,
-    userId: string,
-    userRole: string,
-    hoursFromNow = 48,
-  ) {
+  holdAutoEscalation(contractId: string, userId: string, userRole: string, hoursFromNow = 48) {
     return this.governance.holdAutoEscalation(contractId, userId, userRole, hoursFromNow);
   }
 
@@ -224,12 +239,7 @@ export class OverdueService {
       collectionNotes?: string;
       settlementDate?: string;
       settlementNotes?: string;
-      callResult?:
-        | 'ANSWERED'
-        | 'NO_ANSWER'
-        | 'BUSY'
-        | 'DEVICE_OFF'
-        | 'UNREACHABLE';
+      callResult?: 'ANSWERED' | 'NO_ANSWER' | 'BUSY' | 'DEVICE_OFF' | 'UNREACHABLE';
       negotiationResult?:
         | 'REQUESTED_EXTENSION'
         | 'WILL_PAY'
@@ -261,11 +271,8 @@ export class OverdueService {
     // Pass the facade's logContact (resolved on the call-time receiver, so a
     // `jest.spyOn(service,'logContact')` override is honoured) — preserves the
     // original intra-service `this.logContact` re-entry + its separate $tx.
-    return this.contactLog.partialPaymentReschedule(
-      contractId,
-      callerId,
-      dto,
-      (...args) => this.logContact(...args),
+    return this.contactLog.partialPaymentReschedule(contractId, callerId, dto, (...args) =>
+      this.logContact(...args),
     );
   }
 }

@@ -58,7 +58,11 @@ import { ConsecutiveMissedService } from './consecutive-missed.service';
 
 // ── Shared no-op stubs for the collaborators these read-paths never drive ─────
 const mockDunningEngine = { executeEventTrigger: jest.fn().mockResolvedValue(undefined) };
-const mockKpiService = { invalidate: jest.fn() };
+const mockKpiService = {
+  invalidate: jest.fn(),
+  // getDashboardStats ดึงยอดค้างจริงจากที่นี่ ไม่คำนวณเอง (สูตรมีที่เดียว)
+  getKpi: jest.fn().mockResolvedValue({ totalOutstanding: 123456 }),
+};
 const mockPromiseService = {
   createPromise: jest.fn().mockResolvedValue({ id: 'promise-1' }),
   findActivePromise: jest.fn().mockResolvedValue(null),
@@ -86,7 +90,10 @@ const buildService = async (prisma: PrismaMock): Promise<OverdueService> => {
       { provide: ContractLetterService, useValue: mockLetterService },
       { provide: MdmLockService, useValue: mockMdmLockService },
       { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-      { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+      {
+        provide: ConsecutiveMissedService,
+        useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+      },
     ],
   }).compile();
   return mod.get(OverdueService);
@@ -112,10 +119,7 @@ describe('OverdueService.getOverdueSummary', () => {
   ): PrismaMock => ({
     contract: {
       // Promise.all resolves count() twice (OVERDUE then DEFAULT) then aggregate().
-      count: jest
-        .fn()
-        .mockResolvedValueOnce(counts.overdue)
-        .mockResolvedValueOnce(counts.default),
+      count: jest.fn().mockResolvedValueOnce(counts.overdue).mockResolvedValueOnce(counts.default),
     },
     payment: {
       aggregate: jest.fn().mockResolvedValue({ _sum: aggregateSum }),
@@ -519,7 +523,10 @@ describe('OverdueService.computeFifoTargets (via logContact PROMISED FIFO alloca
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     const svc = mod.get(OverdueService);
@@ -602,5 +609,72 @@ describe('OverdueService.computeFifoTargets (via logContact PROMISED FIFO alloca
     expect(args.where.contractId).toBe('c-1');
     expect(args.where.deletedAt).toBeNull();
     expect(args.orderBy).toEqual({ dueDate: 'asc' });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getDashboardStats — การ์ด "ภาพรวมติดตามหนี้" บน Dashboard ของ FINANCE_MANAGER
+//
+// หน้าจอเรียก GET /overdue/stats มาตั้งแต่ commit 497ff66e3 แต่ไม่เคยมีใครสร้าง
+// endpoint นี้จริง ⇒ 404 ตลอด และวิดเจ็ตค้างที่การ์ดโครงเทาถาวร
+// ─────────────────────────────────────────────────────────────────────────────
+describe('OverdueService.getDashboardStats', () => {
+  const makePrisma = (grouped: unknown[]): PrismaMock => ({
+    contract: { groupBy: jest.fn().mockResolvedValue(grouped) },
+  });
+
+  beforeEach(() => mockKpiService.getKpi.mockClear());
+
+  it('คืนจำนวนสัญญาต่อระดับเตือน 4 ระดับ และยอดค้างจาก KpiService', async () => {
+    const svc = await buildService(
+      makePrisma([
+        {
+          dunningStage: 'REMINDER',
+          _count: { _all: 3 },
+          _sum: { financedAmount: new Prisma.Decimal(30000) },
+        },
+        {
+          dunningStage: 'LEGAL_ACTION',
+          _count: { _all: 1 },
+          _sum: { financedAmount: new Prisma.Decimal(12000) },
+        },
+      ]),
+    );
+
+    const out = await svc.getDashboardStats('FINANCE_MANAGER', null);
+
+    expect(out.stages).toEqual({ REMINDER: 3, NOTICE: 0, FINAL_WARNING: 0, LEGAL_ACTION: 1 });
+    // ยอดค้างต้องมาจาก KpiService ไม่ใช่ Σ financedAmount (42,000) ของ pipeline —
+    // การ์ดเขียนกำกับว่า "ยอดค้างชำระรวม" ซึ่งคนละความหมายกับยอดจัดตั้งต้น
+    expect(out.totalOutstanding).toBe(123456);
+  });
+
+  it('ไม่มีคีย์ NONE ปนมา (การ์ดมีแค่ 4 ระดับ)', async () => {
+    const svc = await buildService(
+      makePrisma([
+        {
+          dunningStage: 'NONE',
+          _count: { _all: 9 },
+          _sum: { financedAmount: new Prisma.Decimal(1) },
+        },
+      ]),
+    );
+    const out = await svc.getDashboardStats('OWNER', null);
+    expect(Object.keys(out.stages).sort()).toEqual([
+      'FINAL_WARNING',
+      'LEGAL_ACTION',
+      'NOTICE',
+      'REMINDER',
+    ]);
+  });
+
+  it('ส่ง role + branchId ต่อให้ KpiService เพื่อให้ scope สาขาตรงกันทั้งสองแหล่ง', async () => {
+    const svc = await buildService(makePrisma([]));
+    await svc.getDashboardStats('BRANCH_MANAGER', 'branch-7');
+    expect(mockKpiService.getKpi).toHaveBeenCalledWith({
+      range: '7d',
+      userRole: 'BRANCH_MANAGER',
+      userBranchId: 'branch-7',
+    });
   });
 });

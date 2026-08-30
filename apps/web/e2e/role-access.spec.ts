@@ -15,12 +15,23 @@ import { gotoWithRetry } from './helpers/navigation';
  * All share password: admin1234
  */
 
-/** Check if user was denied access (redirect or access denied message) */
+/**
+ * Check if user was denied access (redirect or access denied message).
+ *
+ * NOTE: the check is `page.url().includes(targetUrl)`, so any route that is a
+ * `<Navigate>` redirect must be listed by its FINAL destination, not the old
+ * path — otherwise the redirect itself reads as "denied". Current redirects:
+ *   /receipts  → /payments?tab=receipts   (App.tsx)
+ *   /overdue   → /collections             (App.tsx)
+ */
 async function isAccessDenied(page: Page, targetUrl: string): Promise<boolean> {
   await page.waitForTimeout(2000);
   const redirectedAway = !page.url().includes(targetUrl);
-  const deniedMsg = await page.getByText(/ไม่มีสิทธิ์|access denied|unauthorized|403|ไม่อนุญาต/i).first()
-    .isVisible({ timeout: 2000 }).catch(() => false);
+  const deniedMsg = await page
+    .getByText(/ไม่มีสิทธิ์|access denied|unauthorized|403|ไม่อนุญาต/i)
+    .first()
+    .isVisible({ timeout: 2000 })
+    .catch(() => false);
   return redirectedAway || deniedMsg;
 }
 
@@ -48,7 +59,7 @@ test.describe('OWNER role — full access', () => {
     { url: '/stock', name: 'คลังสินค้า' },
     { url: '/reports', name: 'รายงาน' },
     { url: '/expenses', name: 'รายจ่าย' },
-    { url: '/receipts', name: 'ใบเสร็จ' },
+    { url: '/payments?tab=receipts', name: 'ใบเสร็จ' },
     { url: '/purchase-orders', name: 'ใบสั่งซื้อ' },
     { url: '/suppliers', name: 'ผู้จัดจำหน่าย' },
     { url: '/financial-audit', name: 'Financial Audit' },
@@ -126,7 +137,7 @@ test.describe('ACCOUNTANT role — finance access', () => {
     { url: '/contracts', name: 'สัญญา' },
     { url: '/payments', name: 'การชำระเงิน' },
     { url: '/expenses', name: 'รายจ่าย' },
-    { url: '/receipts', name: 'ใบเสร็จ' },
+    { url: '/payments?tab=receipts', name: 'ใบเสร็จ' },
     { url: '/reports', name: 'รายงาน' },
     { url: '/finance-receivable', name: 'เงินรับจากไฟแนนซ์' },
     { url: '/financial-audit', name: 'Financial Audit' },
@@ -174,12 +185,12 @@ test.describe('FINANCE_MANAGER role — finance access', () => {
     { url: '/contracts', name: 'สัญญา' },
     { url: '/payments', name: 'การชำระเงิน' },
     { url: '/expenses', name: 'รายจ่าย' },
-    { url: '/receipts', name: 'ใบเสร็จ' },
+    { url: '/payments?tab=receipts', name: 'ใบเสร็จ' },
     { url: '/reports', name: 'รายงาน' },
     { url: '/profit-loss', name: 'งบกำไรขาดทุน' },
     { url: '/finance-receivable', name: 'เงินรับจากไฟแนนซ์' },
     { url: '/financial-audit', name: 'Financial Audit' },
-    { url: '/overdue', name: 'ติดตามหนี้' },
+    { url: '/collections', name: 'ติดตามหนี้' },
     { url: '/repossessions', name: 'ยึดคืน' },
     { url: '/document-dashboard', name: 'สถานะเอกสาร' },
     { url: '/payments/import-csv', name: 'นำเข้าชำระเงิน (CSV)' },
@@ -231,7 +242,7 @@ test.describe('BRANCH_MANAGER role — broad access', () => {
     { url: '/payments', name: 'การชำระเงิน' },
     { url: '/stock', name: 'คลังสินค้า' },
     { url: '/expenses', name: 'รายจ่าย' },
-    { url: '/receipts', name: 'ใบเสร็จ' },
+    { url: '/payments?tab=receipts', name: 'ใบเสร็จ' },
     { url: '/reports', name: 'รายงาน' },
     { url: '/purchase-orders', name: 'ใบสั่งซื้อ' },
     { url: '/suppliers', name: 'ผู้จัดจำหน่าย' },
@@ -273,13 +284,21 @@ test.describe('Sidebar menu per role', () => {
   test('OWNER sidebar shows ตั้งค่า and จัดการผู้ใช้', async ({ page }) => {
     await loginAsRole(page, 'OWNER');
     await gotoWithRetry(page, '/');
-    await expect(page.locator('.sidebar, [class*="sidebar"], nav').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.sidebar, [class*="sidebar"], nav').first()).toBeVisible({
+      timeout: 15000,
+    });
 
-    const settingsMenu = page.locator('.sidebar, nav').getByText(/ตั้งค่า/).first();
+    const settingsMenu = page
+      .locator('.sidebar, nav')
+      .getByText(/ตั้งค่า/)
+      .first();
     if (await settingsMenu.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(settingsMenu).toBeVisible();
     }
-    const usersMenu = page.locator('.sidebar, nav').getByText(/ผู้ใช้/).first();
+    const usersMenu = page
+      .locator('.sidebar, nav')
+      .getByText(/ผู้ใช้/)
+      .first();
     if (await usersMenu.isVisible({ timeout: 3000 }).catch(() => false)) {
       await expect(usersMenu).toBeVisible();
     }
@@ -288,10 +307,15 @@ test.describe('Sidebar menu per role', () => {
   test('SALES sidebar hides ตั้งค่า and การเงิน', async ({ page }) => {
     await loginAsRole(page, 'SALES');
     await gotoWithRetry(page, '/');
-    await expect(page.locator('.sidebar, [class*="sidebar"], nav').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.sidebar, [class*="sidebar"], nav').first()).toBeVisible({
+      timeout: 15000,
+    });
 
     // SALES should NOT see settings
-    const settingsMenu = page.locator('.sidebar, nav').getByText(/ตั้งค่าระบบ/).first();
+    const settingsMenu = page
+      .locator('.sidebar, nav')
+      .getByText(/ตั้งค่าระบบ/)
+      .first();
     const settingsVisible = await settingsMenu.isVisible({ timeout: 3000 }).catch(() => false);
     expect(settingsVisible).toBeFalsy();
   });
@@ -299,20 +323,31 @@ test.describe('Sidebar menu per role', () => {
   test('ACCOUNTANT sidebar shows การเงิน and รายงาน', async ({ page }) => {
     await loginAsRole(page, 'ACCOUNTANT');
     await gotoWithRetry(page, '/');
-    await expect(page.locator('.sidebar, [class*="sidebar"], nav').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.sidebar, [class*="sidebar"], nav').first()).toBeVisible({
+      timeout: 15000,
+    });
 
     // Should see finance and reports
-    const financeMenu = page.locator('.sidebar, nav').getByText(/การเงิน|รายจ่าย|ใบเสร็จ/).first();
+    const financeMenu = page
+      .locator('.sidebar, nav')
+      .getByText(/การเงิน|รายจ่าย|ใบเสร็จ/)
+      .first();
     if (await financeMenu.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(financeMenu).toBeVisible();
     }
-    const reportsMenu = page.locator('.sidebar, nav').getByText(/รายงาน/).first();
+    const reportsMenu = page
+      .locator('.sidebar, nav')
+      .getByText(/รายงาน/)
+      .first();
     if (await reportsMenu.isVisible({ timeout: 3000 }).catch(() => false)) {
       await expect(reportsMenu).toBeVisible();
     }
 
     // Should NOT see settings
-    const settingsMenu = page.locator('.sidebar, nav').getByText(/ตั้งค่าระบบ/).first();
+    const settingsMenu = page
+      .locator('.sidebar, nav')
+      .getByText(/ตั้งค่าระบบ/)
+      .first();
     const settingsVisible = await settingsMenu.isVisible({ timeout: 3000 }).catch(() => false);
     expect(settingsVisible).toBeFalsy();
   });
@@ -320,16 +355,24 @@ test.describe('Sidebar menu per role', () => {
   test('BRANCH_MANAGER sidebar shows most items except ตั้งค่า', async ({ page }) => {
     await loginAsRole(page, 'BRANCH_MANAGER');
     await gotoWithRetry(page, '/');
-    await expect(page.locator('.sidebar, [class*="sidebar"], nav').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.sidebar, [class*="sidebar"], nav').first()).toBeVisible({
+      timeout: 15000,
+    });
 
     // Should see POS, stock, etc.
-    const stockMenu = page.locator('.sidebar, nav').getByText(/คลัง|สินค้า/).first();
+    const stockMenu = page
+      .locator('.sidebar, nav')
+      .getByText(/คลัง|สินค้า/)
+      .first();
     if (await stockMenu.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(stockMenu).toBeVisible();
     }
 
     // Should NOT see system settings
-    const settingsMenu = page.locator('.sidebar, nav').getByText(/ตั้งค่าระบบ/).first();
+    const settingsMenu = page
+      .locator('.sidebar, nav')
+      .getByText(/ตั้งค่าระบบ/)
+      .first();
     const settingsVisible = await settingsMenu.isVisible({ timeout: 3000 }).catch(() => false);
     expect(settingsVisible).toBeFalsy();
   });
@@ -340,9 +383,18 @@ test.describe('Sidebar menu per role', () => {
    ================================================================ */
 test.describe('Unauthenticated access — redirect to login', () => {
   const protectedRoutes = [
-    '/', '/pos', '/customers', '/contracts', '/payments',
-    '/stock', '/reports', '/expenses', '/settings',
-    '/users', '/branches', '/audit-logs',
+    '/',
+    '/pos',
+    '/customers',
+    '/contracts',
+    '/payments',
+    '/stock',
+    '/reports',
+    '/expenses',
+    '/settings',
+    '/users',
+    '/branches',
+    '/audit-logs',
   ];
 
   for (const route of protectedRoutes) {

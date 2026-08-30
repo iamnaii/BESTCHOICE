@@ -1,15 +1,16 @@
 /**
  * Insurance — Warranty Check page (smoke tests, SP5 Phase 2)
  *
- * Covers /insurance/warranty-check: heading, 3 search-mode tabs, default mode,
- * submit button disabled state, and enabled state after typing.
- * Also covers navigating from /insurance list page to warranty-check.
+ * Covers แท็บ "เช็คประกัน" ของ /insurance: 3 search-mode tabs, default mode,
+ * submit button disabled state, enabled state after typing, และ path เดิม
+ * /insurance/warranty-check ที่ redirect เข้าแท็บ
  *
  * Smoke-only: does NOT submit a search or assert result cards — that requires
  * seeded product/contract data.
  *
- * WarrantyCheckPage default mode = 'imei' (see WarrantyCheckPage.tsx:33).
- * Submit button is disabled when query.length < 3 (see line 107).
+ * แหล่งอ้างอิงจริงคือ apps/web/src/pages/insurance/WarrantyCheckTab.tsx
+ * (ไฟล์ WarrantyCheckPage.tsx ไม่มีแล้ว — ถูกยุบเป็นแท็บ): โหมดตั้งต้น = 'imei'
+ * (บรรทัด 32) และปุ่ม submit ถูก disable เมื่อ query.length < 3 (บรรทัด 105)
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -37,7 +38,6 @@ test.describe('Insurance — Warranty Check (SP5 Phase 2)', () => {
     );
   }
 
-
   // -------------------------------------------------------------------------
   // Smoke 1 — Page renders heading + 3 search-mode tabs
   // -------------------------------------------------------------------------
@@ -59,10 +59,19 @@ test.describe('Insurance — Warranty Check (SP5 Phase 2)', () => {
     await gotoWarrantyTab(page);
 
     // Input placeholder confirms IMEI mode is active by default
-    await expect(
-      page.getByPlaceholder('IMEI หรือ Serial Number'),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByPlaceholder('IMEI หรือ Serial Number')).toBeVisible({ timeout: 5_000 });
   });
+
+  /**
+   * ปุ่ม submit ของฟอร์มต้องระบุชื่อแบบ exact เท่านั้น
+   *
+   * TopBar มีปุ่มค้นหารวมชื่อ "ค้นหา (Ctrl+K)" (TopBar.tsx:214-222) อยู่ทุกหน้า
+   * ⇒ regex /ค้นหา/ ที่ไม่ผูกขอบเขตแมตช์ 2 ปุ่ม แล้ว expect() ล้มด้วย
+   * strict mode violation ก่อนจะได้ตรวจสถานะ disabled/enabled เสียอีก
+   * ชื่อ accessible ของปุ่ม submit คือ "ค้นหา" เป๊ะ ๆ (ไอคอนไม่มีข้อความ —
+   * WarrantyCheckTab.tsx:105-107)
+   */
+  const submitButton = (page: Page) => page.getByRole('button', { name: 'ค้นหา', exact: true });
 
   // -------------------------------------------------------------------------
   // Smoke 3 — Submit button disabled when query is empty / < 3 chars
@@ -71,7 +80,7 @@ test.describe('Insurance — Warranty Check (SP5 Phase 2)', () => {
     await gotoWarrantyTab(page);
 
     // Submit button should be disabled when query is empty
-    const submitBtn = page.getByRole('button', { name: /ค้นหา/ });
+    const submitBtn = submitButton(page);
     await expect(submitBtn).toBeDisabled({ timeout: 5_000 });
 
     // Type 2 chars (below the >=3 threshold) — still disabled
@@ -87,7 +96,7 @@ test.describe('Insurance — Warranty Check (SP5 Phase 2)', () => {
 
     // Type a 15-char IMEI — button should become enabled
     await page.getByPlaceholder('IMEI หรือ Serial Number').fill('123456789012345');
-    const submitBtn = page.getByRole('button', { name: /ค้นหา/ });
+    const submitBtn = submitButton(page);
     await expect(submitBtn).toBeEnabled({ timeout: 5_000 });
   });
 
@@ -99,16 +108,18 @@ test.describe('Insurance — Warranty Check (SP5 Phase 2)', () => {
 
     // Switch to contract mode
     await page.getByRole('button', { name: 'เลขสัญญา' }).click();
-    await expect(
-      page.getByPlaceholder('เลขที่สัญญา เช่น CN-2026-0001'),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByPlaceholder('เลขที่สัญญา เช่น CN-2026-0001')).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   // -------------------------------------------------------------------------
   // Smoke 6 — /insurance list page: navigate to /insurance/warranty-check
   //           (CTA presence depends on InsurancePage implementation)
   // -------------------------------------------------------------------------
-  test('smoke: path เดิม /insurance/warranty-check redirect เข้าแท็บ (ลิงก์เก่าไม่ตาย)', async ({ page }) => {
+  test('smoke: path เดิม /insurance/warranty-check redirect เข้าแท็บ (ลิงก์เก่าไม่ตาย)', async ({
+    page,
+  }) => {
     await gotoWithRetry(page, '/insurance/warranty-check');
     await expect(page).toHaveURL(/\/insurance\?tab=warranty/, { timeout: 10_000 });
     await expect(page.getByRole('tab', { name: 'เช็คประกัน' })).toHaveAttribute(

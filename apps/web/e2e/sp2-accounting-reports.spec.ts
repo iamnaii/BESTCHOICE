@@ -12,9 +12,7 @@ test.describe('SP2 — Accounting Reports', () => {
   test('ACCOUNTANT can view Equity Statement', async ({ page }) => {
     await loginAsRole(page, 'ACCOUNTANT');
     await page.goto('/finance/equity-statement');
-    await expect(
-      page.getByText('งบแสดงการเปลี่ยนแปลงในส่วนของผู้ถือหุ้น').first(),
-    ).toBeVisible();
+    await expect(page.getByText('งบแสดงการเปลี่ยนแปลงในส่วนของผู้ถือหุ้น').first()).toBeVisible();
     // Caveat banner mentions "ค่าประมาณ"
     await expect(page.getByText(/ค่าประมาณ/).first()).toBeVisible();
   });
@@ -30,11 +28,16 @@ test.describe('SP2 — Accounting Reports', () => {
     await expect(page.getByText(/เลือกบัญชี/).first()).toBeVisible();
   });
 
-  test('Intercompany aging tab shows buckets', async ({ page }) => {
+  // NOTE: there is no "รายการค้างจ่าย" tab and no bucket report on this page.
+  // IntercompanySettlementPage has 4 tabs — รอจ่าย / รอบจ่าย / อายุลูกหนี้หน้าร้าน /
+  // กระทบยอด — and the ageing tab (interco/AgingTab.tsx) is a per-contract table with
+  // an "อายุ (วัน)" column, not 0–30/31–60 buckets. Bucket copy lives on a different
+  // page entirely (/expenses/ap-aging, APAgingPage.tsx, and it uses an en dash).
+  test('Intercompany aging tab shows per-contract ageing', async ({ page }) => {
     await loginAsRole(page, 'ACCOUNTANT');
     await page.goto('/accounting/intercompany');
-    await page.getByRole('tab', { name: /รายการค้างจ่าย/ }).click();
-    await expect(page.getByText(/0-30 วัน/).first()).toBeVisible();
+    await page.getByRole('tab', { name: 'อายุลูกหนี้หน้าร้าน' }).click();
+    await expect(page.getByText('อายุ (วัน)').first()).toBeVisible();
   });
 
   test('SALES is blocked from accounting reports', async ({ page }) => {

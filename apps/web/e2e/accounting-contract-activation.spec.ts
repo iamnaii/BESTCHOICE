@@ -24,7 +24,9 @@ test.describe('Accounting — Contract Activation creates JE (Phase A.0)', () =>
     await loginViaAPI(page);
   });
 
-  test('all recent JournalEntries are balanced (F-1-002 — no silent unbalanced post)', async ({ page }) => {
+  test('all recent JournalEntries are balanced (F-1-002 — no silent unbalanced post)', async ({
+    page,
+  }) => {
     const res = await page.request.get(`${API_URL}/api/journal-entries?limit=100`, {
       headers: getAuthHeaders(),
     });
@@ -53,7 +55,9 @@ test.describe('Accounting — Contract Activation creates JE (Phase A.0)', () =>
     }
   });
 
-  test('activated contracts each have at least one related JournalEntry (F-2-001)', async ({ page }) => {
+  test('activated contracts each have at least one related JournalEntry (F-2-001)', async ({
+    page,
+  }) => {
     // Fetch a small window of contracts in ACTIVE status
     const cRes = await page.request.get(`${API_URL}/api/contracts?status=ACTIVE&limit=5`, {
       headers: getAuthHeaders(),
@@ -82,7 +86,10 @@ test.describe('Accounting — Contract Activation creates JE (Phase A.0)', () =>
     });
     expect(jeRes.ok()).toBeTruthy();
     const jeBody = unwrapResponse(await jeRes.json()) as {
-      data: Array<{ description?: string | null; lines: Array<{ debit: string | number; credit: string | number }> }>;
+      data: Array<{
+        description?: string | null;
+        lines: Array<{ debit: string | number; credit: string | number }>;
+      }>;
     };
 
     // At least one of the recent contracts should appear in some JE

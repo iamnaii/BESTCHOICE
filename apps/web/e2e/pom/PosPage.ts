@@ -40,9 +40,7 @@ export class PosPage {
   /** Main "confirm sale" / "ยืนยันการขาย" button (in main content, not sidebar) */
   confirmSaleBtn(): Locator {
     const main = this.page.locator('main, .main-content, [class*="content"]').first();
-    return main
-      .getByRole('button', { name: /ยืนยันการขาย|บันทึกการขาย|ชำระเงิน/ })
-      .first();
+    return main.getByRole('button', { name: /ยืนยันการขาย|บันทึกการขาย|ชำระเงิน/ }).first();
   }
 
   /** Toast notifications */

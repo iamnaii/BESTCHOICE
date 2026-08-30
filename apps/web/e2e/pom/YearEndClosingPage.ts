@@ -46,9 +46,17 @@ export class YearEndClosingPage {
     await this.previewBtn().click();
     // Wait for preview to load — net-income card visible OR alreadyClosed banner
     await Promise.race([
-      this.page.getByText(/กำไรสุทธิ|ขาดทุนสุทธิ/).first().waitFor({ timeout: 15000 }).catch(() => null),
-      this.alreadyClosedBanner().waitFor({ timeout: 15000 }).catch(() => null),
-      this.openMonthsBanner().waitFor({ timeout: 15000 }).catch(() => null),
+      this.page
+        .getByText(/กำไรสุทธิ|ขาดทุนสุทธิ/)
+        .first()
+        .waitFor({ timeout: 15000 })
+        .catch(() => null),
+      this.alreadyClosedBanner()
+        .waitFor({ timeout: 15000 })
+        .catch(() => null),
+      this.openMonthsBanner()
+        .waitFor({ timeout: 15000 })
+        .catch(() => null),
     ]);
   }
 

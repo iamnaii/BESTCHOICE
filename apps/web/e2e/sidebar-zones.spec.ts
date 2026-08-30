@@ -8,7 +8,11 @@ import { loginAsRole } from './helpers/auth';
  *   - Zone pill visibility per role (OWNER both, SALES none, ACC none)
  *   - GearButton (ตั้งค่ากลาง) visibility per role
  *   - Zone switching by clicking pills
- *   - Persistence of selected zone (URL ?zone= + localStorage)
+ *   - Persistence of selected zone (localStorage `bc.sidebar.lastZone`)
+ *     NOTE: clicking a pill navigates to `ZONE_LANDING[zone]` (menu.ts) — the
+ *     `?zone=` param LayoutContext writes is dropped by that navigate(), so the
+ *     assertion is on the landing path, not the query string. `?zone=` is still
+ *     READ on boot (deep links keep working), just never written by a pill click.
  *   - Auto-switch pill when navigating to a path in a different zone
  *   - Cross-zone access guard: SALES navigating to FIN-only path → redirect
  *     to `/` with toast "คุณไม่มีสิทธิ์เข้าถึงหน้านี้" (see MainLayout.tsx:102)
@@ -25,10 +29,7 @@ import { loginAsRole } from './helpers/auth';
  * each file by default in this project's playwright.config (workers: 2).
  */
 
-async function loginAndExpandSidebar(
-  page: Page,
-  role: 'OWNER' | 'SALES' | 'ACCOUNTANT'
-) {
+async function loginAndExpandSidebar(page: Page, role: 'OWNER' | 'SALES' | 'ACCOUNTANT') {
   // Force expanded sidebar so pills/gear labels are visible (default is
   // a collapsed icon rail — same pattern used by login.spec.ts).
   await page.addInitScript(() => {
@@ -54,7 +55,8 @@ test.describe('SP1 — Sidebar zones', () => {
     // Switch to ไฟแนนซ์ pill.
     await finPill.click();
     await expect(finPill).toHaveAttribute('aria-selected', 'true');
-    await expect(page).toHaveURL(/[?&]zone=fin/);
+    // PillSwitcher navigates to ZONE_LANDING.fin ('/finance-portfolio').
+    await expect(page).toHaveURL(/\/finance-portfolio/);
   });
 
   test('SALES sees no pill switcher and no gear', async ({ page }) => {
@@ -79,7 +81,7 @@ test.describe('SP1 — Sidebar zones', () => {
     await loginAndExpandSidebar(page, 'OWNER');
 
     await page.getByRole('tab', { name: 'ไฟแนนซ์' }).first().click();
-    await expect(page).toHaveURL(/[?&]zone=fin/);
+    await expect(page).toHaveURL(/\/finance-portfolio/);
 
     // Re-inject sidebar_collapse so it survives the reload (addInitScript
     // already does this for navigations, but reload triggers a fresh boot).
@@ -97,7 +99,7 @@ test.describe('SP1 — Sidebar zones', () => {
     await page.getByRole('tab', { name: 'หน้าร้าน' }).first().click();
     await expect(page.getByRole('tab', { name: 'หน้าร้าน' }).first()).toHaveAttribute(
       'aria-selected',
-      'true'
+      'true',
     );
 
     // MainLayout.tsx:88 useEffect resolves zone from pathname and auto-switches.
@@ -115,9 +117,7 @@ test.describe('SP1 — Sidebar zones', () => {
     await page.goto('/overdue', { waitUntil: 'domcontentloaded' });
 
     // Wait for the redirect away from /overdue.
-    await expect
-      .poll(() => new URL(page.url()).pathname, { timeout: 8_000 })
-      .not.toBe('/overdue');
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 8_000 }).not.toBe('/overdue');
 
     // Sonner toast container has data-sonner-toast attribute.
     const toast = page.locator('[data-sonner-toast]').first();
@@ -125,16 +125,22 @@ test.describe('SP1 — Sidebar zones', () => {
     await expect(toast).toContainText('คุณไม่มีสิทธิ์เข้าถึงหน้านี้');
   });
 
-  test('Placeholder /quotes renders ComingSoonPage with SP5 + ETA', async ({ page }) => {
+  // The old placeholder /quotes was removed from App.tsx (the quotes model was
+  // dropped from the schema — see docs/accounting/factory-reset-runbook-2026-08.md)
+  // so it now falls through to the catch-all and lands on the Dashboard. This test
+  // keeps its original intent — "a placeholder route renders ComingSoonPage with its
+  // tracking SP + ETA" — on a route that still exists: /settings/brands (OWNER-only,
+  // resolves to the 'settings' zone so MainLayout doesn't bounce it).
+  test('Placeholder /settings/brands renders ComingSoonPage with SP5 + ETA', async ({ page }) => {
     await loginAndExpandSidebar(page, 'OWNER');
 
-    await page.goto('/quotes', { waitUntil: 'domcontentloaded' });
+    await page.goto('/settings/brands', { waitUntil: 'domcontentloaded' });
 
     // ComingSoonPage.tsx renders <h1>{feature}</h1> + tracking SP description.
-    await expect(page.getByRole('heading', { name: 'ใบเสนอราคา' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'จัดการแบรนด์สินค้า' })).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByText(/SP5/)).toBeVisible();
+    await expect(page.getByText(/SP5/).first()).toBeVisible();
     await expect(page.getByText('ภายในไตรมาส 3/2026')).toBeVisible();
   });
 });

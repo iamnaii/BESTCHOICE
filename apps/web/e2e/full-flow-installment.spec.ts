@@ -51,12 +51,15 @@ interface TraceResult {
 }
 
 async function traceContract(page: Page, token: string, contractId: string): Promise<TraceResult> {
-  const response = await page.request.get(`${API_URL}/api/data-audit/trace-contract/${contractId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'X-Requested-With': 'XMLHttpRequest',
+  const response = await page.request.get(
+    `${API_URL}/api/data-audit/trace-contract/${contractId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
     },
-  });
+  );
   expect(response.ok(), `Trace API failed: ${response.status()}`).toBeTruthy();
   const body = await response.json();
   return body.data ?? body;
@@ -90,15 +93,19 @@ test.describe('Full Flow: ขายผ่อนครบวงจร', () => {
     const loaded = await gotoWithRetry(page, '/contracts/create');
     expect(loaded).toBeTruthy();
 
-    // Wizard should show step indicator or product selection
+    // Wizard should show step indicator or product selection.
+    // StepIndicator uses Tailwind utility classes only — no "step"/"wizard" class name
+    // exists to match, so anchor on its rendered text ("ขั้นตอน 1") instead.
     const hasWizard = await page
-      .locator('[class*="step"], [class*="wizard"], [class*="Step"]')
+      .getByText(/ขั้นตอน \d/)
       .first()
       .isVisible({ timeout: 10000 })
       .catch(() => false);
 
+    // "เลือกสินค้า" only — /สินค้า/ matches the TopBar branch badge of the OWNER seed
+    // branch ("คลังสินค้าหลัก (Main Warehouse)"), which is lg:hidden on desktop.
     const hasProductList = await page
-      .getByText(/เลือกสินค้า|สินค้า|Product/i)
+      .getByText('เลือกสินค้า')
       .first()
       .isVisible({ timeout: 5000 })
       .catch(() => false);

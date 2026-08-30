@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, BadRequestException, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  BadRequestException,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
@@ -175,6 +187,22 @@ export class OverdueController {
     return this.overdueService.getCollectionPipelineStats(user.role, user.branchId || undefined);
   }
 
+  /**
+   * การ์ด "ภาพรวมติดตามหนี้" บน Dashboard ของ FINANCE_MANAGER
+   *
+   * หน้าจอ (`DashboardFinanceOverview`) เรียกเส้นทางนี้มาตั้งแต่ commit 497ff66e3
+   * แต่ **ไม่เคยมีใครสร้างมันขึ้นมาจริง** ⇒ ได้ 404 ทุกครั้ง และเพราะวิดเจ็ตเขียนว่า
+   * `if (isLoading || !data) return <skeleton>` การ์ดโครงเทาจึงกะพริบค้างถาวร
+   * บนหน้าแรกของผู้จัดการการเงิน (พบตอนไล่เทส page-health-check, 2026-08-30)
+   *
+   * roles ชุดเดียวกับ /summary และ /pipeline — การ scope สาขาอยู่ในเลเยอร์ service
+   */
+  @Get('stats')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getDashboardStats(@CurrentUser() user: { role: string; branchId: string | null }) {
+    return this.overdueService.getDashboardStats(user.role, user.branchId);
+  }
+
   @Get('contracts/:id/timeline')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getTimeline(@Param('id') id: string) {
@@ -218,19 +246,13 @@ export class OverdueController {
 
   @Post('call-logs')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  createCallLog(
-    @Body() dto: CreateCallLogDto,
-    @CurrentUser() user: { id: string },
-  ) {
+  createCallLog(@Body() dto: CreateCallLogDto, @CurrentUser() user: { id: string }) {
     return this.overdueService.createCallLog(dto, user.id);
   }
 
   @Post(':contractId/assign')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
-  assignCollector(
-    @Param('contractId') contractId: string,
-    @Body() dto: AssignCollectorDto,
-  ) {
+  assignCollector(@Param('contractId') contractId: string, @Body() dto: AssignCollectorDto) {
     return this.overdueService.assignCollector(contractId, dto.assignedToId);
   }
 
@@ -245,12 +267,7 @@ export class OverdueController {
     @Body() body: { hoursFromNow?: number },
     @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.overdueService.holdAutoEscalation(
-      id,
-      user.id,
-      user.role,
-      body?.hoursFromNow,
-    );
+    return this.overdueService.holdAutoEscalation(id, user.id, user.role, body?.hoursFromNow);
   }
 
   @Post(':contractId/settlement')
@@ -393,10 +410,7 @@ export class OverdueController {
 
   @Post('contracts/:id/approve-escalation')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  approveEscalation(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string; role: string },
-  ) {
+  approveEscalation(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
     return this.overdueService.approveDunningEscalation(id, user.id, user.role);
   }
 
@@ -407,12 +421,7 @@ export class OverdueController {
     @Body() body: { reason: string },
     @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.overdueService.rejectDunningEscalation(
-      id,
-      user.id,
-      user.role,
-      body.reason,
-    );
+    return this.overdueService.rejectDunningEscalation(id, user.id, user.role, body.reason);
   }
 
   // --- Z8: MDM lock request live-check + undo (used by useUndoMutation) ---
@@ -430,10 +439,7 @@ export class OverdueController {
    */
   @Delete('mdm-requests/:id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  deleteMdmRequest(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string; role: string },
-  ) {
+  deleteMdmRequest(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
     return this.mdmLockService.deleteIfPending(id, user.id, user.role);
   }
 
@@ -465,10 +471,7 @@ export class OverdueController {
 
   @Post('mdm-requests/:id/unlock')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
-  unlockMdm(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string; role: string },
-  ) {
+  unlockMdm(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
     return this.mdmLockService.unlock(id, user.id, user.role);
   }
 
@@ -594,10 +597,7 @@ export class OverdueController {
 
   @Post('letters/bulk/dispatch')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  bulkDispatchLetters(
-    @Body() dto: BulkDispatchLettersDto,
-    @CurrentUser() user: { id: string },
-  ) {
+  bulkDispatchLetters(@Body() dto: BulkDispatchLettersDto, @CurrentUser() user: { id: string }) {
     return this.contractLetterService.bulkDispatch(dto.items, user.id);
   }
 
@@ -620,10 +620,7 @@ export class OverdueController {
 
   @Post('letters/:id/delivered')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  markLetterDelivered(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string },
-  ) {
+  markLetterDelivered(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     return this.contractLetterService.markDelivered(id, user.id);
   }
 
@@ -699,10 +696,7 @@ export class OverdueController {
 
   @Delete('contracts/:id/snooze')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
-  unsnoozeContract(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string },
-  ) {
+  unsnoozeContract(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     return this.snoozeService.unsnooze(id, user.id);
   }
 
@@ -733,10 +727,7 @@ export class OverdueController {
   // `from` and `to` are ISO date strings; defaults to last 30 days when missing.
   @Get('analytics/recovery')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  getAnalyticsRecovery(
-    @Query('from') fromRaw?: string,
-    @Query('to') toRaw?: string,
-  ) {
+  getAnalyticsRecovery(@Query('from') fromRaw?: string, @Query('to') toRaw?: string) {
     const now = new Date();
     const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const from = fromRaw ? new Date(fromRaw) : defaultFrom;
@@ -760,10 +751,7 @@ export class OverdueController {
   @Get('line-retries')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   listFailed(@Query('limit') limit?: string) {
-    const parsedLimit = Math.min(
-      Math.max(parseInt(limit ?? '', 10) || 100, 1),
-      500,
-    );
+    const parsedLimit = Math.min(Math.max(parseInt(limit ?? '', 10) || 100, 1), 500);
     return this.dunningRetryService.listFailed(parsedLimit);
   }
 

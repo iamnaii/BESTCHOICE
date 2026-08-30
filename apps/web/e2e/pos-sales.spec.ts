@@ -49,13 +49,19 @@ test.describe('POS ขายสินค้า', () => {
     if (!ok) return;
     // Target the main content area submit button (not sidebar)
     const mainContent = page.locator('main, .main-content, [class*="content"]').first();
-    const submitBtn = mainContent.locator('button').filter({ hasText: /ยืนยันการขาย|บันทึกการขาย|ชำระเงิน/ }).first();
+    const submitBtn = mainContent
+      .locator('button')
+      .filter({ hasText: /ยืนยันการขาย|บันทึกการขาย|ชำระเงิน/ })
+      .first();
     if (await submitBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       const isDisabled = await submitBtn.isDisabled();
       if (!isDisabled) {
         await submitBtn.click();
-        const hasError = await page.locator('[data-sonner-toast], .text-destructive, .text-red-500').first()
-          .isVisible({ timeout: 3000 }).catch(() => false);
+        const hasError = await page
+          .locator('[data-sonner-toast], .text-destructive, .text-red-500')
+          .first()
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
         expect(hasError).toBeTruthy();
       } else {
         // Button disabled without product = correct behavior
@@ -100,8 +106,11 @@ test.describe('ประวัติการขาย', () => {
   test('should display sales list or empty state', async ({ page }) => {
     const ok = await gotoWithRetry(page, '/sales');
     if (!ok) return;
-    const hasData = await page.locator('table tbody tr, .sale-item').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr, .sale-item')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (!hasData) {
       await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     }
@@ -110,7 +119,9 @@ test.describe('ประวัติการขาย', () => {
   test('should have date filter', async ({ page }) => {
     const ok = await gotoWithRetry(page, '/sales');
     if (!ok) return;
-    const dateFilter = page.locator('input[type="date"], [data-testid="date-filter"]').first()
+    const dateFilter = page
+      .locator('input[type="date"], [data-testid="date-filter"]')
+      .first()
       .or(page.getByText(/วันที่|ช่วงเวลา/).first());
     if (await dateFilter.isVisible({ timeout: 5000 }).catch(() => false)) {
       await dateFilter.click();
@@ -133,8 +144,7 @@ test.describe('ประวัติการขาย', () => {
   test('should navigate to sale detail on click', async ({ page }) => {
     const ok = await gotoWithRetry(page, '/sales');
     if (!ok) return;
-    const firstRow = page.locator('table tbody tr').first()
-      .or(page.locator('.sale-item').first());
+    const firstRow = page.locator('table tbody tr').first().or(page.locator('.sale-item').first());
     if (await firstRow.isVisible({ timeout: 5000 }).catch(() => false)) {
       await firstRow.click();
       await page.waitForTimeout(1000);
@@ -142,4 +152,3 @@ test.describe('ประวัติการขาย', () => {
     }
   });
 });
-

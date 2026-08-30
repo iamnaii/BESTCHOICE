@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-test.describe.skip('Phase 2: cash checkout — enable after PaySolutions sandbox + seed fixtures', () => {
+test.describe
+  .skip('Phase 2: cash checkout — enable after PaySolutions sandbox + seed fixtures', () => {
   test('browse → reserve → cart → checkout → place order', async ({ page }) => {
     await page.goto('http://localhost:5174/products');
     await page.getByText('iPhone', { exact: false }).first().click();

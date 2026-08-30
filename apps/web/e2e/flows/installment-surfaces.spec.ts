@@ -17,12 +17,7 @@
 import { test, expect } from '@playwright/test';
 import { loginAsRole } from '../helpers/auth';
 import { ContractCreatePage } from '../pom/ContractCreatePage';
-import {
-  cleanupTestData,
-  newSeedIds,
-  seedCustomer,
-  type SeedIds,
-} from '../fixtures/seed-data';
+import { cleanupTestData, newSeedIds, seedCustomer, type SeedIds } from '../fixtures/seed-data';
 import { getApiToken } from '../helpers/api-utils';
 import { gotoWithRetry, hasErrorBoundary } from '../helpers/navigation';
 
@@ -88,9 +83,7 @@ test.describe('Installment surfaces — page-load smoke', () => {
     }
 
     // Search for the seeded customer by phone (unique per run)
-    const search = page
-      .getByPlaceholder(/ค้นหา|search/i)
-      .first();
+    const search = page.getByPlaceholder(/ค้นหา|search/i).first();
     if (await search.isVisible({ timeout: 5000 }).catch(() => false)) {
       await search.fill(customer.phone);
       // Allow debounced search to settle (auto-wait by checking row appearance)
@@ -111,10 +104,12 @@ test.describe('Installment surfaces — page-load smoke', () => {
       throw new Error('Error boundary on /payments — page rendered an unhandled exception');
     }
 
-    // Heading or main content visible
-    await expect(
-      page.getByText(/บันทึก.?ชำระ|รายการ.?ชำระ|Payments?/i).first(),
-    ).toBeVisible({ timeout: 15000 });
+    // Heading visible — PaymentsPage renders <PageHeader title="ชำระเงิน" /> (an <h1>).
+    // Bind to the h1 instead of a loose getByText: a page-level getByText(...).first()
+    // can resolve to the TopBar branch badge (lg:hidden ⇒ hidden on desktop) instead.
+    await expect(page.getByRole('heading', { level: 1, name: 'ชำระเงิน' }).first()).toBeVisible({
+      timeout: 15000,
+    });
 
     // No app error
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');

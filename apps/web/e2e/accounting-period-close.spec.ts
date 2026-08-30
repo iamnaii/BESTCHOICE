@@ -26,7 +26,9 @@ test.describe('Accounting — Period Close hardening (F-6-003)', () => {
     await loginViaAPI(page);
   });
 
-  test('rejects close with forceCloseReason shorter than 50 chars (DTO validation)', async ({ page }) => {
+  test('rejects close with forceCloseReason shorter than 50 chars (DTO validation)', async ({
+    page,
+  }) => {
     const res = await page.request.post(`${API_URL}/api/expenses/periods/close`, {
       headers: getAuthHeaders(),
       data: {
@@ -44,7 +46,9 @@ test.describe('Accounting — Period Close hardening (F-6-003)', () => {
     expect(message).toMatch(/forceCloseReason|50 ตัวอักษร/);
   });
 
-  test('accepts payload shape with valid forceCloseReason ≥50 chars (no DTO error)', async ({ page }) => {
+  test('accepts payload shape with valid forceCloseReason ≥50 chars (no DTO error)', async ({
+    page,
+  }) => {
     const longReason =
       'ทดสอบ E2E สำหรับ F-6-003 — รับทราบและยอมรับปัญหา audit ทั้งหมดที่ระบบรายงาน เพื่อปิดงวดสำหรับ smoke test ของ Phase A.0';
     expect(longReason.length).toBeGreaterThanOrEqual(50);

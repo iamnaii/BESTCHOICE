@@ -62,6 +62,22 @@ jobs:
       JWT_EXPIRATION: 15m
       JWT_REFRESH_EXPIRATION: 7d
       ENCRYPTION_KEY: test-encryption-key-for-ci
+      # PII สองตัวนี้ **จำเป็น** ไม่ใช่ของเสริม — `CustomerPiiService.encryptForWrite`
+      # โยน error ทิ้งทันทีเมื่อจะเขียน nationalId/phone แล้วคีย์หาย หรือสั้นกว่า 32
+      # ตัวอักษร (customer-pii.service.ts:171-182 "refusing to write plaintext") ⇒
+      # ก่อนหน้านี้ทุกเทสที่สร้างลูกค้าผ่าน API ได้ HTTP 500 INTERNAL_ERROR
+      # หมายเหตุ: seed ใช้ `prisma.customer.create` ตรง จึงไม่โดนด่านนี้ —
+      # ข้อมูลตั้งต้นมีครบมาตลอด ที่พังคือเฉพาะการสร้างใหม่ระหว่างเทส
+      # ค่าปลอมสำหรับ CI เท่านั้น (Postgres ใน container ที่ถูกทิ้งหลังรันจบ)
+      #
+      # ⚠️ PII_ENCRYPTION_KEY ต้องเป็น **hex 64 ตัวอักษร** ไม่ใช่แค่ "ยาวเกิน 32"
+      # crypto.util.ts:62 ทำ `createCipheriv(ALGO, Buffer.from(key, 'hex'), iv)` ⇒
+      # สตริงธรรมดาจะถูกแปลงเหลือไม่กี่ไบต์แล้วโยน "Invalid key length" → HTTP 500
+      # (ด่านที่บรรทัด 55 ตรวจแค่ความยาว ≥32 จึงปล่อยค่าที่ใช้ไม่ได้ผ่านมาถึงตรงนี้)
+      # 64 ตัวอักษร hex = 32 ไบต์ ตามที่ aes-256-gcm ต้องการ
+      PII_ENCRYPTION_KEY: e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0
+      # ส่วนตัวนี้เป็น HMAC key (pii.util.ts:53) รับสตริงอะไรก็ได้ ขอแค่ยาว >= 32
+      PII_HASH_SALT: e2e-pii-hash-salt-32-chars-minimum-ci
       PORT: 3000
       NODE_ENV: test
       BASE_URL: http://localhost:5173
@@ -153,11 +169,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ต้องโหลดลง apps/web/ ไม่ใช่รากโปรเจกต์ — ขั้น merge ด้านล่างรันด้วย
+      # working-directory: apps/web ⇒ เดิม artifact ไปอยู่ที่ <ราก>/all-reports/
+      # แล้ว merge หาไม่เจอ ตายด้วย "Directory does not exist: apps/web/all-reports"
+      # ทุกครั้ง และเพราะมี continue-on-error: true มันจึงพังเงียบมาตลอด —
+      # รายงาน HTML รวมไม่เคยถูกสร้างเลยแม้แต่รอบเดียว
       - name: Download shard reports
         uses: actions/download-artifact@v4
         with:
           pattern: playwright-report-shard-*
-          path: all-reports/
+          path: apps/web/all-reports/
 
       - name: Merge reports
         run: npx playwright merge-reports --reporter=html all-reports/

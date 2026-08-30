@@ -3,14 +3,20 @@ import { loginAsRole } from './helpers/auth';
 import { gotoWithRetry, hasErrorBoundary } from './helpers/navigation';
 
 /**
- * /settings — multi-tab hub. #users ถูกยุบเข้า #internal-control (2026-06-23).
+ * /settings — registry-driven panel (ไม่ใช่หน้า Tabs แล้ว).
  *
- * Hash-based: `/settings#vat` opens the VAT tab directly; back/forward
- * restores prior tab. Page is OWNER-only — others are redirected to '/'.
+ * `/settings` → <SettingsIndexRedirect> (pages/settings/SettingsIndexRedirect.tsx)
+ * เด้งไป `/settings/<categoryId>` แรกที่ role นั้นเห็น (OWNER = 'company') แล้ว
+ * เรนเดอร์ SettingsLayout → CategoryPage. ไม่มี element ที่มี role="tab" เหลืออยู่เลย.
  *
- * Source: apps/web/src/pages/SettingsPage/index.tsx.
+ * Hash เดิม (`#vat`, `#periods`, …) ยังใช้ได้ในฐานะทางลัด — HASH_TO_CATEGORY แมป
+ * ไปหมวดใหม่แล้วคง hash ไว้เป็น anchor ของ section (เทสสามตัวล่างยืนยันแค่ว่า
+ * hash ไม่หายและหน้าไม่พัง ไม่ได้ยืนยันพฤติกรรม tab อีกต่อไป).
+ *
+ * Source: apps/web/src/pages/settings/{SettingsIndexRedirect,SettingsLayout,CategoryPage}.tsx.
  */
 
+// hash เดิมที่ยังถูกแมปเป็นหมวด — ใช้โดยเทส back/forward ด้านล่างเท่านั้น
 const TAB_IDS = ['company', 'vat', 'periods', 'attachment', 'internal-control'] as const;
 
 async function settingsMounted(page: Page): Promise<boolean> {
@@ -23,7 +29,7 @@ async function settingsMounted(page: Page): Promise<boolean> {
 }
 
 test.describe('Settings page — tab navigation', () => {
-  test('OWNER lands on /settings — default (company) tab visible', async ({ page }) => {
+  test('OWNER lands on /settings — first visible category (บริษัท & สาขา)', async ({ page }) => {
     await loginAsRole(page, 'OWNER');
     await gotoWithRetry(page, '/settings');
 
@@ -31,11 +37,13 @@ test.describe('Settings page — tab navigation', () => {
 
     await expect(page.getByText('ตั้งค่าระบบ').first()).toBeVisible();
 
-    // Tab triggers should render (OWNER sees 9). TAB_IDS lists a representative subset incl. internal-control.
-    const tabTriggers = page.locator('[role="tab"]');
-    const count = await tabTriggers.count().catch(() => 0);
-    // 5 tabs expected; allow >=5 in case future tabs are added.
-    expect(count).toBeGreaterThanOrEqual(5);
+    // OWNER's first visible registry category is `company` (settings-registry.tsx),
+    // and SettingsLayout renders its label through PageHeader's <h1>.
+    await expect(page).toHaveURL(/\/settings\/company/);
+    await expect(page.getByRole('heading', { name: 'บริษัท & สาขา' }).first()).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByPlaceholder('ค้นหาการตั้งค่า…')).toBeVisible();
   });
 
   test('Hash sync: /settings#vat opens the VAT tab', async ({ page }) => {
@@ -64,10 +72,7 @@ test.describe('Settings page — tab navigation', () => {
     if (!(await settingsMounted(page))) return;
 
     // Click the VAT tab trigger.
-    const vatTrigger = page
-      .locator('[role="tab"]')
-      .filter({ hasText: /^VAT$/ })
-      .first();
+    const vatTrigger = page.locator('[role="tab"]').filter({ hasText: /^VAT$/ }).first();
     if (!(await vatTrigger.isVisible({ timeout: 3000 }).catch(() => false))) return;
 
     await vatTrigger.click();

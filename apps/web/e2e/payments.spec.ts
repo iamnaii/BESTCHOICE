@@ -14,9 +14,9 @@ test.describe('Payments Page', () => {
     await expect(page.getByText('สรุปรายวัน').first()).toBeVisible();
 
     // Search input should be visible (inside pending tab content)
-    await expect(
-      page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร...'),
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร...')).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('should display pending payments tab by default', async ({ page }) => {
@@ -34,9 +34,7 @@ test.describe('Payments Page', () => {
 
     if (hasTable) {
       // Table should have contract/amount columns
-      await expect(
-        page.getByText('สัญญา').or(page.getByText('จำนวนเงิน')).first(),
-      ).toBeVisible();
+      await expect(page.getByText('สัญญา').or(page.getByText('จำนวนเงิน')).first()).toBeVisible();
     }
     // Empty state ("ไม่มีรายการรอชำระ") is also valid
   });
@@ -46,8 +44,11 @@ test.describe('Payments Page', () => {
     await expect(page.getByText('รายการรอชำระ').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
-    // Find a "รับชำระ" (receive payment) button
-    const payButton = page.locator('button:has-text("รับชำระ")').first();
+    // Find a "รับชำระ" (receive payment) button that is actually actionable.
+    // ห้ามข้ามงวด (2026-08-19): แถวที่มีงวดก่อนหน้าค้างจะได้ปุ่ม disabled
+    // (PaymentTable.tsx — disabled={p.hasEarlierUnpaid === true}) ซึ่งยัง "มองเห็นได้"
+    // ⇒ ถ้าไม่กรอง :not([disabled]) เทสจะคลิกปุ่มที่กดไม่ได้จนหมดเวลา
+    const payButton = page.locator('button:has-text("รับชำระ"):not([disabled])').first();
     const hasPayButton = await payButton.isVisible({ timeout: 5000 }).catch(() => false);
 
     if (hasPayButton) {
@@ -95,9 +96,12 @@ test.describe('Payments Page', () => {
     await expect(page.getByText('รายการรอชำระ').first()).toBeVisible({ timeout: 15000 });
 
     // Look for status filter dropdown — it's a <select> with "ทุกสถานะ" option
-    const statusFilter = page.locator('select').filter({
-      has: page.locator('option:has-text("ทุกสถานะ")'),
-    }).first();
+    const statusFilter = page
+      .locator('select')
+      .filter({
+        has: page.locator('option:has-text("ทุกสถานะ")'),
+      })
+      .first();
 
     const hasFilter = await statusFilter.isVisible({ timeout: 5000 }).catch(() => false);
 

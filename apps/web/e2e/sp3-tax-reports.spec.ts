@@ -36,7 +36,9 @@ test.describe('SP3 — Tax Module pages (ACCOUNTANT can view)', () => {
     await gotoWithRetry(page, '/finance/wht');
     const denied = await isAccessDenied(page, '/finance/wht');
     expect(denied).toBeFalsy();
-    await expect(page.getByRole('tab', { name: /ภ\.ง\.ด\.1/i }).first()).toBeVisible();
+    // WhtPage renders FORM_LABELS verbatim — 'ภ.ง.ด. 1 — เงินเดือน' has a space
+    // between 'ภ.ง.ด.' and the form number, so the regex must allow it.
+    await expect(page.getByRole('tab', { name: /ภ\.ง\.ด\.\s*1\b/i }).first()).toBeVisible();
   });
 
   test('ACCOUNTANT can access /finance/e-tax (e-Tax Invoice)', async ({ page }) => {

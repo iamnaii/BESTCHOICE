@@ -13,24 +13,24 @@ test.describe('คลังสินค้า', () => {
 
   test('should load stock page with heading', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('คลังสินค้า').first(),
-    ).toBeVisible({ timeout: 15000 });
+    // หัวข้อจริงคือ "ภาพรวมคลัง" (StockPage/OverviewPage.tsx → PageHeader <h1>).
+    // ห้ามใช้ getByText('คลังสินค้า') — ป้ายชื่อสาขาบน TopBar ("คลังสินค้าหลัก …")
+    // เป็น substring match ตัวแรกในหน้า และถูกซ่อนด้วย lg:hidden บนเดสก์ท็อป.
+    await expect(page.getByRole('heading', { name: 'ภาพรวมคลัง' })).toBeVisible({ timeout: 15000 });
   });
 
   test('should display stock summary (quantity and value)', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/พร้อมขาย|ชิ้น|มูลค่า/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/พร้อมขาย|ชิ้น|มูลค่า/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should have tabs (dashboard / list)', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
     const dashboardTab = page.getByText(/ภาพรวม|Dashboard/).first();
     const listTab = page.getByText(/รายการ|List/).first();
-    const hasTabs = await dashboardTab.isVisible({ timeout: 5000 }).catch(() => false) ||
-                    await listTab.isVisible({ timeout: 3000 }).catch(() => false);
+    const hasTabs =
+      (await dashboardTab.isVisible({ timeout: 5000 }).catch(() => false)) ||
+      (await listTab.isVisible({ timeout: 3000 }).catch(() => false));
     if (hasTabs) {
       // Switch between tabs
       if (await listTab.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -53,7 +53,9 @@ test.describe('คลังสินค้า', () => {
 
   test('should have status filter', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const statusFilter = page.locator('select').first()
+    const statusFilter = page
+      .locator('select')
+      .first()
       .or(page.getByText(/สถานะ|IN_STOCK|พร้อมขาย/).first());
     if (await statusFilter.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(statusFilter).toBeVisible();
@@ -62,8 +64,10 @@ test.describe('คลังสินค้า', () => {
 
   test('should show branch filter for managers', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const branchFilter = page.locator('select, [role="combobox"]')
-      .filter({ hasText: /สาขา|branch/i }).first()
+    const branchFilter = page
+      .locator('select, [role="combobox"]')
+      .filter({ hasText: /สาขา|branch/i })
+      .first()
       .or(page.getByText(/ทุกสาขา|สาขา/).first());
     if (await branchFilter.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(branchFilter).toBeVisible();
@@ -79,8 +83,11 @@ test.describe('คลังสินค้า', () => {
       await page.waitForTimeout(500);
     }
 
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (hasData) {
       await expect(page.locator('table').first()).toBeVisible();
     } else {
@@ -100,9 +107,9 @@ test.describe('โอนสินค้าระหว่างสาขา', ()
 
   test('should load transfers page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/จัดการโอนสินค้า|โอนสินค้า/).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/จัดการโอนสินค้า|โอนสินค้า/).first()).toBeVisible({
+      timeout: 15000,
+    });
   });
 
   test('should have tabs: outgoing, incoming, history', async ({ page }) => {
@@ -141,12 +148,18 @@ test.describe('โอนสินค้าระหว่างสาขา', ()
 
   test('should have create transfer action', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /โอน|สร้าง|เพิ่ม/ }).first();
+    const createBtn = page
+      .locator('button')
+      .filter({ hasText: /โอน|สร้าง|เพิ่ม/ })
+      .first();
     if (await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await createBtn.click();
       await page.waitForTimeout(500);
-      const hasForm = await page.locator('[role="dialog"], .modal, form').first()
-        .isVisible({ timeout: 3000 }).catch(() => false);
+      const hasForm = await page
+        .locator('[role="dialog"], .modal, form')
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
       if (hasForm) {
         await expect(page.locator('[role="dialog"], .modal, form').first()).toBeVisible();
       }
@@ -155,8 +168,11 @@ test.describe('โอนสินค้าระหว่างสาขา', ()
 
   test('should show transfer list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (!hasData) {
       await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     }
@@ -174,15 +190,16 @@ test.describe('ปรับสต็อก', () => {
 
   test('should load adjustments page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('ปรับสต็อก').first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('ปรับสต็อก').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should show adjustment list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (hasData) {
       await expect(page.locator('table').first()).toBeVisible();
     } else {
@@ -192,12 +209,18 @@ test.describe('ปรับสต็อก', () => {
 
   test('should have create adjustment action', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /ปรับ|สร้าง|เพิ่ม/ }).first();
+    const createBtn = page
+      .locator('button')
+      .filter({ hasText: /ปรับ|สร้าง|เพิ่ม/ })
+      .first();
     if (await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await createBtn.click();
       await page.waitForTimeout(500);
-      const hasForm = await page.locator('[role="dialog"], .modal, form').first()
-        .isVisible({ timeout: 3000 }).catch(() => false);
+      const hasForm = await page
+        .locator('[role="dialog"], .modal, form')
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
       if (hasForm) {
         await expect(page.locator('[role="dialog"], .modal, form').first()).toBeVisible();
       }
@@ -206,9 +229,7 @@ test.describe('ปรับสต็อก', () => {
 
   test('should display summary with count and value', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/รายการ|มูลค่า/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/รายการ|มูลค่า/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should no error on page', async ({ page }) => {
@@ -228,21 +249,20 @@ test.describe('ตรวจนับสต๊อก', () => {
 
   test('should load stock count page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/ตรวจนับสต๊อก|ตรวจนับ/).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/ตรวจนับสต๊อก|ตรวจนับ/).first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/ตรวจนับสินค้าจริง/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/ตรวจนับสินค้าจริง/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should have start count action', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const startBtn = page.locator('button').filter({ hasText: /เริ่มนับ|ตรวจนับ|สร้าง/ }).first();
+    const startBtn = page
+      .locator('button')
+      .filter({ hasText: /เริ่มนับ|ตรวจนับ|สร้าง/ })
+      .first();
     if (await startBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(startBtn).toBeVisible();
     }
@@ -250,8 +270,11 @@ test.describe('ตรวจนับสต๊อก', () => {
 
   test('should show count history or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (!hasData) {
       await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     }
@@ -274,22 +297,23 @@ test.describe('แจ้งเตือนสต็อก', () => {
 
   test('should load stock alerts page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('แจ้งเตือนสต็อก').first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('แจ้งเตือนสต็อก').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display low stock count in subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/รายการ|ต่ำกว่าเกณฑ์|แจ้งเตือน/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/รายการ|ต่ำกว่าเกณฑ์|แจ้งเตือน/).first()).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test('should show alerts list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr, .alert-item').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr, .alert-item')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (!hasData) {
       await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     }
@@ -312,16 +336,12 @@ test.describe('ขั้นตอนสต็อก', () => {
 
   test('should load workflow page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('ขั้นตอนสต็อก').first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('ขั้นตอนสต็อก').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle about tracking', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/ติดตามสถานะสินค้า/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/ติดตามสถานะสินค้า/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show workflow pipeline steps', async ({ page }) => {
@@ -350,22 +370,21 @@ test.describe('ตรวจสอบสินค้า', () => {
 
   test('should load inspections page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('ตรวจสอบสินค้า').first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('ตรวจสอบสินค้า').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/ตรวจสอบและอัปเดตสถานะ/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/ตรวจสอบและอัปเดตสถานะ/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show inspection list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr, .inspection-item').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr, .inspection-item')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (hasData) {
       await expect(page.locator('table').first()).toBeVisible();
     } else {
@@ -375,12 +394,18 @@ test.describe('ตรวจสอบสินค้า', () => {
 
   test('should have create inspection action', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /ตรวจ|สร้าง|เพิ่ม/ }).first();
+    const createBtn = page
+      .locator('button')
+      .filter({ hasText: /ตรวจ|สร้าง|เพิ่ม/ })
+      .first();
     if (await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await createBtn.click();
       await page.waitForTimeout(500);
-      const hasForm = await page.locator('[role="dialog"], .modal, form').first()
-        .isVisible({ timeout: 3000 }).catch(() => false);
+      const hasForm = await page
+        .locator('[role="dialog"], .modal, form')
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
       if (hasForm) {
         await expect(page.locator('[role="dialog"], .modal, form').first()).toBeVisible();
       }

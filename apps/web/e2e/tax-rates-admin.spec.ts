@@ -34,13 +34,9 @@ test.describe('TaxRatesPage — OWNER-only admin', () => {
 
     await expect(page.getByText('ตั้งค่าอัตราภาษี').first()).toBeVisible();
     // WHT card + table render once the query resolves.
-    await expect(
-      page.getByText('อัตราภาษีหัก ณ ที่จ่าย').first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('อัตราภาษีหัก ณ ที่จ่าย').first()).toBeVisible({ timeout: 10000 });
     // SSO read-only card present.
-    await expect(
-      page.getByText('อัตราเงินสมทบประกันสังคม').first(),
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('อัตราเงินสมทบประกันสังคม').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('ACCOUNTANT is redirected/denied at /settings/tax-rates', async ({ page }) => {
@@ -85,8 +81,14 @@ test.describe('TaxRatesPage — OWNER-only admin', () => {
       // Either success toast or validation error — both are observable. We assert
       // the dialog closes OR an error toast surfaces (no hang).
       await Promise.race([
-        page.waitForSelector('[role="dialog"]', { state: 'detached', timeout: 8000 }).catch(() => null),
-        page.locator('[data-sonner-toast]').first().waitFor({ timeout: 8000 }).catch(() => null),
+        page
+          .waitForSelector('[role="dialog"]', { state: 'detached', timeout: 8000 })
+          .catch(() => null),
+        page
+          .locator('[data-sonner-toast]')
+          .first()
+          .waitFor({ timeout: 8000 })
+          .catch(() => null),
       ]);
     }
 

@@ -13,7 +13,9 @@ test.describe('Invite Resend Feature', () => {
     await page.goto('/users', { waitUntil: 'domcontentloaded' });
 
     // Tab "คำเชิญ" should be visible
-    await expect(page.getByRole('tab', { name: /คำเชิญ/ }).or(page.getByText('คำเชิญ').first())).toBeVisible({
+    await expect(
+      page.getByRole('tab', { name: /คำเชิญ/ }).or(page.getByText('คำเชิญ').first()),
+    ).toBeVisible({
       timeout: 15000,
     });
   });
@@ -81,14 +83,23 @@ test.describe('Invite Resend Feature', () => {
     // Step 3: Wait for the invite to appear
     await expect(page.getByText(uniqueEmail)).toBeVisible({ timeout: 15000 });
 
-    // Step 4: Click "ส่งซ้ำ" button for this invite
-    const inviteRow = page.getByText(uniqueEmail).locator('../..').first();
-    const resendBtn = inviteRow.getByText('ส่งซ้ำ').or(page.getByText('ส่งซ้ำ').first());
+    // Step 4: Click "ส่งซ้ำ" button for this invite.
+    // The explainer box above the table (UserTable.tsx, prod 2026-08-24) also
+    // contains the words "ส่งซ้ำ", so an unscoped `.or(page.getByText('ส่งซ้ำ'))`
+    // fallback pulls that <p> in → strict mode violation. Scope to the real row.
+    const inviteRow = page.getByRole('row').filter({ hasText: uniqueEmail }).first();
+    const resendBtn = inviteRow.getByRole('button', { name: 'ส่งซ้ำ' });
     await expect(resendBtn).toBeVisible({ timeout: 5000 });
     await resendBtn.click();
 
-    // Step 5: Confirm dialog should appear (may be AlertDialog or confirm modal)
-    const confirmBtn = page.getByRole('button', { name: /ยืนยัน|ตกลง|ใช่|ส่งซ้ำ/ }).last();
+    // Step 5: Confirm dialog should appear (ConfirmDialog → Radix role="dialog",
+    // default confirmLabel 'ยืนยัน'). Scope to the dialog so we never hit another
+    // row's "ส่งซ้ำ" button.
+    const confirmBtn = page
+      .getByRole('dialog')
+      .last()
+      .getByRole('button', { name: /ยืนยัน|ตกลง|ใช่/ })
+      .last();
     await expect(confirmBtn).toBeVisible({ timeout: 5000 });
     await confirmBtn.click();
 
@@ -103,7 +114,7 @@ test.describe('Invite Resend Feature', () => {
     });
     expect(listRes.ok()).toBeTruthy();
     const listData = unwrapResponse(await listRes.json());
-    const invites = Array.isArray(listData) ? listData : listData.data ?? [];
+    const invites = Array.isArray(listData) ? listData : (listData.data ?? []);
     const invitesForEmail: Array<{ id: string; expiresAt: string; usedAt: string | null }> =
       invites.filter((i: { email: string }) => i.email === uniqueEmail);
 
@@ -165,7 +176,7 @@ test.describe('Invite Resend Feature', () => {
       return;
     }
     const listData = unwrapResponse(await listRes.json());
-    const invites = Array.isArray(listData) ? listData : listData.data ?? [];
+    const invites = Array.isArray(listData) ? listData : (listData.data ?? []);
     const usedInvite = invites.find((i: { usedAt: string | null }) => i.usedAt !== null);
 
     if (!usedInvite) {

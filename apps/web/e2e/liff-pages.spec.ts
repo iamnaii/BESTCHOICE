@@ -51,12 +51,21 @@ test.describe('LIFF Payment', () => {
     await page.waitForTimeout(3000);
 
     // Should show payment form, loading, or token error
-    const hasForm = await page.locator('form, input, .payment').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
-    const hasError = await page.getByText(/ไม่พบ|หมดอายุ|ไม่ถูกต้อง|error/i).first()
-      .isVisible({ timeout: 3000 }).catch(() => false);
-    const hasLoading = await page.getByText(/กำลังโหลด|loading/i).first()
-      .isVisible({ timeout: 2000 }).catch(() => false);
+    const hasForm = await page
+      .locator('form, input, .payment')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+    const hasError = await page
+      .getByText(/ไม่พบ|หมดอายุ|ไม่ถูกต้อง|error/i)
+      .first()
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
+    const hasLoading = await page
+      .getByText(/กำลังโหลด|loading/i)
+      .first()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
     // Any response is valid
     expect(hasForm || hasError || hasLoading || true).toBeTruthy();
   });
@@ -112,7 +121,10 @@ test.describe('LIFF Profile', () => {
 test.describe('LIFF Register', () => {
   test('should load LIFF register page', async ({ page, browserName }) => {
     // LIFF pages depend on LINE SDK which may not initialize in non-Chromium browsers
-    test.skip(browserName === 'firefox', 'LIFF SDK unreliable in Firefox (blank page due to LINE redirect)');
+    test.skip(
+      browserName === 'firefox',
+      'LIFF SDK unreliable in Firefox (blank page due to LINE redirect)',
+    );
     await gotoWithRetry(page, '/liff/register');
     await page.waitForTimeout(3000);
 

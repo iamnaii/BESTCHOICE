@@ -54,7 +54,10 @@ test.describe('Finance Receivable contact log', () => {
     await page.getByPlaceholder('รายละเอียดการคุย…').fill('E2E test note');
 
     // Submit — the save button has text "บันทึก" (exact, to avoid matching "บันทึกการติดต่อ")
-    await page.locator('button', { hasText: /^บันทึก$/ }).last().click();
+    await page
+      .locator('button', { hasText: /^บันทึก$/ })
+      .last()
+      .click();
 
     // Sonner toast should appear
     await expect(page.getByText('บันทึกการติดต่อสำเร็จ')).toBeVisible({ timeout: 10000 });
@@ -72,8 +75,13 @@ test.describe('Finance Receivable contact log', () => {
 
     // Check if any real data rows exist (DataTable always renders 1 tr for EmptyState
     // when data=[]; a real row has a button inside the first cell)
-    const hasData = await page.locator('tbody tr').first().locator('button').first()
-      .isVisible({ timeout: 3000 }).catch(() => false);
+    const hasData = await page
+      .locator('tbody tr')
+      .first()
+      .locator('button')
+      .first()
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
     if (!hasData) {
       test.skip(true, 'No external-finance receivables seeded in dev DB');
       return;
@@ -83,7 +91,9 @@ test.describe('Finance Receivable contact log', () => {
 
     // The "มีนัดเลยกำหนด" filter is a plain <input type="checkbox"> inside a <label>.
     // Locate it via the surrounding label text.
-    const checkbox = page.locator('label', { hasText: 'มีนัดเลยกำหนด' }).locator('input[type="checkbox"]');
+    const checkbox = page
+      .locator('label', { hasText: 'มีนัดเลยกำหนด' })
+      .locator('input[type="checkbox"]');
     await checkbox.check();
     await page.waitForLoadState('networkidle');
 

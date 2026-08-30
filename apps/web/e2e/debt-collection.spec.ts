@@ -13,22 +13,21 @@ test.describe('ยึดคืน & ขายต่อ', () => {
 
   test('should load repossessions page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/ยึดคืน/).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/ยึดคืน/).first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/จัดการเครื่องที่ยึดคืน/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/จัดการเครื่องที่ยึดคืน/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show repossession list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (hasData) {
       await expect(page.locator('table').first()).toBeVisible();
     } else {

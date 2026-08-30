@@ -6,6 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
@@ -32,7 +33,8 @@ test.describe('Depreciation — manual run', () => {
       throw new Error(`POST /api/assets failed (${createRes.status()}): ${body}`);
     }
 
-    const created = await createRes.json();
+    // API wraps every success body in { success, data, timestamp } (ResponseInterceptor)
+    const created = unwrapResponse(await createRes.json());
     expect(created.id).toBeTruthy();
 
     const postRes = await page.request.post(`${API_URL}/api/assets/${created.id}/post`, {
@@ -45,9 +47,11 @@ test.describe('Depreciation — manual run', () => {
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     // Preview
-    const previewRes = await page.request.get(`${API_URL}/api/depreciation/preview/${period}`);
+    const previewRes = await page.request.get(`${API_URL}/api/depreciation/preview/${period}`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(previewRes.ok()).toBeTruthy();
-    const preview = await previewRes.json();
+    const preview = unwrapResponse(await previewRes.json());
     expect(preview.assetCount).toBeGreaterThanOrEqual(1);
 
     // Run
@@ -56,7 +60,7 @@ test.describe('Depreciation — manual run', () => {
       data: { period },
     });
     expect(runRes.ok()).toBeTruthy();
-    const run = await runRes.json();
+    const run = unwrapResponse(await runRes.json());
     expect(run.assetCount).toBeGreaterThanOrEqual(1);
     expect(run.status).toBe('POSTED');
 
@@ -65,7 +69,7 @@ test.describe('Depreciation — manual run', () => {
       headers: getRoleAuthHeaders('FINANCE_MANAGER'),
     });
     expect(listRes.ok()).toBeTruthy();
-    const list = await listRes.json();
+    const list = unwrapResponse(await listRes.json());
     expect(list.find((r: { period: string }) => r.period === period)).toBeTruthy();
   });
 });

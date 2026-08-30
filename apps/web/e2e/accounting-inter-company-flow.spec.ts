@@ -3,97 +3,66 @@ import { loginViaAPI, getAuthHeaders } from './helpers/auth';
 import { unwrapResponse } from './helpers/api-utils';
 
 /* ================================================================
-   Phase A.1b — Inter-company JE invariant
+   Inter-company JE invariant
 
-   After Phase A.1b, contract activation and payment posting create
-   PAIRED journal entries on SHOP + FINANCE companies via the
-   inter-company clearing accounts:
-     - SHOP side:    11-2105 Due-from-FINANCE
-     - FINANCE side: 21-1102 Due-to-SHOP
+   ⚠️ This file used to query `GET /journal-entries/trial-balance
+   ?companyId=…`. That endpoint was REMOVED — journal.controller.ts
+   says so in a comment, and the request now falls through to
+   `@Get(':id')` with id='trial-balance' → 404. The replacement,
+   `GET /expenses/ledger/trial-balance`, takes `scope=FINANCE|SHOP|ALL`
+   (prefix-based), never `companyId`, and returns a completely
+   different shape ({ sections, perScope, isBalanced, … }).
 
-   Invariant: across ALL posted JEs, the net debit on SHOP's
-   Due-from-FINANCE must equal the net credit on FINANCE's
-   Due-to-SHOP. Any drift means a paired entry was lost or
-   one-sided.
+   The clearing accounts this file named were wrong too:
+   intercompany.service.ts documents that the old formula read FINANCE
+   from 21-1102 only (missing 21-1101, the bulk of the payable) and
+   SHOP from 11-2105 — a dead Phase A.3 placeholder nothing posts to.
+   The live formula is FINANCE 21-1101 + 21-1102 (Cr−Dr) vs SHOP
+   S11-3001 + S11-3002 (Dr−Cr), and it already has an endpoint:
+   GET /accounting/intercompany/balance.
 
-   Strategy: query trial-balance per company, compare balances on
-   the two clearing accounts.
+   NOTE: `balanced === true` is NOT asserted on purpose. A nonzero
+   drift is an EXPECTED condition (`driftNote` on the response says
+   so): contracts activated before 2026-06-23 (`legacyNoShop`) and
+   contracts with an empty `storeCommission` (COMMISSION_ONLY_GAP)
+   have no SHOP-side receivable at all.
    ================================================================ */
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
-const SHOP_DUE_FROM_FINANCE = '11-2105';
-const FINANCE_DUE_TO_SHOP = '21-1102';
-
-test.describe('Accounting — Inter-company JE invariant (Phase A.1b)', () => {
+test.describe('Accounting — Inter-company JE invariant', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaAPI(page);
   });
 
-  test('SHOP Due-from-FINANCE balance equals FINANCE Due-to-SHOP balance', async ({ page }) => {
-    const cosRes = await page.request.get(`${API_URL}/api/companies`, {
+  test('GET /accounting/intercompany/balance reports both books and their drift', async ({
+    page,
+  }) => {
+    const res = await page.request.get(`${API_URL}/api/accounting/intercompany/balance`, {
       headers: getAuthHeaders(),
     });
+    expect(res.ok()).toBeTruthy();
 
-    if (!cosRes.ok()) {
-      test.skip(true, 'companies endpoint unavailable');
-      return;
-    }
-
-    const companies = unwrapResponse(await cosRes.json()) as Array<{
-      id: string;
-      companyCode: string;
-    }>;
-    const shop = companies.find((c) => c.companyCode === 'SHOP');
-    const finance = companies.find((c) => c.companyCode === 'FINANCE');
-
-    if (!shop || !finance) {
-      test.skip(true, 'SHOP/FINANCE companies not configured in dev DB');
-      return;
-    }
-
-    const shopTBRes = await page.request.get(
-      `${API_URL}/api/journal-entries/trial-balance?companyId=${shop.id}`,
-      { headers: getAuthHeaders() },
-    );
-    expect(shopTBRes.ok()).toBeTruthy();
-    const shopTB = unwrapResponse(await shopTBRes.json()) as {
-      accounts: Array<{ code: string; balance: number }>;
+    const balance = unwrapResponse(await res.json()) as {
+      financeOwesToShop: number;
+      shopReceivableFromFinance: number;
       balanced: boolean;
+      drift: number;
+      driftNote: string;
     };
 
-    const financeTBRes = await page.request.get(
-      `${API_URL}/api/journal-entries/trial-balance?companyId=${finance.id}`,
-      { headers: getAuthHeaders() },
-    );
-    expect(financeTBRes.ok()).toBeTruthy();
-    const financeTB = unwrapResponse(await financeTBRes.json()) as {
-      accounts: Array<{ code: string; balance: number }>;
-      balanced: boolean;
-    };
+    expect(typeof balance.financeOwesToShop).toBe('number');
+    expect(typeof balance.shopReceivableFromFinance).toBe('number');
+    expect(typeof balance.drift).toBe('number');
+    expect(typeof balance.balanced).toBe('boolean');
 
-    // Each company's own trial balance must balance independently
-    expect(shopTB.balanced, 'SHOP trial balance must be balanced').toBeTruthy();
-    expect(financeTB.balanced, 'FINANCE trial balance must be balanced').toBeTruthy();
-
-    const shopDueFrom = shopTB.accounts.find((a) => a.code === SHOP_DUE_FROM_FINANCE);
-    const financeDueTo = financeTB.accounts.find((a) => a.code === FINANCE_DUE_TO_SHOP);
-
-    if (!shopDueFrom && !financeDueTo) {
-      test.skip(true, 'no inter-company activity yet — both clearing accounts unused');
-      return;
-    }
-
-    // SHOP Due-from-FINANCE: asset, normal balance = debit positive
-    // FINANCE Due-to-SHOP:    liability, normal balance = credit (so balance field = -credit)
-    // For the invariant, compare absolute amounts.
-    const shopDueFromAmount = shopDueFrom ? shopDueFrom.balance : 0;
-    const financeDueToAmount = financeDueTo ? -financeDueTo.balance : 0;
-
+    // drift is defined as SHOP receivable − FINANCE payable; the three numbers
+    // must stay internally consistent even when the drift itself is nonzero.
     expect(
-      Math.abs(shopDueFromAmount - financeDueToAmount),
-      `Inter-company drift: SHOP Due-from-FINANCE=${shopDueFromAmount} but FINANCE Due-to-SHOP=${financeDueToAmount}`,
+      Math.abs(balance.drift - (balance.shopReceivableFromFinance - balance.financeOwesToShop)),
+      `Inconsistent response: drift=${balance.drift}, SHOP=${balance.shopReceivableFromFinance}, FINANCE=${balance.financeOwesToShop}`,
     ).toBeLessThan(0.01);
+    expect(balance.balanced).toBe(Math.abs(balance.drift) < 0.01);
   });
 
   test('every recent JournalEntry is balanced (no silent unbalanced post)', async ({ page }) => {

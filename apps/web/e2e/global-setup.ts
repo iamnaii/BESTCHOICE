@@ -43,20 +43,21 @@ export default async function globalSetup() {
   const context = await browser.newContext();
 
   const tokens: Record<string, string> = {};
-  // Sequential to stay comfortably under the /auth/login 10-req/min throttle
+  // เวลาที่ออกโทเคน **รายบทบาท** — ลูปนี้เดินทีละตัวเพื่อเลี่ยง throttle 10 ครั้ง/นาที
+  // จึงกินเวลาหลายวินาที และ role ท้าย ๆ ได้โทเคนช้ากว่า role แรกจริง ๆ
+  // (คู่กับตัวอ่านใน helpers/auth.ts ที่คิดอายุแยกรายบทบาท — ดูคอมเมนต์บั๊ก 401 ที่นั่น)
+  const timestamps: Record<string, number> = {};
   for (const [role, creds] of Object.entries(ROLE_ACCOUNTS)) {
     tokens[role] = await loginRole(context.request, apiURL, role, creds);
+    timestamps[role] = Date.now();
   }
 
   fs.writeFileSync(
     AUTH_FILE,
-    JSON.stringify({ accessToken: tokens.OWNER, timestamp: Date.now() }),
+    JSON.stringify({ accessToken: tokens.OWNER, timestamp: timestamps.OWNER }),
   );
 
-  fs.writeFileSync(
-    ROLE_AUTH_FILE,
-    JSON.stringify({ tokens, timestamp: Date.now() }),
-  );
+  fs.writeFileSync(ROLE_AUTH_FILE, JSON.stringify({ tokens, timestamps, timestamp: Date.now() }));
 
   await browser.close();
 }

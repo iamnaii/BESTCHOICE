@@ -77,20 +77,20 @@ test.describe('Installment Calculation', () => {
 
     // Navigate to PlanDetailsStep
     const productRow = page.locator('table tbody tr').first();
-    if (!await productRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await productRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await productRow.click();
 
     const nextBtn = page.locator('button:has-text("ถัดไป"):not([disabled])');
-    if (!await nextBtn.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn.isVisible({ timeout: 3000 }).catch(() => false))) return;
     await nextBtn.click();
 
     await page.waitForTimeout(1000);
     const customerRow = page.locator('table tbody tr').first();
-    if (!await customerRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await customerRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await customerRow.click();
 
     const nextBtn2 = page.locator('button:has-text("ถัดไป"):not([disabled])');
-    if (!await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false))) return;
     await nextBtn2.click();
 
     // Verify ค่างวด/เดือน is a positive numeric value
@@ -104,7 +104,7 @@ test.describe('Installment Calculation', () => {
 
     const hasValue = await monthlyPaymentEl.isVisible({ timeout: 3000 }).catch(() => false);
     if (hasValue) {
-      const text = await monthlyPaymentEl.textContent() ?? '';
+      const text = (await monthlyPaymentEl.textContent()) ?? '';
       const value = parseBaht(text);
       expect(value).toBeGreaterThan(0);
     }
@@ -120,20 +120,20 @@ test.describe('Installment Calculation', () => {
     await page.waitForTimeout(1500);
 
     const productRow = page.locator('table tbody tr').first();
-    if (!await productRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await productRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await productRow.click();
 
     const nextBtn = page.locator('button:has-text("ถัดไป"):not([disabled])');
-    if (!await nextBtn.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn.isVisible({ timeout: 3000 }).catch(() => false))) return;
     await nextBtn.click();
 
     await page.waitForTimeout(1000);
     const customerRow = page.locator('table tbody tr').first();
-    if (!await customerRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await customerRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await customerRow.click();
 
     const nextBtn2 = page.locator('button:has-text("ถัดไป"):not([disabled])');
-    if (!await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false))) return;
     await nextBtn2.click();
 
     await expect(page.getByText('สรุปการคำนวณ').first()).toBeVisible({ timeout: 10000 });
@@ -147,9 +147,9 @@ test.describe('Installment Calculation', () => {
     // Row 0: ราคาขาย | X,XXX ฿
     // Row 1: เงินดาวน์ | -X,XXX ฿
     // Row 2: ยอดปล่อย (Loan) | X,XXX ฿
-    const sellingPriceText = await rows.nth(0).locator('span').last().textContent() ?? '';
-    const downPaymentText = await rows.nth(1).locator('span').last().textContent() ?? '';
-    const principalText = await rows.nth(2).locator('span').last().textContent() ?? '';
+    const sellingPriceText = (await rows.nth(0).locator('span').last().textContent()) ?? '';
+    const downPaymentText = (await rows.nth(1).locator('span').last().textContent()) ?? '';
+    const principalText = (await rows.nth(2).locator('span').last().textContent()) ?? '';
 
     const sellingPrice = parseBaht(sellingPriceText);
     const downPayment = parseBaht(downPaymentText.replace('-', ''));
@@ -170,30 +170,31 @@ test.describe('Installment Calculation', () => {
     await page.waitForTimeout(1500);
 
     const productRow = page.locator('table tbody tr').first();
-    if (!await productRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await productRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await productRow.click();
 
     const nextBtn = page.locator('button:has-text("ถัดไป"):not([disabled])');
-    if (!await nextBtn.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn.isVisible({ timeout: 3000 }).catch(() => false))) return;
     await nextBtn.click();
 
     await page.waitForTimeout(1000);
     const customerRow = page.locator('table tbody tr').first();
-    if (!await customerRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await customerRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await customerRow.click();
 
     const nextBtn2 = page.locator('button:has-text("ถัดไป"):not([disabled])');
-    if (!await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false))) return;
     await nextBtn2.click();
 
     await expect(page.getByText('สรุปการคำนวณ').first()).toBeVisible({ timeout: 10000 });
 
     const downPaymentInput = page.locator('input[type="number"]').first();
-    if (!await downPaymentInput.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await downPaymentInput.isVisible({ timeout: 3000 }).catch(() => false))) return;
 
     // Read initial monthly payment
     await page.waitForTimeout(300);
-    const monthlyPaymentBefore = await page.locator('.border-t.pt-2 .text-primary').last().textContent() ?? '';
+    const monthlyPaymentBefore =
+      (await page.locator('.border-t.pt-2 .text-primary').last().textContent()) ?? '';
 
     // Increase down payment by 1000
     const currentValue = await downPaymentInput.inputValue();
@@ -203,7 +204,8 @@ test.describe('Installment Calculation', () => {
     await page.waitForTimeout(300);
 
     // Monthly payment should decrease (more down = less financed)
-    const monthlyPaymentAfter = await page.locator('.border-t.pt-2 .text-primary').last().textContent() ?? '';
+    const monthlyPaymentAfter =
+      (await page.locator('.border-t.pt-2 .text-primary').last().textContent()) ?? '';
 
     if (monthlyPaymentBefore && monthlyPaymentAfter) {
       const before = parseBaht(monthlyPaymentBefore);
@@ -222,27 +224,27 @@ test.describe('Installment Calculation', () => {
     await page.waitForTimeout(1500);
 
     const productRow = page.locator('table tbody tr').first();
-    if (!await productRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await productRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await productRow.click();
 
     const nextBtn = page.locator('button:has-text("ถัดไป"):not([disabled])');
-    if (!await nextBtn.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn.isVisible({ timeout: 3000 }).catch(() => false))) return;
     await nextBtn.click();
 
     await page.waitForTimeout(1000);
     const customerRow = page.locator('table tbody tr').first();
-    if (!await customerRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await customerRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await customerRow.click();
 
     const nextBtn2 = page.locator('button:has-text("ถัดไป"):not([disabled])');
-    if (!await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false))) return;
     await nextBtn2.click();
 
     await expect(page.getByText('สรุปการคำนวณ').first()).toBeVisible({ timeout: 10000 });
 
     // Get available month options
     const monthSelect = page.locator('select').first();
-    if (!await monthSelect.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await monthSelect.isVisible({ timeout: 3000 }).catch(() => false))) return;
 
     const options = await monthSelect.locator('option').allTextContents();
     if (options.length < 2) return;
@@ -250,12 +252,14 @@ test.describe('Installment Calculation', () => {
     // Read monthly payment with first option
     await monthSelect.selectOption({ index: 0 });
     await page.waitForTimeout(300);
-    const paymentWithFewerMonths = await page.locator('.border-t.pt-2 .text-primary').last().textContent() ?? '';
+    const paymentWithFewerMonths =
+      (await page.locator('.border-t.pt-2 .text-primary').last().textContent()) ?? '';
 
     // Read monthly payment with last option (more months = lower monthly)
     await monthSelect.selectOption({ index: options.length - 1 });
     await page.waitForTimeout(300);
-    const paymentWithMoreMonths = await page.locator('.border-t.pt-2 .text-primary').last().textContent() ?? '';
+    const paymentWithMoreMonths =
+      (await page.locator('.border-t.pt-2 .text-primary').last().textContent()) ?? '';
 
     if (paymentWithFewerMonths && paymentWithMoreMonths) {
       const fewerMonthsPayment = parseBaht(paymentWithFewerMonths);

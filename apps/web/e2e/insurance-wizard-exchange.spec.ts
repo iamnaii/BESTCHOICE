@@ -96,10 +96,7 @@ test.describe('Insurance — Wizard (exchange branch / bypass smoke)', () => {
     // The bypass banner itself is inside ExchangeProductPickerStep which only mounts
     // at step 4 + chosenFlow='exchange' — that requires seed data to reach in smoke.
     // This test therefore validates the breadcrumb suppression (no warranty step).
-    const ok = await gotoWithRetry(
-      page,
-      '/insurance/new?intent=exchange&bypassWindow=true',
-    );
+    const ok = await gotoWithRetry(page, '/insurance/new?intent=exchange&bypassWindow=true');
     if (!ok) {
       test.skip(
         true,
@@ -141,10 +138,7 @@ test.describe('Insurance — Wizard (exchange branch / bypass smoke)', () => {
     // SALES role is NOT in the bypass whitelist (OWNER / BRANCH_MANAGER only)
     await loginAsRole(page, 'SALES');
 
-    const ok = await gotoWithRetry(
-      page,
-      '/insurance/new?intent=exchange&bypassWindow=true',
-    );
+    const ok = await gotoWithRetry(page, '/insurance/new?intent=exchange&bypassWindow=true');
     if (!ok) {
       test.skip(
         true,

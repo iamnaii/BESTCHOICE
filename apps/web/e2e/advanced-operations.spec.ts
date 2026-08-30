@@ -64,11 +64,13 @@ test.describe('Advanced Operations', () => {
     expect(page.url()).toContain('/promotions');
   });
 
-  test('OWNER can access tax reports page', async ({ page }) => {
+  // SP3 แยก /tax-reports เป็น 3 หน้า (VAT / WHT / e-Tax) — path เดิมเหลือเป็น
+  // <Navigate to="/finance/vat" replace /> (App.tsx) จึงยืนยันที่ปลายทางจริง
+  test('OWNER can access VAT report page', async ({ page }) => {
     await loginAsRole(page, 'OWNER');
-    await gotoWithRetry(page, '/tax-reports');
+    await gotoWithRetry(page, '/finance/vat');
     await page.waitForTimeout(2000);
-    expect(page.url()).toContain('/tax-reports');
+    expect(page.url()).toContain('/finance/vat');
   });
 
   test('OWNER can access commissions page', async ({ page }) => {

@@ -9,19 +9,9 @@ import { ContactResolverService } from '../../contacts/contact-resolver.service'
 import { CustomerQueryService } from './customer-query.service';
 
 /**
- * ชื่อ sentinel ของแถวที่ `findOrCreatePrecheckCustomer` สร้างไว้ก่อนผู้ใช้กรอกข้อมูลเต็ม.
- *
- * `CustomerPreCheckService` ใช้ตัวนี้ตัดสินว่าแถวยัง "ลบทิ้งได้ / เขียนต่อได้" ไหม —
- * เดิมเป็น literal คนละชุดสองที่ (ตัวเขียนกับตัวตรวจ) ซึ่งเป็นความเสี่ยงแบบเดียวกับที่ทำให้
- * `abandonPreCheck` เคยตรวจสถานะไม่ครบ. **แก้ค่านี้ = แถวเก่าที่สร้างด้วยชื่อเดิมจะหลุด
- * ด่านทันที** (ไม่มี migration ตามให้) — ถ้าจะเปลี่ยนต้อง backfill ชื่อในตาราง customers ด้วย
- */
-export const PLACEHOLDER_CUSTOMER_NAME = 'ลูกค้าใหม่ (Pre-check)';
-
-/**
  * Write-path slice of the decomposed CustomersService.
  *
- * Owns create / findOrCreatePrecheckCustomer (both hold a $transaction —
+ * Owns create (holds a $transaction —
  * moved WHOLE, never split) / update / remove / uploadDocument /
  * deleteDocument, plus the write-path helpers (assertContactNotDuplicate,
  * normalize*, validateNationalId, buildPiiEncryptedFields + its inline
@@ -320,103 +310,6 @@ export class CustomerWriteService {
         });
       }
       return tx.customer.create({ data: { ...data, contact: contactConnect } });
-    });
-  }
-
-  /**
-   * Find-or-create the lightweight "pre-check" placeholder Customer, keyed on
-   * national ID, using the SAME PII pipeline + Contact resolution as create().
-   *
-   * Why this exists: the credit pre-check intake (CustomerPreCheckService) used
-   * to look up + create on PLAINTEXT nationalId only — no nationalIdHash, no
-   * encrypted columns, no party-master Contact. create() dedups exclusively on
-   * nationalIdHash + contactId, so a pre-check customer was invisible to it and
-   * the same person got a SECOND duplicate Customer row when they later
-   * completed registration (splitting contracts/payments across two identities).
-   * Routing both paths through this one helper keeps them from drifting, and is
-   * required anyway once Phase 6 drops the plaintext national_id column.
-   *
-   * Returns the customer id + whether a new row was created. A non-deleted
-   * existing customer is returned as-is; a soft-deleted ghost is revived.
-   */
-  async findOrCreatePrecheckCustomer(input: {
-    nationalId: string;
-    phone: string;
-  }): Promise<{ id: string; isNew: boolean }> {
-    const normalizedNid = this.normalizeNationalId(input.nationalId);
-    const normalizedPhone = this.normalizePhone(input.phone) ?? input.phone;
-    const nidHash = hashPII(normalizedNid, this.hashSalt);
-
-    // Dedup on nationalIdHash (the @unique column create() uses) — finds the row
-    // even if soft-deleted, so we revive rather than hit a P2002.
-    const existing = await this.prisma.customer.findUnique({
-      where: { nationalIdHash: nidHash },
-      select: { id: true, deletedAt: true },
-    });
-    if (existing && !existing.deletedAt) {
-      return { id: existing.id, isNew: false };
-    }
-
-    const piiEncrypted = this.buildPiiEncryptedFields({
-      nationalId: normalizedNid,
-      phone: normalizedPhone,
-    });
-    const nationalIdHash = (piiEncrypted.nationalIdHash as string | null | undefined) ?? null;
-
-    if (existing?.deletedAt) {
-      // Same person re-entering — revive the ghost + refresh PII/phone/status.
-      await this.prisma.customer.update({
-        where: { id: existing.id },
-        data: {
-          deletedAt: null,
-          nationalId: normalizedNid,
-          phone: normalizedPhone,
-          ...(piiEncrypted as Partial<Prisma.CustomerUpdateInput>),
-          creditCheckStatus: 'UNDER_REVIEW',
-        },
-      });
-      return { id: existing.id, isNew: false };
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
-        name: PLACEHOLDER_CUSTOMER_NAME,
-        taxId: null,
-        nationalIdHash,
-        phone: normalizedPhone,
-        role: 'CUSTOMER',
-      });
-      const data = {
-        nationalId: normalizedNid,
-        name: PLACEHOLDER_CUSTOMER_NAME,
-        phone: normalizedPhone,
-        ...(piiEncrypted as Partial<Prisma.CustomerCreateInput>),
-        creditCheckStatus: 'UNDER_REVIEW' as const,
-      };
-      // Stub-upgrade guard (mirrors create()): a prior ensureRole stub on this
-      // contact must be UPGRADED, not duplicated (Customer.contactId not @unique).
-      const existingStub = await tx.customer.findFirst({
-        where: { contactId: contact.id, deletedAt: null },
-        select: { id: true },
-      });
-      if (existingStub) {
-        await tx.customer.update({
-          where: { id: existingStub.id },
-          data: {
-            ...(data as Prisma.CustomerUpdateInput),
-            contact: { connect: { id: contact.id } },
-          },
-        });
-        return { id: existingStub.id, isNew: false };
-      }
-      const created = await tx.customer.create({
-        data: {
-          ...(data as Prisma.CustomerCreateInput),
-          contact: { connect: { id: contact.id } },
-        },
-        select: { id: true },
-      });
-      return { id: created.id, isNew: true };
     });
   }
 

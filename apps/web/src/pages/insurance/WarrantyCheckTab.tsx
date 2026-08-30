@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Wrench, Repeat } from 'lucide-react';
 import api from '@/lib/api';
-import PageHeader from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +24,7 @@ interface LookupResponse {
   devices: DeviceResult[];
 }
 
-export default function WarrantyCheckPage() {
+export default function WarrantyCheckTab() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canCreateTicket = !!user && ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user.role);
@@ -62,11 +61,10 @@ export default function WarrantyCheckPage() {
   };
 
   return (
-    <div className="space-y-4 p-4 md:p-6 max-w-4xl">
-      <PageHeader
-        title="เช็คประกัน"
-        subtitle="ตรวจสถานะประกันเครื่องของลูกค้า — ไม่ต้องสร้าง ticket"
-      />
+    <div className="space-y-4 max-w-4xl">
+      <p className="text-sm text-muted-foreground leading-snug">
+        ค้นเครื่องของลูกค้าเพื่อดูสถานะประกัน โดยไม่ต้องเปิดใบซ่อม
+      </p>
 
       <Card className="p-4 space-y-3">
         <div className="flex gap-2 flex-wrap">

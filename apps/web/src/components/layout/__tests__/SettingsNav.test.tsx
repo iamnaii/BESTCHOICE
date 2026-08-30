@@ -79,13 +79,16 @@ describe('ออกจากโหมดตั้งค่า', () => {
     expect(probe()).toBe('/|shop');
   });
 
-  it('ACCOUNTANT ไม่ถูกส่งไป /finance-portfolio (ไม่มีในเมนู ACC → โดน toast ไม่มีสิทธิ์ผี)', () => {
+  it('ACCOUNTANT ออกจากโหมดตั้งค่าแล้วไปหน้าที่เข้าได้จริง', () => {
+    // เดิมเทสนี้ปักว่า "ต้องไม่ใช่ /finance-portfolio" เพราะตอนนั้น ACC ไม่มีหน้านั้น
+    // ในเมนู ⇒ ถูกส่งไปแล้วโดน MainLayout เด้ง. ตอนนี้แก้ที่ต้นเหตุแล้ว (เพิ่ม
+    // /finance-portfolio เข้าเมนู acc-daily — route อนุญาต ACC มาตลอด) ปลายทางนั้น
+    // จึงใช้ได้ปกติ. เก็บเฉพาะ invariant ที่เป็นเจตนาจริง: **ปลายทางต้องเข้าถึงได้**
     role = 'ACCOUNTANT';
     window.history.replaceState({}, '', '/?zone=settings');
     render(<Harness entry="/settings/accounting" />);
     fireEvent.click(screen.getByTestId('exit-settings'));
     const [path] = (probe() ?? '').split('|');
-    expect(path).not.toBe('/finance-portfolio');
     expect(resolveZoneForPath('ACCOUNTANT', path)).toBe('fin');
   });
 });

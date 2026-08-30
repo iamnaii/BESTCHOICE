@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import api from '@/lib/api';
-import WarrantyCheckPage from './WarrantyCheckPage';
+import WarrantyCheckTab from './WarrantyCheckTab';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ function renderWith() {
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/insurance/warranty-check']}>
         <Routes>
-          <Route path="/insurance/warranty-check" element={<WarrantyCheckPage />} />
+          <Route path="/insurance/warranty-check" element={<WarrantyCheckTab />} />
           <Route path="/insurance/new" element={<div data-testid="wizard-page">Wizard</div>} />
         </Routes>
       </MemoryRouter>
@@ -71,7 +71,7 @@ beforeEach(() => {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe('WarrantyCheckPage', () => {
+describe('WarrantyCheckTab', () => {
   it('renders 3 search mode tabs: ลูกค้า / IMEI/Serial / เลขสัญญา', () => {
     renderWith();
     expect(screen.getByRole('button', { name: 'ลูกค้า' })).toBeInTheDocument();

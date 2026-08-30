@@ -30,7 +30,7 @@ const APP_NO_PREFIX = `${TEST_DOC_PREFIX}APP-`;
 export const applicationsSeeder: DomainSeeder = {
   key: 'applications',
   label: 'ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต',
-  routes: ['/installment-applications', '/customer-intake'],
+  routes: ['/installment-applications', '/credit-checks'],
   markerDoc: `OnlineInstallmentApplication.applicationNumber ขึ้นต้น "${APP_NO_PREFIX}" · CreditCheck.reviewNotes = "${CC_REVIEW_NOTE}"`,
 
   async plan(): Promise<PlanRow[]> {
@@ -107,7 +107,7 @@ export const applicationsSeeder: DomainSeeder = {
     }
 
     // CreditCheck ×1 สถานะ PENDING (aiScore/aiSummary ปล่อย null แบบ cc-007 ใน dev seed) —
-    // ให้หน้า /customer-intake มีรายการที่ยังมีงานต่อ. contractId จงใจปล่อย null:
+    // ให้หน้า /credit-checks มีรายการที่ยังมีงานต่อ. contractId จงใจปล่อย null:
     // คอลัมน์เป็น @unique — ผูกสัญญาทดสอบ = เผา slot ตรวจเครดิตของสัญญานั้น + เสี่ยง P2002
     const testCustomer = await ctx.prisma.customer.findFirst({
       where: { addressCurrent: TEST_CUSTOMER_ADDRESS, deletedAt: null },

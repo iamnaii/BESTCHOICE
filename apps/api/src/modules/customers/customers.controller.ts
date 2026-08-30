@@ -14,11 +14,9 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
-import { CustomerPreCheckService } from './customer-precheck.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import type { CustomerTierResponse } from './dto/tier.dto';
-import { CustomerPreCheckDto, CustomerPreCheckResponse } from './dto/precheck.dto';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UpdateCustomerContactDto } from './dto/skip-tracing.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
@@ -42,7 +40,6 @@ export class CustomersController {
     private customersService: CustomersService,
     private piiAudit: PiiAuditService,
     private readonly tierService: CustomerTierService,
-    private readonly preCheckService: CustomerPreCheckService,
     private readonly skipTracingService: SkipTracingService,
     private readonly insightsService: CustomerInsightsService,
   ) {}
@@ -256,48 +253,6 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getTier(@Param('id') id: string): Promise<CustomerTierResponse> {
     return this.tierService.getCustomerTier(id);
-  }
-
-  @Post('pre-check')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async preCheck(
-    @Body() body: CustomerPreCheckDto,
-    @Req() req: AuthRequest,
-  ): Promise<CustomerPreCheckResponse> {
-    return this.preCheckService.runPreCheck(body, {
-      userId: req.user?.id,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'] as string | undefined,
-    });
-  }
-
-  @Post('pre-check/:customerId/abandon')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  @ApiOperation({
-    summary:
-      'Abandon a pre-check session — soft-delete the placeholder customer so a half-finished intake does not leave garbage rows. No-op if the row already has real data.',
-  })
-  abandonPreCheck(@Param('customerId') customerId: string) {
-    return this.preCheckService.abandonPreCheck(customerId);
-  }
-
-  // Roles = ตัดกับ `POST /customers` พอดี (OWNER/BM/SALES) — **ไม่ใช่** ชุดเดียวกับ
-  // pre-check ซึ่งกว้างกว่า. เส้นนี้เรียก `customersService.update()` ตัวเดียวกับ PATCH
-  // ⇒ ถ้าเปิดถึง FINANCE_MANAGER/ACCOUNTANT จะกลายเป็นทางอ้อมให้สองบทบาทนั้นสร้าง
-  // ลูกค้าเต็มใบได้ ทั้งที่ `POST /customers` จงใจตัดออก (เดิมสร้างได้แค่แถว placeholder
-  // เปล่า ๆ จาก pre-check แล้วเขียนอะไรต่อไม่ได้)
-  @Post('pre-check/:customerId/complete')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  @ApiOperation({
-    summary:
-      'Finish an intake session — write the full form onto the placeholder row pre-check created. Roles mirror POST /customers (PATCH /customers/:id is OWNER/BM only, which 403s the SALES-facing intake wizard at its final step); refuses any row that is no longer a pre-check placeholder.',
-  })
-  completePreCheck(
-    @Param('customerId') customerId: string,
-    @Body() dto: UpdateCustomerDto,
-    @Req() req: AuthRequest,
-  ) {
-    return this.preCheckService.completePreCheck(customerId, dto, req.user?.role);
   }
 
   @Post()

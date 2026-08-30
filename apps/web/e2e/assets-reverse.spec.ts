@@ -4,7 +4,7 @@
 // + UI assertion that detail page shows the "กลับรายการ" status badge.
 
 import { test, expect } from '@playwright/test';
-import { loginAsRole } from './helpers/auth';
+import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
 import { gotoWithRetry } from './helpers/navigation';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -18,6 +18,7 @@ test.describe('Asset — reverse', () => {
   test('OWNER can reverse a POSTED asset with reason', async ({ page }) => {
     // 1. Create DRAFT
     const create = await page.request.post(`${API_URL}/api/assets`, {
+      headers: getRoleAuthHeaders('OWNER'),
       data: {
         name: `สินทรัพย์ทดสอบกลับรายการ ${Date.now()}`,
         category: 'EQUIPMENT',
@@ -35,11 +36,14 @@ test.describe('Asset — reverse', () => {
     expect(draft.status).toBe('DRAFT');
 
     // 2. POST DRAFT → POSTED
-    const post = await page.request.post(`${API_URL}/api/assets/${draft.id}/post`);
+    const post = await page.request.post(`${API_URL}/api/assets/${draft.id}/post`, {
+      headers: getRoleAuthHeaders('OWNER'),
+    });
     expect(post.ok()).toBeTruthy();
 
     // 3. Reverse with valid reason (>= 5 chars per ReverseAssetDialog validation)
     const reverse = await page.request.post(`${API_URL}/api/assets/${draft.id}/reverse`, {
+      headers: getRoleAuthHeaders('OWNER'),
       data: { reason: 'ทดสอบกลับรายการอัตโนมัติ E2E' },
     });
     if (!reverse.ok()) {
@@ -50,7 +54,9 @@ test.describe('Asset — reverse', () => {
     expect(reversed.entryNo).toBeTruthy();
 
     // 4. Confirm status flipped to REVERSED + reason stored
-    const after = await page.request.get(`${API_URL}/api/assets/${draft.id}`);
+    const after = await page.request.get(`${API_URL}/api/assets/${draft.id}`, {
+      headers: getRoleAuthHeaders('OWNER'),
+    });
     expect(after.ok()).toBeTruthy();
     const afterAsset = await after.json();
     expect(afterAsset.status).toBe('REVERSED');
@@ -70,6 +76,7 @@ test.describe('Asset — reverse', () => {
   test('reverse rejects reason < 5 characters', async ({ page }) => {
     // Create + POST first
     const create = await page.request.post(`${API_URL}/api/assets`, {
+      headers: getRoleAuthHeaders('OWNER'),
       data: {
         name: `สั้น reason test ${Date.now()}`,
         category: 'EQUIPMENT',
@@ -81,10 +88,13 @@ test.describe('Asset — reverse', () => {
     });
     if (!create.ok()) return; // skip if backend can't seed
     const draft = await create.json();
-    await page.request.post(`${API_URL}/api/assets/${draft.id}/post`);
+    await page.request.post(`${API_URL}/api/assets/${draft.id}/post`, {
+      headers: getRoleAuthHeaders('OWNER'),
+    });
 
     // Reason too short — server should reject (DTO @MinLength(5))
     const reverse = await page.request.post(`${API_URL}/api/assets/${draft.id}/reverse`, {
+      headers: getRoleAuthHeaders('OWNER'),
       data: { reason: 'สั้น' },
     });
     expect(reverse.ok()).toBeFalsy();

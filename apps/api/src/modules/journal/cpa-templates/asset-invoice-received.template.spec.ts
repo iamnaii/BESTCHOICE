@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { PrismaClient, AssetCategory, AssetStatus, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
@@ -90,6 +90,19 @@ async function setup() {
 describe('AssetInvoiceReceivedTemplate', () => {
   beforeAll(async () => {
     template = await setup();
+  });
+
+  // เดิมมีแต่ beforeEach ⇒ ข้อมูลของ "เคสสุดท้าย" ค้างใน DB หลังไฟล์นี้จบ
+  // แถวที่ค้างเป็น FixedAsset status=POSTED ซึ่ง DepreciationService.previewRun()
+  // มองเห็นทั้งตาราง ⇒ ไป fail depreciation.service.spec.ts (จ่ายกันคนละ runner:
+  // ไฟล์นี้ vitest, ตัวนั้น jest — แต่ใช้ DB เดียวกัน) ทุกเคสเพี้ยน +1
+  afterAll(async () => {
+    await prisma.journalPostAuditLog.deleteMany({});
+    await prisma.journalLine.deleteMany({});
+    await prisma.journalEntry.deleteMany({});
+    await prisma.depreciationEntry.deleteMany({});
+    await prisma.assetTransferHistory.deleteMany({});
+    await prisma.fixedAsset.deleteMany({});
   });
 
   beforeEach(async () => {

@@ -19,16 +19,40 @@ export type TestRole = 'OWNER' | 'BRANCH_MANAGER' | 'FINANCE_MANAGER' | 'SALES' 
 
 export const ROLE_ACCOUNTS: Record<TestRole, { email: string; password: string; name: string }> = {
   OWNER: { email: 'admin@bestchoice.com', password: 'admin1234', name: 'สุรชัย เจ้าของร้าน' },
-  BRANCH_MANAGER: { email: 'manager.ladprao@bestchoice.com', password: 'admin1234', name: 'วิภา ผู้จัดการลาดพร้าว' },
-  FINANCE_MANAGER: { email: 'finance@bestchoice.com', password: 'admin1234', name: 'นภา ผู้จัดการการเงิน' },
+  BRANCH_MANAGER: {
+    email: 'manager.ladprao@bestchoice.com',
+    password: 'admin1234',
+    name: 'วิภา ผู้จัดการลาดพร้าว',
+  },
+  FINANCE_MANAGER: {
+    email: 'finance@bestchoice.com',
+    password: 'admin1234',
+    name: 'นภา ผู้จัดการการเงิน',
+  },
   SALES: { email: 'sales1@bestchoice.com', password: 'admin1234', name: 'สมศักดิ์ พนักงานขาย' },
-  ACCOUNTANT: { email: 'accountant@bestchoice.com', password: 'admin1234', name: 'พิมพ์ใจ ฝ่ายบัญชี' },
+  ACCOUNTANT: {
+    email: 'accountant@bestchoice.com',
+    password: 'admin1234',
+    name: 'พิมพ์ใจ ฝ่ายบัญชี',
+  },
 };
 
 const AUTH_FILE = path.join(__dirname, '../../.playwright-auth.json');
 const ROLE_AUTH_FILE = path.join(__dirname, '../../.playwright-roles-auth.json');
 
 // JWT expiry is 15m — treat token as stale after 12 min to be safe
+//
+// ⚠️ 2026-08-30: เคยตั้งสมมติฐานว่าค่านี้คือเหตุที่ E2E แดงทั้งชุด — shard ที่รันนานกว่า
+// 12 นาทีจะ login ใหม่ต่อเทสแล้วชน throttle 10 ครั้ง/นาที (auth.controller.ts) หลักฐาน
+// ที่ใช้คือ "อัตราล้มไต่ขึ้นตรงนาที 10-15 ทุก shard ที่รันเกินนั้น ส่วน shard ที่จบใน
+// 13 นาทีนิ่งที่ 3-5%"
+//
+// **ทดลองแล้วผิด** — ยก JWT_EXPIRATION เป็น 2h + ค่านี้เป็น 90 นาทีใน CI
+// (run 33294915303) รูปแบบไม่ขยับเลย: shard 1 ยังเป็น 15/62/82/67/23/76/41%
+//
+// เหตุจริง: Playwright รัน spec **เรียงตามตัวอักษร** และไฟล์ที่ล้มยกไฟล์
+// (approval-workflow, assets-*, crm-kanban-stages, …) อยู่ท้าย ๆ ตัวอักษรพอดี
+// ⇒ แกน "เวลา" คือแกน "ลำดับไฟล์" การไล่ตามเวลาจึงเป็นทางตัน ให้ไล่ทีละ spec แทน
 const TOKEN_MAX_AGE_MS = 12 * 60 * 1000;
 
 /**
@@ -67,7 +91,10 @@ async function getToken(page: Page): Promise<string> {
   }
 
   // Cache the fresh token so subsequent tests in this worker reuse it
-  fs.writeFileSync(AUTH_FILE, JSON.stringify({ accessToken: data.accessToken, timestamp: Date.now() }));
+  fs.writeFileSync(
+    AUTH_FILE,
+    JSON.stringify({ accessToken: data.accessToken, timestamp: Date.now() }),
+  );
 
   return data.accessToken;
 }
@@ -241,10 +268,7 @@ export async function loginAsRole(page: Page, role: TestRole) {
         tokens: Record<string, string>;
         timestamp: number;
       };
-      if (
-        cache.tokens?.[role] &&
-        Date.now() - cache.timestamp < ROLE_TOKEN_MAX_AGE_MS
-      ) {
+      if (cache.tokens?.[role] && Date.now() - cache.timestamp < ROLE_TOKEN_MAX_AGE_MS) {
         token = cache.tokens[role];
         roleTokenCache[role] = { token, timestamp: cache.timestamp };
       } else {
@@ -288,6 +312,32 @@ export function getAuthHeaders(): Record<string, string> {
     }
   }
   return { 'X-Requested-With': 'XMLHttpRequest' };
+}
+
+/**
+ * Auth headers for `page.request` calls made as a specific role.
+ *
+ * `loginAsRole` sets these headers via `page.setExtraHTTPHeaders`, but that only
+ * covers requests the PAGE makes. `page.request` is the browser context's
+ * APIRequestContext — a separate channel that never sees those headers, so a
+ * direct `page.request.post(...)` arrives with no `X-Requested-With` and
+ * `CsrfGuard` rejects it with 403. Pass this explicitly on every such call.
+ *
+ * Must be called AFTER `loginAsRole(page, role)` in the same worker — that's
+ * what populates the token cache this reads.
+ */
+export function getRoleAuthHeaders(role: TestRole): Record<string, string> {
+  const token = roleTokenCache[role]?.token;
+  if (!token) {
+    throw new Error(
+      `getRoleAuthHeaders(${role}): no cached token — call loginAsRole(page, '${role}') first`,
+    );
+  }
+  return {
+    'X-Requested-With': 'XMLHttpRequest',
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
 }
 
 /**

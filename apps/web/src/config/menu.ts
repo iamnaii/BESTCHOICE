@@ -6,6 +6,7 @@ import {
   Users,
   Smartphone,
   FileCheck,
+  FileSearch,
   HandCoins,
   Warehouse,
   Coins,
@@ -38,7 +39,6 @@ import {
   Send,
   LayoutGrid,
   CheckSquare,
-  UserSearch,
   ShoppingBag,
   ClipboardCheck,
   PiggyBank,
@@ -159,9 +159,11 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
+        // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
+        // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
       ],
     },
     {
@@ -174,7 +176,8 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
-        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
     },
     {
@@ -215,6 +218,9 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'Dashboard', path: '/', icon: Home },
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
+        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
     },
     {
@@ -226,14 +232,14 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
-        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
     },
     {
@@ -251,6 +257,11 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รอถ่ายรูป/ตรวจสภาพ', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
+        // route อนุญาต BRANCH_MANAGER อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ
+        // Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (ปักที่ route-reachability.test.ts)
+        { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'สินทรัพย์ถาวร', path: '/assets', icon: Landmark },
       ],
     },
     {
@@ -325,10 +336,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // (customers.controller.ts @Roles มี FINANCE_MANAGER). ปักไว้ที่
         // __tests__/cta-reachability.test.ts
         //
-        // **ไม่ใส่ `/customer-intake` ให้ FM โดยตั้งใจ** — `POST /customers` และ
-        // `POST /customers/pre-check/:id/complete` ไม่รับ FM ⇒ ให้เข้า wizard ไปก็ตัน
-        // ที่ปุ่มบันทึก. ปุ่ม "+ เพิ่มลูกค้าใหม่" บนหน้าทะเบียนถูกซ่อนจาก FM แทน
-        // (CustomersPage `canCreateCustomer`) ⇒ FM อ่านทะเบียนได้ ไม่มีปุ่มที่กดแล้วเด้ง
+        // ปุ่ม "+ เพิ่มลูกค้าใหม่" บนหน้าทะเบียนถูกซ่อนจาก FM (CustomersPage
+        // `canCreateCustomer`) เพราะ `POST /customers` ไม่รับ FM ⇒ FM อ่านทะเบียนได้
+        // แต่ไม่มีปุ่มที่กดแล้วเด้ง
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
       ],
@@ -343,9 +353,17 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
+        // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
+        // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
         // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
         // Standardized label + icon across all 4 role configs.
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
+        { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
       ],
     },
     {
@@ -358,21 +376,58 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
+      ],
+    },
+    /* ── โซนบัญชีของ ผจก.การเงิน — ยกผังเดียวกับ OWNER (fin zone) มาใช้ ────────
+     * เดิมเป็นกอง "บัญชี & รายงาน" 17 รายการกองเดียว และ **ขาดหน้ารายงานการเงิน 12 หน้า**
+     * ที่ ProtectedRoute อนุญาต FM อยู่แล้ว (งบดุล/งบกระแสเงินสด/สมุดรายวัน/แยกประเภท/
+     * อายุหนี้/หนี้สูญ/ปิดบัญชีรายเดือน ฯลฯ) ⇒ MainLayout เด้ง FM ออกจากหน้าที่ตัวเองมีสิทธิ์
+     * ตอนที่ OWNER ได้ผังใหม่ตาม CSV ฝั่ง FM ไม่ได้ตามมาด้วย — รอบนี้ทำให้ตรงกัน
+     * ชื่อกลุ่ม + การจัดสมาชิกยึดตาม OWNER_CONFIG เป๊ะ เพื่อให้สองบทบาทเห็นโลกเดียวกัน
+     * ปักไว้ที่ __tests__/route-reachability.test.ts
+     */
+    {
+      key: 'fm-revenue',
+      label: 'รายรับ',
+      icon: TrendingUp,
+      zone: 'fin',
+      items: [
+        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
+        { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
+        { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: Receipt },
       ],
     },
     {
-      key: 'fm-finance',
-      label: 'บัญชี & รายงาน',
-      icon: Coins,
+      key: 'fm-spend',
+      label: 'รายจ่าย',
+      icon: Receipt,
       zone: 'fin',
       items: [
-        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
-        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
-        { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
-        { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        // P4-SP2 — Tax module (finance-tax endpoints)
+        { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: Store },
+        { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
+      ],
+    },
+    {
+      key: 'fm-closing',
+      label: 'ปิดบัญชี',
+      icon: CalendarDays,
+      zone: 'fin',
+      items: [
+        { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
+        { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
+        // ไม่มี /accounting/periods — เป็น roles={['OWNER']} (ดูคอมเมนต์ทิศ B)
+      ],
+    },
+    {
+      key: 'fm-tax',
+      label: 'ภาษี',
+      icon: Calculator,
+      zone: 'fin',
+      items: [
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
         { label: 'ภ.ง.ด.1 เงินเดือน (รายพนักงาน)', path: '/finance/wht-report', icon: Calculator },
@@ -380,14 +435,47 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
-        // SP6 — Bank/Cash account directory
-        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
-        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
-        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
-        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
-        { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
+      ],
+    },
+    {
+      key: 'fm-statements',
+      label: 'งบการเงิน',
+      icon: PieChart,
+      zone: 'fin',
+      items: [
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: Landmark },
+        { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+      ],
+    },
+    {
+      key: 'fm-reports',
+      label: 'รายงาน',
+      icon: BarChart3,
+      zone: 'fin',
+      items: [
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
+        { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
+        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: BarChart3 },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: BarChart3 },
+        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: BarChart3 },
+        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
+        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         // P3-SP3 — PEAK CSV export (deep-linked from /settings#peak-mapping which is OWNER-only)
         { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
+      ],
+    },
+    {
+      key: 'fm-bank',
+      label: 'บัญชีธนาคาร/เงินสด',
+      icon: Landmark,
+      zone: 'fin',
+      items: [
+        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
     },
     assetMenuSection,
@@ -424,12 +512,34 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: HandCoins,
       zone: 'fin',
       items: [
+        { label: 'Dashboard การเงิน', path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
+        { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: Receipt },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+      ],
+    },
+    {
+      key: 'acc-reference',
+      label: 'ข้อมูลอ้างอิง',
+      icon: FileSearch,
+      zone: 'fin',
+      items: [
+        // ProtectedRoute ของ 3 หน้านี้อนุญาต ACCOUNTANT อยู่แล้ว แต่ไม่มีในเมนู
+        // ⇒ MainLayout เด้งกลับ Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์
+        // (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'ลูกค้า', path: '/customers', icon: Users },
+        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
       ],
     },
     {
@@ -444,6 +554,10 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
         // P3-SP5 — SHOP-side accounting reports
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: BarChart3 },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: BarChart3 },
+        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: BarChart3 },
       ],
     },
     assetMenuSection,
@@ -457,7 +571,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
         { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
-        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
+        // /accounting/periods เป็น ProtectedRoute roles={['OWNER']} (เป็นแค่ redirect ไป
+        // /settings#periods ซึ่งอยู่หมวด system ที่ OWNER เท่านั้น) ⇒ role นี้กดแล้วโดนปฏิเสธ
+        // เสมอ จึงถอดออกจากเมนู (ปักที่ route-reachability.test.ts ทิศ B)
         { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
         // ผังบัญชี + PEAK Sync ลบออก — ใช้ผ่าน settings › บัญชี & ภาษี (dedupe 2026-06-24)
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
@@ -489,6 +605,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
         { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: Landmark },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
       ],
     },
     {
@@ -552,13 +671,15 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        // CustomersPage's "+ เพิ่มลูกค้าใหม่" navigates here — without this entry the
-        // MainLayout zone guard treats it as another role's page and bounces OWNER.
-        { label: 'เพิ่มลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
+        // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
       ],
     },
     {
@@ -568,11 +689,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
-        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
         { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
-        // คำสั่งเจ้าของ 2026-08-08: ยึดคืนต้องเห็นจาก zone หน้าร้านด้วย (duplicate กับ
-        // owner-fin-revenue โดยตั้งใจ — OWNER เห็นได้จากทั้งสอง zone เหมือน overdue/mdm)
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        // คำสั่งเจ้าของ 2026-08-29: ยึดคืนอยู่ zone ไฟแนนซ์ที่เดียว (owner-fin-revenue)
+        // — กลับคำสั่งเดิม 2026-08-08 ที่ให้ duplicate ไว้ทั้งสอง zone.
+        // OWNER ยังเข้าถึงได้ปกติ: resolveZoneForPath เจอ /repossessions ใน zone fin
+        // แล้ว MainLayout สลับ sidebar ให้เอง (ไม่เด้ง — เด้งเฉพาะตอนไม่เจอเลยสัก zone)
       ],
     },
     /* ── FIN zone restructure (per owner CSV) ───────────────────
@@ -719,6 +840,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'Ads & ROI', path: '/ads', icon: Target },
         { label: 'Broadcast', path: '/broadcast', icon: Send },
+        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
+        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
       ],
     },
     {
@@ -1008,9 +1131,11 @@ export const ZONE_LANDING: Record<Zone, string> = {
 export function getLandingPathForRole(role: string): string {
   const config = ZONE_CONFIG[role];
   if (!config) return '/';
-  // ผ่าน getZoneEntryPathForRole ไม่ใช่ ZONE_LANDING ตรง ๆ — ACCOUNTANT/VIEWER มี
-  // defaultZone = 'fin' แต่ไม่มี '/finance-portfolio' ในเมนูตัวเอง ⇒ ล็อกอินเสร็จเจอ
-  // toast 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วถูกเด้งกลับ '/' ทั้งที่ router อนุญาต
+  // ผ่าน getZoneEntryPathForRole ไม่ใช่ ZONE_LANDING ตรง ๆ — VIEWER มี defaultZone = 'fin'
+  // แต่ไม่มี '/finance-portfolio' ในเมนูตัวเอง (และ route ก็ไม่อนุญาต) ⇒ ล็อกอินเสร็จจะเจอ
+  // toast 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วถูกเด้งกลับ '/'
+  // ACCOUNTANT เคยมีอาการเดียวกันแต่แก้ที่ต้นเหตุแล้ว (เพิ่ม /finance-portfolio เข้าเมนู
+  // acc-daily) — route อนุญาต ACC อยู่แล้ว ทางเลี่ยงนี้จึงเหลือไว้เพื่อ VIEWER
   return getZoneEntryPathForRole(role, config.defaultZone);
 }
 

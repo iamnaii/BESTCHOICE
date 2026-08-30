@@ -166,7 +166,7 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 | `/product-holds` | ออเดอร์ออนไลน์ + การจองเครื่อง (`online-orders`) |
 | `/slip-review` | ออเดอร์ออนไลน์ + การจองเครื่อง (`online-orders`) |
 | `/installment-applications` | ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต (`applications`) |
-| `/customer-intake` | ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต (`applications`) |
+| `/credit-checks` | ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต (`applications`) |
 | `/inspections` | ใบตรวจสภาพเครื่อง (`inspections`) |
 | `/inspections/:id` | ใบตรวจสภาพเครื่อง (`inspections`) |
 | `/insurance` | ใบซ่อม / ประกัน (`repair`) |

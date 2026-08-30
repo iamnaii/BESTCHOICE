@@ -3,13 +3,14 @@
 // fetch /api/assets/:id/audit and verify >=1 log entry.
 
 import { test, expect } from '@playwright/test';
-import { loginAsRole } from './helpers/auth';
+import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
 test('per-asset audit endpoint returns log entries', async ({ page }) => {
   await loginAsRole(page, 'FINANCE_MANAGER');
   const createRes = await page.request.post(`${API_URL}/api/assets`, {
+    headers: getRoleAuthHeaders('FINANCE_MANAGER'),
     data: {
       name: `E2E Audit Test ${Date.now()}`,
       category: 'EQUIPMENT',
@@ -21,8 +22,12 @@ test('per-asset audit endpoint returns log entries', async ({ page }) => {
   });
   expect(createRes.ok()).toBeTruthy();
   const created = await createRes.json();
-  await page.request.post(`${API_URL}/api/assets/${created.id}/post`);
-  const auditRes = await page.request.get(`${API_URL}/api/assets/${created.id}/audit`);
+  await page.request.post(`${API_URL}/api/assets/${created.id}/post`, {
+    headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+  });
+  const auditRes = await page.request.get(`${API_URL}/api/assets/${created.id}/audit`, {
+    headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+  });
   expect(auditRes.ok()).toBeTruthy();
   const audit = await auditRes.json();
   expect(Array.isArray(audit)).toBe(true);

@@ -13,6 +13,7 @@ import {
 import ShopLayout from '@/components/layout/ShopLayout';
 import { Button, Card, CardBody, Container, Section, Stack } from '@/components';
 import { shopInfo } from '@/lib/copy';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 /**
  * Transparency page — answers the questions installment customers actually
@@ -92,6 +93,11 @@ const SECTIONS: TermSection[] = [
 ];
 
 export default function InstallmentTermsPage() {
+  usePageMeta(
+    'เงื่อนไขผ่อน iPhone กับ BESTCHOICE',
+    'เงื่อนไขและรายละเอียดการผ่อน iPhone กับ BESTCHOICE ลพบุรี — ดาวน์ ค่างวด เอกสารที่ใช้ และขั้นตอนอนุมัติ',
+  );
+
   return (
     <ShopLayout>
       <Section padding="md">

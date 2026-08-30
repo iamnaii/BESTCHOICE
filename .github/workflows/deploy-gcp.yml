@@ -550,12 +550,29 @@ jobs:
             --non-interactive
 
       - name: Deploy shop hosting (www.bestchoicephone.com)
-        # Will fail cleanly if the `bestchoicephone-shop` Firebase Hosting
-        # site hasn't been created yet — admin deploy above still succeeded,
-        # so this isolation prevents admin regressions during the shop rollout.
-        continue-on-error: true
+        # เดิมตั้ง continue-on-error: true ไว้ตอนที่ site `bestchoicephone-shop` ยังไม่มีจริง
+        # ตอนนี้ site + custom domain ขึ้นแล้ว การปล่อยให้ล้มแบบเงียบ ๆ แปลว่า
+        # "deploy เขียว แต่หน้าร้านค้างของเก่า" ซึ่งไม่มีใครรู้ตัว — ต้องให้ job แดง
         run: |
           firebase deploy \
             --only hosting:shop \
             --project "${{ secrets.GCP_PROJECT_ID }}" \
             --non-interactive
+
+      - name: Verify shop is live on the real domain
+        # กัน "deploy ผ่านแต่โดเมนไม่เสิร์ฟ" (cert หลุด / custom domain ถูกถอด /
+        # โดนแมปไป site อื่น) — เช็คว่าได้ HTML ของหน้าร้านจริง ไม่ใช่หน้า
+        # "Site Not Found" ของ Firebase
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            body=$(curl -fsS --max-time 20 https://www.bestchoicephone.com/ || true)
+            if printf '%s' "$body" | grep -q 'BESTCHOICE'; then
+              echo "shop OK on www.bestchoicephone.com"
+              exit 0
+            fi
+            echo "attempt $i: ยังไม่เจอหน้าร้านบน www — รอ 15 วิแล้วลองใหม่"
+            sleep 15
+          done
+          echo "::error::www.bestchoicephone.com ไม่ได้เสิร์ฟหน้าร้าน (อาจเป็นหน้า Site Not Found ของ Firebase)"
+          exit 1

@@ -5,6 +5,7 @@ import {
   CallHandler,
 } from '@nestjs/common';
 import { AuditService } from './audit.service';
+import { clientIp } from '../../utils/client-ip.util';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { tap } = require('rxjs');
@@ -58,7 +59,7 @@ export class AuditInterceptor implements NestInterceptor {
     }
 
     const startTime = Date.now();
-    const ipAddress = request.ip || request.headers['x-forwarded-for'] || '';
+    const ipAddress = clientIp(request);
     const userAgent = request.headers['user-agent'] || '';
 
     return next.handle().pipe(

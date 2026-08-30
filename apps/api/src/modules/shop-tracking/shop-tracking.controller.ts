@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { ShopTrackingService } from './shop-tracking.service';
 import { TrackVisitDto } from './dto/track-visit.dto';
 import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
+import { clientIp } from '../../utils/client-ip.util';
 
 @Controller('shop')
 @UseGuards(ShopBotDefenseGuard)
@@ -13,7 +14,7 @@ export class ShopTrackingController {
   @Post('track')
   @Throttle({ short: { limit: 30, ttl: 60_000 } })
   async track(@Body() dto: TrackVisitDto, @Req() req: Request): Promise<{ ok: true }> {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
+    const ip = clientIp(req);
     const userAgent = req.headers['user-agent'] || '';
     const customerId = (req as Request & { user?: { id: string } }).user?.id;
 

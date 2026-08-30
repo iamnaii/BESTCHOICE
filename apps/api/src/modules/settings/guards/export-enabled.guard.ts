@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { clientIp } from '../../../utils/client-ip.util';
 
 /**
  * D1.3.3.1 — server-side gate for data-export endpoints (PDF / Excel / CSV).
@@ -87,10 +88,7 @@ export class ExportEnabledGuard implements CanActivate {
               action: 'EXPORT_BLOCKED',
               entity: 'system_config',
               entityId: 'export_enabled',
-              ipAddress:
-                request?.ip ||
-                request?.headers?.['x-forwarded-for'] ||
-                undefined,
+              ipAddress: clientIp(request) || undefined,
               newValue: {
                 route,
                 method,

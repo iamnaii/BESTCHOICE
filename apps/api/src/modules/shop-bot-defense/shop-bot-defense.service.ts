@@ -31,6 +31,18 @@ function isCatalogPath(pagePath?: string): boolean {
 }
 
 /**
+ * ถังนับแยกตามชนิดของ path
+ *
+ * เดิมทุก endpoint ใต้ /shop/* แชร์ตัวนับเดียวต่อ IP แต่เพดานคนละค่า (catalog 240,
+ * ที่เหลือ 100) ⇒ การ "เดินดูสินค้า" อย่างเดียวก็ดันตัวนับทะลุ 100 ได้ในไม่กี่หน้า
+ * แล้วไปทำให้ **หน้าจ่ายเงิน/จอง/สมัครผ่อน ของคนคนเดียวกันโดน 429** ทั้งที่ยังไม่เคย
+ * ยิง endpoint พวกนั้นเลย — แยกถังทำให้เพดานแต่ละกลุ่มเป็นอิสระต่อกันจริง
+ */
+export function rateBucket(pagePath?: string): 'catalog' | 'core' {
+  return isCatalogPath(pagePath) ? 'catalog' : 'core';
+}
+
+/**
  * พื้นผิวที่ crawler จริงมีเหตุให้แตะ: หน้าแชร์ OG + รายการ/รายละเอียดสินค้า
  * (FF-4 จาก B5 final review): UA เป็นแค่ string ปลอมได้ฟรี — สิทธิ์ KNOWN_GOOD
  * จึงต้องผูกกับ path ไม่ใช่ทั้งระบบ ไม่งั้นใครก็ swap UA แล้วยิง checkout/reserve
@@ -108,7 +120,7 @@ export class ShopBotDefenseService {
    * ทดสอบได้ด้วย unit test; ช่อง race ที่เหลือทำให้นับพลาดได้ไม่กี่ครั้งต่อ
    * หน้าต่าง ซึ่งรับได้สำหรับ bot-defense (ไม่ใช่เส้นทางเงิน)
    */
-  async recordRateLimit(ip: string, userAgent: string, _pagePath: string): Promise<void> {
+  async recordRateLimit(ip: string, userAgent: string, pagePath: string): Promise<void> {
     const salt = process.env.PII_HASH_SALT;
     if (!salt) return;
     // review round 1 [Critical]: guard เรียกเราแบบ fire-and-forget (`void ...`) —
@@ -116,7 +128,7 @@ export class ShopBotDefenseService {
     // rejection = process ทั้งตัวล่มบน Node 24 (พิสูจน์ empirically) ทั้งที่นี่เป็น
     // แค่ตัวนับกันบอท ห้าม block/ล้ม shopper เด็ดขาด — pattern เดียวกับ logDetection
     try {
-      const ipHash = hashPII(ip, salt);
+      const ipHash = hashPII(`${rateBucket(pagePath)}:${ip}`, salt);
       const now = new Date();
 
       const existing = await this.prisma.ipRateLimit.findUnique({ where: { ipHash } });
@@ -157,10 +169,10 @@ export class ShopBotDefenseService {
     }
   }
 
-  async getRequestRate(ip: string): Promise<number> {
+  async getRequestRate(ip: string, pagePath?: string): Promise<number> {
     const salt = process.env.PII_HASH_SALT;
     if (!salt) return 0;
-    const ipHash = hashPII(ip, salt);
+    const ipHash = hashPII(`${rateBucket(pagePath)}:${ip}`, salt);
     const row = await this.prisma.ipRateLimit.findUnique({ where: { ipHash } });
     if (!row) return 0;
     const elapsedMs = Date.now() - row.windowStart.getTime();

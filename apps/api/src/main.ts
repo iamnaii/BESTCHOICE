@@ -28,6 +28,7 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { validateEnv } from './utils/env-validation';
 import { AdminPrefixMiddleware } from './common/middleware/admin-prefix.middleware';
 import { GcpJsonLogger } from './common/logger/gcp-json.logger';
+import { trustedProxyHops } from './utils/client-ip.util';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -40,6 +41,19 @@ async function bootstrap() {
     AppModule,
     GcpJsonLogger.enabled() ? { logger: new GcpJsonLogger() } : {},
   );
+
+  // trust proxy — ตั้งเฉพาะเมื่อรู้จำนวน hop จริงเท่านั้น
+  //
+  // ไม่ตั้งค่า = Express คืน socket peer ซึ่งบน Cloud Run คือ proxy ของ Google
+  // (วัดจริง 2026-08-30: request ผ่าน Firebase rewrite เห็น remoteIp = 66.249.x)
+  // การเปิด trust proxy แบบ `true` ลอย ๆ จะเชื่อ X-Forwarded-For ทั้งสายซึ่ง client
+  // ปลอมได้ฟรี — แย่กว่าเดิม จึงเปิดต่อเมื่อ TRUSTED_PROXY_HOPS ถูกตั้งไว้แล้ว
+  // (Express นับ socket peer เป็น hop ที่ 1 จึงเป็น hops + 1) ดู utils/client-ip.util.ts
+  const proxyHops = trustedProxyHops();
+  if (proxyHops !== null) {
+    app.getHttpAdapter().getInstance().set('trust proxy', proxyHops + 1);
+    logger.log(`trust proxy = ${proxyHops + 1} (TRUSTED_PROXY_HOPS=${proxyHops})`);
+  }
 
   // AdminPrefixMiddleware MUST run at Express level (not via MiddlewareConsumer)
   // so it executes before NestJS routing layer. Rewrites /api/admin/* → /api/*

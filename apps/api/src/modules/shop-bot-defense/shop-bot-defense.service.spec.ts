@@ -171,6 +171,38 @@ describe('ShopBotDefenseService', () => {
     });
   });
 
+  // ก่อนหน้านี้ทุก endpoint ใต้ /shop/* ใช้ตัวนับเดียวกันต่อ IP แต่เพดานคนละค่า
+  // (catalog 240 / ที่เหลือ 100) ⇒ เดินดูสินค้าอย่างเดียวก็ทำให้หน้าจ่ายเงินของ
+  // ตัวเองโดน 429 ได้ — ถังต้องแยกกันจริง
+  describe('ถังนับ catalog กับ core ต้องแยกกัน', () => {
+    it('path สินค้ากับ path จ่ายเงิน ใช้ ipHash คนละค่า', async () => {
+      await service.recordRateLimit('1.2.3.4', 'Mozilla/5.0', '/shop/products');
+      await service.recordRateLimit('1.2.3.4', 'Mozilla/5.0', '/shop/checkout');
+      const hashes = prisma.ipRateLimit.upsert.mock.calls.map(
+        (c: any[]) => c[0].where.ipHash,
+      );
+      expect(hashes).toHaveLength(2);
+      expect(hashes[0]).not.toBe(hashes[1]);
+    });
+
+    it('IP เดียวกัน path กลุ่มเดียวกัน ต้องได้ ipHash เดิม', async () => {
+      await service.recordRateLimit('1.2.3.4', 'Mozilla/5.0', '/shop/products');
+      await service.recordRateLimit('1.2.3.4', 'Mozilla/5.0', '/shop/products/abc');
+      const hashes = prisma.ipRateLimit.upsert.mock.calls.map(
+        (c: any[]) => c[0].where.ipHash,
+      );
+      expect(hashes[0]).toBe(hashes[1]);
+    });
+
+    it('getRequestRate อ่านถังเดียวกับที่ recordRateLimit เขียน', async () => {
+      await service.recordRateLimit('1.2.3.4', 'Mozilla/5.0', '/shop/products');
+      const written = prisma.ipRateLimit.upsert.mock.calls[0][0].where.ipHash;
+      await service.getRequestRate('1.2.3.4', '/shop/products');
+      const read = prisma.ipRateLimit.findUnique.mock.calls.at(-1)[0].where.ipHash;
+      expect(read).toBe(written);
+    });
+  });
+
   describe('getRequestRate — expired window reads as 0', () => {
     it('returns 0 when the stored window is older than 60s', async () => {
       prisma.ipRateLimit.findUnique.mockResolvedValue({

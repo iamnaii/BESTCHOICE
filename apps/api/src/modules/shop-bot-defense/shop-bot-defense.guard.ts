@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { ShopBotDefenseService } from './shop-bot-defense.service';
 import { SKIP_BOT_RATE_LIMIT } from './skip-bot-rate-limit.decorator';
+import { clientIp } from '../../utils/client-ip.util';
 
 @Injectable()
 export class ShopBotDefenseGuard implements CanActivate {
@@ -13,13 +14,13 @@ export class ShopBotDefenseGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
+    const ip = clientIp(req);
     const userAgent = req.headers['user-agent'] || '';
     // setGlobalPrefix('api') ทำให้ req.path เป็น /api/shop/... — ตัด prefix ออกก่อน
     // ไม่งั้นกฎที่จับ path สินค้าใน decideAction เป็น dead code (บั๊กเดิม)
     const pagePath = req.path.replace(/^\/api(?=\/|$)/, '') || '/';
 
-    const requestRate = await this.botDefense.getRequestRate(ip);
+    const requestRate = await this.botDefense.getRequestRate(ip, pagePath);
     const action = this.botDefense.decideAction({ userAgent, requestRate, pagePath });
 
     const detectedType = this.botDefense.classifyUserAgent(userAgent) || 'GENERIC_BOT';

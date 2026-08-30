@@ -5,16 +5,23 @@
  * SPA เปล่า ๆ ทำให้พวกมันเห็นแค่ <div id="root"></div>. สคริปต์นี้เปิด dist ผ่าน
  * `vite preview` แล้วใช้ headless Chromium เก็บ DOM ที่เรนเดอร์เสร็จ (รวม title/meta/
  * canonical/OG ที่ usePageMeta stamp แล้ว) เขียนเป็น dist/<route>/index.html —
- * Firebase Hosting เสิร์ฟไฟล์ตรงก่อนถึง rewrite ** → /index.html เสมอ
+ * Firebase Hosting เสิร์ฟไฟล์ตรงก่อนถึง rewrite เสมอ
  *
- * - เรียกผ่าน `npm run build:prerender` (build ปกติของ PR gate ไม่แตะสคริปต์นี้)
- * - /api/* ระหว่าง snapshot ถูก forward ไป PRERENDER_API_BASE (default = prod) —
- *   ล้มเหลว = ตอบ 503 ให้หน้าเรนเดอร์ empty/error state ของตัวเองแทนที่จะค้าง
- * - route ที่ไม่อยู่ในลิสต์ (เช่น /products/:id) ยังตกไปที่ index.html (snapshot หน้าแรก)
- *   ซึ่ง client router เรนเดอร์ทับทันทีเหมือน SPA เดิม
+ * กติกาสำคัญ (มาจากรอบรีวิว — อย่ารื้อโดยไม่อ่าน):
+ * - เก็บ snapshot ครบทุก route ก่อน แล้วค่อยเขียนไฟล์ทีเดียวตอนท้าย — ห้ามเขียน
+ *   dist/index.html ระหว่างทาง เพราะ vite preview เสิร์ฟไฟล์จากดิสก์สด ๆ ทำให้
+ *   route ถัดไปเรนเดอร์จาก snapshot ที่เปื้อนแล้ว (meta/analytics ของหน้าแรกติดไปด้วย)
+ * - shell สะอาด (index.html ที่ vite build ออกมา) ถูกเก็บเป็น dist/spa-shell.html
+ *   และ firebase.json ชี้ rewrite ** ไปที่นั่น — route ที่ไม่ได้ prerender
+ *   (/products/:id, /cart, ...) จึงได้ shell เปล่าแบบเดิมเป๊ะ ไม่ใช่หน้าแรกเต็ม ๆ
+ *   ที่ canonical ชี้ผิดหน้า
+ * - คำขอออกนอกเครื่องทุกตัวถูกคุม: /api/* GET forward ไป PRERENDER_API_BASE
+ *   (default = prod, ล้ม = 503 ให้หน้าโชว์ empty state), endpoint ตั้งค่า analytics
+ *   ถูกตอบ 404 เสมอ (กัน GA4/Pixel ยิง hit จาก CI + กัน script tag ติดเข้า snapshot),
+ *   ที่เหลือ (fonts/CDN) abort ทิ้ง — deploy ต้องไม่ค้างเพราะ CDN ภายนอกแขวน
  */
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
@@ -26,18 +33,20 @@ const BASE = `http://localhost:${PORT}`;
 const API_BASE = process.env.PRERENDER_API_BASE ?? 'https://www.bestchoicephone.com';
 
 // 11 หน้าใน sitemap.xml — เพิ่ม/ลด route ที่นี่ต้องอัป sitemap คู่กันเสมอ
+// apiDependent = เนื้อหาหลักมาจาก API: ถ้า API ล่มระหว่าง deploy ให้ผ่านพร้อมคำเตือน
+// (หน้า static ล้วนห้ามมี error state เด็ดขาด — เจอ = build แดง)
 const ROUTES = [
-  '/',
-  '/products',
-  '/promotions',
-  '/how-it-works',
-  '/installment-terms',
-  '/sell',
-  '/saving-plan',
-  '/about',
-  '/contact',
-  '/shipping',
-  '/returns',
+  { path: '/', apiDependent: true },
+  { path: '/products', apiDependent: true },
+  { path: '/promotions', apiDependent: true },
+  { path: '/how-it-works', apiDependent: false },
+  { path: '/installment-terms', apiDependent: false },
+  { path: '/sell', apiDependent: false },
+  { path: '/saving-plan', apiDependent: false },
+  { path: '/about', apiDependent: false },
+  { path: '/contact', apiDependent: false },
+  { path: '/shipping', apiDependent: false },
+  { path: '/returns', apiDependent: false },
 ];
 
 function startPreview() {
@@ -63,7 +72,7 @@ async function waitForServer(timeoutMs = 30_000) {
   throw new Error(`vite preview did not start on :${PORT} within ${timeoutMs}ms`);
 }
 
-async function snapshotRoute(context, route) {
+async function captureRoute(context, { path: route, apiDependent }) {
   const page = await context.newPage();
   try {
     await page.goto(`${BASE}${route}`, { waitUntil: 'networkidle', timeout: 45_000 });
@@ -85,16 +94,21 @@ async function snapshotRoute(context, route) {
       throw new Error(`${route}: canonical ไม่ตรง ("${canonical}")`);
     }
     if (html.includes('เกิดข้อผิดพลาด')) {
+      if (!apiDependent) throw new Error(`${route}: หน้า static มี error state ใน snapshot`);
       console.warn(`⚠ ${route}: มี error state ใน snapshot (API ล่มระหว่าง prerender?)`);
     }
-
-    const outFile =
-      route === '/' ? path.join(DIST, 'index.html') : path.join(DIST, route.slice(1), 'index.html');
-    await mkdir(path.dirname(outFile), { recursive: true });
-    await writeFile(outFile, `<!-- prerendered ${new Date().toISOString()} -->\n${html}`);
-    console.log(`✓ ${route} → ${path.relative(WEB_SHOP_DIR, outFile)} (${title})`);
+    return { route, html, title };
   } finally {
     await page.close();
+  }
+}
+
+async function captureWithRetry(context, routeDef) {
+  try {
+    return await captureRoute(context, routeDef);
+  } catch (err) {
+    console.warn(`↻ ${routeDef.path}: ${err.message} — ลองใหม่อีกครั้ง`);
+    return captureRoute(context, routeDef);
   }
 }
 
@@ -103,34 +117,61 @@ let exitCode = 0;
 try {
   await waitForServer();
   const browser = await chromium.launch();
+  const snapshots = [];
   try {
     const context = await browser.newContext();
-    // forward /api/* GET ไป prod เพื่อให้ snapshot มีข้อมูลจริง; อย่างอื่นตอบ 503
-    await context.route('**/api/**', async (routeHandle) => {
+    await context.route('**/*', async (routeHandle) => {
       const req = routeHandle.request();
-      if (req.method() !== 'GET') return routeHandle.fulfill({ status: 503, body: '{}' });
-      try {
-        const url = new URL(req.url());
-        const upstream = await fetch(`${API_BASE}${url.pathname}${url.search}`, {
-          headers: { accept: 'application/json' },
-          signal: AbortSignal.timeout(10_000),
-        });
-        return routeHandle.fulfill({
-          status: upstream.status,
-          headers: { 'content-type': upstream.headers.get('content-type') ?? 'application/json' },
-          body: Buffer.from(await upstream.arrayBuffer()),
-        });
-      } catch {
-        return routeHandle.fulfill({ status: 503, body: '{}' });
+      const url = new URL(req.url());
+      // asset ของแอปเองจาก preview server — ปล่อยผ่าน
+      if (url.origin === BASE) {
+        if (!url.pathname.startsWith('/api/')) return routeHandle.continue();
+        // ห้าม analytics ติดตั้งระหว่าง prerender — 404 → fetchRuntimeConfig คืน null
+        if (url.pathname.startsWith('/api/shop/public-config/analytics')) {
+          return routeHandle.fulfill({ status: 404, body: '{}' });
+        }
+        if (req.method() !== 'GET') return routeHandle.fulfill({ status: 503, body: '{}' });
+        // forward /api/* GET ไป prod เพื่อให้ snapshot มีข้อมูลจริง
+        try {
+          const upstream = await fetch(`${API_BASE}${url.pathname}${url.search}`, {
+            headers: { accept: 'application/json' },
+            signal: AbortSignal.timeout(10_000),
+          });
+          return routeHandle.fulfill({
+            status: upstream.status,
+            headers: {
+              'content-type': upstream.headers.get('content-type') ?? 'application/json',
+            },
+            body: Buffer.from(await upstream.arrayBuffer()),
+          });
+        } catch {
+          return routeHandle.fulfill({ status: 503, body: '{}' });
+        }
       }
+      // โฮสต์ภายนอก (fonts, CDN, tracker) — ตัดทิ้ง: DOM ไม่ต้องใช้ และห้ามให้
+      // CDN ภายนอกแขวน networkidle จน deploy แดง
+      return routeHandle.abort();
     });
-    for (const route of ROUTES) {
-      await snapshotRoute(context, route);
+
+    // เก็บให้ครบทุก route ก่อน แล้วค่อยเขียน — ดูกติกาในคอมเมนต์หัวไฟล์
+    for (const routeDef of ROUTES) {
+      snapshots.push(await captureWithRetry(context, routeDef));
     }
   } finally {
     await browser.close();
   }
-  console.log(`\nPrerendered ${ROUTES.length} routes.`);
+
+  // shell สะอาดสำหรับ route ที่ไม่ได้ prerender (คู่กับ rewrite ** → /spa-shell.html)
+  await copyFile(path.join(DIST, 'index.html'), path.join(DIST, 'spa-shell.html'));
+
+  for (const { route, html, title } of snapshots) {
+    const outFile =
+      route === '/' ? path.join(DIST, 'index.html') : path.join(DIST, route.slice(1), 'index.html');
+    await mkdir(path.dirname(outFile), { recursive: true });
+    await writeFile(outFile, `<!-- prerendered ${new Date().toISOString()} -->\n${html}`);
+    console.log(`✓ ${route} → ${path.relative(WEB_SHOP_DIR, outFile)} (${title})`);
+  }
+  console.log(`\nPrerendered ${snapshots.length} routes + spa-shell.html`);
 } catch (err) {
   console.error(err);
   exitCode = 1;

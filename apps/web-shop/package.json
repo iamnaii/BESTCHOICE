@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && cp dist/index.html dist/spa-shell.html",
     "build:prerender": "npm run build && node scripts/prerender.mjs",
     "preview": "vite preview --port 5174",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --fix"

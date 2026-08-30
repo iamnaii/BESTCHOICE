@@ -58,7 +58,7 @@
         },
         {
           "source": "**",
-          "destination": "/index.html"
+          "destination": "/spa-shell.html"
         }
       ],
       "headers": [

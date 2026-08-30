@@ -6,7 +6,7 @@
 //  - Permission checks (FINANCE_MANAGER only)
 
 import { test, expect } from '@playwright/test';
-import { loginAsRole } from './helpers/auth';
+import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
 import { gotoWithRetry } from './helpers/navigation';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -19,14 +19,13 @@ test.describe('Asset — write-off variations', () => {
 
     // Create asset with 36-month life
     const createRes = await page.request.post(`${API_URL}/api/assets`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         name: `E2E Partial Depreciation Test ${Date.now()}`,
         category: 'FURNITURE',
         basePrice: 18000,
         usefulLifeMonths: 36,
-        purchaseDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .slice(0, 10), // 90 days ago (about 3 months)
+        purchaseDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // 90 days ago (about 3 months)
         paymentAccount: '11-1201',
       },
     });
@@ -35,11 +34,14 @@ test.describe('Asset — write-off variations', () => {
     const assetId = created.id;
 
     // POST the asset
-    const postRes = await page.request.post(`${API_URL}/api/assets/${assetId}/post`);
+    const postRes = await page.request.post(`${API_URL}/api/assets/${assetId}/post`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(postRes.ok()).toBeTruthy();
 
     // Write off the asset
     const writeOffRes = await page.request.post(`${API_URL}/api/assets/${assetId}/dispose`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         disposalType: 'WRITE_OFF',
         disposalDate: new Date().toISOString().slice(0, 10),
@@ -51,7 +53,9 @@ test.describe('Asset — write-off variations', () => {
     expect(result.entryNo).toBeTruthy();
 
     // Verify asset is written off
-    const afterDispose = await page.request.get(`${API_URL}/api/assets/${assetId}`);
+    const afterDispose = await page.request.get(`${API_URL}/api/assets/${assetId}`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(afterDispose.ok()).toBeTruthy();
     const detail = await afterDispose.json();
     expect(detail.status).toBe('WRITTEN_OFF');
@@ -70,6 +74,7 @@ test.describe('Asset — write-off variations', () => {
 
     // Create and POST a simple asset first
     const createRes = await page.request.post(`${API_URL}/api/assets`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         name: `E2E UI Form Test ${Date.now()}`,
         category: 'EQUIPMENT',
@@ -84,7 +89,9 @@ test.describe('Asset — write-off variations', () => {
     const assetId = created.id;
 
     // POST it
-    const postRes = await page.request.post(`${API_URL}/api/assets/${assetId}/post`);
+    const postRes = await page.request.post(`${API_URL}/api/assets/${assetId}/post`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(postRes.ok()).toBeTruthy();
 
     // Navigate to dispose page

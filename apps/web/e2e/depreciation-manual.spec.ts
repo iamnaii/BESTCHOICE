@@ -5,7 +5,7 @@
 // loginAsRole) so we exercise the full HTTP stack without flaky form-fill.
 
 import { test, expect } from '@playwright/test';
-import { loginAsRole } from './helpers/auth';
+import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
@@ -16,6 +16,7 @@ test.describe('Depreciation — manual run', () => {
 
     // Create + post an asset so there's something to depreciate
     const createRes = await page.request.post(`${API_URL}/api/assets`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         name: `E2E Depr Test ${Date.now()}`,
         category: 'EQUIPMENT',
@@ -34,7 +35,9 @@ test.describe('Depreciation — manual run', () => {
     const created = await createRes.json();
     expect(created.id).toBeTruthy();
 
-    const postRes = await page.request.post(`${API_URL}/api/assets/${created.id}/post`);
+    const postRes = await page.request.post(`${API_URL}/api/assets/${created.id}/post`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(postRes.ok()).toBeTruthy();
 
     // Pick the current month as the period (cron-safe for any test timing)
@@ -42,15 +45,14 @@ test.describe('Depreciation — manual run', () => {
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     // Preview
-    const previewRes = await page.request.get(
-      `${API_URL}/api/depreciation/preview/${period}`,
-    );
+    const previewRes = await page.request.get(`${API_URL}/api/depreciation/preview/${period}`);
     expect(previewRes.ok()).toBeTruthy();
     const preview = await previewRes.json();
     expect(preview.assetCount).toBeGreaterThanOrEqual(1);
 
     // Run
     const runRes = await page.request.post(`${API_URL}/api/depreciation/run`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: { period },
     });
     expect(runRes.ok()).toBeTruthy();
@@ -59,11 +61,11 @@ test.describe('Depreciation — manual run', () => {
     expect(run.status).toBe('POSTED');
 
     // Verify it appears in list
-    const listRes = await page.request.get(`${API_URL}/api/depreciation`);
+    const listRes = await page.request.get(`${API_URL}/api/depreciation`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(listRes.ok()).toBeTruthy();
     const list = await listRes.json();
-    expect(
-      list.find((r: { period: string }) => r.period === period),
-    ).toBeTruthy();
+    expect(list.find((r: { period: string }) => r.period === period)).toBeTruthy();
   });
 });

@@ -5,7 +5,7 @@
 // Pattern follows assets-create-post.spec.ts: API-driven with UI smoke verification.
 
 import { test, expect } from '@playwright/test';
-import { loginAsRole } from './helpers/auth';
+import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
 import { gotoWithRetry } from './helpers/navigation';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -19,6 +19,7 @@ test.describe('Asset — dispose', () => {
   test('dispose POSTED asset via SALE (produces JE)', async ({ page }) => {
     // Create DRAFT asset
     const createRes = await page.request.post(`${API_URL}/api/assets`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         name: `E2E Dispose Sale Test ${Date.now()}`,
         category: 'EQUIPMENT',
@@ -34,17 +35,22 @@ test.describe('Asset — dispose', () => {
     expect(created.status).toBe('DRAFT');
 
     // POST the asset (DRAFT → POSTED)
-    const postRes = await page.request.post(`${API_URL}/api/assets/${created.id}/post`);
+    const postRes = await page.request.post(`${API_URL}/api/assets/${created.id}/post`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(postRes.ok()).toBeTruthy();
 
     // Verify POSTED
-    const afterPost = await page.request.get(`${API_URL}/api/assets/${created.id}`);
+    const afterPost = await page.request.get(`${API_URL}/api/assets/${created.id}`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(afterPost.ok()).toBeTruthy();
     const posted = await afterPost.json();
     expect(posted.status).toBe('POSTED');
 
     // Now dispose via SALE
     const disposeRes = await page.request.post(`${API_URL}/api/assets/${created.id}/dispose`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         disposalType: 'SALE',
         disposalDate: new Date().toISOString().slice(0, 10),
@@ -61,7 +67,9 @@ test.describe('Asset — dispose', () => {
     expect(disposed.entryNo).toMatch(/^JE-/);
 
     // Verify asset status is now DISPOSED
-    const afterDispose = await page.request.get(`${API_URL}/api/assets/${created.id}`);
+    const afterDispose = await page.request.get(`${API_URL}/api/assets/${created.id}`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(afterDispose.ok()).toBeTruthy();
     const detail = await afterDispose.json();
     expect(detail.status).toBe('DISPOSED');
@@ -79,6 +87,7 @@ test.describe('Asset — dispose', () => {
   test('WRITE_OFF asset (no proceeds)', async ({ page }) => {
     // Create DRAFT asset
     const createRes = await page.request.post(`${API_URL}/api/assets`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         name: `E2E Write-Off Test ${Date.now()}`,
         category: 'EQUIPMENT',
@@ -92,11 +101,14 @@ test.describe('Asset — dispose', () => {
     const created = await createRes.json();
 
     // POST it
-    const postRes = await page.request.post(`${API_URL}/api/assets/${created.id}/post`);
+    const postRes = await page.request.post(`${API_URL}/api/assets/${created.id}/post`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(postRes.ok()).toBeTruthy();
 
     // Write off (no proceeds, no account code required)
     const writeOffRes = await page.request.post(`${API_URL}/api/assets/${created.id}/dispose`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         disposalType: 'WRITE_OFF',
         disposalDate: new Date().toISOString().slice(0, 10),
@@ -108,7 +120,9 @@ test.describe('Asset — dispose', () => {
     expect(result.entryNo).toBeTruthy();
 
     // Verify WRITTEN_OFF status
-    const afterDispose = await page.request.get(`${API_URL}/api/assets/${created.id}`);
+    const afterDispose = await page.request.get(`${API_URL}/api/assets/${created.id}`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(afterDispose.ok()).toBeTruthy();
     const detail = await afterDispose.json();
     expect(detail.status).toBe('WRITTEN_OFF');

@@ -77,22 +77,29 @@ export async function seedCustomer(
   const phone = input.phone ?? `08${Math.floor(10000000 + Math.random() * 89999999)}`;
   const firstName = input.firstName ?? 'ทดสอบ';
   const lastName = input.lastName ?? `อัตโนมัติ-${suffix.slice(-6)}`;
+  // The API stores ONE `name` column (CreateCustomerDto: `name: string`) — there
+  // is no firstName/lastName pair. Callers still pass the two halves because that
+  // reads better at the call site, so join them here.
+  const name = `${firstName} ${lastName}`;
 
   const res = await page.request.post(`${API_URL}/api/customers`, {
     headers: headers(token),
-    data: { firstName, lastName, nationalId, phone, nickname: 'E2E' },
+    data: { name, nationalId, phone, nickname: 'E2E' },
   });
   if (!res.ok()) {
     const body = await res.text();
     throw new Error(`seedCustomer failed (${res.status()}): ${body}`);
   }
   const c = unwrapResponse(await res.json());
-  return { id: c.id, name: `${c.firstName} ${c.lastName}`, phone: c.phone };
+  return { id: c.id, name: c.name, phone: c.phone };
 }
 
 /* ─── Branch lookup ─── */
 
-export async function getFirstBranch(page: Page, token: string): Promise<{ id: string; name: string }> {
+export async function getFirstBranch(
+  page: Page,
+  token: string,
+): Promise<{ id: string; name: string }> {
   const res = await page.request.get(`${API_URL}/api/branches`, { headers: headers(token) });
   if (!res.ok()) throw new Error(`getFirstBranch failed: ${res.status()}`);
   const data = unwrapResponse(await res.json());

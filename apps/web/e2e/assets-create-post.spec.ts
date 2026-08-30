@@ -3,12 +3,12 @@
 // + UI smoke: list page renders, detail page shows code + status badge.
 //
 // Pattern follows other-income-smoke.spec.ts: drive heavy lifting through
-// page.request (auth header set by loginAsRole) so we exercise the full
+// page.request (headers passed explicitly — see getRoleAuthHeaders) so we exercise the full
 // HTTP stack without flaky form-fill selectors. UI assertions confirm the
 // frontend renders the persisted record correctly.
 
 import { test, expect } from '@playwright/test';
-import { loginAsRole } from './helpers/auth';
+import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
 import { gotoWithRetry } from './helpers/navigation';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -23,15 +23,17 @@ test.describe('Asset — create + POST', () => {
     const ok = await gotoWithRetry(page, '/assets');
     if (!ok) return;
 
-    await expect(
-      page.getByRole('heading', { name: /สินทรัพย์/ }).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: /สินทรัพย์/ }).first()).toBeVisible({
+      timeout: 15000,
+    });
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 
   test('create draft via API → POST → verify POSTED in UI', async ({ page }) => {
-    // Create DRAFT asset via API. Auth header is already set by loginAsRole.
+    // Create DRAFT asset via API. page.request needs its own headers —
+    // loginAsRole's setExtraHTTPHeaders only covers requests the page makes.
     const create = await page.request.post(`${API_URL}/api/assets`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
       data: {
         name: `เครื่องคอมพ์ทดสอบ E2E ${Date.now()}`,
         category: 'EQUIPMENT',
@@ -54,13 +56,17 @@ test.describe('Asset — create + POST', () => {
     expect(draft.assetCode).toMatch(/^[A-Z]{2,4}-/);
 
     // POST it (DRAFT → POSTED)
-    const post = await page.request.post(`${API_URL}/api/assets/${draft.id}/post`);
+    const post = await page.request.post(`${API_URL}/api/assets/${draft.id}/post`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(post.ok()).toBeTruthy();
     const posted = await post.json();
     expect(posted.entryNo).toBeTruthy();
 
     // Re-fetch to confirm status flipped
-    const after = await page.request.get(`${API_URL}/api/assets/${draft.id}`);
+    const after = await page.request.get(`${API_URL}/api/assets/${draft.id}`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(after.ok()).toBeTruthy();
     const afterAsset = await after.json();
     expect(afterAsset.status).toBe('POSTED');
@@ -83,9 +89,9 @@ test.describe('Asset — create + POST', () => {
     // Section titles from AssetEntrySection1Info / Section2Cost
     await expect(page.getByText('1. ข้อมูลสินทรัพย์').first()).toBeVisible({ timeout: 15000 });
     // The "บันทึก & POST" sticky button should be present
-    await expect(
-      page.getByRole('button', { name: /บันทึก.*POST/ }).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /บันทึก.*POST/ }).first()).toBeVisible({
+      timeout: 10000,
+    });
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 });

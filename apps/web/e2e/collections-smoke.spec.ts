@@ -119,7 +119,17 @@ test.describe('/collections power features', () => {
       .getByRole('dialog', { name: /ข้อมูลลูกค้า 360/ })
       .getByRole('button', { name: 'ปิด', exact: true })
       .click();
-    await expect(page.getByRole('dialog', { name: /ข้อมูลลูกค้า 360/ })).not.toBeVisible({
+
+    // ⚠️ ห้ามใช้ not.toBeVisible() ที่นี่ — แผงนี้ **ไม่เคย unmount**:
+    // CollectionsPage/index.tsx:182-186 เรนเดอร์ <Customer360Panel> ไว้เสมอ
+    // (ส่ง contract={panelContract} ซึ่งเป็น null ตอนปิด) และ
+    // components/Customer360Panel.tsx:154-160 ปิดด้วยการเลื่อนออกจากจอ
+    // (`open ? 'translate-x-0' : 'translate-x-full'`) ไม่ใช่ถอดออกจาก DOM
+    // ⇒ <aside role="dialog"> ยังมี bounding box อยู่ Playwright จึงนับว่า "visible"
+    // ตลอด (ล็อก CI: `7 × locator resolved to <aside … translate-x-full>` →
+    // `unexpected value "visible"`).
+    // สิ่งที่ตรวจได้จริงคือ "เลื่อนพ้นจอแล้ว" — auto-retry รอ transition 200ms เอง
+    await expect(page.getByRole('dialog', { name: /ข้อมูลลูกค้า 360/ })).not.toBeInViewport({
       timeout: 3000,
     });
   });

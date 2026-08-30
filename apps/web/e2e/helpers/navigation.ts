@@ -38,6 +38,9 @@ export async function gotoWithRetry(page: Page, url: string): Promise<boolean> {
  * Returns true if error boundary is visible (test should return early).
  */
 export async function hasErrorBoundary(page: Page): Promise<boolean> {
-  return page.getByText('เกิดข้อผิดพลาด').first()
-    .isVisible({ timeout: 1500 }).catch(() => false);
+  return page
+    .getByText('เกิดข้อผิดพลาด')
+    .first()
+    .isVisible({ timeout: 1500 })
+    .catch(() => false);
 }

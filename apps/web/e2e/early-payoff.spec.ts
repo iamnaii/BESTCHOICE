@@ -9,7 +9,9 @@ test.describe('ปิดยอดก่อนกำหนด (Early Payoff)', ()
 
   test('should load contracts page', async ({ page }) => {
     await gotoWithRetry(page, '/contracts');
-    await expect(page.locator('h1, h2, [data-testid="page-title"]')).toContainText(/สัญญา|Contract/i);
+    await expect(page.locator('h1, h2, [data-testid="page-title"]')).toContainText(
+      /สัญญา|Contract/i,
+    );
     expect(await hasErrorBoundary(page)).toBe(false);
   });
 
@@ -52,7 +54,9 @@ test.describe('ปิดยอดก่อนกำหนด (Early Payoff)', ()
         await firstRow.click();
         await page.waitForTimeout(2000);
         // Look for early payoff button
-        const payoffBtn = page.locator('button:has-text("ปิดยอด"), button:has-text("Early Payoff")');
+        const payoffBtn = page.locator(
+          'button:has-text("ปิดยอด"), button:has-text("Early Payoff")',
+        );
         // May or may not be visible depending on contract status
         expect(await hasErrorBoundary(page)).toBe(false);
       }

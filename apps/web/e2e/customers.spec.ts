@@ -2,6 +2,32 @@ import { test, expect } from '@playwright/test';
 import { loginViaAPI } from './helpers/auth';
 import { TEST_CUSTOMER } from './helpers/test-data';
 
+/**
+ * เลขบัตรประชาชน 13 หลักที่ผ่าน checksum ของกรมการปกครอง
+ * (12 หลักแรกสุ่ม แล้วคำนวณหลักที่ 13):
+ *   check = (11 - (Σ digit[i] × (13 - i)) % 11) % 10
+ *
+ * สูตรเดียวกันถูกบังคับ **สองชั้น**:
+ *   - ฝั่งเว็บ `isValidThaiNationalId` — apps/web/src/lib/schemas.ts:13 ใช้ผ่าน
+ *     `nationalIdSchema` (schemas.ts:31-34) ที่ `customerSchema.nationalId` อ้างอิง
+ *   - ฝั่ง API `validateThaiNationalId` — apps/api/src/utils/validation.util.ts:10
+ *     เรียกจาก customer-write.service.ts:232 แล้วตอบ 409 'เลขบัตรประชาชนไม่ถูกต้อง'
+ *
+ * ห้ามใช้ `TEST_CUSTOMER.nationalId` ('1234567890123') กับฟอร์มนี้ — checksum
+ * ของมันได้ 1 แต่หลักที่ 13 เป็น 3 ⇒ zod refine บล็อกตั้งแต่ฝั่ง client
+ * (ฟอร์มไม่ยิง API เลย จึงไม่มี toast ใด ๆ ขึ้นมาให้รอ)
+ */
+function makeValidThaiNationalId(): string {
+  const digits = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10));
+  const sum = digits.reduce((acc, d, i) => acc + d * (13 - i), 0);
+  return digits.join('') + String((11 - (sum % 11)) % 10);
+}
+
+/** เบอร์ไทยที่ผ่านทั้ง `thaiPhoneRegex` (schemas.ts:24) และ DTO ฝั่ง API */
+function makeUniqueThaiPhone(): string {
+  return `08${Math.floor(10000000 + Math.random() * 89999999)}`;
+}
+
 test.describe('Customers Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaAPI(page);
@@ -64,26 +90,41 @@ test.describe('Customers Page', () => {
       .first()
       .waitFor({ timeout: 5000 });
 
+    // คำนำหน้าเป็นฟิลด์ **บังคับ** — `prefix: z.string().min(1, 'กรุณาเลือกคำนำหน้า')`
+    // (apps/web/src/lib/schemas.ts:42) และ default เป็นค่าว่าง (CustomersPage.tsx:125)
+    // ⇒ ไม่เลือก = zod resolver บล็อก `form.handleSubmit` (CustomersPage.tsx:969)
+    // ฟอร์มไม่ยิง `createMutation` เลย จึงไม่มีทั้ง toast สำเร็จและ toast error
+    // select ตัวแรกที่มองเห็นในโมดัลคือ "คำนำหน้า" (CustomersPage.tsx:1021)
+    await modal.locator('select:visible').first().selectOption('นาย');
+
     // The form has sections: คำนำหน้า (select), ชื่อ (text), นามสกุล (text), ...
     // Get all visible text inputs in the modal
+    // (input[type=file] ของ OCR ที่ CustomersPage.tsx:986 เป็น .hidden จึงหลุด :visible)
     const textInputs = modal.locator('input[type="text"]:visible');
 
     // Fill ชื่อ (first visible text input after select)
     await textInputs.nth(0).fill(firstName);
     // Fill นามสกุล
     await textInputs.nth(1).fill(TEST_CUSTOMER.lastName);
-    // Fill เลขบัตรประชาชน
-    await textInputs.nth(2).fill(TEST_CUSTOMER.nationalId);
+    // Fill เลขบัตรประชาชน — ต้องผ่าน checksum (ดู makeValidThaiNationalId ด้านบน)
+    await textInputs.nth(2).fill(makeValidThaiNationalId());
 
-    // Fill เบอร์โทร (tel input)
+    // Fill เบอร์โทร (tel input) — ต้องไม่ซ้ำของเดิม: `assertContactNotDuplicate`
+    // (apps/api/src/modules/customers/services/customer-write.service.ts:238)
+    // ตอบ 409 ถ้าเบอร์ซ้ำ ⇒ ค่าคงที่ TEST_CUSTOMER.phone จะชนตัวเองตั้งแต่รอบที่สอง
     const phoneInput = modal.locator('input[type="tel"]:visible').first();
-    await phoneInput.fill(TEST_CUSTOMER.phone);
+    await phoneInput.fill(makeUniqueThaiPhone());
 
     // Submit the form
     await modal.locator('button:has-text("บันทึก")').click();
 
-    // Wait for success toast or modal to close
-    await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({ timeout: 10000 });
+    // สำเร็จ → toast.success('เพิ่มลูกค้าสำเร็จ') (CustomersPage.tsx:295) แล้ว navigate
+    // ไป /customers/:id — Toaster อยู่ระดับ root (main.tsx:114) toast จึงอยู่ข้ามหน้า
+    // เจาะจงข้อความสำเร็จ ไม่ใช่ `[data-sonner-toast]` ลอย ๆ เพราะ toast.error
+    // ก็ใช้ selector เดียวกัน ⇒ ของเดิม "ผ่าน" ได้แม้การสร้างลูกค้าจะล้มเหลว
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: 'เพิ่มลูกค้าสำเร็จ' }).first(),
+    ).toBeVisible({ timeout: 10000 });
   });
 
   test('should search and filter customers', async ({ page }) => {

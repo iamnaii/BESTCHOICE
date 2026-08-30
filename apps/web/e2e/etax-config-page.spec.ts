@@ -16,9 +16,9 @@ test.describe('ETaxConfigPage (P2-SP5)', () => {
     await page.goto('/settings/e-tax-config', { waitUntil: 'domcontentloaded' });
 
     // Header
-    await expect(
-      page.getByRole('heading', { name: /ตั้งค่า e-Tax Invoice/ }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /ตั้งค่า e-Tax Invoice/ })).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Disabled-mode warning banner must surface to the OWNER
     const banner = page.getByTestId('etax-config-banner');

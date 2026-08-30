@@ -18,9 +18,7 @@ test.describe('Other Income Module — smoke', () => {
         paymentAccountCode: '11-1201',
         amountReceived: 850,
         counterpartyName: 'ทดสอบ KBank E2E',
-        items: [
-          { accountCode: '42-1102', quantity: 1, unitAmount: 1000, whtPct: 15 },
-        ],
+        items: [{ accountCode: '42-1102', quantity: 1, unitAmount: 1000, whtPct: 15 }],
       },
     });
     expect(create.ok()).toBeTruthy();
@@ -46,18 +44,16 @@ test.describe('Other Income Module — smoke', () => {
     const ok = await gotoWithRetry(page, '/other-income');
     if (!ok) return;
 
-    await expect(
-      page.getByRole('heading', { name: /รายได้อื่น/ }),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /รายได้อื่น/ })).toBeVisible({ timeout: 10000 });
   });
 
   test('daily sheet renders', async ({ page }) => {
     const ok = await gotoWithRetry(page, '/other-income/daily-sheet');
     if (!ok) return;
 
-    await expect(
-      page.getByRole('heading', { name: /สรุปรายได้อื่น/ }),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /สรุปรายได้อื่น/ })).toBeVisible({
+      timeout: 10000,
+    });
     await expect(page.getByText('รายได้รวม')).toBeVisible({ timeout: 10000 });
   });
 });

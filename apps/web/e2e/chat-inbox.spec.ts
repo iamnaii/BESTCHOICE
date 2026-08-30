@@ -31,9 +31,9 @@ test.describe('Chat Inbox (/chat)', () => {
   test('shows empty conversation panel when no room selected', async ({ page }) => {
     await page.goto('/chat', { waitUntil: 'domcontentloaded' });
 
-    await expect(
-      page.getByText('เลือกห้องจากด้านซ้ายเพื่อดูการสนทนา'),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('เลือกห้องจากด้านซ้ายเพื่อดูการสนทนา')).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   // Happy-path AI draft approval flow.

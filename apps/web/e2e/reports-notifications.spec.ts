@@ -13,16 +13,12 @@ test.describe('รายงาน', () => {
 
   test('should load reports page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('รายงาน').first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('รายงาน').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/รายงานสรุปข้อมูล/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/รายงานสรุปข้อมูล/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should have report tabs', async ({ page }) => {
@@ -76,8 +72,11 @@ test.describe('รายงาน', () => {
       await page.waitForTimeout(1000);
     }
     // Should show chart, table, or empty state
-    const hasData = await page.locator('table, canvas, .chart, svg').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table, canvas, .chart, svg')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (!hasData) {
       await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     }
@@ -85,7 +84,10 @@ test.describe('รายงาน', () => {
 
   test('should have export functionality (PDF/Excel)', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const exportBtn = page.locator('button').filter({ hasText: /ส่งออก|Export|PDF|Excel|ดาวน์โหลด/ }).first();
+    const exportBtn = page
+      .locator('button')
+      .filter({ hasText: /ส่งออก|Export|PDF|Excel|ดาวน์โหลด/ })
+      .first();
     if (await exportBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(exportBtn).toBeVisible();
     }
@@ -93,7 +95,9 @@ test.describe('รายงาน', () => {
 
   test('should have date range filter', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const dateFilter = page.locator('input[type="date"], input[type="month"]').first()
+    const dateFilter = page
+      .locator('input[type="date"], input[type="month"]')
+      .first()
       .or(page.getByText(/ช่วงเวลา|เดือน/).first());
     if (await dateFilter.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(dateFilter).toBeVisible();
@@ -117,22 +121,21 @@ test.describe('แจ้งเตือน', () => {
 
   test('should load notifications page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('แจ้งเตือน').first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('แจ้งเตือน').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle about LINE/SMS', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/LINE.*SMS|ระบบแจ้งเตือน/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/LINE.*SMS|ระบบแจ้งเตือน/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show notification list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr, .notification-item, .card').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr, .notification-item, .card')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (!hasData) {
       await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     }
@@ -140,7 +143,10 @@ test.describe('แจ้งเตือน', () => {
 
   test('should have mark read action when notifications exist', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const markReadBtn = page.locator('button').filter({ hasText: /อ่านแล้ว|mark.*read/i }).first();
+    const markReadBtn = page
+      .locator('button')
+      .filter({ hasText: /อ่านแล้ว|mark.*read/i })
+      .first();
     if (await markReadBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(markReadBtn).toBeVisible();
     }
@@ -151,8 +157,9 @@ test.describe('แจ้งเตือน', () => {
     if (await hasErrorBoundary(page)) return;
     const search = page.getByPlaceholder(/ค้นหา|search/i).first();
     const filter = page.locator('select, [role="combobox"]').first();
-    const hasFilter = await search.isVisible({ timeout: 3000 }).catch(() => false) ||
-                      await filter.isVisible({ timeout: 3000 }).catch(() => false);
+    const hasFilter =
+      (await search.isVisible({ timeout: 3000 }).catch(() => false)) ||
+      (await filter.isVisible({ timeout: 3000 }).catch(() => false));
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 

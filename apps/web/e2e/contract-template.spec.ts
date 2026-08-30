@@ -17,7 +17,9 @@ test.describe('Contract Template — Full Template Loaded', () => {
     // Get an active contract to preview
     const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
     const response = await page.request.get(`${apiURL}/api/contracts?status=ACTIVE&limit=1`, {
-      headers: page.context().extraHTTPHeaders ? undefined : { 'X-Requested-With': 'XMLHttpRequest' },
+      headers: page.context().extraHTTPHeaders
+        ? undefined
+        : { 'X-Requested-With': 'XMLHttpRequest' },
     });
 
     if (!response.ok()) {
@@ -63,7 +65,9 @@ test.describe('Contract Template — Full Template Loaded', () => {
     expect(html).toContain('พยาน');
   });
 
-  test('contract preview HTML is non-trivial size (full template, not fallback)', async ({ page }) => {
+  test('contract preview HTML is non-trivial size (full template, not fallback)', async ({
+    page,
+  }) => {
     await loginAsRole(page, 'OWNER');
 
     const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';

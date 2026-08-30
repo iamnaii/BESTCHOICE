@@ -34,7 +34,9 @@ test.describe('Accounting — PaySolutions webhook creates JE (F-1-003)', () => 
     expect(res.status()).not.toBe(404);
   });
 
-  test('recent PAID payments via gateway have matching JournalEntry (F-1-003)', async ({ page }) => {
+  test('recent PAID payments via gateway have matching JournalEntry (F-1-003)', async ({
+    page,
+  }) => {
     await loginViaAPI(page);
 
     // Look up recent payments — gateway-collected ones should each have
@@ -76,7 +78,10 @@ test.describe('Accounting — PaySolutions webhook creates JE (F-1-003)', () => 
       .filter((n): n is string => Boolean(n));
 
     if (paymentNumbers.length === 0) {
-      test.skip(true, 'requires fixture: payments lack paymentNumber field — cannot match by description');
+      test.skip(
+        true,
+        'requires fixture: payments lack paymentNumber field — cannot match by description',
+      );
       return;
     }
 

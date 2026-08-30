@@ -17,9 +17,9 @@ test.describe('Expense Workflow', () => {
     await page.waitForTimeout(2000);
 
     // Expense page should load
-    await expect(
-      page.getByText(/รายจ่าย|ค่าใช้จ่าย|Expense/i).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/รายจ่าย|ค่าใช้จ่าย|Expense/i).first()).toBeVisible({
+      timeout: 15000,
+    });
 
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
@@ -34,8 +34,11 @@ test.describe('Expense Workflow', () => {
     await page.waitForTimeout(2000);
     if (await hasErrorBoundary(page)) return;
 
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
 
     if (hasData) {
       await expect(page.locator('table').first()).toBeVisible();
@@ -56,8 +59,11 @@ test.describe('Expense Workflow', () => {
     if (await hasErrorBoundary(page)) return;
 
     // Click create/add expense button
-    const createBtn = page.locator('button').filter({ hasText: /เพิ่ม|สร้าง|บันทึก|รายจ่าย/ }).first();
-    if (!await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    const createBtn = page
+      .locator('button')
+      .filter({ hasText: /เพิ่ม|สร้าง|บันทึก|รายจ่าย/ })
+      .first();
+    if (!(await createBtn.isVisible({ timeout: 5000 }).catch(() => false))) return;
 
     await createBtn.click();
     await page.waitForTimeout(1000);
@@ -68,9 +74,14 @@ test.describe('Expense Workflow', () => {
       await expect(formArea).toBeVisible();
 
       // Check for key form fields
-      const descField = formArea.locator('input, textarea').filter({ hasText: /รายละเอียด|คำอธิบาย/i }).first()
+      const descField = formArea
+        .locator('input, textarea')
+        .filter({ hasText: /รายละเอียด|คำอธิบาย/i })
+        .first()
         .or(formArea.getByPlaceholder(/รายละเอียด|คำอธิบาย|description/i).first());
-      const amountField = formArea.locator('input[name*="amount"], input[placeholder*="จำนวนเงิน"]').first();
+      const amountField = formArea
+        .locator('input[name*="amount"], input[placeholder*="จำนวนเงิน"]')
+        .first();
 
       if (await descField.isVisible({ timeout: 3000 }).catch(() => false)) {
         await expect(descField).toBeVisible();
@@ -93,9 +104,9 @@ test.describe('Expense Workflow', () => {
     await page.waitForTimeout(2000);
 
     // Expense page should load for FINANCE_MANAGER
-    await expect(
-      page.getByText(/รายจ่าย|ค่าใช้จ่าย|Expense/i).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/รายจ่าย|ค่าใช้จ่าย|Expense/i).first()).toBeVisible({
+      timeout: 15000,
+    });
 
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
@@ -111,7 +122,9 @@ test.describe('Expense Workflow', () => {
     if (await hasErrorBoundary(page)) return;
 
     // Status filter should be available (draft, pending approval, approved)
-    const statusFilter = page.locator('select, [role="combobox"]').first()
+    const statusFilter = page
+      .locator('select, [role="combobox"]')
+      .first()
       .or(page.getByText(/ร่าง|รออนุมัติ|อนุมัติแล้ว/).first());
 
     if (await statusFilter.isVisible({ timeout: 5000 }).catch(() => false)) {
@@ -131,9 +144,9 @@ test.describe('Expense Workflow', () => {
     await page.waitForTimeout(2000);
 
     // OWNER should see expense page
-    await expect(
-      page.getByText(/รายจ่าย|ค่าใช้จ่าย|Expense/i).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/รายจ่าย|ค่าใช้จ่าย|Expense/i).first()).toBeVisible({
+      timeout: 15000,
+    });
 
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     await expect(page.locator('body')).not.toContainText('ไม่มีสิทธิ์');
@@ -150,13 +163,20 @@ test.describe('Expense Workflow', () => {
     if (await hasErrorBoundary(page)) return;
 
     // Check for expense rows
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
 
     if (hasData) {
       // Look for approval buttons or status actions
-      const approvalBtn = page.locator('button').filter({ hasText: /อนุมัติ|approve/i }).first();
-      const statusBadge = page.locator('.badge, [class*="badge"]')
+      const approvalBtn = page
+        .locator('button')
+        .filter({ hasText: /อนุมัติ|approve/i })
+        .first();
+      const statusBadge = page
+        .locator('.badge, [class*="badge"]')
         .filter({ hasText: /ร่าง|รออนุมัติ|อนุมัติแล้ว|DRAFT|PENDING|APPROVED/ })
         .first();
 
@@ -198,8 +218,11 @@ test.describe('Expense Workflow', () => {
     await page.waitForTimeout(2000);
 
     // SALES role should either be redirected or see an access denied message
-    const hasDenied = await page.getByText(/ไม่มีสิทธิ์|Forbidden|Access Denied|403/i).first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasDenied = await page
+      .getByText(/ไม่มีสิทธิ์|Forbidden|Access Denied|403/i)
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     const wasRedirected = !page.url().includes('/expenses');
 
     // Either access denied or redirect is acceptable

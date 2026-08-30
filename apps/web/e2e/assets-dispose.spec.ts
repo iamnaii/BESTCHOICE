@@ -75,7 +75,9 @@ test.describe('Asset — dispose', () => {
     expect(afterDispose.ok()).toBeTruthy();
     const detail = unwrapResponse(await afterDispose.json());
     expect(detail.status).toBe('DISPOSED');
-    expect(detail.disposedAt).toBeTruthy();
+    // Field is `disposalDate` (schema.prisma:3495 `disposal_date`) — set together with
+    // status by asset-disposal.template.ts:263-264. There is no `disposedAt` column.
+    expect(detail.disposalDate).toBeTruthy();
 
     // UI smoke: detail page renders disposed asset with status badge
     const ok = await gotoWithRetry(page, `/assets/${created.id}`);
@@ -128,7 +130,9 @@ test.describe('Asset — dispose', () => {
     expect(afterDispose.ok()).toBeTruthy();
     const detail = unwrapResponse(await afterDispose.json());
     expect(detail.status).toBe('WRITTEN_OFF');
-    expect(detail.disposedAt).toBeTruthy();
+    // Same column as the SALE path — the WRITE_OFF branch only overrides `status`
+    // (asset-lifecycle.service.ts:417-424); `disposalDate` still comes from the template.
+    expect(detail.disposalDate).toBeTruthy();
 
     // UI smoke
     const ok = await gotoWithRetry(page, `/assets/${created.id}`);

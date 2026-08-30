@@ -55,6 +55,21 @@ export function runSuffix() {
 
 /* ─── Customer ─── */
 
+/**
+ * สร้างเลขบัตรประชาชน 13 หลักที่ผ่าน checksum ของกรมการปกครอง
+ *
+ * 12 หลักแรกสุ่ม แล้วคำนวณหลักที่ 13 ด้วยสูตรเดียวกับฝั่ง API
+ * (`validateThaiNationalId`): `check = (11 - (Σ digit[i] × (13 - i)) % 11) % 10`
+ *
+ * ใช้ค่าสุ่มไม่ใช่ Date.now() เพราะเทสหลายตัวอาจสร้างลูกค้าในมิลลิวินาทีเดียวกัน
+ * แล้วชน unique constraint ของเลขบัตร
+ */
+function makeValidThaiNationalId(): string {
+  const digits = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10));
+  const sum = digits.reduce((acc, d, i) => acc + d * (13 - i), 0);
+  return digits.join('') + String((11 - (sum % 11)) % 10);
+}
+
 export interface SeedCustomerInput {
   firstName?: string;
   lastName?: string;
@@ -68,10 +83,12 @@ export async function seedCustomer(
   input: SeedCustomerInput = {},
 ): Promise<{ id: string; name: string; phone: string }> {
   const suffix = runSuffix();
-  // 13 digit national ID — Thai checksum isn't enforced for the dev seed.
-  // Using `Date.now().toString().slice(-13)` is fine for E2E because tests do
-  // not share customer rows and Date.now() is monotonic at ms resolution.
-  const nationalId = input.nationalId ?? Date.now().toString().padStart(13, '9').slice(-13);
+  // เลขบัตร 13 หลักที่ checksum **ถูกต้องจริง** — API ตรวจด้วย
+  // `validateThaiNationalId` (apps/api/src/utils/validation.util.ts:10) แล้วตอบ
+  // 409 "เลขบัตรประชาชนไม่ถูกต้อง" ถ้าไม่ผ่าน
+  // (คอมเมนต์เดิมตรงนี้เขียนว่า "checksum ไม่ถูกบังคับสำหรับ dev seed" ซึ่งไม่จริง —
+  //  เดิมไม่เคยเจอเพราะคำขอตายที่ด่านก่อนหน้าตั้งแต่ยังไม่ถึงการตรวจเลขบัตร)
+  const nationalId = input.nationalId ?? makeValidThaiNationalId();
   const phone = input.phone ?? `08${Math.floor(10000000 + Math.random() * 89999999)}`;
   const firstName = input.firstName ?? 'ทดสอบ';
   const lastName = input.lastName ?? `อัตโนมัติ-${suffix.slice(-6)}`;

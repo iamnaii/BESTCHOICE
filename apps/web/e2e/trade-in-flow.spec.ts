@@ -9,13 +9,17 @@ test.describe('รับซื้อเครื่อง (Trade-In)', () => {
 
   test('should load trade-in page', async ({ page }) => {
     await gotoWithRetry(page, '/trade-in');
-    await expect(page.locator('h1, h2, [data-testid="page-title"]')).toContainText(/เทรด|รับซื้อ|Trade/i);
+    await expect(page.locator('h1, h2, [data-testid="page-title"]')).toContainText(
+      /เทรด|รับซื้อ|Trade/i,
+    );
     expect(await hasErrorBoundary(page)).toBe(false);
   });
 
   test('should show create trade-in button', async ({ page }) => {
     await gotoWithRetry(page, '/trade-in');
-    const createBtn = page.locator('button:has-text("สร้าง"), button:has-text("เพิ่ม"), button:has-text("รับซื้อ")').first();
+    const createBtn = page
+      .locator('button:has-text("สร้าง"), button:has-text("เพิ่ม"), button:has-text("รับซื้อ")')
+      .first();
     await expect(createBtn).toBeVisible();
   });
 

@@ -58,13 +58,19 @@ test.describe('Promise lifecycle — happy path (3 slots)', () => {
     await page.locator('input[type=number]').first().fill('1000');
 
     // Add slot 2 via "+ เพิ่ม" button
-    await page.getByRole('button', { name: /\+ เพิ่ม/ }).first().click();
+    await page
+      .getByRole('button', { name: /\+ เพิ่ม/ })
+      .first()
+      .click();
     // After adding, there should be 2 number inputs — pick date for slot 2
     await page.getByRole('button', { name: 'อีก 7 วัน', exact: true }).nth(1).click();
     await page.locator('input[type=number]').nth(1).fill('1500');
 
     // Add slot 3
-    await page.getByRole('button', { name: /\+ เพิ่ม/ }).first().click();
+    await page
+      .getByRole('button', { name: /\+ เพิ่ม/ })
+      .first()
+      .click();
     await page.getByRole('button', { name: 'อีก 15 วัน', exact: true }).nth(2).click();
     await page.locator('input[type=number]').nth(2).fill('1500');
 
@@ -94,6 +100,12 @@ test.describe('Promise lifecycle — happy path (3 slots)', () => {
 
     // Accept either the cycle banner being visible OR the dialog having closed cleanly
     // (if no overdue installments → cycle deadline may not render on page in some seed states)
-    expect(hasBanner || !(await page.getByText(/บันทึกผล/).first().isVisible())).toBe(true);
+    expect(
+      hasBanner ||
+        !(await page
+          .getByText(/บันทึกผล/)
+          .first()
+          .isVisible()),
+    ).toBe(true);
   });
 });

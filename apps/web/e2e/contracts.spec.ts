@@ -27,9 +27,7 @@ test.describe('Contracts Page', () => {
     await expect(page.getByText('สัญญาทั้งหมด').first()).toBeVisible();
 
     // Search input should be available
-    await expect(
-      page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อลูกค้า...'),
-    ).toBeVisible();
+    await expect(page.getByPlaceholder('ค้นหาเลขสัญญา, ชื่อลูกค้า...')).toBeVisible();
   });
 
   test('should navigate to contract creation wizard', async ({ page }) => {
@@ -50,9 +48,9 @@ test.describe('Contracts Page', () => {
 
     // Step 0: Product selection (เลือกสินค้า) — search should be visible
     await expect(
-      page.getByPlaceholder('ค้นหาสินค้า (ชื่อ, ยี่ห้อ, รุ่น, IMEI)...').or(
-        page.getByPlaceholder(/ค้นหาสินค้า/),
-      ),
+      page
+        .getByPlaceholder('ค้นหาสินค้า (ชื่อ, ยี่ห้อ, รุ่น, IMEI)...')
+        .or(page.getByPlaceholder(/ค้นหาสินค้า/)),
     ).toBeVisible({ timeout: 10000 });
   });
 
@@ -132,7 +130,9 @@ test.describe('Contracts Page', () => {
       await expect(page.getByText('เลขสัญญา').or(page.getByText('ลูกค้า')).first()).toBeVisible();
 
       // Status badges should use color coding
-      const statusBadges = page.locator('.bg-green-100, .bg-yellow-100, .bg-red-100, [class*="badge"]');
+      const statusBadges = page.locator(
+        '.bg-green-100, .bg-yellow-100, .bg-red-100, [class*="badge"]',
+      );
       const badgeCount = await statusBadges.count();
       expect(badgeCount).toBeGreaterThanOrEqual(0);
     }

@@ -38,7 +38,10 @@ test.describe('Promise supersede — reschedule flow', () => {
     const logBtnVisible = await logBtn.isVisible({ timeout: 8000 }).catch(() => false);
     if (!logBtnVisible) {
       // Fall back to QueueTab (คิววันนี้) — may have overdue contracts without promises
-      await page.getByRole('button', { name: /คิววันนี้/ }).first().click();
+      await page
+        .getByRole('button', { name: /คิววันนี้/ })
+        .first()
+        .click();
       await page.waitForTimeout(1500);
       const queueLogBtn = page.getByRole('button', { name: 'บันทึกผลการโทร' }).first();
       const queueVisible = await queueLogBtn.isVisible({ timeout: 6000 }).catch(() => false);

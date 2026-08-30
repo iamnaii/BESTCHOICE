@@ -31,7 +31,10 @@ async function assertPageLoaded(page: Page, url: string) {
 
   // Page should have some visible content (not blank)
   // Check for common layout elements: sidebar, heading, main content, loading states
-  const hasContent = await page.locator('main, .sidebar, h1, h2, [role="heading"], table, form, [class*="card"], [class*="Card"], [class*="skeleton"], [class*="Skeleton"], [class*="spinner"], [class*="loading"], button, select, input')
+  const hasContent = await page
+    .locator(
+      'main, .sidebar, h1, h2, [role="heading"], table, form, [class*="card"], [class*="Card"], [class*="skeleton"], [class*="Skeleton"], [class*="spinner"], [class*="loading"], button, select, input',
+    )
     .first()
     .isVisible({ timeout: 8000 })
     .catch(() => false);
@@ -234,7 +237,8 @@ test.describe('Public smoke — pages render without auth', () => {
       expect(errorVisible, `Error boundary on public page ${url}`).toBeFalsy();
 
       // Public pages should show some content (form, heading, etc.)
-      const hasContent = await page.locator('form, h1, h2, [role="heading"], main, [class*="card"], [class*="Card"], button')
+      const hasContent = await page
+        .locator('form, h1, h2, [role="heading"], main, [class*="card"], [class*="Card"], button')
         .first()
         .isVisible({ timeout: 5000 })
         .catch(() => false);

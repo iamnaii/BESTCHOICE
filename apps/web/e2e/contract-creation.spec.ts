@@ -9,7 +9,9 @@ test.describe('สร้างสัญญาผ่อนชำระ', () => {
 
   test('should load contract creation page', async ({ page }) => {
     await gotoWithRetry(page, '/contracts/create');
-    await expect(page.locator('h1, h2, [data-testid="page-title"]')).toContainText(/สร้างสัญญา|สัญญาใหม่/);
+    await expect(page.locator('h1, h2, [data-testid="page-title"]')).toContainText(
+      /สร้างสัญญา|สัญญาใหม่/,
+    );
     expect(await hasErrorBoundary(page)).toBe(false);
   });
 
@@ -23,7 +25,9 @@ test.describe('สร้างสัญญาผ่อนชำระ', () => {
   test('should allow customer search in step 1', async ({ page }) => {
     await gotoWithRetry(page, '/contracts/create');
     // Should have a customer search/select mechanism
-    const searchInput = page.locator('input[placeholder*="ค้นหา"], input[placeholder*="ลูกค้า"]').first();
+    const searchInput = page
+      .locator('input[placeholder*="ค้นหา"], input[placeholder*="ลูกค้า"]')
+      .first();
     if (await searchInput.isVisible()) {
       await searchInput.fill('ทดสอบ');
       // Should show search results or empty state
@@ -34,7 +38,9 @@ test.describe('สร้างสัญญาผ่อนชำระ', () => {
 
   test('should show add customer button/modal', async ({ page }) => {
     await gotoWithRetry(page, '/contracts/create');
-    const addBtn = page.locator('button:has-text("เพิ่มลูกค้า"), button:has-text("ลูกค้าใหม่")').first();
+    const addBtn = page
+      .locator('button:has-text("เพิ่มลูกค้า"), button:has-text("ลูกค้าใหม่")')
+      .first();
     if (await addBtn.isVisible()) {
       await addBtn.click();
       // Should open full-screen customer creation modal

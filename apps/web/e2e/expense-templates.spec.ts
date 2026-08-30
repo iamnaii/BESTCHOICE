@@ -113,9 +113,11 @@ test.describe('Expense Templates — feature flag (templates_enabled)', () => {
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     // The field may live at the top level (most likely shape) or nested under
     // `data`. We runtime-probe both shapes so the test doesn't lock in one.
-    const flags = (typeof json.data === 'object' && json.data !== null
-      ? (json.data as Record<string, unknown>)
-      : json) as Record<string, unknown>;
+    const flags = (
+      typeof json.data === 'object' && json.data !== null
+        ? (json.data as Record<string, unknown>)
+        : json
+    ) as Record<string, unknown>;
 
     if (typeof flags.templatesEnabled === 'boolean') {
       // Field is present — confirmed wired end-to-end.

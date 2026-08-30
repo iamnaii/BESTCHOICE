@@ -32,7 +32,9 @@ export class BookingPage {
 
   /** Generic "select option by text" — works for any combobox after click() */
   optionByText(text: string | RegExp): Locator {
-    return this.page.getByRole('option', { name: text }).first()
+    return this.page
+      .getByRole('option', { name: text })
+      .first()
       .or(this.page.getByText(text).first());
   }
 

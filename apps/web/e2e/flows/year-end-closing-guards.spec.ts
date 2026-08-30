@@ -34,10 +34,14 @@ test.describe('Year-end closing — page-load + guards', () => {
     const y = new YearEndClosingPage(page);
     const ok = await y.goto();
     if (!ok) {
-      throw new Error('/finance/year-end-closing failed to load — likely error boundary or auth issue');
+      throw new Error(
+        '/finance/year-end-closing failed to load — likely error boundary or auth issue',
+      );
     }
     if (await hasErrorBoundary(page)) {
-      throw new Error('Error boundary on /finance/year-end-closing — page rendered an unhandled exception');
+      throw new Error(
+        'Error boundary on /finance/year-end-closing — page rendered an unhandled exception',
+      );
     }
 
     await expect(y.heading()).toBeVisible({ timeout: 15000 });
@@ -64,7 +68,9 @@ test.describe('Year-end closing — page-load + guards', () => {
     const y = new YearEndClosingPage(page);
     const ok = await y.goto();
     if (!ok) {
-      throw new Error('/finance/year-end-closing failed to load — likely error boundary or auth issue');
+      throw new Error(
+        '/finance/year-end-closing failed to load — likely error boundary or auth issue',
+      );
     }
 
     await expect(y.heading()).toBeVisible({ timeout: 15000 });
@@ -82,10 +88,12 @@ test.describe('Year-end closing — page-load + guards', () => {
       .first()
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    const hasAlreadyClosed = await y.alreadyClosedBanner()
+    const hasAlreadyClosed = await y
+      .alreadyClosedBanner()
       .isVisible({ timeout: 2000 })
       .catch(() => false);
-    const hasOpenMonths = await y.openMonthsBanner()
+    const hasOpenMonths = await y
+      .openMonthsBanner()
       .isVisible({ timeout: 2000 })
       .catch(() => false);
 
@@ -115,10 +123,9 @@ test.describe('Year-end closing — page-load + guards', () => {
     await y.clickPreview().catch(() => null);
 
     const readonlyBanner = page.getByText(/โหมดดูอย่างเดียว/).first();
-    const hasReadonly = await readonlyBanner
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    const hasCloseBtn = await y.closeYearBtn()
+    const hasReadonly = await readonlyBanner.isVisible({ timeout: 5000 }).catch(() => false);
+    const hasCloseBtn = await y
+      .closeYearBtn()
       .isVisible({ timeout: 2000 })
       .catch(() => false);
 

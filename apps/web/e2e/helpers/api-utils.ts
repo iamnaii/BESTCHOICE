@@ -23,7 +23,11 @@ function headers(token: string) {
 }
 
 /** Get a fresh token via API login */
-export async function getApiToken(page: Page, email = 'admin@bestchoice.com', password = 'admin1234'): Promise<string> {
+export async function getApiToken(
+  page: Page,
+  email = 'admin@bestchoice.com',
+  password = 'admin1234',
+): Promise<string> {
   const res = await page.request.post(`${API_URL}/api/auth/login`, {
     data: { email, password },
     headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -35,10 +39,18 @@ export async function getApiToken(page: Page, email = 'admin@bestchoice.com', pa
 
 /* ─── Customer CRUD ─── */
 
-export async function createCustomer(page: Page, token: string, data: {
-  firstName: string; lastName: string; nationalId: string; phone: string;
-  nickname?: string; email?: string;
-}) {
+export async function createCustomer(
+  page: Page,
+  token: string,
+  data: {
+    firstName: string;
+    lastName: string;
+    nationalId: string;
+    phone: string;
+    nickname?: string;
+    email?: string;
+  },
+) {
   const res = await page.request.post(`${API_URL}/api/customers`, {
     data,
     headers: headers(token),
@@ -59,19 +71,30 @@ export async function deleteCustomer(page: Page, token: string, id: string) {
 }
 
 export async function searchCustomers(page: Page, token: string, search: string) {
-  const res = await page.request.get(`${API_URL}/api/customers?search=${encodeURIComponent(search)}&limit=5`, {
-    headers: headers(token),
-  });
+  const res = await page.request.get(
+    `${API_URL}/api/customers?search=${encodeURIComponent(search)}&limit=5`,
+    {
+      headers: headers(token),
+    },
+  );
   if (!res.ok()) return { data: [], total: 0 };
   return unwrapResponse(await res.json());
 }
 
 /* ─── Expense CRUD ─── */
 
-export async function createExpense(page: Page, token: string, data: {
-  branchId: string; accountType: string; category: string;
-  description: string; amount: string; expenseDate: string;
-}) {
+export async function createExpense(
+  page: Page,
+  token: string,
+  data: {
+    branchId: string;
+    accountType: string;
+    category: string;
+    description: string;
+    amount: string;
+    expenseDate: string;
+  },
+) {
   const res = await page.request.post(`${API_URL}/api/expenses`, {
     data: { ...data, vatAmount: '0', withholdingTax: '0' },
     headers: headers(token),
@@ -103,9 +126,15 @@ export async function getBranches(page: Page, token: string) {
 
 /* ─── Supplier CRUD ─── */
 
-export async function createSupplier(page: Page, token: string, data: {
-  name: string; contactName: string; phone: string;
-}) {
+export async function createSupplier(
+  page: Page,
+  token: string,
+  data: {
+    name: string;
+    contactName: string;
+    phone: string;
+  },
+) {
   const res = await page.request.post(`${API_URL}/api/suppliers`, {
     data,
     headers: headers(token),

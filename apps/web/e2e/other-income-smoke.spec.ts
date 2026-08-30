@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { loginViaAPI, getAuthHeaders } from './helpers/auth';
 import { gotoWithRetry } from './helpers/navigation';
+import { unwrapResponse } from './helpers/api-utils';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
@@ -22,14 +23,16 @@ test.describe('Other Income Module — smoke', () => {
       },
     });
     expect(create.ok()).toBeTruthy();
-    const draft = await create.json();
+    // ทุก response ถูกครอบด้วย envelope { success, data, timestamp } จาก interceptor กลาง
+    // ⇒ อ่าน draft.docNumber ตรง ๆ ได้ undefined เสมอ (ตกมาตั้งแต่ก่อนงานชุดนี้)
+    const draft = unwrapResponse(await create.json());
     expect(draft.docNumber).toMatch(/^OI-/);
 
     const post = await page.request.post(`${API_URL}/api/other-income/${draft.id}/post`, {
       headers: getAuthHeaders(),
     });
     expect(post.ok()).toBeTruthy();
-    const posted = await post.json();
+    const posted = unwrapResponse(await post.json());
     expect(posted.status).toBe('POSTED');
     expect(posted.journalEntryId).toBeTruthy();
 

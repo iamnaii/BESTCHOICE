@@ -1,12 +1,15 @@
 import { test, expect } from '@playwright/test';
+import { loginAsRole } from './helpers/auth';
 
 test.describe('Insurance wizard — IMEI-driven flow (SP1)', () => {
+  // เดิมกรอกฟอร์มล็อกอินเองด้วย `[name="email"]` ซึ่ง **ไม่มีในหน้าจอ** — LoginPage
+  // ใช้ id="email" / data-testid="login-email" ไม่มี attribute name เลย ⇒ page.fill
+  // รอจนหมดเวลา 15 วิ ทุกครั้ง และต่อให้แก้ selector ก็ยังติดบรรทัดถัดไป เพราะ
+  // waitForURL รอ /dashboard ซึ่งไม่ใช่ route ที่มีอยู่ (ปลายทางหลังล็อกอินมาจาก
+  // getLandingPathForRole ซึ่งขึ้นกับโซนของแต่ละ role)
+  // ⇒ ใช้ helper กลางที่ฉีด token ตรงแทน — ไม่ต้องพึ่งรูปร่างของฟอร์มหรือปลายทาง
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.fill('[name="email"]', 'manager.ladprao@bestchoice.com');
-    await page.fill('[name="password"]', 'admin1234');
-    await page.click('button[type="submit"]');
-    await page.waitForURL(/\/(dashboard|finance-portfolio)/);
+    await loginAsRole(page, 'BRANCH_MANAGER');
   });
 
   test('block message when IMEI not in DB', async ({ page }) => {

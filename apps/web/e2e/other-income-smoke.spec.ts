@@ -39,7 +39,13 @@ test.describe('Other Income Module — smoke', () => {
     const ok = await gotoWithRetry(page, `/other-income/${posted.id}`);
     if (!ok) return;
 
-    await expect(page.getByText(posted.docNumber)).toBeVisible({ timeout: 10000 });
+    // เจาะจงเลขเอกสารในหัวการ์ด "ข้อมูลเอกสาร" (OtherIncomeViewPage.tsx:481)
+    // — `getByText(docNumber)` เปล่า ๆ แมตช์ 3 ที่พร้อมกันแล้วชน strict mode:
+    // ข้อความ toast "เอกสาร <เลข> ลงบัญชีเรียบร้อย", หัวการ์ดนี้ และตัวอย่างใน
+    // iframe ใบเสร็จ (data-testid="icab-frame")
+    await expect(
+      page.locator('span.font-mono').filter({ hasText: posted.docNumber }).first(),
+    ).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('POSTED').first()).toBeVisible({ timeout: 10000 });
   });
 

@@ -199,14 +199,26 @@ const ROLE_TOKEN_MAX_AGE_MS = 10 * 60 * 1000; // 10 min (JWT expires at 15 min)
 function persistRoleToken(role: TestRole, token: string): void {
   try {
     let tokens: Record<string, string> = {};
+    let timestamps: Record<string, number> = {};
     if (fs.existsSync(ROLE_AUTH_FILE)) {
       const existing = JSON.parse(fs.readFileSync(ROLE_AUTH_FILE, 'utf-8')) as {
         tokens?: Record<string, string>;
+        timestamps?: Record<string, number>;
+        timestamp?: number;
       };
       tokens = existing.tokens ?? {};
+      // ไฟล์รูปแบบเก่ามีแต่ timestamp ใบเดียว — เก็บอายุเดิมของทุก role ที่มีอยู่ไว้ก่อน
+      // ไม่งั้นการเขียนของ role เดียวจะรีเซ็ตอายุของ role อื่นให้ดู "สด" อีกครั้ง
+      timestamps = existing.timestamps ?? {};
+      if (!existing.timestamps && existing.timestamp) {
+        for (const r of Object.keys(tokens)) timestamps[r] = existing.timestamp;
+      }
     }
+    const now = Date.now();
     tokens[role] = token;
-    fs.writeFileSync(ROLE_AUTH_FILE, JSON.stringify({ tokens, timestamp: Date.now() }));
+    timestamps[role] = now;
+    // คง `timestamp` ไว้เพื่อความเข้ากันได้กับผู้อ่านรุ่นเก่า — ตัวที่ใช้ตัดสินจริงคือ timestamps
+    fs.writeFileSync(ROLE_AUTH_FILE, JSON.stringify({ tokens, timestamps, timestamp: now }));
   } catch {
     // เขียนไม่ได้ก็ไม่เป็นไร — cache ในหน่วยความจำยังใช้ได้ ห้ามทำให้เทสล้มเพราะเรื่องนี้
   }
@@ -266,11 +278,22 @@ export async function loginAsRole(page: Page, role: TestRole) {
     try {
       const cache = JSON.parse(fs.readFileSync(ROLE_AUTH_FILE, 'utf-8')) as {
         tokens: Record<string, string>;
+        timestamps?: Record<string, number>;
         timestamp: number;
       };
-      if (cache.tokens?.[role] && Date.now() - cache.timestamp < ROLE_TOKEN_MAX_AGE_MS) {
+      // อายุ **รายบทบาท** — ห้ามกลับไปใช้ `cache.timestamp` ใบเดียวเด็ดขาด
+      //
+      // 🔴 บั๊กเดิม: persistRoleToken เขียน `timestamp: Date.now()` ทับทั้งไฟล์ทุกครั้ง
+      // ที่ role **ใด ๆ** ล็อกอินใหม่ ⇒ พอ SALES ล็อกอินสดตอนนาทีที่ 20 โทเคนของ
+      // FINANCE_MANAGER ที่ออกตั้งแต่นาทีที่ 0 (JWT อายุ 15 นาที = หมดอายุไปแล้ว)
+      // ถูกตีตราว่า "ยังสด" แล้วถูกแจกต่อ ⇒ ทุกคำขอบนหน้านั้นได้ 401 พร้อมกันทั้งชุด
+      // (page-health-check ของ FM เห็น 401 รวด 11 ใบในหน้าเดียว)
+      //
+      // fallback ไป cache.timestamp ไว้อ่านไฟล์รูปแบบเก่าที่ยังไม่มี timestamps
+      const issuedAt = cache.timestamps?.[role] ?? cache.timestamp;
+      if (cache.tokens?.[role] && Date.now() - issuedAt < ROLE_TOKEN_MAX_AGE_MS) {
         token = cache.tokens[role];
-        roleTokenCache[role] = { token, timestamp: cache.timestamp };
+        roleTokenCache[role] = { token, timestamp: issuedAt };
       } else {
         token = await apiLoginRole(page, role);
       }

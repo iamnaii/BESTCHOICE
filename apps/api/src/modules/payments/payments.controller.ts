@@ -31,6 +31,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaySolutionsService } from '../paysolutions/paysolutions.service';
 import { RescheduleService } from '../installments/reschedule.service';
 import { RescheduleCollectService } from './services/reschedule-collect.service';
+import { clientIp } from '../../utils/client-ip.util';
 
 class CreatePartialQrDto {
   @IsNumber()
@@ -523,14 +524,9 @@ export class PaymentsController {
     await this.paymentsService.validateBranchAccessByPayment(paymentId, user);
 
     // T3-C4: capture IP + UA of the APPROVER for the immutable audit row.
-    // Trust proxy forwarding is already configured at the app bootstrap
-    // level (req.ip honours X-Forwarded-For); user-agent comes straight
-    // from the browser. Both are optional — null is acceptable if unset.
-    const forwarded = req.headers['x-forwarded-for'];
-    const ipAddress =
-      (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : undefined) ||
-      req.ip ||
-      null;
+    // IP อ่านผ่าน clientIp() ที่เดียวทั้งระบบ (ดู utils/client-ip.util.ts);
+    // user-agent มาจาก browser ตรง ๆ ทั้งคู่เป็น optional — null ได้ถ้าไม่มี
+    const ipAddress = clientIp(req) || null;
     const userAgentHeader = req.headers['user-agent'];
     const userAgent =
       typeof userAgentHeader === 'string' ? userAgentHeader : null;

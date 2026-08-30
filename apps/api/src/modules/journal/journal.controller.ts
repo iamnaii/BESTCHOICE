@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { clientIp } from '../../utils/client-ip.util';
 
 @ApiTags('Journal Entries')
 @ApiBearerAuth('JWT')
@@ -75,10 +76,7 @@ export class JournalController {
   ) {
     // T2-C14 — capture ip + UA at the controller edge. JournalPostAuditLog
     // is the "who POSTED what, from where" legal-retention trail.
-    const ipAddress =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-      req.ip ||
-      undefined;
+    const ipAddress = clientIp(req) || undefined;
     const userAgent = req.headers['user-agent'] ?? undefined;
     return this.journalService.post(id, userId, { ipAddress, userAgent });
   }

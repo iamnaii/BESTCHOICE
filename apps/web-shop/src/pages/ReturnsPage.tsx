@@ -11,8 +11,14 @@ import {
 } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { copy, shopInfo } from '@/lib/copy';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function ReturnsPage() {
+  usePageMeta(
+    'การเปลี่ยน/คืนสินค้าและการรับประกัน',
+    'เงื่อนไขการเปลี่ยน คืนสินค้า และการรับประกัน iPhone ที่ซื้อกับ BESTCHOICE ลพบุรี',
+  );
+
   return (
     <ShopLayout>
       <CategoryHero

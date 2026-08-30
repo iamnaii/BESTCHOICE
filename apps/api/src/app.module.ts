@@ -2,6 +2,7 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { clientIp } from './utils/client-ip.util';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { resolve } from 'path';
 import { AppController } from './app.controller';
@@ -168,13 +169,23 @@ import { AppCacheModule } from './cache/cache.module';
       ],
     }),
     ScheduleModule.forRoot(),
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 1000,
-        limit: 200, // Allow 200 req/sec per IP (supports 20+ concurrent employees on same network)
-      },
-    ]),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          name: 'short',
+          ttl: 1000,
+          limit: 200, // Allow 200 req/sec per IP (supports 20+ concurrent employees on same network)
+        },
+      ],
+      /**
+       * ตัวนับ default ของ @nestjs/throttler คือ `req.ip` ซึ่งบน Cloud Run ไม่ได้
+       * ตั้ง trust proxy จะเป็น IP ของ proxy Google — ค่าเดียวกันสำหรับทุกคน
+       * ⇒ เพดาน @Throttle ทุกเส้นทางกลายเป็น "ทั้งเว็บรวมกัน" ไม่ใช่ต่อคน
+       * (วัดจริง 2026-08-30: request ผ่าน Firebase rewrite เห็น remoteIp = 66.249.x)
+       * คนยิงรัวคนเดียวจึงล็อกลูกค้าคนอื่นออกได้หมด — ผูกกับ clientIp() แทน
+       */
+      getTracker: (req) => clientIp(req as Parameters<typeof clientIp>[0]),
+    }),
     AppCacheModule,
     StorageModule,
     PrismaModule,

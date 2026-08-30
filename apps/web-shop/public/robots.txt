@@ -1,8 +1,13 @@
 # BESTCHOICE Online Shop — robots.txt
 # Hybrid AI strategy: allow AI crawlers for marketing/SEO, block /api/* and aggressive scrapers
+#
+# ⚠️ /api/shop/share/:id คือหน้าการ์ดแชร์ (OG/JSON-LD) ที่ระบบสร้างลิงก์ไปหาเอง —
+# มันอยู่ใต้ /api/ จึงโดน `Disallow: /api/` บล็อกไปด้วย ทำให้ crawler ที่เคารพ
+# robots.txt (facebookexternalhit ฯลฯ) ดึงการ์ดของเราไม่ได้ ⇒ ต้อง Allow ก่อนทุกบล็อก
 
 User-agent: *
 Allow: /
+Allow: /api/shop/share/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout
@@ -13,25 +18,30 @@ Disallow: /account
 User-agent: GPTBot
 Allow: /
 Crawl-delay: 10
+Allow: /api/shop/share/
 Disallow: /api/
 Disallow: /apply
 
 User-agent: ClaudeBot
 Allow: /
 Crawl-delay: 10
+Allow: /api/shop/share/
 Disallow: /api/
 
 User-agent: Anthropic-AI
 Allow: /
 Crawl-delay: 10
+Allow: /api/shop/share/
 Disallow: /api/
 
 User-agent: PerplexityBot
 Allow: /
+Allow: /api/shop/share/
 Disallow: /api/
 
 User-agent: Google-Extended
 Allow: /
+Allow: /api/shop/share/
 Disallow: /api/
 
 # Aggressive scrapers — BLOCK

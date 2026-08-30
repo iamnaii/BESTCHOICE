@@ -17,6 +17,7 @@ import { dAdd, dSub, dClose } from '../../../utils/decimal.util';
 import { loadLateFeeConfig } from '../../../utils/late-fee.util';
 import { computeRescheduleQuote } from '../../../utils/reschedule-quote.util';
 import { PaySolutionsGatewayClient, PAYSOLUTIONS_TIMEOUT_MS } from './paysolutions-gateway.client';
+import { shopBaseUrl } from '../../../utils/shop-base-url.util';
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -241,8 +242,14 @@ export class PaySolutionsIntentService {
 
     // Numeric-only ref (see createPaymentIntent for rationale).
     const orderRef = String(Date.now()).slice(-12);
-    const returnUrlBase =
-      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/orders`;
+    // ⚠️ ห้ามใช้ this.returnUrl (PAYSOLUTIONS_RETURN_URL) ตรงนี้ — ค่านั้นเป็น deep-link
+    // ของ LIFF สัญญาผ่อน ซึ่งถูกสำหรับ 4 flow ของพนักงาน/สัญญาในไฟล์นี้ แต่ผิดสำหรับ
+    // "ลูกค้าหน้าร้านที่เพิ่งจ่ายเงินเสร็จ" — เขาต้องกลับมาหน้าคำสั่งซื้อบนหน้าร้าน
+    // (ก่อนหน้านี้จ่ายเสร็จแล้วเด้งไปหน้า LINE login/หน้าสัญญาที่ไม่มี route ของ order)
+    const shopBase = shopBaseUrl();
+    const returnUrlBase = shopBase
+      ? `${shopBase}/orders`
+      : `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/orders`;
     const returnUrl = `${returnUrlBase}/${order.orderNumber}`;
 
     const paymentPayload: Record<string, unknown> = {
@@ -759,8 +766,11 @@ export class PaySolutionsIntentService {
 
     // Numeric-only ref (see createPaymentIntent for rationale).
     const orderRef = String(Date.now()).slice(-12);
-    const returnUrlBase =
-      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/saving-plan`;
+    // เหตุผลเดียวกับ createOnlineOrderIntent — ปลายทางคือหน้าร้าน ไม่ใช่ LIFF สัญญา
+    const shopBase = shopBaseUrl();
+    const returnUrlBase = shopBase
+      ? `${shopBase}/saving-plan`
+      : `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/saving-plan`;
     const returnUrl = `${returnUrlBase}/${plan.id}`;
 
     const paymentPayload: Record<string, unknown> = {

@@ -550,12 +550,42 @@ jobs:
             --non-interactive
 
       - name: Deploy shop hosting (www.bestchoicephone.com)
-        # Will fail cleanly if the `bestchoicephone-shop` Firebase Hosting
-        # site hasn't been created yet — admin deploy above still succeeded,
-        # so this isolation prevents admin regressions during the shop rollout.
-        continue-on-error: true
+        # เดิมตั้ง continue-on-error: true ไว้ตอนที่ site `bestchoicephone-shop` ยังไม่มีจริง
+        # ตอนนี้ site + custom domain ขึ้นแล้ว การปล่อยให้ล้มแบบเงียบ ๆ แปลว่า
+        # "deploy เขียว แต่หน้าร้านค้างของเก่า" ซึ่งไม่มีใครรู้ตัว — ต้องให้ job แดง
         run: |
           firebase deploy \
             --only hosting:shop \
             --project "${{ secrets.GCP_PROJECT_ID }}" \
             --non-interactive
+
+      - name: Verify shop is actually live
+        # กัน "deploy ผ่านแต่หน้าร้านไม่ขึ้น" — เดิม step deploy ตั้ง continue-on-error
+        # ไว้ จึงเป็นไปได้ที่ CI เขียวแต่โดเมนค้างของเก่าโดยไม่มีใครรู้
+        #
+        # เช็ค 2 origin แล้ว "แดงเมื่อพังทั้งคู่" เท่านั้น เพราะ 2 กรณีนี้ต่างกัน:
+        #   - hosting deploy พังจริง        → ตายทั้งคู่        → ต้องแดง
+        #   - custom domain ยังผูกไม่เสร็จ  → www ยังไม่ขึ้นแต่ web.app ปกติ → ไม่ควรแดง
+        run: |
+          set -uo pipefail
+          check() {
+            body=$(curl -fsS --max-time 20 "$1" 2>/dev/null || true)
+            printf '%s' "$body" | grep -q 'BESTCHOICE'
+          }
+          www_ok=0; legacy_ok=0
+          for i in 1 2 3; do
+            check https://www.bestchoicephone.com/ && www_ok=1
+            check https://bestchoicephone-shop.web.app/ && legacy_ok=1
+            [ "$www_ok" = 1 ] && break
+            echo "รอบ $i: www ยังไม่ขึ้น (web.app=$legacy_ok) — รอ 15 วิ"
+            sleep 15
+          done
+          echo "www=$www_ok legacy=$legacy_ok"
+          if [ "$www_ok" = 1 ]; then
+            echo "หน้าร้านขึ้นบน www.bestchoicephone.com แล้ว"
+          elif [ "$legacy_ok" = 1 ]; then
+            echo "::warning::www.bestchoicephone.com ยังไม่เสิร์ฟหน้าร้าน (custom domain น่าจะยังผูกไม่เสร็จ) แต่ bestchoicephone-shop.web.app ปกติ ⇒ deploy สำเร็จ"
+          else
+            echo "::error::หน้าร้านไม่ขึ้นทั้ง www และ bestchoicephone-shop.web.app — hosting deploy น่าจะพังจริง"
+            exit 1
+          fi

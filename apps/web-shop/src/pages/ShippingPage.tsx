@@ -11,6 +11,7 @@ import {
 import ShopLayout from '@/components/layout/ShopLayout';
 import { copy } from '@/lib/copy';
 import { media } from '@/lib/media-placeholders';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 interface ShippingMethod {
   key: string;
@@ -65,6 +66,11 @@ const METHODS: ShippingMethod[] = [
 ];
 
 export default function ShippingPage() {
+  usePageMeta(
+    'การรับสินค้าและจัดส่ง',
+    'รับเครื่องที่หน้าร้าน BESTCHOICE ลพบุรี หรือให้จัดส่ง — ขั้นตอน ระยะเวลา และค่าจัดส่ง',
+  );
+
   return (
     <ShopLayout>
       <CategoryHero

@@ -62,6 +62,15 @@ jobs:
       JWT_EXPIRATION: 15m
       JWT_REFRESH_EXPIRATION: 7d
       ENCRYPTION_KEY: test-encryption-key-for-ci
+      # PII สองตัวนี้ **จำเป็น** ไม่ใช่ของเสริม — `CustomerPiiService.encryptForWrite`
+      # โยน error ทิ้งทันทีเมื่อจะเขียน nationalId/phone แล้วคีย์หาย หรือสั้นกว่า 32
+      # ตัวอักษร (customer-pii.service.ts:171-182 "refusing to write plaintext") ⇒
+      # ก่อนหน้านี้ทุกเทสที่สร้างลูกค้าผ่าน API ได้ HTTP 500 INTERNAL_ERROR
+      # หมายเหตุ: seed ใช้ `prisma.customer.create` ตรง จึงไม่โดนด่านนี้ —
+      # ข้อมูลตั้งต้นมีครบมาตลอด ที่พังคือเฉพาะการสร้างใหม่ระหว่างเทส
+      # ค่าปลอมสำหรับ CI เท่านั้น (Postgres ใน container ที่ถูกทิ้งหลังรันจบ)
+      PII_ENCRYPTION_KEY: e2e-pii-encryption-key-32-chars-min-ci
+      PII_HASH_SALT: e2e-pii-hash-salt-32-chars-minimum-ci
       PORT: 3000
       NODE_ENV: test
       BASE_URL: http://localhost:5173

@@ -69,19 +69,8 @@ const KNOWN_GAPS_ROUTE_ALLOWS_MENU_MISSING = [
 ];
 
 /** B: เมนูมี path นี้ แต่ ProtectedRoute ไม่อนุญาต role นี้ ⇒ กดแล้วโดนปฏิเสธ */
-const KNOWN_GAPS_MENU_HAS_ROUTE_DENIES = [
-  'ACCOUNTANT /accounting/periods',
-  'ACCOUNTANT /settings/backup',
-  'ACCOUNTANT /settings/brands',
-  'ACCOUNTANT /settings/document-config',
-  'ACCOUNTANT /settings/general',
-  'ACCOUNTANT /settings/rich-menu',
-  'FINANCE_MANAGER /accounting/periods',
-  'FINANCE_MANAGER /settings/backup',
-  'FINANCE_MANAGER /settings/brands',
-  'FINANCE_MANAGER /settings/document-config',
-  'FINANCE_MANAGER /settings/general',
-  'FINANCE_MANAGER /settings/rich-menu',
+const KNOWN_GAPS_MENU_HAS_ROUTE_DENIES: string[] = [
+  // ว่าง — ทิศนี้แก้หมดแล้ว (2026-08-30). ถ้ามีบรรทัดโผล่มาใหม่แปลว่ากำลังปล่อยบั๊กเข้าไป
 ];
 
 const src: string = appSource;
@@ -95,6 +84,10 @@ const redirects = new Set(
 const guarded = [...src.matchAll(/<Route\s+path="([^"]+)"([\s\S]*?)(?=<Route\s|$)/g)]
   .filter(([, path]) => !path.includes(':') && !path.includes('*'))
   .filter(([, path]) => !redirects.has(path) && !COMMON_PATHS.has(path))
+  // /settings/* อยู่นอกขอบเขตเทสนี้: resolveZoneForPath มีทางลัด return 'settings'
+  // ให้ทุก role ที่มี showSettingsGear โดยไม่ดู registry ⇒ ใช้เป็นตัวแทน "มีในเมนู"
+  // ไม่ได้ เมนูตั้งค่าจริงกรองด้วย visibleCategories() ใน settings-access.ts อีกชั้น
+  .filter(([, path]) => !path.startsWith('/settings'))
   .map(([, path, body]) => {
     const m = body.match(/roles=\{\[([^\]]*)\]\}/);
     return { path, roles: m ? [...m[1].matchAll(/'(\w+)'/g)].map((r) => r[1]) : [] };

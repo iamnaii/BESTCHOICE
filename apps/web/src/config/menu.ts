@@ -311,10 +311,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
-        // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
-        // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
-        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
-        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
       ],
     },
     {
@@ -368,19 +364,54 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
       ],
     },
+    /* ── โซนบัญชีของ ผจก.การเงิน — ยกผังเดียวกับ OWNER (fin zone) มาใช้ ────────
+     * เดิมเป็นกอง "บัญชี & รายงาน" 17 รายการกองเดียว และ **ขาดหน้ารายงานการเงิน 12 หน้า**
+     * ที่ ProtectedRoute อนุญาต FM อยู่แล้ว (งบดุล/งบกระแสเงินสด/สมุดรายวัน/แยกประเภท/
+     * อายุหนี้/หนี้สูญ/ปิดบัญชีรายเดือน ฯลฯ) ⇒ MainLayout เด้ง FM ออกจากหน้าที่ตัวเองมีสิทธิ์
+     * ตอนที่ OWNER ได้ผังใหม่ตาม CSV ฝั่ง FM ไม่ได้ตามมาด้วย — รอบนี้ทำให้ตรงกัน
+     * ชื่อกลุ่ม + การจัดสมาชิกยึดตาม OWNER_CONFIG เป๊ะ เพื่อให้สองบทบาทเห็นโลกเดียวกัน
+     * ปักไว้ที่ __tests__/route-reachability.test.ts
+     */
     {
-      key: 'fm-finance',
-      label: 'บัญชี & รายงาน',
-      icon: Coins,
+      key: 'fm-revenue',
+      label: 'รายรับ',
+      icon: TrendingUp,
       zone: 'fin',
       items: [
-        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
-        { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
-        { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        // P4-SP2 — Tax module (finance-tax endpoints)
+        { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
+        { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: Receipt },
+      ],
+    },
+    {
+      key: 'fm-spend',
+      label: 'รายจ่าย',
+      icon: Receipt,
+      zone: 'fin',
+      items: [
+        { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: Store },
+        { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
+      ],
+    },
+    {
+      key: 'fm-closing',
+      label: 'ปิดบัญชี',
+      icon: CalendarDays,
+      zone: 'fin',
+      items: [
+        { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
+        { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
+        // ไม่มี /accounting/periods — เป็น roles={['OWNER']} (ดูคอมเมนต์ทิศ B)
+      ],
+    },
+    {
+      key: 'fm-tax',
+      label: 'ภาษี',
+      icon: Calculator,
+      zone: 'fin',
+      items: [
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
         { label: 'ภ.ง.ด.1 เงินเดือน (รายพนักงาน)', path: '/finance/wht-report', icon: Calculator },
@@ -388,16 +419,47 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ภ.ง.ด.1ก / ใบ 50 ทวิ (รายปี)', path: '/finance/wht-annual', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
-        // SP6 — Bank/Cash account directory
-        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
-        // /accounting/periods เป็น ProtectedRoute roles={['OWNER']} (เป็นแค่ redirect ไป
-        // /settings#periods ซึ่งอยู่หมวด system ที่ OWNER เท่านั้น) ⇒ role นี้กดแล้วโดนปฏิเสธ
-        // เสมอ จึงถอดออกจากเมนู (ปักที่ route-reachability.test.ts ทิศ B)
-        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
-        { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark },
-        { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
+      ],
+    },
+    {
+      key: 'fm-statements',
+      label: 'งบการเงิน',
+      icon: PieChart,
+      zone: 'fin',
+      items: [
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: Landmark },
+        { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+      ],
+    },
+    {
+      key: 'fm-reports',
+      label: 'รายงาน',
+      icon: BarChart3,
+      zone: 'fin',
+      items: [
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
+        { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
+        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: BarChart3 },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: BarChart3 },
+        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: BarChart3 },
+        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
+        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         // P3-SP3 — PEAK CSV export (deep-linked from /settings#peak-mapping which is OWNER-only)
         { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
+      ],
+    },
+    {
+      key: 'fm-bank',
+      label: 'บัญชีธนาคาร/เงินสด',
+      icon: Landmark,
+      zone: 'fin',
+      items: [
+        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
     },
     assetMenuSection,

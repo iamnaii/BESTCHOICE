@@ -86,6 +86,11 @@ beforeEach(async () => {
   await prisma.fixedAsset.deleteMany({ where: { createdById: userId } });
   // Also clean stale assets from sibling test files (DEP-TEST-* prefix from
   // depreciation.template.spec.ts) that might pollute previewRun's POSTED query.
+  //
+  // ⚠️ อย่าเปลี่ยนเป็น deleteMany({}) เพื่อ "ให้ชัวร์" — ลองแล้วพัง: suite ของ asset
+  // รันขนานอยู่และใช้ตารางเดียวกัน การล้างทั้งตารางกลางคันทำให้ asset specs ล้มเพิ่ม
+  // อีก 23 เทส. ต้นเหตุจริงของ +1 คือไฟล์อื่นไม่เก็บกวาด — แก้ที่นั่นแทน
+  // (asset-invoice-received.template.spec.ts ได้ afterAll แล้ว)
   await prisma.fixedAsset.deleteMany({
     where: { assetCode: { startsWith: 'DEP-TEST-' } },
   });

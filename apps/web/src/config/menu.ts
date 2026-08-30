@@ -6,6 +6,7 @@ import {
   Users,
   Smartphone,
   FileCheck,
+  FileSearch,
   HandCoins,
   Warehouse,
   Coins,
@@ -160,6 +161,9 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
+        // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
+        // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
       ],
     },
     {
@@ -246,6 +250,9 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รอถ่ายรูป/ตรวจสภาพ', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
+        // route อนุญาต BRANCH_MANAGER อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ
+        // Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (ปักที่ route-reachability.test.ts)
+        { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
       ],
     },
     {
@@ -304,6 +311,10 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
+        // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
+        // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
       ],
     },
     {
@@ -337,6 +348,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
+        // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
+        // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
         // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
         // Standardized label + icon across all 4 role configs.
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
@@ -424,6 +438,20 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
+      ],
+    },
+    {
+      key: 'acc-reference',
+      label: 'ข้อมูลอ้างอิง',
+      icon: FileSearch,
+      zone: 'fin',
+      items: [
+        // ProtectedRoute ของ 3 หน้านี้อนุญาต ACCOUNTANT อยู่แล้ว แต่ไม่มีในเมนู
+        // ⇒ MainLayout เด้งกลับ Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์
+        // (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'ลูกค้า', path: '/customers', icon: Users },
+        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
       ],
     },
     {
@@ -550,6 +578,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
+        // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
+        { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
       ],
     },
     {

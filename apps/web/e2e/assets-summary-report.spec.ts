@@ -3,16 +3,22 @@
 // Verify response is an array.
 
 import { test, expect } from '@playwright/test';
-import { loginAsRole } from './helpers/auth';
+import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
 test('summary report returns array for each groupBy', async ({ page }) => {
   await loginAsRole(page, 'FINANCE_MANAGER');
   for (const groupBy of ['category', 'custodian', 'location']) {
-    const res = await page.request.get(`${API_URL}/api/reports/asset-summary?groupBy=${groupBy}`);
+    // page.request needs its own headers — loginAsRole's setExtraHTTPHeaders
+    // only covers requests the page itself makes.
+    const res = await page.request.get(`${API_URL}/api/reports/asset-summary?groupBy=${groupBy}`, {
+      headers: getRoleAuthHeaders('FINANCE_MANAGER'),
+    });
     expect(res.ok()).toBeTruthy();
-    const body = await res.json();
+    // The array lives under .data of the { success, data, timestamp } envelope
+    const body = unwrapResponse(await res.json());
     expect(Array.isArray(body)).toBe(true);
   }
 });

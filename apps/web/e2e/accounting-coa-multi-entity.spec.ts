@@ -3,14 +3,23 @@ import { loginViaAPI, getAuthHeaders } from './helpers/auth';
 import { unwrapResponse } from './helpers/api-utils';
 
 /* ================================================================
-   Phase A.1a — Chart of Accounts multi-entity scoping
-   Verifies the new companyId filter on GET /chart-of-accounts:
-   - no param → returns all accounts (SHOP + FINANCE + SHARED)
-   - companyId=SHARED → returns only accounts with companyId=null
-   - companyId=<SHOP id> → returns only SHOP-owned accounts
+   Chart of Accounts — multi-entity partitioning
 
-   Schema change: ChartOfAccount.allowedCompanies dropped; ownership
-   modelled via composite (companyId, code) per Wave 1 of A.1a.
+   ⚠️ The `companyId` scoping this file used to assert NEVER SHIPPED.
+   `model ChartOfAccount` (apps/api/prisma/schema.prisma) has no
+   `companyId` column at all — the code comment on `code` says it
+   outright: "no companyId scoping in A.4". `GET /chart-of-accounts`
+   (chart-of-accounts.controller.ts) accepts only `type` / `status` /
+   `q`; any `?companyId=` is silently ignored and the full chart comes
+   back.
+
+   The partition that DOES exist is the `S` code prefix (P3-SP5, see
+   .claude/rules/accounting.md → "Chart prefix convention"):
+     FINANCE → 11-1101, 21-1101, …   (seed-coa-finance.ts)
+     SHOP    → S11-1101, S21-1101, … (seed-coa-shop.ts)
+   Both live in the same table; the prefix is the partition key until
+   Phase 3 SP7 splits the entities. Report-level entity scoping is a
+   different endpoint: GET /expenses/ledger/trial-balance?scope=SHOP.
    ================================================================ */
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -25,52 +34,36 @@ test.describe('Accounting — CoA multi-entity (Phase A.1a)', () => {
       headers: getAuthHeaders(),
     });
     expect(res.ok()).toBeTruthy();
-    const accounts = unwrapResponse(await res.json()) as Array<{ companyId: string | null }>;
+    const accounts = unwrapResponse(await res.json()) as Array<{ code: string }>;
     expect(Array.isArray(accounts)).toBeTruthy();
-    // After Wave 1 seed split, total chart should comfortably exceed 50 entries
-    // across SHOP + FINANCE + any SHARED rows.
+    // FINANCE seeds ~111 rows and SHOP ~57, so the combined chart comfortably
+    // exceeds 50. (There is no "SHARED" tier — see the file header.)
     expect(accounts.length).toBeGreaterThan(50);
   });
 
-  test('GET /chart-of-accounts?companyId=SHARED returns only null-companyId accounts', async ({ page }) => {
-    const res = await page.request.get(`${API_URL}/api/chart-of-accounts?companyId=SHARED`, {
+  test('GET /chart-of-accounts returns both the FINANCE and the SHOP chart', async ({ page }) => {
+    const res = await page.request.get(`${API_URL}/api/chart-of-accounts`, {
       headers: getAuthHeaders(),
     });
     expect(res.ok()).toBeTruthy();
-    const accounts = unwrapResponse(await res.json()) as Array<{ companyId: string | null }>;
+    const accounts = unwrapResponse(await res.json()) as Array<{ code: string }>;
     expect(Array.isArray(accounts)).toBeTruthy();
-    // Every returned row must have companyId === null
-    expect(accounts.every((a) => a.companyId === null)).toBeTruthy();
+    // FINANCE codes are bare (11-1101); SHOP codes carry the leading `S` (S11-1101).
+    expect(accounts.some((a) => /^\d{2}-/.test(a.code))).toBeTruthy();
+    expect(accounts.some((a) => a.code.startsWith('S'))).toBeTruthy();
   });
 
-  test('GET /chart-of-accounts?companyId=<SHOP_id> returns SHOP accounts only', async ({ page }) => {
-    const cosRes = await page.request.get(`${API_URL}/api/companies`, {
+  test('SHOP-owned accounts are identified by the leading `S` code prefix', async ({ page }) => {
+    const res = await page.request.get(`${API_URL}/api/chart-of-accounts`, {
       headers: getAuthHeaders(),
     });
-    if (!cosRes.ok()) {
-      test.skip(true, 'companies endpoint not available');
-      return;
-    }
-    const companies = unwrapResponse(await cosRes.json()) as Array<{
-      id: string;
-      companyCode?: string;
-    }>;
-    const shop = companies.find((c) => c.companyCode === 'SHOP');
-    if (!shop) {
-      test.skip(true, 'SHOP company not configured');
-      return;
-    }
-
-    const res = await page.request.get(
-      `${API_URL}/api/chart-of-accounts?companyId=${shop.id}`,
-      { headers: getAuthHeaders() },
-    );
     expect(res.ok()).toBeTruthy();
-    const accounts = unwrapResponse(await res.json()) as Array<{
-      companyId: string | null;
-    }>;
+    const accounts = unwrapResponse(await res.json()) as Array<{ code: string }>;
     expect(Array.isArray(accounts)).toBeTruthy();
-    expect(accounts.length).toBeGreaterThan(0);
-    expect(accounts.every((a) => a.companyId === shop.id)).toBeTruthy();
+
+    const shopAccounts = accounts.filter((a) => a.code.startsWith('S'));
+    expect(shopAccounts.length).toBeGreaterThan(0);
+    // csv-fixture-loader accepts `^S?\d{2}-\d{4}$` — every seeded SHOP row must fit it.
+    expect(shopAccounts.every((a) => /^S\d{2}-\d{4}$/.test(a.code))).toBeTruthy();
   });
 });

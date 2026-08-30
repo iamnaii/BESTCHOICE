@@ -10,7 +10,7 @@ test.describe('Dashboard Page', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Page title must be visible
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
 
     // Subtitle contains greeting
     await expect(page.getByText(/ภาพรวมธุรกิจ/).first()).toBeVisible();
@@ -19,7 +19,7 @@ test.describe('Dashboard Page', () => {
   test('should load KPI banner with key metrics', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
 
     // KPI banner labels — these always render once kpis data is received
     await expect(page.getByText('สัญญาทั้งหมด').first()).toBeVisible({ timeout: 10000 });
@@ -43,7 +43,7 @@ test.describe('Dashboard Page', () => {
   test('should display quick action shortcut cards', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
 
     // Quick action shortcuts — always visible for all roles
     await expect(page.getByText('POS ขายสินค้า').first()).toBeVisible({ timeout: 10000 });
@@ -73,7 +73,7 @@ test.describe('Dashboard Page', () => {
   test('should display monthly revenue section for non-SALES role', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Monthly revenue card — visible for OWNER/ACCOUNTANT/BRANCH_MANAGER (our admin is OWNER)
@@ -83,7 +83,7 @@ test.describe('Dashboard Page', () => {
   test('should display aging summary section', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'แดชบอร์ด' })).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Aging summary should be visible

@@ -27,7 +27,6 @@ export interface SeedIds {
   customers: string[];
   products: string[];
   bookings: string[];
-  quotes: string[];
   contracts: string[];
   // NOTE: `payments` and `sales` intentionally omitted — those modules expose
   // no `DELETE /:id` endpoint (audit-trail by design). Records created during
@@ -40,7 +39,6 @@ export function newSeedIds(): SeedIds {
     customers: [],
     products: [],
     bookings: [],
-    quotes: [],
     contracts: [],
   };
 }
@@ -144,7 +142,6 @@ export async function getFirstInStockProduct(
  *   - customers    — DELETE /api/customers/:id     (OWNER)
  *   - products     — DELETE /api/products/:id      (OWNER, BRANCH_MANAGER)
  *   - bookings     — DELETE /api/bookings/:id      (OWNER, BRANCH_MANAGER)
- *   - quotes       — DELETE /api/quotes/:id        (OWNER, BRANCH_MANAGER, SALES)
  *   - contracts    — DELETE /api/contracts/:id     (OWNER only)
  *
  * `payments` and `sales` are NOT cleaned up here — those modules expose no
@@ -157,15 +154,12 @@ export async function getFirstInStockProduct(
 export async function cleanupTestData(page: Page, token: string, ids: SeedIds): Promise<void> {
   const tasks: Array<{ entity: string; id: string; url: string }> = [];
   // Order matters loosely: child records first so FK constraints don't bite.
-  // contracts → bookings → quotes → products → customers
+  // contracts → bookings → products → customers
   for (const id of ids.contracts) {
     tasks.push({ entity: 'contracts', id, url: `${API_URL}/api/contracts/${id}` });
   }
   for (const id of ids.bookings) {
     tasks.push({ entity: 'bookings', id, url: `${API_URL}/api/bookings/${id}` });
-  }
-  for (const id of ids.quotes) {
-    tasks.push({ entity: 'quotes', id, url: `${API_URL}/api/quotes/${id}` });
   }
   for (const id of ids.products) {
     tasks.push({ entity: 'products', id, url: `${API_URL}/api/products/${id}` });

@@ -7,6 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 import { gotoWithRetry } from './helpers/navigation';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -30,7 +31,8 @@ test.describe('Asset — write-off variations', () => {
       },
     });
     expect(createRes.ok()).toBeTruthy();
-    const created = await createRes.json();
+    // API wraps every success body in { success, data, timestamp } (ResponseInterceptor)
+    const created = unwrapResponse(await createRes.json());
     const assetId = created.id;
 
     // POST the asset
@@ -49,7 +51,7 @@ test.describe('Asset — write-off variations', () => {
       },
     });
     expect(writeOffRes.ok()).toBeTruthy();
-    const result = await writeOffRes.json();
+    const result = unwrapResponse(await writeOffRes.json());
     expect(result.entryNo).toBeTruthy();
 
     // Verify asset is written off
@@ -57,14 +59,15 @@ test.describe('Asset — write-off variations', () => {
       headers: getRoleAuthHeaders('FINANCE_MANAGER'),
     });
     expect(afterDispose.ok()).toBeTruthy();
-    const detail = await afterDispose.json();
+    const detail = unwrapResponse(await afterDispose.json());
     expect(detail.status).toBe('WRITTEN_OFF');
 
     // UI: detail page should show write-off date and accumulated depreciation
     const ok = await gotoWithRetry(page, `/assets/${assetId}`);
     if (!ok) return;
 
-    await expect(page.getByText('เลิกใช้แล้ว')).toBeVisible({ timeout: 15000 });
+    // Status badge shows 'ตัดบัญชี' (assetStatusMap.WRITTEN_OFF.label)
+    await expect(page.getByText('ตัดบัญชี').first()).toBeVisible({ timeout: 15000 });
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 
@@ -85,7 +88,7 @@ test.describe('Asset — write-off variations', () => {
       },
     });
     expect(createRes.ok()).toBeTruthy();
-    const created = await createRes.json();
+    const created = unwrapResponse(await createRes.json());
     const assetId = created.id;
 
     // POST it
@@ -98,8 +101,9 @@ test.describe('Asset — write-off variations', () => {
     const ok = await gotoWithRetry(page, `/assets/${assetId}/dispose`);
     if (!ok) return;
 
-    // Form should render without errors and the form element must be visible.
+    // AssetDisposePage renders via FormProvider + <div> — there is no <form>
+    // element to assert on. Anchor on the first section title instead.
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
-    await expect(page.locator('form').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('1. วิธีจำหน่าย').first()).toBeVisible({ timeout: 10000 });
   });
 });

@@ -6,6 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 import { gotoWithRetry } from './helpers/navigation';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -30,7 +31,8 @@ test.describe('Asset — dispose', () => {
       },
     });
     expect(createRes.ok()).toBeTruthy();
-    const created = await createRes.json();
+    // API wraps every success body in { success, data, timestamp } (ResponseInterceptor)
+    const created = unwrapResponse(await createRes.json());
     expect(created.id).toBeTruthy();
     expect(created.status).toBe('DRAFT');
 
@@ -45,7 +47,7 @@ test.describe('Asset — dispose', () => {
       headers: getRoleAuthHeaders('FINANCE_MANAGER'),
     });
     expect(afterPost.ok()).toBeTruthy();
-    const posted = await afterPost.json();
+    const posted = unwrapResponse(await afterPost.json());
     expect(posted.status).toBe('POSTED');
 
     // Now dispose via SALE
@@ -60,7 +62,7 @@ test.describe('Asset — dispose', () => {
       },
     });
     expect(disposeRes.ok()).toBeTruthy();
-    const disposed = await disposeRes.json();
+    const disposed = unwrapResponse(await disposeRes.json());
 
     // Verify JE was created
     expect(disposed.entryNo).toBeTruthy();
@@ -71,7 +73,7 @@ test.describe('Asset — dispose', () => {
       headers: getRoleAuthHeaders('FINANCE_MANAGER'),
     });
     expect(afterDispose.ok()).toBeTruthy();
-    const detail = await afterDispose.json();
+    const detail = unwrapResponse(await afterDispose.json());
     expect(detail.status).toBe('DISPOSED');
     expect(detail.disposedAt).toBeTruthy();
 
@@ -98,7 +100,7 @@ test.describe('Asset — dispose', () => {
       },
     });
     expect(createRes.ok()).toBeTruthy();
-    const created = await createRes.json();
+    const created = unwrapResponse(await createRes.json());
 
     // POST it
     const postRes = await page.request.post(`${API_URL}/api/assets/${created.id}/post`, {
@@ -116,7 +118,7 @@ test.describe('Asset — dispose', () => {
       },
     });
     expect(writeOffRes.ok()).toBeTruthy();
-    const result = await writeOffRes.json();
+    const result = unwrapResponse(await writeOffRes.json());
     expect(result.entryNo).toBeTruthy();
 
     // Verify WRITTEN_OFF status
@@ -124,7 +126,7 @@ test.describe('Asset — dispose', () => {
       headers: getRoleAuthHeaders('FINANCE_MANAGER'),
     });
     expect(afterDispose.ok()).toBeTruthy();
-    const detail = await afterDispose.json();
+    const detail = unwrapResponse(await afterDispose.json());
     expect(detail.status).toBe('WRITTEN_OFF');
     expect(detail.disposedAt).toBeTruthy();
 
@@ -132,8 +134,8 @@ test.describe('Asset — dispose', () => {
     const ok = await gotoWithRetry(page, `/assets/${created.id}`);
     if (!ok) return;
 
-    // Status badge should show 'เลิกใช้แล้ว' (WRITTEN_OFF in Thai)
-    await expect(page.getByText('เลิกใช้แล้ว').first()).toBeVisible({ timeout: 15000 });
+    // Status badge should show 'ตัดบัญชี' (assetStatusMap.WRITTEN_OFF.label)
+    await expect(page.getByText('ตัดบัญชี').first()).toBeVisible({ timeout: 15000 });
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 });

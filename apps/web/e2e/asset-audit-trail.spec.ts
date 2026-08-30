@@ -4,6 +4,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
@@ -21,7 +22,8 @@ test('per-asset audit endpoint returns log entries', async ({ page }) => {
     },
   });
   expect(createRes.ok()).toBeTruthy();
-  const created = await createRes.json();
+  // API wraps every success body in { success, data, timestamp } (ResponseInterceptor)
+  const created = unwrapResponse(await createRes.json());
   await page.request.post(`${API_URL}/api/assets/${created.id}/post`, {
     headers: getRoleAuthHeaders('FINANCE_MANAGER'),
   });
@@ -29,7 +31,7 @@ test('per-asset audit endpoint returns log entries', async ({ page }) => {
     headers: getRoleAuthHeaders('FINANCE_MANAGER'),
   });
   expect(auditRes.ok()).toBeTruthy();
-  const audit = await auditRes.json();
+  const audit = unwrapResponse(await auditRes.json());
   expect(Array.isArray(audit)).toBe(true);
   expect(audit.length).toBeGreaterThanOrEqual(1);
 });

@@ -5,6 +5,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 import { gotoWithRetry } from './helpers/navigation';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -32,7 +33,8 @@ test.describe('Asset — reverse', () => {
       const body = await create.text();
       throw new Error(`POST /api/assets failed (${create.status()}): ${body}`);
     }
-    const draft = await create.json();
+    // API wraps every success body in { success, data, timestamp } (ResponseInterceptor)
+    const draft = unwrapResponse(await create.json());
     expect(draft.status).toBe('DRAFT');
 
     // 2. POST DRAFT → POSTED
@@ -50,7 +52,7 @@ test.describe('Asset — reverse', () => {
       const body = await reverse.text();
       throw new Error(`POST reverse failed (${reverse.status()}): ${body}`);
     }
-    const reversed = await reverse.json();
+    const reversed = unwrapResponse(await reverse.json());
     expect(reversed.entryNo).toBeTruthy();
 
     // 4. Confirm status flipped to REVERSED + reason stored
@@ -58,7 +60,7 @@ test.describe('Asset — reverse', () => {
       headers: getRoleAuthHeaders('OWNER'),
     });
     expect(after.ok()).toBeTruthy();
-    const afterAsset = await after.json();
+    const afterAsset = unwrapResponse(await after.json());
     expect(afterAsset.status).toBe('REVERSED');
     expect(afterAsset.reversedAt).toBeTruthy();
     expect(afterAsset.reversalReason).toContain('ทดสอบกลับรายการ');
@@ -87,7 +89,9 @@ test.describe('Asset — reverse', () => {
       },
     });
     if (!create.ok()) return; // skip if backend can't seed
-    const draft = await create.json();
+    // Must unwrap — an undefined id would 404 and pass the 4xx assertion below
+    // by accident, never exercising the DTO's @MinLength(5) rule.
+    const draft = unwrapResponse(await create.json());
     await page.request.post(`${API_URL}/api/assets/${draft.id}/post`, {
       headers: getRoleAuthHeaders('OWNER'),
     });

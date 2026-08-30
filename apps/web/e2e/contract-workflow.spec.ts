@@ -13,14 +13,19 @@ test.describe('สร้างสัญญา Wizard', () => {
 
   test('should load contract create wizard', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    // Wizard should show step indicator
-    const stepIndicator = page.getByText(/ขั้นตอน|สินค้า|เลือกสินค้า|Step/i).first();
+    // Wizard should show step indicator ("ขั้นตอน 1" — StepIndicator desktop stepper).
+    // NOTE: do not loosen this to /สินค้า/ — the OWNER seed branch is named
+    // "คลังสินค้าหลัก (Main Warehouse)" and the TopBar branch badge (lg:hidden ⇒ hidden
+    // on desktop) sits before the page content in the DOM, so `.first()` would grab it.
+    const stepIndicator = page.getByText(/ขั้นตอน \d/).first();
     await expect(stepIndicator).toBeVisible({ timeout: 15000 });
   });
 
   test('should show product selection step first', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const productStep = page.getByText(/เลือกสินค้า|สินค้า/).first();
+    // "เลือกสินค้า" only (PageHeader subtitle = STEPS[0]) — the bare /สินค้า/ alternative
+    // matches the hidden TopBar branch badge ("คลังสินค้าหลัก (Main Warehouse)") first.
+    const productStep = page.getByText('เลือกสินค้า').first();
     await expect(productStep).toBeVisible({ timeout: 10000 });
   });
 
@@ -40,12 +45,15 @@ test.describe('สร้างสัญญา Wizard', () => {
     if (await hasErrorBoundary(page)) return;
     // Try to select a product first
     const productRow = page.locator('table tbody tr').first();
-    if (!await productRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await productRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await productRow.click();
 
     // Next button
-    const nextBtn = page.locator('button').filter({ hasText: /ถัดไป|Next/ }).first();
-    if (!await nextBtn.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    const nextBtn = page
+      .locator('button')
+      .filter({ hasText: /ถัดไป|Next/ })
+      .first();
+    if (!(await nextBtn.isVisible({ timeout: 3000 }).catch(() => false))) return;
     if (await nextBtn.isDisabled()) return;
 
     await nextBtn.click();
@@ -56,7 +64,10 @@ test.describe('สร้างสัญญา Wizard', () => {
     await expect(customerStep).toBeVisible({ timeout: 5000 });
 
     // Back button
-    const backBtn = page.locator('button').filter({ hasText: /ย้อนกลับ|กลับ|Back/ }).first();
+    const backBtn = page
+      .locator('button')
+      .filter({ hasText: /ย้อนกลับ|กลับ|Back/ })
+      .first();
     if (await backBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await backBtn.click();
       await page.waitForTimeout(500);
@@ -66,7 +77,10 @@ test.describe('สร้างสัญญา Wizard', () => {
   test('should validate required fields before proceeding', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
     // Try next without selecting product
-    const nextBtn = page.locator('button').filter({ hasText: /ถัดไป|Next/ }).first();
+    const nextBtn = page
+      .locator('button')
+      .filter({ hasText: /ถัดไป|Next/ })
+      .first();
     if (await nextBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       const isDisabled = await nextBtn.isDisabled();
       if (!isDisabled) {
@@ -74,8 +88,11 @@ test.describe('สร้างสัญญา Wizard', () => {
         // Should show validation
         const toast = page.locator('[data-sonner-toast]').first();
         const hasToast = await toast.isVisible({ timeout: 3000 }).catch(() => false);
-        const hasError = await page.locator('.text-destructive, .text-red-500, [role="alert"]').first()
-          .isVisible({ timeout: 2000 }).catch(() => false);
+        const hasError = await page
+          .locator('.text-destructive, .text-red-500, [role="alert"]')
+          .first()
+          .isVisible({ timeout: 2000 })
+          .catch(() => false);
         expect(hasToast || hasError || isDisabled).toBeTruthy();
       }
     }
@@ -85,11 +102,11 @@ test.describe('สร้างสัญญา Wizard', () => {
     if (await hasErrorBoundary(page)) return;
     // Select product
     const productRow = page.locator('table tbody tr').first();
-    if (!await productRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await productRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await productRow.click();
 
     const nextBtn = page.locator('button').filter({ hasText: /ถัดไป/ }).first();
-    if (!await nextBtn.isVisible({ timeout: 3000 }).catch(() => false)) return;
+    if (!(await nextBtn.isVisible({ timeout: 3000 }).catch(() => false))) return;
     if (await nextBtn.isDisabled()) return;
     await nextBtn.click();
     await page.waitForTimeout(1000);
@@ -99,7 +116,10 @@ test.describe('สร้างสัญญา Wizard', () => {
     if (await customerRow.isVisible({ timeout: 5000 }).catch(() => false)) {
       await customerRow.click();
       const nextBtn2 = page.locator('button').filter({ hasText: /ถัดไป/ }).first();
-      if (await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false) && !await nextBtn2.isDisabled()) {
+      if (
+        (await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false)) &&
+        !(await nextBtn2.isDisabled())
+      ) {
         await nextBtn2.click();
         await page.waitForTimeout(1000);
       }
@@ -134,7 +154,7 @@ test.describe('รายละเอียดสัญญา', () => {
     if (!ok) return; // app error on contracts page — skip
 
     const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (!(await contractLink.isVisible({ timeout: 5000 }).catch(() => false))) {
       // No contracts or empty state — acceptable
       return;
     }
@@ -143,16 +163,16 @@ test.describe('รายละเอียดสัญญา', () => {
     await page.waitForTimeout(1000);
 
     // Should show contract detail
-    await expect(
-      page.getByText(/รายละเอียดสัญญา|สัญญาผ่อนชำระ/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/รายละเอียดสัญญา|สัญญาผ่อนชำระ/).first()).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test('should display contract information sections', async ({ page }) => {
     const ok = await gotoWithRetry(page, '/contracts');
     if (!ok) return;
     const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await contractLink.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await contractLink.click();
     await page.waitForTimeout(1000);
 
@@ -170,7 +190,7 @@ test.describe('รายละเอียดสัญญา', () => {
     const ok = await gotoWithRetry(page, '/contracts');
     if (!ok) return;
     const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await contractLink.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await contractLink.click();
     await page.waitForTimeout(1000);
 
@@ -184,12 +204,13 @@ test.describe('รายละเอียดสัญญา', () => {
     const ok = await gotoWithRetry(page, '/contracts');
     if (!ok) return;
     const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await contractLink.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await contractLink.click();
     await page.waitForTimeout(1000);
 
     // Status badges
-    const statusBadge = page.locator('.badge, [class*="badge"], [class*="status"]')
+    const statusBadge = page
+      .locator('.badge, [class*="badge"], [class*="status"]')
       .filter({ hasText: /ปกติ|ค้างชำระ|ปิดแล้ว|รอเซ็น|ACTIVE|OVERDUE|CLOSED/ })
       .first();
     if (await statusBadge.isVisible({ timeout: 5000 }).catch(() => false)) {
@@ -208,18 +229,19 @@ test.describe('เซ็นสัญญา', () => {
     await gotoWithRetry(page, '/contracts');
 
     const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await contractLink.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await contractLink.click();
     await page.waitForTimeout(1000);
 
     // Look for sign button
-    const signBtn = page.locator('button, a').filter({ hasText: /ลงนาม|เซ็น|sign/i }).first();
+    const signBtn = page
+      .locator('button, a')
+      .filter({ hasText: /ลงนาม|เซ็น|sign/i })
+      .first();
     if (await signBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await signBtn.click();
       await page.waitForTimeout(1000);
-      await expect(
-        page.getByText(/ลงนามสัญญา|เซ็นสัญญา/).first(),
-      ).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/ลงนามสัญญา|เซ็นสัญญา/).first()).toBeVisible({ timeout: 10000 });
     }
   });
 
@@ -229,12 +251,15 @@ test.describe('เซ็นสัญญา', () => {
     await gotoWithRetry(page, '/contracts');
 
     const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await contractLink.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await contractLink.click();
     await page.waitForTimeout(1000);
 
-    const signBtn = page.locator('button, a').filter({ hasText: /ลงนาม|เซ็น/i }).first();
-    if (!await signBtn.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    const signBtn = page
+      .locator('button, a')
+      .filter({ hasText: /ลงนาม|เซ็น/i })
+      .first();
+    if (!(await signBtn.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await signBtn.click();
     await page.waitForTimeout(1000);
 
@@ -251,12 +276,15 @@ test.describe('เซ็นสัญญา', () => {
     await gotoWithRetry(page, '/contracts');
 
     const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await contractLink.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await contractLink.click();
     await page.waitForTimeout(1000);
 
-    const signBtn = page.locator('button, a').filter({ hasText: /ลงนาม|เซ็น/i }).first();
-    if (!await signBtn.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    const signBtn = page
+      .locator('button, a')
+      .filter({ hasText: /ลงนาม|เซ็น/i })
+      .first();
+    if (!(await signBtn.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await signBtn.click();
     await page.waitForTimeout(1000);
 
@@ -273,17 +301,23 @@ test.describe('เซ็นสัญญา', () => {
     await gotoWithRetry(page, '/contracts');
 
     const contractLink = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractLink.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await contractLink.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await contractLink.click();
     await page.waitForTimeout(1000);
 
-    const signBtn = page.locator('button, a').filter({ hasText: /ลงนาม|เซ็น/i }).first();
-    if (!await signBtn.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    const signBtn = page
+      .locator('button, a')
+      .filter({ hasText: /ลงนาม|เซ็น/i })
+      .first();
+    if (!(await signBtn.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await signBtn.click();
     await page.waitForTimeout(1000);
 
     // Look for clear/reset signature button
-    const clearBtn = page.locator('button').filter({ hasText: /ล้าง|เคลียร์|Clear|ลบ/ }).first();
+    const clearBtn = page
+      .locator('button')
+      .filter({ hasText: /ล้าง|เคลียร์|Clear|ลบ/ })
+      .first();
     if (await clearBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(clearBtn).toBeVisible();
     }
@@ -301,22 +335,21 @@ test.describe('สถานะเอกสารสัญญา', () => {
 
   test('should load document dashboard', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('สถานะเอกสารสัญญา').first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('สถานะเอกสารสัญญา').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/ภาพรวมสถานะเอกสาร/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/ภาพรวมสถานะเอกสาร/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show document tracking list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr, .document-item').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr, .document-item')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (hasData) {
       await expect(page.locator('table, .document-list').first()).toBeVisible();
     } else {
@@ -385,15 +418,19 @@ test.describe('P0: Contract Role-Based Workflow', () => {
     await page.waitForTimeout(2000);
 
     // Contracts page should load with heading
-    await expect(
-      page.getByText(/สัญญา|Contract/i).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/สัญญา|Contract/i).first()).toBeVisible({ timeout: 15000 });
 
     // Should show a table or list of contracts (or empty state)
-    const hasTable = await page.locator('table').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
-    const hasEmpty = await page.getByText(/ไม่มีข้อมูล|ไม่พบ|No data/i).first()
-      .isVisible({ timeout: 3000 }).catch(() => false);
+    const hasTable = await page
+      .locator('table')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+    const hasEmpty = await page
+      .getByText(/ไม่มีข้อมูล|ไม่พบ|No data/i)
+      .first()
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
 
     // Either data or empty state is acceptable
     expect(hasTable || hasEmpty || true).toBeTruthy();
@@ -411,7 +448,7 @@ test.describe('P0: Contract Role-Based Workflow', () => {
 
     // Wait for table to load
     const contractRow = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractRow.isVisible({ timeout: 10000 }).catch(() => false)) {
+    if (!(await contractRow.isVisible({ timeout: 10000 }).catch(() => false))) {
       // No contracts to click — acceptable in dev environment
       return;
     }
@@ -420,9 +457,9 @@ test.describe('P0: Contract Role-Based Workflow', () => {
     await page.waitForTimeout(2000);
 
     // Should navigate to contract detail
-    await expect(
-      page.getByText(/รายละเอียดสัญญา|สัญญาผ่อนชำระ|สถานะ/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/รายละเอียดสัญญา|สัญญาผ่อนชำระ|สถานะ/).first()).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test('FINANCE_MANAGER can see contract status and approval actions', async ({ page }) => {
@@ -436,14 +473,17 @@ test.describe('P0: Contract Role-Based Workflow', () => {
 
     // Navigate to first contract
     const contractRow = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await contractRow.isVisible({ timeout: 10000 }).catch(() => false)) return;
+    if (!(await contractRow.isVisible({ timeout: 10000 }).catch(() => false))) return;
 
     await contractRow.click();
     await page.waitForTimeout(2000);
 
     // Contract detail should show status badge
-    const statusBadge = page.locator('.badge, [class*="badge"], [class*="status"]')
-      .filter({ hasText: /ปกติ|ค้างชำระ|ปิดแล้ว|รอเซ็น|รอยืนยัน|ACTIVE|PENDING|OVERDUE|CLOSED|DRAFT/ })
+    const statusBadge = page
+      .locator('.badge, [class*="badge"], [class*="status"]')
+      .filter({
+        hasText: /ปกติ|ค้างชำระ|ปิดแล้ว|รอเซ็น|รอยืนยัน|ACTIVE|PENDING|OVERDUE|CLOSED|DRAFT/,
+      })
       .first();
 
     if (await statusBadge.isVisible({ timeout: 5000 }).catch(() => false)) {
@@ -451,7 +491,10 @@ test.describe('P0: Contract Role-Based Workflow', () => {
     }
 
     // Look for approval/action buttons (approve, reject, etc.)
-    const actionBtn = page.locator('button').filter({ hasText: /อนุมัติ|ปฏิเสธ|ยืนยัน|approve|reject/i }).first();
+    const actionBtn = page
+      .locator('button')
+      .filter({ hasText: /อนุมัติ|ปฏิเสธ|ยืนยัน|approve|reject/i })
+      .first();
     if (await actionBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await expect(actionBtn).toBeVisible();
     }
@@ -469,9 +512,7 @@ test.describe('P0: Contract Role-Based Workflow', () => {
     await page.waitForTimeout(2000);
 
     // OWNER should see the contracts page without access errors
-    await expect(
-      page.getByText(/สัญญา|Contract/i).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/สัญญา|Contract/i).first()).toBeVisible({ timeout: 15000 });
 
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     await expect(page.locator('body')).not.toContainText('ไม่มีสิทธิ์');

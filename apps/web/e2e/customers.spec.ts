@@ -11,9 +11,9 @@ test.describe('Customers Page', () => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
 
     // Verify page loaded — search input and add button should be visible
-    await expect(
-      page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...'),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...')).toBeVisible({
+      timeout: 15000,
+    });
     await expect(page.getByText('เพิ่มลูกค้า').first()).toBeVisible();
 
     // Summary cards should be visible
@@ -24,11 +24,17 @@ test.describe('Customers Page', () => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
 
     // Wait for page to load, then click the add customer button
-    await expect(page.getByText('เพิ่มลูกค้า').first()).toBeVisible({ timeout: 15000 });
-    await page.getByText('เพิ่มลูกค้า').first().click();
+    // PR #1496: the button opens an in-page modal instead of navigating to
+    // /customer-intake, so the button label and the modal <h2> now share the
+    // same text — target the button by role to keep the locator unambiguous.
+    const addButton = page.getByRole('button', { name: '+ เพิ่มลูกค้าใหม่' });
+    await expect(addButton).toBeVisible({ timeout: 15000 });
+    await addButton.click();
 
-    // Modal should appear with title
-    await expect(page.getByText('เพิ่มลูกค้าใหม่')).toBeVisible({ timeout: 5000 });
+    // Modal should appear with title (heading role → the modal <h2> only)
+    await expect(page.getByRole('heading', { name: 'เพิ่มลูกค้าใหม่' })).toBeVisible({
+      timeout: 5000,
+    });
 
     // Required form fields should be visible — look for labels inside modal
     const modal = page.locator('[role="dialog"], .modal').first();
@@ -38,9 +44,12 @@ test.describe('Customers Page', () => {
 
   test('should create a new customer successfully', async ({ page }) => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByText('เพิ่มลูกค้า').first()).toBeVisible({ timeout: 15000 });
-    await page.getByText('เพิ่มลูกค้า').first().click();
-    await expect(page.getByText('เพิ่มลูกค้าใหม่')).toBeVisible({ timeout: 5000 });
+    const addButton = page.getByRole('button', { name: '+ เพิ่มลูกค้าใหม่' });
+    await expect(addButton).toBeVisible({ timeout: 15000 });
+    await addButton.click();
+    await expect(page.getByRole('heading', { name: 'เพิ่มลูกค้าใหม่' })).toBeVisible({
+      timeout: 5000,
+    });
 
     // Use unique name with timestamp to avoid collisions
     const uniqueSuffix = Date.now().toString().slice(-6);
@@ -50,7 +59,10 @@ test.describe('Customers Page', () => {
     const modal = page.locator('[role="dialog"], .modal').first();
 
     // Wait for visible text inputs to be ready (skip hidden file inputs)
-    await modal.locator('input[type="text"]:visible, select:visible').first().waitFor({ timeout: 5000 });
+    await modal
+      .locator('input[type="text"]:visible, select:visible')
+      .first()
+      .waitFor({ timeout: 5000 });
 
     // The form has sections: คำนำหน้า (select), ชื่อ (text), นามสกุล (text), ...
     // Get all visible text inputs in the modal
@@ -85,24 +97,28 @@ test.describe('Customers Page', () => {
     await page.waitForTimeout(500); // debounce
 
     // Page should update without error
-    await expect(page.locator('[data-sonner-toast][data-type="error"]')).not.toBeVisible({
-      timeout: 3000,
-    }).catch(() => {
-      // No error toast — good
-    });
+    await expect(page.locator('[data-sonner-toast][data-type="error"]'))
+      .not.toBeVisible({
+        timeout: 3000,
+      })
+      .catch(() => {
+        // No error toast — good
+      });
   });
 
   test('should navigate to customer detail page', async ({ page }) => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
 
     // Wait for page to fully load
-    await expect(
-      page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...'),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...')).toBeVisible({
+      timeout: 15000,
+    });
     await page.waitForTimeout(1000);
 
     // Click on the first customer row link
-    const customerLink = page.locator('table tbody tr td a, table tbody tr td .text-primary.cursor-pointer').first();
+    const customerLink = page
+      .locator('table tbody tr td a, table tbody tr td .text-primary.cursor-pointer')
+      .first();
 
     if (await customerLink.isVisible({ timeout: 5000 }).catch(() => false)) {
       await customerLink.click();
@@ -110,9 +126,7 @@ test.describe('Customers Page', () => {
       await expect(page).toHaveURL(/\/customers\/.+/, { timeout: 10000 });
     } else {
       // If no customers exist, the test passes (empty state)
-      await expect(
-        page.getByText('ไม่พบข้อมูล').or(page.locator('table tbody')),
-      ).toBeVisible();
+      await expect(page.getByText('ไม่พบข้อมูล').or(page.locator('table tbody'))).toBeVisible();
     }
   });
 });

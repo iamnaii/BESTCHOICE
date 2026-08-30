@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 
 const API_URL = process.env.API_DIRECT_URL ?? 'http://localhost:3000';
 
@@ -19,7 +20,10 @@ test('list cross-asset transfers via API', async ({ page }) => {
       location: 'HQ',
     },
   });
-  const created = await createRes.json();
+  expect(createRes.ok()).toBeTruthy();
+  // API wraps every success body in { success, data, timestamp } (ResponseInterceptor)
+  const created = unwrapResponse(await createRes.json());
+  expect(created.id).toBeTruthy();
   await page.request.post(`${API_URL}/api/assets/${created.id}/post`, {
     headers: getRoleAuthHeaders('FINANCE_MANAGER'),
   });
@@ -38,7 +42,7 @@ test('list cross-asset transfers via API', async ({ page }) => {
     { headers: getRoleAuthHeaders('FINANCE_MANAGER') },
   );
   expect(listRes.ok()).toBeTruthy();
-  const list = await listRes.json();
+  const list = unwrapResponse(await listRes.json());
   expect(list.total).toBeGreaterThanOrEqual(1);
   const found = list.data.find(
     (r: { asset: { id: string }; toCustodian: string }) =>

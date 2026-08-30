@@ -27,12 +27,14 @@ test.describe('CRM Pipeline — Kanban Thai labels (P2-SP1)', () => {
     // Filter chip row — "ทั้งหมด" + 5 stage labels (each appears at least once
     // here, since the column header below adds another occurrence for active
     // columns).
-    await expect(page.getByRole('tab', { name: 'ทั้งหมด' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'เสนอ' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'ติดต่อ' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'เสนอราคา' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'ปิดการขาย' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'ยกเลิก' })).toBeVisible();
+    // `name` matches as a substring by default, so 'เสนอ' would also resolve
+    // the 'เสนอราคา' chip → strict mode violation. Pin every chip with exact.
+    await expect(page.getByRole('tab', { name: 'ทั้งหมด', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'เสนอ', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ติดต่อ', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'เสนอราคา', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ปิดการขาย', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ยกเลิก', exact: true })).toBeVisible();
 
     // "แสดงยกเลิก" toggle button is present (LOST collapsed by default)
     await expect(page.getByRole('button', { name: /แสดงยกเลิก/ })).toBeVisible();

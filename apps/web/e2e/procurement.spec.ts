@@ -13,22 +13,21 @@ test.describe('ใบสั่งซื้อ (PO)', () => {
 
   test('should load purchase orders page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/ใบสั่งซื้อ|PO/).first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/ใบสั่งซื้อ|PO/).first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/จัดการการสั่งซื้อสินค้า/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/จัดการการสั่งซื้อสินค้า/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show PO list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (hasData) {
       await expect(page.locator('table').first()).toBeVisible();
     } else {
@@ -38,12 +37,18 @@ test.describe('ใบสั่งซื้อ (PO)', () => {
 
   test('should have create PO button', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /สร้าง|เพิ่ม|ใบสั่งซื้อ/ }).first();
+    const createBtn = page
+      .locator('button')
+      .filter({ hasText: /สร้าง|เพิ่ม|ใบสั่งซื้อ/ })
+      .first();
     if (await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await createBtn.click();
       await page.waitForTimeout(500);
-      const hasForm = await page.locator('[role="dialog"], .modal, form').first()
-        .isVisible({ timeout: 3000 }).catch(() => false);
+      const hasForm = await page
+        .locator('[role="dialog"], .modal, form')
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
       if (hasForm) {
         await expect(page.locator('[role="dialog"], .modal, form').first()).toBeVisible();
       }
@@ -62,8 +67,10 @@ test.describe('ใบสั่งซื้อ (PO)', () => {
 
   test('should display PO status badges', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const statusBadge = page.locator('.badge, [class*="badge"]')
-      .filter({ hasText: /ร่าง|อนุมัติ|รับแล้ว|Draft|Approved/ }).first();
+    const statusBadge = page
+      .locator('.badge, [class*="badge"]')
+      .filter({ hasText: /ร่าง|อนุมัติ|รับแล้ว|Draft|Approved/ })
+      .first();
     if (await statusBadge.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(statusBadge).toBeVisible();
     }
@@ -73,12 +80,15 @@ test.describe('ใบสั่งซื้อ (PO)', () => {
   test('should open PO detail on click', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
     const firstRow = page.locator('table tbody tr').first();
-    if (!await firstRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await firstRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await firstRow.click();
     await page.waitForTimeout(1000);
     // Should open detail modal or navigate
-    const hasDetail = await page.locator('[role="dialog"], .modal').first()
-      .isVisible({ timeout: 3000 }).catch(() => false);
+    const hasDetail = await page
+      .locator('[role="dialog"], .modal')
+      .first()
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
     if (hasDetail) {
       await expect(page.locator('[role="dialog"], .modal').first()).toBeVisible();
     }
@@ -86,20 +96,22 @@ test.describe('ใบสั่งซื้อ (PO)', () => {
 
   test('should validate PO form when creating', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /สร้าง|เพิ่ม/ }).first();
-    if (!await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    const createBtn = page
+      .locator('button')
+      .filter({ hasText: /สร้าง|เพิ่ม/ })
+      .first();
+    if (!(await createBtn.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await createBtn.click();
     await page.waitForTimeout(500);
 
-    // Try to submit empty form
-    const submitBtn = page.locator('[role="dialog"] button, .modal button')
-      .filter({ hasText: /บันทึก|สร้าง|save/i }).first();
-    if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await submitBtn.click();
-      await page.waitForTimeout(500);
-      // Should show validation errors or button disabled
-      const hasError = await page.locator('.text-destructive, .text-red-500, [data-sonner-toast]').first()
-        .isVisible({ timeout: 3000 }).catch(() => false);
+    // โมดัลสร้าง PO เป็น wizard 4 ขั้น (useCreatePoWizard.ts WIZARD_STEPS) —
+    // ปุ่ม type="submit" ป้าย "สร้าง PO" เรนเดอร์เฉพาะขั้นสุดท้าย ส่วนขั้นแรก
+    // มีแค่ปุ่ม "ถัดไป" ที่ disabled จนกว่าจะเลือกผู้ขาย (canNext = !!form.supplierId)
+    // ⇒ การ validate ที่เทสนี้ตั้งใจพิสูจน์คือ "ฟอร์มว่าง ⇒ เดินต่อไม่ได้"
+    // (ห้ามยิงที่ /บันทึก|สร้าง/ เพราะจะไปโดนปุ่ม stepper ป้าย "ทบทวน+บันทึก" ที่ disabled ถาวร)
+    const nextBtn = page.locator('[role="dialog"] button').filter({ hasText: 'ถัดไป' }).first();
+    if (await nextBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await expect(nextBtn).toBeDisabled();
       await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
     }
   });
@@ -116,22 +128,21 @@ test.describe('จัดการผู้จัดจำหน่าย', () =>
 
   test('should load suppliers page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText('จัดการผู้จัดจำหน่าย').first(),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('จัดการผู้จัดจำหน่าย').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display supplier count in subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(
-      page.getByText(/ราย/).first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/ราย/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show supplier list or empty state', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const hasData = await page.locator('table tbody tr').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
+    const hasData = await page
+      .locator('table tbody tr')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (hasData) {
       await expect(page.locator('table').first()).toBeVisible();
     } else {
@@ -141,12 +152,18 @@ test.describe('จัดการผู้จัดจำหน่าย', () =>
 
   test('should have create supplier button', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /เพิ่ม|สร้าง|ผู้จัดจำหน่าย/ }).first();
+    const createBtn = page
+      .locator('button')
+      .filter({ hasText: /เพิ่ม|สร้าง|ผู้จัดจำหน่าย/ })
+      .first();
     if (await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await createBtn.click();
       await page.waitForTimeout(500);
-      const hasForm = await page.locator('[role="dialog"], .modal, form').first()
-        .isVisible({ timeout: 3000 }).catch(() => false);
+      const hasForm = await page
+        .locator('[role="dialog"], .modal, form')
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
       if (hasForm) {
         await expect(page.locator('[role="dialog"], .modal, form').first()).toBeVisible();
       }
@@ -166,7 +183,7 @@ test.describe('จัดการผู้จัดจำหน่าย', () =>
   test('should navigate to supplier detail on click', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
     const firstRow = page.locator('table tbody tr td a, table tbody tr').first();
-    if (!await firstRow.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    if (!(await firstRow.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await firstRow.click();
     await page.waitForTimeout(1000);
     // Should show detail view
@@ -175,13 +192,18 @@ test.describe('จัดการผู้จัดจำหน่าย', () =>
 
   test('should validate supplier form', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /เพิ่ม|สร้าง/ }).first();
-    if (!await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) return;
+    const createBtn = page
+      .locator('button')
+      .filter({ hasText: /เพิ่ม|สร้าง/ })
+      .first();
+    if (!(await createBtn.isVisible({ timeout: 5000 }).catch(() => false))) return;
     await createBtn.click();
     await page.waitForTimeout(500);
 
-    const submitBtn = page.locator('[role="dialog"] button, .modal button')
-      .filter({ hasText: /บันทึก|สร้าง|save/i }).first();
+    const submitBtn = page
+      .locator('[role="dialog"] button, .modal button')
+      .filter({ hasText: /บันทึก|สร้าง|save/i })
+      .first();
     if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await submitBtn.click();
       await page.waitForTimeout(500);

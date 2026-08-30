@@ -9,6 +9,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAsRole, getRoleAuthHeaders } from './helpers/auth';
+import { unwrapResponse } from './helpers/api-utils';
 import { gotoWithRetry } from './helpers/navigation';
 
 const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
@@ -50,7 +51,8 @@ test.describe('Asset — create + POST', () => {
       throw new Error(`POST /api/assets failed (${create.status()}): ${body}`);
     }
 
-    const draft = await create.json();
+    // API wraps every success body in { success, data, timestamp } (ResponseInterceptor)
+    const draft = unwrapResponse(await create.json());
     expect(draft.id).toBeTruthy();
     expect(draft.status).toBe('DRAFT');
     expect(draft.assetCode).toMatch(/^[A-Z]{2,4}-/);
@@ -60,7 +62,7 @@ test.describe('Asset — create + POST', () => {
       headers: getRoleAuthHeaders('FINANCE_MANAGER'),
     });
     expect(post.ok()).toBeTruthy();
-    const posted = await post.json();
+    const posted = unwrapResponse(await post.json());
     expect(posted.entryNo).toBeTruthy();
 
     // Re-fetch to confirm status flipped
@@ -68,7 +70,7 @@ test.describe('Asset — create + POST', () => {
       headers: getRoleAuthHeaders('FINANCE_MANAGER'),
     });
     expect(after.ok()).toBeTruthy();
-    const afterAsset = await after.json();
+    const afterAsset = unwrapResponse(await after.json());
     expect(afterAsset.status).toBe('POSTED');
     expect(afterAsset.postedAt).toBeTruthy();
 
@@ -86,8 +88,11 @@ test.describe('Asset — create + POST', () => {
     const ok = await gotoWithRetry(page, '/assets/new');
     if (!ok) return;
 
-    // Section titles from AssetEntrySection1Info / Section2Cost
-    await expect(page.getByText('1. ข้อมูลสินทรัพย์').first()).toBeVisible({ timeout: 15000 });
+    // Section title from AssetEntrySection1Info. The leading number lives in a
+    // separate <div> inside AssetSectionHeader, so never assert on "1. ".
+    await expect(page.getByText('ข้อมูลสินทรัพย์ & เอกสาร').first()).toBeVisible({
+      timeout: 15000,
+    });
     // The "บันทึก & POST" sticky button should be present
     await expect(page.getByRole('button', { name: /บันทึก.*POST/ }).first()).toBeVisible({
       timeout: 10000,

@@ -31,6 +31,9 @@ import SavingPlanDetailPage from './pages/saving-plan/SavingPlanDetailPage';
 import SavingPlansPage from './pages/account/SavingPlansPage';
 import LoginPage from './pages/auth/LoginPage';
 import LineCallbackPage from './pages/auth/LineCallbackPage';
+import InstallmentLopburiPage from './pages/landing/InstallmentLopburiPage';
+import UsedIphoneLopburiPage from './pages/landing/UsedIphoneLopburiPage';
+import NoCreditCardPage from './pages/landing/NoCreditCardPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function RedirectPreserveSearch({ to }: { to: string }) {
@@ -93,6 +96,11 @@ export default function App() {
         <Route path="/saving-plan/create" element={<SavingPlanCreatePage />} />
         <Route path="/saving-plan/:id" element={<SavingPlanDetailPage />} />
         <Route path="/account/saving-plans" element={<SavingPlansPage />} />
+        {/* Landing เจาะคำค้นท้องถิ่น (SEO/AI) — เพิ่ม route ที่นี่ต้องอัป sitemap.xml,
+            prerender ROUTES และ llms.txt คู่กันเสมอ */}
+        <Route path="/ผ่อนไอโฟนลพบุรี" element={<InstallmentLopburiPage />} />
+        <Route path="/iphone-มือสอง-ลพบุรี" element={<UsedIphoneLopburiPage />} />
+        <Route path="/ผ่อนมือถือไม่ใช้บัตรเครดิต" element={<NoCreditCardPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/line-callback" element={<LineCallbackPage />} />
         <Route path="*" element={<NotFoundPage />} />

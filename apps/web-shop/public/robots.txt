@@ -4,6 +4,10 @@
 # ⚠️ /api/shop/share/:id คือหน้าการ์ดแชร์ (OG/JSON-LD) ที่ระบบสร้างลิงก์ไปหาเอง —
 # มันอยู่ใต้ /api/ จึงโดน `Disallow: /api/` บล็อกไปด้วย ทำให้ crawler ที่เคารพ
 # robots.txt (facebookexternalhit ฯลฯ) ดึงการ์ดของเราไม่ได้ ⇒ ต้อง Allow ก่อนทุกบล็อก
+#
+# ⚠️ RFC 9309: บอทที่ match กลุ่มระบุชื่อจะอ่าน "เฉพาะกลุ่มตัวเอง" ไม่รวมกับกลุ่ม * —
+# ทุกกลุ่มระบุชื่อจึงต้องมี Disallow ชุด user-flow (/apply /checkout /orders /account)
+# ครบเหมือนกลุ่ม * เสมอ ไม่งั้นบอทนั้นเห็นหน้าที่เราไม่อยากให้ index
 
 User-agent: *
 Allow: /
@@ -21,34 +25,72 @@ Crawl-delay: 10
 Allow: /api/shop/share/
 Disallow: /api/
 Disallow: /apply
+Disallow: /checkout
+Disallow: /orders
+Disallow: /account
+
+# OAI-SearchBot = ตัวเก็บ index ของ ChatGPT Search (คนละตัวกับ GPTBot ที่ใช้เทรน) —
+# บล็อกตัวนี้ = ร้านหายจากคำตอบของ ChatGPT
+User-agent: OAI-SearchBot
+Allow: /
+Allow: /api/shop/share/
+Disallow: /api/
+Disallow: /apply
+Disallow: /checkout
+Disallow: /orders
+Disallow: /account
 
 User-agent: ClaudeBot
 Allow: /
 Crawl-delay: 10
 Allow: /api/shop/share/
 Disallow: /api/
+Disallow: /apply
+Disallow: /checkout
+Disallow: /orders
+Disallow: /account
 
 User-agent: Anthropic-AI
 Allow: /
 Crawl-delay: 10
 Allow: /api/shop/share/
 Disallow: /api/
+Disallow: /apply
+Disallow: /checkout
+Disallow: /orders
+Disallow: /account
 
 User-agent: PerplexityBot
 Allow: /
 Allow: /api/shop/share/
 Disallow: /api/
+Disallow: /apply
+Disallow: /checkout
+Disallow: /orders
+Disallow: /account
 
 User-agent: Google-Extended
 Allow: /
 Allow: /api/shop/share/
 Disallow: /api/
+Disallow: /apply
+Disallow: /checkout
+Disallow: /orders
+Disallow: /account
+
+# CCBot (Common Crawl) ป้อน training corpus ให้ LLM หลายค่าย — เราอยากให้ AI รู้จักร้าน
+# จึงเปิดรับ (เดิมเคยบล็อก ซึ่งสวนทางกับเป้า AI-search visibility)
+User-agent: CCBot
+Allow: /
+Allow: /api/shop/share/
+Disallow: /api/
+Disallow: /apply
+Disallow: /checkout
+Disallow: /orders
+Disallow: /account
 
 # Aggressive scrapers — BLOCK
 User-agent: Bytespider
-Disallow: /
-
-User-agent: CCBot
 Disallow: /
 
 Sitemap: https://www.bestchoicephone.com/sitemap.xml

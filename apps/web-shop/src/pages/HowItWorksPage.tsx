@@ -82,6 +82,17 @@ const FAQS: FaqItem[] = [
   { question: copy.howItWorks.faq5Q, answer: copy.howItWorks.faq5A },
 ];
 
+// FAQPage structured data — เนื้อหาต้องตรงกับ FAQ ที่มองเห็นบนหน้าเสมอ (สร้างจาก FAQS ก้อนเดียวกัน)
+const FAQ_JSON_LD = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQS.map((f) => ({
+    '@type': 'Question',
+    name: f.question,
+    acceptedAnswer: { '@type': 'Answer', text: f.answer },
+  })),
+});
+
 export default function HowItWorksPage() {
   usePageMeta(
     copy.howItWorks.pageTitle,
@@ -90,6 +101,7 @@ export default function HowItWorksPage() {
 
   return (
     <ShopLayout>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: FAQ_JSON_LD }} />
       <CategoryHero
         title={copy.howItWorks.pageTitle}
         description={copy.howItWorks.intro}

@@ -5,15 +5,15 @@
 
 /**
  * Single source of truth for the shop's public contact channels.
- * TODO(owner): replace the phone placeholder with the real branch number —
- * every page (footer, contact, returns) reads from here.
+ * NAP (name/address/phone) ต้องตรงกับ JSON-LD ใน index.html + Google Business Profile
+ * เสมอ — ความไม่ตรงกันทำให้ AI/search ไม่เชื่อว่าเป็นธุรกิจเดียวกัน (owner ยืนยันชุดนี้ 2026-08-30)
  */
 export const shopInfo = {
   lineHandle: '@bestchoice',
   lineUrl: 'https://line.me/R/ti/p/@bestchoice',
   phoneDisplay: '095-567-8887',
   phoneHref: 'tel:+66955678887',
-  address: 'เลขที่ 99/9 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000',
+  address: 'เลขที่ 456/21 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000',
   hours: 'เปิดทุกวัน 10:00 - 19:00 น.',
   /** TODO(owner): ใส่ลิงก์ Google Maps จริงแล้วปุ่มนำทางจะโผล่เอง */
   mapsUrl: null as string | null,

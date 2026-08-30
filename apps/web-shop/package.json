@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && cp dist/index.html dist/spa-shell.html",
+    "build:prerender": "npm run build && node scripts/prerender.mjs",
     "preview": "vite preview --port 5174",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --fix"
   },
@@ -33,6 +34,7 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.2",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

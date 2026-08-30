@@ -47,6 +47,12 @@ const ROUTES = [
   { path: '/contact', apiDependent: false },
   { path: '/shipping', apiDependent: false },
   { path: '/returns', apiDependent: false },
+  // Landing เจาะคำค้นท้องถิ่น — path ภาษาไทย: browser จะ encode เป็น %XX ตอนขอ
+  // (canonical ที่ usePageMeta stamp ก็เป็นแบบ encode) แต่ชื่อโฟลเดอร์ใน dist เป็น
+  // ตัวอักษรไทยตรง ๆ — Firebase decode path ก่อน match ไฟล์ให้เอง
+  { path: '/ผ่อนไอโฟนลพบุรี', apiDependent: false },
+  { path: '/iphone-มือสอง-ลพบุรี', apiDependent: false },
+  { path: '/ผ่อนมือถือไม่ใช้บัตรเครดิต', apiDependent: false },
 ];
 
 function startPreview() {
@@ -90,7 +96,9 @@ async function captureRoute(context, { path: route, apiDependent }) {
     // Sanity gates — snapshot เสียต้องทำให้ build แดง ไม่ใช่ deploy หน้าเปล่าเงียบ ๆ
     if (!title.includes('BESTCHOICE')) throw new Error(`${route}: title เพี้ยน ("${title}")`);
     if (rootLength < 200) throw new Error(`${route}: #root แทบว่าง (${rootLength} chars)`);
-    if (canonical !== `https://www.bestchoicephone.com${route}`) {
+    // canonical จาก usePageMeta = window.location.pathname ซึ่ง percent-encode
+    // อักษรไทยแล้ว — เทียบกับ route ที่ encode ให้ตรงกัน
+    if (canonical !== `https://www.bestchoicephone.com${encodeURI(route)}`) {
       throw new Error(`${route}: canonical ไม่ตรง ("${canonical}")`);
     }
     if (html.includes('เกิดข้อผิดพลาด')) {

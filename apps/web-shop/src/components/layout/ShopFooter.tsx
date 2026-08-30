@@ -15,6 +15,10 @@ const POLICY_LINKS = [
   { to: '/shipping', label: 'การจัดส่ง' },
   { to: '/returns', label: 'การคืนสินค้า' },
   { to: '/about', label: 'เกี่ยวกับเรา' },
+  // ลิงก์ landing เจาะคำค้น — ให้ crawler เดินถึงจากทุกหน้า
+  { to: '/ผ่อนไอโฟนลพบุรี', label: 'ผ่อน iPhone ลพบุรี' },
+  { to: '/iphone-มือสอง-ลพบุรี', label: 'iPhone มือสอง ลพบุรี' },
+  { to: '/ผ่อนมือถือไม่ใช้บัตรเครดิต', label: 'ผ่อนไม่ใช้บัตรเครดิต' },
 ];
 
 const socialCls =
@@ -41,7 +45,7 @@ export default function ShopFooter() {
             </p>
             <div className="mt-5 flex gap-2.5">
               <a
-                href="https://www.facebook.com/bestchoicephone"
+                href="https://www.facebook.com/bestchoicelopburi"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Facebook"
@@ -59,7 +63,7 @@ export default function ShopFooter() {
                 <MessageCircle className="size-5" aria-hidden />
               </a>
               <a
-                href="https://www.tiktok.com/@bestchoicephone"
+                href="https://www.tiktok.com/@bestchoicelopburi"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="TikTok"

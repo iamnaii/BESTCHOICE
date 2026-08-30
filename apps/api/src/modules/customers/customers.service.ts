@@ -11,7 +11,7 @@ import { CustomerAnalyticsService } from './services/customer-analytics.service'
  *   - CustomerQueryService     — read path (findAll/findOne/search/getReferrals/
  *                                getSummary) + read-path PII decrypt + the
  *                                shared findOne existence-guard.
- *   - CustomerWriteService     — write path (create/findOrCreatePrecheckCustomer/
+ *   - CustomerWriteService     — write path (create/
  *                                update/remove/uploadDocument/deleteDocument).
  *                                Holds the 2 $transaction write paths + the
  *                                write-path PII encrypt helpers.
@@ -78,13 +78,6 @@ export class CustomersService {
 
   create(dto: CreateCustomerDto) {
     return this.write.create(dto);
-  }
-
-  findOrCreatePrecheckCustomer(input: {
-    nationalId: string;
-    phone: string;
-  }): Promise<{ id: string; isNew: boolean }> {
-    return this.write.findOrCreatePrecheckCustomer(input);
   }
 
   update(id: string, dto: UpdateCustomerDto) {

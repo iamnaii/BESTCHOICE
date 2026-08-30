@@ -5,7 +5,6 @@ import { CustomerQueryService } from './services/customer-query.service';
 import { CustomerWriteService } from './services/customer-write.service';
 import { CustomerAnalyticsService } from './services/customer-analytics.service';
 import { CustomerTierService } from './customer-tier.service';
-import { CustomerPreCheckService } from './customer-precheck.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerPiiModule } from './customer-pii.module';
 import { OverdueModule } from '../overdue/overdue.module';
@@ -14,7 +13,7 @@ import { TestModeModule } from '../test-mode/test-mode.module';
 import { CreditCheckModule } from '../credit-check/credit-check.module';
 
 @Module({
-  // CreditCheckModule — pre-check เรียกตัวอ่าน statement ด้วย AI (โมดูลนั้น import แค่
+  // CreditCheckModule — เดิม pre-check เรียกตัวอ่าน statement ด้วย AI (โมดูลนั้น import แค่
   // IntegrationsModule จึงไม่มี cycle กลับมาหา customers)
   imports: [OverdueModule, CustomerPiiModule, ContactsModule, TestModeModule, CreditCheckModule],
   controllers: [CustomersController],
@@ -24,13 +23,11 @@ import { CreditCheckModule } from '../credit-check/credit-check.module';
     CustomerWriteService,
     CustomerAnalyticsService,
     CustomerTierService,
-    CustomerPreCheckService,
     SkipTracingService,
   ],
   exports: [
     CustomersService,
     CustomerTierService,
-    CustomerPreCheckService,
     SkipTracingService,
     CustomerPiiModule,
   ],

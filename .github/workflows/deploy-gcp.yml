@@ -531,8 +531,14 @@ jobs:
           # to the CalVer (e.g. "v26.5.1·a1b2c3d"). vite.config.ts trims to 7 chars.
           GIT_COMMIT: ${{ github.sha }}
 
-      - name: Build customer shop (apps/web-shop → hosting:shop)
-        run: npm run build --workspace=apps/web-shop
+      # prerender ต้องใช้ headless Chromium — ติดตั้งเฉพาะ job นี้ (PR gate ยัง build เปล่าเร็วเหมือนเดิม)
+      - name: Install Playwright Chromium (shop prerender)
+        run: npx playwright install --with-deps chromium
+
+      # build:prerender = build ปกติ + snapshot 11 หน้า marketing เป็น HTML จริงต่อ route
+      # เพื่อให้ AI crawlers (ไม่รัน JS) กับ Bing เห็นเนื้อหา — ดู apps/web-shop/scripts/prerender.mjs
+      - name: Build customer shop (apps/web-shop → hosting:shop, prerendered)
+        run: npm run build:prerender --workspace=apps/web-shop
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2

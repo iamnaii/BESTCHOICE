@@ -47,6 +47,7 @@
       "target": "shop",
       "public": "apps/web-shop/dist",
       "ignore": ["firebase.json", "**/node_modules/**"],
+      "trailingSlash": false,
       "rewrites": [
         {
           "source": "/api/**",

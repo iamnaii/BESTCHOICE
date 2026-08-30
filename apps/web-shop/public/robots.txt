@@ -39,16 +39,27 @@ Allow: /
 Allow: /api/shop/share/
 Disallow: /api/
 
+# OAI-SearchBot = ตัวเก็บ index ของ ChatGPT Search (คนละตัวกับ GPTBot ที่ใช้เทรน) —
+# บล็อกตัวนี้ = ร้านหายจากคำตอบของ ChatGPT
+User-agent: OAI-SearchBot
+Allow: /
+Allow: /api/shop/share/
+Disallow: /api/
+
 User-agent: Google-Extended
+Allow: /
+Allow: /api/shop/share/
+Disallow: /api/
+
+# CCBot (Common Crawl) ป้อน training corpus ให้ LLM หลายค่าย — เราอยากให้ AI รู้จักร้าน
+# จึงเปิดรับ (เดิมเคยบล็อก ซึ่งสวนทางกับเป้า AI-search visibility)
+User-agent: CCBot
 Allow: /
 Allow: /api/shop/share/
 Disallow: /api/
 
 # Aggressive scrapers — BLOCK
 User-agent: Bytespider
-Disallow: /
-
-User-agent: CCBot
 Disallow: /
 
 Sitemap: https://www.bestchoicephone.com/sitemap.xml

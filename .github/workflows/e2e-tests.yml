@@ -69,7 +69,14 @@ jobs:
       # หมายเหตุ: seed ใช้ `prisma.customer.create` ตรง จึงไม่โดนด่านนี้ —
       # ข้อมูลตั้งต้นมีครบมาตลอด ที่พังคือเฉพาะการสร้างใหม่ระหว่างเทส
       # ค่าปลอมสำหรับ CI เท่านั้น (Postgres ใน container ที่ถูกทิ้งหลังรันจบ)
-      PII_ENCRYPTION_KEY: e2e-pii-encryption-key-32-chars-min-ci
+      #
+      # ⚠️ PII_ENCRYPTION_KEY ต้องเป็น **hex 64 ตัวอักษร** ไม่ใช่แค่ "ยาวเกิน 32"
+      # crypto.util.ts:62 ทำ `createCipheriv(ALGO, Buffer.from(key, 'hex'), iv)` ⇒
+      # สตริงธรรมดาจะถูกแปลงเหลือไม่กี่ไบต์แล้วโยน "Invalid key length" → HTTP 500
+      # (ด่านที่บรรทัด 55 ตรวจแค่ความยาว ≥32 จึงปล่อยค่าที่ใช้ไม่ได้ผ่านมาถึงตรงนี้)
+      # 64 ตัวอักษร hex = 32 ไบต์ ตามที่ aes-256-gcm ต้องการ
+      PII_ENCRYPTION_KEY: e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0
+      # ส่วนตัวนี้เป็น HMAC key (pii.util.ts:53) รับสตริงอะไรก็ได้ ขอแค่ยาว >= 32
       PII_HASH_SALT: e2e-pii-hash-salt-32-chars-minimum-ci
       PORT: 3000
       NODE_ENV: test

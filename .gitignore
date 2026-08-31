@@ -59,3 +59,6 @@ interco-preflight-*.txt
 # ไฟล์ล็อกชั่วคราวของ Microsoft Office (สร้างขณะเปิดเอกสารค้างไว้)
 # เช่น docs/guides/~$aff-test-script-muay-pop-2026-08.docx
 ~$*
+
+# TypeScript incremental build artifacts (หลุดเข้า repo ตอน merge #1503)
+*.tsbuildinfo

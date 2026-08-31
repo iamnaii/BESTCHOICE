@@ -6,7 +6,9 @@ interface Props extends React.HTMLAttributes<HTMLElement> {
 }
 const toneClass = {
   default: '',
-  muted: 'bg-muted/40',
+  // Full mint-tint (#E8FAF4) — the guide's section background; white cards
+  // sitting on it get their separation from the tint, not from shadow alone.
+  muted: 'bg-muted',
   emerald: 'bg-emerald-50',
   sand: 'bg-sand-50',
 };

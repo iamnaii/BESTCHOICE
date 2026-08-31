@@ -80,7 +80,7 @@ export default function PromotionsPage() {
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="font-semibold text-base">{p.name}</div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="success" size="sm">
+                        <Badge variant="promo" size="sm">
                           {promoBenefitLabel(p)}
                         </Badge>
                         <span className="text-xs text-muted-foreground">{promoEndsLabel(p)}</span>
@@ -106,7 +106,7 @@ export default function PromotionsPage() {
                     <Button asChild variant="primary" size="sm">
                       <Link to="/products">ดูสินค้า</Link>
                     </Button>
-                    <Button asChild variant="outline" size="sm">
+                    <Button asChild variant="line" size="sm">
                       <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                         <MessageCircle className="size-4" aria-hidden="true" />
                         สอบถาม

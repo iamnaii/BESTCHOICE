@@ -84,7 +84,7 @@ export default function LoginPage() {
                   <p className="text-sm text-muted-foreground leading-snug">
                     {copy.login.intro}
                   </p>
-                  <Button variant="primary" size="lg" fullWidth onClick={startLineLogin}>
+                  <Button variant="line" size="lg" fullWidth onClick={startLineLogin}>
                     <MessageCircle className="size-5" aria-hidden="true" />
                     {copy.login.lineCta}
                   </Button>
@@ -101,7 +101,7 @@ export default function LoginPage() {
                       {copy.login.disabledDescription}
                     </p>
                   </div>
-                  <Button asChild variant="primary" size="lg" fullWidth>
+                  <Button asChild variant="line" size="lg" fullWidth>
                     <a href={shopInfo.lineUrl} target="_blank" rel="noopener noreferrer">
                       <MessageCircle className="size-5" aria-hidden="true" />
                       ทักไลน์ {shopInfo.lineHandle}

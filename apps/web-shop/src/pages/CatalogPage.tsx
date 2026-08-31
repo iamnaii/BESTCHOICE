@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
-import { Search, SlidersHorizontal, ChevronDown, X } from 'lucide-react';
+import { Search, SlidersHorizontal, ChevronDown, X, Banknote, CalendarClock } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   FilterSidebar,
@@ -43,6 +43,14 @@ const CONDITIONS: Array<{ v: '' | 'NEW' | 'USED'; label: string }> = [
   { v: 'USED', label: 'มือ 2' },
 ];
 
+/** สด/ผ่อน — flips which number leads on every card. Installment is the
+    shop's main business, so it is the default view. */
+type PriceMode = 'cash' | 'installment';
+const PRICE_MODES: Array<{ v: PriceMode; label: string; icon: typeof Banknote }> = [
+  { v: 'installment', label: 'ผ่อน', icon: CalendarClock },
+  { v: 'cash', label: 'ซื้อสด', icon: Banknote },
+];
+
 const SORTS: Array<{ v: string; label: string }> = [
   { v: 'popular', label: 'รุ่นใหม่ → เก่า' },
   { v: 'newest', label: 'ใหม่ล่าสุด' },
@@ -63,10 +71,12 @@ function Pill({ active, onClick, children }: PillProps) {
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'px-4 py-1.5 text-[13px] rounded-full transition-colors leading-snug whitespace-nowrap',
+        // Guide chip: white, #DCE7E3 border, green-ink text, Prompt medium;
+        // active flips to the solid deep green.
+        'px-4 py-1.5 font-head text-[13px] font-medium rounded-full transition-colors leading-snug whitespace-nowrap',
         active
-          ? 'bg-ink text-ink-foreground'
-          : 'bg-card text-muted-foreground ring-1 ring-inset ring-border hover:text-foreground',
+          ? 'bg-ink text-ink-foreground font-semibold'
+          : 'bg-card text-accent-foreground ring-1 ring-inset ring-border hover:bg-muted',
       )}
     >
       {children}
@@ -144,6 +154,17 @@ export default function CatalogPage() {
     updateFilters({ ...filters, search: undefined });
   }
 
+  // Derived straight from the URL (no shadow state) — updateFilters copies the
+  // existing params, so the mode survives every filter/search change and a
+  // shared link opens in the same view.
+  const priceMode: PriceMode = searchParams.get('mode') === 'cash' ? 'cash' : 'installment';
+  function setPriceMode(next: PriceMode) {
+    const sp = new URLSearchParams(searchParams);
+    if (next === 'cash') sp.set('mode', 'cash');
+    else sp.delete('mode');
+    setSearchParams(sp, { replace: true });
+  }
+
   // Close sort menu on Escape; return focus to the trigger.
   useEffect(() => {
     if (!sortOpen) return;
@@ -211,7 +232,7 @@ export default function CatalogPage() {
       <Container className="py-4 md:py-6">
         {/* Hero plate — a white card on the tinted canvas, same family as the
             product cards rather than a full-bleed band. */}
-        <section className="rounded-[28px] md:rounded-[40px] bg-card px-6 py-8 md:px-10 md:py-11 shadow-md">
+        <section className="rounded-[28px] md:rounded-[40px] bg-card px-6 py-8 md:px-10 md:py-11 shadow-md border border-border">
           <div className="flex items-center gap-6 md:gap-10">
             <div className="hidden sm:block shrink-0">
               <svg width="112" height="112" viewBox="0 0 118 118" aria-hidden="true">
@@ -242,7 +263,7 @@ export default function CatalogPage() {
                 <span className="text-primary">คัดแล้ว ผ่อนได้บัตรเดียว</span>
               </h1>
               <p className="mt-3 text-[13.5px] md:text-[15px] text-muted-foreground leading-snug">
-                ตรวจ 30 จุด · รับประกันร้าน 30 วัน · ไม่ติด iCloud ทุกเครื่อง
+                ตรวจ 30 จุด · รับประกันร้าน 60 วัน · ไม่ติด iCloud ทุกเครื่อง
               </p>
             </div>
           </div>
@@ -255,7 +276,7 @@ export default function CatalogPage() {
               filters={filters}
               onChange={updateFilters}
               models={models}
-              plan={plan}
+              plan={priceMode === 'installment' ? plan : undefined}
             />
             <WaitlistCard />
           </div>
@@ -263,6 +284,37 @@ export default function CatalogPage() {
           <div className="lg:col-span-3 min-w-0">
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
+              {/* สด/ผ่อน — a view switch, not a filter, so it gets a distinct
+                  segmented look: mint track, white active thumb. The filter
+                  chips next to it stay white-with-border / solid-green. */}
+              <div
+                role="group"
+                aria-label="รูปแบบราคา"
+                className="flex rounded-full bg-muted p-0.5 ring-1 ring-inset ring-border/70"
+              >
+                {PRICE_MODES.map((m) => {
+                  const Icon = m.icon;
+                  const active = priceMode === m.v;
+                  return (
+                    <button
+                      key={m.v}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setPriceMode(m.v)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-3.5 py-1 font-head text-[13px] rounded-full leading-snug whitespace-nowrap transition-all',
+                        active
+                          ? 'bg-white text-primary font-semibold shadow-sm'
+                          : 'font-medium text-zinc-600 hover:text-primary',
+                      )}
+                    >
+                      <Icon className="size-3.5" aria-hidden />
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="flex lg:hidden gap-2">
                 {CONDITIONS.map((c) => (
                   <Pill
@@ -300,7 +352,7 @@ export default function CatalogPage() {
                     filters={filters}
                     onChange={updateFilters}
                     models={models}
-                    plan={plan}
+                    plan={priceMode === 'installment' ? plan : undefined}
                     bare
                   />
                 </DialogContent>
@@ -395,7 +447,7 @@ export default function CatalogPage() {
                 description: copy.catalog.emptyDescription,
               }}
               wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-3"
-              renderItem={(p) => <ProductCard key={p.id} product={p} />}
+              renderItem={(p) => <ProductCard key={p.id} product={p} priceMode={priceMode} />}
             />
 
             {hasNextPage && (

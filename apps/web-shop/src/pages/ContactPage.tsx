@@ -58,7 +58,7 @@ export default function ContactPage() {
                       {copy.contact.lineDescription}
                     </p>
                   </div>
-                  <Button asChild variant="primary" size="lg" fullWidth>
+                  <Button asChild variant="line" size="lg" fullWidth>
                     <a
                       href={shopInfo.lineUrl}
                       target="_blank"

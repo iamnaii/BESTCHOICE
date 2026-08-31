@@ -42,17 +42,31 @@ export interface ProductGroup {
 
 interface Props {
   product: ProductGroup;
+  /**
+   * 'combined' (default) is the original dual layout — cash price big with
+   * the installment teaser under it (HomePage / related sections).
+   * The catalog's สด/ผ่อน switch passes the strict modes instead, and they
+   * hide the other price entirely (owner decision 2026-08-31):
+   * 'installment' = yellow down-payment badge + monthly figure, no cash
+   * price at all; 'cash' = full price only, no installment rate at all.
+   */
+  priceMode?: 'combined' | 'cash' | 'installment';
 }
 
+/**
+ * ป้ายเกรด = ข้อมูล ไม่ใช่คำเตือน (คำตัดสินเจ้าของ 2026-08-31)
+ * ห้ามใช้เหลือง/ส้ม/แดง — ทุกใบดีไซน์เดียวกัน ต่างแค่ความเข้มในโทนเขียวแบรนด์
+ * (ยิ่งสภาพใหม่ยิ่งเข้ม) ส้มถูกสงวนให้ปุ่มแชทอย่างเดียวตาม style guide ข้อ 2
+ */
 const GRADE_STYLES: Record<string, string> = {
-  A: 'bg-emerald-500/80 text-white',
-  B: 'bg-amber-500/85 text-white',
-  C: 'bg-orange-500/85 text-white',
+  A: 'bg-primary text-white',
+  B: 'bg-white text-primary ring-border',
+  C: 'bg-white text-zinc-700 ring-border',
 };
 const GRADE_CHIP: Record<string, string> = {
-  A: 'text-emerald-700',
-  B: 'text-amber-900',
-  C: 'text-orange-700',
+  A: 'bg-white text-primary',
+  B: 'bg-primary text-white',
+  C: 'bg-zinc-700 text-white',
 };
 
 /** Max thumbnails rendered before the strip collapses into a "+N" tile. */
@@ -60,7 +74,7 @@ const THUMB_SLOTS = 4;
 /** The reference stacks up to five tags and buries the product photo. */
 const MAX_TAGS = 2;
 
-export function ProductCard({ product: p }: Props) {
+export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
   const to = p.id ? `/products/${p.id}` : '/products';
   const photos = (p.images?.length ? p.images : p.thumbnailUrl ? [p.thumbnailUrl] : []).slice(0, 5);
   const [active, setActive] = useState(0);
@@ -89,7 +103,7 @@ export function ProductCard({ product: p }: Props) {
   return (
     <article
       className={cn(
-        'group flex flex-col rounded-[26px] md:rounded-[30px] border border-white bg-card/60 p-2 md:p-2.5',
+        'group flex flex-col rounded-[26px] md:rounded-[30px] border border-border bg-card p-2 md:p-2.5',
         'shadow-lg backdrop-blur-sm transition-transform duration-200 ease-out',
         'hover:-translate-y-0.5 motion-reduce:transform-none motion-reduce:transition-none',
       )}
@@ -118,10 +132,13 @@ export function ProductCard({ product: p }: Props) {
               GRADE drops and the coloured letter carries it alone. */}
           <span
             className={cn(
-              'absolute top-1.5 left-1.5 md:top-2 md:left-2 inline-flex items-center gap-1.5 rounded-full backdrop-blur-md ring-1 ring-inset ring-white/55 max-w-[70%]',
+              'absolute top-1.5 left-1.5 md:top-2 md:left-2 inline-flex items-center gap-1.5 rounded-full backdrop-blur-md ring-1 ring-inset max-w-[70%]',
               isNew
-                ? 'bg-emerald-500/85 text-white px-2 py-1 md:px-2.5'
-                : cn('p-0.5 sm:pr-2', GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700/75 text-white'),
+                ? 'bg-ink text-white ring-white/55 px-2 py-1 md:px-2.5'
+                : cn(
+                    'p-0.5 sm:pr-2 ring-white/55',
+                    GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700 text-white',
+                  ),
             )}
             aria-label={
               isNew ? 'เครื่องมือ 1 ของใหม่' : grade ? `สภาพเครื่องเกรด ${grade}` : 'เครื่องมือสอง'
@@ -130,8 +147,8 @@ export function ProductCard({ product: p }: Props) {
             {!isNew && (
               <span
                 className={cn(
-                  'size-[18px] md:size-5 rounded-full bg-white grid place-items-center font-brand text-[10px] md:text-[11px] font-extrabold leading-none shrink-0',
-                  GRADE_CHIP[grade ?? ''] ?? 'text-zinc-700',
+                  'size-[18px] md:size-5 rounded-full grid place-items-center font-brand text-[10px] md:text-[11px] font-extrabold leading-none shrink-0',
+                  GRADE_CHIP[grade ?? ''] ?? 'bg-white text-zinc-700',
                 )}
                 aria-hidden
               >
@@ -252,35 +269,77 @@ export function ProductCard({ product: p }: Props) {
             )}
           </div>
 
-          <div className="flex justify-between gap-2 mt-1 text-[11px] md:text-xs text-muted-foreground leading-snug">
-            <span className="shrink-0">ความจุ</span>
-            <span className="text-right truncate">{specValue || '—'}</span>
+          {/* Spec as one quiet line — the label:value form row read as a
+              spreadsheet cell and left a dead gap across the card. */}
+          <div className="mt-1 text-[11px] md:text-xs text-muted-foreground leading-snug truncate">
+            {specValue || '—'}
           </div>
 
           {/* Installment figure sits where the reference puts its view count:
               it is the differentiator, and the full price stays the biggest
               number on the card. */}
+          {/* Price zone — one left-aligned block in every mode: a tiny Prompt
+              eyebrow names the number, the figure sits under it, details on a
+              third line. No lone right-aligned figures, no zigzag. */}
           <div className="mt-2">
             {p.minPrice == null ? (
               <span className="text-sm font-medium text-muted-foreground">สอบถามราคา</span>
+            ) : priceMode === 'installment' ? (
+              hasQuote ? (
+                <>
+                  {/* เน้นดาวน์ก่อน (owner 2026-08-31): the down payment leads
+                      in the SAME deep-green price treatment every other big
+                      figure uses — a yellow sticker per card turned the grid
+                      into a flyer wall (yellow stays reserved for real
+                      promos). The monthly rate follows as the detail line. */}
+                  <div className="font-head text-[10px] md:text-[10.5px] font-medium text-muted-foreground leading-snug">
+                    ดาวน์
+                  </div>
+                  {p.downAmount != null ? (
+                    <div className="num text-[19px] md:text-[21px] font-bold text-primary leading-tight whitespace-nowrap">
+                      ฿{p.downAmount.toLocaleString()}
+                    </div>
+                  ) : (
+                    <div className="num text-[19px] md:text-[21px] font-bold text-primary leading-tight whitespace-nowrap">
+                      ฿{p.monthlyPaymentFrom!.toLocaleString()}
+                      <span className="text-[11px] md:text-xs font-semibold text-primary/80"> /เดือน</span>
+                    </div>
+                  )}
+                  {p.downAmount != null && (
+                    <p className="num mt-0.5 text-[10.5px] md:text-[11.5px] text-muted-foreground leading-snug whitespace-nowrap">
+                      ผ่อน{' '}
+                      <span className="font-semibold text-primary">
+                        ฿{p.monthlyPaymentFrom!.toLocaleString()}/เดือน
+                      </span>
+                      {p.installmentMonths ? ` · ${p.installmentMonths} งวด` : ''}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <span className="text-sm font-medium text-muted-foreground">สอบถามค่างวด</span>
+              )
+            ) : priceMode === 'cash' ? (
+              <>
+                <div className="font-head text-[10px] md:text-[10.5px] font-medium text-muted-foreground leading-snug">
+                  ราคาเงินสด
+                </div>
+                <div className="num text-[19px] md:text-[21px] font-bold text-primary leading-tight whitespace-nowrap">
+                  ฿{p.minPrice.toLocaleString()}
+                </div>
+              </>
             ) : (
               <>
-                <div className="flex items-end justify-between gap-1.5">
-                  <span className="num text-[10.5px] md:text-[11.5px] font-semibold text-emerald-700 whitespace-nowrap">
-                    {hasQuote ? `ผ่อน ฿${p.monthlyPaymentFrom!.toLocaleString()}/ด.` : 'ผ่อนได้'}
-                  </span>
-                  <span className="num text-[17px] md:text-lg font-bold text-foreground whitespace-nowrap">
-                    ฿{p.minPrice.toLocaleString()}
-                  </span>
+                <div className="num text-[17px] md:text-lg font-bold text-primary leading-tight whitespace-nowrap">
+                  ฿{p.minPrice.toLocaleString()}
                 </div>
-                {/* A monthly figure with no down payment and no tenure beside it
-                    is a half-truth — always print what it was quoted on. */}
-                {hasQuote && p.downAmount != null && (
-                  <p className="num mt-0.5 text-[9.5px] md:text-[10.5px] text-muted-foreground leading-snug">
-                    ดาวน์ ฿{p.downAmount.toLocaleString()}
-                    {p.installmentMonths ? ` · ${p.installmentMonths} งวด` : ''}
-                  </p>
-                )}
+                {/* A monthly figure with no down payment beside it is a
+                    half-truth — always print what it was quoted on. */}
+                <p className="num mt-0.5 text-[10px] md:text-[11px] text-muted-foreground leading-snug truncate">
+                  {hasQuote ? `ผ่อน ฿${p.monthlyPaymentFrom!.toLocaleString()}/ด.` : 'ผ่อนได้'}
+                  {hasQuote && p.downAmount != null
+                    ? ` · ดาวน์ ฿${p.downAmount.toLocaleString()}`
+                    : ''}
+                </p>
               </>
             )}
           </div>
@@ -292,14 +351,14 @@ export function ProductCard({ product: p }: Props) {
               href={shopInfo.lineUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-9 items-center justify-center rounded-full border border-border text-[12.5px] font-medium text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors leading-snug"
+              className="flex h-9 items-center justify-center rounded-full bg-line-app text-white font-head text-[12.5px] font-semibold hover:bg-line-app/90 transition-colors leading-snug"
             >
               ทักแชทเช็ครอบเข้าใหม่
             </a>
           ) : (
             <Link
               to={to}
-              className="flex h-9 items-center justify-center rounded-full bg-ink text-ink-foreground text-[12.5px] font-semibold hover:bg-zinc-800 transition-colors leading-snug"
+              className="flex h-9 items-center justify-center rounded-full bg-ink text-ink-foreground font-head text-[12.5px] font-semibold hover:bg-emerald-800 transition-colors leading-snug"
             >
               {isUnit ? 'ดูเครื่องนี้' : 'เลือกเครื่อง'}
             </Link>

@@ -66,7 +66,7 @@ export default function OrderSuccessPage() {
                     <span className="text-muted-foreground text-sm">
                       {copy.orderSuccess.totalLabel}
                     </span>
-                    <span className="font-bold">
+                    <span className="num font-bold text-primary">
                       ฿{Number(data.totalAmount ?? 0).toLocaleString()}
                     </span>
                   </div>

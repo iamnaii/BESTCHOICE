@@ -71,7 +71,7 @@ export default function CartPage() {
                 <span className="text-sm text-muted-foreground">
                   {copy.checkout.summaryTitle}
                 </span>
-                <span className="font-bold">฿{data.subtotal.toLocaleString()}</span>
+                <span className="num font-bold text-primary">฿{data.subtotal.toLocaleString()}</span>
               </CardBody>
             </Card>
           </div>
@@ -97,7 +97,7 @@ export default function CartPage() {
                             เกรด {i.product.conditionGrade}
                           </div>
                         )}
-                        <div className="font-bold">
+                        <div className="num font-bold text-primary">
                           ฿{Number(i.product.sellingPrice).toLocaleString()}
                         </div>
                         <ReservationCountdownBadge expiresAt={i.expiresAt} />

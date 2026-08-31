@@ -48,7 +48,7 @@ const FAQS = [
   },
   {
     question: 'iPhone มือสองผ่อนได้ไหม',
-    answer: 'ผ่อนได้ด้วยบัตรประชาชนใบเดียว เงื่อนไขเดียวกับเครื่องใหม่ทุกอย่าง เลือกผ่อน 3, 6, 9 หรือ 12 งวด',
+    answer: 'ผ่อนได้ด้วยบัตรประชาชนใบเดียว เงื่อนไขเดียวกับเครื่องใหม่ทุกอย่าง ผ่อนได้สูงสุด 12 งวด',
   },
   {
     question: 'เครื่องมือสองมีประกันไหม',
@@ -60,7 +60,7 @@ const FAQS = [
   },
   {
     question: 'อยู่ต่างจังหวัด สั่งซื้อได้ไหม',
-    answer: 'ได้ สั่งซื้อผ่านเว็บไซต์แล้วจัดส่งถึงบ้านทั่วประเทศ หรือจะทักไลน์ให้ทีมงานช่วยเลือกเครื่องก่อนก็ได้',
+    answer: 'เลือกเครื่องจากหน้าเว็บแล้วทักไลน์สั่งได้จากทุกจังหวัด ทีมงานเช็คเครื่องให้ก่อน — ซื้อเงินสดจัดส่งถึงบ้านทั่วประเทศ ส่วนผ่อนต้องมารับเครื่องที่ร้านลพบุรีเพื่อเซ็นสัญญา',
   },
 ];
 
@@ -134,10 +134,10 @@ export default function UsedIphoneLopburiPage() {
                 ดูเครื่องจริงพร้อมเกรด สุขภาพแบต และค่างวดผ่อนของแต่ละเครื่อง หรือทักไลน์สอบถามก่อนได้
               </p>
               <div className="flex flex-wrap gap-3">
-                <Button asChild variant="primary">
+                <Button asChild variant="primary" size="lg">
                   <Link to="/products?condition=USED">ดู iPhone มือสองทั้งหมด</Link>
                 </Button>
-                <Button asChild variant="outline">
+                <Button asChild variant="line" size="lg">
                   <a href={lineOaMessageUrl('สนใจ iPhone มือสองครับ/ค่ะ')} target="_blank" rel="noopener noreferrer">
                     ทักไลน์ {shopInfo.lineHandle}
                   </a>

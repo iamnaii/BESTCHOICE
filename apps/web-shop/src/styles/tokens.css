@@ -7,96 +7,111 @@
  * config file was deleted in the 2026-08 redesign so nobody "fixes" a color
  * in a file the build never reads.
  *
- * Palette source: apps/web/public/logo.svg. The BESTCHOICE mark is a single
- * linear gradient #39F0CF -> #25BC93 -> #1DA579; those three stops ARE the
- * brand. Everything here derives from them. Neutrals carry a slight green
+ * Palette source: bestchoice-web-style-guide.html (2026-08-31). The logo
+ * gradient runs #38EDCC (mint) -> #1DA479 (green); text/UI greens step down
+ * to #167F5E (buttons/links/prices, 5.0:1 on white) and #0F5F44 (dark
+ * sections). The ONE warm attention color is #F25C1A, reserved for the chat
+ * CTA; #FFC933 carries price/promo badges. Neutrals keep a slight green
  * bias so they read as chosen rather than inherited.
  */
 
 @theme {
   /* Semantic core — every bg-/text-/border- token utility the app uses must
      have its --color-* declared here. */
-  /* Canvas is deliberately NOT white: the glass product cards are white-ish
-     and would disappear on a white page. Card-vs-canvas separation is what
-     carries the whole look. */
-  --color-background: #F3F7F5;
-  --color-foreground: #0E211C;
-  --color-muted: #EDF2F0;
-  --color-muted-foreground: #5C716A;
-  --color-border: #E3ECE8;
-  /* Brand primary = the middle stop of the logo gradient. Was #1DB446 (LINE
-     green), which never matched the mark. */
-  --color-primary: #25BC93;
+  /* Canvas is WHITE per the style guide's 60/30/10 rule; card-vs-canvas
+     separation now comes from borders (#DCE7E3) and mint-tint (#E8FAF4)
+     section backgrounds, not an off-white page. */
+  --color-background: #FFFFFF;
+  --color-foreground: #2B2B2B;
+  --color-muted: #E8FAF4;
+  --color-muted-foreground: #6B7370;
+  --color-border: #DCE7E3;
+  /* Brand primary = the guide's "green-deep": buttons, links, price text.
+     White text on it passes 5.0:1 at any size. The brighter logo green
+     #1DA479 lives at emerald-500 for large lockups/decoration only. */
+  --color-primary: #167F5E;
   --color-primary-foreground: #FFFFFF;
   --color-card: #FFFFFF;
-  --color-card-foreground: #0E211C;
-  --color-secondary: #EDF2F0;
-  --color-secondary-foreground: #16302A;
-  --color-accent: #E4EEEA;
-  --color-accent-foreground: #16302A;
+  --color-card-foreground: #2B2B2B;
+  --color-secondary: #E8FAF4;
+  --color-secondary-foreground: #0F5F44;
+  --color-accent: #DDF5EC;
+  --color-accent-foreground: #0F5F44;
 
   /* CTA — the ONE warm attention color (Von Restorff isolation effect).
-     Reserved for conversion moments only: reserve button, card "เลือกเครื่อง",
-     promo highlights. Everything else stays calm zinc/emerald so this pops. */
-  --color-cta: #EA580C;
+     Reserved for the chat/conversion CTA only. Hover = orange-600. */
+  --color-cta: #F25C1A;
   --color-cta-foreground: #FFFFFF;
 
-  /* Emerald scale — anchored on the three logo gradient stops:
-     400 = #39F0CF (start), 500 = #25BC93 (middle), 600 = #1DA579 (end). */
-  --color-emerald-50:  #EAFAF4;
-  --color-emerald-100: #CDF3E7;
-  --color-emerald-200: #A3E9D6;
-  --color-emerald-300: #6FDCC0;
-  --color-emerald-400: #39F0CF;
-  --color-emerald-500: #25BC93;
-  --color-emerald-600: #1DA579;
-  --color-emerald-700: #157C61;
-  --color-emerald-800: #10604B;
-  --color-emerald-900: #0B4437;
+  /* Promo/price badge yellow — "ดาวน์เริ่ม 1,400", "ผ่อน 0%", ลดราคา.
+     Dark ink text on it reads 9.2:1. */
+  --color-promo: #FFC933;
+  --color-promo-foreground: #2B2B2B;
+
+  /* Platform colors — LINE / Messenger buttons keep their own identity
+     (guide rule 6); never restyle these to brand colors. */
+  --color-line-app: #06C755;
+  --color-messenger: #0084FF;
+
+  /* Emerald scale — anchored on the guide palette:
+     400 = #38EDCC (mint), 500 = #1DA479 (brand green — white text only at
+     display sizes), 600 = #167F5E, 700 = #0F5F44. */
+  --color-emerald-50:  #E8FAF4;
+  --color-emerald-100: #C9F3E7;
+  --color-emerald-200: #9FE9D6;
+  --color-emerald-300: #6BDECC;
+  --color-emerald-400: #38EDCC;
+  --color-emerald-500: #1DA479;
+  --color-emerald-600: #167F5E;
+  --color-emerald-700: #0F5F44;
+  --color-emerald-800: #0B4735;
+  --color-emerald-900: #073527;
 
   /* Neutrals — kept under the zinc-* names so the ~90 existing utility
-     classes keep working, but re-tinted toward the brand green. A pure grey
-     next to this emerald reads as an accident. */
+     classes keep working, re-tinted to the guide's ink/charcoal/gray/line
+     ramp. A pure grey next to this green reads as an accident. */
   --color-zinc-50:  #F7FAF9;
-  --color-zinc-100: #EDF2F0;
-  --color-zinc-200: #E3ECE8;
-  --color-zinc-300: #CBD9D4;
-  --color-zinc-400: #91A69E;
-  --color-zinc-500: #6E837C;
-  --color-zinc-600: #5C716A;
-  --color-zinc-700: #3F534C;
-  --color-zinc-800: #24382F;
-  --color-zinc-900: #0E211C;
+  --color-zinc-100: #EFF4F2;
+  --color-zinc-200: #DCE7E3;
+  --color-zinc-300: #C3D2CC;
+  --color-zinc-400: #93A39D;
+  --color-zinc-500: #6B7370;
+  --color-zinc-600: #5B655F;
+  --color-zinc-700: #4D4D4D;
+  --color-zinc-800: #3A423E;
+  --color-zinc-900: #2B2B2B;
 
-  /* Ink — the near-black used for capsule CTAs on cards and the footer.
-     Distinct from --color-cta, which stays reserved for the single
-     highest-intent action (reserve). */
-  --color-ink: #14251F;
+  /* Ink — the guide's darkest green (#0F5F44): footer, trust band, and the
+     solid-green capsule buttons. Distinct from --color-cta, which stays
+     reserved for the single highest-intent action (chat). */
+  --color-ink: #0F5F44;
   --color-ink-foreground: #FFFFFF;
 
-  /* Sand — warm accent for local-shop sections */
-  --color-sand-50:  #FDF9F3;
-  --color-sand-100: #FAF0E1;
-  --color-sand-500: #C9A876;
-  --color-sand-900: #5C4A2F;
+  /* Sand — warm accent for local-shop sections, retinted toward the promo
+     yellow so warm sections stay in the guide's accent family. */
+  --color-sand-50:  #FFF9EC;
+  --color-sand-100: #FFF1D1;
+  --color-sand-500: #C9A029;
+  --color-sand-900: #5C4A1F;
 
   /* Amber (warning) — used by condition-b */
   --color-amber-100: #FEF3C7;
   --color-amber-500: #F59E0B;
   --color-amber-900: #78350F;
 
-  /* Orange (condition-c) */
-  --color-orange-100: #FFEDD5;
-  --color-orange-500: #F97316;
-  --color-orange-600: #EA580C;
-  --color-orange-700: #C2410C;
+  /* Orange (cta hover/active + condition-c) — 500 mirrors --color-cta */
+  --color-orange-100: #FFF1E8;
+  --color-orange-500: #F25C1A;
+  --color-orange-600: #D9480F;
+  --color-orange-700: #B23A00;
 
   /* Red (destructive) */
   --color-red-100: #FEE2E2;
   --color-red-900: #7F1D1D;
 
-  /* Semantic: condition badges (used-iPhone grading) */
-  --color-condition-a: var(--color-emerald-500);
+  /* Semantic: condition badges (used-iPhone grading). Grade A uses the
+     600 green so small white text keeps 4.5:1 (guide contrast rule). */
+  --color-condition-a: var(--color-emerald-600);
   --color-condition-b: var(--color-amber-500);
   --color-condition-c: var(--color-orange-500);
 
@@ -104,16 +119,23 @@
   --color-destructive: #DD2C00;
   --color-destructive-foreground: #FFFFFF;
 
-  /* Neutral shadows. Green-tinted shadows read as a smudge under the glass
-     cards; the reference stacks plain black at low alpha. */
+  /* Focus ring — was never declared, so every ring-ring utility silently
+     failed to generate and keyboard focus had NO indicator at all. */
+  --color-ring: #167F5E;
+
+  /* Neutral shadows. Green-tinted shadows read as a smudge under the white
+     cards; stack plain near-black at low alpha. */
   --shadow-sm:  0 1px 2px 0 rgb(14 33 28 / 0.04), 0 1px 2px -1px rgb(14 33 28 / 0.04);
   --shadow-md:  0 2px 6px 0 rgb(14 33 28 / 0.06), 0 2px 4px -2px rgb(14 33 28 / 0.05);
   --shadow-lg:  0 6px 16px 0 rgb(14 33 28 / 0.08), 0 4px 6px -4px rgb(14 33 28 / 0.05);
   --shadow-xl:  0 8px 26px 0 rgb(14 33 28 / 0.09), 0 8px 16px -8px rgb(14 33 28 / 0.06);
   --shadow-2xl: 0 24px 60px 0 rgb(14 33 28 / 0.14);
 
-  /* Type — keeps the `font-sans` utility in step with the body stack. */
-  --font-sans: 'Sukhumvit Set', 'Anuphan', 'IBM Plex Sans Thai', 'Noto Sans Thai', sans-serif;
+  /* Type — Sarabun carries body copy (looped, easiest Thai reading face);
+     Prompt carries headings/buttons/prices via --font-head + .font-display.
+     Both load from the single <link> in index.html. */
+  --font-sans: 'Sarabun', 'IBM Plex Sans Thai', 'Noto Sans Thai', sans-serif;
+  --font-head: 'Prompt', 'IBM Plex Sans Thai', 'Noto Sans Thai', sans-serif;
 
   /* Motion durations */
   --duration-fast:   150ms;

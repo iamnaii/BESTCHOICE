@@ -240,7 +240,7 @@ export default function SellQuotePage() {
             {deviceReady && (
               <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 leading-snug">
                 <div className="text-sm text-emerald-800">ราคารับซื้อสูงสุด</div>
-                <div className="text-3xl font-bold text-emerald-600">
+                <div className="text-3xl font-bold text-emerald-600 num">
                   ฿{Number(maxPrice).toLocaleString()}
                 </div>
               </div>
@@ -361,7 +361,7 @@ export default function SellQuotePage() {
                   }`}
                 >
                   <div className="text-sm text-muted-foreground">💵 {copy.sell.cashOption}</div>
-                  <div className="text-3xl font-bold text-emerald-600">
+                  <div className="text-3xl font-bold text-emerald-600 num">
                     ฿{Number(quote.cashPrice ?? quote.price).toLocaleString()}
                   </div>
                 </button>
@@ -379,12 +379,12 @@ export default function SellQuotePage() {
                   <div className="text-sm text-muted-foreground">
                     🔄 {copy.sell.exchangeOption}{' '}
                     {Number(quote.bonusPct ?? 0) > 0 && (
-                      <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+                      <span className="rounded bg-promo px-1.5 py-0.5 text-xs font-semibold text-promo-foreground">
                         +{Number(quote.bonusPct)}%
                       </span>
                     )}
                   </div>
-                  <div className="text-3xl font-bold text-emerald-600">
+                  <div className="text-3xl font-bold text-emerald-600 num">
                     ฿{Number(quote.exchangePrice ?? quote.price).toLocaleString()}
                   </div>
                   <div className="text-xs text-muted-foreground">{copy.sell.exchangeCreditNote}</div>
@@ -489,7 +489,7 @@ export default function SellQuotePage() {
           <Card variant="outlined">
             <CardBody className="space-y-3 leading-snug">
               <p className="text-sm text-muted-foreground leading-snug">{copy.sell.modelUnavailable}</p>
-              <Button asChild variant="outline" fullWidth>
+              <Button asChild variant="line" size="lg" fullWidth>
                 <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                   <MessageCircle className="size-4" aria-hidden="true" />
                   สอบถามราคาทางไลน์

@@ -74,7 +74,7 @@ export default function PromotionsStrip() {
               to="/promotions"
               className="snap-start shrink-0 w-[280px] md:w-auto md:flex-1 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition-colors px-4 py-3 leading-snug"
             >
-              <span className="size-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
+              <span className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
                 {promoIcon(p)}
               </span>
               <span className="min-w-0 flex-1">
@@ -85,7 +85,7 @@ export default function PromotionsStrip() {
                   {promoBenefitLabel(p)} · {promoEndsLabel(p)}
                 </span>
               </span>
-              <ChevronRight className="size-4 text-emerald-400 shrink-0" aria-hidden="true" />
+              <ChevronRight className="size-4 text-emerald-600 shrink-0" aria-hidden="true" />
             </Link>
           ))}
         </div>

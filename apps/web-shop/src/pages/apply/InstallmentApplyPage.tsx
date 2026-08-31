@@ -259,17 +259,17 @@ export default function InstallmentApplyPage() {
                   <>
                     <div className="flex items-center justify-between text-sm leading-snug">
                       <span className="text-muted-foreground">ราคาเครื่อง</span>
-                      <span className="font-medium">
+                      <span className="font-medium num">
                         ฿{productPrice.toLocaleString()}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm leading-snug">
                       <span className="text-muted-foreground">ดาวน์</span>
-                      <span className="font-medium">฿{downValue.toLocaleString()}</span>
+                      <span className="font-medium num">฿{downValue.toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm leading-snug">
                       <span className="text-muted-foreground">ยอดจัด</span>
-                      <span className="font-medium">
+                      <span className="font-medium num">
                         ฿{financed.toLocaleString()}
                       </span>
                     </div>
@@ -281,7 +281,7 @@ export default function InstallmentApplyPage() {
                       <div className="text-xs text-muted-foreground leading-snug">
                         ประมาณค่างวด/เดือน
                       </div>
-                      <div className="text-2xl font-bold text-emerald-600 leading-snug">
+                      <div className="text-2xl font-bold text-emerald-600 leading-snug num">
                         ฿{estimatedMonthly.toLocaleString()}
                       </div>
                       <p className="text-xs text-muted-foreground leading-snug">

@@ -29,7 +29,7 @@ export default function PlanCalculator({ targetAmount, onChange }: Props) {
       </div>
       <div className="rounded-xl border border-border p-4">
         <div className="text-sm text-muted-foreground">ออมเดือนละ</div>
-        <div className="text-2xl font-bold text-primary">฿{monthly.toLocaleString()}</div>
+        <div className="num text-2xl font-bold text-primary">฿{monthly.toLocaleString()}</div>
         <div className="text-xs text-muted-foreground mt-1">
           {duration} เดือน × ฿{monthly.toLocaleString()} = ฿
           {(monthly * duration).toLocaleString()}

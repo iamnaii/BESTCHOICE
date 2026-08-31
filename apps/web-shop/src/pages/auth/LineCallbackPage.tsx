@@ -98,7 +98,7 @@ export default function LineCallbackPage() {
                     </p>
                   </div>
                   {status === 'not-linked' && (
-                    <Button asChild variant="primary" size="lg" fullWidth>
+                    <Button asChild variant="line" size="lg" fullWidth>
                       <a href={shopInfo.lineUrl} target="_blank" rel="noopener noreferrer">
                         <MessageCircle className="size-5" aria-hidden="true" />
                         ทักไลน์ {shopInfo.lineHandle}

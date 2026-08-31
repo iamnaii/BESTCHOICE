@@ -5,14 +5,21 @@ import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'cursor-pointer group whitespace-nowrap focus-visible:outline-hidden inline-flex items-center justify-center has-data-[arrow=true]:justify-between whitespace-nowrap text-sm font-medium ring-offset-background transition-[color,box-shadow] disabled:pointer-events-none disabled:opacity-60 [&_svg]:shrink-0',
+  'cursor-pointer group whitespace-nowrap focus-visible:outline-hidden inline-flex items-center justify-center has-data-[arrow=true]:justify-between whitespace-nowrap font-head text-sm font-semibold ring-offset-background transition-[color,box-shadow] disabled:pointer-events-none disabled:opacity-60 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
         primary: 'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-sm',
-        // The one warm attention variant — reserve/choose-device CTAs only
+        // The one warm attention variant — chat/reserve CTAs only
         // (isolation effect: it converts because it is rare on the page).
-        cta: 'bg-cta text-cta-foreground hover:bg-orange-700 active:bg-orange-700 shadow-sm',
+        cta: 'bg-cta text-cta-foreground hover:bg-orange-600 active:bg-orange-700 shadow-sm',
+        // Platform buttons keep their platform colors (guide rule 6) —
+        // Thai shoppers recognise the LINE green / Messenger blue instantly.
+        // KNOWN WCAG EXCEPTION: white on #06C755 (2.3:1) / #0084FF (3.7:1)
+        // fails 1.4.3 by design — these are the platforms' own brand lockups;
+        // the icon + pill shape carry recognition, not the text alone.
+        line: 'bg-line-app text-white hover:bg-line-app/90 active:bg-line-app/80 shadow-sm',
+        messenger: 'bg-messenger text-white hover:bg-messenger/90 active:bg-messenger/80 shadow-sm',
         mono: 'bg-muted text-foreground border border-border hover:bg-accent',
         destructive:
           'bg-destructive text-destructive-foreground hover:bg-destructive/90 data-[state=open]:bg-destructive/90',
@@ -39,7 +46,7 @@ const buttonVariants = cva(
         dashed: '',
       },
       size: {
-        lg: 'h-10 rounded-xl px-4 text-sm gap-1.5 [&_svg:not([class*=size-])]:size-4',
+        lg: 'h-12 rounded-xl px-6 text-base gap-2 [&_svg:not([class*=size-])]:size-4.5',
         md: 'h-8.5 rounded-xl px-3 gap-1.5 text-[0.8125rem] leading-(--text-sm--line-height) [&_svg:not([class*=size-])]:size-4',
         sm: 'h-7 rounded-md px-2.5 gap-[5px] text-xs [&_svg:not([class*=size-])]:size-3.5',
         icon: 'size-8.5 rounded-md [&_svg:not([class*=size-])]:size-4 shrink-0',
@@ -53,14 +60,14 @@ const buttonVariants = cva(
         circle: 'rounded-full',
       },
       mode: {
-        default: 'focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-2',
-        icon: 'focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-2 shrink-0',
+        default: 'focus-visible:ring-2 focus-visible:ring-ring/80 focus-visible:ring-offset-2',
+        icon: 'focus-visible:ring-2 focus-visible:ring-ring/80 focus-visible:ring-offset-2 shrink-0',
         link: 'text-primary h-auto p-0 bg-transparent rounded-none hover:bg-transparent data-[state=open]:bg-transparent',
         input: `
             justify-start font-normal hover:bg-background [&_svg]:transition-colors [&_svg]:hover:text-foreground data-[state=open]:bg-background
-            focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/30
+            focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/80
             [[data-state=open]>&]:border-ring [[data-state=open]>&]:outline-hidden [[data-state=open]>&]:ring-[3px]
-            [[data-state=open]>&]:ring-ring/30
+            [[data-state=open]>&]:ring-ring/80
             aria-invalid:border-destructive/60 aria-invalid:ring-destructive/10 dark:aria-invalid:border-destructive dark:aria-invalid:ring-destructive/20
             in-data-[invalid=true]:border-destructive/60 in-data-[invalid=true]:ring-destructive/10  dark:in-data-[invalid=true]:border-destructive dark:in-data-[invalid=true]:ring-destructive/20
           `,
@@ -122,7 +129,15 @@ const buttonVariants = cva(
       {
         size: 'lg',
         autoHeight: true,
-        className: 'h-auto min-h-10',
+        className: 'h-auto min-h-12',
+      },
+      // White on the #F25C1A orange is 3.3:1 — passes WCAG only as LARGE
+      // text, so the big conversion CTAs bump to 19px bold (guide's own
+      // "ตัวหนา ≥18px" rule for the orange).
+      {
+        variant: 'cta',
+        size: 'lg',
+        className: 'text-[19px] font-bold',
       },
       {
         variant: 'primary',

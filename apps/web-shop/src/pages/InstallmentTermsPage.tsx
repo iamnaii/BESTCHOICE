@@ -32,10 +32,10 @@ interface TermSection {
 const SECTIONS: TermSection[] = [
   {
     icon: <Calculator className="size-6" aria-hidden="true" />,
-    title: 'ดอกเบี้ยและค่างวด — เห็นตัวเลขจริงก่อนสมัคร',
+    title: 'ดอกเบี้ยและค่างวด — เห็นตัวเลขจริงก่อนตัดสินใจ',
     paragraphs: [
       'เราใช้ดอกเบี้ยแบบคงที่ (flat rate) — ค่างวดเท่ากันทุกเดือนตั้งแต่งวดแรกถึงงวดสุดท้าย ไม่มีดอกเบี้ยลอยตัว ไม่มีค่าธรรมเนียมแอบแฝง',
-      'ก่อนสมัคร คุณกดลองปรับจำนวนงวด (3–12 งวด) และเงินดาวน์ในเครื่องคิดค่างวดบนหน้าสินค้าได้เลย ตัวเลขที่เห็นคือประมาณการจากระบบจริงของเรา ไม่ใช่ตัวเลขโฆษณา',
+      'ก่อนตัดสินใจ คุณกดลองปรับจำนวนงวด (สูงสุด 12 งวด) และเงินดาวน์ในเครื่องคิดค่างวดบนหน้าสินค้าได้เลย ตัวเลขที่เห็นคือประมาณการจากระบบจริงของเรา ไม่ใช่ตัวเลขโฆษณา',
     ],
     bullets: [
       'ค่างวดรวมภาษีมูลค่าเพิ่มแล้ว — ไม่มีบวกเพิ่มทีหลัง',
@@ -153,7 +153,7 @@ export default function InstallmentTermsPage() {
               <Button asChild variant="primary" size="lg" fullWidth>
                 <Link to="/products">ดูสินค้า + ลองคำนวณค่างวด</Link>
               </Button>
-              <Button asChild variant="outline" size="lg" fullWidth>
+              <Button asChild variant="line" size="lg" fullWidth>
                 <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                   <MessageCircle className="size-4" aria-hidden="true" />
                   มีคำถาม? ทักไลน์ได้เลย

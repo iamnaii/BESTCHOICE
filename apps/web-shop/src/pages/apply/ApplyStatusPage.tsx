@@ -195,7 +195,7 @@ export default function ApplyStatusPage() {
                     </>
                   )}
 
-                  <Button asChild variant="outline" size="lg" fullWidth>
+                  <Button asChild variant="line" size="lg" fullWidth>
                     <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                       <MessageCircle className="size-4" aria-hidden="true" />
                       สอบถามทีมงานทาง LINE

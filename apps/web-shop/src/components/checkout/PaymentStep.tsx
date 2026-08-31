@@ -75,11 +75,12 @@ export default function PaymentStep(p: Props) {
           loyaltyDiscount={loyaltyDiscount}
         />
         <div className="flex gap-2">
-          <Button variant="outline" onClick={p.onBack}>
+          <Button variant="outline" size="lg" onClick={p.onBack}>
             ย้อน
           </Button>
           <Button
             className="flex-1"
+            size="lg"
             disabled={!channel || placeMut.isPending}
             onClick={() => placeMut.mutate()}
           >

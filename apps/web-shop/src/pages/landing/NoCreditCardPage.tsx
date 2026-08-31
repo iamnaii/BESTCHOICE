@@ -27,7 +27,7 @@ const NOT_NEEDED = [
 
 const NEEDED = [
   'บัตรประชาชนตัวจริง 1 ใบ',
-  'เงินดาวน์เริ่มประมาณ 20-30% ของราคาเครื่อง',
+  'เงินดาวน์ขั้นต่ำ 15% ของราคาเครื่อง (เริ่มต้นราว 900 บาท)',
 ];
 
 const FAQS = [
@@ -48,8 +48,8 @@ const FAQS = [
     answer: 'ไม่มี ค่างวดที่แจ้งคือยอดที่จ่ายจริงทุกเดือน อ่านเงื่อนไขดอกเบี้ยและการเป็นเจ้าของเครื่องได้ครบถ้วนบนหน้าเงื่อนไขการผ่อนก่อนตัดสินใจ',
   },
   {
-    question: 'อยู่ต่างจังหวัด ไม่ได้อยู่ลพบุรี สมัครได้ไหม',
-    answer: 'สมัครผ่อนออนไลน์ผ่านเว็บไซต์ได้จากทุกจังหวัด อนุมัติแล้วจัดส่งเครื่องถึงบ้านทั่วประเทศ',
+    question: 'อยู่ต่างจังหวัด ไม่ได้อยู่ลพบุรี ผ่อนได้ไหม',
+    answer: 'ทักไลน์สอบถามได้จากทุกจังหวัด แต่การทำสัญญาผ่อนต้องมารับเครื่องที่ร้านลพบุรี เพื่อยืนยันตัวตนและเซ็นสัญญา',
   },
 ];
 
@@ -66,7 +66,7 @@ const FAQ_JSON_LD = JSON.stringify({
 export default function NoCreditCardPage() {
   usePageMeta(
     'ผ่อนมือถือไม่ใช้บัตรเครดิต ใช้บัตรประชาชนใบเดียว',
-    'ผ่อนมือถือโดยไม่ต้องมีบัตรเครดิต ไม่ใช้สลิปเงินเดือน ไม่ต้องมีผู้ค้ำ — ใช้บัตรประชาชนใบเดียว ผ่อน iPhone มือ 1 และมือสองได้ 3-12 งวด ส่งทั่วประเทศ',
+    'ผ่อนมือถือโดยไม่ต้องมีบัตรเครดิต ไม่เช็กบูโร ไม่ต้องมีผู้ค้ำ — ใช้บัตรประชาชนใบเดียว ผ่อน iPhone มือ 1 และมือสองได้สูงสุด 12 งวด ดาวน์เริ่ม 900 บาท',
   );
 
   return (
@@ -108,7 +108,7 @@ export default function NoCreditCardPage() {
                   </ul>
                   <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground leading-snug">
                     <UserCheck className="size-4 shrink-0 mt-0.5 text-emerald-600" aria-hidden="true" />
-                    แค่นี้จริง ๆ — สมัครที่หน้าร้านลพบุรี หรือออนไลน์จากทุกจังหวัด
+                    แค่นี้จริง ๆ — เดินเข้าหน้าร้านลพบุรีได้เลย หรือทักไลน์สอบถามก่อนได้จากทุกจังหวัด
                   </p>
                 </CardBody>
               </Card>
@@ -133,13 +133,13 @@ export default function NoCreditCardPage() {
             <Stack gap={3} className="items-start leading-snug">
               <h2 className="text-xl font-bold leading-snug">เริ่มเลือกเครื่องได้เลย</h2>
               <p className="text-sm text-muted-foreground leading-snug">
-                ทุกเครื่องแสดงค่างวดจริงต่อเดือน ปรับดาวน์และจำนวนงวดดูได้ก่อนสมัคร
+                ทุกเครื่องแสดงค่างวดจริงต่อเดือน ปรับดาวน์และจำนวนงวดดูได้ก่อนตัดสินใจ
               </p>
               <div className="flex flex-wrap gap-3">
-                <Button asChild variant="primary">
+                <Button asChild variant="primary" size="lg">
                   <Link to="/products">ดูสินค้าพร้อมค่างวด</Link>
                 </Button>
-                <Button asChild variant="outline">
+                <Button asChild variant="line" size="lg">
                   <a href={lineOaMessageUrl('สอบถามผ่อนมือถือครับ/ค่ะ')} target="_blank" rel="noopener noreferrer">
                     ทักไลน์ {shopInfo.lineHandle}
                   </a>

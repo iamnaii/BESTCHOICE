@@ -36,16 +36,16 @@ export default function ShippingStep({ onNext, onBack }: Props) {
                 <div className="font-semibold">{m.label}</div>
                 <div className="text-sm text-muted-foreground">{m.etaDays}</div>
               </div>
-              <div className="font-bold">{m.fee === 0 ? 'ฟรี' : `฿${m.fee}`}</div>
+              <div className="font-bold text-primary num">{m.fee === 0 ? 'ฟรี' : `฿${m.fee}`}</div>
             </div>
           </button>
         ))}
       </div>
       <div className="flex gap-2">
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" size="lg" onClick={onBack}>
           ย้อนกลับ
         </Button>
-        <Button disabled={!picked} onClick={() => picked && onNext(picked.method, picked.fee)}>
+        <Button size="lg" disabled={!picked} onClick={() => picked && onNext(picked.method, picked.fee)}>
           ดำเนินการต่อ
         </Button>
       </div>

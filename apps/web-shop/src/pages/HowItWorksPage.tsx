@@ -1,10 +1,7 @@
 import { Link } from 'react-router';
 import {
-  Smartphone,
-  Clock,
-  FileText,
-  MapPin,
-  Wallet,
+  MessageCircle,
+  CreditCard,
   PartyPopper,
   ShieldCheck,
   type LucideIcon,
@@ -40,36 +37,18 @@ const STEPS: Step[] = [
     number: 1,
     title: copy.howItWorks.step1Title,
     description: copy.howItWorks.step1Description,
-    Icon: Smartphone,
+    Icon: MessageCircle,
   },
   {
     number: 2,
     title: copy.howItWorks.step2Title,
     description: copy.howItWorks.step2Description,
-    Icon: Clock,
+    Icon: CreditCard,
   },
   {
     number: 3,
     title: copy.howItWorks.step3Title,
     description: copy.howItWorks.step3Description,
-    Icon: FileText,
-  },
-  {
-    number: 4,
-    title: copy.howItWorks.step4Title,
-    description: copy.howItWorks.step4Description,
-    Icon: MapPin,
-  },
-  {
-    number: 5,
-    title: copy.howItWorks.step5Title,
-    description: copy.howItWorks.step5Description,
-    Icon: Wallet,
-  },
-  {
-    number: 6,
-    title: copy.howItWorks.step6Title,
-    description: copy.howItWorks.step6Description,
     Icon: PartyPopper,
   },
 ];
@@ -96,7 +75,7 @@ const FAQ_JSON_LD = JSON.stringify({
 export default function HowItWorksPage() {
   usePageMeta(
     copy.howItWorks.pageTitle,
-    'วิธีผ่อน iPhone มือ 1 และมือสองบัตรประชาชนใบเดียว 6 ขั้นตอนง่ายๆ ไม่ต้องใช้บัตรเครดิต ร้านมือถือลพบุรี',
+    'วิธีผ่อน iPhone มือ 1 และมือสองบัตรประชาชนใบเดียว 3 ขั้นตอนง่ายๆ ไม่เช็กบูโร ไม่ต้องใช้บัตรเครดิต ร้านมือถือลพบุรี',
   );
 
   return (
@@ -160,7 +139,7 @@ export default function HowItWorksPage() {
         </Stack>
       </Container>
 
-      <Section tone="muted" padding="md">
+      <Section padding="md">
         <Container>
           <TrustStrip />
         </Container>

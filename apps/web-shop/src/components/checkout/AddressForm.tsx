@@ -89,7 +89,7 @@ export default function AddressForm({ onSubmit, initial }: Props) {
           <span className="text-xs text-destructive">{errors.postalCode.message}</span>
         )}
       </div>
-      <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+      <Button type="submit" size="lg" disabled={isSubmitting} className="w-full sm:w-auto">
         ดำเนินการต่อ
       </Button>
     </form>

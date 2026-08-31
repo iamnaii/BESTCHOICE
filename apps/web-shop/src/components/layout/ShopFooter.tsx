@@ -7,7 +7,6 @@ const SERVICE_LINKS = [
   { to: '/sell', label: 'ขาย/เทิร์น iPhone' },
   { to: '/promotions', label: 'โปรโมชัน' },
   { to: '/how-it-works', label: 'วิธีผ่อน' },
-  { to: '/apply/status', label: 'เช็คสถานะใบสมัคร' },
 ];
 
 const POLICY_LINKS = [
@@ -23,11 +22,11 @@ const POLICY_LINKS = [
 
 const socialCls =
   'size-11 rounded-full bg-white/10 ring-1 ring-inset ring-white/15 grid place-items-center ' +
-  'text-white/60 transition-colors';
+  'text-white/75 transition-colors';
 
 export default function ShopFooter() {
   return (
-    <footer className="mt-12 bg-ink text-white/70">
+    <footer className="mt-12 bg-ink text-white/85">
       <div className="container mx-auto max-w-7xl px-4 md:px-6 pt-12 pb-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           <div className="col-span-2 md:col-span-1">
@@ -35,11 +34,13 @@ export default function ShopFooter() {
               <span className="size-9 rounded-xl bg-white grid place-items-center overflow-hidden">
                 <img src="/logo-icon.svg" alt="" className="size-7" aria-hidden />
               </span>
-              <span className="font-brand text-base font-extrabold text-white">
-                BESTCHOICE
+              {/* Guide footer wordmark: BEST in white, CHOICE in the mint. */}
+              <span className="font-brand text-base font-extrabold italic">
+                <span className="text-white">BEST</span>
+                <span className="text-emerald-400">CHOICE</span>
               </span>
             </div>
-            <p className="mt-4 text-sm leading-snug text-white/50">
+            <p className="mt-4 text-sm leading-snug text-white/75">
               ร้านขาย iPhone มือ 1 และมือสองที่ลพบุรี ผ่อนได้ด้วยบัตรประชาชนใบเดียว
               เครื่องผ่านตรวจ 30 จุดทุกเครื่อง
             </p>
@@ -58,7 +59,7 @@ export default function ShopFooter() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="LINE"
-                className={`${socialCls} hover:bg-[#06C755] hover:text-white hover:ring-[#06C755]`}
+                className={`${socialCls} hover:bg-line-app hover:text-white hover:ring-line-app`}
               >
                 <MessageCircle className="size-5" aria-hidden />
               </a>
@@ -79,7 +80,7 @@ export default function ShopFooter() {
             <ul className="mt-4 space-y-2.5 text-sm leading-snug">
               {SERVICE_LINKS.map((l) => (
                 <li key={l.to}>
-                  <Link to={l.to} className="text-white/50 hover:text-white transition-colors">
+                  <Link to={l.to} className="text-white/75 hover:text-white transition-colors">
                     {l.label}
                   </Link>
                 </li>
@@ -92,7 +93,7 @@ export default function ShopFooter() {
             <ul className="mt-4 space-y-2.5 text-sm leading-snug">
               {POLICY_LINKS.map((l) => (
                 <li key={l.to}>
-                  <Link to={l.to} className="text-white/50 hover:text-white transition-colors">
+                  <Link to={l.to} className="text-white/75 hover:text-white transition-colors">
                     {l.label}
                   </Link>
                 </li>
@@ -102,7 +103,7 @@ export default function ShopFooter() {
 
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wide text-white">ติดต่อเรา</h3>
-            <ul className="mt-4 space-y-3 text-sm leading-snug text-white/50">
+            <ul className="mt-4 space-y-3 text-sm leading-snug text-white/75">
               <li className="flex gap-2.5">
                 <Phone className="size-4 mt-0.5 shrink-0" aria-hidden />
                 <a href={shopInfo.phoneHref} className="hover:text-white transition-colors">
@@ -128,7 +129,7 @@ export default function ShopFooter() {
           </div>
         </div>
 
-        <div className="mt-10 border-t border-white/10 pt-6 text-center text-xs text-white/40 leading-snug">
+        <div className="mt-10 border-t border-white/15 pt-6 text-center text-xs text-white/75 leading-snug">
           © 2026 BESTCHOICE Phone Shop — ลพบุรี
         </div>
       </div>

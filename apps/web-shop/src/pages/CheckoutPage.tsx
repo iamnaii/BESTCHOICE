@@ -87,7 +87,7 @@ export default function CheckoutPage() {
                   <span className="text-sm text-muted-foreground">
                     {copy.checkout.toggleSummary}
                   </span>
-                  <span className="font-bold">
+                  <span className="num font-bold text-primary">
                     ฿{Number(item.product.sellingPrice + shippingFee).toLocaleString()}
                   </span>
                 </button>

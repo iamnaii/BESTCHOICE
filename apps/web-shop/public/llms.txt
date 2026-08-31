@@ -1,7 +1,9 @@
 # BESTCHOICE Phone Shop
 
 > ร้านขายไอโฟนมือ 1 และมือสองคุณภาพในจังหวัดลพบุรี ผ่อนได้ด้วยบัตรประชาชนใบเดียว
-> ไม่ต้องใช้บัตรเครดิต ไม่ต้องมีผู้ค้ำ เลือกผ่อน 3-12 งวด รับซื้อ-เทิร์นเครื่องเก่า
+> ไม่เช็กบูโร ไม่ต้องใช้บัตรเครดิต ไม่ต้องมีผู้ค้ำ ดาวน์ขั้นต่ำ 15% (เริ่มราว 900 บาท)
+> ผ่อนสูงสุด 12 งวด รับประกันร้าน 60 วัน รับซื้อ-เทิร์นเครื่องเก่า
+> ติดต่อและปิดการขายผ่าน LINE/โทร แล้วมารับเครื่องที่หน้าร้านลพบุรี (ไม่มีระบบจอง/สมัครผ่อนออนไลน์)
 > BESTCHOICE sells new and quality used iPhones in Lopburi, Thailand, with installment
 > plans that require only a Thai national ID card (no credit card, no guarantor).
 
@@ -13,7 +15,7 @@
 
 - [หน้าแรก](https://www.bestchoicephone.com/): ภาพรวมร้านและสินค้าแนะนำ
 - [สินค้าทั้งหมด](https://www.bestchoicephone.com/products): แคตตาล็อก iPhone มือ 1 และมือสอง พร้อมราคาเงินสดและค่างวดผ่อน
-- [ผ่อนยังไง](https://www.bestchoicephone.com/how-it-works): ขั้นตอนการผ่อน 6 ขั้น + คำถามที่พบบ่อย (ใช้เอกสารอะไร ดาวน์เท่าไร ผ่อนกี่งวด)
+- [ผ่อนยังไง](https://www.bestchoicephone.com/how-it-works): ขั้นตอนการผ่อน 3 ขั้น (ทักแชทเลือกรุ่น → เตรียมบัตรประชาชน → มาที่ร้าน ดาวน์แล้วรับเครื่อง) + คำถามที่พบบ่อย (ใช้เอกสารอะไร ดาวน์เท่าไร ผ่อนกี่งวด)
 - [เงื่อนไขการผ่อน](https://www.bestchoicephone.com/installment-terms): ดอกเบี้ยแบบคงที่ กรรมสิทธิ์เครื่อง และนโยบายล็อกเครื่อง อธิบายตรงไปตรงมา
 - [ขาย/เทิร์นเครื่องเก่า](https://www.bestchoicephone.com/sell): รับซื้อ iPhone มือสอง ประเมินราคาทันที
 - [โปรโมชัน](https://www.bestchoicephone.com/promotions): โปรโมชันปัจจุบัน
@@ -27,6 +29,6 @@
 ## ข้อมูลบริการ
 
 - [การจัดส่ง](https://www.bestchoicephone.com/shipping): ช่องทางจัดส่งและค่าบริการ หรือรับที่หน้าร้านลพบุรีฟรี
-- [การรับประกันและคืนสินค้า](https://www.bestchoicephone.com/returns): รับประกันร้าน 30 วัน + เงื่อนไขคืนสินค้า 7 วัน
+- [การรับประกันและคืนสินค้า](https://www.bestchoicephone.com/returns): รับประกันร้าน 60 วัน + เงื่อนไขคืนสินค้า 7 วัน
 - [เกี่ยวกับเรา](https://www.bestchoicephone.com/about): เรื่องราวของร้านตั้งแต่ปี 2020
 - [ติดต่อเรา](https://www.bestchoicephone.com/contact): ที่อยู่ เบอร์โทร LINE และแผนที่

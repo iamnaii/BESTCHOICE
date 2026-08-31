@@ -18,7 +18,7 @@ export default function CartSummary({ subtotal, onCheckout }: Props) {
       </div>
       <div className="border-t pt-3 flex justify-between font-bold">
         <span>ยอดรวม</span>
-        <span>฿{subtotal.toLocaleString()}</span>
+        <span className="text-primary num">฿{subtotal.toLocaleString()}</span>
       </div>
       <Button className="w-full" size="lg" onClick={onCheckout}>
         ดำเนินการชำระเงิน

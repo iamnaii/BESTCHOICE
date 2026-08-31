@@ -24,6 +24,16 @@
     <!-- canonical จงใจไม่ใส่ static: ไฟล์นี้เป็น fallback shell ของทุก route ที่ไม่ได้
          prerender — canonical แบบตายตัวจะประกาศผิดหน้าใน raw HTML; usePageMeta
          สร้าง <link rel="canonical"> ต่อ route เอง และหน้า prerender ได้ค่าที่ stamp แล้ว -->
+    <!-- Favicon: ก่อนหน้านี้ไม่มีแท็กไอคอนเลย เบราว์เซอร์จึงลอง /favicon.ico ซึ่งโดน
+         rewrite ** ของ Firebase ตอบเป็น spa-shell.html (200 แต่ content-type html)
+         ⇒ แท็บขึ้นไอคอนลูกโลก. ประกาศไฟล์จริงทั้งชุด (svg สำหรับเบราว์เซอร์ใหม่,
+         ico เป็น fallback, apple-touch สำหรับ Add to Home Screen บน iOS) -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="48x48 32x32 16x16" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#167F5E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

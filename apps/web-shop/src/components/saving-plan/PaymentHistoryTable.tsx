@@ -22,7 +22,7 @@ export default function PaymentHistoryTable({ payments }: Props) {
           {payments.map((p) => (
             <tr key={p.id} className="border-t border-border">
               <td className="p-3">{new Date(p.paidAt).toLocaleDateString('th-TH')}</td>
-              <td className="p-3 font-semibold">฿{Number(p.amount).toLocaleString()}</td>
+              <td className="p-3 font-semibold text-primary num">฿{Number(p.amount).toLocaleString()}</td>
               <td className="p-3 text-muted-foreground">{p.paymentMethod}</td>
             </tr>
           ))}

@@ -106,7 +106,7 @@ export default function OrderDetailPage() {
                     <div className="font-semibold truncate">{data.product?.name}</div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">ราคาสินค้า</span>
-                      <span>฿{Number(data.productPrice).toLocaleString()}</span>
+                      <span className="num">฿{Number(data.productPrice).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">
@@ -128,7 +128,7 @@ export default function OrderDetailPage() {
                     )}
                     <div className="border-t pt-2 mt-2 flex justify-between font-bold">
                       <span>รวม</span>
-                      <span>฿{Number(data.totalAmount).toLocaleString()}</span>
+                      <span className="num text-primary">฿{Number(data.totalAmount).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>

@@ -92,7 +92,7 @@ export default function SavingPlansPage() {
                       />
 
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground leading-snug">
-                        <span>
+                        <span className="num">
                           งวดละ ฿{Number(p.monthlyAmount).toLocaleString()} ·{' '}
                           {p.durationMonths} เดือน
                         </span>

@@ -24,7 +24,7 @@ export function Stepper({ steps, current, className }: Props) {
               <div
                 className={cn(
                   'absolute top-4 -left-1/2 right-1/2 h-0.5',
-                  idx <= current ? 'bg-emerald-500' : 'bg-zinc-200',
+                  idx <= current ? 'bg-emerald-600' : 'bg-zinc-200',
                 )}
                 aria-hidden="true"
               />
@@ -32,8 +32,8 @@ export function Stepper({ steps, current, className }: Props) {
             <div
               className={cn(
                 'relative size-8 rounded-full flex items-center justify-center font-semibold text-sm z-10',
-                state === 'done' && 'bg-emerald-500 text-white',
-                state === 'active' && 'bg-emerald-500 text-white ring-4 ring-emerald-100',
+                state === 'done' && 'bg-emerald-600 text-white',
+                state === 'active' && 'bg-emerald-600 text-white ring-4 ring-emerald-100',
                 state === 'future' && 'bg-zinc-100 text-zinc-400',
               )}
             >

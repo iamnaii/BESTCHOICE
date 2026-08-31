@@ -8,8 +8,8 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const variantClass: Record<CardVariant, string> = {
-  plain: 'bg-card',
-  elevated: 'bg-card shadow-md',
+  plain: 'bg-card border border-border',
+  elevated: 'bg-card border border-border shadow-md',
   outlined: 'bg-card border border-zinc-200',
   interactive:
     'bg-card border border-zinc-200 hover:shadow-lg hover:border-emerald-200 transition-all duration-base cursor-pointer',

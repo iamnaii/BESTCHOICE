@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router';
+import { MessageCircle } from 'lucide-react';
 import { Card, CardHeader, CardBody, CardTitle, Badge, Button } from '@/components';
+import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
 
 interface PreviewResponse {
   available: boolean;
@@ -195,7 +196,6 @@ function DownPaymentInput({
 }
 
 export function InstallmentCalculatorCard({ productId, installmentPrice }: Props) {
-  const nav = useNavigate();
   const [months, setMonths] = useState(12);
   const [downPct, setDownPct] = useState(DEFAULT_DOWN_PCT);
   /**
@@ -343,7 +343,7 @@ export function InstallmentCalculatorCard({ productId, installmentPrice }: Props
                     ของเรา
                   </Badge>
                 </div>
-                <div className="text-2xl font-bold text-emerald-700 leading-snug">
+                <div className="num text-2xl font-bold text-emerald-700 leading-snug">
                   ฿{formatTHB(bcResult.monthlyPayment ?? 0)}
                   <span className="text-sm font-normal text-emerald-600"> / เดือน</span>
                 </div>
@@ -361,7 +361,7 @@ export function InstallmentCalculatorCard({ productId, installmentPrice }: Props
                     ไฟแนนซ์นอก
                   </Badge>
                 </div>
-                <div className="text-2xl font-bold text-blue-700 leading-snug">
+                <div className="num text-2xl font-bold text-blue-700 leading-snug">
                   ฿{formatTHB(gfinResult.monthlyPayment ?? 0)}
                   <span className="text-sm font-normal text-blue-600"> / เดือน</span>
                 </div>
@@ -378,9 +378,16 @@ export function InstallmentCalculatorCard({ productId, installmentPrice }: Props
           ค่างวดข้างต้นเป็นการประมาณการ — ราคาจริงเป็นไปตามสัญญาที่ลงนาม
         </p>
 
-        {/* CTA */}
-        <Button variant="primary" size="md" onClick={() => nav(`/apply/${productId}`)}>
-          สมัครผ่อนออนไลน์ →
+        {/* CTA — ร้านไม่มีสมัครผ่อนออนไลน์: ปิดจ๊อบผ่านแชท (คำสั่งเจ้าของ 2026-08-31) */}
+        <Button asChild variant="primary" size="lg">
+          <a
+            href={lineOaMessageUrl(`สนใจผ่อนเครื่องนี้ ${productShareUrl(productId)}`)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <MessageCircle className="size-4" aria-hidden="true" />
+            ทักแชทผ่อนเครื่องนี้
+          </a>
         </Button>
       </CardBody>
     </Card>

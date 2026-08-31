@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useParams, Link } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
-import { MessageCircle, Share2 } from 'lucide-react';
+import { MessageCircle, Phone, Share2 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { getSessionId } from '@/lib/session';
 import {
   copy,
+  shopInfo,
   lineOaMessageUrl,
   lineProductPrefill,
   messengerRefUrl,
   productShareUrl,
 } from '@/lib/copy';
 import { media } from '@/lib/media-placeholders';
-import { useCartStore } from '@/stores/cartStore';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import ShopLayout from '@/components/layout/ShopLayout';
@@ -70,8 +69,6 @@ function conditionDescription(g: string): string {
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const nav = useNavigate();
-  const cart = useCartStore();
   const track = useTrackEvent();
   const [activeImage, setActiveImage] = useState(0);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
@@ -169,31 +166,6 @@ export default function ProductDetailPage() {
       : undefined,
   );
 
-  const reserveMut = useMutation({
-    mutationFn: () =>
-      api
-        .post('/api/shop/reservations', {
-          productId: selectedUnit?.id ?? id,
-          sessionId: getSessionId(),
-        })
-        .then((r) => r.data as { id: string; expiresAt: string }),
-    onSuccess: (res) => {
-      cart.setItem(res.id, selectedUnit?.id ?? id!);
-      if (id) {
-        track('AddToCart', {
-          content_ids: [selectedUnit?.id ?? id],
-          value: selectedUnit?.cashPrice ?? undefined,
-          currency: 'THB',
-        });
-      }
-      toast.success('จองเครื่องนี้ไว้ 15 นาทีแล้ว');
-      nav('/cart');
-    },
-    onError: (e: { response?: { data?: { message?: string } } }) => {
-      toast.error(e.response?.data?.message ?? 'จองไม่สำเร็จ');
-    },
-  });
-
   // B0: head query ของ getProductDetail ผ่าน readiness แล้ว → controller ตอบ 404 ได้จริง
   // ถ้ายังรวม error เข้ากับ loading ลิงก์ที่ส่งลูกค้าจะเป็น Skeleton หมุนค้างตลอดกาล
   //
@@ -239,7 +211,7 @@ export default function ProductDetailPage() {
                 </p>
                 <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
                   <Button
-                    variant="cta"
+                    variant="primary"
                     size="lg"
                     onClick={() => refetch()}
                     disabled={isFetching}
@@ -446,7 +418,7 @@ export default function ProductDetailPage() {
             <div className="space-y-1">
               <div className="flex flex-wrap items-baseline gap-2">
                 {price != null && price > 0 ? (
-                  <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
+                  <div className="num text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
                     ฿{price.toLocaleString()}
                   </div>
                 ) : (
@@ -468,7 +440,7 @@ export default function ProductDetailPage() {
                 )}
               </div>
               {monthlyFrom && (
-                <div className="text-base font-semibold text-emerald-700 leading-snug">
+                <div className="num text-base font-semibold text-emerald-700 leading-snug">
                   ผ่อนเริ่ม ฿{monthlyFrom.toLocaleString()}/เดือน
                   <span className="text-xs font-normal text-muted-foreground">
                     {' '}
@@ -512,23 +484,23 @@ export default function ProductDetailPage() {
                 </Button>
               ) : (
                 <>
-                  <Button
-                    variant="cta"
-                    size="lg"
-                    fullWidth
-                    onClick={() => reserveMut.mutate()}
-                    disabled={reserveMut.isPending}
-                    loading={reserveMut.isPending}
-                  >
-                    {copy.product.reserveCta}
+                  {/* ร้านขายผ่านแชท/โทรเป็นหลัก — ไม่มีบริการจอง/สมัครผ่อนออนไลน์
+                      (คำสั่งเจ้าของ 2026-08-31: ตัด CTA จอง 15 นาที + สมัครผ่อนออก) */}
+                  <Button asChild variant="cta" size="lg" fullWidth>
+                    <a
+                      href={lineOaMessageUrl(linePrefill)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle className="size-4" aria-hidden="true" />
+                      ทักแชทถามเครื่องนี้
+                    </a>
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    fullWidth
-                    onClick={() => nav(`/apply/${selectedUnit?.id ?? data.id}`)}
-                  >
-                    สมัครผ่อนทันที
+                  <Button asChild variant="outline" size="lg" fullWidth>
+                    <a href={shopInfo.phoneHref}>
+                      <Phone className="size-4" aria-hidden="true" />
+                      โทร {shopInfo.phoneDisplay}
+                    </a>
                   </Button>
                 </>
               )}
@@ -537,26 +509,15 @@ export default function ProductDetailPage() {
                 {copy.product.shareCta}
               </Button>
               <div className="flex flex-col gap-1.5">
-                {/* หมดสต็อกแล้ว: ปุ่มไลน์หลักด้านบนคือ CTA เดียวกันนี้อยู่แล้ว —
+                {/* ปุ่มไลน์หลักด้านบนคือ CTA เดียวกันแล้วทั้งสองสถานะ —
                     ไม่ซ้ำลิงก์ปลายทางเดียวกันสองจุด (Messenger ยังโชว์ต่อ
                     เพราะเป็นช่องทางติดต่อคนละช่อง) */}
-                {!isSoldOut && (
-                  <a
-                    href={lineOaMessageUrl(linePrefill)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
-                  >
-                    <MessageCircle className="size-4" aria-hidden="true" />
-                    {copy.product.askLineCta}
-                  </a>
-                )}
                 {messengerUrl && (
                   <a
                     href={messengerUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-full bg-messenger px-4 py-2 font-head text-sm font-semibold text-white hover:bg-messenger/90 leading-snug"
                   >
                     <MessageCircle className="size-4" aria-hidden="true" />
                     {copy.product.askMessengerCta}
@@ -584,7 +545,7 @@ export default function ProductDetailPage() {
         </Section>
       )}
 
-      <Section tone="muted" padding="sm">
+      <Section padding="sm">
         <Container>
           <TrustStrip />
         </Container>
@@ -598,9 +559,8 @@ export default function ProductDetailPage() {
 
       <RelatedSection productId={id!} />
 
-      {/* Mobile sticky CTA — installment customers are the majority; give
-         "สมัครผ่อน" equal billing with reserve instead of burying it above the fold.
-         B5 T12b: หมดสต็อกแล้ว → ปุ่มเดียว พาไปทักแชทแทน (ดู desktop CTA ด้านบน) */}
+      {/* Mobile sticky CTA — ร้านขายผ่านแชท/โทร: LINE เป็นปุ่มหลัก โทรเป็นรอง
+         (หมดสต็อก → ปุ่มเดียว พาไปทักแชทเช็คเครื่องใกล้เคียง) */}
       <StickyBottomBar>
         {isSoldOut ? (
           <Button asChild variant="cta" size="lg" fullWidth>
@@ -611,46 +571,29 @@ export default function ProductDetailPage() {
           </Button>
         ) : (
           <div className="flex gap-2">
-            <Button
-              variant="cta"
-              size="lg"
-              className="flex-1"
-              onClick={() => reserveMut.mutate()}
-              disabled={reserveMut.isPending}
-              loading={reserveMut.isPending}
-            >
-              {copy.product.reserveCta}
+            <Button asChild variant="cta" size="lg" className="flex-1">
+              <a href={lineOaMessageUrl(linePrefill)} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="size-4" aria-hidden="true" />
+                ทักแชทถามเครื่องนี้
+              </a>
             </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="flex-1"
-              onClick={() => nav(`/apply/${selectedUnit?.id ?? data.id}`)}
-            >
-              สมัครผ่อน
+            <Button asChild variant="outline" size="lg" className="flex-1">
+              <a href={shopInfo.phoneHref}>
+                <Phone className="size-4" aria-hidden="true" />
+                โทร
+              </a>
             </Button>
           </div>
         )}
       </StickyBottomBar>
       <StickyBottomBarSpacer />
       <div className="md:hidden flex flex-col items-center gap-2 py-3">
-        {!isSoldOut && (
-          <a
-            href={lineOaMessageUrl(linePrefill)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
-          >
-            <MessageCircle className="size-4" aria-hidden="true" />
-            {copy.product.askLineCta}
-          </a>
-        )}
         {messengerUrl && (
           <a
             href={messengerUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+            className="inline-flex items-center justify-center gap-1.5 rounded-full bg-messenger px-4 py-2 font-head text-sm font-semibold text-white hover:bg-messenger/90 leading-snug"
           >
             <MessageCircle className="size-4" aria-hidden="true" />
             {copy.product.askMessengerCta}

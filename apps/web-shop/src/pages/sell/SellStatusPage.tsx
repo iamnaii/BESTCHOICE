@@ -139,7 +139,7 @@ export default function SellStatusPage() {
                 <div className="text-sm font-medium text-emerald-800 leading-snug">
                   {isExchange ? 'มูลค่าเทิร์นที่ยืนยันแล้ว' : copy.sell.quotedTitle}
                 </div>
-                <div className="text-4xl font-bold text-emerald-600 leading-snug">
+                <div className="text-4xl font-bold text-emerald-600 leading-snug num">
                   ฿{estimated.toLocaleString()}
                 </div>
                 {data.quoteBreakdown && (
@@ -188,7 +188,7 @@ export default function SellStatusPage() {
                 <div className="text-sm font-medium text-emerald-800 leading-snug">
                   ราคาที่ทีมงานเสนอ
                 </div>
-                <div className="text-4xl font-bold text-emerald-600 leading-snug">
+                <div className="text-4xl font-bold text-emerald-600 leading-snug num">
                   ฿{offered.toLocaleString()}
                 </div>
                 {agreed !== null && (
@@ -234,7 +234,7 @@ export default function SellStatusPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Button
                 asChild
-                variant="primary"
+                variant="line"
                 size="lg"
                 fullWidth
                 data-testid="buyback-accept"

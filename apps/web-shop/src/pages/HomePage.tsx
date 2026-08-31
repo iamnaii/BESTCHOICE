@@ -5,6 +5,7 @@ import {
   ShieldCheck,
   BadgeCheck,
   Wallet,
+  Briefcase,
   MessageCircle,
   PiggyBank,
   Target,
@@ -13,6 +14,8 @@ import {
   Repeat,
   MapPin,
   Clock,
+  Star,
+  Facebook,
 } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import PromotionsStrip from '@/components/shop/PromotionsStrip';
@@ -42,24 +45,24 @@ interface CatalogResponse {
 
 const WHY_US_ITEMS = [
   {
-    icon: <ShieldCheck className="size-7" />,
-    title: 'รับประกันร้าน 30 วัน',
-    description: 'ครอบคลุมปัญหาการใช้งานปกติ เปลี่ยน/ซ่อมให้ฟรี',
-  },
-  {
     icon: <BadgeCheck className="size-7" />,
-    title: 'ตรวจสอบ 30 จุดก่อนส่ง',
-    description: 'ทุกเครื่องผ่านเช็คแบตเตอรี่ จอ กล้อง ปุ่ม และเซ็นเซอร์ครบ',
+    title: 'บัตรประชาชนใบเดียว',
+    description: 'ไม่เช็กบูโร ไม่ต้องใช้บัตรเครดิต ไม่ต้องมีผู้ค้ำ',
   },
   {
     icon: <Wallet className="size-7" />,
-    title: 'ผ่อนได้บัตร ปชช. ใบเดียว',
-    description: '3-12 งวด ไม่ต้องใช้บัตรเครดิต อนุมัติไว',
+    title: 'ดาวน์เริ่ม 900 บาท',
+    description: 'ผ่อนสูงสุด 12 งวด มีสลิปเงินเดือนได้เรทร้าน ดาวน์-งวดถูกลง',
   },
   {
-    icon: <MessageCircle className="size-7" />,
-    title: 'ซัพพอร์ตผ่าน LINE',
-    description: 'ทีมงานตอบไวในเวลาทำการ ติดตามสถานะสัญญาได้ทุกขั้น',
+    icon: <ShieldCheck className="size-7" />,
+    title: 'รับประกันร้าน 60 วัน',
+    description: 'ทุกเครื่องตรวจ 30 จุดก่อนส่งมอบ มีปัญหาเปลี่ยน/ซ่อมให้ฟรี',
+  },
+  {
+    icon: <Briefcase className="size-7" />,
+    title: 'ผ่อนได้ทุกอาชีพ',
+    description: 'พนักงานบริษัท โรงงาน ค้าขาย ฟรีแลนซ์ นักศึกษา ก็ผ่อนได้',
   },
 ];
 
@@ -83,7 +86,7 @@ const SERVICE_ITEMS = [
 export default function HomePage() {
   usePageMeta(
     undefined,
-    'iPhone มือ 1 และมือสองคุณภาพ ผ่อนได้บัตรประชาชนใบเดียว ตรวจ 30 จุด รับประกันร้าน 30 วัน ร้านมือถือลพบุรี',
+    'iPhone มือ 1 และมือสองคุณภาพ ผ่อนได้บัตรประชาชนใบเดียว ไม่เช็กบูโร ดาวน์เริ่ม 900 บาท รับประกันร้าน 60 วัน ร้านมือถือลพบุรี',
   );
 
   const { data, isLoading, isError, refetch } = useQuery<CatalogResponse>({
@@ -106,13 +109,13 @@ export default function HomePage() {
 
       <PromotionsStrip />
 
-      <Section tone="muted" padding="sm">
+      <Section padding="sm">
         <Container>
           <TrustStrip />
         </Container>
       </Section>
 
-      <Section padding="md">
+      <Section tone="muted" padding="md">
         <Container>
           <SectionHeader
             title={copy.home.featuredTitle}
@@ -135,7 +138,7 @@ export default function HomePage() {
         </Container>
       </Section>
 
-      <Section tone="emerald" padding="md">
+      <Section padding="md">
         <Container>
           <SectionHeader
             title={copy.home.whyUsTitle}
@@ -224,6 +227,54 @@ export default function HomePage() {
         </Container>
       </Section>
 
+      {/* รีวิวจากลูกค้าจริง — ตัวเลข ณ 2026-08 จาก Google Maps/เพจจริง ทุกลิงก์กดตรวจได้เอง */}
+      <Section padding="md">
+        <Container>
+          <SectionHeader
+            title="รีวิวจากลูกค้าจริง"
+            description="กดดูรีวิวทั้งหมดได้ที่ Google Maps และเพจ Facebook ของร้าน"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card variant="outlined" className="h-full">
+              <CardBody className="space-y-3 leading-snug">
+                <div className="flex items-end gap-3">
+                  <span className="num text-4xl font-bold leading-none">5.0</span>
+                  <span
+                    className="flex items-center gap-0.5 text-promo pb-0.5"
+                    aria-label="5 ดาวเต็ม"
+                  >
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star key={i} className="size-4 fill-current" aria-hidden="true" />
+                    ))}
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">860+ รีวิวบน Google Maps</p>
+                <Button asChild variant="outline" size="md" className="self-start">
+                  <a href={shopInfo.googleReviewsUrl} target="_blank" rel="noopener noreferrer">
+                    <MapPin className="size-4" aria-hidden="true" />
+                    อ่านรีวิวบน Google
+                  </a>
+                </Button>
+              </CardBody>
+            </Card>
+            <Card variant="outlined" className="h-full">
+              <CardBody className="space-y-3 leading-snug">
+                <div className="num text-4xl font-bold leading-none">33,000+</div>
+                <p className="text-sm text-muted-foreground">
+                  ผู้ติดตามเพจ Facebook รีวิวและเครื่องเข้าใหม่ทุกวัน
+                </p>
+                <Button asChild variant="outline" size="md" className="self-start">
+                  <a href={shopInfo.facebookReviewsUrl} target="_blank" rel="noopener noreferrer">
+                    <Facebook className="size-4" aria-hidden="true" />
+                    อ่านรีวิวบน Facebook
+                  </a>
+                </Button>
+              </CardBody>
+            </Card>
+          </div>
+        </Container>
+      </Section>
+
       {/* มาหาเราที่ร้าน — config-driven: รูป/ปุ่มนำทางโผล่เองเมื่อร้านใส่ mapsUrl/storePhotoUrl */}
       <Section tone="muted" padding="md">
         <Container>
@@ -267,7 +318,7 @@ export default function HomePage() {
                       </a>
                     </Button>
                   )}
-                  <Button asChild variant="outline" size="lg">
+                  <Button asChild variant="line" size="lg">
                     <a
                       href={lineOaMessageUrl('สนใจนัดหมายเข้ามาดูเครื่องที่ร้านครับ/ค่ะ')}
                       target="_blank"
@@ -280,6 +331,15 @@ export default function HomePage() {
                 </div>
               </CardBody>
             </div>
+            {/* แผนที่จริงแบบฝัง — จุดเดียวกับปุ่มนำทาง (query เดียวกับ mapsUrl) */}
+            <iframe
+              src="https://maps.google.com/maps?q=BESTCHOICE%20phone%20shop%20%E0%B8%A5%E0%B8%9E%E0%B8%9A%E0%B8%B8%E0%B8%A3%E0%B8%B5&z=16&output=embed"
+              title="แผนที่ร้าน BESTCHOICE ลพบุรี"
+              className="block h-64 w-full border-0 md:h-80"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
           </Card>
         </Container>
       </Section>

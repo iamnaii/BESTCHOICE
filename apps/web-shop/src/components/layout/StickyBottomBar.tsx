@@ -23,5 +23,5 @@ export function StickyBottomBar({
 /** Use inside page layouts to reserve space for the fixed bar so content
     isn't hidden behind it on mobile. */
 export function StickyBottomBarSpacer() {
-  return <div className="md:hidden h-20" aria-hidden="true" />;
+  return <div className="md:hidden h-24" aria-hidden="true" />;
 }

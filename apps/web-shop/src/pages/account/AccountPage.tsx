@@ -50,17 +50,17 @@ export default function AccountPage() {
           <Stack gap={6}>
             <Card
               variant="elevated"
-              className="bg-gradient-to-r from-emerald-50 to-emerald-100"
+              className="bg-muted"
             >
               <CardBody>
                 <div className="flex items-center gap-3 leading-snug">
-                  <div className="flex size-12 items-center justify-center rounded-full bg-emerald-500 text-white">
+                  <div className="flex size-12 items-center justify-center rounded-full bg-emerald-600 text-white">
                     <BadgeCheck className="size-6" />
                   </div>
                   <div>
                     <div className="text-sm text-emerald-900">คะแนนสะสม</div>
                     <div className="leading-snug">
-                      <span className="text-3xl font-bold text-emerald-600">
+                      <span className="text-3xl font-bold text-emerald-600 num">
                         {customer.loyaltyBalance ?? 0}
                       </span>
                       <span className="ml-1 text-sm text-emerald-900">คะแนน</span>

@@ -106,7 +106,7 @@ export default function SavingPlanDetailPage() {
                     <div className="space-y-2 border-t border-zinc-200 pt-3">
                       <div className="flex items-center justify-between text-sm leading-snug">
                         <span className="text-muted-foreground">เป้าหมาย</span>
-                        <span className="font-semibold text-foreground">
+                        <span className="font-semibold text-foreground num">
                           ฿{Number(plan.targetAmount).toLocaleString()}
                         </span>
                       </div>
@@ -131,7 +131,7 @@ export default function SavingPlanDetailPage() {
                   <CardBody className="flex flex-col gap-3">
                     <div className="space-y-1 leading-snug">
                       <div className="text-sm text-muted-foreground">ยอดที่ต้องชำระงวดนี้</div>
-                      <div className="text-3xl font-bold text-emerald-600">
+                      <div className="text-3xl font-bold text-emerald-600 num">
                         ฿{Number(plan.monthlyAmount).toLocaleString()}
                       </div>
                     </div>

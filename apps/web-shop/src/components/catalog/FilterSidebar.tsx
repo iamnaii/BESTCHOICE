@@ -220,7 +220,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
   if (bare) return <div>{body}</div>;
 
   return (
-    <aside className="rounded-[40px] border-8 border-card bg-zinc-50 shadow-lg">
+    <aside className="rounded-[40px] border border-border bg-card shadow-lg">
       <div className="flex items-center gap-2.5 px-4 pt-4">
         <span className="size-7 rounded-xl bg-ink grid place-items-center shrink-0">
           <SlidersHorizontal className="size-3.5 text-ink-foreground" aria-hidden />

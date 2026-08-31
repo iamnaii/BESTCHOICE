@@ -102,7 +102,7 @@ export default function ShippingPage() {
                         <span className="inline-flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                           <m.Icon className="size-5" aria-hidden="true" />
                         </span>
-                        <span className="text-base font-semibold text-emerald-700">{m.fee}</span>
+                        <span className="num text-base font-semibold text-primary">{m.fee}</span>
                       </div>
                       <div className="space-y-1">
                         <h3 className="text-base font-semibold leading-snug">{m.name}</h3>

@@ -13,7 +13,7 @@ export function RelatedSection({ productId }: { productId: string }) {
   if (!data || data.length === 0) return null;
 
   return (
-    <Section padding="md">
+    <Section padding="md" tone="muted">
       <Container>
         <h2 className="font-display text-xl md:text-2xl font-semibold mb-5 leading-snug">
           รุ่นใกล้เคียง

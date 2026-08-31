@@ -18,7 +18,7 @@ export function LoadingState({ rows = 6, variant = 'card-grid', gridClassName }:
         {Array.from({ length: rows }).map((_, i) => (
           <div
             key={i}
-            className="rounded-[26px] md:rounded-[30px] border border-card bg-card/60 p-2 md:p-2.5"
+            className="rounded-[26px] md:rounded-[30px] border border-border bg-card/60 p-2 md:p-2.5"
           >
             <Skeleton className="aspect-[4/3] w-full rounded-[20px] md:rounded-3xl" />
             <div className="hidden sm:flex gap-1.5 mt-2">

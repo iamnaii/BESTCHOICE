@@ -32,7 +32,7 @@ export default function CartItemRow({ item }: Props) {
         )}
         <ReservationCountdownBadge expiresAt={item.expiresAt} />
       </div>
-      <div className="text-right font-bold leading-snug">
+      <div className="text-right font-bold leading-snug text-primary num">
         ฿{Number(item.product.sellingPrice).toLocaleString()}
       </div>
     </div>

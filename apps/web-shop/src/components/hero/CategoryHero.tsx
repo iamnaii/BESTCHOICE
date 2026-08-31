@@ -14,7 +14,7 @@ interface Props {
 
 export function CategoryHero({ title, description, breadcrumbs }: Props) {
   return (
-    <section className="bg-zinc-50 border-b border-zinc-200">
+    <section className="bg-muted border-b border-border">
       <Container>
         <div className="py-6 md:py-8 space-y-2 leading-snug">
           {breadcrumbs && (

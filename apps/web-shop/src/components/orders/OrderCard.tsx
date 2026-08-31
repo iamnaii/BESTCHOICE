@@ -24,7 +24,7 @@ export default function OrderCard({ order }: Props) {
         </div>
         <OrderStatusBadge status={order.status} />
       </div>
-      <div className="mt-2 text-right font-bold">
+      <div className="num mt-2 text-right font-bold text-primary">
         ฿{Number(order.totalAmount).toLocaleString()}
       </div>
     </Link>

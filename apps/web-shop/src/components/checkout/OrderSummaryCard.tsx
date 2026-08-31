@@ -18,20 +18,20 @@ export default function OrderSummaryCard(p: Props) {
         <span>฿{p.shippingFee.toLocaleString()}</span>
       </div>
       {p.promoDiscount > 0 && (
-        <div className="flex justify-between text-primary">
+        <div className="flex justify-between text-primary num">
           <span>ส่วนลดโค้ด</span>
           <span>-฿{p.promoDiscount.toLocaleString()}</span>
         </div>
       )}
       {p.loyaltyDiscount > 0 && (
-        <div className="flex justify-between text-primary">
+        <div className="flex justify-between text-primary num">
           <span>ส่วนลดแต้ม</span>
           <span>-฿{p.loyaltyDiscount.toLocaleString()}</span>
         </div>
       )}
       <div className="border-t pt-2 flex justify-between font-bold text-base">
         <span>รวมที่ต้องชำระ</span>
-        <span>฿{total.toLocaleString()}</span>
+        <span className="text-primary num">฿{total.toLocaleString()}</span>
       </div>
     </div>
   );

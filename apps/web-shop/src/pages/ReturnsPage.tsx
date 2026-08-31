@@ -77,7 +77,7 @@ export default function ReturnsPage() {
                     {copy.returns.contactBody}
                   </p>
                   <Stack gap={2}>
-                    <Button asChild variant="primary" size="md" fullWidth>
+                    <Button asChild variant="line" size="lg" fullWidth>
                       <a
                         href={shopInfo.lineUrl}
                         target="_blank"
@@ -101,7 +101,7 @@ export default function ReturnsPage() {
         </Stack>
       </Container>
 
-      <Section tone="muted" padding="md">
+      <Section padding="md">
         <Container>
           <TrustStrip />
         </Container>

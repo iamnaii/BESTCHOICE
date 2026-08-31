@@ -13,10 +13,10 @@ const NAV_LINKS = [
 ];
 
 /**
- * Solid brand-green bar across the full width, mirroring the reference
- * storefront's solid gold bar. Everything sitting on it is white; the one
- * ink-black capsule on the right is the only high-contrast element, so it
- * reads as THE action without competing with the product cards below.
+ * White bar with a hairline bottom border (guide §3 point 1): ink text,
+ * active link in the deep green with a mint underline, and one deep-green
+ * capsule on the right as THE action — it stays the only solid element so
+ * it reads as the action without competing with the product cards below.
  */
 export default function ShopHeader() {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -59,10 +59,10 @@ export default function ShopHeader() {
   }
 
   const iconBtn =
-    'p-2 rounded-full text-foreground/70 hover:bg-foreground/10 hover:text-foreground transition-colors';
+    'p-2 rounded-full text-foreground/70 hover:bg-muted hover:text-primary transition-colors';
 
   return (
-    <header className="sticky top-0 z-40 bg-primary">
+    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-border">
       <div className="container mx-auto max-w-7xl px-4 md:px-6 py-2.5 flex items-center gap-3 md:gap-5">
         <button
           type="button"
@@ -78,16 +78,19 @@ export default function ShopHeader() {
         </button>
 
         <Link to="/" className="flex items-center gap-2 shrink-0" aria-label="BESTCHOICE หน้าหลัก">
-          <span className="size-8 rounded-xl bg-white grid place-items-center overflow-hidden">
+          <span className="size-8 rounded-xl bg-muted grid place-items-center overflow-hidden">
             <img src="/logo-icon.svg" alt="" className="size-6" aria-hidden />
           </span>
-          <span className="font-brand text-[15px] font-extrabold text-foreground">
-            BESTCHOICE
+          {/* Wordmark split per the logo: BEST in charcoal, CHOICE in the brand green. */}
+          <span className="font-brand text-[15px] font-extrabold italic">
+            <span className="text-zinc-700">BEST</span>
+            <span className="text-emerald-500">CHOICE</span>
           </span>
         </Link>
 
-        {/* Underline grows on hover — the reference's nav signature. */}
-        <nav className="hidden lg:flex items-center gap-5 text-[13.5px]">
+        {/* Mint underline grows on hover; active link sits in the deep green
+            with a full mint underline (guide nav treatment). */}
+        <nav className="hidden lg:flex items-center gap-5 font-head text-[14px] font-medium">
           {NAV_LINKS.map((l) => {
             const active = l.to === '/' ? location.pathname === '/' : location.pathname.startsWith(l.to);
             return (
@@ -97,10 +100,10 @@ export default function ShopHeader() {
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'relative py-1 leading-snug transition-colors',
-                  'after:absolute after:left-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-foreground after:transition-all after:duration-200',
+                  'after:absolute after:left-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-emerald-400 after:transition-all after:duration-200',
                   active
-                    ? 'text-foreground font-medium after:w-full'
-                    : 'text-foreground/70 hover:text-foreground after:w-0 hover:after:w-full',
+                    ? 'text-primary font-semibold after:w-full'
+                    : 'text-foreground/80 hover:text-primary after:w-0 hover:after:w-full',
                 )}
               >
                 {l.label}
@@ -132,14 +135,14 @@ export default function ShopHeader() {
 
         <Link
           to="/how-it-works"
-          className="hidden md:inline-flex h-9 items-center rounded-full bg-ink px-5 text-[13px] font-semibold text-ink-foreground hover:bg-zinc-800 transition-colors whitespace-nowrap leading-snug"
+          className="hidden md:inline-flex h-10 items-center rounded-full bg-ink px-5 font-head text-[13.5px] font-semibold text-ink-foreground hover:bg-emerald-800 transition-colors whitespace-nowrap leading-snug"
         >
           เช็คยอดผ่อนทันที
         </Link>
       </div>
 
       {searchOpen && (
-        <div className="border-t border-foreground/10 bg-primary">
+        <div className="border-t border-border bg-white">
           <form
             onSubmit={submitSearch}
             className="container mx-auto max-w-7xl px-4 md:px-6 py-3 flex gap-2"
@@ -155,11 +158,11 @@ export default function ShopHeader() {
               maxLength={60}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="ค้นหารุ่น เช่น iPhone 15"
-              className="flex-1 h-10 px-4 rounded-full bg-white border-0 text-sm leading-snug text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/40"
+              className="flex-1 h-10 px-4 rounded-full bg-white border border-border text-sm leading-snug text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <button
               type="submit"
-              className="h-10 px-5 rounded-full bg-ink text-ink-foreground text-sm font-semibold hover:bg-zinc-800 transition-colors leading-snug"
+              className="h-10 px-5 rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-emerald-800 transition-colors leading-snug"
             >
               ค้นหา
             </button>
@@ -168,13 +171,13 @@ export default function ShopHeader() {
       )}
 
       {menuOpen && (
-        <nav aria-label="เมนูหลัก" className="lg:hidden border-t border-foreground/10 bg-primary">
+        <nav aria-label="เมนูหลัก" className="lg:hidden border-t border-border bg-white">
           <ul className="container mx-auto max-w-7xl px-4 md:px-6 py-1">
             {NAV_LINKS.map((l) => (
               <li key={l.to}>
                 <Link
                   to={l.to}
-                  className="block py-3 text-[15px] leading-snug text-foreground/80 hover:text-foreground border-b border-foreground/10 last:border-0"
+                  className="block py-3 font-head text-[15px] leading-snug text-foreground/80 hover:text-primary border-b border-border last:border-0"
                   onClick={() => setMenuOpen(false)}
                 >
                   {l.label}
@@ -185,7 +188,7 @@ export default function ShopHeader() {
               <Link
                 to="/how-it-works"
                 onClick={() => setMenuOpen(false)}
-                className="my-3 flex h-11 items-center justify-center rounded-full bg-ink text-ink-foreground text-[15px] font-semibold leading-snug"
+                className="my-3 flex h-12 items-center justify-center rounded-full bg-ink text-ink-foreground font-head text-[15px] font-semibold leading-snug"
               >
                 เช็คยอดผ่อนทันที
               </Link>

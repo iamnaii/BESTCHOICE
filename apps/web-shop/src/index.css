@@ -2,52 +2,68 @@
 @import './styles/tokens.css';
 @import './styles/motion.css';
 
-/* Typeface stack — see docs/design/SHOP-REDESIGN-2026-08.md §2b.
-   The reference storefront sets its Thai text in Sukhumvit Set. That face
-   ships with macOS/iOS as a system font (Cadson Demak, bundled by Apple), so
-   we NAME it rather than serve it — self-hosting it the way the reference
-   does is not something its licence allows. Anyone on an Apple device (a
-   large share of visitors to an iPhone shop) therefore gets the exact face.
-   Everyone else lands on Anuphan, the closest free relative: same foundry,
-   same loopless humanist construction. Fonts are loaded from the single
-   <link> in index.html, not an @import here, so they are not serialised
-   behind this stylesheet. */
+/* Typeface stack — bestchoice-web-style-guide.html §4.
+   Two Google faces: Prompt (loopless, geometric) for headings, buttons,
+   menus and prices; Sarabun (looped) for body copy, where the loops carry
+   long-form Thai reading. Both are loaded from the single <link> in
+   index.html, not an @import here, so they are not serialised behind this
+   stylesheet. Thai body text needs a taller line (vowel/tone marks stack
+   above and below the line): 1.75 for reading text per the guide;
+   headings run 1.3–1.4 via the base rules below. Never use leading-none
+   on Thai text. */
 
 @layer base {
   body {
-    font-family: 'Sukhumvit Set', 'Anuphan', 'IBM Plex Sans Thai', 'Noto Sans Thai', sans-serif;
-    line-height: 1.375; /* snug */
+    font-family: var(--font-sans);
+    font-size: 17px;
+    line-height: 1.75;
+    background: var(--color-background);
+    color: var(--color-foreground);
   }
-  * {
-    line-height: 1.375; /* snug — Thai text safe */
+  @media (min-width: 768px) {
+    body {
+      font-size: 18px;
+    }
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-head);
+    line-height: 1.35;
   }
 }
 
 @layer utilities {
-  /* Headlines. Same Thai face as body — the reference sets its display type
-     in Sukhumvit too, so there is no separate Latin display face any more.
+  /* Headlines set outside h1-h4 tags (divs/spans acting as display type).
      Tracking stays gentle: Thai vowel/tone marks sit above and below the
      line and tight tracking collides them. */
   .font-display {
-    font-family: 'Sukhumvit Set', 'Anuphan', 'IBM Plex Sans Thai', sans-serif;
+    font-family: var(--font-head);
     letter-spacing: -0.01em;
+    line-height: 1.35;
   }
-  /* Prices, counts, money. Thai-first so the ฿ sign matches the surrounding
-     text; Inter carries the digits wherever the Thai faces are unavailable.
-     'tnum' is a no-op on faces that lack it, which is fine — these are
-     right-aligned single figures, not columns of digits. */
+  /* Prices, counts, money — Prompt per the guide (price = Prompt 700 in
+     the deep green). 'tnum' is a no-op on faces that lack it, fine for
+     right-aligned single figures. */
   .num {
-    font-family:
-      'Sukhumvit Set', 'Anuphan', 'Inter', 'IBM Plex Sans Thai', 'Noto Sans Thai', 'Leelawadee UI',
-      'Thonburi', sans-serif;
+    font-family: var(--font-head);
     font-feature-settings: 'tnum';
     letter-spacing: -0.01em;
   }
-  /* Latin-only lockups: the BESTCHOICE wordmark and the GRADE badge. Kept on
-     Inter because both need weight 800, and Sukhumvit Set stops at 700 —
-     asking for 800 there makes the browser synthesise a smeared faux-bold. */
+  /* Latin lockup: the BESTCHOICE wordmark. Prompt carries real 700–800
+     weights so no faux-bold. */
   .font-brand {
-    font-family: 'Inter', 'Sukhumvit Set', sans-serif;
-    letter-spacing: -0.02em;
+    font-family: var(--font-head);
+    letter-spacing: 0.02em;
+  }
+  /* Decorative brand gradient (135°, mint -> green) — backgrounds of
+     graphic shapes only, never behind body text (guide rule 5). */
+  .bg-brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      var(--color-emerald-400) 0%,
+      var(--color-emerald-500) 100%
+    );
   }
 }

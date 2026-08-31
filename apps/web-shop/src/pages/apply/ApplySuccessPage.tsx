@@ -73,7 +73,7 @@ export default function ApplySuccessPage() {
           </Card>
 
           <div className="grid gap-3 w-full sm:grid-cols-2">
-            <Button asChild variant="primary" size="lg" fullWidth>
+            <Button asChild variant="line" size="lg" fullWidth>
               <a
                 href={shopInfo.lineUrl}
                 target="_blank"

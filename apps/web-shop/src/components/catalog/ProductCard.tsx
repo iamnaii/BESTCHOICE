@@ -53,15 +53,20 @@ interface Props {
   priceMode?: 'combined' | 'cash' | 'installment';
 }
 
+/**
+ * ป้ายเกรด = ข้อมูล ไม่ใช่คำเตือน (คำตัดสินเจ้าของ 2026-08-31)
+ * ห้ามใช้เหลือง/ส้ม/แดง — ทุกใบดีไซน์เดียวกัน ต่างแค่ความเข้มในโทนเขียวแบรนด์
+ * (ยิ่งสภาพใหม่ยิ่งเข้ม) ส้มถูกสงวนให้ปุ่มแชทอย่างเดียวตาม style guide ข้อ 2
+ */
 const GRADE_STYLES: Record<string, string> = {
-  A: 'bg-emerald-600 text-white',
-  B: 'bg-amber-500/85 text-white',
-  C: 'bg-orange-500/85 text-white',
+  A: 'bg-primary text-white',
+  B: 'bg-white text-primary ring-border',
+  C: 'bg-white text-zinc-700 ring-border',
 };
 const GRADE_CHIP: Record<string, string> = {
-  A: 'text-emerald-700',
-  B: 'text-amber-900',
-  C: 'text-orange-700',
+  A: 'bg-white text-primary',
+  B: 'bg-primary text-white',
+  C: 'bg-zinc-700 text-white',
 };
 
 /** Max thumbnails rendered before the strip collapses into a "+N" tile. */
@@ -127,10 +132,13 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
               GRADE drops and the coloured letter carries it alone. */}
           <span
             className={cn(
-              'absolute top-1.5 left-1.5 md:top-2 md:left-2 inline-flex items-center gap-1.5 rounded-full backdrop-blur-md ring-1 ring-inset ring-white/55 max-w-[70%]',
+              'absolute top-1.5 left-1.5 md:top-2 md:left-2 inline-flex items-center gap-1.5 rounded-full backdrop-blur-md ring-1 ring-inset max-w-[70%]',
               isNew
-                ? 'bg-emerald-600/95 text-white px-2 py-1 md:px-2.5'
-                : cn('p-0.5 sm:pr-2', GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700/75 text-white'),
+                ? 'bg-ink text-white ring-white/55 px-2 py-1 md:px-2.5'
+                : cn(
+                    'p-0.5 sm:pr-2 ring-white/55',
+                    GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700 text-white',
+                  ),
             )}
             aria-label={
               isNew ? 'เครื่องมือ 1 ของใหม่' : grade ? `สภาพเครื่องเกรด ${grade}` : 'เครื่องมือสอง'
@@ -139,8 +147,8 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
             {!isNew && (
               <span
                 className={cn(
-                  'size-[18px] md:size-5 rounded-full bg-white grid place-items-center font-brand text-[10px] md:text-[11px] font-extrabold leading-none shrink-0',
-                  GRADE_CHIP[grade ?? ''] ?? 'text-zinc-700',
+                  'size-[18px] md:size-5 rounded-full grid place-items-center font-brand text-[10px] md:text-[11px] font-extrabold leading-none shrink-0',
+                  GRADE_CHIP[grade ?? ''] ?? 'bg-white text-zinc-700',
                 )}
                 aria-hidden
               >

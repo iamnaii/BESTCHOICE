@@ -392,7 +392,7 @@ export default function ProductDetailPage() {
             <h1 className="text-2xl md:text-3xl font-bold leading-snug">{displayName}</h1>
 
             <div className="flex flex-wrap gap-2 items-center">
-              <Badge variant={isNew ? 'condition-a' : 'condition-b'} size="md">
+              <Badge variant={isNew ? 'condition-new' : 'condition-b'} size="md">
                 {isNew ? 'เครื่องใหม่ · มือ 1' : 'มือสอง · มือ 2'}
               </Badge>
               {showGrades &&

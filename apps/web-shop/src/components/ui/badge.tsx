@@ -16,9 +16,14 @@ const badgeVariants = cva(
         outline: 'bg-transparent border border-zinc-300 text-zinc-700',
         // Price/promo flags — the guide's yellow badge (ดาวน์เริ่ม, ผ่อน 0%).
         promo: 'bg-promo text-promo-foreground font-head font-bold',
-        'condition-a': 'bg-emerald-600 text-white',
-        'condition-b': 'bg-amber-500 text-white',
-        'condition-c': 'bg-orange-500 text-white',
+        // เกรดเครื่อง = ข้อมูล ไม่ใช่คำเตือน (คำตัดสินเจ้าของ 2026-08-31) —
+        // ห้ามเหลือง/ส้ม/แดง ต่างกันแค่ความเข้มในโทนเขียวแบรนด์ ต้องตรงกับ
+        // GRADE_STYLES ใน ProductCard เสมอ (ป้ายเดียวกันคนละหน้าจอ)
+        // 'condition-new' = เข้มสุด (มือ 1) แล้วไล่อ่อนลงตามเกรด
+        'condition-new': 'bg-ink text-white',
+        'condition-a': 'bg-primary text-white',
+        'condition-b': 'bg-white text-primary ring-1 ring-inset ring-border',
+        'condition-c': 'bg-white text-zinc-700 ring-1 ring-inset ring-border',
       },
       size: {
         sm: 'text-xs px-2 py-0.5',

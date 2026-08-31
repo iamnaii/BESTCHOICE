@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Menu, Search, ShoppingCart, User, X } from 'lucide-react';
+import { Menu, Search, User, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [
@@ -126,9 +126,9 @@ export default function ShopHeader() {
         >
           <Search className="w-5 h-5" />
         </button>
-        <Link to="/cart" aria-label="ตะกร้า" className={iconBtn}>
-          <ShoppingCart className="w-5 h-5" />
-        </Link>
+        {/* ไอคอนตะกร้าถูกถอด 2026-08-31: ร้านปิดจ๊อบผ่านแชท/โทร ไม่มีปุ่มไหนใส่ของ
+            ลงตะกร้าได้อีก (ผู้เรียก cartStore.setItem เหลือศูนย์) — ลิงก์นี้จึงพาไป
+            หน้าตะกร้าว่างเสมอ route /cart ยังอยู่สำหรับลิงก์เก่าที่ค้างในมือลูกค้า */}
         <Link to="/account" aria-label="บัญชี" className={cn(iconBtn, 'hidden sm:inline-flex')}>
           <User className="w-5 h-5" />
         </Link>

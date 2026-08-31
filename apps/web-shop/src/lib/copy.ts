@@ -123,7 +123,8 @@ export const copy = {
   },
 
   product: {
-    reserveCta: 'จองเครื่องนี้ 15 นาที',
+    // reserveCta ("จองเครื่องนี้ 15 นาที") ถูกลบ 2026-08-31 — ร้านไม่มีบริการจอง
+    // ห้ามเพิ่มกลับโดยไม่มีระบบจองจริงรองรับ (คีย์ค้าง = โฆษณาบริการที่ไม่มี)
     // B5 T12b: honest sold-out copy — same wording as ProductCard's
     // 'out' tone (see shop-catalog.service.ts smartStockCount(0)) so the
     // message is identical whether a customer sees it on a listing card

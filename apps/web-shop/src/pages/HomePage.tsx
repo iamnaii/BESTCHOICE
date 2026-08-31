@@ -241,6 +241,7 @@ export default function HomePage() {
                   <span className="num text-4xl font-bold leading-none">5.0</span>
                   <span
                     className="flex items-center gap-0.5 text-promo pb-0.5"
+                    role="img"
                     aria-label="5 ดาวเต็ม"
                   >
                     {Array.from({ length: 5 }).map((_, i) => (

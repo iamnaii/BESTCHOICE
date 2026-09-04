@@ -3,7 +3,7 @@
 > สร้างอัตโนมัติ ห้ามแก้ด้วยมือ · แก้ที่ `policy.mjs` แล้ว `npm run grants` ใหม่
 
 - ตารางทั้งหมด **203** · ให้สิทธิ์บางคอลัมน์ **200** · ไม่ให้เลยทั้งใบ **3**
-- คอลัมน์ทั้งหมด **2964** · ให้ **2397** · ไม่ให้ **567**
+- คอลัมน์ทั้งหมด **2964** · ให้ **2372** · ไม่ให้ **592**
 
 🔒 = ตารางที่ถือ PII (ให้เฉพาะที่อยู่ใน allowlist) · ⛔ = ห้ามทั้งใบ
 
@@ -127,27 +127,31 @@
 
 | ตาราง | ให้ | ไม่ให้ | คอลัมน์ที่ไม่ให้ |
 |---|---:|---:|---|
-| `suppliers` | 14 | 8 | `name` `phone` `phone_secondary` `line_id` `address` `notes` `nickname` `contact_phone` |
-| `company_info` | 18 | 6 | `address` `phone` `director_national_id` `director_address` `bank_account_name` `bank_account_number` |
-| `external_finance_companies` | 11 | 5 | `name` `contact_phone` `bank_account_info` `notes` `email` |
+| `suppliers` | 11 | 11 | `name` `contact_name` `phone` `phone_secondary` `line_id` `address` `tax_id` `notes` `nickname` `title_name` `contact_phone` |
+| `company_info` | 16 | 8 | `tax_id` `address` `phone` `director_name` `director_national_id` `director_address` `bank_account_name` `bank_account_number` |
+| `receipts` | 30 | 7 | `payer_name` `receiver_name` `file_hash` `payer_address` `payer_tax_id` `item_description` `public_token` |
+| `expense_documents` | 25 | 6 | `vendor_name` `vendor_tax_id` `description` `receipt_image_url` `reference` `note` |
+| `external_finance_companies` | 10 | 6 | `name` `contact_phone` `bank_account_info` `notes` `email` `tax_id` |
 | `finance_company_contacts` | 9 | 5 | `name` `phone` `email` `line_id` `notes` |
+| `fixed_assets` | 59 | 5 | `name` `description` `supplier_name` `supplier_tax_id` `note` |
 | `online_installment_applications` | 17 | 5 | `full_name` `phone` `national_id` `line_user_id` `notes` |
-| `expense_documents` | 27 | 4 | `description` `receipt_image_url` `reference` `note` |
+| `signatures` | 12 | 5 | `signature_image` `ip_address` `signature_svg` `signer_name` `contract_hash` |
 | `invite_tokens` | 10 | 4 | `token` `email` `otp_hash` `phone` |
 | `kyc_verifications` | 15 | 4 | `otp_hash` `otp_phone` `id_card_image_url` `ip_address` |
+| `other_incomes` | 36 | 4 | `counterparty_name` `counterparty_tax_id` `counterparty_address` `counterparty_phone` |
 | `purchase_orders` | 25 | 4 | `notes` `attachments` `bank_account_snapshot` `bank_name_snapshot` |
-| `receipts` | 33 | 4 | `file_hash` `payer_address` `item_description` `public_token` |
-| `signatures` | 13 | 4 | `signature_image` `ip_address` `signature_svg` `contract_hash` |
+| `bank_accounts` | 9 | 3 | `account_name` `account_number` `notes` |
 | `canned_response_bubbles` | 15 | 3 | `text` `media_url` `address` |
 | `contract_exchange_requests` | 39 | 3 | `condition_photos` `base_price_snapshot` `ncv_snapshot` |
 | `document_audit_logs` | 6 | 3 | `document_id` `ip_address` `user_agent` |
-| `fixed_assets` | 61 | 3 | `name` `description` `note` |
 | `journal_entries` | 13 | 3 | `description` `reference_type` `reference_id` |
+| `legal_cases` | 8 | 3 | `lawyer_name` `lawyer_phone` `notes` |
 | `login_audit_logs` | 7 | 3 | `email_tried` `ip_address` `user_agent` |
+| `payroll_lines` | 8 | 3 | `employee_name` `employee_tax_id` `base_salary` |
 | `products` | 39 | 3 | `name` `photos` `online_description` |
 | `repair_tickets` | 28 | 3 | `defect_description` `expense_document_id` `notes` |
+| `shareholders` | 8 | 3 | `name` `tax_id` `note` |
 | `accounting_periods` | 19 | 2 | `report_snapshot` `notes` |
-| `bank_accounts` | 10 | 2 | `account_number` `notes` |
 | `branches` | 9 | 2 | `name` `phone` |
 | `canned_response_quick_replies` | 9 | 2 | `payload` `message` |
 | `canned_responses` | 12 | 2 | `content` `media_url` |
@@ -157,14 +161,16 @@
 | `commission_rules` | 10 | 2 | `name` `description` |
 | `contract_documents` | 15 | 2 | `notes` `file_hash` |
 | `credit_note_details` | 2 | 2 | `document_id` `original_document_id` |
+| `equity_shareholder_lines` | 9 | 2 | `document_id` `shareholder_name` |
 | `expense_adjustments` | 7 | 2 | `document_id` `note` |
+| `expense_lines` | 17 | 2 | `description` `supplier_name` |
 | `external_finance_commissions` | 13 | 2 | `sale_reference_id` `notes` |
 | `fee_waiver_approvals` | 4 | 2 | `ip_address` `user_agent` |
 | `inspections` | 12 | 2 | `photos` `notes` |
 | `journal_post_audit_logs` | 5 | 2 | `ip_address` `user_agent` |
-| `legal_cases` | 9 | 2 | `lawyer_phone` `notes` |
+| `notification_logs` | 19 | 2 | `recipient` `message` |
 | `notification_templates` | 15 | 2 | `name` `description` |
-| `other_incomes` | 38 | 2 | `counterparty_address` `counterparty_phone` |
+| `other_income_items` | 15 | 2 | `account_name` `description` |
 | `payment_evidences` | 11 | 2 | `line_user_id` `image_url` |
 | `payments` | 31 | 2 | `notes` `tolerance_journal_line_id` |
 | `payroll_custom_deduction` | 5 | 2 | `payroll_line_id` `name` |
@@ -173,7 +179,6 @@
 | `promotions` | 13 | 2 | `name` `description` |
 | `repossessions` | 24 | 2 | `photos` `notes` |
 | `sales_commissions` | 23 | 2 | `notes` `snapshot_salesperson_id` |
-| `shareholders` | 9 | 2 | `name` `note` |
 | `sms_templates` | 9 | 2 | `name` `body` |
 | `sso_config` | 8 | 2 | `salary_ceiling` `note` |
 | `stock_adjustments` | 11 | 2 | `notes` `photos` |
@@ -205,9 +210,7 @@
 | `e_documents` | 8 | 1 | `file_hash` |
 | `equity_attachments` | 7 | 1 | `document_id` |
 | `equity_documents` | 22 | 1 | `description` |
-| `equity_shareholder_lines` | 10 | 1 | `document_id` |
 | `expense_details` | 1 | 1 | `document_id` |
-| `expense_lines` | 18 | 1 | `description` |
 | `expense_templates` | 12 | 1 | `name` |
 | `filter_presets` | 9 | 1 | `name` |
 | `finance_receivable_contact_logs` | 15 | 1 | `notes` |
@@ -221,17 +224,14 @@
 | `interest_configs` | 12 | 1 | `name` |
 | `journal_lines` | 8 | 1 | `description` |
 | `known_devices` | 8 | 1 | `ip_address` |
-| `notification_logs` | 20 | 1 | `message` |
 | `online_orders` | 30 | 1 | `shipping_address` |
 | `other_income_adjustments` | 6 | 1 | `note` |
-| `other_income_items` | 16 | 1 | `description` |
 | `other_income_templates` | 11 | 1 | `name` |
 | `outbox_events` | 13 | 1 | `payload` |
 | `partial_payment_links` | 15 | 1 | `token` |
 | `payment_drafts` | 18 | 1 | `notes` |
 | `payment_links` | 10 | 1 | `token` |
 | `payroll_details` | 2 | 1 | `document_id` |
-| `payroll_lines` | 10 | 1 | `base_salary` |
 | `promise_slots` | 11 | 1 | `notes` |
 | `quote_items` | 7 | 1 | `description` |
 | `quotes` | 19 | 1 | `notes` |

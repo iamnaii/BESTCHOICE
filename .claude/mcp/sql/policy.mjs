@@ -1,0 +1,135 @@
+/**
+ * นโยบายว่า role `mcp_ro` มองเห็นคอลัมน์ไหนได้บ้าง
+ *
+ * หลักการที่ไม่ต่อรอง — มาจากผลตรวจที่พิสูจน์บน PostgreSQL 16.13 จริง:
+ *
+ *   ห้าม `GRANT SELECT ON <table>` (ทั้งตาราง) เด็ดขาด
+ *   เพราะ ACL ระดับตารางครอบคอลัมน์ที่ migration เพิ่มทีหลัง "อัตโนมัติ" = fail-OPEN
+ *   ต้อง grant ระดับคอลัมน์เสมอ คอลัมน์ใหม่จึงไม่มีสิทธิ์โดยปริยาย = fail-CLOSED
+ *
+ * ผลข้างเคียงที่ยอมรับ: หลัง migration ที่เพิ่มคอลัมน์ ต้อง generate + apply ใหม่
+ * ไม่งั้นคิวรี่จะพังด้วย `permission denied for table ...` (PostgreSQL ไม่มี error
+ * ระดับคอลัมน์ — ข้อความจะกำกวม ตัว MCP จึงต้องแปลให้เอง ดู src/db.mjs)
+ */
+
+/**
+ * ตารางที่ถือข้อมูลส่วนบุคคลของคนจริง — grant เฉพาะคอลัมน์ที่ระบุตรงนี้เท่านั้น
+ * อะไรที่ไม่ได้อยู่ในลิสต์ = ไม่ให้ ไม่ว่าชื่อจะดูปลอดภัยแค่ไหน
+ *
+ * สำรวจ prod 2026-09-04: chat_messages 115,437 แถว · chat_rooms 8,217 ห้อง (Facebook ทั้งหมด)
+ * ในนั้น 488 ข้อความมีเบอร์มือถือ · 375 มีเลข 13 หลัก · 20,257 มีรูปแนบ
+ * (ธุรกิจนี้ = บัตรประชาชน/สลิปเงินเดือน/ทะเบียนบ้านที่ลูกค้าส่งมาสมัครผ่อน)
+ * · 8,201 ห้องมีชื่อจริงบน Facebook · 8,076 มีรูปโปรไฟล์
+ */
+export const PII_TABLE_ALLOWLIST = {
+  // ── แชท: ตอบได้ว่า "มีกี่ข้อความ ห้องไหนค้าง บอทกินเงินเท่าไหร่" โดยไม่เห็นเนื้อความและไม่รู้ว่าใคร
+  chat_messages: [
+    'id', 'room_id', 'role', 'type', 'intent', 'confidence',
+    'model_used', 'input_tokens', 'output_tokens', 'cost_usd',
+    'created_at', 'deleted_at', 'delivered_at', 'read_at', 'delivery_status',
+    'outbound_sent_at', 'staff_id', 'payment_id', 'receipt_id',
+  ],
+  chat_rooms: [
+    'id', 'customer_id', 'channel', 'status', 'verified_at', 'verification_attempts',
+    'handoff_mode', 'handoff_tagged_at', 'handoff_staff_id',
+    'total_messages', 'last_message_at', 'created_at', 'updated_at', 'deleted_at',
+    'priority', 'assigned_to_id', 'first_response_at', 'resolved_at',
+    'lead_score', 'lead_temperature', 'pinned_at', 'pinned_by_id', 'unread_count',
+    'ai_paused', 'ai_paused_at', 'ai_paused_by_id',
+    // จงใจไม่ให้: text, media_url, display_name, picture_url, ai_sales_state,
+    //             line_user_id, external_user_id, handoff_reason, attribution_id
+  ],
+  customers: ['id', 'created_at', 'updated_at', 'deleted_at', 'branch_id', 'customer_type', 'status'],
+  contacts: ['id', 'created_at', 'updated_at', 'deleted_at'],
+  contracts: [
+    'id', 'contract_number', 'customer_id', 'product_id', 'status',
+    'created_at', 'updated_at', 'deleted_at',
+  ],
+  trade_ins: ['id', 'status', 'created_at', 'updated_at', 'deleted_at'],
+  credit_checks: ['id', 'status', 'created_at', 'updated_at', 'deleted_at'],
+  employees: ['id', 'status', 'created_at', 'updated_at', 'deleted_at'],
+  employee_profiles: ['id', 'created_at', 'updated_at', 'deleted_at'],
+  users: ['id', 'role', 'branch_id', 'acp_admin', 'is_active', 'created_at', 'updated_at', 'deleted_at'],
+  audit_logs: ['id', 'action', 'entity_type', 'entity_id', 'user_id', 'created_at'],
+  // จงใจไม่ให้ทั้งตาราง: old_value / new_value เก็บ payload ดิบของทุก mutation
+  dsar_requests: ['id', 'status', 'created_at', 'updated_at'],
+  ai_training_pairs: ['id', 'created_at', 'updated_at', 'deleted_at'],
+  imported_sales: ['id', 'created_at', 'updated_at'],
+  bot_detection_logs: ['id', 'reason', 'created_at'],
+  website_visits: ['id', 'created_at'],
+  refresh_tokens: ['id', 'user_id', 'created_at', 'expires_at', 'revoked_at'],
+  ip_rate_limits: ['id', 'created_at'],
+  staff_chat_activities: ['id', 'room_id', 'staff_id', 'action', 'created_at'],
+}
+
+/**
+ * ตารางที่ไม่ให้แตะเลยแม้แต่คอลัมน์เดียว
+ */
+export const DENIED_TABLES = new Set([
+  'sessions',
+  'password_reset_tokens',
+  'verification_tokens',
+])
+
+/**
+ * ชื่อคอลัมน์ที่ไม่ให้ ไม่ว่าจะอยู่ตารางไหน
+ * นี่คือ "เข็มขัดเส้นที่สอง" — เส้นแรกคือการ grant ระดับคอลัมน์เสมอ
+ * (denylist เพียว ๆ เชื่อไม่ได้ เพราะ PII ในระบบนี้อยู่ในข้อความอิสระที่ชื่อคอลัมน์ไม่บอกอะไร)
+ */
+export const DENIED_COLUMN_PATTERNS = [
+  /national_id/i, /citizen_id/i, /id_card/i,
+  /phone/i, /mobile/i, /tel(ephone)?$/i,
+  /address/i, /^salary/i, /salary/i,
+  /email/i, /line_id/i, /line_user/i, /external_user/i,
+  /guardian/i, /reference/i, /emergency/i,
+  /birth/i, /workplace/i, /employer/i, /occupation/i,
+  /display_name/i, /^name$/i, /first_name/i, /last_name/i, /full_name/i, /nickname/i,
+  /picture/i, /avatar/i, /photo/i, /image/i, /media_url/i, /signature/i, /document/i, /attachment/i,
+  /^text$/i, /^content$/i, /^body$/i, /^message$/i, /^note/i, /^comment/i, /^remark/i, /description/i,
+  /password/i, /secret/i, /token/i, /api_key/i, /credential/i, /_hash$/i, /encrypted/i,
+  /account_no/i, /account_number/i, /bank_account/i, /card_number/i,
+  /ip_address/i, /user_agent/i, /snapshot/i, /payload/i, /old_value/i, /new_value/i,
+  /facebook/i, /google_map/i,
+]
+
+/**
+ * ยกเว้นแบบระบุชื่อตรงตัว — คอลัมน์ที่ชนด่านชื่อข้างบน แต่ตรวจแล้วว่าไม่ใช่ PII จริง
+ * เก็บลิสต์นี้ให้สั้นและระบุชื่อเป๊ะเสมอ ห้ามใส่เป็น pattern เพราะจะกลายเป็นรูรั่วที่รีวิวไม่ทัน
+ * (ตั้งใจไม่ใส่: salary — ถึงเป็นตัวเลขก็ยังเป็นข้อมูลส่วนบุคคล · birth_date ก็เช่นกัน)
+ */
+export const ALWAYS_ALLOW_COLUMNS = new Set([
+  'input_tokens',        // int — จำนวนโทเคนที่บอทใช้ ไม่ใช่ความลับ
+  'output_tokens',       // int
+  'document_type',       // enum ประเภทเอกสาร ไม่ใช่ตัวเอกสาร
+  'document_date',       // date
+  'id_card_verified',    // boolean — ผ่าน/ไม่ผ่าน ไม่ใช่เลขบัตร
+  'public_token_expires_at',
+  'otp_expires_at',
+  'token_expires_at',
+])
+
+/**
+ * ชนิดข้อมูลที่ถือว่าเสี่ยงเก็บข้อความอิสระ — บนตารางที่ไม่ได้อยู่ใน PII_TABLE_ALLOWLIST
+ * คอลัมน์ชนิดนี้ต้องผ่านด่านชื่อก่อนจึงจะได้
+ */
+export const FREE_TEXT_TYPES = new Set(['text', 'character varying', 'json', 'jsonb', 'ARRAY'])
+
+/** ตัดสินว่าคอลัมน์หนึ่ง ๆ ได้สิทธิ์ไหม พร้อมเหตุผล (ใช้ทั้งตอน generate และตอนรีวิว) */
+export function decide(table, column, dataType) {
+  if (DENIED_TABLES.has(table)) return { allow: false, why: 'ตารางถูกห้ามทั้งใบ' }
+
+  const pattern = ALWAYS_ALLOW_COLUMNS.has(column)
+    ? null
+    : DENIED_COLUMN_PATTERNS.find(re => re.test(column))
+
+  if (Object.hasOwn(PII_TABLE_ALLOWLIST, table)) {
+    const listed = PII_TABLE_ALLOWLIST[table].includes(column)
+    if (!listed) return { allow: false, why: 'ตาราง PII — ไม่อยู่ใน allowlist' }
+    if (pattern) return { allow: false, why: `ตาราง PII และชนชื่อต้องห้าม ${pattern}` }
+    return { allow: true, why: 'อยู่ใน allowlist ของตาราง PII' }
+  }
+
+  if (pattern) return { allow: false, why: `ชนชื่อต้องห้าม ${pattern}` }
+  if (FREE_TEXT_TYPES.has(dataType)) return { allow: true, why: `ข้อความอิสระ (${dataType}) แต่ชื่อผ่านด่าน` }
+  return { allow: true, why: 'ตารางไม่ใช่ PII และชื่อผ่านด่าน' }
+}

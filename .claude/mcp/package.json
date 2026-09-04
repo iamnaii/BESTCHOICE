@@ -1,0 +1,18 @@
+{
+  "name": "bestchoice-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server อ่านอย่างเดียวสำหรับถามสถานะ prod ตอนพัฒนา — อยู่ใน .claude/ ซึ่ง paths-ignore ครอบ จึง commit ได้โดยไม่ทริกเกอร์ deploy",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "grants": "node sql/generate-grants.mjs",
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "pg": "^8.13.0"
+  }
+}

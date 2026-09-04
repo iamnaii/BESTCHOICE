@@ -29,8 +29,12 @@ export class Proxy {
 
     const log = createWriteStream(logPath || join(this.#dir, 'proxy.log'))
 
+    // Claude Desktop เปิด MCP server ด้วย PATH ขั้นต่ำ ไม่ใช่ PATH ของ shell
+    // ⇒ cloud-sql-proxy ที่อยู่ใน ~/.local/google-cloud-sdk/bin จะหาไม่เจอ
+    // ให้ตั้ง CLOUD_SQL_PROXY_BIN เป็น path เต็มได้ (ดู README หัวข้อ Claude Desktop)
+    const bin = process.env.CLOUD_SQL_PROXY_BIN || 'cloud-sql-proxy'
     this.#child = spawn(
-      'cloud-sql-proxy',
+      bin,
       // --auto-iam-authn = proxy เอา token ของบัญชี gcloud ที่ล็อกอินอยู่ไปยืนยันตัวตนกับฐานให้
       // ⇒ ไม่มีรหัสผ่านอยู่ที่ไหนเลย และเพิกถอนรายคนได้ด้วย REVOKE/IAM ไม่ต้องหมุนรหัสของใคร
       ['--auto-iam-authn', `${instance}?unix-socket-path=${this.socketPath}`],
@@ -53,7 +57,7 @@ export class Proxy {
         if (this.#spawnError) {
           throw new Error(
             this.#spawnError.code === 'ENOENT'
-              ? 'ไม่พบคำสั่ง cloud-sql-proxy ใน PATH — ติดตั้งก่อน (มากับ google-cloud-sdk)'
+              ? `ไม่พบ ${bin} — ถ้าเปิดจาก Claude Desktop ให้ตั้ง CLOUD_SQL_PROXY_BIN เป็น path เต็มใน claude_desktop_config.json`
               : `เปิด cloud-sql-proxy ไม่ได้: ${this.#spawnError.message}`,
           )
         }

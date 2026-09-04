@@ -39,6 +39,41 @@ claude mcp list      # ต้องขึ้น "bestchoice-db: ... ✓ Connecte
 `.mcp.json` ที่รากเรโปยังมีอยู่ (gitignore ไว้) เป็นทางสำรองตอนเปิด session ที่ `BESTCHOICE/` โดยตรง
 
 **ต้องเปิด session ใหม่หลังลงทะเบียน** — session ที่เปิดค้างอยู่จะยังไม่เห็น
+
+## ต่อกับ Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "bestchoice-db": {
+      "command": "/Users/<คุณ>/.nvm/versions/node/v24.14.1/bin/node",
+      "args": ["/Users/<คุณ>/Desktop/App/BESTCHOICE/.claude/mcp/src/index.mjs"],
+      "env": {
+        "PATH": "/Users/<คุณ>/.local/google-cloud-sdk/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "CLOUD_SQL_PROXY_BIN": "/Users/<คุณ>/.local/google-cloud-sdk/bin/cloud-sql-proxy"
+      }
+    }
+  }
+}
+```
+
+🚨 **ทุก path ต้องเป็น absolute และต้องตั้ง `env` เอง** — Claude Desktop เปิด MCP server ด้วย
+PATH ขั้นต่ำ ไม่ใช่ PATH ของ shell ⇒ `node` (nvm), `gcloud` และ `cloud-sql-proxy`
+(`~/.local/google-cloud-sdk/bin`) หาไม่เจอทั้งหมด
+
+`CLOUD_SQL_PROXY_BIN` มีไว้เพราะ `proxy.mjs` ต้อง **spawn** ตัว proxy เอง — ลำพัง `PATH` ใน `env`
+ก็พอ แต่ระบุ path เต็มไว้ด้วยทำให้ข้อความ error ตรงจุดเวลาย้ายเครื่อง
+
+ทดสอบก่อนเปิดแอปจริงได้ด้วยการจำลอง env แบบเดียวกัน (ดู `env -i` ในประวัติ commit นี้)
+
+## ❌ Claude web (claude.ai) ต่อตัวนี้ไม่ได้
+
+เว็บรันบนเซิร์ฟเวอร์ Anthropic ไม่ใช่เครื่องเรา จึงเปิด **stdio server ในเครื่องไม่ได้เลย**
+รับได้เฉพาะ remote MCP (HTTP/SSE + OAuth) ซึ่งแปลว่าต้อง deploy ตัวนี้ขึ้นเน็ต **และทำ auth ใหม่ทั้งชุด**
+เพราะ `--auto-iam-authn` พึ่ง gcloud ในเครื่อง ซึ่งบนเซิร์ฟเวอร์ไม่มี — เป็นงานคนละชิ้น
+(เฟส 2: ผู้ช่วยของเจ้าของร้าน) ไม่ใช่แค่ตั้งค่าเพิ่ม
 `sql/grants.sql` ถูก generate ไว้แล้วและ commit อยู่ในเรโป — `setup.sh` ใช้ไฟล์นั้นเลย
 
 **สร้างใหม่หลัง migration ที่เพิ่มคอลัมน์** (ต้องมี proxy + `PGURL` เอง — `npm run grants` เฉย ๆ ไม่พอ):

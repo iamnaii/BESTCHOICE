@@ -83,7 +83,12 @@ export const DENIED_COLUMN_PATTERNS = [
   /email/i, /line_id/i, /line_user/i, /external_user/i,
   /guardian/i, /reference/i, /emergency/i,
   /birth/i, /workplace/i, /employer/i, /occupation/i,
-  /display_name/i, /^name$/i, /first_name/i, /last_name/i, /full_name/i, /nickname/i,
+  // 🚨 บทเรียน 2026-09-04: เดิมเขียน /^name$/i ยึดหัวท้าย จึงไม่จับ payer_name / employee_name /
+  //    signer_name เลย และไม่มี pattern ของ tax_id กับ recipient เลยแม้แต่ตัวเดียว
+  //    ⇒ mcp_ro อ่านชื่อลูกค้าผู้จ่าย + เลขบัตรประชาชน 13 หลัก (tax_id ของบุคคลธรรมดา) ได้จริงบน prod
+  //    ตอนนี้กลับด้าน: บล็อกทุกคอลัมน์ที่มีคำเหล่านี้ แล้วปล่อยคืนเฉพาะตัวที่พิสูจน์ว่าไม่ใช่คน
+  //    (ดู NAME_LIKE_ALWAYS_ALLOW) — denylist ที่ยึดหัวท้ายคือตะแกรงที่ชื่อมี prefix ลอดได้เสมอ
+  /name/i, /tax_id/i, /recipient/i, /nickname/i,
   /picture/i, /avatar/i, /photo/i, /image/i, /media_url/i, /signature/i, /document/i, /attachment/i,
   /^text$/i, /^content$/i, /^body$/i, /^message$/i, /^note/i, /^comment/i, /^remark/i, /description/i,
   /password/i, /secret/i, /token/i, /api_key/i, /credential/i, /_hash$/i, /encrypted/i,
@@ -97,6 +102,21 @@ export const DENIED_COLUMN_PATTERNS = [
  * เก็บลิสต์นี้ให้สั้นและระบุชื่อเป๊ะเสมอ ห้ามใส่เป็น pattern เพราะจะกลายเป็นรูรั่วที่รีวิวไม่ทัน
  * (ตั้งใจไม่ใส่: salary — ถึงเป็นตัวเลขก็ยังเป็นข้อมูลส่วนบุคคล · birth_date ก็เช่นกัน)
  */
+/**
+ * คอลัมน์ที่มีคำว่า name/tax_id แต่พิสูจน์แล้วว่า **ไม่ใช่ตัวตนของคน**
+ * ต้องระบุชื่อเป๊ะเสมอ ห้ามใส่เป็น pattern — เหตุผลเดียวกับที่ทำให้พลาดรอบแรก
+ */
+export const NAME_LIKE_ALWAYS_ALLOW = new Set([
+  'migration_name',      // _prisma_migrations
+  'campaign_name', 'ad_name', 'ad_set_name',   // ชื่อแคมเปญโฆษณา
+  'file_name', 'filename', 'original_name',    // ชื่อไฟล์
+  'table_name', 'column_name', 'check_name',   // ชื่อทางเทคนิค
+  'template_name', 'item_name', 'report_name',
+  'hostname',            // ชื่อเครื่องใน log
+  'bank_name',           // ชื่อธนาคาร ไม่ใช่ชื่อคน
+  'name_th', 'name_en',  // company_info = ชื่อนิติบุคคลของเราเอง จดทะเบียนเปิดเผยอยู่แล้ว
+])
+
 export const ALWAYS_ALLOW_COLUMNS = new Set([
   'input_tokens',        // int — จำนวนโทเคนที่บอทใช้ ไม่ใช่ความลับ
   'output_tokens',       // int
@@ -118,9 +138,8 @@ export const FREE_TEXT_TYPES = new Set(['text', 'character varying', 'json', 'js
 export function decide(table, column, dataType) {
   if (DENIED_TABLES.has(table)) return { allow: false, why: 'ตารางถูกห้ามทั้งใบ' }
 
-  const pattern = ALWAYS_ALLOW_COLUMNS.has(column)
-    ? null
-    : DENIED_COLUMN_PATTERNS.find(re => re.test(column))
+  const exempt = ALWAYS_ALLOW_COLUMNS.has(column) || NAME_LIKE_ALWAYS_ALLOW.has(column)
+  const pattern = exempt ? null : DENIED_COLUMN_PATTERNS.find(re => re.test(column))
 
   if (Object.hasOwn(PII_TABLE_ALLOWLIST, table)) {
     const listed = PII_TABLE_ALLOWLIST[table].includes(column)

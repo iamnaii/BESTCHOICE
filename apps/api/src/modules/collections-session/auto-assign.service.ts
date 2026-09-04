@@ -1,9 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import { AssignmentSource } from '@prisma/client';
+import { AssignmentSource, ContractStatus, UserRole } from '@prisma/client';
 
 // Policy constants — business rules, not tuning knobs. Keep in code.
+//
+// สถานะสัญญาที่เข้าคิวติดตามหนี้ประจำวัน
+// ⚠️ ต้องพิมพ์เป็น ContractStatus[] เสมอ — ห้ามใช้ string ธรรมดา + `as any`
+// เดิมเขียนเป็น `['OVERDUE', 'PENDING'] as any` ซึ่ง ContractStatus ไม่มีค่า PENDING
+// TypeScript จึงปล่อยผ่าน แล้ว Prisma โยน validation error ตอน runtime
+// ⇒ cron พังเงียบทุกคืนติดกัน 9 คืน (26 ส.ค. – 3 ก.ย. 2026) ลูกหนี้ไม่ถูกจ่ายงานเลย
+const COLLECTIBLE_STATUSES: ContractStatus[] = [ContractStatus.OVERDUE];
+
 const RECENT_RELATIONSHIP_DAYS = 30;
 const ESCALATION_DAYS = 90;
 const ESCALATION_BROKEN_PROMISES = 2;
@@ -46,7 +54,7 @@ export class AutoAssignService {
 
     const baseContracts = await this.prisma.contract.findMany({
       where: {
-        status: { in: ['OVERDUE', 'PENDING'] as any },
+        status: { in: COLLECTIBLE_STATUSES },
         deletedAt: null,
       },
       select: {
@@ -97,7 +105,7 @@ export class AutoAssignService {
     }));
 
     const collectors = (await this.prisma.user.findMany({
-      where: { role: 'SALES' as any, collectionsActive: true, deletedAt: null },
+      where: { role: UserRole.SALES, collectionsActive: true, deletedAt: null },
       select: { id: true, collectionsActive: true, branchId: true },
     })) as unknown as CollectorInput[];
 

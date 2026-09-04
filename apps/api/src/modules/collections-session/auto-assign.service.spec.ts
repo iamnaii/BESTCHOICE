@@ -1,3 +1,4 @@
+import { ContractStatus, UserRole } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AutoAssignService } from './auto-assign.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -57,6 +58,41 @@ describe('AutoAssignService', () => {
         .map((r) => ({ entityId: r.id, _count: { _all: r.brokenPromiseCount! } })),
     );
   }
+
+  // เทสชุดนี้มีขึ้นเพราะบั๊กจริง: query เคยเขียน `['OVERDUE', 'PENDING'] as any`
+  // ซึ่ง ContractStatus ไม่มีค่า PENDING — `as any` ทำให้ tsc ปล่อยผ่าน แล้ว Prisma
+  // โยน validation error ตอน runtime ⇒ cron พังเงียบ 9 คืนติดกัน
+  // เทสเดิมทุกตัว mock prisma ไว้ จึงไม่มีทางเห็นว่าค่าที่ส่งไปไม่มีอยู่จริงใน enum
+  describe('ค่าที่ส่งให้ Prisma ต้องมีอยู่จริงใน enum', () => {
+    async function captureQueries() {
+      prisma.contract.findMany.mockResolvedValue([]);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.dailyAssignment.findMany.mockResolvedValue([]);
+      await service.runForDate(new Date('2026-04-26'));
+      return {
+        contractWhere: prisma.contract.findMany.mock.calls[0][0].where,
+        userWhere: prisma.user.findMany.mock.calls[0][0].where,
+      };
+    }
+
+    it('สถานะสัญญาที่ใช้กรองต้องเป็นค่าใน ContractStatus ทุกตัว', async () => {
+      const { contractWhere } = await captureQueries();
+      const statuses: string[] = contractWhere.status.in;
+
+      expect(statuses.length).toBeGreaterThan(0);
+      const valid = Object.values(ContractStatus) as string[];
+      const invalid = statuses.filter((s) => !valid.includes(s));
+      expect(invalid).toEqual([]);
+      // ปักไว้ตรง ๆ ว่าค่าที่เคยพังต้องไม่กลับมา
+      expect(statuses).not.toContain('PENDING');
+      expect(statuses).toContain(ContractStatus.OVERDUE);
+    });
+
+    it('role ของพนักงานติดตามต้องเป็นค่าใน UserRole', async () => {
+      const { userWhere } = await captureQueries();
+      expect(Object.values(UserRole) as string[]).toContain(userWhere.role);
+    });
+  });
 
   it('keeps relationship when contract.assignedTo points to active collector', async () => {
     prisma.contract.findMany.mockResolvedValue([

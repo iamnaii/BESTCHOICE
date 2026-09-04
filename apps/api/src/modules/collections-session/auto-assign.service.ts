@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import { AssignmentSource, ContractStatus, UserRole } from '@prisma/client';
+import { AssignmentSource, ContractStatus, PaymentStatus, UserRole } from '@prisma/client';
 
 // Policy constants — business rules, not tuning knobs. Keep in code.
 //
@@ -9,8 +9,19 @@ import { AssignmentSource, ContractStatus, UserRole } from '@prisma/client';
 // ⚠️ ต้องพิมพ์เป็น ContractStatus[] เสมอ — ห้ามใช้ string ธรรมดา + `as any`
 // เดิมเขียนเป็น `['OVERDUE', 'PENDING'] as any` ซึ่ง ContractStatus ไม่มีค่า PENDING
 // TypeScript จึงปล่อยผ่าน แล้ว Prisma โยน validation error ตอน runtime
-// ⇒ cron พังเงียบทุกคืนติดกัน 9 คืน (26 ส.ค. – 3 ก.ย. 2026) ลูกหนี้ไม่ถูกจ่ายงานเลย
-const COLLECTIBLE_STATUSES: ContractStatus[] = [ContractStatus.OVERDUE];
+// ⇒ cron พังเงียบทุกเช้าติดกัน 10 รอบ (26 ส.ค. – 4 ก.ย. 2026) ลูกหนี้ไม่ถูกจ่ายงานเลย
+//   (รอบ 06:00 ของ 4 ก.ย. ก็ยังพัง — fix ขึ้น prod 16:06 วันเดียวกัน รอบแรกที่ใช้โค้ดนี้จริงคือ 5 ก.ย.)
+//
+// DEFAULT อยู่ในลิสต์ตั้งแต่ 2026-09-04 (คำสั่งเจ้าของ) — ผิดนัดชำระต้องตามหนักกว่าเลยกำหนด
+// ไม่ใช่เบากว่า. วัดบน prod วันนั้น: สัญญาที่ค้างจริง 4 ใบ แต่คิวเห็นแค่ 1 (DEFAULT 3 · OVERDUE 1)
+const COLLECTIBLE_STATUSES: ContractStatus[] = [ContractStatus.OVERDUE, ContractStatus.DEFAULT];
+
+// งวดที่ยังเก็บเงินไม่ครบ — พิมพ์เป็น PaymentStatus[] ด้วยเหตุผลเดียวกับ COLLECTIBLE_STATUSES
+const UNSETTLED_PAYMENT_STATUSES: PaymentStatus[] = [
+  PaymentStatus.PENDING,
+  PaymentStatus.OVERDUE,
+  PaymentStatus.PARTIALLY_PAID,
+];
 
 const RECENT_RELATIONSHIP_DAYS = 30;
 const ESCALATION_DAYS = 90;
@@ -56,6 +67,24 @@ export class AutoAssignService {
       where: {
         status: { in: COLLECTIBLE_STATUSES },
         deletedAt: null,
+
+        // ต้องมีงวดที่ถึงกำหนดแล้วและยังเก็บไม่ครบ ถึงจะมีอะไรให้ตาม
+        // 🔑 จำเป็นเป็นพิเศษหลังรับ DEFAULT เข้าคิว: DEFAULT ไม่มีทางกลับเป็น ACTIVE
+        //    (overdue-lifecycle-cron Step 1 flip เฉพาะ `status: 'ACTIVE'`) ⇒ ลูกค้าที่จ่ายไล่หลัง
+        //    จนไม่ค้างแล้วยังคาสถานะ DEFAULT ถาวร ถ้าไม่มีด่านนี้จะถูกจ่ายงานให้ตามทุกเช้า
+        //    ทั้งที่ไม่มีหนี้ให้ตาม — คนตามจะเลิกเชื่อคิว
+        // ด่านเดียวกับ contract-snapshot.cron.ts:50-55 และ queue.service.ts:832-837
+        payments: {
+          some: {
+            dueDate: { lte: date },
+            status: { in: UNSETTLED_PAYMENT_STATUSES },
+          },
+        },
+
+        // พัก 48 ชม. ที่ ผจก.สาขา/การเงิน กดไว้ระหว่างเจรจากับลูกค้า — จ่ายงานให้ไปตามซ้ำ
+        // ระหว่างพักคือทำลายเจตนาของปุ่มนั้น. เคารพเหมือน queue tab "วันนี้"
+        // (queue.service.ts:831) และ cron เลื่อนสถานะ (overdue-lifecycle-cron.service.ts:126-129)
+        OR: [{ blockAutoEscalation: null }, { blockAutoEscalation: { lt: date } }],
       },
       select: {
         id: true,

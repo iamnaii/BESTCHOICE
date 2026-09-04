@@ -1,4 +1,4 @@
-import { ContractStatus, UserRole } from '@prisma/client';
+import { ContractStatus, PaymentStatus, UserRole } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AutoAssignService } from './auto-assign.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -61,7 +61,7 @@ describe('AutoAssignService', () => {
 
   // เทสชุดนี้มีขึ้นเพราะบั๊กจริง: query เคยเขียน `['OVERDUE', 'PENDING'] as any`
   // ซึ่ง ContractStatus ไม่มีค่า PENDING — `as any` ทำให้ tsc ปล่อยผ่าน แล้ว Prisma
-  // โยน validation error ตอน runtime ⇒ cron พังเงียบ 9 คืนติดกัน
+  // โยน validation error ตอน runtime ⇒ cron พังเงียบ 10 รอบเช้าติดกัน
   // เทสเดิมทุกตัว mock prisma ไว้ จึงไม่มีทางเห็นว่าค่าที่ส่งไปไม่มีอยู่จริงใน enum
   describe('ค่าที่ส่งให้ Prisma ต้องมีอยู่จริงใน enum', () => {
     async function captureQueries() {
@@ -86,6 +86,35 @@ describe('AutoAssignService', () => {
       // ปักไว้ตรง ๆ ว่าค่าที่เคยพังต้องไม่กลับมา
       expect(statuses).not.toContain('PENDING');
       expect(statuses).toContain(ContractStatus.OVERDUE);
+      // DEFAULT = ผิดนัดชำระ ต้องเข้าคิวด้วย (คำสั่งเจ้าของ 2026-09-04)
+      // ปักไว้เพราะบทเรียนเดียวกับ PENDING: ลิสต์นี้เคยหลุดโดยไม่มีใครเห็นมา 10 รอบ
+      expect(statuses).toContain(ContractStatus.DEFAULT);
+    });
+
+    it('สถานะงวดที่ใช้กรองต้องเป็นค่าใน PaymentStatus ทุกตัว', async () => {
+      const { contractWhere } = await captureQueries();
+      const statuses: string[] = contractWhere.payments.some.status.in;
+
+      expect(statuses.length).toBeGreaterThan(0);
+      const valid = Object.values(PaymentStatus) as string[];
+      expect(statuses.filter((s) => !valid.includes(s))).toEqual([]);
+      // PAID ต้องไม่อยู่ในนี้ ไม่งั้นทุกสัญญาที่เคยจ่ายสักงวดจะเข้าคิวหมด
+      expect(statuses).not.toContain(PaymentStatus.PAID);
+    });
+
+    it('ต้องกรองเฉพาะสัญญาที่มีงวดถึงกำหนดแล้วและยังเก็บไม่ครบ', async () => {
+      const { contractWhere } = await captureQueries();
+      // ถ้าด่านนี้หาย ลูกค้า DEFAULT ที่จ่ายไล่หลังจนไม่ค้างแล้วจะถูกจ่ายงานทุกเช้าตลอดไป
+      // (DEFAULT ไม่มีทางกลับเป็น ACTIVE)
+      expect(contractWhere.payments?.some?.dueDate?.lte).toBeInstanceOf(Date);
+    });
+
+    it('ต้องเคารพการพักไล่ระดับที่ผู้จัดการกดไว้ (blockAutoEscalation)', async () => {
+      const { contractWhere } = await captureQueries();
+      expect(contractWhere.OR).toEqual([
+        { blockAutoEscalation: null },
+        { blockAutoEscalation: { lt: expect.any(Date) } },
+      ]);
     });
 
     it('role ของพนักงานติดตามต้องเป็นค่าใน UserRole', async () => {

@@ -31,7 +31,9 @@ export class Proxy {
 
     this.#child = spawn(
       'cloud-sql-proxy',
-      [`${instance}?unix-socket-path=${this.socketPath}`],
+      // --auto-iam-authn = proxy เอา token ของบัญชี gcloud ที่ล็อกอินอยู่ไปยืนยันตัวตนกับฐานให้
+      // ⇒ ไม่มีรหัสผ่านอยู่ที่ไหนเลย และเพิกถอนรายคนได้ด้วย REVOKE/IAM ไม่ต้องหมุนรหัสของใคร
+      ['--auto-iam-authn', `${instance}?unix-socket-path=${this.socketPath}`],
       {
         // stdout ของ process นี้คือช่อง JSON-RPC ของ MCP
         // ถ้าปล่อยให้ลูก inherit แล้วมันพิมพ์อะไรออกมาบรรทัดเดียว protocol พังทันที

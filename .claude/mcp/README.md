@@ -15,8 +15,13 @@
 
 ```bash
 cd .claude/mcp && npm install
-bash setup.sh                  # สร้าง role บน prod + ให้สิทธิ์ + เก็บรหัสไว้ ~/.config/bestchoice-mcp/env
+bash setup.sh                  # สร้าง IAM DB user + ผูกเข้ากับ mcp_ro + ตรวจด้วยเส้นทางจริง
 ```
+
+**ไม่มีรหัสผ่านอยู่ที่ไหนเลย** — ใช้ Cloud SQL IAM authentication: `cloud-sql-proxy --auto-iam-authn`
+เอา token ของบัญชี gcloud ที่ล็อกอินอยู่ไปยืนยันตัวตนกับฐานให้
+
+`~/.config/bestchoice-mcp/env` เก็บแค่ `MCP_USER` (อีเมล) กับ `MCP_DATABASE` — ไม่มีความลับ
 
 ## ต่อให้ Claude Code เห็น
 
@@ -78,19 +83,35 @@ role `mcp_ro` จึงมองไม่เห็น `chat_messages.text`, `med
 ตัว MCP แปลให้แล้ว) แก้ด้วย `npm run grants` แล้ว apply `sql/grants.sql` ใหม่
 ตอนสตาร์ททุกครั้ง server จะเทียบสิทธิ์จริงกับ `grants.sql` แล้วเตือนถ้าไม่ตรง
 
-## ถอนออก
+## เพิ่มเครื่อง / เพิ่มคน
+
+เครื่องใหม่ของ**คนเดิม**: ล็อกอิน gcloud บัญชีเดิม → `npm install` → `bash setup.sh` → `claude mcp add`
+**ไม่ต้องขนความลับข้ามเครื่องเลย** เพราะไม่มีความลับให้ขน
+
+คนใหม่: เขารัน `setup.sh` เอง (สคริปต์สร้าง IAM DB user ของบัญชีเขาแล้วผูกเข้า `mcp_ro` ให้)
+ต้องมี IAM role `roles/cloudsql.instanceUser` + `roles/cloudsql.client` บนโปรเจกต์
+
+**ถอนคนออก** — ทันที ไม่กระทบคนอื่น ไม่ต้องหมุนรหัสของใคร:
+```sql
+REVOKE mcp_ro FROM "someone@example.com";
+```
+
+## ถอนออกทั้งหมด
 
 ```sql
 \c bestchoice
 DROP OWNED BY mcp_ro;
 \c postgres
-DROP OWNED BY mcp_ro;     -- DROP OWNED BY ทำงานต่อ database ข้ามขั้นนี้จะเหลือ role ล็อกอินได้ค้างบน prod
+DROP OWNED BY mcp_ro;     -- DROP OWNED BY ทำงานต่อ database ข้ามขั้นนี้ DROP ROLE จะไม่ผ่าน
 DROP ROLE mcp_ro;
 ```
-แล้วลบ `~/.config/bestchoice-mcp/env`
+แล้ว `gcloud sql users delete <อีเมล> --instance=bestchoice-db` + ลบ `~/.config/bestchoice-mcp/env`
++ `claude mcp remove --scope user bestchoice-db`
 
 ## ข้อจำกัดที่รู้อยู่
 
 - **session บน remote sandbox ใช้ไม่ได้** (ไม่มี gcloud/proxy) — server จะจบพร้อมข้อความอธิบาย ไม่ค้าง
 - grant กันไม่ให้*ดึง* PII ได้ แต่กันไม่ได้ว่าสิ่งที่อ่านมาจะไปค้างใน transcript ของ Claude Code บนเครื่อง — **นั่นเป็นนโยบาย ไม่ใช่กลไก**
+- `ALTER ROLE ... SET` **ไม่ถ่ายทอด**ผ่านการเป็นสมาชิก group role ⇒ ต้องตั้ง guard ให้ผู้ใช้จริงทุกคน
+  (`setup.sh` ทำให้แล้ว แต่ถ้าเพิ่มคนด้วยมือต้องไม่ลืม — ดู `sql/create-role.sql`)
 - `system_config.value` อ่านได้ (จำเป็นต่องาน) แต่โดยธรรมชาติมันเก็บอะไรก็ได้

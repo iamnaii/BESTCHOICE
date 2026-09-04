@@ -19,8 +19,10 @@ const CONFIG = join(homedir(), '.config', 'bestchoice-mcp', 'env')
 const log = (...a) => process.stderr.write(a.join(' ') + '\n')
 
 /**
- * รหัสอ่านจากไฟล์นอกเรโป ไม่ใช่ดึงจาก Secret Manager ตอนสตาร์ท
- * gcloud ค้างได้ ~31 วินาทีถ้า token หมดอายุ และ MCP handshake จะค้างตามไปด้วย
+ * ไฟล์ตั้งค่าอยู่นอกเรโปและ **ไม่มีความลับอยู่ในนั้นแล้ว** — เก็บแค่ชื่อผู้ใช้ (อีเมล gcloud)
+ * กับชื่อฐาน เพราะการยืนยันตัวตนใช้ IAM ผ่าน `cloud-sql-proxy --auto-iam-authn`
+ * ไม่อ่านจาก gcloud ตอนสตาร์ท: gcloud ค้างได้ ~31 วินาทีถ้า token หมดอายุ
+ * แล้ว MCP handshake จะค้างตามไปด้วย
  * ตั้งค่าครั้งเดียวด้วย: bash .claude/mcp/setup.sh
  */
 function readConfig() {
@@ -30,7 +32,7 @@ function readConfig() {
     const m = line.match(/^\s*([A-Z_]+)=(.*)$/)
     if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '')
   }
-  return env.MCP_RO_PASSWORD ? env : null
+  return env.MCP_USER ? env : null
 }
 
 const proxy = new Proxy()
@@ -60,8 +62,7 @@ async function connectDb(socketPath, cfg) {
   db = new Db({
     socketDir: socketPath.slice(0, socketPath.lastIndexOf('/')),
     database: cfg.MCP_DATABASE || 'bestchoice',
-    user: cfg.MCP_USER || 'mcp_ro',
-    password: cfg.MCP_RO_PASSWORD,
+    user: cfg.MCP_USER,
   })
 
   const id = await db.assertIdentity()      // ต่อผิดฐาน = ตอบผิดแบบไม่รู้ตัว ต้องตายตรงนี้

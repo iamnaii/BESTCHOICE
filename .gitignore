@@ -62,3 +62,7 @@ interco-preflight-*.txt
 
 # TypeScript incremental build artifacts (หลุดเข้า repo ตอน merge #1503)
 *.tsbuildinfo
+
+# ตั้งค่า MCP เฉพาะเครื่อง — ห้าม commit
+# ไฟล์รากไม่อยู่ใน paths-ignore ของ deploy-gcp.yml ⇒ commit แล้วยิง deploy ขึ้น prod
+/.mcp.json

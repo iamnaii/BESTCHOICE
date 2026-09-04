@@ -1,7 +1,15 @@
 # Go-Live Checklist (real นิติบุคคล cutover)
 
-> Generated 2026-06-22. Context: current prod is **throwaway test data, wiped before real go-live**
-> (see memory `prod-is-testing-phase-data-wiped`). This checklist is the set of **manual ops steps**
+> Generated 2026-06-22 · แก้ 2026-09-04
+>
+> 🚨 **"prod เป็นข้อมูลทดสอบ" จริงเฉพาะฝั่ง ERP — ห้ามอ่านว่าล้างได้ทั้งฐาน**
+> ERP เล็กและตั้งใจล้าง: ลูกค้า 98 · ขาย 6 · สัญญา 23 · จ่ายเงิน 204
+> แต่ **`chat_messages` 115,437 แถว จาก `chat_rooms` 8,217 ห้อง Facebook = คนจริง 8,217 คน**
+> (488 ข้อความมีเบอร์มือถือ · 375 มีเลข 13 หลัก · 20,257 มีรูปแนบ = บัตร/สลิป/ทะเบียนบ้าน
+> ที่ลูกค้าส่งมาสมัครผ่อน · 8,201 ห้องมีชื่อจริง) — ที่มาของตัวเลขอยู่ใน `docs/CONTRIBUTING.md`
+> ⇒ ขั้นตอนล้างข้อมูลด้านล่าง **ต้องระบุตารางเป็นรายตัว ห้ามล้างทั้งฐาน**
+>
+> This checklist is the set of **manual ops steps**
 > that are NOT wired into the deploy pipeline (`deploy-gcp.yml` only runs `prisma migrate deploy`).
 > Code/engineering go-live blockers are tracked as PRs, not here.
 

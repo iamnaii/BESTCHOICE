@@ -46,9 +46,12 @@ jobs:
   lint-and-test:
     name: Lint & Test
     runs-on: ubuntu-latest
-    # Fail fast if a DB-backed spec hangs (the suite normally finishes in
-    # ~5 min) instead of burning the default 6h job limit then auto-cancelling.
-    timeout-minutes: 25
+    # กันไม่ให้ค้างยาวถึงเพดาน 6 ชม.ของ GitHub — แต่ต้องกว้างพอสำหรับ "ทั้ง job"
+    # ไม่ใช่แค่ขั้นเทส: 25 นาทีเดิมตึงเกินไป (run เขียวใช้ 20m29s / 19m52s = เหลือขอบ ~4 นาที)
+    # จน run 33840369707 ชน timeout ทั้งที่ Test API รันแค่ 5m26s และกำลังจะผ่าน
+    # ⇒ deploy ไม่ออกเลย เพราะ deploy/migrate ทั้งคู่ `needs: lint-and-test`
+    # ถ้าอยาก fail fast ให้ใส่ timeout รายขั้นแทน (ดู Security audit ข้างล่าง)
+    timeout-minutes: 40
     # รันทั้งบน PR และบน push main — deploy ต้องผ่านด่านนี้ก่อนเสมอ (คำสั่งเจ้าของ 2026-08-23)
     # เดิม `if: pull_request` ทำให้ merge แบบ admin ทั้งที่เทสแดงแล้ว deploy ขึ้น prod ได้ทันที
     # ทางลัดฉุกเฉิน: กด Run workflow แล้วติ๊ก skip_tests (คำสั่งเจ้าของ 2026-08-24) — job นี้ถูกข้าม
@@ -108,6 +111,9 @@ jobs:
       - name: Security audit
         run: npm audit --audit-level=high
         continue-on-error: true
+        # ขั้นนี้ continue-on-error อยู่แล้ว = ไม่เคยกั้นอะไร แต่เคยกิน 7 นาทีจากงบ 25 นาที
+        # จน job ชน timeout แล้ว deploy ไม่ออก (run 33840369707) — จำกัดไว้ไม่ให้กินงบคนอื่น
+        timeout-minutes: 3
 
       - name: Generate Prisma Client (SHOP)
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma

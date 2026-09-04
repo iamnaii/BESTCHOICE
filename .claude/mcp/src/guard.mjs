@@ -44,13 +44,35 @@ export function stripComments(sql) {
       }
       continue
     }
-    if (sql[i] === "'") { // ข้าม string literal ทั้งก้อน
+    if (sql[i] === "'") { // ข้าม string literal ทั้งก้อน — เนื้อในไม่ใช่คำสั่ง
       out += ' '; i++
       while (i < sql.length) {
         if (sql[i] === "'" && sql[i + 1] === "'") { i += 2; continue }
         if (sql[i] === "'") { i++; break }
         i++
       }
+      continue
+    }
+    if (sql[i] === '"') {
+      // identifier ในเครื่องหมายคำพูดคู่
+      //
+      // `SELECT "pg_sleep"(300)` เรียกฟังก์ชันได้จริงใน PostgreSQL — ถ้าข้ามทิ้งเหมือน
+      // string literal ด่านจะมองไม่เห็นชื่อฟังก์ชันแล้วปล่อยผ่าน
+      // แต่ถ้าคลายเครื่องหมายทุกกรณี `SELECT id AS "last update"` จะกลายเป็นคำว่า
+      // update โดด ๆ แล้วถูกปัดทั้งที่ไม่มีอะไรผิด
+      //
+      // ⇒ คลายเฉพาะตอนที่ปิดเครื่องหมายแล้วตามด้วย `(` = เรียกฟังก์ชัน (เคสอันตรายจริง)
+      //   นอกนั้นแทนด้วยช่องว่างเหมือน identifier ทึบตัวหนึ่ง
+      let j = i + 1, inner = ''
+      while (j < sql.length) {
+        if (sql[j] === '"' && sql[j + 1] === '"') { inner += '"'; j += 2; continue }
+        if (sql[j] === '"') { j++; break }
+        inner += sql[j]; j++
+      }
+      let k = j
+      while (k < sql.length && /\s/.test(sql[k])) k++
+      out += sql[k] === '(' ? inner : ' '
+      i = j
       continue
     }
     out += sql[i]; i++

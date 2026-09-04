@@ -31,7 +31,9 @@ export class Proxy {
 
     this.#child = spawn(
       'cloud-sql-proxy',
-      [`${instance}?unix-socket-path=${this.socketPath}`],
+      // --auto-iam-authn = proxy เอา token ของบัญชี gcloud ที่ล็อกอินอยู่ไปยืนยันตัวตนกับฐานให้
+      // ⇒ ไม่มีรหัสผ่านอยู่ที่ไหนเลย และเพิกถอนรายคนได้ด้วย REVOKE/IAM ไม่ต้องหมุนรหัสของใคร
+      ['--auto-iam-authn', `${instance}?unix-socket-path=${this.socketPath}`],
       {
         // stdout ของ process นี้คือช่อง JSON-RPC ของ MCP
         // ถ้าปล่อยให้ลูก inherit แล้วมันพิมพ์อะไรออกมาบรรทัดเดียว protocol พังทันที
@@ -42,17 +44,34 @@ export class Proxy {
     )
     this.#child.stderr.pipe(log)
     this.#child.on('exit', code => { this.#exited = code })
+    // ไม่มี handler นี้ = spawn ที่ล้มเหลว (ไม่เจอ binary, สิทธิ์ไม่พอ) จะโยน ENOENT
+    // แบบ unhandled แล้วฆ่าทั้ง server ทิ้งโดยไม่มีคำอธิบายให้ผู้ใช้เลย
+    this.#child.on('error', err => { this.#spawnError = err })
 
-    for (let i = 0; i < 100; i++) {
-      if (this.#exited != null) throw new Error(`cloud-sql-proxy ออกก่อนพร้อม (code ${this.#exited}) — ดู ${logPath}`)
-      if (existsSync(this.socketPath)) return this.socketPath
-      await new Promise(r => setTimeout(r, 100))
+    try {
+      for (let i = 0; i < 100; i++) {
+        if (this.#spawnError) {
+          throw new Error(
+            this.#spawnError.code === 'ENOENT'
+              ? 'ไม่พบคำสั่ง cloud-sql-proxy ใน PATH — ติดตั้งก่อน (มากับ google-cloud-sdk)'
+              : `เปิด cloud-sql-proxy ไม่ได้: ${this.#spawnError.message}`,
+          )
+        }
+        if (this.#exited != null) {
+          throw new Error(`cloud-sql-proxy ออกก่อนพร้อม (code ${this.#exited}) — ดู ${logPath || 'proxy.log'}`)
+        }
+        if (existsSync(this.socketPath)) return this.socketPath
+        await new Promise(r => setTimeout(r, 100))
+      }
+      throw new Error('cloud-sql-proxy ไม่พร้อมภายใน 10 วินาที')
+    } catch (e) {
+      this.stop()   // ทุกเส้นทางที่ล้มต้องเก็บกวาด ไม่งั้นเหลือ process + โฟลเดอร์ชั่วคราวค้าง
+      throw e
     }
-    this.stop()
-    throw new Error('cloud-sql-proxy ไม่พร้อมภายใน 10 วินาที')
   }
 
   #exited = null
+  #spawnError = null
 
   stop() {
     try { this.#child?.kill('SIGTERM') } catch {}

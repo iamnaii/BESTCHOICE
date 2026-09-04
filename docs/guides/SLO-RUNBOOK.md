@@ -1,5 +1,11 @@
 # SLO Runbook (T7-C12)
 
+> ⚠️ **กฎ Prometheus ในไฟล์นี้เป็นแผน ไม่ใช่ของที่ติดตั้งจริง** (แก้ 2026-09-04)
+> `HighErrorRate` / `SlowP95` / `EventLoopStalled` / `WebhookAnomalySpike` ต้องการ Prometheus/Grafana
+> ที่ scrape `/api/metrics` — **ไม่เคยถูกสร้างขึ้น** และ `METRICS_SCRAPE_TOKEN` ไม่ได้ตั้งบน prod
+>
+> **การแจ้งเตือนที่ทำงานอยู่จริงคือ Cloud Monitoring 9 policy — ดู `docs/runbooks/alerting.md`**
+
 ## Overview
 BESTCHOICE เปิด `/api/metrics` endpoint สำหรับ Prometheus scrape. Setup guide + target SLOs ด้านล่าง.
 

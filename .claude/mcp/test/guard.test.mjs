@@ -65,6 +65,18 @@ test('คำต้องห้ามที่อยู่ใน string literal �
   ok("SELECT * FROM system_config WHERE key = 'update_mode'")
 })
 
+test('ชื่อฟังก์ชันในเครื่องหมายคำพูดคู่ต้องถูกจับ — ช่องที่ audit เจอ', () => {
+  // `SELECT "pg_sleep"(300)` เรียกฟังก์ชันได้จริงใน PostgreSQL (identifier ตรงตัวพิมพ์)
+  // เดิม stripComments ข้าม "..." ทิ้งเหมือน string literal ⇒ ด่านมองไม่เห็นชื่อฟังก์ชัน
+  no('SELECT "pg_sleep"(300)')
+  no('SELECT "set_config"(\'statement_timeout\',\'0\',false)')
+  no('SELECT "lo_create"(0)')
+  // แต่ identifier ปกติที่มีช่องว่าง/ตัวพิมพ์ใหญ่ต้องยังใช้ได้
+  ok('SELECT id AS "last update" FROM products')
+  ok('SELECT "createdAt" FROM products')
+  ok('SELECT count(*) AS "จำนวน" FROM products')
+})
+
 test('stripComments นับ block comment ซ้อนถูกต้อง', () => {
   assert.equal(stripComments('a /* x /* y */ z */ b').replace(/\s+/g, ' ').trim(), 'a b')
   assert.equal(stripComments('a -- ทิ้ง\nb').replace(/\s+/g, ' ').trim(), 'a b')

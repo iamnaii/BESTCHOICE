@@ -9,15 +9,45 @@
 ถ้าย้ายไป `tools/` หรือที่อื่น commit เดียวจะยิง `prisma migrate deploy` ขึ้น prod ทันที
 
 > ⚠️ `.mcp.json` ที่รากเรโป **ไม่ได้** อยู่ใน paths-ignore — commit ไฟล์นั้นจะ deploy หนึ่งรอบ
-> ถ้าไม่อยากให้ deploy ให้ใส่ `.mcp.json` ใน `.gitignore` แล้วเก็บไว้ในเครื่องอย่างเดียว
+> จึงใส่ `/.mcp.json` ไว้ใน `.gitignore` แล้ว (ดู "ต่อให้ Claude Code เห็น" ข้างล่าง)
 
 ## ตั้งค่า
 
 ```bash
 cd .claude/mcp && npm install
-npm run grants                 # อ่านโครงตารางจริง → sql/grants.sql + sql/grants-report.md
-bash setup.sh                  # สร้าง role บน prod + ให้สิทธิ์ + เก็บรหัสไว้ ~/.config/bestchoice-mcp/env
+bash setup.sh                  # สร้าง IAM DB user + ผูกเข้ากับ mcp_ro + ตรวจด้วยเส้นทางจริง
 ```
+
+**ไม่มีรหัสผ่านอยู่ที่ไหนเลย** — ใช้ Cloud SQL IAM authentication: `cloud-sql-proxy --auto-iam-authn`
+เอา token ของบัญชี gcloud ที่ล็อกอินอยู่ไปยืนยันตัวตนกับฐานให้
+
+`~/.config/bestchoice-mcp/env` เก็บแค่ `MCP_USER` (อีเมล) กับ `MCP_DATABASE` — ไม่มีความลับ
+
+## ต่อให้ Claude Code เห็น
+
+```bash
+claude mcp add --scope user bestchoice-db node \
+  /Users/iamnaii/Desktop/App/BESTCHOICE/.claude/mcp/src/index.mjs
+claude mcp list      # ต้องขึ้น "bestchoice-db: ... ✓ Connected"
+```
+
+**ทำไมต้อง `--scope user` และทำไม path ต้องเป็น absolute** — Claude Code อ่าน `.mcp.json`
+จาก**โฟลเดอร์ที่เปิด session** ไม่ใช่รากเรโป และเครื่องนี้เปิดจากทั้ง `~/Desktop/App`
+(โฟลเดอร์รวมหลายโปรเจกต์) และ `~/Desktop/App/BESTCHOICE` ⇒ วาง `.mcp.json` ที่เดียวไม่ครอบทั้งสองแบบ
+ส่วน path แบบ relative ใน `args` จะถูกตีความเทียบกับ cwd ของ session ซึ่งชี้ผิดทันทีที่เปิดจากที่อื่น
+
+`.mcp.json` ที่รากเรโปยังมีอยู่ (gitignore ไว้) เป็นทางสำรองตอนเปิด session ที่ `BESTCHOICE/` โดยตรง
+
+**ต้องเปิด session ใหม่หลังลงทะเบียน** — session ที่เปิดค้างอยู่จะยังไม่เห็น
+`sql/grants.sql` ถูก generate ไว้แล้วและ commit อยู่ในเรโป — `setup.sh` ใช้ไฟล์นั้นเลย
+
+**สร้างใหม่หลัง migration ที่เพิ่มคอลัมน์** (ต้องมี proxy + `PGURL` เอง — `npm run grants` เฉย ๆ ไม่พอ):
+```bash
+cloud-sql-proxy --port 15432 bestchoice-prod:asia-southeast1:bestchoice-db &
+PGURL="postgresql://bestchoice:<รหัส>@127.0.0.1:15432/bestchoice?sslmode=disable" npm run grants
+psql "$PGURL" -v ON_ERROR_STOP=1 -f sql/grants.sql
+```
+(รหัสอยู่ใน Secret Manager `DATABASE_URL` — ต้องใช้ role เจ้าของตาราง ไม่ใช่ `mcp_ro`)
 `setup.sh` ทำกับ prod แค่ `CREATE ROLE` + `REVOKE` + `GRANT` — ไม่แตะข้อมูล ไม่แตะโครงตาราง ไม่รีสตาร์ท
 
 ## Tool
@@ -34,8 +64,9 @@ bash setup.sh                  # สร้าง role บน prod + ให้ส
 ในนั้น 488 ข้อความมีเบอร์มือถือ · 375 มีเลข 13 หลัก · **20,257 มีรูปแนบ** (ธุรกิจนี้ = บัตร/สลิป/ทะเบียนบ้าน)
 · 8,201 ห้องมีชื่อจริงบน Facebook
 
-**นี่คือข้อมูลของคนจริง ไม่ใช่ข้อมูลทดสอบ** แม้ `docs/CONTRIBUTING.md` จะบอกว่า prod เป็น throwaway
-(ซึ่งจริงเฉพาะฝั่ง ERP — ลูกค้า 98 · ขาย 6 · สัญญา 23)
+**นี่คือข้อมูลของคนจริง ไม่ใช่ข้อมูลทดสอบ** — ตรงกับที่ `docs/CONTRIBUTING.md` และ
+`docs/runbooks/go-live-checklist.md` ระบุไว้แล้ว: "ข้อมูลทดสอบ" จริงเฉพาะฝั่ง ERP
+(ลูกค้า 98 · ขาย 6 · สัญญา 23)
 
 role `mcp_ro` จึงมองไม่เห็น `chat_messages.text`, `media_url`, `chat_rooms.display_name`,
 `picture_url`, `ai_sales_state`, `line_user_id` และคอลัมน์ PII อื่นอีกรวม **567 จาก 2,964 คอลัมน์**
@@ -52,19 +83,35 @@ role `mcp_ro` จึงมองไม่เห็น `chat_messages.text`, `med
 ตัว MCP แปลให้แล้ว) แก้ด้วย `npm run grants` แล้ว apply `sql/grants.sql` ใหม่
 ตอนสตาร์ททุกครั้ง server จะเทียบสิทธิ์จริงกับ `grants.sql` แล้วเตือนถ้าไม่ตรง
 
-## ถอนออก
+## เพิ่มเครื่อง / เพิ่มคน
+
+เครื่องใหม่ของ**คนเดิม**: ล็อกอิน gcloud บัญชีเดิม → `npm install` → `bash setup.sh` → `claude mcp add`
+**ไม่ต้องขนความลับข้ามเครื่องเลย** เพราะไม่มีความลับให้ขน
+
+คนใหม่: เขารัน `setup.sh` เอง (สคริปต์สร้าง IAM DB user ของบัญชีเขาแล้วผูกเข้า `mcp_ro` ให้)
+ต้องมี IAM role `roles/cloudsql.instanceUser` + `roles/cloudsql.client` บนโปรเจกต์
+
+**ถอนคนออก** — ทันที ไม่กระทบคนอื่น ไม่ต้องหมุนรหัสของใคร:
+```sql
+REVOKE mcp_ro FROM "someone@example.com";
+```
+
+## ถอนออกทั้งหมด
 
 ```sql
 \c bestchoice
 DROP OWNED BY mcp_ro;
 \c postgres
-DROP OWNED BY mcp_ro;     -- DROP OWNED BY ทำงานต่อ database ข้ามขั้นนี้จะเหลือ role ล็อกอินได้ค้างบน prod
+DROP OWNED BY mcp_ro;     -- DROP OWNED BY ทำงานต่อ database ข้ามขั้นนี้ DROP ROLE จะไม่ผ่าน
 DROP ROLE mcp_ro;
 ```
-แล้วลบ `~/.config/bestchoice-mcp/env`
+แล้ว `gcloud sql users delete <อีเมล> --instance=bestchoice-db` + ลบ `~/.config/bestchoice-mcp/env`
++ `claude mcp remove --scope user bestchoice-db`
 
 ## ข้อจำกัดที่รู้อยู่
 
 - **session บน remote sandbox ใช้ไม่ได้** (ไม่มี gcloud/proxy) — server จะจบพร้อมข้อความอธิบาย ไม่ค้าง
 - grant กันไม่ให้*ดึง* PII ได้ แต่กันไม่ได้ว่าสิ่งที่อ่านมาจะไปค้างใน transcript ของ Claude Code บนเครื่อง — **นั่นเป็นนโยบาย ไม่ใช่กลไก**
+- `ALTER ROLE ... SET` **ไม่ถ่ายทอด**ผ่านการเป็นสมาชิก group role ⇒ ต้องตั้ง guard ให้ผู้ใช้จริงทุกคน
+  (`setup.sh` ทำให้แล้ว แต่ถ้าเพิ่มคนด้วยมือต้องไม่ลืม — ดู `sql/create-role.sql`)
 - `system_config.value` อ่านได้ (จำเป็นต่องาน) แต่โดยธรรมชาติมันเก็บอะไรก็ได้

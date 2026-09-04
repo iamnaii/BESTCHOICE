@@ -18,11 +18,13 @@ export class Db {
   #pool = null
   #expectedDb
 
-  constructor({ socketDir, database = 'bestchoice', user = 'mcp_ro', password }) {
+  constructor({ socketDir, database = 'bestchoice', user }) {
     this.#expectedDb = database
     this.#pool = new pg.Pool({
       host: socketDir,          // node-postgres ต่อ unix socket โดยให้ host เป็น "โฟลเดอร์" ที่มี socket อยู่
-      database, user, password,
+      database,
+      user,                     // = อีเมลของบัญชี gcloud · ไม่มี password เพราะใช้ IAM auth
+
       // instance เป็น db-g1-small (1 vCPU) และแอปจริงถือ connection_limit=10 อยู่แล้ว
       // เครื่องพัฒนาไม่มีเหตุผลจะกินมากกว่านี้
       max: 3,
@@ -64,9 +66,19 @@ export class Db {
       const table = m[2]
       for (const c of m[1].split(',')) expected.add(`${table}.${c.trim().replace(/^"|"$/g, '')}`)
     }
+    // ถามว่า "อ่านได้จริงไหม" ไม่ใช่ "ใครเป็นผู้รับ grant"
+    // information_schema.column_privileges กรองด้วย grantee = ตัวผู้รับตรง ๆ
+    // ⇒ มองไม่เห็นสิทธิ์ที่ได้มาผ่านการเป็นสมาชิก group role (ซึ่งเป็นวิธีที่ระบบนี้ใช้:
+    //   สิทธิ์ทั้งหมดอยู่ที่ mcp_ro แล้วแจกด้วย GRANT mcp_ro TO "<อีเมล>")
+    // has_column_privilege คิดรวมการสืบทอดให้ จึงตอบตรงคำถามที่เราต้องการจริง ๆ
     const { rows } = await this.#pool.query(`
-      SELECT table_name, column_name FROM information_schema.column_privileges
-      WHERE grantee = current_user AND privilege_type = 'SELECT' AND table_schema = 'public'`)
+      SELECT c.relname AS table_name, a.attname AS column_name
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_attribute a ON a.attrelid = c.oid
+      WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND has_column_privilege(c.oid, a.attnum, 'SELECT')`)
     const live = new Set(rows.map(r => `${r.table_name}.${r.column_name}`))
     const missing = [...expected].filter(k => !live.has(k))
     const extra = [...live].filter(k => !expected.has(k))
@@ -87,6 +99,23 @@ export class Db {
     const started = Date.now()
     try {
       await client.query('BEGIN READ ONLY')
+
+      // SHOW / EXPLAIN ใส่ใน DECLARE ... CURSOR FOR ไม่ได้ (syntax error)
+      // ทั้งสองคืนผลไม่กี่แถวอยู่แล้ว จึงยิงตรงได้ปลอดภัย — ยังอยู่ใน READ ONLY txn เหมือนกัน
+      // (เดิม guard อนุญาตให้ใช้ แต่ db ครอบด้วย cursor เสมอ ⇒ ใช้จริงไม่ได้สักครั้ง)
+      if (/^\s*(show|explain)\b/i.test(sql)) {
+        const res = await client.query(sql)
+        const rows = res.rows.slice(0, n)
+        return {
+          rows,
+          rowCount: rows.length,
+          truncated: res.rows.length > n,
+          truncatedReason: res.rows.length > n ? `ถึงเพดาน ${n} แถว` : null,
+          columns: (res.fields || []).map(f => f.name),
+          durationMs: Date.now() - started,
+        }
+      }
+
       await client.query(`DECLARE mcp_cur NO SCROLL CURSOR FOR ${sql}`)
       const res = await client.query(`FETCH FORWARD ${n + 1} FROM mcp_cur`)  // +1 เพื่อรู้ว่ามีต่อไหม
       const truncatedByRows = res.rows.length > n

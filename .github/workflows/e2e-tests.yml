@@ -122,11 +122,19 @@ jobs:
       - name: Wait for API
         run: npx wait-on http://localhost:3000/api/health --timeout 30000
 
+      # ดาวน์โหลดแพ็กเกจ `serve` ให้จบก่อนเป็นขั้นแยก — ถ้าปล่อยให้ `npx serve ... &`
+      # ทำเองในเบื้องหลัง เวลาดาวน์โหลดจะไปกินโควตาของ wait-on
+      # (E2E run 33845248916 ล้ม 3 ใน 4 shard ที่ขั้น "Wait for Web" เพราะ 15 วิไม่พอ
+      #  ให้ npx โหลด serve บน cache เย็น — shard 4 รอดเพราะจังหวะ cache ต่างกัน)
+      - name: Prefetch serve
+        run: npx --yes serve --version
+
       - name: Serve Web build
-        run: npx serve -s apps/web/dist -l 5173 &
+        run: npx --yes serve -s apps/web/dist -l 5173 &
 
       - name: Wait for Web
-        run: npx wait-on http://localhost:5173 --timeout 15000
+        # 60 วิให้เท่ากับฝั่ง API (30 วิ) บวกเผื่อ — ขั้นนี้ไม่ใช่ที่ที่ควรประหยัดเวลา
+        run: npx wait-on http://localhost:5173 --timeout 60000
 
       - name: Run E2E tests (shard ${{ matrix.shard }}/2)
         # ตัวหารมาจาก `strategy.job-total` (จำนวน job ที่ matrix สร้างจริง) ไม่ใช่เลขที่พิมพ์มือ

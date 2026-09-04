@@ -8,6 +8,7 @@ on:
       - 'docs/**'
       - '.claude/**'
       - 'workflows/**'
+      - 'scripts/ops/**'
   pull_request:
     branches: [main]
     paths-ignore:

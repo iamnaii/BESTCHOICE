@@ -45,6 +45,18 @@ async function connect() {
   if (!cfg) throw new Error(`ยังไม่ได้ตั้งค่า — รัน \`bash .claude/mcp/setup.sh\` (จะเขียน ${CONFIG})`)
 
   const socketPath = await proxy.start()
+  try {
+    await connectDb(socketPath, cfg)
+  } catch (e) {
+    // proxy สตาร์ทไปแล้วแต่ต่อฐานไม่ผ่าน — ถ้าไม่หยุดตรงนี้ process กับโฟลเดอร์ชั่วคราวจะค้าง
+    // (server ยังอยู่และผู้ใช้เรียก tool ซ้ำได้ ⇒ สะสม proxy ทีละตัวทุกครั้งที่ล้ม)
+    proxy.stop()
+    db = null
+    throw e
+  }
+}
+
+async function connectDb(socketPath, cfg) {
   db = new Db({
     socketDir: socketPath.slice(0, socketPath.lastIndexOf('/')),
     database: cfg.MCP_DATABASE || 'bestchoice',

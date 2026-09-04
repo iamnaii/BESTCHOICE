@@ -87,6 +87,23 @@ export class Db {
     const started = Date.now()
     try {
       await client.query('BEGIN READ ONLY')
+
+      // SHOW / EXPLAIN ใส่ใน DECLARE ... CURSOR FOR ไม่ได้ (syntax error)
+      // ทั้งสองคืนผลไม่กี่แถวอยู่แล้ว จึงยิงตรงได้ปลอดภัย — ยังอยู่ใน READ ONLY txn เหมือนกัน
+      // (เดิม guard อนุญาตให้ใช้ แต่ db ครอบด้วย cursor เสมอ ⇒ ใช้จริงไม่ได้สักครั้ง)
+      if (/^\s*(show|explain)\b/i.test(sql)) {
+        const res = await client.query(sql)
+        const rows = res.rows.slice(0, n)
+        return {
+          rows,
+          rowCount: rows.length,
+          truncated: res.rows.length > n,
+          truncatedReason: res.rows.length > n ? `ถึงเพดาน ${n} แถว` : null,
+          columns: (res.fields || []).map(f => f.name),
+          durationMs: Date.now() - started,
+        }
+      }
+
       await client.query(`DECLARE mcp_cur NO SCROLL CURSOR FOR ${sql}`)
       const res = await client.query(`FETCH FORWARD ${n + 1} FROM mcp_cur`)  // +1 เพื่อรู้ว่ามีต่อไหม
       const truncatedByRows = res.rows.length > n

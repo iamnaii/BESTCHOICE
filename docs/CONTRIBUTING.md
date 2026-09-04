@@ -44,7 +44,15 @@ cd apps/web && npx tsc --noEmit && npx vitest run
 
 `main` is protected: **PR required**, **`Lint & Test` must pass**, branch must be **up to date**, **1 approving review**, linear history, no force-push/deletion.
 
-> ⚠️ **Merging to `main` auto-deploys to production** (`deploy-gcp.yml` on push to `main` → GCP Cloud Run + Firebase + `prisma migrate deploy`). Prod is currently throwaway test data (wiped before real go-live), but treat every merge as a real deploy.
+> ⚠️ **Merging to `main` auto-deploys to production** (`deploy-gcp.yml` on push to `main` → GCP Cloud Run + Firebase + `prisma migrate deploy`). Treat every merge as a real deploy.
+>
+> 🚨 **"prod เป็นข้อมูลทดสอบ" จริงเฉพาะฝั่ง ERP — ฝั่งแชทเป็นข้อมูลของคนจริง** (สำรวจ 2026-09-04)
+> ERP เล็กและจะถูกล้างก่อน go-live: ลูกค้า 98 · ขาย 6 · สัญญา 23 · จ่ายเงิน 204
+> แต่ `chat_messages` มี **115,437 แถว** จาก `chat_rooms` **8,217 ห้อง Facebook = คนจริง 8,217 คน**
+> (488 ข้อความมีเบอร์มือถือ · 375 มีเลข 13 หลัก · **20,257 มีรูปแนบ** ซึ่งในธุรกิจนี้คือบัตรประชาชน/
+> สลิปเงินเดือน/ทะเบียนบ้านที่ลูกค้าส่งมาสมัครผ่อน · 8,201 ห้องมีชื่อจริงบน Facebook)
+> ⇒ **ห้ามดัมป์ฐาน prod ลงเครื่อง ห้ามแปะเนื้อความแชทลงที่สาธารณะ และห้ามถือว่าข้อมูลนี้ทิ้งได้**
+> (เครื่องมือที่ต่อ prod ควรใช้ role `mcp_ro` ซึ่งมองไม่เห็นคอลัมน์ PII — ดู `.claude/mcp/README.md`)
 
 1. Branch off the latest `main`: `git fetch origin main && git checkout -b feat/<thing> origin/main`.
 2. **One PR per task.** Keep PRs small and reviewable. `base = main` always.

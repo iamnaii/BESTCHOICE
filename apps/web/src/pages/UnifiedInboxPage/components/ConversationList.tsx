@@ -1,34 +1,41 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { nextRoomIndex } from './list-nav';
 import { isEditableTarget } from '../hooks/useKeyboardShortcuts';
-import { Search, MessageCircle, X, Bell, BellOff, CheckCheck, Loader2 } from 'lucide-react';
+import { Search, MessageCircle, X, Bell, BellOff, CheckCheck, Loader2, ArrowRight, ArrowLeft, Clock } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import ConversationItem from './ConversationItem';
-import ChannelFilter, { type InboxTab, type AiFilter } from './ChannelFilter';
+import ChannelFilter, { type InboxTab, type WhoFilter, type StaffOption } from './ChannelFilter';
 import { deriveTabCounts, deriveChannelCounts } from './tab-counts';
+
+/** รูปตัวกรองของกล่องข้อความ — เจ้าของเคาะ 2026-09-05: ช่องทางเลือกทีละอัน · เมนูผู้ดูแลแทนเมนูบอท
+ *  view: 'expired' = มุมมอง "ตอบไม่ทัน" (ห้อง FB ที่รอและพ้น 24 ชม.) เข้าได้จากบรรทัดสถานะของแท็บรอตอบเท่านั้น */
+export interface InboxFilters {
+  tab: InboxTab;
+  channel: string | null;
+  who: WhoFilter;
+  view: 'queue' | 'expired';
+  search?: string;
+}
 
 interface ConversationListProps {
   sessions: any[];
   activeRoomId: string | null;
   onSelectRoom: (roomId: string) => void;
   isLoading: boolean;
-  filters: {
-    tab: InboxTab;
-    channels: string[];
-    search?: string;
-    aiFilter?: 'all' | 'ai' | 'human' | 'pending';
-  };
-  onFiltersChange: (filters: any) => void;
+  filters: InboxFilters;
+  onFiltersChange: (filters: InboxFilters) => void;
   currentUserId?: string;
+  /** พนักงานสำหรับเมนูผู้ดูแล (จาก GET /staff-chat/staff/online) */
+  staff?: StaffOption[];
   aiSettings?: { autoModeEnabled: boolean; enabledChannels: string[] };
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   muteAll?: boolean;
   onToggleMuteAll?: () => void;
-  serverCounts?: { mine: number; all: number; waiting: number; byChannel: Record<string, number> };
+  serverCounts?: { mine: number; all: number; waiting: number; expired?: number; byChannel: Record<string, number> };
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -42,6 +49,7 @@ export default function ConversationList({
   filters,
   onFiltersChange,
   currentUserId,
+  staff,
   aiSettings,
   connectionStatus,
   muteAll,
@@ -53,7 +61,6 @@ export default function ConversationList({
 }: ConversationListProps) {
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const [searchFocused, setSearchFocused] = useState(false);
-  const aiFilter: AiFilter = filters.aiFilter ?? 'all';
   const debouncedSearch = useDebounce(searchInput, 300);
 
   const queryClient = useQueryClient();
@@ -84,17 +91,14 @@ export default function ConversationList({
     }
   }, [debouncedSearch]);
 
-  const handleChannelToggle = (channel: string) => {
-    const current = filters.channels ?? [];
-    const updated = current.includes(channel)
-      ? current.filter((c: string) => c !== channel)
-      : [...current, channel];
-    onFiltersChange({ ...filters, channels: updated });
-  };
-
   // Server already filters and sorts — just pass through.
   // (tabCounts/channelCounts memos below are kept as serverCounts fallback.)
   const visibleRooms = sessions;
+
+  // ตัวกรอง "รายการ" (ช่องทาง/ผู้ดูแล) ไม่แตะเลขบนแท็บ — แต่ต้องบอกหน้าว่างให้ตรงความจริง
+  const listFilterActive = filters.channel !== null || filters.who !== 'all';
+  const allClear =
+    filters.tab === 'waiting' && filters.view !== 'expired' && !filters.search && !listFilterActive;
 
   const tabCounts = useMemo(() => deriveTabCounts(sessions, currentUserId), [sessions, currentUserId]);
   const channelCounts = useMemo(() => deriveChannelCounts(sessions), [sessions]);
@@ -228,21 +232,54 @@ export default function ConversationList({
         </div>
       </div>
 
-      {/* Tabs + Channel filter + AI status chips (AI chips merged into the same
-          wrapping row — owner asked "หาแต่แชทที่รอตอบ" → 'pending') */}
+      {/* แท็บ + เมนูช่องทาง + เมนูผู้ดูแล — เมนูบอทถูกถอด (เจ้าของ 2026-09-05: "ตรงนี้น่าจะเปลี่ยนเป็นอย่างอื่นแทน")
+          เปลี่ยนแท็บ = กลับคิวปกติเสมอ กันค้างอยู่ในมุมมอง "ตอบไม่ทัน" โดยไม่รู้ตัว */}
       <ChannelFilter
         activeTab={filters.tab}
-        selectedChannels={filters.channels ?? []}
-        onTabChange={(tab) => onFiltersChange({ ...filters, tab })}
-        onChannelToggle={handleChannelToggle}
+        onTabChange={(tab) => onFiltersChange({ ...filters, tab, view: 'queue' })}
+        channel={filters.channel}
+        onChannelChange={(channel) => onFiltersChange({ ...filters, channel })}
+        who={filters.who}
+        onWhoChange={(who) => onFiltersChange({ ...filters, who })}
+        staff={staff ?? []}
+        currentUserId={currentUserId}
         counts={serverCounts ?? tabCounts}
         channelCounts={serverCounts?.byChannel ?? channelCounts}
-        aiFilter={aiFilter}
-        onAiFilterChange={(key) => onFiltersChange({ ...filters, aiFilter: key })}
       />
 
       {/* Divider */}
       <div className="h-px bg-border/60" />
+
+      {/* บรรทัดสถานะของกอง "รอตอบ" — บอกกติกาเรียง และทางเข้ามุมมอง "ตอบไม่ทัน" (สเปก §7 แก้ไข 2026-09-05)
+          ห้องที่พ้น 24 ชม. ไม่อยู่ในคิว เพราะตอบไปก็ส่งไม่ถึง — แต่ต้องมีที่ให้ดู ไม่ใช่หายไปเฉย ๆ */}
+      {filters.tab === 'waiting' && filters.view !== 'expired' && (
+        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          <span className="truncate">เรียง: ใกล้หมดเวลาก่อน แล้วรอนานก่อน</span>
+          {(serverCounts?.expired ?? 0) > 0 && (
+            <button
+              type="button"
+              onClick={() => onFiltersChange({ ...filters, view: 'expired' })}
+              className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-medium text-foreground hover:underline"
+            >
+              ตอบไม่ทัน {serverCounts?.expired} <ArrowRight className="size-3" />
+            </button>
+          )}
+        </div>
+      )}
+      {filters.tab === 'waiting' && filters.view === 'expired' && (
+        <div className="flex items-center gap-2 border-b border-border/60 bg-muted px-4 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          <Clock className="size-3 shrink-0" />
+          {/* สั้นพอกับ 320px — ผลของการพ้นหน้าต่างอธิบายในแถบเหนือช่องพิมพ์เมื่อเปิดห้อง */}
+          <span className="truncate"><span className="font-medium text-foreground">ตอบไม่ทัน {serverCounts?.expired ?? 0}</span> · พ้น 24 ชม. แล้ว</span>
+          <button
+            type="button"
+            onClick={() => onFiltersChange({ ...filters, view: 'queue' })}
+            className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-medium text-foreground hover:underline"
+          >
+            <ArrowLeft className="size-3" /> กลับคิว
+          </button>
+        </div>
+      )}
 
       {/* Room list */}
       <div className="flex-1 overflow-y-auto">
@@ -261,18 +298,41 @@ export default function ConversationList({
         ) : visibleRooms.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
             <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
-              {filters.tab === 'waiting' && !filters.search ? (
+              {allClear ? (
                 <CheckCheck className="w-5 h-5 text-success" />
               ) : (
                 <MessageCircle className="w-5 h-5 text-muted-foreground/40" />
               )}
             </div>
-            {filters.tab === 'waiting' && !filters.search ? (
+            {allClear ? (
               <>
                 <p className="text-sm font-medium text-foreground leading-snug">ตอบครบทุกคนแล้ว</p>
                 <p className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">
                   ลูกค้าที่ทักมาใหม่จะขึ้นที่นี่
                 </p>
+              </>
+            ) : filters.tab === 'waiting' && filters.view === 'expired' && !listFilterActive && !filters.search ? (
+              <>
+                <p className="text-sm font-medium text-muted-foreground leading-snug">ไม่มีห้องที่ตอบไม่ทัน</p>
+                <button
+                  type="button"
+                  onClick={() => onFiltersChange({ ...filters, view: 'queue' })}
+                  className="text-xs text-primary hover:underline mt-1"
+                >
+                  กลับคิว
+                </button>
+              </>
+            ) : listFilterActive && !filters.search ? (
+              <>
+                {/* มีตัวกรองรายการเปิดอยู่ — บอกว่า "ในตัวกรองนี้" ไม่ใช่ "ตอบครบแล้ว" และปุ่มปลดตัวกรองโดยไม่เปลี่ยนแท็บ */}
+                <p className="text-sm font-medium text-muted-foreground leading-snug">ไม่มีแชทในตัวกรองนี้</p>
+                <button
+                  type="button"
+                  onClick={() => onFiltersChange({ ...filters, channel: null, who: 'all' })}
+                  className="text-xs text-primary hover:underline mt-1"
+                >
+                  ดูทั้งกอง
+                </button>
               </>
             ) : sessions.length === 0 ? (
               <>
@@ -303,7 +363,7 @@ export default function ConversationList({
                 <button
                   type="button"
                   onClick={() => {
-                    onFiltersChange({ ...filters, channels: [], tab: 'all', aiFilter: 'all' });
+                    onFiltersChange({ ...filters, channel: null, who: 'all', view: 'queue', tab: 'all' });
                   }}
                   className="text-xs text-primary hover:underline mt-1"
                 >

@@ -4,7 +4,9 @@ import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tansta
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
-import ConversationList from './components/ConversationList';
+import ConversationList, { type InboxFilters } from './components/ConversationList';
+import { describeSendError } from './components/send-error';
+import type { StaffOption } from './components/ChannelFilter';
 import ChatPanel from './components/ChatPanel';
 import Customer360Panel from './components/Customer360Panel';
 import { useChatSocket, type ChatMessageEvent } from './hooks/useChatSocket';
@@ -32,12 +34,8 @@ export default function UnifiedInboxPage() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
   const [roomViewers, setRoomViewers] = useState<{ userId: string; userName: string }[]>([]);
-  const [filters, setFilters] = useState<{
-    tab: InboxTab;
-    channels: string[];
-    search?: string;
-    aiFilter?: 'all' | 'ai' | 'human' | 'pending';
-  }>({ tab: 'waiting', channels: [], aiFilter: 'all' });
+  // เจ้าของเคาะ 2026-09-05: ช่องทางเลือกทีละอัน · เมนูผู้ดูแลแทนเมนูบอท · view 'expired' = มุมมอง "ตอบไม่ทัน"
+  const [filters, setFilters] = useState<InboxFilters>({ tab: 'waiting', channel: null, who: 'all', view: 'queue' });
 
   // Notification mute prefs (localStorage-persisted, no on-mount permission prompt)
   const { muteAll, toggleMuteAll, toggleRoomMute, isMuted } = useNotificationPrefs();
@@ -84,17 +82,21 @@ export default function UnifiedInboxPage() {
     { clientMessageId: string; roomId: string; text: string }[]
   >([]);
   const [failedSends, setFailedSends] = useState<
-    { id: string; roomId: string; text: string; source: 'http' | 'ws'; clientMessageId: string }[]
+    { id: string; roomId: string; text: string; source: 'http' | 'ws'; clientMessageId: string; reason?: string }[]
   >([]);
 
+  // reason = เหตุจริงที่แปลเป็นไทยแล้ว (สเปก §8.1: ส่งไม่ถึงต้องบอกว่าทำไม ไม่เงียบ)
   const pushFailedSend = useCallback(
-    (roomId: string, text: string, source: 'http' | 'ws', clientMessageId: string) => {
-      setFailedSends((prev) =>
+    (roomId: string, text: string, source: 'http' | 'ws', clientMessageId: string, reason?: string) => {
+      setFailedSends((prev) => {
         // avoid a double entry if HTTP-catch and WS send-failed both fire for the same text
-        prev.some((f) => f.roomId === roomId && f.text === text)
-          ? prev
-          : [...prev, { id: crypto.randomUUID(), roomId, text, source, clientMessageId }],
-      );
+        const dup = prev.find((f) => f.roomId === roomId && f.text === text);
+        if (dup) {
+          // รอบหลังมักมีเหตุที่ละเอียดกว่า (WS จาก adapter) — เก็บเหตุไว้ ไม่เพิ่มฟอง
+          return reason && !dup.reason ? prev.map((f) => (f === dup ? { ...f, reason } : f)) : prev;
+        }
+        return [...prev, { id: crypto.randomUUID(), roomId, text, source, clientMessageId, reason }];
+      });
     },
     [],
   );
@@ -157,7 +159,7 @@ export default function UnifiedInboxPage() {
     // onCollision intentionally dropped — the persistent banner (from onViewers)
     // replaces the one-shot toast.
     onSendFailed: (data) => {
-      pushFailedSend(data.roomId, data.text, 'ws', '');
+      pushFailedSend(data.roomId, data.text, 'ws', '', describeSendError(data.error) ?? undefined);
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
     },
     onReconnect: () => {
@@ -183,11 +185,18 @@ export default function UnifiedInboxPage() {
             page: pageParam,
             limit: 50,
             search: filters.search || undefined,
-            assignedToId: filters.tab === 'mine' ? currentUserId : undefined,
-            waiting: filters.tab === 'waiting' ? true : undefined,
-            channels: filters.channels?.length ? filters.channels.join(',') : undefined,
-            aiStatus:
-              filters.aiFilter && filters.aiFilter !== 'all' ? filters.aiFilter : undefined,
+            // แท็บ "ของฉัน" ล็อกผู้ดูแลเป็นตัวเอง — เมนูผู้ดูแลจึงมีผลเฉพาะแท็บอื่น
+            assignedToId:
+              filters.tab === 'mine'
+                ? currentUserId
+                : filters.who !== 'all' && filters.who !== 'free'
+                  ? filters.who
+                  : undefined,
+            unassignedOnly: filters.tab !== 'mine' && filters.who === 'free' ? true : undefined,
+            // รอตอบ = รอ + ยังตอบทัน · ตอบไม่ทัน = รอ + พ้น 24 ชม. (FB) — สองกองแยกกันฝั่งเซิร์ฟเวอร์
+            waiting: filters.tab === 'waiting' && filters.view !== 'expired' ? true : undefined,
+            expired: filters.tab === 'waiting' && filters.view === 'expired' ? true : undefined,
+            channels: filters.channel ?? undefined,
           },
         })
         .then((r) => r.data),
@@ -206,21 +215,34 @@ export default function UnifiedInboxPage() {
   }, [sessionsQuery.data?.pages]);
 
   // ตัวนับจากเซิร์ฟเวอร์ — นับทั้งจักรวาลห้อง ไม่ใช่แค่หน้าที่โหลดมา
-  // ส่ง tab/aiFilter ไปด้วยเพราะชิปช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่
-  // (ไม่งั้นชิปบอกเลขทั้งบริษัทขณะที่รายการข้างล่างถูกกรองไปแล้ว)
+  // ส่ง tab ไปด้วยเพราะเมนูช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่
+  // (ไม่งั้นเมนูบอกเลขทั้งบริษัทขณะที่รายการข้างล่างถูกกรองไปแล้ว)
+  // ตัวกรองรายการ (ช่องทาง/ผู้ดูแล) ไม่ส่ง — เลขบนแท็บต้องคงที่ขณะกรอง (สเปก §7)
   const roomCountsQuery = useQuery({
-    queryKey: ['chat-room-counts', filters.tab, filters.aiFilter],
+    queryKey: ['chat-room-counts', filters.tab],
     queryFn: () =>
       api
-        .get('/staff-chat/rooms/counts', {
-          params: {
-            tab: filters.tab,
-            aiStatus:
-              filters.aiFilter && filters.aiFilter !== 'all' ? filters.aiFilter : undefined,
-          },
-        })
+        .get('/staff-chat/rooms/counts', { params: { tab: filters.tab } })
         .then((r) => r.data),
+    refetchInterval: 60_000,
   });
+
+  // รายชื่อพนักงานสำหรับเมนูผู้ดูแล — endpoint เดียวกับปุ่มมอบหมายใน SessionActions
+  const staffQuery = useQuery({
+    queryKey: ['staff-online'],
+    queryFn: () => api.get('/staff-chat/staff/online').then((r) => r.data?.data ?? r.data),
+    staleTime: 5 * 60_000,
+  });
+  const staffOptions = useMemo<StaffOption[]>(() => {
+    const raw: any[] = Array.isArray(staffQuery.data) ? staffQuery.data : [];
+    return raw
+      .map((u) => ({
+        id: String(u.id),
+        name: u.name ?? u.displayName ?? [u.firstName, u.lastName].filter(Boolean).join(' ') ?? u.email ?? u.id,
+      }))
+      .filter((u) => u.id && u.name)
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  }, [staffQuery.data]);
 
   // AI settings — drives the AI status badge in ConversationItem.
   // Shares the ['ai-settings', 'lite'] cache key with ChatInboxPage Phase A
@@ -387,7 +409,7 @@ export default function UnifiedInboxPage() {
       const data = res.data;
       if (data && data.success === false) {
         removePending();
-        pushFailedSend(roomId, text, 'http', clientMessageId);
+        pushFailedSend(roomId, text, 'http', clientMessageId, describeSendError(data.error ?? data.message) ?? undefined);
         return false;
       }
       // Success — keep the ghost until the refetched row carries the token, then
@@ -398,9 +420,10 @@ export default function UnifiedInboxPage() {
       // until the next inbound message / poll).
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       return true;
-    } catch {
+    } catch (err: any) {
       removePending();
-      pushFailedSend(roomId, text, 'http', clientMessageId);
+      const raw = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.message;
+      pushFailedSend(roomId, text, 'http', clientMessageId, describeSendError(raw) ?? undefined);
       return false;
     }
   };
@@ -511,6 +534,7 @@ export default function UnifiedInboxPage() {
             muteAll={muteAll}
             onToggleMuteAll={handleToggleMuteAll}
             serverCounts={roomCountsQuery.data}
+            staff={staffOptions}
             hasMore={sessionsQuery.hasNextPage}
             isLoadingMore={sessionsQuery.isFetchingNextPage}
             onLoadMore={() => sessionsQuery.fetchNextPage()}

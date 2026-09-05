@@ -58,6 +58,10 @@ function MainContent() {
   const isMobile = useIsMobile();
   const { effectiveSidebarCollapse, currentZone, setCurrentZone, enterSettings } = useLayout();
   const { pathname, search, hash } = useLocation();
+  // key ของ <main> เปลี่ยนตามหน้า (เพื่อ fadeIn + รีเซ็ตโฟกัสเมื่อเปลี่ยนหน้า) — แต่ห้องแชทอยู่ใน URL
+  // (/inbox/:roomId) ถ้า key เปลี่ยนทุกครั้งที่เปิดห้อง ทั้งหน้ากล่องข้อความจะ mount ใหม่:
+  // ตัวกรอง/มุมมองหาย ฟองส่งไม่สำเร็จหาย socket ต่อใหม่ทุกคลิก ⇒ ยุบ /inbox/* เป็นหน้าเดียว
+  const pageKey = pathname.replace(/^(\/inbox)\/.+$/, '$1');
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showKeyboardShortcuts } = useUiFlags();
@@ -174,7 +178,7 @@ function MainContent() {
           id="main"
           tabIndex={-1}
           className="flex-1 grow bg-background focus-visible:outline-hidden"
-          key={pathname}
+          key={pageKey}
         >
           {isFullBleed ? (
             <Outlet />

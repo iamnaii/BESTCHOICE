@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import SessionActions from './SessionActions';
 import MessageTemplatePicker from './MessageTemplatePicker';
 import ProductPickerDialog from './ProductPickerDialog';
 import AiSuggestPanel from './AiSuggestPanel';
+import { fbWindowFor, fbWindowLeftText } from './fb-window';
 import { useKeyboardShortcuts, isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
@@ -112,7 +113,7 @@ interface ChatPanelProps {
   aiTogglePending?: boolean;
   // Optimistic-send ghosts keyed by clientMessageId — each resolves when its saved row lands.
   pendingSends?: { clientMessageId: string; text: string }[];
-  failedSends?: { id: string; text: string; source?: 'http' | 'ws' }[];
+  failedSends?: { id: string; text: string; source?: 'http' | 'ws'; reason?: string }[];
   onRetrySend?: (id: string, text: string) => void;
   onStartTyping?: () => void;
   onStopTyping?: () => void;
@@ -535,6 +536,8 @@ export default function ChatPanel({
   // message auto-reopens the room to ACTIVE (room-manager), so a resolved room
   // can never trap an ongoing conversation behind this gate.
   const isResolved = !!session.resolvedAt || session.status === 'IDLE';
+  // ช่องทางอื่นไม่มีหน้าต่าง → 'open' เสมอ · ห้อง FB ที่ยังไม่มี lastCustomerAt → 'open' (ไม่ขู่ รอเหตุจริงจากการส่ง)
+  const fbWindow = fbWindowFor(session);
 
   return (
     <div
@@ -788,6 +791,8 @@ export default function ChatPanel({
                   <div className="mt-1 flex items-center justify-end gap-2 text-[10px] text-destructive leading-snug">
                     <AlertCircle className="size-3 shrink-0" />{' '}
                     {f.source === 'ws' ? 'ส่งถึงลูกค้าไม่สำเร็จ' : 'ส่งไม่สำเร็จ'}
+                    {/* เหตุจริงจาก Facebook (สเปก §8.1) — ไม่เงียบ ไม่เดา */}
+                    {f.reason && <span className="font-normal text-destructive/80">· {f.reason}</span>}
                     <button
                       type="button"
                       onClick={() => onRetrySend?.(f.id, f.text)}
@@ -805,6 +810,20 @@ export default function ChatPanel({
           </>
         )}
       </div>
+
+      {/* หน้าต่าง 24 ชม. ของ Facebook (สเปก §8.1) — เตือน ไม่ปิดปุ่ม · อ่านจาก session.lastCustomerAt ที่เซิร์ฟเวอร์ตั้ง */}
+      {!isResolved && fbWindow === 'closing' && (
+        <div role="status" className="flex items-start gap-2 border-t border-border/60 bg-warning/10 px-3 py-2 text-xs leading-snug text-foreground">
+          <Clock className="mt-0.5 size-3.5 shrink-0 text-warning" />
+          <span><span className="font-semibold">ตอบได้อีก {fbWindowLeftText(session.lastCustomerAt)}</span> ก่อน Facebook ปิดหน้าต่าง 24 ชั่วโมง</span>
+        </div>
+      )}
+      {!isResolved && fbWindow === 'closed' && (
+        <div role="status" className="flex items-start gap-2 border-t border-border/60 bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
+          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+          <span><span className="font-semibold text-foreground">พ้น 24 ชั่วโมงแล้ว</span> Facebook อาจไม่ให้ส่งข้อความปกติ ถ้าส่งไม่ถึงให้ติดต่อทางโทรศัพท์แทน</span>
+        </div>
+      )}
 
       {/* AI Suggestions */}
       {!isResolved && (

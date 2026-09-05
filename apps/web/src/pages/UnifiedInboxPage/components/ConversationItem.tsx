@@ -4,6 +4,11 @@ import { cn } from '@/lib/utils';
 import { formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
+import { fbWindowFor, fbWindowLeftText } from './fb-window';
+import type { ReactNode } from 'react';
+
+/** ป้ายในแถวรายชื่อไม่เกินเท่านี้ — ท่าเดียวกับ OBI (ROW_PILLS=2) หลังเจอแถวสูง 276px จากป้าย 18 ใบ */
+const MAX_ROW_PILLS = 2;
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
 
 /** Map sentinel-prefixed message bodies to a human-friendly preview. */
@@ -80,6 +85,8 @@ interface ConversationItemProps {
     aiPaused?: boolean;
     handoffMode?: boolean;
     waitingSince?: string | null;
+    /** ข้อความล่าสุดของลูกค้า — ฐานนับหน้าต่าง 24 ชม. ของ Facebook */
+    lastCustomerAt?: string | null;
     customer?: { id: string; name: string; phone?: string; avatarUrl?: string | null; lineAvatarUrl?: string | null } | null;
     assignedTo?: { id: string; name: string; avatarUrl?: string | null } | null;
     tags?: { tag: string }[];
@@ -226,34 +233,55 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           aiPaused ||
           handoffMode ||
           (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
-          <div className="flex items-center gap-1.5 mt-1.5">
-            {session.waitingSince && (
-              <Badge variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">
-                รอ {formatWaitDuration(session.waitingSince)}
-              </Badge>
-            )}
-            {session.tags?.some((t: { tag: string }) => t.tag === 'overdue') && (
-              <Badge variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5">
-                ค้างชำระ
-              </Badge>
-            )}
-            {session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW' && (
-              (() => {
+          <div className="flex items-center gap-1.5 mt-1.5 overflow-hidden">
+            {/* ป้ายไม่เกิน 2 ใบ ที่เหลือยุบเป็น +N (สเปก §7 แก้ไข 2026-09-05) — ลำดับล็อกไว้:
+                ป้ายหน้าต่าง (เหลือ N / หมดเวลาตอบ / รอ N) → ด่วน → ค้างชำระ → สถานะบอท
+                ป้ายหน้าต่างมาก่อนเสมอ เพราะเป็นใบเดียวที่แปลว่า "ทำงานต่อไม่ได้" · ของเดิมห้าใบเต็ม 235/235px แบบ nowrap */}
+            {(() => {
+              const pills: ReactNode[] = [];
+              if (session.waitingSince) {
+                const w = fbWindowFor(session);
+                if (w === 'closed') {
+                  pills.push(<Badge key="win" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">หมดเวลาตอบ</Badge>);
+                } else if (w === 'closing') {
+                  pills.push(<Badge key="win" variant="warning" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">เหลือ {fbWindowLeftText(session.lastCustomerAt)}</Badge>);
+                } else {
+                  pills.push(<Badge key="win" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">รอ {formatWaitDuration(session.waitingSince)}</Badge>);
+                }
+              }
+              if (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') {
                 const cfg = getStatusBadgeProps(session.priority, sessionPriorityMap);
-                return (
-                  <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-1.5 py-0 h-5">
-                    {cfg.label}
-                  </Badge>
-                );
-              })()
-            )}
-            <AiStatusBadge
-              aiAutoEnabled={aiAutoEnabled}
-              channel={session.channel}
-              enabledChannels={enabledChannels}
-              aiPaused={aiPaused}
-              handoffMode={handoffMode}
-            />
+                // แผนที่กลางยังเป็น "HIGH"/"CRITICAL" — ในแถวรายชื่อพูดไทยเหมือนป้ายใบอื่น
+                const label = session.priority === 'CRITICAL' ? 'ด่วนมาก' : session.priority === 'HIGH' ? 'ด่วน' : cfg.label;
+                pills.push(<Badge key="pri" variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-1.5 py-0 h-5">{label}</Badge>);
+              }
+              if (session.tags?.some((t: { tag: string }) => t.tag === 'overdue')) {
+                pills.push(<Badge key="tag" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5">ค้างชำระ</Badge>);
+              }
+              const ai = (
+                <AiStatusBadge
+                  key="ai"
+                  aiAutoEnabled={aiAutoEnabled}
+                  channel={session.channel}
+                  enabledChannels={enabledChannels}
+                  aiPaused={aiPaused}
+                  handoffMode={handoffMode}
+                />
+              );
+              if (aiPaused || handoffMode || (aiAutoEnabled && enabledChannels.includes(session.channel))) pills.push(ai);
+              const shown = pills.slice(0, MAX_ROW_PILLS);
+              const hidden = pills.length - shown.length;
+              return (
+                <>
+                  {shown}
+                  {hidden > 0 && (
+                    <span className="inline-flex h-5 items-center rounded-full border border-border/60 px-1.5 text-[10px] leading-none text-muted-foreground tabular-nums" title={`อีก ${hidden} ป้าย`}>
+                      +{hidden}
+                    </span>
+                  )}
+                </>
+              );
+            })()}
             {session.assignedTo && (
               <span className="text-[11px] text-muted-foreground/80 ml-auto truncate max-w-[80px]">
                 {session.assignedTo.name}

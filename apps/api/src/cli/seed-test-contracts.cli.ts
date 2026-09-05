@@ -45,6 +45,7 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { ensureInstallmentSchedules } from '../utils/installment-schedule.util';
 import { loadLateFeeConfig, resolveLateFee } from '../utils/late-fee.util';
+import { TEST_CUSTOMER_ADDRESS, TEST_DOC_PREFIX } from '../utils/test-data-markers';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -53,9 +54,9 @@ const REQUIRED_CONSENT = 'YES_I_AM_SURE';
  * through these, so a contract opened through the REAL UI (getting a real BCP-
  * number) on a test customer/product is still swept.
  */
-export const TEST_CUSTOMER_ADDRESS = 'ข้อมูลทดสอบระบบ — ลบได้';
-export const TEST_IMEI_PREFIX = 'TEST-';
-export const TEST_CONTRACT_PREFIX = 'TEST-';
+export { TEST_CUSTOMER_ADDRESS };
+export const TEST_IMEI_PREFIX = TEST_DOC_PREFIX;
+export const TEST_CONTRACT_PREFIX = TEST_DOC_PREFIX;
 
 /** Pure installment calc — copied verbatim from prisma/seed.ts `calc()`. */
 function calc(sellingPrice: number, downPayment: number, rate: number, months: number, commPct = 0.1, vatPct = 0.07) {

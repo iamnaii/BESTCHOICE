@@ -209,6 +209,8 @@ describe('ContractsService', () => {
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      // approveCancellation → reopenRepossessionOnUnsale (2026-09-05): เครื่องปกติ = 0 แถว
+      repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       productReservation: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },

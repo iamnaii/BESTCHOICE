@@ -148,6 +148,8 @@ describe('Contract Signing & Workflow', () => {
     mockCheckAgeEligibility.mockReturnValue({ eligible: true, requiresGuardian: false });
 
     const txMock = {
+      // activate → closeRepossessionOnSale (2026-09-05): เครื่องปกติ = 0 แถว
+      repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),

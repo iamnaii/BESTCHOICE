@@ -9,7 +9,7 @@ import {
   QueueSortBy,
 } from './dto/queue-query.dto';
 import { seededShuffle } from '../../utils/shuffle.util';
-import { bangkokStartOfDay } from '../../utils/date.util';
+import { todayQueueWhere } from './today-queue.predicate';
 
 export type QueueTab = 'today' | 'promise';
 
@@ -819,26 +819,10 @@ export class OverdueQueueService {
     now: Date,
     branchScope: Prisma.ContractWhereInput,
   ): Prisma.ContractWhereInput {
-    // Bangkok-local midnight — server TZ on Cloud Run is UTC, so naive
-    // setHours(0,0,0,0) would shift the "today" boundary by 7 hours.
-    const startOfDay = bangkokStartOfDay(now);
-
     if (tab === 'today') {
-      return {
-        ...branchScope,
-        status: { in: ['ACTIVE', 'OVERDUE'] },
-        deletedAt: null,
-        OR: [{ blockAutoEscalation: null }, { blockAutoEscalation: { lt: now } }],
-        payments: {
-          some: {
-            dueDate: { lte: now },
-            status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
-          },
-        },
-        callLogs: {
-          none: { calledAt: { gte: startOfDay } },
-        },
-      };
+      // เงื่อนไขอยู่ที่ today-queue.predicate.ts ที่เดียว — `kpi.service.ts` ใช้ตัวเดียวกัน
+      // เพื่อให้ตัวเลข "คิววันนี้ทั้งหมด" กับรายการข้างล่างตรงกันเสมอโดยโครงสร้าง
+      return todayQueueWhere(now, branchScope);
     }
 
     // promise

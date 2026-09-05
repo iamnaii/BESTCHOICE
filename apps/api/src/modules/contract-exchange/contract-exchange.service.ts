@@ -26,6 +26,7 @@ import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
 import { computeExchangePlan } from './exchange-plan.util';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
+import { assertSameTestSide, TEST_SIDE_CUSTOMER_SELECT } from '../../utils/test-data-markers';
 
 /**
  * Subset of the request user that submit() needs to perform branch scoping.
@@ -91,6 +92,9 @@ export class ContractExchangeService {
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
     const oldContract = await this.prisma.contract.findUnique({
       where: { id: dto.oldContractId },
+      // test-data fence (spec 2026-09-05 §5.4): ลูกค้าสืบทอดจากสัญญาเดิม แต่เครื่องเลือกใหม่
+      // ⇒ คู่ใหม่ ต้องโหลดลูกค้ามาเข้ารั้ว
+      include: { customer: { select: TEST_SIDE_CUSTOMER_SELECT } },
     });
     if (!oldContract || oldContract.deletedAt) {
       throw new NotFoundException('ไม่พบสัญญาเดิม');
@@ -108,7 +112,9 @@ export class ContractExchangeService {
       }) as Promise<ProductPriceSnapshot | null>,
       this.prisma.product.findUnique({
         where: { id: dto.newProductId },
-      }) as Promise<ProductPriceSnapshot | null>,
+        // test-data fence ต้องเห็น PO ต้นทาง (อุปกรณ์เสริมไร้ IMEI จาก PO ทดสอบ)
+        include: { po: { select: { poNumber: true } } },
+      }),
     ]);
     if (!oldRaw) throw new NotFoundException('ไม่พบเครื่องเดิม');
     if (!newRaw) throw new NotFoundException('ไม่พบเครื่องใหม่');
@@ -133,6 +139,12 @@ export class ContractExchangeService {
     if (newProduct.status !== 'IN_STOCK') {
       throw new BadRequestException('เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)');
     }
+    // test-data fence (spec 2026-09-05 §5.4 — แก้หลัง final review): เปลี่ยนเครื่องสืบทอด
+    // "ลูกค้า" แต่ "เครื่อง" เลือกใหม่จากสต็อก ⇒ คู่ใหม่ ต้องอยู่ฝั่งเดียวกันเหมือน POS/เปิดสัญญา.
+    // ตรวจที่ submit ให้คนคีย์เห็นทันที และไม่ทิ้งคำขอ PENDING ที่อนุมัติไม่ได้ค้างไว้ (tier AUTO
+    // เรียก approve ต่อทันทีหลัง create คำขอนอก tx) — approveMemo/approvePriced ตรวจซ้ำใน tx
+    // เพราะฝั่งเปลี่ยนได้ระหว่างรออนุมัติ (แก้ที่อยู่ปัจจุบันของลูกค้า)
+    assertSameTestSide(oldContract.customer, newRaw);
 
     const mode = this.detectMode(
       oldProduct,
@@ -443,7 +455,12 @@ export class ContractExchangeService {
       }
       const req = await (tx as any).contractExchangeRequest.findUniqueOrThrow({
         where: { id },
-        include: { oldContract: true, newProduct: true },
+        // test-data fence (§5.4): ลูกค้าสัญญาเดิม + PO เครื่องใหม่ — include นี้ load-bearing
+        // (`tx as any` ทำให้ชนิดของรั้วบังคับ `po` ไม่ได้ ห้ามตัดออก)
+        include: {
+          oldContract: { include: { customer: { select: TEST_SIDE_CUSTOMER_SELECT } } },
+          newProduct: { include: { po: { select: { poNumber: true } } } },
+        },
       });
       // Task 8 review fix 3: approval can happen days after submit — the old
       // contract may have closed (early payoff / repossession) in between.
@@ -461,6 +478,10 @@ export class ContractExchangeService {
           'เครื่องใหม่ถูกลบออกจากระบบแล้ว — เปลี่ยนเครื่องไม่ได้ กรุณารับเครื่องเข้าสต็อกใหม่แล้วส่งคำขอใหม่',
         );
       }
+      // test-data fence (spec 2026-09-05 §5.4 — แก้หลัง final review): ตาข่ายสุดท้ายใน tx —
+      // ลูกค้าสืบทอดจากสัญญาเดิม แต่เครื่องเลือกใหม่ = คู่ใหม่ และฝั่งเปลี่ยนได้ระหว่างรออนุมัติ
+      // จึงตรวจซ้ำที่จุดเดียวกับด่านเครื่องใหม่ ก่อน `product.update` / `contract.update` ด้านล่าง
+      assertSameTestSide(req.oldContract.customer, req.newProduct);
       const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
       const oldProduct = await tx.product.findUniqueOrThrow({
         where: { id: req.oldProductId },
@@ -527,7 +548,12 @@ export class ContractExchangeService {
       // 2. Re-fetch with full data
       const req = await (tx as any).contractExchangeRequest.findUniqueOrThrow({
         where: { id },
-        include: { oldContract: true, newProduct: true },
+        // test-data fence (§5.4): ลูกค้าสัญญาเดิม + PO เครื่องใหม่ — include นี้ load-bearing
+        // (`tx as any` ทำให้ชนิดของรั้วบังคับ `po` ไม่ได้ ห้ามตัดออก)
+        include: {
+          oldContract: { include: { customer: { select: TEST_SIDE_CUSTOMER_SELECT } } },
+          newProduct: { include: { po: { select: { poNumber: true } } } },
+        },
       });
       const old = req.oldContract;
       // Phase 5 Task 2: เครื่องใหม่ต้องยังไม่ถูก soft-delete — การลบสินค้าไม่แตะ
@@ -539,6 +565,12 @@ export class ContractExchangeService {
           'เครื่องใหม่ถูกลบออกจากระบบแล้ว — เปลี่ยนเครื่องไม่ได้ กรุณารับเครื่องเข้าสต็อกใหม่แล้วส่งคำขอใหม่',
         );
       }
+      // test-data fence (spec 2026-09-05 §5.4 — แก้หลัง final review): ตาข่ายสุดท้ายใน tx —
+      // สัญญาใหม่จะถือ `customerId` ของสัญญาเดิม + `productId` ที่เลือกใหม่ = คู่ใหม่ ถ้าหลุด:
+      // สัญญาทดสอบบนเครื่องจริง → cleanup:test-contracts ลบ JE ต้นทุนของเครื่องจริงทิ้ง แล้วเครื่อง
+      // ค้าง SOLD_INSTALLMENT โดยไม่มีสัญญา (product-hold ห้ามลบ/แก้ IMEI ตลอดกาล). ตรวจก่อน
+      // step 3-6 ทั้งหมด (ยังไม่มี write ใดเกิดขึ้น — โคลน PDPA / contract.create / จองเครื่อง)
+      assertSameTestSide(old.customer, req.newProduct);
 
       // 3. Installment plan for the new contract.
       //    Device Swap 2026-07: server-computed snapshot from submit() when

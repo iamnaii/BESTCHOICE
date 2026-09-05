@@ -165,18 +165,27 @@ RESERVED · SOLD_INSTALLMENT · SOLD_CASH · SOLD_RESELL · REPOSSESSED
 
 helper: `assertSameTestSide(customer, product)` ใน util §3 — รับ object ที่โหลดแล้ว ไม่ query เพิ่ม
 
-### 5.1 จุดวาง — 3 chokepoint ที่ "เครื่องพบลูกค้า" ครั้งแรก
+### 5.1 จุดวาง — ทุก chokepoint ที่ "เครื่องพบลูกค้า" เป็น**คู่ใหม่**
 
 | จุด | ไฟล์ | ตำแหน่ง |
 |---|---|---|
 | ขาย POS (สด / ไฟแนนซ์ภายนอก) | `apps/api/src/modules/sales/services/sale-creation.service.ts` | หลังโหลดลูกค้า (~บรรทัด 48) และเครื่องหลัก + ของแถม — ตรวจ**ทุกชิ้น**ในใบ (ของแถมผิดฝั่งก็ต้องดัง) |
 | เปิดสัญญาผ่อน | `apps/api/src/modules/contracts/services/contract-lifecycle.service.ts create()` | ใน tx หลังโหลด `currentProduct` + `customerData` (~บรรทัด 158-166) — ที่เดียวกับที่ตรวจ `IN_STOCK` |
 | ใบจอง/มัดจำ | `apps/api/src/modules/bookings/bookings.service.ts create()` และตอนแปลงเป็นใบขาย (~บรรทัด 667) | หลังโหลดลูกค้า (~บรรทัด 249) และเครื่องแต่ละรายการ |
+| เปลี่ยนเครื่องระหว่างสัญญา (MEMO / PRICED) — **เพิ่มหลัง final review 2026-09-05** | `apps/api/src/modules/contract-exchange/contract-exchange.service.ts` | `submit()` หลังด่าน `IN_STOCK` (คนคีย์เห็นทันที + ไม่ทิ้งคำขอ PENDING ที่อนุมัติไม่ได้ค้าง — tier AUTO เรียก approve ต่อทันทีหลัง create คำขอนอก tx) **และ** ใน tx ของ `approveMemo()` / `approvePriced()` หลังด่าน "เครื่องใหม่ยังไม่ถูกลบ" ก่อน `product.update` / `contract.update` / `contract.create` — ตาข่ายสุดท้าย เพราะฝั่งเปลี่ยนได้ระหว่างรออนุมัติ (แก้ที่อยู่ลูกค้า) |
+| เคลมเปลี่ยนเครื่องตำหนิ 7 วัน — รวมทาง replace จากใบซ่อม (`bypassWindowCheck`) | `apps/api/src/modules/defect-exchange/defect-exchange.service.ts execute()` | ใน tx หลังโหลด `oldContract` (+`customer`) และ `newProductRec` (+`po`) ก่อนเขียนอะไรทั้งสิ้น (ปิดสัญญาเดิม / กลับรายการ JE / สร้างสัญญาใหม่ / จองเครื่อง) — ทาง bypass ข้าม `checkEligibility` แต่เดินผ่านบรรทัดนี้เหมือนกัน |
 
-ทำไม 3 จุดพอ: activation / ยึดเครื่อง / เปลี่ยนเครื่อง / void / ใบเสร็จ ล้วน**อ่านคู่เดิม**จาก
+ทำไมเท่านี้พอ: activation / ยึดเครื่อง / void / ใบเสร็จ ล้วน**อ่านคู่เดิม**จาก
 `contract.customerId`/`productId` ไม่สร้างคู่ใหม่ (pattern เดียวกับ `assertProductNotHeld` ที่บังคับ
-ที่ประตูเข้า) · การโหลดสินค้าใน 3 จุดต้องเพิ่ม `po: { select: { poNumber: true } }` (ชนิดของ
-`isTestProduct` บังคับ)
+ที่ประตูเข้า) · **เปลี่ยนเครื่อง/เคลมเปลี่ยนเครื่องไม่เข้าข่ายนี้** — สืบทอดเฉพาะ*ลูกค้า* ส่วน*เครื่อง*
+เลือกใหม่จากสต็อกด้วยด่านสถานะอย่างเดียว (`IN_STOCK` / ตรงรุ่น-ความจุ ซึ่งเครื่องทดสอบที่ seed ก็ผ่าน)
+จึงเป็นคู่ใหม่ที่ไม่มีรั้ว (spec ฉบับแรกเขียนผิดว่า "สืบทอดคู่เดิม ไม่ต้องตรวจซ้ำ" — final review พบว่า
+สัญญาทดสอบที่สลับไปเครื่องจริงจะได้สัญญาใหม่ที่ `cleanup:test-contracts` จัดเป็นทดสอบ*ผ่านลูกค้า* แล้ว
+hard-delete JE รวมถึงขาต้นทุน SHOP ของเครื่องจริง ⇒ เครื่องจริงค้าง `SOLD_INSTALLMENT` โดยไม่มีสัญญา
+และ `product-hold` ห้ามลบ/แก้ IMEI ตลอดกาล; ทิศกลับ ลูกค้าจริงบนเครื่องทดสอบ ก็ทำให้สัญญาจริงลอย
+แบบเดียวกัน) · การโหลดสินค้าใน**ทุก**จุดต้องเพิ่ม `po: { select: { poNumber: true } }` (ชนิดของ
+`isTestProduct` บังคับ — ที่ approve ของ contract-exchange ใช้ `tx as any` ชนิดจึงบังคับไม่ได้
+include นั้นเป็น load-bearing ห้ามตัดออก)
 
 ### 5.2 ข้อความ error (ชี้ทางที่ทำได้จริง — `coding-standards.md`)
 
@@ -197,7 +206,12 @@ helper: `assertSameTestSide(customer, product)` ใน util §3 — รับ ob
 
 - **เว็บช็อปสาธารณะ** — ลูกค้าจริงเห็น/สั่งเครื่องทดสอบได้ถ้า `isOnlineVisible = true` ⇒ dry-run
   รายงาน (§4.5 ข้อ 4) ให้ปิดเองก่อนขายจริง; ไม่วางรั้วที่ `consume-order-hold` รอบนี้
-- **เปลี่ยนเครื่อง / ยึดเครื่อง** — สืบทอดคู่ลูกค้าเดิม ไม่ต้องตรวจซ้ำ
+- **ยึดเครื่อง** — สืบทอดคู่เดิมจริง (`RepossessionsService.create` อ่าน `contract.productId` เท่านั้น
+  DTO ไม่มี `productId` ให้เลือกเครื่อง) ไม่ต้องตรวจซ้ำ
+- ~~**เปลี่ยนเครื่อง**~~ — **ถอดออกจากรายการนี้แล้ว (final review 2026-09-05, Critical)**: เหตุผลเดิม
+  "สืบทอดคู่ลูกค้าเดิม" ผิด — สืบทอดเฉพาะลูกค้า ส่วนเครื่องเลือกใหม่จากสต็อก = คู่ใหม่ ⇒ รั้วครอบแล้ว
+  ทั้ง `contract-exchange` (submit + approveMemo + approvePriced) และ `defect-exchange` (execute
+  รวมทาง replace จากใบซ่อม) — ดู §5.1
 
 ## 6. `factory:reset` ปฏิเสธเมื่อมีของจริง
 

@@ -16,6 +16,7 @@ import { ContractLifecycleService } from './contract-lifecycle.service';
 import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
 import { ShopDownPaymentReversalTemplate } from '../../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { TEST_CUSTOMER_ADDRESS } from '../../../utils/test-data-markers';
 
 // ─── module-level mocks (must be hoisted before imports are used) ─────────────
 
@@ -62,6 +63,8 @@ const mockProduct = {
   status: 'IN_STOCK',
   category: 'PHONE_NEW',
   imeiSerial: '123456789012345',
+  name: 'iPhone 15',
+  po: null,
   deletedAt: null,
 };
 
@@ -266,6 +269,36 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
     await service.create({ ...baseDto, downPayment: 0 } as any, 'sp-1');
 
     expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  // ─── test-data fence (spec 2026-09-05 §5.1) ────────────────────────────────
+
+  describe('test-data fence', () => {
+    it('re-check ใน tx โหลด po.poNumber มาด้วย (ชนิดของ isTestProduct บังคับ)', async () => {
+      await service.create({ ...baseDto } as any, 'sp-1');
+      expect(tx.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ include: { po: { select: { poNumber: true } } } }),
+      );
+    });
+
+    it('เครื่อง TEST- → ลูกค้าจริง: BadRequest ก่อนสร้างสัญญา', async () => {
+      tx.product.findFirst.mockResolvedValue({ ...mockProduct, imeiSerial: 'TEST-0001' });
+      await expect(service.create({ ...baseDto } as any, 'sp-1')).rejects.toThrow(/เครื่องทดสอบระบบ/);
+      expect(tx.contract.create).not.toHaveBeenCalled();
+    });
+
+    it('เครื่องจริง → ลูกค้าทดสอบ (ที่อยู่ = marker): BadRequest', async () => {
+      tx.customer.findUnique.mockResolvedValue({ ...mockCustomer, addressCurrent: TEST_CUSTOMER_ADDRESS });
+      await expect(service.create({ ...baseDto } as any, 'sp-1')).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
+      expect(tx.contract.create).not.toHaveBeenCalled();
+    });
+
+    it('ทดสอบ ↔ ทดสอบ ผ่าน — สัญญาถูกสร้าง', async () => {
+      tx.product.findFirst.mockResolvedValue({ ...mockProduct, imeiSerial: 'TEST-0001' });
+      tx.customer.findUnique.mockResolvedValue({ ...mockCustomer, phone: 'TEST-0000001' });
+      await service.create({ ...baseDto } as any, 'sp-1');
+      expect(tx.contract.create).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ─── Task-7 reversal assertions ──────────────────────────────────────────────

@@ -145,4 +145,20 @@ describe('PaymentQueryService — getPendingSummary', () => {
       expect(where.deletedAt).toBeNull();
     }
   });
+
+  // Owner 2026-09-05: unpaid buckets count only contracts the queue can still
+  // collect on (ACTIVE/OVERDUE/DEFAULT — mirrors getPendingPayments + the
+  // orchestrator guard). Money already collected/waived stays counted even
+  // when the contract later closed — those figures describe the past.
+  it('scopes the UNPAID buckets to payable contract statuses, but not collected/waived', async () => {
+    const { service, calls } = makeService({});
+    await service.getPendingSummary({});
+
+    const PAYABLE = { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] };
+    expect(calls.pending.contract.status).toEqual(PAYABLE);
+    expect(calls.pendingRows.contract.status).toEqual(PAYABLE);
+    expect(calls.overdue60.contract.status).toEqual(PAYABLE);
+    expect(calls.collected.contract.status).toBeUndefined();
+    expect(calls.waived.contract.status).toBeUndefined();
+  });
 });

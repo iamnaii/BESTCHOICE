@@ -32,16 +32,17 @@ function setup(rows: ReturnType<typeof row>[], minUnpaidByContract: Record<strin
       _min: { installmentNo: min },
     })),
   );
+  const findMany = jest.fn().mockResolvedValue(rows);
   const prisma = {
     payment: {
-      findMany: jest.fn().mockResolvedValue(rows),
+      findMany,
       count: jest.fn().mockResolvedValue(rows.length),
       groupBy,
     },
     systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     systemSetting: { findUnique: jest.fn().mockResolvedValue(null) },
   } as unknown as PrismaService;
-  return { service: new PaymentQueryService(prisma), groupBy };
+  return { service: new PaymentQueryService(prisma), groupBy, findMany };
 }
 
 describe('getPendingPayments — hasEarlierUnpaid (ห้ามข้ามงวด)', () => {
@@ -95,5 +96,46 @@ describe('getPendingPayments — hasEarlierUnpaid (ห้ามข้ามง�
     await service.getPendingPayments({});
 
     expect(groupBy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Contract-status scope (owner 2026-09-05): the queue only lists installments the
+ * orchestrator will actually accept — contract ACTIVE/OVERDUE/DEFAULT (its guard
+ * rejects anything else with "สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT").
+ * TERMINATED (บอกเลิกแล้ว — ยึดเครื่องจากหน้ายึดคืน), CLOSED_BAD_DEBT, EXCHANGED
+ * leave their unpaid rows behind, so without this filter they sat in the queue
+ * as dead rows nobody could act on. The PAID history tab (status=PAID) is NOT
+ * scoped — a COMPLETED/TERMINATED contract's paid installments must stay visible.
+ */
+describe('getPendingPayments — contract-status scope (เฉพาะสัญญาที่รับชำระได้จริง)', () => {
+  const PAYABLE = ['ACTIVE', 'OVERDUE', 'DEFAULT'];
+
+  it('default (unpaid) listing scopes to ACTIVE/OVERDUE/DEFAULT contracts', async () => {
+    const { service, findMany } = setup([], {});
+
+    await service.getPendingPayments({});
+
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.contract.status).toEqual({ in: PAYABLE });
+    expect(where.contract.workflowStatus).toBe('APPROVED');
+  });
+
+  it('an explicit unpaid status filter (OVERDUE) is still scoped', async () => {
+    const { service, findMany } = setup([], {});
+
+    await service.getPendingPayments({ status: 'OVERDUE' });
+
+    expect(findMany.mock.calls[0][0].where.contract.status).toEqual({ in: PAYABLE });
+  });
+
+  it('status=PAID (ชำระครบ tab) is NOT scoped — paid history of closed contracts stays', async () => {
+    const { service, findMany } = setup([], {});
+
+    await service.getPendingPayments({ status: 'PAID' });
+
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.contract.status).toBeUndefined();
+    expect(where.contract.workflowStatus).toBe('APPROVED');
   });
 });

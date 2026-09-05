@@ -326,10 +326,12 @@ export class ContractPaymentService {
       throw new BadRequestException('วันที่ชำระต้องไม่เป็นวันในอนาคต');
     }
 
-    // Require reference for non-cash methods
-    if (dto.paymentMethod !== 'CASH' && !dto.referenceNo && !dto.slipUrl) {
-      throw new BadRequestException('กรุณาระบุเลขที่อ้างอิงหรือแนบสลิปสำหรับการชำระแบบโอน/QR');
-    }
+    // referenceNo / slipUrl are OPTIONAL for every method — stored on the Payment
+    // rows when supplied, never required. The overlay sends BANK_TRANSFER with no
+    // ref (owner 2026-07-20, PR #1365 dropped the Ref field); a non-CASH guard
+    // here 400-ed every UI payoff from 2026-07-20 until 2026-09-05. Neither the
+    // payment wizard nor the repossession flow requires a ref either — do not
+    // re-add one here without a matching UI field.
 
     // F-3-027 part 2/3 follow-up + Phase A.1b: resolve FINANCE + SHOP
     // companyIds once BEFORE the transaction (and BEFORE the per-installment

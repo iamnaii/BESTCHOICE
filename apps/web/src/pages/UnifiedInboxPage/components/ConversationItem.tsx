@@ -241,7 +241,10 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
               const pills: ReactNode[] = [];
               if (session.waitingSince) {
                 const w = fbWindowFor(session);
-                if (w === 'closed') {
+                if (session.channel === 'FACEBOOK' && !session.lastCustomerAt) {
+                  // ยังไม่มีค่า (ก่อน CLI เติม) — เซิร์ฟเวอร์จัดห้องนี้ไว้ใน "ตอบไม่ทัน" ป้ายห้ามพูด "รอ N" สวนกับกองที่มันอยู่
+                  pills.push(<Badge key="win" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">ไม่ทราบเวลา</Badge>);
+                } else if (w === 'closed') {
                   pills.push(<Badge key="win" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">หมดเวลาตอบ</Badge>);
                 } else if (w === 'closing') {
                   pills.push(<Badge key="win" variant="warning" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">เหลือ {fbWindowLeftText(session.lastCustomerAt)}</Badge>);

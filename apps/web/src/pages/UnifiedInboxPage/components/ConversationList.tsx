@@ -96,7 +96,9 @@ export default function ConversationList({
   const visibleRooms = sessions;
 
   // ตัวกรอง "รายการ" (ช่องทาง/ผู้ดูแล) ไม่แตะเลขบนแท็บ — แต่ต้องบอกหน้าว่างให้ตรงความจริง
-  const listFilterActive = filters.channel !== null || filters.who !== 'all';
+  // แท็บของฉันล็อกผู้ดูแลเป็นตัวเองอยู่แล้ว เมนูผู้ดูแลจึงไม่นับเป็นตัวกรอง
+  const listFilterActive = filters.channel !== null || (filters.tab !== 'mine' && filters.who !== 'all');
+  const expiredCount = serverCounts?.expired ?? 0;
   const allClear =
     filters.tab === 'waiting' && filters.view !== 'expired' && !filters.search && !listFilterActive;
 
@@ -236,7 +238,7 @@ export default function ConversationList({
           เปลี่ยนแท็บ = กลับคิวปกติเสมอ กันค้างอยู่ในมุมมอง "ตอบไม่ทัน" โดยไม่รู้ตัว */}
       <ChannelFilter
         activeTab={filters.tab}
-        onTabChange={(tab) => onFiltersChange({ ...filters, tab, view: 'queue' })}
+        onTabChange={(tab) => onFiltersChange({ ...filters, tab, view: 'queue', who: tab === 'mine' ? 'all' : filters.who })}
         channel={filters.channel}
         onChannelChange={(channel) => onFiltersChange({ ...filters, channel })}
         who={filters.who}
@@ -244,7 +246,8 @@ export default function ConversationList({
         staff={staff ?? []}
         currentUserId={currentUserId}
         counts={serverCounts ?? tabCounts}
-        channelCounts={serverCounts?.byChannel ?? channelCounts}
+        // byChannel ของเซิร์ฟเวอร์นับในจักรวาล "รอตอบ" — มุมมองตอบไม่ทันเป็นคนละกอง ใช้เลขจากแถวที่โหลดมา
+        channelCounts={filters.view === 'expired' ? channelCounts : (serverCounts?.byChannel ?? channelCounts)}
       />
 
       {/* Divider */}
@@ -304,7 +307,19 @@ export default function ConversationList({
                 <MessageCircle className="w-5 h-5 text-muted-foreground/40" />
               )}
             </div>
-            {allClear ? (
+            {allClear && expiredCount > 0 ? (
+              <>
+                {/* คิวว่างจริง แต่ยังมีห้องที่พ้น 24 ชม. — "ตอบครบทุกคนแล้ว" จะโกหก */}
+                <p className="text-sm font-medium text-foreground leading-snug">คิวว่าง</p>
+                <button
+                  type="button"
+                  onClick={() => onFiltersChange({ ...filters, view: 'expired' })}
+                  className="text-xs text-primary hover:underline mt-1"
+                >
+                  มี {expiredCount} ห้องที่ตอบไม่ทัน →
+                </button>
+              </>
+            ) : allClear ? (
               <>
                 <p className="text-sm font-medium text-foreground leading-snug">ตอบครบทุกคนแล้ว</p>
                 <p className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">

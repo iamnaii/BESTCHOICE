@@ -5,7 +5,8 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
-import { describeSendError } from './components/send-error';
+import { describeSendError, SEND_ERROR_WINDOW, SEND_ERROR_TOKEN } from './components/send-error';
+import { buildRoomListParams } from './components/room-query';
 import type { StaffOption } from './components/ChannelFilter';
 import ChatPanel from './components/ChatPanel';
 import Customer360Panel from './components/Customer360Panel';
@@ -92,8 +93,11 @@ export default function UnifiedInboxPage() {
         // avoid a double entry if HTTP-catch and WS send-failed both fire for the same text
         const dup = prev.find((f) => f.roomId === roomId && f.text === text);
         if (dup) {
-          // รอบหลังมักมีเหตุที่ละเอียดกว่า (WS จาก adapter) — เก็บเหตุไว้ ไม่เพิ่มฟอง
-          return reason && !dup.reason ? prev.map((f) => (f === dup ? { ...f, reason } : f)) : prev;
+          // ไม่เพิ่มฟองซ้ำ แต่เหตุที่ "ดีกว่า" ทับได้: เหตุจาก WS (adapter รู้จริง) หรือเหตุที่แปลได้ (พ้น 24 ชม./token)
+          // ชนะข้อความ HTTP ทั่วไปที่มาก่อน
+          const better =
+            !!reason && (!dup.reason || source === 'ws' || reason === SEND_ERROR_WINDOW || reason === SEND_ERROR_TOKEN);
+          return better ? prev.map((f) => (f === dup ? { ...f, reason } : f)) : prev;
         }
         return [...prev, { id: crypto.randomUUID(), roomId, text, source, clientMessageId, reason }];
       });
@@ -184,19 +188,7 @@ export default function UnifiedInboxPage() {
           params: {
             page: pageParam,
             limit: 50,
-            search: filters.search || undefined,
-            // แท็บ "ของฉัน" ล็อกผู้ดูแลเป็นตัวเอง — เมนูผู้ดูแลจึงมีผลเฉพาะแท็บอื่น
-            assignedToId:
-              filters.tab === 'mine'
-                ? currentUserId
-                : filters.who !== 'all' && filters.who !== 'free'
-                  ? filters.who
-                  : undefined,
-            unassignedOnly: filters.tab !== 'mine' && filters.who === 'free' ? true : undefined,
-            // รอตอบ = รอ + ยังตอบทัน · ตอบไม่ทัน = รอ + พ้น 24 ชม. (FB) — สองกองแยกกันฝั่งเซิร์ฟเวอร์
-            waiting: filters.tab === 'waiting' && filters.view !== 'expired' ? true : undefined,
-            expired: filters.tab === 'waiting' && filters.view === 'expired' ? true : undefined,
-            channels: filters.channel ?? undefined,
+            ...buildRoomListParams(filters, currentUserId),
           },
         })
         .then((r) => r.data),
@@ -238,7 +230,8 @@ export default function UnifiedInboxPage() {
     return raw
       .map((u) => ({
         id: String(u.id),
-        name: u.name ?? u.displayName ?? [u.firstName, u.lastName].filter(Boolean).join(' ') ?? u.email ?? u.id,
+        // getAssignableStaff คืน {id, name, email, activeCount} — name ว่างให้ตกไปอีเมล
+        name: u.name || u.email || String(u.id),
       }))
       .filter((u) => u.id && u.name)
       .sort((a, b) => a.name.localeCompare(b.name, 'th'));

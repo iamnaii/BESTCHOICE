@@ -69,6 +69,7 @@ export default function ChannelFilter({
   const selected = channel ? CHANNELS.find((c) => c.key === channel) : undefined;
   const totalInTab = channelCounts ? Object.values(channelCounts).reduce((a, b) => a + b, 0) : undefined;
   // ชื่อแรกพอ — "เอกนรินทร์ คงเดช (คุณ)" บนปุ่มทำสองเมนูตกบรรทัดที่ 320px
+  const mineTab = activeTab === 'mine';
   const whoStaff = staff.find((s) => s.id === who);
   const whoLabel = whoStaff ? (whoStaff.id === currentUserId ? 'คุณ' : whoStaff.name.split(' ')[0]) : '…';
 
@@ -148,18 +149,24 @@ export default function ChannelFilter({
           </SelectContent>
         </Select>
 
-        <Select value={who === 'all' ? ALL : who === 'free' ? FREE : who} onValueChange={(v) => onWhoChange(v === ALL ? 'all' : v === FREE ? 'free' : v)}>
+        {/* แท็บ "ของฉัน" ล็อกผู้ดูแลเป็นตัวเองอยู่แล้ว — เมนูอยู่ที่เดิม (ตำแหน่งคงที่) แต่ปิดและบอกตรง ๆ ว่า "คุณ" */}
+        <Select
+          value={mineTab ? ALL : who === 'all' ? ALL : who === 'free' ? FREE : who}
+          onValueChange={(v) => onWhoChange(v === ALL ? 'all' : v === FREE ? 'free' : v)}
+          disabled={mineTab}
+        >
           <SelectTrigger
             aria-label="กรองตามผู้ดูแล"
             className={cn(
               'h-6 min-h-6 w-auto gap-1 rounded-full border px-2 py-1 text-[11px] font-medium whitespace-nowrap',
-              who !== 'all'
+              !mineTab && who !== 'all'
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
+              mineTab && 'opacity-60',
             )}
           >
             <span className="opacity-70">ผู้ดูแล</span>
-            {who === 'all' ? 'ทุกคน' : who === 'free' ? 'ยังไม่มีคนดูแล' : whoLabel}
+            {mineTab ? 'คุณ' : who === 'all' ? 'ทุกคน' : who === 'free' ? 'ยังไม่มีคนดูแล' : whoLabel}
           </SelectTrigger>
           <SelectContent className="min-w-[186px]">
             <SelectItem value={ALL} className="text-xs">ทุกคน</SelectItem>

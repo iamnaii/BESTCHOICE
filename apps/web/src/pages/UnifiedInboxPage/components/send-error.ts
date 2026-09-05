@@ -2,6 +2,7 @@
  *  รู้จัก: Graph #10 / subcode 2018278 = พ้นหน้าต่าง 24 ชม. · #190 = token ของเพจหมดอายุ · อื่น ๆ = ข้อความดิบตัดที่ 120 */
 export const SEND_ERROR_WINDOW = 'พ้น 24 ชม. Facebook ไม่ให้ส่งข้อความปกติ';
 export const SEND_ERROR_TOKEN = 'token ของเพจหมดอายุ ต้องต่ออายุในตั้งค่า';
+export const SEND_ERROR_NETWORK = 'ต่อเซิร์ฟเวอร์ไม่ได้ — เช็คอินเทอร์เน็ตแล้วลองใหม่';
 
 export function describeSendError(error: string | null | undefined): string | null {
   if (!error) return null;
@@ -24,5 +25,9 @@ export function describeSendError(error: string | null | undefined): string | nu
   }
   if (code === 10 || subcode === 2018278) return SEND_ERROR_WINDOW;
   if (code === 190) return SEND_ERROR_TOKEN;
+  // ข้อความจาก axios/เครือข่าย — อย่าปล่อยอังกฤษดิบใส่ฟองไทย
+  const http = /status code (\d{3})/i.exec(raw);
+  if (http) return `เซิร์ฟเวอร์ตอบ HTTP ${http[1]} — ลองใหม่อีกครั้ง`;
+  if (/network error|failed to fetch|timeout/i.test(raw)) return SEND_ERROR_NETWORK;
   return raw.length > 120 ? raw.slice(0, 120) + '…' : raw;
 }

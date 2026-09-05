@@ -100,3 +100,15 @@ describe('ProtectedRoute ↔ sidebar ต้องสอดคล้องกั�
     expect(stale, `แก้ไปแล้ว — ลบออกจาก KNOWN_GAPS ด้วย ไม่งั้นบั๊กกลับมาได้เงียบ ๆ:\n${stale.join('\n')}`).toEqual([]);
   });
 });
+
+/** /inbox/:roomId? เป็น dynamic segment เทสด้านบนข้ามให้ — ต้องยืนยันเองว่า /inbox ยังอยู่และทุก role ที่ถูกอนุญาตเห็นในเมนู */
+describe('/inbox (optional roomId)', () => {
+  it('มี route เดียว /inbox/:roomId? และทุก role ที่ route อนุญาต หา /inbox เจอในเมนู', () => {
+    const m = src.match(/<Route\s+path="\/inbox\/:roomId\?"([\s\S]*?)\/>/);
+    expect(m).not.toBeNull();
+    expect(src.match(/<Route\s+path="\/inbox(\/:roomId\??)?"/g)?.length).toBe(1);
+    const roles = [...(m![1].match(/roles=\{\[([^\]]*)\]\}/)?.[1] ?? '').matchAll(/'(\w+)'/g)].map((r) => r[1]);
+    expect(roles.length).toBeGreaterThan(0);
+    for (const role of roles) expect(inMenu(role, '/inbox')).toBe(true);
+  });
+});

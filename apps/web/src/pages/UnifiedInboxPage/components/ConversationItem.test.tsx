@@ -56,6 +56,12 @@ describe('ConversationItem — ป้ายในแถว', () => {
     expect(screen.queryByText('หมดเวลาตอบ')).toBeNull();
   });
 
+  it('ห้อง FB ที่รอแต่ยังไม่มี lastCustomerAt (ก่อน CLI เติม) → "ไม่ทราบเวลา" ไม่ใช่ "รอ N"', () => {
+    renderRow(room({ waitingSince: ago(3 * 24 * H), lastCustomerAt: null }));
+    expect(screen.getByText('ไม่ทราบเวลา')).toBeInTheDocument();
+    expect(screen.queryByText(/^รอ /)).toBeNull();
+  });
+
   it('ไม่รอ ไม่ด่วน ไม่ค้าง ไม่มีบอท → ไม่มีป้ายและไม่มี +N', () => {
     renderRow(room());
     expect(screen.queryByText(/\+\d/)).toBeNull();

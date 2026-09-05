@@ -12,6 +12,7 @@ import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
 import { ExecuteDefectExchangeDto } from './dto/defect-exchange.dto';
 import { generateContractNumber } from '../../utils/sequence.util';
 import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
+import { assertSameTestSide, TEST_SIDE_CUSTOMER_SELECT } from '../../utils/test-data-markers';
 import { Decimal } from '@prisma/client/runtime/library';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
@@ -203,12 +204,27 @@ export class DefectExchangeService {
 
         const oldContract = await tx.contract.findUnique({
           where: { id: dto.oldContractId },
-          include: { product: true, payments: true },
+          include: {
+            product: true,
+            payments: true,
+            // test-data fence (spec 2026-09-05 §5.4): โหลดลูกค้ามาเข้ารั้วคู่กับเครื่องใหม่
+            customer: { select: TEST_SIDE_CUSTOMER_SELECT },
+          },
         });
         if (!oldContract) throw new NotFoundException('ไม่พบสัญญา');
 
-        const newProductRec = await tx.product.findUnique({ where: { id: dto.newProductId } });
+        const newProductRec = await tx.product.findUnique({
+          where: { id: dto.newProductId },
+          // รั้วต้องเห็น PO ต้นทาง (อุปกรณ์เสริมไร้ IMEI จาก PO ทดสอบ) — ชนิดของรั้วบังคับ
+          include: { po: { select: { poNumber: true } } },
+        });
         if (!newProductRec) throw new NotFoundException('ไม่พบสินค้าใหม่');
+        // test-data fence (spec 2026-09-05 §5.4 — แก้หลัง final review): เคลมเปลี่ยนเครื่องสืบทอด
+        // "ลูกค้า" แต่เลือก "เครื่อง" ใหม่จากสต็อก (ตรงรุ่น/ความจุ — เครื่องทดสอบที่ seed ก็ผ่าน)
+        // ⇒ คู่ใหม่ ต้องอยู่ฝั่งเดียวกัน. ตรวจตรงนี้ = ก่อนเขียนอะไรทั้งสิ้น (ปิดสัญญาเดิม /
+        // กลับรายการ JE / สร้างสัญญาใหม่ / จองเครื่อง) และครอบทาง replace จากใบซ่อม
+        // (`bypassWindowCheck` ข้าม checkEligibility แต่เดินผ่านบรรทัดนี้เหมือนกัน)
+        assertSameTestSide(oldContract.customer, newProductRec);
 
         // Close old contract
         await tx.contract.update({

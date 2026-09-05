@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
+import { resolveContractLabel } from '../contract-label.util';
 
 export interface ShopCollectSettlementInput {
   contractId: string;
@@ -277,13 +278,15 @@ export class ShopCollectSettlementTemplate {
     // calls, which is exactly what the old (contractId, amount) dedupe relied
     // on. Once requestId is present, fold it into `reference` too so two
     // intentionally-equal-amount remittances don't collide on that index.
+    const contractLabel = await resolveContractLabel(client, contractId);
+
     try {
       const result = await this.journal.createAndPost(
         {
           description:
             typeStamp === 'PAYOUT_RECALL'
-              ? `รับเงินคืนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107 เรียกคืน)`
-              : `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
+              ? `รับเงินคืนจากหน้าร้าน — สัญญา ${contractLabel} (ล้าง 11-2107 เรียกคืน)`
+              : `รับโอนจากหน้าร้าน — สัญญา ${contractLabel} (ล้าง 11-2107)`,
           reference: input.requestId
             ? `${contractId}:shop-collect-settlement:${input.requestId}`
             : `${contractId}:shop-collect-settlement:${amountStr}`,

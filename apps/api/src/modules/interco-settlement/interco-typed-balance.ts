@@ -132,6 +132,26 @@ export function recallFinanceBalance(client: Client, contractId: string): Promis
   );
 }
 
+/**
+ * S21-1104 Σ(Cr−Dr) เฉพาะ SHOP_COLLECT — key ด้วย metadata.contractId. ขาคู่ฝั่ง SHOP ของ
+ * `shopCollectTypedBalance` (2026-09-05: ต้นทาง JP5 รับเครื่องยึด + ใบล้างเจ้าหนี้ตอนโอนให้
+ * FINANCE). explicit stamp เท่านั้น — ไม่มี legacy fallback เพราะบัญชีนี้ไม่เคยรับ
+ * SHOP_COLLECT มาก่อนฟีเจอร์นี้.
+ */
+export function shopCollectShopBalance(
+  client: Client,
+  contractId: string,
+): Promise<Prisma.Decimal> {
+  return sumTyped(
+    client,
+    'S21-1104',
+    'cr-dr',
+    Prisma.sql`
+    je.metadata->>'contractId' = ${contractId}
+    AND je.metadata->>'shopReceivableType' = 'SHOP_COLLECT'`,
+  );
+}
+
 /** S21-1104 Σ(Cr−Dr) เฉพาะ PAYOUT_RECALL — key ด้วย metadata.contractId (C-2) */
 export function recallShopBalance(client: Client, contractId: string): Promise<Prisma.Decimal> {
   return sumTyped(

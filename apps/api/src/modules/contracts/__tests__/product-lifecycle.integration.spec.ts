@@ -41,6 +41,8 @@ import { ContractWorkflowService } from '../contract-workflow.service';
 import { ProductsService } from '../../products/products.service';
 import { SalesService } from '../../sales/sales.service';
 import { RepossessionsService } from '../../repossessions/repossessions.service';
+import { RepossessionJP5Template } from '../../journal/cpa-templates/repossession-jp5.template';
+import { CreditNoteDocumentService } from '../../receipts/services/credit-note-document.service';
 import { ContractExchangeService } from '../../contract-exchange/contract-exchange.service';
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { AuditService } from '../../audit/audit.service';
@@ -115,16 +117,16 @@ const exchangeCancelService = new ExchangeCancelService(
   null as never, // reversalTemplate — PRICED/FINALIZED only
 );
 
-// ยึดเครื่อง: สัญญาที่ใช้ในเทสไม่มีแถว `Payment` ⇒ outstandingBalance = 0 ⇒ JP5 + ใบลดหนี้
-// ไม่ถูกเรียกเลย (`if (outstandingBalance.greaterThan(0))`) — deps เหล่านั้นจึงเป็น null
+// ยึดเครื่อง (review 2026-09-05): create() ปฏิเสธสัญญาที่ไม่มียอดค้าง ⇒ เทสต้อง seed งวดค้างและเดิน JP5 จริง
+// (refund templates ไม่ถูกเรียกใน create(); CN ไม่มี 2A accrual → SKIPPED_NO_ACCRUED; delivery = stub)
 const repossessionsService = new RepossessionsService(
   prisma as never,
   journal,
-  null as never, // repossessionJP5Template
-  null as never, // refundPayoutTemplate
-  null as never, // refundWaiveTemplate
-  null as never, // creditNoteDocumentService
-  null as never, // cnDeliveryService
+  new RepossessionJP5Template(journal, prisma as never),
+  null as never, // refundPayoutTemplate — ไม่ถูกเรียกใน create()
+  null as never, // refundWaiveTemplate — ไม่ถูกเรียกใน create()
+  new CreditNoteDocumentService(prisma as never),
+  { deliver: async () => undefined } as never, // fire-and-forget หลัง tx — ไม่มี CN ให้ส่ง
 );
 
 // ---------------------------------------------------------------------------
@@ -257,6 +259,37 @@ async function seedSignedDraftContract(tag: string, customerId: string, productI
   return contract;
 }
 
+/** งวดค้าง N งวด (สถานะ PENDING) — ให้ create() มียอดค้างและ JP5 + ใบรับเข้าสต็อก SHOP โพสต์จริง */
+async function seedPendingPayments(contractId: string, installmentCount: number): Promise<void> {
+  const startDate = new Date('2025-01-01');
+  for (let installmentNo = 1; installmentNo <= installmentCount; installmentNo++) {
+    const dueDate = new Date(startDate);
+    dueDate.setMonth(dueDate.getMonth() + installmentNo);
+    await prisma.payment.create({
+      data: {
+        contractId,
+        installmentNo,
+        amountDue: dec('1515.83'),
+        amountPaid: dec('0'),
+        dueDate,
+        status: 'PENDING',
+      },
+    });
+  }
+}
+
+/** ยอดสุทธิ (Dr − Cr) ของบัญชีทั้งบัญชีจาก JE ที่ POSTED — ไฟล์นี้รันทีละเทส จึงใช้ delta ได้ */
+async function accountNet(accountCode: string): Promise<Decimal> {
+  const lines = await prisma.journalLine.findMany({
+    where: { accountCode, journalEntry: { status: 'POSTED', deletedAt: null } },
+    select: { debit: true, credit: true },
+  });
+  return lines.reduce(
+    (sum, l) => sum.plus(l.debit.toString()).minus(l.credit.toString()),
+    new Decimal(0),
+  );
+}
+
 /** ขายสดผ่าน POS (เส้นทางเดียวกับหน้าจอ POS: `SalesService.create`) */
 function posCashSale(customerId: string, productId: string, sellingPrice: number) {
   return salesService.create(
@@ -324,6 +357,9 @@ describe('State diagram ของเครื่อง — flow จริงบ�
   }, 180_000);
 
   afterAll(async () => {
+    // งวดค้างที่ seed ให้ JP5 (payments.contract_id FK) + แถวยึดของเคสยึดเครื่อง
+    await prisma.payment.deleteMany({ where: { contractId: { in: createdContractIds } } });
+    await prisma.repossession.deleteMany({ where: { contractId: { in: createdContractIds } } });
     // JE ที่สเปคนี้ผลิต: (ก) stamp metadata.contractId (1A / SHOP legs), (ข) metadata.saleId
     // (ขายสดหน้าร้าน) — สวีปทั้งสองแบบเหมือน exchange/cancellation specs
     const jeIds = new Set<string>();
@@ -603,13 +639,15 @@ describe('State diagram ของเครื่อง — flow จริงบ�
 
   // -------------------------------------------------------------------------
   it(
-    'ยึดเครื่อง: SOLD_INSTALLMENT → REPOSSESSED → REFURBISHED → ขายผ่านเมนูยึด → SOLD_RESELL',
+    'ยึดเครื่อง: SOLD_INSTALLMENT → REPOSSESSED → REFURBISHED → นำเข้าคลัง → ขายที่ POS → SOLD_CASH (รายการยึดปิดเอง)',
     async () => {
       const product = await seedProduct('E1');
       const customer = await seedCustomer('E1');
       const buyer = await seedCustomer('E2');
       const contract = await seedSignedDraftContract('E1', customer.id, product.id);
       await workflow.activate(contract.id);
+      await seedPendingPayments(contract.id, 12);
+      const inventoryBefore = await accountNet('S11-2002');
 
       // ขั้นตอนบอกเลิกสัญญา (หนังสือ CONTRACT_TERMINATION_60D + dispatch) อยู่นอก
       // state diagram ของ "เครื่อง" — seed สถานะสัญญาตรง ๆ เพราะ SystemConfig
@@ -641,20 +679,88 @@ describe('State diagram ของเครื่อง — flow จริงบ�
       expect(refurbished.status).toBe('REFURBISHED');
       expect(refurbished.cashPrice?.toString()).toBe('8900');
 
-      // REFURBISHED ยังไม่ใช่ของในคลัง — POS ขายไม่ได้ (ต้องนำเข้าคลัง หรือขายผ่านเมนูยึด)
+      // REFURBISHED ยังไม่ใช่ของในคลัง — POS ขายไม่ได้ (ต้องนำเข้าคลังก่อน)
       await expect(posCashSale(buyer.id, product.id, 8900)).rejects.toThrow(POS_GUARD_MSG);
 
-      // ขายผ่านเมนูยึด → SOLD_RESELL
-      await repossessionsService.update(
-        repossession.id,
-        { status: 'SOLD', resellPrice: 8900 } as never,
-        OWNER_USER() as never,
-      );
-      const sold = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
-      expect(sold.status).toBe('SOLD_RESELL');
+      // 2026-09-05: "ขายแล้ว" ตั้งด้วยมือไม่ได้อีกต่อไป — ขายเครื่องยึดผ่าน POS ทางเดียว
+      await expect(
+        repossessionsService.update(
+          repossession.id,
+          { status: 'SOLD', resellPrice: 8900 } as never,
+          OWNER_USER() as never,
+        ),
+      ).rejects.toThrow(/POS/);
+
+      // ขาคู่ SHOP ตอนยึด: กรรมสิทธิ์กลับ SHOP + มือถือกลายเป็นมือสอง + ใบรับเข้าสต็อก
+      // (ไม่ได้ติ๊กหน้าร้านรับแทน → Dr S11-2002 / Cr S11-1202 โอนให้ FINANCE ทันที)
+      const shopCompany = await prisma.companyInfo.findFirstOrThrow({
+        where: { companyCode: 'SHOP', deletedAt: null },
+      });
+      expect(refurbished.ownedByCompanyId).toBe(shopCompany.id);
+      expect(refurbished.category).toBe('PHONE_USED');
+      const intake = await prisma.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'shop-repossession-intake' } } as never,
+            { metadata: { path: ['contractId'], equals: contract.id } } as never,
+          ],
+          deletedAt: null,
+        },
+        include: { lines: true },
+      });
+      expect(intake?.status).toBe('POSTED');
+      expect(intake?.companyId).toBe(shopCompany.id);
       expect(
-        (await prisma.repossession.findUniqueOrThrow({ where: { id: repossession.id } })).status,
-      ).toBe('SOLD');
+        intake!.lines.map((l) => [l.accountCode, l.debit.toFixed(2), l.credit.toFixed(2)]),
+      ).toEqual([
+        ['S11-2002', '7000.00', '0.00'],
+        ['S11-1202', '0.00', '7000.00'],
+      ]);
+      expect((await accountNet('S11-2002')).minus(inventoryBefore).toFixed(2)).toBe('7000.00');
+
+      // นำเข้าคลัง (ยืนยันราคา) → ขายที่ POS → รายการยึดถูกปิดเป็น SOLD พร้อมราคาขายจริงโดยอัตโนมัติ
+      await productsService.returnToStock(product.id, adminId, {
+        cashPrice: 8900,
+        installmentPrice: 10900,
+        note: 'ตรวจสภาพแล้ว เกรด B',
+      });
+      const sale = await posCashSale(buyer.id, product.id, 8900);
+      expect(sale.id).toBeTruthy();
+      const sold = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
+      expect(sold.status).toBe('SOLD_CASH');
+      const closedRepo = await prisma.repossession.findUniqueOrThrow({ where: { id: repossession.id } });
+      expect(closedRepo.status).toBe('SOLD');
+      expect(closedRepo.resellPrice?.toString()).toBe('8900');
+      // สต็อกมือสองกลับเป็นศูนย์: ใบรับเข้า +7,000 (ราคาประเมิน) ↔ COGS ตอนขาย −7,000 (costPrice = ราคาประเมิน)
+      expect((await accountNet('S11-2002')).minus(inventoryBefore).toFixed(2)).toBe('0.00');
+    },
+    180_000,
+  );
+
+  it(
+    'ยึดเครื่อง: สัญญาที่ไม่มียอดค้าง → ปฏิเสธ (ผ่อนครบ = เครื่องเป็นของลูกค้า) และไม่แตะสถานะเครื่อง',
+    async () => {
+      const product = await seedProduct('E3');
+      const customer = await seedCustomer('E3');
+      const contract = await seedSignedDraftContract('E3', customer.id, product.id);
+      await workflow.activate(contract.id);
+      await prisma.contract.update({ where: { id: contract.id }, data: { status: 'TERMINATED' } });
+
+      await expect(
+        repossessionsService.create(
+          {
+            contractId: contract.id,
+            repossessedDate: new Date().toISOString(),
+            conditionGrade: 'B',
+            appraisalPrice: 7000,
+          } as never,
+          adminId,
+        ),
+      ).rejects.toThrow(/ไม่มียอดค้างชำระ/);
+
+      const untouched = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
+      expect(untouched.status).toBe('SOLD_INSTALLMENT');
+      expect(await prisma.repossession.findFirst({ where: { productId: product.id } })).toBeNull();
     },
     180_000,
   );

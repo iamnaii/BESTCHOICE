@@ -10,6 +10,7 @@ import { PayoutStatus, Prisma, ProductStatus, RepairStatus } from '@prisma/clien
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { assertProductNotHeld } from '../../products/product-hold.util';
+import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 
@@ -451,6 +452,9 @@ export class SaleVoidService {
       where: { id: { in: productIds } },
       data: { status: ProductStatus.IN_STOCK },
     });
+    // เครื่องยึดที่ขายผ่าน POS แล้ว void → เปิดรายการยึดกลับเป็น "พร้อมขาย" (คู่ของ
+    // closeRepossessionOnSale ใน repossession-resale.util — 2026-09-05). คงราคาขายเดิมไว้เป็นราคาตั้ง.
+    await reopenRepossessionOnUnsale(tx, productIds);
 
     // 2. กลับรายการ JE ทุกใบที่ `metadata.saleId = <saleId>` (ขายสดเท่านั้นที่มี JE)
     let reversalEntryNumbers: string[] = [];

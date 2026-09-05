@@ -208,6 +208,8 @@ describe('SalesService', () => {
       // product status flip in every create*Sale path — every txPrisma stub
       // in this file needs this, whether via `...prisma` spread or built
       // standalone (see the two EXTERNAL_FINANCE tests below that don't spread).
+      // closeRepossessionOnSale (2026-09-05) — POS closes a REPOSSESSED/READY_FOR_SALE row itself
+      repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       productReservation: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
@@ -735,6 +737,8 @@ describe('SalesService', () => {
             },
             sale: { create: jest.fn().mockResolvedValue({ ...mockSale, saleType: 'EXTERNAL_FINANCE' }) },
             financeReceivable: { create: jest.fn().mockResolvedValue({}) },
+            // closeRepossessionOnSale (2026-09-05) — POS closes a REPOSSESSED/READY_FOR_SALE row itself
+            repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
             productReservation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
           };
           return fn(txPrisma);
@@ -764,6 +768,8 @@ describe('SalesService', () => {
                 return Promise.resolve({});
               }),
             },
+            // closeRepossessionOnSale (2026-09-05) — POS closes a REPOSSESSED/READY_FOR_SALE row itself
+            repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
             productReservation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
           };
           return fn(txPrisma);

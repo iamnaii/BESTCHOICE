@@ -42,6 +42,7 @@ export class CreateRepossessionDto {
   @IsNumber({}, { message: 'ราคากลางต้องเป็นตัวเลข' })
   @Min(0, { message: 'ราคากลางต้องไม่ติดลบ' })
   @IsOptional()
+  /** @deprecated ตั้งแต่ 2026-09-05 ราคาเดียว — ค่านี้ถูกละเลย (คอลัมน์ marketValue เก็บ snapshot ราคาตารางรับซื้อแทน) */
   marketValue?: number;
 
   @IsNumber({}, { message: 'ส่วนลดต้องเป็นตัวเลข' })
@@ -52,6 +53,7 @@ export class CreateRepossessionDto {
 
   @IsBoolean()
   @IsOptional()
+  /** ส่ง true → 400 — ไม่มีเงินคืนส่วนต่างให้ลูกค้า (คำตัดสินเจ้าของ 2026-09-05 supersede 2026-08-08 ข้อ 2) */
   customerRefundEnabled?: boolean;
 
   // Cash account dimension for the JP5 deposit leg (direct receipt).

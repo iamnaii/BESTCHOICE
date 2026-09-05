@@ -15,6 +15,8 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
 import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
+import { ShopCollectShopLegs } from '../journal/cpa-templates/shop-collect-shop-legs.template';
+import { shopCollectShopBalance } from '../interco-settlement/interco-typed-balance';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
@@ -639,6 +641,38 @@ export class ContractPaymentService {
           tx,
         );
 
+        // ขาคู่ฝั่ง SHOP (2026-09-05): Dr S21-1104 / Cr S11-1202 — เฉพาะเมื่อสมุด SHOP มี
+        // เจ้าหนี้ SHOP_COLLECT ของสัญญานี้คุ้มยอด (ต้นทาง JP5 หลังฟีเจอร์นี้). แถวต้นทาง JP4
+        // หรือแถวก่อนฟีเจอร์ไม่มีขา Cr S21-1104 มาก่อน → ข้ามพร้อม flag ไม่ดัน S21-1104 ติดลบ.
+        // ใบ FINANCE ที่ dedupe (requestId ซ้ำ) → ไม่โพสต์ซ้ำเช่นกัน.
+        let shopLegEntryNo: string | null = null;
+        let shopLegSkipped: 'DEDUPED' | 'NO_SHOP_PAYABLE' | null = null;
+        if (result.deduped) {
+          shopLegSkipped = 'DEDUPED';
+        } else {
+          const amount = new Prisma.Decimal(String(dto.amount));
+          const shopPayable = await shopCollectShopBalance(tx, id);
+          if (shopPayable.plus('0.01').gte(amount)) {
+            const shopCompany = await tx.companyInfo.findFirst({
+              where: { companyCode: 'SHOP', deletedAt: null },
+              select: { id: true },
+            });
+            if (!shopCompany) throw new InternalServerErrorException('SHOP company not configured');
+            const shopLeg = await new ShopCollectShopLegs(this.journalAutoService).postSettlement(
+              {
+                contractId: id,
+                amount,
+                shopCompanyId: shopCompany.id,
+                requestId: dto.requestId,
+              },
+              tx,
+            );
+            shopLegEntryNo = shopLeg.entryNumber;
+          } else {
+            shopLegSkipped = 'NO_SHOP_PAYABLE';
+          }
+        }
+
         await tx.auditLog.create({
           data: {
             userId,
@@ -650,6 +684,8 @@ export class ContractPaymentService {
               amount: String(dto.amount),
               requestId: dto.requestId ?? null,
               deduped: result.deduped,
+              shopLegEntryNo,
+              shopLegSkipped,
             },
           },
         });

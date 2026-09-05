@@ -6,6 +6,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-balance';
+import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
 
 /**
  * ContractCancellationService — contract-cancellation workflow:
@@ -298,6 +299,9 @@ export class ContractCancellationService {
         where: { id: contract.productId },
         data: { status: 'IN_STOCK', ownedByCompanyId: shopCompanyId } as never,
       });
+      // เครื่องยึดที่ถูกขายผ่อนใหม่แล้วสัญญาใหม่ถูกยกเลิก → เปิดรายการยึดกลับเป็น "พร้อมขาย"
+      // (คู่ของ closeRepossessionOnSale ตอน activate — 2026-09-05). เครื่องปกติ = 0 แถว
+      await reopenRepossessionOnUnsale(tx, [contract.productId]);
       await tx.payment.updateMany({
         where: { contractId: contract.id, deletedAt: null },
         data: { deletedAt: now },

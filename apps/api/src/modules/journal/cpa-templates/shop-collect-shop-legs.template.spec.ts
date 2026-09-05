@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   ShopCollectShopLegs,
@@ -7,13 +8,13 @@ import {
 
 /**
  * ขาคู่ฝั่ง SHOP ของ 11-2107 SHOP_COLLECT ต้นทาง JP5 (คำตัดสินเจ้าของ 2026-09-05).
+ * Runner: vitest — ไฟล์ใต้ cpa-templates/ ถูก jest ignore (testPathIgnorePatterns) และ CI รันด้วย vitest glob
+ * `src/modules/journal/cpa-templates/*.spec.ts` เหมือน template spec เพื่อนบ้าน.
  * Locks: บัญชี/ทิศ/ยอด, stamp SHOP_COLLECT เฉพาะเคสค้างจ่าย, idempotency key, companyId SHOP.
  */
 describe('ShopCollectShopLegs', () => {
   const build = () => {
-    const createAndPost = jest
-      .fn()
-      .mockResolvedValue({ id: 'je-1', entryNumber: 'JE-202609-00001' });
+    const createAndPost = vi.fn().mockResolvedValue({ id: 'je-1', entryNumber: 'JE-202609-00001' });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const legs = new ShopCollectShopLegs({ createAndPost } as any);
     return { legs, createAndPost };

@@ -127,10 +127,9 @@ RESERVED · SOLD_INSTALLMENT · SOLD_CASH · SOLD_RESELL · REPOSSESSED
 | `stock_adjustments` | live, `notes` ไม่ขึ้นต้น `[ทดสอบระบบ]` | — |
 | `stock_alerts` | live, `model ≠ 'TEST-รุ่นแจ้งเตือน'` | — |
 
-ตารางลูกตั้ง `deleted_at` **เฉพาะที่มีคอลัมน์นี้** (`po_items`, `stock_count_items` มี) — ตารางลูก
-ที่ไม่มี (`goods_receiving_items`, `branch_receiving_items`) ปล่อยไว้ เพราะผู้อ่านทุกตัวเข้าทางหัว
-เอกสารซึ่งถูกซ่อนแล้ว (ตรวจตอน implement ว่าไม่มี reader ที่ query ตารางลูกตรง ๆ — ถ้ามีต้องเพิ่ม
-คอลัมน์ ไม่ใช่ข้ามเงียบ)
+ตารางลูกทั้งสี่ (`po_items`, `goods_receiving_items`, `branch_receiving_items`, `stock_count_items`)
+**มี `deleted_at` ครบ** (ตรวจ schema แล้ว 2026-09-05) ⇒ ตั้ง `deleted_at = wipedAt` ตามหัวเอกสาร
+ทุกตาราง — รวมอยู่ใน `WIPED_TABLES` 12 ตารางและ rollback SQL
 
 **ไม่แตะ:** `suppliers` (D4) · `reorder_points` (ตั้งค่า — แถวทดสอบให้ `cleanup:test-pack` กวาด) ·
 `inspections`/`inspection_templates` · `imported_sales` · `trade_ins` (ถ้าเครื่องเทิร์นอยู่บนชั้น

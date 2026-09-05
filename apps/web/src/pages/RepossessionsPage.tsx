@@ -145,19 +145,26 @@ export default function RepossessionsPage() {
   // CLOSED_BAD_DEBT). Key starts with 'contracts' so the overlay's own
   // invalidateQueries(['contracts']) refreshes this list after a successful JP5.
   const {
-    data: awaiting = [],
+    data: awaitingResult,
     isLoading: loadingAwaiting,
     isError: awaitingError,
     error: awaitingErrorDetail,
     refetch: refetchAwaiting,
-  } = useQuery<AwaitingRepossessionContract[]>({
+  } = useQuery<{ rows: AwaitingRepossessionContract[]; total: number }>({
     queryKey: ['contracts', 'awaiting-repossession'],
     queryFn: async () => {
-      // limit=200 = the /contracts server cap; BRANCH_MANAGER is branch-scoped server-side.
-      const res = (await api.get('/contracts?status=TERMINATED&limit=200')).data;
-      return res?.data ?? [];
+      // limit=100 = the /contracts SERVICE cap (contract-query.service clamps to 100
+      // even though the controller accepts 200). Keep `total` so a longer backlog
+      // shows as "แสดง N จาก M" instead of silently truncating (same pattern as the
+      // ชำระครบ tab on PaymentsPage). BRANCH_MANAGER is branch-scoped server-side.
+      const res = (await api.get('/contracts?status=TERMINATED&limit=100')).data;
+      const rows: AwaitingRepossessionContract[] = res?.data ?? [];
+      return { rows, total: res?.total ?? rows.length };
     },
   });
+  const awaiting = awaitingResult?.rows ?? [];
+  const awaitingTotal = awaitingResult?.total ?? 0;
+  const awaitingTruncated = awaitingTotal > awaiting.length;
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) =>
@@ -459,9 +466,14 @@ export default function RepossessionsPage() {
             รอยึดเครื่อง — บอกเลิกสัญญาแล้ว
           </h3>
           <Badge variant="warning" appearance="light" size="sm">
-            {awaiting.length} สัญญา
+            {awaitingTotal} สัญญา
           </Badge>
         </CardHeader>
+        {awaitingTruncated && (
+          <div className="px-4 py-2 border-b bg-warning/10 text-xs text-warning leading-snug">
+            แสดง {awaiting.length} จาก {awaitingTotal} สัญญา — ยึดเครื่องในรายการนี้ก่อน แล้วรายการที่เหลือจะเลื่อนขึ้นมาเอง
+          </div>
+        )}
         <QueryBoundary
           isLoading={loadingAwaiting && awaiting.length === 0}
           isError={awaitingError}

@@ -45,13 +45,15 @@ test.describe('ยึดคืน & ขายต่อ', () => {
     }
   });
 
-  test('should have repossession CTA linking to payments page (OWNER-only)', async ({ page }) => {
+  test('should show the รอยึดเครื่อง card and no longer link to the payments page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    // loginViaAPI logs in as admin@bestchoice.com (OWNER) — the create modal was
-    // removed; the action is now a Link to /payments, shown to OWNER only.
-    const cta = page.getByRole('link', { name: /ยึดเครื่อง/ });
-    await expect(cta).toBeVisible({ timeout: 5000 });
-    await expect(cta).toHaveAttribute('href', '/payments');
+    // 2026-09-05: TERMINATED contracts left the รับชำระ queue, so repossession (JP5)
+    // now starts HERE — a per-row "ยึดเครื่อง" button inside the รอยึดเครื่อง card
+    // (role-gated; covered by RepossessionsPage.awaiting-repossession.test.tsx). The
+    // seed has no TERMINATED contract, so only the card itself is asserted. The old
+    // OWNER-only Link to /payments must be gone for everyone.
+    await expect(page.getByText(/รอยึดเครื่อง/).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('link', { name: /ยึดเครื่อง/ })).toHaveCount(0);
   });
 
   test('should display status indicators for repossessions', async ({ page }) => {
@@ -65,13 +67,16 @@ test.describe('ยึดคืน & ขายต่อ', () => {
 });
 
 /* ================================================================
-   ยึดคืน & ขายต่อ (/repossessions) — CTA role gating (negative case)
-   Phase 2 review follow-up: the OWNER-only CTA link must stay hidden
-   for other roles that can still view the page (e.g. FINANCE_MANAGER,
-   which has canSettle/canViewPl access but not canManage/CTA access).
+   ยึดคืน & ขายต่อ (/repossessions) — non-OWNER still loads the page
+   2026-09-05: the OWNER-only "ไปหน้ารับชำระ" link is gone for every role.
+   FINANCE_MANAGER / BRANCH_MANAGER may open the JP5 overlay from the
+   รอยึดเครื่อง card (preview only — submit stays OWNER-only inside it);
+   ACCOUNTANT gets no button. Per-role button gating is a unit test
+   (RepossessionsPage.awaiting-repossession.test.tsx); here we only pin
+   that the page renders for FM and never regains a link to /payments.
    ================================================================ */
-test.describe('ยึดคืน & ขายต่อ — CTA role gating', () => {
-  test('CTA ยึดเครื่องต้องไม่แสดงสำหรับ FINANCE_MANAGER', async ({ page }) => {
+test.describe('ยึดคืน & ขายต่อ — non-OWNER access', () => {
+  test('FINANCE_MANAGER เห็นหน้ายึดคืนได้ และไม่มีลิงก์ไปหน้ารับชำระ', async ({ page }) => {
     await loginAsRole(page, 'FINANCE_MANAGER');
     await gotoWithRetry(page, '/repossessions');
     if (await hasErrorBoundary(page)) return;
@@ -79,7 +84,6 @@ test.describe('ยึดคืน & ขายต่อ — CTA role gating', () 
     // Page still loads for FINANCE_MANAGER (canSettle/canViewPl = true)
     await expect(page.getByText(/ยึดคืน/).first()).toBeVisible({ timeout: 15000 });
 
-    // But the OWNER-only "ยึดเครื่อง" CTA link must not render
     const cta = page.getByRole('link', { name: /ยึดเครื่อง/ });
     await expect(cta).toHaveCount(0);
   });

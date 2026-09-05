@@ -23,20 +23,26 @@ import { PrismaClient, Prisma } from '@prisma/client';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 const REACHABLE_DAYS = 7;
-const HUMAN_OR_BOT = new Set(['STAFF', 'BOT']);
+/**
+ * เฉพาะ STAFF เท่านั้นที่นับเป็น "คำตอบ" — BOT ไม่นับ (สเปก §3, §4.3: ตารางกฎล้าง
+ * `waitingSince` ระบุชัดว่า BOT/SYSTEM/AUTO_TRIGGER "ไม่ล้าง"; ล้างได้เฉพาะ `markOutboundSent`,
+ * STAFF echo ใน `mirrorOutbound`, หรือ `resolve`) — บอทตอบอัตโนมัตินอกเวลาทำการต้องไม่บัง
+ * ลูกค้าที่ยังรอ "คน" อยู่จริง
+ */
+const REPLY_ROLES = new Set(['STAFF']);
 
 /**
- * เวลาที่ลูกค้าเริ่มรอ = ข้อความ CUSTOMER ใบแรกที่อยู่หลังคำตอบ (STAFF/BOT) ใบล่าสุด
- * คืน null เมื่อข้อความสุดท้ายไม่ใช่ของลูกค้า (= ไม่ได้รอ) · SYSTEM/AUTO_TRIGGER ไม่นับเป็นคำตอบ
+ * เวลาที่ลูกค้าเริ่มรอ = ข้อความ CUSTOMER ใบแรกที่อยู่หลังคำตอบ (STAFF เท่านั้น) ใบล่าสุด
+ * คืน null เมื่อข้อความสุดท้ายไม่ใช่ของลูกค้า (= ไม่ได้รอ) · BOT/SYSTEM/AUTO_TRIGGER ไม่นับเป็นคำตอบ
  * `msgs` ต้องเรียง createdAt จากเก่าไปใหม่
  */
 export function computeWaitingSince(msgs: { role: string; createdAt: Date }[]): Date | null {
   if (msgs.length === 0) return null;
-  const lastCustomerOrReply = [...msgs].reverse().find((m) => m.role === 'CUSTOMER' || HUMAN_OR_BOT.has(m.role));
+  const lastCustomerOrReply = [...msgs].reverse().find((m) => m.role === 'CUSTOMER' || REPLY_ROLES.has(m.role));
   if (!lastCustomerOrReply || lastCustomerOrReply.role !== 'CUSTOMER') return null;
   let lastReplyIdx = -1;
   for (let i = msgs.length - 1; i >= 0; i--) {
-    if (HUMAN_OR_BOT.has(msgs[i].role)) { lastReplyIdx = i; break; }
+    if (REPLY_ROLES.has(msgs[i].role)) { lastReplyIdx = i; break; }
   }
   const firstUnanswered = msgs.slice(lastReplyIdx + 1).find((m) => m.role === 'CUSTOMER');
   return firstUnanswered ? firstUnanswered.createdAt : null;
@@ -44,10 +50,16 @@ export function computeWaitingSince(msgs: { role: string; createdAt: Date }[]): 
 
 // ─── runnable glue (require.main === module) ─────────────────────────────────
 
-/** ห้องที่ข้อความสุดท้าย (ไม่ลบ) เป็นของลูกค้า — ใช้ทั้งนับและเลือกผู้สมัครขั้น 3 */
-const LAST_IS_CUSTOMER = Prisma.sql`
+/**
+ * ห้องที่ยังรอ "คน" ตอบ — ดูเฉพาะข้อความ CUSTOMER/STAFF ใบล่าสุด (ข้าม BOT/SYSTEM/AUTO_TRIGGER
+ * ที่อาจแทรกมาทีหลัง) แล้วเช็คว่าใบนั้นเป็นของลูกค้าหรือไม่ — ต้องตรงกับกฎของ
+ * `computeWaitingSince` เป๊ะ (สเปก §3, §4.3) ไม่งั้นห้องที่จบประวัติด้วย [CUSTOMER, SYSTEM]
+ * จะหลุดจากทั้งขั้น 2 (unread sweep) และขั้น 3 (waiting_since candidates)
+ */
+const WAITING_FOR_HUMAN = Prisma.sql`
   COALESCE((SELECT m.role::text FROM chat_messages m
             WHERE m.room_id = r.id AND m.deleted_at IS NULL
+              AND m.role IN ('CUSTOMER', 'STAFF')
             ORDER BY m.created_at DESC LIMIT 1), '') = 'CUSTOMER'`;
 
 async function count(prisma: PrismaClient, sql: Prisma.Sql): Promise<number> {
@@ -86,14 +98,14 @@ async function main(): Promise<void> {
     const assigned = await count(prisma, Prisma.sql`
       SELECT count(*)::bigint AS n FROM chat_rooms r WHERE r.deleted_at IS NULL AND r.assigned_to_id IS NOT NULL`);
     const unreadStale = await count(prisma, Prisma.sql`
-      SELECT count(*)::bigint AS n FROM chat_rooms r WHERE r.deleted_at IS NULL AND r.unread_count > 0 AND NOT (${LAST_IS_CUSTOMER})`);
+      SELECT count(*)::bigint AS n FROM chat_rooms r WHERE r.deleted_at IS NULL AND r.unread_count > 0 AND NOT (${WAITING_FOR_HUMAN})`);
     const candidates = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT r.id FROM chat_rooms r
       WHERE r.deleted_at IS NULL AND r.waiting_since IS NULL
-        AND r.last_message_at > ${cutoff} AND (${LAST_IS_CUSTOMER})`);
+        AND r.last_message_at > ${cutoff} AND (${WAITING_FOR_HUMAN})`);
     const unreachable = await count(prisma, Prisma.sql`
       SELECT count(*)::bigint AS n FROM chat_rooms r
-      WHERE r.deleted_at IS NULL AND r.last_message_at <= ${cutoff} AND (${LAST_IS_CUSTOMER})`);
+      WHERE r.deleted_at IS NULL AND r.last_message_at <= ${cutoff} AND (${WAITING_FOR_HUMAN})`);
 
     console.log('[reset-inbox-day-one] ===== แผน =====');
     console.log(`  1. ล้างผู้ดูแล                     : ${assigned} ห้อง`);
@@ -125,7 +137,7 @@ async function main(): Promise<void> {
       });
       const step2 = await tx.$executeRaw(Prisma.sql`
         UPDATE chat_rooms r SET unread_count = 0
-        WHERE r.deleted_at IS NULL AND r.unread_count > 0 AND NOT (${LAST_IS_CUSTOMER})`);
+        WHERE r.deleted_at IS NULL AND r.unread_count > 0 AND NOT (${WAITING_FOR_HUMAN})`);
       let step3 = 0;
       for (const w of waitingPlan) {
         const res = await tx.chatRoom.updateMany({

@@ -5266,6 +5266,11 @@ model ChatRoom {
   // SLA tracking
   firstResponseAt DateTime? @map("first_response_at")
   resolvedAt      DateTime? @map("resolved_at")
+  /// "รอตอบตั้งแต่" — เวลาที่ลูกค้าเริ่มรอคำตอบจาก "คน" (สเปก 2026-09-05-inbox-day-one-readiness §3-§4)
+  /// ตั้ง: saveMessage เมื่อข้อความ CUSTOMER เข้ามาและยังว่าง (set-if-null)
+  /// ล้าง: markOutboundSent (ส่งสำเร็จจาก inbox) · mirrorOutbound STAFF (echo Page Inbox) · resolve
+  /// ไม่ล้าง: BOT/SYSTEM · การส่งที่ล้ม · การเปิดอ่าน (markAsRead)
+  waitingSince    DateTime? @map("waiting_since")
 
   // Stats
   unreadCount   Int      @default(0) @map("unread_count")
@@ -5299,6 +5304,7 @@ model ChatRoom {
   @@index([leadScore])
   // Speeds up the */5min first-response SLA cron in chat-engine/chat-cron.service.ts
   @@index([status, firstResponseAt, createdAt])
+  @@index([waitingSince])
   @@map("chat_rooms")
 }
 

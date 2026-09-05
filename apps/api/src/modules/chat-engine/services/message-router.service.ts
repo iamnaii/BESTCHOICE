@@ -1051,7 +1051,7 @@ export class MessageRouterService {
               ? MessageType.TEMPLATE
               : MessageType.TEXT;
 
-    await this.roomManager.saveMessage({
+    const saved = await this.roomManager.saveMessage({
       roomId,
       role: MessageRole.STAFF,
       type,
@@ -1069,7 +1069,24 @@ export class MessageRouterService {
 
     if (!result.success) {
       this.logger.error(`Failed to send staff outbound on ${room.channel}: ${result.error}`);
+      return result;
     }
+
+    // เส้นทางนี้เป็น "คำตอบจากพนักงาน" เต็มตัวเหมือน sendStaffMessage (ปุ่มข้อความสำเร็จรูป
+    // เรียกผ่าน canned-response-sender) จึงต้องปิดท้ายเหมือนกันทุกประการ:
+    // stamp outboundSentAt/externalMessageId + ล้าง "รอตอบ" (สเปก §4.3) แล้วจึงรับเรื่อง (§5)
+    // echo ของ Facebook มากู้ให้ไม่ได้ — webhook ข้าม echo ที่มี FACEBOOK_APP_ID ของเราเอง
+    await this.roomManager.markOutboundSent(saved.id, result.externalMessageId);
+
+    // best-effort: การรับเรื่องล้มต้องไม่ทำให้การส่งที่ถึงลูกค้าแล้วกลายเป็นล้ม
+    try {
+      await this.assignmentService?.claimIfUnassigned(roomId, staffId);
+    } catch (err) {
+      this.logger.warn(
+        `[sendStaffOutbound] claim failed for room ${roomId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
     return result;
   }
 

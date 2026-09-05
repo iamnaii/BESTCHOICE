@@ -769,3 +769,65 @@ describe('MessageRouterService.mirrorOutbound — ข้อความทัก
     expect(roomManager.shouldSkipFirstOutboundClear).not.toHaveBeenCalled();
   });
 });
+
+describe('MessageRouterService.sendStaffOutbound — ข้อความสำเร็จรูปก็ต้องล้าง waiting + รับเรื่อง', () => {
+  function makeOutboundSender(adapterResult: { success: boolean; error?: string; externalMessageId?: string }) {
+    const room = {
+      id: 'r1',
+      channel: ChatChannel.LINE_SHOP,
+      externalUserId: 'U1',
+      lineUserId: null,
+    };
+    const roomManager = {
+      findById: jest.fn().mockResolvedValue(room),
+      saveMessage: jest.fn().mockResolvedValue({ id: 'm-canned', clientMessageId: null, createdAt: new Date() }),
+      markOutboundSent: jest.fn().mockResolvedValue(undefined),
+    };
+    const assignment = { claimIfUnassigned: jest.fn().mockResolvedValue(true) };
+    const adapter = {
+      channel: ChatChannel.LINE_SHOP,
+      sendMessage: jest.fn().mockResolvedValue(adapterResult),
+    };
+    const router = new MessageRouterService(
+      roomManager as any,
+      { initiateHandoff: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue(undefined) } as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      assignment as any,
+    );
+    router.registerAdapter(adapter as any);
+    return { router, roomManager, assignment, adapter };
+  }
+
+  it('ส่งสำเร็จ → markOutboundSent (ล้าง waiting) แล้วค่อย claimIfUnassigned', async () => {
+    const { router, roomManager, assignment } = makeOutboundSender({ success: true, externalMessageId: 'ext-9' });
+    const res = await router.sendStaffOutbound('r1', { text: 'สวัสดีค่ะ' } as any, 'u1');
+
+    expect(res.success).toBe(true);
+    expect(roomManager.markOutboundSent).toHaveBeenCalledWith('m-canned', 'ext-9');
+    expect(assignment.claimIfUnassigned).toHaveBeenCalledWith('r1', 'u1');
+    expect(roomManager.markOutboundSent.mock.invocationCallOrder[0]).toBeLessThan(
+      assignment.claimIfUnassigned.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('adapter ส่งล้ม → ไม่ stamp และไม่รับเรื่อง (ลูกค้ายังไม่ได้รับคำตอบ)', async () => {
+    const { router, roomManager, assignment } = makeOutboundSender({ success: false, error: '(#10) outside window' });
+    const res = await router.sendStaffOutbound('r1', { text: 'สวัสดีค่ะ' } as any, 'u1');
+
+    expect(res.success).toBe(false);
+    expect(roomManager.markOutboundSent).not.toHaveBeenCalled();
+    expect(assignment.claimIfUnassigned).not.toHaveBeenCalled();
+  });
+
+  it('claim ล้ม → ไม่ทำให้การส่งที่สำเร็จแล้วกลายเป็นล้ม', async () => {
+    const { router, assignment } = makeOutboundSender({ success: true, externalMessageId: 'ext-9' });
+    assignment.claimIfUnassigned.mockRejectedValue(new Error('db down'));
+    const res = await router.sendStaffOutbound('r1', { text: 'สวัสดีค่ะ' } as any, 'u1');
+    expect(res.success).toBe(true);
+  });
+});

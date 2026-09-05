@@ -314,6 +314,16 @@ export class RoomManagerService {
       data: updateData,
     });
 
+    if (params.role === MessageRole.CUSTOMER) {
+      // "รอตอบตั้งแต่" (สเปก §4.2) — set-if-null แบบ atomic: เก็บเวลาข้อความ *แรก* ที่ยังไม่ได้ตอบ
+      // ไม่ใช่ใบล่าสุด และไม่ต้องอ่านก่อนเขียน (สองข้อความมาพร้อมกันได้ค่าเดียวกัน)
+      // ⚠️ ห้ามล้างที่นี่สำหรับ STAFF/BOT — การส่งที่ล้มก็ผ่าน saveMessage (save-before-send)
+      await this.prisma.chatRoom.updateMany({
+        where: { id: params.roomId, waitingSince: null },
+        data: { waitingSince: msg.createdAt },
+      });
+    }
+
     return msg;
   }
 

@@ -15,8 +15,10 @@ describe('RoomManagerService', () => {
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn(),
         count: jest.fn(),
+        groupBy: jest.fn().mockResolvedValue([]),
       },
       chatMessage: {
         create: jest.fn(),
@@ -199,6 +201,33 @@ describe('RoomManagerService', () => {
           firstResponseAt: expect.any(Date),
         }),
       });
+    });
+
+    it('CUSTOMER → ตั้ง waitingSince แบบ set-if-null ด้วยเวลาข้อความนั้น (สเปก §4.2)', async () => {
+      const createdAt = new Date('2026-09-05T08:00:00.000Z');
+      prisma.chatMessage.create.mockResolvedValue({ id: 'm-c', createdAt });
+      prisma.chatRoom.update.mockResolvedValue({});
+
+      await service.saveMessage({ roomId: 'room-1', role: MessageRole.CUSTOMER, text: 'สนใจค่ะ' });
+
+      expect(prisma.chatRoom.updateMany).toHaveBeenCalledWith({
+        where: { id: 'room-1', waitingSince: null },
+        data: { waitingSince: createdAt },
+      });
+    });
+
+    it('STAFF / BOT → ไม่แตะ waitingSince เลย (ล้างที่ markOutboundSent/mirrorOutbound เท่านั้น)', async () => {
+      prisma.chatMessage.create.mockResolvedValue({ id: 'm-s', createdAt: new Date() });
+      prisma.chatRoom.findUnique.mockResolvedValue({ firstResponseAt: null });
+      prisma.chatRoom.update.mockResolvedValue({});
+
+      await service.saveMessage({ roomId: 'room-1', role: MessageRole.STAFF, text: 'ตอบแล้วค่ะ' });
+      await service.saveMessage({ roomId: 'room-1', role: MessageRole.BOT, text: 'บอทตอบ' });
+
+      expect(prisma.chatRoom.updateMany).not.toHaveBeenCalled();
+      for (const call of prisma.chatRoom.update.mock.calls) {
+        expect(call[0].data).not.toHaveProperty('waitingSince');
+      }
     });
 
   });

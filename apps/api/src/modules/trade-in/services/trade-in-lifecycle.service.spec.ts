@@ -392,7 +392,12 @@ describe('TradeInLifecycleService.accept() — auto-mark เครื่อง�
       $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(tx)),
       auditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
     };
-    tx.product.create.mockResolvedValue({ id: 'p-new', brand: 'Apple', model: 'iPhone 12', storage: null });
+    tx.product.create.mockResolvedValue({
+      id: 'p-new',
+      brand: 'Apple',
+      model: 'iPhone 12',
+      storage: null,
+    });
     tx.tradeIn.update.mockResolvedValue({ id: 'ti-1', status: 'ACCEPTED' });
     service = new TradeInLifecycleService(
       prisma,
@@ -402,7 +407,9 @@ describe('TradeInLifecycleService.accept() — auto-mark เครื่อง�
       { hash: jest.fn() } as any,
       { findOne: jest.fn(), checkImei: jest.fn() } as any,
       { lookupValuation: jest.fn().mockResolvedValue({ found: false }) } as any,
-      { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } as any,
+      {
+        execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }),
+      } as any,
       { resolveOutflowCashAccount: jest.fn().mockResolvedValue('S11-1102') } as any,
     );
   });

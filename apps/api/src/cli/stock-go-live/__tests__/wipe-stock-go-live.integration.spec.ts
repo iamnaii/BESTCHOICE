@@ -144,7 +144,9 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
     adminId = admin.id;
 
     const branchName = '__stockgolive_branch__';
-    const existing = await prisma.branch.findFirst({ where: { name: branchName, deletedAt: null } });
+    const existing = await prisma.branch.findFirst({
+      where: { name: branchName, deletedAt: null },
+    });
     branchId = existing
       ? existing.id
       : (
@@ -199,9 +201,18 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
       category: 'PHONE_USED',
       status: 'PHOTO_PENDING',
     });
-    C = await product({ name: 'SGL Test C', imeiSerial: `TEST-${tag('C')}`, isOnlineVisible: true });
+    C = await product({
+      name: 'SGL Test C',
+      imeiSerial: `TEST-${tag('C')}`,
+      isOnlineVisible: true,
+    });
     D = await product({ name: `ทดสอบระบบ ${tag('D')}`, imeiSerial: tag('D') });
-    E = await product({ name: 'SGL Cable E', imeiSerial: null, category: 'ACCESSORY', poId: poTest.id });
+    E = await product({
+      name: 'SGL Cable E',
+      imeiSerial: null,
+      category: 'ACCESSORY',
+      poId: poTest.id,
+    });
     F = await product({ name: 'SGL Held F', imeiSerial: tag('F'), poId: po2.id });
     await prisma.productReservation.create({
       data: {
@@ -212,10 +223,20 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
       },
     });
     G = await product({ name: 'SGL Sold G', imeiSerial: tag('G'), status: 'SOLD_CASH' });
-    H = await product({ name: 'SGL Case H', imeiSerial: null, category: 'ACCESSORY', poId: po1.id });
+    H = await product({
+      name: 'SGL Case H',
+      imeiSerial: null,
+      category: 'ACCESSORY',
+      poId: po1.id,
+    });
 
     transferReal = await prisma.stockTransfer.create({
-      data: { productId: A.id, fromBranchId: branchId, toBranchId: branchId, transferredBy: adminId },
+      data: {
+        productId: A.id,
+        fromBranchId: branchId,
+        toBranchId: branchId,
+        transferredBy: adminId,
+      },
       select: { id: true },
     });
     transferTest = await prisma.stockTransfer.create({
@@ -246,7 +267,11 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
       select: { id: true },
     });
     countTest = await prisma.stockCount.create({
-      data: { countNumber: `${TEST_STOCK_COUNT_PREFIX}${tag('X')}`, branchId, countedById: adminId },
+      data: {
+        countNumber: `${TEST_STOCK_COUNT_PREFIX}${tag('X')}`,
+        branchId,
+        countedById: adminId,
+      },
       select: { id: true },
     });
     adjReal = await prisma.stockAdjustment.create({
@@ -312,7 +337,10 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
       where: { id: { in: ids } },
       select: { id: true, imeiSerial: true, name: true, po: { select: { poNumber: true } } },
     });
-    const viaPredicate = rows.filter(isTestProduct).map((r) => r.id).sort();
+    const viaPredicate = rows
+      .filter(isTestProduct)
+      .map((r) => r.id)
+      .sort();
     const viaTestWhere = (
       await prisma.product.findMany({
         where: { id: { in: ids }, AND: [testProductWhere] },
@@ -384,13 +412,29 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
           expect(counts.po_items).toBeGreaterThanOrEqual(1);
           expect(counts.goods_receivings).toBeGreaterThanOrEqual(1);
 
-          const at = async (table: 'product' | 'purchaseOrder' | 'goodsReceiving' | 'stockTransfer' | 'branchReceiving' | 'stockCount' | 'stockAdjustment' | 'stockAlert', id: string) => {
+          const at = async (
+            table:
+              | 'product'
+              | 'purchaseOrder'
+              | 'goodsReceiving'
+              | 'stockTransfer'
+              | 'branchReceiving'
+              | 'stockCount'
+              | 'stockAdjustment'
+              | 'stockAlert',
+            id: string,
+          ) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const row = await (tx as any)[table].findUniqueOrThrow({ where: { id }, select: { deletedAt: true } });
+            const row = await (tx as any)[table].findUniqueOrThrow({
+              where: { id },
+              select: { deletedAt: true },
+            });
             return (row.deletedAt as Date | null)?.getTime() ?? null;
           };
-          for (const id of [A.id, B.id, H.id]) expect(await at('product', id)).toBe(wipedAt.getTime());
-          for (const id of [C.id, D.id, E.id, F.id, G.id]) expect(await at('product', id)).toBeNull();
+          for (const id of [A.id, B.id, H.id])
+            expect(await at('product', id)).toBe(wipedAt.getTime());
+          for (const id of [C.id, D.id, E.id, F.id, G.id])
+            expect(await at('product', id)).toBeNull();
           expect(await at('purchaseOrder', po1.id)).toBe(wipedAt.getTime());
           expect(await at('purchaseOrder', po2.id)).toBeNull();
           expect(await at('purchaseOrder', poTest.id)).toBeNull();
@@ -406,11 +450,20 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
           expect(await at('stockAlert', alertReal.id)).toBe(wipedAt.getTime());
           expect(await at('stockAlert', alertTest.id)).toBeNull();
 
-          const poItems = await tx.pOItem.findMany({ where: { poId: po1.id }, select: { deletedAt: true } });
+          const poItems = await tx.pOItem.findMany({
+            where: { poId: po1.id },
+            select: { deletedAt: true },
+          });
           expect(poItems.every((i) => i.deletedAt?.getTime() === wipedAt.getTime())).toBe(true);
-          const countItems = await tx.stockCountItem.findMany({ where: { stockCountId: countReal.id }, select: { deletedAt: true } });
+          const countItems = await tx.stockCountItem.findMany({
+            where: { stockCountId: countReal.id },
+            select: { deletedAt: true },
+          });
           expect(countItems.every((i) => i.deletedAt?.getTime() === wipedAt.getTime())).toBe(true);
-          const brItems = await tx.branchReceivingItem.findMany({ where: { receivingId: brReal.id }, select: { deletedAt: true } });
+          const brItems = await tx.branchReceivingItem.findMany({
+            where: { receivingId: brReal.id },
+            select: { deletedAt: true },
+          });
           expect(brItems.every((i) => i.deletedAt?.getTime() === wipedAt.getTime())).toBe(true);
 
           const audit = await tx.auditLog.findFirst({
@@ -418,7 +471,10 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
           });
           expect(audit).toBeTruthy();
           expect(audit!.userId).toBe(adminId);
-          const nv = audit!.newValue as { counts: Record<string, number>; skipped: { id: string }[] };
+          const nv = audit!.newValue as {
+            counts: Record<string, number>;
+            skipped: { id: string }[];
+          };
           expect(nv.counts.products).toBe(3);
           expect(nv.skipped.map((s) => s.id)).toEqual([F.id]);
 
@@ -440,12 +496,19 @@ describe('wipe:stock-go-live — flow จริงบน DB จริง', () =>
           expect(await at('stockCount', countReal.id)).toBeNull();
           expect(await at('stockAdjustment', adjReal.id)).toBeNull();
           expect(await at('stockAlert', alertReal.id)).toBeNull();
-          const poItemsBack = await tx.pOItem.findMany({ where: { poId: po1.id }, select: { deletedAt: true } });
+          const poItemsBack = await tx.pOItem.findMany({
+            where: { poId: po1.id },
+            select: { deletedAt: true },
+          });
           expect(poItemsBack.every((i) => i.deletedAt === null)).toBe(true);
 
           throw new Rollback();
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 120_000, maxWait: 10_000 },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 120_000,
+          maxWait: 10_000,
+        },
       ),
     ).rejects.toBeInstanceOf(Rollback);
 

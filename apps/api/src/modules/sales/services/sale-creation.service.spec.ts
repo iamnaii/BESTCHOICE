@@ -6,7 +6,12 @@ import { BadRequestException } from '@nestjs/common';
 import { SaleCreationService } from './sale-creation.service';
 import { TEST_CUSTOMER_ADDRESS } from '../../../utils/test-data-markers';
 
-const realCustomer = { id: 'cust-1', name: 'ลูกค้าจริง', phone: '0891234567', addressCurrent: 'กรุงเทพ' };
+const realCustomer = {
+  id: 'cust-1',
+  name: 'ลูกค้าจริง',
+  phone: '0891234567',
+  addressCurrent: 'กรุงเทพ',
+};
 const testCustomer = {
   id: 'cust-t',
   name: 'ทดสอบระบบ ลูกค้า',
@@ -15,7 +20,12 @@ const testCustomer = {
 };
 const realProduct = { id: 'prod-1', imeiSerial: '356789012345678', name: 'iPhone 15', po: null };
 const testProduct = { id: 'prod-t', imeiSerial: 'TEST-0001', name: 'ทดสอบระบบ มือถือ', po: null };
-const testAccessory = { id: 'prod-acc', imeiSerial: null, name: 'สายชาร์จ', po: { poNumber: 'TEST-PO-0001' } };
+const testAccessory = {
+  id: 'prod-acc',
+  imeiSerial: null,
+  name: 'สายชาร์จ',
+  po: { poNumber: 'TEST-PO-0001' },
+};
 
 const baseDto = {
   saleType: 'CASH',
@@ -68,7 +78,10 @@ describe('SaleCreationService.create — test-data fence', () => {
 
   it('ทดสอบ ↔ ทดสอบ ผ่าน', async () => {
     const { service, writer } = makeService(testCustomer, [testProduct]);
-    await service.create({ ...baseDto, customerId: 'cust-t', productId: 'prod-t' } as never, 'sp-1');
+    await service.create(
+      { ...baseDto, customerId: 'cust-t', productId: 'prod-t' } as never,
+      'sp-1',
+    );
     expect(writer.createCashSale).toHaveBeenCalledTimes(1);
   });
 
@@ -82,9 +95,9 @@ describe('SaleCreationService.create — test-data fence', () => {
 
   it('เครื่องจริง → ลูกค้าทดสอบ: BadRequest', async () => {
     const { service, writer } = makeService(testCustomer, [realProduct]);
-    await expect(service.create({ ...baseDto, customerId: 'cust-t' } as never, 'sp-1')).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      service.create({ ...baseDto, customerId: 'cust-t' } as never, 'sp-1'),
+    ).rejects.toThrow(BadRequestException);
     expect(writer.createCashSale).not.toHaveBeenCalled();
   });
 

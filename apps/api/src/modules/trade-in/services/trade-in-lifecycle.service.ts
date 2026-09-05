@@ -415,7 +415,8 @@ export class TradeInLifecycleService {
         tradeIn.deviceStorage,
       ].filter(Boolean);
       // test-data fence auto-mark (spec 2026-09-05 §5.3): เครื่องที่รับซื้อจากลูกค้าทดสอบต้องมี
-      // marker ติดตัวตั้งแต่เกิด ไม่งั้นคลังจะมองเป็นของจริง (IMEI ไม่แตะ — เป็นของจริงของเครื่องทดสอบ)
+      // marker ติดตัวตั้งแต่เกิด ไม่งั้นคลังจะมองเป็นของจริง
+      // (IMEI ไม่แตะ — เป็นของจริงของเครื่องทดสอบ)
       const seller = tradeIn.customerId
         ? await tx.customer.findUnique({
             where: { id: tradeIn.customerId },
@@ -423,7 +424,8 @@ export class TradeInLifecycleService {
           })
         : null;
       const baseName = nameParts.join(' ');
-      const productName = seller && isTestCustomer(seller) ? `${TEST_NAME_PREFIX} ${baseName}` : baseName;
+      const productName =
+        seller && isTestCustomer(seller) ? `${TEST_NAME_PREFIX} ${baseName}` : baseName;
       // เทิร์น (EXCHANGE instant): ต้นทุนสต็อก = ราคาเงินสด — โบนัสเทิร์นเป็นส่วนลด
       // ฝั่งเครื่องใหม่ ไม่ใช่ต้นทุนเครื่องเก่า (spec /sell §1.5/§7.4) ไม่งั้น COGS
       // บวมเท่าโบนัสทุกเครื่อง; BUYBACK/walk-in = เงินที่จ่ายจริงเหมือนเดิม

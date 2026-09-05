@@ -324,7 +324,10 @@ export async function applyWipe(
 
   const counts: WipeCounts = {
     products: (
-      await tx.product.updateMany({ where: { id: { in: productIds }, deletedAt: null }, data: soft })
+      await tx.product.updateMany({
+        where: { id: { in: productIds }, deletedAt: null },
+        data: soft,
+      })
     ).count,
     purchase_orders: (
       await tx.purchaseOrder.updateMany({
@@ -436,9 +439,7 @@ export async function applyWipe(
 /** SQL ย้อนกลับ — หนึ่งบรรทัดต่อตาราง; Postgres เทียบ timestamp(3) กับ ISO string ตรง ๆ ได้ */
 export function rollbackSql(wipedAt: Date): string[] {
   const ts = wipedAt.toISOString();
-  return WIPED_TABLES.map(
-    (t) => `UPDATE "${t}" SET deleted_at = NULL WHERE deleted_at = '${ts}';`,
-  );
+  return WIPED_TABLES.map((t) => `UPDATE "${t}" SET deleted_at = NULL WHERE deleted_at = '${ts}';`);
 }
 
 const groupCount = <T>(rows: T[], key: (r: T) => string): [string, number][] => {
@@ -447,7 +448,11 @@ const groupCount = <T>(rows: T[], key: (r: T) => string): [string, number][] => 
   return [...m.entries()].sort((a, b) => b[1] - a[1]);
 };
 
-export function formatPlan(plan: WipePlan, mode: 'DRY-RUN' | 'LIVE', counts?: WipeCounts): string[] {
+export function formatPlan(
+  plan: WipePlan,
+  mode: 'DRY-RUN' | 'LIVE',
+  counts?: WipeCounts,
+): string[] {
   const verb = mode === 'DRY-RUN' ? 'จะลบ' : 'ลบแล้ว';
   const out: string[] = [];
   out.push(`โหมด: ${mode}${plan.branchId ? ` · เฉพาะสาขา ${plan.branchId}` : ' · ทุกสาขา'}`);
@@ -473,27 +478,43 @@ export function formatPlan(plan: WipePlan, mode: 'DRY-RUN' | 'LIVE', counts?: Wi
   out.push('');
 
   const cost = plan.products.reduce((acc, p) => acc.plus(p.costPrice), new Prisma.Decimal(0));
-  out.push(`สินค้าที่${verb} ${plan.products.length} เครื่อง · ต้นทุนรวมที่จะหายจากภาพรวมคลัง ${cost.toFixed(2)} บาท`);
-  for (const [k, n] of groupCount(plan.products, (p) => `สาขา ${p.branchName}`)) out.push(`  ${String(n).padStart(6)}  ${k}`);
-  for (const [k, n] of groupCount(plan.products, (p) => `หมวด ${p.category}`)) out.push(`  ${String(n).padStart(6)}  ${k}`);
-  for (const [k, n] of groupCount(plan.products, (p) => `สถานะ ${p.status}`)) out.push(`  ${String(n).padStart(6)}  ${k}`);
+  out.push(
+    `สินค้าที่${verb} ${plan.products.length} เครื่อง · ต้นทุนรวมที่จะหายจากภาพรวมคลัง ${cost.toFixed(2)} บาท`,
+  );
+  for (const [k, n] of groupCount(plan.products, (p) => `สาขา ${p.branchName}`))
+    out.push(`  ${String(n).padStart(6)}  ${k}`);
+  for (const [k, n] of groupCount(plan.products, (p) => `หมวด ${p.category}`))
+    out.push(`  ${String(n).padStart(6)}  ${k}`);
+  for (const [k, n] of groupCount(plan.products, (p) => `สถานะ ${p.status}`))
+    out.push(`  ${String(n).padStart(6)}  ${k}`);
   out.push('');
 
   out.push(`เครื่องที่ข้าม (ติดด่านถือครอง — ไม่ลบ): ${plan.skipped.length}`);
-  for (const s of plan.skipped) out.push(`  - ${s.imeiSerial ?? '(ไม่มี IMEI)'} ${s.name} [${s.status}] สาขา ${s.branchName}: ${s.reason}`);
-  out.push(`เครื่องสถานะผูกธุรกรรม (ไม่แตะ — เคลียร์ผ่านเมนูยกเลิกใบขาย/ยกเลิกสัญญา/ยึดเครื่อง): ${plan.bound.length}`);
-  for (const b of plan.bound) out.push(`  - ${b.imeiSerial ?? '(ไม่มี IMEI)'} ${b.name} [${b.status}] สาขา ${b.branchName}`);
+  for (const s of plan.skipped)
+    out.push(
+      `  - ${s.imeiSerial ?? '(ไม่มี IMEI)'} ${s.name} [${s.status}] สาขา ${s.branchName}: ${s.reason}`,
+    );
+  out.push(
+    `เครื่องสถานะผูกธุรกรรม (ไม่แตะ — เคลียร์ผ่านเมนูยกเลิกใบขาย/ยกเลิกสัญญา/ยึดเครื่อง): ${plan.bound.length}`,
+  );
+  for (const b of plan.bound)
+    out.push(`  - ${b.imeiSerial ?? '(ไม่มี IMEI)'} ${b.name} [${b.status}] สาขา ${b.branchName}`);
   out.push(`PO ที่เก็บไว้เพราะยังมีเครื่องชี้อยู่: ${plan.keptPurchaseOrders.length}`);
   for (const k of plan.keptPurchaseOrders) out.push(`  - ${k.poNumber}: ${k.reason}`);
   out.push('');
 
   out.push(`เครื่องทดสอบที่เหลือ (marker TEST-/ทดสอบระบบ/PO ทดสอบ): ${plan.testProductsRemaining}`);
   if (plan.testProductsOnlineVisible.length) {
-    out.push(`⚠️  เครื่องทดสอบที่ยังเปิดขายออนไลน์ (isOnlineVisible) — ปิดเองก่อนขายจริง: ${plan.testProductsOnlineVisible.length}`);
-    for (const p of plan.testProductsOnlineVisible) out.push(`  - ${p.imeiSerial ?? '(ไม่มี IMEI)'} ${p.name}`);
+    out.push(
+      `⚠️  เครื่องทดสอบที่ยังเปิดขายออนไลน์ (isOnlineVisible) — ปิดเองก่อนขายจริง: ${plan.testProductsOnlineVisible.length}`,
+    );
+    for (const p of plan.testProductsOnlineVisible)
+      out.push(`  - ${p.imeiSerial ?? '(ไม่มี IMEI)'} ${p.name}`);
   }
   if (plan.tradeInProductCount > 0) {
-    out.push(`⚠️  เครื่องเทิร์นที่จะถูกล้าง ${plan.tradeInProductCount} เครื่อง — แถว trade_ins และ JE เทิร์นที่เคยโพสต์ไม่ถูกแตะ (งานของการล้างสมุดทดสอบ)`);
+    out.push(
+      `⚠️  เครื่องเทิร์นที่จะถูกล้าง ${plan.tradeInProductCount} เครื่อง — แถว trade_ins และ JE เทิร์นที่เคยโพสต์ไม่ถูกแตะ (งานของการล้างสมุดทดสอบ)`,
+    );
   }
   out.push('');
   out.push('GL สินค้าคงเหลือปัจจุบัน (CLI นี้ไม่แตะบัญชี — ตัวเลขนี้จะไม่ขยับ):');

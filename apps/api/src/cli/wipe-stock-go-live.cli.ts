@@ -111,7 +111,9 @@ async function main(): Promise<void> {
     );
     for (const line of formatPlan(plan, 'LIVE', counts)) console.log(line);
     console.log('');
-    console.log(`${TAG} AuditLog: action=${STOCK_GO_LIVE_AUDIT_ACTION} entityId=${wipedAt.toISOString()}`);
+    console.log(
+      `${TAG} AuditLog: action=${STOCK_GO_LIVE_AUDIT_ACTION} entityId=${wipedAt.toISOString()}`,
+    );
     console.log(`${TAG} ย้อนกลับ (ถ้าจำเป็น) — รัน SQL ชุดนี้ผ่าน psql:`);
     for (const sql of rollbackSql(wipedAt)) console.log(`  ${sql}`);
   } finally {

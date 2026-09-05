@@ -283,13 +283,20 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
 
     it('เครื่อง TEST- → ลูกค้าจริง: BadRequest ก่อนสร้างสัญญา', async () => {
       tx.product.findFirst.mockResolvedValue({ ...mockProduct, imeiSerial: 'TEST-0001' });
-      await expect(service.create({ ...baseDto } as any, 'sp-1')).rejects.toThrow(/เครื่องทดสอบระบบ/);
+      await expect(service.create({ ...baseDto } as any, 'sp-1')).rejects.toThrow(
+        /เครื่องทดสอบระบบ/,
+      );
       expect(tx.contract.create).not.toHaveBeenCalled();
     });
 
     it('เครื่องจริง → ลูกค้าทดสอบ (ที่อยู่ = marker): BadRequest', async () => {
-      tx.customer.findUnique.mockResolvedValue({ ...mockCustomer, addressCurrent: TEST_CUSTOMER_ADDRESS });
-      await expect(service.create({ ...baseDto } as any, 'sp-1')).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
+      tx.customer.findUnique.mockResolvedValue({
+        ...mockCustomer,
+        addressCurrent: TEST_CUSTOMER_ADDRESS,
+      });
+      await expect(service.create({ ...baseDto } as any, 'sp-1')).rejects.toThrow(
+        /ลูกค้าทดสอบระบบ/,
+      );
       expect(tx.contract.create).not.toHaveBeenCalled();
     });
 

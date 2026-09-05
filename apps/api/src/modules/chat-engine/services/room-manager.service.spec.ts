@@ -232,6 +232,50 @@ describe('RoomManagerService', () => {
 
   });
 
+  describe('clearWaiting / markOutboundSent', () => {
+    it('clearWaiting ล้างเฉพาะห้องที่กำลังรออยู่', async () => {
+      await service.clearWaiting('room-1');
+      expect(prisma.chatRoom.updateMany).toHaveBeenCalledWith({
+        where: { id: 'room-1', waitingSince: { not: null } },
+        data: { waitingSince: null },
+      });
+    });
+
+    it('markOutboundSent (ส่งสำเร็จ) → stamp outboundSentAt แล้วล้าง waiting ของห้องนั้น', async () => {
+      prisma.chatMessage.update.mockResolvedValue({ id: 'm1', roomId: 'room-9' });
+
+      await service.markOutboundSent('m1', 'mid-1');
+
+      expect(prisma.chatMessage.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: { outboundSentAt: expect.any(Date), externalMessageId: 'mid-1' },
+      });
+      expect(prisma.chatRoom.updateMany).toHaveBeenCalledWith({
+        where: { id: 'room-9', waitingSince: { not: null } },
+        data: { waitingSince: null },
+      });
+    });
+
+    it('markOutboundSent ชน P2002 (echo จอง mid ก่อน) → stamp เฉพาะ outboundSentAt และยังล้าง waiting', async () => {
+      const dup: any = new Error('dup');
+      dup.code = 'P2002';
+      prisma.chatMessage.update
+        .mockRejectedValueOnce(dup)
+        .mockResolvedValueOnce({ id: 'm1', roomId: 'room-9' });
+
+      await service.markOutboundSent('m1', 'mid-dup');
+
+      expect(prisma.chatMessage.update).toHaveBeenLastCalledWith({
+        where: { id: 'm1' },
+        data: { outboundSentAt: expect.any(Date) },
+      });
+      expect(prisma.chatRoom.updateMany).toHaveBeenCalledWith({
+        where: { id: 'room-9', waitingSince: { not: null } },
+        data: { waitingSince: null },
+      });
+    });
+  });
+
   describe('getRecentMessages', () => {
     it('excludes undelivered legacy drafts without dropping NULL-intent messages', async () => {
       prisma.chatMessage.findMany.mockResolvedValue([]);

@@ -335,6 +335,18 @@ export class RoomManagerService {
   }
 
   /**
+   * ล้าง "รอตอบ" — เรียกได้เฉพาะเมื่อคำตอบจาก "คน" ถึงลูกค้าแล้ว (สเปก §3 / §4.3):
+   *   markOutboundSent (inbox ส่งสำเร็จ) · mirrorOutbound STAFF (echo จาก Page Inbox) · resolve
+   * ห้ามเรียกจาก saveMessage / BOT / การส่งที่ล้ม / markAsRead
+   */
+  async clearWaiting(roomId: string): Promise<void> {
+    await this.prisma.chatRoom.updateMany({
+      where: { id: roomId, waitingSince: { not: null } },
+      data: { waitingSince: null },
+    });
+  }
+
+  /**
    * Mark a message as successfully delivered to the customer (idempotency flag).
    * เก็บ platform message id ด้วยเมื่อ adapter คืนมา — FB echo webhook dedup
    * ชั้นที่ 2 อาศัย UNIQUE บน ChatMessage.externalMessageId
@@ -342,14 +354,16 @@ export class RoomManagerService {
    * เราส่งเองจะกลายเป็น bubble STAFF ซ้ำเมื่อ env FACEBOOK_APP_ID ไม่ได้ตั้ง
    */
   async markOutboundSent(messageId: string, externalMessageId?: string): Promise<void> {
+    let roomId: string | undefined;
     try {
-      await this.prisma.chatMessage.update({
+      const row = await this.prisma.chatMessage.update({
         where: { id: messageId },
         data: {
           outboundSentAt: new Date(),
           ...(externalMessageId ? { externalMessageId } : {}),
         },
       });
+      roomId = row.roomId;
     } catch (err) {
       // echo webhook อาจมาถึงก่อน HTTP ของเราจะ return แล้วจอง mid ไปก่อน —
       // ยอมเสีย stamp ดีกว่า throw (ข้อความส่งถึงลูกค้าแล้ว ถ้า throw client จะ retry = ส่งซ้ำ)
@@ -370,14 +384,17 @@ export class RoomManagerService {
         this.logger.warn(
           `[markOutboundSent] externalMessageId ${externalMessageId} ถูกใช้แล้ว — stamp เฉพาะ outboundSentAt`,
         );
-        await this.prisma.chatMessage.update({
+        const row = await this.prisma.chatMessage.update({
           where: { id: messageId },
           data: { outboundSentAt: new Date() },
         });
-        return;
+        roomId = row.roomId;
+      } else {
+        throw err;
       }
-      throw err;
     }
+    // ส่งถึงลูกค้าแล้วจริง (ทั้งสองทางด้านบน) → ลูกค้าไม่ได้รออีก
+    if (roomId) await this.clearWaiting(roomId);
   }
 
   /** Get recent messages for AI context or display */

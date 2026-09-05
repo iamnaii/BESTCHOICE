@@ -23,6 +23,15 @@ import { PrismaClient, Prisma } from '@prisma/client';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 const REACHABLE_DAYS = 7;
+
+/**
+ * ค่าเริ่มต้นของ Prisma คือ timeout 5 วิ / maxWait 2 วิ ซึ่งไม่พอสำหรับ transaction นี้:
+ * updateMany ~8,300 ห้อง + UPDATE ดิบ ~8,000 แถวที่แต่ละแถวยิง subquery เข้า chat_messages
+ * + updateMany รายห้องอีก ~52 ครั้ง ⇒ เกิน 5 วิ ได้ง่าย และจะล้มเป็น P2028 rollback ปริศนา
+ * ทั้งที่งานนี้ต้องรันให้จบในหน้าต่างสั้น ๆ ทันทีหลัง deploy
+ */
+const TX_OPTIONS = { timeout: 120_000, maxWait: 10_000 };
+
 /**
  * เฉพาะ STAFF เท่านั้นที่นับเป็น "คำตอบ" — BOT ไม่นับ (สเปก §3, §4.3: ตารางกฎล้าง
  * `waitingSince` ระบุชัดว่า BOT/SYSTEM/AUTO_TRIGGER "ไม่ล้าง"; ล้างได้เฉพาะ `markOutboundSent`,
@@ -147,7 +156,7 @@ async function main(): Promise<void> {
         step3 += res.count;
       }
       return { step1: step1.count, step2, step3 };
-    });
+    }, TX_OPTIONS);
 
     console.log('[reset-inbox-day-one] ===== ผล =====');
     console.log(`  1. ล้างผู้ดูแล                     : ${result.step1}`);

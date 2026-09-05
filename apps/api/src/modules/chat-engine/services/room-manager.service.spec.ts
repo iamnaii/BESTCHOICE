@@ -230,6 +230,16 @@ describe('RoomManagerService', () => {
       });
     });
 
+    it('CUSTOMER → ตั้ง lastCustomerAt แบบเดินหน้าอย่างเดียว (หน้าต่าง 24 ชม. ของ FB นับจากใบล่าสุด)', async () => {
+      const createdAt = new Date('2026-09-05T03:00:00Z');
+      prisma.chatMessage.create.mockResolvedValue({ id: 'm1', createdAt });
+      await service.saveMessage({ roomId: 'room-1', role: MessageRole.CUSTOMER, text: 'ยังอยู่ไหมคะ' });
+      expect(prisma.chatRoom.updateMany).toHaveBeenCalledWith({
+        where: { id: 'room-1', OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: createdAt } }] },
+        data: { lastCustomerAt: createdAt },
+      });
+    });
+
     it('STAFF / BOT → ไม่แตะ waitingSince เลย (ล้างที่ markOutboundSent/mirrorOutbound เท่านั้น)', async () => {
       prisma.chatMessage.create.mockResolvedValue({ id: 'm-s', createdAt: new Date() });
       prisma.chatRoom.findUnique.mockResolvedValue({ firstResponseAt: null });
@@ -369,11 +379,43 @@ describe('RoomManagerService', () => {
       prisma.chatRoom.count.mockResolvedValue(0);
     });
 
-    it('waiting=true → กรอง waitingSince not null และเรียง waitingSince asc อย่างเดียว', async () => {
-      await service.listRooms({ waiting: true });
+    it('waiting=true → กรอง "รอตอบและยังทัน" แล้วเรียงสองชั้น: FB ใกล้หมดเวลาก่อน แล้วรอนานก่อน (สเปก §7 แก้ไข)', async () => {
+      const now = Date.now();
+      const h = (n: number) => new Date(now - n * 3600 * 1000);
+      // FB เหลือ 2 ชม. (ทักเมื่อ 22 ชม.) · LINE รอ 3 วัน · FB ทักเมื่อ 1 ชม. รอ 1 ชม. · FB ทักซ้ำเมื่อ 2 ชม. แต่รอมา 22 ชม.
+      const keys = [
+        { id: 'fb-fresh', channel: 'FACEBOOK', lastCustomerAt: h(1), waitingSince: h(1) },
+        { id: 'line-old', channel: 'LINE_FINANCE', lastCustomerAt: h(72), waitingSince: h(72) },
+        { id: 'fb-closing', channel: 'FACEBOOK', lastCustomerAt: h(22), waitingSince: h(22) },
+        { id: 'fb-nudged', channel: 'FACEBOOK', lastCustomerAt: h(2), waitingSince: h(22) },
+      ];
+      prisma.chatRoom.findMany
+        .mockResolvedValueOnce(keys)
+        .mockResolvedValueOnce(keys.map((k) => ({ id: k.id })));
+
+      const res = await service.listRooms({ waiting: true });
+
+      // where ชุดเดียวกับตัวนับ: waitingSince not null + (ไม่ใช่ FB หรือ FB ที่ยังอยู่ในหน้าต่าง)
+      const keyArgs = prisma.chatRoom.findMany.mock.calls[0][0];
+      expect(keyArgs.where).toMatchObject({ deletedAt: null, waitingSince: { not: null } });
+      expect(keyArgs.where.OR).toEqual([
+        { channel: { not: 'FACEBOOK' } },
+        { channel: 'FACEBOOK', lastCustomerAt: { gte: expect.any(Date) } },
+      ]);
+      expect(keyArgs.orderBy).toBeUndefined();
+      // ชั้น 1 = FB ที่เหลือ ≤3 ชม. · ชั้น 2 = ที่เหลือเรียงรอนานสุด (LINE 3 วัน > FB ทักซ้ำแต่รอ 22 ชม. > FB 1 ชม.)
+      expect(res.data.map((r: { id: string }) => r.id)).toEqual(['fb-closing', 'line-old', 'fb-nudged', 'fb-fresh']);
+      expect(res.total).toBe(4);
+      // hydrate เฉพาะหน้าที่ขอ
+      const rowArgs = prisma.chatRoom.findMany.mock.calls[1][0];
+      expect(rowArgs.where).toEqual({ id: { in: ['fb-closing', 'line-old', 'fb-nudged', 'fb-fresh'] } });
+    });
+
+    it('expired=true → เฉพาะ FACEBOOK ที่รออยู่และ lastCustomerAt พ้น 24 ชม. หรือยังไม่มีค่า', async () => {
+      await service.listRooms({ expired: true });
       const args = prisma.chatRoom.findMany.mock.calls[0][0];
-      expect(args.where).toMatchObject({ deletedAt: null, waitingSince: { not: null } });
-      expect(args.orderBy).toEqual([{ waitingSince: 'asc' }]);
+      expect(args.where).toMatchObject({ deletedAt: null, waitingSince: { not: null }, channel: 'FACEBOOK' });
+      expect(args.where.OR).toEqual([{ lastCustomerAt: null }, { lastCustomerAt: { lt: expect.any(Date) } }]);
     });
 
     it('ไม่ส่ง waiting → เรียงแบบเดิม (ปักหมุดก่อน แล้ว lastMessageAt)', async () => {
@@ -389,24 +431,28 @@ describe('RoomManagerService', () => {
 
   describe('getRoomBadgeCounts — ป้ายต้องเท่ากับจำนวนแถวที่แท็บนั้นแสดง', () => {
     it('นับแต่ละแท็บด้วยตัวกรองของตัวเอง ไม่ใช่ "ยังไม่อ่าน" ชุดเดียวทั้งหมด', async () => {
-      // ลำดับ count: all · mine · waiting
+      // ลำดับ count: all · mine · waiting · expired
       prisma.chatRoom.count
         .mockResolvedValueOnce(8320)
         .mockResolvedValueOnce(2)
-        .mockResolvedValueOnce(231);
+        .mockResolvedValueOnce(24)
+        .mockResolvedValueOnce(44);
       prisma.chatRoom.groupBy.mockResolvedValue([{ channel: 'FACEBOOK', _count: { id: 8320 } }]);
 
       const res = await service.getRoomBadgeCounts('staff-1');
 
-      // all = ห้องทั้งหมด · mine = ห้องของฉันทุกห้อง · waiting = ห้องที่ลูกค้ารอ
-      expect(res).toEqual({ mine: 2, all: 8320, waiting: 231, byChannel: { FACEBOOK: 8320 } });
+      // all = ห้องทั้งหมด · mine = ห้องของฉันทุกห้อง · waiting = รอและยังทัน · expired = รอแต่พ้นหน้าต่าง
+      expect(res).toEqual({ mine: 2, all: 8320, waiting: 24, expired: 44, byChannel: { FACEBOOK: 8320 } });
       // ไม่มีตัวนับใบไหนกรอง unreadCount อีกต่อไป
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({ where: { deletedAt: null } });
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({
         where: { deletedAt: null, assignedToId: 'staff-1' },
       });
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({
-        where: { deletedAt: null, waitingSince: { not: null } },
+        where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, OR: expect.any(Array) }),
+      });
+      expect(prisma.chatRoom.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, channel: 'FACEBOOK' }),
       });
       for (const call of prisma.chatRoom.count.mock.calls) {
         expect(call[0].where.unreadCount).toBeUndefined();
@@ -421,7 +467,7 @@ describe('RoomManagerService', () => {
 
       expect(prisma.chatRoom.groupBy).toHaveBeenCalledWith({
         by: ['channel'],
-        where: { deletedAt: null, waitingSince: { not: null } },
+        where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, OR: expect.any(Array) }),
         _count: { id: true },
       });
     });

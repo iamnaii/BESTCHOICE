@@ -3,6 +3,7 @@
  * สเปก docs/superpowers/specs/2026-09-05-inbox-day-one-readiness-design.md §6
  *
  * ทำ 3 ขั้นใน transaction เดียว (รันซ้ำได้ ผลเป็น 0 การเปลี่ยนแปลง):
+ *   0. last_customer_at = max(created_at) ของข้อความ CUSTOMER — ทุกห้อง (ใช้คิดหน้าต่าง 24 ชม. ของ FB)
  *   1. assigned_to_id = NULL ทุกห้อง — ผู้ดูแลเดิมมาจาก autoAssign แบบวน ไม่มีใครเคยตอบจริง
  *   2. unread_count = 0 ในห้องที่ข้อความสุดท้ายไม่ใช่ของลูกค้า
  *   3. ห้องที่ข้อความสุดท้ายเป็นของลูกค้าและ last_message_at ไม่เกิน 7 วัน:
@@ -115,12 +116,19 @@ async function main(): Promise<void> {
     const unreachable = await count(prisma, Prisma.sql`
       SELECT count(*)::bigint AS n FROM chat_rooms r
       WHERE r.deleted_at IS NULL AND r.last_message_at <= ${cutoff} AND (${WAITING_FOR_HUMAN})`);
+    // last_customer_at (สเปก §7 แก้ไข 2026-09-05) — หน้าต่าง 24 ชม. ของ FB นับจากข้อความล่าสุดของลูกค้า
+    // เติมให้ *ทุก* ห้องที่มีข้อความลูกค้า ไม่ใช่เฉพาะที่รออยู่ (คอลัมน์นี้ใช้ทั้งแท็บรอตอบและมุมมองตอบไม่ทัน)
+    const lastCustMissing = await count(prisma, Prisma.sql`
+      SELECT count(*)::bigint AS n FROM chat_rooms r
+      WHERE r.deleted_at IS NULL AND r.last_customer_at IS NULL
+        AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.room_id = r.id AND m.deleted_at IS NULL AND m.role = 'CUSTOMER')`);
 
     console.log('[reset-inbox-day-one] ===== แผน =====');
     console.log(`  1. ล้างผู้ดูแล                     : ${assigned} ห้อง`);
     console.log(`  2. unread_count → 0                : ${unreadStale} ห้อง`);
     console.log(`  3. ตั้ง waiting_since + ACTIVE     : ${candidates.length} ห้อง (รอไม่เกิน ${REACHABLE_DAYS} วัน)`);
     console.log(`  4. ปล่อย IDLE (รอเกิน ${REACHABLE_DAYS} วัน)   : ${unreachable} ห้อง`);
+    console.log(`  0. เติม last_customer_at            : ${lastCustMissing} ห้อง (จาก max(created_at) ของข้อความ CUSTOMER)`);
 
     if (dryRun) return;
 
@@ -140,6 +148,12 @@ async function main(): Promise<void> {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // ขั้น 0: last_customer_at = ข้อความ CUSTOMER ใบล่าสุด (UPDATE เดียว ไม่วนต่อห้อง — ~8,000 แถว)
+      const step0 = await tx.$executeRaw(Prisma.sql`
+        UPDATE chat_rooms r SET last_customer_at = sub.t
+        FROM (SELECT m.room_id, max(m.created_at) AS t FROM chat_messages m
+              WHERE m.deleted_at IS NULL AND m.role = 'CUSTOMER' GROUP BY m.room_id) sub
+        WHERE r.id = sub.room_id AND r.deleted_at IS NULL AND r.last_customer_at IS NULL`);
       const step1 = await tx.chatRoom.updateMany({
         where: { deletedAt: null, assignedToId: { not: null } },
         data: { assignedToId: null },
@@ -155,10 +169,11 @@ async function main(): Promise<void> {
         });
         step3 += res.count;
       }
-      return { step1: step1.count, step2, step3 };
+      return { step0, step1: step1.count, step2, step3 };
     }, TX_OPTIONS);
 
     console.log('[reset-inbox-day-one] ===== ผล =====');
+    console.log(`  0. เติม last_customer_at            : ${result.step0}`);
     console.log(`  1. ล้างผู้ดูแล                     : ${result.step1}`);
     console.log(`  2. unread_count → 0                : ${result.step2}`);
     console.log(`  3. ตั้ง waiting_since + ACTIVE     : ${result.step3}`);

@@ -5271,6 +5271,9 @@ model ChatRoom {
   /// ล้าง: markOutboundSent (ส่งสำเร็จจาก inbox) · mirrorOutbound STAFF (echo Page Inbox) · resolve
   /// ไม่ล้าง: BOT/SYSTEM · การส่งที่ล้ม · การเปิดอ่าน (markAsRead)
   waitingSince    DateTime? @map("waiting_since")
+  /// เวลาข้อความ *ล่าสุด* ของลูกค้า — Facebook นับหน้าต่างตอบ 24 ชม. จากตัวนี้ (ไม่ใช่ waitingSince ซึ่งเป็นใบแรกที่ยังไม่ตอบ
+  /// และไม่ใช่ lastMessageAt ซึ่งรวมข้อความของเราเอง) · เดินหน้าอย่างเดียว · ล้างข้อมูลวันแรกเติมย้อนหลังให้
+  lastCustomerAt  DateTime? @map("last_customer_at")
 
   // Stats
   unreadCount   Int      @default(0) @map("unread_count")
@@ -5305,6 +5308,7 @@ model ChatRoom {
   // Speeds up the */5min first-response SLA cron in chat-engine/chat-cron.service.ts
   @@index([status, firstResponseAt, createdAt])
   @@index([waitingSince])
+  @@index([channel, lastCustomerAt])
   @@map("chat_rooms")
 }
 

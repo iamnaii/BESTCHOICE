@@ -34,8 +34,11 @@ export interface RoomFilterParams {
   customerId?: string;
   unassignedOnly?: boolean;
   unreadOnly?: boolean;
-  /** แท็บ "รอตอบ" — ห้องที่ลูกค้ารอคำตอบจากคน (waitingSince not null) เรียงรอนานสุดก่อน */
+  /** แท็บ "รอตอบ" — ลูกค้ารอคำตอบจากคน **และยังตอบทัน** (FACEBOOK ต้องมี lastCustomerAt ใน 24 ชม. · ช่องทางอื่นไม่มีหน้าต่าง)
+   *  เรียงสองชั้น: ใกล้หมดเวลาก่อน แล้วรอนานก่อน (สเปก §7 แก้ไข 2026-09-05) */
   waiting?: boolean;
+  /** มุมมอง "ตอบไม่ทัน" — FACEBOOK ที่รออยู่แต่พ้นหน้าต่าง 24 ชม. แล้ว (หรือยังไม่มี lastCustomerAt) */
+  expired?: boolean;
   channels?: ChatChannel[];
   aiStatus?: 'ai' | 'human' | 'pending';
   search?: string;
@@ -43,6 +46,18 @@ export interface RoomFilterParams {
 
 /** แท็บของกล่องข้อความ — ป้ายแต่ละใบต้องนับ "จำนวนแถวที่แท็บนั้นแสดง" เป๊ะ ๆ */
 export type InboxTabKey = 'waiting' | 'mine' | 'all';
+
+/** หน้าต่างตอบของ Facebook Messenger นับจากข้อความล่าสุดของลูกค้า (สเปก §8) */
+export const FB_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** "ใกล้หมดเวลา" = เหลือไม่เกิน 3 ชม. — ชั้นแรกของการเรียงคิว */
+export const FB_CLOSING_MS = 3 * 60 * 60 * 1000;
+/** ห้อง FACEBOOK ที่ยังตอบทัน / ใกล้หมดเวลา — จุดเดียวของกติกา ห้ามคำนวณซ้ำที่อื่น */
+export function fbWindowBounds(now: Date = new Date()): { open: Date; closing: Date } {
+  return {
+    open: new Date(now.getTime() - FB_WINDOW_MS),
+    closing: new Date(now.getTime() - FB_WINDOW_MS + FB_CLOSING_MS),
+  };
+}
 
 /**
  * RoomManagerService — generalized from SessionManagerService.
@@ -347,6 +362,15 @@ export class RoomManagerService {
         where: { id: params.roomId, waitingSince: null },
         data: { waitingSince: msg.createdAt },
       });
+      // เวลาข้อความ *ล่าสุด* ของลูกค้า (หน้าต่าง 24 ชม. ของ FB นับจากตัวนี้) — เดินหน้าอย่างเดียว
+      // ข้อความเก่าที่มาถึงช้า (retry/echo) ต้องไม่ดึงค่าถอยหลัง
+      await this.prisma.chatRoom.updateMany({
+        where: {
+          id: params.roomId,
+          OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: msg.createdAt } }],
+        },
+        data: { lastCustomerAt: msg.createdAt },
+      });
     }
 
     return msg;
@@ -570,7 +594,20 @@ export class RoomManagerService {
       ];
     }
     if (params.unreadOnly) where.unreadCount = { gt: 0 };
-    if (params.waiting) where.waitingSince = { not: null };
+    if (params.waiting) {
+      // รอตอบ *และยังตอบทัน*: ช่องทางที่ไม่ใช่ FACEBOOK ไม่มีหน้าต่าง · FACEBOOK ต้องมี lastCustomerAt ภายใน 24 ชม.
+      // (null = ยังไม่เติมค่า = ถือว่าพ้นแล้ว — บน prod ทุกห้องเป็น null จนกว่า CLI จะรัน และ 44/68 ห้องพ้นจริง)
+      where.waitingSince = { not: null };
+      where.OR = [
+        { channel: { not: ChatChannel.FACEBOOK } },
+        { channel: ChatChannel.FACEBOOK, lastCustomerAt: { gte: fbWindowBounds().open } },
+      ];
+    }
+    if (params.expired) {
+      where.waitingSince = { not: null };
+      where.channel = ChatChannel.FACEBOOK;
+      where.OR = [{ lastCustomerAt: null }, { lastCustomerAt: { lt: fbWindowBounds().open } }];
+    }
     if (params.channels && params.channels.length > 0) where.channel = { in: params.channels };
     if (params.aiStatus === 'ai') {
       where.aiPaused = false;
@@ -591,18 +628,54 @@ export class RoomManagerService {
     const skip = (page - 1) * limit;
 
     const where = this.buildRoomWhere(params);
+    const include = {
+      customer: { select: { id: true, name: true, phone: true } },
+      assignedTo: { select: { id: true, name: true, avatarUrl: true } },
+      tags: true,
+      messages: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: 'desc' as const },
+        take: 1,
+        select: { text: true, role: true, createdAt: true },
+      },
+    };
+
+    if (params.waiting) {
+      // แท็บรอตอบเรียงสองชั้น (สเปก §7 แก้ไข 2026-09-05): ชั้น 1 = FACEBOOK ที่เหลือ ≤ 3 ชม. เรียงเหลือน้อยสุด
+      // ชั้น 2 = ที่เหลือทุกช่องทาง เรียงรอนานสุด · Prisma เรียงด้วย CASE ไม่ได้ จึงดึง key ของทุกห้องที่ผ่าน where
+      // (ชุดนี้เล็กโดยนิยาม — ห้องพ้นหน้าต่างถูกกันออกแล้ว) เรียงในหน่วยความจำ แล้ว hydrate เฉพาะหน้าที่ขอ
+      // ⇒ where ยังเป็นชุดเดียวกับตัวนับ (buildRoomWhere) ไม่มีสำเนา SQL ที่สอง
+      const { closing } = fbWindowBounds();
+      const keys = await this.prisma.chatRoom.findMany({
+        where,
+        select: { id: true, channel: true, lastCustomerAt: true, waitingSince: true },
+      });
+      const tier = (k: (typeof keys)[number]) =>
+        k.channel === ChatChannel.FACEBOOK && k.lastCustomerAt && k.lastCustomerAt < closing ? 0 : 1;
+      keys.sort((a, b) => {
+        const ta = tier(a), tb = tier(b);
+        if (ta !== tb) return ta - tb;
+        if (ta === 0) return a.lastCustomerAt!.getTime() - b.lastCustomerAt!.getTime();
+        return (a.waitingSince?.getTime() ?? 0) - (b.waitingSince?.getTime() ?? 0);
+      });
+      const pageIds = keys.slice(skip, skip + limit).map((k) => k.id);
+      const rows = pageIds.length
+        ? await this.prisma.chatRoom.findMany({ where: { id: { in: pageIds } }, include })
+        : [];
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const data = pageIds.map((id) => byId.get(id)!).filter(Boolean);
+      return { data, total: keys.length, page, limit };
+    }
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.chatRoom.findMany({
         where,
-        // แท็บรอตอบ: รอนานสุดก่อน อย่างเดียว (ปักหมุดไม่มีผล — สเปก §4.5)
         // แท็บอื่น: ปักหมุดก่อน แล้ว lastMessageAt (parity เดิม · priority ไม่ใช่ sort key โดยตั้งใจ)
-        orderBy: params.waiting
-          ? [{ waitingSince: 'asc' as const }]
-          : [
-              { pinnedAt: { sort: 'desc' as const, nulls: 'last' as const } },
-              { lastMessageAt: 'desc' as const },
-            ],
+        // มุมมอง "ตอบไม่ทัน": ใช้ลำดับเดียวกัน (ไม่มีอะไรให้เร่ง แค่ให้เห็นล่าสุดก่อน)
+        orderBy: [
+          { pinnedAt: { sort: 'desc' as const, nulls: 'last' as const } },
+          { lastMessageAt: 'desc' as const },
+        ],
         skip,
         take: limit,
         include: {
@@ -669,13 +742,16 @@ export class RoomManagerService {
     mine: number;
     /** ห้องทั้งหมดที่ยังไม่ถูกลบ */
     all: number;
-    /** ห้องที่ลูกค้ารอคำตอบจากคน — ทั้งบริษัท ไม่ผูกคน (สเปก §4.5) */
+    /** ห้องที่ลูกค้ารอคำตอบจากคน **และยังตอบทัน** — ทั้งบริษัท ไม่ผูกคน (สเปก §4.5, §7 แก้ไข) */
     waiting: number;
+    /** ห้อง FACEBOOK ที่รออยู่แต่พ้นหน้าต่าง 24 ชม. แล้ว — มุมมอง "ตอบไม่ทัน" */
+    expired: number;
     byChannel: Record<string, number>;
   }> {
     // ตัวกรองพื้นฐาน = สิ่งที่ผู้ใช้เลือกไว้นอกเหนือแท็บ (สถานะบอท) — ชุดเดียวกับรายการ
     const base = this.buildRoomWhere({ aiStatus: params?.aiStatus });
-    const waitingWhere: Prisma.ChatRoomWhereInput = { ...base, waitingSince: { not: null } };
+    const waitingWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, waiting: true });
+    const expiredWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, expired: true });
     // ไม่รู้ว่าใครถาม = ไม่มี "ของฉัน" ให้นับ — ปล่อย assignedToId เป็น undefined ไม่ได้
     // เพราะ Prisma อ่านว่า "ไม่กรอง" ⇒ ทุกห้องกลายเป็นห้องของคนคนนั้น
     const mineWhere: Prisma.ChatRoomWhereInput | null = staffId
@@ -684,10 +760,11 @@ export class RoomManagerService {
     const tabWhere: Prisma.ChatRoomWhereInput | null =
       params?.tab === 'waiting' ? waitingWhere : params?.tab === 'mine' ? mineWhere : base;
 
-    const [all, mine, waiting, byChannelRaw] = await Promise.all([
+    const [all, mine, waiting, expired, byChannelRaw] = await Promise.all([
       this.prisma.chatRoom.count({ where: base }),
       mineWhere ? this.prisma.chatRoom.count({ where: mineWhere }) : Promise.resolve(0),
       this.prisma.chatRoom.count({ where: waitingWhere }),
+      this.prisma.chatRoom.count({ where: expiredWhere }),
       this.prisma.chatRoom.groupBy({
         by: ['channel'],
         // tabWhere = null คือแท็บ "ของฉัน" ที่ไม่รู้ว่าใครถาม ⇒ ไม่มีห้องให้นับ
@@ -697,7 +774,7 @@ export class RoomManagerService {
     ]);
     const byChannel: Record<string, number> = {};
     for (const g of byChannelRaw) byChannel[g.channel] = g._count.id;
-    return { mine, all, waiting, byChannel };
+    return { mine, all, waiting, expired, byChannel };
   }
 
   /** Search messages across all rooms */

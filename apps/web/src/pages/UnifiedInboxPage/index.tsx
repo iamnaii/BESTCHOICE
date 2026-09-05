@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -26,6 +27,8 @@ const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA
 export default function UnifiedInboxPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { roomId: roomIdParam } = useParams<{ roomId: string }>();
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
   const [roomViewers, setRoomViewers] = useState<{ userId: string; userName: string }[]>([]);
@@ -34,7 +37,7 @@ export default function UnifiedInboxPage() {
     channels: string[];
     search?: string;
     aiFilter?: 'all' | 'ai' | 'human' | 'pending';
-  }>({ tab: 'all', channels: [], aiFilter: 'all' });
+  }>({ tab: 'waiting', channels: [], aiFilter: 'all' });
 
   // Notification mute prefs (localStorage-persisted, no on-mount permission prompt)
   const { muteAll, toggleMuteAll, toggleRoomMute, isMuted } = useNotificationPrefs();
@@ -182,6 +185,7 @@ export default function UnifiedInboxPage() {
             search: filters.search || undefined,
             assignedToId: filters.tab === 'mine' ? currentUserId : undefined,
             unreadOnly: filters.tab === 'unread' ? true : undefined,
+            waiting: filters.tab === 'waiting' ? true : undefined,
             channels: filters.channels?.length ? filters.channels.join(',') : undefined,
             aiStatus:
               filters.aiFilter && filters.aiFilter !== 'all' ? filters.aiFilter : undefined,
@@ -189,6 +193,7 @@ export default function UnifiedInboxPage() {
         })
         .then((r) => r.data),
     initialPageParam: 1,
+    refetchInterval: 60_000,
     getNextPageParam: (lastPage: any) =>
       lastPage.page * lastPage.limit < lastPage.total ? lastPage.page + 1 : undefined,
   });
@@ -335,15 +340,24 @@ export default function UnifiedInboxPage() {
   });
 
   // Handlers
+  // URL คือแหล่งความจริงของห้องที่เปิด (สเปก §7 ลิงก์ห้องใน URL) — เลือกห้อง = เปลี่ยน URL
   const handleSelectRoom = useCallback(
-    (roomId: string) => {
-      if (activeRoomId) leaveRoom(activeRoomId);
-      setActiveRoomId(roomId);
-      joinRoom(roomId);
-      viewRoom(roomId);
-    },
-    [activeRoomId, joinRoom, leaveRoom],
+    (roomId: string) => navigate(`/inbox/${roomId}`),
+    [navigate],
   );
+
+  // param เปลี่ยน → ออกจากห้องเดิม เข้าห้องใหม่ (ครอบทั้งคลิกเลือก, ปุ่มย้อนกลับ, เปิดลิงก์ตรง, refresh)
+  useEffect(() => {
+    const next = roomIdParam ?? null;
+    if (next === activeRoomId) return;
+    if (activeRoomId) leaveRoom(activeRoomId);
+    setActiveRoomId(next);
+    if (next) {
+      joinRoom(next);
+      viewRoom(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ทำงานเฉพาะเมื่อ URL เปลี่ยน
+  }, [roomIdParam]);
 
   // Send via HTTP — WS is unreliable behind some proxies, so HTTP is the
   // source of truth for sending. WS is still used to receive real-time updates.
@@ -507,7 +521,7 @@ export default function UnifiedInboxPage() {
           onSendMessage={handleSendMessage}
           onSendFile={handleSendFile}
           onSendSticker={handleSendSticker}
-          onBack={() => setActiveRoomId(null)}
+          onBack={() => navigate('/inbox')}
           onAssign={(staffId) =>
             activeRoomId && assignMutation.mutate({ roomId: activeRoomId, staffId })
           }

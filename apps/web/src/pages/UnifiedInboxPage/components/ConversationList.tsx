@@ -28,7 +28,7 @@ interface ConversationListProps {
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   muteAll?: boolean;
   onToggleMuteAll?: () => void;
-  serverCounts?: { mine: number; all: number; unread: number; byChannel: Record<string, number> };
+  serverCounts?: { mine: number; all: number; unread: number; waiting: number; byChannel: Record<string, number> };
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -261,9 +261,20 @@ export default function ConversationList({
         ) : visibleRooms.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
             <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
-              <MessageCircle className="w-5 h-5 text-muted-foreground/40" />
+              {filters.tab === 'waiting' && !filters.search ? (
+                <CheckCheck className="w-5 h-5 text-success" />
+              ) : (
+                <MessageCircle className="w-5 h-5 text-muted-foreground/40" />
+              )}
             </div>
-            {sessions.length === 0 ? (
+            {filters.tab === 'waiting' && !filters.search ? (
+              <>
+                <p className="text-sm font-medium text-foreground leading-snug">ตอบครบทุกคนแล้ว</p>
+                <p className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">
+                  ลูกค้าที่ทักมาใหม่จะขึ้นที่นี่
+                </p>
+              </>
+            ) : sessions.length === 0 ? (
               <>
                 <p className="text-sm font-medium text-muted-foreground leading-snug">ยังไม่มีการสนทนา</p>
                 <p className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">

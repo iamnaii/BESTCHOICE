@@ -1,7 +1,8 @@
 import { cn } from '@/lib/utils';
-import { Inbox, User, Mail } from 'lucide-react';
+import { Inbox, User, Mail, Clock } from 'lucide-react';
 
 const TABS = [
+  { key: 'waiting', label: 'รอตอบ', icon: Clock },
   { key: 'mine', label: 'ของฉัน', icon: User },
   { key: 'all', label: 'ทั้งหมด', icon: Inbox },
   { key: 'unread', label: 'ยังไม่อ่าน', icon: Mail },
@@ -15,7 +16,7 @@ const CHANNELS = [
   { key: 'WEB', label: 'เว็บ', dot: 'bg-muted-foreground' },
 ] as const;
 
-export type InboxTab = 'mine' | 'all' | 'unread';
+export type InboxTab = 'waiting' | 'mine' | 'all' | 'unread';
 export type AiFilter = 'all' | 'ai' | 'human' | 'pending';
 
 const AI_FILTER_LABELS: Record<AiFilter, string> = {
@@ -30,7 +31,7 @@ interface ChannelFilterProps {
   selectedChannels: string[];
   onTabChange: (tab: InboxTab) => void;
   onChannelToggle: (channel: string) => void;
-  counts?: { mine: number; all: number; unread: number };
+  counts?: { mine: number; all: number; unread: number; waiting: number };
   channelCounts?: Record<string, number>;
   aiFilter?: AiFilter;
   onAiFilterChange?: (filter: AiFilter) => void;
@@ -68,7 +69,10 @@ export default function ChannelFilter({
               <Icon className="w-3 h-3" />
               {tab.label}
               {counts && counts[tab.key] > 0 && (
-                <span className="ml-0.5 inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none">
+                <span className={cn(
+                  'ml-0.5 inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full text-[9px] font-bold leading-none',
+                  tab.key === 'waiting' ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground',
+                )}>
                   {counts[tab.key] > 99 ? '99+' : counts[tab.key]}
                 </span>
               )}

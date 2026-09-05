@@ -22,6 +22,21 @@ export function formatChatTimestamp(
   return format(d, 'd MMM yy', { locale: th });
 }
 
+/** ระยะเวลาที่ลูกค้ารอคำตอบ สำหรับป้าย "รอ …" ในแถวคิว (สเปก 2026-09-05 §7) */
+export function formatWaitDuration(
+  since: string | Date | null | undefined,
+  now: Date = new Date(),
+): string {
+  if (!since) return '';
+  const d = toDate(since);
+  if (Number.isNaN(d.getTime())) return '';
+  const diffMin = Math.max(0, Math.floor((now.getTime() - d.getTime()) / 60000));
+  if (diffMin < 60) return `${diffMin} นาที`;
+  const hours = Math.floor(diffMin / 60);
+  if (hours < 48) return `${hours} ชม.`;
+  return `${Math.floor(hours / 24)} วัน`;
+}
+
 /** Day-divider label for the message thread (Thai). */
 export function formatDateSeparator(value: string | Date, now: Date = new Date()): string {
   const d = toDate(value);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatChatTimestamp, formatDateSeparator } from './chat-time';
+import { formatChatTimestamp, formatDateSeparator, formatWaitDuration } from './chat-time';
 
 const NOW = new Date('2026-06-25T12:00:00');
 
@@ -35,5 +35,25 @@ describe('formatDateSeparator', () => {
     expect(formatDateSeparator(new Date('2026-06-24T08:00:00'), NOW)).toBe('เมื่อวาน');
     expect(formatDateSeparator(new Date('2026-06-01T08:00:00'), NOW)).toMatch(/1/);
     expect(formatDateSeparator(new Date('2025-06-01T08:00:00'), NOW)).toMatch(/2025/);
+  });
+});
+
+describe('formatWaitDuration — ป้าย "รอ …" ในแถวคิว', () => {
+  const NOW2 = new Date('2026-09-05T12:00:00');
+  it('ว่าง/ไม่ใช่วันที่ → ""', () => {
+    expect(formatWaitDuration(null, NOW2)).toBe('');
+    expect(formatWaitDuration('x', NOW2)).toBe('');
+  });
+  it('ต่ำกว่า 1 ชม. → นาที (อนาคตเล็กน้อยปัดเป็น 0)', () => {
+    expect(formatWaitDuration(new Date('2026-09-05T11:35:00'), NOW2)).toBe('25 นาที');
+    expect(formatWaitDuration(new Date('2026-09-05T12:00:30'), NOW2)).toBe('0 นาที');
+  });
+  it('ต่ำกว่า 48 ชม. → ชั่วโมง', () => {
+    expect(formatWaitDuration(new Date('2026-09-05T09:00:00'), NOW2)).toBe('3 ชม.');
+    expect(formatWaitDuration(new Date('2026-09-03T13:00:00'), NOW2)).toBe('47 ชม.');
+  });
+  it('ตั้งแต่ 48 ชม. → วัน', () => {
+    expect(formatWaitDuration(new Date('2026-09-03T12:00:00'), NOW2)).toBe('2 วัน');
+    expect(formatWaitDuration('2026-08-30T12:00:00', NOW2)).toBe('6 วัน');
   });
 });

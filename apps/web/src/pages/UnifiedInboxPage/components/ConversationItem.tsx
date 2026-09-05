@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import { Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatChatTimestamp } from '@/lib/chat-time';
+import { formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
@@ -79,6 +79,7 @@ interface ConversationItemProps {
     unreadCount?: number;
     aiPaused?: boolean;
     handoffMode?: boolean;
+    waitingSince?: string | null;
     customer?: { id: string; name: string; phone?: string; avatarUrl?: string | null; lineAvatarUrl?: string | null } | null;
     assignedTo?: { id: string; name: string; avatarUrl?: string | null } | null;
     tags?: { tag: string }[];
@@ -218,13 +219,19 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
         </div>
 
         {/* Tags + priority + assigned + AI status */}
-        {(session.tags?.length ||
+        {(session.waitingSince ||
+          session.tags?.length ||
           (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') ||
           session.assignedTo ||
           aiPaused ||
           handoffMode ||
           (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
           <div className="flex items-center gap-1.5 mt-1.5">
+            {session.waitingSince && (
+              <Badge variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">
+                รอ {formatWaitDuration(session.waitingSince)}
+              </Badge>
+            )}
             {session.tags?.some((t: { tag: string }) => t.tag === 'overdue') && (
               <Badge variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5">
                 ค้างชำระ

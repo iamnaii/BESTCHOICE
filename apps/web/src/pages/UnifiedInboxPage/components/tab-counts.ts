@@ -1,14 +1,16 @@
-type Room = { unreadCount?: number; assignedTo?: { id: string } | null };
+type Room = { unreadCount?: number; assignedTo?: { id: string } | null; waitingSince?: string | null };
 
-/** Unread-room counts per inbox tab. Client-derived from the loaded list. */
+/** Unread-room counts per inbox tab + waiting rooms. Client-derived fallback from the loaded list
+ *  (server counts from GET /staff-chat/rooms/counts are authoritative). */
 export function deriveTabCounts(
   sessions: Room[],
   currentUserId?: string,
-): { mine: number; all: number; unread: number } {
+): { mine: number; all: number; unread: number; waiting: number } {
   const isUnread = (r: Room) => (r.unreadCount ?? 0) > 0;
   const all = sessions.filter(isUnread).length;
   const mine = sessions.filter((r) => isUnread(r) && r.assignedTo?.id === currentUserId).length;
-  return { mine, all, unread: all };
+  const waiting = sessions.filter((r) => !!r.waitingSince).length;
+  return { mine, all, unread: all, waiting };
 }
 
 type ChannelRoom = { unreadCount?: number; channel?: string };

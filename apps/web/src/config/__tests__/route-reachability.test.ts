@@ -109,6 +109,11 @@ describe('/inbox (optional roomId)', () => {
     expect(src.match(/<Route\s+path="\/inbox(\/:roomId\??)?"/g)?.length).toBe(1);
     const roles = [...(m![1].match(/roles=\{\[([^\]]*)\]\}/)?.[1] ?? '').matchAll(/'(\w+)'/g)].map((r) => r[1]);
     expect(roles.length).toBeGreaterThan(0);
-    for (const role of roles) expect(inMenu(role, '/inbox')).toBe(true);
+    // กติกาเดียวกับข้อ A: เด้งเฉพาะเมื่อ role อื่นมีหน้านี้ในเมนูแต่ role นี้ไม่มี
+    // (วันนี้ resolveZoneForPath คืน null ให้ทุก role สำหรับ /inbox — ไม่มีใครเด้ง)
+    const gaps = roles.filter(
+      (role) => !inMenu(role, '/inbox') && ALL_ROLES.some((r) => r !== role && inMenu(r, '/inbox')),
+    );
+    expect(gaps).toEqual([]);
   });
 });

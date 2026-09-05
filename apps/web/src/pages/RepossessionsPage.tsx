@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -14,6 +13,21 @@ import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@
 import { Download, Send } from 'lucide-react';
 import { CashAccountSelect, CASH_ACCOUNT_CODES, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
+import { RepossessionOverlay } from '@/pages/PaymentsPage/components/RepossessionOverlay';
+
+/** สัญญาที่บอกเลิกแล้ว (TERMINATED) — รอยึดเครื่อง. Subset of a GET /contracts list row. */
+interface AwaitingRepossessionContract {
+  id: string;
+  contractNumber: string;
+  status: string;
+  monthlyPayment: string;
+  customer: { id: string; name: string; phone: string };
+  product: { id: string; name: string; brand: string; model: string } | null;
+  branch: { id: string; name: string } | null;
+}
+
+/** Roles that may open the JP5 overlay (preview = OWNER/BM/FM; submit stays OWNER-only inside it). */
+const REPO_OPEN_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
 
 async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
   try {
@@ -70,6 +84,10 @@ export default function RepossessionsPage() {
   // GET /repossessions/profit-loss = OWNER/FM/ACC — gate query กัน 403 เงียบๆ + retry รัวๆ
   const canViewPl = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
   const [statusFilter, setStatusFilter] = useState('');
+  // รอยึดเครื่อง — TERMINATED contract chosen for the JP5 overlay (owner 2026-09-05:
+  // these contracts left the รับชำระ queue, so this page is now the only doorway).
+  const [repoTarget, setRepoTarget] = useState<AwaitingRepossessionContract | null>(null);
+  const canOpenRepo = REPO_OPEN_ROLES.includes(user?.role ?? '');
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repossession | null>(null);
   // Shop-collect settlement dialog (ยึดคืนแบบตั้งลูกหนี้-หน้าร้าน 11-2107)
@@ -121,6 +139,24 @@ export default function RepossessionsPage() {
     queryKey: ['repossessions-pl'],
     queryFn: async () => (await api.get('/repossessions/profit-loss')).data,
     enabled: canViewPl,
+  });
+
+  // TERMINATED = หนังสือบอกเลิกดิสแพตช์แล้ว แต่ยังไม่ยึดเครื่อง (JP5 flips it to
+  // CLOSED_BAD_DEBT). Key starts with 'contracts' so the overlay's own
+  // invalidateQueries(['contracts']) refreshes this list after a successful JP5.
+  const {
+    data: awaiting = [],
+    isLoading: loadingAwaiting,
+    isError: awaitingError,
+    error: awaitingErrorDetail,
+    refetch: refetchAwaiting,
+  } = useQuery<AwaitingRepossessionContract[]>({
+    queryKey: ['contracts', 'awaiting-repossession'],
+    queryFn: async () => {
+      // limit=200 = the /contracts server cap; BRANCH_MANAGER is branch-scoped server-side.
+      const res = (await api.get('/contracts?status=TERMINATED&limit=200')).data;
+      return res?.data ?? [];
+    },
   });
 
   const updateMutation = useMutation({
@@ -412,18 +448,73 @@ export default function RepossessionsPage() {
     <div>
       <PageHeader
         title="ยึดคืน & ขายต่อ"
-        subtitle="จัดการเครื่องที่ยึดคืนแล้ว — การยึดเครื่องทำผ่านหน้ารับชำระ (เลือกสัญญา → ยึดเครื่อง)"
-        action={
-          user?.role === 'OWNER' ? (
-            <Link
-              to="/payments"
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              ยึดเครื่อง — ไปหน้ารับชำระ
-            </Link>
-          ) : undefined
-        }
+        subtitle="สัญญาที่บอกเลิกแล้วรอยึดเครื่องอยู่ในรายการด้านล่าง — กดปุ่ม ยึดเครื่อง เพื่อบันทึกการยึดคืน (JP5) จากหน้านี้"
       />
+
+      {/* รอยึดเครื่อง — TERMINATED contracts (owner 2026-09-05: moved here from the
+          รับชำระ queue, which now lists only contracts a receipt can be recorded on). */}
+      <Card className="shadow-card mb-6 overflow-hidden">
+        <CardHeader className="px-4 py-3 border-b bg-secondary flex flex-row items-center justify-between">
+          <h3 className="text-sm font-medium text-foreground leading-snug">
+            รอยึดเครื่อง — บอกเลิกสัญญาแล้ว
+          </h3>
+          <Badge variant="warning" appearance="light" size="sm">
+            {awaiting.length} สัญญา
+          </Badge>
+        </CardHeader>
+        <QueryBoundary
+          isLoading={loadingAwaiting && awaiting.length === 0}
+          isError={awaitingError}
+          error={awaitingErrorDetail}
+          onRetry={refetchAwaiting}
+          errorTitle="ไม่สามารถโหลดรายการรอยึดเครื่องได้"
+        >
+          {awaiting.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-muted-foreground text-center leading-snug">
+              ไม่มีสัญญาที่บอกเลิกแล้วรอยึดเครื่อง
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-secondary text-muted-foreground text-xs">
+                  <tr>
+                    <th className="px-4 py-2 text-left">สัญญา</th>
+                    <th className="px-4 py-2 text-left">ลูกค้า</th>
+                    <th className="px-4 py-2 text-left">สินค้า</th>
+                    <th className="px-4 py-2 text-left">สาขา</th>
+                    <th className="px-4 py-2 text-right">ค่างวด</th>
+                    <th className="px-4 py-2 text-right"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {awaiting.map((c) => (
+                    <tr key={c.id} className="hover:bg-muted/50">
+                      <td className="px-4 py-2 font-medium text-primary">{c.contractNumber}</td>
+                      <td className="px-4 py-2">{c.customer.name}</td>
+                      <td className="px-4 py-2">{c.product?.name ?? '-'}</td>
+                      <td className="px-4 py-2">{c.branch?.name ?? '-'}</td>
+                      <td className="px-4 py-2 text-right">
+                        {Number(c.monthlyPayment).toLocaleString()} บาท
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {canOpenRepo && (
+                          <button
+                            type="button"
+                            onClick={() => setRepoTarget(c)}
+                            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                          >
+                            ยึดเครื่อง
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </QueryBoundary>
+      </Card>
 
       {/* Profit/Loss Summary */}
       {profitLoss?.summary && (
@@ -532,6 +623,20 @@ export default function RepossessionsPage() {
       >
         <DataTable columns={columns} data={repos} isLoading={isLoading} emptyMessage="ยังไม่มีการยึดคืน" />
       </QueryBoundary>
+
+      {/* JP5 overlay — the same component the payment wizard's "คืนเครื่อง" tab uses. */}
+      {repoTarget && (
+        <RepossessionOverlay
+          contractId={repoTarget.id}
+          contractNumber={repoTarget.contractNumber}
+          customerName={repoTarget.customer.name}
+          branchName={repoTarget.branch?.name}
+          onClose={() => setRepoTarget(null)}
+          onSuccess={() =>
+            queryClient.invalidateQueries({ queryKey: ['contracts', 'awaiting-repossession'] })
+          }
+        />
+      )}
 
       {/* Shop-collect settlement Modal — Dr KBank / Cr 11-2107 */}
       <Modal

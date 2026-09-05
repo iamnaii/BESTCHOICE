@@ -34,6 +34,19 @@ function buildDueDateRange(dueFrom?: string, dueTo?: string): { gte?: Date; lt?:
  * journal, no money math, no $transaction. Bodies moved VERBATIM from the legacy
  * PaymentsService. Constructed internally by PaymentsService.
  */
+/**
+ * Contract statuses the payment orchestrator will accept a receipt for — mirror of
+ * the guard in payment-receipt-orchestrator.ts ("สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE
+ * หรือ DEFAULT"). The queue lists only these (owner 2026-09-05): TERMINATED
+ * (บอกเลิกแล้ว — ยึดเครื่องจากหน้ายึดคืน), CLOSED_BAD_DEBT and EXCHANGED never retire
+ * their unpaid Payment rows, so without this scope they sat in รับชำระ as dead rows
+ * nobody could act on. Keep in sync with the orchestrator — never widen one alone.
+ */
+const PAYABLE_CONTRACT_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT'] as const;
+const UNPAID_PAYMENT_STATUSES = ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'];
+/** No status, or an unpaid one, = the queue proper. status=PAID = the ชำระครบ history tab. */
+const isUnpaidListing = (status?: string) => !status || UNPAID_PAYMENT_STATUSES.includes(status);
+
 @Injectable()
 export class PaymentQueryService {
   constructor(private prisma: PrismaService) {}
@@ -272,6 +285,13 @@ export class PaymentQueryService {
       ];
     }
 
+    // Unpaid listings show only contracts a receipt can still be recorded on.
+    // The PAID history tab is NOT scoped — paid installments of a contract that
+    // later closed (COMPLETED/TERMINATED/...) must stay visible.
+    if (isUnpaidListing(filters.status)) {
+      contractWhere.status = { in: [...PAYABLE_CONTRACT_STATUSES] };
+    }
+
     // Always apply contract filter (at minimum: workflowStatus + deletedAt)
     where.contract = contractWhere;
 
@@ -393,6 +413,13 @@ export class PaymentQueryService {
       deletedAt: null,
     };
     if (filters.branchId) contractWhere.branchId = filters.branchId;
+    // Unpaid buckets (queue count, outstanding, ≥60d) use the same contract-status
+    // scope as getPendingPayments so the cards never disagree with the list.
+    // Collected/waived describe money that already moved — left unscoped.
+    const unpaidContractWhere: Record<string, unknown> = {
+      ...contractWhere,
+      status: { in: [...PAYABLE_CONTRACT_STATUSES] },
+    };
 
     const range = buildDueDateRange(filters.dueFrom, filters.dueTo);
     const dueDate = range ?? undefined;
@@ -419,7 +446,7 @@ export class PaymentQueryService {
     const pendingWhere = {
       deletedAt: null,
       status: { in: PENDING_STATUSES },
-      contract: contractWhere,
+      contract: unpaidContractWhere,
       ...(dueDate ? { dueDate } : {}),
     };
 
@@ -445,7 +472,7 @@ export class PaymentQueryService {
         where: {
           deletedAt: null,
           status: { in: UNPAID_OVERDUE_STATUSES },
-          contract: contractWhere,
+          contract: unpaidContractWhere,
           dueDate: overdueDueDate,
         },
       }),

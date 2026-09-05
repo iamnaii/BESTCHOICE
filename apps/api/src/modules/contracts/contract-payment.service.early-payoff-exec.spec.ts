@@ -545,13 +545,46 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(result.totalPayoff).toBe(11106);
   });
 
-  // Non-cash method without reference/slip is rejected BEFORE the tx opens.
-  it('rejects a non-CASH method with no referenceNo and no slipUrl', async () => {
-    await expect(
-      service.earlyPayoff(quoteContract.id, 'user-1', { paymentMethod: 'BANK_TRANSFER' }),
-    ).rejects.toThrow('กรุณาระบุเลขที่อ้างอิงหรือแนบสลิปสำหรับการชำระแบบโอน/QR');
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(createAndPost).not.toHaveBeenCalled();
+  // Reference/slip are OPTIONAL for every method (owner 2026-07-20, PR #1365):
+  // the overlay sends BANK_TRANSFER with NO referenceNo/slipUrl — that exact
+  // body must post. Regression pin for the 400 that blocked every UI payoff
+  // from 2026-07-20 until 2026-09-05.
+  describe('referenceNo / slipUrl are optional for non-CASH methods', () => {
+    // Byte-for-byte what EarlyPayoffOverlay.mutationFn sends (no ref, no slip).
+    const uiBody: EarlyPayoffDto = {
+      paymentMethod: 'BANK_TRANSFER',
+      discountPct: 50,
+      depositAccountCode: '11-1201',
+      collectedByShop: false,
+    };
+
+    it('accepts BANK_TRANSFER with no referenceNo and no slipUrl (the UI body)', async () => {
+      const result = await service.earlyPayoff(quoteContract.id, 'user-1', uiBody);
+
+      expect(result.totalPayoff).toBe(11106);
+      expect(createAndPost).toHaveBeenCalledTimes(1);
+      expect(paymentUpdates).toHaveLength(6);
+      for (const u of paymentUpdates) {
+        expect(u.data.paymentMethod).toBe('BANK_TRANSFER');
+        // No ref supplied → the row keeps whatever it already had (null here).
+        expect(u.data.gatewayRef).toBeNull();
+        expect(u.data.evidenceUrl).toBeNull();
+      }
+    });
+
+    it('still stores referenceNo / slipUrl on every row when they ARE supplied', async () => {
+      await service.earlyPayoff(quoteContract.id, 'user-1', {
+        ...uiBody,
+        referenceNo: 'KB-2026-0001',
+        slipUrl: 'https://s3.example/slip.png',
+      });
+
+      expect(paymentUpdates).toHaveLength(6);
+      for (const u of paymentUpdates) {
+        expect(u.data.gatewayRef).toBe('KB-2026-0001');
+        expect(u.data.evidenceUrl).toBe('https://s3.example/slip.png');
+      }
+    });
   });
 
   // Late-fee leg on the POSTED JE (review 2026-07-20) ────────────────────────

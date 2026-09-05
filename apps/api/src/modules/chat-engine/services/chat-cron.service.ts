@@ -53,6 +53,7 @@ export class ChatCronService {
    * Marks ACTIVE rooms with no messages in the last 24 hours as IDLE.
    * Rooms are never destroyed — they stay around and will be reopened
    * to ACTIVE automatically when the customer sends a new message.
+   * Rooms where a customer is still waiting for a human reply (waitingSince set) are never idled.
    */
   @Cron('0 */1 * * *', { timeZone: 'Asia/Bangkok' })
   async markIdleRooms(): Promise<void> {
@@ -64,6 +65,8 @@ export class ChatCronService {
         where: {
           status: ChatRoomStatus.ACTIVE,
           handoffMode: false,
+          // ห้องที่ลูกค้ารอคำตอบจากคนอยู่ ห้ามซ่อนเป็น IDLE (วัด prod 2026-09-05: เคยซ่อนไป 222 ห้อง)
+          waitingSince: null,
           lastMessageAt: { lt: twentyFourHoursAgo },
           deletedAt: null,
         },

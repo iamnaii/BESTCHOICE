@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { bangkokStartOfDay } from '../../utils/date.util';
+import { todayQueueWhere } from './today-queue.predicate';
 
 export interface KpiResult {
   totalOutstanding: number;
@@ -63,10 +63,6 @@ export class OverdueKpiService {
   }) {
     const nowDate = new Date();
     const sevenDaysAgo = new Date(nowDate.getTime() - 7 * 86400000);
-    // Use Bangkok-local midnight, not server-TZ midnight. On Cloud Run (UTC),
-    // setHours(0,0,0,0) flips the "today" boundary at 07:00 ICT — collectors
-    // would see yesterday's queue all morning.
-    const today = bangkokStartOfDay(nowDate);
 
     const branchScope: Prisma.ContractWhereInput =
       params.userRole === 'SALES' || params.userRole === 'BRANCH_MANAGER'
@@ -87,21 +83,9 @@ export class OverdueKpiService {
           },
           _sum: { amountDue: true, amountPaid: true, lateFee: true },
         }),
-        this.prisma.contract.count({
-          where: {
-            ...branchScope,
-            status: { in: ['ACTIVE', 'OVERDUE'] },
-            deletedAt: null,
-            OR: [{ blockAutoEscalation: null }, { blockAutoEscalation: { lt: nowDate } }],
-            payments: {
-              some: {
-                dueDate: { lte: nowDate },
-                status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
-              },
-            },
-            callLogs: { none: { calledAt: { gte: today } } },
-          },
-        }),
+        // ต้องเป็นเงื่อนไขเดียวกับรายการในแท็บ "วันนี้" เป๊ะ ๆ ไม่งั้นตัวเลขนี้
+        // จะขัดกับจำนวนการ์ดที่อยู่ข้างล่างมันเอง — ใช้ helper ร่วม ห้ามคัดลอกมาวาง
+        this.prisma.contract.count({ where: todayQueueWhere(nowDate, branchScope) }),
         this.prisma.callLog.count({
           where: {
             result: 'PROMISED',

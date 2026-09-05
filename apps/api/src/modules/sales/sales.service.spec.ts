@@ -165,6 +165,17 @@ describe('SalesService', () => {
         ]),
         create: jest.fn().mockResolvedValue(mockSale),
       },
+      customer: {
+        // รั้วกันข้ามฝั่ง (spec 2026-09-05 §5.1 — SaleCreationService.assertSameTestSideForSale)
+        // อ่านลูกค้าก่อน dispatch ไป writer — ค่าเริ่มต้นเป็นลูกค้าจริง (ที่อยู่ null / เบอร์ปกติ)
+        // ให้รั้วเงียบ: เทสในไฟล์นี้เป็นเรื่องขายจริง ไม่ได้ทดสอบตัวรั้ว
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'customer-1',
+          name: 'สมหญิง ใจดี',
+          phone: '0891234567',
+          addressCurrent: null,
+        }),
+      },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         findMany: jest.fn().mockResolvedValue([mockProduct]),

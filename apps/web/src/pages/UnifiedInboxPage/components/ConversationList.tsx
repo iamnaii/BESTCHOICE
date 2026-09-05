@@ -9,7 +9,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import ConversationItem from './ConversationItem';
 import ChannelFilter, { type InboxTab, type AiFilter } from './ChannelFilter';
-import { deriveTabCounts, deriveChannelUnreadCounts } from './tab-counts';
+import { deriveTabCounts, deriveChannelCounts } from './tab-counts';
 
 interface ConversationListProps {
   sessions: any[];
@@ -28,7 +28,7 @@ interface ConversationListProps {
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   muteAll?: boolean;
   onToggleMuteAll?: () => void;
-  serverCounts?: { mine: number; all: number; unread: number; waiting: number; byChannel: Record<string, number> };
+  serverCounts?: { mine: number; all: number; waiting: number; byChannel: Record<string, number> };
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -97,7 +97,7 @@ export default function ConversationList({
   const visibleRooms = sessions;
 
   const tabCounts = useMemo(() => deriveTabCounts(sessions, currentUserId), [sessions, currentUserId]);
-  const channelCounts = useMemo(() => deriveChannelUnreadCounts(sessions), [sessions]);
+  const channelCounts = useMemo(() => deriveChannelCounts(sessions), [sessions]);
 
   const unreadInView = useMemo(
     () => visibleRooms.filter((r) => (r.unreadCount ?? 0) > 0).map((r) => r.id),

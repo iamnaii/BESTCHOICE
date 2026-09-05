@@ -1,11 +1,28 @@
 import { cn } from '@/lib/utils';
-import { Inbox, User, Mail, Clock } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
+/** สามใบ ไม่ใช่สี่ และไม่มีไอคอน — วัดด้วย headless Chrome ที่คอลัมน์ 320px
+ *
+ *  แท็บ "ยังไม่อ่าน" ถูกตัดออก 2026-09-05: มันวัดว่ามีคนกดเปิดห้องหรือยัง ซึ่งเป็น
+ *  ร่องรอยการใช้หน้าจอ ไม่ใช่ข้อเท็จจริงฝั่งลูกค้า — ห้องที่เปิดอ่านแล้วแต่ยังไม่ตอบ
+ *  ก็ยังเป็นลูกค้าที่รออยู่ "รอตอบ" ตอบคำถามเดียวกันอย่างตรงไปตรงมา
+ *
+ *  ไอคอนถูกตัดออกด้วยเหตุผลเรื่องพื้นที่ล้วน ๆ: ที่ 320px มีที่ให้แถวแท็บ 287px
+ *  สี่ใบพร้อมไอคอน = 342px (ล้น 55px) · สามใบพร้อมไอคอน = 310.5px เมื่อป้ายเป็น
+ *  "99+" ทั้งสามใบ (ยังล้น 23.5px — ตัวเลข prod จริงคือ 8,320 / 231 ⇒ "99+" ทุกใบ)
+ *  สามใบไม่มีไอคอน + ระยะขอบแคบลง (px-2.5) = 266.9px เหลือที่ 20.1px · คำไทย
+ *  บอกอยู่แล้วว่าแต่ละใบคืออะไร
+ *  ไอคอนจึงไม่ได้เพิ่มความหมาย มีแต่กินที่ */
 const TABS = [
-  { key: 'waiting', label: 'รอตอบ', icon: Clock },
-  { key: 'mine', label: 'ของฉัน', icon: User },
-  { key: 'all', label: 'ทั้งหมด', icon: Inbox },
-  { key: 'unread', label: 'ยังไม่อ่าน', icon: Mail },
+  { key: 'waiting', label: 'รอตอบ' },
+  { key: 'mine', label: 'ของฉัน' },
+  { key: 'all', label: 'ทั้งหมด' },
 ] as const;
 
 const CHANNELS = [
@@ -16,14 +33,17 @@ const CHANNELS = [
   { key: 'WEB', label: 'เว็บ', dot: 'bg-muted-foreground' },
 ] as const;
 
-export type InboxTab = 'waiting' | 'mine' | 'all' | 'unread';
+export type InboxTab = 'waiting' | 'mine' | 'all';
 export type AiFilter = 'all' | 'ai' | 'human' | 'pending';
 
+/** ป้ายกลุ่มนี้เคยชนกับชื่อแท็บสองใบ — 'ทั้งหมด' ซ้ำแท็บ "ทั้งหมด" และ 'รอตอบ'
+ *  ซ้ำแท็บ "รอตอบ" ทั้งที่คนละความหมาย (แท็บ = ลูกค้ารอคน · ชิป = บอทส่งต่อให้คน)
+ *  ตอนนี้ทุกใบบอกสิ่งที่ตัวเองกรองด้วยคำของตัวเอง */
 const AI_FILTER_LABELS: Record<AiFilter, string> = {
-  all: 'ทั้งหมด',
-  ai: 'AI',
-  human: 'พนักงาน',
-  pending: 'รอตอบ',
+  all: 'ทุกสถานะ',
+  ai: 'บอทตอบ',
+  human: 'คนตอบ',
+  pending: 'บอทส่งต่อ',
 };
 
 interface ChannelFilterProps {
@@ -31,7 +51,7 @@ interface ChannelFilterProps {
   selectedChannels: string[];
   onTabChange: (tab: InboxTab) => void;
   onChannelToggle: (channel: string) => void;
-  counts?: { mine: number; all: number; unread: number; waiting: number };
+  counts?: { mine: number; all: number; waiting: number };
   channelCounts?: Record<string, number>;
   aiFilter?: AiFilter;
   onAiFilterChange?: (filter: AiFilter) => void;
@@ -47,12 +67,19 @@ export default function ChannelFilter({
   aiFilter,
   onAiFilterChange,
 }: ChannelFilterProps) {
+  // แสดงเฉพาะช่องทางที่มีห้องจริงในแท็บนี้ (บวกใบที่กำลังเลือกอยู่ กันตัวกรองค้างโดยไม่มีปุ่มปิด)
+  // ห้าใบตายตัวกินสองบรรทัดครึ่งในคอลัมน์ 320px และสามในห้าใบไม่เคยมีห้องเลยบน prod
+  // (วัด 2026-09-05: 8,320 ห้องเป็น FACEBOOK ทั้งหมด ไม่มี LINE/TikTok/เว็บ แม้ห้องเดียว)
+  // ยังไม่รู้จำนวน (คำตอบจากเซิร์ฟเวอร์ยังไม่มา) = แสดงทุกใบไว้ก่อน ไม่ใช่ซ่อนทั้งแถว
+  const visibleChannels = channelCounts
+    ? CHANNELS.filter((ch) => (channelCounts[ch.key] ?? 0) > 0 || selectedChannels.includes(ch.key))
+    : CHANNELS;
+
   return (
     <div>
       {/* Main tabs */}
       <div className="flex px-4 pt-1 gap-0.5">
         {TABS.map((tab) => {
-          const Icon = tab.icon;
           const isActive = activeTab === tab.key;
           return (
             <button
@@ -60,13 +87,12 @@ export default function ChannelFilter({
               onClick={() => onTabChange(tab.key)}
               aria-pressed={isActive}
               className={cn(
-                'flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                'flex items-center justify-center gap-1 px-2.5 py-2 text-xs font-medium rounded-md transition-colors',
                 isActive
                   ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              <Icon className="w-3 h-3" />
               {tab.label}
               {counts && counts[tab.key] > 0 && (
                 <span className={cn(
@@ -83,7 +109,7 @@ export default function ChannelFilter({
 
       {/* Channel + AI status chips — one wrapping row so nothing gets clipped */}
       <div className="flex flex-wrap items-center gap-1 px-3 pb-2.5">
-        {CHANNELS.map((ch) => {
+        {visibleChannels.map((ch) => {
           const isActive = selectedChannels.includes(ch.key);
           return (
             <button
@@ -111,24 +137,33 @@ export default function ChannelFilter({
           );
         })}
 
+        {/* ตัวกรองสถานะบอทเป็นเมนูใบเดียว ไม่ใช่ชิปสี่ใบ — ชิปสี่ใบต่อท้ายชิปช่องทางห้าใบ
+            ทำให้แถวตัดบรรทัดจนอ่านไม่ออกว่าใบไหนอยู่กลุ่มไหน ("ทุกสถานะ" ไปนั่งข้าง "เว็บ"
+            เหมือนเป็นช่องทางที่หก) เมนูใบเดียวพกชื่อกลุ่มติดตัวไปด้วยเสมอ */}
         {aiFilter && onAiFilterChange && (
           <>
             <span className="mx-1 h-3.5 w-px bg-border/60" aria-hidden />
-            {(Object.keys(AI_FILTER_LABELS) as AiFilter[]).map((key) => (
-              <button
-                key={key}
-                onClick={() => onAiFilterChange(key)}
-                aria-pressed={aiFilter === key}
+            <Select value={aiFilter} onValueChange={(v) => onAiFilterChange(v as AiFilter)}>
+              <SelectTrigger
+                aria-label="กรองตามสถานะบอท"
                 className={cn(
-                  'px-2 py-1 min-h-6 text-[11px] rounded-full border font-medium transition-colors whitespace-nowrap',
-                  aiFilter === key
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
+                  'h-6 min-h-6 w-auto gap-1 rounded-full border px-2 py-1 text-[11px] font-medium whitespace-nowrap',
+                  aiFilter === 'all'
+                    ? 'bg-background text-muted-foreground border-border/60 hover:bg-muted'
+                    : 'bg-primary text-primary-foreground border-primary',
                 )}
               >
-                {AI_FILTER_LABELS[key]}
-              </button>
-            ))}
+                <span className="opacity-70">บอท</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(AI_FILTER_LABELS) as AiFilter[]).map((key) => (
+                  <SelectItem key={key} value={key} className="text-xs">
+                    {AI_FILTER_LABELS[key]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </>
         )}
       </div>

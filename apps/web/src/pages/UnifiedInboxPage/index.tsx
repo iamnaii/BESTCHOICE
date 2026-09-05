@@ -184,7 +184,6 @@ export default function UnifiedInboxPage() {
             limit: 50,
             search: filters.search || undefined,
             assignedToId: filters.tab === 'mine' ? currentUserId : undefined,
-            unreadOnly: filters.tab === 'unread' ? true : undefined,
             waiting: filters.tab === 'waiting' ? true : undefined,
             channels: filters.channels?.length ? filters.channels.join(',') : undefined,
             aiStatus:
@@ -206,10 +205,21 @@ export default function UnifiedInboxPage() {
     return [...new Map(flat.map((r: any) => [r.id, r])).values()];
   }, [sessionsQuery.data?.pages]);
 
-  // Server-side accurate unread counts — not derived from the loaded subset.
+  // ตัวนับจากเซิร์ฟเวอร์ — นับทั้งจักรวาลห้อง ไม่ใช่แค่หน้าที่โหลดมา
+  // ส่ง tab/aiFilter ไปด้วยเพราะชิปช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่
+  // (ไม่งั้นชิปบอกเลขทั้งบริษัทขณะที่รายการข้างล่างถูกกรองไปแล้ว)
   const roomCountsQuery = useQuery({
-    queryKey: ['chat-room-counts'],
-    queryFn: () => api.get('/staff-chat/rooms/counts').then((r) => r.data),
+    queryKey: ['chat-room-counts', filters.tab, filters.aiFilter],
+    queryFn: () =>
+      api
+        .get('/staff-chat/rooms/counts', {
+          params: {
+            tab: filters.tab,
+            aiStatus:
+              filters.aiFilter && filters.aiFilter !== 'all' ? filters.aiFilter : undefined,
+          },
+        })
+        .then((r) => r.data),
   });
 
   // AI settings — drives the AI status badge in ConversationItem.

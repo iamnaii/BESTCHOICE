@@ -53,6 +53,7 @@ export class TodosController {
       priority: query.priority,
       assigneeId: query.assigneeId,
       branchId: query.branchId,
+      roomId: query.roomId,
       page: query.page,
       limit: query.limit,
       currentUserId: user.id,

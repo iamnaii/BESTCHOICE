@@ -41,6 +41,11 @@ export class TodosQueryDto {
   @IsUUID()
   branchId?: string;
 
+  /** นัดของห้องแชท — กรองเฉพาะนัดของห้องนี้ */
+  @IsOptional()
+  @IsUUID()
+  roomId?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -124,6 +129,11 @@ export class CreateTodoDto {
   @IsString({ each: true })
   tags?: string[];
 
+  /** ผูกนัดกับห้องแชท (แผงขวา) */
+  @IsOptional()
+  @IsUUID()
+  roomId?: string;
+
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
@@ -173,6 +183,11 @@ export class UpdateTodoDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  /** ผูกนัดกับห้องแชท (แผงขวา) */
+  @IsOptional()
+  @IsUUID()
+  roomId?: string;
 
   @IsOptional()
   @IsArray()

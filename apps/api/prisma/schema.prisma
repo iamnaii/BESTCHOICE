@@ -5050,6 +5050,8 @@ model Todo {
   createdById String  @map("created_by_id")
   assigneeId  String? @map("assignee_id")
   branchId    String? @map("branch_id") // optional scoping by branch
+  /** นัดหมายของห้องแชท — ตั้งได้แม้ห้องยังไม่ผูกลูกค้า (แผงขวา RoomDossier · ท่า OBI "นัดเป็นของห้อง") */
+  roomId      String? @map("room_id")
 
   // Tags as Postgres text[]
   tags String[] @default([])
@@ -5066,8 +5068,10 @@ model Todo {
 
   createdBy User          @relation("TodoCreatedBy", fields: [createdById], references: [id])
   assignee  User?         @relation("TodoAssignedTo", fields: [assigneeId], references: [id])
+  room      ChatRoom?     @relation(fields: [roomId], references: [id])
   comments  TodoComment[]
 
+  @@index([roomId])
   @@index([assigneeId])
   @@index([createdById])
   @@index([status])
@@ -5262,6 +5266,7 @@ model ChatRoom {
   leadTemperature String?         @map("lead_temperature")
   attributionId   String?         @map("attribution_id")
   attribution     AdsAttribution? @relation(fields: [attributionId], references: [id])
+  todos           Todo[]
 
   // SLA tracking
   firstResponseAt DateTime? @map("first_response_at")

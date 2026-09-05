@@ -38,6 +38,8 @@ export interface Todo {
   tags: string[];
   checklist?: ChecklistItem[] | null;
   attachments?: Attachment[] | null;
+  /** นัดของห้องแชท (แผงขวา) */
+  roomId?: string | null;
   createdAt: string;
 }
 

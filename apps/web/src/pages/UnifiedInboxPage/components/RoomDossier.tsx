@@ -18,6 +18,8 @@ import ProductContextCard from './ProductContextCard';
 import Customer360Panel from './Customer360Panel';
 import LinkCustomerDialog from './LinkCustomerDialog';
 import { ContractHeroCard, PaymentsTimeline, CallLogList, DeviceWarrantyCard, type SummaryContract } from './DossierCards';
+import { TodoForm } from '@/pages/TodosPage/components/TodoForm';
+import type { Todo, AssigneeRef } from '@/pages/TodosPage/types';
 
 /**
  * แผงขวาของกล่องข้อความ — โครงตามแผงแชทของ OBI (dossier.tsx) ที่เจ้าของเคาะ 2026-09-06:
@@ -202,6 +204,44 @@ function ChannelsGroup({
   );
 }
 
+/** ─── นัดหมายของห้อง (Todo.roomId) — ตั้งได้แม้ยังไม่ผูกลูกค้า (ท่า OBI "นัดเป็นของห้อง") */
+function dueLabel(iso?: string | null): string {
+  if (!iso) return 'ไม่ระบุวัน';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const diff = Math.round((day.getTime() - today.getTime()) / 86_400_000);
+  const time = iso.length > 10 ? ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
+  if (diff === 0) return 'วันนี้' + time;
+  if (diff === 1) return 'พรุ่งนี้' + time;
+  if (diff === -1) return 'เมื่อวาน' + time;
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) + time;
+}
+function AppointmentsGroup({ todos, onNew }: { todos: Todo[]; onNew: () => void }) {
+  const open = todos.filter((t) => t.status !== 'DONE');
+  const rows = [...open].sort((a, b) => (a.dueDate ?? '9').localeCompare(b.dueDate ?? '9')).slice(0, 4);
+  return (
+    <Group label="นัดหมาย" count={open.length} right={<button type="button" className="text-primary" onClick={onNew}>＋ ตั้งนัด</button>}>
+      {rows.length === 0 && <Hint>ยังไม่มีนัดในห้องนี้</Hint>}
+      {rows.map((t) => {
+        const overdue = !!t.dueDate && new Date(t.dueDate).getTime() < Date.now() - 86_400_000;
+        return (
+          <div key={t.id} className="mt-1.5 flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs first:mt-0">
+            <div className="min-w-0 flex-1">
+              <p className="m-0 font-semibold"><span className="tabular-nums">{dueLabel(t.dueDate)}</span> · {t.title}</p>
+              <p className="m-0 text-muted-foreground">{t.assignee?.name ?? 'ยังไม่มอบหมาย'}{t.createdAt ? ` · ตั้งเมื่อ ${new Date(t.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit' })}` : ''}</p>
+            </div>
+            <span className={cn('shrink-0 self-center rounded-full px-2 py-0.5 text-[11px] font-semibold', overdue ? 'bg-destructive/10 text-destructive' : t.status === 'DOING' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
+              {overdue ? 'เลยนัด' : t.status === 'DOING' ? 'กำลังทำ' : 'รอถึงวัน'}
+            </span>
+          </div>
+        );
+      })}
+    </Group>
+  );
+}
+
 /** ─── ตรวจประกันจากเลขเครื่อง — ใช้ได้แม้ยังไม่ผูก (repair-tickets/warranty-lookup?imei=) */
 function ImeiLookup() {
   const [imei, setImei] = useState('');
@@ -296,8 +336,21 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
     setTab('customer');
   }
   const [linkOpen, setLinkOpen] = useState(false);
+  const [apptOpen, setApptOpen] = useState(false);
 
   const linked = !!customerId;
+  // นัดของห้อง — คีย์ขึ้นต้น 'todos' เพื่อให้ TodoForm invalidate แล้วรายการนี้รีเฟรชด้วย
+  const todosQuery = useQuery({
+    queryKey: ['todos', 'room', room?.id],
+    queryFn: () => api.get('/todos', { params: { roomId: room!.id, limit: 20 } }).then((r) => r.data?.data ?? r.data ?? []),
+    enabled: !!room?.id,
+  });
+  const roomTodos: Todo[] = Array.isArray(todosQuery.data) ? todosQuery.data : [];
+  const staffQuery = useQuery<AssigneeRef[]>({
+    queryKey: ['staff-users-todo'],
+    queryFn: () => api.get('/users').then((r) => r.data?.data || r.data || []),
+    enabled: apptOpen,
+  });
   // endpoint + คีย์เดียวกับแผงเดิม (customer-chat-summary) — แคชร่วมกัน ไดอะล็อกของแผงเดิม invalidate แล้วเราเห็นด้วย
   const summaryQuery = useQuery({
     queryKey: ['customer-chat-summary', customerId],
@@ -365,7 +418,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
           </button>
         </div>
         {/* ปุ่มด่วนอันเดียว — "ส่งสินค้า" มีที่แถบพิมพ์แล้ว ไม่ทำซ้ำ · นัดเป็นของห้อง ตั้งได้จากทุกแท็บ */}
-        <Button variant="outline" size="sm" className="w-full" onClick={() => navigate('/todos')}>
+        <Button variant="outline" size="sm" className="w-full" onClick={() => setApptOpen(true)}>
           <CalendarPlus className="mr-1.5 size-3.5" /> ตั้งนัด
         </Button>
       </div>
@@ -436,9 +489,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
 
             <AdGroup room={room} />
 
-            <Group label="นัดหมาย" count={0} right={<button type="button" className="text-primary" onClick={() => navigate('/todos')}>＋ ตั้งนัด</button>}>
-              <Hint>ยังไม่มีนัดในห้องนี้</Hint>
-            </Group>
+            <AppointmentsGroup todos={roomTodos} onNew={() => setApptOpen(true)} />
 
             <Group label="สินค้าที่กำลังคุย">
               <ProductContextCard roomId={room.id} empty={<Hint>ยังไม่พบรุ่นในแชทนี้ — เลือกส่งได้จากปุ่มสินค้าที่แถบพิมพ์</Hint>} />
@@ -501,6 +552,14 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
       </div>
 
       <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={room.id} />
+      {/* ตั้งนัด = ฟอร์ม Todo ตัวเดิม ผูกห้อง + ชื่อล่วงหน้า · บันทึกแล้ว invalidate ['todos'] → รายการนัดข้างบนรีเฟรช */}
+      <TodoForm
+        open={apptOpen}
+        onOpenChange={setApptOpen}
+        editing={null}
+        staffUsers={Array.isArray(staffQuery.data) ? staffQuery.data : []}
+        defaults={{ title: `นัด ${name}`, roomId: room.id, priority: 'MEDIUM', status: 'TODO' }}
+      />
     </aside>
   );
 }

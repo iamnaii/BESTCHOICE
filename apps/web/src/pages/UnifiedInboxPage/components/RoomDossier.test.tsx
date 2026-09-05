@@ -12,6 +12,7 @@ vi.mock('@/lib/api', () => ({
 // บล็อกเดิมของแผงลูกค้าหนักและมีไดอะล็อกเยอะ — ที่นี่ทดสอบโครงแท็บ ไม่ใช่เนื้อในของแผงเดิม
 vi.mock('./Customer360Panel', () => ({ __esModule: true, default: (p: { sections?: string[] }) => <div data-testid="c360">{(p.sections ?? []).join(',')}</div> }));
 vi.mock('./ProductContextCard', () => ({ __esModule: true, default: () => <div data-testid="product-card" /> }));
+vi.mock('@/pages/TodosPage/components/TodoForm', () => ({ __esModule: true, TodoForm: (p: { open: boolean; defaults?: { roomId?: string; title?: string } }) => (p.open ? <div data-testid="todo-form">{p.defaults?.roomId}|{p.defaults?.title}</div> : null) }));
 
 import RoomDossier from './RoomDossier';
 
@@ -61,6 +62,20 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
     expect(apiGet).not.toHaveBeenCalledWith(expect.stringContaining('/chat-summary'));
     // ปุ่มเปิดโปรไฟล์ปิดไว้
     expect(screen.getByRole('button', { name: 'เปิดโปรไฟล์ลูกค้าเต็มหน้า' })).toBeDisabled();
+  });
+
+  it('นัดหมายของห้อง: โหลดจาก /todos?roomId · โชว์ในแท็บ 1 · ปุ่มตั้งนัดเปิดฟอร์ม Todo ผูกห้อง', async () => {
+    apiGet.mockImplementation((url: string, cfg?: { params?: { roomId?: string } }) =>
+      url === '/todos' && cfg?.params?.roomId === 'r-1'
+        ? Promise.resolve({ data: { data: [{ id: 't1', title: 'มารับ iPhone 15', status: 'TODO', priority: 'MEDIUM', dueDate: '2099-01-01T09:00:00Z', assignee: { id: 'u', name: 'แนน' }, createdAt: '2026-09-04T10:00:00Z', tags: [], createdById: 'u' }] } })
+        : Promise.resolve({ data: [] }),
+    );
+    wrap(<RoomDossier room={ROOM} customerId={null} />);
+    await waitFor(() => expect(screen.getByText(/มารับ iPhone 15/)).toBeInTheDocument());
+    expect(screen.getByText('แนน · ตั้งเมื่อ 04/09')).toBeInTheDocument();
+    expect(screen.queryByTestId('todo-form')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^ตั้งนัด$/ }));
+    expect(screen.getByTestId('todo-form')).toHaveTextContent('r-1|นัด สมชาย ก.');
   });
 
   it('ทักเพจโดยตรง (ไม่มี attribution) → บอกว่าไม่ได้มาจากโฆษณา ไม่ปั้นข้อมูล', () => {

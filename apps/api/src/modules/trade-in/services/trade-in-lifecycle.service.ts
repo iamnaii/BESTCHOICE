@@ -28,6 +28,11 @@ import { TradeInValuationService } from './trade-in-valuation.service';
 import { ShopTradeInTemplate } from '../../journal/cpa-templates/shop-trade-in.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { autofillProductPriceFromTemplate } from '../../../utils/product-price-autofill.util';
+import {
+  isTestCustomer,
+  TEST_NAME_PREFIX,
+  TEST_SIDE_CUSTOMER_SELECT,
+} from '../../../utils/test-data-markers';
 
 export class TradeInLifecycleService {
   // Fix round 1 [Important 1]: plain class (not @Injectable) — constructed via `new`
@@ -409,7 +414,16 @@ export class TradeInLifecycleService {
         tradeIn.deviceColor,
         tradeIn.deviceStorage,
       ].filter(Boolean);
-      const productName = nameParts.join(' ');
+      // test-data fence auto-mark (spec 2026-09-05 §5.3): เครื่องที่รับซื้อจากลูกค้าทดสอบต้องมี
+      // marker ติดตัวตั้งแต่เกิด ไม่งั้นคลังจะมองเป็นของจริง (IMEI ไม่แตะ — เป็นของจริงของเครื่องทดสอบ)
+      const seller = tradeIn.customerId
+        ? await tx.customer.findUnique({
+            where: { id: tradeIn.customerId },
+            select: TEST_SIDE_CUSTOMER_SELECT,
+          })
+        : null;
+      const baseName = nameParts.join(' ');
+      const productName = seller && isTestCustomer(seller) ? `${TEST_NAME_PREFIX} ${baseName}` : baseName;
       // เทิร์น (EXCHANGE instant): ต้นทุนสต็อก = ราคาเงินสด — โบนัสเทิร์นเป็นส่วนลด
       // ฝั่งเครื่องใหม่ ไม่ใช่ต้นทุนเครื่องเก่า (spec /sell §1.5/§7.4) ไม่งั้น COGS
       // บวมเท่าโบนัสทุกเครื่อง; BUYBACK/walk-in = เงินที่จ่ายจริงเหมือนเดิม

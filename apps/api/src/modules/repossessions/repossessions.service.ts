@@ -413,7 +413,8 @@ export class RepossessionsService {
       const requireTerminated = strictTerminationConfig?.value === 'true';
       if (requireTerminated && contract.status !== 'TERMINATED') {
         throw new BadRequestException(
-          'JP5 strict mode: ต้องส่งหนังสือบอกเลิกสัญญา (CONTRACT_TERMINATION_60D) ก่อนยึดเครื่อง',
+          'JP5 strict mode: ต้องส่งหนังสือบอกเลิกสัญญา (CONTRACT_TERMINATION_60D) ก่อนยึดเครื่อง — ' +
+            'เมื่อสัญญาเป็น TERMINATED แล้ว ให้กดยึดเครื่องจากหน้ายึดคืน (/repossessions) รายการ "รอยึดเครื่อง"',
         );
       }
 

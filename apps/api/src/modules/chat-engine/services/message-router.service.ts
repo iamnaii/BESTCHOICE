@@ -14,6 +14,7 @@ import {
   DOMAIN_HANDLER_TOKEN,
 } from '../interfaces/domain-handler.interface';
 import { RoomManagerService } from './room-manager.service';
+import { AssignmentService } from './assignment.service';
 import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
@@ -52,6 +53,9 @@ export class MessageRouterService {
     @Optional()
     @Inject(CHAT_GATEWAY_TOKEN)
     private gateway?: IChatGateway,
+    @Optional()
+    @Inject(forwardRef(() => AssignmentService))
+    private assignmentService?: AssignmentService,
   ) {
     // Register adapters by channel (via constructor — only works when ChatEngineModule
     // imports a module that exports CHANNEL_ADAPTER_TOKEN. For the current wiring where
@@ -954,6 +958,17 @@ export class MessageRouterService {
     // externalMessageId (if the adapter returns one, e.g. FB `mid`) is also
     // stamped here — see markOutboundSent jsdoc for why (FB echo dedup).
     await this.roomManager.markOutboundSent(saved.id, result.externalMessageId);
+
+    // ใครตอบก่อนได้เป็นเจ้าของ (สเปก §5) — หลังส่งถึงลูกค้าแล้วเท่านั้น · best-effort:
+    // การรับเรื่องล้มไม่ทำให้การส่งที่สำเร็จแล้วกลายเป็นล้ม (ไม่งั้น client retry = ส่งซ้ำ)
+    try {
+      await this.assignmentService?.claimIfUnassigned(params.roomId, params.staffId);
+    } catch (err) {
+      this.logger.warn(
+        `[sendStaffMessage] claim failed for room ${params.roomId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
     return {
       success: true,
       message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },

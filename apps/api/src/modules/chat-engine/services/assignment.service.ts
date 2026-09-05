@@ -74,6 +74,30 @@ export class AssignmentService {
   }
 
   /**
+   * ใครตอบก่อนได้เป็นเจ้าของ (สเปก §5 · คำตัดสินเจ้าของ 2026-09-05)
+   *
+   * เรียกจาก MessageRouterService.sendStaffMessage **หลังคำตอบถึงลูกค้าแล้ว** เท่านั้น
+   * updateMany แบบมีเงื่อนไข ⇒ สองคนตอบห้องว่างพร้อมกันได้เจ้าของคนเดียว ไม่มี activity/WS ซ้ำ
+   * ห้องที่มีเจ้าของแล้ว คนอื่นตอบได้โดยเจ้าของไม่เปลี่ยน (คืน false เงียบ ๆ)
+   */
+  async claimIfUnassigned(roomId: string, staffId: string): Promise<boolean> {
+    const res = await this.prisma.chatRoom.updateMany({
+      where: { id: roomId, assignedToId: null, deletedAt: null },
+      data: { assignedToId: staffId, status: ChatRoomStatus.ACTIVE },
+    });
+    if (res.count !== 1) return false;
+
+    await this.prisma.staffChatActivity.create({
+      data: { staffId, action: 'assign', metadata: { roomId, source: 'reply' } },
+    });
+
+    this.logger.log(`Room ${roomId} claimed by staff ${staffId} (first reply)`);
+    this.gateway?.emitRoomUpdate(roomId, { event: 'assigned', roomId, assignedToId: staffId });
+    this.gateway?.emitToStaff(staffId, 'chat:assigned', { roomId, assignedToId: staffId });
+    return true;
+  }
+
+  /**
    * Transfer a room from one staff to another.
    *
    * T4-C11 — commission-hijack guard: if the customer in this chat room

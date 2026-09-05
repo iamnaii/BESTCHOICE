@@ -1,5 +1,6 @@
-import { Test } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
 import { RoomManagerService } from './room-manager.service';
+import { AssignmentService } from './assignment.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatRoomStatus, ChatPriority, MessageRole } from '@prisma/client';
 import { StorageService } from '../../storage/storage.service';
@@ -7,6 +8,7 @@ import { StorageService } from '../../storage/storage.service';
 describe('RoomManagerService', () => {
   let service: RoomManagerService;
   let prisma: any;
+  let module: TestingModule;
 
   beforeEach(async () => {
     prisma = {
@@ -31,7 +33,7 @@ describe('RoomManagerService', () => {
       $transaction: jest.fn((fns: any[]) => Promise.all(fns)),
     };
 
-    const module = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         RoomManagerService,
         { provide: PrismaService, useValue: prisma },
@@ -43,6 +45,7 @@ describe('RoomManagerService', () => {
             getSignedDownloadUrl: jest.fn(),
           },
         },
+        { provide: AssignmentService, useValue: { autoAssign: jest.fn() } },
       ],
     }).compile();
 
@@ -134,6 +137,17 @@ describe('RoomManagerService', () => {
           verifiedAt: expect.any(Date),
         }),
       });
+    });
+
+    it('ห้องใหม่ → ไม่ autoAssign (ใครตอบก่อนได้เป็นเจ้าของ — สเปก §5)', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue(null);
+      prisma.chatRoom.findFirst.mockResolvedValue(null);
+      prisma.chatRoom.create.mockResolvedValue({ id: 'room-new', channel: 'FACEBOOK', status: 'ACTIVE' });
+
+      const assignment = module.get(AssignmentService) as { autoAssign: jest.Mock };
+      await service.getOrCreateRoom({ externalUserId: 'PSID-new', channel: ChatChannel.FACEBOOK });
+
+      expect(assignment.autoAssign).not.toHaveBeenCalled();
     });
   });
 

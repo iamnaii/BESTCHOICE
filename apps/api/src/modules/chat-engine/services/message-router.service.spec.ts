@@ -601,3 +601,51 @@ describe('MessageRouterService.mirrorOutbound — echo ล้าง waiting', ()
     expect(roomManager.clearWaiting).not.toHaveBeenCalled();
   });
 });
+
+describe('MessageRouterService.sendStaffMessage — ใครตอบก่อนได้เป็นเจ้าของ', () => {
+  function makeClaimingSender(adapterResult: { success: boolean; error?: string }) {
+    const { router: base, roomManager, adapter } = makeStaffSender();
+    adapter.sendMessage.mockResolvedValue(adapterResult);
+    const assignment = { claimIfUnassigned: jest.fn().mockResolvedValue(true) };
+    const router = new MessageRouterService(
+      roomManager as any,
+      { initiateHandoff: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue(undefined) } as any,
+      undefined, // afterHours
+      undefined, // aiAutoReply
+      undefined, // adapters
+      undefined, // handlers
+      undefined, // gateway
+      assignment as any,
+    );
+    router.registerAdapter(adapter as any);
+    void base;
+    return { router, roomManager, adapter, assignment };
+  }
+
+  it('ส่งสำเร็จ → markOutboundSent แล้วค่อย claimIfUnassigned(roomId, staffId)', async () => {
+    const { router, roomManager, assignment } = makeClaimingSender({ success: true });
+    const res = await router.sendStaffMessage({ roomId: 'r1', staffId: 'u1', text: 'สวัสดีค่ะ', clientMessageId: 'tok-1' });
+
+    expect(res.success).toBe(true);
+    expect(assignment.claimIfUnassigned).toHaveBeenCalledWith('r1', 'u1');
+    expect(roomManager.markOutboundSent.mock.invocationCallOrder[0])
+      .toBeLessThan(assignment.claimIfUnassigned.mock.invocationCallOrder[0]);
+  });
+
+  it('adapter ส่งล้ม → ไม่ markOutboundSent และไม่รับเรื่อง (ลูกค้ายังไม่ได้รับคำตอบ)', async () => {
+    const { router, roomManager, assignment } = makeClaimingSender({ success: false, error: '(#10) outside window' });
+    const res = await router.sendStaffMessage({ roomId: 'r1', staffId: 'u1', text: 'สวัสดีค่ะ', clientMessageId: 'tok-2' });
+
+    expect(res.success).toBe(false);
+    expect(roomManager.markOutboundSent).not.toHaveBeenCalled();
+    expect(assignment.claimIfUnassigned).not.toHaveBeenCalled();
+  });
+
+  it('claim ล้ม (เช่น DB error) → ไม่ทำให้การส่งที่สำเร็จแล้วกลายเป็นล้ม', async () => {
+    const { router, assignment } = makeClaimingSender({ success: true });
+    assignment.claimIfUnassigned.mockRejectedValue(new Error('db down'));
+    const res = await router.sendStaffMessage({ roomId: 'r1', staffId: 'u1', text: 'สวัสดีค่ะ', clientMessageId: 'tok-3' });
+    expect(res.success).toBe(true);
+  });
+});

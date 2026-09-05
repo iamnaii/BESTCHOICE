@@ -13,6 +13,7 @@ describe('AssignmentService', () => {
       chatRoom: {
         findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
         groupBy: jest.fn(),
       },
       user: {
@@ -213,6 +214,33 @@ describe('AssignmentService', () => {
 
       await expect(service.reopen('ghost', 's1')).rejects.toThrow(NotFoundException);
       expect(prisma.chatRoom.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('claimIfUnassigned — ใครตอบก่อนได้เป็นเจ้าของ', () => {
+    it('ห้องว่าง → รับเรื่อง บันทึก activity (source: reply) และคืน true', async () => {
+      prisma.chatRoom.updateMany.mockResolvedValue({ count: 1 });
+      prisma.staffChatActivity.create.mockResolvedValue({});
+
+      const claimed = await service.claimIfUnassigned('room-1', 'staff-1');
+
+      expect(claimed).toBe(true);
+      expect(prisma.chatRoom.updateMany).toHaveBeenCalledWith({
+        where: { id: 'room-1', assignedToId: null, deletedAt: null },
+        data: { assignedToId: 'staff-1', status: ChatRoomStatus.ACTIVE },
+      });
+      expect(prisma.staffChatActivity.create).toHaveBeenCalledWith({
+        data: { staffId: 'staff-1', action: 'assign', metadata: { roomId: 'room-1', source: 'reply' } },
+      });
+    });
+
+    it('ห้องมีเจ้าของแล้ว (หรือแพ้การแข่ง) → count 0 · ไม่บันทึก activity · คืน false', async () => {
+      prisma.chatRoom.updateMany.mockResolvedValue({ count: 0 });
+
+      const claimed = await service.claimIfUnassigned('room-1', 'staff-2');
+
+      expect(claimed).toBe(false);
+      expect(prisma.staffChatActivity.create).not.toHaveBeenCalled();
     });
   });
 

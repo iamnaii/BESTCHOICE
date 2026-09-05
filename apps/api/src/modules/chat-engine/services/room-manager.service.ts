@@ -210,12 +210,7 @@ export class RoomManagerService {
       }
     }
 
-    // Auto-assign to least-busy staff (best-effort)
-    try {
-      await this.assignmentService?.autoAssign(room.id);
-    } catch {
-      // Assignment failure shouldn't block room creation
-    }
+    // ไม่แจกห้องอัตโนมัติอีก — ใครตอบก่อนได้เป็นเจ้าของ (AssignmentService.claimIfUnassigned · สเปก §5)
 
     return room;
   }

@@ -99,6 +99,7 @@ export class StaffChatController {
       assignedToId: query.assignedToId,
       unassignedOnly: query.unassignedOnly,
       unreadOnly: query.unreadOnly,
+      waiting: query.waiting,
       channels: query.channels
         ? (query.channels.split(',').filter(Boolean) as ChatChannel[])
         : undefined,

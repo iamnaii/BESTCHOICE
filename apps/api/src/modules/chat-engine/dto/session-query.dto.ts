@@ -46,6 +46,12 @@ export class SessionQueryDto {
   unreadOnly?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  // แท็บ "รอตอบ" — coerce แบบเดียวกับ unreadOnly (ห้าม @Type(() => Boolean))
+  @Transform(({ value }) => value === true || value === 'true')
+  waiting?: boolean;
+
+  @IsOptional()
   @IsString()
   channels?: string; // comma-separated list, e.g. "LINE_FINANCE,FACEBOOK"
 

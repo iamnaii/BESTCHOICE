@@ -480,6 +480,8 @@ export class RoomManagerService {
     customerId?: string;
     unassignedOnly?: boolean;
     unreadOnly?: boolean;
+    /** แท็บ "รอตอบ" — ห้องที่ลูกค้ารอคำตอบจากคน (waitingSince not null) เรียงรอนานสุดก่อน */
+    waiting?: boolean;
     channels?: ChatChannel[];
     aiStatus?: 'ai' | 'human' | 'pending';
     search?: string;
@@ -513,6 +515,7 @@ export class RoomManagerService {
       ];
     }
     if (params.unreadOnly) where.unreadCount = { gt: 0 };
+    if (params.waiting) where.waitingSince = { not: null };
     if (params.channels && params.channels.length > 0) where.channel = { in: params.channels };
     if (params.aiStatus === 'ai') {
       where.aiPaused = false;
@@ -526,13 +529,14 @@ export class RoomManagerService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.chatRoom.findMany({
         where,
-        // Pinned first, then most-recent — exact parity with the prior client
-        // sort. (priority is intentionally NOT a sort key: the old inbox ignored
-        // it, so adding it would silently reorder the list for users.)
-        orderBy: [
-          { pinnedAt: { sort: 'desc', nulls: 'last' } },
-          { lastMessageAt: 'desc' },
-        ],
+        // แท็บรอตอบ: รอนานสุดก่อน อย่างเดียว (ปักหมุดไม่มีผล — สเปก §4.5)
+        // แท็บอื่น: ปักหมุดก่อน แล้ว lastMessageAt (parity เดิม · priority ไม่ใช่ sort key โดยตั้งใจ)
+        orderBy: params.waiting
+          ? [{ waitingSince: 'asc' as const }]
+          : [
+              { pinnedAt: { sort: 'desc' as const, nulls: 'last' as const } },
+              { lastMessageAt: 'desc' as const },
+            ],
         skip,
         take: limit,
         include: {
@@ -586,14 +590,17 @@ export class RoomManagerService {
     mine: number;
     all: number;
     unread: number;
+    /** ห้องที่ลูกค้ารอคำตอบจากคน — ทั้งบริษัท ไม่ผูกคน (สเปก §4.5) */
+    waiting: number;
     byChannel: Record<string, number>;
   }> {
     const unreadWhere: Prisma.ChatRoomWhereInput = { deletedAt: null, unreadCount: { gt: 0 } };
-    const [all, mine, byChannelRaw] = await Promise.all([
+    const [all, mine, waiting, byChannelRaw] = await Promise.all([
       this.prisma.chatRoom.count({ where: unreadWhere }),
       staffId
         ? this.prisma.chatRoom.count({ where: { ...unreadWhere, assignedToId: staffId } })
         : Promise.resolve(0),
+      this.prisma.chatRoom.count({ where: { deletedAt: null, waitingSince: { not: null } } }),
       this.prisma.chatRoom.groupBy({
         by: ['channel'],
         where: unreadWhere,
@@ -602,7 +609,7 @@ export class RoomManagerService {
     ]);
     const byChannel: Record<string, number> = {};
     for (const g of byChannelRaw) byChannel[g.channel] = g._count.id;
-    return { mine, all, unread: all, byChannel };
+    return { mine, all, unread: all, waiting, byChannel };
   }
 
   /** Search messages across all rooms */

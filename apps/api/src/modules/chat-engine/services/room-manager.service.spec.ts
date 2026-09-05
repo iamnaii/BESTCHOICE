@@ -348,4 +348,46 @@ describe('RoomManagerService', () => {
       });
     });
   });
+
+  describe('listRooms — แท็บรอตอบ', () => {
+    beforeEach(() => {
+      prisma.chatRoom.findMany.mockResolvedValue([]);
+      prisma.chatRoom.count.mockResolvedValue(0);
+    });
+
+    it('waiting=true → กรอง waitingSince not null และเรียง waitingSince asc อย่างเดียว', async () => {
+      await service.listRooms({ waiting: true });
+      const args = prisma.chatRoom.findMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({ deletedAt: null, waitingSince: { not: null } });
+      expect(args.orderBy).toEqual([{ waitingSince: 'asc' }]);
+    });
+
+    it('ไม่ส่ง waiting → เรียงแบบเดิม (ปักหมุดก่อน แล้ว lastMessageAt)', async () => {
+      await service.listRooms({});
+      const args = prisma.chatRoom.findMany.mock.calls[0][0];
+      expect(args.where).not.toHaveProperty('waitingSince');
+      expect(args.orderBy).toEqual([
+        { pinnedAt: { sort: 'desc', nulls: 'last' } },
+        { lastMessageAt: 'desc' },
+      ]);
+    });
+  });
+
+  describe('getRoomBadgeCounts — waiting', () => {
+    it('คืน waiting = จำนวนห้อง waitingSince not null ทั้งบริษัท', async () => {
+      // ลำดับ count: all(unread) · mine(unread) · waiting
+      prisma.chatRoom.count
+        .mockResolvedValueOnce(7)
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(52);
+      prisma.chatRoom.groupBy.mockResolvedValue([{ channel: 'FACEBOOK', _count: { id: 7 } }]);
+
+      const res = await service.getRoomBadgeCounts('staff-1');
+
+      expect(res).toEqual({ mine: 2, all: 7, unread: 7, waiting: 52, byChannel: { FACEBOOK: 7 } });
+      expect(prisma.chatRoom.count).toHaveBeenCalledWith({
+        where: { deletedAt: null, waitingSince: { not: null } },
+      });
+    });
+  });
 });

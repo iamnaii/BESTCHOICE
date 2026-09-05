@@ -392,7 +392,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
   const PRODUCT_ID = '11111111-2222-3333-4444-555555555555';
 
   let controller: FacebookWebhookController;
-  let router: { routeInbound: jest.Mock; mirrorOutbound: jest.Mock; postSystemNote: jest.Mock };
+  let router: { routeInbound: jest.Mock; mirrorOutbound: jest.Mock; postSystemNote: jest.Mock; recordAdReferral: jest.Mock };
   let prisma: { chatRoom: { findFirst: jest.Mock }; product: { findFirst: jest.Mock } };
 
   function referralEvent(ref: string) {
@@ -420,6 +420,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
       routeInbound: jest.fn().mockResolvedValue(undefined),
       mirrorOutbound: jest.fn().mockResolvedValue(undefined),
       postSystemNote: jest.fn().mockResolvedValue(undefined),
+      recordAdReferral: jest.fn().mockResolvedValue(undefined),
     };
     prisma = {
       chatRoom: { findFirst: jest.fn().mockResolvedValue({ id: 'room-1' }) },
@@ -479,6 +480,66 @@ describe('FacebookWebhookController — standalone referral จากลิง�
     await expect(
       controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature),
     ).resolves.toBe('EVENT_RECEIVED');
+    expect(router.postSystemNote).not.toHaveBeenCalled();
+  });
+
+  // ── โฆษณา (PR-A) — เอกสาร Meta: ลูกค้าใหม่จากโฆษณา referral อยู่ใน message.referral ──
+  const AD_REFERRAL = {
+    ad_id: '120246504706250534',
+    source: 'ADS',
+    type: 'OPEN_THREAD',
+    ads_context_data: { ad_title: 'ฝนตกไม่อยากออกจากบ้าน', photo_url: 'https://scontent.example/ad.jpg' },
+  };
+  function messageWithAdReferral() {
+    return {
+      object: 'page',
+      entry: [{ id: 'page1', time: 1, messaging: [{
+        sender: { id: PSID }, recipient: { id: 'page1' }, timestamp: 1,
+        message: { mid: 'm-ad-1', text: 'สนใจครับ', referral: AD_REFERRAL },
+      }] }],
+    };
+  }
+
+  it('ลูกค้าใหม่ทักจากโฆษณา (message.referral) → routeInbound ได้ attribution พร้อมชื่อ/รูปโฆษณา', async () => {
+    const body = messageWithAdReferral();
+    const { req, signature } = signedRequest(FB_APP_SECRET, body);
+    await controller.handleWebhook(req, body, signature);
+    await new Promise((r) => setImmediate(r));
+
+    expect(router.routeInbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalUserId: PSID,
+        text: 'สนใจครับ',
+        attribution: expect.objectContaining({
+          utmSource: 'facebook',
+          adId: '120246504706250534',
+          adTitle: 'ฝนตกไม่อยากออกจากบ้าน',
+          adPhotoUrl: 'https://scontent.example/ad.jpg',
+          utmContent: undefined,
+        }),
+      }),
+    );
+    // ไม่ใช่ ref สินค้า → ไม่โพสต์โน้ตสินค้า
+    expect(router.postSystemNote).not.toHaveBeenCalled();
+  });
+
+  it('ลูกค้าเก่ากลับมาจากโฆษณา (event referral ไม่มี message) → บันทึกที่มาให้ห้องเดิม ไม่สร้างข้อความ', async () => {
+    const body = {
+      object: 'page',
+      entry: [{ id: 'page1', time: 1, messaging: [{
+        sender: { id: PSID }, recipient: { id: 'page1' }, timestamp: 1, referral: AD_REFERRAL,
+      }] }],
+    };
+    const { req, signature } = signedRequest(FB_APP_SECRET, body);
+    await controller.handleWebhook(req, body, signature);
+
+    expect(router.recordAdReferral).toHaveBeenCalledWith(
+      PSID,
+      'FACEBOOK',
+      expect.objectContaining({ adId: '120246504706250534', adTitle: 'ฝนตกไม่อยากออกจากบ้าน' }),
+    );
+    expect(router.routeInbound).not.toHaveBeenCalled();
+    // ไม่มี ref สินค้า → ไม่ยิงโน้ตสินค้า
     expect(router.postSystemNote).not.toHaveBeenCalled();
   });
 

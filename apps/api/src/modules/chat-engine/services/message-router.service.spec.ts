@@ -575,3 +575,60 @@ describe('MessageRouterService — echo จากนอกระบบ (กั�
     expect(roomManager.pauseAiIfActive).toHaveBeenCalledWith('r1', undefined);
   });
 });
+
+describe('MessageRouterService — ที่มาจากโฆษณา (PR-A referral)', () => {
+  const AD = {
+    utmSource: 'facebook',
+    utmCampaign: '120246504706250534',
+    referrerUrl: 'ADS',
+    adId: '120246504706250534',
+    adTitle: 'ฝนตกไม่อยากออกจากบ้าน',
+    adPhotoUrl: 'https://scontent.example/ad.jpg',
+  };
+
+  it('ข้อความแรกจากโฆษณา → ส่ง attribution เข้า getOrCreateRoom และโพสต์โน้ตระบบในห้อง', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).findByExternalUser = jest.fn();
+    (roomManager as any).linkAttribution = jest.fn();
+
+    await router.routeInbound({ ...baseMsg, channel: ChatChannel.FACEBOOK, attribution: AD } as any);
+
+    expect(roomManager.getOrCreateRoom).toHaveBeenCalledWith(expect.objectContaining({ attribution: AD }));
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'r1', role: MessageRole.SYSTEM, text: 'ลูกค้าทักจากโฆษณา · ฝนตกไม่อยากออกจากบ้าน' }),
+    );
+  });
+
+  it('ข้อความปกติ (ไม่มี adId) → ไม่มีโน้ตโฆษณา', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.routeInbound({ ...baseMsg, attribution: { utmSource: 'facebook', utmContent: 'p:abc' } } as any);
+    const systemNotes = roomManager.saveMessage.mock.calls.filter((c) => c[0].role === MessageRole.SYSTEM);
+    expect(systemNotes).toHaveLength(0);
+  });
+
+  it('recordAdReferral: ลูกค้าเก่ากลับมาจากโฆษณา → ผูกที่มาให้ห้องเดิม + โน้ต · ไม่มีห้อง = ไม่ทำอะไร', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).findByExternalUser = jest.fn().mockResolvedValue({ id: 'r-old', attributionId: 'a-old' });
+    (roomManager as any).linkAttribution = jest.fn().mockResolvedValue({ campaignName: 'x', adTitle: 'x', changed: true });
+
+    await router.recordAdReferral('PSID-1', ChatChannel.FACEBOOK, AD);
+
+    expect((roomManager as any).linkAttribution).toHaveBeenCalledWith('r-old', AD, 'a-old');
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'r-old', role: MessageRole.SYSTEM, text: 'ลูกค้าทักจากโฆษณา · ฝนตกไม่อยากออกจากบ้าน' }),
+    );
+
+    (roomManager as any).findByExternalUser.mockResolvedValue(null);
+    (roomManager as any).linkAttribution.mockClear();
+    await router.recordAdReferral('PSID-2', ChatChannel.FACEBOOK, AD);
+    expect((roomManager as any).linkAttribution).not.toHaveBeenCalled();
+  });
+
+  it('โฆษณาไม่มีชื่อ → โน้ตใช้เลขโฆษณาแทน ไม่ว่าง', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.routeInbound({ ...baseMsg, attribution: { ...AD, adTitle: undefined } } as any);
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ role: MessageRole.SYSTEM, text: 'ลูกค้าทักจากโฆษณา · โฆษณา 120246504706250534' }),
+    );
+  });
+});

@@ -1,3 +1,4 @@
+import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
 import {
   Injectable,
   Logger,
@@ -62,12 +63,7 @@ export class RoomManagerService {
     customerId?: string;
     displayName?: string | null;
     pictureUrl?: string | null;
-    attribution?: {
-      utmSource?: string;
-      utmCampaign?: string;
-      utmContent?: string;
-      referrerUrl?: string;
-    };
+    attribution?: InboundAttribution;
   }): Promise<ChatRoom> {
     const isLineChannel =
       params.channel === ChatChannel.LINE_FINANCE ||
@@ -115,13 +111,15 @@ export class RoomManagerService {
       if (!existing.pictureUrl && params.pictureUrl) {
         updateData.pictureUrl = params.pictureUrl;
       }
-      if (Object.keys(updateData).length > 0) {
-        return this.prisma.chatRoom.update({
-          where: { id: existing.id },
-          data: updateData,
-        });
+      const room =
+        Object.keys(updateData).length > 0
+          ? await this.prisma.chatRoom.update({ where: { id: existing.id }, data: updateData })
+          : existing;
+      // ลูกค้าเก่ากดโฆษณา/ลิงก์ซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
+      if (params.attribution?.utmSource) {
+        await this.linkAttribution(room.id, params.attribution, room.attributionId);
       }
-      return existing;
+      return room;
     }
 
     // Try to find linked customer
@@ -153,61 +151,9 @@ export class RoomManagerService {
       },
     });
 
-    // Link ads attribution on new rooms (best-effort — never block room creation)
+    // ที่มาของลูกค้า (โฆษณา/UTM) — best-effort ห้ามทำให้การสร้างห้องล้ม
     if (params.attribution?.utmSource) {
-      try {
-        const platformMap: Record<string, AdsPlatform> = {
-          facebook: AdsPlatform.FACEBOOK_ADS,
-          tiktok: AdsPlatform.TIKTOK_ADS,
-          line: AdsPlatform.LINE_ADS,
-          google: AdsPlatform.GOOGLE_ADS,
-        };
-        const platform =
-          platformMap[params.attribution.utmSource.toLowerCase()] ??
-          AdsPlatform.FACEBOOK_ADS;
-        const campaignKey = params.attribution.utmCampaign ?? 'organic';
-
-        let campaign = await this.prisma.adsCampaign.findFirst({
-          where: {
-            platform,
-            campaignId: campaignKey,
-            deletedAt: null,
-          },
-        });
-        if (!campaign) {
-          campaign = await this.prisma.adsCampaign.create({
-            data: {
-              platform,
-              campaignId: campaignKey,
-              campaignName: params.attribution.utmCampaign ?? 'Auto-detected',
-            },
-          });
-        }
-
-        const attribution = await this.prisma.adsAttribution.create({
-          data: {
-            campaignId: campaign.id,
-            utmSource: params.attribution.utmSource,
-            utmCampaign: params.attribution.utmCampaign,
-            utmContent: params.attribution.utmContent,
-            referrerUrl: params.attribution.referrerUrl,
-            firstTouch: new Date(),
-          },
-        });
-
-        await this.prisma.chatRoom.update({
-          where: { id: room.id },
-          data: { attributionId: attribution.id },
-        });
-
-        this.logger.log(
-          `[Attribution] Linked campaign "${campaignKey}" to room ${room.id}`,
-        );
-      } catch (err) {
-        this.logger.error(
-          `[Attribution] Failed to link attribution for room ${room.id}: ${err instanceof Error ? err.message : err}`,
-        );
-      }
+      await this.linkAttribution(room.id, params.attribution, null);
     }
 
     // Auto-assign to least-busy staff (best-effort)
@@ -218,6 +164,110 @@ export class RoomManagerService {
     }
 
     return room;
+  }
+
+  /** ห้องล่าสุดของผู้ใช้ภายนอกในช่องทางนั้น (ใช้ตอน referral มาโดยไม่มีข้อความ) */
+  async findByExternalUser(
+    externalUserId: string,
+    channel: ChatChannel,
+  ): Promise<{ id: string; attributionId: string | null } | null> {
+    return this.prisma.chatRoom.findFirst({
+      where: { externalUserId, channel, deletedAt: null },
+      orderBy: { lastMessageAt: 'desc' },
+      select: { id: true, attributionId: true },
+    });
+  }
+
+  /**
+   * ผูก "ที่มา" (โฆษณา/UTM) ให้ห้อง — ท่าเดียวกับ OBI `Util\Facebook::ads` + `chat_room.facebook_ad_id`:
+   * แคมเปญคีย์ด้วย ad_id · ชื่อ/รูปโฆษณาเติมจาก ads_context_data เมื่อมี (ครั้งแรกอาจว่าง ครั้งหลังเติมได้) ·
+   * ห้องที่มีที่มาอยู่แล้วและมาจากโฆษณา "ตัวเดิม" → อัปเดต lastTouch · โฆษณา "ตัวใหม่" → attribution ใหม่
+   * แล้วชี้ห้องไปที่ล่าสุด (พนักงานต้องรู้ว่าลูกค้าเพิ่งเห็นชิ้นไหน ไม่ใช่ชิ้นแรกเมื่อ 3 เดือนก่อน)
+   * best-effort ทั้งก้อน — ห้ามทำให้ webhook/การสร้างห้องล้ม
+   */
+  async linkAttribution(
+    roomId: string,
+    attribution: InboundAttribution,
+    currentAttributionId: string | null,
+  ): Promise<{ campaignName: string; adTitle: string | null; changed: boolean } | null> {
+    try {
+      const platformMap: Record<string, AdsPlatform> = {
+        facebook: AdsPlatform.FACEBOOK_ADS,
+        tiktok: AdsPlatform.TIKTOK_ADS,
+        line: AdsPlatform.LINE_ADS,
+        google: AdsPlatform.GOOGLE_ADS,
+      };
+      const platform =
+        platformMap[(attribution.utmSource ?? '').toLowerCase()] ?? AdsPlatform.FACEBOOK_ADS;
+      const campaignKey = attribution.adId ?? attribution.utmCampaign ?? 'organic';
+
+      let campaign = await this.prisma.adsCampaign.findFirst({
+        where: { platform, campaignId: campaignKey, deletedAt: null },
+      });
+      if (!campaign) {
+        campaign = await this.prisma.adsCampaign.create({
+          data: {
+            platform,
+            campaignId: campaignKey,
+            campaignName: attribution.adTitle ?? attribution.utmCampaign ?? 'Auto-detected',
+            adName: attribution.adTitle ?? null,
+            adPhotoUrl: attribution.adPhotoUrl ?? null,
+          },
+        });
+      } else if (
+        (attribution.adTitle && !campaign.adName) ||
+        (attribution.adPhotoUrl && !campaign.adPhotoUrl)
+      ) {
+        // referral ก่อนหน้าอาจไม่มี ads_context_data — เติมชื่อ/รูปเมื่อได้มา ไม่ทับของที่มีอยู่
+        campaign = await this.prisma.adsCampaign.update({
+          where: { id: campaign.id },
+          data: {
+            adName: campaign.adName ?? attribution.adTitle ?? null,
+            adPhotoUrl: campaign.adPhotoUrl ?? attribution.adPhotoUrl ?? null,
+            ...(campaign.campaignName === 'Auto-detected' && attribution.adTitle
+              ? { campaignName: attribution.adTitle }
+              : {}),
+          },
+        });
+      }
+
+      const now = new Date();
+      if (currentAttributionId) {
+        const current = await this.prisma.adsAttribution.findUnique({
+          where: { id: currentAttributionId },
+          select: { id: true, campaignId: true },
+        });
+        if (current && current.campaignId === campaign.id) {
+          await this.prisma.adsAttribution.update({
+            where: { id: current.id },
+            data: { lastTouch: now },
+          });
+          return { campaignName: campaign.campaignName, adTitle: campaign.adName, changed: false };
+        }
+      }
+      const created = await this.prisma.adsAttribution.create({
+        data: {
+          campaignId: campaign.id,
+          utmSource: attribution.utmSource,
+          utmCampaign: attribution.utmCampaign ?? attribution.adId,
+          utmContent: attribution.utmContent,
+          referrerUrl: attribution.referrerUrl,
+          firstTouch: now,
+          lastTouch: now,
+        },
+      });
+      await this.prisma.chatRoom.update({
+        where: { id: roomId },
+        data: { attributionId: created.id },
+      });
+      this.logger.log(`[Attribution] Linked campaign "${campaignKey}" to room ${roomId}`);
+      return { campaignName: campaign.campaignName, adTitle: campaign.adName, changed: true };
+    } catch (err) {
+      this.logger.error(
+        `[Attribution] Failed to link attribution for room ${roomId}: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
   }
 
   /** Save a message and update room stats */
@@ -411,6 +461,14 @@ export class RoomManagerService {
         customer: { select: { id: true, name: true, phone: true, nationalId: true } },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
         tags: true,
+        // "มาจากโฆษณา" ในแผงขวา — ชื่อ/รูปโฆษณา + ครั้งแรก/ล่าสุดที่ทักจากโฆษณา
+        attribution: {
+          select: {
+            firstTouch: true,
+            lastTouch: true,
+            campaign: { select: { campaignId: true, campaignName: true, adName: true, adPhotoUrl: true } },
+          },
+        },
       },
     });
   }

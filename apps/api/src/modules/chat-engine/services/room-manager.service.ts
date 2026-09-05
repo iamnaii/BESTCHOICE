@@ -23,6 +23,27 @@ import { MessageRouterService } from './message-router.service';
 import { StorageService } from '../../storage/storage.service';
 import { signMessageMedia } from './media-url.util';
 
+/** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
+ *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
+ *  เพี้ยนจากกันได้อีก */
+export interface RoomFilterParams {
+  channel?: ChatChannel;
+  status?: ChatRoomStatus;
+  priority?: ChatPriority;
+  assignedToId?: string;
+  customerId?: string;
+  unassignedOnly?: boolean;
+  unreadOnly?: boolean;
+  /** แท็บ "รอตอบ" — ห้องที่ลูกค้ารอคำตอบจากคน (waitingSince not null) เรียงรอนานสุดก่อน */
+  waiting?: boolean;
+  channels?: ChatChannel[];
+  aiStatus?: 'ai' | 'human' | 'pending';
+  search?: string;
+}
+
+/** แท็บของกล่องข้อความ — ป้ายแต่ละใบต้องนับ "จำนวนแถวที่แท็บนั้นแสดง" เป๊ะ ๆ */
+export type InboxTabKey = 'waiting' | 'mine' | 'all';
+
 /**
  * RoomManagerService — generalized from SessionManagerService.
  *
@@ -523,27 +544,9 @@ export class RoomManagerService {
     });
   }
 
-  /** List rooms for the unified inbox with pagination and filters */
-  async listRooms(params: {
-    channel?: ChatChannel;
-    status?: ChatRoomStatus;
-    priority?: ChatPriority;
-    assignedToId?: string;
-    customerId?: string;
-    unassignedOnly?: boolean;
-    unreadOnly?: boolean;
-    /** แท็บ "รอตอบ" — ห้องที่ลูกค้ารอคำตอบจากคน (waitingSince not null) เรียงรอนานสุดก่อน */
-    waiting?: boolean;
-    channels?: ChatChannel[];
-    aiStatus?: 'ai' | 'human' | 'pending';
-    search?: string;
-    page?: number;
-    limit?: number;
-  }) {
-    const page = params.page ?? 1;
-    const limit = params.limit ?? 50;
-    const skip = (page - 1) * limit;
-
+  /** ประกอบ where ของห้องแชทจากตัวกรองชุดเดียว — แหล่งเดียวของทั้งรายการและตัวนับ
+   *  ห้ามเขียนสำเนาที่สอง: ป้ายที่นับด้วยตัวกรองคนละชุดกับรายการคือป้ายที่โกหก */
+  private buildRoomWhere(params: RoomFilterParams): Prisma.ChatRoomWhereInput {
     const where: Prisma.ChatRoomWhereInput = {
       deletedAt: null,
     };
@@ -577,6 +580,17 @@ export class RoomManagerService {
     } else if (params.aiStatus === 'pending') {
       where.handoffMode = true;
     }
+
+    return where;
+  }
+
+  /** List rooms for the unified inbox with pagination and filters */
+  async listRooms(params: RoomFilterParams & { page?: number; limit?: number }) {
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 50;
+    const skip = (page - 1) * limit;
+
+    const where = this.buildRoomWhere(params);
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.chatRoom.findMany({
@@ -635,33 +649,55 @@ export class RoomManagerService {
     return { unread: count };
   }
 
-  /** Unread-room counts for the inbox tab + channel badges, over the whole
-   *  (non-deleted) room universe — so badges aren't truncated by pagination.
-   *  "unread" = room.unreadCount > 0 (mirrors deriveTabCounts/deriveChannelUnreadCounts). */
-  async getRoomBadgeCounts(staffId?: string): Promise<{
+  /** ตัวนับบนป้ายแท็บ + ชิปช่องทาง — นับทั้งจักรวาลห้อง ไม่ถูกตัดด้วย pagination
+   *
+   *  กติกาเดียวของเมธอดนี้: **เลขบนป้ายต้องเท่ากับจำนวนแถวที่แท็บนั้นแสดง**
+   *
+   *  ก่อน 2026-09-05 ทุกตัวนับใช้ตัวกรอง "ยังไม่อ่าน" ตัวเดียวกันหมด ⇒ ป้าย "ทั้งหมด"
+   *  รายงานจำนวนห้องที่ยังไม่อ่าน · `unread` เป็นตัวแปรตัวเดียวกับ `all` เป๊ะ ๆ ·
+   *  ป้าย "ของฉัน" นับเฉพาะห้องของฉัน**ที่ยังไม่อ่าน** · และชิปช่องทางนับเฉพาะห้อง
+   *  ที่ยังไม่อ่านทั้งที่ชิปกรองทั้งแท็บ — สามในสี่ตัวโกหก
+   *
+   *  ชิปช่องทางนับ "ในจักรวาลของแท็บที่เปิดอยู่" ไม่ใช่ทั้งบริษัท เพราะชิปกรองทับแท็บ
+   *  ตัวเลขบนชิปจึงตอบคำถามที่คนกดถามจริง ๆ ว่า "กดแล้วเหลือกี่ห้อง"
+   */
+  async getRoomBadgeCounts(
+    staffId?: string,
+    params?: { tab?: InboxTabKey; aiStatus?: 'ai' | 'human' | 'pending' },
+  ): Promise<{
+    /** ห้องที่ฉันดูแล — ทุกห้อง ไม่ใช่เฉพาะที่ยังไม่อ่าน */
     mine: number;
+    /** ห้องทั้งหมดที่ยังไม่ถูกลบ */
     all: number;
-    unread: number;
     /** ห้องที่ลูกค้ารอคำตอบจากคน — ทั้งบริษัท ไม่ผูกคน (สเปก §4.5) */
     waiting: number;
     byChannel: Record<string, number>;
   }> {
-    const unreadWhere: Prisma.ChatRoomWhereInput = { deletedAt: null, unreadCount: { gt: 0 } };
+    // ตัวกรองพื้นฐาน = สิ่งที่ผู้ใช้เลือกไว้นอกเหนือแท็บ (สถานะบอท) — ชุดเดียวกับรายการ
+    const base = this.buildRoomWhere({ aiStatus: params?.aiStatus });
+    const waitingWhere: Prisma.ChatRoomWhereInput = { ...base, waitingSince: { not: null } };
+    // ไม่รู้ว่าใครถาม = ไม่มี "ของฉัน" ให้นับ — ปล่อย assignedToId เป็น undefined ไม่ได้
+    // เพราะ Prisma อ่านว่า "ไม่กรอง" ⇒ ทุกห้องกลายเป็นห้องของคนคนนั้น
+    const mineWhere: Prisma.ChatRoomWhereInput | null = staffId
+      ? { ...base, assignedToId: staffId }
+      : null;
+    const tabWhere: Prisma.ChatRoomWhereInput | null =
+      params?.tab === 'waiting' ? waitingWhere : params?.tab === 'mine' ? mineWhere : base;
+
     const [all, mine, waiting, byChannelRaw] = await Promise.all([
-      this.prisma.chatRoom.count({ where: unreadWhere }),
-      staffId
-        ? this.prisma.chatRoom.count({ where: { ...unreadWhere, assignedToId: staffId } })
-        : Promise.resolve(0),
-      this.prisma.chatRoom.count({ where: { deletedAt: null, waitingSince: { not: null } } }),
+      this.prisma.chatRoom.count({ where: base }),
+      mineWhere ? this.prisma.chatRoom.count({ where: mineWhere }) : Promise.resolve(0),
+      this.prisma.chatRoom.count({ where: waitingWhere }),
       this.prisma.chatRoom.groupBy({
         by: ['channel'],
-        where: unreadWhere,
+        // tabWhere = null คือแท็บ "ของฉัน" ที่ไม่รู้ว่าใครถาม ⇒ ไม่มีห้องให้นับ
+        where: tabWhere ?? { id: { in: [] } },
         _count: { id: true },
       }),
     ]);
     const byChannel: Record<string, number> = {};
     for (const g of byChannelRaw) byChannel[g.channel] = g._count.id;
-    return { mine, all, unread: all, waiting, byChannel };
+    return { mine, all, waiting, byChannel };
   }
 
   /** Search messages across all rooms */

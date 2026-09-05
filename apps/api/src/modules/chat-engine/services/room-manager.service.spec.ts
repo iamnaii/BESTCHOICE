@@ -387,20 +387,58 @@ describe('RoomManagerService', () => {
     });
   });
 
-  describe('getRoomBadgeCounts — waiting', () => {
-    it('คืน waiting = จำนวนห้อง waitingSince not null ทั้งบริษัท', async () => {
-      // ลำดับ count: all(unread) · mine(unread) · waiting
+  describe('getRoomBadgeCounts — ป้ายต้องเท่ากับจำนวนแถวที่แท็บนั้นแสดง', () => {
+    it('นับแต่ละแท็บด้วยตัวกรองของตัวเอง ไม่ใช่ "ยังไม่อ่าน" ชุดเดียวทั้งหมด', async () => {
+      // ลำดับ count: all · mine · waiting
       prisma.chatRoom.count
-        .mockResolvedValueOnce(7)
+        .mockResolvedValueOnce(8320)
         .mockResolvedValueOnce(2)
-        .mockResolvedValueOnce(52);
-      prisma.chatRoom.groupBy.mockResolvedValue([{ channel: 'FACEBOOK', _count: { id: 7 } }]);
+        .mockResolvedValueOnce(231);
+      prisma.chatRoom.groupBy.mockResolvedValue([{ channel: 'FACEBOOK', _count: { id: 8320 } }]);
 
       const res = await service.getRoomBadgeCounts('staff-1');
 
-      expect(res).toEqual({ mine: 2, all: 7, unread: 7, waiting: 52, byChannel: { FACEBOOK: 7 } });
+      // all = ห้องทั้งหมด · mine = ห้องของฉันทุกห้อง · waiting = ห้องที่ลูกค้ารอ
+      expect(res).toEqual({ mine: 2, all: 8320, waiting: 231, byChannel: { FACEBOOK: 8320 } });
+      // ไม่มีตัวนับใบไหนกรอง unreadCount อีกต่อไป
+      expect(prisma.chatRoom.count).toHaveBeenCalledWith({ where: { deletedAt: null } });
+      expect(prisma.chatRoom.count).toHaveBeenCalledWith({
+        where: { deletedAt: null, assignedToId: 'staff-1' },
+      });
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({
         where: { deletedAt: null, waitingSince: { not: null } },
+      });
+      for (const call of prisma.chatRoom.count.mock.calls) {
+        expect(call[0].where.unreadCount).toBeUndefined();
+      }
+    });
+
+    it('ชิปช่องทางนับในจักรวาลของแท็บที่เปิดอยู่ (รอตอบ) ไม่ใช่ทั้งบริษัท', async () => {
+      prisma.chatRoom.count.mockResolvedValue(0);
+      prisma.chatRoom.groupBy.mockResolvedValue([]);
+
+      await service.getRoomBadgeCounts('staff-1', { tab: 'waiting' });
+
+      expect(prisma.chatRoom.groupBy).toHaveBeenCalledWith({
+        by: ['channel'],
+        where: { deletedAt: null, waitingSince: { not: null } },
+        _count: { id: true },
+      });
+    });
+
+    it('ไม่รู้ว่าใครถาม → mine = 0 และแท็บ "ของฉัน" ไม่มีชิปให้นับ', async () => {
+      prisma.chatRoom.count.mockResolvedValue(9);
+      prisma.chatRoom.groupBy.mockResolvedValue([{ channel: 'LINE_SHOP', _count: { id: 9 } }]);
+
+      const res = await service.getRoomBadgeCounts(undefined, { tab: 'mine' });
+
+      expect(res.mine).toBe(0);
+      // ชิปนับด้วยเงื่อนไขที่ไม่ตรงห้องใดเลย — ไม่ใช่ตกไปนับทั้งบริษัท
+      // (mock คืนค่าเดิมไม่ว่า where เป็นอะไร — ตัวชี้ขาดคือ where ที่ส่งไป)
+      expect(prisma.chatRoom.groupBy).toHaveBeenCalledWith({
+        by: ['channel'],
+        where: { id: { in: [] } },
+        _count: { id: true },
       });
     });
   });

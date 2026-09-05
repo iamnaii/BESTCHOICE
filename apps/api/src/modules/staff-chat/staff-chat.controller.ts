@@ -112,8 +112,19 @@ export class StaffChatController {
 
   @Get('rooms/counts')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getRoomCounts(@Req() req: { user: { id: string } }) {
-    return this.roomManager.getRoomBadgeCounts(req.user.id);
+  async getRoomCounts(
+    @Req() req: { user: { id: string } },
+    // ชิปช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่ ไม่ใช่ทั้งบริษัท — ไม่ส่ง tab มา
+    // จะได้ตัวเลขของแท็บ "ทั้งหมด" ซึ่งเป็นค่าเริ่มต้นที่ปลอดภัยที่สุด
+    @Query() query: { tab?: string; aiStatus?: string },
+  ) {
+    return this.roomManager.getRoomBadgeCounts(req.user.id, {
+      tab: query.tab === 'waiting' || query.tab === 'mine' ? query.tab : 'all',
+      aiStatus:
+        query.aiStatus === 'ai' || query.aiStatus === 'human' || query.aiStatus === 'pending'
+          ? query.aiStatus
+          : undefined,
+    });
   }
 
   @Get('rooms/:id')

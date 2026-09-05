@@ -9,7 +9,7 @@ import { describeSendError, SEND_ERROR_WINDOW, SEND_ERROR_TOKEN } from './compon
 import { buildRoomListParams } from './components/room-query';
 import type { StaffOption } from './components/ChannelFilter';
 import ChatPanel from './components/ChatPanel';
-import Customer360Panel from './components/Customer360Panel';
+import RoomDossier from './components/RoomDossier';
 import { useChatSocket, type ChatMessageEvent } from './hooks/useChatSocket';
 import { useNotificationPrefs } from './hooks/useNotificationPrefs';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,7 +24,7 @@ const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA
 /**
  * UnifiedInboxPage — 3-panel chat interface.
  *
- * Layout: ConversationList | ChatPanel | Customer360Panel
+ * Layout: ConversationList | ChatPanel | RoomDossier (แผงขวา 3 แท็บ · ใช้บล็อกเดิมของ Customer360Panel ผ่านโหมด bare)
  * On mobile: shows one panel at a time.
  */
 export default function UnifiedInboxPage() {
@@ -574,13 +574,13 @@ export default function UnifiedInboxPage() {
         />
       </div>
 
-      {/* Right panel: Customer 360 — always visible on xl+ */}
+      {/* Right panel: RoomDossier (โครง OBI · 3 แท็บ) — always visible on xl+ */}
       <div className="hidden xl:block">
-        <Customer360Panel
+        <RoomDossier
+          room={sessionQuery.data}
           customerId={customerId}
           activeRoomId={activeRoomId}
           onSelectRoom={handleSelectRoom}
-          session={sessionQuery.data}
         />
       </div>
 
@@ -588,14 +588,14 @@ export default function UnifiedInboxPage() {
       <Sheet open={customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
         <SheetContent side="right" className="w-80 p-0 xl:hidden">
           <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
-          <Customer360Panel
+          <RoomDossier
+            room={sessionQuery.data}
             customerId={customerId}
             activeRoomId={activeRoomId}
             onSelectRoom={(id) => {
               handleSelectRoom(id);
               setCustomerPanelOpen(false);
             }}
-            session={sessionQuery.data}
           />
         </SheetContent>
       </Sheet>

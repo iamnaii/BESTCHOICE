@@ -113,10 +113,18 @@ interface StaffItem {
   name: string;
 }
 
+/** บล็อกในแผงเดิมที่แผงใหม่ (RoomDossier) หยิบไปวางในแท็บ — ค่าเริ่มต้น = ทั้งหมด (พฤติกรรมเดิม) */
+export type Customer360Section =
+  | 'product' | 'channels' | 'mdm' | 'warranty' | 'contracts' | 'payments' | 'history' | 'calls' | 'notes' | 'actions';
+
 interface Customer360PanelProps {
   customerId: string | null;
   activeRoomId?: string | null;
   onSelectRoom?: (roomId: string) => void;
+  /** แสดงเฉพาะบล็อกที่ระบุ (ไม่ระบุ = ทั้งหมด) */
+  sections?: Customer360Section[];
+  /** ไม่วาดกรอบ w-80 / หัวโปรไฟล์ / กล่องเลื่อน — ให้ RoomDossier เป็นคนจัดเอง · ไดอะล็อกยังทำงานครบ */
+  bare?: boolean;
   /**
    * Lightweight session shape for rendering the no-customer-link empty state.
    * Used only when `customerId` is null. Optional so existing call sites that
@@ -170,7 +178,8 @@ const sessionStatusLabel: Record<string, string> = {
   ARCHIVED: 'เก็บ',
 };
 
-export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom, session }: Customer360PanelProps) {
+export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom, session, sections, bare }: Customer360PanelProps) {
+  const show = (k: Customer360Section) => !sections || sections.includes(k);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<ContractAction | null>(null);
@@ -523,95 +532,17 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   const firstContract = summary?.activeContracts?.[0];
   const firstProduct = firstContract?.product;
 
-  return (
-    <div className="w-80 shrink-0 border-l border-border flex flex-col h-full">
-      {/* ─── 1. Customer Profile (sticky) ──────────────── */}
-      <div className="p-4 border-b border-border shrink-0 bg-card">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
-            {customer?.avatarUrl || customer?.lineAvatarUrl ? (
-              <img
-                src={customer.avatarUrl || customer.lineAvatarUrl}
-                alt={customer?.name ?? ''}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-muted-foreground text-lg font-bold">{(customer?.name ?? '?')[0]}</span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-sm text-foreground truncate">{customer?.name}</h3>
-            {customer?.phone && (
-              <button
-                type="button"
-                onClick={handleCall}
-                disabled={originateCall.isPending || callStatus === 'calling'}
-                className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1 transition-colors disabled:opacity-60"
-                title="คลิกเพื่อโทรออกผ่าน Yeastar"
-              >
-                <Phone className="w-3 h-3" />
-                {customer.phone}
-              </button>
-            )}
-          </div>
-          {(() => {
-            const riskCfg = getStatusBadgeProps(riskLevel, riskLevelMap);
-            return (
-              <Badge variant={riskCfg.variant} appearance={riskCfg.appearance} className="text-[10px] px-1.5 py-0.5">
-                {riskLevel === 'HIGH' ? 'เสี่ยงสูง' : riskLevel === 'MEDIUM' ? 'เฝ้าระวัง' : 'ปกติ'}
-              </Badge>
-            );
-          })()}
-        </div>
-
-        {customer?.email && (
-          <p className="text-[11px] text-muted-foreground ml-14">{customer.email}</p>
-        )}
-
-        {/* Overdue alert */}
-        {summary && summary.overdueCount > 0 && (
-          <div className="mt-2 p-2 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
-            <div className="text-xs">
-              <span className="font-semibold text-destructive">ค้าง {summary.overdueCount} งวด</span>
-              <span className="text-destructive ml-1">
-                ({Number(summary.totalOutstanding).toLocaleString()} บ.)
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Quick-action row — promoted call + pay buttons */}
-        {summary?.activeContracts?.length > 0 && (
-          <div className="flex gap-2 mt-3">
-            <button
-              type="button"
-              onClick={handleCall}
-              disabled={originateCall.isPending || callStatus === 'calling'}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium transition-colors disabled:opacity-50"
-            >
-              <Phone className="w-3.5 h-3.5" />
-              {originateCall.isPending || callStatus === 'calling' ? 'กำลังโทร...' : 'โทร'}
-            </button>
-            <button
-              type="button"
-              onClick={() => triggerContractAction('send-link')}
-              disabled={sendPaymentFlex.isPending}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-medium transition-colors disabled:opacity-50"
-            >
-              <Link2 className="w-3.5 h-3.5" />
-              {sendPaymentFlex.isPending ? 'กำลังส่ง...' : 'ส่งลิงก์ชำระ'}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ─── Scrollable content ──────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
-      {/* ─── 1b. Product Context (detected from chat) ────── */}
+  // บล็อกเนื้อหา (แยกจากกรอบ) — RoomDossier ใช้โหมด bare หยิบเฉพาะบล็อกที่ต้องการไปวางในแท็บ
+  const blocks = (
+    <>
+      {show('product') && (<>
+{/* ─── 1b. Product Context (detected from chat) ────── */}
       <ProductContextCard roomId={activeRoomId ?? ''} />
 
-      {/* ─── 1c. Cross-Channel Rooms ─────────────────────── */}
+      
+      </>)}
+{show('channels') && (<>
+{/* ─── 1c. Cross-Channel Rooms ─────────────────────── */}
       {crossRooms && crossRooms.length > 0 && (
         <div className="border-b border-border">
           <div className="px-4 pt-4 pb-2">
@@ -648,7 +579,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         </div>
       )}
 
-      {/* ─── 1d. MDM Status ──────────────────────────────── */}
+      
+      </>)}
+{show('mdm') && (<>
+{/* ─── 1d. MDM Status ──────────────────────────────── */}
       <div className="p-4 border-b border-border">
         <SectionHeader
           icon={Smartphone}
@@ -670,7 +604,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         )}
       </div>
 
-      {/* ─── 1e. Warranty (2-tier: manufacturer + shop) ─── */}
+      
+      </>)}
+{show('warranty') && (<>
+{/* ─── 1e. Warranty (2-tier: manufacturer + shop) ─── */}
       <div className="p-4 border-b border-border">
         <SectionHeader
           icon={Shield}
@@ -739,7 +676,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         )}
       </div>
 
-      {/* ─── 2. Active Contracts + Product/IMEI ─────────── */}
+      
+      </>)}
+{show('contracts') && (<>
+{/* ─── 2. Active Contracts + Product/IMEI ─────────── */}
       <div className="p-4 border-b border-border">
         <SectionHeader
           icon={FileText}
@@ -822,7 +762,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         )}
       </div>
 
-      {/* ─── 3. Recent Payments ──────────────────────────── */}
+      
+      </>)}
+{show('payments') && (<>
+{/* ─── 3. Recent Payments ──────────────────────────── */}
       <div className="p-4 border-b border-border">
         <SectionHeader
           icon={CreditCard}
@@ -853,7 +796,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         )}
       </div>
 
-      {/* ─── 4. Chat History (all channels) ──────────────── */}
+      
+      </>)}
+{show('history') && (<>
+{/* ─── 4. Chat History (all channels) ──────────────── */}
       <div className="p-4 border-b border-border">
         <SectionHeader
           icon={MessageSquare}
@@ -901,7 +847,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         )}
       </div>
 
-      {/* ─── 5. Call Logs ────────────────────────────────── */}
+      
+      </>)}
+{show('calls') && (<>
+{/* ─── 5. Call Logs ────────────────────────────────── */}
       {summary?.callLogs?.length > 0 && (
         <div className="p-4 border-b border-border">
           <SectionHeader
@@ -928,7 +877,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         </div>
       )}
 
-      {/* ─── 6. Internal Notes ──────────────────────────── */}
+      
+      </>)}
+{show('notes') && (<>
+{/* ─── 6. Internal Notes ──────────────────────────── */}
       {activeRoomId && (
         <InternalNotesSection
           key={activeRoomId}
@@ -939,7 +891,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         />
       )}
 
-      {/* ─── 7. Quick Actions ────────────────────────────── */}
+      
+      </>)}
+{show('actions') && (<>
+{/* ─── 7. Quick Actions ────────────────────────────── */}
       <div className="p-4">
         <Popover>
           <PopoverTrigger asChild>
@@ -994,8 +949,11 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             </PopoverContent>
           </Popover>
       </div>
-      </div>{/* end scrollable */}
-
+      </>)}
+    </>
+  );
+  const dialogs = (
+    <>
       {/* ─── Quick Action Dialogs ──────────────────────── */}
 
       {/* Contract picker — shown for ANY multi-contract action so staff never hit the wrong device */}
@@ -1300,6 +1258,107 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         </DialogContent>
       </Dialog>
 
+    </>
+  );
+
+  if (bare) {
+    return (
+      <>
+        {blocks}
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    <div className="w-80 shrink-0 border-l border-border flex flex-col h-full">
+      {/* ─── 1. Customer Profile (sticky) ──────────────── */}
+      <div className="p-4 border-b border-border shrink-0 bg-card">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
+            {customer?.avatarUrl || customer?.lineAvatarUrl ? (
+              <img
+                src={customer.avatarUrl || customer.lineAvatarUrl}
+                alt={customer?.name ?? ''}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-muted-foreground text-lg font-bold">{(customer?.name ?? '?')[0]}</span>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-sm text-foreground truncate">{customer?.name}</h3>
+            {customer?.phone && (
+              <button
+                type="button"
+                onClick={handleCall}
+                disabled={originateCall.isPending || callStatus === 'calling'}
+                className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1 transition-colors disabled:opacity-60"
+                title="คลิกเพื่อโทรออกผ่าน Yeastar"
+              >
+                <Phone className="w-3 h-3" />
+                {customer.phone}
+              </button>
+            )}
+          </div>
+          {(() => {
+            const riskCfg = getStatusBadgeProps(riskLevel, riskLevelMap);
+            return (
+              <Badge variant={riskCfg.variant} appearance={riskCfg.appearance} className="text-[10px] px-1.5 py-0.5">
+                {riskLevel === 'HIGH' ? 'เสี่ยงสูง' : riskLevel === 'MEDIUM' ? 'เฝ้าระวัง' : 'ปกติ'}
+              </Badge>
+            );
+          })()}
+        </div>
+
+        {customer?.email && (
+          <p className="text-[11px] text-muted-foreground ml-14">{customer.email}</p>
+        )}
+
+        {/* Overdue alert */}
+        {summary && summary.overdueCount > 0 && (
+          <div className="mt-2 p-2 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+            <div className="text-xs">
+              <span className="font-semibold text-destructive">ค้าง {summary.overdueCount} งวด</span>
+              <span className="text-destructive ml-1">
+                ({Number(summary.totalOutstanding).toLocaleString()} บ.)
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Quick-action row — promoted call + pay buttons */}
+        {summary?.activeContracts?.length > 0 && (
+          <div className="flex gap-2 mt-3">
+            <button
+              type="button"
+              onClick={handleCall}
+              disabled={originateCall.isPending || callStatus === 'calling'}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              {originateCall.isPending || callStatus === 'calling' ? 'กำลังโทร...' : 'โทร'}
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerContractAction('send-link')}
+              disabled={sendPaymentFlex.isPending}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              {sendPaymentFlex.isPending ? 'กำลังส่ง...' : 'ส่งลิงก์ชำระ'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Scrollable content ──────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        {blocks}
+      </div>{/* end scrollable */}
+
+      {dialogs}
     </div>
   );
 }

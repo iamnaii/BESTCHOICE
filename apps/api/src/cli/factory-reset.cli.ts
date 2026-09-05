@@ -49,6 +49,11 @@ import {
   PRODUCT_STATUS_REPORT_ONLY,
   IRREPLACEABLE_IF_NONEMPTY,
 } from './factory-reset-tables';
+import {
+  assertNoRealStock,
+  countRealStock,
+  RealStockPresentError,
+} from './stock-go-live/real-stock-guard';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -214,6 +219,17 @@ async function main(): Promise<void> {
       console.error('ต้องตัดสินใจก่อนว่าจะเก็บหรือทิ้ง — ทางเลือก:');
       console.error('  ก) ย้ายเข้า KEEP_TABLES ใน factory-reset-tables.ts (FK closure รองรับแล้ว)');
       console.error('  ข) ยืนยันว่าทิ้งได้ด้วย ACK_IRREPLACEABLE=<ชื่อตาราง,คั่นด้วยจุลภาค>');
+      await prisma.$disconnect();
+      process.exit(1);
+    }
+
+    // ── ด่าน 5: มีข้อมูลคลังของจริงไหม (spec 2026-09-05 §6) ────────────────────
+    // ทำงานทั้ง DRY_RUN / REHEARSE / รันจริง — ผู้รันต้องเห็นตั้งแต่ตอนดูแผน
+    try {
+      assertNoRealStock(await countRealStock(prisma));
+    } catch (err) {
+      if (!(err instanceof RealStockPresentError)) throw err;
+      console.error(`ERROR: ${err.message}`);
       await prisma.$disconnect();
       process.exit(1);
     }

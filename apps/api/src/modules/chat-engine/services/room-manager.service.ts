@@ -42,6 +42,13 @@ export class RoomManagerService {
    */
   private static readonly ADAPTER_MEDIA_TTL_SEC = 6 * 24 * 3600; // 518400
 
+  /**
+   * หน้าต่างของ "ข้อความทักทายอัตโนมัติของเพจ" — greeting ยิงกลับแทบจะทันทีที่ลูกค้า
+   * ทักครั้งแรก (หลักวินาที) 60 วิ จึงกว้างพอรับความหน่วงของ webhook แต่แคบพอที่
+   * คำตอบของคนจริงแทบไม่มีทางตกอยู่ในนั้น — ดู shouldSkipFirstOutboundClear
+   */
+  private static readonly FIRST_OUTBOUND_GREETING_WINDOW_MS = 60_000;
+
   constructor(
     private prisma: PrismaService,
     private storageService: StorageService,
@@ -327,6 +334,54 @@ export class RoomManagerService {
     return this.prisma.chatMessage.findFirst({
       where: { roomId, clientMessageId },
     });
+  }
+
+  /**
+   * echo ใบนี้ "หน้าตาเหมือนข้อความทักทายอัตโนมัติของเพจ" หรือไม่ — ถ้าใช่ ห้ามล้าง waitingSince
+   *
+   * ที่มา: `facebook-webhook.controller.ts` stamp role STAFF ให้ echo ทุกใบที่ไม่ได้มาจาก
+   * `FACEBOOK_APP_ID` ของเราเอง ซึ่งรวม **ข้อความทักทายอัตโนมัติของเพจ** ที่ยิงทุกครั้งที่
+   * ลูกค้าทักครั้งแรก (บั๊กจริง 2026-08-21: greeting ตัวเดียวกันนี้ปิด AI ไป 633 ห้อง)
+   * ⇒ ถ้าปล่อยให้ล้าง ลูกค้าใหม่จะหลุดจากแท็บ "รอตอบ" ทั้งที่ยังไม่มีคนตอบ = อาการที่ฟีเจอร์นี้
+   * ถูกสร้างมาเพื่อป้องกันพอดี
+   *
+   * เงื่อนไขต้องครบทั้งสอง (= รูปร่างเฉพาะตัวของ greeting: ใบแรกสุด + ทันที):
+   *   1. หลังบันทึก echo ใบนี้แล้ว ห้องมีข้อความ STAFF+BOT รวมกัน **หนึ่งใบพอดี** (คือใบนี้)
+   *   2. มาถึงภายใน 60 วินาทีนับจาก `waitingSince` ของห้อง
+   * คำตอบของคนจริงจะโดนด่านนี้ก็ต่อเมื่อตอบภายในหนึ่งนาทีหลังข้อความแรกสุดของลูกค้า
+   * **และไม่เคยมีคำตอบใบถัดไปอีกเลย** — ผลคือห้องยังค้างในคิวเฉย ๆ ซึ่งเป็นทิศที่ปลอดภัย
+   *
+   * ด่านนี้ถอดออกได้เมื่อเจ้าของปิดข้อความทักทายอัตโนมัติของเพจ (ดูคำถามค้างในสเปก §10)
+   */
+  async shouldSkipFirstOutboundClear(
+    roomId: string,
+    outboundMessageId: string,
+  ): Promise<boolean> {
+    const [room, outbound, outboundCount] = await Promise.all([
+      this.prisma.chatRoom.findUnique({
+        where: { id: roomId },
+        select: { waitingSince: true },
+      }),
+      this.prisma.chatMessage.findUnique({
+        where: { id: outboundMessageId },
+        select: { createdAt: true },
+      }),
+      this.prisma.chatMessage.count({
+        where: {
+          roomId,
+          deletedAt: null,
+          role: { in: [MessageRole.STAFF, MessageRole.BOT] },
+        },
+      }),
+    ]);
+
+    // ไม่มีใครรออยู่ / อ่านแถวไม่ได้ → ไม่ต้องกัน (clearWaiting เป็น no-op อยู่แล้ว)
+    if (!room?.waitingSince || !outbound) return false;
+    // ห้องเคยมีคำตอบใบอื่นมาก่อน → ไม่ใช่ greeting ใบแรก
+    if (outboundCount !== 1) return false;
+
+    const elapsedMs = outbound.createdAt.getTime() - room.waitingSince.getTime();
+    return elapsedMs <= RoomManagerService.FIRST_OUTBOUND_GREETING_WINDOW_MS;
   }
 
   /**

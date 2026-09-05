@@ -673,8 +673,9 @@ export class MessageRouterService {
         }
       })();
     }
+    let saved: { id: string } | undefined;
     try {
-      await this.roomManager.saveMessage({
+      saved = await this.roomManager.saveMessage({
         roomId: room.id,
         externalMessageId: params.externalMessageId,
         role: params.role,
@@ -695,9 +696,15 @@ export class MessageRouterService {
 
     // echo STAFF = Facebook ยืนยันว่าข้อความจากคนถึงลูกค้าแล้ว → ล้าง "รอตอบ" (สเปก §4.3)
     // BOT (เช่น greeting อัตโนมัติของเพจ) ไม่ล้าง — ลูกค้ายังรอคน (สเปก §3)
+    // ข้อยกเว้น: echo ที่หน้าตาเป็น "ข้อความทักทายอัตโนมัติของเพจ" (ใบแรกของห้อง +
+    // มาภายใน 60 วิ) ก็ถูก stamp เป็น STAFF เหมือนกัน — ห้ามล้าง ไม่งั้นลูกค้าใหม่
+    // หลุดคิวโดยไม่มีใครตอบ (ดู RoomManagerService.shouldSkipFirstOutboundClear)
     // `?.` เพราะ spec หลายตัว mock roomManager บางส่วน
     if (params.role === MessageRole.STAFF) {
-      await this.roomManager.clearWaiting?.(room.id);
+      const skip = saved?.id
+        ? await this.roomManager.shouldSkipFirstOutboundClear?.(room.id, saved.id)
+        : false;
+      if (!skip) await this.roomManager.clearWaiting?.(room.id);
     }
 
     this.gateway?.emitNewMessage(room.id, {

@@ -4,7 +4,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 import { JournalAutoService } from '../../journal/journal-auto.service';
-import { IntercoAgingService } from '../interco-aging.service';
+import { IntercoAgingService, negativeTypedFields } from '../interco-aging.service';
 
 /**
  * IntercoAgingService — รายงานอายุลูกหนี้ 11-2107 / S21-1104 (Phase 4 Task 1)
@@ -279,6 +279,42 @@ async function seedShopCollect(id: string, amount: string) {
     lines: [
       { accountCode: '11-2107', dr: dec(amount), cr: zero },
       { accountCode: '21-1103', dr: zero, cr: dec(amount) }, // ขาคู่ synthetic
+    ],
+  });
+}
+
+/** ขาคู่ SHOP ของ JP5 หน้าร้านรับแทน (2026-09-05) — Dr S11-2002 / Cr S21-1104 [SHOP_COLLECT] */
+async function seedShopIntake(id: string, amount: string) {
+  await journalAuto.createAndPost({
+    description: 'JP5 shop intake synthetic (aging)',
+    companyId: shopId,
+    metadata: {
+      flow: 'shop-repossession-intake',
+      idempotencyKey: `agtsi:${id}`,
+      contractId: id,
+      shopReceivableType: 'SHOP_COLLECT',
+    },
+    lines: [
+      { accountCode: 'S11-2002', dr: dec(amount), cr: zero },
+      { accountCode: 'S21-1104', dr: zero, cr: dec(amount) },
+    ],
+  });
+}
+
+/** ขาคู่ SHOP ของใบรับโอนหน้าร้าน (2026-09-05) — Dr S21-1104 / Cr S11-1202 [SHOP_COLLECT] */
+async function seedShopSettleLeg(id: string, amount: string) {
+  await journalAuto.createAndPost({
+    description: 'shop-collect settle SHOP leg synthetic (aging)',
+    companyId: shopId,
+    metadata: {
+      flow: 'shop-collect-settlement-shop',
+      idempotencyKey: `agtssl:${id}`,
+      contractId: id,
+      shopReceivableType: 'SHOP_COLLECT',
+    },
+    lines: [
+      { accountCode: 'S21-1104', dr: dec(amount), cr: zero },
+      { accountCode: 'S11-1202', dr: zero, cr: dec(amount) },
     ],
   });
 }
@@ -620,7 +656,9 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
     expect(row.payoutRecallGross.toFixed(2)).toBe('0.00');
     expect(row.intercoNet.toFixed(2)).toBe('0.00');
     expect(row.shopMirrorNet.toFixed(2)).toBe('0.00');
-    // SHOP_COLLECT เป็น FINANCE-side-only โดยสถาปัตยกรรม — ไม่นับ mismatch
+    // ต้นทาง JP4 ยังไม่มีขาคู่ SHOP → shopMirrorCollectGross = 0 และไม่นับ mismatch
+    // (ขาคู่ของต้นทาง JP5 ตั้งแต่ 2026-09-05 มีเทส 'JP5-origin' แยกด้านล่าง)
+    expect(row.shopMirrorCollectGross.toFixed(2)).toBe('0.00');
     expect(row.bookMismatch).toBe(false);
 
     // อายุแยกกลุ่ม: shop-collect มีวันที่, กลุ่ม interco เป็น null
@@ -1020,6 +1058,44 @@ describe('IntercoAgingService — รายงานอายุลูกหน�
 
   // ต้องเป็นเทสต์ท้ายสุดของไฟล์ — seed ข้างในเทสต์ (ต้องวัด before/after ระดับ
   // บัญชี ซึ่ง beforeAll ทำไม่ได้) และทิ้ง drift ค้างไว้ตลอดที่เหลือของ run
+  it('JP5-origin (2026-09-05): ขาคู่ SHOP ของ SHOP_COLLECT → shopMirrorCollectGross สะท้อน S21-1104 แยกจาก shopMirrorNet/bookMismatch, drift สองบัญชีไม่ขยับทั้งก่อนและหลังรับโอน', async () => {
+    const driftOf = async () => {
+      const all = await agingService.getTypedAccountDrift();
+      return Object.fromEntries(all.map((d) => [d.accountCode, d.drift.toFixed(2)]));
+    };
+    const before = await driftOf();
+
+    const id = await seedBaseContract(31);
+    await seedShopCollect(id, '7000'); // FINANCE: JP5 หน้าร้านรับแทน → Dr 11-2107
+    await seedShopIntake(id, '7000'); // SHOP: Dr S11-2002 / Cr S21-1104
+
+    const row = (await agingService.getShopReceivableAging()).rows.find((r) => r.contractId === id)!;
+    expect(row).toBeDefined();
+    expect(row.shopCollect.toFixed(2)).toBe('7000.00');
+    expect(row.shopMirrorCollectGross.toFixed(2)).toBe('7000.00');
+    // ไม่ปนกลุ่ม interco: กระจก SHOP ของ swap/recall ยังเป็น 0 และสองสมุดไม่ mismatch
+    expect(row.shopMirrorGross.toFixed(2)).toBe('0.00');
+    expect(row.shopMirrorNet.toFixed(2)).toBe('0.00');
+    expect(row.intercoNet.toFixed(2)).toBe('0.00');
+    expect(row.bookMismatch).toBe(false);
+    expect(row.legacyOneBook).toBe(false);
+    expect(negativeTypedFields(row)).toEqual([]);
+    // บรรทัดใหม่ classify ได้ทั้งสองบัญชี ⇒ drift ระดับบัญชีต้องไม่ขยับ
+    // (ไม่งั้น reconcile รายเดือนยิง ACCOUNT_DRIFT บน S21-1104 ตั้งแต่การยึดครั้งแรก)
+    const afterIntake = await driftOf();
+    expect(afterIntake['11-2107']).toBe(before['11-2107']);
+    expect(afterIntake['S21-1104']).toBe(before['S21-1104']);
+
+    await seedShopCollectSettle(id, '7000'); // FINANCE: Dr 11-1201 / Cr 11-2107
+    await seedShopSettleLeg(id, '7000'); // SHOP: Dr S21-1104 / Cr S11-1202
+    expect(
+      (await agingService.getShopReceivableAging()).rows.find((r) => r.contractId === id),
+    ).toBeUndefined();
+    const afterSettle = await driftOf();
+    expect(afterSettle['11-2107']).toBe(before['11-2107']);
+    expect(afterSettle['S21-1104']).toBe(before['S21-1104']);
+  });
+
   it('carry ข: mirror ของ swap ยุค legacy ที่ไม่มี stamp → เลนส์เห็นค้าง แต่บัญชีจริง 0 (จับได้ที่ drift เท่านั้น)', async () => {
     const before = (await agingService.getTypedAccountDrift()).find(
       (d) => d.accountCode === '11-2107',

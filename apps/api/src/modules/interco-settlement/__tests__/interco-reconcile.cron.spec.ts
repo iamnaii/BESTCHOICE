@@ -54,6 +54,7 @@ function makeRow(partial: Partial<ShopReceivableAgingRow>): ShopReceivableAgingR
     shopMirrorGross: D(0),
   shopMirrorSwapGross: D(0),
   shopMirrorRecallGross: D(0),
+  shopMirrorCollectGross: D(0),
     shopMirrorNet: D(0),
     intercoOldestPostedAt: null,
     intercoAgeDays: null,

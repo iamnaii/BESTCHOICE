@@ -147,6 +147,8 @@ describe('ContractWorkflowService', () => {
         count: jest.fn().mockResolvedValue(1),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      // closeRepossessionOnSale (2026-09-05) — เครื่องยึดที่ขายผ่อนใหม่ปิดรายการยึดใน tx เดียวกัน
+      repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         // Phase 5 Task 2: activate() ใช้ findFirst (+ deletedAt: null) แทน findUnique
@@ -250,6 +252,21 @@ describe('ContractWorkflowService', () => {
       expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith(
         'contract-1',
         expect.anything(), // tx client
+      );
+    });
+
+    it('closes an open Repossession row for the device (resale on a new installment — 2026-09-05)', async () => {
+      await service.activate('contract-1');
+
+      expect(prisma.repossession.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.repossession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            deletedAt: null,
+            status: { in: ['REPOSSESSED', 'UNDER_REPAIR', 'READY_FOR_SALE'] },
+          }),
+          data: expect.objectContaining({ status: 'SOLD', soldContractId: 'contract-1' }),
+        }),
       );
     });
 

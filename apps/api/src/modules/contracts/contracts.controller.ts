@@ -6,6 +6,7 @@ import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
 import { ContractDocumentService } from './contract-document.service';
 import { ContractSnapshotService } from './contract-snapshot.service';
+import { ContractJournalQueryService } from '../journal/contract-journal-query.service';
 import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto, RequestCancellationDto, RejectCancellationDto, ShopCollectSettlementDto } from './dto/contract.dto';
 import { PdpaConsentDto } from './dto/pdpa-consent.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -26,6 +27,7 @@ export class ContractsController {
     private paymentService: ContractPaymentService,
     private documentService: ContractDocumentService,
     private snapshotService: ContractSnapshotService,
+    private contractJournalQuery: ContractJournalQueryService,
   ) {}
 
   @Get()
@@ -211,6 +213,21 @@ export class ContractsController {
     @CurrentUser() user: { id: string },
   ) {
     return this.paymentService.shopCollectSettlement(id, user.id, dto);
+  }
+
+  /**
+   * บันทึกบัญชีของสัญญา — JE ทุกใบ (ทั้งสมุด FINANCE/SHOP, ทุก flow) ที่ stamp
+   * metadata.contractId + ใบกลับรายการที่ชี้กลับมา. Roles + branch scope เหมือน
+   * GET :id (ข้ามสาขา = 404 ใน service). Spec 2026-09-05 contract-journal-view.
+   */
+  @Get(':id/journal-entries')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'ดูบันทึกบัญชี (JE) ทุกใบของสัญญา ทั้งสมุด FINANCE และ SHOP' })
+  listJournalEntries(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    return this.contractJournalQuery.listForContract(id, user);
   }
 
   // === VALIDATION: ตรวจสอบความครบถ้วนของสัญญา ===

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FocusScope } from '@radix-ui/react-focus-scope';
 import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -53,10 +53,21 @@ interface RepoPreview {
     unpaidLateFees: number;
     closingAmount: number;
     marketValue: number;
+    /** ที่มาของราคากลางที่ใช้คำนวณ — null = ยังไม่ได้กรอกทั้งราคากลางและราคาประเมิน (ยังคำนวณไม่ได้) */
+    marketValueSource: 'MARKET' | 'APPRAISAL' | null;
     customerRefundEnabled: boolean;
     customerRefund: number;
     profitLoss: number;
   };
+  /** ยึดได้ไหม ณ ตอนนี้ (สถานะสัญญา + strict mode) — กติกาเดียวกับตอนบันทึกจริง */
+  eligibility?: { canRepossess: boolean; reason: string | null } | null;
+  /** ราคากลางแนะนำจากตารางรับซื้อมือสอง (ยี่ห้อ+รุ่น+ความจุ+เกรดที่เลือก) */
+  valuation?: {
+    grade: string;
+    found: boolean;
+    suggestedPrice: number | null;
+    note: string | null;
+  } | null;
   /** Dry-run JP5 JE — same buildJe as the posting path (null เมื่อ preview ล้มเหลว/ไม่มีงวดค้าง) */
   journalPreview?: {
     lines: {
@@ -123,9 +134,11 @@ export function RepossessionOverlay({
   const [conditionGrade, setConditionGrade] = useState('A');
   const [appraisalPrice, setAppraisalPrice] = useState('');
   const [repairCost, setRepairCost] = useState('0');
-  const [marketValue, setMarketValue] = useState('');
+  // ราคาเดียว (คำตัดสินเจ้าของ 2026-09-05): ราคาประเมิน = ราคาที่หน้าร้านรับเครื่อง = ยอดที่ลงบัญชี
+  // ตารางรับซื้อเป็นค่าตั้งต้น + ตัวเทียบ. autoPrice แยก "ค่าที่ระบบเติม" ออกจาก "พนักงานพิมพ์เอง":
+  // เปลี่ยนเกรดแล้วค่าตั้งต้นถูกสลับให้ แต่ค่าที่พิมพ์เองไม่ถูกทับ
+  const [autoPrice, setAutoPrice] = useState<string | null>(null);
   const [discountPct, setDiscountPct] = useState('50');
-  const [customerRefundEnabled, setCustomerRefundEnabled] = useState(false);
   // Owner rule 2026-07-08: direct FINANCE receipt = ธนาคารกสิกร (11-1201) only;
   // เครื่อง/เงินที่อยู่หน้าร้านใช้ collectedByShop → Dr 11-2107 (เหมือนปิดยอด).
   const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
@@ -147,23 +160,21 @@ export function RepossessionOverlay({
     queryKey: [
       'repossession-preview',
       contractId,
-      marketValue,
+      conditionGrade,
       appraisalPrice,
       discountPct,
-      customerRefundEnabled,
       depositAccountCode,
       collectedByShop,
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (marketValue) params.set('marketValue', marketValue);
-      // ราคากลางเว้นว่าง → ให้ backend ใช้ราคาประเมินตาม placeholder
       if (appraisalPrice) params.set('appraisalPrice', appraisalPrice);
       if (discountPct) params.set('discountPct', discountPct);
-      params.set('customerRefundEnabled', String(customerRefundEnabled));
       // JOURNAL AUTO dry-run — mirror ตอน create: collectedByShop → Dr 11-2107
       params.set('depositAccountCode', depositAccountCode);
       params.set('collectedByShop', String(collectedByShop));
+      // เกรด → backend ค้นตารางรับซื้อมือสองให้เป็นราคากลางแนะนำ
+      params.set('conditionGrade', conditionGrade);
       const { data } = await api.get(`/repossessions/preview/${contractId}?${params.toString()}`);
       return data;
     },
@@ -172,6 +183,37 @@ export function RepossessionOverlay({
 
   // ผลทางบัญชี (ledger) — คู่กับ calculation.profitLoss เชิงบริหาร (คำสั่งเจ้าของ 2026-08-08 ข้อ 1)
   const ledgerPl = useMemo(() => computeLedgerPl(preview?.journalPreview), [preview]);
+
+  // ราคาตารางรับซื้อ (เกรดที่เลือก) → เติมราคาประเมินเป็นค่าตั้งต้นเฉพาะเมื่อช่องว่างหรือยังเป็น
+  // ค่าที่ระบบเติมไว้ก่อนหน้า; เปลี่ยนเกรดแล้วไม่พบ → ล้างค่าที่ระบบเติม (ค่าที่พิมพ์เองคงไว้)
+  const valuation = preview?.valuation;
+  useEffect(() => {
+    if (!valuation || valuation.grade !== conditionGrade) return;
+    if (valuation.found && valuation.suggestedPrice != null) {
+      const s = String(valuation.suggestedPrice);
+      if (s === autoPrice) return;
+      setAppraisalPrice((cur) => (cur === '' || cur === autoPrice ? s : cur));
+      setAutoPrice(s);
+    } else if (autoPrice !== null) {
+      setAppraisalPrice((cur) => (cur === autoPrice ? '' : cur));
+      setAutoPrice(null);
+    }
+  }, [valuation, conditionGrade, autoPrice]);
+
+  // ด่านตารางรับซื้อ (ตัวเลขชุดเดียวกับหน้ารับซื้อ ±15%): ต่างเกิน → ต้องระบุเหตุผลในหมายเหตุ
+  // server บังคับซ้ำใน create() — ที่นี่แค่บอกล่วงหน้าและกันกดยืนยันโดยยังไม่มีเหตุผล
+  const tablePrice =
+    valuation?.found && valuation.grade === conditionGrade ? valuation.suggestedPrice : null;
+  const appraisalForDeviation = Number(appraisalPrice);
+  const deviationPct =
+    tablePrice && tablePrice > 0 && appraisalForDeviation > 0
+      ? ((appraisalForDeviation - tablePrice) / tablePrice) * 100
+      : null;
+  const needsReason = deviationPct !== null && Math.abs(deviationPct) > 15;
+  const reasonMissing = needsReason && notes.trim().length === 0;
+  const blockedByEligibility = preview?.eligibility?.canRepossess === false;
+  const deviationLabel =
+    deviationPct === null ? '' : `${deviationPct > 0 ? '+' : ''}${deviationPct.toFixed(0)}%`;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -182,9 +224,7 @@ export function RepossessionOverlay({
         appraisalPrice: Number(appraisalPrice),
         repairCost: repairCost ? Number(repairCost) : 0,
         notes: notes || undefined,
-        marketValue: marketValue ? Number(marketValue) : undefined,
         discountPct: discountPct ? Number(discountPct) : 50,
-        customerRefundEnabled,
         depositAccountCode: collectedByShop ? undefined : depositAccountCode,
         collectedByShop,
         // Cleared input = '' → omit so the server defaults to today (an empty
@@ -235,8 +275,18 @@ export function RepossessionOverlay({
       repossessedDate.length > 0 &&
       !!conditionGrade &&
       appraisalNum > 0 &&
+      !reasonMissing &&
+      !blockedByEligibility &&
       !mutation.isPending,
-    [canCreate, repossessedDate, conditionGrade, appraisalNum, mutation.isPending],
+    [
+      canCreate,
+      repossessedDate,
+      conditionGrade,
+      appraisalNum,
+      reasonMissing,
+      blockedByEligibility,
+      mutation.isPending,
+    ],
   );
 
   const inputClass =
@@ -302,6 +352,17 @@ export function RepossessionOverlay({
           </div>
         </Section>
 
+        {/* ยึดไม่ได้ (strict mode / สถานะสัญญา) — บอกตั้งแต่เปิด ไม่รอชน 400 ตอนยืนยัน (2026-09-05) */}
+        {blockedByEligibility && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning leading-snug"
+          >
+            <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+            <span>{preview?.eligibility?.reason}</span>
+          </div>
+        )}
+
         {/* Section 2: สภาพเครื่อง + ราคาประเมิน */}
         <Section
           icon={<Gauge className="size-4" />}
@@ -359,6 +420,28 @@ export function RepossessionOverlay({
                   className={`${inputClass} text-right font-mono`}
                   placeholder="0.00"
                 />
+                {valuation && valuation.grade === conditionGrade && (
+                  <p
+                    className={`mt-1 text-[11px] leading-snug ${
+                      reasonMissing
+                        ? 'text-destructive'
+                        : valuation.found
+                          ? 'text-muted-foreground'
+                          : 'text-warning'
+                    }`}
+                  >
+                    {!valuation.found
+                      ? `ไม่มีรุ่นนี้ในตารางรับซื้อ (เกรด ${valuation.grade}) ตีราคาเอง`
+                      : reasonMissing
+                        ? `ต่างจากตารางรับซื้อ ${deviationLabel} (เกิน 15%) — ต้องระบุเหตุผลในหมายเหตุก่อนยืนยัน`
+                        : `ตารางรับซื้อ เกรด ${valuation.grade}: ${formatNumberDecimal(valuation.suggestedPrice ?? 0, 2)} ฿` +
+                          (appraisalPrice === autoPrice
+                            ? ' (ค่าตั้งต้น ปรับตามสภาพจริงได้)'
+                            : deviationLabel
+                              ? ` · ต่างจากตาราง ${deviationLabel}`
+                              : '')}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">
@@ -382,24 +465,10 @@ export function RepossessionOverlay({
         <Section
           icon={<Calculator className="size-4" />}
           title="คำนวณกำไร/ขาดทุน (FINANCE)"
-          subtitle="ราคากลาง, ส่วนลด, เงินคืนลูกค้า"
+          subtitle="ส่วนลดยอดปิด — ราคาประเมิน − ยอดปิดสัญญา"
         >
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">
-                  ราคากลางเครื่อง (฿)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={marketValue}
-                  onChange={(e) => setMarketValue(e.target.value)}
-                  className={`${inputClass} text-right font-mono`}
-                  placeholder="ใช้ราคาประเมินถ้าเว้นว่าง"
-                />
-              </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">
                   ส่วนลดยอดปิด (%)
@@ -415,21 +484,6 @@ export function RepossessionOverlay({
                 />
               </div>
             </div>
-            <label className="flex items-center gap-2 cursor-pointer px-3 py-2.5 rounded-lg bg-muted hover:bg-accent transition-colors">
-              <input
-                type="checkbox"
-                checked={customerRefundEnabled}
-                onChange={(e) => setCustomerRefundEnabled(e.target.checked)}
-                className="size-4 accent-primary cursor-pointer"
-              />
-              <span className="text-sm font-medium text-foreground leading-snug">
-                คืนเงินส่วนต่างให้ลูกค้า
-              </span>
-              <span className="text-xs text-muted-foreground ml-auto leading-snug">
-                (กรณีราคากลาง &gt; ยอดปิด)
-              </span>
-            </label>
-
             {/* Live breakdown */}
             {!canPreview ? (
               <div className="py-6 text-center text-sm leading-snug text-muted-foreground">
@@ -476,62 +530,64 @@ export function RepossessionOverlay({
                 </div>
                 <div className="border-t border-border pt-2 space-y-2">
                   <Row
-                    label="ราคากลางเครื่อง"
-                    value={`${preview.calculation.marketValue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
+                    label="ราคาประเมิน (หน้าร้านรับเครื่อง)"
+                    value={
+                      preview.calculation.marketValueSource === null
+                        ? '—'
+                        : `${preview.calculation.marketValue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`
+                    }
                   />
-                  {preview.calculation.customerRefundEnabled && (
-                    <Row
-                      label="เงินคืนลูกค้า"
-                      value={`- ${preview.calculation.customerRefund.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
-                      destructive
-                    />
-                  )}
                 </div>
-                <div
-                  className={`flex justify-between items-center mt-2 p-3 rounded-lg ${
-                    preview.calculation.profitLoss >= 0
-                      ? 'bg-success/10 ring-1 ring-success/30'
-                      : 'bg-destructive/10 ring-1 ring-destructive/30'
-                  }`}
-                >
-                  <div>
-                    <div
-                      className={`text-xs font-medium leading-snug ${preview.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
-                    >
-                      {preview.calculation.profitLoss >= 0 ? (
-                        <>
-                          <Check className="size-4 inline mr-1" />
-                          กำไร/ขาดทุนเชิงบริหาร
-                        </>
-                      ) : (
-                        <>
-                          <X className="size-4 inline mr-1" />
-                          กำไร/ขาดทุนเชิงบริหาร
-                        </>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground leading-snug">
-                      ราคากลาง − ยอดปิดสัญญา − เงินคืน
-                    </div>
+                {preview.calculation.marketValueSource === null ? (
+                  <div className="mt-2 p-3 rounded-lg bg-muted text-xs text-muted-foreground leading-snug">
+                    กรอกราคาประเมินก่อน จึงจะคำนวณกำไร/ขาดทุนเชิงบริหารได้
                   </div>
+                ) : (
                   <div
-                    className={`text-xl font-bold ${preview.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
+                    className={`flex justify-between items-center mt-2 p-3 rounded-lg ${
+                      preview.calculation.profitLoss >= 0
+                        ? 'bg-success/10 ring-1 ring-success/30'
+                        : 'bg-destructive/10 ring-1 ring-destructive/30'
+                    }`}
                   >
-                    {preview.calculation.profitLoss >= 0 ? '+' : ''}
-                    {preview.calculation.profitLoss.toLocaleString('th-TH', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}{' '}
-                    ฿
+                    <div>
+                      <div
+                        className={`text-xs font-medium leading-snug ${preview.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
+                      >
+                        {preview.calculation.profitLoss >= 0 ? (
+                          <>
+                            <Check className="size-4 inline mr-1" />
+                            กำไร/ขาดทุนเชิงบริหาร
+                          </>
+                        ) : (
+                          <>
+                            <X className="size-4 inline mr-1" />
+                            กำไร/ขาดทุนเชิงบริหาร
+                          </>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground leading-snug">
+                        ราคาประเมิน − ยอดปิดสัญญา
+                      </div>
+                    </div>
+                    <div
+                      className={`text-xl font-bold ${preview.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
+                    >
+                      {preview.calculation.profitLoss >= 0 ? '+' : ''}
+                      {preview.calculation.profitLoss.toLocaleString('th-TH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{' '}
+                      ฿
+                    </div>
                   </div>
-                </div>
+                )}
                 {/* คำสั่งเจ้าของ 2026-08-08 (ข้อ 1): โชว์เลขบัญชีคู่กับเลขบริหาร — สองเลขต่างกันได้
                     (ส่วนลด/ราคากลาง อยู่เฉพาะมุมมองบริหาร; บัญชีรับรู้จากราคาตี + เงินคืน) */}
                 {preview.journalPreview && (
                   <div className="flex justify-between text-xs mt-2 px-3">
                     <span className="text-muted-foreground leading-snug">
-                      ผลทางบัญชี (ledger — จากราคาตี
-                      {preview.calculation.customerRefundEnabled ? ' หักเงินคืน' : ''})
+                      ผลทางบัญชี (ledger — จากราคาประเมิน)
                     </span>
                     <span className="font-medium text-foreground">
                       {ledgerPl >= 0 ? '+' : ''}

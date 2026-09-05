@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { roundBaht } from '../../../utils/installment.util';
 import { loadLateFeeConfig, resolveLivePaymentLateFee } from '../../../utils/late-fee.util';
+import { collectAccountCodes, toContractJeView } from '../../journal/contract-je-view.util';
 
 /**
  * Build a Prisma `dueDate` range filter from BKK-local YYYY-MM-DD bounds.
@@ -186,7 +187,7 @@ export class PaymentQueryService {
 
     // JournalLine.accountCode is a plain string (no CoA relation) — resolve
     // display names in one lookup, fallback to the code itself.
-    const codes = [...new Set(allEntries.flatMap((e) => e.lines.map((l) => l.accountCode)))];
+    const codes = collectAccountCodes(allEntries);
     const coaRows = codes.length
       ? await this.prisma.chartOfAccount.findMany({
           where: { code: { in: codes } },
@@ -195,50 +196,9 @@ export class PaymentQueryService {
       : [];
     const nameByCode = new Map(coaRows.map((r) => [r.code, r.name]));
 
-    return allEntries.map((e) => {
-      const meta = (e.metadata ?? {}) as Record<string, unknown>;
-      let totalDebit = new Prisma.Decimal(0);
-      let totalCredit = new Prisma.Decimal(0);
-      // JournalLine has no lineNo and its id is a random UUID, so DB order is
-      // arbitrary — present Dr lines before Cr (stable sort keeps each group's
-      // relative order), matching the Dr-then-Cr convention of every JE view.
-      const orderedLines = [...e.lines].sort(
-        (a, b) => (b.debit.gt(0) ? 1 : 0) - (a.debit.gt(0) ? 1 : 0),
-      );
-      const lines = orderedLines.map((l) => {
-        totalDebit = totalDebit.plus(l.debit);
-        totalCredit = totalCredit.plus(l.credit);
-        return {
-          accountCode: l.accountCode,
-          accountName: nameByCode.get(l.accountCode) ?? l.accountCode,
-          debit: l.debit.toFixed(2),
-          credit: l.credit.toFixed(2),
-          description: l.description ?? '',
-        };
-      });
-      return {
-        id: e.id,
-        entryNumber: e.entryNumber,
-        entryDate: e.entryDate,
-        postedAt: e.postedAt,
-        description: e.description,
-        paymentId: typeof meta.paymentId === 'string' ? meta.paymentId : null,
-        tag: typeof meta.tag === 'string' ? meta.tag : null,
-        flow: typeof meta.flow === 'string' ? meta.flow : null,
-        deltaApplied: typeof meta.deltaApplied === 'string' ? meta.deltaApplied : null,
-        lateFeePortion: typeof meta.lateFeePortion === 'string' ? meta.lateFeePortion : null,
-        // Receipt-void trail: originals get reversed=true + the mirror's number;
-        // reversal JEs point back via originalEntryId (CREDIT_NOTE row matching).
-        reversed: meta.reversed === true,
-        reversedByEntryNumber:
-          typeof meta.reversedByEntryNumber === 'string' ? meta.reversedByEntryNumber : null,
-        originalEntryId: typeof meta.originalEntryId === 'string' ? meta.originalEntryId : null,
-        lines,
-        totalDebit: totalDebit.toFixed(2),
-        totalCredit: totalCredit.toFixed(2),
-        isBalanced: totalDebit.toFixed(2) === totalCredit.toFixed(2),
-      };
-    });
+    // Shared mapper (journal/contract-je-view.util) — same shape as
+    // GET /contracts/:id/journal-entries so the web JeBlock renders both.
+    return allEntries.map((e) => toContractJeView(e, nameByCode));
   }
 
   // ─── Get all pending payments (for payment queue view) ─

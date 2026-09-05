@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { closeRepossessionOnSale } from '../../repossessions/repossession-resale.util';
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -201,6 +202,13 @@ export class SaleWriterService {
     await preemptReservationsInTx(tx, bundleProductIds);
   }
 
+  /**
+   * เครื่องยึดที่ขายผ่าน POS (คำตัดสินเจ้าของ 2026-09-05): ปิดรายการยึดเป็น "ขายแล้ว" ให้เอง
+   * พร้อมราคาขายจริง — การ์ดกำไร/ขาดทุนหน้ายึดนับเฉพาะ SOLD และหน้ายึดไม่ให้ตั้งด้วยมืออีก
+   * (เส้นทางเดิม "จัดการ→ขายแล้ว" ไม่ลง JE เลย). ไม่มีแถวยึด = no-op. void ใบขายเปิดกลับ
+   * เป็น READY_FOR_SALE (SaleVoidService).
+   */
+
   async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
@@ -237,6 +245,7 @@ export class SaleWriterService {
       });
       // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน
       await preemptReservationsInTx(tx, [dto.productId]);
+      await closeRepossessionOnSale(tx, { productId: dto.productId, resellPrice: dto.sellingPrice });
 
       // SHOP-side: post one cash-sale JE per product (bundle-aware). Sale has no
       // per-product price, so revenue is allocated proportionally by product cost.
@@ -542,6 +551,7 @@ export class SaleWriterService {
       });
       // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน
       await preemptReservationsInTx(tx, [dto.productId]);
+      await closeRepossessionOnSale(tx, { productId: dto.productId, resellPrice: dto.sellingPrice });
 
       // ── ลงบัญชีฝั่ง SHOP (C1 — คำวินิจฉัยผู้สอบ 2026-08-25 "แก้ไปข้างหน้า") ────
       // เดิมจุดนี้เป็นแค่ TODO ⇒ ส่งมอบเครื่องจริง รับดาวน์จริง ตั้งลูกหนี้จริง

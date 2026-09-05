@@ -14,6 +14,7 @@ import { Download, Send } from 'lucide-react';
 import { CashAccountSelect, CASH_ACCOUNT_CODES, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 import { RepossessionOverlay } from '@/pages/PaymentsPage/components/RepossessionOverlay';
+import ContractJournalDialog from '@/components/contract/ContractJournalDialog';
 
 /** สัญญาที่บอกเลิกแล้ว (TERMINATED) — รอยึดเครื่อง. Subset of a GET /contracts list row. */
 interface AwaitingRepossessionContract {
@@ -58,6 +59,8 @@ interface Repossession {
   /** เงินคืนส่วนต่างลูกค้า (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — ตั้งหนี้ 21-1107 ตอนยึด */
   customerRefundEnabled: boolean;
   customerRefund: string | null;
+  /** ยอด 11-2107 ลูกหนี้-หน้าร้าน (SHOP_COLLECT) ที่ยังค้างของสัญญานี้ — ปุ่ม "รับโอนหน้าร้าน" โชว์เฉพาะ > 0 */
+  shopCollectOutstanding: string;
   contract: {
     id: string;
     contractNumber: string;
@@ -87,6 +90,10 @@ export default function RepossessionsPage() {
   // รอยึดเครื่อง — TERMINATED contract chosen for the JP5 overlay (owner 2026-09-05:
   // these contracts left the รับชำระ queue, so this page is now the only doorway).
   const [repoTarget, setRepoTarget] = useState<AwaitingRepossessionContract | null>(null);
+  // "บัญชี" — บันทึกบัญชีของสัญญา (JE ทุกใบ ทั้งสมุด FINANCE/SHOP) ในหน้าเดิม
+  const [journalTarget, setJournalTarget] = useState<{ id: string; contractNumber: string } | null>(
+    null,
+  );
   const canOpenRepo = REPO_OPEN_ROLES.includes(user?.role ?? '');
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repossession | null>(null);
@@ -221,8 +228,8 @@ export default function RepossessionsPage() {
 
   const openSettlement = (repo: Repossession) => {
     setSettlementRepo(repo);
-    // Prefill with the parked repossession value (the JP5 Dr 11-2107 amount).
-    setSettlementAmount(String(Number(repo.appraisalPrice)));
+    // Prefill with the 11-2107 balance still parked for this contract (JP5 Dr, minus settlements).
+    setSettlementAmount(String(Number(repo.shopCollectOutstanding)));
     setSettlementAccountCode('11-1201');
     setSettlementRequestId(crypto.randomUUID());
   };
@@ -379,6 +386,16 @@ export default function RepossessionsPage() {
       label: '',
       render: (r: Repossession) => (
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setJournalTarget({ id: r.contract.id, contractNumber: r.contract.contractNumber })
+            }
+            title="บันทึกบัญชี (JE) ทุกใบของสัญญานี้ — JP5, ใบลดหนี้, จ่ายคืน, รับโอนหน้าร้าน"
+            className="text-muted-foreground hover:text-foreground text-sm font-medium"
+          >
+            บัญชี
+          </button>
           {canManage && (r.status === 'REPOSSESSED' || r.status === 'UNDER_REPAIR') && (
             <button
               onClick={() => {
@@ -398,7 +415,7 @@ export default function RepossessionsPage() {
               จัดการ
             </button>
           )}
-          {canSettle && (
+          {canSettle && Number(r.shopCollectOutstanding) > 0 && (
             <button
               onClick={() => openSettlement(r)}
               title="บันทึกรับโอนจากหน้าร้าน — ล้างลูกหนี้-หน้าร้าน (11-2107) กรณียึดคืนแบบตั้งลูกหนี้-หน้าร้าน"
@@ -508,16 +525,27 @@ export default function RepossessionsPage() {
                       <td className="px-4 py-2 text-right">
                         {Number(c.monthlyPayment).toLocaleString()} บาท
                       </td>
-                      <td className="px-4 py-2 text-right">
-                        {canOpenRepo && (
+                      <td className="px-4 py-2 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-3">
                           <button
                             type="button"
-                            onClick={() => setRepoTarget(c)}
-                            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                            onClick={() =>
+                              setJournalTarget({ id: c.id, contractNumber: c.contractNumber })
+                            }
+                            className="text-sm font-medium text-muted-foreground hover:text-foreground"
                           >
-                            ยึดเครื่อง
+                            บัญชี
                           </button>
-                        )}
+                          {canOpenRepo && (
+                            <button
+                              type="button"
+                              onClick={() => setRepoTarget(c)}
+                              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                            >
+                              ยึดเครื่อง
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -649,6 +677,13 @@ export default function RepossessionsPage() {
           }
         />
       )}
+
+      {/* บันทึกบัญชีของสัญญา — JE ทุกใบ (FINANCE + SHOP) */}
+      <ContractJournalDialog
+        contractId={journalTarget?.id ?? null}
+        contractNumber={journalTarget?.contractNumber}
+        onClose={() => setJournalTarget(null)}
+      />
 
       {/* Shop-collect settlement Modal — Dr KBank / Cr 11-2107 */}
       <Modal
@@ -915,8 +950,8 @@ export default function RepossessionsPage() {
                   <option value="READY_FOR_SALE">พร้อมขาย</option>
                 </>}
                 {selectedRepo.status === 'READY_FOR_SALE' && <>
+                  {/* "ขายแล้ว" ตั้งด้วยมือไม่ได้ — ขายผ่าน POS แล้วระบบปิดให้เอง (2026-09-05) */}
                   <option value="READY_FOR_SALE">พร้อมขาย</option>
-                  <option value="SOLD">ขายแล้ว</option>
                 </>}
                 {selectedRepo.status === 'SOLD' && <>
                   <option value="SOLD">ขายแล้ว</option>

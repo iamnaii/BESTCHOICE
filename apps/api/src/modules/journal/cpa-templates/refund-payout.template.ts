@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
+import { resolveContractLabel } from '../contract-label.util';
 
 export interface RefundPayoutInput {
   contractId: string;
@@ -215,11 +216,13 @@ export class RefundPayoutTemplate {
 
     const zero = new Decimal(0);
 
+    const contractLabel = await resolveContractLabel(client, contractId);
+
     // ── Post Dr 21-1107 / Cr depositAccountCode ───────────────────────────────
     try {
       const result = await this.journal.createAndPost(
         {
-          description: `จ่ายเงินคืนส่วนต่างลูกค้า — สัญญา ${contractId.slice(0, 8)} (ล้าง 21-1107)`,
+          description: `จ่ายเงินคืนส่วนต่างลูกค้า — สัญญา ${contractLabel} (ล้าง 21-1107)`,
           reference: input.requestId
             ? `${contractId}:refund-payout:${input.requestId}`
             : `${contractId}:refund-payout:${amountStr}`,

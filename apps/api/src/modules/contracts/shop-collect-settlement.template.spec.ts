@@ -72,6 +72,8 @@ describe('ShopCollectSettlementTemplate — P2002 race handling', () => {
       createAndPost: jest.fn(),
     };
     prismaMock = {
+      // resolveContractLabel (2026-09-05) reads the contract number for the JE description BEFORE createAndPost
+      contract: { findUnique: jest.fn().mockResolvedValue({ contractNumber: 'TEST-20260905-001' }) },
       journalEntry: {
         findFirst: jest.fn(),
       },

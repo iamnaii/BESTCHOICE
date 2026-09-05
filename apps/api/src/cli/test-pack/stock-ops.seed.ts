@@ -1,4 +1,5 @@
 import { TEST_DOC_PREFIX, TEST_NOTE_MARKER, testNote } from './_context';
+import { TEST_ALERT_MODEL, TEST_STOCK_COUNT_PREFIX } from '../../utils/test-data-markers';
 import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
 
@@ -8,8 +9,8 @@ import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from '
  * "ค่าตรงตัว" (equality) ไม่ใช่ prefix — ReorderPoint/StockAlert ที่สร้างมือด้วย model
  * ชื่ออื่นจะไม่ถูกกวาด
  */
-const COUNT_NO_PREFIX = `${TEST_DOC_PREFIX}COUNT-`;
-const ALERT_MODEL = `${TEST_DOC_PREFIX}รุ่นแจ้งเตือน`;
+const COUNT_NO_PREFIX = TEST_STOCK_COUNT_PREFIX;
+const ALERT_MODEL = TEST_ALERT_MODEL;
 
 /**
  * ไม่โพสต์ JE — seed สถานะไหนก็ได้

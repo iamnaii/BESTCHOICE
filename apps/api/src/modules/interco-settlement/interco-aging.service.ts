@@ -49,6 +49,12 @@ export interface ShopReceivableAgingRow {
   shopMirrorSwapGross: Prisma.Decimal;
   /** S21-1104 เฉพาะ PAYOUT_RECALL (Cr−Dr) — คู่กระจกของ `payoutRecallGross` (B2 2026-08-25) */
   shopMirrorRecallGross: Prisma.Decimal;
+  /**
+   * S21-1104 เฉพาะ SHOP_COLLECT (Cr−Dr) — คู่กระจกของ `shopCollect` (ขาคู่ SHOP ของการยึดเครื่อง
+   * 2026-09-05). แยกคอลัมน์เหมือนฝั่ง FINANCE — **ไม่รวม** ใน `shopMirrorGross`/`shopMirrorNet`/
+   * `bookMismatch` (กลุ่ม interco) เพราะเงินก้อนนี้ล้างผ่านใบ shop-collect ไม่ใช่รอบจ่าย.
+   */
+  shopMirrorCollectGross: Prisma.Decimal;
   /** S21-1104 (Cr−Dr, conditional key) − settledDeduction — กระจกฝั่ง SHOP ของ intercoNet */
   shopMirrorNet: Prisma.Decimal;
   /** MIN(posted_at) ของ JE ที่มีขา Dr บน 11-2107 typed (กลุ่ม interco) */
@@ -292,7 +298,7 @@ export function sortAgingRows(rows: ShopReceivableAgingRow[]): void {
 /** ฟิลด์ขั้นต่ำของ predicate ยอดติดลบ */
 export type NegativeCheckable = Pick<
   ShopReceivableAgingRow,
-  'intercoNet' | 'shopCollect' | 'shopMirrorNet' | 'legacyOneBook'
+  'intercoNet' | 'shopCollect' | 'shopMirrorNet' | 'shopMirrorCollectGross' | 'legacyOneBook'
 >;
 
 /**
@@ -336,6 +342,15 @@ export function negativeTypedFields(row: NegativeCheckable): NegativeTypedField[
   }
   if (row.shopCollect.lt(neg)) {
     out.push({ field: 'shopCollect', label: 'หน้าร้านรับเงินแทน (11-2107)', value: row.shopCollect });
+  }
+  // ขาคู่ SHOP ของ SHOP_COLLECT (S21-1104, 2026-09-05) — ด่านใน shopCollectSettlement กันล้างเกินผ่านแอป
+  // แต่ JV มือที่ stamp SHOP_COLLECT ยังทำให้ติดลบได้ ต้องเห็นที่ NEGATIVE_TYPED เหมือนช่องอื่น
+  if (row.shopMirrorCollectGross.lt(neg)) {
+    out.push({
+      field: 'shopMirrorCollectGross',
+      label: 'กระจกฝั่ง SHOP — หน้าร้านรับแทน (S21-1104)',
+      value: row.shopMirrorCollectGross,
+    });
   }
   return out;
 }
@@ -546,21 +561,26 @@ export class IntercoAgingService {
         mirror_gross: unknown;
         mirror_swap: unknown;
         mirror_recall: unknown;
+        mirror_collect: unknown;
       }>
     >(Prisma.sql`
       SELECT ${SHOP_KEY} AS contract_id,
-             COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS mirror_gross,
+             COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL')
+                          THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_gross,
              COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
                           THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_swap,
              COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'
-                          THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_recall
+                          THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_recall,
+             COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'SHOP_COLLECT'
+                          THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_collect
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
       WHERE jl.account_code = 'S21-1104'
         AND jl.deleted_at IS NULL
         AND je.status = 'POSTED'
         AND je.deleted_at IS NULL
-        AND je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL')
+        -- SHOP_COLLECT (2026-09-05): ขาคู่ SHOP ของการยึด — เก็บแยกคอลัมน์ ไม่เข้า mirror_gross
+        AND je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT')
         AND (${SHOP_KEY}) IS NOT NULL
       GROUP BY 1
     `);
@@ -573,11 +593,16 @@ export class IntercoAgingService {
     // ที่ผสมสองประเภทในใบเดียว **ไม่ stamp โดยตั้งใจ** จึงไม่เข้า WHERE ของคิวรีนี้อยู่แล้ว
     const shopSwapByContract = new Map<string, Prisma.Decimal>();
     const shopRecallByContract = new Map<string, Prisma.Decimal>();
+    const shopCollectMirrorByContract = new Map<string, Prisma.Decimal>();
     for (const row of shopRows) {
       if (!row.contract_id) continue;
       shopByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_gross ?? 0)));
       shopSwapByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_swap ?? 0)));
       shopRecallByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_recall ?? 0)));
+      shopCollectMirrorByContract.set(
+        row.contract_id,
+        new Prisma.Decimal(String(row.mirror_collect ?? 0)),
+      );
     }
 
     const financeByContract = new Map<
@@ -671,6 +696,7 @@ export class IntercoAgingService {
         shopMirrorGross: shopGross,
         shopMirrorSwapGross: shopSwapByContract.get(contractId) ?? zero,
         shopMirrorRecallGross: shopRecallByContract.get(contractId) ?? zero,
+        shopMirrorCollectGross: shopCollectMirrorByContract.get(contractId) ?? zero,
         shopMirrorNet,
         intercoOldestPostedAt,
         intercoAgeDays: ageDays(intercoOldestPostedAt),
@@ -880,7 +906,7 @@ export class IntercoAgingService {
       JOIN journal_entries je ON je.id = jl.journal_entry_id
       WHERE jl.account_code = 'S21-1104'
         AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
-        AND je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL')
+        AND je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT')
         AND (${SHOP_KEY}) IS NOT NULL
     `);
 

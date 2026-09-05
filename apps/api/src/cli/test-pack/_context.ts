@@ -1,12 +1,9 @@
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { SeedRefs } from './_types';
+import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, TEST_NOTE_MARKER } from '../../utils/test-data-markers';
 
-/** marker ของเอกสารที่เลขถูก DocNumberService คุม — อยู่ในฟิลด์ข้อความ ห้ามไปแตะเลข */
-export const TEST_NOTE_MARKER = '[ทดสอบระบบ]';
-/** marker ของทะเบียนหลัก — อยู่ที่ชื่อ */
-export const TEST_NAME_PREFIX = 'ทดสอบระบบ';
-/** marker ของเลขเอกสารที่ seeder สร้างเอง */
-export const TEST_DOC_PREFIX = 'TEST-';
+/** ค่าคงที่ marker ย้ายไป `src/utils/test-data-markers.ts` (แหล่งเดียวกับรั้ว/CLI ล้างคลัง) — re-export ให้ผู้เรียกเดิม */
+export { TEST_DOC_PREFIX, TEST_NAME_PREFIX, TEST_NOTE_MARKER };
 
 export const testNote = (what: string): string => `${TEST_NOTE_MARKER} ${what}`;
 export const testName = (what: string): string => `${TEST_NAME_PREFIX} ${what}`;

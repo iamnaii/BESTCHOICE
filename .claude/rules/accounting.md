@@ -91,7 +91,7 @@ Key codes referenced by JE templates:
 | 21-1101 | เจ้าหนี้-หน้าร้าน (ยอดจัด) |
 | 21-1102 | เจ้าหนี้ค่าคอม-หน้าร้าน |
 | 21-1103 | เงินรับล่วงหน้า (Advance from customer) |
-| 21-1107 | เจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (ตั้ง ณ วันยึดเมื่อราคากลาง > ยอดปิด — JP5; ล้างเมื่อจ่ายคืนผ่าน RefundPayoutTemplate) (prod: ต้องรัน seed:coa หลัง deploy — บัญชีใหม่ไม่ได้ seed อัตโนมัติใน pipeline) |
+| 21-1107 | เจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง — **ปิดใช้ 2026-09-05 (ไม่มีเงินคืนส่วนต่างอีกต่อไป — ดูหัวข้อ "ยึดเครื่อง — ราคาเดียว")** · เดิม: ตั้ง ณ วันยึดเมื่อราคากลาง > ยอดปิด (JP5) ล้างผ่าน RefundPayoutTemplate · บัญชีคงไว้ในผัง (prod ไม่มีแถวใช้) |
 | 21-2101 | ภาษีขาย ภ.พ.30 (VAT Output — settled) |
 | 21-2102 | ภาษีขายรอเรียกเก็บ (VAT Deferred Output) |
 | 21-2103 | VAT บังคับ-ลูกหนี้ค้าง 60 วัน |
@@ -127,9 +127,9 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 | `PaymentReceipt2BTemplate` | Payment received (single) | Dr cash / Cr 11-2101 + 11-2103 + 21-2101 cleared from 21-2102 |
 | `PaymentReceipt2BSplitTemplate` | Partial payment | As above with pro-rata split |
 | `EarlyPayoffJP4Template` | Early payoff | Includes Dr 52-1106 (discount) + reverse remaining 11-2106 |
-| `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; optional `input.customerRefund` → Cr 21-1107 (เงินคืนส่วนต่างลูกค้า, คำสั่งเจ้าของ 2026-08-08 ข้อ 2) pushed BEFORE the loss/gain plug is computed — the plug absorbs it automatically (gain shrinks/loss grows by exactly the refund, no separate formula). Paid out later via `RefundPayoutTemplate` |
-| `RefundPayoutTemplate` | Manual — `POST /repossessions/:id/refund-payment` | Dr 21-1107 / Cr depositAccountCode — clears the 21-1107 balance JP5 parked (mirrors `ShopCollectSettlementTemplate`'s outstanding/idempotency pattern, scoped to 21-1107 instead of 11-2107) |
-| `RefundWaiveTemplate` | Manual — `POST /repossessions/:id/refund-waive` | Dr 21-1107 / Cr 41-1102 — ล้างยอด 21-1107 คงเหลือทั้งหมด (ไม่มี amount input) เข้ารายได้จากการยึดสินค้า เมื่อเจ้าของตัดสินใจ "ไม่คืนเงิน" ส่วนต่าง (คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม) |
+| `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; `Dr <deposit>` = **ราคาประเมิน** (ราคาเดียว 2026-09-05). optional `input.customerRefund` → Cr 21-1107 ยังอยู่ใน template แต่ **caller ไม่ส่งอีกแล้ว** (`create()` ปฏิเสธ `customerRefundEnabled=true` — คำตัดสินเจ้าของ 2026-09-05 supersede 2026-08-08 ข้อ 2) |
+| `RefundPayoutTemplate` | Manual — `POST /repossessions/:id/refund-payment` — **legacy เท่านั้น (2026-09-05)**: ใช้ได้เฉพาะแถวยึดที่เคยติ๊กคืนเงินก่อนนโยบายใหม่ (prod ไม่มี) | Dr 21-1107 / Cr depositAccountCode — clears the 21-1107 balance JP5 parked |
+| `RefundWaiveTemplate` | Manual — `POST /repossessions/:id/refund-waive` — **legacy เท่านั้น (2026-09-05)** | Dr 21-1107 / Cr 41-1102 — ล้างยอด 21-1107 คงเหลือทั้งหมดเข้ารายได้จากการยึดสินค้า |
 | `RescheduleJP6Template` | Reschedule (6a/6b variants) | Reclassify overdue to 21-1103 advance |
 | `Vat60dayMandatoryTemplate` | Daily cron 02:00 BKK | Mandatory VAT on 60-day overdue installments |
 | `Vat60dayReversalTemplate` | Payment after 60-day flag | Reversal when overdue payment received |
@@ -138,6 +138,93 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 dead code, never had a production caller. Its intended trigger (clearing 21-1101/21-1102 on
 payment to SHOP) is now handled by the Inter-Co Settlement Batch flow — see "Inter-Co Settlement
 Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08-01)" below.
+
+---
+
+## ยึดเครื่อง — ราคาเดียว + ไม่มีเงินคืนส่วนต่าง (คำตัดสินเจ้าของ 2026-09-05)
+
+Spec: `docs/superpowers/specs/2026-09-05-repossession-single-price-design.md` · โค้ด:
+`repossessions.service.ts` (`previewCalculation` / `create`), `RepossessionOverlay.tsx`
+
+**คำตัดสิน (ปิดประเด็น — อย่าเสนอกลับ):**
+1. **ไม่มีเงินคืนส่วนต่างให้ลูกค้า** — ปพพ. ม.574 ให้ผู้ให้เช่าซื้อริบเงินที่ชำระแล้วและเอาของคืน
+   ไม่บังคับคืนส่วนต่าง ⇒ นโยบายเจ้าของเลือกไม่คืน **supersede คำสั่ง 2026-08-08 ข้อ 2**.
+   `create()` ปฏิเสธ `customerRefundEnabled=true` (400 ไทย) แทนละเลยเงียบๆ; overlay ถอดติ๊กออก;
+   `previewCalculation` คืน `customerRefund = 0` เสมอ. บัญชี 21-1107 + `RefundPayoutTemplate` /
+   `RefundWaiveTemplate` + endpoints **คงไว้เพื่อแถวยึดเก่าที่เคยติ๊ก** (prod หลัง factory reset ไม่มี).
+2. **ราคาเดียว** — เหลือ "ราคาประเมิน" ช่องเดียว = ราคาที่หน้าร้านรับเครื่องไปจาก FINANCE = ยอดที่ JP5
+   ลง `Dr <deposit>`. ช่อง "ราคากลาง" ถูกถอดจากหน้าจอ (DTO `marketValue` deprecated — ค่าที่ส่งมาถูกละเลย).
+3. **ตารางรับซื้อมือสอง (`TradeInValuation`) เป็นค่าตั้งต้น + ตัวเทียบ** — เลือกเกรด → preview ค้น
+   (ยี่ห้อ, รุ่น, ความจุ, เกรด) เติมราคาประเมินให้ (แก้ทับได้; ค่าที่พิมพ์เองไม่ถูกทับเมื่อสลับเกรด) ·
+   **ด่าน ±15%** ชุดเดียวกับหน้ารับซื้อ (`TradeInLifecycleService.PRICE_CEILING/FLOOR_RATIO`):
+   ต่างจากตารางเกิน 15% ต้องมีเหตุผลใน `notes` ทั้งฝั่ง UI (ปุ่มยืนยันปิด) และ `create()`
+   (`RepossessionsService.TABLE_DEVIATION_LIMIT` → 400 ไทย) · ไม่มีรุ่นในตาราง = ตีราคาเอง ไม่มีด่าน.
+4. **คอลัมน์ `Repossession.marketValue` เปลี่ยนความหมายเป็น snapshot ราคาตารางรับซื้อ ณ วันยึด**
+   (ไม่มีในตาราง = ราคาประเมิน) · `profitLoss` = ราคาประเมิน − ยอดปิดสัญญา · `customerRefund` = 0.
+   ไม่มี migration — ก่อนหน้านี้ไม่มีผู้อ่านสองคอลัมน์นี้เลย (grep 2026-09-05).
+5. **preview เลิกถอยไปใช้ `product.costPrice`** — ไม่มีราคาประเมิน = `marketValueSource: null` และจอโชว์ "—"
+   (เดิมโชว์ต้นทุนซื้อเข้าเป็น "ราคากลาง" ทั้งที่ create ไม่เคยใช้เลขนั้น).
+
+**ขาคู่ฝั่ง SHOP ของการยึด (ทำแล้ว 2026-09-05 — ปิด "ASYMMETRY ที่รู้ตัว" ต้นทาง JP5):**
+`ShopCollectShopLegs` (`cpa-templates/shop-collect-shop-legs.template.ts`, ไม่ใช่ Nest provider —
+สร้างภายในผู้เรียก) โพสต์ใน tx เดียวกับ JP5 (`RepossessionsService.create`):
+
+```
+Dr S11-2002 สินค้าคงคลัง-มือถือมือสอง        [ราคาประเมิน]
+   Cr S21-1104 เจ้าหนี้ FINANCE                 [ราคาประเมิน]   ← collectedByShop (FINANCE Dr 11-2107) · stamp SHOP_COLLECT
+   Cr S11-1202 ธนาคาร SHOP (จ่าย)               [ราคาประเมิน]   ← หน้าร้านโอนให้ FINANCE ทันที (FINANCE Dr KBank) · ไม่ stamp
+```
+flow `shop-repossession-intake`, key `shop-repossession-intake:<contractId>`, `metadata.contractId`.
+`create()` ตรวจ `validatePeriodOpen` ของ **ทั้งสองบริษัท** และ flip `product.ownedByCompanyId` → SHOP +
+`category PHONE_NEW → PHONE_USED` (ขายต่อผ่าน POS จึงลง Cr S11-2002 ถูกบัญชี).
+
+ใบล้างเจ้าหนี้ (`ContractPaymentService.shopCollectSettlement` หลัง `ShopCollectSettlementTemplate`):
+`Dr S21-1104 / Cr S11-1202` flow `shop-collect-settlement-shop` key `<flow>:<contractId>:<requestId|amount>`
+**เฉพาะเมื่อ** `shopCollectShopBalance(tx, id)` (S21-1104 typed SHOP_COLLECT) คุ้มยอด — แถวต้นทาง **JP4**
+(ปิดยอดหน้าร้านรับแทน — ยังไม่มีขา SHOP ตอนตั้งหนี้ เพราะต้องเลือกบัญชีเงินสด SHOP ต่อสาขา
+`resolveBranchCashAccount` ที่ fail-closed) และแถวก่อนฟีเจอร์ถูกข้ามพร้อม `shopLegSkipped: 'NO_SHOP_PAYABLE'`
+ใน AuditLog `SHOP_COLLECT_SETTLED` (ใบ FINANCE dedupe → `'DEDUPED'`). **ห้ามโพสต์ขา SHOP โดยไม่มีด่านนี้** —
+S21-1104 ติดลบ. `settleRecallCash` (PAYOUT_RECALL) มี SHOP leg ของตัวเองอยู่แล้ว ไม่แตะ.
+
+**เลนส์ S21-1104 รู้จัก SHOP_COLLECT แล้ว** (`interco-aging.service.ts` Query B + `getTypedAccountDrift`,
+`interco-typed-balance.ts shopCollectShopBalance`): คอลัมน์ใหม่ `shopMirrorCollectGross` แยกเหมือน
+ฝั่ง FINANCE (`shopCollect`) — **ไม่รวม** ใน `shopMirrorGross`/`shopMirrorNet`/`bookMismatch` (กลุ่ม interco
+ล้างผ่านรอบจ่าย ส่วน SHOP_COLLECT ล้างผ่านใบ shop-collect). ถ้าไม่เติมประเภทนี้ใน drift lens, reconcile
+รายเดือนจะยิง `ACCOUNT_DRIFT` บน S21-1104 ทุกเดือนตั้งแต่การยึดครั้งแรก.
+
+**ขายต่อเครื่องยึด = ผ่าน POS หรือเปิดสัญญาผ่อนใหม่เท่านั้น (2026-09-05, ขยายหลัง review):** แถว
+`Repossession` ปิด/เปิดผ่าน helper เดียว `repossessions/repossession-resale.util.ts` —
+`closeRepossessionOnSale` (→ `SOLD` + `resellPrice` = ราคาขายจริง) เรียกจาก `SaleWriterService`
+(ขายสด/ไฟแนนซ์ภายนอก) และ `ContractWorkflowService.activate` (ขายผ่อนใหม่ — stamp `soldContractId`);
+`reopenRepossessionOnUnsale` (→ `READY_FOR_SALE`) เรียกจาก `SaleVoidService` และ
+`ContractCancellationService.approveCancellation` (C-1). **ห้ามเขียน updateMany ชุดที่สอง.**
+`VALID_TRANSITIONS.READY_FOR_SALE = []` และ `update()` ปฏิเสธ `status: 'SOLD'` ด้วยข้อความไทยที่ชี้ปุ่ม
+"นำเข้าคลังพร้อมขาย" ก่อน (เครื่อง `REFURBISHED` POS ไม่รับ) — สาขา SOLD เดิมใน `update()` ถูกลบทิ้ง.
+JE ตอนขาย = `ShopCashSaleTemplate` / `ShopInventoryTransferTemplate` ปกติ (Cr S11-2002 ที่ `costPrice` =
+ราคาประเมิน ตั้งโดย `markReadyForSale` ⇒ สต็อกมือสองกลับเป็น 0 พอดีกับใบรับเข้า — ปักที่
+`product-lifecycle.integration.spec.ts`). เส้นทางเปลี่ยนเครื่อง (device swap) ที่หยิบเครื่องยึดไปเป็นเครื่องใหม่
+**ยังไม่ปิดแถวยึด** — ยังไม่มีเคสจริง.
+
+**ด่านของ `create()` ที่เพิ่มจาก review 2026-09-05 (preview `eligibility` ใช้กติกาชุดเดียวกัน — ข้อความอยู่ใน
+`ZERO_OUTSTANDING_MSG` / `RE_REPOSSESSION_MSG` ของ `repossessions.service.ts`):**
+- **ยอดค้าง ≤ 0 → 400** — ผ่อนครบ = เครื่องเป็นของลูกค้า (ปพพ. ม.572); และถ้าปล่อยผ่าน JP5+ใบรับเข้าจะไม่โพสต์
+  (เดิม gate ที่ `outstanding > 0`) แต่เครื่องถูกย้ายเข้า SHOP อยู่ดี ⇒ S11-2002 ติดลบตอนขายต่อ.
+- **เครื่องเคยมีแถว `Repossession` → 409** — `Repossession.productId` เป็น `@unique` ⇒ loop
+  ยึด→ขายต่อ→ผ่อนใหม่→ค้างอีก บันทึกครั้งที่สองไม่ได้ (ด่าน `findFirst` ก่อน JP5 + แปลง P2002 เป็น 409 เดียวกัน
+  เป็นตาข่าย). **ยังเปิดอยู่:** ถ้าธุรกิจต้องยึดเครื่องเดิมซ้ำจริง ต้องถอด `@unique` (migration) และเปลี่ยน
+  `reopenRepossessionOnUnsale` ให้เลือกแถวล่าสุดแทน `updateMany` — รอเคสจริง/คำสั่งเจ้าของ.
+- **ราคาประเมิน 0** (DTO ยอมรับ `@Min(0)`) → JP5 โพสต์ตามเดิม แต่ **ไม่โพสต์ใบรับเข้าสต็อก SHOP**
+  (เครื่องไม่มีมูลค่า ต้นทุน 0 — ไม่มีบรรทัดศูนย์บาท).
+
+**หน้ายึด/วิซาร์ด:** `previewCalculation` คืน `eligibility {canRepossess, reason}` (สถานะสัญญา + strict
+mode กติกาเดียวกับ `create()`) → overlay โชว์แบนเนอร์ + ปิดปุ่มยืนยัน แทนปล่อยชน 400 · `findAll` คืน
+`shopCollectOutstanding` (11-2107 SHOP_COLLECT ต่อสัญญาผ่าน `shopCollectTypedBalance`) → ปุ่ม
+"รับโอนหน้าร้าน" โชว์เฉพาะแถวที่ยังมียอด และเติมยอดนั้นให้.
+
+**ที่ยังเปิดอยู่ (ไม่เกี่ยวกับเงินคืน):** เลข "บนจอ" กับ "ในสมุด" ยังต่างกันเท่า**ส่วนลดยอดปิด**
+(JP5 ไม่ book ส่วนลดแยกเหมือน JP4 `52-1106`) — คำถาม CPA 2026-08-08 ข้อ 1 ยังไม่ได้คำตอบ
+(ถามซ้ำแล้ว: `docs/accounting/cpa-followup-2026-09-05.txt`) · ขาคู่ SHOP ของ **JP4** ปิดยอดหน้าร้านรับแทน
+(`Dr <เงินสด SHOP ต่อสาขา> / Cr S21-1104`) ยังไม่ต่อ — รอตัดสินบัญชีเงินสด SHOP ต่อสาขา.
 
 ---
 
@@ -2284,8 +2371,8 @@ buyback 8,000):**
 FINANCE-side-only มาตลอด) — **ไม่ได้ประดิษฐ์บัญชีใหม่ และไม่ได้เดา JE ปิดช่องนี้**.
 > **⚖️ CPA ตอบแล้ว 2026-08-24 (ข้อ A1): "ต้องมี ตั้งรหัส S21-1104 เจ้าหนี้ FINANCE"**
 > **สถานะ: เปลี่ยนรหัสในโค้ดแล้ว 2026-08-24** (`S21-3001` → `S21-1104` ทั้ง CSV + 194 จุดใน 34 ไฟล์)
-> — แต่ **ความไม่สมมาตรที่บรรยายไว้ข้างบนยังไม่ถูกปิด**: บัญชีมีแล้วก็จริง แต่ยังไม่มีใครโพสต์ขาคู่
-> ให้ 11-2107 ประเภท `SHOP_COLLECT` (JP4/JP5 ที่หน้าร้านรับเงินแทน) — นั่นเป็นงานคนละชิ้น
+> — ความไม่สมมาตรของ `SHOP_COLLECT` ต้นทาง **JP5 ปิดแล้ว 2026-09-05** (`ShopCollectShopLegs` — ดูหัวข้อ
+> "ยึดเครื่อง — ราคาเดียว"); ต้นทาง **JP4** (ปิดยอดหน้าร้านรับแทน) ยังไม่ต่อ
 > `S21-1104` เป็นบัญชีตาม **คู่สัญญา**
 > (ติดหนี้ FINANCE) ไม่ใช่ตาม **วัตถุประสงค์** (ค่าเครื่องรับคืน) จึงรับหนี้ระหว่างกันได้ทุกประเภท
 > รวมถึงการจ่าย ปกส./ภาษีหัก ณ ที่จ่าย แทนกัน (ข้อ C5).

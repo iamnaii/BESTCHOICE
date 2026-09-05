@@ -74,6 +74,8 @@ describe('SaleVoidService.voidSale', () => {
         ]),
         updateMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
+      // เครื่องยึดที่ขายผ่าน POS แล้ว void → เปิดรายการยึดกลับ (2026-09-05)
+      repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       repairTicket: { findFirst: jest.fn().mockResolvedValue(null) },
       // G8 — default = ใบขายไม่ได้แปลงมาจากใบจอง
       booking: { findFirst: jest.fn().mockResolvedValue(null) },

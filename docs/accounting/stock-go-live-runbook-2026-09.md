@@ -45,7 +45,7 @@
 |---|---|
 | soft-delete **สินค้าบนชั้น**ที่ไม่มี marker (สถานะ `IN_STOCK`/`PHOTO_PENDING`/`QC_PENDING`/`REFURBISHED`/`DAMAGED`/… ) ด้วย `deleted_at` ค่าเดียวทั้งรอบ | **ไม่แตะบัญชี** (GL `S11-2001/2002/2003` ไม่ขยับ) · ไม่แตะ `suppliers` (คำตัดสิน D4) · `reorder_points` · `inspections` · `imported_sales` · `trade_ins` · ราคา/รูปสินค้า · ลูกค้า |
 | PO จริง + ใบรับของของ PO นั้น — **เฉพาะ PO ที่ไม่เหลือเครื่องรอดชี้อยู่** (เครื่องรอด = ทดสอบ / ติดด่านถือครอง / ผูกธุรกรรม) | เครื่องที่**สัญญา/ใบจอง/ออเดอร์ทดสอบถืออยู่** → ข้าม+รายงาน ไม่ลบ · เครื่องสถานะ `SOLD_*`/`RESERVED`/`REPOSSESSED` → ไม่แตะ รายงานแยก |
-| ใบโอน / ใบปรับ / ใบนับ / แจ้งเตือน ที่ไม่มี marker **ของใบเอง** | ⚠️ **เอกสารเคลื่อนไหวถูกเลือกด้วย marker ของใบ ไม่ใช่ตามเครื่อง** — ประวัติโอน/ปรับ/นับของเครื่องที่รอด (เพราะมีธุรกรรมถืออยู่ หรือเป็นเครื่องทดสอบที่ใบไม่มี marker) **หายไปพร้อมกัน** · เคสที่เจ็บที่สุดคือ**เครื่องระหว่างโอน**: ใบโอนหาย เครื่องยังอยู่ หน้ารับของปลายทางไม่มีอะไรให้รับ — ดูขั้น ③ ข้อ 8 และขั้น ⑥ |
+| ใบโอน / ใบปรับ / ใบนับ / แจ้งเตือน ที่ไม่มี marker **ของใบเอง** | ⚠️ **เอกสารเคลื่อนไหวถูกเลือกด้วย marker ของใบ ไม่ใช่ตามเครื่อง** — ประวัติโอน/ปรับ/นับของเครื่องที่รอด (เพราะมีธุรกรรมถืออยู่ หรือเป็นเครื่องทดสอบที่ใบไม่มี marker) **หายไปพร้อมกัน** · เคสที่เจ็บที่สุดคือ**เครื่องระหว่างโอน**: ใบโอนหาย เครื่องยังอยู่ หน้ารับของปลายทางไม่มีอะไรให้รับ — ดูขั้น ③ ข้อ 9 และขั้น ⑥ |
 | AuditLog 1 แถว (`action = STOCK_GO_LIVE_WIPE`, `entity_id = <wipedAt>`) + พิมพ์ SQL ย้อนกลับ 12 บรรทัด | JE ตอนรับของ / JE ยอดยกมาสินค้าคงเหลือ — รอผู้สอบ (ดูขั้น ⑦ ท้าย) |
 
 `ONLY_BRANCH_ID=<uuid>` (ถ้าอยากล้างทีละสาขา) จำกัดเฉพาะ **สินค้า · ใบโอน (ต้นทางหรือปลายทาง) ·
@@ -81,17 +81,26 @@ gh run list --workflow deploy-gcp.yml --branch main --limit 3
 
 ### ③ Dry-run (ไม่เขียนอะไร)
 
-หน้าต่างแรก — เปิด proxy ค้างไว้ (สูตรเดียวกับ `scripts/ops/*.sh`):
+ทุกคำสั่งในเอกสารนี้รันใน **Git Bash** (สูตรเดียวกับ `scripts/ops/*.sh`). หน้าต่างแรก — เปิด proxy
+ค้างไว้:
 
 ```bash
-cloud-sql-proxy --port 15432 bestchoice-prod:asia-southeast1:bestchoice-db
+cloud-sql-proxy --gcloud-auth --port 15432 bestchoice-prod:asia-southeast1:bestchoice-db
 ```
 
-หน้าต่างที่สอง — รันจาก checkout ของ repo ที่ `npm install` แล้ว (CLI รันจาก source ผ่าน `tsx`
-ไม่ต้อง build; ใช้ `DATABASE_URL` ตัวเดียว ไม่ต้องตั้ง `DATABASE_URL_FINANCE`):
+หน้าต่างที่สอง — รันจาก checkout ของ repo ที่ `npm install` แล้ว (CLI รันจาก source ผ่าน `npx -y tsx`
+ไม่ต้อง build — ครั้งแรก npx จะดาวน์โหลด `tsx` เอง ต้องมีเน็ต · ถ้าเพิ่ง clone ใหม่ให้
+`npm --prefix apps/api run prisma:generate` หนึ่งครั้งก่อน · ใช้ `DATABASE_URL` ตัวเดียว ไม่ต้องตั้ง
+`DATABASE_URL_FINANCE` เพราะ CLI ไม่แตะสมุด FINANCE).
+
+รหัสผ่านอยู่ใน secret `DATABASE_URL` (`gcloud secrets versions access latest --secret=DATABASE_URL`
+— user ปัจจุบันคือ `bestchoice`) **ห้าม echo ลง log/แชท**. ตั้ง**สอง**ตัวแปร: `PGURL` สำหรับ `psql`
+(**ห้าม**มี `?schema=public` — เป็นพารามิเตอร์ของ Prisma เท่านั้น psql จะปฏิเสธด้วย
+`invalid URI query parameter: "schema"`) และ `DATABASE_URL` สำหรับ CLI:
 
 ```bash
-export DATABASE_URL="postgresql://<user>:<password>@127.0.0.1:15432/bestchoice?schema=public"
+export PGURL="postgresql://bestchoice:<password>@127.0.0.1:15432/bestchoice"
+export DATABASE_URL="${PGURL}?schema=public"
 EXPECTED_DB_NAME=bestchoice npm --prefix apps/api run wipe:stock-go-live
 ```
 
@@ -109,20 +118,25 @@ EXPECTED_DB_NAME=bestchoice npm --prefix apps/api run wipe:stock-go-live
 3. **เครื่องสถานะผูกธุรกรรม** (`SOLD_*`/`RESERVED`/`REPOSSESSED`) — ไม่ถูกแตะ ไม่นับในภาพรวมคลัง
    อยู่แล้ว ให้ตัดสินเป็นราย ๆ ด้วยเมนูเดียวกับข้อ 2
 4. **PO ที่เก็บไว้** เพราะข้อ 2-3 (หรือเครื่องทดสอบ) ยังชี้อยู่ — ใบพวกนี้จะยังโผล่ที่ `/purchase-orders`
-5. **⚠️ เครื่องทดสอบที่ยังเปิดขายออนไลน์** — รายการ IMEI/ชื่อ → จดไว้ทำขั้น ④
-6. **⚠️ เครื่องเทิร์นที่จะถูกล้าง** — แถว `trade_ins` และ JE เทิร์นที่เคยโพสต์**ไม่ถูกแตะ**
-   (เป็นงานของการล้างสมุดทดสอบ ไม่ใช่ของคลัง)
-7. **GL สินค้าคงเหลือ** `S11-2001/2002/2003` — จดตัวเลขไว้เทียบในขั้น ⑥ (ต้องไม่ขยับ)
-8. **ใบโอนที่ยังเปิดอยู่** — CLI นับใบโอนรวมในข้อ 1 แต่**ไม่แยกว่าใบไหนยังเปิด** ต้องดูเอง:
+5. **เครื่องทดสอบที่เหลือ** — จำนวนเครื่องที่มี marker (`TEST-`/`ทดสอบระบบ`/PO ทดสอบ) ซึ่งจะ**ยังอยู่**
+   หลังล้าง — ต้องเท่ากับที่เคย seed ไว้ (ไม่เคย seed = 0)
+6. **⚠️ เครื่องทดสอบที่ยังเปิดขายออนไลน์** — **พิมพ์เฉพาะเมื่อมี** (ไม่มีบรรทัดนี้ = 0 ข้ามขั้น ④ ได้)
+   → รายการ IMEI/ชื่อ จดไว้ทำขั้น ④
+7. **⚠️ เครื่องเทิร์นที่จะถูกล้าง** — พิมพ์เฉพาะเมื่อมี — แถว `trade_ins` และ JE เทิร์นที่เคยโพสต์
+   **ไม่ถูกแตะ** (เป็นงานของการล้างสมุดทดสอบ ไม่ใช่ของคลัง)
+8. **GL สินค้าคงเหลือ** `S11-2001/2002/2003` — จดตัวเลขไว้เทียบในขั้น ⑥ (ต้องไม่ขยับ)
+9. **ใบโอนที่ยังเปิดอยู่** — CLI นับใบโอนรวมในข้อ 1 แต่**ไม่แยกว่าใบไหนยังเปิด** ต้องดูเอง
+   (option ของ `psql` ต้องอยู่**ก่อน** URL — ดูกล่องในขั้น ⑧):
 
-   ```sql
-   -- ใบโอนจริงที่ยังเปิด — จะถูกล้างทั้งใบ ไม่ว่าเครื่องในใบจะรอดหรือไม่
-   SELECT t.batch_number, t.status, p.imei_serial, p.name, p.status AS product_status
-   FROM stock_transfers t
-   JOIN products p ON p.id = t.product_id
-   WHERE t.deleted_at IS NULL
-     AND t.status IN ('PENDING', 'IN_TRANSIT')
-     AND (t.notes IS NULL OR t.notes NOT LIKE '[ทดสอบระบบ]%');
+   ```bash
+   # ใบโอนจริงที่ยังเปิด — จะถูกล้างทั้งใบ ไม่ว่าเครื่องในใบจะรอดหรือไม่
+   psql -A -t -c "
+     SELECT t.id, t.batch_number, t.status, p.imei_serial, p.name, p.status AS product_status
+     FROM stock_transfers t
+     JOIN products p ON p.id = t.product_id
+     WHERE t.deleted_at IS NULL
+       AND t.status IN ('PENDING', 'IN_TRANSIT')
+       AND (t.notes IS NULL OR t.notes NOT LIKE '[ทดสอบระบบ]%');" "$PGURL"
    ```
 
    มีแถว → ไปที่ `/stock/transfers` (กรอง "รอจัดส่ง" / "ระหว่างโอนสินค้า") **ปิดให้จบก่อนล้าง**:
@@ -132,7 +146,7 @@ EXPECTED_DB_NAME=bestchoice npm --prefix apps/api run wipe:stock-go-live
 
 ### ④ ปิดเครื่องทดสอบที่ยังเปิดขายออนไลน์
 
-ตามรายการข้อ 5 ของ dry-run: ค้น IMEI ที่ `/stock/products` → เปิดหน้าเครื่อง (`/products/<id>`) →
+ตามรายการข้อ 6 ของ dry-run (ถ้า dry-run ไม่พิมพ์บรรทัดนั้น = ไม่มี ข้ามขั้นนี้ได้): ค้น IMEI ที่ `/stock/products` → เปิดหน้าเครื่อง (`/products/<id>`) →
 การ์ด **"แสดงบนเว็บ shop"** → ปิดสวิตช์ ทีละเครื่อง (หน้ารายการมีปุ่ม "เปิดแสดงบนเว็บ" แบบกลุ่ม
 แต่**ไม่มีปุ่มปิดแบบกลุ่ม** — ต้องเข้าทีละเครื่อง) · CLI ไม่แก้ค่านี้ให้ และรั้วไม่ครอบเว็บช็อป
 ⇒ ถ้าไม่ปิด ลูกค้าจริงหน้าเว็บจะเห็นและสั่งเครื่องทดสอบได้
@@ -168,30 +182,42 @@ npm --prefix apps/api run wipe:stock-go-live 2>&1 | tee "stock-go-live-$(date +%
 - `/purchase-orders/qc` คิว QC/ถ่ายรูป = 0 · `/purchase-orders` เปิดอยู่เฉพาะ `TEST-PO-*`
   (+ PO ที่ CLI รายงานว่าเก็บไว้ในขั้น ③ ข้อ 4)
 - `/stock/alerts` ว่าง · `/stock/transfers` กรอง "รอจัดส่ง" / "ระหว่างโอนสินค้า" ไม่มีใบจริงค้าง
-- **เครื่องที่รอดต้องไม่มีใบโอนค้างที่หายไป** — ตรวจด้วย SQL (ต้องได้ 0 แถว):
-
-  ```sql
-  -- เครื่องที่ยังอยู่ แต่ใบโอนที่ยังเปิดของมันถูกล้างในรอบนี้
-  SELECT p.imei_serial, p.name, p.branch_id, t.batch_number, t.status
-  FROM stock_transfers t
-  JOIN products p ON p.id = t.product_id
-  WHERE t.deleted_at = '<wipedAt>'
-    AND t.status IN ('PENDING', 'IN_TRANSIT')
-    AND p.deleted_at IS NULL;
-  ```
-
-  มีแถว = เครื่องนั้นในระบบยังอยู่สาขาต้นทาง (`branch_id` ไม่ย้ายจนกว่าจะรับที่ปลายทาง) แต่ไม่มีใบ
-  ให้รับแล้ว → คืนใบโอน**เฉพาะแถวนั้น**: `UPDATE stock_transfers SET deleted_at = NULL WHERE id = '<id>';`
-  แล้วรับตามปกติที่ `/stock/transfers?view=incoming` (หรือปฏิเสธถ้าเครื่องยังอยู่ต้นทางจริง)
-- งบทดลอง SHOP (`/shop/accounting`) — `S11-2001/2002/2003` **เท่ากับ**ที่ dry-run พิมพ์ในขั้น ③ ข้อ 7
-  (CLI ไม่แตะบัญชี ถ้าขยับ = มีคนโพสต์ JE ระหว่างนั้น ไม่ใช่ CLI)
-- จำนวนที่ล้าง = จำนวนที่ CLI รายงาน (บน Windows ต้องวาง option **ก่อน** URL — ดูกล่องในขั้น ⑧):
+- **เครื่องที่รอดต้องไม่มีใบโอนค้างที่หายไป** — ตรวจ (ต้องได้ 0 แถว):
 
   ```bash
-  psql -A -t -c "SELECT count(*) FROM products WHERE deleted_at = '<wipedAt>';" "$DATABASE_URL"
+  # เครื่องที่ยังอยู่ แต่ใบโอนที่ยังเปิดของมันถูกล้างในรอบนี้
+  psql -A -t -c "
+    SELECT t.id, t.batch_number, t.status, p.imei_serial, p.name, p.branch_id
+    FROM stock_transfers t
+    JOIN products p ON p.id = t.product_id
+    WHERE t.deleted_at = '<wipedAt>'
+      AND t.status IN ('PENDING', 'IN_TRANSIT')
+      AND p.deleted_at IS NULL;" "$PGURL"
   ```
 
-- AuditLog มีแถว: `SELECT entity_id, created_at FROM audit_logs WHERE action = 'STOCK_GO_LIVE_WIPE';`
+  มีแถว = เครื่องนั้นในระบบยังอยู่สาขาต้นทาง (`branch_id` ย้ายตอนรับที่ปลายทางเท่านั้น) แต่ใบโอนที่จะใช้
+  รับ**หายไปแล้ว** — **ห้ามซื้อขายเครื่องนั้นจนกว่าจะปิดใบ**. คืนใบโอน**เฉพาะแถวนั้น**ด้วย `id` จากผล
+  ข้างบน (ใบโอนที่ยังไม่ถูกรับไม่มีแถว `branch_receivings` จึงคืนตารางเดียวพอ):
+
+  ```bash
+  psql -A -t -c "UPDATE stock_transfers SET deleted_at = NULL WHERE id = '<id>';" "$PGURL"
+  ```
+
+  แล้วปิดใบให้จบใน UI: ของถึงปลายทางแล้วให้รับที่ `/stock/transfers?view=incoming` · เครื่องยังอยู่
+  ต้นทางจริงให้ "ปฏิเสธ" ใบที่ `/stock/transfers` — เครื่องจึงจะอยู่ถูกสาขาและซื้อขายต่อได้
+- งบทดลอง SHOP (`/shop/accounting`) — `S11-2001/2002/2003` **เท่ากับ**ที่ dry-run พิมพ์ในขั้น ③ ข้อ 8
+  (CLI ไม่แตะบัญชี ถ้าขยับ = มีคนโพสต์ JE ระหว่างนั้น ไม่ใช่ CLI)
+- จำนวนที่ล้าง = จำนวนที่ CLI รายงาน (option ต้องอยู่**ก่อน** URL และใช้ `$PGURL` — ดูกล่องในขั้น ⑧):
+
+  ```bash
+  psql -A -t -c "SELECT count(*) FROM products WHERE deleted_at = '<wipedAt>';" "$PGURL"
+  ```
+
+- AuditLog มีแถว:
+
+  ```bash
+  psql -A -t -c "SELECT entity_id, created_at FROM audit_logs WHERE action = 'STOCK_GO_LIVE_WIPE';" "$PGURL"
+  ```
 
 ### ⑦ เริ่มใช้จริง
 
@@ -222,21 +248,26 @@ npm --prefix apps/api run wipe:stock-go-live 2>&1 | tee "stock-go-live-$(date +%
 
 > 🪟 **บน Windows `psql` เมิน option ที่วางหลัง URL โดยไม่บอก** — `psql "$URL" -c "…"` จะ
 > "สำเร็จ" โดยไม่รันอะไรเลย (ตรวจพบบนเครื่องนี้ `C:\Users\<you>\pgsql\bin` ระหว่างทำ Task 3)
-> ซึ่งเป็นความล้มเหลวที่แย่ที่สุดสำหรับคำสั่งย้อนกลับ ⇒ **วาง option ก่อน URL เสมอ**:
+> ซึ่งเป็นความล้มเหลวที่แย่ที่สุดสำหรับคำสั่งย้อนกลับ ⇒ **วาง option ก่อน URL เสมอ** และใช้ `$PGURL`
+> จากขั้น ③ (**ไม่ใช่** `$DATABASE_URL` — ตัวนั้นมี `?schema=public` ที่ psql ปฏิเสธ):
 >
 > ```bash
-> psql -A -t -c "UPDATE \"products\" SET deleted_at = NULL WHERE deleted_at = '<wipedAt>';" "$DATABASE_URL"
+> psql -A -t -c "UPDATE \"products\" SET deleted_at = NULL WHERE deleted_at = '<wipedAt>';" "$PGURL"
 > # …ทำซ้ำอีก 11 บรรทัดตามที่ CLI พิมพ์ แล้วตรวจว่ากลับมาจริง:
-> psql -A -t -c "SELECT count(*) FROM products WHERE deleted_at = '<wipedAt>';" "$DATABASE_URL"   # ต้องได้ 0
+> psql -A -t -c "SELECT count(*) FROM products WHERE deleted_at = '<wipedAt>';" "$PGURL"   # ต้องได้ 0
+> ```
+>
+> ทางที่พิมพ์ผิดยากกว่า: คัดลอก 12 บรรทัดจากไฟล์ `.log` ลงไฟล์ `stock-go-live-rollback.sql` ตรง ๆ
+> (ไม่ต้อง escape เครื่องหมายคำพูด) แล้วรันทีเดียว — หยุดทันทีที่บรรทัดใดล้ม:
+>
+> ```bash
+> psql -v ON_ERROR_STOP=1 -f stock-go-live-rollback.sql "$PGURL"
 > ```
 
 ค่า `<wipedAt>` อยู่ในไฟล์ `.log` ของขั้น ⑤ — ถ้า output หาย ดึงจาก AuditLog:
 
-```sql
-SELECT entity_id AS wiped_at, created_at
-FROM audit_logs
-WHERE action = 'STOCK_GO_LIVE_WIPE'
-ORDER BY created_at DESC;
+```bash
+psql -A -t -c "SELECT entity_id AS wiped_at, created_at FROM audit_logs WHERE action = 'STOCK_GO_LIVE_WIPE' ORDER BY created_at DESC;" "$PGURL"
 ```
 
 **ข้อจำกัดของการย้อนกลับ (ตรวจแล้ว):**

@@ -689,6 +689,13 @@ export class MessageRouterService {
       throw err;
     }
 
+    // echo STAFF = Facebook ยืนยันว่าข้อความจากคนถึงลูกค้าแล้ว → ล้าง "รอตอบ" (สเปก §4.3)
+    // BOT (เช่น greeting อัตโนมัติของเพจ) ไม่ล้าง — ลูกค้ายังรอคน (สเปก §3)
+    // `?.` เพราะ spec หลายตัว mock roomManager บางส่วน
+    if (params.role === MessageRole.STAFF) {
+      await this.roomManager.clearWaiting?.(room.id);
+    }
+
     this.gateway?.emitNewMessage(room.id, {
       role: params.role === MessageRole.BOT ? 'BOT' : 'STAFF',
       text: params.text,

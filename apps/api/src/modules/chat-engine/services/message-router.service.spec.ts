@@ -22,6 +22,7 @@ function makeRouter(opts: {
     findById: jest.fn().mockResolvedValue({ aiPaused: false, handoffMode: false }),
     getOrCreateRoom: jest.fn().mockResolvedValue(room),
     saveMessage: jest.fn().mockResolvedValue({ id: 'm1' }),
+    clearWaiting: jest.fn().mockResolvedValue(undefined),
   };
   const handoffManager = { initiateHandoff: jest.fn() };
   const configService = { get: jest.fn().mockReturnValue(undefined) };
@@ -573,5 +574,30 @@ describe('MessageRouterService — echo จากนอกระบบ (กั�
     await router.mirrorOutbound(echo as any);
     await new Promise((r) => setImmediate(r));
     expect(roomManager.pauseAiIfActive).toHaveBeenCalledWith('r1', undefined);
+  });
+});
+
+describe('MessageRouterService.mirrorOutbound — echo ล้าง waiting', () => {
+  const base = { externalUserId: 'PSID-1', channel: ChatChannel.FACEBOOK, text: 'ตอบจากแอป Facebook' };
+
+  it('echo STAFF → ล้าง waiting ของห้อง (ถึงลูกค้าแล้วโดยนิยาม)', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-1' });
+    expect(roomManager.clearWaiting).toHaveBeenCalledWith('r1');
+  });
+
+  it('BOT (greeting อัตโนมัติของเพจ) → ไม่ล้าง waiting', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.mirrorOutbound({ ...base, role: MessageRole.BOT, externalMessageId: 'mid-2' });
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+  });
+
+  it('echo ซ้ำ (P2002) → ไม่ล้างซ้ำ', async () => {
+    const { router, roomManager } = makeRouter({});
+    const dup: any = new Error('dup');
+    dup.code = 'P2002';
+    roomManager.saveMessage.mockRejectedValueOnce(dup);
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-1' });
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
   });
 });

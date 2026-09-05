@@ -9,8 +9,11 @@
 | ย้อนกลับ | SQL ต่อตารางที่ CLI พิมพ์ตอนจบ (`deleted_at = <wipedAt>` ค่าเดียวทั้งรอบ) — ดูขั้น ⑧ |
 | สถานะ | ⏳ **ยังไม่ได้รันบน production** — dry-run ผ่านบน dev DB แล้ว 2026-09-05 (พิมพ์แผนครบ เขียนลง DB = 0 แถว) · ด่าน 5 ของ `factory:reset` พิสูจน์แล้วบน dev ว่าปฏิเสธจริง (`สินค้าจริง 47 เครื่อง, ใบรับของจริง 6 ใบ` exit 1) |
 
-> ⚠️ **หลังรันขั้น ⑤ แล้ว `factory:reset` จะปฏิเสธการรัน** (ด่าน 5 — มีของจริงในระบบ)
-> ทางล้างข้อมูลทดสอบหลังจากนี้คือ `cleanup:test-pack` + `cleanup:test-contracts` เท่านั้น
+> ⚠️ **ด่าน 5 ของ `factory:reset` นับ "ของจริง" = สินค้า live ที่ไม่มี marker (ทุกสถานะ) + ใบรับของของ PO จริง**
+> (`real-stock-guard.ts`) — ทันทีหลังขั้น ⑤ ที่ล้างสะอาด (ไม่มีเครื่องข้าม/ผูกธุรกรรมเหลือ) ด่านนี้จะ**ยังผ่าน**
+> มันกลับมาปฏิเสธเมื่อ (ก) รับของจริงเข้ามาในขั้น ⑦ หรือ (ข) มีเครื่องไม่มี marker รอดจากการล้าง — ถูกข้ามเพราะ
+> ติดด่านถือครอง / สถานะผูกธุรกรรม `SOLD_*`·`RESERVED`·`REPOSSESSED` (ขั้น ③ ข้อ 2-3) — หรือใบรับของของ PO
+> ที่ CLI เก็บไว้ (ข้อ 4). ตั้งแต่จุดนั้นทางล้างข้อมูลทดสอบคือ `cleanup:test-pack` + `cleanup:test-contracts` เท่านั้น
 > (`cleanup:test-contracts` รันจาก `dist/` ⇒ ต้อง `npm --prefix apps/api run build` ก่อนหนึ่งครั้ง)
 
 ---
@@ -22,7 +25,7 @@
 
 | อยากเทส | ต้องทำ |
 |---|---|
-| ลูกค้าทดสอบ | ที่อยู่ปัจจุบัน = `ข้อมูลทดสอบระบบ — ลบได้` (หรือเบอร์ขึ้นต้น `TEST-`) — แก้ได้ที่หน้าแก้ไขลูกค้า |
+| ลูกค้าทดสอบ | ที่อยู่ปัจจุบัน = `ข้อมูลทดสอบระบบ — ลบได้` หรือเบอร์ขึ้นต้น `TEST-` — **seed เท่านั้น** (`seed:test-pack` / `seed:test-contracts`) **หน้าจอตั้ง marker ให้ไม่ได้**: ฟอร์มลูกค้าทุกตัวเก็บที่อยู่เป็น JSON (`serializeAddress`) แต่รั้วเทียบข้อความตรงตัว และ DTO บังคับเบอร์ `0`+9 หลัก จึงใส่ `TEST-` ไม่ผ่าน ⇒ เทสด้วยมือให้**เลือก**ลูกค้าทดสอบที่ seed ไว้ · ทิศกลับทำได้: กรอกที่อยู่ปัจจุบันบนลูกค้าทดสอบแล้วบันทึก = กลายเป็นลูกค้าจริงทันที (ปล่อยช่องว่างไม่กระทบ — ฟอร์มไม่ส่งฟิลด์ว่าง) |
 | เครื่องทดสอบ | IMEI ขึ้นต้น `TEST-` ตอนรับของ (หรือชื่อขึ้นต้น `ทดสอบระบบ`; อุปกรณ์เสริมที่ไม่มี IMEI: รับผ่าน PO ทดสอบ) |
 | ซัพพลายเออร์ทดสอบ | ชื่อขึ้นต้น `ทดสอบระบบ` |
 | PO ทดสอบ | เลข PO ระบบออกให้ ตั้งเองไม่ได้ ⇒ ใส่ IMEI `TEST-` ตอนรับของแทน (PO ที่ seed มาใช้ `TEST-PO-*`) |
@@ -88,7 +91,8 @@ gh run list --workflow deploy-gcp.yml --branch main --limit 3
 cloud-sql-proxy --gcloud-auth --port 15432 bestchoice-prod:asia-southeast1:bestchoice-db
 ```
 
-หน้าต่างที่สอง — รันจาก checkout ของ repo ที่ `npm install` แล้ว (CLI รันจาก source ผ่าน `npx -y tsx`
+หน้าต่างที่สอง — รันจาก **root ของ repo** (โฟลเดอร์ที่มี `apps/` — `npm --prefix apps/api` แปลง path
+จากโฟลเดอร์ปัจจุบัน ถ้า `cd apps/api` ไปแล้วมันจะหา `apps/api/apps/api` แล้วล้ม) ที่ `npm install` แล้ว (CLI รันจาก source ผ่าน `npx -y tsx`
 ไม่ต้อง build — ครั้งแรก npx จะดาวน์โหลด `tsx` เอง ต้องมีเน็ต · ถ้าเพิ่ง clone ใหม่ให้
 `npm --prefix apps/api run prisma:generate` หนึ่งครั้งก่อน · ใช้ `DATABASE_URL` ตัวเดียว ไม่ต้องตั้ง
 `DATABASE_URL_FINANCE` เพราะ CLI ไม่แตะสมุด FINANCE).
@@ -136,11 +140,23 @@ EXPECTED_DB_NAME=bestchoice npm --prefix apps/api run wipe:stock-go-live
      JOIN products p ON p.id = t.product_id
      WHERE t.deleted_at IS NULL
        AND t.status IN ('PENDING', 'IN_TRANSIT')
-       AND (t.notes IS NULL OR t.notes NOT LIKE '[ทดสอบระบบ]%');" "$PGURL"
+       AND (t.notes IS NULL OR t.notes NOT LIKE '[ทดสอบระบบ]%')
+       -- ล้างทีละสาขา (ONLY_BRANCH_ID) ให้เปิดบรรทัดถัดไป — CLI เลือกใบที่ต้นทาง หรือ ปลายทาง เป็นสาขานั้น
+       -- AND (t.from_branch_id = '<branchId>' OR t.to_branch_id = '<branchId>')
+       ;" "$PGURL"
    ```
 
-   มีแถว → ไปที่ `/stock/transfers` (กรอง "รอจัดส่ง" / "ระหว่างโอนสินค้า") **ปิดให้จบก่อนล้าง**:
-   ของถึงแล้วให้รับที่ปลายทาง (`/stock/transfers?view=incoming`) · ยังไม่ส่งให้ "ปฏิเสธ" ·
+   (คิวรีข้างบนถือว่าล้างทั้ง DB — ถ้ารันทีละสาขาแล้วไม่เติมบรรทัดสาขา จะเห็นใบของสาขาอื่นที่ CLI ไม่แตะปนมาด้วย)
+
+   มีแถว → **ปิดให้จบก่อนล้าง** — ฝั่งใบโอนออก (`/stock/transfers`) **ไม่มีปุ่มปฏิเสธ** (endpoint
+   `POST /products/transfers/:id/reject` มีใน API แต่ไม่มีปุ่มไหนเรียก — `rejectMutation` ในหน้านั้นประกาศไว้
+   แต่ไม่ถูกใช้) ใบปิดได้ทางเดียวคือ**รับที่ปลายทาง**:
+   1. ใบ `PENDING` → กด **"จัดส่งทั้งใบ"** ที่ `/stock/transfers` (กรอง "รอจัดส่ง") ก่อน — หน้ารับของรับได้เฉพาะ
+      ใบ `IN_TRANSIT` (ใบ `PENDING` รับไม่ได้ ระบบตอบ "ต้องจัดส่งก่อนถึงจะรับได้")
+   2. `/stock/transfers?view=incoming` เลือกสาขาปลายทาง → ตรวจรับ: ของถึงจริง = **"ผ่าน"** (เครื่องย้ายไป
+      สาขาปลายทาง) · เครื่องยังอยู่ต้นทางจริง = **"ไม่ผ่าน" ทุกรายการ + ใส่เหตุผล** (ใบเป็น `REJECTED`
+      เครื่องไม่ถูกย้าย = ยังอยู่สาขาต้นทางถูกต้อง)
+
    เครื่องจริงที่จะถูกล้างอยู่แล้วปล่อยได้ (ใบกับเครื่องหายพร้อมกัน) — **แต่เครื่องทดสอบ / เครื่องที่ข้าม
    ในข้อ 2 ห้ามค้างในใบโอน** เพราะใบจะหายแต่เครื่องยังอยู่ที่สาขาต้นทางในระบบ ทั้งที่ตัวเครื่องอยู่ปลายทาง
 
@@ -158,11 +174,13 @@ factory reset) แต่ถ้ามีใบขาย commit ชนกันพ
 — รันซ้ำได้ทันที
 
 ```bash
+set -o pipefail   # ไม่งั้น exit code ของบรรทัดล่างเป็นของ tee (สำเร็จเสมอ) — CLI ล้มจะถูกซ่อน
 CONFIRM_WIPE_STOCK_GO_LIVE=YES_I_AM_SURE \
 ALLOW_PROD_WIPE_STOCK_GO_LIVE=YES_I_AM_SURE \
 NODE_ENV=production \
 EXPECTED_DB_NAME=bestchoice \
 npm --prefix apps/api run wipe:stock-go-live 2>&1 | tee "stock-go-live-$(date +%F).log"
+echo "exit=$?"    # ต้องเป็น 0 — ไม่ใช่ 0 = ไม่ได้เขียนอะไร (อ่าน FATAL:/ERROR: ใน .log)
 ```
 
 > **ทำไมต้องพิมพ์ `NODE_ENV=production` เอง:** ด่าน `ALLOW_PROD_WIPE_STOCK_GO_LIVE` ทำงาน
@@ -203,8 +221,28 @@ npm --prefix apps/api run wipe:stock-go-live 2>&1 | tee "stock-go-live-$(date +%
   psql -A -t -c "UPDATE stock_transfers SET deleted_at = NULL WHERE id = '<id>';" "$PGURL"
   ```
 
-  แล้วปิดใบให้จบใน UI: ของถึงปลายทางแล้วให้รับที่ `/stock/transfers?view=incoming` · เครื่องยังอยู่
-  ต้นทางจริงให้ "ปฏิเสธ" ใบที่ `/stock/transfers` — เครื่องจึงจะอยู่ถูกสาขาและซื้อขายต่อได้
+  แล้วปิดใบให้จบใน UI — **ทางเดียวที่มีคือรับที่ปลายทาง** (ฝั่งใบโอนออกไม่มีปุ่มปฏิเสธ — ดูขั้น ③ ข้อ 9):
+  ใบ `PENDING` กด "จัดส่งทั้งใบ" ที่ `/stock/transfers` ก่อน → `/stock/transfers?view=incoming` เลือกสาขา
+  ปลายทาง → ของถึงปลายทางแล้ว "ผ่าน" (เครื่องย้ายสาขา) · เครื่องยังอยู่ต้นทางจริง "ไม่ผ่าน" ทุกรายการ + เหตุผล
+  (ใบ `REJECTED` เครื่องคงอยู่ต้นทาง) — เครื่องจึงจะอยู่ถูกสาขาและซื้อขายต่อได้
+- **ทิศกลับ — ใบโอนทดสอบยังเปิด แต่เครื่องในใบถูกล้าง** (ใบมี `[ทดสอบระบบ]` จึงรอด ส่วนเครื่องไม่มี marker
+  จึงถูกล้าง): หน้ารับของปลายทางจะโชว์แถวที่ชี้เครื่องที่ถูกลบ (`pending-deliveries` ไม่กรอง `products.deleted_at`)
+  — ตรวจ (ต้องได้ 0 แถว):
+
+  ```bash
+  psql -A -t -c "
+    SELECT t.id, t.batch_number, t.status, t.notes, p.id AS product_id, p.imei_serial, p.name
+    FROM stock_transfers t
+    JOIN products p ON p.id = t.product_id
+    WHERE t.deleted_at IS NULL
+      AND t.status IN ('PENDING', 'IN_TRANSIT')
+      AND p.deleted_at = '<wipedAt>';" "$PGURL"
+  ```
+
+  มีแถว = ตัดสินทีละใบ: เครื่องนั้นควรถูกล้างจริง → ล้างใบตามไปด้วย timestamp เดียวกัน (ขั้น ⑧ จะคืนพร้อมกัน):
+  `psql -A -t -c "UPDATE stock_transfers SET deleted_at = '<wipedAt>' WHERE id = '<id>';" "$PGURL"` ·
+  เครื่องไม่ควรถูกล้าง → คืนเครื่องก่อน (`UPDATE products SET deleted_at = NULL WHERE id = '<product_id>'`)
+  แล้วปิดใบผ่าน UI ตามข้อข้างบน
 - งบทดลอง SHOP (`/shop/accounting`) — `S11-2001/2002/2003` **เท่ากับ**ที่ dry-run พิมพ์ในขั้น ③ ข้อ 8
   (CLI ไม่แตะบัญชี ถ้าขยับ = มีคนโพสต์ JE ระหว่างนั้น ไม่ใช่ CLI)
 - จำนวนที่ล้าง = จำนวนที่ CLI รายงาน (option ต้องอยู่**ก่อน** URL และใช้ `$PGURL` — ดูกล่องในขั้น ⑧):

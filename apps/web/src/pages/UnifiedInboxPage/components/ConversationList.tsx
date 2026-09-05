@@ -256,7 +256,7 @@ export default function ConversationList({
       {/* บรรทัดสถานะของกอง "รอตอบ" — บอกกติกาเรียง และทางเข้ามุมมอง "ตอบไม่ทัน" (สเปก §7 แก้ไข 2026-09-05)
           ห้องที่พ้น 24 ชม. ไม่อยู่ในคิว เพราะตอบไปก็ส่งไม่ถึง — แต่ต้องมีที่ให้ดู ไม่ใช่หายไปเฉย ๆ */}
       {filters.tab === 'waiting' && filters.view !== 'expired' && (
-        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-1.5 text-[11px] leading-snug text-muted-foreground">
+        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-2 text-[11px] leading-snug text-muted-foreground">
           <span className="truncate">เรียง: ใกล้หมดเวลาก่อน แล้วรอนานก่อน</span>
           {(serverCounts?.expired ?? 0) > 0 && (
             <button
@@ -270,7 +270,7 @@ export default function ConversationList({
         </div>
       )}
       {filters.tab === 'waiting' && filters.view === 'expired' && (
-        <div className="flex items-center gap-2 border-b border-border/60 bg-muted px-4 py-1.5 text-[11px] leading-snug text-muted-foreground">
+        <div className="flex items-center gap-2 border-b border-border/60 bg-muted px-4 py-2 text-[11px] leading-snug text-muted-foreground">
           <Clock className="size-3 shrink-0" />
           {/* สั้นพอกับ 320px — ผลของการพ้นหน้าต่างอธิบายในแถบเหนือช่องพิมพ์เมื่อเปิดห้อง */}
           <span className="truncate"><span className="font-medium text-foreground">ตอบไม่ทัน {serverCounts?.expired ?? 0}</span> · พ้น 24 ชม. แล้ว</span>

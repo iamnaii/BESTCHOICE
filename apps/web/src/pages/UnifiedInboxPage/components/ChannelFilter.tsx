@@ -76,7 +76,7 @@ export default function ChannelFilter({
   return (
     <div>
       {/* แท็บกองงาน */}
-      <div className="flex px-4 pt-1 gap-0.5">
+      <div className="flex px-4 pt-1.5 gap-1">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.key;
           const n = tab.key === 'waiting' ? counts?.waiting : tab.key === 'mine' ? counts?.mine : undefined;
@@ -107,7 +107,7 @@ export default function ChannelFilter({
       </div>
 
       {/* เมนูช่องทาง + เมนูผู้ดูแล — รูปเดียวกัน กรองเฉพาะรายการ ไม่แตะเลขบนแท็บ */}
-      <div className="flex flex-wrap items-center gap-1 px-3 pb-2.5">
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-2 pb-3">
         <Select value={channel ?? ALL} onValueChange={(v) => onChannelChange(v === ALL ? null : v)}>
           <SelectTrigger
             aria-label="กรองตามช่องทาง"

@@ -190,6 +190,8 @@ export class AssignmentService {
         status: ChatRoomStatus.IDLE,
         handoffMode: false,
         resolvedAt: new Date(),
+        // ปิดแชทโดยไม่ต้องตอบ (ลูกค้าพิมพ์ขอบคุณ) = ออกจากคิว "รอตอบ" (สเปก §4.3)
+        waitingSince: null,
       },
     });
 

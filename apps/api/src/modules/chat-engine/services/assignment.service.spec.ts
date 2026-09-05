@@ -165,7 +165,21 @@ describe('AssignmentService', () => {
           status: ChatRoomStatus.IDLE,
           handoffMode: false,
           resolvedAt: expect.any(Date),
+          waitingSince: null,
         }),
+      });
+    });
+
+    it('ปิดแชทโดยไม่ต้องตอบ → ล้าง waitingSince ด้วย (สเปก §4.3)', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room-1' });
+      prisma.chatRoom.update.mockResolvedValue({});
+      prisma.staffChatActivity.create.mockResolvedValue({});
+
+      await service.resolve('room-1', 'staff-1');
+
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
+        data: expect.objectContaining({ status: ChatRoomStatus.IDLE, waitingSince: null }),
       });
     });
 

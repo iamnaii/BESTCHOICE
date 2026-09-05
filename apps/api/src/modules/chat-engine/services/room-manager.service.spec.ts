@@ -398,9 +398,14 @@ describe('RoomManagerService', () => {
       // where ชุดเดียวกับตัวนับ: waitingSince not null + (ไม่ใช่ FB หรือ FB ที่ยังอยู่ในหน้าต่าง)
       const keyArgs = prisma.chatRoom.findMany.mock.calls[0][0];
       expect(keyArgs.where).toMatchObject({ deletedAt: null, waitingSince: { not: null } });
-      expect(keyArgs.where.OR).toEqual([
-        { channel: { not: 'FACEBOOK' } },
-        { channel: 'FACEBOOK', lastCustomerAt: { gte: expect.any(Date) } },
+      // เงื่อนไข OR ซ้อนใน AND — ไม่ทับ OR ของการค้นหา
+      expect(keyArgs.where.AND).toEqual([
+        {
+          OR: [
+            { channel: { not: 'FACEBOOK' } },
+            { channel: 'FACEBOOK', lastCustomerAt: { gte: expect.any(Date) } },
+          ],
+        },
       ]);
       expect(keyArgs.orderBy).toBeUndefined();
       // ชั้น 1 = FB ที่เหลือ ≤3 ชม. · ชั้น 2 = ที่เหลือเรียงรอนานสุด (LINE 3 วัน > FB ทักซ้ำแต่รอ 22 ชม. > FB 1 ชม.)
@@ -414,8 +419,31 @@ describe('RoomManagerService', () => {
     it('expired=true → เฉพาะ FACEBOOK ที่รออยู่และ lastCustomerAt พ้น 24 ชม. หรือยังไม่มีค่า', async () => {
       await service.listRooms({ expired: true });
       const args = prisma.chatRoom.findMany.mock.calls[0][0];
-      expect(args.where).toMatchObject({ deletedAt: null, waitingSince: { not: null }, channel: 'FACEBOOK' });
-      expect(args.where.OR).toEqual([{ lastCustomerAt: null }, { lastCustomerAt: { lt: expect.any(Date) } }]);
+      expect(args.where).toMatchObject({ deletedAt: null, waitingSince: { not: null } });
+      expect(args.where.AND).toEqual([
+        { channel: 'FACEBOOK' },
+        { OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: expect.any(Date) } }] },
+      ]);
+    });
+
+    it('ค้นหาบนแท็บรอตอบ → เงื่อนไขค้นหาและเงื่อนไขรอตอบอยู่ครบทั้งคู่ (เดิม OR ทับกัน ค้นหาถูกทิ้งเงียบ ๆ)', async () => {
+      await service.listRooms({ waiting: true, search: 'สมชาย' });
+      const args = prisma.chatRoom.findMany.mock.calls[0][0];
+      expect(args.where.AND).toHaveLength(2);
+      expect(args.where.AND[0].OR).toEqual(
+        expect.arrayContaining([{ customer: { name: { contains: 'สมชาย', mode: 'insensitive' } } }]),
+      );
+      expect(args.where.AND[1].OR).toEqual(
+        expect.arrayContaining([{ channel: { not: 'FACEBOOK' } }]),
+      );
+    });
+
+    it('ตอบไม่ทัน + เลือกช่องทาง → channel=FACEBOOK ยังอยู่ (LINE ที่ lastCustomerAt ว่างต้องไม่ถูกป้ายว่าพ้น 24 ชม.)', async () => {
+      await service.listRooms({ expired: true, channels: ['LINE_SHOP'] });
+      const args = prisma.chatRoom.findMany.mock.calls[0][0];
+      expect(args.where.AND).toEqual(
+        expect.arrayContaining([{ channel: 'FACEBOOK' }, { channel: { in: ['LINE_SHOP'] } }]),
+      );
     });
 
     it('ไม่ส่ง waiting → เรียงแบบเดิม (ปักหมุดก่อน แล้ว lastMessageAt)', async () => {
@@ -449,10 +477,14 @@ describe('RoomManagerService', () => {
         where: { deletedAt: null, assignedToId: 'staff-1' },
       });
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({
-        where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, OR: expect.any(Array) }),
+        where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, AND: [expect.objectContaining({ OR: expect.any(Array) })] }),
       });
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({
-        where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, channel: 'FACEBOOK' }),
+        where: expect.objectContaining({
+          deletedAt: null,
+          waitingSince: { not: null },
+          AND: expect.arrayContaining([{ channel: 'FACEBOOK' }]),
+        }),
       });
       for (const call of prisma.chatRoom.count.mock.calls) {
         expect(call[0].where.unreadCount).toBeUndefined();
@@ -467,7 +499,7 @@ describe('RoomManagerService', () => {
 
       expect(prisma.chatRoom.groupBy).toHaveBeenCalledWith({
         by: ['channel'],
-        where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, OR: expect.any(Array) }),
+        where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, AND: expect.any(Array) }),
         _count: { id: true },
       });
     });

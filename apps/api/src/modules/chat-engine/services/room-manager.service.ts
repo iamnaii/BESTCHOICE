@@ -574,6 +574,9 @@ export class RoomManagerService {
     const where: Prisma.ChatRoomWhereInput = {
       deletedAt: null,
     };
+    // เงื่อนไขที่มี OR ของตัวเอง (ค้นหา / รอตอบ / ตอบไม่ทัน / ช่องทางหลายอัน) ต้องซ้อนใน AND
+    // — เดิมเขียน where.OR ทับกัน: ค้นหาบนแท็บรอตอบถูกทิ้งเงียบ ๆ และ expired+channels ทับ channel=FACEBOOK
+    const and: Prisma.ChatRoomWhereInput[] = [];
 
     if (params.channel) where.channel = params.channel;
     if (params.status) where.status = params.status;
@@ -582,33 +585,38 @@ export class RoomManagerService {
     if (params.customerId) where.customerId = params.customerId;
     if (params.unassignedOnly) where.assignedToId = null;
     if (params.search) {
-      where.OR = [
-        { customer: { name: { contains: params.search, mode: 'insensitive' } } },
-        { customer: { phone: { contains: params.search } } },
-        { lineUserId: { contains: params.search } },
-        // FB/TikTok/Web rooms often have no linked Customer yet — match on
-        // the platform-fetched displayName + the channel-specific user id
-        // (FB PSID, TikTok user id, web visitor id).
-        { displayName: { contains: params.search, mode: 'insensitive' } },
-        { externalUserId: { contains: params.search } },
-      ];
+      and.push({
+        OR: [
+          { customer: { name: { contains: params.search, mode: 'insensitive' } } },
+          { customer: { phone: { contains: params.search } } },
+          { lineUserId: { contains: params.search } },
+          // FB/TikTok/Web rooms often have no linked Customer yet — match on
+          // the platform-fetched displayName + the channel-specific user id
+          // (FB PSID, TikTok user id, web visitor id).
+          { displayName: { contains: params.search, mode: 'insensitive' } },
+          { externalUserId: { contains: params.search } },
+        ],
+      });
     }
     if (params.unreadOnly) where.unreadCount = { gt: 0 };
     if (params.waiting) {
       // รอตอบ *และยังตอบทัน*: ช่องทางที่ไม่ใช่ FACEBOOK ไม่มีหน้าต่าง · FACEBOOK ต้องมี lastCustomerAt ภายใน 24 ชม.
       // (null = ยังไม่เติมค่า = ถือว่าพ้นแล้ว — บน prod ทุกห้องเป็น null จนกว่า CLI จะรัน และ 44/68 ห้องพ้นจริง)
       where.waitingSince = { not: null };
-      where.OR = [
-        { channel: { not: ChatChannel.FACEBOOK } },
-        { channel: ChatChannel.FACEBOOK, lastCustomerAt: { gte: fbWindowBounds().open } },
-      ];
+      and.push({
+        OR: [
+          { channel: { not: ChatChannel.FACEBOOK } },
+          { channel: ChatChannel.FACEBOOK, lastCustomerAt: { gte: fbWindowBounds().open } },
+        ],
+      });
     }
     if (params.expired) {
       where.waitingSince = { not: null };
-      where.channel = ChatChannel.FACEBOOK;
-      where.OR = [{ lastCustomerAt: null }, { lastCustomerAt: { lt: fbWindowBounds().open } }];
+      and.push({ channel: ChatChannel.FACEBOOK });
+      and.push({ OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: fbWindowBounds().open } }] });
     }
-    if (params.channels && params.channels.length > 0) where.channel = { in: params.channels };
+    // ช่องทางที่เลือกซ้อนกับเงื่อนไขอื่น (expired + LINE ⇒ ว่าง ซึ่งคือความจริง ไม่ใช่ห้อง LINE ที่ถูกป้ายว่าพ้น 24 ชม.)
+    if (params.channels && params.channels.length > 0) and.push({ channel: { in: params.channels } });
     if (params.aiStatus === 'ai') {
       where.aiPaused = false;
       where.handoffMode = false;
@@ -617,6 +625,7 @@ export class RoomManagerService {
     } else if (params.aiStatus === 'pending') {
       where.handoffMode = true;
     }
+    if (and.length > 0) where.AND = and;
 
     return where;
   }

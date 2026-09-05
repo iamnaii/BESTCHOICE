@@ -82,7 +82,11 @@ Migration: `20261000300000_chat_room_waiting_since` (คอลัมน์ nulla
 
 ### 4.6 ผลข้างเคียงที่ต้องรู้
 - **วันที่เปิดบอท Facebook เต็มตัว** ห้องที่บอทตอบแล้วจะยังค้างในคิว "รอตอบ" จนกว่าคนจะตอบ ต้องเพิ่มสถานะ "บอทตอบแล้ว" ตอนนั้น (นอกขอบเขตรอบนี้ — บันทึกไว้ในหัวข้อ 10)
-- มีผู้เขียน `chatMessage.create` ตรง 3 ที่ที่ข้าม saveMessage (`line-oa/payment-links/payment-link.service.ts:340`, `notifications/services/notification-dispatch.service.ts:314`, `chatbot-finance/services/chat-room.service.ts:86` ซึ่งไม่มีผู้เรียก) — ทั้งหมดฝั่ง LINE ที่ยังไม่มีห้อง และไม่มีตัวไหนเขียน role CUSTOMER → ไม่กระทบ แต่แผนต้องมีด่านตรวจ (grep) ยืนยัน
+- **ผู้เขียนที่ข้าม `RoomManagerService.saveMessage`** (สำรวจใหม่ 2026-09-05 — ฉบับก่อนหน้าของหัวข้อนี้เขียนผิด 2 ข้อ: อ้างว่า `chatbot-finance/services/chat-room.service.ts` ไม่มีผู้เรียก และอ้างว่าไม่มีตัวไหนเขียน role CUSTOMER)
+  - `line-oa/payment-links/payment-link.service.ts:340` · `notifications/services/notification-dispatch.service.ts:314` — เขียน `chatMessage.create` ตรง ฝั่ง LINE ไม่ใช่ role CUSTOMER → ไม่กระทบ
+  - 🔴 **`chatbot-finance/services/chat-room.service.ts` มีผู้เรียกจริง**: `chatbot-finance/services/chatbot-finance.service.ts` เรียก `ChatRoomService.saveMessage` ด้วย `role: MessageRole.CUSTOMER` **6 จุด** (บรรทัด 205, 228, 255, 268, 279, 354) — เป็นตัวเขียนห้อง+ข้อความคู่ขนานครบชุดของช่องทาง LINE_FINANCE ที่**ไม่แตะ `RoomManagerService` เลย** ⇒ **ไม่เคยตั้ง `waitingSince`**
+  - ผลกระทบวันนี้ = **ศูนย์** (prod ไม่มีห้อง LINE เลย — ตาราง §1) และล้มไปทางที่ปลอดภัย: ลูกค้า LINE จะ*ไม่ปรากฏ*ในคิว ไม่ใช่ถูกล้างผิด ⇒ ไม่แก้ในรอบนี้ แต่เป็นเงื่อนไขบังคับก่อนเปิด LINE (§10)
+  - **ตรวจซ้ำแล้วว่าถูกต้อง**: `staff-chat/web-widget.gateway.ts:111` และเส้นทาง inbound ของ router เอง (`message-router.service.ts:187, 615`) เขียน CUSTOMER ผ่าน `roomManager.saveMessage` ทั้งคู่ → `waitingSince` ถูกตั้งตามปกติ
 
 ## 5. ส่วนที่ 2 · ใครตอบก่อนได้เป็นเจ้าของ
 
@@ -163,7 +167,12 @@ Migration: `20261000300000_chat_room_waiting_since` (คอลัมน์ nulla
 
 ## 10. ความเสี่ยงและสิ่งที่ต้องกลับมาทำเมื่อสถานการณ์เปลี่ยน
 - **เปิดบอท Facebook เต็มตัว** → ต้องมีสถานะ "บอทตอบแล้ว" มิฉะนั้นคิวรอตอบจะเต็มไปด้วยห้องที่บอทดูแลอยู่
-- **เปิดช่องทาง LINE** → ตรวจผู้เขียน `chatMessage.create` ตรง 3 ที่ (§4.6) ว่าไม่มีตัวไหนเขียน CUSTOMER โดยข้าม saveMessage
+- **เปิดช่องทาง LINE** → ต้องทำก่อน: ให้ `ChatRoomService.saveMessage` (`chatbot-finance/services/chat-room.service.ts`) เดินผ่าน `RoomManagerService` หรือทำ set-if-null ของ `waitingSince` ซ้ำในนั้น — ตอนนี้ผู้เรียก 6 จุดใน `chatbot-finance.service.ts` เขียน CUSTOMER โดยข้าม `RoomManagerService` ทั้งหมด (§4.6) ⇒ ห้อง LINE จะไม่มีวันเข้าคิว "รอตอบ"
+  - **ท่าตรวจที่ถูก: grep `role: MessageRole.CUSTOMER` แล้วดูว่าจุดไหนไม่ได้ผ่าน `RoomManagerService.saveMessage`** — การ grep `prisma.chatMessage.create(` (ท่าเดิม) **มองไม่เห็น wrapper service** อย่าง `ChatRoomService` จึงพลาดช่องนี้มารอบแรก
+- **เทสต์ที่อยากได้ก่อนขึ้น PR หน้าเว็บ** (ยังไม่ทำในรอบนี้) — 2 ตัว แบบต่อ DB จริง ตาม harness ที่มีอยู่แล้วใน `room-manager.recent-messages.db.spec.ts`:
+  1. ข้อความลูกค้าเข้า → echo ข้อความทักทายอัตโนมัติของเพจตามมา → ห้องต้อง**ยังอยู่**ใน `listRooms({ waiting: true })`
+  2. ยิง endpoint ข้อความสำเร็จรูป (canned response) → ห้องต้อง**หลุด**จากคิว "รอตอบ"
+- **คำถามค้างที่เจ้าของต้องตอบ (สาขานี้พึ่งคำตอบนี้อยู่):** ข้อความทักทายอัตโนมัติของเพจ Facebook **ยังเปิดอยู่ไหม** — ถ้าปิดไปแล้ว ด่านกันของ Fix 1 (`RoomManagerService.shouldSkipFirstOutboundClear`) ถอดออกได้
 - **ทีมเริ่มใช้จริง 1 เดือน** → ค่อยเลือกจากรายการที่ตัดออก (นัดติดตาม · ภาพรวมทีม · โน้ตในไทม์ไลน์) ตามที่ติดขัดจริง ไม่ใช่ตามที่ OBI มี
 - ข้อความส่งล้มยังแสดง 2 ฟอง (save≠delivered) เป็นของเดิม ไม่แก้ในรอบนี้
 

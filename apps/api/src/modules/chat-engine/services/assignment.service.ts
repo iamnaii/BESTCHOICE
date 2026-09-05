@@ -260,6 +260,10 @@ export class AssignmentService {
    * Auto-assign: round-robin to least-busy online staff.
    * Falls back to any staff with OWNER/BRANCH_MANAGER/FINANCE_MANAGER/SALES role
    * if no one is explicitly online.
+   *
+   * ⚠️ dead code ตั้งแต่ Task 8 — ไม่มีผู้เรียกใน production แล้ว: การแจกห้องอัตโนมัติถูกแทนที่
+   * ด้วย "ใครตอบก่อนได้เป็นเจ้าของ" (claimIfUnassigned หลังคำตอบถึงลูกค้า · สเปก §5)
+   * เก็บไว้รอรอบเก็บกวาด — อย่าอ่านว่าระบบยังแจกงานอัตโนมัติอยู่
    */
   async autoAssign(roomId: string): Promise<string | null> {
     // Get staff with open room counts

@@ -52,6 +52,8 @@ export class RoomManagerService {
   constructor(
     private prisma: PrismaService,
     private storageService: StorageService,
+    // ⚠️ dead code ตั้งแต่ Task 8 — ไม่มีผู้เรียกใน production แล้ว (createRoom เลิก autoAssign;
+    // การรับเรื่องย้ายไป AssignmentService.claimIfUnassigned หลังคำตอบถึงลูกค้า) เก็บไว้รอรอบเก็บกวาด
     @Optional() @Inject(forwardRef(() => AssignmentService))
     private assignmentService?: AssignmentService,
     @Optional() @Inject(forwardRef(() => MessageRouterService))

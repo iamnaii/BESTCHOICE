@@ -27,6 +27,8 @@
     "backfill:external-finance": "tsx scripts/backfill-external-finance-fk.ts",
     "backfill:contacts": "node dist/src/cli/backfill-contacts.cli.js",
     "backfill:contacts:help": "echo 'Cloud Run Job (prod) / node dist: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] npm --prefix apps/api run backfill:contacts  (runs node dist/src/cli/backfill-contacts.cli.js)'",
+    "reset:inbox-day-one": "node dist/src/cli/reset-inbox-day-one.cli.js",
+    "reset:inbox-day-one:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run reset:inbox-day-one. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run reset:inbox-day-one — ล้างผู้ดูแลทุกห้อง, unread=0 ในห้องที่ตอบแล้ว, ตั้ง waiting_since ให้ห้องที่ลูกค้ารอไม่เกิน 7 วัน'",
     "factory:reset": "npx -y tsx src/cli/factory-reset.cli.ts",
     "factory:reset:help": "echo 'ดูก่อน: DRY_RUN=1 EXPECTED_DB_NAME=<db> npm --prefix apps/api run factory:reset | รันจริง: CONFIRM_FACTORY_RESET=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_RESET=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run factory:reset — ล้างทุกตารางยกเว้น company_info/branches/users/_prisma_migrations'",
     "wipe:accounting": "node dist/src/cli/wipe-accounting.cli.js",

@@ -470,6 +470,8 @@ describe('RoomManagerService', () => {
       expect(args.where).not.toHaveProperty('waitingSince');
       expect(args.orderBy).toEqual([
         { pinnedAt: { sort: 'desc', nulls: 'last' } },
+        // ห้องปิดงานแล้วไปท้ายรายการ (เจ้าของเคาะ 2026-09-06)
+        { resolvedAt: { sort: 'desc', nulls: 'first' } },
         { lastMessageAt: 'desc' },
       ]);
     });
@@ -487,12 +489,13 @@ describe('RoomManagerService', () => {
 
       const res = await service.getRoomBadgeCounts('staff-1');
 
-      // all = ห้องทั้งหมด · mine = ห้องของฉันทุกห้อง · waiting = รอและยังทัน · expired = รอแต่พ้นหน้าต่าง
+      // all = ห้องทั้งหมด · mine = ห้องของฉันที่ยังเปิด · waiting = รอและยังทัน · expired = รอแต่พ้นหน้าต่าง
       expect(res).toEqual({ mine: 2, all: 8320, waiting: 24, expired: 44, byChannel: { FACEBOOK: 8320 } });
       // ไม่มีตัวนับใบไหนกรอง unreadCount อีกต่อไป
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({ where: { deletedAt: null } });
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({
-        where: { deletedAt: null, assignedToId: 'staff-1' },
+        // ของฉัน = งานที่ยังเปิดของฉัน — ห้องปิดงานแล้วไม่นับ (ชุดเดียวกับ openOnly ของรายการ)
+        where: { deletedAt: null, assignedToId: 'staff-1', resolvedAt: null },
       });
       expect(prisma.chatRoom.count).toHaveBeenCalledWith({
         where: expect.objectContaining({ deletedAt: null, waitingSince: { not: null }, AND: [expect.objectContaining({ OR: expect.any(Array) })] }),

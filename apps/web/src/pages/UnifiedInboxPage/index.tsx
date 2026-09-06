@@ -357,8 +357,20 @@ export default function UnifiedInboxPage() {
     onSuccess: (_data, roomId) => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
+      // ปิดงานแล้วเด้งไปห้องถัดไปในรายการ ให้ไล่คิวได้ต่อเนื่อง (เจ้าของเคาะ 2026-09-06) · เลิกทำ = กลับมาห้องเดิม
+      if (roomId === activeRoomId) {
+        const idx = sessions.findIndex((s) => s.id === roomId);
+        const next = idx >= 0 ? (sessions[idx + 1] ?? sessions[idx - 1]) : undefined;
+        navigate(next ? `/inbox/${next.id}` : '/inbox');
+      }
       toast.success('ปิดแชทแล้ว', {
-        action: { label: 'เลิกทำ', onClick: () => reopenMutation.mutate(roomId) },
+        action: {
+          label: 'เลิกทำ',
+          onClick: () => {
+            reopenMutation.mutate(roomId);
+            navigate(`/inbox/${roomId}`);
+          },
+        },
       });
     },
     onError: () => toast.error('ปิดแชทไม่สำเร็จ'),

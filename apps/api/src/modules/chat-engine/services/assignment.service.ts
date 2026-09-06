@@ -8,7 +8,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ChatRoomStatus } from '@prisma/client';
+import { ChatRoomStatus, MessageRole } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 
 /** Roles eligible to be assigned/transferred chat rooms. Single source of truth — do NOT duplicate inline. */
@@ -231,6 +231,26 @@ export class AssignmentService {
     this.gateway?.emitRoomUpdate(roomId, { event: 'resolved', roomId, resolvedBy: staffId });
   }
 
+  /** เวลาที่ลูกค้าเริ่มรอ = ข้อความ CUSTOMER ใบแรกหลังคำตอบ (STAFF) ใบล่าสุด · null = ไม่ได้รอ */
+  private async computeWaitingSince(roomId: string): Promise<Date | null> {
+    const lastReply = await this.prisma.chatMessage.findFirst({
+      where: { roomId, deletedAt: null, role: MessageRole.STAFF },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const firstUnanswered = await this.prisma.chatMessage.findFirst({
+      where: {
+        roomId,
+        deletedAt: null,
+        role: MessageRole.CUSTOMER,
+        ...(lastReply ? { createdAt: { gt: lastReply.createdAt } } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    });
+    return firstUnanswered?.createdAt ?? null;
+  }
+
   /** Inverse of resolve — reactivate a resolved room (for undo). */
   async reopen(roomId: string, staffId: string): Promise<void> {
     const room = await this.prisma.chatRoom.findUnique({
@@ -239,9 +259,12 @@ export class AssignmentService {
     });
     if (!room) throw new NotFoundException('ไม่พบ room');
 
+    // เปิดงานกลับ = ข้อมูลต้องพูดความจริง: ถ้าข้อความล่าสุดเป็นของลูกค้าที่ยังไม่มีคนตอบ
+    // ห้องต้องกลับเข้าคิว "รอตอบ" ด้วย (กติกาเดียวกับ CLI reset-inbox-day-one: นับเฉพาะ STAFF เป็นคำตอบ)
+    const waitingSince = await this.computeWaitingSince(roomId);
     await this.prisma.chatRoom.update({
       where: { id: roomId },
-      data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null },
+      data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null, waitingSince },
     });
 
     await this.prisma.staffChatActivity.create({

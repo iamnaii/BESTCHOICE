@@ -44,4 +44,12 @@ describe('deriveChannelCounts', () => {
   it('ห้องที่ไม่มีช่องทางถูกข้าม', () => {
     expect(deriveChannelCounts([{ channel: undefined }])).toEqual({});
   });
+
+  it('ของฉันไม่นับห้องที่ปิดงานแล้ว (ชุดเดียวกับ openOnly ของรายการ)', () => {
+    const sessions = [
+      { assignedTo: { id: 'me' }, waitingSince: null, resolvedAt: '2026-09-06T00:00:00.000Z' },
+      { assignedTo: { id: 'me' }, waitingSince: null, resolvedAt: null },
+    ];
+    expect(deriveTabCounts(sessions, 'me')).toEqual({ mine: 1, all: 2, waiting: 0 });
+  });
 });

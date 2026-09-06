@@ -53,6 +53,12 @@ export class SessionQueryDto {
 
   @IsOptional()
   @IsBoolean()
+  // เฉพาะห้องที่ยังไม่ปิดงาน (resolvedAt ว่าง) — แท็บ "ของฉัน" = งานที่ยังเปิดของฉัน (เจ้าของเคาะ 2026-09-06)
+  @Transform(({ value }) => value === true || value === 'true')
+  openOnly?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   // มุมมอง "ตอบไม่ทัน" (สเปก §7 แก้ไข 2026-09-05) — FACEBOOK ที่รออยู่แต่พ้นหน้าต่าง 24 ชม. · coerce แบบเดียวกับ waiting
   @Transform(({ value }) => value === true || value === 'true')
   expired?: boolean;

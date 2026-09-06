@@ -193,19 +193,42 @@ describe('AssignmentService', () => {
   });
 
   describe('reopen', () => {
-    it('reactivates a resolved room (status ACTIVE, clears resolvedAt) and logs activity', async () => {
+    it('reactivates a resolved room (status ACTIVE, clears resolvedAt) and logs activity — ไม่มีลูกค้ารอ = waitingSince null', async () => {
       prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room1' });
       prisma.chatRoom.update.mockResolvedValue({});
       prisma.staffChatActivity.create.mockResolvedValue({});
+      prisma.chatMessage = { findFirst: jest.fn().mockResolvedValue(null) } as any;
 
       await service.reopen('room1', 'staff1');
 
       expect(prisma.chatRoom.update).toHaveBeenCalledWith({
         where: { id: 'room1' },
-        data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null },
+        data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null, waitingSince: null },
       });
       expect(prisma.staffChatActivity.create).toHaveBeenCalledWith({
         data: { staffId: 'staff1', action: 'reopen', metadata: { roomId: 'room1' } },
+      });
+    });
+
+    it('เปิดงานกลับทั้งที่ลูกค้าทักค้างไว้ → waitingSince = ข้อความลูกค้าใบแรกหลังคำตอบล่าสุด (กลับเข้าคิวรอตอบ)', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room1' });
+      prisma.chatRoom.update.mockResolvedValue({});
+      prisma.staffChatActivity.create.mockResolvedValue({});
+      const lastReplyAt = new Date('2026-09-06T01:00:00.000Z');
+      const firstUnansweredAt = new Date('2026-09-06T02:00:00.000Z');
+      prisma.chatMessage = {
+        findFirst: jest.fn(async ({ where }: any) =>
+          where.role === 'STAFF' ? { createdAt: lastReplyAt } : { createdAt: firstUnansweredAt },
+        ),
+      } as any;
+
+      await service.reopen('room1', 'staff1');
+
+      const calls = (prisma.chatMessage.findFirst as jest.Mock).mock.calls;
+      expect(calls[1][0].where.createdAt).toEqual({ gt: lastReplyAt });
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room1' },
+        data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null, waitingSince: firstUnansweredAt },
       });
     });
 

@@ -62,6 +62,8 @@ export interface ChatSendFailedEvent {
 interface ChatSocketEvents {
   onNewMessage?: (data: ChatMessageEvent) => void;
   onRoomUpdate?: (data: ChatRoomUpdateEvent) => void;
+  /** โน้ตภายในของห้องเปลี่ยน (เพิ่ม/ลบ/ปัก/ปลด) — รีเฟรชโน้ต + โน้ตปักหมุดในห้องนั้น */
+  onNoteChanged?: (data: { roomId: string; action: string; noteId?: string }) => void;
   onTyping?: (data: ChatTypingEvent) => void;
   onPresence?: (data: ChatPresenceEvent) => void;
   onViewers?: (data: ChatViewersEvent) => void;
@@ -146,6 +148,7 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
 
     socket.on('chat:message:new', (data) => eventsRef.current.onNewMessage?.(data));
     socket.on('chat:room:update', (data) => eventsRef.current.onRoomUpdate?.(data));
+    socket.on('chat:note:changed', (data) => eventsRef.current.onNoteChanged?.(data));
     socket.on('chat:typing', (data) => {
       eventsRef.current.onTyping?.(data);
       // Show customer typing indicator for active room

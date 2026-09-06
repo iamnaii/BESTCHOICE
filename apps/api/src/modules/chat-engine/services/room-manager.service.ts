@@ -260,6 +260,13 @@ export class RoomManagerService {
     return room;
   }
 
+  /** ชื่อพนักงานสำหรับข้อความระบบ ("มอบหมายให้ แนน โดย …") — ไม่พบคืน "พนักงาน" */
+  async getStaffName(staffId: string | null | undefined): Promise<string> {
+    if (!staffId) return 'พนักงาน';
+    const u = await this.prisma.user.findUnique({ where: { id: staffId }, select: { name: true } });
+    return u?.name || 'พนักงาน';
+  }
+
   /** Save a message and update room stats */
   /**
    * ห้องนี้บอทเคยตอบไปแล้วหรือยัง — ใช้แยก "พนักงานแทรกกลางบทสนทนาที่บอทคุยอยู่"
@@ -307,6 +314,9 @@ export class RoomManagerService {
     costUsd?: number;
     visionExtracted?: Prisma.InputJsonValue;
     clientMessageId?: string;
+    /** ข้อความระบบที่ไม่ใช่การสนทนา (มอบหมาย/ปิดงาน/โฆษณา) — ไม่แตะ lastMessageAt/totalMessages/unread
+     *  ไม่งั้นห้องที่ปิดงานเด้งขึ้นบนสุดและพรีวิวรายการซ้ายกลายเป็นบรรทัดระบบ */
+    silent?: boolean;
   }) {
     const msg = await this.prisma.chatMessage.create({
       data: {
@@ -328,6 +338,8 @@ export class RoomManagerService {
         clientMessageId: params.clientMessageId,
       },
     });
+
+    if (params.silent) return msg;
 
     // Track first staff/bot response for SLA
     const updateData: Prisma.ChatRoomUpdateInput = {
@@ -535,6 +547,13 @@ export class RoomManagerService {
         customer: { select: { id: true, name: true, phone: true, nationalId: true } },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
         tags: true,
+        // โน้ตปักหมุดของห้อง (ห้องละ 1) — แถบใต้หัวห้องในกระทู้
+        notes: {
+          where: { deletedAt: null, pinnedAt: { not: null } },
+          orderBy: { pinnedAt: 'desc' },
+          take: 1,
+          include: { staff: { select: { id: true, name: true } } },
+        },
       },
     });
   }
@@ -642,7 +661,8 @@ export class RoomManagerService {
       assignedTo: { select: { id: true, name: true, avatarUrl: true } },
       tags: true,
       messages: {
-        where: { deletedAt: null },
+        // พรีวิว = ข้อความสนทนาล่าสุด — ข้อความระบบ (มอบหมาย/ปิดงาน/โฆษณา) ห้ามมาแทนที่ข้อความลูกค้า
+        where: { deletedAt: null, role: { not: MessageRole.SYSTEM } },
         orderBy: { createdAt: 'desc' as const },
         take: 1,
         select: { text: true, role: true, createdAt: true },

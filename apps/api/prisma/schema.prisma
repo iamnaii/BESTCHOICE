@@ -5685,6 +5685,11 @@ model ChatNote {
   @@index([roomId])
   @@index([staffId])
   @@index([deletedAt])
+  /** โน้ตปักหมุดของห้อง (ห้องละ 1) — แถบใต้หัวห้องในกระทู้ */
+  pinnedAt   DateTime? @map("pinned_at")
+  pinnedById String?   @map("pinned_by_id")
+
+  @@index([roomId, pinnedAt])
   @@map("chat_notes")
 }
 

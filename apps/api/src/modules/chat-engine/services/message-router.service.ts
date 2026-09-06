@@ -969,7 +969,7 @@ export class MessageRouterService {
     // ใครตอบก่อนได้เป็นเจ้าของ (สเปก §5) — หลังส่งถึงลูกค้าแล้วเท่านั้น · best-effort:
     // การรับเรื่องล้มไม่ทำให้การส่งที่สำเร็จแล้วกลายเป็นล้ม (ไม่งั้น client retry = ส่งซ้ำ)
     try {
-      await this.assignmentService?.claimIfUnassigned(params.roomId, params.staffId);
+      await this.noteClaimIfFirst(params.roomId, params.staffId);
     } catch (err) {
       this.logger.warn(
         `[sendStaffMessage] claim failed for room ${params.roomId}: ${err instanceof Error ? err.message : err}`,
@@ -989,8 +989,22 @@ export class MessageRouterService {
    * ลิงก์ Messenger จากหน้าสินค้าบนเว็บ (B4) — ข้อความมีชื่อรุ่นเต็มเพื่อให้
    * ProductContextCard/detection จับได้เหมือนลูกค้าพิมพ์ชื่อรุ่นมาเอง
    */
+  /** ใครตอบก่อนได้เป็นเจ้าของ — ถ้าเพิ่งได้เป็นเจ้าของจริง โพสต์ข้อความระบบให้ทีมรู้ (ครั้งเดียวต่อห้อง) */
+  private async noteClaimIfFirst(roomId: string, staffId: string): Promise<void> {
+    const claimed = await this.assignmentService?.claimIfUnassigned(roomId, staffId);
+    if (!claimed) return;
+    try {
+      const name = await this.roomManager.getStaffName(staffId);
+      await this.postSystemNote(roomId, `${name} รับห้องนี้ (ตอบก่อน)`);
+    } catch (err) {
+      this.logger.warn(`[claim note] room ${roomId}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   async postSystemNote(roomId: string, text: string): Promise<void> {
     await this.roomManager.saveMessage({
+      // เงียบ: ไม่แตะสถิติห้อง — ข้อความระบบไม่ใช่การสนทนา (สเปกแผงกลาง 2026-09-06)
+      silent: true,
       roomId,
       role: MessageRole.SYSTEM,
       type: MessageType.TEXT,
@@ -1080,7 +1094,7 @@ export class MessageRouterService {
 
     // best-effort: การรับเรื่องล้มต้องไม่ทำให้การส่งที่ถึงลูกค้าแล้วกลายเป็นล้ม
     try {
-      await this.assignmentService?.claimIfUnassigned(roomId, staffId);
+      await this.noteClaimIfFirst(roomId, staffId);
     } catch (err) {
       this.logger.warn(
         `[sendStaffOutbound] claim failed for room ${roomId}: ${err instanceof Error ? err.message : err}`,

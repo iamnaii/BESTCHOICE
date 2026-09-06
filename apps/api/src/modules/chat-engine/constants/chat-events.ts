@@ -19,6 +19,8 @@ export const CHAT_EVENTS = {
   RESOLVED: 'chat:resolved',
   /** New note added to room */
   NOTE_ADDED: 'chat:note:added',
+  /** โน้ตภายในของห้องเปลี่ยน (เพิ่ม/ลบ/ปักหมุด/ปลดหมุด) — ผู้ที่เปิดห้องอยู่รีเฟรชโน้ต */
+  NOTE_CHANGED: 'chat:note:changed',
   /** Current viewers of a room */
   VIEWERS: 'chat:viewers',
   /** Collision warning — another staff is viewing the same room */

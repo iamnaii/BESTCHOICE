@@ -831,3 +831,19 @@ describe('MessageRouterService.sendStaffOutbound — ข้อความสำ
     expect(res.success).toBe(true);
   });
 });
+
+describe('MessageRouterService — ข้อความระบบ "รับห้องนี้ (ตอบก่อน)"', () => {
+  it('claimIfUnassigned=true → โน้ตระบบแบบเงียบ 1 ครั้ง · false → ไม่มีโน้ต', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).getStaffName = jest.fn().mockResolvedValue('แนน');
+    const assignment = { claimIfUnassigned: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false) };
+    (router as any).assignmentService = assignment;
+    await (router as any).noteClaimIfFirst('r1', 'u1');
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'r1', role: MessageRole.SYSTEM, silent: true, text: 'แนน รับห้องนี้ (ตอบก่อน)' }),
+    );
+    roomManager.saveMessage.mockClear();
+    await (router as any).noteClaimIfFirst('r1', 'u1');
+    expect(roomManager.saveMessage).not.toHaveBeenCalled();
+  });
+});

@@ -1,4 +1,5 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional, ForbiddenException } from '@nestjs/common';
+import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../../chat-engine/interfaces/chat-gateway.interface';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CannedResponseVariableService } from './canned-response-variable.service';
 
@@ -12,16 +13,68 @@ export class StaffMessageService {
   constructor(
     private prisma: PrismaService,
     private cannedResponseVariableService: CannedResponseVariableService,
+    @Optional() @Inject(CHAT_GATEWAY_TOKEN) private readonly gateway?: IChatGateway,
   ) {}
 
   /** Add an internal note to a room */
   async addNote(roomId: string, staffId: string, content: string) {
-    return this.prisma.chatNote.create({
+    const note = await this.prisma.chatNote.create({
       data: { roomId, staffId, content },
       include: {
         staff: { select: { id: true, name: true, avatarUrl: true } },
       },
     });
+    this.gateway?.emitNoteChanged?.(roomId, { roomId, action: 'added', noteId: note.id });
+    return note;
+  }
+
+  /** ลบโน้ต (soft) — คนเขียนเอง หรือ OWNER/BRANCH_MANAGER เท่านั้น · ถ้าเป็นโน้ตปักหมุด แถบใต้หัวหายไปด้วย */
+  async deleteNote(roomId: string, noteId: string, actor: { id: string; role: string }) {
+    const note = await this.prisma.chatNote.findFirst({
+      where: { id: noteId, roomId, deletedAt: null },
+      select: { id: true, staffId: true },
+    });
+    if (!note) throw new NotFoundException('ไม่พบโน้ต');
+    const isManager = actor.role === 'OWNER' || actor.role === 'BRANCH_MANAGER';
+    if (note.staffId !== actor.id && !isManager) {
+      throw new ForbiddenException('ลบได้เฉพาะโน้ตของตัวเอง หรือผู้จัดการ');
+    }
+    await this.prisma.chatNote.update({
+      where: { id: noteId },
+      data: { deletedAt: new Date(), pinnedAt: null, pinnedById: null },
+    });
+    this.gateway?.emitNoteChanged?.(roomId, { roomId, action: 'deleted', noteId });
+  }
+
+  /** ปักโน้ตเป็นโน้ตของห้อง — ห้องละ 1: ปลดอันเก่าในทรานแซกชันเดียวกัน */
+  async pinNote(roomId: string, noteId: string, staffId: string) {
+    const note = await this.prisma.chatNote.findFirst({
+      where: { id: noteId, roomId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!note) throw new NotFoundException('ไม่พบโน้ต');
+    const now = new Date();
+    const [, pinned] = await this.prisma.$transaction([
+      this.prisma.chatNote.updateMany({
+        where: { roomId, pinnedAt: { not: null }, id: { not: noteId } },
+        data: { pinnedAt: null, pinnedById: null },
+      }),
+      this.prisma.chatNote.update({
+        where: { id: noteId },
+        data: { pinnedAt: now, pinnedById: staffId },
+        include: { staff: { select: { id: true, name: true, avatarUrl: true } } },
+      }),
+    ]);
+    this.gateway?.emitNoteChanged?.(roomId, { roomId, action: 'pinned', noteId });
+    return pinned;
+  }
+
+  async unpinNote(roomId: string, noteId: string) {
+    await this.prisma.chatNote.updateMany({
+      where: { id: noteId, roomId },
+      data: { pinnedAt: null, pinnedById: null },
+    });
+    this.gateway?.emitNoteChanged?.(roomId, { roomId, action: 'unpinned', noteId });
   }
 
   /** Get all notes for a room */

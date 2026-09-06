@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,9 @@ import SessionActions from './SessionActions';
 import MessageTemplatePicker from './MessageTemplatePicker';
 import ProductPickerDialog from './ProductPickerDialog';
 import AiSuggestPanel from './AiSuggestPanel';
+import NoteBubble from './NoteBubble';
+import PinnedNoteBar from './PinnedNoteBar';
+import { mergeTimeline, type RoomNote } from './timeline';
 import { fbWindowFor, fbWindowLeftText } from './fb-window';
 import { useKeyboardShortcuts, isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
@@ -118,6 +121,15 @@ interface ChatPanelProps {
   onStartTyping?: () => void;
   onStopTyping?: () => void;
   staffTypingName?: string | null;
+  /** โน้ตภายในของห้อง — รวมเข้าไทม์ไลน์ (สเปกแผงกลาง 2026-09-06) */
+  notes?: RoomNote[];
+  /** โน้ตปักหมุด (ห้องละ 1) — แถบใต้หัวห้อง */
+  pinnedNote?: RoomNote | null;
+  currentUserRole?: string;
+  onAddNote?: (content: string) => void | Promise<boolean | void>;
+  onPinNote?: (noteId: string) => void;
+  onUnpinNote?: (noteId: string) => void;
+  onDeleteNote?: (noteId: string) => void;
 }
 
 export default function ChatPanel({
@@ -126,6 +138,13 @@ export default function ChatPanel({
   isLoadingMessages,
   isCustomerTyping = false,
   onSendMessage,
+  notes = [],
+  pinnedNote = null,
+  currentUserRole,
+  onAddNote,
+  onPinNote,
+  onUnpinNote,
+  onDeleteNote,
   onSendFile,
   onSendSticker,
   onBack,
@@ -152,6 +171,15 @@ export default function ChatPanel({
   staffTypingName,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
+  // โหมดช่องพิมพ์ (ท่า OBI): คุยกับลูกค้า | โน้ตภายใน — เปลี่ยนห้องแล้วกลับโหมดคุยเสมอ กันเผลอ
+  const [composerMode, setComposerMode] = useState<'chat' | 'note'>('chat');
+  const isNoteMode = composerMode === 'note';
+  useEffect(() => {
+    setComposerMode('chat');
+  }, [session?.id]);
+  const timeline = useMemo(() => mergeTimeline(messages, notes), [messages, notes]);
+  const canDeleteNote = (n: RoomNote) =>
+    (n.staff?.id ?? n.staffId) === currentUserId || currentUserRole === 'OWNER' || currentUserRole === 'BRANCH_MANAGER';
   const [isSending, setIsSending] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<{ aiDraft: string; intent: string } | null>(null);
   const [showActions, setShowActions] = useState(false);
@@ -445,7 +473,7 @@ export default function ChatPanel({
     setIsSending(true);
     let result: boolean | void;
     try {
-      result = await onSendMessage(text);
+      result = isNoteMode ? await onAddNote?.(text) : await onSendMessage(text);
     } finally {
       setIsSending(false);
     }
@@ -469,6 +497,11 @@ export default function ChatPanel({
     // Never send while an IME composition is in progress — Thai/CJK candidate
     // selection commits with Enter, which would otherwise send mid-word.
     if (e.nativeEvent.isComposing || (e.nativeEvent as KeyboardEvent).keyCode === 229) {
+      return;
+    }
+    if (e.key === 'Escape' && isNoteMode) {
+      e.preventDefault();
+      setComposerMode('chat');
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -710,6 +743,7 @@ export default function ChatPanel({
       </div>
 
       {/* Messages */}
+      {pinnedNote && onUnpinNote && <PinnedNoteBar note={pinnedNote} onUnpin={onUnpinNote} />}
       <div className="flex-1 overflow-y-auto px-4 py-3" role="log" aria-label="ประวัติข้อความ">
         {isLoadingMessages ? (
           <div className="space-y-3 py-4">
@@ -727,26 +761,37 @@ export default function ChatPanel({
           </div>
         ) : (
           <>
-            {messages.map((msg, i) => {
+            {timeline.map((item, i) => {
+              const prev = timeline[i - 1];
               const showDateSeparator =
-                i === 0 ||
-                !isSameDay(new Date(messages[i - 1].createdAt), new Date(msg.createdAt));
+                i === 0 || !isSameDay(new Date(prev.createdAt), new Date(item.createdAt));
               return (
-                <div key={msg.id}>
+                <div key={item.id}>
                   {showDateSeparator && (
                     <div className="flex items-center gap-3 py-3 px-4">
                       <div className="flex-1 h-px bg-border" />
                       <span className="text-[11px] text-muted-foreground font-medium">
-                        {formatDateSeparator(msg.createdAt)}
+                        {formatDateSeparator(item.createdAt)}
                       </span>
                       <div className="flex-1 h-px bg-border" />
                     </div>
                   )}
-                  <MessageBubble
-                    message={msg}
-                    customerAvatar={avatarUrl || undefined}
-                    customerInitial={displayName[0]}
-                  />
+                  {item.kind === 'note' ? (
+                    <NoteBubble
+                      note={item.data}
+                      isPinned={!!item.data.pinnedAt}
+                      canDelete={canDeleteNote(item.data)}
+                      onPin={onPinNote}
+                      onUnpin={onUnpinNote}
+                      onDelete={onDeleteNote}
+                    />
+                  ) : (
+                    <MessageBubble
+                      message={item.data}
+                      customerAvatar={avatarUrl || undefined}
+                      customerInitial={displayName[0]}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -812,13 +857,13 @@ export default function ChatPanel({
       </div>
 
       {/* หน้าต่าง 24 ชม. ของ Facebook (สเปก §8.1) — เตือน ไม่ปิดปุ่ม · อ่านจาก session.lastCustomerAt ที่เซิร์ฟเวอร์ตั้ง */}
-      {!isResolved && fbWindow === 'closing' && (
+      {!isResolved && !isNoteMode && fbWindow === 'closing' && (
         <div role="status" className="flex items-start gap-2 border-t border-border/60 bg-warning/10 px-3 py-2 text-xs leading-snug text-foreground">
           <Clock className="mt-0.5 size-3.5 shrink-0 text-warning" />
           <span><span className="font-semibold">ตอบได้อีก {fbWindowLeftText(session.lastCustomerAt)}</span> ก่อน Facebook ปิดหน้าต่าง 24 ชั่วโมง</span>
         </div>
       )}
-      {!isResolved && fbWindow === 'closed' && (
+      {!isResolved && !isNoteMode && fbWindow === 'closed' && (
         <div role="status" className="flex items-start gap-2 border-t border-border/60 bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
           <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
           <span><span className="font-semibold text-foreground">พ้น 24 ชั่วโมงแล้ว</span> Facebook อาจไม่ให้ส่งข้อความปกติ ถ้าส่งไม่ถึงให้ติดต่อทางโทรศัพท์แทน</span>
@@ -837,7 +882,33 @@ export default function ChatPanel({
       {/* Input */}
       {!isResolved && (
         <div className="border-t border-border/60 px-3 py-2.5 bg-card">
-          <div className="flex items-end gap-1.5">
+          {/* สวิตช์โหมด (ท่า OBI cn-mode): คุยกับลูกค้า | โน้ตภายใน */}
+          {onAddNote && !isResolved && (
+            <div className="mb-1.5 flex items-center gap-1" role="radiogroup" aria-label="โหมดช่องพิมพ์">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!isNoteMode}
+                onClick={() => setComposerMode('chat')}
+                className={cn('rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors', !isNoteMode ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted')}
+              >
+                คุยกับลูกค้า
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={isNoteMode}
+                onClick={() => { setComposerMode('note'); inputRef.current?.focus(); }}
+                className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors', isNoteMode ? 'border-warning bg-warning/15 text-foreground' : 'border-border text-muted-foreground hover:bg-muted')}
+              >
+                <StickyNote className="size-3" /> โน้ตภายใน
+              </button>
+              <span className="ml-1 text-[10.5px] text-muted-foreground">
+                {isNoteMode ? 'เห็นเฉพาะทีมงาน ไม่ส่งถึงลูกค้า · Esc กลับไปคุย' : ''}
+              </span>
+            </div>
+          )}
+          <div className={cn('flex items-end gap-1.5', isNoteMode && '[&>button]:pointer-events-none [&>button]:opacity-30')}>
             {/* File upload */}
             <input
               ref={fileInputRef}
@@ -848,7 +919,7 @@ export default function ChatPanel({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={isUploadingFile}
+              disabled={isUploadingFile || isNoteMode}
               aria-label="แนบไฟล์"
               className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="แนบไฟล์/รูปภาพ"
@@ -1067,7 +1138,7 @@ export default function ChatPanel({
             {/* Product picker */}
             <button
               onClick={() => setShowProductPicker(true)}
-              disabled={!session?.id}
+              disabled={!session?.id || isNoteMode}
               aria-label="ส่งข้อมูลสินค้า"
               className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ส่งข้อมูล/รูปสินค้า"
@@ -1077,7 +1148,7 @@ export default function ChatPanel({
             {/* Message template picker */}
             <button
               onClick={() => setShowTemplatePicker(true)}
-              disabled={!session?.id}
+              disabled={!session?.id || isNoteMode}
               aria-label="ข้อความสำเร็จรูป"
               className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ข้อความสำเร็จรูป (Ctrl+K)"
@@ -1099,15 +1170,20 @@ export default function ChatPanel({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               onBlur={endTyping}
-              placeholder="พิมพ์ข้อความ..."
-              aria-label="พิมพ์ข้อความ"
+              placeholder={isNoteMode ? 'พิมพ์โน้ตภายใน… Enter = บันทึก' : 'พิมพ์ข้อความ...'}
+              aria-label={isNoteMode ? 'พิมพ์โน้ตภายใน' : 'พิมพ์ข้อความ'}
               rows={1}
-              className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-colors placeholder:text-muted-foreground/70"
+              className={cn(
+                'flex-1 resize-none overflow-y-auto px-3 py-2 text-sm rounded-lg border-0 focus:outline-none focus:ring-2 max-h-32 transition-colors placeholder:text-muted-foreground/70',
+                isNoteMode
+                  ? 'bg-warning/10 focus:ring-warning/40 focus:bg-warning/10'
+                  : 'bg-muted/40 focus:ring-primary/20 focus:bg-background',
+              )}
             />
             <button
               onClick={() => void handleSend()}
               disabled={!inputText.trim() || isSending}
-              aria-label="ส่งข้อความ"
+              aria-label={isNoteMode ? 'บันทึกโน้ต' : 'ส่งข้อความ'}
               className={cn(
                 'p-2 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-all duration-200',
                 inputText.trim() && !isSending
@@ -1123,7 +1199,7 @@ export default function ChatPanel({
             </button>
           </div>
           <p className="hidden lg:block mt-1 px-1 text-[11px] leading-snug text-muted-foreground/70">
-            Enter ส่ง · Shift+Enter ขึ้นบรรทัด
+            {isNoteMode ? 'Enter บันทึกโน้ต · Shift+Enter ขึ้นบรรทัด' : 'Enter ส่ง · Shift+Enter ขึ้นบรรทัด'}
           </p>
         </div>
       )}

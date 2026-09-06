@@ -373,6 +373,22 @@ describe('RoomManagerService', () => {
     });
   });
 
+  describe('saveMessage — ข้อความระบบแบบเงียบ (silent)', () => {
+    it('silent=true → บันทึกข้อความ แต่ไม่แตะสถิติห้อง (lastMessageAt/totalMessages/unread) — ห้องไม่เด้ง พรีวิวไม่เปลี่ยน', async () => {
+      prisma.chatMessage.create.mockResolvedValue({ id: 'm-sys', createdAt: new Date() });
+      await service.saveMessage({ roomId: 'r1', role: MessageRole.SYSTEM, text: 'ปิดงานโดย แนน', silent: true });
+      expect(prisma.chatMessage.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ role: MessageRole.SYSTEM, text: 'ปิดงานโดย แนน' }) }));
+      expect(prisma.chatRoom.update).not.toHaveBeenCalled();
+      expect(prisma.chatRoom.updateMany).not.toHaveBeenCalled();
+    });
+    it('ไม่ silent → อัปเดตสถิติห้องเหมือนเดิม', async () => {
+      prisma.chatMessage.create.mockResolvedValue({ id: 'm1', createdAt: new Date() });
+      prisma.chatRoom.findUnique.mockResolvedValue({ firstResponseAt: null });
+      await service.saveMessage({ roomId: 'r1', role: MessageRole.STAFF, text: 'สวัสดี', staffId: 'u1' });
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'r1' } }));
+    });
+  });
+
   describe('listRooms — แท็บรอตอบ', () => {
     beforeEach(() => {
       prisma.chatRoom.findMany.mockResolvedValue([]);
@@ -414,6 +430,8 @@ describe('RoomManagerService', () => {
       // hydrate เฉพาะหน้าที่ขอ
       const rowArgs = prisma.chatRoom.findMany.mock.calls[1][0];
       expect(rowArgs.where).toEqual({ id: { in: ['fb-closing', 'line-old', 'fb-nudged', 'fb-fresh'] } });
+      // พรีวิวรายการซ้าย = ข้อความสนทนาล่าสุด — ข้อความระบบห้ามมาแทนที่ข้อความลูกค้า
+      expect(rowArgs.include.messages.where).toEqual({ deletedAt: null, role: { not: MessageRole.SYSTEM } });
     });
 
     it('expired=true → เฉพาะ FACEBOOK ที่รออยู่และ lastCustomerAt พ้น 24 ชม. หรือยังไม่มีค่า', async () => {

@@ -12,6 +12,8 @@ async function build(prisma: any) {
 describe('ChatAiDraftService', () => {
   it('takeOver pauses AI and assigns room to staff', async () => {
     const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'แนน' }) },
+      chatMessage: { create: jest.fn().mockResolvedValue({ id: 'm-sys' }) },
       chatRoom: { update: jest.fn().mockResolvedValue({}) },
     };
     const svc = await build(prisma);

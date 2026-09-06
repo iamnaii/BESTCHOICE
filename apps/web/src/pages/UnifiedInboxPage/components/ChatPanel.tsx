@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -881,34 +881,71 @@ export default function ChatPanel({
 
       {/* Input */}
       {!isResolved && (
-        <div className="border-t border-border/60 px-3 py-2.5 bg-card">
-          {/* สวิตช์โหมด (ท่า OBI cn-mode): คุยกับลูกค้า | โน้ตภายใน */}
-          {onAddNote && !isResolved && (
-            <div className="mb-1.5 flex items-center gap-1" role="radiogroup" aria-label="โหมดช่องพิมพ์">
+        <div className="border-t border-border/60 px-3 pt-2 pb-3 bg-card">
+          {/* แท็บโหมดเกาะขอบบนของการ์ด (แบบที่เจ้าของโอเค 2026-09-06): ตอบลูกค้า | โน้ตภายใน */}
+          {onAddNote && (
+            <div className="ml-3 flex items-end gap-0.5" role="radiogroup" aria-label="โหมดช่องพิมพ์">
               <button
                 type="button"
                 role="radio"
                 aria-checked={!isNoteMode}
-                onClick={() => setComposerMode('chat')}
-                className={cn('rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors', !isNoteMode ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted')}
+                onClick={() => { setComposerMode('chat'); inputRef.current?.focus(); }}
+                className={cn(
+                  'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
+                  !isNoteMode ? 'border-border bg-card text-primary' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
+                )}
               >
-                คุยกับลูกค้า
+                <MessageSquare className="size-3.5" /> ตอบลูกค้า
               </button>
               <button
                 type="button"
                 role="radio"
                 aria-checked={isNoteMode}
                 onClick={() => { setComposerMode('note'); inputRef.current?.focus(); }}
-                className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors', isNoteMode ? 'border-warning bg-warning/15 text-foreground' : 'border-border text-muted-foreground hover:bg-muted')}
+                className={cn(
+                  'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
+                  isNoteMode ? 'border-warning/50 bg-warning/10 text-foreground' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
+                )}
               >
-                <StickyNote className="size-3" /> โน้ตภายใน
+                <StickyNote className="size-3.5" /> โน้ตภายใน
               </button>
-              <span className="ml-1 text-[10.5px] text-muted-foreground">
-                {isNoteMode ? 'เห็นเฉพาะทีมงาน ไม่ส่งถึงลูกค้า · Esc กลับไปคุย' : ''}
-              </span>
             </div>
           )}
-          <div className={cn('flex items-end gap-1.5', isNoteMode && '[&>button]:pointer-events-none [&>button]:opacity-30')}>
+          <div
+            className={cn(
+              'flex flex-col rounded-xl border transition-[box-shadow,border-color]',
+              isNoteMode
+                ? 'border-warning/50 bg-warning/10 focus-within:ring-2 focus-within:ring-warning/25'
+                : 'border-border bg-card focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/20',
+            )}
+          >
+            <textarea
+              ref={inputRef}
+              value={inputText}
+              onChange={(e) => {
+                const v = e.target.value;
+                setInputText(v);
+                // Drop the AI-draft association once the box is cleared, so an
+                // unrelated follow-up isn't logged as an "edit" of that draft.
+                if (selectedSuggestion && v.trim() === '') setSelectedSuggestion(null);
+                if (v.trim()) emitTyping();
+                else endTyping();
+              }}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onBlur={endTyping}
+              placeholder={isNoteMode ? 'พิมพ์โน้ตภายใน…' : `พิมพ์ข้อความถึง ${displayName}…`}
+              aria-label={isNoteMode ? 'พิมพ์โน้ตภายใน' : 'พิมพ์ข้อความ'}
+              rows={2}
+              className="block w-full resize-none overflow-y-auto bg-transparent px-3.5 pt-2.5 pb-1 text-sm leading-relaxed border-0 focus:outline-none focus:ring-0 max-h-32 placeholder:text-muted-foreground/60"
+            />
+            <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5 pt-0.5">
+              {isNoteMode ? (
+                <span className="inline-flex items-center gap-1.5 pl-2 text-[12px] text-amber-800">
+                  <Lock className="size-3.5" /> เห็นเฉพาะทีมงาน · ไม่ส่งถึงลูกค้า
+                </span>
+              ) : (
+                <div className="flex items-center gap-0.5">
             {/* File upload */}
             <input
               ref={fileInputRef}
@@ -919,9 +956,9 @@ export default function ChatPanel({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={isUploadingFile || isNoteMode}
+              disabled={isUploadingFile}
               aria-label="แนบไฟล์"
-              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="size-9 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="แนบไฟล์/รูปภาพ"
             >
               {isUploadingFile ? (
@@ -936,7 +973,7 @@ export default function ChatPanel({
                 <button
                   aria-label="อิโมจิ / สติกเกอร์"
                   className={cn(
-                    'p-2 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-colors',
+                    'size-9 inline-flex items-center justify-center rounded-lg transition-colors',
                     emojiOpen
                       ? 'text-primary bg-primary/10'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted',
@@ -1138,9 +1175,9 @@ export default function ChatPanel({
             {/* Product picker */}
             <button
               onClick={() => setShowProductPicker(true)}
-              disabled={!session?.id || isNoteMode}
+              disabled={!session?.id}
               aria-label="ส่งข้อมูลสินค้า"
-              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="size-9 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ส่งข้อมูล/รูปสินค้า"
             >
               <Smartphone className="w-4 h-4" />
@@ -1148,59 +1185,38 @@ export default function ChatPanel({
             {/* Message template picker */}
             <button
               onClick={() => setShowTemplatePicker(true)}
-              disabled={!session?.id || isNoteMode}
+              disabled={!session?.id}
               aria-label="ข้อความสำเร็จรูป"
-              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="size-9 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ข้อความสำเร็จรูป (Ctrl+K)"
             >
               <MessageSquareQuote className="w-4 h-4" />
             </button>
-            <textarea
-              ref={inputRef}
-              value={inputText}
-              onChange={(e) => {
-                const v = e.target.value;
-                setInputText(v);
-                // Drop the AI-draft association once the box is cleared, so an
-                // unrelated follow-up isn't logged as an "edit" of that draft.
-                if (selectedSuggestion && v.trim() === '') setSelectedSuggestion(null);
-                if (v.trim()) emitTyping();
-                else endTyping();
-              }}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              onBlur={endTyping}
-              placeholder={isNoteMode ? 'พิมพ์โน้ตภายใน… Enter = บันทึก' : 'พิมพ์ข้อความ...'}
-              aria-label={isNoteMode ? 'พิมพ์โน้ตภายใน' : 'พิมพ์ข้อความ'}
-              rows={1}
-              className={cn(
-                'flex-1 resize-none overflow-y-auto px-3 py-2 text-sm rounded-lg border-0 focus:outline-none focus:ring-2 max-h-32 transition-colors placeholder:text-muted-foreground/70',
-                isNoteMode
-                  ? 'bg-warning/10 focus:ring-warning/40 focus:bg-warning/10'
-                  : 'bg-muted/40 focus:ring-primary/20 focus:bg-background',
+                </div>
               )}
-            />
-            <button
-              onClick={() => void handleSend()}
-              disabled={!inputText.trim() || isSending}
-              aria-label={isNoteMode ? 'บันทึกโน้ต' : 'ส่งข้อความ'}
-              className={cn(
-                'p-2 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-all duration-200',
-                inputText.trim() && !isSending
-                  ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md'
-                  : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
-              )}
-            >
-              {isSending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
+              <div className="flex items-center gap-3">
+                <span className="hidden lg:inline text-[11px] leading-none text-muted-foreground/80 whitespace-nowrap">
+                  {isNoteMode ? 'Enter บันทึก · Esc กลับไปตอบ' : 'Enter ส่ง · Shift+Enter ขึ้นบรรทัด'}
+                </span>
+                <button
+                  onClick={() => void handleSend()}
+                  disabled={!inputText.trim() || isSending}
+                  aria-label={isNoteMode ? 'บันทึกโน้ต' : 'ส่งข้อความ'}
+                  className={cn(
+                    'inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold transition-all duration-200',
+                    inputText.trim() && !isSending
+                      ? isNoteMode
+                        ? 'bg-warning text-amber-950 shadow-sm hover:bg-warning/90'
+                        : 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md'
+                      : 'bg-muted text-muted-foreground/50 cursor-not-allowed',
+                  )}
+                >
+                  {isNoteMode ? 'บันทึกโน้ต' : 'ส่ง'}
+                  {isSending ? <Loader2 className="size-4 animate-spin" /> : isNoteMode ? <StickyNote className="size-4" /> : <Send className="size-4" />}
+                </button>
+              </div>
+            </div>
           </div>
-          <p className="hidden lg:block mt-1 px-1 text-[11px] leading-snug text-muted-foreground/70">
-            {isNoteMode ? 'Enter บันทึกโน้ต · Shift+Enter ขึ้นบรรทัด' : 'Enter ส่ง · Shift+Enter ขึ้นบรรทัด'}
-          </p>
         </div>
       )}
 

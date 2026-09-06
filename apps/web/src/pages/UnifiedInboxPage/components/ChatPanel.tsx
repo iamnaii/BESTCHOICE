@@ -597,7 +597,7 @@ export default function ChatPanel({
 
   return (
     <div
-      className="relative flex-1 flex flex-col h-full"
+      className="@container relative flex-1 flex flex-col h-full"
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -613,7 +613,7 @@ export default function ChatPanel({
         </div>
       )}
       {/* Header — ชื่อ · รอตอบนานแค่ไหน · ใครดูแล · ปุ่มที่รู้ว่าทำอะไร (แบบที่เจ้าของโอเค 2026-09-06) */}
-      <div className="flex items-center gap-3 px-3.5 py-2 border-b border-border/60 bg-card">
+      <div className="flex items-center gap-2 @lg:gap-3 px-2.5 @lg:px-3.5 py-2 border-b border-border/60 bg-card">
           <button onClick={onBack} aria-label="กลับ" className="lg:hidden p-1 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -640,7 +640,7 @@ export default function ChatPanel({
             </span>
             {/* ชิปผู้ดูแล — ที่เดียวที่เห็นว่าใครรับห้อง (แผงขวาไม่มีกล่องผู้ดูแลแล้ว) · กด = เปิดมอบหมาย */}
             {!isResolved && (
-              <>
+              <span className="hidden @md:inline-flex items-center gap-1.5">
                 <span className="text-border">·</span>
                 <button
                   type="button"
@@ -663,11 +663,11 @@ export default function ChatPanel({
                     'ยังไม่มีผู้ดูแล'
                   )}
                 </button>
-              </>
+              </span>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 @lg:gap-1.5 shrink-0">
           {onShowCustomerInfo && (
             <button
               onClick={onShowCustomerInfo}
@@ -685,7 +685,7 @@ export default function ChatPanel({
               onClick={() => pinMutation.mutate(!!session.pinnedAt)}
               disabled={pinMutation.isPending}
               className={cn(
-                'size-8 inline-flex items-center justify-center rounded-md transition-colors',
+                'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors',
                 session.pinnedAt ? 'bg-card text-warning shadow-sm' : 'text-muted-foreground hover:text-foreground',
               )}
               title={session.pinnedAt ? 'ปักหมุดอยู่ — กดเพื่อถอด' : 'ปักหมุดห้องนี้ไว้บนสุด'}
@@ -703,7 +703,7 @@ export default function ChatPanel({
                 aria-label="สลับสถานะ AI"
                 aria-pressed={!aiPaused}
                 className={cn(
-                  'size-8 inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50',
+                  'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50',
                   aiPaused ? 'text-muted-foreground hover:text-foreground' : 'bg-card text-primary shadow-sm',
                 )}
               >
@@ -718,7 +718,7 @@ export default function ChatPanel({
                 aria-label="สลับการแจ้งเตือนห้องนี้"
                 aria-pressed={!!roomMuted}
                 className={cn(
-                  'size-8 inline-flex items-center justify-center rounded-md transition-colors',
+                  'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors',
                   roomMuted ? 'bg-card text-destructive shadow-sm' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
@@ -733,20 +733,24 @@ export default function ChatPanel({
                 type="button"
                 onClick={onReopen}
                 disabled={reopenPending}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                title="เปิดงานกลับ"
+                aria-label="เปิดงานกลับ"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2 @lg:px-3 text-[12.5px] font-semibold text-foreground hover:bg-muted transition-colors disabled:opacity-50"
               >
                 {reopenPending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
-                เปิดงานกลับ
+                <span className="hidden @lg:inline">เปิดงานกลับ</span>
               </button>
             )
           ) : (
             <button
               type="button"
               onClick={onResolve}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12.5px] font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+              title="ปิดงาน — จบเรื่องนี้ ลูกค้าทักใหม่ห้องกลับมาเอง"
+              aria-label="ปิดงาน"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-2 @lg:px-3 text-[12.5px] font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
             >
               <Check className="size-4" />
-              ปิดงาน
+              <span className="hidden @lg:inline">ปิดงาน</span>
             </button>
           )}
           <button

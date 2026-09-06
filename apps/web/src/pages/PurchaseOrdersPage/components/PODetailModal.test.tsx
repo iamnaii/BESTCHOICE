@@ -165,6 +165,24 @@ describe('PODetailModal (redesign A)', () => {
     expect(screen.getByRole('region', { name: 'หมายเหตุ' })).toHaveTextContent('ล็อตนี้ขอเครื่องซีลใหม่เท่านั้น');
   });
 
+  it('closes from the X button and from Esc — but Esc is ignored while another dialog sits on top', () => {
+    const p = renderModal(basePO());
+    fireEvent.click(screen.getByRole('button', { name: 'ปิด' }));
+    expect(p.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'กลับ' })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(p.onClose).toHaveBeenCalledTimes(2);
+
+    // a dialog rendered after this one (payment modal / confirm) is the one Esc should reach
+    const top = document.createElement('div');
+    top.setAttribute('role', 'dialog');
+    document.body.appendChild(top);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(p.onClose).toHaveBeenCalledTimes(2);
+    top.remove();
+  });
+
   it('a cancelled PO has no footer actions and no tile buttons', () => {
     renderModal(basePO({ status: 'CANCELLED' }), { onCancel: vi.fn() });
     expect(screen.queryByRole('button', { name: 'รับสินค้า' })).not.toBeInTheDocument();

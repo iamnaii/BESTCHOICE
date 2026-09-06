@@ -1,5 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
-import { ChevronLeft, Coins, History, Package, Paperclip, PencilLine, Phone, Printer, Truck } from 'lucide-react';
+import { Coins, History, Package, Paperclip, PencilLine, Phone, Printer, Truck, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
@@ -71,6 +72,24 @@ function ProgressBar({ pct, tone }: { pct: number; tone: 'success' | 'warning' }
 
 export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openReceiveModal, openPaymentModal, onCancel }: PODetailModalProps) {
   const navigate = useNavigate();
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Esc closes this modal — but only while it is the top-most dialog. The payment / receive
+  // modals and the Radix confirm dialog all render after it in the DOM (siblings in index.tsx,
+  // portals at the end of body), so a later [role=dialog] means something is open on top.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      if (dialogs[dialogs.length - 1] !== overlayRef.current) return;
+      e.preventDefault();
+      onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   const po = selectedPO;
 
@@ -122,21 +141,28 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-8 pb-8 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label="รายละเอียดใบสั่งซื้อ">
+    <div ref={overlayRef} className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-8 pb-8 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label="รายละเอียดใบสั่งซื้อ">
       <div className="flex max-h-[calc(100vh-4rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-background shadow-2xl">
-        {/* Sticky header: number + the two states that matter, side by side */}
+        {/* Sticky header: number + the two states that matter, side by side; ปิด (X / Esc) on the right */}
         <div className="sticky top-0 z-10 flex shrink-0 items-center gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur-xs">
-          <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
-            <ChevronLeft className="size-4" aria-hidden />
-            กลับ
-          </button>
-          {po && statusCfg && payCfg && (
+          {po && statusCfg && payCfg ? (
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <h2 className="font-mono text-lg font-semibold leading-snug text-foreground">{po.poNumber}</h2>
               <Badge variant={statusCfg.variant} appearance={statusCfg.appearance}>{statusCfg.label}</Badge>
               <Badge variant={payCfg.variant} appearance={payCfg.appearance}>{payCfg.label}</Badge>
             </div>
+          ) : (
+            <div className="flex-1" />
           )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="ปิด"
+            title="ปิด (Esc)"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
         </div>
 
         {po && goods && pay && due && (

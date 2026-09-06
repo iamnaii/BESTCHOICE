@@ -197,8 +197,12 @@ export function CreatePOModal({
           </div>
         </div>
 
-        {/* Active step panel. Enter inside a text field must never submit the PO — only the
-            footer button does (the last step has money inputs sitting next to a submit button). */}
+        {/* Active step panel. The wizard never renders a submit-type button: the footer's
+            ถัดไป / สร้าง PO share one position, and a real click on ถัดไป used to flip that same
+            <button> to type=submit mid-dispatch (React flushes the step change in a microtask
+            between listeners), so the browser's activation behaviour submitted the form and
+            created the PO instead of showing the summary (2026-09-06). สร้าง PO calls
+            handleCreate itself; onSubmit + the Enter guard stay only as belt-and-braces. */}
         <form
           onSubmit={handleCreate}
           onKeyDown={(e) => {
@@ -265,7 +269,9 @@ export function CreatePOModal({
             </button>
             {isLast ? (
               <button
-                type="submit"
+                key="create"
+                type="button"
+                onClick={handleCreate}
                 disabled={createMutation.isPending}
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
               >
@@ -273,6 +279,7 @@ export function CreatePOModal({
               </button>
             ) : (
               <button
+                key="next"
                 type="button"
                 onClick={() => canNext && next()}
                 disabled={!canNext}

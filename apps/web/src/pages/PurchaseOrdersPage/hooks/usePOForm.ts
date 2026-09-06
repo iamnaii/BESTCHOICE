@@ -4,6 +4,7 @@ import { ItemForm } from '../types';
 import { emptyItem } from '../constants';
 import { computePoTotals } from '../poTotals';
 import { getExpectedDateError } from '../po-dates.util';
+import { resolveCategory, type CatalogEntry, type PhoneMode } from '../po-catalog.util';
 import { UseMutationResult } from '@tanstack/react-query';
 
 interface UsePOFormOptions {
@@ -24,19 +25,34 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     paidAmount: '',
     paymentNotes: '',
   });
-  const [items, setItems] = useState<ItemForm[]>([{ ...emptyItem }]);
+  // Rows are created by the catalog picker (addCatalogItem / addAccessoryItem), so the
+  // wizard starts with none instead of a blank cascade-of-dropdowns row.
+  const [items, setItems] = useState<ItemForm[]>([]);
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [formAttachments, setFormAttachments] = useState<string[]>([]);
 
   const resetForm = () => {
     setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '', discount: '', discountAfterVat: '', paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '' });
-    setItems([{ ...emptyItem }]);
+    setItems([]);
     setFormAttachments([]);
     setAttachmentUrl('');
   };
 
-  const addItem = () => setItems([...items, { ...emptyItem }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
+
+  /** Picker: one catalog model → one prefilled row (storage/color/price chosen on the row). */
+  const addCatalogItem = (entry: CatalogEntry, phoneMode: PhoneMode) => {
+    const category = resolveCategory(entry, phoneMode);
+    setItems((prev) => [...prev, { ...emptyItem, brand: entry.brand, model: entry.name, category }]);
+  };
+  /** Picker: accessory type → one accessory row (brand = the only catalog brand, for the compatible-model chips). */
+  const addAccessoryItem = (accessoryType: string) => {
+    setItems((prev) => [...prev, { ...emptyItem, category: 'ACCESSORY', accessoryType, brand: 'Apple' }]);
+  };
+  /** Same model, another storage/colour — copy the row right below its source. */
+  const duplicateItem = (idx: number) => {
+    setItems((prev) => [...prev.slice(0, idx + 1), { ...prev[idx] }, ...prev.slice(idx + 1)]);
+  };
 
   const updateItem = (idx: number, field: string, value: string) => {
     const newItems = [...items];
@@ -92,6 +108,10 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     const expectedDateError = getExpectedDateError(form.orderDate, form.expectedDate);
     if (expectedDateError) {
       toast.error(expectedDateError);
+      return;
+    }
+    if (items.length === 0) {
+      toast.error('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
       return;
     }
     const invalidItems = items.filter((i) => !i.category || !i.quantity || !i.unitPrice);
@@ -154,7 +174,9 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     formAttachments,
     setFormAttachments,
     resetForm,
-    addItem,
+    addCatalogItem,
+    addAccessoryItem,
+    duplicateItem,
     removeItem,
     updateItem,
     toggleModel,

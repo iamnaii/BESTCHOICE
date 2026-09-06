@@ -2,6 +2,7 @@ import { formatNumberDecimal, formatDateShort } from '@/utils/formatters';
 import type { CreatePOModalProps } from '../CreatePOModal';
 import type { ItemForm } from '../../types';
 import type { PoTotals } from '../../poTotals';
+import { itemLabel } from '../../po-catalog.util';
 
 interface StepReviewProps {
   form: CreatePOModalProps['form'];
@@ -20,18 +21,6 @@ interface StepReviewProps {
 }
 
 const baht = (n: number) => `${formatNumberDecimal(n, 2)} บาท`;
-
-function itemLabel(i: ItemForm): string {
-  if (i.category === 'ACCESSORY') {
-    const isCharger = i.accessoryType === 'ชุดชาร์จ';
-    return isCharger
-      ? [i.accessoryType, i.accessoryBrand, i.model].filter(Boolean).join(' ')
-      : [i.accessoryType, i.accessoryBrand, i.model ? `สำหรับ ${i.model}` : '']
-          .filter(Boolean)
-          .join(' ');
-  }
-  return [i.brand, i.model, i.color, i.storage].filter(Boolean).join(' ');
-}
 
 export function StepReview({
   form,

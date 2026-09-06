@@ -225,11 +225,12 @@ export default function PurchaseOrdersPage() {
         form={poForm.form}
         setForm={poForm.setForm}
         items={poForm.items}
-        setItems={poForm.setItems}
-        addItem={poForm.addItem}
         removeItem={poForm.removeItem}
+        duplicateItem={poForm.duplicateItem}
         updateItem={poForm.updateItem}
         toggleModel={poForm.toggleModel}
+        addCatalogItem={poForm.addCatalogItem}
+        addAccessoryItem={poForm.addAccessoryItem}
         suppliers={data.suppliers}
         suppliersLoading={data.suppliersLoading}
         suppliersError={data.suppliersError}

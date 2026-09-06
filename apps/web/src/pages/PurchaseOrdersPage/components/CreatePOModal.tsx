@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { ItemForm } from '../types';
 import type { ContactPickResult } from '@/components/contacts/ContactCombobox';
 import { WIZARD_STEPS } from '../hooks/useCreatePoWizard';
+import type { CatalogEntry, PhoneMode } from '../po-catalog.util';
 import { StepSupplier } from './wizard/StepSupplier';
 import { StepItems } from './wizard/StepItems';
 import { StepDiscountVat } from './wizard/StepDiscountVat';
@@ -26,11 +27,12 @@ export interface CreatePOModalProps {
   };
   setForm: React.Dispatch<React.SetStateAction<CreatePOModalProps['form']>>;
   items: ItemForm[];
-  setItems: React.Dispatch<React.SetStateAction<ItemForm[]>>;
-  addItem: () => void;
   removeItem: (idx: number) => void;
+  duplicateItem: (idx: number) => void;
   updateItem: (idx: number, field: string, value: string) => void;
   toggleModel: (idx: number, modelName: string) => void;
+  addCatalogItem: (entry: CatalogEntry, phoneMode: PhoneMode) => void;
+  addAccessoryItem: (accessoryType: string) => void;
   suppliers: {
     id: string;
     name: string;
@@ -73,11 +75,12 @@ export function CreatePOModal({
   form,
   setForm,
   items,
-  setItems,
-  addItem,
   removeItem,
+  duplicateItem,
   updateItem,
   toggleModel,
+  addCatalogItem,
+  addAccessoryItem,
   suppliersLoading,
   suppliersError,
   selectedSupplier,
@@ -110,7 +113,8 @@ export function CreatePOModal({
       aria-modal="true"
       aria-label="สร้างใบสั่งซื้อ"
     >
-      <div className="w-full max-w-3xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+      {/* 5xl (was 3xl) so the items table's seven columns fit without truncating model/colour names */}
+      <div className="w-full max-w-5xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
           <button
@@ -216,14 +220,13 @@ export function CreatePOModal({
             {step === 1 && (
               <StepItems
                 items={items}
-                setItems={setItems}
-                addItem={addItem}
-                removeItem={removeItem}
                 updateItem={updateItem}
                 toggleModel={toggleModel}
+                removeItem={removeItem}
+                duplicateItem={duplicateItem}
+                addCatalogItem={addCatalogItem}
+                addAccessoryItem={addAccessoryItem}
                 subtotal={subtotal}
-                selectClass={selectClass}
-                inputClass={inputClass}
               />
             )}
             {step === 2 && (

@@ -7,7 +7,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { PurchaseOrder, ApprovePOPayload } from '../types';
 import { ApprovePODialog } from './ApprovePODialog';
 import type { SupplierPaymentMethod } from './wizard/PaymentSection';
-import { receiveProgress, isOverdue, supplierContactIsRedundant } from '../po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel } from '../po-list.util';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { POCard } from './POCard';
@@ -149,7 +149,10 @@ export function POListTab({
   const onCancel = (po: PurchaseOrder) =>
     setConfirmDialog({
       open: true,
-      message: `ต้องการยกเลิก PO ${po.poNumber}?`,
+      message:
+        po.status === 'ORDERED'
+          ? `ต้องการยกเลิก PO ${po.poNumber}? สั่งซื้อแล้วแต่ยังไม่ได้รับของ — ยกเลิกแล้วต้องแจ้งผู้ขายเอง`
+          : `ต้องการยกเลิก PO ${po.poNumber}?`,
       action: () => cancelMutation.mutate(po.id),
     });
 
@@ -342,15 +345,19 @@ export function POListTab({
               >
                 <X className="size-4" />
               </button>
-              <button
-                onClick={() => onCancel(po)}
-                className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors"
-                title="ยกเลิก"
-                aria-label={`ยกเลิก ${po.poNumber}`}
-              >
-                <Ban className="size-4" />
-              </button>
             </>
+          )}
+          {/* also for an ORDERED PO with nothing received yet (approve lands on ORDERED now) */}
+          {canCancel(po) && (
+            <button
+              onClick={() => onCancel(po)}
+              disabled={cancelMutation.isPending}
+              className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              title="ยกเลิก"
+              aria-label={`ยกเลิก ${po.poNumber}`}
+            >
+              <Ban className="size-4" />
+            </button>
           )}
         </div>
       ),

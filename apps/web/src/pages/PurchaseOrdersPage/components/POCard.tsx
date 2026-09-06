@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
 import { formatDateShort } from '@/utils/formatters';
-import { receiveProgress, isOverdue, supplierContactIsRedundant } from '../po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel } from '../po-list.util';
 import type { PurchaseOrder } from '../types';
 import { PackageCheck, Check, X, Ban, ShoppingCart, AlertTriangle } from 'lucide-react';
 
@@ -178,15 +178,17 @@ function POCardImpl({
                 <X className="size-4" />
                 ปฏิเสธ
               </button>
-              <button
-                onClick={stop(() => onCancel(po))}
-                className={`${actionBtn} border-destructive/30 text-destructive hover:bg-destructive/10`}
-                aria-label={`ยกเลิก ${po.poNumber}`}
-              >
-                <Ban className="size-4" />
-                ยกเลิก
-              </button>
             </>
+          )}
+          {canCancel(po) && (
+            <button
+              onClick={stop(() => onCancel(po))}
+              className={`${actionBtn} border-destructive/30 text-destructive hover:bg-destructive/10`}
+              aria-label={`ยกเลิก ${po.poNumber}`}
+            >
+              <Ban className="size-4" />
+              ยกเลิก
+            </button>
           )}
         </div>
       )}

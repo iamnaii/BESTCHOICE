@@ -1,6 +1,8 @@
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ContactCombobox } from '@/components/contacts/ContactCombobox';
 import { formatDateShort } from '@/utils/formatters';
+import { cn } from '@/lib/utils';
+import { withOrderDate } from '../../po-dates.util';
 import type { CreatePOModalProps } from '../CreatePOModal';
 
 interface StepSupplierProps {
@@ -13,6 +15,8 @@ interface StepSupplierProps {
   supplierHasVat: boolean;
   creditTermDays: number | null;
   dueDatePreview: Date | null;
+  /** From useCreatePoWizard — วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่ง */
+  expectedDateError: string | null;
   inputClass: string;
 }
 
@@ -26,6 +30,7 @@ export function StepSupplier({
   supplierHasVat,
   creditTermDays,
   dueDatePreview,
+  expectedDateError,
   inputClass,
 }: StepSupplierProps) {
   return (
@@ -107,7 +112,7 @@ export function StepSupplier({
             </label>
             <ThaiDateInput
               value={form.orderDate}
-              onChange={(e) => setForm({ ...form, orderDate: e.target.value })}
+              onChange={(e) => setForm(withOrderDate(form, e.target.value))}
               className={inputClass}
               required
             />
@@ -119,8 +124,15 @@ export function StepSupplier({
             <ThaiDateInput
               value={form.expectedDate}
               onChange={(e) => setForm({ ...form, expectedDate: e.target.value })}
-              className={inputClass}
+              min={form.orderDate || undefined}
+              aria-invalid={expectedDateError ? true : undefined}
+              className={cn(inputClass, expectedDateError && 'border-destructive focus:ring-destructive/30')}
             />
+            {expectedDateError && (
+              <p role="alert" className="mt-1 text-xs text-destructive leading-snug">
+                {expectedDateError}
+              </p>
+            )}
           </div>
         </div>
 

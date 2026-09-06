@@ -44,6 +44,8 @@ interface ThaiDateInputProps {
   'data-date-range-custom-start'?: 'true';
   /** Accessible name — reaches the inner input via the rest-spread. */
   'aria-label'?: string;
+  /** Validation state — reaches the inner input via the rest-spread. */
+  'aria-invalid'?: boolean;
 }
 
 export default function ThaiDateInput({
@@ -78,8 +80,19 @@ export default function ThaiDateInput({
 
   const selectedDate = parsed && !isNaN(parsed.getTime()) ? parsed : null;
 
+  function toIso(year: number, month: number, day: number) {
+    return `${year}-${pad2(month + 1)}-${pad2(day)}`;
+  }
+
+  // min/max are YYYY-MM-DD, so a lexical compare is calendar order. Out-of-range days
+  // are rendered disabled AND refused here, so no path (grid, "วันนี้") can pick one.
+  function isOutOfRange(iso: string) {
+    return (!!min && iso < min) || (!!max && iso > max);
+  }
+
   function selectDay(year: number, month: number, day: number) {
-    const iso = `${year}-${pad2(month + 1)}-${pad2(day)}`;
+    const iso = toIso(year, month, day);
+    if (isOutOfRange(iso)) return;
     onChange({ target: { value: iso } });
     setOpen(false);
     setViewMode('days');
@@ -270,9 +283,11 @@ export default function ThaiDateInput({
                   <button
                     key={idx}
                     type="button"
+                    disabled={isOutOfRange(toIso(cell.year, cell.month, cell.day))}
                     onClick={() => selectDay(cell.year, cell.month, cell.day)}
                     className={cn(
                       'size-8 flex items-center justify-center text-sm rounded-md relative',
+                      'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent',
                       cell.outside ? 'text-muted-foreground/40' : 'hover:bg-accent',
                       isSelected(cell) && 'bg-primary text-primary-foreground hover:bg-primary',
                       isToday(cell) && !isSelected(cell) && 'after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:size-1 after:rounded-full after:bg-primary',
@@ -296,11 +311,9 @@ export default function ThaiDateInput({
             </button>
             <button
               type="button"
-              onClick={() => {
-                const t = new Date();
-                selectDay(t.getFullYear(), t.getMonth(), t.getDate());
-              }}
-              className="text-xs text-primary hover:text-primary/80 font-medium"
+              disabled={isOutOfRange(toIso(today.getFullYear(), today.getMonth(), today.getDate()))}
+              onClick={() => selectDay(today.getFullYear(), today.getMonth(), today.getDate())}
+              className="text-xs text-primary hover:text-primary/80 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
               วันนี้
             </button>

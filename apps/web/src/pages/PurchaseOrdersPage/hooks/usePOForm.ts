@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { ItemForm } from '../types';
 import { emptyItem } from '../constants';
 import { computePoTotals } from '../poTotals';
+import { getExpectedDateError } from '../po-dates.util';
 import { UseMutationResult } from '@tanstack/react-query';
 
 interface UsePOFormOptions {
@@ -85,6 +86,12 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     e.preventDefault();
     if (!form.supplierId) {
       toast.error('กรุณาเลือกผู้จัดจำหน่าย');
+      return;
+    }
+    // Draft recovery can reopen the wizard past step 0, so the step gate alone is not enough
+    const expectedDateError = getExpectedDateError(form.orderDate, form.expectedDate);
+    if (expectedDateError) {
+      toast.error(expectedDateError);
       return;
     }
     const invalidItems = items.filter((i) => !i.category || !i.quantity || !i.unitPrice);

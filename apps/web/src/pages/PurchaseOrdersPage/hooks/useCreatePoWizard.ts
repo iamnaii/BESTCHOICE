@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ItemForm } from '../types';
+import { getExpectedDateError } from '../po-dates.util';
 
 export const WIZARD_STEPS = ['เลือกผู้ขาย', 'เพิ่มรายการ', 'ส่วนลด/VAT', 'ทบทวน+บันทึก'];
 const LAST_STEP = WIZARD_STEPS.length - 1;
@@ -40,6 +41,8 @@ export interface CreatePoWizardApi {
   canNext: boolean;
   dueDatePreview: Date | null;
   creditTermDays: number | null;
+  /** วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่ง — null when valid or expectedDate empty */
+  expectedDateError: string | null;
   draftRecovered: boolean;
   clearDraft: () => void;
 }
@@ -115,8 +118,9 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
   const itemsValid = items.length > 0 && items.every(
     (i) => i.category && Number(i.quantity) > 0 && Number(i.unitPrice) > 0,
   );
+  const expectedDateError = getExpectedDateError(form.orderDate, form.expectedDate);
   const canNext =
-    step === 0 ? !!form.supplierId :
+    step === 0 ? !!form.supplierId && !expectedDateError :
     step === 1 ? itemsValid :
     true; // steps 2 & 3 are always advanceable (3 = submit handled by the form)
 
@@ -127,5 +131,5 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
   const back = useCallback(() => setStep((s) => Math.max(s - 1, 0)), []);
 
   // dueDatePreview is exported as a Date so each panel formats it (formatDateShort) itself.
-  return { step, goToStep, next, back, canNext, dueDatePreview, creditTermDays, draftRecovered, clearDraft };
+  return { step, goToStep, next, back, canNext, dueDatePreview, creditTermDays, expectedDateError, draftRecovered, clearDraft };
 }

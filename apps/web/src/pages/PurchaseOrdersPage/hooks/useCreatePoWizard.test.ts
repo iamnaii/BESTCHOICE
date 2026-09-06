@@ -74,3 +74,23 @@ describe('useCreatePoWizard', () => {
     expect(setItems).toHaveBeenCalled();
   });
 });
+
+describe('useCreatePoWizard — expectedDate must not be before orderDate', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('exposes no error when expectedDate is empty or on/after orderDate', () => {
+    const { result, rerender } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
+    expect(result.current.expectedDateError).toBeNull();
+    rerender(makeOpts({ form: { ...makeOpts().form, orderDate: '2026-09-13', expectedDate: '2026-09-13' } }));
+    expect(result.current.expectedDateError).toBeNull();
+  });
+
+  it('exposes the error and blocks step 0 when expectedDate is before orderDate', () => {
+    const { result } = renderHook((p) => useCreatePoWizard(p), {
+      initialProps: makeOpts({ form: { ...makeOpts().form, orderDate: '2026-09-13', expectedDate: '2026-09-07' } }),
+    });
+    expect(result.current.step).toBe(0);
+    expect(result.current.expectedDateError).toBe('วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่ง');
+    expect(result.current.canNext).toBe(false);
+  });
+});

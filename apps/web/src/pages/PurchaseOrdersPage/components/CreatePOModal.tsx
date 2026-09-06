@@ -209,6 +209,7 @@ export function CreatePOModal({
                 supplierHasVat={supplierHasVat}
                 creditTermDays={wizard.creditTermDays}
                 dueDatePreview={wizard.dueDatePreview}
+                expectedDateError={wizard.expectedDateError}
                 inputClass={inputClass}
               />
             )}

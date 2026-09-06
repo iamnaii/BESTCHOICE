@@ -8,6 +8,21 @@ import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { PoQueryService } from './po-query.service';
 
 /**
+ * วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่งซื้อ — compared at day granularity (UTC).
+ * `orderDate` is the DTO's ISO string on create, or the Date already stored on
+ * the PO for update / order. A missing expectedDate is fine (nullable column).
+ */
+function assertExpectedNotBeforeOrder(expectedDate: string | undefined, orderDate: string | Date) {
+  if (!expectedDate) return;
+  const expected = new Date(expectedDate);
+  const order = new Date(orderDate);
+  if (Number.isNaN(expected.getTime()) || Number.isNaN(order.getTime())) return; // @IsDateString already rejects garbage
+  if (expected.toISOString().slice(0, 10) < order.toISOString().slice(0, 10)) {
+    throw new BadRequestException('วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่งซื้อ');
+  }
+}
+
+/**
  * Lifecycle mutations for purchase orders: create (VAT/net Decimal math +
  * PO-number $transaction), update, approve, reject, cancel, updatePayment.
  *
@@ -25,6 +40,8 @@ export class PoLifecycleService {
   ) {}
 
   async create(dto: CreatePODto, userId: string) {
+    assertExpectedNotBeforeOrder(dto.expectedDate, dto.orderDate);
+
     // Validate supplier exists & get credit terms
     const supplier = await this.prisma.supplier.findUnique({
       where: { id: dto.supplierId },
@@ -139,6 +156,7 @@ export class PoLifecycleService {
     if (!['DRAFT', 'PENDING'].includes(po.status)) {
       throw new BadRequestException('แก้ไขได้เฉพาะ PO สถานะร่างหรือรอรับสินค้าเท่านั้น');
     }
+    assertExpectedNotBeforeOrder(dto.expectedDate, po.orderDate);
 
     const data: Record<string, unknown> = {};
     if (dto.expectedDate) data.expectedDate = new Date(dto.expectedDate);
@@ -172,6 +190,7 @@ export class PoLifecycleService {
     if (po.status !== 'APPROVED') {
       throw new BadRequestException('สั่งซื้อได้เฉพาะ PO ที่อนุมัติแล้ว (APPROVED) เท่านั้น');
     }
+    assertExpectedNotBeforeOrder(dto.expectedDate, po.orderDate);
     return this.prisma.purchaseOrder.update({
       where: { id },
       data: {

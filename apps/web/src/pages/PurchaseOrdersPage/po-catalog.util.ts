@@ -90,6 +90,10 @@ export interface AccessorySku {
   lastCost: number | null;
 }
 
+/** Every row can be sent: a category, a quantity > 0 and a unit price > 0 (PO wizard gate + รับเข้าตรง). */
+export const allItemsComplete = (items: ItemForm[]): boolean =>
+  items.length > 0 && items.every((i) => !!i.category && Number(i.quantity) > 0 && Number(i.unitPrice) > 0);
+
 /**
  * Human label for a line — shared by the item rows and the summary step, and the same
  * rule the API's buildProductName() uses for the received units.

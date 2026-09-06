@@ -94,6 +94,15 @@ export default function PurchaseOrdersPage() {
     [queryClient, data.suppliers, poForm],
   );
 
+  // รับเข้าตรง uses the same contact picker; the picked contact becomes the direct-receive supplier
+  const onDirectSupplierSelect = useCallback(
+    async ({ childId }: { childId: string }) => {
+      await queryClient.invalidateQueries({ queryKey: ['suppliers-for-po'] });
+      data.setDirectSupplierId(childId);
+    },
+    [queryClient, data],
+  );
+
   const onSummaryCardClick = useCallback(
     (action: SummaryFilterAction) => {
       if ('panel' in action) {
@@ -309,7 +318,8 @@ export default function PurchaseOrdersPage() {
         onClose={() => data.setIsDirectReceiveOpen(false)}
         suppliers={data.suppliers}
         supplierId={data.directSupplierId}
-        setSupplierId={data.setDirectSupplierId}
+        onSupplierSelect={onDirectSupplierSelect}
+        searchAccessorySkus={searchAccessorySkus}
         lines={data.directLines}
         setLines={data.setDirectLines}
         notes={data.directNotes}

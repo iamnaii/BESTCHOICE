@@ -218,6 +218,16 @@ describe('StepItems — device row', () => {
   });
 });
 
+describe('StepItems — custom labels (รับเข้าตรง reuses the step with cost-price wording)', () => {
+  it('renders the given title and money column headers', () => {
+    renderStep([], { labels: { title: 'รายการที่รับเข้า', hint: 'ทดสอบ', price: 'ราคาทุน/ชิ้น', total: 'รวมทุน' } });
+    expect(screen.getByRole('heading', { name: 'รายการที่รับเข้า' })).toBeInTheDocument();
+    expect(screen.getByText('ทดสอบ')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'ราคาทุน/ชิ้น' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'รวมทุน' })).toBeInTheDocument();
+  });
+});
+
 describe('StepItems — accessory rows (one line each, type fixed from the chip)', () => {
   it('shows the type as text (no type select) with a brand input', () => {
     const p = renderStep([caseItem]);

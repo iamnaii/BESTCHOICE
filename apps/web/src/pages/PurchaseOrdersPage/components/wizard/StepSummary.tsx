@@ -5,6 +5,7 @@ import type { CreatePOModalProps } from '../CreatePOModal';
 import type { ItemForm } from '../../types';
 import type { PoTotals } from '../../poTotals';
 import { itemLabel } from '../../po-catalog.util';
+import { paymentMethodLabels } from '../../constants';
 
 interface StepSummaryProps {
   form: CreatePOModalProps['form'];
@@ -32,13 +33,6 @@ const fieldCls =
 const moneyInput =
   'h-9 w-36 rounded-md border border-input bg-background px-2 text-right font-mono text-sm tabular-nums outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30';
 const labelCls = 'mb-1 block text-xs leading-snug text-muted-foreground';
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  CASH: 'เงินสด',
-  BANK_TRANSFER: 'โอนธนาคาร',
-  CHECK: 'เช็ค',
-  CREDIT: 'เครดิต',
-};
 
 function CardHeader({ icon, title, hint, tone }: { icon: React.ReactNode; title: string; hint: string; tone: string }) {
   return (
@@ -234,12 +228,12 @@ export function StepSummary({
                   const credit = pm.creditTermDays ? ` ${pm.creditTermDays} วัน` : '';
                   return (
                     <option key={idx} value={pm.paymentMethod}>
-                      {(PAYMENT_METHOD_LABELS[pm.paymentMethod] || pm.paymentMethod) + detail + credit + (pm.isDefault ? ' (ค่าเริ่มต้น)' : '')}
+                      {(paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod) + detail + credit + (pm.isDefault ? ' (ค่าเริ่มต้น)' : '')}
                     </option>
                   );
                 })
               ) : (
-                Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+                Object.entries(paymentMethodLabels).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ItemForm } from '../types';
 import { getExpectedDateError } from '../po-dates.util';
+import { allItemsComplete } from '../po-catalog.util';
 
 // 3 steps (owner decision 2026-09-06): discount/VAT, payment and notes live together on the
 // last step, which also submits — the old "ทบทวน" step duplicated the items table.
@@ -118,9 +119,7 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
   }
 
   // Per-step advance gate
-  const itemsValid = items.length > 0 && items.every(
-    (i) => i.category && Number(i.quantity) > 0 && Number(i.unitPrice) > 0,
-  );
+  const itemsValid = allItemsComplete(items);
   const expectedDateError = getExpectedDateError(form.orderDate, form.expectedDate);
   const canNext =
     step === 0 ? !!form.supplierId && !expectedDateError :

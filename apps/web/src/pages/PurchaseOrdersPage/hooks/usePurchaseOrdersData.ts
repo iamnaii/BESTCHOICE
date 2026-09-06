@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { PurchaseOrder, PODetail, ReceivingUnitForm, DirectReceiveLineForm } from '../types';
+import { PurchaseOrder, PODetail, ReceivingUnitForm, ItemForm } from '../types';
 import { defaultChecklist } from '../constants';
 import { PurchasingSummary } from '../summaryStrip';
 import { buildReceiveResultMessage } from '../receiveResultMessage';
@@ -53,7 +53,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [activeTab, setActiveTab] = useState<'list' | 'payable'>('list');
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [isDirectReceiveOpen, setIsDirectReceiveOpen] = useState(false);
-  const [directLines, setDirectLines] = useState<DirectReceiveLineForm[]>([]);
+  // รับเข้าตรง rows share the PO wizard's ItemForm (unitPrice = ราคาทุน/ชิ้น)
+  const [directLines, setDirectLines] = useState<ItemForm[]>([]);
   const [directSupplierId, setDirectSupplierId] = useState('');
   const [directNotes, setDirectNotes] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -430,19 +431,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const openDirectReceive = () => {
     setDirectSupplierId('');
     setDirectNotes('');
-    setDirectLines([
-      {
-        category: 'PHONE_NEW',
-        brand: '',
-        model: '',
-        color: '',
-        storage: '',
-        accessoryType: '',
-        accessoryBrand: '',
-        quantity: '1',
-        costPrice: '',
-      },
-    ]);
+    // rows come from the picker, so open with none (same as the PO wizard)
+    setDirectLines([]);
     setIsDirectReceiveOpen(true);
   };
 

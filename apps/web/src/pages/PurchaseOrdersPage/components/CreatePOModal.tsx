@@ -1,6 +1,5 @@
 import { UseMutationResult } from '@tanstack/react-query';
-import { Check, Users, Package, FileText } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Users, Package, FileText } from 'lucide-react';
 import { ItemForm } from '../types';
 import type { ContactPickResult } from '@/components/contacts/ContactCombobox';
 import { WIZARD_STEPS } from '../hooks/useCreatePoWizard';
@@ -8,6 +7,7 @@ import type { AccessorySku, CatalogEntry, PhoneMode } from '../po-catalog.util';
 import { StepSupplier } from './wizard/StepSupplier';
 import { StepItems } from './wizard/StepItems';
 import { StepSummary } from './wizard/StepSummary';
+import { WizardStepper, type WizardStep } from './wizard/WizardStepper';
 
 export interface CreatePOModalProps {
   isOpen: boolean;
@@ -66,6 +66,7 @@ export interface CreatePOModalProps {
 
 // One icon per wizard step: เลือกผู้ขาย → เพิ่มรายการ → สรุป + จ่ายเงิน
 const STEP_ICONS = [Users, Package, FileText];
+const STEPS: WizardStep[] = WIZARD_STEPS.map((label, i) => ({ label, icon: STEP_ICONS[i] ?? Package }));
 
 export function CreatePOModal({
   isOpen,
@@ -141,60 +142,7 @@ export function CreatePOModal({
 
         {/* Stepper */}
         <div className="px-6 pt-4 shrink-0">
-          <div className="flex items-center">
-            {WIZARD_STEPS.map((label, i) => {
-              const completed = i < step;
-              const current = i === step;
-              const clickable = i < step;
-              const Icon = STEP_ICONS[i] || Package;
-              return (
-                <div key={label} className="flex items-center flex-1 last:flex-none">
-                  <button
-                    type="button"
-                    disabled={!clickable}
-                    onClick={() => clickable && goToStep(i)}
-                    className={cn(
-                      'flex items-center gap-2 group',
-                      clickable ? 'cursor-pointer' : 'cursor-default',
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'size-8 rounded-lg flex items-center justify-center shrink-0 transition-all',
-                        completed && 'bg-primary text-primary-foreground',
-                        current && 'bg-primary text-primary-foreground ring-4 ring-primary/20',
-                        !completed && !current && 'bg-muted text-muted-foreground',
-                      )}
-                    >
-                      {completed ? (
-                        <Check className="size-4" strokeWidth={2.5} />
-                      ) : (
-                        <Icon className="size-4" />
-                      )}
-                    </div>
-                    <div
-                      className={cn(
-                        'text-sm font-medium leading-snug hidden sm:block',
-                        current ? 'text-foreground' : 'text-muted-foreground',
-                      )}
-                    >
-                      {label}
-                    </div>
-                  </button>
-                  {i < WIZARD_STEPS.length - 1 && (
-                    <div className="flex-1 mx-3 h-0.5 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={cn(
-                          'h-full rounded-full transition-all',
-                          i < step ? 'bg-primary w-full' : 'w-0',
-                        )}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <WizardStepper steps={STEPS} current={step} onStepClick={goToStep} />
         </div>
 
         {/* Active step panel. The wizard never renders a submit-type button: the footer's

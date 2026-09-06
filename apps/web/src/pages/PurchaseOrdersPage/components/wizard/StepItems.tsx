@@ -18,9 +18,18 @@ interface StepItemsProps {
   addExistingAccessoryItem: (sku: AccessorySku) => void;
   searchAccessorySkus: (search: string) => Promise<AccessorySku[]>;
   subtotal: number;
+  /** Wording overrides — รับเข้าตรง reuses the step with cost-price labels. */
+  labels?: { title?: string; hint?: string; price?: string; total?: string; footerTotal?: string };
 }
 
 const th = 'px-2.5 py-2.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground';
+const DEFAULT_LABELS = {
+  title: 'รายการสินค้า',
+  hint: 'ค้นหารุ่นแล้วกดเพิ่ม — สภาพ / ความจุ / สี / จำนวน / ราคา เลือกในตาราง · อุปกรณ์เสริมค้นจากสินค้าเดิมหรือสร้างรายการใหม่',
+  price: 'ราคา/ชิ้น',
+  total: 'รวม',
+  footerTotal: '',
+};
 
 /**
  * Step 2 of the PO wizard — search-first picker + one table row per line.
@@ -40,7 +49,9 @@ export function StepItems({
   addExistingAccessoryItem,
   searchAccessorySkus,
   subtotal,
+  labels,
 }: StepItemsProps) {
+  const t = { ...DEFAULT_LABELS, ...labels };
   const pieces = items.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
 
   // A quick-chip add lands the user on the new row (its first choice), not back in the
@@ -61,10 +72,8 @@ export function StepItems({
           <Package className="size-4.5" />
         </div>
         <div className="flex-1">
-          <h3 className="text-sm font-semibold leading-snug text-foreground">รายการสินค้า</h3>
-          <p className="text-xs leading-snug text-muted-foreground">
-            ค้นหารุ่นแล้วกดเพิ่ม — สภาพ / ความจุ / สี / จำนวน / ราคา เลือกในตาราง · อุปกรณ์เสริมค้นจากสินค้าเดิมหรือสร้างรายการใหม่
-          </p>
+          <h3 className="text-sm font-semibold leading-snug text-foreground">{t.title}</h3>
+          <p className="text-xs leading-snug text-muted-foreground">{t.hint}</p>
         </div>
       </div>
 
@@ -103,8 +112,8 @@ export function StepItems({
               <th scope="col" className={th}>ความจุ</th>
               <th scope="col" className={th}>สี</th>
               <th scope="col" className={th}>จำนวน</th>
-              <th scope="col" className={th}>ราคา/ชิ้น</th>
-              <th scope="col" className={`${th} text-right`}>รวม</th>
+              <th scope="col" className={th}>{t.price}</th>
+              <th scope="col" className={`${th} text-right`}>{t.total}</th>
               <th scope="col" className={th}>
                 <span className="sr-only">จัดการ</span>
               </th>
@@ -153,8 +162,11 @@ export function StepItems({
         <span className="text-sm leading-snug text-muted-foreground">
           รวม {items.length} รายการ · {pieces} ชิ้น
         </span>
-        <span className="font-mono text-base font-semibold tabular-nums text-foreground">
-          {formatNumberDecimal(subtotal, 2)} บาท
+        <span className="inline-flex items-baseline gap-2">
+          {t.footerTotal && <span className="text-xs text-muted-foreground">{t.footerTotal}</span>}
+          <span className="font-mono text-base font-semibold tabular-nums text-foreground">
+            {formatNumberDecimal(subtotal, 2)} บาท
+          </span>
         </span>
       </div>
     </div>

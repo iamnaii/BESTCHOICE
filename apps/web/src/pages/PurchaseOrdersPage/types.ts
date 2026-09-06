@@ -115,15 +115,3 @@ export interface ReceivingUnitForm {
   accessoryBrand?: string;
 }
 
-// One ad-hoc supplier-direct line (expands into `quantity` ReceivingUnitForm units)
-export interface DirectReceiveLineForm {
-  category: string;
-  brand: string;
-  model: string;
-  color: string;
-  storage: string;
-  accessoryType: string;
-  accessoryBrand: string;
-  quantity: string;
-  costPrice: string;
-}

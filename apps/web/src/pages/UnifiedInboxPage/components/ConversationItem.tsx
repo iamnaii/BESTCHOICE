@@ -216,7 +216,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           )}>
             {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
             {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
-            {formatMessagePreview(lastMessage?.text)}
+            {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground/70">ยังไม่มีข้อความ</span>}
           </p>
           {hasUnread && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-snug flex-shrink-0">

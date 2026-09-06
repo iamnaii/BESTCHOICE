@@ -3,15 +3,25 @@ import { apptState, formatDurationTh, nextAppointment } from './appointment';
 
 const NOW = new Date('2026-09-06T10:00:00+07:00');
 const at = (iso: string) => new Date(iso).toISOString();
+// ป้ายพิมพ์เวลาตามโซนของเครื่อง (CI = UTC · เครื่องเรา = ไทย) — คาดหวังด้วยตัวจัดรูปเดียวกัน ไม่ใช่ตัวเลขตายตัว
+const hhmm = (iso: string) => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+const dmy = (iso: string) => {
+  const d = new Date(iso);
+  const th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  return `${d.getDate()} ${th[d.getMonth()]}`;
+};
 
 describe('apptState — ป้ายนัดตามความใกล้', () => {
   it.each([
     ['เลยนัด', at('2026-09-06T09:20:00+07:00'), 'overdue', 'เลยนัด 40 นาที', true],
     ['ถึงเวลาพอดี (±1 นาที)', at('2026-09-06T10:00:30+07:00'), 'due', 'ถึงเวลานัดแล้ว', true],
     ['ใกล้ถึง ≤15 นาที', at('2026-09-06T10:12:00+07:00'), 'soon', 'นัดอีก 12 นาที', true],
-    ['วันนี้แต่ยังอีกนาน', at('2026-09-06T15:30:00+07:00'), 'today', 'นัดวันนี้ 15:30', false],
-    ['พรุ่งนี้', at('2026-09-07T07:00:00+07:00'), 'tomorrow', 'นัดพรุ่งนี้ 07:00', false],
-    ['วันอื่น', at('2026-09-12T13:00:00+07:00'), 'later', 'นัด 12 ก.ย. 13:00', false],
+    ['วันนี้แต่ยังอีกนาน', at('2026-09-06T15:30:00+07:00'), 'today', `นัดวันนี้ ${hhmm('2026-09-06T15:30:00+07:00')}`, false],
+    ['พรุ่งนี้', at('2026-09-07T12:00:00+07:00'), 'tomorrow', `นัดพรุ่งนี้ ${hhmm('2026-09-07T12:00:00+07:00')}`, false],
+    ['วันอื่น', at('2026-09-12T13:00:00+07:00'), 'later', `นัด ${dmy('2026-09-12T13:00:00+07:00')} ${hhmm('2026-09-12T13:00:00+07:00')}`, false],
   ])('%s', (_n, due, kind, label, urgent) => {
     const st = apptState(due, NOW)!;
     expect(st.kind).toBe(kind);

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Pin, X } from 'lucide-react';
+import { StickyNote, X } from 'lucide-react';
+import { formatChatTimestamp } from '@/lib/chat-time';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,13 +17,18 @@ import type { RoomNote } from './timeline';
 export default function PinnedNoteBar({ note, onUnpin }: { note: RoomNote; onUnpin: (id: string) => void }) {
   const [confirm, setConfirm] = useState(false);
   return (
-    <div className="flex items-start gap-2 border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs" role="note" aria-label="โน้ตของห้อง">
-      <Pin className="mt-0.5 size-3.5 shrink-0 text-warning" />
-      <div className="min-w-0 flex-1 leading-relaxed">
-        <span className="font-semibold">โน้ต:</span> {note.content}
-        <span className="text-muted-foreground"> · {note.staff?.name ?? 'พนักงาน'}</span>
-      </div>
-      <button type="button" onClick={() => setConfirm(true)} aria-label="ปลดโน้ตของห้อง" title="ปลดโน้ตของห้อง" className="shrink-0 rounded p-1 text-muted-foreground hover:bg-warning/20 hover:text-foreground">
+    <div
+      className="flex items-center gap-2 border-b border-l-[3px] border-b-warning/40 border-l-warning bg-warning/10 py-1.5 pl-3 pr-1.5 text-[13px]"
+      role="note"
+      aria-label="โน้ตของห้อง"
+    >
+      <StickyNote className="size-3.5 shrink-0 text-warning" />
+      <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wide text-amber-800">โน้ตของห้อง</span>
+      <span className="min-w-0 flex-1 truncate" title={note.content}>{note.content}</span>
+      <span className="shrink-0 text-[11.5px] text-muted-foreground">
+        {note.staff?.name ?? 'พนักงาน'} · {formatChatTimestamp(note.pinnedAt ?? note.createdAt)}
+      </span>
+      <button type="button" onClick={() => setConfirm(true)} aria-label="ปลดโน้ตของห้อง" title="ปลดโน้ตของห้อง" className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-warning/20 hover:text-foreground">
         <X className="size-3.5" />
       </button>
       <AlertDialog open={confirm} onOpenChange={setConfirm}>

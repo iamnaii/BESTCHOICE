@@ -1,8 +1,8 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock , Check } from 'lucide-react';
 import { isSameDay } from 'date-fns';
-import { formatDateSeparator } from '@/lib/chat-time';
+import { formatDateSeparator, formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -569,6 +569,29 @@ export default function ChatPanel({
   // message auto-reopens the room to ACTIVE (room-manager), so a resolved room
   // can never trap an ongoing conversation behind this gate.
   const isResolved = !!session.resolvedAt || session.status === 'IDLE';
+  const isLine = session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP';
+  const channelLabel =
+    session.channel === 'LINE_FINANCE' ? 'LINE การเงิน'
+      : session.channel === 'LINE_SHOP' ? 'LINE ร้าน'
+        : session.channel === 'FACEBOOK' ? 'Facebook'
+          : session.channel === 'TIKTOK' ? 'TikTok'
+            : 'Web';
+  const channelDotClass = isLine ? 'bg-[#06C755]' : session.channel === 'FACEBOOK' ? 'bg-[#1877F2]' : 'bg-foreground/60';
+  const assigneeFullName: string | null = session.assignedTo?.name ?? session.assignedStaff?.name ?? null;
+  // ชิปใช้ชื่อต้นอย่างเดียว (ชื่อเต็มอยู่ใน title) — บรรทัดสถานะแคบ ชื่อ-นามสกุลไทยยาวจะชนปุ่มขวา
+  const assigneeName = assigneeFullName ? assigneeFullName.trim().split(/\s+/)[0] : null;
+  // บรรทัดสถานะหัวห้อง: รอตอบ (เหลือง · แดงเมื่อเกิน 1 ชม.) · ตอบแล้ว · ปิดงานแล้ว
+  const roomStatus = (() => {
+    if (isResolved) {
+      const when = session.resolvedAt ? formatChatTimestamp(session.resolvedAt) : '';
+      return { tone: 'text-muted-foreground', text: when ? `ปิดงานแล้ว · ${when}` : 'ปิดงานแล้ว' };
+    }
+    if (session.waitingSince) {
+      const late = Date.now() - new Date(session.waitingSince).getTime() > 60 * 60_000;
+      return { tone: late ? 'text-destructive' : 'text-amber-700', text: `รอตอบ ${formatWaitDuration(session.waitingSince)}` };
+    }
+    return { tone: 'text-primary', text: 'ตอบแล้ว' };
+  })();
   // ช่องทางอื่นไม่มีหน้าต่าง → 'open' เสมอ · ห้อง FB ที่ยังไม่มี lastCustomerAt → 'open' (ไม่ขู่ รอเหตุจริงจากการส่ง)
   const fbWindow = fbWindowFor(session);
 
@@ -589,124 +612,149 @@ export default function ChatPanel({
           </div>
         </div>
       )}
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card">
-        <div className="flex items-center gap-3">
+      {/* Header — ชื่อ · รอตอบนานแค่ไหน · ใครดูแล · ปุ่มที่รู้ว่าทำอะไร (แบบที่เจ้าของโอเค 2026-09-06) */}
+      <div className="flex items-center gap-3 px-3.5 py-2 border-b border-border/60 bg-card">
           <button onClick={onBack} aria-label="กลับ" className="lg:hidden p-1 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          {/* Customer avatar */}
-          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 ring-2 ring-background">
+        <div className="relative shrink-0">
+          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden ring-2 ring-background">
             {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={displayName}
-                className="w-full h-full object-cover"
-              />
+              <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
             ) : (
               <span className="text-muted-foreground text-sm font-bold">{displayName[0]}</span>
             )}
           </div>
-          <div>
-            <h3 className="font-semibold text-sm text-foreground">{displayName}</h3>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold',
-                  session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP'
-                    ? 'bg-[#06C755]/10 text-[#06C755]'
-                    : session.channel === 'FACEBOOK'
-                      ? 'bg-[#1877F2]/10 text-[#1877F2]'
-                      : session.channel === 'TIKTOK'
-                        ? 'bg-foreground/10 text-foreground'
-                        : 'bg-muted text-foreground/70',
-                )}
-              >
-                <span className={cn(
-                  'w-1.5 h-1.5 rounded-full',
-                  session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP'
-                    ? 'bg-[#06C755]'
-                    : session.channel === 'FACEBOOK'
-                      ? 'bg-[#1877F2]'
-                      : 'bg-current',
-                )} />
-                {session.channel === 'LINE_FINANCE'
-                  ? 'LINE การเงิน'
-                  : session.channel === 'LINE_SHOP'
-                    ? 'LINE ร้าน'
-                    : session.channel === 'FACEBOOK'
-                      ? 'Facebook'
-                      : session.channel === 'TIKTOK'
-                        ? 'TikTok'
-                        : 'Web'}
-              </span>
-              <span className="w-px h-3 bg-border" />
-              {/* Backend exposes status: ACTIVE|IDLE + resolvedAt — the old
-                  session.sessionStatus field never existed on this endpoint. */}
-              <span className="text-[11px] text-muted-foreground font-medium leading-snug">
-                {session.resolvedAt || session.status === 'IDLE' ? 'ปิดแล้ว' : 'กำลังสนทนา'}
-              </span>
-            </div>
+          {/* จุดสีช่องทางที่มุมรูป (ฟ้า = Facebook · เขียว = LINE) แทนเม็ดยาเต็มใบ */}
+          <span aria-hidden className={cn('absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-2 ring-card', channelDotClass)} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-[15px] font-semibold leading-tight text-foreground" title={displayName}>{displayName}</h3>
+          <div className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground [&>*]:shrink-0">
+            <span>{channelLabel}</span>
+            <span className="text-border">·</span>
+            {/* สถานะจริงจาก waiting_since (PR1) แทน "กำลังสนทนา" ที่ไม่บอกอะไร */}
+            <span className={cn('inline-flex items-center gap-1 font-semibold', roomStatus.tone)} data-testid="room-status">
+              <span className="size-[7px] rounded-full bg-current" />
+              {roomStatus.text}
+            </span>
+            {/* ชิปผู้ดูแล — ที่เดียวที่เห็นว่าใครรับห้อง (แผงขวาไม่มีกล่องผู้ดูแลแล้ว) · กด = เปิดมอบหมาย */}
+            {!isResolved && (
+              <>
+                <span className="text-border">·</span>
+                <button
+                  type="button"
+                  onClick={() => setShowActions((v) => !v)}
+                  aria-expanded={showActions}
+                  title={assigneeFullName ? `ผู้ดูแล: ${assigneeFullName} — กดเพื่อมอบหมาย/โอน` : 'ตอบก่อนได้เป็นเจ้าของห้อง — กดเพื่อมอบหมาย'}
+                  className={cn(
+                    'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border text-[11.5px] leading-none transition-colors',
+                    assigneeName
+                      ? 'border-border bg-card pl-0.5 pr-2 text-foreground hover:bg-muted'
+                      : 'border-dashed border-warning/60 bg-warning/10 px-2 text-amber-800 hover:bg-warning/20',
+                  )}
+                >
+                  {assigneeName ? (
+                    <>
+                      <span className="grid size-4 place-items-center rounded-full bg-sky-500 text-[9px] font-bold text-white">{assigneeName[0]}</span>
+                      {assigneeName} ดูแล
+                    </>
+                  ) : (
+                    'ยังไม่มีผู้ดูแล'
+                  )}
+                </button>
+              </>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5 shrink-0">
           {onShowCustomerInfo && (
             <button
               onClick={onShowCustomerInfo}
-              className="xl:hidden p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
+              className="xl:hidden size-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
               title="ข้อมูลลูกค้า"
               aria-label="ข้อมูลลูกค้า"
             >
               <UserCircle2 className="w-5 h-5" />
             </button>
           )}
-          {onToggleRoomMute && (
+          {/* รางสถานะ 3 ปุ่ม: หมุด · บอท · แจ้งเตือน — อันที่ "เปิด" นูนขึ้นเป็นสีขาว */}
+          <div className="flex gap-px rounded-lg border border-border bg-muted p-0.5" role="group" aria-label="สถานะห้อง">
             <button
               type="button"
-              onClick={onToggleRoomMute}
-              title={roomMuted ? 'เปิดแจ้งเตือนห้องนี้' : 'ปิดแจ้งเตือนห้องนี้'}
-              aria-label="สลับการแจ้งเตือนห้องนี้"
-              className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
-            >
-              {roomMuted ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
-            </button>
-          )}
-          {onToggleAi && (
-            <button
-              type="button"
-              onClick={onToggleAi}
-              disabled={aiTogglePending}
-              title={aiPaused ? 'เปิด AI ตอบอัตโนมัติ' : 'หยุด AI (พนักงานตอบเอง)'}
-              aria-label="สลับสถานะ AI"
+              onClick={() => pinMutation.mutate(!!session.pinnedAt)}
+              disabled={pinMutation.isPending}
               className={cn(
-                'p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-colors disabled:opacity-50',
-                aiPaused
-                  ? 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                  : 'text-primary bg-primary/10 hover:bg-primary/20',
+                'size-8 inline-flex items-center justify-center rounded-md transition-colors',
+                session.pinnedAt ? 'bg-card text-warning shadow-sm' : 'text-muted-foreground hover:text-foreground',
               )}
+              title={session.pinnedAt ? 'ปักหมุดอยู่ — กดเพื่อถอด' : 'ปักหมุดห้องนี้ไว้บนสุด'}
+              aria-label={session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
+              aria-pressed={!!session.pinnedAt}
             >
-              {aiPaused ? <BotOff className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+              {session.pinnedAt ? <Pin className="size-4" /> : <Pin className="size-4" />}
+            </button>
+            {onToggleAi && (
+              <button
+                type="button"
+                onClick={onToggleAi}
+                disabled={aiTogglePending}
+                title={aiPaused ? 'บอทหยุดตอบ (พนักงานตอบเอง) — กดเพื่อคืนให้บอท' : 'บอทตอบอัตโนมัติอยู่ — กดเพื่อหยุดและตอบเอง'}
+                aria-label="สลับสถานะ AI"
+                aria-pressed={!aiPaused}
+                className={cn(
+                  'size-8 inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50',
+                  aiPaused ? 'text-muted-foreground hover:text-foreground' : 'bg-card text-primary shadow-sm',
+                )}
+              >
+                {aiPaused ? <BotOff className="size-4" /> : <Bot className="size-4" />}
+              </button>
+            )}
+            {onToggleRoomMute && (
+              <button
+                type="button"
+                onClick={onToggleRoomMute}
+                title={roomMuted ? 'ปิดเสียงห้องนี้อยู่ — กดเพื่อเปิด' : 'แจ้งเตือนเปิดอยู่ — กดเพื่อปิดเสียงห้องนี้'}
+                aria-label="สลับการแจ้งเตือนห้องนี้"
+                aria-pressed={!!roomMuted}
+                className={cn(
+                  'size-8 inline-flex items-center justify-center rounded-md transition-colors',
+                  roomMuted ? 'bg-card text-destructive shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {roomMuted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+              </button>
+            )}
+          </div>
+          {/* ปิดงาน = ปุ่มหลักมีคำ (เดิมซ่อนใน ⋮) · ห้องที่ปิดแล้วปุ่มเดิมกลายเป็น "เปิดงานกลับ" */}
+          {isResolved ? (
+            onReopen && (
+              <button
+                type="button"
+                onClick={onReopen}
+                disabled={reopenPending}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                {reopenPending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
+                เปิดงานกลับ
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={onResolve}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12.5px] font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+            >
+              <Check className="size-4" />
+              ปิดงาน
             </button>
           )}
-          <button
-            onClick={() => pinMutation.mutate(!!session.pinnedAt)}
-            disabled={pinMutation.isPending}
-            className={cn(
-              'p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-colors',
-              session.pinnedAt
-                ? 'text-warning hover:bg-warning/10'
-                : 'text-muted-foreground hover:bg-accent hover:text-foreground/70',
-            )}
-            title={session.pinnedAt ? 'ถอดหมุด' : 'ปักหมุด'}
-            aria-label={session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
-          >
-            {session.pinnedAt ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
-          </button>
           <button
             onClick={() => setShowActions(!showActions)}
             aria-label="ตัวเลือกเพิ่มเติม"
             aria-expanded={showActions}
-            className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
+            title="เพิ่มเติม: มอบหมาย · โอนห้อง · คืนให้บอท"
+            className="size-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
           >
             <MoreVertical className="w-5 h-5" />
           </button>
@@ -1220,27 +1268,10 @@ export default function ChatPanel({
         </div>
       )}
 
-      {/* Resolved-room bar — replaces the composer; reopening restores it */}
+      {/* แถบห้องปิดแล้ว — แทนช่องพิมพ์ · ปุ่ม "เปิดงานกลับ" อยู่หัวห้อง (ไม่ซ้ำ 2 ที่) */}
       {isResolved && (
-        <div className="border-t border-border/60 bg-muted/30 px-4 py-3 flex items-center justify-between gap-3">
-          <span className="text-[13px] text-muted-foreground leading-snug">
-            แชทนี้ปิดแล้ว — เปิดแชทใหม่เพื่อพิมพ์ข้อความ
-          </span>
-          {onReopen && (
-            <button
-              type="button"
-              onClick={onReopen}
-              disabled={reopenPending}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium leading-snug text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {reopenPending ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <RotateCw className="size-3.5" />
-              )}
-              เปิดแชทใหม่
-            </button>
-          )}
+        <div className="border-t border-border/60 bg-muted/30 px-4 py-3 text-[13px] text-muted-foreground leading-snug">
+          ห้องนี้ปิดงานแล้ว — กด "เปิดงานกลับ" ที่หัวห้องเพื่อพิมพ์ต่อ (ลูกค้าทักใหม่ห้องกลับมาเอง)
         </div>
       )}
 

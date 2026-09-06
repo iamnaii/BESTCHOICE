@@ -23,7 +23,9 @@ describe('NoteBubble / PinnedNoteBar', () => {
   it('แถบโน้ตของห้อง: ✕ ต้องยืนยันก่อนปลดหมุด', () => {
     const onUnpin = vi.fn();
     render(<PinnedNoteBar note={NOTE} onUnpin={onUnpin} />);
-    expect(screen.getByRole('note', { name: 'โน้ตของห้อง' })).toHaveTextContent('โน้ต: ลูกค้าจะมารับพรุ่งนี้ 4 โมง');
+    const bar = screen.getByRole('note', { name: 'โน้ตของห้อง' });
+    expect(bar).toHaveTextContent('โน้ตของห้อง');
+    expect(bar).toHaveTextContent('ลูกค้าจะมารับพรุ่งนี้ 4 โมง');
     fireEvent.click(screen.getByRole('button', { name: 'ปลดโน้ตของห้อง' }));
     expect(onUnpin).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'ปลดหมุด' }));

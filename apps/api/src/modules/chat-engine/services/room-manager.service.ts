@@ -38,6 +38,8 @@ export interface RoomFilterParams {
   /** แท็บ "รอตอบ" — ลูกค้ารอคำตอบจากคน **และยังตอบทัน** (FACEBOOK ต้องมี lastCustomerAt ใน 24 ชม. · ช่องทางอื่นไม่มีหน้าต่าง)
    *  เรียงสองชั้น: ใกล้หมดเวลาก่อน แล้วรอนานก่อน (สเปก §7 แก้ไข 2026-09-05) */
   waiting?: boolean;
+  /** เฉพาะห้องที่ยังไม่ปิดงาน (resolvedAt ว่าง) — แท็บ "ของฉัน" */
+  openOnly?: boolean;
   /** มุมมอง "ตอบไม่ทัน" — FACEBOOK ที่รออยู่แต่พ้นหน้าต่าง 24 ชม. แล้ว (หรือยังไม่มี lastCustomerAt) */
   expired?: boolean;
   channels?: ChatChannel[];
@@ -661,6 +663,7 @@ export class RoomManagerService {
     if (params.assignedToId) where.assignedToId = params.assignedToId;
     if (params.customerId) where.customerId = params.customerId;
     if (params.unassignedOnly) where.assignedToId = null;
+    if (params.openOnly) where.resolvedAt = null;
     if (params.search) {
       and.push({
         OR: [
@@ -761,6 +764,8 @@ export class RoomManagerService {
         // มุมมอง "ตอบไม่ทัน": ใช้ลำดับเดียวกัน (ไม่มีอะไรให้เร่ง แค่ให้เห็นล่าสุดก่อน)
         orderBy: [
           { pinnedAt: { sort: 'desc' as const, nulls: 'last' as const } },
+          // ห้องที่ปิดงานแล้วไปอยู่ท้ายรายการ (ปิดล่าสุดก่อน) — ไม่ปนกับงานที่ยังเปิด
+          { resolvedAt: { sort: 'desc' as const, nulls: 'first' as const } },
           { lastMessageAt: 'desc' as const },
         ],
         skip,
@@ -770,7 +775,9 @@ export class RoomManagerService {
           assignedTo: { select: { id: true, name: true, avatarUrl: true } },
           tags: true,
           messages: {
-            where: { deletedAt: null },
+            // พรีวิวแถวรายชื่อ = ข้อความสนทนาล่าสุด — ข้อความระบบ (ปิดงาน/มอบหมาย/โฆษณา) ห้ามมาแทนที่
+            // (listRooms มี 2 ทาง: คิวรอตอบใช้ `const include` ข้างบน · ทางปกติใช้ include ตรงนี้ — #1524 กรองแค่ทางแรก)
+            where: { deletedAt: null, role: { not: MessageRole.SYSTEM } },
             orderBy: { createdAt: 'desc' },
             take: 1,
             select: { text: true, role: true, createdAt: true },
@@ -841,8 +848,9 @@ export class RoomManagerService {
     const expiredWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, expired: true });
     // ไม่รู้ว่าใครถาม = ไม่มี "ของฉัน" ให้นับ — ปล่อย assignedToId เป็น undefined ไม่ได้
     // เพราะ Prisma อ่านว่า "ไม่กรอง" ⇒ ทุกห้องกลายเป็นห้องของคนคนนั้น
+    // "ของฉัน" = งานที่ยังเปิดของฉัน — ห้องที่ปิดงานแล้วไม่นับ (ชุดเดียวกับรายการ openOnly)
     const mineWhere: Prisma.ChatRoomWhereInput | null = staffId
-      ? { ...base, assignedToId: staffId }
+      ? { ...base, assignedToId: staffId, resolvedAt: null }
       : null;
     const tabWhere: Prisma.ChatRoomWhereInput | null =
       params?.tab === 'waiting' ? waitingWhere : params?.tab === 'mine' ? mineWhere : base;
@@ -1264,7 +1272,7 @@ export class RoomManagerService {
         channel: true,
         lastMessageAt: true,
         messages: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, role: { not: MessageRole.SYSTEM } },
           orderBy: { createdAt: 'desc' },
           take: 1,
           select: { text: true, createdAt: true },

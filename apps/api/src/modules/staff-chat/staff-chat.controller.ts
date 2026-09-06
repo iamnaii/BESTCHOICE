@@ -102,6 +102,7 @@ export class StaffChatController {
       unassignedOnly: query.unassignedOnly,
       unreadOnly: query.unreadOnly,
       waiting: query.waiting,
+      openOnly: query.openOnly,
       // มุมมอง "ตอบไม่ทัน" (สเปก §7 แก้ไข 2026-09-05) — FACEBOOK ที่รออยู่แต่พ้นหน้าต่าง 24 ชม.
       expired: query.expired,
       channels: query.channels

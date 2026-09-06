@@ -1,4 +1,4 @@
-type Room = { assignedTo?: { id: string } | null; waitingSince?: string | null };
+type Room = { assignedTo?: { id: string } | null; waitingSince?: string | null; resolvedAt?: string | null };
 
 /** ตัวนับสำรองฝั่งจอ ใช้เมื่อยังไม่ได้คำตอบจาก GET /staff-chat/rooms/counts
  *  (ตัวเลขจากเซิร์ฟเวอร์เป็นตัวจริงเสมอ เพราะนับทั้งจักรวาลห้อง ไม่ใช่แค่หน้าที่โหลดมา)
@@ -12,7 +12,7 @@ export function deriveTabCounts(
 ): { mine: number; all: number; waiting: number } {
   const all = sessions.length;
   const mine = currentUserId
-    ? sessions.filter((r) => r.assignedTo?.id === currentUserId).length
+    ? sessions.filter((r) => r.assignedTo?.id === currentUserId && !r.resolvedAt).length
     : 0;
   const waiting = sessions.filter((r) => !!r.waitingSince).length;
   return { mine, all, waiting };

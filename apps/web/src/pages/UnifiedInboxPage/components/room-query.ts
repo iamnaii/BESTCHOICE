@@ -9,6 +9,8 @@ export function buildRoomListParams(filters: InboxFilters, currentUserId?: strin
   return {
     search: filters.search || undefined,
     assignedToId: mine ? currentUserId : staffPick,
+    // ของฉัน = งานที่ยังเปิดของฉัน — ห้องที่ปิดงานแล้วดูได้ใน "ทั้งหมด" (ท้ายรายการ)
+    openOnly: mine ? true : undefined,
     unassignedOnly: !mine && filters.who === 'free' ? true : undefined,
     waiting: filters.tab === 'waiting' && filters.view !== 'expired' ? true : undefined,
     expired: filters.tab === 'waiting' && filters.view === 'expired' ? true : undefined,

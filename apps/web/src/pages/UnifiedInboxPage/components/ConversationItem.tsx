@@ -85,6 +85,8 @@ interface ConversationItemProps {
     aiPaused?: boolean;
     handoffMode?: boolean;
     waitingSince?: string | null;
+    /** ปิดงานแล้วเมื่อ — แถวจางลง + ป้าย "ปิดแล้ว" อยู่ท้ายรายการ */
+    resolvedAt?: string | null;
     /** ข้อความล่าสุดของลูกค้า — ฐานนับหน้าต่าง 24 ชม. ของ Facebook */
     lastCustomerAt?: string | null;
     customer?: { id: string; name: string; phone?: string; avatarUrl?: string | null; lineAvatarUrl?: string | null } | null;
@@ -180,6 +182,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           ? 'bg-primary/10 border-l-2 border-l-primary'
           : 'hover:bg-muted/40',
         isPinned && !isActive && 'bg-warning/5',
+        !!session.resolvedAt && !isActive && 'opacity-60',
       )}
       onClick={() => onSelect(session.id)}
       onKeyDown={(e) => {
@@ -216,7 +219,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           )}>
             {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
             {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
-            {formatMessagePreview(lastMessage?.text)}
+            {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground/70">ยังไม่มีข้อความ</span>}
           </p>
           {hasUnread && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-snug flex-shrink-0">
@@ -226,7 +229,8 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
         </div>
 
         {/* Tags + priority + assigned + AI status */}
-        {(session.waitingSince ||
+        {(session.resolvedAt ||
+          session.waitingSince ||
           session.tags?.length ||
           (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') ||
           session.assignedTo ||
@@ -239,6 +243,9 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
                 ป้ายหน้าต่างมาก่อนเสมอ เพราะเป็นใบเดียวที่แปลว่า "ทำงานต่อไม่ได้" · ของเดิมห้าใบเต็ม 235/235px แบบ nowrap */}
             {(() => {
               const pills: ReactNode[] = [];
+              if (session.resolvedAt) {
+                pills.push(<Badge key="closed" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">ปิดแล้ว</Badge>);
+              }
               if (session.waitingSince) {
                 const w = fbWindowFor(session);
                 if (session.channel === 'FACEBOOK' && !session.lastCustomerAt) {

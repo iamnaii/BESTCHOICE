@@ -129,3 +129,38 @@ export interface ApprovePOPayload {
   paymentNotes?: string;
   attachments?: string[];
 }
+
+/** ซื้อสินค้า — one wizard, two ways in: order first (PO) or goods already in hand (direct receive). */
+export type PurchaseMode = 'po' | 'receive';
+
+/** The purchase wizard's form (owned by usePOForm) — shared by every step panel. */
+export interface PoFormState {
+  supplierId: string;
+  orderDate: string;
+  expectedDate: string;
+  notes: string;
+  discount: string;
+  discountAfterVat: string;
+  paymentStatus: string;
+  paymentMethod: string;
+  paidAmount: string;
+  paymentNotes: string;
+}
+
+export interface SupplierPaymentMethodOption {
+  paymentMethod: string;
+  bankName?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  creditTermDays?: number;
+  isDefault: boolean;
+}
+
+/** One entry of the suppliers list the page loads for the wizard. */
+export interface SupplierOption {
+  id: string;
+  name: string;
+  contactName: string | null;
+  hasVat: boolean;
+  paymentMethods: SupplierPaymentMethodOption[];
+}

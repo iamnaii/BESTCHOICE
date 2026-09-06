@@ -26,6 +26,8 @@ function renderStep(overrides: Partial<Parameters<typeof StepSupplier>[0]> = {})
       dueDatePreview={null}
       inputClass=""
       expectedDateError={null}
+      mode="po"
+      onModeChange={vi.fn()}
       {...overrides}
     />,
   );
@@ -52,5 +54,27 @@ describe('StepSupplier — picking a new order date clears the expected date', (
     fireEvent.click(screen.getAllByPlaceholderText('วว/ดด/ปปปป')[0]);
     fireEvent.click(screen.getByRole('button', { name: '13' }));
     expect(setForm).toHaveBeenCalledWith({ ...current, orderDate: '2026-09-13', expectedDate: '' });
+  });
+});
+
+describe('StepSupplier — วิธีซื้อ toggle (one wizard, two ways in; owner 2026-09-06)', () => {
+  it('PO mode shows the order/expected dates; receive mode books today and hides them', () => {
+    const { unmount } = renderStep();
+    expect(screen.getByText('วันที่คาดรับสินค้า')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /สั่งซื้อล่วงหน้า/ })).toHaveAttribute('aria-checked', 'true');
+    unmount();
+    renderStep({ mode: 'receive', form: { ...form, orderDate: '2026-09-06', expectedDate: '' } });
+    expect(screen.queryByText('วันที่คาดรับสินค้า')).toBeNull();
+    expect(screen.getByText(/รับเข้าวันนี้ 06\/09\/2569/)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /ของถึงแล้ว/ })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('clicking the other way calls onModeChange with a plain button (no submit)', () => {
+    const onModeChange = vi.fn();
+    renderStep({ onModeChange });
+    const receive = screen.getByRole('radio', { name: /ของถึงแล้ว/ });
+    expect(receive).toHaveAttribute('type', 'button');
+    fireEvent.click(receive);
+    expect(onModeChange).toHaveBeenCalledWith('receive');
   });
 });

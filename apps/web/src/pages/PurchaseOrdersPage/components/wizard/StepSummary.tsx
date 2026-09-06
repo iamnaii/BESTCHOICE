@@ -1,18 +1,17 @@
 import { Calculator, Pencil, StickyNote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal, formatDateShort } from '@/utils/formatters';
-import type { CreatePOModalProps } from '../CreatePOModal';
-import type { ItemForm } from '../../types';
+import type { ItemForm, PoFormState, SupplierOption } from '../../types';
 import type { PoTotals } from '../../poTotals';
 import { itemLabel } from '../../po-catalog.util';
 import { PaymentSection } from './PaymentSection';
 import { CardHeader, card, fieldCls, moneyInput } from './chrome';
 
 interface StepSummaryProps {
-  form: CreatePOModalProps['form'];
-  setForm: CreatePOModalProps['setForm'];
+  form: PoFormState;
+  setForm: React.Dispatch<React.SetStateAction<PoFormState>>;
   items: ItemForm[];
-  selectedSupplier: CreatePOModalProps['selectedSupplier'];
+  selectedSupplier: SupplierOption | undefined;
   supplierHasVat: boolean;
   totals: PoTotals;
   dueDatePreview: Date | null;

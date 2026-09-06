@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useCreatePoWizard, WIZARD_STEPS } from './useCreatePoWizard';
+import { useCreatePoWizard, PURCHASE_STEPS } from './useCreatePoWizard';
 import type { ItemForm } from '../types';
 
 const baseItem: ItemForm = { brand: 'Apple', category: 'PHONE_NEW', model: 'iPhone 16', color: '', storage: '', quantity: '2', unitPrice: '30000', accessoryType: '', accessoryBrand: '' };
@@ -37,12 +37,12 @@ describe('useCreatePoWizard', () => {
     expect(result.current.canNext).toBe(false);
   });
 
-  it('step 1 (items) gate: every item needs category, quantity>0, unitPrice>0', () => {
+  it('step 0 gate also needs every item complete (category, quantity>0, unitPrice>0) — items live on step 0 now', () => {
     const { result, rerender } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
-    act(() => result.current.next()); // -> step 1
-    expect(result.current.step).toBe(1);
     expect(result.current.canNext).toBe(true);
     rerender(makeOpts({ items: [{ ...baseItem, unitPrice: '' }] }));
+    expect(result.current.canNext).toBe(false);
+    rerender(makeOpts({ items: [] }));
     expect(result.current.canNext).toBe(false);
   });
 
@@ -80,27 +80,55 @@ describe('useCreatePoWizard', () => {
   });
 });
 
-describe('useCreatePoWizard — 3-step flow (owner decision 2026-09-06)', () => {
+describe('useCreatePoWizard — one wizard, two modes (owner 2026-09-06 "รวมกันได้เลยไหม")', () => {
   beforeEach(() => localStorage.clear());
 
-  it('has exactly three steps ending in สรุป + จ่ายเงิน', () => {
-    expect(WIZARD_STEPS).toEqual(['เลือกผู้ขาย', 'เพิ่มรายการ', 'สรุป + จ่ายเงิน']);
+  it('PO mode: ผู้ขาย + รายการ → สรุป + จ่ายเงิน; receive mode adds ตรวจรับ in between', () => {
+    expect(PURCHASE_STEPS.po).toEqual(['ผู้ขาย + รายการ', 'สรุป + จ่ายเงิน']);
+    expect(PURCHASE_STEPS.receive).toEqual(['ผู้ขาย + รายการ', 'ตรวจรับ', 'สรุป + จ่ายเงิน']);
   });
 
-  it('next() stops at the last step (2) and step 2 is always advanceable (submit is the form)', () => {
+  it('starts in PO mode; next() stops at the summary (1); the summary is always advanceable', () => {
     const { result } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
+    expect(result.current.mode).toBe('po');
+    expect(result.current.steps).toEqual(PURCHASE_STEPS.po);
     act(() => result.current.next());
     act(() => result.current.next());
-    act(() => result.current.next());
-    expect(result.current.step).toBe(2);
+    expect(result.current.step).toBe(1);
+    expect(result.current.isLast).toBe(true);
     expect(result.current.canNext).toBe(true);
   });
 
-  it('a draft saved on the old 4-step wizard (step 3) is restored onto the last step', () => {
+  it('receive mode: three steps, next() stops at 2, step 1 is ตรวจรับ', () => {
+    const { result } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
+    act(() => result.current.setMode('receive'));
+    expect(result.current.steps).toEqual(PURCHASE_STEPS.receive);
+    act(() => result.current.next());
+    expect(result.current.isInspect).toBe(true);
+    act(() => result.current.next());
+    act(() => result.current.next());
+    expect(result.current.step).toBe(2);
+    expect(result.current.isLast).toBe(true);
+  });
+
+  it('the draft remembers the mode; a receive draft reopens on step 0 (units are not saved)', () => {
+    const first = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
+    act(() => first.result.current.setMode('receive'));
+    act(() => first.result.current.next());
+    expect(JSON.parse(localStorage.getItem('bestchoice-po-draft') ?? '{}').mode).toBe('receive');
+    first.unmount();
+    const { result } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
+    expect(result.current.draftRecovered).toBe(true);
+    expect(result.current.mode).toBe('receive');
+    expect(result.current.step).toBe(0);
+  });
+
+  it('a draft saved by the old 3-step wizard (step 2/3, no mode) restores as a PO on the summary (1)', () => {
     localStorage.setItem('bestchoice-po-draft', JSON.stringify({ step: 3, form: makeOpts().form, items: [baseItem], savedAt: new Date().toISOString() }));
     const { result } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
     expect(result.current.draftRecovered).toBe(true);
-    expect(result.current.step).toBe(2);
+    expect(result.current.mode).toBe('po');
+    expect(result.current.step).toBe(1);
   });
 });
 

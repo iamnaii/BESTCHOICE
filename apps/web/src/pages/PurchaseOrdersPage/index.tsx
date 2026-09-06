@@ -16,11 +16,10 @@ import type { AccessorySku } from './po-catalog.util';
 import { statusLabels, paymentStatusLabels } from './constants';
 import { POListTab } from './components/POListTab';
 import { AccountsPayableTab } from './components/AccountsPayableTab';
-import { CreatePOModal } from './components/CreatePOModal';
+import { PurchaseModal } from './components/PurchaseModal';
 import { PODetailModal } from './components/PODetailModal';
 import { PaymentModal } from './components/PaymentModal';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
-import { DirectReceiveModal } from './components/DirectReceiveModal';
 import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
 import type { SummaryFilterAction } from './summaryStrip';
 
@@ -94,15 +93,6 @@ export default function PurchaseOrdersPage() {
     [queryClient, data.suppliers, poForm],
   );
 
-  // รับเข้าตรง uses the same contact picker; the picked contact becomes the direct-receive supplier
-  const onDirectSupplierSelect = useCallback(
-    async ({ childId }: { childId: string }) => {
-      await queryClient.invalidateQueries({ queryKey: ['suppliers-for-po'] });
-      data.setDirectSupplierId(childId);
-    },
-    [queryClient, data],
-  );
-
   const onSummaryCardClick = useCallback(
     (action: SummaryFilterAction) => {
       if ('panel' in action) {
@@ -169,17 +159,12 @@ export default function PurchaseOrdersPage() {
                 ส่งออก Excel
               </button>
             )}
-            <button
-              onClick={data.openDirectReceive}
-              className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors"
-            >
-              รับเข้าตรง (supplier)
-            </button>
+            {/* One entry for both ways in (owner 2026-09-06): the wizard asks "ของถึงแล้วหรือยัง" on step 1 */}
             <button
               onClick={() => data.setIsCreateModalOpen(true)}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
-              + สร้าง PO
+              + ซื้อสินค้า
             </button>
           </div>
         }
@@ -237,7 +222,7 @@ export default function PurchaseOrdersPage() {
         />
       )}
 
-      <CreatePOModal
+      <PurchaseModal
         isOpen={data.isCreateModalOpen}
         onClose={() => data.setIsCreateModalOpen(false)}
         form={poForm.form}
@@ -266,6 +251,7 @@ export default function PurchaseOrdersPage() {
         setFormAttachments={poForm.setFormAttachments}
         wizard={wizard}
         totals={totals}
+        directReceiveMutation={data.directReceiveMutation}
       />
 
       <PODetailModal
@@ -311,20 +297,6 @@ export default function PurchaseOrdersPage() {
         updateReceivingUnit={data.updateReceivingUnit}
         updateChecklist={data.updateChecklist}
         handleGoodsReceiving={data.handleGoodsReceiving}
-      />
-
-      <DirectReceiveModal
-        isOpen={data.isDirectReceiveOpen}
-        onClose={() => data.setIsDirectReceiveOpen(false)}
-        suppliers={data.suppliers}
-        supplierId={data.directSupplierId}
-        onSupplierSelect={onDirectSupplierSelect}
-        searchAccessorySkus={searchAccessorySkus}
-        lines={data.directLines}
-        setLines={data.setDirectLines}
-        notes={data.directNotes}
-        setNotes={data.setDirectNotes}
-        directReceiveMutation={data.directReceiveMutation}
       />
 
       <ConfirmDialog

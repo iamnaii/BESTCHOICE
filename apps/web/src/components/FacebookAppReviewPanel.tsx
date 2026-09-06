@@ -181,7 +181,7 @@ const TESTS: TestCase[] = [
   {
     key: 'subscribe_webhooks',
     permission: 'pages_manage_metadata',
-    title: 'Subscribe Page Webhooks (messages + feed comments)',
+    title: 'Subscribe Page Webhooks (messages + referrals + feed comments)',
     endpoint: '/facebook/app-review/subscribe-webhooks',
     method: 'POST',
     group: 'write',
@@ -190,7 +190,8 @@ const TESTS: TestCase[] = [
       {
         key: 'fields',
         label: 'Subscribed fields (comma-separated)',
-        defaultValue: 'messages,messaging_postbacks,message_deliveries,message_reads,feed',
+        // messaging_referrals = ลูกค้าเก่ากลับมาจากโฆษณา — ไม่ subscribe จะไม่รู้เลยว่ามาจากโฆษณาไหน (ต้องตรงกับ default ฝั่ง API)
+        defaultValue: 'messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads,feed',
       },
     ],
   },

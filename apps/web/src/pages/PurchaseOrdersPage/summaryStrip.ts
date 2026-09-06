@@ -1,7 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   FileClock,
-  ShoppingCart,
   Truck,
   AlertTriangle,
   PackageCheck,
@@ -15,6 +14,7 @@ import {
  */
 export interface PurchasingSummary {
   pendingApproval: number;
+  /** Still returned by the API; no card since 2026-09-06 (approve lands on ORDERED — nothing waits to be ordered). */
   toOrder: number;
   incoming: number;
   overdue: number;
@@ -47,13 +47,6 @@ export const SUMMARY_CARDS: SummaryCardDef[] = [
     icon: FileClock,
     tone: 'warning',
     action: { tab: 'list', status: 'DRAFT', overdueOnly: false },
-  },
-  {
-    key: 'toOrder',
-    label: 'รอสั่งซื้อ',
-    icon: ShoppingCart,
-    tone: 'primary',
-    action: { tab: 'list', status: 'APPROVED', overdueOnly: false },
   },
   {
     key: 'incoming',

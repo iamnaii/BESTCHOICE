@@ -55,7 +55,7 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
-      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     };
     return { tx, created };
   };
@@ -114,6 +114,48 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
     const service = await build(prisma);
     await expect(service.directReceive(baseDto() as never, 'user-1')).rejects.toThrow(NotFoundException);
+  });
+
+  // 2026-09-06: a direct receive used to book netAmount = totalAmount (no VAT, no discount) and
+  // always UNPAID, so a VAT supplier's payable was 7% short on the AP tab and a cash purchase
+  // paid on the spot still showed as owed. It now uses the same money math + terms as create().
+  it("applies the supplier's VAT, discounts and credit terms exactly like create()", async () => {
+    const { tx, created } = makeTx();
+    tx.supplier.findUnique = jest.fn().mockResolvedValue({
+      id: 'sup-1', deletedAt: null, hasVat: true,
+      paymentMethods: [{ paymentMethod: 'CREDIT', creditTermDays: 30, isDefault: true, bankName: 'KBank', bankAccountNumber: '123-4-56789-0' }],
+    });
+    tx.systemConfig.findMany = jest.fn().mockResolvedValue([]); // no VAT_RATE row → 7%
+    const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+    const service = await build(prisma);
+
+    const dto = { ...baseDto(), discount: 900, discountAfterVat: 40 };
+    dto.items[0].unitPrice = 42900;
+    await service.directReceive(dto as never, 'user-1');
+
+    const po: any = created.po[0];
+    expect(Number(po.totalAmount)).toBe(42900);
+    expect(Number(po.discount)).toBe(900);
+    expect(Number(po.vatAmount)).toBe(2940); // (42900 − 900) × 0.07
+    expect(Number(po.discountAfterVat)).toBe(40);
+    expect(Number(po.netAmount)).toBe(44900); // 42000 + 2940 − 40
+    expect(po.dueDate).toEqual(new Date('2099-02-14T00:00:00.000Z')); // orderDate + 30 days credit
+    expect(po.bankAccountSnapshot).toBe('123-4-56789-0');
+    expect(po.bankNameSnapshot).toBe('KBank');
+  });
+
+  it('records a payment made on the spot on the auto-PO (defaults to UNPAID when absent)', async () => {
+    const { tx, created } = makeTx();
+    tx.systemConfig.findMany = jest.fn().mockResolvedValue([]);
+    const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+    const service = await build(prisma);
+
+    await service.directReceive({ ...baseDto(), paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 30000, paymentNotes: 'จ่ายสดหน้าร้าน' } as never, 'user-1');
+    expect(created.po[0]).toEqual(expect.objectContaining({ paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 30000, paymentNotes: 'จ่ายสดหน้าร้าน' }));
+
+    await service.directReceive(baseDto() as never, 'user-1');
+    expect(created.po[1]).toEqual(expect.objectContaining({ paymentStatus: 'UNPAID', paidAmount: 0 }));
+    expect(Number((created.po[1] as any).netAmount)).toBe(30000); // supplier without VAT: net = total
   });
 
   it('persists structured defectReason on a REJECT unit', async () => {

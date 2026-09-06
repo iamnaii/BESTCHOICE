@@ -4,8 +4,10 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import { formatDateShort } from '@/utils/formatters';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { PurchaseOrder } from '../types';
-import { receiveProgress, isOverdue, supplierContactIsRedundant } from '../po-list.util';
+import { PurchaseOrder, ApprovePOPayload } from '../types';
+import { ApprovePODialog } from './ApprovePODialog';
+import type { SupplierPaymentMethod } from './wizard/PaymentSection';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel } from '../po-list.util';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { POCard } from './POCard';
@@ -31,12 +33,12 @@ export interface POListTabProps {
   openDetailModal: (po: PurchaseOrder) => void;
   openReceiveModal: (po: PurchaseOrder) => void;
   openPaymentModal: (po: PurchaseOrder) => void;
-  approveMutation: UseMutationResult<unknown, unknown, string, unknown>;
+  approveMutation: UseMutationResult<unknown, unknown, ApprovePOPayload, unknown>;
   orderMutation: UseMutationResult<unknown, unknown, string, unknown>;
   rejectPOMutation: UseMutationResult<unknown, unknown, { id: string; reason: string }, unknown>;
   cancelMutation: UseMutationResult<unknown, unknown, string, unknown>;
   setConfirmDialog: (value: { open: boolean; message: string; action: () => void }) => void;
-  suppliers: { id: string; name: string }[];
+  suppliers: { id: string; name: string; hasVat?: boolean; paymentMethods?: SupplierPaymentMethod[] }[];
   overdueOnly: boolean;
   setOverdueOnly: (value: boolean) => void;
 }
@@ -91,6 +93,7 @@ export function POListTab({
   const debouncedSearch = useDebounce(search, 250);
   const [supplierFilter, setSupplierFilter] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('');
+  const [approveDialog, setApproveDialog] = useState<{ open: boolean; po: PurchaseOrder | null }>({ open: false, po: null });
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; po: PurchaseOrder | null; reason: string }>({
     open: false,
     po: null,
@@ -133,12 +136,9 @@ export function POListTab({
 
   // Shared action handlers — used by both the desktop table action column and
   // the mobile POCard so the two views can never drift in behavior.
-  const onApprove = (po: PurchaseOrder) =>
-    setConfirmDialog({
-      open: true,
-      message: `อนุมัติ PO ${po.poNumber}?`,
-      action: () => approveMutation.mutate(po.id),
-    });
+  // Approve = order + pay in one box (owner 2026-09-06) — the bare confirm is gone.
+  const onApprove = (po: PurchaseOrder) => setApproveDialog({ open: true, po });
+  const closeApprove = () => setApproveDialog({ open: false, po: null });
   const onOrder = (po: PurchaseOrder) =>
     setConfirmDialog({
       open: true,
@@ -149,7 +149,10 @@ export function POListTab({
   const onCancel = (po: PurchaseOrder) =>
     setConfirmDialog({
       open: true,
-      message: `ต้องการยกเลิก PO ${po.poNumber}?`,
+      message:
+        po.status === 'ORDERED'
+          ? `ต้องการยกเลิก PO ${po.poNumber}? สั่งซื้อแล้วแต่ยังไม่ได้รับของ — ยกเลิกแล้วต้องแจ้งผู้ขายเอง`
+          : `ต้องการยกเลิก PO ${po.poNumber}?`,
       action: () => cancelMutation.mutate(po.id),
     });
 
@@ -342,15 +345,19 @@ export function POListTab({
               >
                 <X className="size-4" />
               </button>
-              <button
-                onClick={() => onCancel(po)}
-                className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors"
-                title="ยกเลิก"
-                aria-label={`ยกเลิก ${po.poNumber}`}
-              >
-                <Ban className="size-4" />
-              </button>
             </>
+          )}
+          {/* also for an ORDERED PO with nothing received yet (approve lands on ORDERED now) */}
+          {canCancel(po) && (
+            <button
+              onClick={() => onCancel(po)}
+              disabled={cancelMutation.isPending}
+              className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              title="ยกเลิก"
+              aria-label={`ยกเลิก ${po.poNumber}`}
+            >
+              <Ban className="size-4" />
+            </button>
           )}
         </div>
       ),
@@ -503,6 +510,19 @@ export function POListTab({
           </CardContent>
         </Card>
       )}
+
+      <ApprovePODialog
+        open={approveDialog.open}
+        po={approveDialog.po}
+        supplier={suppliers.find((s) => s.id === approveDialog.po?.supplier.id)}
+        pending={approveMutation.isPending}
+        onClose={closeApprove}
+        onReject={(po) => {
+          closeApprove();
+          setRejectDialog({ open: true, po, reason: '' });
+        }}
+        onConfirm={(payload) => approveMutation.mutate(payload, { onSuccess: closeApprove })}
+      />
 
       {/* Reject reason dialog */}
       <Dialog

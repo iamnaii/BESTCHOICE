@@ -22,6 +22,28 @@ import {
 } from './product-enter-stock.util';
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
+import { isAccessoryProductCode } from '../../utils/accessory-type.util';
+
+/** One accessory SKU as the PO picker sees it (see findAccessorySkus). */
+export interface AccessorySku {
+  /** old Tooltify code when the SKU was imported (F1601, CCCT01), null for PO-created ones */
+  code: string | null;
+  name: string;
+  accessoryType: string | null;
+  accessoryBrand: string | null;
+  model: string;
+  inStock: number;
+  lastCost: number | null;
+}
+
+interface AccessorySkuRow {
+  name: string;
+  accessory_type: string | null;
+  accessory_brand: string | null;
+  model: string;
+  in_stock: bigint | number;
+  last_cost: unknown;
+}
 import { evaluateReadiness } from '../../utils/product-readiness.util';
 
 const productInclude = {
@@ -677,6 +699,38 @@ export class ProductsService {
       orderBy: { brand: 'asc' },
     });
     return brands.map((b) => b.brand);
+  }
+
+  /**
+   * Accessory "SKUs" for the PO picker — one row per product NAME (units are one row each),
+   * searchable by name or by the old Tooltify code the importer left in `accessoryType`.
+   * Returns the raw fields a PO line copies (accessoryType / accessoryBrand / model) so the
+   * received units get the same name (see buildProductName), plus stock + last cost.
+   */
+  async findAccessorySkus(search: string, limit = 20): Promise<AccessorySku[]> {
+    const term = `%${(search ?? '').trim()}%`;
+    const rows = await this.prisma.$queryRaw<AccessorySkuRow[]>(Prisma.sql`
+      SELECT p.name, p.accessory_type, p.accessory_brand, p.model,
+             COUNT(*) FILTER (WHERE p.status = 'IN_STOCK') AS in_stock,
+             (SELECT p2.cost_price FROM products p2
+                WHERE p2.name = p.name AND p2.category = 'ACCESSORY' AND p2.deleted_at IS NULL
+                ORDER BY p2.created_at DESC LIMIT 1) AS last_cost
+      FROM products p
+      WHERE p.category = 'ACCESSORY' AND p.deleted_at IS NULL
+        AND (p.name ILIKE ${term} OR p.accessory_type ILIKE ${term})
+      GROUP BY p.name, p.accessory_type, p.accessory_brand, p.model
+      ORDER BY in_stock DESC, p.name ASC
+      LIMIT ${limit}
+    `);
+    return rows.map((r) => ({
+      code: isAccessoryProductCode(r.accessory_type) ? r.accessory_type : null,
+      name: r.name,
+      accessoryType: r.accessory_type,
+      accessoryBrand: r.accessory_brand,
+      model: r.model,
+      inStock: Number(r.in_stock),
+      lastCost: r.last_cost == null ? null : Number(r.last_cost),
+    }));
   }
 
   /** B0 §2.3 — checklist "พร้อมขึ้นเว็บ" รายข้อ (หน้าสินค้า admin ใน B1 กินอันนี้) */

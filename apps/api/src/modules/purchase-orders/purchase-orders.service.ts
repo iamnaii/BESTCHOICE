@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto, DirectReceiveDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto, ApprovePODto, DirectReceiveDto } from './dto/create-po.dto';
 import { PoQueryService } from './services/po-query.service';
 import { PoLifecycleService } from './services/po-lifecycle.service';
 import { PoReceivingService } from './services/po-receiving.service';
@@ -34,16 +34,16 @@ export class PurchaseOrdersService {
     return this.query.findOne(id);
   }
 
-  create(dto: CreatePODto, userId: string) {
-    return this.lifecycle.create(dto, userId);
+  create(dto: CreatePODto, userId: string, userRole?: string) {
+    return this.lifecycle.create(dto, userId, userRole);
   }
 
   update(id: string, dto: UpdatePODto) {
     return this.lifecycle.update(id, dto);
   }
 
-  approve(id: string, userId: string) {
-    return this.lifecycle.approve(id, userId);
+  approve(id: string, userId: string, dto?: ApprovePODto) {
+    return this.lifecycle.approve(id, userId, dto);
   }
 
   order(id: string, userId: string, dto: OrderPODto) {

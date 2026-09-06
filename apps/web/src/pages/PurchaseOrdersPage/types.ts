@@ -77,6 +77,10 @@ export interface ItemForm {
   unitPrice: string;
   accessoryType: string;
   accessoryBrand: string;
+  /** Row re-ordered from an existing accessory SKU (display only — not sent to the API). */
+  sourceName?: string;
+  sourceCode?: string | null;
+  sourceInStock?: number;
 }
 
 export type DefectReasonValue =
@@ -111,15 +115,52 @@ export interface ReceivingUnitForm {
   accessoryBrand?: string;
 }
 
-// One ad-hoc supplier-direct line (expands into `quantity` ReceivingUnitForm units)
-export interface DirectReceiveLineForm {
-  category: string;
-  brand: string;
-  model: string;
-  color: string;
-  storage: string;
-  accessoryType: string;
-  accessoryBrand: string;
-  quantity: string;
-  costPrice: string;
+
+/**
+ * Body of POST /purchase-orders/:id/approve (ApprovePODto) — approve = order, and the owner
+ * may record the payment made on the spot in the same request (2026-09-06).
+ */
+export interface ApprovePOPayload {
+  id: string;
+  expectedDate?: string;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  paidAmount?: number;
+  paymentNotes?: string;
+  attachments?: string[];
+}
+
+/** ซื้อสินค้า — one wizard, two ways in: order first (PO) or goods already in hand (direct receive). */
+export type PurchaseMode = 'po' | 'receive';
+
+/** The purchase wizard's form (owned by usePOForm) — shared by every step panel. */
+export interface PoFormState {
+  supplierId: string;
+  orderDate: string;
+  expectedDate: string;
+  notes: string;
+  discount: string;
+  discountAfterVat: string;
+  paymentStatus: string;
+  paymentMethod: string;
+  paidAmount: string;
+  paymentNotes: string;
+}
+
+export interface SupplierPaymentMethodOption {
+  paymentMethod: string;
+  bankName?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  creditTermDays?: number;
+  isDefault: boolean;
+}
+
+/** One entry of the suppliers list the page loads for the wizard. */
+export interface SupplierOption {
+  id: string;
+  name: string;
+  contactName: string | null;
+  hasVat: boolean;
+  paymentMethods: SupplierPaymentMethodOption[];
 }

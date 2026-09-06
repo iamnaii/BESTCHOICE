@@ -1,30 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import type { ItemForm } from '../types';
+import type { ItemForm, PoFormState, PurchaseMode } from '../types';
+import { getExpectedDateError } from '../po-dates.util';
+import { allItemsComplete } from '../po-catalog.util';
 
-export const WIZARD_STEPS = ['เลือกผู้ขาย', 'เพิ่มรายการ', 'ส่วนลด/VAT', 'ทบทวน+บันทึก'];
-const LAST_STEP = WIZARD_STEPS.length - 1;
+/**
+ * One wizard, two ways in (owner 2026-09-06 "รวมกันได้เลยไหม"): the first step holds the supplier
+ * AND the items for both modes; ordering ahead goes straight to สรุป + จ่ายเงิน, goods already in
+ * hand get a ตรวจรับ step (IMEI / selling price / photos per unit) in between.
+ */
+export const PURCHASE_STEPS: Record<PurchaseMode, string[]> = {
+  po: ['ผู้ขาย + รายการ', 'สรุป + จ่ายเงิน'],
+  receive: ['ผู้ขาย + รายการ', 'ตรวจรับ', 'สรุป + จ่ายเงิน'],
+};
 
 const DRAFT_KEY = 'bestchoice-po-draft';
 const DRAFT_TTL_MS = 24 * 60 * 60 * 1000; // 24h, matches the contract-draft TTL
 
-type WizardForm = {
-  supplierId: string; orderDate: string; expectedDate: string; discount: string;
-  discountAfterVat: string; notes: string; paymentStatus: string; paymentMethod: string;
-  paidAmount: string; paymentNotes: string;
-};
-
 interface PoDraft {
   step: number;
-  form: WizardForm;
+  /** absent on drafts saved before the modes existed → PO */
+  mode?: PurchaseMode;
+  form: PoFormState;
   items: ItemForm[];
   savedAt: string;
 }
 
 export interface UseCreatePoWizardOptions {
   isOpen: boolean;
-  form: WizardForm;
-  setForm: React.Dispatch<React.SetStateAction<WizardForm>>;
+  form: PoFormState;
+  setForm: React.Dispatch<React.SetStateAction<PoFormState>>;
   items: ItemForm[];
   setItems: React.Dispatch<React.SetStateAction<ItemForm[]>>;
   selectedSupplier:
@@ -34,12 +39,24 @@ export interface UseCreatePoWizardOptions {
 
 export interface CreatePoWizardApi {
   step: number;
+  mode: PurchaseMode;
+  /** Switching modes returns to the first step (the toggle lives there anyway). */
+  setMode: (mode: PurchaseMode) => void;
+  /** Step labels for the current mode (PURCHASE_STEPS[mode]). */
+  steps: string[];
+  lastStep: number;
+  /** receive mode, on ตรวจรับ */
+  isInspect: boolean;
+  /** on สรุป + จ่ายเงิน — the step that submits */
+  isLast: boolean;
   goToStep: (s: number) => void;
   next: () => void;
   back: () => void;
   canNext: boolean;
   dueDatePreview: Date | null;
   creditTermDays: number | null;
+  /** วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่ง — null when valid or expectedDate empty */
+  expectedDateError: string | null;
   draftRecovered: boolean;
   clearDraft: () => void;
 }
@@ -47,8 +64,12 @@ export interface CreatePoWizardApi {
 export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizardApi {
   const { isOpen, form, setForm, items, setItems, selectedSupplier } = opts;
   const [step, setStep] = useState(0);
+  const [mode, setModeState] = useState<PurchaseMode>('po');
   const [draftRecovered, setDraftRecovered] = useState(false);
   const recoveredRef = useRef(false);
+
+  const steps = PURCHASE_STEPS[mode];
+  const lastStep = steps.length - 1;
 
   const clearDraft = useCallback(() => {
     localStorage.removeItem(DRAFT_KEY);
@@ -68,7 +89,11 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
       }
       setForm(draft.form);
       setItems(draft.items);
-      setStep(draft.step);
+      const restoredMode: PurchaseMode = draft.mode === 'receive' ? 'receive' : 'po';
+      setModeState(restoredMode);
+      // Units (IMEI / photos) are never saved, so a receive draft reopens on the first step;
+      // a PO draft reopens where it was — old 3/4-step drafts land on the summary.
+      setStep(restoredMode === 'receive' ? 0 : Math.min(Math.max(draft.step ?? 0, 0), PURCHASE_STEPS.po.length - 1));
       setDraftRecovered(true);
       toast('พบใบสั่งซื้อร่างที่บันทึกไว้ — กู้คืนแล้ว', {
         description: `บันทึกเมื่อ ${new Date(draft.savedAt).toLocaleString('th-TH')}`,
@@ -85,17 +110,18 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
       recoveredRef.current = false;
       setDraftRecovered(false);
       setStep(0);
+      setModeState('po');
     }
   }, [isOpen]);
 
-  // Auto-save: persist on every form/items/step change while open (only if there is content)
+  // Auto-save: persist on every form/items/step/mode change while open (only if there is content)
   useEffect(() => {
     if (!isOpen) return;
     const hasContent = !!form.supplierId || items.some((i) => i.category || i.unitPrice);
     if (!hasContent) return;
-    const draft: PoDraft = { step, form, items, savedAt: new Date().toISOString() };
+    const draft: PoDraft = { step, mode, form, items, savedAt: new Date().toISOString() };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  }, [isOpen, step, form, items]);
+  }, [isOpen, step, mode, form, items]);
 
   // Credit-term-driven due-date preview (mirrors po-lifecycle.service.create():69-77)
   const selectedPm = form.paymentMethod
@@ -111,21 +137,42 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
     }
   }
 
-  // Per-step advance gate
-  const itemsValid = items.length > 0 && items.every(
-    (i) => i.category && Number(i.quantity) > 0 && Number(i.unitPrice) > 0,
-  );
-  const canNext =
-    step === 0 ? !!form.supplierId :
-    step === 1 ? itemsValid :
-    true; // steps 2 & 3 are always advanceable (3 = submit handled by the form)
+  // The first step gate: a RESOLVED supplier (a recovered draft can name one that no longer
+  // exists), a sane expected date, and every row complete. Later steps validate in the modal
+  // (ตรวจรับ) or submit (สรุป + จ่ายเงิน).
+  const expectedDateError = getExpectedDateError(form.orderDate, form.expectedDate);
+  const canNext = step === 0 ? !!selectedSupplier && !expectedDateError && allItemsComplete(items) : true;
 
-  const goToStep = useCallback((s: number) => {
-    if (s >= 0 && s <= LAST_STEP) setStep(s);
-  }, []);
-  const next = useCallback(() => setStep((s) => Math.min(s + 1, LAST_STEP)), []);
+  const goToStep = useCallback(
+    (s: number) => {
+      if (s >= 0 && s <= lastStep) setStep(s);
+    },
+    [lastStep],
+  );
+  const next = useCallback(() => setStep((s) => Math.min(s + 1, lastStep)), [lastStep]);
   const back = useCallback(() => setStep((s) => Math.max(s - 1, 0)), []);
+  const setMode = useCallback((m: PurchaseMode) => {
+    setModeState(m);
+    setStep(0);
+  }, []);
 
   // dueDatePreview is exported as a Date so each panel formats it (formatDateShort) itself.
-  return { step, goToStep, next, back, canNext, dueDatePreview, creditTermDays, draftRecovered, clearDraft };
+  return {
+    step,
+    mode,
+    setMode,
+    steps,
+    lastStep,
+    isInspect: mode === 'receive' && step === 1,
+    isLast: step === lastStep,
+    goToStep,
+    next,
+    back,
+    canNext,
+    dueDatePreview,
+    creditTermDays,
+    expectedDateError,
+    draftRecovered,
+    clearDraft,
+  };
 }

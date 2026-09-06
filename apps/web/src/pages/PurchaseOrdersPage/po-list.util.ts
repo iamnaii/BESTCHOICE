@@ -35,3 +35,13 @@ export function supplierContactIsRedundant(supplier: {
     supplier.contactName.trim().toLowerCase() === supplier.name.trim().toLowerCase()
   );
 }
+
+/**
+ * ยกเลิกได้ไหม — mirrors PoLifecycleService.cancel(): DRAFT / APPROVED (legacy) / PENDING, or an
+ * ORDERED PO with nothing received yet (owner 2026-09-06: approve now lands on ORDERED directly,
+ * so the old "cancellable while APPROVED" window must stay reachable from the list and the card).
+ */
+export function canCancel(po: { status: string; items: { receivedQty: number }[] }): boolean {
+  if (['DRAFT', 'APPROVED', 'PENDING'].includes(po.status)) return true;
+  return po.status === 'ORDERED' && po.items.every((i) => !i.receivedQty);
+}

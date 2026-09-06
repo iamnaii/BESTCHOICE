@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { receiveProgress, isOverdue, supplierContactIsRedundant } from './po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel } from './po-list.util';
 
 describe('receiveProgress', () => {
   it('sums received/ordered across items and computes pct', () => {
@@ -48,5 +48,29 @@ describe('supplierContactIsRedundant', () => {
   it('is false when contactName is null/empty', () => {
     expect(supplierContactIsRedundant({ name: 'ACME', contactName: null })).toBe(false);
     expect(supplierContactIsRedundant({ name: 'ACME', contactName: '' })).toBe(false);
+  });
+});
+
+// Owner 2026-09-06: an ORDERED PO with nothing received yet can still be cancelled (the API's
+// cancel() rule) — the list/card must offer the action, not just for DRAFT (found by QA).
+describe('canCancel', () => {
+  const po = (status: string, received: number[] = [0]) => ({
+    status,
+    items: received.map((r) => ({ quantity: 2, receivedQty: r })),
+  });
+  it('DRAFT (and legacy APPROVED) can be cancelled', () => {
+    expect(canCancel(po('DRAFT'))).toBe(true);
+    expect(canCancel(po('APPROVED'))).toBe(true);
+  });
+  it('ORDERED with nothing received can be cancelled', () => {
+    expect(canCancel(po('ORDERED', [0, 0]))).toBe(true);
+  });
+  it('ORDERED with any piece received cannot', () => {
+    expect(canCancel(po('ORDERED', [0, 1]))).toBe(false);
+  });
+  it('received / cancelled POs cannot', () => {
+    expect(canCancel(po('PARTIALLY_RECEIVED', [1]))).toBe(false);
+    expect(canCancel(po('FULLY_RECEIVED', [2]))).toBe(false);
+    expect(canCancel(po('CANCELLED'))).toBe(false);
   });
 });

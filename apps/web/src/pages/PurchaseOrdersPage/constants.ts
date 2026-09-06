@@ -27,6 +27,13 @@ export const paymentStatusLabels: Record<string, string> = {
   FULLY_PAID: 'จ่ายครบแล้ว',
 };
 
+export const paymentMethodLabels: Record<string, string> = {
+  CASH: 'เงินสด',
+  BANK_TRANSFER: 'โอนธนาคาร',
+  CHECK: 'เช็ค',
+  CREDIT: 'เครดิต',
+};
+
 export const paymentStatusColors: Record<string, string> = {
   UNPAID: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
   DEPOSIT_PAID: 'bg-warning/10 text-warning dark:bg-warning/15',

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { PurchaseOrder, PODetail, ReceivingUnitForm, DirectReceiveLineForm } from '../types';
+import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload } from '../types';
 import { defaultChecklist } from '../constants';
 import { PurchasingSummary } from '../summaryStrip';
 import { buildReceiveResultMessage } from '../receiveResultMessage';
@@ -44,6 +44,21 @@ export function buildDirectReceiveItem(i: ReceivingUnitForm) {
   };
 }
 
+/** Body of POST /purchase-orders/direct-receive as the modal assembles it (money fields from step 3). */
+export interface DirectReceiveInput {
+  supplierId: string;
+  orderDate: string;
+  notes?: string;
+  items: ReceivingUnitForm[];
+  discount?: number;
+  discountAfterVat?: number;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  paidAmount?: number;
+  paymentNotes?: string;
+  attachments?: string[];
+}
+
 export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }) {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
@@ -52,10 +67,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'payable'>('list');
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
-  const [isDirectReceiveOpen, setIsDirectReceiveOpen] = useState(false);
-  const [directLines, setDirectLines] = useState<DirectReceiveLineForm[]>([]);
-  const [directSupplierId, setDirectSupplierId] = useState('');
-  const [directNotes, setDirectNotes] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     message: string;
@@ -169,22 +180,29 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
 
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => api.post('/purchase-orders', data),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
-      toast.success('สร้างใบสั่งซื้อสำเร็จ (สถานะ: รออนุมัติ)');
+      // The OWNER's own PO is ordered at once (no self-approval); a branch manager's waits.
+      toast.success(
+        res?.data?.status === 'ORDERED'
+          ? 'สร้างใบสั่งซื้อและสั่งซื้อแล้ว (สถานะ: สั่งซื้อแล้ว)'
+          : 'สร้างใบสั่งซื้อสำเร็จ (สถานะ: รออนุมัติ)',
+      );
       setIsCreateModalOpen(false);
       options?.onCreateSuccess?.();
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // Approve = order (+ the payment made on the spot) — one request, one toast.
   const approveMutation = useMutation({
-    mutationFn: async (id: string) => api.post(`/purchase-orders/${id}/approve`),
-    onSuccess: () => {
+    mutationFn: async ({ id, ...body }: ApprovePOPayload) => api.post(`/purchase-orders/${id}/approve`, body),
+    onSuccess: (_res, vars) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
-      toast.success('อนุมัติ PO สำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
+      toast.success(vars.paymentStatus ? 'อนุมัติและสั่งซื้อ PO สำเร็จ · บันทึกการจ่ายเงินแล้ว' : 'อนุมัติและสั่งซื้อ PO สำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -279,23 +297,30 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       orderDate,
       notes,
       items,
-    }: {
-      supplierId: string;
-      orderDate: string;
-      notes?: string;
-      items: ReceivingUnitForm[];
-    }) =>
+      ...money
+    }: DirectReceiveInput) =>
       api.post('/purchase-orders/direct-receive', {
         supplierId,
         orderDate,
         notes: notes || undefined,
         items: items.map(buildDirectReceiveItem),
+        // step 3 สรุป + จ่ายเงิน (2026-09-06) — same money math as a normal PO on the API
+        discount: money.discount,
+        discountAfterVat: money.discountAfterVat,
+        paymentStatus: money.paymentStatus,
+        paymentMethod: money.paymentMethod,
+        paidAmount: money.paidAmount,
+        paymentNotes: money.paymentNotes,
+        attachments: money.attachments,
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
       toast.success(buildReceiveResultMessage(res.data));
-      setIsDirectReceiveOpen(false);
+      // the receive mode lives in the same ซื้อสินค้า wizard as a PO — close + reset it the same way
+      setIsCreateModalOpen(false);
+      options?.onCreateSuccess?.();
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -425,25 +450,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setPaymentAttachments(po.attachments || []);
     setPaymentAttachmentUrl('');
     setIsPaymentModalOpen(true);
-  };
-
-  const openDirectReceive = () => {
-    setDirectSupplierId('');
-    setDirectNotes('');
-    setDirectLines([
-      {
-        category: 'PHONE_NEW',
-        brand: '',
-        model: '',
-        color: '',
-        storage: '',
-        accessoryType: '',
-        accessoryBrand: '',
-        quantity: '1',
-        costPrice: '',
-      },
-    ]);
-    setIsDirectReceiveOpen(true);
   };
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
@@ -576,14 +582,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setIsDetailModalOpen,
     isReceiveModalOpen,
     setIsReceiveModalOpen,
-    isDirectReceiveOpen,
-    setIsDirectReceiveOpen,
-    directLines,
-    setDirectLines,
-    directSupplierId,
-    setDirectSupplierId,
-    directNotes,
-    setDirectNotes,
     isPaymentModalOpen,
     setIsPaymentModalOpen,
     confirmDialog,
@@ -605,7 +603,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     // Actions
     openDetailModal,
     openReceiveModal,
-    openDirectReceive,
     openPaymentModal,
     updateReceivingUnit,
     updateChecklist,

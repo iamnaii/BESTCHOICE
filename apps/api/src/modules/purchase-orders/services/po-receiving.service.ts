@@ -1,8 +1,10 @@
 import { NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { Prisma, ProductCategory } from '@prisma/client';
+import { Prisma, ProductCategory, POPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
+import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms } from './po-amounts.util';
+import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
 import {
@@ -350,27 +352,51 @@ export class PoReceivingService {
       try {
         return await this.prisma.$transaction(
           async (tx) => {
-            // 1) Validate supplier
-            const supplier = await tx.supplier.findUnique({ where: { id: dto.supplierId } });
+            // 1) Validate supplier (+ VAT flag and payment terms, same select as create())
+            const supplier = await tx.supplier.findUnique({
+              where: { id: dto.supplierId },
+              select: { id: true, ...SUPPLIER_TERMS_SELECT },
+            });
             if (!supplier || supplier.deletedAt) throw new NotFoundException('ไม่พบ Supplier');
 
             // 2) Create the auto-PO (unitPrice = costPrice). Starts APPROVED so the
             //    OWNER approval gate is structurally bypassed (audited at step 4).
+            //    Money math / due date / bank snapshot are the create() rules
+            //    (po-amounts.util) — a VAT supplier's payable and a purchase paid on the
+            //    spot were booked wrong before 2026-09-06 (net = total, always UNPAID).
             const poNumber = await generatePONumber(tx);
-            const totalAmount = dto.items.reduce((s, i) => s + Number(i.unitPrice) * i.quantity, 0);
+            const orderDate = new Date(dto.orderDate);
+            const vatRate = supplier.hasVat ? await loadVatRateDecimal(tx) : 0;
+            const amounts = computePoAmounts(dto.items, {
+              supplierHasVat: !!supplier.hasVat,
+              vatRate,
+              discount: dto.discount,
+              discountAfterVat: dto.discountAfterVat,
+            });
+            const terms = resolvePaymentTerms(supplier, dto.paymentMethod, orderDate);
             const po = await tx.purchaseOrder.create({
               data: {
                 poNumber,
                 supplierId: dto.supplierId,
-                orderDate: new Date(dto.orderDate),
-                totalAmount,
-                netAmount: totalAmount, // direct receive: no VAT/discount math
+                orderDate,
+                totalAmount: amounts.totalAmount,
+                discount: amounts.discount,
+                discountAfterVat: amounts.discountAfterVat,
+                vatAmount: amounts.vatAmount,
+                netAmount: amounts.netAmount,
+                dueDate: terms.dueDate,
+                bankAccountSnapshot: terms.bankAccountSnapshot,
+                bankNameSnapshot: terms.bankNameSnapshot,
                 notes: dto.notes ?? null,
                 createdById: userId,
                 approvedById: userId,
                 status: 'APPROVED',
                 isDirectReceive: true,
-                paymentStatus: 'UNPAID',
+                paymentStatus: (dto.paymentStatus as POPaymentStatus) || 'UNPAID',
+                paymentMethod: dto.paymentMethod || null,
+                paidAmount: dto.paidAmount || 0,
+                paymentNotes: dto.paymentNotes || null,
+                attachments: dto.attachments || [],
                 items: {
                   create: dto.items.map((i) => ({
                     brand: i.brand || null,

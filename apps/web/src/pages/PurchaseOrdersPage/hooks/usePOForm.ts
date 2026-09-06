@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ItemForm } from '../types';
-import { emptyItem } from '../constants';
 import { computePoTotals } from '../poTotals';
+import { getExpectedDateError } from '../po-dates.util';
+import { useItemRows } from './useItemRows';
 import { UseMutationResult } from '@tanstack/react-query';
 
 interface UsePOFormOptions {
@@ -23,68 +24,43 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     paidAmount: '',
     paymentNotes: '',
   });
-  const [items, setItems] = useState<ItemForm[]>([{ ...emptyItem }]);
+  // Rows are created by the catalog picker (addCatalogItem / addAccessoryItem), so the
+  // wizard starts with none instead of a blank cascade-of-dropdowns row.
+  const [items, setItems] = useState<ItemForm[]>([]);
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [formAttachments, setFormAttachments] = useState<string[]>([]);
 
   const resetForm = () => {
     setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '', discount: '', discountAfterVat: '', paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '' });
-    setItems([{ ...emptyItem }]);
+    setItems([]);
     setFormAttachments([]);
     setAttachmentUrl('');
   };
 
-  const addItem = () => setItems([...items, { ...emptyItem }]);
-  const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
+  // Row operations (add/duplicate/update/toggle/remove) — shared with รับเข้าตรง
+  const rows = useItemRows(items, setItems);
 
-  const updateItem = (idx: number, field: string, value: string) => {
-    const newItems = [...items];
-    const item = { ...newItems[idx], [field]: value };
-
-    // Cascade reset when parent changes (Category is first)
-    if (field === 'category') {
-      item.brand = '';
-      item.model = '';
-      item.color = '';
-      item.storage = '';
-      item.accessoryType = '';
-      item.accessoryBrand = '';
-    } else if (field === 'accessoryType') {
-      // Reset compatible brand/model/accessoryBrand when accessory type changes
-      item.brand = '';
-      item.model = '';
-      item.accessoryBrand = '';
-    } else if (field === 'brand') {
-      item.model = '';
-      item.color = '';
-      item.storage = '';
-    } else if (field === 'model') {
-      item.color = '';
-      item.storage = '';
-    }
-
-    newItems[idx] = item;
-    setItems(newItems);
-  };
-
-  // Toggle model for multi-select (accessories)
-  const toggleModel = (idx: number, modelName: string) => {
-    const newItems = [...items];
-    const item = { ...newItems[idx] };
-    const current = item.model ? item.model.split(', ').filter(Boolean) : [];
-    if (current.includes(modelName)) {
-      item.model = current.filter((m) => m !== modelName).join(', ');
-    } else {
-      item.model = [...current, modelName].join(', ');
-    }
-    newItems[idx] = item;
-    setItems(newItems);
-  };
+  const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.supplierId) {
       toast.error('กรุณาเลือกผู้จัดจำหน่าย');
+      return;
+    }
+    // QA 2026-09-06: a recovered draft may point at a supplier that no longer exists
+    if (!selectedSupplier) {
+      toast.error('ไม่พบผู้จัดจำหน่ายที่บันทึกไว้ในร่าง — กรุณาเลือกผู้ขายใหม่');
+      return;
+    }
+    // Draft recovery can reopen the wizard past step 0, so the step gate alone is not enough
+    const expectedDateError = getExpectedDateError(form.orderDate, form.expectedDate);
+    if (expectedDateError) {
+      toast.error(expectedDateError);
+      return;
+    }
+    if (items.length === 0) {
+      toast.error('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ');
       return;
     }
     const invalidItems = items.filter((i) => !i.category || !i.quantity || !i.unitPrice);
@@ -120,7 +96,6 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     });
   };
 
-  const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
   const supplierHasVat = selectedSupplier?.hasVat ?? false;
   const {
     subtotal,
@@ -147,10 +122,7 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     formAttachments,
     setFormAttachments,
     resetForm,
-    addItem,
-    removeItem,
-    updateItem,
-    toggleModel,
+    ...rows,
     handleCreate,
     subtotal,
     selectedSupplier,

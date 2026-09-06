@@ -107,6 +107,35 @@ export class OrderPODto {
   expectedDate?: string;
 }
 
+/**
+ * Approve = order (2026-09-06): the owner confirms the expected date while approving, and —
+ * because approving is the moment the owner decides to pay — may record the payment
+ * (status / method / amount / notes / slips) in the same request. Every payment field is
+ * optional: leaving them out approves on credit (paymentStatus stays UNPAID).
+ */
+export class ApprovePODto extends OrderPODto {
+  @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
+  @IsOptional()
+  paymentStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  paidAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  paymentNotes?: string;
+
+  @IsArray()
+  @IsOptional()
+  attachments?: string[];
+}
+
 export class UpdatePODto {
   @IsDateString()
   @IsOptional()
@@ -266,6 +295,16 @@ export class DirectReceiveDto {
 
   @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => DirectReceiveItemDto)
   items: DirectReceiveItemDto[];
+
+  // Same money / payment fields as CreatePODto (2026-09-06): the auto-PO books VAT and
+  // discounts like a normal PO, and a purchase paid on the spot is recorded as paid.
+  @IsNumber() @IsOptional() @Min(0) discount?: number;
+  @IsNumber() @IsOptional() @Min(0) discountAfterVat?: number;
+  @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID']) @IsOptional() paymentStatus?: string;
+  @IsString() @IsOptional() paymentMethod?: string;
+  @IsNumber() @IsOptional() @Min(0) paidAmount?: number;
+  @IsString() @IsOptional() paymentNotes?: string;
+  @IsArray() @IsOptional() attachments?: string[];
 }
 
 export class RejectQCDto {

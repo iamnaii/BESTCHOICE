@@ -6,19 +6,20 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download, ClipboardCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
+import api from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
 import { usePurchaseOrdersData } from './hooks/usePurchaseOrdersData';
 import { usePOForm } from './hooks/usePOForm';
 import { useCreatePoWizard } from './hooks/useCreatePoWizard';
 import { computePoTotals } from './poTotals';
+import type { AccessorySku } from './po-catalog.util';
 import { statusLabels, paymentStatusLabels } from './constants';
 import { POListTab } from './components/POListTab';
 import { AccountsPayableTab } from './components/AccountsPayableTab';
-import { CreatePOModal } from './components/CreatePOModal';
+import { PurchaseModal } from './components/PurchaseModal';
 import { PODetailModal } from './components/PODetailModal';
 import { PaymentModal } from './components/PaymentModal';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
-import { DirectReceiveModal } from './components/DirectReceiveModal';
 import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
 import type { SummaryFilterAction } from './summaryStrip';
 
@@ -60,6 +61,13 @@ export default function PurchaseOrdersPage() {
   });
 
   wizardClearRef.current = wizard.clearDraft;
+
+  // Accessory picker: re-order an existing SKU by name/code (stable identity — the picker
+  // debounces on this function, so a new closure every render would refetch every render).
+  const searchAccessorySkus = useCallback(async (search: string): Promise<AccessorySku[]> => {
+    const res = await api.get('/products/accessory-skus', { params: { search } });
+    return (res.data?.data ?? []) as AccessorySku[];
+  }, []);
 
   // Supplier selection handler: invalidate + refetch suppliers-for-po so a newly-created
   // supplier appears in the array, then set supplierId. The selectedSupplier/VAT/payment-method
@@ -151,17 +159,12 @@ export default function PurchaseOrdersPage() {
                 ส่งออก Excel
               </button>
             )}
-            <button
-              onClick={data.openDirectReceive}
-              className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors"
-            >
-              รับเข้าตรง (supplier)
-            </button>
+            {/* One entry for both ways in (owner 2026-09-06): the wizard asks "ของถึงแล้วหรือยัง" on step 1 */}
             <button
               onClick={() => data.setIsCreateModalOpen(true)}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
-              + สร้าง PO
+              + ซื้อสินค้า
             </button>
           </div>
         }
@@ -219,17 +222,20 @@ export default function PurchaseOrdersPage() {
         />
       )}
 
-      <CreatePOModal
+      <PurchaseModal
         isOpen={data.isCreateModalOpen}
         onClose={() => data.setIsCreateModalOpen(false)}
         form={poForm.form}
         setForm={poForm.setForm}
         items={poForm.items}
-        setItems={poForm.setItems}
-        addItem={poForm.addItem}
         removeItem={poForm.removeItem}
+        duplicateItem={poForm.duplicateItem}
         updateItem={poForm.updateItem}
         toggleModel={poForm.toggleModel}
+        addCatalogItem={poForm.addCatalogItem}
+        addAccessoryItem={poForm.addAccessoryItem}
+        addExistingAccessoryItem={poForm.addExistingAccessoryItem}
+        searchAccessorySkus={searchAccessorySkus}
         suppliers={data.suppliers}
         suppliersLoading={data.suppliersLoading}
         suppliersError={data.suppliersError}
@@ -237,12 +243,6 @@ export default function PurchaseOrdersPage() {
         onSupplierSelect={onSupplierSelect}
         supplierHasVat={poForm.supplierHasVat}
         subtotal={poForm.subtotal}
-        discountNum={poForm.discountNum}
-        subtotalAfterDiscount={poForm.subtotalAfterDiscount}
-        vatAmount={poForm.vatAmount}
-        totalWithVat={poForm.totalWithVat}
-        discountAfterVatNum={poForm.discountAfterVatNum}
-        netAmount={poForm.netAmount}
         createMutation={data.createMutation}
         handleCreate={poForm.handleCreate}
         attachmentUrl={poForm.attachmentUrl}
@@ -251,6 +251,7 @@ export default function PurchaseOrdersPage() {
         setFormAttachments={poForm.setFormAttachments}
         wizard={wizard}
         totals={totals}
+        directReceiveMutation={data.directReceiveMutation}
       />
 
       <PODetailModal
@@ -296,19 +297,6 @@ export default function PurchaseOrdersPage() {
         updateReceivingUnit={data.updateReceivingUnit}
         updateChecklist={data.updateChecklist}
         handleGoodsReceiving={data.handleGoodsReceiving}
-      />
-
-      <DirectReceiveModal
-        isOpen={data.isDirectReceiveOpen}
-        onClose={() => data.setIsDirectReceiveOpen(false)}
-        suppliers={data.suppliers}
-        supplierId={data.directSupplierId}
-        setSupplierId={data.setDirectSupplierId}
-        lines={data.directLines}
-        setLines={data.setDirectLines}
-        notes={data.directNotes}
-        setNotes={data.setDirectNotes}
-        directReceiveMutation={data.directReceiveMutation}
       />
 
       <ConfirmDialog

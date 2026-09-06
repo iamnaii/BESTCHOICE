@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, DirectReceiveDto, RejectQCDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -143,9 +143,10 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   create(
     @Body() dto: CreatePODto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.purchaseOrdersService.create(dto, user.id);
+    // OWNER-created POs skip the self-approval ceremony (ORDERED at once); BM POs stay DRAFT
+    return this.purchaseOrdersService.create(dto, user.id, user.role);
   }
 
   @Patch(':id')
@@ -158,9 +159,10 @@ export class PurchaseOrdersController {
   @Roles('OWNER')
   approve(
     @Param('id') id: string,
+    @Body() dto: ApprovePODto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.purchaseOrdersService.approve(id, user.id);
+    return this.purchaseOrdersService.approve(id, user.id, dto);
   }
 
   @Post(':id/order')

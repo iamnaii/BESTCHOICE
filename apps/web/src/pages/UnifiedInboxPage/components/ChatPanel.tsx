@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock , Check } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock , Check , CalendarClock } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator, formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import AiSuggestPanel from './AiSuggestPanel';
 import NoteBubble from './NoteBubble';
 import PinnedNoteBar from './PinnedNoteBar';
 import { mergeTimeline, type RoomNote } from './timeline';
+import { apptState, nextAppointment } from './appointment';
 import { fbWindowFor, fbWindowLeftText } from './fb-window';
 import { useKeyboardShortcuts, isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
@@ -577,6 +578,8 @@ export default function ChatPanel({
           : session.channel === 'TIKTOK' ? 'TikTok'
             : 'Web';
   const channelDotClass = isLine ? 'bg-[#06C755]' : session.channel === 'FACEBOOK' ? 'bg-[#1877F2]' : 'bg-foreground/60';
+  const roomAppt = nextAppointment(session.todos);
+  const roomApptState = apptState(roomAppt?.dueDate);
   const assigneeFullName: string | null = session.assignedTo?.name ?? session.assignedStaff?.name ?? null;
   // ชิปใช้ชื่อต้นอย่างเดียว (ชื่อเต็มอยู่ใน title) — บรรทัดสถานะแคบ ชื่อ-นามสกุลไทยยาวจะชนปุ่มขวา
   const assigneeName = assigneeFullName ? assigneeFullName.trim().split(/\s+/)[0] : null;
@@ -662,6 +665,31 @@ export default function ChatPanel({
                   ) : (
                     'ยังไม่มีผู้ดูแล'
                   )}
+                </button>
+              </span>
+            )}
+            {/* ชิปนัดถัดไป — กดแล้วเลื่อนไปที่นัดในแผงขวา (จอแคบเปิดแผงให้) */}
+            {roomAppt && roomApptState && (
+              <span className="hidden @md:inline-flex items-center gap-1.5">
+                <span className="text-border">·</span>
+                <button
+                  type="button"
+                  title={`${roomAppt.title} — กดเพื่อดูนัดในแผงขวา`}
+                  onClick={() => {
+                    if (window.innerWidth < 1280) onShowCustomerInfo?.();
+                    document.getElementById('room-appointments')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                  className={cn(
+                    'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border px-2 text-[11.5px] font-semibold leading-none transition-colors',
+                    roomApptState.tone === 'danger'
+                      ? 'border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20'
+                      : roomApptState.tone === 'warn'
+                        ? 'border-warning/60 bg-warning/10 text-amber-800 hover:bg-warning/20 dark:border-amber-400/50 dark:bg-amber-400/10 dark:text-amber-200'
+                        : 'border-border bg-card text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  <CalendarClock className="size-3" />
+                  {roomApptState.label}
                 </button>
               </span>
             )}

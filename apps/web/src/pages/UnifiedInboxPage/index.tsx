@@ -2,6 +2,9 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { NOTIFICATION_SOUND_URL } from './components/notification-sound';
+import AppointmentAlertBar from './components/AppointmentAlertBar';
+import { apptState, nextAppointment } from './components/appointment';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
@@ -18,7 +21,6 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { resolveUploadFeedback } from './components/upload-feedback';
 
 // Sound notification
-const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU4GAAB/f39/f39/f39/f3+AgICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqeop6ioqamqqqqrq6ysra2urq+vsLCxsbKys7O0tLW1tra3t7i4ubm6uru7vLy9vb6+v7/AwMHBwsLDw8TExcXGxsfHyMjJycrKy8vMzM3Nzs7Pz9DQ0dHS0tPT1NTV1dbW19fY2NnZ2tra29vc3N3d3t7f3+Dg4eHi4uPj5OTl5ebm5+fo6Onp6urr6+zs7e3u7u/v8PDx8fLy8/P09PX19vb39/j4+fn6+vv7/Pz9/f7+/v7+/v7+';
 
 
 /**
@@ -207,7 +209,10 @@ export default function UnifiedInboxPage() {
     // Offset pagination over a mutable lastMessageAt order can repeat a room at a
     // page boundary if rooms shift between fetches — dedup by id to avoid React
     // key collisions / double rows. Map preserves first-seen (server) order.
-    return [...new Map(flat.map((r: any) => [r.id, r])).values()];
+    const list = [...new Map(flat.map((r: any) => [r.id, r])).values()];
+    // ห้องที่ถึงนัด/ใกล้ถึง (≤15 นาที) ลอยขึ้นบนสุด — ชั้น 1 (เจ้าของเคาะ 2026-09-06) · ลำดับเดิมคงที่ในแต่ละกลุ่ม
+    const urgent = (r: any) => !!apptState(nextAppointment(r.todos)?.dueDate)?.urgent;
+    return [...list.filter(urgent), ...list.filter((r) => !urgent(r))];
   }, [sessionsQuery.data?.pages]);
 
   // ตัวนับจากเซิร์ฟเวอร์ — นับทั้งจักรวาลห้อง ไม่ใช่แค่หน้าที่โหลดมา
@@ -556,7 +561,10 @@ export default function UnifiedInboxPage() {
   const otherViewers = roomViewers.filter((v) => v.userId !== user?.id);
 
   return (
-    <div className="h-dvh flex bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
+    <div className="h-dvh flex flex-col bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
+      {/* แถบเตือนนัดเหนือทุกแผง (ชั้น 2 ท่า OBI apptAlert) — โผล่เฉพาะเมื่อมีนัดถึงเวลา/ใกล้ถึง */}
+      <AppointmentAlertBar onGoToRoom={handleSelectRoom} />
+      <div className="flex flex-1 min-h-0">
       {/* Left panel: Conversation list */}
       <div className={`w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
         <QueryBoundary
@@ -661,6 +669,7 @@ export default function UnifiedInboxPage() {
           />
         </SheetContent>
       </Sheet>
+      </div>
     </div>
   );
 }

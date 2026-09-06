@@ -542,3 +542,18 @@ describe('RoomManagerService', () => {
     });
   });
 });
+
+describe('RoomManagerService.listDueAppointments — นัดที่ถึงเวลา/ใกล้ถึง 15 นาที/เลยไม่เกิน 24 ชม.', () => {
+  it('กรอง: มีห้อง · ยังไม่เสร็จ · dueDate ในช่วง [now-24h, now+15m] · เรียงใกล้สุดก่อน · ไม่เกิน 20', async () => {
+    const prisma = { todo: { findMany: jest.fn().mockResolvedValue([]) } };
+    const svc = new RoomManagerService(prisma as any, {} as any);
+    const now = new Date('2026-09-06T07:00:00.000Z');
+    await svc.listDueAppointments(now);
+    const args = prisma.todo.findMany.mock.calls[0][0];
+    expect(args.where).toMatchObject({ deletedAt: null, roomId: { not: null }, status: { not: 'DONE' } });
+    expect(args.where.dueDate).toEqual({ gte: new Date('2026-09-05T07:00:00.000Z'), lte: new Date('2026-09-06T07:15:00.000Z') });
+    expect(args.orderBy).toEqual({ dueDate: 'asc' });
+    expect(args.take).toBe(20);
+    expect(args.select.room.select.customer).toEqual({ select: { name: true } });
+  });
+});

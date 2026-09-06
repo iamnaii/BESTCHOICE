@@ -18,6 +18,7 @@ import {
   MessageRole,
   MessageType,
   Prisma,
+  TodoStatus,
 } from '@prisma/client';
 import { AssignmentService } from './assignment.service';
 import { MessageRouterService } from './message-router.service';
@@ -27,6 +28,14 @@ import { signMessageMedia } from './media-url.util';
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
  *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
  *  เพี้ยนจากกันได้อีก */
+/** นัดถัดไปของห้อง (ยังไม่เสร็จ มีวันเวลา) — ป้ายในแถวรายชื่อ + ชิปหัวห้อง (เจ้าของเคาะ 2026-09-06 ชั้น 1) */
+const ROOM_NEXT_APPOINTMENT = {
+  where: { deletedAt: null, status: { not: TodoStatus.DONE }, dueDate: { not: null } },
+  orderBy: { dueDate: 'asc' as const },
+  take: 1,
+  select: { id: true, title: true, dueDate: true, status: true },
+};
+
 export interface RoomFilterParams {
   channel?: ChatChannel;
   status?: ChatRoomStatus;
@@ -319,6 +328,27 @@ export class RoomManagerService {
     }
   }
 
+  /**
+   * นัดที่ถึงเวลา/ใกล้ถึง (≤15 นาที) หรือเลยมาไม่เกิน 24 ชม. ของทุกห้อง — แถบเตือนเหนือทุกแผง (ชั้น 2)
+   * เลยเกิน 24 ชม. = เก่าจนเตือนไม่มีประโยชน์ ปล่อยให้เห็นเป็นป้ายแดงในแถวรายชื่อแทน
+   */
+  async listDueAppointments(now: Date = new Date()) {
+    return this.prisma.todo.findMany({
+      where: {
+        deletedAt: null,
+        roomId: { not: null },
+        status: { not: TodoStatus.DONE },
+        dueDate: { gte: new Date(now.getTime() - 24 * 3600_000), lte: new Date(now.getTime() + 15 * 60_000) },
+      },
+      orderBy: { dueDate: 'asc' },
+      take: 20,
+      select: {
+        id: true, title: true, dueDate: true, status: true, roomId: true,
+        room: { select: { id: true, displayName: true, customer: { select: { name: true } } } },
+      },
+    });
+  }
+
   /** Save a message and update room stats */
   /**
    * ห้องนี้บอทเคยตอบไปแล้วหรือยัง — ใช้แยก "พนักงานแทรกกลางบทสนทนาที่บอทคุยอยู่"
@@ -599,6 +629,7 @@ export class RoomManagerService {
         customer: { select: { id: true, name: true, phone: true, nationalId: true } },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
         tags: true,
+        todos: ROOM_NEXT_APPOINTMENT,
         // โน้ตปักหมุดของห้อง (ห้องละ 1) — แถบใต้หัวห้องในกระทู้
         notes: {
           where: { deletedAt: null, pinnedAt: { not: null } },
@@ -721,6 +752,7 @@ export class RoomManagerService {
       customer: { select: { id: true, name: true, phone: true } },
       assignedTo: { select: { id: true, name: true, avatarUrl: true } },
       tags: true,
+      todos: ROOM_NEXT_APPOINTMENT,
       messages: {
         // พรีวิว = ข้อความสนทนาล่าสุด — ข้อความระบบ (มอบหมาย/ปิดงาน/โฆษณา) ห้ามมาแทนที่ข้อความลูกค้า
         where: { deletedAt: null, role: { not: MessageRole.SYSTEM } },
@@ -774,6 +806,7 @@ export class RoomManagerService {
           customer: { select: { id: true, name: true, phone: true } },
           assignedTo: { select: { id: true, name: true, avatarUrl: true } },
           tags: true,
+          todos: ROOM_NEXT_APPOINTMENT,
           messages: {
             // พรีวิวแถวรายชื่อ = ข้อความสนทนาล่าสุด — ข้อความระบบ (ปิดงาน/มอบหมาย/โฆษณา) ห้ามมาแทนที่
             // (listRooms มี 2 ทาง: คิวรอตอบใช้ `const include` ข้างบน · ทางปกติใช้ include ตรงนี้ — #1524 กรองแค่ทางแรก)

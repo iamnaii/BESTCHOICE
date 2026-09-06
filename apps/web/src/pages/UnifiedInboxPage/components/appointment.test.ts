@@ -1,27 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { apptState, formatDurationTh, nextAppointment } from './appointment';
 
-const NOW = new Date('2026-09-06T10:00:00+07:00');
-const at = (iso: string) => new Date(iso).toISOString();
-// ป้ายพิมพ์เวลาตามโซนของเครื่อง (CI = UTC · เครื่องเรา = ไทย) — คาดหวังด้วยตัวจัดรูปเดียวกัน ไม่ใช่ตัวเลขตายตัว
+// สร้างเวลาทั้งหมดจาก "ตอนนี้" ในโซนของเครื่องที่รัน (CI = UTC · เครื่องเรา = ไทย · ที่ไหนก็ได้)
+// จะได้ไม่มีเคสที่ข้ามวันเพราะโซน — ป้ายพิมพ์เวลา local ด้วยตัวจัดรูปเดียวกับโค้ด
+const NOW = new Date(2026, 8, 6, 10, 0, 0); // 6 ก.ย. 2026 10:00 local
+const shiftMin = (m: number) => new Date(NOW.getTime() + m * 60_000).toISOString();
+const atLocal = (dayOffset: number, h: number, mi: number) => {
+  const d = new Date(NOW);
+  d.setDate(NOW.getDate() + dayOffset);
+  d.setHours(h, mi, 0, 0);
+  return d.toISOString();
+};
 const hhmm = (iso: string) => {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
+const TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const dmy = (iso: string) => {
   const d = new Date(iso);
-  const th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  return `${d.getDate()} ${th[d.getMonth()]}`;
+  return `${d.getDate()} ${TH[d.getMonth()]}`;
 };
 
 describe('apptState — ป้ายนัดตามความใกล้', () => {
+  const today = atLocal(0, 15, 30);
+  const tomorrow = atLocal(1, 7, 0);
+  const later = atLocal(6, 13, 0);
   it.each([
-    ['เลยนัด', at('2026-09-06T09:20:00+07:00'), 'overdue', 'เลยนัด 40 นาที', true],
-    ['ถึงเวลาพอดี (±1 นาที)', at('2026-09-06T10:00:30+07:00'), 'due', 'ถึงเวลานัดแล้ว', true],
-    ['ใกล้ถึง ≤15 นาที', at('2026-09-06T10:12:00+07:00'), 'soon', 'นัดอีก 12 นาที', true],
-    ['วันนี้แต่ยังอีกนาน', at('2026-09-06T15:30:00+07:00'), 'today', `นัดวันนี้ ${hhmm('2026-09-06T15:30:00+07:00')}`, false],
-    ['พรุ่งนี้', at('2026-09-07T12:00:00+07:00'), 'tomorrow', `นัดพรุ่งนี้ ${hhmm('2026-09-07T12:00:00+07:00')}`, false],
-    ['วันอื่น', at('2026-09-12T13:00:00+07:00'), 'later', `นัด ${dmy('2026-09-12T13:00:00+07:00')} ${hhmm('2026-09-12T13:00:00+07:00')}`, false],
+    ['เลยนัด', shiftMin(-40), 'overdue', 'เลยนัด 40 นาที', true],
+    ['ถึงเวลาพอดี (±1 นาที)', shiftMin(0.5), 'due', 'ถึงเวลานัดแล้ว', true],
+    ['ใกล้ถึง ≤15 นาที', shiftMin(12), 'soon', 'นัดอีก 12 นาที', true],
+    ['วันนี้แต่ยังอีกนาน', today, 'today', `นัดวันนี้ ${hhmm(today)}`, false],
+    ['พรุ่งนี้', tomorrow, 'tomorrow', `นัดพรุ่งนี้ ${hhmm(tomorrow)}`, false],
+    ['วันอื่น', later, 'later', `นัด ${dmy(later)} ${hhmm(later)}`, false],
   ])('%s', (_n, due, kind, label, urgent) => {
     const st = apptState(due, NOW)!;
     expect(st.kind).toBe(kind);
@@ -35,7 +45,7 @@ describe('apptState — ป้ายนัดตามความใกล้',
   });
 
   it('16 นาที = ยังไม่ urgent (ขอบ 15 นาทีของ OBI)', () => {
-    expect(apptState(at('2026-09-06T10:16:00+07:00'), NOW)!.urgent).toBe(false);
+    expect(apptState(shiftMin(16), NOW)!.urgent).toBe(false);
   });
 });
 

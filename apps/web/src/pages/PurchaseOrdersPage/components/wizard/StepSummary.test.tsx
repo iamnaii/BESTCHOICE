@@ -91,3 +91,10 @@ describe('StepSummary — สรุป + จ่ายเงิน (last step of 
     expect(p.setForm).toHaveBeenCalledWith(expect.objectContaining({ notes: 'ส่งสาขาลาดพร้าว' }));
   });
 });
+
+describe('StepSummary — recovered draft whose supplier no longer exists', () => {
+  it('names the problem instead of showing "-" (QA 2026-09-06)', () => {
+    renderStep({ selectedSupplier: undefined });
+    expect(screen.getByRole('alert')).toHaveTextContent('ไม่พบผู้จัดจำหน่ายที่บันทึกไว้ในร่าง — กลับไปเลือกใหม่ที่ขั้น "เลือกผู้ขาย"');
+  });
+});

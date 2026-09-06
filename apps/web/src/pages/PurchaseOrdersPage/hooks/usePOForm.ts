@@ -40,10 +40,17 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
   // Row operations (add/duplicate/update/toggle/remove) — shared with รับเข้าตรง
   const rows = useItemRows(items, setItems);
 
+  const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.supplierId) {
       toast.error('กรุณาเลือกผู้จัดจำหน่าย');
+      return;
+    }
+    // QA 2026-09-06: a recovered draft may point at a supplier that no longer exists
+    if (!selectedSupplier) {
+      toast.error('ไม่พบผู้จัดจำหน่ายที่บันทึกไว้ในร่าง — กรุณาเลือกผู้ขายใหม่');
       return;
     }
     // Draft recovery can reopen the wizard past step 0, so the step gate alone is not enough
@@ -89,7 +96,6 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     });
   };
 
-  const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
   const supplierHasVat = selectedSupplier?.hasVat ?? false;
   const {
     subtotal,

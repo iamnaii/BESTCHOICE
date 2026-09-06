@@ -32,6 +32,11 @@ describe('useCreatePoWizard', () => {
     expect(result.current.canNext).toBe(true);
   });
 
+  it('step 0 gate: a supplierId that resolves to no supplier (stale draft) does not pass', () => {
+    const { result } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts({ selectedSupplier: undefined, form: { ...makeOpts().form, supplierId: 'gone-sup' } }) });
+    expect(result.current.canNext).toBe(false);
+  });
+
   it('step 1 (items) gate: every item needs category, quantity>0, unitPrice>0', () => {
     const { result, rerender } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
     act(() => result.current.next()); // -> step 1

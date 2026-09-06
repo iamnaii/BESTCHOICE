@@ -59,6 +59,11 @@ export function StepSummary({
           <div className="min-w-0">
             <div className="text-2xs uppercase leading-snug tracking-wider text-muted-foreground">ผู้จัดจำหน่าย</div>
             <div className="text-base font-semibold leading-snug text-foreground">{selectedSupplier?.name ?? '-'}</div>
+            {!selectedSupplier && (
+              <p role="alert" className="mt-1 text-xs leading-snug text-destructive">
+                ไม่พบผู้จัดจำหน่ายที่บันทึกไว้ในร่าง — กลับไปเลือกใหม่ที่ขั้น &quot;เลือกผู้ขาย&quot;
+              </p>
+            )}
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm leading-snug text-muted-foreground">
               {receive ? (
                 <span>รับเข้าวันนี้ {form.orderDate ? formatDateShort(form.orderDate) : '-'}</span>

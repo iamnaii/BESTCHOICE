@@ -137,3 +137,17 @@ describe('usePOForm.handleCreate — expectedDate must not be before orderDate',
     );
   });
 });
+
+// QA 2026-09-06: a recovered draft can point at a supplier that no longer exists (deleted, or a
+// draft from another environment) — the summary then showed "-" and "สร้าง PO" hit a 404.
+describe('usePOForm — stale draft supplier', () => {
+  it('handleCreate blocks with a toast when the form supplierId resolves to no supplier', () => {
+    const { result, createMutation } = setup();
+    act(() => result.current.setForm((f) => ({ ...f, supplierId: 'gone-sup' })));
+    act(() => result.current.addCatalogItem({ brand: 'Apple', name: 'iPhone 16', category: 'PHONE_NEW', colors: [], storage: [] }, 'PHONE_NEW'));
+    act(() => result.current.updateItem(0, 'unitPrice', '100'));
+    act(() => result.current.handleCreate(submitEvent));
+    expect(toast.error).toHaveBeenCalledWith('ไม่พบผู้จัดจำหน่ายที่บันทึกไว้ในร่าง — กรุณาเลือกผู้ขายใหม่');
+    expect(createMutation.mutate).not.toHaveBeenCalled();
+  });
+});

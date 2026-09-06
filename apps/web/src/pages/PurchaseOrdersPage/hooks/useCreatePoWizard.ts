@@ -121,8 +121,9 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
   // Per-step advance gate
   const itemsValid = allItemsComplete(items);
   const expectedDateError = getExpectedDateError(form.orderDate, form.expectedDate);
+  // A recovered draft can name a supplier that no longer exists — gate on the resolved supplier
   const canNext =
-    step === 0 ? !!form.supplierId && !expectedDateError :
+    step === 0 ? !!selectedSupplier && !expectedDateError :
     step === 1 ? itemsValid :
     true; // step 2 (สรุป + จ่ายเงิน) submits via the form — nothing to gate here
 

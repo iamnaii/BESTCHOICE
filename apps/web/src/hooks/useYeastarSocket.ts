@@ -21,7 +21,13 @@ function getWsBaseUrl(): string {
   // เสียง/แจ้งเตือน/typing ไม่เคยทำงานเลย (สเปก §9.4 แก้ไข 2026-09-05) · prod: API อยู่ origin เดียวกับหน้าเว็บ
   // และ gateway allowlist มีโดเมนนั้นอยู่แล้ว · dev: API แยกพอร์ต 3000 · VITE_WS_URL ยัง override ได้ทั้งคู่
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
-  return import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin;
+  if (import.meta.env.DEV) return 'http://localhost:3000';
+  // prod: หน้าเว็บอยู่บน Firebase Hosting ซึ่ง rewrite ได้แค่ HTTP /api/** — WebSocket ต้องไปที่ API โดยตรง
+  // (ไม่งั้น handshake ตกไป index.html → inbox ขึ้น "ออฟไลน์" ตลอด 2026-09-06)
+  if (typeof window !== 'undefined' && /(^|\.)bestchoicephone\.app$/.test(window.location.hostname)) {
+    return 'https://api.bestchoicephone.app';
+  }
+  return window.location.origin;
 }
 
 /**
@@ -44,8 +50,10 @@ export function useYeastarSocket(onInbound: (event: InboundCallEvent) => void) {
     const socket: Socket = io(`${getWsBaseUrl()}/events`, {
       auth: { token },
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 3,
-      reconnectionDelay: 3000,
+      // Cloud Run ปิด WS ทุกครั้งที่ครบ request timeout — ต้องต่อใหม่ได้เรื่อย ๆ ไม่ใช่ยอมแพ้หลัง 3 ครั้ง
+      reconnectionAttempts: 30,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 15000,
       timeout: 5000,
       autoConnect: true,
     });

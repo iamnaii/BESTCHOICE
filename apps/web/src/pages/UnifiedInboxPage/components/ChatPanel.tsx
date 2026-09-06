@@ -588,7 +588,7 @@ export default function ChatPanel({
     }
     if (session.waitingSince) {
       const late = Date.now() - new Date(session.waitingSince).getTime() > 60 * 60_000;
-      return { tone: late ? 'text-destructive' : 'text-amber-700', text: `รอตอบ ${formatWaitDuration(session.waitingSince)}` };
+      return { tone: late ? 'text-destructive' : 'text-amber-700 dark:text-amber-300', text: `รอตอบ ${formatWaitDuration(session.waitingSince)}` };
     }
     return { tone: 'text-primary', text: 'ตอบแล้ว' };
   })();
@@ -651,12 +651,12 @@ export default function ChatPanel({
                     'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border text-[11.5px] leading-none transition-colors',
                     assigneeName
                       ? 'border-border bg-card pl-0.5 pr-2 text-foreground hover:bg-muted'
-                      : 'border-dashed border-warning/60 bg-warning/10 px-2 text-amber-800 hover:bg-warning/20',
+                      : 'border-dashed border-warning/60 bg-warning/10 px-2 text-amber-800 hover:bg-warning/20 dark:border-amber-400/50 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20',
                   )}
                 >
                   {assigneeName ? (
                     <>
-                      <span className="grid size-4 place-items-center rounded-full bg-sky-500 text-[9px] font-bold text-white">{assigneeName[0]}</span>
+                      <span className="grid size-4 place-items-center rounded-full bg-sky-500 text-[9px] font-bold text-white dark:bg-sky-400 dark:text-sky-950">{assigneeName[0]}</span>
                       {assigneeName} ดูแล
                     </>
                   ) : (
@@ -686,7 +686,7 @@ export default function ChatPanel({
               disabled={pinMutation.isPending}
               className={cn(
                 'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors',
-                session.pinnedAt ? 'bg-card text-warning shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                session.pinnedAt ? 'bg-card text-warning shadow-sm dark:bg-white/10 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground',
               )}
               title={session.pinnedAt ? 'ปักหมุดอยู่ — กดเพื่อถอด' : 'ปักหมุดห้องนี้ไว้บนสุด'}
               aria-label={session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
@@ -704,7 +704,7 @@ export default function ChatPanel({
                 aria-pressed={!aiPaused}
                 className={cn(
                   'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50',
-                  aiPaused ? 'text-muted-foreground hover:text-foreground' : 'bg-card text-primary shadow-sm',
+                  aiPaused ? 'text-muted-foreground hover:text-foreground' : 'bg-card text-primary shadow-sm dark:bg-white/10',
                 )}
               >
                 {aiPaused ? <BotOff className="size-4" /> : <Bot className="size-4" />}
@@ -719,7 +719,7 @@ export default function ChatPanel({
                 aria-pressed={!!roomMuted}
                 className={cn(
                   'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors',
-                  roomMuted ? 'bg-card text-destructive shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  roomMuted ? 'bg-card text-destructive shadow-sm dark:bg-white/10 dark:text-red-300' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
                 {roomMuted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
@@ -780,7 +780,7 @@ export default function ChatPanel({
 
       {/* Persistent "another staff is viewing" banner */}
       {otherViewers && otherViewers.length > 0 && (
-        <div className="flex items-center gap-2 bg-warning/10 px-4 py-1.5 text-[11px] text-warning leading-snug border-b border-warning/20">
+        <div className="flex items-center gap-2 bg-warning/10 px-4 py-1.5 text-[11px] text-warning dark:bg-amber-400/10 dark:text-amber-200 leading-snug border-b border-warning/20">
           <Eye className="size-3.5 shrink-0" />
           <span className="truncate">
             {otherViewers.map((v) => v.userName).join(', ')} กำลังดูห้องนี้อยู่ — ระวังตอบซ้ำ
@@ -956,7 +956,7 @@ export default function ChatPanel({
                 onClick={() => { setComposerMode('note'); inputRef.current?.focus(); }}
                 className={cn(
                   'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
-                  isNoteMode ? 'border-warning/50 bg-warning/10 text-foreground' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
+                  isNoteMode ? 'border-warning/50 bg-warning/10 text-foreground dark:border-amber-400/40 dark:bg-amber-400/10' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
                 )}
               >
                 <StickyNote className="size-3.5" /> โน้ตภายใน
@@ -967,7 +967,7 @@ export default function ChatPanel({
             className={cn(
               'flex flex-col rounded-xl border transition-[box-shadow,border-color]',
               isNoteMode
-                ? 'border-warning/50 bg-warning/10 focus-within:ring-2 focus-within:ring-warning/25'
+                ? 'border-warning/50 bg-warning/10 focus-within:ring-2 focus-within:ring-warning/25 dark:border-amber-400/40 dark:bg-amber-400/10'
                 : 'border-border bg-card focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/20',
             )}
           >
@@ -993,7 +993,7 @@ export default function ChatPanel({
             />
             <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5 pt-0.5">
               {isNoteMode ? (
-                <span className="inline-flex items-center gap-1.5 pl-2 text-[12px] text-amber-800">
+                <span className="inline-flex items-center gap-1.5 pl-2 text-[12px] text-amber-800 dark:text-amber-200">
                   <Lock className="size-3.5" /> เห็นเฉพาะทีมงาน · ไม่ส่งถึงลูกค้า
                 </span>
               ) : (
@@ -1258,7 +1258,7 @@ export default function ChatPanel({
                     'inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold transition-all duration-200',
                     inputText.trim() && !isSending
                       ? isNoteMode
-                        ? 'bg-warning text-amber-950 shadow-sm hover:bg-warning/90'
+                        ? 'bg-warning text-amber-950 shadow-sm hover:bg-warning/90 dark:bg-amber-400 dark:hover:bg-amber-300'
                         : 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md'
                       : 'bg-muted text-muted-foreground/50 cursor-not-allowed',
                   )}

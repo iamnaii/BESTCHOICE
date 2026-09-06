@@ -24,7 +24,7 @@ export default function NoteBubble({
   const time = new Date(note.createdAt).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   return (
     <div className="px-4 py-1" data-testid="note-bubble">
-      <div className={cn('rounded-xl border bg-warning/10 px-3 py-2 text-sm', isPinned ? 'border-warning' : 'border-warning/40')}>
+      <div className={cn('rounded-xl border bg-warning/10 px-3 py-2 text-sm dark:bg-amber-400/10', isPinned ? 'border-warning dark:border-amber-400/70' : 'border-warning/40 dark:border-amber-400/30')}>
         <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <StickyNote className="size-3 text-warning" />
           <span className="font-semibold text-foreground/80">โน้ตภายใน</span>

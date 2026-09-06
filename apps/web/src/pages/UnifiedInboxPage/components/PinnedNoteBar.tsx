@@ -18,12 +18,12 @@ export default function PinnedNoteBar({ note, onUnpin }: { note: RoomNote; onUnp
   const [confirm, setConfirm] = useState(false);
   return (
     <div
-      className="flex items-center gap-2 border-b border-l-[3px] border-b-warning/40 border-l-warning bg-warning/10 py-1.5 pl-3 pr-1.5 text-[13px]"
+      className="flex items-center gap-2 border-b border-l-[3px] border-b-warning/40 border-l-warning bg-warning/10 dark:border-b-amber-400/30 dark:border-l-amber-400 dark:bg-amber-400/10 py-1.5 pl-3 pr-1.5 text-[13px]"
       role="note"
       aria-label="โน้ตของห้อง"
     >
-      <StickyNote className="size-3.5 shrink-0 text-warning" />
-      <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wide text-amber-800">โน้ตของห้อง</span>
+      <StickyNote className="size-3.5 shrink-0 text-warning dark:text-amber-300" />
+      <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">โน้ตของห้อง</span>
       <span className="min-w-0 flex-1 truncate" title={note.content}>{note.content}</span>
       <span className="shrink-0 text-[11.5px] text-muted-foreground">
         {note.staff?.name ?? 'พนักงาน'} · {formatChatTimestamp(note.pinnedAt ?? note.createdAt)}

@@ -328,6 +328,8 @@ jobs:
         run: npm run build --workspace=apps/web
         env:
           VITE_API_URL: ${{ env.IS_MAIN == 'true' && 'https://api.bestchoicephone.app/api' || 'http://localhost:3000/api' }}
+          # socket.io ต้องต่อ API โดยตรง — Firebase Hosting rewrite /api/** ไม่รองรับ WebSocket (inbox ขึ้น "ออฟไลน์" บน prod 2026-09-06)
+          VITE_WS_URL: ${{ env.IS_MAIN == 'true' && 'https://api.bestchoicephone.app' || 'http://localhost:3000' }}
           VITE_SHOP_URL: https://www.bestchoicephone.com
           VITE_LIFF_ID: 2009442540-d9XnzWwl
           # Surface short commit SHA so the version badge can show it next
@@ -556,7 +558,7 @@ jobs:
             --memory=2Gi \
             --cpu=2 \
             --cpu-boost \
-            --timeout=300 \
+            --timeout=3600 \
             --execution-environment=gen2 \
             --set-secrets="\
           JWT_SECRET=JWT_SECRET:latest,\

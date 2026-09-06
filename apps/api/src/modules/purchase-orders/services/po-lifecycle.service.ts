@@ -1,11 +1,11 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, POPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { CreatePODto, UpdatePODto, UpdatePaymentDto, OrderPODto } from '../dto/create-po.dto';
+import { CreatePODto, UpdatePODto, UpdatePaymentDto, OrderPODto, ApprovePODto } from '../dto/create-po.dto';
 import { generatePONumber } from '../../../utils/sequence.util';
-import { d, dAdd, dSub, dSum } from '../../../utils/decimal.util';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { PoQueryService } from './po-query.service';
+import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms } from './po-amounts.util';
 
 /**
  * วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่งซื้อ — compared at day granularity (UTC).
@@ -39,75 +39,41 @@ export class PoLifecycleService {
     private query: PoQueryService,
   ) {}
 
-  async create(dto: CreatePODto, userId: string) {
+  async create(dto: CreatePODto, userId: string, userRole?: string) {
     assertExpectedNotBeforeOrder(dto.expectedDate, dto.orderDate);
+    // Owner decision 2026-09-06: the OWNER does not approve their own PO — it is ordered at
+    // once. A BRANCH_MANAGER's PO still starts DRAFT and waits for the owner (branch spend gate).
+    const ownerCreated = userRole === 'OWNER';
 
     // Validate supplier exists & get credit terms
     const supplier = await this.prisma.supplier.findUnique({
       where: { id: dto.supplierId },
-      select: {
-        deletedAt: true,
-        hasVat: true,
-        paymentMethods: {
-          where: { deletedAt: null },
-          orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-          select: {
-            paymentMethod: true,
-            creditTermDays: true,
-            isDefault: true,
-            bankName: true,
-            bankAccountNumber: true,
-          },
-        },
-      },
+      select: SUPPLIER_TERMS_SELECT,
     });
     if (!supplier || supplier.deletedAt) throw new NotFoundException('ไม่พบ Supplier');
 
-    // Calculate total with discount & VAT (only if supplier has VAT)
-    // Money math in Prisma.Decimal end-to-end. VAT = subtotal × rate can land on a
-    // half-satang that the old float `Math.round(subtotal * vatRate * 100) / 100`
-    // dropped (same class as commission.util) — books a 1-satang-off VAT on the PO.
-    const totalAmount = dSum(dto.items.map((item) => d(item.quantity).mul(item.unitPrice)));
-    const discount = d(dto.discount || 0); // ส่วนลดก่อน VAT
-    const discountAfterVat = supplier.hasVat ? d(dto.discountAfterVat || 0) : d(0); // ส่วนลดหลัง VAT (เฉพาะ supplier มี VAT)
-    const subtotalAfterDiscount = dSub(totalAmount, discount);
-    // D1.1.3.1 — resolve VAT via canonical-key-first helper. Reads VAT_RATE
-    // (percent) first, falls back to legacy vat_pct/vat_rate (decimal), or
-    // 0.07 if all are absent. Replaces the previous direct `vat_pct` lookup
-    // that silently returned the default when admins saved through the new
-    // VatTab UI (which writes VAT_RATE).
+    // Money math (Decimal end-to-end, VAT only for VAT suppliers) + credit terms + bank
+    // snapshot (T5-C18) — shared with directReceive() via po-amounts.util so an auto-PO
+    // books exactly what a normal PO does. VAT rate: D1.1.3.1 canonical-key-first loader
+    // (VAT_RATE → legacy vat_pct/vat_rate → 0.07).
     const vatRate = await loadVatRateDecimal(this.prisma);
-    const vatAmount = supplier.hasVat
-      ? subtotalAfterDiscount.mul(vatRate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
-      : d(0);
-    const netAmount = dSub(dAdd(subtotalAfterDiscount, vatAmount), discountAfterVat);
-
-    // Calculate due date from supplier credit terms
+    const { totalAmount, discount, discountAfterVat, vatAmount, netAmount } = computePoAmounts(dto.items, {
+      supplierHasVat: supplier.hasVat,
+      vatRate,
+      discount: dto.discount,
+      discountAfterVat: dto.discountAfterVat,
+    });
     const orderDateObj = new Date(dto.orderDate);
-    let dueDate: Date | null = null;
-    const selectedPm = dto.paymentMethod
-      ? supplier.paymentMethods.find((pm) => pm.paymentMethod === dto.paymentMethod)
-      : supplier.paymentMethods.find((pm) => pm.isDefault) || supplier.paymentMethods[0];
-    if (selectedPm?.creditTermDays) {
-      dueDate = new Date(orderDateObj);
-      dueDate.setDate(dueDate.getDate() + selectedPm.creditTermDays);
-    }
-
-    // T5-C18: Snapshot supplier's primary bank at create-time so edits to the
-    // supplier record later cannot silently re-target historical POs. `selectedPm`
-    // above already resolves the correct payment method (requested method or
-    // supplier default).
-    const bankAccountSnapshot = selectedPm?.bankAccountNumber ?? null;
-    const bankNameSnapshot = selectedPm?.bankName ?? null;
+    const { dueDate, bankAccountSnapshot, bankNameSnapshot } = resolvePaymentTerms(supplier, dto.paymentMethod, orderDateObj);
 
     // Use transaction to prevent PO number race condition
     return this.prisma.$transaction(async (tx) => {
       // Generate PO number inside transaction: PO-YYYY-MM-NNN format (monthly sequence)
       const poNumber = await generatePONumber(tx);
 
-      // PO now starts as DRAFT (requires Owner approval)
       return tx.purchaseOrder.create({
         data: {
+          ...(ownerCreated ? { approvedById: userId, orderedAt: new Date() } : {}),
           poNumber,
           supplierId: dto.supplierId,
           orderDate: orderDateObj,
@@ -123,7 +89,7 @@ export class PoLifecycleService {
           bankAccountSnapshot,
           bankNameSnapshot,
           createdById: userId,
-          status: 'DRAFT',
+          status: ownerCreated ? 'ORDERED' : 'DRAFT',
           paymentStatus: (dto.paymentStatus as POPaymentStatus) || 'UNPAID',
           paymentMethod: dto.paymentMethod || null,
           paidAmount: dto.paidAmount || 0,
@@ -169,15 +135,27 @@ export class PoLifecycleService {
     });
   }
 
-  async approve(id: string, userId: string) {
+  /**
+   * Approve = order (owner decision 2026-09-06): DRAFT → ORDERED in one step. The separate
+   * "กดสั่งซื้อ" click added no information (receiving was already allowed from APPROVED);
+   * the one thing it did — confirm the expected date — moves into the approval body.
+   * order() stays for any legacy APPROVED row.
+   */
+  async approve(id: string, userId: string, dto?: ApprovePODto) {
     const po = await this.query.findOne(id);
     if (po.status !== 'DRAFT') {
       throw new BadRequestException('อนุมัติได้เฉพาะ PO สถานะ DRAFT เท่านั้น (ต้องรอ Owner อนุมัติ)');
     }
+    assertExpectedNotBeforeOrder(dto?.expectedDate, po.orderDate);
 
     return this.prisma.purchaseOrder.update({
       where: { id },
-      data: { status: 'APPROVED', approvedById: userId },
+      data: {
+        status: 'ORDERED',
+        approvedById: userId,
+        orderedAt: new Date(),
+        ...(dto?.expectedDate ? { expectedDate: new Date(dto.expectedDate) } : {}),
+      },
       include: {
         supplier: { select: { id: true, name: true } },
         items: true,
@@ -227,7 +205,12 @@ export class PoLifecycleService {
 
   async cancel(id: string) {
     const po = await this.query.findOne(id);
-    if (!['DRAFT', 'APPROVED', 'PENDING'].includes(po.status)) {
+    // An ORDERED PO is still cancellable while nothing has been received — approve now
+    // lands on ORDERED directly, so the old "cancellable APPROVED" window must not vanish.
+    const nothingReceived = (po.items ?? []).every((i) => !i.receivedQty);
+    const cancellable =
+      ['DRAFT', 'APPROVED', 'PENDING'].includes(po.status) || (po.status === 'ORDERED' && nothingReceived);
+    if (!cancellable) {
       throw new BadRequestException('ยกเลิกได้เฉพาะ PO ที่ยังไม่ได้รับสินค้าเท่านั้น');
     }
 

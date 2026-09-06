@@ -771,7 +771,7 @@ export class RoomManagerService {
           tags: true,
           messages: {
             // พรีวิวแถวรายชื่อ = ข้อความสนทนาล่าสุด — ข้อความระบบ (ปิดงาน/มอบหมาย/โฆษณา) ห้ามมาแทนที่
-            // (#1524 กรองไว้ที่ const include ข้างบนซึ่งไม่ได้ถูกใช้ตรงนี้ — พรีวิวบน prod จึงยังโชว์ข้อความระบบ)
+            // (listRooms มี 2 ทาง: คิวรอตอบใช้ `const include` ข้างบน · ทางปกติใช้ include ตรงนี้ — #1524 กรองแค่ทางแรก)
             where: { deletedAt: null, role: { not: MessageRole.SYSTEM } },
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -1266,7 +1266,7 @@ export class RoomManagerService {
         channel: true,
         lastMessageAt: true,
         messages: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, role: { not: MessageRole.SYSTEM } },
           orderBy: { createdAt: 'desc' },
           take: 1,
           select: { text: true, createdAt: true },

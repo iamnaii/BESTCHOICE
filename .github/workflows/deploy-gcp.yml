@@ -36,33 +36,141 @@ concurrency:
 
 jobs:
   # ============================================
-  # Job 1: Lint, Test, Build (same as deploy.yml)
+  # ด่านเทส — แตกเป็น 4 job รันคู่ขนาน (2026-09-05, คำสั่งเจ้าของ "deploy ให้เร็วกว่านี้")
   #
-  # Runs on pull_request only — once a PR's lint+test passes and gets
-  # merged, the same commit doesn't need to re-run lint+test on push to
-  # main (build-and-push-api uses Docker layer caching independently).
-  # Saves ~5 min per merge × every PR = significant Actions minutes/month.
+  # เดิม job เดียว `lint-and-test` รัน 13 ขั้นต่อกันเป็นเส้นตรง ~21 นาที (install 2.5 · Test API 5.2 ·
+  # Test Web 4.3 · integration 3.2 · lint 2 · build 2.5 …) ทั้งที่ lint / test web / test API /
+  # integration ไม่พึ่งกันเลย ตอนนี้เส้นทางที่ยาวสุดคือ test-api (~8 นาที) ด่านยังครบเท่าเดิมทุกตัว —
+  # migrate-db / deploy-api / deploy-web ต้องเห็นว่า "ไม่มี gate ไหน failure/cancelled" ผ่าน
+  # `needs.*.result` ก่อนเดินต่อ (ดู if: ของแต่ละ job ปลายทาง)
+  #
+  # ทางลัดฉุกเฉิน skip_tests (คำสั่งเจ้าของ 2026-08-24): ข้าม 4 gate นี้ (result = skipped) แต่
+  # build-web ยังรันเสมอ เพราะเป็นตัวผลิต artifact ที่ deploy-web ใช้ — ข้ามเทสได้ ข้าม build ไม่ได้
+  #
+  # การติดตั้ง deps ทุก job ผ่าน composite action เดียว (.github/actions/setup-deps) ซึ่ง cache
+  # node_modules ทั้ง workspace ตาม package-lock ⇒ install ~2.5 นาที → ไม่กี่วินาทีเมื่อ cache hit
+  #
+  # heap: งาน node ใน repo นี้ข้ามเพดาน default (~2GB) แล้ว — exit 134 ทั้ง Lint API (eslint
+  # type-aware ~2,000 ไฟล์) และ Test API (jest --runInBand สะสมทุก suite ในโปรเซสเดียว) บน c3d27d87
+  # จึงตั้ง NODE_OPTIONS ระดับ job ให้ทุก job ที่รัน node (runner มี RAM 16GB)
   # ============================================
-  lint-and-test:
-    name: Lint & Test
+  lint:
+    name: Lint + Build API
     runs-on: ubuntu-latest
-    # กันไม่ให้ค้างยาวถึงเพดาน 6 ชม.ของ GitHub — แต่ต้องกว้างพอสำหรับ "ทั้ง job"
-    # ไม่ใช่แค่ขั้นเทส: 25 นาทีเดิมตึงเกินไป (run เขียวใช้ 20m29s / 19m52s = เหลือขอบ ~4 นาที)
-    # จน run 33840369707 ชน timeout ทั้งที่ Test API รันแค่ 5m26s และกำลังจะผ่าน
-    # ⇒ deploy ไม่ออกเลย เพราะ deploy/migrate ทั้งคู่ `needs: lint-and-test`
-    # ถ้าอยาก fail fast ให้ใส่ timeout รายขั้นแทน (ดู Security audit ข้างล่าง)
-    timeout-minutes: 40
-    # รันทั้งบน PR และบน push main — deploy ต้องผ่านด่านนี้ก่อนเสมอ (คำสั่งเจ้าของ 2026-08-23)
-    # เดิม `if: pull_request` ทำให้ merge แบบ admin ทั้งที่เทสแดงแล้ว deploy ขึ้น prod ได้ทันที
-    # ทางลัดฉุกเฉิน: กด Run workflow แล้วติ๊ก skip_tests (คำสั่งเจ้าของ 2026-08-24) — job นี้ถูกข้าม
-    # ทั้ง 3 job ปลายทางใช้ `needs.lint-and-test.result != 'failure'` จึงเดินต่อเมื่อ skipped
+    timeout-minutes: 15
     if: inputs.skip_tests != true
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-deps
+        with:
+          prisma: both
 
-    # โปรเจกต์โตจนงาน node ใน job นี้ข้ามเพดาน heap default (~2GB) แล้ว — ตายด้วย
-    # exit 134 ทั้ง `Lint API` (eslint type-aware ~1,980 ไฟล์ ⇒ TS program ทั้งโปรเจกต์)
-    # และ `Test API` (jest --runInBand ⇒ ทุก suite สะสมในโปรเซสเดียว) บน c3d27d87
-    # ตั้งที่ระดับ job ไม่ใช่รายขั้น เพราะเป็นเพดานร่วมของทุกงาน node ที่นี่ —
-    # ไล่แก้ทีละขั้นคือรอให้ขั้นถัดไปตายแล้วค่อยตามแก้ทีหลัง. runner มี RAM 16GB
+      - name: Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+        # ขั้นนี้ continue-on-error อยู่แล้ว = ไม่เคยกั้นอะไร แต่เคยกิน 7 นาทีจากงบ 25 นาที
+        # จน job ชน timeout แล้ว deploy ไม่ออก (run 33840369707) — จำกัดไว้ไม่ให้กินงบคนอื่น
+        timeout-minutes: 3
+
+      - name: Lint API
+        run: npm run lint --workspace=apps/api
+
+      - name: Lint Web
+        run: npm run lint --workspace=apps/web
+
+      # gate ว่า API คอมไพล์ผ่าน + verify:assets — บน PR นี่คือด่านเดียวของ API build
+      # (build-and-push-api / Docker รันเฉพาะ main)
+      - name: Build API
+        run: npm run build --workspace=apps/api
+
+  test-web:
+    name: Test Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: inputs.skip_tests != true
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-deps
+        with:
+          # shared types ที่ web import ต้องมี Prisma client (SHOP) — เหมือนที่ deploy-web เดิม generate ก่อน build
+          prisma: shop
+
+      # 2026-08-06 (payroll round 2-3) — web unit tests never ran in ANY
+      # pipeline before this step (both payroll web tests were dead in CI).
+      - name: Test Web
+        run: npm run test --workspace=apps/web
+
+  test-api:
+    name: Test API
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: inputs.skip_tests != true
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+
+    # jest unit specs บางไฟล์ต่อ DB จริง (asset-journal, credit-check, room-manager …) จึงต้องมี
+    # Postgres ทั้งสองตัว + migrate เหมือนเดิม (ซ้ำกับ test-integration โดยจำเป็น — GitHub Actions
+    # ไม่มี YAML anchor ให้แชร์ services block)
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      # SP7.1 — second postgres for FINANCE DB (dual-Prisma architecture)
+      postgres-finance:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_finance_db
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5433:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-deps
+        with:
+          prisma: both
+
+      - name: Run DB migrations (SHOP)
+        run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
+
+      - name: Run DB migrations (FINANCE)
+        run: npm run prisma:finance:migrate:deploy --workspace=apps/api
+        env:
+          DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
+      - name: Test API
+        run: npm run test --workspace=apps/api
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
+          DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
+          JWT_SECRET: test-secret
+
+  test-integration:
+    name: Integration (dual-Prisma + money invariants)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: inputs.skip_tests != true
     env:
       NODE_OPTIONS: --max-old-space-size=6144
 
@@ -95,31 +203,11 @@ jobs:
           --health-retries 5
         ports:
           - 5433:5432
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-deps
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Security audit
-        run: npm audit --audit-level=high
-        continue-on-error: true
-        # ขั้นนี้ continue-on-error อยู่แล้ว = ไม่เคยกั้นอะไร แต่เคยกิน 7 นาทีจากงบ 25 นาที
-        # จน job ชน timeout แล้ว deploy ไม่ออก (run 33840369707) — จำกัดไว้ไม่ให้กินงบคนอื่น
-        timeout-minutes: 3
-
-      - name: Generate Prisma Client (SHOP)
-        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
-
-      - name: Generate Prisma Client (FINANCE)
-        run: npm run prisma:finance:generate --workspace=apps/api
+          prisma: both
 
       - name: Run DB migrations (SHOP)
         run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
@@ -130,26 +218,6 @@ jobs:
         run: npm run prisma:finance:migrate:deploy --workspace=apps/api
         env:
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
-
-      # heap ที่ยกให้ อยู่ที่ `env` ระดับ job ด้านบน (ใช้ร่วมกับ Test API)
-      - name: Lint API
-        run: npm run lint --workspace=apps/api
-
-      - name: Lint Web
-        run: npm run lint --workspace=apps/web
-
-      # 2026-08-06 (payroll round 2-3) — web unit tests never ran in ANY
-      # pipeline before this step (both payroll web tests were dead in CI).
-      - name: Test Web
-        run: npm run test --workspace=apps/web
-
-      - name: Test API
-        run: npm run test --workspace=apps/api
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
-          DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
-          JWT_SECRET: test-secret
-
       - name: Run dual-Prisma integration tests (SP7.1)
         run: npm run test:e2e --workspace=apps/api
         env:
@@ -211,6 +279,8 @@ jobs:
           # Void-sale E2E (2026-08-23) — same jest-invisible *.integration.spec.ts naming;
           # new directory ⇒ new glob (บทเรียน jp5-vat-split: glob ไม่ recurse เอง)
           SALES_FILES=$(ls src/modules/sales/__tests__/*.integration.spec.ts)
+          # Stock go-live wipe (2026-09-05) — ตรรกะอยู่ใต้ src/cli/ ⇒ directory ใหม่ = glob ใหม่
+          STOCK_GO_LIVE_FILES=$(ls src/cli/stock-go-live/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
@@ -224,35 +294,111 @@ jobs:
             $EXPDOC_FILES \
             $DASH_FILES \
             $EQUITY_FILES \
-            $SALES_FILES
+            $SALES_FILES \
+            $STOCK_GO_LIVE_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
           JWT_SECRET: test-secret
           NODE_ENV: test
 
-      - name: Build API
-        run: npm run build --workspace=apps/api
+  # ============================================
+  # Build เว็บทั้งสองแอป "ครั้งเดียว" — เป็นทั้ง gate (PR) และตัวผลิต artifact ให้ deploy-web (main)
+  #
+  # เดิม lint-and-test build Web + Web-Shop แล้วทิ้ง จากนั้น deploy-web ติดตั้ง deps ใหม่ ลง Chromium
+  # ใหม่ แล้ว build ซ้ำทั้งหมดอีกรอบ (5 นาทีครึ่ง) ตอนนี้ build ที่นี่ที่เดียวแล้วส่ง dist ต่อผ่าน artifact
+  # ไม่ผูกกับ skip_tests — ข้ามด่านเทสได้ แต่ข้ามการ build ไม่ได้ (ไม่มีอะไรจะ deploy)
+  # ============================================
+  build-web:
+    name: Build Web + Web-Shop
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+      # main (push/dispatch) = build ของจริงสำหรับ deploy · PR = build เปล่าเป็น gate (URL localhost เหมือนเดิม)
+      IS_MAIN: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-deps
+        with:
+          # shared types ที่ web import ต้องมี Prisma client (SHOP)
+          prisma: shop
 
-      - name: Build Web
+      - name: Build admin web (apps/web → hosting:admin)
         run: npm run build --workspace=apps/web
         env:
-          VITE_API_URL: http://localhost:3000/api
+          VITE_API_URL: ${{ env.IS_MAIN == 'true' && 'https://api.bestchoicephone.app/api' || 'http://localhost:3000/api' }}
+          VITE_SHOP_URL: https://www.bestchoicephone.com
+          VITE_LIFF_ID: 2009442540-d9XnzWwl
           # Surface short commit SHA so the version badge can show it next
           # to the CalVer (e.g. "v26.5.1·a1b2c3d"). vite.config.ts trims to 7 chars.
           GIT_COMMIT: ${{ github.sha }}
 
+      # prerender ต้องใช้ headless Chromium — เฉพาะ main (PR build เปล่าเร็วเหมือนเดิม)
+      - name: Install Playwright Chromium (shop prerender)
+        if: env.IS_MAIN == 'true'
+        run: npx playwright install --with-deps chromium
+
+      # build:prerender = build ปกติ + snapshot 11 หน้า marketing เป็น HTML จริงต่อ route
+      # เพื่อให้ AI crawlers (ไม่รัน JS) กับ Bing เห็นเนื้อหา — ดู apps/web-shop/scripts/prerender.mjs
+      - name: Build customer shop (apps/web-shop → hosting:shop, prerendered)
+        if: env.IS_MAIN == 'true'
+        run: npm run build:prerender --workspace=apps/web-shop
+
       # /sell rework ลบไฟล์จำนวนมากใน web-shop — ก่อนหน้านี้ CI ไม่เคย build
       # web-shop เลย (พังจะไปโผล่ตอน deploy บน main) จึงเพิ่ม gate ที่ PR
-      - name: Build Web-Shop (customer storefront)
+      - name: Build customer shop (PR gate, no prerender)
+        if: env.IS_MAIN != 'true'
         run: npm run build --workspace=apps/web-shop
 
-      # E2E tests run in separate workflow (e2e-tests.yml) — skip here for faster deploy
-      # - name: Install Playwright Browsers
-      #   run: npx playwright install --with-deps chromium
-      #   working-directory: apps/web
+      # ส่ง dist ให้ deploy-web (เฉพาะ main — บน PR ไม่มีใครใช้) · เก็บ 3 วันพอสำหรับ debug
+      - name: Upload web dist
+        if: env.IS_MAIN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+          retention-days: 3
+          if-no-files-found: error
 
-      # E2E tests run in dedicated workflow: .github/workflows/e2e-tests.yml
+      - name: Upload shop dist
+        if: env.IS_MAIN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shop-dist
+          path: apps/web-shop/dist
+          retention-days: 3
+          if-no-files-found: error
+
+  # ============================================
+  # สรุปผลทุก gate เป็น status check เดียวชื่อเดิม "Lint & Test" — branch protection ของ main
+  # บังคับชื่อนี้ (required_status_checks) และ docs/CONTRIBUTING.md อ้างชื่อนี้ จึงห้ามเปลี่ยน/หาย
+  # job นี้ไม่รันอะไรเอง: ผ่านเมื่อทุก gate success หรือ skipped (ทางลัดฉุกเฉิน), แดงเมื่อ gate ใด
+  # failure/cancelled — migrate-db / deploy-web พึ่ง check นี้ตัวเดียวแทนการไล่เช็คทีละ gate
+  # ============================================
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, test-web, test-api, test-integration, build-web]
+    if: always()
+    steps:
+      - name: ผลรายด่าน
+        run: |
+          cat <<'EOF'
+          lint:             ${{ needs.lint.result }}
+          test-web:         ${{ needs.test-web.result }}
+          test-api:         ${{ needs.test-api.result }}
+          test-integration: ${{ needs.test-integration.result }}
+          build-web:        ${{ needs.build-web.result }}
+          EOF
+      - name: มี gate แดง/ถูกยกเลิก
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error title=Lint & Test::มี gate ที่ failure/cancelled — ห้าม merge/deploy"
+          exit 1
+      - name: ทุก gate ผ่าน
+        run: echo "ทุก gate ผ่าน (หรือถูกข้ามด้วย skip_tests)"
 
   # ============================================
   # Job 2: Build API Docker Image → Artifact Registry
@@ -308,10 +454,12 @@ jobs:
   migrate-db:
     name: Run Database Migrations
     needs: [lint-and-test, build-and-push-api]
-    # เทสต้องไม่ "แดง" — skipped (ทางลัดฉุกเฉิน) ผ่านได้, failure ไม่ผ่าน
+    # "Lint & Test" = job สรุปทุก gate (lint / test-web / test-api / test-integration / build-web):
+    # success เมื่อทุก gate ผ่านหรือถูกข้ามด้วยทางลัดฉุกเฉิน, failure เมื่อ gate ใดแดง/ถูกยกเลิก
+    # build-web อยู่ในสรุปด้วย: API กับ web ต้องขึ้นพร้อมกัน — ถ้า web build พัง ห้าม migrate/deploy API
     if: >-
       always() && needs.build-and-push-api.result == 'success' &&
-      needs.lint-and-test.result != 'failure' && needs.lint-and-test.result != 'cancelled'
+      needs.lint-and-test.result == 'success'
     runs-on: ubuntu-latest
 
     steps:
@@ -359,14 +507,15 @@ jobs:
   # ============================================
   deploy-api:
     name: Deploy API to Cloud Run
-    needs: [migrate-db, lint-and-test]
+    # test-api อยู่ใน needs เพื่ออ่าน result (skipped = ทางลัดฉุกเฉิน) — ด่านจริงคือ migrate-db
+    needs: [migrate-db, test-api]
     if: always() && needs.migrate-db.result == 'success'
     runs-on: ubuntu-latest
 
     steps:
       # ทางลัดฉุกเฉินถูกใช้ → ทิ้งร่องรอยไว้ในหน้า run + summary ให้ตามย้อนหลังได้ว่าใครกด เมื่อไร
       - name: ⚠️ บันทึกว่า deploy นี้ข้ามด่านเทส
-        if: needs.lint-and-test.result == 'skipped'
+        if: needs.test-api.result == 'skipped'
         run: |
           echo "::warning title=ข้ามด่านเทส::deploy นี้ใช้ทางลัดฉุกเฉิน (skip_tests) โดย ${{ github.actor }} — ต้องรันเทสตามให้ครบหลังจากนี้"
           {
@@ -503,49 +652,40 @@ jobs:
 
   # ============================================
   # Job 5: Deploy Frontend to Firebase Hosting
+  # 2026-09-05: ไม่ติดตั้ง deps ไม่ build ซ้ำแล้ว — ใช้ dist จาก build-web ผ่าน artifact
+  # (เดิม job นี้ install + Chromium + build ทั้งสองแอปใหม่อีกรอบ = 5 นาทีครึ่ง)
   # ============================================
   deploy-web:
     name: Deploy Web to Firebase Hosting
     runs-on: ubuntu-latest
-    needs: lint-and-test
+    timeout-minutes: 15
+    # "Lint & Test" = job สรุปทุก gate (success แม้ gate ถูกข้ามด้วยทางลัดฉุกเฉิน) + ต้องมี artifact จาก build-web
+    needs: [lint-and-test, build-web]
     if: >-
       always() && github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.lint-and-test.result != 'failure' && needs.lint-and-test.result != 'cancelled'
+      needs.lint-and-test.result == 'success' && needs.build-web.result == 'success'
 
     steps:
+      # ต้องการแค่ firebase.json + .firebaserc จาก repo — dist ทั้งสองมาจาก build-web
       - uses: actions/checkout@v4
+
+      - name: Download admin web dist (from build-web)
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+
+      - name: Download shop dist (from build-web, prerendered)
+        uses: actions/download-artifact@v4
+        with:
+          name: shop-dist
+          path: apps/web-shop/dist
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma client (needed by shared types during build)
-        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
-
-      - name: Build admin web (apps/web → hosting:admin)
-        run: npm run build --workspace=apps/web
-        env:
-          VITE_API_URL: https://api.bestchoicephone.app/api
-          VITE_SHOP_URL: https://www.bestchoicephone.com
-          VITE_LIFF_ID: 2009442540-d9XnzWwl
-          # Surface short commit SHA so the version badge can show it next
-          # to the CalVer (e.g. "v26.5.1·a1b2c3d"). vite.config.ts trims to 7 chars.
-          GIT_COMMIT: ${{ github.sha }}
-
-      # prerender ต้องใช้ headless Chromium — ติดตั้งเฉพาะ job นี้ (PR gate ยัง build เปล่าเร็วเหมือนเดิม)
-      - name: Install Playwright Chromium (shop prerender)
-        run: npx playwright install --with-deps chromium
-
-      # build:prerender = build ปกติ + snapshot 11 หน้า marketing เป็น HTML จริงต่อ route
-      # เพื่อให้ AI crawlers (ไม่รัน JS) กับ Bing เห็นเนื้อหา — ดู apps/web-shop/scripts/prerender.mjs
-      - name: Build customer shop (apps/web-shop → hosting:shop, prerendered)
-        run: npm run build:prerender --workspace=apps/web-shop
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2

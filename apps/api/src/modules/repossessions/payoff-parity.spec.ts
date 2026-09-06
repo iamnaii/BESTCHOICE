@@ -86,6 +86,10 @@ describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff
 
   function makeServices(contract: ReturnType<typeof makeContract>) {
     const prisma = {
+      // eligibility (2026-09-05) อ่าน strict flag ใน previewCalculation — ปิดไว้ = ไม่กระทบ parity
+      systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      // eligibility (review 2026-09-05) ด่าน 'เครื่องเคยมีแถวยึด' — ไม่เคย = ไม่กระทบ parity
+      repossession: { findFirst: jest.fn().mockResolvedValue(null) },
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: {
         findMany: jest

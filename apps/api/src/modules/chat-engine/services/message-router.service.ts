@@ -7,6 +7,7 @@ import {
   OutboundMessage,
   OutboundQuickReply,
   CHANNEL_ADAPTER_TOKEN,
+  InboundAttribution,
 } from '../interfaces/channel-adapter.interface';
 import {
   IDomainHandler,
@@ -179,6 +180,10 @@ export class MessageRouterService {
       pictureUrl: profile?.avatarUrl,
       attribution: message.attribution,
     });
+    // ทักจากโฆษณา → โน้ตระบบในห้อง ตรงเวลาที่เกิด (ท่า OBI logNotify) — ไม่ต้องเปิดแผงขวาก็เห็น
+    if (message.attribution?.adId) {
+      await this.postAdReferralNote(room.id, message.attribution);
+    }
 
     // 2. Save inbound message
     await this.roomManager.saveMessage({
@@ -998,6 +1003,30 @@ export class MessageRouterService {
       await this.postSystemNote(roomId, `${name} รับห้องนี้ (ตอบก่อน)`);
     } catch (err) {
       this.logger.warn(`[claim note] room ${roomId}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  /**
+   * ลูกค้าเก่ากลับมาจากโฆษณา (event messaging_referrals ไม่มี message) — ผูกที่มาให้ห้องเดิม + โน้ตระบบ
+   * ไม่มีห้อง = ไม่ทำอะไร (ห้องจะถูกสร้างพร้อม attribution เมื่อข้อความแรกมาถึง)
+   */
+  async recordAdReferral(
+    externalUserId: string,
+    channel: ChatChannel,
+    attribution: InboundAttribution,
+  ): Promise<void> {
+    const room = await this.roomManager.findByExternalUser(externalUserId, channel);
+    if (!room) return;
+    await this.roomManager.linkAttribution(room.id, attribution, room.attributionId);
+    await this.postAdReferralNote(room.id, attribution);
+  }
+
+  private async postAdReferralNote(roomId: string, attribution: InboundAttribution): Promise<void> {
+    try {
+      const title = attribution.adTitle ?? `โฆษณา ${attribution.adId ?? ''}`.trim();
+      await this.postSystemNote(roomId, `ลูกค้าทักจากโฆษณา · ${title}`);
+    } catch (err) {
+      this.logger.warn(`[Attribution] note failed for room ${roomId}: ${err instanceof Error ? err.message : err}`);
     }
   }
 

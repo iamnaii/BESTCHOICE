@@ -11,6 +11,11 @@ import { InterCompanyService } from '../../inter-company/inter-company.service';
 import { DiscountPolicy } from './discount-policy.util';
 import { SaleWriterService } from './sale-writer.service';
 import { SaleWarrantyNotifierService } from './sale-warranty-notifier.service';
+import {
+  assertSameTestSide,
+  TEST_SIDE_CUSTOMER_SELECT,
+  TEST_SIDE_PRODUCT_SELECT,
+} from '../../../utils/test-data-markers';
 
 /**
  * Sale-creation orchestrator extracted from SalesService.create.
@@ -63,6 +68,10 @@ export class SaleCreationService {
 
     const discount = baseDiscount + loyaltyPoints;
     const netAmount = dto.sellingPrice - discount;
+
+    // test-data fence (spec 2026-09-05 §5.1): เครื่องทุกชิ้นในใบกับลูกค้าต้องอยู่ฝั่งเดียวกัน
+    // — ตรวจก่อนแตะ tx ใด ๆ; ของแถมผิดฝั่งก็ต้องดัง
+    await this.assertSameTestSideForSale(dto);
 
     // T5-C8 pre-check (before sub-methods' own verifyProductInStock which
     // only validates stock state). We resolve wasPreviouslyDamaged upfront
@@ -162,5 +171,29 @@ export class SaleCreationService {
     }
 
     return sale;
+  }
+
+  /**
+   * รั้วกันข้ามฝั่ง — โหลดลูกค้า + เครื่องหลัก + ของแถม ด้วย select ขั้นต่ำ (รวม po.poNumber
+   * ที่ชนิดของ isTestProduct บังคับ) แล้วให้ util ตัดสิน. ไม่พบลูกค้า = NotFound ข้อความเดิม
+   * ของโมดูลนี้ (writer จะโยนแบบเดียวกันอยู่แล้ว แต่รั้วต้องอ่านลูกค้าก่อน writer)
+   */
+  private async assertSameTestSideForSale(dto: CreateSaleDto): Promise<void> {
+    const productIds = [dto.productId, ...(dto.bundleProductIds ?? [])].filter(
+      (id): id is string => !!id,
+    );
+    if (productIds.length === 0) return;
+    const [customer, products] = await Promise.all([
+      this.prisma.customer.findFirst({
+        where: { id: dto.customerId, deletedAt: null },
+        select: TEST_SIDE_CUSTOMER_SELECT,
+      }),
+      this.prisma.product.findMany({
+        where: { id: { in: productIds }, deletedAt: null },
+        select: TEST_SIDE_PRODUCT_SELECT,
+      }),
+    ]);
+    if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
+    for (const product of products) assertSameTestSide(customer, product);
   }
 }

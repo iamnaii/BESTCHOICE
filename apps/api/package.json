@@ -84,7 +84,9 @@
     "import:tooltify-stock": "npx -y tsx src/cli/import-tooltify-stock.cli.ts",
     "import:tooltify-stock:help": "echo 'Dry-run default: TOOLTIFY_IMPORT_DIR=<folder> EXPECTED_DB_NAME=<db> npm --prefix apps/api run import:tooltify-stock. To write: CONFIRM_IMPORT_STOCK=YES_I_AM_SURE TOOLTIFY_IMPORT_DIR=<folder> EXPECTED_DB_NAME=<db> [ALLOW_PROD_IMPORT_STOCK=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run import:tooltify-stock'",
     "wipe:test-stock": "npx -y tsx src/cli/wipe-test-stock.cli.ts",
-    "wipe:test-stock:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run wipe:test-stock. To soft-delete non-TTFY test products: CONFIRM_WIPE_STOCK=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE_STOCK=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run wipe:test-stock'"
+    "wipe:test-stock:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run wipe:test-stock. To soft-delete non-TTFY test products: CONFIRM_WIPE_STOCK=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE_STOCK=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run wipe:test-stock'",
+    "wipe:stock-go-live": "npx -y tsx src/cli/wipe-stock-go-live.cli.ts",
+    "wipe:stock-go-live:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run wipe:stock-go-live. To wipe: CONFIRM_WIPE_STOCK_GO_LIVE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE_STOCK_GO_LIVE=YES_I_AM_SURE NODE_ENV=production] [ONLY_BRANCH_ID=<uuid>] npm --prefix apps/api run wipe:stock-go-live'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

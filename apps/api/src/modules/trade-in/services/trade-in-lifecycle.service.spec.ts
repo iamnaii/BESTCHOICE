@@ -2,6 +2,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { TradeInLifecycleService } from './trade-in-lifecycle.service';
 import { ShopTradeInTemplate } from '../../journal/cpa-templates/shop-trade-in.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { TEST_CUSTOMER_ADDRESS } from '../../../utils/test-data-markers';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -18,6 +19,7 @@ function makeTx() {
       create: jest.fn(),
       findFirst: jest.fn().mockResolvedValue(null),
     },
+    customer: { findUnique: jest.fn().mockResolvedValue(null) },
     // B0 §2.1: autofill hook queries pricingTemplate — empty means NO_TEMPLATE,
     // returns before touching product.update/systemConfig, so this is all that's needed.
     pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
@@ -357,5 +359,91 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
       await service.accept('ti-9', { ...BASE_DTO, branchId: 'br-1' }, 'u1');
       expect(tx.product.create.mock.calls[0][0].data.branchId).toBe('br-1');
     });
+  });
+});
+
+describe('TradeInLifecycleService.accept() — auto-mark เครื่องจากลูกค้าทดสอบ (spec 2026-09-05 §5.3)', () => {
+  let service: TradeInLifecycleService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  let tx: ReturnType<typeof makeTx>;
+
+  const baseTradeIn = {
+    id: 'ti-1',
+    status: 'APPRAISED',
+    deletedAt: null,
+    flow: 'BUYBACK',
+    branchId: 'br-1',
+    offeredPrice: new Decimal(5000),
+    estimatedValue: null,
+    imei: '359000000000001',
+    deviceBrand: 'Apple',
+    deviceModel: 'iPhone 12',
+    deviceColor: null,
+    deviceStorage: null,
+    deviceCondition: 'A',
+    notes: null,
+  };
+  const acceptDto = { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' };
+
+  beforeEach(() => {
+    tx = makeTx();
+    prisma = {
+      $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(tx)),
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+    };
+    tx.product.create.mockResolvedValue({
+      id: 'p-new',
+      brand: 'Apple',
+      model: 'iPhone 12',
+      storage: null,
+    });
+    tx.tradeIn.update.mockResolvedValue({ id: 'ti-1', status: 'ACCEPTED' });
+    service = new TradeInLifecycleService(
+      prisma,
+      { upload: jest.fn() } as any,
+      { allocate: jest.fn() } as any,
+      { findOrCreateByNaturalKey: jest.fn() } as any,
+      { hash: jest.fn() } as any,
+      { findOne: jest.fn(), checkImei: jest.fn() } as any,
+      { lookupValuation: jest.fn().mockResolvedValue({ found: false }) } as any,
+      {
+        execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }),
+      } as any,
+      { resolveOutflowCashAccount: jest.fn().mockResolvedValue('S11-1102') } as any,
+    );
+  });
+
+  it('ลูกค้าทดสอบ (ที่อยู่ = marker) → ชื่อเครื่องขึ้นต้น "ทดสอบระบบ "', async () => {
+    tx.tradeIn.findUnique.mockResolvedValue({ ...baseTradeIn, customerId: 'cust-t' });
+    tx.customer.findUnique.mockResolvedValue({
+      id: 'cust-t',
+      name: 'ทดสอบระบบ ลูกค้า',
+      phone: '0890000000',
+      addressCurrent: TEST_CUSTOMER_ADDRESS,
+    });
+    await service.accept('ti-1', acceptDto as any, 'u-1');
+    const data = tx.product.create.mock.calls[0][0].data;
+    expect(data.name).toBe('ทดสอบระบบ Apple iPhone 12');
+    expect(data.imeiSerial).toBe('359000000000001'); // IMEI ไม่ถูกแตะ
+  });
+
+  it('ลูกค้าจริง → ชื่อเครื่องไม่เปลี่ยน', async () => {
+    tx.tradeIn.findUnique.mockResolvedValue({ ...baseTradeIn, customerId: 'cust-1' });
+    tx.customer.findUnique.mockResolvedValue({
+      id: 'cust-1',
+      name: 'สมชาย',
+      phone: '0891234567',
+      addressCurrent: 'กรุงเทพ',
+    });
+    await service.accept('ti-1', acceptDto as any, 'u-1');
+    expect(tx.product.create.mock.calls[0][0].data.name).toBe('Apple iPhone 12');
+  });
+
+  it('ผู้ขาย walk-in (ไม่มี customerId) → ไม่ query ลูกค้า ชื่อไม่เปลี่ยน', async () => {
+    tx.tradeIn.findUnique.mockResolvedValue({ ...baseTradeIn, customerId: null });
+    await service.accept('ti-1', acceptDto as any, 'u-1');
+    expect(tx.customer.findUnique).not.toHaveBeenCalled();
+    expect(tx.product.create.mock.calls[0][0].data.name).toBe('Apple iPhone 12');
   });
 });

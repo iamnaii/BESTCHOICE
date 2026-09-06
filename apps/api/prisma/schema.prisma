@@ -5743,6 +5743,8 @@ model AdsCampaign {
   campaignName String      @map("campaign_name")
   adSetName    String?     @map("ad_set_name")
   adName       String?     @map("ad_name")
+  /** รูป/วิดีโอของโฆษณาที่ลูกค้าเห็นก่อนทัก — จาก ads_context_data ของ Messenger referral (ลิงก์ CDN หมดอายุได้ ต้องมี fallback) */
+  adPhotoUrl   String?     @map("ad_photo_url")
   budget       Decimal?    @db.Decimal(12, 2)
   startDate    DateTime?   @map("start_date")
   endDate      DateTime?   @map("end_date")

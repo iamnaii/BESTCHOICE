@@ -16,9 +16,10 @@ import ContractPaymentSchedule from '@/components/contract/ContractPaymentSchedu
 import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
+import ContractJournalDialog from '@/components/contract/ContractJournalDialog';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
-import { Copy, CheckCircle2, XCircle, AlertTriangle, Check, ChevronRight, History } from 'lucide-react';
+import { Copy, CheckCircle2, XCircle, AlertTriangle, Check, ChevronRight, History, BookOpen } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -96,6 +97,7 @@ export default function ContractDetailPage() {
   // Payment-history modal — reachable for ANY status (incl. EARLY_PAYOFF / COMPLETED
   // contracts that have dropped out of the /payments pending queue).
   const [historyContractId, setHistoryContractId] = useState<string | null>(null);
+  const [journalOpen, setJournalOpen] = useState(false);
   const [customerLink, setCustomerLink] = useState<string | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
@@ -336,6 +338,18 @@ const deleteMutation = useMutation({
               >
                 <History className="size-4" />
                 ประวัติการชำระ
+              </button>
+            )}
+
+            {/* บันทึกบัญชีของสัญญา — JE ทุกใบทั้งสมุด FINANCE/SHOP (spec 2026-09-05);
+                DRAFT ยังไม่มี JE จึงซ่อน */}
+            {contract.status !== 'DRAFT' && (
+              <button
+                onClick={() => setJournalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"
+              >
+                <BookOpen className="size-4" />
+                บันทึกบัญชี
               </button>
             )}
 
@@ -970,6 +984,13 @@ const deleteMutation = useMutation({
       <PaymentHistorySheet
         contractId={historyContractId}
         onClose={() => setHistoryContractId(null)}
+      />
+
+      {/* บันทึกบัญชีของสัญญา (JE ทุกใบ FINANCE + SHOP) */}
+      <ContractJournalDialog
+        contractId={journalOpen ? contract.id : null}
+        contractNumber={contract.contractNumber}
+        onClose={() => setJournalOpen(false)}
       />
 
       {/* Submit Review Confirm Modal */}

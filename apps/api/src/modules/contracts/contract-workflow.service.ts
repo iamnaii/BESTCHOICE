@@ -20,6 +20,7 @@ import { loadInstallmentConfig } from '../../utils/config.util';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ProductsService } from '../products/products.service';
+import { closeRepossessionOnSale } from '../repossessions/repossession-resale.util';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 import { TestModeService } from '../test-mode/test-mode.service';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -449,6 +450,13 @@ export class ContractWorkflowService {
         },
       });
       await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
+      // เครื่องยึดที่ถูกนำกลับเข้าคลังแล้วขายผ่อนใหม่ → ปิดรายการยึดเป็น SOLD พร้อมราคาขายจริง
+      // (คู่ของ POS ใน SaleWriterService; ยกเลิกสัญญา C-1 เปิดกลับ — 2026-09-05). เครื่องปกติ = 0 แถว
+      await closeRepossessionOnSale(tx, {
+        productId: contract.productId,
+        resellPrice: contract.sellingPrice,
+        soldContractId: id,
+      });
 
       // Ownership transfer: SHOP → FINANCE.
       // Per CLAUDE.md business rule: "กรรมสิทธิ์สินค้าย้ายจาก SHOP → FINANCE

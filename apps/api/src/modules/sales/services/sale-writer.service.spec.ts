@@ -52,6 +52,8 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       // resolveSaleShopWarranty อ่านคีย์ warranty.shopWarrantyDays ใน tx เดียวกัน
       // ไม่มีแถว = ไม่ override ⇒ ใช้ค่าตามชนิดสินค้า
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      // closeRepossessionOnSale (2026-09-05) — เครื่องยึดที่ขายผ่าน POS ปิดรายการยึดให้เอง
+      repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'p1',

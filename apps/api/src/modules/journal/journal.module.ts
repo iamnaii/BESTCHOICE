@@ -3,6 +3,7 @@ import { JournalController } from './journal.controller';
 import { JournalService } from './journal.service';
 import { JournalAutoService } from './journal-auto.service';
 import { AccountRoleService } from './account-role.service';
+import { ContractJournalQueryService } from './contract-journal-query.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ContractActivation1ATemplate } from './cpa-templates/contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './cpa-templates/installment-accrual-2a.template';
@@ -77,6 +78,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     JournalService,
     JournalAutoService,
     AccountRoleService,
+    ContractJournalQueryService,
     ContractActivation1ATemplate,
     InstallmentAccrual2ATemplate,
     InstallmentAccrualCron,
@@ -145,6 +147,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     JournalService,
     JournalAutoService,
     AccountRoleService,
+    ContractJournalQueryService,
     ContractActivation1ATemplate,
     InstallmentAccrual2ATemplate,
     PaymentReceiptTemplate,

@@ -16,6 +16,7 @@ import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-p
 import { ShopDownPaymentReversalTemplate } from '../../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
+import { assertSameTestSide } from '../../../utils/test-data-markers';
 
 /**
  * ContractLifecycleService — write-side lifecycle of a contract: create
@@ -157,6 +158,8 @@ export class ContractLifecycleService {
           // สุดท้ายก่อนสร้างสัญญาบนเครื่องที่ IMEI หลุด unique index ไปแล้ว
           const currentProduct = await tx.product.findFirst({
             where: { id: dto.productId, deletedAt: null },
+            // test-data fence ต้องเห็น PO ต้นทาง (อุปกรณ์เสริมไร้ IMEI จาก PO ทดสอบ)
+            include: { po: { select: { poNumber: true } } },
           });
           if (!currentProduct || currentProduct.status !== 'IN_STOCK') {
             throw new BadRequestException('สินค้าไม่พร้อมขาย (อาจถูกจองแล้ว)');
@@ -164,6 +167,9 @@ export class ContractLifecycleService {
 
           // Fetch customer data for snapshot (isolation from future edits)
           const customerData = await tx.customer.findUnique({ where: { id: dto.customerId, deletedAt: null } });
+          // test-data fence (spec 2026-09-05 §5.1): เครื่องกับลูกค้าต้องอยู่ฝั่งเดียวกัน —
+          // ที่เดียวกับด่าน IN_STOCK ใน tx (ไม่พบลูกค้า = ปล่อยให้ FK ล้มตามพฤติกรรมเดิม)
+          if (customerData) assertSameTestSide(customerData, currentProduct);
           const customerSnapshot: Prisma.InputJsonValue | undefined = customerData ? {
             name: customerData.name,
             prefix: customerData.prefix,

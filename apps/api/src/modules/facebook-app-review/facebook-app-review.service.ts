@@ -273,7 +273,10 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const fields = dto.fields ?? 'messages,messaging_postbacks,message_deliveries,message_reads';
+    // messaging_referrals = ลูกค้าเก่าที่กลับมาจากโฆษณา/m.me — ไม่ subscribe จะไม่รู้เลยว่ามาจากโฆษณาไหน
+    // (ลูกค้าใหม่จากโฆษณา referral มากับ messages/messaging_postbacks อยู่แล้ว)
+    const fields =
+      dto.fields ?? 'messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads';
     const url = `${GRAPH_BASE}/${c.pageId}/subscribed_apps`;
     const body = { subscribed_fields: fields };
     return this.call('POST', url, body, 'subscribe_page_webhooks', c.pageToken);

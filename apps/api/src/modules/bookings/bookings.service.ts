@@ -24,6 +24,11 @@ import { ShopBookingDepositAppliedTemplate } from '../journal/cpa-templates/shop
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopBookingRefundTemplate } from '../journal/cpa-templates/shop-booking-refund.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import {
+  assertSameTestSide,
+  TEST_SIDE_CUSTOMER_SELECT,
+  TEST_SIDE_PRODUCT_SELECT,
+} from '../../utils/test-data-markers';
 
 type RequestUser = { id: string; role: string; branchId?: string | null };
 
@@ -247,7 +252,7 @@ export class BookingsService {
     const [customer, branch] = await Promise.all([
       this.prisma.customer.findFirst({
         where: { id: dto.customerId, deletedAt: null },
-        select: { id: true },
+        select: TEST_SIDE_CUSTOMER_SELECT,
       }),
       this.prisma.branch.findFirst({
         where: { id: dto.branchId, deletedAt: null },
@@ -256,6 +261,19 @@ export class BookingsService {
     ]);
     if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
     if (!branch) throw new NotFoundException('ไม่พบสาขา');
+
+    // test-data fence (spec 2026-09-05 §5.1): รายการที่ผูกเครื่องจริงต้องอยู่ฝั่งเดียวกับลูกค้า
+    // (รายการที่มีแต่ description ไม่มีเครื่อง — ไม่มีอะไรให้ตรวจ)
+    const fencedProductIds = dto.items
+      .map((item) => item.productId)
+      .filter((id): id is string => !!id);
+    if (fencedProductIds.length > 0) {
+      const fencedProducts = await this.prisma.product.findMany({
+        where: { id: { in: fencedProductIds }, deletedAt: null },
+        select: TEST_SIDE_PRODUCT_SELECT,
+      });
+      for (const product of fencedProducts) assertSameTestSide(customer, product);
+    }
 
     const total = this.computeTotal(dto.items);
     const deposit = new Prisma.Decimal(dto.depositAmount);
@@ -602,7 +620,7 @@ export class BookingsService {
   ) {
     const booking = await this.prisma.booking.findFirst({
       where: { id, deletedAt: null },
-      include: { items: true },
+      include: { items: true, customer: { select: TEST_SIDE_CUSTOMER_SELECT } },
     });
     if (!booking) throw new NotFoundException('ไม่พบใบจอง');
 
@@ -667,12 +685,15 @@ export class BookingsService {
       // 2. Verify the product is still IN_STOCK (race vs another POS sale).
       const product = await tx.product.findUnique({
         where: { id: firstItem.productId! },
+        include: { po: { select: { poNumber: true } } },
       });
       if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
         throw new BadRequestException(
           'สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว — กรุณาตรวจสอบสต็อก',
         );
       }
+      // test-data fence (spec 2026-09-05 §5.1) — ตอนแปลงเป็นใบขายคือจุดที่เครื่องพบลูกค้าจริง
+      assertSameTestSide(booking.customer, product);
 
       const saleNumber = await generateSaleNumber(
         tx as unknown as Parameters<typeof generateSaleNumber>[0],

@@ -14,6 +14,7 @@ import { ShopAccountResolver } from '../../journal/shop-account-resolver.service
 import { ShopBookingDepositAppliedTemplate } from '../../journal/cpa-templates/shop-booking-deposit-applied.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopBookingRefundTemplate } from '../../journal/cpa-templates/shop-booking-refund.template';
+import { TEST_CUSTOMER_ADDRESS } from '../../../utils/test-data-markers';
 
 // Mock sequence util so tests don't need a real `booking` delegate
 jest.mock('../../../utils/sequence.util', () => ({
@@ -76,6 +77,9 @@ describe('BookingsService', () => {
         id: 'prod-1',
         status: 'IN_STOCK',
         deletedAt: null,
+        imeiSerial: '356789012345678',
+        name: 'iPhone 15',
+        po: null,
       }),
       update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
     };
@@ -99,7 +103,15 @@ describe('BookingsService', () => {
         count: jest.fn().mockResolvedValue(0),
         update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
-      customer: { findFirst: jest.fn().mockResolvedValue({ id: 'cust-1' }) },
+      customer: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'cust-1',
+          name: 'ลูกค้าจริง',
+          phone: '0891234567',
+          addressCurrent: 'กรุงเทพ',
+        }),
+      },
+      product: { findMany: jest.fn().mockResolvedValue([]) },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'br-1' }) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'u-admin' }) },
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -371,6 +383,12 @@ describe('BookingsService', () => {
       convertedToSaleId: null,
       bookingNumber: 'BK-20260517-0001',
       customerId: 'cust-1',
+      customer: {
+        id: 'cust-1',
+        name: 'ลูกค้าจริง',
+        phone: '0891234567',
+        addressCurrent: 'กรุงเทพ',
+      },
       branchId: 'br-1',
       totalAmount: new Prisma.Decimal(40990),
       depositAmount: new Prisma.Decimal(40990),
@@ -431,6 +449,12 @@ describe('BookingsService', () => {
       convertedToSaleId: null,
       bookingNumber: 'BK-20260517-0001',
       customerId: 'cust-1',
+      customer: {
+        id: 'cust-1',
+        name: 'ลูกค้าจริง',
+        phone: '0891234567',
+        addressCurrent: 'กรุงเทพ',
+      },
       branchId: 'br-1',
       totalAmount: new Prisma.Decimal(40990),
       depositAmount: new Prisma.Decimal(40990),
@@ -475,6 +499,12 @@ describe('BookingsService', () => {
       convertedToSaleId: null,
       bookingNumber: 'BK-20260517-0001',
       customerId: 'cust-1',
+      customer: {
+        id: 'cust-1',
+        name: 'ลูกค้าจริง',
+        phone: '0891234567',
+        addressCurrent: 'กรุงเทพ',
+      },
       branchId: 'br-1',
       totalAmount: new Prisma.Decimal(40990),
       depositAmount: new Prisma.Decimal(5000),
@@ -623,5 +653,71 @@ describe('BookingsService', () => {
       branchId: 'br-1',
     });
     await expect(service.remove('bk-1', OWNER)).rejects.toThrow(BadRequestException);
+  });
+
+  // ─── test-data fence (spec 2026-09-05 §5.1) ────────────────────────────────
+
+  it('create — รายการที่ผูกเครื่อง TEST- กับลูกค้าจริง → BadRequest ก่อนเปิด tx', async () => {
+    prisma.product.findMany.mockResolvedValueOnce([
+      { id: 'prod-t', imeiSerial: 'TEST-0001', name: 'ทดสอบระบบ มือถือ', po: null },
+    ]);
+    await expect(
+      service.create(
+        {
+          customerId: 'cust-1',
+          branchId: 'br-1',
+          items: [{ productId: 'prod-t', description: 'X', quantity: 1, unitPrice: 1000 }],
+          depositAmount: 100,
+        },
+        'user-1',
+        OWNER,
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['prod-t'] }, deletedAt: null } }),
+    );
+  });
+
+  it('create — รายการไม่ผูกเครื่อง (description อย่างเดียว) ไม่ query สินค้า', async () => {
+    await service.create(
+      {
+        customerId: 'cust-1',
+        branchId: 'br-1',
+        items: [{ description: 'จองรุ่นที่ยังไม่มีของ', quantity: 1, unitPrice: 1000 }],
+        depositAmount: 100,
+      },
+      'user-1',
+      OWNER,
+    );
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('convertToSale — ลูกค้าทดสอบ + เครื่องจริง → BadRequest, ไม่สร้าง Sale', async () => {
+    prisma.booking.findFirst.mockResolvedValueOnce({
+      id: 'bk-1',
+      status: 'PAID',
+      convertedToSaleId: null,
+      bookingNumber: 'BK-20260517-0001',
+      customerId: 'cust-t',
+      customer: {
+        id: 'cust-t',
+        name: 'ทดสอบระบบ ลูกค้า',
+        phone: 'TEST-0000001',
+        addressCurrent: TEST_CUSTOMER_ADDRESS,
+      },
+      branchId: 'br-1',
+      totalAmount: new Prisma.Decimal(40990),
+      depositAmount: new Prisma.Decimal(40990),
+      depositMethod: 'CASH',
+      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 40990, amount: 40990 }],
+    });
+    await expect(service.convertToSale('bk-1', {}, 'user-1', OWNER)).rejects.toThrow(
+      /ลูกค้าทดสอบระบบ/,
+    );
+    expect(prisma._tx.sale.create).not.toHaveBeenCalled();
+    expect(prisma._tx.product.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ include: { po: { select: { poNumber: true } } } }),
+    );
   });
 });

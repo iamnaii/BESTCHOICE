@@ -1,0 +1,56 @@
+name: Setup Node + workspace dependencies
+description: >-
+  Node.js + node_modules restored from cache keyed on package-lock.json (exact match
+  only — a partial restore would skip `npm ci` on a half-populated tree), plus optional
+  Prisma client generation. One composite so the parallel CI jobs cannot drift on how
+  they install (2026-09-05 — deploy-gcp.yml split into parallel gates).
+
+inputs:
+  node-version:
+    description: Node.js major version
+    required: false
+    default: '20'
+  prisma:
+    description: Prisma clients to generate — none | shop | both (SHOP + FINANCE)
+    required: false
+    default: none
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+
+    # node_modules of the whole workspace (root + every app/package). Postinstall
+    # outputs (prisma engines, esbuild/rollup binaries) live inside, so a hit means
+    # `npm ci` is skipped entirely (~2.5 min → seconds). No restore-keys on purpose:
+    # only an exact package-lock match may skip the install.
+    - name: Restore node_modules
+      id: modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: ${{ runner.os }}-node${{ inputs.node-version }}-modules-${{ hashFiles('package-lock.json') }}
+
+    - name: Install dependencies
+      if: steps.modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    # Generated clients are NOT trusted from cache — the schema can change without
+    # package-lock changing, so every consumer regenerates (~10 s each).
+    - name: Generate Prisma Client (SHOP)
+      if: inputs.prisma == 'shop' || inputs.prisma == 'both'
+      shell: bash
+      run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+    - name: Generate Prisma Client (FINANCE)
+      if: inputs.prisma == 'both'
+      shell: bash
+      run: npm run prisma:finance:generate --workspace=apps/api

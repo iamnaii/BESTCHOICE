@@ -165,6 +165,17 @@ describe('SalesService', () => {
         ]),
         create: jest.fn().mockResolvedValue(mockSale),
       },
+      customer: {
+        // รั้วกันข้ามฝั่ง (spec 2026-09-05 §5.1 — SaleCreationService.assertSameTestSideForSale)
+        // อ่านลูกค้าก่อน dispatch ไป writer — ค่าเริ่มต้นเป็นลูกค้าจริง (ที่อยู่ null / เบอร์ปกติ)
+        // ให้รั้วเงียบ: เทสในไฟล์นี้เป็นเรื่องขายจริง ไม่ได้ทดสอบตัวรั้ว
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'customer-1',
+          name: 'สมหญิง ใจดี',
+          phone: '0891234567',
+          addressCurrent: null,
+        }),
+      },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         findMany: jest.fn().mockResolvedValue([mockProduct]),
@@ -197,6 +208,8 @@ describe('SalesService', () => {
       // product status flip in every create*Sale path — every txPrisma stub
       // in this file needs this, whether via `...prisma` spread or built
       // standalone (see the two EXTERNAL_FINANCE tests below that don't spread).
+      // closeRepossessionOnSale (2026-09-05) — POS closes a REPOSSESSED/READY_FOR_SALE row itself
+      repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       productReservation: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
@@ -724,6 +737,8 @@ describe('SalesService', () => {
             },
             sale: { create: jest.fn().mockResolvedValue({ ...mockSale, saleType: 'EXTERNAL_FINANCE' }) },
             financeReceivable: { create: jest.fn().mockResolvedValue({}) },
+            // closeRepossessionOnSale (2026-09-05) — POS closes a REPOSSESSED/READY_FOR_SALE row itself
+            repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
             productReservation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
           };
           return fn(txPrisma);
@@ -753,6 +768,8 @@ describe('SalesService', () => {
                 return Promise.resolve({});
               }),
             },
+            // closeRepossessionOnSale (2026-09-05) — POS closes a REPOSSESSED/READY_FOR_SALE row itself
+            repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
             productReservation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
           };
           return fn(txPrisma);

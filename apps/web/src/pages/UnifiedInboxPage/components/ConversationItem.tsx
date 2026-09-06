@@ -1,10 +1,11 @@
 import { memo, useState } from 'react';
-import { Pin } from 'lucide-react';
+import { CalendarClock, Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
 import { fbWindowFor, fbWindowLeftText } from './fb-window';
+import { apptState, nextAppointment, type RoomAppointment } from './appointment';
 import type { ReactNode } from 'react';
 
 /** ป้ายในแถวรายชื่อไม่เกินเท่านี้ — ท่าเดียวกับ OBI (ROW_PILLS=2) หลังเจอแถวสูง 276px จากป้าย 18 ใบ */
@@ -87,6 +88,8 @@ interface ConversationItemProps {
     waitingSince?: string | null;
     /** ปิดงานแล้วเมื่อ — แถวจางลง + ป้าย "ปิดแล้ว" อยู่ท้ายรายการ */
     resolvedAt?: string | null;
+    /** นัดถัดไปของห้อง (API ส่งใบใกล้สุดที่ยังไม่เสร็จ) — ป้ายนัดตามความใกล้ */
+    todos?: RoomAppointment[] | null;
     /** ข้อความล่าสุดของลูกค้า — ฐานนับหน้าต่าง 24 ชม. ของ Facebook */
     lastCustomerAt?: string | null;
     customer?: { id: string; name: string; phone?: string; avatarUrl?: string | null; lineAvatarUrl?: string | null } | null;
@@ -230,6 +233,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
 
         {/* Tags + priority + assigned + AI status */}
         {(session.resolvedAt ||
+          session.todos?.length ||
           session.waitingSince ||
           session.tags?.length ||
           (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') ||
@@ -237,7 +241,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           aiPaused ||
           handoffMode ||
           (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
-          <div className="flex items-center gap-1.5 mt-1.5 overflow-hidden">
+          <div className="flex items-center gap-1.5 mt-1.5 overflow-hidden whitespace-nowrap">
             {/* ป้ายไม่เกิน 2 ใบ ที่เหลือยุบเป็น +N (สเปก §7 แก้ไข 2026-09-05) — ลำดับล็อกไว้:
                 ป้ายหน้าต่าง (เหลือ N / หมดเวลาตอบ / รอ N) → ด่วน → ค้างชำระ → สถานะบอท
                 ป้ายหน้าต่างมาก่อนเสมอ เพราะเป็นใบเดียวที่แปลว่า "ทำงานต่อไม่ได้" · ของเดิมห้าใบเต็ม 235/235px แบบ nowrap */}
@@ -258,6 +262,14 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
                 } else {
                   pills.push(<Badge key="win" variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug">รอ {formatWaitDuration(session.waitingSince)}</Badge>);
                 }
+              }
+              const appt = apptState(nextAppointment(session.todos)?.dueDate);
+              if (appt) {
+                pills.push(
+                  <Badge key="appt" variant={appt.tone === 'danger' ? 'destructive' : appt.tone === 'warn' ? 'warning' : 'secondary'} appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug inline-flex items-center gap-1">
+                    <CalendarClock className="size-3" />{appt.label}
+                  </Badge>,
+                );
               }
               if (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') {
                 const cfg = getStatusBadgeProps(session.priority, sessionPriorityMap);

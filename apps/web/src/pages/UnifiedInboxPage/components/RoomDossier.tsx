@@ -10,6 +10,7 @@ import {
   MessagesSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apptState } from './appointment';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
@@ -225,15 +226,17 @@ function AppointmentsGroup({ todos, onNew }: { todos: Todo[]; onNew: () => void 
     <Group label="นัดหมาย" count={open.length} right={<button type="button" className="text-primary" onClick={onNew}>＋ ตั้งนัด</button>}>
       {rows.length === 0 && <Hint>ยังไม่มีนัดในห้องนี้</Hint>}
       {rows.map((t) => {
-        const overdue = !!t.dueDate && new Date(t.dueDate).getTime() < Date.now() - 86_400_000;
+        // ชิปสถานะใช้กติกาเดียวกับป้ายแถวรายชื่อ/แถบเตือน (apptState) — เลยนัด 9 นาทีต้องแดง ไม่ใช่ "รอถึงวัน"
+        const st = apptState(t.dueDate);
+        const overdue = !!st && st.tone === 'danger';
         return (
           <div key={t.id} className="mt-1.5 flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs first:mt-0">
             <div className="min-w-0 flex-1">
               <p className="m-0 font-semibold"><span className="tabular-nums">{dueLabel(t.dueDate)}</span> · {t.title}</p>
               <p className="m-0 text-muted-foreground">{t.assignee?.name ?? 'ยังไม่มอบหมาย'}{t.createdAt ? ` · ตั้งเมื่อ ${new Date(t.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit' })}` : ''}</p>
             </div>
-            <span className={cn('shrink-0 self-center rounded-full px-2 py-0.5 text-[11px] font-semibold', overdue ? 'bg-destructive/10 text-destructive' : t.status === 'DOING' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
-              {overdue ? 'เลยนัด' : t.status === 'DOING' ? 'กำลังทำ' : 'รอถึงวัน'}
+            <span className={cn('shrink-0 self-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold', overdue ? 'bg-destructive/10 text-destructive' : st?.tone === 'warn' ? 'bg-warning/15 text-amber-800 dark:text-amber-200' : t.status === 'DOING' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
+              {overdue ? st!.label : st?.tone === 'warn' ? 'วันนี้' : t.status === 'DOING' ? 'กำลังทำ' : 'รอถึงวัน'}
             </span>
           </div>
         );
@@ -489,7 +492,9 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
 
             <AdGroup room={room} />
 
-            <AppointmentsGroup todos={roomTodos} onNew={() => setApptOpen(true)} />
+            <div id="room-appointments" className="scroll-mt-2">
+              <AppointmentsGroup todos={roomTodos} onNew={() => setApptOpen(true)} />
+            </div>
 
             <Group label="สินค้าที่กำลังคุย">
               <ProductContextCard roomId={room.id} empty={<Hint>ยังไม่พบรุ่นในแชทนี้ — เลือกส่งได้จากปุ่มสินค้าที่แถบพิมพ์</Hint>} />

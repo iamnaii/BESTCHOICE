@@ -115,6 +115,13 @@ export class StaffChatController {
     });
   }
 
+  /** นัดที่ถึงเวลา/ใกล้ถึง/เลยไม่เกิน 24 ชม. ของทุกห้อง — แถบเตือนเหนือทุกแผงของ inbox */
+  @Get('appointments/due')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async listDueAppointments() {
+    return this.roomManager.listDueAppointments();
+  }
+
   @Get('rooms/counts')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getRoomCounts(

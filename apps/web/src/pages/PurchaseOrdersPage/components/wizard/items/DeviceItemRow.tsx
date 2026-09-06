@@ -1,8 +1,7 @@
 import { getModelInfo } from '@/data/productCatalog';
 import { cn } from '@/lib/utils';
 import type { ItemForm } from '../../../types';
-import { ChipGroup } from './ChipGroup';
-import { ActionsCell, CompactSelect, MoneyCells, cellCls } from './RowChrome';
+import { ActionsCell, CompactSelect, MoneyCells, cellCls, selectCls } from './RowChrome';
 
 interface DeviceItemRowProps {
   item: ItemForm;
@@ -12,12 +11,7 @@ interface DeviceItemRowProps {
   onRemove: () => void;
 }
 
-const CONDITION = [
-  { value: 'PHONE_NEW', label: 'ใหม่' },
-  { value: 'PHONE_USED', label: 'มือสอง' },
-];
-
-/** One phone/tablet line of the items table: # | รุ่น (+ ใหม่/มือสอง) | ความจุ | สี | จำนวน | ราคา | รวม | ⧉ × */
+/** One phone/tablet line of the items table: # | รุ่น | สภาพ | ความจุ | สี | จำนวน | ราคา | รวม | ⧉ × */
 export function DeviceItemRow({ item, idx, onChange, onDuplicate, onRemove }: DeviceItemRowProps) {
   const info = item.brand && item.model ? getModelInfo(item.brand, item.model) : undefined;
   const isTablet = item.category === 'TABLET';
@@ -32,15 +26,23 @@ export function DeviceItemRow({ item, idx, onChange, onDuplicate, onRemove }: De
         <div className="truncate text-sm font-semibold leading-snug text-foreground" title={item.model}>
           {item.model || 'ไม่ระบุรุ่น'}
         </div>
-        <div className="mt-1">
-          {isTablet ? (
-            <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">แท็บเล็ต</span>
-          ) : (
-            <ChipGroup label="สภาพ" hideLabel options={CONDITION} value={item.category} onChange={(v) => onChange('category', v)} />
-          )}
-        </div>
         {!info && (
-          <p className="mt-1 text-2xs leading-snug text-muted-foreground">ไม่พบรุ่นในแคตตาล็อก — ลบแล้วเพิ่มใหม่</p>
+          <p className="mt-0.5 text-2xs leading-snug text-muted-foreground">ไม่พบรุ่นในแคตตาล็อก — ลบแล้วเพิ่มใหม่</p>
+        )}
+      </td>
+      <td className={cellCls}>
+        {isTablet ? (
+          <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">แท็บเล็ต</span>
+        ) : (
+          <select
+            aria-label="สภาพ"
+            value={item.category}
+            onChange={(e) => onChange('category', e.target.value)}
+            className={selectCls}
+          >
+            <option value="PHONE_NEW">ใหม่</option>
+            <option value="PHONE_USED">มือสอง</option>
+          </select>
         )}
       </td>
       <td className={cellCls}>

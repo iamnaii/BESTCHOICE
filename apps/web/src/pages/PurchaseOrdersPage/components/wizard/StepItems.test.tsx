@@ -45,16 +45,21 @@ describe('StepItems — picker (search first)', () => {
     expect(p.addCatalogItem).toHaveBeenCalledWith(expect.objectContaining({ name: 'iPhone 17 Pro Max', brand: 'Apple' }), 'PHONE_NEW');
   });
 
-  it('typing filters the catalog and picking a result adds it with the active new/used mode', () => {
+  it('mode chips are โทรศัพท์ / แท็บเล็ต / อุปกรณ์เสริม — new vs used is chosen per row, not here', () => {
+    renderStep([]);
+    const radios = within(screen.getByRole('radiogroup', { name: 'ประเภทสินค้า' })).getAllByRole('radio');
+    expect(radios.map((r) => r.textContent)).toEqual(['โทรศัพท์', 'แท็บเล็ต', 'อุปกรณ์เสริม']);
+  });
+
+  it('typing filters the catalog and picking a result adds it as a new phone', () => {
     const p = renderStep([]);
-    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'ประเภทสินค้า' })).getByRole('radio', { name: 'มือสอง' }));
     const input = screen.getByRole('combobox', { name: 'ค้นหารุ่น' });
     fireEvent.change(input, { target: { value: '16 pro' } });
     expect(screen.getByRole('option', { name: 'iPhone 16 Pro' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'iPhone 16 Pro Max' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'iPhone 15 Pro' })).toBeNull();
     fireEvent.click(screen.getByRole('option', { name: 'iPhone 16 Pro' }));
-    expect(p.addCatalogItem).toHaveBeenCalledWith(expect.objectContaining({ name: 'iPhone 16 Pro' }), 'PHONE_USED');
+    expect(p.addCatalogItem).toHaveBeenCalledWith(expect.objectContaining({ name: 'iPhone 16 Pro' }), 'PHONE_NEW');
     expect(input).toHaveValue(''); // cleared so the next model can be typed straight away
   });
 
@@ -74,10 +79,56 @@ describe('StepItems — picker (search first)', () => {
   });
 });
 
+describe('StepItems — when the results list opens (owner feedback 2026-09-06)', () => {
+  const search = () => screen.getByRole('combobox', { name: 'ค้นหารุ่น' });
+
+  it('latest chip adds the row without opening the results list', () => {
+    const p = renderStep([]);
+    fireEvent.click(within(screen.getByRole('group', { name: 'รุ่นล่าสุด' })).getByRole('button', { name: 'iPhone 17 Pro' }));
+    expect(p.addCatalogItem).toHaveBeenCalledWith(expect.objectContaining({ name: 'iPhone 17 Pro' }), 'PHONE_NEW');
+    expect(screen.queryByRole('option')).toBeNull();
+    expect(search()).not.toHaveFocus();
+  });
+
+  it('after a latest-chip add, focus moves to the new row’s storage select', () => {
+    const props = {
+      items: [iphone16pro], updateItem: vi.fn(), toggleModel: vi.fn(), removeItem: vi.fn(), duplicateItem: vi.fn(),
+      addCatalogItem: vi.fn(), addAccessoryItem: vi.fn(), subtotal: 0,
+    };
+    const { rerender } = render(<StepItems {...props} />);
+    fireEvent.click(within(screen.getByRole('group', { name: 'รุ่นล่าสุด' })).getByRole('button', { name: 'iPhone 17 Pro' }));
+    // the parent appends the row on the next render
+    const added: ItemForm = { ...blank, brand: 'Apple', model: 'iPhone 17 Pro', category: 'PHONE_NEW' };
+    rerender(<StepItems {...props} items={[iphone16pro, added]} />);
+    expect(row(2).getByRole('combobox', { name: 'ความจุ' })).toHaveFocus();
+  });
+
+  it('focus alone keeps the list closed; click, typing or ArrowDown opens it', () => {
+    renderStep([]);
+    fireEvent.focus(search());
+    expect(screen.queryByRole('option')).toBeNull();
+    fireEvent.click(search());
+    expect(screen.queryAllByRole('option').length).toBeGreaterThan(0);
+    fireEvent.keyDown(search(), { key: 'Escape' });
+    expect(screen.queryByRole('option')).toBeNull();
+    fireEvent.keyDown(search(), { key: 'ArrowDown' });
+    expect(screen.queryAllByRole('option').length).toBeGreaterThan(0);
+  });
+
+  it('picking from the list keeps focus in the search box with the list closed', () => {
+    renderStep([]);
+    fireEvent.change(search(), { target: { value: '16 pro' } });
+    fireEvent.click(screen.getByRole('option', { name: 'iPhone 16 Pro' }));
+    expect(search()).toHaveFocus();
+    expect(search()).toHaveValue('');
+    expect(screen.queryByRole('option')).toBeNull();
+  });
+});
+
 describe('StepItems — table layout', () => {
   it('renders one column header per field so every row lines up', () => {
     renderStep([iphone16pro]);
-    for (const h of ['รุ่น', 'ความจุ', 'สี', 'จำนวน', 'ราคา/ชิ้น', 'รวม']) {
+    for (const h of ['รุ่น', 'สภาพ', 'ความจุ', 'สี', 'จำนวน', 'ราคา/ชิ้น', 'รวม']) {
       expect(screen.getByRole('columnheader', { name: h })).toBeInTheDocument();
     }
   });
@@ -101,10 +152,20 @@ describe('StepItems — device row', () => {
     expect(row(1).getByRole('combobox', { name: 'ความจุ' })).toHaveValue('512GB');
   });
 
-  it('new/used toggle updates the category', () => {
+  it('สภาพ column is a ใหม่/มือสอง select that updates the category', () => {
     const p = renderStep([iphone16pro]);
-    fireEvent.click(within(row(1).getByRole('radiogroup', { name: 'สภาพ' })).getByRole('radio', { name: 'มือสอง' }));
+    const cond = row(1).getByRole('combobox', { name: 'สภาพ' });
+    expect(within(cond).getAllByRole('option').map((o) => o.textContent)).toEqual(['ใหม่', 'มือสอง']);
+    expect(cond).toHaveValue('PHONE_NEW');
+    fireEvent.change(cond, { target: { value: 'PHONE_USED' } });
     expect(p.updateItem).toHaveBeenCalledWith(0, 'category', 'PHONE_USED');
+  });
+
+  it('tablet rows show แท็บเล็ต in the สภาพ column instead of the select', () => {
+    renderStep([{ ...blank, brand: 'Apple', model: 'iPad (10th gen)', category: 'TABLET' }]);
+    const r = row(1);
+    expect(r.queryByRole('combobox', { name: 'สภาพ' })).toBeNull();
+    expect(r.getByText('แท็บเล็ต')).toBeInTheDocument();
   });
 
   it('quantity stepper: + increments, − is disabled at 1', () => {

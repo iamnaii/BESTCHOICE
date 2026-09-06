@@ -10,15 +10,17 @@ import {
   storageRange,
   type CatalogEntry,
   type CatalogKind,
-  type PhoneMode,
 } from '../../../po-catalog.util';
 import { ChipGroup } from './ChipGroup';
 
-type PickMode = PhoneMode | 'TABLET' | 'ACCESSORY';
+/** How a model was picked — the search flow keeps typing, the chip flow jumps to the new row. */
+export type PickVia = 'search' | 'chip';
 
+type PickMode = 'PHONE' | 'TABLET' | 'ACCESSORY';
+
+// ใหม่/มือสอง is a column on each row (owner 2026-09-06), so the picker only chooses the kind.
 const MODES = [
-  { value: 'PHONE_NEW', label: 'โทรศัพท์ใหม่' },
-  { value: 'PHONE_USED', label: 'มือสอง' },
+  { value: 'PHONE', label: 'โทรศัพท์' },
   { value: 'TABLET', label: 'แท็บเล็ต' },
   { value: 'ACCESSORY', label: 'อุปกรณ์เสริม' },
 ];
@@ -29,31 +31,35 @@ const quickChip =
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40';
 
 interface CatalogPickerProps {
-  onPick: (entry: CatalogEntry, phoneMode: PhoneMode) => void;
+  onPick: (entry: CatalogEntry, via: PickVia) => void;
   onPickAccessory: (accessoryType: string) => void;
 }
 
 /**
- * Search-first picker: type a model → Enter/click adds a row. The mode chips set the
- * category of the next row (ใหม่/มือสอง/แท็บเล็ต) or switch to accessory types.
- * Results render inline (no portal) so the modal's scroll container can't clip them.
+ * Search-first picker: type a model → Enter/click adds a row. The mode chips switch
+ * between phones, tablets and accessory types. The results list opens only on an
+ * explicit gesture — typing, clicking the box, or ArrowDown — never on focus alone,
+ * so adding via a quick chip does not pop the list over the table (owner feedback
+ * 2026-09-06). Results render inline (no portal) so the modal's scroll container
+ * cannot clip them.
  */
 export function CatalogPicker({ onPick, onPickAccessory }: CatalogPickerProps) {
-  const [mode, setMode] = useState<PickMode>('PHONE_NEW');
+  const [mode, setMode] = useState<PickMode>('PHONE');
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const kind: CatalogKind = mode === 'TABLET' ? 'TABLET' : 'PHONE';
-  const phoneMode: PhoneMode = mode === 'PHONE_USED' ? 'PHONE_USED' : 'PHONE_NEW';
   const results = searchCatalog(query, kind, 12);
   const latest = latestModels(kind, 6);
 
-  function pick(entry: CatalogEntry) {
-    onPick(entry, phoneMode);
+  function pick(entry: CatalogEntry, via: PickVia) {
+    onPick(entry, via);
     setQuery('');
     setOpen(false);
-    inputRef.current?.focus();
+    // Search flow: stay in the box (closed) so the next model can be typed straight away.
+    // Chip flow: leave focus alone — StepItems moves it to the new row.
+    if (via === 'search') inputRef.current?.focus();
   }
 
   return (
@@ -67,6 +73,7 @@ export function CatalogPicker({ onPick, onPickAccessory }: CatalogPickerProps) {
         onChange={(v) => {
           setMode(v as PickMode);
           setQuery('');
+          setOpen(false);
         }}
       />
 
@@ -97,12 +104,14 @@ export function CatalogPicker({ onPick, onPickAccessory }: CatalogPickerProps) {
                   setQuery(v);
                   setOpen(true);
                 }}
-                onFocus={() => setOpen(true)}
+                onClick={() => setOpen(true)}
                 onBlur={() => setOpen(false)}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     setOpen(false);
                     e.currentTarget.blur();
+                  } else if (e.key === 'ArrowDown' && !open) {
+                    setOpen(true);
                   }
                 }}
                 aria-label="ค้นหารุ่น"
@@ -130,7 +139,7 @@ export function CatalogPicker({ onPick, onPickAccessory }: CatalogPickerProps) {
                     <CommandEmpty>ไม่พบรุ่น "{query}"</CommandEmpty>
                     <CommandGroup heading={kind === 'TABLET' ? 'iPad' : 'iPhone'}>
                       {results.map((e) => (
-                        <CommandItem key={e.name} value={e.name} aria-label={e.name} onSelect={() => pick(e)}>
+                        <CommandItem key={e.name} value={e.name} aria-label={e.name} onSelect={() => pick(e, 'search')}>
                           <span className="flex-1 truncate">{e.name}</span>
                           <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">{storageRange(e.storage)}</span>
                         </CommandItem>
@@ -149,7 +158,7 @@ export function CatalogPicker({ onPick, onPickAccessory }: CatalogPickerProps) {
             <span className="mr-0.5 text-xs text-muted-foreground">รุ่นล่าสุด</span>
             <div role="group" aria-label="รุ่นล่าสุด" className="flex flex-wrap gap-1.5">
               {latest.map((e) => (
-                <button key={e.name} type="button" onClick={() => pick(e)} className={quickChip}>
+                <button key={e.name} type="button" onClick={() => pick(e, 'chip')} className={quickChip}>
                   <Plus className="size-3" />
                   {e.name}
                 </button>

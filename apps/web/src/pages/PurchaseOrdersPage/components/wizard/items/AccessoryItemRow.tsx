@@ -19,7 +19,7 @@ interface AccessoryItemRowProps {
 }
 
 /**
- * One accessory line. The first three columns (รุ่น | ความจุ | สี) are merged into a
+ * One accessory line. The first four columns (รุ่น | สภาพ | ความจุ | สี) are merged into a
  * single cell holding type / brand / connector-or-compatible-models, while the money
  * columns stay aligned with the device rows.
  */
@@ -34,7 +34,7 @@ export function AccessoryItemRow({ item, idx, onChange, onToggleModel, onDuplica
       className="border-t border-border/60 bg-primary/5 transition-colors dark:bg-primary/10"
     >
       <td className={cn(cellCls, 'text-xs tabular-nums text-muted-foreground')}>{idx + 1}</td>
-      <td colSpan={3} className={cellCls}>
+      <td colSpan={4} className={cellCls}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="shrink-0 rounded-full bg-primary/15 px-2 py-0.5 text-2xs font-medium text-primary dark:bg-primary/20">
             อุปกรณ์เสริม

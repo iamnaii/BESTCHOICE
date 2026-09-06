@@ -27,6 +27,10 @@ export function catalogEntries(): CatalogEntry[] {
 export const kindOf = (entry: Pick<CatalogEntry, 'category'>): CatalogKind =>
   entry.category === 'TABLET' ? 'TABLET' : 'PHONE';
 
+/** ItemForm.category → what kind of product the row is; ใหม่/มือสอง are the same kind (a phone). */
+export const categoryKind = (category: string): string =>
+  category === 'PHONE_NEW' || category === 'PHONE_USED' ? 'PHONE' : category;
+
 const compact = (s: string) => s.toLowerCase().replace(/\s+/g, '');
 
 /**

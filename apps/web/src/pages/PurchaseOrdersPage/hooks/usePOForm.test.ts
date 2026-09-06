@@ -50,6 +50,24 @@ describe('usePOForm — catalog-driven item rows', () => {
     expect(result.current.items[0]).toMatchObject({ category: 'ACCESSORY', accessoryType: 'เคส', brand: 'Apple', model: '', quantity: '1' });
   });
 
+  it('switching a phone row between ใหม่ and มือสอง keeps its model / storage / colour', () => {
+    const { result } = setup();
+    act(() => result.current.addCatalogItem(iphone16pro, 'PHONE_NEW'));
+    act(() => result.current.updateItem(0, 'storage', '256GB'));
+    act(() => result.current.updateItem(0, 'color', 'Black Titanium'));
+    act(() => result.current.updateItem(0, 'category', 'PHONE_USED'));
+    expect(result.current.items[0]).toMatchObject({
+      category: 'PHONE_USED', brand: 'Apple', model: 'iPhone 16 Pro', storage: '256GB', color: 'Black Titanium',
+    });
+  });
+
+  it('changing a row to a different kind of category still resets the model fields', () => {
+    const { result } = setup();
+    act(() => result.current.addCatalogItem(iphone16pro, 'PHONE_NEW'));
+    act(() => result.current.updateItem(0, 'category', 'ACCESSORY'));
+    expect(result.current.items[0]).toMatchObject({ category: 'ACCESSORY', model: '', storage: '', color: '' });
+  });
+
   it('duplicateItem inserts a copy right after the source row', () => {
     const { result } = setup();
     act(() => {

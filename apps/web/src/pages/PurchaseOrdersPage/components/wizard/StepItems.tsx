@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Package } from 'lucide-react';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { ItemForm } from '../../types';
@@ -21,9 +22,9 @@ const th = 'px-2 py-2 text-left text-2xs font-medium uppercase tracking-wider te
 
 /**
  * Step 2 of the PO wizard — search-first picker + one table row per line.
- * Top: one search box over the catalog (+ ใหม่/มือสอง/แท็บเล็ต/อุปกรณ์เสริม and
- * one-click latest models). Below: a table whose columns line up across every row
- * (รุ่น | ความจุ | สี | จำนวน | ราคา/ชิ้น | รวม). Same ItemForm shape as before, so
+ * Top: one search box over the catalog (+ โทรศัพท์/แท็บเล็ต/อุปกรณ์เสริม and one-click
+ * latest models). Below: a table whose columns line up across every row
+ * (รุ่น | สภาพ | ความจุ | สี | จำนวน | ราคา/ชิ้น | รวม). Same ItemForm shape as before, so
  * review/totals/submit are untouched.
  */
 export function StepItems({
@@ -38,6 +39,17 @@ export function StepItems({
 }: StepItemsProps) {
   const pieces = items.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
 
+  // A quick-chip add lands the user on the new row (its first choice), not back in the
+  // search box — the parent appends the row, so the focus moves once the row exists.
+  const tableRef = useRef<HTMLTableElement>(null);
+  const focusNewRow = useRef(false);
+  useEffect(() => {
+    if (!focusNewRow.current) return;
+    focusNewRow.current = false;
+    const row = tableRef.current?.querySelector('tbody tr:last-of-type');
+    row?.querySelector<HTMLElement>('select[aria-label="ความจุ"], input[aria-label="ยี่ห้ออุปกรณ์"]')?.focus();
+  }, [items.length]);
+
   return (
     <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2.5">
@@ -47,23 +59,33 @@ export function StepItems({
         <div className="flex-1">
           <h3 className="text-sm font-semibold leading-snug text-foreground">รายการสินค้า</h3>
           <p className="text-xs leading-snug text-muted-foreground">
-            ค้นหารุ่นแล้วกดเพิ่ม — เลือกความจุ / สี / จำนวน / ราคาในตาราง
+            ค้นหารุ่นแล้วกดเพิ่ม — เลือกสภาพ / ความจุ / สี / จำนวน / ราคาในตาราง
           </p>
         </div>
       </div>
 
-      <CatalogPicker onPick={addCatalogItem} onPickAccessory={addAccessoryItem} />
+      <CatalogPicker
+        onPick={(entry, via) => {
+          if (via === 'chip') focusNewRow.current = true;
+          addCatalogItem(entry, 'PHONE_NEW');
+        }}
+        onPickAccessory={(type) => {
+          focusNewRow.current = true;
+          addAccessoryItem(type);
+        }}
+      />
 
       <div className="mt-4 overflow-x-auto rounded-lg border border-border">
-        <table className="w-full table-fixed border-collapse text-sm">
+        <table ref={tableRef} className="w-full table-fixed border-collapse text-sm">
           <colgroup>
-            {/* # | รุ่น (rest ≈ 250px) | ความจุ | สี | จำนวน (stepper = 106px) | ราคา | รวม | ⧉ × */}
+            {/* # | รุ่น (rest ≈ 172px) | สภาพ (fits "มือสอง") | ความจุ | สี | จำนวน (stepper = 106px) | ราคา | รวม | ⧉ × */}
             <col className="w-7" />
             <col />
+            <col className="w-25" />
             <col className="w-26" />
-            <col className="w-38" />
+            <col className="w-35" />
             <col className="w-31" />
-            <col className="w-30" />
+            <col className="w-28" />
             <col className="w-24" />
             <col className="w-14" />
           </colgroup>
@@ -71,6 +93,7 @@ export function StepItems({
             <tr>
               <th scope="col" className={th}>#</th>
               <th scope="col" className={th}>รุ่น</th>
+              <th scope="col" className={th}>สภาพ</th>
               <th scope="col" className={th}>ความจุ</th>
               <th scope="col" className={th}>สี</th>
               <th scope="col" className={th}>จำนวน</th>
@@ -84,7 +107,7 @@ export function StepItems({
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center">
+                <td colSpan={9} className="px-4 py-8 text-center">
                   <p className="text-sm font-medium text-foreground">ยังไม่มีรายการ</p>
                   <p className="mt-1 text-xs leading-snug text-muted-foreground">
                     พิมพ์ชื่อรุ่นในช่องค้นหา หรือกดรุ่นล่าสุดด้านบนเพื่อเพิ่มแถว

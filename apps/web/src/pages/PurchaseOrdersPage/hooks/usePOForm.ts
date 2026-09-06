@@ -4,7 +4,7 @@ import { ItemForm } from '../types';
 import { emptyItem } from '../constants';
 import { computePoTotals } from '../poTotals';
 import { getExpectedDateError } from '../po-dates.util';
-import { resolveCategory, type CatalogEntry, type PhoneMode } from '../po-catalog.util';
+import { categoryKind, resolveCategory, type CatalogEntry, type PhoneMode } from '../po-catalog.util';
 import { UseMutationResult } from '@tanstack/react-query';
 
 interface UsePOFormOptions {
@@ -58,8 +58,9 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     const newItems = [...items];
     const item = { ...newItems[idx], [field]: value };
 
-    // Cascade reset when parent changes (Category is first)
-    if (field === 'category') {
+    // Cascade reset when parent changes (Category is first). Flipping a phone between
+    // ใหม่/มือสอง (the สภาพ column) is the same kind of product, so its model/storage/colour stay.
+    if (field === 'category' && categoryKind(value) !== categoryKind(newItems[idx].category)) {
       item.brand = '';
       item.model = '';
       item.color = '';

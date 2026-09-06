@@ -264,6 +264,22 @@ export default function PurchaseOrdersPage() {
         poDetail={data.poDetail}
         openReceiveModal={data.openReceiveModal}
         openPaymentModal={data.openPaymentModal}
+        onCancel={(po) =>
+          data.setConfirmDialog({
+            open: true,
+            message:
+              po.status === 'ORDERED'
+                ? `ต้องการยกเลิก PO ${po.poNumber}? สั่งซื้อแล้วแต่ยังไม่ได้รับของ — ยกเลิกแล้วต้องแจ้งผู้ขายเอง`
+                : `ต้องการยกเลิก PO ${po.poNumber}?`,
+            action: () =>
+              data.cancelMutation.mutate(po.id, {
+                onSuccess: () => {
+                  data.setIsDetailModalOpen(false);
+                  data.setPODetail(null);
+                },
+              }),
+          })
+        }
       />
 
       <PaymentModal

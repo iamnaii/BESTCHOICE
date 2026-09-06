@@ -42,6 +42,8 @@ export interface PurchaseOrder {
   orderDate: string;
   expectedDate: string | null;
   orderedAt: string | null;
+  /** Row creation time (Prisma default) — the history's "สร้าง" timestamp. */
+  createdAt?: string;
   dueDate: string | null;
   status: string;
   subtotal: string;

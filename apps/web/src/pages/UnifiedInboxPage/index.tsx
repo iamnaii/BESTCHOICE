@@ -1,11 +1,15 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
-import ConversationList from './components/ConversationList';
+import ConversationList, { type InboxFilters } from './components/ConversationList';
+import { describeSendError, SEND_ERROR_WINDOW, SEND_ERROR_TOKEN } from './components/send-error';
+import { buildRoomListParams } from './components/room-query';
+import type { StaffOption } from './components/ChannelFilter';
 import ChatPanel from './components/ChatPanel';
-import Customer360Panel from './components/Customer360Panel';
+import RoomDossier from './components/RoomDossier';
 import { useChatSocket, type ChatMessageEvent } from './hooks/useChatSocket';
 import { useNotificationPrefs } from './hooks/useNotificationPrefs';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,21 +24,19 @@ const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA
 /**
  * UnifiedInboxPage — 3-panel chat interface.
  *
- * Layout: ConversationList | ChatPanel | Customer360Panel
+ * Layout: ConversationList | ChatPanel | RoomDossier (แผงขวา 3 แท็บ · ใช้บล็อกเดิมของ Customer360Panel ผ่านโหมด bare)
  * On mobile: shows one panel at a time.
  */
 export default function UnifiedInboxPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { roomId: roomIdParam } = useParams<{ roomId: string }>();
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
   const [roomViewers, setRoomViewers] = useState<{ userId: string; userName: string }[]>([]);
-  const [filters, setFilters] = useState<{
-    tab: InboxTab;
-    channels: string[];
-    search?: string;
-    aiFilter?: 'all' | 'ai' | 'human' | 'pending';
-  }>({ tab: 'all', channels: [], aiFilter: 'all' });
+  // เจ้าของเคาะ 2026-09-05: ช่องทางเลือกทีละอัน · เมนูผู้ดูแลแทนเมนูบอท · view 'expired' = มุมมอง "ตอบไม่ทัน"
+  const [filters, setFilters] = useState<InboxFilters>({ tab: 'waiting', channel: null, who: 'all', view: 'queue' });
 
   // Notification mute prefs (localStorage-persisted, no on-mount permission prompt)
   const { muteAll, toggleMuteAll, toggleRoomMute, isMuted } = useNotificationPrefs();
@@ -81,17 +83,24 @@ export default function UnifiedInboxPage() {
     { clientMessageId: string; roomId: string; text: string }[]
   >([]);
   const [failedSends, setFailedSends] = useState<
-    { id: string; roomId: string; text: string; source: 'http' | 'ws'; clientMessageId: string }[]
+    { id: string; roomId: string; text: string; source: 'http' | 'ws'; clientMessageId: string; reason?: string }[]
   >([]);
 
+  // reason = เหตุจริงที่แปลเป็นไทยแล้ว (สเปก §8.1: ส่งไม่ถึงต้องบอกว่าทำไม ไม่เงียบ)
   const pushFailedSend = useCallback(
-    (roomId: string, text: string, source: 'http' | 'ws', clientMessageId: string) => {
-      setFailedSends((prev) =>
+    (roomId: string, text: string, source: 'http' | 'ws', clientMessageId: string, reason?: string) => {
+      setFailedSends((prev) => {
         // avoid a double entry if HTTP-catch and WS send-failed both fire for the same text
-        prev.some((f) => f.roomId === roomId && f.text === text)
-          ? prev
-          : [...prev, { id: crypto.randomUUID(), roomId, text, source, clientMessageId }],
-      );
+        const dup = prev.find((f) => f.roomId === roomId && f.text === text);
+        if (dup) {
+          // ไม่เพิ่มฟองซ้ำ แต่เหตุที่ "ดีกว่า" ทับได้: เหตุจาก WS (adapter รู้จริง) หรือเหตุที่แปลได้ (พ้น 24 ชม./token)
+          // ชนะข้อความ HTTP ทั่วไปที่มาก่อน
+          const better =
+            !!reason && (!dup.reason || source === 'ws' || reason === SEND_ERROR_WINDOW || reason === SEND_ERROR_TOKEN);
+          return better ? prev.map((f) => (f === dup ? { ...f, reason } : f)) : prev;
+        }
+        return [...prev, { id: crypto.randomUUID(), roomId, text, source, clientMessageId, reason }];
+      });
     },
     [],
   );
@@ -153,8 +162,12 @@ export default function UnifiedInboxPage() {
     },
     // onCollision intentionally dropped — the persistent banner (from onViewers)
     // replaces the one-shot toast.
+    onNoteChanged: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['chat-notes', data.roomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', data.roomId] });
+    },
     onSendFailed: (data) => {
-      pushFailedSend(data.roomId, data.text, 'ws', '');
+      pushFailedSend(data.roomId, data.text, 'ws', '', describeSendError(data.error) ?? undefined);
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
     },
     onReconnect: () => {
@@ -179,16 +192,12 @@ export default function UnifiedInboxPage() {
           params: {
             page: pageParam,
             limit: 50,
-            search: filters.search || undefined,
-            assignedToId: filters.tab === 'mine' ? currentUserId : undefined,
-            unreadOnly: filters.tab === 'unread' ? true : undefined,
-            channels: filters.channels?.length ? filters.channels.join(',') : undefined,
-            aiStatus:
-              filters.aiFilter && filters.aiFilter !== 'all' ? filters.aiFilter : undefined,
+            ...buildRoomListParams(filters, currentUserId),
           },
         })
         .then((r) => r.data),
     initialPageParam: 1,
+    refetchInterval: 60_000,
     getNextPageParam: (lastPage: any) =>
       lastPage.page * lastPage.limit < lastPage.total ? lastPage.page + 1 : undefined,
   });
@@ -201,11 +210,36 @@ export default function UnifiedInboxPage() {
     return [...new Map(flat.map((r: any) => [r.id, r])).values()];
   }, [sessionsQuery.data?.pages]);
 
-  // Server-side accurate unread counts — not derived from the loaded subset.
+  // ตัวนับจากเซิร์ฟเวอร์ — นับทั้งจักรวาลห้อง ไม่ใช่แค่หน้าที่โหลดมา
+  // ส่ง tab ไปด้วยเพราะเมนูช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่
+  // (ไม่งั้นเมนูบอกเลขทั้งบริษัทขณะที่รายการข้างล่างถูกกรองไปแล้ว)
+  // ตัวกรองรายการ (ช่องทาง/ผู้ดูแล) ไม่ส่ง — เลขบนแท็บต้องคงที่ขณะกรอง (สเปก §7)
   const roomCountsQuery = useQuery({
-    queryKey: ['chat-room-counts'],
-    queryFn: () => api.get('/staff-chat/rooms/counts').then((r) => r.data),
+    queryKey: ['chat-room-counts', filters.tab],
+    queryFn: () =>
+      api
+        .get('/staff-chat/rooms/counts', { params: { tab: filters.tab } })
+        .then((r) => r.data),
+    refetchInterval: 60_000,
   });
+
+  // รายชื่อพนักงานสำหรับเมนูผู้ดูแล — endpoint เดียวกับปุ่มมอบหมายใน SessionActions
+  const staffQuery = useQuery({
+    queryKey: ['staff-online'],
+    queryFn: () => api.get('/staff-chat/staff/online').then((r) => r.data?.data ?? r.data),
+    staleTime: 5 * 60_000,
+  });
+  const staffOptions = useMemo<StaffOption[]>(() => {
+    const raw: any[] = Array.isArray(staffQuery.data) ? staffQuery.data : [];
+    return raw
+      .map((u) => ({
+        id: String(u.id),
+        // getAssignableStaff คืน {id, name, email, activeCount} — name ว่างให้ตกไปอีเมล
+        name: u.name || u.email || String(u.id),
+      }))
+      .filter((u) => u.id && u.name)
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  }, [staffQuery.data]);
 
   // AI settings — drives the AI status badge in ConversationItem.
   // Shares the ['ai-settings', 'lite'] cache key with ChatInboxPage Phase A
@@ -228,6 +262,41 @@ export default function UnifiedInboxPage() {
   });
 
   // Fetch messages for active room
+  // โน้ตภายในของห้อง — รวมเข้าไทม์ไลน์กับข้อความ (สเปกแผงกลาง 2026-09-06)
+  const notesQuery = useQuery({
+    queryKey: ['chat-notes', activeRoomId],
+    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/notes`).then((r) => r.data?.data ?? r.data ?? []),
+    enabled: !!activeRoomId,
+  });
+  const invalidateNotes = (roomId: string) => {
+    queryClient.invalidateQueries({ queryKey: ['chat-notes', roomId] });
+    queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
+  };
+  const addNoteMutation = useMutation({
+    mutationFn: ({ roomId, content }: { roomId: string; content: string }) =>
+      api.post(`/staff-chat/rooms/${roomId}/notes`, { content }).then((r) => r.data),
+    onSuccess: (_d, v) => invalidateNotes(v.roomId),
+    onError: () => toast.error('บันทึกโน้ตไม่สำเร็จ'),
+  });
+  const pinNoteMutation = useMutation({
+    mutationFn: ({ roomId, noteId }: { roomId: string; noteId: string }) =>
+      api.patch(`/staff-chat/rooms/${roomId}/notes/${noteId}/pin`).then((r) => r.data),
+    onSuccess: (_d, v) => invalidateNotes(v.roomId),
+    onError: () => toast.error('ปักหมุดไม่สำเร็จ'),
+  });
+  const unpinNoteMutation = useMutation({
+    mutationFn: ({ roomId, noteId }: { roomId: string; noteId: string }) =>
+      api.delete(`/staff-chat/rooms/${roomId}/notes/${noteId}/pin`).then((r) => r.data),
+    onSuccess: (_d, v) => invalidateNotes(v.roomId),
+    onError: () => toast.error('ปลดหมุดไม่สำเร็จ'),
+  });
+  const deleteNoteMutation = useMutation({
+    mutationFn: ({ roomId, noteId }: { roomId: string; noteId: string }) =>
+      api.delete(`/staff-chat/rooms/${roomId}/notes/${noteId}`).then((r) => r.data),
+    onSuccess: (_d, v) => invalidateNotes(v.roomId),
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'ลบโน้ตไม่สำเร็จ'),
+  });
+
   const messagesQuery = useQuery({
     queryKey: ['chat-messages', activeRoomId],
     queryFn: () =>
@@ -335,15 +404,24 @@ export default function UnifiedInboxPage() {
   });
 
   // Handlers
+  // URL คือแหล่งความจริงของห้องที่เปิด (สเปก §7 ลิงก์ห้องใน URL) — เลือกห้อง = เปลี่ยน URL
   const handleSelectRoom = useCallback(
-    (roomId: string) => {
-      if (activeRoomId) leaveRoom(activeRoomId);
-      setActiveRoomId(roomId);
-      joinRoom(roomId);
-      viewRoom(roomId);
-    },
-    [activeRoomId, joinRoom, leaveRoom],
+    (roomId: string) => navigate(`/inbox/${roomId}`),
+    [navigate],
   );
+
+  // param เปลี่ยน → ออกจากห้องเดิม เข้าห้องใหม่ (ครอบทั้งคลิกเลือก, ปุ่มย้อนกลับ, เปิดลิงก์ตรง, refresh)
+  useEffect(() => {
+    const next = roomIdParam ?? null;
+    if (next === activeRoomId) return;
+    if (activeRoomId) leaveRoom(activeRoomId);
+    setActiveRoomId(next);
+    if (next) {
+      joinRoom(next);
+      viewRoom(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ทำงานเฉพาะเมื่อ URL เปลี่ยน
+  }, [roomIdParam]);
 
   // Send via HTTP — WS is unreliable behind some proxies, so HTTP is the
   // source of truth for sending. WS is still used to receive real-time updates.
@@ -363,7 +441,7 @@ export default function UnifiedInboxPage() {
       const data = res.data;
       if (data && data.success === false) {
         removePending();
-        pushFailedSend(roomId, text, 'http', clientMessageId);
+        pushFailedSend(roomId, text, 'http', clientMessageId, describeSendError(data.error ?? data.message) ?? undefined);
         return false;
       }
       // Success — keep the ghost until the refetched row carries the token, then
@@ -374,9 +452,10 @@ export default function UnifiedInboxPage() {
       // until the next inbound message / poll).
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       return true;
-    } catch {
+    } catch (err: any) {
       removePending();
-      pushFailedSend(roomId, text, 'http', clientMessageId);
+      const raw = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.message;
+      pushFailedSend(roomId, text, 'http', clientMessageId, describeSendError(raw) ?? undefined);
       return false;
     }
   };
@@ -487,6 +566,7 @@ export default function UnifiedInboxPage() {
             muteAll={muteAll}
             onToggleMuteAll={handleToggleMuteAll}
             serverCounts={roomCountsQuery.data}
+            staff={staffOptions}
             hasMore={sessionsQuery.hasNextPage}
             isLoadingMore={sessionsQuery.isFetchingNextPage}
             onLoadMore={() => sessionsQuery.fetchNextPage()}
@@ -499,6 +579,17 @@ export default function UnifiedInboxPage() {
         <ChatPanel
           session={sessionQuery.data}
           messages={messagesQuery.data ?? []}
+          notes={Array.isArray(notesQuery.data) ? notesQuery.data : []}
+          pinnedNote={sessionQuery.data?.notes?.[0] ?? null}
+          currentUserRole={user?.role}
+          onAddNote={async (content) => {
+            if (!activeRoomId) return false;
+            await addNoteMutation.mutateAsync({ roomId: activeRoomId, content });
+            return true;
+          }}
+          onPinNote={(noteId) => activeRoomId && pinNoteMutation.mutate({ roomId: activeRoomId, noteId })}
+          onUnpinNote={(noteId) => activeRoomId && unpinNoteMutation.mutate({ roomId: activeRoomId, noteId })}
+          onDeleteNote={(noteId) => activeRoomId && deleteNoteMutation.mutate({ roomId: activeRoomId, noteId })}
           isLoadingMessages={messagesQuery.isLoading}
           isCustomerTyping={isCustomerTyping}
           onStartTyping={() => activeRoomId && startTyping(activeRoomId)}
@@ -507,7 +598,7 @@ export default function UnifiedInboxPage() {
           onSendMessage={handleSendMessage}
           onSendFile={handleSendFile}
           onSendSticker={handleSendSticker}
-          onBack={() => setActiveRoomId(null)}
+          onBack={() => navigate('/inbox')}
           onAssign={(staffId) =>
             activeRoomId && assignMutation.mutate({ roomId: activeRoomId, staffId })
           }
@@ -533,13 +624,13 @@ export default function UnifiedInboxPage() {
         />
       </div>
 
-      {/* Right panel: Customer 360 — always visible on xl+ */}
+      {/* Right panel: RoomDossier (โครง OBI · 3 แท็บ) — always visible on xl+ */}
       <div className="hidden xl:block">
-        <Customer360Panel
+        <RoomDossier
+          room={sessionQuery.data}
           customerId={customerId}
           activeRoomId={activeRoomId}
           onSelectRoom={handleSelectRoom}
-          session={sessionQuery.data}
         />
       </div>
 
@@ -547,14 +638,14 @@ export default function UnifiedInboxPage() {
       <Sheet open={customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
         <SheetContent side="right" className="w-80 p-0 xl:hidden">
           <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
-          <Customer360Panel
+          <RoomDossier
+            room={sessionQuery.data}
             customerId={customerId}
             activeRoomId={activeRoomId}
             onSelectRoom={(id) => {
               handleSelectRoom(id);
               setCustomerPanelOpen(false);
             }}
-            session={sessionQuery.data}
           />
         </SheetContent>
       </Sheet>

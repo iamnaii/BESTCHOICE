@@ -74,6 +74,30 @@ export class AssignmentService {
   }
 
   /**
+   * ใครตอบก่อนได้เป็นเจ้าของ (สเปก §5 · คำตัดสินเจ้าของ 2026-09-05)
+   *
+   * เรียกจาก MessageRouterService.sendStaffMessage **หลังคำตอบถึงลูกค้าแล้ว** เท่านั้น
+   * updateMany แบบมีเงื่อนไข ⇒ สองคนตอบห้องว่างพร้อมกันได้เจ้าของคนเดียว ไม่มี activity/WS ซ้ำ
+   * ห้องที่มีเจ้าของแล้ว คนอื่นตอบได้โดยเจ้าของไม่เปลี่ยน (คืน false เงียบ ๆ)
+   */
+  async claimIfUnassigned(roomId: string, staffId: string): Promise<boolean> {
+    const res = await this.prisma.chatRoom.updateMany({
+      where: { id: roomId, assignedToId: null, deletedAt: null },
+      data: { assignedToId: staffId, status: ChatRoomStatus.ACTIVE },
+    });
+    if (res.count !== 1) return false;
+
+    await this.prisma.staffChatActivity.create({
+      data: { staffId, action: 'assign', metadata: { roomId, source: 'reply' } },
+    });
+
+    this.logger.log(`Room ${roomId} claimed by staff ${staffId} (first reply)`);
+    this.gateway?.emitRoomUpdate(roomId, { event: 'assigned', roomId, assignedToId: staffId });
+    this.gateway?.emitToStaff(staffId, 'chat:assigned', { roomId, assignedToId: staffId });
+    return true;
+  }
+
+  /**
    * Transfer a room from one staff to another.
    *
    * T4-C11 — commission-hijack guard: if the customer in this chat room
@@ -190,6 +214,8 @@ export class AssignmentService {
         status: ChatRoomStatus.IDLE,
         handoffMode: false,
         resolvedAt: new Date(),
+        // ปิดแชทโดยไม่ต้องตอบ (ลูกค้าพิมพ์ขอบคุณ) = ออกจากคิว "รอตอบ" (สเปก §4.3)
+        waitingSince: null,
       },
     });
 
@@ -234,6 +260,10 @@ export class AssignmentService {
    * Auto-assign: round-robin to least-busy online staff.
    * Falls back to any staff with OWNER/BRANCH_MANAGER/FINANCE_MANAGER/SALES role
    * if no one is explicitly online.
+   *
+   * ⚠️ dead code ตั้งแต่ Task 8 — ไม่มีผู้เรียกใน production แล้ว: การแจกห้องอัตโนมัติถูกแทนที่
+   * ด้วย "ใครตอบก่อนได้เป็นเจ้าของ" (claimIfUnassigned หลังคำตอบถึงลูกค้า · สเปก §5)
+   * เก็บไว้รอรอบเก็บกวาด — อย่าอ่านว่าระบบยังแจกงานอัตโนมัติอยู่
    */
   async autoAssign(roomId: string): Promise<string | null> {
     // Get staff with open room counts

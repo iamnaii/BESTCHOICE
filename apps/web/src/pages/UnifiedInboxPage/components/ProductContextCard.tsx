@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
@@ -26,11 +27,13 @@ interface DetectedProduct {
 
 interface ProductContextCardProps {
   roomId: string;
+  /** สิ่งที่วาดเมื่อไม่พบสินค้า (ค่าเริ่มต้น = ไม่วาดอะไร ตามพฤติกรรมเดิมของแผงลูกค้า) */
+  empty?: ReactNode;
 }
 
 const baht = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
 
-export default function ProductContextCard({ roomId }: ProductContextCardProps) {
+export default function ProductContextCard({ roomId, empty }: ProductContextCardProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -88,7 +91,9 @@ export default function ProductContextCard({ roomId }: ProductContextCardProps) 
     onError: () => toast.error('ส่งข้อมูลสินค้าไม่สำเร็จ'),
   });
 
-  if (isLoading || !products || products.length === 0) return null;
+  // จองที่ตอนโหลด (กันหน้ากระโดดเมื่อการ์ดโผล่) · ไม่พบ → วาด empty ที่ผู้เรียกให้ (RoomDossier บอกว่า "ยังไม่พบรุ่น")
+  if (isLoading) return empty ? <div className="h-9 animate-pulse rounded-md bg-muted/60" aria-hidden /> : null;
+  if (!products || products.length === 0) return empty ? <>{empty}</> : null;
 
   return (
     <div className="border-t border-border pt-3">

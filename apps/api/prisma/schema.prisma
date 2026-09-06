@@ -5050,6 +5050,8 @@ model Todo {
   createdById String  @map("created_by_id")
   assigneeId  String? @map("assignee_id")
   branchId    String? @map("branch_id") // optional scoping by branch
+  /** นัดหมายของห้องแชท — ตั้งได้แม้ห้องยังไม่ผูกลูกค้า (แผงขวา RoomDossier · ท่า OBI "นัดเป็นของห้อง") */
+  roomId      String? @map("room_id")
 
   // Tags as Postgres text[]
   tags String[] @default([])
@@ -5066,8 +5068,10 @@ model Todo {
 
   createdBy User          @relation("TodoCreatedBy", fields: [createdById], references: [id])
   assignee  User?         @relation("TodoAssignedTo", fields: [assigneeId], references: [id])
+  room      ChatRoom?     @relation(fields: [roomId], references: [id])
   comments  TodoComment[]
 
+  @@index([roomId])
   @@index([assigneeId])
   @@index([createdById])
   @@index([status])
@@ -5262,10 +5266,19 @@ model ChatRoom {
   leadTemperature String?         @map("lead_temperature")
   attributionId   String?         @map("attribution_id")
   attribution     AdsAttribution? @relation(fields: [attributionId], references: [id])
+  todos           Todo[]
 
   // SLA tracking
   firstResponseAt DateTime? @map("first_response_at")
   resolvedAt      DateTime? @map("resolved_at")
+  /// "รอตอบตั้งแต่" — เวลาที่ลูกค้าเริ่มรอคำตอบจาก "คน" (สเปก 2026-09-05-inbox-day-one-readiness §3-§4)
+  /// ตั้ง: saveMessage เมื่อข้อความ CUSTOMER เข้ามาและยังว่าง (set-if-null)
+  /// ล้าง: markOutboundSent (ส่งสำเร็จจาก inbox) · mirrorOutbound STAFF (echo Page Inbox) · resolve
+  /// ไม่ล้าง: BOT/SYSTEM · การส่งที่ล้ม · การเปิดอ่าน (markAsRead)
+  waitingSince    DateTime? @map("waiting_since")
+  /// เวลาข้อความ *ล่าสุด* ของลูกค้า — Facebook นับหน้าต่างตอบ 24 ชม. จากตัวนี้ (ไม่ใช่ waitingSince ซึ่งเป็นใบแรกที่ยังไม่ตอบ
+  /// และไม่ใช่ lastMessageAt ซึ่งรวมข้อความของเราเอง) · เดินหน้าอย่างเดียว · ล้างข้อมูลวันแรกเติมย้อนหลังให้
+  lastCustomerAt  DateTime? @map("last_customer_at")
 
   // Stats
   unreadCount   Int      @default(0) @map("unread_count")
@@ -5299,6 +5312,8 @@ model ChatRoom {
   @@index([leadScore])
   // Speeds up the */5min first-response SLA cron in chat-engine/chat-cron.service.ts
   @@index([status, firstResponseAt, createdAt])
+  @@index([waitingSince])
+  @@index([channel, lastCustomerAt])
   @@map("chat_rooms")
 }
 
@@ -5670,6 +5685,11 @@ model ChatNote {
   @@index([roomId])
   @@index([staffId])
   @@index([deletedAt])
+  /** โน้ตปักหมุดของห้อง (ห้องละ 1) — แถบใต้หัวห้องในกระทู้ */
+  pinnedAt   DateTime? @map("pinned_at")
+  pinnedById String?   @map("pinned_by_id")
+
+  @@index([roomId, pinnedAt])
   @@map("chat_notes")
 }
 
@@ -5723,6 +5743,8 @@ model AdsCampaign {
   campaignName String      @map("campaign_name")
   adSetName    String?     @map("ad_set_name")
   adName       String?     @map("ad_name")
+  /** รูป/วิดีโอของโฆษณาที่ลูกค้าเห็นก่อนทัก — จาก ads_context_data ของ Messenger referral (ลิงก์ CDN หมดอายุได้ ต้องมี fallback) */
+  adPhotoUrl   String?     @map("ad_photo_url")
   budget       Decimal?    @db.Decimal(12, 2)
   startDate    DateTime?   @map("start_date")
   endDate      DateTime?   @map("end_date")

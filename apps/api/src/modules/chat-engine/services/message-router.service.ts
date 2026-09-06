@@ -7,6 +7,7 @@ import {
   OutboundMessage,
   OutboundQuickReply,
   CHANNEL_ADAPTER_TOKEN,
+  InboundAttribution,
 } from '../interfaces/channel-adapter.interface';
 import {
   IDomainHandler,
@@ -14,6 +15,7 @@ import {
   DOMAIN_HANDLER_TOKEN,
 } from '../interfaces/domain-handler.interface';
 import { RoomManagerService } from './room-manager.service';
+import { AssignmentService } from './assignment.service';
 import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
@@ -52,6 +54,9 @@ export class MessageRouterService {
     @Optional()
     @Inject(CHAT_GATEWAY_TOKEN)
     private gateway?: IChatGateway,
+    @Optional()
+    @Inject(forwardRef(() => AssignmentService))
+    private assignmentService?: AssignmentService,
   ) {
     // Register adapters by channel (via constructor — only works when ChatEngineModule
     // imports a module that exports CHANNEL_ADAPTER_TOKEN. For the current wiring where
@@ -175,6 +180,10 @@ export class MessageRouterService {
       pictureUrl: profile?.avatarUrl,
       attribution: message.attribution,
     });
+    // ทักจากโฆษณา → โน้ตระบบในห้อง ตรงเวลาที่เกิด (ท่า OBI logNotify) — ไม่ต้องเปิดแผงขวาก็เห็น
+    if (message.attribution?.adId) {
+      await this.postAdReferralNote(room.id, message.attribution);
+    }
 
     // 2. Save inbound message
     await this.roomManager.saveMessage({
@@ -669,8 +678,9 @@ export class MessageRouterService {
         }
       })();
     }
+    let saved: { id: string } | undefined;
     try {
-      await this.roomManager.saveMessage({
+      saved = await this.roomManager.saveMessage({
         roomId: room.id,
         externalMessageId: params.externalMessageId,
         role: params.role,
@@ -687,6 +697,19 @@ export class MessageRouterService {
         return;
       }
       throw err;
+    }
+
+    // echo STAFF = Facebook ยืนยันว่าข้อความจากคนถึงลูกค้าแล้ว → ล้าง "รอตอบ" (สเปก §4.3)
+    // BOT (เช่น greeting อัตโนมัติของเพจ) ไม่ล้าง — ลูกค้ายังรอคน (สเปก §3)
+    // ข้อยกเว้น: echo ที่หน้าตาเป็น "ข้อความทักทายอัตโนมัติของเพจ" (ใบแรกของห้อง +
+    // มาภายใน 60 วิ) ก็ถูก stamp เป็น STAFF เหมือนกัน — ห้ามล้าง ไม่งั้นลูกค้าใหม่
+    // หลุดคิวโดยไม่มีใครตอบ (ดู RoomManagerService.shouldSkipFirstOutboundClear)
+    // `?.` เพราะ spec หลายตัว mock roomManager บางส่วน
+    if (params.role === MessageRole.STAFF) {
+      const skip = saved?.id
+        ? await this.roomManager.shouldSkipFirstOutboundClear?.(room.id, saved.id)
+        : false;
+      if (!skip) await this.roomManager.clearWaiting?.(room.id);
     }
 
     this.gateway?.emitNewMessage(room.id, {
@@ -947,6 +970,17 @@ export class MessageRouterService {
     // externalMessageId (if the adapter returns one, e.g. FB `mid`) is also
     // stamped here — see markOutboundSent jsdoc for why (FB echo dedup).
     await this.roomManager.markOutboundSent(saved.id, result.externalMessageId);
+
+    // ใครตอบก่อนได้เป็นเจ้าของ (สเปก §5) — หลังส่งถึงลูกค้าแล้วเท่านั้น · best-effort:
+    // การรับเรื่องล้มไม่ทำให้การส่งที่สำเร็จแล้วกลายเป็นล้ม (ไม่งั้น client retry = ส่งซ้ำ)
+    try {
+      await this.noteClaimIfFirst(params.roomId, params.staffId);
+    } catch (err) {
+      this.logger.warn(
+        `[sendStaffMessage] claim failed for room ${params.roomId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
     return {
       success: true,
       message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },
@@ -960,8 +994,46 @@ export class MessageRouterService {
    * ลิงก์ Messenger จากหน้าสินค้าบนเว็บ (B4) — ข้อความมีชื่อรุ่นเต็มเพื่อให้
    * ProductContextCard/detection จับได้เหมือนลูกค้าพิมพ์ชื่อรุ่นมาเอง
    */
+  /** ใครตอบก่อนได้เป็นเจ้าของ — ถ้าเพิ่งได้เป็นเจ้าของจริง โพสต์ข้อความระบบให้ทีมรู้ (ครั้งเดียวต่อห้อง) */
+  private async noteClaimIfFirst(roomId: string, staffId: string): Promise<void> {
+    const claimed = await this.assignmentService?.claimIfUnassigned(roomId, staffId);
+    if (!claimed) return;
+    try {
+      const name = await this.roomManager.getStaffName(staffId);
+      await this.postSystemNote(roomId, `${name} รับห้องนี้ (ตอบก่อน)`);
+    } catch (err) {
+      this.logger.warn(`[claim note] room ${roomId}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  /**
+   * ลูกค้าเก่ากลับมาจากโฆษณา (event messaging_referrals ไม่มี message) — ผูกที่มาให้ห้องเดิม + โน้ตระบบ
+   * ไม่มีห้อง = ไม่ทำอะไร (ห้องจะถูกสร้างพร้อม attribution เมื่อข้อความแรกมาถึง)
+   */
+  async recordAdReferral(
+    externalUserId: string,
+    channel: ChatChannel,
+    attribution: InboundAttribution,
+  ): Promise<void> {
+    const room = await this.roomManager.findByExternalUser(externalUserId, channel);
+    if (!room) return;
+    await this.roomManager.linkAttribution(room.id, attribution, room.attributionId);
+    await this.postAdReferralNote(room.id, attribution);
+  }
+
+  private async postAdReferralNote(roomId: string, attribution: InboundAttribution): Promise<void> {
+    try {
+      const title = attribution.adTitle ?? `โฆษณา ${attribution.adId ?? ''}`.trim();
+      await this.postSystemNote(roomId, `ลูกค้าทักจากโฆษณา · ${title}`);
+    } catch (err) {
+      this.logger.warn(`[Attribution] note failed for room ${roomId}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   async postSystemNote(roomId: string, text: string): Promise<void> {
     await this.roomManager.saveMessage({
+      // เงียบ: ไม่แตะสถิติห้อง — ข้อความระบบไม่ใช่การสนทนา (สเปกแผงกลาง 2026-09-06)
+      silent: true,
       roomId,
       role: MessageRole.SYSTEM,
       type: MessageType.TEXT,
@@ -1022,7 +1094,7 @@ export class MessageRouterService {
               ? MessageType.TEMPLATE
               : MessageType.TEXT;
 
-    await this.roomManager.saveMessage({
+    const saved = await this.roomManager.saveMessage({
       roomId,
       role: MessageRole.STAFF,
       type,
@@ -1040,7 +1112,24 @@ export class MessageRouterService {
 
     if (!result.success) {
       this.logger.error(`Failed to send staff outbound on ${room.channel}: ${result.error}`);
+      return result;
     }
+
+    // เส้นทางนี้เป็น "คำตอบจากพนักงาน" เต็มตัวเหมือน sendStaffMessage (ปุ่มข้อความสำเร็จรูป
+    // เรียกผ่าน canned-response-sender) จึงต้องปิดท้ายเหมือนกันทุกประการ:
+    // stamp outboundSentAt/externalMessageId + ล้าง "รอตอบ" (สเปก §4.3) แล้วจึงรับเรื่อง (§5)
+    // echo ของ Facebook มากู้ให้ไม่ได้ — webhook ข้าม echo ที่มี FACEBOOK_APP_ID ของเราเอง
+    await this.roomManager.markOutboundSent(saved.id, result.externalMessageId);
+
+    // best-effort: การรับเรื่องล้มต้องไม่ทำให้การส่งที่ถึงลูกค้าแล้วกลายเป็นล้ม
+    try {
+      await this.noteClaimIfFirst(roomId, staffId);
+    } catch (err) {
+      this.logger.warn(
+        `[sendStaffOutbound] claim failed for room ${roomId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
     return result;
   }
 

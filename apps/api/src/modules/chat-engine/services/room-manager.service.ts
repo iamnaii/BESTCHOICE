@@ -1,3 +1,4 @@
+import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
 import {
   Injectable,
   Logger,
@@ -23,6 +24,42 @@ import { MessageRouterService } from './message-router.service';
 import { StorageService } from '../../storage/storage.service';
 import { signMessageMedia } from './media-url.util';
 
+/** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
+ *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
+ *  เพี้ยนจากกันได้อีก */
+export interface RoomFilterParams {
+  channel?: ChatChannel;
+  status?: ChatRoomStatus;
+  priority?: ChatPriority;
+  assignedToId?: string;
+  customerId?: string;
+  unassignedOnly?: boolean;
+  unreadOnly?: boolean;
+  /** แท็บ "รอตอบ" — ลูกค้ารอคำตอบจากคน **และยังตอบทัน** (FACEBOOK ต้องมี lastCustomerAt ใน 24 ชม. · ช่องทางอื่นไม่มีหน้าต่าง)
+   *  เรียงสองชั้น: ใกล้หมดเวลาก่อน แล้วรอนานก่อน (สเปก §7 แก้ไข 2026-09-05) */
+  waiting?: boolean;
+  /** มุมมอง "ตอบไม่ทัน" — FACEBOOK ที่รออยู่แต่พ้นหน้าต่าง 24 ชม. แล้ว (หรือยังไม่มี lastCustomerAt) */
+  expired?: boolean;
+  channels?: ChatChannel[];
+  aiStatus?: 'ai' | 'human' | 'pending';
+  search?: string;
+}
+
+/** แท็บของกล่องข้อความ — ป้ายแต่ละใบต้องนับ "จำนวนแถวที่แท็บนั้นแสดง" เป๊ะ ๆ */
+export type InboxTabKey = 'waiting' | 'mine' | 'all';
+
+/** หน้าต่างตอบของ Facebook Messenger นับจากข้อความล่าสุดของลูกค้า (สเปก §8) */
+export const FB_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** "ใกล้หมดเวลา" = เหลือไม่เกิน 3 ชม. — ชั้นแรกของการเรียงคิว */
+export const FB_CLOSING_MS = 3 * 60 * 60 * 1000;
+/** ห้อง FACEBOOK ที่ยังตอบทัน / ใกล้หมดเวลา — จุดเดียวของกติกา ห้ามคำนวณซ้ำที่อื่น */
+export function fbWindowBounds(now: Date = new Date()): { open: Date; closing: Date } {
+  return {
+    open: new Date(now.getTime() - FB_WINDOW_MS),
+    closing: new Date(now.getTime() - FB_WINDOW_MS + FB_CLOSING_MS),
+  };
+}
+
 /**
  * RoomManagerService — generalized from SessionManagerService.
  *
@@ -42,9 +79,18 @@ export class RoomManagerService {
    */
   private static readonly ADAPTER_MEDIA_TTL_SEC = 6 * 24 * 3600; // 518400
 
+  /**
+   * หน้าต่างของ "ข้อความทักทายอัตโนมัติของเพจ" — greeting ยิงกลับแทบจะทันทีที่ลูกค้า
+   * ทักครั้งแรก (หลักวินาที) 60 วิ จึงกว้างพอรับความหน่วงของ webhook แต่แคบพอที่
+   * คำตอบของคนจริงแทบไม่มีทางตกอยู่ในนั้น — ดู shouldSkipFirstOutboundClear
+   */
+  private static readonly FIRST_OUTBOUND_GREETING_WINDOW_MS = 60_000;
+
   constructor(
     private prisma: PrismaService,
     private storageService: StorageService,
+    // ⚠️ dead code ตั้งแต่ Task 8 — ไม่มีผู้เรียกใน production แล้ว (createRoom เลิก autoAssign;
+    // การรับเรื่องย้ายไป AssignmentService.claimIfUnassigned หลังคำตอบถึงลูกค้า) เก็บไว้รอรอบเก็บกวาด
     @Optional() @Inject(forwardRef(() => AssignmentService))
     private assignmentService?: AssignmentService,
     @Optional() @Inject(forwardRef(() => MessageRouterService))
@@ -62,12 +108,7 @@ export class RoomManagerService {
     customerId?: string;
     displayName?: string | null;
     pictureUrl?: string | null;
-    attribution?: {
-      utmSource?: string;
-      utmCampaign?: string;
-      utmContent?: string;
-      referrerUrl?: string;
-    };
+    attribution?: InboundAttribution;
   }): Promise<ChatRoom> {
     const isLineChannel =
       params.channel === ChatChannel.LINE_FINANCE ||
@@ -115,13 +156,15 @@ export class RoomManagerService {
       if (!existing.pictureUrl && params.pictureUrl) {
         updateData.pictureUrl = params.pictureUrl;
       }
-      if (Object.keys(updateData).length > 0) {
-        return this.prisma.chatRoom.update({
-          where: { id: existing.id },
-          data: updateData,
-        });
+      const room =
+        Object.keys(updateData).length > 0
+          ? await this.prisma.chatRoom.update({ where: { id: existing.id }, data: updateData })
+          : existing;
+      // ลูกค้าเก่ากดโฆษณา/ลิงก์ซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
+      if (params.attribution?.utmSource) {
+        await this.linkAttribution(room.id, params.attribution, room.attributionId);
       }
-      return existing;
+      return room;
     }
 
     // Try to find linked customer
@@ -153,71 +196,125 @@ export class RoomManagerService {
       },
     });
 
-    // Link ads attribution on new rooms (best-effort — never block room creation)
+    // ที่มาของลูกค้า (โฆษณา/UTM) — best-effort ห้ามทำให้การสร้างห้องล้ม
     if (params.attribution?.utmSource) {
-      try {
-        const platformMap: Record<string, AdsPlatform> = {
-          facebook: AdsPlatform.FACEBOOK_ADS,
-          tiktok: AdsPlatform.TIKTOK_ADS,
-          line: AdsPlatform.LINE_ADS,
-          google: AdsPlatform.GOOGLE_ADS,
-        };
-        const platform =
-          platformMap[params.attribution.utmSource.toLowerCase()] ??
-          AdsPlatform.FACEBOOK_ADS;
-        const campaignKey = params.attribution.utmCampaign ?? 'organic';
-
-        let campaign = await this.prisma.adsCampaign.findFirst({
-          where: {
-            platform,
-            campaignId: campaignKey,
-            deletedAt: null,
-          },
-        });
-        if (!campaign) {
-          campaign = await this.prisma.adsCampaign.create({
-            data: {
-              platform,
-              campaignId: campaignKey,
-              campaignName: params.attribution.utmCampaign ?? 'Auto-detected',
-            },
-          });
-        }
-
-        const attribution = await this.prisma.adsAttribution.create({
-          data: {
-            campaignId: campaign.id,
-            utmSource: params.attribution.utmSource,
-            utmCampaign: params.attribution.utmCampaign,
-            utmContent: params.attribution.utmContent,
-            referrerUrl: params.attribution.referrerUrl,
-            firstTouch: new Date(),
-          },
-        });
-
-        await this.prisma.chatRoom.update({
-          where: { id: room.id },
-          data: { attributionId: attribution.id },
-        });
-
-        this.logger.log(
-          `[Attribution] Linked campaign "${campaignKey}" to room ${room.id}`,
-        );
-      } catch (err) {
-        this.logger.error(
-          `[Attribution] Failed to link attribution for room ${room.id}: ${err instanceof Error ? err.message : err}`,
-        );
-      }
+      await this.linkAttribution(room.id, params.attribution, null);
     }
 
-    // Auto-assign to least-busy staff (best-effort)
-    try {
-      await this.assignmentService?.autoAssign(room.id);
-    } catch {
-      // Assignment failure shouldn't block room creation
-    }
+    // ไม่แจกห้องอัตโนมัติอีก — ใครตอบก่อนได้เป็นเจ้าของ (AssignmentService.claimIfUnassigned · สเปก §5)
 
     return room;
+  }
+
+  /** ชื่อพนักงานสำหรับข้อความระบบ ("มอบหมายให้ แนน โดย …") — ไม่พบคืน "พนักงาน" */
+  async getStaffName(staffId: string | null | undefined): Promise<string> {
+    if (!staffId) return 'พนักงาน';
+    const u = await this.prisma.user.findUnique({ where: { id: staffId }, select: { name: true } });
+    return u?.name || 'พนักงาน';
+  }
+
+  /** ห้องล่าสุดของผู้ใช้ภายนอกในช่องทางนั้น (ใช้ตอน referral มาโดยไม่มีข้อความ) */
+  async findByExternalUser(
+    externalUserId: string,
+    channel: ChatChannel,
+  ): Promise<{ id: string; attributionId: string | null } | null> {
+    return this.prisma.chatRoom.findFirst({
+      where: { externalUserId, channel, deletedAt: null },
+      orderBy: { lastMessageAt: 'desc' },
+      select: { id: true, attributionId: true },
+    });
+  }
+
+  /**
+   * ผูก "ที่มา" (โฆษณา/UTM) ให้ห้อง — ท่าเดียวกับ OBI `Util\Facebook::ads` + `chat_room.facebook_ad_id`:
+   * แคมเปญคีย์ด้วย ad_id · ชื่อ/รูปโฆษณาเติมจาก ads_context_data เมื่อมี (ครั้งแรกอาจว่าง ครั้งหลังเติมได้) ·
+   * ห้องที่มีที่มาอยู่แล้วและมาจากโฆษณา "ตัวเดิม" → อัปเดต lastTouch · โฆษณา "ตัวใหม่" → attribution ใหม่
+   * แล้วชี้ห้องไปที่ล่าสุด (พนักงานต้องรู้ว่าลูกค้าเพิ่งเห็นชิ้นไหน ไม่ใช่ชิ้นแรกเมื่อ 3 เดือนก่อน)
+   * best-effort ทั้งก้อน — ห้ามทำให้ webhook/การสร้างห้องล้ม
+   */
+  async linkAttribution(
+    roomId: string,
+    attribution: InboundAttribution,
+    currentAttributionId: string | null,
+  ): Promise<{ campaignName: string; adTitle: string | null; changed: boolean } | null> {
+    try {
+      const platformMap: Record<string, AdsPlatform> = {
+        facebook: AdsPlatform.FACEBOOK_ADS,
+        tiktok: AdsPlatform.TIKTOK_ADS,
+        line: AdsPlatform.LINE_ADS,
+        google: AdsPlatform.GOOGLE_ADS,
+      };
+      const platform =
+        platformMap[(attribution.utmSource ?? '').toLowerCase()] ?? AdsPlatform.FACEBOOK_ADS;
+      const campaignKey = attribution.adId ?? attribution.utmCampaign ?? 'organic';
+
+      let campaign = await this.prisma.adsCampaign.findFirst({
+        where: { platform, campaignId: campaignKey, deletedAt: null },
+      });
+      if (!campaign) {
+        campaign = await this.prisma.adsCampaign.create({
+          data: {
+            platform,
+            campaignId: campaignKey,
+            campaignName: attribution.adTitle ?? attribution.utmCampaign ?? 'Auto-detected',
+            adName: attribution.adTitle ?? null,
+            adPhotoUrl: attribution.adPhotoUrl ?? null,
+          },
+        });
+      } else if (
+        (attribution.adTitle && !campaign.adName) ||
+        (attribution.adPhotoUrl && !campaign.adPhotoUrl)
+      ) {
+        // referral ก่อนหน้าอาจไม่มี ads_context_data — เติมชื่อ/รูปเมื่อได้มา ไม่ทับของที่มีอยู่
+        campaign = await this.prisma.adsCampaign.update({
+          where: { id: campaign.id },
+          data: {
+            adName: campaign.adName ?? attribution.adTitle ?? null,
+            adPhotoUrl: campaign.adPhotoUrl ?? attribution.adPhotoUrl ?? null,
+            ...(campaign.campaignName === 'Auto-detected' && attribution.adTitle
+              ? { campaignName: attribution.adTitle }
+              : {}),
+          },
+        });
+      }
+
+      const now = new Date();
+      if (currentAttributionId) {
+        const current = await this.prisma.adsAttribution.findUnique({
+          where: { id: currentAttributionId },
+          select: { id: true, campaignId: true },
+        });
+        if (current && current.campaignId === campaign.id) {
+          await this.prisma.adsAttribution.update({
+            where: { id: current.id },
+            data: { lastTouch: now },
+          });
+          return { campaignName: campaign.campaignName, adTitle: campaign.adName, changed: false };
+        }
+      }
+      const created = await this.prisma.adsAttribution.create({
+        data: {
+          campaignId: campaign.id,
+          utmSource: attribution.utmSource,
+          utmCampaign: attribution.utmCampaign ?? attribution.adId,
+          utmContent: attribution.utmContent,
+          referrerUrl: attribution.referrerUrl,
+          firstTouch: now,
+          lastTouch: now,
+        },
+      });
+      await this.prisma.chatRoom.update({
+        where: { id: roomId },
+        data: { attributionId: created.id },
+      });
+      this.logger.log(`[Attribution] Linked campaign "${campaignKey}" to room ${roomId}`);
+      return { campaignName: campaign.campaignName, adTitle: campaign.adName, changed: true };
+    } catch (err) {
+      this.logger.error(
+        `[Attribution] Failed to link attribution for room ${roomId}: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
   }
 
   /** Save a message and update room stats */
@@ -267,6 +364,9 @@ export class RoomManagerService {
     costUsd?: number;
     visionExtracted?: Prisma.InputJsonValue;
     clientMessageId?: string;
+    /** ข้อความระบบที่ไม่ใช่การสนทนา (มอบหมาย/ปิดงาน/โฆษณา) — ไม่แตะ lastMessageAt/totalMessages/unread
+     *  ไม่งั้นห้องที่ปิดงานเด้งขึ้นบนสุดและพรีวิวรายการซ้ายกลายเป็นบรรทัดระบบ */
+    silent?: boolean;
   }) {
     const msg = await this.prisma.chatMessage.create({
       data: {
@@ -288,6 +388,8 @@ export class RoomManagerService {
         clientMessageId: params.clientMessageId,
       },
     });
+
+    if (params.silent) return msg;
 
     // Track first staff/bot response for SLA
     const updateData: Prisma.ChatRoomUpdateInput = {
@@ -314,6 +416,25 @@ export class RoomManagerService {
       data: updateData,
     });
 
+    if (params.role === MessageRole.CUSTOMER) {
+      // "รอตอบตั้งแต่" (สเปก §4.2) — set-if-null แบบ atomic: เก็บเวลาข้อความ *แรก* ที่ยังไม่ได้ตอบ
+      // ไม่ใช่ใบล่าสุด และไม่ต้องอ่านก่อนเขียน (สองข้อความมาพร้อมกันได้ค่าเดียวกัน)
+      // ⚠️ ห้ามล้างที่นี่สำหรับ STAFF/BOT — การส่งที่ล้มก็ผ่าน saveMessage (save-before-send)
+      await this.prisma.chatRoom.updateMany({
+        where: { id: params.roomId, waitingSince: null },
+        data: { waitingSince: msg.createdAt },
+      });
+      // เวลาข้อความ *ล่าสุด* ของลูกค้า (หน้าต่าง 24 ชม. ของ FB นับจากตัวนี้) — เดินหน้าอย่างเดียว
+      // ข้อความเก่าที่มาถึงช้า (retry/echo) ต้องไม่ดึงค่าถอยหลัง
+      await this.prisma.chatRoom.updateMany({
+        where: {
+          id: params.roomId,
+          OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: msg.createdAt } }],
+        },
+        data: { lastCustomerAt: msg.createdAt },
+      });
+    }
+
     return msg;
   }
 
@@ -325,6 +446,66 @@ export class RoomManagerService {
   }
 
   /**
+   * echo ใบนี้ "หน้าตาเหมือนข้อความทักทายอัตโนมัติของเพจ" หรือไม่ — ถ้าใช่ ห้ามล้าง waitingSince
+   *
+   * ที่มา: `facebook-webhook.controller.ts` stamp role STAFF ให้ echo ทุกใบที่ไม่ได้มาจาก
+   * `FACEBOOK_APP_ID` ของเราเอง ซึ่งรวม **ข้อความทักทายอัตโนมัติของเพจ** ที่ยิงทุกครั้งที่
+   * ลูกค้าทักครั้งแรก (บั๊กจริง 2026-08-21: greeting ตัวเดียวกันนี้ปิด AI ไป 633 ห้อง)
+   * ⇒ ถ้าปล่อยให้ล้าง ลูกค้าใหม่จะหลุดจากแท็บ "รอตอบ" ทั้งที่ยังไม่มีคนตอบ = อาการที่ฟีเจอร์นี้
+   * ถูกสร้างมาเพื่อป้องกันพอดี
+   *
+   * เงื่อนไขต้องครบทั้งสอง (= รูปร่างเฉพาะตัวของ greeting: ใบแรกสุด + ทันที):
+   *   1. หลังบันทึก echo ใบนี้แล้ว ห้องมีข้อความ STAFF+BOT รวมกัน **หนึ่งใบพอดี** (คือใบนี้)
+   *   2. มาถึงภายใน 60 วินาทีนับจาก `waitingSince` ของห้อง
+   * คำตอบของคนจริงจะโดนด่านนี้ก็ต่อเมื่อตอบภายในหนึ่งนาทีหลังข้อความแรกสุดของลูกค้า
+   * **และไม่เคยมีคำตอบใบถัดไปอีกเลย** — ผลคือห้องยังค้างในคิวเฉย ๆ ซึ่งเป็นทิศที่ปลอดภัย
+   *
+   * ด่านนี้ถอดออกได้เมื่อเจ้าของปิดข้อความทักทายอัตโนมัติของเพจ (ดูคำถามค้างในสเปก §10)
+   */
+  async shouldSkipFirstOutboundClear(
+    roomId: string,
+    outboundMessageId: string,
+  ): Promise<boolean> {
+    const [room, outbound, outboundCount] = await Promise.all([
+      this.prisma.chatRoom.findUnique({
+        where: { id: roomId },
+        select: { waitingSince: true },
+      }),
+      this.prisma.chatMessage.findUnique({
+        where: { id: outboundMessageId },
+        select: { createdAt: true },
+      }),
+      this.prisma.chatMessage.count({
+        where: {
+          roomId,
+          deletedAt: null,
+          role: { in: [MessageRole.STAFF, MessageRole.BOT] },
+        },
+      }),
+    ]);
+
+    // ไม่มีใครรออยู่ / อ่านแถวไม่ได้ → ไม่ต้องกัน (clearWaiting เป็น no-op อยู่แล้ว)
+    if (!room?.waitingSince || !outbound) return false;
+    // ห้องเคยมีคำตอบใบอื่นมาก่อน → ไม่ใช่ greeting ใบแรก
+    if (outboundCount !== 1) return false;
+
+    const elapsedMs = outbound.createdAt.getTime() - room.waitingSince.getTime();
+    return elapsedMs <= RoomManagerService.FIRST_OUTBOUND_GREETING_WINDOW_MS;
+  }
+
+  /**
+   * ล้าง "รอตอบ" — เรียกได้เฉพาะเมื่อคำตอบจาก "คน" ถึงลูกค้าแล้ว (สเปก §3 / §4.3):
+   *   markOutboundSent (inbox ส่งสำเร็จ) · mirrorOutbound STAFF (echo จาก Page Inbox) · resolve
+   * ห้ามเรียกจาก saveMessage / BOT / การส่งที่ล้ม / markAsRead
+   */
+  async clearWaiting(roomId: string): Promise<void> {
+    await this.prisma.chatRoom.updateMany({
+      where: { id: roomId, waitingSince: { not: null } },
+      data: { waitingSince: null },
+    });
+  }
+
+  /**
    * Mark a message as successfully delivered to the customer (idempotency flag).
    * เก็บ platform message id ด้วยเมื่อ adapter คืนมา — FB echo webhook dedup
    * ชั้นที่ 2 อาศัย UNIQUE บน ChatMessage.externalMessageId
@@ -332,14 +513,16 @@ export class RoomManagerService {
    * เราส่งเองจะกลายเป็น bubble STAFF ซ้ำเมื่อ env FACEBOOK_APP_ID ไม่ได้ตั้ง
    */
   async markOutboundSent(messageId: string, externalMessageId?: string): Promise<void> {
+    let roomId: string | undefined;
     try {
-      await this.prisma.chatMessage.update({
+      const row = await this.prisma.chatMessage.update({
         where: { id: messageId },
         data: {
           outboundSentAt: new Date(),
           ...(externalMessageId ? { externalMessageId } : {}),
         },
       });
+      roomId = row.roomId;
     } catch (err) {
       // echo webhook อาจมาถึงก่อน HTTP ของเราจะ return แล้วจอง mid ไปก่อน —
       // ยอมเสีย stamp ดีกว่า throw (ข้อความส่งถึงลูกค้าแล้ว ถ้า throw client จะ retry = ส่งซ้ำ)
@@ -360,14 +543,17 @@ export class RoomManagerService {
         this.logger.warn(
           `[markOutboundSent] externalMessageId ${externalMessageId} ถูกใช้แล้ว — stamp เฉพาะ outboundSentAt`,
         );
-        await this.prisma.chatMessage.update({
+        const row = await this.prisma.chatMessage.update({
           where: { id: messageId },
           data: { outboundSentAt: new Date() },
         });
-        return;
+        roomId = row.roomId;
+      } else {
+        throw err;
       }
-      throw err;
     }
+    // ส่งถึงลูกค้าแล้วจริง (ทั้งสองทางด้านบน) → ลูกค้าไม่ได้รออีก
+    if (roomId) await this.clearWaiting(roomId);
   }
 
   /** Get recent messages for AI context or display */
@@ -411,6 +597,21 @@ export class RoomManagerService {
         customer: { select: { id: true, name: true, phone: true, nationalId: true } },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
         tags: true,
+        // โน้ตปักหมุดของห้อง (ห้องละ 1) — แถบใต้หัวห้องในกระทู้
+        notes: {
+          where: { deletedAt: null, pinnedAt: { not: null } },
+          orderBy: { pinnedAt: 'desc' },
+          take: 1,
+          include: { staff: { select: { id: true, name: true } } },
+        },
+        // "มาจากโฆษณา" ในแผงขวา — ชื่อ/รูปโฆษณา + ครั้งแรก/ล่าสุดที่ทักจากโฆษณา
+        attribution: {
+          select: {
+            firstTouch: true,
+            lastTouch: true,
+            campaign: { select: { campaignId: true, campaignName: true, adName: true, adPhotoUrl: true } },
+          },
+        },
       },
     });
   }
@@ -444,28 +645,15 @@ export class RoomManagerService {
     });
   }
 
-  /** List rooms for the unified inbox with pagination and filters */
-  async listRooms(params: {
-    channel?: ChatChannel;
-    status?: ChatRoomStatus;
-    priority?: ChatPriority;
-    assignedToId?: string;
-    customerId?: string;
-    unassignedOnly?: boolean;
-    unreadOnly?: boolean;
-    channels?: ChatChannel[];
-    aiStatus?: 'ai' | 'human' | 'pending';
-    search?: string;
-    page?: number;
-    limit?: number;
-  }) {
-    const page = params.page ?? 1;
-    const limit = params.limit ?? 50;
-    const skip = (page - 1) * limit;
-
+  /** ประกอบ where ของห้องแชทจากตัวกรองชุดเดียว — แหล่งเดียวของทั้งรายการและตัวนับ
+   *  ห้ามเขียนสำเนาที่สอง: ป้ายที่นับด้วยตัวกรองคนละชุดกับรายการคือป้ายที่โกหก */
+  private buildRoomWhere(params: RoomFilterParams): Prisma.ChatRoomWhereInput {
     const where: Prisma.ChatRoomWhereInput = {
       deletedAt: null,
     };
+    // เงื่อนไขที่มี OR ของตัวเอง (ค้นหา / รอตอบ / ตอบไม่ทัน / ช่องทางหลายอัน) ต้องซ้อนใน AND
+    // — เดิมเขียน where.OR ทับกัน: ค้นหาบนแท็บรอตอบถูกทิ้งเงียบ ๆ และ expired+channels ทับ channel=FACEBOOK
+    const and: Prisma.ChatRoomWhereInput[] = [];
 
     if (params.channel) where.channel = params.channel;
     if (params.status) where.status = params.status;
@@ -474,19 +662,38 @@ export class RoomManagerService {
     if (params.customerId) where.customerId = params.customerId;
     if (params.unassignedOnly) where.assignedToId = null;
     if (params.search) {
-      where.OR = [
-        { customer: { name: { contains: params.search, mode: 'insensitive' } } },
-        { customer: { phone: { contains: params.search } } },
-        { lineUserId: { contains: params.search } },
-        // FB/TikTok/Web rooms often have no linked Customer yet — match on
-        // the platform-fetched displayName + the channel-specific user id
-        // (FB PSID, TikTok user id, web visitor id).
-        { displayName: { contains: params.search, mode: 'insensitive' } },
-        { externalUserId: { contains: params.search } },
-      ];
+      and.push({
+        OR: [
+          { customer: { name: { contains: params.search, mode: 'insensitive' } } },
+          { customer: { phone: { contains: params.search } } },
+          { lineUserId: { contains: params.search } },
+          // FB/TikTok/Web rooms often have no linked Customer yet — match on
+          // the platform-fetched displayName + the channel-specific user id
+          // (FB PSID, TikTok user id, web visitor id).
+          { displayName: { contains: params.search, mode: 'insensitive' } },
+          { externalUserId: { contains: params.search } },
+        ],
+      });
     }
     if (params.unreadOnly) where.unreadCount = { gt: 0 };
-    if (params.channels && params.channels.length > 0) where.channel = { in: params.channels };
+    if (params.waiting) {
+      // รอตอบ *และยังตอบทัน*: ช่องทางที่ไม่ใช่ FACEBOOK ไม่มีหน้าต่าง · FACEBOOK ต้องมี lastCustomerAt ภายใน 24 ชม.
+      // (null = ยังไม่เติมค่า = ถือว่าพ้นแล้ว — บน prod ทุกห้องเป็น null จนกว่า CLI จะรัน และ 44/68 ห้องพ้นจริง)
+      where.waitingSince = { not: null };
+      and.push({
+        OR: [
+          { channel: { not: ChatChannel.FACEBOOK } },
+          { channel: ChatChannel.FACEBOOK, lastCustomerAt: { gte: fbWindowBounds().open } },
+        ],
+      });
+    }
+    if (params.expired) {
+      where.waitingSince = { not: null };
+      and.push({ channel: ChatChannel.FACEBOOK });
+      and.push({ OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: fbWindowBounds().open } }] });
+    }
+    // ช่องทางที่เลือกซ้อนกับเงื่อนไขอื่น (expired + LINE ⇒ ว่าง ซึ่งคือความจริง ไม่ใช่ห้อง LINE ที่ถูกป้ายว่าพ้น 24 ชม.)
+    if (params.channels && params.channels.length > 0) and.push({ channel: { in: params.channels } });
     if (params.aiStatus === 'ai') {
       where.aiPaused = false;
       where.handoffMode = false;
@@ -495,16 +702,66 @@ export class RoomManagerService {
     } else if (params.aiStatus === 'pending') {
       where.handoffMode = true;
     }
+    if (and.length > 0) where.AND = and;
+
+    return where;
+  }
+
+  /** List rooms for the unified inbox with pagination and filters */
+  async listRooms(params: RoomFilterParams & { page?: number; limit?: number }) {
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 50;
+    const skip = (page - 1) * limit;
+
+    const where = this.buildRoomWhere(params);
+    const include = {
+      customer: { select: { id: true, name: true, phone: true } },
+      assignedTo: { select: { id: true, name: true, avatarUrl: true } },
+      tags: true,
+      messages: {
+        // พรีวิว = ข้อความสนทนาล่าสุด — ข้อความระบบ (มอบหมาย/ปิดงาน/โฆษณา) ห้ามมาแทนที่ข้อความลูกค้า
+        where: { deletedAt: null, role: { not: MessageRole.SYSTEM } },
+        orderBy: { createdAt: 'desc' as const },
+        take: 1,
+        select: { text: true, role: true, createdAt: true },
+      },
+    };
+
+    if (params.waiting) {
+      // แท็บรอตอบเรียงสองชั้น (สเปก §7 แก้ไข 2026-09-05): ชั้น 1 = FACEBOOK ที่เหลือ ≤ 3 ชม. เรียงเหลือน้อยสุด
+      // ชั้น 2 = ที่เหลือทุกช่องทาง เรียงรอนานสุด · Prisma เรียงด้วย CASE ไม่ได้ จึงดึง key ของทุกห้องที่ผ่าน where
+      // (ชุดนี้เล็กโดยนิยาม — ห้องพ้นหน้าต่างถูกกันออกแล้ว) เรียงในหน่วยความจำ แล้ว hydrate เฉพาะหน้าที่ขอ
+      // ⇒ where ยังเป็นชุดเดียวกับตัวนับ (buildRoomWhere) ไม่มีสำเนา SQL ที่สอง
+      const { closing } = fbWindowBounds();
+      const keys = await this.prisma.chatRoom.findMany({
+        where,
+        select: { id: true, channel: true, lastCustomerAt: true, waitingSince: true },
+      });
+      const tier = (k: (typeof keys)[number]) =>
+        k.channel === ChatChannel.FACEBOOK && k.lastCustomerAt && k.lastCustomerAt < closing ? 0 : 1;
+      keys.sort((a, b) => {
+        const ta = tier(a), tb = tier(b);
+        if (ta !== tb) return ta - tb;
+        if (ta === 0) return a.lastCustomerAt!.getTime() - b.lastCustomerAt!.getTime();
+        return (a.waitingSince?.getTime() ?? 0) - (b.waitingSince?.getTime() ?? 0);
+      });
+      const pageIds = keys.slice(skip, skip + limit).map((k) => k.id);
+      const rows = pageIds.length
+        ? await this.prisma.chatRoom.findMany({ where: { id: { in: pageIds } }, include })
+        : [];
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const data = pageIds.map((id) => byId.get(id)!).filter(Boolean);
+      return { data, total: keys.length, page, limit };
+    }
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.chatRoom.findMany({
         where,
-        // Pinned first, then most-recent — exact parity with the prior client
-        // sort. (priority is intentionally NOT a sort key: the old inbox ignored
-        // it, so adding it would silently reorder the list for users.)
+        // แท็บอื่น: ปักหมุดก่อน แล้ว lastMessageAt (parity เดิม · priority ไม่ใช่ sort key โดยตั้งใจ)
+        // มุมมอง "ตอบไม่ทัน": ใช้ลำดับเดียวกัน (ไม่มีอะไรให้เร่ง แค่ให้เห็นล่าสุดก่อน)
         orderBy: [
-          { pinnedAt: { sort: 'desc', nulls: 'last' } },
-          { lastMessageAt: 'desc' },
+          { pinnedAt: { sort: 'desc' as const, nulls: 'last' as const } },
+          { lastMessageAt: 'desc' as const },
         ],
         skip,
         take: limit,
@@ -552,30 +809,59 @@ export class RoomManagerService {
     return { unread: count };
   }
 
-  /** Unread-room counts for the inbox tab + channel badges, over the whole
-   *  (non-deleted) room universe — so badges aren't truncated by pagination.
-   *  "unread" = room.unreadCount > 0 (mirrors deriveTabCounts/deriveChannelUnreadCounts). */
-  async getRoomBadgeCounts(staffId?: string): Promise<{
+  /** ตัวนับบนป้ายแท็บ + ชิปช่องทาง — นับทั้งจักรวาลห้อง ไม่ถูกตัดด้วย pagination
+   *
+   *  กติกาเดียวของเมธอดนี้: **เลขบนป้ายต้องเท่ากับจำนวนแถวที่แท็บนั้นแสดง**
+   *
+   *  ก่อน 2026-09-05 ทุกตัวนับใช้ตัวกรอง "ยังไม่อ่าน" ตัวเดียวกันหมด ⇒ ป้าย "ทั้งหมด"
+   *  รายงานจำนวนห้องที่ยังไม่อ่าน · `unread` เป็นตัวแปรตัวเดียวกับ `all` เป๊ะ ๆ ·
+   *  ป้าย "ของฉัน" นับเฉพาะห้องของฉัน**ที่ยังไม่อ่าน** · และชิปช่องทางนับเฉพาะห้อง
+   *  ที่ยังไม่อ่านทั้งที่ชิปกรองทั้งแท็บ — สามในสี่ตัวโกหก
+   *
+   *  ชิปช่องทางนับ "ในจักรวาลของแท็บที่เปิดอยู่" ไม่ใช่ทั้งบริษัท เพราะชิปกรองทับแท็บ
+   *  ตัวเลขบนชิปจึงตอบคำถามที่คนกดถามจริง ๆ ว่า "กดแล้วเหลือกี่ห้อง"
+   */
+  async getRoomBadgeCounts(
+    staffId?: string,
+    params?: { tab?: InboxTabKey; aiStatus?: 'ai' | 'human' | 'pending' },
+  ): Promise<{
+    /** ห้องที่ฉันดูแล — ทุกห้อง ไม่ใช่เฉพาะที่ยังไม่อ่าน */
     mine: number;
+    /** ห้องทั้งหมดที่ยังไม่ถูกลบ */
     all: number;
-    unread: number;
+    /** ห้องที่ลูกค้ารอคำตอบจากคน **และยังตอบทัน** — ทั้งบริษัท ไม่ผูกคน (สเปก §4.5, §7 แก้ไข) */
+    waiting: number;
+    /** ห้อง FACEBOOK ที่รออยู่แต่พ้นหน้าต่าง 24 ชม. แล้ว — มุมมอง "ตอบไม่ทัน" */
+    expired: number;
     byChannel: Record<string, number>;
   }> {
-    const unreadWhere: Prisma.ChatRoomWhereInput = { deletedAt: null, unreadCount: { gt: 0 } };
-    const [all, mine, byChannelRaw] = await Promise.all([
-      this.prisma.chatRoom.count({ where: unreadWhere }),
-      staffId
-        ? this.prisma.chatRoom.count({ where: { ...unreadWhere, assignedToId: staffId } })
-        : Promise.resolve(0),
+    // ตัวกรองพื้นฐาน = สิ่งที่ผู้ใช้เลือกไว้นอกเหนือแท็บ (สถานะบอท) — ชุดเดียวกับรายการ
+    const base = this.buildRoomWhere({ aiStatus: params?.aiStatus });
+    const waitingWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, waiting: true });
+    const expiredWhere = this.buildRoomWhere({ aiStatus: params?.aiStatus, expired: true });
+    // ไม่รู้ว่าใครถาม = ไม่มี "ของฉัน" ให้นับ — ปล่อย assignedToId เป็น undefined ไม่ได้
+    // เพราะ Prisma อ่านว่า "ไม่กรอง" ⇒ ทุกห้องกลายเป็นห้องของคนคนนั้น
+    const mineWhere: Prisma.ChatRoomWhereInput | null = staffId
+      ? { ...base, assignedToId: staffId }
+      : null;
+    const tabWhere: Prisma.ChatRoomWhereInput | null =
+      params?.tab === 'waiting' ? waitingWhere : params?.tab === 'mine' ? mineWhere : base;
+
+    const [all, mine, waiting, expired, byChannelRaw] = await Promise.all([
+      this.prisma.chatRoom.count({ where: base }),
+      mineWhere ? this.prisma.chatRoom.count({ where: mineWhere }) : Promise.resolve(0),
+      this.prisma.chatRoom.count({ where: waitingWhere }),
+      this.prisma.chatRoom.count({ where: expiredWhere }),
       this.prisma.chatRoom.groupBy({
         by: ['channel'],
-        where: unreadWhere,
+        // tabWhere = null คือแท็บ "ของฉัน" ที่ไม่รู้ว่าใครถาม ⇒ ไม่มีห้องให้นับ
+        where: tabWhere ?? { id: { in: [] } },
         _count: { id: true },
       }),
     ]);
     const byChannel: Record<string, number> = {};
     for (const g of byChannelRaw) byChannel[g.channel] = g._count.id;
-    return { mine, all, unread: all, byChannel };
+    return { mine, all, waiting, expired, byChannel };
   }
 
   /** Search messages across all rooms */

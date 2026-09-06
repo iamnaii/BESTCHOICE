@@ -45,6 +45,8 @@ interface TodoFormProps {
   onOpenChange: (open: boolean) => void;
   editing: Todo | null;
   staffUsers: AssigneeRef[];
+  /** ค่าตั้งต้นตอนสร้างใหม่ — แผงขวาของแชทใช้ผูกนัดกับห้อง (roomId) + ชื่อนัดล่วงหน้า */
+  defaults?: Partial<typeof emptyForm>;
 }
 
 /** Format a date string as a relative time label (Thai) */
@@ -60,7 +62,7 @@ function formatRelative(dateStr: string) {
   return formatDateMedium(new Date(dateStr));
 }
 
-export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormProps) {
+export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: TodoFormProps) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<typeof emptyForm>({ ...emptyForm });
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
@@ -106,10 +108,13 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
         checklist: Array.isArray(editing.checklist) ? editing.checklist : [],
         attachments: Array.isArray(editing.attachments) ? editing.attachments : [],
         tagsInput: '',
+        roomId: editing.roomId ?? undefined,
       });
     } else {
-      setForm({ ...emptyForm });
+      setForm({ ...emptyForm, ...(defaults ?? {}) });
     }
+    // defaults เป็น object ใหม่ทุก render ของผู้เรียก — ผูกกับ open/editing พอ ไม่งั้นฟอร์มถูกล้างขณะพิมพ์
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing]);
 
   const saveMutation = useMutation({
@@ -129,6 +134,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
         tags: form.tags || [],
         checklist,
         attachments: form.attachments || [],
+        ...(form.roomId ? { roomId: form.roomId } : {}),
       };
       if (!payload.title) throw new Error('กรุณาระบุชื่องาน');
       if (editing) {

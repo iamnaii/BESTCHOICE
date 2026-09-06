@@ -1,40 +1,47 @@
 import { describe, it, expect } from 'vitest';
-import { deriveTabCounts, deriveChannelUnreadCounts } from './tab-counts';
+import { deriveTabCounts, deriveChannelCounts } from './tab-counts';
 
-const S = (over: Partial<{ unreadCount: number; assignedTo: { id: string } | null }>) => ({
-  unreadCount: 0,
+const S = (over: Partial<{ assignedTo: { id: string } | null; waitingSince: string | null }>) => ({
   assignedTo: null,
+  waitingSince: null,
   ...over,
 });
 
 describe('deriveTabCounts', () => {
-  it('counts unread rooms for all/unread, and my unread for mine', () => {
+  it('นับตามความหมายของแต่ละแท็บ ไม่ใช่ "ยังไม่อ่าน" ชุดเดียวทั้งหมด', () => {
     const sessions = [
-      S({ unreadCount: 2, assignedTo: { id: 'me' } }),
-      S({ unreadCount: 1, assignedTo: { id: 'other' } }),
-      S({ unreadCount: 0, assignedTo: { id: 'me' } }),
-      S({ unreadCount: 5, assignedTo: null }),
+      S({ assignedTo: { id: 'me' }, waitingSince: '2026-09-05T01:00:00Z' }),
+      S({ assignedTo: { id: 'other' } }),
+      S({ assignedTo: { id: 'me' }, waitingSince: '2026-09-05T02:00:00Z' }),
+      S({ assignedTo: null }),
     ];
-    expect(deriveTabCounts(sessions, 'me')).toEqual({ mine: 1, all: 3, unread: 3 });
+    // ทั้งหมด = ทุกแถว · ของฉัน = ห้องที่ฉันดูแลทุกห้อง · รอตอบ = ห้องที่ลูกค้ารอ
+    expect(deriveTabCounts(sessions, 'me')).toEqual({ mine: 2, all: 4, waiting: 2 });
   });
-  it('handles missing currentUserId + empty list', () => {
-    expect(deriveTabCounts([], undefined)).toEqual({ mine: 0, all: 0, unread: 0 });
+
+  it('ไม่รู้ว่าใครถาม → ของฉันเป็นศูนย์ ไม่ใช่ห้องที่ยังไม่มีเจ้าของ', () => {
+    const sessions = [S({ assignedTo: null }), S({ assignedTo: { id: 'someone' } })];
+    expect(deriveTabCounts(sessions, undefined)).toEqual({ mine: 0, all: 2, waiting: 0 });
+  });
+
+  it('รายการว่าง', () => {
+    expect(deriveTabCounts([], 'me')).toEqual({ mine: 0, all: 0, waiting: 0 });
   });
 });
 
-describe('deriveChannelUnreadCounts', () => {
-  it('counts unread rooms per channel', () => {
+describe('deriveChannelCounts', () => {
+  it('นับทุกห้องที่แสดงอยู่ต่อช่องทาง ไม่ใช่เฉพาะห้องที่ยังไม่อ่าน', () => {
     const sessions = [
-      { unreadCount: 2, channel: 'LINE_FINANCE' },
-      { unreadCount: 0, channel: 'LINE_FINANCE' },
-      { unreadCount: 1, channel: 'FACEBOOK' },
-      { unreadCount: 5, channel: 'FACEBOOK' },
-      { unreadCount: 0, channel: 'WEB' },
+      { channel: 'LINE_FINANCE' },
+      { channel: 'LINE_FINANCE' },
+      { channel: 'FACEBOOK' },
+      { channel: 'FACEBOOK' },
+      { channel: 'WEB' },
     ];
-    expect(deriveChannelUnreadCounts(sessions)).toEqual({ LINE_FINANCE: 1, FACEBOOK: 2 });
+    expect(deriveChannelCounts(sessions)).toEqual({ LINE_FINANCE: 2, FACEBOOK: 2, WEB: 1 });
   });
 
-  it('returns an empty object for no unread', () => {
-    expect(deriveChannelUnreadCounts([{ unreadCount: 0, channel: 'WEB' }])).toEqual({});
+  it('ห้องที่ไม่มีช่องทางถูกข้าม', () => {
+    expect(deriveChannelCounts([{ channel: undefined }])).toEqual({});
   });
 });

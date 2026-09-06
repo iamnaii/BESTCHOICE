@@ -16,7 +16,7 @@ import { Request, Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
-import { InboundMessage } from '../chat-engine/interfaces/channel-adapter.interface';
+import { InboundMessage, InboundAttribution } from '../chat-engine/interfaces/channel-adapter.interface';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
@@ -43,6 +43,30 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
  * This controller is intentionally public (no JwtAuthGuard) — it receives
  * external webhook calls from Facebook's infrastructure.
  */
+/**
+ * แปลง Messenger `referral` → ที่มาของลูกค้า
+ * โครง referral: { ref?, source: 'ADS'|'SHORTLINK'|…, type: 'OPEN_THREAD', ad_id?, ads_context_data?: { ad_title, photo_url, video_url, post_id } }
+ * ท่าเดียวกับ OBI `Util\Facebook::ads` — เก็บชื่อ/รูปจาก ads_context_data ทันที ไม่ต้องใช้ Marketing API
+ */
+export function buildFbAttribution(referral: any): InboundAttribution | undefined {
+  if (!referral) return undefined;
+  const ctx = referral.ads_context_data ?? {};
+  const adId = referral.ad_id != null ? String(referral.ad_id) : undefined;
+  // Meta ส่ง ref: "" มาในโฆษณาที่ไม่ได้ตั้ง ref — ว่าง = ไม่มี
+  const ref = typeof referral.ref === 'string' && referral.ref.trim() ? referral.ref.trim() : undefined;
+  return {
+    utmSource: 'facebook',
+    utmCampaign: adId ?? ref,
+    utmContent: ref,
+    referrerUrl: referral.source ?? undefined,
+    adId,
+    adTitle: typeof ctx.ad_title === 'string' && ctx.ad_title.trim() ? ctx.ad_title.trim() : undefined,
+    // รูปนิ่งมาก่อน ไม่มีค่อยใช้ thumbnail ของวิดีโอ
+    adPhotoUrl: ctx.photo_url ?? ctx.video_url ?? undefined,
+    postId: ctx.post_id != null ? String(ctx.post_id) : undefined,
+  };
+}
+
 @Controller('webhooks/facebook')
 export class FacebookWebhookController {
   private readonly logger = new Logger(FacebookWebhookController.name);
@@ -227,15 +251,7 @@ export class FacebookWebhookController {
         // fall through to legacy routeInbound path
       }
 
-      const referral = postback.referral ?? event.referral;
-      const attribution = referral
-        ? {
-            utmSource: 'facebook',
-            utmCampaign: referral.ad_id ?? referral.ref ?? undefined,
-            utmContent: referral.ref ?? undefined,
-            referrerUrl: referral.source ?? undefined,
-          }
-        : undefined;
+      const attribution = buildFbAttribution(postback.referral ?? event.referral);
 
       // FF-1 (B4 final review): ปุ่ม Get Started (Task 9) ส่ง payload 'GET_STARTED'
       // ถึงตรงนี้ทุกครั้งที่ลูกค้าใหม่กด — ถ้าปล่อย raw token จะกลายเป็นบับเบิลลูกค้า
@@ -262,7 +278,7 @@ export class FacebookWebhookController {
       void this.messageRouter
         .routeInbound(inbound)
         .then(() =>
-          referral?.ref ? this.handleProductReferral(senderId, String(referral.ref)) : undefined,
+          attribution?.utmContent ? this.handleProductReferral(senderId, String(attribution.utmContent)) : undefined,
         )
         .catch((err) =>
           this.logger.error(
@@ -276,7 +292,14 @@ export class FacebookWebhookController {
     // Facebook ส่ง event ที่ "ไม่มี" ทั้ง message และ postback — ก่อน B4 ตกที่
     // `if (!message) return` ด้านล่างและหายเงียบ ทำให้แอดมินไม่รู้ว่ามาจากเครื่องไหน
     if (event.referral && !message && !postback) {
-      await this.handleProductReferral(senderId, String(event.referral.ref ?? ''));
+      // ลูกค้าเก่ากลับมาจากโฆษณา (source=ADS) — ต้อง subscribe messaging_referrals ถึงจะได้ event นี้
+      const adAttribution = buildFbAttribution(event.referral);
+      if (adAttribution?.adId) {
+        await this.messageRouter.recordAdReferral(senderId, ChatChannel.FACEBOOK, adAttribution);
+      }
+      if (event.referral.ref) {
+        await this.handleProductReferral(senderId, String(event.referral.ref));
+      }
       return;
     }
 
@@ -284,16 +307,11 @@ export class FacebookWebhookController {
 
     const { type, text, mediaUrl } = this.parseMessage(message);
 
-    // Extract Facebook referral / ad attribution data
-    const referral = event.referral ?? event.postback?.referral;
-    const attribution = referral
-      ? {
-          utmSource: 'facebook',
-          utmCampaign: referral.ad_id ?? referral.ref ?? undefined,
-          utmContent: referral.ref ?? undefined,
-          referrerUrl: referral.source ?? undefined,
-        }
-      : undefined;
+    // ที่มาของลูกค้า: ลูกค้าใหม่ที่ทักจากโฆษณา Meta ใส่ referral ไว้ "ใน message" (message.referral)
+    // ไม่ใช่ระดับ event — เดิมอ่านแค่ event/postback จึงไม่เคยเห็นโฆษณาของลูกค้าใหม่เลย (prod: 0 แถว)
+    const attribution = buildFbAttribution(
+      event.referral ?? event.postback?.referral ?? message.referral,
+    );
 
     const inbound: InboundMessage = {
       externalMessageId: message.mid,

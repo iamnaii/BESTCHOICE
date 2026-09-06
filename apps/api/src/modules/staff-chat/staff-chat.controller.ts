@@ -17,6 +17,7 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
@@ -61,6 +62,7 @@ import { CHAT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
 @Controller('staff-chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class StaffChatController {
+  private readonly logger = new Logger(StaffChatController.name);
   constructor(
     private roomManager: RoomManagerService,
     private assignment: AssignmentService,
@@ -99,6 +101,9 @@ export class StaffChatController {
       assignedToId: query.assignedToId,
       unassignedOnly: query.unassignedOnly,
       unreadOnly: query.unreadOnly,
+      waiting: query.waiting,
+      // มุมมอง "ตอบไม่ทัน" (สเปก §7 แก้ไข 2026-09-05) — FACEBOOK ที่รออยู่แต่พ้นหน้าต่าง 24 ชม.
+      expired: query.expired,
       channels: query.channels
         ? (query.channels.split(',').filter(Boolean) as ChatChannel[])
         : undefined,
@@ -111,8 +116,19 @@ export class StaffChatController {
 
   @Get('rooms/counts')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getRoomCounts(@Req() req: { user: { id: string } }) {
-    return this.roomManager.getRoomBadgeCounts(req.user.id);
+  async getRoomCounts(
+    @Req() req: { user: { id: string } },
+    // ชิปช่องทางต้องนับในจักรวาลของแท็บที่เปิดอยู่ ไม่ใช่ทั้งบริษัท — ไม่ส่ง tab มา
+    // จะได้ตัวเลขของแท็บ "ทั้งหมด" ซึ่งเป็นค่าเริ่มต้นที่ปลอดภัยที่สุด
+    @Query() query: { tab?: string; aiStatus?: string },
+  ) {
+    return this.roomManager.getRoomBadgeCounts(req.user.id, {
+      tab: query.tab === 'waiting' || query.tab === 'mine' ? query.tab : 'all',
+      aiStatus:
+        query.aiStatus === 'ai' || query.aiStatus === 'human' || query.aiStatus === 'pending'
+          ? query.aiStatus
+          : undefined,
+    });
   }
 
   @Get('rooms/:id')
@@ -211,9 +227,23 @@ export class StaffChatController {
   async assignRoom(
     @Param('id') id: string,
     @Body('staffId') staffId: string,
+    @Req() req: any,
   ) {
     await this.assignment.assign(id, staffId);
+    await this.roomEventNote(id, async () => {
+      const [to, by] = await Promise.all([this.roomManager.getStaffName(staffId), this.roomManager.getStaffName(req.user?.id)]);
+      return `มอบหมายให้ ${to} โดย ${by}`;
+    });
     return { success: true };
+  }
+
+  /** ข้อความระบบในกระทู้ "ใครทำอะไรกับห้องนี้" — best-effort ห้ามทำให้คำสั่งหลักล้ม (สเปกแผงกลาง 2026-09-06) */
+  private async roomEventNote(roomId: string, build: () => Promise<string>) {
+    try {
+      await this.messageRouter.postSystemNote(roomId, await build());
+    } catch (err) {
+      this.logger.warn(`[room event note] ${roomId}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   @Patch('rooms/:id/customer')
@@ -245,6 +275,7 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async resolveRoom(@Param('id') id: string, @Req() req: any) {
     await this.assignment.resolve(id, req.user.id);
+    await this.roomEventNote(id, async () => `ปิดงานโดย ${await this.roomManager.getStaffName(req.user.id)}`);
     return { success: true };
   }
 
@@ -252,6 +283,7 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async reopenRoom(@Param('id') id: string, @Req() req: any) {
     await this.assignment.reopen(id, req.user.id);
+    await this.roomEventNote(id, async () => `เปิดห้องใหม่โดย ${await this.roomManager.getStaffName(req.user.id)}`);
     return { success: true };
   }
 
@@ -296,6 +328,28 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getNotes(@Param('id') id: string) {
     return this.staffMessage.getNotes(id);
+  }
+
+  /** ลบโน้ตภายใน — คนเขียนเอง หรือ OWNER/BRANCH_MANAGER */
+  @Delete('rooms/:id/notes/:noteId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async deleteNote(@Param('id') id: string, @Param('noteId') noteId: string, @Req() req: any) {
+    await this.staffMessage.deleteNote(id, noteId, { id: req.user.id, role: req.user.role });
+    return { success: true };
+  }
+
+  /** ปักโน้ตเป็นโน้ตของห้อง (ห้องละ 1 — ปลดอันเก่าให้เอง) */
+  @Patch('rooms/:id/notes/:noteId/pin')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async pinNote(@Param('id') id: string, @Param('noteId') noteId: string, @Req() req: any) {
+    return this.staffMessage.pinNote(id, noteId, req.user.id);
+  }
+
+  @Delete('rooms/:id/notes/:noteId/pin')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async unpinNote(@Param('id') id: string, @Param('noteId') noteId: string) {
+    await this.staffMessage.unpinNote(id, noteId);
+    return { success: true };
   }
 
   // ─── Canned Responses ─────────────────────────────────

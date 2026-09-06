@@ -62,6 +62,8 @@ export interface ChatSendFailedEvent {
 interface ChatSocketEvents {
   onNewMessage?: (data: ChatMessageEvent) => void;
   onRoomUpdate?: (data: ChatRoomUpdateEvent) => void;
+  /** โน้ตภายในของห้องเปลี่ยน (เพิ่ม/ลบ/ปัก/ปลด) — รีเฟรชโน้ต + โน้ตปักหมุดในห้องนั้น */
+  onNoteChanged?: (data: { roomId: string; action: string; noteId?: string }) => void;
   onTyping?: (data: ChatTypingEvent) => void;
   onPresence?: (data: ChatPresenceEvent) => void;
   onViewers?: (data: ChatViewersEvent) => void;
@@ -76,8 +78,11 @@ function getWsBaseUrl(): string {
   if (API_URL.startsWith('http')) {
     return new URL(API_URL).origin;
   }
-  // In dev, API_URL is "/api" (relative) — WS must connect to the API server directly
-  return import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+  // API_URL เป็น path สัมพัทธ์ทั้ง dev และ prod — เดิมตกไป localhost:3000 บน prod ⇒ socket ต่อไม่ติด
+  // เสียง/แจ้งเตือน/typing ไม่เคยทำงานเลย (สเปก §9.4 แก้ไข 2026-09-05) · prod: API อยู่ origin เดียวกับหน้าเว็บ
+  // และ gateway allowlist มีโดเมนนั้นอยู่แล้ว · dev: API แยกพอร์ต 3000 · VITE_WS_URL ยัง override ได้ทั้งคู่
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  return import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin;
 }
 
 /**
@@ -143,6 +148,7 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
 
     socket.on('chat:message:new', (data) => eventsRef.current.onNewMessage?.(data));
     socket.on('chat:room:update', (data) => eventsRef.current.onRoomUpdate?.(data));
+    socket.on('chat:note:changed', (data) => eventsRef.current.onNoteChanged?.(data));
     socket.on('chat:typing', (data) => {
       eventsRef.current.onTyping?.(data);
       // Show customer typing indicator for active room

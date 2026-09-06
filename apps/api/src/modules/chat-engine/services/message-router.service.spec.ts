@@ -1,5 +1,6 @@
 import { MessageRouterService } from './message-router.service';
 import { ChatChannel, MessageType, MessageRole } from '@prisma/client';
+import { RoomManagerService } from './room-manager.service';
 
 const baseMsg = {
   externalMessageId: 'em1',
@@ -22,6 +23,7 @@ function makeRouter(opts: {
     findById: jest.fn().mockResolvedValue({ aiPaused: false, handoffMode: false }),
     getOrCreateRoom: jest.fn().mockResolvedValue(room),
     saveMessage: jest.fn().mockResolvedValue({ id: 'm1' }),
+    clearWaiting: jest.fn().mockResolvedValue(undefined),
   };
   const handoffManager = { initiateHandoff: jest.fn() };
   const configService = { get: jest.fn().mockReturnValue(undefined) };
@@ -573,5 +575,332 @@ describe('MessageRouterService — echo จากนอกระบบ (กั�
     await router.mirrorOutbound(echo as any);
     await new Promise((r) => setImmediate(r));
     expect(roomManager.pauseAiIfActive).toHaveBeenCalledWith('r1', undefined);
+  });
+});
+
+describe('MessageRouterService.mirrorOutbound — echo ล้าง waiting', () => {
+  const base = { externalUserId: 'PSID-1', channel: ChatChannel.FACEBOOK, text: 'ตอบจากแอป Facebook' };
+
+  it('echo STAFF → ล้าง waiting ของห้อง (ถึงลูกค้าแล้วโดยนิยาม)', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-1' });
+    expect(roomManager.clearWaiting).toHaveBeenCalledWith('r1');
+  });
+
+  it('BOT (greeting อัตโนมัติของเพจ) → ไม่ล้าง waiting', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.mirrorOutbound({ ...base, role: MessageRole.BOT, externalMessageId: 'mid-2' });
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+  });
+
+  it('echo ซ้ำ (P2002) → ไม่ล้างซ้ำ', async () => {
+    const { router, roomManager } = makeRouter({});
+    const dup: any = new Error('dup');
+    dup.code = 'P2002';
+    roomManager.saveMessage.mockRejectedValueOnce(dup);
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-1' });
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+  });
+});
+
+describe('MessageRouterService.sendStaffMessage — ใครตอบก่อนได้เป็นเจ้าของ', () => {
+  function makeClaimingSender(adapterResult: { success: boolean; error?: string }) {
+    const { router: base, roomManager, adapter } = makeStaffSender();
+    adapter.sendMessage.mockResolvedValue(adapterResult);
+    const assignment = { claimIfUnassigned: jest.fn().mockResolvedValue(true) };
+    const router = new MessageRouterService(
+      roomManager as any,
+      { initiateHandoff: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue(undefined) } as any,
+      undefined, // afterHours
+      undefined, // aiAutoReply
+      undefined, // adapters
+      undefined, // handlers
+      undefined, // gateway
+      assignment as any,
+    );
+    router.registerAdapter(adapter as any);
+    void base;
+    return { router, roomManager, adapter, assignment };
+  }
+
+  it('ส่งสำเร็จ → markOutboundSent แล้วค่อย claimIfUnassigned(roomId, staffId)', async () => {
+    const { router, roomManager, assignment } = makeClaimingSender({ success: true });
+    const res = await router.sendStaffMessage({ roomId: 'r1', staffId: 'u1', text: 'สวัสดีค่ะ', clientMessageId: 'tok-1' });
+
+    expect(res.success).toBe(true);
+    expect(assignment.claimIfUnassigned).toHaveBeenCalledWith('r1', 'u1');
+    expect(roomManager.markOutboundSent.mock.invocationCallOrder[0])
+      .toBeLessThan(assignment.claimIfUnassigned.mock.invocationCallOrder[0]);
+  });
+
+  it('adapter ส่งล้ม → ไม่ markOutboundSent และไม่รับเรื่อง (ลูกค้ายังไม่ได้รับคำตอบ)', async () => {
+    const { router, roomManager, assignment } = makeClaimingSender({ success: false, error: '(#10) outside window' });
+    const res = await router.sendStaffMessage({ roomId: 'r1', staffId: 'u1', text: 'สวัสดีค่ะ', clientMessageId: 'tok-2' });
+
+    expect(res.success).toBe(false);
+    expect(roomManager.markOutboundSent).not.toHaveBeenCalled();
+    expect(assignment.claimIfUnassigned).not.toHaveBeenCalled();
+  });
+
+  it('claim ล้ม (เช่น DB error) → ไม่ทำให้การส่งที่สำเร็จแล้วกลายเป็นล้ม', async () => {
+    const { router, assignment } = makeClaimingSender({ success: true });
+    assignment.claimIfUnassigned.mockRejectedValue(new Error('db down'));
+    const res = await router.sendStaffMessage({ roomId: 'r1', staffId: 'u1', text: 'สวัสดีค่ะ', clientMessageId: 'tok-3' });
+    expect(res.success).toBe(true);
+  });
+});
+
+describe('MessageRouterService.mirrorOutbound — ข้อความทักทายอัตโนมัติของเพจต้องไม่เตะลูกค้าใหม่ออกจากคิว', () => {
+  const WAITING_SINCE = new Date('2026-09-05T02:00:00.000Z');
+  const base = { externalUserId: 'PSID-1', channel: ChatChannel.FACEBOOK, text: 'สวัสดีค่ะ BESTCHOICE ยินดีให้บริการ' };
+
+  /**
+   * ใช้ RoomManagerService "ตัวจริง" เป็นคนตัดสิน shouldSkipFirstOutboundClear
+   * (บน prisma จำลอง) — เทสต์ชุดนี้จึงพิสูจน์เงื่อนไขจริง (ใบแรก + ใน 60 วินาที)
+   * ไม่ใช่ค่าที่ mock ตอบกลับมา
+   */
+  function makeEchoRouter(opts: {
+    waitingSince?: Date | null;
+    priorOutbound?: number;
+    echoAt: Date;
+    duplicate?: boolean;
+  }) {
+    const messages: any[] = [];
+    for (let i = 0; i < (opts.priorOutbound ?? 0); i++) {
+      messages.push({
+        id: `prior-${i}`,
+        roomId: 'r1',
+        role: MessageRole.STAFF,
+        createdAt: new Date('2026-09-04T00:00:00.000Z'),
+        deletedAt: null,
+      });
+    }
+    const prisma = {
+      chatRoom: {
+        findUnique: jest.fn(async ({ where }: any) =>
+          where.id === 'r1' ? { waitingSince: opts.waitingSince ?? WAITING_SINCE } : null,
+        ),
+      },
+      chatMessage: {
+        findUnique: jest.fn(async ({ where }: any) => messages.find((m) => m.id === where.id) ?? null),
+        count: jest.fn(async ({ where }: any) =>
+          messages.filter(
+            (m) =>
+              m.roomId === where.roomId && m.deletedAt === null && where.role.in.includes(m.role),
+          ).length,
+        ),
+      },
+    };
+    const realRoomManager = new RoomManagerService(prisma as any, {} as any);
+    const roomManager = {
+      getOrCreateRoom: jest.fn().mockResolvedValue({ id: 'r1' }),
+      saveMessage: jest.fn(async (p: any) => {
+        if (opts.duplicate) {
+          const dup: any = new Error('dup');
+          dup.code = 'P2002';
+          throw dup;
+        }
+        const row = {
+          id: 'echo-1',
+          roomId: 'r1',
+          role: p.role,
+          createdAt: opts.echoAt,
+          deletedAt: null,
+        };
+        messages.push(row);
+        return row;
+      }),
+      clearWaiting: jest.fn().mockResolvedValue(undefined),
+      shouldSkipFirstOutboundClear: jest.fn((roomId: string, msgId: string) =>
+        realRoomManager.shouldSkipFirstOutboundClear(roomId, msgId),
+      ),
+    };
+    const router = new MessageRouterService(
+      roomManager as any,
+      { initiateHandoff: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue(undefined) } as any,
+    );
+    return { router, roomManager };
+  }
+
+  it('echo ใบแรกของห้อง ภายใน 60 วินาทีหลังลูกค้าทัก (= greeting ของเพจ) → ไม่ล้าง waiting', async () => {
+    const { router, roomManager } = makeEchoRouter({
+      echoAt: new Date(WAITING_SINCE.getTime() + 3_000),
+    });
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-g1' } as any);
+    expect(roomManager.saveMessage).toHaveBeenCalled();
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+  });
+
+  it('echo ใบแรกแต่มาหลังเกิน 60 วินาที (= คนตอบจริง) → ล้าง waiting ตามปกติ', async () => {
+    const { router, roomManager } = makeEchoRouter({
+      echoAt: new Date(WAITING_SINCE.getTime() + 61_000),
+    });
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-g2' } as any);
+    expect(roomManager.clearWaiting).toHaveBeenCalledWith('r1');
+  });
+
+  it('ห้องที่เคยมี outbound แล้ว → echo ใบถัดไปล้างเสมอ แม้จะมาเร็ว', async () => {
+    const { router, roomManager } = makeEchoRouter({
+      priorOutbound: 1,
+      echoAt: new Date(WAITING_SINCE.getTime() + 2_000),
+    });
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-g3' } as any);
+    expect(roomManager.clearWaiting).toHaveBeenCalledWith('r1');
+  });
+
+  it('BOT echo → ไม่ล้าง และไม่ต้องถามด่านเลย', async () => {
+    const { router, roomManager } = makeEchoRouter({
+      echoAt: new Date(WAITING_SINCE.getTime() + 120_000),
+    });
+    await router.mirrorOutbound({ ...base, role: MessageRole.BOT, externalMessageId: 'mid-g4' } as any);
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+    expect(roomManager.shouldSkipFirstOutboundClear).not.toHaveBeenCalled();
+  });
+
+  it('echo ซ้ำ (P2002) → ไม่ล้าง และไม่ถามด่าน (ออกก่อนตั้งแต่ saveMessage)', async () => {
+    const { router, roomManager } = makeEchoRouter({
+      duplicate: true,
+      echoAt: new Date(WAITING_SINCE.getTime() + 120_000),
+    });
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-g5' } as any);
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+    expect(roomManager.shouldSkipFirstOutboundClear).not.toHaveBeenCalled();
+  });
+});
+
+describe('MessageRouterService.sendStaffOutbound — ข้อความสำเร็จรูปก็ต้องล้าง waiting + รับเรื่อง', () => {
+  function makeOutboundSender(adapterResult: { success: boolean; error?: string; externalMessageId?: string }) {
+    const room = {
+      id: 'r1',
+      channel: ChatChannel.LINE_SHOP,
+      externalUserId: 'U1',
+      lineUserId: null,
+    };
+    const roomManager = {
+      findById: jest.fn().mockResolvedValue(room),
+      saveMessage: jest.fn().mockResolvedValue({ id: 'm-canned', clientMessageId: null, createdAt: new Date() }),
+      markOutboundSent: jest.fn().mockResolvedValue(undefined),
+    };
+    const assignment = { claimIfUnassigned: jest.fn().mockResolvedValue(true) };
+    const adapter = {
+      channel: ChatChannel.LINE_SHOP,
+      sendMessage: jest.fn().mockResolvedValue(adapterResult),
+    };
+    const router = new MessageRouterService(
+      roomManager as any,
+      { initiateHandoff: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue(undefined) } as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      assignment as any,
+    );
+    router.registerAdapter(adapter as any);
+    return { router, roomManager, assignment, adapter };
+  }
+
+  it('ส่งสำเร็จ → markOutboundSent (ล้าง waiting) แล้วค่อย claimIfUnassigned', async () => {
+    const { router, roomManager, assignment } = makeOutboundSender({ success: true, externalMessageId: 'ext-9' });
+    const res = await router.sendStaffOutbound('r1', { text: 'สวัสดีค่ะ' } as any, 'u1');
+
+    expect(res.success).toBe(true);
+    expect(roomManager.markOutboundSent).toHaveBeenCalledWith('m-canned', 'ext-9');
+    expect(assignment.claimIfUnassigned).toHaveBeenCalledWith('r1', 'u1');
+    expect(roomManager.markOutboundSent.mock.invocationCallOrder[0]).toBeLessThan(
+      assignment.claimIfUnassigned.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('adapter ส่งล้ม → ไม่ stamp และไม่รับเรื่อง (ลูกค้ายังไม่ได้รับคำตอบ)', async () => {
+    const { router, roomManager, assignment } = makeOutboundSender({ success: false, error: '(#10) outside window' });
+    const res = await router.sendStaffOutbound('r1', { text: 'สวัสดีค่ะ' } as any, 'u1');
+
+    expect(res.success).toBe(false);
+    expect(roomManager.markOutboundSent).not.toHaveBeenCalled();
+    expect(assignment.claimIfUnassigned).not.toHaveBeenCalled();
+  });
+
+  it('claim ล้ม → ไม่ทำให้การส่งที่สำเร็จแล้วกลายเป็นล้ม', async () => {
+    const { router, assignment } = makeOutboundSender({ success: true, externalMessageId: 'ext-9' });
+    assignment.claimIfUnassigned.mockRejectedValue(new Error('db down'));
+    const res = await router.sendStaffOutbound('r1', { text: 'สวัสดีค่ะ' } as any, 'u1');
+    expect(res.success).toBe(true);
+  });
+});
+
+describe('MessageRouterService — ข้อความระบบ "รับห้องนี้ (ตอบก่อน)"', () => {
+  it('claimIfUnassigned=true → โน้ตระบบแบบเงียบ 1 ครั้ง · false → ไม่มีโน้ต', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).getStaffName = jest.fn().mockResolvedValue('แนน');
+    const assignment = { claimIfUnassigned: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false) };
+    (router as any).assignmentService = assignment;
+    await (router as any).noteClaimIfFirst('r1', 'u1');
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'r1', role: MessageRole.SYSTEM, silent: true, text: 'แนน รับห้องนี้ (ตอบก่อน)' }),
+    );
+    roomManager.saveMessage.mockClear();
+    await (router as any).noteClaimIfFirst('r1', 'u1');
+    expect(roomManager.saveMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('MessageRouterService — ที่มาจากโฆษณา (PR-A referral)', () => {
+  const AD = {
+    utmSource: 'facebook',
+    utmCampaign: '120246504706250534',
+    referrerUrl: 'ADS',
+    adId: '120246504706250534',
+    adTitle: 'ฝนตกไม่อยากออกจากบ้าน',
+    adPhotoUrl: 'https://scontent.example/ad.jpg',
+  };
+
+  it('ข้อความแรกจากโฆษณา → ส่ง attribution เข้า getOrCreateRoom และโพสต์โน้ตระบบในห้อง', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).findByExternalUser = jest.fn();
+    (roomManager as any).linkAttribution = jest.fn();
+
+    await router.routeInbound({ ...baseMsg, channel: ChatChannel.FACEBOOK, attribution: AD } as any);
+
+    expect(roomManager.getOrCreateRoom).toHaveBeenCalledWith(expect.objectContaining({ attribution: AD }));
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'r1', role: MessageRole.SYSTEM, text: 'ลูกค้าทักจากโฆษณา · ฝนตกไม่อยากออกจากบ้าน' }),
+    );
+  });
+
+  it('ข้อความปกติ (ไม่มี adId) → ไม่มีโน้ตโฆษณา', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.routeInbound({ ...baseMsg, attribution: { utmSource: 'facebook', utmContent: 'p:abc' } } as any);
+    const systemNotes = roomManager.saveMessage.mock.calls.filter((c) => c[0].role === MessageRole.SYSTEM);
+    expect(systemNotes).toHaveLength(0);
+  });
+
+  it('recordAdReferral: ลูกค้าเก่ากลับมาจากโฆษณา → ผูกที่มาให้ห้องเดิม + โน้ต · ไม่มีห้อง = ไม่ทำอะไร', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).findByExternalUser = jest.fn().mockResolvedValue({ id: 'r-old', attributionId: 'a-old' });
+    (roomManager as any).linkAttribution = jest.fn().mockResolvedValue({ campaignName: 'x', adTitle: 'x', changed: true });
+
+    await router.recordAdReferral('PSID-1', ChatChannel.FACEBOOK, AD);
+
+    expect((roomManager as any).linkAttribution).toHaveBeenCalledWith('r-old', AD, 'a-old');
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'r-old', role: MessageRole.SYSTEM, text: 'ลูกค้าทักจากโฆษณา · ฝนตกไม่อยากออกจากบ้าน' }),
+    );
+
+    (roomManager as any).findByExternalUser.mockResolvedValue(null);
+    (roomManager as any).linkAttribution.mockClear();
+    await router.recordAdReferral('PSID-2', ChatChannel.FACEBOOK, AD);
+    expect((roomManager as any).linkAttribution).not.toHaveBeenCalled();
+  });
+
+  it('โฆษณาไม่มีชื่อ → โน้ตใช้เลขโฆษณาแทน ไม่ว่าง', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.routeInbound({ ...baseMsg, attribution: { ...AD, adTitle: undefined } } as any);
+    expect(roomManager.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ role: MessageRole.SYSTEM, text: 'ลูกค้าทักจากโฆษณา · โฆษณา 120246504706250534' }),
+    );
   });
 });

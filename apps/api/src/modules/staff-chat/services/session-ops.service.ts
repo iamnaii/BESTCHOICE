@@ -136,13 +136,34 @@ export class SessionOpsService {
         }
       }
 
-      // d. Recalculate primary totalMessages
+      // d. Recalculate primary totalMessages + ยก "รอตอบ" ที่เก่ากว่ามาไว้บนห้องหลัก
+      //    ขั้น e soft-delete ห้องรอง ซึ่งถูกกรองออกทั้ง listRooms และ getRoomBadgeCounts
+      //    ⇒ ถ้าห้องรองกำลังรอตอบอยู่แต่ห้องหลักไม่ได้รอ ลูกค้าที่รอจะหายจากคิวไปเฉย ๆ
+      //    null = ไม่ได้รอ ⇒ เลือกเวลาที่เก่ากว่าของสองห้อง (มีข้างเดียวก็ใช้ข้างนั้น)
       const messageCount = await tx.chatMessage.count({
         where: { roomId: primaryId, deletedAt: null },
       });
+      const [primaryNow, secondaryNow] = await Promise.all([
+        tx.chatRoom.findUnique({
+          where: { id: primaryId },
+          select: { waitingSince: true },
+        }),
+        tx.chatRoom.findUnique({
+          where: { id: secondaryId },
+          select: { waitingSince: true },
+        }),
+      ]);
+      const waitingCandidates = [
+        primaryNow?.waitingSince ?? null,
+        secondaryNow?.waitingSince ?? null,
+      ].filter((d): d is Date => d !== null);
+      const mergedWaitingSince = waitingCandidates.length
+        ? new Date(Math.min(...waitingCandidates.map((d) => d.getTime())))
+        : null;
+
       await tx.chatRoom.update({
         where: { id: primaryId },
-        data: { totalMessages: messageCount },
+        data: { totalMessages: messageCount, waitingSince: mergedWaitingSince },
       });
 
       // e. Soft-delete secondary room

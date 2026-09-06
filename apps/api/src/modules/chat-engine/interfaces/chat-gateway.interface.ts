@@ -8,6 +8,8 @@ export interface IChatGateway {
   emitNewMessage(roomId: string, payload: Record<string, unknown>): void;
   emitRoomUpdate(roomId: string, payload: Record<string, unknown>): void;
   emitToStaff(staffId: string, event: string, payload: Record<string, unknown>): void;
+  /** โน้ตภายในเปลี่ยน — optional เพราะ gateway ฝั่ง web widget ไม่มีโน้ต */
+  emitNoteChanged?(roomId: string, payload: Record<string, unknown>): void;
 }
 
 export const CHAT_GATEWAY_TOKEN = 'CHAT_GATEWAY';

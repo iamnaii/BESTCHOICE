@@ -4,6 +4,22 @@ import { ChatChannel, MessageType } from '@prisma/client';
  * Inbound message from any channel — normalized before reaching the engine.
  * Each adapter converts its platform-specific format into this shape.
  */
+/**
+ * ที่มาของลูกค้า — UTM ทั่วไป + ข้อมูลโฆษณาจาก Messenger `referral.ads_context_data`
+ * (Meta ส่ง ad_title / photo_url / video_url / post_id มาให้ฟรีในทุก referral ไม่ต้องใช้ Marketing API)
+ */
+export interface InboundAttribution {
+  utmSource?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  referrerUrl?: string;
+  /** referral.ad_id — มีเฉพาะ source=ADS */
+  adId?: string;
+  adTitle?: string;
+  adPhotoUrl?: string;
+  postId?: string;
+}
+
 export interface InboundMessage {
   /** Platform-specific message ID (LINE messageId, FB mid, etc.) */
   externalMessageId: string;
@@ -24,12 +40,7 @@ export interface InboundMessage {
   /** Timestamp from the platform (if available) */
   timestamp?: Date;
   /** UTM / referral attribution data (e.g. from Facebook ad click) */
-  attribution?: {
-    utmSource?: string;
-    utmCampaign?: string;
-    utmContent?: string;
-    referrerUrl?: string;
-  };
+  attribution?: InboundAttribution;
   /** LINE reply token — ใช้ครั้งเดียว อายุ ~60 วิ; LINE adapters ใช้ reply API (ฟรี) ก่อน fallback เป็น push */
   replyToken?: string;
 }

@@ -333,6 +333,11 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     this.server?.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.ROOM_UPDATE, payload);
   }
 
+  /** โน้ตภายในของห้องเปลี่ยน — ส่งให้คนที่เปิดห้องอยู่ (ไม่ส่งเข้า INBOX: โน้ตไม่กระทบรายการซ้าย) */
+  emitNoteChanged(roomId: string, payload: Record<string, unknown>): void {
+    this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.NOTE_CHANGED, payload);
+  }
+
   /** Notify a specific staff member */
   emitToStaff(staffId: string, event: string, payload: Record<string, unknown>): void {
     this.server?.to(CHAT_ROOMS.staff(staffId)).emit(event, payload);

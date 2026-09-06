@@ -13,6 +13,8 @@ interface FindAllParams {
   priority?: TodoPriority;
   assigneeId?: string; // 'me' | uuid
   branchId?: string;
+  /** นัดของห้องแชทห้องเดียว */
+  roomId?: string;
   page?: number;
   limit?: number;
   currentUserId: string;
@@ -37,6 +39,7 @@ export class TodosService {
       priority,
       assigneeId,
       branchId,
+      roomId,
       page = 1,
       limit = 50,
       currentUserId,
@@ -53,6 +56,7 @@ export class TodosService {
     if (status) where.status = status;
     if (priority) where.priority = priority;
     if (branchId) where.branchId = branchId;
+    if (roomId) where.roomId = roomId;
     if (assigneeId) {
       where.assigneeId = assigneeId === 'me' ? currentUserId : assigneeId;
     }
@@ -154,6 +158,7 @@ export class TodosService {
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
         assigneeId: dto.assigneeId,
         branchId: dto.branchId,
+        roomId: dto.roomId,
         tags: dto.tags ?? [],
         checklist: (dto.checklist as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         attachments: (dto.attachments as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
@@ -180,6 +185,9 @@ export class TodosService {
       data.assignee = dto.assigneeId
         ? { connect: { id: dto.assigneeId } }
         : { disconnect: true };
+    }
+    if (dto.roomId !== undefined) {
+      data.room = dto.roomId ? { connect: { id: dto.roomId } } : { disconnect: true };
     }
     if (dto.tags !== undefined) data.tags = { set: dto.tags };
     if (dto.checklist !== undefined) {

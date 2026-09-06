@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MessageRole, MessageType } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.interface';
 
 /**
@@ -37,6 +38,7 @@ export class ChatAiDraftService {
       aiPaused: true,
       aiPausedById: staffId,
     });
+    await this.systemNote(roomId, async () => `${await this.staffName(staffId)} รับช่วงจากบอท — บอทหยุดตอบห้องนี้`);
     return { paused: true };
   }
 
@@ -60,6 +62,29 @@ export class ChatAiDraftService {
       aiPaused: false,
     });
     this.logger.log(`Room ${roomId} released back to AI by staff ${staffId}`);
+    await this.systemNote(roomId, async () => `คืนให้บอทตอบ โดย ${await this.staffName(staffId)}`);
     return { released: true };
+  }
+
+  private async staffName(staffId: string): Promise<string> {
+    const u = await this.prisma.user.findUnique({ where: { id: staffId }, select: { name: true } });
+    return u?.name || 'พนักงาน';
+  }
+
+  /**
+   * ข้อความระบบในกระทู้ "ใครทำอะไรกับห้องนี้" — เขียนตรงลง chat_messages แบบเงียบ
+   * (ไม่ผ่าน saveMessage จึงไม่แตะ lastMessageAt/totalMessages/unread — ห้องไม่เด้ง พรีวิวไม่เปลี่ยน)
+   * best-effort: ล้มแล้วแค่ log ไม่ทำให้ take-over/release ล้ม
+   */
+  private async systemNote(roomId: string, build: () => Promise<string>): Promise<void> {
+    try {
+      const text = await build();
+      await this.prisma.chatMessage.create({
+        data: { roomId, role: MessageRole.SYSTEM, type: MessageType.TEXT, text },
+      });
+      this.gateway?.emitNewMessage(roomId, { role: 'SYSTEM', text, type: MessageType.TEXT, roomId });
+    } catch (err) {
+      this.logger.warn(`[system note] ${roomId}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 }

@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
 import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
+import { TEST_CUSTOMER_ADDRESS } from '../../utils/test-data-markers';
 
 // generateContractNumber issues a $queryRaw lock + sequence read; stub it out
 // so unit tests don't need a Postgres advisory-lock implementation.
@@ -12,10 +13,29 @@ jest.mock('../../utils/sequence.util', () => ({
   generateContractNumber: jest.fn().mockResolvedValue('CT-2026-05-00001'),
 }));
 
+// test-data fence (spec 2026-09-05 §5.4 — แก้หลัง final review): เคลมเปลี่ยนเครื่องสืบทอด "ลูกค้า"
+// แต่ "เครื่อง" เลือกใหม่จากสต็อก ⇒ คู่ใหม่ ต้องผ่าน `assertSameTestSide`. mock ที่ไปถึงรั้วต้องมี
+// ฟิลด์ที่รั้วอ่าน: ลูกค้า {name, phone, addressCurrent} · เครื่อง {name, imeiSerial, po}
+const REAL_CUSTOMER = {
+  id: 'cust-1',
+  name: 'ลูกค้าจริง',
+  phone: '0891234567',
+  addressCurrent: 'กรุงเทพ',
+};
+const TEST_CUSTOMER = {
+  id: 'cust-1',
+  name: 'ทดสอบระบบ ลูกค้า',
+  phone: 'TEST-0000001',
+  addressCurrent: TEST_CUSTOMER_ADDRESS,
+};
+const REAL_PRODUCT_FENCE = { name: 'iPhone 14', imeiSerial: '356789012345678', po: null };
+const TEST_PRODUCT_FENCE = { name: 'iPhone 14', imeiSerial: 'TEST-0001', po: null };
+
 describe('DefectExchangeService', () => {
   let service: DefectExchangeService;
   let prisma: any;
   let repairTickets: any;
+  let reversal: any;
 
   const oldContractId = 'ct-old';
   const newProductId = 'prod-new';
@@ -64,6 +84,8 @@ describe('DefectExchangeService', () => {
       supplierId: 'sup-1',
     },
     payments: [],
+    // test-data fence: execute() include ลูกค้าของสัญญาเดิมมาเข้ารั้ว
+    customer: REAL_CUSTOMER,
     ...overrides,
   });
 
@@ -78,6 +100,7 @@ describe('DefectExchangeService', () => {
     shopWarrantyDays: 30,
     stockInDate: new Date(),
     supplierId: 'sup-1',
+    ...REAL_PRODUCT_FENCE,
   };
 
   const OWNER = { id: 'user-owner', role: 'OWNER', branchId: null };
@@ -122,16 +145,14 @@ describe('DefectExchangeService', () => {
     repairTickets = {
       markReplaced: jest.fn().mockResolvedValue(undefined),
     };
+    reversal = { reverseContract: jest.fn().mockResolvedValue({ id: 'je-rev' }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DefectExchangeService,
         { provide: PrismaService, useValue: prisma },
         { provide: JournalAutoService, useValue: {} },
-        {
-          provide: DefectExchangeReversalTemplate,
-          useValue: { reverseContract: jest.fn().mockResolvedValue({ id: 'je-rev' }) },
-        },
+        { provide: DefectExchangeReversalTemplate, useValue: reversal },
         { provide: RepairTicketsService, useValue: repairTickets },
       ],
     }).compile();
@@ -382,6 +403,90 @@ describe('DefectExchangeService', () => {
           }),
         }),
       );
+    });
+  });
+
+  // spec 2026-09-05 §5.4 (แก้หลัง final review Critical): เคลมเปลี่ยนเครื่องตำหนิสืบทอด "ลูกค้า"
+  // แต่เลือก "เครื่อง" ใหม่จากสต็อก (ต้องตรงรุ่น/ความจุ — เครื่องทดสอบที่ seed ไว้ก็ผ่าน)
+  // ⇒ คู่ใหม่ ต้องผ่านรั้วที่จุดโหลดเครื่องใน tx ก่อนปิดสัญญาเดิม/สร้างสัญญาใหม่/แตะสถานะเครื่อง.
+  // ทาง replace จากใบซ่อม (bypassWindowCheck) ข้าม checkEligibility แต่ต้องไม่ข้ามรั้ว.
+  describe('execute — test-data fence (คู่ใหม่ = ลูกค้าเดิม + เครื่องที่เลือกใหม่)', () => {
+    const dto = { oldContractId, newProductId, defectReason: 'screen broken' } as any;
+    const arm = (contract: any, product: any) => {
+      prisma.contract.findUnique.mockResolvedValue(contract);
+      prisma.product.findUnique.mockResolvedValue(product);
+      const tx = prisma.__tx;
+      tx.payment.count.mockResolvedValue(0);
+      tx.contract.findUnique.mockResolvedValue(contract);
+      tx.product.findUnique.mockResolvedValue(product);
+      return tx;
+    };
+    const expectNothingWritten = (tx: any) => {
+      expect(tx.contract.update).not.toHaveBeenCalled();
+      expect(tx.contract.create).not.toHaveBeenCalled();
+      expect(tx.product.update).not.toHaveBeenCalled();
+      expect(tx.payment.createMany).not.toHaveBeenCalled();
+      expect(tx.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+      expect(reversal.reverseContract).not.toHaveBeenCalled();
+    };
+
+    it('จริง ↔ จริง ผ่าน และโหลดลูกค้าของสัญญาเดิม + PO ของเครื่องใหม่ใน tx', async () => {
+      const tx = arm(baseContract(), newProductRec);
+      const result = await service.execute(dto, userId);
+      expect(result.newContract).toBeDefined();
+      expect(tx.contract.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: oldContractId },
+          include: expect.objectContaining({
+            customer: { select: expect.objectContaining({ addressCurrent: true }) },
+          }),
+        }),
+      );
+      // po บังคับในชนิดของรั้ว — อุปกรณ์เสริมไร้ IMEI จาก PO ทดสอบต้องถูกมองเป็นของทดสอบ
+      expect(tx.product.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: newProductId },
+          include: { po: { select: { poNumber: true } } },
+        }),
+      );
+    });
+
+    it('ทดสอบ ↔ ทดสอบ ผ่าน', async () => {
+      const tx = arm(baseContract({ customer: TEST_CUSTOMER }), {
+        ...newProductRec,
+        ...TEST_PRODUCT_FENCE,
+      });
+      const result = await service.execute(dto, userId);
+      expect(result.oldContract.status).toBe('DEFECT_EXCHANGED');
+      expect(tx.contract.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('เครื่องทดสอบ → ลูกค้าจริง: BadRequest ก่อนปิดสัญญาเดิม/สร้างสัญญาใหม่', async () => {
+      const tx = arm(baseContract(), { ...newProductRec, ...TEST_PRODUCT_FENCE });
+      await expect(service.execute(dto, userId)).rejects.toThrow(/เครื่องทดสอบระบบ/);
+      expectNothingWritten(tx);
+    });
+
+    it('เครื่องจริง → ลูกค้าทดสอบ: BadRequest ก่อนเขียนอะไรทั้งสิ้น', async () => {
+      const tx = arm(baseContract({ customer: TEST_CUSTOMER }), newProductRec);
+      await expect(service.execute(dto, userId)).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
+      expectNothingWritten(tx);
+    });
+
+    it('ทาง replace จากใบซ่อม (bypassWindowCheck) ก็ไม่ข้ามรั้ว — ไม่ markReplaced', async () => {
+      const tx = arm(baseContract(), { ...newProductRec, ...TEST_PRODUCT_FENCE });
+      tx.repairTicket.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        customerId: 'cust-1',
+        status: 'IN_PROGRESS',
+        deletedAt: null,
+      });
+      await expect(
+        service.execute({ ...dto, bypassWindowCheck: true, originRepairTicketId: 'rt-1' }, OWNER),
+      ).rejects.toThrow(/เครื่องทดสอบระบบ/);
+      expectNothingWritten(tx);
+      expect(repairTickets.markReplaced).not.toHaveBeenCalled();
     });
   });
 });

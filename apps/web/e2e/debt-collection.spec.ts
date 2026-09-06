@@ -18,7 +18,9 @@ test.describe('ยึดคืน & ขายต่อ', () => {
 
   test('should display subtitle', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(page.getByText(/จัดการเครื่องที่ยึดคืน/).first()).toBeVisible({ timeout: 10000 });
+    // subtitle เปลี่ยนเมื่อ 2026-09-05 (#1513 ย้ายทางเข้ายึดเครื่องมาหน้านี้) — ข้อความเดิม
+    // "จัดการเครื่องที่ยึดคืน" ไม่มีบนหน้าจออีกแล้ว เทสจึงแดงทุก PR ตั้งแต่นั้น
+    await expect(page.getByText(/เพื่อบันทึกการยึดคืน/).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should show repossession list or empty state', async ({ page }) => {

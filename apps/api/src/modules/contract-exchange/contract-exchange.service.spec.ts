@@ -18,6 +18,7 @@ import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-e
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import { TEST_CUSTOMER_ADDRESS } from '../../utils/test-data-markers';
 
 // Default user shape used by submit() tests after Fix 2 (issue #1086 item 2).
 // SALES_BR1 matches the mock contract's branchId ('br-1') so legacy tests
@@ -25,6 +26,25 @@ import { CompanyResolverService } from '../journal/company-resolver.service';
 const SALES_BR1 = { id: 'u-1', role: 'SALES', branchId: 'br-1' };
 const SALES_BR2 = { id: 'u-2', role: 'SALES', branchId: 'br-2' };
 const OWNER_USER = { id: 'owner-1', role: 'OWNER', branchId: null };
+
+// test-data fence (spec 2026-09-05 §5.4 — แก้หลัง final review): เปลี่ยนเครื่องสืบทอด "ลูกค้า"
+// แต่ "เครื่อง" เลือกใหม่จากสต็อก ⇒ เป็นคู่ใหม่ ต้องผ่าน `assertSameTestSide` เหมือน POS/เปิดสัญญา.
+// ทุก mock ที่ไปถึงรั้วต้องมีฟิลด์ที่รั้วอ่าน: ลูกค้า {name, phone, addressCurrent} ·
+// เครื่อง {name, imeiSerial, po} (po บังคับในชนิด — อุปกรณ์เสริมไร้ IMEI จาก PO ทดสอบ)
+const REAL_CUSTOMER = {
+  id: 'cust',
+  name: 'ลูกค้าจริง',
+  phone: '0891234567',
+  addressCurrent: 'กรุงเทพ',
+};
+const TEST_CUSTOMER = {
+  id: 'cust-t',
+  name: 'ทดสอบระบบ ลูกค้า',
+  phone: 'TEST-0000001',
+  addressCurrent: TEST_CUSTOMER_ADDRESS,
+};
+const REAL_PRODUCT_FENCE = { name: 'iPhone 15', imeiSerial: '356789012345678', po: null };
+const TEST_PRODUCT_FENCE = { name: 'iPhone 15', imeiSerial: 'TEST-0001', po: null };
 
 describe('ContractExchangeService.submit', () => {
   let service: ContractExchangeService;
@@ -113,6 +133,7 @@ describe('ContractExchangeService.submit', () => {
       productId: 'op',
       deletedAt: null,
       sellingPrice: '28000',
+      customer: REAL_CUSTOMER,
     });
     prisma.product.findUnique
       .mockResolvedValueOnce({
@@ -129,6 +150,7 @@ describe('ContractExchangeService.submit', () => {
         storage: '256',
         sellingPrice: '28000',
         status: 'IN_STOCK',
+        ...REAL_PRODUCT_FENCE,
       });
     await expect(
       service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
@@ -145,6 +167,7 @@ describe('ContractExchangeService.submit', () => {
       productId: 'op',
       deletedAt: null,
       sellingPrice: '28000',
+      customer: REAL_CUSTOMER,
     });
     prisma.product.findUnique
       .mockResolvedValueOnce({
@@ -161,6 +184,7 @@ describe('ContractExchangeService.submit', () => {
         storage: '256',
         sellingPrice: '30000',
         status: 'IN_STOCK',
+        ...REAL_PRODUCT_FENCE,
       });
     await expect(
       service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
@@ -176,6 +200,7 @@ describe('ContractExchangeService.submit', () => {
       productId: 'op',
       deletedAt: null,
       sellingPrice: '28000',
+      customer: REAL_CUSTOMER,
     });
     prisma.product.findUnique
       .mockResolvedValueOnce({
@@ -211,6 +236,7 @@ describe('ContractExchangeService.submit', () => {
       productId: 'op',
       deletedAt: null,
       sellingPrice: '28000',
+      customer: REAL_CUSTOMER,
     });
     prisma.product.findUnique
       .mockResolvedValueOnce({
@@ -229,6 +255,7 @@ describe('ContractExchangeService.submit', () => {
         sellingPrice: '28000',
         installmentPrice: '28000',
         status: 'IN_STOCK',
+        ...REAL_PRODUCT_FENCE,
       });
     prisma.contractExchangeRequest.create.mockImplementation(async ({ data }: any) => ({
       id: 'req-memo',
@@ -256,7 +283,7 @@ describe('ContractExchangeService.submit', () => {
     const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', ...same })
-      .mockResolvedValueOnce({ id: 'np', ...same, status: 'IN_STOCK' });
+      .mockResolvedValueOnce({ id: 'np', ...same, status: 'IN_STOCK', ...REAL_PRODUCT_FENCE });
     await expect(
       service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
     ).rejects.toThrow('เครื่องเดิมไม่ตรงกับสัญญา');
@@ -300,11 +327,12 @@ describe('ContractExchangeService.submit', () => {
       productId: 'op',
       deletedAt: null,
       sellingPrice: '28000',
+      customer: REAL_CUSTOMER,
     });
     const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', ...same })
-      .mockResolvedValueOnce({ id: 'np', ...same, status: 'IN_STOCK' });
+      .mockResolvedValueOnce({ id: 'np', ...same, status: 'IN_STOCK', ...REAL_PRODUCT_FENCE });
     prisma.contractExchangeRequest.create.mockResolvedValue({ id: 'req-owner', status: 'PENDING' });
 
     const result = await service.submit(
@@ -322,11 +350,12 @@ describe('ContractExchangeService.submit', () => {
       productId: 'op',
       deletedAt: null,
       sellingPrice: '28000',
+      customer: REAL_CUSTOMER,
     });
     const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', ...same })
-      .mockResolvedValueOnce({ id: 'np', ...same, status: 'IN_STOCK' });
+      .mockResolvedValueOnce({ id: 'np', ...same, status: 'IN_STOCK', ...REAL_PRODUCT_FENCE });
     prisma.contractExchangeRequest.create.mockResolvedValue({ id: 'req-1', status: 'PENDING' });
 
     const result = await service.submit(
@@ -386,6 +415,8 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
     downPayment: { toString: () => '1000' } as any,
     advanceBalance: { toString: () => '0' } as any,
     creditBalance: { toString: () => '0' } as any,
+    // test-data fence: submit()/approve() include ลูกค้าของสัญญาเดิมมาเข้ารั้ว
+    customer: REAL_CUSTOMER,
   };
   const oldProduct = {
     id: 'op',
@@ -402,6 +433,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
     storage: '256',
     sellingPrice: '11000',
     status: 'IN_STOCK',
+    ...REAL_PRODUCT_FENCE,
   };
   // Different model, price 10000 → PRICED (plan: financed 10000, commission 1000, vendorSum 11000)
   const diffNewProduct = {
@@ -411,6 +443,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
     storage: '256',
     sellingPrice: '10000',
     status: 'IN_STOCK',
+    ...REAL_PRODUCT_FENCE,
   };
 
   const baseDto = { oldContractId: 'old-c', oldProductId: 'op', newProductId: 'np' };
@@ -466,7 +499,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
           oldProductId: 'op',
           newProductId: 'np2',
           // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-          newProduct: { id: 'np2', deletedAt: null },
+          newProduct: { id: 'np2', deletedAt: null, ...REAL_PRODUCT_FENCE },
           oldContract,
         }),
         update: jest.fn(),
@@ -592,6 +625,69 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
     // สูตร gross เดิมคือ buyback − grossRemainingInclVat = 8,000 − 12,126.68 = −4,126.68
     expect(result.grossRemainingInclVat).toBe('12126.68');
   });
+
+  // spec 2026-09-05 §5.4 (แก้หลัง final review Critical): เปลี่ยนเครื่องสืบทอด "ลูกค้า"
+  // จากสัญญาเดิม แต่ "เครื่อง" เลือกใหม่จากสต็อก ⇒ คู่ที่เกิดขึ้นเป็นคู่ใหม่ ต้องผ่านรั้ว
+  // เหมือน POS/เปิดสัญญา. ตรวจตั้งแต่ submit ให้คนคีย์เห็น error ทันที และไม่ทิ้งคำขอ
+  // PENDING ที่อนุมัติไม่ได้ค้างไว้ (tier AUTO เรียก approve ต่อทันที — ถ้ารั้วดังที่ approve
+  // แถวคำขอถูก create ไปแล้วนอก tx). approve ยังต้องตรวจซ้ำ (ด้านล่าง) เพราะฝั่งเปลี่ยนได้
+  // ระหว่างรออนุมัติ.
+  describe('test-data fence at submit (คู่ใหม่ = ลูกค้าเดิม + เครื่องที่เลือกใหม่)', () => {
+    const withCustomer = (customer: unknown) =>
+      prisma.contract.findUnique.mockResolvedValue({ ...oldContract, customer });
+    const withNewProductFence = (fence: Record<string, unknown>) =>
+      prisma.product.findUnique.mockImplementation(async ({ where }: any) => {
+        if (where.id === 'op') return oldProduct;
+        if (where.id === 'np') return { ...sameNewProduct, ...fence };
+        if (where.id === 'np2') return { ...diffNewProduct, ...fence };
+        return null;
+      });
+
+    it('จริง ↔ จริง ผ่าน และโหลดลูกค้าของสัญญาเดิม + PO ของเครื่องใหม่มาเข้ารั้ว', async () => {
+      const result = await service.submit(baseDto, user);
+      expect(result.mode).toBe('MEMO');
+      expect(prisma.contract.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: { customer: { select: expect.objectContaining({ addressCurrent: true }) } },
+        }),
+      );
+      // po บังคับในชนิดของรั้ว — อุปกรณ์เสริมไร้ IMEI จาก PO ทดสอบต้องถูกมองเป็นของทดสอบ
+      expect(prisma.product.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'np' },
+          include: { po: { select: { poNumber: true } } },
+        }),
+      );
+    });
+
+    it('ทดสอบ ↔ ทดสอบ ผ่าน', async () => {
+      withCustomer(TEST_CUSTOMER);
+      withNewProductFence(TEST_PRODUCT_FENCE);
+      const result = await service.submit(baseDto, user);
+      expect(result.mode).toBe('MEMO');
+      expect(prisma.contractExchangeRequest.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('เครื่องทดสอบ → ลูกค้าจริง: BadRequest ก่อนสร้างคำขอ', async () => {
+      withNewProductFence(TEST_PRODUCT_FENCE);
+      await expect(service.submit(baseDto, user)).rejects.toThrow(/เครื่องทดสอบระบบ/);
+      expect(prisma.contractExchangeRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('เครื่องจริง → ลูกค้าทดสอบ: BadRequest ก่อนสร้างคำขอ', async () => {
+      withCustomer(TEST_CUSTOMER);
+      await expect(service.submit(baseDto, user)).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
+      expect(prisma.contractExchangeRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('PRICED tier AUTO ผิดฝั่ง: ดังก่อน create คำขอ ⇒ ไม่ทิ้ง PENDING ค้าง', async () => {
+      prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: '8000' });
+      withNewProductFence(TEST_PRODUCT_FENCE);
+      await expect(service.submit(pricedDtoFull, user)).rejects.toThrow(BadRequestException);
+      expect(prisma.contractExchangeRequest.create).not.toHaveBeenCalled();
+      expect(prisma.contract.create).not.toHaveBeenCalled();
+    });
+  });
 });
 
 // ============================================================================
@@ -704,7 +800,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldProductId: 'old-p',
       newProductId: 'new-p',
       // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-      newProduct: { id: 'new-p', deletedAt: null },
+      newProduct: { id: 'new-p', deletedAt: null, ...REAL_PRODUCT_FENCE },
       oldContract: makeOldContract(12, 4),
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -775,7 +871,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldProductId: 'op',
       newProductId: 'np',
       // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-      newProduct: { id: 'np', deletedAt: null },
+      newProduct: { id: 'np', deletedAt: null, ...REAL_PRODUCT_FENCE },
       oldContract: old,
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -823,7 +919,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldProductId: 'op',
       newProductId: 'np',
       // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-      newProduct: { id: 'np', deletedAt: null },
+      newProduct: { id: 'np', deletedAt: null, ...REAL_PRODUCT_FENCE },
       oldContract: old,
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -845,7 +941,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldProductId: 'op',
       newProductId: 'np',
       // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-      newProduct: { id: 'np', deletedAt: null },
+      newProduct: { id: 'np', deletedAt: null, ...REAL_PRODUCT_FENCE },
       oldContract: makeOldContract(12, 4),
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -865,7 +961,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldProductId: 'op',
       newProductId: 'np',
       // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-      newProduct: { id: 'np', deletedAt: null },
+      newProduct: { id: 'np', deletedAt: null, ...REAL_PRODUCT_FENCE },
       oldContract: makeOldContract(12, 12),
     });
     prisma.payment.count.mockResolvedValue(12);
@@ -884,7 +980,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldProductId: 'op',
       newProductId: 'np',
       // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-      newProduct: { id: 'np', deletedAt: null },
+      newProduct: { id: 'np', deletedAt: null, ...REAL_PRODUCT_FENCE },
       oldContract: makeOldContract(12, 4), // makeOldContract sets downPayment=4000
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -908,7 +1004,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       oldProductId: 'op',
       newProductId: 'np',
       // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-      newProduct: { id: 'np', deletedAt: null },
+      newProduct: { id: 'np', deletedAt: null, ...REAL_PRODUCT_FENCE },
       oldContract: { ...makeOldContract(12, 4), vatAmount: null },
     });
     prisma.payment.count.mockResolvedValue(4);
@@ -930,7 +1026,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         oldProductId: 'op',
         newProductId: 'np',
         // Phase 5 Task 2: approve() อ่าน relation `newProduct` เพื่อกันเครื่องที่ถูก soft-delete
-        newProduct: { id: 'np', deletedAt: null },
+        newProduct: { id: 'np', deletedAt: null, ...REAL_PRODUCT_FENCE },
         oldContract: makeOldContract(12, 4),
       });
       prisma.payment.count.mockResolvedValue(4);
@@ -1022,7 +1118,11 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         oldProductId: 'old-p',
         newProductId: 'new-p',
         oldContract,
-        newProduct: { id: 'new-p', installmentPrice: { toString: () => '10000' } },
+        newProduct: {
+          id: 'new-p',
+          installmentPrice: { toString: () => '10000' },
+          ...REAL_PRODUCT_FENCE,
+        },
       },
       // PRICED + REVIEW — BM may approve (legacy row: no plan snapshot → clone fallback)
       req2: {
@@ -1035,7 +1135,11 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         oldProductId: 'old-p',
         newProductId: 'new-p',
         oldContract,
-        newProduct: { id: 'new-p', installmentPrice: { toString: () => '10000' } },
+        newProduct: {
+          id: 'new-p',
+          installmentPrice: { toString: () => '10000' },
+          ...REAL_PRODUCT_FENCE,
+        },
       },
       // MEMO — same model + same price, no JE
       memoReq: {
@@ -1048,7 +1152,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         oldProductId: 'oldP1',
         newProductId: 'newP1',
         oldContract: { ...oldContract, id: 'oldC1' },
-        newProduct: { id: 'newP1', deletedAt: null },
+        newProduct: { id: 'newP1', deletedAt: null, ...REAL_PRODUCT_FENCE },
       },
       // PRICED + REVIEW with full submit-time plan snapshot (Device Swap 2026-07)
       pricedReq: {
@@ -1061,7 +1165,11 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         oldProductId: 'old-p',
         newProductId: 'new-p',
         oldContract,
-        newProduct: { id: 'new-p', installmentPrice: { toString: () => '10000' } },
+        newProduct: {
+          id: 'new-p',
+          installmentPrice: { toString: () => '10000' },
+          ...REAL_PRODUCT_FENCE,
+        },
         newTotalMonths: 12,
         newMonthlyPayment: { toString: () => '1515.83' },
         newInterestTotal: { toString: () => '6000' },
@@ -1395,7 +1503,11 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
   });
 
   it('PRICED snapshot branch: newProduct.installmentPrice null → BadRequest (defensive)', async () => {
-    requests.pricedReq.newProduct = { id: 'new-p', installmentPrice: null };
+    requests.pricedReq.newProduct = {
+      id: 'new-p',
+      installmentPrice: null,
+      ...REAL_PRODUCT_FENCE,
+    };
     await expect(
       service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {}),
     ).rejects.toThrow(BadRequestException);
@@ -1407,6 +1519,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     requests.pricedReq.newProduct = {
       id: 'new-p',
       installmentPrice: { toString: () => '12000' }, // was 10000 at submit
+      ...REAL_PRODUCT_FENCE,
     };
     await expect(
       service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {}),
@@ -1473,6 +1586,94 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {}),
     ).rejects.toThrow('เปลี่ยนเครื่องไม่ได้');
     expect(prisma.contract.create).not.toHaveBeenCalled();
+  });
+
+  // spec 2026-09-05 §5.4 (แก้หลัง final review Critical) — ตาข่ายสุดท้ายใน tx ของ approve:
+  // ฝั่งของลูกค้า/เครื่องเปลี่ยนได้ระหว่างรออนุมัติ (แก้ที่อยู่ลูกค้า) จึงต้องตรวจซ้ำที่จุดเดียวกับ
+  // ด่าน "เครื่องใหม่ยังไม่ถูกลบ" ก่อน `product.update` / `contract.update` / `contract.create`.
+  // ถ้าหลุด: สัญญาทดสอบบนเครื่องจริง → cleanup:test-contracts ลบ JE ต้นทุนของเครื่องจริงทิ้ง
+  // แล้วเครื่องค้าง SOLD_INSTALLMENT โดยไม่มีสัญญา (product-hold ห้ามลบ/แก้ IMEI ตลอดกาล).
+  describe('test-data fence at approve (ตาข่ายสุดท้ายใน tx)', () => {
+    const OWNER = { id: 'u1', role: 'OWNER', branchId: null };
+    const memoDto = { memoAddendumSigned: true, memoMdmSwapped: true };
+
+    it('MEMO จริง ↔ จริง ผ่าน + include ลูกค้าของสัญญาเดิมและ PO ของเครื่องใหม่', async () => {
+      await service.approve('memoReq', OWNER, memoDto);
+      expect(prisma.contract.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { productId: 'newP1' } }),
+      );
+      expect(prisma.contractExchangeRequest.findUniqueOrThrow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: {
+            oldContract: {
+              include: { customer: { select: expect.objectContaining({ addressCurrent: true }) } },
+            },
+            newProduct: { include: { po: { select: { poNumber: true } } } },
+          },
+        }),
+      );
+    });
+
+    it('MEMO ทดสอบ ↔ ทดสอบ ผ่าน', async () => {
+      requests.memoReq.oldContract = { ...requests.memoReq.oldContract, customer: TEST_CUSTOMER };
+      requests.memoReq.newProduct = { ...requests.memoReq.newProduct, ...TEST_PRODUCT_FENCE };
+      await service.approve('memoReq', OWNER, memoDto);
+      expect(prisma.contract.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('MEMO เครื่องทดสอบ → ลูกค้าจริง: BadRequest, ไม่สลับเครื่อง ไม่มี audit', async () => {
+      requests.memoReq.newProduct = { ...requests.memoReq.newProduct, ...TEST_PRODUCT_FENCE };
+      await expect(service.approve('memoReq', OWNER, memoDto)).rejects.toThrow(/เครื่องทดสอบระบบ/);
+      expect(prisma.contract.update).not.toHaveBeenCalled();
+      expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('MEMO เครื่องจริง → ลูกค้าทดสอบ: BadRequest, ไม่สลับเครื่อง', async () => {
+      requests.memoReq.oldContract = { ...requests.memoReq.oldContract, customer: TEST_CUSTOMER };
+      await expect(service.approve('memoReq', OWNER, memoDto)).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
+      expect(prisma.contract.update).not.toHaveBeenCalled();
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    });
+
+    it('PRICED จริง ↔ จริง ผ่าน (สร้างสัญญาใหม่ + จองเครื่อง)', async () => {
+      await service.approve('pricedReq', OWNER, {});
+      expect(prisma.contract.create).toHaveBeenCalledTimes(1);
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'RESERVED' }) }),
+      );
+    });
+
+    it('PRICED ทดสอบ ↔ ทดสอบ ผ่าน', async () => {
+      requests.pricedReq.oldContract = {
+        ...requests.pricedReq.oldContract,
+        customer: TEST_CUSTOMER,
+      };
+      requests.pricedReq.newProduct = { ...requests.pricedReq.newProduct, ...TEST_PRODUCT_FENCE };
+      await service.approve('pricedReq', OWNER, {});
+      expect(prisma.contract.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('PRICED เครื่องทดสอบ → ลูกค้าจริง: BadRequest, ไม่สร้างสัญญา/จอง/โคลน PDPA', async () => {
+      requests.pricedReq.newProduct = { ...requests.pricedReq.newProduct, ...TEST_PRODUCT_FENCE };
+      await expect(service.approve('pricedReq', OWNER, {})).rejects.toThrow(/เครื่องทดสอบระบบ/);
+      expect(prisma.contract.create).not.toHaveBeenCalled();
+      expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.pDPAConsent.create).not.toHaveBeenCalled();
+      expect(prisma.contractExchangeRequest.update).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('PRICED เครื่องจริง → ลูกค้าทดสอบ: BadRequest, ไม่สร้างสัญญา', async () => {
+      requests.pricedReq.oldContract = {
+        ...requests.pricedReq.oldContract,
+        customer: TEST_CUSTOMER,
+      };
+      await expect(service.approve('pricedReq', OWNER, {})).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
+      expect(prisma.contract.create).not.toHaveBeenCalled();
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -2159,6 +2360,8 @@ function makeOldContract(totalMonths: number, _paid: number) {
     sellingPrice: { toString: () => '28000' } as any,
     downPayment: { toString: () => '4000' } as any,
     creditBalance: { toString: () => '0' } as any,
+    // test-data fence: approve() include ลูกค้าของสัญญาเดิมมาเข้ารั้ว
+    customer: REAL_CUSTOMER,
   };
 }
 

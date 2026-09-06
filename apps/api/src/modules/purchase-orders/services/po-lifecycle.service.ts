@@ -148,6 +148,21 @@ export class PoLifecycleService {
     }
     assertExpectedNotBeforeOrder(dto?.expectedDate, po.orderDate);
 
+    // Payment made on the spot (owner 2026-09-06): same fields + same ceiling as updatePayment().
+    // Only written when the body carries a payment status — a bare approval leaves the
+    // PO's payment untouched (credit purchase, pay later via "จ่ายเงิน").
+    const payment: Prisma.PurchaseOrderUncheckedUpdateInput = {};
+    if (dto?.paymentStatus) {
+      if (dto.paidAmount !== undefined && dto.paidAmount > Number(po.netAmount)) {
+        throw new BadRequestException(`ยอดจ่ายเกินกว่ายอดสุทธิ (${Number(po.netAmount).toLocaleString()} บาท)`);
+      }
+      payment.paymentStatus = dto.paymentStatus as POPaymentStatus;
+      if (dto.paymentMethod !== undefined) payment.paymentMethod = dto.paymentMethod || null;
+      if (dto.paidAmount !== undefined) payment.paidAmount = dto.paidAmount;
+      if (dto.paymentNotes !== undefined) payment.paymentNotes = dto.paymentNotes || null;
+      if (dto.attachments !== undefined) payment.attachments = dto.attachments;
+    }
+
     return this.prisma.purchaseOrder.update({
       where: { id },
       data: {
@@ -155,6 +170,7 @@ export class PoLifecycleService {
         approvedById: userId,
         orderedAt: new Date(),
         ...(dto?.expectedDate ? { expectedDate: new Date(dto.expectedDate) } : {}),
+        ...payment,
       },
       include: {
         supplier: { select: { id: true, name: true } },

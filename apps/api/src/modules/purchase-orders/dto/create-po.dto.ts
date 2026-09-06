@@ -107,8 +107,34 @@ export class OrderPODto {
   expectedDate?: string;
 }
 
-/** Approve = order (2026-09-06): the owner confirms the expected date while approving. */
-export class ApprovePODto extends OrderPODto {}
+/**
+ * Approve = order (2026-09-06): the owner confirms the expected date while approving, and —
+ * because approving is the moment the owner decides to pay — may record the payment
+ * (status / method / amount / notes / slips) in the same request. Every payment field is
+ * optional: leaving them out approves on credit (paymentStatus stays UNPAID).
+ */
+export class ApprovePODto extends OrderPODto {
+  @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
+  @IsOptional()
+  paymentStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  paidAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  paymentNotes?: string;
+
+  @IsArray()
+  @IsOptional()
+  attachments?: string[];
+}
 
 export class UpdatePODto {
   @IsDateString()

@@ -17,13 +17,13 @@ export function WizardStepper({
   onStepClick?: (index: number) => void;
 }) {
   return (
-    <div className="flex items-center">
+    <ol aria-label="ขั้นตอน" className="flex items-center">
       {steps.map(({ label, icon: Icon }, i) => {
         const completed = i < current;
         const isCurrent = i === current;
         const clickable = completed && !!onStepClick;
         return (
-          <div key={label} className="flex items-center flex-1 last:flex-none">
+          <li key={label} aria-current={isCurrent ? 'step' : undefined} className="flex items-center flex-1 last:flex-none">
             <button
               type="button"
               disabled={!clickable}
@@ -49,9 +49,9 @@ export function WizardStepper({
                 <div className={cn('h-full rounded-full transition-all', i < current ? 'bg-primary w-full' : 'w-0')} />
               </div>
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }

@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { SUMMARY_CARDS, TONE_STYLES, type PurchasingSummary } from './summaryStrip';
 
 describe('SUMMARY_CARDS', () => {
-  it('defines exactly the 7 B0 summary keys, in order, with no duplicates', () => {
+  // "รอสั่งซื้อ" was dropped 2026-09-06: approve now lands on ORDERED, so nothing waits to be ordered.
+  it('defines exactly the 6 summary cards, in order, with no duplicates', () => {
     const keys = SUMMARY_CARDS.map((c) => c.key);
     expect(keys).toEqual([
       'pendingApproval',
-      'toOrder',
       'incoming',
       'overdue',
       'receiving',
@@ -33,10 +33,10 @@ describe('SUMMARY_CARDS', () => {
     }
   });
 
-  it('overdue card routes to list+overdueOnly; toOrder→APPROVED; incoming→ORDERED; receiving→PARTIALLY_RECEIVED; pendingApproval→DRAFT', () => {
+  it('overdue card routes to list+overdueOnly; incoming→ORDERED; receiving→PARTIALLY_RECEIVED; pendingApproval→DRAFT', () => {
     const byKey = Object.fromEntries(SUMMARY_CARDS.map((c) => [c.key, c.action]));
     expect(byKey.overdue).toEqual({ tab: 'list', status: 'ORDERED', overdueOnly: true });
-    expect(byKey.toOrder).toEqual({ tab: 'list', status: 'APPROVED', overdueOnly: false });
+    expect(byKey.toOrder).toBeUndefined();
     expect(byKey.incoming).toEqual({ tab: 'list', status: 'ORDERED', overdueOnly: false });
     expect(byKey.receiving).toEqual({ tab: 'list', status: 'PARTIALLY_RECEIVED', overdueOnly: false });
     expect(byKey.pendingApproval).toEqual({ tab: 'list', status: 'DRAFT', overdueOnly: false });

@@ -11,8 +11,20 @@ vi.mock('@/components/contacts/ContactCombobox', () => ({
   ),
 }));
 vi.mock('./ReceivingUnitCard', () => ({
-  ReceivingUnitCard: ({ unit }: { unit: { label: string; category: string; costPrice: string } }) => (
-    <div data-testid="unit">{`${unit.label} · ${unit.category} · ฿${unit.costPrice}`}</div>
+  // The real card is covered by its own tests; here it is a label plus the two inputs the
+  // summary-step gate needs (IMEI + selling price), wired to the modal's updater.
+  ReceivingUnitCard: ({
+    unit, idx, updateReceivingUnit,
+  }: {
+    unit: { label: string; category: string; costPrice: string };
+    idx: number;
+    updateReceivingUnit: (idx: number, field: string, value: string) => void;
+  }) => (
+    <div data-testid="unit">
+      {`${unit.label} · ${unit.category} · ฿${unit.costPrice}`}
+      <input aria-label={`IMEI ${unit.label}`} onChange={(e) => updateReceivingUnit(idx, 'imeiSerial', e.target.value)} />
+      <input aria-label={`ราคาขาย ${unit.label}`} onChange={(e) => updateReceivingUnit(idx, 'sellingPrice', e.target.value)} />
+    </div>
   ),
 }));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
@@ -102,5 +114,59 @@ describe('DirectReceiveModal — ถัดไป expands rows into units for ต
     ]);
     fireEvent.click(screen.getByRole('button', { name: /กลับไปแก้รายการ/ }));
     expect(screen.getByRole('combobox', { name: 'ค้นหารุ่น' })).toBeInTheDocument();
+  });
+});
+
+describe('DirectReceiveModal — step 3 สรุป + จ่ายเงิน (owner 2026-09-06)', () => {
+  const onePhone = { ...phone, quantity: '1' };
+  const toSummary = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป: ตรวจรับ 2 ชิ้น' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'IMEI Apple iPhone 17 Pro Deep Blue 256GB #1' }), { target: { value: '356789012345678' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'ราคาขาย Apple iPhone 17 Pro Deep Blue 256GB #1' }), { target: { value: '45900' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'ราคาขาย ฟิล์มกระจก iPhone 16 - iStar #1' }), { target: { value: '150' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป: สรุป + จ่ายเงิน' }));
+  };
+
+  it('the stepper has three steps and ตรวจรับ leads to the summary instead of submitting', () => {
+    const p = renderModal({ lines: [onePhone, film] });
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('เพิ่มรายการ'), expect.stringContaining('ตรวจรับ'), expect.stringContaining('สรุป + จ่ายเงิน')]),
+    );
+    toSummary();
+    expect(p.directReceiveMutation.mutate).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'รับเข้าตรง — สรุป + จ่ายเงิน' })).toBeInTheDocument();
+    const recap = screen.getByRole('region', { name: 'สรุปใบสั่งซื้อ' });
+    expect(recap).toHaveTextContent('รับเข้าวันนี้');
+    expect(recap).toHaveTextContent('ผ่าน 2 ชิ้น');
+    expect(screen.getByTestId('subtotal')).toHaveTextContent('42,935.00 บาท');
+  });
+
+  it('ยืนยัน sends the money and payment fields with the units (cash purchase paid in full)', () => {
+    const p = renderModal({ lines: [onePhone, film] });
+    toSummary();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'ส่วนลด' }), { target: { value: '35' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'สถานะการจ่าย' }), { target: { value: 'FULLY_PAID' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'หมายเหตุ' }), { target: { value: 'ซื้อสดหน้าร้าน' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเข้าตรง 2 ชิ้น' }));
+    expect(p.setNotes).toHaveBeenCalledWith('ซื้อสดหน้าร้าน');
+    expect(p.directReceiveMutation.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        supplierId: 's1',
+        discount: 35,
+        paymentStatus: 'FULLY_PAID',
+        paymentMethod: 'CASH',
+        paidAmount: 42900,
+        items: expect.arrayContaining([expect.objectContaining({ imeiSerial: '356789012345678', sellingPrice: '45900' })]),
+      }),
+    );
+    expect(document.querySelector('button[type="submit"]')).toBeNull();
+  });
+
+  it('ย้อนกลับ from the summary returns to ตรวจรับ with the units intact', () => {
+    renderModal({ lines: [onePhone, film] });
+    toSummary();
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }));
+    expect(screen.getByRole('heading', { name: 'รับเข้าตรง — ตรวจรับ' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('unit')).toHaveLength(2);
   });
 });

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { UseMutationResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronLeft, ClipboardCheck, Info, Package, StickyNote, Users } from 'lucide-react';
+import { ChevronLeft, ClipboardCheck, FileText, Info, Package, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ContactCombobox, type ContactPickResult } from '@/components/contacts/ContactCombobox';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -9,10 +9,14 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/u
 import { ItemForm, ReceivingUnitForm } from '../types';
 import { defaultChecklist, paymentMethodLabels } from '../constants';
 import { allItemsComplete, itemLabel, type AccessorySku } from '../po-catalog.util';
+import { computePoTotals } from '../poTotals';
 import { useItemRows } from '../hooks/useItemRows';
+import type { DirectReceiveInput } from '../hooks/usePurchaseOrdersData';
 import type { CreatePOModalProps } from './CreatePOModal';
 import { StepItems } from './wizard/StepItems';
+import { StepSummary } from './wizard/StepSummary';
 import { WizardStepper, type WizardStep } from './wizard/WizardStepper';
+import { isPaidStatus, paidAmountError, type PaymentFields } from './wizard/PaymentSection';
 import { ReceivingUnitCard } from './ReceivingUnitCard';
 import { useReceivingDuplicates } from './useReceivingDuplicates';
 
@@ -28,19 +32,34 @@ export interface DirectReceiveModalProps {
   setLines: React.Dispatch<React.SetStateAction<ItemForm[]>>;
   notes: string;
   setNotes: (v: string) => void;
-  directReceiveMutation: UseMutationResult<
-    unknown,
-    unknown,
-    { supplierId: string; orderDate: string; notes?: string; items: ReceivingUnitForm[] },
-    unknown
-  >;
+  directReceiveMutation: UseMutationResult<unknown, unknown, DirectReceiveInput, unknown>;
   searchAccessorySkus: (search: string) => Promise<AccessorySku[]>;
 }
 
+type Step = 'lines' | 'inspect' | 'summary';
+const STEP_ORDER: Step[] = ['lines', 'inspect', 'summary'];
 const STEPS: WizardStep[] = [
   { label: 'เพิ่มรายการ', icon: Package },
   { label: 'ตรวจรับ', icon: ClipboardCheck },
+  { label: 'สรุป + จ่ายเงิน', icon: FileText },
 ];
+const TITLES: Record<Step, string> = {
+  lines: 'รับเข้าตรง (supplier)',
+  inspect: 'รับเข้าตรง — ตรวจรับ',
+  summary: 'รับเข้าตรง — สรุป + จ่ายเงิน',
+};
+const WIDTHS: Record<Step, string> = { lines: 'max-w-7xl', inspect: 'max-w-3xl', summary: 'max-w-4xl' };
+
+/** Discount + payment keyed in on step 3 — the same fields the PO wizard's last step holds. */
+type MoneyForm = PaymentFields & { discount: string; discountAfterVat: string };
+const emptyMoney = (): MoneyForm => ({
+  discount: '',
+  discountAfterVat: '',
+  paymentStatus: 'UNPAID',
+  paymentMethod: '',
+  paidAmount: '',
+  paymentNotes: '',
+});
 
 const card = 'rounded-xl border border-border/50 bg-card p-5 shadow-sm';
 const primaryBtn =
@@ -78,10 +97,12 @@ export function lineToUnits(item: ItemForm): ReceivingUnitForm[] {
 }
 
 /**
- * รับเข้าตรง — goods bought without a PO, received on the spot. Step 1 reuses the PO wizard's
- * picker + items table (owner 2026-09-06) with cost-price wording; step 2 (ตรวจรับ, one card per
- * unit: IMEI / selling price / photos) is unchanged. No submit-type button anywhere: ถัดไป and
- * ยืนยัน are plain buttons (see CreatePOModal for the mid-click type flip that bit us).
+ * รับเข้าตรง — goods bought without a PO, received on the spot. Three steps (owner 2026-09-06):
+ * ① เพิ่มรายการ — the PO wizard's picker + items table with cost-price wording; ② ตรวจรับ — one
+ * card per unit (IMEI / selling price / photos); ③ สรุป + จ่ายเงิน — the wizard's summary step
+ * (discount / VAT / payment / slips / notes), and that is where the confirm button lives, so a
+ * cash purchase is booked paid right here. No submit-type button anywhere (see CreatePOModal
+ * for the mid-click type flip that bit us).
  */
 export function DirectReceiveModal(props: DirectReceiveModalProps) {
   const {
@@ -98,14 +119,29 @@ export function DirectReceiveModal(props: DirectReceiveModalProps) {
     searchAccessorySkus,
   } = props;
   const isMobile = useIsMobile();
-  const [step, setStep] = useState<'lines' | 'inspect'>('lines');
+  const [step, setStep] = useState<Step>('lines');
   const [units, setUnits] = useState<ReceivingUnitForm[]>([]);
+  const [money, setMoney] = useState<MoneyForm>(emptyMoney);
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [attachmentUrl, setAttachmentUrl] = useState('');
   const dupIndices = useReceivingDuplicates(units);
   const rows = useItemRows(lines, setLines);
 
+  // Fresh wizard every time it opens (the parent already resets lines / supplier / notes)
+  useEffect(() => {
+    if (!isOpen) return;
+    setStep('lines');
+    setUnits([]);
+    setMoney(emptyMoney());
+    setAttachments([]);
+    setAttachmentUrl('');
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
+  const today = new Date().toISOString().split('T')[0];
   const selectedSupplier = suppliers.find((s) => s.id === supplierId);
+  const supplierHasVat = selectedSupplier?.hasVat ?? false;
   const defaultPm = selectedSupplier?.paymentMethods.find((pm) => pm.isDefault) ?? selectedSupplier?.paymentMethods[0];
   const pieces = lines.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
   const subtotal = lines.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
@@ -119,6 +155,20 @@ export function DirectReceiveModal(props: DirectReceiveModalProps) {
       : !complete
         ? 'กรอกจำนวนและราคาทุนให้ครบทุกรายการ'
         : 'ขั้นถัดไปกรอก IMEI · ราคาขาย · รูป ทีละชิ้น';
+
+  const totals = computePoTotals({ items: lines, discount: money.discount, discountAfterVat: money.discountAfterVat, supplierHasVat });
+  const passed = units.filter((u) => u.status === 'PASS').length;
+  const rejected = units.length - passed;
+
+  // Credit-term due date, same rule as the PO wizard (orderDate = today for a direct receive)
+  const selectedPm = money.paymentMethod
+    ? selectedSupplier?.paymentMethods.find((pm) => pm.paymentMethod === money.paymentMethod)
+    : defaultPm;
+  let dueDatePreview: Date | null = null;
+  if (selectedPm?.creditTermDays) {
+    dueDatePreview = new Date(today);
+    dueDatePreview.setDate(dueDatePreview.getDate() + selectedPm.creditTermDays);
+  }
 
   const updateUnit = (idx: number, field: string, value: string) =>
     setUnits((prev) =>
@@ -157,7 +207,8 @@ export function DirectReceiveModal(props: DirectReceiveModalProps) {
     setStep('inspect');
   };
 
-  const submit = () => {
+  /** ตรวจรับ → สรุป: every unit must be inspectable before the money is keyed in. */
+  const goSummary = () => {
     const passUnits = units.filter((u) => u.status === 'PASS');
     if (passUnits.some((u) => u.category !== 'ACCESSORY' && !u.imeiSerial.trim())) {
       toast.error('กรุณาระบุ IMEI ให้ครบทุกเครื่องที่ผ่าน');
@@ -175,11 +226,34 @@ export function DirectReceiveModal(props: DirectReceiveModalProps) {
       toast.error('มี IMEI ซ้ำกันในรายการ กรุณาแก้ไขก่อนบันทึก');
       return;
     }
+    // default the payment method once the supplier is known (the picker can change it later)
+    setMoney((m) => ({ ...m, paymentMethod: m.paymentMethod || defaultPm?.paymentMethod || '' }));
+    setStep('summary');
+  };
+
+  const submit = () => {
+    const paid = isPaidStatus(money.paymentStatus);
+    const amountError = paidAmountError(money, totals.netAmount);
+    if (paid && amountError) {
+      toast.error(amountError);
+      return;
+    }
     directReceiveMutation.mutate({
       supplierId,
-      orderDate: new Date().toISOString().split('T')[0],
+      orderDate: today,
       notes,
       items: units,
+      discount: money.discount ? Number(money.discount) : undefined,
+      discountAfterVat: money.discountAfterVat ? Number(money.discountAfterVat) : undefined,
+      ...(paid
+        ? {
+            paymentStatus: money.paymentStatus,
+            paymentMethod: money.paymentMethod || undefined,
+            paidAmount: Number(money.paidAmount),
+            paymentNotes: money.paymentNotes || undefined,
+            attachments: attachments.length > 0 ? attachments : undefined,
+          }
+        : {}),
     });
   };
 
@@ -228,26 +302,6 @@ export function DirectReceiveModal(props: DirectReceiveModalProps) {
             footerTotal: 'ต้นทุนรวม',
           }}
         />
-
-        <section className={card}>
-          <div className="mb-4 flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-              <StickyNote className="size-4.5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold leading-snug text-foreground">หมายเหตุ</h3>
-              <p className="text-xs leading-snug text-muted-foreground">ถ้ามี — ติดไปกับใบรับเข้า</p>
-            </div>
-          </div>
-          <textarea
-            aria-label="หมายเหตุ"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm leading-snug outline-hidden placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
-            placeholder="บันทึกเพิ่มเติม เช่น รับจากหน้าร้านสาขาลาดพร้าว"
-          />
-        </section>
       </div>
       <div className="shrink-0 border-t bg-background/95 px-4 py-4 sm:px-6 flex items-center justify-between gap-3">
         <button type="button" onClick={onClose} className={outlineBtn}>
@@ -292,6 +346,58 @@ export function DirectReceiveModal(props: DirectReceiveModalProps) {
         <button type="button" onClick={() => setStep('lines')} className={outlineBtn}>
           ย้อนกลับ
         </button>
+        <div className="flex items-center gap-4">
+          <span className="hidden items-center gap-1.5 text-xs leading-snug text-muted-foreground sm:inline-flex">
+            <Info className="size-3.5 shrink-0" />
+            ขั้นถัดไปคิดส่วนลด / VAT และบันทึกการจ่ายเงิน — ปุ่มยืนยันอยู่ที่นั่น
+          </span>
+          <button type="button" onClick={goSummary} className={primaryBtn}>
+            ถัดไป: สรุป + จ่ายเงิน
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // StepSummary edits one form object; here that object is stitched from the parent's notes +
+  // the local money state, and its writes are split back the same way.
+  const summaryForm: CreatePOModalProps['form'] = { supplierId, orderDate: today, expectedDate: '', notes, ...money };
+  const setSummaryForm: CreatePOModalProps['setForm'] = (action) => {
+    const next = typeof action === 'function' ? action(summaryForm) : action;
+    if (next.notes !== notes) setNotes(next.notes);
+    setMoney({
+      discount: next.discount,
+      discountAfterVat: next.discountAfterVat,
+      paymentStatus: next.paymentStatus,
+      paymentMethod: next.paymentMethod,
+      paidAmount: next.paidAmount,
+      paymentNotes: next.paymentNotes,
+    });
+  };
+
+  const summaryBody = (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <StepSummary
+          form={summaryForm}
+          setForm={setSummaryForm}
+          items={lines}
+          selectedSupplier={selectedSupplier}
+          supplierHasVat={supplierHasVat}
+          totals={totals}
+          dueDatePreview={dueDatePreview}
+          attachmentUrl={attachmentUrl}
+          setAttachmentUrl={setAttachmentUrl}
+          formAttachments={attachments}
+          setFormAttachments={setAttachments}
+          onEditItems={() => setStep('lines')}
+          receive={{ passed, rejected }}
+        />
+      </div>
+      <div className="shrink-0 border-t bg-background/95 px-4 py-4 sm:px-6 flex items-center justify-between gap-3">
+        <button type="button" onClick={() => setStep('inspect')} className={outlineBtn}>
+          ย้อนกลับ
+        </button>
         <button type="button" onClick={submit} disabled={directReceiveMutation.isPending} className={primaryBtn}>
           {directReceiveMutation.isPending ? 'กำลังรับเข้า…' : `ยืนยันรับเข้าตรง ${units.length} ชิ้น`}
         </button>
@@ -299,9 +405,11 @@ export function DirectReceiveModal(props: DirectReceiveModalProps) {
     </div>
   );
 
-  const body = step === 'lines' ? linesBody : inspectBody;
-  const title = step === 'lines' ? 'รับเข้าตรง (supplier)' : 'รับเข้าตรง — ตรวจรับ';
-  const stepper = <WizardStepper steps={STEPS} current={step === 'lines' ? 0 : 1} onStepClick={() => setStep('lines')} />;
+  const body = step === 'lines' ? linesBody : step === 'inspect' ? inspectBody : summaryBody;
+  const title = TITLES[step];
+  const stepper = (
+    <WizardStepper steps={STEPS} current={STEP_ORDER.indexOf(step)} onStepClick={(i) => setStep(STEP_ORDER[i] ?? 'lines')} />
+  );
 
   if (isMobile) {
     return (
@@ -329,8 +437,8 @@ export function DirectReceiveModal(props: DirectReceiveModalProps) {
       aria-modal="true"
       aria-label="รับเข้าตรง"
     >
-      {/* 7xl on the items step (same table as the PO wizard); the per-unit inspect cards keep the narrower frame */}
-      <div className={cn('w-full bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]', step === 'lines' ? 'max-w-7xl' : 'max-w-3xl')}>
+      {/* 7xl on the items step (same table as the PO wizard); the per-unit cards and the summary keep narrower frames */}
+      <div className={cn('w-full bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]', WIDTHS[step])}>
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
           <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ChevronLeft className="size-4" />

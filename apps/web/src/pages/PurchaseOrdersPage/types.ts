@@ -115,3 +115,17 @@ export interface ReceivingUnitForm {
   accessoryBrand?: string;
 }
 
+
+/**
+ * Body of POST /purchase-orders/:id/approve (ApprovePODto) — approve = order, and the owner
+ * may record the payment made on the spot in the same request (2026-09-06).
+ */
+export interface ApprovePOPayload {
+  id: string;
+  expectedDate?: string;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  paidAmount?: number;
+  paymentNotes?: string;
+  attachments?: string[];
+}

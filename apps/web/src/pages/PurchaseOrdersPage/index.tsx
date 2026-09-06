@@ -6,11 +6,13 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download, ClipboardCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
+import api from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
 import { usePurchaseOrdersData } from './hooks/usePurchaseOrdersData';
 import { usePOForm } from './hooks/usePOForm';
 import { useCreatePoWizard } from './hooks/useCreatePoWizard';
 import { computePoTotals } from './poTotals';
+import type { AccessorySku } from './po-catalog.util';
 import { statusLabels, paymentStatusLabels } from './constants';
 import { POListTab } from './components/POListTab';
 import { AccountsPayableTab } from './components/AccountsPayableTab';
@@ -60,6 +62,13 @@ export default function PurchaseOrdersPage() {
   });
 
   wizardClearRef.current = wizard.clearDraft;
+
+  // Accessory picker: re-order an existing SKU by name/code (stable identity — the picker
+  // debounces on this function, so a new closure every render would refetch every render).
+  const searchAccessorySkus = useCallback(async (search: string): Promise<AccessorySku[]> => {
+    const res = await api.get('/products/accessory-skus', { params: { search } });
+    return (res.data?.data ?? []) as AccessorySku[];
+  }, []);
 
   // Supplier selection handler: invalidate + refetch suppliers-for-po so a newly-created
   // supplier appears in the array, then set supplierId. The selectedSupplier/VAT/payment-method
@@ -231,6 +240,8 @@ export default function PurchaseOrdersPage() {
         toggleModel={poForm.toggleModel}
         addCatalogItem={poForm.addCatalogItem}
         addAccessoryItem={poForm.addAccessoryItem}
+        addExistingAccessoryItem={poForm.addExistingAccessoryItem}
+        searchAccessorySkus={searchAccessorySkus}
         suppliers={data.suppliers}
         suppliersLoading={data.suppliersLoading}
         suppliersError={data.suppliersError}
@@ -238,12 +249,6 @@ export default function PurchaseOrdersPage() {
         onSupplierSelect={onSupplierSelect}
         supplierHasVat={poForm.supplierHasVat}
         subtotal={poForm.subtotal}
-        discountNum={poForm.discountNum}
-        subtotalAfterDiscount={poForm.subtotalAfterDiscount}
-        vatAmount={poForm.vatAmount}
-        totalWithVat={poForm.totalWithVat}
-        discountAfterVatNum={poForm.discountAfterVatNum}
-        netAmount={poForm.netAmount}
         createMutation={data.createMutation}
         handleCreate={poForm.handleCreate}
         attachmentUrl={poForm.attachmentUrl}

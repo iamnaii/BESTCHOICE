@@ -105,6 +105,19 @@ export class ProductsController {
     return this.productsService.getBrands();
   }
 
+  /** PO wizard: re-order an existing accessory by name or old product code. */
+  @Get('accessory-skus')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async findAccessorySkus(
+    @CurrentUser() user: { role: string },
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const rows = await this.productsService.findAccessorySkus(search ?? '', Math.min(Number(limit) || 20, 50));
+    // last cost is a cost figure — same visibility rule as costPrice on the list endpoints
+    return { data: canSeeCost(user.role) ? rows : rows.map((r) => ({ ...r, lastCost: null })) };
+  }
+
   @Get('warranty/expiring')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getWarrantyExpiring(

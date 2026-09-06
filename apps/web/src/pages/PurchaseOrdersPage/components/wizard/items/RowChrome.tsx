@@ -3,17 +3,33 @@ import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { QtyStepper } from './QtyStepper';
 
-/* Shared table cells so device and accessory rows share the same columns. */
+/*
+ * Shared table cells so device and accessory rows share the same columns.
+ * Airy sizing (owner 2026-09-06 "มันแน่นไปป่าว"): 40px controls, 12px/10px cell padding.
+ */
 
-export const cellCls = 'px-2 py-2 align-middle';
+export const cellCls = 'px-2.5 py-3 align-middle';
 
 export const selectCls =
-  'h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground outline-hidden ' +
+  'h-10 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-hidden ' +
   'focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50';
 
 export const inputCls =
-  'h-9 rounded-md border border-input bg-background px-2 text-sm outline-hidden placeholder:text-muted-foreground ' +
+  'h-10 rounded-md border border-input bg-background px-2.5 text-sm outline-hidden placeholder:text-muted-foreground ' +
   'focus-visible:ring-2 focus-visible:ring-ring/30';
+
+/**
+ * Fixed 72px label track + a control that fills the rest — every accessory row gets the
+ * same control width no matter how long its label is (owner: "ปรับให้ความกว้างเท่ากัน").
+ */
+export function LabeledControl({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-18 shrink-0 text-xs leading-snug text-muted-foreground">{label}</span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
 
 export function CompactSelect({
   label,
@@ -70,7 +86,7 @@ export function MoneyCells({
       </td>
       <td className={cellCls}>
         <span className="relative block">
-          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">฿</span>
+          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">฿</span>
           <input
             aria-label="ราคาต่อชิ้น"
             type="number"
@@ -80,7 +96,7 @@ export function MoneyCells({
             value={unitPrice}
             onChange={(e) => onUnitPrice(e.target.value)}
             placeholder="0.00"
-            className={cn(inputCls, 'w-full pl-5 pr-1.5 text-right tabular-nums', !unitPrice && 'border-warning/70')}
+            className={cn(inputCls, 'w-full pl-6 pr-2 text-right tabular-nums', !unitPrice && 'border-warning/70')}
           />
         </span>
       </td>
@@ -95,7 +111,7 @@ export function ActionsCell({ onDuplicate, onRemove }: { onDuplicate: () => void
   const base =
     'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors cursor-pointer hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40';
   return (
-    <td className={cn(cellCls, 'pr-1')}>
+    <td className={cn(cellCls, 'pl-1 pr-1.5')}>
       <div className="flex items-center justify-end gap-0.5">
         <button type="button" aria-label="ทำซ้ำรายการ" title="ทำซ้ำ — รุ่นเดิม เปลี่ยนความจุ/สี" onClick={onDuplicate} className={cn(base, 'hover:text-foreground')}>
           <Copy className="size-4" />

@@ -70,15 +70,40 @@ export function resolveCategory(entry: Pick<CatalogEntry, 'category'>, phoneMode
   return entry.category === 'TABLET' ? 'TABLET' : phoneMode;
 }
 
-/** Human label for a line — shared by the item rows and the review step. */
+/**
+ * Accessory types a PO line can carry. Anything else in `accessoryType` is an EXISTING
+ * product's code (Tooltify import stored codes like F1601 there). Mirror of
+ * apps/api/src/utils/accessory-type.util.ts — keep both lists identical.
+ */
+export const KNOWN_ACCESSORY_TYPES = ['ฟิล์ม', 'ชุดชาร์จ', 'หูฟัง', 'เคส', 'อื่นๆ'];
+export const isAccessoryProductCode = (accessoryType: string): boolean =>
+  !!accessoryType && !KNOWN_ACCESSORY_TYPES.includes(accessoryType);
+
+/** One accessory SKU from GET /products/accessory-skus. */
+export interface AccessorySku {
+  code: string | null;
+  name: string;
+  accessoryType: string | null;
+  accessoryBrand: string | null;
+  model: string;
+  inStock: number;
+  lastCost: number | null;
+}
+
+/**
+ * Human label for a line — shared by the item rows and the summary step, and the same
+ * rule the API's buildProductName() uses for the received units.
+ */
 export function itemLabel(i: ItemForm): string {
   if (i.category === 'ACCESSORY') {
-    const isCharger = i.accessoryType === 'ชุดชาร์จ';
-    return isCharger
-      ? [i.accessoryType, i.accessoryBrand, i.model].filter(Boolean).join(' ')
-      : [i.accessoryType, i.accessoryBrand, i.model ? `สำหรับ ${i.model}` : '']
-          .filter(Boolean)
-          .join(' ');
+    if (isAccessoryProductCode(i.accessoryType)) {
+      return i.sourceName || i.model || [i.accessoryType, i.accessoryBrand].filter(Boolean).join(' ');
+    }
+    if (i.accessoryType === 'ฟิล์ม' || i.accessoryType === 'เคส') {
+      const parts = [i.accessoryType, i.accessoryBrand].filter(Boolean).join(' ');
+      return i.model ? `${parts} สำหรับ ${i.model}` : parts;
+    }
+    return [i.accessoryType, i.accessoryBrand, i.model].filter(Boolean).join(' ');
   }
   return [i.brand, i.model, i.color, i.storage].filter(Boolean).join(' ');
 }

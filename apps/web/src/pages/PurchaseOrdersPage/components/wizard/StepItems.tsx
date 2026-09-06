@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Package } from 'lucide-react';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { ItemForm } from '../../types';
-import type { CatalogEntry, PhoneMode } from '../../po-catalog.util';
+import type { AccessorySku, CatalogEntry, PhoneMode } from '../../po-catalog.util';
 import { CatalogPicker } from './items/CatalogPicker';
 import { DeviceItemRow } from './items/DeviceItemRow';
 import { AccessoryItemRow } from './items/AccessoryItemRow';
@@ -15,17 +15,19 @@ interface StepItemsProps {
   duplicateItem: (idx: number) => void;
   addCatalogItem: (entry: CatalogEntry, phoneMode: PhoneMode) => void;
   addAccessoryItem: (accessoryType: string) => void;
+  addExistingAccessoryItem: (sku: AccessorySku) => void;
+  searchAccessorySkus: (search: string) => Promise<AccessorySku[]>;
   subtotal: number;
 }
 
-const th = 'px-2 py-2 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground';
+const th = 'px-2.5 py-2.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground';
 
 /**
  * Step 2 of the PO wizard — search-first picker + one table row per line.
- * Top: one search box over the catalog (+ โทรศัพท์/แท็บเล็ต/อุปกรณ์เสริม and one-click
- * latest models). Below: a table whose columns line up across every row
- * (รุ่น | สภาพ | ความจุ | สี | จำนวน | ราคา/ชิ้น | รวม). Same ItemForm shape as before, so
- * review/totals/submit are untouched.
+ * Top: one search box (catalog for โทรศัพท์/แท็บเล็ต, existing products for อุปกรณ์เสริม)
+ * plus one-click chips. Below: a table whose columns line up across every row
+ * (รุ่น | สภาพ | ความจุ | สี | จำนวน | ราคา/ชิ้น | รวม); accessory rows merge the middle
+ * columns. Same ItemForm shape as before, so totals/submit are untouched.
  */
 export function StepItems({
   items,
@@ -35,6 +37,8 @@ export function StepItems({
   duplicateItem,
   addCatalogItem,
   addAccessoryItem,
+  addExistingAccessoryItem,
+  searchAccessorySkus,
   subtotal,
 }: StepItemsProps) {
   const pieces = items.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
@@ -59,7 +63,7 @@ export function StepItems({
         <div className="flex-1">
           <h3 className="text-sm font-semibold leading-snug text-foreground">รายการสินค้า</h3>
           <p className="text-xs leading-snug text-muted-foreground">
-            ค้นหารุ่นแล้วกดเพิ่ม — เลือกสภาพ / ความจุ / สี / จำนวน / ราคาในตาราง
+            ค้นหารุ่นแล้วกดเพิ่ม — สภาพ / ความจุ / สี / จำนวน / ราคา เลือกในตาราง · อุปกรณ์เสริมค้นจากสินค้าเดิมหรือสร้างรายการใหม่
           </p>
         </div>
       </div>
@@ -73,21 +77,23 @@ export function StepItems({
           focusNewRow.current = true;
           addAccessoryItem(type);
         }}
+        onPickExisting={addExistingAccessoryItem}
+        searchAccessorySkus={searchAccessorySkus}
       />
 
-      <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+      <div className="mt-5 overflow-x-auto rounded-lg border border-border">
         <table ref={tableRef} className="w-full table-fixed border-collapse text-sm">
           <colgroup>
-            {/* # | รุ่น (rest ≈ 172px) | สภาพ (fits "มือสอง") | ความจุ | สี | จำนวน (stepper = 106px) | ราคา | รวม | ⧉ × */}
-            <col className="w-7" />
+            {/* # 32 | รุ่น (rest ≈ 282px) | สภาพ 112 | ความจุ 120 | สี 176 | จำนวน 132 (stepper 110) | ราคา 136 | รวม 120 | ⧉ × 80 */}
+            <col className="w-8" />
             <col />
-            <col className="w-25" />
-            <col className="w-26" />
-            <col className="w-35" />
-            <col className="w-31" />
             <col className="w-28" />
-            <col className="w-24" />
-            <col className="w-14" />
+            <col className="w-30" />
+            <col className="w-44" />
+            <col className="w-33" />
+            <col className="w-34" />
+            <col className="w-30" />
+            <col className="w-20" />
           </colgroup>
           <thead className="bg-muted/50">
             <tr>
@@ -107,7 +113,7 @@ export function StepItems({
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center">
+                <td colSpan={9} className="px-4 py-10 text-center">
                   <p className="text-sm font-medium text-foreground">ยังไม่มีรายการ</p>
                   <p className="mt-1 text-xs leading-snug text-muted-foreground">
                     พิมพ์ชื่อรุ่นในช่องค้นหา หรือกดรุ่นล่าสุดด้านบนเพื่อเพิ่มแถว
@@ -143,7 +149,7 @@ export function StepItems({
       </div>
 
       {/* Running subtotal footer */}
-      <div className="mt-4 flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2.5">
+      <div className="mt-4 flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
         <span className="text-sm leading-snug text-muted-foreground">
           รวม {items.length} รายการ · {pieces} ชิ้น
         </span>

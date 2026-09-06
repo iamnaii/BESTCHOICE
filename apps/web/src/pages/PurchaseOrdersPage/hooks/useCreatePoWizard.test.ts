@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useCreatePoWizard } from './useCreatePoWizard';
+import { useCreatePoWizard, WIZARD_STEPS } from './useCreatePoWizard';
 import type { ItemForm } from '../types';
 
 const baseItem: ItemForm = { brand: 'Apple', category: 'PHONE_NEW', model: 'iPhone 16', color: '', storage: '', quantity: '2', unitPrice: '30000', accessoryType: '', accessoryBrand: '' };
@@ -72,6 +72,30 @@ describe('useCreatePoWizard', () => {
     expect(result.current.draftRecovered).toBe(true);
     expect(setForm).toHaveBeenCalled();
     expect(setItems).toHaveBeenCalled();
+  });
+});
+
+describe('useCreatePoWizard — 3-step flow (owner decision 2026-09-06)', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('has exactly three steps ending in สรุป + จ่ายเงิน', () => {
+    expect(WIZARD_STEPS).toEqual(['เลือกผู้ขาย', 'เพิ่มรายการ', 'สรุป + จ่ายเงิน']);
+  });
+
+  it('next() stops at the last step (2) and step 2 is always advanceable (submit is the form)', () => {
+    const { result } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
+    act(() => result.current.next());
+    act(() => result.current.next());
+    act(() => result.current.next());
+    expect(result.current.step).toBe(2);
+    expect(result.current.canNext).toBe(true);
+  });
+
+  it('a draft saved on the old 4-step wizard (step 3) is restored onto the last step', () => {
+    localStorage.setItem('bestchoice-po-draft', JSON.stringify({ step: 3, form: makeOpts().form, items: [baseItem], savedAt: new Date().toISOString() }));
+    const { result } = renderHook((p) => useCreatePoWizard(p), { initialProps: makeOpts() });
+    expect(result.current.draftRecovered).toBe(true);
+    expect(result.current.step).toBe(2);
   });
 });
 

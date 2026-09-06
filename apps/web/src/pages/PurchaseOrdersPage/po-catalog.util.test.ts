@@ -89,4 +89,11 @@ describe('itemLabel', () => {
   it('charger: type brand connector', () => {
     expect(itemLabel({ ...base, category: 'ACCESSORY', accessoryType: 'ชุดชาร์จ', accessoryBrand: 'Anker', model: 'Type-C' })).toBe('ชุดชาร์จ Anker Type-C');
   });
+  it('หูฟัง / อื่นๆ: type brand model without "สำหรับ"', () => {
+    expect(itemLabel({ ...base, category: 'ACCESSORY', accessoryType: 'หูฟัง', accessoryBrand: 'Apple', model: 'AirPods Pro 2' })).toBe('หูฟัง Apple AirPods Pro 2');
+    expect(itemLabel({ ...base, category: 'ACCESSORY', accessoryType: 'อื่นๆ', accessoryBrand: '', model: 'สายชาร์จ 1 ม.' })).toBe('อื่นๆ สายชาร์จ 1 ม.');
+  });
+  it('re-ordered existing product (code in accessoryType): the stored name wins', () => {
+    expect(itemLabel({ ...base, category: 'ACCESSORY', accessoryType: 'F1601', accessoryBrand: 'iStar', model: 'ฟิล์มกระจก iPhone 16 - iStar', sourceName: 'ฟิล์มกระจก iPhone 16 - iStar' })).toBe('ฟิล์มกระจก iPhone 16 - iStar');
+  });
 });

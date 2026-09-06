@@ -3,7 +3,9 @@ import { toast } from 'sonner';
 import type { ItemForm } from '../types';
 import { getExpectedDateError } from '../po-dates.util';
 
-export const WIZARD_STEPS = ['เลือกผู้ขาย', 'เพิ่มรายการ', 'ส่วนลด/VAT', 'ทบทวน+บันทึก'];
+// 3 steps (owner decision 2026-09-06): discount/VAT, payment and notes live together on the
+// last step, which also submits — the old "ทบทวน" step duplicated the items table.
+export const WIZARD_STEPS = ['เลือกผู้ขาย', 'เพิ่มรายการ', 'สรุป + จ่ายเงิน'];
 const LAST_STEP = WIZARD_STEPS.length - 1;
 
 const DRAFT_KEY = 'bestchoice-po-draft';
@@ -71,7 +73,8 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
       }
       setForm(draft.form);
       setItems(draft.items);
-      setStep(draft.step);
+      // drafts saved by the old 4-step wizard may point past the last step
+      setStep(Math.min(Math.max(draft.step ?? 0, 0), LAST_STEP));
       setDraftRecovered(true);
       toast('พบใบสั่งซื้อร่างที่บันทึกไว้ — กู้คืนแล้ว', {
         description: `บันทึกเมื่อ ${new Date(draft.savedAt).toLocaleString('th-TH')}`,
@@ -122,7 +125,7 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
   const canNext =
     step === 0 ? !!form.supplierId && !expectedDateError :
     step === 1 ? itemsValid :
-    true; // steps 2 & 3 are always advanceable (3 = submit handled by the form)
+    true; // step 2 (สรุป + จ่ายเงิน) submits via the form — nothing to gate here
 
   const goToStep = useCallback((s: number) => {
     if (s >= 0 && s <= LAST_STEP) setStep(s);

@@ -1,14 +1,13 @@
 import { UseMutationResult } from '@tanstack/react-query';
-import { Check, Users, Package, Calculator, FileText } from 'lucide-react';
+import { Check, Users, Package, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ItemForm } from '../types';
 import type { ContactPickResult } from '@/components/contacts/ContactCombobox';
 import { WIZARD_STEPS } from '../hooks/useCreatePoWizard';
-import type { CatalogEntry, PhoneMode } from '../po-catalog.util';
+import type { AccessorySku, CatalogEntry, PhoneMode } from '../po-catalog.util';
 import { StepSupplier } from './wizard/StepSupplier';
 import { StepItems } from './wizard/StepItems';
-import { StepDiscountVat } from './wizard/StepDiscountVat';
-import { StepReview } from './wizard/StepReview';
+import { StepSummary } from './wizard/StepSummary';
 
 export interface CreatePOModalProps {
   isOpen: boolean;
@@ -33,6 +32,8 @@ export interface CreatePOModalProps {
   toggleModel: (idx: number, modelName: string) => void;
   addCatalogItem: (entry: CatalogEntry, phoneMode: PhoneMode) => void;
   addAccessoryItem: (accessoryType: string) => void;
+  addExistingAccessoryItem: (sku: AccessorySku) => void;
+  searchAccessorySkus: (search: string) => Promise<AccessorySku[]>;
   suppliers: {
     id: string;
     name: string;
@@ -53,12 +54,6 @@ export interface CreatePOModalProps {
   onSupplierSelect: (result: ContactPickResult) => Promise<void>;
   supplierHasVat: boolean;
   subtotal: number;
-  discountNum: number;
-  subtotalAfterDiscount: number;
-  vatAmount: number;
-  totalWithVat: number;
-  discountAfterVatNum: number;
-  netAmount: number;
   createMutation: UseMutationResult<unknown, unknown, Record<string, unknown>, unknown>;
   handleCreate: (e: React.FormEvent) => void;
   attachmentUrl: string;
@@ -68,6 +63,9 @@ export interface CreatePOModalProps {
   wizard: import('../hooks/useCreatePoWizard').CreatePoWizardApi;
   totals: import('../poTotals').PoTotals;
 }
+
+// One icon per wizard step: เลือกผู้ขาย → เพิ่มรายการ → สรุป + จ่ายเงิน
+const STEP_ICONS = [Users, Package, FileText];
 
 export function CreatePOModal({
   isOpen,
@@ -81,6 +79,8 @@ export function CreatePOModal({
   toggleModel,
   addCatalogItem,
   addAccessoryItem,
+  addExistingAccessoryItem,
+  searchAccessorySkus,
   suppliersLoading,
   suppliersError,
   selectedSupplier,
@@ -98,11 +98,9 @@ export function CreatePOModal({
 }: CreatePOModalProps) {
   if (!isOpen) return null;
 
-  const selectClass =
+  const inputClass =
     'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
-  const inputClass = selectClass;
 
-  const stepIcons = [Users, Package, Calculator, FileText];
   const { step, goToStep, next, back, canNext } = wizard;
   const isLast = step === WIZARD_STEPS.length - 1;
 
@@ -113,8 +111,8 @@ export function CreatePOModal({
       aria-modal="true"
       aria-label="สร้างใบสั่งซื้อ"
     >
-      {/* 5xl (was 3xl) so the items table's seven columns fit without truncating model/colour names */}
-      <div className="w-full max-w-5xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+      {/* 7xl so the items table's nine columns breathe at 40px controls (owner: "มันแน่นไปป่าว") */}
+      <div className="w-full max-w-7xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
           <button
@@ -148,7 +146,7 @@ export function CreatePOModal({
               const completed = i < step;
               const current = i === step;
               const clickable = i < step;
-              const Icon = stepIcons[i] || Package;
+              const Icon = STEP_ICONS[i] || Package;
               return (
                 <div key={label} className="flex items-center flex-1 last:flex-none">
                   <button
@@ -199,8 +197,15 @@ export function CreatePOModal({
           </div>
         </div>
 
-        {/* Active step panel */}
-        <form onSubmit={handleCreate} className="flex-1 overflow-y-auto">
+        {/* Active step panel. Enter inside a text field must never submit the PO — only the
+            footer button does (the last step has money inputs sitting next to a submit button). */}
+        <form
+          onSubmit={handleCreate}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault();
+          }}
+          className="flex-1 overflow-y-auto"
+        >
           <div className="p-6">
             {step === 0 && (
               <StepSupplier
@@ -226,19 +231,13 @@ export function CreatePOModal({
                 duplicateItem={duplicateItem}
                 addCatalogItem={addCatalogItem}
                 addAccessoryItem={addAccessoryItem}
+                addExistingAccessoryItem={addExistingAccessoryItem}
+                searchAccessorySkus={searchAccessorySkus}
                 subtotal={subtotal}
               />
             )}
             {step === 2 && (
-              <StepDiscountVat
-                form={form}
-                setForm={setForm}
-                supplierHasVat={supplierHasVat}
-                totals={totals}
-              />
-            )}
-            {step === 3 && (
-              <StepReview
+              <StepSummary
                 form={form}
                 setForm={setForm}
                 items={items}
@@ -250,8 +249,7 @@ export function CreatePOModal({
                 setAttachmentUrl={setAttachmentUrl}
                 formAttachments={formAttachments}
                 setFormAttachments={setFormAttachments}
-                selectClass={selectClass}
-                inputClass={inputClass}
+                onEditItems={() => goToStep(1)}
               />
             )}
           </div>

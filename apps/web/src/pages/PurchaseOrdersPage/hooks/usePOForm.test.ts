@@ -44,6 +44,26 @@ describe('usePOForm — catalog-driven item rows', () => {
     expect(result.current.items[0]).toMatchObject({ model: 'iPad (10th gen)', category: 'TABLET' });
   });
 
+  it('addExistingAccessoryItem copies the SKU fields, keeps its name, and prefills the last cost', () => {
+    const { result } = setup();
+    act(() => result.current.addExistingAccessoryItem({
+      code: 'F1601', name: 'ฟิล์มกระจก iPhone 16 - iStar', accessoryType: 'F1601', accessoryBrand: 'iStar',
+      model: 'ฟิล์มกระจก iPhone 16 - iStar', inStock: 13, lastCost: 35,
+    }));
+    expect(result.current.items[0]).toEqual({
+      brand: '', model: 'ฟิล์มกระจก iPhone 16 - iStar', category: 'ACCESSORY', color: '', storage: '', quantity: '1', unitPrice: '35',
+      accessoryType: 'F1601', accessoryBrand: 'iStar', sourceName: 'ฟิล์มกระจก iPhone 16 - iStar', sourceCode: 'F1601', sourceInStock: 13,
+    });
+  });
+
+  it('addExistingAccessoryItem leaves the price empty when the SKU has no cost on record', () => {
+    const { result } = setup();
+    act(() => result.current.addExistingAccessoryItem({
+      code: null, name: 'เคส Spigen สำหรับ iPhone 16 Pro', accessoryType: 'เคส', accessoryBrand: 'Spigen', model: 'iPhone 16 Pro', inStock: 0, lastCost: null,
+    }));
+    expect(result.current.items[0]).toMatchObject({ unitPrice: '', sourceCode: null, accessoryType: 'เคส', model: 'iPhone 16 Pro' });
+  });
+
   it('addAccessoryItem appends an accessory row of the given type', () => {
     const { result } = setup();
     act(() => result.current.addAccessoryItem('เคส'));

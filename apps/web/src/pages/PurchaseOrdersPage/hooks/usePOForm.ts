@@ -4,7 +4,7 @@ import { ItemForm } from '../types';
 import { emptyItem } from '../constants';
 import { computePoTotals } from '../poTotals';
 import { getExpectedDateError } from '../po-dates.util';
-import { categoryKind, resolveCategory, type CatalogEntry, type PhoneMode } from '../po-catalog.util';
+import { categoryKind, resolveCategory, type AccessorySku, type CatalogEntry, type PhoneMode } from '../po-catalog.util';
 import { UseMutationResult } from '@tanstack/react-query';
 
 interface UsePOFormOptions {
@@ -48,6 +48,23 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
   /** Picker: accessory type → one accessory row (brand = the only catalog brand, for the compatible-model chips). */
   const addAccessoryItem = (accessoryType: string) => {
     setItems((prev) => [...prev, { ...emptyItem, category: 'ACCESSORY', accessoryType, brand: 'Apple' }]);
+  };
+  /** Picker: re-order an EXISTING accessory SKU — copy its identity so received units keep the name; price = last cost. */
+  const addExistingAccessoryItem = (sku: AccessorySku) => {
+    setItems((prev) => [
+      ...prev,
+      {
+        ...emptyItem,
+        category: 'ACCESSORY',
+        accessoryType: sku.accessoryType ?? '',
+        accessoryBrand: sku.accessoryBrand ?? '',
+        model: sku.model,
+        unitPrice: sku.lastCost != null ? String(sku.lastCost) : '',
+        sourceName: sku.name,
+        sourceCode: sku.code,
+        sourceInStock: sku.inStock,
+      },
+    ]);
   };
   /** Same model, another storage/colour — copy the row right below its source. */
   const duplicateItem = (idx: number) => {
@@ -177,6 +194,7 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     resetForm,
     addCatalogItem,
     addAccessoryItem,
+    addExistingAccessoryItem,
     duplicateItem,
     removeItem,
     updateItem,

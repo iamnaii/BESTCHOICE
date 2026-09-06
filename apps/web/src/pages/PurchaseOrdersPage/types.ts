@@ -77,6 +77,10 @@ export interface ItemForm {
   unitPrice: string;
   accessoryType: string;
   accessoryBrand: string;
+  /** Row re-ordered from an existing accessory SKU (display only — not sent to the API). */
+  sourceName?: string;
+  sourceCode?: string | null;
+  sourceInStock?: number;
 }
 
 export type DefectReasonValue =

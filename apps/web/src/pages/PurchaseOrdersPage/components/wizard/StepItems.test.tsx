@@ -15,6 +15,14 @@ const blank: ItemForm = {
 const iphone16pro: ItemForm = { ...blank, brand: 'Apple', model: 'iPhone 16 Pro', category: 'PHONE_NEW' };
 const caseItem: ItemForm = { ...blank, brand: 'Apple', category: 'ACCESSORY', accessoryType: 'เคส' };
 const charger: ItemForm = { ...blank, brand: 'Apple', category: 'ACCESSORY', accessoryType: 'ชุดชาร์จ' };
+const film: ItemForm = { ...blank, brand: 'Apple', category: 'ACCESSORY', accessoryType: 'ฟิล์ม', accessoryBrand: 'Hoco', model: 'iPhone 16 Pro, iPhone 17 Pro' };
+const earphone: ItemForm = { ...blank, category: 'ACCESSORY', accessoryType: 'หูฟัง', accessoryBrand: 'Apple' };
+const other: ItemForm = { ...blank, category: 'ACCESSORY', accessoryType: 'อื่นๆ' };
+const existing: ItemForm = {
+  ...blank, category: 'ACCESSORY', accessoryType: 'F1601', accessoryBrand: 'iStar', model: 'ฟิล์มกระจก iPhone 16 - iStar',
+  unitPrice: '35', sourceName: 'ฟิล์มกระจก iPhone 16 - iStar', sourceCode: 'F1601', sourceInStock: 13,
+};
+const skuF1601 = { code: 'F1601', name: 'ฟิล์มกระจก iPhone 16 - iStar', accessoryType: 'F1601', accessoryBrand: 'iStar', model: 'ฟิล์มกระจก iPhone 16 - iStar', inStock: 13, lastCost: 35 };
 
 function renderStep(items: ItemForm[], overrides: Partial<Parameters<typeof StepItems>[0]> = {}) {
   const props = {
@@ -25,6 +33,8 @@ function renderStep(items: ItemForm[], overrides: Partial<Parameters<typeof Step
     duplicateItem: vi.fn(),
     addCatalogItem: vi.fn(),
     addAccessoryItem: vi.fn(),
+    addExistingAccessoryItem: vi.fn(),
+    searchAccessorySkus: vi.fn().mockResolvedValue([skuF1601]),
     subtotal: 0,
     ...overrides,
   };
@@ -77,6 +87,20 @@ describe('StepItems — picker (search first)', () => {
     fireEvent.click(within(screen.getByRole('group', { name: 'ประเภทอุปกรณ์' })).getByRole('button', { name: 'เคส' }));
     expect(p.addAccessoryItem).toHaveBeenCalledWith('เคส');
   });
+
+  it('accessory mode: searching existing products by name/code and picking one re-orders it', async () => {
+    const p = renderStep([]);
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'ประเภทสินค้า' })).getByRole('radio', { name: 'อุปกรณ์เสริม' }));
+    const input = screen.getByRole('combobox', { name: 'ค้นหาสินค้าเดิม' });
+    fireEvent.change(input, { target: { value: '16' } });
+    const opt = await screen.findByRole('option', { name: 'ฟิล์มกระจก iPhone 16 - iStar' });
+    expect(p.searchAccessorySkus).toHaveBeenCalledWith('16');
+    expect(opt).toHaveTextContent('F1601');
+    expect(opt).toHaveTextContent('คงเหลือ 13');
+    fireEvent.click(opt);
+    expect(p.addExistingAccessoryItem).toHaveBeenCalledWith(skuF1601);
+    expect(input).toHaveValue('');
+  });
 });
 
 describe('StepItems — when the results list opens (owner feedback 2026-09-06)', () => {
@@ -93,7 +117,8 @@ describe('StepItems — when the results list opens (owner feedback 2026-09-06)'
   it('after a latest-chip add, focus moves to the new row’s storage select', () => {
     const props = {
       items: [iphone16pro], updateItem: vi.fn(), toggleModel: vi.fn(), removeItem: vi.fn(), duplicateItem: vi.fn(),
-      addCatalogItem: vi.fn(), addAccessoryItem: vi.fn(), subtotal: 0,
+      addCatalogItem: vi.fn(), addAccessoryItem: vi.fn(), addExistingAccessoryItem: vi.fn(),
+      searchAccessorySkus: vi.fn().mockResolvedValue([]), subtotal: 0,
     };
     const { rerender } = render(<StepItems {...props} />);
     fireEvent.click(within(screen.getByRole('group', { name: 'รุ่นล่าสุด' })).getByRole('button', { name: 'iPhone 17 Pro' }));
@@ -193,24 +218,59 @@ describe('StepItems — device row', () => {
   });
 });
 
-describe('StepItems — accessory row', () => {
-  it('charger row offers connector chips', () => {
+describe('StepItems — accessory rows (one line each, type fixed from the chip)', () => {
+  it('shows the type as text (no type select) with a brand input', () => {
+    const p = renderStep([caseItem]);
+    const r = row(1);
+    expect(r.queryByRole('combobox', { name: 'ประเภทอุปกรณ์' })).toBeNull();
+    expect(r.getByText('เคส')).toBeInTheDocument();
+    fireEvent.change(r.getByRole('textbox', { name: 'ยี่ห้ออุปกรณ์' }), { target: { value: 'Spigen' } });
+    expect(p.updateItem).toHaveBeenCalledWith(0, 'accessoryBrand', 'Spigen');
+  });
+
+  it('เคส: one compatible model from a select', () => {
+    const p = renderStep([caseItem]);
+    const sel = row(1).getByRole('combobox', { name: 'สำหรับรุ่น' });
+    expect(within(sel).getByRole('option', { name: 'iPhone 16 Pro' })).toBeInTheDocument();
+    fireEvent.change(sel, { target: { value: 'iPhone 16 Pro' } });
+    expect(p.updateItem).toHaveBeenCalledWith(0, 'model', 'iPhone 16 Pro');
+  });
+
+  it('ฟิล์ม: one box listing the chosen models with a count, opening a multi-pick list', () => {
+    const p = renderStep([film]);
+    const btn = row(1).getByRole('button', { name: 'สำหรับรุ่น' });
+    expect(btn).toHaveTextContent('iPhone 16 Pro, iPhone 17 Pro');
+    expect(btn).toHaveTextContent('2');
+    fireEvent.click(btn);
+    fireEvent.click(screen.getByRole('option', { name: 'iPhone 17 Pro Max' }));
+    expect(p.toggleModel).toHaveBeenCalledWith(0, 'iPhone 17 Pro Max');
+  });
+
+  it('ชุดชาร์จ: connector select', () => {
     const p = renderStep([charger]);
-    fireEvent.click(within(row(1).getByRole('radiogroup', { name: 'ชนิดหัวชาร์จ' })).getByRole('radio', { name: 'Type-C' }));
+    fireEvent.change(row(1).getByRole('combobox', { name: 'หัวชาร์จ' }), { target: { value: 'Type-C' } });
     expect(p.updateItem).toHaveBeenCalledWith(0, 'model', 'Type-C');
   });
 
-  it('case row: type select, brand input and compatible-model picker', () => {
-    const p = renderStep([{ ...caseItem, model: 'iPhone 16' }]);
+  it('หูฟัง / อื่นๆ: free-text model / detail', () => {
+    const p = renderStep([earphone, other]);
+    fireEvent.change(row(1).getByRole('textbox', { name: 'รุ่น' }), { target: { value: 'AirPods Pro 2' } });
+    expect(p.updateItem).toHaveBeenCalledWith(0, 'model', 'AirPods Pro 2');
+    fireEvent.change(row(2).getByRole('textbox', { name: 'รายละเอียด' }), { target: { value: 'สายชาร์จ 1 ม.' } });
+    expect(p.updateItem).toHaveBeenCalledWith(1, 'model', 'สายชาร์จ 1 ม.');
+  });
+
+  it('re-ordered existing product: name + code read-only, stock caption, nothing else to pick', () => {
+    const p = renderStep([existing]);
     const r = row(1);
-    fireEvent.change(r.getByRole('combobox', { name: 'ประเภทอุปกรณ์' }), { target: { value: 'ฟิล์ม' } });
-    expect(p.updateItem).toHaveBeenCalledWith(0, 'accessoryType', 'ฟิล์ม');
-    fireEvent.change(r.getByRole('textbox', { name: 'ยี่ห้ออุปกรณ์' }), { target: { value: 'Spigen' } });
-    expect(p.updateItem).toHaveBeenCalledWith(0, 'accessoryBrand', 'Spigen');
-    expect(r.getByText('iPhone 16')).toBeInTheDocument(); // selected model chip
-    fireEvent.click(r.getByRole('button', { name: 'เลือกรุ่นที่รองรับ' }));
-    fireEvent.click(screen.getByRole('option', { name: 'iPhone 16 Pro' }));
-    expect(p.toggleModel).toHaveBeenCalledWith(0, 'iPhone 16 Pro');
+    expect(r.getByText('ฟิล์มกระจก iPhone 16 - iStar')).toBeInTheDocument();
+    expect(r.getByText(/สินค้าเดิม · iStar · คงเหลือ 13 ชิ้น/)).toBeInTheDocument();
+    expect(r.getByLabelText('รหัสสินค้า')).toHaveValue('F1601');
+    expect(r.getByLabelText('รหัสสินค้า')).toHaveAttribute('readonly');
+    expect(r.queryByRole('textbox', { name: 'ยี่ห้ออุปกรณ์' })).toBeNull();
+    expect(r.getByRole('spinbutton', { name: 'ราคาต่อชิ้น' })).toHaveValue(35);
+    fireEvent.click(r.getByRole('button', { name: 'เพิ่มจำนวน' }));
+    expect(p.updateItem).toHaveBeenCalledWith(0, 'quantity', '2');
   });
 });
 

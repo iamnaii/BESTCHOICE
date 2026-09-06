@@ -26,8 +26,15 @@
     </div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // dev (localhost): ไม่ลงทะเบียน SW และถอดตัวเก่าทิ้ง — SW ที่แคช shell ของ branch ก่อนทำให้หน้าขาว/หลอกว่า "ไม่มีสิทธิ์"
       if ('serviceWorker' in navigator) {
+        var isLocalDev = ['localhost', '127.0.0.1'].indexOf(location.hostname) !== -1;
         window.addEventListener('load', () => {
+          if (isLocalDev) {
+            navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
+            if (window.caches) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => {});
+            return;
+          }
           navigator.serviceWorker.register('/sw.js').catch(() => {});
         });
       }

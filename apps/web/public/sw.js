@@ -8,6 +8,10 @@
  */
 
 const CACHE_NAME = 'bestchoice-v1';
+
+// dev (localhost): SW ตัวเก่าที่ยังคุมแท็บอยู่ต้องถอดตัวเองทิ้งตอน activate — ไม่งั้นแท็บที่เคยเปิดไว้
+// จะโดน shell เก่าจากแคชจนหน้าขาว แม้ index.html ใหม่จะเลิกลงทะเบียนแล้ว
+const IS_LOCAL_DEV = ['localhost', '127.0.0.1'].includes(self.location.hostname);
 const STATIC_ASSETS = [
   '/',
   '/logo-icon.svg',
@@ -26,7 +30,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => IS_LOCAL_DEV || k !== CACHE_NAME).map((k) => caches.delete(k)))
+        .then(() => (IS_LOCAL_DEV ? self.registration.unregister() : undefined))
     )
   );
   self.clients.claim();

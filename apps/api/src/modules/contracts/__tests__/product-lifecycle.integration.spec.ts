@@ -39,6 +39,7 @@ import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 import { ContractWorkflowService } from '../contract-workflow.service';
 import { ProductsService } from '../../products/products.service';
+import { ProductPhotosService } from '../../quality-control/product-photos.service';
 import { SalesService } from '../../sales/sales.service';
 import { RepossessionsService } from '../../repossessions/repossessions.service';
 import { RepossessionJP5Template } from '../../journal/cpa-templates/repossession-jp5.template';
@@ -65,6 +66,7 @@ const journal = new JournalAutoService(prisma as never);
 const companyResolver = new CompanyResolverService(prisma as never);
 const audit = new AuditService(prisma as never);
 const productsService = new ProductsService(prisma as never);
+const productPhotosService = new ProductPhotosService(prisma as never);
 const shopAccountResolver = new ShopAccountResolver(prisma as never);
 
 const workflow = new ContractWorkflowService(
@@ -639,7 +641,7 @@ describe('State diagram ของเครื่อง — flow จริงบ�
 
   // -------------------------------------------------------------------------
   it(
-    'ยึดเครื่อง: SOLD_INSTALLMENT → REPOSSESSED → REFURBISHED → นำเข้าคลัง → ขายที่ POS → SOLD_CASH (รายการยึดปิดเอง)',
+    'ยึดเครื่อง: SOLD_INSTALLMENT → REPOSSESSED → พร้อมขาย (สองราคา) → รอถ่ายรูป → ครบ 6 มุมเข้าคลัง → ขายที่ POS → SOLD_CASH (รายการยึดปิดเอง)',
     async () => {
       const product = await seedProduct('E1');
       const customer = await seedCustomer('E1');
@@ -673,13 +675,26 @@ describe('State diagram ของเครื่อง — flow จริงบ�
       // เครื่องยึดยังอยู่ในมือกิจการ — ลบไม่ได้ (Task 1 ชั้นสถานะ)
       await expect(productsService.remove(product.id)).rejects.toThrow(DELETE_GUARD_MSG);
 
-      // ตีราคาใหม่ผ่านเมนูยึด → REFURBISHED + ราคาขายต่อถูกเขียนเป็นราคาเงินสด
-      await repossessionsService.markReadyForSale(repossession.id, 8900, OWNER_USER() as never);
+      // "พร้อมขาย" (2026-09-07 เหมือนรับซื้อมือสอง): ตั้งสองราคา → เครื่องเข้าคิวรอถ่ายรูป
+      // ไม่ใช่ REFURBISHED + ปุ่มนำเข้าคลังอีกต่อไป
+      await expect(
+        repossessionsService.update(
+          repossession.id,
+          { status: 'READY_FOR_SALE', resellPrice: 8900 } as never,
+          OWNER_USER() as never,
+        ),
+      ).rejects.toThrow(/พร้อมขาย/);
+      await repossessionsService.markReadyForSale(
+        repossession.id,
+        { resellPrice: 8900, installmentPrice: 10900 },
+        OWNER_USER() as never,
+      );
       const refurbished = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
-      expect(refurbished.status).toBe('REFURBISHED');
+      expect(refurbished.status).toBe('PHOTO_PENDING');
       expect(refurbished.cashPrice?.toString()).toBe('8900');
+      expect(refurbished.installmentPrice?.toString()).toBe('10900');
 
-      // REFURBISHED ยังไม่ใช่ของในคลัง — POS ขายไม่ได้ (ต้องนำเข้าคลังก่อน)
+      // ยังไม่ใช่ของในคลัง — POS ขายไม่ได้ จนกว่ารูป 6 มุมจะครบ
       await expect(posCashSale(buyer.id, product.id, 8900)).rejects.toThrow(POS_GUARD_MSG);
 
       // 2026-09-05: "ขายแล้ว" ตั้งด้วยมือไม่ได้อีกต่อไป — ขายเครื่องยึดผ่าน POS ทางเดียว
@@ -718,12 +733,17 @@ describe('State diagram ของเครื่อง — flow จริงบ�
       ]);
       expect((await accountNet('S11-2002')).minus(inventoryBefore).toFixed(2)).toBe('7000.00');
 
-      // นำเข้าคลัง (ยืนยันราคา) → ขายที่ POS → รายการยึดถูกปิดเป็น SOLD พร้อมราคาขายจริงโดยอัตโนมัติ
-      await productsService.returnToStock(product.id, adminId, {
-        cashPrice: 8900,
-        installmentPrice: 10900,
-        note: 'ตรวจสภาพแล้ว เกรด B',
-      });
+      // ถ่ายรูปครบ 6 มุมที่คิว → ยืนยันรูป → เข้าคลังเอง (ราคาตั้งแล้วตั้งแต่กดพร้อมขาย)
+      for (const angle of ['front', 'back', 'left', 'right', 'top', 'bottom']) {
+        await productPhotosService.uploadPhoto(product.id, angle, `data:image/jpeg;base64,${angle}`, adminId);
+      }
+      const completed = await productPhotosService.completePhotos(product.id, adminId);
+      expect(completed.enteredStock).toBe(true);
+      expect(
+        (await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).status,
+      ).toBe('IN_STOCK');
+
+      // ขายที่ POS → รายการยึดถูกปิดเป็น SOLD พร้อมราคาขายจริงโดยอัตโนมัติ
       const sale = await posCashSale(buyer.id, product.id, 8900);
       expect(sale.id).toBeTruthy();
       const sold = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });

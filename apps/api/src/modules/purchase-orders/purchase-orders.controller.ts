@@ -51,8 +51,10 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.getSummary();
   }
 
-  // === QC Confirmation (Step 4: สินค้าเข้าคลัง) ===
+  // === คิว "รอถ่ายรูป" (มือสองที่รูป 6 มุมยังไม่ครบ) ===
   // Static routes MUST be before :id parametric routes
+  // 2026-09-07: POST qc-confirm ถูกถอด — ขั้น QC_PENDING ยกเลิก เครื่องขึ้นขายผ่านการ
+  // ยืนยันรูป 6 มุม (`POST /products/:id/photos/complete`) หรือครบตั้งแต่ตอนรับสินค้า
 
   @Get('qc-pending')
   @Roles('OWNER', 'BRANCH_MANAGER')
@@ -70,12 +72,6 @@ export class PurchaseOrdersController {
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });
-  }
-
-  @Post('qc-confirm')
-  @Roles('OWNER', 'BRANCH_MANAGER')
-  confirmQC(@Body('productIds') productIds: string[]) {
-    return this.purchaseOrdersService.confirmQC(productIds);
   }
 
   @Post('qc-reject')

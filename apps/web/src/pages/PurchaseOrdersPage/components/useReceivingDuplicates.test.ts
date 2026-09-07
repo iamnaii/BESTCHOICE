@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { computeDuplicateIndices } from './useReceivingDuplicates';
 import type { ReceivingUnitForm } from '../types';
+import { emptyAnglePhotos } from '@/constants/photo-angles';
 
 const u = (over: Partial<ReceivingUnitForm>): ReceivingUnitForm => ({
   poItemId: '',
@@ -18,6 +19,7 @@ const u = (over: Partial<ReceivingUnitForm>): ReceivingUnitForm => ({
   checklist: [],
   sellingPrice: '', installmentPrice: '',
   photos: [],
+  anglePhotos: emptyAnglePhotos(),
   costPrice: '',
   ...over,
 });

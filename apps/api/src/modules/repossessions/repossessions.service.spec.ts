@@ -161,6 +161,10 @@ describe('RepossessionsService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      // 2026-09-07 — "พร้อมขาย" ล้างรูป 6 มุมชุดเก่าก่อนส่งเข้าคิวรอถ่ายรูป
+      productPhoto: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       // Phase 3 Task 6 — findAll's batched CN lookup (creditNote attach).
       receipt: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -1533,71 +1537,16 @@ describe('RepossessionsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('updates product status to REFURBISHED when moving to READY_FOR_SALE', async () => {
+    it('PATCH สถานะเป็น READY_FOR_SALE ถูกปฏิเสธ — ต้องผ่านปุ่ม "พร้อมขาย" (สองราคา + คิวรอถ่ายรูป)', async () => {
       prisma.repossession.findUnique.mockResolvedValue(
         makeRepossession({ status: 'UNDER_REPAIR' }),
       );
-      prisma.product.update.mockResolvedValue({});
-      prisma.repossession.update.mockResolvedValue(makeRepossession({ status: 'READY_FOR_SALE' }));
 
-      await service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 7000 } as never);
-
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'REFURBISHED' }),
-        }),
-      );
-    });
-
-    it('adjusts costPrice to appraisalPrice (TAS 2) when marking READY_FOR_SALE', async () => {
-      prisma.repossession.findUnique.mockResolvedValue(
-        makeRepossession({ status: 'UNDER_REPAIR', appraisalPrice: decimal(6000) }),
-      );
-      prisma.product.update.mockResolvedValue({});
-      prisma.repossession.update.mockResolvedValue({});
-
-      await service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 7500 } as never);
-
-      // Wave 3 / Task 4 (W-2): costPrice now passed as Prisma.Decimal to
-      // preserve precision. Compare via Decimal.eq instead of numeric equality.
-      // Task 4 (R-007/TAS 2, Phase 1): costPrice = appraisalPrice (6000), NOT
-      // resellPrice (7500) — using the resale price as costPrice would zero out
-      // margin when the item is actually sold.
-      expect(prisma.product.update).toHaveBeenCalledTimes(1);
-      const call = prisma.product.update.mock.calls[0][0];
-      expect(call.data.status).toBe('REFURBISHED');
-      expect(new Prisma.Decimal(call.data.costPrice).eq(6000)).toBe(true);
-    });
-
-    it('READY_FOR_SALE ตั้ง costPrice = ราคาประเมิน ไม่ใช่ราคาขายต่อ (R-007/TAS 2)', async () => {
-      prisma.repossession.findUnique.mockResolvedValue(
-        makeRepossession({ status: 'REPOSSESSED', appraisalPrice: decimal(3000) }),
-      );
-      prisma.repossession.update.mockResolvedValue(makeRepossession({ status: 'READY_FOR_SALE' }));
-      prisma.product.update.mockResolvedValue({});
-      await service.update(
-        'repo-1',
-        { status: 'READY_FOR_SALE', resellPrice: 5500 } as never,
-        { id: 'user-1', role: 'OWNER' },
-      );
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ costPrice: new Prisma.Decimal(3000) }),
-        }),
-      );
-    });
-
-    it('READY_FOR_SALE falls back to resellPrice when appraisalPrice is 0/null', async () => {
-      prisma.repossession.findUnique.mockResolvedValue(
-        makeRepossession({ status: 'UNDER_REPAIR', appraisalPrice: null }),
-      );
-      prisma.product.update.mockResolvedValue({});
-      prisma.repossession.update.mockResolvedValue({});
-
-      await service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 4200 } as never);
-
-      const call = prisma.product.update.mock.calls[0][0];
-      expect(new Prisma.Decimal(call.data.costPrice).eq(4200)).toBe(true);
+      await expect(
+        service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 7000 } as never),
+      ).rejects.toThrow(/พร้อมขาย/);
+      expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.repossession.update).not.toHaveBeenCalled();
     });
 
     it('updates repossession to SOLD status and returns updated record (Phase A.5 JE deferred)', async () => {
@@ -1635,35 +1584,95 @@ describe('RepossessionsService', () => {
     });
   });
 
-  describe('markReadyForSale — B0 เขียนคอลัมน์ราคา', () => {
-    it('set Product.cashPrice = resellPrice และสร้างแถวราคาเงินสด', async () => {
-      // findOne() อ่านจาก this.prisma (ไม่ใช่ tx) — mock ที่นี่
-      prisma.repossession.findUnique.mockResolvedValue({
-        id: 'r1',
-        status: 'REPOSSESSED',
-        appraisalPrice: null,
-        product: { id: 'prod-1', prices: [] },
-        deletedAt: null,
-      });
+  describe('markReadyForSale — พร้อมขาย = สองราคา + เข้าคิวรอถ่ายรูป (2026-09-07)', () => {
+    const repoRow = (over: Record<string, unknown> = {}) => ({
+      id: 'r1',
+      status: 'REPOSSESSED',
+      appraisalPrice: null,
+      product: { id: 'prod-1', prices: [] },
+      deletedAt: null,
+      ...over,
+    });
+    const arm = () => {
       prisma.repossession.update.mockResolvedValue({ id: 'r1', status: 'READY_FOR_SALE' });
       prisma.product.update.mockResolvedValue({ id: 'prod-1' });
       // beforeEach เดิมมีแค่ productPrice.{findFirst,create,update} — util ใช้ findMany + updateMany
       prisma.productPrice.findMany = jest.fn().mockResolvedValue([]);
       prisma.productPrice.updateMany = jest.fn().mockResolvedValue({ count: 0 });
       prisma.productPrice.create.mockResolvedValue({ id: 'row-1' });
+    };
 
-      await service.markReadyForSale('r1', 21000);
+    it('เขียนราคาเงินสด + ราคาผ่อนลงคอลัมน์ และสร้างแถวราคาทั้งสอง', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(repoRow());
+      arm();
 
-      // product.update ถูกเรียก 2 ครั้ง: (1) status/costPrice เดิม (2) cashPrice ของ B0
+      await service.markReadyForSale('r1', { resellPrice: 21000, installmentPrice: 23900 });
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const priceUpdate = prisma.product.update.mock.calls.find(
         (c: any[]) => c[0].data.cashPrice !== undefined,
       );
       expect(priceUpdate).toBeDefined();
       expect(priceUpdate[0].data.cashPrice.toString()).toBe('21000');
-      expect(prisma.productPrice.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาเงินสด' }) }),
+      expect(priceUpdate[0].data.installmentPrice.toString()).toBe('23900');
+      const labels = prisma.productPrice.create.mock.calls.map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (c: any[]) => c[0].data.label,
       );
+      expect(labels).toEqual(expect.arrayContaining(['ราคาเงินสด', 'ราคาผ่อน BESTCHOICE']));
+      expect(prisma.repossession.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'READY_FOR_SALE', resellPrice: 21000 } }),
+      );
+    });
+
+    it('เครื่องเข้าคิวรอถ่ายรูป (PHOTO_PENDING ไม่ใช่ REFURBISHED) กลับคลังหลัก และรูป 6 มุมชุดเก่าถูกล้าง', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(repoRow());
+      arm();
+
+      await service.markReadyForSale('r1', { resellPrice: 5000, installmentPrice: 5900 });
+
+      const statusUpdate = prisma.product.update.mock.calls[0][0];
+      expect(statusUpdate.data.status).toBe('PHOTO_PENDING');
+      expect(statusUpdate.data.branchId).toBe('branch-1');
+      expect(prisma.productPhoto.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { productId: 'prod-1' },
+          data: expect.objectContaining({ front: null, bottom: null, isCompleted: false }),
+        }),
+      );
+    });
+
+    it('costPrice = ราคาประเมิน (R-007/TAS 2) ไม่ใช่ราคาขายต่อ', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(repoRow({ appraisalPrice: decimal(6000) }));
+      arm();
+
+      await service.markReadyForSale('r1', { resellPrice: 7500, installmentPrice: 8500 });
+
+      const statusUpdate = prisma.product.update.mock.calls[0][0];
+      expect(new Prisma.Decimal(statusUpdate.data.costPrice).eq(6000)).toBe(true);
+    });
+
+    it('ไม่มีราคาประเมิน → costPrice ถอยไปใช้ราคาขายต่อ', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(repoRow({ appraisalPrice: null }));
+      arm();
+
+      await service.markReadyForSale('r1', { resellPrice: 4200, installmentPrice: 4900 });
+
+      const statusUpdate = prisma.product.update.mock.calls[0][0];
+      expect(new Prisma.Decimal(statusUpdate.data.costPrice).eq(4200)).toBe(true);
+    });
+
+    it('ต้องมีทั้งสองราคา — ขาดราคาผ่อน → BadRequestException', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(repoRow());
+      arm();
+
+      await expect(
+        service.markReadyForSale('r1', { resellPrice: 4200, installmentPrice: 0 }),
+      ).rejects.toThrow(/ราคาผ่อน/);
+      await expect(
+        service.markReadyForSale('r1', { resellPrice: 0, installmentPrice: 4900 }),
+      ).rejects.toThrow(/ราคาขายต่อ/);
+      expect(prisma.product.update).not.toHaveBeenCalled();
     });
   });
 
@@ -1735,9 +1744,9 @@ describe('RepossessionsService', () => {
       ).resolves.toBeTruthy();
     });
 
-    // Finding 3 (WARNING): costBasis fallback should use the stored
-    // repo.resellPrice, not drop to 0, when dto.resellPrice is omitted.
-    it('READY_FOR_SALE costBasis fallback = repo.resellPrice เมื่อไม่มี appraisalPrice และไม่ส่ง dto.resellPrice ใหม่', async () => {
+    // 2026-09-07: PATCH ไปสถานะพร้อมขายถูกปิดทุกกรณี (แม้แถวมีราคาขายต่อค้างอยู่แล้ว) —
+    // costBasis fallback ของเส้นทางนี้จึงไม่มีอีก (ดู markReadyForSale ซึ่งบังคับส่งสองราคา)
+    it('READY_FOR_SALE ผ่าน PATCH ถูกปฏิเสธแม้แถวมี resellPrice อยู่แล้ว', async () => {
       prisma.repossession.findUnique.mockResolvedValue(
         makeRepossession({
           status: 'UNDER_REPAIR',
@@ -1745,13 +1754,11 @@ describe('RepossessionsService', () => {
           resellPrice: decimal(7000),
         }),
       );
-      prisma.product.update.mockResolvedValue({});
-      prisma.repossession.update.mockResolvedValue({});
 
-      await service.update('repo-1', { status: 'READY_FOR_SALE' } as never, owner);
-
-      const call = prisma.product.update.mock.calls[0][0];
-      expect(new Prisma.Decimal(call.data.costPrice).eq(7000)).toBe(true);
+      await expect(
+        service.update('repo-1', { status: 'READY_FOR_SALE' } as never, owner),
+      ).rejects.toThrow(/พร้อมขาย/);
+      expect(prisma.product.update).not.toHaveBeenCalled();
     });
 
     // Phase 2 review follow-up (Item 1): costBasis = appraisal>0 ? appraisal : fallback

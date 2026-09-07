@@ -4,6 +4,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { GoodsReceivingModal, receivingIsDirty } from './GoodsReceivingModal';
 import type { PurchaseOrder, ReceivingUnitForm } from '../types';
 import { defaultChecklist } from '../constants';
+import { emptyAnglePhotos } from '@/constants/photo-angles';
 
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
@@ -39,6 +40,7 @@ const seed = (over: Partial<ReceivingUnitForm>): ReceivingUnitForm => ({
   sellingPrice: '45900',
   installmentPrice: '49900',
   photos: [],
+  anglePhotos: emptyAnglePhotos(),
   costPrice: '42900',
   ...over,
 });
@@ -134,7 +136,10 @@ describe('GoodsReceivingModal — one device per screen', () => {
     expect(screen.getByTestId('next-hint')).toHaveTextContent('กรอกวันหมดประกันหรือติ๊กหมดประกันแล้ว');
     fireEvent.click(screen.getByLabelText('หมดประกันแล้ว'));
     expect(screen.getByRole('button', { name: 'ไปเครื่องถัดไป' })).toBeEnabled();
-    expect(screen.getByLabelText('ถ่ายรูป')).toBeInTheDocument();
+    expect(screen.getByTestId('angle-panel')).toBeInTheDocument();
+    expect(screen.getByLabelText('ถ่ายรูปด้านหน้า')).toBeInTheDocument();
+    expect(screen.getByTestId('angle-panel')).toHaveTextContent('ถ่ายแล้ว 0/6 มุม');
+    expect(screen.getByLabelText('รูปตำหนิ/ความเสียหาย')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'เปิดเช็คลิสต์' }));
     expect(screen.getByTestId('checklist')).toBeInTheDocument();
   });
@@ -183,7 +188,10 @@ describe('GoodsReceivingModal — one device per screen', () => {
     expect(rows[0]).toHaveTextContent('49,900');
     expect(rows[2]).toHaveTextContent('แบต 89% · มีกล่อง');
     expect(rows[3]).toHaveTextContent('ผ่าน 2 ชิ้น');
-    expect(within(summary).getByText('5 ชิ้น', { selector: 'span' })).toBeInTheDocument();
+    // the used phone passed without its six angles → it waits in the photo queue, the other 4 go on sale
+    expect(rows[2]).toHaveTextContent('0/6 มุม');
+    expect(summary).toHaveTextContent(/เข้าคลังพร้อมขาย\s*4 ชิ้น/);
+    expect(summary).toHaveTextContent(/รอถ่ายรูป 6 มุมก่อนขึ้นขาย\s*1 ชิ้น/);
     fireEvent.change(within(summary).getByLabelText('หมายเหตุใบรับ'), { target: { value: 'กล่องบุบ 1 กล่อง' } });
     fireEvent.click(within(summary).getByRole('button', { name: 'ยืนยันรับสินค้า 5 ชิ้น' }));
     expect(handle).toHaveBeenCalledTimes(1);

@@ -1,3 +1,5 @@
+import type { AnglePhotos } from '@/constants/photo-angles';
+
 export interface POItem {
   id: string;
   brand: string;
@@ -110,7 +112,10 @@ export interface ReceivingUnitForm {
   sellingPrice: string;
   /** ราคาผ่อน → Product.installmentPrice (phones only; accessories sell at one price) */
   installmentPrice: string;
+  /** รูปหลักฐานอิสระ (ตำหนิ/ความเสียหาย) → Product.photos + ใบรับของ */
   photos: string[];
+  /** รูปสินค้า 6 มุม (มือสอง) → ProductPhoto — ครบ 6 + มีราคา = เข้าคลังพร้อมขายทันที */
+  anglePhotos: AnglePhotos;
   /** ราคาทุน/ชิ้น — sent on direct receive; on a PO receive it is the PO line's unitPrice, shown only */
   costPrice: string;
   // Direct-receive-only product attrs (PO-based seeds leave these undefined —

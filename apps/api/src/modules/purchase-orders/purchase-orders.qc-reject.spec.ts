@@ -25,9 +25,9 @@ describe('PurchaseOrdersService.rejectQC', () => {
     return module.get<PurchaseOrdersService>(PurchaseOrdersService);
   };
 
-  it('soft-deletes QC_PENDING products and returns the count', async () => {
+  it('soft-deletes PHOTO_PENDING products and returns the count', async () => {
     const tx = buildTx([
-      { id: 'p1', status: 'QC_PENDING', name: 'iPhone' },
+      { id: 'p1', status: 'PHOTO_PENDING', name: 'iPhone' },
       { id: 'p2', status: 'PHOTO_PENDING', name: 'iPhone 2' },
     ]);
     prisma = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
@@ -49,10 +49,13 @@ describe('PurchaseOrdersService.rejectQC', () => {
     await expect(service.rejectQC([], 'x')).rejects.toThrow(BadRequestException);
   });
 
-  it('rejects when a product is not in a QC stage', async () => {
-    const tx = buildTx([{ id: 'p1', status: 'IN_STOCK', name: 'Sold-in' }]);
-    prisma = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
-    service = await build();
-    await expect(service.rejectQC(['p1'], 'late')).rejects.toThrow(BadRequestException);
+  it('rejects when a product is not in the photo queue (IN_STOCK, legacy QC_PENDING)', async () => {
+    for (const status of ['IN_STOCK', 'QC_PENDING']) {
+      const tx = buildTx([{ id: 'p1', status, name: 'Sold-in' }]);
+      prisma = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+      service = await build();
+      await expect(service.rejectQC(['p1'], 'late')).rejects.toThrow(/รอถ่ายรูป/);
+      expect(tx.product.updateMany).not.toHaveBeenCalled();
+    }
   });
 });

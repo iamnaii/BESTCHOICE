@@ -23,6 +23,18 @@ describe('assertManualStatusChangeAllowed', () => {
     ).not.toThrow();
   });
 
+  it('QC_PENDING เลิกใช้แล้ว — ตั้งเป็นปลายทางไม่ได้ แต่แถวเก่ายังย้ายออกได้', () => {
+    expect(() => assertManualStatusChangeAllowed(ProductStatus.IN_STOCK, 'QC_PENDING')).toThrow(
+      /QC_PENDING เลิกใช้แล้ว/,
+    );
+    expect(() =>
+      assertManualStatusChangeAllowed(ProductStatus.QC_PENDING, 'PHOTO_PENDING'),
+    ).not.toThrow();
+    expect(() =>
+      assertManualStatusChangeAllowed(ProductStatus.QC_PENDING, 'QC_PENDING'),
+    ).not.toThrow();
+  });
+
   it('ออกจากสถานะระบบจัดการ (ขาย/จอง/ยึด) ด้วยมือ → block', () => {
     for (const from of SYSTEM_MANAGED_STATUSES) {
       expect(() => assertManualStatusChangeAllowed(from, 'IN_STOCK')).toThrow(BadRequestException);

@@ -10,7 +10,8 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { formatDateShort } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
-import { Download, Send } from 'lucide-react';
+import { Camera, Download, Send } from 'lucide-react';
+import { Link } from 'react-router';
 import { CashAccountSelect, CASH_ACCOUNT_CODES, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 import { RepossessionOverlay } from '@/pages/PaymentsPage/components/RepossessionOverlay';
@@ -69,7 +70,17 @@ interface Repossession {
     customer: { id: string; name: string; phone: string };
     branch: { id: string; name: string };
   };
-  product: { id: string; name: string; brand: string; model: string; imeiSerial: string | null };
+  product: {
+    id: string;
+    name: string;
+    brand: string;
+    model: string;
+    imeiSerial: string | null;
+    /** PHOTO_PENDING = อยู่ในคิวรอถ่ายรูป (พร้อมขายแล้วแต่ยังขึ้นขายไม่ได้) */
+    status?: string;
+    /** จำนวนมุมที่ถ่ายแล้ว 0–6 */
+    photoAngles?: number;
+  };
   appraisedBy: { id: string; name: string };
   /** Auto-issued ใบลดหนี้ (CN) from JP5 repossession — null when this repossession
    *  wrote off no accrued-unpaid installments (outstandingBalance was 0). */
@@ -113,9 +124,10 @@ export default function RepossessionsPage() {
   // ไม่คืนเงิน dialog (คำสั่งเจ้าของ 2026-08-08 เพิ่มเติม — ล้าง 21-1107 ที่เหลือเข้ารายได้ 41-1102)
   const [waiveRepo, setWaiveRepo] = useState<Repossession | null>(null);
   const [waiveRequestId, setWaiveRequestId] = useState('');
-  // พร้อมขาย modal (ต้องระบุราคาขายต่อ — endpoint บังคับ ReadyForSaleDto.resellPrice)
+  // พร้อมขาย modal — สองราคา (เงินสด + ผ่อน) แล้วเครื่องเข้าคิวรอถ่ายรูป (2026-09-07)
   const [readyForSaleRepo, setReadyForSaleRepo] = useState<Repossession | null>(null);
   const [readyForSalePrice, setReadyForSalePrice] = useState('');
+  const [readyForSaleInstallment, setReadyForSaleInstallment] = useState('');
   const [updateForm, setUpdateForm] = useState({
     repairCost: '',
     resellPrice: '',
@@ -186,13 +198,22 @@ export default function RepossessionsPage() {
   });
 
   const readyForSaleMutation = useMutation({
-    mutationFn: async ({ id, resellPrice }: { id: string; resellPrice: number }) =>
-      api.post(`/repossessions/${id}/ready-for-sale`, { resellPrice }),
+    mutationFn: async ({
+      id,
+      resellPrice,
+      installmentPrice,
+    }: {
+      id: string;
+      resellPrice: number;
+      installmentPrice: number;
+    }) => api.post(`/repossessions/${id}/ready-for-sale`, { resellPrice, installmentPrice }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repossessions'] });
-      toast.success('เปลี่ยนสถานะเป็น พร้อมขาย แล้ว');
+      queryClient.invalidateQueries({ queryKey: ['qc-pending-count'] });
+      toast.success('พร้อมขายแล้ว — เครื่องเข้าคิวรอถ่ายรูป 6 มุม ถ่ายครบแล้วขึ้นขายเอง');
       setReadyForSaleRepo(null);
       setReadyForSalePrice('');
+      setReadyForSaleInstallment('');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -371,7 +392,21 @@ export default function RepossessionsPage() {
       label: 'สถานะ',
       render: (r: Repossession) => {
         const cfg = getStatusBadgeProps(r.status, repossessionStatusMap);
-        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+        const inPhotoQueue = r.status === 'READY_FOR_SALE' && r.product.status === 'PHOTO_PENDING';
+        return (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
+            {inPhotoQueue && (
+              <Link
+                to={`/products/${r.product.id}`}
+                title="เครื่องอยู่ในคิวรอถ่ายรูป 6 มุม — ครบแล้วขึ้นขายเอง"
+                className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning hover:bg-warning/20 dark:bg-warning/15"
+              >
+                <Camera className="size-3" /> รอถ่ายรูป {r.product.photoAngles ?? 0}/6
+              </Link>
+            )}
+          </div>
+        );
       },
     },
     {
@@ -401,6 +436,7 @@ export default function RepossessionsPage() {
               onClick={() => {
                 setReadyForSaleRepo(r);
                 setReadyForSalePrice(r.resellPrice ? String(Number(r.resellPrice)) : '');
+                setReadyForSaleInstallment('');
               }}
               className="text-success hover:text-success/80 text-sm font-medium"
             >
@@ -864,7 +900,7 @@ export default function RepossessionsPage() {
         )}
       </Modal>
 
-      {/* พร้อมขาย Modal — ต้องระบุราคาขายต่อ (endpoint บังคับ + ย้ายเครื่องกลับคลังหลัก) */}
+      {/* พร้อมขาย Modal — สองราคา (endpoint บังคับ) → เครื่องกลับคลังหลัก + เข้าคิวรอถ่ายรูป 6 มุม */}
       <Modal
         isOpen={!!readyForSaleRepo}
         onClose={() => setReadyForSaleRepo(null)}
@@ -877,6 +913,7 @@ export default function RepossessionsPage() {
               readyForSaleMutation.mutate({
                 id: readyForSaleRepo.id,
                 resellPrice: Number(readyForSalePrice),
+                installmentPrice: Number(readyForSaleInstallment),
               });
             }}
             className="space-y-4"
@@ -885,24 +922,46 @@ export default function RepossessionsPage() {
               <div><strong>สินค้า:</strong> {readyForSaleRepo.product.brand} {readyForSaleRepo.product.model}</div>
               <div><strong>ราคาตี:</strong> {Number(readyForSaleRepo.appraisalPrice).toLocaleString()} บาท</div>
               <div className="text-xs text-muted-foreground leading-snug pt-1">
-                เครื่องจะย้ายกลับคลังหลักและตั้งราคาขาย Refurbished ตามที่ระบุ
+                เครื่องจะย้ายกลับคลังหลักและเข้าคิว "รอถ่ายรูป 6 มุม" เหมือนเครื่องรับซื้อ ถ่ายครบแล้วขึ้นขายเอง
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
-                ราคาขายต่อ (บาท) <span className="text-destructive">*</span>
-              </label>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={readyForSalePrice}
-                onChange={(e) => setReadyForSalePrice(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-hidden focus:ring-2 focus:ring-ring/20"
-                placeholder="0.00"
-                required
-              />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="ready-for-sale-cash" className="block text-sm font-medium text-foreground mb-1">
+                  ราคาเงินสด (บาท) <span className="text-destructive">*</span>
+                </label>
+                <input
+                  id="ready-for-sale-cash"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={readyForSalePrice}
+                  onChange={(e) => setReadyForSalePrice(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-hidden focus:ring-2 focus:ring-ring/20"
+                  placeholder="0.00"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="ready-for-sale-installment" className="block text-sm font-medium text-foreground mb-1">
+                  ราคาผ่อน BESTCHOICE (บาท) <span className="text-destructive">*</span>
+                </label>
+                <input
+                  id="ready-for-sale-installment"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={readyForSaleInstallment}
+                  onChange={(e) => setReadyForSaleInstallment(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-hidden focus:ring-2 focus:ring-ring/20"
+                  placeholder="0.00"
+                  required
+                />
+              </div>
             </div>
+            <p className="text-xs text-muted-foreground leading-snug">
+              ต้องกรอกทั้งสองราคา — เครื่องยังถือราคาผ่อนตอนเป็นเครื่องใหม่อยู่ ถ้าไม่ทับ POS จะหยิบราคาเก่าไปขาย
+            </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
@@ -913,7 +972,11 @@ export default function RepossessionsPage() {
               </button>
               <button
                 type="submit"
-                disabled={readyForSaleMutation.isPending || !(Number(readyForSalePrice) > 0)}
+                disabled={
+                  readyForSaleMutation.isPending ||
+                  !(Number(readyForSalePrice) > 0) ||
+                  !(Number(readyForSaleInstallment) > 0)
+                }
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
               >
                 {readyForSaleMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน พร้อมขาย'}
@@ -939,15 +1002,14 @@ export default function RepossessionsPage() {
                 onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
-                {/* Show only valid status transitions based on current status */}
+                {/* Show only valid status transitions based on current status —
+                    พร้อมขาย ตั้งผ่านปุ่ม "พร้อมขาย" เท่านั้น (สองราคา + คิวรอถ่ายรูป, 2026-09-07) */}
                 {selectedRepo.status === 'REPOSSESSED' && <>
                   <option value="REPOSSESSED">ยึดคืนแล้ว</option>
                   <option value="UNDER_REPAIR">กำลังซ่อม</option>
-                  <option value="READY_FOR_SALE">พร้อมขาย</option>
                 </>}
                 {selectedRepo.status === 'UNDER_REPAIR' && <>
                   <option value="UNDER_REPAIR">กำลังซ่อม</option>
-                  <option value="READY_FOR_SALE">พร้อมขาย</option>
                 </>}
                 {selectedRepo.status === 'READY_FOR_SALE' && <>
                   {/* "ขายแล้ว" ตั้งด้วยมือไม่ได้ — ขายผ่าน POS แล้วระบบปิดให้เอง (2026-09-05) */}

@@ -67,7 +67,7 @@ const pages: NavEntry[] = [
   { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle, keywords: 'overdue หนี้ ค้าง ติดตาม' },
   { label: 'คลังสินค้า', path: '/stock', icon: Warehouse, keywords: 'stock inventory สต็อก คลัง' },
   { label: 'สั่งซื้อ', path: '/purchase-orders', icon: Warehouse, keywords: 'purchase order PO สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'] },
-  { label: 'ศูนย์ตรวจ QC', path: '/purchase-orders/qc', icon: ClipboardCheck, keywords: 'qc quality check ตรวจ คุณภาพ qc center', roles: ['OWNER', 'BRANCH_MANAGER'] },
+  { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: ClipboardCheck, keywords: 'qc ถ่ายรูป 6 มุม มือสอง photo pending รอถ่ายรูป', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'รายงาน', path: '/reports', icon: BarChart3, keywords: 'report รายงาน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, keywords: 'profit loss กำไร ขาดทุน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, keywords: 'notification แจ้งเตือน', roles: ['OWNER', 'BRANCH_MANAGER'] },

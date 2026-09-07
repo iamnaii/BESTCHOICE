@@ -6,6 +6,7 @@ import { formatNumber } from '@/utils/formatters';
 import type { DefectReasonValue, ReceivingUnitForm } from '../types';
 import { checklistCategories, defectReasonOptions } from '../constants';
 import { conditionLabel, isUsedUnit, unitTitle } from '../receiving-flow.util';
+import { PHOTO_ANGLES, PHOTO_ANGLE_LABELS, anglesShot, type PhotoAngle } from '@/constants/photo-angles';
 
 export interface UnitInspectScreenProps {
   unit: ReceivingUnitForm;
@@ -20,6 +21,9 @@ export interface UnitInspectScreenProps {
   onChecklist: (idx: number, checkIdx: number, field: 'passed' | 'note', value: boolean | string) => void;
   onAddPhotos: (idx: number, files: FileList) => void;
   onRemovePhoto: (idx: number, photoIdx: number) => void;
+  /** รูปสินค้า 6 มุม (มือสอง) — หนึ่งช่องหนึ่งรูป */
+  onAnglePhoto: (idx: number, angle: PhotoAngle, file: File) => void;
+  onRemoveAnglePhoto: (idx: number, angle: PhotoAngle) => void;
   /**
    * Enter on the serial field = "ผ่าน" + next device (two scans, no tap). Receives the unit as it
    * will be after this keystroke, because the parent's state has not re-rendered yet.
@@ -97,10 +101,84 @@ function PhotoStrip({
 }
 
 /**
+ * รูปสินค้า 6 มุม (owner 2026-09-07 "ตอนรับเครื่องหน้า PO ด้วย ให้มี 6 มุม"): the same six fixed
+ * slots the photo queue and the product page use. Complete + priced = the unit goes on sale the
+ * moment the receive is confirmed; anything less and it waits in the "รอถ่ายรูป" queue with the
+ * angles already shot kept. Never blocks the next button.
+ */
+function AnglePhotoGrid({
+  unit,
+  idx,
+  onAnglePhoto,
+  onRemoveAnglePhoto,
+}: Pick<UnitInspectScreenProps, 'unit' | 'idx' | 'onAnglePhoto' | 'onRemoveAnglePhoto'>) {
+  const shot = anglesShot(unit.anglePhotos);
+  return (
+    <div className="flex flex-col gap-3.5 rounded-xl border border-info/30 bg-info/5 p-4" data-testid="angle-panel">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[13px] font-semibold text-info">รูปสินค้า 6 มุม — ใช้ขึ้นขายหน้าร้านออนไลน์</span>
+        <span className="text-[13px] whitespace-nowrap text-muted-foreground">
+          ถ่ายแล้ว <span className="font-semibold text-foreground">{shot}/6</span> มุม
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
+        {PHOTO_ANGLES.map((angle) => {
+          const src = unit.anglePhotos[angle];
+          const label = PHOTO_ANGLE_LABELS[angle];
+          return (
+            <div key={angle} className="flex min-w-0 flex-col items-center gap-1.5">
+              {src ? (
+                <div className="relative h-[84px] w-full overflow-hidden rounded-[10px] border border-border">
+                  <img src={src} alt={`รูปด้าน${label}`} className="size-full object-cover" />
+                  <span className="absolute top-1.5 left-1.5 grid size-[18px] place-items-center rounded-full bg-success text-success-foreground">
+                    <Check className="size-3" />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAnglePhoto(idx, angle)}
+                    aria-label={`ลบรูปด้าน${label}`}
+                    className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="grid h-[84px] w-full cursor-pointer place-items-center rounded-[10px] border-2 border-dashed border-info/50 bg-card text-info hover:bg-info/10">
+                  <Camera className="size-6" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    aria-label={`ถ่ายรูปด้าน${label}`}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) onAnglePhoto(idx, angle, file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              )}
+              <div className={cn('text-xs font-medium whitespace-nowrap', src ? 'text-foreground' : 'text-info')}>
+                {label}
+                {src ? '' : ' · แตะถ่าย'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-xs leading-snug text-muted-foreground">
+        ครบ 6 มุม + มีราคา = เข้าคลังพร้อมขายทันที · ถ่ายไม่ครบไปต่อได้ เครื่องนี้จะไปอยู่ในคิว "รอถ่ายรูป" แทน
+      </div>
+    </div>
+  );
+}
+
+/**
  * One device per screen (owner-approved mockup 2026-09-07): the ordering facts on top, IMEI and
  * serial side by side, an explicit ผ่าน | ไม่ผ่าน pair, then only the panel that result needs —
- * the red reject box, the yellow used-phone box, both selling prices — and a camera only where a
- * photo is worth taking (used phones, damage).
+ * the red reject box, the yellow used-phone box, both selling prices — the six-angle grid on a
+ * used phone, and a free camera only where evidence is worth keeping (damage, blemishes).
  */
 export function UnitInspectScreen({
   unit,
@@ -113,6 +191,8 @@ export function UnitInspectScreen({
   onChecklist,
   onAddPhotos,
   onRemovePhoto,
+  onAnglePhoto,
+  onRemoveAnglePhoto,
   onAdvance,
 }: UnitInspectScreenProps) {
   const serialRef = useRef<HTMLInputElement>(null);
@@ -453,7 +533,10 @@ export function UnitInspectScreen({
       )}
 
       {unit.status === 'PASS' && used && (
-        <PhotoStrip unit={unit} idx={idx} label="ถ่ายรูป" onAddPhotos={onAddPhotos} onRemovePhoto={onRemovePhoto} />
+        <>
+          <AnglePhotoGrid unit={unit} idx={idx} onAnglePhoto={onAnglePhoto} onRemoveAnglePhoto={onRemoveAnglePhoto} />
+          <PhotoStrip unit={unit} idx={idx} label="รูปตำหนิ/ความเสียหาย" onAddPhotos={onAddPhotos} onRemovePhoto={onRemovePhoto} />
+        </>
       )}
     </div>
   );

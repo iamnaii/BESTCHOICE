@@ -31,6 +31,7 @@ import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay, bkkYearMonth } from '../../utils/date.util';
 import { getBranchScope } from '../auth/branch-access.util';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
+import { countPhotoAngles } from '../quality-control/photo-angles.util';
 
 /** Authenticated request user — service-level branch scoping (BranchGuard delegates to us). */
 export type RequestUser = { id: string; role?: string; branchId?: string | null };
@@ -159,7 +160,7 @@ export class RepossessionsService {
             },
           },
           product: {
-            select: { id: true, name: true, brand: true, model: true, imeiSerial: true },
+            select: { id: true, name: true, brand: true, model: true, imeiSerial: true, status: true },
           },
           appraisedBy: { select: { id: true, name: true } },
         },
@@ -215,10 +216,16 @@ export class RepossessionsService {
         ),
       ),
     );
+    // "รอถ่ายรูป n/6" บนแถวพร้อมขาย (2026-09-07) — นับมุมจากตารางรูป ไม่โหลด base64
+    const photoAngles = await countPhotoAngles(
+      this.prisma,
+      data.map((r) => r.product.id),
+    );
     const dataWithCn = data.map((r) => {
       const cn = receiptByContractId.get(r.contract.id);
       return {
         ...r,
+        product: { ...r.product, photoAngles: photoAngles.get(r.product.id) ?? 0 },
         shopCollectOutstanding: (
           outstandingByContract.get(r.contract.id) ?? new Prisma.Decimal(0)
         ).toFixed(2),
@@ -1064,7 +1071,7 @@ export class RepossessionsService {
     // 2026-09-05: ขายเครื่องยึดต้องผ่าน POS เท่านั้น (ลง JE ฝั่ง SHOP + ปิดรายการยึดให้เอง)
     if (dto.status === 'SOLD' && repo.status !== 'SOLD') {
       throw new BadRequestException(
-        'ตั้ง "ขายแล้ว" ด้วยมือไม่ได้ — กด "นำเข้าคลังพร้อมขาย" ที่หน้าสินค้าก่อน แล้วขายผ่านหน้าขาย (POS) หรือเปิดสัญญาผ่อนใหม่ ระบบจะปิดรายการยึดพร้อมลงบัญชีให้เอง',
+        'ตั้ง "ขายแล้ว" ด้วยมือไม่ได้ — กด "พร้อมขาย" (ตั้งสองราคา) แล้วถ่ายรูป 6 มุมให้ครบ เครื่องจะเข้าคลังเอง จากนั้นขายผ่านหน้าขาย (POS) หรือเปิดสัญญาผ่อนใหม่ ระบบจะปิดรายการยึดพร้อมลงบัญชีให้เอง',
       );
     }
 
@@ -1097,32 +1104,28 @@ export class RepossessionsService {
 
       data.status = dto.status as RepossessionStatus;
 
+      // พร้อมขาย = ประตูเดียวคือ `markReadyForSale` (ปุ่ม "พร้อมขาย" — 2026-09-07 ต้องตั้ง
+      // สองราคาแล้วส่งเครื่องเข้าคิวรอถ่ายรูป) — PATCH สถานะตรงจะได้ราคาผ่อนเก่าติดเครื่องไป
+      if (dto.status === 'READY_FOR_SALE') {
+        throw new BadRequestException(
+          'เปลี่ยนเป็น พร้อมขาย ผ่านปุ่ม "พร้อมขาย" ในหน้ายึดเครื่องเท่านั้น (ต้องตั้งราคาเงินสด + ราคาผ่อน แล้วเครื่องจะเข้าคิวรอถ่ายรูป)',
+        );
+      }
+
       // Update product status based on repossession status
       // SOLD ไม่มีในตารางนี้อีกต่อไป (2026-09-05) — ปิดผ่าน POS/เปิดสัญญาใหม่เท่านั้น (ด่านด้านบน)
+      // READY_FOR_SALE ไม่มีในตารางนี้ (ด่านด้านบน) — ตั้งผ่าน markReadyForSale เท่านั้น
       const productStatusMap: Record<string, ProductStatus> = {
         UNDER_REPAIR: 'REPOSSESSED',
-        READY_FOR_SALE: 'REFURBISHED',
       };
 
       // Use transaction to ensure product status and repossession update are atomic
       const newProductStatus = productStatusMap[dto.status];
       if (newProductStatus) {
         const updatedRepo = await this.prisma.$transaction(async (tx) => {
-          const productUpdateData: Record<string, unknown> = { status: newProductStatus };
-          // R-007/TAS 2: fair value ณ วันยึด = ราคาประเมิน (mirror markReadyForSale) —
-          // ใช้ราคาขายต่อเป็น costPrice จะทำให้ margin ตอนขายจริงเป็นศูนย์
-          // Wave 3 / Task 4 (W-2): Decimal arithmetic to preserve precision.
-          if (dto.status === 'READY_FOR_SALE') {
-            const appraisal = new Prisma.Decimal(repo.appraisalPrice ?? 0);
-            const fallback = new Prisma.Decimal(dto.resellPrice ?? repo.resellPrice ?? 0);
-            const costBasis = appraisal.greaterThan(0) ? appraisal : fallback;
-            if (costBasis.greaterThan(0)) {
-              productUpdateData.costPrice = costBasis;
-            }
-          }
           await tx.product.update({
             where: { id: repo.product.id },
-            data: productUpdateData,
+            data: { status: newProductStatus },
           });
           return tx.repossession.update({
             where: { id },
@@ -1153,11 +1156,24 @@ export class RepossessionsService {
   }
 
   /**
-   * Mark repossessed product as ready for sale with pricing
-   * Creates ProductPrice and moves product to REFURBISHED + back to main warehouse
+   * "พร้อมขาย" — ตั้งราคาขายสองราคาแล้วส่งเครื่องยึดคืนเข้าคิว "รอถ่ายรูป" เหมือนเครื่องรับซื้อ
+   * (คำสั่งเจ้าของ 2026-09-07 — เดิมเครื่องเป็น REFURBISHED แล้วต้องไปกด "นำเข้าคลังพร้อมขาย"
+   * โดยไม่มีรูปสักใบ)
+   *
+   * - สถานะเครื่อง → PHOTO_PENDING: ถ่ายครบ 6 มุมแล้ว `ProductPhotosService.completePhotos`
+   *   พาเข้า IN_STOCK เอง (ด่านราคาผ่านเพราะราคาตั้งที่นี่แล้ว)
+   * - ราคา: เงินสด = ราคาขายต่อ, ผ่อน = `installmentPrice` — ต้องมาทั้งคู่ เพราะเครื่องยังถือ
+   *   ราคาผ่อนตอนเป็นเครื่องใหม่ (ไม่มี flow ล้างราคา — ดู .claude/rules/database.md)
+   * - รูป 6 มุมชุดเก่า (ถ้าเครื่องเคยเป็นมือสองมาก่อน) ถูกล้าง — สภาพเปลี่ยนไปแล้ว ต้องถ่ายใหม่
+   * - costPrice = ราคาประเมิน (R-007 / TAS 2) ตามเดิม, กลับคลังหลักตามเดิม
    */
-  async markReadyForSale(id: string, resellPrice: number, user?: RequestUser) {
+  async markReadyForSale(
+    id: string,
+    prices: { resellPrice: number; installmentPrice: number },
+    user?: RequestUser,
+  ) {
     const repo = await this.findOne(id, user);
+    const { resellPrice, installmentPrice } = prices;
 
     if (repo.status !== 'UNDER_REPAIR' && repo.status !== 'REPOSSESSED') {
       throw new BadRequestException('สถานะไม่ถูกต้อง ต้องเป็น REPOSSESSED หรือ UNDER_REPAIR');
@@ -1165,6 +1181,9 @@ export class RepossessionsService {
 
     if (!resellPrice || resellPrice <= 0) {
       throw new BadRequestException('กรุณาระบุราคาขายต่อ');
+    }
+    if (!installmentPrice || installmentPrice <= 0) {
+      throw new BadRequestException('กรุณาระบุราคาผ่อน');
     }
 
     // Use transaction to ensure all updates are atomic
@@ -1181,24 +1200,39 @@ export class RepossessionsService {
       await tx.product.update({
         where: { id: repo.product.id },
         data: {
-          status: 'REFURBISHED',
+          status: 'PHOTO_PENDING',
           costPrice: appraisalPrice.greaterThan(0)
             ? appraisalPrice
             : new Prisma.Decimal(resellPrice),
-          stockInDate: new Date(),
           ...(mainWarehouse ? { branchId: mainWarehouse.id } : {}),
         },
       });
 
-      // B0 §2.1: ราคาขายต่อ = ราคาเงินสดของเครื่อง (คอลัมน์เป็นแหล่งจริง)
-      // write-through สร้าง/อัปเดตแถว ProductPrice ให้เอง — เลิก label เฉพาะกิจ
-      // 'ราคาขายต่อ (Refurbished)' ที่ผู้อ่านทุกตัวต้องรู้จักเป็นพิเศษ
+      // B0 §2.1: คอลัมน์ราคาเป็นแหล่งจริง — write-through สร้าง/อัปเดตแถว ProductPrice ให้เอง
       const cashPrice = new Prisma.Decimal(resellPrice);
+      const installment = new Prisma.Decimal(installmentPrice);
       await tx.product.update({
         where: { id: repo.product.id },
-        data: { cashPrice },
+        data: { cashPrice, installmentPrice: installment },
       });
-      await syncPriceRowsFromColumns(tx, repo.product.id, { cashPrice });
+      await syncPriceRowsFromColumns(tx, repo.product.id, {
+        cashPrice,
+        installmentPrice: installment,
+      });
+
+      // รูป 6 มุมชุดเก่าใช้ไม่ได้แล้ว — เครื่องต้องถูกถ่ายใหม่ในคิว
+      await tx.productPhoto.updateMany({
+        where: { productId: repo.product.id },
+        data: {
+          front: null,
+          back: null,
+          left: null,
+          right: null,
+          top: null,
+          bottom: null,
+          isCompleted: false,
+        },
+      });
 
       return tx.repossession.update({
         where: { id },

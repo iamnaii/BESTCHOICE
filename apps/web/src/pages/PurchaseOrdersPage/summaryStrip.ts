@@ -4,7 +4,7 @@ import {
   Truck,
   AlertTriangle,
   PackageCheck,
-  ClipboardCheck,
+  Camera,
   Wallet,
 } from 'lucide-react';
 
@@ -71,8 +71,8 @@ export const SUMMARY_CARDS: SummaryCardDef[] = [
   },
   {
     key: 'waitingQc',
-    label: 'รอเข้าคลัง',
-    icon: ClipboardCheck,
+    label: 'รอถ่ายรูป',
+    icon: Camera,
     tone: 'warning',
     action: { panel: 'qc' },
   },

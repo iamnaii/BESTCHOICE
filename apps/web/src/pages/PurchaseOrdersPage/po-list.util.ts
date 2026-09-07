@@ -45,3 +45,47 @@ export function canCancel(po: { status: string; items: { receivedQty: number }[]
   if (['DRAFT', 'APPROVED', 'PENDING'].includes(po.status)) return true;
   return po.status === 'ORDERED' && po.items.every((i) => !i.receivedQty);
 }
+
+/**
+ * A leading "[tag]" on a name (the way test data is marked) — the list shows it as a small chip
+ * beside the name instead of letting it push the name onto a second line.
+ */
+export function splitLeadingTag(name: string): { tag: string | null; name: string } {
+  const trimmed = name.trim();
+  const m = /^\[([^\]]+)\]\s*(.*)$/.exec(trimmed);
+  return m && m[2] ? { tag: m[1], name: m[2] } : { tag: null, name: trimmed };
+}
+
+export const pieceCount = (po: { items: { quantity: number }[] }): number =>
+  po.items.reduce((s, i) => s + i.quantity, 0);
+
+const looksLikeCode = (s: string) => s !== '' && /^[A-Za-z0-9-]+$/.test(s);
+
+/** "iPhone 17 Pro ×2, iPhone 15, เคส Spigen ×2" — what the PO orders, in one line for the list. */
+export function itemsSummary(po: {
+  items: {
+    brand: string;
+    model: string;
+    category: string | null;
+    quantity: number;
+    accessoryType: string | null;
+    accessoryBrand: string | null;
+  }[];
+}): string {
+  const single = po.items.length === 1;
+  return po.items
+    .map((i) => {
+      let name: string;
+      if (i.category === 'ACCESSORY') {
+        const type = i.accessoryType ?? '';
+        name = looksLikeCode(type)
+          ? i.model || type
+          : [type, i.accessoryBrand].filter(Boolean).join(' ') || i.model || 'อุปกรณ์เสริม';
+      } else {
+        name = i.model || i.brand || 'สินค้า';
+      }
+      const cond = single && i.category === 'PHONE_USED' ? ' · มือสอง' : single && i.category === 'PHONE_NEW' ? ' · ใหม่' : '';
+      return `${name}${cond}${i.quantity > 1 ? ` ×${i.quantity}` : ''}`;
+    })
+    .join(', ');
+}

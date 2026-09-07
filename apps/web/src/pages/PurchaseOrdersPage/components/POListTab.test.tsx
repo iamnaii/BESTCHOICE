@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import { POListTab } from './POListTab';
 import type { PurchaseOrder } from '../types';
 
@@ -78,5 +78,29 @@ describe('POListTab — desktop table cells that never wrap', () => {
     expect(screen.queryByText('ทดสอบระบบ')).not.toBeInTheDocument();
     const actions = within(row).getByRole('button', { name: 'ยกเลิก PO-2026-09-009' }).closest('td') as HTMLElement;
     expect(actions.className).toContain('sticky');
+  });
+});
+
+describe('POListTab — sorting after the date moved under the PO number', () => {
+  it('sorting by เลข PO orders by the order date, not by the PO string (two number formats coexist)', () => {
+    renderTab([
+      po({ id: 'a', poNumber: 'PO-2026-09-011', orderDate: '2026-09-07' }),
+      po({ id: 'b', poNumber: 'PO-2026-003', orderDate: '2026-03-01' }),
+      po({ id: 'c', poNumber: 'PO-2026-09-002', orderDate: '2026-06-06' }),
+    ]);
+    const order = () => screen.getAllByRole('button', { name: /^PO-2026/ }).map((b) => b.textContent);
+    fireEvent.click(screen.getByRole('columnheader', { name: /เลข PO/ }));
+    expect(order()).toEqual(['PO-2026-003', 'PO-2026-09-002', 'PO-2026-09-011']);
+    fireEvent.click(screen.getByRole('columnheader', { name: /เลข PO/ }));
+    expect(order()).toEqual(['PO-2026-09-011', 'PO-2026-09-002', 'PO-2026-003']);
+  });
+
+  it('sorting by ผู้จัดจำหน่าย orders by the supplier name', () => {
+    renderTab([
+      po({ id: 'a', poNumber: 'PO-2026-09-011', supplier: { id: 's1', name: 'iCare Refurbished', contactName: null, phone: '', hasVat: false } }),
+      po({ id: 'b', poNumber: 'PO-2026-09-010', supplier: { id: 's2', name: 'Anker Official TH', contactName: null, phone: '', hasVat: false } }),
+    ]);
+    fireEvent.click(screen.getByRole('columnheader', { name: /ผู้จัดจำหน่าย/ }));
+    expect(screen.getAllByRole('button', { name: /^PO-2026/ }).map((b) => b.textContent)).toEqual(['PO-2026-09-010', 'PO-2026-09-011']);
   });
 });

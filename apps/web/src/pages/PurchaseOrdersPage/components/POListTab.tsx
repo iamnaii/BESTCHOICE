@@ -165,6 +165,9 @@ export function POListTab({
       key: 'poNumber',
       label: 'เลข PO',
       sortable: true,
+      // the date lives under the number now — sorting this column keeps ordering by date, not by
+      // the PO string (two number formats coexist: PO-2026-09-011 and the older PO-2026-003)
+      sortKey: 'orderDate',
       width: '150px',
       render: (po) => (
         <div>
@@ -185,6 +188,7 @@ export function POListTab({
       key: 'supplier',
       label: 'ผู้จัดจำหน่าย',
       sortable: true,
+      sortKey: 'supplier.name',
       render: (po) => {
         const { tag, name } = splitLeadingTag(po.supplier.name);
         const sameName = supplierContactIsRedundant(po.supplier);
@@ -210,8 +214,8 @@ export function POListTab({
     {
       key: 'items',
       label: 'รายการ',
-      sortable: true,
-      width: '200px',
+      sortable: false,
+      width: '180px',
       render: (po) => {
         const summary = itemsSummary(po);
         return (
@@ -298,7 +302,7 @@ export function POListTab({
     {
       key: 'received',
       label: 'รับสินค้า',
-      width: '170px',
+      width: '150px',
       render: (po) => {
         const { received, ordered, pct } = receiveProgress(po);
         const done = ordered > 0 && received >= ordered;
@@ -536,8 +540,9 @@ export function POListTab({
               emptyDescription={emptyDesc}
               columnToggle
               onRowClick={openDetailModal}
-              // below this the supplier column would be squeezed — scroll sideways instead (actions stay pinned)
-              minWidth="1240px"
+              // below this the supplier column would be squeezed — scroll sideways instead (actions stay
+              // pinned); 1180 keeps a 1366px laptop (≈1086px of content) from scrolling for most names
+              minWidth="1180px"
             />
           </CardContent>
         </Card>

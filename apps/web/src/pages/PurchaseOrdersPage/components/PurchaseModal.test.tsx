@@ -14,15 +14,6 @@ vi.mock('@/components/contacts/ContactCombobox', () => ({
     </button>
   ),
 }));
-vi.mock('./ReceivingUnitCard', () => ({
-  ReceivingUnitCard: ({ unit, idx, updateReceivingUnit }: { unit: { label: string; category: string; costPrice: string }; idx: number; updateReceivingUnit: (idx: number, field: string, value: string) => void }) => (
-    <div data-testid="unit">
-      {`${unit.label} · ${unit.category} · ฿${unit.costPrice}`}
-      <input aria-label={`IMEI ${unit.label}`} onChange={(e) => updateReceivingUnit(idx, 'imeiSerial', e.target.value)} />
-      <input aria-label={`ราคาขาย ${unit.label}`} onChange={(e) => updateReceivingUnit(idx, 'sellingPrice', e.target.value)} />
-    </div>
-  ),
-}));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
 
@@ -132,10 +123,18 @@ describe('PurchaseModal — one entry "ซื้อสินค้า" for both 
     fireEvent.click(screen.getByRole('radio', { name: /ของถึงแล้ว/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป: ตรวจรับ 2 ชิ้น' }));
     expect(screen.getByRole('heading', { name: 'ซื้อสินค้า — ตรวจรับ' })).toBeInTheDocument();
-    expect(screen.getAllByTestId('unit')).toHaveLength(2);
-    fireEvent.change(screen.getByRole('textbox', { name: 'IMEI Apple iPhone 17 Pro Deep Blue 256GB #1' }), { target: { value: '356000000090601' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'ราคาขาย Apple iPhone 17 Pro Deep Blue 256GB #1' }), { target: { value: '45900' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'ราคาขาย ฟิล์มกระจก iPhone 16 - iStar #1' }), { target: { value: '150' } });
+    // one device per screen: a phone screen + one counted accessory line
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getByText('เครื่องที่ 1 จาก 2')).toBeInTheDocument();
+    expect(screen.getByText('42,900 บาท')).toBeInTheDocument(); // the row's cost, read-only
+    fireEvent.change(screen.getByLabelText(/^IMEI/), { target: { value: '356000000090601' } });
+    fireEvent.change(screen.getByLabelText(/^หมายเลขซีเรียล/), { target: { value: 'QASN0906A' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ผ่าน' }));
+    fireEvent.change(screen.getByLabelText(/^ราคาเงินสด/), { target: { value: '45900' } });
+    fireEvent.change(screen.getByLabelText(/^ราคาผ่อน/), { target: { value: '49900' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ไปเครื่องถัดไป' }));
+    expect(screen.getByText('ชิ้นที่ 2 จาก 2')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^ราคาเงินสด/), { target: { value: '150' } });
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป: สรุป + จ่ายเงิน' }));
     expect(screen.getByRole('heading', { name: 'ซื้อสินค้า — สรุป + จ่ายเงิน' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'สรุปใบสั่งซื้อ' })).toHaveTextContent('รับเข้าวันนี้');
@@ -143,13 +142,16 @@ describe('PurchaseModal — one entry "ซื้อสินค้า" for both 
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเข้าตรง 2 ชิ้น' }));
     expect(directReceiveMutation.mutate).toHaveBeenCalledWith(expect.objectContaining({
       supplierId: 's1', paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 42935,
-      items: expect.arrayContaining([expect.objectContaining({ imeiSerial: '356000000090601', sellingPrice: '45900' })]),
+      items: expect.arrayContaining([
+        expect.objectContaining({ imeiSerial: '356000000090601', serialNumber: 'QASN0906A', status: 'PASS', sellingPrice: '45900', installmentPrice: '49900' }),
+        expect.objectContaining({ category: 'ACCESSORY', status: 'PASS', sellingPrice: '150' }),
+      ]),
     }));
     expect(createMutation.mutate).not.toHaveBeenCalled();
     expect(document.querySelector('button[type="submit"]')).toBeNull();
   });
 
-  it('receive mode: ตรวจรับ refuses to move on without an IMEI on a passed phone', () => {
+  it('receive mode: ตรวจรับ refuses to move on while a phone is still undecided', () => {
     const { directReceiveMutation } = renderModal([phone]);
     pickSupplier();
     fireEvent.click(screen.getByRole('radio', { name: /ของถึงแล้ว/ }));

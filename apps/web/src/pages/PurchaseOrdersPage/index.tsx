@@ -310,9 +310,14 @@ export default function PurchaseOrdersPage() {
         receivingNotes={data.receivingNotes}
         setReceivingNotes={data.setReceivingNotes}
         goodsReceivingMutation={data.goodsReceivingMutation}
-        updateReceivingUnit={data.updateReceivingUnit}
-        updateChecklist={data.updateChecklist}
         handleGoodsReceiving={data.handleGoodsReceiving}
+        confirmClose={(proceed) =>
+          data.setConfirmDialog({
+            open: true,
+            message: 'ปิดหน้ารับสินค้า? ข้อมูลที่กรอกไว้จะหายทั้งหมด',
+            action: proceed,
+          })
+        }
       />
 
       <ConfirmDialog

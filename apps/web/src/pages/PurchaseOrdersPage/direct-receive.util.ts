@@ -20,7 +20,8 @@ export function lineToUnits(item: ItemForm): ReceivingUnitForm[] {
     accessoryBrand: item.accessoryBrand,
     imeiSerial: '',
     serialNumber: '',
-    status: 'PASS',
+    // phones wait for an explicit ผ่าน/ไม่ผ่าน; an accessory line is counted, so it starts received
+    status: item.category === 'ACCESSORY' ? 'PASS' : '',
     rejectReason: '',
     defectReason: '',
     batteryHealth: '',
@@ -29,6 +30,7 @@ export function lineToUnits(item: ItemForm): ReceivingUnitForm[] {
     hasBox: true,
     checklist: defaultChecklist.map((c) => ({ ...c, passed: true, note: '' })),
     sellingPrice: '',
+    installmentPrice: '',
     photos: [],
     costPrice: item.unitPrice,
   }));

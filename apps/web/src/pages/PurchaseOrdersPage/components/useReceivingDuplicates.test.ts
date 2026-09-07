@@ -16,7 +16,7 @@ const u = (over: Partial<ReceivingUnitForm>): ReceivingUnitForm => ({
   warrantyExpireDate: '',
   hasBox: true,
   checklist: [],
-  sellingPrice: '',
+  sellingPrice: '', installmentPrice: '',
   photos: [],
   costPrice: '',
   ...over,

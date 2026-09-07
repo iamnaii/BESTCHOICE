@@ -5,7 +5,7 @@ import type { ReceivingUnitForm } from '../types';
 const baseUnit = (over: Partial<ReceivingUnitForm>): ReceivingUnitForm => ({
   poItemId: '', label: '', category: 'PHONE_NEW', imeiSerial: '', serialNumber: '',
   status: 'PASS', rejectReason: '', defectReason: '', batteryHealth: '', warrantyExpired: false,
-  warrantyExpireDate: '', hasBox: true, checklist: [], sellingPrice: '', photos: [], costPrice: '0',
+  warrantyExpireDate: '', hasBox: true, checklist: [], sellingPrice: '', installmentPrice: '', photos: [], costPrice: '0',
   ...over,
 });
 

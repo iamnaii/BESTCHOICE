@@ -235,11 +235,17 @@ export class GoodsReceivingItemDto {
   @Type(() => ChecklistResultDto)
   checklistResults?: ChecklistResultDto[];
 
+  /** ราคาเงินสด (ราคาเต็มจำนวน) → Product.cashPrice */
   @IsNumber()
   @IsOptional()
   @Min(0)
   sellingPrice?: number;
 
+  /** ราคาผ่อน → Product.installmentPrice (2026-09-07: the shop sells at two prices) */
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  installmentPrice?: number;
 }
 
 export class GoodsReceivingDto {
@@ -284,6 +290,7 @@ export class DirectReceiveItemDto {
   @IsArray() @IsOptional() @ValidateNested({ each: true }) @Type(() => ChecklistResultDto)
   checklistResults?: ChecklistResultDto[];
   @IsNumber() @IsOptional() @Min(0) sellingPrice?: number;
+  @IsNumber() @IsOptional() @Min(0) installmentPrice?: number;
 }
 
 export class DirectReceiveDto {

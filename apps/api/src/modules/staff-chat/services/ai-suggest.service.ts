@@ -1,17 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ProductDetectService } from './product-detect.service';
 import { AiTrainingService } from './ai-training.service';
 import { PersonaService } from './persona.service';
-import { AiUsageService } from '../../ai-usage/ai-usage.service';
+import { AiTextService } from '../../ai-usage/ai-text.service';
 import type { AiSuggestion, AiSuggestResponse } from '../dto/ai-suggest.dto';
 
 @Injectable()
 export class AiSuggestService {
   private readonly logger = new Logger(AiSuggestService.name);
-  private anthropic: Anthropic | null = null;
   private readonly MODEL = 'claude-haiku-4-5-20251001';
 
   constructor(
@@ -20,20 +18,13 @@ export class AiSuggestService {
     private productDetect: ProductDetectService,
     private aiTraining: AiTrainingService,
     private persona: PersonaService,
-    private aiUsage: AiUsageService,
-  ) {
-    const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
-    if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey });
-    } else {
-      this.logger.warn('ANTHROPIC_API_KEY not set — AI suggest disabled');
-    }
-  }
+    private aiText: AiTextService,
+  ) {}
 
   async suggest(roomId: string, currentDraft?: string): Promise<AiSuggestResponse> {
     const start = Date.now();
 
-    if (!this.anthropic) {
+    if (!this.aiText.isAvailable) {
       // Mock mode มีราคา/โปรที่แต่งขึ้น แล้วแอดมินกดส่งได้ทันที — ห้ามหลุดขึ้น prod
       if (this.config.get<string>('NODE_ENV') === 'production') {
         this.logger.warn(
@@ -156,32 +147,20 @@ confidence แนวทาง:
     const userMessage = `## ข้อมูลลูกค้า\n${customerContext}\n\n## สินค้าที่เกี่ยวข้อง\n${productContext}\n\n## โปรโมชันที่ active\n${promoContext}\n\n${examplesText ? examplesText + '\n\n' : ''}## บทสนทนา\n${conversationText}\n\n${currentDraft ? `## ข้อความที่พนักงานกำลังพิมพ์\n${currentDraft}` : ''}\n\nแนะนำข้อความตอบ 2-3 ข้อความ:`;
 
     try {
-      const response = await this.anthropic.messages.create({
-        model: this.MODEL,
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-      });
+      const text = await this.aiText.generate(
+        {
+          model: this.MODEL,
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }],
+        },
+        {
+          service: 'ai-suggest',
+          method: 'suggest',
+        },
+      );
 
-      void this.aiUsage.record({
-        service: 'ai-suggest',
-        method: 'suggest',
-        model: this.MODEL,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
-        status: 'success',
-      });
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        return {
-          suggestions: [],
-          detectedProducts: products.map((p) => p.name),
-          processingTimeMs: Date.now() - start,
-        };
-      }
-
-      const jsonMatch = content.text.match(/\[[\s\S]*\]/);
+      const jsonMatch = text?.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
         return {
           suggestions: [],

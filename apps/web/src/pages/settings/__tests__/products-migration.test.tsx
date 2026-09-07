@@ -26,9 +26,9 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('products migration', () => {
-  it('/settings/products/pricing → render หน้า pricing ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
+  it('/settings/products/pricing → render หน้า pricing ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', async () => {
     render(<App entry="/settings/products/pricing" />);
-    expect(screen.getByText('pricing-page')).toBeTruthy();
+    expect(await screen.findByText('pricing-page')).toBeTruthy();
     // desktop left category nav is removed — sidebar drives category selection now
     expect(screen.queryByRole('link', { name: /สินค้า/ })).toBeNull();
   });

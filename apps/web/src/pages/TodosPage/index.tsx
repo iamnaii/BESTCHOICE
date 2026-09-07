@@ -1,3 +1,5 @@
+import { useAuth } from '@/contexts/AuthContext';
+import { useSearchParams } from 'react-router';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -18,9 +20,24 @@ import {
 
 export default function TodosPage() {
   const queryClient = useQueryClient();
-  const [view, setView] = useState<TodoView>('all');
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawView = searchParams.get('view');
+  const view: TodoView = ['all', 'today', 'upcoming', 'priority', 'completed'].includes(rawView ?? '')
+    ? rawView as TodoView : 'all';
+  const setView = (next: TodoView) => setSearchParams((previous) => {
+    const params = new URLSearchParams(previous);
+    params.set('view', next);
+    return params;
+  }, { replace: true });
   const [search, setSearch] = useState('');
-  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const assigneeFilter = searchParams.get('assigneeId') ?? '';
+  const setAssigneeFilter = (next: string) => setSearchParams((previous) => {
+    const params = new URLSearchParams(previous);
+    if (next) params.set('assigneeId', next);
+    else params.delete('assigneeId');
+    return params;
+  }, { replace: true });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string }>({
     open: false,
@@ -29,7 +46,8 @@ export default function TodosPage() {
   const [editing, setEditing] = useState<Todo | null>(null);
 
   const { data: staffUsers = [] } = useQuery<AssigneeRef[]>({
-    queryKey: ['staff-users-todo'],
+    queryKey: ['staff-users-todo', user?.id],
+    enabled: user?.role === 'OWNER',
     queryFn: async () => {
       const { data } = await api.get('/users');
       const list = data.data || data || [];

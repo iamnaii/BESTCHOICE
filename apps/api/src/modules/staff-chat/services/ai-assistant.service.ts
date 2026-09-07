@@ -1,30 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AiUsageService } from '../../ai-usage/ai-usage.service';
+import { AiTextService } from '../../ai-usage/ai-text.service';
 
 @Injectable()
 export class AiAssistantService {
   private readonly logger = new Logger(AiAssistantService.name);
-  private anthropic: Anthropic | null = null;
   private summaryCache = new Map<string, { text: string; expiresAt: number }>();
 
   private static readonly MODEL = 'claude-haiku-4-5-20251001';
   private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(
-    private configService: ConfigService,
     private prisma: PrismaService,
-    private aiUsage: AiUsageService,
-  ) {
-    const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
-    if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey });
-    } else {
-      this.logger.warn('ANTHROPIC_API_KEY not set — AI assistant features disabled');
-    }
-  }
+    private aiText: AiTextService,
+  ) {}
 
   /**
    * Summarize a chat room's conversation in 2-3 Thai sentences.
@@ -37,7 +26,7 @@ export class AiAssistantService {
       return cached.text;
     }
 
-    if (!this.anthropic) {
+    if (!this.aiText.isAvailable) {
       return 'ไม่สามารถสรุปได้ — ยังไม่ได้ตั้งค่า API key';
     }
 
@@ -75,30 +64,24 @@ export class AiAssistantService {
         .join('\n');
 
       // 4. Call Claude haiku
-      const response = await this.anthropic.messages.create({
-        model: AiAssistantService.MODEL,
-        max_tokens: 300,
-        messages: [
-          {
-            role: 'user',
-            content: `สรุปบทสนทนานี้ใน 2-3 ประโยค ภาษาไทย:\n\n${conversationText}`,
-          },
-        ],
-      });
+      const text = await this.aiText.generate(
+        {
+          model: AiAssistantService.MODEL,
+          max_tokens: 300,
+          messages: [
+            {
+              role: 'user',
+              content: `สรุปบทสนทนานี้ใน 2-3 ประโยค ภาษาไทย:\n\n${conversationText}`,
+            },
+          ],
+        },
+        {
+          service: 'ai-assistant',
+          method: 'summarizeConversation',
+        },
+      );
 
-      void this.aiUsage.record({
-        service: 'ai-assistant',
-        method: 'summarizeConversation',
-        model: AiAssistantService.MODEL,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
-        status: 'success',
-      });
-
-      const summary =
-        response.content[0].type === 'text'
-          ? response.content[0].text
-          : 'ไม่สามารถสรุปได้';
+      const summary = text ?? 'ไม่สามารถสรุปได้';
 
       // 5. Cache result
       this.summaryCache.set(roomId, {
@@ -116,45 +99,36 @@ export class AiAssistantService {
   /**
    * Adjust the tone of a message text.
    */
-  async adjustTone(
-    text: string,
-    tone: 'formal' | 'casual' | 'friendly',
-  ): Promise<string> {
-    if (!this.anthropic) {
+  async adjustTone(text: string, tone: 'formal' | 'casual' | 'friendly'): Promise<string> {
+    if (!this.aiText.isAvailable) {
       return text;
     }
 
     const tonePrompts: Record<string, string> = {
       formal: 'เขียนข้อความนี้ใหม่ให้สุภาพเป็นทางการ ตอบเฉพาะข้อความที่เขียนใหม่เท่านั้น:',
       casual: 'เขียนข้อความนี้ใหม่ให้เป็นกันเอง ตอบเฉพาะข้อความที่เขียนใหม่เท่านั้น:',
-      friendly:
-        'เขียนข้อความนี้ใหม่ให้เป็นมิตรอบอุ่น ตอบเฉพาะข้อความที่เขียนใหม่เท่านั้น:',
+      friendly: 'เขียนข้อความนี้ใหม่ให้เป็นมิตรอบอุ่น ตอบเฉพาะข้อความที่เขียนใหม่เท่านั้น:',
     };
 
     try {
-      const response = await this.anthropic.messages.create({
-        model: AiAssistantService.MODEL,
-        max_tokens: 500,
-        messages: [
-          {
-            role: 'user',
-            content: `${tonePrompts[tone]}\n\n${text}`,
-          },
-        ],
-      });
+      const adjusted = await this.aiText.generate(
+        {
+          model: AiAssistantService.MODEL,
+          max_tokens: 500,
+          messages: [
+            {
+              role: 'user',
+              content: `${tonePrompts[tone]}\n\n${text}`,
+            },
+          ],
+        },
+        {
+          service: 'ai-assistant',
+          method: 'adjustTone',
+        },
+      );
 
-      void this.aiUsage.record({
-        service: 'ai-assistant',
-        method: 'adjustTone',
-        model: AiAssistantService.MODEL,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
-        status: 'success',
-      });
-
-      return response.content[0].type === 'text'
-        ? response.content[0].text
-        : text;
+      return adjusted ?? text;
     } catch (error) {
       this.logger.error('Failed to adjust tone', error);
       return text;

@@ -34,9 +34,9 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('comms migration', () => {
-  it('/settings/comms/line-oa → render หน้า line-oa ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
+  it('/settings/comms/line-oa → render หน้า line-oa ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', async () => {
     render(<App entry="/settings/comms/line-oa" />);
-    expect(screen.getByText('line-oa-page')).toBeTruthy();
+    expect(await screen.findByText('line-oa-page')).toBeTruthy();
     // desktop left category nav is removed — sidebar drives category selection now
     expect(screen.queryByRole('link', { name: /สื่อสาร/ })).toBeNull();
   });

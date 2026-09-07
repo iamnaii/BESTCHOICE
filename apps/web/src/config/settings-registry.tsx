@@ -1,43 +1,74 @@
-import type { ComponentType } from 'react';
+import { lazy, type ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck, Plug } from 'lucide-react';
-import CompanySettingsPage from '@/pages/CompanySettingsPage';
-import AccountRolesPage from '@/pages/AccountRolesPage';
-import IntegrationHubPage from '@/pages/IntegrationHubPage';
-import MdmTestPage from '@/pages/MdmTestPage';
-import LineOaSettingsPage from '@/pages/LineOaSettingsPage';
-import LineGreetingPage from '@/pages/LineGreetingPage';
-import SmsTemplatesPage from '@/pages/SmsTemplatesPage';
-import ChannelSettingsPage from '@/pages/ChannelSettingsPage';
-import DunningSettingsPage from '@/pages/DunningSettingsPage';
-import CollectionsSettingsPage from '@/pages/SettingsPage/CollectionsPage';
-import PricingTemplatesPage from '@/pages/PricingTemplatesPage';
-import StickersSettingsPage from '@/pages/SettingsPage/StickersPage';
-import AiAdminPage from '@/pages/AiAdminPage';
-import AiPersonaPage from '@/pages/AiPersonaPage';
-import AiSettingsPage from '@/pages/AiSettingsPage';
-import AiTrainingPage from '@/pages/AiTrainingPage';
-import AiPerformancePage from '@/pages/AiPerformancePage';
-import InterestConfigPage from '@/pages/InterestConfigPage';
-import GfinConfigPage from '@/pages/GfinConfigPage';
-import PaymentMethodSettingsPage from '@/pages/PaymentMethodSettingsPage';
-import ChartOfAccountsPage from '@/pages/ChartOfAccountsPage';
-import PeakSyncPage from '@/pages/PeakSyncPage';
-import { ETaxConfigPage } from '@/pages/ETaxConfigPage';
-// inline components (อยู่ที่เดิม — แค่ import มา render)
-import { CompanyTab } from '@/pages/SettingsPage/tabs/CompanyTab';
-import { VatTab } from '@/pages/SettingsPage/tabs/VatTab';
-import { PeriodsTab } from '@/pages/SettingsPage/tabs/PeriodsTab';
-import { AttachmentTab } from '@/pages/SettingsPage/tabs/AttachmentTab';
-import { PeakMappingTab } from '@/pages/SettingsPage/tabs/PeakMappingTab';
-import { OffsiteBackupTab } from '@/pages/SettingsPage/tabs/OffsiteBackupTab';
-import { PdpaTab } from '@/pages/SettingsPage/tabs/PdpaTab';
-import { MakerCheckerToggle } from '@/pages/SettingsPage/components/MakerCheckerToggle';
-import { ReversePermissionCard } from '@/pages/SettingsPage/components/ReversePermissionCard';
-import { ReverseReasonsManagementCard } from '@/pages/SettingsPage/components/ReverseReasonsManagementCard';
-import { PettyCashCustodianCard } from '@/pages/SettingsPage/components/PettyCashCustodianCard';
-import { TestModeToggle } from '@/pages/SettingsPage/components/TestModeToggle';
-import { LateFeeSettingsCard } from '@/pages/SettingsPage/components/LateFeeSettingsCard';
+
+// Navigation/search read this registry too: defer page code until its item is rendered.
+const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
+const AccountRolesPage = lazy(() => import('@/pages/AccountRolesPage'));
+const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
+const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
+const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
+const LineGreetingPage = lazy(() => import('@/pages/LineGreetingPage'));
+const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
+const ChannelSettingsPage = lazy(() => import('@/pages/ChannelSettingsPage'));
+const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
+const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
+const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
+const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
+const AiAdminPage = lazy(() => import('@/pages/AiAdminPage'));
+const AiPersonaPage = lazy(() => import('@/pages/AiPersonaPage'));
+const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
+const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
+const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
+const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
+const GfinConfigPage = lazy(() => import('@/pages/GfinConfigPage'));
+const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
+const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
+const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
+const ETaxConfigPage = lazy(() =>
+  import('@/pages/ETaxConfigPage').then((m) => ({ default: m.ETaxConfigPage })),
+);
+
+// Inline forms keep their existing components and load only in the selected category.
+const CompanyTab = lazy(() =>
+  import('@/pages/SettingsPage/tabs/CompanyTab').then((m) => ({ default: m.CompanyTab })),
+);
+const VatTab = lazy(() =>
+  import('@/pages/SettingsPage/tabs/VatTab').then((m) => ({ default: m.VatTab })),
+);
+const PeriodsTab = lazy(() =>
+  import('@/pages/SettingsPage/tabs/PeriodsTab').then((m) => ({ default: m.PeriodsTab })),
+);
+const AttachmentTab = lazy(() =>
+  import('@/pages/SettingsPage/tabs/AttachmentTab').then((m) => ({ default: m.AttachmentTab })),
+);
+const PeakMappingTab = lazy(() =>
+  import('@/pages/SettingsPage/tabs/PeakMappingTab').then((m) => ({ default: m.PeakMappingTab })),
+);
+const OffsiteBackupTab = lazy(() =>
+  import('@/pages/SettingsPage/tabs/OffsiteBackupTab').then((m) => ({ default: m.OffsiteBackupTab })),
+);
+const PdpaTab = lazy(() =>
+  import('@/pages/SettingsPage/tabs/PdpaTab').then((m) => ({ default: m.PdpaTab })),
+);
+const MakerCheckerToggle = lazy(() =>
+  import('@/pages/SettingsPage/components/MakerCheckerToggle').then((m) => ({ default: m.MakerCheckerToggle })),
+);
+const ReversePermissionCard = lazy(() =>
+  import('@/pages/SettingsPage/components/ReversePermissionCard').then((m) => ({ default: m.ReversePermissionCard })),
+);
+const ReverseReasonsManagementCard = lazy(() =>
+  import('@/pages/SettingsPage/components/ReverseReasonsManagementCard').then((m) => ({ default: m.ReverseReasonsManagementCard })),
+);
+const PettyCashCustodianCard = lazy(() =>
+  import('@/pages/SettingsPage/components/PettyCashCustodianCard').then((m) => ({ default: m.PettyCashCustodianCard })),
+);
+const TestModeToggle = lazy(() =>
+  import('@/pages/SettingsPage/components/TestModeToggle').then((m) => ({ default: m.TestModeToggle })),
+);
+const LateFeeSettingsCard = lazy(() =>
+  import('@/pages/SettingsPage/components/LateFeeSettingsCard').then((m) => ({ default: m.LateFeeSettingsCard })),
+);
 
 export type SettingsRole = 'OWNER' | 'FINANCE_MANAGER' | 'ACCOUNTANT';
 export type SettingsItemKind = 'inline' | 'route' | 'external';

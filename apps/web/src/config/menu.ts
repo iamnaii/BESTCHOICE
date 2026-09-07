@@ -1,3 +1,4 @@
+import { NAV_LABELS } from './work-navigation';
 import type { LucideIcon } from 'lucide-react';
 import { settingsNavEntries } from './settings-access';
 import type { SettingsRole } from './settings-registry';
@@ -156,7 +157,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       icon: ShoppingCart,
       zone: 'shop',
       items: [
-        { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
@@ -172,8 +173,8 @@ const SALES_CONFIG: RoleMenuConfig = {
       icon: FileCheck,
       zone: 'shop',
       items: [
-        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
+        { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
@@ -186,18 +187,18 @@ const SALES_CONFIG: RoleMenuConfig = {
       icon: Warehouse,
       zone: 'shop',
       items: [
-        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
-        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
+        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
+        { label: NAV_LABELS.chat, path: '/chat', icon: MessageSquareMore },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
   ],
   bottomNav: [
-    { label: 'POS', path: '/pos', icon: ShoppingCart },
+    { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },
     { label: 'ลูกค้า', path: '/customers', icon: Users },
     { label: 'สัญญา', path: '/contracts', icon: FileCheck },
     { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
@@ -215,7 +216,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       icon: Home,
       zone: 'shop',
       items: [
-        { label: 'Dashboard', path: '/', icon: Home },
+        { label: NAV_LABELS.home, path: '/', icon: Home },
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
@@ -229,13 +230,13 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       icon: ShoppingCart,
       zone: 'shop',
       items: [
-        { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
-        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
+        { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
@@ -251,7 +252,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       // (เดิมเรียงกลับหัว คือเอาปลายทาง คลัง/สติกเกอร์ ขึ้นก่อนต้นทาง PO/ผู้จัดจำหน่าย)
       // ผจก.สาขาไม่มี 'รับซื้อมือสอง' ตรงนี้ — อยู่ในหมวด "ขาย" ของ role นี้
       items: [
-        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: Camera, badgeKey: 'qc-pending-count' },
@@ -275,8 +276,8 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         // คำสั่งเจ้าของ 2026-08-08: หน้าร้าน (BM) ต้องเห็นเมนูยึดคืน — API/route/branch
         // scoping รองรับ BM อยู่แล้ว (#1397: เห็นเฉพาะสาขาตัวเอง) ขาดแค่รายการเมนู
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
-        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
-        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
+        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
+        { label: NAV_LABELS.chat, path: '/chat', icon: MessageSquareMore },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
     },
@@ -300,7 +301,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
     // SHOP P&L for BM is deferred to a future per-branch report.
   ],
   bottomNav: [
-    { label: 'Dashboard', path: '/', icon: Home },
+    { label: NAV_LABELS.home, path: '/', icon: Home },
     { label: 'สต็อก', path: '/stock', icon: Warehouse },
     { label: 'สัญญา', path: '/contracts', icon: FileCheck },
     { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
@@ -318,7 +319,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: Home,
       zone: 'fin',
       items: [
-        { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
@@ -328,8 +329,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: HandCoins,
       zone: 'fin',
       items: [
-        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
+        { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
         // ผจก.การเงินเข้า /inbox ได้ (App.tsx roles) และปุ่ม "สร้างลูกค้าจากแชทนี้" พาไป
         // /customers — ถ้าไม่มีรายการนี้ `resolveZoneForPath` คืน null แล้ว MainLayout
         // เด้งกลับ Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่ API เปิดให้ FM อยู่แล้ว
@@ -349,13 +350,13 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: ShoppingCart,
       zone: 'shop',
       items: [
-        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
+        { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
-        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
         // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
         // Standardized label + icon across all 4 role configs.
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
@@ -375,9 +376,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
-        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
+        { label: NAV_LABELS.chat, path: '/chat', icon: MessageSquareMore },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
+        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
       ],
     },
     /* ── โซนบัญชีของ ผจก.การเงิน — ยกผังเดียวกับ OWNER (fin zone) มาใช้ ────────
@@ -493,7 +494,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
     },
   ],
   bottomNav: [
-    { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
+    { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
     { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
     { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
     { label: 'ชำระ', path: '/payments', icon: HandCoins },
@@ -513,7 +514,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'Dashboard การเงิน', path: '/finance-portfolio', icon: CircleDollarSign },
-        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
@@ -536,8 +537,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         // ⇒ MainLayout เด้งกลับ Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์
         // (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
+        { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
       ],
@@ -641,7 +642,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: CircleDollarSign,
       zone: 'fin',
       items: [
-        { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
       ],
     },
     {
@@ -655,7 +656,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       // ร่วมของทั้งสองทาง (po-receiving.service.ts:185 และ trade-in-lifecycle.service.ts:432
       // ต่างก็เขียนสถานะ PHOTO_PENDING) — อย่าย้ายไปแทรกกลาง
       items: [
-        { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
@@ -672,14 +673,14 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
-        { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
-        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
+        { label: NAV_LABELS.chat, path: '/chat', icon: MessageSquareMore },
       ],
     },
     {
@@ -710,7 +711,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: TrendingUp,
       zone: 'fin',
       items: [
-        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'ติดตามลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
@@ -841,7 +842,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'Ads & ROI', path: '/ads', icon: Target },
         { label: 'Broadcast', path: '/broadcast', icon: Send },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
+        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
       ],
     },
     {
@@ -861,7 +862,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
     },
   ],
   bottomNav: [
-    { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
+    { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
     { label: 'รายงาน', path: '/reports', icon: BarChart3 },
     { label: 'Collection', path: '/overdue', icon: AlertTriangle },
     { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
@@ -959,7 +960,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
     bottomNav: {
       shop: OWNER_CONFIG.bottomNav,
       fin: [
-        { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ชำระ', path: '/payments', icon: HandCoins },
@@ -1001,7 +1002,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
     sections: FINANCE_MANAGER_CONFIG.sidebar,
     bottomNav: {
       shop: [
-        { label: 'Dashboard', path: '/', icon: Home },
+        { label: NAV_LABELS.home, path: '/', icon: Home },
         { label: 'สัญญา', path: '/contracts', icon: FileCheck },
         { label: 'ชำระ', path: '/payments', icon: HandCoins },
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },

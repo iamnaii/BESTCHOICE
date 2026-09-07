@@ -42,6 +42,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useUnionSearch } from '@/pages/CollectionsPage/hooks/useUnionSearch';
 import { settingsRegistry } from '@/config/settings-registry';
+import { NAV_LABELS, quickActions } from '@/config/work-navigation';
+export { quickActions } from '@/config/work-navigation';
 
 /* ─── Navigation Items ─── */
 
@@ -54,18 +56,19 @@ interface NavEntry {
 }
 
 const pages: NavEntry[] = [
-  { label: 'หน้าหลัก', path: '/', icon: Home, keywords: 'dashboard home' },
-  { label: 'POS ขายสินค้า', path: '/pos', icon: ShoppingCart, keywords: 'pos sale ขาย' },
+  { label: NAV_LABELS.home, path: '/', icon: Home, keywords: 'dashboard home' },
+  { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart, keywords: 'pos sale ขาย' },
   { label: 'ประวัติการขาย', path: '/sales', icon: Receipt, keywords: 'sales history' },
+  { label: NAV_LABELS.crm, path: '/crm', icon: Users, keywords: 'crm pipeline ติดตามลูกค้า', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
   { label: 'ลูกค้า', path: '/customers', icon: Users, keywords: 'customer ลูกค้า' },
   { label: 'รายชื่อผู้ติดต่อ', path: '/contacts', icon: BookUser, keywords: 'contacts ผู้ติดต่อ ผู้ขาย supplier ไฟแนนซ์ สมุดผู้ติดต่อ', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'รับซื้อมือสอง / เทิร์น', path: '/trade-in', icon: Smartphone, keywords: 'trade-in buyback sell รับซื้อ เทิร์น มือสอง', roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
-  { label: 'สัญญาผ่อน', path: '/contracts', icon: FileCheck, keywords: 'contract สัญญา ผ่อน' },
-  { label: 'ชำระเงิน', path: '/payments', icon: DollarSign, keywords: 'payment ชำระ จ่าย' },
+  { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck, keywords: 'contract สัญญา ผ่อน' },
+  { label: NAV_LABELS.payments, path: '/payments', icon: DollarSign, keywords: 'payment ชำระ จ่าย' },
   { label: 'ใบเสร็จรับเงิน', path: '/payments?tab=receipts', icon: Receipt, keywords: 'receipt ใบเสร็จ', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, keywords: 'slip review สลิป', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle, keywords: 'overdue หนี้ ค้าง ติดตาม' },
-  { label: 'คลังสินค้า', path: '/stock', icon: Warehouse, keywords: 'stock inventory สต็อก คลัง' },
+  { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse, keywords: 'stock inventory สต็อก คลัง' },
   { label: 'สั่งซื้อ', path: '/purchase-orders', icon: Warehouse, keywords: 'purchase order PO สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: ClipboardCheck, keywords: 'qc ถ่ายรูป 6 มุม มือสอง photo pending รอถ่ายรูป', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'รายงาน', path: '/reports', icon: BarChart3, keywords: 'report รายงาน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
@@ -78,36 +81,6 @@ const pages: NavEntry[] = [
   { label: 'PDPA', path: '/pdpa', icon: Shield, keywords: 'pdpa privacy', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'ส่วนของผู้ถือหุ้น (Equity)', path: '/finance/equity', icon: Landmark, keywords: 'equity ทุน ปันผล ผู้ถือหุ้น เพิ่มทุน ถอนเงิน', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins, keywords: 'dividend ปันผล ภงด2 pnd2 wht', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-];
-
-/**
- * รายการที่ **ไม่ใส่ `roles`** จะโชว์ให้ทุกบทบาท (`filterByRole` ปล่อยผ่าน) ⇒ ปลายทางต้อง
- * เข้าได้ทุกบทบาทจริง ๆ ไม่งั้นกดแล้วโดน MainLayout เด้งกลับ Dashboard พร้อม toast
- * "ไม่มีสิทธิ์". `/contracts/create` กับ `/payments` เข้าได้ทุกบทบาทจึงเว้นว่างได้
- * ปักกติกานี้ไว้ที่ __tests__/command-palette-reachability.test.ts
- */
-export const quickActions: NavEntry[] = [
-  { label: 'สร้างสัญญาใหม่', path: '/contracts/create', icon: Plus, keywords: 'new contract สร้าง สัญญา' },
-  // `?new=1` คือพารามิเตอร์เดียวที่ CustomersPage อ่านเพื่อเปิดโมดัลเพิ่มลูกค้า
-  // (อย่าเปลี่ยนเป็น `?action=new` — เคยผิดมาแล้ว กดแล้วได้หน้ารายชื่อเปล่า ๆ)
-  // roles = @Roles ของ POST /customers (ผจก.การเงิน/ฝ่ายบัญชี สร้างลูกค้าไม่ได้)
-  {
-    label: 'เพิ่มลูกค้าใหม่',
-    path: '/customers?new=1',
-    icon: Plus,
-    keywords: 'new customer เพิ่ม ลูกค้า เครดิต',
-    roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'],
-  },
-  // pre-existing: ไม่เคยมี roles มาก่อน ⇒ ผจก.การเงิน/ฝ่ายบัญชี กดแล้วเด้งมาตลอด
-  // (/pos อยู่ใน sidebar ของ OWNER/BM/SALES เท่านั้น)
-  {
-    label: 'ขายสินค้า (POS)',
-    path: '/pos',
-    icon: ShoppingCart,
-    keywords: 'sell ขาย pos',
-    roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'],
-  },
-  { label: 'บันทึกชำระเงิน', path: '/payments', icon: DollarSign, keywords: 'record payment บันทึก ชำระ' },
 ];
 
 /* ─── Settings Registry Entries ─── */
@@ -218,6 +191,12 @@ export default function CommandPalette() {
 
   const hasQuery = debouncedQuery.trim().length >= 2;
   const showRecent = !query && recent.length > 0;
+  // Server matches stay visible; local navigation still needs its own filtering.
+  const queryTerms = debouncedQuery.trim().toLowerCase().split(/\s+/);
+  const matchingNavigation = (items: NavEntry[]) => filterByRole(items).filter((item) => {
+    const searchable = `${item.label} ${item.keywords ?? ''}`.toLowerCase();
+    return !hasQuery || queryTerms.every((term) => searchable.includes(term));
+  });
 
   return (
     <div className="fixed inset-0 z-50">
@@ -238,7 +217,7 @@ export default function CommandPalette() {
           shouldFilter={!hasQuery}
         >
           <CommandInput
-            placeholder="ค้นหาหน้า, contract#, ชื่อ, เบอร์, IMEI, tracking#..."
+            placeholder="ค้นหาชื่อ เบอร์โทร เลขสัญญา IMEI หรือชื่อเมนู..."
             value={query}
             onValueChange={setQuery}
           />
@@ -362,7 +341,7 @@ export default function CommandPalette() {
 
             {/* Quick Actions */}
             <CommandGroup heading="ดำเนินการด่วน">
-              {filterByRole(quickActions).map((item) => (
+              {matchingNavigation(quickActions).map((item) => (
                 <CommandItem
                   key={item.path}
                   value={`${item.label} ${item.keywords || ''}`}
@@ -378,7 +357,7 @@ export default function CommandPalette() {
 
             {/* Pages + Settings entries */}
             <CommandGroup heading="ไปยังหน้า">
-              {filterByRole(allPages).map((item) => (
+              {matchingNavigation(allPages).map((item) => (
                 <CommandItem
                   key={`${item.label}:${item.path}`}
                   value={`${item.label} ${item.keywords || ''}`}

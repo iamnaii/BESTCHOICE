@@ -5,6 +5,7 @@ import {
   CallHandler,
 } from '@nestjs/common';
 import { AuditService } from './audit.service';
+import { sanitizeAuditValue } from './audit-sanitize.util';
 import { clientIp } from '../../utils/client-ip.util';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -12,41 +13,6 @@ const { tap } = require('rxjs');
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  private static readonly SENSITIVE_FIELDS = [
-    // Auth credentials
-    'password', 'token', 'secret', 'accessToken', 'refreshToken',
-    'currentPassword', 'newPassword', 'confirmPassword',
-    // PII — PDPA compliance
-    'nationalId', 'vendorTaxId', 'taxId',
-    'phone', 'mobilePhone', 'emergencyPhone',
-    'email', 'lineId', 'lineUserId',
-    'address', 'currentAddress', 'registeredAddress',
-    'bankAccount', 'bankAccountNumber', 'accountNumber',
-    // T2-C15: integration secrets stored under SystemConfig or passed in
-    // third-party webhook payloads. These leak through the audit log as
-    // "newValue" otherwise.
-    'bankApiKey', 'paymentGateway', 'peakSecretKey', 'mdmApiKey',
-    'connectId', 'userToken', 'appSecret', 'webhookSecret',
-    'secretKey', 'smsApiSecret',
-  ];
-
-  /**
-   * T2-C15: pattern-match catch-all for secret-shaped keys we haven't
-   * listed explicitly (e.g. `xyzApiKey`, `someSecret`, `myToken`). Keeps
-   * us safe when new fields are added to SystemConfig without touching
-   * this file.
-   */
-  private static readonly SENSITIVE_FIELD_PATTERNS: RegExp[] = [
-    /secret/i,
-    /apikey/i,
-    /token/i,
-  ];
-
-  private static isSensitiveKey(key: string): boolean {
-    if (AuditInterceptor.SENSITIVE_FIELDS.includes(key)) return true;
-    return AuditInterceptor.SENSITIVE_FIELD_PATTERNS.some((re) => re.test(key));
-  }
-
   constructor(private auditService: AuditService) {}
 
   intercept(context: ExecutionContext, next: CallHandler) {
@@ -145,28 +111,6 @@ export class AuditInterceptor implements NestInterceptor {
 
   private sanitizeBody(body: Record<string, unknown>): Record<string, unknown> | undefined {
     if (!body || typeof body !== 'object' || Object.keys(body).length === 0) return undefined;
-    const sanitized = { ...body };
-    // T2-C15: redact by exact name OR by regex match (e.g. xyzApiKey,
-    // someSecret). Covers the SystemConfig integration-secrets surface
-    // without having to enumerate every possible key.
-    for (const key of Object.keys(sanitized)) {
-      if (AuditInterceptor.isSensitiveKey(key)) {
-        sanitized[key] = '[REDACTED]';
-      }
-    }
-    for (const [key, value] of Object.entries(sanitized)) {
-      if (sanitized[key] === '[REDACTED]') continue;
-      if (typeof value === 'string' && value.startsWith('data:')) {
-        sanitized[key] = '[FILE_DATA]';
-      } else if (Array.isArray(value)) {
-        sanitized[key] = value.map((v) =>
-          typeof v === 'string' && v.startsWith('data:') ? '[FILE_DATA]' : v,
-        );
-      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        // Recurse into nested objects to sanitize sensitive fields
-        sanitized[key] = this.sanitizeBody(value as Record<string, unknown>);
-      }
-    }
-    return sanitized;
+    return sanitizeAuditValue(body) as Record<string, unknown>;
   }
 }

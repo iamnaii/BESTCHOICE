@@ -1,0 +1,284 @@
+{
+  "checkedAt": "2026-09-07T17:47:29.703Z",
+  "scope": "Built frontend only; fake SALES identity and local API fixtures; no real login/backend",
+  "fontNote": "External font stylesheets are fulfilled locally with empty CSS; screenshots use system font fallbacks consistently in both builds",
+  "gzipMethod": "Sum of default Node gzip sizes of unique JS assets requested before interaction; not measured wire bytes",
+  "baselineRef": "289d0d4a21da0263a1834db0e797d19f88e74244",
+  "finalRef": "8e7aac7735222bb0e0cec95301ce44010474fdd6",
+  "browserVersion": "145.0.7632.6",
+  "comparison": {
+    "beforeGzipBytes": 680916,
+    "afterGzipBytes": 549242,
+    "reductionGzipBytes": 131674,
+    "reductionPercent": 19.34
+  },
+  "status": "PASS",
+  "runs": [
+    {
+      "name": "baseline-sales-desktop",
+      "origin": "http://127.0.0.1:5197",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "pageErrors": [],
+      "consoleErrors": [],
+      "fixtureErrors": [],
+      "checkErrors": [],
+      "checks": [
+        "Home heading rendered without horizontal overflow"
+      ],
+      "dimensions": {
+        "viewport": 1440,
+        "document": 1440,
+        "body": 1440
+      },
+      "status": "PASS",
+      "initialJavaScript": {
+        "count": 157,
+        "bytes": 2337580,
+        "gzipBytes": 680916
+      },
+      "apiRequests": [
+        {
+          "method": "GET",
+          "path": "/api/admin/auth/me",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/settings/test-mode",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/overdue/collections-flag",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/staff-chat/unread-count",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/commissions",
+          "search": "?salespersonId=me&startDate=2026-08-31&endDate=2026-09-07"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/settings/ui-flags",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/overdue/pipeline",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/customers/upsell-candidates",
+          "search": "?limit=5"
+        }
+      ]
+    },
+    {
+      "name": "final-sales-desktop",
+      "origin": "http://127.0.0.1:5198",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "pageErrors": [],
+      "consoleErrors": [],
+      "fixtureErrors": [],
+      "checkErrors": [],
+      "checks": [
+        "Home heading rendered without horizontal overflow",
+        "Four SALES action links point to permitted destinations",
+        "Initial SALES request set excludes ManagementDashboard; shared chart/PDF chunks are separately reported",
+        "POS alias finds sales entries and excludes unrelated menu entries",
+        "Personal todos link/filter persist today/me then all/me without admin user requests"
+      ],
+      "dimensions": {
+        "viewport": 1440,
+        "document": 1440,
+        "body": 1440
+      },
+      "sharedHeavyChunks": [
+        {
+          "path": "/assets/charts-DtrQsyEN.js",
+          "bytes": 417857,
+          "gzipBytes": 118653
+        },
+        {
+          "path": "/assets/pdf-bkdg-02G.js",
+          "bytes": 430540,
+          "gzipBytes": 138289
+        }
+      ],
+      "todosDimensions": {
+        "viewport": 1440,
+        "document": 1440,
+        "body": 1440
+      },
+      "status": "PASS",
+      "initialJavaScript": {
+        "count": 82,
+        "bytes": 1799569,
+        "gzipBytes": 549242
+      },
+      "apiRequests": [
+        {
+          "method": "GET",
+          "path": "/api/admin/auth/me",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/settings/test-mode",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/overdue/collections-flag",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/staff-chat/unread-count",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/commissions",
+          "search": "?salespersonId=me&startDate=2026-08-31&endDate=2026-09-07"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/todos",
+          "search": "?view=today&assigneeId=me&limit=5"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/settings/ui-flags",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/search/union",
+          "search": "?q=POS"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/todos",
+          "search": "?view=today&assigneeId=me&limit=100"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/todos",
+          "search": "?view=all&assigneeId=me&limit=100"
+        }
+      ]
+    },
+    {
+      "name": "final-sales-mobile",
+      "origin": "http://127.0.0.1:5198",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "pageErrors": [],
+      "consoleErrors": [],
+      "fixtureErrors": [],
+      "checkErrors": [],
+      "checks": [
+        "Home heading rendered without horizontal overflow",
+        "Four SALES action links point to permitted destinations",
+        "Initial SALES request set excludes ManagementDashboard; shared chart/PDF chunks are separately reported",
+        "POS alias finds sales entries and excludes unrelated menu entries",
+        "Personal todos link/filter persist today/me then all/me without admin user requests"
+      ],
+      "dimensions": {
+        "viewport": 390,
+        "document": 390,
+        "body": 390
+      },
+      "sharedHeavyChunks": [
+        {
+          "path": "/assets/charts-DtrQsyEN.js",
+          "bytes": 417857,
+          "gzipBytes": 118653
+        },
+        {
+          "path": "/assets/pdf-bkdg-02G.js",
+          "bytes": 430540,
+          "gzipBytes": 138289
+        }
+      ],
+      "todosDimensions": {
+        "viewport": 390,
+        "document": 390,
+        "body": 390
+      },
+      "status": "PASS",
+      "initialJavaScript": {
+        "count": 82,
+        "bytes": 1799569,
+        "gzipBytes": 549242
+      },
+      "apiRequests": [
+        {
+          "method": "GET",
+          "path": "/api/admin/auth/me",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/settings/test-mode",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/overdue/collections-flag",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/staff-chat/unread-count",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/commissions",
+          "search": "?salespersonId=me&startDate=2026-08-31&endDate=2026-09-07"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/todos",
+          "search": "?view=today&assigneeId=me&limit=5"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/settings/ui-flags",
+          "search": ""
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/search/union",
+          "search": "?q=POS"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/todos",
+          "search": "?view=today&assigneeId=me&limit=100"
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/todos",
+          "search": "?view=all&assigneeId=me&limit=100"
+        }
+      ]
+    }
+  ]
+}

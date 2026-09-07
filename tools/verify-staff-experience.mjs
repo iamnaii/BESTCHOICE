@@ -2,6 +2,14 @@
  * Local-only browser check for the built SALES start screen.
  * Usage: node tools/verify-staff-experience.mjs [--baseline-only]
  * Build apps/web/dist first. Baseline defaults to /tmp/bestchoice-ai-native/baseline.
+ * Optional environment variables:
+ *   STAFF_EVIDENCE_DIR: screenshots/report directory (default /tmp/bestchoice-ai-native)
+ *   STAFF_BASELINE_DIR: baseline build (default <evidence>/baseline)
+ *   STAFF_FINAL_DIR: final build (default <repository>/apps/web/dist)
+ *   STAFF_BASELINE_PORT / STAFF_FINAL_PORT: localhost ports (default 5197 / 5198)
+ *   STAFF_BROWSER_EXECUTABLE_PATH: installed Chromium binary (default Playwright's browser)
+ *   STAFF_BASELINE_REF / STAFF_FINAL_REF: build provenance recorded in the report
+ * Baseline provenance also reads <evidence>/baseline-ref.txt when present.
  * Every API call is fulfilled here; all other external traffic and sockets are blocked.
  * Gzip totals describe the unique JS files actually requested before interaction,
  * compressed with Node's default gzip, rather than preview-server wire bytes.
@@ -15,9 +23,9 @@ import { chromium, expect } from '@playwright/test';
 import { preview } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = '/tmp/bestchoice-ai-native';
-const baselineDir = path.join(output, 'baseline');
-const finalDir = path.join(root, 'apps/web/dist');
+const output = path.resolve(process.env.STAFF_EVIDENCE_DIR || '/tmp/bestchoice-ai-native');
+const baselineDir = path.resolve(process.env.STAFF_BASELINE_DIR || path.join(output, 'baseline'));
+const finalDir = path.resolve(process.env.STAFF_FINAL_DIR || path.join(root, 'apps/web/dist'));
 const baselineOnly = process.argv.includes('--baseline-only');
 const baselinePort = Number(process.env.STAFF_BASELINE_PORT || 5197);
 const finalPort = Number(process.env.STAFF_FINAL_PORT || 5198);
@@ -213,6 +221,9 @@ async function runScreen({ name, directory, origin, viewport, isFinal, interacti
 
 try {
   await mkdir(output, { recursive: true });
+  report.baselineRef = process.env.STAFF_BASELINE_REF
+    || await readFile(path.join(output, 'baseline-ref.txt'), 'utf8').then((ref) => ref.trim()).catch(() => null);
+  report.finalRef = process.env.STAFF_FINAL_REF || null;
   await access(path.join(baselineDir, 'index.html'));
   if (!baselineOnly) await access(path.join(finalDir, 'index.html'));
   for (const [directory, port] of [[baselineDir, baselinePort], ...(!baselineOnly ? [[finalDir, finalPort]] : [])]) {
@@ -220,7 +231,8 @@ try {
       build: { outDir: directory }, preview: { host: '127.0.0.1', port, strictPort: true } });
     servers.push(server);
   }
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true,
+    ...(process.env.STAFF_BROWSER_EXECUTABLE_PATH ? { executablePath: process.env.STAFF_BROWSER_EXECUTABLE_PATH } : {}) });
   report.browserVersion = browser.version();
   await runScreen({ name: 'baseline-sales-desktop', directory: baselineDir,
     origin: `http://127.0.0.1:${baselinePort}`, viewport: { width: 1440, height: 1000 }, isFinal: false });

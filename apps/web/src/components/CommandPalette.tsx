@@ -27,7 +27,6 @@ import {
   Shield,
   FileText,
   Search,
-  Plus,
   User as UserIcon,
   Mail,
   Smartphone,

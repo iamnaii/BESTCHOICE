@@ -156,11 +156,11 @@ export class AuditInterceptor implements NestInterceptor {
     }
     for (const [key, value] of Object.entries(sanitized)) {
       if (sanitized[key] === '[REDACTED]') continue;
-      if (typeof value === 'string' && value.startsWith('data:image/')) {
-        sanitized[key] = '[IMAGE_DATA]';
+      if (typeof value === 'string' && value.startsWith('data:')) {
+        sanitized[key] = '[FILE_DATA]';
       } else if (Array.isArray(value)) {
         sanitized[key] = value.map((v) =>
-          typeof v === 'string' && v.startsWith('data:image/') ? '[IMAGE_DATA]' : v,
+          typeof v === 'string' && v.startsWith('data:') ? '[FILE_DATA]' : v,
         );
       } else if (value && typeof value === 'object' && !Array.isArray(value)) {
         // Recurse into nested objects to sanitize sensitive fields

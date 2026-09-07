@@ -212,16 +212,19 @@ ${(() => {
     const esc = this.escapeHtml.bind(this);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payments: any[] = contract.payments || [];
+    const payments: any[] = (contract.payments || []).filter((payment: any) => !payment.deletedAt);
+    const totalPayable = payments.length
+      ? payments.reduce((sum, payment) => sum.plus(payment.amountDue), new Prisma.Decimal(0)).toNumber()
+      : Number(contract.financedAmount);
 
     // Fallback: generate display-only rows from contract metadata when payments are missing
     if (payments.length === 0 && contract.totalMonths > 0) {
       const startDate = new Date(contract.createdAt);
       const dueDay = contract.paymentDueDay || startDate.getDate();
       for (let i = 1; i <= contract.totalMonths; i++) {
-        const due = new Date(startDate);
-        due.setMonth(due.getMonth() + i);
-        if (dueDay <= 28) due.setDate(dueDay);
+        const targetMonth = startDate.getMonth() + i;
+        const lastDay = new Date(startDate.getFullYear(), targetMonth + 1, 0).getDate();
+        const due = new Date(startDate.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
         payments.push({
           installmentNo: i,
           dueDate: due,
@@ -323,8 +326,9 @@ ${(() => {
       '{total_months}': String(contract.totalMonths),
       '{interest_rate}': `${(Number(contract.interestRate) * 100).toFixed(1)}%`,
       '{interest_total}': Number(contract.interestTotal).toLocaleString(),
-      '{financed_amount}': Number(contract.financedAmount).toLocaleString(),
-      '{financed_amount_text}': this.numberToThaiText(Number(contract.financedAmount)),
+      // Legacy templates use these names for the total hire-purchase amount, including VAT.
+      '{financed_amount}': totalPayable.toLocaleString(),
+      '{financed_amount_text}': this.numberToThaiText(totalPayable),
       '{total_months_text}': this.numberToThaiCountText(contract.totalMonths) + 'เดือน',
       '{first_payment_due}': firstPaymentDue,
       '{first_payment_day}': firstPaymentDay,
@@ -416,8 +420,8 @@ ${(() => {
       'CONTRACT.DATE_DAY': thaiDay,
       'CONTRACT.DATE_MONTH': thaiMonth,
       'CONTRACT.DATE_YEAR': thaiYear,
-      'CONTRACT.TOTAL_AMOUNT': Number(contract.financedAmount).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-      'CONTRACT.TOTAL_AMOUNT_TEXT': this.numberToThaiText(Number(contract.financedAmount)),
+      'CONTRACT.TOTAL_AMOUNT': totalPayable.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      'CONTRACT.TOTAL_AMOUNT_TEXT': this.numberToThaiText(totalPayable),
       'CONTRACT.DOWN_PAYMENT': Number(contract.downPayment).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
       'CONTRACT.SELLING_PRICE': Number(contract.sellingPrice).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
       'CONTRACT.MONTHLY_PAYMENT': Number(contract.monthlyPayment).toLocaleString('th-TH', { minimumFractionDigits: 2 }),

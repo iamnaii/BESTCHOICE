@@ -15,10 +15,8 @@ import { resolveStoreCommission } from '../../utils/store-commission.util';
  *   vat         / totalMonths → ROUND_HALF_UP (1190/12  =   99.17)
  *   installmentTotal           = installmentExclVat + vatPerInst   (= 1515.83)
  *
- * NOTE: this is the BASE per-installment breakdown. The 2A accrual additionally
- * trues-up the LAST installment to absorb the rounding residual so the contract
- * nets exactly to zero — that last-period adjustment stays in 2A and is layered
- * on top of these base values.
+ * Omit installmentNo for the base breakdown. Passing the last installment
+ * includes the residual used by 2A, so receipts clear the same receivable.
  */
 
 type DecimalInput = Decimal | string | number;
@@ -34,6 +32,7 @@ export interface InstallmentBreakdownInput {
   vatAmount: DecimalInput | null;
   /** Number of installments in the contract. */
   totalMonths: number;
+  installmentNo?: number;
 }
 
 export interface InstallmentBreakdown {
@@ -71,9 +70,15 @@ export function computeInstallmentBreakdown(
       ? new Decimal(input.vatAmount)
       : grossExclVat.times('0.07').toDecimalPlaces(2);
 
-  const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
-  const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  let installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+  let interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  let vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  if (input.installmentNo === input.totalMonths) {
+    const priorPeriods = total.minus(1);
+    installmentExclVat = grossExclVat.minus(installmentExclVat.times(priorPeriods));
+    interestPerInst = interest.minus(interestPerInst.times(priorPeriods));
+    vatPerInst = vat.minus(vatPerInst.times(priorPeriods));
+  }
   const installmentTotal = installmentExclVat.plus(vatPerInst);
 
   return {

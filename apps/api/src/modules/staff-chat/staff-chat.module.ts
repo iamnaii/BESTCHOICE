@@ -1,4 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { OcrModule } from '../ocr/ocr.module';
+import { RoomCreditController } from './room-credit.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { StaffChatGateway } from './staff-chat.gateway';
@@ -57,6 +59,7 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
  */
 @Module({
   imports: [
+    OcrModule,
     ChatEngineModule,
     forwardRef(() => ChatbotFinanceModule),
     // SalesBotModule now imports StaffChatModule (forwardRef) to access
@@ -70,7 +73,7 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
       inject: [ConfigService],
     }),
   ],
-  controllers: [StaffChatController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
+  controllers: [StaffChatController, RoomCreditController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
   providers: [StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ProductQuoteService, ChatToContractService, CannedResponseVariableService, CannedResponseBubbleService, CannedResponseQuickReplyService, BubbleTranslatorService, CannedResponseSenderService, QuickReplyPostbackRouterService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, AiSuggestService, AiAutoReplyService, ProductDetectService, LeadScoringService, AiTrainingService, AiImportService, AiMetricsService, EmbeddingService, PersonaService, SalesStateService, TrainingExtractCron, EmbeddingBackfillCron, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
   exports: [StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService, AiAutoReplyService, PersonaService, QuickReplyPostbackRouterService, CHAT_GATEWAY_TOKEN],
 })

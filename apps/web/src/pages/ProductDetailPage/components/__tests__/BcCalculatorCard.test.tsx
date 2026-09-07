@@ -18,7 +18,7 @@ describe('BcCalculatorCard', () => {
         <BcCalculatorCard productId="p1" installmentPrice={19900} config={config} />
       </BrowserRouter>,
     );
-    expect(screen.getByText(/2,413\.21/)).toBeInTheDocument();
+    expect(screen.getByText(/2,413\.20/)).toBeInTheDocument();
   });
 
   it('hides commission when hideCommission=true (SALES role)', () => {

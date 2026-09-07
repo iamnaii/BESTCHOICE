@@ -7,6 +7,7 @@
  * back to baht (2 decimal places) only at the end.
  */
 import { BadRequestException } from '@nestjs/common';
+import { computeInstallmentBreakdown } from '../modules/journal/compute-installment-breakdown';
 
 export interface InstallmentCalculation {
   principal: number;
@@ -29,7 +30,7 @@ export function roundBaht(value: number): number {
  * 3. interestTotal = principal × interestRate × totalMonths  (flat rate)
  * 4. vatAmount = (principal + storeCommission + interestTotal) × vatPct
  * 5. financedAmount = principal + storeCommission + interestTotal + vatAmount
- * 6. monthlyPayment = round(financedAmount / totalMonths, 2) — satang precision (no rounding up)
+ * 6. monthlyPayment = floor(subtotal / months, 2) + round(VAT / months, 2) — CPA rounding
  *
  * All intermediate values are computed at satang precision (2 decimal places)
  * to prevent floating-point accumulation errors.
@@ -56,7 +57,8 @@ export function calculateInstallment(
   const financedAmount = roundBaht(principal + storeCommission + interestTotal + vatAmount);
   // Monthly payment at satang precision (no ceil). Last installment absorbs rounding
   // remainder in generatePaymentSchedule.
-  const monthlyPayment = roundBaht(financedAmount / totalMonths);
+  const monthlyPayment = computeInstallmentBreakdown({ financedAmount: principal, storeCommission,
+    interestTotal, vatAmount, totalMonths }).installmentTotal.toNumber();
 
   return { principal, interestTotal, storeCommission, vatAmount, financedAmount, monthlyPayment };
 }
@@ -88,7 +90,8 @@ export function calculateInstallmentWithInterest(
   const interestRounded = roundBaht(interestTotal);
   const vatAmount = roundBaht((principal + storeCommission + interestRounded) * vatPct);
   const financedAmount = roundBaht(principal + storeCommission + interestRounded + vatAmount);
-  const monthlyPayment = roundBaht(financedAmount / totalMonths);
+  const monthlyPayment = computeInstallmentBreakdown({ financedAmount: principal, storeCommission,
+    interestTotal: interestRounded, vatAmount, totalMonths }).installmentTotal.toNumber();
 
   return {
     principal,
@@ -136,11 +139,14 @@ export function generatePaymentSchedule(
   const dueDay = paymentDueDay || 1;
   const payments: PaymentScheduleItem[] = [];
 
-  // Pre-compute per-month breakdowns (ceil for 1..N-1, remainder for last)
+  // Match the ledger's separate pre-VAT / VAT rounding; the final row carries residuals.
   const hasBreakdown = !!breakdownTotals;
-  const mpPrincipal = hasBreakdown ? Math.ceil(breakdownTotals.principal / totalMonths) : 0;
-  const mpInterest = hasBreakdown ? Math.ceil(breakdownTotals.interestTotal / totalMonths) : 0;
-  const mpCommission = hasBreakdown ? Math.ceil(breakdownTotals.storeCommission / totalMonths) : 0;
+  const base = breakdownTotals ? computeInstallmentBreakdown({ financedAmount: breakdownTotals.principal,
+    storeCommission: breakdownTotals.storeCommission, interestTotal: breakdownTotals.interestTotal,
+    vatAmount: breakdownTotals.vatAmount, totalMonths }) : null;
+  const mpInterest = base?.interestPerInst.toNumber() ?? 0;
+  const mpCommission = hasBreakdown ? roundBaht(breakdownTotals.storeCommission / totalMonths) : 0;
+  const mpPrincipal = base ? base.installmentExclVat.minus(mpInterest).minus(mpCommission).toNumber() : 0;
 
   let usedPrincipal = 0;
   let usedInterest = 0;

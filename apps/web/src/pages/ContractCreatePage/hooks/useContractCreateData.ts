@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { contractCreditIssue, type ApprovedContractLimit } from '../credit-approval';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -46,13 +47,6 @@ export function useContractCreateData() {
   useEffect(() => {
     if (custSameAddress) setCustAddrCurrent(custAddrIdCard);
   }, [custSameAddress, custAddrIdCard]);
-
-  // Auto-fill paymentDueDay from customer's salaryPayDay
-  useEffect(() => {
-    if (selectedCustomer?.salaryPayDay) {
-      setPaymentDueDay(selectedCustomer.salaryPayDay);
-    }
-  }, [selectedCustomer]);
 
   // Reset override flag when customer changes
   useEffect(() => {
@@ -204,10 +198,9 @@ export function useContractCreateData() {
       const parsed = Number(prefillMonths);
       if (!isNaN(parsed)) setTotalMonths(parsed);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { data: latestCreditCheck } = useQuery<{ id: string; status: string; aiScore: number | null } | null>({
+  const { data: latestCreditCheck } = useQuery<{ id: string; status: string; checkType: string; aiScore: number | null; approvals?: ApprovedContractLimit[] } | null>({
     queryKey: ['customer-latest-credit', selectedCustomer?.id],
     queryFn: async () => {
       const { data } = await api.get(`/customers/${selectedCustomer!.id}/credit-check/latest`);
@@ -215,6 +208,14 @@ export function useContractCreateData() {
     },
     enabled: !!selectedCustomer,
   });
+
+  const creditApproval = latestCreditCheck?.status === 'APPROVED' && latestCreditCheck.checkType === 'FULL'
+    ? latestCreditCheck.approvals?.[0] ?? null : null;
+  useEffect(() => {
+    if (creditApproval && !creditApproval.supersededAt && !creditApproval.usedByContractId) {
+      setPaymentDueDay(creditApproval.salaryPayDay);
+    } else setPaymentDueDay(selectedCustomer?.salaryPayDay ?? 1);
+  }, [creditApproval, selectedCustomer?.id, selectedCustomer?.salaryPayDay]);
 
   const { data: interestConfig } = useQuery<InterestConfig | null>({
     queryKey: ['interest-config', selectedProduct?.category],
@@ -330,10 +331,12 @@ export function useContractCreateData() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const customerCreditApproved = latestCreditCheck?.status === 'APPROVED';
+  const customerCreditApproved = !!creditApproval && !creditApproval.supersededAt && !creditApproval.usedByContractId;
 
-  const handleSubmit = (sellingPrice: number) => {
+  const handleSubmit = (sellingPrice: number, amounts: { monthlyPayment: number; financedAmount: number }) => {
     if (!selectedProduct || !selectedCustomer) return;
+    const issue = contractCreditIssue(creditApproval, { ...amounts, totalMonths, paymentDueDay });
+    if (issue) { toast.error(issue); return; }
     createMutation.mutate({
       customerId: selectedCustomer.id,
       productId: selectedProduct.id,
@@ -344,6 +347,7 @@ export function useContractCreateData() {
       totalMonths,
       notes: notes || undefined,
       paymentDueDay,
+      creditApprovalId: creditApproval!.id,
       ...(overrideActiveContractCheck ? { overrideActiveContractCheck: true } : {}),
     });
   };
@@ -434,6 +438,7 @@ export function useContractCreateData() {
 
     // Navigation helpers
     customerCreditApproved,
+    creditApproval,
     handleSubmit,
     goToStep,
     canNext,

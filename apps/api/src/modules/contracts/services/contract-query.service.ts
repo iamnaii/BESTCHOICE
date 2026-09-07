@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { TestModeService } from '../../test-mode/test-mode.service';
+import { visibleContractCredit } from '../../credit-check/services/room-credit-access';
 import {
   validateIMEI,
   validateThaiPhone,
@@ -155,7 +156,7 @@ export class ContractQueryService {
       }
     }
 
-    return contract;
+    return visibleContractCredit(this.prisma, contract, user);
   }
 
   /**

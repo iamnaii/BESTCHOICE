@@ -81,6 +81,18 @@ export function validateFileBase64(fileBase64: string): { mediaType: string; bas
     throw new BadRequestException('ข้อมูลไฟล์ไม่ถูกต้อง (รูปแบบ base64 ไม่ถูกต้อง)');
   }
 
+  if (isDocument) {
+    const bytes = Buffer.from(base64Data, 'base64');
+    if (bytes.subarray(0, 5).toString('ascii') !== '%PDF-') {
+      throw new BadRequestException('ไฟล์ PDF ไม่ถูกต้อง กรุณาเลือกไฟล์ใหม่');
+    }
+    // Round 1 only detects encryption; passwords never enter an API request.
+    const pdfText = bytes.toString('latin1').replace(/#([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+    if (/\/Encrypt\b/.test(pdfText)) {
+      throw new BadRequestException('เปิดไฟล์นี้ไม่ได้ — ไฟล์นี้ล็อกรหัส กรุณาใช้ PDF ที่ไม่ล็อกรหัส หรือส่งเป็นรูปแทน');
+    }
+  }
+
   return { mediaType, base64Data, isDocument };
 }
 

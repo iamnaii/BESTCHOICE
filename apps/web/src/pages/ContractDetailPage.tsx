@@ -478,7 +478,7 @@ const deleteMutation = useMutation({
         <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
           <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดผ่อนรวม</div>
-            <div className="text-xl font-bold tabular-nums font-mono">{formatNumber(contract.financedAmount)} บาท</div>
+            <div className="text-xl font-bold tabular-nums font-mono">{formatNumber(contract.payments.length ? contract.payments.reduce((total, payment) => total + Number(payment.amountDue), 0) : contract.financedAmount)} บาท</div>
           </CardContent>
         </Card>
         <Card className={`rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden ${totalOutstanding > 0 ? '' : 'opacity-60'}`}>

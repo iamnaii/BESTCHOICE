@@ -117,7 +117,7 @@ describe('useContractCalculation', () => {
     //   subtotalForVat  = 20000 + 2000 + 3600 = 25600
     //   vatAmount       = 25600 * 0.07 = 1792
     //   financedAmount  = 25600 + 1792 = 27392
-    //   monthlyPayment  = round(27392 / 12, 2) = 2282.67
+    //   monthlyPayment  = floor(25600 / 12, 2) + round(1792 / 12, 2) = 2282.66
     it('matches the canonical numbers for the 25000/5000/12 case', () => {
       const { result } = setupHook({
         product: makeProduct(25000),
@@ -131,7 +131,7 @@ describe('useContractCalculation', () => {
       expect(result.current.interestTotal).toBe(3600);
       expect(result.current.vatAmount).toBeCloseTo(1792, 6);
       expect(result.current.financedAmount).toBeCloseTo(27392, 6);
-      expect(result.current.monthlyPayment).toBeCloseTo(2282.67, 2);
+      expect(result.current.monthlyPayment).toBeCloseTo(2282.66, 2);
     });
   });
 

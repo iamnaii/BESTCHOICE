@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Sparkles, AlertTriangle } from 'lucide-react';
+import CreditAffordabilityForm, { type CreditApprovalPayload } from './CreditAffordabilityForm';
 
 interface Props {
+  creditCheckId?: string;
+  checkType?: string;
   open: boolean;
   onClose: () => void;
   aiDecision: string; // current CreditCheck.status — what AI decided
@@ -15,7 +18,7 @@ interface Props {
   notes: string;
   onNotesChange: (v: string) => void;
   isPending: boolean;
-  onConfirm: () => void;
+  onConfirm: (affordability?: CreditApprovalPayload | null) => void;
 }
 
 const DOWN_TIERS = [
@@ -114,6 +117,8 @@ function decisionLabel(decision: string): string {
 }
 
 export default function CreditCheckOverrideDialog({
+  creditCheckId,
+  checkType = 'FULL',
   open,
   onClose,
   aiDecision,
@@ -127,28 +132,30 @@ export default function CreditCheckOverrideDialog({
   isPending,
   onConfirm,
 }: Props) {
+  const [affordability, setAffordability] = useState<CreditApprovalPayload | null>(null);
+  const needsAmount = status === 'APPROVED' && checkType === 'FULL';
   // `aiDecision` is actually the record's CURRENT status (possibly already
   // overridden). The backend rejects same-status "overrides" as no-ops via
   // enforceOverridePolicy, so selecting the same status here is never valid
   // no matter what we label it in UI.
-  const isNoOp = !!status && status === aiDecision;
+  const isNoOp = !!status && status === aiDecision && !needsAmount;
   const currentOption = REASON_OPTIONS.find((o) => o.value === reasonCategory);
   const compiled = useMemo(() => compileReason(reasonCategory, notes), [reasonCategory, notes]);
 
   // Validation — override requires a reason (different-status is the only
   // legit case; same-status is disallowed).
-  const needsReason = !!status && status !== aiDecision;
+  const needsReason = !!status && (status !== aiDecision || needsAmount);
   const isHighDown = reasonCategory === 'HIGH_DOWN';
   const highDownTierValid = isHighDown && DOWN_TIERS.some((t) => t.value === notes.trim());
   const detailValid = isHighDown
     ? highDownTierValid
     : !currentOption?.requiresDetail || notes.trim().length >= 10;
-  const reasonValid = !!reasonCategory && detailValid && compiled.length <= 2000;
-  const disabled = !status || isNoOp || !reasonValid || isPending;
+  const reasonValid = !!reasonCategory && detailValid && compiled.length >= 20 && compiled.length <= 2000;
+  const disabled = !status || isNoOp || !reasonValid || isPending || (needsAmount && !affordability);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>ปรับแก้สถานะเครดิตเช็ค</DialogTitle>
         </DialogHeader>
@@ -172,7 +179,7 @@ export default function CreditCheckOverrideDialog({
             </label>
             <select
               value={status}
-              onChange={(e) => onStatusChange(e.target.value)}
+              onChange={(e) => { setAffordability(null); onStatusChange(e.target.value); }}
               className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
             >
               <option value="">-- เลือกสถานะ --</option>
@@ -181,6 +188,8 @@ export default function CreditCheckOverrideDialog({
               <option value="MANUAL_REVIEW">ต้องตรวจเพิ่ม</option>
             </select>
           </div>
+
+          {open && needsAmount && creditCheckId && <CreditAffordabilityForm creditCheckId={creditCheckId} onChange={setAffordability} />}
 
           {/* Same status selected → block (no-op) */}
           {isNoOp && (
@@ -277,7 +286,7 @@ export default function CreditCheckOverrideDialog({
           <Button variant="outline" onClick={onClose}>
             ยกเลิก
           </Button>
-          <Button variant="primary" onClick={onConfirm} disabled={disabled}>
+          <Button variant="primary" onClick={() => onConfirm(needsAmount ? affordability : undefined)} disabled={disabled}>
             {isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}
           </Button>
         </DialogFooter>

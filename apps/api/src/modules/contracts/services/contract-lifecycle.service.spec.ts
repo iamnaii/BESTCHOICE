@@ -1,3 +1,4 @@
+import * as creditApproval from '../../credit-check/services/credit-approval';
 /**
  * ContractLifecycleService — ShopDownPayment wiring tests (Task 6 + Task 7).
  *
@@ -136,8 +137,11 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
   let queryMock: any;
 
   beforeEach(() => {
+    jest.spyOn(creditApproval, 'claimCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
+
     // Inner tx object — the callback arg when prisma.$transaction(cb) is called
     tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       creditCheck: {
         findFirst: jest.fn().mockResolvedValue({ id: 'cc-1', status: 'APPROVED', contractId: null }),
         update: jest.fn().mockResolvedValue({}),
@@ -157,6 +161,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
         findUnique: jest.fn().mockResolvedValue(mockCustomer),
       },
       contract: {
+        findUnique: jest.fn(async () => ({ ...await queryMock.findOne(), signatures: [] })),
         create: jest.fn().mockResolvedValue(mockCreatedContract),
         update: jest.fn().mockResolvedValue(mockCreatedContract),
       },
@@ -381,4 +386,13 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
     await expect(service.create({ ...baseDto } as any, 'sp-1')).resolves.toBeDefined();
     expect(shopDownPaymentTemplate.execute).toHaveBeenCalledTimes(1);
   });
+  it('does not delete a draft that activated while waiting for the customer lock', async () => {
+    tx.contract.findUnique = jest.fn().mockResolvedValue({ ...mockCreatedContract, status: 'ACTIVE' });
+    await expect(service.softDelete('c-1', 'user-1')).rejects.toThrow(/สถานะ/);
+    expect(tx.contract.update).not.toHaveBeenCalled();
+    expect(shopDownPaymentReversalTemplate.execute).not.toHaveBeenCalled();
+  });
+
 });
+
+afterEach(() => jest.restoreAllMocks());

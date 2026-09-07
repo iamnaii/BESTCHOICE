@@ -58,8 +58,8 @@ describe('calcBcInstallment — canonical worked example (iPhone 14 Pro 128GB, 1
     expect(out.totalWithVat.toFixed(2)).toBe('28958.48');
   });
 
-  it('monthlyPayment = 2,413.21', () => {
-    expect(out.monthlyPayment.toFixed(2)).toBe('2413.21');
+  it('monthlyPayment = 2,413.20', () => {
+    expect(out.monthlyPayment.toFixed(2)).toBe('2413.20');
   });
 
   it('financeToShop = 18,606.50', () => {
@@ -145,3 +145,16 @@ describe('calcBcInstallment — edge cases', () => {
     expect(out.financedAmount.toFixed(2)).toBe('14900.00');
   });
 });
+
+  it('quotes the same CPA rounded installment as the accounting ledger', () => {
+    const out = calcBcInstallment({ installmentPrice: new Decimal(12500), customDownAmount: new Decimal(2500), months: 12,
+      config: { ...DEFAULT_CONFIG, ratePctByMonths: new Map([[12, new Decimal('0.6')]]) } });
+    expect(out.totalWithVat.toFixed(2)).toBe('18190.00');
+    expect(out.monthlyPayment.toFixed(2)).toBe('1515.83');
+  });
+
+  it('keeps separate CPA rounding when the gross monthly total would add one satang', () => {
+    const out = calcBcInstallment({ installmentPrice: new Decimal(10000), customDownAmount: new Decimal(2000), months: 12,
+      config: { ...DEFAULT_CONFIG, ratePctByMonths: new Map([[12, new Decimal('0.3')]]) } });
+    expect(out.monthlyPayment.toFixed(2)).toBe('998.66');
+  });

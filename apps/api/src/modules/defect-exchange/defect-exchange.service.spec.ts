@@ -1,3 +1,10 @@
+import * as creditApproval from '../credit-check/services/credit-approval';
+import * as creditLocks from '../credit-check/services/room-credit-history';
+beforeEach(() => {
+  jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockResolvedValue(undefined);
+  jest.spyOn(creditLocks, 'lockCreditCustomer').mockResolvedValue(undefined);
+});
+afterEach(() => jest.restoreAllMocks());
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DefectExchangeService } from './defect-exchange.service';
@@ -158,6 +165,17 @@ describe('DefectExchangeService', () => {
     }).compile();
 
     service = module.get<DefectExchangeService>(DefectExchangeService);
+  });
+
+  it('rolls back a replacement with no fresh credit review before reserving its product', async () => {
+    prisma.contract.findUnique.mockResolvedValue(baseContract());
+    prisma.product.findUnique.mockResolvedValue(newProductRec);
+    prisma.__tx.contract.findUnique.mockResolvedValue(baseContract());
+    prisma.__tx.product.findUnique.mockResolvedValue(newProductRec);
+    prisma.__tx.payment.count.mockResolvedValue(0);
+    jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockRejectedValue(new BadRequestException('ต้องตรวจเครดิตรอบใหม่'));
+    await expect(service.execute({ oldContractId, newProductId, defectReason: 'screen broken' } as any, userId)).rejects.toThrow(/รอบใหม่/);
+    expect(prisma.__tx.product.update).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: newProductId } }));
   });
 
   describe('execute — Wave 3 T2 payment guard (ปพพ.386 C-6)', () => {

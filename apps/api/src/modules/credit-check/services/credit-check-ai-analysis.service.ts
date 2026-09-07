@@ -42,6 +42,10 @@ export class CreditCheckAiAnalysisService {
     });
     if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
 
+    if ((creditCheck.aiAnalysis as Record<string, unknown> | null)?.source === 'chat-statement') {
+      throw new BadRequestException('รายการนี้อ่านจากสเตทเม้นในแชท กรุณาเปิดแชทต้นทางเพื่อวิเคราะห์อีกครั้ง');
+    }
+
     if (creditCheck.statementFiles.length === 0) {
       throw new BadRequestException('กรุณาอัปโหลด Statement ธนาคารก่อน');
     }
@@ -89,6 +93,10 @@ export class CreditCheckAiAnalysisService {
       },
     });
     if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+
+    if ((creditCheck.aiAnalysis as Record<string, unknown> | null)?.source === 'chat-statement') {
+      throw new BadRequestException('รายการนี้อ่านจากสเตทเม้นในแชท กรุณาเปิดแชทต้นทางเพื่อวิเคราะห์อีกครั้ง');
+    }
 
     if (creditCheck.statementFiles.length === 0) {
       throw new BadRequestException('กรุณาอัปโหลด Statement ธนาคารก่อน');
@@ -198,6 +206,7 @@ export class CreditCheckAiAnalysisService {
     "monthlyIncome": <รายได้ต่อเดือนโดยประมาณจาก statement>,
     "averageBalance": <ยอดเงินคงเหลือเฉลี่ย>,
     "monthlyPayment": ${params.monthlyPayment},
+    "affordablePayment": <ค่างวดที่ผ่อนไหวต่อเดือน ไม่ใช่ค่างวดของสัญญา พิจารณาเงินเหลือและภาระหนี้ เพดานไม่เกินรายได้ต่อเดือน × 40% ตามเกณฑ์เดิม; null ถ้าข้อมูลไม่พอ>,
     "affordabilityRatio": <สัดส่วนค่างวดต่อรายได้ 0.0-1.0>,
     "incomeConsistency": "<stable/unstable/unknown>",
     "debtObligations": <ประมาณภาระหนี้อื่นต่อเดือน>,

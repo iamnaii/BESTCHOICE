@@ -14,6 +14,7 @@ import { ContractSummaryPanel } from './components/ContractSummaryPanel';
 import { CustomerCreateModal } from './components/CustomerCreateModal';
 import { EditProductModal } from './components/EditProductModal';
 import { EditCustomerModal } from './components/EditCustomerModal';
+import { contractCreditIssue, contractCreditSchedule } from './credit-approval';
 
 export default function ContractCreatePage() {
   useDocumentTitle('สร้างสัญญา');
@@ -43,7 +44,7 @@ export default function ContractCreatePage() {
   };
 
   const canNext = () => {
-    return data.canNext(
+    return (data.step !== 2 || !creditIssue) && data.canNext(
       calculation.sellingPrice,
       calculation.minDownPct,
       calculation.minMonths,
@@ -53,8 +54,13 @@ export default function ContractCreatePage() {
 
   const lastStep = STEPS.length - 1;
 
+  const creditPlan = { monthlyPayment: calculation.monthlyPayment, financedAmount: calculation.financedAmount,
+    totalMonths: data.totalMonths, paymentDueDay: data.paymentDueDay };
+  const creditIssue = contractCreditIssue(data.creditApproval, creditPlan);
+  const creditSchedule = contractCreditSchedule(creditPlan);
+
   const handleSubmit = () => {
-    data.handleSubmit(calculation.sellingPrice);
+    data.handleSubmit(calculation.sellingPrice, creditPlan);
   };
 
   return (
@@ -130,6 +136,21 @@ export default function ContractCreatePage() {
             monthOptions={calculation.monthOptions}
           />
 
+          {data.selectedCustomer && <div className="my-4 max-w-xl space-y-2 rounded-xl border border-border p-4 text-sm">
+            {data.creditApproval && <>
+              <p className="font-semibold">ยอดที่ผู้จัดการอนุมัติ: ไม่เกิน {Number(data.creditApproval.approvedMonthlyPayment).toLocaleString('th-TH')} บาท/เดือน</p>
+              <p>ชำระ{data.creditApproval.salaryPayDay === 31 ? 'ทุกสิ้นเดือน' : `วันที่ ${data.creditApproval.salaryPayDay} ของเดือน`}</p>
+              {creditSchedule[0] && <p>งวดแรก: {creditSchedule[0].dueDate.toLocaleDateString('th-TH')} · {creditSchedule[0].amount.toLocaleString('th-TH')} บาท</p>}
+              <details><summary className="cursor-pointer text-primary">ดูตารางงวดก่อนสร้างสัญญา</summary>
+                <table className="mt-2 w-full text-left"><thead><tr><th>งวด</th><th>ครบกำหนด</th><th className="text-right">บาท</th></tr></thead>
+                  <tbody>{creditSchedule.map(row => <tr key={row.installmentNo}><td>{row.installmentNo}</td><td>{row.dueDate.toLocaleDateString('th-TH')}</td><td className="text-right">{row.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td></tr>)}</tbody>
+                </table>
+              </details>
+            </>}
+            {creditIssue && <p role="alert" className="text-destructive">{creditIssue}</p>}
+            <a className="text-primary underline" href={`/customers/${data.selectedCustomer.id}?tab=credit`}>เปิดประวัติและพิจารณายอดผ่อน</a>
+          </div>}
+
           {data.selectedProduct && data.selectedCustomer && (
             <ContractSummaryPanel
               selectedProduct={data.selectedProduct}
@@ -170,7 +191,7 @@ export default function ContractCreatePage() {
             variant="primary"
             size="lg"
             onClick={handleSubmit}
-            disabled={data.createMutation.isPending}
+            disabled={data.createMutation.isPending || !!creditIssue}
           >
             <Send className="size-4" />
             {data.createMutation.isPending ? 'กำลังสร้าง...' : 'สร้างสัญญา'}

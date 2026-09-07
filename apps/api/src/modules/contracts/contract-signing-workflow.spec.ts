@@ -1,3 +1,4 @@
+import * as creditApproval from '../credit-check/services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
@@ -137,8 +138,11 @@ describe('Contract Signing & Workflow', () => {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockContract: any;
+  let txMock: any;
 
   beforeEach(async () => {
+    jest.spyOn(creditApproval, 'assertContractCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
+
     mockContract = makeContract();
 
     // Reset validation mocks
@@ -147,7 +151,8 @@ describe('Contract Signing & Workflow', () => {
     mockCheckRequiredSignatures.mockReturnValue({ complete: true, checklist: [] });
     mockCheckAgeEligibility.mockReturnValue({ eligible: true, requiresGuardian: false });
 
-    const txMock = {
+    txMock = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       // activate → closeRepossessionOnSale (2026-09-05): เครื่องปกติ = 0 แถว
       repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       contract: {
@@ -530,6 +535,7 @@ describe('Contract Signing & Workflow', () => {
 
     it('ACT-1: เปิดใช้งานสำเร็จ → transaction (status=ACTIVE, product=SOLD_INSTALLMENT, Sale record)', async () => {
       prisma.contract.findUnique.mockResolvedValue(approvedContract());
+      txMock.contract.findUnique.mockResolvedValue(approvedContract());
 
       await workflowService.activate('contract-1');
       expect(prisma.$transaction).toHaveBeenCalled();
@@ -686,3 +692,5 @@ describe('Contract Signing & Workflow', () => {
     });
   });
 });
+
+afterEach(() => jest.restoreAllMocks());

@@ -259,11 +259,12 @@ export class StaffChatController {
   async linkCustomerToRoom(
     @Param('id') id: string,
     @Body('customerId') customerId: string,
+    @Req() req: { user: { id: string; role: string } },
   ) {
     if (!customerId || typeof customerId !== 'string') {
       throw new BadRequestException('กรุณาระบุ customerId');
     }
-    await this.roomManager.linkCustomer(id, customerId);
+    await this.roomManager.linkCustomer(id, customerId, req.user);
     return { success: true };
   }
 

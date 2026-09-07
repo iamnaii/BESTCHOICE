@@ -7,6 +7,7 @@ import { CreditCheckRiskService } from './services/credit-check-risk.service';
 import { CreditCheckAiAnalysisService } from './services/credit-check-ai-analysis.service';
 import { CreditCheckCrudService } from './services/credit-check-crud.service';
 import { CreditCheckOverrideService } from './services/credit-check-override.service';
+import { CreditHistoryActor } from './services/room-credit-access';
 
 /**
  * Facade for credit-check. Keeps the 13-method public surface and delegates
@@ -51,20 +52,20 @@ export class CreditCheckService {
     endDate?: string;
     branchId?: string;
     checkedById?: string;
-  }) {
-    return this.crud.findAll(filters);
+  }, actor?: CreditHistoryActor) {
+    return this.crud.findAll(filters, actor);
   }
 
-  findByContract(contractId: string) {
-    return this.crud.findByContract(contractId);
+  findByContract(contractId: string, actor?: CreditHistoryActor) {
+    return this.crud.findByContract(contractId, actor);
   }
 
-  findByCustomer(customerId: string) {
-    return this.crud.findByCustomer(customerId);
+  findByCustomer(customerId: string, actor?: CreditHistoryActor) {
+    return this.crud.findByCustomer(customerId, actor);
   }
 
-  findLatestByCustomer(customerId: string) {
-    return this.crud.findLatestByCustomer(customerId);
+  findLatestByCustomer(customerId: string, actor?: CreditHistoryActor) {
+    return this.crud.findLatestByCustomer(customerId, actor);
   }
 
   createForCustomer(customerId: string, dto: CreateCreditCheckDto, _userId: string) {

@@ -1,3 +1,4 @@
+import * as creditApproval from '../../credit-check/services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -44,8 +45,11 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
   };
 
   beforeEach(async () => {
+    jest.spyOn(creditApproval, 'claimCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
+
     // ── per-test tx mock (mimics what $transaction exposes inside callback) ──
     tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       sale: {
         create: jest.fn().mockResolvedValue(mockSale),
       },
@@ -363,6 +367,21 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     expect(tx.productReservation.findMany).toBeUndefined();
   });
 
+  it('claims an approved monthly limit before completing an installment sale', async () => {
+    const approval = await import('../../credit-check/services/credit-approval');
+    const claim = jest.spyOn(approval, 'claimCreditApproval').mockRejectedValue(new Error('ต้องอนุมัติยอดผ่อน'));
+    tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+    tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
+    tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+    tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+    try {
+      await expect(service.createInstallmentSale({ productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
+        bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH', paymentDueDay: 25 } as never,
+        'sp-1', 20000, 0)).rejects.toThrow('ต้องอนุมัติยอดผ่อน');
+      expect(tx.payment.createMany).not.toHaveBeenCalled();
+    } finally { claim.mockRestore(); }
+  });
+
   it('(f) createInstallmentSale: ตัด hold หลัง flip เครื่องเป็น RESERVED', async () => {
     // downPayment 3000 = 15% ของ 20000 พอดี = ค่า DEFAULTS.minDownPaymentPct
     // (config.util.ts:183) → ผ่านเงื่อนไข `downPayment < netAmount * pct` แบบเฉียดฉิว
@@ -380,6 +399,8 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       } as any,
       'sp-1', 20000, 0,
     );
+
+    expect(tx.contract.create.mock.calls[0][0].data.financedAmount).toBe(17000);
 
     const call = tx.productReservation.updateMany.mock.calls.at(-1)[0];
     expect(call.where.productId).toEqual({ in: ['p1'] });
@@ -558,3 +579,5 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     });
   });
 });
+
+afterEach(() => jest.restoreAllMocks());

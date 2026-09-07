@@ -93,7 +93,7 @@ describe('InstallmentPreviewService', () => {
     });
     const result = await service.preview({ productId: 'p1', provider: 'BC', months: 12 });
     expect(result.available).toBe(true);
-    expect(result.monthlyPayment).toBeCloseTo(2413.21, 2);
+    expect(result.monthlyPayment).toBeCloseTo(2413.20, 2);
     expect(result.downAmount).toBeCloseTo(2985, 2);
   });
 

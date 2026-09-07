@@ -93,6 +93,8 @@ function makeService(overrides: {
         : overrides.accrualJournalEntryId,
     contract: {
       totalMonths: overrides.totalMonths ?? 12,
+      financedAmount: D(10000),
+      storeCommission: D(1000),
       interestTotal: D(6000),
       monthlyPayment: D('1515.83'),
       vatAmount: D(1190),

@@ -47,7 +47,10 @@ export function calcBcInstallment(input: BcCalcInput): BcCalcOutput {
   const subtotal = round2(financedAmount.add(interestAmount).add(commissionAmount));
   const vatAmount = round2(subtotal.mul(config.vatPct));
   const totalWithVat = round2(subtotal.add(vatAmount));
-  const monthlyPayment = months > 0 ? round2(totalWithVat.div(months)) : new Decimal(0);
+  // Match CPA installment accrual: round the pre-VAT and VAT portions separately.
+  const monthlyPayment = months > 0
+    ? subtotal.div(months).toDecimalPlaces(2, Decimal.ROUND_DOWN).plus(round2(vatAmount.div(months)))
+    : new Decimal(0);
   const financeToShop = round2(financedAmount.add(commissionAmount));
 
   return {

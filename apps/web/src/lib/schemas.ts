@@ -86,7 +86,7 @@ export type ProductFormData = z.infer<typeof productSchema>;
 export const contractPlanSchema = z.object({
   downPayment: z.number().min(0, 'เงินดาวน์ต้องไม่ติดลบ'),
   totalMonths: z.number().min(1, 'จำนวนงวดต้องอย่างน้อย 1').max(60, 'จำนวนงวดสูงสุด 60'),
-  paymentDueDay: z.number().min(1).max(28, 'วันที่ชำระต้องระหว่าง 1-28'),
+  paymentDueDay: z.number().int('วันที่ชำระต้องเป็นจำนวนเต็ม').min(1).max(31, 'วันที่ชำระต้องระหว่าง 1-31'),
   notes: z.string().optional(),
 });
 

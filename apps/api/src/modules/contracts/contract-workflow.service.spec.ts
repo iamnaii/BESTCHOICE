@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import * as creditApproval from '../credit-check/services/credit-approval';
 import { Prisma } from '@prisma/client';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -133,7 +134,10 @@ describe('ContractWorkflowService', () => {
     });
 
   beforeEach(async () => {
+    jest.spyOn(creditApproval, 'assertContractCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
+
     prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
@@ -236,6 +240,13 @@ describe('ContractWorkflowService', () => {
   });
 
   describe('activate', () => {
+    it('checks the approved installment amount before activating or posting money', async () => {
+      const guard = jest.spyOn(creditApproval, 'assertContractCreditApproval').mockRejectedValue(new Error('ยอดอนุมัติไม่พอ'));
+      try {
+        await expect(service.activate('contract-1')).rejects.toThrow('ยอดอนุมัติไม่พอ');
+        expect(prisma.contract.update).not.toHaveBeenCalled();
+      } finally { guard.mockRestore(); }
+    });
     it('activates a fully-approved DRAFT contract and writes the activation JE', async () => {
       await service.activate('contract-1');
 
@@ -633,3 +644,5 @@ describe('ContractWorkflowService', () => {
     });
   });
 });
+
+afterEach(() => jest.restoreAllMocks());

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import type { Product, InterestConfig, Customer } from '../types';
@@ -86,6 +86,7 @@ export function PlanDetailsStep({
   monthlyPayment,
   monthOptions,
 }: PlanDetailsStepProps) {
+  const dueDayInputId = useId();
   const form = useForm<ContractPlanFormData>({
     resolver: standardSchemaResolver(contractPlanSchema),
     defaultValues: {
@@ -154,12 +155,13 @@ export function PlanDetailsStep({
           name="downPayment"
           render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-sm font-medium text-foreground">
+              <FormLabel htmlFor={`${dueDayInputId}-down`} className="text-sm font-medium text-foreground">
                 เงินดาวน์ <InfoTip text="เงินที่ลูกค้าจ่ายล่วงหน้า หน้าร้านเก็บไว้ ไม่ผ่านไฟแนนซ์ — ขั้นต่ำกำหนดตามนโยบาย" />
               </FormLabel>
               <FormControl>
                 <input
                   type="number"
+                  id={`${dueDayInputId}-down`}
                   {...field}
                   onChange={(e) => {
                     const val = Number(e.target.value);
@@ -182,9 +184,10 @@ export function PlanDetailsStep({
           name="totalMonths"
           render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-sm font-medium text-foreground">จำนวนงวด (เดือน)</FormLabel>
+              <FormLabel htmlFor={`${dueDayInputId}-months`} className="text-sm font-medium text-foreground">จำนวนงวด (เดือน)</FormLabel>
               <FormControl>
                 <select
+                  id={`${dueDayInputId}-months`}
                   value={field.value}
                   onChange={(e) => {
                     const val = Number(e.target.value);
@@ -207,11 +210,13 @@ export function PlanDetailsStep({
         <FormField
           control={form.control}
           name="paymentDueDay"
-          render={({ field }) => (
+          render={({ field, fieldState }) => (
             <FormItem>
-              <FormLabel className="text-sm font-medium text-foreground">วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</FormLabel>
+              <FormLabel htmlFor={dueDayInputId} className="text-sm font-medium text-foreground">วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</FormLabel>
               <FormControl>
                 <select
+                  id={dueDayInputId}
+                  aria-invalid={!!fieldState.error}
                   value={field.value}
                   onChange={(e) => {
                     const val = Number(e.target.value);
@@ -220,7 +225,7 @@ export function PlanDetailsStep({
                   }}
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                 >
-                  {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>
                   ))}
                 </select>

@@ -7,6 +7,7 @@ import {
   forwardRef,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -24,6 +25,7 @@ import { AssignmentService } from './assignment.service';
 import { MessageRouterService } from './message-router.service';
 import { StorageService } from '../../storage/storage.service';
 import { signMessageMedia } from './media-url.util';
+import { linkRoomCreditHistory, lockCreditRoom } from '../../credit-check/services/room-credit-history';
 
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
  *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
@@ -654,27 +656,35 @@ export class RoomManagerService {
    * already linked to a different customer — relinking requires explicit
    * unlink-then-link, not silent overwrite.
    */
-  async linkCustomer(roomId: string, customerId: string) {
-    const room = await this.prisma.chatRoom.findUnique({
+  async linkCustomer(roomId: string, customerId: string, actor: { id: string; role: string }) {
+    return this.prisma.$transaction(async tx => {
+    await lockCreditRoom(tx, roomId);
+    const room = await tx.chatRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, customerId: true, deletedAt: true },
+      select: { id: true, customerId: true, deletedAt: true, assignedToId: true },
     });
     if (!room || room.deletedAt) {
       throw new NotFoundException('ห้องแชทไม่พบหรือถูกลบ');
     }
+    if (actor.role === 'SALES' && room.assignedToId && room.assignedToId !== actor.id) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+    }
     if (room.customerId && room.customerId !== customerId) {
       throw new ConflictException('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
     }
-    const customer = await this.prisma.customer.findUnique({
+    const customer = await tx.customer.findUnique({
       where: { id: customerId },
       select: { id: true, deletedAt: true },
     });
     if (!customer || customer.deletedAt) {
       throw new NotFoundException('ไม่พบลูกค้า');
     }
-    return this.prisma.chatRoom.update({
+    const linked = await tx.chatRoom.update({
       where: { id: roomId },
       data: { customerId },
+    });
+    await linkRoomCreditHistory(tx, roomId, customerId);
+    return linked;
     });
   }
 

@@ -3,14 +3,15 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
-import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy } from 'lucide-react';
+import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck } from 'lucide-react';
+import { CREDIT_MESSAGE_MIME } from './credit-statement';
 import { linkifyText } from '@/lib/linkify';
 import { toast } from 'sonner';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { ImageLightbox } from '@/components/ImageLightbox';
 
 /** In-chat image with a loading skeleton and a graceful error tile. */
-function ChatImage({ src }: { src: string }) {
+function ChatImage({ src, onLoadError }: { src: string; onLoadError?: () => void }) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -39,7 +40,7 @@ function ChatImage({ src }: { src: string }) {
         className="max-w-60 max-h-75 rounded-lg cursor-zoom-in"
         loading="lazy"
         onLoad={() => setLoaded(true)}
-        onError={() => setErrored(true)}
+        onError={() => { setErrored(true); onLoadError?.(); }}
         onClick={() => setLightboxSrc(src)}
         title="คลิกเพื่อดูรูปเต็ม"
       />
@@ -49,6 +50,9 @@ function ChatImage({ src }: { src: string }) {
 }
 
 interface MessageBubbleProps {
+  onCreditMessage?: (messageId: string) => void;
+  creditAttached?: boolean;
+  creditBusy?: boolean;
   message: {
     id: string;
     role: string;
@@ -85,7 +89,10 @@ function AiAutoIndicator({ intent, role }: { intent?: string | null; role: strin
   );
 }
 
-function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubbleProps) {
+function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessage, creditAttached, creditBusy }: MessageBubbleProps) {
+  const [failedMediaUrl, setFailedMediaUrl] = useState<string | null>(null);
+  const mediaBroken = !!message.mediaUrl && failedMediaUrl === message.mediaUrl;
+  const canCredit = !!onCreditMessage && !!message.mediaUrl && (message.type === 'IMAGE' || message.type === 'FILE');
   const isCustomer = message.role === 'CUSTOMER';
   const isBot = message.role === 'BOT';
   const isStaff = message.role === 'STAFF';
@@ -312,6 +319,14 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
 
         {/* Bubble */}
         <div
+          draggable={canCredit && !mediaBroken && !creditBusy}
+          onDragStart={event => {
+            if (!canCredit || mediaBroken || creditBusy) { event.preventDefault(); return; }
+            event.stopPropagation();
+            event.dataTransfer.clearData();
+            event.dataTransfer.setData(CREDIT_MESSAGE_MIME, message.id);
+            event.dataTransfer.effectAllowed = 'copy';
+          }}
           className={cn(
             'relative max-w-full min-w-0 px-3.5 py-2 rounded-2xl text-sm leading-relaxed [overflow-wrap:anywhere]',
             isCustomer
@@ -339,6 +354,14 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
           )}
 
           {/* Media — render by type: FILE/non-image → file tile; image → ChatImage skeleton */}
+          {canCredit && <button type="button"
+            aria-label={mediaBroken ? 'โหลดไฟล์ไม่ได้ กรุณาขอไฟล์ใหม่' : creditAttached ? 'เอาออกจากการตรวจเครดิต' : 'แนบเพื่อตรวจเครดิต'}
+            title={mediaBroken ? 'ไฟล์อาจหมดอายุ กรุณาขอไฟล์ใหม่' : creditAttached ? 'แนบแล้ว · กดเพื่อเอาออก' : 'แนบเพื่อตรวจเครดิต · ลูกค้าไม่เห็น'}
+            disabled={mediaBroken || creditBusy}
+            onClick={event => { event.stopPropagation(); onCreditMessage?.(message.id); }}
+            className={cn('absolute flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed', canCopy ? 'top-8' : 'top-1', isCustomer ? '-right-12' : '-left-12', creditAttached ? 'text-primary opacity-100' : 'opacity-0')}>
+            {creditAttached ? <Check className="size-4" /> : <ShieldCheck className="size-4" />}
+          </button>}
           {message.mediaUrl &&
             ((message.type === 'FILE' ||
             (message.mediaType && !message.mediaType.startsWith('image/'))) ? (
@@ -353,7 +376,7 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
                 <Download className="size-3.5 shrink-0 text-muted-foreground" />
               </a>
             ) : (
-              <ChatImage src={message.mediaUrl} />
+              <ChatImage key={message.mediaUrl} src={message.mediaUrl} onLoadError={() => setFailedMediaUrl(message.mediaUrl!)} />
             ))}
 
           {/* Text — skip when the message is a FILE/non-image so the filename

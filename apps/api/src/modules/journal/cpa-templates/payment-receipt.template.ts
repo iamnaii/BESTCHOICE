@@ -129,6 +129,7 @@ export class PaymentReceiptTemplate {
       interestTotal: c.interestTotal.toString(),
       vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
       totalMonths: c.totalMonths,
+      installmentNo: inst.installmentNo,
     });
 
     // Shared with the wizard's PARTIAL preview (reconstruct-prior.ts) so the

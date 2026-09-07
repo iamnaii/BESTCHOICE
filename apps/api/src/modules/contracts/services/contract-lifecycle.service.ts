@@ -17,6 +17,8 @@ import { ShopDownPaymentReversalTemplate } from '../../journal/cpa-templates/sho
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
 import { assertSameTestSide } from '../../../utils/test-data-markers';
+import { claimCreditApproval, assertContractCreditApproval } from '../../credit-check/services/credit-approval';
+import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
 
 /**
  * ContractLifecycleService — write-side lifecycle of a contract: create
@@ -104,8 +106,8 @@ export class ContractLifecycleService {
     }
 
     // Validate paymentDueDay
-    if (dto.paymentDueDay !== undefined && (dto.paymentDueDay < 1 || (dto.paymentDueDay > 28 && dto.paymentDueDay !== 31))) {
-      throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28 หรือ 31 (สิ้นเดือน)');
+    if (dto.paymentDueDay !== undefined && (!Number.isInteger(dto.paymentDueDay) || dto.paymentDueDay < 1 || dto.paymentDueDay > 31)) {
+      throw new BadRequestException('วันที่ครบกำหนดชำระต้องเป็นจำนวนเต็มระหว่าง 1-31 (31 คือสิ้นเดือน)');
     }
 
     // Calculate installment using shared utility
@@ -138,9 +140,10 @@ export class ContractLifecycleService {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         contract = await this.prisma.$transaction(async (tx) => {
+          await lockCreditCustomer(tx, dto.customerId);
           // Verify credit check inside transaction for atomicity
           const approvedCreditCheck = await tx.creditCheck.findFirst({
-            where: { customerId: dto.customerId, status: 'APPROVED', contractId: null },
+            where: { customerId: dto.customerId, status: 'APPROVED', checkType: 'FULL', contractId: null, deletedAt: null },
             orderBy: { createdAt: 'desc' },
           });
           // Honor test-mode: only throw when there's no approved credit check
@@ -209,7 +212,7 @@ export class ContractLifecycleService {
               interestRate: params.interestRate,
               totalMonths: dto.totalMonths,
               interestTotal,
-              financedAmount,
+              financedAmount: calc.principal,
               storeCommission: calc.storeCommission,
               vatAmount: calc.vatAmount,
               vatPct: params.vatPct,
@@ -228,6 +231,11 @@ export class ContractLifecycleService {
             newContract.id, dto.totalMonths, financedAmount, monthlyPayment, dto.paymentDueDay,
             { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
           );
+          // The amount gate always applies, including when the old status-only test gate is enabled.
+          await claimCreditApproval(tx, { customerId: dto.customerId, contractId: newContract.id,
+            creditApprovalId: dto.creditApprovalId, monthlyAmounts: payments.map(payment => Number(payment.amountDue)),
+            paymentDueDay: dto.paymentDueDay, firstPaymentDue: payments[0]?.dueDate,
+            actor: { id: salespersonId, role: salespersonRole ?? 'SALES' } });
           await tx.payment.createMany({ data: payments });
 
           // SHOP-side: record the down payment received at contract creation.
@@ -254,16 +262,7 @@ export class ContractLifecycleService {
           // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (กันขายซ้ำ)
           await preemptReservationsInTx(tx, [dto.productId]);
 
-          // Link the approved credit check to this contract.
-          // Guarded: when the credit gate was bypassed in test-mode there is no
-          // approvedCreditCheck to link, so this step is skipped (creditCheckId
-          // / contractId link is simply left unset — no crash on null).
-          if (approvedCreditCheck) {
-            await tx.creditCheck.update({
-              where: { id: approvedCreditCheck.id },
-              data: { contractId: newContract.id },
-            });
-          }
+          // claimCreditApproval linked the check atomically with its single-use approval.
 
           return newContract;
         }, { timeout: 15000 });
@@ -276,7 +275,7 @@ export class ContractLifecycleService {
           continue;
         }
         // Re-throw BadRequestException / ForbiddenException as-is
-        if (err instanceof BadRequestException || err instanceof ForbiddenException) {
+        if (err instanceof BadRequestException || err instanceof ForbiddenException || err instanceof ConflictException) {
           throw err;
         }
 
@@ -394,8 +393,8 @@ export class ContractLifecycleService {
     if (totalMonths < minInstallmentMonths || totalMonths > maxInstallmentMonths) {
       throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minInstallmentMonths}-${maxInstallmentMonths} เดือน`);
     }
-    if (paymentDueDay !== undefined && paymentDueDay !== null && (paymentDueDay < 1 || (paymentDueDay > 28 && paymentDueDay !== 31))) {
-      throw new BadRequestException('วันที่ครบกำหนดชำระต้องอยู่ระหว่าง 1-28 หรือ 31 (สิ้นเดือน)');
+    if (paymentDueDay !== undefined && paymentDueDay !== null && (!Number.isInteger(paymentDueDay) || paymentDueDay < 1 || paymentDueDay > 31)) {
+      throw new BadRequestException('วันที่ครบกำหนดชำระต้องเป็นจำนวนเต็มระหว่าง 1-31 (31 คือสิ้นเดือน)');
     }
 
     // Recalculate financials using shared utility
@@ -418,6 +417,7 @@ export class ContractLifecycleService {
 
     // Update contract + recreate payment schedule
     await this.prisma.$transaction(async (tx) => {
+      await lockCreditCustomer(tx, contract.customerId);
       // T5-C4 — Any existing payment row (PAID/PARTIALLY_PAID/PENDING/OVERDUE)
       // means the installment schedule is contractually locked in. Editing
       // financial fields after that point would silently rewrite already-
@@ -438,6 +438,7 @@ export class ContractLifecycleService {
           sellingPrice !== Number(contract.sellingPrice) ||
           downPayment !== Number(contract.downPayment) ||
           totalMonths !== contract.totalMonths ||
+          paymentDueDay !== contract.paymentDueDay ||
           interestRateChanged;
 
         if (financialsChanged) {
@@ -449,17 +450,29 @@ export class ContractLifecycleService {
         }
       }
 
+      if (existingPaymentCount === 0) {
+        const schedule = generatePaymentSchedule(id, totalMonths, financedAmount, monthlyPayment, paymentDueDay,
+          { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount });
+        await assertContractCreditApproval(tx, { customerId: contract.customerId, contractId: id,
+          monthlyAmounts: schedule.map(payment => Number(payment.amountDue)), paymentDueDay });
+      }
+
       await tx.contract.update({
         where: { id },
         data: {
+          ...(existingPaymentCount === 0 ? {
           sellingPrice,
           downPayment,
           totalMonths,
           interestRate,
           interestTotal,
-          financedAmount,
+          financedAmount: calc.principal,
+          storeCommission: calc.storeCommission,
+          vatAmount: calc.vatAmount,
+          vatPct: params.vatPct,
           monthlyPayment,
           paymentDueDay,
+          } : {}),
           notes: dto.notes !== undefined ? dto.notes : contract.notes,
         },
       });
@@ -496,7 +509,7 @@ export class ContractLifecycleService {
 
   // === SOFT DELETE: ลบสัญญา (เฉพาะ CREATING/REJECTED, ห้ามลบสัญญาที่ลงนามแล้ว) ===
   async softDelete(id: string, userId: string) {
-    const contract = await this.query.findOne(id);
+    let contract = await this.query.findOne(id);
 
     // T5-C2 — Explicit terminal-status lockdown. Once a contract leaves DRAFT
     // (activation, payoff, repossession, bad-debt close-out, etc.) it becomes
@@ -545,6 +558,13 @@ export class ContractLifecycleService {
     const cascadedSignatures = hasSignatures ? contract.signatures.length : 0;
 
     await this.prisma.$transaction(async (tx) => {
+      await lockCreditCustomer(tx, contract.customerId);
+      const current = await tx.contract.findUnique({ where: { id, deletedAt: null }, include: { signatures: { where: { deletedAt: null } } } });
+      if (!current || current.status !== 'DRAFT' || !['CREATING', 'REJECTED'].includes(current.workflowStatus) ||
+        (current.signatures.length > 0 && current.workflowStatus !== 'REJECTED')) {
+        throw new BadRequestException('สัญญาเปลี่ยนสถานะแล้ว กรุณาโหลดข้อมูลใหม่ก่อนลบ');
+      }
+      contract = { ...contract, ...current };
       // Reverse the SHOP down-payment JE if one was posted for this DRAFT contract.
       const downPayment = new Decimal(contract.downPayment.toString());
       if (downPayment.gt(0)) {
@@ -583,10 +603,8 @@ export class ContractLifecycleService {
           data: { deletedAt: now },
         });
       }
-      // Release the credit check back to the customer — unlinking from this
-      // (now-deleted) contract lets them reuse the APPROVED decision for a
-      // future contract. The gate at contracts.service.ts:332 filters on
-      // `contractId: null`, so a stale link would trap the approval.
+      // Unlink the document for a new review. The old approval remains consumed
+      // by this deleted contract and can never be claimed a second time.
       await tx.creditCheck.updateMany({
         where: { contractId: id },
         data: { contractId: null },

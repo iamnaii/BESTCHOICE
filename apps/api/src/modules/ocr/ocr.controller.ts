@@ -1,4 +1,5 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req, BadRequestException } from '@nestjs/common';
+import { CreditRoomActor, RoomCreditService } from '../credit-check/services/room-credit.service';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { OcrService } from './ocr.service';
@@ -19,7 +20,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @Controller('ocr')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OcrController {
-  constructor(private ocrService: OcrService) {}
+  constructor(private ocrService: OcrService, private roomCredit: RoomCreditService) {}
 
   @Post('id-card')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
@@ -59,7 +60,11 @@ export class OcrController {
   @Post('bank-statement')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   @Throttle({ short: { limit: 5, ttl: 60000 } })
-  analyzeBankStatement(@Body() dto: OcrBankStatementDto) {
+  analyzeBankStatement(@Body() dto: OcrBankStatementDto, @Req() req: { user: CreditRoomActor }) {
+    if (dto.roomId) {
+      if (dto.filesBase64 !== undefined) throw new BadRequestException('กรุณาเลือกรายการไฟล์จากห้องแชทเท่านั้น');
+      return this.roomCredit.analyze(dto.roomId, dto.fileIds!, req.user);
+    }
     return this.ocrService.analyzeBankStatement(dto.filesBase64);
   }
 }

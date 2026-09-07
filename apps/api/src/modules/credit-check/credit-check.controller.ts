@@ -7,6 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { CreditAffordabilityDto } from './dto/credit-affordability.dto';
 
 // === Global credit check list ===
 @ApiTags('Credit Check')
@@ -16,9 +17,17 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class GlobalCreditCheckController {
   constructor(private service: CreditCheckService) {}
 
+  @Post(':id/affordability')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  previewAffordability(@Param('id') id: string, @Body() dto: CreditAffordabilityDto,
+    @CurrentUser() user: { id: string; role: string }) {
+    return this.service.override_.approval.preview(id, dto, user);
+  }
+
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
+    @CurrentUser() user: { id: string; role: string },
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
@@ -37,7 +46,7 @@ export class GlobalCreditCheckController {
       endDate,
       branchId,
       checkedById,
-    });
+    }, user);
   }
 
   @Get('customer-history/:customerId')
@@ -92,8 +101,8 @@ export class CreditCheckController {
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findByContract(@Param('contractId') contractId: string) {
-    return this.service.findByContract(contractId);
+  findByContract(@Param('contractId') contractId: string, @CurrentUser() user: { id: string; role: string }) {
+    return this.service.findByContract(contractId, user);
   }
 
   @Post()
@@ -131,14 +140,14 @@ export class CustomerCreditCheckController {
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findByCustomer(@Param('customerId') customerId: string) {
-    return this.service.findByCustomer(customerId);
+  findByCustomer(@Param('customerId') customerId: string, @CurrentUser() user: { id: string; role: string }) {
+    return this.service.findByCustomer(customerId, user);
   }
 
   @Get('latest')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findLatest(@Param('customerId') customerId: string) {
-    return this.service.findLatestByCustomer(customerId);
+  findLatest(@Param('customerId') customerId: string, @CurrentUser() user: { id: string; role: string }) {
+    return this.service.findLatestByCustomer(customerId, user);
   }
 
   @Post()

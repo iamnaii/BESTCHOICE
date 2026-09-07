@@ -36,6 +36,9 @@ export default function LinkCustomerDialog({
       setSearch('');
       queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      for (const key of ['customers', 'credit-checks', 'customer-credit-checks', 'customer-latest-credit', 'customer-credit-check-latest-statement']) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
     },
     onError: () => toast.error('ผูกลูกค้าไม่สำเร็จ'),
   });

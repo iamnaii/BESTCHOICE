@@ -90,6 +90,9 @@ const stickerStaticUrl = (stickerId: number) =>
 const MAX_COMPOSER_HEIGHT = 128; // px — matches Tailwind max-h-32 (8rem)
 
 interface ChatPanelProps {
+  onCreditMessage?: (messageId: string) => void;
+  creditMessageIds?: string[];
+  creditBusy?: boolean;
   session: any;
   messages: any[];
   isLoadingMessages: boolean;
@@ -134,6 +137,9 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({
+  onCreditMessage,
+  creditMessageIds = [],
+  creditBusy,
   session,
   messages,
   isLoadingMessages,
@@ -611,7 +617,8 @@ export default function ChatPanel({
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-primary/5 pointer-events-none">
           <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-primary bg-card/90 px-6 py-4 text-primary">
             <Upload className="size-6" />
-            <span className="text-sm font-medium leading-snug">วางไฟล์เพื่อส่ง</span>
+            <span className="text-sm font-medium leading-snug">วางที่นี่ = ส่งให้ลูกค้า</span>
+            <span className="text-xs leading-snug">ลูกค้าเห็นทันที</span>
           </div>
         </div>
       )}
@@ -867,6 +874,9 @@ export default function ChatPanel({
                     />
                   ) : (
                     <MessageBubble
+                      onCreditMessage={onCreditMessage}
+                      creditAttached={creditMessageIds.includes(item.data.id)}
+                      creditBusy={creditBusy}
                       message={item.data}
                       customerAvatar={avatarUrl || undefined}
                       customerInitial={displayName[0]}

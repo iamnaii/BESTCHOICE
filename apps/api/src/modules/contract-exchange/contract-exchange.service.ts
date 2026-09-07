@@ -24,6 +24,10 @@ import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
 import { computeExchangePlan } from './exchange-plan.util';
+import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
+import { generatePaymentSchedule } from '../../utils/installment.util';
+import { bindExchangeCreditCheck } from '../credit-check/services/credit-approval';
+import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 import { assertSameTestSide, TEST_SIDE_CUSTOMER_SELECT } from '../../utils/test-data-markers';
@@ -422,7 +426,7 @@ export class ContractExchangeService {
     if (pre.mode === 'MEMO') {
       return this.approveMemo(id, user.id, dto);
     }
-    return this.approvePriced(id, user.id);
+    return this.approvePriced(id, user.id, user.role);
   }
 
   /** MEMO (workbook Case 1): เปลี่ยน device บนสัญญาเดิม — ไม่มี JE, ไม่มีสัญญาใหม่ (spec §8) */
@@ -528,7 +532,7 @@ export class ContractExchangeService {
   }
 
   /** PRICED: เดิมคือ approve() ทั้งก้อน — เปลี่ยนเฉพาะที่มาของแผนผ่อน (Device Swap 2026-07) */
-  private async approvePriced(id: string, userId: string) {
+  private async approvePriced(id: string, userId: string, userRole?: string | null) {
     // audit หลัง commit — เหตุผลเดียวกับ `approveMemo` (nested root-tx = P2028)
     let pendingAudit: AuditEntry | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
@@ -555,6 +559,7 @@ export class ContractExchangeService {
           newProduct: { include: { po: { select: { poNumber: true } } } },
         },
       });
+      await lockCreditCustomer(tx, req.oldContract.customerId);
       const old = req.oldContract;
       // Phase 5 Task 2: เครื่องใหม่ต้องยังไม่ถูก soft-delete — การลบสินค้าไม่แตะ
       // `product.status` ดังนั้นเช็คสถานะอย่างเดียวจับไม่ได้ และ approve ก็สั่ง
@@ -665,6 +670,14 @@ export class ContractExchangeService {
         };
       }
 
+      const breakdown = computeInstallmentBreakdown(planFields);
+      const scheduleTotal = usedSnapshot
+        ? breakdown.grossExclVat.plus(breakdown.vat)
+        : planFields.monthlyPayment.times(planFields.totalMonths);
+      if (planFields.interestTotal.lt(0) || !breakdown.grossExclVat.plus(breakdown.vat).equals(scheduleTotal)) {
+        throw new BadRequestException('ยอดแผนเดิมไม่ตรงกับตารางบัญชี กรุณาส่งคำขอเปลี่ยนเครื่องใหม่เพื่อคำนวณแผนล่าสุด');
+      }
+
       // 4. Create new contract as DRAFT (sign-then-activate gate).
       // Issue #1086 item 4 — use EXCH-YYYYMMDD-NNNN to avoid grep-collision
       // with ExpenseDocument's EX- prefix.
@@ -712,6 +725,7 @@ export class ContractExchangeService {
           pdpaConsentId: clonedPdpaConsentId,
           planType: old.planType,
           totalMonths: planFields.totalMonths,
+          paymentDueDay: old.paymentDueDay || 1,
           monthlyPayment: planFields.monthlyPayment,
           financedAmount: planFields.financedAmount,
           storeCommission: planFields.storeCommission,
@@ -727,6 +741,29 @@ export class ContractExchangeService {
           exchangedFromContractId: old.id,
         } as any,
       });
+
+      await bindExchangeCreditCheck(tx, old.customerId, newContract.id, { id: userId, role: userRole || 'SALES' });
+      const principalPerInst = planFields.financedAmount.div(planFields.totalMonths).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+      const commissionPerInst = planFields.monthlyPayment.minus(principalPerInst)
+        .minus(breakdown.interestPerInst).minus(breakdown.vatPerInst);
+      const split = (total: Decimal, monthly: Decimal, last: boolean) =>
+        (last ? total.minus(monthly.times(planFields.totalMonths - 1)) : monthly).toDecimalPlaces(2).toNumber();
+      const schedule = generatePaymentSchedule(newContract.id, planFields.totalMonths,
+        scheduleTotal.toNumber(), planFields.monthlyPayment.toNumber(), old.paymentDueDay || 1)
+        .map((payment, index) => {
+          const last = index === planFields.totalMonths - 1;
+          return { ...payment,
+            monthlyPrincipal: split(planFields.financedAmount, principalPerInst, last),
+            monthlyInterest: split(planFields.interestTotal, breakdown.interestPerInst, last),
+            monthlyCommission: split(breakdown.commission, commissionPerInst, last),
+            vatAmount: split(breakdown.vat, breakdown.vatPerInst, last),
+          };
+        });
+      if (schedule.some(payment => [payment.monthlyPrincipal, payment.monthlyInterest,
+        payment.monthlyCommission, payment.vatAmount].some(amount => amount < 0))) {
+        throw new BadRequestException('ส่วนประกอบค่างวดไม่ถูกต้อง กรุณาส่งคำขอเปลี่ยนเครื่องใหม่');
+      }
+      await tx.payment.createMany({ data: schedule });
 
       // 5. Reserve the new product so it can't be sold to anyone else
       // between approval and activation. The new-contract activation flow

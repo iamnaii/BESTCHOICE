@@ -25,6 +25,9 @@ import { ContractExchangeService } from '../contract-exchange/contract-exchange.
 import { TestModeService } from '../test-mode/test-mode.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import * as crypto from 'crypto';
+import { CreditHistoryActor, visibleContractCredit } from '../credit-check/services/room-credit-access';
+import { assertContractCreditApproval } from '../credit-check/services/credit-approval';
+import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
 
 @Injectable()
 export class ContractWorkflowService {
@@ -154,7 +157,7 @@ export class ContractWorkflowService {
   }
 
   // === WORKFLOW: ส่งตรวจสอบ (ตรวจ Validation ทั้งหมดก่อนส่ง) ===
-  async submitForReview(id: string, userId: string) {
+  async submitForReview(id: string, userId: string, userRole = 'SALES') {
     const contract = await this.findOne(id);
 
     if (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED') {
@@ -247,7 +250,7 @@ export class ContractWorkflowService {
       },
     });
 
-    return this.findOne(id);
+    return this.findOne(id, { id: userId, role: userRole });
   }
 
   // === WORKFLOW: อนุมัติสัญญา (ตรวจเอกสารครบก่อนอนุมัติ) ===
@@ -433,6 +436,16 @@ export class ContractWorkflowService {
 
     await this.prisma.$transaction(async (tx) => {
       // Re-check product status inside transaction to prevent race condition
+      await lockCreditCustomer(tx, contract.customerId);
+      const current = await tx.contract.findUnique({ where: { id, deletedAt: null },
+        include: { payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } } } });
+      if (!current || current.status !== 'DRAFT' || current.workflowStatus !== 'APPROVED') {
+        throw new BadRequestException('สัญญาเปลี่ยนสถานะแล้ว กรุณาโหลดข้อมูลใหม่');
+      }
+      await assertContractCreditApproval(tx, { customerId: current.customerId, contractId: id,
+        paymentDueDay: current.paymentDueDay,
+        monthlyAmounts: current.payments.map(payment => Number(payment.amountDue)),
+        firstPaymentDue: current.payments[0]?.dueDate });
       // (เงื่อนไข `deletedAt: null` ต้องเหมือนด่านนอก tx เป๊ะ — ไม่งั้นการลบที่แทรกเข้ามา
       // ระหว่างสองด่านจะหลุดผ่านด่านใน tx ซึ่งเป็นตาข่ายสุดท้ายก่อนเงิน/กรรมสิทธิ์ขยับ)
       const prod = await tx.product.findFirst({
@@ -744,7 +757,7 @@ export class ContractWorkflowService {
   }
 
   /** Shared findOne - reuses Prisma query for contract with full includes */
-  private async findOne(id: string) {
+  private async findOne(id: string, actor?: CreditHistoryActor) {
     const contract = await this.prisma.contract.findUnique({
       where: { id },
       include: {
@@ -769,6 +782,6 @@ export class ContractWorkflowService {
       },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-    return contract;
+    return visibleContractCredit(this.prisma, contract, actor);
   }
 }

@@ -2,6 +2,10 @@ import { IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max 
 import { Type } from 'class-transformer';
 
 export class CreateSaleDto {
+  @IsString()
+  @IsOptional()
+  creditApprovalId?: string;
+
   @IsEnum(['CASH', 'INSTALLMENT', 'EXTERNAL_FINANCE'], { message: 'กรุณาระบุประเภทการขาย' })
   saleType: string;
 

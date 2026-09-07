@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { generatePaymentSchedule } from './installment.util';
 import {
   buildInstallmentScheduleRows,
   ensureInstallmentSchedules,
@@ -42,6 +43,31 @@ describe('installment-schedule.util', () => {
     it('falls back to createdAt day-of-month when paymentDueDay is null', () => {
       const rows = buildInstallmentScheduleRows({ ...base, paymentDueDay: null });
       expect(rows[0].dueDate).toEqual(new Date(2026, 1, 10));
+    });
+
+    it.each([29, 30, 31])('keeps payday %i within each target month, then restores the original day', (paymentDueDay) => {
+      const rows = buildInstallmentScheduleRows({ ...base, paymentDueDay, totalMonths: 3 });
+      expect(rows.map(row => row.dueDate)).toEqual([
+        new Date(2026, 1, 28), new Date(2026, 2, paymentDueDay), new Date(2026, 3, Math.min(paymentDueDay, 30)),
+      ]);
+    });
+
+    it('uses February 29 for an end-of-month payday in a leap year', () => {
+      const rows = buildInstallmentScheduleRows({ ...base, createdAt: new Date(2028, 0, 10), paymentDueDay: 31 });
+      expect(rows[0].dueDate).toEqual(new Date(2028, 1, 29));
+      expect(rows[1].dueDate).toEqual(new Date(2028, 2, 31));
+    });
+
+    it.each([25, 29, 30, 31])('matches the real Payment dates for payday %i', (paymentDueDay) => {
+      const createdAt = new Date(2026, 0, 31, 12);
+      jest.useFakeTimers().setSystemTime(createdAt);
+      try {
+        const payments = generatePaymentSchedule('c1', 3, 3000, 1000, paymentDueDay);
+        const schedules = buildInstallmentScheduleRows({ ...base, createdAt, paymentDueDay, totalMonths: 3, financedAmount: 3000, monthlyPayment: 1000 });
+        expect(schedules.map(row => row.dueDate)).toEqual(payments.map(row => row.dueDate));
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('treats null interestTotal / monthlyPayment as zero', () => {

@@ -9,7 +9,10 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ApproveCreditAffordabilityDto } from './credit-affordability.dto';
 
 // Per-file size cap. A 5MB raw image → ~6.7MB base64 (33% overhead).
 // Cap at 8MB base64 per file so owners can upload full-resolution phone
@@ -41,6 +44,11 @@ export class CreateCreditCheckDto {
 }
 
 export class OverrideCreditCheckDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ApproveCreditAffordabilityDto)
+  affordability?: ApproveCreditAffordabilityDto;
+
   @IsString()
   @Matches(/^(APPROVED|REJECTED|MANUAL_REVIEW)$/, {
     message: 'status ต้องเป็น APPROVED, REJECTED หรือ MANUAL_REVIEW',

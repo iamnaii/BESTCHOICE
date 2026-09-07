@@ -2,6 +2,10 @@ import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max,
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
+  @IsUUID()
+  @IsOptional()
+  creditApprovalId?: string;
+
   @IsString()
   customerId: string;
 
@@ -41,7 +45,7 @@ export class CreateContractDto {
   @IsOptional()
   notes?: string;
 
-  // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-28 หรือ 31=สิ้นเดือน)
+  // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-31 โดย 31=สิ้นเดือน)
   @IsInt({ message: 'วันครบกำหนดชำระต้องเป็นจำนวนเต็ม' })
   @Min(1, { message: 'วันครบกำหนดชำระต้องอยู่ระหว่าง 1-31' })
   @Max(31, { message: 'วันครบกำหนดชำระต้องอยู่ระหว่าง 1-31' })

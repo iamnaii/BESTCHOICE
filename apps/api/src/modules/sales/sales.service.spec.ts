@@ -1,3 +1,4 @@
+import * as creditApproval from '../credit-check/services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -154,7 +155,9 @@ describe('SalesService', () => {
   // ─── beforeEach ────────────────────────────────────────────────────────────
 
   beforeEach(async () => {
+    jest.spyOn(creditApproval, 'claimCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
     prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       sale: {
         findMany: jest.fn().mockResolvedValue([mockSale]),
         findUnique: jest.fn().mockResolvedValue(mockSale),

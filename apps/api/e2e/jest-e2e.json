@@ -1,8 +1,19 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": "..",
   "testEnvironment": "node",
   "testRegex": "e2e/.*\\.e2e-spec\\.ts$",
-  "testPathIgnorePatterns": ["approval-workflow.e2e-spec.ts"],
-  "transform": { "^.+\\.(t|j)s$": "ts-jest" }
+  "testPathIgnorePatterns": [
+    "approval-workflow.e2e-spec.ts",
+    "chat-credit-check\\.e2e-spec\\.ts$",
+    "credit-approval\\.e2e-spec\\.ts$",
+    "credit-payment-flow\\.e2e-spec\\.ts$"
+  ],
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  }
 }

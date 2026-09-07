@@ -1,8 +1,11 @@
-import { NotFoundException, Logger } from '@nestjs/common';
+import { BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCreditCheckDto } from '../dto/credit-check.dto';
 import { CreditCheckRiskService } from './credit-check-risk.service';
+import { creditHistoryAccess, CreditHistoryActor } from './room-credit-access';
+import { approvalHistoryInclude } from './credit-approval';
+import { lockCreditCustomer } from './room-credit-history';
 
 /**
  * CRUD sub-service for credit-check. Plain class (NOT @Injectable) —
@@ -29,8 +32,8 @@ export class CreditCheckCrudService {
     endDate?: string;
     branchId?: string;
     checkedById?: string;
-  }) {
-    const where: Record<string, unknown> = { deletedAt: null };
+  }, actor?: CreditHistoryActor) {
+    const where: Record<string, unknown> = { deletedAt: null, ...creditHistoryAccess(actor) };
     if (filters.status) where.status = filters.status;
     if (filters.search) {
       where.customer = { name: { contains: filters.search, mode: 'insensitive' } };
@@ -65,6 +68,7 @@ export class CreditCheckCrudService {
           customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
           contract: { select: { id: true, contractNumber: true } },
           checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
         },
       }),
       this.prisma.creditCheck.count({ where }),
@@ -97,12 +101,13 @@ export class CreditCheckCrudService {
     };
   }
 
-  async findByContract(contractId: string) {
+  async findByContract(contractId: string, actor?: CreditHistoryActor) {
     const creditCheck = await this.prisma.creditCheck.findUnique({
-      where: { contractId },
+      where: actor ? { contractId, AND: creditHistoryAccess(actor) } : { contractId },
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
         checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
       },
     });
     if (creditCheck?.deletedAt) return null;
@@ -110,21 +115,23 @@ export class CreditCheckCrudService {
   }
 
   // === Customer-level credit check (ไม่ต้องมีสัญญา) ===
-  async findByCustomer(customerId: string) {
+  async findByCustomer(customerId: string, actor?: CreditHistoryActor) {
     return this.prisma.creditCheck.findMany({
-      where: { customerId, deletedAt: null },
+      where: { customerId, deletedAt: null, ...creditHistoryAccess(actor) },
       orderBy: { createdAt: 'desc' },
       include: {
         contract: { select: { id: true, contractNumber: true } },
         checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
       },
     });
   }
 
-  async findLatestByCustomer(customerId: string) {
+  async findLatestByCustomer(customerId: string, actor?: CreditHistoryActor) {
     const include = {
       customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
       checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
     };
 
     // Prefer the latest FULL check (real credit assessment: statement + AI
@@ -133,7 +140,7 @@ export class CreditCheckCrudService {
     // a customer intake PRE=MANUAL_REVIEW shouldn't override an earlier
     // FULL=APPROVED that a manager signed off on.
     const latestFull = await this.prisma.creditCheck.findFirst({
-      where: { customerId, deletedAt: null, checkType: 'FULL' },
+      where: { customerId, deletedAt: null, checkType: 'FULL', ...creditHistoryAccess(actor) },
       orderBy: { createdAt: 'desc' },
       include,
     });
@@ -142,7 +149,7 @@ export class CreditCheckCrudService {
     // No FULL check yet — fall back to latest PRE (covers GOLD-tier
     // auto-approve via pre-check flow).
     return this.prisma.creditCheck.findFirst({
-      where: { customerId, deletedAt: null },
+      where: { customerId, deletedAt: null, ...creditHistoryAccess(actor) },
       orderBy: { createdAt: 'desc' },
       include,
     });
@@ -162,6 +169,7 @@ export class CreditCheckCrudService {
         customerId,
         deletedAt: null,
         createdAt: { gte: recentCutoff },
+        roomAnalysis: { is: null },
         bankName: dto.bankName ?? null,
         statementMonths: dto.statementMonths ?? 3,
       },
@@ -169,11 +177,14 @@ export class CreditCheckCrudService {
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
         checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
       },
     });
     if (recentDuplicate) return recentDuplicate;
 
-    const creditCheck = await this.prisma.creditCheck.create({
+    const creditCheck = await this.prisma.$transaction(async tx => {
+      await lockCreditCustomer(tx, customerId);
+      return tx.creditCheck.create({
       data: {
         customerId,
         bankName: dto.bankName,
@@ -184,7 +195,9 @@ export class CreditCheckCrudService {
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
         checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
       },
+      });
     });
 
     // Auto-calculate risk score in background (don't block creation)
@@ -215,6 +228,9 @@ export class CreditCheckCrudService {
     // Check if credit check already exists
     const existing = await this.prisma.creditCheck.findUnique({ where: { contractId } });
     if (existing) {
+      if ((existing.aiAnalysis as Record<string, unknown> | null)?.source === 'chat-statement') {
+        throw new BadRequestException('ผลสเตทเม้นจากแชทต้องวิเคราะห์ใหม่จากห้องต้นทาง');
+      }
       // Update existing
       return this.prisma.creditCheck.update({
         where: { contractId },
@@ -231,11 +247,14 @@ export class CreditCheckCrudService {
         include: {
           customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
           checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
         },
       });
     }
 
-    const creditCheck = await this.prisma.creditCheck.create({
+    const creditCheck = await this.prisma.$transaction(async tx => {
+      await lockCreditCustomer(tx, contract.customerId);
+      return tx.creditCheck.create({
       data: {
         contractId,
         customerId: contract.customerId,
@@ -246,7 +265,9 @@ export class CreditCheckCrudService {
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
         checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
       },
+      });
     });
 
     // Auto-calculate risk score in background (don't block creation)
@@ -280,13 +301,16 @@ export class CreditCheckCrudService {
   }) {
     const creditCheck = await this.prisma.creditCheck.findUnique({
       where: { id: creditCheckId },
-      select: { id: true, deletedAt: true, customerId: true },
+      select: { id: true, deletedAt: true, customerId: true, aiAnalysis: true },
     });
     if (!creditCheck || creditCheck.deletedAt) {
       throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
     }
 
     const updateData: Record<string, unknown> = {};
+    if ((creditCheck.aiAnalysis as Record<string, unknown> | null)?.source === 'chat-statement') {
+      throw new BadRequestException('ผลสเตทเม้นจากแชทต้องวิเคราะห์ใหม่จากห้องต้นทาง');
+    }
     if (data.salaryVerified != null) updateData.salaryVerified = data.salaryVerified;
     if (data.employerName != null) updateData.employerName = data.employerName;
     if (data.salaryPayDay != null) updateData.salaryPayDay = data.salaryPayDay;
@@ -302,6 +326,7 @@ export class CreditCheckCrudService {
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
         checkedBy: { select: { id: true, name: true } },
+          approvals: approvalHistoryInclude,
       },
     });
 

@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { InboxTab } from './components/ChannelFilter';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { resolveUploadFeedback } from './components/upload-feedback';
+import { useRoomCredit } from './hooks/useRoomCredit';
 
 // Sound notification
 
@@ -36,6 +37,20 @@ export default function UnifiedInboxPage() {
   const { roomId: roomIdParam } = useParams<{ roomId: string }>();
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
+  const [creditFocus, setCreditFocus] = useState<{ roomId: string; tick: number } | null>(null);
+  const activeCreditRoomRef = useRef(activeRoomId);
+  activeCreditRoomRef.current = activeRoomId;
+  const credit = useRoomCredit(activeRoomId, (attachedRoomId) => {
+    const open = () => {
+      navigate(`/inbox/${attachedRoomId}`);
+      setCreditFocus({ roomId: attachedRoomId, tick: Date.now() });
+      if (window.innerWidth < 1280) setCustomerPanelOpen(true);
+    };
+    if (attachedRoomId === activeCreditRoomRef.current && window.innerWidth >= 1280) {
+      setCreditFocus({ roomId: attachedRoomId, tick: Date.now() });
+    }
+    toast.success('แนบไฟล์เพื่อตรวจเครดิตแล้ว', window.innerWidth < 1280 ? { action: { label: 'เปิดแผง', onClick: open } } : undefined);
+  });
   const [roomViewers, setRoomViewers] = useState<{ userId: string; userName: string }[]>([]);
   // เจ้าของเคาะ 2026-09-05: ช่องทางเลือกทีละอัน · เมนูผู้ดูแลแทนเมนูบอท · view 'expired' = มุมมอง "ตอบไม่ทัน"
   const [filters, setFilters] = useState<InboxFilters>({ tab: 'waiting', channel: null, who: 'all', view: 'queue' });
@@ -631,6 +646,9 @@ export default function UnifiedInboxPage() {
           onReturnToAI={() => activeRoomId && returnToAIMutation.mutate(activeRoomId)}
           currentUserId={user?.id ?? ''}
           onShowCustomerInfo={() => setCustomerPanelOpen(true)}
+          onCreditMessage={credit.toggleMessage}
+          creditMessageIds={credit.files.flatMap(file => file.sourceMessageId ? [file.sourceMessageId] : [])}
+          creditBusy={credit.busy}
           isUploadingFile={uploadFileMutation.isPending}
           otherViewers={otherViewers}
           roomMuted={isMuted(activeRoomId ?? undefined)}
@@ -647,6 +665,8 @@ export default function UnifiedInboxPage() {
       {/* Right panel: RoomDossier (โครง OBI · 3 แท็บ) — always visible on xl+ */}
       <div className="hidden xl:block">
         <RoomDossier
+          credit={credit}
+          creditFocus={creditFocus}
           room={sessionQuery.data}
           customerId={customerId}
           activeRoomId={activeRoomId}
@@ -659,6 +679,8 @@ export default function UnifiedInboxPage() {
         <SheetContent side="right" className="w-80 p-0 xl:hidden">
           <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
           <RoomDossier
+            credit={credit}
+            creditFocus={creditFocus}
             room={sessionQuery.data}
             customerId={customerId}
             activeRoomId={activeRoomId}

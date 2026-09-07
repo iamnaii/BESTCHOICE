@@ -124,7 +124,7 @@ export class SaleCreationService {
         sale = await this.writer.createCashSale(dto, salespersonId, netAmount, discount);
         break;
       case 'INSTALLMENT':
-        sale = await this.writer.createInstallmentSale(dto, salespersonId, netAmount, discount);
+        sale = await this.writer.createInstallmentSale(dto, salespersonId, netAmount, discount, userRole);
         break;
       case 'EXTERNAL_FINANCE':
         sale = await this.writer.createExternalFinanceSale(dto, salespersonId, netAmount, discount);

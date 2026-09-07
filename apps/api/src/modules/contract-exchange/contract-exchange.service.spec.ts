@@ -1,3 +1,10 @@
+import * as creditApproval from '../credit-check/services/credit-approval';
+import * as creditLocks from '../credit-check/services/room-credit-history';
+beforeEach(() => {
+  jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockResolvedValue(undefined);
+  jest.spyOn(creditLocks, 'lockCreditCustomer').mockResolvedValue(undefined);
+});
+afterEach(() => jest.restoreAllMocks());
 import { Test } from '@nestjs/testing';
 import {
   BadRequestException,
@@ -397,6 +404,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
   // Carries the full column set approve() reads so the AUTO path can run end-to-end.
   const oldContract = {
     id: 'old-c',
+    paymentDueDay: 25,
     branchId: 'br-1',
     status: 'ACTIVE',
     productId: 'op',
@@ -508,6 +516,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
       tradeInValuation: { findFirst: jest.fn().mockResolvedValue(null) },
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
       payment: {
+        createMany: jest.fn(),
         count: jest.fn().mockResolvedValue(4),
         findFirst: jest.fn().mockResolvedValue(null),
       },
@@ -591,6 +600,11 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
   it('tier AUTO → auto-approve ทันที (status APPROVED + newContractId)', async () => {
     // basePrice 8000 → marketMin 6800; buyback 8000 ≥ NCV(0) และ ≥ 6800 → AUTO
     prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: '8000' });
+    prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+      id: 'req-1', oldContract, newProductId: 'np2', newProduct: { ...diffNewProduct, ...REAL_PRODUCT_FENCE },
+      newTotalMonths: 12, newInterestRate: '0.05', newMonthlyPayment: '1515.83',
+      newStoreCommission: '1000', newInterestTotal: '6000', newVatAmount: '1190',
+    });
     const result = await service.submit(pricedDtoFull, user);
     expect(result.autoApproved).toBe(true);
     expect(result.status).toBe('APPROVED');
@@ -732,7 +746,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
-      payment: { count: jest.fn() },
+      payment: { count: jest.fn(), createMany: jest.fn() },
       product: {
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn(),
@@ -790,6 +804,17 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     await expect(
       service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {}),
     ).rejects.toThrow(/อาจถูกอนุมัติแล้ว/);
+  });
+
+  it('requires a fresh credit review before reserving the replacement product', async () => {
+    prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+    prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({ id: 'r1', newProductId: 'new-p',
+      newProduct: { id: 'new-p', deletedAt: null, ...REAL_PRODUCT_FENCE }, oldContract: makeOldContract(12, 4) });
+    prisma.payment.count.mockResolvedValue(4);
+    prisma.contract.create.mockResolvedValue({ id: 'new-c' });
+    jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockRejectedValue(new BadRequestException('ต้องตรวจเครดิตรอบใหม่'));
+    await expect(service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(/รอบใหม่/);
+    expect(prisma.product.update).not.toHaveBeenCalled();
   });
 
   it('creates DRAFT new contract + reserves new product + APPROVED workflow + audit (no JE, no old-side flips)', async () => {
@@ -857,6 +882,11 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     );
 
     expect(result).toEqual({ id: 'r1', newContractId: 'new-c', mode: 'PRICED' });
+    expect(prisma.payment.createMany).toHaveBeenCalled();
+    const schedule = prisma.payment.createMany.mock.calls[0][0].data;
+    expect(schedule).toHaveLength(8);
+    expect(schedule.every((p: any) => p.amountDue > 0)).toBe(true);
+    expect(prisma.contract.create.mock.calls[0][0].data.paymentDueDay).toBe(25);
   });
 
   it('clones PDPA consent from old contract for new contract (unique constraint workaround)', async () => {
@@ -996,7 +1026,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
   // Task 8 review fix 1 — legacy fallback must pass vatAmount null THROUGH,
   // not coerce to Decimal(0): ExchangeNewContract1ATemplate treats null as
   // "derive 7%" but 0 as "book zero VAT".
-  it('legacy fallback: old.vatAmount null → contract.create receives vatAmount null (not 0)', async () => {
+  it('rejects a legacy request whose VAT fallback makes its schedule disagree with accounting', async () => {
     prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
     prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
       id: 'r1',
@@ -1010,10 +1040,9 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     prisma.payment.count.mockResolvedValue(4);
     prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
-    await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
-
-    const createData = prisma.contract.create.mock.calls[0][0].data;
-    expect(createData.vatAmount).toBeNull();
+    await expect(service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(/ส่งคำขอ.*ใหม่/);
+    expect(prisma.contract.create).not.toHaveBeenCalled();
+    expect(prisma.product.update).not.toHaveBeenCalled();
   });
 
   // Issue #1086 item 4 — EXCH-YYYYMMDD-NNNN doc number (no EX-${Date.now()} collision)
@@ -1199,7 +1228,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         create: jest.fn().mockResolvedValue({ id: 'new-c', contractNumber: 'EXCH-20260729-0001' }),
         update: jest.fn(),
       },
-      payment: { count: jest.fn().mockResolvedValue(4) },
+      payment: { count: jest.fn().mockResolvedValue(4), createMany: jest.fn() },
       product: {
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn().mockResolvedValue({
@@ -1473,6 +1502,14 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     expect(created.monthlyPayment.toString()).toBe('1515.83');
     expect(created.financedAmount.toString()).toBe('10000');
     expect(created.interestTotal.toString()).toBe('6000');
+    const payments = prisma.payment.createMany.mock.calls[0][0].data;
+    for (const [field, total] of [['monthlyPrincipal', 10000], ['monthlyCommission', 1000], ['monthlyInterest', 6000], ['vatAmount', 1190]] as const) {
+      expect(payments.every((p: any) => p[field] !== null)).toBe(true);
+      expect(payments.reduce((sum: number, p: any) => sum + p[field], 0)).toBeCloseTo(total, 2);
+    }
+    expect(payments.reduce((sum: number, p: any) => sum + p.amountDue, 0)).toBeCloseTo(18190, 2);
+    expect(payments[0].monthlyPrincipal).toBe(833.33);
+    expect(payments[0].vatAmount).toBe(99.17);
     expect(created.downPayment.toString()).toBe('0');
     expect(result.mode).toBe('PRICED');
     // Snapshot branch must NOT run the legacy remaining-months clone
@@ -2343,6 +2380,7 @@ describe('ContractExchangeService.listRecent', () => {
 function makeOldContract(totalMonths: number, _paid: number) {
   return {
     id: 'old-c',
+    paymentDueDay: 25,
     customerId: 'cust',
     productId: 'old-p',
     branchId: 'br',
@@ -2353,10 +2391,10 @@ function makeOldContract(totalMonths: number, _paid: number) {
     totalMonths,
     monthlyPayment: { toString: () => '1416.66' } as any,
     financedAmount: { toString: () => '10000' } as any,
-    storeCommission: { toString: () => '1000' } as any,
+    storeCommission: { toString: () => '0' } as any,
     interestRate: { toString: () => '16' } as any,
     interestTotal: { toString: () => '4000' } as any,
-    vatAmount: { toString: () => '1190' } as any,
+    vatAmount: { toString: () => '0' } as any,
     sellingPrice: { toString: () => '28000' } as any,
     downPayment: { toString: () => '4000' } as any,
     creditBalance: { toString: () => '0' } as any,

@@ -47,7 +47,9 @@ export function buildInstallmentScheduleRows(
 
   const rows: Prisma.InstallmentScheduleCreateManyInput[] = [];
   for (let i = 1; i <= c.totalMonths; i++) {
-    const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, dueDay);
+    const targetMonth = baseDate.getMonth() + i;
+    const lastDay = new Date(baseDate.getFullYear(), targetMonth + 1, 0).getDate();
+    const dueDate = new Date(baseDate.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
     rows.push({
       contractId: c.id,
       installmentNo: i,

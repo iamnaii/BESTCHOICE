@@ -122,6 +122,10 @@ export class CreditCheckRiskService {
       throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
     }
 
+    if ((creditCheck.aiAnalysis as Record<string, unknown> | null)?.source === 'chat-statement') {
+      throw new BadRequestException('ผลสเตทเม้นจากแชทต้องวิเคราะห์ใหม่จากห้องต้นทาง');
+    }
+
     // Determine salary and monthly payment
     const salary = data.salaryVerified
       || (creditCheck.salaryVerified ? Number(creditCheck.salaryVerified) : 0)
@@ -185,9 +189,7 @@ export class CreditCheckRiskService {
     }
 
     // Suggest due day based on salary pay day
-    const suggestedDueDay = creditCheck.customer.salaryPayDay
-      ? Math.min(28, creditCheck.customer.salaryPayDay + 5) // 5 days after payday
-      : null;
+    const suggestedDueDay = creditCheck.customer.salaryPayDay ?? null;
 
     // Persist risk assessment to credit check
     await this.prisma.creditCheck.update({
@@ -243,6 +245,9 @@ export class CreditCheckRiskService {
       throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
     }
 
+    if ((creditCheck.aiAnalysis as Record<string, unknown> | null)?.source === 'chat-statement') {
+      throw new BadRequestException('ผลสเตทเม้นจากแชทต้องวิเคราะห์ใหม่จากห้องต้นทาง');
+    }
     const customer = creditCheck.customer;
     const monthlyPayment = creditCheck.contract ? Number(creditCheck.contract.monthlyPayment) : 0;
     const monthlySalary = customer.salary ? Number(customer.salary) : 0;

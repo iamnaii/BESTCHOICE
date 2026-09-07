@@ -1,3 +1,4 @@
+import { creditHeadline, type StatementResult } from '@/pages/UnifiedInboxPage/components/credit-statement';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -30,8 +31,11 @@ import {
 } from '@/components/ui/select';
 import { formatDateShort } from '@/utils/formatters';
 import { ShieldCheck, Loader2 } from 'lucide-react';
+import CreditAffordabilityForm, { type CreditApprovalPayload, type CreditApprovalSnapshot } from '@/components/credit-check/CreditAffordabilityForm';
 
 interface CreditCheckRow {
+  approvals?: CreditApprovalSnapshot[];
+  aiAnalysis?: StatementResult | null;
   id: string;
   status: string;
   checkType: string;
@@ -74,6 +78,7 @@ const DECIDE_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
 
 /** ต้องตรงกับ OverrideCreditCheckDto — เหตุผลสั้นกว่านี้ API ปฏิเสธ */
 const MIN_REASON_LENGTH = 20;
+const MAX_REASON_LENGTH = 2000;
 
 export default function CreditChecksPage() {
   useDocumentTitle('ตรวจเครดิต');
@@ -90,6 +95,7 @@ export default function CreditChecksPage() {
     null,
   );
   const [reason, setReason] = useState('');
+  const [affordability, setAffordability] = useState<CreditApprovalPayload | null>(null);
 
   const query = useQuery<CreditCheckResponse>({
     queryKey: ['credit-checks', status, debouncedSearch],
@@ -103,17 +109,25 @@ export default function CreditChecksPage() {
   });
 
   const decideMutation = useMutation({
-    mutationFn: async () => {
-      if (!target?.row.customer) throw new Error('รายการนี้ไม่มีลูกค้าผูกอยู่');
+    mutationFn: async ({ decision, overrideReason, approval }: {
+      decision: NonNullable<typeof target>; overrideReason: string; approval: CreditApprovalPayload | null;
+    }) => {
+      if (!decision.row.customer) throw new Error('รายการนี้ไม่มีลูกค้าผูกอยู่');
+      if (decision.next === 'APPROVED' && decision.row.checkType === 'FULL' && !approval) throw new Error('กรุณายืนยันยอดผ่อนก่อนอนุมัติ');
       await api.post(
-        `/customers/${target.row.customer.id}/credit-check/${target.row.id}/override`,
-        { status: target.next, overrideReason: reason, attachmentIds: [] },
+        `/customers/${decision.row.customer.id}/credit-check/${decision.row.id}/override`,
+        { status: decision.next, overrideReason, attachmentIds: [],
+          ...(decision.next === 'APPROVED' && decision.row.checkType === 'FULL' ? { affordability: approval } : {}) },
       );
     },
-    onSuccess: () => {
-      toast.success(target?.next === 'APPROVED' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว');
+    onSuccess: (_data, { decision }) => {
+      toast.success(decision.next === 'APPROVED' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว');
       queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customer'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-latest-credit'] });
+      setAffordability(null);
       setTarget(null);
       setReason('');
     },
@@ -156,7 +170,12 @@ export default function CreditChecksPage() {
     {
       key: 'aiSummary',
       label: 'AI ว่าอย่างไร',
-      render: (c: CreditCheckRow) => (
+      render: (c: CreditCheckRow) => c.aiAnalysis?.source === 'chat-statement' ? (
+        <div className="space-y-1 text-sm leading-snug">
+          {(() => { const headline = creditHeadline(c.aiAnalysis!); return headline ? <p className="font-medium text-primary">{headline.label} · {headline.amount.toLocaleString('th-TH')} บาท</p> : <p>อ่านสเตทเม้นแล้ว</p>; })()}
+          {typeof c.aiAnalysis.roomId === 'string' && <a href={`/inbox/${c.aiAnalysis.roomId}`} onClick={event => event.stopPropagation()} className="text-xs text-primary underline">เปิดแชทต้นทาง</a>}
+        </div>
+      ) : (
         <span className="text-sm text-muted-foreground leading-snug line-clamp-2 max-w-md">
           {c.aiSummary ?? '—'}
         </span>
@@ -168,9 +187,14 @@ export default function CreditChecksPage() {
       render: (c: CreditCheckRow) => {
         const meta = STATUS_META[c.status] ?? { label: c.status, variant: 'secondary' as const };
         return (
-          <Badge variant={meta.variant} appearance="light" size="sm">
-            {meta.label}
-          </Badge>
+          <div className="space-y-2">
+            <Badge variant={meta.variant} appearance="light" size="sm">{meta.label}</Badge>
+            {c.approvals?.[0] && <div className="text-xs space-y-1">
+              <p className="font-medium">อนุมัติค่างวดไม่เกิน {Number(c.approvals[0].approvedMonthlyPayment).toLocaleString('th-TH')} บาท/เดือน</p>
+              <p>ชำระ{c.approvals[0].salaryPayDay === 31 ? 'ทุกสิ้นเดือน' : `วันที่ ${c.approvals[0].salaryPayDay} ของเดือน`}</p>
+              <p className="text-muted-foreground">{c.approvals[0].supersededAt ? 'ผลนี้ถูกแทนที่แล้ว' : c.approvals[0].usedByContractId ? 'นำไปใช้กับสัญญาแล้ว' : 'สำหรับสัญญาใหม่หนึ่งฉบับ'}</p>
+            </div>}
+          </div>
         );
       },
     },
@@ -187,30 +211,34 @@ export default function CreditChecksPage() {
             key: 'actions',
             label: '',
             render: (c: CreditCheckRow) =>
-              // ตัดสินได้เฉพาะรายการที่ยังรออยู่ และต้องมีลูกค้าผูกอยู่
-              // (endpoint override เป็น /customers/:customerId/... จึงต้องมี id)
-              c.customer && (c.status === 'MANUAL_REVIEW' || c.status === 'PENDING') ? (
+              // Keep available transitions aligned with the override endpoint and role policy.
+              c.customer && ['MANUAL_REVIEW', 'PENDING', 'APPROVED', 'REJECTED'].includes(c.status) ? (
                 <div className="flex gap-1.5 justify-end">
-                  <Button
+                  {!(c.status === 'REJECTED' && user?.role === 'BRANCH_MANAGER') &&
+                    !(c.status === 'APPROVED' && c.checkType !== 'FULL') && <Button
+                    disabled={decideMutation.isPending}
                     size="sm"
                     variant="outline"
                     onClick={(e) => {
                       e.stopPropagation();
+                      setAffordability(null); setReason('');
                       setTarget({ row: c, next: 'APPROVED' });
                     }}
                   >
-                    อนุมัติ
-                  </Button>
-                  <Button
+                    {c.status === 'APPROVED' ? 'ทบทวนยอดอนุมัติ' : 'อนุมัติ'}
+                  </Button>}
+                  {c.status !== 'REJECTED' && <Button
+                    disabled={decideMutation.isPending}
                     size="sm"
                     variant="outline"
                     onClick={(e) => {
                       e.stopPropagation();
+                      setAffordability(null); setReason('');
                       setTarget({ row: c, next: 'REJECTED' });
                     }}
                   >
                     ไม่อนุมัติ
-                  </Button>
+                  </Button>}
                 </div>
               ) : null,
           },
@@ -219,7 +247,7 @@ export default function CreditChecksPage() {
   ];
 
   const summary = query.data?.summary;
-  const reasonTooShort = reason.trim().length < MIN_REASON_LENGTH;
+  const reasonInvalid = reason.trim().length < MIN_REASON_LENGTH || reason.trim().length > MAX_REASON_LENGTH;
 
   return (
     <div>
@@ -262,7 +290,7 @@ export default function CreditChecksPage() {
               : 'ไม่พบรายการตรวจเครดิต'
           }
           onRowClick={(c: CreditCheckRow) =>
-            c.customer && navigate(`/customers/${c.customer.id}`)
+            c.customer && navigate(`/customers/${c.customer.id}?tab=credit`)
           }
           toolbar={
             <div className="flex flex-wrap items-center gap-3">
@@ -290,26 +318,31 @@ export default function CreditChecksPage() {
         />
       </QueryBoundary>
 
-      <Dialog open={!!target} onOpenChange={(open) => !open && setTarget(null)}>
-        <DialogContent>
+      <Dialog open={!!target} onOpenChange={(open) => !open && !decideMutation.isPending && setTarget(null)}>
+        <DialogContent showCloseButton={!decideMutation.isPending} className="flex max-w-[calc(100%-2rem)] flex-col sm:max-w-2xl max-h-[90dvh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>
               {target?.next === 'APPROVED' ? 'อนุมัติผลตรวจเครดิต' : 'ไม่อนุมัติผลตรวจเครดิต'}
             </DialogTitle>
             <DialogDescription className="leading-snug">
               {target?.row.customer?.name}
-              {target?.row.aiScore !== null && target?.row.aiScore !== undefined
-                ? ` · คะแนน AI ${target.row.aiScore}`
-                : ' · ไม่มีคะแนน AI'}
+              {target?.row.checkType === 'FULL' ? ' · ตรวจเต็ม' : ' · ตรวจเบื้องต้น'}
             </DialogDescription>
           </DialogHeader>
 
+          <div className="min-h-0 overflow-y-auto space-y-4">
+          {target?.row.customer && <a className="text-sm text-primary underline" href={`/customers/${target.row.customer.id}?tab=credit`} target="_blank" rel="noopener noreferrer">เปิดหลักฐานและประวัติเครดิต</a>}
+          {target?.next === 'APPROVED' && target.row.checkType !== 'FULL' && <p className="text-sm text-muted-foreground">ผลตรวจเบื้องต้นยังไม่ใช่ยอดผ่อนที่ใช้เปิดสัญญา ต้องตรวจเต็มและยืนยันยอดผ่อนก่อนสร้างสัญญา</p>}
+          <fieldset disabled={decideMutation.isPending} className="min-w-0 space-y-4">
           {target?.row.aiRecommendation && (
             <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm leading-snug">
               <div className="text-xs text-muted-foreground mb-1">คำแนะนำจาก AI</div>
               {target.row.aiRecommendation}
             </div>
           )}
+
+          {target?.next === 'APPROVED' && target.row.checkType === 'FULL' && <CreditAffordabilityForm
+            key={target.row.id} creditCheckId={target.row.id} onChange={setAffordability} />}
 
           <div>
             <label
@@ -323,6 +356,7 @@ export default function CreditChecksPage() {
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
+              maxLength={MAX_REASON_LENGTH}
               placeholder="เช่น ลูกค้านำสลิปเงินเดือนเพิ่มมาแสดง รายได้เพียงพอต่อค่างวด"
             />
             <p className="text-xs text-muted-foreground mt-1 tabular-nums">
@@ -330,14 +364,17 @@ export default function CreditChecksPage() {
             </p>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTarget(null)}>
+          </fieldset>
+          </div>
+          {target?.next === 'APPROVED' && target.row.checkType === 'FULL' && !affordability && <p className="text-xs text-muted-foreground">กรอกตัวเลขและหลักฐาน คำนวณเพดาน แล้วติ๊กยืนยันก่อนบันทึก</p>}
+          <DialogFooter className="shrink-0">
+            <Button variant="outline" disabled={decideMutation.isPending} onClick={() => setTarget(null)}>
               ยกเลิก
             </Button>
             <Button
               variant="primary"
-              disabled={reasonTooShort || decideMutation.isPending}
-              onClick={() => decideMutation.mutate()}
+              disabled={reasonInvalid || decideMutation.isPending || (target?.next === 'APPROVED' && target.row.checkType === 'FULL' && !affordability)}
+              onClick={() => target && decideMutation.mutate({ decision: target, overrideReason: reason.trim(), approval: affordability })}
             >
               {decideMutation.isPending && <Loader2 className="size-4 animate-spin" />}
               ยืนยัน

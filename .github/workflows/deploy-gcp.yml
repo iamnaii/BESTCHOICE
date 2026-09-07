@@ -378,11 +378,33 @@ jobs:
   # job นี้ไม่รันอะไรเอง: ผ่านเมื่อทุก gate success หรือ skipped (ทางลัดฉุกเฉิน), แดงเมื่อ gate ใด
   # failure/cancelled — migrate-db / deploy-web พึ่ง check นี้ตัวเดียวแทนการไล่เช็คทีละ gate
   # ============================================
+  test-chat-credit:
+    name: Chat credit + approval
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: inputs.skip_tests != true
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+      CREDIT_PG_BIN: /usr/lib/postgresql/16/bin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-deps
+        with:
+          prisma: both
+      - name: Install isolated PostgreSQL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16 postgresql-16-pgvector
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify credit flow on isolated PostgreSQL
+        run: bash tools/test-chat-credit.sh
+
   lint-and-test:
     name: Lint & Test
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, test-web, test-api, test-integration, build-web]
+    needs: [lint, test-web, test-api, test-integration, test-chat-credit, build-web]
     if: always()
     steps:
       - name: ผลรายด่าน
@@ -392,6 +414,7 @@ jobs:
           test-web:         ${{ needs.test-web.result }}
           test-api:         ${{ needs.test-api.result }}
           test-integration: ${{ needs.test-integration.result }}
+          test-chat-credit: ${{ needs.test-chat-credit.result }}
           build-web:        ${{ needs.build-web.result }}
           EOF
       - name: มี gate แดง/ถูกยกเลิก

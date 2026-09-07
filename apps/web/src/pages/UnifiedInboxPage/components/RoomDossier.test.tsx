@@ -42,6 +42,11 @@ const ROOM = {
 };
 
 describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)', () => {
+  it('keeps credit as the second group after customer information', () => {
+    wrap(<RoomDossier room={ROOM} customerId={null} activeRoomId="r-1" />);
+    const headings = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent);
+    expect(headings.slice(0, 3)).toEqual(['ข้อมูลลูกค้า', 'ตรวจเครดิต', 'มาจากโฆษณา']);
+  });
   beforeEach(() => {
     apiGet.mockReset();
     apiGet.mockResolvedValue({ data: [] });

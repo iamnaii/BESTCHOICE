@@ -1,3 +1,5 @@
+import { claimCreditApproval } from '../../credit-check/services/credit-approval';
+import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { closeRepossessionOnSale } from '../../repossessions/repossession-resale.util';
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
@@ -312,7 +314,7 @@ export class SaleWriterService {
     }, { isolationLevel: 'Serializable' });
   }
 
-  async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
+  async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, userRole = 'SALES') {
     // Default planType to STORE_DIRECT (single plan type)
     if (!dto.planType) dto.planType = 'STORE_DIRECT';
     if (!dto.downPayment && dto.downPayment !== 0) throw new BadRequestException('กรุณาใส่เงินดาวน์');
@@ -356,6 +358,7 @@ export class SaleWriterService {
     );
 
     return this.runSaleTransaction(async (tx) => {
+      await lockCreditCustomer(tx, dto.customerId);
       await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
@@ -380,7 +383,7 @@ export class SaleWriterService {
           interestRate: params.interestRate,
           totalMonths: dto.totalMonths!,
           interestTotal: calc.interestTotal,
-          financedAmount: calc.financedAmount,
+          financedAmount: calc.principal,
           storeCommission: calc.storeCommission,
           vatAmount: calc.vatAmount,
           vatPct: params.vatPct,
@@ -398,6 +401,10 @@ export class SaleWriterService {
         contract.id, dto.totalMonths!, calc.financedAmount, calc.monthlyPayment, dto.paymentDueDay,
         { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
       );
+      await claimCreditApproval(tx, { customerId: dto.customerId, contractId: contract.id,
+        creditApprovalId: dto.creditApprovalId, paymentDueDay: dto.paymentDueDay,
+        monthlyAmounts: payments.map(payment => Number(payment.amountDue)), firstPaymentDue: payments[0]?.dueDate,
+        actor: { id: salespersonId, role: userRole } });
       await tx.payment.createMany({ data: payments });
 
       // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย

@@ -1,0 +1,45 @@
+{
+  "scope": "Synthetic OCR/intent; real local HTTP, PostgreSQL stock, calculator, credit UI and contract draft",
+  "runs": [
+    {
+      "name": "desktop",
+      "viewport": {
+        "width": 1500,
+        "height": 1000
+      },
+      "dimensions": {
+        "viewport": 1500,
+        "width": 1500
+      },
+      "status": "PASS",
+      "checks": [
+        "Explicit preparation",
+        "Real stock and calculator draft",
+        "No automatic send/sale",
+        "Customer/product/room handoff",
+        "Credit return preserves down/months",
+        "Unapproved customer stays at credit gate"
+      ]
+    },
+    {
+      "name": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "dimensions": {
+        "viewport": 390,
+        "width": 390
+      },
+      "status": "PASS",
+      "checks": [
+        "Explicit preparation",
+        "Real stock and calculator draft",
+        "No automatic send/sale",
+        "Customer/product/room handoff",
+        "Credit return preserves down/months",
+        "Unapproved customer stays at credit gate"
+      ]
+    }
+  ]
+}

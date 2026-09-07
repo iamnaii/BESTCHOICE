@@ -519,21 +519,19 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
       where: { contractId_installmentNo: { contractId: c.id, installmentNo: 12 } },
     });
 
-    // The receipt primitive's basis is the UN-residual-adjusted installmentTotal
-    // (1,515.83) — the 2A accrual's last-period residual adjustment (1,515.87)
-    // is a pre-existing, unrelated 4-satang asymmetry between the two bases.
-    // 1,515.83 − 354 (already cleared by the park consume) = 1,161.83.
+    // Receipts now include the same final-period residual as the 2A accrual.
+    // 1,515.87 − 354 (already cleared by the park consume) = 1,161.87.
     const { split } = await tpl.execute({
       installmentScheduleId: sched12.id,
-      delta: D('1161.83'),
+      delta: D('1161.87'),
       debitAccountCode: '11-1201',
       isFinalReceipt: true,
     });
-    expect(split.principalCleared.toFixed(2)).toBe('1161.83');
+    expect(split.principalCleared.toFixed(2)).toBe('1161.87');
     expect(split.principalRemainingAfter.toFixed(2)).toBe('0.00');
 
     // Σ over EVERY JE stamped with installment #12: the park consume's 354 and
-    // this receipt's 1,161.83 — together exactly ONE installmentTotal, never two.
+    // this receipt's 1,161.87 — together exactly ONE installmentTotal, never two.
     const instEntries = await prisma.journalEntry.findMany({
       where: {
         metadata: { path: ['installmentScheduleId'], equals: sched12.id } as any,
@@ -545,9 +543,14 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
       .flatMap((e) => e.lines)
       .filter((l) => l.accountCode === '11-2103')
       .reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
-    expect(cr11.toFixed(2)).toBe('1515.83');
-    // Explicitly NOT the double-credit shape (354 + a full 1,515.83).
-    expect(cr11.toFixed(2)).not.toBe('1869.83');
+    expect(cr11.toFixed(2)).toBe('1515.87');
+    const dr11 = instEntries.flatMap(entry => entry.lines)
+      .filter(line => line.accountCode === '11-2103')
+      .reduce((sum, line) => sum.plus(line.debit.toString()), new Decimal(0));
+    expect(dr11.minus(cr11).toFixed(2)).toBe('0.00');
+    // No duplicate clearing or unapproved tolerance adjustment hides a residue.
+    expect(cr11.toFixed(2)).not.toBe('1869.87');
+    expect(split.underpayRounding.toFixed(2)).toBe('0.00');
   });
 });
 

@@ -5,6 +5,7 @@ import { CreditCheckService } from './credit-check.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AiProviderService } from '../ai-usage/ai-provider.service';
 
 
 const verifiedApproval = {
@@ -56,7 +57,7 @@ describe('CreditCheckService override audit', () => {
     integrationConfig = { getValue: jest.fn().mockResolvedValue(null) };
 
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [
+      providers: [AiProviderService,
         CreditCheckService,
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: integrationConfig },

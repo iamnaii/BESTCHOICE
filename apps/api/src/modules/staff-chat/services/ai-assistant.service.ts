@@ -19,7 +19,7 @@ export class AiAssistantService {
    * Summarize a chat room's conversation in 2-3 Thai sentences.
    * Results are cached for 5 minutes per room.
    */
-  async summarizeConversation(roomId: string): Promise<string> {
+  async summarizeConversation(roomId: string, userId?: string): Promise<string> {
     // 1. Check cache
     const cached = this.summaryCache.get(roomId);
     if (cached && cached.expiresAt > Date.now()) {
@@ -78,6 +78,7 @@ export class AiAssistantService {
         {
           service: 'ai-assistant',
           method: 'summarizeConversation',
+          ...(userId ? { userId } : {}),
         },
       );
 
@@ -99,7 +100,7 @@ export class AiAssistantService {
   /**
    * Adjust the tone of a message text.
    */
-  async adjustTone(text: string, tone: 'formal' | 'casual' | 'friendly'): Promise<string> {
+  async adjustTone(text: string, tone: 'formal' | 'casual' | 'friendly', userId?: string): Promise<string> {
     if (!this.aiText.isAvailable) {
       return text;
     }
@@ -125,6 +126,7 @@ export class AiAssistantService {
         {
           service: 'ai-assistant',
           method: 'adjustTone',
+          ...(userId ? { userId } : {}),
         },
       );
 

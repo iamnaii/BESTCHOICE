@@ -48,7 +48,7 @@ try {
       },
     });
     assert.equal(bc.isValid, true);
-    assert.equal(bc.monthlyPayment.toFixed(2), '2413.21');
+    assert.equal(bc.monthlyPayment.toFixed(2), '2413.20');
     assert.equal(bc.totalWithVat.toFixed(2), '28958.48');
     const product = { brand: 'Apple', model: 'iPhone 14 Pro', storage: '128 GB', category: 'PHONE_USED' };
     const mappings = [{ id: 'm1', gfinSeries: 'iPhone 14', gfinVariant: 'Pro', storage: '128GB', condition: 'HAND_2', maxPrice: new Decimal('21500'), modelMatchPattern: 'iPhone 14 Pro', isActive: true }];

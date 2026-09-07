@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../apps/api/src/prisma/prisma.service';
 import { IntegrationConfigService } from '../apps/api/src/modules/integrations/integration-config.service';
 import { AiUsageService } from '../apps/api/src/modules/ai-usage/ai-usage.service';
+import { AiProviderService } from '../apps/api/src/modules/ai-usage/ai-provider.service';
 import { OcrService } from '../apps/api/src/modules/ocr/ocr.service';
 import { StorageService } from '../apps/api/src/modules/storage/storage.service';
 
@@ -17,7 +18,7 @@ async function main() {
   const db = new PrismaService();
   const config = new ConfigService({ ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, GCS_BUCKET: process.env.GCS_BUCKET });
   const storage = new StorageService(config);
-  const ocr = new OcrService(new IntegrationConfigService(db, config), new AiUsageService(db, config));
+  const ocr = new OcrService(new IntegrationConfigService(db, config), new AiProviderService(new AiUsageService(db, config)));
   const key = `credit-provider-smoke/${randomUUID()}/synthetic-statement.pdf`;
   let uploaded = false;
   try {

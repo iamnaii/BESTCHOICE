@@ -2,6 +2,7 @@ import { InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AiProviderService } from '../ai-usage/ai-provider.service';
 import { CreditCheckService } from './credit-check.service';
 
 /**
@@ -46,11 +47,12 @@ const makeService = (apiKey: ConfigValue): CreditCheckService => {
     getValue: jest.fn().mockResolvedValue(apiKey),
   } as unknown as IntegrationConfigService;
   const aiUsage = { record: jest.fn() } as unknown as AiUsageService;
-  return new CreditCheckService(prisma, config, aiUsage);
+  return new CreditCheckService(prisma, config, new AiProviderService(aiUsage));
 };
 
 /** Typed view of the private methods we drive directly. */
 type AiParams = {
+  userId?: string;
   bankName: string | null;
   statementMonths: number;
   statementFiles: string[];
@@ -336,7 +338,7 @@ describe('CreditCheckService AI analysis (characterization)', () => {
       const prisma = {} as unknown as PrismaService;
       const config = { getValue: jest.fn().mockResolvedValue('sk-test') } as unknown as IntegrationConfigService;
       const aiUsage = { record: jest.fn() };
-      const svc = new CreditCheckService(prisma, config, aiUsage as unknown as AiUsageService);
+      const svc = new CreditCheckService(prisma, config, new AiProviderService(aiUsage as unknown as AiUsageService));
 
       const create: FakeCreate = jest.fn().mockResolvedValue({
         content: [{ type: 'text', text: JSON.stringify({ score: 80 }) }],
@@ -344,14 +346,15 @@ describe('CreditCheckService AI analysis (characterization)', () => {
       });
       spyPrivate(svc, 'getAnthropicClient').mockResolvedValue({ messages: { create } });
 
-      await asPrivate(svc).performClaudeAnalysis({ ...baseParams });
+      await asPrivate(svc).performClaudeAnalysis({ ...baseParams, userId: 'server-actor' });
 
       expect(aiUsage.record).toHaveBeenCalledTimes(1);
       expect(aiUsage.record).toHaveBeenCalledWith(
         expect.objectContaining({
           service: 'credit-check',
           method: 'performClaudeAnalysis',
-          model: 'claude-sonnet-4-5-20250514',
+          model: 'claude-sonnet-4-6',
+          userId: 'server-actor',
           inputTokens: 111,
           outputTokens: 22,
           status: 'success',

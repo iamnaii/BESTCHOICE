@@ -70,6 +70,24 @@ describe('AiAssistantService', () => {
     expect(aiText.generate).not.toHaveBeenCalled();
   });
 
+  it('attributes only new model calls to the server actor while preserving the room cache', async () => {
+    const { service, aiText } = makeService();
+    await service.summarizeConversation('room-1', 'actor-1');
+    await service.summarizeConversation('room-1', 'actor-2');
+    expect(aiText.generate).toHaveBeenCalledTimes(1);
+    expect(aiText.generate.mock.calls[0][1]).toEqual({
+      service: 'ai-assistant',
+      method: 'summarizeConversation',
+      userId: 'actor-1',
+    });
+    await service.adjustTone('ร่างเดิม', 'formal', 'actor-2');
+    expect(aiText.generate.mock.calls[1][1]).toEqual({
+      service: 'ai-assistant',
+      method: 'adjustTone',
+      userId: 'actor-2',
+    });
+  });
+
   it.each([
     ['formal', 'เขียนข้อความนี้ใหม่ให้สุภาพเป็นทางการ ตอบเฉพาะข้อความที่เขียนใหม่เท่านั้น:'],
     ['casual', 'เขียนข้อความนี้ใหม่ให้เป็นกันเอง ตอบเฉพาะข้อความที่เขียนใหม่เท่านั้น:'],

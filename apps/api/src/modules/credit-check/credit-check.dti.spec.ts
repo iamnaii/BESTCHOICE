@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AiProviderService } from '../ai-usage/ai-provider.service';
 import { CreditCheckService } from './credit-check.service';
 
 /**
@@ -38,7 +39,7 @@ const run = (
   const svc = new CreditCheckService(
     makePrisma(cc),
     {} as unknown as IntegrationConfigService,
-    { record: jest.fn() } as unknown as AiUsageService,
+    new AiProviderService({ record: jest.fn() } as unknown as AiUsageService),
   );
   // calculateDtiRiskScore + getCustomerHistory both live on the internally-constructed
   // CreditCheckRiskService sub-service (svc.risk); the DTI call resolves its history

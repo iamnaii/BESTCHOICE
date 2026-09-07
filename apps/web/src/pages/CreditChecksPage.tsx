@@ -1,6 +1,8 @@
+import ContractReturnNotice from '@/components/credit-check/ContractReturnNotice';
+import { customerCreditUrl } from '@/lib/contract-return';
 import { creditHeadline, type StatementResult } from '@/pages/UnifiedInboxPage/components/credit-statement';
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -83,6 +85,8 @@ const MAX_REASON_LENGTH = 2000;
 export default function CreditChecksPage() {
   useDocumentTitle('ตรวจเครดิต');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const creditUrl = (customerId: string) => customerCreditUrl(customerId, searchParams.get('returnTo'));
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canDecide = DECIDE_ROLES.includes(user?.role ?? '');
@@ -256,6 +260,8 @@ export default function CreditChecksPage() {
         subtitle="คิวผลตรวจเครดิตที่รอผู้จัดการตัดสิน"
       />
 
+      <ContractReturnNotice />
+
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
           {[
@@ -290,7 +296,7 @@ export default function CreditChecksPage() {
               : 'ไม่พบรายการตรวจเครดิต'
           }
           onRowClick={(c: CreditCheckRow) =>
-            c.customer && navigate(`/customers/${c.customer.id}?tab=credit`)
+            c.customer && navigate(creditUrl(c.customer.id))
           }
           toolbar={
             <div className="flex flex-wrap items-center gap-3">
@@ -331,7 +337,7 @@ export default function CreditChecksPage() {
           </DialogHeader>
 
           <div className="min-h-0 overflow-y-auto space-y-4">
-          {target?.row.customer && <a className="text-sm text-primary underline" href={`/customers/${target.row.customer.id}?tab=credit`} target="_blank" rel="noopener noreferrer">เปิดหลักฐานและประวัติเครดิต</a>}
+          {target?.row.customer && <a className="text-sm text-primary underline" href={creditUrl(target.row.customer.id)} target="_blank" rel="noopener noreferrer">เปิดหลักฐานและประวัติเครดิต</a>}
           {target?.next === 'APPROVED' && target.row.checkType !== 'FULL' && <p className="text-sm text-muted-foreground">ผลตรวจเบื้องต้นยังไม่ใช่ยอดผ่อนที่ใช้เปิดสัญญา ต้องตรวจเต็มและยืนยันยอดผ่อนก่อนสร้างสัญญา</p>}
           <fieldset disabled={decideMutation.isPending} className="min-w-0 space-y-4">
           {target?.row.aiRecommendation && (

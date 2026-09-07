@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
-import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AiProviderService } from '../ai-usage/ai-provider.service';
 import { AnthropicOcrClient } from './services/anthropic-ocr.client';
 import { OcrExtractorsService } from './services/ocr-extractors.service';
 import {
@@ -19,41 +19,41 @@ export class OcrService {
 
   constructor(
     private integrationConfig: IntegrationConfigService,
-    private aiUsage: AiUsageService,
+    private provider: AiProviderService,
   ) {
-    this.anthropicClient = new AnthropicOcrClient(this.integrationConfig, this.aiUsage);
-    this.extractors = new OcrExtractorsService(this.anthropicClient, this.aiUsage);
+    this.anthropicClient = new AnthropicOcrClient(this.integrationConfig, this.provider);
+    this.extractors = new OcrExtractorsService(this.anthropicClient, this.provider);
   }
 
-  checkAiStatus(): Promise<{ configured: boolean; connected: boolean; model: string; error?: string }> {
-    return this.anthropicClient.checkAiStatus();
+  checkAiStatus(userId?: string): Promise<{ configured: boolean; connected: boolean; model: string; error?: string }> {
+    return this.anthropicClient.checkAiStatus(userId);
   }
 
-  generateTemplateHtml(fileBase64: string): Promise<{ contentHtml: string; placeholders: string[] }> {
-    return this.extractors.generateTemplateHtml(fileBase64);
+  generateTemplateHtml(fileBase64: string, userId?: string): Promise<{ contentHtml: string; placeholders: string[] }> {
+    return this.extractors.generateTemplateHtml(fileBase64, userId);
   }
 
-  extractIdCard(imageBase64: string): Promise<OcrIdCardResult> {
-    return this.extractors.extractIdCard(imageBase64);
+  extractIdCard(imageBase64: string, userId?: string): Promise<OcrIdCardResult> {
+    return this.extractors.extractIdCard(imageBase64, userId);
   }
 
-  extractPaymentSlip(imageBase64: string): Promise<OcrPaymentSlipResult> {
-    return this.extractors.extractPaymentSlip(imageBase64);
+  extractPaymentSlip(imageBase64: string, userId?: string): Promise<OcrPaymentSlipResult> {
+    return this.extractors.extractPaymentSlip(imageBase64, userId);
   }
 
-  extractBookBank(imageBase64: string): Promise<OcrBookBankResult> {
-    return this.extractors.extractBookBank(imageBase64);
+  extractBookBank(imageBase64: string, userId?: string): Promise<OcrBookBankResult> {
+    return this.extractors.extractBookBank(imageBase64, userId);
   }
 
-  extractDrivingLicense(imageBase64: string): Promise<OcrDrivingLicenseResult> {
-    return this.extractors.extractDrivingLicense(imageBase64);
+  extractDrivingLicense(imageBase64: string, userId?: string): Promise<OcrDrivingLicenseResult> {
+    return this.extractors.extractDrivingLicense(imageBase64, userId);
   }
 
-  analyzeSalarySlip(imageBase64: string): Promise<OcrSalarySlipResult> {
-    return this.extractors.analyzeSalarySlip(imageBase64);
+  analyzeSalarySlip(imageBase64: string, userId?: string): Promise<OcrSalarySlipResult> {
+    return this.extractors.analyzeSalarySlip(imageBase64, userId);
   }
 
-  analyzeBankStatement(filesBase64: string[]): Promise<OcrBankStatementResult> {
-    return this.extractors.analyzeBankStatement(filesBase64);
+  analyzeBankStatement(filesBase64: string[], userId?: string): Promise<OcrBankStatementResult> {
+    return this.extractors.analyzeBankStatement(filesBase64, userId);
   }
 }

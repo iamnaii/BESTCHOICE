@@ -3,15 +3,15 @@ import { useRef, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import api from '@/lib/api';
-import { useDebounce } from '@/hooks/useDebounce';
 import { displayAddress } from '@/components/ui/AddressForm';
 import ProductContextCard from './ProductContextCard';
+import LinkCustomerDialog from './LinkCustomerDialog';
+import CustomerContractDialogs from './customer360/CustomerContractDialogs';
+import RecentPaymentGroup from './customer360/RecentPaymentGroup';
+import { useCustomerContractActions } from './customer360/useCustomerContractActions';
+import type { ContractSummaryItem, PaymentSummaryItem } from './customer360/types';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap, riskLevelMap } from '@/lib/status-badges';
-import ContactLogDialog from '@/pages/CollectionsPage/components/ContactLogDialog';
-import LockDeviceDialog from '@/pages/CollectionsPage/components/LockDeviceDialog';
-import type { ContractRow } from '@/pages/CollectionsPage/types';
-import { decideContractTarget, type ContractAction } from './contract-action';
 import {
   User,
   FileText,
@@ -27,16 +27,11 @@ import {
   Zap,
   Shield,
   ChevronRight,
-  Banknote,
-  Landmark,
-  QrCode,
   XCircle,
   CheckCircle2,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { useIsMobile } from '@/hooks/useIsMobile';
 import { format, isPast, differenceInDays } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -45,38 +40,6 @@ import { Button } from '@/components/ui/button';
 import { UserPlus } from 'lucide-react';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
 
-
-interface ContractSummaryItem {
-  id: string;
-  contractNumber: string;
-  status: string;
-  product?: { name?: string; brand?: string; model?: string; warrantyExpireDate?: string };
-  serialNumber?: string;
-  paidInstallments: number;
-  totalInstallments: number;
-  monthlyPayment: number | string;
-  nextDueDate?: string;
-  mdmLockedAt?: string;
-  shopWarrantyEndDate?: string;
-}
-
-interface PaymentPartial {
-  id: string;
-  receiptNumber: string;
-  amount: number | string;
-  paidDate: string;
-  paymentMethod: string | null;
-}
-
-interface PaymentSummaryItem {
-  id: string;
-  contract?: { contractNumber: string };
-  installmentNo: number;
-  amountDue: number | string;
-  amountPaid: number | string;
-  status: string;
-  partials: PaymentPartial[];
-}
 
 interface ChatSessionItem {
   id: string;
@@ -138,13 +101,6 @@ interface Customer360PanelProps {
   } | null;
 }
 
-const ACTION_ICON: Record<ContractAction, React.ReactNode> = {
-  'send-link': <Link2 className="w-4 h-4" />,
-  'contact-log': <Phone className="w-4 h-4" />,
-  'mdm-lock': <Lock className="w-4 h-4" />,
-  'view-pdf': <FileText className="w-4 h-4" />,
-};
-
 const channelLabel: Record<string, string> = {
   LINE_FINANCE: 'LINE Finance',
   LINE_SHOP: 'LINE Shop',
@@ -181,50 +137,7 @@ const sessionStatusLabel: Record<string, string> = {
 export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom, session, sections, bare }: Customer360PanelProps) {
   const show = (k: Customer360Section) => !sections || sections.includes(k);
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [pendingAction, setPendingAction] = useState<ContractAction | null>(null);
-
-  const ACTION_TITLE: Record<ContractAction, string> = {
-    'send-link': 'เลือกสัญญาที่จะส่งลิงก์ชำระ',
-    'contact-log': 'เลือกสัญญาที่จะบันทึกติดต่อ + นัดชำระ',
-    'mdm-lock': 'เลือกสัญญาที่จะส่งคำสั่งล็อกเครื่อง',
-    'view-pdf': 'เลือกสัญญาที่จะดู PDF',
-  };
-
-  // ─── Link existing customer ───────────────────────────
   const [linkOpen, setLinkOpen] = useState(false);
-  const [linkSearch, setLinkSearch] = useState('');
-  const debouncedLinkSearch = useDebounce(linkSearch, 400);
-
-  const linkSearchQuery = useQuery({
-    queryKey: ['customer-search', debouncedLinkSearch],
-    queryFn: () =>
-      api
-        .get(`/customers/search?q=${encodeURIComponent(debouncedLinkSearch)}`)
-        .then((r) => r.data?.data ?? r.data),
-    enabled: linkOpen && debouncedLinkSearch.trim().length >= 2,
-  });
-
-  const linkCustomer = useMutation({
-    mutationFn: (customerId: string) =>
-      api.patch(`/staff-chat/rooms/${activeRoomId}/customer`, { customerId }),
-    onSuccess: () => {
-      toast.success('ผูกลูกค้ากับแชทนี้แล้ว');
-      setLinkOpen(false);
-      setLinkSearch('');
-      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-    },
-    onError: (err: { response?: { data?: { message?: string } } }) =>
-      toast.error(err?.response?.data?.message ?? 'ผูกลูกค้าไม่สำเร็จ'),
-  });
-
-  // Both ContactLog + MDM lock dialogs reuse Collections components and need
-  // a full ContractRow shape — fetched on demand via /overdue/queue-row
-  const [contactLogContract, setContactLogContract] = useState<ContractRow | null>(null);
-  const [mdmLockContract, setMdmLockContract] = useState<ContractRow | null>(null);
-  // Signed contract PDF preview
-  const [pdfPreview, setPdfPreview] = useState<{ url: string; contractNumber: string } | null>(null);
   const [customerInfoOpen, setCustomerInfoOpen] = useState(false);
   const [callStatus, setCallStatus] = useState<'idle' | 'calling'>('idle');
   const callResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -312,75 +225,9 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     enabled: !!activeRoomId,
   });
 
-  // ─── Send payment Flex card via LINE Finance ──────────
-  const sendPaymentFlex = useMutation({
-    mutationFn: (contractId: string) =>
-      api.post('/line-oa/payment-flex', { contractId }).then((r) => r.data),
-    onSuccess: (data: { type?: 'reminder' | 'overdue' }) => {
-      toast.success(
-        data?.type === 'overdue'
-          ? 'ส่ง Flex Card (แจ้งค้างชำระ) แล้ว'
-          : 'ส่ง Flex Card (เตือนค่างวด) แล้ว',
-      );
-      closeDialog();
-    },
-    onError: (err: { response?: { data?: { message?: string; error?: string } } }) => {
-      toast.error(
-        err?.response?.data?.message ?? err?.response?.data?.error ?? 'ส่ง Flex Card ไม่สำเร็จ',
-      );
-    },
-  });
-
-
-  const fetchAndOpenContactLog = useMutation({
-    mutationFn: (contractId: string) =>
-      api.get(`/overdue/contracts/${contractId}/queue-row`).then((r) => r.data?.data ?? r.data),
-    onSuccess: (row: ContractRow | null) => {
-      if (!row) {
-        toast.error('ไม่พบข้อมูลสัญญา');
-        return;
-      }
-      setContactLogContract(row);
-    },
-    onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
-  });
-
-
-  const fetchAndOpenMdmLock = useMutation({
-    mutationFn: (contractId: string) =>
-      api.get(`/overdue/contracts/${contractId}/queue-row`).then((r) => r.data?.data ?? r.data),
-    onSuccess: (row: ContractRow | null) => {
-      if (!row) {
-        toast.error('ไม่พบข้อมูลสัญญา');
-        return;
-      }
-      setMdmLockContract(row);
-    },
-    onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
-  });
-
-
-  const openContractPdf = useMutation({
-    mutationFn: async (contract: ContractSummaryItem) => {
-      const { data: docs } = await api.get(`/contracts/${contract.id}/documents`);
-      const list: { id: string; documentType: string; createdAt: string }[] = docs?.data ?? docs ?? [];
-      // Pick the most recent signed contract PDF
-      const signedContract = list
-        .filter((d) => d.documentType === 'CONTRACT')
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-      if (!signedContract) {
-        throw new Error('ยังไม่มีไฟล์สัญญา PDF — สัญญานี้อาจยังไม่ได้สร้างเอกสาร');
-      }
-      const { data } = await api.get(`/documents/${signedContract.id}/signed-url`);
-      return { url: data.url as string, contractNumber: contract.contractNumber };
-    },
-    onSuccess: (result) => setPdfPreview(result),
-    onError: (err: Error) => toast.error(err.message ?? 'ไม่สามารถเปิดสัญญาได้'),
-  });
-
-
-  const closeDialog = () => setPendingAction(null);
-  const isMobile = useIsMobile();
+  const activeContracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
+  const contractActions = useCustomerContractActions(customerId, activeContracts);
+  const { sendPaymentFlex, openContractPdf, triggerContractAction } = contractActions;
 
   // ─── Collapsible section state (localStorage-persisted) ────
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -398,38 +245,6 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       } catch {}
       return next;
     });
-
-  const runContractAction = (action: ContractAction, contract: ContractSummaryItem) => {
-    setPendingAction(null);
-    switch (action) {
-      case 'send-link':
-        sendPaymentFlex.mutate(contract.id);
-        break;
-      case 'contact-log':
-        fetchAndOpenContactLog.mutate(contract.id);
-        break;
-      case 'mdm-lock':
-        fetchAndOpenMdmLock.mutate(contract.id);
-        break;
-      case 'view-pdf':
-        openContractPdf.mutate(contract);
-        break;
-    }
-  };
-
-  const triggerContractAction = (action: ContractAction) => {
-    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
-    const target = decideContractTarget(contracts);
-    if (target.kind === 'none') {
-      toast.error('ไม่มีสัญญาที่ใช้งาน');
-      return;
-    }
-    if (target.kind === 'single') {
-      runContractAction(action, target.contract);
-      return;
-    }
-    setPendingAction(action); // 2+ contracts → make the staffer choose
-  };
 
   if (!customerId) {
     if (session && (session.displayName || session.id)) {
@@ -489,6 +304,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
               <Link2 className="w-3.5 h-3.5 mr-1.5" /> ผูกลูกค้าที่มีอยู่
             </Button>
           )}
+          {activeRoomId && <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={activeRoomId} />}
         </div>
       );
     }
@@ -954,142 +770,8 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   );
   const dialogs = (
     <>
-      {/* ─── Quick Action Dialogs ──────────────────────── */}
-
-      {/* Contract picker — shown for ANY multi-contract action so staff never hit the wrong device */}
-      {(() => {
-        const pickerTitle = pendingAction ? (
-          <span className="flex items-center gap-2">
-            {ACTION_ICON[pendingAction]} {ACTION_TITLE[pendingAction]}
-          </span>
-        ) : null;
-        const pickerBody = pendingAction && (
-          <div className="space-y-2">
-            {(() => {
-              const busy =
-                sendPaymentFlex.isPending ||
-                fetchAndOpenContactLog.isPending ||
-                fetchAndOpenMdmLock.isPending ||
-                openContractPdf.isPending;
-              return ((summary?.activeContracts ?? []) as ContractSummaryItem[]).map((c) => {
-                const productName =
-                  c.product?.name ?? `${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() ?? 'สินค้า';
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => pendingAction && runContractAction(pendingAction, c)}
-                    className="w-full text-left p-3 rounded-lg border border-border hover:bg-accent text-sm transition-colors disabled:opacity-50"
-                  >
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-medium text-foreground">{c.contractNumber}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {Number(c.monthlyPayment).toLocaleString()} บ./งวด
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{productName}</p>
-                  </button>
-                );
-              });
-            })()}
-          </div>
-        );
-        return isMobile ? (
-          <Sheet open={pendingAction !== null} onOpenChange={(o) => !o && closeDialog()}>
-            <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh] overflow-y-auto">
-              <SheetHeader>
-                <SheetTitle>{pickerTitle}</SheetTitle>
-                <SheetDescription className="sr-only">เลือกสัญญาเพื่อดำเนินการ</SheetDescription>
-              </SheetHeader>
-              <div className="mt-2">{pickerBody}</div>
-            </SheetContent>
-          </Sheet>
-        ) : (
-          <Dialog open={pendingAction !== null} onOpenChange={(o) => !o && closeDialog()}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>{pickerTitle}</DialogTitle>
-                <DialogDescription className="sr-only">เลือกสัญญาเพื่อดำเนินการ</DialogDescription>
-              </DialogHeader>
-              {pickerBody}
-            </DialogContent>
-          </Dialog>
-        );
-      })()}
-
-      {/* Link existing customer — search + link */}
-      <Dialog
-        open={linkOpen}
-        onOpenChange={(o) => {
-          setLinkOpen(o);
-          if (!o) setLinkSearch('');
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Link2 className="w-4 h-4" /> ผูกลูกค้าที่มีอยู่
-            </DialogTitle>
-            <DialogDescription className="sr-only">ค้นหาและผูกลูกค้าที่มีอยู่กับห้องแชทนี้</DialogDescription>
-          </DialogHeader>
-          <input
-            autoFocus
-            value={linkSearch}
-            onChange={(e) => setLinkSearch(e.target.value)}
-            placeholder="ค้นหาชื่อ / เบอร์ / เลขบัตร (อย่างน้อย 2 ตัวอักษร)"
-            className="w-full px-3 py-2 text-sm rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background placeholder:text-muted-foreground/40"
-          />
-          <div className="max-h-72 overflow-y-auto space-y-1">
-            {linkSearchQuery.isFetching && (
-              <p className="text-xs text-muted-foreground text-center py-3 leading-snug">กำลังค้นหา...</p>
-            )}
-            {!linkSearchQuery.isFetching &&
-              debouncedLinkSearch.trim().length >= 2 &&
-              (linkSearchQuery.data?.length ?? 0) === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-3 leading-snug">ไม่พบลูกค้า</p>
-              )}
-            {(linkSearchQuery.data ?? []).map(
-              (c: { id: string; name: string; phone?: string }) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  disabled={linkCustomer.isPending}
-                  onClick={() => linkCustomer.mutate(c.id)}
-                  className="w-full text-left p-2.5 rounded-lg border border-border hover:bg-accent text-sm transition-colors disabled:opacity-50"
-                >
-                  <span className="font-medium text-foreground">{c.name}</span>
-                  {c.phone && (
-                    <span className="text-xs text-muted-foreground ml-2">{c.phone}</span>
-                  )}
-                </button>
-              ),
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Contact Log + Settlement — reuses CollectionsPage dialog for full UI parity */}
-      <ContactLogDialog
-        open={!!contactLogContract}
-        contract={contactLogContract}
-        onClose={() => setContactLogContract(null)}
-        onSaved={() => {
-          queryClient.invalidateQueries({ queryKey: ['customer-chat-summary', customerId] });
-          setContactLogContract(null);
-        }}
-      />
-
-      {/* MDM Lock — reuses CollectionsPage dialog for full UI parity */}
-      {mdmLockContract && (
-        <LockDeviceDialog
-          open={!!mdmLockContract}
-          onOpenChange={(o) => !o && setMdmLockContract(null)}
-          contractId={mdmLockContract.id}
-          customerName={mdmLockContract.customer.name}
-          daysOverdue={mdmLockContract.daysOverdue}
-        />
-      )}
+      <CustomerContractDialogs actions={contractActions} contracts={activeContracts} />
+      {activeRoomId && <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={activeRoomId} />}
 
       {/* Customer info preview */}
       <Dialog open={customerInfoOpen} onOpenChange={setCustomerInfoOpen}>
@@ -1226,37 +908,6 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         </DialogContent>
       </Dialog>
 
-      {/* Signed contract PDF preview */}
-      <Dialog open={!!pdfPreview} onOpenChange={(o) => !o && setPdfPreview(null)}>
-        <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
-            <DialogTitle className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                สัญญา {pdfPreview?.contractNumber}
-              </span>
-              {pdfPreview?.url && (
-                <a
-                  href={pdfPreview.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors mr-6"
-                >
-                  เปิดในแท็บใหม่
-                </a>
-              )}
-            </DialogTitle>
-            <DialogDescription className="sr-only">ตัวอย่างเอกสาร PDF</DialogDescription>
-          </DialogHeader>
-          {pdfPreview?.url && (
-            <iframe
-              src={pdfPreview.url}
-              title={`สัญญา ${pdfPreview.contractNumber}`}
-              className="flex-1 w-full border-0"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
 
     </>
   );
@@ -1532,119 +1183,6 @@ function InternalNotesSection({
 }
 
 // ─── Sub-components ───────────────────────────────────────
-
-const paymentMethodMeta: Record<string, { label: string; icon: typeof Banknote; className: string }> = {
-  CASH:           { label: 'เงินสด', icon: Banknote,   className: 'bg-success/10 text-success' },
-  BANK_TRANSFER:  { label: 'โอน',    icon: Landmark,   className: 'bg-info/10 text-info' },
-  QR_EWALLET:     { label: 'QR',     icon: QrCode,     className: 'bg-primary/10 text-primary' },
-  ONLINE_GATEWAY: { label: 'ออนไลน์', icon: CreditCard, className: 'bg-accent text-accent-foreground' },
-};
-
-function PaymentMethodChip({ method }: { method: string | null | undefined }) {
-  if (!method) return <span className="text-[10px] text-muted-foreground">—</span>;
-  const meta = paymentMethodMeta[method];
-  if (!meta) {
-    return (
-      <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium bg-muted text-muted-foreground">
-        {method}
-      </span>
-    );
-  }
-  const Icon = meta.icon;
-  return (
-    <span className={`inline-flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-medium ${meta.className}`}>
-      <Icon className="w-2.5 h-2.5" />
-      {meta.label}
-    </span>
-  );
-}
-
-function RecentPaymentGroup({ payment }: { payment: PaymentSummaryItem }) {
-  const [open, setOpen] = useState(false);
-  const isPartial = payment.status === 'PARTIALLY_PAID';
-  const due = Number(payment.amountDue);
-  const paid = Number(payment.amountPaid);
-  const partialCount = payment.partials.length;
-  const expandable = partialCount > 1 || isPartial;
-
-  return (
-    <div className="rounded-md bg-muted/30 border border-border/50 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => expandable && setOpen((o) => !o)}
-        className={cn(
-          'w-full grid grid-cols-[12px_1fr_auto] items-center gap-2 px-2 py-1.5 text-left',
-          expandable ? 'cursor-pointer hover:bg-muted/50' : 'cursor-default',
-        )}
-      >
-        {expandable ? (
-          <ChevronRight
-            className={cn(
-              'w-3 h-3 text-muted-foreground transition-transform',
-              open && 'rotate-90',
-            )}
-          />
-        ) : (
-          <span />
-        )}
-        <div className="min-w-0">
-          <div className="text-[11px] text-foreground/90 truncate">
-            <span className="font-mono text-info">{payment.contract?.contractNumber}</span>
-            <span className="text-muted-foreground"> · งวด {payment.installmentNo}</span>
-          </div>
-          <div className="text-[9px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
-            {partialCount > 1 && <span>{partialCount} ครั้ง</span>}
-            {partialCount > 1 && (isPartial || partialCount === 1) && <span>·</span>}
-            <span
-              className={cn(
-                'inline-flex items-center px-1 py-px rounded text-[9px] font-semibold',
-                isPartial
-                  ? 'bg-warning/10 text-warning'
-                  : 'bg-success/10 text-success',
-              )}
-            >
-              {isPartial ? 'ชำระบางส่วน' : 'ครบ'}
-            </span>
-          </div>
-        </div>
-        <div className="text-right shrink-0">
-          <div className="text-xs font-semibold text-success tabular-nums">
-            {paid.toLocaleString()} บ.
-          </div>
-          {isPartial && (
-            <div className="text-[9px] text-warning tabular-nums">
-              / {due.toLocaleString()}
-            </div>
-          )}
-        </div>
-      </button>
-
-      {open && expandable && (
-        <div className="border-t border-border/50 bg-background/40">
-          {payment.partials.map((r, idx) => (
-            <div
-              key={r.id}
-              className="grid grid-cols-[16px_1fr_auto] items-center gap-2 pl-6 pr-2 py-1 text-[10px] border-t border-border/30 first:border-t-0"
-            >
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-muted-foreground text-[9px] font-semibold tabular-nums">
-                {partialCount - idx}
-              </span>
-              <div className="flex items-center gap-1.5 min-w-0">
-                <PaymentMethodChip method={r.paymentMethod} />
-                <span className="text-muted-foreground truncate">
-                  {format(new Date(r.paidDate), 'dd/MM HH:mm')}
-                </span>
-              </div>
-              <span className="font-medium text-foreground tabular-nums">
-                {Number(r.amount).toLocaleString()}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function SectionHeader({
   icon: Icon,

@@ -1,3 +1,4 @@
+import { AiProviderService } from './ai-provider.service';
 import Anthropic, { APIConnectionTimeoutError } from '@anthropic-ai/sdk';
 import { Logger } from '@nestjs/common';
 import { AiTextService } from './ai-text.service';
@@ -24,7 +25,7 @@ function makeService(apiKey: string | undefined = 'test-key') {
   const record = jest.fn().mockResolvedValue(undefined);
   const service = new AiTextService(
     { get: jest.fn().mockReturnValue(apiKey) } as any,
-    { record } as any,
+    new AiProviderService({ record } as any),
   );
   return { service, create, record };
 }

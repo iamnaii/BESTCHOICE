@@ -1,18 +1,8 @@
 {
-  "checkedAt": "2026-09-07T17:47:29.703Z",
+  "checkedAt": "2026-09-07T19:07:50.888Z",
   "scope": "Built frontend only; fake SALES identity and local API fixtures; no real login/backend",
   "fontNote": "External font stylesheets are fulfilled locally with empty CSS; screenshots use system font fallbacks consistently in both builds",
   "gzipMethod": "Sum of default Node gzip sizes of unique JS assets requested before interaction; not measured wire bytes",
-  "baselineRef": "289d0d4a21da0263a1834db0e797d19f88e74244",
-  "finalRef": "8e7aac7735222bb0e0cec95301ce44010474fdd6",
-  "browserVersion": "145.0.7632.6",
-  "comparison": {
-    "beforeGzipBytes": 680916,
-    "afterGzipBytes": 549242,
-    "reductionGzipBytes": 131674,
-    "reductionPercent": 19.34
-  },
-  "status": "PASS",
   "runs": [
     {
       "name": "baseline-sales-desktop",
@@ -23,22 +13,6 @@
       },
       "pageErrors": [],
       "consoleErrors": [],
-      "fixtureErrors": [],
-      "checkErrors": [],
-      "checks": [
-        "Home heading rendered without horizontal overflow"
-      ],
-      "dimensions": {
-        "viewport": 1440,
-        "document": 1440,
-        "body": 1440
-      },
-      "status": "PASS",
-      "initialJavaScript": {
-        "count": 157,
-        "bytes": 2337580,
-        "gzipBytes": 680916
-      },
       "apiRequests": [
         {
           "method": "GET",
@@ -80,54 +54,823 @@
           "path": "/api/admin/customers/upsell-candidates",
           "search": "?limit=5"
         }
-      ]
+      ],
+      "blockedExternal": [
+        "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
+      ],
+      "fixtureErrors": [],
+      "checkErrors": [],
+      "checks": [
+        "Home heading rendered without horizontal overflow"
+      ],
+      "initialJavaScript": {
+        "files": [
+          {
+            "path": "/assets/AddressForm-DV7esDfo.js",
+            "bytes": 6808,
+            "gzipBytes": 2341
+          },
+          {
+            "path": "/assets/AuthContext-lCgISEfd.js",
+            "bytes": 2068,
+            "gzipBytes": 983
+          },
+          {
+            "path": "/assets/Combination-8qVKtBAw.js",
+            "bytes": 15606,
+            "gzipBytes": 5908
+          },
+          {
+            "path": "/assets/CompanyFilter-Cu83712i.js",
+            "bytes": 1088,
+            "gzipBytes": 667
+          },
+          {
+            "path": "/assets/ConfirmDialog-BaH0lrd8.js",
+            "bytes": 907,
+            "gzipBytes": 525
+          },
+          {
+            "path": "/assets/DashboardPage-DYAFnvMu.js",
+            "bytes": 71565,
+            "gzipBytes": 13869
+          },
+          {
+            "path": "/assets/Modal-DBeylYsz.js",
+            "bytes": 565,
+            "gzipBytes": 359
+          },
+          {
+            "path": "/assets/PageHeader-BiPXI63l.js",
+            "bytes": 1338,
+            "gzipBytes": 613
+          },
+          {
+            "path": "/assets/PeriodClosePage-CPKqcErj.js",
+            "bytes": 9998,
+            "gzipBytes": 3373
+          },
+          {
+            "path": "/assets/QueryBoundary-DyGq9vNl.js",
+            "bytes": 1461,
+            "gzipBytes": 773
+          },
+          {
+            "path": "/assets/accountName-DeuKMBO5.js",
+            "bytes": 136,
+            "gzipBytes": 130
+          },
+          {
+            "path": "/assets/activity-CBcWo5wB.js",
+            "bytes": 234,
+            "gzipBytes": 200
+          },
+          {
+            "path": "/assets/alert-stVmJRZZ.js",
+            "bytes": 3419,
+            "gzipBytes": 958
+          },
+          {
+            "path": "/assets/animated-counter-B7WKoDXg.js",
+            "bytes": 755,
+            "gzipBytes": 464
+          },
+          {
+            "path": "/assets/api-BIvi6slH.js",
+            "bytes": 3536,
+            "gzipBytes": 869
+          },
+          {
+            "path": "/assets/api-xyN2-72E.js",
+            "bytes": 44909,
+            "gzipBytes": 17323
+          },
+          {
+            "path": "/assets/arrow-left-BbE8e9ZG.js",
+            "bytes": 165,
+            "gzipBytes": 162
+          },
+          {
+            "path": "/assets/arrow-left-right-D7gFlIiq.js",
+            "bytes": 248,
+            "gzipBytes": 196
+          },
+          {
+            "path": "/assets/arrow-right-Cltz8Jtm.js",
+            "bytes": 165,
+            "gzipBytes": 162
+          },
+          {
+            "path": "/assets/arrow-right-left-BFa2g3_Q.js",
+            "bytes": 248,
+            "gzipBytes": 195
+          },
+          {
+            "path": "/assets/arrow-up-right-GHDy9ic2.js",
+            "bytes": 283,
+            "gzipBytes": 204
+          },
+          {
+            "path": "/assets/badge-DXCwyVeY.js",
+            "bytes": 3865,
+            "gzipBytes": 1127
+          },
+          {
+            "path": "/assets/bank-accounts-CpmKtpe-.js",
+            "bytes": 143,
+            "gzipBytes": 147
+          },
+          {
+            "path": "/assets/banknote-MKgYrDRw.js",
+            "bytes": 245,
+            "gzipBytes": 209
+          },
+          {
+            "path": "/assets/bell-BeV_PlEm.js",
+            "bytes": 290,
+            "gzipBytes": 238
+          },
+          {
+            "path": "/assets/book-open-CsJcoQEY.js",
+            "bytes": 279,
+            "gzipBytes": 206
+          },
+          {
+            "path": "/assets/bot-DJZueITj.js",
+            "bytes": 328,
+            "gzipBytes": 228
+          },
+          {
+            "path": "/assets/brain-B23_NF7w.js",
+            "bytes": 577,
+            "gzipBytes": 308
+          },
+          {
+            "path": "/assets/building-2-9Wggc123.js",
+            "bytes": 383,
+            "gzipBytes": 241
+          },
+          {
+            "path": "/assets/button-B3orifG5.js",
+            "bytes": 9239,
+            "gzipBytes": 1740
+          },
+          {
+            "path": "/assets/calculator-kqyeINp4.js",
+            "bytes": 530,
+            "gzipBytes": 282
+          },
+          {
+            "path": "/assets/calendar-B0hoVLgb.js",
+            "bytes": 257,
+            "gzipBytes": 201
+          },
+          {
+            "path": "/assets/calendar-days-Ogtyp7gs.js",
+            "bytes": 494,
+            "gzipBytes": 266
+          },
+          {
+            "path": "/assets/camera-tMOnnlv2.js",
+            "bytes": 336,
+            "gzipBytes": 252
+          },
+          {
+            "path": "/assets/card-y1Gxj37H.js",
+            "bytes": 2334,
+            "gzipBytes": 791
+          },
+          {
+            "path": "/assets/chart-column-Js8ESZ66.js",
+            "bytes": 251,
+            "gzipBytes": 194
+          },
+          {
+            "path": "/assets/chart-pie-CzfQyMoW.js",
+            "bytes": 273,
+            "gzipBytes": 225
+          },
+          {
+            "path": "/assets/charts-DtrQsyEN.js",
+            "bytes": 417857,
+            "gzipBytes": 118653
+          },
+          {
+            "path": "/assets/check-BNtnYjQR.js",
+            "bytes": 124,
+            "gzipBytes": 140
+          },
+          {
+            "path": "/assets/checkbox-DZ2PPK1l.js",
+            "bytes": 4688,
+            "gzipBytes": 1950
+          },
+          {
+            "path": "/assets/chevron-down-XJJ5pIAy.js",
+            "bytes": 128,
+            "gzipBytes": 141
+          },
+          {
+            "path": "/assets/chevron-right-DDe11mAh.js",
+            "bytes": 130,
+            "gzipBytes": 142
+          },
+          {
+            "path": "/assets/chevron-up-CDFISWIx.js",
+            "bytes": 128,
+            "gzipBytes": 141
+          },
+          {
+            "path": "/assets/circle-alert-GNaQcfmC.js",
+            "bytes": 250,
+            "gzipBytes": 187
+          },
+          {
+            "path": "/assets/circle-check-C9nbC7c4.js",
+            "bytes": 178,
+            "gzipBytes": 169
+          },
+          {
+            "path": "/assets/circle-check-big-qwYIsdCQ.js",
+            "bytes": 194,
+            "gzipBytes": 182
+          },
+          {
+            "path": "/assets/circle-dollar-sign-CnOeLujp.js",
+            "bytes": 248,
+            "gzipBytes": 203
+          },
+          {
+            "path": "/assets/circle-play-qBm6HgfW.js",
+            "bytes": 256,
+            "gzipBytes": 213
+          },
+          {
+            "path": "/assets/circle-user-round-B5s8o2R9.js",
+            "bytes": 253,
+            "gzipBytes": 208
+          },
+          {
+            "path": "/assets/circle-x-Dq0WjQHO.js",
+            "bytes": 207,
+            "gzipBytes": 178
+          },
+          {
+            "path": "/assets/clipboard-check-BMY7Nc0u.js",
+            "bytes": 304,
+            "gzipBytes": 235
+          },
+          {
+            "path": "/assets/clipboard-list-Bimt8RoR.js",
+            "bytes": 411,
+            "gzipBytes": 262
+          },
+          {
+            "path": "/assets/coins-DOv2vWvl.js",
+            "bytes": 285,
+            "gzipBytes": 228
+          },
+          {
+            "path": "/assets/command-CsVOY47_.js",
+            "bytes": 13767,
+            "gzipBytes": 5224
+          },
+          {
+            "path": "/assets/copy-DLkcAnJc.js",
+            "bytes": 236,
+            "gzipBytes": 209
+          },
+          {
+            "path": "/assets/createLucideIcon-CVUcxUwT.js",
+            "bytes": 1424,
+            "gzipBytes": 798
+          },
+          {
+            "path": "/assets/credit-card-CE3Ja1QZ.js",
+            "bytes": 207,
+            "gzipBytes": 187
+          },
+          {
+            "path": "/assets/date-CPj2E54N.js",
+            "bytes": 2283,
+            "gzipBytes": 889
+          },
+          {
+            "path": "/assets/dialog-BMX8_Lli.js",
+            "bytes": 2670,
+            "gzipBytes": 1025
+          },
+          {
+            "path": "/assets/dist--UKVHdiW.js",
+            "bytes": 32581,
+            "gzipBytes": 9138
+          },
+          {
+            "path": "/assets/dist--xKjRm_X.js",
+            "bytes": 416,
+            "gzipBytes": 295
+          },
+          {
+            "path": "/assets/dist-0Be7KzU1.js",
+            "bytes": 4020,
+            "gzipBytes": 1496
+          },
+          {
+            "path": "/assets/dist-8nFUAH2Y.js",
+            "bytes": 3656,
+            "gzipBytes": 1613
+          },
+          {
+            "path": "/assets/dist-BYKQCAZk.js",
+            "bytes": 597,
+            "gzipBytes": 379
+          },
+          {
+            "path": "/assets/dist-Bsb18jjY.js",
+            "bytes": 454,
+            "gzipBytes": 300
+          },
+          {
+            "path": "/assets/dist-CYTz83FC.js",
+            "bytes": 4361,
+            "gzipBytes": 1902
+          },
+          {
+            "path": "/assets/dist-CmK2cRwi.js",
+            "bytes": 642,
+            "gzipBytes": 392
+          },
+          {
+            "path": "/assets/dist-CnwrqdAG.js",
+            "bytes": 296,
+            "gzipBytes": 210
+          },
+          {
+            "path": "/assets/dist-DIjs-2BV.js",
+            "bytes": 1870,
+            "gzipBytes": 870
+          },
+          {
+            "path": "/assets/dist-DJhvNKzt.js",
+            "bytes": 6775,
+            "gzipBytes": 2570
+          },
+          {
+            "path": "/assets/dist-DjGoPhs0.js",
+            "bytes": 26306,
+            "gzipBytes": 10112
+          },
+          {
+            "path": "/assets/dist-DkjxkW1e.js",
+            "bytes": 2137,
+            "gzipBytes": 949
+          },
+          {
+            "path": "/assets/dist-OcdpZWHs.js",
+            "bytes": 500,
+            "gzipBytes": 363
+          },
+          {
+            "path": "/assets/dist-df1D3dKU.js",
+            "bytes": 68,
+            "gzipBytes": 83
+          },
+          {
+            "path": "/assets/dist-qdY89rfb.js",
+            "bytes": 2760,
+            "gzipBytes": 1217
+          },
+          {
+            "path": "/assets/dollar-sign-DFy3BPzV.js",
+            "bytes": 219,
+            "gzipBytes": 192
+          },
+          {
+            "path": "/assets/download-DEsV8CVs.js",
+            "bytes": 232,
+            "gzipBytes": 192
+          },
+          {
+            "path": "/assets/ellipsis-yxePYujC.js",
+            "bytes": 226,
+            "gzipBytes": 164
+          },
+          {
+            "path": "/assets/esm-BlMDRFcL.js",
+            "bytes": 11672,
+            "gzipBytes": 3856
+          },
+          {
+            "path": "/assets/excel.util-B6b5CsU8.js",
+            "bytes": 1372,
+            "gzipBytes": 747
+          },
+          {
+            "path": "/assets/external-link-B2_HJUNh.js",
+            "bytes": 251,
+            "gzipBytes": 199
+          },
+          {
+            "path": "/assets/eye-B9Ln0q3b.js",
+            "bytes": 256,
+            "gzipBytes": 200
+          },
+          {
+            "path": "/assets/eye-off-CicaXh4U.js",
+            "bytes": 430,
+            "gzipBytes": 272
+          },
+          {
+            "path": "/assets/file-check-evc1-Agh.js",
+            "bytes": 318,
+            "gzipBytes": 236
+          },
+          {
+            "path": "/assets/file-exclamation-point-nd7hiWg9.js",
+            "bytes": 311,
+            "gzipBytes": 233
+          },
+          {
+            "path": "/assets/formatters-CU8_l9OW.js",
+            "bytes": 2681,
+            "gzipBytes": 1051
+          },
+          {
+            "path": "/assets/gavel-Blw7PYNj.js",
+            "bytes": 316,
+            "gzipBytes": 226
+          },
+          {
+            "path": "/assets/grip-vertical-BdA8iPki.js",
+            "bytes": 371,
+            "gzipBytes": 197
+          },
+          {
+            "path": "/assets/image-DspP3d0k.js",
+            "bytes": 269,
+            "gzipBytes": 223
+          },
+          {
+            "path": "/assets/index-CON0PzZR.js",
+            "bytes": 280087,
+            "gzipBytes": 72133
+          },
+          {
+            "path": "/assets/info-DPV9x9_2.js",
+            "bytes": 204,
+            "gzipBytes": 178
+          },
+          {
+            "path": "/assets/input-BVBozbPK.js",
+            "bytes": 3696,
+            "gzipBytes": 1109
+          },
+          {
+            "path": "/assets/key-round-OuP3t_zc.js",
+            "bytes": 355,
+            "gzipBytes": 259
+          },
+          {
+            "path": "/assets/label-BOnTHphy.js",
+            "bytes": 1206,
+            "gzipBytes": 705
+          },
+          {
+            "path": "/assets/layers-jTPpb3ii.js",
+            "bytes": 421,
+            "gzipBytes": 243
+          },
+          {
+            "path": "/assets/layout-template-DgWoxHr4.js",
+            "bytes": 286,
+            "gzipBytes": 192
+          },
+          {
+            "path": "/assets/liff-_pGWEaP-.js",
+            "bytes": 120079,
+            "gzipBytes": 33322
+          },
+          {
+            "path": "/assets/lightbulb-iBHrj7Op.js",
+            "bytes": 286,
+            "gzipBytes": 227
+          },
+          {
+            "path": "/assets/link-2-D08Yvs8I.js",
+            "bytes": 242,
+            "gzipBytes": 208
+          },
+          {
+            "path": "/assets/loader-circle-BjaHZUoi.js",
+            "bytes": 144,
+            "gzipBytes": 155
+          },
+          {
+            "path": "/assets/lock-BIMp0zd6.js",
+            "bytes": 206,
+            "gzipBytes": 191
+          },
+          {
+            "path": "/assets/lock-open-B5vKjU3Y.js",
+            "bytes": 210,
+            "gzipBytes": 196
+          },
+          {
+            "path": "/assets/map-pin-DbwZUPk1.js",
+            "bytes": 259,
+            "gzipBytes": 225
+          },
+          {
+            "path": "/assets/megaphone-Ci00fy2f.js",
+            "bytes": 346,
+            "gzipBytes": 246
+          },
+          {
+            "path": "/assets/message-square-Bo4bprAj.js",
+            "bytes": 233,
+            "gzipBytes": 205
+          },
+          {
+            "path": "/assets/minus-B9CEhQCx.js",
+            "bytes": 117,
+            "gzipBytes": 133
+          },
+          {
+            "path": "/assets/otherIncome-Mhtr1klR.js",
+            "bytes": 2085,
+            "gzipBytes": 653
+          },
+          {
+            "path": "/assets/package-C-hX1mgq.js",
+            "bytes": 372,
+            "gzipBytes": 257
+          },
+          {
+            "path": "/assets/page-skeletons-Cl9IGTG7.js",
+            "bytes": 1735,
+            "gzipBytes": 474
+          },
+          {
+            "path": "/assets/pdf-CIBoUYyf.js",
+            "bytes": 430540,
+            "gzipBytes": 138287
+          },
+          {
+            "path": "/assets/pencil-D6nYHIuD.js",
+            "bytes": 276,
+            "gzipBytes": 227
+          },
+          {
+            "path": "/assets/phone-B1jaGn4w.js",
+            "bytes": 322,
+            "gzipBytes": 232
+          },
+          {
+            "path": "/assets/plus-C9hYuQ78.js",
+            "bytes": 153,
+            "gzipBytes": 151
+          },
+          {
+            "path": "/assets/popover-DeM9ht9u.js",
+            "bytes": 7073,
+            "gzipBytes": 2558
+          },
+          {
+            "path": "/assets/qr-code-Exq--SUl.js",
+            "bytes": 650,
+            "gzipBytes": 311
+          },
+          {
+            "path": "/assets/query-B6AfrxyT.js",
+            "bytes": 33828,
+            "gzipBytes": 10245
+          },
+          {
+            "path": "/assets/receipt-vTiHJwpF.js",
+            "bytes": 654,
+            "gzipBytes": 285
+          },
+          {
+            "path": "/assets/refresh-cw-DlKeGRDG.js",
+            "bytes": 321,
+            "gzipBytes": 228
+          },
+          {
+            "path": "/assets/rolldown-runtime-DWdDZTNf.js",
+            "bytes": 1084,
+            "gzipBytes": 621
+          },
+          {
+            "path": "/assets/rotate-ccw-BS0kNekn.js",
+            "bytes": 200,
+            "gzipBytes": 182
+          },
+          {
+            "path": "/assets/save-CFj5-VCA.js",
+            "bytes": 327,
+            "gzipBytes": 228
+          },
+          {
+            "path": "/assets/scale-cz7to7aZ.js",
+            "bytes": 332,
+            "gzipBytes": 222
+          },
+          {
+            "path": "/assets/search-Dobei_jx.js",
+            "bytes": 174,
+            "gzipBytes": 167
+          },
+          {
+            "path": "/assets/select-CI0qlomi.js",
+            "bytes": 23374,
+            "gzipBytes": 7943
+          },
+          {
+            "path": "/assets/settings-BQTqGsiM.js",
+            "bytes": 487,
+            "gzipBytes": 259
+          },
+          {
+            "path": "/assets/settings-access-CObhCMuK.js",
+            "bytes": 380841,
+            "gzipBytes": 79127
+          },
+          {
+            "path": "/assets/shared-tjjLP2fG.js",
+            "bytes": 8494,
+            "gzipBytes": 2498
+          },
+          {
+            "path": "/assets/shield-alert-DrkKvsUx.js",
+            "bytes": 353,
+            "gzipBytes": 260
+          },
+          {
+            "path": "/assets/shield-check-CZJ6Qv4_.js",
+            "bytes": 320,
+            "gzipBytes": 250
+          },
+          {
+            "path": "/assets/shield-off-DcDJTACr.js",
+            "bytes": 400,
+            "gzipBytes": 283
+          },
+          {
+            "path": "/assets/skeleton-BvwZQNqw.js",
+            "bytes": 324,
+            "gzipBytes": 247
+          },
+          {
+            "path": "/assets/slider-BGSzEH4y.js",
+            "bytes": 8530,
+            "gzipBytes": 3428
+          },
+          {
+            "path": "/assets/smartphone-C5b4uYXK.js",
+            "bytes": 197,
+            "gzipBytes": 182
+          },
+          {
+            "path": "/assets/sparkles-Bqbfpr8A.js",
+            "bytes": 494,
+            "gzipBytes": 281
+          },
+          {
+            "path": "/assets/star-BPH6VYn_.js",
+            "bytes": 472,
+            "gzipBytes": 292
+          },
+          {
+            "path": "/assets/status-badges-ByKwau_W.js",
+            "bytes": 14616,
+            "gzipBytes": 2880
+          },
+          {
+            "path": "/assets/store-DUTqSZIu.js",
+            "bytes": 498,
+            "gzipBytes": 287
+          },
+          {
+            "path": "/assets/switch-Cr2HutE5.js",
+            "bytes": 3708,
+            "gzipBytes": 1700
+          },
+          {
+            "path": "/assets/table-DBa_MTZ3.js",
+            "bytes": 1270,
+            "gzipBytes": 521
+          },
+          {
+            "path": "/assets/tabs-D8tK1CnF.js",
+            "bytes": 6495,
+            "gzipBytes": 2067
+          },
+          {
+            "path": "/assets/textarea-C3mE_otF.js",
+            "bytes": 844,
+            "gzipBytes": 482
+          },
+          {
+            "path": "/assets/tooltip-CJeUhvRf.js",
+            "bytes": 8997,
+            "gzipBytes": 3262
+          },
+          {
+            "path": "/assets/trash-2-BbJDCLGM.js",
+            "bytes": 328,
+            "gzipBytes": 215
+          },
+          {
+            "path": "/assets/trending-up-CwdzMWdK.js",
+            "bytes": 175,
+            "gzipBytes": 171
+          },
+          {
+            "path": "/assets/triangle-alert-CrTNsQfV.js",
+            "bytes": 265,
+            "gzipBytes": 215
+          },
+          {
+            "path": "/assets/upload-C2rfycQV.js",
+            "bytes": 230,
+            "gzipBytes": 192
+          },
+          {
+            "path": "/assets/useCopyToClipboard-DEZLG1ZV.js",
+            "bytes": 424,
+            "gzipBytes": 312
+          },
+          {
+            "path": "/assets/useDebounce-DFgSboa6.js",
+            "bytes": 261,
+            "gzipBytes": 208
+          },
+          {
+            "path": "/assets/useDocumentTitle-BtvL-oF4.js",
+            "bytes": 234,
+            "gzipBytes": 202
+          },
+          {
+            "path": "/assets/user-check-DHb0DYCL.js",
+            "bytes": 243,
+            "gzipBytes": 208
+          },
+          {
+            "path": "/assets/user-roles-DT8pP0bm.js",
+            "bytes": 927,
+            "gzipBytes": 398
+          },
+          {
+            "path": "/assets/users-BB1HR2nO.js",
+            "bytes": 306,
+            "gzipBytes": 226
+          },
+          {
+            "path": "/assets/utils-BYKMb33N.js",
+            "bytes": 26936,
+            "gzipBytes": 8495
+          },
+          {
+            "path": "/assets/vendor-kObsw-z1.js",
+            "bytes": 219415,
+            "gzipBytes": 69636
+          },
+          {
+            "path": "/assets/wallet-BwtNIYnE.js",
+            "bytes": 286,
+            "gzipBytes": 205
+          },
+          {
+            "path": "/assets/x-DUdccTNe.js",
+            "bytes": 154,
+            "gzipBytes": 152
+          },
+          {
+            "path": "/assets/zap-T1pFnUfW.js",
+            "bytes": 262,
+            "gzipBytes": 207
+          }
+        ],
+        "count": 157,
+        "bytes": 2337580,
+        "gzipBytes": 680916
+      },
+      "dimensions": {
+        "viewport": 1440,
+        "document": 1440,
+        "body": 1440
+      },
+      "status": "PASS"
     },
     {
       "name": "final-sales-desktop",
-      "origin": "http://127.0.0.1:5198",
+      "origin": "http://127.0.0.1:5196",
       "viewport": {
         "width": 1440,
         "height": 1000
       },
       "pageErrors": [],
       "consoleErrors": [],
-      "fixtureErrors": [],
-      "checkErrors": [],
-      "checks": [
-        "Home heading rendered without horizontal overflow",
-        "Four SALES action links point to permitted destinations",
-        "Initial SALES request set excludes ManagementDashboard; shared chart/PDF chunks are separately reported",
-        "POS alias finds sales entries and excludes unrelated menu entries",
-        "Personal todos link/filter persist today/me then all/me without admin user requests"
-      ],
-      "dimensions": {
-        "viewport": 1440,
-        "document": 1440,
-        "body": 1440
-      },
-      "sharedHeavyChunks": [
-        {
-          "path": "/assets/charts-DtrQsyEN.js",
-          "bytes": 417857,
-          "gzipBytes": 118653
-        },
-        {
-          "path": "/assets/pdf-bkdg-02G.js",
-          "bytes": 430540,
-          "gzipBytes": 138289
-        }
-      ],
-      "todosDimensions": {
-        "viewport": 1440,
-        "document": 1440,
-        "body": 1440
-      },
-      "status": "PASS",
-      "initialJavaScript": {
-        "count": 82,
-        "bytes": 1799569,
-        "gzipBytes": 549242
-      },
       "apiRequests": [
         {
           "method": "GET",
@@ -179,54 +922,469 @@
           "path": "/api/admin/todos",
           "search": "?view=all&assigneeId=me&limit=100"
         }
-      ]
+      ],
+      "blockedExternal": [
+        "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
+      ],
+      "fixtureErrors": [],
+      "checkErrors": [],
+      "checks": [
+        "Home heading rendered without horizontal overflow",
+        "Four SALES action links point to permitted destinations",
+        "Initial SALES request set excludes ManagementDashboard; shared chart/PDF chunks are separately reported",
+        "POS alias finds sales entries and excludes unrelated menu entries",
+        "Personal todos link/filter persist today/me then all/me without admin user requests"
+      ],
+      "initialJavaScript": {
+        "files": [
+          {
+            "path": "/assets/AuthContext-BS3EENj6.js",
+            "bytes": 2073,
+            "gzipBytes": 984
+          },
+          {
+            "path": "/assets/Combination-D6cegxIK.js",
+            "bytes": 15606,
+            "gzipBytes": 5906
+          },
+          {
+            "path": "/assets/DashboardPage-BsHsqfR1.js",
+            "bytes": 4197,
+            "gzipBytes": 1857
+          },
+          {
+            "path": "/assets/EmptyState-8RmO4fDV.js",
+            "bytes": 807,
+            "gzipBytes": 436
+          },
+          {
+            "path": "/assets/PageHeader-BbnPTzze.js",
+            "bytes": 1338,
+            "gzipBytes": 613
+          },
+          {
+            "path": "/assets/QueryBoundary-CyeYko5m.js",
+            "bytes": 1461,
+            "gzipBytes": 775
+          },
+          {
+            "path": "/assets/StaffHome-DLs5LfCa.js",
+            "bytes": 10757,
+            "gzipBytes": 3275
+          },
+          {
+            "path": "/assets/api-0X-p5XCN.js",
+            "bytes": 3536,
+            "gzipBytes": 869
+          },
+          {
+            "path": "/assets/api-c9yl48f9.js",
+            "bytes": 44909,
+            "gzipBytes": 17320
+          },
+          {
+            "path": "/assets/arrow-left-D2aWfypE.js",
+            "bytes": 165,
+            "gzipBytes": 163
+          },
+          {
+            "path": "/assets/arrow-left-right-CkK7t2Gt.js",
+            "bytes": 248,
+            "gzipBytes": 197
+          },
+          {
+            "path": "/assets/arrow-right-nG_ajWEN.js",
+            "bytes": 165,
+            "gzipBytes": 163
+          },
+          {
+            "path": "/assets/banknote-4u8JQSVn.js",
+            "bytes": 245,
+            "gzipBytes": 210
+          },
+          {
+            "path": "/assets/bell-SHtS6p5C.js",
+            "bytes": 290,
+            "gzipBytes": 238
+          },
+          {
+            "path": "/assets/book-open-Dt25HOx1.js",
+            "bytes": 279,
+            "gzipBytes": 206
+          },
+          {
+            "path": "/assets/building-2-pl4WvnX2.js",
+            "bytes": 383,
+            "gzipBytes": 242
+          },
+          {
+            "path": "/assets/calculator-U3xA0z27.js",
+            "bytes": 530,
+            "gzipBytes": 283
+          },
+          {
+            "path": "/assets/calendar-days-BlbtiTUy.js",
+            "bytes": 494,
+            "gzipBytes": 266
+          },
+          {
+            "path": "/assets/camera-nQvOoeYw.js",
+            "bytes": 336,
+            "gzipBytes": 252
+          },
+          {
+            "path": "/assets/chart-column-A8eO-QSi.js",
+            "bytes": 251,
+            "gzipBytes": 194
+          },
+          {
+            "path": "/assets/chart-pie-1lAPxlBA.js",
+            "bytes": 273,
+            "gzipBytes": 225
+          },
+          {
+            "path": "/assets/charts-DtrQsyEN.js",
+            "bytes": 417857,
+            "gzipBytes": 118653
+          },
+          {
+            "path": "/assets/circle-alert-CSFTLRZ6.js",
+            "bytes": 250,
+            "gzipBytes": 188
+          },
+          {
+            "path": "/assets/circle-dollar-sign-CC2oUu7m.js",
+            "bytes": 248,
+            "gzipBytes": 204
+          },
+          {
+            "path": "/assets/circle-question-mark-CELdHGpT.js",
+            "bytes": 248,
+            "gzipBytes": 212
+          },
+          {
+            "path": "/assets/clipboard-check-Bgc0moqd.js",
+            "bytes": 304,
+            "gzipBytes": 236
+          },
+          {
+            "path": "/assets/clipboard-list-DpAkJziS.js",
+            "bytes": 411,
+            "gzipBytes": 263
+          },
+          {
+            "path": "/assets/clock-5ICgaTUn.js",
+            "bytes": 169,
+            "gzipBytes": 167
+          },
+          {
+            "path": "/assets/coins-YbtCDcjA.js",
+            "bytes": 285,
+            "gzipBytes": 229
+          },
+          {
+            "path": "/assets/createLucideIcon-BSJXpsT5.js",
+            "bytes": 1424,
+            "gzipBytes": 798
+          },
+          {
+            "path": "/assets/dist-BKwK5YoN.js",
+            "bytes": 500,
+            "gzipBytes": 363
+          },
+          {
+            "path": "/assets/dist-Bsb18jjY.js",
+            "bytes": 454,
+            "gzipBytes": 300
+          },
+          {
+            "path": "/assets/dist-CA3pyGWm.js",
+            "bytes": 6775,
+            "gzipBytes": 2564
+          },
+          {
+            "path": "/assets/dist-CDEpU7p9.js",
+            "bytes": 2760,
+            "gzipBytes": 1219
+          },
+          {
+            "path": "/assets/dist-CmK2cRwi.js",
+            "bytes": 642,
+            "gzipBytes": 392
+          },
+          {
+            "path": "/assets/dist-CmeLJVDj.js",
+            "bytes": 416,
+            "gzipBytes": 293
+          },
+          {
+            "path": "/assets/dist-CtVovrz4.js",
+            "bytes": 4361,
+            "gzipBytes": 1904
+          },
+          {
+            "path": "/assets/dist-DQA7HnKa.js",
+            "bytes": 1870,
+            "gzipBytes": 873
+          },
+          {
+            "path": "/assets/dist-DWq227HF.js",
+            "bytes": 26306,
+            "gzipBytes": 10111
+          },
+          {
+            "path": "/assets/dist-Ddtid1m-.js",
+            "bytes": 2137,
+            "gzipBytes": 948
+          },
+          {
+            "path": "/assets/dist-DeE4Hv_L.js",
+            "bytes": 4020,
+            "gzipBytes": 1493
+          },
+          {
+            "path": "/assets/dist-Oq7C28M0.js",
+            "bytes": 3656,
+            "gzipBytes": 1611
+          },
+          {
+            "path": "/assets/dist-df1D3dKU.js",
+            "bytes": 68,
+            "gzipBytes": 83
+          },
+          {
+            "path": "/assets/dist-eGpRd-k1.js",
+            "bytes": 597,
+            "gzipBytes": 376
+          },
+          {
+            "path": "/assets/dollar-sign-DCFTi3oj.js",
+            "bytes": 219,
+            "gzipBytes": 193
+          },
+          {
+            "path": "/assets/ellipsis-BBXAZqeA.js",
+            "bytes": 226,
+            "gzipBytes": 164
+          },
+          {
+            "path": "/assets/esm-BlMDRFcL.js",
+            "bytes": 11672,
+            "gzipBytes": 3856
+          },
+          {
+            "path": "/assets/file-check-BV4f65_x.js",
+            "bytes": 318,
+            "gzipBytes": 237
+          },
+          {
+            "path": "/assets/file-text-C0NQevrc.js",
+            "bytes": 385,
+            "gzipBytes": 251
+          },
+          {
+            "path": "/assets/inbox-DPfirfKW.js",
+            "bytes": 286,
+            "gzipBytes": 232
+          },
+          {
+            "path": "/assets/index-Dga9Kycy.js",
+            "bytes": 345267,
+            "gzipBytes": 90281
+          },
+          {
+            "path": "/assets/landmark-DsspJEcR.js",
+            "bytes": 400,
+            "gzipBytes": 263
+          },
+          {
+            "path": "/assets/liff-Orl9U0gL.js",
+            "bytes": 120079,
+            "gzipBytes": 33322
+          },
+          {
+            "path": "/assets/mail-zoPUhChM.js",
+            "bytes": 213,
+            "gzipBytes": 202
+          },
+          {
+            "path": "/assets/message-square-Ce6meN27.js",
+            "bytes": 233,
+            "gzipBytes": 203
+          },
+          {
+            "path": "/assets/message-square-more-BN0epiRh.js",
+            "bytes": 354,
+            "gzipBytes": 245
+          },
+          {
+            "path": "/assets/page-skeletons-pkxlF9gg.js",
+            "bytes": 1735,
+            "gzipBytes": 475
+          },
+          {
+            "path": "/assets/pdf-tOKrtQWz.js",
+            "bytes": 430540,
+            "gzipBytes": 138291
+          },
+          {
+            "path": "/assets/plug-DtyFjXsl.js",
+            "bytes": 286,
+            "gzipBytes": 202
+          },
+          {
+            "path": "/assets/plus-CPQQ9ajs.js",
+            "bytes": 153,
+            "gzipBytes": 151
+          },
+          {
+            "path": "/assets/query-BEt65K4L.js",
+            "bytes": 34236,
+            "gzipBytes": 10368
+          },
+          {
+            "path": "/assets/receipt-kB4UJSJA.js",
+            "bytes": 654,
+            "gzipBytes": 285
+          },
+          {
+            "path": "/assets/refresh-cw-BpJRC0pk.js",
+            "bytes": 321,
+            "gzipBytes": 229
+          },
+          {
+            "path": "/assets/rolldown-runtime-DWdDZTNf.js",
+            "bytes": 1084,
+            "gzipBytes": 621
+          },
+          {
+            "path": "/assets/search-DGRqD5vR.js",
+            "bytes": 174,
+            "gzipBytes": 168
+          },
+          {
+            "path": "/assets/settings-8cf4RdZs.js",
+            "bytes": 487,
+            "gzipBytes": 259
+          },
+          {
+            "path": "/assets/settings-registry-DUotqIfd.js",
+            "bytes": 25668,
+            "gzipBytes": 5933
+          },
+          {
+            "path": "/assets/shield-IHVWzbNW.js",
+            "bytes": 272,
+            "gzipBytes": 227
+          },
+          {
+            "path": "/assets/shield-check-rAzwV2pI.js",
+            "bytes": 320,
+            "gzipBytes": 251
+          },
+          {
+            "path": "/assets/shopping-cart-CgqabjAV.js",
+            "bytes": 292,
+            "gzipBytes": 234
+          },
+          {
+            "path": "/assets/skeleton-BM-6rQbN.js",
+            "bytes": 324,
+            "gzipBytes": 248
+          },
+          {
+            "path": "/assets/smartphone-Cg1HxH5d.js",
+            "bytes": 197,
+            "gzipBytes": 183
+          },
+          {
+            "path": "/assets/sparkles-B-G1tNUV.js",
+            "bytes": 494,
+            "gzipBytes": 282
+          },
+          {
+            "path": "/assets/tooltip-BJt_6CxK.js",
+            "bytes": 8997,
+            "gzipBytes": 3256
+          },
+          {
+            "path": "/assets/triangle-alert-LAc4uRw1.js",
+            "bytes": 265,
+            "gzipBytes": 216
+          },
+          {
+            "path": "/assets/useDocumentTitle-DlUOee3W.js",
+            "bytes": 234,
+            "gzipBytes": 202
+          },
+          {
+            "path": "/assets/users-BvdY1sLB.js",
+            "bytes": 306,
+            "gzipBytes": 227
+          },
+          {
+            "path": "/assets/utils-BYKMb33N.js",
+            "bytes": 26936,
+            "gzipBytes": 8495
+          },
+          {
+            "path": "/assets/vendor-CnRgfGcX.js",
+            "bytes": 219415,
+            "gzipBytes": 69637
+          },
+          {
+            "path": "/assets/wallet-DaoWpffU.js",
+            "bytes": 286,
+            "gzipBytes": 206
+          },
+          {
+            "path": "/assets/work-navigation-DApzvXgu.js",
+            "bytes": 2754,
+            "gzipBytes": 1108
+          },
+          {
+            "path": "/assets/x-BFVw8FrJ.js",
+            "bytes": 154,
+            "gzipBytes": 152
+          }
+        ],
+        "count": 82,
+        "bytes": 1800337,
+        "gzipBytes": 549509
+      },
+      "dimensions": {
+        "viewport": 1440,
+        "document": 1440,
+        "body": 1440
+      },
+      "sharedHeavyChunks": [
+        {
+          "path": "/assets/charts-DtrQsyEN.js",
+          "bytes": 417857,
+          "gzipBytes": 118653
+        },
+        {
+          "path": "/assets/pdf-tOKrtQWz.js",
+          "bytes": 430540,
+          "gzipBytes": 138291
+        }
+      ],
+      "todosDimensions": {
+        "viewport": 1440,
+        "document": 1440,
+        "body": 1440
+      },
+      "status": "PASS"
     },
     {
       "name": "final-sales-mobile",
-      "origin": "http://127.0.0.1:5198",
+      "origin": "http://127.0.0.1:5196",
       "viewport": {
         "width": 390,
         "height": 844
       },
       "pageErrors": [],
       "consoleErrors": [],
-      "fixtureErrors": [],
-      "checkErrors": [],
-      "checks": [
-        "Home heading rendered without horizontal overflow",
-        "Four SALES action links point to permitted destinations",
-        "Initial SALES request set excludes ManagementDashboard; shared chart/PDF chunks are separately reported",
-        "POS alias finds sales entries and excludes unrelated menu entries",
-        "Personal todos link/filter persist today/me then all/me without admin user requests"
-      ],
-      "dimensions": {
-        "viewport": 390,
-        "document": 390,
-        "body": 390
-      },
-      "sharedHeavyChunks": [
-        {
-          "path": "/assets/charts-DtrQsyEN.js",
-          "bytes": 417857,
-          "gzipBytes": 118653
-        },
-        {
-          "path": "/assets/pdf-bkdg-02G.js",
-          "bytes": 430540,
-          "gzipBytes": 138289
-        }
-      ],
-      "todosDimensions": {
-        "viewport": 390,
-        "document": 390,
-        "body": 390
-      },
-      "status": "PASS",
-      "initialJavaScript": {
-        "count": 82,
-        "bytes": 1799569,
-        "gzipBytes": 549242
-      },
       "apiRequests": [
         {
           "method": "GET",
@@ -278,7 +1436,469 @@
           "path": "/api/admin/todos",
           "search": "?view=all&assigneeId=me&limit=100"
         }
-      ]
+      ],
+      "blockedExternal": [
+        "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
+      ],
+      "fixtureErrors": [],
+      "checkErrors": [],
+      "checks": [
+        "Home heading rendered without horizontal overflow",
+        "Four SALES action links point to permitted destinations",
+        "Initial SALES request set excludes ManagementDashboard; shared chart/PDF chunks are separately reported",
+        "POS alias finds sales entries and excludes unrelated menu entries",
+        "Personal todos link/filter persist today/me then all/me without admin user requests"
+      ],
+      "initialJavaScript": {
+        "files": [
+          {
+            "path": "/assets/AuthContext-BS3EENj6.js",
+            "bytes": 2073,
+            "gzipBytes": 984
+          },
+          {
+            "path": "/assets/Combination-D6cegxIK.js",
+            "bytes": 15606,
+            "gzipBytes": 5906
+          },
+          {
+            "path": "/assets/DashboardPage-BsHsqfR1.js",
+            "bytes": 4197,
+            "gzipBytes": 1857
+          },
+          {
+            "path": "/assets/EmptyState-8RmO4fDV.js",
+            "bytes": 807,
+            "gzipBytes": 436
+          },
+          {
+            "path": "/assets/PageHeader-BbnPTzze.js",
+            "bytes": 1338,
+            "gzipBytes": 613
+          },
+          {
+            "path": "/assets/QueryBoundary-CyeYko5m.js",
+            "bytes": 1461,
+            "gzipBytes": 775
+          },
+          {
+            "path": "/assets/StaffHome-DLs5LfCa.js",
+            "bytes": 10757,
+            "gzipBytes": 3275
+          },
+          {
+            "path": "/assets/api-0X-p5XCN.js",
+            "bytes": 3536,
+            "gzipBytes": 869
+          },
+          {
+            "path": "/assets/api-c9yl48f9.js",
+            "bytes": 44909,
+            "gzipBytes": 17320
+          },
+          {
+            "path": "/assets/arrow-left-D2aWfypE.js",
+            "bytes": 165,
+            "gzipBytes": 163
+          },
+          {
+            "path": "/assets/arrow-left-right-CkK7t2Gt.js",
+            "bytes": 248,
+            "gzipBytes": 197
+          },
+          {
+            "path": "/assets/arrow-right-nG_ajWEN.js",
+            "bytes": 165,
+            "gzipBytes": 163
+          },
+          {
+            "path": "/assets/banknote-4u8JQSVn.js",
+            "bytes": 245,
+            "gzipBytes": 210
+          },
+          {
+            "path": "/assets/bell-SHtS6p5C.js",
+            "bytes": 290,
+            "gzipBytes": 238
+          },
+          {
+            "path": "/assets/book-open-Dt25HOx1.js",
+            "bytes": 279,
+            "gzipBytes": 206
+          },
+          {
+            "path": "/assets/building-2-pl4WvnX2.js",
+            "bytes": 383,
+            "gzipBytes": 242
+          },
+          {
+            "path": "/assets/calculator-U3xA0z27.js",
+            "bytes": 530,
+            "gzipBytes": 283
+          },
+          {
+            "path": "/assets/calendar-days-BlbtiTUy.js",
+            "bytes": 494,
+            "gzipBytes": 266
+          },
+          {
+            "path": "/assets/camera-nQvOoeYw.js",
+            "bytes": 336,
+            "gzipBytes": 252
+          },
+          {
+            "path": "/assets/chart-column-A8eO-QSi.js",
+            "bytes": 251,
+            "gzipBytes": 194
+          },
+          {
+            "path": "/assets/chart-pie-1lAPxlBA.js",
+            "bytes": 273,
+            "gzipBytes": 225
+          },
+          {
+            "path": "/assets/charts-DtrQsyEN.js",
+            "bytes": 417857,
+            "gzipBytes": 118653
+          },
+          {
+            "path": "/assets/circle-alert-CSFTLRZ6.js",
+            "bytes": 250,
+            "gzipBytes": 188
+          },
+          {
+            "path": "/assets/circle-dollar-sign-CC2oUu7m.js",
+            "bytes": 248,
+            "gzipBytes": 204
+          },
+          {
+            "path": "/assets/circle-question-mark-CELdHGpT.js",
+            "bytes": 248,
+            "gzipBytes": 212
+          },
+          {
+            "path": "/assets/clipboard-check-Bgc0moqd.js",
+            "bytes": 304,
+            "gzipBytes": 236
+          },
+          {
+            "path": "/assets/clipboard-list-DpAkJziS.js",
+            "bytes": 411,
+            "gzipBytes": 263
+          },
+          {
+            "path": "/assets/clock-5ICgaTUn.js",
+            "bytes": 169,
+            "gzipBytes": 167
+          },
+          {
+            "path": "/assets/coins-YbtCDcjA.js",
+            "bytes": 285,
+            "gzipBytes": 229
+          },
+          {
+            "path": "/assets/createLucideIcon-BSJXpsT5.js",
+            "bytes": 1424,
+            "gzipBytes": 798
+          },
+          {
+            "path": "/assets/dist-BKwK5YoN.js",
+            "bytes": 500,
+            "gzipBytes": 363
+          },
+          {
+            "path": "/assets/dist-Bsb18jjY.js",
+            "bytes": 454,
+            "gzipBytes": 300
+          },
+          {
+            "path": "/assets/dist-CA3pyGWm.js",
+            "bytes": 6775,
+            "gzipBytes": 2564
+          },
+          {
+            "path": "/assets/dist-CDEpU7p9.js",
+            "bytes": 2760,
+            "gzipBytes": 1219
+          },
+          {
+            "path": "/assets/dist-CmK2cRwi.js",
+            "bytes": 642,
+            "gzipBytes": 392
+          },
+          {
+            "path": "/assets/dist-CmeLJVDj.js",
+            "bytes": 416,
+            "gzipBytes": 293
+          },
+          {
+            "path": "/assets/dist-CtVovrz4.js",
+            "bytes": 4361,
+            "gzipBytes": 1904
+          },
+          {
+            "path": "/assets/dist-DQA7HnKa.js",
+            "bytes": 1870,
+            "gzipBytes": 873
+          },
+          {
+            "path": "/assets/dist-DWq227HF.js",
+            "bytes": 26306,
+            "gzipBytes": 10111
+          },
+          {
+            "path": "/assets/dist-Ddtid1m-.js",
+            "bytes": 2137,
+            "gzipBytes": 948
+          },
+          {
+            "path": "/assets/dist-DeE4Hv_L.js",
+            "bytes": 4020,
+            "gzipBytes": 1493
+          },
+          {
+            "path": "/assets/dist-Oq7C28M0.js",
+            "bytes": 3656,
+            "gzipBytes": 1611
+          },
+          {
+            "path": "/assets/dist-df1D3dKU.js",
+            "bytes": 68,
+            "gzipBytes": 83
+          },
+          {
+            "path": "/assets/dist-eGpRd-k1.js",
+            "bytes": 597,
+            "gzipBytes": 376
+          },
+          {
+            "path": "/assets/dollar-sign-DCFTi3oj.js",
+            "bytes": 219,
+            "gzipBytes": 193
+          },
+          {
+            "path": "/assets/ellipsis-BBXAZqeA.js",
+            "bytes": 226,
+            "gzipBytes": 164
+          },
+          {
+            "path": "/assets/esm-BlMDRFcL.js",
+            "bytes": 11672,
+            "gzipBytes": 3856
+          },
+          {
+            "path": "/assets/file-check-BV4f65_x.js",
+            "bytes": 318,
+            "gzipBytes": 237
+          },
+          {
+            "path": "/assets/file-text-C0NQevrc.js",
+            "bytes": 385,
+            "gzipBytes": 251
+          },
+          {
+            "path": "/assets/inbox-DPfirfKW.js",
+            "bytes": 286,
+            "gzipBytes": 232
+          },
+          {
+            "path": "/assets/index-Dga9Kycy.js",
+            "bytes": 345267,
+            "gzipBytes": 90281
+          },
+          {
+            "path": "/assets/landmark-DsspJEcR.js",
+            "bytes": 400,
+            "gzipBytes": 263
+          },
+          {
+            "path": "/assets/liff-Orl9U0gL.js",
+            "bytes": 120079,
+            "gzipBytes": 33322
+          },
+          {
+            "path": "/assets/mail-zoPUhChM.js",
+            "bytes": 213,
+            "gzipBytes": 202
+          },
+          {
+            "path": "/assets/message-square-Ce6meN27.js",
+            "bytes": 233,
+            "gzipBytes": 203
+          },
+          {
+            "path": "/assets/message-square-more-BN0epiRh.js",
+            "bytes": 354,
+            "gzipBytes": 245
+          },
+          {
+            "path": "/assets/page-skeletons-pkxlF9gg.js",
+            "bytes": 1735,
+            "gzipBytes": 475
+          },
+          {
+            "path": "/assets/pdf-tOKrtQWz.js",
+            "bytes": 430540,
+            "gzipBytes": 138291
+          },
+          {
+            "path": "/assets/plug-DtyFjXsl.js",
+            "bytes": 286,
+            "gzipBytes": 202
+          },
+          {
+            "path": "/assets/plus-CPQQ9ajs.js",
+            "bytes": 153,
+            "gzipBytes": 151
+          },
+          {
+            "path": "/assets/query-BEt65K4L.js",
+            "bytes": 34236,
+            "gzipBytes": 10368
+          },
+          {
+            "path": "/assets/receipt-kB4UJSJA.js",
+            "bytes": 654,
+            "gzipBytes": 285
+          },
+          {
+            "path": "/assets/refresh-cw-BpJRC0pk.js",
+            "bytes": 321,
+            "gzipBytes": 229
+          },
+          {
+            "path": "/assets/rolldown-runtime-DWdDZTNf.js",
+            "bytes": 1084,
+            "gzipBytes": 621
+          },
+          {
+            "path": "/assets/search-DGRqD5vR.js",
+            "bytes": 174,
+            "gzipBytes": 168
+          },
+          {
+            "path": "/assets/settings-8cf4RdZs.js",
+            "bytes": 487,
+            "gzipBytes": 259
+          },
+          {
+            "path": "/assets/settings-registry-DUotqIfd.js",
+            "bytes": 25668,
+            "gzipBytes": 5933
+          },
+          {
+            "path": "/assets/shield-IHVWzbNW.js",
+            "bytes": 272,
+            "gzipBytes": 227
+          },
+          {
+            "path": "/assets/shield-check-rAzwV2pI.js",
+            "bytes": 320,
+            "gzipBytes": 251
+          },
+          {
+            "path": "/assets/shopping-cart-CgqabjAV.js",
+            "bytes": 292,
+            "gzipBytes": 234
+          },
+          {
+            "path": "/assets/skeleton-BM-6rQbN.js",
+            "bytes": 324,
+            "gzipBytes": 248
+          },
+          {
+            "path": "/assets/smartphone-Cg1HxH5d.js",
+            "bytes": 197,
+            "gzipBytes": 183
+          },
+          {
+            "path": "/assets/sparkles-B-G1tNUV.js",
+            "bytes": 494,
+            "gzipBytes": 282
+          },
+          {
+            "path": "/assets/tooltip-BJt_6CxK.js",
+            "bytes": 8997,
+            "gzipBytes": 3256
+          },
+          {
+            "path": "/assets/triangle-alert-LAc4uRw1.js",
+            "bytes": 265,
+            "gzipBytes": 216
+          },
+          {
+            "path": "/assets/useDocumentTitle-DlUOee3W.js",
+            "bytes": 234,
+            "gzipBytes": 202
+          },
+          {
+            "path": "/assets/users-BvdY1sLB.js",
+            "bytes": 306,
+            "gzipBytes": 227
+          },
+          {
+            "path": "/assets/utils-BYKMb33N.js",
+            "bytes": 26936,
+            "gzipBytes": 8495
+          },
+          {
+            "path": "/assets/vendor-CnRgfGcX.js",
+            "bytes": 219415,
+            "gzipBytes": 69637
+          },
+          {
+            "path": "/assets/wallet-DaoWpffU.js",
+            "bytes": 286,
+            "gzipBytes": 206
+          },
+          {
+            "path": "/assets/work-navigation-DApzvXgu.js",
+            "bytes": 2754,
+            "gzipBytes": 1108
+          },
+          {
+            "path": "/assets/x-BFVw8FrJ.js",
+            "bytes": 154,
+            "gzipBytes": 152
+          }
+        ],
+        "count": 82,
+        "bytes": 1800337,
+        "gzipBytes": 549509
+      },
+      "dimensions": {
+        "viewport": 390,
+        "document": 390,
+        "body": 390
+      },
+      "sharedHeavyChunks": [
+        {
+          "path": "/assets/charts-DtrQsyEN.js",
+          "bytes": 417857,
+          "gzipBytes": 118653
+        },
+        {
+          "path": "/assets/pdf-tOKrtQWz.js",
+          "bytes": 430540,
+          "gzipBytes": 138291
+        }
+      ],
+      "todosDimensions": {
+        "viewport": 390,
+        "document": 390,
+        "body": 390
+      },
+      "status": "PASS"
     }
-  ]
+  ],
+  "baselineRef": "289d0d4a21da0263a1834db0e797d19f88e74244",
+  "finalRef": "integrated-working-tree",
+  "browserVersion": "145.0.7632.6",
+  "comparison": {
+    "beforeGzipBytes": 680916,
+    "afterGzipBytes": 549509,
+    "reductionGzipBytes": 131407,
+    "reductionPercent": 19.3
+  },
+  "status": "PASS"
 }

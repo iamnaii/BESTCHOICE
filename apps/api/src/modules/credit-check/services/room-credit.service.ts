@@ -294,7 +294,7 @@ export class RoomCreditService {
         const { mimeType } = detectFile(bytes);
         base64.push(`data:${mimeType};base64,${bytes.toString('base64')}`);
       }
-      const { confidence: _confidence, ...result } = await this.ocr.analyzeBankStatement(base64);
+      const { confidence: _confidence, ...result } = await this.ocr.analyzeBankStatement(base64, actor.id);
       if (
         ![result.totalIncome, result.totalExpense, result.balance, result.monthlyIncome].some(
           (value) => typeof value === 'number' && Number.isFinite(value),

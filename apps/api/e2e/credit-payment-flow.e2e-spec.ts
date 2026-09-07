@@ -7,6 +7,7 @@ import { seedShopCoa } from '../prisma/seed-coa-shop';
 import { CreditCheckService } from '../src/modules/credit-check/credit-check.service';
 import { IntegrationConfigService } from '../src/modules/integrations/integration-config.service';
 import { AiUsageService } from '../src/modules/ai-usage/ai-usage.service';
+import { AiProviderService } from '../src/modules/ai-usage/ai-provider.service';
 import { ContractLifecycleService } from '../src/modules/contracts/services/contract-lifecycle.service';
 import { ContractQueryService } from '../src/modules/contracts/services/contract-query.service';
 import { ContractSignatureService } from '../src/modules/contracts/services/contract-signature.service';
@@ -78,7 +79,7 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     lifecycle = new ContractLifecycleService(db, new ContractQueryService(db), down,
       new ShopDownPaymentReversalTemplate(journal, db, resolver), shopAccounts, undefined, audit);
     const config = new ConfigService({});
-    credits = new CreditCheckService(db, new IntegrationConfigService(db, config), new AiUsageService(db, config));
+    credits = new CreditCheckService(db, new IntegrationConfigService(db, config), new AiProviderService(new AiUsageService(db, config)));
     // Only PDF generation/storage and external notifications are substituted.
     // Real signature persistence and integrity verification still execute.
     signatures = new ContractSignatureService(db, () => ({

@@ -1,0 +1,34 @@
+[
+  {
+    "root": "apps/api/src",
+    "beforeFiles": 1392,
+    "beforeLines": 213667,
+    "afterFiles": 1407,
+    "afterLines": 214837,
+    "deltaLines": 1170
+  },
+  {
+    "root": "apps/web/src",
+    "beforeFiles": 909,
+    "beforeLines": 201047,
+    "afterFiles": 927,
+    "afterLines": 202579,
+    "deltaLines": 1532
+  },
+  {
+    "root": "apps/web-shop/src",
+    "beforeFiles": 131,
+    "beforeLines": 12337,
+    "afterFiles": 131,
+    "afterLines": 12337,
+    "deltaLines": 0
+  },
+  {
+    "root": "packages/shared/src",
+    "beforeFiles": 6,
+    "beforeLines": 727,
+    "afterFiles": 6,
+    "afterLines": 730,
+    "deltaLines": 3
+  }
+]

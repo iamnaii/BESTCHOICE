@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import MessageBubble from './MessageBubble';
 import { swapRoomDraft } from './composer-draft';
+import PrepareOfferDialog from './PrepareOfferDialog';
 import SessionActions from './SessionActions';
 import MessageTemplatePicker from './MessageTemplatePicker';
 import ProductPickerDialog from './ProductPickerDialog';
@@ -961,6 +962,11 @@ export default function ChatPanel({
       )}
 
       {/* AI Suggestions */}
+      {!isResolved && !isNoteMode && (
+        <div className="border-t border-border/60 px-2">
+          <PrepareOfferDialog key={session.id} roomId={session.id} onInsert={(text) => { setSelectedSuggestion(null); insertAtCaret(text); }} />
+        </div>
+      )}
       {!isResolved && (
         <AiSuggestPanel
           roomId={session.id}

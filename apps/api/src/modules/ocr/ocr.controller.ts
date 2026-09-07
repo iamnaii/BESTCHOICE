@@ -25,36 +25,36 @@ export class OcrController {
   @Post('id-card')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   @Throttle({ short: { limit: 5, ttl: 60000 } })
-  extractIdCard(@Body() dto: OcrIdCardDto) {
-    return this.ocrService.extractIdCard(dto.imageBase64);
+  extractIdCard(@Body() dto: OcrIdCardDto, @Req() req: { user: CreditRoomActor }) {
+    return this.ocrService.extractIdCard(dto.imageBase64, req.user.id);
   }
 
   @Post('payment-slip')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @Throttle({ short: { limit: 10, ttl: 60000 } })
-  extractPaymentSlip(@Body() dto: OcrPaymentSlipDto) {
-    return this.ocrService.extractPaymentSlip(dto.imageBase64);
+  extractPaymentSlip(@Body() dto: OcrPaymentSlipDto, @Req() req: { user: CreditRoomActor }) {
+    return this.ocrService.extractPaymentSlip(dto.imageBase64, req.user.id);
   }
 
   @Post('book-bank')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   @Throttle({ short: { limit: 5, ttl: 60000 } })
-  extractBookBank(@Body() dto: OcrBookBankDto) {
-    return this.ocrService.extractBookBank(dto.imageBase64);
+  extractBookBank(@Body() dto: OcrBookBankDto, @Req() req: { user: CreditRoomActor }) {
+    return this.ocrService.extractBookBank(dto.imageBase64, req.user.id);
   }
 
   @Post('driving-license')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   @Throttle({ short: { limit: 5, ttl: 60000 } })
-  extractDrivingLicense(@Body() dto: OcrDrivingLicenseDto) {
-    return this.ocrService.extractDrivingLicense(dto.imageBase64);
+  extractDrivingLicense(@Body() dto: OcrDrivingLicenseDto, @Req() req: { user: CreditRoomActor }) {
+    return this.ocrService.extractDrivingLicense(dto.imageBase64, req.user.id);
   }
 
   @Post('salary-slip')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   @Throttle({ short: { limit: 5, ttl: 60000 } })
-  analyzeSalarySlip(@Body() dto: OcrSalarySlipDto) {
-    return this.ocrService.analyzeSalarySlip(dto.imageBase64);
+  analyzeSalarySlip(@Body() dto: OcrSalarySlipDto, @Req() req: { user: CreditRoomActor }) {
+    return this.ocrService.analyzeSalarySlip(dto.imageBase64, req.user.id);
   }
 
   @Post('bank-statement')
@@ -65,6 +65,6 @@ export class OcrController {
       if (dto.filesBase64 !== undefined) throw new BadRequestException('กรุณาเลือกรายการไฟล์จากห้องแชทเท่านั้น');
       return this.roomCredit.analyze(dto.roomId, dto.fileIds!, req.user);
     }
-    return this.ocrService.analyzeBankStatement(dto.filesBase64);
+    return this.ocrService.analyzeBankStatement(dto.filesBase64, req.user.id);
   }
 }

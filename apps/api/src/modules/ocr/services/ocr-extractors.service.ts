@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { AnthropicOcrClient } from './anthropic-ocr.client';
 import { Prisma } from '@prisma/client';
-import { AiUsageService } from '../../ai-usage/ai-usage.service';
+import { AiProviderService } from '../../ai-usage/ai-provider.service';
 import {
   validateNationalId,
   isValidDate,
@@ -29,7 +29,7 @@ export class OcrExtractorsService {
 
   constructor(
     private client: AnthropicOcrClient,
-    private aiUsage: AiUsageService,
+    private provider: AiProviderService,
   ) {}
 
   // ─── 0. Generate Template HTML from File ───────────────
@@ -57,7 +57,7 @@ export class OcrExtractorsService {
 6. ตอบเป็น HTML เท่านั้น ห้ามมี markdown code block หรือข้อความอื่น
 7. ถ้าเอกสารไม่ใช่สัญญาหรือเอกสารทางธุรกิจ ให้สร้างเทมเพลตสัญญาผ่อนชำระทั่วไป โดยอ้างอิงจากรูปแบบที่เห็น`;
 
-  async generateTemplateHtml(fileBase64: string): Promise<{ contentHtml: string; placeholders: string[] }> {
+  async generateTemplateHtml(fileBase64: string, userId?: string): Promise<{ contentHtml: string; placeholders: string[] }> {
     const client = await this.client.ensureAnthropicReady();
     const { mediaType, base64Data, isDocument } = validateFileBase64(fileBase64);
 
@@ -66,7 +66,7 @@ export class OcrExtractorsService {
         ? { type: 'document' as const, source: { type: 'base64' as const, media_type: mediaType as 'application/pdf', data: base64Data } }
         : { type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: base64Data } };
 
-      const response = await client.messages.create({
+      const response = await this.provider.complete(client, {
         model: AnthropicOcrClient.OCR_MODEL,
         max_tokens: 8192,
         temperature: 0.2,
@@ -83,16 +83,7 @@ export class OcrExtractorsService {
             ],
           },
         ],
-      });
-
-      void this.aiUsage.record({
-        service: 'ocr',
-        method: 'generateTemplateHtml',
-        model: AnthropicOcrClient.OCR_MODEL,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
-        status: 'success',
-      });
+      }, { service: 'ocr', method: 'generateTemplateHtml', userId });
 
       const textContent = response.content.find((c) => c.type === 'text');
       if (!textContent || textContent.type !== 'text') {
@@ -130,7 +121,7 @@ export class OcrExtractorsService {
 
   // ─── 1. Extract ID Card ─────────────────────────────────
 
-  async extractIdCard(imageBase64: string): Promise<OcrIdCardResult> {
+  async extractIdCard(imageBase64: string, userId?: string): Promise<OcrIdCardResult> {
     await this.client.ensureAnthropicReady();
     const { mediaType, base64Data } = validateImageBase64(imageBase64);
 
@@ -192,7 +183,7 @@ export class OcrExtractorsService {
 ${basePrompt.split('ตอบเป็น JSON ตามรูปแบบนี้:')[1]}`;
 
     try {
-      const result = await this.client.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt);
+      const result = await this.client.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt, userId);
 
       const rawNationalId = result.nationalId
         ? String(result.nationalId).replace(/[\s-]/g, '')
@@ -242,7 +233,7 @@ ${basePrompt.split('ตอบเป็น JSON ตามรูปแบบนี
 
   // ─── 2. Extract Payment Slip ────────────────────────────
 
-  async extractPaymentSlip(imageBase64: string): Promise<OcrPaymentSlipResult> {
+  async extractPaymentSlip(imageBase64: string, userId?: string): Promise<OcrPaymentSlipResult> {
     await this.client.ensureAnthropicReady();
     const { mediaType, base64Data } = validateImageBase64(imageBase64);
 
@@ -281,7 +272,7 @@ ${basePrompt.split('ตอบเป็น JSON ตามรูปแบบนี
 ${basePrompt}`;
 
     try {
-      const result = await this.client.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt);
+      const result = await this.client.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt, userId);
 
       // Parse and validate amount
       let amount: number | null = null;
@@ -341,7 +332,7 @@ ${basePrompt}`;
 
   // ─── 3. Extract Book Bank ───────────────────────────────
 
-  async extractBookBank(imageBase64: string): Promise<OcrBookBankResult> {
+  async extractBookBank(imageBase64: string, userId?: string): Promise<OcrBookBankResult> {
     await this.client.ensureAnthropicReady();
     const { mediaType, base64Data } = validateImageBase64(imageBase64);
 
@@ -374,7 +365,7 @@ ${basePrompt}`;
 ${basePrompt}`;
 
     try {
-      const result = await this.client.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt);
+      const result = await this.client.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt, userId);
 
       // Parse balance
       let balance: number | null = null;
@@ -420,7 +411,7 @@ ${basePrompt}`;
 
   // ─── 4. Extract Driving License ─────────────────────────
 
-  async extractDrivingLicense(imageBase64: string): Promise<OcrDrivingLicenseResult> {
+  async extractDrivingLicense(imageBase64: string, userId?: string): Promise<OcrDrivingLicenseResult> {
     await this.client.ensureAnthropicReady();
     const { mediaType, base64Data } = validateImageBase64(imageBase64);
 
@@ -481,7 +472,7 @@ ${basePrompt}`;
 ${basePrompt}`;
 
     try {
-      const result = await this.client.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt);
+      const result = await this.client.callClaudeOcrWithRetry(mediaType, base64Data, basePrompt, retryPrompt, userId);
 
       const rawNationalId = result.nationalId
         ? String(result.nationalId).replace(/[\s-]/g, '')
@@ -542,7 +533,7 @@ ${basePrompt}`;
     'ถ้าเป็นสลิปธนาคาร ให้ดูยอดเงินเข้าที่เป็นเงินเดือน\n' +
     'ตอบเป็น JSON: { netSalary, employerName, slipDate, payDay, bankName, confidence }';
 
-  async analyzeSalarySlip(imageBase64: string): Promise<OcrSalarySlipResult> {
+  async analyzeSalarySlip(imageBase64: string, userId?: string): Promise<OcrSalarySlipResult> {
     await this.client.ensureAnthropicReady();
     const { mediaType, base64Data } = validateImageBase64(imageBase64);
 
@@ -552,6 +543,7 @@ ${basePrompt}`;
         base64Data,
         OcrExtractorsService.SALARY_SLIP_PROMPT,
         OcrExtractorsService.SALARY_SLIP_RETRY_PROMPT,
+        userId,
       );
 
       const netSalary = result.netSalary != null ? Number(result.netSalary) : null;
@@ -601,7 +593,7 @@ ${basePrompt}`;
     'ดูรูปอีกครั้งอย่างละเอียด โดยเฉพาะยอดเงินเข้า เงินออก ยอดคงเหลือ และช่วงวันที่\n' +
     OcrExtractorsService.BANK_STATEMENT_PROMPT;
 
-  async analyzeBankStatement(filesBase64: string[]): Promise<OcrBankStatementResult> {
+  async analyzeBankStatement(filesBase64: string[], userId?: string): Promise<OcrBankStatementResult> {
     await this.client.ensureAnthropicReady();
 
     if (!Array.isArray(filesBase64) || filesBase64.length === 0) {
@@ -615,6 +607,7 @@ ${basePrompt}`;
         validatedFiles,
         OcrExtractorsService.BANK_STATEMENT_PROMPT,
         OcrExtractorsService.BANK_STATEMENT_RETRY_PROMPT,
+        userId,
       );
 
       const transactionCount = result.transactionCount != null ? Math.round(Number(result.transactionCount)) : null;

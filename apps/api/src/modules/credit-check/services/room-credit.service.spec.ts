@@ -186,7 +186,7 @@ describe('room statement attachments and analysis', () => {
     expect(ocr.analyzeBankStatement).toHaveBeenCalledWith([
       expect.stringMatching(/^data:application\/pdf;base64,/),
       expect.stringMatching(/^data:application\/pdf;base64,/),
-    ]);
+    ], actor.id);
     expect(db.roomCreditAnalysis.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: 'analysis', status: 'ANALYZING' }),

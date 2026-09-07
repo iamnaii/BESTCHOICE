@@ -21,7 +21,7 @@ export class AiSuggestService {
     private aiText: AiTextService,
   ) {}
 
-  async suggest(roomId: string, currentDraft?: string): Promise<AiSuggestResponse> {
+  async suggest(roomId: string, currentDraft?: string, userId?: string): Promise<AiSuggestResponse> {
     const start = Date.now();
 
     if (!this.aiText.isAvailable) {
@@ -157,6 +157,7 @@ confidence แนวทาง:
         {
           service: 'ai-suggest',
           method: 'suggest',
+          ...(userId ? { userId } : {}),
         },
       );
 

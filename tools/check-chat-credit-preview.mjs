@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 
-const origin = 'http://localhost:5187';
+const origin = process.env.CREDIT_PREVIEW_ORIGIN || 'http://localhost:5187';
 const response = await fetch(`${origin}/api/admin/preview/info`);
 assert.equal(response.status, 200, 'Start tools/preview-chat-credit.sh before running this check');
 const info = await response.json();

@@ -4,15 +4,13 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import Anthropic from '@anthropic-ai/sdk';
+import { AiProviderService, AiClient } from '../../ai-usage/ai-provider.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
-import { AiUsageService } from '../../ai-usage/ai-usage.service';
 import { parseJsonResponse } from './ocr-parsing.util';
 
 @Injectable()
 export class AnthropicOcrClient {
   private readonly logger = new Logger(AnthropicOcrClient.name);
-  private anthropic: Anthropic | null = null;
 
   static readonly OCR_SYSTEM_PROMPT =
     'คุณเป็นผู้เชี่ยวชาญด้าน OCR สำหรับเอกสารไทย มีความแม่นยำสูงสุดในการอ่านตัวอักษรไทยและตัวเลขจากรูปถ่ายเอกสาร ' +
@@ -26,19 +24,15 @@ export class AnthropicOcrClient {
 
   constructor(
     private integrationConfig: IntegrationConfigService,
-    private aiUsage: AiUsageService,
+    private provider: AiProviderService,
   ) {}
 
-  private async getAnthropicClient(): Promise<Anthropic | null> {
+  private async getAnthropicClient(): Promise<AiClient | null> {
     const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
-    if (!apiKey) return null;
-    if (!this.anthropic) {
-      this.anthropic = new Anthropic({ apiKey, timeout: 120_000 });
-    }
-    return this.anthropic;
+    return this.provider.clientFor(apiKey, 'document');
   }
 
-  async ensureAnthropicReady(): Promise<Anthropic> {
+  async ensureAnthropicReady(): Promise<AiClient> {
     const client = await this.getAnthropicClient();
     if (!client) {
       throw new BadRequestException('OCR ไม่พร้อมใช้งาน — ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY');
@@ -47,7 +41,7 @@ export class AnthropicOcrClient {
   }
 
   /** Check if Anthropic AI is configured and reachable */
-  async checkAiStatus(): Promise<{ configured: boolean; connected: boolean; model: string; error?: string }> {
+  async checkAiStatus(userId?: string): Promise<{ configured: boolean; connected: boolean; model: string; error?: string }> {
     const model = AnthropicOcrClient.OCR_MODEL;
     const client = await this.getAnthropicClient();
     if (!client) {
@@ -55,27 +49,19 @@ export class AnthropicOcrClient {
     }
     try {
       // Use count_tokens as a lightweight ping — no tokens consumed
-      await client.messages.countTokens({
+      await this.provider.countTokens(client, {
         model,
         messages: [{ role: 'user', content: 'ping' }],
       });
       return { configured: true, connected: true, model };
-    } catch (err) {
+    } catch {
       // If count_tokens not available, try a simple messages call
       try {
-        const response = await client.messages.create({
+        await this.provider.complete(client, {
           model,
           max_tokens: 1,
           messages: [{ role: 'user', content: 'hi' }],
-        });
-        void this.aiUsage.record({
-          service: 'ocr',
-          method: 'checkAiStatus',
-          model,
-          inputTokens: response.usage?.input_tokens ?? 0,
-          outputTokens: response.usage?.output_tokens ?? 0,
-          status: 'success',
-        });
+        }, { service: 'ocr', method: 'checkAiStatus', userId });
         return { configured: true, connected: true, model };
       } catch (err2) {
         const msg = (err2 as Error).message || 'Unknown error';
@@ -88,9 +74,10 @@ export class AnthropicOcrClient {
     mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
     base64Data: string,
     prompt: string,
+    userId?: string,
   ): Promise<Record<string, unknown>> {
     const client = await this.ensureAnthropicReady();
-    const response = await client.messages.create({
+    const response = await this.provider.complete(client, {
       model: AnthropicOcrClient.OCR_MODEL,
       max_tokens: 2048,
       temperature: 0,
@@ -107,16 +94,7 @@ export class AnthropicOcrClient {
           ],
         },
       ],
-    });
-
-    void this.aiUsage.record({
-      service: 'ocr',
-      method: 'callClaudeOcr',
-      model: AnthropicOcrClient.OCR_MODEL,
-      inputTokens: response.usage?.input_tokens ?? 0,
-      outputTokens: response.usage?.output_tokens ?? 0,
-      status: 'success',
-    });
+    }, { service: 'ocr', method: 'callClaudeOcr', userId });
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
@@ -131,15 +109,16 @@ export class AnthropicOcrClient {
     base64Data: string,
     prompt: string,
     retryPrompt: string,
+    userId?: string,
   ): Promise<Record<string, unknown>> {
-    let bestResult = await this.callClaudeOcr(mediaType, base64Data, prompt);
+    let bestResult = await this.callClaudeOcr(mediaType, base64Data, prompt, userId);
     const confidence = Number(bestResult.confidence) || 0;
 
     if (confidence < AnthropicOcrClient.LOW_CONFIDENCE_THRESHOLD) {
       this.logger.warn(`Low confidence (${confidence.toFixed(2)}), retrying with enhanced prompt`);
       for (let attempt = 0; attempt < AnthropicOcrClient.MAX_RETRIES; attempt++) {
         try {
-          const retryResult = await this.callClaudeOcr(mediaType, base64Data, retryPrompt);
+          const retryResult = await this.callClaudeOcr(mediaType, base64Data, retryPrompt, userId);
           const retryConfidence = Number(retryResult.confidence) || 0;
           if (retryConfidence > confidence) {
             bestResult = retryResult;
@@ -157,6 +136,7 @@ export class AnthropicOcrClient {
   async callClaudeOcrMultiFile(
     files: Array<{ mediaType: string; base64Data: string; isDocument: boolean }>,
     prompt: string,
+    userId?: string,
   ): Promise<Record<string, unknown>> {
     const client = await this.ensureAnthropicReady();
 
@@ -180,7 +160,7 @@ export class AnthropicOcrClient {
           },
     );
 
-    const response = await client.messages.create({
+    const response = await this.provider.complete(client, {
       model: AnthropicOcrClient.OCR_MODEL,
       max_tokens: 2048,
       temperature: 0,
@@ -191,16 +171,7 @@ export class AnthropicOcrClient {
           content: [...fileBlocks, { type: 'text', text: prompt }],
         },
       ],
-    });
-
-    void this.aiUsage.record({
-      service: 'ocr',
-      method: 'callClaudeOcrMultiFile',
-      model: AnthropicOcrClient.OCR_MODEL,
-      inputTokens: response.usage?.input_tokens ?? 0,
-      outputTokens: response.usage?.output_tokens ?? 0,
-      status: 'success',
-    });
+    }, { service: 'ocr', method: 'callClaudeOcrMultiFile', userId });
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
@@ -214,15 +185,16 @@ export class AnthropicOcrClient {
     files: Array<{ mediaType: string; base64Data: string; isDocument: boolean }>,
     prompt: string,
     retryPrompt: string,
+    userId?: string,
   ): Promise<Record<string, unknown>> {
-    let bestResult = await this.callClaudeOcrMultiFile(files, prompt);
+    let bestResult = await this.callClaudeOcrMultiFile(files, prompt, userId);
     const confidence = Number(bestResult.confidence) || 0;
 
     if (confidence < AnthropicOcrClient.LOW_CONFIDENCE_THRESHOLD) {
       this.logger.warn(`Low confidence (${confidence.toFixed(2)}), retrying with enhanced prompt`);
       for (let attempt = 0; attempt < AnthropicOcrClient.MAX_RETRIES; attempt++) {
         try {
-          const retryResult = await this.callClaudeOcrMultiFile(files, retryPrompt);
+          const retryResult = await this.callClaudeOcrMultiFile(files, retryPrompt, userId);
           const retryConfidence = Number(retryResult.confidence) || 0;
           if (retryConfidence > confidence) {
             bestResult = retryResult;

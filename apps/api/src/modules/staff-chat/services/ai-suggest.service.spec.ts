@@ -91,6 +91,17 @@ describe('AiSuggestService.suggest — text assistance', () => {
   beforeEach(() => jest.spyOn(Logger.prototype, 'error').mockImplementation());
   afterEach(() => jest.restoreAllMocks());
 
+  it('attributes suggestions to the server actor without adding that identity to the prompt', async () => {
+    const { service, aiText } = setup();
+    await service.suggest('room-1', 'ร่างเดิม', 'server-actor');
+    expect(aiText.generate.mock.calls[0][1]).toEqual({
+      service: 'ai-suggest',
+      method: 'suggest',
+      userId: 'server-actor',
+    });
+    expect(JSON.stringify(aiText.generate.mock.calls[0][0])).not.toContain('server-actor');
+  });
+
   it('keeps grounded context, model/token budget and at most three suggestions', async () => {
     const { service, aiText, aiTraining, suggestions } = setup();
     const result = await service.suggest('room-1', 'ร่างเดิม');

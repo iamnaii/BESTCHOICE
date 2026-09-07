@@ -29,9 +29,9 @@ export const CALCULATE_INSTALLMENT_TOOL = {
 export class CalculateInstallmentTool {
   constructor(private readonly prisma: PrismaService) {}
 
-  async run(input: { productId: string; downPct?: number; tenureMonths: number }) {
+  async run(input: { productId: string; downPct?: number; tenureMonths: number }, scope?: { branchId: string }, inStockOnly = false) {
     const product = await this.prisma.product.findFirst({
-      where: { id: input.productId, deletedAt: null },
+      where: { id: input.productId, deletedAt: null, ...(scope ? { branchId: scope.branchId } : {}), ...(inStockOnly ? { status: 'IN_STOCK' as const } : {}) },
       select: {
         id: true,
         name: true,

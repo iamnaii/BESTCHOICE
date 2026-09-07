@@ -26,6 +26,7 @@ import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ContractWorkflowService } from '../contract-workflow.service';
 import { ContractLifecycleService } from '../services/contract-lifecycle.service';
+import { seedVerifiedContractApproval } from './credit-approval.fixture';
 
 const prisma = new PrismaClient();
 
@@ -159,6 +160,7 @@ async function seedSignedDraftContract(
       vatAmount: dec('1190.00'),
       vatPct: dec('0.0700'),
       monthlyPayment: dec('1515.83'),
+      paymentDueDay: 1,
       status: 'DRAFT',
       workflowStatus: 'APPROVED',
       ...(opts.exchangedFromContractId
@@ -167,6 +169,7 @@ async function seedSignedDraftContract(
     },
   });
   createdContractIds.push(contract.id);
+  await seedVerifiedContractApproval(prisma, contract.id, adminId);
 
   for (const signerType of ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2'] as const) {
     await prisma.signature.create({
@@ -206,6 +209,9 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
 
   afterAll(async () => {
     await prisma.signature.deleteMany({ where: { contractId: { in: createdContractIds } } });
+    await prisma.payment.deleteMany({ where: { contractId: { in: createdContractIds } } });
+    await prisma.creditApproval.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
+    await prisma.creditCheck.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
     await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
     await prisma.pDPAConsent.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
     await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });

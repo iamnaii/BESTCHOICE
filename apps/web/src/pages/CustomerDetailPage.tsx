@@ -1,3 +1,4 @@
+import ContractReturnNotice from '@/components/credit-check/ContractReturnNotice';
 import { openCreditDocument } from '@/lib/credit-document';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router';
 import CreditCheckCreateDialog from '@/components/credit-check/CreditCheckCreateDialog';
@@ -577,6 +578,8 @@ export default function CustomerDetailPage() {
           </Button>
         </div>
       } />
+
+      <ContractReturnNotice customerId={id} />
 
       {/* Profile Header Card — Metronic v9.4.8 style */}
       <Card className="mb-6 rounded-xl border border-border/50 bg-card shadow-sm">

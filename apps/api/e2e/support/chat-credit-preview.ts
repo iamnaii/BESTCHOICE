@@ -30,6 +30,13 @@ import {
 } from '../../src/modules/credit-check/credit-check.controller';
 import { IntegrationConfigService } from '../../src/modules/integrations/integration-config.service';
 import { AiUsageService } from '../../src/modules/ai-usage/ai-usage.service';
+import { AiProviderService } from '../../src/modules/ai-usage/ai-provider.service';
+import { AiTextService } from '../../src/modules/ai-usage/ai-text.service';
+import { RoomAssistanceController } from '../../src/modules/staff-chat/room-assistance.controller';
+import { PrepareOfferService } from '../../src/modules/staff-chat/services/prepare-offer.service';
+import { RoomAiAccessService } from '../../src/modules/staff-chat/services/room-ai-access.service';
+import { SearchProductsTool } from '../../src/modules/sales-bot/tools/search-products.tool';
+import { CalculateInstallmentTool } from '../../src/modules/sales-bot/tools/calculate-installment.tool';
 
 const root = process.env.CREDIT_PREVIEW_ROOT!;
 if (
@@ -56,7 +63,7 @@ const db = new PrismaService();
 const config = new ConfigService({});
 const integrations = new IntegrationConfigService(db, config);
 const usage = new AiUsageService(db, config);
-const credits = new CreditCheckService(db, integrations, usage);
+const credits = new CreditCheckService(db, integrations, new AiProviderService(usage));
 const contractQuery = new ContractQueryService(db);
 const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
@@ -82,7 +89,7 @@ const sampleResult = {
   confidence: 0.9,
 };
 const ocr = realOcr
-  ? new OcrService(integrations, usage)
+  ? new OcrService(integrations, new AiProviderService(usage))
   : {
       analyzeBankStatement: async () => {
         await new Promise((done) => setTimeout(done, 1800));
@@ -114,7 +121,7 @@ const storage = realStorage
         });
       },
     };
-let actor: { id: string; role: string };
+let actor: { id: string; role: string; accessibleCompanies: string[] };
 let info: Record<string, unknown>;
 let pdf: Buffer;
 
@@ -135,9 +142,10 @@ async function fixture(name: string) {
       mediaType: 'application/pdf',
     },
   });
+  await db.chatMessage.create({ data: { roomId: room.id, role: 'CUSTOMER', type: 'TEXT', text: 'สนใจ iPhone 15 งบราคาเงินสดไม่เกิน 15000 บาท' } });
   const branch = await db.branch.findFirst({ where: { name: 'LOCAL PREVIEW BRANCH' } }) ||
     await db.branch.create({ data: { name: 'LOCAL PREVIEW BRANCH' } });
-  const product = await db.product.create({ data: { name: 'โทรศัพท์ตัวอย่าง Local', brand: 'SYNTHETIC', model: 'TEST',
+  const product = await db.product.create({ data: { name: 'โทรศัพท์ตัวอย่าง Local', brand: 'Apple', model: 'iPhone 15',
     category: 'PHONE_NEW', costPrice: 5000, installmentPrice: 10000, cashPrice: 10000,
     branchId: branch.id, imeiSerial: randomUUID(), status: 'IN_STOCK' } });
   return { roomId: room.id, customerId: customer.id, customerName: customer.name, productId: product.id, branchId: branch.id };
@@ -235,7 +243,12 @@ async function main() {
       role: 'OWNER',
     },
   });
-  actor = { id: user.id, role: 'OWNER' };
+  actor = { id: user.id, role: 'OWNER', accessibleCompanies: ['SHOP', 'FINANCE'] };
+  if (!(await db.interestConfig.count({ where: { productCategories: { has: 'PHONE_NEW' }, isActive: true } }))) {
+    await db.interestConfig.create({ data: { name: 'LOCAL PREVIEW PLAN', productCategories: ['PHONE_NEW'],
+      interestRate: 0.10, minDownPaymentPct: 0.20, storeCommissionPct: 0, vatPct: 0,
+      minInstallmentMonths: 6, maxInstallmentMonths: 12, isActive: true } });
+  }
   const doc = await PDFDocument.create();
   const page = doc.addPage();
   [
@@ -283,6 +296,7 @@ async function main() {
   const module = await Test.createTestingModule({
     controllers: [
       RoomCreditController,
+      RoomAssistanceController,
       OcrController,
       CustomerCreditCheckController,
       GlobalCreditCheckController,
@@ -290,6 +304,10 @@ async function main() {
     ],
     providers: [
       RoomCreditService,
+      PrepareOfferService, RoomAiAccessService, SearchProductsTool, CalculateInstallmentTool,
+      { provide: AiTextService, useValue: { isAvailable: true, generate: async () => JSON.stringify({
+        summary: 'ตัวอย่าง AI จำลอง: สนใจ iPhone 15 งบเงินสด 15,000 บาท', searchQuery: 'iPhone 15', maxPriceThb: 15000,
+      }) } },
       { provide: PrismaService, useValue: db },
       { provide: StorageService, useValue: storageForPreview },
       { provide: OcrService, useValue: ocr },
@@ -357,7 +375,7 @@ async function main() {
     if (
       /^\/api\/(preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales\/config)/.test(path) || path === '/api/customers' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*)?)$/.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
       path === '/api/staff-chat/ai/settings'
@@ -401,9 +419,9 @@ async function main() {
     isolated: true,
     ocr: realOcr ? 'real' : 'mock',
     storage: realStorage ? 'gcs' : 'local-files',
-    roomUrl: `http://localhost:5187/inbox/${room.id}`,
-    resultUrl: `http://localhost:5187/inbox/${resultRoom.id}`,
-    queueUrl: 'http://localhost:5187/credit-checks',
+    roomUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/inbox/${room.id}`,
+    resultUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/inbox/${resultRoom.id}`,
+    queueUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/credit-checks`,
     apiOrigin,
     apiPid: process.pid,
     vitePid: vite.pid,

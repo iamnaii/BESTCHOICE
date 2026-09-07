@@ -18,6 +18,8 @@ export function ProductSelectStep({
   setSelectedProduct,
   onNext,
 }: ProductSelectStepProps) {
+  const visibleProducts = selectedProduct && !products.some(product => product.id === selectedProduct.id)
+    ? [selectedProduct, ...products] : products;
   return (
     <div>
       <input
@@ -28,7 +30,7 @@ export function ProductSelectStep({
         className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-4 focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors outline-hidden"
       />
       <div className="grid gap-3">
-        {products.map((p) => (
+        {visibleProducts.map((p) => (
           <div
             key={p.id}
             onClick={() => setSelectedProduct(p)}
@@ -78,7 +80,7 @@ export function ProductSelectStep({
             </div>
           </div>
         ))}
-        {products.length === 0 && (
+        {visibleProducts.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">ไม่พบสินค้าที่พร้อมขาย</div>
         )}
       </div>

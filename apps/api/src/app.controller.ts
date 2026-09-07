@@ -9,6 +9,7 @@ import { NotificationQueueService } from './modules/notifications/notification-q
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { Roles } from './modules/auth/decorators/roles.decorator';
+import { CurrentUser } from './modules/auth/decorators/current-user.decorator';
 
 @SkipThrottle()
 @Controller()
@@ -35,7 +36,7 @@ export class AppController {
   @Get('system-status')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async systemStatus() {
+  async systemStatus(@CurrentUser() user: { id: string }) {
     // Database check
     let database = { connected: false, latencyMs: 0, error: undefined as string | undefined };
     try {
@@ -47,7 +48,7 @@ export class AppController {
     }
 
     // AI check
-    const ai = await this.ocrService.checkAiStatus();
+    const ai = await this.ocrService.checkAiStatus(user.id);
 
     // Redis/Cache check
     let redis = { connected: false, type: 'in-memory' as string, error: undefined as string | undefined };

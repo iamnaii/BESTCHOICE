@@ -33,6 +33,7 @@ import { CannedResponseBubbleService } from './services/canned-response-bubble.s
 import { CannedResponseQuickReplyService } from './services/canned-response-quickreply.service';
 import { CannedResponseSenderService } from './services/canned-response-sender.service';
 import { AiAssistantService } from './services/ai-assistant.service';
+import { RoomAiAccessService, StaffAiActor } from './services/room-ai-access.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
 import { AiSuggestService } from './services/ai-suggest.service';
@@ -87,6 +88,7 @@ export class StaffChatController {
     private cannedResponseBubble: CannedResponseBubbleService,
     private cannedResponseQuickReply: CannedResponseQuickReplyService,
     private cannedResponseSender: CannedResponseSenderService,
+    private roomAiAccess: RoomAiAccessService,
   ) {}
 
   // ─── Rooms ────────────────────────────────────────────
@@ -533,28 +535,30 @@ export class StaffChatController {
 
   @Post('rooms/:id/summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async summarizeRoom(@Param('id') id: string) {
-    const summary = await this.aiAssistant.summarizeConversation(id);
+  async summarizeRoom(@Param('id') id: string, @Req() req: { user: StaffAiActor }) {
+    await this.roomAiAccess.assertAccess(id, req.user);
+    const summary = await this.aiAssistant.summarizeConversation(id, req.user.id);
     return { summary };
   }
 
   @Post('ai/adjust-tone')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async adjustTone(@Body() body: { text: string; tone: 'formal' | 'casual' | 'friendly' }) {
-    const adjusted = await this.aiAssistant.adjustTone(body.text, body.tone);
+  async adjustTone(@Body() body: { text: string; tone: 'formal' | 'casual' | 'friendly' }, @Req() req: { user: StaffAiActor }) {
+    const adjusted = await this.aiAssistant.adjustTone(body.text, body.tone, req.user.id);
     return { text: adjusted };
   }
 
   @Post('rooms/:id/suggest')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getSuggestions(@Param('id') id: string, @Body() dto: AiSuggestRequestDto) {
+  async getSuggestions(@Param('id') id: string, @Body() dto: AiSuggestRequestDto, @Req() req: { user: StaffAiActor }) {
+    await this.roomAiAccess.assertAccess(id, req.user);
     const enabled = this.config.get<string>('AI_SUGGEST_ENABLED') === 'true';
     const hasApiKey = !!this.config.get<string>('ANTHROPIC_API_KEY');
     // Allow mock mode (no API key) even without AI_SUGGEST_ENABLED
     if (!enabled && hasApiKey) {
       return { suggestions: [], detectedProducts: [], processingTimeMs: 0 };
     }
-    return this.aiSuggest.suggest(id, dto.currentDraft);
+    return this.aiSuggest.suggest(id, dto.currentDraft, req.user.id);
   }
 
   @Get('rooms/:id/products')

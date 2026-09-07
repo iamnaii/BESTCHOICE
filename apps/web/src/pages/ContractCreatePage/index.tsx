@@ -22,6 +22,8 @@ export default function ContractCreatePage() {
 
   const calculation = useContractCalculation({
     selectedProduct: data.selectedProduct,
+    preserveDownPayment: data.preserveDownPayment,
+    configPending: data.configPending,
     interestConfig: data.interestConfig,
     posConfig: data.posConfig,
     downPayment: data.downPayment,
@@ -98,7 +100,7 @@ export default function ContractCreatePage() {
           onNext={() => goToStep(2)}
           latestCreditCheck={data.latestCreditCheck}
           customerCreditApproved={data.customerCreditApproved}
-          navigate={data.navigate}
+          onOpenCredit={data.openCustomerCredit}
           onOpenCustomerModal={() => { data.resetCustForm(); data.setShowCustomerModal(true); }}
           overrideActiveContractCheck={data.overrideActiveContractCheck}
           setOverrideActiveContractCheck={data.setOverrideActiveContractCheck}
@@ -148,7 +150,7 @@ export default function ContractCreatePage() {
               </details>
             </>}
             {creditIssue && <p role="alert" className="text-destructive">{creditIssue}</p>}
-            <a className="text-primary underline" href={`/customers/${data.selectedCustomer.id}?tab=credit`}>เปิดประวัติและพิจารณายอดผ่อน</a>
+            <button type="button" className="text-primary underline" onClick={data.openCustomerCredit}>เปิดประวัติและพิจารณายอดผ่อน</button>
           </div>}
 
           {data.selectedProduct && data.selectedCustomer && (

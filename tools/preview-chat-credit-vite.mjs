@@ -10,7 +10,7 @@ const server = await createServer({
   configFile: path.join(root, 'vite.config.ts'),
   server: {
     host: '127.0.0.1',
-    port: 5187,
+    port: Number(process.env.CREDIT_PREVIEW_PORT || 5187),
     strictPort: true,
     proxy: { '/api': { target: process.env.CREDIT_API_ORIGIN, changeOrigin: true } },
   },

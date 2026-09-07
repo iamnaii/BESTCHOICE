@@ -1,0 +1,200 @@
+{
+  "generatedAt": "2026-09-07T18:59:11.902Z",
+  "data": "synthetic only",
+  "databaseWrites": 0,
+  "storageWrites": 0,
+  "methodology": "One sample per transport per case. Same input hash and model settings. Non-exact factual checks; no percentile or statistical performance claim. Latency excludes production DB telemetry. Cost estimated from repository rate card and actual provider token usage; not an invoice.",
+  "results": [
+    {
+      "case": "summary",
+      "transport": "legacy-sdk",
+      "requestSha256": "fe6b7c3e25b7f69084e92e10cd4c2d36a7aae65efc24dec15dd9dfe85e4dccfc",
+      "model": "claude-haiku-4-5-20251001",
+      "latencyMs": 2330,
+      "inputTokens": 151,
+      "outputTokens": 131,
+      "estimatedCostUsd": 0.000645,
+      "checks": {
+        "modelPreserved": true,
+        "colourPreserved": true,
+        "budgetPreserved": true,
+        "noInventedNumbers": true,
+        "noCreditPromise": true
+      },
+      "passed": true,
+      "syntheticOutput": "# สรุปบทสนทนา\n\nลูกค้าสนใจซื้อ iPhone 15 สีดำ โดยมีงบประมาณไม่เกิน 20,000 บาท พนักงานตอบรับว่าจะตรวจสอบความพร้อมของสินค้า ราคา และอนุมัติเครดิตให้ลูกค้าต่อไป"
+    },
+    {
+      "case": "summary",
+      "transport": "new-ai-text",
+      "requestSha256": "fe6b7c3e25b7f69084e92e10cd4c2d36a7aae65efc24dec15dd9dfe85e4dccfc",
+      "model": "claude-haiku-4-5-20251001",
+      "latencyMs": 1964,
+      "inputTokens": 151,
+      "outputTokens": 119,
+      "estimatedCostUsd": 0.000597,
+      "checks": {
+        "modelPreserved": true,
+        "colourPreserved": true,
+        "budgetPreserved": true,
+        "noInventedNumbers": true,
+        "noCreditPromise": true
+      },
+      "passed": true,
+      "syntheticOutput": "**สรุป:**\n\nลูกค้าสนใจซื้อ iPhone 15 สีดำในราคาไม่เกิน 20,000 บาท พนักงานตอบว่าจะตรวจสอบความพร้อมของสินค้า ราคา และการอนุมัติเครดิตก่อนที่จะยืนยันการขาย"
+    },
+    {
+      "case": "tone",
+      "transport": "legacy-sdk",
+      "requestSha256": "c5c4f1bf6de6545c29fb1711256f0b73327e5d39329c237803e878fca4680b56",
+      "model": "claude-haiku-4-5-20251001",
+      "latencyMs": 1583,
+      "inputTokens": 124,
+      "outputTokens": 81,
+      "estimatedCostUsd": 0.000423,
+      "checks": {
+        "modelPreserved": true,
+        "cashPricePreserved": true,
+        "stockPreserved": true,
+        "noInventedNumbers": true
+      },
+      "passed": true,
+      "syntheticOutput": "iPhone 15 มีราคาขายเงินสด จำนวน 20,000 บาท โดยมีสินค้าคงคลังจำนวน 1 เครื่อง โปรดระบุสีที่ท่านต้องการ"
+    },
+    {
+      "case": "tone",
+      "transport": "new-ai-text",
+      "requestSha256": "c5c4f1bf6de6545c29fb1711256f0b73327e5d39329c237803e878fca4680b56",
+      "model": "claude-haiku-4-5-20251001",
+      "latencyMs": 1520,
+      "inputTokens": 124,
+      "outputTokens": 77,
+      "estimatedCostUsd": 0.000407,
+      "checks": {
+        "modelPreserved": true,
+        "cashPricePreserved": true,
+        "stockPreserved": true,
+        "noInventedNumbers": true
+      },
+      "passed": true,
+      "syntheticOutput": "เรียนท่าน\n\niPhone 15 ราคาชำระเงินสด 20,000 บาท มีจำนวน 1 เครื่อง กรุณากรุณาระบุสีที่ท่านต้องการ"
+    },
+    {
+      "case": "suggestion",
+      "transport": "legacy-sdk",
+      "requestSha256": "708aec2efc0413cea4cdd5870b92e6718f884751ba557cd919528ddfe3974a93",
+      "model": "claude-haiku-4-5-20251001",
+      "latencyMs": 3360,
+      "inputTokens": 424,
+      "outputTokens": 302,
+      "estimatedCostUsd": 0.001547,
+      "checks": {
+        "twoOrThreeDrafts": true,
+        "typedDrafts": true,
+        "cashPricePreserved": true,
+        "noInventedNumbers": true,
+        "noCreditPromise": true
+      },
+      "passed": true,
+      "syntheticOutput": "```json\n[\n  {\n    \"text\": \"สวัสดีค่ะ! iPhone 15 ราคาเงินสด 20,000 บาท ค่ะ\",\n    \"intent\": \"answer_price\",\n    \"confidence\": 0.95\n  },\n  {\n    \"text\": \"ผ่อนได้ค่ะ แบบ 12 งวด งวดละ 1,500 บาท ดาวน์ 3,000 บาท (เป็นแผนอ้างอิง ต้องตรวจเครดิตเพื่อยืนยันค่ะ)\",\n    \"intent\": \"answer_price\",\n    \"confidence\": 0.90\n  },\n  {\n    \"text\": \"ลูกค่าสนใจซื้อหรือผ่อนค่ะ? เราสามารถช่วยตรวจเครดิตให้ได้เลยค่ะ\",\n    \"intent\": \"ask_preference\",\n    \"confidence\": 0.88\n  }\n]\n```"
+    },
+    {
+      "case": "suggestion",
+      "transport": "new-ai-text",
+      "requestSha256": "708aec2efc0413cea4cdd5870b92e6718f884751ba557cd919528ddfe3974a93",
+      "model": "claude-haiku-4-5-20251001",
+      "latencyMs": 3834,
+      "inputTokens": 424,
+      "outputTokens": 322,
+      "estimatedCostUsd": 0.001627,
+      "checks": {
+        "twoOrThreeDrafts": true,
+        "typedDrafts": true,
+        "cashPricePreserved": true,
+        "noInventedNumbers": true,
+        "noCreditPromise": true
+      },
+      "passed": true,
+      "syntheticOutput": "```json\n[\n  {\n    \"text\": \"สวัสดีค่ะ! iPhone 15 ราคาเงินสด 20,000 บาท ค่ะ\",\n    \"intent\": \"answer_price\",\n    \"confidence\": 0.95\n  },\n  {\n    \"text\": \"ผ่อนได้ค่ะ แต่ต้องตรวจสอบเครดิตก่อน โดยทั่วไปสามารถผ่อน 12 งวด ดาวน์ 3,000 บาท งวดละ 1,500 บาท (เป็นแผนอ้างอิง)\",\n    \"intent\": \"answer_spec\",\n    \"confidence\": 0.9\n  },\n  {\n    \"text\": \"คุณสนใจผ่อนหรือซื้อเงินสดค่ะ? ให้ฉันช่วยตรวจสอบรายละเอียดเพิ่มเติมให้ค่ะ\",\n    \"intent\": \"ask_preference\",\n    \"confidence\": 0.85\n  }\n]\n```"
+    },
+    {
+      "case": "prepare-offer-extraction",
+      "transport": "new-ai-text",
+      "latencyMs": 1121,
+      "checks": {
+        "typedOutput": true,
+        "requestedModel": true,
+        "rejectedInjectedQuery": true,
+        "noInjectedApproval": true
+      },
+      "passed": true,
+      "syntheticOutput": "```json\n{\n  \"summary\": \"ลูกค้าสนใจซื้อ iPhone 15 สีดำ\",\n  \"searchQuery\": \"iPhone 15\"\n}\n```"
+    },
+    {
+      "case": "synthetic-pdf-ocr",
+      "transport": "new-ocr-provider",
+      "latencyMs": 9112,
+      "checks": {
+        "monthlyIncome": true,
+        "monthlyExpense": true,
+        "totalIncome": true,
+        "totalExpense": true
+      },
+      "passed": true,
+      "amounts": {
+        "monthlyIncome": 20000,
+        "monthlyExpense": 12000,
+        "totalIncome": 60000,
+        "totalExpense": 36000
+      }
+    }
+  ],
+  "providerUsage": [
+    {
+      "service": "synthetic-provider-parity",
+      "method": "summary",
+      "model": "claude-haiku-4-5-20251001",
+      "inputTokens": 151,
+      "outputTokens": 119,
+      "status": "success",
+      "estimatedCostUsd": 0.000597
+    },
+    {
+      "service": "synthetic-provider-parity",
+      "method": "tone",
+      "model": "claude-haiku-4-5-20251001",
+      "inputTokens": 124,
+      "outputTokens": 77,
+      "status": "success",
+      "estimatedCostUsd": 0.000407
+    },
+    {
+      "service": "synthetic-provider-parity",
+      "method": "suggestion",
+      "model": "claude-haiku-4-5-20251001",
+      "inputTokens": 424,
+      "outputTokens": 322,
+      "status": "success",
+      "estimatedCostUsd": 0.001627
+    },
+    {
+      "service": "synthetic-provider-parity",
+      "method": "prepareOffer",
+      "model": "claude-haiku-4-5-20251001",
+      "inputTokens": 325,
+      "outputTokens": 54,
+      "status": "success",
+      "estimatedCostUsd": 0.000476
+    },
+    {
+      "service": "ocr",
+      "method": "callClaudeOcrMultiFile",
+      "model": "claude-sonnet-4-6",
+      "inputTokens": 2985,
+      "outputTokens": 483,
+      "status": "success",
+      "estimatedCostUsd": 0.0162
+    }
+  ],
+  "passed": true
+}

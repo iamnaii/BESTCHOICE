@@ -117,8 +117,8 @@ export class CreditCheckController {
 
   @Post('analyze')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  analyze(@Param('contractId') contractId: string) {
-    return this.service.analyze(contractId);
+  analyze(@Param('contractId') contractId: string, @CurrentUser() user: { id: string }) {
+    return this.service.analyze(contractId, user.id);
   }
 
   @Post('override')
@@ -162,8 +162,8 @@ export class CustomerCreditCheckController {
 
   @Post(':creditCheckId/analyze')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  analyze(@Param('creditCheckId') creditCheckId: string) {
-    return this.service.analyzeForCustomer(creditCheckId);
+  analyze(@Param('creditCheckId') creditCheckId: string, @CurrentUser() user: { id: string }) {
+    return this.service.analyzeForCustomer(creditCheckId, user.id);
   }
 
   @Post(':creditCheckId/override')

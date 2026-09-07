@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { contractCreditIssue, type ApprovedContractLimit } from '../credit-approval';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,30 +8,54 @@ import { toast } from 'sonner';
 import type { Product, Customer, InterestConfig, CustReferenceData } from '../types';
 import { emptyCustForm, emptyCustReference } from '../constants';
 import { useDraftStorage } from '@/hooks/useDraftStorage';
+import { useAuth } from '@/contexts/AuthContext';
+import { contractReturnUrl, customerCreditUrl } from '@/lib/contract-return';
 
 export function useContractCreateData() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const preselectedCustomerId = searchParams.get('customerId');
-  // URL prefill params from BcCalculatorCard "ใช้ราคานี้ทำสัญญา" button
-  const prefillProductId = searchParams.get('productId');
-  const prefillDownAmount = searchParams.get('downAmount');
-  const prefillMonths = searchParams.get('months');
-  const hasPrefilled = useRef(false);
-  const [step, setStep] = useState(0);
-  const draft = useDraftStorage();
+  const { user } = useAuth();
+  const draft = useDraftStorage(user?.id);
+  // Explicit Inbox/calculator links start a fresh proposal; only matching returns
+  // restore its saved form. Never mix another customer/product's notes or amounts.
+  const [entry] = useState(() => {
+    const params = new URL(contractReturnUrl(`/contracts/create?${searchParams}`)!, 'https://internal.invalid').searchParams;
+    const saved = draft.load();
+    const hasExplicitContext = ['customerId', 'productId', 'downAmount', 'months', 'fromRoom'].some(key => params.has(key));
+    const matches = (!params.has('customerId') || params.get('customerId') === saved?.customerId) &&
+      (!params.has('productId') || params.get('productId') === saved?.productId) &&
+      (!params.has('fromRoom') || params.get('fromRoom') === saved?.fromRoom);
+    const restored = !hasExplicitContext || (params.get('resume') === '1' && matches) ? saved : null;
+    return { restored, customerId: params.get('customerId') ?? restored?.customerId,
+      productId: params.get('productId') ?? restored?.productId,
+      fromRoom: params.get('fromRoom') ?? restored?.fromRoom,
+      downAmount: params.has('downAmount') ? Number(params.get('downAmount')) : restored?.downPayment,
+      months: params.has('months') ? Number(params.get('months')) : restored?.totalMonths };
+  });
+  const [step, setStep] = useState(Math.min(entry.restored?.step ?? 0, !entry.productId ? 0 : !entry.customerId ? 1 : 3));
 
   // Form state
+  const productRestored = useRef(false);
+  const customerRestored = useRef(false);
   const [productSearch, setProductSearch] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProduct, setSelectedProductState] = useState<Product | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomerState] = useState<Customer | null>(null);
+  // An explicit choice (including clearing OCR selection) wins over pending restores.
+  const setSelectedProduct = useCallback((value: Product | null) => {
+    productRestored.current = true;
+    setSelectedProductState(value);
+  }, []);
+  const setSelectedCustomer = useCallback((value: Customer | null) => {
+    customerRestored.current = true;
+    setSelectedCustomerState(value);
+  }, []);
   const planType = 'STORE_DIRECT';
-  const [downPayment, setDownPayment] = useState(0);
-  const [totalMonths, setTotalMonths] = useState(6);
-  const [notes, setNotes] = useState('');
-  const [paymentDueDay, setPaymentDueDay] = useState<number>(1);
+  const [downPayment, setDownPayment] = useState(entry.downAmount ?? 0);
+  const [totalMonths, setTotalMonths] = useState(entry.months ?? 6);
+  const [notes, setNotes] = useState(entry.restored?.notes ?? '');
+  const [paymentDueDay, setPaymentDueDay] = useState<number>(entry.restored?.paymentDueDay ?? 1);
   const [overrideActiveContractCheck, setOverrideActiveContractCheck] = useState(false);
 
   // Manual customer creation modal state (Step 2)
@@ -53,39 +77,35 @@ export function useContractCreateData() {
     setOverrideActiveContractCheck(false);
   }, [selectedCustomer?.id]);
 
-  // Restore draft on mount
   useEffect(() => {
-    const saved = draft.load();
-    if (!saved) return;
-    toast('พบข้อมูลร่างที่บันทึกไว้ — กู้คืนอัตโนมัติแล้ว', {
-      description: `บันทึกเมื่อ ${new Date(saved.savedAt).toLocaleString('th-TH')}`,
-      duration: 5000,
+    if (entry.restored) toast('กู้คืนร่างสัญญาแล้ว', {
+      description: 'ตรวจเครดิตและสถานะสินค้าอีกครั้งก่อนดำเนินการต่อ',
     });
-    setStep(saved.step);
-    setDownPayment(saved.downPayment);
-    setTotalMonths(saved.totalMonths);
-    setPaymentDueDay(saved.paymentDueDay);
-    setNotes(saved.notes);
-    // productId / customerId are IDs only — the actual objects will be found via query data after load
-    if (saved.productId) setProductSearch(saved.productId);
-    if (saved.customerId) setCustomerSearch(saved.customerId);
+  }, [entry]);
+
+  const saveDraft = useCallback(() => draft.save({
+    step, productId: selectedProduct?.id ?? (!productRestored.current ? entry.productId : undefined),
+    customerId: selectedCustomer?.id ?? (!customerRestored.current ? entry.customerId : undefined), fromRoom: entry.fromRoom,
+    downPayment, totalMonths, paymentDueDay, notes,
+  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, totalMonths, paymentDueDay, notes]);
+  const latestSave = useRef(saveDraft);
+  useEffect(() => { latestSave.current = saveDraft; }, [saveDraft]);
+  useEffect(() => {
+    const interval = setInterval(() => latestSave.current(), 30_000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Auto-save draft every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      draft.save({
-        step,
-        productId: selectedProduct?.id,
-        customerId: selectedCustomer?.id,
-        downPayment,
-        totalMonths,
-        paymentDueDay,
-        notes,
-      });
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [draft, step, selectedProduct, selectedCustomer, downPayment, totalMonths, paymentDueDay, notes]);
+  const openCustomerCredit = () => {
+    if (!selectedCustomer) return;
+    if (!saveDraft()) {
+      toast.error('บันทึกร่างไม่สำเร็จ กรุณาเปิดพื้นที่จัดเก็บของเบราว์เซอร์แล้วลองอีกครั้ง');
+      return;
+    }
+    const params = new URLSearchParams({ customerId: selectedCustomer.id, resume: '1' });
+    if (selectedProduct) params.set('productId', selectedProduct.id);
+    if (entry.fromRoom) params.set('fromRoom', entry.fromRoom);
+    navigate(customerCreditUrl(selectedCustomer.id, `/contracts/create?${params}`));
+  };
 
   const resetCustForm = () => {
     setCustForm(emptyCustForm);
@@ -160,54 +180,62 @@ export function useContractCreateData() {
     enabled: step >= 1,
   });
 
-  // Pre-select customer from URL param ?customerId= (Phase 4 integration)
-  useQuery<Customer | null>({
-    queryKey: ['preselect-customer', preselectedCustomerId],
-    queryFn: async () => {
-      if (!preselectedCustomerId) return null;
-      const { data } = await api.get(`/customers/${preselectedCustomerId}`);
-      if (data) setSelectedCustomer(data);
-      return data;
-    },
-    enabled: !!preselectedCustomerId && !selectedCustomer,
+  // Restore entities by ID even when they are outside the current search page.
+  // Apply each response once so a background refetch cannot undo staff selection.
+  const customerQuery = useQuery<Customer | null>({
+    queryKey: ['preselect-customer', user?.id, entry.customerId],
+    queryFn: async () => (await api.get(`/customers/${entry.customerId}`)).data,
+    enabled: !!entry.customerId,
+    staleTime: 0,
   });
-
-  // Pre-select product from URL param ?productId= (from BcCalculatorCard "ใช้ราคานี้ทำสัญญา")
-  useQuery<Product | null>({
-    queryKey: ['preselect-product', prefillProductId],
-    queryFn: async () => {
-      if (!prefillProductId) return null;
-      const { data } = await api.get(`/products/${prefillProductId}`);
-      if (data) setSelectedProduct(data);
-      return data;
-    },
-    enabled: !!prefillProductId && !selectedProduct,
-  });
-
-  // Pre-fill downPayment and totalMonths from URL params (run once on mount)
   useEffect(() => {
-    if (hasPrefilled.current) return;
-    if (!prefillDownAmount && !prefillMonths) return;
-    hasPrefilled.current = true;
+    if (customerRestored.current || customerQuery.isError || !customerQuery.isFetchedAfterMount || !customerQuery.data) return;
+    customerRestored.current = true;
+    setSelectedCustomerState(current => current ?? customerQuery.data!);
+  }, [customerQuery.data, customerQuery.isFetchedAfterMount, customerQuery.isError]);
 
-    if (prefillDownAmount) {
-      const parsed = Number(prefillDownAmount);
-      if (!isNaN(parsed)) setDownPayment(parsed);
+  const productQuery = useQuery<Product | null>({
+    queryKey: ['preselect-product', user?.id, entry.productId],
+    queryFn: async () => (await api.get(`/products/${entry.productId}`)).data,
+    enabled: !!entry.productId,
+    staleTime: 0,
+  });
+  useEffect(() => {
+    if (productRestored.current || productQuery.isError || !productQuery.isFetchedAfterMount || !productQuery.data) return;
+    productRestored.current = true;
+    if (productQuery.data.status !== 'IN_STOCK') {
+      setStep(0);
+      toast.error('สินค้าที่เลือกไว้ไม่พร้อมขายแล้ว กรุณาเลือกสินค้าใหม่');
+      return;
     }
-    if (prefillMonths) {
-      const parsed = Number(prefillMonths);
-      if (!isNaN(parsed)) setTotalMonths(parsed);
-    }
-  }, []);
+    setSelectedProductState(current => current ?? productQuery.data!);
+  }, [productQuery.data, productQuery.isFetchedAfterMount, productQuery.isError]);
 
-  const { data: latestCreditCheck } = useQuery<{ id: string; status: string; checkType: string; aiScore: number | null; approvals?: ApprovedContractLimit[] } | null>({
+  useEffect(() => {
+    if (productQuery.isError && !productRestored.current) {
+      productRestored.current = true;
+      setStep(0);
+      toast.error('โหลดสินค้าที่เลือกไว้ไม่สำเร็จ กรุณาเลือกสินค้าอีกครั้ง');
+    }
+    if (customerQuery.isError && !customerRestored.current) {
+      customerRestored.current = true;
+      setStep(current => Math.min(current, 1));
+      toast.error('โหลดลูกค้าที่เลือกไว้ไม่สำเร็จ กรุณาเลือกลูกค้าอีกครั้ง');
+    }
+  }, [productQuery.isError, customerQuery.isError]);
+
+  const latestCreditQuery = useQuery<{ id: string; status: string; checkType: string; aiScore: number | null; approvals?: ApprovedContractLimit[] } | null>({
     queryKey: ['customer-latest-credit', selectedCustomer?.id],
     queryFn: async () => {
       const { data } = await api.get(`/customers/${selectedCustomer!.id}/credit-check/latest`);
       return data;
     },
     enabled: !!selectedCustomer,
+    staleTime: 0,
   });
+  // A cached approval may have been consumed or revoked while staff were away.
+  const latestCreditCheck = latestCreditQuery.isFetchedAfterMount && !latestCreditQuery.isError
+    ? latestCreditQuery.data : undefined;
 
   const creditApproval = latestCreditCheck?.status === 'APPROVED' && latestCreditCheck.checkType === 'FULL'
     ? latestCreditCheck.approvals?.[0] ?? null : null;
@@ -217,7 +245,7 @@ export function useContractCreateData() {
     } else setPaymentDueDay(selectedCustomer?.salaryPayDay ?? 1);
   }, [creditApproval, selectedCustomer?.id, selectedCustomer?.salaryPayDay]);
 
-  const { data: interestConfig } = useQuery<InterestConfig | null>({
+  const { data: interestConfig, isPending: interestConfigPending } = useQuery<InterestConfig | null>({
     queryKey: ['interest-config', selectedProduct?.category],
     queryFn: async () => {
       const { data } = await api.get(`/interest-configs/by-category/${selectedProduct!.category}`);
@@ -226,7 +254,7 @@ export function useContractCreateData() {
     enabled: !!selectedProduct,
   });
 
-  const { data: posConfig } = useQuery<{ interestRate: number; minDownPaymentPct: number; storeCommissionPct: number; vatPct: number; minInstallmentMonths: number; maxInstallmentMonths: number }>({
+  const { data: posConfig, isPending: posConfigPending } = useQuery<{ interestRate: number; minDownPaymentPct: number; storeCommissionPct: number; vatPct: number; minInstallmentMonths: number; maxInstallmentMonths: number }>({
     queryKey: ['pos-config'],
     queryFn: async () => { const { data } = await api.get('/sales/config'); return data; },
   });
@@ -371,6 +399,10 @@ export function useContractCreateData() {
 
   return {
     navigate,
+    openCustomerCredit,
+    preserveDownPayment: entry.downAmount !== undefined,
+    configPending: interestConfigPending || posConfigPending,
+    fromRoom: entry.fromRoom,
     step,
     setStep,
     productSearch,

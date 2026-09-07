@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../src/modules/auth/guards/jwt-auth.guard';
 import { BranchGuard } from '../src/modules/auth/guards/branch.guard';
 import { IntegrationConfigService } from '../src/modules/integrations/integration-config.service';
 import { AiUsageService } from '../src/modules/ai-usage/ai-usage.service';
+import { AiProviderService } from '../src/modules/ai-usage/ai-provider.service';
 import { ContractLifecycleService } from '../src/modules/contracts/services/contract-lifecycle.service';
 import { CreateContractDto } from '../src/modules/contracts/dto/contract.dto';
 
@@ -39,7 +40,7 @@ describe('verified credit approval with PostgreSQL and real HTTP controllers', (
     ownerId = owner.id;
     branchId = (await db.branch.create({ data: { name: 'APPROVAL TEST BRANCH' } })).id;
     const config = new ConfigService({});
-    credits = new CreditCheckService(db, new IntegrationConfigService(db, config), new AiUsageService(db, config));
+    credits = new CreditCheckService(db, new IntegrationConfigService(db, config), new AiProviderService(new AiUsageService(db, config)));
     lifecycle = new ContractLifecycleService(db, {
       isTestModeEnabled: async () => false,
       findOne: (id: string) => db.contract.findUniqueOrThrow({ where: { id }, include: { payments: { orderBy: { installmentNo: 'asc' } } } }),

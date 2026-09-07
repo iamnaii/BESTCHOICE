@@ -35,6 +35,6 @@ import { LlmProviderRegistry } from './providers/llm-provider.registry';
     GeminiProvider,
     LlmProviderRegistry,
   ],
-  exports: [SalesBotService, ClaudeProvider, GeminiProvider, LlmProviderRegistry],
+  exports: [SalesBotService, SearchProductsTool, CalculateInstallmentTool, ClaudeProvider, GeminiProvider, LlmProviderRegistry],
 })
 export class SalesBotModule {}

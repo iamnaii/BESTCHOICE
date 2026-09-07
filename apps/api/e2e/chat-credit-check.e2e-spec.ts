@@ -27,6 +27,7 @@ import { CustomerCreditCheckController } from '../src/modules/credit-check/credi
 import { CreditCheckService } from '../src/modules/credit-check/credit-check.service';
 import { IntegrationConfigService } from '../src/modules/integrations/integration-config.service';
 import { AiUsageService } from '../src/modules/ai-usage/ai-usage.service';
+import { AiProviderService } from '../src/modules/ai-usage/ai-provider.service';
 import { ConfigService } from '@nestjs/config';
 import { linkRoomCreditHistory } from '../src/modules/credit-check/services/room-credit-history';
 
@@ -128,7 +129,7 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
     creditService = new CreditCheckService(
       db,
       new IntegrationConfigService(db, config),
-      new AiUsageService(db, config),
+      new AiProviderService(new AiUsageService(db, config)),
     );
     const module = await Test.createTestingModule({
       controllers: [

@@ -3,6 +3,7 @@ import { validateFileBase64 } from './ocr-parsing.util';
 import { OcrExtractorsService } from './ocr-extractors.service';
 import { AnthropicOcrClient } from './anthropic-ocr.client';
 import { AiUsageService } from '../../ai-usage/ai-usage.service';
+import { AiProviderService } from '../../ai-usage/ai-provider.service';
 
 const pdf = (text: string) => `data:application/pdf;base64,${Buffer.from(text).toString('base64')}`;
 
@@ -24,7 +25,7 @@ describe('statement credit safety', () => {
   const client = { ensureAnthropicReady: jest.fn(), callClaudeOcrMultiFileWithRetry: jest.fn() };
   const service = new OcrExtractorsService(
     client as unknown as AnthropicOcrClient,
-    {} as AiUsageService,
+    new AiProviderService({} as AiUsageService),
   );
   beforeEach(() => jest.clearAllMocks());
 

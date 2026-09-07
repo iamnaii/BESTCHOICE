@@ -12,7 +12,7 @@ function collect(config) {
 test('CI collects the isolated credit specs exactly once, outside the shared service database suite', () => {
   const defaults = collect('jest-e2e.json');
   const isolated = collect('jest-chat-credit.json');
-  for (const file of ['chat-credit-check.e2e-spec.ts', 'credit-approval.e2e-spec.ts', 'credit-payment-flow.e2e-spec.ts']) {
+  for (const file of ['chat-credit-check.e2e-spec.ts', 'credit-approval.e2e-spec.ts', 'credit-payment-flow.e2e-spec.ts', 'staff-offer.e2e-spec.ts']) {
     assert.ok(!defaults.includes(file), `${file} must not run against the shared CI service database`);
     assert.ok(isolated.includes(file), `${file} must run in the dedicated suite`);
   }

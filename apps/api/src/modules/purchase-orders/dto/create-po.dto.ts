@@ -185,6 +185,20 @@ export class ChecklistResultDto {
   note?: string;
 }
 
+/**
+ * รูปสินค้า 6 มุมของมือสอง (base64 data URL ต่อมุม) — เขียนลง `ProductPhoto` ในรอบเดียวกับ
+ * การสร้างเครื่อง (คำสั่งเจ้าของ 2026-09-07 "ตอนรับเครื่องหน้า PO ด้วย ให้มี 6 มุม")
+ * ครบ 6 มุม + มีราคา ⇒ เครื่องเข้าคลังพร้อมขายทันที · ไม่ครบ ⇒ รอถ่ายรูป (คิวเดิม)
+ */
+export class AnglePhotosDto {
+  @IsString() @IsOptional() front?: string;
+  @IsString() @IsOptional() back?: string;
+  @IsString() @IsOptional() left?: string;
+  @IsString() @IsOptional() right?: string;
+  @IsString() @IsOptional() top?: string;
+  @IsString() @IsOptional() bottom?: string;
+}
+
 // New goods receiving DTOs
 export class GoodsReceivingItemDto {
   @IsString()
@@ -246,6 +260,12 @@ export class GoodsReceivingItemDto {
   @IsOptional()
   @Min(0)
   installmentPrice?: number;
+
+  /** รูป 6 มุม (มือสองเท่านั้น — หมวดอื่นถูกละเลย) */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AnglePhotosDto)
+  anglePhotos?: AnglePhotosDto;
 }
 
 export class GoodsReceivingDto {
@@ -291,6 +311,7 @@ export class DirectReceiveItemDto {
   checklistResults?: ChecklistResultDto[];
   @IsNumber() @IsOptional() @Min(0) sellingPrice?: number;
   @IsNumber() @IsOptional() @Min(0) installmentPrice?: number;
+  @IsOptional() @ValidateNested() @Type(() => AnglePhotosDto) anglePhotos?: AnglePhotosDto;
 }
 
 export class DirectReceiveDto {

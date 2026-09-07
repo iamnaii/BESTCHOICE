@@ -28,7 +28,8 @@ export const SYSTEM_MANAGED_STATUSES: ReadonlySet<ProductStatus> = new Set([
  * AuditLog ว่าใครเป็นคนตัดสิน + ด่านราคาขาย
  *
  * ทำไมไม่ยัด REFURBISHED เข้า `SYSTEM_MANAGED_STATUSES` ทั้งสถานะ: flow ระบบ
- * **ตั้ง** REFURBISHED (ยึดเครื่อง `markReadyForSale` / เปลี่ยนเครื่อง A.4) แต่ไม่มี
+ * **ตั้ง** REFURBISHED (เปลี่ยนเครื่อง A.4 — ยึดเครื่องเลิกใช้ตั้งแต่ 2026-09-07 ไปเข้าคิว
+ * รอถ่ายรูปแทน) แต่ไม่มี
  * flow ไหน **ปลด** มันเลย ⇒ เหมารวมจะบล็อกทั้ง REFURBISHED → DAMAGED
  * (ตรวจแล้วเจอเสียเพิ่ม) และ DAMAGED → REFURBISHED (ซ่อมเสร็จ) ซึ่งไม่มีเส้นทาง
  * อื่นรองรับ = เครื่องค้างสถานะถาวร
@@ -49,6 +50,18 @@ const MANUAL_TRANSITION_DENY: ReadonlyArray<{
 ];
 
 const ALL_STATUSES = new Set<string>(Object.values(ProductStatus));
+
+/**
+ * สถานะที่เลิกใช้แล้ว — ตั้งมือไม่ได้ (แถวเก่าที่ยังค้างยังย้ายออกได้)
+ * QC_PENDING: ขั้น "ยืนยัน QC" ถูกยกเลิก 2026-09-07 — ไม่มี flow ไหนสร้างมันตั้งแต่ 2026-03-06
+ * และปุ่มยืนยันเดิมพาเครื่องเข้า IN_STOCK โดยไม่ผ่านด่านราคา; มือสองใช้ PHOTO_PENDING (รอถ่ายรูป)
+ */
+const RETIRED_TARGET_STATUSES: ReadonlyMap<ProductStatus, string> = new Map([
+  [
+    ProductStatus.QC_PENDING,
+    'สถานะ QC_PENDING เลิกใช้แล้ว — มือสองที่ยังขึ้นขายไม่ได้ให้ใช้ "รอถ่ายรูป" (PHOTO_PENDING)',
+  ],
+]);
 
 /** ป้ายไทยสั้น ๆ สำหรับข้อความ error (ไม่ต้องครบทุกสถานะ — เฉพาะที่โผล่ใน error ได้) */
 const THAI: Partial<Record<ProductStatus, string>> = {
@@ -80,6 +93,9 @@ export function assertManualStatusChangeAllowed(current: ProductStatus, next: st
   }
   const target = next as ProductStatus;
   if (target === current) return;
+
+  const retired = current !== target ? RETIRED_TARGET_STATUSES.get(target) : undefined;
+  if (retired) throw new BadRequestException(retired);
 
   const denied = MANUAL_TRANSITION_DENY.find((r) => r.from === current && r.to === target);
   if (denied) {

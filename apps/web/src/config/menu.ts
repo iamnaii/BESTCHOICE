@@ -58,7 +58,7 @@ import {
   Mail,
   // Unified contact party-master — สมุดผู้ติดต่อ
   ArrowLeft,
-  BookUser,
+  BookUser, Camera
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -254,7 +254,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
-        { label: 'รอถ่ายรูป/ตรวจสภาพ', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
+        { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: Camera, badgeKey: 'qc-pending-count' },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         // route อนุญาต BRANCH_MANAGER อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ
@@ -651,7 +651,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       // 'ภาพรวมคลัง' อยู่บนสุดเสมอ (คำสั่งเจ้าของ) — เป็นหน้าที่เปิดบ่อยที่สุดของหมวดนี้
       // ที่เหลือเรียงตาม flow ของจริง: ตั้งคู่ค้า → ของเข้า 2 ทาง → ด่านก่อนขึ้นขาย → ของในคลัง
-      // 'รอถ่ายรูป/ตรวจสภาพ' ต้องอยู่ "หลัง" ทั้ง PO และรับซื้อมือสอง เพราะเป็นปลายทาง
+      // 'รอถ่ายรูป' ต้องอยู่ "หลัง" ทั้ง PO และรับซื้อมือสอง เพราะเป็นปลายทาง
       // ร่วมของทั้งสองทาง (po-receiving.service.ts:185 และ trade-in-lifecycle.service.ts:432
       // ต่างก็เขียนสถานะ PHOTO_PENDING) — อย่าย้ายไปแทรกกลาง
       items: [
@@ -659,7 +659,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
-        { label: 'รอถ่ายรูป/ตรวจสภาพ', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
+        { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: Camera, badgeKey: 'qc-pending-count' },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
       ],

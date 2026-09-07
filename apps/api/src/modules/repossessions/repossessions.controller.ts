@@ -109,7 +109,11 @@ export class RepossessionsController {
     @Body() dto: ReadyForSaleDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.repossessionsService.markReadyForSale(id, dto.resellPrice, user);
+    return this.repossessionsService.markReadyForSale(
+      id,
+      { resellPrice: dto.resellPrice, installmentPrice: dto.installmentPrice },
+      user,
+    );
   }
 
   // Task 2 (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — จ่ายเงินคืนส่วนต่างลูกค้า (ล้าง 21-1107)

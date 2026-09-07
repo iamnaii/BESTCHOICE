@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download, ClipboardCheck } from 'lucide-react';
+import { Download, Camera } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import api from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
@@ -96,7 +96,7 @@ export default function PurchaseOrdersPage() {
   const onSummaryCardClick = useCallback(
     (action: SummaryFilterAction) => {
       if ('panel' in action) {
-        navigate('/purchase-orders/qc'); // รอ QC → the dedicated QC center page (B4)
+        navigate('/purchase-orders/qc'); // รอถ่ายรูป → the photo queue page
         return;
       }
       if (action.tab === 'payable') {
@@ -117,13 +117,15 @@ export default function PurchaseOrdersPage() {
         subtitle="จัดการการสั่งซื้อสินค้า"
         action={
           <div className="flex gap-2">
-            <Link
-              to="/purchase-orders/qc"
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
-            >
-              <ClipboardCheck className="size-4" />
-              ศูนย์ตรวจ QC
-            </Link>
+            {(data.summary?.waitingQc ?? 0) > 0 && (
+              <Link
+                to="/purchase-orders/qc"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
+              >
+                <Camera className="size-4" />
+                รอถ่ายรูป {data.summary?.waitingQc}
+              </Link>
+            )}
             {data.pos.length > 0 && (
               <button
                 onClick={async () => {

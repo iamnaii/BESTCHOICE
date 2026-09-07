@@ -11,11 +11,11 @@ import { PrismaService } from '../../prisma/prisma.service';
  */
 describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const makeTx = () => {
+  const makeTx = ({ category = 'PHONE_NEW' }: { category?: string } = {}) => {
     const created: Record<string, unknown[]> = {
-      po: [], poUpdate: [], audit: [], gr: [], gri: [], product: [], price: [], poItemUpdate: [],
+      po: [], poUpdate: [], audit: [], gr: [], gri: [], product: [], price: [], poItemUpdate: [], photo: [],
     };
-    const poItems = [{ id: 'poi-1', category: 'PHONE_NEW', brand: 'Apple', model: 'iPhone 16',
+    const poItems = [{ id: 'poi-1', category, brand: 'Apple', model: 'iPhone 16',
       color: null, storage: '256GB', accessoryType: null, accessoryBrand: null,
       quantity: 1, receivedQty: 0, unitPrice: 30000 }];
     const tx: any = {
@@ -47,6 +47,9 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
         create: jest.fn().mockImplementation(({ data }) => { created.product.push(data); return Promise.resolve({ id: 'prod-1', ...data }); }),
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
+      },
+      productPhoto: {
+        create: jest.fn().mockImplementation(({ data }) => { created.photo.push(data); return Promise.resolve({ id: 'pp1', ...data }); }),
       },
       productPrice: {
         create: jest.fn().mockImplementation(({ data }) => { created.price.push(data); return Promise.resolve({}); }),
@@ -117,6 +120,73 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
       ['ราคาเงินสด', 39900],
       ['ราคาผ่อน BESTCHOICE', 43900],
     ]);
+  });
+
+  // 2026-09-07 (คำสั่งเจ้าของ "ตอนรับเครื่องหน้า PO ด้วย ให้มี 6 มุม"): รูป 6 มุมถ่ายได้ตั้งแต่ตอนรับ
+  // ครบ + มีราคา → เข้าคลังพร้อมขายทันที ไม่ผ่านคิว; ไม่ครบ → รอถ่ายรูป โดยมุมที่ถ่ายแล้วถูกเก็บไว้
+  describe('มือสอง + รูป 6 มุมตอนรับ', () => {
+    const angles = (n: number) =>
+      Object.fromEntries(['front', 'back', 'left', 'right', 'top', 'bottom'].slice(0, n).map((a) => [a, `data:${a}`]));
+    const usedDto = (n: number) => {
+      const dto = baseDto();
+      (dto.items[0] as any).category = 'PHONE_USED';
+      (dto.items[0] as any).installmentPrice = 43900;
+      (dto.items[0] as any).anglePhotos = angles(n);
+      return dto;
+    };
+
+    it('ครบ 6 มุม + สองราคา → IN_STOCK ทันที และแถวรูป isCompleted', async () => {
+      const { tx, created } = makeTx({ category: 'PHONE_USED' });
+      const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+      const service = await build(prisma);
+      await service.directReceive(usedDto(6) as never, 'user-1');
+      expect(created.product[0]).toEqual(expect.objectContaining({ category: 'PHONE_USED', status: 'IN_STOCK' }));
+      expect(created.photo[0]).toEqual(
+        expect.objectContaining({ productId: 'prod-1', front: 'data:front', bottom: 'data:bottom', isCompleted: true, uploadedById: 'user-1' }),
+      );
+    });
+
+    it('ถ่ายไม่ครบ → PHOTO_PENDING (เข้าคิว) แต่มุมที่ถ่ายแล้วถูกเก็บ', async () => {
+      const { tx, created } = makeTx({ category: 'PHONE_USED' });
+      const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+      const service = await build(prisma);
+      await service.directReceive(usedDto(4) as never, 'user-1');
+      expect(created.product[0]).toEqual(expect.objectContaining({ status: 'PHOTO_PENDING' }));
+      expect(created.photo[0]).toEqual(expect.objectContaining({ right: 'data:right', isCompleted: false }));
+      expect((created.photo[0] as any).top).toBeUndefined();
+    });
+
+    it('ไม่ได้ถ่ายเลย → PHOTO_PENDING และไม่สร้างแถวรูป', async () => {
+      const { tx, created } = makeTx({ category: 'PHONE_USED' });
+      const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+      const service = await build(prisma);
+      await service.directReceive(usedDto(0) as never, 'user-1');
+      expect(created.product[0]).toEqual(expect.objectContaining({ status: 'PHOTO_PENDING' }));
+      expect(created.photo).toHaveLength(0);
+    });
+
+    it('ครบ 6 มุมแต่ไม่มีราคา → ยังรอถ่ายรูป (ด่านราคาของการเข้าคลังยังอยู่)', async () => {
+      const { tx, created } = makeTx({ category: 'PHONE_USED' });
+      const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+      const service = await build(prisma);
+      const dto = usedDto(6);
+      delete (dto.items[0] as any).sellingPrice;
+      delete (dto.items[0] as any).installmentPrice;
+      await service.directReceive(dto as never, 'user-1');
+      expect(created.product[0]).toEqual(expect.objectContaining({ status: 'PHOTO_PENDING' }));
+      expect(created.photo[0]).toEqual(expect.objectContaining({ isCompleted: true }));
+    });
+
+    it('เครื่องใหม่ละเลย anglePhotos (ไม่มีแถวรูป, IN_STOCK ตามเดิม)', async () => {
+      const { tx, created } = makeTx();
+      const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+      const service = await build(prisma);
+      const dto = baseDto();
+      (dto.items[0] as any).anglePhotos = angles(6);
+      await service.directReceive(dto as never, 'user-1');
+      expect(created.product[0]).toEqual(expect.objectContaining({ status: 'IN_STOCK' }));
+      expect(created.photo).toHaveLength(0);
+    });
   });
 
   it('rejects a missing/zero costPrice (COGS would silently break)', async () => {

@@ -12,7 +12,7 @@ import { PoReceivingService } from './services/po-receiving.service';
  * three plain sub-services and delegates:
  *  - PoQueryService     — reads, AP grouping, QC-pending, GR history/summary
  *  - PoLifecycleService — create (PO-number $tx), update/approve/reject/cancel/updatePayment
- *  - PoReceivingService — goodsReceiving (Serializable $tx), confirmQC
+ *  - PoReceivingService — goodsReceiving (Serializable $tx), rejectQC
  */
 @Injectable()
 export class PurchaseOrdersService {
@@ -93,10 +93,6 @@ export class PurchaseOrdersService {
 
   directReceive(dto: DirectReceiveDto, userId: string) {
     return this.receiving.directReceive(dto, userId);
-  }
-
-  confirmQC(productIds: string[]) {
-    return this.receiving.confirmQC(productIds);
   }
 
   rejectQC(productIds: string[], reason: string) {

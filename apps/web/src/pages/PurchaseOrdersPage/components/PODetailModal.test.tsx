@@ -146,7 +146,7 @@ describe('PODetailModal (redesign A)', () => {
     expect(within(acc).getByText('0 / 2')).toBeInTheDocument();
     const dev = within(table).getByRole('row', { name: 'รายการ #1' });
     expect(within(dev).getByText('1 / 1')).toBeInTheDocument();
-    expect(within(dev).getByText('รอเข้าคลัง 1')).toBeInTheDocument();
+    expect(within(dev).getByText('รอถ่ายรูป 1')).toBeInTheDocument();
     expect(screen.getByTestId('net-amount')).toHaveTextContent('47,165.60 บาท');
     expect(screen.getByTestId('goods-progress')).toHaveTextContent('1 / 3');
     expect(screen.getByTestId('paid-progress')).toHaveTextContent('14,150');

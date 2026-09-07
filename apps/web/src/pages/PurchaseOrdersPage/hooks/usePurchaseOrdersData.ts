@@ -7,6 +7,7 @@ import { defaultChecklist } from '../constants';
 import { receivingBlockers } from '../receiving-flow.util';
 import { PurchasingSummary } from '../summaryStrip';
 import { buildReceiveResultMessage } from '../receiveResultMessage';
+import { emptyAnglePhotos, shotAnglePhotos } from '@/constants/photo-angles';
 
 export function buildDirectReceiveItem(i: ReceivingUnitForm) {
   const isUsed = i.category === 'PHONE_USED';
@@ -28,6 +29,7 @@ export function buildDirectReceiveItem(i: ReceivingUnitForm) {
     photos: i.photos.length ? i.photos : undefined,
     ...(isUsed && i.status === 'PASS'
       ? {
+          anglePhotos: shotAnglePhotos(i.anglePhotos),
           batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
           warrantyExpired: i.warrantyExpired,
           warrantyExpireDate:
@@ -263,6 +265,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
             photos: i.photos.length ? i.photos : undefined,
             ...(isUsed && i.status === 'PASS'
               ? {
+                  anglePhotos: shotAnglePhotos(i.anglePhotos),
                   batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
                   warrantyExpired: i.warrantyExpired,
                   warrantyExpireDate:
@@ -444,6 +447,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
           sellingPrice: defaults.cash,
           installmentPrice: defaults.installment,
           photos: [],
+          anglePhotos: emptyAnglePhotos(),
           costPrice: Number(item.unitPrice) > 0 ? String(Number(item.unitPrice)) : '',
         });
       }

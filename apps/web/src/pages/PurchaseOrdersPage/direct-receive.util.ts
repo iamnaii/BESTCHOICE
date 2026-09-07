@@ -3,6 +3,7 @@ import { defaultChecklist } from './constants';
 import { itemLabel } from './po-catalog.util';
 import type { DirectReceiveInput } from './hooks/usePurchaseOrdersData';
 import { isPaidStatus } from './components/wizard/PaymentSection';
+import { emptyAnglePhotos } from '@/constants/photo-angles';
 
 /** One table row → `quantity` units for the ตรวจรับ step (label = the same name the wizard shows). */
 export function lineToUnits(item: ItemForm): ReceivingUnitForm[] {
@@ -32,6 +33,7 @@ export function lineToUnits(item: ItemForm): ReceivingUnitForm[] {
     sellingPrice: '',
     installmentPrice: '',
     photos: [],
+    anglePhotos: emptyAnglePhotos(),
     costPrice: item.unitPrice,
   }));
 }

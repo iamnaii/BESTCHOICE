@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Check, ListChecks, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ReceivingUnitForm } from '../types';
+import type { PhotoAngle } from '@/constants/photo-angles';
+import { compressImageForOcr } from '@/lib/compressImage';
 import {
   buildScreens,
   isAccessoryUnit,
@@ -99,6 +101,22 @@ export function ReceivingFlow({ units, setUnits, mode, notes, setNotes, onConfir
       });
   const onRemovePhoto = (idx: number, photoIdx: number) =>
     setUnits((prev) => prev.map((u, i) => (i === idx ? { ...u, photos: u.photos.filter((_, p) => p !== photoIdx) } : u)));
+  // six-angle shots go to the online listing, so shrink them like the product page does (1200px JPEG)
+  const onAnglePhoto = (idx: number, angle: PhotoAngle, file: File) => {
+    void compressImageForOcr(file, 1200, 0.8)
+      .catch(() => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('อ่านไฟล์ไม่ได้'));
+        reader.readAsDataURL(file);
+      }))
+      .then((dataUrl) =>
+        setUnits((prev) => prev.map((u, i) => (i === idx ? { ...u, anglePhotos: { ...u.anglePhotos, [angle]: dataUrl } } : u))),
+      )
+      .catch(() => undefined);
+  };
+  const onRemoveAnglePhoto = (idx: number, angle: PhotoAngle) =>
+    setUnits((prev) => prev.map((u, i) => (i === idx ? { ...u, anglePhotos: { ...u.anglePhotos, [angle]: null } } : u)));
 
   const hint = screen ? screenHint(units, screen) : null;
   const isLast = current >= screens.length - 1;
@@ -212,6 +230,8 @@ export function ReceivingFlow({ units, setUnits, mode, notes, setNotes, onConfir
             onChecklist={onChecklist}
             onAddPhotos={onAddPhotos}
             onRemovePhoto={onRemovePhoto}
+            onAnglePhoto={onAnglePhoto}
+            onRemoveAnglePhoto={onRemoveAnglePhoto}
             onAdvance={(next) => advanceFrom(units.map((u, i) => (i === screen.idx ? next : u)))}
           />
         )}

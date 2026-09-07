@@ -135,7 +135,7 @@ export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
       <div
         className={cn(
           'flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-hidden rounded-[14px] bg-background shadow-2xl transition-[max-width]',
-          wide ? 'max-w-[1100px]' : 'max-w-[680px]',
+          wide ? 'max-w-[1160px]' : 'max-w-[680px]',
         )}
       >
         <div className="flex shrink-0 items-start gap-3 px-6 pt-[18px]">

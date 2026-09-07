@@ -8,6 +8,8 @@ import {
   isAccessoryUnit,
   isUsedUnit,
   tally,
+  photoProgress,
+  photoTally,
   unitState,
   unitTitle,
   type ReceivingScreen,
@@ -83,6 +85,7 @@ function Result({ units, screen }: { units: ReceivingUnitForm[]; screen: Receivi
  */
 export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEditScreen, onBack, onConfirm, confirming, confirmLabel }: ReceivingSummaryProps) {
   const t = tally(units);
+  const pt = photoTally(units);
   return (
     <div className="flex flex-col" data-testid="receiving-summary">
       <div className="mx-4 mt-4 rounded-[14px] border border-border/50 bg-card p-4 shadow-sm sm:mx-6 sm:p-5">
@@ -98,7 +101,7 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[1000px] table-fixed border-collapse">
+          <table className="w-full min-w-[1060px] table-fixed border-collapse">
             <thead className="bg-muted/50">
               <tr>
                 <th className={cn(thCls, 'w-[46px]')}>#</th>
@@ -110,6 +113,7 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
                 <th className={cn(thCls, 'w-[104px]')}>ซีเรียล</th>
                 <th className={cn(thCls, 'w-[92px] text-right')}>ราคาเงินสด</th>
                 <th className={cn(thCls, 'w-[88px] text-right')}>ราคาผ่อน</th>
+                <th className={cn(thCls, 'w-[64px]')}>รูป</th>
                 <th className={cn(thCls, 'w-[150px] text-right')}>ผลตรวจ</th>
               </tr>
             </thead>
@@ -165,6 +169,17 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
                     <td className={cn(tdCls, 'font-mono text-[13px] tracking-wide')}>{accessory ? none : first.serialNumber || dash}</td>
                     <td className={cn(tdCls, 'text-right')}>{first.status === 'REJECT' && !accessory ? dash : money(first.sellingPrice)}</td>
                     <td className={cn(tdCls, 'text-right')}>{accessory || first.status === 'REJECT' ? dash : money(first.installmentPrice)}</td>
+                    <td className={cn(tdCls, 'text-xs whitespace-nowrap')}>
+                      {(() => {
+                        const pp = first.status === 'PASS' ? photoProgress(first) : null;
+                        if (!pp) return dash;
+                        return (
+                          <span className={pp.shot >= pp.total ? 'font-medium text-success' : 'text-warning'}>
+                            {pp.shot}/{pp.total} มุม
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className={cn(tdCls, 'text-right')}>
                       <Result units={units} screen={screen} />
                     </td>
@@ -195,9 +210,15 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
           )}
           <div className="flex flex-col gap-1.5 rounded-[10px] bg-muted/60 px-3.5 py-3 text-sm">
             <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">เข้าคลัง (รอถ่ายรูป/QC)</span>
-              <span className="font-semibold">{t.passed} ชิ้น</span>
+              <span className="text-muted-foreground">เข้าคลังพร้อมขาย</span>
+              <span className="font-semibold">{pt.readyForSale} ชิ้น</span>
             </div>
+            {pt.pendingPhotos > 0 && (
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">รอถ่ายรูป 6 มุมก่อนขึ้นขาย</span>
+                <span className="font-semibold text-warning">{pt.pendingPhotos} ชิ้น</span>
+              </div>
+            )}
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">ไม่ผ่าน · แจ้งผู้ขาย</span>
               <span className="font-semibold text-destructive">{t.rejected} ชิ้น</span>

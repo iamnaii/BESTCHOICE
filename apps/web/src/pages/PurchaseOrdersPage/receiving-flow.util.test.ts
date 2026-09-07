@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ReceivingUnitForm } from './types';
+import { emptyAnglePhotos } from '@/constants/photo-angles';
 import {
   buildScreens,
   receivingBlockers,
@@ -10,6 +11,9 @@ import {
   unitState,
   unitTitle,
   withPriceDefaults,
+  needsPhotoQueue,
+  photoProgress,
+  photoTally,
 } from './receiving-flow.util';
 
 const unit = (over: Partial<ReceivingUnitForm> = {}): ReceivingUnitForm => ({
@@ -33,6 +37,7 @@ const unit = (over: Partial<ReceivingUnitForm> = {}): ReceivingUnitForm => ({
   sellingPrice: '',
   installmentPrice: '',
   photos: [],
+  anglePhotos: emptyAnglePhotos(),
   costPrice: '42900',
   ...over,
 });
@@ -150,5 +155,47 @@ describe('unitTitle', () => {
   it('falls back to the wizard row name for an accessory re-ordered from an existing SKU', () => {
     expect(unitTitle(accessory({ poItemId: '', label: 'ฟิล์มกระจก iPhone 16 - iStar #1', accessoryType: 'F1601', accessoryBrand: 'iStar', model: 'ฟิล์มกระจก iPhone 16 - iStar' })))
       .toEqual({ title: 'ฟิล์มกระจก iPhone 16 - iStar', subtitle: 'อุปกรณ์เสริม' });
+  });
+});
+
+// 2026-09-07 — รูป 6 มุมถ่ายได้ตั้งแต่ตอนรับ: ครบ + ราคา = ขึ้นขายเลย, ไม่ครบ = คิวรอถ่ายรูป (ไม่บล็อกปุ่มถัดไป)
+describe('six-angle photos on receive', () => {
+  const usedPassed = (over: Partial<ReceivingUnitForm> = {}) =>
+    unit({
+      category: 'PHONE_USED',
+      imeiSerial: '351',
+      serialNumber: 'SN',
+      status: 'PASS',
+      batteryHealth: '90',
+      warrantyExpired: true,
+      sellingPrice: '17900',
+      installmentPrice: '19900',
+      ...over,
+    });
+  const allSix = { front: 'f', back: 'b', left: 'l', right: 'r', top: 't', bottom: 'x' };
+
+  it('photoProgress counts the angles of a used phone and is null for anything else', () => {
+    expect(photoProgress(usedPassed())).toEqual({ shot: 0, total: 6 });
+    expect(photoProgress(usedPassed({ anglePhotos: { ...allSix, top: null } }))).toEqual({ shot: 5, total: 6 });
+    expect(photoProgress(unit({ status: 'PASS' }))).toBeNull();
+  });
+
+  it('a passed used phone without all six angles heads for the photo queue; the hint never blocks on it', () => {
+    const partial = usedPassed({ anglePhotos: { ...allSix, bottom: null } });
+    expect(needsPhotoQueue(partial)).toBe(true);
+    expect(unitHint(partial)).toBeNull();
+    expect(needsPhotoQueue(usedPassed({ anglePhotos: allSix }))).toBe(false);
+    expect(needsPhotoQueue(usedPassed({ status: 'REJECT', defectReason: 'DOA' }))).toBe(false);
+  });
+
+  it('photoTally splits the passed units into shelf-ready and photo-queue', () => {
+    const units = [
+      unit({ imeiSerial: '1', serialNumber: 'A', status: 'PASS', sellingPrice: '45900', installmentPrice: '49900' }),
+      usedPassed({ imeiSerial: '2' }),
+      usedPassed({ imeiSerial: '3', anglePhotos: allSix }),
+      usedPassed({ imeiSerial: '4', status: 'REJECT', defectReason: 'DOA' }),
+      unit({ imeiSerial: '5' }), // still todo — not counted
+    ];
+    expect(photoTally(units)).toEqual({ readyForSale: 2, pendingPhotos: 1 });
   });
 });

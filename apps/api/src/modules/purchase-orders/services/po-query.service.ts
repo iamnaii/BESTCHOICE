@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { d, dAdd, dSub, dSum } from '../../../utils/decimal.util';
+import { countPhotoAngles } from '../../quality-control/photo-angles.util';
 
 // Accounts-payable ("ค้างจ่าย") = money actually owed to a supplier: either the
 // goods have been RECEIVED (a payable), OR a deposit/partial payment has already
@@ -318,43 +319,46 @@ export class PoQueryService {
       this.prisma.purchaseOrder.count({ where: { ...base, status: 'ORDERED' } }),
       this.prisma.purchaseOrder.count({ where: { ...base, status: 'ORDERED', expectedDate: { lt: now } } }),
       this.prisma.purchaseOrder.count({ where: { ...base, status: 'PARTIALLY_RECEIVED' } }),
-      this.prisma.product.count({ where: { deletedAt: null, status: { in: ['QC_PENDING', 'PHOTO_PENDING'] } } }),
+      this.prisma.product.count({ where: { deletedAt: null, status: 'PHOTO_PENDING' } }),
       this.prisma.purchaseOrder.count({ where: { ...base, ...AP_OWED_WHERE } }),
     ]);
     return { pendingApproval, toOrder, incoming, overdue, receiving, waitingQc, unpaid };
   }
 
   /**
-   * Get products pending QC. Defaults to QC_PENDING only (back-compat).
-   * Additive flags: includePhotoPending widens to QC_PENDING + PHOTO_PENDING
-   * (the QC center queue), poId narrows to one PO.
+   * คิว "รอถ่ายรูป" — มือสองที่ยังขึ้นขายไม่ได้เพราะรูป 6 มุมยังไม่ครบ (PHOTO_PENDING)
+   *
+   * 2026-09-07: ขั้น QC_PENDING ถูกยกเลิก (คิวนี้เคยรับสองสถานะ) — flag `includePhotoPending`
+   * เดิมยังรับได้แต่ไม่มีผล. แต่ละแถวบอก "ที่มา" จากความสัมพันธ์จริงของเครื่อง ไม่ใช่เดาจาก
+   * สถานะ: ยึดเครื่องคืน (Repossession) · รับซื้อมือสอง (TradeIn) · จาก PO (poId) และจำนวนมุม
+   * ที่ถ่ายแล้ว (`photoAngles`) ให้หน้าจอโชว์ n/6 โดยไม่โหลด base64
    */
   async getQCPending(filters: {
     branchId?: string;
     poId?: string;
+    /** @deprecated ไม่มีผลตั้งแต่ 2026-09-07 — คิวเป็น PHOTO_PENDING อย่างเดียว */
     includePhotoPending?: boolean;
     page?: number;
     limit?: number;
   }) {
-    const where: Record<string, unknown> = {
-      deletedAt: null,
-      status: filters.includePhotoPending
-        ? { in: ['QC_PENDING', 'PHOTO_PENDING'] }
-        : 'QC_PENDING',
-    };
+    const where: Record<string, unknown> = { deletedAt: null, status: 'PHOTO_PENDING' };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.poId) where.poId = filters.poId;
 
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
         include: {
           branch: { select: { id: true, name: true } },
           supplier: { select: { id: true, name: true } },
           po: { select: { id: true, poNumber: true } },
+          repossession: {
+            select: { id: true, contract: { select: { id: true, contractNumber: true } } },
+          },
+          tradeIns: { where: { deletedAt: null }, select: { id: true }, take: 1 },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -362,6 +366,20 @@ export class PoQueryService {
       }),
       this.prisma.product.count({ where }),
     ]);
+
+    const angles = await countPhotoAngles(this.prisma, rows.map((r) => r.id));
+    const data = rows.map(({ repossession, tradeIns, ...p }) => ({
+      ...p,
+      source: repossession ? 'REPOSSESSION' : tradeIns.length > 0 ? 'TRADE_IN' : p.poId ? 'PO' : 'OTHER',
+      repossession: repossession
+        ? {
+            id: repossession.id,
+            contractId: repossession.contract.id,
+            contractNumber: repossession.contract.contractNumber,
+          }
+        : null,
+      photoAngles: angles.get(p.id) ?? 0,
+    }));
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }

@@ -7,6 +7,7 @@ import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms } from './
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
+import { anglesComplete, pickAnglePhotos } from '../../quality-control/photo-angles.util';
 import {
   autofillProductPriceFromTemplate,
   resolveInstallmentSemantics,
@@ -15,7 +16,7 @@ import {
 /**
  * Inventory-mutating goods-receiving flows. Owns the 2 write transactions:
  *  - goodsReceiving() — Serializable $transaction (per-unit IMEI/photo flow)
- *  - confirmQC()      — $transaction (QC_PENDING → IN_STOCK / PHOTO_PENDING)
+ *  - rejectQC()       — $transaction (ตัดเครื่องที่ยังรอถ่ายรูปออกจากคลัง)
  *
  * Each $transaction callback lives WHOLE inside a single method — the tx client
  * is closure-bound and never crosses a service boundary, so the Serializable
@@ -182,9 +183,20 @@ export class PoReceivingService {
         const productName = buildProductName(poItem, productCategory);
 
         // Create product for passed items
-        // PHONE_USED → PHOTO_PENDING (ต้องถ่ายรูป 6 มุมก่อนเข้าคลัง)
         // PHONE_NEW / ACCESSORY → IN_STOCK (เข้าคลังได้เลย)
-        const initialStatus = productCategory === 'PHONE_USED' ? 'PHOTO_PENDING' : 'IN_STOCK';
+        // PHONE_USED → ถ่ายรูป 6 มุมได้ตั้งแต่หน้ารับสินค้า (คำสั่งเจ้าของ 2026-09-07):
+        //   ครบ 6 มุม + มีราคาขายในใบเดียวกัน → IN_STOCK ทันที (ไม่ผ่านคิว)
+        //   ไม่ครบ / ไม่มีราคา          → PHOTO_PENDING (คิว "รอถ่ายรูป" — มุมที่ถ่ายแล้วถูกเก็บไว้)
+        // ประตูนี้จงใจไม่ผ่าน product-enter-stock.util เหมือนของใหม่ — ราคาถูกตั้งในใบรับของ
+        // ใบเดียวกัน ไม่มีราคาเก่าค้างให้ต้องยืนยัน (ดู .claude/rules/database.md)
+        const anglePhotos = productCategory === 'PHONE_USED' ? pickAnglePhotos(item.anglePhotos) : {};
+        const pricedOnReceipt =
+          (item.sellingPrice !== undefined && item.sellingPrice > 0) ||
+          (item.installmentPrice !== undefined && item.installmentPrice > 0);
+        const initialStatus =
+          productCategory !== 'PHONE_USED' || (anglesComplete(anglePhotos) && pricedOnReceipt)
+            ? 'IN_STOCK'
+            : 'PHOTO_PENDING';
         const product = await tx.product.create({
           data: {
             name: productName,
@@ -210,6 +222,18 @@ export class PoReceivingService {
             accessoryBrand: poItem.accessoryBrand || null,
           },
         });
+
+        // รูป 6 มุมที่ถ่ายตอนรับ → แถว ProductPhoto ของเครื่อง (ครบ = isCompleted เหมือนกดยืนยันที่คิว)
+        if (Object.keys(anglePhotos).length > 0) {
+          await tx.productPhoto.create({
+            data: {
+              productId: product.id,
+              ...anglePhotos,
+              isCompleted: anglesComplete(anglePhotos),
+              uploadedById: userId,
+            },
+          });
+        }
 
         // B0 §2.1: ราคาขายที่กรอกตอนรับเข้า = ราคาเงินสดของเครื่อง (คอลัมน์คือแหล่งจริง);
         // 2026-09-07 ร้านขายสองราคา — ราคาผ่อนที่กรอกมาด้วยลง installmentPrice ทางเดียวกัน
@@ -459,6 +483,7 @@ export class PoReceivingService {
               checklistResults: line.checklistResults,
               sellingPrice: line.sellingPrice,
               installmentPrice: line.installmentPrice,
+              anglePhotos: line.anglePhotos,
             }));
 
             const gr = await this.runReceiveInTx(tx, po.id, { items: grItems, notes: dto.notes }, userId);
@@ -476,9 +501,9 @@ export class PoReceivingService {
   }
 
   /**
-   * Reject products at the post-receive QC stage (QC_PENDING / PHOTO_PENDING):
-   * soft-delete the failed units and record the reason. JE-free, products-table
-   * only — no accounting/finance touch.
+   * "ไม่รับเข้าคลัง" จากคิวรอถ่ายรูป (PHOTO_PENDING): soft-delete เครื่องที่ตรวจแล้วไม่ผ่าน
+   * พร้อมเหตุผล — ไม่แตะ JE/บัญชี. ขั้น QC_PENDING ถูกยกเลิก 2026-09-07 (ไม่มี flow ไหน
+   * สร้างมันตั้งแต่ 2026-03-06 และปุ่มยืนยันเป็นช่องอ้อมด่านราคา) จึงรับเฉพาะ PHOTO_PENDING
    */
   async rejectQC(productIds: string[], reason: string) {
     if (!productIds || productIds.length === 0) {
@@ -495,10 +520,10 @@ export class PoReceivingService {
         throw new BadRequestException(`ไม่พบสินค้า ID: ${notFound.join(', ')}`);
       }
 
-      const invalid = products.filter((p) => !['QC_PENDING', 'PHOTO_PENDING'].includes(p.status));
+      const invalid = products.filter((p) => p.status !== 'PHOTO_PENDING');
       if (invalid.length > 0) {
         throw new BadRequestException(
-          `สินค้าต่อไปนี้ไม่ได้อยู่ในขั้นตอน QC: ${invalid.map((p) => p.name).join(', ')}`,
+          `สินค้าต่อไปนี้ไม่ได้อยู่ในคิวรอถ่ายรูป: ${invalid.map((p) => p.name).join(', ')}`,
         );
       }
 
@@ -515,58 +540,4 @@ export class PoReceivingService {
     });
   }
 
-  /**
-   * Confirm QC for products - moves QC_PENDING → IN_STOCK (เข้าคลังหลัก)
-   * Workflow Step 4: สินค้าเข้าคลัง
-   */
-  async confirmQC(productIds: string[]) {
-    if (!productIds || productIds.length === 0) {
-      throw new BadRequestException('กรุณาระบุสินค้าที่ต้องการยืนยัน QC');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const products = await tx.product.findMany({
-        where: { id: { in: productIds }, deletedAt: null },
-      });
-
-      // Validate all products are QC_PENDING
-      const invalidProducts = products.filter((p) => p.status !== 'QC_PENDING');
-      if (invalidProducts.length > 0) {
-        throw new BadRequestException(
-          `สินค้าต่อไปนี้ไม่ได้อยู่ในสถานะ QC_PENDING: ${invalidProducts.map((p) => p.name).join(', ')}`,
-        );
-      }
-
-      const notFound = productIds.filter((id) => !products.find((p) => p.id === id));
-      if (notFound.length > 0) {
-        throw new BadRequestException(`ไม่พบสินค้า ID: ${notFound.join(', ')}`);
-      }
-
-      // PHONE_USED → PHOTO_PENDING (ต้องถ่ายรูป 6 มุมก่อนเข้าคลัง)
-      const usedPhoneIds = products.filter((p) => p.category === 'PHONE_USED').map((p) => p.id);
-      const otherIds = products.filter((p) => p.category !== 'PHONE_USED').map((p) => p.id);
-
-      if (usedPhoneIds.length > 0) {
-        await tx.product.updateMany({
-          where: { id: { in: usedPhoneIds } },
-          data: { status: 'PHOTO_PENDING' },
-        });
-      }
-
-      // อื่นๆ → IN_STOCK ตรง (ไม่ต้องถ่ายรูป)
-      if (otherIds.length > 0) {
-        await tx.product.updateMany({
-          where: { id: { in: otherIds } },
-          data: { status: 'IN_STOCK', stockInDate: new Date() },
-        });
-      }
-
-      return {
-        confirmed: productIds.length,
-        message: `ยืนยัน QC สำเร็จ ${productIds.length} ชิ้น`
-          + (usedPhoneIds.length > 0 ? ` (มือสอง ${usedPhoneIds.length} ชิ้น → รอถ่ายรูป)` : '')
-          + (otherIds.length > 0 ? ` (อื่นๆ ${otherIds.length} ชิ้น → เข้าคลัง)` : ''),
-      };
-    });
-  }
 }

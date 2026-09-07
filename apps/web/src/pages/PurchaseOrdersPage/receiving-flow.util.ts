@@ -3,6 +3,7 @@
 // component and the wizard's ตรวจรับ step both drive their unit arrays through these.
 import type { ReceivingUnitForm } from './types';
 import { computeDuplicateIndices } from './components/useReceivingDuplicates';
+import { anglesComplete, anglesShot } from '@/constants/photo-angles';
 
 export const isAccessoryUnit = (u: Pick<ReceivingUnitForm, 'category'>) => u.category === 'ACCESSORY';
 export const isUsedUnit = (u: Pick<ReceivingUnitForm, 'category'>) => u.category === 'PHONE_USED';
@@ -153,6 +154,32 @@ export function receivingBlockers(units: ReceivingUnitForm[]): ReceivingBlocker[
   });
   computeDuplicateIndices(units).forEach((idx) => out.push({ idx, message: 'IMEI ซ้ำกับเครื่องอื่นในรายการนี้' }));
   return out.sort((a, b) => a.idx - b.idx);
+}
+
+/**
+ * Used phone that passed but whose six angles are not all shot yet — it lands in the
+ * "รอถ่ายรูป" queue instead of going on sale. Soft by design (owner 2026-09-07): the next
+ * button never blocks on photos, the hint just says where the unit will end up.
+ */
+export const needsPhotoQueue = (u: ReceivingUnitForm): boolean =>
+  isUsedUnit(u) && u.status === 'PASS' && !anglesComplete(u.anglePhotos);
+
+/** "ถ่ายแล้ว n/6" for a used unit; null for anything without the six-angle panel. */
+export function photoProgress(u: ReceivingUnitForm): { shot: number; total: number } | null {
+  if (!isUsedUnit(u)) return null;
+  return { shot: anglesShot(u.anglePhotos), total: 6 };
+}
+
+/** Where the passed units go: straight to the shelf, or the photo queue first. */
+export function photoTally(units: ReceivingUnitForm[]): { readyForSale: number; pendingPhotos: number } {
+  let readyForSale = 0;
+  let pendingPhotos = 0;
+  units.forEach((u) => {
+    if (unitState(u) !== 'done') return;
+    if (needsPhotoQueue(u)) pendingPhotos += 1;
+    else readyForSale += 1;
+  });
+  return { readyForSale, pendingPhotos };
 }
 
 export function tally(units: ReceivingUnitForm[]): { passed: number; rejected: number; pending: number } {

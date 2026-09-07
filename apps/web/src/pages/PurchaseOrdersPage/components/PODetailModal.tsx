@@ -128,7 +128,7 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
         </Badge>
         {qc && qc.qcPending > 0 && (
           <Badge variant="warning" appearance="light" className="text-[10px]">
-            รอเข้าคลัง {qc.qcPending}
+            รอถ่ายรูป {qc.qcPending}
           </Badge>
         )}
         {qc && qc.inStock > 0 && (

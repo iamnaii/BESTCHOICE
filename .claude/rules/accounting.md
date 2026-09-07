@@ -199,7 +199,9 @@ S21-1104 ติดลบ. `settleRecallCash` (PAYOUT_RECALL) มี SHOP leg ข
 `reopenRepossessionOnUnsale` (→ `READY_FOR_SALE`) เรียกจาก `SaleVoidService` และ
 `ContractCancellationService.approveCancellation` (C-1). **ห้ามเขียน updateMany ชุดที่สอง.**
 `VALID_TRANSITIONS.READY_FOR_SALE = []` และ `update()` ปฏิเสธ `status: 'SOLD'` ด้วยข้อความไทยที่ชี้ปุ่ม
-"นำเข้าคลังพร้อมขาย" ก่อน (เครื่อง `REFURBISHED` POS ไม่รับ) — สาขา SOLD เดิมใน `update()` ถูกลบทิ้ง.
+"พร้อมขาย" + ถ่ายรูป 6 มุมให้ครบก่อน (2026-09-07: เครื่องยึดเข้าคิว `PHOTO_PENDING` แทน `REFURBISHED` —
+ดู `.claude/rules/database.md` state diagram; `update()` ปฏิเสธ `status: 'READY_FOR_SALE'` ด้วย ประตูเดียวคือ
+`markReadyForSale` ที่บังคับสองราคา) — สาขา SOLD เดิมใน `update()` ถูกลบทิ้ง.
 JE ตอนขาย = `ShopCashSaleTemplate` / `ShopInventoryTransferTemplate` ปกติ (Cr S11-2002 ที่ `costPrice` =
 ราคาประเมิน ตั้งโดย `markReadyForSale` ⇒ สต็อกมือสองกลับเป็น 0 พอดีกับใบรับเข้า — ปักที่
 `product-lifecycle.integration.spec.ts`). เส้นทางเปลี่ยนเครื่อง (device swap) ที่หยิบเครื่องยึดไปเป็นเครื่องใหม่

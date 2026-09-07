@@ -16,13 +16,17 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('useQcPendingCount', () => {
   beforeEach(() => get.mockReset());
 
-  it('returns the total from qc-pending and requests includePhotoPending', async () => {
+  it('returns the total from qc-pending (limit=1, no legacy flag)', async () => {
     get.mockResolvedValue({ data: { total: 7 } });
     const { result } = renderHook(() => useQcPendingCount(true), { wrapper });
     await waitFor(() => expect(result.current).toBe(7));
     expect(get).toHaveBeenCalledWith(
       '/purchase-orders/qc-pending',
-      expect.objectContaining({ params: expect.objectContaining({ includePhotoPending: true, limit: 1 }) }),
+      expect.objectContaining({ params: expect.not.objectContaining({ includePhotoPending: expect.anything() }) }),
+    );
+    expect(get).toHaveBeenCalledWith(
+      '/purchase-orders/qc-pending',
+      expect.objectContaining({ params: expect.objectContaining({ limit: 1 }) }),
     );
   });
 

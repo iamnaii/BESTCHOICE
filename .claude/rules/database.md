@@ -173,7 +173,10 @@ helper เดียวกัน (`apps/api/src/modules/products/product-enter-st
 ไม่มีการยืนยันราคา (`newValue.via !== 'BUTTON'` และราคาใน `newValue` เท่ากับ `oldValue`).
 
 ประตูที่ **จงใจไม่ผ่าน** helper (ตรวจครบทุกจุดที่เขียน `status: 'IN_STOCK'` เมื่อ 2026-08-22):
-`po-receiving` (ของใหม่ ตั้งราคาในใบเดียวกัน) · `stock-adjustments` reason `FOUND`
+`po-receiving` (ของใหม่ ตั้งราคาในใบเดียวกัน — และตั้งแต่ 2026-09-07 **มือสองที่ถ่ายรูป 6 มุมครบ
+ตอนรับ + มีราคาในใบเดียวกัน** ก็เข้า `IN_STOCK` ตรงทางนี้ โดยแถว `ProductPhoto` ถูกสร้างใน tx เดียวกัน
+`isCompleted = true`; ถ่ายไม่ครบ/ไม่มีราคา → `PHOTO_PENDING` เข้าคิว "รอถ่ายรูป" เก็บมุมที่ถ่ายแล้วไว้) ·
+`stock-adjustments` reason `FOUND`
 (มี allow-list ของตัวเอง + 4-eyes + แถว `StockAdjustment` เป็นหลักฐาน) · เส้นทาง **ยกเลิก**
 สัญญา/เปลี่ยนเครื่อง/**ใบขาย** (`SaleVoidService` — เพิ่ม 2026-08-23, คลาสเดียวกัน: ตอนขาย
 `verifyProductInStock`/`markBundleProductsSold` บังคับว่าต้องเป็น `IN_STOCK` มาก่อน และไม่มี flow
@@ -236,26 +239,39 @@ AuditLog) — **POS ยังขายเฉพาะ `IN_STOCK` เหมือ
 (state machine กลางจะเป็นกติกาชุดที่สองซ้อนกับด่านที่มีอยู่):
 
 ```
-PO_RECEIVED / QC_PENDING / PHOTO_PENDING ──(มีราคา)──▶ IN_STOCK ──(POS)──▶ SOLD_CASH
-                                                          │
-                                     (เปิดสัญญา) ─────────┴──▶ SOLD_INSTALLMENT
-                                                                    │
-   ┌────────────────────────┬───────────────────────────────────────┤
-   │ ยึดเครื่อง (JP5)        │ เปลี่ยนเครื่อง (A.4)                    │ ยกเลิกสัญญา
-   ▼                        ▼                                       ▼
-REPOSSESSED             REFURBISHED                              IN_STOCK
-   │                        │                                (คืนพร้อมราคาเดิม)
-   │ markReadyForSale       │ ปุ่ม "นำเข้าคลังพร้อมขาย"
-   │ (ตีราคาใหม่)            │ (ยืนยันราคา)
-   ▼                        ▼
-REFURBISHED ──(ขายผ่านเมนูยึด)──▶ SOLD_RESELL          IN_STOCK
+รับสินค้า (PO/รับเข้าตรง): ใหม่/อุปกรณ์ ──▶ IN_STOCK · มือสองครบ 6 มุม + ราคา ──▶ IN_STOCK
+                           มือสองไม่ครบ ──▶ PHOTO_PENDING ──(ถ่ายครบ + มีราคา — completePhotos)──▶ IN_STOCK
+รับซื้อมือสอง (trade-in) ──▶ PHOTO_PENDING ──(ถ่ายครบ + ตั้งราคา)──▶ IN_STOCK ──(POS)──▶ SOLD_CASH
+                                                                        │
+                                                   (เปิดสัญญา) ─────────┴──▶ SOLD_INSTALLMENT
+                                                                                  │
+   ┌────────────────────────┬─────────────────────────────────────────────────────┤
+   │ ยึดเครื่อง (JP5)        │ เปลี่ยนเครื่อง (A.4)                                  │ ยกเลิกสัญญา
+   ▼                        ▼                                                     ▼
+REPOSSESSED             REFURBISHED                                            IN_STOCK
+   │ ปุ่ม "พร้อมขาย"          │ ปุ่ม "นำเข้าคลังพร้อมขาย"                      (คืนพร้อมราคาเดิม)
+   │ markReadyForSale        │ (ยืนยันราคา)
+   │ (สองราคา: สด+ผ่อน       ▼
+   │  ล้างรูป 6 มุมชุดเก่า)   IN_STOCK
+   ▼
+PHOTO_PENDING ──(ถ่ายครบ 6 มุม — completePhotos, ราคาผ่านแล้ว)──▶ IN_STOCK ──(POS)──▶ SOLD_CASH (ปิดแถวยึด)
 ```
+
+**2026-09-07 (คำสั่งเจ้าของ "ยึดเครื่องคืนต้องมีเหมือนรับซื้อมือสอง"):** เครื่องยึดเลิกใช้ `REFURBISHED` +
+ปุ่มนำเข้าคลัง — `markReadyForSale` รับ `{ resellPrice, installmentPrice }` (ทั้งคู่บังคับ เพราะเครื่องยังถือ
+ราคาผ่อนตอนเป็นเครื่องใหม่) เขียนสองราคา + sync แถวราคา, ล้าง `ProductPhoto` ชุดเก่า, ตั้ง `PHOTO_PENDING`
+แล้วปล่อยให้ `completePhotos` พาเข้า `IN_STOCK`. `RepossessionsService.update()` **ปฏิเสธ** `status:
+'READY_FOR_SALE'` (ประตูเดียวคือปุ่ม). `REFURBISHED` เหลือเฉพาะสายเปลี่ยนเครื่อง (A.4) ซึ่งยังใช้ปุ่ม
+นำเข้าคลังตามเดิม — ยังไม่เคาะว่าจะเข้าคิวรอถ่ายรูปด้วยไหม (ต้องมีขั้นตั้งราคาใหม่ก่อน).
+`QC_PENDING` เลิกใช้: `POST qc-confirm`/`confirmQC` ถูกถอด, ตั้งมือเป็นปลายทางไม่ได้
+(`RETIRED_TARGET_STATUSES`), คิว `qc-pending` = `PHOTO_PENDING` อย่างเดียว + `source`/`photoAngles` ต่อแถว.
 
 ปักไว้ที่ `apps/api/src/modules/contracts/__tests__/product-lifecycle.integration.spec.ts`
 (5 เคส บน DB จริง): เครื่องเดียวเปิดสองสัญญาพร้อมกันไม่ได้ · ขายสดซ้ำไม่ได้ · **ห่วงโซ่
 ลบเครื่อง → รับ IMEI เดิมเข้าใหม่ → ขายซ้ำ ถูกปิดครบสาย** · MEMO exchange → `REFURBISHED`
-→ ปุ่มนำเข้าคลัง → ขาย POS ได้ · ยึดเครื่อง `SOLD_INSTALLMENT → REPOSSESSED → REFURBISHED
-→ SOLD_RESELL`. ส่วนด่าน `deletedAt` ของการเปิดสัญญา/เปลี่ยนเครื่อง (รวม race ภายใน tx)
+→ ปุ่มนำเข้าคลัง → ขาย POS ได้ · ยึดเครื่อง `SOLD_INSTALLMENT → REPOSSESSED → (พร้อมขาย สองราคา)
+PHOTO_PENDING → (ถ่ายครบ 6 มุม) IN_STOCK → SOLD_CASH` + `update()` ปฏิเสธ READY_FOR_SALE ผ่าน PATCH.
+ส่วนด่าน `deletedAt` ของการเปิดสัญญา/เปลี่ยนเครื่อง (รวม race ภายใน tx)
 อยู่ที่ `product-guard.integration.spec.ts`. ทั้งสองไฟล์อยู่ใต้
 `src/modules/contracts/__tests__/` ซึ่ง CI glob ครอบแล้ว (เพิ่มไว้ตั้งแต่ Phase 3).
 

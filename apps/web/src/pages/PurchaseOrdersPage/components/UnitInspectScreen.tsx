@@ -287,7 +287,9 @@ export function UnitInspectScreen({
       {unit.status === 'PASS' && used && (
         <div className="flex flex-col gap-3.5 rounded-xl border border-warning/25 bg-warning/5 p-4" data-testid="used-panel">
           <div className="text-[13px] font-semibold text-warning">ข้อมูลมือสอง — ต้องกรอกก่อนผ่าน</div>
-          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-[112px_auto_minmax(0,1fr)] sm:items-start">
+          {/* battery · box · warranty date · "expired" tick — the tick gets its own column so it never
+              pushes past the panel (it fell outside the frame on prod, 2026-09-07) */}
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-[100px_auto_minmax(0,1fr)_auto] sm:items-end">
             <div>
               <label htmlFor={`battery-${idx}`} className={labelCls}>
                 % แบตเตอรี่
@@ -312,7 +314,7 @@ export function UnitInspectScreen({
                   type="button"
                   aria-pressed={unit.hasBox}
                   onClick={() => set({ hasBox: true })}
-                  className={cn(segBtn, 'min-h-0', unit.hasBox ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}
+                  className={cn(segBtn, 'min-h-0 px-3', unit.hasBox ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}
                 >
                   มีกล่อง
                 </button>
@@ -320,36 +322,34 @@ export function UnitInspectScreen({
                   type="button"
                   aria-pressed={!unit.hasBox}
                   onClick={() => set({ hasBox: false })}
-                  className={cn(segBtn, 'min-h-0', !unit.hasBox ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}
+                  className={cn(segBtn, 'min-h-0 px-3', !unit.hasBox ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}
                 >
                   ไม่มีกล่อง
                 </button>
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className={labelCls}>
                 ประกันศูนย์ถึง
                 {!unit.warrantyExpired && <Req />}
               </div>
-              <div className="flex items-center gap-3">
-                <ThaiDateInput
-                  value={unit.warrantyExpireDate}
-                  onChange={(e) => set({ warrantyExpireDate: e.target.value })}
-                  disabled={unit.warrantyExpired}
-                  aria-label="ประกันศูนย์ถึง"
-                  className={cn(fieldCls, 'w-[150px] flex-none')}
-                />
-                <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-[13px] whitespace-nowrap text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={unit.warrantyExpired}
-                    onChange={(e) => set({ warrantyExpired: e.target.checked })}
-                    className="size-[18px] rounded"
-                  />
-                  หมดประกันแล้ว
-                </label>
-              </div>
+              <ThaiDateInput
+                value={unit.warrantyExpireDate}
+                onChange={(e) => set({ warrantyExpireDate: e.target.value })}
+                disabled={unit.warrantyExpired}
+                aria-label="ประกันศูนย์ถึง"
+                className={cn(fieldCls, 'min-w-0')}
+              />
             </div>
+            <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-[13px] whitespace-nowrap text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={unit.warrantyExpired}
+                onChange={(e) => set({ warrantyExpired: e.target.checked })}
+                className="size-[18px] rounded"
+              />
+              หมดประกันแล้ว
+            </label>
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-warning/25 pt-3">
             <span className="text-sm">

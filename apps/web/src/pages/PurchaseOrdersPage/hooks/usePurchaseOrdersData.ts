@@ -384,12 +384,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       if (Array.isArray(templates)) {
         for (const t of templates) {
           const key = `${(t.brand || '').toLowerCase()}|${(t.model || '').toLowerCase()}|${(t.storage || '').toLowerCase()}|${(t.category || '').toUpperCase()}`;
-          if (t.cashPrice || t.installmentBestchoicePrice) {
-            pricingCache.set(key, {
-              cash: t.cashPrice ? String(Number(t.cashPrice)) : '',
-              installment: t.installmentBestchoicePrice ? String(Number(t.installmentBestchoicePrice)) : '',
-            });
-          }
+          const cash = Number(t.cashPrice) > 0 ? String(Number(t.cashPrice)) : '';
+          const installment = Number(t.installmentBestchoicePrice) > 0 ? String(Number(t.installmentBestchoicePrice)) : '';
+          if (cash || installment) pricingCache.set(key, { cash, installment });
         }
       }
     } catch {

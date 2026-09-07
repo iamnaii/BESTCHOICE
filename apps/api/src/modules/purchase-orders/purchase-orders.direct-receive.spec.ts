@@ -99,6 +99,26 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     expect(result).toEqual(expect.objectContaining({ poId: 'po-new', poNumber: 'PO-2099-01-003', receivingId: 'gr1', passed: 1, rejected: 0 }));
   });
 
+  // 2026-09-07: the shop sells at two prices — a receive keys in ราคาเงินสด + ราคาผ่อน and both
+  // land on the product columns and their ProductPrice rows in one write-through
+  it('writes installmentPrice next to the cash price (column + ราคาผ่อน BESTCHOICE row)', async () => {
+    const { tx, created } = makeTx();
+    const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+    const service = await build(prisma);
+    const dto = baseDto();
+    (dto.items[0] as any).installmentPrice = 43900;
+
+    await service.directReceive(dto as never, 'user-1');
+
+    const priceUpdate = tx.product.update.mock.calls.map((c: any) => c[0].data).find((d: any) => d.cashPrice || d.installmentPrice);
+    expect(Number(priceUpdate.cashPrice)).toBe(39900);
+    expect(Number(priceUpdate.installmentPrice)).toBe(43900);
+    expect(created.price.map((p: any) => [p.label, Number(p.amount)])).toEqual([
+      ['ราคาเงินสด', 39900],
+      ['ราคาผ่อน BESTCHOICE', 43900],
+    ]);
+  });
+
   it('rejects a missing/zero costPrice (COGS would silently break)', async () => {
     const { tx } = makeTx();
     const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };

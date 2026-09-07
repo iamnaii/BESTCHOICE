@@ -211,11 +211,16 @@ export class PoReceivingService {
           },
         });
 
-        // B0 §2.1: ราคาขายที่กรอกตอนรับเข้า = ราคาเงินสดของเครื่อง (คอลัมน์คือแหล่งจริง)
-        if (item.sellingPrice && item.sellingPrice > 0) {
-          const cashPrice = new Prisma.Decimal(item.sellingPrice);
-          await tx.product.update({ where: { id: product.id }, data: { cashPrice } });
-          await syncPriceRowsFromColumns(tx, product.id, { cashPrice });
+        // B0 §2.1: ราคาขายที่กรอกตอนรับเข้า = ราคาเงินสดของเครื่อง (คอลัมน์คือแหล่งจริง);
+        // 2026-09-07 ร้านขายสองราคา — ราคาผ่อนที่กรอกมาด้วยลง installmentPrice ทางเดียวกัน
+        const keyedPrices: { cashPrice?: Prisma.Decimal; installmentPrice?: Prisma.Decimal } = {};
+        if (item.sellingPrice && item.sellingPrice > 0) keyedPrices.cashPrice = new Prisma.Decimal(item.sellingPrice);
+        if (item.installmentPrice && item.installmentPrice > 0) {
+          keyedPrices.installmentPrice = new Prisma.Decimal(item.installmentPrice);
+        }
+        if (keyedPrices.cashPrice || keyedPrices.installmentPrice) {
+          await tx.product.update({ where: { id: product.id }, data: keyedPrices });
+          await syncPriceRowsFromColumns(tx, product.id, keyedPrices);
         } else {
           // ไม่ได้กรอกราคา → เติมจากตารางราคากลาง (ครอบ direct-receive ที่ delegate เข้ามาที่นี่)
           //
@@ -453,6 +458,7 @@ export class PoReceivingService {
               hasBox: line.hasBox,
               checklistResults: line.checklistResults,
               sellingPrice: line.sellingPrice,
+              installmentPrice: line.installmentPrice,
             }));
 
             const gr = await this.runReceiveInTx(tx, po.id, { items: grItems, notes: dto.notes }, userId);

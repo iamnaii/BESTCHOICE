@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload } from '../types';
 import { defaultChecklist } from '../constants';
+import { receivingBlockers } from '../receiving-flow.util';
 import { PurchasingSummary } from '../summaryStrip';
 import { buildReceiveResultMessage } from '../receiveResultMessage';
 
@@ -41,6 +42,7 @@ export function buildDirectReceiveItem(i: ReceivingUnitForm) {
         }
       : {}),
     ...(i.status === 'PASS' && i.sellingPrice ? { sellingPrice: Number(i.sellingPrice) } : {}),
+    ...(i.status === 'PASS' && i.installmentPrice ? { installmentPrice: Number(i.installmentPrice) } : {}),
   };
 }
 
@@ -277,6 +279,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
             ...(i.status === 'PASS' && i.sellingPrice
               ? { sellingPrice: Number(i.sellingPrice) }
               : {}),
+            ...(i.status === 'PASS' && i.installmentPrice
+              ? { installmentPrice: Number(i.installmentPrice) }
+              : {}),
           };
         }),
         notes: notes || undefined,
@@ -372,14 +377,19 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setSelectedPO(po);
     setReceivingNotes('');
 
-    // Fetch all pricing templates and match on client side
-    const pricingCache = new Map<string, string>();
+    // Fetch all pricing templates and match on client side — both selling prices (2026-09-07)
+    const pricingCache = new Map<string, { cash: string; installment: string }>();
     try {
       const { data: templates } = await api.get('/pricing-templates');
       if (Array.isArray(templates)) {
         for (const t of templates) {
           const key = `${(t.brand || '').toLowerCase()}|${(t.model || '').toLowerCase()}|${(t.storage || '').toLowerCase()}|${(t.category || '').toUpperCase()}`;
-          if (t.cashPrice) pricingCache.set(key, String(Number(t.cashPrice)));
+          if (t.cashPrice || t.installmentBestchoicePrice) {
+            pricingCache.set(key, {
+              cash: t.cashPrice ? String(Number(t.cashPrice)) : '',
+              installment: t.installmentBestchoicePrice ? String(Number(t.installmentBestchoicePrice)) : '',
+            });
+          }
         }
       }
     } catch {
@@ -402,16 +412,13 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
         : [item.brand, item.model, item.color, item.storage].filter(Boolean);
 
       // Try to find matching pricing template (with storage, then without)
-      let defaultPrice = '';
+      let defaults = { cash: '', installment: '' };
       if (!isAccessory && item.brand && item.model) {
         const category = (item.category || 'PHONE_NEW').toUpperCase();
         const key = `${item.brand.toLowerCase()}|${item.model.toLowerCase()}|${(item.storage || '').toLowerCase()}|${category}`;
-        defaultPrice = pricingCache.get(key) || '';
         // Fallback: try without storage
-        if (!defaultPrice && item.storage) {
-          const keyNoStorage = `${item.brand.toLowerCase()}|${item.model.toLowerCase()}||${category}`;
-          defaultPrice = pricingCache.get(keyNoStorage) || '';
-        }
+        const keyNoStorage = `${item.brand.toLowerCase()}|${item.model.toLowerCase()}||${category}`;
+        defaults = pricingCache.get(key) ?? (item.storage ? pricingCache.get(keyNoStorage) : undefined) ?? defaults;
       }
 
       for (let i = 0; i < remaining; i++) {
@@ -419,9 +426,17 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
           poItemId: item.id,
           label: `${nameParts.join(' ')} #${item.receivedQty + i + 1}`,
           category: item.category || '',
+          // the device screen repeats the ordering facts (สภาพ · ความจุ · สี · ราคาสั่งซื้อ)
+          brand: item.brand || '',
+          model: item.model || '',
+          color: item.color || '',
+          storage: item.storage || '',
+          accessoryType: item.accessoryType || '',
+          accessoryBrand: item.accessoryBrand || '',
           imeiSerial: '',
           serialNumber: '',
-          status: 'PASS',
+          // phones wait for an explicit ผ่าน/ไม่ผ่าน; an accessory line is counted, so it starts received
+          status: isAccessory ? 'PASS' : '',
           rejectReason: '',
           defectReason: '',
           batteryHealth: '',
@@ -429,9 +444,10 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
           warrantyExpireDate: '',
           hasBox: true,
           checklist: defaultChecklist.map((c) => ({ ...c, passed: true, note: '' })),
-          sellingPrice: defaultPrice,
+          sellingPrice: defaults.cash,
+          installmentPrice: defaults.installment,
           photos: [],
-          costPrice: '',
+          costPrice: Number(item.unitPrice) > 0 ? String(Number(item.unitPrice)) : '',
         });
       }
     }
@@ -473,8 +489,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setReceivingUnits(newUnits);
   };
 
-  const handleGoodsReceiving = (e: React.FormEvent) => {
-    e.preventDefault();
+  /** ยืนยันรับสินค้า — the summary's confirm button (no form submit any more, 2026-09-07). */
+  const handleGoodsReceiving = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!selectedPO) return;
 
     if (receivingUnits.length === 0) {
@@ -482,49 +499,10 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       return;
     }
 
-    const missingDefect = receivingUnits.filter((u) => u.status === 'REJECT' && !u.defectReason);
-    if (missingDefect.length > 0) {
-      toast.error('กรุณาเลือกสาเหตุที่ไม่ผ่าน (defect) สำหรับรายการที่ไม่ผ่าน');
-      return;
-    }
-
-    const passUnits = receivingUnits.filter((u) => u.status === 'PASS');
-
-    const missingImei = passUnits.filter((u) => u.category !== 'ACCESSORY' && !u.imeiSerial.trim());
-    if (missingImei.length > 0) {
-      toast.error('กรุณาระบุ IMEI ให้ครบทุกรายการที่ผ่าน');
-      return;
-    }
-
-    const missingSerial = passUnits.filter(
-      (u) => u.category !== 'ACCESSORY' && !u.serialNumber.trim(),
-    );
-    if (missingSerial.length > 0) {
-      toast.error('กรุณาระบุหมายเลขซีเรียลให้ครบทุกรายการที่ผ่าน');
-      return;
-    }
-
-    const missingSellingPrice = passUnits.filter(
-      (u) => !u.sellingPrice.trim() || Number(u.sellingPrice) <= 0,
-    );
-    if (missingSellingPrice.length > 0) {
-      toast.error('กรุณาระบุราคาขายให้ครบทุกรายการที่ผ่าน');
-      return;
-    }
-
-    const usedPhonePass = passUnits.filter((u) => u.category === 'PHONE_USED');
-
-    const missingBattery = usedPhonePass.filter((u) => !u.batteryHealth.trim());
-    if (missingBattery.length > 0) {
-      toast.error('กรุณาระบุ % แบตเตอรี่สำหรับมือสองทุกเครื่อง');
-      return;
-    }
-
-    const missingWarranty = usedPhonePass.filter(
-      (u) => !u.warrantyExpired && !u.warrantyExpireDate.trim(),
-    );
-    if (missingWarranty.length > 0) {
-      toast.error('กรุณาระบุวันหมดประกันหรือติ๊กหมดประกันแล้ว');
+    // the same rules the device screens enforce, re-checked here in case a row was edited from the summary
+    const blocker = receivingBlockers(receivingUnits)[0];
+    if (blocker) {
+      toast.error(`ชิ้นที่ ${blocker.idx + 1}: ${blocker.message}`);
       return;
     }
 

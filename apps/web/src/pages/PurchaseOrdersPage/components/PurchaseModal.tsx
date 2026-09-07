@@ -13,13 +13,13 @@ import type { PoTotals } from '../poTotals';
 import type { CreatePoWizardApi } from '../hooks/useCreatePoWizard';
 import type { DirectReceiveInput } from '../hooks/usePurchaseOrdersData';
 import { buildDirectReceivePayload, lineToUnits } from '../direct-receive.util';
+import { receivingBlockers } from '../receiving-flow.util';
 import { StepSupplier } from './wizard/StepSupplier';
 import { StepItems } from './wizard/StepItems';
 import { StepSummary } from './wizard/StepSummary';
 import { WizardStepper, type WizardStep } from './wizard/WizardStepper';
 import { paidAmountError, isPaidStatus } from './wizard/PaymentSection';
-import { ReceivingUnitCard } from './ReceivingUnitCard';
-import { useReceivingDuplicates } from './useReceivingDuplicates';
+import { ReceivingFlow } from './ReceivingFlow';
 
 export interface PurchaseModalProps {
   isOpen: boolean;
@@ -114,7 +114,6 @@ export function PurchaseModal(props: PurchaseModalProps) {
   } = props;
   const isMobile = useIsMobile();
   const [units, setUnits] = useState<ReceivingUnitForm[]>([]);
-  const dupIndices = useReceivingDuplicates(units);
 
   if (!isOpen) return null;
 
@@ -146,7 +145,7 @@ export function PurchaseModal(props: PurchaseModalProps) {
             ? 'กรอกจำนวนและราคาทุนให้ครบทุกรายการ'
             : 'กรอกจำนวนและราคาให้ครบทุกรายการ'
           : receive
-            ? 'ขั้นถัดไปกรอก IMEI · ราคาขาย · รูป ทีละชิ้น'
+            ? 'ขั้นถัดไปตรวจรับทีละเครื่อง: IMEI · ซีเรียล · ผล · ราคาขาย'
             : 'ขั้นถัดไป ส่วนลด/VAT · จ่ายเงิน · หมายเหตุ แล้วสร้าง PO';
   const firstLabel = receive ? (pieces > 0 ? `ถัดไป: ตรวจรับ ${pieces} ชิ้น` : 'ถัดไป: ตรวจรับ') : 'ถัดไป: สรุป + จ่ายเงิน';
 
@@ -157,51 +156,11 @@ export function PurchaseModal(props: PurchaseModalProps) {
   };
 
   // ---- receive: ตรวจรับ ----
-  const updateUnit = (idx: number, field: string, value: string) =>
-    setUnits((prev) =>
-      prev.map((u, i) => {
-        if (i !== idx) return u;
-        const boolFields = ['hasBox', 'warrantyExpired'];
-        return { ...u, [field]: boolFields.includes(field) ? value === 'true' : value };
-      }),
-    );
-  const updateUnitChecklist = (unitIdx: number, checkIdx: number, field: 'passed' | 'note', value: boolean | string) =>
-    setUnits((prev) =>
-      prev.map((u, i) =>
-        i !== unitIdx ? u : { ...u, checklist: u.checklist.map((c, ci) => (ci === checkIdx ? { ...c, [field]: value } : c)) },
-      ),
-    );
-  const onAddPhotos = (idx: number, files: FileList) =>
-    Array.from(files)
-      .slice(0, 6)
-      .forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = () =>
-          setUnits((prev) =>
-            prev.map((u, i) => (i === idx && u.photos.length < 6 ? { ...u, photos: [...u.photos, reader.result as string] } : u)),
-          );
-        reader.readAsDataURL(file);
-      });
-  const onRemovePhoto = (idx: number, photoIdx: number) =>
-    setUnits((prev) => prev.map((u, i) => (i === idx ? { ...u, photos: u.photos.filter((_, p) => p !== photoIdx) } : u)));
-
-  /** ตรวจรับ → สรุป: every unit must be inspectable before the money is keyed in. */
+  /** ตรวจรับ → สรุป: every device must be complete (the same rules the device screens enforce). */
   const goSummary = () => {
-    const passUnits = units.filter((u) => u.status === 'PASS');
-    if (passUnits.some((u) => u.category !== 'ACCESSORY' && !u.imeiSerial.trim())) {
-      toast.error('กรุณาระบุ IMEI ให้ครบทุกเครื่องที่ผ่าน');
-      return;
-    }
-    if (passUnits.some((u) => !u.sellingPrice.trim() || Number(u.sellingPrice) <= 0)) {
-      toast.error('กรุณาระบุราคาขายให้ครบทุกเครื่องที่ผ่าน');
-      return;
-    }
-    if (units.some((u) => u.status === 'REJECT' && !u.defectReason)) {
-      toast.error('กรุณาเลือกสาเหตุที่ไม่ผ่านให้ครบ');
-      return;
-    }
-    if (dupIndices.size > 0) {
-      toast.error('มี IMEI ซ้ำกันในรายการ กรุณาแก้ไขก่อนบันทึก');
+    const blocker = receivingBlockers(units)[0];
+    if (blocker) {
+      toast.error(`ชิ้นที่ ${blocker.idx + 1}: ${blocker.message}`);
       return;
     }
     // the summary's payment block starts from the supplier's default method (a draft may lack it)
@@ -231,23 +190,12 @@ export function PurchaseModal(props: PurchaseModalProps) {
   const width = isInspect ? 'max-w-3xl' : isLast ? 'max-w-4xl' : 'max-w-7xl';
 
   const panel = isInspect ? (
-    <div className="space-y-3">
-      <button type="button" onClick={() => goToStep(0)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+    <div className="-mx-4 sm:-mx-6">
+      <button type="button" onClick={() => goToStep(0)} className="ml-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground sm:ml-6">
         <ChevronLeft className="size-4" /> กลับไปแก้รายการ
       </button>
-      {units.map((unit, idx) => (
-        <ReceivingUnitCard
-          key={idx}
-          unit={unit}
-          idx={idx}
-          isDuplicate={dupIndices.has(idx)}
-          showCostPrice
-          updateReceivingUnit={updateUnit}
-          updateChecklist={updateUnitChecklist}
-          onAddPhotos={onAddPhotos}
-          onRemovePhoto={onRemovePhoto}
-        />
-      ))}
+      {/* one device per screen — the wizard's own footer carries ถัดไป / ย้อนกลับ */}
+      <ReceivingFlow units={units} setUnits={setUnits} mode="direct" />
     </div>
   ) : isLast ? (
     <StepSummary

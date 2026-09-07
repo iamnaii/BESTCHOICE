@@ -42,6 +42,8 @@ export interface PurchaseOrder {
   orderDate: string;
   expectedDate: string | null;
   orderedAt: string | null;
+  /** Row creation time (Prisma default) — the history's "สร้าง" timestamp. */
+  createdAt?: string;
   dueDate: string | null;
   status: string;
   subtotal: string;
@@ -87,13 +89,16 @@ export type DefectReasonValue =
   | 'SCREEN' | 'BATTERY' | 'IMEI_BLOCKED' | 'BOX_MISSING'
   | 'WRONG_MODEL' | 'DOA' | 'COSMETIC' | 'OTHER';
 
+/** ผลตรวจของหนึ่งชิ้น — '' = ยังไม่ได้เลือก (จอรับทีละเครื่องบังคับกด ผ่าน/ไม่ผ่าน เอง, 2026-09-07) */
+export type ReceivingStatus = 'PASS' | 'REJECT' | '';
+
 export interface ReceivingUnitForm {
   poItemId: string;
   label: string;
   category: string;
   imeiSerial: string;
   serialNumber: string;
-  status: 'PASS' | 'REJECT';
+  status: ReceivingStatus;
   rejectReason: string;
   defectReason: DefectReasonValue | '';
   batteryHealth: string;
@@ -101,9 +106,13 @@ export interface ReceivingUnitForm {
   warrantyExpireDate: string;
   hasBox: boolean;
   checklist: { item: string; category: string; passed: boolean; note: string }[];
+  /** ราคาเงินสด (ราคาเต็มจำนวน) → Product.cashPrice — the field keeps its old name */
   sellingPrice: string;
+  /** ราคาผ่อน → Product.installmentPrice (phones only; accessories sell at one price) */
+  installmentPrice: string;
   photos: string[];
-  costPrice: string; // direct-receive only (empty for PO-based receive)
+  /** ราคาทุน/ชิ้น — sent on direct receive; on a PO receive it is the PO line's unitPrice, shown only */
+  costPrice: string;
   // Direct-receive-only product attrs (PO-based seeds leave these undefined —
   // the PO unit derives its name from the PO line; direct-receive seeds set them).
   // Required by buildDirectReceiveItem (Task 2 Step 6) + lineToUnits (Task 4 Step 2).

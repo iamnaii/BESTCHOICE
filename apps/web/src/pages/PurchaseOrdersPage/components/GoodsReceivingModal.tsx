@@ -1,10 +1,11 @@
+import { useEffect, useRef, useState } from 'react';
 import { UseMutationResult } from '@tanstack/react-query';
-import { PurchaseOrder, ReceivingUnitForm } from '../types';
-import { ReceivingUnitCard } from './ReceivingUnitCard';
-import { useReceivingDuplicates } from './useReceivingDuplicates';
+import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { ChevronLeft } from 'lucide-react';
+import { PurchaseOrder, ReceivingUnitForm } from '../types';
+import { ReceivingFlow } from './ReceivingFlow';
 
 export interface GoodsReceivingModalProps {
   isOpen: boolean;
@@ -20,18 +21,22 @@ export interface GoodsReceivingModalProps {
     { poId: string; items: ReceivingUnitForm[]; notes: string },
     unknown
   >;
-  updateReceivingUnit: (idx: number, field: string, value: string) => void;
-  updateChecklist: (
-    unitIdx: number,
-    checkIdx: number,
-    field: 'passed' | 'note',
-    value: boolean | string,
-  ) => void;
-  handleGoodsReceiving: (e: React.FormEvent) => void;
+  /** ยืนยันรับสินค้า — validates through the shared blockers, then posts */
+  handleGoodsReceiving: (e?: React.FormEvent) => void;
+  /** asked before discarding typed data — the page routes it through its ConfirmDialog */
+  confirmClose?: (proceed: () => void) => void;
 }
 
-const MAX_PHOTOS_PER_UNIT = 6;
+/** Anything changed since the modal opened (an IMEI, a result, a price…) — closing would throw it away. */
+export function receivingIsDirty(units: ReceivingUnitForm[], baseline: string | null): boolean {
+  return baseline !== null && JSON.stringify(units) !== baseline;
+}
 
+/**
+ * รับสินค้า — one device per screen (owner-approved mockup 2026-09-07). The modal is only the
+ * frame (PO number, supplier, X / Esc); every screen lives in ReceivingFlow so the ซื้อสินค้า
+ * wizard's ตรวจรับ step can reuse it.
+ */
 export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
   const {
     isOpen,
@@ -42,116 +47,58 @@ export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
     receivingNotes,
     setReceivingNotes,
     goodsReceivingMutation,
-    updateReceivingUnit,
-    updateChecklist,
     handleGoodsReceiving,
+    confirmClose,
   } = props;
   const isMobile = useIsMobile();
-  const dupIndices = useReceivingDuplicates(receivingUnits);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  // device screens sit in a 680px frame; the summary table (the ordering columns + IMEI/serial/prices) needs ~1100
+  const [wide, setWide] = useState(false);
+  // the units as seeded when the modal opened — the dirty check compares against this
+  const baselineRef = useRef<string | null>(null);
+  if (isOpen && baselineRef.current === null) baselineRef.current = JSON.stringify(receivingUnits);
+  useEffect(() => {
+    if (!isOpen) {
+      baselineRef.current = null;
+      setWide(false);
+    }
+  }, [isOpen]);
 
-  const onAddPhotos = (idx: number, files: FileList) => {
-    Array.from(files)
-      .slice(0, MAX_PHOTOS_PER_UNIT)
-      .forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = () =>
-          setReceivingUnits((prev) => {
-            const next = [...prev];
-            const cur = next[idx];
-            if (cur.photos.length >= MAX_PHOTOS_PER_UNIT) return prev;
-            next[idx] = { ...cur, photos: [...cur.photos, reader.result as string] };
-            return next;
-          });
-        reader.readAsDataURL(file);
-      });
+  const requestClose = () => {
+    if (confirmClose && receivingIsDirty(receivingUnits, baselineRef.current)) confirmClose(onClose);
+    else onClose();
   };
-  const onRemovePhoto = (idx: number, photoIdx: number) =>
-    setReceivingUnits((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], photos: next[idx].photos.filter((_, i) => i !== photoIdx) };
-      return next;
-    });
 
-  const passCount = receivingUnits.filter((u) => u.status === 'PASS').length;
-  const rejectCount = receivingUnits.filter((u) => u.status === 'REJECT').length;
+  // Esc closes the topmost dialog only (a confirm dialog on top keeps this one open)
+  useEffect(() => {
+    if (!isOpen || isMobile) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      if (dialogs[dialogs.length - 1] !== overlayRef.current) return;
+      e.preventDefault();
+      requestClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, isMobile, receivingUnits, confirmClose, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !selectedPO) return null;
 
-  const body = (
-    <form onSubmit={handleGoodsReceiving} className="flex flex-col flex-1 overflow-hidden">
-      {/* Sticky progress strip */}
-      <div className="shrink-0 px-4 sm:px-6 py-3 border-b bg-background/95 backdrop-blur-xs">
-        <div className="flex items-center justify-between text-sm leading-snug">
-          <span className="text-muted-foreground">ตรวจรับ {receivingUnits.length} ชิ้น</span>
-          <span className="flex gap-3">
-            <span className="text-success">ผ่าน {passCount}</span>
-            <span className="text-destructive">ไม่ผ่าน {rejectCount}</span>
-          </span>
-        </div>
-        <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden flex">
-          <div
-            className="bg-success h-full"
-            style={{
-              width: `${receivingUnits.length ? (passCount / receivingUnits.length) * 100 : 0}%`,
-            }}
-          />
-          <div
-            className="bg-destructive h-full"
-            style={{
-              width: `${receivingUnits.length ? (rejectCount / receivingUnits.length) * 100 : 0}%`,
-            }}
-          />
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
-        {receivingUnits.map((unit, idx) => (
-          <ReceivingUnitCard
-            key={idx}
-            unit={unit}
-            idx={idx}
-            isDuplicate={dupIndices.has(idx)}
-            updateReceivingUnit={updateReceivingUnit}
-            updateChecklist={updateChecklist}
-            onAddPhotos={onAddPhotos}
-            onRemovePhoto={onRemovePhoto}
-          />
-        ))}
-        {receivingUnits.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground text-sm leading-snug">
-            ไม่มีรายการที่รอรับสินค้า
-          </div>
-        )}
-        <div>
-          <label className="block text-xs text-muted-foreground mb-1 leading-snug">หมายเหตุ</label>
-          <textarea
-            value={receivingNotes}
-            onChange={(e) => setReceivingNotes(e.target.value)}
-            rows={2}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden"
-            placeholder="บันทึกเพิ่มเติม…"
-          />
-        </div>
-      </div>
-
-      {/* Sticky footer */}
-      <div className="shrink-0 border-t px-4 sm:px-6 py-3 flex gap-3 bg-background/95 backdrop-blur-xs">
-        <button
-          type="button"
-          onClick={onClose}
-          className="min-h-11 px-4 text-sm text-muted-foreground"
-        >
-          ยกเลิก
-        </button>
-        <button
-          type="submit"
-          disabled={goodsReceivingMutation.isPending || receivingUnits.length === 0}
-          className="flex-1 min-h-11 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-        >
-          {goodsReceivingMutation.isPending ? 'กำลังรับสินค้า…' : 'ยืนยันรับสินค้า'}
-        </button>
-      </div>
-    </form>
+  const total = receivingUnits.length;
+  const flow = (
+    <ReceivingFlow
+      units={receivingUnits}
+      setUnits={setReceivingUnits}
+      mode="po"
+      notes={receivingNotes}
+      setNotes={setReceivingNotes}
+      onConfirm={() => handleGoodsReceiving()}
+      confirming={goodsReceivingMutation.isPending}
+      confirmLabel={`ยืนยันรับสินค้า ${total} ชิ้น`}
+      onCancel={requestClose}
+      onViewChange={(v) => setWide(v === 'summary')}
+    />
   );
 
   if (isMobile) {
@@ -159,16 +106,19 @@ export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
       <Drawer
         open={isOpen}
         onOpenChange={(o) => {
-          if (!o) onClose();
+          if (!o) requestClose();
         }}
       >
         <DrawerContent className="h-[92dvh]">
           <DrawerHeader className="text-left">
             <DrawerTitle className="leading-snug">
-              รับสินค้า — {selectedPO?.poNumber || ''}
+              รับสินค้า <span className="font-mono text-sm text-muted-foreground">{selectedPO.poNumber}</span>
             </DrawerTitle>
+            <div className="text-[13px] text-muted-foreground">
+              {selectedPO.supplier.name} · {total} ชิ้น
+            </div>
           </DrawerHeader>
-          {selectedPO && body}
+          <div className="flex-1 overflow-y-auto pb-4">{flow}</div>
         </DrawerContent>
       </Drawer>
     );
@@ -176,26 +126,39 @@ export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8"
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-8 pb-8 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
       aria-label="รับสินค้า"
     >
-      <div className="w-full max-w-3xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
+      <div
+        className={cn(
+          'flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-hidden rounded-[14px] bg-background shadow-2xl transition-[max-width]',
+          wide ? 'max-w-[1100px]' : 'max-w-[680px]',
+        )}
+      >
+        <div className="flex shrink-0 items-start gap-3 px-6 pt-[18px]">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2.5">
+              <h2 className="text-lg font-semibold leading-snug">รับสินค้า</h2>
+              <span className="font-mono text-[13px] font-semibold text-muted-foreground">{selectedPO.poNumber}</span>
+            </div>
+            <div className="mt-0.5 text-[13px] text-muted-foreground">
+              {selectedPO.supplier.name} · {total} ชิ้น
+            </div>
+          </div>
           <button
             type="button"
-            onClick={onClose}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            onClick={requestClose}
+            aria-label="ปิด"
+            title="ปิด (Esc)"
+            className="grid size-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            <ChevronLeft className="size-4" /> กลับ
+            <X className="size-[18px]" />
           </button>
-          <h2 className="text-lg font-semibold text-foreground leading-snug">
-            รับสินค้า — {selectedPO?.poNumber || ''}
-          </h2>
-          <div className="w-16" />
         </div>
-        {selectedPO && body}
+        <div className="flex-1 overflow-y-auto">{flow}</div>
       </div>
     </div>
   );

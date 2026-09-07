@@ -264,6 +264,22 @@ export default function PurchaseOrdersPage() {
         poDetail={data.poDetail}
         openReceiveModal={data.openReceiveModal}
         openPaymentModal={data.openPaymentModal}
+        onCancel={(po) =>
+          data.setConfirmDialog({
+            open: true,
+            message:
+              po.status === 'ORDERED'
+                ? `ต้องการยกเลิก PO ${po.poNumber}? สั่งซื้อแล้วแต่ยังไม่ได้รับของ — ยกเลิกแล้วต้องแจ้งผู้ขายเอง`
+                : `ต้องการยกเลิก PO ${po.poNumber}?`,
+            action: () =>
+              data.cancelMutation.mutate(po.id, {
+                onSuccess: () => {
+                  data.setIsDetailModalOpen(false);
+                  data.setPODetail(null);
+                },
+              }),
+          })
+        }
       />
 
       <PaymentModal
@@ -294,9 +310,14 @@ export default function PurchaseOrdersPage() {
         receivingNotes={data.receivingNotes}
         setReceivingNotes={data.setReceivingNotes}
         goodsReceivingMutation={data.goodsReceivingMutation}
-        updateReceivingUnit={data.updateReceivingUnit}
-        updateChecklist={data.updateChecklist}
         handleGoodsReceiving={data.handleGoodsReceiving}
+        confirmClose={(proceed) =>
+          data.setConfirmDialog({
+            open: true,
+            message: 'ปิดหน้ารับสินค้า? ข้อมูลที่กรอกไว้จะหายทั้งหมด',
+            action: proceed,
+          })
+        }
       />
 
       <ConfirmDialog

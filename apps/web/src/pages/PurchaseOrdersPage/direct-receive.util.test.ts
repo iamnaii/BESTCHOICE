@@ -21,7 +21,9 @@ describe('lineToUnits — one table row → quantity units for ตรวจร�
       'Apple iPhone 17 Pro Deep Blue 256GB #2 · PHONE_NEW · ฿42900',
       'ฟิล์มกระจก iPhone 16 - iStar #1 · ACCESSORY · ฿35',
     ]);
-    expect(units[0]).toMatchObject({ brand: 'Apple', model: 'iPhone 17 Pro', storage: '256GB', status: 'PASS', imeiSerial: '', photos: [] });
+    // a phone waits for an explicit ผ่าน/ไม่ผ่าน on its own screen; an accessory line starts counted as received
+    expect(units[0]).toMatchObject({ brand: 'Apple', model: 'iPhone 17 Pro', storage: '256GB', status: '', imeiSerial: '', installmentPrice: '', photos: [] });
+    expect(units[2]).toMatchObject({ category: 'ACCESSORY', status: 'PASS' });
   });
 });
 

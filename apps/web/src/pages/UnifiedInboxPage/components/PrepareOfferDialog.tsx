@@ -84,7 +84,7 @@ export default function PrepareOfferDialog({ roomId, onInsert }: { roomId: strin
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="offer-budget" className="leading-snug">งบราคาเงินสดสูงสุด (บาท)</Label>
-              <Input id="offer-budget" type="number" min="1" max="1000000" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="ไม่จำกัด" disabled={offer.isPending} />
+              <Input id="offer-budget" type="number" min="1" max="1000000" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="ใช้งบจากแชท" disabled={offer.isPending} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="offer-months">จำนวนงวดที่ต้องการ</Label>

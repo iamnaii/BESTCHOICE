@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-07T19:07:50.888Z",
+  "checkedAt": "2026-09-07T19:16:01.763Z",
   "scope": "Built frontend only; fake SALES identity and local API fixtures; no real login/backend",
   "fontNote": "External font stylesheets are fulfilled locally with empty CSS; screenshots use system font fallbacks consistently in both builds",
   "gzipMethod": "Sum of default Node gzip sizes of unique JS assets requested before interaction; not measured wire bytes",
@@ -948,14 +948,14 @@
             "gzipBytes": 5906
           },
           {
-            "path": "/assets/DashboardPage-BsHsqfR1.js",
+            "path": "/assets/DashboardPage-CbOjAPaq.js",
             "bytes": 4197,
-            "gzipBytes": 1857
+            "gzipBytes": 1856
           },
           {
-            "path": "/assets/EmptyState-8RmO4fDV.js",
+            "path": "/assets/EmptyState-BPygCRqi.js",
             "bytes": 807,
-            "gzipBytes": 436
+            "gzipBytes": 437
           },
           {
             "path": "/assets/PageHeader-BbnPTzze.js",
@@ -968,9 +968,9 @@
             "gzipBytes": 775
           },
           {
-            "path": "/assets/StaffHome-DLs5LfCa.js",
+            "path": "/assets/StaffHome-gkp0P88z.js",
             "bytes": 10757,
-            "gzipBytes": 3275
+            "gzipBytes": 3274
           },
           {
             "path": "/assets/api-0X-p5XCN.js",
@@ -1188,9 +1188,9 @@
             "gzipBytes": 232
           },
           {
-            "path": "/assets/index-Dga9Kycy.js",
+            "path": "/assets/index-DB-oSmsR.js",
             "bytes": 345267,
-            "gzipBytes": 90281
+            "gzipBytes": 90288
           },
           {
             "path": "/assets/landmark-DsspJEcR.js",
@@ -1268,9 +1268,9 @@
             "gzipBytes": 259
           },
           {
-            "path": "/assets/settings-registry-DUotqIfd.js",
+            "path": "/assets/settings-registry-B6di5l_4.js",
             "bytes": 25668,
-            "gzipBytes": 5933
+            "gzipBytes": 5935
           },
           {
             "path": "/assets/shield-IHVWzbNW.js",
@@ -1350,7 +1350,7 @@
         ],
         "count": 82,
         "bytes": 1800337,
-        "gzipBytes": 549509
+        "gzipBytes": 549517
       },
       "dimensions": {
         "viewport": 1440,
@@ -1462,14 +1462,14 @@
             "gzipBytes": 5906
           },
           {
-            "path": "/assets/DashboardPage-BsHsqfR1.js",
+            "path": "/assets/DashboardPage-CbOjAPaq.js",
             "bytes": 4197,
-            "gzipBytes": 1857
+            "gzipBytes": 1856
           },
           {
-            "path": "/assets/EmptyState-8RmO4fDV.js",
+            "path": "/assets/EmptyState-BPygCRqi.js",
             "bytes": 807,
-            "gzipBytes": 436
+            "gzipBytes": 437
           },
           {
             "path": "/assets/PageHeader-BbnPTzze.js",
@@ -1482,9 +1482,9 @@
             "gzipBytes": 775
           },
           {
-            "path": "/assets/StaffHome-DLs5LfCa.js",
+            "path": "/assets/StaffHome-gkp0P88z.js",
             "bytes": 10757,
-            "gzipBytes": 3275
+            "gzipBytes": 3274
           },
           {
             "path": "/assets/api-0X-p5XCN.js",
@@ -1702,9 +1702,9 @@
             "gzipBytes": 232
           },
           {
-            "path": "/assets/index-Dga9Kycy.js",
+            "path": "/assets/index-DB-oSmsR.js",
             "bytes": 345267,
-            "gzipBytes": 90281
+            "gzipBytes": 90288
           },
           {
             "path": "/assets/landmark-DsspJEcR.js",
@@ -1782,9 +1782,9 @@
             "gzipBytes": 259
           },
           {
-            "path": "/assets/settings-registry-DUotqIfd.js",
+            "path": "/assets/settings-registry-B6di5l_4.js",
             "bytes": 25668,
-            "gzipBytes": 5933
+            "gzipBytes": 5935
           },
           {
             "path": "/assets/shield-IHVWzbNW.js",
@@ -1864,7 +1864,7 @@
         ],
         "count": 82,
         "bytes": 1800337,
-        "gzipBytes": 549509
+        "gzipBytes": 549517
       },
       "dimensions": {
         "viewport": 390,
@@ -1896,8 +1896,8 @@
   "browserVersion": "145.0.7632.6",
   "comparison": {
     "beforeGzipBytes": 680916,
-    "afterGzipBytes": 549509,
-    "reductionGzipBytes": 131407,
+    "afterGzipBytes": 549517,
+    "reductionGzipBytes": 131399,
     "reductionPercent": 19.3
   },
   "status": "PASS"

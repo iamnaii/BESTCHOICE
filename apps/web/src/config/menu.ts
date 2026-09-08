@@ -192,7 +192,6 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
-        { label: NAV_LABELS.chat, path: '/inbox', icon: MessageSquareMore },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
@@ -277,7 +276,6 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         // scoping รองรับ BM อยู่แล้ว (#1397: เห็นเฉพาะสาขาตัวเอง) ขาดแค่รายการเมนู
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
-        { label: NAV_LABELS.chat, path: '/inbox', icon: MessageSquareMore },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
     },
@@ -376,7 +374,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
-        { label: NAV_LABELS.chat, path: '/inbox', icon: MessageSquareMore },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
       ],
@@ -678,8 +675,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
-        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: NAV_LABELS.chat, path: '/inbox', icon: MessageSquareMore },
       ],
     },
     {

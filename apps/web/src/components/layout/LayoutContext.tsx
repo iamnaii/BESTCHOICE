@@ -1,5 +1,9 @@
-import { createContext, ReactNode, useContext, useState, useCallback, useMemo } from 'react';
-import type { Zone } from '@/config/menu';
+import { createContext, Fragment, ReactNode, useContext, useState, useCallback, useMemo, useLayoutEffect } from 'react';
+import { Navigate, useLocation } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
+import { getZoneConfigForRole, getZoneEntryPathForRole, resolveZoneForPath, COMMON_PATHS, type Zone } from '@/config/menu';
+import { WORK_COMPANY, setRequestCompany } from '@/lib/company-scope';
 
 /** โซนปกติ (ไม่ใช่โหมดตั้งค่า) — ปลายทางที่ปุ่ม "ออกจากตั้งค่า" พากลับ */
 export type NonSettingsZone = Exclude<Zone, 'settings'>;
@@ -22,6 +26,7 @@ interface LayoutState {
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: (open: boolean) => void;
   currentZone: Zone;
+  workZone: NonSettingsZone;
   setCurrentZone: (zone: Zone) => void;
   settingsReturn: SettingsReturn | null;
   /** เข้าโหมดตั้งค่า พร้อมจำที่ที่จากมา */
@@ -34,6 +39,13 @@ interface LayoutState {
 const LayoutContext = createContext<LayoutState | undefined>(undefined);
 
 export function LayoutProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const { pathname, search, key } = useLocation();
+  const queryClient = useQueryClient();
+  const role = user?.role ?? '';
+  const config = getZoneConfigForRole(role, user?.accessibleCompanies);
+  const fallback = (config?.defaultZone === 'fin' ? 'fin' : 'shop') as NonSettingsZone;
+  const canUse = (zone: Zone) => zone === 'settings' ? !!config?.showSettingsGear : !!config?.zones.includes(zone);
   const [sidebarCollapse, setSidebarCollapseState] = useState(() => {
     try {
       const saved = localStorage.getItem('sidebar_collapse');
@@ -48,25 +60,85 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
   // อาจเป็นหน้าที่ role เสียสิทธิ์ไปแล้ว; รีเฟรชกลางโหมดตั้งค่าให้ตกไปที่ fallback แทน
   const [settingsReturn, setSettingsReturn] = useState<SettingsReturn | null>(null);
 
-  const [currentZone, setCurrentZoneState] = useState<Zone>(() => {
+  const [selectedZone, setCurrentZoneState] = useState<Zone>(() => {
     try {
       // Priority 1: URL ?zone=
       const url = new URL(window.location.href);
+      // Router search is authoritative; window search supports legacy deep links.
+      if (search) url.search = search;
       const urlZone = url.searchParams.get('zone');
-      if (urlZone === 'shop' || urlZone === 'fin' || urlZone === 'settings') {
+      if ((urlZone === 'shop' || urlZone === 'fin' || urlZone === 'settings') && canUse(urlZone)) {
         return urlZone;
       }
       // Priority 2: localStorage
       const saved = localStorage.getItem('bc.sidebar.lastZone');
-      if (saved === 'shop' || saved === 'fin' || saved === 'settings') {
+      if ((saved === 'shop' || saved === 'fin' || saved === 'settings') && canUse(saved)) {
         return saved;
       }
     } catch {
       /* ignore */
     }
     // Priority 3: default (Sidebar overrides via role default on first render)
-    return 'shop';
+    return fallback;
   });
+  const [lastWorkZone, setLastWorkZone] = useState<NonSettingsZone>(() => {
+    if (selectedZone !== 'settings') return selectedZone;
+    try {
+      const saved = localStorage.getItem('bc.sidebar.workZone');
+      if ((saved === 'shop' || saved === 'fin') && canUse(saved)) return saved;
+    } catch { /* Use the authorized default. */ }
+    return fallback;
+  });
+  const requestedZone = new URLSearchParams(search).get('zone');
+  const explicitWorkZone = (requestedZone === 'shop' || requestedZone === 'fin') && canUse(requestedZone) ? requestedZone : null;
+  const preferred = explicitWorkZone ?? (canUse(selectedZone) ? selectedZone : fallback);
+  // Detail routes inherit their menu's company without granting that route permission.
+  const pathZone = (() => {
+    let path = pathname;
+    while (path && !COMMON_PATHS.has(path)) {
+      const zone = resolveZoneForPath(role, path, preferred);
+      if (zone) return zone;
+      path = path.slice(0, path.lastIndexOf('/'));
+    }
+    return null;
+  })();
+  const deniedCompany = pathZone !== null && pathZone !== 'settings' && !canUse(pathZone);
+  const currentZone = pathZone && !deniedCompany ? pathZone : preferred;
+  const workZone = currentZone === 'settings' ? (explicitWorkZone ?? (canUse(lastWorkZone) ? lastWorkZone : fallback)) : currentZone;
+  const company = WORK_COMPANY[workZone];
+  const scopeKey = `${user?.id ?? role}:${company}`;
+  const [installedScope, setInstalledScope] = useState<string | null>(null);
+  const hasWorkAccess = !!config?.zones.length;
+
+  useLayoutEffect(() => {
+    if (!hasWorkAccess) {
+      setRequestCompany(undefined);
+      queryClient.removeQueries();
+      return;
+    }
+    // Children stay unmounted until their API scope and empty cache are installed.
+    // Removing queries cancels old in-flight results before another company mounts.
+    setRequestCompany(company);
+    if (installedScope !== scopeKey) {
+      queryClient.removeQueries();
+      setInstalledScope(scopeKey);
+    }
+    // Settings links may omit ?zone; remember the company restored by browser history.
+    setLastWorkZone(workZone);
+    setCurrentZoneState(currentZone);
+    try {
+      localStorage.setItem('bc.sidebar.lastZone', currentZone);
+      localStorage.setItem('bc.sidebar.workZone', workZone);
+    } catch { /* Selection remains valid in memory. */ }
+    // Stamp the rendered destination, not the previous entry in a tab's click handler.
+    // Back/Forward then restore the company even for shared pages such as `/`.
+    if (!deniedCompany) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('company');
+      url.searchParams.set('zone', workZone);
+      window.history.replaceState(window.history.state, '', url.toString());
+    }
+  }, [company, currentZone, installedScope, scopeKey, queryClient, workZone, hasWorkAccess, key, deniedCompany]);
 
   const setSidebarCollapse = useCallback((collapse: boolean) => {
     setSidebarCollapseState(collapse);
@@ -78,21 +150,23 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setCurrentZone = useCallback((zone: Zone) => {
+    const allowed = getZoneConfigForRole(role, user?.accessibleCompanies);
+    if (zone === 'settings' ? !allowed?.showSettingsGear : !allowed?.zones.includes(zone)) return;
     setCurrentZoneState(zone);
     // ออกจากโหมดตั้งค่าทางไหนก็ต้องลืมที่ที่จำไว้ — ไม่ใช่แค่ทางปุ่ม "ออกจากตั้งค่า".
     // มีอีกสามทางที่พาออก: breadcrumb "หน้าหลัก"/โลโก้ (MainLayout รีเซ็ต), path-driven
     // resolve, และ useZoneValidator. ถ้าไม่ล้าง ครั้งหน้าที่เข้าตั้งค่าจะถูกพากลับหน้าเก่า
     // ที่ผู้ใช้เลิกทำไปหลายก้าวแล้ว
-    if (zone !== 'settings') setSettingsReturn(null);
+    if (zone !== 'settings') {
+      setSettingsReturn(null);
+      setLastWorkZone(zone);
+    }
     try {
       localStorage.setItem('bc.sidebar.lastZone', zone);
-      const url = new URL(window.location.href);
-      url.searchParams.set('zone', zone);
-      window.history.replaceState({}, '', url.toString());
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [role, user?.accessibleCompanies]);
 
   const enterSettings = useCallback(
     (from: SettingsReturn) => {
@@ -120,6 +194,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       mobileSidebarOpen,
       setMobileSidebarOpen,
       currentZone,
+      workZone,
       setCurrentZone,
       settingsReturn,
       enterSettings,
@@ -130,6 +205,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       setSidebarCollapse,
       mobileSidebarOpen,
       currentZone,
+      workZone,
       setCurrentZone,
       settingsReturn,
       enterSettings,
@@ -137,7 +213,13 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>;
+  if (!hasWorkAccess) return <p role="alert" className="p-6">บัญชีนี้ยังไม่มีสิทธิ์เข้าถึงบริษัท กรุณาติดต่อผู้ดูแลระบบ</p>;
+  if (deniedCompany) return <Navigate to={getZoneEntryPathForRole(role, fallback)} replace />;
+  return (
+    <LayoutContext.Provider value={value}>
+      {installedScope === scopeKey && <Fragment key={scopeKey}>{children}</Fragment>}
+    </LayoutContext.Provider>
+  );
 }
 
 export function useLayout() {

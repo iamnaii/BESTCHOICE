@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { settingsNavGroups } from '@/config/settings-access';
 import type { SettingsRole } from '@/config/settings-registry';
-import { getZoneConfigForRole, getZoneEntryPathForRole, ZONE_LANDING } from '@/config/menu';
+import { getWorkZoneHref, getZoneEntryPathForRole, ZONE_LANDING } from '@/config/menu';
 import { useLayout, type NonSettingsZone, type SettingsReturn } from './LayoutContext';
 
 const ZONE_LABEL: Record<NonSettingsZone, string> = {
@@ -42,16 +42,14 @@ export function useSettingsZone() {
   const role = user?.role ?? '';
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentZone, settingsReturn, enterSettings, exitSettings, setMobileSidebarOpen } =
+  const { currentZone, workZone, settingsReturn, enterSettings, exitSettings, setMobileSidebarOpen } =
     useLayout();
-
-  const defaultZone = getZoneConfigForRole(role)?.defaultZone;
 
   // ใช้เมื่อไม่มีที่จากมาให้จำ (เข้าตรงด้วย bookmark / ?zone=settings / รีเฟรชกลางทาง)
   const fallback = useMemo<SettingsReturn>(() => {
-    const zone: NonSettingsZone = defaultZone && defaultZone !== 'settings' ? defaultZone : 'shop';
+    const zone = workZone;
     return { zone, path: getZoneEntryPathForRole(role, zone) };
-  }, [role, defaultZone]);
+  }, [role, workZone]);
 
   const target = settingsReturn ?? fallback;
 
@@ -60,14 +58,14 @@ export function useSettingsZone() {
       currentZone === 'settings' ? fallback.zone : (currentZone as NonSettingsZone);
     enterSettings({ zone: from, path: fullPath(location) });
     setMobileSidebarOpen(false);
-    navigate(ZONE_LANDING.settings);
+    navigate(getWorkZoneHref(ZONE_LANDING.settings, from));
     handoffFocus();
   }, [currentZone, fallback.zone, location, enterSettings, setMobileSidebarOpen, navigate]);
 
   const exit = useCallback(() => {
     const to = exitSettings(fallback);
     setMobileSidebarOpen(false);
-    navigate(to.path);
+    navigate(getWorkZoneHref(to.path, to.zone));
     handoffFocus();
   }, [exitSettings, fallback, setMobileSidebarOpen, navigate]);
 

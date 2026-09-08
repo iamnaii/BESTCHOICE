@@ -41,6 +41,16 @@ import { ReceivablesReportService } from '../../src/modules/reports/services/rec
 import { seedPreviewPortfolio } from './preview-portfolio-fixture';
 import { CustomerQueryService } from '../../src/modules/customers/services/customer-query.service';
 import { CustomerTierService } from '../../src/modules/customers/customer-tier.service';
+import { DashboardOverviewService } from '../../src/modules/dashboard/services/dashboard-overview.service';
+import { DashboardCollectionsService } from '../../src/modules/dashboard/services/dashboard-collections.service';
+import { DashboardOpsService } from '../../src/modules/dashboard/services/dashboard-ops.service';
+import { OverdueQueriesService } from '../../src/modules/overdue/services/overdue-queries.service';
+import { PromiseService } from '../../src/modules/overdue/promise.service';
+import { CustomerAnalyticsService } from '../../src/modules/customers/services/customer-analytics.service';
+import { RevenueReportService } from '../../src/modules/reports/services/revenue-report.service';
+import { TransactionalReportService } from '../../src/modules/accounting/transactional-report.service';
+import { CompanyResolverService } from '../../src/modules/journal/company-resolver.service';
+import { CompanyService } from '../../src/modules/company/company.service';
 
 const root = process.env.CREDIT_PREVIEW_ROOT!;
 if (
@@ -71,6 +81,15 @@ const credits = new CreditCheckService(db, integrations, new AiProviderService(u
 const contractQuery = new ContractQueryService(db);
 const receivables = new ReceivablesReportService(db);
 const customerQuery = new CustomerQueryService(db, new CustomerTierService(db));
+// Real dashboard reads against the same synthetic database; only the cache facade is omitted.
+const dashboardOverview = new DashboardOverviewService(db);
+const dashboardCollections = new DashboardCollectionsService(db);
+const dashboardOps = new DashboardOpsService(db);
+const overdueQuery = new OverdueQueriesService(db, new PromiseService(db));
+const customerAnalytics = new CustomerAnalyticsService(db, customerQuery);
+const revenueReports = new RevenueReportService(db);
+const transactionalReports = new TransactionalReportService(db, new CompanyResolverService(db));
+const companies = new CompanyService(db);
 const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
   { resolveBranchCashAccount: async () => '110101' } as never);
@@ -173,6 +192,27 @@ class PreviewController {
   }
   @Get('branches') branches() {
     return db.branch.findMany({ where: { deletedAt: null } });
+  }
+  @Get('companies') companies() { return companies.findAll(); }
+  @Get('dashboard/kpis') dashboardKpis() { return dashboardOverview.computeKPIs(); }
+  @Get('dashboard/monthly-trend') dashboardTrend() { return dashboardOverview.getMonthlyTrend(); }
+  @Get('dashboard/status-distribution') dashboardStatuses() { return dashboardOverview.getStatusDistribution(); }
+  @Get('dashboard/branch-comparison') dashboardBranches() { return dashboardOverview.getBranchComparison(); }
+  @Get('dashboard/monthly-revenue') dashboardRevenue() { return dashboardOverview.getMonthlyRevenue(); }
+  @Get('dashboard/top-overdue') dashboardOverdue() { return dashboardCollections.getTopOverdue(); }
+  @Get('dashboard/aging-summary') dashboardAging() { return dashboardCollections.getAgingSummary(); }
+  @Get('dashboard/watch-list') dashboardWatchList() { return dashboardCollections.computeWatchList(); }
+  @Get('dashboard/alerts') dashboardAlerts() { return dashboardOps.computeAlerts(); }
+  @Get('dashboard/staff-performance') dashboardStaff() { return dashboardOps.getStaffPerformance(); }
+  @Get('overdue/pipeline') dashboardPipeline() { return overdueQuery.getCollectionPipelineStats('OWNER'); }
+  @Get('customers/upsell-candidates') customerUpsell(@Query('limit') limit = '5') {
+    return customerAnalytics.getUpsellCandidates(undefined, Math.max(1, Math.min(parseInt(limit, 10) || 5, 50)));
+  }
+  @Get('reports/entity-profit') entityProfit(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    return revenueReports.getEntityProfitReport(startDate, endDate);
+  }
+  @Get('reports/comparative-pl') comparativePL(@Query('year') year: string, @Query('month') month: string) {
+    return transactionalReports.getComparativePL(Number(year), Number(month), undefined, undefined, true);
   }
   @Get('products') async products() {
     const products = await db.product.findMany({ where: { status: 'IN_STOCK', deletedAt: null }, include: { branch: true, prices: true } });
@@ -419,7 +459,9 @@ async function main() {
         path,
       ) ||
       path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
-      path === '/api/branches'
+      path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' ||
+      /^\/api\/dashboard\/(kpis|monthly-trend|status-distribution|branch-comparison|monthly-revenue|top-overdue|aging-summary|watch-list|alerts|staff-performance)$/.test(path) ||
+      /^\/api\/reports\/(entity-profit|comparative-pl)$/.test(path)
     )
       return next();
     return res.status(501).json({ message: 'เมนูนี้ยังไม่รองรับใน local preview', code: 'LOCAL_PREVIEW_UNSUPPORTED' });

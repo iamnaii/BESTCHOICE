@@ -906,7 +906,7 @@ function App() {
             path="/shop/accounting"
             element={
               <ProtectedRoute
-                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}
+                roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER']}
               >
                 <ShopAccountingPage />
               </ProtectedRoute>

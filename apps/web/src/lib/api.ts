@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_URL } from '@/lib/env';
+import { getRequestCompany } from './company-scope';
 import { currentLocation, shouldSkipLoginRedirect } from '@/lib/public-routes';
 
 // In-memory token storage — not accessible via XSS unlike localStorage
@@ -45,16 +46,10 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  // SP7.3 — attach current entity scope as ?company= so EntityScopeMiddleware
-  // on the backend can scope queries to the correct company.
-  // Read from localStorage (not React context) because axios lives outside the React tree.
-  try {
-    const scope = localStorage.getItem('bc-entity-scope');
-    if (scope && !config.params?.company) {
-      config.params = { ...(config.params || {}), company: scope.toLowerCase() };
-    }
-  } catch {
-    // localStorage unavailable (SSR / private browsing edge case) — skip
+  // One work selection determines the company for all requests from that workspace.
+  const scope = getRequestCompany();
+  if (scope && !('_retry' in config && config._retry)) {
+    config.params = { ...(config.params || {}), company: scope.toLowerCase() };
   }
 
   return config;

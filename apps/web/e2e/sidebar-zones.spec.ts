@@ -5,14 +5,11 @@ import { loginAsRole } from './helpers/auth';
  * SP1 — Sidebar redesign E2E tests
  *
  * Covers Task 16 from the SP1 implementation plan:
- *   - Zone pill visibility per role (OWNER both, SALES none, ACC none)
+ *   - Zone pill visibility per role (OWNER both, SALES none, ACC by company access)
  *   - GearButton (ตั้งค่ากลาง) visibility per role
  *   - Zone switching by clicking pills
  *   - Persistence of selected zone (localStorage `bc.sidebar.lastZone`)
- *     NOTE: clicking a pill navigates to `ZONE_LANDING[zone]` (menu.ts) — the
- *     `?zone=` param LayoutContext writes is dropped by that navigate(), so the
- *     assertion is on the landing path, not the query string. `?zone=` is still
- *     READ on boot (deep links keep working), just never written by a pill click.
+ *     The destination carries ?zone=shop|fin, so Back/Forward restores its company.
  *   - Auto-switch pill when navigating to a path in a different zone
  *   - Cross-zone access guard: SALES navigating to FIN-only path → redirect
  *     to `/` with toast "คุณไม่มีสิทธิ์เข้าถึงหน้านี้" (see MainLayout.tsx:102)
@@ -69,12 +66,14 @@ test.describe('SP1 — Sidebar zones', () => {
     await expect(page.getByRole('button', { name: 'ตั้งค่ากลาง' })).toHaveCount(0);
   });
 
-  test('ACCOUNTANT sees no pills (FIN-only role)', async ({ page }) => {
+  test('ACCOUNTANT sees work choices only for its granted companies', async ({ page }) => {
+    const meResponse = page.waitForResponse(response => /\/auth\/me(?:\?|$)/.test(response.url()));
     await loginAndExpandSidebar(page, 'ACCOUNTANT');
-
-    // ACCOUNTANT's zoneConfig has only ['fin'] → PillSwitcher renders null.
-    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' })).toHaveCount(0);
-    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' })).toHaveCount(0);
+    const me = await meResponse;
+    const envelope = await me.json();
+    const user = envelope.data ?? envelope;
+    const both = ['SHOP', 'FINANCE'].every(company => user.accessibleCompanies.includes(company));
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(both ? 1 : 0);
   });
 
   test('OWNER zone selection persists across reload', async ({ page }) => {

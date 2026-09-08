@@ -1,12 +1,12 @@
 import { ShoppingCart, CircleDollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { cn } from '@/lib/utils';
-import { ZONE_LANDING, type Zone } from '@/config/menu';
+import { getWorkZoneHref, getZoneEntryPathForRole, type Zone } from '@/config/menu';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface PillSwitcherProps {
   zones: Zone[];
   current: Zone;
-  onSwitch: (zone: Zone) => void;
 }
 
 const ZONE_META: Record<Exclude<Zone, 'settings'>, { label: string; icon: typeof ShoppingCart }> = {
@@ -14,8 +14,9 @@ const ZONE_META: Record<Exclude<Zone, 'settings'>, { label: string; icon: typeof
   fin: { label: 'งานการเงิน', icon: CircleDollarSign },
 };
 
-export function PillSwitcher({ zones, current, onSwitch }: PillSwitcherProps) {
+export function PillSwitcher({ zones, current }: PillSwitcherProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   // Only render pills for shop+fin (settings is accessed via GearButton)
   const pillZones = zones.filter((z): z is 'shop' | 'fin' => z === 'shop' || z === 'fin');
   if (pillZones.length < 2) return null;
@@ -33,11 +34,11 @@ export function PillSwitcher({ zones, current, onSwitch }: PillSwitcherProps) {
               key={zone}
               type="button"
               role="tab"
+              aria-label={`${meta.label} (${zone === 'shop' ? 'SHOP' : 'FINANCE'})`}
               aria-selected={active}
               onClick={() => {
                 if (zone !== current) {
-                  onSwitch(zone);
-                  navigate(ZONE_LANDING[zone]);
+                  navigate(getWorkZoneHref(getZoneEntryPathForRole(user?.role ?? '', zone), zone));
                 }
               }}
               className={cn(
@@ -48,7 +49,7 @@ export function PillSwitcher({ zones, current, onSwitch }: PillSwitcherProps) {
               )}
             >
               <Icon className="size-3.5" aria-hidden="true" />
-              <span>{meta.label}</span>
+              <span>{meta.label}<span className="block text-[10px] font-normal">{zone === 'shop' ? 'SHOP' : 'FINANCE'}</span></span>
             </button>
           );
         })}

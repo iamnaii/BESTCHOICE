@@ -104,6 +104,16 @@ gzip ลด **19.30%** (131,399 bytes) เป็นขนาดคำนวณ�
 
 ## ตรวจซ้ำ
 
+### ข้อกำหนดหมวดงานจากเจ้าของ — 8 กันยายน 2026
+
+**งานหน้าร้าน = SHOP และงานการเงิน = FINANCE** เป็นตัวเลือกเดียวในแถบข้าง ถอดตัวเลือกบริษัทอิสระใน TopBar รวม request scope เข้ากับหมวดงานก่อน mount หน้า และล้าง query cache เมื่อเปลี่ยนบริษัท ปุ่มสลับพาไป landing ของ role พร้อมบริษัทใน URL จึงคืนบริษัทเดิมได้เมื่อ refresh/Back/Forward; ตั้งค่าจำบริษัทที่เข้ามาแต่ไม่ persist path เก่าข้าม session
+
+แสดงหมวดเฉพาะที่ role มีเมนูและบัญชีมีสิทธิ์บริษัทนั้น ไม่เพิ่มสิทธิ์บริษัท ย้ายบัญชี SHOP ของ ACCOUNTANT/VIEWER ไปหมวด SHOP และจัด route permission ให้ตรง API ที่มีอยู่ คงปุ่มกล่องข้อความด้านบนตามเดิม
+
+ขอบเขตคือ navigation และ company context ของ request ไม่เปลี่ยนสูตรบัญชีหรือรับรอง company isolation ของทุก API ตัวกรองรายงานเปรียบเทียบยังเป็นตัวกรองเฉพาะหน้า พบเรื่องเดิมที่ต้องตรวจแยก: MonthlyClose เลือกบริษัทแรกจากรายการเป็นค่าเริ่มต้น และ dashboard บางบริการรวมข้อมูลหลายบริษัท จึงไม่ใช้ผล local นี้รับรองงานปิดบัญชี/การแยกฐานข้อมูลทั้งหมด
+
+Regression เพิ่มกรณี direct link ที่มี company เก่า, shared routes, reload/Back/Forward, settings history, ถอนสิทธิ์บริษัท, response เก่ามาถึงหลังสลับบริษัท และ request ที่ retry หลัง refresh token โดยยังใช้บริษัทเดิม `local:check` ตรวจ navigation นี้ทั้งจอคอมและมือถือร่วมกับบริการ Dashboard จริงบนฐานจำลอง
+
 ```bash
 ./tools/check-types.sh all
 npm run test --workspace=apps/web

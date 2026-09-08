@@ -4,9 +4,10 @@ import { join } from 'node:path';
 import { chromium, expect } from '@playwright/test';
 import { acquireLock, ensurePreview, fingerprint, git, output, repo, run } from './local-preview.mjs';
 import { checkLocalPages } from './check-local-pages.mjs';
+import { checkWorkCompany } from './check-local-work-company.mjs';
 
 const release = acquireLock('check');
-const report = { status: 'RUNNING', scope: 'Basic checks + synthetic Inbox, customers and FINANCE portfolio browser smoke; not a full backend/financial regression',
+const report = { status: 'RUNNING', scope: 'Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio and work-company navigation; not a full backend/financial regression',
   repo, revision: git('rev-parse', '--short', 'HEAD'), sourceFingerprint: fingerprint(), startedAt: new Date().toISOString(), checks: [] };
 mkdirSync(output, { recursive: true });
 const save = () => writeFileSync(join(output, 'check.json'), JSON.stringify(report, null, 2) + '\n');
@@ -60,6 +61,9 @@ try {
       await checkLocalPages(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });
+      await checkWorkCompany(page, info.url, output, viewport.width);
+      assert.deepEqual(errors, [], 'Browser errors');
+      report.checks.push({ label: `SHOP/FINANCE navigation (requests, reload, back/forward) ${viewport.width}px`, status: 'PASS' });
       await context.close();
     }
   } finally { await browser.close(); }

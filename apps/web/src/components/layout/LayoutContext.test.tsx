@@ -1,10 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import type { ReactNode } from 'react';
 
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'OWNER' } }) }));
+
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <LayoutProvider>{children}</LayoutProvider>
+  <QueryClientProvider client={new QueryClient()}><MemoryRouter><LayoutProvider>{children}</LayoutProvider></MemoryRouter></QueryClientProvider>
 );
 
 describe('LayoutContext currentZone persistence', () => {
@@ -31,7 +35,7 @@ describe('LayoutContext currentZone persistence', () => {
     expect(result.current.currentZone).toBe('fin');
   });
 
-  it('setCurrentZone updates state + localStorage + URL', () => {
+  it('in-place zone sync updates state, storage and the current history entry', () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
     act(() => result.current.setCurrentZone('fin'));
     expect(result.current.currentZone).toBe('fin');

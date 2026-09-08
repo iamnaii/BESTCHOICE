@@ -33,7 +33,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useLayout } from './LayoutContext';
-import { getSidebarForRole, getZoneConfigForRole, getZoneEntryPathForRole } from '@/config/menu';
+import { getSidebarForRole, getZoneConfigForRole, getZoneEntryPathForRole, getWorkZoneHref } from '@/config/menu';
 import type { MenuSection, MenuBadgeKey, Zone } from '@/config/menu';
 import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
@@ -141,7 +141,7 @@ function useZoneValidator() {
   const { currentZone, setCurrentZone } = useLayout();
   const { user } = useAuth();
   const role = user?.role ?? '';
-  const zoneConfig = getZoneConfigForRole(role);
+  const zoneConfig = getZoneConfigForRole(role, user?.accessibleCompanies);
 
   useEffect(() => {
     if (!zoneConfig) return;
@@ -191,7 +191,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
   const { pathname, hash } = useLocation();
   const [openPopover, setOpenPopover] = useState<string | null>(null);
-  const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
+  const { role, zoneConfig, currentZone } = useZoneValidator();
   const { enter: enterSettings } = useSettingsZone();
   const navigate = useNavigate();
 
@@ -258,7 +258,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
               .map((zone) => {
                 const Icon = zone === 'shop' ? ShoppingCart : CircleDollarSign;
                 const active = currentZone === zone;
-                const label = zone === 'shop' ? 'งานหน้าร้าน' : 'งานการเงิน';
+                const label = zone === 'shop' ? 'งานหน้าร้าน (SHOP)' : 'งานการเงิน (FINANCE)';
                 return (
                   <Tooltip key={zone}>
                     <TooltipTrigger asChild>
@@ -266,10 +266,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                         type="button"
                         onClick={() => {
                           if (zone === currentZone) return;
-                          // สลับโซนต้อง navigate ด้วยเสมอ (เหมือน PillSwitcher) — ถ้าเปลี่ยนแต่
-                          // โซน เมนูจะเปลี่ยนแต่เนื้อหาค้างหน้าเดิม และ MainLayout จงใจไม่แก้ให้
-                          setCurrentZone(zone);
-                          navigate(getZoneEntryPathForRole(role, zone));
+                          navigate(getWorkZoneHref(getZoneEntryPathForRole(role, zone), zone));
                         }}
                         aria-label={label}
                         aria-pressed={active}
@@ -471,7 +468,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
 function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
   const { pathname, hash } = useLocation();
-  const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
+  const { role, zoneConfig, currentZone } = useZoneValidator();
   const { inSettings, enter: enterSettings } = useSettingsZone();
 
   const sections = useRoleMenu(role, currentZone);
@@ -542,7 +539,6 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         <PillSwitcher
           zones={zoneConfig.zones}
           current={currentZone}
-          onSwitch={setCurrentZone}
         />
       )}
 
@@ -635,7 +631,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
 function MobileSidebarContent() {
   const { user, logout } = useAuth();
   const { pathname, hash } = useLocation();
-  const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
+  const { role, zoneConfig, currentZone } = useZoneValidator();
   const { inSettings, enter: enterSettings } = useSettingsZone();
 
   const sections = useRoleMenu(role, currentZone);
@@ -701,7 +697,6 @@ function MobileSidebarContent() {
         <PillSwitcher
           zones={zoneConfig.zones}
           current={currentZone}
-          onSwitch={setCurrentZone}
         />
       )}
 

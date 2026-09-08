@@ -9,10 +9,19 @@ import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
+import { consumePaymentApproval } from './services/payment-approval-request.util';
+
+jest.mock('./services/payment-approval-request.util', () => ({
+  ...jest.requireActual('./services/payment-approval-request.util'),
+  consumePaymentApproval: jest.fn(),
+}));
+
+const approvalContext = { requestId: 'approval-request-1', actorId: 'approver-1' };
+const consumeApproval = consumePaymentApproval as jest.Mock;
 
 /**
  * Integration tests for financial flows.
@@ -48,12 +57,14 @@ describe('PaymentsService — Financial Integration', () => {
   };
 
   beforeEach(async () => {
+    consumeApproval.mockReset().mockResolvedValue({ requestedById: 'u1', approverId: approvalContext.actorId });
     // Reset state
     payments.forEach(p => { p.amountPaid = 0; p.status = 'PENDING'; p.paidDate = null; p.lateFee = 0; });
     contract.creditBalance = 0;
     contract.status = 'ACTIVE';
 
     const tx = {
+      paymentDraft: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       contract: {
         findUnique: jest.fn().mockReturnValue({ ...contract, payments: [...payments] }),
         update: jest.fn().mockImplementation(({ data }) => ({ ...contract, ...data })),
@@ -155,19 +166,33 @@ describe('PaymentsService — Financial Integration', () => {
     });
 
     // T16: Tolerance approval tests
-    it('T16 — succeeds with toleranceApproverId when diff is within 1 ฿', async () => {
+    it('T16 — approved 0.50 shortage settles the installment and audits the actual approver', async () => {
       // Amount 999.50 vs outstanding 1000 — diff 0.50 ฿, within tolerance
-      const result = await service.recordPayment('c1', 1, 999.5, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-TOL1', undefined, 'u1');
-      expect(result).toBeDefined();
+      const result = await service.recordPayment(
+        'c1', 1, 999.5, 'CASH', 'u1', 'https://s3.example.com/slip.jpg',
+        undefined, 'TXN-TOL1', undefined, 'nominated-user', undefined, true,
+        undefined, undefined, undefined, undefined, true, 0, approvalContext,
+      );
+      expect(result.status).toBe('PAID');
+      expect(Number(payments[0].amountPaid)).toBe(1000);
+      expect(consumeApproval).toHaveBeenCalledWith(expect.any(Object), approvalContext, 'RECORD_PAYMENT', 'pay-1');
+      expect(service['auditService'].log).toHaveBeenCalledWith(expect.objectContaining({
+        userId: approvalContext.actorId,
+        action: 'TOLERANCE_APPROVED',
+        newValue: expect.objectContaining({ amountReceived: '999.5', requestedBy: 'u1' }),
+      }));
     });
 
-    it('T16 — rejects toleranceApproverId with SALES role', async () => {
+    it('T16 — a nominated SALES account cannot replace a real approval', async () => {
       // Mock user.findUnique to return a SALES user for this test
       const prisma = (service['prisma'] as unknown) as { user: { findUnique: jest.Mock } };
       prisma.user.findUnique.mockResolvedValueOnce({ id: 'u-sales', role: 'SALES', deletedAt: null });
       await expect(
         service.recordPayment('c1', 1, 999.5, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-TOL2', undefined, 'u-sales'),
-      ).rejects.toThrow('ผู้อนุมัติต้องมีบทบาท OWNER');
+      ).rejects.toThrow(ForbiddenException);
+      expect(consumeApproval).not.toHaveBeenCalled();
+      expect(payments[0].status).toBe('PENDING');
+      expect(Number(payments[0].amountPaid)).toBe(0);
     });
 
     it('T16 — no AuditLog written when payment is exact (no toleranceApproverId)', async () => {

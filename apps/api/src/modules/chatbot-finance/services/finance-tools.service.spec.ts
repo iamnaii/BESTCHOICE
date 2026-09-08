@@ -90,6 +90,16 @@ describe('FinanceToolsService — flat-bracket late-fee quote', () => {
     expect(res.found).toBe(false);
   });
 
+  it.each([0, 50, 175])('getCurrentBalance keeps the stored fee %s after partial payment', async (lateFee) => {
+    prisma.payment.findFirst.mockResolvedValue({
+      ...overdue({ amountDue: 2000, daysOverdue: 60 }),
+      amountPaid: new Prisma.Decimal(550), lateFee: new Prisma.Decimal(lateFee),
+    });
+    const res = await service.getCurrentBalance('cust-1');
+    expect(res.lateFee).toBe(lateFee);
+    expect(res.totalAmount).toBe(1450 + lateFee);
+  });
+
   // ─── calculateFine tests ───────────────────────────────────────
 
   it('calculateFine(5): tier2 (>= minDays 3) = 100', async () => {

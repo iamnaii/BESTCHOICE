@@ -4,21 +4,12 @@
  * Extracted (PR #1314 gap-fill) so the running-total, fee-total, and receipt→JE
  * selection rules can be unit-tested without rendering the sheet. The component
  * keeps the react-query wiring; these functions own the arithmetic + selection.
- * Logic is byte-identical to the previous inline implementation.
  */
 
 export interface ReceiptAmountRow {
   isVoided: boolean;
   receiptType: string;
   amount: string;
-}
-
-export interface FeePaymentRow {
-  status: string;
-  amountPaid: string;
-  lateFee: string;
-  waivedAmount: string | null;
-  lateFeeWaived: boolean;
 }
 
 export interface ReceiptRef {
@@ -45,24 +36,20 @@ export function computeCumulativePaid(receipts: ReceiptAmountRow[]): number {
 }
 
 /**
- * Late-fee / waiver totals for the summary card. Counted on installments where
- * collection has STARTED (status PAID or amountPaid > 0) — amountPaid-based rather
- * than status so the fee doesn't vanish when the midnight cron flips a
- * PARTIALLY_PAID overdue row back to OVERDUE; pure accruals on untouched overdue
- * rows stay excluded.
+ * Sum the same per-receipt fee values shown in the table. Rescheduling resets
+ * Payment.lateFee, so that mutable amount cannot represent past collections.
+ * computeReceiptFeeDisplay already excludes voids and handles legacy attribution.
  */
-export function computeFeeTotals(payments: FeePaymentRow[]): {
+export function computeFeeTotals(fees: Iterable<{ lateFee: number; waived: number }>): {
   totalLateFee: number;
   totalWaived: number;
 } {
-  const feePayments = payments.filter((p) => p.status === 'PAID' || Number(p.amountPaid) > 0);
-  const totalLateFee = feePayments.reduce((s, p) => s + Number(p.lateFee), 0);
-  const totalWaived = feePayments.reduce(
-    (s, p) =>
-      s +
-      (p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0),
-    0,
-  );
+  let totalLateFee = 0;
+  let totalWaived = 0;
+  for (const fee of fees) {
+    totalLateFee += fee.lateFee;
+    totalWaived += fee.waived;
+  }
   return { totalLateFee, totalWaived };
 }
 
@@ -162,6 +149,14 @@ export interface CaseReceiptRow {
   receiptType: string;
   amount: string;
   paymentStatus: string | null;
+  /** Historical action attributed by the API to this receipt. */
+  paymentCase?: string | null;
+}
+
+export interface ReceiptInstallmentAllocation {
+  installmentNo: number;
+  amount: string;
+  kind: 'INSTALLMENT' | 'RESCHEDULE_ADVANCE';
 }
 
 export interface CasePaymentRow {
@@ -174,34 +169,44 @@ export interface CasePaymentRow {
 
 export type CaseTone = 'warning' | 'info' | 'primary' | 'success';
 
+const PAYMENT_CASE_LABELS: Record<string, { label: string; tone: CaseTone }> = {
+  NORMAL: { label: 'ตรงดิว', tone: 'success' },
+  PARTIAL: { label: 'แบ่งชำระ', tone: 'info' },
+  RESCHEDULE: { label: 'ปรับดิว', tone: 'warning' },
+  EARLY_PAYOFF: { label: 'ปิดยอด', tone: 'warning' },
+  REPOSSESSION: { label: 'คืนเครื่อง', tone: 'warning' },
+  OVERPAY_ADVANCE: { label: 'ชำระล่วงหน้า', tone: 'primary' },
+  OVERPAY: { label: 'ชำระเกิน', tone: 'primary' },
+  UNDERPAY: { label: 'ชำระขาด', tone: 'warning' },
+};
+
 /**
- * The derived CASE label for one receipt row (no persisted `case` field).
- *
- * OVER means the customer handed over MORE than this installment obliged them
- * to. The obligation is `amountDue + NET late fee` (gross − waived) — the same
- * figure `PaymentReceiptOrchestrator` calls `remaining` when it decides whether
- * an overage becomes a 21-1103 advance credit. Comparing against `amountDue`
- * alone (the pre-2026-08-18 rule) labelled every correctly-collected fee as an
- * overpay, and hid the genuine ones: on prod contract TEST-20260809-004, งวด 1
- * paid exactly 3,671 + 100 read "OVER" while งวด 3 — which was 29฿ SHORT in
- * cash and closed by an advance credit — read "OVER" too.
+ * Prefer the receipt's historical action: a reschedule receipt can collect both
+ * the current installment and an advance for the last installment. Its total
+ * alone cannot distinguish rescheduling from an ordinary overpayment.
+ * Legacy responses fall back to document type, receipt status and net obligation.
  */
 export function caseForReceipt(
   r: CaseReceiptRow,
   p: CasePaymentRow | undefined,
 ): { label: string; tone: CaseTone } {
+  if (r.paymentCase && Object.prototype.hasOwnProperty.call(PAYMENT_CASE_LABELS, r.paymentCase))
+    return PAYMENT_CASE_LABELS[r.paymentCase];
   if (r.receiptType === 'EARLY_PAYOFF') return { label: 'ปิดยอด', tone: 'warning' };
   if (r.receiptType === 'DOWN_PAYMENT') return { label: 'ดาวน์', tone: 'warning' };
   if (r.receiptType === 'CREDIT_NOTE') return { label: 'ใบลดหนี้', tone: 'warning' };
   if (r.receiptType === 'RESCHEDULE_FEE') return { label: 'ปรับดิว', tone: 'warning' };
-  if (r.paymentStatus === 'PARTIAL') return { label: 'PARTIAL', tone: 'info' };
+  if (r.paymentStatus === 'PARTIAL') return { label: 'แบ่งชำระ', tone: 'info' };
+  // Explicit null means the API could not establish this receipt's history.
+  // Undefined alone keeps compatibility with responses from an older API.
+  if (r.paymentCase === null) return { label: 'ไม่ระบุ', tone: 'info' };
   if (p) {
-    // Same waiver convention as computeFeeTotals: an explicit waivedAmount wins,
+    // An explicit waivedAmount wins,
     // otherwise lateFeeWaived means the whole gross fee was waived.
     const waived =
       p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0;
     const obligation = Number(p.amountDue) + (Number(p.lateFee) - waived);
-    if (Number(r.amount) > obligation) return { label: 'OVER', tone: 'primary' };
+    if (Number(r.amount) > obligation) return { label: 'ชำระเกิน', tone: 'primary' };
   }
-  return { label: 'NORMAL', tone: 'success' };
+  return { label: 'ตรงดิว', tone: 'success' };
 }

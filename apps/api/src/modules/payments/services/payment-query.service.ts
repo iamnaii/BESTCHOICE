@@ -1,3 +1,4 @@
+import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../../receipts/receipt-types.constants';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -5,6 +6,7 @@ import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { roundBaht } from '../../../utils/installment.util';
 import { loadLateFeeConfig, resolveLivePaymentLateFee } from '../../../utils/late-fee.util';
 import { collectAccountCodes, toContractJeView } from '../../journal/contract-je-view.util';
+import { loadLateFeePaidByPaymentIds, loadPostedPaymentReceiptTotals } from './payment-late-fee-paid.util';
 
 /**
  * Build a Prisma `dueDate` range filter from BKK-local YYYY-MM-DD bounds.
@@ -345,9 +347,43 @@ export class PaymentQueryService {
       }
     }
 
+    // Payment.amountPaid measures installment settlement and includes credits.
+    // The paid list separately shows cash on active installment receipts, including
+    // a bundled reschedule's overage. RESCHEDULE_FEE belongs to its own receipt,
+    // not the current installment. Missing receipt evidence stays unavailable.
+    const paidPaymentIds = data.filter((p) => p.status === 'PAID').map((p) => p.id);
+    const receiptCashByPayment = new Map<string, string>();
+    if (paidPaymentIds.length > 0) {
+      const receiptSums = await this.prisma.receipt.groupBy({
+        by: ['paymentId'],
+        where: {
+          paymentId: { in: paidPaymentIds },
+          receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
+          isVoided: false,
+          deletedAt: null,
+        },
+        _sum: { amount: true },
+      });
+      for (const row of receiptSums) {
+        if (row.paymentId && row._sum.amount !== null)
+          receiptCashByPayment.set(row.paymentId, row._sum.amount.toFixed(2));
+      }
+    }
+
+    const { lateFeePaid: lateFeePaidByPayment, knownReceiptCash } =
+      await loadPostedPaymentReceiptTotals(this.prisma, data.map(p => p.id));
+    for (const [paymentId, receiptCash] of receiptCashByPayment) {
+      // Issuance is post-commit: one partial receipt can be absent even when
+      // other receipts exist. Never present that known incomplete sum as cash.
+      if (knownReceiptCash.get(paymentId)?.gt(new Prisma.Decimal(receiptCash))) {
+        receiptCashByPayment.delete(paymentId);
+      }
+    }
     const withLiveFee = data.map((p) => ({
       ...p,
       lateFee: p.status === 'PAID' ? netStoredFee(p) : resolveLivePaymentLateFee(p, cfg, now),
+      lateFeePaid: (lateFeePaidByPayment.get(p.id) ?? new Prisma.Decimal(0)).toFixed(2),
+      ...(p.status === 'PAID' ? { receiptCashAmount: receiptCashByPayment.get(p.id) ?? null } : {}),
       hasEarlierUnpaid:
         p.status !== 'PAID' &&
         p.installmentNo > (minUnpaidByContract.get(p.contract.id) ?? p.installmentNo),
@@ -451,20 +487,29 @@ export class PaymentQueryService {
       // stamp — recompute from current config so the KPI matches the queue rows).
       this.prisma.payment.findMany({
         where: pendingWhere,
-        select: { dueDate: true, amountDue: true, lateFeeWaived: true },
+        select: { id: true, dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
       }),
       loadLateFeeConfig(this.prisma),
     ]);
 
+    const lateFeePaidByPayment = await loadLateFeePaidByPaymentIds(this.prisma, pendingRows.map(p => p.id));
+    const feePaid = pendingRows.reduce(
+      (sum, p) => sum.plus(lateFeePaidByPayment.get(p.id) ?? 0), new Prisma.Decimal(0),
+    );
     const dec = (v: Prisma.Decimal | number | null | undefined) => new Prisma.Decimal(v ?? 0);
+    // amountPaid includes collected fees; restore that portion before calculating
+    // the installment balance, then subtract it from the fee balance below.
     const outstandingPrincipal = dec(pending._sum?.amountDue)
       .sub(dec(pending._sum?.amountPaid))
+      .plus(feePaid)
       .toDecimalPlaces(2)
       .toNumber();
 
     const now = new Date();
     const outstandingLateFee = pendingRows
-      .reduce((sum, p) => sum.add(resolveLivePaymentLateFee(p, cfg, now)), new Prisma.Decimal(0))
+      .reduce((sum, p) => sum.add(Prisma.Decimal.max(
+        resolveLivePaymentLateFee(p, cfg, now).minus(lateFeePaidByPayment.get(p.id) ?? 0), 0,
+      )), new Prisma.Decimal(0))
       .toDecimalPlaces(2)
       .toNumber();
 

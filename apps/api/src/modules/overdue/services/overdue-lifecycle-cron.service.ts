@@ -76,6 +76,9 @@ export class OverdueLifecycleCronService {
         -- days-overdue formula would resurrect/overwrite the fee AND wrongly flip a
         -- PARTIALLY_PAID row back to OVERDUE after the customer paid the principal.
         AND "amount_paid" < "amount_due"
+        -- Once any payment is received, the cumulative fee is frozen for this
+        -- installment, including zero. Staff may explicitly add a fee later.
+        AND "amount_paid" <= 0
         AND "contract_id" IN (
           SELECT "id" FROM "contracts"
           WHERE "status" IN ('ACTIVE', 'OVERDUE', 'DEFAULT')

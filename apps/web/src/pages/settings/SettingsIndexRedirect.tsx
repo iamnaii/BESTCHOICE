@@ -24,6 +24,10 @@ export function SettingsIndexRedirect() {
 
   useEffect(() => {
     const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
+    if (hash === 'peak-mapping') {
+      navigate('/settings/accounting/chart?tab=peak', { replace: true });
+      return;
+    }
     // #contacts is now a standalone page — redirect directly
     if (hash === 'contacts') {
       navigate('/contacts', { replace: true });

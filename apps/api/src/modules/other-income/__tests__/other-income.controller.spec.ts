@@ -16,10 +16,8 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
-import { ReversePermissionGuard } from '../../auth/guards/reverse-permission.guard';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { OtherIncomeController } from '../other-income.controller';
 import { OtherIncomeService } from '../other-income.service';
@@ -98,19 +96,10 @@ describe('OtherIncomeController — @Roles metadata', () => {
     expect(roles).not.toContain('BRANCH_MANAGER');
   });
 
-  // Audit Finding A — reverse permission must be uniform across all 3 accounting
-  // modules. Other Income (like Expense's void) must additionally consult the
-  // dynamic `reverse_permission` SystemConfig mode via ReversePermissionGuard,
-  // not just the static @Roles bundle. (Previously OI relied on @Roles only.)
-  it('reverse() is additionally gated by ReversePermissionGuard (dynamic mode)', () => {
-    const handler = (OtherIncomeController.prototype as unknown as Record<string, unknown>)[
-      'reverse'
-    ];
-    const guards = Reflect.getMetadata(GUARDS_METADATA, handler as object) as
-      | unknown[]
-      | undefined;
-    expect(guards).toBeDefined();
-    expect(guards).toContain(ReversePermissionGuard);
+  it('approve/reject allow eligible accounting roles for per-user service authorization', () => {
+    for (const method of ['approve', 'reject']) {
+      expect(methodRoles(method)).toEqual(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']);
+    }
   });
 
   it('list(), create(), post(), copy() have no method-level @Roles (inherit class)', () => {

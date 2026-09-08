@@ -1,3 +1,5 @@
+import { consumePaymentApproval } from '../../payments/services/payment-approval-request.util';
+jest.mock('../../payments/services/payment-approval-request.util', () => ({ ...jest.requireActual('../../payments/services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
 /**
  * Voiding one receipt of a MULTI-RECEIPT installment must issue a ใบลดหนี้
  * (credit note) for EVERY receipt it voids — not only the one the user clicked.
@@ -131,10 +133,11 @@ const creditNotesFrom = (createMock: jest.Mock) =>
     .filter((d: any) => d.receiptType === 'CREDIT_NOTE');
 
 describe('ReceiptVoidService — credit note per voided receipt', () => {
+  beforeEach(() => { (consumePaymentApproval as jest.Mock).mockReset().mockResolvedValue({ requestedById: 'maker-1', approverId: 'approver-1', payload: {} }); });
   it('issues a credit note for the sibling receipt voided alongside the target', async () => {
     const { service, receiptCreate } = setup();
 
-    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER');
+    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', { requestId: 'void-request', actorId: 'approver-1' });
 
     const cns = creditNotesFrom(receiptCreate as jest.Mock);
     expect(cns).toHaveLength(2);
@@ -144,7 +147,7 @@ describe('ReceiptVoidService — credit note per voided receipt', () => {
   it('credit-note total equals the money actually cancelled (2,000 + 1,771)', async () => {
     const { service, receiptCreate } = setup();
 
-    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER');
+    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', { requestId: 'void-request', actorId: 'approver-1' });
 
     const total = creditNotesFrom(receiptCreate as jest.Mock).reduce(
       (acc: Prisma.Decimal, c: any) => acc.plus(new Prisma.Decimal(c.amount)),
@@ -156,7 +159,7 @@ describe('ReceiptVoidService — credit note per voided receipt', () => {
   it('each credit note carries its own source receipt amount and installment', async () => {
     const { service, receiptCreate } = setup();
 
-    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER');
+    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', { requestId: 'void-request', actorId: 'approver-1' });
 
     const bySource = new Map(
       creditNotesFrom(receiptCreate as jest.Mock).map((c: any) => [c.voidedReceiptId, c]),
@@ -170,7 +173,7 @@ describe('ReceiptVoidService — credit note per voided receipt', () => {
   it('records every credit note in the RECEIPT_VOID audit trail', async () => {
     const { service, tx } = setup();
 
-    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER');
+    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', { requestId: 'void-request', actorId: 'approver-1' });
 
     const audit = (tx.auditLog.create as jest.Mock).mock.calls[0][0].data;
     expect(audit.action).toBe('RECEIPT_VOID');
@@ -182,7 +185,7 @@ describe('ReceiptVoidService — credit note per voided receipt', () => {
     (tx.receipt.findMany as jest.Mock).mockResolvedValue([]);
     (tx.receipt.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
 
-    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER');
+    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', { requestId: 'void-request', actorId: 'approver-1' });
 
     expect(creditNotesFrom(receiptCreate as jest.Mock)).toHaveLength(1);
   });

@@ -98,3 +98,33 @@ describe('resolveLivePaymentLateFee — display-side live late fee (flat-bracket
     ).toBe(100);
   });
 });
+
+
+describe('resolveLivePaymentLateFee — fee frozen after the first receipt', () => {
+  const cfg: LateFeeConfig = { tier1Amount: 50, tier2Amount: 100, tier2MinDays: 3 };
+  const asOf = new Date('2026-09-08T05:00:00Z');
+  const payment = {
+    dueDate: new Date('2026-08-01T05:00:00Z'), amountDue: 6079,
+    amountPaid: 3179, lateFee: 50, lateFeeWaived: false,
+  };
+
+  it.each([0, 50, 175])('keeps stored cumulative fee %s after a payment despite later brackets', (lateFee) => {
+    expect(resolveLivePaymentLateFee({ ...payment, lateFee }, cfg, asOf).toNumber()).toBe(lateFee);
+  });
+
+  it('keeps a fee already partly collected instead of forgiving its unpaid balance', () => {
+    expect(resolveLivePaymentLateFee({ ...payment, amountPaid: 20 }, cfg, asOf).toNumber()).toBe(50);
+  });
+
+  it('does not let changed configuration reprice a partially paid installment', () => {
+    expect(resolveLivePaymentLateFee(payment, { ...cfg, tier2Amount: 500 }, asOf).toNumber()).toBe(50);
+  });
+
+  it('still prices a different untouched installment from current brackets', () => {
+    expect(resolveLivePaymentLateFee({ ...payment, amountPaid: 0 }, cfg, asOf).toNumber()).toBe(100);
+  });
+
+  it('keeps waiver precedence on a partially paid installment', () => {
+    expect(resolveLivePaymentLateFee({ ...payment, lateFeeWaived: true }, cfg, asOf).toNumber()).toBe(0);
+  });
+});

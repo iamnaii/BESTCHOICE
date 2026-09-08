@@ -196,6 +196,9 @@ describe('RescheduleOverlay', () => {
     // ยอดปรับดิว appears in Section 2 AND as the 6a row in the payment section
     expect(screen.getByText('ยอดปรับดิว (6a)')).toBeInTheDocument();
     expect(screen.getAllByText('354.00 บาท')).toHaveLength(2);
+    expect(screen.getByText('ครบกำหนดใหม่ (งวดนี้)')).toBeInTheDocument();
+    expect(screen.getByText(/งวดที่ 3 เป็นต้นไป ครบกำหนดวันเดียวกันทุกเดือน/)).toBeInTheDocument();
+    expect(screen.getByText('เดือนที่ไม่มีวันตรงกับดิวใหม่ ใช้วันสุดท้ายของเดือน')).toBeInTheDocument();
   });
 
   it('6b shows ค่างวดงวดนี้ row and collects the full bundle', async () => {
@@ -208,6 +211,9 @@ describe('RescheduleOverlay', () => {
     expect((await screen.findAllByText('1515.83 บาท')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('ยอดปรับดิว (6b)')).toBeInTheDocument();
     expect(await screen.findByText('1945.62 บาท')).toBeInTheDocument();
+    expect(screen.getByText('วันอ้างอิงดิวใหม่')).toBeInTheDocument();
+    expect(screen.queryByText('ครบกำหนดใหม่ (งวดนี้)')).not.toBeInTheDocument();
+    expect(screen.getByText(/งวดที่ 4 เป็นต้นไป ครบกำหนดวันเดียวกันทุกเดือน/)).toBeInTheDocument();
 
     // QR is 6a-only — the method button must be hidden in 6b
     expect(screen.queryByRole('button', { name: 'QR ใน LINE' })).not.toBeInTheDocument();

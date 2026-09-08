@@ -109,6 +109,7 @@ function makeService(overrides: {
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
       findUnique: jest.fn().mockResolvedValue(installment),
     },
+    payment: { findFirst: jest.fn().mockResolvedValue({ amountDue: D('1515.83'), amountPaid: D(0) }) },
     chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
     journalEntry: {
       findMany: jest.fn().mockImplementation((args: any) => {
@@ -167,7 +168,8 @@ describe('PaymentJournalPreviewService — park bucket (I-4 / M-1)', () => {
         depositAccountCode: '11-1101',
       });
 
-      const or = prisma.journalEntry.findMany.mock.calls[0][0].where.OR;
+      const contextQuery = prisma.journalEntry.findMany.mock.calls.find(([args]) => args.where.OR);
+      const or = contextQuery![0].where.OR;
       const refs = or.map((c: any) => c.referenceId).filter(Boolean);
       expect(refs).toContain(`${INST_ID}:advance-consume-on-accrual`);
       expect(refs).toContain(`${INST_ID}:reschedule-park-consume`);

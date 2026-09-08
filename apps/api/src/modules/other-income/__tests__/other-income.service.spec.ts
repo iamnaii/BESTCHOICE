@@ -1,3 +1,4 @@
+import { setIncomeFixturePermissions } from './fixtures/accounting-permission-fixture';
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -96,6 +97,7 @@ describe('OtherIncomeService — CRUD', () => {
       },
     });
     userId = user.id;
+    await setIncomeFixturePermissions(prisma, userId, ['INCOME_POST', 'INCOME_CANCEL']);
   });
 
   afterAll(async () => {
@@ -107,6 +109,7 @@ describe('OtherIncomeService — CRUD', () => {
     });
     await prisma.otherIncome.deleteMany({ where: { createdById: userId } });
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await setIncomeFixturePermissions(prisma, userId, []);
     await prisma.$disconnect();
   });
 
@@ -162,6 +165,28 @@ describe('OtherIncomeService — CRUD', () => {
 
     expect(D(updated.incomeGross.toString()).eq(2000)).toBe(true);
     expect(D(updated.netReceived.toString()).eq(1700)).toBe(true);
+  });
+
+  it('clears explicitly removed dates/customer and preserves them when omitted on PATCH', async () => {
+    const customer = await prisma.customer.create({ data: { name: 'TEST-OI optional fields', phone: '0800000000' } });
+    try {
+      const draft = await service.create({
+        issueDate: '2026-05-06', dueDate: '2026-05-20', paymentDate: '2026-05-06', customerId: customer.id,
+        priceType: 'EXCLUSIVE', paymentAccountCode: '11-1201', amountReceived: 100,
+        items: [{ accountCode: '42-1102', quantity: 1, unitAmount: 100 }],
+      }, userId);
+      const kept = await service.update(draft.id, { customerNote: 'แก้หมายเหตุ' }, userId);
+      expect(kept.customerId).toBe(customer.id);
+      expect(kept.dueDate).toEqual(draft.dueDate);
+      expect(kept.paymentDate).toEqual(draft.paymentDate);
+      const cleared = await service.update(draft.id, { dueDate: null, paymentDate: null, customerId: null }, userId);
+      expect(cleared.customerId).toBeNull();
+      expect(cleared.dueDate).toBeNull();
+      expect(cleared.paymentDate).toBeNull();
+    } finally {
+      await prisma.otherIncome.updateMany({ where: { customerId: customer.id }, data: { customerId: null } });
+      await prisma.customer.delete({ where: { id: customer.id } });
+    }
   });
 
   it('refuses to update a POSTED doc (throws ConflictException with POSTED message)', async () => {
@@ -301,6 +326,7 @@ describe('OtherIncomeService — post + reverse + copy', () => {
       },
     });
     userId = user.id;
+    await setIncomeFixturePermissions(prisma, userId, ['INCOME_POST', 'INCOME_CANCEL']);
   }, 30_000);
 
   afterAll(async () => {
@@ -340,6 +366,7 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     }
 
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await setIncomeFixturePermissions(prisma, userId, []);
     await prisma.$disconnect();
   }, 30_000);
 
@@ -390,6 +417,112 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     expect(je!.referenceId).toBe(draft.id);
     // 3 lines: Dr 11-1201 (bank), Dr 11-4103 (WHT), Cr 42-1102 (income)
     expect(je!.lines.length).toBe(3);
+  }, 30_000);
+
+  /** Synchronize transaction entry after both callers have read the same real draft.
+   * No database result or write is mocked; both callbacks execute against PostgreSQL.
+   */
+  async function raceAfterDraftReads<T, U>(first: () => Promise<T>, second: () => Promise<U>) {
+    const transaction = prisma.$transaction.bind(prisma);
+    let entered = 0;
+    let release!: () => void;
+    const bothReady = new Promise<void>((resolve) => { release = resolve; });
+    const transactionSpy = jest.spyOn(prisma, '$transaction').mockImplementation(
+      async (callback: any, options?: any) => {
+        entered += 1;
+        if (entered === 2) release();
+        await bothReady;
+        return transaction(callback, options);
+      },
+    );
+    try {
+      return await Promise.allSettled([first(), second()]);
+    } finally {
+      release();
+      transactionSpy.mockRestore();
+    }
+  }
+
+  it('post(): concurrent draft edit cannot diverge stored amounts/items from the posted journal', async () => {
+    const draft = await service.create({
+      issueDate: '2026-05-06',
+      priceType: 'EXCLUSIVE',
+      paymentAccountCode: '11-1201',
+      amountReceived: 100,
+      items: [{ accountCode: '42-1102', quantity: 1, unitAmount: 100, vatPct: 0, whtPct: 0 }],
+    }, userId);
+
+    const [edit, post] = await raceAfterDraftReads(
+      () => service.update(draft.id, {
+        amountReceived: 200,
+        items: [{ accountCode: '42-1102', quantity: 1, unitAmount: 200, vatPct: 0, whtPct: 0 }],
+      }, userId),
+      () => service.post(draft.id, {}, userId),
+    );
+    const fulfilled = [edit, post].filter((result) => result.status === 'fulfilled');
+    const rejected = [edit, post].filter((result) => result.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.getStatus()).toBe(409);
+
+    const final = await prisma.otherIncome.findUniqueOrThrow({
+      where: { id: draft.id }, include: { items: true },
+    });
+    const entries = await prisma.journalEntry.findMany({
+      where: { referenceId: draft.id }, include: { lines: true },
+    });
+    const expectedAmount = edit.status === 'fulfilled' ? '200.00' : '100.00';
+    expect(final.amountReceived.toFixed(2)).toBe(expectedAmount);
+    expect(final.incomeGross.toFixed(2)).toBe(expectedAmount);
+    expect(final.netReceived.toFixed(2)).toBe(expectedAmount);
+    expect(final.totalAmount.toFixed(2)).toBe(expectedAmount);
+    expect(final.items).toHaveLength(1);
+    expect(final.items[0].quantity.toFixed(2)).toBe('1.00');
+    expect(final.items[0].unitAmount.toFixed(2)).toBe(expectedAmount);
+    expect(final.items[0].amountBeforeVat.toFixed(2)).toBe(expectedAmount);
+
+    if (post.status === 'fulfilled') {
+      expect(final.status).toBe('POSTED');
+      expect(entries).toHaveLength(1);
+      expect(entries[0].id).toBe(final.journalEntryId);
+      expect(entries[0].status).toBe('POSTED');
+      expect(entries[0].lines).toHaveLength(2);
+      expect(entries[0].lines.find((line) => line.accountCode === '11-1201')?.debit.toFixed(2))
+        .toBe(expectedAmount);
+      expect(entries[0].lines.find((line) => line.accountCode === '42-1102')?.credit.toFixed(2))
+        .toBe(expectedAmount);
+    } else {
+      expect(final.status).toBe('DRAFT');
+      expect(final.journalEntryId).toBeNull();
+      expect(final.receiptNo).toBeNull();
+      expect(entries).toHaveLength(0);
+    }
+  }, 30_000);
+
+  it('post(): two simultaneous callers produce exactly one posted journal and one conflict', async () => {
+    const draft = await createStandardDraft();
+    const results = await raceAfterDraftReads(
+      () => service.post(draft.id, {}, userId),
+      () => service.post(draft.id, {}, userId),
+    );
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.filter((result) => result.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.getStatus()).toBe(409);
+
+    const final = await prisma.otherIncome.findUniqueOrThrow({ where: { id: draft.id } });
+    const entries = await prisma.journalEntry.findMany({
+      where: { referenceId: draft.id }, include: { lines: true },
+    });
+    expect(final.status).toBe('POSTED');
+    expect(final.receiptNo).toMatch(/^RT-202605-\d{5}$/);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe(final.journalEntryId);
+    expect(entries[0].status).toBe('POSTED');
+    expect(entries[0].lines).toHaveLength(3);
+    expect(entries[0].lines.find((line) => line.accountCode === '11-1201')?.debit.toFixed(2)).toBe('850.00');
+    expect(entries[0].lines.find((line) => line.accountCode === '11-4103')?.debit.toFixed(2)).toBe('150.00');
+    expect(entries[0].lines.find((line) => line.accountCode === '42-1102')?.credit.toFixed(2)).toBe('1000.00');
   }, 30_000);
 
   // ----------------------------------------------------------------
@@ -649,6 +782,7 @@ describe('OtherIncomeService — post — period lock (B1)', () => {
       },
     });
     userId = user.id;
+    await setIncomeFixturePermissions(prisma, userId, ['INCOME_POST', 'INCOME_CANCEL']);
   }, 30_000);
 
   afterAll(async () => {
@@ -679,6 +813,7 @@ describe('OtherIncomeService — post — period lock (B1)', () => {
     });
 
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await setIncomeFixturePermissions(prisma, userId, []);
     await prisma.$disconnect();
   }, 30_000);
 
@@ -879,6 +1014,7 @@ describe('OtherIncomeService — createDraftForRepair (SHOP companyId + external
       },
     });
     userId = user.id;
+    await setIncomeFixturePermissions(prisma, userId, ['INCOME_POST', 'INCOME_CANCEL']);
     (service as any).__customerId = customer.id;
   }, 30_000);
 
@@ -891,6 +1027,7 @@ describe('OtherIncomeService — createDraftForRepair (SHOP companyId + external
       .deleteMany({ where: { id: (service as any).__customerId } })
       .catch(() => {});
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await setIncomeFixturePermissions(prisma, userId, []);
     await prisma.$disconnect();
   }, 30_000);
 

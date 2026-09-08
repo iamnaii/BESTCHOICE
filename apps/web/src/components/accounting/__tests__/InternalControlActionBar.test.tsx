@@ -1,8 +1,8 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { InternalControlActionBar } from '../InternalControlActionBar';
-import type { IcabAuditEvent, IcabCurrentUser } from '../types';
+import { InternalControlActionBar } from '@/components/accounting/InternalControlActionBar';
+import type { IcabAuditEvent, IcabCurrentUser } from '@/components/accounting/types';
 
 /**
  * Smoke tests for the shared InternalControlActionBar. The component
@@ -197,7 +197,7 @@ describe('InternalControlActionBar', () => {
       render(
         wrap(
           <InternalControlActionBar
-            module="other_income"
+            module="asset"
             status="POSTED"
             auditLog={sampleAudit}
             currentUser={{ ...baseUser, role: 'OWNER' }}
@@ -301,7 +301,7 @@ describe('InternalControlActionBar', () => {
       render(
         wrap(
           <InternalControlActionBar
-            module="other_income"
+            module="asset"
             status="POSTED"
             auditLog={sampleAudit}
             currentUser={{
@@ -323,7 +323,7 @@ describe('InternalControlActionBar', () => {
       render(
         wrap(
           <InternalControlActionBar
-            module="other_income"
+            module="asset"
             status="POSTED"
             auditLog={sampleAudit}
             currentUser={{
@@ -345,7 +345,7 @@ describe('InternalControlActionBar', () => {
       render(
         wrap(
           <InternalControlActionBar
-            module="other_income"
+            module="asset"
             status="POSTED"
             auditLog={sampleAudit}
             currentUser={{
@@ -367,7 +367,7 @@ describe('InternalControlActionBar', () => {
       render(
         wrap(
           <InternalControlActionBar
-            module="other_income"
+            module="asset"
             status="POSTED"
             auditLog={sampleAudit}
             currentUser={{
@@ -398,6 +398,7 @@ describe('InternalControlActionBar', () => {
             currentUser={{ ...baseUser, role: 'OWNER' }}
             docNumber="RT-202605-00006"
             onCancel={vi.fn()}
+            canReverse={true}
             onReverse={onReverse}
           />,
         ),
@@ -475,4 +476,53 @@ describe('InternalControlActionBar', () => {
       expect(frame?.className).toMatch(/accent-purple/);
     });
   });
+  describe.each(['expense', 'other_income'] as const)('%s explicit permissions', (module) => {
+    it('shows the saved creator when an older document has no creation audit', () => {
+      render(wrap(<InternalControlActionBar module={module} status="REVERSED" auditLog={[]}
+        recorderName="Original recorder" currentUser={{ ...baseUser, name: 'Canceler' }} onCancel={vi.fn()} />));
+      expect(screen.getByText('ผู้บันทึก:').parentElement).toHaveTextContent('Original recorder');
+      expect(screen.getByText('ผู้บันทึก:').parentElement).not.toHaveTextContent('Canceler');
+    });
+
+    it('does not attribute a document with missing creator history to the viewer', () => {
+      render(wrap(<InternalControlActionBar module={module} status="POSTED" auditLog={[]}
+        currentUser={{ ...baseUser, name: 'Viewer' }} onCancel={vi.fn()} />));
+      expect(screen.getByText('ผู้บันทึก:').parentElement).toHaveTextContent('—');
+      expect(screen.getByText('ผู้บันทึก:').parentElement).not.toHaveTextContent('Viewer');
+    });
+
+    it.each(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'])('never falls back to the %s role or old CUSTOM override', (role) => {
+      mockedReversePermission = 'CUSTOM';
+      render(wrap(<InternalControlActionBar module={module} status="POSTED" auditLog={[]}
+        currentUser={{ ...baseUser, role, canReverseOverride: true }} docNumber="DOC-1"
+        canReverse={false} onCancel={vi.fn()} onReverse={vi.fn()} />));
+      expect(screen.queryByRole('button', { name: /กลับรายการ/i })).not.toBeInTheDocument();
+    });
+
+    it('uses a granted cancel permission even when legacy policy is OWNER_ONLY', () => {
+      mockedReversePermission = 'OWNER_ONLY';
+      render(wrap(<InternalControlActionBar module={module} status="POSTED" auditLog={[]}
+        currentUser={{ ...baseUser, role: 'ACCOUNTANT', canReverseOverride: false }} docNumber="DOC-1"
+        canReverse onCancel={vi.fn()} onReverse={vi.fn()} />));
+      expect(screen.getByRole('button', { name: /กลับรายการ/i })).toBeInTheDocument();
+    });
+
+    it('does not label a poster as an approver', () => {
+      render(wrap(<InternalControlActionBar module={module} status="POSTED"
+        auditLog={[{ event: 'POSTED', userId: 'poster', userName: 'Poster', timestamp: '2026-09-08T01:00:00Z' }]}
+        currentUser={baseUser} onCancel={vi.fn()} />));
+      expect(screen.queryByText('ผู้อนุมัติ:')).not.toBeInTheDocument();
+    });
+
+    it('shows the person who actually approved independently from the poster', () => {
+      render(wrap(<InternalControlActionBar module={module} status="POSTED"
+        auditLog={[
+          { event: 'POSTED', userId: 'poster', userName: 'Poster', timestamp: '2026-09-08T02:00:00Z' },
+          { event: 'APPROVED', userId: 'checker', userName: 'Checker', timestamp: '2026-09-08T01:00:00Z' },
+        ]} currentUser={baseUser} onCancel={vi.fn()} />));
+      expect(screen.getByText('ผู้อนุมัติ:').parentElement).toHaveTextContent('Checker');
+      expect(screen.getByText('ผู้อนุมัติ:').parentElement).not.toHaveTextContent('Poster');
+    });
+  });
+
 });

@@ -63,18 +63,18 @@ export class CreateOtherIncomeDto {
 
   @IsOptional()
   @IsDateString()
-  dueDate?: string;
+  dueDate?: string | null;
 
   @IsOptional()
   @IsDateString()
-  paymentDate?: string;
+  paymentDate?: string | null;
 
   @IsEnum(OtherIncomePriceType)
   priceType!: OtherIncomePriceType;
 
   @IsOptional()
   @IsUUID()
-  customerId?: string;
+  customerId?: string | null;
 
   @IsOptional()
   @IsString()

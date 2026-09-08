@@ -50,6 +50,7 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     status: 'OVERDUE',
     deletedAt: null,
     monthlyPayment: D('4472.00'),
+    totalMonths: 10,
   };
   const paymentRow = {
     id: 'pay-1',
@@ -142,6 +143,7 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     expect(q.lateFee).toBe('100.00');
     expect(q.collectAmount).toBe('1144.00');
     expect(q.variant).toBe('6a');
+    expect(q.newDueDate).toBe('2026-07-04T05:00:00.000Z');
   });
 
   it('quote(): 6b = ค่างวดคงเหลือ 4472 + fee 1044 + lateFee 100 → collect 5616 (จ่ายทั้งก้อนวันนี้)', async () => {
@@ -213,6 +215,7 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
         fromInstallmentNo: 1,
         daysToShift: 7,
         variant: '6a',
+        scheduleAnchor: { installmentNo: 1, dueDate: new Date('2026-07-04T05:00:00.000Z') },
       }),
       prisma,
     );
@@ -248,6 +251,8 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
       'CASH',
       null,
       'user-1',
+      undefined,
+      'JE-RD-1',
     );
 
     expect(result).toMatchObject({
@@ -323,7 +328,11 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
 
     // งวดนี้จ่ายจบวันนี้ — เลื่อนเฉพาะงวดถัดไป (CPA case 6b)
     expect(rescheduleService.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ fromInstallmentNo: 2, variant: '6b' }),
+      expect.objectContaining({
+        fromInstallmentNo: 2,
+        variant: '6b',
+        scheduleAnchor: { installmentNo: 1, dueDate: new Date('2026-07-04T05:00:00.000Z') },
+      }),
       prisma,
     );
 

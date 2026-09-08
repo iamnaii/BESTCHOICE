@@ -18,6 +18,7 @@ import { seedStandard17k12m } from '../../journal/__tests__/scenario-helpers';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from '../../journal/cpa-templates/installment-accrual-2a.template';
+import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { PaymentJournalPreviewService } from './payment-journal-preview.service';
 
 const prisma = new PrismaClient();
@@ -72,6 +73,12 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
     });
     await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(sched5.id);
     schedule5Id = sched5.id;
+    await prisma.payment.create({
+      data: {
+        contractId, installmentNo: 5, dueDate: sched5.dueDate,
+        amountDue: new Decimal('1515.83'), amountPaid: new Decimal(0),
+      },
+    });
 
     svc = new PaymentJournalPreviewService(prisma as any, undefined);
   });
@@ -123,6 +130,65 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
     expect(res.lines.every((l) => l.block === '2B' && l.posted === false)).toBe(true);
     expect(res.subtotals['2B'].balanced).toBe(true);
     expect(res.lines.some((l) => l.accountCode === '11-2103' && Number(l.credit) > 0)).toBe(true);
+  });
+
+  it('previews the same remaining 3,000 as posting after a 3,179 partial receipt', async () => {
+    const fixture = await seedStandard17k12m(prisma);
+    await prisma.contract.update({
+      where: { id: fixture.id },
+      data: {
+        totalMonths: 10, financedAmount: new Decimal(29900),
+        storeCommission: new Decimal(2990), interestTotal: new Decimal(23920),
+        vatAmount: new Decimal('3976.70'), monthlyPayment: new Decimal(6079),
+      },
+    });
+    const schedule = await prisma.installmentSchedule.update({
+      where: { contractId_installmentNo: { contractId: fixture.id, installmentNo: 2 } },
+      data: { principal: new Decimal(2990), interest: new Decimal(2392), amountDue: new Decimal(6079) },
+    });
+    const payment = await prisma.payment.create({
+      data: {
+        contractId: fixture.id, installmentNo: 2, dueDate: schedule.dueDate,
+        amountDue: new Decimal(6079), amountPaid: new Decimal(3179),
+        lateFee: new Decimal(100), status: 'PARTIALLY_PAID',
+      },
+    });
+    const journal = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(fixture.id);
+    await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(schedule.id);
+    const receipt = new PaymentReceiptTemplate(journal, prisma as any);
+    await receipt.execute({
+      installmentScheduleId: schedule.id, paymentId: payment.id,
+      delta: new Decimal(3179), lateFee: new Decimal(100),
+      debitAccountCode: '11-1101', isFinalReceipt: false,
+    });
+    const entriesBefore = await prisma.journalEntry.count();
+    const result = await svc.previewJournal({
+      contractId: fixture.id, installmentNo: 2, amountReceived: 3000,
+      depositAccountCode: '11-1101', lateFee: 100, case: 'NORMAL',
+    });
+    expect(await prisma.journalEntry.count()).toBe(entriesBefore);
+    expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).amountPaid.toFixed(2)).toBe('3179.00');
+    expect(result.isBalanced).toBe(true);
+    expect(result.subtotals['2B']).toMatchObject({ debit: '3000.00', credit: '3000.00', balanced: true });
+    expect(result.lines.find(l => l.accountCode === '42-1103')).toBeUndefined();
+    expect(result.lines.find(l => l.accountCode === '11-2103')?.credit).toBe('2999.67');
+    expect(result.lines.find(l => l.accountCode === '53-1503')?.credit).toBe('0.33');
+    expect(result.accrual2A?.subtotal.balanced).toBe(true);
+
+    const posted = await receipt.execute({
+      installmentScheduleId: schedule.id, paymentId: payment.id,
+      delta: new Decimal(3000), lateFee: new Decimal(100),
+      debitAccountCode: '11-1101', isFinalReceipt: true,
+    });
+    const entry = await prisma.journalEntry.findUniqueOrThrow({
+      where: { entryNumber: posted.entryNo }, include: { lines: true },
+    });
+    const postedLines = entry.lines.map(l => ({
+      code: l.accountCode, debit: l.debit.toFixed(2), credit: l.credit.toFixed(2),
+    })).sort((a, b) => a.code.localeCompare(b.code));
+    expect(result.lines.map(l => ({ code: l.accountCode, debit: l.debit, credit: l.credit }))
+      .sort((a, b) => a.code.localeCompare(b.code))).toEqual(postedLines);
   });
 
   // Critical #1 (code-review): a VOIDED accrual (status=VOIDED, deletedAt still null)

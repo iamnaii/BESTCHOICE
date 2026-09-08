@@ -349,6 +349,14 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
       expect(args[10]).toBe('PARTIAL');
     });
 
+    it('books only the explicit fee frozen on the QR and keeps its staff attribution', async () => {
+      const link = { ...makeLink(), metadata: { additionalLateFee: '50.00', requestedById: 'staff-1' } };
+      await service.handlePartialPaymentCallback(link, { refno, result_code: '00', transaction_id: 'tx-fee' });
+      const args = payments.recordPayment.mock.calls[0];
+      expect(args[4]).toBe('staff-1');
+      expect(args[17]).toBe(50);
+    });
+
     it('success: uses the configured QR default account code when present', async () => {
       prisma.paymentMethodConfig.findFirst.mockResolvedValueOnce({
         accountCode: '11-1202',

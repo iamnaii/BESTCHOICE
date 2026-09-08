@@ -167,6 +167,8 @@ export class PaySolutionsService {
   createPartialPaymentQR(input: {
     paymentId: string;
     amount: number;
+    additionalLateFee?: number;
+    requestedById?: string;
     description?: string;
   }): Promise<{ partialPaymentLinkId: string; paymentUrl: string; orderRef: string; sentToLine: boolean }> {
     return this.services().intent.createPartialPaymentQR(input);

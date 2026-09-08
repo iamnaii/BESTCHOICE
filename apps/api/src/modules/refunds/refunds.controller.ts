@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -15,6 +7,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RefundsService } from './refunds.service';
 import {
   RequestRefundDto,
+  ApproveRefundDto,
   MarkRefundReversedDto,
   RejectRefundDto,
   MarkRefundFailedDto,
@@ -28,41 +21,49 @@ export class RefundsController {
   constructor(private readonly refunds: RefundsService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
+    @CurrentUser() user: { id: string },
     @Query('status') status?: string,
     @Query('contractId') contractId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.refunds.findAll({
-      status,
-      contractId,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
-    });
+    return this.refunds.findAll(
+      {
+        status,
+        contractId,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      },
+      user.id,
+    );
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findOne(@Param('id') id: string) {
-    return this.refunds.findOne(id);
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  findOne(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.refunds.findOne(id, user.id);
   }
 
   @Post('request')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   request(@Body() dto: RequestRefundDto, @CurrentUser() user: { id: string }) {
     return this.refunds.requestRefund(dto, user.id);
   }
 
   @Post(':id/approve')
-  @Roles('OWNER', 'FINANCE_MANAGER')
-  approve(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
-    return this.refunds.approveRefund(id, user.id, user.role);
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  approve(
+    @Param('id') id: string,
+    @Body() dto: ApproveRefundDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.refunds.approveRefund(id, user.id, user.role, dto.reason);
   }
 
   @Post(':id/reject')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   reject(
     @Param('id') id: string,
     @Body() dto: RejectRefundDto,

@@ -1378,6 +1378,31 @@ model Payment {
   @@map("payments")
 }
 
+model PaymentApprovalRequest {
+  id                  String   @id @default(uuid())
+  action              String
+  targetId            String   @map("target_id")
+  contractId          String   @map("contract_id")
+  requestedById       String   @map("requested_by_id")
+  requiredPermissions String[] @map("required_permissions")
+  payload             Json
+  reviewSummary       Json     @map("review_summary")
+  snapshot            Json
+  reason              String
+  status              String   @default("PENDING")
+  reviewedById        String?  @map("reviewed_by_id")
+  reviewedAt          DateTime? @map("reviewed_at")
+  reviewReason        String?  @map("review_reason")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
+
+  @@index([contractId, status])
+  @@index([requestedById, createdAt])
+  @@index([status, createdAt])
+  @@map("payment_approval_requests")
+}
+
 /// Phase 4 — an unposted draft receipt for an installment Payment. A payment is in
 /// the DRAFT state iff it has a live PaymentDraft row (deletedAt null): the cashier
 /// has prepared the receipt but not yet "ลงบัญชี" (posted the JE). Posting reads these
@@ -1390,6 +1415,7 @@ model PaymentDraft {
   paymentMethod           String    @map("payment_method")
   depositAccountCode      String?   @map("deposit_account_code")
   lateFee                 Decimal?  @map("late_fee") @db.Decimal(12, 2)
+  additionalLateFee       Decimal?  @map("additional_late_fee") @db.Decimal(12, 2)
   lateFeeWaiverAmount     Decimal?  @map("late_fee_waiver_amount") @db.Decimal(12, 2)
   lateFeeWaiverReasonCode String?   @map("late_fee_waiver_reason_code")
   waiverApproverId        String?   @map("waiver_approver_id")

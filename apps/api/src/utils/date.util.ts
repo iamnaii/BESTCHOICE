@@ -57,3 +57,25 @@ export function isFutureBkkDay(date: Date, now: Date = new Date()): boolean {
 export function bkkYearMonth(date: Date): string {
   return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(0, 7);
 }
+
+/** Add Asia/Bangkok calendar days while preserving the time of day (Thailand has no DST). */
+export function addBkkDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 86_400_000);
+}
+
+/**
+ * Move from a fixed Bangkok calendar anchor by whole months, clamping only the
+ * target month. Always pass the original anchor so January 31 -> February 28
+ * -> March 31, rather than carrying February's shorter day into later months.
+ * UTC getters on the offset date keep the result independent of the server TZ.
+ */
+export function addBkkMonths(anchor: Date, months: number): Date {
+  const local = new Date(anchor.getTime() + BANGKOK_OFFSET_MS);
+  const day = local.getUTCDate();
+  const targetMonth = local.getUTCMonth() + months;
+  const lastDay = new Date(Date.UTC(local.getUTCFullYear(), targetMonth + 1, 0)).getUTCDate();
+  local.setUTCDate(1);
+  local.setUTCMonth(targetMonth);
+  local.setUTCDate(Math.min(day, lastDay));
+  return new Date(local.getTime() - BANGKOK_OFFSET_MS);
+}

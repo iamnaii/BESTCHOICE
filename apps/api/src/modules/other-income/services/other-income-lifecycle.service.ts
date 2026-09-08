@@ -1,3 +1,4 @@
+import { assertAccountingPermission } from '../../../utils/accounting-permissions';
 import {
   BadRequestException,
   ConflictException,
@@ -212,6 +213,12 @@ export class OtherIncomeLifecycleService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      // Claim the version read by the editor before touching item rows.
+      const claimed = await tx.otherIncome.updateMany({
+        where: { id, status: OtherIncomeStatus.DRAFT, deletedAt: null, updatedAt: existing.updatedAt },
+        data: { updatedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new ConflictException('เอกสารถูกแก้ไขหรือดำเนินการแล้ว — กรุณาโหลดใหม่');
       if (dto.items) {
         await tx.otherIncomeItem.deleteMany({ where: { otherIncomeId: id } });
       }
@@ -221,8 +228,8 @@ export class OtherIncomeLifecycleService {
 
       const merged: CreateOtherIncomeDto = {
         issueDate: dto.issueDate ?? existing.issueDate.toISOString(),
-        dueDate: dto.dueDate ?? existing.dueDate?.toISOString(),
-        paymentDate: dto.paymentDate ?? existing.paymentDate?.toISOString(),
+        dueDate: dto.dueDate !== undefined ? dto.dueDate : existing.dueDate?.toISOString(),
+        paymentDate: dto.paymentDate !== undefined ? dto.paymentDate : existing.paymentDate?.toISOString(),
         priceType: dto.priceType ?? existing.priceType,
         paymentAccountCode: dto.paymentAccountCode ?? existing.paymentAccountCode,
         amountReceived: dto.amountReceived ?? (existing.amountReceived.toString() as any),
@@ -243,7 +250,7 @@ export class OtherIncomeLifecycleService {
             amount: a.amount.toString() as any,
             note: a.note ?? undefined,
           })),
-        customerId: dto.customerId ?? existing.customerId ?? undefined,
+        customerId: dto.customerId !== undefined ? dto.customerId : existing.customerId ?? undefined,
         counterpartyName: dto.counterpartyName ?? existing.counterpartyName ?? undefined,
         counterpartyTaxId: dto.counterpartyTaxId ?? existing.counterpartyTaxId ?? undefined,
         counterpartyAddress:
@@ -316,18 +323,17 @@ export class OtherIncomeLifecycleService {
   }
 
   async softDelete(id: string, userId: string) {
-    const existing = await this.findOneOrFail(id);
-    if (existing.status !== OtherIncomeStatus.DRAFT) {
-      throw new ConflictException(`เอกสาร POSTED/REVERSED ลบไม่ได้ — ใช้ Reverse Entry`);
-    }
-    const deleted = await this.prisma.otherIncome.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-      include: { items: true, adjustments: true },
+    return this.prisma.$transaction(async (tx) => {
+      await assertAccountingPermission(tx, userId, 'INCOME_CANCEL');
+      const claimed = await tx.otherIncome.updateMany({
+        where: { id, status: OtherIncomeStatus.DRAFT, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new ConflictException('ลบได้เฉพาะเอกสารร่างที่ยังไม่ถูกดำเนินการ');
+      const deleted = await tx.otherIncome.findUniqueOrThrow({ where: { id }, include: { items: true, adjustments: true } });
+      await tx.auditLog.create({ data: { userId, action: 'OI_DELETED', entity: 'other_income', entityId: id, newValue: { deletedAt: deleted.deletedAt } } });
+      return deleted;
     });
-
-    await this.auditLifecycle('OI_DELETED', userId, deleted);
-    return deleted;
   }
 
   // -------------------------------------------------------------------------
@@ -349,16 +355,18 @@ export class OtherIncomeLifecycleService {
       );
     }
     // Reset any prior reject metadata (re-submission after rejection)
-    const requested = await this.prisma.otherIncome.update({
-      where: { id },
+    const claimed = await this.prisma.otherIncome.updateMany({
+      where: { id, status: OtherIncomeStatus.DRAFT, deletedAt: null, updatedAt: doc.updatedAt },
       data: {
         status: OtherIncomeStatus.READY,
         rejectedAt: null,
         rejectedById: null,
         rejectNote: null,
       },
-      include: { items: true, adjustments: true },
     });
+
+    if (claimed.count !== 1) throw new ConflictException('เอกสารถูกดำเนินการแล้ว — กรุณาโหลดใหม่');
+    const requested = await this.findOneOrFail(id);
 
     await this.auditLifecycle('OI_APPROVAL_REQUESTED', userId, requested);
     return requested;
@@ -377,6 +385,7 @@ export class OtherIncomeLifecycleService {
     dto: { note?: string },
     userId: string,
   ) {
+    await assertAccountingPermission(this.prisma, userId, 'INCOME_APPROVE');
     if (!(await this.config.isMakerCheckerEnabled())) {
       throw new BadRequestException('Maker-Checker ปิดอยู่');
     }
@@ -457,6 +466,7 @@ export class OtherIncomeLifecycleService {
     });
 
     const approved = await this.prisma.$transaction(async (tx) => {
+      await assertAccountingPermission(tx, userId, 'INCOME_APPROVE');
       const now = new Date();
 
       // CAS-claim: atomically flip READY → POSTED, but only if still READY.
@@ -515,6 +525,7 @@ export class OtherIncomeLifecycleService {
     dto: { note: string },
     userId: string,
   ) {
+    await assertAccountingPermission(this.prisma, userId, 'INCOME_APPROVE');
     if (!(await this.config.isMakerCheckerEnabled())) {
       throw new BadRequestException('Maker-Checker ปิดอยู่');
     }
@@ -557,6 +568,10 @@ export class OtherIncomeLifecycleService {
   // -------------------------------------------------------------------------
 
   async post(id: string, dto: PostOtherIncomeDto, userId: string) {
+    await assertAccountingPermission(this.prisma, userId, 'INCOME_POST');
+    if (await this.config.isMakerCheckerEnabled()) {
+      throw new BadRequestException('เอกสารต้องผ่านการอนุมัติก่อน — กรุณาส่งขออนุมัติ');
+    }
     const doc = await this.findOneOrFail(id);
     if (doc.status !== OtherIncomeStatus.DRAFT) {
       throw new ConflictException(
@@ -654,6 +669,12 @@ export class OtherIncomeLifecycleService {
     }
 
     const posted = await this.prisma.$transaction(async (tx) => {
+      await assertAccountingPermission(tx, userId, 'INCOME_POST');
+      const claimed = await tx.otherIncome.updateMany({
+        where: { id, status: OtherIncomeStatus.DRAFT, deletedAt: null, updatedAt: doc.updatedAt },
+        data: { status: OtherIncomeStatus.POSTED },
+      });
+      if (claimed.count !== 1) throw new ConflictException('เอกสารถูกดำเนินการแล้ว — กรุณาโหลดใหม่');
       const receiptNo = await this.docNumber.nextReceiptNumber(tx, doc.issueDate);
       const now = new Date();
 
@@ -732,6 +753,7 @@ export class OtherIncomeLifecycleService {
   // -------------------------------------------------------------------------
 
   async reverse(id: string, dto: ReverseOtherIncomeDto, userId: string) {
+    await assertAccountingPermission(this.prisma, userId, 'INCOME_CANCEL');
     const original = await this.findOneOrFail(id);
     if (original.status !== OtherIncomeStatus.POSTED) {
       throw new ConflictException(
@@ -758,6 +780,12 @@ export class OtherIncomeLifecycleService {
     }
 
     const reversal = await this.prisma.$transaction(async (tx) => {
+      await assertAccountingPermission(tx, userId, 'INCOME_CANCEL');
+      const claimed = await tx.otherIncome.updateMany({
+        where: { id, status: OtherIncomeStatus.POSTED, deletedAt: null },
+        data: { status: OtherIncomeStatus.REVERSED },
+      });
+      if (claimed.count !== 1) throw new ConflictException('เอกสารถูกดำเนินการแล้ว — กรุณาโหลดใหม่');
       const issueDate = new Date();
       // W15 — Append "-R" suffix so reversal docs are visually distinct from
       // originals in list views without needing to open the detail page.

@@ -1,3 +1,5 @@
+import { consumePaymentApproval } from './services/payment-approval-request.util';
+jest.mock('./services/payment-approval-request.util', () => ({ ...jest.requireActual('./services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
 jest.mock('@sentry/node', () => ({
   captureMessage: jest.fn(),
   captureException: jest.fn(),
@@ -55,6 +57,7 @@ describe('PaymentsService', () => {
   };
 
   beforeEach(async () => {
+    (consumePaymentApproval as jest.Mock).mockReset().mockResolvedValue({ requestedById: 'user-1', approverId: 'approver-1', payload: {} });
     const mockPrisma = {
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
@@ -323,6 +326,7 @@ describe('PaymentsService', () => {
       expect(receiptsService.generateReceipt).toHaveBeenCalledWith(
         'contract-1', 'payment-1', 'INSTALLMENT', 3000, 1, 'CASH', null, 'user-1',
         expect.any(Date), // effectivePaidDate — ใบเสร็จลงวันที่รับเงิน (QA #1347 follow-up)
+        undefined, // no schedule/JE in this legacy-path fixture
       );
     });
 
@@ -334,6 +338,7 @@ describe('PaymentsService', () => {
       expect(receiptsService.generateReceipt).toHaveBeenCalledWith(
         'contract-1', 'payment-1', 'INSTALLMENT', 1000, 1, 'CASH', null, 'user-1',
         expect.any(Date), // effectivePaidDate — ใบเสร็จลงวันที่รับเงิน (QA #1347 follow-up)
+        undefined, // no schedule/JE in this legacy-path fixture
       );
     });
 
@@ -487,13 +492,9 @@ describe('PaymentsService', () => {
       expect(callArgs.autoApproveSystemRounding).toBe(true);
     });
 
-    it('PR-843/I2 Phase 5b: a genuine ≤1฿ customer underpay does NOT close the installment (stays PARTIALLY_PAID) → primitive NOT called, approver gate intact', async () => {
-      // Customer pays amountDue − 0.50 (a ≤1฿ shortfall, no advance). The condition
-      // dGte(amount+advanceConsume, remaining) is FALSE → isPaidInFull=false AND the
-      // shortage (0.50) ≤ 1฿ so isPartialClear=false → recordPayment does NOT enter
-      // the isFinalReceipt close path at all. The installment stays PARTIALLY_PAID and
-      // the 52-1104 auto-approve never fires — the approver gate is preserved by
-      // construction (the underpay never force-closes without one).
+    it('a genuine 0.50 baht customer shortfall requires actual tolerance approval and causes no unapproved write', async () => {
+      // A normal receipt with a 0.50 shortfall requires a pending approval request.
+      // An explicit partial receipt remains a separate supported action.
       const updatedPayment = { ...mockPayment, id: 'payment-1', amountDue: 3000, amountPaid: 2999.5, status: 'PARTIALLY_PAID', paidDate: null };
       prisma.payment.findFirst.mockResolvedValue({ ...mockPayment, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' });
       prisma.payment.update.mockResolvedValue(updatedPayment);
@@ -502,10 +503,8 @@ describe('PaymentsService', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const templateMock = (service as any).paymentReceiptTemplate;
 
-      const result = await service.recordPayment('contract-1', 1, 2999.5, 'CASH', 'user-1', 'http://slip.jpg');
-
-      // Not fully paid, not a PARTIAL force-clear → primitive never invoked.
-      expect(result.status).toBe('PARTIALLY_PAID');
+      await expect(service.recordPayment('contract-1', 1, 2999.5, 'CASH', 'user-1', 'http://slip.jpg')).rejects.toThrow(ForbiddenException);
+      expect(prisma.payment.update).not.toHaveBeenCalled();
       expect(templateMock.execute).not.toHaveBeenCalled();
     });
   });
@@ -726,49 +725,14 @@ describe('PaymentsService', () => {
       prisma.payment.findUnique.mockResolvedValue(payableWithFee);
     });
 
-    it('rejects self-approval (requester === approver)', async () => {
-      await expect(
-        service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'user-1'),
-      ).rejects.toThrow(ForbiddenException);
+    it('rejects a nominated approver without an actual approval request', async () => {
+      await expect(service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1')).rejects.toThrow(ForbiddenException);
       expect(prisma.payment.update).not.toHaveBeenCalled();
     });
-
-    it('rejects when approverId is missing/empty', async () => {
-      await expect(
-        service.waiveLateFee('payment-1', 'goodwill', 'user-1', ''),
-      ).rejects.toThrow(BadRequestException);
+    it('propagates current permission/SoD refusal from the approval kernel', async () => {
+      (consumePaymentApproval as jest.Mock).mockRejectedValueOnce(new ForbiddenException('approval denied'));
+      await expect(service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1', undefined, { requestId: 'waiver-request', actorId: 'approver-1' })).rejects.toThrow('approval denied');
       expect(prisma.payment.update).not.toHaveBeenCalled();
-    });
-
-    it('rejects when approver does not exist', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-      await expect(
-        service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'ghost'),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('rejects when approver is deactivated', async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        id: 'approver-1',
-        role: 'FINANCE_MANAGER',
-        isActive: false,
-        deletedAt: null,
-      });
-      await expect(
-        service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1'),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('rejects when approver is not manager-tier (e.g. SALES)', async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        id: 'sales-1',
-        role: 'SALES',
-        isActive: true,
-        deletedAt: null,
-      });
-      await expect(
-        service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'sales-1'),
-      ).rejects.toThrow(ForbiddenException);
     });
 
     it('allows waiver when requester ≠ manager-tier approver', async () => {
@@ -784,12 +748,7 @@ describe('PaymentsService', () => {
         lateFeeWaived: true,
       });
 
-      const res = await service.waiveLateFee(
-        'payment-1',
-        'customer hardship',
-        'user-1',
-        'approver-1',
-      );
+      const res = await service.waiveLateFee('payment-1', 'customer hardship', 'user-1', 'approver-1', undefined, { requestId: 'waiver-request', actorId: 'approver-1' });
       expect(res.lateFeeWaived).toBe(true);
       expect(prisma.payment.update).toHaveBeenCalled();
     });
@@ -811,13 +770,7 @@ describe('PaymentsService', () => {
         lateFeeWaived: true,
       });
 
-      await service.waiveLateFee(
-        'payment-1',
-        'customer hardship',
-        'user-1',
-        'approver-1',
-        { ipAddress: '10.0.0.42', userAgent: 'Mozilla/5.0 Test' },
-      );
+      await service.waiveLateFee('payment-1', 'customer hardship', 'user-1', 'approver-1', { ipAddress: '10.0.0.42', userAgent: 'Mozilla/5.0 Test' }, { requestId: 'waiver-request', actorId: 'approver-1' });
 
       expect(prisma.feeWaiverApproval.create).toHaveBeenCalledWith({
         data: {
@@ -829,11 +782,8 @@ describe('PaymentsService', () => {
       });
     });
 
-    it('does NOT write the approval row when the waiver is rejected upstream', async () => {
-      // Self-approval — rejection happens before the tx even starts.
-      await expect(
-        service.waiveLateFee('payment-1', 'reason', 'user-1', 'user-1'),
-      ).rejects.toThrow(ForbiddenException);
+    it('does NOT write approval evidence for a legacy direct waiver', async () => {
+      await expect(service.waiveLateFee('payment-1', 'reason', 'user-1', 'user-1')).rejects.toThrow(ForbiddenException);
       expect(prisma.feeWaiverApproval.create).not.toHaveBeenCalled();
     });
   });
@@ -1018,7 +968,7 @@ describe('PaymentsService', () => {
         lateFeeWaived: true,
       });
 
-      await service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1');
+      await service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1', undefined, { requestId: 'waiver-request', actorId: 'approver-1' });
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
@@ -1035,7 +985,7 @@ describe('PaymentsService', () => {
         lateFeeWaived: true,
       });
 
-      await service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1');
+      await service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1', undefined, { requestId: 'waiver-request', actorId: 'approver-1' });
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
       const [message, opts] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
       expect(message).toBe('Large late-fee waiver');
@@ -1097,6 +1047,7 @@ describe('PaymentsService', () => {
     ];
 
     beforeEach(() => {
+      prisma.payment.findFirst.mockResolvedValue({ amountDue: '2202.41', amountPaid: '0' });
       prisma.chartOfAccount = {
         findMany: jest.fn().mockResolvedValue(mockCoaRows),
       };

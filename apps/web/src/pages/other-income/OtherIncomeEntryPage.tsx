@@ -1,3 +1,4 @@
+import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useForm } from 'react-hook-form';
@@ -243,6 +244,7 @@ function SectionHeader({
 }
 
 export default function OtherIncomeEntryPage() {
+  const permissions = useAccountingPermissions();
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
   const [searchParams] = useSearchParams();
@@ -1258,6 +1260,7 @@ export default function OtherIncomeEntryPage() {
         </form>
       </div>
 
+      {!makerCheckerEnabled && !permissions.can('INCOME_POST') && <p className="mt-4 text-sm text-muted-foreground" role="status">ไม่มีสิทธิ์ POST รายรับ — สามารถบันทึกร่างได้</p>}
       {/* InternalControlActionBar — shared across 3 accounting modules.
           Entry page only renders the DRAFT state, so no audit log is needed
           (the document doesn't exist yet) — we pass an empty array. */}
@@ -1274,7 +1277,7 @@ export default function OtherIncomeEntryPage() {
         makerCheckerEnabled={makerCheckerEnabled}
         isLoading={isSubmitting}
         errorCount={errorCount}
-        canPost={canPost}
+        canPost={canPost && (makerCheckerEnabled || permissions.can('INCOME_POST'))}
         onCancel={() => navigate('/other-income')}
         onSaveDraft={() => {
           const raw = form.getValues();

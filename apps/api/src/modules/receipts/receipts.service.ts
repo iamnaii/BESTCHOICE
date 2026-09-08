@@ -1,3 +1,4 @@
+import type { PaymentApprovalContext } from '../payments/services/payment-approval-request.util';
 import { BadRequestException, Injectable, Inject, Optional, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
@@ -77,6 +78,7 @@ export class ReceiptsService {
     transactionRef: string | null,
     issuedById: string,
     paidDate?: Date,
+    sourceJournalEntryNumber?: string,
   ) {
     return this.issuance.generateReceipt(
       contractId,
@@ -88,6 +90,7 @@ export class ReceiptsService {
       transactionRef,
       issuedById,
       paidDate,
+      sourceJournalEntryNumber,
     );
   }
 
@@ -131,8 +134,9 @@ export class ReceiptsService {
     issuedById: string,
     approvedById: string,
     userRole?: string,
+    approvalContext?: PaymentApprovalContext,
   ) {
-    return this.void.voidReceipt(id, reason, issuedById, approvedById, userRole);
+    return this.void.voidReceipt(id, reason, issuedById, approvedById, userRole, approvalContext);
   }
 
   /** Manually push the receipt to the customer's LINE OA. */

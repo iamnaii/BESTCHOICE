@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+vi.mock('../ReceiptVoidDialog', () => ({ default: () => null, ReceiptVoidDialog: () => null }));
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PaymentHistorySheet from '../PaymentHistorySheet';
@@ -110,6 +111,114 @@ beforeEach(() => {
 });
 
 describe('PaymentHistorySheet — fullscreen + JE one-page dialog', () => {
+  it('shows a 6a receipt at installment 12/12 separately from the later installment 5 payment', async () => {
+    const payment = { ...PAYMENT, id: 'pay-5', installmentNo: 5, amountDue: '3671', amountPaid: '3671' };
+    const split = {
+      ...RECEIPT, id: 'reschedule-6a', receiptNumber: 'RT-6A-1714', receiptType: 'RESCHEDULE_FEE',
+      installmentNo: 5, paymentId: payment.id, amount: '1714', paymentCase: 'RESCHEDULE',
+      lateFeeCollected: '0', lateFeeWaivedThisReceipt: '0',
+      installmentAllocations: [{ installmentNo: 12, amount: '1714', kind: 'RESCHEDULE_ADVANCE' }],
+    };
+    const installment = {
+      ...RECEIPT, id: 'installment-5', receiptNumber: 'RT-INSTALLMENT-3671',
+      installmentNo: 5, paymentId: payment.id, amount: '3671', paymentCase: 'NORMAL',
+      installmentAllocations: [{ installmentNo: 5, amount: '3671', kind: 'INSTALLMENT' }],
+    };
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/journal-entries')) return Promise.resolve({ data: [] });
+      if (url.startsWith('/receipts/contract')) return Promise.resolve({ data: [split, installment] });
+      return Promise.resolve({ data: { data: [payment], contract: { ...CONTRACT, totalMonths: 12, rescheduleAdvanceBalance: '1714' } } });
+    });
+    render(wrap(<PaymentHistorySheet contractId="ct-1" onClose={vi.fn()} />));
+    const splitRow = within((await screen.findByText('RT-6A-1714')).closest('tr')!);
+    expect(splitRow.getByText('12/12')).toBeInTheDocument();
+    expect(splitRow.getByText('1,714.00 ฿')).toBeInTheDocument();
+    expect(splitRow.getByText('ปรับดิว')).toBeInTheDocument();
+    expect(splitRow.queryByText('5/12')).not.toBeInTheDocument();
+    const installmentRow = within(screen.getByText('RT-INSTALLMENT-3671').closest('tr')!);
+    expect(installmentRow.getByText('5/12')).toBeInTheDocument();
+    expect(installmentRow.getByText('ตรงดิว')).toBeInTheDocument();
+  });
+
+  it('retains collected reschedule fees in the summary after the installment fee resets', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/journal-entries')) return Promise.resolve({ data: [] });
+      if (url.startsWith('/receipts/contract')) return Promise.resolve({ data: [{
+        ...RECEIPT, receiptType: 'RESCHEDULE_FEE', amount: '1144',
+        paymentCase: 'RESCHEDULE', lateFeeCollected: '100.00', lateFeeWaivedThisReceipt: '0.00',
+        installmentAllocations: [{ installmentNo: 10, amount: '1044', kind: 'RESCHEDULE_ADVANCE' }],
+      }] });
+      return Promise.resolve({ data: { data: [{
+        ...PAYMENT, status: 'PENDING', amountPaid: '0', lateFee: '0',
+      }], contract: { ...CONTRACT, rescheduleAdvanceBalance: '1044' } } });
+    });
+    render(wrap(<PaymentHistorySheet contractId="ct-1" onClose={vi.fn()} />));
+    await screen.findByText(RECEIPT.receiptNumber);
+    expect(screen.getByText('100.00 / 0.00 ฿')).toBeInTheDocument();
+    expect(screen.getByText('0 / 10')).toBeInTheDocument();
+  });
+
+  it('shows both reschedule allocations in one receipt without counting the last installment paid', async () => {
+    const installments = Array.from({ length: 10 }, (_, index) => ({
+      ...PAYMENT,
+      id: `pay-${index + 1}`,
+      installmentNo: index + 1,
+      status: index < 4 ? 'PAID' : 'PENDING',
+      amountPaid: index < 4 ? '4472' : '0',
+      lateFee: index < 3 ? '100' : '0',
+    }));
+    const receipts = installments.slice(0, 4).map((p, index) => ({
+      ...RECEIPT,
+      id: `receipt-${index + 1}`,
+      receiptNumber: `RT-HISTORY-${index + 1}`,
+      paymentId: p.id,
+      installmentNo: p.installmentNo,
+      amount: index < 3 ? '4572' : '5516',
+      paymentCase: index < 3 ? 'NORMAL' : 'RESCHEDULE',
+      installmentAllocations: index < 3 ? null : [
+        { installmentNo: 4, amount: '4472', kind: 'INSTALLMENT' },
+        { installmentNo: 10, amount: '1044', kind: 'RESCHEDULE_ADVANCE' },
+      ],
+    }));
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/journal-entries')) return Promise.resolve({ data: [] });
+      if (url.startsWith('/receipts/contract')) return Promise.resolve({ data: receipts });
+      return Promise.resolve({ data: { data: installments, contract: {
+        ...CONTRACT, rescheduleAdvanceBalance: '1044',
+      } } });
+    });
+    render(wrap(<PaymentHistorySheet contractId="ct-1" onClose={vi.fn()} />));
+    const receiptCell = await screen.findByText('RT-HISTORY-4');
+    const row = within(receiptCell.closest('tr')!);
+    expect(row.getByText('4/10')).toBeInTheDocument();
+    expect(row.getByText('4,472.00 ฿')).toBeInTheDocument();
+    expect(row.getByText('10/10')).toBeInTheDocument();
+    expect(row.getByText('1,044.00 ฿')).toBeInTheDocument();
+    expect(row.getByText('ล่วงหน้างวดสุดท้าย')).toBeInTheDocument();
+    expect(row.getByText('ปรับดิว')).toBeInTheDocument();
+    expect(row.getByText('5,516.00')).toBeInTheDocument();
+    expect(screen.getByText('4 / 10')).toBeInTheDocument();
+    expect(screen.getByText('19,232.00 ฿')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(5);
+    expect(screen.getAllByText('ตรงดิว')).toHaveLength(3);
+    expect(screen.getByRole('columnheader', { name: 'ลักษณะการชำระ' })).toBeInTheDocument();
+  });
+
+  it('does not assign the current parked balance to a receipt without allocation history', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/journal-entries')) return Promise.resolve({ data: [] });
+      if (url.startsWith('/receipts/contract')) return Promise.resolve({ data: [RECEIPT] });
+      return Promise.resolve({ data: { data: [PAYMENT], contract: {
+        ...CONTRACT, rescheduleAdvanceBalance: '1044',
+      } } });
+    });
+    render(wrap(<PaymentHistorySheet contractId="ct-1" onClose={vi.fn()} />));
+    const receiptCell = await screen.findByText(RECEIPT.receiptNumber);
+    const row = within(receiptCell.closest('tr')!);
+    expect(row.queryByText('10/10')).not.toBeInTheDocument();
+    expect(row.queryByText('1,044.00 ฿')).not.toBeInTheDocument();
+  });
+
   it('renders the history dialog fullscreen (inset-5, no centered max-width)', async () => {
     render(wrap(<PaymentHistorySheet contractId="ct-1" onClose={vi.fn()} />));
     await screen.findByText('RT-202607-00015');

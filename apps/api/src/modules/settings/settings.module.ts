@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AccountingPermissionsController } from './accounting-permissions.controller';
+import { AccountingPermissionsService } from './services/accounting-permissions.service';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { SettingsFlagsService } from './services/settings-flags.service';
@@ -17,11 +19,12 @@ import { JournalModule } from '../journal/journal.module';
   // the same prisma instance and is invoked by SettingsController as a
   // `validate` callback into AccountRoleService.update().
   imports: [JournalModule],
-  controllers: [SettingsController],
+  controllers: [SettingsController, AccountingPermissionsController],
   // D1.3.2.2 — SettingsAccessGuard is consumed by the controller via
   // `@UseGuards(...)` so Nest needs it in the providers list.
   providers: [
     SettingsService,
+    AccountingPermissionsService,
     // Wave-4 decomposition — internal sub-services the facade delegates to.
     SettingsFlagsService,
     SettingsWriteService,

@@ -1,15 +1,7 @@
 /**
- * Attribute an installment's late fee / waiver to its FIRST receipt only.
- *
- * When an installment is split across several partial receipts, the late fee is
- * a single per-installment charge — showing the installment-level `lateFee` on
- * EVERY receipt row made it look charged N times ("ใบที่ 2 มีค่าปรับซ้ำ").
- *
- * Owner decision (display convention, not ledger): show the full late fee on the
- * FIRST receipt of the installment and 0 on the rest. "First" = earliest by
- * paidDate, tie-broken by the sequential receiptNumber. Voided receipts and
- * non-payment receipts (credit note / early payoff / down payment) never carry
- * the fee.
+ * Use the fee and waiver booked on each receipt's own journal entry.
+ * Legacy first-receipt allocation is only a fallback when no receipt in the
+ * installment has authoritative fee history. Mixed unknown rows stay unknown.
  */
 export interface ReceiptFeeRow {
   id: string;
@@ -18,11 +10,16 @@ export interface ReceiptFeeRow {
   paymentId: string | null;
   paidDate: string;
   isVoided: boolean;
+  lateFeeCollected?: string | null;
+  lateFeeWaivedThisReceipt?: string | null;
+  hasReceiptFeeHistory?: boolean;
 }
 
 export interface FeeInfo {
   lateFee: number;
   waived: number;
+  /** Cannot safely attribute a fee to this historical receipt. */
+  unavailable?: boolean;
 }
 
 // RESCHEDULE_FEE: ปรับดิว collect receipt — carries its own fee/late-fee breakdown
@@ -34,8 +31,18 @@ export function computeReceiptFeeDisplay(
   feeByPaymentId: Map<string, FeeInfo>,
 ): Map<string, FeeInfo> {
   const result = new Map<string, FeeInfo>();
-  // Default every receipt to no fee.
-  for (const r of receipts) result.set(r.id, { lateFee: 0, waived: 0 });
+  for (const r of receipts) {
+    result.set(r.id, { lateFee: 0, waived: 0 });
+    // A reschedule collect has its own fee; never borrow the installment's fee.
+    if (r.receiptType === 'RESCHEDULE_FEE' && !r.isVoided) {
+      if (r.lateFeeCollected != null && r.lateFeeWaivedThisReceipt != null) {
+        const waived = Number(r.lateFeeWaivedThisReceipt);
+        result.set(r.id, { lateFee: Number(r.lateFeeCollected) + waived, waived });
+      } else {
+        result.set(r.id, { lateFee: 0, waived: 0, unavailable: true });
+      }
+    }
+  }
 
   // Group fee-eligible receipts by installment (paymentId).
   const byPayment = new Map<string, ReceiptFeeRow[]>();
@@ -47,6 +54,19 @@ export function computeReceiptFeeDisplay(
   }
 
   for (const [paymentId, rows] of byPayment) {
+    const hasExactFee = (row: ReceiptFeeRow) =>
+      row.lateFeeCollected != null && row.lateFeeWaivedThisReceipt != null;
+    if (rows.some((row) => hasExactFee(row) || row.hasReceiptFeeHistory)) {
+      for (const row of rows) {
+        if (hasExactFee(row)) {
+          const waived = Number(row.lateFeeWaivedThisReceipt);
+          result.set(row.id, { lateFee: Number(row.lateFeeCollected) + waived, waived });
+        } else {
+          result.set(row.id, { lateFee: 0, waived: 0, unavailable: true });
+        }
+      }
+      continue;
+    }
     const fee = feeByPaymentId.get(paymentId);
     if (!fee || (fee.lateFee <= 0 && fee.waived <= 0)) continue;
     const first = [...rows].sort(

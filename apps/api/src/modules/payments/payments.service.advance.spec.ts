@@ -22,7 +22,7 @@ jest.mock('@sentry/nestjs', () => ({
 }));
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -38,6 +38,15 @@ import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
+import { consumePaymentApproval } from './services/payment-approval-request.util';
+
+jest.mock('./services/payment-approval-request.util', () => ({
+  ...jest.requireActual('./services/payment-approval-request.util'),
+  consumePaymentApproval: jest.fn(),
+}));
+
+const approvalContext = { requestId: 'approval-request-1', actorId: 'approver-1' };
+const consumeApproval = consumePaymentApproval as jest.Mock;
 
 const D = (n: number | string) => new Prisma.Decimal(n);
 
@@ -94,6 +103,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   });
 
   beforeEach(async () => {
+    consumeApproval.mockReset().mockResolvedValue({ requestedById: 'user-1', approverId: approvalContext.actorId });
     advanceBalance = 0; // reset at start of each test
     rescheduleAdvanceBalance = 0; // reset at start of each test
 
@@ -159,6 +169,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       },
       // Phase 4 draft/post split
       paymentDraft: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findFirst: jest.fn().mockResolvedValue(null),
         upsert: jest
           .fn()
@@ -1012,10 +1023,14 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         undefined,
         25,
         'goodwill',
-        'approver-1',
+        'nominated-user', // ignored: authenticated context owns approval identity
+        true,
+        0,
+        approvalContext,
       );
 
       expect(result.status).toBe('PAID');
+      expect(consumeApproval).toHaveBeenCalledWith(prisma, approvalContext, 'RECORD_PAYMENT', 'adv-payment-60');
 
       // Payment.update carries the waiver fields
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1038,7 +1053,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       expect(new Prisma.Decimal(tArgs.lateFeeWaived.toString()).toNumber()).toBe(25);
     });
 
-    it('SoD: approver === recorder → ForbiddenException', async () => {
+    it('a self-nominated approver cannot bypass the approval request', async () => {
       stubPaymentRow(makePayment(61, { dueDate: dueDate5() }));
       await expect(
         service.recordPayment(
@@ -1059,10 +1074,12 @@ describe('PaymentsService — advance balance (Task 4)', () => {
           'goodwill',
           'user-1', // approver === recorder
         ),
-      ).rejects.toThrow(/Segregation of Duties/);
+      ).rejects.toThrow(ForbiddenException);
+      expect(consumeApproval).not.toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
     });
 
-    it('waiver without approverId → BadRequestException', async () => {
+    it('a waiver without a trusted approval context is rejected', async () => {
       stubPaymentRow(makePayment(62, { dueDate: dueDate5() }));
       await expect(
         service.recordPayment(
@@ -1083,7 +1100,8 @@ describe('PaymentsService — advance balance (Task 4)', () => {
           'goodwill',
           undefined,
         ),
-      ).rejects.toThrow(/ผู้อนุมัติ/);
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.payment.update).not.toHaveBeenCalled();
     });
 
     it('waiver > gross late fee → BadRequestException', async () => {
@@ -1115,6 +1133,9 @@ describe('PaymentsService — advance balance (Task 4)', () => {
           999,
           'goodwill',
           'approver-1', // 999 > gross 50
+          true,
+          0,
+          approvalContext,
         ),
       ).rejects.toThrow(/เกินค่าปรับ/);
     });

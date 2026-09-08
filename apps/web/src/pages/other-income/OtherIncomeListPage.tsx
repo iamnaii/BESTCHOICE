@@ -1,3 +1,4 @@
+import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -114,6 +115,7 @@ function StatusCard({
 }
 
 export default function OtherIncomeListPage() {
+  const permissions = useAccountingPermissions();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { defaultTimeRange } = useUiFlags();
@@ -426,7 +428,7 @@ export default function OtherIncomeListPage() {
                         <StatusBadge status={doc.status} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {doc.status === 'DRAFT' && (
+                        {doc.status === 'DRAFT' && permissions.can('INCOME_CANCEL') && (
                           <button
                             type="button"
                             onClick={(e) => {

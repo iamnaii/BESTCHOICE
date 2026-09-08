@@ -1,61 +1,19 @@
-import { useQuery } from '@tanstack/react-query';
-import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
-interface Props {
-  approvedById: string;
-  onChange: (id: string) => void;
-}
-
-interface UserRow {
-  id: string;
-  name: string;
-  role: string;
-}
-
-const APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
-
-export function ApproverSection({ approvedById, onChange }: Props) {
+export function ApproverSection() {
   const { user } = useAuth();
-  // /users/approvers is the lean PII-free approver lookup (GET /users is
-  // OWNER-only, so non-OWNER recorders used to get an empty list here). It
-  // returns a bare array of active manager-role users; keep the expense role
-  // subset filter client-side.
-  const { data: approvers } = useQuery<UserRow[]>({
-    queryKey: ['users', 'approvers'],
-    queryFn: async () => {
-      const res = await api.get('/users/approvers');
-      const list: UserRow[] = res.data ?? [];
-      return list.filter((u) => APPROVER_ROLES.includes(u.role));
-    },
-    staleTime: 60_000,
-  });
-
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid gap-4 sm:grid-cols-2">
       <div>
-        <label className="block text-xs font-medium mb-1">ผู้บันทึก</label>
-        <input
-          type="text"
-          value={user ? `${user.name} (${user.role})` : ''}
-          readOnly
-          className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-muted/50"
-        />
+        <p className="text-xs font-medium mb-1">ผู้บันทึก</p>
+        <p className="px-3 py-2 border border-border rounded-lg text-sm bg-muted/50">
+          {user?.name ?? '—'}
+        </p>
       </div>
       <div>
-        <label className="block text-xs font-medium mb-1">ผู้อนุมัติ</label>
-        <select
-          value={approvedById}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
-        >
-          <option value="">— เลือก —</option>
-          {approvers?.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name} ({a.role})
-            </option>
-          ))}
-        </select>
+        <p className="text-xs font-medium mb-1">ผู้อนุมัติ</p>
+        <p className="text-sm">ระบบบันทึกชื่อจากผู้มีสิทธิ์ที่กดอนุมัติจริง</p>
+        <p className="mt-1 text-xs text-muted-foreground">เจ้าของกำหนดสิทธิ์รายคนที่ ตั้งค่า → สิทธิ์รายการบัญชีรายรับ–รายจ่าย</p>
       </div>
     </div>
   );

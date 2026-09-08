@@ -39,6 +39,7 @@ function setup(rows: ReturnType<typeof row>[], minUnpaidByContract: Record<strin
       count: jest.fn().mockResolvedValue(rows.length),
       groupBy,
     },
+    journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
     systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     systemSetting: { findUnique: jest.fn().mockResolvedValue(null) },
   } as unknown as PrismaService;

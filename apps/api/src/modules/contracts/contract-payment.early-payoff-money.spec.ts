@@ -1,3 +1,5 @@
+import { consumePaymentApproval } from '../payments/services/payment-approval-request.util';
+jest.mock('../payments/services/payment-approval-request.util', () => ({ ...jest.requireActual('../payments/services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from './contract-payment.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
@@ -563,7 +565,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
 
     // GAP4 — owed formula (amountDue + lateFee − amountPaid) + FIFO allocation.
     it('GAP4: owed = (amountDue + lateFee) − amountPaid; non-waived fee included; payAmount + new amountPaid pinned', async () => {
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       // All 7 rows updated, in installmentNo order (FIFO).
       expect(paymentUpdates.map((u) => u.where.id)).toEqual([
@@ -584,7 +586,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
     });
 
     it('GAP4: a WAIVED late fee is dropped from owed (lateFee 300 ignored)', async () => {
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       // inst 8: lateFeeWaived true ⇒ lateFee treated as 0 ⇒ owed = 1926 − 0 = 1926
       // (the 300 fee does NOT inflate the payment). payAmount 1926 ⇒ paid 1926.00.
@@ -597,7 +599,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       const quote = await service.getEarlyPayoffQuote(quoteContract.id);
       expect(quote.totalPayoff).toBe(11106);
 
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       // Per-row payAmount = newAmountPaid − amountPaidBefore.
       const before: Record<string, string> = {
@@ -629,7 +631,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
     // GAP4 — the unconditional-PAID quirk: a row reached after the payoff is
     // exhausted gets payAmount 0.00 yet is STILL flipped to PAID.
     it('GAP4 (quirk): row reached after remainingPayoff hits 0 → payAmount 0.00 but status STILL PAID', async () => {
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       const p13 = dataOf('pay-13');
       // amountPaid unchanged from 0 (0 + 0 = 0.00) → payAmount was 0.00.
@@ -641,3 +643,21 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
     });
   });
 });
+
+/** Money tests run an already-approved action; the kernel's own suites test authority and stale snapshots. */
+async function approvedEarlyPayoff(service: ContractPaymentService, id: string, userId: string, dto: Parameters<ContractPaymentService['earlyPayoff']>[2]) {
+  (consumePaymentApproval as jest.Mock).mockReset();
+  const originalQuote = service.getEarlyPayoffQuote.bind(service);
+  let approvedQuote: Awaited<ReturnType<ContractPaymentService['getEarlyPayoffQuote']>>;
+  const quoteSpy = jest.spyOn(service, 'getEarlyPayoffQuote').mockImplementation(async (...args) => {
+    // These unit fixtures model a reviewed quote; real transactional re-quote/staleness is covered by the approval integration suite.
+    if (args[3]) return approvedQuote;
+    const quote = await originalQuote(...args);
+    approvedQuote = quote;
+    (consumePaymentApproval as jest.Mock).mockResolvedValueOnce({ requestedById: userId, approverId: 'test-approver', payload: dto, reviewSummary: quote });
+    return quote;
+  });
+  try {
+    return await service.earlyPayoff(id, userId, dto, { requestId: 'payoff-request', actorId: 'test-approver' });
+  } finally { quoteSpy.mockRestore(); }
+}

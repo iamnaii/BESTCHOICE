@@ -42,9 +42,6 @@ const PeriodsTab = lazy(() =>
 const AttachmentTab = lazy(() =>
   import('@/pages/SettingsPage/tabs/AttachmentTab').then((m) => ({ default: m.AttachmentTab })),
 );
-const PeakMappingTab = lazy(() =>
-  import('@/pages/SettingsPage/tabs/PeakMappingTab').then((m) => ({ default: m.PeakMappingTab })),
-);
 const OffsiteBackupTab = lazy(() =>
   import('@/pages/SettingsPage/tabs/OffsiteBackupTab').then((m) => ({ default: m.OffsiteBackupTab })),
 );
@@ -53,6 +50,12 @@ const PdpaTab = lazy(() =>
 );
 const MakerCheckerToggle = lazy(() =>
   import('@/pages/SettingsPage/components/MakerCheckerToggle').then((m) => ({ default: m.MakerCheckerToggle })),
+);
+const AccountingPermissionsCard = lazy(() =>
+  import('@/pages/SettingsPage/components/AccountingPermissionsCard').then((m) => ({ default: m.AccountingPermissionsCard })),
+);
+const PaymentApprovalPermissionsCard = lazy(() =>
+  import('@/pages/SettingsPage/components/PaymentApprovalPermissionsCard').then((m) => ({ default: m.PaymentApprovalPermissionsCard })),
 );
 const ReversePermissionCard = lazy(() =>
   import('@/pages/SettingsPage/components/ReversePermissionCard').then((m) => ({ default: m.ReversePermissionCard })),
@@ -112,7 +115,9 @@ export const settingsRegistry: SettingsCategory[] = [
       { id: 'users', label: 'ผู้ใช้ / พนักงาน', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'external', path: '/users' },
       { id: 'account-roles', label: 'บัญชีตาม Role', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'route', component: AccountRolesPage, path: '/settings/access/account-roles' },
       { id: 'maker-checker', label: 'ระบบอนุมัติ 2 ชั้น (Maker-Checker)', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: MakerCheckerToggle, keywords: ['อนุมัติ', 'maker', 'checker'] },
-      { id: 'reverse-permission', label: 'สิทธิ์กลับรายการ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReversePermissionCard, keywords: ['reverse', 'กลับรายการ', 'void'] },
+      { id: 'accounting-permissions', label: 'สิทธิ์รายการบัญชีรายรับ–รายจ่าย', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: AccountingPermissionsCard, keywords: ['รายรับ', 'รายจ่าย', 'POST', 'อนุมัติ', 'ยกเลิก'] },
+      { id: 'payment-approval-permissions', label: 'สิทธิ์อนุมัติรับชำระ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: PaymentApprovalPermissionsCard, keywords: ['รับชำระ', 'ค่าปรับ', 'อนุโลม', 'คืนเงิน', 'อนุมัติ'] },
+      { id: 'reverse-permission', label: 'สิทธิ์กลับรายการสินทรัพย์', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReversePermissionCard, keywords: ['reverse', 'กลับรายการ', 'void'] },
       { id: 'reverse-reasons', label: 'เหตุผลกลับรายการ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReverseReasonsManagementCard },
       { id: 'petty-cash', label: 'ผู้ดูแลเงินสดย่อย', group: 'เงินสด', roles: ['OWNER'], kind: 'inline', component: PettyCashCustodianCard, keywords: ['petty cash', 'เงินสดย่อย'] },
       { id: 'attachment', label: 'นโยบายเอกสารแนบ', group: 'เอกสาร', roles: ['OWNER'], kind: 'inline', component: AttachmentTab, keywords: ['แนบไฟล์', 'attachment'] },
@@ -123,8 +128,7 @@ export const settingsRegistry: SettingsCategory[] = [
     items: [
       { id: 'vat', label: 'VAT', group: 'ภาษี', roles: ['OWNER'], kind: 'inline', component: VatTab, keywords: ['ภาษี', '7%', 'มูลค่าเพิ่ม'] },
       { id: 'periods', label: 'งวดบัญชี', group: 'บัญชี', roles: ['OWNER'], kind: 'inline', component: PeriodsTab, keywords: ['ปิดงวด', 'period'] },
-      { id: 'peak-mapping', label: 'PEAK mapping', group: 'บัญชี', roles: ALL, kind: 'inline', component: PeakMappingTab, keywords: ['peak'] },
-      { id: 'chart', label: 'ผังบัญชี', group: 'บัญชี', roles: ALL, kind: 'route', component: ChartOfAccountsPage, path: '/settings/accounting/chart' },
+      { id: 'chart', label: 'ผังบัญชี / รหัส PEAK', group: 'บัญชี', roles: ALL, kind: 'route', component: ChartOfAccountsPage, path: '/settings/accounting/chart', keywords: ['peak', 'mapping', 'จับคู่', 'รหัสบัญชี'] },
       { id: 'peak-sync', label: 'PEAK sync', group: 'บัญชี', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: PeakSyncPage, path: '/settings/accounting/peak-sync' },
       { id: 'e-tax', label: 'e-Tax', group: 'ภาษี', roles: ['OWNER'], kind: 'route', component: ETaxConfigPage, path: '/settings/accounting/e-tax' },
       { id: 'documents', label: 'เลขที่/รูปแบบเอกสาร', group: 'บัญชี', roles: ['OWNER'], kind: 'external', path: '/settings/document-config' },

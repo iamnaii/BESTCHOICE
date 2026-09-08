@@ -37,6 +37,7 @@ import { PaymentJournalPreviewService } from './services/payment-journal-preview
 import { PaymentCsvImportService } from './services/payment-csv-import.service';
 import { PaymentPostCommitHooks } from './services/payment-post-commit-hooks';
 import { assertSequentialInstallment } from './services/installment-sequence.util';
+import type { PaymentApprovalContext } from './services/payment-approval-request.util';
 
 /**
  * Facade over the decomposed payments core (the regulated FINANCE money path).
@@ -278,6 +279,8 @@ export class PaymentsService {
     waiverApproverId?: string,
     /** ห้ามข้ามงวด — PaySolutions webhook ส่ง false (เงินเข้า gateway แล้ว), ที่เหลือ default true. */
     enforceSequence: boolean = true,
+    additionalLateFee: number = 0,
+    approvalContext?: PaymentApprovalContext,
   ) {
     return this.services().orchestrator.recordPayment(
       contractId,
@@ -297,6 +300,8 @@ export class PaymentsService {
       lateFeeWaiverReasonCode,
       waiverApproverId,
       enforceSequence,
+      additionalLateFee,
+      approvalContext,
     );
   }
 
@@ -313,6 +318,7 @@ export class PaymentsService {
       paymentMethod: string;
       depositAccountCode?: string;
       lateFee?: number;
+      additionalLateFee?: number;
       lateFeeWaiverAmount?: number;
       lateFeeWaiverReasonCode?: string;
       waiverApproverId?: string;
@@ -336,6 +342,7 @@ export class PaymentsService {
       paymentMethod: params.paymentMethod,
       depositAccountCode: params.depositAccountCode ?? null,
       lateFee: params.lateFee != null ? new Prisma.Decimal(params.lateFee.toString()) : null,
+      additionalLateFee: params.additionalLateFee != null ? new Prisma.Decimal(params.additionalLateFee.toString()) : null,
       lateFeeWaiverAmount:
         params.lateFeeWaiverAmount != null ? new Prisma.Decimal(params.lateFeeWaiverAmount.toString()) : null,
       lateFeeWaiverReasonCode: params.lateFeeWaiverReasonCode ?? null,
@@ -396,6 +403,8 @@ export class PaymentsService {
       draft.lateFeeWaiverAmount != null ? Number(draft.lateFeeWaiverAmount) : undefined,
       draft.lateFeeWaiverReasonCode ?? undefined,
       draft.waiverApproverId ?? undefined,
+      true,
+      draft.additionalLateFee != null ? Number(draft.additionalLateFee) : 0,
     );
 
     // Retire the draft once posted (best-effort; a re-post is blocked by the
@@ -500,8 +509,9 @@ export class PaymentsService {
     userId: string,
     approverId: string,
     context?: { ipAddress?: string | null; userAgent?: string | null },
+    approvalContext?: PaymentApprovalContext,
   ) {
-    return this.services().waiver.waiveLateFee(paymentId, reason, userId, approverId, context);
+    return this.services().waiver.waiveLateFee(paymentId, reason, userId, approverId, context, approvalContext);
   }
 
   // ─── T3-C5: Preventive immutability guard ───────────────

@@ -27,6 +27,7 @@
  *      (forward-only: no pre-feature JE can hold park money) — the legacy path
  *      must not be "fixed" into guessing a split.
  */
+import { voidReceiptWithApproval } from '../../../../e2e/helpers/payment-approval';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -101,10 +102,10 @@ async function ensureApprover(): Promise<string> {
 }
 
 async function cleanLedger(): Promise<void> {
+  await prisma.receipt.deleteMany({});
   await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
-  await prisma.receipt.deleteMany({});
   await prisma.loyaltyPoint.deleteMany({});
   await prisma.payment.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
@@ -294,7 +295,7 @@ describe('void of a last-installment receipt restores park money to its OWN buck
 
   it('voiding it returns 200 to advanceBalance and 354 to rescheduleAdvanceBalance — no cross-contamination', async () => {
     const receiptId = await latestReceiptId();
-    const result = await receiptsService.voidReceipt(
+    const result = await voidReceiptWithApproval(prisma, receiptsService,
       receiptId,
       'ทดสอบยกเลิกใบเสร็จงวดสุดท้าย (park)',
       recordedById,
@@ -345,7 +346,7 @@ describe('void of a last-installment receipt restores park money to its OWN buck
       data: { metadata: stripped as never },
     });
 
-    await receiptsService.voidReceipt(
+    await voidReceiptWithApproval(prisma, receiptsService,
       await latestReceiptId(),
       'ทดสอบยกเลิกใบเสร็จแบบไม่มี stamp (legacy)',
       recordedById,

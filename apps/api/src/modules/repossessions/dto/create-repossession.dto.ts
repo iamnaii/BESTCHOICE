@@ -1,6 +1,14 @@
 import { IsString, IsNumber, IsOptional, IsDateString, IsBoolean, IsIn, Min, Max } from 'class-validator';
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
+export const REPOSSESSION_RETURN_REASONS = {
+  UNAFFORDABLE: 'ลูกค้าไม่สามารถผ่อนต่อได้',
+  NO_LONGER_NEEDED: 'ลูกค้าไม่ประสงค์ใช้งานต่อ',
+  AFTER_TERMINATION: 'รับเครื่องคืนหลังบอกเลิกสัญญา',
+  OTHER: 'อื่น ๆ',
+} as const;
+export type RepossessionReturnReason = keyof typeof REPOSSESSION_RETURN_REASONS;
+
 export class CreateRepossessionDto {
   @IsString({ message: 'กรุณาระบุสัญญา' })
   contractId: string;
@@ -37,6 +45,11 @@ export class CreateRepossessionDto {
   @IsString({ message: 'กรุณาระบุหมายเหตุเป็นข้อความ' })
   @IsOptional()
   notes?: string;
+
+  /** Optional for existing clients; the return screen requires an explicit selection. */
+  @IsOptional()
+  @IsIn(Object.keys(REPOSSESSION_RETURN_REASONS), { message: 'กรุณาเลือกเหตุผลคืนเครื่องที่ถูกต้อง' })
+  returnReason?: RepossessionReturnReason;
 
   // ─── ราคากลาง + คำนวณกำไร/ขาดทุน (FINANCE perspective) ───
   @IsNumber({}, { message: 'ราคากลางต้องเป็นตัวเลข' })

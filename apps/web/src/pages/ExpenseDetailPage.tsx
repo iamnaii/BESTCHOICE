@@ -1,3 +1,4 @@
+import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -6,7 +7,6 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import {
   InternalControlActionBar,
-  resolveCanReverse,
   mapAuditEvents,
   type RawAuditEntry,
   type IcabStatus,
@@ -94,6 +94,7 @@ export function mapExpenseStatusToIcab(status: ExpenseStatus): IcabStatus {
     case 'VOIDED':
       return 'REVERSED';
     case 'APPROVED':
+      return 'DRAFT';
     case 'ACCRUAL':
     case 'POSTED':
     default:
@@ -144,6 +145,7 @@ export default function ExpenseDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const flags = useUiFlags();
+  const permissions = useAccountingPermissions();
 
   const docQuery = useQuery<ExpenseDocument>({
     queryKey: ['expense-document', id],
@@ -218,20 +220,17 @@ export default function ExpenseDetailPage() {
   });
 
   const doc = docQuery.data;
-  const makerCheckerEnabled = flags.approvalEnabled;
+  const makerCheckerEnabled = flags.approvalEnabled && doc?.status !== 'APPROVED';
   const icabStatus = doc ? mapExpenseStatusToIcab(doc.status) : 'DRAFT';
 
   // Mode-aware reverse gate (Audit Finding A) — mirrors the backend
   // ReversePermissionGuard so the button only shows when the server will allow.
   const canReverse =
-    resolveCanReverse(flags.reversePermission, user?.role, user?.canReverseOverride) &&
+    permissions.can('EXPENSE_CANCEL') &&
     icabStatus === 'POSTED';
 
   const isOwnDoc = !!doc && doc.createdBy?.id === user?.id;
-  const isViewerApprover =
-    !!user &&
-    (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER') &&
-    doc?.createdBy?.id !== user.id;
+  const isViewerApprover = permissions.can('EXPENSE_APPROVE');
 
   const isActionLoading =
     postMutation.isPending ||
@@ -394,7 +393,11 @@ export default function ExpenseDetailPage() {
           docNumber={doc.number}
           docAmount={Number(doc.netPayment ?? doc.totalAmount)}
           docSubtitle={doc.vendorName ?? undefined}
-          auditLog={mapAuditEvents(auditQuery.data ?? [])}
+          auditLog={mapAuditEvents((auditQuery.data ?? []).map((event) => ({
+            ...event,
+            action: event.action === 'EXPENSE_VOIDED' ? 'REVERSED' : event.action,
+          })))}
+          recorderName={doc.createdBy?.name}
           currentUser={{
             id: user.id,
             role: user.role,
@@ -405,6 +408,7 @@ export default function ExpenseDetailPage() {
           isViewerApprover={isViewerApprover}
           isOwnDoc={isOwnDoc}
           isLoading={isActionLoading}
+          canPost={makerCheckerEnabled || permissions.can('EXPENSE_POST')}
           canReverse={Boolean(canReverse)}
           onCancel={() => navigate('/expenses')}
           onClose={() => navigate('/expenses')}

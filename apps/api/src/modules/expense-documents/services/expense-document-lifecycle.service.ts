@@ -2,20 +2,16 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import {
-  getApproversList,
-  assertUserCanApprove,
   getApprovalRequiredDocTypes,
   getReverseReasons,
 } from '../approval-config.util';
-import { resolvePostPermissionRoles } from '../post-permission.guard';
-import { resolveReversePermissionRoles } from '../reverse-permission.guard';
+import { assertAccountingPermission, assertAccountingBranch, getAccountingPermissions, parseAccountingPermissions, ACCOUNTING_PERMISSIONS_KEY } from '../../../utils/accounting-permissions';
 import { bkkBusinessDate } from '../bkk-business-date.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { readBoolFlag } from '../../../utils/config.util';
@@ -96,6 +92,8 @@ export class ExpenseDocumentLifecycleService {
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      const { user: actor } = await getAccountingPermissions(tx, userId);
+      assertAccountingBranch(actor, doc.branchId);
       if (doc.status !== 'DRAFT') {
         throw new BadRequestException(
           `ส่งขออนุมัติได้เฉพาะเอกสาร DRAFT — สถานะปัจจุบัน ${doc.status}`,
@@ -169,15 +167,16 @@ export class ExpenseDocumentLifecycleService {
       if (!enabled) return;
       if (!this.notifications) return;
 
-      // Resolve recipients: approvers_list → fallback to OWNER users.
-      let recipients = await getApproversList(this.prisma);
-      if (recipients.length === 0) {
-        const owners = await this.prisma.user.findMany({
-          where: { role: 'OWNER', isActive: true, deletedAt: null },
-          select: { id: true },
-        });
-        recipients = owners.map((u) => u.id);
-      }
+      const [policy, users, document] = await Promise.all([
+        this.prisma.systemConfig.findFirst({ where: { key: ACCOUNTING_PERMISSIONS_KEY, deletedAt: null }, select: { value: true } }),
+        this.prisma.user.findMany({ where: { isActive: true, deletedAt: null, isSystemUser: false, role: { in: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'] } }, select: { id: true, role: true, branchId: true } }),
+        this.prisma.expenseDocument.findUnique({ where: { id: doc.id }, select: { branchId: true } }),
+      ]);
+      const grants = parseAccountingPermissions(policy?.value);
+      const recipients = users.filter((user) =>
+        (user.role === 'OWNER' || grants[user.id]?.includes('EXPENSE_APPROVE')) &&
+        (user.role !== 'BRANCH_MANAGER' || (!!user.branchId && user.branchId === document?.branchId)),
+      ).map((user) => user.id);
       if (recipients.length === 0) return;
 
       const totalStr = new Prisma.Decimal(doc.totalAmount.toString()).toFixed(2);
@@ -206,17 +205,21 @@ export class ExpenseDocumentLifecycleService {
   }
 
   // ─── Soft delete (DRAFT only) ────────────────────────────────────────
-  async softDelete(id: string, _userId: string) {
-    const existing = await this.prisma.expenseDocument.findUniqueOrThrow({ where: { id } });
-    if (existing.status !== 'DRAFT') {
-      throw new BadRequestException('ลบได้เฉพาะเอกสาร DRAFT — เอกสารที่ post ไปแล้ว ใช้ void แทน');
-    }
-    if (existing.deletedAt) {
-      throw new BadRequestException('เอกสารถูกลบไปแล้ว');
-    }
-    return this.prisma.expenseDocument.update({
-      where: { id },
-      data: { deletedAt: new Date() },
+  async softDelete(id: string, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const { user: actor } = await assertAccountingPermission(tx, userId, 'EXPENSE_CANCEL');
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `post:${id}`);
+      const existing = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      assertAccountingBranch(actor, existing.branchId);
+      if (existing.status !== 'DRAFT' || existing.deletedAt) {
+        throw new BadRequestException('ลบได้เฉพาะเอกสารร่างที่ยังไม่ถูกยกเลิก');
+      }
+      const deleted = await tx.expenseDocument.update({ where: { id }, data: { deletedAt: new Date() } });
+      await tx.auditLog.create({ data: {
+        action: 'DELETED', entity: 'expense_document', entityId: id, userId,
+        oldValue: { status: 'DRAFT' }, newValue: { deletedAt: deleted.deletedAt },
+      } });
+      return deleted;
     });
   }
 
@@ -228,19 +231,9 @@ export class ExpenseDocumentLifecycleService {
   // D1.2.1.6 — also accepts APPROVED → POSTED (when approval_enabled is on
   // AND auto_post_on_approve is false, OWNER manually calls post() on an
   // APPROVED doc; assertCanPost permits both DRAFT + APPROVED).
-  async post(id: string, _userId: string, userRole?: string) {
-    // D1.3.2.3 (S3 defense-in-depth) — mirror the PostPermissionGuard
-    // check at the service boundary. Skipped when userRole is undefined
-    // (system-internal / unit-test paths).
-    if (userRole !== undefined) {
-      const allowed = await resolvePostPermissionRoles(this.prisma);
-      if (!allowed.has(userRole)) {
-        throw new ForbiddenException(
-          `ไม่มีสิทธิ์โพสต์เอกสาร (role ปัจจุบัน: ${userRole})`,
-        );
-      }
-    }
+  async post(id: string, _userId: string, _userRole?: string) {
     return this.prisma.$transaction(async (tx) => {
+      const { user: actor } = await assertAccountingPermission(tx, _userId, 'EXPENSE_POST');
       // Per-doc advisory lock — serializes concurrent post calls on the same id.
       // Without this, two callers could both read DRAFT, both pass assertCanPost,
       // and both run the JE template → two journal entries for one document
@@ -249,6 +242,7 @@ export class ExpenseDocumentLifecycleService {
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      assertAccountingBranch(actor, doc.branchId);
 
       // D1.2.1.2 — approval gate (threshold OR doctype filter).
       //
@@ -293,7 +287,15 @@ export class ExpenseDocumentLifecycleService {
         totalAmount: doc.totalAmount.toString(),
       });
 
-      return this.executePostBody(doc, tx);
+      if (doc.status === 'DRAFT') {
+        await tx.expenseDocument.update({ where: { id }, data: { approvedById: null } });
+      }
+      const result = await this.executePostBody(doc, tx);
+      await tx.auditLog.create({ data: {
+        action: 'POSTED', entity: 'expense_document', entityId: id, userId: _userId,
+        oldValue: { status: doc.status }, newValue: { postedById: _userId },
+      } });
+      return result;
     });
   }
 
@@ -560,19 +562,19 @@ export class ExpenseDocumentLifecycleService {
   //
   // userId is captured for audit logs (APPROVED + AUTO_POSTED actions written
   // inside the same tx). Signature parity with post() / voidDocument().
-  async approve(id: string, userId: string, userRole?: string) {
+  async approve(id: string, userId: string, _userRole?: string) {
     return this.prisma.$transaction(async (tx) => {
       // Re-use the `post:` lock key — approve always either becomes the JE
       // post (auto path) or precedes a future post(), so serializing on the
       // same lock is correct.
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
 
-      // D1.2.1.3 — approver membership check. OWNER always passes; everyone
-      // else must appear in SystemConfig `approvers_list`.
-      await assertUserCanApprove(tx, userId, userRole);
+      // Resolve current per-user permission, including active OWNER identity.
+      const { user: actor } = await assertAccountingPermission(tx, userId, 'EXPENSE_APPROVE');
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      assertAccountingBranch(actor, doc.branchId);
       this.transition.assertCanApprove({ from: doc.status });
 
       // Stamp APPROVED first so the auto-post branch starts from a clean
@@ -580,7 +582,7 @@ export class ExpenseDocumentLifecycleService {
       // the APPROVED state persists and downstream post() will pick it up.
       await tx.expenseDocument.update({
         where: { id },
-        data: { status: 'APPROVED' as DocumentStatus },
+        data: { status: 'APPROVED' as DocumentStatus, approvedById: userId },
       });
 
       // D1.2.1.6 — APPROVED audit log (always written, regardless of auto-post).
@@ -628,30 +630,21 @@ export class ExpenseDocumentLifecycleService {
     id: string,
     userId: string,
     dto: VoidExpenseDocumentDto = {},
-    userRole?: string,
+    _userRole?: string,
   ) {
-    // D1.3.2.4 (S3 defense-in-depth) — mirror the ReversePermissionGuard
-    // check at the service boundary. Skipped when userRole is undefined
-    // (system-internal / unit-test paths).
-    if (userRole !== undefined) {
-      const allowed = await resolveReversePermissionRoles(this.prisma);
-      if (!allowed.has(userRole)) {
-        throw new ForbiddenException(
-          `ไม่มีสิทธิ์กลับรายการเอกสาร (role ปัจจุบัน: ${userRole})`,
-        );
-      }
-    }
     return this.prisma.$transaction(async (tx) => {
+      const { user: actor } = await assertAccountingPermission(tx, userId, 'EXPENSE_CANCEL');
       // Per-doc advisory lock — serializes concurrent voids on the same id so
       // two callers cannot both pass assertCanVoid and double-post a reversal JE.
       // (PG REPEATABLE READ does not prevent this write skew on its own.)
-      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `void:${id}`);
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({
         where: { id },
         include: { settlement: { include: { settlementLines: true } } },
       });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      assertAccountingBranch(actor, doc.branchId);
 
       // D1.2.7.4 — `reverse_block_cascaded` (default true). OWNER may disable
       // via SystemConfig to allow voiding upstream docs even when downstream CN/SE
@@ -796,7 +789,9 @@ export class ExpenseDocumentLifecycleService {
         const reverseEntry = await this.journal.createAndPost(
           {
             description: `กลับรายการ ${doc.number}`,
-            reference: doc.id,
+            // Keep one reversal per document without colliding with the
+            // original AUTO reference. Metadata retains the source document.
+            reference: `${doc.id}:reversal`,
             metadata: {
               tag: 'EXPENSE_VOID_REVERSAL',
               documentId: doc.id,

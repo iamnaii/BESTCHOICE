@@ -145,7 +145,6 @@ export interface ExpenseFormState {
   reference: string;
   receiptImageUrl: string;
   note: string;
-  approvedById: string;
   fromTemplateId: string;
   lines: ExpenseLineForm[];
   // CN-only

@@ -22,6 +22,12 @@ export interface ListQuery {
   sort?: string;
 }
 
+// CREATE omits empty optional inputs; PATCH explicitly clears them with null.
+function withOptionalInputs<T extends Partial<OtherIncomeFormValues>>(data: T, isUpdate = false) {
+  const optional = (value: string | undefined) => value === '' ? (isUpdate ? null : undefined) : value;
+  return { ...data, dueDate: optional(data.dueDate), paymentDate: optional(data.paymentDate), customerId: optional(data.customerId) };
+}
+
 export const otherIncomeApi = {
   list: (q: ListQuery = {}) =>
     api.get<ListResponse>('/other-income', { params: q }).then((r) => r.data),
@@ -30,10 +36,10 @@ export const otherIncomeApi = {
     api.get<OtherIncome>(`/other-income/${id}`).then((r) => r.data),
 
   create: (data: OtherIncomeFormValues) =>
-    api.post<OtherIncome>('/other-income', data).then((r) => r.data),
+    api.post<OtherIncome>('/other-income', withOptionalInputs(data)).then((r) => r.data),
 
   update: (id: string, data: Partial<OtherIncomeFormValues>) =>
-    api.patch<OtherIncome>(`/other-income/${id}`, data).then((r) => r.data),
+    api.patch<OtherIncome>(`/other-income/${id}`, withOptionalInputs(data, true)).then((r) => r.data),
 
   softDelete: (id: string) =>
     api.delete(`/other-income/${id}`).then((r) => r.data),

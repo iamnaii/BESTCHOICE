@@ -1,3 +1,5 @@
+import { consumePaymentApproval } from '../payments/services/payment-approval-request.util';
+jest.mock('../payments/services/payment-approval-request.util', () => ({ ...jest.requireActual('../payments/services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ReceiptsService } from './receipts.service';
@@ -24,6 +26,7 @@ describe('ReceiptsService', () => {
   const approverId = 'user-2';
 
   beforeEach(async () => {
+    (consumePaymentApproval as jest.Mock).mockReset().mockResolvedValue({ requestedById: userId, approverId: approverId, payload: {} });
     // Build a tx mock that exposes the same surface as PrismaService used inside
     // voidReceipt's $transaction callback.
     const txMock = {
@@ -161,7 +164,7 @@ describe('ReceiptsService', () => {
         { id: 'je-2', status: 'POSTED' },
       ]);
 
-      const result = await service.voidReceipt(receiptId, 'wrong amount', userId, approverId);
+      const result = await service.voidReceipt(receiptId, 'wrong amount', userId, approverId, undefined, { requestId: 'void-request', actorId: approverId });
 
       expect(result.voidedReceipt).toBeDefined();
       expect(result.creditNote).toBeDefined();
@@ -239,7 +242,7 @@ describe('ReceiptsService', () => {
       // WHERE means the DB returns ONLY the receipt JE — model that here.
       tx.journalEntry.findMany.mockResolvedValue([{ id: 'je-receipt', status: 'POSTED' }]);
 
-      await service.voidReceipt(receiptId, 'wrong amount', userId, approverId);
+      await service.voidReceipt(receiptId, 'wrong amount', userId, approverId, undefined, { requestId: 'void-request', actorId: approverId });
 
       // Only the receipt JE is reversed — the overpayment-credit JE is never touched
       // (it never enters the result set thanks to the tag filter).
@@ -296,231 +299,28 @@ describe('ReceiptsService', () => {
 
       // Must throw — outer $transaction rolls back the receipt.update + auditLog
       await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId),
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, undefined, { requestId: 'void-request', actorId: approverId }),
       ).rejects.toThrow('JE reversal failed');
     });
   });
 
-  describe('voidReceipt — Wave 3 T2 authorization (ปพพ.386 W-3)', () => {
-    const validReceiptMock = () => ({
-      id: receiptId,
-      receiptNumber: 'RT-202604-00001',
-      contractId: 'ct-1',
-      paymentId: 'pay-1',
-      payerName: 'Customer A',
-      receiverName: 'Cashier',
-      amount: 1000,
-      installmentNo: 1,
-      paymentMethod: 'CASH',
-      isVoided: false,
-      deletedAt: null,
-      createdAt: new Date(),
-      paidDate: new Date(),
+  describe('voidReceipt — actual approval authority', () => {
+    it.each(['OWNER', 'ACCOUNTANT', undefined])('denies legacy nominated approver without a request (%s)', async (role) => {
+      await expect(service.voidReceipt(receiptId, 'wrong amount', userId, approverId, role)).rejects.toThrow(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
-
-    const setupHappyPath = (tx: any) => {
-      tx.receipt.findUnique.mockResolvedValue(validReceiptMock());
-      tx.receipt.create.mockResolvedValue({
-        id: 'cn-1',
-        receiptNumber: 'RT-202604-00002',
-        receiptType: 'CREDIT_NOTE',
-      });
-      tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
-      tx.journalEntry.findMany.mockResolvedValue([]); // no JE → graceful skip (legacy)
-    };
-
-    it('throws ForbiddenException when SALES role attempts to void', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'SALES'),
-      ).rejects.toThrow(ForbiddenException);
-
-      // Audit log must NOT be created on rejection
-      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    it('checks approval inside the financial transaction and propagates permission denial', async () => {
+      prisma.__tx.receipt.findUnique.mockResolvedValue({ id: receiptId, deletedAt: null });
+      (consumePaymentApproval as jest.Mock).mockRejectedValueOnce(new ForbiddenException('permission revoked'));
+      const context = { requestId: 'void-request', actorId: approverId };
+      await expect(service.voidReceipt(receiptId, 'wrong amount', userId, 'arbitrary-name', 'OWNER', context)).rejects.toThrow('permission revoked');
+      expect(consumePaymentApproval).toHaveBeenCalledWith(prisma.__tx, context, 'VOID_RECEIPT', receiptId);
+      expect(prisma.__tx.receipt.create).not.toHaveBeenCalled();
     });
-
-    it('allows OWNER role and writes RECEIPT_VOID audit log', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-
-      const result = await service.voidReceipt(
-        receiptId,
-        'wrong amount',
-        userId,
-        approverId,
-        'OWNER',
-      );
-
-      expect(result.voidedReceipt).toBeDefined();
-      expect(result.creditNote).toBeDefined();
-
-      // Audit log written with correct shape
-      expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
-      const auditCall = tx.auditLog.create.mock.calls[0][0];
-      expect(auditCall.data.action).toBe('RECEIPT_VOID');
-      expect(auditCall.data.entity).toBe('receipt');
-      expect(auditCall.data.entityId).toBe(receiptId);
-      expect(auditCall.data.userId).toBe(userId);
-      expect(auditCall.data.newValue.reason).toBe('wrong amount');
-      expect(auditCall.data.newValue.userRole).toBe('OWNER');
-      expect(auditCall.data.newValue.creditNoteId).toBe('cn-1');
-      expect(auditCall.data.oldValue.receiptNumber).toBe('RT-202604-00001');
-    });
-
-    it('allows ACCOUNTANT role', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'ACCOUNTANT'),
-      ).resolves.toBeDefined();
-    });
-
-    it('allows BRANCH_MANAGER role', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'BRANCH_MANAGER'),
-      ).resolves.toBeDefined();
-    });
-
-    it('allows FINANCE_MANAGER role', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'FINANCE_MANAGER'),
-      ).resolves.toBeDefined();
-    });
-
-    it('falls back to defensive allow when userRole is undefined (legacy callers)', async () => {
-      // Service-layer guard skips role check if undefined — controller is
-      // single source of truth via @Roles. Defensive layer rejects only if
-      // a known-bad role is explicitly passed.
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId),
-      ).resolves.toBeDefined();
-    });
-
-    it('throws ForbiddenException when requester and approver are the same user (SoD)', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, userId, 'OWNER'),
-      ).rejects.toThrow(ForbiddenException);
-      expect(tx.auditLog.create).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('voidReceipt — approver validation (SoD hardening)', () => {
-    const setupHappyPath = (tx: any) => {
-      tx.receipt.findUnique.mockResolvedValue({
-        id: receiptId,
-        receiptNumber: 'RT-202604-00001',
-        contractId: 'ct-1',
-        paymentId: 'pay-1',
-        payerName: 'Customer A',
-        receiverName: 'Cashier',
-        amount: 1000,
-        installmentNo: 1,
-        paymentMethod: 'CASH',
-        isVoided: false,
-        deletedAt: null,
-        createdAt: new Date(),
-        paidDate: new Date(),
-      });
-      tx.receipt.create.mockResolvedValue({
-        id: 'cn-1',
-        receiptNumber: 'RT-202604-00002',
-        receiptType: 'CREDIT_NOTE',
-      });
-      tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
-      tx.journalEntry.findMany.mockResolvedValue([]);
-    };
-
-    it('throws NotFoundException when the approver id does not exist', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-      prisma.user.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, 'ghost-user', 'OWNER'),
-      ).rejects.toThrow(NotFoundException);
-      expect(tx.auditLog.create).not.toHaveBeenCalled();
-    });
-
-    it('throws NotFoundException when the approver is deactivated', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-      prisma.user.findUnique.mockResolvedValue({
-        id: approverId,
-        role: 'OWNER',
-        isActive: false,
-        deletedAt: null,
-      });
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'OWNER'),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws NotFoundException when the approver is soft-deleted', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-      prisma.user.findUnique.mockResolvedValue({
-        id: approverId,
-        role: 'OWNER',
-        isActive: true,
-        deletedAt: new Date(),
-      });
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'OWNER'),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws ForbiddenException when the approver role is SALES (not void-capable)', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-      prisma.user.findUnique.mockResolvedValue({
-        id: approverId,
-        role: 'SALES',
-        isActive: true,
-        deletedAt: null,
-      });
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'OWNER'),
-      ).rejects.toThrow(ForbiddenException);
-      expect(tx.auditLog.create).not.toHaveBeenCalled();
-    });
-
-    it('accepts an active ACCOUNTANT approver and records them in the void trail', async () => {
-      const tx = prisma.__tx;
-      setupHappyPath(tx);
-      prisma.user.findUnique.mockResolvedValue({
-        id: approverId,
-        role: 'ACCOUNTANT',
-        isActive: true,
-        deletedAt: null,
-      });
-
-      await expect(
-        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'OWNER'),
-      ).resolves.toBeDefined();
-
-      // Approver recorded on both the receipt row and the forensic audit log.
-      const updateCall = tx.receipt.update.mock.calls[0][0];
-      expect(updateCall.data.voidApprovedById).toBe(approverId);
-      const auditCall = tx.auditLog.create.mock.calls[0][0];
-      expect(auditCall.data.newValue.approvedById).toBe(approverId);
+    it('rejects a valid request being executed for another requester', async () => {
+      prisma.__tx.receipt.findUnique.mockResolvedValue({ id: receiptId, deletedAt: null });
+      await expect(service.voidReceipt(receiptId, 'wrong amount', 'other-maker', approverId, 'OWNER', { requestId: 'void-request', actorId: approverId })).rejects.toThrow(ForbiddenException);
+      expect(prisma.__tx.receipt.create).not.toHaveBeenCalled();
     });
   });
 
@@ -586,7 +386,7 @@ describe('ReceiptsService', () => {
       const tx = prisma.__tx;
       setup(tx);
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       expect(tx.payment.update).toHaveBeenCalledWith({
         where: { id: 'pay-1' },
@@ -598,7 +398,7 @@ describe('ReceiptsService', () => {
       const tx = prisma.__tx;
       setup(tx, { payment: { dueDate: FUTURE_DUE } });
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       expect(tx.payment.update).toHaveBeenCalledWith({
         where: { id: 'pay-1' },
@@ -611,7 +411,7 @@ describe('ReceiptsService', () => {
       setup(tx);
       tx.receipt.updateMany.mockResolvedValue({ count: 1 });
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       expect(tx.receipt.updateMany).toHaveBeenCalledWith({
         where: {
@@ -635,7 +435,7 @@ describe('ReceiptsService', () => {
       const tx = prisma.__tx;
       setup(tx);
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       expect(tx.loyaltyPoint.updateMany).toHaveBeenCalledWith({
         where: { paymentId: 'pay-1', deletedAt: null },
@@ -669,7 +469,7 @@ describe('ReceiptsService', () => {
         ],
       });
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       expect(tx.contract.update).toHaveBeenCalledTimes(1);
       const call = tx.contract.update.mock.calls[0][0];
@@ -695,7 +495,7 @@ describe('ReceiptsService', () => {
         ],
       });
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       const call = tx.contract.update.mock.calls[0][0];
       expect(String(call.data.advanceBalance.increment)).toBe('-200');
@@ -717,7 +517,7 @@ describe('ReceiptsService', () => {
         ],
       });
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       expect(tx.contract.update).not.toHaveBeenCalled();
     });
@@ -727,7 +527,7 @@ describe('ReceiptsService', () => {
       setup(tx, { receipt: { paymentId: null, receiptType: 'DOWN_PAYMENT' } });
 
       await expect(
-        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId }),
       ).resolves.toBeDefined();
 
       expect(tx.payment.update).not.toHaveBeenCalled();
@@ -740,7 +540,7 @@ describe('ReceiptsService', () => {
       setup(tx, { receipt: { receiptType: 'CREDIT_NOTE' } });
 
       await expect(
-        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId }),
       ).rejects.toThrow(BadRequestException);
       expect(tx.receipt.create).not.toHaveBeenCalled();
       expect(tx.auditLog.create).not.toHaveBeenCalled();
@@ -751,7 +551,7 @@ describe('ReceiptsService', () => {
       setup(tx, { receipt: { receiptType: 'RESCHEDULE_FEE' } });
 
       await expect(
-        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId }),
       ).rejects.toThrow(BadRequestException);
       expect(tx.receipt.create).not.toHaveBeenCalled();
     });
@@ -761,7 +561,7 @@ describe('ReceiptsService', () => {
       setup(tx, { contract: { status: 'COMPLETED' } });
 
       await expect(
-        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId }),
       ).rejects.toThrow(BadRequestException);
       expect(tx.receipt.create).not.toHaveBeenCalled();
       expect(tx.payment.update).not.toHaveBeenCalled();
@@ -772,7 +572,7 @@ describe('ReceiptsService', () => {
       setup(tx);
       tx.receipt.updateMany.mockResolvedValue({ count: 1 });
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       const auditCall = tx.auditLog.create.mock.calls[0][0];
       expect(auditCall.data.newValue.paymentReverted).toEqual(
@@ -796,7 +596,7 @@ describe('ReceiptsService', () => {
         ],
       });
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const template = (service as any).receiptVoidReversalTemplate;
@@ -831,7 +631,7 @@ describe('ReceiptsService', () => {
           },
         ]);
 
-      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId });
 
       const call = tx.payment.update.mock.calls[0][0];
       expect(call.data.status).toBe('PARTIALLY_PAID');
@@ -844,7 +644,7 @@ describe('ReceiptsService', () => {
       setup(tx, { receipt: { receiptType: 'EARLY_PAYOFF', paymentId: null } });
 
       await expect(
-        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId }),
       ).rejects.toThrow(BadRequestException);
       expect(tx.receipt.create).not.toHaveBeenCalled();
     });
@@ -856,7 +656,7 @@ describe('ReceiptsService', () => {
         setup(tx, { contract: { status } });
 
         await expect(
-          service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+          service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER', { requestId: 'void-request', actorId: approverId }),
         ).rejects.toThrow(BadRequestException);
         expect(tx.receipt.create).not.toHaveBeenCalled();
         expect(tx.payment.update).not.toHaveBeenCalled();
@@ -873,6 +673,7 @@ describe('ReceiptsService', () => {
     }) {
       const created = jest.fn(async ({ data }: any) => ({ id: 'rcpt-new', ...data }));
       const tx = {
+        auditLog: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({}) },
         contract: {
           findUnique: jest.fn().mockResolvedValue({
             id: 'ct-1',

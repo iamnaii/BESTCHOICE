@@ -90,20 +90,6 @@ export class PaymentJournalPreviewService {
     const c = inst.contract;
     const zero = new Prisma.Decimal(0);
 
-    // Per-installment calculations.
-    // Ordinary installments keep the stored quote. The last one carries the
-    // same residual as accrual and receipt posting, including NORMAL previews.
-    const installmentTotal = Number.isInteger(inst.installmentNo) && inst.installmentNo === c.totalMonths
-      ? computeInstallmentBreakdown({
-        financedAmount: c.financedAmount.toString(),
-        storeCommission: c.storeCommission?.toString() ?? null,
-        interestTotal: c.interestTotal.toString(),
-        vatAmount: c.vatAmount?.toString() ?? null,
-        totalMonths: c.totalMonths,
-        installmentNo: inst.installmentNo,
-      }).installmentTotal
-      : new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
-
     // Round 2 I3 audit: input.lateFee arrives as `number` from the DTO.
     // `.toString()` is defensive against Decimal constructor surprises on
     // large numbers — only this one site consumes input.lateFee raw, and
@@ -229,6 +215,22 @@ export class PaymentJournalPreviewService {
       };
     }
 
+    // Use the same accrual basis and prior receipt history as posting. The billed
+    // amount can be rounded to whole baht; it is not the GL receivable balance.
+    const { installmentTotal } = computeInstallmentBreakdown({
+      financedAmount: c.financedAmount.toString(),
+      storeCommission: c.storeCommission?.toString() ?? null,
+      interestTotal: c.interestTotal.toString(),
+      vatAmount: c.vatAmount?.toString() ?? null,
+      totalMonths: c.totalMonths,
+      installmentNo: inst.installmentNo,
+    });
+    const { priorPrincipalCleared, priorLateFeeBooked } = await reconstructPriorCleared(
+      this.prisma,
+      inst.id,
+      installmentTotal,
+    );
+
     // ── PARTIAL case: mirror PaymentReceiptTemplate exactly ─────────────────
     // Fee-first split (owner 2026-07-02): Cr 42-1103 = late fee owed, Cr 11-2103 =
     // remainder. Uses the SAME pure pipeline the posting runs (installmentTotal from
@@ -245,22 +247,9 @@ export class PaymentJournalPreviewService {
         );
       }
       const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
-      const { installmentTotal: instTotalForSplit } = computeInstallmentBreakdown({
-        financedAmount: c.financedAmount.toString(),
-        storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
-        interestTotal: c.interestTotal.toString(),
-        vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
-        totalMonths: c.totalMonths,
-        installmentNo: inst.installmentNo,
-      });
-      const { priorPrincipalCleared, priorLateFeeBooked } = await reconstructPriorCleared(
-        this.prisma,
-        inst.id,
-        instTotalForSplit,
-      );
       const split = splitReceipt({
         delta: amountReceived,
-        installmentTotal: instTotalForSplit,
+        installmentTotal,
         // recordPayment rejects waiver-on-partial, so netLateFee == gross here;
         // clamped anyway for a mid-edit preview where both fields are filled.
         lateFee: netLateFee,
@@ -321,6 +310,11 @@ export class PaymentJournalPreviewService {
 
     // ── Normal / Overpay / Underpay / EarlyPayoff (existing logic continues) ─
     const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
+    const payment = await this.prisma.payment.findFirst({
+      where: { contractId: input.contractId, installmentNo: input.installmentNo, deletedAt: null },
+      select: { amountDue: true, amountPaid: true },
+    });
+    if (!payment) throw new NotFoundException('ไม่พบงวดชำระ');
     const isConsolidated = !inst.accrualJournalEntryId; // 2A not yet run
 
     // Accrual-mode classification for UI explanation chip:
@@ -339,11 +333,6 @@ export class PaymentJournalPreviewService {
           : 'CONSOLIDATED_BACKFILL';
     }
 
-    // Dr: cash/bank received. The wizard's amountReceived IS the full net cash — it
-    // already nets out the late-fee waiver + the advance deduction — mirroring what
-    // the save posts (orchestrator delta = amount). Do NOT add late fee on top.
-    const totalReceived = amountReceived;
-
     // ── Advance balance split (mirror recordPayment §Task 4) ────────────────
     // Owed = installment + NET late fee (gross − waived); the waived portion books to
     // Dr 52-1105, not collected in cash.
@@ -354,7 +343,11 @@ export class PaymentJournalPreviewService {
     // the preview never disagrees with what save() posts.
     const parkBalance = new Prisma.Decimal((c.rescheduleAdvanceBalance ?? 0).toString());
     const isLastInstallmentPreview = inst.installmentNo === c.totalMonths;
-    const remaining = installmentTotal.plus(netLateFee); // net owed (no prevPaid in preview)
+    // Advance allocation follows the billed obligation, exactly as recordPayment:
+    // amountDue + net fee - amountPaid. GL cents are handled by rounding below.
+    const remaining = new Prisma.Decimal(payment.amountDue.toString())
+      .plus(netLateFee)
+      .minus(new Prisma.Decimal(payment.amountPaid.toString()));
     const overage = amountReceived.minus(remaining);
     let previewAdvCredit = zero;
     let previewAdvConsume = zero;
@@ -365,7 +358,10 @@ export class PaymentJournalPreviewService {
     } else if (
       (input.consumeAdvance ?? true) &&
       amountReceived.lt(remaining) &&
-      (input.case === undefined || input.case === 'NORMAL') &&
+      (input.case === undefined ||
+        input.case === 'NORMAL' ||
+        input.case === 'OVERPAY' ||
+        input.case === 'UNDERPAY') &&
       (advanceBalance.gt(zero) || (isLastInstallmentPreview && parkBalance.gt(zero)))
     ) {
       // Mirror orchestrator: only auto-consume when the credit checkbox is on.
@@ -386,96 +382,41 @@ export class PaymentJournalPreviewService {
     // application-level bookkeeping distinction only, not a GL-level one.
     const previewTotalConsume = previewAdvConsume.plus(previewParkConsume);
 
-    // 1. Cash in (skip when 0 — full advance cover edge)
-    if (totalReceived.gt(zero)) {
-      rawLines.push({
-        code: input.depositAccountCode,
-        dr: totalReceived,
-        cr: zero,
-        description: 'รับชำระ',
-      });
+    // Check the billed obligation before applying GL rounding. A 1.20 baht
+    // customer shortage must not become an allowed 0.87 baht ledger adjustment.
+    const shortage = remaining.minus(amountReceived).minus(previewTotalConsume);
+    if (shortage.gt('1.00')) {
+      throw new BadRequestException(
+        `จำนวนเงินน้อยกว่ายอดที่ต้องชำระ (ยอดที่ต้องชำระ ${remaining.toFixed(2)} บาท) — เลือก case 'PARTIAL' เพื่อบันทึกเป็นจ่ายบางส่วน`,
+      );
     }
 
-    // 2. Consume existing advance (generic + park bucket)
-    if (previewTotalConsume.gt(zero)) {
-      rawLines.push({
-        code: '21-1103',
-        dr: previewTotalConsume,
-        cr: zero,
-        description: 'หักเงินรับล่วงหน้า',
-      });
-    }
-
-    // 2b. Late-fee waiver discount (Dr 52-1105) — Cr 42-1103 below stays GROSS.
-    if (lateFeeWaivedAmount.gt(zero)) {
-      rawLines.push({
-        code: '52-1105',
-        dr: lateFeeWaivedAmount,
-        cr: zero,
-        description: 'ส่วนลดให้ลูกค้า — อนุโลมค่าปรับ',
-      });
-    }
-
-    // Preview mirrors the SAVE (QA #1347 follow-up): since PR-843/I2 the posting
-    // primitive (PaymentReceiptTemplate) ALWAYS credits 11-2103 — never the
-    // consolidated 2A+2B legs — and the nightly accrual cron backfills the 2A
-    // (it accrues every dueDate<=today row regardless of PAID status). The old
-    // consolidated branch here previewed lines that never post. `accrualMode`
-    // below still tells the UI whether 2A already ran or the cron will backfill.
-    rawLines.push({
-      code: '11-2103',
-      dr: zero,
-      cr: installmentTotal,
-      description: 'ล้างลูกหนี้ค้างชำระ',
+    const split = splitReceipt({
+      delta: amountReceived,
+      installmentTotal,
+      lateFee: netLateFee,
+      priorPrincipalCleared,
+      priorLateFeeBooked,
+      advanceConsume: previewTotalConsume,
+      advanceCredit: previewAdvCredit,
+      isFinalReceipt: true,
     });
-
-    // Late fee: Cr 42-1103 if > 0
-    if (lateFeeAmount.gt(zero)) {
-      rawLines.push({
-        code: '42-1103',
-        dr: zero,
-        cr: lateFeeAmount,
-        description: 'ค่าปรับชำระล่าช้า',
-      });
+    if (split.overpayRounding.gt('1.00') || split.principalRemainingAfter.gt('1.00')) {
+      throw new BadRequestException('ยอดรับชำระต่างจากลูกหนี้คงเหลือเกินเกณฑ์ปัดเศษ 1.00 บาท');
     }
-
-    // 5. Park new advance (overpay → 21-1103)
-    if (previewAdvCredit.gt(zero)) {
-      rawLines.push({
-        code: '21-1103',
-        dr: zero,
-        cr: previewAdvCredit,
-        description: 'เงินรับล่วงหน้า',
-      });
-    }
-
-    // 6. Rounding adjustment (≤1฿ tolerance) — must include for balanced preview
-    // This mirrors PaymentReceipt2BTemplate's rounding logic.
-    // Skipped for OVERPAY_ADVANCE / advance consume because those clear the diff via 21-1103.
-    if (previewAdvCredit.eq(zero) && previewTotalConsume.eq(zero)) {
-      const roundingDiff = amountReceived.minus(installmentTotal.plus(netLateFee));
-      const tolerance = new Prisma.Decimal('1.00');
-      if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
-        // D1.1.6.2 — resolve via AccountRoleService when available, otherwise
-        // fall back to spec-default 53-1503 (matches the seed row).
-        const adjOverpayCode = this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503';
-        rawLines.push({
-          code: adjOverpayCode,
-          dr: zero,
-          cr: roundingDiff,
-          description: 'กำไรปัดเศษ (Policy C)',
-        });
-      } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
-        // D1.1.6.1 — resolve via AccountRoleService when available, otherwise
-        // fall back to spec-default 52-1104 (matches the seed row).
-        const adjUnderpayCode = this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104';
-        rawLines.push({
-          code: adjUnderpayCode,
-          dr: roundingDiff.abs(),
-          cr: zero,
-          description: 'ส่วนลดเศษสตางค์ (Policy C)',
-        });
-      }
+    // Share the posting allocation, including fee-first receipts, current
+    // waivers, and rounding alongside advance consumption/credit.
+    for (const line of buildReceiptLines({
+      split,
+      debitAccountCode: input.depositAccountCode,
+      delta: amountReceived,
+      advanceConsume: previewTotalConsume,
+      advanceCredit: previewAdvCredit,
+      lateFeeWaived: lateFeeWaivedAmount,
+      overpayCode: this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503',
+      underpayCode: this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104',
+    })) {
+      rawLines.push({ code: line.accountCode, dr: line.dr, cr: line.cr, description: line.description ?? '' });
     }
 
     // 2B_ONLY: fetch the already-POSTED 2A accrual context (read-only). Includes
@@ -485,8 +426,6 @@ export class PaymentJournalPreviewService {
     // 11-2103 state. `status:'POSTED'` excludes a VOIDED accrual (void keeps
     // deletedAt null in this codebase — see shop-collect void regression test).
     // The mockup case has no consume JE → 2A = the clean 2,115.00 accrual.
-    // NOTE (Phase 2): the live 2B leg still credits the full installmentTotal to
-    // 11-2103; reconciling that against prior clears (reconstructPrior) is §4.1.
     let accrualLineRows: {
       accountCode: string;
       debit: Prisma.Decimal;

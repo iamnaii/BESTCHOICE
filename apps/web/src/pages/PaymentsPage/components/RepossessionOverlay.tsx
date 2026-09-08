@@ -51,6 +51,7 @@ interface RepoPreview {
     discountPct: number;
     discountAmount: number;
     unpaidLateFees: number;
+    rescheduleAdvanceApplied?: number;
     closingAmount: number;
     marketValue: number;
     /** ที่มาของราคากลางที่ใช้คำนวณ — null = ยังไม่ได้กรอกทั้งราคากลางและราคาประเมิน (ยังคำนวณไม่ได้) */
@@ -85,6 +86,12 @@ interface RepoPreview {
 
 const GRADES = ['A', 'B', 'C', 'D'];
 const PREVIEW_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
+const RETURN_REASONS = [
+  { value: 'UNAFFORDABLE', label: 'ลูกค้าไม่สามารถผ่อนต่อได้' },
+  { value: 'NO_LONGER_NEEDED', label: 'ลูกค้าไม่ประสงค์ใช้งานต่อ' },
+  { value: 'AFTER_TERMINATION', label: 'รับเครื่องคืนหลังบอกเลิกสัญญา' },
+  { value: 'OTHER', label: 'อื่น ๆ' },
+];
 
 /** Today's date in Asia/Bangkok (YYYY-MM-DD) — avoids UTC off-by-one during BKK evening. */
 const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
@@ -146,6 +153,7 @@ export function RepossessionOverlay({
   // วันที่รับเงิน/ลงบัญชี (mirror ปิดยอด) — ย้อนหลังได้ถ้างวดบัญชียังเปิด
   const [paymentDate, setPaymentDate] = useState(bkkToday);
   const [notes, setNotes] = useState('');
+  const [returnReason, setReturnReason] = useState('');
   // Settlement dialog (mirror ปิดยอด) — หน้าร้านโอนเงินยึดคืนเข้า FINANCE ทีหลัง
   // แล้วเคลียร์ Dr 11-2107 ผ่าน endpoint เดียวกับ JP4 (sums 11-2107 by contractId)
   const [settlementOpen, setSettlementOpen] = useState(false);
@@ -156,7 +164,10 @@ export function RepossessionOverlay({
   const [settlementRequestId, setSettlementRequestId] = useState('');
   const canSettlement = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
 
-  const { data: preview, isLoading: previewLoading } = useQuery<RepoPreview>({
+  const {
+    data: preview, isLoading: previewLoading, isFetching: previewFetching,
+    isError: previewFailed, error: previewError, refetch: retryPreview,
+  } = useQuery<RepoPreview>({
     queryKey: [
       'repossession-preview',
       contractId,
@@ -179,6 +190,9 @@ export function RepossessionOverlay({
       return data;
     },
     enabled: canPreview && !!contractId,
+    // Eligibility and ledger balances can change while this dialog is closed.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // ผลทางบัญชี (ledger) — คู่กับ calculation.profitLoss เชิงบริหาร (คำสั่งเจ้าของ 2026-08-08 ข้อ 1)
@@ -224,6 +238,7 @@ export function RepossessionOverlay({
         appraisalPrice: Number(appraisalPrice),
         repairCost: repairCost ? Number(repairCost) : 0,
         notes: notes || undefined,
+        returnReason,
         discountPct: discountPct ? Number(discountPct) : 50,
         depositAccountCode: collectedByShop ? undefined : depositAccountCode,
         collectedByShop,
@@ -259,6 +274,7 @@ export function RepossessionOverlay({
     },
     onSuccess: () => {
       toast.success('บันทึกรับโอนจากหน้าร้านสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['repossession-preview', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       queryClient.invalidateQueries({ queryKey: ['repossessions'] });
@@ -269,24 +285,28 @@ export function RepossessionOverlay({
   });
 
   const appraisalNum = Number(appraisalPrice);
-  const canSubmit = useMemo(
-    () =>
-      canCreate &&
-      repossessedDate.length > 0 &&
-      !!conditionGrade &&
-      appraisalNum > 0 &&
-      !reasonMissing &&
-      !blockedByEligibility &&
-      !mutation.isPending,
-    [
-      canCreate,
-      repossessedDate,
-      conditionGrade,
-      appraisalNum,
-      reasonMissing,
-      blockedByEligibility,
-      mutation.isPending,
-    ],
+  const submitBlockReason = !canCreate ? 'เฉพาะเจ้าของ (OWNER) ยืนยันยึดคืนได้'
+    : blockedByEligibility ? preview?.eligibility?.reason || 'สัญญานี้ยังยึดคืนไม่ได้'
+    : previewLoading || previewFetching ? 'กำลังตรวจสอบยอดและรายการ JP5'
+    : previewFailed ? 'ตรวจสอบข้อมูลไม่สำเร็จ กรุณาลองคำนวณใหม่'
+    : !preview || preview.eligibility?.canRepossess !== true ? 'ยังตรวจสอบสถานะสัญญาไม่สำเร็จ'
+    : !repossessedDate ? 'กรุณาระบุวันที่ยึดคืน'
+    : !Number.isFinite(appraisalNum) || appraisalNum <= 0 ? 'กรุณาระบุราคาประเมินมากกว่า 0'
+    : !Number.isFinite(Number(repairCost)) || Number(repairCost) < 0 ? 'ค่าซ่อมต้องไม่ติดลบ'
+    : discountPct !== '' && (!Number.isFinite(Number(discountPct)) || Number(discountPct) < 0 || Number(discountPct) > 100) ? 'ส่วนลดยอดปิดต้องอยู่ระหว่าง 0 ถึง 100%'
+    : paymentDate && (paymentDate > bkkToday() || paymentDate.slice(0, 7) !== bkkToday().slice(0, 7)) ? 'วันที่รับเงินต้องอยู่ในเดือนปัจจุบันและไม่เป็นวันในอนาคต'
+    : !returnReason ? 'กรุณาเลือกเหตุผลคืนเครื่อง'
+    : returnReason === 'OTHER' && !notes.trim() ? 'กรุณาระบุรายละเอียดเหตุผลคืนเครื่อง'
+    : reasonMissing ? 'กรุณาอธิบายเหตุผลที่ราคาประเมินต่างจากตารางเกิน 15% ในรายละเอียดเพิ่มเติม'
+    : !preview.journalPreview ? 'ยังไม่มีรายการ JP5 ให้ตรวจสอบ กรุณาลองคำนวณใหม่'
+    : !preview.journalPreview.isBalanced ? 'รายการ JP5 ยังไม่สมดุล กรุณาตรวจสอบก่อนยืนยัน'
+    : mutation.isPending ? 'กำลังบันทึกการยึดคืน' : null;
+  const canSubmit = submitBlockReason === null;
+  const hasReceivableRelief = preview?.journalPreview?.lines.some((line) =>
+    ['11-2101', '11-2103', '11-2105'].includes(line.accountCode) && Number(line.credit) > 0,
+  );
+  const hasVatCreditNote = preview?.journalPreview?.lines.some((line) =>
+    line.accountCode === '21-2101' && Number(line.debit) > 0,
   );
 
   const inputClass =
@@ -489,6 +509,11 @@ export function RepossessionOverlay({
               <div className="py-6 text-center text-sm leading-snug text-muted-foreground">
                 ดูตัวอย่าง P&L ได้เฉพาะ OWNER / ผจก.สาขา / ผจก.การเงิน
               </div>
+            ) : previewFailed ? (
+              <div role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive">
+                <p>คำนวณตัวอย่างไม่สำเร็จ: {getErrorMessage(previewError)}</p>
+                <button type="button" onClick={() => retryPreview()} className="mt-2 underline">ลองคำนวณใหม่</button>
+              </div>
             ) : previewLoading || !preview ? (
               <div className="py-6 text-center text-sm leading-snug text-muted-foreground">
                 กำลังคำนวณ...
@@ -521,9 +546,15 @@ export function RepossessionOverlay({
                     destructive
                   />
                 )}
+                {(preview.calculation.rescheduleAdvanceApplied ?? 0) > 0 && (
+                  <Row
+                    label="หักเงินรับล่วงหน้าที่พักไว้"
+                    value={`- ${formatNumberDecimal(preview.calculation.rescheduleAdvanceApplied!)} ฿`}
+                  />
+                )}
                 <div className="border-t border-border pt-2">
                   <Row
-                    label="ยอดปิดสัญญา (ตรงกับปิดยอดก่อนกำหนด)"
+                    label="ยอดปิดสัญญาสุทธิ"
                     value={`${preview.calculation.closingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
                     bold
                   />
@@ -557,12 +588,12 @@ export function RepossessionOverlay({
                         {preview.calculation.profitLoss >= 0 ? (
                           <>
                             <Check className="size-4 inline mr-1" />
-                            กำไร/ขาดทุนเชิงบริหาร
+                            ส่วนต่างราคาประเมินเทียบยอดปิด
                           </>
                         ) : (
                           <>
                             <X className="size-4 inline mr-1" />
-                            กำไร/ขาดทุนเชิงบริหาร
+                            ส่วนต่างราคาประเมินเทียบยอดปิด
                           </>
                         )}
                       </div>
@@ -585,9 +616,10 @@ export function RepossessionOverlay({
                 {/* คำสั่งเจ้าของ 2026-08-08 (ข้อ 1): โชว์เลขบัญชีคู่กับเลขบริหาร — สองเลขต่างกันได้
                     (ส่วนลด/ราคากลาง อยู่เฉพาะมุมมองบริหาร; บัญชีรับรู้จากราคาตี + เงินคืน) */}
                 {preview.journalPreview && (
-                  <div className="flex justify-between text-xs mt-2 px-3">
+                  <div className="text-xs mt-2 px-3 space-y-2">
+                    <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground leading-snug">
-                      ผลทางบัญชี (ledger — จากราคาประเมิน)
+                      กำไร/ขาดทุนจากรายการยึดคืน
                     </span>
                     <span className="font-medium text-foreground">
                       {ledgerPl >= 0 ? '+' : ''}
@@ -597,6 +629,17 @@ export function RepossessionOverlay({
                       })}{' '}
                       ฿
                     </span>
+                    </div>
+                    <p className="text-muted-foreground leading-relaxed">
+                      อ่านจากบัญชีกำไร/ขาดทุนจากการยึดใน JP5 หลังล้างยอดคงเหลือทางบัญชี
+                      ตัวเลขนี้ใช้ฐานบัญชี ส่วนต่างด้านบนใช้ยอดปิดสัญญาหลังส่วนลด
+                    </p>
+                    {!hasReceivableRelief && (
+                      <p className="text-warning leading-relaxed">
+                        JP5 ชุดนี้ไม่มีบรรทัดตัดลูกหนี้ ยอดจึงรวมมูลค่ารับคืนและเงินล่วงหน้าที่ล้างออก
+                        ควรตรวจประวัติบัญชีของสัญญาประกอบ
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -666,24 +709,36 @@ export function RepossessionOverlay({
         {/* Section 5: หมายเหตุ */}
         <Section
           icon={<FileText className="size-4" />}
-          title="หมายเหตุ"
-          subtitle="บันทึกเพิ่มเติม (ถ้ามี)"
+          title="เหตุผลคืนเครื่อง"
+          subtitle="เลือกเหตุผลและบันทึกรายละเอียดประกอบ"
         >
+          <label htmlFor="repo-return-reason" className="block text-xs font-medium mb-1.5">
+            เหตุผลคืนเครื่อง <span className="text-destructive">*</span>
+          </label>
+          <select id="repo-return-reason" value={returnReason} onChange={(e) => setReturnReason(e.target.value)} className={inputClass} required>
+            <option value="">— เลือกเหตุผลคืนเครื่อง —</option>
+            {RETURN_REASONS.map((reason) => <option key={reason.value} value={reason.value}>{reason.label}</option>)}
+          </select>
+          <label htmlFor="repo-return-notes" className="block text-xs font-medium mt-3 mb-1.5">
+            รายละเอียดเพิ่มเติม {(returnReason === 'OTHER' || needsReason) ? <span className="text-destructive">*</span> : '(ถ้ามี)'}
+          </label>
           <textarea
+            id="repo-return-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             className={`${inputClass} resize-none`}
-            placeholder="เช่น สาเหตุการยึด, สภาพเครื่อง..."
+            placeholder="เช่น สภาพเครื่อง หรือเหตุผลที่ราคาประเมินต่างจากตาราง..."
           />
+          {needsReason && <p className="text-xs text-warning mt-1">กรุณาอธิบายเหตุผลที่ราคาประเมินต่างจากตารางเกิน 15% เพิ่มเติมจากเหตุผลคืนเครื่อง</p>}
         </Section>
 
         {/* Section 5.5: JOURNAL AUTO — JP5 JE preview (dry-run บรรทัดเดียวกับตอน post) */}
         {canPreview && preview?.journalPreview && (
           <Section
             icon={<FileText className="size-4" />}
-            title="JOURNAL AUTO — บันทึกทางบัญชี"
-            subtitle="JP5 — ยึดเครื่อง + ใบลดหนี้ VAT (ม.82/5)"
+            title="รายการบัญชีคืนเครื่อง (JP5)"
+            subtitle={hasVatCreditNote ? 'ยึดเครื่องและกลับรายการ VAT พร้อมออกใบลดหนี้' : 'รายการที่จะลงบัญชีเมื่อยืนยันยึดคืน'}
           >
             <div className="space-y-1">
               <div className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs text-muted-foreground font-medium pb-1 border-b border-border">
@@ -727,6 +782,12 @@ export function RepossessionOverlay({
             </div>
           </Section>
         )}
+        {canPreview && !previewLoading && !previewFetching && !previewFailed && preview && !preview.journalPreview && (
+          <Section icon={<FileText className="size-4" />} title="รายการบัญชีคืนเครื่อง (JP5)" subtitle="ยังไม่มีรายการให้ตรวจสอบ">
+            <p className="text-sm text-warning">ไม่สามารถเตรียมรายการ JP5 ได้ กรุณาตรวจสอบข้อมูลบัญชีของสัญญาแล้วลองอีกครั้ง</p>
+            <button type="button" onClick={() => retryPreview()} className="mt-2 text-sm underline">ลองคำนวณใหม่</button>
+          </Section>
+        )}
 
         {/* Section 6: สิ่งที่จะเกิดขึ้น */}
         <Section
@@ -736,7 +797,7 @@ export function RepossessionOverlay({
           tone="success"
         >
           <ul className="space-y-1.5 text-sm">
-            <Effect text="ปิดลูกหนี้คงค้าง + ออกใบลดหนี้ VAT (ม.82/5) — บันทึก JE (JP5)" />
+            <Effect text={hasVatCreditNote ? 'ปิดลูกหนี้คงค้างและออกใบลดหนี้ VAT — บันทึก JP5' : 'ปิดรายการคงค้างของสัญญาตามรายการบัญชี JP5 ด้านบน'} />
             {collectedByShop && (
               <Effect
                 text="ตั้งลูกหนี้-หน้าร้าน 11-2107 — ต้องบันทึกรับโอนจากหน้าร้าน (settlement) ภายหลัง"
@@ -752,7 +813,14 @@ export function RepossessionOverlay({
       </div>
 
       {/* Footer */}
-      <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-between gap-3">
+      <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 space-y-3">
+        {submitBlockReason && (
+          <div id="repo-submit-block" role="status" className="text-sm text-warning leading-snug">
+            <p>{submitBlockReason}</p>
+            {blockedByEligibility && <a href={`/contracts/${contractId}`} className="inline-block mt-1 underline">เปิดสัญญาเพื่อตรวจสถานะและหนังสือบอกเลิก</a>}
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3">
         {/* Settlement button — visible to OWNER / FINANCE_MANAGER / ACCOUNTANT (mirror ปิดยอด) */}
         {canSettlement ? (
           <button
@@ -779,17 +847,13 @@ export function RepossessionOverlay({
           <button
             onClick={() => mutation.mutate()}
             disabled={!canSubmit}
-            title={
-              !canCreate
-                ? 'เฉพาะเจ้าของ (OWNER) ยึดคืนได้'
-                : appraisalNum <= 0
-                  ? 'กรุณาระบุราคาประเมิน'
-                  : undefined
-            }
+            title={submitBlockReason ?? undefined}
+            aria-describedby={submitBlockReason ? 'repo-submit-block' : undefined}
             className="px-6 py-2.5 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
           >
             {mutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยึดคืน'}
           </button>
+        </div>
         </div>
       </div>
 

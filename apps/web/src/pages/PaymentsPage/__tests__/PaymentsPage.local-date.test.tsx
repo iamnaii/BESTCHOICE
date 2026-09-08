@@ -1,3 +1,5 @@
+vi.mock('@/components/payment/PaymentApprovalQueue', () => ({ default: () => null }));
+vi.mock('@/components/payment/PaymentApprovalRequestDialog', () => ({ default: () => null }));
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

@@ -26,8 +26,15 @@ import PaymentPeriodBar from './components/PaymentPeriodBar';
 import PaymentKpiCards from './components/PaymentKpiCards';
 import { RecordPaymentModal, BatchPaymentModal } from './components/PaymentModals';
 import { RecordPaymentWizard, type WizardSubmitPayload } from './components/RecordPaymentWizard';
-import { ToleranceApprovalDialog } from '@/components/ToleranceApprovalDialog';
-import type { PendingPayment, DailySummary, PendingSummary, OcrPaymentSlipResult, VoidedReceiptInfo } from './types';
+import PaymentApprovalRequestDialog from '@/components/payment/PaymentApprovalRequestDialog';
+import PaymentApprovalQueue from '@/components/payment/PaymentApprovalQueue';
+import type {
+  PendingPayment,
+  DailySummary,
+  PendingSummary,
+  OcrPaymentSlipResult,
+  VoidedReceiptInfo,
+} from './types';
 import { paymentStatusLabels, isSlipRequired } from './types';
 
 export default function PaymentsPage() {
@@ -35,10 +42,17 @@ export default function PaymentsPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
-  const canSeeReceipts = user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user.role);
+  const canSeeReceipts =
+    user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user.role);
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (searchParams.get('tab') || 'pending') as 'pending' | 'paid' | 'summary' | 'slip-review' | 'receipts';
-  const setTab = (value: 'pending' | 'paid' | 'summary' | 'slip-review' | 'receipts') => setSearchParams({ tab: value });
+  const tab = (searchParams.get('tab') || 'pending') as
+    | 'pending'
+    | 'paid'
+    | 'summary'
+    | 'slip-review'
+    | 'receipts';
+  const setTab = (value: 'pending' | 'paid' | 'summary' | 'slip-review' | 'receipts') =>
+    setSearchParams({ tab: value });
 
   // Redirect SALES users away from receipts tab (no permission)
   useEffect(() => {
@@ -94,7 +108,12 @@ export default function PaymentsPage() {
   const [showPayWizard, setShowPayWizard] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
   // paidDate = LOCAL date (money-impacting: toISOString() records YESTERDAY before 07:00 BKK).
-  const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: toLocalDateString() });
+  const [payForm, setPayForm] = useState({
+    amount: 0,
+    paymentMethod: 'CASH',
+    notes: '',
+    paidDate: toLocalDateString(),
+  });
   // T15: deposit account code for the payment journal Dr leg; defaults to user preference or system default
   const [depositAccountCode, setDepositAccountCode] = useState<string>(
     user?.defaultCashAccountCode ?? '11-1101',
@@ -246,12 +265,13 @@ export default function PaymentsPage() {
     consumeAdvance: payload.consumeAdvance,
     paidDate: payload.paidDate,
     lateFee: payload.lateFee,
+    additionalLateFee: payload.additionalLateFee,
     lateFeeWaiverAmount: payload.lateFeeWaiverAmount,
     lateFeeWaiverReasonCode: payload.lateFeeWaiverReasonCode,
-    waiverApproverId: payload.waiverApproverId,
   });
   const draftMutation = useMutation({
-    mutationFn: async (body: Record<string, unknown>) => (await api.post('/payments/draft', body)).data,
+    mutationFn: async (body: Record<string, unknown>) =>
+      (await api.post('/payments/draft', body)).data,
     onSuccess: () => {
       toast.success('บันทึกฉบับร่างแล้ว (ยังไม่ลงบัญชี)');
       queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
@@ -268,7 +288,13 @@ export default function PaymentsPage() {
     // Note: on the dirty path the saver becomes the draft's createdById, so the
     // posted Payment.recordedById (collector KPI attribution) moves to whoever
     // edited — intended: the person who changed the numbers owns the record.
-    mutationFn: async ({ paymentId, dirtyPayload }: { paymentId: string; dirtyPayload?: WizardSubmitPayload }) => {
+    mutationFn: async ({
+      paymentId,
+      dirtyPayload,
+    }: {
+      paymentId: string;
+      dirtyPayload?: WizardSubmitPayload;
+    }) => {
       if (dirtyPayload) await api.post('/payments/draft', draftBodyFromPayload(dirtyPayload));
       return (await api.post(`/payments/${paymentId}/post-draft`, {})).data;
     },
@@ -287,7 +313,8 @@ export default function PaymentsPage() {
     },
   });
   const cancelDraftMutation = useMutation({
-    mutationFn: async (paymentId: string) => (await api.delete(`/payments/draft/${paymentId}`)).data,
+    mutationFn: async (paymentId: string) =>
+      (await api.delete(`/payments/draft/${paymentId}`)).data,
     onSuccess: () => {
       toast.success('ยกเลิกฉบับร่างแล้ว');
       queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
@@ -301,28 +328,32 @@ export default function PaymentsPage() {
   // Mockup §11.1 — after กลับรายการ (receipt void) the installment is un-paid
   // server-side; re-open the record wizard on that installment with only the
   // contract + งวด context (amounts start from the wizard's fresh defaults).
-  const reopenAfterVoid = useCallback(
-    async (info: VoidedReceiptInfo) => {
-      if (!info.paymentId || !info.contractNumber) return; // e.g. down-payment receipts have no installment
-      try {
-        const params = new URLSearchParams();
-        params.set('search', info.contractNumber);
-        params.set('limit', '100');
-        const { data } = await api.get(`/payments/pending?${params}`);
-        const row = (data.data as PendingPayment[] | undefined)?.find((p) => p.id === info.paymentId);
-        if (!row) return; // installment not in the pending set (race / already re-paid) — user can reopen manually
-        setSelectedPayment(row);
-        setShowPayWizard(true);
-      } catch {
-        // Void already succeeded — reopening is a convenience, never surface an error for it.
-      }
-    },
-    [],
-  );
+  const reopenAfterVoid = useCallback(async (info: VoidedReceiptInfo) => {
+    if (!info.paymentId || !info.contractNumber) return; // e.g. down-payment receipts have no installment
+    try {
+      const params = new URLSearchParams();
+      params.set('search', info.contractNumber);
+      params.set('limit', '100');
+      const { data } = await api.get(`/payments/pending?${params}`);
+      const row = (data.data as PendingPayment[] | undefined)?.find((p) => p.id === info.paymentId);
+      if (!row) return; // installment not in the pending set (race / already re-paid) — user can reopen manually
+      setSelectedPayment(row);
+      setShowPayWizard(true);
+    } catch {
+      // Void already succeeded — reopening is a convenience, never surface an error for it.
+    }
+  }, []);
 
   // Batch payment mutation
   const batchMutation = useMutation({
-    mutationFn: async (payments: { contractId: string; installmentNo: number; amount: number; paymentMethod: string }[]) => {
+    mutationFn: async (
+      payments: {
+        contractId: string;
+        installmentNo: number;
+        amount: number;
+        paymentMethod: string;
+      }[],
+    ) => {
       const results = [];
       for (const p of payments) {
         const { data } = await api.post('/payments/record', { ...p, notes: 'ชำระแบบรวม (batch)' });
@@ -346,20 +377,16 @@ export default function PaymentsPage() {
   // Pending summary totals — Decimal arithmetic, single number convert at end
   // (audit finding P0). Otherwise per-row parseFloat drift accumulates across
   // hundreds of rows.
-  const pendingSummary = useMemo(() => ({
-    count: pendingPayments.length,
-    totalDue: pendingPayments
-      .reduce(
-        (sum, p) =>
-          sum
-            .add(p.amountDue)
-            .add(p.lateFee)
-            .sub(p.amountPaid),
-        new Decimal(0),
-      )
-      .toDecimalPlaces(2)
-      .toNumber(),
-  }), [pendingPayments]);
+  const pendingSummary = useMemo(
+    () => ({
+      count: pendingPayments.length,
+      totalDue: pendingPayments
+        .reduce((sum, p) => sum.add(p.amountDue).add(p.lateFee).sub(p.amountPaid), new Decimal(0))
+        .toDecimalPlaces(2)
+        .toNumber(),
+    }),
+    [pendingPayments],
+  );
 
   // Tab badge shows the whole-system pending count (from the aggregate KPI),
   // falling back to the loaded page count until the summary resolves.
@@ -380,7 +407,8 @@ export default function PaymentsPage() {
         { header: 'สาขา', key: 'branch', width: 15 },
       ],
       data: pendingPayments.map((p) => {
-        const outstanding = parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid);
+        const outstanding =
+          parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid);
         return {
           contractNumber: p.contract.contractNumber,
           customer: p.contract.customer.name,
@@ -423,7 +451,7 @@ export default function PaymentsPage() {
         installmentNo: p.installmentNo,
         amountDue: parseFloat(p.amountDue).toLocaleString(),
         lateFee: parseFloat(p.lateFee).toLocaleString(),
-        amountPaid: parseFloat(p.amountPaid).toLocaleString(),
+        amountPaid: p.receiptCashAmount == null ? '–' : Number(p.receiptCashAmount).toLocaleString(),
         dueDate: p.dueDate ? new Date(p.dueDate).toLocaleDateString('th-TH') : '-',
         paidDate: p.paidDate ? new Date(p.paidDate).toLocaleDateString('th-TH') : '-',
         branch: p.contract.branch.name,
@@ -444,9 +472,10 @@ export default function PaymentsPage() {
 
   // Batch helpers
   const toggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -455,27 +484,23 @@ export default function PaymentsPage() {
     if (selectedIds.size === pendingPayments.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(pendingPayments.map(p => p.id)));
+      setSelectedIds(new Set(pendingPayments.map((p) => p.id)));
     }
   }, [pendingPayments, selectedIds.size]);
 
-  const batchSelectedPayments = useMemo(() =>
-    pendingPayments.filter(p => selectedIds.has(p.id)),
-  [pendingPayments, selectedIds]);
+  const batchSelectedPayments = useMemo(
+    () => pendingPayments.filter((p) => selectedIds.has(p.id)),
+    [pendingPayments, selectedIds],
+  );
 
-  const batchTotal = useMemo(() =>
-    batchSelectedPayments
-      .reduce(
-        (sum, p) =>
-          sum
-            .add(p.amountDue)
-            .add(p.lateFee)
-            .sub(p.amountPaid),
-        new Decimal(0),
-      )
-      .toDecimalPlaces(2)
-      .toNumber(),
-  [batchSelectedPayments]);
+  const batchTotal = useMemo(
+    () =>
+      batchSelectedPayments
+        .reduce((sum, p) => sum.add(p.amountDue).add(p.lateFee).sub(p.amountPaid), new Decimal(0))
+        .toDecimalPlaces(2)
+        .toNumber(),
+    [batchSelectedPayments],
+  );
 
   const handleBatchPay = () => {
     if (isSlipRequired(batchPayMethod) && !batchSlipResult) {
@@ -486,22 +511,36 @@ export default function PaymentsPage() {
     const items = batchSelectedPayments.map((p, i) => ({
       contractId: p.contract.id,
       installmentNo: p.installmentNo,
-      amount: Math.round((parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid)) * 100) / 100,
+      amount:
+        Math.round(
+          (parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid)) * 100,
+        ) / 100,
       paymentMethod: batchPayMethod,
       transactionRef: `${batchRef}-${i + 1}`,
     }));
     batchMutation.mutate(items);
   };
 
-  const openPayModal = useCallback((payment: PendingPayment) => {
-    setSelectedPayment(payment);
-    const remaining = parseFloat(payment.amountDue) + parseFloat(payment.lateFee) - parseFloat(payment.amountPaid);
-    setPayForm({ amount: Math.round(remaining * 100) / 100, paymentMethod: 'CASH', notes: '', paidDate: toLocalDateString() });
-    setDepositAccountCode(user?.defaultCashAccountCode ?? '11-1101');
-    setSlipResult(null);
-    // Open the new wizard UI
-    setShowPayWizard(true);
-  }, [user?.defaultCashAccountCode]);
+  const openPayModal = useCallback(
+    (payment: PendingPayment) => {
+      setSelectedPayment(payment);
+      const remaining =
+        parseFloat(payment.amountDue) +
+        parseFloat(payment.lateFee) -
+        parseFloat(payment.amountPaid);
+      setPayForm({
+        amount: Math.round(remaining * 100) / 100,
+        paymentMethod: 'CASH',
+        notes: '',
+        paidDate: toLocalDateString(),
+      });
+      setDepositAccountCode(user?.defaultCashAccountCode ?? '11-1101');
+      setSlipResult(null);
+      // Open the new wizard UI
+      setShowPayWizard(true);
+    },
+    [user?.defaultCashAccountCode],
+  );
 
   const handlePay = () => {
     if (!selectedPayment || payForm.amount <= 0) return;
@@ -530,12 +569,18 @@ export default function PaymentsPage() {
     const diff = new Decimal(payForm.amount).sub(remaining).toDecimalPlaces(2).toNumber();
     const absDiff = Math.abs(diff);
     if (absDiff > 1.0) {
-      toast.error(`ส่วนต่างเกิน 1 ฿ (${absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`);
+      toast.error(
+        `ส่วนต่างเกิน 1 ฿ (${absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
+      );
       return;
     }
     if (absDiff >= 0.01) {
       // Pause: ask approver to confirm before submitting
-      setPendingPayload(payload);
+      setPendingPayload({
+        ...payload,
+        case: diff < 0 ? 'UNDERPAY' : 'OVERPAY',
+        paidDate: payForm.paidDate,
+      });
       setShowToleranceDialog(true);
       return;
     }
@@ -551,13 +596,23 @@ export default function PaymentsPage() {
     fileRef: React.RefObject<HTMLInputElement | null>,
     onAutoFill?: (data: OcrPaymentSlipResult) => void,
   ) => {
-    if (file.size > 10 * 1024 * 1024) { toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB'); return; }
-    if (!file.type.startsWith('image/')) { toast.error('กรุณาเลือกไฟล์รูปภาพ'); return; }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('กรุณาเลือกไฟล์รูปภาพ');
+      return;
+    }
 
     setLoading(true);
     try {
       const imageBase64 = await compressImageForOcr(file);
-      const { data } = await api.post<OcrPaymentSlipResult>('/ocr/payment-slip', { imageBase64 }, { timeout: 90000 });
+      const { data } = await api.post<OcrPaymentSlipResult>(
+        '/ocr/payment-slip',
+        { imageBase64 },
+        { timeout: 90000 },
+      );
       setResult(data);
       if (onAutoFill) onAutoFill(data);
 
@@ -599,7 +654,7 @@ export default function PaymentsPage() {
         if (data.transactionDate) notesParts.push(data.transactionDate);
         if (data.transactionTime) notesParts.push(data.transactionTime);
 
-        setPayForm(prev => ({
+        setPayForm((prev) => ({
           ...prev,
           amount: data.amount!,
           paymentMethod: method,
@@ -626,11 +681,17 @@ export default function PaymentsPage() {
   const handleQuickSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await scanSlip(file, setQuickOcrLoading, () => {}, quickSlipFileRef, () => {
-      // Navigate to slip-review tab after successful scan
-      setTab('slip-review');
-      toast.success('สลิปถูกส่งไปตรวจสอบแล้ว');
-    });
+    await scanSlip(
+      file,
+      setQuickOcrLoading,
+      () => {},
+      quickSlipFileRef,
+      () => {
+        // Navigate to slip-review tab after successful scan
+        setTab('slip-review');
+        toast.success('สลิปถูกส่งไปตรวจสอบแล้ว');
+      },
+    );
   };
 
   return (
@@ -683,7 +744,9 @@ export default function PaymentsPage() {
         >
           รายการรอชำระ
           {tabBadgeCount > 0 && (
-            <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${tab === 'pending' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+            <span
+              className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${tab === 'pending' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+            >
               {tabBadgeCount.toLocaleString('th-TH')}
             </span>
           )}
@@ -730,7 +793,11 @@ export default function PaymentsPage() {
           />
 
           {/* 6 accounting-aware KPI cards (whole-system aggregate) */}
-          <PaymentKpiCards summary={pendingKpi} loading={loadingKpi} collectedLabel={collectedLabel} />
+          <PaymentKpiCards
+            summary={pendingKpi}
+            loading={loadingKpi}
+            collectedLabel={collectedLabel}
+          />
 
           <PaymentFilters
             searchTerm={searchTerm}
@@ -781,8 +848,8 @@ export default function PaymentsPage() {
             }}
           />
           <p className="mb-4 -mt-2 text-xs text-muted-foreground leading-snug">
-            ช่วงวันที่กรองตาม<span className="font-medium text-foreground">วันครบกำหนดของงวด</span> (เหมือนแท็บรอชำระ)
-            — งวดเก่าที่เพิ่งมาชำระเดือนนี้ ให้ขยายช่วงย้อนหลังจึงจะเห็น
+            ช่วงวันที่กรองตาม<span className="font-medium text-foreground">วันครบกำหนดของงวด</span>{' '}
+            (เหมือนแท็บรอชำระ) — งวดเก่าที่เพิ่งมาชำระเดือนนี้ ให้ขยายช่วงย้อนหลังจึงจะเห็น
           </p>
 
           <PaymentFilters
@@ -801,8 +868,9 @@ export default function PaymentsPage() {
 
           {paidTruncated && (
             <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-warning leading-snug">
-              แสดง {paidPayments.length.toLocaleString('th-TH')} จาก {paidTotal.toLocaleString('th-TH')} รายการ
-              (เรียงตามวันครบกำหนด) — ปรับช่วงวันที่ให้แคบลงเพื่อดูรายการทั้งหมด
+              แสดง {paidPayments.length.toLocaleString('th-TH')} จาก{' '}
+              {paidTotal.toLocaleString('th-TH')} รายการ (เรียงตามวันครบกำหนด) —
+              ปรับช่วงวันที่ให้แคบลงเพื่อดูรายการทั้งหมด
             </div>
           )}
 
@@ -830,6 +898,8 @@ export default function PaymentsPage() {
         </div>
       )}
 
+      <PaymentApprovalQueue />
+
       {/* Summary Tab */}
       {tab === 'summary' && (
         <PaymentSummary
@@ -845,7 +915,10 @@ export default function PaymentsPage() {
         <RecordPaymentWizard
           open={showPayWizard}
           payment={selectedPayment}
-          onClose={() => { setShowPayWizard(false); setSelectedPayment(null); }}
+          onClose={() => {
+            setShowPayWizard(false);
+            setSelectedPayment(null);
+          }}
           onSubmit={(payload) => {
             // When the cashier keeps the credit checkbox on, the wizard prefills the
             // NET amount (gross − advance − park); the tolerance check must compare
@@ -859,7 +932,9 @@ export default function PaymentsPage() {
             // จึง bypass tolerance gate (backend บันทึกเป็น PARTIALLY_PAID / เงินรับล่วงหน้า).
             const gate = paymentToleranceGate(payload.case, payload.amount, remaining);
             if (gate.action === 'block') {
-              toast.error(`ส่วนต่างเกิน 1 ฿ (${gate.absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`);
+              toast.error(
+                `ส่วนต่างเกิน 1 ฿ (${gate.absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`,
+              );
               return;
             }
             const mutationPayload: Record<string, unknown> = {
@@ -879,16 +954,24 @@ export default function PaymentsPage() {
               paidDate: payload.paidDate,
               lateFeeWaiverAmount: payload.lateFeeWaiverAmount,
               lateFeeWaiverReasonCode: payload.lateFeeWaiverReasonCode,
-              waiverApproverId: payload.waiverApproverId,
               // Round 2 W7 fix: forward the wizard's lateFee so the DTO field
               // added in C1 actually carries the user's input across the wire.
               // Server still recomputes its own value as the source of truth,
               // but populating the field keeps the request body aligned with
               // form state + makes the user intent traceable in request logs.
               lateFee: payload.lateFee,
+              additionalLateFee: payload.additionalLateFee,
             };
-            if (gate.action === 'confirm') {
-              setPendingPayload(mutationPayload);
+            if (gate.action === 'confirm' || (payload.lateFeeWaiverAmount ?? 0) > 0) {
+              setPendingPayload({
+                ...mutationPayload,
+                case:
+                  gate.action === 'confirm'
+                    ? payload.amount < remaining
+                      ? 'UNDERPAY'
+                      : 'OVERPAY'
+                    : payload.case,
+              });
               setShowToleranceDialog(true);
               return;
             }
@@ -897,7 +980,9 @@ export default function PaymentsPage() {
             setSelectedPayment(null);
           }}
           onSaveDraft={(payload) => draftMutation.mutate(draftBodyFromPayload(payload))}
-          onPostDraft={(paymentId, dirtyPayload) => postDraftMutation.mutate({ paymentId, dirtyPayload })}
+          onPostDraft={(paymentId, dirtyPayload) =>
+            postDraftMutation.mutate({ paymentId, dirtyPayload })
+          }
           onCancelDraft={(paymentId) => cancelDraftMutation.mutate(paymentId)}
           isSubmitting={
             recordMutation.isPending ||
@@ -915,7 +1000,17 @@ export default function PaymentsPage() {
         payment={selectedPayment}
         payForm={payForm}
         onPayFormChange={setPayForm}
-        onClose={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: toLocalDateString() }); }}
+        onClose={() => {
+          setShowPayModal(false);
+          setSelectedPayment(null);
+          setSlipResult(null);
+          setPayForm({
+            amount: 0,
+            paymentMethod: 'CASH',
+            notes: '',
+            paidDate: toLocalDateString(),
+          });
+        }}
         onSubmit={handlePay}
         isPending={recordMutation.isPending}
         slipFileRef={slipFileRef}
@@ -955,35 +1050,29 @@ export default function PaymentsPage() {
         onVoided={reopenAfterVoid}
       />
 
-      {/* T16: Tolerance Approval Dialog */}
-      {showToleranceDialog && pendingPayload && selectedPayment && (() => {
-        // Must be the SAME netted figure the gate approved against — otherwise the
-        // approver is shown a ส่วนต่าง that contradicts the ≤1฿ decision that opened
-        // this dialog (it would restate the whole credit/park as an under-payment).
-        const remaining = computeGateRemaining(selectedPayment, {
-          consumeAdvance: pendingPayload.consumeAdvance as boolean,
-          lateFeeWaiverAmount: pendingPayload.lateFeeWaiverAmount as number | undefined,
-        });
-        const diff = new Decimal(pendingPayload.amount as number).sub(remaining).toDecimalPlaces(2).toNumber();
-        return (
-          <ToleranceApprovalDialog
-            open={showToleranceDialog}
-            onOpenChange={setShowToleranceDialog}
-            diff={diff}
-            amountReceived={pendingPayload.amount as number}
-            outstanding={remaining}
-            onApprove={(approverId) => {
-              setShowToleranceDialog(false);
-              recordMutation.mutate({ ...pendingPayload, toleranceApproverId: approverId });
-              setPendingPayload(null);
-            }}
-            onCancel={() => {
-              setShowToleranceDialog(false);
-              setPendingPayload(null);
-            }}
-          />
-        );
-      })()}
+      {showToleranceDialog && pendingPayload && selectedPayment && (
+        <PaymentApprovalRequestDialog
+          open={showToleranceDialog}
+          onOpenChange={setShowToleranceDialog}
+          action="RECORD_PAYMENT"
+          targetId={selectedPayment.id}
+          contractNumber={selectedPayment.contract.contractNumber}
+          payload={pendingPayload}
+          requiredPermissions={[
+            ...((Number(pendingPayload.lateFeeWaiverAmount) || 0) > 0 ? ['WAIVE_LATE_FEE'] : []),
+            ...(['UNDERPAY', 'OVERPAY'].includes(String(pendingPayload.case))
+              ? ['PAYMENT_TOLERANCE']
+              : []),
+          ]}
+          onRequested={() => {
+            setShowToleranceDialog(false);
+            setPendingPayload(null);
+            setShowPayWizard(false);
+            setShowPayModal(false);
+            setSelectedPayment(null);
+          }}
+        />
+      )}
     </div>
   );
 }

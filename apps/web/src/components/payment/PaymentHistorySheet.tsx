@@ -21,6 +21,7 @@ import {
   receiptLabelsForJes,
   caseForReceipt,
   type CaseTone,
+  type ReceiptInstallmentAllocation,
 } from './paymentHistoryDerivations';
 import { toast } from 'sonner';
 import type { VoidedReceiptInfo } from '@/pages/PaymentsPage/types';
@@ -67,9 +68,14 @@ interface ReceiptItem {
   isVoided: boolean;
   paidDate: string;
   issuedByName: string | null;
+  lateFeeCollected?: string | null;
+  lateFeeWaivedThisReceipt?: string | null;
+  hasReceiptFeeHistory?: boolean;
+  paymentCase?: string | null;
+  installmentAllocations?: ReceiptInstallmentAllocation[] | null;
 }
 
-const VOID_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
+const VOID_REQUEST_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'];
 // Receipt types the backend refuses to void (ReceiptVoidService guards,
 // 2026-07-08): CN is itself the reversal document; reschedule fees and
 // early payoff have no automatic un-do path. Hide the void button so the
@@ -119,7 +125,7 @@ interface Props {
 
 export default function PaymentHistorySheet({ contractId, onClose, onVoided }: Props) {
   const { user } = useAuth();
-  const canVoid = VOID_ROLES.includes(user?.role ?? '');
+  const canRequestVoid = VOID_REQUEST_ROLES.includes(user?.role ?? '');
   const [voidTarget, setVoidTarget] = useState<{
     id: string;
     receiptNumber: string;
@@ -174,10 +180,8 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
   const contract = pResp?.contract;
   const paymentById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments]);
 
-  // Per-receipt late fee/waiver for display: attribute an installment's fee to its
-  // FIRST receipt only (owner UI convention) so split-payment receipts don't each
-  // repeat the same 100฿. The ledger still books the fee once (principal-first);
-  // this is purely how the history table reads. See computeReceiptFeeDisplay.
+  // Per-receipt fee fields come from the linked JE. Cumulative installment fees
+  // are only a fallback for entirely legacy histories without receipt attribution.
   const feeByPaymentId = useMemo(() => {
     const m = new Map<string, { lateFee: number; waived: number }>();
     for (const p of payments) {
@@ -197,14 +201,11 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
   // paid installments are payment-based; the money totals are collected-only:
   // cumulative = Σ non-voided receipt amounts EXCLUDING credit notes (a CN row
   // carries the original's POSITIVE amount — counting it would keep a voided
-  // payment in the total). Late-fee/waiver counted on installments where
-  // collection has STARTED (PAID or amountPaid > 0) — amountPaid-based rather
-  // than status so the fee doesn't vanish when the midnight cron flips a
-  // PARTIALLY_PAID overdue row back to OVERDUE; pure accruals on untouched
-  // overdue rows stay excluded. Matches the per-row fee shown in the table.
+  // payment in the total). Fees use the same receipt history as the table,
+  // including fees already collected before a reschedule resets Payment.lateFee.
   const paidCount = payments.filter((p) => p.status === 'PAID').length;
   const cumulativePaid = computeCumulativePaid(receipts);
-  const { totalLateFee, totalWaived } = computeFeeTotals(payments);
+  const { totalLateFee, totalWaived } = computeFeeTotals(receiptFees.values());
 
   // One row per receipt (incl. voided), oldest installment first.
   const rows = useMemo(
@@ -291,11 +292,11 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                           <Th>เลขที่ใบเสร็จ</Th>
                           <Th>ดิวชำระ</Th>
                           <Th>วันที่ชำระ</Th>
-                          <Th>งวด</Th>
+                          <Th>งวด / การจัดสรรเงิน</Th>
                           <Th className="text-right">ยอดต้องชำระ</Th>
                           <Th className="text-right">ยอดรับจริง</Th>
                           <Th>ค่าปรับ/อนุโลม</Th>
-                          <Th>CASE</Th>
+                          <Th>ลักษณะการชำระ</Th>
                           <Th>ช่องทาง</Th>
                           <Th>สถานะ</Th>
                           <Th>ผู้บันทึก</Th>
@@ -307,7 +308,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                         {rows.map((r) => {
                           const p = r.paymentId ? paymentById.get(r.paymentId) : undefined;
                           const c = caseFor(r, p);
-                          const { lateFee, waived } = receiptFees.get(r.id) ?? {
+                          const { lateFee, waived, unavailable } = receiptFees.get(r.id) ?? {
                             lateFee: 0,
                             waived: 0,
                           };
@@ -322,13 +323,36 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                               <Td>{p ? formatDateShort(p.dueDate) : '–'}</Td>
                               <Td>{formatDateShort(r.paidDate)}</Td>
                               <Td>
-                                {r.installmentNo ?? '–'}
-                                {contract ? `/${contract.totalMonths}` : ''}
+                                {r.installmentAllocations?.length ? (
+                                  <div className="space-y-1.5">
+                                    {r.installmentAllocations.map((allocation) => (
+                                      <div key={`${allocation.kind}-${allocation.installmentNo}`}>
+                                        <div className="flex items-baseline justify-between gap-4 tabular-nums">
+                                          <span>
+                                            {allocation.installmentNo}
+                                            {contract ? `/${contract.totalMonths}` : ''}
+                                          </span>
+                                          <span>{money(allocation.amount)} ฿</span>
+                                        </div>
+                                        {allocation.kind === 'RESCHEDULE_ADVANCE' && (
+                                          <div className="text-xs text-warning">ล่วงหน้างวดสุดท้าย</div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <>
+                                    {r.installmentNo ?? '–'}
+                                    {contract ? `/${contract.totalMonths}` : ''}
+                                  </>
+                                )}
                               </Td>
                               <Td className="text-right">{p ? `${money(p.amountDue)}` : '–'}</Td>
                               <Td className="text-right">{money(r.amount)}</Td>
                               <Td>
-                                {lateFee > 0 ? (
+                                {unavailable ? (
+                                  <span className="text-muted-foreground" title="ไม่พบข้อมูลค่าปรับแยกของใบเสร็จนี้">–</span>
+                                ) : lateFee > 0 ? (
                                   <div className="text-xs leading-snug">
                                     <div className="text-warning">{money(lateFee)}฿</div>
                                     {waived > 0 && (
@@ -337,7 +361,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                     <div className="text-foreground font-medium">
                                       สุทธิ {money(lateFee - waived)}฿
                                     </div>
-                                    {p?.waivedReason && (
+                                    {waived > 0 && p?.waivedReason && (
                                       <div className="text-muted-foreground">{p.waivedReason}</div>
                                     )}
                                   </div>
@@ -389,7 +413,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                       >
                                         <FileText className="size-3.5" />
                                       </button>
-                                      {canVoid &&
+                                      {canRequestVoid &&
                                         !UNVOIDABLE_RECEIPT_TYPES.includes(r.receiptType) && (
                                           <button
                                             onClick={() =>

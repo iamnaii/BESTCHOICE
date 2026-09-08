@@ -1,4 +1,4 @@
-import { IsNumber, IsString, Min, MinLength, MaxLength } from 'class-validator';
+import { IsNumber, IsString, IsOptional, Min, MinLength, MaxLength } from 'class-validator';
 
 export class RequestRefundDto {
   @IsString()
@@ -12,6 +12,14 @@ export class RequestRefundDto {
   @MinLength(10, { message: 'เหตุผลต้องมีอย่างน้อย 10 ตัวอักษร' })
   @MaxLength(2000)
   reason!: string;
+}
+
+/** Required for OWNER self-approval; recorded with the authenticated approval. */
+export class ApproveRefundDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reason?: string;
 }
 
 export class MarkRefundReversedDto {

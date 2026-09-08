@@ -23,7 +23,6 @@ import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { ReversePermissionGuard } from '../auth/guards/reverse-permission.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OtherIncomeService } from './other-income.service';
@@ -246,11 +245,8 @@ export class OtherIncomeController {
   }
 
   @Post(':id/reverse')
-  // Coarse superset — ReversePermissionGuard narrows per the dynamic
-  // `reverse_permission` mode (default OWNER+FM mode rejects ACCOUNTANT;
-  // the +ACCOUNTANT / CUSTOM modes may allow it).
+  // The lifecycle service checks the current per-user INCOME_CANCEL permission.
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  @UseGuards(ReversePermissionGuard)
   reverse(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: ReverseOtherIncomeDto,
@@ -267,7 +263,7 @@ export class OtherIncomeController {
   }
 
   @Post(':id/approve')
-  @Roles('OWNER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @HttpCode(200)
   approve(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -278,7 +274,7 @@ export class OtherIncomeController {
   }
 
   @Post(':id/reject')
-  @Roles('OWNER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @HttpCode(200)
   reject(
     @Param('id', new ParseUUIDPipe()) id: string,

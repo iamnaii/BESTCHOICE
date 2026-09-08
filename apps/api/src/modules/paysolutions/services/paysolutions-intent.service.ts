@@ -13,9 +13,10 @@ import { LineOaService } from '../../line-oa/line-oa.service';
 import { buildEarlyPayoffQRFlex } from '../../line-oa/flex-messages/early-payoff-qr.flex';
 import { buildPartialPaymentQRFlex } from '../../line-oa/flex-messages/partial-payment-qr.flex';
 import { buildRescheduleQRFlex } from '../../line-oa/flex-messages/reschedule-qr.flex';
-import { dAdd, dSub, dClose } from '../../../utils/decimal.util';
+import { d, dAdd, dSub, dClose } from '../../../utils/decimal.util';
 import { loadLateFeeConfig } from '../../../utils/late-fee.util';
 import { computeRescheduleQuote } from '../../../utils/reschedule-quote.util';
+import { addBkkDays } from '../../../utils/date.util';
 import { PaySolutionsGatewayClient, PAYSOLUTIONS_TIMEOUT_MS } from './paysolutions-gateway.client';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
 
@@ -437,6 +438,8 @@ export class PaySolutionsIntentService {
   async createPartialPaymentQR(input: {
     paymentId: string;
     amount: number;
+    additionalLateFee?: number;
+    requestedById?: string;
     description?: string;
   }): Promise<{ partialPaymentLinkId: string; paymentUrl: string; orderRef: string; sentToLine: boolean }> {
     const payment = await this.prisma.payment.findUnique({
@@ -455,6 +458,13 @@ export class PaySolutionsIntentService {
     }
     if (input.amount <= 0) {
       throw new BadRequestException('ยอดที่ส่ง QR ต้องมากกว่า 0');
+    }
+
+    const additionalLateFee = input.additionalLateFee ?? 0;
+    if (!Number.isFinite(additionalLateFee) || additionalLateFee < 0 ||
+        !d(additionalLateFee).eq(d(additionalLateFee).toDecimalPlaces(2)) ||
+        (additionalLateFee > 0 && !input.requestedById)) {
+      throw new BadRequestException('ค่าปรับที่เพิ่มต้องมีผู้บันทึก ไม่ติดลบ และมีทศนิยมไม่เกิน 2 ตำแหน่ง');
     }
 
     // Single outstanding QR per installment — cancel any earlier active one.
@@ -506,6 +516,7 @@ export class PaySolutionsIntentService {
           customerId: payment.contract.customer.id,
           token: orderRef,
           amount: input.amount,
+          metadata: { additionalLateFee: additionalLateFee.toFixed(2), requestedById: input.requestedById ?? null },
           gatewayRef: (gatewayResponse.refNo as string | undefined) ?? null,
           paymentUrl,
           status: 'ACTIVE',
@@ -700,8 +711,7 @@ export class PaySolutionsIntentService {
       const lineId = payment.contract.customer.lineIdFinance;
       if (lineId) {
         try {
-          const newDue = new Date(payment.dueDate);
-          newDue.setDate(newDue.getDate() + input.daysToShift);
+          const newDue = addBkkDays(payment.dueDate, input.daysToShift);
           const newDueDateText = newDue.toLocaleDateString('th-TH', {
             day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok',
           });

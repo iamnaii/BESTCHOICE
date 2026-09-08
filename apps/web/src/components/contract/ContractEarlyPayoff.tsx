@@ -1,3 +1,4 @@
+import PaymentApprovalRequestDialog from '@/components/payment/PaymentApprovalRequestDialog';
 import { useState } from 'react';
 import { FocusScope } from '@radix-ui/react-focus-scope';
 import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
@@ -95,11 +96,11 @@ export function EarlyPayoffOverlay({
   productName,
   branchName,
   onClose,
-  onSuccess,
 }: Props) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [discountPct, setDiscountPct] = useState(50);
+  const [approvalOpen, setApprovalOpen] = useState(false);
   // Owner rule 2026-07-08: direct FINANCE receipt = ธนาคารกสิกร (11-1201) only.
   const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
   // BKK-aware today — toISOString() is UTC and yields "yesterday" before 07:00 น. (PR #1327 bug class)
@@ -132,38 +133,6 @@ export function EarlyPayoffOverlay({
     },
   });
 
-  const mutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post(`/contracts/${contractId}/early-payoff`, {
-        // วิธีชำระตายตัว — เงินเข้า FINANCE ตรงมีทางเดียวคือโอนเข้ากสิกร (owner
-        // rule 2026-07-08); เงินสด/เครื่องอยู่หน้าร้านใช้ collectedByShop แทน
-        // (UI ตัด dropdown ออกให้เหมือนจอคืนเครื่อง — owner 2026-07-20)
-        paymentMethod: 'BANK_TRANSFER',
-        discountPct,
-        depositAccountCode,
-        collectedByShop,
-        // Cleared input = '' → omit so the server defaults to today (an empty
-        // string fails @IsDateString with a 400)
-        paymentDate: paymentDate || undefined,
-        notes: notes || undefined,
-      });
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('ปิดสัญญาก่อนกำหนดสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
-      queryClient.invalidateQueries({ queryKey: ['contract-payoff', contractId] });
-      queryClient.invalidateQueries({ queryKey: ['contracts'] });
-      // Payoff flips payments to PAID + posts the JP4 JE — refresh the
-      // payment-history caches (contract-payments/receipts/journal-entries)
-      // so the ประวัติการชำระ modal on ContractDetailPage isn't served stale.
-      invalidatePaymentQueries(queryClient);
-      onSuccess();
-      onClose();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
   const settlementMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post(`/contracts/${contractId}/shop-collect-settlement`, {
@@ -188,10 +157,28 @@ export function EarlyPayoffOverlay({
   const inputClass =
     'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden';
 
-  const canSubmit = !!quote && !mutation.isPending;
+  const canSubmit = !!quote;
 
   return (
     <WizardStackedOverlay maxWidthClass="max-w-2xl">
+      <PaymentApprovalRequestDialog
+        open={approvalOpen}
+        onOpenChange={setApprovalOpen}
+        action="EARLY_PAYOFF"
+        targetId={contractId}
+        contractNumber={contractNumber}
+        requiredPermissions={['EARLY_PAYOFF']}
+        initialReason={notes}
+        payload={{
+          paymentMethod: 'BANK_TRANSFER',
+          discountPct,
+          depositAccountCode,
+          collectedByShop,
+          paymentDate: paymentDate || undefined,
+          notes: notes || undefined,
+        }}
+        onRequested={onClose}
+      />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
         <button
@@ -622,11 +609,11 @@ export function EarlyPayoffOverlay({
             ยกเลิก
           </button>
           <button
-            onClick={() => mutation.mutate()}
+            onClick={() => setApprovalOpen(true)}
             disabled={!canSubmit}
             className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
           >
-            {mutation.isPending ? 'กำลังปิด...' : 'ยืนยันปิดสัญญา'}
+            ส่งขออนุมัติปิดสัญญา
           </button>
         </div>
       </div>

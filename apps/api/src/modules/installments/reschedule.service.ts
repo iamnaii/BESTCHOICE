@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { addBkkDays, addBkkMonths } from '../../utils/date.util';
 
 export type RescheduleVariant = '6a' | '6b';
 
@@ -9,6 +10,8 @@ export interface RescheduleInput {
   contractId: string;
   fromInstallmentNo: number;
   daysToShift: number;
+  /** Quoted new due date for the initiating installment, including a PAID 6b installment. */
+  scheduleAnchor?: { installmentNo: number; dueDate: Date };
   /** Optional — when provided, an AuditLog row is written inside the transaction. */
   userId?: string;
   /** Optional — recorded in AuditLog metadata for downstream JE classification. */
@@ -29,8 +32,9 @@ export class RescheduleService {
   /**
    * Wave 2 / Task 4 — atomic reschedule:
    *   1. UPDATE installment_schedules.due_date for installmentNo >= fromInstallmentNo
-   *      (shifted by daysToShift), so cron 2A posts the accrual on the NEW dueDate.
-   *   2. Reduce last installment amountDue by reschedule fee (CSV case-6a/6b step 1).
+   *      on the quoted monthly day, clamped at month-end without drift.
+   *      PAID installments retain both schedule and Payment history.
+   *   2. Keep installment amounts unchanged; the collect service parks the fee.
    *   3. Write AuditLog action=RESCHEDULE if userId provided.
    *      (consecutiveMissed is now derived — no persisted field to reset)
    *
@@ -49,7 +53,7 @@ export class RescheduleService {
     outerTx?: Prisma.TransactionClient,
   ): Promise<RescheduleResult> {
     const readClient: Prisma.TransactionClient | PrismaService = outerTx ?? this.prisma;
-    const installments = await readClient.installmentSchedule.findMany({
+    const candidates = await readClient.installmentSchedule.findMany({
       where: {
         contractId: input.contractId,
         installmentNo: { gte: input.fromInstallmentNo },
@@ -57,6 +61,17 @@ export class RescheduleService {
       } as any,
       orderBy: { installmentNo: 'asc' },
     });
+    const paidPayments = await readClient.payment.findMany({
+      where: {
+        contractId: input.contractId,
+        installmentNo: { gte: input.fromInstallmentNo },
+        deletedAt: null,
+        status: 'PAID',
+      },
+      select: { installmentNo: true },
+    });
+    const paidInstallmentNos = new Set(paidPayments.map((payment) => payment.installmentNo));
+    const installments = candidates.filter((inst) => !paidInstallmentNos.has(inst.installmentNo));
     if (!installments.length) {
       throw new NotFoundException('No installments to reschedule');
     }
@@ -84,9 +99,14 @@ export class RescheduleService {
       const newDueDates: Record<string, Date> = {};
       const shiftedIds: string[] = [];
 
+      const anchor = input.scheduleAnchor ?? {
+        installmentNo: installments[0].installmentNo,
+        dueDate: addBkkDays(installments[0].dueDate, input.daysToShift),
+      };
       for (const inst of installments) {
-        const newDue = new Date(inst.dueDate);
-        newDue.setDate(newDue.getDate() + input.daysToShift);
+        // Use installment numbers, not array indexes: PAID or missing rows must
+        // keep their calendar slot. Never add days to each old monthly due date.
+        const newDue = addBkkMonths(anchor.dueDate, inst.installmentNo - anchor.installmentNo);
         await tx.installmentSchedule.update({
           where: { id: inst.id },
           data: {
@@ -143,6 +163,8 @@ export class RescheduleService {
               fromInstallmentNo: input.fromInstallmentNo,
               daysToShift: input.daysToShift,
               variant: input.variant ?? null,
+              anchorInstallmentNo: anchor.installmentNo,
+              anchorNewDueDate: anchor.dueDate.toISOString(),
               rescheduleFee: fee.toFixed(2),
               shiftedInstallmentCount: installments.length,
               firstShiftedInstallmentNo: installments[0].installmentNo,

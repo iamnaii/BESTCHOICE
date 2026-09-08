@@ -29,6 +29,7 @@
  *   cd apps/api && npm run test:e2e -- multireceipt-reversal
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { voidReceiptWithApproval } from './helpers/payment-approval';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { JournalAutoService } from '../src/modules/journal/journal-auto.service';
@@ -223,13 +224,14 @@ describeOrSkip('Multi-receipt JE reversal — PR-843/I2 Phase 3 PR 3.1 (real DB 
           });
           for (const r of rjes) if (!jes.find((j) => j.id === r.id)) jes.push(r);
         }
+        await step(() => prisma.receipt.deleteMany({ where: { contractId } }));
         const ids = jes.map((e) => e.id);
         if (ids.length) {
+          await step(() => prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: ids } } }));
           await step(() => prisma.journalLine.deleteMany({ where: { journalEntryId: { in: ids } } }));
           await step(() => prisma.journalEntry.deleteMany({ where: { id: { in: ids } } }));
         }
         // audit_logs is IMMUTABLE (DB trigger blocks DELETE) — never deleted here.
-        await step(() => prisma.receipt.deleteMany({ where: { contractId } }));
         await step(() => prisma.payment.deleteMany({ where: { contractId } }));
         await step(() => prisma.installmentSchedule.deleteMany({ where: { contractId } }));
         await step(() => prisma.contract.deleteMany({ where: { id: contractId } }));
@@ -329,7 +331,7 @@ describeOrSkip('Multi-receipt JE reversal — PR-843/I2 Phase 3 PR 3.1 (real DB 
     });
 
     // issuer (adminId) != approver (approverId) — satisfies segregation of duties.
-    const res = await receipts.voidReceipt(receipt.id, 'multi-receipt void e2e', adminId, approverId, 'ACCOUNTANT');
+    const res = await voidReceiptWithApproval(prisma, receipts, receipt.id, 'multi-receipt void e2e', adminId, approverId, 'ACCOUNTANT');
     expect(res.voidedReceipt).toBeDefined();
     expect(res.creditNote).toBeDefined();
 

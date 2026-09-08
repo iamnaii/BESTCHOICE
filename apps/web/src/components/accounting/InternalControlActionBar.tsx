@@ -47,8 +47,10 @@ export interface InternalControlActionBarProps {
   status: IcabStatus;
   /** Audit events for this single document (already filtered by parent). */
   auditLog: IcabAuditEvent[];
-  /** Current viewer — used to gate reverse button + show "ผู้บันทึก". */
+  /** Current viewer — used to gate actions. */
   currentUser: IcabCurrentUser;
+  /** Persisted document creator, including documents without a CREATED audit. */
+  recorderName?: string | null;
 
   /** Maker-Checker mode (READY state shows + ต้องอนุมัติ badge). */
   makerCheckerEnabled?: boolean;
@@ -180,6 +182,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
     status,
     auditLog,
     currentUser,
+    recorderName,
     makerCheckerEnabled = false,
     isOwnDoc = false,
     isViewerApprover = false,
@@ -206,8 +209,9 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
   const [reverseDialogOpen, setReverseDialogOpen] = useState(false);
 
   const recorder =
-    auditLog.find((e) => e.event === 'CREATED')?.userName ?? currentUser.name;
-  const approver = auditLog.find((e) => e.event === 'APPROVED' || e.event === 'POSTED');
+    recorderName ?? auditLog.find((e) => e.event === 'CREATED')?.userName ??
+    (module === 'asset' ? currentUser.name : '—');
+  const approver = auditLog.find((e) => e.event === 'APPROVED');
 
   const resolvedPrintLabel = printLabel ?? ICAB_MODULE_DEFAULTS[module].printLabel;
   const showApprovalBadge = makerCheckerEnabled && (status === 'DRAFT' || status === 'READY');
@@ -218,11 +222,11 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
   //   3. Other modes: caller-supplied `canReverse` prop (pre-flight role check).
   // The server `ReversePermissionGuard` re-validates on every reverse request,
   // so this flag is UI-only and never a security boundary.
-  const canReverseResolved =
+  const canReverseResolved = module !== 'asset' ? canReverse : (
     currentUser.role === 'OWNER' ||
     (flags.reversePermission === 'CUSTOM'
       ? currentUser.canReverseOverride === true
-      : canReverse);
+      : canReverse));
 
   return (
     <>
@@ -325,7 +329,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
               </span>
             )}
             {status === 'READY' && !isViewerApprover && !isOwnDoc && (
-              <span className="text-muted-foreground">รออนุมัติจาก OWNER</span>
+              <span className="text-muted-foreground">รอผู้มีสิทธิ์อนุมัติ</span>
             )}
           </div>
 

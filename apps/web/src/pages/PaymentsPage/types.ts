@@ -27,7 +27,11 @@ export interface PendingPayment {
   dueDate: string;
   amountDue: string;
   amountPaid: string;
+  /** Active installment receipt cash for the paid list; null means no receipt evidence. */
+  receiptCashAmount?: string | null;
   lateFee: string;
+  /** Late fee already booked by prior receipts for this installment. */
+  lateFeePaid?: string;
   status: string;
   /** Set once the installment is PAID — used by the ชำระครบ tab. */
   paidDate?: string | null;

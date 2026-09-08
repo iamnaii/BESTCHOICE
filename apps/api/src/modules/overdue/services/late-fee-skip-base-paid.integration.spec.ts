@@ -72,10 +72,8 @@ describe('calculateLateFees skips installments whose base is already paid', () =
         status: 'PENDING',
       } as any,
     });
-    // Row 3 — PARTIAL principal (0 < amountPaid < amountDue): the base is NOT settled,
-    // so the `amount_paid < amount_due` guard must NOT skip it — the cron SHOULD still
-    // recompute the fee + flip OVERDUE. Preset lateFee = 77 (not a BRACKET output) so a
-    // recompute is detectable. Pins the strict-'<' boundary from the paid side.
+    // Row 3 — once a partial receipt exists, keep its cumulative fee even when
+    // the current bracket differs. A later receipt must not add a new auto fee.
     await prisma.payment.create({
       data: {
         contractId,
@@ -86,6 +84,15 @@ describe('calculateLateFees skips installments whose base is already paid', () =
         dueDate: new Date(now - 10 * 86_400_000),
         status: 'PARTIALLY_PAID',
       } as any,
+    });
+    // Row 4 — an on-time first partial had no fee. Becoming overdue later must
+    // not introduce a fee automatically on that same installment.
+    await prisma.payment.create({
+      data: {
+        contractId, installmentNo: 4, amountDue: new Prisma.Decimal('3671.00'),
+        amountPaid: new Prisma.Decimal('1000.00'), lateFee: new Prisma.Decimal(0),
+        dueDate: new Date(now - 10 * 86_400_000), status: 'PARTIALLY_PAID',
+      },
     });
   });
 
@@ -119,18 +126,18 @@ describe('calculateLateFees skips installments whose base is already paid', () =
     expect(unpaid!.status).toBe('OVERDUE');
   });
 
-  it('still recomputes the fee + flips OVERDUE for a PARTIAL principal row (0 < amountPaid < amountDue)', async () => {
+  it('preserves the fee and status after any partial payment, including an original zero fee', async () => {
     const svc = new OverdueLifecycleCronService(
       prisma as any,
       new ConsecutiveMissedService(prisma as any),
     );
     await svc.calculateLateFees();
 
-    // Row 3 — base only partly paid: guard `amount_paid < amount_due` is TRUE, so the
-    // row is processed like any overdue row — fee recomputed to tier2 (100, NOT frozen 77),
-    // status flipped OVERDUE. Confirms the skip applies ONLY to base-settled rows.
     const partial = await prisma.payment.findFirst({ where: { contractId, installmentNo: 3 } });
-    expect(new Prisma.Decimal(partial!.lateFee.toString()).toString()).toBe('100');
-    expect(partial!.status).toBe('OVERDUE');
+    expect(new Prisma.Decimal(partial!.lateFee.toString()).toString()).toBe('77');
+    expect(partial!.status).toBe('PARTIALLY_PAID');
+    const zeroFee = await prisma.payment.findFirst({ where: { contractId, installmentNo: 4 } });
+    expect(zeroFee!.lateFee.toFixed(2)).toBe('0.00');
+    expect(zeroFee!.status).toBe('PARTIALLY_PAID');
   });
 });

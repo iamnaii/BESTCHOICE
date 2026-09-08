@@ -27,6 +27,7 @@
  *   the void+re-receipt pair nets out), and net cash Dr 11-1101 == 1,515.83
  *   (money received exactly once after the voided receipt is reversed).
  */
+import { voidReceiptWithApproval } from '../../../../e2e/helpers/payment-approval';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -107,10 +108,10 @@ describe('receipt void un-pays the installment → re-receipt succeeds (integrat
   beforeAll(async () => {
     // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
     // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.receipt.deleteMany({});
     await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
-    await prisma.receipt.deleteMany({});
     await prisma.loyaltyPoint.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
@@ -196,9 +197,10 @@ describe('receipt void un-pays the installment → re-receipt succeeds (integrat
   });
 
   afterAll(async () => {
+    await prisma.receipt.deleteMany({});
+    await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
-    await prisma.receipt.deleteMany({});
     await prisma.loyaltyPoint.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
@@ -211,7 +213,7 @@ describe('receipt void un-pays the installment → re-receipt succeeds (integrat
   });
 
   it('void reverses the ledger, reverts the Payment to OVERDUE/0/null, voids the receipt + writes the audit trail', async () => {
-    const result = await receiptsService.voidReceipt(
+    const result = await voidReceiptWithApproval(prisma, receiptsService,
       receiptId,
       'ทดสอบยกเลิกการชำระ',
       recordedById,
@@ -327,7 +329,7 @@ describe('receipt void un-pays the installment → re-receipt succeeds (integrat
       recordedById,
     );
 
-    const result = await receiptsService.voidReceipt(
+    const result = await voidReceiptWithApproval(prisma, receiptsService,
       receipt2.id,
       'ทดสอบยกเลิกรอบสอง',
       recordedById,

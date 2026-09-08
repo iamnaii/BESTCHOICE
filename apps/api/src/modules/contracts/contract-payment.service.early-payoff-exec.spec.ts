@@ -1,3 +1,5 @@
+import { consumePaymentApproval } from '../payments/services/payment-approval-request.util';
+jest.mock('../payments/services/payment-approval-request.util', () => ({ ...jest.requireActual('../payments/services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from './contract-payment.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
@@ -245,7 +247,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
   // (a) FIFO marks each unpaid Payment PAID ──────────────────────────────────
   it('(a) FIFO-distributes the payoff and marks every unpaid Payment PAID', async () => {
-    await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
     // One update per unpaid row, in installmentNo order (pay-7 .. pay-12).
     expect(paymentUpdates).toHaveLength(6);
@@ -273,7 +275,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
   // (b) the createAndPost JE has the 8 documented codes and is BALANCED ───────
   it('(b) posts ONE JE with the 8 documented account codes and Dr === Cr', async () => {
-    await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
     expect(createAndPost).toHaveBeenCalledTimes(1);
     const je = getCapturedJe();
@@ -318,7 +320,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
   // (b2) backdate fix 2026-07-09: JE entryDate follows dto.paymentDate ────────
   it('(b2) threads dto.paymentDate into the JE postedAt (backdate lands in the ledger too)', async () => {
-    await service.earlyPayoff(quoteContract.id, 'user-1', {
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', {
       ...baseDto,
       paymentDate: '2026-01-05',
     });
@@ -331,7 +333,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
   // (b4) QA #1347 follow-up: the EARLY_PAYOFF receipt carries the same backdate ─
   it('(b4) passes dto.paymentDate to generateReceipt so the receipt is dated on the money date', async () => {
-    await service.earlyPayoff(quoteContract.id, 'user-1', {
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', {
       ...baseDto,
       paymentDate: '2026-01-05',
     });
@@ -345,7 +347,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     const tomorrow = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     await expect(
-      service.earlyPayoff(quoteContract.id, 'user-1', { ...baseDto, paymentDate: tomorrow }),
+      approvedEarlyPayoff(service, quoteContract.id, 'user-1', { ...baseDto, paymentDate: tomorrow }),
     ).rejects.toThrow(/อนาคต/);
     expect(createAndPost).not.toHaveBeenCalled();
   });
@@ -359,7 +361,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(quote.discountPct).toBe(50); // percentage form returned to callers
 
     // Exec path JE discount (uses quote.discountPct=50 then .div(100)).
-    await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
     const je = getCapturedJe();
     const execDiscount = lineFor(je, '52-1106')!.dr.toFixed(2);
 
@@ -372,7 +374,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
   // (d) contract -> EARLY_PAYOFF + creditBalance 0 + transferOwnership(null) ──
   it('(d) flips contract to EARLY_PAYOFF + creditBalance 0 and releases ownership to null', async () => {
-    const result = await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+    const result = await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
     expect(tx.contract.update).toHaveBeenCalledTimes(1);
     expect(contractUpdateData.status).toBe('EARLY_PAYOFF');
@@ -405,7 +407,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
         activeRow: { agingBucket: '1-30' },
       });
 
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       expect(eclExecute).toHaveBeenCalledTimes(1);
       const [input, txArg] = eclExecute.mock.calls[0];
@@ -428,7 +430,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
         activeRow: null,
       });
 
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       expect(eclExecute).not.toHaveBeenCalled();
       expect(badDebtProvisionUpdateMany).toHaveBeenCalledWith({
@@ -443,7 +445,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
         activeRow: null, // no ACTIVE row (e.g. row already reversed by a prior cron run)
       });
 
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       expect(eclExecute).toHaveBeenCalledTimes(1);
       const input = eclExecute.mock.calls[0][0];
@@ -476,7 +478,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(quote.journalPreview.lines).toHaveLength(7);
 
     // WRITE path: the posted JE now ALSO drops the discount line (7 lines).
-    await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
     const je = getCapturedJe();
     expect(je.lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
     expect(je.lines).toHaveLength(7);
@@ -500,7 +502,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
   it('(f) clamps discountPct to a max of 50% even when the caller asks for more', async () => {
     // dto.discountPct = 80 → getEarlyPayoffQuote clamps to min(50, 80) = 50,
     // returns discountPct 50 → exec JE discount = 900 × 50/100 = 450.00.
-    await service.earlyPayoff(quoteContract.id, 'user-1', { paymentMethod: 'CASH', discountPct: 80 });
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', { paymentMethod: 'CASH', discountPct: 80 });
     const je = getCapturedJe();
     expect(je.metadata.interestDiscountPercent).toBe(50);
     expect(lineFor(je, '52-1106')!.dr.toFixed(2)).toBe('450.00');
@@ -511,7 +513,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     // Math.max(0, Math.min(50, -10)) = 0 → quote discountPct 0 → discount
     // = 900 × 0/100 = 0. The EXEC JE now guards the 52-1106 line (converged
     // with the preview — see (e)).
-    await service.earlyPayoff(quoteContract.id, 'user-1', { paymentMethod: 'CASH', discountPct: -10 });
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', { paymentMethod: 'CASH', discountPct: -10 });
     const je = getCapturedJe();
     expect(je.metadata.interestDiscountPercent).toBe(0);
     expect(je.lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
@@ -527,7 +529,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
   // future divergence surfaces here.
   it('characterizes the quote-cash vs JE-cash bases (coincide in this clean fixture)', async () => {
     const quote = await service.getEarlyPayoffQuote(quoteContract.id);
-    const result = await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+    const result = await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
     const je = getCapturedJe();
 
     const jeCash = lineFor(je, '11-1201')!.dr.toFixed(2);
@@ -559,7 +561,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     };
 
     it('accepts BANK_TRANSFER with no referenceNo and no slipUrl (the UI body)', async () => {
-      const result = await service.earlyPayoff(quoteContract.id, 'user-1', uiBody);
+      const result = await approvedEarlyPayoff(service, quoteContract.id, 'user-1', uiBody);
 
       expect(result.totalPayoff).toBe(11106);
       expect(createAndPost).toHaveBeenCalledTimes(1);
@@ -573,7 +575,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     });
 
     it('still stores referenceNo / slipUrl on every row when they ARE supplied', async () => {
-      await service.earlyPayoff(quoteContract.id, 'user-1', {
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', {
         ...uiBody,
         referenceNo: 'KB-2026-0001',
         slipUrl: 'https://s3.example/slip.png',
@@ -607,7 +609,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       mockSchedules();
       tx.journalEntry = { findMany: jest.fn().mockResolvedValue([]) };
 
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       const je = getCapturedJe();
       expect(lineFor(je, '42-1103')?.cr.toFixed(2)).toBe('300.00');
@@ -629,7 +631,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
         ]),
       };
 
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       const je = getCapturedJe();
       // เหลือลงได้แค่ 300 − 120 = 180 — ห้าม Cr 42-1103 ซ้ำยอดที่ลงแล้ว
@@ -647,7 +649,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       rows[0] = { ...rows[0], lateFeeWaived: true };
       tx.payment.findMany.mockResolvedValue(rows);
 
-      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+      await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
 
       const je = getCapturedJe();
       expect(lineFor(je, '42-1103')).toBeUndefined();
@@ -655,3 +657,21 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     });
   });
 });
+
+/** Money tests run an already-approved action; the kernel's own suites test authority and stale snapshots. */
+async function approvedEarlyPayoff(service: ContractPaymentService, id: string, userId: string, dto: Parameters<ContractPaymentService['earlyPayoff']>[2]) {
+  (consumePaymentApproval as jest.Mock).mockReset();
+  const originalQuote = service.getEarlyPayoffQuote.bind(service);
+  let approvedQuote: Awaited<ReturnType<ContractPaymentService['getEarlyPayoffQuote']>>;
+  const quoteSpy = jest.spyOn(service, 'getEarlyPayoffQuote').mockImplementation(async (...args) => {
+    // These unit fixtures model a reviewed quote; real transactional re-quote/staleness is covered by the approval integration suite.
+    if (args[3]) return approvedQuote;
+    const quote = await originalQuote(...args);
+    approvedQuote = quote;
+    (consumePaymentApproval as jest.Mock).mockResolvedValueOnce({ requestedById: userId, approverId: 'test-approver', payload: dto, reviewSummary: quote });
+    return quote;
+  });
+  try {
+    return await service.earlyPayoff(id, userId, dto, { requestId: 'payoff-request', actorId: 'test-approver' });
+  } finally { quoteSpy.mockRestore(); }
+}

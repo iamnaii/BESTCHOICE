@@ -624,6 +624,28 @@ describe('RepossessionsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('rejects invalid return reasons and Other without detail before writing', async () => {
+      await expect(service.create({ ...baseDto, returnReason: 'INVALID' } as never, 'user-1'))
+        .rejects.toThrow('กรุณาเลือกเหตุผลคืนเครื่องที่ถูกต้อง');
+      await expect(service.create({ ...baseDto, returnReason: 'OTHER', notes: '  ' } as never, 'user-1'))
+        .rejects.toThrow('กรุณาระบุรายละเอียดเหตุผลคืนเครื่อง');
+      expect(prisma.repossession.create).not.toHaveBeenCalled();
+    });
+
+    it('saves the selected return reason with readable notes and a structured audit code', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      await service.create({ ...baseDto, returnReason: 'UNAFFORDABLE', notes: 'ผู้รับเครื่องตรวจสภาพแล้ว' } as never, 'user-1');
+      expect(prisma.repossession.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        notes: 'เหตุผลคืนเครื่อง: ลูกค้าไม่สามารถผ่อนต่อได้\nผู้รับเครื่องตรวจสภาพแล้ว',
+      }) }));
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        action: 'REPOSSESSION', newValue: expect.objectContaining({ returnReason: 'UNAFFORDABLE', returnReasonLabel: 'ลูกค้าไม่สามารถผ่อนต่อได้' }),
+      }) }));
+    });
+
     it('throws NotFoundException when contract is not found', async () => {
       prisma.contract.findUnique.mockResolvedValue(null);
 
@@ -1022,7 +1044,7 @@ describe('RepossessionsService', () => {
         prisma.tradeInValuation = tableRow(8000); // appraisal 6000 = −25%
 
         await expect(
-          service.create({ ...baseDto, notes: '   ' } as never, 'user-1'),
+          service.create({ ...baseDto, returnReason: 'UNAFFORDABLE', notes: '   ' } as never, 'user-1'),
         ).rejects.toThrow(/เกิน 15%/);
 
         expect(prisma.repossession.create).not.toHaveBeenCalled();

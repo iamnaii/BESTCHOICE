@@ -49,8 +49,12 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
       // Default null → threshold defaults to 0 → never enforced.
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
-        // approval_enabled / auto_post_on_approve etc. → null = defaults
-        findFirst: jest.fn().mockResolvedValue(null),
+        // Preserve feature-flag defaults; current accountant has explicit action grants.
+        findFirst: jest.fn(async ({ where }: { where: { key: string } }) =>
+          where.key === 'accounting_permissions'
+            ? { value: JSON.stringify({ 'user-1': ['EXPENSE_POST', 'EXPENSE_APPROVE'] }) }
+            : null,
+        ),
       },
       // post/approve resolve SHOP companyId for the validatePeriodOpen call.
       companyInfo: {
@@ -64,6 +68,11 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
         create: jest.fn().mockResolvedValue({}),
       },
       user: {
+        findFirst: jest.fn(async ({ where }: { where: { id: string } }) =>
+          where.id === 'user-1'
+            ? { id: 'user-1', name: 'Accountant', role: 'ACCOUNTANT', branchId: null }
+            : null,
+        ),
         findMany: jest.fn().mockResolvedValue([]),
       },
       journalEntry: {

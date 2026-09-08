@@ -1,3 +1,5 @@
+import { consumePaymentApproval } from './services/payment-approval-request.util';
+jest.mock('./services/payment-approval-request.util', () => ({ ...jest.requireActual('./services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
 /**
  * payments.credit-waive-summary.spec.ts
  *
@@ -159,6 +161,7 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
   };
 
   beforeEach(async () => {
+    (consumePaymentApproval as jest.Mock).mockReset().mockResolvedValue({ requestedById: 'requester-1', approverId: 'approver-1', payload: {} });
     jest.clearAllMocks();
     prisma = buildPrisma();
     createAndPost = jest.fn().mockResolvedValue({ id: 'je-1' });
@@ -377,7 +380,7 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       // checkContractCompletion: all installments now paid → completes contract.
       prisma.payment.count.mockResolvedValue(0);
 
-      const result = await service.waiveLateFee('wv-pay-1', 'goodwill', 'requester-1', 'approver-1');
+      const result = await service.waiveLateFee('wv-pay-1', 'goodwill', 'requester-1', 'approver-1', undefined, { requestId: 'waiver-request', actorId: 'approver-1' });
 
       const write = prisma.payment.update.mock.calls[0][0];
       expect(write.data.lateFee).toBe(0);
@@ -406,7 +409,7 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
-    it('requester === approver → ForbiddenException (Segregation of Duties), no write', async () => {
+    it('direct waiver without a request → ForbiddenException, no write', async () => {
       await expect(
         service.waiveLateFee('wv-pay-1', 'self approve', 'same-user', 'same-user'),
       ).rejects.toThrow(ForbiddenException);
@@ -417,7 +420,7 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       prisma.payment.findUnique.mockResolvedValue(mkPayment({ lateFee: D(0) }));
 
       await expect(
-        service.waiveLateFee('wv-pay-1', 'no fee', 'requester-1', 'approver-1'),
+        service.waiveLateFee('wv-pay-1', 'no fee', 'requester-1', 'approver-1', undefined, { requestId: 'waiver-request', actorId: 'approver-1' }),
       ).rejects.toThrow('รายการนี้ไม่มีค่าปรับ');
       expect(prisma.payment.update).not.toHaveBeenCalled();
     });
@@ -429,7 +432,7 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       // Not fully paid (amountPaid 0 < amountDue 3000) → status stays, no completion.
       prisma.payment.count.mockResolvedValue(1);
 
-      const result = await service.waiveLateFee('wv-pay-1', 'big waiver', 'requester-1', 'approver-1');
+      const result = await service.waiveLateFee('wv-pay-1', 'big waiver', 'requester-1', 'approver-1', undefined, { requestId: 'waiver-request', actorId: 'approver-1' });
 
       expect(result.originalLateFee).toBe(6000);
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);

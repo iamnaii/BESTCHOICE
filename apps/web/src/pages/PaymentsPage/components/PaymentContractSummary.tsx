@@ -21,17 +21,20 @@ export type DetectedCase =
 export function ContractInfoPanel({
   payment,
   lateFee,
+  lateFeePaid,
   netExposure,
   onOpenPayoff,
 }: {
   payment: PendingPayment;
   lateFee: Decimal;
+  lateFeePaid: Decimal;
   netExposure: Decimal;
   onOpenPayoff: () => void;
 }) {
   const amountDue = new Decimal(payment.amountDue);
   const amountPaid = new Decimal(payment.amountPaid);
   const totalDue = amountDue.add(lateFee).sub(amountPaid).toDecimalPlaces(2);
+  const receiptLateFee = Decimal.max(lateFee.minus(lateFeePaid), 0);
   const isOverdue = payment.status === 'OVERDUE';
 
   const row = (label: string, value: React.ReactNode, red?: boolean) => (
@@ -57,12 +60,12 @@ export function ContractInfoPanel({
         'ค่างวด',
         `${amountDue.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿`,
       )}
-      {lateFee.gt(0) &&
-        row(
-          'ค่าปรับ',
-          `${lateFee.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿`,
-          true,
-        )}
+      {row(
+        'ค่าปรับที่รับครั้งนี้',
+        `${receiptLateFee.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿`,
+        receiptLateFee.gt(0),
+      )}
+      {lateFeePaid.gt(0) && row('ค่าปรับที่รับแล้ว', `${lateFeePaid.toFixed(2)} ฿`)}
       {amountPaid.gt(0) && (
         <>
           {row(

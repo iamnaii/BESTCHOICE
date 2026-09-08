@@ -127,7 +127,7 @@ export class ExpenseDocumentCreateService {
           receiptImageUrl: dto.receiptImageUrl ?? null,
           note: dto.note ?? null,
           fromTemplateId: dto.fromTemplateId ?? null,
-          approvedById: dto.approvedById ?? null,
+          approvedById: null,
           // Phase A.5 — tax-disallowed flag (ม.65 ตรี). Lines inherit from doc-level
           // unless they set their own override.
           taxDisallowed: dto.taxDisallowed ?? false,
@@ -1179,6 +1179,7 @@ export class ExpenseDocumentCreateService {
   // ─── Update (DRAFT only) ─────────────────────────────────────────────
   async update(id: string, dto: UpdateExpenseDocumentDto, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `post:${id}`);
       const existing = await tx.expenseDocument.findUniqueOrThrow({
         where: { id },
         include: { expenseDetail: { include: { lines: true } } },
@@ -1204,11 +1205,7 @@ export class ExpenseDocumentCreateService {
       if (dto.reference !== undefined) data.reference = dto.reference;
       if (dto.receiptImageUrl !== undefined) data.receiptImageUrl = dto.receiptImageUrl;
       if (dto.note !== undefined) data.note = dto.note;
-      if (dto.approvedById !== undefined) {
-        data.approvedBy = dto.approvedById
-          ? { connect: { id: dto.approvedById } }
-          : { disconnect: true };
-      }
+
       // Phase A.5 — accountants may flip the flag retroactively while a doc
       // is still editable (DRAFT/ACCRUAL). Persisted as plain Boolean.
       if (dto.taxDisallowed !== undefined) data.taxDisallowed = dto.taxDisallowed;

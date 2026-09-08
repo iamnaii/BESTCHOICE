@@ -1,3 +1,4 @@
+import { creditSnapshot, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort, formatDateMedium, formatDateLong, getThaiDateParts } from '../../../utils/thai-date.util';
@@ -647,6 +648,17 @@ ${(() => {
       );
     }
 
+    const tender = creditSnapshot(contract.tradeInCreditSnapshot);
+    if (tender) {
+      const cash = cashDownPayment(contract).toFixed(2);
+      const disclosure = `<section style="break-inside:avoid;border:1px solid #ccc;padding:10px;margin:12px 0;font-size:10pt;line-height:1.6">
+        <strong>รายละเอียดการชำระด้วยเครื่องเทิร์น</strong><br>
+        อ้างอิง ${esc(tender.voucherNumber ?? tender.tradeInId)}<br>
+        เงินดาวน์สด/โอน ${cash} บาท + มูลค่าเครื่องเทิร์น ${tender.baseAmount} บาท = ยอดชำระล่วงหน้ารวม ${tender.totalDownAmount} บาท<br>
+        โบนัสเทิร์น ${tender.bonusAmount} บาท รวมเป็นส่วนลดในราคาขายแล้ว (ไม่ใช่เงินสดรับ)
+      </section>`;
+      result = result.includes('</body>') ? result.replace('</body>', `${disclosure}</body>`) : result + disclosure;
+    }
     return result;
   }
 

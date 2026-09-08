@@ -1,6 +1,7 @@
 import type { Product, Customer, InterestConfig } from '../types';
 
 export interface ContractSummaryPanelProps {
+  tradeInBaseAmount?: number;
   selectedProduct: Product;
   selectedCustomer: Customer;
   sellingPrice: number;
@@ -12,6 +13,7 @@ export interface ContractSummaryPanelProps {
 }
 
 export function ContractSummaryPanel({
+  tradeInBaseAmount = 0,
   selectedProduct,
   selectedCustomer,
   sellingPrice,
@@ -25,6 +27,7 @@ export function ContractSummaryPanel({
     <details className="mt-4">
       <summary className="cursor-pointer text-sm font-semibold text-foreground hover:text-primary">สรุปสัญญาก่อนยืนยัน</summary>
       <div className="mt-3 rounded-xl border border-border/50 bg-card p-5 shadow-sm space-y-3">
+        {tradeInBaseAmount > 0 && <p className="text-sm">เงินดาวน์สด/โอน {downPayment.toLocaleString()} + เครื่องเทิร์น {tradeInBaseAmount.toLocaleString()} = รวม {(downPayment + tradeInBaseAmount).toLocaleString()} บาท</p>}
         <div className="bg-muted/50 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">สินค้า</span><div className="font-medium mt-0.5">{selectedProduct.brand} {selectedProduct.model}</div></div>
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ลูกค้า</span><div className="font-medium mt-0.5">{selectedCustomer.name}</div></div>

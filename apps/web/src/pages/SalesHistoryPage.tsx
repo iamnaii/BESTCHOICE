@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import type { TradeInCreditSnapshot } from '@installment/shared';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
@@ -27,6 +28,7 @@ const VOID_REASON_MIN = 10;
 const VOIDABLE_SALE_TYPES = new Set(['CASH', 'EXTERNAL_FINANCE']);
 
 interface Sale {
+  tradeInCreditSnapshot?: TradeInCreditSnapshot | null;
   id: string;
   saleNumber: string;
   saleType: string;
@@ -243,6 +245,10 @@ export default function SalesHistoryPage() {
         { header: 'ยอดสุทธิ', key: 'netAmount', width: 14 },
         { header: 'วิธีชำระ', key: 'paymentMethod', width: 14 },
         { header: 'เงินดาวน์', key: 'downPayment', width: 14 },
+        { header: 'เงินสด/โอนสุทธิ (รายการเทิร์น)', key: 'tradeCash', width: 20 },
+        { header: 'มูลค่าเครื่องเทิร์น', key: 'tradeBase', width: 18 },
+        { header: 'โบนัสเทิร์น (รวมในส่วนลด)', key: 'tradeBonus', width: 22 },
+        { header: 'ใบรับเครื่องเทิร์น', key: 'tradeVoucher', width: 22 },
         { header: 'ค่างวด', key: 'monthlyPayment', width: 14 },
         { header: 'จำนวนงวด', key: 'totalMonths', width: 10 },
         { header: 'เลขสัญญา', key: 'contractNumber', width: 18 },
@@ -287,6 +293,10 @@ export default function SalesHistoryPage() {
             netAmount: Number(s.netAmount),
             paymentMethod: paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-',
             downPayment: s.downPaymentAmount ? Number(s.downPaymentAmount) : '-',
+            tradeCash: s.tradeInCreditSnapshot ? Number(s.tradeInCreditSnapshot.cashDownAmount) : '-',
+            tradeBase: s.tradeInCreditSnapshot ? Number(s.tradeInCreditSnapshot.baseAmount) : '-',
+            tradeBonus: s.tradeInCreditSnapshot ? Number(s.tradeInCreditSnapshot.bonusAmount) : '-',
+            tradeVoucher: s.tradeInCreditSnapshot?.voucherNumber ?? s.tradeInCreditSnapshot?.tradeInId ?? '-',
             monthlyPayment: s.contract ? Number(s.contract.monthlyPayment) : '-',
             totalMonths: s.contract?.totalMonths || '-',
             contractNumber: s.contract?.contractNumber || '-',
@@ -418,6 +428,12 @@ export default function SalesHistoryPage() {
       render: (s: Sale) => (
         <div className="text-xs">
           <div>{paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-'}</div>
+          {s.tradeInCreditSnapshot && <div className="space-y-1 mt-1">
+            <div>เงินสด/โอนสุทธิ {Number(s.tradeInCreditSnapshot.cashDownAmount).toLocaleString()} ฿</div>
+            <div>เครดิตเครื่องเทิร์น {Number(s.tradeInCreditSnapshot.baseAmount).toLocaleString()} ฿</div>
+            <div>โบนัส {Number(s.tradeInCreditSnapshot.bonusAmount).toLocaleString()} ฿ (รวมในส่วนลด)</div>
+            <div className="text-muted-foreground">{s.tradeInCreditSnapshot.voucherNumber ?? s.tradeInCreditSnapshot.tradeInId}</div>
+          </div>}
           {s.saleType === 'INSTALLMENT' && s.contract && (
             <div className="text-primary">
               ดาวน์ {Number(s.downPaymentAmount || 0).toLocaleString()} ฿

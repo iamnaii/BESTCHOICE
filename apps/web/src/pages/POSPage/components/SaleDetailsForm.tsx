@@ -25,6 +25,7 @@ interface SaleDetailsFormProps {
   selectedPriceId: string;
   onPriceSelect: (priceId: string) => void;
   netAmount: number;
+  cashDue?: number;
   transferAmount: number;
   sellingPrice: string;
   discount: string;
@@ -37,6 +38,7 @@ export default function SaleDetailsForm({
   selectedPriceId,
   onPriceSelect,
   netAmount,
+  cashDue = netAmount,
   transferAmount,
   sellingPrice,
   discount,
@@ -198,7 +200,7 @@ export default function SaleDetailsForm({
                           field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)
                         }
                         className={inputClass}
-                        placeholder={String(netAmount)}
+                        placeholder={String(cashDue)}
                       />
                     </FormControl>
                     <FormMessage />

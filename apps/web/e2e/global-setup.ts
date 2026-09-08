@@ -6,6 +6,18 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = path.join(__dirname, '../.playwright-auth.json');
 const ROLE_AUTH_FILE = path.join(__dirname, '../.playwright-roles-auth.json');
+const EXPECTED_COMPANIES: Record<string, string[]> = {
+  OWNER: ['SHOP', 'FINANCE'], BRANCH_MANAGER: ['SHOP'], SALES: ['SHOP'],
+  FINANCE_MANAGER: ['FINANCE'], ACCOUNTANT: ['SHOP', 'FINANCE'],
+};
+function assertGrants(user: { role?: string; accessibleCompanies?: string[]; primaryCompany?: string } | undefined, role: string, source: string) {
+  const expected = [...EXPECTED_COMPANIES[role]].sort();
+  const actual = Array.isArray(user?.accessibleCompanies) ? [...user.accessibleCompanies].sort() : [];
+  if (user?.role !== role || JSON.stringify(actual) !== JSON.stringify(expected)
+    || user?.primaryCompany !== (role === 'FINANCE_MANAGER' ? 'FINANCE' : 'SHOP')) {
+    throw new Error(`Global setup: ${role} company grants are incorrect in ${source}; check seed and auth serialization`);
+  }
+}
 
 const ROLE_ACCOUNTS: Record<string, { email: string; password: string }> = {
   OWNER: { email: 'admin@bestchoice.com', password: 'admin1234' },
@@ -33,6 +45,11 @@ async function loginRole(
   if (!data.accessToken) {
     throw new Error(`Global setup: accessToken missing for ${role}`);
   }
+  assertGrants(data.user, role, 'login');
+  const me = await request.get(`${apiURL}/api/auth/me`, { headers: { Authorization: `Bearer ${data.accessToken}` } });
+  if (!me.ok()) throw new Error(`Global setup /auth/me failed for ${role}: HTTP ${me.status()}`);
+  const meRaw = await me.json();
+  assertGrants(meRaw.success && meRaw.data ? meRaw.data : meRaw, role, '/auth/me');
   return data.accessToken;
 }
 
@@ -40,6 +57,7 @@ export default async function globalSetup() {
   const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
   const browser = await chromium.launch();
+  try {
   const context = await browser.newContext();
 
   const tokens: Record<string, string> = {};
@@ -59,5 +77,7 @@ export default async function globalSetup() {
 
   fs.writeFileSync(ROLE_AUTH_FILE, JSON.stringify({ tokens, timestamps, timestamp: Date.now() }));
 
-  await browser.close();
+  } finally {
+    await browser.close();
+  }
 }

@@ -56,8 +56,8 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(getSidebarForRole('SALES', 'settings')).toEqual([]);
   });
 
-  it('ACCOUNTANT + shop returns empty', () => {
-    expect(getSidebarForRole('ACCOUNTANT', 'shop')).toEqual([]);
+  it('ACCOUNTANT finds SHOP accounting in SHOP', () => {
+    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting']);
   });
 
   it('ACCOUNTANT + fin returns accounting sections', () => {
@@ -150,26 +150,25 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
 });
 
 describe('VIEWER role (Owner Q4 2026-05-17)', () => {
-  it('VIEWER zone config is fin-only with no settings gear', () => {
+  it('VIEWER has company-specific report zones and no settings gear', () => {
     const cfg = getZoneConfigForRole('VIEWER');
     expect(cfg).toBeDefined();
-    expect(cfg?.zones).toEqual(['fin']);
+    expect(cfg?.zones).toEqual(['shop', 'fin']);
     expect(cfg?.defaultZone).toBe('fin');
     expect(cfg?.showSettingsGear).toBe(false);
   });
 
-  it('VIEWER + fin returns the 4 expected read-only sections', () => {
+  it('VIEWER + fin returns FINANCE read-only sections', () => {
     const keys = getSidebarForRole('VIEWER', 'fin').map((s) => s.key);
     expect(keys).toEqual([
       'viewer-accounting',
       'viewer-reports',
-      'viewer-shop-accounting',
       'viewer-audit',
     ]);
   });
 
-  it('VIEWER + shop returns empty (out of read-only scope)', () => {
-    expect(getSidebarForRole('VIEWER', 'shop')).toEqual([]);
+  it('VIEWER finds SHOP accounting in SHOP', () => {
+    expect(getSidebarForRole('VIEWER', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting']);
   });
 
   it('VIEWER + settings returns empty (no gear)', () => {
@@ -177,7 +176,7 @@ describe('VIEWER role (Owner Q4 2026-05-17)', () => {
   });
 
   it('VIEWER menu paths stay inside the Q4-approved scope', () => {
-    const sections = getSidebarForRole('VIEWER', 'fin');
+    const sections = [...getSidebarForRole('VIEWER', 'fin'), ...getSidebarForRole('VIEWER', 'shop')];
     const paths = sections.flatMap((s) => s.items.map((i) => i.path));
     // Every path must read /reports, /accounting/*, /audit-logs, /finance/*,
     // /profit-loss, /shop/accounting, or /financial-audit — all map to
@@ -333,5 +332,21 @@ describe('resolveZoneForPath — hash-aware (regression: FM/ACC must not bounce 
   it('/contacts resolves to settings zone for OWNER (item inside the settings submenu)', () => {
     // /contacts is the first item inside the ตั้งค่าระบบ submenu (settings zone)
     expect(resolveZoneForPath('OWNER', '/contacts')).toBe('settings');
+  });
+});
+
+ describe('work choices respect company grants and available role menus', () => {
+  it.each([
+    ['OWNER', ['FINANCE'], ['fin'], 'fin'],
+    ['ACCOUNTANT', ['SHOP'], ['shop'], 'shop'],
+    ['BRANCH_MANAGER', ['SHOP', 'FINANCE'], ['shop'], 'shop'],
+  ])('%s uses an accessible default with %j', (role, companies, zones, defaultZone) => {
+    const config = getZoneConfigForRole(role as string, companies as string[]);
+    expect(config?.zones).toEqual(zones);
+    expect(config?.defaultZone).toBe(defaultZone);
+  });
+  it('an account without company grants has no work choice', () => {
+    expect(getZoneConfigForRole('OWNER', [])?.zones).toEqual([]);
+    expect(getZoneConfigForRole('OWNER')?.zones).toEqual(['shop', 'fin']);
   });
 });

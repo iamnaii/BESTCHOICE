@@ -87,7 +87,7 @@ export default function TradeInTable({
       label: 'วันที่/เวลา',
       sortable: true,
       hideable: true,
-      width: '116px',
+      width: '104px',
       render: (item) => {
         const at = item.idCardVerifiedAt ?? item.createdAt;
         return (
@@ -107,7 +107,7 @@ export default function TradeInTable({
       label: 'เลขใบสำคัญ',
       sortable: true,
       hideable: true,
-      width: '152px',
+      width: '144px',
       render: (item) =>
         item.voucherNumber ? (
           <div className="truncate font-mono text-foreground" title={item.voucherNumber}>
@@ -122,17 +122,15 @@ export default function TradeInTable({
       key: 'device',
       label: 'อุปกรณ์',
       render: (item) => {
-        const device = [item.deviceBrand, item.deviceModel].filter(Boolean).join(' ');
+        const device = [item.deviceBrand, item.deviceModel, item.deviceStorage].filter(Boolean).join(' ');
         return (
           <div className="min-w-0">
-            {/* Model owns line 1 outright — storage used to get clipped off its tail */}
-            <div className="truncate leading-snug text-foreground" title={device}>
+            {/* Keep the identifier on its own line; longer model names can wrap. */}
+            <div className="whitespace-normal wrap-anywhere leading-snug text-foreground" title={device}>
               {device}
             </div>
             <SubLine title={item.imei ?? undefined}>
-              {item.deviceStorage && <span className="shrink-0">{item.deviceStorage}</span>}
-              {item.deviceStorage && item.imei && <span className="shrink-0">·</span>}
-              {item.imei && <span className="truncate font-mono">{item.imei}</span>}
+              {item.imei && <span className="font-mono">{item.imei}</span>}
             </SubLine>
           </div>
         );
@@ -146,7 +144,7 @@ export default function TradeInTable({
         const name = item.customer?.name || item.sellerName || '-';
         return (
           <div className="min-w-0">
-            <div className="truncate font-medium leading-snug text-foreground" title={name}>
+            <div className="whitespace-normal wrap-anywhere font-medium leading-snug text-foreground" title={name}>
               {name}
             </div>
             <SubLine title={item.sellerPhone ?? undefined}>
@@ -165,12 +163,12 @@ export default function TradeInTable({
       key: 'estimatedValue',
       label: 'ราคา',
       sortable: true,
-      width: '112px',
+      width: '104px',
       align: 'right',
       render: (item) => {
         const value = item.agreedPrice ?? item.offeredPrice ?? item.estimatedValue;
         const methodLabel =
-          item.paymentMethod === 'CASH'
+          item.paymentMethod === 'TRADE_IN_CREDIT' ? 'เครดิตเทิร์น' : item.paymentMethod === 'CASH'
             ? 'เงินสด'
             : item.paymentMethod === 'TRANSFER'
               ? 'โอน'
@@ -202,7 +200,7 @@ export default function TradeInTable({
     {
       key: 'status',
       label: 'สถานะ',
-      width: '104px',
+      width: '96px',
       render: (item) => {
         const cfg = getStatusBadgeProps(item.status, tradeInStatusMap);
         return (
@@ -221,12 +219,12 @@ export default function TradeInTable({
       key: 'buyer',
       label: 'ผู้รับซื้อ',
       hideable: true,
-      width: '148px',
+      width: '104px',
       render: (item) => {
         const buyer = item.idCardVerifiedBy ?? item.appraisedBy;
         if (!buyer) return <span className="truncate text-muted-foreground">รอรับซื้อ</span>;
         return (
-          <div className="truncate text-foreground" title={buyer.name}>
+          <div className="whitespace-normal wrap-anywhere leading-snug text-foreground" title={buyer.name}>
             {buyer.name}
           </div>
         );
@@ -236,10 +234,10 @@ export default function TradeInTable({
       key: 'branch',
       label: 'สาขา',
       hideable: true,
-      width: '100px',
+      width: '88px',
       render: (item) =>
         item.branch ? (
-          <div className="truncate text-foreground" title={item.branch.name}>
+          <div className="whitespace-normal wrap-anywhere leading-snug text-foreground" title={item.branch.name}>
             {item.branch.name}
           </div>
         ) : (
@@ -385,7 +383,7 @@ export default function TradeInTable({
           data={data || []}
           isLoading={isLoading}
           density="compact"
-          minWidth="1340px"
+          minWidth="1100px"
           emptyMessage="ไม่พบรายการรับซื้อ"
           emptyIcon={RefreshCw}
           toolbar={filters}

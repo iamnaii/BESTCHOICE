@@ -17,31 +17,16 @@ export class VoucherPdfRenderer {
   private resolveFontCss(): string | null {
     if (this.cachedFontCss !== undefined) return this.cachedFontCss;
     try {
-      const fontPaths = [
-        path.join(process.cwd(), 'public', 'fonts'),
-        path.join(__dirname, '..', '..', '..', '..', '..', '..', 'public', 'fonts'),
-        path.join(process.cwd(), '..', 'web', 'public', 'fonts'),
-      ];
-      const fontsDir = fontPaths.find((p) =>
-        fs.existsSync(path.join(p, 'THSarabunPSK-Regular.ttf')),
-      );
-      if (!fontsDir) {
-        this.cachedFontCss = null;
-        return null;
-      }
-      const reg = path.join(fontsDir, 'THSarabunPSK-Regular.ttf');
-      const bold = path.join(fontsDir, 'THSarabunPSK-Bold.ttf');
-      let css = '';
-      if (fs.existsSync(reg)) {
-        css += `@font-face{font-family:'TH Sarabun PSK';src:url(data:font/truetype;base64,${fs
-          .readFileSync(reg)
-          .toString('base64')}) format('truetype');font-weight:400;font-style:normal;}`;
-      }
-      if (fs.existsSync(bold)) {
-        css += `@font-face{font-family:'TH Sarabun PSK';src:url(data:font/truetype;base64,${fs
-          .readFileSync(bold)
-          .toString('base64')}) format('truetype');font-weight:700;font-style:normal;}`;
-      }
+      // Reuse the licensed font assets already packaged by Nest in src and dist.
+      const fontsDir = path.join(__dirname, '..', '..', '..', 'other-income', 'assets', 'fonts');
+      const css = [400, 500, 600]
+        .map((weight) => {
+          const data = fs
+            .readFileSync(path.join(fontsDir, `ibmplexsansthai-${weight}.ttf`))
+            .toString('base64');
+          return `@font-face{font-family:'IBM Plex Sans Thai';src:url(data:font/truetype;base64,${data}) format('truetype');font-weight:${weight};font-style:normal;}`;
+        })
+        .join('');
       this.cachedFontCss = css || null;
       return this.cachedFontCss;
     } catch (err) {

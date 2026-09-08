@@ -1,7 +1,8 @@
-import { IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateSaleDto {
+  @IsUUID() @IsOptional() tradeInCreditId?: string;
   @IsString()
   @IsOptional()
   creditApprovalId?: string;

@@ -41,28 +41,23 @@ test.describe('Payments Page', () => {
 
   test('should open payment recording modal for a pending item', async ({ page }) => {
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByText('รายการรอชำระ').first()).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(2000);
+    const main = page.getByRole('main');
+    await expect(main.getByRole('button', { name: /^รายการรอชำระ/ })).toBeVisible();
+    // Include earlier unpaid installments; the current-month queue can contain
+    // only disabled later installments. Never match the sidebar's payment link.
+    await main.getByRole('radiogroup', { name: 'ช่วงวันที่' })
+      .getByRole('radio', { name: 'ทั้งหมด', exact: true }).click();
+    const payButton = main.getByRole('table').locator('button:enabled')
+      .filter({ hasText: /^รับชำระ$/ }).first();
+    await expect(payButton).toBeVisible({ timeout: 15000 });
+    await payButton.click();
 
-    // Find a "รับชำระ" (receive payment) button that is actually actionable.
-    // ห้ามข้ามงวด (2026-08-19): แถวที่มีงวดก่อนหน้าค้างจะได้ปุ่ม disabled
-    // (PaymentTable.tsx — disabled={p.hasEarlierUnpaid === true}) ซึ่งยัง "มองเห็นได้"
-    // ⇒ ถ้าไม่กรอง :not([disabled]) เทสจะคลิกปุ่มที่กดไม่ได้จนหมดเวลา
-    const payButton = page.locator('button:has-text("รับชำระ"):not([disabled])').first();
-    const hasPayButton = await payButton.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (hasPayButton) {
-      await payButton.click();
-
-      // Payment modal should appear with form fields
-      await expect(
-        page.getByText('บันทึกการรับชำระ').or(page.getByText('จำนวนเงินที่รับ')).first(),
-      ).toBeVisible({ timeout: 5000 });
-
-      // Payment method dropdown should be available
-      await expect(page.getByText('วิธีชำระ').first()).toBeVisible();
-    }
-    // If no pending payments, test passes
+    const dialog = page.getByRole('dialog', { name: /บันทึกชำระ —/ });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: /ช่องทางรับชำระ/ })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /^เงินสด/ })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /^โอนธนาคาร/ })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /^ชำระผ่าน QR/ })).toBeVisible();
   });
 
   test('should switch to daily summary tab', async ({ page }) => {

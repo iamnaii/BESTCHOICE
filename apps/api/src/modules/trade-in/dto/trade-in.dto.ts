@@ -2,15 +2,23 @@ import {
   IsString,
   IsOptional,
   IsNumber,
+  Min,
   IsIn,
   IsBoolean,
   IsUUID,
   Length,
   Matches,
+  MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_VERSION_ERROR } from '@installment/shared';
 
-export class CreateTradeInDto {
+class DeviceEvidenceDto {
+  @IsString() @IsOptional() @MaxLength(300) imeiMissingReason?: string | null;
+  @IsString() @IsOptional() @MaxLength(300) serialNumberMissingReason?: string | null;
+}
+
+export class CreateTradeInDto extends DeviceEvidenceDto {
   // ─── Customer / Branch ──────────────────────────────
   @IsString()
   @IsOptional()
@@ -48,6 +56,12 @@ export class CreateTradeInDto {
   @IsOptional()
   @Matches(/^\d{15}$/, { message: 'IMEI ต้องเป็นตัวเลข 15 หลัก' })
   imei?: string;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @MaxLength(100, { message: 'Serial Number ต้องไม่เกิน 100 ตัวอักษร' })
+  serialNumber?: string;
 
   @IsNumber({}, { message: 'ราคาประเมินต้องเป็นตัวเลข' })
   @IsOptional()
@@ -142,7 +156,25 @@ export class AppraiseTradeInDto {
   forceReason?: string;
 }
 
-export class AcceptTradeInDto {
+export class AcceptTradeInDto extends DeviceEvidenceDto {
+  @IsString() @IsOptional() @MaxLength(200) sellerName?: string;
+  @IsString() @IsOptional() @Matches(/^\d{9,10}$/) sellerPhone?: string;
+  @IsString() @IsOptional() @Length(13, 13) sellerIdCardNumber?: string;
+  @IsString() @IsOptional() @MaxLength(2000) sellerAddress?: string;
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d{15}$/, { message: 'IMEI ต้องเป็นตัวเลข 15 หลัก' })
+  imei?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @MaxLength(100, { message: 'Serial Number ต้องไม่เกิน 100 ตัวอักษร' })
+  serialNumber?: string | null;
+
+  @IsIn([TRADE_IN_DECLARATION_VERSION], { message: TRADE_IN_DECLARATION_VERSION_ERROR })
+  declarationVersion: string;
+
   @IsBoolean({ message: 'ต้องยืนยันว่าตรวจบัตรประชาชนแล้ว' })
   idCardVerified: boolean;
 
@@ -154,8 +186,8 @@ export class AcceptTradeInDto {
   policeReportAcknowledged?: boolean;
 
   @IsString({ message: 'กรุณาเลือกวิธีชำระเงิน' })
-  @IsIn(['CASH', 'TRANSFER'], { message: "วิธีชำระต้องเป็น 'CASH' หรือ 'TRANSFER'" })
-  paymentMethod: 'CASH' | 'TRANSFER';
+  @IsIn(['CASH', 'TRANSFER', 'TRADE_IN_CREDIT'], { message: 'กรุณาเลือกวิธีรับเงินหรือเครดิตเทิร์นเครื่อง' })
+  paymentMethod: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT';
 
   @IsString()
   @IsOptional()
@@ -186,7 +218,10 @@ export class AcceptTradeInDto {
  * Quick Buy DTO — รวม create + appraise + accept + voucher allocate ใน step เดียว
  * สำหรับเคส POS counter ที่พนักงานตัดสินใจรับซื้อทันทีโดยไม่ต้องส่งผู้จัดการอนุมัติ
  */
-export class QuickBuyTradeInDto {
+export class QuickBuyTradeInDto extends DeviceEvidenceDto {
+  @IsUUID('4', { message: 'กรุณารีเฟรชหน้าเพื่อเริ่มรายการรับซื้อ' })
+  requestId: string;
+
   // Seller (walk-in) — party-master contact resolved by the picker upstream
   @IsUUID('4')
   @IsOptional()
@@ -251,11 +286,21 @@ export class QuickBuyTradeInDto {
   @Matches(/^\d{15}$/, { message: 'IMEI ต้องเป็นตัวเลข 15 หลัก' })
   imei?: string;
 
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @MaxLength(100, { message: 'Serial Number ต้องไม่เกิน 100 ตัวอักษร' })
+  serialNumber?: string;
+
   // Price (ราคาที่ตกลงเลย — ไม่แยก estimate/offer)
-  @IsNumber({}, { message: 'กรุณาระบุราคารับซื้อ' })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'ราคารับซื้อต้องเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง' })
+  @Min(0.01, { message: 'ราคารับซื้อต้องอย่างน้อย 0.01 บาท' })
   agreedPrice: number;
 
   // Anti-theft consent
+  @IsIn([TRADE_IN_DECLARATION_VERSION], { message: TRADE_IN_DECLARATION_VERSION_ERROR })
+  declarationVersion: string;
+
   @IsBoolean({ message: 'ต้องยืนยันว่าตรวจบัตรประชาชนแล้ว' })
   idCardVerified: boolean;
 
@@ -327,4 +372,3 @@ export class UpsertValuationDto {
   @IsOptional()
   note?: string;
 }
-

@@ -8,7 +8,7 @@ test.describe('/letters page', () => {
 
   test('owner sees 5 tabs', async ({ page }) => {
     await page.goto('/letters', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'จัดการจดหมาย' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'จัดการจดหมาย', level: 1 })).toBeVisible({
       timeout: 15000,
     });
     await expect(page.getByText('รอพิมพ์', { exact: false }).first()).toBeVisible();
@@ -20,7 +20,7 @@ test.describe('/letters page', () => {
 
   test('search filter triggers q= request', async ({ page }) => {
     await page.goto('/letters', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'จัดการจดหมาย' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'จัดการจดหมาย', level: 1 })).toBeVisible({
       timeout: 15000,
     });
 
@@ -34,7 +34,7 @@ test.describe('/letters page', () => {
 
   test('Export Excel button triggers a download', async ({ page }) => {
     await page.goto('/letters', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'จัดการจดหมาย' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'จัดการจดหมาย', level: 1 })).toBeVisible({
       timeout: 15000,
     });
 
@@ -58,7 +58,7 @@ test.describe('/letters page', () => {
     // role test (POST /overdue/letters/:id/cancel returns 403 for SALES) +
     // unit-tested in LetterTable component logic — asserting on tab labels
     // here is brittle (the "CANCELLED" status tab also has text "ยกเลิก").
-    await expect(page.getByRole('heading', { name: 'จัดการจดหมาย' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'จัดการจดหมาย', level: 1 })).toBeVisible();
     expect(page.url()).toContain('/letters');
   });
 });

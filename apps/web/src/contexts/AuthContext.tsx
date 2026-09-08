@@ -9,6 +9,7 @@ import {
 } from 'react';
 import * as Sentry from '@sentry/react';
 import api, { setAccessToken } from '@/lib/api';
+import { setRequestCompany } from '@/lib/company-scope';
 import { currentLocation, isPublicPage } from '@/lib/public-routes';
 
 interface User {
@@ -74,12 +75,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore logout errors
     }
     setAccessToken(null);
+    setRequestCompany(undefined);
     setUser(null);
     setSentryUser(null);
     try {
       // โซนที่ค้างไว้เป็นของ session ก่อน — ถ้าไม่ล้าง คนถัดไปที่ล็อกอินบนเครื่องนี้
       // จะเปิดมาอยู่โหมดตั้งค่าของคนอื่น (และ role ที่ไม่มีเฟืองจะเจอเมนูว่างหนึ่งเฟรม)
       localStorage.removeItem('bc.sidebar.lastZone');
+      localStorage.removeItem('bc.sidebar.workZone');
     } catch {
       /* ignore */
     }

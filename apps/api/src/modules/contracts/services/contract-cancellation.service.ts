@@ -1,3 +1,5 @@
+import { cleanupCreditContractSale } from '../../trade-in/services/credit-contract-cleanup.util';
+import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
@@ -189,6 +191,7 @@ export class ContractCancellationService {
           advanceBalance: true,
           creditBalance: true,
           rescheduleAdvanceBalance: true,
+          tradeInCreditSnapshot: true,
         },
       });
       if (contract.status !== 'ACTIVE') {
@@ -278,6 +281,10 @@ export class ContractCancellationService {
         },
         tx,
       );
+
+      await cleanupCreditContractSale(tx, contract, approverId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น');
+      await new TradeInCreditService(this.prisma).release(tx, contract.tradeInCreditSnapshot,
+        { contractId: contract.id }, approverId, 'ยกเลิกสัญญา');
 
       // Find the JE id by entryNumber to store FK
       const reversalJE = await tx.journalEntry.findUniqueOrThrow({

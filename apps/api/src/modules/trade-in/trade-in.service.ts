@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { TradeInCreditService } from './services/trade-in-credit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -32,6 +33,9 @@ import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
  */
 @Injectable()
 export class TradeInService {
+  availableCredits(customerId: string, branchId: string) {
+    return new TradeInCreditService(this.prisma).available(customerId, branchId);
+  }
   private readonly valuation: TradeInValuationService;
   private readonly query: TradeInQueryService;
   private readonly lifecycle: TradeInLifecycleService;
@@ -94,6 +98,10 @@ export class TradeInService {
 
   findOne(id: string) {
     return this.query.findOne(id);
+  }
+
+  quickBuyStatus(requestId: string, userId: string) {
+    return this.lifecycle.quickBuyStatus(requestId, userId);
   }
 
   sellerHistory(idCardNumber: string) {

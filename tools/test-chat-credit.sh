@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Cached node_modules does not include workspace build outputs. Jest below is
+# invoked directly, so npm's API pretest hook does not prepare this dependency.
+npm run build --workspace=@installment/shared
 if [ -z "${CREDIT_PG_BIN:-}" ]; then
   for candidate in /usr/lib/postgresql/16/bin /opt/homebrew/opt/postgresql@16/bin /usr/local/opt/postgresql@16/bin; do
     if [ -x "$candidate/initdb" ]; then CREDIT_PG_BIN=$candidate; break; fi

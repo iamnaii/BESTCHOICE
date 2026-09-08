@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, Link, useLocation } from 'react-router';
@@ -39,6 +40,7 @@ function Probe() {
 
 function renderAt(entry: string) {
   return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route element={<MainLayout />}>
@@ -47,7 +49,8 @@ function renderAt(entry: string) {
           <Route path="/settings/:categoryId" element={<Probe />} />
         </Route>
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -70,7 +73,7 @@ describe('เข้าตั้งค่าโดยไม่ผ่านปุ�
     expect(probe()).toContain('/settings/accounting|settings|fin:/overdue');
 
     fireEvent.click(screen.getByTestId('exit-settings'));
-    expect(probe()).toContain('/overdue|fin|');
+    expect(probe()).toContain('/overdue?zone=fin|fin|');
   });
 
   it('จำ query string + hash ด้วย (หน้าที่เก็บสถานะไว้ใน URL)', () => {
@@ -83,7 +86,7 @@ describe('เข้าตั้งค่าโดยไม่ผ่านปุ�
     expect(probe()).toContain('fin:/overdue?tab=late#row-9');
 
     fireEvent.click(screen.getByTestId('exit-settings'));
-    expect(probe()).toContain('/overdue?tab=late#row-9|fin|');
+    expect(probe()).toContain('/overdue?tab=late&zone=fin#row-9|fin|');
   });
 });
 
@@ -105,12 +108,12 @@ describe('ค้างอยู่โหมดตั้งค่าแล้ว�
 
     // ออกทาง breadcrumb "หน้าหลัก" (ไม่ใช่ปุ่มออก) → ที่จำไว้ต้องหาย
     fireEvent.click(screen.getByText('หน้าหลัก'));
-    expect(probe()).toContain('/|shop|null');
+    expect(probe()).toContain('/|fin|null');
 
     // เข้าตั้งค่าอีกรอบจากหน้าหลัก แล้วออก → ต้องกลับ '/' ไม่ใช่ /overdue
     fireEvent.click(screen.getByText('ไปตั้งค่า'));
-    expect(probe()).toContain('shop:/');
+    expect(probe()).toContain('fin:/');
     fireEvent.click(screen.getByTestId('exit-settings'));
-    expect(probe()).toContain('/|shop|');
+    expect(probe()).toContain('/?zone=fin|fin|');
   });
 });

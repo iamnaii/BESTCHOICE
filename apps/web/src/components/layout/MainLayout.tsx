@@ -8,7 +8,7 @@ import { useUiFlags } from '@/hooks/useUiFlags';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
-import { Sheet, SheetContent, SheetBody } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetBody, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import CommandPalette from '@/components/CommandPalette';
 import ShortcutsHelpOverlay from '@/components/ShortcutsHelpOverlay';
 import MobileBottomNav from './MobileBottomNav';
@@ -42,6 +42,8 @@ function MobileSidebar() {
         side="left"
         close={false}
       >
+        <SheetTitle className="sr-only">เมนูหลัก</SheetTitle>
+        <SheetDescription className="sr-only">เลือกหมวดงานและเมนูที่ต้องการ</SheetDescription>
         <SheetBody className="p-0 overflow-y-auto h-full">
           <Sidebar mobile />
         </SheetBody>
@@ -52,11 +54,11 @@ function MobileSidebar() {
 
 /* ── Main Content Area ────────────────────────────── */
 /* ── Full-bleed routes (no TopBar, no container padding) ── */
-const FULL_BLEED_ROUTES = ['/inbox', '/chat'];
+const FULL_BLEED_ROUTES = ['/inbox'];
 
 function MainContent() {
   const isMobile = useIsMobile();
-  const { effectiveSidebarCollapse, currentZone, setCurrentZone, enterSettings } = useLayout();
+  const { effectiveSidebarCollapse, currentZone, workZone, setCurrentZone, enterSettings } = useLayout();
   const { pathname, search, hash } = useLocation();
   // key ของ <main> เปลี่ยนตามหน้า (เพื่อ fadeIn + รีเซ็ตโฟกัสเมื่อเปลี่ยนหน้า) — แต่ห้องแชทอยู่ใน URL
   // (/inbox/:roomId) ถ้า key เปลี่ยนทุกครั้งที่เปิดห้อง ทั้งหน้ากล่องข้อความจะ mount ใหม่:
@@ -87,12 +89,13 @@ function MainContent() {
     // Skip if only `currentZone` changed (pill click) — preserve manual intent.
     const isFirstRun = prevPathnameRef.current === null;
     const pathChanged = prevPathnameRef.current !== pathname;
+    const previousPathname = prevPathnameRef.current;
     const prevFullPath = prevFullPathRef.current;
     prevPathnameRef.current = pathname;
     prevFullPathRef.current = pathname + search + hash;
     if (!isFirstRun && !pathChanged) return;
 
-    const targetZone = resolveZoneForPath(role, pathname);
+    const targetZone = resolveZoneForPath(role, pathname, currentZone);
 
     if (targetZone === null) {
       // Path is not in THIS role's sidebar — check if it's in any other role's
@@ -105,8 +108,7 @@ function MainContent() {
         // ไม่งั้นคลิกโลโก้/breadcrumb "หน้าหลัก" แล้วได้หน้า Dashboard ที่ยังโชว์
         // เมนูตั้งค่าอยู่ข้าง ๆ และไม่มีทางออกให้เห็น (อาการที่เจ้าของรายงาน)
         if (currentZone === 'settings') {
-          const cfg = getZoneConfigForRole(role);
-          if (cfg) setCurrentZone(cfg.defaultZone);
+          setCurrentZone(workZone);
         }
         return;
       }
@@ -123,6 +125,10 @@ function MainContent() {
       return;
     }
 
+    if (targetZone === 'settings' && prevFullPath && !previousPathname?.startsWith('/settings')) {
+      enterSettings({ zone: workZone, path: prevFullPath });
+      return;
+    }
     // Path lives in role's sidebar — switch the pill if needed.
     if (targetZone !== currentZone) {
       // เข้าตั้งค่าโดยไม่ผ่านปุ่มเฟือง (TopBar › ตั้งค่าระบบ, Ctrl+K, ลิงก์ในหน้า, bookmark)
@@ -134,7 +140,7 @@ function MainContent() {
         setCurrentZone(targetZone);
       }
     }
-  }, [pathname, search, hash, user?.role, currentZone, setCurrentZone, enterSettings, navigate]);
+  }, [pathname, search, hash, user?.role, currentZone, workZone, setCurrentZone, enterSettings, navigate]);
 
   // D1.4.1.2 — when OWNER disables `show_keyboard_shortcuts`, the Shift+?
   // help-dialog binding becomes a no-op AND the overlay is never rendered.

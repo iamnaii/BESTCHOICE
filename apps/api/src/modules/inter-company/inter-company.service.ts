@@ -95,7 +95,7 @@ export class InterCompanyService {
   ) {
     // C-8 fix: Double-entry note includes downPayment for complete journal
     const totalSalesRevenue = data.downPayment + data.principal + data.commission;
-    const note = `SHOP: Debit เงินสด ${data.downPayment} + ลูกหนี้เช่าซื้อ ${data.principal + data.commission}, Credit รายได้จากการขาย ${totalSalesRevenue}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${data.principal + data.interestTotal}, Credit เจ้าหนี้ SHOP ${data.principal + data.commission}`;
+    const note = `SHOP: เงินดาวน์รวมเงินสดและเครดิตเทิร์น ${data.downPayment} + ลูกหนี้เช่าซื้อ ${data.principal + data.commission}, รายได้จากการขายรวม ${totalSalesRevenue}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${data.principal + data.interestTotal}, Credit เจ้าหนี้ SHOP ${data.principal + data.commission}`;
 
     // T5-C21: Resolve company IDs from companyCode. Both FINANCE and SHOP
     // rows MUST exist — the migration seeds stub rows so fresh environments

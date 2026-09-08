@@ -1,3 +1,4 @@
+import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import {
   BadRequestException,
   ConflictException,
@@ -185,6 +186,7 @@ export class SaleVoidService {
         deletedAt: true,
         branchId: true,
         netAmount: true,
+        tradeInCreditSnapshot: true,
       },
     });
     if (!sale) throw new NotFoundException('ไม่พบใบขายที่ต้องการยกเลิก');
@@ -477,6 +479,8 @@ export class SaleVoidService {
         reversalEntryNumbers = created.map((c) => c.entryNumber);
       }
     }
+
+    await new TradeInCreditService(this.prisma).release(tx, sale.tradeInCreditSnapshot, { saleId: sale.id }, user.id, reason);
 
     // 3. FinanceReceivable → soft delete (G3 การันตีแล้วว่ายังไม่มีเงินเข้า)
     if (receivable) {

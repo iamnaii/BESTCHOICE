@@ -1,4 +1,19 @@
+import { CustomerPiiService } from '../src/modules/customers/customer-pii.service';
+import { TransactionalReportService } from '../src/modules/accounting/transactional-report.service';
 import { ConfigService } from '@nestjs/config';
+import { TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
+import { TradeInService } from '../src/modules/trade-in/trade-in.service';
+import { TradeInCreditService } from '../src/modules/trade-in/services/trade-in-credit.service';
+import { tradeInProviders } from './support/trade-in-fixture';
+import { SaleCreationService } from '../src/modules/sales/services/sale-creation.service';
+import { SaleWriterService } from '../src/modules/sales/services/sale-writer.service';
+import { SaleVoidService } from '../src/modules/sales/services/sale-void.service';
+import { InterCompanyService } from '../src/modules/inter-company/inter-company.service';
+import { ShopCashSaleTemplate } from '../src/modules/journal/cpa-templates/shop-cash-sale.template';
+import { ShopExternalFinanceSaleTemplate } from '../src/modules/journal/cpa-templates/shop-external-finance-sale.template';
+import { ExchangeCancelReversalTemplate } from '../src/modules/journal/cpa-templates/exchange-cancel-reversal.template';
+import { ContractCancellationTemplate } from '../src/modules/journal/cpa-templates/contract-cancellation.template';
+import { ContractCancellationService } from '../src/modules/contracts/services/contract-cancellation.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -38,7 +53,7 @@ if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-
   throw new Error('Only the disposable tools/test-chat-credit.sh database is allowed');
 }
 const db = new PrismaService();
-const originalEnv = { node: process.env.NODE_ENV, rate: process.env.USE_NEW_RATE_LOOKUP };
+const originalEnv = { node: process.env.NODE_ENV, rate: process.env.USE_NEW_RATE_LOOKUP, salt: process.env.PII_HASH_SALT };
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const readEntries = (contractId: string) => db.journalEntry.findMany({
@@ -53,15 +68,18 @@ describe('approved credit → real create/sign/activate → partial/complete pay
   let ownerId: string, branchId: string, shopId: string, financeId: string;
   let credits: CreditCheckService, lifecycle: ContractLifecycleService, signatures: ContractSignatureService;
   let workflow: ContractWorkflowService, payments: PaymentsService, accrual: InstallmentAccrual2ATemplate;
+  let tradeIns: TradeInService, tradeCredits: TradeInCreditService, sales: SaleCreationService;
+  let saleVoid: SaleVoidService, cancellations: ContractCancellationService;
   const pdfJobs: Promise<unknown>[] = [];
   beforeAll(async () => {
     process.env.NODE_ENV = 'production'; // Exercise production workflow gates in the isolated DB.
     process.env.USE_NEW_RATE_LOOKUP = 'false';
+    process.env.PII_HASH_SALT = 'isolated-trade-credit-test-salt-00000000000000000000000000000000';
     await db.$connect();
     await seedFinanceCoa(db); await seedShopCoa(db);
     ownerId = (await db.user.upsert({ where: { email: 'admin@bestchoice.com' },
-      create: { email: 'admin@bestchoice.com', password: 'unused', name: 'ISOLATED OWNER', role: 'OWNER' },
-      update: { role: 'OWNER', isActive: true, deletedAt: null } })).id;
+      create: { email: 'admin@bestchoice.com', password: 'unused', name: 'ISOLATED OWNER', role: 'OWNER', accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'SHOP' },
+      update: { role: 'OWNER', isActive: true, deletedAt: null, accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'SHOP' } })).id;
     for (const companyCode of ['SHOP', 'FINANCE']) {
       const company = await db.companyInfo.upsert({ where: { companyCode }, create: {
         companyCode, nameTh: `ISOLATED ${companyCode}`, taxId: companyCode === 'SHOP' ? '9999999999996' : '9999999999997',
@@ -75,6 +93,16 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       minInstallmentMonths: 6, maxInstallmentMonths: 12 } });
     const journal = new JournalAutoService(db), resolver = new CompanyResolverService(db);
     const shopAccounts = new ShopAccountResolver(db), audit = new AuditService(db), products = new ProductsService(db);
+    const interco = new InterCompanyService(db);
+    sales = new SaleCreationService(db, new SaleWriterService(db, interco, new ShopCashSaleTemplate(journal, db, resolver),
+      shopAccounts, new ShopExternalFinanceSaleTemplate(journal, db, resolver)), interco, { notify: async () => undefined } as never);
+    const sweep = new ExchangeCancelReversalTemplate(journal, db);
+    saleVoid = new SaleVoidService(db, sweep);
+    cancellations = new ContractCancellationService(db,
+      () => new ContractCancellationTemplate(db, sweep, new EclStageReverseTemplate(journal, db)), () => resolver);
+    tradeIns = tradeInProviders(db, { upload: async () => 'synthetic://photo' } as never)
+      .find((p): p is { provide: typeof TradeInService; useValue: TradeInService } => typeof p === 'object' && p.provide === TradeInService)!.useValue;
+    tradeCredits = new TradeInCreditService(db);
     const down = new ShopDownPaymentTemplate(journal, db, resolver);
     lifecycle = new ContractLifecycleService(db, new ContractQueryService(db), down,
       new ShopDownPaymentReversalTemplate(journal, db, resolver), shopAccounts, undefined, audit);
@@ -104,7 +132,213 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     jest.useRealTimers();
     if (originalEnv.node === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalEnv.node;
     if (originalEnv.rate === undefined) delete process.env.USE_NEW_RATE_LOOKUP; else process.env.USE_NEW_RATE_LOOKUP = originalEnv.rate;
+    if (originalEnv.salt === undefined) delete process.env.PII_HASH_SALT; else process.env.PII_HASH_SALT = originalEnv.salt;
     await Promise.all(pdfJobs); await db.$disconnect(); // Parent runner destroys this entire database.
+  });
+  beforeEach(() => jest.useRealTimers());
+
+  async function exchangeCase() {
+    const prefix = `0${String(Math.floor(Math.random() * 1e11)).padStart(11, '0')}`;
+    const nationalId = prefix + (11 - [...prefix].reduce((s, n, i) => s + Number(n) * (13 - i), 0) % 11) % 10;
+    const customer = await db.customer.create({ data: { name: 'ISOLATED EXCHANGE CUSTOMER', nationalId, nationalIdHash: new CustomerPiiService(db).hash(nationalId),
+      phone: '0000000000', birthDate: new Date('1990-01-01'), addressIdCard: '1 Synthetic Road', addressCurrent: '1 Synthetic Road',
+      references: [{ firstName: 'Synthetic', lastName: 'Reference', phone: '0000000001', relationship: 'เพื่อน' }], salary: 30000, salaryPayDay: 25 } });
+    const product = await db.product.create({ data: { name: 'ISOLATED NEW DEVICE', brand: 'SYNTHETIC', model: 'TRADE-CREDIT', category: 'ACCESSORY',
+      imeiSerial: `SYNTHETIC-${randomUUID()}`, branchId, ownedByCompanyId: shopId, costPrice: 6000, status: 'IN_STOCK' } });
+    const intake = await tradeIns.create({ customerId: customer.id, branchId, deviceBrand: 'SYNTHETIC', deviceModel: 'OLD DEVICE',
+      sellerName: customer.name, sellerPhone: customer.phone, sellerIdCardNumber: nationalId, sellerAddress: '1 Synthetic Road',
+      serialNumber: `SN-${randomUUID()}`, imeiMissingReason: 'Synthetic device without cellular radio' });
+    await db.tradeIn.update({ where: { id: intake.id }, data: { status: 'APPRAISED', offeredPrice: 5500,
+      quoteBreakdown: { cashPrice: '5000', exchangePrice: '5500' } } });
+    await tradeIns.accept(intake.id, { idCardVerified: true, sellerConsentSigned: true,
+      declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: image, paymentMethod: 'TRADE_IN_CREDIT' }, ownerId);
+    return { customer, product, intake,
+      dto: { customerId: customer.id, productId: product.id, branchId, sellingPrice: 15000, tradeInCreditId: intake.id,
+        downPayment: 2000, totalMonths: 12, paymentDueDay: 25, paymentMethod: 'CASH' } };
+  }
+
+  async function approve(customerId: string) {
+    const check = await db.creditCheck.create({ data: { customerId, checkType: 'FULL', status: 'MANUAL_REVIEW',
+      statementFiles: ['synthetic.pdf'], aiAnalysis: { monthlyIncome: 30000, monthlyExpense: 10000 } } });
+    const basis = { verifiedMonthlyIncome: 30000, livingExpenses: 10000, externalMonthlyDebt: 0, salaryPayDay: 25,
+      evidenceNotes: 'หลักฐานจำลองสำหรับทดสอบการนำเครดิตเครื่องเทิร์นมาใช้ซื้อสินค้า' };
+    const preview = await credits.override_.approval.preview(check.id, basis, { id: ownerId, role: 'OWNER' });
+    await credits.overrideById(check.id, { status: 'APPROVED', overrideReason: 'ตรวจสอบหลักฐานจำลองครบแล้วสำหรับทดสอบเครดิตเทิร์น',
+      affordability: { ...basis, contextToken: preview.contextToken, approvedMonthlyPayment: 2000, confirmed: true } }, ownerId, 'OWNER');
+  }
+
+  async function activate(contractId: string, customerId: string) {
+    const consent = await db.pDPAConsent.create({ data: { customerId, consentVersion: 'SYNTHETIC-1', privacyNoticeText: 'Synthetic consent', status: 'GRANTED', grantedAt: new Date(), purposes: ['CONTRACT'] } });
+    await db.contract.update({ where: { id: contractId }, data: { pdpaConsentId: consent.id } });
+    await db.contractDocument.createMany({ data: (['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO'] as const).map(documentType => ({
+      contractId, documentType, uploadedById: ownerId, fileName: `${documentType}.png`, fileUrl: `synthetic://${documentType}.png`, fileHash: hash(documentType) })) });
+    for (const signerType of ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2']) await signatures.signContract(contractId, image, signerType,
+      { ip: '127.0.0.1', userAgent: 'isolated-jest' }, { signerName: `Synthetic ${signerType}`, staffUserId: ownerId });
+    await Promise.all(pdfJobs);
+    await workflow.submitForReview(contractId, ownerId, 'OWNER');
+    await workflow.approveContract(contractId, ownerId, 'OWNER', 'Synthetic approval');
+    await workflow.activate(contractId);
+  }
+
+  it('uses base value as cash-sale tender, bonus once, then restores credit on void', async () => {
+    const c = await exchangeCase();
+    const sale = await sales.create({ ...c.dto, saleType: 'CASH', amountReceived: 9500 }, ownerId, 'OWNER');
+    const stored = await db.sale.findUniqueOrThrow({ where: { id: sale.id } });
+    expect(stored.netAmount.toNumber()).toBe(14500); expect(stored.amountReceived?.toNumber()).toBe(9500);
+    expect(stored.discount.toNumber()).toBe(500);
+    const entries = await db.journalEntry.findMany({ where: { metadata: { path: ['saleId'], equals: sale.id } }, include: { lines: true } });
+    expect(sum(entries, 'S11-1101', 'debit').minus(sum(entries, 'S11-1101', 'credit')).toNumber()).toBe(9500);
+    expect(await tradeCredits.available(c.customer.id, branchId)).toEqual([]);
+    await saleVoid.voidSale(sale.id, { id: ownerId, role: 'OWNER', branchId: null }, 'Synthetic void trade credit');
+    expect((await tradeCredits.available(c.customer.id, branchId)).map((x) => x.id)).toContain(c.intake.id);
+    const source = await db.tradeIn.findUniqueOrThrow({ where: { id: c.intake.id } });
+    expect(source.currentRedemptionId).toBeNull();
+    expect((await db.journalEntry.findUniqueOrThrow({ where: { id: source.creditIssueJournalId! } })).metadata).not.toMatchObject({ reversed: true });
+    await sales.create({ ...c.dto, saleType: 'CASH', amountReceived: 9500 }, ownerId, 'OWNER');
+    expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id } })).toBe(2);
+  });
+
+  it.each(['direct', 'pos'])('keeps cash down separate through %s installment creation, activation and cancellation', async (path) => {
+    const c = await exchangeCase(); await approve(c.customer.id);
+    const created = path === 'direct' ? await lifecycle.create(c.dto, ownerId, 'OWNER')
+      : await sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER');
+    const contractId = path === 'direct' ? created.id : (await db.sale.findUniqueOrThrow({ where: { id: created.id } })).contractId!;
+    const stored = await db.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(stored.downPayment.toNumber()).toBe(7000); expect(stored.sellingPrice.toNumber()).toBe(14500);
+    expect(stored.financedAmount.toNumber()).toBe(7500);
+    await activate(contractId, c.customer.id);
+    const entries = await readEntries(contractId);
+    expect(sum(entries, 'S11-1101', 'debit').toNumber()).toBe(2000);
+    expect(sum(entries, 'S21-2001', 'credit').minus(sum(entries, 'S21-2001', 'debit')).toNumber()).toBe(0);
+    expect(await db.sale.count({ where: { contractId, deletedAt: null } })).toBe(1);
+    const cancellation = await cancellations.requestCancellation(contractId, ownerId, 'Synthetic trade credit cancellation', 0);
+    await cancellations.approveCancellation(cancellation.id, ownerId);
+    expect(await db.sale.count({ where: { contractId, deletedAt: null } })).toBe(0);
+    expect(await db.financeReceivable.count({ where: { sale: { contractId }, deletedAt: null } })).toBe(0);
+    expect((await tradeCredits.available(c.customer.id, branchId)).map((x) => x.id)).toContain(c.intake.id);
+    const after = await readEntries(contractId);
+    expect(sum(after, 'S21-2001', 'credit').minus(sum(after, 'S21-2001', 'debit')).toNumber()).toBe(2000);
+  });
+
+  it.each(['direct', 'pos'])('returns credit and only actual cash when deleting an unsigned %s draft', async (path) => {
+    const c = await exchangeCase(); await approve(c.customer.id);
+    const created = path === 'direct' ? await lifecycle.create(c.dto, ownerId, 'OWNER') : await sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER');
+    const contract = path === 'direct' ? created : { id: (await db.sale.findUniqueOrThrow({ where: { id: created.id } })).contractId! };
+    await lifecycle.softDelete(contract.id, ownerId);
+    expect((await tradeCredits.available(c.customer.id, branchId)).map((x) => x.id)).toContain(c.intake.id);
+    const entries = await readEntries(contract.id);
+    expect(sum(entries, 'S11-1101', 'debit').toNumber()).toBe(path === 'direct' ? 2000 : 0);
+    expect(sum(entries, 'S11-1101', 'credit').toNumber()).toBe(path === 'direct' ? 2000 : 0);
+    expect(await db.sale.count({ where: { contractId: contract.id, deletedAt: null } })).toBe(0);
+    expect(await db.financeReceivable.count({ where: { sale: { contractId: contract.id }, deletedAt: null } })).toBe(0);
+    expect(await db.salesCommission.count({ where: { contractId: contract.id, status: { not: 'CLAWED_BACK' }, deletedAt: null } })).toBe(0);
+    expect(await db.interCompanyTransaction.count({ where: { contractId: contract.id, deletedAt: null } })).toBe(0);
+  });
+
+  it('accepts satang prices without false credit re-quote failures', async () => {
+    const c = await exchangeCase();
+    const sale = await sales.create({ ...c.dto, saleType: 'CASH', sellingPrice: 15000.11, discount: 0.22, amountReceived: 9499.89 }, ownerId, 'OWNER');
+    const saved = await db.sale.findUniqueOrThrow({ where: { id: sale.id } });
+    expect(Number(saved.netAmount)).toBe(14499.89);
+    expect(Number(saved.amountReceived)).toBe(9499.89);
+  });
+
+  it('keeps unused credit and retained cancellation cash in the derived balance sheet', async () => {
+    const report = new TransactionalReportService(db, new CompanyResolverService(db));
+    const date = new Date().toISOString().slice(0, 10);
+    const before = await report.getBalanceSheet(date, branchId);
+    const c = await exchangeCase();
+    const issued = await report.getBalanceSheet(date, branchId);
+    expect(issued.liabilities.totalLiabilities - before.liabilities.totalLiabilities).toBe(5000);
+    await approve(c.customer.id);
+    const sale = await sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER');
+    const contractId = (await db.sale.findUniqueOrThrow({ where: { id: sale.id } })).contractId!;
+    await activate(contractId, c.customer.id);
+    const active = await report.getBalanceSheet(date, branchId);
+    const cancellation = await cancellations.requestCancellation(contractId, ownerId, 'Synthetic report cancellation', 0);
+    await cancellations.approveCancellation(cancellation.id, ownerId);
+    const canceled = await report.getBalanceSheet(date, branchId);
+    expect(canceled.assets.currentAssets.cashAndBank).toBe(active.assets.currentAssets.cashAndBank);
+    expect(canceled.liabilities.totalLiabilities - active.liabilities.totalLiabilities).toBe(7000);
+  });
+
+  it('does not return credit when a related commission payout has already been approved', async () => {
+    const c = await exchangeCase(); await approve(c.customer.id);
+    const sale = await sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER');
+    const contractId = (await db.sale.findUniqueOrThrow({ where: { id: sale.id } })).contractId!;
+    const commission = await db.salesCommission.findFirstOrThrow({ where: { saleId: sale.id } });
+    const payout = await db.commissionPayout.upsert({ where: { salespersonId_period: { salespersonId: ownerId, period: commission.period } },
+      create: { salespersonId: ownerId, period: commission.period, totalSales: 14500, totalCommission: 435, commissionCount: 1, status: 'APPROVED', generatedAt: new Date() },
+      update: { status: 'APPROVED', generatedAt: new Date(), deletedAt: null } });
+    try {
+      await expect(lifecycle.softDelete(contractId, ownerId)).rejects.toThrow(/รอบจ่าย/);
+      expect(await tradeCredits.available(c.customer.id, branchId)).toEqual([]);
+      expect((await db.sale.findUniqueOrThrow({ where: { id: sale.id } })).deletedAt).toBeNull();
+    } finally { await db.commissionPayout.update({ where: { id: payout.id }, data: { deletedAt: new Date() } }); }
+  });
+
+  it('allows only one simultaneous purchase to consume the same credit', async () => {
+    const c = await exchangeCase();
+    const other = await db.product.create({ data: { name: 'ISOLATED CONCURRENT DEVICE', brand: 'SYNTHETIC', model: 'CONCURRENT', category: 'ACCESSORY', branchId,
+      ownedByCompanyId: shopId, imeiSerial: `SYNTHETIC-${randomUUID()}`, costPrice: 6000, status: 'IN_STOCK' } });
+    const results = await Promise.allSettled([c.product.id, other.id].map(productId => sales.create({ ...c.dto, productId, saleType: 'CASH', amountReceived: 9500 }, ownerId, 'OWNER')));
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id, releasedAt: null } })).toBe(1);
+    expect(await db.sale.count({ where: { productId: { in: [c.product.id, other.id] }, deletedAt: null } })).toBe(1);
+  });
+
+  it('rolls back the sale, stock and claim when the credit journal fails', async () => {
+    const c = await exchangeCase();
+    const original = JournalAutoService.prototype.createAndPost;
+    const fault = jest.spyOn(JournalAutoService.prototype, 'createAndPost').mockImplementation(function (input, tx) {
+      if ((input.metadata as Record<string, unknown> | undefined)?.flow === 'shop-trade-in-credit-applied') throw new Error('Synthetic credit journal failure');
+      return original.call(this, input, tx);
+    });
+    try {
+      await expect(sales.create({ ...c.dto, saleType: 'CASH' }, ownerId, 'OWNER')).rejects.toThrow('Synthetic credit journal failure');
+    } finally { fault.mockRestore(); }
+    expect(await db.sale.count({ where: { productId: c.product.id } })).toBe(0);
+    expect((await db.product.findUniqueOrThrow({ where: { id: c.product.id } })).status).toBe('IN_STOCK');
+    expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id } })).toBe(0);
+    expect((await db.tradeIn.findUniqueOrThrow({ where: { id: c.intake.id } })).currentRedemptionId).toBeNull();
+  });
+
+  it('prevents a POS sale and a direct contract from claiming the same credit together', async () => {
+    const c = await exchangeCase(); await approve(c.customer.id);
+    const other = await db.product.create({ data: { name: 'ISOLATED CASH COMPETITOR', brand: 'SYNTHETIC', model: 'CONCURRENT', category: 'ACCESSORY', branchId,
+      ownedByCompanyId: shopId, imeiSerial: `SYNTHETIC-${randomUUID()}`, costPrice: 6000, status: 'IN_STOCK' } });
+    const results = await Promise.allSettled([
+      lifecycle.create(c.dto, ownerId, 'OWNER'),
+      sales.create({ ...c.dto, productId: other.id, saleType: 'CASH' }, ownerId, 'OWNER'),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id, releasedAt: null } })).toBe(1);
+    expect(await db.product.count({ where: { id: { in: [c.product.id, other.id] }, status: { not: 'IN_STOCK' } } })).toBe(1);
+  });
+
+  it('rejects identity mismatch after resolving the existing customer of a seller contact', async () => {
+    const c = await exchangeCase();
+    const contact = await db.contact.create({ data: { contactCode: `ISOLATED-${randomUUID()}`, name: 'Synthetic Seller', roles: ['TRADE_IN_SELLER'] } });
+    await db.customer.update({ where: { id: c.customer.id }, data: { contactId: contact.id } });
+    const intake = await db.tradeIn.create({ data: { sellerContactId: contact.id, branchId, deviceBrand: 'SYNTHETIC', deviceModel: 'MISMATCH',
+      flow: 'EXCHANGE', status: 'APPRAISED', offeredPrice: 5000, serialNumber: `SN-${randomUUID()}`, imeiMissingReason: 'Wi-Fi only',
+      sellerName: 'Other Seller', sellerPhone: '0000000000', sellerAddress: 'Other Address', sellerIdCardNumber: '0000000000001' } });
+    await expect(tradeIns.accept(intake.id, { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION,
+      sellerSignatureBase64: image, paymentMethod: 'TRADE_IN_CREDIT' }, ownerId)).rejects.toThrow('ไม่ตรงกับลูกค้า');
+    expect((await db.tradeIn.findUniqueOrThrow({ where: { id: intake.id } })).productId).toBeNull();
+    expect(await db.journalEntry.count({ where: { referenceId: `tradein:${intake.id}` } })).toBe(0);
+  });
+
+  it('rejects wrong customers, foreign branches, oversized credit, and finance-only actors atomically', async () => {
+    const c = await exchangeCase(), other = await exchangeCase();
+    const before = await db.sale.count();
+    await expect(sales.create({ ...c.dto, saleType: 'CASH', customerId: other.customer.id }, ownerId, 'OWNER')).rejects.toThrow('ไม่ใช่');
+    await expect(sales.create({ ...c.dto, saleType: 'CASH', sellingPrice: 4000 }, ownerId, 'OWNER')).rejects.toThrow('เต็มยอด');
+    await expect(sales.create({ ...c.dto, saleType: 'CASH', branchId: (await db.branch.create({ data: { name: `OTHER ${randomUUID()}`, companyId: shopId } })).id }, ownerId, 'OWNER')).rejects.toThrow('สาขา');
+    const restricted = await db.user.create({ data: { email: `restricted-${randomUUID()}@test.invalid`, password: 'unused', role: 'OWNER', name: 'ISOLATED FINANCE ONLY', accessibleCompanies: ['FINANCE'] } });
+    await expect(sales.create({ ...c.dto, saleType: 'CASH' }, restricted.id, 'OWNER')).rejects.toThrow('สิทธิ์ SHOP');
+    expect(await db.sale.count()).toBe(before);
+    expect((await db.tradeIn.findUniqueOrThrow({ where: { id: c.intake.id } })).currentRedemptionId).toBeNull();
   });
   it('preserves amount/payday and balances cash and receivables across two receipts', async () => {
     const customer = await db.customer.create({ data: { name: 'ISOLATED SYNTHETIC CUSTOMER', nationalId: `SYNTHETIC-${randomUUID()}`,

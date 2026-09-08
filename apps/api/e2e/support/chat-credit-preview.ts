@@ -1,4 +1,18 @@
+import { seedTradeInShop, tradeInProviders } from './trade-in-fixture';
+import { TradeInController } from '../../src/modules/trade-in/trade-in.controller';
+import { ContactsController } from '../../src/modules/contacts/contacts.controller';
+import { ProductPhotosController } from '../../src/modules/quality-control/product-photos.controller';
+import { ProductPhotosService } from '../../src/modules/quality-control/product-photos.service';
+import { ProductsService } from '../../src/modules/products/products.service';
+import { PoQueryService } from '../../src/modules/purchase-orders/services/po-query.service';
+import { UpdateProductDto } from '../../src/modules/products/dto/update-product.dto';
+import { InterestConfigService } from '../../src/modules/interest-config/interest-config.service';
+import { PromotionsService } from '../../src/modules/promotions/promotions.service';
+import { GfinConfigService } from '../../src/modules/gfin-config/gfin-config.service';
+import { AuditService } from '../../src/modules/audit/audit.service';
+import { ShopReservationService } from '../../src/modules/shop-reservation/shop-reservation.service';
 import { randomUUID } from 'node:crypto';
+import { json } from 'express';
 import { ContractLifecycleService } from '../../src/modules/contracts/services/contract-lifecycle.service';
 import { ContractQueryService } from '../../src/modules/contracts/services/contract-query.service';
 import { CreateContractDto } from '../../src/modules/contracts/dto/contract.dto';
@@ -37,6 +51,20 @@ import { PrepareOfferService } from '../../src/modules/staff-chat/services/prepa
 import { RoomAiAccessService } from '../../src/modules/staff-chat/services/room-ai-access.service';
 import { SearchProductsTool } from '../../src/modules/sales-bot/tools/search-products.tool';
 import { CalculateInstallmentTool } from '../../src/modules/sales-bot/tools/calculate-installment.tool';
+import { ReceivablesReportService } from '../../src/modules/reports/services/receivables-report.service';
+import { seedPreviewPortfolio } from './preview-portfolio-fixture';
+import { CustomerQueryService } from '../../src/modules/customers/services/customer-query.service';
+import { CustomerTierService } from '../../src/modules/customers/customer-tier.service';
+import { DashboardOverviewService } from '../../src/modules/dashboard/services/dashboard-overview.service';
+import { DashboardCollectionsService } from '../../src/modules/dashboard/services/dashboard-collections.service';
+import { DashboardOpsService } from '../../src/modules/dashboard/services/dashboard-ops.service';
+import { OverdueQueriesService } from '../../src/modules/overdue/services/overdue-queries.service';
+import { PromiseService } from '../../src/modules/overdue/promise.service';
+import { CustomerAnalyticsService } from '../../src/modules/customers/services/customer-analytics.service';
+import { RevenueReportService } from '../../src/modules/reports/services/revenue-report.service';
+import { TransactionalReportService } from '../../src/modules/accounting/transactional-report.service';
+import { CompanyResolverService } from '../../src/modules/journal/company-resolver.service';
+import { CompanyService } from '../../src/modules/company/company.service';
 
 const root = process.env.CREDIT_PREVIEW_ROOT!;
 if (
@@ -65,6 +93,23 @@ const integrations = new IntegrationConfigService(db, config);
 const usage = new AiUsageService(db, config);
 const credits = new CreditCheckService(db, integrations, new AiProviderService(usage));
 const contractQuery = new ContractQueryService(db);
+const receivables = new ReceivablesReportService(db);
+const customerQuery = new CustomerQueryService(db, new CustomerTierService(db));
+// Real dashboard reads against the same synthetic database; only the cache facade is omitted.
+const dashboardOverview = new DashboardOverviewService(db);
+const dashboardCollections = new DashboardCollectionsService(db);
+const dashboardOps = new DashboardOpsService(db);
+const overdueQuery = new OverdueQueriesService(db, new PromiseService(db));
+const customerAnalytics = new CustomerAnalyticsService(db, customerQuery);
+const revenueReports = new RevenueReportService(db);
+const transactionalReports = new TransactionalReportService(db, new CompanyResolverService(db));
+const companies = new CompanyService(db);
+const products = new ProductsService(db);
+const poQuery = new PoQueryService(db);
+const interestConfigs = new InterestConfigService(db);
+const promotions = new PromotionsService(db);
+const gfin = new GfinConfigService(db, new AuditService(db));
+const holds = new ShopReservationService(db, {} as never, new AuditService(db));
 const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
   { resolveBranchCashAccount: async () => '110101' } as never);
@@ -153,15 +198,69 @@ async function fixture(name: string) {
 
 @Controller()
 class PreviewController {
-  @Get('products') async products() {
-    const products = await db.product.findMany({ where: { status: 'IN_STOCK', deletedAt: null }, include: { branch: true, prices: true } });
-    return { data: products };
+  @Get('reports/finance-portfolio') portfolio(
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return receivables.getFinancePortfolio(
+      status, Math.max(1, parseInt(page || '', 10) || 1),
+      Math.max(1, Math.min(parseInt(limit || '', 10) || 50, 100)), startDate, endDate,
+    );
   }
-  @Get('products/:id') product(@Param('id') id: string) {
-    return db.product.findUnique({ where: { id }, include: { branch: true, prices: true } });
+  @Get('branches') branches() {
+    return db.branch.findMany({ where: { deletedAt: null } });
   }
-  @Get('customers') async customers(@Query('search') search?: string) {
-    return { data: await db.customer.findMany({ where: { deletedAt: null, ...(search ? { name: { contains: search } } : {}) } }) };
+  @Get('companies') companies() { return companies.findAll(); }
+  @Get('dashboard/kpis') dashboardKpis() { return dashboardOverview.computeKPIs(); }
+  @Get('dashboard/monthly-trend') dashboardTrend() { return dashboardOverview.getMonthlyTrend(); }
+  @Get('dashboard/status-distribution') dashboardStatuses() { return dashboardOverview.getStatusDistribution(); }
+  @Get('dashboard/branch-comparison') dashboardBranches() { return dashboardOverview.getBranchComparison(); }
+  @Get('dashboard/monthly-revenue') dashboardRevenue() { return dashboardOverview.getMonthlyRevenue(); }
+  @Get('dashboard/top-overdue') dashboardOverdue() { return dashboardCollections.getTopOverdue(); }
+  @Get('dashboard/aging-summary') dashboardAging() { return dashboardCollections.getAgingSummary(); }
+  @Get('dashboard/watch-list') dashboardWatchList() { return dashboardCollections.computeWatchList(); }
+  @Get('dashboard/alerts') dashboardAlerts() { return dashboardOps.computeAlerts(); }
+  @Get('dashboard/staff-performance') dashboardStaff() { return dashboardOps.getStaffPerformance(); }
+  @Get('overdue/pipeline') dashboardPipeline() { return overdueQuery.getCollectionPipelineStats('OWNER'); }
+  @Get('customers/upsell-candidates') customerUpsell(@Query('limit') limit = '5') {
+    return customerAnalytics.getUpsellCandidates(undefined, Math.max(1, Math.min(parseInt(limit, 10) || 5, 50)));
+  }
+  @Get('reports/entity-profit') entityProfit(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    return revenueReports.getEntityProfitReport(startDate, endDate);
+  }
+  @Get('reports/comparative-pl') comparativePL(@Query('year') year: string, @Query('month') month: string) {
+    return transactionalReports.getComparativePL(Number(year), Number(month), undefined, undefined, true);
+  }
+  @Get('products') products(@Query() query: Record<string, string>) {
+    return products.findAll({ ...query, page: Number(query.page) || 1, limit: Number(query.limit) || 50 });
+  }
+  @Get('products/:id') product(@Param('id') id: string) { return products.findOne(id); }
+  @Patch('products/:id') updateProduct(@Param('id') id: string, @Body() dto: UpdateProductDto) {
+    return products.update(id, dto, actor.id);
+  }
+  @Get('products/:id/readiness') readiness(@Param('id') id: string) { return products.getReadiness(id); }
+  @Get('purchase-orders/qc-pending') qcPending(@Query() query: Record<string, string>) {
+    return poQuery.getQCPending({ branchId: query.branchId, poId: query.poId,
+      page: Number(query.page) || 1, limit: Number(query.limit) || 50 });
+  }
+  @Get('admin/product-holds') productHolds(@Query('productId') productId: string) {
+    return holds.listAdminHolds({ productId, status: 'ACTIVE' });
+  }
+  @Get('promotions/active') promotions() { return promotions.findActivePromotions(); }
+  @Get('interest-configs/resolved') resolvedInterest(@Query('category') category: string) { return interestConfigs.resolveConfig(category); }
+  @Get('gfin-config/max-prices') maxPrices() { return gfin.listMaxPrices(); }
+  @Get('gfin-config/overprice-rules') overprice() { return gfin.listOverpriceRules(); }
+  @Get('gfin-config/rate-factors') rateFactors() { return gfin.listRateFactors(); }
+  @Get('customers') customers(@Query() query: Record<string, string>) {
+    return customerQuery.findAll(
+      query.search, Math.max(1, parseInt(query.page, 10) || 1),
+      Math.max(1, Math.min(parseInt(query.limit, 10) || 50, 100)),
+      query.contractStatus, query.hasOverdue === 'true', query.creditStatus,
+      query.branchId, query.sortBy, query.sortOrder, query.tier, query.creditCheckStatus,
+    );
   }
   @Get('interest-configs/by-category/:category') interest(@Param('category') category: string) {
     return db.interestConfig.findFirst({ where: { productCategories: { has: category as never }, isActive: true } });
@@ -217,7 +316,7 @@ class PreviewController {
   ) {
     return manager.linkCustomer(id, customerId, actor);
   }
-  @Get('customers/search') customers(@Query('q') q = '') {
+  @Get('customers/search') searchCustomers(@Query('q') q = '') {
     return db.customer.findMany({ where: { deletedAt: null, name: { contains: q } } });
   }
   @Get('customers/:id') async customer(@Param('id') id: string) {
@@ -233,6 +332,7 @@ class PreviewController {
 
 async function main() {
   await db.$connect();
+  await seedTradeInShop(db, 'LOCAL PREVIEW BRANCH');
   const user = await db.user.upsert({
     where: { email: 'preview@test.invalid' },
     update: {},
@@ -293,8 +393,10 @@ async function main() {
       data: { customerId: created.customerId },
     });
   }
+  await seedPreviewPortfolio(db, actor.id);
   const module = await Test.createTestingModule({
     controllers: [
+      TradeInController, ContactsController, ProductPhotosController,
       RoomCreditController,
       RoomAssistanceController,
       OcrController,
@@ -303,6 +405,8 @@ async function main() {
       PreviewController,
     ],
     providers: [
+      ...tradeInProviders(db, storageForPreview as StorageService),
+      ProductPhotosService,
       RoomCreditService,
       PrepareOfferService, RoomAiAccessService, SearchProductsTool, CalculateInstallmentTool,
       { provide: AiTextService, useValue: { isAvailable: true, generate: async () => JSON.stringify({
@@ -325,11 +429,25 @@ async function main() {
     .useValue({ canActivate: () => true })
     .compile();
   const app = module.createNestApplication({ logger: false });
+  app.use(json({ limit: '20mb' }));
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.use((req, res, next) => {
     req.url = req.url.replace(/^\/api\/admin(?=\/|$)/, '/api');
     const path = req.path;
+    // Explicit app-shell fixtures. Unsupported endpoints must not masquerade as empty data.
+    if (req.method === 'GET') {
+      const shellData = {
+        '/api/settings/test-mode': { enabled: false },
+        '/api/overdue/collections-flag': { enabled: false },
+        '/api/settings/ui-flags': {},
+        '/api/staff-chat/appointments/due': [],
+        '/api/staff-chat/staff/online': [],
+        '/api/staff-chat/unread-count': { unread: 0 },
+        '/api/notifications/logs/stats': { total: 0, sent: 0, failed: 0, pending: 0 },
+      };
+      if (Object.prototype.hasOwnProperty.call(shellData, path)) return res.json(shellData[path]);
+    }
     if (path.endsWith('/suggest'))
       return res.json({ suggestions: [], detectedProducts: [], processingTimeMs: 0 });
     if (path.endsWith('/chat-summary'))
@@ -373,16 +491,18 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
-      /^\/api\/(preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales\/config)/.test(path) || path === '/api/customers' ||
+      /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales\/config)/.test(path) || path === '/api/customers' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*)?)$/.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
-      path === '/api/staff-chat/ai/settings'
+      path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
+      path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
+      /^\/api\/dashboard\/(kpis|monthly-trend|status-distribution|branch-comparison|monthly-revenue|top-overdue|aging-summary|watch-list|alerts|staff-performance)$/.test(path) ||
+      /^\/api\/reports\/(entity-profit|comparative-pl)$/.test(path)
     )
       return next();
-    if (req.method === 'GET') return res.json([]);
-    return res.status(400).json({ message: 'โหมด local นี้เปิดให้ทดสอบเฉพาะการตรวจเครดิต' });
+    return res.status(501).json({ message: 'เมนูนี้ยังไม่รองรับใน local preview', code: 'LOCAL_PREVIEW_UNSUPPORTED' });
   });
   await app.listen(0, '127.0.0.1');
   const credit = app.get(RoomCreditService);
@@ -403,20 +523,35 @@ async function main() {
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     },
   );
-  const stop = async () => {
-    vite.kill('SIGTERM');
+  let stopping = false;
+  const stop = async (code = 0) => {
+    if (stopping) return;
+    stopping = true;
+    if (vite.pid && vite.exitCode === null && vite.signalCode === null) {
+      const exited = new Promise<void>(resolve => vite.once('exit', () => resolve()));
+      vite.kill('SIGTERM');
+      await exited;
+    }
     await app.close();
     await db.$disconnect();
-    process.exit(0);
+    await unlink(join(root, 'runtime.json')).catch(() => {});
+    process.exit(code);
   };
-  process.once('SIGTERM', stop);
-  process.once('SIGINT', stop);
-  await new Promise<void>((ready, reject) => {
-    vite.once('message', () => ready());
-    vite.once('exit', (code) => reject(new Error(`Preview Vite exited: ${code}`)));
+  process.once('SIGTERM', () => void stop());
+  process.once('SIGINT', () => void stop());
+  vite.once('error', error => { console.error(error.message); void stop(1); });
+  vite.once('exit', () => { if (!stopping) void stop(1); });
+  await new Promise<void>(ready => {
+    const timeout = setTimeout(() => { console.error('Preview Vite startup timed out'); void stop(1); }, 30000);
+    vite.once('message', () => { clearTimeout(timeout); ready(); });
   });
   info = {
     isolated: true,
+    repoRoot: process.env.CREDIT_REPO_ROOT,
+    runId: process.env.CREDIT_LOCAL_RUN_ID ?? null,
+    sourceFingerprint: process.env.CREDIT_SOURCE_FINGERPRINT ?? null,
+    sourceRevision: process.env.CREDIT_SOURCE_REVISION ?? null,
+    startedAt: new Date().toISOString(),
     ocr: realOcr ? 'real' : 'mock',
     storage: realStorage ? 'gcs' : 'local-files',
     roomUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/inbox/${room.id}`,

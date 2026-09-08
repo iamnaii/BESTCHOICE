@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { RefreshCw, Plus, Search, X } from 'lucide-react';
+import TradeInProductHandoff from '@/components/trade-in/TradeInProductHandoff';
+import Modal from '@/components/ui/Modal';
 import QuickBuyModal from '@/components/trade-in/QuickBuyModal';
 import TradeInTable from './components/TradeInTable';
 import AppraisalModal from './components/AppraisalModal';
@@ -18,10 +20,12 @@ import ValuationsTab from './components/ValuationsTab';
 import QuestionnaireTab from './components/QuestionnaireTab';
 import TradeInDetailDialog from './components/TradeInDetailDialog';
 import OnlineAppraiseModal from './components/OnlineAppraiseModal';
+import VoucherPdfPreview from './components/VoucherPdfPreview';
 import type {
   TradeIn,
   TradeInsResponse,
   AcceptFormState,
+  AcceptRequest,
   TradeInSubmissionSource,
   TradeInFlow,
 } from './types';
@@ -54,12 +58,12 @@ function Segmented<T extends string>({
   ariaLabel?: string;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
       {label && <span className="text-xs leading-snug text-muted-foreground">{label}</span>}
       <div
         role="radiogroup"
         aria-label={ariaLabel ?? label}
-        className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5"
+        className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg bg-muted p-0.5"
       >
         {options.map(([key, text]) => {
           const active = value === key;
@@ -115,6 +119,7 @@ export default function TradeInPage() {
 
   const [page, setPage] = useState(1);
   const [showQuickBuy, setShowQuickBuy] = useState(false);
+  const [received, setReceived] = useState<{ id: string; productId: string; voucherNumber?: string } | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
 
@@ -171,6 +176,7 @@ export default function TradeInPage() {
     onSuccess: () => {
       toast.success('ประเมินราคาเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
       setAppraiseModal(null);
       setAppraiseValue('');
       setAppraiseCondition('B');
@@ -179,11 +185,15 @@ export default function TradeInPage() {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: async ({ id, body }: { id: string; body: AcceptFormState & { branchId?: string } }) =>
+    mutationFn: async ({ id, body }: { id: string; body: AcceptRequest }) =>
       api.post(`/trade-ins/${id}/accept`, body),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res.data.productId) setReceived(res.data);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['qc-pending-count'] });
       toast.success('ยอมรับการรับซื้อเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
       setAcceptModal(null);
       setAcceptForm(EMPTY_ACCEPT_FORM);
     },
@@ -195,39 +205,61 @@ export default function TradeInPage() {
     onSuccess: () => {
       toast.success('ปฏิเสธการรับซื้อ');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   // Track ว่ากำลังเปิด PDF ใบไหนอยู่ — โชว์ spinner ที่ปุ่มนั้น
   const [voucherLoadingId, setVoucherLoadingId] = useState<string | null>(null);
+  const [voucherPreview, setVoucherPreview] = useState<{ blob: Blob; filename: string; requestId: number } | null>(null);
+  const voucherRequest = useRef(0);
+  useEffect(() => () => { voucherRequest.current += 1; }, []);
+
+  function closeVoucherPreview() {
+    voucherRequest.current += 1;
+    setVoucherLoadingId(null);
+    setVoucherPreview(null);
+  }
 
   const generateVoucherMutation = useMutation({
     mutationFn: async (id: string) => api.post(`/trade-ins/${id}/voucher`),
-    onSuccess: async (res, id) => {
-      toast.success(`ออกใบสำคัญเลขที่ ${res.data.voucherNumber}`);
-      queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
-      await openVoucherPdf(id);
+    onMutate: (id) => {
+      setVoucherLoadingId(id);
+      return { requestId: ++voucherRequest.current };
     },
-    onError: (err) => toast.error(getErrorMessage(err)),
+    onSuccess: async (res, id, context) => {
+      queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
+      if (context.requestId !== voucherRequest.current) return;
+      toast.success(`ออกใบสำคัญเลขที่ ${res.data.voucherNumber}`);
+      await openVoucherPdf(id, context.requestId);
+    },
+    onError: (err, _id, context) => {
+      if (context?.requestId !== voucherRequest.current) return;
+      setVoucherLoadingId(null);
+      toast.error(getErrorMessage(err));
+    },
   });
 
   /* ─── Helpers ─── */
 
-  // ดาวน์โหลด PDF เป็น blob (ผ่าน axios — ส่ง JWT แนบ) แล้วเปิดในแท็บใหม่
-  async function openVoucherPdf(id: string) {
+  // Keep JWT/company scope and the server filename when previewing the authenticated PDF.
+  async function openVoucherPdf(id: string, requestId = ++voucherRequest.current) {
     setVoucherLoadingId(id);
     try {
       const res = await api.get(`/trade-ins/${id}/voucher.pdf`, { responseType: 'blob' });
+      if (requestId !== voucherRequest.current) return;
       const blob = new Blob([res.data], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      // revoke ภายหลัง 60 วิ ให้แท็บใหม่โหลดเสร็จก่อน
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const disposition = String(res.headers['content-disposition'] || '');
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const filename = encodedName ? decodeURIComponent(encodedName)
+        : disposition.match(/filename="([^"]+)"/i)?.[1] || 'ใบสำคัญรับเครื่อง.pdf';
+      setVoucherPreview({ blob, filename, requestId });
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      if (requestId === voucherRequest.current) toast.error(getErrorMessage(err));
     } finally {
-      setVoucherLoadingId(null);
+      if (requestId === voucherRequest.current) setVoucherLoadingId(null);
     }
   }
 
@@ -282,11 +314,29 @@ export default function TradeInPage() {
       <QuickBuyModal
         open={showQuickBuy}
         onClose={() => setShowQuickBuy(false)}
-        onSuccess={(id) => {
+        onIncomplete={(id) => {
           queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
-          openVoucherPdf(id);
+          queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
+          setDetailId(id);
+        }}
+        onSuccess={(result) => {
+          queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+          queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
+          queryClient.invalidateQueries({ queryKey: ['products'] });
+          queryClient.invalidateQueries({ queryKey: ['qc-pending-count'] });
+          setReceived(result);
         }}
       />
+
+      <Modal isOpen={!!received} onClose={() => setReceived(null)} title="รับเครื่องเรียบร้อย" size="md">
+        {received && <div className="space-y-4">
+          <TradeInProductHandoff productId={received.productId} />
+          <Button variant="outline" disabled={voucherLoadingId === received.id || generateVoucherMutation.isPending}
+            onClick={() => received.voucherNumber ? openVoucherPdf(received.id) : generateVoucherMutation.mutate(received.id)}>
+            พิมพ์เอกสารรับเครื่อง
+          </Button>
+        </div>}
+      </Modal>
 
       {canManage && (
         <div className="mb-4">
@@ -307,7 +357,7 @@ export default function TradeInPage() {
             /* Filters live in the table's own toolbar so the list reads as one
                surface instead of three stacked bars. */
             filters={
-              <>
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-3">
                 <div className="relative w-full sm:w-72">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -344,7 +394,7 @@ export default function TradeInPage() {
                     ล้างตัวกรอง
                   </Button>
                 )}
-              </>
+              </div>
             }
             data={data?.data}
             total={data?.total}
@@ -384,10 +434,12 @@ export default function TradeInPage() {
             onClose={handleCloseAccept}
           />
 
-          <TradeInDetailDialog id={detailId} onClose={() => setDetailId(null)} />
+          <TradeInDetailDialog id={detailId} onClose={() => setDetailId(null)} onVoucher={handleVoucher}
+            voucherLoading={voucherLoadingId === detailId || generateVoucherMutation.isPending} />
           <OnlineAppraiseModal item={onlineAppraise} onClose={() => setOnlineAppraise(null)} />
         </>
       )}
+      {voucherPreview && <VoucherPdfPreview key={voucherPreview.requestId} {...voucherPreview} onClose={closeVoucherPreview} />}
     </div>
   );
 }

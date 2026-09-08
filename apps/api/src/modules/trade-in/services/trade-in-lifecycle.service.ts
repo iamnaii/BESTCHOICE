@@ -3,7 +3,11 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  HttpException,
+  ConflictException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { TradeInCreditService } from './trade-in-credit.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import {
@@ -16,7 +20,9 @@ import {
 import { TradeInVoucherService } from './voucher.service';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
-import { Prisma } from '@prisma/client';
+import { Prisma, TradeInFlow } from '@prisma/client';
+import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_TEXT, TRADE_IN_DECLARATION_VERSION_ERROR } from '@installment/shared';
+import { tradeInEvidenceError, TradeInEvidence } from '@installment/shared';
 import {
   normalizeNationalId,
   buildTradeInPiiEncryptedFields,
@@ -49,10 +55,12 @@ export class TradeInLifecycleService {
     private valuation: TradeInValuationService,
     private shopTradeInTemplate: ShopTradeInTemplate,
     private shopAccountResolver: ShopAccountResolver,
+    private credits = new TradeInCreditService(prisma),
   ) {}
 
   // ─── Create ───────────────────────────────────────────────
-  async create(dto: CreateTradeInDto) {
+  async create(dto: CreateTradeInDto, flow: TradeInFlow = 'EXCHANGE', request: Pick<Prisma.TradeInUncheckedCreateInput,
+    'quickBuyRequestId' | 'quickBuyRequestHash' | 'quickBuyRequestedById'> = {}) {
     // Walk-in หรือ existing customer ก็ได้ — ต้องมีอย่างน้อยหนึ่งอย่าง:
     // customerId, sellerContactId (party-master), หรือ sellerName (free-text)
     if (!dto.customerId && !dto.sellerContactId && !dto.sellerName) {
@@ -144,6 +152,8 @@ export class TradeInLifecycleService {
 
       return tx.tradeIn.create({
         data: {
+          ...request,
+          flow,
           customerId: dto.customerId,
           productId: dto.productId,
           branchId: dto.branchId,
@@ -153,6 +163,9 @@ export class TradeInLifecycleService {
           deviceColor: dto.deviceColor,
           deviceCondition: dto.deviceCondition,
           imei: dto.imei,
+          serialNumber: dto.serialNumber?.trim() || null,
+          imeiMissingReason: dto.imei ? null : dto.imeiMissingReason?.trim(),
+          serialNumberMissingReason: dto.serialNumber?.trim() ? null : dto.serialNumberMissingReason?.trim(),
           estimatedValue: dto.estimatedValue,
           notes: dto.notes,
           sellerName: dto.sellerName,
@@ -184,7 +197,7 @@ export class TradeInLifecycleService {
   async update(id: string, dto: UpdateTradeInDto) {
     const existing = await this.query.findOne(id);
     // ห้ามแก้ข้อมูลผู้ขายหลังจาก accept แล้ว — กันลบหลักฐาน anti-stolen-goods
-    if (existing.status === 'ACCEPTED' || existing.status === 'COMPLETED') {
+    if (existing.idCardVerifiedAt || existing.sellerDeclarationSnapshot || existing.status === 'ACCEPTED' || existing.status === 'COMPLETED') {
       const sellerFields = [
         dto.sellerName,
         dto.sellerPhone,
@@ -204,8 +217,12 @@ export class TradeInLifecycleService {
       throw new BadRequestException('เลขบัตรประชาชนไม่ถูกต้อง');
     }
     return this.prisma.tradeIn.update({
-      where: { id },
+      where: { id, ...([dto.sellerName, dto.sellerPhone, dto.sellerIdCardNumber, dto.sellerAddress].some((v) => v !== undefined)
+        ? { idCardVerifiedAt: null, deletedAt: null, status: { notIn: ['ACCEPTED', 'COMPLETED'] as const } } : {}) },
       data: { ...dto },
+    }).catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') throw new ConflictException('รายการลงนามรับเครื่องแล้ว กรุณาโหลดข้อมูลใหม่');
+      throw error;
     });
   }
 
@@ -240,6 +257,10 @@ export class TradeInLifecycleService {
       tradeIn.offeredPrice !== null && tradeIn.offeredPrice !== undefined
         ? Number(tradeIn.offeredPrice)
         : null;
+    if (tradeIn.idCardVerifiedAt || tradeIn.sellerDeclarationSnapshot) {
+      if (previousPrice === dto.offeredPrice) return tradeIn;
+      throw new BadRequestException('รับเครื่องและลงนามแล้ว ไม่สามารถเปลี่ยนราคาที่รับรองไว้');
+    }
 
     if (tradeIn.appraisalLocked) {
       const sameRequest = previousPrice !== null && previousPrice === dto.offeredPrice;
@@ -345,6 +366,37 @@ export class TradeInLifecycleService {
   }
 
   // ─── Accept (with anti-theft gate) ────────────────────────
+  private async assertEvidence(evidence: TradeInEvidence, sellerContactId?: string | null, customerId?: string | null,
+    db: Prisma.TransactionClient = this.prisma) {
+    const error = tradeInEvidenceError(evidence);
+    if (error) throw new BadRequestException(error);
+    const hash = this.pii.hash(normalizeNationalId(evidence.sellerIdCardNumber!));
+    if (sellerContactId) {
+      const contact = await db.contact.findUnique({ where: { id: sellerContactId } });
+      if (!contact || contact.deletedAt || !contact.isActive) throw new BadRequestException('ไม่พบรายชื่อผู้ขายที่ใช้งานได้');
+      if (contact.nationalIdHash && contact.nationalIdHash !== hash) throw new BadRequestException('เลขบัตรประชาชนไม่ตรงกับผู้ขายที่เลือก');
+    }
+    if (customerId) {
+      const customer = await db.customer.findUnique({ where: { id: customerId }, select: { nationalIdHash: true, deletedAt: true, contactId: true } });
+      if (!customer || customer.deletedAt || (customer.nationalIdHash && customer.nationalIdHash !== hash)
+        || (sellerContactId && customer.contactId && sellerContactId !== customer.contactId)) {
+        throw new BadRequestException('ข้อมูลบัตรประชาชนไม่ตรงกับลูกค้าที่เลือก');
+      }
+    }
+  }
+
+  private assertSellerDeclaration(dto: Pick<AcceptTradeInDto, 'declarationVersion' | 'sellerSignatureBase64'>) {
+    if (dto.declarationVersion !== TRADE_IN_DECLARATION_VERSION) {
+      throw new BadRequestException(TRADE_IN_DECLARATION_VERSION_ERROR);
+    }
+    if (!dto.sellerSignatureBase64?.trim()) {
+      throw new BadRequestException('กรุณาให้ผู้ขายอ่านคำรับรองและลงลายเซ็นก่อนรับเครื่อง');
+    }
+    if (dto.sellerSignatureBase64.length > 200_000) {
+      throw new BadRequestException('ลายเซ็นมีขนาดใหญ่เกินไป');
+    }
+  }
+
   // เมื่อ ACCEPTED → auto-create Product (PHONE_USED, PHOTO_PENDING) + ลิงก์ TradeIn.productId
   // ตาม pattern เดียวกับ PurchaseOrder.receive() — สินค้ามือสองต้องถ่ายรูป 6 มุมก่อนเข้าคลังจริง
   async accept(id: string, dto: AcceptTradeInDto, userId: string) {
@@ -356,13 +408,21 @@ export class TradeInLifecycleService {
       if (tradeIn.status !== 'APPRAISED') {
         throw new BadRequestException('รายการนี้ยังไม่ได้ประเมินราคา');
       }
+      if (tradeIn.idCardVerifiedAt || tradeIn.sellerSignatureBase64 || tradeIn.sellerSignatureUrl || tradeIn.sellerDeclarationSnapshot) {
+        throw new BadRequestException('รายการนี้มีหลักฐานการรับเครื่องแล้ว ไม่สามารถลงนามรับเครื่องซ้ำได้');
+      }
       if (!dto.idCardVerified) {
         throw new BadRequestException('ต้องยืนยันว่าตรวจบัตรประชาชนผู้ขายแล้ว');
       }
       if (!dto.sellerConsentSigned) {
         throw new BadRequestException('ต้องให้ผู้ขายเซ็นยืนยันความเป็นเจ้าของก่อน');
       }
-      if (dto.paymentMethod === 'TRANSFER') {
+      this.assertSellerDeclaration(dto);
+      const paymentMethod = tradeIn.flow === 'EXCHANGE' ? 'TRADE_IN_CREDIT' : dto.paymentMethod;
+      if (tradeIn.flow !== 'EXCHANGE' && !['CASH', 'TRANSFER'].includes(paymentMethod)) {
+        throw new BadRequestException('รายการรับซื้อต้องเลือกจ่ายเงินสดหรือโอนให้ผู้ขาย');
+      }
+      if (paymentMethod === 'TRANSFER') {
         if (!dto.transferBankName || !dto.transferAccountNumber || !dto.transferAccountName) {
           throw new BadRequestException(
             'กรณีโอนต้องระบุธนาคาร, เลขบัญชี และชื่อบัญชีผู้รับโอน',
@@ -383,25 +443,47 @@ export class TradeInLifecycleService {
 
       // เก็บลายเซ็นผู้ขายเป็น base64 ตรง ๆ (ไม่พึ่ง S3)
       // size guard: ลายเซ็นจาก SignaturePadFull canvas ปกติ < 30KB
-      let signatureBase64: string | null = null;
-      if (dto.sellerSignatureBase64) {
-        if (dto.sellerSignatureBase64.length > 200_000) {
-          throw new BadRequestException('ลายเซ็นมีขนาดใหญ่เกินไป');
+      const signatureBase64 = dto.sellerSignatureBase64!;
+      const acceptedAt = new Date();
+      // Staff can confirm identifiers on online/appraised records before signing.
+      const imei = dto.imei === undefined ? tradeIn.imei : dto.imei;
+      const serialNumber = dto.serialNumber === undefined
+        ? tradeIn.serialNumber : dto.serialNumber?.trim() || null;
+      const evidence = {
+        sellerName: (dto.sellerName ?? tradeIn.sellerName)?.trim(),
+        sellerPhone: (dto.sellerPhone ?? tradeIn.sellerPhone)?.trim(),
+        sellerIdCardNumber: (dto.sellerIdCardNumber ?? tradeIn.sellerIdCardNumber)?.trim(),
+        sellerAddress: (dto.sellerAddress ?? tradeIn.sellerAddress)?.trim(),
+        imei, serialNumber,
+        imeiMissingReason: imei ? null : (dto.imeiMissingReason ?? tradeIn.imeiMissingReason)?.trim(),
+        serialNumberMissingReason: serialNumber ? null : (dto.serialNumberMissingReason ?? tradeIn.serialNumberMissingReason)?.trim(),
+      };
+      await this.assertEvidence(evidence, tradeIn.sellerContactId, tradeIn.customerId, tx);
+      let creditCustomerId = tradeIn.customerId;
+      let sellerContactId = tradeIn.sellerContactId;
+      if (tradeIn.flow === 'EXCHANGE' && !creditCustomerId) {
+        if (!sellerContactId) {
+          const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
+            name: evidence.sellerName!, phone: evidence.sellerPhone!, taxId: null,
+            nationalIdHash: this.pii.hash(normalizeNationalId(evidence.sellerIdCardNumber!)), role: 'TRADE_IN_SELLER',
+          });
+          sellerContactId = contact.id;
         }
-        signatureBase64 = dto.sellerSignatureBase64;
+        creditCustomerId = (await this.contactResolver.ensureRole(tx, sellerContactId, 'CUSTOMER')).customerId!;
+        await this.assertEvidence(evidence, sellerContactId, creditCustomerId, tx);
       }
 
       // T5-C12: IMEI uniqueness check — เฉพาะ active products (soft-deleted
       // ถือว่าคืน IMEI กลับเข้า pool ได้) ตรงกับ partial unique index ใน DB
       // (migration 20260525200000_product_imei_partial_unique).
-      if (tradeIn.imei) {
+      if (imei) {
         const existing = await tx.product.findFirst({
-          where: { imeiSerial: tradeIn.imei, deletedAt: null },
+          where: { imeiSerial: imei, deletedAt: null },
           select: { id: true, name: true },
         });
         if (existing) {
           throw new BadRequestException(
-            `IMEI ${tradeIn.imei} มีอยู่ในระบบแล้ว: ${existing.name}`,
+            `IMEI ${imei} มีอยู่ในระบบแล้ว: ${existing.name}`,
           );
         }
       }
@@ -446,7 +528,8 @@ export class TradeInLifecycleService {
           costPrice,
           branchId: effectiveBranchId,
           status: 'PHOTO_PENDING',
-          imeiSerial: tradeIn.imei ?? null,
+          imeiSerial: imei ?? null,
+          serialNumber: serialNumber ?? null,
           checklistResults: {
             source: 'trade-in',
             tradeInId: tradeIn.id,
@@ -487,38 +570,58 @@ export class TradeInLifecycleService {
       }
 
       const updated = await tx.tradeIn.update({
-        where: { id },
+        // Conditional write also prevents concurrent accept requests replacing signed evidence.
+        where: { id, status: 'APPRAISED', deletedAt: null, idCardVerifiedAt: null, sellerSignatureBase64: null,
+          sellerSignatureUrl: null, sellerDeclarationSnapshot: { equals: Prisma.DbNull } },
         data: {
+          ...evidence,
+          customerId: creditCustomerId,
+          sellerContactId,
           branchId: effectiveBranchId,
           status: 'ACCEPTED',
+          imei,
+          serialNumber,
           agreedPrice: tradeIn.offeredPrice,
           productId: product.id,
-          idCardVerifiedAt: new Date(),
+          idCardVerifiedAt: acceptedAt,
           idCardVerifiedById: userId,
           sellerConsentSigned: true,
           policeReportAcknowledged: dto.policeReportAcknowledged ?? false,
-          paymentMethod: dto.paymentMethod,
-          transferBankName: dto.paymentMethod === 'TRANSFER' ? dto.transferBankName : null,
+          paymentMethod,
+          transferBankName: paymentMethod === 'TRANSFER' ? dto.transferBankName : null,
           transferAccountNumber:
-            dto.paymentMethod === 'TRANSFER' ? dto.transferAccountNumber : null,
+            paymentMethod === 'TRANSFER' ? dto.transferAccountNumber : null,
           transferAccountName:
-            dto.paymentMethod === 'TRANSFER' ? dto.transferAccountName : null,
+            paymentMethod === 'TRANSFER' ? dto.transferAccountName : null,
           ...buildTradeInPiiEncryptedFields({
-            paymentMethod: dto.paymentMethod,
+            paymentMethod,
             transferAccountNumber: dto.transferAccountNumber,
             transferAccountName: dto.transferAccountName,
           }),
-          sellerSignatureBase64: signatureBase64 ?? undefined,
+          sellerSignatureBase64: signatureBase64,
+          sellerDeclarationSnapshot: {
+            version: TRADE_IN_DECLARATION_VERSION,
+            text: TRADE_IN_DECLARATION_TEXT,
+            acceptedAt: acceptedAt.toISOString(),
+            acceptedByUserId: userId,
+          },
         },
+      }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+          throw new BadRequestException('รายการรับเครื่องถูกเปลี่ยนแปลงแล้ว กรุณารีเฟรชหน้าเพื่อตรวจสอบ');
+        }
+        throw error;
       });
 
-      // SHOP-side: a BUYBACK buys the used device for cash → Dr S11-2002 / Cr cash.
-      // EXCHANGE is intentionally skipped: its value is credited toward a purchase and is
-      // booked with the companion sale/contract, not as a standalone cash-out (deferred).
+      // Receipt of an exchange phone creates stock and a liability for its base value.
+      if (tradeIn.flow === 'EXCHANGE') {
+        await this.credits.issue(tx, tradeIn.id, costPrice, new Prisma.Decimal(tradeIn.offeredPrice ?? 0).minus(costPrice));
+      }
+      // A BUYBACK pays the seller immediately.
       if (tradeIn.flow === 'BUYBACK' && costPrice.gt(0)) {
         const cashAccountCode = await this.shopAccountResolver.resolveOutflowCashAccount(
           effectiveBranchId,
-          dto.paymentMethod,
+          paymentMethod,
           tx,
         );
         await this.shopTradeInTemplate.execute(
@@ -557,6 +660,17 @@ export class TradeInLifecycleService {
     userId: string,
     userBranchId?: string | null,
   ) {
+    if (!dto.requestId) throw new BadRequestException('กรุณารีเฟรชหน้าเพื่อเริ่มรายการรับซื้อ');
+    const effectiveBranch = dto.branchId ?? userBranchId ?? null;
+    const payload = { ...dto, branchId: effectiveBranch, userId };
+    const requestHash = createHash('sha256').update(JSON.stringify(payload, Object.keys(payload).sort())).digest('hex');
+    const replay = await this.prisma.tradeIn.findUnique({ where: { quickBuyRequestId: dto.requestId } });
+    if (replay) {
+      if (replay.quickBuyRequestedById !== userId || replay.quickBuyRequestHash !== requestHash) {
+        throw new ConflictException('รหัสรายการนี้ถูกใช้กับข้อมูลอื่นแล้ว กรุณาตรวจรายการเดิมก่อนเริ่มรับซื้อใหม่');
+      }
+      return this.replayQuickBuy(replay);
+    }
     // Resolve branch — prefer DTO (explicit pick), fall back to user's home branch.
     // OWNER/cross-branch users have no default branch, so they must pass branchId
     // explicitly; surface a clear error instead of letting accept() fail later.
@@ -566,6 +680,23 @@ export class TradeInLifecycleService {
         'กรุณาเลือกสาขาที่รับซื้อก่อน — บัญชีของคุณไม่ได้ผูกกับสาขาเริ่มต้น',
       );
     }
+    if (!Number.isFinite(dto.agreedPrice) || dto.agreedPrice < 0.01 || new Prisma.Decimal(dto.agreedPrice).decimalPlaces() > 2) {
+      throw new BadRequestException('ราคารับซื้อต้องอย่างน้อย 0.01 บาท และมีทศนิยมไม่เกิน 2 ตำแหน่ง');
+    }
+    if (!dto.idCardVerified || !dto.sellerConsentSigned) {
+      throw new BadRequestException('กรุณายืนยันการตรวจบัตรและความยินยอมก่อนรับซื้อ');
+    }
+    this.assertSellerDeclaration(dto);
+    await this.assertEvidence(dto, dto.sellerContactId);
+    if (!['CASH', 'TRANSFER'].includes(dto.paymentMethod)) {
+      throw new BadRequestException('กรุณาเลือกจ่ายเงินสดหรือโอนให้ผู้ขาย');
+    }
+    if (dto.paymentMethod === 'TRANSFER' &&
+      (!dto.transferBankName?.trim() || !dto.transferAccountNumber?.trim() || !dto.transferAccountName?.trim())) {
+      throw new BadRequestException('กรุณาระบุธนาคาร เลขบัญชี และชื่อบัญชีผู้ขายที่รับเงิน');
+    }
+    // Fail before creating an intermediate record when the SHOP funding account is missing.
+    await this.shopAccountResolver.resolveOutflowCashAccount(branchId, dto.paymentMethod);
 
     // ─── Stage 1: Create (PENDING_APPRAISAL) ───
     // ใช้ create() เดิม — validation seller/IMEI dup/ID card upload เกิดที่นี่
@@ -577,6 +708,9 @@ export class TradeInLifecycleService {
       deviceColor: dto.deviceColor,
       deviceCondition: dto.deviceCondition,
       imei: dto.imei,
+      serialNumber: dto.serialNumber,
+      imeiMissingReason: dto.imeiMissingReason,
+      serialNumberMissingReason: dto.serialNumberMissingReason,
       estimatedValue: dto.agreedPrice,
       notes: dto.notes,
       sellerContactId: dto.sellerContactId,
@@ -586,50 +720,91 @@ export class TradeInLifecycleService {
       sellerAddress: dto.sellerAddress,
       idCardPhotoBase64: dto.idCardPhotoBase64,
       idCardSource: dto.idCardSource,
-    });
+    }, 'BUYBACK', { quickBuyRequestId: dto.requestId, quickBuyRequestHash: requestHash, quickBuyRequestedById: userId })
+      .catch(async (error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          const existing = await this.prisma.tradeIn.findUnique({ where: { quickBuyRequestId: dto.requestId } });
+          if (existing) {
+            if (existing.quickBuyRequestedById !== userId || existing.quickBuyRequestHash !== requestHash) {
+              throw new ConflictException('รหัสรายการนี้ถูกใช้กับข้อมูลอื่นแล้ว');
+            }
+            // Only the request which created this row may execute the remaining stages.
+            throw new ConflictException({ message: 'รายการนี้กำลังบันทึกอยู่ กรุณาตรวจสถานะรายการเดิม', tradeInId: existing.id });
+          }
+        }
+        throw error;
+      });
 
-    // ─── Stage 2: Appraise (PENDING_APPRAISAL → APPRAISED) ───
-    await this.appraise(
-      created.id,
-      {
-        offeredPrice: dto.agreedPrice,
-        deviceCondition: dto.deviceCondition || 'B',
-      },
-      userId,
-    );
+    try {
+      // ─── Stage 2: Appraise (PENDING_APPRAISAL → APPRAISED) ───
+      await this.appraise(
+        created.id,
+        {
+          offeredPrice: dto.agreedPrice,
+          deviceCondition: dto.deviceCondition || 'B',
+        },
+        userId,
+      );
 
-    // ─── Stage 3: Accept (APPRAISED → ACCEPTED) ───
-    // Validation consent + payment + signature เกิดที่นี่
-    await this.accept(
-      created.id,
-      {
-        idCardVerified: dto.idCardVerified,
-        sellerConsentSigned: dto.sellerConsentSigned,
-        policeReportAcknowledged: true,
-        paymentMethod: dto.paymentMethod,
-        transferBankName: dto.transferBankName,
-        transferAccountNumber: dto.transferAccountNumber,
-        transferAccountName: dto.transferAccountName,
-        sellerSignatureBase64: dto.sellerSignatureBase64,
-      },
-      userId,
-    );
+      // ─── Stage 3: Accept (APPRAISED → ACCEPTED) ───
+      // Validation consent + payment + signature เกิดที่นี่
+      const accepted = await this.accept(
+        created.id,
+        {
+          idCardVerified: dto.idCardVerified,
+          sellerConsentSigned: dto.sellerConsentSigned,
+          declarationVersion: dto.declarationVersion,
+          paymentMethod: dto.paymentMethod,
+          transferBankName: dto.transferBankName,
+          transferAccountNumber: dto.transferAccountNumber,
+          transferAccountName: dto.transferAccountName,
+          sellerSignatureBase64: dto.sellerSignatureBase64,
+        },
+        userId,
+      );
 
-    // ─── Stage 4: Allocate voucher number ───
-    const voucher = await this.voucher.allocate(created.id);
+      // ─── Stage 4: Allocate voucher number ───
+      const voucher = await this.voucher.allocate(created.id);
 
-    // Re-fetch เพื่อตอบ IMEI warning (create() บันทึก imeiBlacklistResult ให้แล้ว)
-    const final = await this.prisma.tradeIn.findUnique({
-      where: { id: created.id },
-      select: { imeiBlacklistResult: true },
-    });
+      // Re-fetch เพื่อตอบ IMEI warning (create() บันทึก imeiBlacklistResult ให้แล้ว)
+      const final = await this.prisma.tradeIn.findUnique({
+        where: { id: created.id },
+        select: { imeiBlacklistResult: true },
+      });
 
-    return {
-      id: created.id,
-      voucherNumber: voucher.voucherNumber,
-      voucherDate: voucher.voucherDate,
-      imeiWarning: final?.imeiBlacklistResult === 'duplicate',
-    };
+      return {
+        id: created.id,
+        productId: accepted.productId,
+        productStatus: 'PHOTO_PENDING' as const,
+        voucherNumber: voucher.voucherNumber,
+        voucherDate: voucher.voucherDate,
+        imeiWarning: final?.imeiBlacklistResult === 'duplicate',
+      };
+    } catch (error) {
+      const response = error instanceof HttpException ? error.getResponse() : null;
+      const detail = typeof response === 'string' ? response
+        : response && typeof response === 'object' && 'message' in response ? response.message : null;
+      throw new BadRequestException({
+        message: `บันทึกรายการ ${created.id} แล้ว แต่ยังทำไม่ครบขั้นตอน${detail ? `: ${detail}` : ''} — เปิดรายละเอียดรายการเดิมเพื่อตรวจสถานะก่อนทำต่อ`,
+        tradeInId: created.id,
+      });
+    }
+  }
+
+  async quickBuyStatus(requestId: string, userId: string) {
+    const row = await this.prisma.tradeIn.findUnique({ where: { quickBuyRequestId: requestId } });
+    if (!row || row.quickBuyRequestedById !== userId) return { found: false as const };
+    return { found: true as const, id: row.id, status: row.status, productId: row.productId, voucherNumber: row.voucherNumber };
+  }
+
+  private async replayQuickBuy(row: { id: string; status: string; productId: string | null; deletedAt: Date | null; imeiBlacklistResult: string | null }) {
+    if (row.deletedAt || !['ACCEPTED', 'COMPLETED'].includes(row.status)) {
+      throw new ConflictException({ message: 'มีรายการรับซื้อนี้แล้ว กรุณาเปิดรายการเดิมเพื่อตรวจสถานะก่อนทำต่อ', tradeInId: row.id });
+    }
+    const voucher = await this.voucher.allocate(row.id);
+    return { id: row.id, productId: row.productId, productStatus: 'PHOTO_PENDING' as const,
+      voucherNumber: voucher.voucherNumber, voucherDate: voucher.voucherDate,
+      imeiWarning: row.imeiBlacklistResult === 'duplicate' };
   }
 
   // ─── Reject / Complete ────────────────────────────────────

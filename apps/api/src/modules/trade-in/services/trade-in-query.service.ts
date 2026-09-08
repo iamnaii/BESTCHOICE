@@ -77,6 +77,7 @@ export class TradeInQueryService {
         { deviceBrand: { contains: q, mode: 'insensitive' } },
         { deviceModel: { contains: q, mode: 'insensitive' } },
         { imei: { contains: q } },
+        { serialNumber: { contains: q, mode: 'insensitive' } },
         { sellerName: { contains: q, mode: 'insensitive' } },
         { sellerPhone: { contains: q } },
         { voucherNumber: { contains: q, mode: 'insensitive' } },
@@ -91,6 +92,7 @@ export class TradeInQueryService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
+          product: { select: { id: true, name: true, status: true } },
           customer: { select: { id: true, name: true, phone: true } },
           branch: { select: { id: true, name: true } },
           appraisedBy: { select: { id: true, name: true } },
@@ -109,7 +111,7 @@ export class TradeInQueryService {
       where: { id },
       include: {
         customer: { select: { id: true, name: true, phone: true, nationalId: true, addressIdCard: true } },
-        product: { select: { id: true, name: true, brand: true, model: true } },
+        product: { select: { id: true, name: true, brand: true, model: true, status: true } },
         branch: { select: { id: true, name: true } },
         appraisedBy: { select: { id: true, name: true } },
         idCardVerifiedBy: { select: { id: true, name: true } },
@@ -177,12 +179,15 @@ export class TradeInQueryService {
     source: 'card_reader' | 'upload',
   ) {
     const tradeIn = await this.findOne(id);
+    if (tradeIn.idCardVerifiedAt || tradeIn.sellerDeclarationSnapshot) {
+      throw new BadRequestException('ไม่สามารถเปลี่ยนหลักฐานบัตรหลังลงนามรับเครื่องแล้ว');
+    }
     const { buffer, contentType } = decodeBase64Image(photoBase64);
     const ext = contentType.split('/')[1] || 'jpg';
     const key = `trade-ins/${tradeIn.id}/id-card-${Date.now()}.${ext}`;
     await this.storage.upload(key, buffer, contentType);
     return this.prisma.tradeIn.update({
-      where: { id },
+      where: { id, idCardVerifiedAt: null },
       data: { idCardPhotoUrl: key, idCardSource: source },
       select: { id: true, idCardPhotoUrl: true, idCardSource: true },
     });

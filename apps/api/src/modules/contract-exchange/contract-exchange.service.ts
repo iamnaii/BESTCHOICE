@@ -106,6 +106,7 @@ export class ContractExchangeService {
     if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถสร้างคำขอเปลี่ยนเครื่องของสาขาอื่นได้');
     }
+    if (oldContract.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
     if (oldContract.status !== 'ACTIVE') {
       throw new BadRequestException(`สัญญาเดิมสถานะ ${oldContract.status} — ต้องเป็น ACTIVE`);
     }
@@ -267,6 +268,7 @@ export class ContractExchangeService {
     if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถดูข้อมูลสัญญาของสาขาอื่นได้');
     }
+    if (oldContract.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
     const oldProduct = (await this.prisma.product.findUnique({
       where: { id: oldContract.productId },
     })) as any;
@@ -409,7 +411,7 @@ export class ContractExchangeService {
     // Tier-role enforcement ที่ service (spec §6) — controller เปิด OWNER+BM แล้ว
     const pre = await (this.prisma as any).contractExchangeRequest.findUnique({
       where: { id },
-      include: { oldContract: { select: { branchId: true } } },
+      include: { oldContract: { select: { branchId: true, tradeInCreditSnapshot: true } } },
     });
     if (!pre || pre.deletedAt) throw new NotFoundException('ไม่พบคำขอเปลี่ยนเครื่อง');
     // I7 (final review 2026-07-29): BM must not approve another branch's request
@@ -417,6 +419,7 @@ export class ContractExchangeService {
     if (!hasCrossBranchAccess(user) && pre.oldContract?.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถอนุมัติคำขอของสาขาอื่นได้');
     }
+    if (pre.oldContract?.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
     if (pre.mode === 'PRICED' && pre.approvalTier === 'ESCALATE' && user.role !== 'OWNER') {
       throw new ForbiddenException(
         'ราคารับซื้อต่ำกว่า 70% ของมูลค่าคงเหลือ — ต้องให้ผู้จัดการใหญ่ (OWNER) อนุมัติเท่านั้น',
@@ -468,6 +471,7 @@ export class ContractExchangeService {
       });
       // Task 8 review fix 3: approval can happen days after submit — the old
       // contract may have closed (early payoff / repossession) in between.
+      if (req.oldContract.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
       if (req.oldContract.status !== 'ACTIVE') {
         throw new BadRequestException(
           `สัญญาเดิมสถานะ ${req.oldContract.status} — เปลี่ยนเครื่องไม่ได้`,
@@ -561,6 +565,7 @@ export class ContractExchangeService {
       });
       await lockCreditCustomer(tx, req.oldContract.customerId);
       const old = req.oldContract;
+      if (old.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
       // Phase 5 Task 2: เครื่องใหม่ต้องยังไม่ถูก soft-delete — การลบสินค้าไม่แตะ
       // `product.status` ดังนั้นเช็คสถานะอย่างเดียวจับไม่ได้ และ approve ก็สั่ง
       // `product.update` ตรง ๆ ได้สำเร็จบนแถวที่ถูกลบแล้ว (Prisma ไม่กรอง soft-delete ให้)
@@ -876,8 +881,9 @@ export class ContractExchangeService {
     const bal21_1103 = await glContractBalance(tx, oldContractId, '21-1103', 'cr');
     const oldC = await tx.contract.findUniqueOrThrow({
       where: { id: oldContractId },
-      select: { advanceBalance: true, creditBalance: true, rescheduleAdvanceBalance: true },
+      select: { advanceBalance: true, creditBalance: true, rescheduleAdvanceBalance: true, tradeInCreditSnapshot: true },
     });
+    if (oldC.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
     // I-6 — OWNER DECISION PENDING (2026-08-17). This guard is KEPT AS-IS on purpose.
     // Note the asymmetry between the buckets it blocks on: `advanceBalance` is a
     // TRANSIENT block (the next 2A accrual FIFOs it into the following installment,

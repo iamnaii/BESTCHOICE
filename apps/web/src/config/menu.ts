@@ -1,4 +1,5 @@
 import { NAV_LABELS } from './work-navigation';
+import { WORK_COMPANY } from '@/lib/company-scope';
 import type { LucideIcon } from 'lucide-react';
 import { settingsNavEntries } from './settings-access';
 import type { SettingsRole } from './settings-registry';
@@ -192,7 +193,6 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
-        { label: NAV_LABELS.chat, path: '/chat', icon: MessageSquareMore },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
@@ -221,7 +221,6 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
-        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
     },
     {
@@ -277,7 +276,6 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         // scoping รองรับ BM อยู่แล้ว (#1397: เห็นเฉพาะสาขาตัวเอง) ขาดแค่รายการเมนู
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
-        { label: NAV_LABELS.chat, path: '/chat', icon: MessageSquareMore },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
     },
@@ -376,7 +374,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
-        { label: NAV_LABELS.chat, path: '/chat', icon: MessageSquareMore },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
       ],
@@ -508,6 +505,10 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
 const ACCOUNTANT_CONFIG: RoleMenuConfig = {
   sidebar: [
     {
+      key: 'acc-shop-accounting', label: 'บัญชีหน้าร้าน (SHOP)', icon: Store, zone: 'shop',
+      items: [{ label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart }],
+    },
+    {
       key: 'acc-daily',
       label: 'งานประจำวัน',
       icon: HandCoins,
@@ -553,8 +554,6 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
         // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
         { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
-        // P3-SP5 — SHOP-side accounting reports
-        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: BarChart3 },
         { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: BarChart3 },
@@ -627,7 +626,6 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
     { label: 'ชำระ', path: '/payments', icon: HandCoins },
     { label: 'ใบเสร็จ', path: '/payments?tab=receipts', icon: FileText },
     { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
-    { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
     { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
   ],
 };
@@ -679,8 +677,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
-        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: NAV_LABELS.chat, path: '/chat', icon: MessageSquareMore },
       ],
     },
     {
@@ -875,7 +871,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
  * Scope per Owner Response Q4: /accounting/*, /audit-logs, /reports/* —
  * external auditor view (CPA / สรรพากร). Backend RolesGuard gates
  * VIEWER via `viewer_role_enabled` SystemConfig flag (PR #1036). The
- * menu mirrors that scope: no SHOP zone, no settings gear, no mutating
+ * menu mirrors that scope: company-specific reports, no settings gear, no mutating
  * action links. Pages reached via this menu serve read-only data; any
  * action button on them returns 403 via the gated @Roles().
  */
@@ -912,7 +908,7 @@ const VIEWER_CONFIG: RoleMenuConfig = {
       key: 'viewer-shop-accounting',
       label: 'บัญชีหน้าร้าน (SHOP)',
       icon: Store,
-      zone: 'fin',
+      zone: 'shop',
       items: [
         { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
       ],
@@ -958,7 +954,13 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
     showSettingsGear: true,
     sections: OWNER_CONFIG.sidebar,
     bottomNav: {
-      shop: OWNER_CONFIG.bottomNav,
+      shop: [
+        { label: NAV_LABELS.home, path: '/', icon: Home },
+        { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
+        { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
       fin: [
         { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
@@ -1029,12 +1031,15 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
     },
   },
   ACCOUNTANT: {
-    zones: ['fin'],
+    zones: ['shop', 'fin'],
     defaultZone: 'fin',
     showSettingsGear: true,
     sections: ACCOUNTANT_CONFIG.sidebar,
     bottomNav: {
-      shop: [],
+      shop: [
+        { label: 'บัญชีหน้าร้าน', path: '/shop/accounting', icon: Store },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
       fin: ACCOUNTANT_CONFIG.bottomNav,
       settings: [
         // ทางออกต้องอยู่บนบาร์ล่าง ไม่ใช่ซ่อนในลิ้นชัก — บนมือถือลิ้นชักคือที่ที่ต้องเปิดก่อนถึงจะเห็น
@@ -1045,12 +1050,15 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
     },
   },
   VIEWER: {
-    zones: ['fin'],
+    zones: ['shop', 'fin'],
     defaultZone: 'fin',
     showSettingsGear: false,
     sections: VIEWER_CONFIG.sidebar,
     bottomNav: {
-      shop: [],
+      shop: [
+        { label: 'บัญชีหน้าร้าน', path: '/shop/accounting', icon: Store },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
       fin: VIEWER_CONFIG.bottomNav,
       settings: [],
     },
@@ -1098,13 +1106,16 @@ const ZONE_LOOKUP_ORDER: Zone[] = ['shop', 'fin', 'settings'];
  * pathname never includes the hash). Returns null if the path isn't in any of
  * the role's accessible zones (caller decides pass-through vs redirect).
  */
-export function resolveZoneForPath(role: string, path: string): Zone | null {
+export function resolveZoneForPath(role: string, path: string, preferredZone?: Zone): Zone | null {
   if (path === '/settings' || path.startsWith('/settings/') || path.startsWith('/settings#')) {
     const cfg = ZONE_CONFIG[role];
     if (cfg?.showSettingsGear) return 'settings';
   }
   const matches = (menuPath: string) => menuPath === path || menuPath.split('#')[0] === path;
-  for (const z of ZONE_LOOKUP_ORDER) {
+  // Shared pages stay in the chosen company; a fixed /shop or /finance page wins.
+  const fixedZone = path.startsWith('/shop/') ? 'shop' : path.startsWith('/finance/') || path === '/finance-portfolio' ? 'fin' : undefined;
+  const first = fixedZone ?? preferredZone;
+  for (const z of [...(first ? [first] : []), ...ZONE_LOOKUP_ORDER.filter(z => z !== first)]) {
     const sections = getSidebarForRole(role, z);
     const found = sections.some((s) =>
       s.items.some(
@@ -1117,8 +1128,13 @@ export function resolveZoneForPath(role: string, path: string): Zone | null {
 }
 
 /** Returns the RoleZoneConfig for a role (or undefined). Used by Sidebar to check pills/gear visibility. */
-export function getZoneConfigForRole(role: string): RoleZoneConfig | undefined {
-  return ZONE_CONFIG[role];
+export function getZoneConfigForRole(role: string, companies?: readonly string[]): RoleZoneConfig | undefined {
+  const config = ZONE_CONFIG[role];
+  if (!config) return undefined;
+  const zones = config.zones.filter(z => z !== 'settings' &&
+    config.sections.some(section => section.zone === z) &&
+    (!companies || companies.includes(WORK_COMPANY[z])));
+  return { ...config, zones, defaultZone: zones.includes(config.defaultZone) ? config.defaultZone : zones[0] ?? config.defaultZone };
 }
 
 /** Landing route for each zone — used by LoginPage + PillSwitcher to pick where to navigate. */
@@ -1127,6 +1143,14 @@ export const ZONE_LANDING: Record<Zone, string> = {
   fin: '/finance-portfolio',
   settings: '/settings',
 };
+
+/** Store the work company on the destination so shared routes survive Back/Forward. */
+export function getWorkZoneHref(path: string, zone: 'shop' | 'fin'): string {
+  const url = new URL(path, 'http://workspace.invalid');
+  url.searchParams.set('zone', zone);
+  url.searchParams.delete('company');
+  return url.pathname + url.search + url.hash;
+}
 
 /** Landing path for a role on first login — based on the role's defaultZone. */
 export function getLandingPathForRole(role: string): string {
@@ -1156,6 +1180,7 @@ export const COMMON_PATHS = new Set<string>(['/']);
  * อนุญาตจริง. เลือกจากเมนูของ role เองแทนเมื่อ landing ใช้ไม่ได้.
  */
 export function getZoneEntryPathForRole(role: string, zone: Zone): string {
+  if (zone === 'shop' && (role === 'ACCOUNTANT' || role === 'VIEWER')) return '/shop/accounting';
   const landing = ZONE_LANDING[zone];
   if (COMMON_PATHS.has(landing) || resolveZoneForPath(role, landing) === zone) return landing;
   const first = getSidebarForRole(role, zone)[0]?.items[0];

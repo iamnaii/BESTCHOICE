@@ -194,7 +194,6 @@ test.describe('FINANCE_MANAGER role — finance access', () => {
     { url: '/repossessions', name: 'ยึดคืน' },
     { url: '/document-dashboard', name: 'สถานะเอกสาร' },
     { url: '/payments/import-csv', name: 'นำเข้าชำระเงิน (CSV)' },
-    { url: '/stock', name: 'คลังสินค้า (ดูอย่างเดียว)' },
   ];
 
   for (const { url, name } of allowedPages) {
@@ -204,6 +203,14 @@ test.describe('FINANCE_MANAGER role — finance access', () => {
       expect(denied).toBeFalsy();
     });
   }
+
+  test('FINANCE_MANAGER with only FINANCE grant cannot open SHOP stock', async ({ page }) => {
+    await page.goto('/stock', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(url => url.pathname === '/finance-portfolio');
+    await expect(page.getByRole('heading', { name: 'พอร์ตสัญญา BESTCHOICE FINANCE', level: 1 }))
+      .toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(0);
+  });
 
   // FINANCE_MANAGER CANNOT access:
   const deniedPages = [

@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { takeOver } from '@/pages/chat/lib/chat-api';
 import { buildContractCreateUrl } from './contract-create-url';
 
 interface SessionActionsProps {
@@ -96,7 +95,7 @@ export default function SessionActions({
   // room is aiPaused → button disappears and the existing "Return to AI Bot"
   // button takes its place (it renders when session.handoffMode, but the
   // post-takeOver state has aiPaused=true, so neither button is shown until
-  // the bot escalates — same parity as ChatInboxPage).
+  // the bot escalates).
   const canTakeOver = !session?.aiPaused && !session?.handoffMode;
 
   return (
@@ -255,7 +254,7 @@ export default function SessionActions({
               if (!session?.id || isTakingOver) return;
               setIsTakingOver(true);
               try {
-                await takeOver(session.id);
+                await api.post(`/chat-ai/take-over/${session.id}`);
                 queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
                 queryClient.invalidateQueries({ queryKey: ['chat-room', session.id] });
                 toast.success('รับช่วงต่อแล้ว — AI หยุดตอบห้องนี้');

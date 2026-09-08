@@ -48,6 +48,7 @@ interface ContractDetail {
   planType: string;
   sellingPrice: string;
   downPayment: string;
+  tradeInCreditSnapshot?: import('@installment/shared').TradeInCreditSnapshot | null;
   interestRate: string;
   totalMonths: number;
   interestTotal: string;
@@ -218,7 +219,7 @@ const deleteMutation = useMutation({
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      const { data } = await api.patch(`/contracts/${id}`, editForm);
+      const { data } = await api.patch(`/contracts/${id}`, contract?.tradeInCreditSnapshot ? { notes: editForm.notes } : editForm);
       return data;
     },
     onSuccess: () => {
@@ -688,7 +689,7 @@ const deleteMutation = useMutation({
 
           {isEditing ? (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <fieldset disabled={!!contract.tradeInCreditSnapshot} className="grid grid-cols-2 gap-3 disabled:opacity-60">
                 <div>
                   <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขาย</label>
                   <input type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
@@ -713,7 +714,8 @@ const deleteMutation = useMutation({
                     ))}
                   </select>
                 </div>
-              </div>
+              </fieldset>
+              {contract.tradeInCreditSnapshot && <p className="text-xs text-muted-foreground">รายการใช้เครดิตเทิร์นแก้ได้เฉพาะหมายเหตุ หากเปลี่ยนยอดให้ยกเลิกร่างและสร้างใหม่</p>}
               <div>
                 <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
                 <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
@@ -765,6 +767,11 @@ const deleteMutation = useMutation({
                 <div>
                   <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">เงินดาวน์</div>
                   <div className="text-base font-semibold text-foreground tabular-nums font-mono">{formatNumber(contract.downPayment)}<span className="text-xs font-normal text-muted-foreground ml-1">฿</span></div>
+                  {contract.tradeInCreditSnapshot && <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                    <p>เงินสด/โอน {formatNumber(contract.tradeInCreditSnapshot.cashDownAmount)} ฿ + เครื่องเทิร์น {formatNumber(contract.tradeInCreditSnapshot.baseAmount)} ฿</p>
+                    <p>โบนัสเทิร์น {formatNumber(contract.tradeInCreditSnapshot.bonusAmount)} ฿ รวมในส่วนลดแล้ว</p>
+                    <p>อ้างอิง {contract.tradeInCreditSnapshot.voucherNumber ?? contract.tradeInCreditSnapshot.tradeInId}</p>
+                  </div>}
                 </div>
                 <div>
                   <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">ผ่อน {contract.totalMonths} งวด</div>

@@ -5,14 +5,11 @@ import { loginAsRole } from './helpers/auth';
  * SP1 — Sidebar redesign E2E tests
  *
  * Covers Task 16 from the SP1 implementation plan:
- *   - Zone pill visibility per role (OWNER both, SALES none, ACC none)
+ *   - Zone pill visibility per role (OWNER both, SALES none, ACC by company access)
  *   - GearButton (ตั้งค่ากลาง) visibility per role
  *   - Zone switching by clicking pills
  *   - Persistence of selected zone (localStorage `bc.sidebar.lastZone`)
- *     NOTE: clicking a pill navigates to `ZONE_LANDING[zone]` (menu.ts) — the
- *     `?zone=` param LayoutContext writes is dropped by that navigate(), so the
- *     assertion is on the landing path, not the query string. `?zone=` is still
- *     READ on boot (deep links keep working), just never written by a pill click.
+ *     The destination carries ?zone=shop|fin, so Back/Forward restores its company.
  *   - Auto-switch pill when navigating to a path in a different zone
  *   - Cross-zone access guard: SALES navigating to FIN-only path → redirect
  *     to `/` with toast "คุณไม่มีสิทธิ์เข้าถึงหน้านี้" (see MainLayout.tsx:102)
@@ -44,8 +41,8 @@ test.describe('SP1 — Sidebar zones', () => {
   test('OWNER sees both pills + gear, can switch zones', async ({ page }) => {
     await loginAndExpandSidebar(page, 'OWNER');
 
-    const shopPill = page.getByRole('tab', { name: 'หน้าร้าน' }).first();
-    const finPill = page.getByRole('tab', { name: 'ไฟแนนซ์' }).first();
+    const shopPill = page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' }).first();
+    const finPill = page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' }).first();
     const gearBtn = page.getByRole('button', { name: 'ตั้งค่ากลาง' }).first();
 
     await expect(shopPill).toBeVisible();
@@ -63,31 +60,33 @@ test.describe('SP1 — Sidebar zones', () => {
     await loginAndExpandSidebar(page, 'SALES');
 
     // Pill switcher is hidden when role has <2 zones (PillSwitcher.tsx:19).
-    await expect(page.getByRole('tab', { name: 'หน้าร้าน' })).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'ไฟแนนซ์' })).toHaveCount(0);
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' })).toHaveCount(0);
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' })).toHaveCount(0);
     // Gear is hidden when zoneConfig.showSettingsGear === false.
     await expect(page.getByRole('button', { name: 'ตั้งค่ากลาง' })).toHaveCount(0);
   });
 
-  test('ACCOUNTANT sees no pills (FIN-only role)', async ({ page }) => {
+  test('ACCOUNTANT sees work choices only for its granted companies', async ({ page }) => {
+    const meResponse = page.waitForResponse(response => /\/auth\/me(?:\?|$)/.test(response.url()));
     await loginAndExpandSidebar(page, 'ACCOUNTANT');
-
-    // ACCOUNTANT's zoneConfig has only ['fin'] → PillSwitcher renders null.
-    await expect(page.getByRole('tab', { name: 'หน้าร้าน' })).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'ไฟแนนซ์' })).toHaveCount(0);
+    const me = await meResponse;
+    const envelope = await me.json();
+    const user = envelope.data ?? envelope;
+    const both = ['SHOP', 'FINANCE'].every(company => user.accessibleCompanies.includes(company));
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(both ? 1 : 0);
   });
 
   test('OWNER zone selection persists across reload', async ({ page }) => {
     await loginAndExpandSidebar(page, 'OWNER');
 
-    await page.getByRole('tab', { name: 'ไฟแนนซ์' }).first().click();
+    await page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' }).first().click();
     await expect(page).toHaveURL(/\/finance-portfolio/);
 
     // Re-inject sidebar_collapse so it survives the reload (addInitScript
     // already does this for navigations, but reload triggers a fresh boot).
     await page.reload({ waitUntil: 'domcontentloaded' });
 
-    const finPill = page.getByRole('tab', { name: 'ไฟแนนซ์' }).first();
+    const finPill = page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' }).first();
     await expect(finPill).toBeVisible({ timeout: 10_000 });
     await expect(finPill).toHaveAttribute('aria-selected', 'true');
   });
@@ -96,15 +95,15 @@ test.describe('SP1 — Sidebar zones', () => {
     await loginAndExpandSidebar(page, 'OWNER');
 
     // Force into SHOP zone first.
-    await page.getByRole('tab', { name: 'หน้าร้าน' }).first().click();
-    await expect(page.getByRole('tab', { name: 'หน้าร้าน' }).first()).toHaveAttribute(
+    await page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' }).first().click();
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' }).first()).toHaveAttribute(
       'aria-selected',
       'true',
     );
 
     // MainLayout.tsx:88 useEffect resolves zone from pathname and auto-switches.
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
-    const finPill = page.getByRole('tab', { name: 'ไฟแนนซ์' }).first();
+    const finPill = page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' }).first();
     await expect(finPill).toBeVisible({ timeout: 10_000 });
     await expect(finPill).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
   });

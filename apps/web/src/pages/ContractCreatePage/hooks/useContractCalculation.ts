@@ -15,6 +15,8 @@ import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 // Per-month rate map is built from legacy rate × months to preserve identical output.
 
 interface UseContractCalculationParams {
+  tradeInBaseAmount?: number;
+  tradeInBonusAmount?: number;
   selectedProduct: Product | null;
   preserveDownPayment?: boolean;
   configPending?: boolean;
@@ -27,6 +29,8 @@ interface UseContractCalculationParams {
 }
 
 export function useContractCalculation({
+  tradeInBaseAmount = 0,
+  tradeInBonusAmount = 0,
   selectedProduct,
   preserveDownPayment = false,
   configPending = false,
@@ -61,7 +65,9 @@ export function useContractCalculation({
     return row ? parseFloat(row.amount) : 0;
   };
 
-  const sellingPrice = getSellingPrice();
+  const grossSellingPrice = getSellingPrice();
+  const sellingPrice = new Decimal(grossSellingPrice).minus(tradeInBonusAmount).toNumber();
+  const totalDownPayment = new Decimal(downPayment).plus(tradeInBaseAmount).toNumber();
 
   const interestRate = interestConfig ? parseFloat(interestConfig.interestRate) : (posConfig?.interestRate ?? 0.08);
   const minDownPct = interestConfig ? parseFloat(interestConfig.minDownPaymentPct) : (posConfig?.minDownPaymentPct ?? 0.15);
@@ -74,9 +80,9 @@ export function useContractCalculation({
   const [downPaymentTouched, setDownPaymentTouched] = useState(preserveDownPayment);
   useEffect(() => {
     if (!downPaymentTouched && sellingPrice > 0 && minDownPct > 0) {
-      setDownPayment(Math.ceil(sellingPrice * minDownPct));
+      setDownPayment(Decimal.max(0, new Decimal(sellingPrice).mul(minDownPct).ceil().minus(tradeInBaseAmount)).toNumber());
     }
-  }, [sellingPrice, minDownPct, downPaymentTouched]);
+  }, [sellingPrice, minDownPct, downPaymentTouched, tradeInBaseAmount]);
 
   // Clamp totalMonths when config range changes
   useEffect(() => {
@@ -100,10 +106,10 @@ export function useContractCalculation({
 
   // Clamp downPayment to sellingPrice to preserve the old hook's Decimal.max(…, 0)
   // behaviour: if downPayment >= sellingPrice the util produces 0 for all fields.
-  const clampedDownAmount = new Decimal(Math.min(downPayment, sellingPrice));
+  const clampedDownAmount = new Decimal(Math.max(0, Math.min(totalDownPayment, sellingPrice)));
 
   const out = calcBcInstallment({
-    installmentPrice: new Decimal(sellingPrice),
+    installmentPrice: new Decimal(Math.max(0, sellingPrice)),
     months: totalMonths,
     customDownAmount: clampedDownAmount,
     config: {
@@ -138,6 +144,7 @@ export function useContractCalculation({
   }
 
   return {
+    grossSellingPrice, totalDownPayment,
     getSellingPrice,
     sellingPrice,
     interestRate,

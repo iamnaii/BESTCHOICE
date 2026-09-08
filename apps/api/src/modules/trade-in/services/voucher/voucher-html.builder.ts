@@ -1,4 +1,5 @@
 import { thaiBahtText } from '../../../../utils/thai-baht-text.util';
+import { LEGACY_TRADE_IN_DECLARATION } from '@installment/shared';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -6,50 +7,27 @@ import * as path from 'path';
  * VoucherHtmlBuilder — pure presentation layer for the Trade-In payment voucher.
  *
  * Builds the self-contained inline HTML/CSS template (no external network calls)
- * + all presentation helpers (icons, logo SVG, date/baht formatting, escaping,
+ * + all presentation helpers (logo SVG, date/baht formatting, escaping,
  * device-label rendering). NO DI — instantiate directly.
  */
 export class VoucherHtmlBuilder {
-  /** Format date as DD/MM/YYYY (Christian year) */
-  private formatDmy(d: Date): string {
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    return `${dd}/${mm}/${d.getFullYear()}`;
-  }
-
   /** Format date as Thai date "8 เมษายน 2569" (Buddhist year) */
   private formatThaiDate(d: Date): string {
     const months = [
-      'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+      'มกราคม',
+      'กุมภาพันธ์',
+      'มีนาคม',
+      'เมษายน',
+      'พฤษภาคม',
+      'มิถุนายน',
+      'กรกฎาคม',
+      'สิงหาคม',
+      'กันยายน',
+      'ตุลาคม',
+      'พฤศจิกายน',
+      'ธันวาคม',
     ];
     return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear() + 543}`;
-  }
-
-  /** Lucide-style stroke icons inline (24×24 viewBox) — SVG เพื่อใช้ใน PDF */
-  private icon(name: string, size = 14, color = '#6b7280'): string {
-    const paths: Record<string, string> = {
-      clipboard:
-        '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
-      'message-circle':
-        '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
-      'pen-tool':
-        '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
-      wallet:
-        '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>',
-      phone:
-        '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
-      mail:
-        '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
-      globe:
-        '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
-      user:
-        '<circle cx="12" cy="7" r="4"/><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>',
-      'banknote':
-        '<rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
-    };
-    const path = paths[name] || '';
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle">${path}</svg>`;
   }
 
   /** BESTCHOICE logo SVG — อ่านจาก apps/web/public/logo.svg (cached) */
@@ -65,15 +43,11 @@ export class VoucherHtmlBuilder {
     const found = candidates.find((p) => fs.existsSync(p));
     if (found) {
       const raw = fs.readFileSync(found, 'utf8');
-      // ใส่ width/height ให้พอดีกับ header (ต้นฉบับ viewBox 710×425)
-      this.cachedLogoSvg = raw.replace(
-        /<svg\b([^>]*)>/,
-        '<svg$1 style="width:160px;height:auto;display:block">',
-      );
+      this.cachedLogoSvg = raw;
       return this.cachedLogoSvg;
     }
     // fallback — ถ้าหาไฟล์ไม่เจอ ใช้ text แทน (ไม่ใช่ SVG เทียม)
-    this.cachedLogoSvg = `<div style="font-family:Arial,sans-serif;font-size:22pt;font-weight:800;letter-spacing:1px"><span style="color:#4D4D4D">BEST</span><span style="color:#1DA579">CHOICE</span></div>`;
+    this.cachedLogoSvg = `<div style="font-family:Arial,sans-serif;font-size:10pt;font-weight:800;letter-spacing:1px"><span style="color:#4D4D4D">BEST</span><span style="color:#1DA579">CHOICE</span></div>`;
     return this.cachedLogoSvg;
   }
 
@@ -84,15 +58,15 @@ export class VoucherHtmlBuilder {
     deviceStorage: string | null;
     deviceColor: string | null;
     imei: string | null;
+    serialNumber?: string | null;
+    imeiMissingReason?: string | null;
+    serialNumberMissingReason?: string | null;
   }): string {
     const main = [t.deviceBrand, t.deviceModel, t.deviceStorage].filter(Boolean).join(' ');
-    const sub = [
-      t.deviceColor ? `สี${t.deviceColor}` : null,
-      t.imei ? `IMEI ${t.imei}` : null,
-    ]
-      .filter(Boolean)
-      .join(' ');
-    return sub ? `${main}\n${sub}` : main;
+    return [main, t.deviceColor ? `สี${t.deviceColor}` : null,
+      `IMEI: ${t.imei || (t.imeiMissingReason ? `ไม่มี — ${t.imeiMissingReason}` : 'ไม่ระบุ')}`,
+      `Serial Number: ${t.serialNumber || (t.serialNumberMissingReason ? `ไม่มี — ${t.serialNumberMissingReason}` : 'ไม่ระบุ')}`,
+    ].filter(Boolean).join('\n');
   }
 
   /** เลขเป็นข้อความไทย เช่น 37,673.00 → "สามหมื่นเจ็ดพันหกร้อยเจ็ดสิบสามบาทถ้วน" */
@@ -132,13 +106,15 @@ export class VoucherHtmlBuilder {
     sellerPhone: string;
     sellerIdCard: string;
     sellerSignatureBase64: string | null;
+    sellerDeclarationText?: string | null;
     issuerName: string;
     issuerSignatureBase64: string | null;
-    qrDataUrl: string;
     deviceLabel: string;
     amount: number;
     amountText: string;
-    paymentMethod: 'CASH' | 'TRANSFER';
+    paymentMethod: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT';
+    creditBaseAmount?: number | null;
+    creditBonusAmount?: number | null;
     transferBankName: string | null;
     transferAccountNumber: string | null;
     transferAccountName: string | null;
@@ -152,701 +128,216 @@ export class VoucherHtmlBuilder {
       logoUrl: null,
     };
 
+    const isCredit = data.paymentMethod === 'TRADE_IN_CREDIT';
+    const title = isCredit ? 'ใบรับเครื่องเทิร์น' : 'ใบสำคัญจ่ายเงิน';
+    const esc = (value: string) => this.escapeHtml(value);
+    const date = this.formatThaiDate(data.voucherDate);
+    const [deviceName, ...deviceDetails] = data.deviceLabel.split('\n');
+    const signature = (value: string | null, label: string) =>
+      value
+        ? `<img src="${esc(value)}" alt="${label}" />`
+        : '<span class="muted">ลงชื่อ ................................................</span>';
+
     return `<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>ใบสำคัญจ่ายเงิน ${this.escapeHtml(data.voucherNumber)}</title>
+  <title>${title} ${esc(data.voucherNumber)}</title>
   <style>
-    @page { size: A4; margin: 14mm 16mm 16mm; }
+    @page {
+      size: A4;
+      margin: 15mm 17mm;
+      @bottom-center {
+        content: "${data.isReprint ? 'สำเนา / COPY' : ''}";
+        font-family: 'IBM Plex Sans Thai', sans-serif;
+        font-size: 8pt;
+        color: #53635c;
+      }
+    }
+    :root { --ink: #192d25; --muted: #53635c; --green: #16694f; --rule: #d4ddd8; }
     * { box-sizing: border-box; }
     body {
-      font-family: 'TH Sarabun PSK', sans-serif;
-      font-size: 12pt;
-      color: #1f2937;
       margin: 0;
-      line-height: 1.5;
       background: #fff;
-    }
-    .page { padding: 0; position: relative; }
-
-    /* ─── Watermark "สำเนา" diagonal ─── */
-    .watermark {
-      position: fixed;
-      top: 35%;
-      left: 50%;
-      transform: translate(-50%, -50%) rotate(-28deg);
-      font-size: 110pt;
-      font-weight: 900;
-      color: rgba(220, 38, 38, 0.05);
-      letter-spacing: 10px;
-      z-index: 0;
-      pointer-events: none;
-      white-space: nowrap;
-    }
-    .content { position: relative; z-index: 1; }
-
-    /* ─── Color tokens — match BESTCHOICE green palette ─── */
-    :root {
-      --green-50: #f0faf3;
-      --green-100: #dcf5e3;
-      --green-200: #b8e8c4;
-      --green-500: #6dbe7a;
-      --green-600: #4ea35f;
-      --green-700: #2e7d32;
-      --gray-700: #374151;
-      --gray-500: #6b7280;
-      --gray-400: #9ca3af;
-    }
-
-    /* ─── Top header — Logo ซ้าย / Title ขวา (2 cols only) ─── */
-    .top-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-    .top-header .logo { display: flex; align-items: center; }
-    .top-header .logo > svg { max-width: 170px; max-height: 70px; }
-    .top-header .title-block { text-align: right; }
-    .top-header .title {
-      font-family: 'TH Sarabun PSK', sans-serif;
-      font-size: 44pt;
-      font-weight: 700;
-      color: #6dbe7a;
-      line-height: 1;
-      letter-spacing: -0.5px;
-    }
-    .top-header .title-en {
+      color: var(--ink);
+      font-family: 'IBM Plex Sans Thai', sans-serif;
       font-size: 11pt;
-      color: #9ca3af;
-      font-weight: 600;
-      letter-spacing: 3px;
-      margin-top: 4px;
-    }
-    .top-header::after {
-      content: '';
-      display: block;
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: -8px;
-      height: 1px;
-      background: linear-gradient(to right, transparent, #d1d5db, transparent);
-    }
-    .top-header { position: relative; }
-    .top-header .title-reprint {
-      font-size: 12pt;
-      color: #dc2626;
-      font-weight: 600;
-      text-align: right;
-      margin-bottom: 4px;
-    }
-
-    /* ─── Info grid (2 rows × 2 cols) ─── */
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 260px;
-      column-gap: 28px;
-      row-gap: 10px;
-      margin-bottom: 12px;
-    }
-    .info-block .row {
-      display: flex;
-      gap: 10px;
-      font-size: 12pt;
-      line-height: 1.6;
-    }
-    .info-block .label {
-      color: #1f2937;
-      font-weight: 700;
-      min-width: 84px;
-      flex-shrink: 0;
-    }
-    .info-block .value { color: #374151; flex: 1; }
-    .info-block .value strong { font-weight: 700; color: #1f2937; }
-    .info-block .contacts {
-      display: flex;
-      gap: 22px;
-      flex-wrap: wrap;
-      margin-top: 6px;
-      margin-left: 94px;
-      font-size: 11pt;
-      color: #4b5563;
-    }
-    .info-block .contacts .ct { display: inline-flex; align-items: center; gap: 6px; }
-
-    .info-right-block .doc-row {
-      display: flex;
-      gap: 10px;
-      font-size: 12pt;
-      padding: 4px 0;
-    }
-    .info-right-block .doc-label {
-      color: #1f2937;
-      font-weight: 700;
-      min-width: 110px;
-    }
-    .info-right-block .doc-value { color: #374151; flex: 1; }
-    .info-right-block .lbl {
-      font-size: 12pt;
-      color: #1f2937;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-    .info-right-block .ct {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11pt;
-      color: #4b5563;
-      padding: 3px 0;
-    }
-
-    /* ─── Items table ─── */
-    table.items {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 4px;
-    }
-    table.items thead th {
-      background: #dcf5e3;
-      font-size: 11.5pt;
-      font-weight: 700;
-      color: #1f2937;
-      padding: 13px 14px;
-      text-align: left;
-      border-top: 1px solid #b8e8c4;
-      border-bottom: 1px solid #b8e8c4;
-    }
-    table.items thead th.right { text-align: right; }
-    table.items thead th.center { text-align: center; }
-    table.items tbody td {
-      padding: 10px 14px;
-      border-bottom: 1px solid #ebedf0;
-      font-size: 12pt;
-      vertical-align: top;
-    }
-    table.items tbody td.right { text-align: right; font-weight: 600; color: #1f2937; }
-    table.items tbody td.center { text-align: center; }
-    table.items tbody .item-main { color: #1f2937; font-weight: 700; font-size: 12.5pt; }
-    table.items tbody .item-sub {
-      color: #9ca3af;
-      font-size: 11pt;
-      margin-top: 2px;
-    }
-    .table-note {
-      font-size: 10pt;
-      color: #6b7280;
-      padding: 8px 12px 0;
-    }
-
-    /* ─── Spacer ─── */
-    .spacer { min-height: 0; }
-
-    /* ─── Summary ─── */
-    .summary-grid {
-      display: grid;
-      grid-template-columns: 1fr 320px;
-      gap: 24px;
-      margin-top: 10px;
-    }
-    .summary-left {
-      display: grid;
-      grid-template-columns: 26px 1fr 1fr;
-      gap: 6px 14px;
-      font-size: 12pt;
-      align-items: start;
-    }
-    .summary-left .icon {
-      grid-row: span 2;
-      display: inline-flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding-top: 4px;
-    }
-    .summary-left .label {
-      color: #1f2937;
-      font-weight: 700;
-      padding: 1px 0;
-    }
-    .summary-left .value {
-      color: #1f2937;
-      font-weight: 600;
-      text-align: right;
-      padding: 1px 0;
-    }
-    .summary-left .baht-text {
-      grid-column: 2 / span 2;
-      text-align: right;
-      color: #6b7280;
-      font-style: italic;
-      font-size: 11pt;
-      margin-top: -2px;
-    }
-
-    .summary-right .total-box {
-      background: #dcf5e3;
-      border-radius: 4px;
-      padding: 18px 22px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .summary-right .total-box .total-label {
-      font-size: 13pt;
-      font-weight: 700;
-      color: #1f2937;
-    }
-    .summary-right .total-box .total-amount {
-      font-size: 24pt;
-      font-weight: 800;
-      color: #2e7d32;
-      line-height: 1;
-    }
-    .summary-right .total-box .total-amount .unit {
-      font-size: 11pt;
-      font-weight: 600;
-      color: #4b5563;
-      margin-left: 4px;
-    }
-    .summary-right .extra-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 7px 20px;
-      font-size: 11pt;
-      color: #4b5563;
-    }
-    .summary-right .extra-row .value { color: #1f2937; font-weight: 600; }
-
-    /* ─── Payment ─── */
-    .payment-section {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid #ebedf0;
-      display: grid;
-      grid-template-columns: 26px 1fr 1.5fr 150px;
-      gap: 14px;
-      font-size: 12pt;
-    }
-    .payment-section .icon {
-      padding-top: 2px;
-      display: flex;
-      align-items: flex-start;
-    }
-    .payment-section .col {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .payment-section .col .icon-label {
-      font-weight: 700;
-      color: #1f2937;
-      margin-bottom: 4px;
-    }
-    .payment-section .pay-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    .payment-section .pay-row .label { color: #4b5563; }
-    .payment-section .pay-row .value { color: #1f2937; font-weight: 600; }
-    .payment-section .bank-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 2px 0;
-    }
-    .payment-section .bank-icon {
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: #6dbe7a;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      margin-top: 1px;
-    }
-    .payment-section .bank-info .bank-name {
-      color: #1f2937;
-      font-weight: 700;
-      font-size: 12pt;
-    }
-    .payment-section .bank-info .acc-num {
-      color: #1f2937;
-      font-weight: 700;
-      font-size: 11.5pt;
-    }
-    .payment-section .bank-info .acc-name {
-      color: #4b5563;
-      font-size: 11pt;
-    }
-    .payment-section .pay-amount {
-      text-align: right;
-      font-weight: 700;
-      font-size: 12pt;
-      color: #1f2937;
-      padding-top: 26px;
-    }
-
-    /* ─── Note ─── */
-    .note-section {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid #ebedf0;
-      display: grid;
-      grid-template-columns: 26px 1fr;
-      gap: 14px;
-      align-items: center;
-    }
-    .note-section .icon { display: flex; align-items: center; }
-    .note-section .label {
-      font-weight: 700;
-      color: #1f2937;
-      font-size: 12pt;
-    }
-
-    /* ─── Signatures ─── */
-    .sig-section {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid #ebedf0;
-      display: grid;
-      grid-template-columns: 26px 220px 1fr;
-      gap: 14px;
-      align-items: flex-start;
-    }
-    .sig-section .icon { display: flex; align-items: flex-start; padding-top: 2px; }
-    .sig-section .qr-col {
-      text-align: center;
-    }
-    .sig-section .qr-col .qr-label {
-      font-size: 11pt;
-      color: #4b5563;
-      margin-bottom: 6px;
-    }
-    .sig-section .qr-col .qr-box {
-      width: 110px;
-      height: 110px;
-      background: repeating-linear-gradient(45deg, #1f2937 0 4px, transparent 4px 8px),
-                  repeating-linear-gradient(-45deg, #1f2937 0 4px, transparent 4px 8px);
-      background-color: #fff;
-      border: 1px solid #1f2937;
-      margin: 0 auto;
-    }
-    .sig-section .signer-col {
-      padding-left: 16px;
-    }
-    .sig-section .signer-title {
-      font-size: 12pt;
-      color: #1f2937;
-      font-weight: 700;
-      margin-bottom: 14px;
-    }
-    .sig-section .signer-img {
-      height: 42px;
-      margin-bottom: 4px;
-      display: inline-flex;
-      align-items: flex-end;
-      color: #9ca3af;
-      font-size: 10pt;
-      font-style: italic;
-    }
-    .sig-section .signer-line {
-      width: 220px;
-      border-top: 1px dotted #9ca3af;
-      padding-top: 6px;
-    }
-    .sig-section .signer-name {
-      font-size: 12pt;
-      color: #1f2937;
-      font-weight: 700;
-    }
-    .sig-section .signer-date {
-      font-size: 11pt;
-      color: #6b7280;
-      margin-top: 2px;
-    }
-
-    /* ─── IMEI badge in items table ─── */
-    table.items tbody .imei-badge {
-      display: inline-block;
-      margin-top: 6px;
-      padding: 3px 10px;
-      background: #f3f4f6;
-      border: 1px solid #e5e7eb;
-      border-radius: 4px;
-      font-size: 10.5pt;
-      font-weight: 600;
-      color: #374151;
-      font-family: 'TH Sarabun PSK', monospace;
-    }
-    table.items tbody .imei-badge .lbl {
-      color: #6b7280;
-      font-weight: 400;
-      margin-right: 6px;
-    }
-
-    /* ─── Legal disclaimer ─── */
-    .legal-disclaimer {
-      margin-top: 14px;
-      padding: 10px 14px;
-      background: #fffbeb;
-      border-left: 3px solid #f59e0b;
-      border-radius: 3px;
-      font-size: 10pt;
-      color: #78350f;
       line-height: 1.5;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
-    .legal-disclaimer .receiver {
-      margin-top: 6px;
-      padding-top: 6px;
-      border-top: 1px dashed #fcd34d;
-      color: #78350f;
-    }
-    .legal-disclaimer .receiver strong { font-weight: 700; }
-
-    /* ─── Dual signature columns ─── */
-    .sig-section .dual-signers {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 32px;
-    }
-    .sig-section .dual-signers .signer {
-      text-align: left;
-    }
-
-    /* ─── Page footer ─── */
-    .page-footer {
-      margin-top: 26px;
-      padding-top: 10px;
-      border-top: 1px solid #ebedf0;
-      display: flex;
-      justify-content: space-between;
-      font-size: 9.5pt;
-      color: #9ca3af;
-    }
+    h1, h2, p { margin: 0; }
+    strong { font-weight: 600; }
+    .label, .muted { color: var(--muted); }
+    .label { font-size: 9pt; }
+    .number { font-variant-numeric: tabular-nums; }
+    .masthead { display: grid; grid-template-columns: minmax(0, 1fr) 60mm; gap: 8mm; padding-bottom: 4mm; border-bottom: 1.2pt solid var(--green); }
+    .brand { display: flex; align-items: center; gap: 4mm; }
+    .logo { flex: 0 0 20mm; width: 20mm; }
+    .logo svg { width: 100%; height: auto; display: block; }
+    .company { min-width: 0; font-size: 9pt; line-height: 1.6; overflow-wrap: anywhere; }
+    .company-name { font-size: 11pt; font-weight: 600; margin-bottom: 1.5mm; }
+    .company-contact { margin-top: 1mm; }
+    .document-meta { font-size: 9pt; }
+    .meta-row { display: grid; grid-template-columns: 14mm minmax(0, 1fr); gap: 2mm; margin-bottom: 1.5mm; }
+    .meta-row > :last-child { text-align: right; overflow-wrap: anywhere; }
+    .copy-status { margin-top: 2mm; text-align: right; font-size: 8pt; color: var(--muted); }
+    .hero { margin-top: 4mm; }
+    .document-title { min-width: 0; }
+    h1 { font-size: 24pt; font-weight: 600; line-height: 1.3; letter-spacing: -0.5pt; }
+    .subtitle { margin-top: 2mm; font-size: 8pt; letter-spacing: 1.5pt; color: var(--muted); }
+    .total-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7mm; align-items: center; margin-top: 3mm; }
+    .total-amount { text-align: right; }
+    .amount { font-size: 30pt; font-weight: 600; line-height: 1.3; letter-spacing: -0.8pt; color: var(--green); white-space: nowrap; }
+    .currency { margin-left: 2mm; font-size: 9pt; font-weight: 400; letter-spacing: normal; color: var(--muted); }
+    .amount-words { font-size: 10pt; overflow-wrap: anywhere; }
+    .amount-words .label { margin-bottom: 1mm; }
+    .section { margin-top: 4mm; }
+    h2 { font-size: 11pt; line-height: 1.5; font-weight: 600; margin-bottom: 2mm; }
+    .section-title { display: flex; align-items: center; gap: 3mm; }
+    .section-title::before { content: ''; width: 2mm; height: 2mm; background: var(--green); flex-shrink: 0; }
+    .seller-row { display: grid; grid-template-columns: 28mm minmax(0, 1fr); gap: 3mm; margin-top: 1mm; align-items: baseline; }
+    .seller-row > :last-child { overflow-wrap: anywhere; }
+    .seller-name { font-size: 12pt; }
+    .seller-contact { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 5mm; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th { padding: 2mm 3mm; border-top: 0.5pt solid var(--rule); border-bottom: 0.5pt solid var(--rule); text-align: left; font-size: 9pt; font-weight: 500; color: var(--muted); }
+    td { padding: 3mm; border-bottom: 0.5pt solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
+    th:first-child, td:first-child { padding-left: 0; }
+    th:last-child, td:last-child { padding-right: 0; }
+    .center { text-align: center; }
+    .right { text-align: right; }
+    .device-name { font-size: 11pt; font-weight: 600; }
+    .device-details { font-size: 9pt; color: var(--muted); line-height: 1.5; margin-top: 1mm; }
+    .item-amount { white-space: nowrap; font-size: 11pt; }
+    .payment { margin-top: 3mm; }
+    .payment-row { display: grid; grid-template-columns: 37mm minmax(0, 1fr); gap: 3mm; margin-top: 1mm; align-items: baseline; }
+    .payment-row > :last-child { overflow-wrap: anywhere; }
+    .credit-note { margin-top: 2mm; font-size: 9pt; color: var(--muted); }
+    .declaration { border-top: 0.5pt solid var(--rule); padding-top: 3mm; margin-top: 4mm; font-size: 9pt; line-height: 1.7; color: var(--muted); }
+    .acceptance { break-inside: avoid; padding-bottom: 1mm; }
+    .acceptance .declaration { line-height: 1.5; margin-top: 2mm; padding-top: 2mm; }
+    .acceptance .signatures { margin-top: 2mm; }
+    .acceptance footer { margin-top: 2mm; }
+    .signatures { display: flex; gap: 16mm; margin-top: 4mm; }
+    .signer { flex: 1; min-width: 0; text-align: center; font-size: 10pt; overflow-wrap: anywhere; }
+    .signature-space { display: flex; align-items: center; justify-content: center; height: 19mm; border-bottom: 0.5pt solid #a8b8af; margin-bottom: 2.5mm; }
+    .signature-space img { max-width: 100%; max-height: 16mm; object-fit: contain; }
+    .signature-space .muted { font-size: 9pt; }
+    .signer-role { font-size: 9pt; margin-top: 1.5mm; }
+    .signer-date { font-size: 8pt; color: var(--muted); margin-top: 1mm; }
+    footer { display: flex; justify-content: space-between; gap: 5mm; padding-top: 2.5mm; margin-top: 3mm; border-top: 0.5pt solid var(--rule); color: var(--muted); font-size: 8pt; }
+    footer span { overflow-wrap: anywhere; }
+    .masthead, .hero, .items, .seller, tr, .payment, .declaration, .signatures, footer { break-inside: avoid; }
+    h2 { break-after: avoid; }
+    p { orphans: 3; widows: 3; }
+    ${isCredit ? `
+    body { font-size: 10pt; }
+    .masthead { padding-bottom: 3mm; }
+    .company { line-height: 1.4; }
+    .hero, .section { margin-top: 2mm; }
+    h1 { font-size: 22pt; }
+    .subtitle { margin-top: 1mm; }
+    h2 { margin-bottom: 1mm; }
+    th { padding-top: 1.5mm; padding-bottom: 1.5mm; }
+    td { padding-top: 2mm; padding-bottom: 2mm; }
+    .credit-note { margin-top: 1mm; }
+    .acceptance .declaration { line-height: 1.4; }
+    .signature-space { height: 14mm; margin-bottom: 1.5mm; }
+    .signature-space img { max-height: 12mm; }
+    ` : ''}
   </style>
 </head>
 <body>
-  <div class="page">
-    ${data.isReprint ? '<div class="watermark">สำเนา</div>' : ''}
-    <div class="content">
-    <!-- Top header: logo ซ้าย / title ขวา -->
-    <div class="top-header">
+  <header class="masthead">
+    <div class="brand">
       <div class="logo">${this.logoSvg()}</div>
-      <div class="title-block">
-        <div class="title">ใบสำคัญจ่ายเงิน</div>
-        <div class="title-en">PAYMENT VOUCHER</div>
+      <div class="company">
+        <p class="company-name">${esc(company.nameTh)}</p>
+        <p>${esc(company.address)}</p>
+        <p class="company-contact">เลขประจำตัวผู้เสียภาษี ${esc(company.taxId)}</p>
+        ${company.phone ? `<p>โทร. ${esc(company.phone)}</p>` : ''}
       </div>
     </div>
-
-    <!-- Info grid: 2 rows × 2 cols -->
-    <div class="info-grid">
-      <!-- Row 1: ผู้ซื้อ (BESTCHOICE) | เลขเอกสาร -->
-      <div class="info-block">
-        <div class="row">
-          <span class="label">ผู้ซื้อ :</span>
-          <span class="value"><strong>${this.escapeHtml(company.nameTh)}</strong></span>
-        </div>
-        <div class="row">
-          <span class="label">ที่อยู่ :</span>
-          <span class="value">${this.escapeHtml(company.address)}</span>
-        </div>
-        <div class="row">
-          <span class="label">เลขที่ภาษี :</span>
-          <span class="value">${this.escapeHtml(company.taxId)} (สำนักงานใหญ่)</span>
-        </div>
-        <div class="contacts">
-          <span class="ct">${this.icon('phone', 13, '#9ca3af')} ${this.escapeHtml(company.phone || '063-134-6356')}</span>
-          <span class="ct">${this.icon('mail', 13, '#9ca3af')} bestchoice2568@gmail.com</span>
-        </div>
-      </div>
-      <div class="info-right-block">
-        <div class="doc-row">
-          <span class="doc-label">เลขที่เอกสาร :</span>
-          <span class="doc-value">${this.escapeHtml(data.voucherNumber)}</span>
-        </div>
-        <div class="doc-row">
-          <span class="doc-label">วันที่ออก :</span>
-          <span class="doc-value">${this.escapeHtml(this.formatThaiDate(data.voucherDate))}</span>
-        </div>
-        <div class="doc-row">
-          <span class="doc-label">อ้างอิง :</span>
-          <span class="doc-value">-</span>
-        </div>
-      </div>
-
-      <!-- Row 2: ผู้ขาย (walk-in) | ติดต่อกลับที่ -->
-      <div class="info-block">
-        <div class="row">
-          <span class="label">ผู้ขาย :</span>
-          <span class="value"><strong>${this.escapeHtml(data.sellerName)}</strong></span>
-        </div>
-        <div class="row">
-          <span class="label">ที่อยู่ :</span>
-          <span class="value">${this.escapeHtml(data.sellerAddress)}</span>
-        </div>
-        <div class="row">
-          <span class="label">เลขบัตร ปชช. :</span>
-          <span class="value">${this.escapeHtml(data.sellerIdCard)}</span>
-        </div>
-        <div class="contacts">
-          <span class="ct">${this.icon('phone', 13, '#9ca3af')} ${this.escapeHtml(data.sellerPhone)}</span>
-        </div>
-      </div>
-      <div class="info-right-block">
-        <div class="lbl">ติดต่อกลับที่ :</div>
-        <div class="ct">${this.icon('user', 14, '#9ca3af')} ${this.escapeHtml(data.issuerName)}</div>
-        <div class="ct">${this.icon('phone', 14, '#9ca3af')} ${this.escapeHtml(company.phone || '063-134-6356')}</div>
-        <div class="ct">${this.icon('mail', 14, '#9ca3af')} bestchoice2568@gmail.com</div>
-      </div>
+    <div class="document-meta">
+      <div class="meta-row"><span class="label">เลขที่</span><strong class="number">${esc(data.voucherNumber)}</strong></div>
+      <div class="meta-row"><span class="label">วันที่</span><span>${date}</span></div>
+      <p class="copy-status">${data.isReprint ? 'สำเนา / COPY' : 'ต้นฉบับ / ORIGINAL'}</p>
     </div>
+  </header>
 
-    <!-- Items table -->
-    <table class="items">
-      <thead>
-        <tr>
-          <th class="center" style="width:60px">ลำดับ</th>
-          <th>คำอธิบาย</th>
-          <th class="center" style="width:90px">จำนวน</th>
-          <th class="right" style="width:160px">จำนวนเงิน (฿)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td class="center">1</td>
-          <td>
-            ${this.renderItemLabel(data.deviceLabel)}
-            ${this.renderImeiBadge(data.deviceLabel)}
-          </td>
-          <td class="center">1</td>
-          <td class="right">${this.formatBaht(data.amount)}</td>
-        </tr>
-      </tbody>
+  <section class="hero" aria-label="สรุปเอกสาร">
+    <div class="document-title">
+      <h1>${title}</h1>
+      <p class="subtitle">${isCredit ? 'TRADE-IN RECEIPT' : 'PAYMENT VOUCHER'}</p>
+    </div>
+  </section>
+
+  <section class="seller section">
+    <h2 class="section-title">${isCredit ? 'ผู้ส่งมอบเครื่อง' : 'ผู้รับเงิน / ผู้ขาย'}</h2>
+    <div class="seller-row"><span class="label">ชื่อ–นามสกุล</span><strong class="seller-name">${esc(data.sellerName)}</strong></div>
+    <div class="seller-contact">
+      <div class="seller-row"><span class="label">เลขบัตรประชาชน</span><span class="number">${esc(data.sellerIdCard)}</span></div>
+      <div class="seller-row"><span class="label">โทรศัพท์</span><span class="number">${esc(data.sellerPhone)}</span></div>
+    </div>
+    <div class="seller-row"><span class="label">ที่อยู่</span><span>${esc(data.sellerAddress)}</span></div>
+  </section>
+
+  <section class="items section">
+    <h2 class="section-title">${isCredit ? 'รายการรับเครื่องเทิร์น' : 'รายการรับซื้อ'}</h2>
+    <table aria-label="${isCredit ? 'รายการเครื่องเทิร์น' : 'รายการจ่ายเงิน'}">
+      <colgroup><col style="width:12mm"><col><col style="width:22mm"><col style="width:38mm"></colgroup>
+      <thead><tr><th class="center">ลำดับ</th><th>รายละเอียดเครื่อง</th><th class="center">จำนวน</th><th class="right">${isCredit ? 'มูลค่า (บาท)' : 'จำนวนเงิน (บาท)'}</th></tr></thead>
+      <tbody><tr>
+        <td class="center">1</td>
+        <td><p class="device-name">${esc(deviceName)}</p>${deviceDetails.length ? `<p class="device-details">${esc(deviceDetails.join('\n'))}</p>` : ''}</td>
+        <td class="center">1 เครื่อง</td>
+        <td class="right item-amount number"><strong>${this.formatBaht(data.amount)}</strong></td>
+      </tr></tbody>
     </table>
-
-    <div class="spacer"></div>
-
-    <!-- Summary -->
-    <div class="summary-grid">
-      <div class="summary-left">
-        <div class="icon">${this.icon('clipboard', 18, '#4b5563')}</div>
-        <div class="label">รวมเป็นเงิน</div>
-        <div class="value">${this.formatBaht(data.amount)} บาท</div>
-        <div class="baht-text">(${this.escapeHtml(data.amountText)})</div>
-      </div>
-      <div class="summary-right">
-        <div class="total-box">
-          <span class="total-label">จำนวนเงินทั้งสิ้น</span>
-          <span class="total-amount">${this.formatBaht(data.amount)}<span class="unit">บาท</span></span>
-        </div>
+    <div class="total-summary">
+      <div class="amount-words"><p class="label">จำนวนเงินเป็นตัวอักษร</p><p>${esc(data.amountText)}</p></div>
+      <div class="total-amount">
+        <p class="label">${isCredit ? 'ยอดเครดิตที่ตกลง' : 'ยอดจ่ายสุทธิ'}</p>
+        <p class="amount number">${this.formatBaht(data.amount)}<span class="currency">บาท</span></p>
       </div>
     </div>
+  </section>
 
-    <!-- Legal disclaimer -->
-    <div class="legal-disclaimer">
-      <div>ผู้ขายรับรองว่าเป็นเจ้าของเครื่องโดยชอบด้วยกฎหมาย และยินยอมให้บริษัทตรวจสอบที่มาของเครื่อง หากพบว่าเป็นทรัพย์สินที่ได้มาโดยมิชอบ ผู้ขายยินยอมให้ดำเนินคดีตามกฎหมาย</div>
-      <div class="receiver"><strong>ผู้รับซื้อ:</strong> ${this.escapeHtml(data.issuerName)}</div>
+  <section class="payment">
+    <h2 class="section-title">${isCredit ? 'การรับเครื่อง' : 'ข้อมูลการจ่ายเงิน'}</h2>
+    <div class="payment-row"><span class="label">${isCredit ? 'รูปแบบการรับเครื่อง' : 'วิธีจ่ายเงิน'}</span><strong>${isCredit ? 'เครดิตเทิร์นเครื่อง' : data.paymentMethod === 'TRANSFER' ? 'โอนเงินเข้าบัญชีผู้ขาย' : 'เงินสด'}</strong></div>
+    ${
+      isCredit
+        ? `${data.creditBaseAmount != null && data.creditBonusAmount != null ? `<p class="credit-note">มูลค่าเครื่อง ${this.formatBaht(data.creditBaseAmount)} บาท + โบนัสส่วนลด ${this.formatBaht(data.creditBonusAmount)} บาท · ใช้เต็มยอดครั้งเดียวตามเงื่อนไขรายการขาย</p>` : ''}<p class="credit-note">เอกสารนี้ยืนยันการรับเครื่อง การใช้เครดิตให้ตรวจจากใบขายหรือสัญญาที่อ้างอิงรายการนี้</p>`
+        : data.paymentMethod === 'TRANSFER'
+          ? `<div class="payment-row"><span class="label">ธนาคาร / เลขบัญชี</span><span>${esc(data.transferBankName || '-')} / <span class="number">${esc(data.transferAccountNumber || '-')}</span></span></div>
+           <div class="payment-row"><span class="label">ชื่อบัญชีผู้รับเงิน</span><span>${esc(data.transferAccountName || '-')}</span></div>`
+          : `<div class="payment-row"><span class="label">ผู้รับเงินสด</span><span>${esc(data.sellerName)}</span></div>`
+    }
+  </section>
+
+  ${data.sellerDeclarationText ? '<div class="acceptance">' : ''}
+  <p class="declaration"><strong>คำรับรองผู้ขาย</strong>${data.sellerDeclarationText ? ` · ${esc(data.voucherNumber)}<br>` : ' '}${esc(data.sellerDeclarationText ?? LEGACY_TRADE_IN_DECLARATION)}</p>
+
+  <section class="signatures" aria-label="ลายเซ็น">
+    <div class="signer">
+      <div class="signature-space">${signature(data.issuerSignatureBase64, 'ลายเซ็นผู้ออกเอกสาร')}</div>
+      <strong>${esc(data.issuerName)}</strong>
+      <p class="signer-role">ผู้รับซื้อ / ผู้ออกเอกสาร</p>
+      <p class="signer-date">วันที่ ${date}</p>
     </div>
-
-    <!-- Payment -->
-    <div class="payment-section">
-      <div class="icon">${this.icon('wallet', 18, '#4b5563')}</div>
-      <div class="col">
-        <div class="icon-label">ชำระเงิน</div>
-        <div class="pay-row"><span class="label">วันที่ชำระ :</span><span class="value">${this.escapeHtml(this.formatThaiDate(data.voucherDate))}</span></div>
-        <div class="pay-row"><span class="label">วิธีชำระ :</span><span class="value">${data.paymentMethod === 'CASH' ? 'เงินสด' : 'โอนเงิน'}</span></div>
-      </div>
-      <div class="col">
-        ${
-          data.paymentMethod === 'TRANSFER'
-            ? `<div class="bank-row">
-                 <span class="bank-icon">${this.icon('wallet', 14, '#fff')}</span>
-                 <div class="bank-info">
-                   <div class="bank-name">${this.escapeHtml(data.transferBankName || '-')}</div>
-                   <div class="acc-num">${this.escapeHtml(data.transferAccountNumber || '-')}</div>
-                   <div class="acc-name">${this.escapeHtml(data.transferAccountName || '-')}</div>
-                 </div>
-               </div>`
-            : `<div class="bank-row">
-                 <span class="bank-icon">${this.icon('banknote', 14, '#fff')}</span>
-                 <div class="bank-info">
-                   <div class="bank-name">รับเงินสด</div>
-                   <div class="acc-name">โดย ${this.escapeHtml(data.issuerName)}</div>
-                 </div>
-               </div>`
-        }
-      </div>
-      <div class="pay-amount">${this.formatBaht(data.amount)} บาท</div>
+    <div class="signer">
+      <div class="signature-space">${signature(data.sellerSignatureBase64, 'ลายเซ็นผู้ขาย')}</div>
+      <strong>${esc(data.sellerName)}</strong>
+      <p class="signer-role">${isCredit ? 'ผู้ส่งมอบเครื่อง' : 'ผู้รับเงิน (ผู้ขาย)'}</p>
+      <p class="signer-date">วันที่ ${date}</p>
     </div>
+  </section>
 
-
-    <!-- Signature: QR + Dual signers -->
-    <div class="sig-section">
-      <div class="icon">${this.icon('pen-tool', 18, '#4b5563')}</div>
-      <div class="qr-col">
-        <div class="qr-label">สแกนเพื่อตรวจสอบเอกสาร</div>
-        <img src="${data.qrDataUrl}" alt="QR" style="width:100px;height:100px;display:block;margin:0 auto" />
-      </div>
-      <div class="signer-col">
-        <div class="dual-signers">
-          <!-- ผู้ออก (บริษัท) -->
-          <div class="signer">
-            <div class="signer-title">ผู้ออกใบสำคัญจ่ายเงิน</div>
-            ${
-              data.issuerSignatureBase64
-                ? `<img src="${data.issuerSignatureBase64}" alt="signature" style="height:42px;display:block;margin-bottom:2px;object-fit:contain" />`
-                : `<div class="signer-img">(รอลายเซ็น)</div>`
-            }
-            <div class="signer-line">
-              <div class="signer-name">${this.escapeHtml(data.issuerName)}</div>
-              <div class="signer-date">${this.escapeHtml(this.formatThaiDate(data.voucherDate))}</div>
-            </div>
-          </div>
-          <!-- ผู้รับเงิน (ผู้ขาย) -->
-          <div class="signer">
-            <div class="signer-title">ผู้รับเงิน (ผู้ขาย)</div>
-            ${
-              data.sellerSignatureBase64
-                ? `<img src="${data.sellerSignatureBase64}" alt="seller signature" style="height:42px;display:block;margin-bottom:2px;object-fit:contain" />`
-                : `<div class="signer-img">(รอลายเซ็น)</div>`
-            }
-            <div class="signer-line">
-              <div class="signer-name">${this.escapeHtml(data.sellerName)}</div>
-              <div class="signer-date">${this.escapeHtml(this.formatThaiDate(data.voucherDate))}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Page footer -->
-    <div class="page-footer">
-      <span>${this.escapeHtml(data.voucherNumber)}</span>
-      <span>ออกโดยระบบ BESTCHOICE</span>
-      <span>หน้า 1 / 1</span>
-    </div>
-    </div><!-- /.content -->
-  </div>
+  <footer><span class="number">${esc(data.voucherNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer>
+  ${data.sellerDeclarationText ? '</div>' : ''}
 </body>
 </html>`;
-  }
-
-  /** แยกบรรทัดหลัก/รอง ของ deviceLabel — แสดงเฉพาะข้อมูลที่ไม่ใช่ IMEI (IMEI แสดงเป็น badge แยก) */
-  private renderItemLabel(label: string): string {
-    const parts = label.split('\n');
-    const main = parts[0] || '';
-    // เอา IMEI ออกจาก sub line (จะแสดงเป็น badge แยก)
-    const sub = parts.slice(1).join(' ').replace(/IMEI\s+\d+/, '').trim();
-    return `<div class="item-main">${this.escapeHtml(main)}</div>${sub ? `<div class="item-sub">${this.escapeHtml(sub)}</div>` : ''}`;
-  }
-
-  /** Render IMEI เป็น badge เด่น (ถ้ามีใน deviceLabel) */
-  private renderImeiBadge(label: string): string {
-    const m = label.match(/IMEI\s+(\d+)/);
-    if (!m) return '';
-    return `<div class="imei-badge"><span class="lbl">IMEI</span>${this.escapeHtml(m[1])}</div>`;
   }
 }

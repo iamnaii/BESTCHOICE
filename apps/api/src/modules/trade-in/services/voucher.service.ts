@@ -42,7 +42,9 @@ export class TradeInVoucherService {
   }
 
   // ─── Render PDF on-demand (no storage required) ───────────
-  async renderPdf(tradeInId: string): Promise<{ buffer: Buffer; voucherNumber: string }> {
+  async renderPdf(
+    tradeInId: string,
+  ): Promise<{ buffer: Buffer; voucherNumber: string; filename: string }> {
     const tradeIn = await this.prisma.tradeIn.findUnique({
       where: { id: tradeInId },
       include: {
@@ -65,6 +67,16 @@ export class TradeInVoucherService {
     const issuer = tradeIn.idCardVerifiedBy || tradeIn.appraisedBy;
     const issuerName = issuer?.name || 'BESTCHOICE';
     const issuerSignature = issuer?.savedSignature || null;
+    // Historical signatures must retain the text originally accepted, never today's terms.
+    const declaration = tradeIn.sellerDeclarationSnapshot;
+    let sellerDeclarationText: string | null = null;
+    if (declaration != null) {
+      if (typeof declaration !== 'object' || Array.isArray(declaration) ||
+        typeof declaration.text !== 'string' || !declaration.text.trim()) {
+        throw new BadRequestException('ข้อมูลคำรับรองที่ลงนามไม่สมบูรณ์ ไม่สามารถออกเอกสารได้');
+      }
+      sellerDeclarationText = declaration.text;
+    }
 
     // ─── (สำเนา) detection: ครั้งแรกพิมพ์ → save voucherPrintedAt
     //     ครั้งถัดไป → ทำเครื่องหมาย "สำเนา"
@@ -76,11 +88,6 @@ export class TradeInVoucherService {
       });
     }
 
-    // ─── QR code: link ไปหน้า verify (ถ้ายังไม่มี endpoint ก็เป็น URL placeholder)
-    const verifyUrl = `${process.env.PUBLIC_APP_URL || 'https://bestchoice.local'}/verify/voucher/${tradeIn.voucherNumber}`;
-    const qrcode = await import('qrcode');
-    const qrDataUrl = await qrcode.toDataURL(verifyUrl, { width: 220, margin: 0 });
-
     const html = this.builder.buildHtml({
       voucherNumber: tradeIn.voucherNumber,
       voucherDate: tradeIn.voucherDate,
@@ -91,19 +98,32 @@ export class TradeInVoucherService {
       sellerPhone,
       sellerIdCard,
       sellerSignatureBase64: tradeIn.sellerSignatureBase64,
+      sellerDeclarationText,
       issuerName,
       issuerSignatureBase64: issuerSignature,
-      qrDataUrl,
       deviceLabel: this.builder.buildDeviceLabel(tradeIn),
       amount,
       amountText: this.builder.numberToThaiBahtText(amount),
-      paymentMethod: (tradeIn.paymentMethod as 'CASH' | 'TRANSFER' | null) ?? 'CASH',
+      creditBaseAmount: tradeIn.creditBaseAmount == null ? null : Number(tradeIn.creditBaseAmount),
+      creditBonusAmount: tradeIn.creditBonusAmount == null ? null : Number(tradeIn.creditBonusAmount),
+      // Legacy counter purchases had flow=EXCHANGE despite an actual CASH/TRANSFER payout.
+      // Preserve their original receipt; only explicit credit acceptance gets a credit receipt.
+      paymentMethod:
+        tradeIn.paymentMethod === 'TRADE_IN_CREDIT'
+          ? 'TRADE_IN_CREDIT'
+          : ((tradeIn.paymentMethod as 'CASH' | 'TRANSFER' | null) ?? 'CASH'),
       transferBankName: tradeIn.transferBankName,
       transferAccountNumber: tradeIn.transferAccountNumber,
       transferAccountName: tradeIn.transferAccountName,
     });
 
     const buffer = await this.renderer.htmlToPdf(html);
-    return { buffer, voucherNumber: tradeIn.voucherNumber };
+    const documentName =
+      tradeIn.paymentMethod === 'TRADE_IN_CREDIT' ? 'ใบรับเครื่องเทิร์น' : 'ใบสำคัญจ่ายเงิน';
+    return {
+      buffer,
+      voucherNumber: tradeIn.voucherNumber,
+      filename: `${documentName}_${tradeIn.voucherNumber}.pdf`,
+    };
   }
 }

@@ -1,4 +1,5 @@
 import { claimCreditApproval } from '../../credit-check/services/credit-approval';
+import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { closeRepossessionOnSale } from '../../repossessions/repossession-resale.util';
@@ -215,6 +216,12 @@ export class SaleWriterService {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
     return this.runSaleTransaction(async (tx) => {
+      const credits = new TradeInCreditService(this.prisma);
+      const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(dto.loyaltyPointsRedeemed ?? 0).toNumber() };
+      const credit = dto.tradeInCreditId ? await credits.quote(tx, creditInput) : null;
+      if (credit && !credit.net.eq(netAmount)) throw new BadRequestException('ราคาหลังโบนัสเทิร์นเปลี่ยนแล้ว กรุณาตรวจยอดอีกครั้ง');
+      const cashDue = new Decimal(netAmount).minus(credit?.base ?? 0);
+      if (credit && new Decimal(dto.amountReceived ?? cashDue).lt(cashDue)) throw new BadRequestException('ยอดเงินที่รับยังไม่ครบ');
       const mainProduct = await this.verifyProductInStock(tx, dto.productId);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
       const saleNumber = await generateSaleNumber(tx);
@@ -234,7 +241,7 @@ export class SaleWriterService {
           discount,
           netAmount,
           paymentMethod: dto.paymentMethod as PaymentMethod,
-          amountReceived: dto.amountReceived || netAmount,
+          amountReceived: dto.amountReceived ?? cashDue,
           bundleProductIds: dto.bundleProductIds || [],
           notes: dto.notes,
         },
@@ -265,6 +272,7 @@ export class SaleWriterService {
         tx,
       );
       const allocations = allocateCashSaleByCost(
+        // Base value is tender; the existing sale JE is adjusted in this same transaction.
         new Decimal(netAmount.toString()),
         ordered.map((p) => ({ id: p.id, costPrice: new Decimal(p.costPrice.toString()) })),
       );
@@ -286,6 +294,12 @@ export class SaleWriterService {
           },
           tx,
         );
+      }
+
+      if (credit) {
+        const snapshot = await credits.claim(tx, { ...creditInput, target: { saleId: sale.id }, cashAmount: cashDue.toNumber(), actorId: salespersonId }, cashAccountCode);
+        await tx.sale.update({ where: { id: sale.id }, data: { tradeInCreditSnapshot: snapshot } });
+        sale.tradeInCreditSnapshot = snapshot;
       }
 
       // Auto-create sales commission (read from CommissionRule, fallback to 3%)
@@ -319,6 +333,15 @@ export class SaleWriterService {
     if (!dto.planType) dto.planType = 'STORE_DIRECT';
     if (!dto.downPayment && dto.downPayment !== 0) throw new BadRequestException('กรุณาใส่เงินดาวน์');
     if (!dto.totalMonths) throw new BadRequestException('กรุณาเลือกจำนวนงวด');
+    const cashDown = dto.downPayment!;
+    const credits = new TradeInCreditService(this.prisma);
+    const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(dto.loyaltyPointsRedeemed ?? 0).toNumber() };
+    const credit = dto.tradeInCreditId ? await credits.quote(this.prisma, creditInput) : null;
+    if (credit) {
+      if (!credit.net.eq(netAmount)) throw new BadRequestException('ยอดหลังโบนัสเทิร์นไม่ตรงกัน');
+      dto = { ...dto, downPayment: new Decimal(cashDown).plus(credit.base).toNumber() };
+    }
+    if (dto.downPayment! >= netAmount || dto.downPayment! < 0) throw new BadRequestException('ยอดดาวน์รวมต้องน้อยกว่าราคาขาย');
 
     // Look up product to find matching InterestConfig
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
@@ -335,24 +358,24 @@ export class SaleWriterService {
     const effectiveVatPct = await resolveVatPctForBranch(this.prisma, dto.branchId, baseParams.vatPct);
     const params = { ...baseParams, vatPct: effectiveVatPct };
 
-    if (dto.downPayment < netAmount * params.minDownPaymentPct) {
+    if (dto.downPayment! < netAmount * params.minDownPaymentPct) {
       throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(params.minDownPaymentPct * 100).toFixed(0)}%`);
     }
-    if (dto.totalMonths < params.minInstallmentMonths || dto.totalMonths > params.maxInstallmentMonths) {
+    if (dto.totalMonths! < params.minInstallmentMonths || dto.totalMonths! > params.maxInstallmentMonths) {
       throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
     }
 
     // Resolve total-contract rate via new lookup (feature-flagged; fallback = legacy rate × months)
     const ratePct = interestConfig
-      ? Number(await getRateForMonths(this.prisma, interestConfig.id, dto.totalMonths))
-      : params.interestRate * dto.totalMonths;
-    const principalForInterest = roundBaht(netAmount - dto.downPayment);
+      ? Number(await getRateForMonths(this.prisma, interestConfig.id, dto.totalMonths!))
+      : params.interestRate * dto.totalMonths!;
+    const principalForInterest = roundBaht(netAmount - dto.downPayment!);
     const interestTotal = roundBaht(principalForInterest * ratePct);
     const calc = calculateInstallmentWithInterest(
       netAmount,
-      dto.downPayment,
+      dto.downPayment!,
       interestTotal,
-      dto.totalMonths,
+      dto.totalMonths!,
       params.storeCommissionPct,
       params.vatPct,
     );
@@ -409,10 +432,16 @@ export class SaleWriterService {
 
       // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย
       // Create sale record linked to contract
+      if (credit) {
+        const snapshot = await credits.claim(tx, { ...creditInput, target: { contractId: contract.id }, cashAmount: cashDown, actorId: salespersonId });
+        await tx.contract.update({ where: { id: contract.id }, data: { tradeInCreditSnapshot: snapshot } });
+        contract.tradeInCreditSnapshot = snapshot;
+      }
       const sale = await tx.sale.create({
         data: {
           saleNumber,
           saleType: 'INSTALLMENT',
+          tradeInCreditSnapshot: contract.tradeInCreditSnapshot ?? undefined,
           customerId: dto.customerId,
           productId: dto.productId,
           branchId: dto.branchId,
@@ -421,7 +450,7 @@ export class SaleWriterService {
           discount,
           netAmount,
           paymentMethod: dto.paymentMethod as PaymentMethod,
-          amountReceived: dto.downPayment,
+          amountReceived: cashDown,
           downPaymentAmount: dto.downPayment,
           contractId: contract.id,
           bundleProductIds: dto.bundleProductIds || [],

@@ -1,3 +1,4 @@
+import { cashDownPayment } from '../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
@@ -65,6 +66,7 @@ export class ContractWorkflowService {
    * "this signature happened" fingerprint.
    */
   private computeContractHash(contract: {
+    tradeInCreditSnapshot?: Prisma.JsonValue;
     contractNumber: string;
     customerId: string;
     productId: string;
@@ -128,6 +130,7 @@ export class ContractWorkflowService {
       customerNationalId: contract.customer?.nationalId ?? null,
       signatures,
       documents,
+      ...(contract.tradeInCreditSnapshot ? { tradeInCreditSnapshot: contract.tradeInCreditSnapshot } : {}),
     });
     return crypto.createHash('sha256').update(payload).digest('hex');
   }
@@ -509,11 +512,14 @@ export class ContractWorkflowService {
         );
       } else {
         // Standard activation flow — auto-create Sale record + post 1A JE.
+        const existingSale = await tx.sale.findFirst({ where: { contractId: contract.id, deletedAt: null } });
+        if (!existingSale) {
         const saleNumber = await generateSaleNumber(tx);
         await tx.sale.create({
           data: {
             saleNumber,
             saleType: 'INSTALLMENT',
+            tradeInCreditSnapshot: contract.tradeInCreditSnapshot ?? undefined,
             customerId: contract.customerId,
             productId: contract.productId,
             branchId: contract.branchId,
@@ -522,13 +528,14 @@ export class ContractWorkflowService {
             discount: 0,
             netAmount: contract.sellingPrice,
             paymentMethod: 'CASH',
-            amountReceived: contract.downPayment,
+            amountReceived: cashDownPayment(contract),
             downPaymentAmount: contract.downPayment,
             contractId: contract.id,
             bundleProductIds: [],
             notes: `สร้างอัตโนมัติจากสัญญา ${contract.contractNumber}`,
           },
         });
+        }
 
         // Auto journal entry — record contract activation (HP receivable).
         // Wave 1 / Task 4: 1A JE now runs inside the outer $transaction by
@@ -567,13 +574,14 @@ export class ContractWorkflowService {
         // atomic with the FINANCE 1A entry. salePrice is reconstructed as down+financed (D-8)
         // so the template's financing-identity assertion holds by construction.
         const downAmount = new Decimal(contract.downPayment.toString());
+        const cashDown = cashDownPayment(contract);
         const financedAmt = new Decimal(contract.financedAmount.toString());
 
         // In-flight rollout guard (spec §12): a contract created BEFORE this feature
         // shipped never got a ShopDownPayment JE, but ShopInventoryTransfer below will
         // Dr S21-2001 to "clear" the down payable. If no down JE exists yet, post a
         // catch-up ShopDownPayment first so the clearance lands against a real credit.
-        if (downAmount.gt(0)) {
+        if (cashDown.gt(0)) {
           const downJe = await tx.journalEntry.findFirst({
             where: {
               AND: [
@@ -592,7 +600,7 @@ export class ContractWorkflowService {
                 contractId: contract.id,
                 contractNumber: contract.contractNumber,
                 cashAccountCode,
-                downAmount,
+                downAmount: cashDown,
               },
               tx,
             );

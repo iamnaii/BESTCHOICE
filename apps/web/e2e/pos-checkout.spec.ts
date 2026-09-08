@@ -166,34 +166,12 @@ test.describe('POS Checkout Flow', () => {
   });
 
   test('should validate checkout requires product selection', async ({ page }) => {
-    const ok = await gotoWithRetry(page, '/pos');
-    if (!ok) return;
-
-    await page.waitForTimeout(2000);
-
-    // Find the submit/checkout button
-    const submitBtn = page
-      .locator('button')
-      .filter({ hasText: /ยืนยันการขาย|บันทึกการขาย|ชำระเงิน|ขาย/ })
-      .first();
-    if (await submitBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      const isDisabled = await submitBtn.isDisabled();
-      if (!isDisabled) {
-        await submitBtn.click();
-        await page.waitForTimeout(1000);
-        // Should show validation error (toast or inline)
-        const hasError = await page
-          .locator('[data-sonner-toast], .text-destructive, .text-red-500, [role="alert"]')
-          .first()
-          .isVisible({ timeout: 5000 })
-          .catch(() => false);
-        expect(hasError).toBeTruthy();
-      } else {
-        // Button disabled without product = correct behavior
-        expect(isDisabled).toBeTruthy();
-      }
-    }
-    // If no submit button visible at all — product must be selected first (valid)
+    await page.goto('/pos', { waitUntil: 'domcontentloaded' });
+    const main = page.getByRole('main');
+    await expect(main.getByText('ยังไม่ได้เลือกสินค้า', { exact: true })).toBeVisible();
+    const submitBtn = main.getByRole('button', { name: 'บันทึกการขาย', exact: true });
+    await expect(submitBtn).toBeVisible();
+    await expect(submitBtn).toBeDisabled();
   });
 
   test('should show payment method options for cash sale', async ({ page }) => {

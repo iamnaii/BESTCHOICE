@@ -1,22 +1,25 @@
 import { useState, useEffect } from 'react';
+import { TRADE_IN_DECLARATION_VERSION, tradeInEvidenceError } from '@installment/shared';
+import SellerDeclaration from '@/components/trade-in/SellerDeclaration';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import Modal from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import SellerPaymentFields from '@/components/trade-in/SellerPaymentFields';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
 import { AlertTriangle } from 'lucide-react';
-import type { TradeIn, AcceptFormState } from '../types';
+import type { TradeIn, AcceptFormState, AcceptRequest } from '../types';
 
 interface AcceptModalProps {
   item: TradeIn | null;
   form: AcceptFormState;
   isPending: boolean;
   onChange: (patch: Partial<AcceptFormState>) => void;
-  onConfirm: (id: string, body: AcceptFormState & { branchId?: string }) => void;
+  onConfirm: (id: string, body: AcceptRequest) => void;
   onClose: () => void;
 }
 
@@ -33,8 +36,16 @@ export default function AcceptModal({
   const canPickBranch = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
   const needBranch = !!item && !item.branchId;
   const [branchId, setBranchId] = useState<string>('');
+  const [identifiers, setIdentifiers] = useState({ imei: '', serialNumber: '', imeiMissingReason: '', serialNumberMissingReason: '',
+    sellerName: '', sellerPhone: '', sellerIdCardNumber: '', sellerAddress: '' });
   useEffect(() => {
-    if (item) setBranchId(item.branchId ?? user?.branchId ?? '');
+    if (item) {
+      setBranchId(item.branchId ?? user?.branchId ?? '');
+      setIdentifiers({ imei: item.imei ?? '', serialNumber: item.serialNumber ?? '',
+        imeiMissingReason: item.imeiMissingReason ?? '', serialNumberMissingReason: item.serialNumberMissingReason ?? '',
+        sellerName: item.sellerName ?? item.customer?.name ?? '', sellerPhone: item.sellerPhone ?? '',
+        sellerIdCardNumber: item.sellerIdCardNumber ?? '', sellerAddress: item.sellerAddress ?? '' });
+    }
   }, [item, user?.branchId]);
   const { data: branches } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -42,8 +53,21 @@ export default function AcceptModal({
     enabled: needBranch && canPickBranch,
   });
 
+  const isCredit = item?.flow === 'EXCHANGE';
+
+  function changeIdentifiers(patch: Partial<typeof identifiers>) {
+    setIdentifiers((current) => ({ ...current, ...patch }));
+    onChange({ idCardVerified: false, sellerConsentSigned: false, sellerSignatureBase64: '' });
+  }
+
   function handleConfirm() {
     if (!item) return;
+    const evidenceError = tradeInEvidenceError(identifiers);
+    if (evidenceError) { toast.error(evidenceError); return; }
+    if (identifiers.imei && !/^\d{15}$/.test(identifiers.imei)) {
+      toast.error('IMEI ต้องเป็นตัวเลข 15 หลัก');
+      return;
+    }
     if (needBranch && !branchId) {
       toast.error('กรุณาเลือกสาขาที่รับเครื่อง');
       return;
@@ -52,7 +76,7 @@ export default function AcceptModal({
       toast.error('กรุณายืนยันการตรวจบัตรและความยินยอมก่อน');
       return;
     }
-    if (form.paymentMethod === 'TRANSFER') {
+    if (!isCredit && form.paymentMethod === 'TRANSFER') {
       if (!form.transferBankName || !form.transferAccountNumber || !form.transferAccountName) {
         toast.error('กรุณากรอกข้อมูลการโอนให้ครบ');
         return;
@@ -62,11 +86,22 @@ export default function AcceptModal({
       toast.error('กรุณาให้ผู้ขายลงลายเซ็นก่อน');
       return;
     }
-    onConfirm(item.id, needBranch ? { ...form, branchId } : form);
+    const isTransfer = !isCredit && form.paymentMethod === 'TRANSFER';
+    onConfirm(item.id, { ...form,
+      ...identifiers,
+      declarationVersion: TRADE_IN_DECLARATION_VERSION,
+      imei: identifiers.imei || null,
+      serialNumber: identifiers.serialNumber.trim() || null,
+      paymentMethod: isCredit ? 'TRADE_IN_CREDIT' : form.paymentMethod,
+      transferBankName: isTransfer ? form.transferBankName : '',
+      transferAccountNumber: isTransfer ? form.transferAccountNumber : '',
+      transferAccountName: isTransfer ? form.transferAccountName : '',
+      ...(needBranch ? { branchId } : {}),
+    });
   }
 
   return (
-    <Modal isOpen={!!item} onClose={onClose} title="ยืนยันการรับซื้อเครื่อง" size="md">
+    <Modal isOpen={!!item} onClose={() => { if (!isPending) onClose(); }} title={isCredit ? "ยืนยันรับเครื่องเทิร์น" : "ยืนยันการรับซื้อเครื่อง"} size="md">
       {item && (
         <div className="space-y-4">
           <div className="rounded-lg bg-warning/10 dark:bg-warning/15 border border-warning/20 dark:border-warning/30 p-3 text-xs text-warning flex gap-2">
@@ -85,12 +120,41 @@ export default function AcceptModal({
             </p>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {([
+              ['sellerName', 'ชื่อผู้ขายตามบัตรประชาชน', 200],
+              ['sellerPhone', 'เบอร์โทรผู้ขาย', 10],
+              ['sellerIdCardNumber', 'เลขบัตรประชาชน', 13],
+              ['sellerAddress', 'ที่อยู่ตามหลักฐาน', 2000],
+            ] as const).map(([field, label, max]) => <div key={field}>
+              <Label htmlFor={`accept-${field}`}>{label} *</Label>
+              <Input id={`accept-${field}`} value={identifiers[field]} maxLength={max} disabled={isPending}
+                onChange={(e) => changeIdentifiers({ [field]: e.target.value })} />
+            </div>)}
+            <div>
+              <Label htmlFor="accept-imei">IMEI</Label>
+              <Input id="accept-imei" className="mt-1 font-mono" disabled={isPending}
+                inputMode="numeric" maxLength={15} placeholder="15 หลัก" value={identifiers.imei}
+                onChange={(e) => changeIdentifiers({ imei: e.target.value.replace(/\D/g, '') })} />
+            </div>
+            <div>
+              <Label htmlFor="accept-serial">Serial Number</Label>
+              <Input id="accept-serial" className="mt-1 font-mono" disabled={isPending}
+                maxLength={100} placeholder="หมายเลขเครื่อง" value={identifiers.serialNumber}
+                onChange={(e) => changeIdentifiers({ serialNumber: e.target.value })} />
+            </div>
+          </div>
+
+          {!identifiers.imei && <div><Label htmlFor="accept-imei-reason">เหตุผลที่ไม่มี IMEI *</Label><Input id="accept-imei-reason" disabled={isPending} maxLength={300} value={identifiers.imeiMissingReason} onChange={(e) => changeIdentifiers({ imeiMissingReason: e.target.value })} /></div>}
+          {!identifiers.serialNumber.trim() && <div><Label htmlFor="accept-serial-reason">เหตุผลที่ไม่มี Serial Number *</Label><Input id="accept-serial-reason" disabled={isPending} maxLength={300} value={identifiers.serialNumberMissingReason} onChange={(e) => changeIdentifiers({ serialNumberMissingReason: e.target.value })} /></div>}
+
           {needBranch && (
             <div>
               <Label>สาขาที่รับเครื่อง *</Label>
               {canPickBranch ? (
                 <select
                   className="mt-1.5 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                  disabled={isPending}
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}
                 >
@@ -112,90 +176,54 @@ export default function AcceptModal({
           <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
             <input
               type="checkbox"
+              disabled={isPending}
               className="mt-1"
               checked={form.idCardVerified}
               onChange={(e) => onChange({ idCardVerified: e.target.checked })}
             />
             <span className="text-sm">ตรวจบัตรประชาชนผู้ขายแล้วและตรงกับใบหน้า</span>
           </label>
+          <SellerDeclaration />
           <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
             <input
               type="checkbox"
+              disabled={isPending}
               className="mt-1"
               checked={form.sellerConsentSigned}
               onChange={(e) => onChange({ sellerConsentSigned: e.target.checked })}
             />
-            <span className="text-sm">ผู้ขายเซ็นยืนยันว่าเป็นเจ้าของเครื่องโดยชอบด้วยกฎหมาย</span>
+            <span className="text-sm">ผู้ขายได้อ่านและยอมรับคำรับรองผู้ขายทุกข้อ</span>
           </label>
           <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
             <input
               type="checkbox"
+              disabled={isPending}
               className="mt-1"
               checked={form.policeReportAcknowledged}
               onChange={(e) => onChange({ policeReportAcknowledged: e.target.checked })}
             />
             <span className="text-sm">
-              แจ้งผู้ขายแล้วว่าหากเป็นของโจรจะถูกดำเนินคดีตามกฎหมาย
+              แจ้งผู้ขายแล้วว่าหากพบเหตุสงสัย บริษัทจะตรวจสอบและดำเนินการตามกฎหมาย
             </span>
           </label>
 
           {/* Payment method */}
-          <div className="border-t pt-3 mt-2">
-            <Label>วิธีชำระเงินให้ผู้ขาย *</Label>
-            <div className="flex gap-2 mt-1.5">
-              <button
-                type="button"
-                onClick={() => onChange({ paymentMethod: 'CASH' })}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                  form.paymentMethod === 'CASH'
-                    ? 'bg-success text-success-foreground border-success'
-                    : 'bg-card text-foreground border-border hover:border-success/50'
-                }`}
-              >
-                เงินสด
-              </button>
-              <button
-                type="button"
-                onClick={() => onChange({ paymentMethod: 'TRANSFER' })}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                  form.paymentMethod === 'TRANSFER'
-                    ? 'bg-info text-info-foreground border-info'
-                    : 'bg-card text-foreground border-border hover:border-info/50'
-                }`}
-              >
-                โอน
-              </button>
+          {isCredit ? (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+              <p className="font-medium">เครดิตเทิร์นเครื่อง ฿{Number(item.offeredPrice ?? 0).toLocaleString()}</p>
+              <p className="text-sm text-muted-foreground">ขั้นตอนนี้บันทึกการรับเครื่องและยอดเครดิตที่ตกลง ยังไม่นำเครดิตไปหักยอดขายหรือสัญญา</p>
             </div>
-            {form.paymentMethod === 'TRANSFER' && (
-              <div className="space-y-2 mt-3">
-                <Input
-                  placeholder="ธนาคาร เช่น กสิกรไทย"
-                  value={form.transferBankName}
-                  onChange={(e) => onChange({ transferBankName: e.target.value })}
-                />
-                <Input
-                  placeholder="เลขบัญชีผู้รับโอน"
-                  value={form.transferAccountNumber}
-                  onChange={(e) =>
-                    onChange({ transferAccountNumber: e.target.value.replace(/[^\d-]/g, '') })
-                  }
-                />
-                <Input
-                  placeholder="ชื่อบัญชี"
-                  value={form.transferAccountName}
-                  onChange={(e) => onChange({ transferAccountName: e.target.value })}
-                />
-              </div>
-            )}
-          </div>
+          ) : <SellerPaymentFields value={form} onChange={onChange} disabled={isPending} />}
 
           {/* ลายเซ็นผู้ขาย */}
           <div className="border-t pt-3">
-            <Label>ลายเซ็นผู้ขาย *</Label>
+            <Label className="mt-3 block">ลายเซ็นผู้ขาย *</Label>
             <p className="text-xs text-muted-foreground mb-2">
-              ผู้ขายลงนามยืนยันการขายและความเป็นเจ้าของ
+              ลงนามยืนยันรายการรับเครื่องและคำรับรองผู้ขายข้างต้น
             </p>
             <SignaturePadFull
+              key={`${item.id}:${JSON.stringify(identifiers)}`}
+              isPending={isPending}
               onSign={() => {
                 /* handled by submit button */
               }}
@@ -207,11 +235,11 @@ export default function AcceptModal({
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={onClose} disabled={isPending}>
               ยกเลิก
             </Button>
             <Button onClick={handleConfirm} disabled={isPending}>
-              {isPending ? 'กำลังบันทึก...' : 'ยืนยันรับซื้อ'}
+              {isPending ? 'กำลังบันทึก...' : isCredit ? 'ยืนยันรับเครื่องเทิร์น' : 'ยืนยันรับซื้อ'}
             </Button>
           </div>
         </div>

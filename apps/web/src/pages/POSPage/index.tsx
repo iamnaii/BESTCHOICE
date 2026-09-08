@@ -1,4 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import Decimal from 'decimal.js';
+import type { AvailableTradeInCredit } from '@installment/shared';
+import TradeInCreditPicker from '@/components/trade-in/TradeInCreditPicker';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
@@ -46,6 +49,8 @@ export default function POSPage() {
   // Customer search state
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [tradeInCreditId, setTradeInCreditId] = useState('');
+  const [tradeInCredit, setTradeInCredit] = useState<AvailableTradeInCredit | null>(null);
 
   // Price selection UI state (not submitted directly — maps to sellingPrice via form)
   const [selectedPriceId, setSelectedPriceId] = useState('');
@@ -72,6 +77,11 @@ export default function POSPage() {
   });
 
   // Convenient watched values for derived calculations and summary display
+  useEffect(() => {
+    setTradeInCreditId(''); setTradeInCredit(null);
+    saleForm.setValue('amountReceived', undefined);
+  }, [selectedCustomer?.id, selectedProduct?.id, saleType]);
+
   const sellingPrice = String(saleForm.watch('sellingPrice') || 0);
   const discount = String(saleForm.watch('discount') || 0);
   const amountReceived = String(saleForm.watch('amountReceived') || '');
@@ -104,13 +114,15 @@ export default function POSPage() {
   const netAmount = useMemo(() => {
     const price = parseFloat(sellingPrice) || 0;
     const disc = parseFloat(discount) || 0;
-    return price - disc;
-  }, [sellingPrice, discount]);
+    return new Decimal(price).minus(disc).minus(tradeInCredit?.bonusAmount ?? 0).toNumber();
+  }, [sellingPrice, discount, tradeInCredit]);
+  const cashDue = new Decimal(netAmount).minus(tradeInCredit?.baseAmount ?? 0).toNumber();
+  const creditReady = !tradeInCreditId || (tradeInCredit?.id === tradeInCreditId && cashDue >= 0);
 
   const changeAmount = useMemo(() => {
     const received = parseFloat(amountReceived) || 0;
-    return received - netAmount;
-  }, [amountReceived, netAmount]);
+    return new Decimal(received).minus(cashDue).toNumber();
+  }, [amountReceived, cashDue]);
 
   const transferAmount = useMemo(() => {
     const down = parseFloat(downPayment) || 0;
@@ -172,6 +184,7 @@ export default function POSPage() {
     mutationFn: async () => {
       if (!selectedProduct) throw new Error('กรุณาเลือกสินค้า');
       if (!selectedCustomer) throw new Error('กรุณาเลือกลูกค้า');
+      if (!creditReady) throw new Error('กรุณาตรวจเครดิตเทิร์นและยอดชำระเพิ่มก่อน');
 
       const valid = await saleForm.trigger();
       if (!valid) throw new Error('กรุณาตรวจสอบข้อมูลในฟอร์ม');
@@ -180,6 +193,7 @@ export default function POSPage() {
 
       const payload: Record<string, unknown> = {
         saleType,
+        tradeInCreditId: saleType === 'CASH' ? tradeInCreditId || undefined : undefined,
         customerId: selectedCustomer.id,
         productId: selectedProduct.id,
         branchId: selectedProduct.branchId,
@@ -191,7 +205,7 @@ export default function POSPage() {
 
       if (saleType === 'CASH') {
         payload.paymentMethod = formValues.paymentMethod;
-        payload.amountReceived = formValues.amountReceived ?? netAmount;
+        payload.amountReceived = formValues.amountReceived ?? cashDue;
       } else if (saleType === 'INSTALLMENT') {
         const down = formValues.downPayment ?? 0;
         const minDownPct = posConfig?.minDownPaymentPct ?? 0.15;
@@ -220,6 +234,7 @@ export default function POSPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-credits'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       const typeLabel = saleTypeConfig[saleType].label;
       toast.success(`ขาย${typeLabel}สำเร็จ - ${data.saleNumber}`);
@@ -351,6 +366,9 @@ export default function POSPage() {
           />
 
           {/* Sale Details */}
+          {saleType === 'CASH' && <TradeInCreditPicker customerId={selectedCustomer?.id} branchId={selectedProduct?.branchId}
+            productId={selectedProduct?.id} value={tradeInCreditId} disabled={createSaleMutation.isPending}
+            onChange={(id) => { setTradeInCreditId(id); setTradeInCredit(null); saleForm.setValue('amountReceived', undefined); }} onResolved={setTradeInCredit} />}
           <SaleDetailsForm
             saleForm={saleForm}
             saleType={saleType}
@@ -358,6 +376,7 @@ export default function POSPage() {
             selectedPriceId={selectedPriceId}
             onPriceSelect={handlePriceSelect}
             netAmount={netAmount}
+            cashDue={cashDue}
             transferAmount={transferAmount}
             sellingPrice={sellingPrice}
             discount={discount}
@@ -367,12 +386,14 @@ export default function POSPage() {
         {/* Right Column - Summary (sticky) */}
         <div className="flex flex-col gap-5">
           <SaleSummary
+            tradeInCredit={tradeInCredit}
+            cashDue={cashDue}
             saleType={saleType}
             selectedProduct={selectedProduct}
             selectedCustomer={selectedCustomer}
             bundleProducts={bundleProducts}
             sellingPrice={sellingPrice}
-            discount={discount}
+            discount={new Decimal(discount || 0).plus(tradeInCredit?.bonusAmount ?? 0).toString()}
             netAmount={netAmount}
             amountReceived={amountReceived}
             changeAmount={changeAmount}
@@ -381,7 +402,7 @@ export default function POSPage() {
             financeCompany={financeCompany}
             contractNumber={contractNumber}
             isSubmitting={createSaleMutation.isPending}
-            canSubmit={!!selectedProduct && !!selectedCustomer && !!sellingPrice}
+            canSubmit={!!selectedProduct && !!selectedCustomer && !!sellingPrice && creditReady}
             onSubmit={() => createSaleMutation.mutate()}
             onReset={resetForm}
           />

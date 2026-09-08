@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import { getRequestCompany } from '@/lib/company-scope';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { toast } from 'sonner';
@@ -56,7 +57,8 @@ export default function TodosPage() {
   });
 
   const { data, isLoading, isError, error, refetch } = useQuery<TodosResponse>({
-    queryKey: ['todos', view, search, assigneeFilter],
+    // A late optimistic rollback must never populate another user's/company's list.
+    queryKey: ['todos', user?.id, getRequestCompany(), view, search, assigneeFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('view', view);

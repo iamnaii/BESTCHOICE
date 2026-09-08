@@ -38,13 +38,11 @@ export class BranchGuard implements CanActivate {
     }
 
     // Pull branchId from the most common carriers
-    const requestedBranchId: string | undefined =
-      request.params?.branchId ??
-      request.query?.branchId ??
-      request.body?.branchId;
+    const requestedBranches = [request.params?.branchId, request.query?.branchId, request.body?.branchId]
+      .filter((value) => value !== undefined && value !== null && value !== '');
 
     // No explicit branchId → service layer handles scoping
-    if (!requestedBranchId) {
+    if (requestedBranches.length === 0) {
       return true;
     }
 
@@ -52,7 +50,7 @@ export class BranchGuard implements CanActivate {
     if (!user.branchId) {
       throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
     }
-    if (user.branchId !== requestedBranchId) {
+    if (requestedBranches.some((branchId) => branchId !== user.branchId)) {
       throw new ForbiddenException('ไม่สามารถเข้าถึงข้อมูลของสาขาอื่นได้');
     }
     return true;

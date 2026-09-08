@@ -51,11 +51,15 @@ function setupHook(opts: {
   config?: InterestConfig | null;
   initialDownPayment?: number;
   initialMonths?: number;
+  tradeInBaseAmount?: number;
+  tradeInBonusAmount?: number;
 }) {
   return renderHook(() => {
     const [downPayment, setDownPayment] = useState(opts.initialDownPayment ?? 0);
     const [totalMonths, setTotalMonths] = useState(opts.initialMonths ?? 12);
     const calc = useContractCalculation({
+      tradeInBaseAmount: opts.tradeInBaseAmount,
+      tradeInBonusAmount: opts.tradeInBonusAmount,
       selectedProduct: opts.product,
       interestConfig: opts.config ?? null,
       posConfig: undefined,
@@ -69,6 +73,23 @@ function setupHook(opts: {
 }
 
 describe('useContractCalculation', () => {
+  it('separates a trade-in bonus discount from tender and additional cash', () => {
+    const { result } = setupHook({ product: makeProduct(15000), config: makeConfig(),
+      tradeInBaseAmount: 5000, tradeInBonusAmount: 500 });
+    expect(result.current.downPayment).toBe(0);
+    act(() => { result.current.setDownPaymentTouched(true); result.current.setDownPayment(2000); });
+    expect(result.current.grossSellingPrice).toBe(15000);
+    expect(result.current.sellingPrice).toBe(14500);
+    expect(result.current.totalDownPayment).toBe(7000);
+    expect(result.current.principal).toBe(7500);
+  });
+
+  it('collects only the cash missing from the minimum total down payment', () => {
+    const { result } = setupHook({ product: makeProduct(15000), config: makeConfig(),
+      tradeInBaseAmount: 1000, tradeInBonusAmount: 500 });
+    expect(result.current.downPayment).toBe(1900);
+    expect(result.current.totalDownPayment).toBe(2900);
+  });
   describe('selling price extraction', () => {
     it('returns 0 when no product is selected', () => {
       const { result } = setupHook({ product: null });

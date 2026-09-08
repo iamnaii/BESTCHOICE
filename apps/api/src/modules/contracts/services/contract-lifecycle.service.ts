@@ -1,5 +1,8 @@
+import { cleanupCreditContractSale } from '../../trade-in/services/credit-contract-cleanup.util';
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { StructuredLoggerService } from '../../../common/logger';
+import { TradeInCreditService, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
+import { DiscountPolicy } from '../../sales/services/discount-policy.util';
 import { PlanType, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -42,6 +45,11 @@ export class ContractLifecycleService {
   ) {}
 
   async create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string) {
+    const cashDown = dto.downPayment;
+    const credits = new TradeInCreditService(this.prisma);
+    const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: dto.sellingPrice };
+    const credit = dto.tradeInCreditId ? await credits.quote(this.prisma, creditInput) : null;
+    if (credit) dto = { ...dto, sellingPrice: credit.net.toNumber(), downPayment: new Decimal(cashDown).plus(credit.base).toNumber() };
     // Block if customer already has active contract(s), unless OWNER/BRANCH_MANAGER overrides
     const activeContracts = await this.prisma.contract.findMany({
       where: {
@@ -68,6 +76,7 @@ export class ContractLifecycleService {
     if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
       throw new BadRequestException('สินค้าไม่พร้อมขาย');
     }
+    if (credit) DiscountPolicy.assertDiscountAllowed(creditInput.sellingPrice, credit.bonus.toNumber(), salespersonRole ?? 'SALES', Number(product.costPrice), undefined);
 
     // Validate IMEI is present (legal requirement)
     if (!product.imeiSerial) {
@@ -226,6 +235,11 @@ export class ContractLifecycleService {
             },
           });
 
+          if (credit) {
+            const snapshot = await credits.claim(tx, { ...creditInput, target: { contractId: newContract.id }, cashAmount: cashDown, actorId: salespersonId });
+            await tx.contract.update({ where: { id: newContract.id }, data: { tradeInCreditSnapshot: snapshot } });
+            newContract.tradeInCreditSnapshot = snapshot;
+          }
           // Create payment schedule using shared utility
           const payments = generatePaymentSchedule(
             newContract.id, dto.totalMonths, financedAmount, monthlyPayment, dto.paymentDueDay,
@@ -239,7 +253,7 @@ export class ContractLifecycleService {
           await tx.payment.createMany({ data: payments });
 
           // SHOP-side: record the down payment received at contract creation.
-          const downPayment = new Decimal(dto.downPayment.toString());
+          const downPayment = cashDownPayment(newContract);
           if (downPayment.gt(0)) {
             const cashAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(dto.branchId, tx);
             await this.shopDownPaymentTemplate.execute(
@@ -350,6 +364,9 @@ export class ContractLifecycleService {
   // === UPDATE: แก้ไขรายละเอียดสัญญา (เฉพาะ CREATING/REJECTED) ===
   async update(id: string, dto: UpdateContractDto, userId: string) {
     const contract = await this.query.findOne(id);
+    if (contract.tradeInCreditSnapshot && Object.keys(dto).some((key) => key !== 'notes')) {
+      throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นแก้ยอดไม่ได้ กรุณายกเลิกฉบับร่างแล้วสร้างใหม่เพื่อคำนวณและตรวจเครดิตอีกครั้ง');
+    }
 
     // Only allow editing when CREATING or REJECTED
     if (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED') {
@@ -566,7 +583,10 @@ export class ContractLifecycleService {
       }
       contract = { ...contract, ...current };
       // Reverse the SHOP down-payment JE if one was posted for this DRAFT contract.
-      const downPayment = new Decimal(contract.downPayment.toString());
+      const downPayment = cashDownPayment(contract);
+      await cleanupCreditContractSale(tx, contract, userId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น');
+      await new TradeInCreditService(this.prisma).release(tx, contract.tradeInCreditSnapshot,
+        { contractId: id }, userId, 'ลบสัญญาฉบับร่าง', true);
       if (downPayment.gt(0)) {
         const downJe = await tx.journalEntry.findFirst({
           where: {

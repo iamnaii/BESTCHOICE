@@ -26,8 +26,8 @@ export async function seedTradeInShop(db: PrismaService, branchName: string) {
       address: 'ข้อมูลจำลองสำหรับทดสอบ', directorName: 'ผู้ทดสอบ' },
   });
   const user = await db.user.upsert({
-    where: { email: 'admin@bestchoice.com' }, update: {},
-    create: { email: 'admin@bestchoice.com', name: 'ISOLATED TEST SYSTEM', password: 'unused', role: 'OWNER' },
+    where: { email: 'admin@bestchoice.com' }, update: { accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'SHOP' },
+    create: { email: 'admin@bestchoice.com', name: 'ISOLATED TEST SYSTEM', password: 'unused', role: 'OWNER', accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'SHOP' },
   });
   for (const [code, name] of [['S11-1102', 'เงินสดสาขาทดสอบ'], ['S11-1202', 'ธนาคาร SHOP จ่าย'], ['S11-2002', 'สินค้าคงคลังมือถือมือสอง']]) {
     await db.chartOfAccount.upsert({ where: { code }, update: {}, create: { code, name, type: 'สินทรัพย์', normalBalance: 'Dr' } });

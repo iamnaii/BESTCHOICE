@@ -59,11 +59,13 @@ export class VoucherHtmlBuilder {
     deviceColor: string | null;
     imei: string | null;
     serialNumber?: string | null;
+    imeiMissingReason?: string | null;
+    serialNumberMissingReason?: string | null;
   }): string {
     const main = [t.deviceBrand, t.deviceModel, t.deviceStorage].filter(Boolean).join(' ');
     return [main, t.deviceColor ? `สี${t.deviceColor}` : null,
-      `IMEI: ${t.imei || 'ไม่ระบุ'}`,
-      `Serial Number: ${t.serialNumber || 'ไม่ระบุ'}`,
+      `IMEI: ${t.imei || (t.imeiMissingReason ? `ไม่มี — ${t.imeiMissingReason}` : 'ไม่ระบุ')}`,
+      `Serial Number: ${t.serialNumber || (t.serialNumberMissingReason ? `ไม่มี — ${t.serialNumberMissingReason}` : 'ไม่ระบุ')}`,
     ].filter(Boolean).join('\n');
   }
 
@@ -111,6 +113,8 @@ export class VoucherHtmlBuilder {
     amount: number;
     amountText: string;
     paymentMethod: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT';
+    creditBaseAmount?: number | null;
+    creditBonusAmount?: number | null;
     transferBankName: string | null;
     transferAccountNumber: string | null;
     transferAccountName: string | null;
@@ -227,6 +231,21 @@ export class VoucherHtmlBuilder {
     .masthead, .hero, .items, .seller, tr, .payment, .declaration, .signatures, footer { break-inside: avoid; }
     h2 { break-after: avoid; }
     p { orphans: 3; widows: 3; }
+    ${isCredit ? `
+    body { font-size: 10pt; }
+    .masthead { padding-bottom: 3mm; }
+    .company { line-height: 1.4; }
+    .hero, .section { margin-top: 2mm; }
+    h1 { font-size: 22pt; }
+    .subtitle { margin-top: 1mm; }
+    h2 { margin-bottom: 1mm; }
+    th { padding-top: 1.5mm; padding-bottom: 1.5mm; }
+    td { padding-top: 2mm; padding-bottom: 2mm; }
+    .credit-note { margin-top: 1mm; }
+    .acceptance .declaration { line-height: 1.4; }
+    .signature-space { height: 14mm; margin-bottom: 1.5mm; }
+    .signature-space img { max-height: 12mm; }
+    ` : ''}
   </style>
 </head>
 <body>
@@ -290,7 +309,7 @@ export class VoucherHtmlBuilder {
     <div class="payment-row"><span class="label">${isCredit ? 'รูปแบบการรับเครื่อง' : 'วิธีจ่ายเงิน'}</span><strong>${isCredit ? 'เครดิตเทิร์นเครื่อง' : data.paymentMethod === 'TRANSFER' ? 'โอนเงินเข้าบัญชีผู้ขาย' : 'เงินสด'}</strong></div>
     ${
       isCredit
-        ? '<p class="credit-note">เอกสารนี้ยืนยันการรับเครื่อง ยังไม่ยืนยันการนำเครดิตไปใช้</p>'
+        ? `${data.creditBaseAmount != null && data.creditBonusAmount != null ? `<p class="credit-note">มูลค่าเครื่อง ${this.formatBaht(data.creditBaseAmount)} บาท + โบนัสส่วนลด ${this.formatBaht(data.creditBonusAmount)} บาท · ใช้เต็มยอดครั้งเดียวตามเงื่อนไขรายการขาย</p>` : ''}<p class="credit-note">เอกสารนี้ยืนยันการรับเครื่อง การใช้เครดิตให้ตรวจจากใบขายหรือสัญญาที่อ้างอิงรายการนี้</p>`
         : data.paymentMethod === 'TRANSFER'
           ? `<div class="payment-row"><span class="label">ธนาคาร / เลขบัญชี</span><span>${esc(data.transferBankName || '-')} / <span class="number">${esc(data.transferAccountNumber || '-')}</span></span></div>
            <div class="payment-row"><span class="label">ชื่อบัญชีผู้รับเงิน</span><span>${esc(data.transferAccountName || '-')}</span></div>`

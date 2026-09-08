@@ -36,6 +36,8 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
+import { EntityScopeGuard } from '../../guards/entity-scope.guard';
+import { Entity } from '../../decorators/entity.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
@@ -145,6 +147,20 @@ export class TradeInController {
     @CurrentUser('branchId') userBranchId: string | null,
   ) {
     return this.tradeInService.quickBuy(dto, userId, userBranchId);
+  }
+
+  @Get('quick-buy/requests/:requestId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  quickBuyStatus(@Param('requestId') requestId: string, @CurrentUser('id') userId: string) {
+    return this.tradeInService.quickBuyStatus(requestId, userId);
+  }
+
+  @Get('credits')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  availableCredits(@Query('customerId') customerId: string, @Query('branchId') branchId: string) {
+    return this.tradeInService.availableCredits(customerId, branchId);
   }
 
   // Seller history (auto-fill + repeat warning)

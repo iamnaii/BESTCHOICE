@@ -20,7 +20,7 @@ function makeTx() {
       create: jest.fn(),
       findFirst: jest.fn().mockResolvedValue(null),
     },
-    customer: { findUnique: jest.fn().mockResolvedValue(null) },
+    customer: { findUnique: jest.fn().mockResolvedValue({ id: 'cust-1', phone: '0000000000', addressCurrent: null }) },
     // B0 §2.1: autofill hook queries pricingTemplate — empty means NO_TEMPLATE,
     // returns before touching product.update/systemConfig, so this is all that's needed.
     pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
@@ -70,6 +70,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
       { lookupValuation: jest.fn().mockResolvedValue({ found: false }) } as any, // TradeInValuationService
       shopTradeInTemplate,                             // ShopTradeInTemplate
       shopAccountResolver,                             // ShopAccountResolver
+      { issue: jest.fn().mockResolvedValue(undefined) } as any,
     );
   });
 
@@ -97,7 +98,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
     await service.accept(
       'ti-1',
-      { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
+      { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
       'u-1',
     );
 
@@ -119,7 +120,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
       id: 'ti-2',
       status: 'APPRAISED',
       deletedAt: null,
-      flow: 'EXCHANGE',
+      flow: 'EXCHANGE', customerId: 'cust-1',
       branchId: 'br-1',
       offeredPrice: new Decimal(5000),
       estimatedValue: null,
@@ -136,7 +137,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
     await service.accept(
       'ti-2',
-      { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
+      { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
       'u-1',
     );
 
@@ -168,7 +169,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
     await service.accept(
       'ti-3',
       {
-        idCardVerified: true,
+        sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true,
         sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==',
         paymentMethod: 'TRANSFER',
         transferBankName: 'KBank',
@@ -189,7 +190,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
         id: 'ti-4',
         status: 'APPRAISED',
         deletedAt: null,
-        flow: 'EXCHANGE',
+        flow: 'EXCHANGE', customerId: 'cust-1',
         branchId: 'br-1',
         // offeredPrice = 13660 includes the EXCHANGE bonus on top of cashPrice —
         // stock cost must use the underlying cashPrice (12420), NOT this total.
@@ -209,7 +210,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
       await service.accept(
         'ti-4',
-        { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
+        { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
         'u-1',
       );
 
@@ -245,7 +246,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
       await service.accept(
         'ti-5',
-        { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
+        { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
         'u-1',
       );
 
@@ -260,7 +261,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
         id: 'ti-6',
         status: 'APPRAISED',
         deletedAt: null,
-        flow: 'EXCHANGE',
+        flow: 'EXCHANGE', customerId: 'cust-1',
         branchId: 'br-1',
         offeredPrice: new Decimal(8000),
         estimatedValue: null,
@@ -278,7 +279,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
       await service.accept(
         'ti-6',
-        { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
+        { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
         'u-1',
       );
 
@@ -307,7 +308,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
       firstAppraisedAt: null,
     };
     const BASE_DTO = {
-      idCardVerified: true,
+      sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true,
       sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==',
       paymentMethod: 'CASH' as const,
     };
@@ -385,7 +386,7 @@ describe('TradeInLifecycleService.accept() — auto-mark เครื่อง�
     deviceCondition: 'A',
     notes: null,
   };
-  const acceptDto = { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
+  const acceptDto = { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
 
   beforeEach(() => {
     tx = makeTx();

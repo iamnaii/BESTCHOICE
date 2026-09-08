@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateSaleDto } from '../dto/sale.dto';
 import { InterCompanyService } from '../../inter-company/inter-company.service';
@@ -66,8 +67,12 @@ export class SaleCreationService {
       }
     }
 
-    const discount = baseDiscount + loyaltyPoints;
-    const netAmount = dto.sellingPrice - discount;
+    if (dto.tradeInCreditId && dto.saleType === 'EXTERNAL_FINANCE') throw new BadRequestException('เครดิตเทิร์นยังไม่รองรับไฟแนนซ์ภายนอก');
+    const tradeCredit = dto.tradeInCreditId ? await new TradeInCreditService(this.prisma).quote(this.prisma, {
+      ...dto, tradeInId: dto.tradeInCreditId, priceAfterDiscount: new Prisma.Decimal(dto.sellingPrice).minus(baseDiscount).minus(loyaltyPoints).toNumber(),
+    }) : null;
+    const discount = new Prisma.Decimal(baseDiscount).plus(loyaltyPoints).plus(tradeCredit?.bonus ?? 0).toNumber();
+    const netAmount = new Prisma.Decimal(dto.sellingPrice).minus(discount).toNumber();
 
     // test-data fence (spec 2026-09-05 §5.1): เครื่องทุกชิ้นในใบกับลูกค้าต้องอยู่ฝั่งเดียวกัน
     // — ตรวจก่อนแตะ tx ใด ๆ; ของแถมผิดฝั่งก็ต้องดัง

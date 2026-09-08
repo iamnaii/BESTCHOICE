@@ -1,4 +1,5 @@
 import { Copy } from 'lucide-react';
+import type { AvailableTradeInCredit } from '@installment/shared';
 import { toast } from 'sonner';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
@@ -7,6 +8,8 @@ import type { SaleType } from '@/lib/constants';
 import type { Product, Customer } from '../types';
 
 interface SaleSummaryProps {
+  tradeInCredit?: AvailableTradeInCredit | null;
+  cashDue?: number;
   saleType: SaleType;
   selectedProduct: Product | null;
   selectedCustomer: Customer | null;
@@ -27,6 +30,8 @@ interface SaleSummaryProps {
 }
 
 export default function SaleSummary({
+  tradeInCredit,
+  cashDue,
   saleType,
   selectedProduct,
   selectedCustomer,
@@ -162,6 +167,11 @@ export default function SaleSummary({
         </div>
 
         {/* Cash change */}
+        {tradeInCredit && <div className="space-y-2 rounded-lg bg-primary/5 p-3 text-sm">
+          <p>โบนัสเทิร์น (รวมในส่วนลดแล้ว): {Number(tradeInCredit.bonusAmount).toLocaleString()} ฿</p>
+          <p>ชำระด้วยมูลค่าเครื่องเทิร์น: {Number(tradeInCredit.baseAmount).toLocaleString()} ฿</p>
+          <p className="font-semibold">ยอดชำระเพิ่ม: {cashDue?.toLocaleString()} ฿</p>
+        </div>}
         {saleType === 'CASH' && parseFloat(amountReceived) > 0 && (
           <div className="space-y-2 mt-3 pt-3 border-t border-border/50">
             <div className="flex justify-between items-center text-sm">

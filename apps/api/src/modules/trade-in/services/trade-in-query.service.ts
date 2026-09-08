@@ -179,12 +179,15 @@ export class TradeInQueryService {
     source: 'card_reader' | 'upload',
   ) {
     const tradeIn = await this.findOne(id);
+    if (tradeIn.idCardVerifiedAt || tradeIn.sellerDeclarationSnapshot) {
+      throw new BadRequestException('ไม่สามารถเปลี่ยนหลักฐานบัตรหลังลงนามรับเครื่องแล้ว');
+    }
     const { buffer, contentType } = decodeBase64Image(photoBase64);
     const ext = contentType.split('/')[1] || 'jpg';
     const key = `trade-ins/${tradeIn.id}/id-card-${Date.now()}.${ext}`;
     await this.storage.upload(key, buffer, contentType);
     return this.prisma.tradeIn.update({
-      where: { id },
+      where: { id, idCardVerifiedAt: null },
       data: { idCardPhotoUrl: key, idCardSource: source },
       select: { id: true, idCardPhotoUrl: true, idCardSource: true },
     });

@@ -36,7 +36,7 @@ test.describe('Login Page', () => {
 
   test('should redirect to dashboard after login', async ({ page }) => {
     await loginAsAdmin(page);
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL((url) => url.pathname === '/');
   });
 
   test('should display sidebar menu items after login', async ({ page }) => {

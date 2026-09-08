@@ -13,7 +13,12 @@ import {
 import { Transform } from 'class-transformer';
 import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_VERSION_ERROR } from '@installment/shared';
 
-export class CreateTradeInDto {
+class DeviceEvidenceDto {
+  @IsString() @IsOptional() @MaxLength(300) imeiMissingReason?: string | null;
+  @IsString() @IsOptional() @MaxLength(300) serialNumberMissingReason?: string | null;
+}
+
+export class CreateTradeInDto extends DeviceEvidenceDto {
   // ─── Customer / Branch ──────────────────────────────
   @IsString()
   @IsOptional()
@@ -151,7 +156,11 @@ export class AppraiseTradeInDto {
   forceReason?: string;
 }
 
-export class AcceptTradeInDto {
+export class AcceptTradeInDto extends DeviceEvidenceDto {
+  @IsString() @IsOptional() @MaxLength(200) sellerName?: string;
+  @IsString() @IsOptional() @Matches(/^\d{9,10}$/) sellerPhone?: string;
+  @IsString() @IsOptional() @Length(13, 13) sellerIdCardNumber?: string;
+  @IsString() @IsOptional() @MaxLength(2000) sellerAddress?: string;
   @IsString()
   @IsOptional()
   @Matches(/^\d{15}$/, { message: 'IMEI ต้องเป็นตัวเลข 15 หลัก' })
@@ -209,7 +218,10 @@ export class AcceptTradeInDto {
  * Quick Buy DTO — รวม create + appraise + accept + voucher allocate ใน step เดียว
  * สำหรับเคส POS counter ที่พนักงานตัดสินใจรับซื้อทันทีโดยไม่ต้องส่งผู้จัดการอนุมัติ
  */
-export class QuickBuyTradeInDto {
+export class QuickBuyTradeInDto extends DeviceEvidenceDto {
+  @IsUUID('4', { message: 'กรุณารีเฟรชหน้าเพื่อเริ่มรายการรับซื้อ' })
+  requestId: string;
+
   // Seller (walk-in) — party-master contact resolved by the picker upstream
   @IsUUID('4')
   @IsOptional()

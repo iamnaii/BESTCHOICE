@@ -1,4 +1,5 @@
 import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_TEXT, LEGACY_TRADE_IN_DECLARATION } from '@installment/shared';
+import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -22,7 +23,7 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
   let app: INestApplication;
   let fixture: Awaited<ReturnType<typeof seedTradeInShop>>;
   let actor: { id: string; role: string; branchId: string | null };
-  const payment = { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
+  const payment = { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
   const pdf = jest.spyOn(VoucherPdfRenderer.prototype, 'htmlToPdf').mockResolvedValue(Buffer.from('%PDF-test'));
 
   beforeAll(async () => {
@@ -43,8 +44,31 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
   afterAll(async () => { await app?.close(); await db.$disconnect(); pdf.mockRestore(); });
 
   const buy = (extra: Record<string, unknown> = {}) => request(app.getHttpServer()).post('/trade-ins/quick-buy').send({
-    ...payment, branchId: fixture.branch.id, sellerContactId: fixture.seller.id,
+    ...payment, requestId: randomUUID(), branchId: fixture.branch.id, sellerContactId: fixture.seller.id,
     sellerName: fixture.seller.name, deviceBrand: 'TEST', deviceModel: 'BUYBACK-DEVICE', agreedPrice: 5000, ...extra,
+  });
+
+  it('returns the original purchase after a lost response instead of buying the device twice', async () => {
+    const requestId = randomUUID();
+    const first = await buy({ requestId }).expect(201);
+    const replay = await buy({ requestId }).expect(201);
+    expect(replay.body).toEqual(first.body);
+    expect(await db.tradeIn.count({ where: { quickBuyRequestId: requestId } })).toBe(1);
+    expect(await db.journalEntry.count({ where: { referenceId: `tradein:${first.body.id}` } })).toBe(1);
+    await buy({ requestId, agreedPrice: 5100 }).expect(409);
+  });
+
+  it('allocates one stable voucher when replay and original request finish together', async () => {
+    const created = await buy().expect(201);
+    await db.tradeIn.update({ where: { id: created.body.id }, data: { voucherNumber: null, voucherDate: null } });
+    const service = app.get(TradeInVoucherService);
+    const results = await Promise.all([service.allocate(created.body.id), service.allocate(created.body.id)]);
+    expect(results[0]).toEqual(results[1]);
+  });
+
+  it('requires seller identity and traceable device information before buying', async () => {
+    await buy({ sellerIdCardNumber: undefined }).expect(400);
+    await buy({ imei: undefined, serialNumber: undefined }).expect(400);
   });
 
   it.each([['CASH', 'S11-1102'], ['TRANSFER', 'S11-1202']])('records %s as BUYBACK, debits used stock and credits the SHOP source', async (method, code) => {
@@ -83,14 +107,15 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
     const accepted = await db.tradeIn.findUniqueOrThrow({ where: { id: tradeIn.id }, include: { product: true } });
     expect(accepted).toMatchObject({ paymentMethod: 'TRADE_IN_CREDIT', transferAccountNumber: null, transferAccountNameEncrypted: null });
     expect(accepted.product?.costPrice.toString()).toBe('5000');
-    expect(await db.journalEntry.count({ where: { referenceId: `tradein:${tradeIn.id}` } })).toBe(0);
+    expect(await db.journalEntry.count({ where: { referenceId: `tradein:${tradeIn.id}` } })).toBe(1);
     const vouchers = app.get(TradeInVoucherService);
     await vouchers.allocate(tradeIn.id);
     const document = await vouchers.renderPdf(tradeIn.id);
     expect(document.filename).toBe(`ใบรับเครื่องเทิร์น_${document.voucherNumber}.pdf`);
     const html = pdf.mock.calls.at(-1)![0];
     expect(html).toContain('ใบรับเครื่องเทิร์น');
-    expect(html).toContain('ยังไม่ยืนยันการนำเครดิตไปใช้');
+    expect(html).toContain('การใช้เครดิตให้ตรวจจากใบขายหรือสัญญา');
+    expect(html).toContain('มูลค่าเครื่อง 5,000.00 บาท + โบนัสส่วนลด 500.00 บาท');
     expect(html).not.toContain('รับเงินสด');
     expect(html).not.toContain('โอนเงิน');
   });

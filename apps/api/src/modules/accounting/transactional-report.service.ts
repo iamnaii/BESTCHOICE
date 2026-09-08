@@ -1,3 +1,4 @@
+import { creditSnapshot } from '../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,6 +14,42 @@ import { EXPENSE_ACCOUNT_CATEGORY } from './accounting-section-map.util';
  */
 @Injectable()
 export class TransactionalReportService {
+  /** A canceled sale disappears from aggregates; its cash remains until a dated refund JE. */
+  private async canceledTradeCash(entryDate: Prisma.DateTimeFilter, branchId?: string) {
+    const sales = await this.prisma.sale.findMany({ where: { deletedAt: { not: null },
+      saleType: 'INSTALLMENT', tradeInCreditSnapshot: { not: Prisma.DbNull }, ...(branchId ? { branchId } : {}) },
+      select: { contractId: true } });
+    const ids = [...new Set(sales.map(s => s.contractId).filter((id): id is string => !!id))];
+    const result = { cash: new Prisma.Decimal(0), advance: new Prisma.Decimal(0) };
+    if (!ids.length) return result;
+    const linked = await this.prisma.journalEntry.findMany({ where: { OR: [
+      ...ids.map(id => ({ metadata: { path: ['contractId'], equals: id } })),
+      { referenceType: 'CONTRACT', referenceId: { in: ids } },
+    ] }, select: { id: true } });
+    const lines = await this.prisma.journalLine.findMany({ where: { deletedAt: null,
+      journalEntry: { entryDate, deletedAt: null, status: { in: ['POSTED', 'VOIDED'] }, OR: [
+        { id: { in: linked.map(j => j.id) } }, { referenceType: 'REVERSAL', referenceId: { in: linked.map(j => j.id) } },
+      ] }, OR: [{ accountCode: { startsWith: 'S11-11' } }, { accountCode: { startsWith: 'S11-12' } }, { accountCode: 'S21-2001' }] },
+      select: { accountCode: true, debit: true, credit: true } });
+    for (const line of lines) {
+      if (line.accountCode === 'S21-2001') result.advance = result.advance.plus(line.credit).minus(line.debit);
+      else result.cash = result.cash.plus(line.debit).minus(line.credit);
+    }
+    return result;
+  }
+  private async tradeInTender(filter: Prisma.SaleWhereInput) {
+    const rows = await this.prisma.sale.findMany({ where: { ...filter, deletedAt: null,
+      saleType: { in: ['CASH', 'INSTALLMENT'] }, tradeInCreditSnapshot: { not: Prisma.DbNull } },
+      select: { saleType: true, tradeInCreditSnapshot: true } });
+    const result = { cash: new Prisma.Decimal(0), installment: new Prisma.Decimal(0) };
+    for (const row of rows) {
+      const snapshot = creditSnapshot(row.tradeInCreditSnapshot);
+      if (!snapshot) continue;
+      const key = row.saleType === 'CASH' ? 'cash' : 'installment';
+      result[key] = result[key].plus(snapshot.baseAmount);
+    }
+    return result;
+  }
   private readonly logger = new Logger(TransactionalReportService.name);
   constructor(
     private prisma: PrismaService,
@@ -609,10 +646,13 @@ export class TransactionalReportService {
       _sum: { paidAmount: true },
     });
 
+    const noncash = await this.tradeInTender({ createdAt: { lte: endDate }, ...branchFilter });
+    const canceledTrade = await this.canceledTradeCash({ lte: endDate }, branchId);
     const totalCashInflows = new Prisma.Decimal(paymentsReceived._sum.amountPaid ?? 0)
       .add(new Prisma.Decimal(cashSalesTotal._sum.netAmount ?? 0))
       .add(new Prisma.Decimal(downPaymentsTotal._sum.downPaymentAmount ?? 0))
-      .add(new Prisma.Decimal(financeReceivedTotal._sum.receivedAmount ?? 0));
+      .add(new Prisma.Decimal(financeReceivedTotal._sum.receivedAmount ?? 0))
+      .sub(noncash.cash).sub(noncash.installment).plus(canceledTrade.cash);
     const totalCashOutflows = new Prisma.Decimal(expensesPaid._sum.totalAmount ?? 0)
       .add(new Prisma.Decimal(purchaseOrdersPaid._sum.paidAmount ?? 0));
     const cashAndBank = totalCashInflows.sub(totalCashOutflows);
@@ -676,7 +716,15 @@ export class TransactionalReportService {
 
     // ── LIABILITIES ──
 
-    const customerCreditBalances = new Prisma.Decimal(creditBalances._sum.creditBalance ?? 0);
+    // Use the redemption history, not today's active pointer, for as-of reports.
+    const unusedTradeCredit = await this.prisma.tradeIn.aggregate({
+      where: { ...branchFilter, creditIssuedAt: { lte: endDate },
+        creditRedemptions: { none: { createdAt: { lte: endDate },
+          OR: [{ releasedAt: null }, { releasedAt: { gt: endDate } }] } } },
+      _sum: { creditBaseAmount: true },
+    });
+    const customerCreditBalances = new Prisma.Decimal(creditBalances._sum.creditBalance ?? 0)
+      .plus(unusedTradeCredit._sum.creditBaseAmount ?? 0).plus(canceledTrade.advance);
     const totalWhtPayable = new Prisma.Decimal(whtPayable._sum.withholdingTax ?? 0);
     const totalAccrued = new Prisma.Decimal(accruedExpenses._sum.totalAmount ?? 0);
 
@@ -801,8 +849,10 @@ export class TransactionalReportService {
       _sum: { paidAmount: true },
     });
 
-    const cashFromSales = new Prisma.Decimal(cashSales._sum.netAmount ?? 0);
-    const cashFromDownPayments = new Prisma.Decimal(downPayments._sum.downPaymentAmount ?? 0);
+    const noncash = await this.tradeInTender({ createdAt: dateRange, ...branchFilter });
+    const canceledTrade = await this.canceledTradeCash(dateRange, branchId);
+    const cashFromSales = new Prisma.Decimal(cashSales._sum.netAmount ?? 0).sub(noncash.cash);
+    const cashFromDownPayments = new Prisma.Decimal(downPayments._sum.downPaymentAmount ?? 0).sub(noncash.installment).plus(canceledTrade.cash);
     // C-3 fix: amountPaid already includes lateFee portion (customer pays amountDue + lateFee as one sum)
     // so we don't add lateFee separately to avoid double-counting
     const cashFromInstallments = new Prisma.Decimal(installmentPayments._sum.amountPaid ?? 0);

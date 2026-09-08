@@ -89,17 +89,15 @@ describe('BranchGuard', () => {
     });
   });
 
-  describe('priority of branchId sources', () => {
-    it('prefers params over query and body', () => {
-      // Params = 'branch-a', the user's own branch → allow.
-      // Query + body have 'branch-b' → would block if they were used.
+  describe('conflicting branchId sources', () => {
+    it('rejects a foreign body/query branch even when params name the own branch', () => {
       const ctx = makeCtx({
         user: { role: 'SALES', branchId: 'branch-a' },
         params: { branchId: 'branch-a' },
         query: { branchId: 'branch-b' },
         body: { branchId: 'branch-b' },
       });
-      expect(guard.canActivate(ctx)).toBe(true);
+      expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
     });
   });
 });

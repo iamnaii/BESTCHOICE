@@ -15,6 +15,9 @@ export async function checkTradeIn(page, origin, output, width) {
   await page.getByPlaceholder('ค้นหาผู้ติดต่อ / เลขภาษี...').fill('ผู้ขายตัวอย่าง Local');
   await page.getByRole('option', { name: /ผู้ขายตัวอย่าง Local/ }).click();
   await expect(dialog.getByText('ผู้ขายตัวอย่าง Local', { exact: true })).toBeVisible();
+  await dialog.getByLabel('เลขบัตรประชาชน *', { exact: true }).fill('0000000000001');
+  await dialog.getByLabel('เบอร์โทรผู้ขาย *', { exact: true }).fill('0000000000');
+  await dialog.getByPlaceholder('123/45').fill('1 Synthetic Road');
   await dialog.getByRole('button', { name: 'ถัดไป' }).click();
   await dialog.locator('select').nth(0).selectOption('Apple');
   await dialog.locator('select').nth(1).selectOption('iPhone 15');

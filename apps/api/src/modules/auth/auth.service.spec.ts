@@ -25,6 +25,7 @@ describe('AuthService', () => {
     password: '', // will be set in beforeAll
     name: 'Test User',
     role: 'SALES',
+    accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP',
     branchId: 'branch-1',
     isActive: true,
     failedLoginAttempts: 0,
@@ -128,6 +129,7 @@ describe('AuthService', () => {
         password: 'password123',
       });
 
+      expect(result).toMatchObject({ user: { accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP' } });
       expect(result.state).toBe('AUTHENTICATED');
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');

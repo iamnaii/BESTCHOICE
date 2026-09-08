@@ -219,6 +219,8 @@ export class AuthService {
         role: user.role,
         branchId: user.branchId,
         branchName: user.branch?.name || null,
+        accessibleCompanies: user.accessibleCompanies,
+        primaryCompany: user.primaryCompany,
         // InternalControlActionBar — per-user reverse override (CUSTOM mode).
         // Without this, a freshly-logged-in user keeps canReverseOverride
         // undefined until the next /auth/me, hiding the reverse button.
@@ -340,6 +342,8 @@ export class AuthService {
         branchId: true,
         deletedAt: true,
         preferences: true,
+        accessibleCompanies: true,
+        primaryCompany: true,
         defaultCashAccountCode: true,
         // InternalControlActionBar — per-user reverse-permission override.
         // Null = use role-based default. Consumed by the shared bar to gate

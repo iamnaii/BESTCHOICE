@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
+import { TRADE_IN_DECLARATION_VERSION, tradeInEvidenceError } from '@installment/shared';
 import SellerDeclaration from '@/components/trade-in/SellerDeclaration';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
@@ -36,11 +36,15 @@ export default function AcceptModal({
   const canPickBranch = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
   const needBranch = !!item && !item.branchId;
   const [branchId, setBranchId] = useState<string>('');
-  const [identifiers, setIdentifiers] = useState({ imei: '', serialNumber: '' });
+  const [identifiers, setIdentifiers] = useState({ imei: '', serialNumber: '', imeiMissingReason: '', serialNumberMissingReason: '',
+    sellerName: '', sellerPhone: '', sellerIdCardNumber: '', sellerAddress: '' });
   useEffect(() => {
     if (item) {
       setBranchId(item.branchId ?? user?.branchId ?? '');
-      setIdentifiers({ imei: item.imei ?? '', serialNumber: item.serialNumber ?? '' });
+      setIdentifiers({ imei: item.imei ?? '', serialNumber: item.serialNumber ?? '',
+        imeiMissingReason: item.imeiMissingReason ?? '', serialNumberMissingReason: item.serialNumberMissingReason ?? '',
+        sellerName: item.sellerName ?? item.customer?.name ?? '', sellerPhone: item.sellerPhone ?? '',
+        sellerIdCardNumber: item.sellerIdCardNumber ?? '', sellerAddress: item.sellerAddress ?? '' });
     }
   }, [item, user?.branchId]);
   const { data: branches } = useQuery<{ id: string; name: string }[]>({
@@ -53,11 +57,13 @@ export default function AcceptModal({
 
   function changeIdentifiers(patch: Partial<typeof identifiers>) {
     setIdentifiers((current) => ({ ...current, ...patch }));
-    onChange({ sellerConsentSigned: false, sellerSignatureBase64: '' });
+    onChange({ idCardVerified: false, sellerConsentSigned: false, sellerSignatureBase64: '' });
   }
 
   function handleConfirm() {
     if (!item) return;
+    const evidenceError = tradeInEvidenceError(identifiers);
+    if (evidenceError) { toast.error(evidenceError); return; }
     if (identifiers.imei && !/^\d{15}$/.test(identifiers.imei)) {
       toast.error('IMEI ต้องเป็นตัวเลข 15 หลัก');
       return;
@@ -82,6 +88,7 @@ export default function AcceptModal({
     }
     const isTransfer = !isCredit && form.paymentMethod === 'TRANSFER';
     onConfirm(item.id, { ...form,
+      ...identifiers,
       declarationVersion: TRADE_IN_DECLARATION_VERSION,
       imei: identifiers.imei || null,
       serialNumber: identifiers.serialNumber.trim() || null,
@@ -114,6 +121,16 @@ export default function AcceptModal({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {([
+              ['sellerName', 'ชื่อผู้ขายตามบัตรประชาชน', 200],
+              ['sellerPhone', 'เบอร์โทรผู้ขาย', 10],
+              ['sellerIdCardNumber', 'เลขบัตรประชาชน', 13],
+              ['sellerAddress', 'ที่อยู่ตามหลักฐาน', 2000],
+            ] as const).map(([field, label, max]) => <div key={field}>
+              <Label htmlFor={`accept-${field}`}>{label} *</Label>
+              <Input id={`accept-${field}`} value={identifiers[field]} maxLength={max} disabled={isPending}
+                onChange={(e) => changeIdentifiers({ [field]: e.target.value })} />
+            </div>)}
             <div>
               <Label htmlFor="accept-imei">IMEI</Label>
               <Input id="accept-imei" className="mt-1 font-mono" disabled={isPending}
@@ -127,6 +144,9 @@ export default function AcceptModal({
                 onChange={(e) => changeIdentifiers({ serialNumber: e.target.value })} />
             </div>
           </div>
+
+          {!identifiers.imei && <div><Label htmlFor="accept-imei-reason">เหตุผลที่ไม่มี IMEI *</Label><Input id="accept-imei-reason" disabled={isPending} maxLength={300} value={identifiers.imeiMissingReason} onChange={(e) => changeIdentifiers({ imeiMissingReason: e.target.value })} /></div>}
+          {!identifiers.serialNumber.trim() && <div><Label htmlFor="accept-serial-reason">เหตุผลที่ไม่มี Serial Number *</Label><Input id="accept-serial-reason" disabled={isPending} maxLength={300} value={identifiers.serialNumberMissingReason} onChange={(e) => changeIdentifiers({ serialNumberMissingReason: e.target.value })} /></div>}
 
           {needBranch && (
             <div>
@@ -202,7 +222,7 @@ export default function AcceptModal({
               ลงนามยืนยันรายการรับเครื่องและคำรับรองผู้ขายข้างต้น
             </p>
             <SignaturePadFull
-              key={`${item.id}:${identifiers.imei}:${identifiers.serialNumber}`}
+              key={`${item.id}:${JSON.stringify(identifiers)}`}
               isPending={isPending}
               onSign={() => {
                 /* handled by submit button */

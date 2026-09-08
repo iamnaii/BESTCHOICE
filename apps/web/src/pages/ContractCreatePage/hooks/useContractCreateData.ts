@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { AvailableTradeInCredit } from '@installment/shared';
+import Decimal from 'decimal.js';
 import { contractCreditIssue, type ApprovedContractLimit } from '../credit-approval';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -42,12 +44,17 @@ export function useContractCreateData() {
   const [selectedProduct, setSelectedProductState] = useState<Product | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomerState] = useState<Customer | null>(null);
+  const [tradeInCreditId, setTradeInCreditId] = useState(entry.restored?.tradeInCreditId ?? '');
+  const [tradeInCredit, setTradeInCredit] = useState<AvailableTradeInCredit | null>(null);
+  const tradeInCreditReady = !tradeInCreditId || tradeInCredit?.id === tradeInCreditId;
   // An explicit choice (including clearing OCR selection) wins over pending restores.
   const setSelectedProduct = useCallback((value: Product | null) => {
+    setTradeInCreditId(''); setTradeInCredit(null);
     productRestored.current = true;
     setSelectedProductState(value);
   }, []);
   const setSelectedCustomer = useCallback((value: Customer | null) => {
+    setTradeInCreditId(''); setTradeInCredit(null);
     customerRestored.current = true;
     setSelectedCustomerState(value);
   }, []);
@@ -86,8 +93,8 @@ export function useContractCreateData() {
   const saveDraft = useCallback(() => draft.save({
     step, productId: selectedProduct?.id ?? (!productRestored.current ? entry.productId : undefined),
     customerId: selectedCustomer?.id ?? (!customerRestored.current ? entry.customerId : undefined), fromRoom: entry.fromRoom,
-    downPayment, totalMonths, paymentDueDay, notes,
-  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, totalMonths, paymentDueDay, notes]);
+    downPayment, totalMonths, paymentDueDay, notes, tradeInCreditId: tradeInCreditId || undefined,
+  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, totalMonths, paymentDueDay, notes, tradeInCreditId]);
   const latestSave = useRef(saveDraft);
   useEffect(() => { latestSave.current = saveDraft; }, [saveDraft]);
   useEffect(() => {
@@ -316,6 +323,7 @@ export function useContractCreateData() {
       return data;
     },
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['trade-in-credits'] });
       draft.clear();
       toast.success('สร้างสัญญาสำเร็จ — อัปโหลดเอกสารที่หน้ารายละเอียดสัญญา');
       navigate(`/contracts/${data.id}`);
@@ -363,6 +371,9 @@ export function useContractCreateData() {
 
   const handleSubmit = (sellingPrice: number, amounts: { monthlyPayment: number; financedAmount: number }) => {
     if (!selectedProduct || !selectedCustomer) return;
+    const net = new Decimal(sellingPrice).minus(tradeInCredit?.bonusAmount ?? 0);
+    const totalDown = new Decimal(downPayment).plus(tradeInCredit?.baseAmount ?? 0);
+    if (!tradeInCreditReady || totalDown.gte(net)) { toast.error('กรุณาตรวจเครดิตเทิร์นและเงินดาวน์รวมก่อน'); return; }
     const issue = contractCreditIssue(creditApproval, { ...amounts, totalMonths, paymentDueDay });
     if (issue) { toast.error(issue); return; }
     createMutation.mutate({
@@ -371,6 +382,7 @@ export function useContractCreateData() {
       branchId: selectedProduct.branchId,
       planType,
       sellingPrice,
+      tradeInCreditId: tradeInCreditId || undefined,
       downPayment,
       totalMonths,
       notes: notes || undefined,
@@ -393,11 +405,16 @@ export function useContractCreateData() {
       if (blocking > 0 && !overrideActiveContractCheck) return false;
       return true;
     }
-    if (step === 2) return downPayment >= sellingPrice * minDownPct && totalMonths >= minMonths && totalMonths <= maxMonths;
+    if (step === 2) {
+      const totalDown = new Decimal(downPayment).plus(tradeInCredit?.baseAmount ?? 0);
+      return tradeInCreditReady && totalDown.gte(new Decimal(sellingPrice).mul(minDownPct)) && totalDown.lt(sellingPrice)
+        && totalMonths >= minMonths && totalMonths <= maxMonths;
+    }
     return true;
   };
 
   return {
+    tradeInCreditId, setTradeInCreditId, tradeInCredit, setTradeInCredit, tradeInCreditReady,
     navigate,
     openCustomerCredit,
     preserveDownPayment: entry.downAmount !== undefined,

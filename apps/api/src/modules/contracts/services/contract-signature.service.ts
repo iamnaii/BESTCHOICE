@@ -72,6 +72,7 @@ export class ContractSignatureService {
       totalMonths: contract.totalMonths,
       monthlyPayment: contract.monthlyPayment,
       imei: contract.product?.imeiSerial,
+      ...(contract.tradeInCreditSnapshot ? { tradeInCreditSnapshot: contract.tradeInCreditSnapshot } : {}),
     });
     const contractHash = crypto.createHash('sha256').update(contractContent).digest('hex');
 

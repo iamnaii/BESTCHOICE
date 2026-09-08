@@ -1,4 +1,5 @@
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import TradeInCreditPicker from '@/components/trade-in/TradeInCreditPicker';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
@@ -21,6 +22,8 @@ export default function ContractCreatePage() {
   const data = useContractCreateData();
 
   const calculation = useContractCalculation({
+    tradeInBaseAmount: Number(data.tradeInCredit?.baseAmount ?? 0),
+    tradeInBonusAmount: Number(data.tradeInCredit?.bonusAmount ?? 0),
     selectedProduct: data.selectedProduct,
     preserveDownPayment: data.preserveDownPayment,
     configPending: data.configPending,
@@ -62,7 +65,7 @@ export default function ContractCreatePage() {
   const creditSchedule = contractCreditSchedule(creditPlan);
 
   const handleSubmit = () => {
-    data.handleSubmit(calculation.sellingPrice, creditPlan);
+    data.handleSubmit(calculation.grossSellingPrice, creditPlan);
   };
 
   return (
@@ -78,6 +81,13 @@ export default function ContractCreatePage() {
       />
 
       <StepIndicator steps={STEPS} currentStep={data.step} onStepClick={(s) => goToStep(s)} />
+      <div className="my-4"><TradeInCreditPicker customerId={data.selectedCustomer?.id} branchId={data.selectedProduct?.branchId}
+        productId={data.selectedProduct?.id} value={data.tradeInCreditId} disabled={data.createMutation.isPending}
+        onChange={(id) => { data.setTradeInCreditId(id); data.setTradeInCredit(null); }} onResolved={data.setTradeInCredit} /></div>
+      {data.tradeInCredit && <div className="mb-4 rounded-lg bg-primary/5 p-3 text-sm space-y-1">
+        <p>ราคาสินค้า {calculation.grossSellingPrice.toLocaleString()} − โบนัสเทิร์น {Number(data.tradeInCredit.bonusAmount).toLocaleString()} = {calculation.sellingPrice.toLocaleString()} บาท</p>
+        <p>มูลค่าเครื่อง {Number(data.tradeInCredit.baseAmount).toLocaleString()} + เงินดาวน์สด/โอน {data.downPayment.toLocaleString()} = ชำระล่วงหน้ารวม {calculation.totalDownPayment.toLocaleString()} บาท</p>
+      </div>}
 
       {data.step === 0 && (
         <ProductSelectStep
@@ -110,6 +120,7 @@ export default function ContractCreatePage() {
       {data.step === 2 && (
         <>
           <PlanDetailsStep
+            tradeInBaseAmount={Number(data.tradeInCredit?.baseAmount ?? 0)}
             selectedProduct={data.selectedProduct}
             interestConfig={data.interestConfig}
             selectedCustomer={data.selectedCustomer}
@@ -155,6 +166,7 @@ export default function ContractCreatePage() {
 
           {data.selectedProduct && data.selectedCustomer && (
             <ContractSummaryPanel
+              tradeInBaseAmount={Number(data.tradeInCredit?.baseAmount ?? 0)}
               selectedProduct={data.selectedProduct}
               selectedCustomer={data.selectedCustomer}
               sellingPrice={calculation.sellingPrice}
@@ -193,7 +205,7 @@ export default function ContractCreatePage() {
             variant="primary"
             size="lg"
             onClick={handleSubmit}
-            disabled={data.createMutation.isPending || !!creditIssue}
+            disabled={data.createMutation.isPending || !!creditIssue || !data.tradeInCreditReady || calculation.totalDownPayment >= calculation.sellingPrice}
           >
             <Send className="size-4" />
             {data.createMutation.isPending ? 'กำลังสร้าง...' : 'สร้างสัญญา'}

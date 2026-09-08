@@ -46,6 +46,7 @@ describe('AccountingService', () => {
 
   beforeEach(async () => {
     prisma = {
+      tradeIn: { aggregate: jest.fn().mockResolvedValue({ _sum: { creditBaseAmount: null } }) },
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest

@@ -209,31 +209,31 @@ async function main() {
   const hashedPassword = await bcrypt.hash('admin1234', 10);
 
   const owner = await prisma.user.create({
-    data: { id: 'user-001', email: 'admin@bestchoice.com', password: hashedPassword, name: 'สุรชัย เจ้าของร้าน', role: 'OWNER', branchId: branch1.id },
+    data: { id: 'user-001', email: 'admin@bestchoice.com', password: hashedPassword, name: 'สุรชัย เจ้าของร้าน', role: 'OWNER', accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'SHOP', branchId: branch1.id },
   });
   const mgr1 = await prisma.user.create({
-    data: { id: 'user-002', email: 'manager.ladprao@bestchoice.com', password: hashedPassword, name: 'วิภา ผู้จัดการลาดพร้าว', role: 'BRANCH_MANAGER', branchId: branch2.id },
+    data: { id: 'user-002', email: 'manager.ladprao@bestchoice.com', password: hashedPassword, name: 'วิภา ผู้จัดการลาดพร้าว', role: 'BRANCH_MANAGER', accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP', branchId: branch2.id },
   });
   const mgr2 = await prisma.user.create({
-    data: { id: 'user-003', email: 'manager.ramkham@bestchoice.com', password: hashedPassword, name: 'ธนา ผู้จัดการรามคำแหง', role: 'BRANCH_MANAGER', branchId: branch3.id },
+    data: { id: 'user-003', email: 'manager.ramkham@bestchoice.com', password: hashedPassword, name: 'ธนา ผู้จัดการรามคำแหง', role: 'BRANCH_MANAGER', accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP', branchId: branch3.id },
   });
   const sales1 = await prisma.user.create({
-    data: { id: 'user-004', email: 'sales1@bestchoice.com', password: hashedPassword, name: 'สมศักดิ์ พนักงานขาย', role: 'SALES', branchId: branch2.id },
+    data: { id: 'user-004', email: 'sales1@bestchoice.com', password: hashedPassword, name: 'สมศักดิ์ พนักงานขาย', role: 'SALES', accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP', branchId: branch2.id },
   });
   const sales2 = await prisma.user.create({
-    data: { id: 'user-005', email: 'sales2@bestchoice.com', password: hashedPassword, name: 'อารียา พนักงานขาย', role: 'SALES', branchId: branch3.id },
+    data: { id: 'user-005', email: 'sales2@bestchoice.com', password: hashedPassword, name: 'อารียา พนักงานขาย', role: 'SALES', accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP', branchId: branch3.id },
   });
   const accountant = await prisma.user.create({
-    data: { id: 'user-006', email: 'accountant@bestchoice.com', password: hashedPassword, name: 'พิมพ์ใจ ฝ่ายบัญชี', role: 'ACCOUNTANT', branchId: null },
+    data: { id: 'user-006', email: 'accountant@bestchoice.com', password: hashedPassword, name: 'พิมพ์ใจ ฝ่ายบัญชี', role: 'ACCOUNTANT', accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'SHOP', branchId: null },
   });
   const sales3 = await prisma.user.create({
-    data: { id: 'user-007', email: 'sales3@bestchoice.com', password: hashedPassword, name: 'กิตติ พนักงานขาย', role: 'SALES', branchId: branch4.id },
+    data: { id: 'user-007', email: 'sales3@bestchoice.com', password: hashedPassword, name: 'กิตติ พนักงานขาย', role: 'SALES', accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP', branchId: branch4.id },
   });
   const mgr3 = await prisma.user.create({
-    data: { id: 'user-008', email: 'manager.bangkhae@bestchoice.com', password: hashedPassword, name: 'ประภา ผู้จัดการบางแค', role: 'BRANCH_MANAGER', branchId: branch4.id },
+    data: { id: 'user-008', email: 'manager.bangkhae@bestchoice.com', password: hashedPassword, name: 'ประภา ผู้จัดการบางแค', role: 'BRANCH_MANAGER', accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP', branchId: branch4.id },
   });
   const finMgr = await prisma.user.create({
-    data: { id: 'user-009', email: 'finance@bestchoice.com', password: hashedPassword, name: 'นภา ผู้จัดการการเงิน', role: 'FINANCE_MANAGER', branchId: null },
+    data: { id: 'user-009', email: 'finance@bestchoice.com', password: hashedPassword, name: 'นภา ผู้จัดการการเงิน', role: 'FINANCE_MANAGER', accessibleCompanies: ['FINANCE'], primaryCompany: 'FINANCE', branchId: null },
   });
 
   console.log('Users created: 9');

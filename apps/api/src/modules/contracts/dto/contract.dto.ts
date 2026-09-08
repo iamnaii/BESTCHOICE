@@ -2,6 +2,7 @@ import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max,
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
+  @IsUUID() @IsOptional() tradeInCreditId?: string;
   @IsUUID()
   @IsOptional()
   creditApprovalId?: string;

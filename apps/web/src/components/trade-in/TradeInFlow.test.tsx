@@ -10,7 +10,7 @@ import TradeInProductHandoff from './TradeInProductHandoff';
 import api from '@/lib/api';
 import { TRADE_IN_DECLARATION_CLAUSES, TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
 
-const auth = vi.hoisted(() => ({ user: { role: 'OWNER', branchId: 'branch-1' } }));
+const auth = vi.hoisted(() => ({ user: { id: 'staff-1', role: 'OWNER', branchId: 'branch-1' } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('@/lib/api', () => ({ default: { get: vi.fn(), post: vi.fn() }, getErrorMessage: () => 'บันทึกไม่สำเร็จ' }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
@@ -30,6 +30,8 @@ function wrapper({ children }: { children: React.ReactNode }) {
 async function prepareBuy() {
   const user = userEvent.setup();
   await user.click(screen.getByRole('button', { name: 'เลือกผู้ขายทดสอบ' }));
+  await user.type(screen.getByLabelText('เลขบัตรประชาชน *'), '0000000000001');
+  await user.type(screen.getByPlaceholderText('123/45'), '1 Test Road');
   await user.click(screen.getByRole('button', { name: /ถัดไป/ }));
   await user.selectOptions(screen.getByRole('option', { name: 'Apple' }).closest('select')!, 'Apple');
   await user.selectOptions(screen.getByRole('option', { name: 'iPhone 15' }).closest('select')!, 'iPhone 15');
@@ -46,6 +48,7 @@ async function prepareBuy() {
 describe('Counter purchase, seller payment and stock handoff', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     auth.user.role = 'OWNER';
     vi.mocked(api.get).mockResolvedValue({ data: [{ id: 'branch-1', name: 'สาขาทดสอบ' }] });
     vi.mocked(api.post).mockResolvedValue({ data: { id: 'trade-in-1', productId: 'received-product', productStatus: 'PHOTO_PENDING', voucherNumber: 'EXP-1' } });
@@ -83,6 +86,45 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     expect(screen.getByText('ผู้ขายทดสอบ')).toBeInTheDocument();
   });
 
+  it('retries a lost response using the same request key and stores no seller evidence', async () => {
+    vi.mocked(api.post).mockRejectedValueOnce(new Error('connection lost'));
+    render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
+    const user = await prepareBuy();
+    const save = screen.getByRole('button', { name: /บันทึก \+ ออกใบสำคัญ/ });
+    await user.click(save);
+    await waitFor(() => expect(save).toBeEnabled());
+    const key = (vi.mocked(api.post).mock.calls[0][1] as { requestId: string }).requestId;
+    expect(key).toMatch(/^[a-f0-9-]{36}$/);
+    expect(sessionStorage.getItem('bc:quick-buy:pending:staff-1')).toBe(key);
+    await user.click(save);
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect((vi.mocked(api.post).mock.calls[1][1] as { requestId: string }).requestId).toBe(key);
+    await waitFor(() => expect(sessionStorage.getItem('bc:quick-buy:pending:staff-1')).toBeNull());
+  });
+
+  it('recovers an already-created purchase on reopen without posting another purchase', async () => {
+    const key = '6635859c-cd9e-4f73-91ad-5c5037300a39';
+    sessionStorage.setItem('bc:quick-buy:pending:staff-1', key);
+    vi.mocked(api.get).mockImplementation(async (url) => ({ data: String(url).includes('/requests/')
+      ? { found: true, id: 'original-purchase' } : [{ id: 'branch-1', name: 'สาขาทดสอบ' }] }));
+    const incomplete = vi.fn();
+    render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={incomplete} />, { wrapper });
+    await waitFor(() => expect(incomplete).toHaveBeenCalledWith('original-purchase'));
+    expect(api.post).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('bc:quick-buy:pending:staff-1')).toBeNull();
+  });
+
+  it('keeps the pending key when the first request has not reached the server yet', async () => {
+    const key = '6635859c-cd9e-4f73-91ad-5c5037300a39';
+    sessionStorage.setItem('bc:quick-buy:pending:staff-1', key);
+    vi.mocked(api.get).mockImplementation(async (url) => ({ data: String(url).includes('/requests/')
+      ? { found: false } : [{ id: 'branch-1', name: 'สาขาทดสอบ' }] }));
+    render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
+    const user = await prepareBuy();
+    await user.click(screen.getByRole('button', { name: /บันทึก \+ ออกใบสำคัญ/ }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/trade-ins/quick-buy', expect.objectContaining({ requestId: key })));
+  });
+
   it('requires fresh identity confirmation and signature after going back to edit the purchase', async () => {
     render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
     const user = await prepareBuy();
@@ -117,7 +159,7 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     const change = vi.fn();
     const item: TradeIn = { id: 'exchange-1', status: 'APPRAISED', branchId: 'branch-1', flow: 'EXCHANGE',
       deviceBrand: 'Apple', deviceModel: 'iPhone 15', deviceStorage: null, deviceCondition: null, imei: '359000000000082', serialNumber: 'HANDOFF-SN-82',
-      estimatedValue: 5500, offeredPrice: 5500, agreedPrice: null, sellerName: 'ผู้ขาย', sellerPhone: null,
+      estimatedValue: 5500, offeredPrice: 5500, agreedPrice: null, sellerName: 'ผู้ขาย', sellerPhone: '0000000000', sellerIdCardNumber: '0000000000001', sellerAddress: 'TEST ADDRESS',
       voucherNumber: null, voucherPdfUrl: null, createdAt: '2026-09-08', customer: null };
     render(<AcceptModal item={item} form={{ ...EMPTY_ACCEPT_FORM, idCardVerified: true, sellerConsentSigned: true,
       sellerSignatureBase64: 'signature', paymentMethod: 'TRANSFER', transferBankName: 'STALE', transferAccountName: 'STALE', transferAccountNumber: '123' }}
@@ -133,7 +175,7 @@ describe('Counter purchase, seller payment and stock handoff', () => {
       declarationVersion: TRADE_IN_DECLARATION_VERSION,
     }));
     await userEvent.type(screen.getByLabelText('Serial Number'), 'A');
-    expect(change).toHaveBeenLastCalledWith({ sellerConsentSigned: false, sellerSignatureBase64: '' });
+    expect(change).toHaveBeenLastCalledWith({ idCardVerified: false, sellerConsentSigned: false, sellerSignatureBase64: '' });
   });
 
   it('gives SALES a valid product link and asks a manager to set prices', () => {

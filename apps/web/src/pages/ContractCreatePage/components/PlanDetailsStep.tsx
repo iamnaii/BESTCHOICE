@@ -30,6 +30,7 @@ function InfoTip({ text }: { text: string }) {
 }
 
 export interface PlanDetailsStepProps {
+  tradeInBaseAmount?: number;
   selectedProduct: Product | null;
   interestConfig: InterestConfig | null | undefined;
   selectedCustomer: Customer | null;
@@ -59,6 +60,7 @@ export interface PlanDetailsStepProps {
 }
 
 export function PlanDetailsStep({
+  tradeInBaseAmount = 0,
   selectedProduct,
   interestConfig,
   selectedCustomer,
@@ -156,7 +158,7 @@ export function PlanDetailsStep({
           render={({ field }) => (
             <FormItem>
               <FormLabel htmlFor={`${dueDayInputId}-down`} className="text-sm font-medium text-foreground">
-                เงินดาวน์ <InfoTip text="เงินที่ลูกค้าจ่ายล่วงหน้า หน้าร้านเก็บไว้ ไม่ผ่านไฟแนนซ์ — ขั้นต่ำกำหนดตามนโยบาย" />
+                เงินดาวน์ที่รับเป็นเงินสด/โอน <InfoTip text="กรอกเฉพาะเงินที่รับเพิ่ม ระบบรวมมูลค่าเครื่องเทิร์นให้ในการคำนวณยอดจัด" />
               </FormLabel>
               <FormControl>
                 <input
@@ -173,7 +175,7 @@ export function PlanDetailsStep({
                   min={0}
                 />
               </FormControl>
-              <div className="text-xs text-muted-foreground">ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% = {(sellingPrice * minDownPct).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
+              <div className="text-xs text-muted-foreground">เงินสด/โอนขั้นต่ำเพิ่ม {Math.max(0, Math.ceil(sellingPrice * minDownPct) - tradeInBaseAmount).toLocaleString()} ฿ (ยอดดาวน์รวมขั้นต่ำ {(minDownPct * 100).toFixed(0)}%)</div>
               <FormMessage />
             </FormItem>
           )}
@@ -266,7 +268,7 @@ export function PlanDetailsStep({
         {/* Calculation Summary — Customer-facing */}
         {(() => {
           const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-          const totalPaid = downPayment + monthlyPayment * totalMonths;
+          const totalPaid = downPayment + tradeInBaseAmount + monthlyPayment * totalMonths;
           const extraOverCash = totalPaid - sellingPrice;
           const extraPct = sellingPrice > 0 ? (extraOverCash / sellingPrice) * 100 : 0;
           const subtotalBeforeVat = principal + storeCommission + interestTotal;
@@ -281,8 +283,8 @@ export function PlanDetailsStep({
                   <span className="tabular-nums font-mono">{fmt(sellingPrice)} ฿</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">จ่ายวันนี้ (ดาวน์)</span>
-                  <span className="tabular-nums font-mono">-{fmt(downPayment)} ฿</span>
+                  <span className="text-muted-foreground">ชำระล่วงหน้ารวม (สด/โอน + เครื่องเทิร์น)</span>
+                  <span className="tabular-nums font-mono">-{fmt(downPayment + tradeInBaseAmount)} ฿</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">ผ่อน {totalMonths} งวด × งวดละ</span>

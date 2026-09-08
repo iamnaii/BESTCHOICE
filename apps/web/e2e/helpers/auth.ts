@@ -145,7 +145,8 @@ export async function loginAsAdmin(page: Page) {
   }
 
   // Wait for redirect to dashboard — use toHaveURL which polls the URL
-  await expect(page).toHaveURL('/', { timeout: 30000 });
+  await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 30000 });
+  await expect(page.getByRole('main')).toBeVisible({ timeout: 15000 });
   await page.waitForSelector('.sidebar', { timeout: 15000 });
 }
 
@@ -174,7 +175,8 @@ export async function loginViaAPI(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   // Wait for auth to resolve — use toHaveURL (polls) instead of waitForURL
-  await expect(page).toHaveURL('/', { timeout: 30000 });
+  await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 30000 });
+  await expect(page.getByRole('main')).toBeVisible({ timeout: 15000 });
 }
 
 /**
@@ -314,7 +316,8 @@ export async function loginAsRole(page: Page, role: TestRole) {
   }, token);
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page).toHaveURL('/', { timeout: 30000 });
+  await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 30000 });
+  await expect(page.getByRole('main')).toBeVisible({ timeout: 15000 });
 }
 
 /**

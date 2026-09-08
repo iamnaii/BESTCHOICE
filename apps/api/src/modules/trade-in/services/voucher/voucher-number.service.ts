@@ -49,6 +49,9 @@ export class VoucherNumberService {
     if (tradeIn.voucherNumber && tradeIn.voucherDate) {
       return { voucherNumber: tradeIn.voucherNumber, voucherDate: tradeIn.voucherDate };
     }
+    if (tradeIn.voucherNumber || tradeIn.voucherDate) {
+      throw new BadRequestException('ข้อมูลเลขที่ใบสำคัญไม่ครบ กรุณาตรวจรายการเดิม');
+    }
 
     // Race-safe: retry P2002 (unique collision) สูงสุด 5 ครั้ง
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -57,7 +60,7 @@ export class VoucherNumberService {
           const voucherNumber = await this.generateVoucherNumber(tx);
           const voucherDate = new Date();
           return tx.tradeIn.update({
-            where: { id: tradeInId },
+            where: { id: tradeInId, AND: [{ voucherNumber: null }, { voucherDate: null }] },
             data: { voucherNumber, voucherDate },
             select: { voucherNumber: true, voucherDate: true },
           });
@@ -65,7 +68,15 @@ export class VoucherNumberService {
         return { voucherNumber: result.voucherNumber!, voucherDate: result.voucherDate! };
       } catch (err) {
         const code = (err as { code?: string })?.code;
-        if (code !== 'P2002') throw err;
+        if (code !== 'P2002' && code !== 'P2025') throw err;
+        // A concurrent request may have finished allocating this same voucher.
+        const winner = await this.prisma.tradeIn.findUnique({
+          where: { id: tradeInId }, select: { voucherNumber: true, voucherDate: true },
+        });
+        if (winner?.voucherNumber && winner.voucherDate) return {
+          voucherNumber: winner.voucherNumber, voucherDate: winner.voucherDate,
+        };
+        if (code === 'P2025') throw err;
         this.logger.warn(`Voucher number collision (attempt ${attempt + 1}), retrying`);
       }
     }

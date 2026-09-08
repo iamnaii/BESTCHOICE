@@ -3,6 +3,7 @@ import { useCallback, useMemo } from 'react';
 const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface ContractDraft {
+  tradeInCreditId?: string;
   step: number;
   productId?: string;
   customerId?: string;
@@ -44,7 +45,7 @@ export function useDraftStorage(userId: string | undefined) {
         !Number.isInteger(draft.totalMonths) || draft.totalMonths < 1 ||
         !Number.isInteger(draft.paymentDueDay) || draft.paymentDueDay < 1 || draft.paymentDueDay > 31 ||
         typeof draft.notes !== 'string' || !validId(draft.customerId) ||
-        !validId(draft.productId) || !validId(draft.fromRoom)) {
+        !validId(draft.productId) || !validId(draft.fromRoom) || !validId(draft.tradeInCreditId)) {
         clear();
         return null;
       }

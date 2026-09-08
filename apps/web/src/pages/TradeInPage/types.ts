@@ -2,6 +2,10 @@ export type TradeInSubmissionSource = 'OFFLINE' | 'ONLINE';
 export type TradeInFlow = 'EXCHANGE' | 'BUYBACK';
 
 export interface TradeIn {
+  sellerIdCardNumber?: string | null;
+  sellerAddress?: string | null;
+  imeiMissingReason?: string | null;
+  serialNumberMissingReason?: string | null;
   id: string;
   status: string;
   productId?: string | null;
@@ -85,6 +89,12 @@ export const EMPTY_ACCEPT_FORM: AcceptFormState = {
 };
 
 export type AcceptRequest = Omit<AcceptFormState, 'paymentMethod'> & {
+  sellerName?: string;
+  sellerPhone?: string;
+  sellerIdCardNumber?: string;
+  sellerAddress?: string;
+  imeiMissingReason?: string;
+  serialNumberMissingReason?: string;
   declarationVersion: string;
   imei?: string | null;
   serialNumber?: string | null;

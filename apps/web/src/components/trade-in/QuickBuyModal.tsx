@@ -1,7 +1,7 @@
 import { isAxiosError } from 'axios';
-import { TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
+import { TRADE_IN_DECLARATION_VERSION, tradeInEvidenceError, tradeInSellerEvidenceError } from '@installment/shared';
 import SellerDeclaration from './SellerDeclaration';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -60,6 +60,34 @@ const conditionOptions = [
 
 export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }: QuickBuyModalProps) {
   const { user } = useAuth();
+  const storageKey = `bc:quick-buy:pending:${user?.id}`;
+  const requestId = useRef<string | null>(null);
+  const sellerEpoch = useRef(0);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState(false);
+  const [recoveryAttempt, setRecoveryAttempt] = useState(0);
+  const recoveryHandlers = useRef({ onIncomplete, onClose });
+  recoveryHandlers.current = { onIncomplete, onClose: close };
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const pending = sessionStorage.getItem(storageKey);
+    requestId.current = pending;
+    setRecoveryError(false);
+    if (!pending) { setRecovering(false); return; }
+    setRecovering(true);
+    api.get(`/trade-ins/quick-buy/requests/${pending}`).then(({ data }) => {
+      if (cancelled) return;
+      if (data.found) {
+        recoveryHandlers.current.onIncomplete(data.id);
+        sessionStorage.removeItem(storageKey);
+        requestId.current = null;
+        recoveryHandlers.current.onClose();
+      }
+    }).catch(() => { if (!cancelled) setRecoveryError(true); })
+      .finally(() => { if (!cancelled) setRecovering(false); });
+    return () => { cancelled = true; };
+  }, [open, storageKey, recoveryAttempt]);
   const [step, setStep] = useState(1);
   const [branchId, setBranchId] = useState<string>(user?.branchId ?? '');
   const [imeiCheckResult, setImeiCheckResult] = useState<{ result: 'clean' | 'duplicate'; count: number } | null>(null);
@@ -87,6 +115,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
     deviceCondition: 'B',
     imei: '',
     serialNumber: '',
+    imeiMissingReason: '',
+    serialNumberMissingReason: '',
     agreedPrice: '',
     // Step 3: confirm
     paymentMethod: 'CASH' as 'CASH' | 'TRANSFER',
@@ -100,6 +130,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
   const [address, setAddress] = useState<AddressData>({ ...emptyAddress });
 
   function reset() {
+    sellerEpoch.current++;
     setStep(1);
     setBranchId(user?.branchId ?? '');
     setImeiCheckResult(null);
@@ -109,7 +140,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
       sellerContactId: '', sellerName: '', sellerPhone: '', sellerIdCardNumber: '',
       idCardPhotoBase64: '', idCardSource: '',
       deviceBrand: '', deviceModel: '', deviceStorage: '', deviceColor: '',
-      deviceCondition: 'B', imei: '', serialNumber: '', agreedPrice: '',
+      deviceCondition: 'B', imei: '', serialNumber: '', imeiMissingReason: '', serialNumberMissingReason: '', agreedPrice: '',
       paymentMethod: 'CASH', transferBankName: '', transferAccountNumber: '', transferAccountName: '',
       sellerSignatureBase64: '', idCardVerified: false, sellerConsentSigned: false,
     });
@@ -122,7 +153,11 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
 
   const quickBuyMutation = useMutation({
     mutationFn: async () => {
+      requestId.current ??= crypto.randomUUID();
+      // Store only the request key. Never persist identity, card images or signatures.
+      sessionStorage.setItem(storageKey, requestId.current);
       const payload = {
+        requestId: requestId.current,
         branchId: branchId || undefined,
         sellerContactId: form.sellerContactId || undefined,
         sellerName: form.sellerName,
@@ -138,6 +173,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
         deviceCondition: form.deviceCondition,
         imei: form.imei || undefined,
         serialNumber: form.serialNumber.trim() || undefined,
+        imeiMissingReason: form.imei ? undefined : form.imeiMissingReason.trim(),
+        serialNumberMissingReason: form.serialNumber.trim() ? undefined : form.serialNumberMissingReason.trim(),
         agreedPrice: parseFloat(form.agreedPrice),
         idCardVerified: form.idCardVerified,
         sellerConsentSigned: form.sellerConsentSigned,
@@ -151,6 +188,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
       return api.post('/trade-ins/quick-buy', payload);
     },
     onSuccess: (res) => {
+      sessionStorage.removeItem(storageKey);
+      requestId.current = null;
       const { voucherNumber, imeiWarning } = res.data;
       if (imeiWarning) {
         toast.warning(`รับซื้อสำเร็จ — แต่พบ IMEI ซ้ำในระบบ โปรดตรวจสอบ`);
@@ -165,6 +204,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
       const id = isAxiosError(err) ? err.response?.data?.tradeInId : undefined;
       if (typeof id === 'string') {
         onIncomplete(id);
+        sessionStorage.removeItem(storageKey);
+        requestId.current = null;
         close();
       }
     },
@@ -172,13 +213,13 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
 
   // ─── Card reader ─────────────────────────────────────
   async function readFromCardReader() {
+    const epoch = sellerEpoch.current;
     try {
       const d = await readSmartCard();
+      if (epoch !== sellerEpoch.current) return;
       const fullName = `${d.prefix || ''}${d.firstName || ''} ${d.lastName || ''}`.trim();
       setForm((f) => ({
         ...f,
-        // Card reader pre-fills name; clear contactId so the picker isn't stale
-        sellerContactId: '',
         sellerName: fullName,
         sellerIdCardNumber: d.nationalId || '',
         idCardSource: 'card_reader',
@@ -212,7 +253,9 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) return toast.error('ไฟล์ต้องไม่เกิน 5MB');
     const reader = new FileReader();
+    const epoch = sellerEpoch.current;
     reader.onload = () => {
+      if (epoch !== sellerEpoch.current) return;
       setForm((f) => ({
         ...f,
         idCardPhotoBase64: reader.result as string,
@@ -226,8 +269,10 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
   // ─── Seller history (auto-fill) ──────────────────────
   async function fetchSellerHistory(idCard: string) {
     if (idCard.length !== 13) return;
+    const epoch = sellerEpoch.current;
     try {
       const res = await api.get(`/trade-ins/seller-history/${idCard}`);
+      if (epoch !== sellerEpoch.current) return;
       const data = res.data as SellerHistoryResponse;
       setSellerHistory(data);
       if (data.found && data.lastSeller) {
@@ -254,15 +299,21 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
 
   // ─── Seller contact picker ───────────────────────────
   async function handleSellerSelect({ contactId, name }: { contactId: string; name: string }) {
-    setForm((f) => ({ ...f, sellerContactId: contactId, sellerName: name, sellerPhone: '' }));
+    const epoch = ++sellerEpoch.current;
+    setAddress({ ...emptyAddress });
+    setSellerHistory(null);
+    setForm((f) => ({ ...f, sellerContactId: contactId, sellerName: name, sellerPhone: '',
+      sellerIdCardNumber: '', idCardPhotoBase64: '', idCardSource: '',
+      idCardVerified: false, sellerConsentSigned: false, sellerSignatureBase64: '' }));
     // Fetch the contact detail to populate phone (best-effort; non-blocking)
     try {
       const detail = await contactsApi.detail(contactId);
+      if (epoch !== sellerEpoch.current) return;
       if (detail.phone) {
         setForm((f) => ({ ...f, sellerPhone: detail.phone ?? '' }));
       }
     } catch {
-      // silent — phone is optional
+      // The operator can enter the phone manually.
     }
   }
 
@@ -288,9 +339,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
     if (step === 1) {
       if (!branchId) return toast.error('กรุณาเลือกสาขาที่รับซื้อ');
       if (!form.sellerContactId) return toast.error('กรุณาเลือกผู้ขายจากรายชื่อผู้ติดต่อ');
-      if (form.sellerIdCardNumber && form.sellerIdCardNumber.length !== 13) {
-        return toast.error('เลขบัตรประชาชนต้อง 13 หลัก');
-      }
+      const error = tradeInSellerEvidenceError({ ...form, sellerAddress: composeAddress(address) });
+      if (error) return toast.error(error);
     }
     if (step === 2) {
       if (!form.deviceBrand || !form.deviceModel) return toast.error('กรุณาเลือกยี่ห้อ + รุ่น');
@@ -298,6 +348,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
         return toast.error('กรุณาระบุราคารับซื้อ');
       }
       if (form.imei && !/^\d{15}$/.test(form.imei)) return toast.error('IMEI ต้องเป็น 15 หลัก');
+      const error = tradeInEvidenceError({ ...form, sellerAddress: composeAddress(address) });
+      if (error) return toast.error(error);
     }
     setStep(step + 1);
   }
@@ -308,6 +360,9 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
   }
 
   function submit() {
+    if (recovering || recoveryError) return;
+    const evidenceError = tradeInEvidenceError({ ...form, sellerAddress: composeAddress(address) });
+    if (evidenceError) return toast.error(evidenceError);
     if (!form.idCardVerified || !form.sellerConsentSigned) {
       return toast.error('กรุณายืนยันการตรวจบัตรและความยินยอม');
     }
@@ -379,6 +434,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6">
+          {recovering && <p role="status">กำลังตรวจรายการที่ส่งไว้ก่อนหน้า…</p>}
+          {recoveryError && <div role="alert" className="mb-4 text-destructive">ยังตรวจสถานะรายการเดิมไม่ได้ กรุณาตรวจอีกครั้งก่อนรับซื้อใหม่ <Button variant="outline" onClick={() => setRecoveryAttempt((n) => n + 1)}>ตรวจอีกครั้ง</Button></div>}
           {/* ─── STEP 1: SELLER ─── */}
           {step === 1 && (
             <div className="space-y-4">
@@ -440,21 +497,26 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
                       placeholder="ค้นหาหรือสร้างผู้ขาย"
                     />
                   </div>
-                  {form.sellerPhone && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      เบอร์โทร: {form.sellerPhone}
-                    </p>
-                  )}
                 </div>
                 <div>
-                  <Label>เลขบัตรประชาชน</Label>
+                  <Label htmlFor="buy-seller-name">ชื่อผู้ขายตามบัตรประชาชน *</Label>
+                  <Input id="buy-seller-name" value={form.sellerName} onChange={(e) => setForm((f) => ({ ...f, sellerName: e.target.value }))} />
+                </div>
+                <div>
+                  <Label htmlFor="buy-seller-phone">เบอร์โทรผู้ขาย *</Label>
+                  <Input id="buy-seller-phone" inputMode="tel" maxLength={10} value={form.sellerPhone} onChange={(e) => setForm((f) => ({ ...f, sellerPhone: e.target.value.replace(/\D/g, '') }))} />
+                </div>
+                <div>
+                  <Label htmlFor="buy-seller-id">เลขบัตรประชาชน *</Label>
                   <Input
+                    id="buy-seller-id"
                     className="mt-1 font-mono"
                     maxLength={13}
                     placeholder="1234567890123"
                     value={form.sellerIdCardNumber}
                     onChange={(e) => {
                       const v = e.target.value.replace(/\D/g, '');
+                      sellerEpoch.current++;
                       setForm((f) => ({ ...f, sellerIdCardNumber: v }));
                       if (v.length === 13) fetchSellerHistory(v);
                       else setSellerHistory(null);
@@ -487,6 +549,9 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
           {step === 2 && (
             <div className="space-y-4">
               <Label className="text-sm font-semibold">ข้อมูลเครื่องและราคา</Label>
+              <p className="text-xs text-muted-foreground">บันทึกหมายเลขจากตัวเครื่องอย่างน้อยหนึ่งรายการ หากไม่มีอีกหมายเลข ให้ระบุเหตุผล</p>
+              {!form.imei && <div><Label htmlFor="buy-imei-reason">เหตุผลที่ไม่มี IMEI *</Label><Input id="buy-imei-reason" maxLength={300} value={form.imeiMissingReason} onChange={(e) => setForm((f) => ({ ...f, imeiMissingReason: e.target.value }))} placeholder="เช่น รุ่น Wi-Fi ไม่มี IMEI" /></div>}
+              {!form.serialNumber.trim() && <div><Label htmlFor="buy-serial-reason">เหตุผลที่ไม่มี Serial Number *</Label><Input id="buy-serial-reason" maxLength={300} value={form.serialNumberMissingReason} onChange={(e) => setForm((f) => ({ ...f, serialNumberMissingReason: e.target.value }))} /></div>}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>ยี่ห้อ *</Label>
@@ -670,7 +735,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
           ) : (
             <Button
               onClick={submit}
-              disabled={quickBuyMutation.isPending}
+              disabled={quickBuyMutation.isPending || recovering || recoveryError}
               className="bg-success hover:bg-success/90 text-success-foreground font-bold"
             >
               {quickBuyMutation.isPending ? 'กำลังบันทึก...' : <><Check className="size-4 mr-1.5 inline" />บันทึก + ออกใบสำคัญ</>}

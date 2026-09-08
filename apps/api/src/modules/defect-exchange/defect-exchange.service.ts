@@ -51,6 +51,7 @@ export class DefectExchangeService {
     }
 
     const reasons: string[] = [];
+    if (contract.tradeInCreditSnapshot) reasons.push('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
 
     // Must be ACTIVE
     if (!['ACTIVE', 'OVERDUE'].includes(contract.status)) {
@@ -214,6 +215,7 @@ export class DefectExchangeService {
           },
         });
         if (!oldContract) throw new NotFoundException('ไม่พบสัญญา');
+        if (oldContract.tradeInCreditSnapshot) throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นยังไม่รองรับการเปลี่ยนเครื่อง ต้องตรวจการคืนเครดิตก่อน');
         await lockCreditCustomer(tx, oldContract.customerId);
 
         const newProductRec = await tx.product.findUnique({

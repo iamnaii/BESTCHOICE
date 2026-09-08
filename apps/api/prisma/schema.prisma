@@ -1050,6 +1050,8 @@ model Customer {
 }
 
 model Contract {
+  tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
+  tradeInCreditRedemptions TradeInCreditRedemption[]
   id                       String         @id @default(uuid())
   contractNumber           String         @unique @map("contract_number")
   customerId               String         @map("customer_id")
@@ -2541,6 +2543,8 @@ model SsoConfig {
 // ============================================================
 
 model Sale {
+  tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
+  tradeInCreditRedemptions TradeInCreditRedemption[]
   id                String         @id @default(uuid())
   saleNumber        String         @unique @map("sale_number")
   saleType          SaleType       @map("sale_type")
@@ -4816,6 +4820,15 @@ enum TradeInStatus {
 }
 
 model TradeIn {
+  creditBaseAmount Decimal? @db.Decimal(12, 2) @map("credit_base_amount")
+  creditBonusAmount Decimal? @db.Decimal(12, 2) @map("credit_bonus_amount")
+  creditIssuedAt DateTime? @map("credit_issued_at")
+  creditIssueJournalId String? @map("credit_issue_journal_id")
+  currentRedemptionId String? @unique @map("current_redemption_id")
+  currentCreditRedemption TradeInCreditRedemption? @relation("ActiveTradeInCredit", fields: [currentRedemptionId], references: [id], onDelete: Restrict)
+  creditRedemptions TradeInCreditRedemption[] @relation("TradeInCreditSource")
+  imeiMissingReason         String? @map("imei_missing_reason")
+  serialNumberMissingReason String? @map("serial_number_missing_reason")
   id                   String                  @id @default(uuid())
   /// Phase 3: ONLINE submissions come from bestchoicephone.app customer wizard;
   /// OFFLINE is the existing branch walk-in flow.
@@ -4890,6 +4903,11 @@ model TradeIn {
   transferAccountNumberEncrypted String? @map("transfer_account_number_encrypted")
   transferAccountNameEncrypted   String? @map("transfer_account_name_encrypted")
 
+  // Retry identity contains no raw seller data or signature payload.
+  quickBuyRequestId String? @unique @map("quick_buy_request_id")
+  quickBuyRequestHash String? @map("quick_buy_request_hash")
+  quickBuyRequestedById String? @map("quick_buy_requested_by_id")
+
   // ─── ใบสำคัญจ่ายเงิน ───────────────────────────────────────────────
   voucherNumber String?   @unique @map("voucher_number") // EXP-YYYYMMNNNNN
   voucherDate   DateTime? @map("voucher_date")
@@ -4926,6 +4944,27 @@ model TradeIn {
 // ============================================================
 // TRADE-IN VALUATION TABLE (ตารางราคารับซื้อมาตรฐาน)
 // ============================================================
+
+model TradeInCreditRedemption {
+  id String @id @default(uuid())
+  tradeInId String @map("trade_in_id")
+  tradeIn TradeIn @relation("TradeInCreditSource", fields: [tradeInId], references: [id], onDelete: Restrict)
+  activeForTradeIn TradeIn? @relation("ActiveTradeInCredit")
+  saleId String? @unique @map("sale_id")
+  sale Sale? @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  contractId String? @unique @map("contract_id")
+  contract Contract? @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  baseAmount Decimal @db.Decimal(12, 2) @map("base_amount")
+  bonusAmount Decimal @db.Decimal(12, 2) @map("bonus_amount")
+  createdById String @map("created_by_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  applicationJournalEntryId String? @map("application_journal_entry_id")
+  releasedAt DateTime? @map("released_at")
+  releasedById String? @map("released_by_id")
+  releaseReason String? @map("release_reason")
+  @@index([tradeInId])
+  @@map("trade_in_credit_redemptions")
+}
 
 model TradeInValuation {
   id        String  @id @default(uuid())

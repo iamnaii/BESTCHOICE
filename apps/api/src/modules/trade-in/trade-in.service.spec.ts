@@ -33,7 +33,7 @@ function makeTradeIn(overrides: Partial<Record<string, unknown>> = {}) {
     notes: null,
     sellerName: 'สมหญิง รักดี',
     sellerPhone: '0822222222',
-    sellerIdCardNumber: null,
+    sellerIdCardNumber: '0000000000001', sellerAddress: 'TEST ADDRESS', serialNumber: 'TEST-SN',
     idCardPhotoUrl: null,
     idCardSource: null,
     imeiBlacklistResult: null,
@@ -85,8 +85,9 @@ describe('TradeInService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
       },
+      contact: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       customer: {
-        findUnique: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({ id: 'cust-1', phone: '0822222222', addressCurrent: null, deletedAt: null, nationalIdHash: null }),
       },
       product: {
         findUnique: jest.fn(),
@@ -834,6 +835,9 @@ describe('TradeInService', () => {
   // ──────────────────────────────────────────────────────────────────────────
   describe('quickBuy', () => {
     const baseQuickBuyDto = {
+      requestId: '91a8f927-2db2-4b8c-9b2f-1e8ef7bff005',
+      sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS',
+      sellerIdCardNumber: '0000000000001', imei: '123456789012345', serialNumber: 'TEST-SN',
       branchId: 'branch-1',
       deviceBrand: 'Apple',
       deviceModel: 'iPhone 15',
@@ -850,7 +854,7 @@ describe('TradeInService', () => {
         row = { ...row, ...data, ...(data.offeredPrice != null ? { offeredPrice: new Prisma.Decimal(String(data.offeredPrice)) } : {}) };
         return row;
       });
-      prisma.tradeIn.findUnique.mockImplementation(async () => row);
+      prisma.tradeIn.findUnique.mockImplementation(async ({ where }: { where: { quickBuyRequestId?: string } }) => where.quickBuyRequestId && !row.quickBuyRequestId ? null : row);
       prisma.tradeIn.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
         row = { ...row, ...data, ...(data.offeredPrice != null ? { offeredPrice: new Prisma.Decimal(String(data.offeredPrice)) } : {}) };
         return row;
@@ -875,6 +879,7 @@ describe('TradeInService', () => {
       prisma.tradeIn.create.mockResolvedValue(makeTradeIn({ id: 'ti-qb-1' }));
       // Stage 2: appraise — findUnique returns PENDING_APPRAISAL, update returns APPRAISED
       prisma.tradeIn.findUnique
+        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(makeTradeIn({ id: 'ti-qb-1', status: 'PENDING_APPRAISAL', appraisalLocked: false, firstAppraisedAt: null }))
         .mockResolvedValueOnce(makeTradeIn({ id: 'ti-qb-1', status: 'APPRAISED', offeredPrice: 18000 }))
         // Stage 4: re-fetch for imeiBlacklistResult

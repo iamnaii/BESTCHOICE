@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -20,6 +20,7 @@ import ValuationsTab from './components/ValuationsTab';
 import QuestionnaireTab from './components/QuestionnaireTab';
 import TradeInDetailDialog from './components/TradeInDetailDialog';
 import OnlineAppraiseModal from './components/OnlineAppraiseModal';
+import VoucherPdfPreview from './components/VoucherPdfPreview';
 import type {
   TradeIn,
   TradeInsResponse,
@@ -208,33 +209,53 @@ export default function TradeInPage() {
 
   // Track ว่ากำลังเปิด PDF ใบไหนอยู่ — โชว์ spinner ที่ปุ่มนั้น
   const [voucherLoadingId, setVoucherLoadingId] = useState<string | null>(null);
+  const [voucherPreview, setVoucherPreview] = useState<{ blob: Blob; filename: string; requestId: number } | null>(null);
+  const voucherRequest = useRef(0);
+  useEffect(() => () => { voucherRequest.current += 1; }, []);
+
+  function closeVoucherPreview() {
+    voucherRequest.current += 1;
+    setVoucherLoadingId(null);
+    setVoucherPreview(null);
+  }
 
   const generateVoucherMutation = useMutation({
     mutationFn: async (id: string) => api.post(`/trade-ins/${id}/voucher`),
-    onSuccess: async (res, id) => {
-      toast.success(`ออกใบสำคัญเลขที่ ${res.data.voucherNumber}`);
-      queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
-      await openVoucherPdf(id);
+    onMutate: (id) => {
+      setVoucherLoadingId(id);
+      return { requestId: ++voucherRequest.current };
     },
-    onError: (err) => toast.error(getErrorMessage(err)),
+    onSuccess: async (res, id, context) => {
+      queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      if (context.requestId !== voucherRequest.current) return;
+      toast.success(`ออกใบสำคัญเลขที่ ${res.data.voucherNumber}`);
+      await openVoucherPdf(id, context.requestId);
+    },
+    onError: (err, _id, context) => {
+      if (context?.requestId !== voucherRequest.current) return;
+      setVoucherLoadingId(null);
+      toast.error(getErrorMessage(err));
+    },
   });
 
   /* ─── Helpers ─── */
 
-  // ดาวน์โหลด PDF เป็น blob (ผ่าน axios — ส่ง JWT แนบ) แล้วเปิดในแท็บใหม่
-  async function openVoucherPdf(id: string) {
+  // Keep JWT/company scope and the server filename when previewing the authenticated PDF.
+  async function openVoucherPdf(id: string, requestId = ++voucherRequest.current) {
     setVoucherLoadingId(id);
     try {
       const res = await api.get(`/trade-ins/${id}/voucher.pdf`, { responseType: 'blob' });
+      if (requestId !== voucherRequest.current) return;
       const blob = new Blob([res.data], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      // revoke ภายหลัง 60 วิ ให้แท็บใหม่โหลดเสร็จก่อน
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const disposition = String(res.headers['content-disposition'] || '');
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const filename = encodedName ? decodeURIComponent(encodedName)
+        : disposition.match(/filename="([^"]+)"/i)?.[1] || 'ใบสำคัญรับเครื่อง.pdf';
+      setVoucherPreview({ blob, filename, requestId });
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      if (requestId === voucherRequest.current) toast.error(getErrorMessage(err));
     } finally {
-      setVoucherLoadingId(null);
+      if (requestId === voucherRequest.current) setVoucherLoadingId(null);
     }
   }
 
@@ -411,6 +432,7 @@ export default function TradeInPage() {
           <OnlineAppraiseModal item={onlineAppraise} onClose={() => setOnlineAppraise(null)} />
         </>
       )}
+      {voucherPreview && <VoucherPdfPreview key={voucherPreview.requestId} {...voucherPreview} onClose={closeVoucherPreview} />}
     </div>
   );
 }

@@ -42,7 +42,9 @@ export class TradeInVoucherService {
   }
 
   // ─── Render PDF on-demand (no storage required) ───────────
-  async renderPdf(tradeInId: string): Promise<{ buffer: Buffer; voucherNumber: string }> {
+  async renderPdf(
+    tradeInId: string,
+  ): Promise<{ buffer: Buffer; voucherNumber: string; filename: string }> {
     const tradeIn = await this.prisma.tradeIn.findUnique({
       where: { id: tradeInId },
       include: {
@@ -103,6 +105,12 @@ export class TradeInVoucherService {
     });
 
     const buffer = await this.renderer.htmlToPdf(html);
-    return { buffer, voucherNumber: tradeIn.voucherNumber };
+    const documentName =
+      tradeIn.paymentMethod === 'TRADE_IN_CREDIT' ? 'ใบรับเครื่องเทิร์น' : 'ใบสำคัญจ่ายเงิน';
+    return {
+      buffer,
+      voucherNumber: tradeIn.voucherNumber,
+      filename: `${documentName}_${tradeIn.voucherNumber}.pdf`,
+    };
   }
 }

@@ -379,9 +379,11 @@ export class TradeInController {
   @UseGuards(ExportEnabledGuard)
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   async downloadVoucher(@Param('id') id: string, @Res() res: Response) {
-    const { buffer, voucherNumber } = await this.tradeInService.getVoucherPdf(id);
+    const { buffer, voucherNumber, filename } = await this.tradeInService.getVoucherPdf(id);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="voucher-${voucherNumber}.pdf"`);
+    res.setHeader('Content-Disposition',
+      `inline; filename="voucher-${voucherNumber}.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.append('Access-Control-Expose-Headers', 'Content-Disposition');
     res.send(buffer);
   }
 }

@@ -81,7 +81,8 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
     expect(await db.journalEntry.count({ where: { referenceId: `tradein:${tradeIn.id}` } })).toBe(0);
     const vouchers = app.get(TradeInVoucherService);
     await vouchers.allocate(tradeIn.id);
-    await vouchers.renderPdf(tradeIn.id);
+    const document = await vouchers.renderPdf(tradeIn.id);
+    expect(document.filename).toBe(`ใบรับเครื่องเทิร์น_${document.voucherNumber}.pdf`);
     const html = pdf.mock.calls.at(-1)![0];
     expect(html).toContain('ใบรับเครื่องเทิร์น');
     expect(html).toContain('ยังไม่ยืนยันการนำเครดิตไปใช้');
@@ -108,7 +109,8 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
       paymentMethod: method, transferBankName: 'SELLER LEGACY BANK', transferAccountName: 'SELLER LEGACY', transferAccountNumber: '1234567890' } });
     const vouchers = app.get(TradeInVoucherService);
     await vouchers.allocate(tradeIn.id);
-    await vouchers.renderPdf(tradeIn.id);
+    const document = await vouchers.renderPdf(tradeIn.id);
+    expect(document.filename).toBe(`ใบสำคัญจ่ายเงิน_${document.voucherNumber}.pdf`);
     const html = pdf.mock.calls.at(-1)![0];
     expect(html).toContain('ใบสำคัญจ่ายเงิน');
     expect(html).toContain(method === 'CASH' ? 'รับเงินสด' : 'SELLER LEGACY BANK');

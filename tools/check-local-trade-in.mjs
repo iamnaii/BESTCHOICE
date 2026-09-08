@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
 
@@ -47,11 +48,24 @@ export async function checkTradeIn(page, origin, output, width) {
   assert.equal(result.productStatus, 'PHOTO_PENDING');
   await expect(page.getByText('รับเครื่องแล้ว — รอเตรียมเครื่องก่อนขาย', { exact: true })).toBeVisible();
   await page.screenshot({ path: join(output, `trade-in-handoff-${width}.png`) });
-  if (width >= 1024) {
-    const voucher = page.waitForResponse(r => /\/voucher\.pdf(?:\?|$)/.test(r.url()));
-    await page.getByRole('button', { name: 'พิมพ์เอกสารรับเครื่อง' }).click();
-    assert.equal((await voucher).status(), 200, 'Real voucher PDF must render');
-  }
+  const voucher = page.waitForResponse(r => /\/voucher\.pdf(?:\?|$)/.test(r.url()));
+  await page.getByRole('button', { name: 'พิมพ์เอกสารรับเครื่อง' }).click();
+  const pdfResponse = await voucher;
+  assert.equal(pdfResponse.status(), 200, 'Real voucher PDF must render');
+  const filename = `ใบสำคัญจ่ายเงิน_${result.voucherNumber}.pdf`;
+  assert.ok(pdfResponse.headers()['content-disposition'].includes(`filename*=UTF-8''${encodeURIComponent(filename)}`));
+  const preview = page.getByRole('dialog', { name: 'ตัวอย่างเอกสารรับเครื่อง' });
+  await expect(preview.getByText(filename, { exact: true })).toBeVisible();
+  const download = page.waitForEvent('download');
+  await preview.getByRole('link', { name: 'ดาวน์โหลด PDF' }).click();
+  const file = await download;
+  assert.equal(file.suggestedFilename(), filename, 'Browser must save a descriptive filename, not the blob UUID');
+  await file.saveAs(join(output, `trade-in-voucher-${width}.pdf`));
+  assert.deepEqual(readFileSync(join(output, `trade-in-voucher-${width}.pdf`)), await pdfResponse.body(),
+    'Downloaded file must be the same PDF that was opened for preview');
+  await page.screenshot({ path: join(output, `trade-in-voucher-${width}.png`) });
+  await preview.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(preview).toHaveCount(0);
   await page.getByRole('link', { name: 'เปิดเครื่อง ดูรูปและราคา' }).click();
   await expect(page).toHaveURL(new RegExp(`/products/${result.productId}`));
   await page.getByRole('button', { name: 'แก้ราคา', exact: true }).click();

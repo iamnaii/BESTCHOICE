@@ -1,3 +1,5 @@
+import { bindExchangeCreditCheck } from '../credit-check/services/credit-approval';
+import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
 import {
   Injectable,
   NotFoundException,
@@ -212,6 +214,7 @@ export class DefectExchangeService {
           },
         });
         if (!oldContract) throw new NotFoundException('ไม่พบสัญญา');
+        await lockCreditCustomer(tx, oldContract.customerId);
 
         const newProductRec = await tx.product.findUnique({
           where: { id: dto.newProductId },
@@ -280,6 +283,8 @@ export class DefectExchangeService {
             notes: `เปลี่ยนเครื่องจากสัญญา ${oldContract.contractNumber} (ภายใน 7 วัน)\nอาการ: ${dto.defectReason}${dto.notes ? '\n' + dto.notes : ''}`,
           },
         });
+
+        await bindExchangeCreditCheck(tx, oldContract.customerId, newContract.id, reqUser);
 
         // Copy payment schedule from old (same dueDates, same amountDue, but reset amountPaid/status).
         // The per-installment breakdown (principal/interest/commission/VAT) MUST be carried over —

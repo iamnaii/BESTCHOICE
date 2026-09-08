@@ -88,7 +88,7 @@ export interface SearchProductsResult {
 export class SearchProductsTool {
   constructor(private readonly prisma: PrismaService) {}
 
-  async run(input: { query: string; maxPriceThb?: number }): Promise<SearchProductsResult> {
+  async run(input: { query: string; maxPriceThb?: number }, scope?: { branchId: string }): Promise<SearchProductsResult> {
     const raw = String(input?.query ?? '').trim();
     const parsed = parseDeviceQuery(raw);
     const emptyResult: SearchProductsResult = {
@@ -116,6 +116,7 @@ export class SearchProductsTool {
 
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
+      ...(scope ? { branchId: scope.branchId } : {}),
       isOnlineVisible: true,
       // spec §5: บอทต้องเห็นเครื่องที่ติดจองด้วย เพื่อตอบว่า "มีของแต่ติดจอง"
       status: { in: ['IN_STOCK', 'RESERVED'] },

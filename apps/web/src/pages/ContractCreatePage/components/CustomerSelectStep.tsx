@@ -12,7 +12,7 @@ export interface CustomerSelectStepProps {
   onNext: () => void;
   latestCreditCheck: { id: string; status: string; aiScore: number | null } | null | undefined;
   customerCreditApproved: boolean;
-  navigate: (path: string) => void;
+  onOpenCredit: () => void;
   onOpenCustomerModal: () => void;
   overrideActiveContractCheck: boolean;
   setOverrideActiveContractCheck: (v: boolean) => void;
@@ -27,12 +27,14 @@ export function CustomerSelectStep({
   onNext,
   latestCreditCheck,
   customerCreditApproved,
-  navigate,
+  onOpenCredit,
   onOpenCustomerModal,
   overrideActiveContractCheck,
   setOverrideActiveContractCheck,
 }: CustomerSelectStepProps) {
   const { user } = useAuth();
+  const visibleCustomers = selectedCustomer && !customers.some(customer => customer.id === selectedCustomer.id)
+    ? [selectedCustomer, ...customers] : customers;
   const canOverride = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const activeBlockingCount =
     (selectedCustomer?.activeContracts ?? 0) + (selectedCustomer?.overdueContracts ?? 0);
@@ -58,7 +60,7 @@ export function CustomerSelectStep({
         className="w-full px-3 py-2 border border-input rounded-lg text-sm mb-4"
       />
       <div className="grid gap-3">
-        {customers.map((c) => {
+        {visibleCustomers.map((c) => {
           const blocking = (c.activeContracts ?? 0) + (c.overdueContracts ?? 0);
           return (
             <div
@@ -88,7 +90,7 @@ export function CustomerSelectStep({
             </div>
           );
         })}
-        {customers.length === 0 && (
+        {visibleCustomers.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">ไม่พบลูกค้า</div>
         )}
       </div>
@@ -158,9 +160,6 @@ export function CustomerSelectStep({
             : isRejected
               ? 'ยื่นตรวจใหม่'
               : 'ดูรายละเอียด';
-        const buttonHref = hasNoCheck
-          ? '/credit-checks'
-          : `/customers/${selectedCustomer.id}?tab=credit`;
 
         return (
           <div className={`mt-4 rounded-xl border p-4 ${customerCreditApproved ? 'bg-success/5 dark:bg-success/10 border-success/20' : 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20'}`}>
@@ -178,7 +177,7 @@ export function CustomerSelectStep({
               </div>
               {!customerCreditApproved && (
                 <button
-                  onClick={() => navigate(buttonHref)}
+                  onClick={onOpenCredit}
                   className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 whitespace-nowrap"
                 >
                   {buttonLabel}

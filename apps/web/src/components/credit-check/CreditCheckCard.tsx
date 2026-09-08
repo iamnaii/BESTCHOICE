@@ -4,8 +4,12 @@ import { getStatusBadgeProps, creditCheckStatusMap } from '@/lib/status-badges';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import { Brain, Pencil, FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { AiAnalysisData } from './types';
+import { creditHeadline } from '@/pages/UnifiedInboxPage/components/credit-statement';
+import type { CreditApprovalSnapshot } from './CreditAffordabilityForm';
 
 export interface CreditCheckItem {
+  checkType?: string;
+  approvals?: CreditApprovalSnapshot[];
   id: string;
   status: string;
   bankName: string | null;
@@ -49,6 +53,8 @@ export default function CreditCheckCard({
 }: Props) {
   const csCfg = getStatusBadgeProps(cc.status, creditCheckStatusMap);
   const ai = cc.aiAnalysis as AiAnalysisData | null;
+  const chatSource = cc.aiAnalysis?.source === 'chat-statement';
+  const headline = chatSource ? creditHeadline(cc.aiAnalysis!) : null;
   const risk = riskFromScore(cc.aiScore);
   // Only show AI risk badge when it adds info beyond the status badge:
   // - status=PENDING + score present: status says "รอวิเคราะห์" but AI already has an opinion
@@ -98,13 +104,13 @@ export default function CreditCheckCard({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {cc.status === 'PENDING' && (
+          {cc.status === 'PENDING' && !chatSource && (
             <Button size="sm" variant="primary" onClick={() => onAnalyze(cc.id)} disabled={isAnalyzing}>
               <Brain className="size-3.5" />
               {isAnalyzing ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์'}
             </Button>
           )}
-          {canOverride && cc.aiScore !== null && (
+          {canOverride && (
             <Button size="sm" variant="outline" onClick={() => onOverride(cc.id)}>
               <Pencil className="size-3.5" />
               ปรับแก้สถานะ
@@ -112,6 +118,18 @@ export default function CreditCheckCard({
           )}
         </div>
       </div>
+
+      {cc.approvals?.[0] && <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+        <p className="font-semibold">อนุมัติค่างวดไม่เกิน {Number(cc.approvals[0].approvedMonthlyPayment).toLocaleString('th-TH')} บาท/เดือน</p>
+        <p>ชำระ{cc.approvals[0].salaryPayDay === 31 ? 'ทุกสิ้นเดือน' : `วันที่ ${cc.approvals[0].salaryPayDay} ของเดือน`}</p>
+        <p className="text-xs text-muted-foreground">{cc.approvals[0].supersededAt ? 'ผลนี้ถูกแทนที่แล้ว' : cc.approvals[0].usedByContractId ? 'นำไปใช้กับสัญญาแล้ว' : 'สำหรับสัญญาใหม่หนึ่งฉบับ'}{cc.approvals[0].approvedBy && ` · ผู้อนุมัติ ${cc.approvals[0].approvedBy.name}`}</p>
+      </div>}
+
+      {chatSource && <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+        {headline && <p className="font-semibold text-primary">{headline.label} · {headline.amount.toLocaleString('th-TH')} บาท</p>}
+        {typeof cc.aiAnalysis?.dateRange === 'string' && <p className="text-xs text-muted-foreground">ช่วงเอกสาร {cc.aiAnalysis.dateRange}</p>}
+        {typeof cc.aiAnalysis?.roomId === 'string' && <a href={`/inbox/${cc.aiAnalysis.roomId}`} className="text-primary underline">เปิดแชทต้นทาง</a>}
+      </div>}
 
       {cc.aiScore !== null && (
         <div className="flex items-center gap-4">

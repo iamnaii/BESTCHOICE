@@ -1,0 +1,47 @@
+{
+  "generatedAt": "2026-09-07T19:06:08.595Z",
+  "data": "synthetic only",
+  "databaseWrites": 0,
+  "storageWrites": 0,
+  "methodology": "One sample per transport per case. Same input hash and model settings. Non-exact factual checks; no percentile or statistical performance claim. Latency excludes production DB telemetry. Cost estimated from repository rate card and actual provider token usage; not an invoice.",
+  "results": [
+    {
+      "case": "standalone-credit-image",
+      "transport": "new-credit-provider",
+      "latencyMs": 18007,
+      "intentionalModelMigration": "Former claude-sonnet-4-5-20250514 returned live HTTP 404; validated claude-sonnet-4-6 now used with unchanged prompt/fallback.",
+      "checks": {
+        "realProviderSucceeded": true,
+        "readSyntheticIncome": true,
+        "modelAffordabilityPresent": true,
+        "noManagerApprovalCreated": true
+      },
+      "passed": true,
+      "amounts": {
+        "monthlyIncome": 20000,
+        "affordablePayment": 8000
+      },
+      "status": "APPROVED",
+      "persistedFields": [
+        "aiAnalysis",
+        "aiScore",
+        "aiSummary",
+        "aiRecommendation",
+        "status"
+      ],
+      "approvalNote": "Legacy AI recommendation status is separate from the manager approval snapshot required by contract creation."
+    }
+  ],
+  "providerUsage": [
+    {
+      "service": "credit-check",
+      "method": "performClaudeAnalysis",
+      "model": "claude-sonnet-4-6",
+      "inputTokens": 1656,
+      "outputTokens": 1019,
+      "status": "success",
+      "estimatedCostUsd": 0.020253
+    }
+  ],
+  "passed": true
+}

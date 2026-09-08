@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { CategoryPage } from '../CategoryPage';
 import { SettingsLayout } from '../SettingsLayout';
@@ -13,8 +13,12 @@ vi.mock('@/pages/SettingsPage/tabs/PdpaTab', () => ({ PdpaTab: () => <div>pdpa-b
 vi.mock('@/pages/SettingsPage/tabs/OffsiteBackupTab', () => ({ OffsiteBackupTab: () => <div>backup-body</div> }));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
 
-function renderCat(id: string) {
-  return render(<MemoryRouter><CategoryPage categoryId={id} /></MemoryRouter>);
+function renderCat(id: string, hash = '') {
+  return render(
+    <MemoryRouter initialEntries={[`/settings/${id}${hash}`]}>
+      <CategoryPage categoryId={id} />
+    </MemoryRouter>,
+  );
 }
 
 /** เรนเดอร์ตามเส้นทางจริง (SettingsLayout ห่อ CategoryPage) — ชื่อหมวดย้ายไปอยู่บน
@@ -43,13 +47,12 @@ describe('CategoryPage', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('scrolls to the section matching the URL hash on mount', () => {
+  it('scrolls to the section matching the URL hash after forms load', async () => {
     const scrollSpy = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollSpy;
-    window.location.hash = '#test-mode';
     role = 'OWNER';
-    renderCat('system');
-    expect(scrollSpy).toHaveBeenCalled();
+    renderCat('system', '#test-mode');
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1));
   });
 
   it('แสดงชื่อหมวดเป็นหัวข้อหน้า และแสดงครั้งเดียว (ไม่ซ้ำกับ h2 เดิมใน CategoryPage)', () => {
@@ -90,12 +93,12 @@ describe('CategoryPage', () => {
     }
   });
 
-  it('render inline component sections ของหมวด (system)', () => {
+  it('render inline component sections ของหมวด (system)', async () => {
     role = 'OWNER';
     renderCat('system');
-    expect(screen.getByText('test-mode-body')).toBeTruthy();
-    expect(screen.getByText('pdpa-body')).toBeTruthy();
-    expect(screen.getByText('backup-body')).toBeTruthy();
+    expect(await screen.findByText('test-mode-body')).toBeTruthy();
+    expect(await screen.findByText('pdpa-body')).toBeTruthy();
+    expect(await screen.findByText('backup-body')).toBeTruthy();
   });
 
   it('no duplicate-key warning on system category (ข้อมูล group contiguous after เชื่อมต่อ moved out)', () => {

@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AiProviderService } from '../ai-usage/ai-provider.service';
 import { CreditCheckService } from './credit-check.service';
 
 /**
@@ -38,7 +39,7 @@ const run = (
   const svc = new CreditCheckService(
     makePrisma(cc),
     {} as unknown as IntegrationConfigService,
-    { record: jest.fn() } as unknown as AiUsageService,
+    new AiProviderService({ record: jest.fn() } as unknown as AiUsageService),
   );
   // calculateDtiRiskScore + getCustomerHistory both live on the internally-constructed
   // CreditCheckRiskService sub-service (svc.risk); the DTI call resolves its history
@@ -57,6 +58,11 @@ const cc = (over: Record<string, unknown>) => ({
 });
 
 describe('CreditCheckService.calculateDtiRiskScore', () => {
+  it.each([1, 25, 29, 30, 31])('suggests the confirmed payday %i without adding days or capping at 28', async (salaryPayDay) => {
+    const r = await run(cc({ customer: { id: 'cu-1', salary: 30000, salaryPayDay } }), {});
+    expect(r.suggestedDueDay).toBe(salaryPayDay);
+  });
+
   it('rates LOW for low DTI + own home', async () => {
     const r = await run(
       cc({ customer: { id: 'cu-1', salary: 30000, addressCurrentType: 'OWN', salaryPayDay: 25 }, contract: { monthlyPayment: 6000 } }),
@@ -65,7 +71,7 @@ describe('CreditCheckService.calculateDtiRiskScore', () => {
     expect(r.riskScore).toBe('LOW'); // DTI 0.2 → 0 pts, OWN → −1
     expect(r.debtToIncomeRatio).toBe(0.2);
     expect(r.details.riskPoints).toBe(-1);
-    expect(r.suggestedDueDay).toBe(28); // min(28, 25 + 5)
+    expect(r.suggestedDueDay).toBe(25);
   });
 
   it('rates MEDIUM for mid DTI + rented home', async () => {
@@ -75,7 +81,7 @@ describe('CreditCheckService.calculateDtiRiskScore', () => {
     );
     expect(r.riskScore).toBe('MEDIUM'); // DTI 0.4 → 1, RENT → +1 = 2
     expect(r.debtToIncomeRatio).toBe(0.4);
-    expect(r.suggestedDueDay).toBe(6); // 1 + 5
+    expect(r.suggestedDueDay).toBe(1);
   });
 
   it('rates HIGH when DTI is high and home is rented', async () => {

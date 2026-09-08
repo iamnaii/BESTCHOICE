@@ -1,0 +1,14 @@
+{
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "e2e/(chat-credit-check|credit-approval|credit-payment-flow|staff-offer)\\.e2e-spec\\.ts$",
+  "testPathIgnorePatterns": [],
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  }
+}

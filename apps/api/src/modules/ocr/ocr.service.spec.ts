@@ -4,13 +4,16 @@ import { BadRequestException, InternalServerErrorException } from '@nestjs/commo
 import { OcrService } from './ocr.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AiProviderService } from '../ai-usage/ai-provider.service';
 
 // Mock Anthropic SDK
 const mockCreate = jest.fn();
 jest.mock('@anthropic-ai/sdk', () => {
-  return jest.fn().mockImplementation(() => ({
-    messages: { create: mockCreate },
-  }));
+  return {
+    ...jest.requireActual('@anthropic-ai/sdk'),
+    __esModule: true,
+    default: jest.fn().mockImplementation(() => ({ messages: { create: mockCreate } })),
+  };
 });
 
 describe('OcrService', () => {
@@ -30,7 +33,7 @@ describe('OcrService', () => {
     aiUsage = { record: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
+      providers: [AiProviderService,
         OcrService,
         {
           provide: ConfigService,
@@ -122,6 +125,22 @@ describe('OcrService', () => {
           status: 'success',
         }),
       );
+    });
+
+    it('records each OCR confidence retry once with its server actor and no document payload', async () => {
+      mockCreate
+        .mockResolvedValueOnce(makeMockResponse({ ...sampleOcrResponse, confidence: 0.2 }))
+        .mockResolvedValueOnce(makeMockResponse({ ...sampleOcrResponse, confidence: 0.95 }));
+      const result = await service.extractIdCard(validBase64, 'server-actor');
+      expect(result.confidence).toBe(0.95);
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(aiUsage.record).toHaveBeenCalledTimes(2);
+      for (const [entry] of aiUsage.record.mock.calls) {
+        expect(entry).toEqual(expect.objectContaining({
+          service: 'ocr', method: 'callClaudeOcr', userId: 'server-actor', status: 'success',
+        }));
+        expect(JSON.stringify(entry)).not.toContain('/9j/4AAQSkZJRg==');
+      }
     });
 
     it('should return nationalIdValid false for invalid checksum', async () => {
@@ -425,7 +444,7 @@ describe('OcrService', () => {
     it('should throw when ANTHROPIC_API_KEY is not configured and must not record a fake AI usage row', async () => {
       const noKeyAiUsage = { record: jest.fn() };
       const module: TestingModule = await Test.createTestingModule({
-        providers: [
+        providers: [AiProviderService,
           OcrService,
           {
             provide: ConfigService,
@@ -903,7 +922,7 @@ describe('OcrService', () => {
 
     it('should throw when no API key configured for DL', async () => {
       const module: TestingModule = await Test.createTestingModule({
-        providers: [
+        providers: [AiProviderService,
           OcrService,
           {
             provide: ConfigService,

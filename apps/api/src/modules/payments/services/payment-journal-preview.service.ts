@@ -91,13 +91,18 @@ export class PaymentJournalPreviewService {
     const zero = new Prisma.Decimal(0);
 
     // Per-installment calculations.
-    // Use contract.monthlyPayment as source of truth (set by sales workflow,
-    // matches what user sees). The per-installment VAT/interest breakdown that
-    // used to live here fed the pre-PR-843 consolidated preview branch — the
-    // save now always credits 11-2103 (see the mirror comment below), so the
-    // live preview needs only the installment total.
-    const monthly = new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
-    const installmentTotal = monthly;
+    // Ordinary installments keep the stored quote. The last one carries the
+    // same residual as accrual and receipt posting, including NORMAL previews.
+    const installmentTotal = Number.isInteger(inst.installmentNo) && inst.installmentNo === c.totalMonths
+      ? computeInstallmentBreakdown({
+        financedAmount: c.financedAmount.toString(),
+        storeCommission: c.storeCommission?.toString() ?? null,
+        interestTotal: c.interestTotal.toString(),
+        vatAmount: c.vatAmount?.toString() ?? null,
+        totalMonths: c.totalMonths,
+        installmentNo: inst.installmentNo,
+      }).installmentTotal
+      : new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
 
     // Round 2 I3 audit: input.lateFee arrives as `number` from the DTO.
     // `.toString()` is defensive against Decimal constructor surprises on
@@ -246,6 +251,7 @@ export class PaymentJournalPreviewService {
         interestTotal: c.interestTotal.toString(),
         vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
         totalMonths: c.totalMonths,
+        installmentNo: inst.installmentNo,
       });
       const { priorPrincipalCleared, priorLateFeeBooked } = await reconstructPriorCleared(
         this.prisma,

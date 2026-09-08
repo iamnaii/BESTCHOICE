@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { sanitizeAuditValue } from './audit-sanitize.util';
 
 export interface AuditEntry {
   userId?: string;
@@ -93,6 +94,15 @@ export class AuditService {
     try {
       if (!entry.userId) return;
 
+      // Explicit service callers bypass the HTTP interceptor. Normalize Date/Decimal
+      // to their JSON representation, then seal exactly the sanitized values we store.
+      const oldValue = sanitizeAuditValue(
+        JSON.parse(JSON.stringify(entry.oldValue ?? null)),
+      ) as Prisma.InputJsonValue | null;
+      const newValue = sanitizeAuditValue(
+        JSON.parse(JSON.stringify(entry.newValue ?? null)),
+      ) as Prisma.InputJsonValue | null;
+
       // T2-C4 ext: hash chain. $transaction keeps nextval() + read-last-hash
       // + insert atomic so two concurrent writers can't race to the same
       // prevRowHash value.
@@ -111,9 +121,6 @@ export class AuditService {
 
         const id = randomUUID();
         const createdAt = new Date();
-        const oldValue = (entry.oldValue as Prisma.InputJsonValue) ?? Prisma.JsonNull;
-        const newValue = (entry.newValue as Prisma.InputJsonValue) ?? Prisma.JsonNull;
-
         const rowHash = this.computeRowHash({
           sequenceNumber,
           id,
@@ -121,8 +128,8 @@ export class AuditService {
           action: entry.action,
           entity: entry.entity,
           entityId: entry.entityId || '',
-          oldValue: entry.oldValue ?? null,
-          newValue: entry.newValue ?? null,
+          oldValue,
+          newValue,
           createdAt,
           prevRowHash: prevRow?.rowHash ?? null,
         });
@@ -134,8 +141,8 @@ export class AuditService {
             action: entry.action,
             entity: entry.entity,
             entityId: entry.entityId || '',
-            oldValue,
-            newValue,
+            oldValue: oldValue ?? Prisma.JsonNull,
+            newValue: newValue ?? Prisma.JsonNull,
             ipAddress: entry.ipAddress || null,
             userAgent: entry.userAgent || null,
             duration: entry.duration || null,

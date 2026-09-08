@@ -33,7 +33,7 @@ describe('calculateInstallment ↔ calculateInstallmentWithInterest equivalence'
     // financed = 16,915, interest = 16,915 × 0.50 = 8,457.50
     const out = calculateInstallmentWithInterest(19900, 2985, 8457.50, 12, 0.10, 0.07);
     expect(out.financedAmount).toBeCloseTo(28958.48, 2);    // financed + interest + comm + vat
-    expect(out.monthlyPayment).toBeCloseTo(2413.21, 2);
+    expect(out.monthlyPayment).toBeCloseTo(2413.20, 2);
   });
 });
 
@@ -62,3 +62,13 @@ describe('Contract math — feature flag off (legacy preserved)', () => {
     expect(refactor.interestTotal).toBeCloseTo(legacy.interestTotal, 2);
   });
 });
+
+  it('matches CPA rounding: 17000 before VAT / 12 floors to 1416.66 plus VAT 99.17', () => {
+    const out = calculateInstallmentWithInterest(12500, 2500, 6000, 12, 0.10, 0.07);
+    expect(out.financedAmount).toBe(18190);
+    expect(out.monthlyPayment).toBe(1515.83);
+  });
+
+  it('keeps separate CPA rounding when rounding the gross monthly total would add one satang', () => {
+    expect(calculateInstallmentWithInterest(10000, 2000, 2400, 12, 0.10, 0.07).monthlyPayment).toBe(998.66);
+  });

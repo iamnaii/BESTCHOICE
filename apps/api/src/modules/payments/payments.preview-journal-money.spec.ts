@@ -98,6 +98,8 @@ const lineFor = (lines: JeLine[], code: string): JeLine | undefined =>
  */
 type ContractStub = {
   totalMonths: number;
+  financedAmount: Prisma.Decimal;
+  storeCommission: Prisma.Decimal;
   interestTotal: Prisma.Decimal | null;
   monthlyPayment: Prisma.Decimal | null;
   vatAmount: Prisma.Decimal | null;
@@ -124,6 +126,10 @@ describe('PaymentsService.previewJournal (characterization)', () => {
 
   const baseContract = (overrides: Partial<ContractStub> = {}): ContractStub => ({
     totalMonths: 12,
+    // 18,000 principal + 6,000 interest = 12 installments of 2,000;
+    // the final-period preview derives this from actual contract totals.
+    financedAmount: D(18000),
+    storeCommission: D(0),
     interestTotal: D(6000),
     monthlyPayment: D(2000),
     vatAmount: D(0),
@@ -626,6 +632,33 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       expect(lineFor(out.lines, '21-1103')?.debit).toBe('100.00');
       expect(out.totalDebit).toBe('2000.00');
       expect(out.totalCredit).toBe('2000.00');
+      expect(out.isBalanced).toBe(true);
+    });
+
+    it('uses the actual final-period residual when consuming parked money', async () => {
+      installment = baseInstallment({
+        installmentNo: 12,
+        contract: baseContract({
+          financedAmount: D(10000),
+          storeCommission: D(1000),
+          interestTotal: D(6000),
+          vatAmount: D(1190),
+          monthlyPayment: D('1515.83'),
+          rescheduleAdvanceBalance: D(300),
+        }),
+      });
+
+      const out = await service.previewJournal({
+        contractId: 'c-1', installmentNo: 12, amountReceived: 1415.83,
+        depositAccountCode: '11-1101', case: 'NORMAL',
+      });
+
+      // The last accrual is 1,515.87, so the parked bucket covers 100.04.
+      expect(lineFor(out.lines, '21-1103')?.debit).toBe('100.04');
+      expect(lineFor(out.lines, '11-2103')?.credit).toBe('1515.87');
+      expect(lineFor(out.lines, '52-1104')).toBeUndefined();
+      expect(out.totalDebit).toBe('1515.87');
+      expect(out.totalCredit).toBe('1515.87');
       expect(out.isBalanced).toBe(true);
     });
   });

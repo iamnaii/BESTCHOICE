@@ -690,6 +690,7 @@ model User {
   documentsUploaded           ContractDocument[]        @relation("DocumentUploadedBy")
   creditChecks                CreditCheck[]             @relation("CreditCheckedBy")
   creditOverrides             CreditCheck[]             @relation("CreditOverriddenBy")
+  creditApprovals              CreditApproval[]          @relation("CreditApprovedBy")
   branchReceivings            BranchReceiving[]         @relation("BranchReceivedBy")
   stockCounts                 StockCount[]              @relation("StockCountedBy")
   productPhotosUploaded       ProductPhoto[]            @relation("ProductPhotoUploadedBy")
@@ -973,6 +974,7 @@ model Customer {
   contracts          Contract[]
   sales              Sale[]
   creditChecks       CreditCheck[]
+  creditApprovals    CreditApproval[]
   pdpaConsents       PDPAConsent[]
   dsarRequests       DSARRequest[]
   kycVerifications   KycVerification[]
@@ -1082,7 +1084,7 @@ model Contract {
   reviewedAt     DateTime?              @map("reviewed_at")
   reviewNotes    String?                @map("review_notes")
 
-  // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-28)
+  // วันที่ครบกำหนดชำระ ตามวันเงินเดือนออก (1-31; 31 คือสิ้นเดือน)
   paymentDueDay Int? @map("payment_due_day")
 
   // ที่มาดอกเบี้ย
@@ -1162,6 +1164,7 @@ model Contract {
   sale                     Sale?
   contractDocuments        ContractDocument[]
   creditCheck              CreditCheck?
+  creditApprovals          CreditApproval[]
   pdpaConsent              PDPAConsent?                  @relation(fields: [pdpaConsentId], references: [id])
   receipts                 Receipt[]
   paymentLinks             PaymentLink[]
@@ -2901,12 +2904,52 @@ model CreditCheck {
   customer     Customer  @relation(fields: [customerId], references: [id])
   checkedBy    User?     @relation("CreditCheckedBy", fields: [checkedById], references: [id])
   overriddenBy User?     @relation("CreditOverriddenBy", fields: [overriddenById], references: [id])
+  roomAnalysis RoomCreditAnalysis?
+  approvals    CreditApproval[]
 
   @@index([contractId])
   @@index([customerId])
   @@index([status])
   @@index([overriddenById])
   @@map("credit_checks")
+}
+
+/// Amounts and evidence are immutable; only consumption/supersession metadata may change.
+model CreditApproval {
+  id                     String   @id @default(uuid())
+  creditCheckId          String   @map("credit_check_id")
+  customerId             String   @map("customer_id")
+  approvedById           String   @map("approved_by_id")
+  policyVersion          String   @map("policy_version")
+  verifiedMonthlyIncome  Decimal  @map("verified_monthly_income") @db.Decimal(12, 2)
+  livingExpenses         Decimal  @map("living_expenses") @db.Decimal(12, 2)
+  externalMonthlyDebt    Decimal  @map("external_monthly_debt") @db.Decimal(12, 2)
+  internalMonthlyDebt    Decimal  @map("internal_monthly_debt") @db.Decimal(12, 2)
+  remainingIncome        Decimal  @map("remaining_income") @db.Decimal(12, 2)
+  maximumMonthlyPayment  Decimal  @map("maximum_monthly_payment") @db.Decimal(12, 2)
+  approvedMonthlyPayment Decimal  @map("approved_monthly_payment") @db.Decimal(12, 2)
+  salaryPayDay           Int      @map("salary_pay_day")
+  evidenceNotes          String   @map("evidence_notes")
+  sourceFinancialHash    String   @map("source_financial_hash")
+  customerFinancialHash  String   @map("customer_financial_hash")
+  commitments            Json
+  usedByContractId       String?  @map("used_by_contract_id")
+  usedAt                 DateTime? @map("used_at")
+  usedFirstPaymentDue    DateTime? @map("used_first_payment_due")
+  supersededAt           DateTime? @map("superseded_at")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  deletedAt              DateTime? @map("deleted_at")
+
+  creditCheck   CreditCheck @relation(fields: [creditCheckId], references: [id], onDelete: Restrict)
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  approvedBy    User @relation("CreditApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  usedByContract Contract? @relation(fields: [usedByContractId], references: [id], onDelete: Restrict)
+
+  @@index([customerId, createdAt])
+  @@index([creditCheckId, createdAt])
+  @@index([usedByContractId])
+  @@map("credit_approvals")
 }
 
 // ============================================================
@@ -5299,6 +5342,8 @@ model ChatRoom {
   sideMessages  ChatSideMessage[]
   trainingPairs AiTrainingPair[]
   autoReplyLogs AiAutoReplyLog[]
+  creditFiles RoomCreditFile[]
+  creditAnalyses RoomCreditAnalysis[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -5315,6 +5360,41 @@ model ChatRoom {
   @@index([waitingSince])
   @@index([channel, lastCustomerAt])
   @@map("chat_rooms")
+}
+
+model RoomCreditFile {
+  id String @id @default(uuid())
+  roomId String @map("room_id")
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  key String @unique
+  name String
+  mimeType String @map("mime_type")
+  size Int
+  sourceMessageId String? @map("source_message_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([roomId, deletedAt])
+  @@map("room_credit_files")
+}
+
+model RoomCreditAnalysis {
+  id String @id @default(uuid())
+  roomId String @map("room_id")
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  fileIds String[] @map("file_ids")
+  status String @default("ANALYZING")
+  result Json?
+  error String?
+  creditCheckId String? @unique @map("credit_check_id")
+  creditCheck CreditCheck? @relation(fields: [creditCheckId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([roomId, createdAt])
+  @@map("room_credit_analyses")
 }
 
 /// Chat message — ทุกข้อความใน room

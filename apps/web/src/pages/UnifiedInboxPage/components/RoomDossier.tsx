@@ -1,4 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import RoomCreditCard, { CreditFilePicker } from './RoomCreditCard';
+import { CREDIT_MESSAGE_MIME } from './credit-statement';
+import type { RoomCreditModel } from '../hooks/useRoomCredit';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -323,15 +326,35 @@ interface LookupDevice {
 }
 
 interface RoomDossierProps {
+  credit?: RoomCreditModel;
+  creditFocus?: { roomId: string; tick: number } | null;
   room: DossierRoom | null | undefined;
   customerId: string | null;
   activeRoomId?: string | null;
   onSelectRoom?: (roomId: string) => void;
 }
 
-export default function RoomDossier({ room, customerId, activeRoomId, onSelectRoom }: RoomDossierProps) {
+export default function RoomDossier({ room, customerId, activeRoomId, onSelectRoom, credit, creditFocus }: RoomDossierProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('customer');
+  const creditRef = useRef<HTMLDivElement>(null);
+  const creditDragDepth = useRef(0);
+  const [creditDragging, setCreditDragging] = useState(false);
+  const [creditFlash, setCreditFlash] = useState(false);
+  useEffect(() => { creditDragDepth.current = 0; setCreditDragging(false); }, [room?.id]);
+  useEffect(() => {
+    if (!creditFocus || creditFocus.roomId !== room?.id) return;
+    setTab('customer');
+    const timer = window.setTimeout(() => {
+      if (creditRef.current?.getClientRects().length) {
+        creditRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        setCreditFlash(true);
+      }
+    }, 50);
+    const clear = window.setTimeout(() => setCreditFlash(false), 1500);
+    return () => { window.clearTimeout(timer); window.clearTimeout(clear); };
+  }, [creditFocus, room?.id]);
+  const acceptsCredit = (event: React.DragEvent) => !!credit && Array.from(event.dataTransfer.types).some(type => type === 'Files' || type === CREDIT_MESSAGE_MIME);
   // เปิดห้องใหม่ → กลับแท็บ 1 เสมอ (สิ่งที่ต้องรู้ก่อนพิมพ์คำแรก)
   const [tabRoom, setTabRoom] = useState<string | null>(null);
   if (room?.id && tabRoom !== room.id) {
@@ -397,7 +420,20 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
   };
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-card" aria-label="ข้อมูลลูกค้า">
+    <aside className="relative flex h-full w-80 shrink-0 flex-col border-l border-border bg-card" aria-label="ข้อมูลลูกค้า"
+      onDragEnter={event => { if (!acceptsCredit(event)) return; event.preventDefault(); creditDragDepth.current++; setCreditDragging(true); }}
+      onDragOver={event => { if (!acceptsCredit(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = credit?.busy ? 'none' : 'copy'; }}
+      onDragLeave={event => { if (!acceptsCredit(event)) return; event.preventDefault(); if (--creditDragDepth.current <= 0) { creditDragDepth.current = 0; setCreditDragging(false); } }}
+      onDrop={event => {
+        if (!acceptsCredit(event)) return;
+        event.preventDefault(); event.stopPropagation(); creditDragDepth.current = 0; setCreditDragging(false);
+        if (credit?.busy) return;
+        setTab('customer');
+        const messageId = event.dataTransfer.getData(CREDIT_MESSAGE_MIME);
+        if (messageId) { if (!credit?.files.some(file => file.sourceMessageId === messageId)) credit?.toggleMessage(messageId); }
+        else credit?.upload(Array.from(event.dataTransfer.files));
+      }}>
+      {creditDragging && <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-primary bg-primary/10"><div className="rounded-xl border border-primary bg-card px-4 py-5 text-center text-primary shadow-sm"><p className="font-semibold leading-snug">วางที่นี่ = ให้ AI ตรวจเครดิต</p><p className="mt-1 text-xs leading-snug">ลูกค้าไม่เห็น</p>{credit?.busy && <p className="mt-2 text-xs">กำลังทำงาน กรุณารอก่อนแนบไฟล์</p>}</div></div>}
       {/* หัว */}
       <div className="flex shrink-0 flex-col gap-2.5 border-b border-border px-3.5 pb-3 pt-3.5">
         <div className="flex items-start gap-2.5">
@@ -489,6 +525,12 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
                 </dd>
               </dl>
             </Group>
+
+            <div ref={creditRef} className="scroll-mt-2">
+              <Group label="ตรวจเครดิต" count={credit?.files.length || null} right={<CreditFilePicker credit={credit} />} className={creditFlash ? "ring-2 ring-primary/40" : undefined}>
+                <RoomCreditCard key={room.id} credit={credit} customerId={customerId} />
+              </Group>
+            </div>
 
             <AdGroup room={room} />
 

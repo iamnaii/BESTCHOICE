@@ -9,6 +9,7 @@ TARGET="${1:-all}"
 
 check_api() {
   echo "=== Checking API TypeScript ==="
+  npm run build --workspace=@installment/shared
   cd apps/api && npx tsc --noEmit
   echo "API: OK"
   cd ../..

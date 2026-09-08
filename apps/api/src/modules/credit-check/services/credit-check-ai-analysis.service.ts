@@ -1,38 +1,32 @@
 import { NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
-import Anthropic from '@anthropic-ai/sdk';
+import { AiProviderService, AiClient, AiRequest } from '../../ai-usage/ai-provider.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
-import { AiUsageService } from '../../ai-usage/ai-usage.service';
 
 /**
  * AI-analysis sub-service for credit-check. Plain class (NOT @Injectable) —
  * instantiated internally by the CreditCheckService facade.
  *
  * Owns: analyzeForCustomer, analyze + the private performAIAnalysis /
- * performClaudeAnalysis / performRuleBasedAnalysis + the memoized
- * getAnthropicClient. The IntegrationConfigService dependency lives here. The
- * facade news ONE instance so getAnthropicClient memoization stays a singleton.
+ * performClaudeAnalysis / performRuleBasedAnalysis. Credentials still resolve
+ * through IntegrationConfigService; client caching and request usage belong to
+ * the shared provider transport.
  */
 export class CreditCheckAiAnalysisService {
   private readonly logger = new Logger(CreditCheckAiAnalysisService.name);
-  private anthropic: Anthropic | null = null;
 
   constructor(
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
-    private aiUsage: AiUsageService,
+    private provider: AiProviderService,
   ) {}
 
-  private async getAnthropicClient(): Promise<Anthropic | null> {
+  private async getAnthropicClient(): Promise<AiClient | null> {
     const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
-    if (!apiKey) return null;
-    if (!this.anthropic) {
-      this.anthropic = new Anthropic({ apiKey });
-    }
-    return this.anthropic;
+    return this.provider.clientFor(apiKey, 'credit');
   }
 
-  async analyzeForCustomer(creditCheckId: string) {
+  async analyzeForCustomer(creditCheckId: string, userId?: string) {
     const creditCheck = await this.prisma.creditCheck.findUnique({
       where: { id: creditCheckId },
       include: {
@@ -41,6 +35,10 @@ export class CreditCheckAiAnalysisService {
       },
     });
     if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+
+    if ((creditCheck.aiAnalysis as Record<string, unknown> | null)?.source === 'chat-statement') {
+      throw new BadRequestException('รายการนี้อ่านจากสเตทเม้นในแชท กรุณาเปิดแชทต้นทางเพื่อวิเคราะห์อีกครั้ง');
+    }
 
     if (creditCheck.statementFiles.length === 0) {
       throw new BadRequestException('กรุณาอัปโหลด Statement ธนาคารก่อน');
@@ -58,6 +56,7 @@ export class CreditCheckAiAnalysisService {
       monthlyPayment,
       customerSalary,
       customerOccupation: creditCheck.customer.occupation,
+      userId,
     });
 
     return this.prisma.creditCheck.update({
@@ -76,7 +75,7 @@ export class CreditCheckAiAnalysisService {
     });
   }
 
-  async analyze(contractId: string) {
+  async analyze(contractId: string, userId?: string) {
     const creditCheck = await this.prisma.creditCheck.findUnique({
       where: { contractId },
       include: {
@@ -89,6 +88,10 @@ export class CreditCheckAiAnalysisService {
       },
     });
     if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
+
+    if ((creditCheck.aiAnalysis as Record<string, unknown> | null)?.source === 'chat-statement') {
+      throw new BadRequestException('รายการนี้อ่านจากสเตทเม้นในแชท กรุณาเปิดแชทต้นทางเพื่อวิเคราะห์อีกครั้ง');
+    }
 
     if (creditCheck.statementFiles.length === 0) {
       throw new BadRequestException('กรุณาอัปโหลด Statement ธนาคารก่อน');
@@ -105,6 +108,7 @@ export class CreditCheckAiAnalysisService {
       monthlyPayment,
       customerSalary,
       customerOccupation: creditCheck.customer.occupation,
+      userId,
     });
 
     const updatedCheck = await this.prisma.creditCheck.update({
@@ -133,6 +137,7 @@ export class CreditCheckAiAnalysisService {
     monthlyPayment: number;
     customerSalary: number;
     customerOccupation: string | null;
+    userId?: string;
   }) {
     // Try Claude Vision API first, fallback to rule-based if unavailable
     const client = await this.getAnthropicClient();
@@ -155,13 +160,14 @@ export class CreditCheckAiAnalysisService {
     monthlyPayment: number;
     customerSalary: number;
     customerOccupation: string | null;
+    userId?: string;
   }) {
     const client = await this.getAnthropicClient();
     if (!client) {
       throw new InternalServerErrorException('Anthropic client not initialized');
     }
 
-    const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
+    const contentBlocks: AiRequest['messages'][0]['content'] = [];
 
     // Add statement images as content blocks (only accept base64 data URLs to prevent SSRF)
     for (const fileUrl of params.statementFiles.slice(0, 5)) {
@@ -198,6 +204,7 @@ export class CreditCheckAiAnalysisService {
     "monthlyIncome": <รายได้ต่อเดือนโดยประมาณจาก statement>,
     "averageBalance": <ยอดเงินคงเหลือเฉลี่ย>,
     "monthlyPayment": ${params.monthlyPayment},
+    "affordablePayment": <ค่างวดที่ผ่อนไหวต่อเดือน ไม่ใช่ค่างวดของสัญญา พิจารณาเงินเหลือและภาระหนี้ เพดานไม่เกินรายได้ต่อเดือน × 40% ตามเกณฑ์เดิม; null ถ้าข้อมูลไม่พอ>,
     "affordabilityRatio": <สัดส่วนค่างวดต่อรายได้ 0.0-1.0>,
     "incomeConsistency": "<stable/unstable/unknown>",
     "debtObligations": <ประมาณภาระหนี้อื่นต่อเดือน>,
@@ -214,25 +221,15 @@ export class CreditCheckAiAnalysisService {
 ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
     });
 
-    // Keep in sync with the Sonnet ID used in finance-ai.service.ts and ocr.service.ts.
-    // Mismatch (`claude-sonnet-4-20250514`) previously caused the API call to fail
-    // and silently fall back to rule-based scoring with no alert.
-    const model = 'claude-sonnet-4-5-20250514';
+    // Live provider check on 2026-09-08 returned 404 for the former dated ID.
+    // Use the validated OCR model; prompts, scoring and rule fallback stay unchanged.
+    const model = 'claude-sonnet-4-6';
 
-    const response = await client.messages.create({
+    const response = await this.provider.complete(client, {
       model,
       max_tokens: 1024,
       messages: [{ role: 'user', content: contentBlocks }],
-    });
-
-    void this.aiUsage.record({
-      service: 'credit-check',
-      method: 'performClaudeAnalysis',
-      model,
-      inputTokens: response.usage?.input_tokens ?? 0,
-      outputTokens: response.usage?.output_tokens ?? 0,
-      status: 'success',
-    });
+    }, { service: 'credit-check', method: 'performClaudeAnalysis', userId: params.userId });
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {

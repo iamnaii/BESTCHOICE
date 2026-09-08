@@ -28,9 +28,9 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('finance migration', () => {
-  it('/settings/finance/interest → render หน้า interest ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
+  it('/settings/finance/interest → render หน้า interest ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', async () => {
     render(<App entry="/settings/finance/interest" />);
-    expect(screen.getByText('interest-page')).toBeTruthy();
+    expect(await screen.findByText('interest-page')).toBeTruthy();
     // desktop left category nav is removed — sidebar drives category selection now
     expect(screen.queryByRole('link', { name: /การเงิน/ })).toBeNull();
   });

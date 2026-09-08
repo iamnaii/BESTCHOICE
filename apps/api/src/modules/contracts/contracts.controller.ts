@@ -149,8 +149,8 @@ export class ContractsController {
 
   @Post(':id/submit-review')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  submitForReview(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.workflowService.submitForReview(id, user.id);
+  submitForReview(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
+    return this.workflowService.submitForReview(id, user.id, user.role);
   }
 
   // Contract approval is restricted to OWNER + FINANCE_MANAGER. Letting a

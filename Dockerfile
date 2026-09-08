@@ -93,6 +93,9 @@ COPY --from=builder --chown=appuser:appgroup /app/apps/api/package.json ./apps/a
 # them from process.cwd()/public/fonts (and fallbacks); ensure they exist.
 COPY --chown=appuser:appgroup apps/api/public ./public
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
+# npm's workspace link points here; ship compiled shared utilities for plain Node.js.
+COPY --from=builder --chown=appuser:appgroup /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder --chown=appuser:appgroup /app/packages/shared/dist ./packages/shared/dist
 # Workspace-nested deps (resolution conflicts) — see comment above.
 COPY --from=deps --chown=appuser:appgroup /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder --chown=appuser:appgroup /app/node_modules/.prisma ./node_modules/.prisma

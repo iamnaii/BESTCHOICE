@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import CreditAffordabilityForm, { type CreditApprovalPayload } from '@/components/credit-check/CreditAffordabilityForm';
 
 interface CreditCheckData {
   id: string;
@@ -34,6 +35,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
   const [bankName, setBankName] = useState('');
   const [overrideStatus, setOverrideStatus] = useState('');
   const [overrideNotes, setOverrideNotes] = useState('');
+  const [affordability, setAffordability] = useState<CreditApprovalPayload | null>(null);
 
   const { data: creditCheck } = useQuery<CreditCheckData | null>({
     queryKey: ['credit-check', contractId],
@@ -109,9 +111,11 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
 
   const overrideMutation = useMutation({
     mutationFn: async () => {
+      if (overrideStatus === 'APPROVED' && !affordability) throw new Error('กรุณายืนยันยอดผ่อนก่อนอนุมัติ');
       const { data } = await api.post(`/contracts/${contractId}/credit-check/override`, {
         status: overrideStatus,
-        reviewNotes: overrideNotes || undefined,
+        overrideReason: overrideNotes,
+        ...(overrideStatus === 'APPROVED' ? { affordability } : {}),
       });
       return data;
     },
@@ -120,6 +124,10 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
       refetchCreditCheckEverywhere();
       setOverrideStatus('');
       setOverrideNotes('');
+      setAffordability(null);
+      queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -144,7 +152,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
     return 'bg-destructive';
   };
 
-  const canOverride = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
+  const canOverride = user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user.role);
 
   return (
     <div className="space-y-4">
@@ -285,13 +293,14 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
           )}
 
           {/* Override controls for managers */}
-          {canOverride && creditCheck.aiScore !== null && (
+          {canOverride && (
             <div className="border-t pt-3 space-y-2">
               <div className="text-xs text-muted-foreground font-medium">Override ผลตรวจสอบ (สำหรับผู้จัดการ)</div>
               <div className="flex gap-2">
                 <select
+                  aria-label="ผลพิจารณาเครดิต"
                   value={overrideStatus}
-                  onChange={(e) => setOverrideStatus(e.target.value)}
+                  onChange={(e) => { setAffordability(null); setOverrideStatus(e.target.value); }}
                   className="px-3 py-1.5 border border-input rounded-lg text-sm"
                 >
                   <option value="">เลือกสถานะ...</option>
@@ -303,17 +312,19 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                   type="text"
                   value={overrideNotes}
                   onChange={(e) => setOverrideNotes(e.target.value)}
-                  placeholder="หมายเหตุ..."
+                  placeholder="เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร"
+                  aria-label="เหตุผลการพิจารณา"
                   className="flex-1 px-3 py-1.5 border border-input rounded-lg text-sm"
                 />
                 <button
                   onClick={() => overrideMutation.mutate()}
-                  disabled={!overrideStatus || overrideMutation.isPending}
+                  disabled={!overrideStatus || overrideNotes.trim().length < 20 || overrideMutation.isPending || (overrideStatus === 'APPROVED' && !affordability)}
                   className="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                 >
                   บันทึก
                 </button>
               </div>
+              {overrideStatus === 'APPROVED' && <CreditAffordabilityForm creditCheckId={creditCheck.id} onChange={setAffordability} />}
             </div>
           )}
         </div>

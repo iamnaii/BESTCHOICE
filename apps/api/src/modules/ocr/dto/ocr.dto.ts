@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MaxLength, IsArray, ArrayMinSize, ArrayMaxSize } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsArray, ArrayMinSize, ArrayMaxSize, ValidateIf, IsUUID, ArrayUnique } from 'class-validator';
 
 export class OcrIdCardDto {
   @IsString()
@@ -36,6 +36,19 @@ export class OcrSalarySlipDto {
 }
 
 export class OcrBankStatementDto {
+  @ValidateIf(dto => dto.roomId !== undefined)
+  @IsUUID('4', { message: 'รหัสห้องแชทไม่ถูกต้อง' })
+  roomId?: string;
+
+  @ValidateIf(dto => dto.roomId !== undefined)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  fileIds?: string[];
+
+  @ValidateIf(dto => dto.roomId === undefined)
   @IsArray({ message: 'ต้องส่งไฟล์เป็น array' })
   @ArrayMinSize(1, { message: 'ต้องมีไฟล์อย่างน้อย 1 ไฟล์' })
   @ArrayMaxSize(10, { message: 'อัปโหลดได้สูงสุด 10 ไฟล์' })
@@ -114,6 +127,14 @@ export interface OcrSalarySlipResult {
 }
 
 export interface OcrBankStatementResult {
+  monthlyIncome?: number | null;
+  monthlyExpense?: number | null;
+  averageBalance?: number | null;
+  affordablePayment?: number | null;
+  statementMonths?: number | null;
+  incomeConsistency?: string | null;
+  positiveFactors?: string[];
+  riskFactors?: string[];
   accountName: string | null;
   bankName: string | null;
   totalIncome: number | null;

@@ -1,3 +1,4 @@
+import { NAV_LABELS } from '@/config/work-navigation';
 import { useMemo } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -157,8 +158,9 @@ export default function TopBar() {
 
   const pageTitle = useMemo(() => {
     const map: Record<string, string> = {
-      '/': 'Dashboard', '/pos': 'POS', '/customers': 'ลูกค้า',
-      '/contracts': 'สัญญา', '/payments': 'ชำระเงิน', '/stock': 'สต็อก',
+      '/': NAV_LABELS.home, '/pos': NAV_LABELS.sales, '/customers': 'ลูกค้า',
+      '/contracts': NAV_LABELS.contracts, '/payments': NAV_LABELS.payments, '/stock': NAV_LABELS.stock,
+      '/crm': NAV_LABELS.crm, '/chat': NAV_LABELS.chat, '/inbox': NAV_LABELS.chat,
       '/overdue': 'ค้างชำระ', '/settings': 'ตั้งค่า', '/users': 'ผู้ใช้',
       '/branches': 'สาขา', '/suppliers': 'ผู้จำหน่าย', '/commissions': 'คอมมิชชัน',
       '/receipts': 'ใบเสร็จ', '/audit-logs': 'Audit Logs', '/notifications': 'แจ้งเตือน',

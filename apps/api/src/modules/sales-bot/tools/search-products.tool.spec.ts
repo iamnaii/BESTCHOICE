@@ -46,6 +46,27 @@ describe('SearchProductsTool.run', () => {
     else process.env.SHOP_BASE_URL = prevBase;
   });
 
+  it('applies the server branch in the database query before grouping staff stock', async () => {
+    const prisma = makePrisma([]);
+    await new SearchProductsTool(prisma).run({ query: 'iPhone 15' }, { branchId: 'branch-1' });
+    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        branchId: 'branch-1',
+        deletedAt: null,
+        isOnlineVisible: true,
+        status: { in: ['IN_STOCK', 'RESERVED'] },
+      }),
+    }));
+  });
+
+  it('preserves the public bot catalog query when no staff branch scope is supplied', async () => {
+    const prisma = makePrisma([]);
+    await new SearchProductsTool(prisma).run({ query: 'iPhone 15' });
+    const query = jest.mocked(prisma.product.findMany).mock.calls[0][0]!;
+    expect(query.where).not.toHaveProperty('branchId');
+    expect(query.where).toMatchObject({ deletedAt: null, isOnlineVisible: true });
+  });
+
   it('คืนคีย์ครบตามสัญญา (query/totalMatches/priceMissingCount/groups)', async () => {
     const tool = new SearchProductsTool(makePrisma([row()]));
     const r = await tool.run({ query: 'ไอโฟน 15 โปรแม็กซ์ 256gb' });

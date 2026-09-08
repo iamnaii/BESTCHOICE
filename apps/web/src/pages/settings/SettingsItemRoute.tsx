@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { useParams, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { findItem } from '@/config/settings-access';
@@ -14,5 +15,13 @@ export function SettingsItemRoute() {
     return <Navigate to={`/settings/${categoryId}`} replace />;
   }
   const C = found.item.component;
-  return <C />;
+  return (
+    <Suspense fallback={
+      <p role="status" className="py-4 text-sm text-muted-foreground leading-snug">
+        กำลังโหลด{found.item.label}…
+      </p>
+    }>
+      <C />
+    </Suspense>
+  );
 }

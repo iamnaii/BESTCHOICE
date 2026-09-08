@@ -8,6 +8,7 @@ import { AuditService } from '../audit/audit.service';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopDownPaymentReversalTemplate } from '../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import * as creditApproval from '../credit-check/services/credit-approval';
 
 /**
  * ContractsService unit tests.
@@ -201,7 +202,11 @@ describe('ContractsService', () => {
   // ─── beforeEach ────────────────────────────────────────────────────────────
 
   beforeEach(async () => {
+    jest.spyOn(creditApproval, 'claimCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
+    jest.spyOn(creditApproval, 'assertContractCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
+
     prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
@@ -409,6 +414,19 @@ describe('ContractsService', () => {
       prisma.contract.findMany.mockResolvedValue([]);
     });
 
+    it('enforces the approved monthly limit inside contract creation', async () => {
+      const claim = jest.spyOn(creditApproval, 'claimCreditApproval')
+        .mockRejectedValue(new BadRequestException('ค่างวดเกินยอดอนุมัติ'));
+      try {
+        await expect(service.create({ ...validDto, paymentDueDay: 25 }, 'user-1'))
+          .rejects.toThrow(/ยอดอนุมัติ/);
+        expect(claim).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+          customerId: 'customer-1', paymentDueDay: 25, monthlyAmounts: [1813],
+        }));
+        expect(prisma.product.update).not.toHaveBeenCalled();
+      } finally { claim.mockRestore(); }
+    });
+
     it('throws BadRequestException when product does not exist', async () => {
       prisma.product.findUnique.mockResolvedValue(null);
       await expect(service.create(validDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
@@ -463,10 +481,17 @@ describe('ContractsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws BadRequestException when paymentDueDay is in the invalid 29-30 range', async () => {
+    it.each([0, 32, 25.5])('throws BadRequestException for invalid paymentDueDay %s', async (paymentDueDay) => {
       await expect(
-        service.create({ ...validDto, paymentDueDay: 29 }, 'user-1'),
+        service.create({ ...validDto, paymentDueDay }, 'user-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it.each([29, 30, 31])('creates a contract with payday %i and sends that day to its payment schedule', async (paymentDueDay) => {
+      await service.create({ ...validDto, paymentDueDay }, 'user-1');
+      expect(prisma.contract.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ paymentDueDay }),
+      }));
     });
 
     it('throws BadRequestException when no approved credit check exists', async () => {
@@ -474,48 +499,13 @@ describe('ContractsService', () => {
       await expect(service.create(validDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('bypasses the credit gate and still creates when test-mode is ON (no approved credit check)', async () => {
+    it('still requires an approved amount when the old test-mode status gate is bypassed', async () => {
       testModeMock.isEnabled.mockResolvedValue(true);
-
-      const creditCheckUpdate = jest.fn().mockResolvedValue({});
-      prisma.$transaction.mockImplementation(
-        async (fn: (tx: unknown) => Promise<unknown>) => {
-          const txPrisma = {
-            ...prisma,
-            product: {
-              ...prisma.product,
-              findUnique: jest.fn().mockResolvedValue(mockProduct),
-              // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
-              findFirst: jest.fn().mockResolvedValue(mockProduct),
-              update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
-            },
-            creditCheck: {
-              // No approved credit check available — would normally throw.
-              findFirst: jest.fn().mockResolvedValue(null),
-              update: creditCheckUpdate,
-            },
-            customer: { findUnique: jest.fn().mockResolvedValue(mockCustomer) },
-            contract: { create: jest.fn().mockResolvedValue(mockContract) },
-            payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
-          };
-          return fn(txPrisma);
-        },
-      );
-
-      const result = await service.create(validDto, 'user-1');
-
-      expect(result).toBeDefined();
-      expect(result.id).toBe('contract-1');
-      // Linking step must be skipped when there's no credit check to link.
-      expect(creditCheckUpdate).not.toHaveBeenCalled();
-      // Bypass must be audited with the salesperson as the actor.
-      expect(auditMock.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'CONTRACT_CREDIT_GATE_BYPASSED_TEST_MODE',
-          entity: 'contract',
-          userId: 'user-1',
-        }),
-      );
+      prisma.creditCheck.findFirst.mockResolvedValue(null);
+      jest.mocked(creditApproval.claimCreditApproval).mockRejectedValue(new BadRequestException('ต้องอนุมัติยอดผ่อน'));
+      await expect(service.create(validDto, 'user-1')).rejects.toThrow('ต้องอนุมัติยอดผ่อน');
+      expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.payment.createMany).not.toHaveBeenCalled();
     });
 
     it('does NOT bypass the credit gate when test-mode is OFF (existing behavior)', async () => {
@@ -1054,6 +1044,23 @@ describe('ContractsService', () => {
   // ─────────────────────────────────────────────────────────────────────────────
 
   describe('T5-C4 — update financials blocked when any payment rows exist', () => {
+    it.each([25, 29, 30, 31])('does not change the contract due day to %i once payments exist', async (paymentDueDay) => {
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, workflowStatus: 'CREATING' });
+      prisma.payment.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+      await expect(service.update('contract-1', { paymentDueDay }, 'user-1'))
+        .rejects.toThrow(/ไม่สามารถแก้ไขเงื่อนไขทางการเงินได้/);
+      expect(prisma.contract.update).not.toHaveBeenCalled();
+    });
+
+    it.each([29, 30, 31])('allows payday %i when no payment schedule exists yet', async (paymentDueDay) => {
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, workflowStatus: 'CREATING' });
+      await service.update('contract-1', { paymentDueDay }, 'user-1');
+      expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ paymentDueDay }),
+      }));
+      expect(prisma.payment.createMany).toHaveBeenCalled();
+    });
+
     it('no payments yet → financial edit is allowed', async () => {
       prisma.contract.findUnique.mockResolvedValue({
         ...mockContract,
@@ -1723,3 +1730,5 @@ describe('ContractsService', () => {
     });
   });
 });
+
+afterEach(() => jest.restoreAllMocks());

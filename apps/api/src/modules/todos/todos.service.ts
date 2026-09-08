@@ -102,9 +102,12 @@ export class TodosService {
       this.prisma.todo.count({ where }),
     ]);
 
-    // Summary counts (ignoring view filter, but respecting search/branch)
+    // Tab counts share the list scope; only the selected view is ignored.
     const baseWhere: Prisma.TodoWhereInput = { deletedAt: null };
     if (branchId) baseWhere.branchId = branchId;
+    if (where.assigneeId) baseWhere.assigneeId = where.assigneeId;
+    if (roomId) baseWhere.roomId = roomId;
+    if (where.OR) baseWhere.OR = where.OR;
 
     const [allCount, todayCount, upcomingCount, priorityCount, completedCount] = await Promise.all([
       this.prisma.todo.count({ where: { ...baseWhere, status: { not: 'DONE' } } }),

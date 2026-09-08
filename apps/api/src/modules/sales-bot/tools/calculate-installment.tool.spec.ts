@@ -49,6 +49,36 @@ describe('CalculateInstallmentTool.run', () => {
     else process.env.SHOP_BASE_URL = prevBase;
   });
 
+  it('revalidates the server branch and in-stock status in the quote database read', async () => {
+    const prisma = makePrisma(productRow(), cfgRow());
+    await new CalculateInstallmentTool(prisma).run(
+      { productId: 'prd-1', tenureMonths: 12 }, { branchId: 'branch-1' }, true,
+    );
+    expect(prisma.product.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'prd-1', deletedAt: null, branchId: 'branch-1', status: 'IN_STOCK' },
+    }));
+  });
+
+  it('does not query rates or quote a product absent from the scoped available stock', async () => {
+    const prisma = makePrisma(null, cfgRow());
+    const result = await new CalculateInstallmentTool(prisma).run(
+      { productId: 'other-branch-or-reserved', tenureMonths: 12 }, { branchId: 'branch-1' }, true,
+    );
+    expect(result).toEqual({ error: 'product_not_found' });
+    expect(prisma.interestConfig.findFirst).not.toHaveBeenCalled();
+    expect(prisma.product.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'other-branch-or-reserved', deletedAt: null, branchId: 'branch-1', status: 'IN_STOCK' },
+    }));
+  });
+
+  it('preserves existing bot quote lookup without staff branch or stock-status constraints', async () => {
+    const prisma = makePrisma(productRow(), cfgRow());
+    await new CalculateInstallmentTool(prisma).run({ productId: 'prd-1', tenureMonths: 12 });
+    expect(prisma.product.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'prd-1', deletedAt: null },
+    }));
+  });
+
   it('คิดจาก installmentPrice (ไม่ใช่ราคาเงินสด) และคืนคีย์ครบตามสัญญา', async () => {
     const tool = new CalculateInstallmentTool(makePrisma(productRow(), cfgRow()));
     const r = (await tool.run({ productId: 'prd-1', downPct: 20, tenureMonths: 12 })) as Record<

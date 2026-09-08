@@ -1,3 +1,4 @@
+import QueryBoundary from '@/components/QueryBoundary';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,8 +17,9 @@ interface CommissionSummary {
 export default function DashboardMySales() {
   const { user } = useAuth();
 
-  const { data, isLoading } = useQuery<CommissionSummary>({
+  const { data, isLoading, isError, error, refetch } = useQuery<CommissionSummary>({
     queryKey: ['dashboard-my-sales', user?.id],
+    enabled: Boolean(user?.id),
     queryFn: async () => {
       const now = new Date();
       const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
@@ -46,6 +48,10 @@ export default function DashboardMySales() {
     },
     staleTime: 5 * 60 * 1000,
   });
+
+  if (isError) {
+    return <QueryBoundary isLoading={false} isError error={error} onRetry={() => { void refetch(); }} errorTitle="โหลดยอดขายของฉันไม่สำเร็จ" errorMessage="คุณยังเริ่มงานจากปุ่มด้านบนได้ และลองโหลดสรุปยอดอีกครั้งภายหลัง">{null}</QueryBoundary>;
+  }
 
   if (isLoading || !data) {
     return (

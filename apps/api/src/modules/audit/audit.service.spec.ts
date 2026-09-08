@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { AuditService } from './audit.service';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 jest.mock('@sentry/nestjs');
 
@@ -181,6 +182,14 @@ describe('AuditService — Merkle hash chain (T2-C4 ext)', () => {
       expect(result.rowsChecked).toBe(0);
     });
 
+    it('verifies historical file values as stored without retroactive sanitization', async () => {
+      const row = buildRow(1n, null, {
+        newValue: { file: 'data:application/pdf;base64,QQ==' },
+      });
+      prisma.auditLog.findMany.mockResolvedValue([row]);
+      expect((await service.verifyChain()).ok).toBe(true);
+    });
+
     it('jsonb เรียง key ใหม่ตอนอ่านกลับ → hash รุ่น 2 ยังตรง (เหตุที่ prod ร้อง broken ทุกคืน)', async () => {
       // ตอนเขียน: key ตามลำดับ DTO · ตอนอ่านจาก jsonb: สั้นก่อน แล้วเรียงไบต์
       const written = { negotiationResult: 'WILL_PAY', result: 'PROMISED', slots: [{ settlementAmount: 5000, settlementDate: '2026-08-23' }] };
@@ -211,6 +220,95 @@ describe('AuditService — Merkle hash chain (T2-C4 ext)', () => {
       const result = await service.verifyChain();
       expect(result.ok).toBe(true);
     });
+  });
+});
+
+describe('AuditService.log — sanitize direct writes before sealing the hash', () => {
+  const create = jest.fn();
+  const findMany = jest.fn();
+  const tx = {
+    $queryRaw: jest.fn(),
+    auditLog: { create },
+  };
+  const prisma = {
+    $transaction: jest.fn(),
+    auditLog: { findMany },
+  };
+  let service: AuditService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    tx.$queryRaw.mockResolvedValue([{ nextval: 1n }]);
+    create.mockResolvedValue(undefined);
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+    service = new AuditService(prisma as unknown as PrismaService);
+  });
+
+  it('masks settings signatures and nested profile data in old/new values and hashes the stored payload', async () => {
+    const entry = {
+      userId: 'u-1',
+      action: 'SYSTEM_CONFIG_UPDATE',
+      entity: 'SystemConfig',
+      entityId: 'lessor_signature_image',
+      oldValue: { key: 'lessor_signature_image', value: 'data:image/png;base64,T0xE' },
+      newValue: {
+        key: 'lessor_signature_image', value: 'data:image/png;base64,TkVX',
+        profiles: [{ avatarUrl: 'data:image/jpeg;base64,QQ==', nationalId: '1234567890123' }],
+        documents: [[{ photoBase64: 'SUQtQ0FSRA==' }]],
+      },
+    };
+    const original = JSON.parse(JSON.stringify(entry));
+    const compute = jest.spyOn(service, 'computeRowHash');
+    await service.log(entry);
+
+    expect(create).toHaveBeenCalledTimes(1);
+    const row = create.mock.calls[0][0].data;
+    expect(row.oldValue).toEqual({ key: 'lessor_signature_image', value: '[FILE_DATA]' });
+    expect(row.newValue).toEqual({
+      key: 'lessor_signature_image', value: '[FILE_DATA]',
+      profiles: [{ avatarUrl: '[FILE_DATA]', nationalId: '[REDACTED]' }],
+      documents: [[{ photoBase64: '[FILE_DATA]' }]],
+    });
+    expect(compute).toHaveBeenCalledWith(expect.objectContaining({
+      oldValue: row.oldValue, newValue: row.newValue,
+    }));
+    expect(entry).toEqual(original);
+
+    // Read back the JSON database shape, then verify the actual stored hash.
+    findMany.mockResolvedValue([row]);
+    expect(await service.verifyChain()).toMatchObject({ ok: true, rowsChecked: 1 });
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it('preserves Decimal, Date, null and empty containers using their persisted JSON representation', async () => {
+    const newValue = {
+      amount: new Prisma.Decimal('1234.50'),
+      dueDate: new Date('2026-09-07T00:00:00.000Z'),
+      active: false, count: 0, note: '', optional: undefined,
+      details: {}, items: [], previous: null,
+    };
+    await service.log({ userId: 'u-1', action: 'UPDATE', entity: 'payment', newValue });
+    expect(create).toHaveBeenCalledTimes(1);
+    const row = create.mock.calls[0][0].data;
+    expect(row.newValue).toEqual({
+      amount: '1234.5', dueDate: '2026-09-07T00:00:00.000Z',
+      active: false, count: 0, note: '', details: {}, items: [], previous: null,
+    });
+    expect(newValue.amount).toBeInstanceOf(Prisma.Decimal);
+    expect(newValue.dueDate).toBeInstanceOf(Date);
+    findMany.mockResolvedValue([{ ...row, oldValue: null }]);
+    expect((await service.verifyChain()).ok).toBe(true);
+  });
+
+  it('continues storing absent payloads as JSON null and hashing null', async () => {
+    const compute = jest.spyOn(service, 'computeRowHash');
+    await service.log({ userId: 'u-1', action: 'DELETE', entity: 'file' });
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      oldValue: Prisma.JsonNull, newValue: Prisma.JsonNull,
+    }) });
+    expect(compute).toHaveBeenCalledWith(expect.objectContaining({
+      oldValue: null, newValue: null,
+    }));
   });
 });
 

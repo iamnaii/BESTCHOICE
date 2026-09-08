@@ -55,6 +55,7 @@ import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-p
 import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { seedVerifiedContractApproval } from './credit-approval.fixture';
 
 const prisma = new PrismaClient();
 
@@ -247,11 +248,13 @@ async function seedSignedDraftContract(tag: string, customerId: string, productI
       vatAmount: dec('1190.00'),
       vatPct: dec('0.0700'),
       monthlyPayment: dec('1515.83'),
+      paymentDueDay: 1,
       status: 'DRAFT',
       workflowStatus: 'APPROVED',
     },
   });
   createdContractIds.push(contract.id);
+  await seedVerifiedContractApproval(prisma, contract.id, adminId);
 
   for (const signerType of ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2'] as const) {
     await prisma.signature.create({
@@ -267,15 +270,9 @@ async function seedPendingPayments(contractId: string, installmentCount: number)
   for (let installmentNo = 1; installmentNo <= installmentCount; installmentNo++) {
     const dueDate = new Date(startDate);
     dueDate.setMonth(dueDate.getMonth() + installmentNo);
-    await prisma.payment.create({
-      data: {
-        contractId,
-        installmentNo,
-        amountDue: dec('1515.83'),
-        amountPaid: dec('0'),
-        dueDate,
-        status: 'PENDING',
-      },
+    await prisma.payment.update({
+      where: { contractId_installmentNo: { contractId, installmentNo } },
+      data: { dueDate, status: 'PENDING' },
     });
   }
 }
@@ -400,6 +397,8 @@ describe('State diagram ของเครื่อง — flow จริงบ�
       where: { contractId: { in: createdContractIds } },
     });
     await prisma.payment.deleteMany({ where: { contractId: { in: createdContractIds } } });
+    await prisma.creditApproval.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
+    await prisma.creditCheck.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
     await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
     await prisma.productPrice.deleteMany({ where: { productId: { in: createdProductIds } } });
     await prisma.productReservation.deleteMany({ where: { productId: { in: createdProductIds } } });
@@ -764,6 +763,11 @@ describe('State diagram ของเครื่อง — flow จริงบ�
       const customer = await seedCustomer('E3');
       const contract = await seedSignedDraftContract('E3', customer.id, product.id);
       await workflow.activate(contract.id);
+      // This fixture represents a fully paid loan, so the real schedule must carry no unpaid debt.
+      for (const payment of await prisma.payment.findMany({ where: { contractId: contract.id } })) {
+        await prisma.payment.update({ where: { id: payment.id },
+          data: { status: 'PAID', amountPaid: payment.amountDue, paidDate: new Date() } });
+      }
       await prisma.contract.update({ where: { id: contract.id }, data: { status: 'TERMINATED' } });
 
       await expect(

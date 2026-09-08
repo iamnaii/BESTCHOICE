@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Link } from 'react-router';
+import { Suspense, useEffect, useRef } from 'react';
+import { Link, useLocation } from 'react-router';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { categoryById, visibleItems } from '@/config/settings-access';
@@ -12,7 +12,13 @@ function ItemSection({ item, categoryId }: { item: SettingsItem; categoryId: str
     const C = item.component;
     return (
       <div id={item.id} className="scroll-mt-20">
-        <C />
+        <Suspense fallback={
+          <p data-settings-loading role="status" className="py-4 text-sm text-muted-foreground leading-snug">
+            กำลังโหลด{item.label}…
+          </p>
+        }>
+          <C />
+        </Suspense>
       </div>
     );
   }
@@ -31,17 +37,27 @@ function ItemSection({ item, categoryId }: { item: SettingsItem; categoryId: str
 export function CategoryPage({ categoryId }: { categoryId: string }) {
   const { user } = useAuth();
   const role = (user?.role ?? '') as SettingsRole;
+  const { hash } = useLocation();
+  const contentRef = useRef<HTMLDivElement>(null);
 
-  // Keep this effect ABOVE all early returns — hooks must run unconditionally
-  // (the body already guards empty hash + missing element, so it's a no-op on
-  // not-found renders and safe to call regardless of whether `cat` exists).
+  // Earlier panels can move the target as lazy forms replace their placeholders.
+  // Scroll once after this category's forms settle, then stop observing changes.
   useEffect(() => {
-    const hash = window.location.hash.slice(1);
-    if (!hash) return;
-    // defer to next frame so the section is in the DOM
-    const el = document.getElementById(hash);
-    if (el) el.scrollIntoView({ block: 'start' });
-  }, [categoryId]);
+    const content = contentRef.current;
+    if (!hash || !content) return;
+    const scrollWhenReady = () => {
+      if (content.querySelector('[data-settings-loading]')) return false;
+      const target = document.getElementById(hash.slice(1));
+      if (target && content.contains(target)) target.scrollIntoView({ block: 'start' });
+      return true;
+    };
+    if (scrollWhenReady()) return;
+    const observer = new MutationObserver(() => {
+      if (scrollWhenReady()) observer.disconnect();
+    });
+    observer.observe(content, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [categoryId, hash, role]);
 
   const cat = categoryById(categoryId);
   if (!cat) return <p className="text-sm text-muted-foreground">ไม่พบหมวดนี้</p>;
@@ -57,7 +73,7 @@ export function CategoryPage({ categoryId }: { categoryId: string }) {
 
   // ชื่อหมวดอยู่บน PageHeader ของ SettingsLayout แล้ว — เดิมโชว์ซ้ำสองที่ติดกัน
   return (
-    <div className="space-y-6">
+    <div ref={contentRef} className="space-y-6">
       {groups.map((g, gi) => (
         <section key={`${g.name ?? ''}-${gi}`} className="space-y-4">
           {g.name && <h2 className={groupLabelClass}>{g.name}</h2>}

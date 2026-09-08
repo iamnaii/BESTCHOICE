@@ -1,9 +1,18 @@
+import { CreditApprovalService } from './services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CreditCheckService } from './credit-check.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AiProviderService } from '../ai-usage/ai-provider.service';
+
+
+const verifiedApproval = {
+  verifiedMonthlyIncome: 15000, livingExpenses: 9000, externalMonthlyDebt: 0,
+  approvedMonthlyPayment: 2500, salaryPayDay: 25, evidenceNotes: 'ตรวจรายได้ รายจ่าย หนี้ และวันรับเงินครบแล้ว',
+  contextToken: 'a'.repeat(64), confirmed: true,
+};
 
 describe('CreditCheckService override audit', () => {
   let service: CreditCheckService;
@@ -15,6 +24,8 @@ describe('CreditCheckService override audit', () => {
   const baseCheck = {
     id: 'cc-1',
     contractId: 'con-1',
+    customerId: 'cust-1',
+    checkType: 'FULL',
     status: 'REJECTED',
     aiScore: 35,
     originalStatus: null,
@@ -23,7 +34,9 @@ describe('CreditCheckService override audit', () => {
   };
 
   beforeEach(async () => {
+    jest.spyOn(CreditApprovalService.prototype, 'approveInTransaction').mockResolvedValue({ id: 'approved-cap' } as never);
     prisma = {
+      creditApproval: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       customer: {
         findUnique: jest.fn().mockResolvedValue({ id: 'cust-1', deletedAt: null }),
         // override sync สถานะบนตัวลูกค้าใน tx เดียวกับ CreditCheck
@@ -38,12 +51,13 @@ describe('CreditCheckService override audit', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
       },
-      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: jest.fn((ops) => typeof ops === 'function' ? ops(prisma) : Promise.all(ops)),
     };
     integrationConfig = { getValue: jest.fn().mockResolvedValue(null) };
 
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [
+      providers: [AiProviderService,
         CreditCheckService,
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: integrationConfig },
@@ -57,7 +71,7 @@ describe('CreditCheckService override audit', () => {
     prisma.creditCheck.findUnique.mockResolvedValue(null);
     await expect(
       service.override('con-missing', {
-        status: 'APPROVED',
+        status: 'APPROVED', affordability: verifiedApproval,
         overrideReason: 'lorem ipsum valid reason 30+ characters',
       }, 'u-1', 'OWNER'),
     ).rejects.toThrow(NotFoundException);
@@ -66,7 +80,7 @@ describe('CreditCheckService override audit', () => {
   it('rejects REJECTED → APPROVED override by BRANCH_MANAGER', async () => {
     await expect(
       service.override('con-1', {
-        status: 'APPROVED',
+        status: 'APPROVED', affordability: verifiedApproval,
         overrideReason: 'customer provided additional income proof',
       }, 'u-1', 'BRANCH_MANAGER'),
     ).rejects.toThrow(ForbiddenException);
@@ -75,7 +89,7 @@ describe('CreditCheckService override audit', () => {
 
   it('allows REJECTED → APPROVED by OWNER and captures original state + reason', async () => {
     await service.override('con-1', {
-      status: 'APPROVED',
+      status: 'APPROVED', affordability: verifiedApproval,
       overrideReason: 'customer produced additional salary slip from second job',
     }, 'u-owner', 'OWNER');
 
@@ -90,7 +104,7 @@ describe('CreditCheckService override audit', () => {
 
   it('allows REJECTED → APPROVED by FINANCE_MANAGER', async () => {
     await service.override('con-1', {
-      status: 'APPROVED',
+      status: 'APPROVED', affordability: verifiedApproval,
       overrideReason: 'manager review — employer confirmed salary verbally',
     }, 'u-fm', 'FINANCE_MANAGER');
     expect(prisma.creditCheck.update).toHaveBeenCalled();
@@ -103,7 +117,7 @@ describe('CreditCheckService override audit', () => {
       aiScore: 52,
     });
     await service.override('con-1', {
-      status: 'APPROVED',
+      status: 'APPROVED', affordability: verifiedApproval,
       overrideReason: 'reviewed with customer — debts paid off',
     }, 'u-bm', 'BRANCH_MANAGER');
     expect(prisma.creditCheck.update).toHaveBeenCalled();
@@ -112,7 +126,7 @@ describe('CreditCheckService override audit', () => {
   it('rejects no-op override (same status)', async () => {
     prisma.creditCheck.findUnique.mockResolvedValue({
       ...baseCheck,
-      status: 'APPROVED',
+      status: 'APPROVED', affordability: verifiedApproval,
     });
     await expect(
       service.override('con-1', {
@@ -122,10 +136,22 @@ describe('CreditCheckService override audit', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('rechecks a contract override after another manager changes the decision', async () => {
+    prisma.creditCheck.findUnique
+      .mockResolvedValueOnce({ ...baseCheck, status: 'MANUAL_REVIEW' })
+      .mockResolvedValue(baseCheck);
+    await expect(service.override('con-1', {
+      status: 'APPROVED', affordability: verifiedApproval,
+      overrideReason: 'branch manager review with additional evidence',
+    }, 'u-bm', 'BRANCH_MANAGER')).rejects.toThrow(ForbiddenException);
+    expect(prisma.creditCheck.update).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('preserves originalStatus across repeat overrides (first override wins)', async () => {
     prisma.creditCheck.findUnique.mockResolvedValue({
       ...baseCheck,
-      status: 'APPROVED', // already overridden once from REJECTED
+      status: 'APPROVED', affordability: verifiedApproval, // already overridden once from REJECTED
       originalStatus: 'REJECTED',
       originalScore: 35,
     });
@@ -253,7 +279,7 @@ describe('CreditCheckService override audit', () => {
       await service.overrideById(
         'cc-42',
         {
-          status: 'APPROVED',
+          status: 'APPROVED', affordability: verifiedApproval,
           overrideReason: validReason,
           attachmentIds: ['att-1', 'att-2'],
         },
@@ -293,10 +319,11 @@ describe('CreditCheckService override audit', () => {
         checkType,
         status: status === 'MANUAL_REVIEW' ? 'APPROVED' : 'MANUAL_REVIEW',
       });
+      prisma.creditCheck.findFirst.mockResolvedValue({ id: 'cc-sync' });
 
       await service.overrideById(
         'cc-sync',
-        { status, overrideReason: validReason, attachmentIds: [] },
+        { status, overrideReason: validReason, attachmentIds: [], ...(checkType === 'FULL' && status === 'APPROVED' ? { affordability: verifiedApproval } : {}) },
         'u-owner',
         'OWNER',
       );
@@ -305,6 +332,27 @@ describe('CreditCheckService override audit', () => {
         where: { id: 'cust-9' },
         data: { creditCheckStatus: expected },
       });
+    });
+
+    it('keeps the latest customer decision when an older check is overridden', async () => {
+      prisma.creditCheck.findFirst.mockResolvedValue({ id: 'cc-newer' });
+      await service.overrideById('cc-1', {
+        status: 'MANUAL_REVIEW', overrideReason: validReason,
+      }, 'u-owner', 'OWNER');
+      expect(prisma.creditCheck.update).toHaveBeenCalled();
+      expect(prisma.customer.update).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create.mock.calls[0][0].data.newValue.customerCreditCheckStatus).toBeNull();
+    });
+
+    it('rechecks the decision after acquiring the customer lock', async () => {
+      prisma.creditCheck.findUnique
+        .mockResolvedValueOnce(baseCheck)
+        .mockResolvedValueOnce({ ...baseCheck, status: 'APPROVED' });
+      await expect(service.overrideById('cc-1', {
+        status: 'APPROVED', overrideReason: validReason,
+      }, 'u-owner', 'OWNER')).rejects.toThrow(BadRequestException);
+      expect(prisma.creditCheck.update).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
     });
 
     it('allows empty attachmentIds (informational) but still writes audit log', async () => {
@@ -316,7 +364,7 @@ describe('CreditCheckService override audit', () => {
       await service.overrideById(
         'cc-1',
         {
-          status: 'APPROVED',
+          status: 'APPROVED', affordability: verifiedApproval,
           overrideReason: validReason,
           attachmentIds: [],
         },
@@ -339,7 +387,7 @@ describe('CreditCheckService override audit', () => {
       const { plainToInstance } = await import('class-transformer');
 
       const dto = plainToInstance(OverrideCreditCheckDto, {
-        status: 'APPROVED',
+        status: 'APPROVED', affordability: verifiedApproval,
         overrideReason: shortReason,
       });
       const errors = await validate(dto);
@@ -355,7 +403,7 @@ describe('CreditCheckService override audit', () => {
       const { plainToInstance } = await import('class-transformer');
 
       const dto = plainToInstance(OverrideCreditCheckDto, {
-        status: 'APPROVED',
+        status: 'APPROVED', affordability: verifiedApproval,
         overrideReason: validReason,
         attachmentIds: ['doc-123'],
       });
@@ -364,3 +412,5 @@ describe('CreditCheckService override audit', () => {
     });
   });
 });
+
+afterEach(() => jest.restoreAllMocks());

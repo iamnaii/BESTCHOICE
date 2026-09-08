@@ -1,7 +1,10 @@
+import ContractReturnNotice from '@/components/credit-check/ContractReturnNotice';
+import { openCreditDocument } from '@/lib/credit-document';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router';
 import CreditCheckCreateDialog from '@/components/credit-check/CreditCheckCreateDialog';
 import CreditCheckCard from '@/components/credit-check/CreditCheckCard';
 import CreditCheckOverrideDialog, { compileReason } from '@/components/credit-check/CreditCheckOverrideDialog';
+import type { CreditApprovalPayload } from '@/components/credit-check/CreditAffordabilityForm';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api, { getErrorMessage } from '@/lib/api';
@@ -96,6 +99,7 @@ interface RiskFlag {
 
 
 interface CreditCheckItem {
+  checkType?: string;
   id: string;
   status: string;
   bankName: string | null;
@@ -183,6 +187,7 @@ export default function CustomerDetailPage() {
   }, [editSameAddress, editAddrIdCard]);
 
   const canEdit = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
+  const canReviewCredit = !!user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user.role);
 
   const {
     data: customer,
@@ -316,7 +321,7 @@ export default function CustomerDetailPage() {
   });
 
   const overrideCreditMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (affordability?: CreditApprovalPayload | null) => {
       if (!overrideId) return;
       // Dialog blocks same-status selection (backend rejects no-ops), so by
       // the time we reach here overrideStatus !== current, and a reason
@@ -324,12 +329,17 @@ export default function CustomerDetailPage() {
       const { data } = await api.post(`/customers/${id}/credit-check/${overrideId}/override`, {
         status: overrideStatus,
         overrideReason: compileReason(overrideReasonCategory, overrideNotes),
+        ...(affordability ? { affordability } : {}),
       });
       return data;
     },
     onSuccess: () => {
       toast.success('อัปเดตสถานะเครดิตเช็คแล้ว');
       queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
+      queryClient.invalidateQueries({ queryKey: ['customer-latest-credit', id] });
+      queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['customer', id] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       setOverrideId(null);
       setOverrideStatus('');
       setOverrideReasonCategory('');
@@ -568,6 +578,8 @@ export default function CustomerDetailPage() {
           </Button>
         </div>
       } />
+
+      <ContractReturnNotice customerId={id} />
 
       {/* Profile Header Card — Metronic v9.4.8 style */}
       <Card className="mb-6 rounded-xl border border-border/50 bg-card shadow-sm">
@@ -872,7 +884,7 @@ export default function CustomerDetailPage() {
               <CreditCheckCard
                 key={cc.id}
                 cc={cc}
-                canOverride={!!canEdit}
+                canOverride={canReviewCredit}
                 isAnalyzing={analyzeCreditMutation.isPending}
                 onAnalyze={(ccId) => analyzeCreditMutation.mutate(ccId)}
                 onOverride={(ccId) => {
@@ -883,7 +895,7 @@ export default function CustomerDetailPage() {
                   setOverrideReasonCategory('');
                   setOverrideNotes('');
                 }}
-                onViewStatement={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+                onViewStatement={(url) => void openCreditDocument(url)}
               />
             ))}
           </div>
@@ -1382,6 +1394,9 @@ export default function CustomerDetailPage() {
       />
 
       <CreditCheckOverrideDialog
+        key={overrideId ?? 'closed'}
+        creditCheckId={overrideId ?? undefined}
+        checkType={creditChecks.find(check => check.id === overrideId)?.checkType}
         open={!!overrideId}
         onClose={() => {
           setOverrideId(null);
@@ -1401,7 +1416,7 @@ export default function CustomerDetailPage() {
         notes={overrideNotes}
         onNotesChange={setOverrideNotes}
         isPending={overrideCreditMutation.isPending}
-        onConfirm={() => overrideCreditMutation.mutate()}
+        onConfirm={(affordability) => overrideCreditMutation.mutate(affordability)}
       />
     </div>
   );

@@ -19,10 +19,10 @@ function renderAt(path: string) {
 }
 
 describe('SettingsItemRoute', () => {
-  it('render component ของ route-item (interest)', () => {
+  it('render component ของ route-item (interest)', async () => {
     role = 'OWNER';
     renderAt('/settings/finance/interest');
-    expect(screen.getByText('interest-page')).toBeTruthy();
+    expect(await screen.findByText('interest-page')).toBeTruthy();
   });
 
   it('role ไม่มีสิทธิ์ → redirect ไปหน้าหมวด', () => {

@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
+import { seedStatementReview } from '../../contracts/__tests__/credit-approval.fixture';
 import { ContractExchangeService } from '../contract-exchange.service';
 import { ExchangeCancelService } from '../contract-exchange-cancel.service';
 import { AuditService } from '../../audit/audit.service';
@@ -540,6 +541,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
     // clear items + batches before the contracts they reference.
     await prisma.interCoSettlementItem.deleteMany({ where: { batchId: { in: createdBatchIds } } });
     await prisma.interCoSettlementBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
+    await prisma.creditCheck.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
     await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
     await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
     await prisma.customer.deleteMany({ where: { id: { in: createdCustomerIds } } });
@@ -597,6 +599,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       createdRequestIds.push(submitted.id);
 
       // --- Real approve (creates the DRAFT EXCH- contract from the plan snapshot)
+      await seedStatementReview(prisma, fix.customerId);
       const approved = await svc.approve(submitted.id, { id: adminId, role: 'OWNER', branchId: null }, {});
       expect(approved.newContractId).toBeTruthy();
       const newContractId = approved.newContractId as string;
@@ -1710,6 +1713,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
 
       // approve = contract.create with exchangedFromContractId = old id —
       // this is the exact statement that threw P2002 before the fix.
+      await seedStatementReview(prisma, fix.customerId);
       const approved = await svc.approve(
         submitted.id,
         { id: adminId, role: 'OWNER', branchId: null },

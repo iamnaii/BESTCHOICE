@@ -1,12 +1,12 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
-const DRAFT_KEY = 'bestchoice-contract-draft';
-const DRAFT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface ContractDraft {
   step: number;
   productId?: string;
   customerId?: string;
+  fromRoom?: string;
   downPayment: number;
   totalMonths: number;
   paymentDueDay: number;
@@ -14,31 +14,46 @@ export interface ContractDraft {
   savedAt: string;
 }
 
-export function useDraftStorage() {
-  const save = useCallback((draft: Omit<ContractDraft, 'savedAt'>) => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
-  }, []);
+/** Drafts belong to the signed-in employee, including on shared shop computers. */
+export function useDraftStorage(userId: string | undefined) {
+  const key = userId ? `bestchoice-contract-draft:${userId}` : null;
+  const clear = useCallback(() => {
+    try { if (key) localStorage.removeItem(key); } catch { /* Storage may be unavailable. */ }
+  }, [key]);
+
+  const save = useCallback((draft: Omit<ContractDraft, 'savedAt'>): boolean => {
+    if (!key) return false;
+    try {
+      localStorage.setItem(key, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
+      return true;
+    } catch { return false; }
+  }, [key]);
 
   const load = useCallback((): ContractDraft | null => {
-    const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return null;
+    if (!key) return null;
     try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
       const draft = JSON.parse(raw) as ContractDraft;
-      // Expire drafts older than 24 hours
-      if (new Date().getTime() - new Date(draft.savedAt).getTime() > DRAFT_TTL_MS) {
-        localStorage.removeItem(DRAFT_KEY);
+      const age = Date.now() - Date.parse(draft.savedAt);
+      const validId = (value: unknown) => value === undefined ||
+        (typeof value === 'string' && /^[\w-]{1,128}$/.test(value));
+      if (!Number.isFinite(age) || age < 0 || age > DRAFT_TTL_MS ||
+        !Number.isInteger(draft.step) || draft.step < 0 || draft.step > 3 ||
+        !Number.isFinite(draft.downPayment) || draft.downPayment < 0 ||
+        !Number.isInteger(draft.totalMonths) || draft.totalMonths < 1 ||
+        !Number.isInteger(draft.paymentDueDay) || draft.paymentDueDay < 1 || draft.paymentDueDay > 31 ||
+        typeof draft.notes !== 'string' || !validId(draft.customerId) ||
+        !validId(draft.productId) || !validId(draft.fromRoom)) {
+        clear();
         return null;
       }
       return draft;
     } catch {
-      localStorage.removeItem(DRAFT_KEY);
+      clear();
       return null;
     }
-  }, []);
+  }, [key, clear]);
 
-  const clear = useCallback(() => {
-    localStorage.removeItem(DRAFT_KEY);
-  }, []);
-
-  return { save, load, clear };
+  return useMemo(() => ({ save, load, clear }), [save, load, clear]);
 }

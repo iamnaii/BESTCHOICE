@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
-import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AiProviderService } from '../ai-usage/ai-provider.service';
 import { CreditCheckRiskService } from './services/credit-check-risk.service';
 import { CreditCheckAiAnalysisService } from './services/credit-check-ai-analysis.service';
 import { CreditCheckCrudService } from './services/credit-check-crud.service';
 import { CreditCheckOverrideService } from './services/credit-check-override.service';
+import { CreditHistoryActor } from './services/room-credit-access';
 
 /**
  * Facade for credit-check. Keeps the 13-method public surface and delegates
@@ -14,10 +15,7 @@ import { CreditCheckOverrideService } from './services/credit-check-override.ser
  * sub-services are plain classes (NOT @Injectable / DI-registered) wired up
  * in the constructor body, so the module providers stay unchanged.
  *
- * Constructor grew a 3rd arg (AiUsageService, #1317) so the AI-analysis
- * sub-service can record Claude usage; AiUsageService is @Global() so no
- * module import is needed. Every `new CreditCheckService(...)` call site
- * (specs) was updated to pass a 3rd arg alongside this change.
+ * The global AiProviderService owns provider requests and usage tracking.
  *
  * Sub-services are exposed as public readonly fields so tests that need to spy
  * on a (previously-facade-private) helper can target the owning sub-service
@@ -33,10 +31,10 @@ export class CreditCheckService {
   constructor(
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
-    private aiUsage: AiUsageService,
+    private provider: AiProviderService,
   ) {
     this.risk = new CreditCheckRiskService(this.prisma);
-    this.ai = new CreditCheckAiAnalysisService(this.prisma, this.integrationConfig, this.aiUsage);
+    this.ai = new CreditCheckAiAnalysisService(this.prisma, this.integrationConfig, this.provider);
     this.crud = new CreditCheckCrudService(this.prisma, this.risk); // crud needs risk for background auto-score
     this.override_ = new CreditCheckOverrideService(this.prisma);
   }
@@ -51,20 +49,20 @@ export class CreditCheckService {
     endDate?: string;
     branchId?: string;
     checkedById?: string;
-  }) {
-    return this.crud.findAll(filters);
+  }, actor?: CreditHistoryActor) {
+    return this.crud.findAll(filters, actor);
   }
 
-  findByContract(contractId: string) {
-    return this.crud.findByContract(contractId);
+  findByContract(contractId: string, actor?: CreditHistoryActor) {
+    return this.crud.findByContract(contractId, actor);
   }
 
-  findByCustomer(customerId: string) {
-    return this.crud.findByCustomer(customerId);
+  findByCustomer(customerId: string, actor?: CreditHistoryActor) {
+    return this.crud.findByCustomer(customerId, actor);
   }
 
-  findLatestByCustomer(customerId: string) {
-    return this.crud.findLatestByCustomer(customerId);
+  findLatestByCustomer(customerId: string, actor?: CreditHistoryActor) {
+    return this.crud.findLatestByCustomer(customerId, actor);
   }
 
   createForCustomer(customerId: string, dto: CreateCreditCheckDto, _userId: string) {
@@ -89,12 +87,12 @@ export class CreditCheckService {
   }
 
   // === AI Analysis ===
-  analyzeForCustomer(creditCheckId: string) {
-    return this.ai.analyzeForCustomer(creditCheckId);
+  analyzeForCustomer(creditCheckId: string, userId?: string) {
+    return this.ai.analyzeForCustomer(creditCheckId, userId);
   }
 
-  analyze(contractId: string) {
-    return this.ai.analyze(contractId);
+  analyze(contractId: string, userId?: string) {
+    return this.ai.analyze(contractId, userId);
   }
 
   // === Risk Scoring ===

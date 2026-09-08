@@ -36,13 +36,13 @@ export function CompanyPillSwitcher() {
           aria-selected={scope === 'SHOP'}
           onClick={() => handleSwitch('SHOP')}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm transition leading-snug',
+            'inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs sm:px-3 sm:text-sm transition leading-snug',
             scope === 'SHOP'
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
           )}
         >
-          <Store className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          <Store className="hidden h-3.5 w-3.5 shrink-0 sm:block" strokeWidth={1.75} />
           หน้าร้าน
         </button>
       )}
@@ -53,13 +53,13 @@ export function CompanyPillSwitcher() {
           aria-selected={scope === 'FINANCE'}
           onClick={() => handleSwitch('FINANCE')}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm transition leading-snug',
+            'inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs sm:px-3 sm:text-sm transition leading-snug',
             scope === 'FINANCE'
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
           )}
         >
-          <Wallet className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          <Wallet className="hidden h-3.5 w-3.5 shrink-0 sm:block" strokeWidth={1.75} />
           ไฟแนนซ์
         </button>
       )}

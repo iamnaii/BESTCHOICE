@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StaffChatController } from './staff-chat.controller';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -17,6 +17,7 @@ import { CannedResponseBubbleService } from './services/canned-response-bubble.s
 import { CannedResponseQuickReplyService } from './services/canned-response-quickreply.service';
 import { CannedResponseSenderService } from './services/canned-response-sender.service';
 import { AiAssistantService } from './services/ai-assistant.service';
+import { RoomAiAccessService } from './services/room-ai-access.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
 import { AiSuggestService } from './services/ai-suggest.service';
@@ -40,11 +41,16 @@ describe('StaffChatController', () => {
   let roomManager: RoomManagerService;
   let gateway: StaffChatGateway;
   let aiAutoReply: AiAutoReplyService;
+  let roomAiAccess: RoomAiAccessService;
+  let aiAssistant: AiAssistantService;
+  let aiSuggest: AiSuggestService;
+  let config: ConfigService;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
       controllers: [StaffChatController],
       providers: [
+        { provide: RoomAiAccessService, useValue: { assertAccess: jest.fn().mockResolvedValue({}) } },
         { provide: PrismaService, useValue: {} },
         {
           provide: RoomManagerService,
@@ -68,12 +74,12 @@ describe('StaffChatController', () => {
             reorderCannedResponses: jest.fn(),
           },
         },
-        { provide: AiAssistantService, useValue: {} },
+        { provide: AiAssistantService, useValue: { summarizeConversation: jest.fn(), adjustTone: jest.fn() } },
         { provide: MediaContentService, useValue: {} },
         { provide: ChatToContractService, useValue: {} },
         { provide: StorageService, useValue: {} },
         { provide: MessageRouterService, useValue: {} },
-        { provide: AiSuggestService, useValue: {} },
+        { provide: AiSuggestService, useValue: { suggest: jest.fn() } },
         { provide: LeadScoringService, useValue: {} },
         { provide: ProductDetectService, useValue: {} },
         { provide: AiTrainingService, useValue: {} },
@@ -126,6 +132,41 @@ describe('StaffChatController', () => {
     roomManager = module.get(RoomManagerService);
     gateway = module.get(StaffChatGateway);
     aiAutoReply = module.get(AiAutoReplyService);
+    roomAiAccess = module.get(RoomAiAccessService);
+    aiAssistant = module.get(AiAssistantService);
+    aiSuggest = module.get(AiSuggestService);
+    config = module.get(ConfigService);
+  });
+
+  describe('room AI access and authenticated attribution', () => {
+    const user = { id: 'staff-1', role: 'SALES', branchId: 'branch-1', accessibleCompanies: ['SHOP'] };
+
+    it('checks current room permission before a cached summary can be returned', async () => {
+      jest.spyOn(aiAssistant, 'summarizeConversation').mockResolvedValue('private cached summary');
+      await expect(controller.summarizeRoom('room-1', { user })).resolves.toEqual({ summary: 'private cached summary' });
+      expect(aiAssistant.summarizeConversation).toHaveBeenCalledWith('room-1', user.id);
+
+      jest.mocked(aiAssistant.summarizeConversation).mockClear();
+      jest.spyOn(roomAiAccess, 'assertAccess').mockRejectedValue(new ForbiddenException());
+      await expect(controller.summarizeRoom('room-1', { user })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(roomAiAccess.assertAccess).toHaveBeenLastCalledWith('room-1', user);
+      expect(aiAssistant.summarizeConversation).not.toHaveBeenCalled();
+    });
+
+    it('checks permission before suggestions even when the feature would return an empty response', async () => {
+      jest.spyOn(config, 'get').mockReturnValue('configured-key');
+      jest.spyOn(roomAiAccess, 'assertAccess').mockRejectedValue(new ForbiddenException());
+      await expect(controller.getSuggestions('room-1', { currentDraft: 'hello' }, { user }))
+        .rejects.toBeInstanceOf(ForbiddenException);
+      expect(aiSuggest.suggest).not.toHaveBeenCalled();
+    });
+
+    it('attributes authorized suggestions and tone changes to the authenticated actor', async () => {
+      await controller.getSuggestions('room-1', { currentDraft: 'hello' }, { user });
+      expect(aiSuggest.suggest).toHaveBeenCalledWith('room-1', 'hello', user.id);
+      await controller.adjustTone({ text: 'hello', tone: 'friendly' }, { user });
+      expect(aiAssistant.adjustTone).toHaveBeenCalledWith('hello', 'friendly', user.id);
+    });
   });
 
   describe('GET /staff-chat/rooms/:roomId/canned-responses/:id/preview', () => {

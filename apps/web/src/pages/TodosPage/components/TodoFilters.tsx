@@ -33,7 +33,7 @@ export function TodoFilters({
   return (
     <>
       {/* Tabs (pill style) */}
-      <div className="flex gap-1.5 mb-5 p-1 bg-muted/50 rounded-xl w-fit overflow-x-auto">
+      <div className="flex gap-1.5 mb-5 p-1 bg-muted/50 rounded-xl w-fit max-w-full overflow-x-auto">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = view === t.value;
@@ -78,6 +78,7 @@ export function TodoFilters({
           <div className="relative">
             <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
             <select
+              aria-label="ผู้รับมอบหมาย"
               value={assigneeFilter}
               onChange={(e) => onAssigneeFilterChange(e.target.value)}
               className="pl-9 pr-8 py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors appearance-none cursor-pointer"

@@ -16,6 +16,8 @@ import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 
 interface UseContractCalculationParams {
   selectedProduct: Product | null;
+  preserveDownPayment?: boolean;
+  configPending?: boolean;
   interestConfig: InterestConfig | null | undefined;
   posConfig: { interestRate: number; minDownPaymentPct: number; storeCommissionPct: number; vatPct: number; minInstallmentMonths: number; maxInstallmentMonths: number } | undefined;
   downPayment: number;
@@ -26,6 +28,8 @@ interface UseContractCalculationParams {
 
 export function useContractCalculation({
   selectedProduct,
+  preserveDownPayment = false,
+  configPending = false,
   interestConfig,
   posConfig,
   downPayment,
@@ -67,7 +71,7 @@ export function useContractCalculation({
   const maxMonths = interestConfig?.maxInstallmentMonths ?? posConfig?.maxInstallmentMonths ?? 12;
 
   // Auto-set down payment to minimum when price/config becomes available
-  const [downPaymentTouched, setDownPaymentTouched] = useState(false);
+  const [downPaymentTouched, setDownPaymentTouched] = useState(preserveDownPayment);
   useEffect(() => {
     if (!downPaymentTouched && sellingPrice > 0 && minDownPct > 0) {
       setDownPayment(Math.ceil(sellingPrice * minDownPct));
@@ -76,13 +80,13 @@ export function useContractCalculation({
 
   // Clamp totalMonths when config range changes
   useEffect(() => {
-    if (minMonths > maxMonths) return;
+    if (configPending || minMonths > maxMonths) return;
     setTotalMonths(prev => {
       if (prev < minMonths) return minMonths;
       if (prev > maxMonths) return maxMonths;
       return prev;
     });
-  }, [minMonths, maxMonths]);
+  }, [minMonths, maxMonths, configPending]);
 
   // Build per-month rate map from legacy single rate × months.
   // When InterestConfigRate is wired (future PR), this can read config.rates directly.

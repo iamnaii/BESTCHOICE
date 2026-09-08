@@ -1,3 +1,4 @@
+import { isRoomCreditDocument, openCreditDocument } from '@/lib/credit-document';
 import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Circle, Plus, Eye, Trash2, Loader2, FileText, Link2 } from 'lucide-react';
@@ -305,7 +306,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                       <button
                         type="button"
-                        onClick={() => setViewingFile({ url, name: `Statement ${idx + 1}`, label: 'Statement ธนาคาร' })}
+                        onClick={() => { if (isRoomCreditDocument(url)) void openCreditDocument(url); else setViewingFile({ url, name: `Statement ${idx + 1}`, label: 'Statement ธนาคาร' }); }}
                         className="p-1.5 bg-background/90 rounded text-foreground hover:bg-background"
                         aria-label="ดูเอกสาร"
                       >

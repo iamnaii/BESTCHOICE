@@ -9,7 +9,7 @@ vi.mock('@/lib/api', () => ({ default: { get: (...a: unknown[]) => get(...a) } }
 import { useCustomerSummary } from '../useCustomerSummary';
 import { PRODUCT_READINESS_QUERY_KEY } from '../useProductReadiness';
 
-// golden config เดียวกับ buildCustomerSummary.test.ts (installmentPrice 19900 → 12 งวด/2,985/2,413.21)
+// golden config เดียวกับ buildCustomerSummary.test.ts (installmentPrice 19900 → 12 งวด/2,985/2,413.20)
 const bcConfig = {
   minDownPct: 0.15,
   commissionPct: 0.1,
@@ -81,7 +81,7 @@ describe('useCustomerSummary', () => {
     await waitFor(() => expect(result.current.summaryText).toContain('ผ่อน 12 งวด'));
     expect(result.current.summaryText).toContain('ราคาเงินสด 15,900 บาท');
     expect(result.current.summaryText).toContain(
-      'ผ่อน 12 งวด ดาวน์ 2,985 บาท งวดละ 2,413.21 บาท',
+      'ผ่อน 12 งวด ดาวน์ 2,985 บาท งวดละ 2,413.20 บาท',
     );
   });
 

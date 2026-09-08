@@ -30,9 +30,9 @@ export interface LogsQuery {
 }
 
 /**
- * Centralized logger for every Claude API call. Kept fire-and-forget so
- * audit logging never blocks or fails a customer-facing AI call. The hourly
- * cron reads from this table to compute running daily spend.
+ * Centralized AI usage recorder. Provider transports await this write before
+ * returning on Cloud Run; persistence failures are reported without replacing
+ * the model result. The hourly cron computes spend from these records.
  */
 @Injectable()
 export class AiUsageService {

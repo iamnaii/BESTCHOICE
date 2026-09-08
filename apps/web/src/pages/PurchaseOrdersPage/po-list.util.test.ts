@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel } from './po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, splitLeadingTag, pieceCount, itemsSummary } from './po-list.util';
 
 describe('receiveProgress', () => {
   it('sums received/ordered across items and computes pct', () => {
@@ -72,5 +72,38 @@ describe('canCancel', () => {
     expect(canCancel(po('PARTIALLY_RECEIVED', [1]))).toBe(false);
     expect(canCancel(po('FULLY_RECEIVED', [2]))).toBe(false);
     expect(canCancel(po('CANCELLED'))).toBe(false);
+  });
+});
+
+describe('list cells that must never wrap (2026-09-07 redesign)', () => {
+  const item = (over: Record<string, unknown>) => ({
+    brand: 'Apple', model: 'iPhone 17 Pro', category: 'PHONE_NEW', quantity: 1, accessoryType: null, accessoryBrand: null, ...over,
+  });
+
+  it('splitLeadingTag lifts a "[tag]" prefix off a supplier name and leaves plain names alone', () => {
+    expect(splitLeadingTag('[ทดสอบระบบ] QA ผู้ขาย VAT เครดิต')).toEqual({ tag: 'ทดสอบระบบ', name: 'QA ผู้ขาย VAT เครดิต' });
+    expect(splitLeadingTag('บริษัท ไอเดียโมบาย จำกัด')).toEqual({ tag: null, name: 'บริษัท ไอเดียโมบาย จำกัด' });
+    expect(splitLeadingTag('[ว่าง]')).toEqual({ tag: null, name: '[ว่าง]' });
+  });
+
+  it('pieceCount sums the ordered quantity', () => {
+    expect(pieceCount({ items: [item({ quantity: 2 }), item({ quantity: 3 })] })).toBe(5);
+  });
+
+  it('itemsSummary names each line once with its count, phones by model, accessories by type + brand', () => {
+    expect(
+      itemsSummary({
+        items: [
+          item({ quantity: 2 }),
+          item({ model: 'iPhone 15', category: 'PHONE_USED' }),
+          item({ brand: '', model: 'iPhone 17 Pro', category: 'ACCESSORY', accessoryType: 'เคส', accessoryBrand: 'Spigen', quantity: 2 }),
+        ],
+      }),
+    ).toBe('iPhone 17 Pro ×2, iPhone 15, เคส Spigen ×2');
+  });
+
+  it('itemsSummary adds the condition on a single-line PO and uses the SKU name for coded accessories', () => {
+    expect(itemsSummary({ items: [item({ model: 'iPhone 14', category: 'PHONE_USED' })] })).toBe('iPhone 14 · มือสอง');
+    expect(itemsSummary({ items: [item({ category: 'ACCESSORY', model: 'ฟิล์มกระจก iPhone 16 - iStar', accessoryType: 'F1601', accessoryBrand: 'iStar', quantity: 3 })] })).toBe('ฟิล์มกระจก iPhone 16 - iStar ×3');
   });
 });

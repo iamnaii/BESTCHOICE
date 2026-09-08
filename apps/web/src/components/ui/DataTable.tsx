@@ -55,6 +55,11 @@ export interface Column<T> {
   /** Extra classes on the `<th>`. */
   headerClassName?: string;
   /**
+   * Row field (dot path allowed, e.g. `'supplier.name'`) the sort reads instead of `key` —
+   * for a rendered cell whose visible value is not the row property it is keyed by.
+   */
+  sortKey?: string;
+  /**
    * Pin this column to the right edge while the table scrolls horizontally.
    * Use for the action column so it never scrolls out of reach.
    */
@@ -188,9 +193,10 @@ function DataTable<T extends { id: string }>({
 
     // Data columns
     columns.forEach((col) => {
+      const path = (col.sortKey ?? col.key).split('.');
       cols.push(
         helper.accessor(
-          (row) => (row as Record<string, unknown>)[col.key],
+          (row) => path.reduce<unknown>((v, k) => (v == null ? v : (v as Record<string, unknown>)[k]), row),
           {
             id: col.key,
             header: col.label,

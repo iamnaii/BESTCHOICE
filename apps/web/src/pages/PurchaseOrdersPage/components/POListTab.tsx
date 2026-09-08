@@ -7,7 +7,8 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { PurchaseOrder, ApprovePOPayload } from '../types';
 import { ApprovePODialog } from './ApprovePODialog';
 import type { SupplierPaymentMethod } from './wizard/PaymentSection';
-import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel } from '../po-list.util';
+import { cn } from '@/lib/utils';
+import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel, splitLeadingTag, pieceCount, itemsSummary } from '../po-list.util';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { POCard } from './POCard';
@@ -156,85 +157,117 @@ export function POListTab({
       action: () => cancelMutation.mutate(po.id),
     });
 
+  // Every column but the supplier has a fixed width (DataTable switches to table-fixed), badges
+  // never wrap and long names truncate — the owner's list showed a supplier on three lines and
+  // "รับบางส่วน" broken mid-word (2026-09-07).
   const columns: Column<PurchaseOrder>[] = [
     {
       key: 'poNumber',
       label: 'เลข PO',
       sortable: true,
+      // the date lives under the number now — sorting this column keeps ordering by date, not by
+      // the PO string (two number formats coexist: PO-2026-09-011 and the older PO-2026-003)
+      sortKey: 'orderDate',
+      width: '150px',
       render: (po) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            openDetailModal(po);
-          }}
-          className="font-medium text-primary hover:underline whitespace-nowrap"
-        >
-          {po.poNumber}
-        </button>
+        <div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openDetailModal(po);
+            }}
+            className="font-mono font-semibold text-primary hover:underline whitespace-nowrap"
+          >
+            {po.poNumber}
+          </button>
+          <div className="mt-0.5 text-xs text-muted-foreground whitespace-nowrap">สั่ง {formatDateShort(po.orderDate)}</div>
+        </div>
       ),
     },
     {
       key: 'supplier',
       label: 'ผู้จัดจำหน่าย',
       sortable: true,
+      sortKey: 'supplier.name',
       render: (po) => {
+        const { tag, name } = splitLeadingTag(po.supplier.name);
         const sameName = supplierContactIsRedundant(po.supplier);
         return (
-          <div>
-            <div className="font-medium">{po.supplier.name}</div>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate font-medium" title={po.supplier.name}>
+                {name}
+              </span>
+              {tag && (
+                <span className="shrink-0 rounded bg-muted px-1.5 text-[11px] leading-[18px] font-medium whitespace-nowrap text-muted-foreground">
+                  {tag}
+                </span>
+              )}
+            </div>
             {po.supplier.contactName && !sameName && (
-              <div className="text-xs text-muted-foreground">{po.supplier.contactName}</div>
+              <div className="mt-0.5 truncate text-xs text-muted-foreground">{po.supplier.contactName}</div>
             )}
           </div>
         );
       },
     },
     {
-      key: 'orderDate',
-      label: 'วันที่สั่ง',
-      sortable: true,
-      render: (po) => <span className="text-sm whitespace-nowrap">{formatDateShort(po.orderDate)}</span>,
-    },
-    {
       key: 'items',
       label: 'รายการ',
-      sortable: true,
-      render: (po) => <span className="text-sm">{po.items.length} รายการ</span>,
+      sortable: false,
+      width: '180px',
+      render: (po) => {
+        const summary = itemsSummary(po);
+        return (
+          <div className="min-w-0">
+            <div className="whitespace-nowrap">
+              <span className="font-medium">{po.items.length} รายการ</span>
+              <span className="text-muted-foreground"> · {pieceCount(po)} ชิ้น</span>
+            </div>
+            <div className="mt-0.5 truncate text-xs text-muted-foreground" title={summary}>
+              {summary}
+            </div>
+          </div>
+        );
+      },
     },
     {
       key: 'totalAmount',
       label: 'ยอดรวม',
       sortable: true,
-      render: (po) => (
-        <div>
-          <span className="text-sm font-medium whitespace-nowrap">
-            {Number(po.netAmount ?? po.totalAmount).toLocaleString()} บาท
-          </span>
-          {Number(po.discount) > 0 && (
-            <div className="text-xs text-destructive">ส่วนลดก่อน VAT -{Number(po.discount).toLocaleString()}</div>
-          )}
-          {Number(po.discountAfterVat) > 0 && (
-            <div className="text-xs text-destructive">ส่วนลดหลัง VAT -{Number(po.discountAfterVat).toLocaleString()}</div>
-          )}
-          {Number(po.vatAmount) > 0 && (
-            <div className="text-xs text-primary">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>
-          )}
-        </div>
-      ),
+      width: '150px',
+      align: 'right',
+      render: (po) => {
+        const vat = Number(po.vatAmount);
+        const discount = (Number(po.discount) || 0) + (Number(po.discountAfterVat) || 0);
+        return (
+          <div>
+            <div className="whitespace-nowrap">
+              <span className="font-mono font-semibold tabular-nums">{Number(po.netAmount ?? po.totalAmount).toLocaleString()}</span>{' '}
+              <span className="text-xs text-muted-foreground">บาท</span>
+            </div>
+            <div className={cn('mt-0.5 text-xs whitespace-nowrap', vat > 0 ? 'text-primary' : 'text-muted-foreground')}>
+              {vat > 0 ? `รวม VAT ${vat.toLocaleString()}` : 'ไม่มี VAT'}
+            </div>
+            {discount > 0 && <div className="text-xs text-destructive whitespace-nowrap">ส่วนลด -{discount.toLocaleString()}</div>}
+          </div>
+        );
+      },
     },
     {
       key: 'status',
       label: 'สถานะ',
       sortable: true,
+      width: '136px',
       render: (po) => {
         const cfg = getStatusBadgeProps(po.status, poStatusMap);
         return (
           <div className="flex flex-col items-start gap-1">
-            <Badge variant={cfg.variant} appearance={cfg.appearance}>
+            <Badge variant={cfg.variant} appearance={cfg.appearance} className="whitespace-nowrap">
               {cfg.label}
             </Badge>
             {isOverdue(po) && (
-              <Badge variant="destructive" appearance="light" className="gap-1 leading-snug">
+              <Badge variant="destructive" appearance="light" className="gap-1 leading-snug whitespace-nowrap">
                 <AlertTriangle className="size-3" />
                 เลยกำหนด
               </Badge>
@@ -247,6 +280,7 @@ export function POListTab({
       key: 'paymentStatus',
       label: 'การจ่ายเงิน',
       sortable: true,
+      width: '132px',
       render: (po) => {
         const cfg = getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap);
         return (
@@ -258,7 +292,7 @@ export function POListTab({
             className="cursor-pointer hover:opacity-80"
             title="แก้ไขสถานะการจ่ายเงิน"
           >
-            <Badge variant={cfg.variant} appearance={cfg.appearance}>
+            <Badge variant={cfg.variant} appearance={cfg.appearance} className="whitespace-nowrap">
               {cfg.label}
             </Badge>
           </button>
@@ -268,22 +302,19 @@ export function POListTab({
     {
       key: 'received',
       label: 'รับสินค้า',
+      width: '150px',
       render: (po) => {
         const { received, ordered, pct } = receiveProgress(po);
         const done = ordered > 0 && received >= ordered;
         return (
-          <div className="flex items-center gap-2 min-w-[120px]">
+          <div className="flex items-center gap-2.5">
             <span className="text-sm whitespace-nowrap tabular-nums leading-snug">
-              <span className="text-muted-foreground">รับแล้ว </span>
-              <span className={done ? 'text-success font-semibold' : 'font-medium'}>{received}</span>
+              <span className={cn('font-mono font-semibold', done && 'text-success')}>{received}</span>
               <span className="text-muted-foreground">/{ordered}</span>
             </span>
             {ordered > 0 && (
-              <div className="flex-1 bg-secondary rounded-full h-1.5 min-w-[40px]">
-                <div
-                  className={`h-1.5 rounded-full ${done ? 'bg-success' : 'bg-primary'}`}
-                  style={{ width: `${pct}%` }}
-                />
+              <div className="h-1.5 flex-1 rounded-full bg-muted">
+                <div className={cn('h-1.5 rounded-full', done ? 'bg-success' : 'bg-primary')} style={{ width: `${pct}%` }} />
               </div>
             )}
           </div>
@@ -294,8 +325,11 @@ export function POListTab({
       key: 'actions',
       label: '',
       hideable: false,
+      width: '148px',
+      align: 'right',
+      stickyRight: true,
       render: (po) => (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => openDetailModal(po)}
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -506,6 +540,9 @@ export function POListTab({
               emptyDescription={emptyDesc}
               columnToggle
               onRowClick={openDetailModal}
+              // below this the supplier column would be squeezed — scroll sideways instead (actions stay
+              // pinned); 1180 keeps a 1366px laptop (≈1086px of content) from scrolling for most names
+              minWidth="1180px"
             />
           </CardContent>
         </Card>

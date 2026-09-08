@@ -14,11 +14,14 @@ export async function checkTradeIn(page, origin, output, width) {
   await dialog.getByText('ค้นหาหรือสร้างผู้ขาย', { exact: true }).click();
   await page.getByPlaceholder('ค้นหาผู้ติดต่อ / เลขภาษี...').fill('ผู้ขายตัวอย่าง Local');
   await page.getByRole('option', { name: /ผู้ขายตัวอย่าง Local/ }).click();
-  await expect(dialog.getByText('ผู้ขายตัวอย่าง Local', { exact: true })).toBeVisible();
+  // The option text is visible before ensure-role finishes. Wait for the form
+  // to receive the selected contact before entering evidence that selection resets.
+  await expect(dialog.getByLabel('ชื่อผู้ขายตามบัตรประชาชน *', { exact: true })).toHaveValue('ผู้ขายตัวอย่าง Local');
   await dialog.getByLabel('เลขบัตรประชาชน *', { exact: true }).fill('0000000000001');
   await dialog.getByLabel('เบอร์โทรผู้ขาย *', { exact: true }).fill('0000000000');
   await dialog.getByPlaceholder('123/45').fill('1 Synthetic Road');
   await dialog.getByRole('button', { name: 'ถัดไป' }).click();
+  await expect(dialog.getByText('ขั้นที่ 2 / 3', { exact: true })).toBeVisible();
   await dialog.locator('select').nth(0).selectOption('Apple');
   await dialog.locator('select').nth(1).selectOption('iPhone 15');
   const imei = `99${Date.now()}`; // Synthetic identifier, unique across retained preview runs.

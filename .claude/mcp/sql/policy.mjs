@@ -28,6 +28,8 @@ export const PII_TABLE_ALLOWLIST = {
     'model_used', 'input_tokens', 'output_tokens', 'cost_usd',
     'created_at', 'deleted_at', 'delivered_at', 'read_at', 'delivery_status',
     'outbound_sent_at', 'staff_id', 'payment_id', 'receipt_id',
+    // 👇 เจ้าของสั่งเปิด 2026-09-06 — ดู OWNER_APPROVED_PII
+    'text', 'media_url',
   ],
   chat_rooms: [
     'id', 'customer_id', 'channel', 'status', 'verified_at', 'verification_attempts',
@@ -36,8 +38,10 @@ export const PII_TABLE_ALLOWLIST = {
     'priority', 'assigned_to_id', 'first_response_at', 'resolved_at',
     'lead_score', 'lead_temperature', 'pinned_at', 'pinned_by_id', 'unread_count',
     'ai_paused', 'ai_paused_at', 'ai_paused_by_id',
-    // จงใจไม่ให้: text, media_url, display_name, picture_url, ai_sales_state,
-    //             line_user_id, external_user_id, handoff_reason, attribution_id
+    // 👇 เจ้าของสั่งเปิด 2026-09-06 — ดู OWNER_APPROVED_PII
+    'display_name',
+    // ยังไม่ให้: picture_url, ai_sales_state, line_user_id, external_user_id,
+    //           handoff_reason, attribution_id
   ],
   customers: ['id', 'created_at', 'updated_at', 'deleted_at', 'branch_id', 'customer_type', 'status'],
   contacts: ['id', 'created_at', 'updated_at', 'deleted_at'],
@@ -60,6 +64,27 @@ export const PII_TABLE_ALLOWLIST = {
   refresh_tokens: ['id', 'user_id', 'created_at', 'expires_at', 'revoked_at'],
   ip_rate_limits: ['id', 'created_at'],
   staff_chat_activities: ['id', 'room_id', 'staff_id', 'action', 'created_at'],
+}
+
+/**
+ * 🔓 คอลัมน์ PII ที่ **เจ้าของสั่งเปิดเอง** — ระบุเป็นคู่ (ตาราง → คอลัมน์) เสมอ
+ *
+ * คำสั่งเจ้าของ 2026-09-06 "ต้องการให้อ่านได้" ยืนยันหลังเห็นตัวเลขความเสี่ยงแล้ว
+ * บริบทที่แจ้งก่อนตัดสิน (สำรวจ prod 2026-09-04): 488 ข้อความมีเบอร์มือถือ ·
+ * 375 มีเลข 13 หลัก · 20,257 มีรูปแนบ (บัตรประชาชน/สลิปเงินเดือน/ทะเบียนบ้าน) ·
+ * 8,201 ห้องมีชื่อจริง · ไม่มีสัญญาประมวลผลข้อมูลกับ Anthropic และประกาศความเป็น
+ * ส่วนตัวที่ลูกค้าเซ็นไม่ได้ระบุ Anthropic เป็นบุคคลที่สาม
+ *
+ * ⚠️ ผูกกับตารางเสมอ ห้ามย้ายไป ALWAYS_ALLOW_COLUMNS — `text` มีใน 3 ตาราง
+ * (chat_messages, canned_response_bubbles, chat_side_messages) `media_url` ก็ 3 ตาราง
+ * ยกเว้นแบบเหมาจะเปิดตารางที่ไม่มีใครตั้งใจเปิด
+ *
+ * 🔑 ถอนคืน: ลบบรรทัดในนี้ + คอลัมน์ใน PII_TABLE_ALLOWLIST แล้ว `npm run grants`
+ *    + apply — สิทธิ์หายทันที ไม่ต้องหมุนรหัส ไม่ต้องแตะผู้ใช้
+ */
+export const OWNER_APPROVED_PII = {
+  chat_messages: new Set(['text', 'media_url']),
+  chat_rooms: new Set(['display_name']),
 }
 
 /**
@@ -144,6 +169,9 @@ export function decide(table, column, dataType) {
   if (Object.hasOwn(PII_TABLE_ALLOWLIST, table)) {
     const listed = PII_TABLE_ALLOWLIST[table].includes(column)
     if (!listed) return { allow: false, why: 'ตาราง PII — ไม่อยู่ใน allowlist' }
+    if (pattern && OWNER_APPROVED_PII[table]?.has(column)) {
+      return { allow: true, why: `PII ที่เจ้าของสั่งเปิด 2026-09-06 (ชน ${pattern} — ยกเว้นเฉพาะตารางนี้)` }
+    }
     if (pattern) return { allow: false, why: `ตาราง PII และชนชื่อต้องห้าม ${pattern}` }
     return { allow: true, why: 'อยู่ใน allowlist ของตาราง PII' }
   }

@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #F9F9F7; font-family: 'Inter', 'IBM Plex Sans Thai', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #0D9668; } a:hover { color: #0A7A55; }
+    .ic { display: block; }
+  </style>
+</helmet>
+
+<div style="width: 320px; box-sizing: border-box; padding: 10px; background: #F9F9F7; color: #231E1A; border-left: 1px solid #E4E1DD;">
+  <section style="border-radius: 10px; border: 1px solid #E4E1DD; background: #FDFDFC; padding: 10px 12px 12px;">
+    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700;">
+      <h3 style="margin: 0; font-size: 12.5px; font-weight: 700;">ตรวจเครดิต</h3>
+      <span style="font-weight: 600; color: #746A63;">(3)</span>
+      <span style="margin-left: auto; font-size: 12px; font-weight: 600; color: #746A63; opacity: 0.55;">＋ เลือกไฟล์</span>
+    </div>
+
+    <div style="display: flex; gap: 6px; opacity: 0.55;">
+      <div style="flex: 1; display: flex; align-items: center; gap: 6px; border-radius: 8px; border: 1px solid rgba(228, 225, 221, 0.5); background: #F7F7F5; padding: 6px 8px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#746A63" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ic"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+        <span style="font-size: 11px; font-weight: 600;">1</span>
+      </div>
+      <div style="flex: 1; display: flex; align-items: center; gap: 6px; border-radius: 8px; border: 1px solid rgba(228, 225, 221, 0.5); background: #F7F7F5; padding: 6px 8px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#746A63" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ic"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+        <span style="font-size: 11px; font-weight: 600;">2</span>
+      </div>
+      <div style="flex: 1; display: flex; align-items: center; gap: 6px; border-radius: 8px; border: 1px solid rgba(228, 225, 221, 0.5); background: #F7F7F5; padding: 6px 8px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#746A63" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ic"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+        <span style="font-size: 11px; font-weight: 600;">3</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 10px; border-radius: 10px; border: 1px solid rgba(13, 150, 104, 0.3); background: rgba(13, 150, 104, 0.05); padding: 14px 12px; text-align: center;">
+      <div style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 700; color: #0D9668;">        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="ic"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        กำลังวิเคราะห์...
+      </div>
+      <div style="margin-top: 8px; height: 3px; border-radius: 999px; background: rgba(13, 150, 104, 0.15); overflow: hidden;">
+        <div style="width: 45%; height: 100%; background: #0D9668;"></div>
+      </div>
+      <p style="margin: 8px 0 0; font-size: 11px; line-height: 1.375; color: #746A63;">ปิดแผงไปคุยต่อได้ ผลจะรออยู่ · ปกติ 20 ถึง 40 วินาที</p>
+    </div>
+  </section>
+</div>
+</x-dc>
+</body>
+</html>

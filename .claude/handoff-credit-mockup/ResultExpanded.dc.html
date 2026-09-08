@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #F9F9F7; font-family: 'Inter', 'IBM Plex Sans Thai', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #0D9668; } a:hover { color: #0A7A55; }
+    .ic { display: block; }
+  </style>
+</helmet>
+
+<div style="width: 320px; box-sizing: border-box; padding: 10px; background: #F9F9F7; color: #231E1A; border-left: 1px solid #E4E1DD;">
+  <section style="border-radius: 10px; border: 1px solid #E4E1DD; background: #FDFDFC; padding: 10px 12px 12px;">
+    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700;">
+      <h3 style="margin: 0; font-size: 12.5px; font-weight: 700;">ตรวจเครดิต</h3>
+      <span style="font-weight: 600; color: #746A63;">(3)</span>
+      <span style="margin-left: auto; font-size: 12px; font-weight: 600; color: #0D9668;">＋ เลือกไฟล์</span>
+    </div>
+
+    <div style="border-radius: 8px; border: 1px solid rgba(13, 150, 104, 0.3); background: rgba(13, 150, 104, 0.05); padding: 10px 12px;">
+      <div style="font-size: 11px; color: #746A63;">ผ่อนไหวเดือนละ</div>
+      <div style="display: flex; align-items: baseline;">
+        <span style="font-size: 26px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;">7,300</span>
+        <span style="margin-left: 4px; font-size: 14px; font-weight: 600; color: #746A63;">฿/เดือน</span>
+      </div>
+      <div style="margin-top: 4px; font-size: 11px; color: #746A63; font-variant-numeric: tabular-nums;">รายรับ 32,400 − รายจ่าย 25,100</div>
+    </div>
+
+    <div style="margin-top: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;">
+      <div style="border-radius: 8px; border: 1px solid rgba(228, 225, 221, 0.5); background: #F7F7F5; padding: 8px;">
+        <div style="font-size: 11px; color: #746A63;">รายรับเฉลี่ย/เดือน</div>
+        <div style="margin-top: 2px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;">32,400</div>
+      </div>
+      <div style="border-radius: 8px; border: 1px solid rgba(228, 225, 221, 0.5); background: #F7F7F5; padding: 8px;">
+        <div style="font-size: 11px; color: #746A63;">รายจ่ายเฉลี่ย/เดือน</div>
+        <div style="margin-top: 2px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;">25,100</div>
+      </div>
+      <div style="border-radius: 8px; border: 1px solid rgba(228, 225, 221, 0.5); background: #F7F7F5; padding: 8px;">
+        <div style="font-size: 11px; color: #746A63;">ยอดคงเหลือเฉลี่ย</div>
+        <div style="margin-top: 2px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;">18,250</div>
+      </div>
+      <div style="border-radius: 8px; border: 1px solid rgba(228, 225, 221, 0.5); background: #F7F7F5; padding: 8px;">
+        <div style="font-size: 11px; color: #746A63;">เงินเดือนเข้า</div>
+        <div style="margin-top: 2px; font-size: 12px; font-weight: 700;">เงินเข้า 3/3 เดือน</div>
+      </div>
+    </div>
+
+    <p style="margin: 8px 0 0; font-size: 11px; color: #746A63; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">กสิกรไทย · สเตทเม้น 1 มิ.ย. ถึง 31 ส.ค. · 3 ไฟล์</p>
+
+    <div style="margin-top: 10px; border-top: 1px solid #E4E1DD; padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: #17A34A;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="ic"><path d="M20 6 9 17l-5-5"/></svg>
+          ปัจจัยบวก
+        </div>
+        <ul style="margin: 4px 0 0; padding-left: 16px; font-size: 11px; line-height: 1.65; color: rgba(35, 30, 26, 0.8);">
+          <li>เงินเดือนเข้าตรงทุกวันที่ 28 ครบ 3 เดือน</li>
+          <li>ยอดคงเหลือปลายเดือนไม่เคยต่ำกว่า 12,000</li>
+        </ul>
+      </div>
+      <div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: #C2810B;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="ic"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          ปัจจัยเสี่ยง
+        </div>
+        <ul style="margin: 4px 0 0; padding-left: 16px; font-size: 11px; line-height: 1.65; color: rgba(35, 30, 26, 0.8);">
+          <li>มีรายการโอนออกก้อนใหญ่ 2 ครั้ง รวม 41,000</li>
+          <li>ผ่อนสินค้าอื่นอยู่ประมาณ 3,200/เดือน</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #E4E1DD; padding-top: 8px;">
+      <span style="font-size: 11px; color: #746A63;">อ่านโดย AI · 7 ก.ย. 69 · 14:32</span>
+      <span style="font-size: 12px; font-weight: 600; color: #0D9668;">ดูฉบับเต็ม ›</span>
+    </div>
+
+    <div style="margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; padding: 4px 0; font-size: 12px; font-weight: 600; color: #0D9668;">
+      ย่อ
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="ic"><path d="m18 15-6-6-6 6"/></svg>
+    </div>
+  </section>
+</div>
+</x-dc>
+</body>
+</html>

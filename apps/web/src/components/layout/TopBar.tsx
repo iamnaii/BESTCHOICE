@@ -33,7 +33,7 @@ import { useCommandPalette } from '@/components/CommandPalette';
 import { ChatUnreadBadge } from './Sidebar';
 import { isChatVisibleForRole } from '@/config/menu';
 import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
-import { CompanyPillSwitcher } from './CompanyPillSwitcher';
+import { CompanySwitcher } from './CompanySwitcher';
 
 const NOTIFICATION_ROLES = ['OWNER', 'BRANCH_MANAGER'];
 
@@ -82,13 +82,13 @@ function UserDropdown() {
             <span className="text-white text-[13px] font-bold leading-none">{initials}</span>
           </div>
           {/* Name (hidden on small) */}
-          <div className="hidden sm:flex flex-col items-start leading-tight">
-            <span className="text-[13px] font-semibold text-foreground leading-tight">{user.name}</span>
+          <div className="hidden xl:flex min-w-0 max-w-44 flex-col items-start leading-tight">
+            <span className="max-w-full truncate text-[13px] font-semibold text-foreground leading-tight">{user.name}</span>
             <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-md mt-0.5', roleCls)}>
               {roleLabel}
             </span>
           </div>
-          <ChevronDown className="size-3.5 text-muted-foreground/60 hidden sm:block" strokeWidth={1.75} />
+          <ChevronDown className="size-3.5 text-muted-foreground/60 hidden xl:block" strokeWidth={1.75} />
         </button>
       </DropdownMenuTrigger>
 
@@ -173,10 +173,10 @@ export default function TopBar() {
   }, [pathname]);
 
   return (
-    <header data-print-hide="true" className="sticky top-0 z-10 h-[60px] bg-background border-b border-border flex items-center justify-between shrink-0 px-5 lg:px-6">
+    <header data-print-hide="true" className="sticky top-0 z-10 h-[60px] bg-background border-b border-border flex items-center justify-between shrink-0 px-2 sm:px-5 lg:px-6">
 
       {/* ── Left: hamburger (mobile) + breadcrumb ── */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex min-w-9 items-center gap-2.5">
         {/* Mobile hamburger */}
         {isMobile && (
           <Button
@@ -191,27 +191,27 @@ export default function TopBar() {
         )}
 
         {/* Breadcrumb — desktop only */}
-        <nav className="hidden lg:flex items-center gap-1.5 text-sm leading-snug">
+        <nav className="hidden min-w-0 lg:flex items-center gap-1.5 text-sm leading-snug">
           <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">หน้าหลัก</Link>
           {pathname !== '/' && (
             <>
               <span className="text-muted-foreground/40">/</span>
-              <span className="text-foreground font-medium">{pageTitle}</span>
+              <span className="truncate text-foreground font-medium">{pageTitle}</span>
             </>
           )}
         </nav>
 
         {/* Branch badge — shown on mobile/tablet when no breadcrumb */}
         {user?.branchName && (
-          <span className="lg:hidden inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/60 text-[12px] font-medium text-muted-foreground border border-border/40">
-            <Building2 className="size-3 opacity-50" strokeWidth={1.75} />
-            {user.branchName}
+          <span className="hidden md:inline-flex lg:hidden min-w-0 max-w-40 items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/60 text-[12px] font-medium text-muted-foreground border border-border/40">
+            <Building2 className="size-3 shrink-0 opacity-50" strokeWidth={1.75} />
+            <span className="truncate">{user.branchName}</span>
           </span>
         )}
       </div>
 
       {/* ── Right: search + actions + user ─────────── */}
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0 sm:gap-1">
 
         {/* Search button → opens Command Palette */}
         <button
@@ -223,8 +223,8 @@ export default function TopBar() {
           <span className="text-muted-foreground">ค้นหา... (⌘K)</span>
         </button>
 
-        {/* SP7.3 — entity switcher pill (only renders for dual-entity users) */}
-        <CompanyPillSwitcher />
+        {/* Company data scope (only renders for dual-company users) */}
+        <CompanySwitcher />
 
         {/* Chat inbox button */}
         {user && isChatVisibleForRole(user.role) && (

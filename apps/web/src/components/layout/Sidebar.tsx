@@ -258,7 +258,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
               .map((zone) => {
                 const Icon = zone === 'shop' ? ShoppingCart : CircleDollarSign;
                 const active = currentZone === zone;
-                const label = zone === 'shop' ? 'หน้าร้าน' : 'ไฟแนนซ์';
+                const label = zone === 'shop' ? 'งานหน้าร้าน' : 'งานการเงิน';
                 return (
                   <Tooltip key={zone}>
                     <TooltipTrigger asChild>

@@ -8,7 +8,7 @@ import { useUiFlags } from '@/hooks/useUiFlags';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
-import { Sheet, SheetContent, SheetBody } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetBody, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import CommandPalette from '@/components/CommandPalette';
 import ShortcutsHelpOverlay from '@/components/ShortcutsHelpOverlay';
 import MobileBottomNav from './MobileBottomNav';
@@ -42,6 +42,8 @@ function MobileSidebar() {
         side="left"
         close={false}
       >
+        <SheetTitle className="sr-only">เมนูหลัก</SheetTitle>
+        <SheetDescription className="sr-only">เลือกหมวดงานและเมนูที่ต้องการ</SheetDescription>
         <SheetBody className="p-0 overflow-y-auto h-full">
           <Sidebar mobile />
         </SheetBody>

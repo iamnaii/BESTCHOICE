@@ -44,8 +44,8 @@ test.describe('SP1 — Sidebar zones', () => {
   test('OWNER sees both pills + gear, can switch zones', async ({ page }) => {
     await loginAndExpandSidebar(page, 'OWNER');
 
-    const shopPill = page.getByRole('tab', { name: 'หน้าร้าน' }).first();
-    const finPill = page.getByRole('tab', { name: 'ไฟแนนซ์' }).first();
+    const shopPill = page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' }).first();
+    const finPill = page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' }).first();
     const gearBtn = page.getByRole('button', { name: 'ตั้งค่ากลาง' }).first();
 
     await expect(shopPill).toBeVisible();
@@ -63,8 +63,8 @@ test.describe('SP1 — Sidebar zones', () => {
     await loginAndExpandSidebar(page, 'SALES');
 
     // Pill switcher is hidden when role has <2 zones (PillSwitcher.tsx:19).
-    await expect(page.getByRole('tab', { name: 'หน้าร้าน' })).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'ไฟแนนซ์' })).toHaveCount(0);
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' })).toHaveCount(0);
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' })).toHaveCount(0);
     // Gear is hidden when zoneConfig.showSettingsGear === false.
     await expect(page.getByRole('button', { name: 'ตั้งค่ากลาง' })).toHaveCount(0);
   });
@@ -73,21 +73,21 @@ test.describe('SP1 — Sidebar zones', () => {
     await loginAndExpandSidebar(page, 'ACCOUNTANT');
 
     // ACCOUNTANT's zoneConfig has only ['fin'] → PillSwitcher renders null.
-    await expect(page.getByRole('tab', { name: 'หน้าร้าน' })).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'ไฟแนนซ์' })).toHaveCount(0);
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' })).toHaveCount(0);
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' })).toHaveCount(0);
   });
 
   test('OWNER zone selection persists across reload', async ({ page }) => {
     await loginAndExpandSidebar(page, 'OWNER');
 
-    await page.getByRole('tab', { name: 'ไฟแนนซ์' }).first().click();
+    await page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' }).first().click();
     await expect(page).toHaveURL(/\/finance-portfolio/);
 
     // Re-inject sidebar_collapse so it survives the reload (addInitScript
     // already does this for navigations, but reload triggers a fresh boot).
     await page.reload({ waitUntil: 'domcontentloaded' });
 
-    const finPill = page.getByRole('tab', { name: 'ไฟแนนซ์' }).first();
+    const finPill = page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' }).first();
     await expect(finPill).toBeVisible({ timeout: 10_000 });
     await expect(finPill).toHaveAttribute('aria-selected', 'true');
   });
@@ -96,15 +96,15 @@ test.describe('SP1 — Sidebar zones', () => {
     await loginAndExpandSidebar(page, 'OWNER');
 
     // Force into SHOP zone first.
-    await page.getByRole('tab', { name: 'หน้าร้าน' }).first().click();
-    await expect(page.getByRole('tab', { name: 'หน้าร้าน' }).first()).toHaveAttribute(
+    await page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' }).first().click();
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานหน้าร้าน' }).first()).toHaveAttribute(
       'aria-selected',
       'true',
     );
 
     // MainLayout.tsx:88 useEffect resolves zone from pathname and auto-switches.
     await page.goto('/payments', { waitUntil: 'domcontentloaded' });
-    const finPill = page.getByRole('tab', { name: 'ไฟแนนซ์' }).first();
+    const finPill = page.getByRole('tablist', { name: 'หมวดงาน' }).getByRole('tab', { name: 'งานการเงิน' }).first();
     await expect(finPill).toBeVisible({ timeout: 10_000 });
     await expect(finPill).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
   });

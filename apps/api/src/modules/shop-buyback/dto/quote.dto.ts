@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
+  IsBoolean,
   IsIn,
   IsISO8601,
   IsNotEmpty,
@@ -25,6 +26,10 @@ export class QuoteAnswerDto {
 }
 
 export class BuybackQuoteDto {
+  @IsOptional()
+  @IsBoolean({ message: 'กรุณายืนยันเงื่อนไขรับซื้อ' })
+  deviceEligibilityConfirmed?: boolean;
+
   @IsString()
   @IsNotEmpty({ message: 'กรุณาระบุรุ่น' })
   model!: string;

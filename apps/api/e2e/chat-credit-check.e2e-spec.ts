@@ -433,11 +433,16 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
           path === '/ocr/bank-statement' ||
           path === '/credit-checks'
         ) {
-          if (path.endsWith('/credit-check/messages') && holdAttachment) {
-            attachmentEntered?.();
-            await holdAttachment;
-          }
+          const delayedAttachment = path.endsWith('/credit-check/messages')
+            && route.request().method() === 'POST' ? holdAttachment : null;
           const response = await route.fetch({ url: `${apiOrigin}/api${path}${url.search}` });
+          if (delayedAttachment) {
+            expect(response.ok()).toBe(true);
+            attachmentEntered?.();
+            // Delay delivery to the client after real HTTP completes. This tests
+            // late success after navigation without deferring context cookie lookup.
+            await delayedAttachment;
+          }
           return route.fulfill({ response });
         }
         if (path === '/auth/me')
@@ -564,7 +569,10 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
       await page.getByRole('button', { name: 'กลับ', exact: true }).click();
       await page.getByText('TEST SECOND ROOM', { exact: true }).click();
       await browserExpect.poll(() => new URL(page.url()).pathname).toBe(`/inbox/${otherRoom.id}`);
+      const deliveredAttachment = page.waitForResponse((response) =>
+        response.request().method() === 'POST' && response.url().includes('/credit-check/messages'));
       releaseAttachment();
+      expect((await deliveredAttachment).ok()).toBe(true);
       await page.getByRole('button', { name: 'เปิดแผง', exact: true }).last().click();
       await browserExpect.poll(() => new URL(page.url()).pathname).toBe(`/inbox/${roomId}`);
       const sheet = page.getByRole('dialog');

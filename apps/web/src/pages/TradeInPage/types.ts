@@ -1,3 +1,5 @@
+import type { BuybackBreakdown } from '@installment/shared';
+
 export type TradeInSubmissionSource = 'OFFLINE' | 'ONLINE';
 export type TradeInFlow = 'EXCHANGE' | 'BUYBACK';
 
@@ -53,19 +55,14 @@ export interface TradeIn {
     questionKey: string;
     title: string;
     selectType: 'SINGLE' | 'MULTI';
-    choices: Array<{ choiceId: string; label: string; deductType: 'PERCENT' | 'FIXED'; deductValue: string }>;
+    choices: Array<{
+      choiceId: string;
+      label: string;
+      deductType: 'PERCENT' | 'FIXED';
+      deductValue: string;
+    }>;
   }> | null;
-  quoteBreakdown?: {
-    maxPrice: string;
-    fixedTotal: string;
-    pctTotal: string;
-    price: string;
-    lines: Array<{ label: string; deductType: 'PERCENT' | 'FIXED'; deductValue: string; amount: string }>;
-    cashPrice?: string;
-    exchangePrice?: string;
-    bonusPct?: string;
-    chosenFlow?: 'BUYBACK' | 'EXCHANGE';
-  } | null;
+  quoteBreakdown?: BuybackBreakdown | null;
 }
 
 export interface TradeInsResponse {

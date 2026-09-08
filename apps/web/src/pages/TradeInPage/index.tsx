@@ -94,7 +94,7 @@ function Segmented<T extends string>({
 const TAB_OPTIONS = [
   ['list', 'รายการรับซื้อ'],
   ['valuations', 'ตารางราคากลาง'],
-  ['questions', 'แบบประเมินออนไลน์'],
+  ['questions', 'แบบตรวจสภาพ'],
 ] as const;
 
 const SOURCE_OPTIONS = [
@@ -132,8 +132,6 @@ export default function TradeInPage() {
 
   // Appraise modal state
   const [appraiseModal, setAppraiseModal] = useState<TradeIn | null>(null);
-  const [appraiseValue, setAppraiseValue] = useState('');
-  const [appraiseCondition, setAppraiseCondition] = useState('B');
 
   // Accept modal state
   const [acceptModal, setAcceptModal] = useState<TradeIn | null>(null);
@@ -158,31 +156,6 @@ export default function TradeInPage() {
   });
 
   /* ─── Mutations ─── */
-
-  const appraiseMutation = useMutation({
-    mutationFn: async ({
-      id,
-      value,
-      condition,
-    }: {
-      id: string;
-      value: number;
-      condition: string;
-    }) =>
-      api.patch(`/trade-ins/${id}/appraise`, {
-        offeredPrice: value,
-        deviceCondition: condition,
-      }),
-    onSuccess: () => {
-      toast.success('ประเมินราคาเรียบร้อย');
-      queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
-      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
-      setAppraiseModal(null);
-      setAppraiseValue('');
-      setAppraiseCondition('B');
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
 
   const acceptMutation = useMutation({
     mutationFn: async ({ id, body }: { id: string; body: AcceptRequest }) =>
@@ -279,12 +252,6 @@ export default function TradeInPage() {
     setFlowFilter('ALL');
     setSearchInput('');
     setPage(1);
-  }
-
-  function handleCloseAppraise() {
-    setAppraiseModal(null);
-    setAppraiseValue('');
-    setAppraiseCondition('B');
   }
 
   function handleCloseAccept() {
@@ -405,7 +372,10 @@ export default function TradeInPage() {
             canManage={canManage}
             onRefetch={refetch}
             onPageChange={setPage}
-            onAppraise={(item) => (item.quoteBreakdown ? setOnlineAppraise(item) : setAppraiseModal(item))}
+            onAppraise={(item) => {
+              if (item.quoteBreakdown) { setOnlineAppraise(item); return; }
+              setAppraiseModal(item);
+            }}
             onAccept={setAcceptModal}
             onReject={(id) => rejectMutation.mutate(id)}
             onVoucher={handleVoucher}
@@ -414,16 +384,7 @@ export default function TradeInPage() {
             voucherLoadingId={voucherLoadingId ?? (generateVoucherMutation.isPending ? (generateVoucherMutation.variables ?? null) : null)}
           />
 
-          <AppraisalModal
-            item={appraiseModal}
-            value={appraiseValue}
-            condition={appraiseCondition}
-            isPending={appraiseMutation.isPending}
-            onValueChange={setAppraiseValue}
-            onConditionChange={setAppraiseCondition}
-            onConfirm={(id, value, condition) => appraiseMutation.mutate({ id, value, condition })}
-            onClose={handleCloseAppraise}
-          />
+          <AppraisalModal item={appraiseModal} onClose={() => setAppraiseModal(null)} />
 
           <AcceptModal
             item={acceptModal}

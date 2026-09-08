@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
@@ -7,10 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
+import AppraisalModal from './AppraisalModal';
 import type { TradeIn } from '../types';
-
-interface QuestionChoice { id: string; label: string; deductType: 'PERCENT' | 'FIXED'; deductValue: string }
-interface Question { id: string; key: string; title: string; selectType: 'SINGLE' | 'MULTI'; choices: QuestionChoice[] }
 
 interface Props {
   item: TradeIn | null;
@@ -25,25 +23,12 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
   const [mode, setMode] = useState<Mode>('AS_ANSWERED');
-  const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [manualPrice, setManualPrice] = useState('');
   const [manualReason, setManualReason] = useState('');
   const [cashFallback, setCashFallback] = useState(false);
-
-  // questionnaire ปัจจุบัน (public endpoint) — ใช้เฉพาะโหมดแก้คำตอบ
-  const questionsQ = useQuery<{ questions: Question[] }>({
-    queryKey: ['buyback-questions-public'],
-    queryFn: () => api.get('/shop/buyback/questions').then((r) => r.data),
-    enabled: !!item && mode === 'REVISED',
-  });
-
-  // prefill จากคำตอบเดิมของลูกค้าเมื่อเปิดโหมด REVISED ครั้งแรก
-  const prefill = useMemo(() => {
-    const map: Record<string, string[]> = {};
-    for (const a of item?.conditionAnswers ?? []) map[a.questionKey] = a.choices.map((c) => c.choiceId);
-    return map;
-  }, [item]);
-  const effectiveAnswers = Object.keys(answers).length > 0 ? answers : prefill;
+  const [eligibleItemId, setEligibleItemId] = useState<string | null>(null);
+  const eligibilityRequired = item?.quoteBreakdown?.eligibilityRequired === true;
+  const deviceEligibilityConfirmed = !!item && eligibleItemId === item.id;
 
   const appraise = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -52,38 +37,51 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
       toast.success('ยืนยันราคาเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
       if (item) queryClient.invalidateQueries({ queryKey: ['trade-in-detail', item.id] });
-      handleClose();
+      resetAndClose();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   function handleClose() {
+    if (appraise.isPending) return;
+    resetAndClose();
+  }
+
+  function resetAndClose() {
     setMode('AS_ANSWERED');
-    setAnswers({});
     setManualPrice('');
     setManualReason('');
     setCashFallback(false);
+    setEligibleItemId(null);
     onClose();
   }
 
   function confirm() {
+    if (appraise.isPending || (eligibilityRequired && !deviceEligibilityConfirmed)) return;
+    const eligibility = eligibilityRequired ? { deviceEligibilityConfirmed } : {};
     if (mode === 'AS_ANSWERED') {
-      appraise.mutate(cashFallback ? { mode, useCashPrice: true } : { mode });
-    } else if (mode === 'REVISED') {
-      const qs = questionsQ.data?.questions ?? [];
-      const payload = qs.map((q) => ({ questionKey: q.key, choiceIds: effectiveAnswers[q.key] ?? [] }));
-      const incomplete = qs.some((q) => q.selectType === 'SINGLE' && (effectiveAnswers[q.key] ?? []).length !== 1);
-      if (incomplete) { toast.error('ตอบแบบประเมินให้ครบทุกข้อ'); return; }
-      appraise.mutate({ mode, answers: payload });
-    } else {
+      appraise.mutate({ mode, ...(cashFallback ? { useCashPrice: true } : {}), ...eligibility });
+    } else if (mode === 'MANUAL') {
       const price = Number(manualPrice);
-      if (!Number.isFinite(price) || price <= 0) { toast.error('กรุณาระบุราคา'); return; }
-      if (manualReason.trim().length < 3) { toast.error('ระบุเหตุผลอย่างน้อย 3 ตัวอักษร'); return; }
-      appraise.mutate({ mode, offeredPrice: price, reason: manualReason });
+      if (!Number.isFinite(price) || price <= 0) {
+        toast.error('กรุณาระบุราคา');
+        return;
+      }
+      if (manualReason.trim().length < 3) {
+        toast.error('ระบุเหตุผลอย่างน้อย 3 ตัวอักษร');
+        return;
+      }
+      appraise.mutate({ mode, offeredPrice: price, reason: manualReason, ...eligibility });
     }
   }
 
   const quoted = item?.quoteBreakdown ? Number(item.quoteBreakdown.price) : null;
+
+  if (mode === 'REVISED') {
+    return (
+      <AppraisalModal item={item} onClose={handleClose} onBack={() => setMode('AS_ANSWERED')} />
+    );
+  }
 
   return (
     <Modal isOpen={!!item} onClose={handleClose} title="ยืนยันราคาใบเสนอออนไลน์" size="lg">
@@ -92,12 +90,16 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
           <div className="rounded-lg bg-muted p-3 space-y-1">
             <div className="font-semibold">
               {item.deviceBrand} {item.deviceModel} {item.deviceStorage ?? ''}
-              <span className={`ml-2 text-xs font-medium ${item.flow === 'EXCHANGE' ? 'text-warning' : 'text-muted-foreground'}`}>
+              <span
+                className={`ml-2 text-xs font-medium ${item.flow === 'EXCHANGE' ? 'text-warning' : 'text-muted-foreground'}`}
+              >
                 {item.flow === 'EXCHANGE' ? 'เทิร์นแลกเครื่องใหม่ (เครดิต)' : 'รับซื้อเงินสด'}
               </span>
             </div>
             {quoted !== null && (
-              <div className="text-lg font-bold">ราคาที่เสนอออนไลน์: ฿{quoted.toLocaleString()}</div>
+              <div className="text-lg font-bold">
+                ราคาที่เสนอออนไลน์: ฿{quoted.toLocaleString()}
+              </div>
             )}
             {item.quoteBreakdown?.cashPrice && item.quoteBreakdown?.exchangePrice && (
               <div className="text-xs text-muted-foreground">
@@ -112,14 +114,22 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
             <Button
               variant={mode === 'AS_ANSWERED' ? 'primary' : 'outline'}
               size="sm"
-              onClick={() => { setMode('AS_ANSWERED'); setCashFallback(false); }}
+              disabled={appraise.isPending}
+              onClick={() => {
+                setMode('AS_ANSWERED');
+                setCashFallback(false);
+              }}
             >
               สภาพตรงตามที่ตอบ
             </Button>
             <Button
-              variant={mode === 'REVISED' ? 'primary' : 'outline'}
+              variant="outline"
               size="sm"
-              onClick={() => { setMode('REVISED'); setCashFallback(false); }}
+              disabled={appraise.isPending}
+              onClick={() => {
+                setMode('REVISED');
+                setCashFallback(false);
+              }}
             >
               สภาพไม่ตรง — แก้คำตอบ
             </Button>
@@ -127,7 +137,11 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
               <Button
                 variant={mode === 'MANUAL' ? 'primary' : 'outline'}
                 size="sm"
-                onClick={() => { setMode('MANUAL'); setCashFallback(false); }}
+                disabled={appraise.isPending}
+                onClick={() => {
+                  setMode('MANUAL');
+                  setCashFallback(false);
+                }}
               >
                 กำหนดราคาเอง (OWNER)
               </Button>
@@ -136,7 +150,11 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
               <Button
                 variant={cashFallback ? 'primary' : 'outline'}
                 size="sm"
-                onClick={() => { setMode('AS_ANSWERED'); setCashFallback(true); }}
+                disabled={appraise.isPending}
+                onClick={() => {
+                  setMode('AS_ANSWERED');
+                  setCashFallback(true);
+                }}
               >
                 ลูกค้าไม่ซื้อเครื่อง — ใช้ราคาเงินสด
               </Button>
@@ -145,77 +163,61 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
 
           {mode === 'AS_ANSWERED' && (
             <p className="text-muted-foreground">
-              ยืนยัน{item.flow === 'EXCHANGE' ? 'มูลค่าเทิร์น (เครดิตซื้อเครื่องใหม่)' : 'รับซื้อ'}ที่ ฿
-              {Number(item.estimatedValue ?? quoted ?? 0).toLocaleString()} ตามใบเสนอ
+              ยืนยัน{item.flow === 'EXCHANGE' ? 'มูลค่าเทิร์น (เครดิตซื้อเครื่องใหม่)' : 'รับซื้อ'}
+              ที่ ฿{Number(item.estimatedValue ?? quoted ?? 0).toLocaleString()} ตามใบเสนอ
             </p>
           )}
 
           {cashFallback && item.quoteBreakdown?.cashPrice && (
             <p className="text-muted-foreground">
-              ถอยเป็นขายเงินสด ฿{Number(item.quoteBreakdown.cashPrice).toLocaleString()} — ระบบจะเปลี่ยนรายการเป็น "รับซื้อ"
+              ถอยเป็นขายเงินสด ฿{Number(item.quoteBreakdown.cashPrice).toLocaleString()} —
+              ระบบจะเปลี่ยนรายการเป็น "รับซื้อ"
             </p>
-          )}
-
-          {mode === 'REVISED' && (
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {questionsQ.isLoading && <p className="text-muted-foreground">กำลังโหลดแบบประเมิน...</p>}
-              {(questionsQ.data?.questions ?? []).map((q) => {
-                const chosen = effectiveAnswers[q.key] ?? [];
-                return (
-                  <div key={q.key}>
-                    <Label>{q.title}</Label>
-                    <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
-                      {q.choices.map((c) => {
-                        const selected = chosen.includes(c.id);
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() =>
-                              setAnswers((_prev) => {
-                                const base = { ...effectiveAnswers };
-                                if (q.selectType === 'SINGLE') return { ...base, [q.key]: [c.id] };
-                                return {
-                                  ...base,
-                                  [q.key]: selected ? chosen.filter((x) => x !== c.id) : [...chosen, c.id],
-                                };
-                              })
-                            }
-                            className={`rounded-lg border p-2 text-left text-xs leading-snug transition-colors ${
-                              selected ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'
-                            }`}
-                          >
-                            {c.label}
-                            <span className="text-muted-foreground">
-                              {' '}({c.deductType === 'PERCENT' ? `−${Number(c.deductValue)}%` : `−฿${Number(c.deductValue).toLocaleString()}`})
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-              <p className="text-xs text-muted-foreground">ระบบจะคิดราคาใหม่จากตารางค่าหักปัจจุบันโดยอัตโนมัติ</p>
-            </div>
           )}
 
           {mode === 'MANUAL' && (
             <div className="space-y-3">
               <div>
                 <Label>ราคาที่เสนอ (บาท) *</Label>
-                <Input className="mt-1" type="number" value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} />
+                <Input
+                  className="mt-1"
+                  type="number"
+                  value={manualPrice}
+                  onChange={(e) => setManualPrice(e.target.value)}
+                />
               </div>
               <div>
                 <Label>เหตุผล * (บันทึก audit)</Label>
-                <Input className="mt-1" value={manualReason} onChange={(e) => setManualReason(e.target.value)} />
+                <Input
+                  className="mt-1"
+                  value={manualReason}
+                  onChange={(e) => setManualReason(e.target.value)}
+                />
               </div>
             </div>
           )}
 
+          {eligibilityRequired && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 shrink-0 accent-primary"
+                aria-label="ยืนยันเครื่องผ่านเงื่อนไขรับซื้อ"
+                checked={deviceEligibilityConfirmed}
+                disabled={appraise.isPending}
+                onChange={(event) => setEligibleItemId(event.target.checked ? item.id : null)}
+              />
+              <span>{item.quoteBreakdown?.eligibilityText}</span>
+            </label>
+          )}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={handleClose}>ยกเลิก</Button>
-            <Button onClick={confirm} disabled={appraise.isPending}>
+            <Button variant="outline" onClick={handleClose} disabled={appraise.isPending}>
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={confirm}
+              disabled={appraise.isPending || (eligibilityRequired && !deviceEligibilityConfirmed)}
+            >
               {appraise.isPending ? 'กำลังบันทึก...' : 'ยืนยันราคา'}
             </Button>
           </div>

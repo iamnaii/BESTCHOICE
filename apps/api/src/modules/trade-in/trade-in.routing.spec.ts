@@ -41,12 +41,12 @@ describe('TradeInController routing', () => {
       providers: [
         { provide: TradeInService, useValue: tradeInService },
         { provide: BuybackQuestionAdminService, useValue: adminService },
-        { provide: OnlineAppraisalService, useValue: { appraiseOnline: jest.fn() } },
+        { provide: OnlineAppraisalService, useValue: { appraiseOnline: jest.fn(), referenceCatalog: jest.fn().mockResolvedValue(null) } },
         { provide: PiiAuditService, useValue: { logDecryption: jest.fn() } },
         { provide: PrismaService, useValue: {} },
       ],
     })
-      .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
+      .overrideGuard(JwtAuthGuard).useValue({ canActivate: (ctx) => { ctx.switchToHttp().getRequest().user = { role: 'OWNER', accessibleCompanies: ['SHOP'] }; return true; } })
       .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
       .overrideGuard(BranchGuard).useValue({ canActivate: () => true })
       .compile();

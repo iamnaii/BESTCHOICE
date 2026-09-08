@@ -1,4 +1,4 @@
-import { seedTradeInShop, tradeInProviders } from './trade-in-fixture';
+import { seedTradeInAppraisal, seedTradeInShop, tradeInProviders } from './trade-in-fixture';
 import { TradeInController } from '../../src/modules/trade-in/trade-in.controller';
 import { ContactsController } from '../../src/modules/contacts/contacts.controller';
 import { ProductPhotosController } from '../../src/modules/quality-control/product-photos.controller';
@@ -333,6 +333,7 @@ class PreviewController {
 async function main() {
   await db.$connect();
   await seedTradeInShop(db, 'LOCAL PREVIEW BRANCH');
+  await seedTradeInAppraisal(db);
   const user = await db.user.upsert({
     where: { email: 'preview@test.invalid' },
     update: {},

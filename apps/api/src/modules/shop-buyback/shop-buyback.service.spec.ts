@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ShopBuybackService } from './shop-buyback.service';
 import { BuybackPricingService } from './buyback-pricing.service';
@@ -91,7 +91,7 @@ describe('ShopBuybackService (instant quote)', () => {
           ),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      systemConfig: { findFirst: jest.fn().mockResolvedValue({ value: '10' }) },
+      systemConfig: { findFirst: jest.fn().mockImplementation(({ where }) => Promise.resolve(where.key === 'sell_exchange_bonus_pct' ? { value: '10' } : null)) },
     };
     line = { sendFlexMessage: jest.fn().mockResolvedValue(undefined) };
     service = new ShopBuybackService(prisma, line, new BuybackPricingService());
@@ -101,6 +101,55 @@ describe('ShopBuybackService (instant quote)', () => {
     { questionKey: 'warranty', choiceIds: ['c11'] },
     { questionKey: 'functional-issues', choiceIds: [] },
   ];
+
+  describe('model/storage reference pricing', () => {
+    const referenceQuestions = [
+      { id: 'rq1', key: 'warranty', title: 'ประกัน', selectType: 'SINGLE', choices: [{ id: 'expired', label: 'หมดประกัน', deductType: 'FIXED', deductValue: '500' }] },
+      { id: 'rq2', key: 'body', title: 'ตัวเครื่อง', selectType: 'SINGLE', choices: [{ id: 'scratched', label: 'มีรอย', deductType: 'PERCENT', deductValue: '15' }] },
+    ];
+    const catalog = { version: 1, source: 'https://www.yellobe.com/buy/detail', capturedAt: '2026-09-08T14:00:00Z',
+      profiles: { small: { pricingMode: 'MAX_PERCENT_EXACT', eligibilityRequired: true, eligibilityText: 'เครื่องเปิดใช้งานได้และไม่มีบัญชีล็อก', questions: referenceQuestions },
+        large: { pricingMode: 'MAX_PERCENT_EXACT', eligibilityRequired: true, eligibilityText: 'เครื่องเปิดใช้งานได้และไม่มีบัญชีล็อก',
+          questions: [{ ...referenceQuestions[1], choices: [{ id: 'large-scratch', label: 'มีรอย', deductType: 'PERCENT', deductValue: '20' }] }] } },
+      assignments: [{ model: 'iPhone 12', storage: '128GB', profileId: 'small' }, { model: 'iPhone 12', storage: '256GB', profileId: 'large' }] };
+    const referenceAnswers = [{ questionKey: 'warranty', choiceIds: ['expired'] }, { questionKey: 'body', choiceIds: ['scratched'] }];
+    beforeEach(() => {
+      prisma.systemConfig.findFirst.mockImplementation(({ where }) => Promise.resolve({ value: where.key === 'sell_reference_pricing_v1' ? JSON.stringify(catalog) : '10' }));
+      prisma.tradeInValuation.findFirst.mockResolvedValue({ model: 'iPhone 12', storage: '128GB', basePrice: D(5000) });
+    });
+
+    it('selects the exact capacity profile and uses it for both questions and quote snapshots', async () => {
+      const questions = await service.getQuestions('iphone 12', '128 GB');
+      expect(questions).toMatchObject({ profileId: 'small', eligibilityRequired: true, pricingMode: 'MAX_PERCENT_EXACT', questions: referenceQuestions });
+      expect((await service.getQuestions('iPhone 12', '256GB')).questions[0].choices[0].id).toBe('large-scratch');
+      const result = await service.quoteForAnswers('iPhone 12', '128GB', referenceAnswers, 'BUYBACK', { deviceEligibilityConfirmed: true });
+      expect(result.price).toBe('3825.00');
+      expect(result.grade).toBe('C');
+      expect(result.breakdown).toMatchObject({ profileId: 'small', source: catalog.source, pricingMode: 'MAX_PERCENT_EXACT', pctTotal: '15' });
+      expect(result.conditionAnswers).toContainEqual(expect.objectContaining({ questionKey: '__device_eligibility', confirmed: true, profileId: 'small' }));
+      expect(prisma.buybackQuestion.findMany).not.toHaveBeenCalled();
+    });
+
+    it('fails closed for unconfirmed eligibility, unsupported capacities and malformed runtime catalogs', async () => {
+      await expect(service.quoteForAnswers('iPhone 12', '128GB', referenceAnswers)).rejects.toThrow(BadRequestException);
+      await expect(service.getQuestions('iPhone 12', '512GB')).rejects.toThrow(BadRequestException);
+      prisma.systemConfig.findFirst.mockResolvedValue({ value: '{broken' });
+      await expect(service.getQuestions('iPhone 12', '128GB')).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('hides unsupported capacities of reference models while keeping legacy models and the no-argument questionnaire', async () => {
+      prisma.tradeInValuation.findMany.mockResolvedValue([
+        { model: 'iPhone 12', storage: '128GB', basePrice: D(5000) },
+        { model: 'iPhone 12', storage: '512GB', basePrice: D(6000) },
+        { model: 'iPhone 8', storage: '64GB', basePrice: D(1000) },
+      ]);
+      const result = await service.getCatalog();
+      expect(result.models).toEqual([{ model: 'iPhone 12', storages: [{ storage: '128GB', maxPrice: '5000.00' }] },
+        { model: 'iPhone 8', storages: [{ storage: '64GB', maxPrice: '1000.00' }] }]);
+      expect((await service.getQuestions()).eligibilityRequired).toBe(false);
+      expect(prisma.buybackQuestion.findMany).toHaveBeenCalled();
+    });
+  });
 
   const dto = {
     model: 'iPhone 15',
@@ -114,6 +163,17 @@ describe('ShopBuybackService (instant quote)', () => {
   } as any;
 
   describe('quoteForAnswers', () => {
+    it('staff assessment requires explicit answers for MULTI questions and a configured questionnaire', async () => {
+      await expect(service.quoteForAnswers('iPhone 15', '128GB', [
+        { questionKey: 'warranty', choiceIds: ['c11'] },
+      ], 'BUYBACK', { requireCompleteQuestionnaire: true })).rejects.toThrow(BadRequestException);
+      const quote = await service.quoteForAnswers('iPhone 15', '128GB', answers, 'BUYBACK', { requireCompleteQuestionnaire: true });
+      expect(quote.price).toBe('14000.00');
+      prisma.buybackQuestion.findMany.mockResolvedValue([]);
+      await expect(service.quoteForAnswers('iPhone 15', '128GB', [], 'BUYBACK', { requireCompleteQuestionnaire: true }))
+        .rejects.toThrow(BadRequestException);
+    });
+
     it('คำนวณราคาเดียว + breakdown: (14500-500)*1 → 14000', async () => {
       const r = await service.quoteForAnswers('iPhone 15', '128GB', answers);
       expect(r.available).toBe(true);
@@ -272,7 +332,7 @@ describe('ShopBuybackService (instant quote)', () => {
     });
 
     it('bonus config นอกช่วง → default 10', async () => {
-      prisma.systemConfig.findFirst.mockResolvedValue({ value: '250' });
+      prisma.systemConfig.findFirst.mockImplementation(({ where }) => Promise.resolve(where.key === 'sell_exchange_bonus_pct' ? { value: '250' } : null));
       const r = await service.quoteForAnswers('iPhone 15', '128GB', answers, 'EXCHANGE');
       expect(r.bonusPct).toBe('10');
     });

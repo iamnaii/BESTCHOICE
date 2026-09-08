@@ -4,6 +4,7 @@ export * from './liff-types';
 export * from './trade-in-declaration';
 export * from './trade-in-evidence';
 export * from './trade-in-credit';
+export type * from './buyback-questionnaire';
 export {
   calcBcInstallment,
   calcGfinInstallment,

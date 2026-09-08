@@ -9,8 +9,11 @@ import {
   Length,
   Matches,
   MaxLength,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { QuoteAnswerDto } from '../../shop-buyback/dto/quote.dto';
 import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_VERSION_ERROR } from '@installment/shared';
 
 class DeviceEvidenceDto {
@@ -219,6 +222,21 @@ export class AcceptTradeInDto extends DeviceEvidenceDto {
  * สำหรับเคส POS counter ที่พนักงานตัดสินใจรับซื้อทันทีโดยไม่ต้องส่งผู้จัดการอนุมัติ
  */
 export class QuickBuyTradeInDto extends DeviceEvidenceDto {
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => QuoteAnswerDto)
+  answers?: QuoteAnswerDto[];
+
+  @IsOptional()
+  @IsBoolean({ message: 'กรุณายืนยันเงื่อนไขรับซื้อ' })
+  deviceEligibilityConfirmed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/, { message: 'ข้อมูลตัวอย่างราคาไม่ถูกต้อง กรุณาประเมินใหม่' })
+  previewToken?: string;
+
   @IsUUID('4', { message: 'กรุณารีเฟรชหน้าเพื่อเริ่มรายการรับซื้อ' })
   requestId: string;
 

@@ -1,11 +1,25 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import type { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { readNumberFlag } from '../../utils/config.util';
-import { BuybackPricingService, DeductSelection } from './buyback-pricing.service';
+import { BuybackPricingService, DeductSelection, QuoteComputation } from './buyback-pricing.service';
 import { QuoteAnswerDto, SubmitBuybackDto } from './dto/quote.dto';
+import { REFERENCE_PRICING_CONFIG_KEY, ReferencePricingCatalog, ReferencePricingMetadata } from './reference-pricing.types';
+import { parseReferencePricingCatalog, referenceModelKey, referenceStorageKey } from './reference-pricing';
+
+type AvailableBuybackQuote = ReferencePricingMetadata & {
+  available: true;
+  model: string; storage: string; price: string; cashPrice: string; exchangePrice: string; bonusPct: string; maxPrice: string;
+  grade: 'A' | 'B' | 'C' | 'D';
+  breakdown: ReferencePricingMetadata & {
+    maxPrice: string; fixedTotal: string; pctTotal: string; price: string; cashPrice: string; exchangePrice: string;
+    bonusPct: string; chosenFlow: 'BUYBACK' | 'EXCHANGE'; lines: QuoteComputation['lines'];
+  };
+  conditionAnswers: unknown[];
+};
+type BuybackQuote = AvailableBuybackQuote | ({ available: false } & Partial<Omit<AvailableBuybackQuote, 'available'>>);
 
 /** เรียงรุ่น iPhone ใหม่→เก่า: gen*10 + (Pro Max 3 / Pro 2 / Plus 1 / base 0); parse ไม่ได้ → null (ไปท้าย) */
 export function iphoneModelRank(model: string): number | null {
@@ -43,6 +57,7 @@ export class ShopBuybackService {
 
   // ─── Catalog ──────────────────────────────────────────────────────────
   async getCatalog() {
+    const reference = await this.referenceCatalog();
     const rows = await this.prisma.tradeInValuation.findMany({
       where: {
         brand: { equals: 'Apple', mode: 'insensitive' },
@@ -55,6 +70,8 @@ export class ShopBuybackService {
 
     const byModel = new Map<string, Array<{ storage: string; maxPrice: string }>>();
     for (const r of rows) {
+      const assignments = reference?.assignments.filter((entry) => referenceModelKey(entry.model) === referenceModelKey(r.model));
+      if (assignments?.length && !assignments.some((entry) => referenceStorageKey(entry.storage) === referenceStorageKey(r.storage))) continue;
       const list = byModel.get(r.model) ?? [];
       list.push({ storage: r.storage, maxPrice: new Prisma.Decimal(r.basePrice).toFixed(2) });
       byModel.set(r.model, list);
@@ -78,25 +95,57 @@ export class ShopBuybackService {
   }
 
   // ─── Questions ────────────────────────────────────────────────────────
-  async getQuestions() {
-    const questions = await this.loadActiveQuestions();
+  async getQuestions(model?: string, storage?: string) {
+    const reference = await this.referenceFor(model, storage);
+    const questions = reference?.profile.questions ?? await this.loadActiveQuestions();
     const bonusPct = await this.getBonusPct();
     return {
       bonusPct: bonusPct.toString(),
+      ...this.referenceMetadata(reference),
       questions: questions.map((q) => ({
         id: q.id,
         key: q.key,
         title: q.title,
-        helpText: q.helpText,
+        helpText: q.helpText ?? null,
         selectType: q.selectType,
         choices: q.choices.map((c) => ({
           id: c.id,
           label: c.label,
           deductType: c.deductType,
           deductValue: new Prisma.Decimal(c.deductValue).toString(),
+          ...(c.helpText ? { helpText: c.helpText } : {}),
+          ...(c.isNoneChoice !== undefined ? { isNoneChoice: c.isNoneChoice } : {}),
         })),
       })),
     };
+  }
+
+  async referenceCatalog(): Promise<ReferencePricingCatalog | null> {
+    const row = await this.prisma.systemConfig.findFirst({ where: { key: REFERENCE_PRICING_CONFIG_KEY, deletedAt: null }, select: { value: true } });
+    if (!row) return null;
+    try { return parseReferencePricingCatalog(row.value); } catch {
+      throw new ServiceUnavailableException('ข้อมูลราคาอ้างอิงไม่สมบูรณ์ กรุณาให้ผู้ดูแลตรวจสอบก่อนประเมินราคา');
+    }
+  }
+
+  private async referenceFor(model?: string, storage?: string) {
+    const catalog = await this.referenceCatalog();
+    if (!catalog) return null;
+    // Old clients may still ask for the legacy global questionnaire without a device.
+    if (model === undefined && storage === undefined) return null;
+    if (!model?.trim() || !storage?.trim()) throw new BadRequestException('กรุณาระบุรุ่นและความจุเครื่องให้ครบ');
+    const assignments = catalog.assignments.filter((entry) => referenceModelKey(entry.model) === referenceModelKey(model));
+    if (!assignments.length) return null;
+    const assignment = assignments.find((entry) => referenceStorageKey(entry.storage) === referenceStorageKey(storage));
+    if (!assignment) throw new BadRequestException('ยังไม่มีเงื่อนไขราคาอ้างอิงสำหรับความจุนี้ กรุณาตรวจสอบรุ่นและความจุ');
+    return { catalog, assignment, profileId: assignment.profileId, profile: catalog.profiles[assignment.profileId] };
+  }
+
+  private referenceMetadata(reference: Awaited<ReturnType<ShopBuybackService['referenceFor']>>): ReferencePricingMetadata {
+    return reference ? { pricingMode: reference.profile.pricingMode, source: reference.catalog.source,
+      capturedAt: reference.catalog.capturedAt, profileId: reference.profileId,
+      eligibilityRequired: reference.profile.eligibilityRequired, eligibilityText: reference.profile.eligibilityText }
+      : { pricingMode: 'SUM_PERCENT_FLOOR10' as const, eligibilityRequired: false };
   }
 
   /** โบนัสเทิร์น % จาก SystemConfig — default 10, นอกช่วง 0–100 → 10 (spec /sell §3) */
@@ -130,12 +179,14 @@ export class ShopBuybackService {
     storage: string,
     answers: QuoteAnswerDto[],
     flow: 'BUYBACK' | 'EXCHANGE' = 'BUYBACK',
-  ) {
+    options: { requireCompleteQuestionnaire?: boolean; deviceEligibilityConfirmed?: boolean } = {},
+  ): Promise<BuybackQuote> {
+    const reference = await this.referenceFor(model, storage);
     const valuation = await this.prisma.tradeInValuation.findFirst({
       where: {
         brand: { equals: 'Apple', mode: 'insensitive' },
-        model: { equals: model, mode: 'insensitive' },
-        storage: { equals: storage, mode: 'insensitive' },
+        model: { equals: reference?.assignment.model ?? model, mode: 'insensitive' },
+        storage: { equals: reference?.assignment.storage ?? storage, mode: 'insensitive' },
         condition: 'A',
         deletedAt: null,
       },
@@ -144,7 +195,14 @@ export class ShopBuybackService {
       return { available: false as const };
     }
 
-    const questions = await this.loadActiveQuestions();
+    const questions = reference?.profile.questions ?? await this.loadActiveQuestions();
+    if (reference && options.deviceEligibilityConfirmed !== true) {
+      throw new BadRequestException('กรุณายืนยันว่าเครื่องผ่านเงื่อนไขรับซื้อก่อนประเมินราคา');
+    }
+    const requireComplete = options.requireCompleteQuestionnaire || !!reference;
+    if (requireComplete && questions.length === 0) {
+      throw new BadRequestException('ยังไม่มีแบบประเมินที่เปิดใช้งาน กรุณาตั้งค่าแบบประเมินก่อน');
+    }
     if (questions.length === 0) {
       this.logger.warn('Buyback questionnaire ว่าง — เสนอ maxPrice ตรงๆ');
     }
@@ -155,6 +213,9 @@ export class ShopBuybackService {
     }
 
     const byKey = new Map(answers.map((a) => [a.questionKey, a.choiceIds]));
+    if (requireComplete && (byKey.size !== questions.length || questions.some((q) => !byKey.has(q.key)))) {
+      throw new BadRequestException('กรุณาตอบแบบประเมินให้ครบทุกข้อ รวมข้อที่ไม่พบปัญหา');
+    }
     const selections: DeductSelection[] = [];
     const conditionAnswers: unknown[] = [];
 
@@ -170,6 +231,9 @@ export class ShopBuybackService {
         if (!c) throw new BadRequestException('กรุณาตอบแบบประเมินให้ครบทุกข้อ');
         return c;
       });
+      if (reference && chosen.length > 1 && chosen.some((choice) => choice.isNoneChoice)) {
+        throw new BadRequestException('ไม่สามารถเลือกไม่มีปัญหาพร้อมกับรายการปัญหาในข้อเดียวกัน');
+      }
       for (const c of chosen) {
         selections.push({
           choiceId: c.id,
@@ -191,8 +255,12 @@ export class ShopBuybackService {
       });
     }
 
+    if (reference) conditionAnswers.push({ questionKey: '__device_eligibility', title: reference.profile.eligibilityText,
+      selectType: 'SINGLE', choices: [{ choiceId: 'confirmed', label: 'ยืนยันว่าผ่านเงื่อนไขรับซื้อ', deductType: 'FIXED', deductValue: '0' }],
+      confirmed: true, source: reference.catalog.source, capturedAt: reference.catalog.capturedAt, profileId: reference.profileId });
+
     const maxPrice = new Prisma.Decimal(valuation.basePrice);
-    const comp = this.pricing.compute(maxPrice, selections);
+    const comp = this.pricing.compute(maxPrice, selections, reference?.profile.pricingMode);
     const bonusPct = await this.getBonusPct();
     const exchangePrice = this.pricing.applyExchangeBonus(comp.price, bonusPct);
     const flowPrice = flow === 'EXCHANGE' ? exchangePrice : comp.price;
@@ -206,7 +274,9 @@ export class ShopBuybackService {
       bonusPct: bonusPct.toString(),
       maxPrice: maxPrice.toFixed(2),
       grade: this.pricing.gradeFromPct(comp.pctTotal),
+      ...this.referenceMetadata(reference),
       breakdown: {
+        ...this.referenceMetadata(reference),
         maxPrice: maxPrice.toFixed(2),
         fixedTotal: comp.fixedTotal.toFixed(2),
         pctTotal: comp.pctTotal.toString(),
@@ -237,7 +307,7 @@ export class ShopBuybackService {
     }
 
     const flow = dto.flow ?? 'BUYBACK';
-    const quote = await this.quoteForAnswers(dto.model, dto.storage, dto.answers, flow);
+    const quote = await this.quoteForAnswers(dto.model, dto.storage, dto.answers, flow, { deviceEligibilityConfirmed: dto.deviceEligibilityConfirmed });
     if (!quote.available) {
       throw new NotFoundException('รุ่นนี้ยังไม่เปิดรับซื้อออนไลน์');
     }

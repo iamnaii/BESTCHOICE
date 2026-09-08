@@ -1,7 +1,8 @@
 import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_TEXT } from '@installment/shared';
 import { Prisma } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { TradeInService } from './trade-in.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -846,6 +847,60 @@ describe('TradeInService', () => {
       sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==',
       paymentMethod: 'CASH' as const,
     };
+
+    it('rejects a stale computed preview before creating seller, device or payout records', async () => {
+      const appraisal = { prepareQuickBuy: jest.fn().mockRejectedValue(new ConflictException('price changed')) };
+      await expect(service.quickBuy({ ...baseQuickBuyDto, deviceStorage: '128GB',
+        answers: [{ questionKey: 'screen', choiceIds: ['intact'] }], previewToken: 'a'.repeat(64) },
+      'user-1', 'branch-1', appraisal)).rejects.toThrow(ConflictException);
+      expect(appraisal.prepareQuickBuy).toHaveBeenCalled();
+      expect(prisma.tradeIn.create).not.toHaveBeenCalled();
+      expect(contactResolver.findOrCreateByNaturalKey).not.toHaveBeenCalled();
+      expect(storage.upload).not.toHaveBeenCalled();
+      expect(postBuyback).not.toHaveBeenCalled();
+    });
+
+    it('replays a finished legacy request with its original hash before any price lookup', async () => {
+      const payload = { ...baseQuickBuyDto, branchId: 'branch-1', userId: 'user-1' };
+      const oldHash = createHash('sha256').update(JSON.stringify(payload, Object.keys(payload).sort())).digest('hex');
+      prisma.tradeIn.findUnique.mockResolvedValue(makeTradeIn({ status: 'ACCEPTED', productId: 'prod-1',
+        quickBuyRequestedById: 'user-1', quickBuyRequestHash: oldHash }));
+      const appraisal = { prepareQuickBuy: jest.fn().mockRejectedValue(new ConflictException('price changed')) };
+      await expect(service.quickBuy(baseQuickBuyDto, 'user-1', 'branch-1', appraisal)).resolves.toMatchObject({ productId: 'prod-1' });
+      expect(appraisal.prepareQuickBuy).not.toHaveBeenCalled();
+      expect(prisma.tradeIn.create).not.toHaveBeenCalled();
+    });
+
+    it('persists the server appraisal, buys once and detects changed nested answers on replay', async () => {
+      let row: Record<string, unknown> = makeTradeIn({ customerId: null, appraisalLocked: false, updatedAt: new Date() });
+      const apply = ({ data }: { data: Record<string, unknown> }) => { row = { ...row, ...data }; return row; };
+      prisma.tradeIn.create.mockImplementation(async (input) => apply(input));
+      prisma.tradeIn.update.mockImplementation(async (input) => apply(input));
+      prisma.tradeIn.updateMany = jest.fn().mockImplementation((input) => { apply(input); return { count: 1 }; });
+      prisma.tradeIn.findUnique.mockImplementation(async ({ where }: { where: { quickBuyRequestId?: string } }) =>
+        where.quickBuyRequestId && !row.quickBuyRequestId ? null : row);
+      const appraisal = { prepareQuickBuy: jest.fn().mockResolvedValue({
+        device: { deviceBrand: 'Apple', deviceModel: 'iPhone 12', deviceStorage: '128GB' },
+        data: { offeredPrice: new Prisma.Decimal(3825), estimatedValue: new Prisma.Decimal(3825), deviceCondition: 'C',
+          basePriceAtAppraisal: new Prisma.Decimal(5000), quoteBreakdown: { price: '3825.00', chosenFlow: 'BUYBACK' },
+          conditionAnswers: [{ questionKey: 'body', title: 'Server condition', choices: [{ choiceId: 'scratch' }] }] },
+      }) };
+      const dto = { ...baseQuickBuyDto, deviceModel: 'iPhone 12', deviceStorage: '128GB', agreedPrice: 3825,
+        answers: [{ questionKey: 'body', choiceIds: ['scratch'] }], previewToken: 'a'.repeat(64) };
+      const first = await service.quickBuy(dto, 'user-1', 'branch-1', appraisal);
+      expect(row).toMatchObject({ status: 'ACCEPTED', flow: 'BUYBACK', appraisalLocked: true, deviceCondition: 'C', appraisedById: 'user-1' });
+      expect(prisma.tradeIn.create.mock.calls[0][0].data).toMatchObject({ deviceCondition: 'C',
+        conditionAnswers: [{ questionKey: 'body', title: 'Server condition', choices: [{ choiceId: 'scratch' }] }], quoteBreakdown: { price: '3825.00' } });
+      expect(prisma.product.create.mock.calls[0][0].data.costPrice.toString()).toBe('3825');
+      appraisal.prepareQuickBuy.mockRejectedValue(new ConflictException('configuration changed later'));
+      await expect(service.quickBuy(dto, 'user-1', 'branch-1', appraisal)).resolves.toEqual(first);
+      await expect(service.quickBuy({ ...dto, answers: [{ questionKey: 'body', choiceIds: ['intact'] }] },
+        'user-1', 'branch-1', appraisal)).rejects.toThrow(ConflictException);
+      await expect(service.quickBuy(dto, 'other-user', 'branch-1', appraisal)).rejects.toThrow(ConflictException);
+      expect(appraisal.prepareQuickBuy).toHaveBeenCalledTimes(1);
+      expect(prisma.tradeIn.create).toHaveBeenCalledTimes(1);
+      expect(postBuyback).toHaveBeenCalledTimes(1);
+    });
 
     it('records a counter payout as BUYBACK and posts the SHOP purchase journal', async () => {
       // Reproduce the schema default across the real create/appraise/accept path.

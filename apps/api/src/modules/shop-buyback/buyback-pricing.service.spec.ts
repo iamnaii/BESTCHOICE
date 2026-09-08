@@ -1,4 +1,6 @@
 import { Prisma } from '@prisma/client';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { BuybackPricingService, DeductSelection } from './buyback-pricing.service';
 
 const D = (n: number | string) => new Prisma.Decimal(n);
@@ -8,8 +10,45 @@ const sel = (
   label = 'x',
 ): DeductSelection => ({ choiceId: 'c-' + label, label, deductType, deductValue: D(deductValue) });
 
+const captured = JSON.parse(readFileSync(resolve(__dirname, '../../../../../docs/reference/yellobe-2026-09-08/pricing-observations.json'), 'utf8')) as {
+  observations: Array<{ name: string; basePrice: string; resultPrice: string;
+    selected: Array<{ inputId: string; label: string; deductType: 'FIXED' | 'PERCENT' | null; deductValue: string | null }> }>;
+};
+
 describe('BuybackPricingService', () => {
   const svc = new BuybackPricingService();
+
+  it('keeps all 13 captured anonymous source observations in the parity fixture', () => {
+    expect(captured.observations).toHaveLength(13);
+  });
+
+  it.each(captured.observations)('matches captured reference result: $name', (observation) => {
+    const selections = observation.selected.flatMap((choice) => choice.deductType && choice.deductValue !== null
+      ? [{ choiceId: choice.inputId, label: choice.label, deductType: choice.deductType, deductValue: D(choice.deductValue) }] : []);
+    const result = svc.compute(D(observation.basePrice), selections, 'MAX_PERCENT_EXACT');
+    expect(result.price.toFixed(2)).toBe(D(observation.resultPrice).toFixed(2));
+    expect(result.lines.reduce((sum, line) => sum.plus(line.amount), D(0)).toFixed(2))
+      .toBe(D(observation.basePrice).minus(result.price).toFixed(2));
+  });
+
+  it('applies BESTCHOICE zero floor and cent precision safeguards separately from source parity', () => {
+    const clamped = svc.compute(D(100), [sel('FIXED', 150), sel('PERCENT', 15)], 'MAX_PERCENT_EXACT');
+    expect(clamped.price.toString()).toBe('0');
+    expect(clamped.lines.map((line) => line.amount)).toEqual(['100.00', '0.00']);
+    expect(svc.compute(D('100.01'), [sel('PERCENT', 33.33)], 'MAX_PERCENT_EXACT').price.toFixed(2)).toBe('66.68');
+  });
+
+  it('reference mode uses the highest percentage after fixed deductions without rounding to tens', () => {
+    const mode = 'MAX_PERCENT_EXACT' as const;
+    expect(svc.compute(D(5000), [sel('FIXED', 500), sel('PERCENT', 15)], mode).price.toString()).toBe('3825');
+    const equalPercent = svc.compute(D(5000), [sel('PERCENT', 15, 'body'), sel('PERCENT', 15, 'screen')], mode);
+    expect(equalPercent.price.toString()).toBe('4250');
+    expect(equalPercent.lines.map((line) => line.amount)).toEqual(['750.00', '0.00']);
+    const display = svc.compute(D(5000), [sel('PERCENT', 15, 'body'), sel('PERCENT', 45, 'display')], mode);
+    expect(display.price.toString()).toBe('2750');
+    expect(display.pctTotal.toString()).toBe('45');
+    expect(display.lines.map((line) => line.amount)).toEqual(['0.00', '2250.00']);
+  });
 
   it('สภาพสมบูรณ์ (ไม่มีหัก) = maxPrice เต็ม', () => {
     const r = svc.compute(D(14500), []);

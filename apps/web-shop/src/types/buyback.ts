@@ -1,3 +1,15 @@
+import type { BuybackBreakdown } from '@installment/shared';
+
+export type {
+  BuybackAnswer,
+  BuybackChoice,
+  BuybackQuestion,
+  BuybackQuestionsResponse,
+  BuybackBreakdownLine,
+  BuybackBreakdown,
+  BuybackQuoteResult,
+} from '@installment/shared';
+
 export type BuybackStatus =
   | 'PENDING_APPRAISAL'
   | 'APPRAISED'
@@ -10,59 +22,6 @@ export interface BuybackCatalog {
     model: string;
     storages: Array<{ storage: string; maxPrice: string }>;
   }>;
-}
-
-export interface BuybackChoice {
-  id: string;
-  label: string;
-  deductType: 'PERCENT' | 'FIXED';
-  deductValue: string;
-}
-
-export interface BuybackQuestion {
-  id: string;
-  key: string;
-  title: string;
-  helpText: string | null;
-  selectType: 'SINGLE' | 'MULTI';
-  choices: BuybackChoice[];
-}
-
-export interface BuybackQuestionsResponse {
-  bonusPct: string;
-  questions: BuybackQuestion[];
-}
-
-export interface BuybackBreakdownLine {
-  label: string;
-  deductType: 'PERCENT' | 'FIXED';
-  deductValue: string;
-  amount: string;
-}
-
-export interface BuybackBreakdown {
-  maxPrice: string;
-  fixedTotal: string;
-  pctTotal: string;
-  price: string;
-  lines: BuybackBreakdownLine[];
-  cashPrice?: string;
-  exchangePrice?: string;
-  bonusPct?: string;
-  chosenFlow?: 'BUYBACK' | 'EXCHANGE';
-}
-
-export interface BuybackQuoteResult {
-  available: boolean;
-  model?: string;
-  storage?: string;
-  price?: string;
-  maxPrice?: string;
-  grade?: 'A' | 'B' | 'C' | 'D';
-  breakdown?: BuybackBreakdown;
-  cashPrice?: string;
-  exchangePrice?: string;
-  bonusPct?: string;
 }
 
 export interface BuybackSubmitResponse {

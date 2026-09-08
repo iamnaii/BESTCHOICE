@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import SellConfigBox from './SellConfigBox';
+import ReferenceQuestionnaire, {
+  type ReferenceQuestionnaireCatalog,
+} from './ReferenceQuestionnaire';
 
 interface Choice {
   id: string;
@@ -27,14 +30,20 @@ interface Question {
   choices: Choice[];
 }
 
-/** แก้คำถาม/ตัวเลือก/ค่าหักของแบบประเมินรับซื้อออนไลน์ — มีผลกับ quote ถัดไปทันที */
+/** แก้คำถาม/ตัวเลือก/ค่าหักของแบบประเมินรับซื้อหน้าร้านและออนไลน์ — มีผลกับ quote ถัดไปทันที */
 export default function QuestionnaireTab() {
   const queryClient = useQueryClient();
   const [edits, setEdits] = useState<Record<string, { label?: string; deductValue?: string }>>({});
-  const [newChoice, setNewChoice] = useState<Record<string, { label: string; deductType: 'PERCENT' | 'FIXED'; deductValue: string }>>({});
+  const [newChoice, setNewChoice] = useState<
+    Record<string, { label: string; deductType: 'PERCENT' | 'FIXED'; deductValue: string }>
+  >({});
   const [choiceToDelete, setChoiceToDelete] = useState<Choice | null>(null);
+  const [showLegacy, setShowLegacy] = useState(false);
 
-  const { data, isLoading } = useQuery<{ questions: Question[] }>({
+  const { data, isLoading, isError, error } = useQuery<{
+    questions: Question[];
+    reference?: ReferenceQuestionnaireCatalog | null;
+  }>({
     queryKey: ['buyback-questions-admin'],
     queryFn: () => api.get('/trade-ins/buyback-questions').then((r) => r.data),
   });
@@ -44,7 +53,10 @@ export default function QuestionnaireTab() {
   const patchQuestion = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api.patch(`/trade-ins/buyback-questions/${id}`, body),
-    onSuccess: () => { toast.success('บันทึกแล้ว'); invalidate(); },
+    onSuccess: () => {
+      toast.success('บันทึกแล้ว');
+      invalidate();
+    },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
@@ -82,7 +94,10 @@ export default function QuestionnaireTab() {
 
   const deleteChoice = useMutation({
     mutationFn: (id: string) => api.delete(`/trade-ins/buyback-choices/${id}`),
-    onSuccess: () => { toast.success('ลบตัวเลือกแล้ว'); invalidate(); },
+    onSuccess: () => {
+      toast.success('ลบตัวเลือกแล้ว');
+      invalidate();
+    },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
@@ -93,18 +108,43 @@ export default function QuestionnaireTab() {
     if (e.label !== undefined) body.label = e.label;
     if (e.deductValue !== undefined) {
       const v = Number(e.deductValue);
-      if (!Number.isFinite(v) || v < 0) { toast.error('ค่าหักไม่ถูกต้อง'); return; }
+      if (!Number.isFinite(v) || v < 0) {
+        toast.error('ค่าหักไม่ถูกต้อง');
+        return;
+      }
       body.deductValue = v;
     }
     patchChoice.mutate({ id: c.id, body });
   }
 
   if (isLoading) return <p className="text-sm text-muted-foreground leading-snug">กำลังโหลด...</p>;
+  if (isError)
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        {getErrorMessage(error)}
+      </p>
+    );
+  if (data?.reference && !showLegacy)
+    return (
+      <div className="space-y-4">
+        <ReferenceQuestionnaire catalog={data.reference} />
+        <SellConfigBox />
+        <Button variant="outline" onClick={() => setShowLegacy(true)}>
+          จัดการแบบตรวจทั่วไป
+        </Button>
+      </div>
+    );
 
   return (
     <div className="space-y-4">
+      {data?.reference && (
+        <Button variant="outline" onClick={() => setShowLegacy(false)}>
+          กลับไปเงื่อนไขอ้างอิง iPhone
+        </Button>
+      )}
       <p className="text-sm text-muted-foreground leading-snug">
-        การแก้ค่าหักมีผลกับการเช็คราคาครั้งถัดไปทันที — ใบเสนอที่ลูกค้าส่งมาแล้วไม่เปลี่ยน (snapshot ไว้)
+        แบบตรวจทั่วไปใช้กับรุ่นที่ไม่ได้ผูกชุดอ้างอิง
+        การแก้ค่าหักมีผลกับการประเมินครั้งถัดไปของรุ่นเหล่านั้น ใบเสนอเดิมไม่เปลี่ยน
       </p>
       <SellConfigBox />
       {(data?.questions ?? []).map((q) => (
@@ -132,21 +172,39 @@ export default function QuestionnaireTab() {
                     <Input
                       className="h-8"
                       value={edits[c.id]?.label ?? c.label}
-                      onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...prev[c.id], label: e.target.value } }))}
+                      onChange={(e) =>
+                        setEdits((prev) => ({
+                          ...prev,
+                          [c.id]: { ...prev[c.id], label: e.target.value },
+                        }))
+                      }
                     />
                   </td>
-                  <td className="p-2 w-28 text-muted-foreground">{c.deductType === 'PERCENT' ? 'หัก %' : 'หักบาท'}</td>
+                  <td className="p-2 w-28 text-muted-foreground">
+                    {c.deductType === 'PERCENT' ? 'หัก %' : 'หักบาท'}
+                  </td>
                   <td className="p-2 w-32">
                     <Input
                       className="h-8"
                       type="number"
                       value={edits[c.id]?.deductValue ?? String(Number(c.deductValue))}
-                      onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...prev[c.id], deductValue: e.target.value } }))}
+                      onChange={(e) =>
+                        setEdits((prev) => ({
+                          ...prev,
+                          [c.id]: { ...prev[c.id], deductValue: e.target.value },
+                        }))
+                      }
                     />
                   </td>
                   <td className="p-2 w-36 text-right">
                     {edits[c.id] && (
-                      <Button size="sm" onClick={() => saveChoice(c)} disabled={patchChoice.isPending}>บันทึก</Button>
+                      <Button
+                        size="sm"
+                        onClick={() => saveChoice(c)}
+                        disabled={patchChoice.isPending}
+                      >
+                        บันทึก
+                      </Button>
                     )}
                     <Button
                       variant="outline"
@@ -165,14 +223,32 @@ export default function QuestionnaireTab() {
                     className="h-8"
                     placeholder="เพิ่มตัวเลือกใหม่..."
                     value={newChoice[q.id]?.label ?? ''}
-                    onChange={(e) => setNewChoice((prev) => ({ ...prev, [q.id]: { label: e.target.value, deductType: prev[q.id]?.deductType ?? 'PERCENT', deductValue: prev[q.id]?.deductValue ?? '' } }))}
+                    onChange={(e) =>
+                      setNewChoice((prev) => ({
+                        ...prev,
+                        [q.id]: {
+                          label: e.target.value,
+                          deductType: prev[q.id]?.deductType ?? 'PERCENT',
+                          deductValue: prev[q.id]?.deductValue ?? '',
+                        },
+                      }))
+                    }
                   />
                 </td>
                 <td className="p-2 w-28">
                   <select
                     className="w-full h-8 rounded-lg border border-input bg-background px-2 text-sm"
                     value={newChoice[q.id]?.deductType ?? 'PERCENT'}
-                    onChange={(e) => setNewChoice((prev) => ({ ...prev, [q.id]: { label: prev[q.id]?.label ?? '', deductType: e.target.value as 'PERCENT' | 'FIXED', deductValue: prev[q.id]?.deductValue ?? '' } }))}
+                    onChange={(e) =>
+                      setNewChoice((prev) => ({
+                        ...prev,
+                        [q.id]: {
+                          label: prev[q.id]?.label ?? '',
+                          deductType: e.target.value as 'PERCENT' | 'FIXED',
+                          deductValue: prev[q.id]?.deductValue ?? '',
+                        },
+                      }))
+                    }
                   >
                     <option value="PERCENT">หัก %</option>
                     <option value="FIXED">หักบาท</option>
@@ -184,7 +260,16 @@ export default function QuestionnaireTab() {
                     type="number"
                     placeholder="ค่าหัก"
                     value={newChoice[q.id]?.deductValue ?? ''}
-                    onChange={(e) => setNewChoice((prev) => ({ ...prev, [q.id]: { label: prev[q.id]?.label ?? '', deductType: prev[q.id]?.deductType ?? 'PERCENT', deductValue: e.target.value } }))}
+                    onChange={(e) =>
+                      setNewChoice((prev) => ({
+                        ...prev,
+                        [q.id]: {
+                          label: prev[q.id]?.label ?? '',
+                          deductType: prev[q.id]?.deductType ?? 'PERCENT',
+                          deductValue: e.target.value,
+                        },
+                      }))
+                    }
                   />
                 </td>
                 <td className="p-2 w-36 text-right">
@@ -194,8 +279,14 @@ export default function QuestionnaireTab() {
                     onClick={() => {
                       const nc = newChoice[q.id];
                       const v = Number(nc?.deductValue);
-                      if (!nc?.label || !Number.isFinite(v) || v < 0) { toast.error('กรอกตัวเลือก/ค่าหักให้ครบ'); return; }
-                      addChoice.mutate({ questionId: q.id, body: { label: nc.label, deductType: nc.deductType, deductValue: v } });
+                      if (!nc?.label || !Number.isFinite(v) || v < 0) {
+                        toast.error('กรอกตัวเลือก/ค่าหักให้ครบ');
+                        return;
+                      }
+                      addChoice.mutate({
+                        questionId: q.id,
+                        body: { label: nc.label, deductType: nc.deductType, deductValue: v },
+                      });
                     }}
                     disabled={addChoice.isPending}
                   >
@@ -212,7 +303,9 @@ export default function QuestionnaireTab() {
         open={choiceToDelete !== null}
         onOpenChange={(o) => !o && setChoiceToDelete(null)}
         title="ลบตัวเลือก"
-        description={choiceToDelete ? `ต้องการลบตัวเลือก "${choiceToDelete.label}" ใช่หรือไม่?` : ''}
+        description={
+          choiceToDelete ? `ต้องการลบตัวเลือก "${choiceToDelete.label}" ใช่หรือไม่?` : ''
+        }
         variant="destructive"
         confirmLabel="ลบ"
         loading={deleteChoice.isPending}

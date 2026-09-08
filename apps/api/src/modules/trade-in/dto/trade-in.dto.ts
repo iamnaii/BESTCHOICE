@@ -8,6 +8,7 @@ import {
   IsUUID,
   Length,
   Matches,
+  MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_VERSION_ERROR } from '@installment/shared';
@@ -50,6 +51,12 @@ export class CreateTradeInDto {
   @IsOptional()
   @Matches(/^\d{15}$/, { message: 'IMEI ต้องเป็นตัวเลข 15 หลัก' })
   imei?: string;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @MaxLength(100, { message: 'Serial Number ต้องไม่เกิน 100 ตัวอักษร' })
+  serialNumber?: string;
 
   @IsNumber({}, { message: 'ราคาประเมินต้องเป็นตัวเลข' })
   @IsOptional()
@@ -145,6 +152,17 @@ export class AppraiseTradeInDto {
 }
 
 export class AcceptTradeInDto {
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d{15}$/, { message: 'IMEI ต้องเป็นตัวเลข 15 หลัก' })
+  imei?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @MaxLength(100, { message: 'Serial Number ต้องไม่เกิน 100 ตัวอักษร' })
+  serialNumber?: string | null;
+
   @IsIn([TRADE_IN_DECLARATION_VERSION], { message: TRADE_IN_DECLARATION_VERSION_ERROR })
   declarationVersion: string;
 
@@ -255,6 +273,12 @@ export class QuickBuyTradeInDto {
   @IsOptional()
   @Matches(/^\d{15}$/, { message: 'IMEI ต้องเป็นตัวเลข 15 หลัก' })
   imei?: string;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @MaxLength(100, { message: 'Serial Number ต้องไม่เกิน 100 ตัวอักษร' })
+  serialNumber?: string;
 
   // Price (ราคาที่ตกลงเลย — ไม่แยก estimate/offer)
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'ราคารับซื้อต้องเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง' })

@@ -9,6 +9,7 @@ import Modal from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';
 import SellerPaymentFields from '@/components/trade-in/SellerPaymentFields';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
 import { AlertTriangle } from 'lucide-react';
 import type { TradeIn, AcceptFormState, AcceptRequest } from '../types';
@@ -35,8 +36,12 @@ export default function AcceptModal({
   const canPickBranch = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
   const needBranch = !!item && !item.branchId;
   const [branchId, setBranchId] = useState<string>('');
+  const [identifiers, setIdentifiers] = useState({ imei: '', serialNumber: '' });
   useEffect(() => {
-    if (item) setBranchId(item.branchId ?? user?.branchId ?? '');
+    if (item) {
+      setBranchId(item.branchId ?? user?.branchId ?? '');
+      setIdentifiers({ imei: item.imei ?? '', serialNumber: item.serialNumber ?? '' });
+    }
   }, [item, user?.branchId]);
   const { data: branches } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -46,8 +51,17 @@ export default function AcceptModal({
 
   const isCredit = item?.flow === 'EXCHANGE';
 
+  function changeIdentifiers(patch: Partial<typeof identifiers>) {
+    setIdentifiers((current) => ({ ...current, ...patch }));
+    onChange({ sellerConsentSigned: false, sellerSignatureBase64: '' });
+  }
+
   function handleConfirm() {
     if (!item) return;
+    if (identifiers.imei && !/^\d{15}$/.test(identifiers.imei)) {
+      toast.error('IMEI ต้องเป็นตัวเลข 15 หลัก');
+      return;
+    }
     if (needBranch && !branchId) {
       toast.error('กรุณาเลือกสาขาที่รับเครื่อง');
       return;
@@ -69,6 +83,8 @@ export default function AcceptModal({
     const isTransfer = !isCredit && form.paymentMethod === 'TRANSFER';
     onConfirm(item.id, { ...form,
       declarationVersion: TRADE_IN_DECLARATION_VERSION,
+      imei: identifiers.imei || null,
+      serialNumber: identifiers.serialNumber.trim() || null,
       paymentMethod: isCredit ? 'TRADE_IN_CREDIT' : form.paymentMethod,
       transferBankName: isTransfer ? form.transferBankName : '',
       transferAccountNumber: isTransfer ? form.transferAccountNumber : '',
@@ -95,6 +111,21 @@ export default function AcceptModal({
             <p>
               <strong>ราคาตกลง:</strong> ฿{Number(item.offeredPrice ?? 0).toLocaleString()}
             </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="accept-imei">IMEI</Label>
+              <Input id="accept-imei" className="mt-1 font-mono" disabled={isPending}
+                inputMode="numeric" maxLength={15} placeholder="15 หลัก" value={identifiers.imei}
+                onChange={(e) => changeIdentifiers({ imei: e.target.value.replace(/\D/g, '') })} />
+            </div>
+            <div>
+              <Label htmlFor="accept-serial">Serial Number</Label>
+              <Input id="accept-serial" className="mt-1 font-mono" disabled={isPending}
+                maxLength={100} placeholder="หมายเลขเครื่อง" value={identifiers.serialNumber}
+                onChange={(e) => changeIdentifiers({ serialNumber: e.target.value })} />
+            </div>
           </div>
 
           {needBranch && (
@@ -171,6 +202,7 @@ export default function AcceptModal({
               ลงนามยืนยันรายการรับเครื่องและคำรับรองผู้ขายข้างต้น
             </p>
             <SignaturePadFull
+              key={`${item.id}:${identifiers.imei}:${identifiers.serialNumber}`}
               isPending={isPending}
               onSign={() => {
                 /* handled by submit button */

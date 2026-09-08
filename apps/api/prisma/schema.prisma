@@ -4840,6 +4840,7 @@ model TradeIn {
   deviceColor          String?                 @map("device_color")
   deviceCondition      String?                 @map("device_condition") // A/B/C/D
   imei                 String?
+  serialNumber         String?                 @map("serial_number")
   estimatedValue       Decimal?                @map("estimated_value") @db.Decimal(12, 2) // ราคาประเมินเบื้องต้น
   offeredPrice         Decimal?                @map("offered_price") @db.Decimal(12, 2) // ราคาที่เสนอ
   /// Snapshot ของ TradeInValuation.basePrice ตอน appraise — ใช้คำนวณ deviation

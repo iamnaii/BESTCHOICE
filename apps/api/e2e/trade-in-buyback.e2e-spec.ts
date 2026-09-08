@@ -125,6 +125,43 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
     expect(html).not.toContain('ภาระจำนำ');
   });
 
+  it('keeps IMEI and Serial separate through purchase, stock, search and printed evidence', async () => {
+    const res = await buy({ imei: '359000000000081', serialNumber: '  BC-SN-00081  ' }).expect(201);
+    const row = await db.tradeIn.findUniqueOrThrow({ where: { id: res.body.id }, include: { product: true } });
+    expect(row).toMatchObject({ imei: '359000000000081', serialNumber: 'BC-SN-00081' });
+    expect(row.product).toMatchObject({ imeiSerial: row.imei, serialNumber: row.serialNumber });
+    const found = await request(app.getHttpServer()).get('/trade-ins').query({ search: 'bc-sn-00081' }).expect(200);
+    expect(found.body.data.map((r: { id: string }) => r.id)).toContain(row.id);
+    await db.product.update({ where: { id: row.productId! }, data: { serialNumber: 'LATER-STOCK-EDIT' } });
+    await app.get(TradeInVoucherService).renderPdf(row.id);
+    const html = pdf.mock.calls.at(-1)![0];
+    expect(html).toContain('IMEI: 359000000000081<br>Serial Number: BC-SN-00081');
+    expect(html).not.toContain('LATER-STOCK-EDIT');
+    const before = await db.tradeIn.count();
+    await buy({ serialNumber: 'X'.repeat(101) }).expect(400);
+    await buy({ serialNumber: 12345 }).expect(400);
+    expect(await db.tradeIn.count()).toBe(before);
+  });
+
+  it('captures identifiers at handoff and rejects duplicate IMEI before signing or creating stock', async () => {
+    const draft = () => db.tradeIn.create({ data: { branchId: fixture.branch.id, sellerName: 'IDENTIFIER HANDOFF',
+      deviceBrand: 'TEST', deviceModel: 'SERIAL', flow: 'EXCHANGE', status: 'APPRAISED', offeredPrice: 5000 } });
+    const row = await draft();
+    await request(app.getHttpServer()).post(`/trade-ins/${row.id}/accept`)
+      .send({ ...payment, imei: '359000000000082', serialNumber: '  HANDOFF-SN-82  ' }).expect(201);
+    const saved = await db.tradeIn.findUniqueOrThrow({ where: { id: row.id }, include: { product: true } });
+    expect(saved).toMatchObject({ imei: '359000000000082', serialNumber: 'HANDOFF-SN-82' });
+    expect(saved.product).toMatchObject({ imeiSerial: saved.imei, serialNumber: saved.serialNumber });
+    const duplicate = await draft();
+    const products = await db.product.count();
+    await request(app.getHttpServer()).post(`/trade-ins/${duplicate.id}/accept`)
+      .send({ ...payment, imei: saved.imei, serialNumber: 'DIFFERENT-SERIAL' }).expect(400);
+    expect(await db.product.count()).toBe(products);
+    expect(await db.tradeIn.findUniqueOrThrow({ where: { id: duplicate.id } })).toMatchObject({
+      status: 'APPRAISED', imei: null, serialNumber: null, sellerDeclarationSnapshot: null,
+    });
+  });
+
   it('rejects missing or stale terms and missing signatures before creating a purchase', async () => {
     const before = await db.tradeIn.count();
     await buy({ declarationVersion: undefined }).expect(400);

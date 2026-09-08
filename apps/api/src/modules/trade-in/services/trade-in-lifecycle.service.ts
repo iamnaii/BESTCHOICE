@@ -156,6 +156,7 @@ export class TradeInLifecycleService {
           deviceColor: dto.deviceColor,
           deviceCondition: dto.deviceCondition,
           imei: dto.imei,
+          serialNumber: dto.serialNumber?.trim() || null,
           estimatedValue: dto.estimatedValue,
           notes: dto.notes,
           sellerName: dto.sellerName,
@@ -408,18 +409,22 @@ export class TradeInLifecycleService {
       // size guard: ลายเซ็นจาก SignaturePadFull canvas ปกติ < 30KB
       const signatureBase64 = dto.sellerSignatureBase64!;
       const acceptedAt = new Date();
+      // Staff can confirm identifiers on online/appraised records before signing.
+      const imei = dto.imei === undefined ? tradeIn.imei : dto.imei;
+      const serialNumber = dto.serialNumber === undefined
+        ? tradeIn.serialNumber : dto.serialNumber?.trim() || null;
 
       // T5-C12: IMEI uniqueness check — เฉพาะ active products (soft-deleted
       // ถือว่าคืน IMEI กลับเข้า pool ได้) ตรงกับ partial unique index ใน DB
       // (migration 20260525200000_product_imei_partial_unique).
-      if (tradeIn.imei) {
+      if (imei) {
         const existing = await tx.product.findFirst({
-          where: { imeiSerial: tradeIn.imei, deletedAt: null },
+          where: { imeiSerial: imei, deletedAt: null },
           select: { id: true, name: true },
         });
         if (existing) {
           throw new BadRequestException(
-            `IMEI ${tradeIn.imei} มีอยู่ในระบบแล้ว: ${existing.name}`,
+            `IMEI ${imei} มีอยู่ในระบบแล้ว: ${existing.name}`,
           );
         }
       }
@@ -464,7 +469,8 @@ export class TradeInLifecycleService {
           costPrice,
           branchId: effectiveBranchId,
           status: 'PHOTO_PENDING',
-          imeiSerial: tradeIn.imei ?? null,
+          imeiSerial: imei ?? null,
+          serialNumber: serialNumber ?? null,
           checklistResults: {
             source: 'trade-in',
             tradeInId: tradeIn.id,
@@ -511,6 +517,8 @@ export class TradeInLifecycleService {
         data: {
           branchId: effectiveBranchId,
           status: 'ACCEPTED',
+          imei,
+          serialNumber,
           agreedPrice: tradeIn.offeredPrice,
           productId: product.id,
           idCardVerifiedAt: acceptedAt,
@@ -624,6 +632,7 @@ export class TradeInLifecycleService {
       deviceColor: dto.deviceColor,
       deviceCondition: dto.deviceCondition,
       imei: dto.imei,
+      serialNumber: dto.serialNumber,
       estimatedValue: dto.agreedPrice,
       notes: dto.notes,
       sellerContactId: dto.sellerContactId,

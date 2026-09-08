@@ -43,6 +43,17 @@ describe('VoucherHtmlBuilder', () => {
     expect(html).not.toContain('/verify/voucher/');
   });
 
+  it('labels both device identifiers independently, including missing historical values', () => {
+    const device = { deviceBrand: 'Apple', deviceModel: 'iPhone 15', deviceStorage: null, deviceColor: null, imei: '359000000000081' };
+    const label = builder.buildDeviceLabel({ ...device, serialNumber: 'BC-SN-00081' });
+    const html = builder.buildHtml({ ...voucher, deviceLabel: label });
+    expect(html).toContain('IMEI: 359000000000081<br>Serial Number: BC-SN-00081');
+    const missing = builder.buildDeviceLabel({ ...device, imei: null });
+    expect(missing).toContain('IMEI: ไม่ระบุ\nSerial Number: ไม่ระบุ');
+    const serialOnly = builder.buildDeviceLabel({ ...device, imei: null, serialNumber: '<SN&81>' });
+    expect(builder.buildHtml({ ...voucher, deviceLabel: serialOnly })).toContain('Serial Number: &lt;SN&amp;81&gt;');
+  });
+
   it('renders saved signatures or leaves a signing space for each party', () => {
     const unsigned = builder.buildHtml(voucher);
     expect(unsigned.match(/ลงชื่อ \.{48}/g)).toHaveLength(2);

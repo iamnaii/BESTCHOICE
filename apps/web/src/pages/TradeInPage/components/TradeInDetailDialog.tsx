@@ -29,9 +29,10 @@ export default function TradeInDetailDialog({ id, onClose }: Props) {
             <div className="text-muted-foreground">
               {data.deviceCondition && <>เกรด {data.deviceCondition}</>}
               {data.batteryHealth != null && <> · แบตเตอรี่ {data.batteryHealth}%</>}
-              {data.imei && <> · IMEI {data.imei}</>}
             </div>
             <div className="text-muted-foreground">
+              <div className="break-all">IMEI: {data.imei || 'ไม่ระบุ'}</div>
+              <div className="break-all">Serial Number: {data.serialNumber || 'ไม่ระบุ'}</div>
               ผู้ขาย: {data.sellerName ?? data.customer?.name ?? '-'} {data.sellerPhone ? `(${data.sellerPhone})` : ''}
             </div>
             {data.preferredVisitDate && (

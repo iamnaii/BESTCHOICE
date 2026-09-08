@@ -58,12 +58,13 @@ export class VoucherHtmlBuilder {
     deviceStorage: string | null;
     deviceColor: string | null;
     imei: string | null;
+    serialNumber?: string | null;
   }): string {
     const main = [t.deviceBrand, t.deviceModel, t.deviceStorage].filter(Boolean).join(' ');
-    const sub = [t.deviceColor ? `สี${t.deviceColor}` : null, t.imei ? `IMEI ${t.imei}` : null]
-      .filter(Boolean)
-      .join(' ');
-    return sub ? `${main}\n${sub}` : main;
+    return [main, t.deviceColor ? `สี${t.deviceColor}` : null,
+      `IMEI: ${t.imei || 'ไม่ระบุ'}`,
+      `Serial Number: ${t.serialNumber || 'ไม่ระบุ'}`,
+    ].filter(Boolean).join('\n');
   }
 
   /** เลขเป็นข้อความไทย เช่น 37,673.00 → "สามหมื่นเจ็ดพันหกร้อยเจ็ดสิบสามบาทถ้วน" */
@@ -203,14 +204,14 @@ export class VoucherHtmlBuilder {
     .center { text-align: center; }
     .right { text-align: right; }
     .device-name { font-size: 11pt; font-weight: 600; }
-    .device-details { font-size: 9pt; color: var(--muted); line-height: 1.6; margin-top: 1.5mm; }
+    .device-details { font-size: 9pt; color: var(--muted); line-height: 1.5; margin-top: 1mm; }
     .item-amount { white-space: nowrap; font-size: 11pt; }
     .payment { margin-top: 3mm; }
     .payment-row { display: grid; grid-template-columns: 37mm minmax(0, 1fr); gap: 3mm; margin-top: 1mm; align-items: baseline; }
     .payment-row > :last-child { overflow-wrap: anywhere; }
     .credit-note { margin-top: 2mm; font-size: 9pt; color: var(--muted); }
     .declaration { border-top: 0.5pt solid var(--rule); padding-top: 3mm; margin-top: 4mm; font-size: 9pt; line-height: 1.7; color: var(--muted); }
-    .acceptance { break-inside: avoid; }
+    .acceptance { break-inside: avoid; padding-bottom: 1mm; }
     .acceptance .declaration { line-height: 1.5; margin-top: 2mm; padding-top: 2mm; }
     .acceptance .signatures { margin-top: 2mm; }
     .acceptance footer { margin-top: 2mm; }

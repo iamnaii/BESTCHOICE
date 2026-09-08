@@ -18,6 +18,10 @@ export async function checkTradeIn(page, origin, output, width) {
   await dialog.getByRole('button', { name: 'ถัดไป' }).click();
   await dialog.locator('select').nth(0).selectOption('Apple');
   await dialog.locator('select').nth(1).selectOption('iPhone 15');
+  const imei = `99${Date.now()}`; // Synthetic identifier, unique across retained preview runs.
+  const serialNumber = `LOCAL-SN-${width}-${Date.now()}`;
+  await dialog.getByLabel('IMEI', { exact: true }).fill(imei);
+  await dialog.getByLabel('Serial Number', { exact: true }).fill(serialNumber);
   await dialog.getByPlaceholder('0', { exact: true }).fill('5000');
   await dialog.getByRole('button', { name: 'ถัดไป' }).click();
   await dialog.getByRole('checkbox', { name: /ตรวจบัตรประชาชน/ }).check();
@@ -45,6 +49,9 @@ export async function checkTradeIn(page, origin, output, width) {
   assert.equal(response.status(), 201, await response.text());
   const result = await response.json();
   assert.ok(result.productId);
+  const received = await (await page.request.get(new URL(`/api/trade-ins/${result.id}`, origin).href)).json();
+  assert.equal(received.imei, imei);
+  assert.equal(received.serialNumber, serialNumber);
   assert.equal(result.productStatus, 'PHOTO_PENDING');
   await expect(page.getByText('รับเครื่องแล้ว — รอเตรียมเครื่องก่อนขาย', { exact: true })).toBeVisible();
   await page.screenshot({ path: join(output, `trade-in-handoff-${width}.png`) });

@@ -12,6 +12,7 @@ export interface TradeIn {
   deviceColor?: string | null;
   deviceCondition: string | null;
   imei: string | null;
+  serialNumber?: string | null;
   estimatedValue: number | null;
   offeredPrice: number | null;
   agreedPrice: number | null;
@@ -85,6 +86,8 @@ export const EMPTY_ACCEPT_FORM: AcceptFormState = {
 
 export type AcceptRequest = Omit<AcceptFormState, 'paymentMethod'> & {
   declarationVersion: string;
+  imei?: string | null;
+  serialNumber?: string | null;
   paymentMethod: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT';
   branchId?: string;
 };

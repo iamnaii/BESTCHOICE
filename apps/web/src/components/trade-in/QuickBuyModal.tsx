@@ -86,6 +86,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
     deviceColor: '',
     deviceCondition: 'B',
     imei: '',
+    serialNumber: '',
     agreedPrice: '',
     // Step 3: confirm
     paymentMethod: 'CASH' as 'CASH' | 'TRANSFER',
@@ -108,7 +109,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
       sellerContactId: '', sellerName: '', sellerPhone: '', sellerIdCardNumber: '',
       idCardPhotoBase64: '', idCardSource: '',
       deviceBrand: '', deviceModel: '', deviceStorage: '', deviceColor: '',
-      deviceCondition: 'B', imei: '', agreedPrice: '',
+      deviceCondition: 'B', imei: '', serialNumber: '', agreedPrice: '',
       paymentMethod: 'CASH', transferBankName: '', transferAccountNumber: '', transferAccountName: '',
       sellerSignatureBase64: '', idCardVerified: false, sellerConsentSigned: false,
     });
@@ -136,6 +137,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
         deviceColor: form.deviceColor || undefined,
         deviceCondition: form.deviceCondition,
         imei: form.imei || undefined,
+        serialNumber: form.serialNumber.trim() || undefined,
         agreedPrice: parseFloat(form.agreedPrice),
         idCardVerified: form.idCardVerified,
         sellerConsentSigned: form.sellerConsentSigned,
@@ -552,9 +554,11 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
                   </select>
                 </div>
                 <div>
-                  <Label>IMEI</Label>
+                  <Label htmlFor="quick-buy-imei">IMEI</Label>
                   <Input
                     className="mt-1 font-mono"
+                    id="quick-buy-imei"
+                    inputMode="numeric"
                     maxLength={15}
                     placeholder="15 หลัก"
                     value={form.imei}
@@ -572,6 +576,13 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
                       )}
                     </div>
                   )}
+                </div>
+                <div>
+                  <Label htmlFor="quick-buy-serial">Serial Number</Label>
+                  <Input id="quick-buy-serial" className="mt-1 font-mono" maxLength={100}
+                    placeholder="หมายเลขเครื่องจากตัวเครื่องหรือการตั้งค่า"
+                    value={form.serialNumber}
+                    onChange={(e) => setForm((f) => ({ ...f, serialNumber: e.target.value }))} />
                 </div>
                 <div className="col-span-2">
                   <Label>ราคารับซื้อ (บาท) *</Label>
@@ -598,6 +609,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
               <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1">
                 <div><strong>ประเภท:</strong> รับซื้อ — จ่ายเงินให้ผู้ขาย</div>
                 <div><strong>ผู้ขาย:</strong> {form.sellerName}</div>
+                <div className="break-all"><strong>IMEI:</strong> {form.imei || 'ไม่ระบุ'}</div>
+                <div className="break-all"><strong>Serial Number:</strong> {form.serialNumber.trim() || 'ไม่ระบุ'}</div>
                 <div><strong>เครื่อง:</strong> {form.deviceBrand} {form.deviceModel} {form.deviceStorage}</div>
                 <div><strong>ราคารับซื้อ:</strong> <span className="text-lg font-bold text-success">฿{Number(form.agreedPrice || 0).toLocaleString()}</span></div>
               </div>

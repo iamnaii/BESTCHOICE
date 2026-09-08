@@ -77,6 +77,7 @@ export class TradeInQueryService {
         { deviceBrand: { contains: q, mode: 'insensitive' } },
         { deviceModel: { contains: q, mode: 'insensitive' } },
         { imei: { contains: q } },
+        { serialNumber: { contains: q, mode: 'insensitive' } },
         { sellerName: { contains: q, mode: 'insensitive' } },
         { sellerPhone: { contains: q } },
         { voucherNumber: { contains: q, mode: 'insensitive' } },

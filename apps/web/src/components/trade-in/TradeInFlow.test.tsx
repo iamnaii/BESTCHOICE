@@ -33,6 +33,8 @@ async function prepareBuy() {
   await user.click(screen.getByRole('button', { name: /ถัดไป/ }));
   await user.selectOptions(screen.getByRole('option', { name: 'Apple' }).closest('select')!, 'Apple');
   await user.selectOptions(screen.getByRole('option', { name: 'iPhone 15' }).closest('select')!, 'iPhone 15');
+  await user.type(screen.getByLabelText('IMEI'), '359000000000081');
+  await user.type(screen.getByLabelText('Serial Number'), '  BC-SN-00081  ');
   await user.type(screen.getByPlaceholderText('0'), '5000');
   await user.click(screen.getByRole('button', { name: /ถัดไป/ }));
   await user.click(screen.getByRole('checkbox', { name: /ตรวจบัตรประชาชน/ }));
@@ -63,6 +65,7 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ productId: 'received-product' })));
     expect(api.post).toHaveBeenCalledWith('/trade-ins/quick-buy', expect.objectContaining({
       paymentMethod: method, sellerContactId: 'seller-1', agreedPrice: 5000,
+      imei: '359000000000081', serialNumber: 'BC-SN-00081',
       declarationVersion: TRADE_IN_DECLARATION_VERSION,
       transferAccountNumber: method === 'TRANSFER' ? '1234567890' : undefined,
     }));
@@ -111,20 +114,26 @@ describe('Counter purchase, seller payment and stock handoff', () => {
 
   it('accepts EXCHANGE as credit without a payout selector or stale seller bank fields', async () => {
     const confirm = vi.fn();
+    const change = vi.fn();
     const item: TradeIn = { id: 'exchange-1', status: 'APPRAISED', branchId: 'branch-1', flow: 'EXCHANGE',
-      deviceBrand: 'Apple', deviceModel: 'iPhone 15', deviceStorage: null, deviceCondition: null, imei: null,
+      deviceBrand: 'Apple', deviceModel: 'iPhone 15', deviceStorage: null, deviceCondition: null, imei: '359000000000082', serialNumber: 'HANDOFF-SN-82',
       estimatedValue: 5500, offeredPrice: 5500, agreedPrice: null, sellerName: 'ผู้ขาย', sellerPhone: null,
       voucherNumber: null, voucherPdfUrl: null, createdAt: '2026-09-08', customer: null };
     render(<AcceptModal item={item} form={{ ...EMPTY_ACCEPT_FORM, idCardVerified: true, sellerConsentSigned: true,
       sellerSignatureBase64: 'signature', paymentMethod: 'TRANSFER', transferBankName: 'STALE', transferAccountName: 'STALE', transferAccountNumber: '123' }}
-      isPending={false} onChange={vi.fn()} onConfirm={confirm} onClose={vi.fn()} />, { wrapper });
+      isPending={false} onChange={change} onConfirm={confirm} onClose={vi.fn()} />, { wrapper });
+    expect(screen.getByLabelText('IMEI')).toHaveValue('359000000000082');
+    expect(screen.getByLabelText('Serial Number')).toHaveValue('HANDOFF-SN-82');
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     for (const clause of TRADE_IN_DECLARATION_CLAUSES) expect(screen.getByText(clause)).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเครื่องเทิร์น' }));
     expect(confirm).toHaveBeenCalledWith('exchange-1', expect.objectContaining({
+      imei: '359000000000082', serialNumber: 'HANDOFF-SN-82',
       paymentMethod: 'TRADE_IN_CREDIT', transferBankName: '', transferAccountName: '', transferAccountNumber: '',
       declarationVersion: TRADE_IN_DECLARATION_VERSION,
     }));
+    await userEvent.type(screen.getByLabelText('Serial Number'), 'A');
+    expect(change).toHaveBeenLastCalledWith({ sellerConsentSigned: false, sellerSignatureBase64: '' });
   });
 
   it('gives SALES a valid product link and asks a manager to set prices', () => {

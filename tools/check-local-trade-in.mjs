@@ -143,6 +143,12 @@ export async function checkTradeIn(page, origin, output, width) {
     await expect(inventory.getByText('฿6,500', { exact: true })).toBeVisible();
     assert.equal(await detail.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), true, 'Receipt details must not clip horizontally');
     await page.screenshot({ path: join(output, `trade-in-detail-${width}.png`) });
+    const detailBody = detail.getByTestId('trade-in-detail-body');
+    assert.ok(await detailBody.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), 'Detail content must wrap inside its scroll area');
+    const printButton = detail.getByRole('button', { name: 'พิมพ์เอกสารรับเครื่อง', exact: true });
+    const printBounds = await printButton.boundingBox();
+    const viewportHeight = await page.evaluate(() => innerHeight);
+    assert.ok(printBounds && printBounds.height >= 44 && printBounds.y >= 0 && printBounds.y + printBounds.height <= viewportHeight, 'Document action must remain visible below the scrolling details');
     if (edge === 'start') {
       await detail.getByRole('button', { name: 'พิมพ์เอกสารรับเครื่อง', exact: true }).click();
       const documentPreview = page.getByRole('dialog', { name: 'ตัวอย่างเอกสารรับเครื่อง' });

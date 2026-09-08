@@ -26,3 +26,18 @@ No schema, accounting, ownership, access-grant or transaction changes. Local dat
 - Visually inspected desktop/mobile details. Refreshed the user's Chrome tab and opened the latest sample receipt; the purchase action now fits inside the physical window. The managed preview remains available at `http://localhost:5195/trade-in?zone=shop`; the full local app remains on port 5198. Both use synthetic records.
 
 These are local checks for this UI change. Earlier CI/E2E results on `a88079789` predate this change; no merge or deployment was performed.
+
+## Detail redesign with UI UX Pro Max
+
+The detail dialog now leads with the device model, condition, original IMEI/Serial and agreed intake amount. A compact inventory panel follows immediately with current status, both selling prices, photo count and a single primary link to the product. Receipt/payment metadata and seller/evidence data sit in two columns on desktop and one column on mobile. Historical online quote, answers, notes and photos remain available below.
+
+Used the existing controlled Radix/shadcn Dialog primitives with a bounded scroll body and fixed header/document footer. The dialog is at most 896 px wide with viewport gutters; print/close targets are at least 44 px. API queries, permissions, cache behavior and financial meanings are unchanged. No new packages or shared component changes.
+
+UI UX Pro Max searches verified font-size hierarchy, readable mobile text and controlled Dialog composition. The layout applies those guidelines to the staff workflow using existing semantic colors and Thai fonts. Primary-button contrast was measured at 4.69:1 in light mode and 6.84:1 in dark mode; badges retain state colors with readable foreground text.
+
+Design verification:
+
+- Existing detail regression: all 11 tests passed.
+- Browser checks passed at 1440×1000, 390×844, 375×667, 844×390 landscape, 1024×768 dark mode, and 390×844 with root text enlarged to 20 px. Tested both scroll ends, full evidence visibility, fixed document/close controls, keyboard focus/Escape, horizontal bounds and page errors. Screenshots inspected in light/dark/mobile.
+- Full AppModule with disposable PostgreSQL: all 7 width/sidebar combinations passed after redesign, including opening details at both table scroll edges.
+- `npm run local:check` after the redesign: all 17 checks passed, including 1,719 Web tests, 42 Shared tests, types/lint/build and the extended desktop/mobile purchase/document/photo/stock/detail flow. Source fingerprint: `a9a8b35a1ac013a30078b098a83c2d088e616a89e014dcc3fd29d85c89679e7b`.

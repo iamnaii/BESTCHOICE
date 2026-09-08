@@ -14,7 +14,15 @@ import {
 } from '@/utils/getDisplayPrices';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import Modal from '@/components/ui/Modal';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ArrowRight, Camera, FileText, Printer, Smartphone, UserRound, X } from 'lucide-react';
 import type { TradeIn } from '../types';
 
 interface Props {
@@ -24,7 +32,7 @@ interface Props {
   voucherLoading?: boolean;
 }
 
-/** รายละเอียด TradeIn — โชว์คำตอบประเมินออนไลน์ + breakdown + รูป/แบต/โน้ตของ record online เก่า */
+/** Receipt identity and agreed terms stay separate from current inventory data. */
 export default function TradeInDetailDialog({ id, onClose, onVoucher, voucherLoading }: Props) {
   const { user } = useAuth();
   const canIssueVoucher = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
@@ -35,267 +43,375 @@ export default function TradeInDetailDialog({ id, onClose, onVoucher, voucherLoa
     staleTime: 0,
   });
 
-  return (
-    <Modal isOpen={!!id} onClose={onClose} title="รายละเอียดรายการรับซื้อ" size="lg">
-      <QueryBoundary
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดรายละเอียดรายการรับซื้อได้"
-      >
-        {data && (
-          <div className="min-w-0 space-y-5 text-sm leading-snug">
-            <section
-              aria-label="ข้อมูลการรับซื้อ"
-              className="rounded-lg border border-border p-4 space-y-3"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-semibold">ข้อมูลการรับซื้อ</h2>
-                <Badge
-                  variant={getStatusBadgeProps(data.status, tradeInStatusMap).variant}
-                  appearance={getStatusBadgeProps(data.status, tradeInStatusMap).appearance}
-                >
-                  {getStatusBadgeProps(data.status, tradeInStatusMap).label}
-                </Badge>
-              </div>
-              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <DetailField label="เลขเอกสาร">
-                  {data.voucherNumber || 'ยังไม่ออกเอกสาร'}
-                </DetailField>
-                <DetailField label="ประเภท">
-                  {data.paymentMethod === 'TRADE_IN_CREDIT' ||
-                  (!['CASH', 'TRANSFER'].includes(data.paymentMethod ?? '') &&
-                    data.flow === 'EXCHANGE')
-                    ? 'เทิร์นเครื่อง'
-                    : ['CASH', 'TRANSFER'].includes(data.paymentMethod ?? '') ||
-                        data.flow === 'BUYBACK'
-                      ? 'รับซื้อเงินสด / โอน'
-                      : 'ไม่ระบุ'}
-                </DetailField>
-                <DetailField label="วันที่ทำรายการ">{dateTime(data.createdAt)}</DetailField>
-                <DetailField label="สาขาที่รับเครื่อง">{data.branch?.name}</DetailField>
-                <DetailField label="ราคาตกลงรับเครื่อง">{amount(data.agreedPrice)}</DetailField>
-                {data.agreedPrice == null && (
-                  <>
-                    <DetailField label="ราคาที่เสนอ">{amount(data.offeredPrice)}</DetailField>
-                    <DetailField label="ราคาประเมิน">{amount(data.estimatedValue)}</DetailField>
-                  </>
-                )}
-                <DetailField label="วิธีจ่าย">
-                  {data.paymentMethod === 'TRADE_IN_CREDIT'
-                    ? 'เครดิตเทิร์นเครื่อง'
-                    : data.paymentMethod === 'CASH'
-                      ? 'เงินสด'
-                      : data.paymentMethod === 'TRANSFER'
-                        ? 'โอนเงิน'
-                        : 'ยังไม่ระบุ'}
-                </DetailField>
-                <DetailField label="ผู้รับซื้อ">
-                  {data.idCardVerifiedBy?.name || data.appraisedBy?.name}
-                </DetailField>
-                <DetailField label="วันที่ตรวจบัตรและรับเครื่อง">
-                  {dateTime(data.idCardVerifiedAt)}
-                </DetailField>
-                {data.paymentMethod === 'TRANSFER' && (
-                  <>
-                    <DetailField label="ธนาคารผู้ขาย">{data.transferBankName}</DetailField>
-                    <DetailField label="บัญชีผู้ขาย">
-                      {maskAccountNumber(data.transferAccountNumber)}
-                    </DetailField>
-                    <DetailField label="ชื่อบัญชีผู้ขาย">{data.transferAccountName}</DetailField>
-                  </>
-                )}
-                {data.paymentMethod === 'TRADE_IN_CREDIT' && (
-                  <>
-                    <DetailField label="มูลค่าเครื่องเป็นเครดิต">
-                      {amount(data.creditBaseAmount)}
-                    </DetailField>
-                    <DetailField label="โบนัสส่วนลด">{amount(data.creditBonusAmount)}</DetailField>
-                    <DetailField label="สถานะเครดิต">
-                      {data.creditIssuedAt
-                        ? data.currentRedemptionId
-                          ? 'ใช้เครดิตแล้ว'
-                          : 'ยังไม่ใช้เครดิต'
-                        : 'ยังไม่ออกเครดิต'}
-                    </DetailField>
-                  </>
-                )}
-              </dl>
-              {onVoucher &&
-                ['ACCEPTED', 'COMPLETED'].includes(data.status) &&
-                (data.voucherNumber || canIssueVoucher) && (
-                  <Button
-                    variant="outline"
-                    disabled={voucherLoading}
-                    onClick={() => onVoucher(data)}
-                  >
-                    {voucherLoading
-                      ? 'กำลังเปิดเอกสาร...'
-                      : data.voucherNumber
-                        ? 'พิมพ์เอกสารรับเครื่อง'
-                        : 'ออกเอกสารรับเครื่อง'}
-                  </Button>
-                )}
-              {onVoucher &&
-                ['ACCEPTED', 'COMPLETED'].includes(data.status) &&
-                !data.voucherNumber &&
-                !canIssueVoucher && (
-                  <p className="text-sm text-muted-foreground">
-                    ให้ผู้จัดการออกเอกสารรับเครื่องก่อน แล้วจึงพิมพ์เอกสารได้
-                  </p>
-                )}
-            </section>
-            {data.productId && <InventorySummary productId={data.productId} />}
+  const status = data ? getStatusBadgeProps(data.status, tradeInStatusMap) : null;
+  const canPrint = data && onVoucher && ['ACCEPTED', 'COMPLETED'].includes(data.status);
+  const paymentLabel =
+    data?.paymentMethod === 'TRADE_IN_CREDIT'
+      ? 'เครดิตเทิร์นเครื่อง'
+      : data?.paymentMethod === 'CASH'
+        ? 'เงินสด'
+        : data?.paymentMethod === 'TRANSFER'
+          ? 'โอนเงิน'
+          : 'ยังไม่ระบุ';
 
-            <section aria-label="เครื่องและผู้ขายตามใบรับเครื่อง" className="space-y-3">
-              <h2 className="font-semibold">เครื่องและผู้ขายตามใบรับเครื่อง</h2>
-              <div>
-                <div className="font-semibold">
-                  {data.deviceBrand} {data.deviceModel} {data.deviceStorage ?? ''}
-                </div>
-                <div className="text-muted-foreground">
-                  {data.deviceCondition && <>เกรด {data.deviceCondition}</>}
-                  {data.batteryHealth != null && <> · แบตเตอรี่ {data.batteryHealth}%</>}
-                </div>
-                <div className="text-muted-foreground">
-                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <DetailField label="IMEI">{data.imei || 'ไม่ระบุ'}</DetailField>
-                    <DetailField label="Serial Number">
+  return (
+    <Dialog
+      open={!!id}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="w-[calc(100%-1rem)] max-w-4xl max-h-[calc(100dvh-1rem)] gap-0 overflow-hidden rounded-xl p-0 motion-reduce:animate-none"
+      >
+        <DialogHeader className="mb-0 flex-row items-center justify-between gap-3 space-y-0 border-b border-border px-5 py-3 text-start sm:px-7">
+          <div className="min-w-0">
+            <DialogTitle className="text-base">รายละเอียดรายการรับซื้อ</DialogTitle>
+            <DialogDescription className="sr-only">
+              ข้อมูลตามใบรับเครื่อง สถานะสินค้า และเอกสารรับซื้อ
+            </DialogDescription>
+          </div>
+          <DialogClose asChild>
+            <Button variant="ghost" size="icon" className="size-11" aria-label="Close">
+              <X className="size-5" aria-hidden="true" />
+            </Button>
+          </DialogClose>
+        </DialogHeader>
+        <div
+          className="min-h-0 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7 sm:py-6"
+          data-testid="trade-in-detail-body"
+        >
+          <QueryBoundary
+            isLoading={isLoading}
+            isError={isError}
+            error={error}
+            onRetry={refetch}
+            errorTitle="ไม่สามารถโหลดรายละเอียดรายการรับซื้อได้"
+          >
+            {data && (
+              <div className="min-w-0 space-y-6 text-sm leading-snug">
+                <section aria-label="เครื่องตามใบรับเครื่อง" className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <Smartphone className="size-6" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0 space-y-2">
+                        <h3 className="text-xl font-semibold leading-snug tracking-tight wrap-anywhere sm:text-2xl">
+                          {data.deviceBrand} {data.deviceModel}
+                        </h3>
+                        <p className="text-muted-foreground">
+                          {[
+                            data.deviceStorage,
+                            data.deviceColor,
+                            data.deviceCondition && `เกรด ${data.deviceCondition}`,
+                            data.batteryHealth != null && `แบตเตอรี่ ${data.batteryHealth}%`,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || 'ยังไม่ระบุสภาพเครื่อง'}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {status && (
+                            <Badge
+                              variant={status.variant}
+                              appearance={status.appearance}
+                              className="text-foreground"
+                            >
+                              {status.label}
+                            </Badge>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {data.paymentMethod === 'TRADE_IN_CREDIT' ||
+                            (!['CASH', 'TRANSFER'].includes(data.paymentMethod ?? '') &&
+                              data.flow === 'EXCHANGE')
+                              ? 'เทิร์นเครื่อง'
+                              : ['CASH', 'TRANSFER'].includes(data.paymentMethod ?? '') ||
+                                  data.flow === 'BUYBACK'
+                                ? 'รับซื้อเงินสด / โอน'
+                                : 'ไม่ระบุ'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-muted/50 px-4 py-3 sm:min-w-44 sm:text-right">
+                      <dl>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">ราคาตกลงรับเครื่อง</dt>
+                          <dd className="mt-1 text-2xl font-semibold leading-snug tracking-tight tabular-nums sm:text-3xl">
+                            {amount(data.agreedPrice)}
+                          </dd>
+                        </div>
+                      </dl>
+                      <p className="mt-1 text-xs text-muted-foreground">{paymentLabel}</p>
+                    </div>
+                  </div>
+                  <dl className="grid gap-3 rounded-lg border border-border px-4 py-3 sm:grid-cols-2">
+                    <DetailField label="IMEI" mono>
+                      {data.imei || 'ไม่ระบุ'}
+                    </DetailField>
+                    <DetailField label="Serial Number" mono>
                       {data.serialNumber || 'ไม่ระบุ'}
                     </DetailField>
                   </dl>
-                  {data.imeiMissingReason && <p>เหตุผลที่ไม่มี IMEI: {data.imeiMissingReason}</p>}
-                  {data.serialNumberMissingReason && (
-                    <p>เหตุผลที่ไม่มี Serial: {data.serialNumberMissingReason}</p>
-                  )}
-                </div>
-                {data.preferredVisitDate && (
-                  <div className="text-muted-foreground">
-                    วันที่สะดวกเข้าร้าน:{' '}
-                    {new Date(data.preferredVisitDate).toLocaleDateString('th-TH')}
-                  </div>
-                )}
-              </div>
-
-              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <DetailField label="สี">{data.deviceColor}</DetailField>
-                <DetailField label="ชื่อผู้ขาย">
-                  {data.sellerName ?? data.customer?.name}
-                </DetailField>
-                <DetailField label="โทรศัพท์ผู้ขาย">{data.sellerPhone}</DetailField>
-                <DetailField label="ที่อยู่ผู้ขาย">{data.sellerAddress}</DetailField>
-                <DetailField label="ตรวจบัตรประชาชน">
-                  {data.idCardVerifiedAt ? 'ตรวจแล้ว' : 'ยังไม่มีข้อมูลการตรวจ'}
-                </DetailField>
-                <DetailField label="คำรับรองผู้ขาย">
-                  {data.sellerConsentSigned ? 'ผู้ขายยอมรับแล้ว' : 'ยังไม่มีข้อมูลการยอมรับ'}
-                </DetailField>
-              </dl>
-              {data.notes && (
-                <p className="whitespace-pre-wrap wrap-anywhere">หมายเหตุพนักงาน: {data.notes}</p>
-              )}
-            </section>
-
-            {data.quoteBreakdown && (
-              <div className="rounded-lg border border-border p-3 space-y-1">
-                <div className="font-medium">ใบเสนอราคาออนไลน์</div>
-                {data.quoteBreakdown.chosenFlow && (
-                  <div className="text-xs text-muted-foreground">
-                    ประเภท:{' '}
-                    {data.quoteBreakdown.chosenFlow === 'EXCHANGE'
-                      ? 'เทิร์นแลกเครื่องใหม่ (เครดิต)'
-                      : 'รับซื้อเงินสด'}
-                  </div>
-                )}
-                <div className="flex justify-between text-muted-foreground">
-                  <span>ราคาสูงสุด</span>
-                  <span>{amount(data.quoteBreakdown.maxPrice)}</span>
-                </div>
-                {data.quoteBreakdown.cashPrice != null && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>ราคารับซื้อเงินสด</span>
-                    <span>{amount(data.quoteBreakdown.cashPrice)}</span>
-                  </div>
-                )}
-                {(Array.isArray(data.quoteBreakdown.lines) ? data.quoteBreakdown.lines : [])
-                  .filter((l) => Number(l.amount) > 0)
-                  .map((l, i) => (
-                    <div key={i} className="flex justify-between text-muted-foreground">
-                      <span>{l.label}</span>
-                      <span>−฿{Number(l.amount).toLocaleString()}</span>
-                    </div>
-                  ))}
-                {data.quoteBreakdown.chosenFlow === 'EXCHANGE' &&
-                  data.quoteBreakdown.cashPrice &&
-                  data.quoteBreakdown.exchangePrice && (
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>โบนัสเทิร์น +{Number(data.quoteBreakdown.bonusPct ?? 0)}%</span>
-                      <span>
-                        +฿
-                        {(
-                          Number(data.quoteBreakdown.exchangePrice) -
-                          Number(data.quoteBreakdown.cashPrice)
-                        ).toLocaleString()}
-                      </span>
+                  {(data.imeiMissingReason || data.serialNumberMissingReason) && (
+                    <div className="space-y-1 text-muted-foreground">
+                      {data.imeiMissingReason && (
+                        <p>เหตุผลที่ไม่มี IMEI: {data.imeiMissingReason}</p>
+                      )}
+                      {data.serialNumberMissingReason && (
+                        <p>เหตุผลที่ไม่มี Serial: {data.serialNumberMissingReason}</p>
+                      )}
                     </div>
                   )}
-                <div className="flex justify-between font-semibold border-t border-border pt-1">
-                  <span>ราคาที่เสนอ</span>
-                  <span>{amount(data.quoteBreakdown.price)}</span>
-                </div>
-              </div>
-            )}
+                </section>
 
-            {Array.isArray(data.conditionAnswers) && data.conditionAnswers.length > 0 && (
-              <div className="rounded-lg border border-border p-3 space-y-1.5">
-                <div className="font-medium">คำตอบประเมินออนไลน์ของลูกค้า</div>
-                {data.conditionAnswers.map((a) => (
-                  <div key={a.questionKey} className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">{a.title}</span>
-                    <span className="text-right">
-                      {!Array.isArray(a.choices)
-                        ? 'ยังไม่มีคำตอบ'
-                        : a.choices.length === 0
-                          ? 'ไม่มีปัญหา'
-                          : a.choices.map((c) => c.label).join(', ')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                {data.productId && <InventorySummary productId={data.productId} />}
 
-            {data.customerNotes && (
-              <div className="text-muted-foreground">หมายเหตุลูกค้า: {data.customerNotes}</div>
-            )}
+                <div className="grid gap-6 sm:grid-cols-2 sm:gap-8">
+                  <section aria-label="ข้อมูลการรับซื้อ" className="min-w-0 space-y-4">
+                    <h3 className="flex items-center gap-2 font-semibold">
+                      <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
+                      ข้อมูลการรับซื้อ
+                    </h3>
+                    <dl className="grid gap-4 sm:grid-cols-2">
+                      <DetailField label="เลขเอกสาร">
+                        {data.voucherNumber || 'ยังไม่ออกเอกสาร'}
+                      </DetailField>
+                      <DetailField label="วันที่ทำรายการ">{dateTime(data.createdAt)}</DetailField>
+                      <DetailField label="สาขาที่รับเครื่อง">{data.branch?.name}</DetailField>
+                      <DetailField label="ผู้รับซื้อ">
+                        {data.idCardVerifiedBy?.name || data.appraisedBy?.name}
+                      </DetailField>
+                      <DetailField label="วิธีจ่าย">{paymentLabel}</DetailField>
+                      <DetailField label="วันที่ตรวจบัตรและรับเครื่อง">
+                        {dateTime(data.idCardVerifiedAt)}
+                      </DetailField>
+                      {data.agreedPrice == null && (
+                        <>
+                          <DetailField label="ราคาที่เสนอ">{amount(data.offeredPrice)}</DetailField>
+                          <DetailField label="ราคาประเมิน">
+                            {amount(data.estimatedValue)}
+                          </DetailField>
+                        </>
+                      )}
+                      {data.paymentMethod === 'TRANSFER' && (
+                        <>
+                          <DetailField label="ธนาคารผู้ขาย">{data.transferBankName}</DetailField>
+                          <DetailField label="บัญชีผู้ขาย">
+                            {maskAccountNumber(data.transferAccountNumber)}
+                          </DetailField>
+                          <DetailField label="ชื่อบัญชีผู้ขาย">
+                            {data.transferAccountName}
+                          </DetailField>
+                        </>
+                      )}
+                      {data.paymentMethod === 'TRADE_IN_CREDIT' && (
+                        <>
+                          <DetailField label="มูลค่าเครื่องเป็นเครดิต">
+                            {amount(data.creditBaseAmount)}
+                          </DetailField>
+                          <DetailField label="โบนัสส่วนลด">
+                            {amount(data.creditBonusAmount)}
+                          </DetailField>
+                          <DetailField label="สถานะเครดิต">
+                            {data.creditIssuedAt
+                              ? data.currentRedemptionId
+                                ? 'ใช้เครดิตแล้ว'
+                                : 'ยังไม่ใช้เครดิต'
+                              : 'ยังไม่ออกเครดิต'}
+                          </DetailField>
+                        </>
+                      )}
+                    </dl>
+                  </section>
 
-            {(data.photoUrls?.length ?? 0) > 0 && (
-              <div className="grid grid-cols-4 gap-2">
-                {data.photoUrls!.map((url, i) => (
-                  <a
-                    key={i}
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block aspect-square rounded-lg overflow-hidden bg-muted"
+                  <section
+                    aria-label="เครื่องและผู้ขายตามใบรับเครื่อง"
+                    className="min-w-0 space-y-4 border-t border-border pt-5 sm:border-t-0 sm:border-l sm:pl-6 sm:pt-0"
                   >
-                    <img src={url} alt={`รูปที่ ${i + 1}`} className="h-full w-full object-cover" />
-                  </a>
-                ))}
+                    <h3 className="flex items-center gap-2 font-semibold">
+                      <UserRound className="size-4 text-muted-foreground" aria-hidden="true" />
+                      ข้อมูลผู้ขายและหลักฐาน
+                    </h3>
+                    <dl className="grid gap-4 sm:grid-cols-2">
+                      <DetailField label="ชื่อผู้ขาย">
+                        {data.sellerName ?? data.customer?.name}
+                      </DetailField>
+                      <DetailField label="โทรศัพท์ผู้ขาย">{data.sellerPhone}</DetailField>
+                      <div className="sm:col-span-2">
+                        <DetailField label="ที่อยู่ผู้ขาย">{data.sellerAddress}</DetailField>
+                      </div>
+                      <DetailField label="ตรวจบัตรประชาชน">
+                        {data.idCardVerifiedAt ? 'ตรวจแล้ว' : 'ยังไม่มีข้อมูลการตรวจ'}
+                      </DetailField>
+                      <DetailField label="คำรับรองผู้ขาย">
+                        {data.sellerConsentSigned ? 'ผู้ขายยอมรับแล้ว' : 'ยังไม่มีข้อมูลการยอมรับ'}
+                      </DetailField>
+                      {data.preferredVisitDate && (
+                        <DetailField label="วันที่สะดวกเข้าร้าน">
+                          {formatThaiDate(data.preferredVisitDate)}
+                        </DetailField>
+                      )}
+                    </dl>
+                    {data.notes && (
+                      <p className="whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+                        หมายเหตุพนักงาน: {data.notes}
+                      </p>
+                    )}
+                  </section>
+                </div>
+
+                {data.quoteBreakdown && (
+                  <div className="rounded-lg border border-border p-3 space-y-1">
+                    <div className="font-medium">ใบเสนอราคาออนไลน์</div>
+                    {data.quoteBreakdown.chosenFlow && (
+                      <div className="text-xs text-muted-foreground">
+                        ประเภท:{' '}
+                        {data.quoteBreakdown.chosenFlow === 'EXCHANGE'
+                          ? 'เทิร์นแลกเครื่องใหม่ (เครดิต)'
+                          : 'รับซื้อเงินสด'}
+                      </div>
+                    )}
+                    <div className="flex justify-between gap-4 wrap-anywhere text-muted-foreground">
+                      <span>ราคาสูงสุด</span>
+                      <span>{amount(data.quoteBreakdown.maxPrice)}</span>
+                    </div>
+                    {data.quoteBreakdown.cashPrice != null && (
+                      <div className="flex justify-between gap-4 wrap-anywhere text-muted-foreground">
+                        <span>ราคารับซื้อเงินสด</span>
+                        <span>{amount(data.quoteBreakdown.cashPrice)}</span>
+                      </div>
+                    )}
+                    {(Array.isArray(data.quoteBreakdown.lines) ? data.quoteBreakdown.lines : [])
+                      .filter((l) => Number(l.amount) > 0)
+                      .map((l, i) => (
+                        <div
+                          key={i}
+                          className="flex justify-between gap-4 wrap-anywhere text-muted-foreground"
+                        >
+                          <span>{l.label}</span>
+                          <span>−฿{Number(l.amount).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    {data.quoteBreakdown.chosenFlow === 'EXCHANGE' &&
+                      data.quoteBreakdown.cashPrice &&
+                      data.quoteBreakdown.exchangePrice && (
+                        <div className="flex justify-between gap-4 wrap-anywhere text-muted-foreground">
+                          <span>โบนัสเทิร์น +{Number(data.quoteBreakdown.bonusPct ?? 0)}%</span>
+                          <span>
+                            +฿
+                            {(
+                              Number(data.quoteBreakdown.exchangePrice) -
+                              Number(data.quoteBreakdown.cashPrice)
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                    <div className="flex justify-between font-semibold border-t border-border pt-1">
+                      <span>ราคาที่เสนอ</span>
+                      <span>{amount(data.quoteBreakdown.price)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {Array.isArray(data.conditionAnswers) && data.conditionAnswers.length > 0 && (
+                  <div className="rounded-lg border border-border p-3 space-y-1.5">
+                    <div className="font-medium">คำตอบประเมินออนไลน์ของลูกค้า</div>
+                    {data.conditionAnswers.map((a) => (
+                      <div key={a.questionKey} className="flex justify-between gap-3 wrap-anywhere">
+                        <span className="text-muted-foreground">{a.title}</span>
+                        <span className="text-right">
+                          {!Array.isArray(a.choices)
+                            ? 'ยังไม่มีคำตอบ'
+                            : a.choices.length === 0
+                              ? 'ไม่มีปัญหา'
+                              : a.choices.map((c) => c.label).join(', ')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {data.customerNotes && (
+                  <div className="text-muted-foreground">หมายเหตุลูกค้า: {data.customerNotes}</div>
+                )}
+
+                {(data.photoUrls?.length ?? 0) > 0 && (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {data.photoUrls!.map((url, i) => (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block aspect-square rounded-lg overflow-hidden bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      >
+                        <img
+                          src={url}
+                          alt={`รูปประเมินเครื่องที่ ${i + 1}`}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
+            )}
+          </QueryBoundary>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/30 px-5 py-3 sm:px-7">
+          <div className="min-w-0 flex-1">
+            {!isError && canPrint && (data.voucherNumber || canIssueVoucher) && (
+              <Button
+                variant="outline"
+                className="min-h-11 w-full whitespace-normal leading-snug sm:w-auto"
+                disabled={voucherLoading}
+                onClick={() => onVoucher(data)}
+              >
+                <Printer className="size-4" aria-hidden="true" />
+                {voucherLoading
+                  ? 'กำลังเปิดเอกสาร...'
+                  : data.voucherNumber
+                    ? 'พิมพ์เอกสารรับเครื่อง'
+                    : 'ออกเอกสารรับเครื่อง'}
+              </Button>
+            )}
+            {!isError && canPrint && !data.voucherNumber && !canIssueVoucher && (
+              <p className="text-xs leading-snug text-muted-foreground">
+                ให้ผู้จัดการออกเอกสารรับเครื่องก่อน แล้วจึงพิมพ์เอกสารได้
+              </p>
             )}
           </div>
-        )}
-      </QueryBoundary>
-    </Modal>
+          <DialogClose asChild>
+            <Button variant="ghost" className="min-h-11 px-5">
+              ปิด
+            </Button>
+          </DialogClose>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function DetailField({ label, children }: { label: string; children?: ReactNode }) {
+function DetailField({
+  label,
+  children,
+  mono = false,
+}: {
+  label: string;
+  children?: ReactNode;
+  mono?: boolean;
+}) {
   return (
     <div className="min-w-0 space-y-1">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="whitespace-pre-wrap wrap-anywhere">{children ?? 'ยังไม่ระบุ'}</dd>
+      <dd
+        className={`whitespace-pre-wrap wrap-anywhere text-base leading-snug sm:text-sm ${mono ? 'font-mono tabular-nums' : ''}`}
+      >
+        {children ?? 'ยังไม่ระบุ'}
+      </dd>
     </div>
   );
 }
@@ -329,24 +445,26 @@ function InventorySummary({ productId }: { productId: string }) {
   return (
     <section
       aria-label="สถานะเครื่องปัจจุบัน"
-      className="rounded-lg border border-border bg-muted/20 p-4 space-y-3"
+      className="space-y-4 rounded-xl border border-border bg-muted/30 p-4 sm:p-5"
     >
-      <h2 className="font-semibold">สถานะเครื่องปัจจุบัน</h2>
-      <QueryBoundary
-        isLoading={product.isLoading}
-        isError={product.isError}
-        error={product.error}
-        onRetry={product.refetch}
-        errorTitle="ไม่สามารถโหลดสถานะเครื่องได้"
-      >
-        {product.data && (
-          <>
-            {badge && (
-              <Badge variant={badge.variant} appearance={badge.appearance}>
-                {badge.label}
-              </Badge>
-            )}
-            <dl className="grid grid-cols-2 gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">สถานะเครื่องปัจจุบัน</h3>
+        {!product.isError && badge && (
+          <Badge variant={badge.variant} appearance={badge.appearance} className="text-foreground">
+            {badge.label}
+          </Badge>
+        )}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <QueryBoundary
+          isLoading={product.isLoading}
+          isError={product.isError}
+          error={product.error}
+          onRetry={product.refetch}
+          errorTitle="ไม่สามารถโหลดสถานะเครื่องได้"
+        >
+          {product.data && (
+            <dl className="grid grid-cols-2 gap-4 [&_dd]:text-lg [&_dd]:font-semibold [&_dd]:tabular-nums">
               <DetailField label="ราคาเงินสด">
                 {normalizePositive(prices?.cash) != null ? amount(prices?.cash) : 'ยังไม่ตั้งราคา'}
               </DetailField>
@@ -356,36 +474,49 @@ function InventorySummary({ productId }: { productId: string }) {
                   : 'ยังไม่ตั้งราคา'}
               </DetailField>
             </dl>
-            {product.data.status === 'PHOTO_PENDING' && (
-              <p className="text-sm text-muted-foreground">
-                {canSetPrice ? 'ตรวจและตั้งราคาขาย' : 'ให้ผู้จัดการตั้งราคาขาย'} ถ่ายรูป 6 มุม
-                แล้วกด “ยืนยันรูปครบ” ที่หน้าสินค้าเพื่อเข้าคลัง
-              </p>
-            )}
-          </>
+          )}
+        </QueryBoundary>
+        {photos.isError ? (
+          <div role="alert" className="space-y-2 text-sm text-destructive">
+            <p>ไม่สามารถโหลดข้อมูลรูปถ่ายได้</p>
+            <Button variant="outline" className="min-h-11" onClick={() => photos.refetch()}>
+              ลองโหลดรูปใหม่
+            </Button>
+          </div>
+        ) : (
+          <dl className="border-t border-border pt-3 sm:border-t-0 sm:border-l sm:pl-5 sm:pt-0">
+            <div className="space-y-1">
+              <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Camera className="size-3.5" aria-hidden="true" />
+                รูปถ่ายสินค้า
+              </dt>
+              <dd className="text-lg font-semibold leading-snug tabular-nums">
+                {photos.isLoading
+                  ? 'กำลังโหลดรูปถ่าย...'
+                  : photos.data && Number.isInteger(photos.data.completedCount)
+                    ? `${photos.data.completedCount}/${photos.data.totalCount} มุม`
+                    : 'ยังไม่มีข้อมูลรูปถ่าย'}
+              </dd>
+            </div>
+          </dl>
         )}
-      </QueryBoundary>
-      {photos.isError ? (
-        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
-          <span>ไม่สามารถโหลดข้อมูลรูปถ่ายได้</span>
-          <Button size="sm" variant="outline" onClick={() => photos.refetch()}>
-            ลองโหลดรูปใหม่
-          </Button>
-        </div>
-      ) : (
-        <dl>
-          <DetailField label="รูปถ่ายสินค้า">
-            {photos.isLoading
-              ? 'กำลังโหลดรูปถ่าย...'
-              : photos.data && Number.isInteger(photos.data.completedCount)
-                ? `${photos.data.completedCount}/${photos.data.totalCount} มุม`
-                : 'ยังไม่มีข้อมูลรูปถ่าย'}
-          </DetailField>
-        </dl>
-      )}
-      <Button asChild variant="outline">
-        <Link to={`/products/${productId}?zone=shop`}>เปิดเครื่อง ดูรูปและราคา</Link>
-      </Button>
+      </div>
+      <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground leading-snug">
+          {!product.isError && product.data?.status === 'PHOTO_PENDING'
+            ? `${canSetPrice ? 'ตรวจและตั้งราคาขาย' : 'ให้ผู้จัดการตั้งราคาขาย'} ถ่ายรูป 6 มุม แล้วกด “ยืนยันรูปครบ” ที่หน้าสินค้าเพื่อเข้าคลัง`
+            : 'เปิดหน้าสินค้าเพื่อตรวจรูป ราคา และสถานะล่าสุด'}
+        </p>
+        <Button
+          asChild
+          className="min-h-11 shrink-0 whitespace-normal leading-snug bg-[color-mix(in_srgb,var(--color-primary)_85%,var(--color-foreground))] hover:bg-[color-mix(in_srgb,var(--color-primary)_75%,var(--color-foreground))] dark:bg-primary dark:text-background dark:hover:bg-primary/90"
+        >
+          <Link to={`/products/${productId}?zone=shop`}>
+            เปิดเครื่อง ดูรูปและราคา
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        </Button>
+      </div>
     </section>
   );
 }

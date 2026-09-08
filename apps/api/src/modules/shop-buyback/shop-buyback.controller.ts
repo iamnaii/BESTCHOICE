@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { ShopBuybackService } from './shop-buyback.service';
@@ -22,14 +22,14 @@ export class ShopBuybackController {
 
   @Get('questions')
   @Throttle({ short: { limit: 60, ttl: 60_000 } })
-  getQuestions() {
-    return this.service.getQuestions();
+  getQuestions(@Query('model') model?: string, @Query('storage') storage?: string) {
+    return this.service.getQuestions(model, storage);
   }
 
   @Post('quote')
   @Throttle({ short: { limit: 60, ttl: 60_000 } })
   quote(@Body() dto: BuybackQuoteDto) {
-    return this.service.quoteForAnswers(dto.model, dto.storage, dto.answers);
+    return this.service.quoteForAnswers(dto.model, dto.storage, dto.answers, 'BUYBACK', { deviceEligibilityConfirmed: dto.deviceEligibilityConfirmed });
   }
 
   @Post('submit')

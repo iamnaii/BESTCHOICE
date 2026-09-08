@@ -6,6 +6,7 @@ import { acquireLock, ensurePreview, fingerprint, git, output, repo, run } from 
 import { checkLocalPages } from './check-local-pages.mjs';
 import { checkWorkCompany } from './check-local-work-company.mjs';
 import { checkTradeIn } from './check-local-trade-in.mjs';
+import { checkAppraisal } from './check-local-appraisal.mjs';
 
 const release = acquireLock('check');
 const report = { status: 'RUNNING', scope: 'Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression',
@@ -18,7 +19,7 @@ save();
 
 try {
   const steps = [
-    ['Local tooling', process.execPath, ['--test', 'tools/local-preview.test.mjs', 'tools/preview-chat-credit.test.mjs']],
+    ['Local tooling', process.execPath, ['--test', 'tools/local-preview.test.mjs', 'tools/preview-chat-credit.test.mjs', 'tools/import-yellobe-reference.test.mjs']],
     ['Prisma SHOP', join(repo, 'node_modules/.bin/prisma'), ['generate', '--schema', 'apps/api/prisma/schema.prisma']],
     ['Prisma FINANCE', join(repo, 'node_modules/.bin/prisma'), ['generate', '--schema', 'apps/api/prisma-finance/schema.prisma']],
     ['API + Web types', 'bash', ['tools/check-types.sh', 'all']],
@@ -26,6 +27,8 @@ try {
     ['Web lint', 'npm', ['run', 'lint', '--workspace=apps/web']],
     ['Web tests', 'npm', ['run', 'test', '--workspace=apps/web']],
     ['Shared tests', 'npm', ['run', 'test', '--workspace=@installment/shared']],
+    ['Storefront tests', 'npm', ['run', 'test', '--workspace=apps/web-shop']],
+    ['Storefront build + types', 'npm', ['run', 'build', '--workspace=apps/web-shop']],
     ['Web build', 'npm', ['run', 'build', '--workspace=apps/web']],
   ];
   for (const [label, command, args] of steps) {
@@ -68,6 +71,9 @@ try {
       await checkTradeIn(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Trade-in purchase, voucher, price and six-angle stock handoff ${viewport.width}px`, status: 'PASS' });
+      await checkAppraisal(page, info.url, output, viewport.width);
+      assert.deepEqual(errors, [], 'Browser errors');
+      report.checks.push({ label: `iPhone inspection, computed price and saved snapshot ${viewport.width}px`, status: 'PASS' });
       await context.close();
     }
   } finally { await browser.close(); }

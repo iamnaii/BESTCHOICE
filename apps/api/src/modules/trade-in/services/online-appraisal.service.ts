@@ -1,8 +1,14 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, TradeIn } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ShopBuybackService } from '../../shop-buyback/shop-buyback.service';
-import { AppraiseOnlineDto } from '../dto/appraise-online.dto';
+import { AppraisalPreviewDto, AppraiseOnlineDto, QuickBuyPreviewDto } from '../dto/appraise-online.dto';
+import { QuoteAnswerDto } from '../../shop-buyback/dto/quote.dto';
+
+type AppraisalDevice = Pick<TradeIn, 'deviceBrand' | 'deviceModel'> & { deviceStorage?: string | null };
+type QuickBuyAssessment = AppraisalDevice & { answers?: QuoteAnswerDto[]; deviceEligibilityConfirmed?: boolean;
+  previewToken?: string; agreedPrice: number; deviceCondition?: string };
 
 /**
  * Handshake ยืนยันราคาหน้าร้านของ record ที่มาจาก instant quote (spec §7.4):
@@ -10,7 +16,7 @@ import { AppraiseOnlineDto } from '../dto/appraise-online.dto';
  *  - AS_ANSWERED: สภาพตรงตามตอบ → ใช้ estimatedValue เป๊ะ
  *  - REVISED:     staff แก้คำตอบ → engine คิดใหม่จาก config ปัจจุบัน
  *  - MANUAL:      OWNER + reason (audited) — free-hand
- * Record walk-in / online แบบเก่า (ไม่มี quoteBreakdown) → ใช้ appraise() เดิม
+ * Walk-in / legacy records can start with REVISED after reviewing a server preview.
  */
 @Injectable()
 export class OnlineAppraisalService {
@@ -19,10 +25,127 @@ export class OnlineAppraisalService {
     private readonly shopBuyback: ShopBuybackService,
   ) {}
 
-  async appraiseOnline(id: string, dto: AppraiseOnlineDto, userId: string, userRole: string) {
+  referenceCatalog() {
+    return this.shopBuyback.referenceCatalog();
+  }
+
+  quickBuyCatalog() {
+    return this.shopBuyback.getCatalog();
+  }
+
+  async quickBuyQuestions(model: string, storage: string) {
+    const device = this.deviceInput({ deviceBrand: 'Apple', deviceModel: model, deviceStorage: storage });
+    const result = await this.shopBuyback.getQuestions(device.model, device.storage);
+    if (!result.questions.length) throw new BadRequestException('ยังไม่มีแบบประเมินที่เปิดใช้งาน กรุณาตั้งค่าแบบประเมินก่อน');
+    return result;
+  }
+
+  async quickBuyPreview(dto: QuickBuyPreviewDto) {
+    const quote = await this.quoteDevice(dto, dto.answers, 'BUYBACK', dto.deviceEligibilityConfirmed);
+    const previewToken = createHash('sha256').update(JSON.stringify({ version: 1, purpose: 'quick-buy', deviceBrand: 'Apple',
+      deviceModel: quote.model, deviceStorage: quote.storage, quote })).digest('hex');
+    return { ...quote, previewToken };
+  }
+
+  async prepareQuickBuy(dto: QuickBuyAssessment, userId: string) {
+    if (!dto.answers?.length || !dto.deviceStorage || !dto.previewToken) {
+      throw new BadRequestException('กรุณาประเมินสภาพและดูราคาก่อนยืนยันรับซื้อ');
+    }
+    const quote = await this.quickBuyPreview({ ...dto, deviceStorage: dto.deviceStorage, answers: dto.answers });
+    if (quote.previewToken !== dto.previewToken) throw new ConflictException({ code: 'QUICK_BUY_QUOTE_CHANGED',
+      message: 'ราคาหรือเงื่อนไขประเมินเปลี่ยนแล้ว กรุณาดูราคาใหม่ก่อนรับซื้อ' });
+    const price = new Prisma.Decimal(quote.cashPrice);
+    if (!price.isFinite() || !price.gt(0)) throw new BadRequestException('ผลประเมินนี้ไม่มีมูลค่ารับซื้อ');
+    if (!Number.isFinite(dto.agreedPrice) || !price.eq(dto.agreedPrice) || (dto.deviceCondition !== undefined && dto.deviceCondition !== quote.grade)) {
+      throw new ConflictException({ code: 'QUICK_BUY_QUOTE_CHANGED',
+        message: 'ราคาหรือเกรดเครื่องไม่ตรงกับผลประเมิน กรุณาดูราคาใหม่ก่อนรับซื้อ' });
+    }
+    return { device: { deviceBrand: 'Apple', deviceModel: quote.model, deviceStorage: quote.storage }, data: {
+      offeredPrice: price, estimatedValue: price, deviceCondition: quote.grade, basePriceAtAppraisal: new Prisma.Decimal(quote.maxPrice),
+      quoteBreakdown: quote.breakdown as unknown as Prisma.InputJsonValue,
+      conditionAnswers: this.confirmEligibility(quote.conditionAnswers, quote.breakdown, userId),
+    } };
+  }
+
+  async questions(tradeInId?: string, userRole = 'OWNER', userBranchId: string | null = null) {
+    const device = tradeInId ? this.deviceInput(await this.loadItem(tradeInId, userRole, userBranchId)) : null;
+    const result = await this.shopBuyback.getQuestions(device?.model, device?.storage);
+    if (!result.questions.length) throw new BadRequestException('ยังไม่มีแบบประเมินที่เปิดใช้งาน กรุณาตั้งค่าแบบประเมินก่อน');
+    return result;
+  }
+
+  private async loadItem(id: string, userRole: string, userBranchId: string | null) {
     const tradeIn = await this.prisma.tradeIn.findFirst({ where: { id, deletedAt: null } });
     if (!tradeIn) throw new NotFoundException('ไม่พบรายการเทรดอิน');
-    if (!tradeIn.quoteBreakdown && dto.mode !== 'MANUAL') {
+    if (!['OWNER', 'BRANCH_MANAGER'].includes(userRole)) throw new ForbiddenException('ไม่มีสิทธิ์ประเมินราคา');
+    if (userRole === 'BRANCH_MANAGER' && (!userBranchId || (tradeIn.branchId
+      ? tradeIn.branchId !== userBranchId
+      : tradeIn.submissionSource !== 'ONLINE'))) {
+      throw new ForbiddenException('ไม่สามารถประเมินรายการของสาขาอื่นหรือรายการหน้าร้านที่ยังไม่มีสาขา');
+    }
+    return tradeIn;
+  }
+
+  private deviceInput(tradeIn: AppraisalDevice) {
+    if (typeof tradeIn.deviceBrand !== 'string' || typeof tradeIn.deviceModel !== 'string'
+      || tradeIn.deviceBrand.trim().toLowerCase() !== 'apple' || !/^iphone\b/i.test(tradeIn.deviceModel.trim())) {
+      throw new BadRequestException('แบบประเมินนี้รองรับเฉพาะ Apple iPhone');
+    }
+    if (typeof tradeIn.deviceStorage !== 'string' || !tradeIn.deviceStorage.trim()) throw new BadRequestException('รายการนี้ยังไม่ระบุความจุเครื่อง กรุณาระบุข้อมูลเครื่องให้ครบก่อน');
+    return { model: tradeIn.deviceModel.trim(), storage: tradeIn.deviceStorage.trim() };
+  }
+
+  private async quoteItem(tradeIn: TradeIn, answers: QuoteAnswerDto[], deviceEligibilityConfirmed?: boolean) {
+    return this.quoteDevice(tradeIn, answers, tradeIn.flow === 'EXCHANGE' ? 'EXCHANGE' : 'BUYBACK', deviceEligibilityConfirmed);
+  }
+
+  private async quoteDevice(input: AppraisalDevice, answers: QuoteAnswerDto[], flow: 'BUYBACK' | 'EXCHANGE', deviceEligibilityConfirmed?: boolean) {
+    const device = this.deviceInput(input);
+    const quote = await this.shopBuyback.quoteForAnswers(device.model, device.storage, answers,
+      flow, { requireCompleteQuestionnaire: true,
+        ...(deviceEligibilityConfirmed === undefined ? {} : { deviceEligibilityConfirmed }) });
+    if (!quote.available) throw new BadRequestException('รุ่นหรือความจุนี้ไม่มีราคาในตาราง — แก้ตารางราคากลางก่อน');
+    return quote;
+  }
+
+  private confirmEligibility(answers: unknown, quote: { eligibilityRequired?: unknown; eligibilityText?: unknown;
+    source?: unknown; capturedAt?: unknown; profileId?: unknown }, userId: string): Prisma.InputJsonValue {
+    const existingAnswers = Array.isArray(answers) ? answers : [];
+    if (quote.eligibilityRequired !== true) return existingAnswers as Prisma.InputJsonValue;
+    return [...existingAnswers.filter((answer) => !answer || typeof answer !== 'object'
+      || (answer as Record<string, unknown>).questionKey !== '__device_eligibility'), {
+      questionKey: '__device_eligibility', title: quote.eligibilityText,
+      selectType: 'SINGLE', choices: [{ choiceId: 'confirmed', label: 'ยืนยันว่าผ่านเงื่อนไขรับซื้อ', deductType: 'FIXED', deductValue: '0' }],
+      confirmed: true, source: quote.source, capturedAt: quote.capturedAt, profileId: quote.profileId,
+      verifiedById: userId, verifiedAt: new Date().toISOString(),
+    }] as Prisma.InputJsonValue;
+  }
+
+  private fingerprint(tradeIn: TradeIn, quote: Awaited<ReturnType<OnlineAppraisalService['quoteItem']>>) {
+    return createHash('sha256').update(JSON.stringify({ version: 1, id: tradeIn.id, updatedAt: tradeIn.updatedAt,
+      brand: tradeIn.deviceBrand, model: tradeIn.deviceModel, storage: tradeIn.deviceStorage, flow: tradeIn.flow,
+      branchId: tradeIn.branchId, status: tradeIn.status, appraisalLocked: tradeIn.appraisalLocked, quote })).digest('hex');
+  }
+
+  async preview(id: string, dto: AppraisalPreviewDto, userRole: string, userBranchId: string | null) {
+    const tradeIn = await this.loadItem(id, userRole, userBranchId);
+    if (tradeIn.appraisalLocked || tradeIn.status !== 'PENDING_APPRAISAL') {
+      throw new BadRequestException('รายการนี้ไม่อยู่ในสถานะรอประเมิน กรุณาโหลดข้อมูลใหม่');
+    }
+    const quote = await this.quoteItem(tradeIn, dto.answers, dto.deviceEligibilityConfirmed);
+    return { ...quote, previewToken: this.fingerprint(tradeIn, quote) };
+  }
+
+  async appraiseOnline(id: string, dto: AppraiseOnlineDto, userId: string, userRole: string, userBranchId: string | null = null) {
+    const tradeIn = await this.loadItem(id, userRole, userBranchId);
+    const eligibility = tradeIn.quoteBreakdown as Record<string, unknown> | null;
+    if (eligibility?.eligibilityRequired === true && dto.deviceEligibilityConfirmed !== true) {
+      throw new BadRequestException('กรุณายืนยันว่าเครื่องผ่านเงื่อนไขรับซื้อก่อนยืนยันราคา');
+    }
+    if (dto.mode !== 'MANUAL' && dto.offeredPrice !== undefined) {
+      throw new BadRequestException('ราคาประเมินต้องคำนวณจากแบบประเมิน ไม่สามารถส่งราคามาเองได้');
+    }
+    if (!tradeIn.quoteBreakdown && dto.mode === 'AS_ANSWERED') {
       throw new BadRequestException(
         'รายการนี้ไม่ได้มาจากใบเสนอราคาออนไลน์ — ใช้การประเมินราคาแบบปกติ',
       );
@@ -89,17 +212,14 @@ export class OnlineAppraisalService {
       if (!dto.answers || dto.answers.length === 0) {
         throw new BadRequestException('กรุณาส่งคำตอบแบบประเมินชุดใหม่');
       }
-      const recordFlow = tradeIn.flow === 'EXCHANGE' ? ('EXCHANGE' as const) : ('BUYBACK' as const);
-      const quote = await this.shopBuyback.quoteForAnswers(
-        tradeIn.deviceModel,
-        tradeIn.deviceStorage ?? '',
-        dto.answers,
-        recordFlow,
-      );
-      if (!quote.available) {
-        throw new BadRequestException('รุ่นนี้ไม่มีราคาในตารางแล้ว — แก้ตารางราคากลางก่อน');
+      const quote = await this.quoteItem(tradeIn, dto.answers, dto.deviceEligibilityConfirmed);
+      if ((!tradeIn.quoteBreakdown || dto.previewToken) && dto.previewToken !== this.fingerprint(tradeIn, quote)) {
+        throw new ConflictException('ข้อมูลเครื่องหรือราคาประเมินเปลี่ยนแล้ว กรุณาดูราคาใหม่ก่อนยืนยัน');
       }
       offeredPrice = new Prisma.Decimal(quote.price!);
+      if (!offeredPrice.isFinite() || !offeredPrice.gt(0)) {
+        throw new BadRequestException('ผลประเมินนี้ไม่มีมูลค่ารับซื้อ กรุณาตรวจสภาพและคำตอบอีกครั้ง');
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const newBreakdown = quote.breakdown as any;
       basePriceAtAppraisal = new Prisma.Decimal(newBreakdown?.maxPrice ?? quote.maxPrice ?? 0);
@@ -162,6 +282,12 @@ export class OnlineAppraisalService {
       }
     }
 
+    const savedQuote = (extraData.quoteBreakdown ?? tradeIn.quoteBreakdown) as Record<string, unknown> | null;
+    if (savedQuote?.eligibilityRequired === true) {
+      const answers = extraData.conditionAnswers ?? tradeIn.conditionAnswers;
+      extraData.conditionAnswers = this.confirmEligibility(answers, savedQuote, userId);
+    }
+
     // Compare-and-set: findFirst ข้างบนอ่านแบบ dirty read — ระหว่างนี้ staff คนอื่นอาจ
     // appraise record เดียวกันไปแล้ว ใช้ updateMany + WHERE conditional (เห็น state ที่อ่านมา)
     // กัน race แทน update({where:{id}}) ธรรมดาที่ตัวชนะ/แพ้ overwrite กันเงียบๆ ได้เสมอ
@@ -179,7 +305,7 @@ export class OnlineAppraisalService {
             status: { in: ['PENDING_APPRAISAL', 'APPRAISED'] },
             offeredPrice: tradeIn.offeredPrice,
           }
-        : { id, deletedAt: null, appraisalLocked: false, status: 'PENDING_APPRAISAL' };
+        : { id, deletedAt: null, appraisalLocked: false, status: 'PENDING_APPRAISAL', updatedAt: tradeIn.updatedAt };
 
     const result = await this.prisma.tradeIn.updateMany({
       where: whereGuard,

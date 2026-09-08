@@ -1,0 +1,3361 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-08T14:33:38.585Z",
+  "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+  "capturePolicy": {
+    "submittedOnlyAnonymousQuote": true,
+    "submittedTradingChannel": false,
+    "submittedContactOrLead": false,
+    "changedPublishedBasePrice": false,
+    "usedOnlyPublishedChoices": true
+  },
+  "observedRule": {
+    "formula": "(publishedBasePrice - sum(selectedFixedDeductions)) * (1 - max(selectedPercentDeductions) / 100)",
+    "fixedAggregation": "SUM",
+    "percentageAggregation": "GLOBAL_MAX_ACROSS_SINGLE_AND_MULTI",
+    "roundDownToTen": false,
+    "fractionalBahtRounding": "UNDETERMINED: all captured base prices/fixed deductions are multiples of 100 and percent deductions are integers.",
+    "negativeResultFloor": "NOT_TESTED"
+  },
+  "observations": [
+    {
+      "name": "baseline",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-0",
+          "label": "ประกันเหลือมากกว่า 4 เดือน",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-0",
+          "label": "ไม่มีรอยขีดข่วน",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "question_name[183][573]",
+          "0"
+        ],
+        [
+          "slected_value_set[247]",
+          "ไม่มีรอยขีดข่วน"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "ไม่มีรอยขีดข่วน"
+        ],
+        [
+          "question_name[247][652]",
+          "0"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ],
+        [
+          "optional",
+          ""
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:28:57.775Z",
+      "status": 200,
+      "requestReconstructedFromSourceForm": false,
+      "resultPrice": "5000",
+      "fixedSum": 0,
+      "maxPercent": 0,
+      "percentSum": 0,
+      "expectedFromSumFixedThenMaxPercent": 5000,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/quote-baseline.html",
+      "rawResponseSha256": "03287e5100d9be69b5480f5786bdcc5d571c5f0bb3732851ce26de8811160369",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "expired-body-light",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-2",
+          "label": "หมดประกัน",
+          "deductType": "FIXED",
+          "deductValue": "500"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-1",
+          "label": "มีรอยนิดหน่อย รอยเคส",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "หมดประกัน"
+        ],
+        [
+          "nav_amt[2][]",
+          "500"
+        ],
+        [
+          "nav_name[2][]",
+          "หมดประกัน"
+        ],
+        [
+          "question_name[183][575]",
+          "500"
+        ],
+        [
+          "slected_value_set[247]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "question_name[247][653]",
+          "15"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          ""
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:29:42.859Z",
+      "status": 200,
+      "requestReconstructedFromSourceForm": true,
+      "resultPrice": "3825",
+      "fixedSum": 500,
+      "maxPercent": 15,
+      "percentSum": 15,
+      "expectedFromSumFixedThenMaxPercent": 3825,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/quote-expired-body-light.html",
+      "rawResponseSha256": "3ad186c115a32ef9e741339529b0b48a2f42becee5adaaa050421bc1da93eaa1",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "two-percent",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-0",
+          "label": "ประกันเหลือมากกว่า 4 เดือน",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-1",
+          "label": "มีรอยนิดหน่อย รอยเคส",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-1",
+          "label": "หน้าจอมีรอยบางๆ",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "question_name[183][573]",
+          "0"
+        ],
+        [
+          "slected_value_set[247]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "question_name[247][653]",
+          "15"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอมีรอยบางๆ"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอมีรอยบางๆ"
+        ],
+        [
+          "question_name[248][657]",
+          "15"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          ""
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:29:43.387Z",
+      "status": 200,
+      "requestReconstructedFromSourceForm": true,
+      "resultPrice": "4250",
+      "fixedSum": 0,
+      "maxPercent": 15,
+      "percentSum": 30,
+      "expectedFromSumFixedThenMaxPercent": 4250,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/quote-two-percent.html",
+      "rawResponseSha256": "7c91f89f45a4948963222b1d95cce0e84a3d2486ebb4650113ab6e5abfc03f47",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "fixed-and-two-percent",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-2",
+          "label": "หมดประกัน",
+          "deductType": "FIXED",
+          "deductValue": "500"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-1",
+          "label": "มีรอยนิดหน่อย รอยเคส",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-1",
+          "label": "หน้าจอมีรอยบางๆ",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "หมดประกัน"
+        ],
+        [
+          "nav_amt[2][]",
+          "500"
+        ],
+        [
+          "nav_name[2][]",
+          "หมดประกัน"
+        ],
+        [
+          "question_name[183][575]",
+          "500"
+        ],
+        [
+          "slected_value_set[247]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "question_name[247][653]",
+          "15"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอมีรอยบางๆ"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอมีรอยบางๆ"
+        ],
+        [
+          "question_name[248][657]",
+          "15"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          ""
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:29:43.839Z",
+      "status": 200,
+      "requestReconstructedFromSourceForm": true,
+      "resultPrice": "3825",
+      "fixedSum": 500,
+      "maxPercent": 15,
+      "percentSum": 30,
+      "expectedFromSumFixedThenMaxPercent": 3825,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/quote-fixed-and-two-percent.html",
+      "rawResponseSha256": "50d8986b7dbfbe5251bbc3375267cbdb9f477a1e2c992362cf45a8a623d86fed",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "three-percent",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-0",
+          "label": "ประกันเหลือมากกว่า 4 เดือน",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-1",
+          "label": "มีรอยนิดหน่อย รอยเคส",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-1",
+          "label": "หน้าจอมีรอยบางๆ",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-1",
+          "label": "จุด Bright / ฝุ่นในจอ / ขอบจอเงา",
+          "deductType": "PERCENT",
+          "deductValue": "45"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "question_name[183][573]",
+          "0"
+        ],
+        [
+          "slected_value_set[247]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "question_name[247][653]",
+          "15"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอมีรอยบางๆ"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอมีรอยบางๆ"
+        ],
+        [
+          "question_name[248][657]",
+          "15"
+        ],
+        [
+          "slected_value_set[249]",
+          "จุด Bright / ฝุ่นในจอ / ขอบจอเงา"
+        ],
+        [
+          "nav_amt[1][]",
+          "45"
+        ],
+        [
+          "nav_name[1][]",
+          "จุด Bright / ฝุ่นในจอ / ขอบจอเงา"
+        ],
+        [
+          "question_name[249][660]",
+          "45"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          ""
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:29:44.302Z",
+      "status": 200,
+      "requestReconstructedFromSourceForm": true,
+      "resultPrice": "2750",
+      "fixedSum": 0,
+      "maxPercent": 45,
+      "percentSum": 75,
+      "expectedFromSumFixedThenMaxPercent": 2750,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/quote-three-percent.html",
+      "rawResponseSha256": "31b1848f8e488a8f63aea4e15754cb3f47c479489c73f9147e6f5639294b7835",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "body-and-vibration",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-0",
+          "label": "ประกันเหลือมากกว่า 4 เดือน",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-1",
+          "label": "มีรอยนิดหน่อย รอยเคส",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-3",
+          "label": "ระบบสั่น",
+          "deductType": "PERCENT",
+          "deductValue": "45"
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "question_name[183][573]",
+          "0"
+        ],
+        [
+          "slected_value_set[247]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "question_name[247][653]",
+          "15"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          "45"
+        ],
+        [
+          "porp_amt[]",
+          "45"
+        ],
+        [
+          "porp_name[]",
+          "ระบบสั่น"
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:29:44.838Z",
+      "status": 200,
+      "requestReconstructedFromSourceForm": true,
+      "resultPrice": "2750",
+      "fixedSum": 0,
+      "maxPercent": 45,
+      "percentSum": 60,
+      "expectedFromSumFixedThenMaxPercent": 2750,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/quote-body-and-vibration.html",
+      "rawResponseSha256": "65942de1b169a37f93cb15de1ef153c1c1eea294dd60b683b4cd04b47aea57cc",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "two-functional",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-0",
+          "label": "ประกันเหลือมากกว่า 4 เดือน",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-0",
+          "label": "ไม่มีรอยขีดข่วน",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-3",
+          "label": "ระบบสั่น",
+          "deductType": "PERCENT",
+          "deductValue": "45"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-7",
+          "label": "ลำโพงบน ล่าง",
+          "deductType": "PERCENT",
+          "deductValue": "45"
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "question_name[183][573]",
+          "0"
+        ],
+        [
+          "slected_value_set[247]",
+          "ไม่มีรอยขีดข่วน"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "ไม่มีรอยขีดข่วน"
+        ],
+        [
+          "question_name[247][652]",
+          "0"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          "45"
+        ],
+        [
+          "porp_amt[]",
+          "45"
+        ],
+        [
+          "porp_name[]",
+          "ระบบสั่น"
+        ],
+        [
+          "optional",
+          "45"
+        ],
+        [
+          "porp_amt[]",
+          "45"
+        ],
+        [
+          "porp_name[]",
+          "ลำโพงบน ล่าง"
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:29:45.289Z",
+      "status": 200,
+      "requestReconstructedFromSourceForm": true,
+      "resultPrice": "2750",
+      "fixedSum": 0,
+      "maxPercent": 45,
+      "percentSum": 90,
+      "expectedFromSumFixedThenMaxPercent": 2750,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/quote-two-functional.html",
+      "rawResponseSha256": "ebed82ad405ae6d0d69fedad8e49aedc263b09c2f1a04ddaa7780c975a122a1e",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "two-equal-fixed",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-2",
+          "label": "หมดประกัน",
+          "deductType": "FIXED",
+          "deductValue": "500"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-0",
+          "label": "ไม่มีรอยขีดข่วน",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-2",
+          "label": "ไม่มีกล่อง",
+          "deductType": "FIXED",
+          "deductValue": "500"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "หมดประกัน"
+        ],
+        [
+          "nav_amt[2][]",
+          "500"
+        ],
+        [
+          "nav_name[2][]",
+          "หมดประกัน"
+        ],
+        [
+          "question_name[183][575]",
+          "500"
+        ],
+        [
+          "slected_value_set[247]",
+          "ไม่มีรอยขีดข่วน"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "ไม่มีรอยขีดข่วน"
+        ],
+        [
+          "question_name[247][652]",
+          "0"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "ไม่มีกล่อง"
+        ],
+        [
+          "nav_amt[2][]",
+          "500"
+        ],
+        [
+          "nav_name[2][]",
+          "ไม่มีกล่อง"
+        ],
+        [
+          "question_name[257][1422]",
+          "500"
+        ],
+        [
+          "optional",
+          ""
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:33:14.020Z",
+      "fetchedAt": "2026-09-08T14:33:14.148Z",
+      "status": 200,
+      "url": "https://www.yellobe.com/buy/posescion_price",
+      "resultPrice": "4000",
+      "fixedSum": 1000,
+      "maxPercent": 0,
+      "percentSum": 0,
+      "expectedFromSumFixedThenMaxPercent": 4000,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/verified-quote-two-equal-fixed.html",
+      "rawResponseSha256": "f9df9ab913cb6844498c192e34ce796ccb8dee3a607b3c488b52afe820ca6083",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "two-different-fixed",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-2",
+          "label": "เครื่องนอกโมเดลอื่น",
+          "deductType": "FIXED",
+          "deductValue": "1500"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-2",
+          "label": "หมดประกัน",
+          "deductType": "FIXED",
+          "deductValue": "500"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-0",
+          "label": "ไม่มีรอยขีดข่วน",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องนอกโมเดลอื่น"
+        ],
+        [
+          "nav_amt[2][]",
+          "1500"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องนอกโมเดลอื่น"
+        ],
+        [
+          "question_name[182][1313]",
+          "1500"
+        ],
+        [
+          "slected_value_set[183]",
+          "หมดประกัน"
+        ],
+        [
+          "nav_amt[2][]",
+          "500"
+        ],
+        [
+          "nav_name[2][]",
+          "หมดประกัน"
+        ],
+        [
+          "question_name[183][575]",
+          "500"
+        ],
+        [
+          "slected_value_set[247]",
+          "ไม่มีรอยขีดข่วน"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "ไม่มีรอยขีดข่วน"
+        ],
+        [
+          "question_name[247][652]",
+          "0"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          ""
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:33:14.706Z",
+      "fetchedAt": "2026-09-08T14:33:14.768Z",
+      "status": 200,
+      "url": "https://www.yellobe.com/buy/posescion_price",
+      "resultPrice": "3000",
+      "fixedSum": 2000,
+      "maxPercent": 0,
+      "percentSum": 0,
+      "expectedFromSumFixedThenMaxPercent": 3000,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/verified-quote-two-different-fixed.html",
+      "rawResponseSha256": "315797a6a1de02ac5db895aa4ef67e1e9859e079ae540577b26ec5e93ab30764",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "all-fixed-and-mixed-percent",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-2",
+          "label": "เครื่องนอกโมเดลอื่น",
+          "deductType": "FIXED",
+          "deductValue": "1500"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-2",
+          "label": "หมดประกัน",
+          "deductType": "FIXED",
+          "deductValue": "500"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-1",
+          "label": "มีรอยนิดหน่อย รอยเคส",
+          "deductType": "PERCENT",
+          "deductValue": "15"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-2",
+          "label": "หน้าจอมีรอยสะดุด",
+          "deductType": "PERCENT",
+          "deductValue": "32"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-1",
+          "label": "แบตเตอรี่ ต่ำกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "1500"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-2",
+          "label": "ไม่มีกล่อง",
+          "deductType": "FIXED",
+          "deductValue": "500"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-3",
+          "label": "ระบบสั่น",
+          "deductType": "PERCENT",
+          "deductValue": "45"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-7",
+          "label": "ลำโพงบน ล่าง",
+          "deductType": "PERCENT",
+          "deductValue": "45"
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องนอกโมเดลอื่น"
+        ],
+        [
+          "nav_amt[2][]",
+          "1500"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องนอกโมเดลอื่น"
+        ],
+        [
+          "question_name[182][1313]",
+          "1500"
+        ],
+        [
+          "slected_value_set[183]",
+          "หมดประกัน"
+        ],
+        [
+          "nav_amt[2][]",
+          "500"
+        ],
+        [
+          "nav_name[2][]",
+          "หมดประกัน"
+        ],
+        [
+          "question_name[183][575]",
+          "500"
+        ],
+        [
+          "slected_value_set[247]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "nav_amt[1][]",
+          "15"
+        ],
+        [
+          "nav_name[1][]",
+          "มีรอยนิดหน่อย รอยเคส"
+        ],
+        [
+          "question_name[247][653]",
+          "15"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอมีรอยสะดุด"
+        ],
+        [
+          "nav_amt[1][]",
+          "32"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอมีรอยสะดุด"
+        ],
+        [
+          "question_name[248][658]",
+          "32"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ ต่ำกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "1500"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ ต่ำกว่า 80%"
+        ],
+        [
+          "question_name[250][1426]",
+          "1500"
+        ],
+        [
+          "slected_value_set[257]",
+          "ไม่มีกล่อง"
+        ],
+        [
+          "nav_amt[2][]",
+          "500"
+        ],
+        [
+          "nav_name[2][]",
+          "ไม่มีกล่อง"
+        ],
+        [
+          "question_name[257][1422]",
+          "500"
+        ],
+        [
+          "optional",
+          "45"
+        ],
+        [
+          "porp_amt[]",
+          "45"
+        ],
+        [
+          "porp_name[]",
+          "ระบบสั่น"
+        ],
+        [
+          "optional",
+          "45"
+        ],
+        [
+          "porp_amt[]",
+          "45"
+        ],
+        [
+          "porp_name[]",
+          "ลำโพงบน ล่าง"
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:33:15.329Z",
+      "fetchedAt": "2026-09-08T14:33:15.397Z",
+      "status": 200,
+      "url": "https://www.yellobe.com/buy/posescion_price",
+      "resultPrice": "550",
+      "fixedSum": 4000,
+      "maxPercent": 45,
+      "percentSum": 137,
+      "expectedFromSumFixedThenMaxPercent": 550,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/verified-quote-all-fixed-and-mixed-percent.html",
+      "rawResponseSha256": "cb45a290beae15fbc9ac1cb9eb327a57ba514467b899c6021555959ffcb37c9e",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "body-higher-than-functional",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "detailId": "1140",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5000.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-0",
+          "label": "ประกันเหลือมากกว่า 4 เดือน",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-4",
+          "label": "ฝาหลัง / กระจกหลังแตก",
+          "deductType": "PERCENT",
+          "deductValue": "55"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-3",
+          "label": "ระบบสั่น",
+          "deductType": "PERCENT",
+          "deductValue": "45"
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5000"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1140"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "64 GB"
+        ],
+        [
+          "orderdetail",
+          "1140"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "question_name[183][573]",
+          "0"
+        ],
+        [
+          "slected_value_set[247]",
+          "ฝาหลัง / กระจกหลังแตก"
+        ],
+        [
+          "nav_amt[1][]",
+          "55"
+        ],
+        [
+          "nav_name[1][]",
+          "ฝาหลัง / กระจกหลังแตก"
+        ],
+        [
+          "question_name[247][1239]",
+          "55"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          "45"
+        ],
+        [
+          "porp_amt[]",
+          "45"
+        ],
+        [
+          "porp_name[]",
+          "ระบบสั่น"
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:33:15.945Z",
+      "fetchedAt": "2026-09-08T14:33:16.016Z",
+      "status": 200,
+      "url": "https://www.yellobe.com/buy/posescion_price",
+      "resultPrice": "2250",
+      "fixedSum": 0,
+      "maxPercent": 55,
+      "percentSum": 100,
+      "expectedFromSumFixedThenMaxPercent": 2250,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/verified-quote-body-higher-than-functional.html",
+      "rawResponseSha256": "83447cd459eabb18d68a775745f68167f4b40e7c2ec3d74501144bd43a5f1ccc",
+      "sourceFormSha256": "a31f889271fc9b76e81cc7f58a4d77c1cbe75e7514e282f47a2e3d8a1c8764ec",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "mini-256-unit-baht",
+      "model": "iPhone 12 Mini",
+      "storage": "256GB",
+      "detailId": "1127",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "4700.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-0",
+          "label": "ประกันเหลือมากกว่า 4 เดือน",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-4",
+          "label": "ฝาหลัง / กระจกหลังแตก",
+          "deductType": "PERCENT",
+          "deductValue": "51"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "4700"
+        ],
+        [
+          "orderbuy",
+          "585"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12 Mini"
+        ],
+        [
+          "size_id",
+          "1127"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "256 GB"
+        ],
+        [
+          "orderdetail",
+          "1127"
+        ],
+        [
+          "sub_category_ID",
+          "367"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.png"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "question_name[183][573]",
+          "0"
+        ],
+        [
+          "slected_value_set[247]",
+          "ฝาหลัง / กระจกหลังแตก"
+        ],
+        [
+          "nav_amt[1][]",
+          "51"
+        ],
+        [
+          "nav_name[1][]",
+          "ฝาหลัง / กระจกหลังแตก"
+        ],
+        [
+          "question_name[247][1239]",
+          "51"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          ""
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:33:16.558Z",
+      "fetchedAt": "2026-09-08T14:33:16.625Z",
+      "status": 200,
+      "url": "https://www.yellobe.com/buy/posescion_price",
+      "resultPrice": "2303",
+      "fixedSum": 0,
+      "maxPercent": 51,
+      "percentSum": 51,
+      "expectedFromSumFixedThenMaxPercent": 2303,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/verified-quote-mini-256-unit-baht.html",
+      "rawResponseSha256": "f1b73dff122cced0ca3aea7a1e77685c04d9e1e9723cdf7b56f9f660dc5c744e",
+      "sourceFormSha256": "822b00ab90357e7f856c2788fdf07b1942602e7917a39e909b2de054ba1e9e1c",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    },
+    {
+      "name": "iphone12-128-unit-baht",
+      "model": "iPhone 12",
+      "storage": "128GB",
+      "detailId": "1141",
+      "sourceUrl": "https://www.yellobe.com/buy/posescion_price",
+      "basePrice": "5500.00",
+      "selected": [
+        {
+          "groupId": "182",
+          "inputId": "gg182-0",
+          "label": "เครื่องไทย TH",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "183",
+          "inputId": "gg183-0",
+          "label": "ประกันเหลือมากกว่า 4 เดือน",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "247",
+          "inputId": "gg247-4",
+          "label": "ฝาหลัง / กระจกหลังแตก",
+          "deductType": "PERCENT",
+          "deductValue": "51"
+        },
+        {
+          "groupId": "248",
+          "inputId": "gg248-0",
+          "label": "หน้าจอไม่มีรอย",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "249",
+          "inputId": "gg249-0",
+          "label": "แสดงภาพหน้าจอปกติ",
+          "deductType": "PERCENT",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "250",
+          "inputId": "gg250-0",
+          "label": "แบตเตอรี่ มากกว่า 80%",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "257",
+          "inputId": "gg257-0",
+          "label": "มีกล่อง / อุปกรณ์ครบ",
+          "deductType": "FIXED",
+          "deductValue": "0"
+        },
+        {
+          "groupId": "functional",
+          "inputId": "optional-no",
+          "label": "ไม่มีปัญหา",
+          "deductType": null,
+          "deductValue": null
+        }
+      ],
+      "eligibilityConfirmed": true,
+      "requestBody": [
+        [
+          "maxprice",
+          "5500"
+        ],
+        [
+          "orderbuy",
+          "590"
+        ],
+        [
+          "category_Name_TH",
+          "iPhone"
+        ],
+        [
+          "sub_category_Name_TH",
+          "iPhone 12"
+        ],
+        [
+          "size_id",
+          "1141"
+        ],
+        [
+          "buy_color",
+          "all"
+        ],
+        [
+          "detail_memory",
+          "128 GB"
+        ],
+        [
+          "orderdetail",
+          "1141"
+        ],
+        [
+          "sub_category_ID",
+          "368"
+        ],
+        [
+          "category_ID",
+          "104"
+        ],
+        [
+          "sub_category_Name_EN",
+          "Color_product_21-12-2020_151227.jpg"
+        ],
+        [
+          "slected_value_set[182]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "เครื่องไทย TH "
+        ],
+        [
+          "question_name[182][570]",
+          "0"
+        ],
+        [
+          "slected_value_set[183]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "ประกันเหลือมากกว่า 4 เดือน"
+        ],
+        [
+          "question_name[183][573]",
+          "0"
+        ],
+        [
+          "slected_value_set[247]",
+          "ฝาหลัง / กระจกหลังแตก"
+        ],
+        [
+          "nav_amt[1][]",
+          "51"
+        ],
+        [
+          "nav_name[1][]",
+          "ฝาหลัง / กระจกหลังแตก"
+        ],
+        [
+          "question_name[247][1239]",
+          "51"
+        ],
+        [
+          "slected_value_set[248]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "หน้าจอไม่มีรอย"
+        ],
+        [
+          "question_name[248][656]",
+          "0"
+        ],
+        [
+          "slected_value_set[249]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "nav_amt[1][]",
+          "0"
+        ],
+        [
+          "nav_name[1][]",
+          "แสดงภาพหน้าจอปกติ"
+        ],
+        [
+          "question_name[249][659]",
+          "0"
+        ],
+        [
+          "slected_value_set[250]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "แบตเตอรี่ มากกว่า 80%"
+        ],
+        [
+          "question_name[250][1425]",
+          "0"
+        ],
+        [
+          "slected_value_set[257]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "nav_amt[2][]",
+          "0"
+        ],
+        [
+          "nav_name[2][]",
+          "มีกล่อง / อุปกรณ์ครบ"
+        ],
+        [
+          "question_name[257][694]",
+          "0"
+        ],
+        [
+          "optional",
+          ""
+        ],
+        [
+          "isDeviceStatusConfirmed",
+          "1"
+        ]
+      ],
+      "requestedAt": "2026-09-08T14:33:17.167Z",
+      "fetchedAt": "2026-09-08T14:33:17.233Z",
+      "status": 200,
+      "url": "https://www.yellobe.com/buy/posescion_price",
+      "resultPrice": "2695",
+      "fixedSum": 0,
+      "maxPercent": 51,
+      "percentSum": 51,
+      "expectedFromSumFixedThenMaxPercent": 2695,
+      "matchesObservedRule": true,
+      "rawResponsePath": ".tmp/yellobe-2026-09-08/verified-quote-iphone12-128-unit-baht.html",
+      "rawResponseSha256": "6fc2a0fb22bd4e593f33a10f089ed96b1175a4a5fa08cba48f53d944c64667b3",
+      "sourceFormSha256": "4c86817093b80d3499f4b84fa1df639960ba675f02753b6bf7de987a02f1c7c6",
+      "nextFormActions": [
+        "https://www.yellobe.com/product",
+        "https://www.yellobe.com/buy/detail",
+        "https://www.yellobe.com/buy/trading_channel",
+        "https://www.yellobe.com/home/Subscribe"
+      ]
+    }
+  ]
+}

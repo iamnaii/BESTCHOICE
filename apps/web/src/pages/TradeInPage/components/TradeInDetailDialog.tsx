@@ -264,7 +264,7 @@ export default function TradeInDetailDialog({ id, onClose, onVoucher, voucherLoa
 
                 {data.quoteBreakdown && (
                   <div className="rounded-lg border border-border p-3 space-y-1">
-                    <div className="font-medium">ใบเสนอราคาออนไลน์</div>
+                    <div className="font-medium">รายละเอียดราคาประเมิน</div>
                     {data.quoteBreakdown.chosenFlow && (
                       <div className="text-xs text-muted-foreground">
                         ประเภท:{' '}
@@ -317,7 +317,7 @@ export default function TradeInDetailDialog({ id, onClose, onVoucher, voucherLoa
 
                 {Array.isArray(data.conditionAnswers) && data.conditionAnswers.length > 0 && (
                   <div className="rounded-lg border border-border p-3 space-y-1.5">
-                    <div className="font-medium">คำตอบประเมินออนไลน์ของลูกค้า</div>
+                    <div className="font-medium">คำตอบแบบประเมินสภาพเครื่อง</div>
                     {data.conditionAnswers.map((a) => (
                       <div key={a.questionKey} className="flex justify-between gap-3 wrap-anywhere">
                         <span className="text-muted-foreground">{a.title}</span>

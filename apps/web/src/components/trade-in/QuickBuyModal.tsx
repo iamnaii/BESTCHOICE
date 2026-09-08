@@ -1,8 +1,15 @@
 import { isAxiosError } from 'axios';
-import { TRADE_IN_DECLARATION_VERSION, tradeInEvidenceError, tradeInSellerEvidenceError } from '@installment/shared';
+import {
+  TRADE_IN_DECLARATION_VERSION,
+  tradeInEvidenceError,
+  tradeInSellerEvidenceError,
+  tradeInDeviceEvidenceError,
+  type BuybackQuestionsResponse,
+  type BuybackQuoteResult,
+} from '@installment/shared';
 import SellerDeclaration from './SellerDeclaration';
 import { useState, useRef, useEffect } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,7 +17,7 @@ import { readSmartCard } from '@/lib/cardReader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import {
   CheckCircle,
   ChevronLeft,
@@ -20,13 +27,29 @@ import {
   AlertTriangle,
   ShoppingBag,
   Check,
+  Smartphone,
+  X,
 } from 'lucide-react';
-import { brands, getModels } from '@/data/productCatalog';
+import InspectionQuestions, { isQuestionAnswered } from './InspectionQuestions';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogPortal,
+  DialogOverlay,
+} from '@/components/ui/dialog';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
-import AddressForm, { type AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
+import AddressForm, {
+  type AddressData,
+  emptyAddress,
+  composeAddress,
+} from '@/components/ui/AddressForm';
 import SellerPaymentFields from './SellerPaymentFields';
 import { ContactCombobox } from '@/components/contacts/ContactCombobox';
 import { contactsApi } from '@/lib/api/contacts';
+import { getModels } from '@/data/productCatalog';
+import PurchaseSelect from './PurchaseSelect';
 
 export interface QuickBuyResult {
   id: string;
@@ -47,19 +70,32 @@ interface SellerHistoryResponse {
   totalCount: number;
   recentCount: number;
   warning: boolean;
-  lastSeller: { sellerName: string; sellerPhone: string | null; sellerAddress: string | null } | null;
+  lastSeller: {
+    sellerName: string;
+    sellerPhone: string | null;
+    sellerAddress: string | null;
+  } | null;
   history: Array<{ id: string; device: string; amount: number; date: string; status: string }>;
 }
 
-const conditionOptions = [
-  { value: 'A', label: 'A — ดีเยี่ยม' },
-  { value: 'B', label: 'B — ดี' },
-  { value: 'C', label: 'C — พอใช้' },
-  { value: 'D', label: 'D — ใช้งานหนัก' },
-];
+interface BuybackCatalog {
+  models: Array<{ model: string; storages: Array<{ storage: string; maxPrice: string }> }>;
+}
+type PurchaseQuote = BuybackQuoteResult & { previewToken?: string };
+const purchaseSteps = ['เลือกเครื่อง', 'ตรวจสภาพ + ราคา', 'ผู้ขาย', 'จ่ายเงิน + เซ็น'];
+const purchaseActionClass =
+  'min-h-11 rounded-lg px-5 text-sm bg-[color-mix(in_srgb,var(--color-primary)_85%,var(--color-foreground))] hover:bg-[color-mix(in_srgb,var(--color-primary)_75%,var(--color-foreground))] dark:bg-primary dark:text-background dark:hover:bg-primary/90';
+const money = (value: string | number) =>
+  `฿${Number(value).toLocaleString('th-TH', { maximumFractionDigits: 2 })}`;
 
-export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }: QuickBuyModalProps) {
+export default function QuickBuyModal({
+  open,
+  onClose,
+  onSuccess,
+  onIncomplete,
+}: QuickBuyModalProps) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const storageKey = `bc:quick-buy:pending:${user?.id}`;
   const requestId = useRef<string | null>(null);
   const sellerEpoch = useRef(0);
@@ -74,23 +110,45 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
     const pending = sessionStorage.getItem(storageKey);
     requestId.current = pending;
     setRecoveryError(false);
-    if (!pending) { setRecovering(false); return; }
+    if (!pending) {
+      setRecovering(false);
+      return;
+    }
     setRecovering(true);
-    api.get(`/trade-ins/quick-buy/requests/${pending}`).then(({ data }) => {
-      if (cancelled) return;
-      if (data.found) {
-        recoveryHandlers.current.onIncomplete(data.id);
-        sessionStorage.removeItem(storageKey);
-        requestId.current = null;
-        recoveryHandlers.current.onClose();
-      }
-    }).catch(() => { if (!cancelled) setRecoveryError(true); })
-      .finally(() => { if (!cancelled) setRecovering(false); });
-    return () => { cancelled = true; };
+    api
+      .get(`/trade-ins/quick-buy/requests/${pending}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data.found) {
+          recoveryHandlers.current.onIncomplete(data.id);
+          sessionStorage.removeItem(storageKey);
+          requestId.current = null;
+          recoveryHandlers.current.onClose();
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRecoveryError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setRecovering(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, storageKey, recoveryAttempt]);
   const [step, setStep] = useState(1);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const sending = useRef(false);
+  const [selected, setSelected] = useState<Record<string, string[]>>({});
+  const [deviceEligibilityConfirmed, setDeviceEligibilityConfirmed] = useState(false);
+  useEffect(() => {
+    bodyRef.current?.scrollTo?.({ top: 0 });
+  }, [step]);
   const [branchId, setBranchId] = useState<string>(user?.branchId ?? '');
-  const [imeiCheckResult, setImeiCheckResult] = useState<{ result: 'clean' | 'duplicate'; count: number } | null>(null);
+  const [imeiCheckResult, setImeiCheckResult] = useState<{
+    result: 'clean' | 'duplicate';
+    count: number;
+  } | null>(null);
   const [sellerHistory, setSellerHistory] = useState<SellerHistoryResponse | null>(null);
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
@@ -100,25 +158,23 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
   });
 
   const [form, setForm] = useState({
-    // Step 1: seller (address ใช้ AddressForm แยก state)
-    sellerContactId: '',  // contact FK (party master)
+    // Step 3: seller (address ใช้ AddressForm แยก state)
+    sellerContactId: '', // contact FK (party master)
     sellerName: '',
     sellerPhone: '',
     sellerIdCardNumber: '',
     idCardPhotoBase64: '',
     idCardSource: '' as '' | 'card_reader' | 'upload',
-    // Step 2: device
-    deviceBrand: '',
+    // Step 1: device
+    deviceBrand: 'Apple',
     deviceModel: '',
     deviceStorage: '',
     deviceColor: '',
-    deviceCondition: 'B',
     imei: '',
     serialNumber: '',
     imeiMissingReason: '',
     serialNumberMissingReason: '',
-    agreedPrice: '',
-    // Step 3: confirm
+    // Step 4: confirm
     paymentMethod: 'CASH' as 'CASH' | 'TRANSFER',
     transferBankName: '',
     transferAccountNumber: '',
@@ -129,20 +185,134 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
   });
   const [address, setAddress] = useState<AddressData>({ ...emptyAddress });
 
+  const catalog = useQuery<BuybackCatalog>({
+    queryKey: ['quick-buy-catalog'],
+    queryFn: ({ signal }) =>
+      api.get('/trade-ins/quick-buy/catalog', { signal }).then((r) => r.data),
+    enabled: open,
+    staleTime: 0,
+    retry: false,
+  });
+  const modelOptions = catalog.data?.models ?? [];
+  const storageOptions =
+    modelOptions.find((entry) => entry.model === form.deviceModel)?.storages ?? [];
+  const colorOptions =
+    getModels(form.deviceBrand).find(
+      (model) => model.name.toLowerCase() === form.deviceModel.trim().toLowerCase(),
+    )?.colors ?? [];
+  const questionnaire = useQuery<BuybackQuestionsResponse>({
+    queryKey: ['quick-buy-questions', form.deviceModel, form.deviceStorage],
+    queryFn: ({ signal }) =>
+      api
+        .get('/trade-ins/quick-buy/questions', {
+          params: { model: form.deviceModel, storage: form.deviceStorage },
+          signal,
+        })
+        .then((r) => r.data),
+    enabled: open && !!form.deviceModel && !!form.deviceStorage,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const questions = questionnaire.data?.questions ?? [];
+  const completed = questions.filter((question) => isQuestionAnswered(question, selected)).length;
+  const inspectionComplete =
+    questions.length > 0 &&
+    completed === questions.length &&
+    (!questionnaire.data?.eligibilityRequired || deviceEligibilityConfirmed);
+  const answers = questions.map((question) => ({
+    questionKey: question.key,
+    choiceIds: [...(selected[question.key] ?? [])].sort(),
+  }));
+  const eligibility = questionnaire.data?.eligibilityRequired ? { deviceEligibilityConfirmed } : {};
+  const preview = useQuery<PurchaseQuote>({
+    queryKey: [
+      'quick-buy-preview',
+      form.deviceModel,
+      form.deviceStorage,
+      questionnaire.data,
+      answers,
+      eligibility,
+    ],
+    queryFn: ({ signal }) =>
+      api
+        .post(
+          '/trade-ins/quick-buy/preview',
+          {
+            deviceBrand: 'Apple',
+            deviceModel: form.deviceModel,
+            deviceStorage: form.deviceStorage,
+            answers,
+            ...eligibility,
+          },
+          { signal },
+        )
+        .then((r) => r.data),
+    enabled:
+      open &&
+      step >= 2 &&
+      inspectionComplete &&
+      !questionnaire.isFetching &&
+      !questionnaire.isError,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const quote =
+    inspectionComplete &&
+    !preview.isFetching &&
+    !preview.isError &&
+    !questionnaire.isFetching &&
+    !questionnaire.isError
+      ? preview.data
+      : undefined;
+  const priceReady = !!(
+    quote?.available &&
+    quote.previewToken &&
+    quote.grade &&
+    Number.isFinite(Number(quote.cashPrice)) &&
+    Number(quote.cashPrice) > 0
+  );
+  const clearInspection = () => {
+    setSelected({});
+    setDeviceEligibilityConfirmed(false);
+  };
+
   function reset() {
     sellerEpoch.current++;
+    sending.current = false;
+    clearInspection();
     setStep(1);
     setBranchId(user?.branchId ?? '');
     setImeiCheckResult(null);
     setSellerHistory(null);
     setAddress({ ...emptyAddress });
     setForm({
-      sellerContactId: '', sellerName: '', sellerPhone: '', sellerIdCardNumber: '',
-      idCardPhotoBase64: '', idCardSource: '',
-      deviceBrand: '', deviceModel: '', deviceStorage: '', deviceColor: '',
-      deviceCondition: 'B', imei: '', serialNumber: '', imeiMissingReason: '', serialNumberMissingReason: '', agreedPrice: '',
-      paymentMethod: 'CASH', transferBankName: '', transferAccountNumber: '', transferAccountName: '',
-      sellerSignatureBase64: '', idCardVerified: false, sellerConsentSigned: false,
+      sellerContactId: '',
+      sellerName: '',
+      sellerPhone: '',
+      sellerIdCardNumber: '',
+      idCardPhotoBase64: '',
+      idCardSource: '',
+      deviceBrand: 'Apple',
+      deviceModel: '',
+      deviceStorage: '',
+      deviceColor: '',
+      imei: '',
+      serialNumber: '',
+      imeiMissingReason: '',
+      serialNumberMissingReason: '',
+      paymentMethod: 'CASH',
+      transferBankName: '',
+      transferAccountNumber: '',
+      transferAccountName: '',
+      sellerSignatureBase64: '',
+      idCardVerified: false,
+      sellerConsentSigned: false,
     });
   }
 
@@ -170,20 +340,27 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
         deviceModel: form.deviceModel,
         deviceStorage: form.deviceStorage || undefined,
         deviceColor: form.deviceColor || undefined,
-        deviceCondition: form.deviceCondition,
+        deviceCondition: quote!.grade,
         imei: form.imei || undefined,
         serialNumber: form.serialNumber.trim() || undefined,
         imeiMissingReason: form.imei ? undefined : form.imeiMissingReason.trim(),
-        serialNumberMissingReason: form.serialNumber.trim() ? undefined : form.serialNumberMissingReason.trim(),
-        agreedPrice: parseFloat(form.agreedPrice),
+        serialNumberMissingReason: form.serialNumber.trim()
+          ? undefined
+          : form.serialNumberMissingReason.trim(),
+        agreedPrice: Number(quote!.cashPrice),
+        answers,
+        ...eligibility,
+        previewToken: quote!.previewToken,
         idCardVerified: form.idCardVerified,
         sellerConsentSigned: form.sellerConsentSigned,
         declarationVersion: TRADE_IN_DECLARATION_VERSION,
         sellerSignatureBase64: form.sellerSignatureBase64 || undefined,
         paymentMethod: form.paymentMethod,
         transferBankName: form.paymentMethod === 'TRANSFER' ? form.transferBankName : undefined,
-        transferAccountNumber: form.paymentMethod === 'TRANSFER' ? form.transferAccountNumber : undefined,
-        transferAccountName: form.paymentMethod === 'TRANSFER' ? form.transferAccountName : undefined,
+        transferAccountNumber:
+          form.paymentMethod === 'TRANSFER' ? form.transferAccountNumber : undefined,
+        transferAccountName:
+          form.paymentMethod === 'TRANSFER' ? form.transferAccountName : undefined,
       };
       return api.post('/trade-ins/quick-buy', payload);
     },
@@ -199,9 +376,27 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
       onSuccess(res.data);
       close();
     },
+    onSettled: () => {
+      sending.current = false;
+    },
     onError: (err) => {
       toast.error(getErrorMessage(err));
       const id = isAxiosError(err) ? err.response?.data?.tradeInId : undefined;
+      if (
+        isAxiosError(err) &&
+        typeof id !== 'string' &&
+        (err.response?.status === 400 || err.response?.data?.code === 'QUICK_BUY_QUOTE_CHANGED')
+      ) {
+        setForm((f) => ({
+          ...f,
+          idCardVerified: false,
+          sellerConsentSigned: false,
+          sellerSignatureBase64: '',
+        }));
+        setStep(2);
+        void questionnaire.refetch();
+        void queryClient.invalidateQueries({ queryKey: ['quick-buy-preview'] });
+      }
       if (typeof id === 'string') {
         onIncomplete(id);
         sessionStorage.removeItem(storageKey);
@@ -244,7 +439,9 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
       if (d.nationalId) await fetchSellerHistory(d.nationalId);
       toast.success('อ่านบัตรเรียบร้อย');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'ไม่พบเครื่องอ่านบัตร — ตรวจสอบว่า service รันอยู่');
+      toast.error(
+        err instanceof Error ? err.message : 'ไม่พบเครื่องอ่านบัตร — ตรวจสอบว่า service รันอยู่',
+      );
     }
   }
 
@@ -280,8 +477,12 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
         // หมายเหตุ: address ของ legacy เก็บเป็น composed string จะไม่ auto-fill ลง AddressForm structured fields
         setForm((f) => ({
           ...f,
-          sellerName: f.sellerContactId ? f.sellerName : (f.sellerName || data.lastSeller!.sellerName || ''),
-          sellerPhone: f.sellerContactId ? f.sellerPhone : (f.sellerPhone || data.lastSeller!.sellerPhone || ''),
+          sellerName: f.sellerContactId
+            ? f.sellerName
+            : f.sellerName || data.lastSeller!.sellerName || '',
+          sellerPhone: f.sellerContactId
+            ? f.sellerPhone
+            : f.sellerPhone || data.lastSeller!.sellerPhone || '',
         }));
         if (data.warning) {
           toast.warning(
@@ -302,9 +503,18 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
     const epoch = ++sellerEpoch.current;
     setAddress({ ...emptyAddress });
     setSellerHistory(null);
-    setForm((f) => ({ ...f, sellerContactId: contactId, sellerName: name, sellerPhone: '',
-      sellerIdCardNumber: '', idCardPhotoBase64: '', idCardSource: '',
-      idCardVerified: false, sellerConsentSigned: false, sellerSignatureBase64: '' }));
+    setForm((f) => ({
+      ...f,
+      sellerContactId: contactId,
+      sellerName: name,
+      sellerPhone: '',
+      sellerIdCardNumber: '',
+      idCardPhotoBase64: '',
+      idCardSource: '',
+      idCardVerified: false,
+      sellerConsentSigned: false,
+      sellerSignatureBase64: '',
+    }));
     // Fetch the contact detail to populate phone (best-effort; non-blocking)
     try {
       const detail = await contactsApi.detail(contactId);
@@ -336,31 +546,48 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
 
   // ─── Step navigation ────────────────────────────────
   function next() {
+    if (sending.current || recovering || recoveryError) return;
     if (step === 1) {
+      if (
+        !modelOptions.some((entry) => entry.model === form.deviceModel) ||
+        !storageOptions.some((entry) => entry.storage === form.deviceStorage)
+      ) {
+        return toast.error('กรุณาเลือกรุ่น iPhone และความจุที่มีราคารับซื้อ');
+      }
+      const error = tradeInDeviceEvidenceError(form);
+      if (error) return toast.error(error);
+    }
+    if (step === 2 && !priceReady) return toast.error('กรุณาตรวจเครื่องให้ครบและรอราคาประเมินก่อน');
+    if (step === 3) {
+      if (!priceReady) {
+        setStep(2);
+        return toast.error('กรุณาตรวจราคาประเมินอีกครั้ง');
+      }
       if (!branchId) return toast.error('กรุณาเลือกสาขาที่รับซื้อ');
       if (!form.sellerContactId) return toast.error('กรุณาเลือกผู้ขายจากรายชื่อผู้ติดต่อ');
       const error = tradeInSellerEvidenceError({ ...form, sellerAddress: composeAddress(address) });
       if (error) return toast.error(error);
+      sellerEpoch.current++; // Ignore late card/contact reads after moving to confirmation.
     }
-    if (step === 2) {
-      if (!form.deviceBrand || !form.deviceModel) return toast.error('กรุณาเลือกยี่ห้อ + รุ่น');
-      if (!form.agreedPrice || parseFloat(form.agreedPrice) <= 0) {
-        return toast.error('กรุณาระบุราคารับซื้อ');
-      }
-      if (form.imei && !/^\d{15}$/.test(form.imei)) return toast.error('IMEI ต้องเป็น 15 หลัก');
-      const error = tradeInEvidenceError({ ...form, sellerAddress: composeAddress(address) });
-      if (error) return toast.error(error);
-    }
-    setStep(step + 1);
+    setStep(Math.min(step + 1, 4));
   }
   function prev() {
     // Identity/device/price edits require a fresh check and seller signature.
-    setForm((f) => ({ ...f, idCardVerified: false, sellerConsentSigned: false, sellerSignatureBase64: '' }));
-    setStep(step - 1);
+    setForm((f) => ({
+      ...f,
+      idCardVerified: false,
+      sellerConsentSigned: false,
+      sellerSignatureBase64: '',
+    }));
+    setStep(Math.max(step - 1, 1));
   }
 
   function submit() {
-    if (recovering || recoveryError) return;
+    if (recovering || recoveryError || sending.current) return;
+    if (!priceReady) {
+      setStep(2);
+      return toast.error('กรุณาตรวจราคาประเมินอีกครั้ง');
+    }
     const evidenceError = tradeInEvidenceError({ ...form, sellerAddress: composeAddress(address) });
     if (evidenceError) return toast.error(evidenceError);
     if (!form.idCardVerified || !form.sellerConsentSigned) {
@@ -374,122 +601,187 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
         return toast.error('กรุณากรอกข้อมูลการโอนให้ครบ');
       }
     }
+    sending.current = true;
     quickBuyMutation.mutate();
   }
 
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-md flex items-start justify-center pt-6 pb-6"
-      role="dialog"
-      aria-modal="true"
+    <Dialog
+      open
+      onOpenChange={(value) => {
+        if (!value && !sending.current) close();
+      }}
     >
-      <div className="w-full max-w-3xl bg-card rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-3rem)] ring-1 ring-border">
+      <DialogPortal>
+        <DialogOverlay className="bg-black/55 backdrop-blur-[2px] dark:bg-black/70" />
+      </DialogPortal>
+      <DialogContent
+        overlay={false}
+        showCloseButton={false}
+        onEscapeKeyDown={(event) => {
+          if (sending.current) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (sending.current) event.preventDefault();
+        }}
+        className="flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-4xl flex-col gap-0 overflow-hidden rounded-2xl bg-card p-0 text-sm leading-snug shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl [&_[data-slot=input]]:mt-2 [&_[data-slot=input]]:h-11 [&_[data-slot=input]]:rounded-lg [&_[data-slot=input]]:text-base [&_[data-slot=input]]:shadow-none sm:[&_[data-slot=input]]:text-sm [&_[data-slot=button]]:min-h-11 [&_[data-slot=label]]:text-sm [&_[role=combobox]]:min-h-11 [&_[role=combobox]]:rounded-lg"
+      >
         {/* Header — sticky */}
-        <div className="sticky top-0 z-10 bg-linear-to-b from-success/10 to-card border-b border-success/30 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-success text-success-foreground flex items-center justify-center shadow-sm">
-              <ShoppingBag className="size-5" />
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border bg-card px-4 py-4 sm:items-center sm:px-7 sm:py-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <ShoppingBag className="size-5" aria-hidden="true" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-foreground">รับซื้อมือถือมือสอง</h2>
-              <p className="text-xs text-muted-foreground">รับเครื่องและจ่ายเงินให้ผู้ขาย แล้วเตรียมรูปและราคาขาย</p>
+            <div className="min-w-0">
+              <DialogTitle className="text-lg font-semibold leading-snug text-foreground">
+                รับซื้อมือถือมือสอง
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm leading-snug">
+                ตรวจเครื่องและดูราคาก่อน แล้วจึงกรอกผู้ขายและยืนยันรับซื้อ
+              </DialogDescription>
             </div>
           </div>
           <button
             type="button"
-            onClick={close}
+            onClick={() => {
+              if (!sending.current) close();
+            }}
             disabled={quickBuyMutation.isPending}
-            className="text-muted-foreground hover:text-foreground text-sm font-medium"
+            aria-label="ปิด"
+            className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           >
-            ปิด
+            <X className="size-5" aria-hidden="true" />
           </button>
         </div>
 
-        {/* Stepper */}
-        <div className="px-6 py-3 bg-muted/50 border-b border-border">
-          <div className="flex items-center justify-between max-w-md mx-auto">
-            {[1, 2, 3].map((s) => (
-              <div key={s} className="flex items-center flex-1 last:flex-initial">
-                <div
-                  className={`size-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                    s < step
-                      ? 'bg-success text-success-foreground'
-                      : s === step
-                      ? 'bg-success text-success-foreground ring-4 ring-success/20'
-                      : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {s < step ? <Check className="size-4" /> : s}
-                </div>
-                <div className="ml-2 text-xs font-medium text-foreground">
-                  {s === 1 ? 'ผู้ขาย' : s === 2 ? 'ตรวจเครื่อง + ราคา' : 'จ่ายเงิน + เซ็น'}
-                </div>
-                {s < 3 && <div className="flex-1 h-px bg-border mx-3" />}
-              </div>
-            ))}
-          </div>
-        </div>
+        <ol
+          aria-label="ขั้นตอนรับซื้อ"
+          className="grid shrink-0 grid-cols-4 gap-1 border-b border-border bg-card px-3 sm:gap-3 sm:px-7"
+        >
+          {purchaseSteps.map((label, index) => (
+            <li
+              key={label}
+              aria-current={step === index + 1 ? 'step' : undefined}
+              className={cn(
+                'flex min-w-0 flex-col items-center gap-2 border-b-2 px-1 py-3 text-center sm:flex-row sm:gap-3 sm:py-4 sm:text-start',
+                step === index + 1 ? 'border-primary' : 'border-transparent',
+              )}
+            >
+              <span
+                className={cn(
+                  'flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+                  index + 1 === step
+                    ? 'bg-foreground text-background'
+                    : index + 1 < step
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {index + 1 < step ? <Check className="size-4" aria-hidden="true" /> : index + 1}
+              </span>
+              <span
+                className={`text-xs leading-snug sm:text-sm ${index + 1 === step ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}
+              >
+                {label}
+              </span>
+            </li>
+          ))}
+        </ol>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div
+          ref={bodyRef}
+          data-testid="quick-buy-body"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-background/50 p-4 sm:p-7"
+        >
           {recovering && <p role="status">กำลังตรวจรายการที่ส่งไว้ก่อนหน้า…</p>}
-          {recoveryError && <div role="alert" className="mb-4 text-destructive">ยังตรวจสถานะรายการเดิมไม่ได้ กรุณาตรวจอีกครั้งก่อนรับซื้อใหม่ <Button variant="outline" onClick={() => setRecoveryAttempt((n) => n + 1)}>ตรวจอีกครั้ง</Button></div>}
-          {/* ─── STEP 1: SELLER ─── */}
-          {step === 1 && (
-            <div className="space-y-4">
+          {recoveryError && (
+            <div role="alert" className="mb-4 text-destructive">
+              ยังตรวจสถานะรายการเดิมไม่ได้ กรุณาตรวจอีกครั้งก่อนรับซื้อใหม่{' '}
+              <Button variant="outline" onClick={() => setRecoveryAttempt((n) => n + 1)}>
+                ตรวจอีกครั้ง
+              </Button>
+            </div>
+          )}
+          {/* ─── STEP 3: SELLER ─── */}
+          {step === 3 && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
+                <div>
+                  <p className="font-semibold">
+                    {form.deviceModel} · {form.deviceStorage}
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    ตรวจเครื่องแล้ว กรอกผู้ขายเพื่อดำเนินการรับซื้อ
+                  </p>
+                </div>
+                <p className="text-2xl font-semibold tracking-tight tabular-nums">
+                  {priceReady ? money(quote!.cashPrice!) : 'กำลังตรวจราคา...'}
+                </p>
+              </div>
               <div>
-                <Label className="text-sm font-semibold">สาขาที่รับซื้อ *</Label>
-                <select
-                  className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                <Label htmlFor="quick-buy-branch" className="text-sm font-semibold">
+                  สาขาที่รับซื้อ *
+                </Label>
+                <PurchaseSelect
+                  id="quick-buy-branch"
                   value={branchId}
-                  onChange={(e) => setBranchId(e.target.value)}
-                >
-                  <option value="">-- เลือกสาขา --</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
+                  onValueChange={setBranchId}
+                  placeholder="เลือกสาขา"
+                  options={branches.map((branch) => ({ value: branch.id, label: branch.name }))}
+                />
               </div>
 
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold">ข้อมูลผู้ขาย</Label>
-                <button
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-6">
+                <h3 className="text-base font-semibold leading-snug">ข้อมูลผู้ขาย</h3>
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={readFromCardReader}
-                  className="px-3 py-2 rounded-lg bg-info text-info-foreground text-xs font-semibold hover:bg-info/90 flex items-center gap-1.5"
+                  className="min-h-11 gap-2 rounded-lg px-4 text-sm"
                 >
-                  <CreditCard className="size-3.5" />
+                  <CreditCard className="size-4" aria-hidden="true" />
                   อ่านบัตรประชาชน
-                </button>
+                </Button>
               </div>
 
               {sellerHistory?.found && (
-                <div className={`rounded-lg p-3 text-xs flex gap-2 ${
-                  sellerHistory.warning
-                    ? 'bg-destructive/10 border border-destructive/20 text-destructive'
-                    : 'bg-info/10 border border-info/20 text-info'
-                }`}>
+                <div
+                  className={`flex gap-3 rounded-xl p-4 text-sm leading-snug text-foreground ${
+                    sellerHistory.warning
+                      ? 'bg-destructive/10 border border-destructive/20'
+                      : 'bg-muted/50 border border-border'
+                  }`}
+                >
                   <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                   <div>
                     {sellerHistory.warning ? (
                       <>
-                        <div className="font-semibold mb-1 flex items-center gap-1.5"><AlertTriangle className="size-4" /> ผู้ขายรายนี้มีประวัติผิดปกติ</div>
-                        <div>ขายมาแล้ว {sellerHistory.recentCount} ครั้งใน 30 วันล่าสุด — รวมทั้งหมด {sellerHistory.totalCount} ครั้ง — โปรดตรวจสอบที่มาให้ละเอียดก่อนรับซื้อ</div>
+                        <div className="font-semibold mb-1 flex items-center gap-1.5">
+                          <AlertTriangle className="size-4" /> ผู้ขายรายนี้มีประวัติผิดปกติ
+                        </div>
+                        <div>
+                          ขายมาแล้ว {sellerHistory.recentCount} ครั้งใน 30 วันล่าสุด — รวมทั้งหมด{' '}
+                          {sellerHistory.totalCount} ครั้ง — โปรดตรวจสอบที่มาให้ละเอียดก่อนรับซื้อ
+                        </div>
                       </>
                     ) : (
-                      <>เคยขายมาแล้ว {sellerHistory.totalCount} ครั้ง — ข้อมูลถูก auto-fill จากครั้งล่าสุด</>
+                      <>
+                        เคยขายมาแล้ว {sellerHistory.totalCount} ครั้ง — ข้อมูลถูก auto-fill
+                        จากครั้งล่าสุด
+                      </>
                     )}
                   </div>
                 </div>
               )}
 
               {/* ลำดับเหมือนฟอร์มข้อมูลลูกค้า: ผู้ขาย (picker) → เลขบัตร → ที่อยู่ → แนบบัตร */}
-              <div className="space-y-4">
-                <div>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="sm:col-span-2">
                   <Label>ผู้ขาย *</Label>
-                  <div className="mt-1">
+                  <div className="mt-2">
                     <ContactCombobox
                       roleNeeded="TRADE_IN_SELLER"
                       value={form.sellerName}
@@ -498,13 +790,25 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
                     />
                   </div>
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <Label htmlFor="buy-seller-name">ชื่อผู้ขายตามบัตรประชาชน *</Label>
-                  <Input id="buy-seller-name" value={form.sellerName} onChange={(e) => setForm((f) => ({ ...f, sellerName: e.target.value }))} />
+                  <Input
+                    id="buy-seller-name"
+                    value={form.sellerName}
+                    onChange={(e) => setForm((f) => ({ ...f, sellerName: e.target.value }))}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="buy-seller-phone">เบอร์โทรผู้ขาย *</Label>
-                  <Input id="buy-seller-phone" inputMode="tel" maxLength={10} value={form.sellerPhone} onChange={(e) => setForm((f) => ({ ...f, sellerPhone: e.target.value.replace(/\D/g, '') }))} />
+                  <Input
+                    id="buy-seller-phone"
+                    inputMode="tel"
+                    maxLength={10}
+                    value={form.sellerPhone}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, sellerPhone: e.target.value.replace(/\D/g, '') }))
+                    }
+                  />
                 </div>
                 <div>
                   <Label htmlFor="buy-seller-id">เลขบัตรประชาชน *</Label>
@@ -523,195 +827,410 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
                     }}
                   />
                 </div>
-                <AddressForm value={address} onChange={setAddress} label="ที่อยู่ตามบัตร" />
-                <div>
+                <div className="border-t border-border pt-5 sm:col-span-2 [&_input]:h-11 [&_input]:rounded-lg [&_input]:text-base sm:[&_input]:text-sm">
+                  <AddressForm value={address} onChange={setAddress} label="ที่อยู่ตามบัตร" />
+                </div>
+                <div className="sm:col-span-2">
                   <Label>แนบรูปบัตรประชาชน</Label>
-                  <label className="mt-1 flex items-center justify-center gap-2 h-12 px-3 rounded-lg border border-dashed border-input bg-background text-sm cursor-pointer hover:border-info/60 hover:bg-info/5 transition-colors">
+                  <label className="mt-2 flex min-h-16 cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-input bg-card p-4 text-sm transition-colors hover:border-primary/60 hover:bg-primary/5 has-focus-visible:ring-2 has-focus-visible:ring-ring">
                     {form.idCardPhotoBase64 ? (
                       <>
-                        <CheckCircle className="size-5 text-success" />
-                        <span className="text-success font-medium">อัปโหลดแล้ว — คลิกเพื่อเปลี่ยน</span>
+                        <CheckCircle className="size-5 shrink-0 text-primary" />
+                        <span className="font-medium">อัปโหลดแล้ว — คลิกเพื่อเปลี่ยน</span>
                       </>
                     ) : (
                       <>
                         <Upload className="size-5 text-muted-foreground" />
-                        <span className="text-muted-foreground">คลิกเพื่อเลือกไฟล์รูปบัตรประชาชน</span>
+                        <span className="text-muted-foreground">
+                          คลิกเพื่อเลือกไฟล์รูปบัตรประชาชน
+                        </span>
                       </>
                     )}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleIdCardUpload} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={handleIdCardUpload}
+                    />
                   </label>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ─── STEP 2: DEVICE + PRICE ─── */}
-          {step === 2 && (
-            <div className="space-y-4">
-              <Label className="text-sm font-semibold">ข้อมูลเครื่องและราคา</Label>
-              <p className="text-xs text-muted-foreground">บันทึกหมายเลขจากตัวเครื่องอย่างน้อยหนึ่งรายการ หากไม่มีอีกหมายเลข ให้ระบุเหตุผล</p>
-              {!form.imei && <div><Label htmlFor="buy-imei-reason">เหตุผลที่ไม่มี IMEI *</Label><Input id="buy-imei-reason" maxLength={300} value={form.imeiMissingReason} onChange={(e) => setForm((f) => ({ ...f, imeiMissingReason: e.target.value }))} placeholder="เช่น รุ่น Wi-Fi ไม่มี IMEI" /></div>}
-              {!form.serialNumber.trim() && <div><Label htmlFor="buy-serial-reason">เหตุผลที่ไม่มี Serial Number *</Label><Input id="buy-serial-reason" maxLength={300} value={form.serialNumberMissingReason} onChange={(e) => setForm((f) => ({ ...f, serialNumberMissingReason: e.target.value }))} /></div>}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>ยี่ห้อ *</Label>
-                  <select
-                    className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-                    value={form.deviceBrand}
-                    onChange={(e) => setForm((f) => ({ ...f, deviceBrand: e.target.value, deviceModel: '', deviceStorage: '', deviceColor: '' }))}
-                  >
-                    <option value="">-- เลือก --</option>
-                    {brands.map((b) => <option key={b} value={b}>{b}</option>)}
-                  </select>
+          {/* ─── STEP 1: DEVICE ─── */}
+          {step === 1 && (
+            <section
+              className="grid gap-6 md:grid-cols-[minmax(0,1fr)_15rem]"
+              aria-label="เลือกเครื่องที่รับซื้อ"
+            >
+              <div className="md:col-span-2">
+                <h3 className="text-lg font-semibold leading-snug">เริ่มจากเครื่องที่ต้องการขาย</h3>
+                <p className="mt-2 text-sm leading-snug text-muted-foreground">
+                  รับซื้อเฉพาะ iPhone เลือกรุ่นและความจุ แล้วตรวจสภาพเพื่อดูราคา
+                </p>
+              </div>
+              {catalog.isPending ? (
+                <p role="status" className="md:col-span-2">
+                  กำลังโหลดรุ่นและราคารับซื้อ...
+                </p>
+              ) : catalog.isError ? (
+                <div role="alert" className="space-y-2 text-sm md:col-span-2">
+                  <p>{getErrorMessage(catalog.error)}</p>
+                  <Button variant="outline" onClick={() => catalog.refetch()}>
+                    โหลดรุ่นใหม่
+                  </Button>
                 </div>
+              ) : modelOptions.length === 0 ? (
+                <p role="alert" className="md:col-span-2">
+                  ยังไม่มีรุ่นที่เปิดราคารับซื้อ
+                </p>
+              ) : null}
+              <div className="grid min-w-0 content-start gap-5 sm:grid-cols-2">
                 <div>
-                  <Label>รุ่น *</Label>
-                  <select
-                    className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm disabled:opacity-50"
+                  <Label htmlFor="quick-buy-model">รุ่น iPhone *</Label>
+                  <PurchaseSelect
+                    id="quick-buy-model"
                     value={form.deviceModel}
-                    onChange={(e) => setForm((f) => ({ ...f, deviceModel: e.target.value, deviceStorage: '', deviceColor: '' }))}
-                    disabled={!form.deviceBrand}
-                  >
-                    <option value="">-- เลือก --</option>
-                    {form.deviceBrand && getModels(form.deviceBrand).map((m) => (
-                      <option key={m.name} value={m.name}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>ความจุ</Label>
-                  <select
-                    className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm disabled:opacity-50"
-                    value={form.deviceStorage}
-                    onChange={(e) => setForm((f) => ({ ...f, deviceStorage: e.target.value }))}
-                    disabled={!form.deviceModel}
-                  >
-                    <option value="">-- เลือก --</option>
-                    {form.deviceBrand && form.deviceModel &&
-                      (getModels(form.deviceBrand).find((m) => m.name === form.deviceModel)?.storage || []).map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>สี</Label>
-                  <select
-                    className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm disabled:opacity-50"
-                    value={form.deviceColor}
-                    onChange={(e) => setForm((f) => ({ ...f, deviceColor: e.target.value }))}
-                    disabled={!form.deviceModel}
-                  >
-                    <option value="">-- เลือก --</option>
-                    {form.deviceBrand && form.deviceModel &&
-                      (getModels(form.deviceBrand).find((m) => m.name === form.deviceModel)?.colors || []).map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>สภาพเครื่อง</Label>
-                  <select
-                    className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-                    value={form.deviceCondition}
-                    onChange={(e) => setForm((f) => ({ ...f, deviceCondition: e.target.value }))}
-                  >
-                    {conditionOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Label htmlFor="quick-buy-imei">IMEI</Label>
-                  <Input
-                    className="mt-1 font-mono"
-                    id="quick-buy-imei"
-                    inputMode="numeric"
-                    maxLength={15}
-                    placeholder="15 หลัก"
-                    value={form.imei}
-                    onChange={(e) => { setForm((f) => ({ ...f, imei: e.target.value.replace(/\D/g, '') })); setImeiCheckResult(null); }}
-                    onBlur={checkImei}
+                    disabled={catalog.isPending || catalog.isError}
+                    placeholder="เลือกรุ่น iPhone"
+                    options={modelOptions.map((entry) => ({
+                      value: entry.model,
+                      label: entry.model,
+                    }))}
+                    onValueChange={(value) => {
+                      clearInspection();
+                      setForm((f) => ({
+                        ...f,
+                        deviceModel: value,
+                        deviceStorage: '',
+                        deviceColor: '',
+                      }));
+                    }}
                   />
-                  {imeiCheckResult && (
-                    <div className={`mt-1 flex items-center gap-1.5 text-xs ${
-                      imeiCheckResult.result === 'clean' ? 'text-success' : 'text-destructive'
-                    }`}>
-                      {imeiCheckResult.result === 'clean' ? (
-                        <><CheckCircle className="size-3" /> ไม่พบ IMEI ซ้ำ</>
-                      ) : (
-                        <><AlertTriangle className="size-3" /> พบ IMEI นี้ในระบบ {imeiCheckResult.count} ครั้ง</>
-                      )}
-                    </div>
-                  )}
                 </div>
                 <div>
-                  <Label htmlFor="quick-buy-serial">Serial Number</Label>
-                  <Input id="quick-buy-serial" className="mt-1 font-mono" maxLength={100}
-                    placeholder="หมายเลขเครื่องจากตัวเครื่องหรือการตั้งค่า"
-                    value={form.serialNumber}
-                    onChange={(e) => setForm((f) => ({ ...f, serialNumber: e.target.value }))} />
+                  <Label htmlFor="quick-buy-storage">ความจุ *</Label>
+                  <PurchaseSelect
+                    id="quick-buy-storage"
+                    value={form.deviceStorage}
+                    disabled={!form.deviceModel}
+                    placeholder="เลือกความจุ"
+                    options={storageOptions.map((entry) => ({
+                      value: entry.storage,
+                      label: entry.storage,
+                    }))}
+                    onValueChange={(value) => {
+                      clearInspection();
+                      setForm((f) => ({ ...f, deviceStorage: value }));
+                    }}
+                  />
                 </div>
-                <div className="col-span-2">
-                  <Label>ราคารับซื้อ (บาท) *</Label>
-                  <Input
-                    className="mt-1 text-lg font-bold"
-                    type="number"
-                    placeholder="0"
-                    value={form.agreedPrice}
-                    onChange={(e) => setForm((f) => ({ ...f, agreedPrice: e.target.value }))}
+                <div className="sm:col-span-2">
+                  <Label htmlFor="quick-buy-color">สีเครื่อง</Label>
+                  <PurchaseSelect
+                    id="quick-buy-color"
+                    value={form.deviceColor}
+                    disabled={!colorOptions.length}
+                    onValueChange={(value) => setForm((f) => ({ ...f, deviceColor: value }))}
+                    placeholder={
+                      !form.deviceModel
+                        ? 'เลือกรุ่น iPhone ก่อน'
+                        : colorOptions.length
+                          ? 'เลือกสีเครื่อง'
+                          : 'ยังไม่มีข้อมูลสีรุ่นนี้ในระบบ'
+                    }
+                    options={colorOptions.map((color) => ({ value: color, label: color }))}
+                    clearLabel="ยังไม่ระบุสี"
                   />
                 </div>
               </div>
-            </div>
+              <div className="flex flex-col justify-center rounded-xl border border-primary/20 bg-primary/5 p-5">
+                <Smartphone
+                  className="mb-4 hidden size-7 text-primary md:block"
+                  aria-hidden="true"
+                />
+                <p className="text-sm text-muted-foreground">ราคารับซื้อสูงสุดก่อนตรวจสภาพ</p>
+                <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">
+                  {storageOptions.find((entry) => entry.storage === form.deviceStorage)
+                    ? money(
+                        storageOptions.find((entry) => entry.storage === form.deviceStorage)!
+                          .maxPrice,
+                      )
+                    : '—'}
+                </p>
+                <p className="mt-3 text-xs leading-snug text-muted-foreground">
+                  ราคาจริงคำนวณจากผลตรวจในขั้นตอนถัดไป
+                </p>
+              </div>
+              <div className="space-y-5 border-t border-border pt-6 md:col-span-2">
+                <h3 className="text-base font-semibold leading-snug">หมายเลขประจำเครื่อง</h3>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="quick-buy-imei">IMEI</Label>
+                    <Input
+                      id="quick-buy-imei"
+                      className="mt-1 font-mono"
+                      inputMode="numeric"
+                      maxLength={15}
+                      placeholder="15 หลัก"
+                      value={form.imei}
+                      onChange={(event) => {
+                        clearInspection();
+                        setForm((f) => ({ ...f, imei: event.target.value.replace(/\D/g, '') }));
+                        setImeiCheckResult(null);
+                      }}
+                      onBlur={checkImei}
+                    />
+                    {imeiCheckResult && (
+                      <p
+                        className={`mt-1 text-xs leading-snug ${imeiCheckResult.result === 'clean' ? 'text-muted-foreground' : 'text-destructive'}`}
+                      >
+                        {imeiCheckResult.result === 'clean'
+                          ? 'ไม่พบ IMEI ซ้ำ'
+                          : `พบ IMEI นี้ในระบบ ${imeiCheckResult.count} ครั้ง`}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="quick-buy-serial">Serial Number</Label>
+                    <Input
+                      id="quick-buy-serial"
+                      className="mt-1 font-mono"
+                      maxLength={100}
+                      placeholder="หมายเลขเครื่อง"
+                      value={form.serialNumber}
+                      onChange={(event) => {
+                        clearInspection();
+                        setForm((f) => ({ ...f, serialNumber: event.target.value }));
+                      }}
+                    />
+                  </div>
+                </div>
+                {(!form.imei || !form.serialNumber.trim()) && (
+                  <details className="rounded-lg bg-muted/50 px-4 text-sm leading-snug">
+                    <summary className="min-h-11 cursor-pointer py-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      กรณีอ่านหมายเลขเครื่องไม่ได้
+                    </summary>
+                    <p className="mb-4 text-xs text-muted-foreground">
+                      ต้องมีอย่างน้อยหนึ่งหมายเลข และระบุเหตุผลสำหรับหมายเลขที่ขาด
+                    </p>
+                    {!form.imei && (
+                      <div className="mb-3">
+                        <Label htmlFor="buy-imei-reason">เหตุผลที่ไม่มี IMEI *</Label>
+                        <Input
+                          id="buy-imei-reason"
+                          className="mt-1"
+                          maxLength={300}
+                          value={form.imeiMissingReason}
+                          onChange={(event) =>
+                            setForm((f) => ({ ...f, imeiMissingReason: event.target.value }))
+                          }
+                        />
+                      </div>
+                    )}
+                    {!form.serialNumber.trim() && (
+                      <div>
+                        <Label htmlFor="buy-serial-reason">เหตุผลที่ไม่มี Serial Number *</Label>
+                        <Input
+                          id="buy-serial-reason"
+                          className="mt-1"
+                          maxLength={300}
+                          value={form.serialNumberMissingReason}
+                          onChange={(event) =>
+                            setForm((f) => ({
+                              ...f,
+                              serialNumberMissingReason: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    )}
+                  </details>
+                )}
+              </div>
+            </section>
           )}
 
-          {/* ─── STEP 3: CONFIRM + SIGN ─── */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-xs text-warning flex gap-2">
-                <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+          {/* ─── STEP 2: INSPECTION + PRICE ─── */}
+          {step === 2 && (
+            <section className="space-y-6" aria-label="ตรวจสภาพและดูราคารับซื้อ">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold leading-snug">
+                      {form.deviceModel} · {form.deviceStorage}
+                    </h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      ตรวจครบแล้วราคาจะแสดงอัตโนมัติ
+                    </p>
+                  </div>
+                  <p className="rounded-full bg-muted px-3 py-1.5 text-xs font-medium tabular-nums">
+                    ตรวจแล้ว {completed}/{questions.length} ข้อ
+                  </p>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-200 motion-reduce:transition-none"
+                    style={{
+                      width: `${questions.length ? (completed / questions.length) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+              {questionnaire.isPending || questionnaire.isFetching ? (
+                <p role="status">กำลังโหลดแบบตรวจ...</p>
+              ) : questionnaire.isError ? (
+                <div role="alert" className="space-y-2 text-sm">
+                  <p>{getErrorMessage(questionnaire.error)}</p>
+                  <Button variant="outline" onClick={() => questionnaire.refetch()}>
+                    โหลดแบบตรวจใหม่
+                  </Button>
+                </div>
+              ) : questionnaire.data?.questions.length ? (
+                <InspectionQuestions
+                  questionnaire={questionnaire.data}
+                  selected={selected}
+                  onChange={setSelected}
+                  deviceEligibilityConfirmed={deviceEligibilityConfirmed}
+                  onEligibilityChange={setDeviceEligibilityConfirmed}
+                />
+              ) : (
+                <p role="alert">ยังไม่มีแบบตรวจสำหรับรุ่นและความจุนี้</p>
+              )}
+              {preview.isError && inspectionComplete && (
+                <div role="alert" className="space-y-2 text-sm">
+                  <p className="text-destructive">{getErrorMessage(preview.error)}</p>
+                  <Button variant="outline" onClick={() => preview.refetch()}>
+                    คำนวณราคาใหม่
+                  </Button>
+                </div>
+              )}
+              {priceReady && quote?.breakdown && (
+                <section
+                  aria-label="รายละเอียดราคารับซื้อ"
+                  className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-5 text-sm"
+                >
+                  <h3 className="text-base font-semibold leading-snug">ราคาตามผลตรวจ</h3>
+                  <dl className="space-y-3">
+                    <div className="flex justify-between gap-4">
+                      <dt>ราคาสูงสุด</dt>
+                      <dd className="font-medium tabular-nums">
+                        {money(quote.breakdown.maxPrice)}
+                      </dd>
+                    </div>
+                    {quote.breakdown.lines
+                      .filter((line) => Number(line.amount) > 0)
+                      .map((line, index) => (
+                        <div key={index} className="flex justify-between gap-4">
+                          <dt className="min-w-0 text-muted-foreground wrap-anywhere">
+                            {line.label}
+                          </dt>
+                          <dd className="shrink-0 tabular-nums">−{money(line.amount)}</dd>
+                        </div>
+                      ))}
+                    <div className="flex items-center justify-between gap-4 border-t border-primary/20 pt-4 font-semibold">
+                      <dt>ราคารับซื้อเงินสด</dt>
+                      <dd className="text-2xl tracking-tight tabular-nums">
+                        {money(quote.cashPrice!)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="text-xs text-muted-foreground">เกรด {quote.grade} จากผลตรวจ</p>
+                </section>
+              )}
+              {quote && !priceReady && (
+                <p role="alert" className="text-sm text-destructive">
+                  ผลตรวจนี้ยังไม่มีราคารับซื้อที่ยืนยันได้ กรุณาตรวจคำตอบและราคากลาง
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* ─── STEP 4: CONFIRM + SIGN ─── */}
+          {step === 4 && (
+            <div className="space-y-6">
+              <div className="flex items-start gap-3 rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-foreground">
+                <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
                 <div>กรุณายืนยันขั้นตอนป้องกันการรับซื้อของโจรก่อนกดบันทึก</div>
               </div>
 
-              <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1">
-                <div><strong>ประเภท:</strong> รับซื้อ — จ่ายเงินให้ผู้ขาย</div>
-                <div><strong>ผู้ขาย:</strong> {form.sellerName}</div>
-                <div className="break-all"><strong>IMEI:</strong> {form.imei || 'ไม่ระบุ'}</div>
-                <div className="break-all"><strong>Serial Number:</strong> {form.serialNumber.trim() || 'ไม่ระบุ'}</div>
-                <div><strong>เครื่อง:</strong> {form.deviceBrand} {form.deviceModel} {form.deviceStorage}</div>
-                <div><strong>ราคารับซื้อ:</strong> <span className="text-lg font-bold text-success">฿{Number(form.agreedPrice || 0).toLocaleString()}</span></div>
+              <div className="overflow-hidden rounded-xl border border-border bg-card">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-primary/5 p-5">
+                  <div>
+                    <p className="text-xs text-muted-foreground">รับซื้อ — จ่ายเงินให้ผู้ขาย</p>
+                    <h3 className="mt-1 text-base font-semibold leading-snug">
+                      {form.deviceBrand} {form.deviceModel} {form.deviceStorage}
+                    </h3>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">ราคารับซื้อ</p>
+                    <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
+                      {priceReady ? money(quote!.cashPrice!) : 'กำลังตรวจราคา...'}
+                    </p>
+                  </div>
+                </div>
+                <dl className="grid gap-4 p-5 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs text-muted-foreground">ผู้ขาย</dt>
+                    <dd className="mt-1 font-medium wrap-anywhere">{form.sellerName}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">IMEI</dt>
+                    <dd className="mt-1 font-mono wrap-anywhere">{form.imei || 'ไม่ระบุ'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Serial Number</dt>
+                    <dd className="mt-1 font-mono wrap-anywhere">
+                      {form.serialNumber.trim() || 'ไม่ระบุ'}
+                    </dd>
+                  </div>
+                </dl>
               </div>
 
-              <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
+              <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50 has-checked:border-primary/40 has-checked:bg-primary/5 has-focus-visible:ring-2 has-focus-visible:ring-ring">
                 <input
                   type="checkbox"
                   disabled={quickBuyMutation.isPending}
-                  className="mt-1"
+                  className="mt-0.5 size-4 shrink-0 accent-primary"
                   checked={form.idCardVerified}
                   onChange={(e) => setForm((f) => ({ ...f, idCardVerified: e.target.checked }))}
                 />
                 <span className="text-sm">ตรวจบัตรประชาชนผู้ขายแล้วและตรงกับใบหน้า</span>
               </label>
               <SellerDeclaration />
-              <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
+              <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50 has-checked:border-primary/40 has-checked:bg-primary/5 has-focus-visible:ring-2 has-focus-visible:ring-ring">
                 <input
                   type="checkbox"
                   disabled={quickBuyMutation.isPending}
-                  className="mt-1"
+                  className="mt-0.5 size-4 shrink-0 accent-primary"
                   checked={form.sellerConsentSigned}
-                  onChange={(e) => setForm((f) => ({ ...f, sellerConsentSigned: e.target.checked }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, sellerConsentSigned: e.target.checked }))
+                  }
                 />
                 <span className="text-sm">ผู้ขายได้อ่านและยอมรับคำรับรองผู้ขายทุกข้อ</span>
               </label>
 
-              <SellerPaymentFields value={form} disabled={quickBuyMutation.isPending}
-                onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+              <div className="[&>fieldset]:space-y-4 [&>fieldset]:pt-5 [&_legend]:text-base [&_legend]:font-semibold [&_label:has(input[type=radio])]:flex-1 [&_label:has(input[type=radio])]:cursor-pointer [&_label:has(input[type=radio])]:rounded-lg [&_label:has(input[type=radio])]:border [&_label:has(input[type=radio])]:border-border [&_label:has(input[type=radio])]:bg-card [&_label:has(input[type=radio])]:px-4 [&_label:has(input:checked)]:border-primary/40 [&_label:has(input:checked)]:bg-primary/5 [&_input[type=radio]]:accent-primary">
+                <SellerPaymentFields
+                  value={form}
+                  disabled={quickBuyMutation.isPending}
+                  onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+                />
+              </div>
 
-              <div className="border-t pt-3">
-                <Label className="mt-3 block">ลายเซ็นผู้ขาย *</Label>
-                <p className="text-xs text-muted-foreground mb-2">ลงนามยืนยันรายการรับเครื่องและคำรับรองผู้ขายข้างต้น</p>
+              <div className="border-t border-border pt-6 [&_canvas]:bg-primary-foreground">
+                <Label className="block text-base font-semibold">ลายเซ็นผู้ขาย *</Label>
+                <p className="mb-5 mt-2 text-sm text-muted-foreground">
+                  ลงนามยืนยันรายการรับเครื่องและคำรับรองผู้ขายข้างต้น
+                </p>
                 <SignaturePadFull
                   isPending={quickBuyMutation.isPending}
                   initialImage={form.sellerSignatureBase64}
-                  onSign={() => { /* submit ผ่านปุ่มล่าง */ }}
+                  onSign={() => {
+                    /* submit ผ่านปุ่มล่าง */
+                  }}
                   onDraftChange={(d) => setForm((f) => ({ ...f, sellerSignatureBase64: d || '' }))}
                   buttonText=""
                 />
@@ -721,28 +1240,71 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
         </div>
 
         {/* Footer — sticky */}
-        <div className="sticky bottom-0 bg-card border-t border-border px-6 py-4 flex justify-between gap-3">
-          <Button variant="outline" onClick={prev} disabled={step === 1 || quickBuyMutation.isPending}>
-            <ChevronLeft className="size-4 mr-1" /> ย้อนกลับ
-          </Button>
-          <Badge variant="outline" className="text-xs self-center">
-            ขั้นที่ {step} / 3
-          </Badge>
-          {step < 3 ? (
-            <Button onClick={next}>
-              ถัดไป <ChevronRight className="size-4 ml-1" />
-            </Button>
-          ) : (
-            <Button
-              onClick={submit}
-              disabled={quickBuyMutation.isPending || recovering || recoveryError}
-              className="bg-success hover:bg-success/90 text-success-foreground font-bold"
-            >
-              {quickBuyMutation.isPending ? 'กำลังบันทึก...' : <><Check className="size-4 mr-1.5 inline" />บันทึก + ออกใบสำคัญ</>}
-            </Button>
+        <div className="shrink-0 border-t border-border bg-card px-4 py-4 sm:px-7">
+          {step === 2 && (
+            <div className="mb-4 flex items-center justify-between gap-4" aria-live="polite">
+              <div>
+                <p className="text-xs text-muted-foreground">ราคารับซื้อเงินสด</p>
+                <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
+                  {priceReady
+                    ? money(quote!.cashPrice!)
+                    : inspectionComplete && preview.isFetching
+                      ? 'กำลังคำนวณ...'
+                      : '—'}
+                </p>
+              </div>
+              {!inspectionComplete && (
+                <p className="max-w-40 text-right text-xs leading-snug text-muted-foreground">
+                  ตรวจให้ครบและยืนยันเงื่อนไขรับซื้อ
+                </p>
+              )}
+            </div>
           )}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 sm:grid-cols-[1fr_auto_1fr]">
+            <p className="col-span-2 text-center text-xs text-muted-foreground sm:col-span-1 sm:col-start-2 sm:row-start-1">
+              ขั้นที่ {step} / 4
+            </p>
+            <Button
+              variant="outline"
+              className="min-h-11 rounded-lg px-4 text-sm sm:col-start-1 sm:row-start-1 sm:justify-self-start"
+              onClick={prev}
+              disabled={step === 1 || quickBuyMutation.isPending}
+            >
+              <ChevronLeft className="size-4 mr-1" /> ย้อนกลับ
+            </Button>
+            {step < 4 ? (
+              <Button
+                onClick={next}
+                className={cn(
+                  purchaseActionClass,
+                  'sm:col-start-3 sm:row-start-1 sm:justify-self-end',
+                )}
+                disabled={recovering || recoveryError || (step === 2 && !priceReady)}
+              >
+                ถัดไป <ChevronRight className="size-4 ml-1" />
+              </Button>
+            ) : (
+              <Button
+                onClick={submit}
+                disabled={quickBuyMutation.isPending || recovering || recoveryError || !priceReady}
+                className={cn(
+                  purchaseActionClass,
+                  'h-auto min-w-0 whitespace-normal sm:col-start-3 sm:row-start-1 sm:justify-self-end',
+                )}
+              >
+                {quickBuyMutation.isPending ? (
+                  'กำลังบันทึก...'
+                ) : (
+                  <>
+                    <Check className="size-4 mr-1.5 inline" />
+                    บันทึก + ออกใบสำคัญ
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

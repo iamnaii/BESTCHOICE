@@ -31,7 +31,7 @@ import {
   UpdateBuybackQuestionDto,
   UpdateSellConfigDto,
 } from './dto/buyback-question.dto';
-import { AppraiseOnlineDto } from './dto/appraise-online.dto';
+import { AppraisalPreviewDto, AppraiseOnlineDto, QuickBuyPreviewDto } from './dto/appraise-online.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -138,18 +138,47 @@ export class TradeInController {
     };
   }
 
-  // Quick Buy — 1-shot create + appraise + accept + voucher allocate
+  // Device-first inspection does not create a seller, TradeIn or payout.
+  @Get('quick-buy/catalog')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  quickBuyCatalog() {
+    return this.onlineAppraisal.quickBuyCatalog();
+  }
+
+  @Get('quick-buy/questions')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  quickBuyQuestions(@Query('model') model: string, @Query('storage') storage: string) {
+    return this.onlineAppraisal.quickBuyQuestions(model, storage);
+  }
+
+  @Post('quick-buy/preview')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  quickBuyPreview(@Body() dto: QuickBuyPreviewDto) {
+    return this.onlineAppraisal.quickBuyPreview(dto);
+  }
+
+  // Quick Buy — create + server appraisal + accept + voucher allocate
   @Post('quick-buy')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   quickBuy(
     @Body() dto: QuickBuyTradeInDto,
     @CurrentUser('id') userId: string,
     @CurrentUser('branchId') userBranchId: string | null,
   ) {
-    return this.tradeInService.quickBuy(dto, userId, userBranchId);
+    return this.tradeInService.quickBuy(dto, userId, userBranchId, this.onlineAppraisal);
   }
 
   @Get('quick-buy/requests/:requestId')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   quickBuyStatus(@Param('requestId') requestId: string, @CurrentUser('id') userId: string) {
     return this.tradeInService.quickBuyStatus(requestId, userId);
@@ -247,9 +276,37 @@ export class TradeInController {
   // ⚠️ ต้องอยู่เหนือ @Get(':id') เสมอ (route-shadowing)
 
   @Get('buyback-questions')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  listBuybackQuestions() {
-    return this.buybackAdmin.list();
+  async listBuybackQuestions() {
+    const [global, reference] = await Promise.all([this.buybackAdmin.list(), this.onlineAppraisal.referenceCatalog()]);
+    return { ...global, reference };
+  }
+
+  @Get('appraisal-questions')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  appraisalQuestions(
+    @Query('tradeInId') tradeInId?: string,
+    @CurrentUser('role') userRole?: string,
+    @CurrentUser('branchId') userBranchId?: string | null,
+  ) {
+    return this.onlineAppraisal.questions(tradeInId, userRole, userBranchId);
+  }
+
+  @Post(':id/appraisal-preview')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  appraisalPreview(
+    @Param('id') id: string,
+    @Body() dto: AppraisalPreviewDto,
+    @CurrentUser('role') userRole: string,
+    @CurrentUser('branchId') userBranchId: string | null,
+  ) {
+    return this.onlineAppraisal.preview(id, dto, userRole, userBranchId);
   }
 
   @Post('buyback-questions')
@@ -339,16 +396,19 @@ export class TradeInController {
     return this.tradeInService.appraise(id, dto, userId, userRole);
   }
 
-  /** §7.4 handshake — ยืนยันราคา record ที่มาจาก instant quote (มี quoteBreakdown) */
+  /** Server questionnaire appraisal, including pending walk-in records. */
   @Patch(':id/appraise-online')
+  @UseGuards(EntityScopeGuard)
+  @Entity('SHOP')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  appraiseOnline(
+  async appraiseOnline(
     @Param('id') id: string,
     @Body() dto: AppraiseOnlineDto,
     @CurrentUser('id') userId: string,
     @CurrentUser('role') userRole: string,
+    @CurrentUser('branchId') userBranchId: string | null,
   ) {
-    return this.onlineAppraisal.appraiseOnline(id, dto, userId, userRole);
+    return this.applyRoleMask(await this.onlineAppraisal.appraiseOnline(id, dto, userId, userRole, userBranchId), userRole);
   }
 
   @Post(':id/accept')

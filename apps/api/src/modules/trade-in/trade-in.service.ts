@@ -16,6 +16,7 @@ import { CustomerPiiService } from '../customers/customer-pii.service';
 import { TradeInValuationService } from './services/trade-in-valuation.service';
 import { TradeInQueryService } from './services/trade-in-query.service';
 import { TradeInLifecycleService } from './services/trade-in-lifecycle.service';
+import type { OnlineAppraisalService } from './services/online-appraisal.service';
 import {
   normalizeNationalId,
   buildTradeInPiiEncryptedFields,
@@ -141,8 +142,8 @@ export class TradeInService {
     return this.lifecycle.accept(id, dto, userId);
   }
 
-  quickBuy(dto: QuickBuyTradeInDto, userId: string, userBranchId?: string | null) {
-    return this.lifecycle.quickBuy(dto, userId, userBranchId);
+  quickBuy(dto: QuickBuyTradeInDto, userId: string, userBranchId?: string | null, appraisal?: Pick<OnlineAppraisalService, 'prepareQuickBuy'>) {
+    return this.lifecycle.quickBuy(dto, userId, userBranchId, appraisal);
   }
 
   reject(id: string) {

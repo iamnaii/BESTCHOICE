@@ -10,9 +10,12 @@ import { VoucherPdfRenderer } from '../src/modules/trade-in/services/voucher/vou
 import { JwtAuthGuard } from '../src/modules/auth/guards/jwt-auth.guard';
 import { ExportEnabledGuard } from '../src/modules/settings/guards/export-enabled.guard';
 import { StorageService } from '../src/modules/storage/storage.service';
-import { seedTradeInShop, tradeInProviders } from './support/trade-in-fixture';
+import { seedTradeInAppraisal, seedTradeInShop, tradeInProviders } from './support/trade-in-fixture';
 import { ProductPhotosService } from '../src/modules/quality-control/product-photos.service';
 import { ProductsService } from '../src/modules/products/products.service';
+import { ShopBuybackController } from '../src/modules/shop-buyback/shop-buyback.controller';
+import { ShopBotDefenseGuard } from '../src/modules/shop-bot-defense/shop-bot-defense.guard';
+import { REFERENCE_PRICING_CONFIG_KEY, ReferencePricingCatalog } from '../src/modules/shop-buyback/reference-pricing.types';
 
 if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) {
   throw new Error('Run tools/test-chat-credit.sh with its disposable database');
@@ -22,21 +25,23 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
   const db = new PrismaService();
   let app: INestApplication;
   let fixture: Awaited<ReturnType<typeof seedTradeInShop>>;
-  let actor: { id: string; role: string; branchId: string | null };
+  let actor: { id: string; role: string; branchId: string | null; accessibleCompanies: string[] };
   const payment = { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
   const pdf = jest.spyOn(VoucherPdfRenderer.prototype, 'htmlToPdf').mockResolvedValue(Buffer.from('%PDF-test'));
 
   beforeAll(async () => {
     await db.$connect();
     fixture = await seedTradeInShop(db, 'BUYBACK E2E BRANCH');
-    actor = { id: fixture.user.id, role: 'OWNER', branchId: null };
+    await seedTradeInAppraisal(db);
+    actor = { id: fixture.user.id, role: 'OWNER', branchId: null, accessibleCompanies: ['SHOP', 'FINANCE'] };
     const storage = { upload: async () => 'isolated/test-image' } as unknown as StorageService;
     const module = await Test.createTestingModule({
-      controllers: [TradeInController],
+      controllers: [TradeInController, ShopBuybackController],
       providers: [{ provide: PrismaService, useValue: db }, ...tradeInProviders(db, storage)],
     }).overrideGuard(JwtAuthGuard).useValue({ canActivate: (context: { switchToHttp(): { getRequest(): { user: unknown } } }) => {
       context.switchToHttp().getRequest().user = actor; return true;
-    } }).overrideGuard(ExportEnabledGuard).useValue({ canActivate: () => false }).compile();
+    } }).overrideGuard(ExportEnabledGuard).useValue({ canActivate: () => false })
+      .overrideGuard(ShopBotDefenseGuard).useValue({ canActivate: () => true }).compile();
     app = module.createNestApplication({ logger: false });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
@@ -46,6 +51,225 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
   const buy = (extra: Record<string, unknown> = {}) => request(app.getHttpServer()).post('/trade-ins/quick-buy').send({
     ...payment, requestId: randomUUID(), branchId: fixture.branch.id, sellerContactId: fixture.seller.id,
     sellerName: fixture.seller.name, deviceBrand: 'TEST', deviceModel: 'BUYBACK-DEVICE', agreedPrice: 5000, ...extra,
+  });
+
+  describe('device-first QuickBuy server pricing', () => {
+    const answers = [
+      { questionKey: 'local-screen', choiceIds: ['local-screen-cracked'] },
+      { questionKey: 'local-battery', choiceIds: ['local-battery-worn'] },
+      { questionKey: 'local-issues', choiceIds: [] },
+    ];
+    const device = { deviceBrand: 'Apple', deviceModel: 'iPhone 15', deviceStorage: '128GB', answers };
+    const preview = (extra: Record<string, unknown> = {}) => request(app.getHttpServer()).post('/trade-ins/quick-buy/preview').send({ ...device, ...extra });
+    const counts = async () => ({ tradeIns: await db.tradeIn.count(), contacts: await db.contact.count(),
+      products: await db.product.count(), journals: await db.journalEntry.count() });
+
+    it('previews without intake writes, purchases the canonical cash price and replays after a price change', async () => {
+      const initial = await counts();
+      const catalog = await request(app.getHttpServer()).get('/trade-ins/quick-buy/catalog').expect(200);
+      expect(catalog.body.models).toContainEqual(expect.objectContaining({ model: 'iPhone 15' }));
+      const questions = await request(app.getHttpServer()).get('/trade-ins/quick-buy/questions')
+        .query({ model: 'iPhone 15', storage: '128GB' }).expect(200);
+      expect(questions.body.questions.map((q: { key: string }) => q.key)).toEqual(['local-screen', 'local-battery', 'local-issues']);
+      await request(app.getHttpServer()).get('/trade-ins/quick-buy/questions').expect(400);
+      await preview({ answers: answers.slice(0, 2) }).expect(400);
+      await preview({ deviceBrand: 'Samsung' }).expect(400);
+      const quoted = await preview().expect(201);
+      expect(quoted.body).toMatchObject({ price: '8100.00', cashPrice: '8100.00', grade: 'B', previewToken: expect.stringMatching(/^[a-f0-9]{64}$/) });
+      expect(await counts()).toEqual(initial);
+
+      const payload = { ...device, agreedPrice: 8100, deviceCondition: 'B', requestId: randomUUID(), previewToken: quoted.body.previewToken };
+      await buy({ ...payload, previewToken: undefined }).expect(400);
+      expect((await buy({ ...payload, agreedPrice: 8200 }).expect(409)).body.code).toBe('QUICK_BUY_QUOTE_CHANGED');
+      await buy({ ...payload, deviceCondition: 'A' }).expect(409);
+      expect(await counts()).toEqual(initial);
+      const bought = await buy(payload).expect(201);
+      const row = await db.tradeIn.findUniqueOrThrow({ where: { id: bought.body.id }, include: { product: true } });
+      expect(row).toMatchObject({ status: 'ACCEPTED', flow: 'BUYBACK', deviceCondition: 'B', appraisalLocked: true, appraisedById: actor.id });
+      expect(row.offeredPrice!.toFixed(2)).toBe('8100.00');
+      expect(row.agreedPrice!.toFixed(2)).toBe('8100.00');
+      expect(row.basePriceAtAppraisal!.toFixed(2)).toBe('10000.00');
+      expect(row.product!.costPrice.toFixed(2)).toBe('8100.00');
+      expect(row.conditionAnswers).toEqual(quoted.body.conditionAnswers);
+      expect(row.quoteBreakdown).toEqual(quoted.body.breakdown);
+
+      const valuation = await db.tradeInValuation.findUniqueOrThrow({ where: { brand_model_storage_condition:
+        { brand: 'Apple', model: 'iPhone 15', storage: '128GB', condition: 'A' } } });
+      try {
+        await db.tradeInValuation.update({ where: { id: valuation.id }, data: { basePrice: 11000 } });
+        const afterPurchase = await counts();
+        expect((await buy({ ...payload, requestId: randomUUID() }).expect(409)).body.code).toBe('QUICK_BUY_QUOTE_CHANGED');
+        expect((await buy(payload).expect(201)).body).toEqual(bought.body);
+        await buy({ ...payload, answers: [{ questionKey: 'local-screen', choiceIds: ['local-screen-intact'] }, ...answers.slice(1)] }).expect(409);
+        expect(await counts()).toEqual(afterPurchase);
+        expect(await db.tradeIn.count({ where: { quickBuyRequestId: payload.requestId } })).toBe(1);
+        expect(await db.journalEntry.count({ where: { referenceId: `tradein:${row.id}` } })).toBe(1);
+      } finally {
+        await db.tradeInValuation.update({ where: { id: valuation.id }, data: { basePrice: valuation.basePrice } });
+      }
+    });
+
+    it('requires SHOP, allows sales to preview, and keeps final intake within their branch', async () => {
+      const original = actor;
+      try {
+        actor = { ...actor, accessibleCompanies: ['FINANCE'] };
+        await request(app.getHttpServer()).get('/trade-ins/quick-buy/catalog').expect(403);
+        await request(app.getHttpServer()).get('/trade-ins/quick-buy/questions').query({ model: 'iPhone 15', storage: '128GB' }).expect(403);
+        await preview().expect(403);
+        await buy().expect(403);
+        actor = { ...actor, role: 'SALES', branchId: fixture.branch.id, accessibleCompanies: ['SHOP'] };
+        const quote = await preview().expect(201);
+        await buy({ ...device, agreedPrice: 8100, previewToken: quote.body.previewToken, branchId: randomUUID() }).expect(403);
+        actor = { ...actor, role: 'ACCOUNTANT' };
+        await preview().expect(403);
+      } finally { actor = original; }
+    });
+  });
+
+  describe('authenticated walk-in questionnaire appraisal', () => {
+    const answers = [
+      { questionKey: 'local-screen', choiceIds: ['local-screen-cracked'] },
+      { questionKey: 'local-battery', choiceIds: ['local-battery-worn'] },
+      { questionKey: 'local-issues', choiceIds: [] },
+    ];
+    const pending = (extra: Record<string, unknown> = {}) => db.tradeIn.create({ data: {
+      deviceBrand: 'Apple', deviceModel: 'iPhone 15', deviceStorage: '128GB', deviceCondition: 'A',
+      submissionSource: 'OFFLINE', flow: 'BUYBACK', branchId: fixture.branch.id, ...extra,
+    } });
+    const preview = (id: string, body: Record<string, unknown> = { answers }) => request(app.getHttpServer()).post(`/trade-ins/${id}/appraisal-preview`).send(body);
+
+    it('previews and commits the same server price/grade, with one winning concurrent confirmation', async () => {
+      const row = await pending();
+      const questions = await request(app.getHttpServer()).get('/trade-ins/appraisal-questions').expect(200);
+      expect(questions.body.questions.map((q: { key: string }) => q.key)).toEqual(['local-screen', 'local-battery', 'local-issues']);
+      const result = await preview(row.id).expect(201);
+      expect(result.body).toMatchObject({ price: '8100.00', grade: 'B', cashPrice: '8100.00' });
+      expect((await db.tradeIn.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('PENDING_APPRAISAL');
+      const confirmed = await Promise.all([0, 1].map(() => request(app.getHttpServer()).patch(`/trade-ins/${row.id}/appraise-online`)
+        .send({ mode: 'REVISED', answers, previewToken: result.body.previewToken, deviceCondition: 'D' })));
+      expect(confirmed.filter((r) => r.status === 200)).toHaveLength(1);
+      expect(confirmed.filter((r) => r.status >= 400)).toHaveLength(1);
+      const saved = await db.tradeIn.findUniqueOrThrow({ where: { id: row.id } });
+      expect(saved.status).toBe('APPRAISED');
+      expect(saved.deviceCondition).toBe('B');
+      expect(saved.offeredPrice!.toFixed(2)).toBe('8100.00');
+      expect(saved.estimatedValue!.toFixed(2)).toBe('8100.00');
+      expect(saved.basePriceAtAppraisal!.toFixed(2)).toBe('10000.00');
+      expect(saved.quoteBreakdown).toMatchObject({ price: '8100.00', chosenFlow: 'BUYBACK' });
+      expect(saved.conditionAnswers).toEqual(result.body.conditionAnswers);
+      expect(saved.productId).toBeNull();
+    });
+
+    it('rejects incomplete MULTI answers, unsupported brands/storage and missing or stale price previews', async () => {
+      const row = await pending();
+      await preview(row.id, { answers: answers.slice(0, 2) }).expect(400);
+      await preview((await pending({ deviceBrand: 'Samsung' })).id).expect(400);
+      await preview((await pending({ deviceStorage: null })).id).expect(400);
+      await request(app.getHttpServer()).patch(`/trade-ins/${row.id}/appraise-online`).send({ mode: 'REVISED', answers }).expect(409);
+      const result = await preview(row.id).expect(201);
+      await request(app.getHttpServer()).patch(`/trade-ins/${row.id}/appraise-online`)
+        .send({ mode: 'REVISED', answers, previewToken: result.body.previewToken, offeredPrice: 1 }).expect(400);
+      await db.tradeIn.update({ where: { id: row.id }, data: { notes: 'Updated after preview' } });
+      await request(app.getHttpServer()).patch(`/trade-ins/${row.id}/appraise-online`)
+        .send({ mode: 'REVISED', answers, previewToken: result.body.previewToken }).expect(409);
+      expect((await db.tradeIn.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('PENDING_APPRAISAL');
+    });
+
+    it('requires SHOP and appraisal role, limits managers to own branch but allows unassigned online intake', async () => {
+      const row = await pending();
+      const originalActor = actor;
+      try {
+        actor = { ...actor, accessibleCompanies: ['FINANCE'] };
+        await request(app.getHttpServer()).get('/trade-ins/appraisal-questions').expect(403);
+        await preview(row.id).expect(403);
+        await request(app.getHttpServer()).patch(`/trade-ins/${row.id}/appraise-online`).send({ mode: 'REVISED', answers }).expect(403);
+        actor = { ...originalActor, role: 'SALES', branchId: fixture.branch.id };
+        await preview(row.id).expect(403);
+        actor = { ...originalActor, role: 'BRANCH_MANAGER', branchId: 'another-branch' };
+        await preview(row.id).expect(403);
+        actor = { ...actor, branchId: fixture.branch.id };
+        await preview(row.id).expect(201);
+        await preview((await pending({ branchId: null })).id).expect(403);
+        await preview((await pending({ branchId: null, submissionSource: 'ONLINE' })).id).expect(201);
+      } finally { actor = originalActor; }
+    });
+
+    it('retains EXCHANGE cash base and bonus separately in the saved appraisal', async () => {
+      const row = await pending({ flow: 'EXCHANGE' });
+      const result = await preview(row.id).expect(201);
+      expect(result.body).toMatchObject({ cashPrice: '8100.00', exchangePrice: '8910.00', price: '8910.00' });
+      const saved = await request(app.getHttpServer()).patch(`/trade-ins/${row.id}/appraise-online`)
+        .send({ mode: 'REVISED', answers, previewToken: result.body.previewToken }).expect(200);
+      expect(saved.body.quoteBreakdown).toMatchObject({ cashPrice: '8100.00', exchangePrice: '8910.00', price: '8910.00', chosenFlow: 'EXCHANGE' });
+    });
+  });
+
+  it('uses scoped reference profiles through public and staff APIs, keeps eligibility proof and preserves previous snapshots', async () => {
+    const config = await db.systemConfig.findUnique({ where: { key: REFERENCE_PRICING_CONFIG_KEY } });
+    const catalog: ReferencePricingCatalog = { version: 1, source: 'https://www.yellobe.com/buy/detail', capturedAt: '2026-09-08T14:00:00Z',
+      profiles: { p: { pricingMode: 'MAX_PERCENT_EXACT', eligibilityRequired: true, eligibilityText: 'เครื่องเปิดได้และไม่มีบัญชีล็อก', questions: [
+        { id: 'ref-q1', key: 'warranty', title: 'ประกัน', selectType: 'SINGLE', choices: [{ id: 'ref-expired', label: 'หมดประกัน', deductType: 'FIXED', deductValue: '500' }] },
+        { id: 'ref-q2', key: 'body', title: 'ตัวเครื่อง', selectType: 'SINGLE', choices: [{ id: 'ref-body', label: 'มีรอย', deductType: 'PERCENT', deductValue: '15' }] },
+      ] } }, assignments: [{ model: 'iPhone 12', storage: '128GB', profileId: 'p' }] };
+    const answers = [{ questionKey: 'warranty', choiceIds: ['ref-expired'] }, { questionKey: 'body', choiceIds: ['ref-body'] }];
+    const body = { model: 'iPhone 12', storage: '128GB', answers, deviceEligibilityConfirmed: true };
+    try {
+      await db.tradeInValuation.upsert({ where: { brand_model_storage_condition: { brand: 'Apple', model: 'iPhone 12', storage: '128GB', condition: 'A' } },
+        update: { basePrice: 5000, deletedAt: null }, create: { brand: 'Apple', model: 'iPhone 12', storage: '128GB', condition: 'A', basePrice: 5000 } });
+      await db.systemConfig.upsert({ where: { key: REFERENCE_PRICING_CONFIG_KEY }, update: { value: JSON.stringify(catalog), deletedAt: null },
+        create: { key: REFERENCE_PRICING_CONFIG_KEY, value: JSON.stringify(catalog) } });
+      const questions = await request(app.getHttpServer()).get('/shop/buyback/questions').query({ model: 'iPhone 12', storage: '128GB' }).expect(200);
+      expect(questions.body).toMatchObject({ profileId: 'p', eligibilityRequired: true });
+      expect(questions.body.questions.map((q: { key: string }) => q.key)).toEqual(['warranty', 'body']);
+      await request(app.getHttpServer()).get('/shop/buyback/questions').query({ model: 'iPhone 12', storage: '512GB' }).expect(400);
+      await request(app.getHttpServer()).post('/shop/buyback/quote').send({ ...body, deviceEligibilityConfirmed: false }).expect(400);
+      await request(app.getHttpServer()).post('/shop/buyback/submit').send({ ...body, sellerName: 'TEST SELLER', sellerPhone: '0000000000', deviceEligibilityConfirmed: false }).expect(400);
+      const quote = await request(app.getHttpServer()).post('/shop/buyback/quote').send(body).expect(201);
+      expect(quote.body).toMatchObject({ price: '3825.00', grade: 'C' });
+      const quickDevice = { deviceBrand: 'Apple', deviceModel: body.model, deviceStorage: body.storage, answers };
+      const quickQuestions = await request(app.getHttpServer()).get('/trade-ins/quick-buy/questions').query({ model: body.model, storage: body.storage }).expect(200);
+      expect(quickQuestions.body.profileId).toBe('p');
+      await request(app.getHttpServer()).post('/trade-ins/quick-buy/preview').send(quickDevice).expect(400);
+      const quickPreview = await request(app.getHttpServer()).post('/trade-ins/quick-buy/preview')
+        .send({ ...quickDevice, deviceEligibilityConfirmed: true }).expect(201);
+      const quickBought = await buy({ ...quickDevice, deviceEligibilityConfirmed: true, previewToken: quickPreview.body.previewToken,
+        agreedPrice: 3825, deviceCondition: 'C' }).expect(201);
+      const quickRow = await db.tradeIn.findUniqueOrThrow({ where: { id: quickBought.body.id } });
+      expect(quickRow.quoteBreakdown).toEqual(quickPreview.body.breakdown);
+      expect(quickRow.conditionAnswers).toEqual(expect.arrayContaining([expect.objectContaining({
+        questionKey: '__device_eligibility', confirmed: true, source: catalog.source, profileId: 'p', verifiedById: actor.id })]));
+      const submitted = await request(app.getHttpServer()).post('/shop/buyback/submit').send({ ...body, sellerName: 'TEST SELLER', sellerPhone: '0000000000' }).expect(201);
+      const online = await db.tradeIn.findUniqueOrThrow({ where: { id: submitted.body.id } });
+      expect(online.conditionAnswers).toEqual(expect.arrayContaining([expect.objectContaining({ questionKey: '__device_eligibility', confirmed: true })]));
+
+      const walkIn = await db.tradeIn.create({ data: { deviceBrand: 'Apple', deviceModel: 'iPhone 12', deviceStorage: '128GB', flow: 'BUYBACK',
+        submissionSource: 'OFFLINE', branchId: fixture.branch.id } });
+      const staffQuestions = await request(app.getHttpServer()).get('/trade-ins/appraisal-questions').query({ tradeInId: walkIn.id }).expect(200);
+      expect(staffQuestions.body.profileId).toBe('p');
+      await request(app.getHttpServer()).post(`/trade-ins/${walkIn.id}/appraisal-preview`).send({ answers }).expect(400);
+      const preview = await request(app.getHttpServer()).post(`/trade-ins/${walkIn.id}/appraisal-preview`).send({ answers, deviceEligibilityConfirmed: true }).expect(201);
+      const admin = await request(app.getHttpServer()).get('/trade-ins/buyback-questions').expect(200);
+      expect(admin.body.reference.assignments).toEqual(catalog.assignments);
+      const changed = structuredClone(catalog);
+      changed.profiles.p.questions[1].choices[0].deductValue = '20';
+      await db.systemConfig.update({ where: { key: REFERENCE_PRICING_CONFIG_KEY }, data: { value: JSON.stringify(changed) } });
+      await request(app.getHttpServer()).patch(`/trade-ins/${walkIn.id}/appraise-online`)
+        .send({ mode: 'REVISED', answers, deviceEligibilityConfirmed: true, previewToken: preview.body.previewToken }).expect(409);
+      const refreshed = await request(app.getHttpServer()).post(`/trade-ins/${walkIn.id}/appraisal-preview`).send({ answers, deviceEligibilityConfirmed: true }).expect(201);
+      const saved = await request(app.getHttpServer()).patch(`/trade-ins/${walkIn.id}/appraise-online`)
+        .send({ mode: 'REVISED', answers, deviceEligibilityConfirmed: true, previewToken: refreshed.body.previewToken }).expect(200);
+      expect(saved.body.offeredPrice).toBe('3600');
+      expect(saved.body.conditionAnswers).toEqual(expect.arrayContaining([expect.objectContaining({ questionKey: '__device_eligibility', verifiedById: actor.id })]));
+      expect((await db.tradeIn.findUniqueOrThrow({ where: { id: online.id } })).quoteBreakdown).toEqual(online.quoteBreakdown);
+      await request(app.getHttpServer()).patch(`/trade-ins/${online.id}/appraise-online`).send({ mode: 'AS_ANSWERED' }).expect(400);
+      const asAnswered = await request(app.getHttpServer()).patch(`/trade-ins/${online.id}/appraise-online`)
+        .send({ mode: 'AS_ANSWERED', deviceEligibilityConfirmed: true }).expect(200);
+      expect(asAnswered.body.offeredPrice).toBe('3825');
+      expect(asAnswered.body.conditionAnswers).toEqual(expect.arrayContaining([expect.objectContaining({ questionKey: '__device_eligibility', verifiedById: actor.id })]));
+    } finally {
+      await db.systemConfig.update({ where: { key: REFERENCE_PRICING_CONFIG_KEY }, data: config
+        ? { value: config.value, deletedAt: config.deletedAt } : { deletedAt: new Date() } });
+    }
   });
 
   it('returns the original purchase after a lost response instead of buying the device twice', async () => {

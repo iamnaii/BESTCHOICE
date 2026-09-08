@@ -1,0 +1,2154 @@
+{
+  "schemaVersion": 1,
+  "source": "Yellobe public buyback catalog",
+  "sourcePageUrl": "https://www.yellobe.com/buy",
+  "captureDate": "2026-09-08",
+  "generatedAt": "2026-09-08T14:28:07.699Z",
+  "priceMeaning": "Published maximum buyback cash price before condition deductions; no condition grade inferred.",
+  "scope": "Numbered iPhone models 12 and later, plus iPhone Air; excludes SE and numbered models 11 and earlier.",
+  "modelCatalog": {
+    "sourceUrl": "https://www.yellobe.com/home/type2",
+    "method": "POST",
+    "body": {
+      "id": "104"
+    },
+    "fetchedAt": "2026-09-08T14:24:07.145Z",
+    "fetchedAtSource": "existing-cache-file-mtime"
+  },
+  "modelCount": 26,
+  "offerCount": 85,
+  "flaggedOfferCount": 3,
+  "manufacturerCapacityReview": {
+    "verifiedOn": "2026-09-08",
+    "scope": "Only the models explicitly listed below were checked against Apple in this capture.",
+    "models": {
+      "iPhone 17": {
+        "capacities": [
+          "256GB",
+          "512GB"
+        ],
+        "sourceUrl": "https://www.apple.com/iphone-17/specs/"
+      },
+      "iPhone Air": {
+        "capacities": [
+          "256GB",
+          "512GB",
+          "1TB"
+        ],
+        "sourceUrl": "https://www.apple.com/iphone-air/specs/"
+      },
+      "iPhone 17 Pro": {
+        "capacities": [
+          "256GB",
+          "512GB",
+          "1TB"
+        ],
+        "sourceUrl": "https://www.apple.com/iphone-17-pro/specs/"
+      },
+      "iPhone 17 Pro Max": {
+        "capacities": [
+          "256GB",
+          "512GB",
+          "1TB",
+          "2TB"
+        ],
+        "sourceUrl": "https://www.apple.com/iphone-17-pro/specs/"
+      },
+      "iPhone 17e": {
+        "capacities": [
+          "256GB",
+          "512GB"
+        ],
+        "sourceUrl": "https://www.apple.com/iphone-17e/specs/"
+      }
+    }
+  },
+  "captures": [
+    {
+      "modelId": "1165",
+      "model": "iPhone 17",
+      "fetchedAt": "2026-09-08T14:27:00.547Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1165.json"
+    },
+    {
+      "modelId": "1166",
+      "model": "iPhone Air",
+      "fetchedAt": "2026-09-08T14:27:01.117Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1166.json"
+    },
+    {
+      "modelId": "1167",
+      "model": "iPhone 17 Pro",
+      "fetchedAt": "2026-09-08T14:27:01.675Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 4,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1167.json"
+    },
+    {
+      "modelId": "1168",
+      "model": "iPhone 17 Pro Max",
+      "fetchedAt": "2026-09-08T14:27:02.232Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 4,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1168.json"
+    },
+    {
+      "modelId": "1262",
+      "model": "iPhone 17e",
+      "fetchedAt": "2026-09-08T14:27:02.795Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1262.json"
+    },
+    {
+      "modelId": "367",
+      "model": "iPhone 12 Mini",
+      "fetchedAt": "2026-09-08T14:27:03.359Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-367.json"
+    },
+    {
+      "modelId": "368",
+      "model": "iPhone 12",
+      "fetchedAt": "2026-09-08T14:24:25.076Z",
+      "fetchedAtSource": "existing-cache-file-mtime",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-368.json"
+    },
+    {
+      "modelId": "369",
+      "model": "iPhone 12 Pro",
+      "fetchedAt": "2026-09-08T14:27:03.931Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-369.json"
+    },
+    {
+      "modelId": "370",
+      "model": "iPhone 12 Pro Max",
+      "fetchedAt": "2026-09-08T14:27:04.497Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-370.json"
+    },
+    {
+      "modelId": "570",
+      "model": "iPhone 13 Mini",
+      "fetchedAt": "2026-09-08T14:27:05.063Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-570.json"
+    },
+    {
+      "modelId": "571",
+      "model": "iPhone 13",
+      "fetchedAt": "2026-09-08T14:27:05.627Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-571.json"
+    },
+    {
+      "modelId": "572",
+      "model": "iPhone 13 Pro",
+      "fetchedAt": "2026-09-08T14:27:06.188Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-572.json"
+    },
+    {
+      "modelId": "573",
+      "model": "iPhone 13 Pro Max",
+      "fetchedAt": "2026-09-08T14:27:06.750Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 4,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-573.json"
+    },
+    {
+      "modelId": "694",
+      "model": "iPhone 14 Pro Max",
+      "fetchedAt": "2026-09-08T14:27:07.307Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 4,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-694.json"
+    },
+    {
+      "modelId": "695",
+      "model": "iPhone 14 Pro",
+      "fetchedAt": "2026-09-08T14:27:07.871Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 4,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-695.json"
+    },
+    {
+      "modelId": "696",
+      "model": "iPhone 14 Plus",
+      "fetchedAt": "2026-09-08T14:27:08.426Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-696.json"
+    },
+    {
+      "modelId": "698",
+      "model": "iPhone 14",
+      "fetchedAt": "2026-09-08T14:27:08.985Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-698.json"
+    },
+    {
+      "modelId": "905",
+      "model": "iPhone 15",
+      "fetchedAt": "2026-09-08T14:27:09.546Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-905.json"
+    },
+    {
+      "modelId": "906",
+      "model": "iPhone 15 Pro",
+      "fetchedAt": "2026-09-08T14:27:10.107Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 4,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-906.json"
+    },
+    {
+      "modelId": "907",
+      "model": "iPhone 15 Plus",
+      "fetchedAt": "2026-09-08T14:27:10.671Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-907.json"
+    },
+    {
+      "modelId": "908",
+      "model": "iPhone 15 Pro Max",
+      "fetchedAt": "2026-09-08T14:27:11.238Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-908.json"
+    },
+    {
+      "modelId": "1033",
+      "model": "iPhone 16",
+      "fetchedAt": "2026-09-08T14:27:11.802Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1033.json"
+    },
+    {
+      "modelId": "1034",
+      "model": "iPhone 16 Plus",
+      "fetchedAt": "2026-09-08T14:27:12.377Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1034.json"
+    },
+    {
+      "modelId": "1035",
+      "model": "iPhone 16 Pro",
+      "fetchedAt": "2026-09-08T14:27:12.938Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 4,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1035.json"
+    },
+    {
+      "modelId": "1036",
+      "model": "iPhone 16 Pro Max",
+      "fetchedAt": "2026-09-08T14:27:13.495Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1036.json"
+    },
+    {
+      "modelId": "1096",
+      "model": "iPhone 16e",
+      "fetchedAt": "2026-09-08T14:27:14.066Z",
+      "fetchedAtSource": "http-response",
+      "capacityCount": 3,
+      "rawCache": ".tmp/yellobe-2026-09-08/capacities-1096.json"
+    }
+  ],
+  "rows": [
+    {
+      "modelId": "1165",
+      "detailId": "2936",
+      "buyId": "1641",
+      "model": "iPhone 17",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "21500.00",
+      "sourcePrice": "21500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1165"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:00.547Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1165",
+      "detailId": "2937",
+      "buyId": "1641",
+      "model": "iPhone 17",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "23500.00",
+      "sourcePrice": "23500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1165"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:00.547Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1165",
+      "detailId": "2938",
+      "buyId": "1641",
+      "model": "iPhone 17",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "24500.00",
+      "sourcePrice": "24500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1165"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:00.547Z",
+      "fetchedAtSource": "http-response",
+      "flags": [
+        "CAPACITY_NOT_LISTED_BY_MANUFACTURER"
+      ]
+    },
+    {
+      "modelId": "1166",
+      "detailId": "2939",
+      "buyId": "1642",
+      "model": "iPhone Air",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "21000.00",
+      "sourcePrice": "21000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1166"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:01.117Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1166",
+      "detailId": "2940",
+      "buyId": "1642",
+      "model": "iPhone Air",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "22000.00",
+      "sourcePrice": "22000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1166"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:01.117Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1166",
+      "detailId": "2941",
+      "buyId": "1642",
+      "model": "iPhone Air",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "23000.00",
+      "sourcePrice": "23000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1166"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:01.117Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1167",
+      "detailId": "2942",
+      "buyId": "1643",
+      "model": "iPhone 17 Pro",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "31500.00",
+      "sourcePrice": "31500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1167"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:01.675Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1167",
+      "detailId": "2943",
+      "buyId": "1643",
+      "model": "iPhone 17 Pro",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "33500.00",
+      "sourcePrice": "33500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1167"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:01.675Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1167",
+      "detailId": "2944",
+      "buyId": "1643",
+      "model": "iPhone 17 Pro",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "35500.00",
+      "sourcePrice": "35500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1167"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:01.675Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1167",
+      "detailId": "2945",
+      "buyId": "1643",
+      "model": "iPhone 17 Pro",
+      "storage": "2TB",
+      "sourceStorage": "2 TB",
+      "maxCashPrice": "36500.00",
+      "sourcePrice": "36500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1167"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:01.675Z",
+      "fetchedAtSource": "http-response",
+      "flags": [
+        "CAPACITY_NOT_LISTED_BY_MANUFACTURER"
+      ]
+    },
+    {
+      "modelId": "1168",
+      "detailId": "2946",
+      "buyId": "1644",
+      "model": "iPhone 17 Pro Max",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "36500.00",
+      "sourcePrice": "36500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1168"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:02.232Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1168",
+      "detailId": "2947",
+      "buyId": "1644",
+      "model": "iPhone 17 Pro Max",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "38500.00",
+      "sourcePrice": "38500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1168"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:02.232Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1168",
+      "detailId": "2948",
+      "buyId": "1644",
+      "model": "iPhone 17 Pro Max",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "40500.00",
+      "sourcePrice": "40500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1168"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:02.232Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1168",
+      "detailId": "2949",
+      "buyId": "1644",
+      "model": "iPhone 17 Pro Max",
+      "storage": "2TB",
+      "sourceStorage": "2 TB",
+      "maxCashPrice": "41500.00",
+      "sourcePrice": "41500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1168"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:02.232Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1262",
+      "detailId": "3116",
+      "buyId": "1739",
+      "model": "iPhone 17e",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "13000.00",
+      "sourcePrice": "13000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1262"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:02.795Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1262",
+      "detailId": "3117",
+      "buyId": "1739",
+      "model": "iPhone 17e",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "14000.00",
+      "sourcePrice": "14000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1262"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:02.795Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1262",
+      "detailId": "3118",
+      "buyId": "1739",
+      "model": "iPhone 17e",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "15000.00",
+      "sourcePrice": "15000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1262"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:02.795Z",
+      "fetchedAtSource": "http-response",
+      "flags": [
+        "CAPACITY_NOT_LISTED_BY_MANUFACTURER"
+      ]
+    },
+    {
+      "modelId": "367",
+      "detailId": "1125",
+      "buyId": "585",
+      "model": "iPhone 12 Mini",
+      "storage": "64GB",
+      "sourceStorage": "64 GB",
+      "maxCashPrice": "4000.00",
+      "sourcePrice": "4000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "367"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:03.359Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "367",
+      "detailId": "1126",
+      "buyId": "585",
+      "model": "iPhone 12 Mini",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "4500.00",
+      "sourcePrice": "4500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "367"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:03.359Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "367",
+      "detailId": "1127",
+      "buyId": "585",
+      "model": "iPhone 12 Mini",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "4700.00",
+      "sourcePrice": "4700",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "367"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:03.359Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "368",
+      "detailId": "1140",
+      "buyId": "590",
+      "model": "iPhone 12",
+      "storage": "64GB",
+      "sourceStorage": "64 GB",
+      "maxCashPrice": "5000.00",
+      "sourcePrice": "5000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "368"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:24:25.076Z",
+      "fetchedAtSource": "existing-cache-file-mtime",
+      "flags": []
+    },
+    {
+      "modelId": "368",
+      "detailId": "1141",
+      "buyId": "590",
+      "model": "iPhone 12",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "5500.00",
+      "sourcePrice": "5500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "368"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:24:25.076Z",
+      "fetchedAtSource": "existing-cache-file-mtime",
+      "flags": []
+    },
+    {
+      "modelId": "368",
+      "detailId": "1142",
+      "buyId": "590",
+      "model": "iPhone 12",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "6000.00",
+      "sourcePrice": "6000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "368"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:24:25.076Z",
+      "fetchedAtSource": "existing-cache-file-mtime",
+      "flags": []
+    },
+    {
+      "modelId": "369",
+      "detailId": "1170",
+      "buyId": "600",
+      "model": "iPhone 12 Pro",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "7000.00",
+      "sourcePrice": "7000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "369"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:03.931Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "369",
+      "detailId": "1171",
+      "buyId": "600",
+      "model": "iPhone 12 Pro",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "8000.00",
+      "sourcePrice": "8000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "369"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:03.931Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "369",
+      "detailId": "1172",
+      "buyId": "600",
+      "model": "iPhone 12 Pro",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "8500.00",
+      "sourcePrice": "8500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "369"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:03.931Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "370",
+      "detailId": "1182",
+      "buyId": "604",
+      "model": "iPhone 12 Pro Max",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "9000.00",
+      "sourcePrice": "9000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "370"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:04.497Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "370",
+      "detailId": "1183",
+      "buyId": "604",
+      "model": "iPhone 12 Pro Max",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "10000.00",
+      "sourcePrice": "10000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "370"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:04.497Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "370",
+      "detailId": "1184",
+      "buyId": "604",
+      "model": "iPhone 12 Pro Max",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "10500.00",
+      "sourcePrice": "10500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "370"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:04.497Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "570",
+      "detailId": "1898",
+      "buyId": "1031",
+      "model": "iPhone 13 Mini",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "5500.00",
+      "sourcePrice": "5500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "570"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:05.063Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "570",
+      "detailId": "1899",
+      "buyId": "1031",
+      "model": "iPhone 13 Mini",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "6500.00",
+      "sourcePrice": "6500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "570"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:05.063Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "570",
+      "detailId": "1900",
+      "buyId": "1031",
+      "model": "iPhone 13 Mini",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "7000.00",
+      "sourcePrice": "7000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "570"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:05.063Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "571",
+      "detailId": "1901",
+      "buyId": "1032",
+      "model": "iPhone 13",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "9500.00",
+      "sourcePrice": "9500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "571"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:05.627Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "571",
+      "detailId": "1902",
+      "buyId": "1032",
+      "model": "iPhone 13",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "10000.00",
+      "sourcePrice": "10000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "571"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:05.627Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "571",
+      "detailId": "1903",
+      "buyId": "1032",
+      "model": "iPhone 13",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "10500.00",
+      "sourcePrice": "10500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "571"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:05.627Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "572",
+      "detailId": "1904",
+      "buyId": "1033",
+      "model": "iPhone 13 Pro",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "11000.00",
+      "sourcePrice": "11000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "572"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:06.188Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "572",
+      "detailId": "1905",
+      "buyId": "1033",
+      "model": "iPhone 13 Pro",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "12000.00",
+      "sourcePrice": "12000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "572"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:06.188Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "572",
+      "detailId": "1906",
+      "buyId": "1033",
+      "model": "iPhone 13 Pro",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "12500.00",
+      "sourcePrice": "12500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "572"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:06.188Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "573",
+      "detailId": "1907",
+      "buyId": "1034",
+      "model": "iPhone 13 Pro Max",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "12500.00",
+      "sourcePrice": "12500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "573"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:06.750Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "573",
+      "detailId": "1908",
+      "buyId": "1034",
+      "model": "iPhone 13 Pro Max",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "13500.00",
+      "sourcePrice": "13500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "573"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:06.750Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "573",
+      "detailId": "1909",
+      "buyId": "1034",
+      "model": "iPhone 13 Pro Max",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "14000.00",
+      "sourcePrice": "14000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "573"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:06.750Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "573",
+      "detailId": "2935",
+      "buyId": "1034",
+      "model": "iPhone 13 Pro Max",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "14500.00",
+      "sourcePrice": "14500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "573"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:06.750Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "694",
+      "detailId": "2113",
+      "buyId": "1155",
+      "model": "iPhone 14 Pro Max",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "17000.00",
+      "sourcePrice": "17000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "694"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:07.307Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "694",
+      "detailId": "2114",
+      "buyId": "1155",
+      "model": "iPhone 14 Pro Max",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "18000.00",
+      "sourcePrice": "18000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "694"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:07.307Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "694",
+      "detailId": "2115",
+      "buyId": "1155",
+      "model": "iPhone 14 Pro Max",
+      "storage": "512GB",
+      "sourceStorage": " 512 GB",
+      "maxCashPrice": "19000.00",
+      "sourcePrice": "19000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "694"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:07.307Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "694",
+      "detailId": "2116",
+      "buyId": "1155",
+      "model": "iPhone 14 Pro Max",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "19500.00",
+      "sourcePrice": "19500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "694"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:07.307Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "695",
+      "detailId": "2117",
+      "buyId": "1156",
+      "model": "iPhone 14 Pro",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "15000.00",
+      "sourcePrice": "15000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "695"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:07.871Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "695",
+      "detailId": "2118",
+      "buyId": "1156",
+      "model": "iPhone 14 Pro",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "16000.00",
+      "sourcePrice": "16000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "695"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:07.871Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "695",
+      "detailId": "2119",
+      "buyId": "1156",
+      "model": "iPhone 14 Pro",
+      "storage": "512GB",
+      "sourceStorage": " 512 GB",
+      "maxCashPrice": "17000.00",
+      "sourcePrice": "17000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "695"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:07.871Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "695",
+      "detailId": "2120",
+      "buyId": "1156",
+      "model": "iPhone 14 Pro",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "17500.00",
+      "sourcePrice": "17500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "695"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:07.871Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "696",
+      "detailId": "2124",
+      "buyId": "1158",
+      "model": "iPhone 14 Plus",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "13000.00",
+      "sourcePrice": "13000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "696"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:08.426Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "696",
+      "detailId": "2125",
+      "buyId": "1158",
+      "model": "iPhone 14 Plus",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "14000.00",
+      "sourcePrice": "14000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "696"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:08.426Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "696",
+      "detailId": "2126",
+      "buyId": "1158",
+      "model": "iPhone 14 Plus",
+      "storage": "512GB",
+      "sourceStorage": " 512 GB",
+      "maxCashPrice": "14500.00",
+      "sourcePrice": "14500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "696"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:08.426Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "698",
+      "detailId": "2121",
+      "buyId": "1157",
+      "model": "iPhone 14",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "11000.00",
+      "sourcePrice": "11000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "698"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:08.985Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "698",
+      "detailId": "2122",
+      "buyId": "1157",
+      "model": "iPhone 14",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "12000.00",
+      "sourcePrice": "12000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "698"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:08.985Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "698",
+      "detailId": "2123",
+      "buyId": "1157",
+      "model": "iPhone 14",
+      "storage": "512GB",
+      "sourceStorage": " 512 GB",
+      "maxCashPrice": "12500.00",
+      "sourcePrice": "12500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "698"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:08.985Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "905",
+      "detailId": "2425",
+      "buyId": "1367",
+      "model": "iPhone 15",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "14500.00",
+      "sourcePrice": "14500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "905"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:09.546Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "905",
+      "detailId": "2426",
+      "buyId": "1367",
+      "model": "iPhone 15",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "15500.00",
+      "sourcePrice": "15500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "905"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:09.546Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "905",
+      "detailId": "2427",
+      "buyId": "1367",
+      "model": "iPhone 15",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "16000.00",
+      "sourcePrice": "16000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "905"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:09.546Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "906",
+      "detailId": "2428",
+      "buyId": "1368",
+      "model": "iPhone 15 Pro",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "18000.00",
+      "sourcePrice": "18000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "906"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:10.107Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "906",
+      "detailId": "2429",
+      "buyId": "1368",
+      "model": "iPhone 15 Pro",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "19000.00",
+      "sourcePrice": "19000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "906"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:10.107Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "906",
+      "detailId": "2430",
+      "buyId": "1368",
+      "model": "iPhone 15 Pro",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "20000.00",
+      "sourcePrice": "20000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "906"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:10.107Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "906",
+      "detailId": "2934",
+      "buyId": "1368",
+      "model": "iPhone 15 Pro",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "20500.00",
+      "sourcePrice": "20500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "906"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:10.107Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "907",
+      "detailId": "2431",
+      "buyId": "1369",
+      "model": "iPhone 15 Plus",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "15500.00",
+      "sourcePrice": "15500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "907"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:10.671Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "907",
+      "detailId": "2432",
+      "buyId": "1369",
+      "model": "iPhone 15 Plus",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "16500.00",
+      "sourcePrice": "16500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "907"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:10.671Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "907",
+      "detailId": "2433",
+      "buyId": "1369",
+      "model": "iPhone 15 Plus",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "17000.00",
+      "sourcePrice": "17000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "907"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:10.671Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "908",
+      "detailId": "2434",
+      "buyId": "1370",
+      "model": "iPhone 15 Pro Max",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "21500.00",
+      "sourcePrice": "21500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "908"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:11.238Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "908",
+      "detailId": "2435",
+      "buyId": "1370",
+      "model": "iPhone 15 Pro Max",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "22500.00",
+      "sourcePrice": "22500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "908"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:11.238Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "908",
+      "detailId": "2436",
+      "buyId": "1370",
+      "model": "iPhone 15 Pro Max",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "23000.00",
+      "sourcePrice": "23000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "908"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:11.238Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1033",
+      "detailId": "2678",
+      "buyId": "1502",
+      "model": "iPhone 16",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "18000.00",
+      "sourcePrice": "18000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1033"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:11.802Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1033",
+      "detailId": "2679",
+      "buyId": "1502",
+      "model": "iPhone 16",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "19000.00",
+      "sourcePrice": "19000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1033"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:11.802Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1033",
+      "detailId": "2712",
+      "buyId": "1502",
+      "model": "iPhone 16",
+      "storage": "512GB",
+      "sourceStorage": "512 GB ",
+      "maxCashPrice": "20000.00",
+      "sourcePrice": "20000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1033"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:11.802Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1034",
+      "detailId": "2680",
+      "buyId": "1503",
+      "model": "iPhone 16 Plus",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "21000.00",
+      "sourcePrice": "21000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1034"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:12.377Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1034",
+      "detailId": "2681",
+      "buyId": "1503",
+      "model": "iPhone 16 Plus",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "22000.00",
+      "sourcePrice": "22000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1034"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:12.377Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1034",
+      "detailId": "2711",
+      "buyId": "1503",
+      "model": "iPhone 16 Plus",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "23000.00",
+      "sourcePrice": "23000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1034"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:12.377Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1035",
+      "detailId": "2682",
+      "buyId": "1504",
+      "model": "iPhone 16 Pro",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "21500.00",
+      "sourcePrice": "21500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1035"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:12.938Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1035",
+      "detailId": "2683",
+      "buyId": "1504",
+      "model": "iPhone 16 Pro",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "22500.00",
+      "sourcePrice": "22500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1035"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:12.938Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1035",
+      "detailId": "2714",
+      "buyId": "1504",
+      "model": "iPhone 16 Pro",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "23500.00",
+      "sourcePrice": "23500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1035"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:12.938Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1035",
+      "detailId": "2715",
+      "buyId": "1504",
+      "model": "iPhone 16 Pro",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "24000.00",
+      "sourcePrice": "24000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1035"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:12.938Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1036",
+      "detailId": "2684",
+      "buyId": "1505",
+      "model": "iPhone 16 Pro Max",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "27500.00",
+      "sourcePrice": "27500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1036"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:13.495Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1036",
+      "detailId": "2685",
+      "buyId": "1505",
+      "model": "iPhone 16 Pro Max",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "28500.00",
+      "sourcePrice": "28500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1036"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:13.495Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1036",
+      "detailId": "2713",
+      "buyId": "1505",
+      "model": "iPhone 16 Pro Max",
+      "storage": "1TB",
+      "sourceStorage": "1 TB",
+      "maxCashPrice": "29500.00",
+      "sourcePrice": "29500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1036"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:13.495Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1096",
+      "detailId": "2805",
+      "buyId": "1568",
+      "model": "iPhone 16e",
+      "storage": "128GB",
+      "sourceStorage": "128 GB",
+      "maxCashPrice": "11000.00",
+      "sourcePrice": "11000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1096"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:14.066Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1096",
+      "detailId": "2806",
+      "buyId": "1568",
+      "model": "iPhone 16e",
+      "storage": "256GB",
+      "sourceStorage": "256 GB",
+      "maxCashPrice": "12000.00",
+      "sourcePrice": "12000",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1096"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:14.066Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    },
+    {
+      "modelId": "1096",
+      "detailId": "2807",
+      "buyId": "1568",
+      "model": "iPhone 16e",
+      "storage": "512GB",
+      "sourceStorage": "512 GB",
+      "maxCashPrice": "12500.00",
+      "sourcePrice": "12500",
+      "currency": "THB",
+      "sourceUrl": "https://www.yellobe.com/home/type3_v2",
+      "sourcePageUrl": "https://www.yellobe.com/buy",
+      "sourceRequest": {
+        "method": "POST",
+        "body": {
+          "id": "1096"
+        }
+      },
+      "fetchedAt": "2026-09-08T14:27:14.066Z",
+      "fetchedAtSource": "http-response",
+      "flags": []
+    }
+  ]
+}

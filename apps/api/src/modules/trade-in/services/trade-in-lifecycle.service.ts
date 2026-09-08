@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { TradeInCreditService } from './trade-in-credit.service';
+import type { OnlineAppraisalService } from './online-appraisal.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import {
@@ -60,7 +61,7 @@ export class TradeInLifecycleService {
 
   // ─── Create ───────────────────────────────────────────────
   async create(dto: CreateTradeInDto, flow: TradeInFlow = 'EXCHANGE', request: Pick<Prisma.TradeInUncheckedCreateInput,
-    'quickBuyRequestId' | 'quickBuyRequestHash' | 'quickBuyRequestedById'> = {}) {
+    'quickBuyRequestId' | 'quickBuyRequestHash' | 'quickBuyRequestedById' | 'quoteBreakdown' | 'conditionAnswers' | 'basePriceAtAppraisal'> = {}) {
     // Walk-in หรือ existing customer ก็ได้ — ต้องมีอย่างน้อยหนึ่งอย่าง:
     // customerId, sellerContactId (party-master), หรือ sellerName (free-text)
     if (!dto.customerId && !dto.sellerContactId && !dto.sellerName) {
@@ -659,11 +660,16 @@ export class TradeInLifecycleService {
     dto: QuickBuyTradeInDto,
     userId: string,
     userBranchId?: string | null,
+    appraisal?: Pick<OnlineAppraisalService, 'prepareQuickBuy'>,
   ) {
     if (!dto.requestId) throw new BadRequestException('กรุณารีเฟรชหน้าเพื่อเริ่มรายการรับซื้อ');
     const effectiveBranch = dto.branchId ?? userBranchId ?? null;
     const payload = { ...dto, branchId: effectiveBranch, userId };
-    const requestHash = createHash('sha256').update(JSON.stringify(payload, Object.keys(payload).sort())).digest('hex');
+    // Sort every object, preserving nested questionnaire answers. A top-level replacer
+    // array silently drops questionKey/choiceIds; primitive legacy DTO hashes stay identical.
+    const requestHash = createHash('sha256').update(JSON.stringify(payload, (_key, value: unknown) =>
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value)).digest('hex');
     const replay = await this.prisma.tradeIn.findUnique({ where: { quickBuyRequestId: dto.requestId } });
     if (replay) {
       if (replay.quickBuyRequestedById !== userId || replay.quickBuyRequestHash !== requestHash) {
@@ -671,6 +677,11 @@ export class TradeInLifecycleService {
       }
       return this.replayQuickBuy(replay);
     }
+    const computed = dto.answers !== undefined || dto.previewToken !== undefined || dto.deviceEligibilityConfirmed !== undefined;
+    if (computed && !appraisal) throw new BadRequestException('ไม่สามารถตรวจผลประเมินรับซื้อได้ กรุณาโหลดหน้าใหม่');
+    // Recompute before any seller/device/storage/payout write. Completed retries above
+    // return their historical result even if the price table has changed since then.
+    const assessment = computed ? await appraisal!.prepareQuickBuy(dto, userId) : null;
     // Resolve branch — prefer DTO (explicit pick), fall back to user's home branch.
     // OWNER/cross-branch users have no default branch, so they must pass branchId
     // explicitly; surface a clear error instead of letting accept() fail later.
@@ -702,11 +713,11 @@ export class TradeInLifecycleService {
     // ใช้ create() เดิม — validation seller/IMEI dup/ID card upload เกิดที่นี่
     const created = await this.create({
       branchId,
-      deviceBrand: dto.deviceBrand,
-      deviceModel: dto.deviceModel,
-      deviceStorage: dto.deviceStorage,
+      deviceBrand: assessment?.device.deviceBrand ?? dto.deviceBrand,
+      deviceModel: assessment?.device.deviceModel ?? dto.deviceModel,
+      deviceStorage: assessment?.device.deviceStorage ?? dto.deviceStorage,
       deviceColor: dto.deviceColor,
-      deviceCondition: dto.deviceCondition,
+      deviceCondition: assessment?.data.deviceCondition ?? dto.deviceCondition,
       imei: dto.imei,
       serialNumber: dto.serialNumber,
       imeiMissingReason: dto.imeiMissingReason,
@@ -720,7 +731,9 @@ export class TradeInLifecycleService {
       sellerAddress: dto.sellerAddress,
       idCardPhotoBase64: dto.idCardPhotoBase64,
       idCardSource: dto.idCardSource,
-    }, 'BUYBACK', { quickBuyRequestId: dto.requestId, quickBuyRequestHash: requestHash, quickBuyRequestedById: userId })
+    }, 'BUYBACK', { quickBuyRequestId: dto.requestId, quickBuyRequestHash: requestHash, quickBuyRequestedById: userId,
+      ...(assessment ? { quoteBreakdown: assessment.data.quoteBreakdown, conditionAnswers: assessment.data.conditionAnswers,
+        basePriceAtAppraisal: assessment.data.basePriceAtAppraisal } : {}) })
       .catch(async (error: unknown) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
           const existing = await this.prisma.tradeIn.findUnique({ where: { quickBuyRequestId: dto.requestId } });
@@ -737,14 +750,14 @@ export class TradeInLifecycleService {
 
     try {
       // ─── Stage 2: Appraise (PENDING_APPRAISAL → APPRAISED) ───
-      await this.appraise(
-        created.id,
-        {
-          offeredPrice: dto.agreedPrice,
-          deviceCondition: dto.deviceCondition || 'B',
-        },
-        userId,
-      );
+      if (assessment) {
+        const applied = await this.prisma.tradeIn.updateMany({ where: { id: created.id, status: 'PENDING_APPRAISAL',
+          appraisalLocked: false, deletedAt: null, updatedAt: created.updatedAt }, data: { ...assessment.data,
+          status: 'APPRAISED', appraisalLocked: true, firstAppraisedAt: new Date(), appraisedById: userId } });
+        if (applied.count !== 1) throw new ConflictException('รายการรับซื้อเปลี่ยนแล้ว กรุณาเปิดรายการเดิมเพื่อตรวจสอบ');
+      } else {
+        await this.appraise(created.id, { offeredPrice: dto.agreedPrice, deviceCondition: dto.deviceCondition || 'B' }, userId);
+      }
 
       // ─── Stage 3: Accept (APPRAISED → ACCEPTED) ───
       // Validation consent + payment + signature เกิดที่นี่

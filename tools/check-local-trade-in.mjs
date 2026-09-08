@@ -126,6 +126,12 @@ export async function checkTradeIn(page, origin, output, width) {
   assert.ok(controls.content <= controls.viewport + 1, 'Trade-in list must fit the viewport');
   assert.deepEqual(controls.clipped, [], 'Search, filters and page actions must remain reachable');
   const scroller = page.getByTestId('data-table');
+  if (width >= 1440) {
+    const expandSidebar = page.getByRole('button', { name: 'ขยายเมนู', exact: true });
+    if (await expandSidebar.count()) await expandSidebar.click();
+    await page.locator('.wrapper').evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished.catch(() => {}))));
+    assert.ok(await scroller.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), 'All trade-in columns must fit a laptop with the sidebar expanded');
+  }
   for (const edge of ['start', 'end']) {
     await scroller.evaluate((e, side) => { e.scrollLeft = side === 'start' ? 0 : e.scrollWidth; }, edge);
     const menu = page.getByRole('button', { name: 'เมนูการทำงาน' });

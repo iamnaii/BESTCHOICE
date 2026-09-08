@@ -41,3 +41,11 @@ Design verification:
 - Browser checks passed at 1440×1000, 390×844, 375×667, 844×390 landscape, 1024×768 dark mode, and 390×844 with root text enlarged to 20 px. Tested both scroll ends, full evidence visibility, fixed document/close controls, keyboard focus/Escape, horizontal bounds and page errors. Screenshots inspected in light/dark/mobile.
 - Full AppModule with disposable PostgreSQL: all 7 width/sidebar combinations passed after redesign, including opening details at both table scroll edges.
 - `npm run local:check` after the redesign: all 17 checks passed, including 1,719 Web tests, 42 Shared tests, types/lint/build and the extended desktop/mobile purchase/document/photo/stock/detail flow. Source fingerprint: `a9a8b35a1ac013a30078b098a83c2d088e616a89e014dcc3fd29d85c89679e7b`.
+
+## Fit the purchase table to the laptop
+
+The list still imposed a 1340 px minimum width, exceeding the available 1170 px with the user's sidebar expanded. Reduced the TradeInTable minimum to 1100 px and redistributed fixed widths, preserving all nine columns, typography, sorting, column visibility and action behavior. Long model, seller, receiver and branch names wrap. Capacity stays with the model so IMEI has its own line.
+
+Browser checks with the sidebar expanded measured 1118/1118 px (container/table) at a 1440 px viewport and 1170/1170 px at 1492 px. The first date/reference and the pinned actions now fit together. Long Thai names, model/capacity, five record statuses, column toggling and actions at both scroll edges passed. At 390 px the 1100 px table remains inside its 348 px scroller; the page itself does not overflow. The local regression now requires all columns to fit at laptop width with the sidebar expanded.
+
+`npm run local:check` after the table fit change: all 17 checks passed at source fingerprint `7086a26d54339ab8a8513450c38c3f3816e056d8b2d3eea14710fa928a30cbec`. The user's current Chrome tab was also measured at 1170/1170 px with horizontal scroll position 0.

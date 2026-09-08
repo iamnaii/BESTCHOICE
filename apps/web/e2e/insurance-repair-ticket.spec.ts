@@ -53,7 +53,7 @@ test.describe('Insurance / Repair Ticket (SP5 Phase 2)', () => {
       true,
     );
 
-    await expect(page.getByRole('heading', { name: 'รับซ่อม/รับประกัน' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'รับซ่อม/รับประกัน', level: 1 })).toBeVisible({
       timeout: 10_000,
     });
 
@@ -95,7 +95,7 @@ test.describe('Insurance / Repair Ticket (SP5 Phase 2)', () => {
     const ok = await gotoWithRetry(page, '/insurance');
     expect(ok, 'หน้า /insurance ขึ้น error boundary').toBe(true);
 
-    await expect(page.getByRole('heading', { name: 'รับซ่อม/รับประกัน' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'รับซ่อม/รับประกัน', level: 1 })).toBeVisible({
       timeout: 10_000,
     });
 

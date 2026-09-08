@@ -53,7 +53,7 @@ test.describe('Other Income Module — smoke', () => {
     const ok = await gotoWithRetry(page, '/other-income');
     if (!ok) return;
 
-    await expect(page.getByRole('heading', { name: /รายได้อื่น/ })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /รายได้อื่น/, level: 1 })).toBeVisible({ timeout: 10000 });
   });
 
   test('daily sheet renders', async ({ page }) => {

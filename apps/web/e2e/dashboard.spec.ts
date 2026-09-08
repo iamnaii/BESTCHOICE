@@ -61,13 +61,14 @@ test.describe('Dashboard Page', () => {
     await expect(page).toHaveURL(/\/contracts/, { timeout: 10000 });
   });
 
-  test('should navigate to /overdue when clicking ค้าง/ผิดนัด KPI', async ({ page }) => {
+  test('should navigate to /collections when clicking ค้าง/ผิดนัด KPI', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByText('ค้าง/ผิดนัด').first()).toBeVisible({ timeout: 15000 });
 
     await page.getByText('ค้าง/ผิดนัด').first().click();
-    await expect(page).toHaveURL(/\/overdue/, { timeout: 10000 });
+    await expect(page).toHaveURL(url => url.pathname === '/collections', { timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'ติดตามหนี้', level: 1 })).toBeVisible();
   });
 
   test('should display monthly revenue section for non-SALES role', async ({ page }) => {

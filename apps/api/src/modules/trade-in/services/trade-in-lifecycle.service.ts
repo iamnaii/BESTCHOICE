@@ -18,6 +18,7 @@ import { TradeInVoucherService } from './voucher.service';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
 import { Prisma, TradeInFlow } from '@prisma/client';
+import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_TEXT, TRADE_IN_DECLARATION_VERSION_ERROR } from '@installment/shared';
 import {
   normalizeNationalId,
   buildTradeInPiiEncryptedFields,
@@ -347,6 +348,18 @@ export class TradeInLifecycleService {
   }
 
   // ─── Accept (with anti-theft gate) ────────────────────────
+  private assertSellerDeclaration(dto: Pick<AcceptTradeInDto, 'declarationVersion' | 'sellerSignatureBase64'>) {
+    if (dto.declarationVersion !== TRADE_IN_DECLARATION_VERSION) {
+      throw new BadRequestException(TRADE_IN_DECLARATION_VERSION_ERROR);
+    }
+    if (!dto.sellerSignatureBase64?.trim()) {
+      throw new BadRequestException('กรุณาให้ผู้ขายอ่านคำรับรองและลงลายเซ็นก่อนรับเครื่อง');
+    }
+    if (dto.sellerSignatureBase64.length > 200_000) {
+      throw new BadRequestException('ลายเซ็นมีขนาดใหญ่เกินไป');
+    }
+  }
+
   // เมื่อ ACCEPTED → auto-create Product (PHONE_USED, PHOTO_PENDING) + ลิงก์ TradeIn.productId
   // ตาม pattern เดียวกับ PurchaseOrder.receive() — สินค้ามือสองต้องถ่ายรูป 6 มุมก่อนเข้าคลังจริง
   async accept(id: string, dto: AcceptTradeInDto, userId: string) {
@@ -358,12 +371,16 @@ export class TradeInLifecycleService {
       if (tradeIn.status !== 'APPRAISED') {
         throw new BadRequestException('รายการนี้ยังไม่ได้ประเมินราคา');
       }
+      if (tradeIn.idCardVerifiedAt || tradeIn.sellerSignatureBase64 || tradeIn.sellerSignatureUrl || tradeIn.sellerDeclarationSnapshot) {
+        throw new BadRequestException('รายการนี้มีหลักฐานการรับเครื่องแล้ว ไม่สามารถลงนามรับเครื่องซ้ำได้');
+      }
       if (!dto.idCardVerified) {
         throw new BadRequestException('ต้องยืนยันว่าตรวจบัตรประชาชนผู้ขายแล้ว');
       }
       if (!dto.sellerConsentSigned) {
         throw new BadRequestException('ต้องให้ผู้ขายเซ็นยืนยันความเป็นเจ้าของก่อน');
       }
+      this.assertSellerDeclaration(dto);
       const paymentMethod = tradeIn.flow === 'EXCHANGE' ? 'TRADE_IN_CREDIT' : dto.paymentMethod;
       if (tradeIn.flow !== 'EXCHANGE' && !['CASH', 'TRANSFER'].includes(paymentMethod)) {
         throw new BadRequestException('รายการรับซื้อต้องเลือกจ่ายเงินสดหรือโอนให้ผู้ขาย');
@@ -389,13 +406,8 @@ export class TradeInLifecycleService {
 
       // เก็บลายเซ็นผู้ขายเป็น base64 ตรง ๆ (ไม่พึ่ง S3)
       // size guard: ลายเซ็นจาก SignaturePadFull canvas ปกติ < 30KB
-      let signatureBase64: string | null = null;
-      if (dto.sellerSignatureBase64) {
-        if (dto.sellerSignatureBase64.length > 200_000) {
-          throw new BadRequestException('ลายเซ็นมีขนาดใหญ่เกินไป');
-        }
-        signatureBase64 = dto.sellerSignatureBase64;
-      }
+      const signatureBase64 = dto.sellerSignatureBase64!;
+      const acceptedAt = new Date();
 
       // T5-C12: IMEI uniqueness check — เฉพาะ active products (soft-deleted
       // ถือว่าคืน IMEI กลับเข้า pool ได้) ตรงกับ partial unique index ใน DB
@@ -493,13 +505,15 @@ export class TradeInLifecycleService {
       }
 
       const updated = await tx.tradeIn.update({
-        where: { id },
+        // Conditional write also prevents concurrent accept requests replacing signed evidence.
+        where: { id, status: 'APPRAISED', deletedAt: null, idCardVerifiedAt: null, sellerSignatureBase64: null,
+          sellerSignatureUrl: null, sellerDeclarationSnapshot: { equals: Prisma.DbNull } },
         data: {
           branchId: effectiveBranchId,
           status: 'ACCEPTED',
           agreedPrice: tradeIn.offeredPrice,
           productId: product.id,
-          idCardVerifiedAt: new Date(),
+          idCardVerifiedAt: acceptedAt,
           idCardVerifiedById: userId,
           sellerConsentSigned: true,
           policeReportAcknowledged: dto.policeReportAcknowledged ?? false,
@@ -514,8 +528,19 @@ export class TradeInLifecycleService {
             transferAccountNumber: dto.transferAccountNumber,
             transferAccountName: dto.transferAccountName,
           }),
-          sellerSignatureBase64: signatureBase64 ?? undefined,
+          sellerSignatureBase64: signatureBase64,
+          sellerDeclarationSnapshot: {
+            version: TRADE_IN_DECLARATION_VERSION,
+            text: TRADE_IN_DECLARATION_TEXT,
+            acceptedAt: acceptedAt.toISOString(),
+            acceptedByUserId: userId,
+          },
         },
+      }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+          throw new BadRequestException('รายการรับเครื่องถูกเปลี่ยนแปลงแล้ว กรุณารีเฟรชหน้าเพื่อตรวจสอบ');
+        }
+        throw error;
       });
 
       // SHOP-side: a BUYBACK buys the used device for cash → Dr S11-2002 / Cr cash.
@@ -578,6 +603,7 @@ export class TradeInLifecycleService {
     if (!dto.idCardVerified || !dto.sellerConsentSigned) {
       throw new BadRequestException('กรุณายืนยันการตรวจบัตรและความยินยอมก่อนรับซื้อ');
     }
+    this.assertSellerDeclaration(dto);
     if (!['CASH', 'TRANSFER'].includes(dto.paymentMethod)) {
       throw new BadRequestException('กรุณาเลือกจ่ายเงินสดหรือโอนให้ผู้ขาย');
     }
@@ -627,7 +653,7 @@ export class TradeInLifecycleService {
         {
           idCardVerified: dto.idCardVerified,
           sellerConsentSigned: dto.sellerConsentSigned,
-          policeReportAcknowledged: true,
+          declarationVersion: dto.declarationVersion,
           paymentMethod: dto.paymentMethod,
           transferBankName: dto.transferBankName,
           transferAccountNumber: dto.transferAccountNumber,

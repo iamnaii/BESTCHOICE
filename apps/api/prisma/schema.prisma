@@ -4872,6 +4872,7 @@ model TradeIn {
   // ─── การยินยอม + ตรวจสอบของโจร ────────────────────────────────────
   sellerSignatureUrl       String?   @map("seller_signature_url") // ลายเซ็นผู้ขาย (S3 — legacy)
   sellerSignatureBase64    String?   @map("seller_signature_base64") @db.Text // ลายเซ็นผู้ขาย base64 (เก็บใน DB ตรง ๆ)
+  sellerDeclarationSnapshot Json?   @map("seller_declaration_snapshot") // Server-owned terms and acceptance metadata; null preserves legacy wording.
   voucherPrintedAt         DateTime? @map("voucher_printed_at") // ครั้งแรกที่พิมพ์ใบสำคัญ (ใช้ check "สำเนา")
   sellerConsentSigned      Boolean   @default(false) @map("seller_consent_signed")
   policeReportAcknowledged Boolean   @default(false) @map("police_report_acknowledged")

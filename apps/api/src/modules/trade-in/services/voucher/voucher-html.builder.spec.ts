@@ -1,4 +1,5 @@
 import { VoucherHtmlBuilder } from './voucher-html.builder';
+import { LEGACY_TRADE_IN_DECLARATION, TRADE_IN_DECLARATION_TEXT } from '@installment/shared';
 
 describe('VoucherHtmlBuilder', () => {
   const builder = new VoucherHtmlBuilder();
@@ -55,6 +56,18 @@ describe('VoucherHtmlBuilder', () => {
     expect(signed).toContain(`src="${sellerSignature}" alt="ลายเซ็นผู้ขาย"`);
     expect(signed).toContain(`src="${issuerSignature}" alt="ลายเซ็นผู้ออกเอกสาร"`);
     expect(signed).not.toContain('ลงชื่อ ................................................');
+  });
+
+  it('preserves legacy wording and renders only the supplied signed text for new receipts', () => {
+    expect(builder.buildHtml(voucher)).toContain(LEGACY_TRADE_IN_DECLARATION);
+    expect(builder.buildHtml(voucher)).not.toContain('ภาระจำนำ');
+    const html = builder.buildHtml({ ...voucher, sellerDeclarationText: TRADE_IN_DECLARATION_TEXT });
+    expect(html).toContain('ภาระจำนำ');
+    expect(html).toContain('ไม่เรียกซ้ำส่วนที่คืนหรือชดใช้แล้ว');
+    expect(html).not.toContain(LEGACY_TRADE_IN_DECLARATION);
+    const historical = builder.buildHtml({ ...voucher, sellerDeclarationText: 'ข้อที่เคยลงนาม <เดิม>\nบรรทัดถัดไป' });
+    expect(historical).toContain('ข้อที่เคยลงนาม &lt;เดิม&gt;<br>บรรทัดถัดไป');
+    expect(historical).not.toContain('ภาระจำนำ');
   });
 
   it('escapes supplied company, seller, device and recipient details as text', () => {

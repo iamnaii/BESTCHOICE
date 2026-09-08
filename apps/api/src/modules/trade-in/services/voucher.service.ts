@@ -67,6 +67,16 @@ export class TradeInVoucherService {
     const issuer = tradeIn.idCardVerifiedBy || tradeIn.appraisedBy;
     const issuerName = issuer?.name || 'BESTCHOICE';
     const issuerSignature = issuer?.savedSignature || null;
+    // Historical signatures must retain the text originally accepted, never today's terms.
+    const declaration = tradeIn.sellerDeclarationSnapshot;
+    let sellerDeclarationText: string | null = null;
+    if (declaration != null) {
+      if (typeof declaration !== 'object' || Array.isArray(declaration) ||
+        typeof declaration.text !== 'string' || !declaration.text.trim()) {
+        throw new BadRequestException('ข้อมูลคำรับรองที่ลงนามไม่สมบูรณ์ ไม่สามารถออกเอกสารได้');
+      }
+      sellerDeclarationText = declaration.text;
+    }
 
     // ─── (สำเนา) detection: ครั้งแรกพิมพ์ → save voucherPrintedAt
     //     ครั้งถัดไป → ทำเครื่องหมาย "สำเนา"
@@ -88,6 +98,7 @@ export class TradeInVoucherService {
       sellerPhone,
       sellerIdCard,
       sellerSignatureBase64: tradeIn.sellerSignatureBase64,
+      sellerDeclarationText,
       issuerName,
       issuerSignatureBase64: issuerSignature,
       deviceLabel: this.builder.buildDeviceLabel(tradeIn),

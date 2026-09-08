@@ -1,3 +1,4 @@
+import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_TEXT, LEGACY_TRADE_IN_DECLARATION } from '@installment/shared';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -21,7 +22,7 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
   let app: INestApplication;
   let fixture: Awaited<ReturnType<typeof seedTradeInShop>>;
   let actor: { id: string; role: string; branchId: string | null };
-  const payment = { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' };
+  const payment = { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
   const pdf = jest.spyOn(VoucherPdfRenderer.prototype, 'htmlToPdf').mockResolvedValue(Buffer.from('%PDF-test'));
 
   beforeAll(async () => {
@@ -52,6 +53,10 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
       transferAccountNumber: '1234567890', transferAccountName: 'SELLER RECIPIENT', flow: 'EXCHANGE' }).expect(201);
     const tradeIn = await db.tradeIn.findUniqueOrThrow({ where: { id: res.body.id }, include: { product: true } });
     expect(tradeIn.flow).toBe('BUYBACK');
+    expect(tradeIn.sellerDeclarationSnapshot).toEqual({
+      version: TRADE_IN_DECLARATION_VERSION, text: TRADE_IN_DECLARATION_TEXT,
+      acceptedAt: tradeIn.idCardVerifiedAt!.toISOString(), acceptedByUserId: actor.id,
+    });
     expect(tradeIn.productId).toBe(res.body.productId);
     expect(tradeIn.product?.status).toBe('PHOTO_PENDING');
     expect(tradeIn.product?.costPrice.toString()).toBe('5000');
@@ -115,6 +120,55 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
     expect(html).toContain('ใบสำคัญจ่ายเงิน');
     expect(html).toContain(method === 'CASH' ? 'รับเงินสด' : 'SELLER LEGACY BANK');
     expect(html).not.toContain('ยอดเครดิตที่ตกลง');
+    expect(tradeIn.sellerDeclarationSnapshot).toBeNull();
+    expect(html).toContain(LEGACY_TRADE_IN_DECLARATION);
+    expect(html).not.toContain('ภาระจำนำ');
+  });
+
+  it('rejects missing or stale terms and missing signatures before creating a purchase', async () => {
+    const before = await db.tradeIn.count();
+    await buy({ declarationVersion: undefined }).expect(400);
+    await buy({ declarationVersion: 'obsolete' }).expect(400);
+    await buy({ sellerSignatureBase64: undefined }).expect(400);
+    await buy({ sellerSignatureBase64: '  ' }).expect(400);
+    expect(await db.tradeIn.count()).toBe(before);
+  });
+
+  it('keeps signed evidence after forced reappraisal and renders the saved text verbatim', async () => {
+    const res = await buy().expect(201);
+    const accepted = await db.tradeIn.findUniqueOrThrow({ where: { id: res.body.id } });
+    await db.tradeIn.update({ where: { id: accepted.id }, data: { status: 'APPRAISED' } });
+    const productCount = await db.product.count();
+    await request(app.getHttpServer()).post(`/trade-ins/${accepted.id}/accept`)
+      .send({ ...payment, sellerSignatureBase64: 'replacement' }).expect(400);
+    expect(await db.tradeIn.findUniqueOrThrow({ where: { id: accepted.id } })).toMatchObject({
+      sellerDeclarationSnapshot: accepted.sellerDeclarationSnapshot,
+      sellerSignatureBase64: accepted.sellerSignatureBase64,
+    });
+    expect(await db.product.count()).toBe(productCount);
+    // Simulate a distinct previously accepted edition: the current catalog must not replace it.
+    await db.tradeIn.update({ where: { id: accepted.id }, data: { sellerDeclarationSnapshot: {
+      version: 'historical-test', text: 'ข้อความที่ลงนามไว้ <ตัวอย่าง>',
+      acceptedAt: accepted.idCardVerifiedAt!.toISOString(), acceptedByUserId: actor.id,
+    } } });
+    await app.get(TradeInVoucherService).renderPdf(accepted.id);
+    const html = pdf.mock.calls.at(-1)![0];
+    expect(html).toContain('ข้อความที่ลงนามไว้ &lt;ตัวอย่าง&gt;');
+    expect(html).not.toContain('ภาระจำนำ');
+  });
+
+  it('accepts only one concurrent signature and rolls back the losing stock/journal write', async () => {
+    const row = await db.tradeIn.create({ data: { branchId: fixture.branch.id, sellerName: 'CONCURRENT SIGNING',
+      deviceBrand: 'TEST', deviceModel: 'CONCURRENT', flow: 'BUYBACK', status: 'APPRAISED', offeredPrice: 5000 } });
+    const productCount = await db.product.count();
+    const results = await Promise.all([1, 2].map((n) => request(app.getHttpServer())
+      .post(`/trade-ins/${row.id}/accept`).send({ ...payment, sellerSignatureBase64: `signature-${n}` })));
+    expect(results.map((r) => r.status).sort()).toEqual([201, 400]);
+    expect(await db.product.count()).toBe(productCount + 1);
+    expect(await db.journalEntry.count({ where: { referenceId: `tradein:${row.id}` } })).toBe(1);
+    const saved = await db.tradeIn.findUniqueOrThrow({ where: { id: row.id } });
+    expect(saved.sellerSignatureBase64).toBe(`signature-${results.findIndex((r) => r.status === 201) + 1}`);
+    expect(saved.sellerDeclarationSnapshot).toMatchObject({ version: TRADE_IN_DECLARATION_VERSION, text: TRADE_IN_DECLARATION_TEXT });
   });
 
   it('returns the existing record ID when appraisal fails so staff can resume instead of creating another purchase', async () => {

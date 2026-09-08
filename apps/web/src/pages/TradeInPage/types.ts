@@ -84,6 +84,7 @@ export const EMPTY_ACCEPT_FORM: AcceptFormState = {
 };
 
 export type AcceptRequest = Omit<AcceptFormState, 'paymentMethod'> & {
+  declarationVersion: string;
   paymentMethod: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT';
   branchId?: string;
 };

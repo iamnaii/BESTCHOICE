@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
+import SellerDeclaration from '@/components/trade-in/SellerDeclaration';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -66,6 +68,7 @@ export default function AcceptModal({
     }
     const isTransfer = !isCredit && form.paymentMethod === 'TRANSFER';
     onConfirm(item.id, { ...form,
+      declarationVersion: TRADE_IN_DECLARATION_VERSION,
       paymentMethod: isCredit ? 'TRADE_IN_CREDIT' : form.paymentMethod,
       transferBankName: isTransfer ? form.transferBankName : '',
       transferAccountNumber: isTransfer ? form.transferAccountNumber : '',
@@ -129,6 +132,7 @@ export default function AcceptModal({
             />
             <span className="text-sm">ตรวจบัตรประชาชนผู้ขายแล้วและตรงกับใบหน้า</span>
           </label>
+          <SellerDeclaration />
           <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
             <input
               type="checkbox"
@@ -137,7 +141,7 @@ export default function AcceptModal({
               checked={form.sellerConsentSigned}
               onChange={(e) => onChange({ sellerConsentSigned: e.target.checked })}
             />
-            <span className="text-sm">ผู้ขายเซ็นยืนยันว่าเป็นเจ้าของเครื่องโดยชอบด้วยกฎหมาย</span>
+            <span className="text-sm">ผู้ขายได้อ่านและยอมรับคำรับรองผู้ขายทุกข้อ</span>
           </label>
           <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
             <input
@@ -148,7 +152,7 @@ export default function AcceptModal({
               onChange={(e) => onChange({ policeReportAcknowledged: e.target.checked })}
             />
             <span className="text-sm">
-              แจ้งผู้ขายแล้วว่าหากเป็นของโจรจะถูกดำเนินคดีตามกฎหมาย
+              แจ้งผู้ขายแล้วว่าหากพบเหตุสงสัย บริษัทจะตรวจสอบและดำเนินการตามกฎหมาย
             </span>
           </label>
 
@@ -162,9 +166,9 @@ export default function AcceptModal({
 
           {/* ลายเซ็นผู้ขาย */}
           <div className="border-t pt-3">
-            <Label>ลายเซ็นผู้ขาย *</Label>
+            <Label className="mt-3 block">ลายเซ็นผู้ขาย *</Label>
             <p className="text-xs text-muted-foreground mb-2">
-              ผู้ขายลงนามยืนยันการขายและความเป็นเจ้าของ
+              ลงนามยืนยันรายการรับเครื่องและคำรับรองผู้ขายข้างต้น
             </p>
             <SignaturePadFull
               isPending={isPending}

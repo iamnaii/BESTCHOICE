@@ -1,3 +1,4 @@
+import { TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
 import { Decimal } from '@prisma/client/runtime/library';
 import { TradeInLifecycleService } from './trade-in-lifecycle.service';
 import { ShopTradeInTemplate } from '../../journal/cpa-templates/shop-trade-in.template';
@@ -96,7 +97,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
     await service.accept(
       'ti-1',
-      { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' } as any,
+      { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
       'u-1',
     );
 
@@ -135,7 +136,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
     await service.accept(
       'ti-2',
-      { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' } as any,
+      { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
       'u-1',
     );
 
@@ -168,7 +169,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
       'ti-3',
       {
         idCardVerified: true,
-        sellerConsentSigned: true,
+        sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==',
         paymentMethod: 'TRANSFER',
         transferBankName: 'KBank',
         transferAccountNumber: '123',
@@ -208,7 +209,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
       await service.accept(
         'ti-4',
-        { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' } as any,
+        { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
         'u-1',
       );
 
@@ -244,7 +245,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
       await service.accept(
         'ti-5',
-        { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' } as any,
+        { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
         'u-1',
       );
 
@@ -277,7 +278,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
       await service.accept(
         'ti-6',
-        { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' } as any,
+        { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
         'u-1',
       );
 
@@ -307,7 +308,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
     };
     const BASE_DTO = {
       idCardVerified: true,
-      sellerConsentSigned: true,
+      sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==',
       paymentMethod: 'CASH' as const,
     };
 
@@ -384,7 +385,7 @@ describe('TradeInLifecycleService.accept() — auto-mark เครื่อง�
     deviceCondition: 'A',
     notes: null,
   };
-  const acceptDto = { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' };
+  const acceptDto = { idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
 
   beforeEach(() => {
     tx = makeTx();

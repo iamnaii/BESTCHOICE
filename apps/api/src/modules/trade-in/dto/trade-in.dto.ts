@@ -10,6 +10,7 @@ import {
   Matches,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_VERSION_ERROR } from '@installment/shared';
 
 export class CreateTradeInDto {
   // ─── Customer / Branch ──────────────────────────────
@@ -144,6 +145,9 @@ export class AppraiseTradeInDto {
 }
 
 export class AcceptTradeInDto {
+  @IsIn([TRADE_IN_DECLARATION_VERSION], { message: TRADE_IN_DECLARATION_VERSION_ERROR })
+  declarationVersion: string;
+
   @IsBoolean({ message: 'ต้องยืนยันว่าตรวจบัตรประชาชนแล้ว' })
   idCardVerified: boolean;
 
@@ -258,6 +262,9 @@ export class QuickBuyTradeInDto {
   agreedPrice: number;
 
   // Anti-theft consent
+  @IsIn([TRADE_IN_DECLARATION_VERSION], { message: TRADE_IN_DECLARATION_VERSION_ERROR })
+  declarationVersion: string;
+
   @IsBoolean({ message: 'ต้องยืนยันว่าตรวจบัตรประชาชนแล้ว' })
   idCardVerified: boolean;
 

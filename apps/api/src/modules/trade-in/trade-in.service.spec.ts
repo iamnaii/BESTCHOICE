@@ -1,3 +1,4 @@
+import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_TEXT } from '@installment/shared';
 import { Prisma } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
@@ -548,7 +549,7 @@ describe('TradeInService', () => {
   describe('accept', () => {
     const baseAcceptDto = {
       idCardVerified: true,
-      sellerConsentSigned: true,
+      sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==',
       policeReportAcknowledged: true,
       paymentMethod: 'CASH' as const,
     };
@@ -593,10 +594,33 @@ describe('TradeInService', () => {
 
       expect(prisma.tradeIn.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: 'ACCEPTED' }),
+          data: expect.objectContaining({ status: 'ACCEPTED', sellerDeclarationSnapshot: {
+            version: TRADE_IN_DECLARATION_VERSION, text: TRADE_IN_DECLARATION_TEXT,
+            acceptedAt: expect.any(String), acceptedByUserId: 'user-1',
+          } }),
         }),
       );
       expect(result.agreedPrice).toBe(5000);
+    });
+
+    it.each([
+      { declarationVersion: 'obsolete' },
+      { declarationVersion: undefined },
+      { sellerSignatureBase64: undefined },
+      { sellerSignatureBase64: '  ' },
+    ])('rejects invalid signing evidence before stock or journal writes: %j', async (patch) => {
+      prisma.tradeIn.findUnique.mockResolvedValue(makeTradeIn({ status: 'APPRAISED' }));
+      await expect(service.accept('ti-1', { ...baseAcceptDto, ...patch } as any, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.product.create).not.toHaveBeenCalled();
+      expect(prisma.tradeIn.update).not.toHaveBeenCalled();
+      expect(postBuyback).not.toHaveBeenCalled();
+    });
+
+    it('does not replace evidence when an accepted record is forced back to APPRAISED', async () => {
+      prisma.tradeIn.findUnique.mockResolvedValue(makeTradeIn({ status: 'APPRAISED', idCardVerifiedAt: new Date() }));
+      await expect(service.accept('ti-1', baseAcceptDto, 'user-1')).rejects.toThrow('มีหลักฐานการรับเครื่องแล้ว');
+      expect(prisma.product.create).not.toHaveBeenCalled();
+      expect(prisma.tradeIn.update).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when seller signature exceeds 200KB', async () => {
@@ -815,7 +839,7 @@ describe('TradeInService', () => {
       deviceModel: 'iPhone 15',
       agreedPrice: 18000,
       idCardVerified: true,
-      sellerConsentSigned: true,
+      sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==',
       paymentMethod: 'CASH' as const,
     };
 

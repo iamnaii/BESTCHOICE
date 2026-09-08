@@ -34,6 +34,8 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
+  const strokeMade = useRef(false);
+  const lastPosition = useRef<{ x: number; y: number } | null>(null);
 
   const setupCtx = useCallback(() => {
     const canvas = canvasRef.current;
@@ -68,11 +70,12 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
     if (isPending) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    setIsDrawing(true);
-    setHasDrawn(true);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const pos = getCanvasPos(e, canvas);
+    setIsDrawing(true);
+    strokeMade.current = false;
+    lastPosition.current = pos;
     ctx.beginPath();
     ctx.moveTo(pos.x, pos.y);
   };
@@ -86,14 +89,19 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const pos = getCanvasPos(e, canvas);
+    if (lastPosition.current?.x === pos.x && lastPosition.current?.y === pos.y) return;
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
+    lastPosition.current = pos;
+    strokeMade.current = true;
+    setHasDrawn(true);
   };
 
   const endDraw = () => {
-    if (isPending) return;
+    if (isPending || !isDrawing) return;
     setIsDrawing(false);
-    if (onDraftChange && canvasRef.current) {
+    lastPosition.current = null;
+    if (strokeMade.current && onDraftChange && canvasRef.current) {
       onDraftChange(canvasRef.current.toDataURL('image/png'));
     }
   };
@@ -104,6 +112,9 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setIsDrawing(false);
+    strokeMade.current = false;
+    lastPosition.current = null;
     setHasDrawn(false);
     onDraftChange?.(null);
   };
@@ -138,6 +149,7 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
         onTouchStart={startDraw}
         onTouchMove={draw}
         onTouchEnd={endDraw}
+        onTouchCancel={endDraw}
       />
 
       <div className="flex gap-3 mt-4 w-full">

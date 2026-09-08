@@ -1,4 +1,5 @@
 import { thaiBahtText } from '../../../../utils/thai-baht-text.util';
+import { LEGACY_TRADE_IN_DECLARATION } from '@installment/shared';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -102,6 +103,7 @@ export class VoucherHtmlBuilder {
     sellerPhone: string;
     sellerIdCard: string;
     sellerSignatureBase64: string | null;
+    sellerDeclarationText?: string | null;
     issuerName: string;
     issuerSignatureBase64: string | null;
     deviceLabel: string;
@@ -208,6 +210,10 @@ export class VoucherHtmlBuilder {
     .payment-row > :last-child { overflow-wrap: anywhere; }
     .credit-note { margin-top: 2mm; font-size: 9pt; color: var(--muted); }
     .declaration { border-top: 0.5pt solid var(--rule); padding-top: 3mm; margin-top: 4mm; font-size: 9pt; line-height: 1.7; color: var(--muted); }
+    .acceptance { break-inside: avoid; }
+    .acceptance .declaration { line-height: 1.5; margin-top: 2mm; padding-top: 2mm; }
+    .acceptance .signatures { margin-top: 2mm; }
+    .acceptance footer { margin-top: 2mm; }
     .signatures { display: flex; gap: 16mm; margin-top: 4mm; }
     .signer { flex: 1; min-width: 0; text-align: center; font-size: 10pt; overflow-wrap: anywhere; }
     .signature-space { display: flex; align-items: center; justify-content: center; height: 19mm; border-bottom: 0.5pt solid #a8b8af; margin-bottom: 2.5mm; }
@@ -291,7 +297,8 @@ export class VoucherHtmlBuilder {
     }
   </section>
 
-  <p class="declaration"><strong>คำรับรองผู้ขาย</strong> ผู้ขายรับรองว่าเป็นเจ้าของเครื่องโดยชอบด้วยกฎหมาย และยินยอมให้บริษัทตรวจสอบที่มาของเครื่อง หากพบว่าเป็นทรัพย์สินที่ได้มาโดยมิชอบ ผู้ขายยินยอมให้ดำเนินคดีตามกฎหมาย</p>
+  ${data.sellerDeclarationText ? '<div class="acceptance">' : ''}
+  <p class="declaration"><strong>คำรับรองผู้ขาย</strong>${data.sellerDeclarationText ? ` · ${esc(data.voucherNumber)}<br>` : ' '}${esc(data.sellerDeclarationText ?? LEGACY_TRADE_IN_DECLARATION)}</p>
 
   <section class="signatures" aria-label="ลายเซ็น">
     <div class="signer">
@@ -309,6 +316,7 @@ export class VoucherHtmlBuilder {
   </section>
 
   <footer><span class="number">${esc(data.voucherNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer>
+  ${data.sellerDeclarationText ? '</div>' : ''}
 </body>
 </html>`;
   }

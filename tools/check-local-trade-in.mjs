@@ -21,7 +21,7 @@ export async function checkTradeIn(page, origin, output, width) {
   await dialog.getByPlaceholder('0', { exact: true }).fill('5000');
   await dialog.getByRole('button', { name: 'ถัดไป' }).click();
   await dialog.getByRole('checkbox', { name: /ตรวจบัตรประชาชน/ }).check();
-  await dialog.getByRole('checkbox', { name: /ผู้ขายเซ็นยืนยัน/ }).check();
+  await dialog.getByRole('checkbox', { name: /ผู้ขายได้อ่านและยอมรับ/ }).check();
   // Check the recipient UI on desktop and the cash path on mobile.
   if (width >= 1024) {
     await dialog.getByRole('radio', { name: 'โอนเงิน' }).check();

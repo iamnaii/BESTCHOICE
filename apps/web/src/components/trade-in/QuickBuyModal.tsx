@@ -1,4 +1,6 @@
 import { isAxiosError } from 'axios';
+import { TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
+import SellerDeclaration from './SellerDeclaration';
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -137,6 +139,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
         agreedPrice: parseFloat(form.agreedPrice),
         idCardVerified: form.idCardVerified,
         sellerConsentSigned: form.sellerConsentSigned,
+        declarationVersion: TRADE_IN_DECLARATION_VERSION,
         sellerSignatureBase64: form.sellerSignatureBase64 || undefined,
         paymentMethod: form.paymentMethod,
         transferBankName: form.paymentMethod === 'TRANSFER' ? form.transferBankName : undefined,
@@ -296,7 +299,11 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
     }
     setStep(step + 1);
   }
-  function prev() { setStep(step - 1); }
+  function prev() {
+    // Identity/device/price edits require a fresh check and seller signature.
+    setForm((f) => ({ ...f, idCardVerified: false, sellerConsentSigned: false, sellerSignatureBase64: '' }));
+    setStep(step - 1);
+  }
 
   function submit() {
     if (!form.idCardVerified || !form.sellerConsentSigned) {
@@ -605,6 +612,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
                 />
                 <span className="text-sm">ตรวจบัตรประชาชนผู้ขายแล้วและตรงกับใบหน้า</span>
               </label>
+              <SellerDeclaration />
               <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
                 <input
                   type="checkbox"
@@ -613,15 +621,15 @@ export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }
                   checked={form.sellerConsentSigned}
                   onChange={(e) => setForm((f) => ({ ...f, sellerConsentSigned: e.target.checked }))}
                 />
-                <span className="text-sm">ผู้ขายเซ็นยืนยันว่าเป็นเจ้าของเครื่องโดยชอบด้วยกฎหมาย</span>
+                <span className="text-sm">ผู้ขายได้อ่านและยอมรับคำรับรองผู้ขายทุกข้อ</span>
               </label>
 
               <SellerPaymentFields value={form} disabled={quickBuyMutation.isPending}
                 onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
 
               <div className="border-t pt-3">
-                <Label>ลายเซ็นผู้ขาย *</Label>
-                <p className="text-xs text-muted-foreground mb-2">ผู้ขายลงนามยืนยันการขายและความเป็นเจ้าของ</p>
+                <Label className="mt-3 block">ลายเซ็นผู้ขาย *</Label>
+                <p className="text-xs text-muted-foreground mb-2">ลงนามยืนยันรายการรับเครื่องและคำรับรองผู้ขายข้างต้น</p>
                 <SignaturePadFull
                   isPending={quickBuyMutation.isPending}
                   initialImage={form.sellerSignatureBase64}

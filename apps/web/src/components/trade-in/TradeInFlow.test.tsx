@@ -8,6 +8,7 @@ import AcceptModal from '@/pages/TradeInPage/components/AcceptModal';
 import { EMPTY_ACCEPT_FORM, type TradeIn } from '@/pages/TradeInPage/types';
 import TradeInProductHandoff from './TradeInProductHandoff';
 import api from '@/lib/api';
+import { TRADE_IN_DECLARATION_CLAUSES, TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
 
 const auth = vi.hoisted(() => ({ user: { role: 'OWNER', branchId: 'branch-1' } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
@@ -35,7 +36,7 @@ async function prepareBuy() {
   await user.type(screen.getByPlaceholderText('0'), '5000');
   await user.click(screen.getByRole('button', { name: /ถัดไป/ }));
   await user.click(screen.getByRole('checkbox', { name: /ตรวจบัตรประชาชน/ }));
-  await user.click(screen.getByRole('checkbox', { name: /ผู้ขายเซ็นยืนยัน/ }));
+  await user.click(screen.getByRole('checkbox', { name: /ผู้ขายได้อ่านและยอมรับ/ }));
   await user.click(screen.getByRole('button', { name: 'ลงลายเซ็นทดสอบ' }));
   return user;
 }
@@ -52,6 +53,7 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     const onSuccess = vi.fn();
     render(<QuickBuyModal open onClose={vi.fn()} onSuccess={onSuccess} onIncomplete={vi.fn()} />, { wrapper });
     const user = await prepareBuy();
+    for (const clause of TRADE_IN_DECLARATION_CLAUSES) expect(screen.getByText(clause)).toBeVisible();
     await user.click(screen.getByRole('radio', { name: 'โอนเงิน' }));
     await user.type(screen.getByLabelText('ธนาคารผู้ขาย *'), 'ธนาคารผู้ขาย');
     await user.type(screen.getByLabelText('เลขบัญชีผู้ขาย *'), '1234567890');
@@ -61,6 +63,7 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ productId: 'received-product' })));
     expect(api.post).toHaveBeenCalledWith('/trade-ins/quick-buy', expect.objectContaining({
       paymentMethod: method, sellerContactId: 'seller-1', agreedPrice: 5000,
+      declarationVersion: TRADE_IN_DECLARATION_VERSION,
       transferAccountNumber: method === 'TRANSFER' ? '1234567890' : undefined,
     }));
     expect(vi.mocked(api.get).mock.calls.some(([url]) => String(url).includes('bank-accounts'))).toBe(false);
@@ -75,6 +78,24 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalled());
     expect(close).not.toHaveBeenCalled();
     expect(screen.getByText('ผู้ขายทดสอบ')).toBeInTheDocument();
+  });
+
+  it('requires fresh identity confirmation and signature after going back to edit the purchase', async () => {
+    render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
+    const user = await prepareBuy();
+    await user.click(screen.getByRole('button', { name: /ย้อนกลับ/ }));
+    await user.clear(screen.getByPlaceholderText('0'));
+    await user.type(screen.getByPlaceholderText('0'), '6000');
+    await user.click(screen.getByRole('button', { name: /ถัดไป/ }));
+    expect(screen.getByRole('checkbox', { name: /ตรวจบัตรประชาชน/ })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /ผู้ขายได้อ่านและยอมรับ/ })).not.toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: /ตรวจบัตรประชาชน/ }));
+    await user.click(screen.getByRole('checkbox', { name: /ผู้ขายได้อ่านและยอมรับ/ }));
+    await user.click(screen.getByRole('button', { name: /บันทึก \+ ออกใบสำคัญ/ }));
+    expect(api.post).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'ลงลายเซ็นทดสอบ' }));
+    await user.click(screen.getByRole('button', { name: /บันทึก \+ ออกใบสำคัญ/ }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/trade-ins/quick-buy', expect.objectContaining({ agreedPrice: 6000 })));
   });
 
   it('opens the existing record after a partial failure instead of offering to submit a new purchase', async () => {
@@ -98,9 +119,11 @@ describe('Counter purchase, seller payment and stock handoff', () => {
       sellerSignatureBase64: 'signature', paymentMethod: 'TRANSFER', transferBankName: 'STALE', transferAccountName: 'STALE', transferAccountNumber: '123' }}
       isPending={false} onChange={vi.fn()} onConfirm={confirm} onClose={vi.fn()} />, { wrapper });
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    for (const clause of TRADE_IN_DECLARATION_CLAUSES) expect(screen.getByText(clause)).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเครื่องเทิร์น' }));
     expect(confirm).toHaveBeenCalledWith('exchange-1', expect.objectContaining({
       paymentMethod: 'TRADE_IN_CREDIT', transferBankName: '', transferAccountName: '', transferAccountNumber: '',
+      declarationVersion: TRADE_IN_DECLARATION_VERSION,
     }));
   });
 

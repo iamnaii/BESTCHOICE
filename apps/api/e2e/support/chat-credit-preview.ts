@@ -37,6 +37,10 @@ import { PrepareOfferService } from '../../src/modules/staff-chat/services/prepa
 import { RoomAiAccessService } from '../../src/modules/staff-chat/services/room-ai-access.service';
 import { SearchProductsTool } from '../../src/modules/sales-bot/tools/search-products.tool';
 import { CalculateInstallmentTool } from '../../src/modules/sales-bot/tools/calculate-installment.tool';
+import { ReceivablesReportService } from '../../src/modules/reports/services/receivables-report.service';
+import { seedPreviewPortfolio } from './preview-portfolio-fixture';
+import { CustomerQueryService } from '../../src/modules/customers/services/customer-query.service';
+import { CustomerTierService } from '../../src/modules/customers/customer-tier.service';
 
 const root = process.env.CREDIT_PREVIEW_ROOT!;
 if (
@@ -65,6 +69,8 @@ const integrations = new IntegrationConfigService(db, config);
 const usage = new AiUsageService(db, config);
 const credits = new CreditCheckService(db, integrations, new AiProviderService(usage));
 const contractQuery = new ContractQueryService(db);
+const receivables = new ReceivablesReportService(db);
+const customerQuery = new CustomerQueryService(db, new CustomerTierService(db));
 const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
   { resolveBranchCashAccount: async () => '110101' } as never);
@@ -153,6 +159,21 @@ async function fixture(name: string) {
 
 @Controller()
 class PreviewController {
+  @Get('reports/finance-portfolio') portfolio(
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return receivables.getFinancePortfolio(
+      status, Math.max(1, parseInt(page || '', 10) || 1),
+      Math.max(1, Math.min(parseInt(limit || '', 10) || 50, 100)), startDate, endDate,
+    );
+  }
+  @Get('branches') branches() {
+    return db.branch.findMany({ where: { deletedAt: null } });
+  }
   @Get('products') async products() {
     const products = await db.product.findMany({ where: { status: 'IN_STOCK', deletedAt: null }, include: { branch: true, prices: true } });
     return { data: products };
@@ -160,8 +181,13 @@ class PreviewController {
   @Get('products/:id') product(@Param('id') id: string) {
     return db.product.findUnique({ where: { id }, include: { branch: true, prices: true } });
   }
-  @Get('customers') async customers(@Query('search') search?: string) {
-    return { data: await db.customer.findMany({ where: { deletedAt: null, ...(search ? { name: { contains: search } } : {}) } }) };
+  @Get('customers') customers(@Query() query: Record<string, string>) {
+    return customerQuery.findAll(
+      query.search, Math.max(1, parseInt(query.page, 10) || 1),
+      Math.max(1, Math.min(parseInt(query.limit, 10) || 50, 100)),
+      query.contractStatus, query.hasOverdue === 'true', query.creditStatus,
+      query.branchId, query.sortBy, query.sortOrder, query.tier, query.creditCheckStatus,
+    );
   }
   @Get('interest-configs/by-category/:category') interest(@Param('category') category: string) {
     return db.interestConfig.findFirst({ where: { productCategories: { has: category as never }, isActive: true } });
@@ -217,7 +243,7 @@ class PreviewController {
   ) {
     return manager.linkCustomer(id, customerId, actor);
   }
-  @Get('customers/search') customers(@Query('q') q = '') {
+  @Get('customers/search') searchCustomers(@Query('q') q = '') {
     return db.customer.findMany({ where: { deletedAt: null, name: { contains: q } } });
   }
   @Get('customers/:id') async customer(@Param('id') id: string) {
@@ -293,6 +319,7 @@ async function main() {
       data: { customerId: created.customerId },
     });
   }
+  await seedPreviewPortfolio(db, actor.id);
   const module = await Test.createTestingModule({
     controllers: [
       RoomCreditController,
@@ -330,6 +357,19 @@ async function main() {
   app.use((req, res, next) => {
     req.url = req.url.replace(/^\/api\/admin(?=\/|$)/, '/api');
     const path = req.path;
+    // Explicit app-shell fixtures. Unsupported endpoints must not masquerade as empty data.
+    if (req.method === 'GET') {
+      const shellData = {
+        '/api/settings/test-mode': { enabled: false },
+        '/api/overdue/collections-flag': { enabled: false },
+        '/api/settings/ui-flags': {},
+        '/api/staff-chat/appointments/due': [],
+        '/api/staff-chat/staff/online': [],
+        '/api/staff-chat/unread-count': { unread: 0 },
+        '/api/notifications/logs/stats': { total: 0, sent: 0, failed: 0, pending: 0 },
+      };
+      if (Object.prototype.hasOwnProperty.call(shellData, path)) return res.json(shellData[path]);
+    }
     if (path.endsWith('/suggest'))
       return res.json({ suggestions: [], detectedProducts: [], processingTimeMs: 0 });
     if (path.endsWith('/chat-summary'))
@@ -378,11 +418,11 @@ async function main() {
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
-      path === '/api/staff-chat/ai/settings'
+      path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
+      path === '/api/branches'
     )
       return next();
-    if (req.method === 'GET') return res.json([]);
-    return res.status(400).json({ message: 'โหมด local นี้เปิดให้ทดสอบเฉพาะการตรวจเครดิต' });
+    return res.status(501).json({ message: 'เมนูนี้ยังไม่รองรับใน local preview', code: 'LOCAL_PREVIEW_UNSUPPORTED' });
   });
   await app.listen(0, '127.0.0.1');
   const credit = app.get(RoomCreditService);

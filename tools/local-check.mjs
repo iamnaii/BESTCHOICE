@@ -3,9 +3,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium, expect } from '@playwright/test';
 import { acquireLock, ensurePreview, fingerprint, git, output, repo, run } from './local-preview.mjs';
+import { checkLocalPages } from './check-local-pages.mjs';
 
 const release = acquireLock('check');
-const report = { status: 'RUNNING', scope: 'Basic checks + synthetic Inbox browser smoke; not a full backend/financial regression',
+const report = { status: 'RUNNING', scope: 'Basic checks + synthetic Inbox, customers and FINANCE portfolio browser smoke; not a full backend/financial regression',
   repo, revision: git('rev-parse', '--short', 'HEAD'), sourceFingerprint: fingerprint(), startedAt: new Date().toISOString(), checks: [] };
 mkdirSync(output, { recursive: true });
 const save = () => writeFileSync(join(output, 'check.json'), JSON.stringify(report, null, 2) + '\n');
@@ -45,14 +46,20 @@ try {
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
+      // React ErrorBoundary catches rendering errors, so pageerror alone misses them.
+      page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
       await page.goto(info.url, { waitUntil: 'domcontentloaded' });
       await expect(page.getByRole('button', { name: /^รอตอบ/ })).toBeVisible();
       await expect(page.getByRole('combobox', { name: 'กรองตามช่องทาง' })).toBeVisible();
+      await expect(page.getByText('เกิดข้อผิดพลาด', { exact: true })).toHaveCount(0);
       const width = await page.evaluate(() => ({ viewport: innerWidth, content: document.documentElement.scrollWidth }));
       assert.ok(width.content <= width.viewport + 1, 'Horizontal overflow');
       assert.deepEqual(errors, [], 'Browser errors');
       await page.screenshot({ path: join(output, `inbox-${viewport.width}.png`), fullPage: true });
       report.checks.push({ label: `Inbox ${viewport.width}px`, status: 'PASS' });
+      await checkLocalPages(page, info.url, output, viewport.width);
+      assert.deepEqual(errors, [], 'Browser errors');
+      report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });
       await context.close();
     }
   } finally { await browser.close(); }

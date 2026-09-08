@@ -6,13 +6,13 @@
 npm run local:check
 ```
 
-คำสั่งจะ generate Prisma clients, ตรวจ TypeScript ของ API/Web, lint โดยไม่แก้ไฟล์อัตโนมัติ, ทดสอบ Web/Shared, build Web แล้วเปิดหรือรีเฟรช preview ของ checkout นี้ ตรวจ Inbox บน Chromium ที่ 1440px และ 390px ก่อนรายงานว่าผ่าน ถ้ามีขั้นตอนไหนล้มจะคืน exit code ที่ไม่ใช่ศูนย์และไม่อ้างว่าผ่าน
+คำสั่งจะ generate Prisma clients, ตรวจ TypeScript ของ API/Web, lint โดยไม่แก้ไฟล์อัตโนมัติ, ทดสอบ Web/Shared, build Web แล้วเปิดหรือรีเฟรช preview ของ checkout นี้ ตรวจ Inbox, ลูกค้า และพอร์ตสัญญา FINANCE บน Chromium ที่ 1440px และ 390px รวมถึงการกรองสถานะ รูปแบบข้อมูลรายงาน ผลรวมเมื่อแบ่งหน้า และช่วงวันที่ไม่มีข้อมูลก่อนรายงานว่าผ่าน ตรวจทั้ง console error และ ErrorBoundary เพื่อจับข้อผิดพลาดที่ React จัดการไว้ ถ้ามีขั้นตอนไหนล้มจะคืน exit code ที่ไม่ใช่ศูนย์และไม่อ้างว่าผ่าน
 
 หลังผ่าน เปิด **http://localhost:5195/inbox** ได้ต่อแม้คำสั่งตรวจจบแล้ว ดูผล/ภาพ/บันทึก server ใน `.tmp/local-preview/` ซึ่งไม่เข้า Git:
 
 - `check.json`: เวลา, source fingerprint, ขั้นตอนที่ผ่าน/ล้ม และ URL ที่ตรวจ
 - `checks.log`: ผลตรวจฉบับเต็ม รวม lint warnings; หน้าคำสั่งแสดงความคืบหน้าแบบย่อ
-- `inbox-1440.png`, `inbox-390.png`: ภาพหน้าจอ
+- `inbox-1440.png`, `inbox-390.png`, `finance-portfolio-1440.png`, `finance-portfolio-390.png`: ภาพหน้าจอ
 - `server.log`: ข้อผิดพลาดเมื่อเปิด preview
 - `state.json`: เฉพาะ process และฐานทดสอบของ checkout นี้
 
@@ -30,7 +30,7 @@ npm run local:stop     # หยุดเฉพาะชุด server ที่�
 
 ## ขอบเขตของผลตรวจ
 
-Preview นี้ใช้ข้อมูลและ AI จำลองสำหรับ Inbox, ตรวจเครดิต, เตรียมข้อเสนอ และส่งต่อไปทำสัญญา ไม่ส่งแชทจริงหรืออ่านข้อมูล production และไม่ใช่ backend เต็มของทุกเมนู
+Preview นี้ใช้ข้อมูลและ AI จำลองสำหรับ Inbox, ลูกค้า, ตรวจเครดิต, เตรียมข้อเสนอ, ส่งต่อไปทำสัญญา และพอร์ตสัญญา FINANCE โดยรายงานเรียกบริการอ่านข้อมูลเดียวกับ API จริงบนฐานทดสอบ มีสัญญาตัวอย่างปกติ/ค้างชำระและไม่เขียนทับเมื่อรีสตาร์ต ไม่ส่งแชทจริงหรืออ่านข้อมูล production และไม่ใช่ backend เต็มของทุกเมนู Endpoint ที่ไม่รองรับจะตอบ 501 แทนการส่ง array ว่างที่ทำให้หน้าแสดงยอดศูนย์ผิดหรือพัง
 
 Basic checks ไม่แทนการทดสอบ feature ที่แก้ หากแก้การเงิน/API ให้ใช้ชุด PostgreSQL แยกที่มีอยู่ เช่น `bash tools/test-chat-credit.sh`; เลือก `CREDIT_RUN_API_REGRESSION=1` เมื่อต้องตรวจ API เต็มชุด ฟีเจอร์นอกขอบเขต preview ต้องเปิด app/API ที่รองรับจาก checkout เดียวกันและตรวจ flow นั้นเพิ่มเติม ห้ามรายงานว่าทุกฟีเจอร์ผ่านจาก Inbox smoke เพียงหน้าเดียว
 

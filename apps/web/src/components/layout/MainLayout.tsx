@@ -52,7 +52,7 @@ function MobileSidebar() {
 
 /* ── Main Content Area ────────────────────────────── */
 /* ── Full-bleed routes (no TopBar, no container padding) ── */
-const FULL_BLEED_ROUTES = ['/inbox', '/chat'];
+const FULL_BLEED_ROUTES = ['/inbox'];
 
 function MainContent() {
   const isMobile = useIsMobile();

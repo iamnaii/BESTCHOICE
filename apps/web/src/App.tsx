@@ -172,7 +172,6 @@ const BankAccountsPage = lazy(() => import('@/pages/BankAccountsPage'));
 // D1.1.1.4 — AccountRolesPage moved to settings-registry (kind:'route') — lazy import removed
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
-const ChatInboxPage = lazy(() => import('@/pages/chat/ChatInboxPage'));
 const CrmPipelinePage = lazy(() => import('@/pages/CrmPipelinePage'));
 const AdsTrackingPage = lazy(() => import('@/pages/AdsTrackingPage'));
 // ChannelSettingsPage moved to settings-registry (P2b comms migration)
@@ -337,6 +336,9 @@ function App() {
         {/* Unknown /liff/* sub-paths fall back to primary LIFF page (not catch-all "*→/"). */}
         <Route path="/liff/*" element={<Navigate to="/liff/contract" replace />} />
 
+
+        {/* Keep old chat bookmarks working without mounting the retired page/layout. */}
+        <Route path="/chat" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><Navigate to="/inbox" replace /></ProtectedRoute>} />
 
         {/* Protected Admin Routes */}
         <Route
@@ -504,7 +506,6 @@ function App() {
           {/* เส้นทางเดียว (roomId เป็น optional segment) — สองเส้นทางแยกทำให้หน้าถูก mount ใหม่ทุกครั้งที่เปิดห้อง:
               ตัวกรอง/มุมมอง/ฟองส่งไม่สำเร็จหาย และ socket ต่อใหม่ทุกคลิก */}
           <Route path="/inbox/:roomId?" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><UnifiedInboxPage /></ProtectedRoute>} />
-          <Route path="/chat" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><ChatInboxPage /></ProtectedRoute>} />
           <Route path="/crm" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><CrmPipelinePage /></ProtectedRoute>} />
           <Route path="/ads" element={<ProtectedRoute roles={['OWNER']}><AdsTrackingPage /></ProtectedRoute>} />
           {/* P2b — channels moved to /settings/comms/channels */}

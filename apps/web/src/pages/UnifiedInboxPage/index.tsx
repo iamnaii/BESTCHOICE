@@ -262,8 +262,6 @@ export default function UnifiedInboxPage() {
   }, [staffQuery.data]);
 
   // AI settings — drives the AI status badge in ConversationItem.
-  // Shares the ['ai-settings', 'lite'] cache key with ChatInboxPage Phase A
-  // so the two pages don't re-fetch when the user toggles between them.
   const aiSettingsQuery = useQuery<{ autoModeEnabled: boolean; enabledChannels: string[] }>({
     queryKey: ['ai-settings', 'lite'],
     queryFn: () =>

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 // `?raw` ของ Vite — อ่านซอร์สจริงโดยไม่ต้องพึ่ง node types (tsconfig ของ web ไม่มี)
 import appSource from '../../App.tsx?raw';
-import { resolveZoneForPath, COMMON_PATHS } from '../menu';
+import { getMenuConfig, resolveZoneForPath, COMMON_PATHS } from '../menu';
 
 /**
  * ความสอดคล้องระหว่าง **ProtectedRoute (App.tsx)** กับ **sidebar (menu.ts)**
@@ -109,11 +109,13 @@ describe('/inbox (optional roomId)', () => {
     expect(src.match(/<Route\s+path="\/inbox(\/:roomId\??)?"/g)?.length).toBe(1);
     const roles = [...(m![1].match(/roles=\{\[([^\]]*)\]\}/)?.[1] ?? '').matchAll(/'(\w+)'/g)].map((r) => r[1]);
     expect(roles.length).toBeGreaterThan(0);
-    // กติกาเดียวกับข้อ A: เด้งเฉพาะเมื่อ role อื่นมีหน้านี้ในเมนูแต่ role นี้ไม่มี
-    // (วันนี้ resolveZoneForPath คืน null ให้ทุก role สำหรับ /inbox — ไม่มีใครเด้ง)
-    const gaps = roles.filter(
-      (role) => !inMenu(role, '/inbox') && ALL_ROLES.some((r) => r !== role && inMenu(r, '/inbox')),
-    );
-    expect(gaps).toEqual([]);
+    expect(roles.filter((role) => !inMenu(role, '/inbox'))).toEqual([]);
+    for (const role of ALL_ROLES) {
+      expect(inMenu(role, '/chat')).toBe(false);
+      const mobileChat = getMenuConfig(role).bottomNav.filter((item) =>
+        item.path === '/chat' || item.path === '/inbox',
+      );
+      expect(mobileChat.map((item) => item.path)).toEqual(roles.includes(role) ? ['/inbox'] : []);
+    }
   });
 });

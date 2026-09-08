@@ -112,10 +112,14 @@ if printf 'SET default_transaction_read_only = off;\nCREATE TABLE mcp_should_fai
 fi
 echo "   ✓ เขียนไม่ได้แม้ปิด read-only แล้ว (ติดสิทธิ์จริง)"
 
-if psql "$IAM_URL" -qAtX -c 'SELECT text FROM chat_messages LIMIT 1' >/dev/null 2>&1; then
-  die "อ่านเนื้อความแชทได้! หยุดทันที — ตรวจ policy.mjs"
-fi
-echo "   ✓ อ่าน chat_messages.text ไม่ได้"
+# เนื้อความแชทเปิดให้อ่านตั้งแต่ 2026-09-06 ตามคำสั่งเจ้าของ (ดู OWNER_APPROVED_PII)
+# ด่านนี้จึงเปลี่ยนไปเฝ้า "เส้นแดงที่ยังไม่เคยเปิด" แทน — ชื่อลูกค้า และเลขบัตรประชาชน
+for probe in 'SELECT name FROM customers LIMIT 1' 'SELECT payer_tax_id FROM receipts LIMIT 1'; do
+  if psql "$IAM_URL" -qAtX -c "$probe" >/dev/null 2>&1; then
+    die "อ่านได้: $probe — หยุดทันที ตรวจ policy.mjs"
+  fi
+done
+echo "   ✓ ชื่อลูกค้า + เลขบัตรประชาชน ยังอ่านไม่ได้"
 
 psql "$IAM_URL" -qAtX -c 'SELECT count(*) FROM chat_messages' >/dev/null || die "นับแถวแชทไม่ได้ (ควรได้)"
 echo "   ✓ นับแถว chat_messages ได้"

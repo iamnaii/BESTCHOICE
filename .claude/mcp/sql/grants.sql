@@ -112,13 +112,13 @@ REVOKE ALL ON public."chat_knowledge_base" FROM mcp_ro;
 GRANT SELECT ("id", "channel", "category", "intent", "trigger_keywords", "example_questions", "response_template", "response_type", "requires_auth", "requires_tools", "active", "priority", "created_at", "updated_at", "deleted_at") ON public."chat_knowledge_base" TO mcp_ro;
 
 REVOKE ALL ON public."chat_messages" FROM mcp_ro;
-GRANT SELECT ("id", "room_id", "role", "type", "intent", "confidence", "model_used", "input_tokens", "output_tokens", "cost_usd", "payment_id", "receipt_id", "created_at", "deleted_at", "staff_id", "delivered_at", "read_at", "delivery_status", "outbound_sent_at") ON public."chat_messages" TO mcp_ro;
+GRANT SELECT ("id", "room_id", "role", "type", "text", "media_url", "intent", "confidence", "model_used", "input_tokens", "output_tokens", "cost_usd", "payment_id", "receipt_id", "created_at", "deleted_at", "staff_id", "delivered_at", "read_at", "delivery_status", "outbound_sent_at") ON public."chat_messages" TO mcp_ro;
 
 REVOKE ALL ON public."chat_notes" FROM mcp_ro;
-GRANT SELECT ("id", "room_id", "staff_id", "created_at", "updated_at", "deleted_at") ON public."chat_notes" TO mcp_ro;
+GRANT SELECT ("id", "room_id", "staff_id", "created_at", "updated_at", "deleted_at", "pinned_at", "pinned_by_id") ON public."chat_notes" TO mcp_ro;
 
 REVOKE ALL ON public."chat_rooms" FROM mcp_ro;
-GRANT SELECT ("id", "customer_id", "channel", "status", "verified_at", "verification_attempts", "handoff_mode", "handoff_tagged_at", "handoff_staff_id", "total_messages", "last_message_at", "created_at", "updated_at", "deleted_at", "priority", "assigned_to_id", "first_response_at", "resolved_at", "lead_score", "lead_temperature", "pinned_at", "pinned_by_id", "unread_count", "ai_paused", "ai_paused_at", "ai_paused_by_id") ON public."chat_rooms" TO mcp_ro;
+GRANT SELECT ("id", "customer_id", "channel", "status", "verified_at", "verification_attempts", "handoff_mode", "handoff_tagged_at", "handoff_staff_id", "total_messages", "last_message_at", "created_at", "updated_at", "deleted_at", "priority", "assigned_to_id", "first_response_at", "resolved_at", "lead_score", "lead_temperature", "pinned_at", "pinned_by_id", "unread_count", "display_name", "ai_paused", "ai_paused_at", "ai_paused_by_id") ON public."chat_rooms" TO mcp_ro;
 
 REVOKE ALL ON public."chat_side_messages" FROM mcp_ro;
 GRANT SELECT ("id", "room_id", "staff_id", "created_at", "deleted_at") ON public."chat_side_messages" TO mcp_ro;
@@ -580,7 +580,7 @@ REVOKE ALL ON public."todo_comments" FROM mcp_ro;
 GRANT SELECT ("id", "todo_id", "user_id", "created_at") ON public."todo_comments" TO mcp_ro;
 
 REVOKE ALL ON public."todos" FROM mcp_ro;
-GRANT SELECT ("id", "title", "status", "priority", "due_date", "completed_at", "created_by_id", "assignee_id", "branch_id", "tags", "checklist", "created_at", "updated_at", "deleted_at") ON public."todos" TO mcp_ro;
+GRANT SELECT ("id", "title", "status", "priority", "due_date", "completed_at", "created_by_id", "assignee_id", "branch_id", "tags", "checklist", "created_at", "updated_at", "deleted_at", "room_id") ON public."todos" TO mcp_ro;
 
 REVOKE ALL ON public."trade_in_valuations" FROM mcp_ro;
 GRANT SELECT ("id", "brand", "model", "storage", "condition", "base_price", "created_at", "updated_at", "deleted_at") ON public."trade_in_valuations" TO mcp_ro;

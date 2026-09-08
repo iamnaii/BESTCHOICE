@@ -3,7 +3,7 @@
 > สร้างอัตโนมัติ ห้ามแก้ด้วยมือ · แก้ที่ `policy.mjs` แล้ว `npm run grants` ใหม่
 
 - ตารางทั้งหมด **203** · ให้สิทธิ์บางคอลัมน์ **200** · ไม่ให้เลยทั้งใบ **3**
-- คอลัมน์ทั้งหมด **2964** · ให้ **2372** · ไม่ให้ **592**
+- คอลัมน์ทั้งหมด **2970** · ให้ **2378** · ไม่ให้ **592**
 
 🔒 = ตารางที่ถือ PII (ให้เฉพาะที่อยู่ใน allowlist) · ⛔ = ห้ามทั้งใบ
 
@@ -28,16 +28,16 @@
 - **ไม่ให้**: `ip_hash` `user_agent` `detected_type` `signals` `page_path` `action` `detected_at`
 
 ### 🔒 `chat_messages`
-ให้ 19 · ไม่ให้ 8
+ให้ 21 · ไม่ให้ 6
 
-- **ให้**: `id` `room_id` `role` `type` `intent` `confidence` `model_used` `input_tokens` `output_tokens` `cost_usd` `payment_id` `receipt_id` `created_at` `deleted_at` `staff_id` `delivered_at` `read_at` `delivery_status` `outbound_sent_at`
-- **ไม่ให้**: `text` `media_url` `media_type` `tools_used` `vision_extracted` `external_message_id` `flex_json` `client_message_id`
+- **ให้**: `id` `room_id` `role` `type` `text` `media_url` `intent` `confidence` `model_used` `input_tokens` `output_tokens` `cost_usd` `payment_id` `receipt_id` `created_at` `deleted_at` `staff_id` `delivered_at` `read_at` `delivery_status` `outbound_sent_at`
+- **ไม่ให้**: `media_type` `tools_used` `vision_extracted` `external_message_id` `flex_json` `client_message_id`
 
 ### 🔒 `chat_rooms`
-ให้ 26 · ไม่ให้ 7
+ให้ 27 · ไม่ให้ 8
 
-- **ให้**: `id` `customer_id` `channel` `status` `verified_at` `verification_attempts` `handoff_mode` `handoff_tagged_at` `handoff_staff_id` `total_messages` `last_message_at` `created_at` `updated_at` `deleted_at` `priority` `assigned_to_id` `first_response_at` `resolved_at` `lead_score` `lead_temperature` `pinned_at` `pinned_by_id` `unread_count` `ai_paused` `ai_paused_at` `ai_paused_by_id`
-- **ไม่ให้**: `line_user_id` `handoff_reason` `external_user_id` `attribution_id` `display_name` `picture_url` `ai_sales_state`
+- **ให้**: `id` `customer_id` `channel` `status` `verified_at` `verification_attempts` `handoff_mode` `handoff_tagged_at` `handoff_staff_id` `total_messages` `last_message_at` `created_at` `updated_at` `deleted_at` `priority` `assigned_to_id` `first_response_at` `resolved_at` `lead_score` `lead_temperature` `pinned_at` `pinned_by_id` `unread_count` `display_name` `ai_paused` `ai_paused_at` `ai_paused_by_id`
+- **ไม่ให้**: `line_user_id` `handoff_reason` `external_user_id` `attribution_id` `picture_url` `ai_sales_state` `waiting_since` `last_customer_at`
 
 ### 🔒 `contacts`
 ให้ 4 · ไม่ให้ 11
@@ -184,10 +184,11 @@
 | `stock_adjustments` | 11 | 2 | `notes` `photos` |
 | `supplier_payment_methods` | 9 | 2 | `bank_account_name` `bank_account_number` |
 | `template_categories` | 4 | 2 | `name` `description` |
-| `todos` | 14 | 2 | `description` `attachments` |
+| `todos` | 15 | 2 | `description` `attachments` |
 | `webhook_anomalies` | 5 | 2 | `ip_address` `user_agent` |
 | `webhook_subscriptions` | 8 | 2 | `name` `secret` |
 | `account_role_map` | 7 | 1 | `note` |
+| `ads_campaigns` | 13 | 1 | `ad_photo_url` |
 | `bad_debt_provisions` | 17 | 1 | `notes` |
 | `bad_debt_write_off_audit_logs` | 10 | 1 | `notes` |
 | `booking_items` | 7 | 1 | `description` |
@@ -196,7 +197,7 @@
 | `branch_receivings` | 7 | 1 | `notes` |
 | `broadcast_messages` | 15 | 1 | `content` |
 | `call_logs` | 36 | 1 | `notes` |
-| `chat_notes` | 6 | 1 | `content` |
+| `chat_notes` | 8 | 1 | `content` |
 | `chat_side_messages` | 5 | 1 | `text` |
 | `chat_snoozes` | 6 | 1 | `note` |
 | `commission_payouts` | 15 | 1 | `notes` |

@@ -5,9 +5,10 @@ import { chromium, expect } from '@playwright/test';
 import { acquireLock, ensurePreview, fingerprint, git, output, repo, run } from './local-preview.mjs';
 import { checkLocalPages } from './check-local-pages.mjs';
 import { checkWorkCompany } from './check-local-work-company.mjs';
+import { checkTradeIn } from './check-local-trade-in.mjs';
 
 const release = acquireLock('check');
-const report = { status: 'RUNNING', scope: 'Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio and work-company navigation; not a full backend/financial regression',
+const report = { status: 'RUNNING', scope: 'Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression',
   repo, revision: git('rev-parse', '--short', 'HEAD'), sourceFingerprint: fingerprint(), startedAt: new Date().toISOString(), checks: [] };
 mkdirSync(output, { recursive: true });
 const save = () => writeFileSync(join(output, 'check.json'), JSON.stringify(report, null, 2) + '\n');
@@ -48,7 +49,7 @@ try {
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       // React ErrorBoundary catches rendering errors, so pageerror alone misses them.
-      page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+      page.on('console', message => { if (message.type() === 'error') errors.push(`${message.text()} (${message.location().url})`); });
       await page.goto(info.url, { waitUntil: 'domcontentloaded' });
       await expect(page.getByRole('button', { name: /^รอตอบ/ })).toBeVisible();
       await expect(page.getByRole('combobox', { name: 'กรองตามช่องทาง' })).toBeVisible();
@@ -64,6 +65,9 @@ try {
       await checkWorkCompany(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `SHOP/FINANCE navigation (requests, reload, back/forward) ${viewport.width}px`, status: 'PASS' });
+      await checkTradeIn(page, info.url, output, viewport.width);
+      assert.deepEqual(errors, [], 'Browser errors');
+      report.checks.push({ label: `Trade-in purchase, voucher, price and six-angle stock handoff ${viewport.width}px`, status: 'PASS' });
       await context.close();
     }
   } finally { await browser.close(); }

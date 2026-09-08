@@ -97,7 +97,10 @@ export class TradeInVoucherService {
       deviceLabel: this.builder.buildDeviceLabel(tradeIn),
       amount,
       amountText: this.builder.numberToThaiBahtText(amount),
-      paymentMethod: (tradeIn.paymentMethod as 'CASH' | 'TRANSFER' | null) ?? 'CASH',
+      // Legacy counter purchases had flow=EXCHANGE despite an actual CASH/TRANSFER payout.
+      // Preserve their original receipt; only explicit credit acceptance gets a credit receipt.
+      paymentMethod: tradeIn.paymentMethod === 'TRADE_IN_CREDIT' ? 'TRADE_IN_CREDIT'
+        : (tradeIn.paymentMethod as 'CASH' | 'TRANSFER' | null) ?? 'CASH',
       transferBankName: tradeIn.transferBankName,
       transferAccountNumber: tradeIn.transferAccountNumber,
       transferAccountName: tradeIn.transferAccountName,

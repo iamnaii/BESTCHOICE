@@ -91,6 +91,7 @@ export class TradeInQueryService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
+          product: { select: { id: true, name: true, status: true } },
           customer: { select: { id: true, name: true, phone: true } },
           branch: { select: { id: true, name: true } },
           appraisedBy: { select: { id: true, name: true } },
@@ -109,7 +110,7 @@ export class TradeInQueryService {
       where: { id },
       include: {
         customer: { select: { id: true, name: true, phone: true, nationalId: true, addressIdCard: true } },
-        product: { select: { id: true, name: true, brand: true, model: true } },
+        product: { select: { id: true, name: true, brand: true, model: true, status: true } },
         branch: { select: { id: true, name: true } },
         appraisedBy: { select: { id: true, name: true } },
         idCardVerifiedBy: { select: { id: true, name: true } },

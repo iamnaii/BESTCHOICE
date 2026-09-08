@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { RefreshCw, Plus, Search, X } from 'lucide-react';
+import TradeInProductHandoff from '@/components/trade-in/TradeInProductHandoff';
+import Modal from '@/components/ui/Modal';
 import QuickBuyModal from '@/components/trade-in/QuickBuyModal';
 import TradeInTable from './components/TradeInTable';
 import AppraisalModal from './components/AppraisalModal';
@@ -22,6 +24,7 @@ import type {
   TradeIn,
   TradeInsResponse,
   AcceptFormState,
+  AcceptRequest,
   TradeInSubmissionSource,
   TradeInFlow,
 } from './types';
@@ -115,6 +118,7 @@ export default function TradeInPage() {
 
   const [page, setPage] = useState(1);
   const [showQuickBuy, setShowQuickBuy] = useState(false);
+  const [received, setReceived] = useState<{ id: string; productId: string; voucherNumber?: string } | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
 
@@ -179,9 +183,12 @@ export default function TradeInPage() {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: async ({ id, body }: { id: string; body: AcceptFormState & { branchId?: string } }) =>
+    mutationFn: async ({ id, body }: { id: string; body: AcceptRequest }) =>
       api.post(`/trade-ins/${id}/accept`, body),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res.data.productId) setReceived(res.data);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['qc-pending-count'] });
       toast.success('ยอมรับการรับซื้อเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
       setAcceptModal(null);
@@ -282,11 +289,27 @@ export default function TradeInPage() {
       <QuickBuyModal
         open={showQuickBuy}
         onClose={() => setShowQuickBuy(false)}
-        onSuccess={(id) => {
+        onIncomplete={(id) => {
           queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
-          openVoucherPdf(id);
+          setDetailId(id);
+        }}
+        onSuccess={(result) => {
+          queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+          queryClient.invalidateQueries({ queryKey: ['products'] });
+          queryClient.invalidateQueries({ queryKey: ['qc-pending-count'] });
+          setReceived(result);
         }}
       />
+
+      <Modal isOpen={!!received} onClose={() => setReceived(null)} title="รับเครื่องเรียบร้อย" size="md">
+        {received && <div className="space-y-4">
+          <TradeInProductHandoff productId={received.productId} />
+          <Button variant="outline" disabled={voucherLoadingId === received.id || generateVoucherMutation.isPending}
+            onClick={() => received.voucherNumber ? openVoucherPdf(received.id) : generateVoucherMutation.mutate(received.id)}>
+            พิมพ์เอกสารรับเครื่อง
+          </Button>
+        </div>}
+      </Modal>
 
       {canManage && (
         <div className="mb-4">

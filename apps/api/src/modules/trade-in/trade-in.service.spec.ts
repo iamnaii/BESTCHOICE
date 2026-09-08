@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { TradeInService } from './trade-in.service';
@@ -68,6 +69,7 @@ describe('TradeInService', () => {
   let contactResolver: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pii: any;
+  let postBuyback: jest.Mock;
 
   beforeEach(async () => {
     prisma = {
@@ -125,6 +127,7 @@ describe('TradeInService', () => {
       hash: jest.fn().mockReturnValue(null),
     };
 
+    postBuyback = jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' });
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TradeInService,
@@ -133,7 +136,7 @@ describe('TradeInService', () => {
         { provide: TradeInVoucherService, useValue: voucher },
         { provide: ContactResolverService, useValue: contactResolver },
         { provide: CustomerPiiService, useValue: pii },
-        { provide: ShopTradeInTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
+        { provide: ShopTradeInTemplate, useValue: { execute: postBuyback } },
         { provide: ShopAccountResolver, useValue: { resolveOutflowCashAccount: jest.fn().mockResolvedValue('S11-1101') } },
       ],
     }).compile();
@@ -815,6 +818,31 @@ describe('TradeInService', () => {
       sellerConsentSigned: true,
       paymentMethod: 'CASH' as const,
     };
+
+    it('records a counter payout as BUYBACK and posts the SHOP purchase journal', async () => {
+      // Reproduce the schema default across the real create/appraise/accept path.
+      let row: Record<string, unknown> = makeTradeIn({ customerId: null, flow: 'EXCHANGE' });
+      prisma.tradeIn.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        row = { ...row, ...data, ...(data.offeredPrice != null ? { offeredPrice: new Prisma.Decimal(String(data.offeredPrice)) } : {}) };
+        return row;
+      });
+      prisma.tradeIn.findUnique.mockImplementation(async () => row);
+      prisma.tradeIn.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        row = { ...row, ...data, ...(data.offeredPrice != null ? { offeredPrice: new Prisma.Decimal(String(data.offeredPrice)) } : {}) };
+        return row;
+      });
+
+      const result = await service.quickBuy(
+        { ...baseQuickBuyDto, sellerName: 'ผู้ขายทดสอบ' }, 'user-1', 'branch-1',
+      );
+
+      expect(row).toMatchObject({ flow: 'BUYBACK', status: 'ACCEPTED', productId: 'prod-new-1' });
+      expect(postBuyback).toHaveBeenCalledTimes(1);
+      expect(postBuyback).toHaveBeenCalledWith(expect.objectContaining({
+        tradeInId: row.id, cashAccountCode: 'S11-1101',
+      }), prisma);
+      expect(result).toMatchObject({ productId: 'prod-new-1' });
+    });
 
     /** Wire up the 4 stages so quickBuy() can run end-to-end in tests */
     function setupQuickBuyMocks() {

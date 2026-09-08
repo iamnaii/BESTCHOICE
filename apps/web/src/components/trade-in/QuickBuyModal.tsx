@@ -1,3 +1,4 @@
+import { isAxiosError } from 'axios';
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -21,15 +22,22 @@ import {
 import { brands, getModels } from '@/data/productCatalog';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
 import AddressForm, { type AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
-import { BANK_OPTIONS } from '@/components/credit-check/types';
-import { bankAccountsApi, type BankAccount } from '@/lib/api/bank-accounts';
+import SellerPaymentFields from './SellerPaymentFields';
 import { ContactCombobox } from '@/components/contacts/ContactCombobox';
 import { contactsApi } from '@/lib/api/contacts';
+
+export interface QuickBuyResult {
+  id: string;
+  productId: string;
+  productStatus: string;
+  voucherNumber: string;
+}
 
 interface QuickBuyModalProps {
   open: boolean;
   onClose: () => void;
-  onSuccess: (id: string, voucherNumber: string) => void;
+  onSuccess: (result: QuickBuyResult) => void;
+  onIncomplete: (id: string) => void;
 }
 
 interface SellerHistoryResponse {
@@ -48,7 +56,7 @@ const conditionOptions = [
   { value: 'D', label: 'D — ใช้งานหนัก' },
 ];
 
-export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModalProps) {
+export default function QuickBuyModal({ open, onClose, onSuccess, onIncomplete }: QuickBuyModalProps) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [branchId, setBranchId] = useState<string>(user?.branchId ?? '');
@@ -58,12 +66,6 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
     queryFn: async () => (await api.get('/branches')).data,
-    enabled: open,
-  });
-
-  const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
-    queryKey: ['bank-accounts', true],
-    queryFn: () => bankAccountsApi.list(true),
     enabled: open,
   });
 
@@ -144,16 +146,23 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
       return api.post('/trade-ins/quick-buy', payload);
     },
     onSuccess: (res) => {
-      const { id, voucherNumber, imeiWarning } = res.data;
+      const { voucherNumber, imeiWarning } = res.data;
       if (imeiWarning) {
         toast.warning(`รับซื้อสำเร็จ — แต่พบ IMEI ซ้ำในระบบ โปรดตรวจสอบ`);
       } else {
         toast.success(`รับซื้อสำเร็จ — เลขที่ ${voucherNumber}`);
       }
-      onSuccess(id, voucherNumber);
+      onSuccess(res.data);
       close();
     },
-    onError: (err) => toast.error(getErrorMessage(err)),
+    onError: (err) => {
+      toast.error(getErrorMessage(err));
+      const id = isAxiosError(err) ? err.response?.data?.tradeInId : undefined;
+      if (typeof id === 'string') {
+        onIncomplete(id);
+        close();
+      }
+    },
   });
 
   // ─── Card reader ─────────────────────────────────────
@@ -321,12 +330,13 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
             </div>
             <div>
               <h2 className="text-base font-bold text-foreground">รับซื้อมือถือมือสอง</h2>
-              <p className="text-xs text-muted-foreground">กรอกข้อมูลผู้ขาย เครื่อง และยืนยันการรับซื้อ</p>
+              <p className="text-xs text-muted-foreground">รับเครื่องและจ่ายเงินให้ผู้ขาย แล้วเตรียมรูปและราคาขาย</p>
             </div>
           </div>
           <button
             type="button"
             onClick={close}
+            disabled={quickBuyMutation.isPending}
             className="text-muted-foreground hover:text-foreground text-sm font-medium"
           >
             ปิด
@@ -350,7 +360,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                   {s < step ? <Check className="size-4" /> : s}
                 </div>
                 <div className="ml-2 text-xs font-medium text-foreground">
-                  {s === 1 ? 'ผู้ขาย' : s === 2 ? 'เครื่อง + ราคา' : 'ยืนยัน + เซ็น'}
+                  {s === 1 ? 'ผู้ขาย' : s === 2 ? 'ตรวจเครื่อง + ราคา' : 'จ่ายเงิน + เซ็น'}
                 </div>
                 {s < 3 && <div className="flex-1 h-px bg-border mx-3" />}
               </div>
@@ -579,6 +589,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
               </div>
 
               <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1">
+                <div><strong>ประเภท:</strong> รับซื้อ — จ่ายเงินให้ผู้ขาย</div>
                 <div><strong>ผู้ขาย:</strong> {form.sellerName}</div>
                 <div><strong>เครื่อง:</strong> {form.deviceBrand} {form.deviceModel} {form.deviceStorage}</div>
                 <div><strong>ราคารับซื้อ:</strong> <span className="text-lg font-bold text-success">฿{Number(form.agreedPrice || 0).toLocaleString()}</span></div>
@@ -587,6 +598,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
               <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
                 <input
                   type="checkbox"
+                  disabled={quickBuyMutation.isPending}
                   className="mt-1"
                   checked={form.idCardVerified}
                   onChange={(e) => setForm((f) => ({ ...f, idCardVerified: e.target.checked }))}
@@ -596,6 +608,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
               <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
                 <input
                   type="checkbox"
+                  disabled={quickBuyMutation.isPending}
                   className="mt-1"
                   checked={form.sellerConsentSigned}
                   onChange={(e) => setForm((f) => ({ ...f, sellerConsentSigned: e.target.checked }))}
@@ -603,86 +616,15 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                 <span className="text-sm">ผู้ขายเซ็นยืนยันว่าเป็นเจ้าของเครื่องโดยชอบด้วยกฎหมาย</span>
               </label>
 
-              <div className="border-t pt-3">
-                <Label>วิธีชำระเงิน *</Label>
-                <div className="flex gap-2 mt-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, paymentMethod: 'CASH' }))}
-                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                      form.paymentMethod === 'CASH'
-                        ? 'bg-success text-success-foreground border-success'
-                        : 'bg-card text-foreground border-border hover:border-success/40'
-                    }`}
-                  >เงินสด</button>
-                  <button
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, paymentMethod: 'TRANSFER' }))}
-                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                      form.paymentMethod === 'TRANSFER'
-                        ? 'bg-info text-info-foreground border-info'
-                        : 'bg-card text-foreground border-border hover:border-info/40'
-                    }`}
-                  >โอน</button>
-                </div>
-                {form.paymentMethod === 'TRANSFER' && (
-                  <div className="space-y-2 mt-3">
-                    {bankAccounts.length > 0 && (
-                      <select
-                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-                        value={
-                          bankAccounts.find(
-                            (acc) =>
-                              acc.accountName === form.transferAccountName &&
-                              acc.bankName === form.transferBankName,
-                          )?.id ?? ''
-                        }
-                        onChange={(e) => {
-                          const acc = bankAccounts.find((a) => a.id === e.target.value);
-                          if (!acc) return;
-                          setForm((f) => ({
-                            ...f,
-                            transferAccountName: acc.accountName,
-                            transferBankName: acc.bankName,
-                            transferAccountNumber: acc.accountNumber ?? '',
-                          }));
-                        }}
-                      >
-                        <option value="">-- เลือกบัญชีโอน (กรอกเอง) --</option>
-                        {bankAccounts.map((acc) => (
-                          <option key={acc.id} value={acc.id}>
-                            {acc.accountName} — {acc.bankName}
-                            {acc.accountNumber ? ` (${acc.accountNumber})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <select
-                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-                      value={form.transferBankName}
-                      onChange={(e) => setForm((f) => ({ ...f, transferBankName: e.target.value }))}
-                    >
-                      <option value="">-- เลือกธนาคาร --</option>
-                      {BANK_OPTIONS.map((b) => (
-                        <option key={b} value={b}>
-                          {b}
-                        </option>
-                      ))}
-                      {/* Keep a value auto-filled from a bank account that isn't in the preset list */}
-                      {form.transferBankName && !BANK_OPTIONS.includes(form.transferBankName) && (
-                        <option value={form.transferBankName}>{form.transferBankName}</option>
-                      )}
-                    </select>
-                    <Input placeholder="เลขบัญชี" value={form.transferAccountNumber} onChange={(e) => setForm((f) => ({ ...f, transferAccountNumber: e.target.value.replace(/[^\d-]/g, '') }))} />
-                    <Input placeholder="ชื่อบัญชี" value={form.transferAccountName} onChange={(e) => setForm((f) => ({ ...f, transferAccountName: e.target.value }))} />
-                  </div>
-                )}
-              </div>
+              <SellerPaymentFields value={form} disabled={quickBuyMutation.isPending}
+                onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
 
               <div className="border-t pt-3">
                 <Label>ลายเซ็นผู้ขาย *</Label>
                 <p className="text-xs text-muted-foreground mb-2">ผู้ขายลงนามยืนยันการขายและความเป็นเจ้าของ</p>
                 <SignaturePadFull
+                  isPending={quickBuyMutation.isPending}
+                  initialImage={form.sellerSignatureBase64}
                   onSign={() => { /* submit ผ่านปุ่มล่าง */ }}
                   onDraftChange={(d) => setForm((f) => ({ ...f, sellerSignatureBase64: d || '' }))}
                   buttonText=""
@@ -694,7 +636,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
 
         {/* Footer — sticky */}
         <div className="sticky bottom-0 bg-card border-t border-border px-6 py-4 flex justify-between gap-3">
-          <Button variant="outline" onClick={prev} disabled={step === 1}>
+          <Button variant="outline" onClick={prev} disabled={step === 1 || quickBuyMutation.isPending}>
             <ChevronLeft className="size-4 mr-1" /> ย้อนกลับ
           </Button>
           <Badge variant="outline" className="text-xs self-center">

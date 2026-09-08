@@ -446,7 +446,7 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
               id: userId,
               role: 'OWNER',
               name: 'TEST STAFF',
-              allowedCompanies: ['SHOP', 'FINANCE'],
+              accessibleCompanies: ['SHOP', 'FINANCE'],
             },
           });
         if (
@@ -563,10 +563,10 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
       await attachmentStarted;
       await page.getByRole('button', { name: 'กลับ', exact: true }).click();
       await page.getByText('TEST SECOND ROOM', { exact: true }).click();
-      await browserExpect(page).toHaveURL(new RegExp(`/inbox/${otherRoom.id}$`));
+      await browserExpect.poll(() => new URL(page.url()).pathname).toBe(`/inbox/${otherRoom.id}`);
       releaseAttachment();
       await page.getByRole('button', { name: 'เปิดแผง', exact: true }).last().click();
-      await browserExpect(page).toHaveURL(new RegExp(`/inbox/${roomId}$`));
+      await browserExpect.poll(() => new URL(page.url()).pathname).toBe(`/inbox/${roomId}`);
       const sheet = page.getByRole('dialog');
       await browserExpect(
         sheet.getByRole('button', { name: 'AI วิเคราะห์ (2 ไฟล์)' }),

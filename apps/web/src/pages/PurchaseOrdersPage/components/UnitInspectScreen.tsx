@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { AlertTriangle, Camera, Check, ListChecks, ScanLine, Smartphone, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import UsedDeviceDetailsFields from '@/components/product/UsedDeviceDetailsFields';
 import { formatNumber } from '@/utils/formatters';
 import type { DefectReasonValue, ReceivingUnitForm } from '../types';
 import { checklistCategories, defectReasonOptions } from '../constants';
@@ -367,70 +367,7 @@ export function UnitInspectScreen({
       {unit.status === 'PASS' && used && (
         <div className="flex flex-col gap-3.5 rounded-xl border border-warning/25 bg-warning/5 p-4" data-testid="used-panel">
           <div className="text-[13px] font-semibold text-warning">ข้อมูลมือสอง — ต้องกรอกก่อนผ่าน</div>
-          {/* battery · box · warranty date · "expired" tick — the tick gets its own column so it never
-              pushes past the panel (it fell outside the frame on prod, 2026-09-07) */}
-          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-[100px_auto_minmax(0,1fr)_auto] sm:items-end">
-            <div>
-              <label htmlFor={`battery-${idx}`} className={labelCls}>
-                % แบตเตอรี่
-                <Req />
-              </label>
-              <input
-                id={`battery-${idx}`}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={100}
-                value={unit.batteryHealth}
-                onChange={(e) => set({ batteryHealth: e.target.value })}
-                placeholder="เช่น 89"
-                className={cn(fieldCls, 'font-mono')}
-              />
-            </div>
-            <div>
-              <div className={labelCls}>กล่อง</div>
-              <div className="inline-flex h-11 gap-0.5 rounded-lg bg-muted p-0.5">
-                <button
-                  type="button"
-                  aria-pressed={unit.hasBox}
-                  onClick={() => set({ hasBox: true })}
-                  className={cn(segBtn, 'min-h-0 px-3', unit.hasBox ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}
-                >
-                  มีกล่อง
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={!unit.hasBox}
-                  onClick={() => set({ hasBox: false })}
-                  className={cn(segBtn, 'min-h-0 px-3', !unit.hasBox ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}
-                >
-                  ไม่มีกล่อง
-                </button>
-              </div>
-            </div>
-            <div className="min-w-0">
-              <div className={labelCls}>
-                ประกันศูนย์ถึง
-                {!unit.warrantyExpired && <Req />}
-              </div>
-              <ThaiDateInput
-                value={unit.warrantyExpireDate}
-                onChange={(e) => set({ warrantyExpireDate: e.target.value })}
-                disabled={unit.warrantyExpired}
-                aria-label="ประกันศูนย์ถึง"
-                className={cn(fieldCls, 'min-w-0')}
-              />
-            </div>
-            <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-[13px] whitespace-nowrap text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={unit.warrantyExpired}
-                onChange={(e) => set({ warrantyExpired: e.target.checked })}
-                className="size-[18px] rounded"
-              />
-              หมดประกันแล้ว
-            </label>
-          </div>
+          <UsedDeviceDetailsFields value={unit} onChange={set} idPrefix={String(idx)} showRequired />
           <div className="flex items-center justify-between gap-3 border-t border-warning/25 pt-3">
             <span className="text-sm">
               เช็คลิสต์ตรวจเครื่อง

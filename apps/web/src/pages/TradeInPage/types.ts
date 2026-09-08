@@ -4,6 +4,8 @@ export type TradeInFlow = 'EXCHANGE' | 'BUYBACK';
 export interface TradeIn {
   id: string;
   status: string;
+  productId?: string | null;
+  product?: { id: string; name: string; status: string } | null;
   deviceBrand: string;
   deviceModel: string;
   deviceStorage: string | null;
@@ -19,7 +21,7 @@ export interface TradeIn {
   voucherPdfUrl: string | null;
   createdAt: string;
   idCardVerifiedAt?: string | null;
-  paymentMethod?: 'CASH' | 'TRANSFER' | null;
+  paymentMethod?: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT' | null;
   submissionSource?: TradeInSubmissionSource;
   flow?: TradeInFlow;
   branchId?: string | null;
@@ -79,4 +81,9 @@ export const EMPTY_ACCEPT_FORM: AcceptFormState = {
   transferAccountNumber: '',
   transferAccountName: '',
   sellerSignatureBase64: '',
+};
+
+export type AcceptRequest = Omit<AcceptFormState, 'paymentMethod'> & {
+  paymentMethod: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT';
+  branchId?: string;
 };

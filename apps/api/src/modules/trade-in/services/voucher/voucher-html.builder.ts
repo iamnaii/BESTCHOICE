@@ -138,7 +138,7 @@ export class VoucherHtmlBuilder {
     deviceLabel: string;
     amount: number;
     amountText: string;
-    paymentMethod: 'CASH' | 'TRANSFER';
+    paymentMethod: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT';
     transferBankName: string | null;
     transferAccountNumber: string | null;
     transferAccountName: string | null;
@@ -152,11 +152,13 @@ export class VoucherHtmlBuilder {
       logoUrl: null,
     };
 
+    const isCredit = data.paymentMethod === 'TRADE_IN_CREDIT';
+    const title = isCredit ? 'ใบรับเครื่องเทิร์น' : 'ใบสำคัญจ่ายเงิน';
     return `<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>ใบสำคัญจ่ายเงิน ${this.escapeHtml(data.voucherNumber)}</title>
+  <title>${title} ${this.escapeHtml(data.voucherNumber)}</title>
   <style>
     @page { size: A4; margin: 14mm 16mm 16mm; }
     * { box-sizing: border-box; }
@@ -637,8 +639,8 @@ export class VoucherHtmlBuilder {
     <div class="top-header">
       <div class="logo">${this.logoSvg()}</div>
       <div class="title-block">
-        <div class="title">ใบสำคัญจ่ายเงิน</div>
-        <div class="title-en">PAYMENT VOUCHER</div>
+        <div class="title">${title}</div>
+        <div class="title-en">${isCredit ? 'TRADE-IN RECEIPT' : 'PAYMENT VOUCHER'}</div>
       </div>
     </div>
 
@@ -755,13 +757,15 @@ export class VoucherHtmlBuilder {
     <div class="payment-section">
       <div class="icon">${this.icon('wallet', 18, '#4b5563')}</div>
       <div class="col">
-        <div class="icon-label">ชำระเงิน</div>
-        <div class="pay-row"><span class="label">วันที่ชำระ :</span><span class="value">${this.escapeHtml(this.formatThaiDate(data.voucherDate))}</span></div>
-        <div class="pay-row"><span class="label">วิธีชำระ :</span><span class="value">${data.paymentMethod === 'CASH' ? 'เงินสด' : 'โอนเงิน'}</span></div>
+        <div class="icon-label">${isCredit ? 'เครดิตเทิร์นเครื่อง' : 'ชำระเงิน'}</div>
+        <div class="pay-row"><span class="label">${isCredit ? 'วันที่รับเครื่อง' : 'วันที่ชำระ'} :</span><span class="value">${this.escapeHtml(this.formatThaiDate(data.voucherDate))}</span></div>
+        <div class="pay-row"><span class="label">${isCredit ? 'ประเภท' : 'วิธีชำระ'} :</span><span class="value">${isCredit ? 'เครดิตเทิร์นเครื่อง' : data.paymentMethod === 'CASH' ? 'เงินสด' : 'โอนเงิน'}</span></div>
       </div>
       <div class="col">
         ${
-          data.paymentMethod === 'TRANSFER'
+          isCredit
+            ? `<div class="bank-info"><div class="bank-name">ยอดเครดิตที่ตกลง</div><div class="acc-name">เอกสารนี้ยืนยันการรับเครื่อง ยังไม่ยืนยันการนำเครดิตไปใช้</div></div>`
+            : data.paymentMethod === 'TRANSFER'
             ? `<div class="bank-row">
                  <span class="bank-icon">${this.icon('wallet', 14, '#fff')}</span>
                  <div class="bank-info">
@@ -794,7 +798,7 @@ export class VoucherHtmlBuilder {
         <div class="dual-signers">
           <!-- ผู้ออก (บริษัท) -->
           <div class="signer">
-            <div class="signer-title">ผู้ออกใบสำคัญจ่ายเงิน</div>
+            <div class="signer-title">ผู้ออก${title}</div>
             ${
               data.issuerSignatureBase64
                 ? `<img src="${data.issuerSignatureBase64}" alt="signature" style="height:42px;display:block;margin-bottom:2px;object-fit:contain" />`
@@ -807,7 +811,7 @@ export class VoucherHtmlBuilder {
           </div>
           <!-- ผู้รับเงิน (ผู้ขาย) -->
           <div class="signer">
-            <div class="signer-title">ผู้รับเงิน (ผู้ขาย)</div>
+            <div class="signer-title">${isCredit ? 'ผู้ส่งมอบเครื่อง' : 'ผู้รับเงิน (ผู้ขาย)'}</div>
             ${
               data.sellerSignatureBase64
                 ? `<img src="${data.sellerSignatureBase64}" alt="seller signature" style="height:42px;display:block;margin-bottom:2px;object-fit:contain" />`

@@ -2,6 +2,7 @@ import {
   IsString,
   IsOptional,
   IsNumber,
+  Min,
   IsIn,
   IsBoolean,
   IsUUID,
@@ -154,8 +155,8 @@ export class AcceptTradeInDto {
   policeReportAcknowledged?: boolean;
 
   @IsString({ message: 'กรุณาเลือกวิธีชำระเงิน' })
-  @IsIn(['CASH', 'TRANSFER'], { message: "วิธีชำระต้องเป็น 'CASH' หรือ 'TRANSFER'" })
-  paymentMethod: 'CASH' | 'TRANSFER';
+  @IsIn(['CASH', 'TRANSFER', 'TRADE_IN_CREDIT'], { message: 'กรุณาเลือกวิธีรับเงินหรือเครดิตเทิร์นเครื่อง' })
+  paymentMethod: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT';
 
   @IsString()
   @IsOptional()
@@ -252,7 +253,8 @@ export class QuickBuyTradeInDto {
   imei?: string;
 
   // Price (ราคาที่ตกลงเลย — ไม่แยก estimate/offer)
-  @IsNumber({}, { message: 'กรุณาระบุราคารับซื้อ' })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'ราคารับซื้อต้องเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง' })
+  @Min(0.01, { message: 'ราคารับซื้อต้องอย่างน้อย 0.01 บาท' })
   agreedPrice: number;
 
   // Anti-theft consent
@@ -327,4 +329,3 @@ export class UpsertValuationDto {
   @IsOptional()
   note?: string;
 }
-

@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  HttpException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -16,7 +17,7 @@ import {
 import { TradeInVoucherService } from './voucher.service';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
-import { Prisma } from '@prisma/client';
+import { Prisma, TradeInFlow } from '@prisma/client';
 import {
   normalizeNationalId,
   buildTradeInPiiEncryptedFields,
@@ -52,7 +53,7 @@ export class TradeInLifecycleService {
   ) {}
 
   // ─── Create ───────────────────────────────────────────────
-  async create(dto: CreateTradeInDto) {
+  async create(dto: CreateTradeInDto, flow: TradeInFlow = 'EXCHANGE') {
     // Walk-in หรือ existing customer ก็ได้ — ต้องมีอย่างน้อยหนึ่งอย่าง:
     // customerId, sellerContactId (party-master), หรือ sellerName (free-text)
     if (!dto.customerId && !dto.sellerContactId && !dto.sellerName) {
@@ -144,6 +145,7 @@ export class TradeInLifecycleService {
 
       return tx.tradeIn.create({
         data: {
+          flow,
           customerId: dto.customerId,
           productId: dto.productId,
           branchId: dto.branchId,
@@ -362,7 +364,11 @@ export class TradeInLifecycleService {
       if (!dto.sellerConsentSigned) {
         throw new BadRequestException('ต้องให้ผู้ขายเซ็นยืนยันความเป็นเจ้าของก่อน');
       }
-      if (dto.paymentMethod === 'TRANSFER') {
+      const paymentMethod = tradeIn.flow === 'EXCHANGE' ? 'TRADE_IN_CREDIT' : dto.paymentMethod;
+      if (tradeIn.flow !== 'EXCHANGE' && !['CASH', 'TRANSFER'].includes(paymentMethod)) {
+        throw new BadRequestException('รายการรับซื้อต้องเลือกจ่ายเงินสดหรือโอนให้ผู้ขาย');
+      }
+      if (paymentMethod === 'TRANSFER') {
         if (!dto.transferBankName || !dto.transferAccountNumber || !dto.transferAccountName) {
           throw new BadRequestException(
             'กรณีโอนต้องระบุธนาคาร, เลขบัญชี และชื่อบัญชีผู้รับโอน',
@@ -497,14 +503,14 @@ export class TradeInLifecycleService {
           idCardVerifiedById: userId,
           sellerConsentSigned: true,
           policeReportAcknowledged: dto.policeReportAcknowledged ?? false,
-          paymentMethod: dto.paymentMethod,
-          transferBankName: dto.paymentMethod === 'TRANSFER' ? dto.transferBankName : null,
+          paymentMethod,
+          transferBankName: paymentMethod === 'TRANSFER' ? dto.transferBankName : null,
           transferAccountNumber:
-            dto.paymentMethod === 'TRANSFER' ? dto.transferAccountNumber : null,
+            paymentMethod === 'TRANSFER' ? dto.transferAccountNumber : null,
           transferAccountName:
-            dto.paymentMethod === 'TRANSFER' ? dto.transferAccountName : null,
+            paymentMethod === 'TRANSFER' ? dto.transferAccountName : null,
           ...buildTradeInPiiEncryptedFields({
-            paymentMethod: dto.paymentMethod,
+            paymentMethod,
             transferAccountNumber: dto.transferAccountNumber,
             transferAccountName: dto.transferAccountName,
           }),
@@ -518,7 +524,7 @@ export class TradeInLifecycleService {
       if (tradeIn.flow === 'BUYBACK' && costPrice.gt(0)) {
         const cashAccountCode = await this.shopAccountResolver.resolveOutflowCashAccount(
           effectiveBranchId,
-          dto.paymentMethod,
+          paymentMethod,
           tx,
         );
         await this.shopTradeInTemplate.execute(
@@ -566,6 +572,21 @@ export class TradeInLifecycleService {
         'กรุณาเลือกสาขาที่รับซื้อก่อน — บัญชีของคุณไม่ได้ผูกกับสาขาเริ่มต้น',
       );
     }
+    if (!Number.isFinite(dto.agreedPrice) || dto.agreedPrice < 0.01 || new Prisma.Decimal(dto.agreedPrice).decimalPlaces() > 2) {
+      throw new BadRequestException('ราคารับซื้อต้องอย่างน้อย 0.01 บาท และมีทศนิยมไม่เกิน 2 ตำแหน่ง');
+    }
+    if (!dto.idCardVerified || !dto.sellerConsentSigned) {
+      throw new BadRequestException('กรุณายืนยันการตรวจบัตรและความยินยอมก่อนรับซื้อ');
+    }
+    if (!['CASH', 'TRANSFER'].includes(dto.paymentMethod)) {
+      throw new BadRequestException('กรุณาเลือกจ่ายเงินสดหรือโอนให้ผู้ขาย');
+    }
+    if (dto.paymentMethod === 'TRANSFER' &&
+      (!dto.transferBankName?.trim() || !dto.transferAccountNumber?.trim() || !dto.transferAccountName?.trim())) {
+      throw new BadRequestException('กรุณาระบุธนาคาร เลขบัญชี และชื่อบัญชีผู้ขายที่รับเงิน');
+    }
+    // Fail before creating an intermediate record when the SHOP funding account is missing.
+    await this.shopAccountResolver.resolveOutflowCashAccount(branchId, dto.paymentMethod);
 
     // ─── Stage 1: Create (PENDING_APPRAISAL) ───
     // ใช้ create() เดิม — validation seller/IMEI dup/ID card upload เกิดที่นี่
@@ -586,50 +607,62 @@ export class TradeInLifecycleService {
       sellerAddress: dto.sellerAddress,
       idCardPhotoBase64: dto.idCardPhotoBase64,
       idCardSource: dto.idCardSource,
-    });
+    }, 'BUYBACK');
 
-    // ─── Stage 2: Appraise (PENDING_APPRAISAL → APPRAISED) ───
-    await this.appraise(
-      created.id,
-      {
-        offeredPrice: dto.agreedPrice,
-        deviceCondition: dto.deviceCondition || 'B',
-      },
-      userId,
-    );
+    try {
+      // ─── Stage 2: Appraise (PENDING_APPRAISAL → APPRAISED) ───
+      await this.appraise(
+        created.id,
+        {
+          offeredPrice: dto.agreedPrice,
+          deviceCondition: dto.deviceCondition || 'B',
+        },
+        userId,
+      );
 
-    // ─── Stage 3: Accept (APPRAISED → ACCEPTED) ───
-    // Validation consent + payment + signature เกิดที่นี่
-    await this.accept(
-      created.id,
-      {
-        idCardVerified: dto.idCardVerified,
-        sellerConsentSigned: dto.sellerConsentSigned,
-        policeReportAcknowledged: true,
-        paymentMethod: dto.paymentMethod,
-        transferBankName: dto.transferBankName,
-        transferAccountNumber: dto.transferAccountNumber,
-        transferAccountName: dto.transferAccountName,
-        sellerSignatureBase64: dto.sellerSignatureBase64,
-      },
-      userId,
-    );
+      // ─── Stage 3: Accept (APPRAISED → ACCEPTED) ───
+      // Validation consent + payment + signature เกิดที่นี่
+      const accepted = await this.accept(
+        created.id,
+        {
+          idCardVerified: dto.idCardVerified,
+          sellerConsentSigned: dto.sellerConsentSigned,
+          policeReportAcknowledged: true,
+          paymentMethod: dto.paymentMethod,
+          transferBankName: dto.transferBankName,
+          transferAccountNumber: dto.transferAccountNumber,
+          transferAccountName: dto.transferAccountName,
+          sellerSignatureBase64: dto.sellerSignatureBase64,
+        },
+        userId,
+      );
 
-    // ─── Stage 4: Allocate voucher number ───
-    const voucher = await this.voucher.allocate(created.id);
+      // ─── Stage 4: Allocate voucher number ───
+      const voucher = await this.voucher.allocate(created.id);
 
-    // Re-fetch เพื่อตอบ IMEI warning (create() บันทึก imeiBlacklistResult ให้แล้ว)
-    const final = await this.prisma.tradeIn.findUnique({
-      where: { id: created.id },
-      select: { imeiBlacklistResult: true },
-    });
+      // Re-fetch เพื่อตอบ IMEI warning (create() บันทึก imeiBlacklistResult ให้แล้ว)
+      const final = await this.prisma.tradeIn.findUnique({
+        where: { id: created.id },
+        select: { imeiBlacklistResult: true },
+      });
 
-    return {
-      id: created.id,
-      voucherNumber: voucher.voucherNumber,
-      voucherDate: voucher.voucherDate,
-      imeiWarning: final?.imeiBlacklistResult === 'duplicate',
-    };
+      return {
+        id: created.id,
+        productId: accepted.productId,
+        productStatus: 'PHOTO_PENDING' as const,
+        voucherNumber: voucher.voucherNumber,
+        voucherDate: voucher.voucherDate,
+        imeiWarning: final?.imeiBlacklistResult === 'duplicate',
+      };
+    } catch (error) {
+      const response = error instanceof HttpException ? error.getResponse() : null;
+      const detail = typeof response === 'string' ? response
+        : response && typeof response === 'object' && 'message' in response ? response.message : null;
+      throw new BadRequestException({
+        message: `บันทึกรายการ ${created.id} แล้ว แต่ยังทำไม่ครบขั้นตอน${detail ? `: ${detail}` : ''} — เปิดรายละเอียดรายการเดิมเพื่อตรวจสถานะก่อนทำต่อ`,
+        tradeInId: created.id,
+      });
+    }
   }
 
   // ─── Reject / Complete ────────────────────────────────────

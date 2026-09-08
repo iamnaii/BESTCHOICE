@@ -65,6 +65,7 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
 
   const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    if (isPending) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     setIsDrawing(true);
@@ -78,6 +79,7 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    if (isPending) return;
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -89,6 +91,7 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
   };
 
   const endDraw = () => {
+    if (isPending) return;
     setIsDrawing(false);
     if (onDraftChange && canvasRef.current) {
       onDraftChange(canvasRef.current.toDataURL('image/png'));
@@ -96,6 +99,7 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
   };
 
   const clear = () => {
+    if (isPending) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -106,7 +110,7 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
 
   const handleSign = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !hasDrawn) return;
+    if (isPending || !canvas || !hasDrawn) return;
     onSign(canvas.toDataURL('image/png'));
   };
 
@@ -139,18 +143,19 @@ export default function SignaturePadFull({ onSign, isPending, label, signerName,
       <div className="flex gap-3 mt-4 w-full">
         <button
           onClick={clear}
+          disabled={isPending}
           className="px-6 py-3.5 text-sm border border-input rounded-xl hover:bg-muted"
         >
           ล้างลายเซ็น
         </button>
         <div className="flex-1" />
-        <button
+        {buttonText !== '' && <button
           onClick={handleSign}
           disabled={!hasDrawn || isPending}
           className="px-8 py-3.5 text-sm bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-50 font-medium"
         >
-          {isPending ? 'กำลังบันทึก...' : buttonText || 'ยืนยันลงนาม'}
-        </button>
+          {isPending ? 'กำลังบันทึก...' : buttonText ?? 'ยืนยันลงนาม'}
+        </button>}
       </div>
     </div>
   );

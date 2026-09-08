@@ -170,7 +170,7 @@ export default function TradeInTable({
       render: (item) => {
         const value = item.agreedPrice ?? item.offeredPrice ?? item.estimatedValue;
         const methodLabel =
-          item.paymentMethod === 'CASH'
+          item.paymentMethod === 'TRADE_IN_CREDIT' ? 'เครดิตเทิร์น' : item.paymentMethod === 'CASH'
             ? 'เงินสด'
             : item.paymentMethod === 'TRANSFER'
               ? 'โอน'

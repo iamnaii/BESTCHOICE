@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { expect } from '@playwright/test';
+
+/** Uses real trade-in/product services with synthetic data in the guarded preview database. */
+export async function checkTradeIn(page, origin, output, width) {
+  const info = await (await page.request.get(new URL('/api/preview/info', origin).href)).json();
+  assert.equal(info.isolated, true, 'Never create a purchase outside the isolated preview');
+  await page.goto(new URL('/trade-in?zone=shop', origin).href);
+  await page.getByRole('button', { name: 'รับซื้อเครื่อง', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.locator('select').selectOption({ label: 'LOCAL PREVIEW BRANCH' });
+  await dialog.getByText('ค้นหาหรือสร้างผู้ขาย', { exact: true }).click();
+  await page.getByPlaceholder('ค้นหาผู้ติดต่อ / เลขภาษี...').fill('ผู้ขายตัวอย่าง Local');
+  await page.getByRole('option', { name: /ผู้ขายตัวอย่าง Local/ }).click();
+  await expect(dialog.getByText('ผู้ขายตัวอย่าง Local', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'ถัดไป' }).click();
+  await dialog.locator('select').nth(0).selectOption('Apple');
+  await dialog.locator('select').nth(1).selectOption('iPhone 15');
+  await dialog.getByPlaceholder('0', { exact: true }).fill('5000');
+  await dialog.getByRole('button', { name: 'ถัดไป' }).click();
+  await dialog.getByRole('checkbox', { name: /ตรวจบัตรประชาชน/ }).check();
+  await dialog.getByRole('checkbox', { name: /ผู้ขายเซ็นยืนยัน/ }).check();
+  // Check the recipient UI on desktop and the cash path on mobile.
+  if (width >= 1024) {
+    await dialog.getByRole('radio', { name: 'โอนเงิน' }).check();
+    await dialog.getByLabel('ธนาคารผู้ขาย *').fill('ธนาคารผู้ขายตัวอย่าง');
+    await dialog.getByLabel('เลขบัญชีผู้ขาย *').fill('1234567890');
+    await dialog.getByLabel('ชื่อบัญชีผู้ขาย *').fill('ผู้ขายตัวอย่าง Local');
+  }
+  await expect(dialog.getByRole('button', { name: 'ยืนยันลงนาม', exact: true })).toHaveCount(0);
+  const canvas = dialog.locator('canvas');
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
+  assert.ok(box);
+  await page.mouse.move(box.x + 30, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 100, box.y + 60, { steps: 8 });
+  await page.mouse.up();
+  await page.screenshot({ path: join(output, `trade-in-payment-${width}.png`) });
+  const saved = page.waitForResponse(r => /\/trade-ins\/quick-buy(?:\?|$)/.test(r.url()) && r.request().method() === 'POST');
+  await dialog.getByRole('button', { name: 'บันทึก + ออกใบสำคัญ', exact: true }).click();
+  const response = await saved;
+  assert.equal(response.status(), 201, await response.text());
+  const result = await response.json();
+  assert.ok(result.productId);
+  assert.equal(result.productStatus, 'PHOTO_PENDING');
+  await expect(page.getByText('รับเครื่องแล้ว — รอเตรียมเครื่องก่อนขาย', { exact: true })).toBeVisible();
+  await page.screenshot({ path: join(output, `trade-in-handoff-${width}.png`) });
+  if (width >= 1024) {
+    const voucher = page.waitForResponse(r => /\/voucher\.pdf(?:\?|$)/.test(r.url()));
+    await page.getByRole('button', { name: 'พิมพ์เอกสารรับเครื่อง' }).click();
+    assert.equal((await voucher).status(), 200, 'Real voucher PDF must render');
+  }
+  await page.getByRole('link', { name: 'เปิดเครื่อง ดูรูปและราคา' }).click();
+  await expect(page).toHaveURL(new RegExp(`/products/${result.productId}`));
+  await page.getByRole('button', { name: 'แก้ราคา', exact: true }).click();
+  await page.getByRole('dialog').getByRole('spinbutton').nth(0).fill('6000');
+  await page.getByRole('dialog').getByRole('spinbutton').nth(1).fill('6500');
+  const price = page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes(`/products/${result.productId}`));
+  await page.getByRole('dialog').getByRole('button', { name: 'บันทึก', exact: true }).click();
+  assert.equal((await price).status(), 200);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'รูปถ่าย', exact: true }).click();
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNGkAAAAASUVORK5CYII=', 'base64');
+  for (let n = 0; n < 6; n++) {
+    await page.getByRole('button', { name: 'ถ่าย', exact: true }).first().click();
+    const upload = page.waitForResponse(r => /\/photos\/upload(?:\?|$)/.test(r.url()));
+    await page.locator('input[type=file]').setInputFiles({ name: 'synthetic-device.png', mimeType: 'image/png', buffer: png });
+    assert.equal((await upload).status(), 201);
+    await expect(page.getByRole('button', { name: 'ถ่าย', exact: true })).toHaveCount(5 - n);
+  }
+  const completed = page.waitForResponse(r => /\/photos\/complete(?:\?|$)/.test(r.url()));
+  await page.getByRole('button', { name: 'ยืนยันรูปครบ', exact: true }).click();
+  const completedResponse = await completed;
+  assert.equal(completedResponse.status(), 201);
+  assert.equal((await completedResponse.json()).enteredStock, true);
+  await expect(page.getByRole('button', { name: 'ยืนยันรูปครบ', exact: true })).toHaveCount(0);
+  const size = await page.evaluate(() => ({ content: document.documentElement.scrollWidth, viewport: innerWidth }));
+  assert.ok(size.content <= size.viewport + 1, 'Product handoff must fit the viewport');
+  await page.screenshot({ path: join(output, `trade-in-stock-${width}.png`), fullPage: true });
+}

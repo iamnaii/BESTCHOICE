@@ -1,3 +1,4 @@
+import TradeInProductHandoff from '@/components/trade-in/TradeInProductHandoff';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import Modal from '@/components/ui/Modal';
@@ -39,6 +40,9 @@ export default function TradeInDetailDialog({ id, onClose }: Props) {
               </div>
             )}
           </div>
+
+          {data.productId && <TradeInProductHandoff productId={data.productId}
+            pending={data.product?.status === 'PHOTO_PENDING'} />}
 
           {data.quoteBreakdown && (
             <div className="rounded-lg border border-border p-3 space-y-1">

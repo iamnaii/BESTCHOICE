@@ -286,7 +286,7 @@ async function main(): Promise<void> {
     );
 
     let linked = 0;
-    let failed = 0;
+    const failed = 0;
 
     // Process in batches of 100 to keep memory + lock contention bounded.
     const BATCH_SIZE = 100;

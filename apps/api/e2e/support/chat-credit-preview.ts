@@ -403,20 +403,35 @@ async function main() {
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     },
   );
-  const stop = async () => {
-    vite.kill('SIGTERM');
+  let stopping = false;
+  const stop = async (code = 0) => {
+    if (stopping) return;
+    stopping = true;
+    if (vite.pid && vite.exitCode === null && vite.signalCode === null) {
+      const exited = new Promise<void>(resolve => vite.once('exit', () => resolve()));
+      vite.kill('SIGTERM');
+      await exited;
+    }
     await app.close();
     await db.$disconnect();
-    process.exit(0);
+    await unlink(join(root, 'runtime.json')).catch(() => {});
+    process.exit(code);
   };
-  process.once('SIGTERM', stop);
-  process.once('SIGINT', stop);
-  await new Promise<void>((ready, reject) => {
-    vite.once('message', () => ready());
-    vite.once('exit', (code) => reject(new Error(`Preview Vite exited: ${code}`)));
+  process.once('SIGTERM', () => void stop());
+  process.once('SIGINT', () => void stop());
+  vite.once('error', error => { console.error(error.message); void stop(1); });
+  vite.once('exit', () => { if (!stopping) void stop(1); });
+  await new Promise<void>(ready => {
+    const timeout = setTimeout(() => { console.error('Preview Vite startup timed out'); void stop(1); }, 30000);
+    vite.once('message', () => { clearTimeout(timeout); ready(); });
   });
   info = {
     isolated: true,
+    repoRoot: process.env.CREDIT_REPO_ROOT,
+    runId: process.env.CREDIT_LOCAL_RUN_ID ?? null,
+    sourceFingerprint: process.env.CREDIT_SOURCE_FINGERPRINT ?? null,
+    sourceRevision: process.env.CREDIT_SOURCE_REVISION ?? null,
+    startedAt: new Date().toISOString(),
     ocr: realOcr ? 'real' : 'mock',
     storage: realStorage ? 'gcs' : 'local-files',
     roomUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/inbox/${room.id}`,

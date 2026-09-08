@@ -2,10 +2,11 @@
 # Run full test suite: lint + type check + E2E
 # Usage: ./tools/run-tests.sh [--skip-e2e]
 
-set -e
+set -euo pipefail
+cd "$(dirname "$0")/.."
 
 SKIP_E2E=false
-if [ "$1" = "--skip-e2e" ]; then
+if [ "${1:-}" = "--skip-e2e" ]; then
   SKIP_E2E=true
 fi
 
@@ -15,10 +16,10 @@ echo "=== Step 1: TypeScript Check ==="
 echo ""
 echo "=== Step 2: Lint ==="
 echo "--- API ---"
-cd apps/api && npx eslint src --ext .ts 2>/dev/null || echo "API lint: check manually"
+cd apps/api && npx eslint src --ext .ts
 cd ../..
 echo "--- Web ---"
-cd apps/web && npx eslint src --ext .ts,.tsx 2>/dev/null || echo "Web lint: check manually"
+cd apps/web && npx eslint src --ext .ts,.tsx
 cd ../..
 
 if [ "$SKIP_E2E" = false ]; then

@@ -9,6 +9,10 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
+    "local:check": "node tools/local-check.mjs",
+    "local:preview": "node tools/local-preview.mjs start",
+    "local:status": "node tools/local-preview.mjs status",
+    "local:stop": "node tools/local-preview.mjs stop",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",

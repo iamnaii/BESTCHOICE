@@ -1,3 +1,4 @@
+import { consumePaymentApproval, type PaymentApprovalContext } from './payment-approval-request.util';
 import {
   Injectable,
   Logger,
@@ -40,36 +41,19 @@ export class LateFeeWaiverService {
     userId: string,
     approverId: string,
     context?: { ipAddress?: string | null; userAgent?: string | null },
+    approvalContext?: PaymentApprovalContext,
   ) {
-    // T1-C2 — 4-eyes (Segregation of Duties): requester ≠ approver, and
-    // approver must be a manager-tier user. Waiver bypass previously let a
-    // single accountant self-approve fee writedowns, which our phone-shop
-    // margin (~10%) cannot absorb at volume.
-    if (!approverId) {
-      throw new BadRequestException('ต้องระบุผู้อนุมัติ (approverId)');
+    if (!approvalContext) {
+      throw new ForbiddenException('กรุณาส่งคำขออนุโลมค่าปรับผ่านหน้ารออนุมัติ');
     }
-    if (approverId === userId) {
-      throw new ForbiddenException(
-        'ผู้ขอยกเว้นและผู้อนุมัติต้องเป็นคนละคน (Segregation of Duties)',
-      );
-    }
-    const approver = await this.prisma.user.findUnique({
-      where: { id: approverId },
-      select: { id: true, role: true, isActive: true, deletedAt: true },
-    });
-    if (!approver || !approver.isActive || approver.deletedAt) {
-      throw new NotFoundException('ไม่พบผู้อนุมัติ หรือผู้อนุมัติถูกปิดการใช้งาน');
-    }
-    const approverAllowed = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
-    if (!approverAllowed.includes(approver.role)) {
-      throw new ForbiddenException(
-        `ผู้อนุมัติต้องมีสิทธิ์ OWNER / FINANCE_MANAGER / BRANCH_MANAGER (role ปัจจุบัน: ${approver.role})`,
-      );
-    }
+    if (!reason?.trim()) throw new BadRequestException('กรุณาระบุเหตุผลที่อนุโลมค่าปรับ');
+    approverId = approvalContext.actorId;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบรายการชำระ');
+      const approval = await consumePaymentApproval(tx, approvalContext, 'WAIVE_LATE_FEE', paymentId);
+      if (approval.requestedById !== userId) throw new ForbiddenException('ผู้ขออนุมัติไม่ตรงกับผู้ทำรายการ');
       if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
       // I5 fix: read lateFee / amountDue / amountPaid through Prisma.Decimal
       // so comparisons + log values cannot drift on large balances. The

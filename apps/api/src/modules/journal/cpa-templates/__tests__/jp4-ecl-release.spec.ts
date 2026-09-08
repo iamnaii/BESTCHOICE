@@ -1,3 +1,4 @@
+import { earlyPayoffWithApproval } from '../../../../../e2e/helpers/payment-approval';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -47,11 +48,11 @@ async function setup(): Promise<{ journal: JournalAutoService; adminId: string }
   // JournalPostAuditLog rows (asset flows) FK-reference journal_entries —
   // clear them BEFORE journalEntry or deleteMany trips P2003 (same cleanup
   // convention as early-payoff-jp4.template.spec.ts / ecl-terminated-base.spec.ts).
+  await prisma.receipt.deleteMany({});
   await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
   await prisma.badDebtProvision.deleteMany({});
-  await prisma.receipt.deleteMany({});
   await prisma.eDocument.deleteMany({});
   await prisma.signature.deleteMany({});
   await prisma.contractDocument.deleteMany({});
@@ -227,7 +228,7 @@ describe('JP4 early payoff releases 11-2102 ECL allowance (C1, 2026-07-30)', () 
     const journal = new JournalAutoService(prisma as any);
     const svc = buildService(journal);
 
-    await svc.earlyPayoff(contractId, adminId, { paymentMethod: 'CASH', discountPct: 50 });
+    await earlyPayoffWithApproval(prisma, svc, contractId, adminId, { paymentMethod: 'CASH', discountPct: 50 });
 
     // Contract flipped to EARLY_PAYOFF (the pre-existing JP4 behaviour).
     const updated = await prisma.contract.findUnique({ where: { id: contractId } });

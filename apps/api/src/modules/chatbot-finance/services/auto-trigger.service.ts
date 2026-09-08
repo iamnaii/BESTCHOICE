@@ -6,7 +6,7 @@ import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatRoomService } from './chat-room.service';
 import { TEMPLATES, ReminderPayload } from '../constants/reminder-templates';
 import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
-import { loadLateFeeConfig, resolveLateFee, LateFeeConfig } from '../../../utils/late-fee.util';
+import { loadLateFeeConfig, resolveLivePaymentLateFee, LateFeeConfig } from '../../../utils/late-fee.util';
 import { FinanceConfigService } from './finance-config.service';
 import {
   AutoTriggerType,
@@ -176,8 +176,8 @@ export class AutoTriggerService {
   }): Promise<'sent' | 'skipped' | 'failed'> {
     const amount = Number(args.payment.amountDue) - Number(args.payment.amountPaid);
     const daysOverdue = args.dayOffset < 0 ? Math.abs(args.dayOffset) : 0;
-    // Flat-bracket late fee (matches recordPayment / overdue cron / LIFF quote).
-    const fineAmount = Number(resolveLateFee(args.lateFeeConfig, daysOverdue));
+    // Follow the same frozen-after-payment fee as collection and chatbot quotes.
+    const fineAmount = Number(resolveLivePaymentLateFee(args.payment, args.lateFeeConfig, new Date()));
 
     const payload: ReminderPayload = {
       customerName: args.customerName,

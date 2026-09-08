@@ -2,6 +2,9 @@ import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import { attachReceiptPaymentHistory } from './receipt-payment-history';
+import { getReceiptDocumentBalance } from './receipt-document-balance';
+import { attachReceiptFeeBreakdowns } from './receipt-fee-breakdown';
 
 /** Read-only receipt queries (list, by-contract, by-id, by-number). */
 export class ReceiptQueryService {
@@ -100,7 +103,7 @@ export class ReceiptQueryService {
     }));
 
     return {
-      data: dataWithCn,
+      data: await attachReceiptFeeBreakdowns(this.prisma, dataWithCn),
       total,
       page,
       limit,
@@ -126,7 +129,10 @@ export class ReceiptQueryService {
       ? await this.prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
       : [];
     const nameById = new Map(users.map((u) => [u.id, u.name]));
-    return receipts.map((r) => ({ ...r, issuedByName: nameById.get(r.issuedById) ?? null }));
+    const withFees = await attachReceiptFeeBreakdowns(this.prisma, receipts.map((r) => ({
+      ...r, issuedByName: nameById.get(r.issuedById) ?? null,
+    })));
+    return attachReceiptPaymentHistory(this.prisma, withFees);
   }
 
   /** Get a single receipt */
@@ -235,7 +241,18 @@ export class ReceiptQueryService {
         })
       : null;
 
-    return { ...receipt, company, issuer, payment, priorReceiptCount, voidedRef };
+    const [receiptWithFees] = await attachReceiptFeeBreakdowns(this.prisma, [receipt]);
+    const [[receiptWithHistory], documentBalance] = await Promise.all([
+      attachReceiptPaymentHistory(this.prisma, [receiptWithFees]),
+      getReceiptDocumentBalance(this.prisma, receipt, {
+        financedAmount: receipt.contract.financedAmount,
+        storeCommission: receipt.contract.storeCommission,
+        interestTotal: receipt.contract.interestTotal,
+        vatAmount: receipt.contract.vatAmount,
+        totalMonths: receipt.contract.totalMonths,
+      }),
+    ]);
+    return { ...receiptWithHistory, ...documentBalance, company, issuer, payment, priorReceiptCount, voidedRef };
   }
 
   /**
@@ -305,6 +322,7 @@ export class ReceiptQueryService {
       },
     });
 
-    return { ...receipt, company };
+    const [receiptWithFees] = await attachReceiptFeeBreakdowns(this.prisma, [receipt]);
+    return { ...receiptWithFees, company };
   }
 }

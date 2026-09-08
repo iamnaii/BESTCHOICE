@@ -21,8 +21,12 @@ describe('ExpenseDocumentsService', () => {
   let payroll: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let settlement: any;
+  let accountingPolicy: string;
 
   beforeEach(() => {
+    accountingPolicy = JSON.stringify({
+      'user-1': ['EXPENSE_POST', 'EXPENSE_APPROVE', 'EXPENSE_CANCEL'],
+    });
     prisma = {
       $transaction: jest.fn(async (cb: any) => cb(prisma)),
       $executeRawUnsafe: jest.fn().mockResolvedValue(1),
@@ -69,6 +73,9 @@ describe('ExpenseDocumentsService', () => {
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
         findFirst: jest.fn().mockImplementation((args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'reverse_reason_required') {
             return Promise.resolve({ value: 'false' });
           }
@@ -94,9 +101,17 @@ describe('ExpenseDocumentsService', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
       },
-      // D1.2.1.3 — approve() validates approvers_list against User table.
-      // Default: list is empty (only OWNER may approve).
+      // Current database identity and explicit grants apply to every lifecycle call.
       user: {
+        findFirst: jest.fn(async ({ where }: { where: { id: string } }) => {
+          if (where.id === 'user-owner') {
+            return { id: where.id, name: 'Owner', role: 'OWNER', branchId: null };
+          }
+          if (['user-1', 'user-not-listed', 'user-acc-1', 'user-active', 'user-x'].includes(where.id)) {
+            return { id: where.id, name: 'Accountant', role: 'ACCOUNTANT', branchId: null };
+          }
+          return null;
+        }),
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
@@ -139,6 +154,7 @@ describe('ExpenseDocumentsService', () => {
     it('generates number, creates header + ExpenseDetail with lines in same tx', async () => {
       await service.create(
         {
+          approvedById: 'forged-approver',
           documentType: 'EXPENSE',
           branchId: 'branch-1',
           documentDate: '2026-05-10',
@@ -156,6 +172,7 @@ describe('ExpenseDocumentsService', () => {
             number: 'EX-20260510-0001',
             documentType: 'EXPENSE',
             createdById: 'user-1',
+            approvedById: null,
             status: 'DRAFT',
           }),
         }),
@@ -355,6 +372,7 @@ describe('ExpenseDocumentsService', () => {
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-1',
         status: 'DRAFT',
+        approvedById: 'legacy-nominee',
         documentType: 'EXPENSE',
         paymentMethod: 'CASH',
         depositAccountCode: '11-1101',
@@ -364,6 +382,8 @@ describe('ExpenseDocumentsService', () => {
       await service.post('doc-1', 'user-1');
       expect(sameDay.execute).toHaveBeenCalledWith('doc-1', expect.anything());
       expect(accrual.execute).not.toHaveBeenCalled();
+      expect(prisma.expenseDocument.update).toHaveBeenCalledWith({ where: { id: 'doc-1' }, data: { approvedById: null } });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'POSTED', userId: 'user-1' }) }));
     });
     it('calls Accrual template when paymentMethod missing', async () => {
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
@@ -698,6 +718,9 @@ describe('ExpenseDocumentsService', () => {
     it('D1.2.1.2: rejects post when approval_enabled=true AND totalAmount >= threshold (default 50k)', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           // approval_threshold key absent -> readNumberFlag falls back to 50000
           if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
@@ -724,6 +747,9 @@ describe('ExpenseDocumentsService', () => {
     it('D1.2.1.2: post proceeds normally when totalAmount < threshold (below 50k)', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
           return Promise.resolve(null);
@@ -748,6 +774,9 @@ describe('ExpenseDocumentsService', () => {
     it('D1.2.1.2: OWNER-configured threshold overrides default (e.g. 100k)', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           if (args.where.key === 'approval_threshold') return Promise.resolve({ value: '100000' });
           if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
@@ -774,6 +803,9 @@ describe('ExpenseDocumentsService', () => {
     it('D1.2.1.2: negative threshold clamps to 0 -> all docs gated when flag on', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           if (args.where.key === 'approval_threshold') return Promise.resolve({ value: '-100000' });
           if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
@@ -799,6 +831,9 @@ describe('ExpenseDocumentsService', () => {
     it('D1.2.1.2: gates low-value PAYROLL via default doctype filter (OR composition)', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           // approval_required_doc_types absent → falls back to ['PAYROLL']
           if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
@@ -825,6 +860,9 @@ describe('ExpenseDocumentsService', () => {
     it('D1.2.1.2: non-required doctype below threshold passes (OR neither true)', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
           return Promise.resolve(null);
@@ -920,6 +958,9 @@ describe('ExpenseDocumentsService', () => {
     it('rejects when source status is not DRAFT', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           return Promise.resolve(null);
         },
@@ -937,6 +978,9 @@ describe('ExpenseDocumentsService', () => {
     it('flips DRAFT → PENDING_APPROVAL when approval_enabled is true', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           return Promise.resolve(null);
         },
@@ -959,6 +1003,9 @@ describe('ExpenseDocumentsService', () => {
     it('rejects when doc is soft-deleted', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
           return Promise.resolve(null);
         },
@@ -995,7 +1042,7 @@ describe('ExpenseDocumentsService', () => {
 
     // NOTE: D1.2.1.6 tests pass `'OWNER'` as the third arg so the D1.2.1.3
     // approver-list gate short-circuits. These tests focus on auto-post + audit
-    // behaviour, not on the approvers_list permission check (which is covered
+    // behaviour, not on the accounting permission check (which is covered
     // exhaustively in the `approve (D1.2.1.3)` describe block below).
     it('rejects when source status is not PENDING_APPROVAL', async () => {
       setupApprovableDoc({ status: 'DRAFT' });
@@ -1025,6 +1072,9 @@ describe('ExpenseDocumentsService', () => {
       transition.assertCanApprove = jest.fn();
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'auto_post_on_approve') {
             return Promise.resolve({ value: 'false' });
           }
@@ -1079,6 +1129,9 @@ describe('ExpenseDocumentsService', () => {
       transition.assertCanApprove = jest.fn();
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
+          if (args.where.key === 'accounting_permissions') {
+            return Promise.resolve({ value: accountingPolicy });
+          }
           if (args.where.key === 'auto_post_on_approve') {
             return Promise.resolve({ value: 'false' });
           }
@@ -1134,7 +1187,7 @@ describe('ExpenseDocumentsService', () => {
     });
   });
 
-  // D1.2.1.3 — approvers_list role gate
+  // Current actor grants authorize approval; legacy role arguments are not trusted.
   describe('approve (D1.2.1.3)', () => {
     function setupPendingDoc(overrides: Record<string, unknown> = {}) {
       // Doc must include the fields executePostBody reads (totalAmount,
@@ -1169,9 +1222,9 @@ describe('ExpenseDocumentsService', () => {
       });
     }
 
-    it('OWNER can always approve regardless of approvers_list', async () => {
+    it('the current OWNER can approve without an explicit grant', async () => {
       setupPendingDoc();
-      // user.findMany returns [] (default) but OWNER short-circuits the check
+      // OWNER is resolved from the current database row, not the legacy role argument.
       await service.approve('doc-app', 'user-owner', 'OWNER');
       const updateCalls = prisma.expenseDocument.update.mock.calls;
       expect(
@@ -1182,62 +1235,35 @@ describe('ExpenseDocumentsService', () => {
       ).toBe(true);
     });
 
-    it('rejects non-OWNER users not on the approvers_list', async () => {
+    it('rejects an active accountant without EXPENSE_APPROVE', async () => {
       setupPendingDoc();
-      prisma.systemConfig.findFirst.mockImplementation(
-        (args: { where: { key: string } }) => {
-          if (args.where.key === 'approvers_list') {
-            return Promise.resolve({ value: JSON.stringify(['user-other']) });
-          }
-          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
-          return Promise.resolve(null);
-        },
-      );
-      prisma.user.findMany.mockResolvedValue([{ id: 'user-other' }]);
       await expect(service.approve('doc-app', 'user-not-listed', 'ACCOUNTANT')).rejects.toThrow(
         ForbiddenException,
       );
+      expect(prisma.expenseDocument.update).not.toHaveBeenCalled();
     });
 
-    it('accepts non-OWNER users that ARE on the approvers_list', async () => {
+    it('accepts an active accountant explicitly granted EXPENSE_APPROVE', async () => {
       setupPendingDoc();
-      prisma.systemConfig.findFirst.mockImplementation(
-        (args: { where: { key: string } }) => {
-          if (args.where.key === 'approvers_list') {
-            return Promise.resolve({ value: JSON.stringify(['user-acc-1']) });
-          }
-          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
-          return Promise.resolve(null);
-        },
-      );
-      prisma.user.findMany.mockResolvedValue([{ id: 'user-acc-1' }]);
+      accountingPolicy = JSON.stringify({ 'user-acc-1': ['EXPENSE_APPROVE'] });
       await service.approve('doc-app', 'user-acc-1', 'ACCOUNTANT');
-      const updateCalls = prisma.expenseDocument.update.mock.calls;
-      expect(
-        updateCalls.some((c: unknown[]) => {
-          const arg = c[0] as { data?: { status?: string } };
-          return arg?.data?.status === 'APPROVED';
-        }),
-      ).toBe(true);
+      expect(prisma.expenseDocument.update).toHaveBeenCalledWith({
+        where: { id: 'doc-app' },
+        data: { status: 'APPROVED', approvedById: 'user-acc-1' },
+      });
     });
 
-    it('drops stale/inactive user IDs from approvers_list', async () => {
+    it('rejects a stale or inactive actor even with an explicit grant', async () => {
       setupPendingDoc();
-      prisma.systemConfig.findFirst.mockImplementation(
-        (args: { where: { key: string } }) => {
-          if (args.where.key === 'approvers_list') {
-            return Promise.resolve({ value: JSON.stringify(['user-stale', 'user-active']) });
-          }
-          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
-          return Promise.resolve(null);
-        },
-      );
-      // findMany only returns the active user; the stale ID is dropped
-      prisma.user.findMany.mockResolvedValue([{ id: 'user-active' }]);
-      // user-stale tries to approve but is filtered out → Forbidden
+      accountingPolicy = JSON.stringify({
+        'user-stale': ['EXPENSE_APPROVE'],
+        'user-active': ['EXPENSE_APPROVE'],
+      });
+      // The active-only database lookup cannot resolve the stale actor.
       await expect(service.approve('doc-app', 'user-stale', 'ACCOUNTANT')).rejects.toThrow(
         ForbiddenException,
       );
+      expect(prisma.expenseDocument.update).not.toHaveBeenCalled();
     });
 
     it('rejects when source status is not PENDING_APPROVAL', async () => {
@@ -1247,24 +1273,25 @@ describe('ExpenseDocumentsService', () => {
       );
     });
 
-    it('falls back to "OWNER-only" when approvers_list JSON is malformed', async () => {
+    it('denies non-OWNER approval when accounting_permissions is malformed', async () => {
       setupPendingDoc();
-      prisma.systemConfig.findFirst.mockImplementation(
-        (args: { where: { key: string } }) => {
-          if (args.where.key === 'approvers_list') {
-            return Promise.resolve({ value: 'not-json' });
-          }
-          return Promise.resolve(null);
-        },
-      );
-      // Non-OWNER can't approve when list is empty/malformed
+      accountingPolicy = 'not-json';
       await expect(service.approve('doc-app', 'user-x', 'ACCOUNTANT')).rejects.toThrow(
         ForbiddenException,
       );
+      expect(prisma.expenseDocument.update).not.toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
+    it('ignores a nominated approver in draft updates', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({ id: 'doc-1', status: 'DRAFT', deletedAt: null });
+      await service.update('doc-1', { description: 'แก้ไขร่าง', approvedById: 'forged-approver' } as never, 'user-1');
+      const data = prisma.expenseDocument.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('approvedBy');
+      expect(data).not.toHaveProperty('approvedById');
+    });
+
     it('rejects update on POSTED doc', async () => {
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({ id: 'doc-1', status: 'POSTED' });
       transition.assertCanEdit.mockImplementation(() => { throw new BadRequestException('locked'); });
@@ -1447,7 +1474,7 @@ describe('ExpenseDocumentsService', () => {
       // Lock is taken at the start of the tx, before any read.
       expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
         expect.stringContaining('pg_advisory_xact_lock'),
-        'void:doc-1',
+        'post:doc-1',
       );
     });
     it('throws when CAS detects another caller already voided the doc', async () => {
@@ -1609,6 +1636,9 @@ describe('ExpenseDocumentsService', () => {
     // D1.2.7.4 — cascade block toggle
     it('D1.2.7.4: OWNER can disable cascade block via SystemConfig — void proceeds even with pending CN/SE', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'accounting_permissions') {
+          return Promise.resolve({ value: accountingPolicy });
+        }
         if (args.where.key === 'reverse_block_cascaded') return Promise.resolve({ value: 'false' });
         if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
         return Promise.resolve(null);
@@ -1654,7 +1684,9 @@ describe('ExpenseDocumentsService', () => {
     it('D1.2.7.4: default behavior unchanged when SystemConfig key absent (flag = true)', async () => {
       // No SystemConfig override → cascade block enforced (= existing C3.4 behavior).
       // Pass reasonCode so the test fails specifically on cascade, not reason-required.
-      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      prisma.systemConfig.findFirst = jest.fn(async ({ where }: { where: { key: string } }) =>
+        where.key === 'accounting_permissions' ? { value: accountingPolicy } : null,
+      );
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-1', documentType: 'EXPENSE',
       });
@@ -1666,7 +1698,9 @@ describe('ExpenseDocumentsService', () => {
 
     // D1.2.7.1 — reason_required toggle
     it('D1.2.7.1: rejects void when no reasonCode and flag is on (default)', async () => {
-      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      prisma.systemConfig.findFirst = jest.fn(async ({ where }: { where: { key: string } }) =>
+        where.key === 'accounting_permissions' ? { value: accountingPolicy } : null,
+      );
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-1', documentType: 'EXPENSE',
       });
@@ -1677,6 +1711,9 @@ describe('ExpenseDocumentsService', () => {
     // D1.2.7.2 — DB-driven reasons whitelist
     it('D1.2.7.2: rejects void when reasonCode is not in configured whitelist', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'accounting_permissions') {
+          return Promise.resolve({ value: accountingPolicy });
+        }
         if (args.where.key === 'reverse_reasons') {
           return Promise.resolve({
             value: JSON.stringify([{ code: 'manager_decision', label: 'x' }]),
@@ -1697,6 +1734,9 @@ describe('ExpenseDocumentsService', () => {
 
     it('D1.2.7.2: accepts custom reasonCode when in configured whitelist', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'accounting_permissions') {
+          return Promise.resolve({ value: accountingPolicy });
+        }
         if (args.where.key === 'reverse_reasons') {
           return Promise.resolve({
             value: JSON.stringify([{ code: 'manager_decision', label: 'x' }]),
@@ -1742,6 +1782,9 @@ describe('ExpenseDocumentsService', () => {
     // D1.2.6.4 — future-date reverseDate block
     it('D1.2.6.4: rejects future-dated reverseDate when flag is off', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'accounting_permissions') {
+          return Promise.resolve({ value: accountingPolicy });
+        }
         if (args.where.key === 'payment_date_allow_future') return Promise.resolve({ value: 'false' });
         if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
         return Promise.resolve(null);
@@ -1796,6 +1839,9 @@ describe('ExpenseDocumentsService', () => {
 
     it('D1.2.7.1: allows void without reasonCode when flag is off', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'accounting_permissions') {
+          return Promise.resolve({ value: accountingPolicy });
+        }
         if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
         return Promise.resolve(null);
       });
@@ -1964,6 +2010,9 @@ describe('ExpenseDocumentsService', () => {
 
     it('rejects with BadRequest "ระบบเงินสดย่อยถูกปิดใช้งาน" when petty_cash_enabled = false', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'accounting_permissions') {
+          return Promise.resolve({ value: accountingPolicy });
+        }
         if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'false' });
         return Promise.resolve(null);
       });
@@ -1978,6 +2027,9 @@ describe('ExpenseDocumentsService', () => {
     it('proceeds past the flag check when petty_cash_enabled = true (explicit)', async () => {
       // Default-true behaviour: flag missing OR equal to "true" should allow.
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'accounting_permissions') {
+          return Promise.resolve({ value: accountingPolicy });
+        }
         if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'true' });
         return Promise.resolve(null);
       });
@@ -1996,7 +2048,9 @@ describe('ExpenseDocumentsService', () => {
     });
 
     it('proceeds past the flag check when SystemConfig row missing (default true)', async () => {
-      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      prisma.systemConfig.findFirst = jest.fn(async ({ where }: { where: { key: string } }) =>
+        where.key === 'accounting_permissions' ? { value: accountingPolicy } : null,
+      );
       try {
         await service.createPettyCash(
           validDto as never,
@@ -2009,6 +2063,9 @@ describe('ExpenseDocumentsService', () => {
 
     it('proceeds past the flag check on unparseable SystemConfig value (defaults to true)', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'accounting_permissions') {
+          return Promise.resolve({ value: accountingPolicy });
+        }
         if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'maybe' });
         return Promise.resolve(null);
       });

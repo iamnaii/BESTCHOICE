@@ -1,3 +1,4 @@
+import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,7 +22,7 @@ import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { accountDisplayName } from '@/utils/accountName';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
-import { useApprovalActions, getApprovalReason, canApprove } from '@/hooks/useApprovalActions';
+import { useApprovalActions, getApprovalReason } from '@/hooks/useApprovalActions';
 
 // ─── Types ───
 interface ExpenseDocument {
@@ -125,7 +126,7 @@ export default function ExpensesPage() {
   // surface. When OWNER disables, the favorites tab + entry button are
   // hidden. Default true so first paint matches legacy behaviour.
   const { templatesEnabled } = useUiFlags();
-  const isOwner = currentUser?.role === 'OWNER';
+  const permissions = useAccountingPermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFilter = searchParams.get('tab') || 'all';
   const statusFilter = searchParams.get('status') || '';
@@ -240,11 +241,7 @@ export default function ExpensesPage() {
   // row actions share the same react-query cache invalidations + sonner toasts.
   const uiFlags = useUiFlags();
   const { submitForApproval, approve } = useApprovalActions();
-  const isApprover = canApprove({
-    userId: currentUser?.id,
-    userRole: currentUser?.role,
-    approversList: uiFlags.approversList,
-  });
+  const isApprover = permissions.can('EXPENSE_APPROVE');
 
   const total = expensesData?.total ?? 0;
 
@@ -413,7 +410,7 @@ export default function ExpensesPage() {
                       {/* Legacy direct POST — hidden when approval workflow is on so
                           users follow the new lifecycle. Backend gate also rejects
                           direct POST on DRAFT when approvalEnabled is true. */}
-                      {!uiFlags.approvalEnabled && (
+                      {!uiFlags.approvalEnabled && permissions.can('EXPENSE_POST') && (
                         <button
                           onClick={() => setConfirmDialog({ open: true, message: `โพสต์ "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'post' }) })}
                           className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
@@ -443,7 +440,7 @@ export default function ExpensesPage() {
                   )}
                   {/* APPROVED docs that didn't auto-post fall back to the legacy
                       POST action — OWNER can still finalize them manually. */}
-                  {e.status === 'APPROVED' && isOwner && (
+                  {e.status === 'APPROVED' && permissions.can('EXPENSE_POST') && (
                     <button
                       onClick={() =>
                         setConfirmDialog({
@@ -457,7 +454,7 @@ export default function ExpensesPage() {
                       โพสต์
                     </button>
                   )}
-                  {isOwner && (
+                  {permissions.can('EXPENSE_CANCEL') && (
                     <button
                       onClick={() => { setReverseDialog({ open: true, id: e.id, number: e.number }); setOpenMenuId(null); }}
                       className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive"

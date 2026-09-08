@@ -119,3 +119,31 @@ describe('PaymentTable — mode="paid" (ชำระครบ tab)', () => {
     expect(screen.queryByText('ปิดยอดก่อนกำหนด')).not.toBeInTheDocument();
   });
 });
+
+
+describe('PaymentTable — receipt cash on settled installments', () => {
+  it('shows bundled cash and net final cash while preserving the full obligation', () => {
+    renderTable('paid', [
+      makePayment({ id: 'bundle', installmentNo: 4, amountDue: '4472', amountPaid: '4472', receiptCashAmount: '5516.00' }),
+      makePayment({ id: 'last', installmentNo: 10, amountDue: '4472', amountPaid: '4472', receiptCashAmount: '3428.00' }),
+    ]);
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0].querySelectorAll('td')[4]).toHaveTextContent('4,472 ฿');
+    expect(rows[0].querySelectorAll('td')[5]).toHaveTextContent('5,516 ฿');
+    expect(rows[1].querySelectorAll('td')[4]).toHaveTextContent('4,472 ฿');
+    expect(rows[1].querySelectorAll('td')[5]).toHaveTextContent('3,428 ฿');
+  });
+
+  it('distinguishes unavailable receipt evidence from a proven zero amount', () => {
+    renderTable('paid', [makePayment({ id: 'unknown', receiptCashAmount: null }), makePayment({ id: 'zero', receiptCashAmount: '0.00' })]);
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0].querySelectorAll('td')[5]).toHaveTextContent('–');
+    expect(rows[0].querySelectorAll('td')[5].querySelector('span')).toHaveAttribute('title', 'ไม่พบข้อมูลยอดรับจากใบเสร็จ');
+    expect(rows[1].querySelectorAll('td')[5]).toHaveTextContent('0 ฿');
+  });
+
+  it('pending mode continues to show installment settlement for outstanding arithmetic', () => {
+    renderTable('pending', [makePayment({ status: 'PARTIALLY_PAID', amountPaid: '3179', receiptCashAmount: '9999' })]);
+    expect(screen.getAllByRole('row')[1].querySelectorAll('td')[5]).toHaveTextContent('3,179 ฿');
+  });
+});

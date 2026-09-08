@@ -19,6 +19,7 @@ const basePayment = {
   dueDate: overdue5d,
   amountDue: D('4472.00'),
   amountPaid: D('0.00'),
+  lateFee: D('100.00'),
   lateFeeWaived: false,
 };
 

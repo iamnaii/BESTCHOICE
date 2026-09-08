@@ -27,6 +27,7 @@ export function lateFeeAtPostDate(
   row: {
     dueDate: Date;
     amountDue: Prisma.Decimal | string | number;
+    amountPaid?: Prisma.Decimal | string | number;
     lateFee: Prisma.Decimal | string | number;
     lateFeeWaived: boolean;
   },

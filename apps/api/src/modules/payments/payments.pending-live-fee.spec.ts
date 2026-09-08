@@ -17,18 +17,38 @@ describe('PaymentQueryService — getPendingPayments live late fee', () => {
   };
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 
-  function makeService(rows: Record<string, unknown>[]) {
+  function makeService(rows: Record<string, unknown>[], journalEntries: unknown[] = []) {
     const findMany = jest.fn().mockResolvedValue(rows);
     const count = jest.fn().mockResolvedValue(rows.length);
     const systemConfig = { findUnique: jest.fn(BRACKET) };
     const groupBy = jest.fn().mockResolvedValue([]);
-    const prisma = { payment: { findMany, count, groupBy }, systemConfig };
+    const prisma = { payment: { findMany, count, groupBy }, systemConfig,
+      journalEntry: { findMany: jest.fn().mockResolvedValue(journalEntries) },
+      receipt: { groupBy: jest.fn().mockResolvedValue([]) },
+    };
     return new PaymentQueryService(prisma as unknown as never);
   }
 
   const D = (v: string) => new Prisma.Decimal(v);
   const lateFeeNum = (row: { lateFee: { toString(): string } }) =>
     new Prisma.Decimal(row.lateFee.toString()).toNumber();
+
+  it('returns only the fee already paid from the ledger, with zero for an untouched installment', async () => {
+    const rows = ['p-partial', 'p-new'].map(id => ({
+      id, status: id === 'p-partial' ? 'PARTIALLY_PAID' : 'PENDING',
+      dueDate: daysAgo(30), amountDue: D('6079'), amountPaid: D(id === 'p-partial' ? '3179' : '0'),
+      lateFeeWaived: false, lateFee: D('100'), contract: {},
+    }));
+    const entry = (reversed: boolean) => ({
+      status: 'POSTED', deletedAt: null,
+      metadata: { tag: 'receipt', paymentId: 'p-partial', reversed },
+      lines: [{ accountCode: '42-1103', debit: D('0'), credit: D('100'), deletedAt: null }],
+    });
+    const res = await makeService(rows, [entry(false), entry(true)]).getPendingPayments({});
+    expect(res.data.map(p => p.lateFeePaid)).toEqual(['100.00', '0.00']);
+    expect(res.data.map(p => p.lateFee.toString())).toEqual(['100', '100']);
+    expect(res.data[0].amountPaid.toString()).toBe('3179');
+  });
 
   it('overrides the stale stored stamp with the live flat-bracket tier2 fee', async () => {
     const service = makeService([

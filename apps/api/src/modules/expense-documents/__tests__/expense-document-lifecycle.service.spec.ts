@@ -17,7 +17,7 @@ import { makeExpenseDocumentsService } from './support/make-expense-documents-se
  * Branches pinned:
  *   (a) notification_on_pending=false → early return (no send)
  *   (b) notifications undefined        → early return (no throw)
- *   (c) empty approvers_list           → OWNER fallback (send to owners)
+ *   (c) no explicit grants            → only current OWNER users receive
  *   (d) Promise.allSettled             → one failed recipient is swallowed;
  *                                        the others still receive + no rethrow
  */
@@ -29,7 +29,7 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
    */
   function makePrisma(opts: {
     configValues?: Record<string, string>;
-    users?: Array<{ id: string }>;
+    users?: Array<{ id: string; role: string; branchId: string | null }>;
   } = {}) {
     const configValues: Record<string, string> = {
       approval_enabled: 'true',
@@ -41,7 +41,8 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
       expenseDocument: {
         findUniqueOrThrow: jest
           .fn()
-          .mockResolvedValue({ id: 'doc-1', status: 'DRAFT', deletedAt: null }),
+          .mockResolvedValue({ id: 'doc-1', status: 'DRAFT', branchId: 'branch-1', deletedAt: null }),
+        findUnique: jest.fn().mockResolvedValue({ branchId: 'branch-1' }),
         update: jest.fn().mockResolvedValue({
           id: 'doc-1',
           number: 'EX-20260610-0001',
@@ -59,6 +60,11 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
         }),
       },
       user: {
+        findFirst: jest.fn(async ({ where }: { where: { id: string } }) =>
+          where.id === 'user-1'
+            ? { id: 'user-1', name: 'Requester', role: 'ACCOUNTANT', branchId: 'branch-1' }
+            : null,
+        ),
         findMany: jest.fn().mockResolvedValue(opts.users ?? []),
       },
     };
@@ -69,7 +75,7 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
     const send = jest.fn().mockResolvedValue(undefined);
     const prisma = makePrisma({
       configValues: { notification_on_pending: 'false' },
-      users: [{ id: 'owner-1' }],
+      users: [{ id: 'owner-1', role: 'OWNER', branchId: null }],
     });
     const { service } = makeExpenseDocumentsService({ prisma, notifications: { send } });
 
@@ -79,7 +85,7 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
   });
 
   it('(b) notifications undefined → submit still succeeds, no throw', async () => {
-    const prisma = makePrisma({ users: [{ id: 'owner-1' }] });
+    const prisma = makePrisma({ users: [{ id: 'owner-1', role: 'OWNER', branchId: null }] });
     // notifications omitted → factory default undefined.
     const { service } = makeExpenseDocumentsService({ prisma });
 
@@ -88,17 +94,20 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
     expect(result.status).toBe('PENDING_APPROVAL');
   });
 
-  it('(c) empty approvers_list → falls back to OWNER users', async () => {
+  it('(c) no explicit grants → notifies only current OWNER users', async () => {
     const send = jest.fn().mockResolvedValue(undefined);
-    // No approvers_list config row → getApproversList returns [] → OWNER fallback.
-    const prisma = makePrisma({ users: [{ id: 'owner-1' }, { id: 'owner-2' }] });
+    // OWNER is eligible without an explicit accounting permission assignment.
+    const prisma = makePrisma({ users: [{ id: 'owner-1', role: 'OWNER', branchId: null }, { id: 'owner-2', role: 'OWNER', branchId: null }] });
     const { service } = makeExpenseDocumentsService({ prisma, notifications: { send } });
 
     await service.submitForApproval('doc-1', 'user-1');
 
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ role: 'OWNER', isActive: true, deletedAt: null }),
+        where: expect.objectContaining({
+          role: { in: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'] },
+          isActive: true, deletedAt: null, isSystemUser: false,
+        }),
       }),
     );
     expect(send).toHaveBeenCalledTimes(2);
@@ -110,12 +119,41 @@ describe('ExpenseDocumentLifecycleService — notifyApprovers fan-out (via facad
     );
   });
 
+  it('notifies assigned approvers and restricts branch managers to the document branch', async () => {
+    const send = jest.fn().mockResolvedValue(undefined);
+    const prisma = makePrisma({
+      configValues: {
+        accounting_permissions: JSON.stringify({
+          accountant: ['EXPENSE_APPROVE'],
+          'bm-same': ['EXPENSE_APPROVE'],
+          'bm-other': ['EXPENSE_APPROVE'],
+          'bm-no-branch': ['EXPENSE_APPROVE'],
+          unassigned: ['EXPENSE_POST'],
+        }),
+      },
+      users: [
+        { id: 'accountant', role: 'ACCOUNTANT', branchId: null },
+        { id: 'bm-same', role: 'BRANCH_MANAGER', branchId: 'branch-1' },
+        { id: 'bm-other', role: 'BRANCH_MANAGER', branchId: 'branch-2' },
+        { id: 'bm-no-branch', role: 'BRANCH_MANAGER', branchId: null },
+        { id: 'unassigned', role: 'ACCOUNTANT', branchId: null },
+      ],
+    });
+    const { service } = makeExpenseDocumentsService({ prisma, notifications: { send } });
+
+    await service.submitForApproval('doc-1', 'user-1');
+
+    expect(send.mock.calls.map(([notification]) => notification.recipient)).toEqual([
+      'accountant', 'bm-same',
+    ]);
+  });
+
   it('(d) one failed recipient is swallowed (allSettled); others still notified; no rethrow', async () => {
     const send = jest
       .fn()
       .mockRejectedValueOnce(new Error('recipient blew up'))
       .mockResolvedValue(undefined);
-    const prisma = makePrisma({ users: [{ id: 'owner-1' }, { id: 'owner-2' }] });
+    const prisma = makePrisma({ users: [{ id: 'owner-1', role: 'OWNER', branchId: null }, { id: 'owner-2', role: 'OWNER', branchId: null }] });
     const { service } = makeExpenseDocumentsService({ prisma, notifications: { send } });
 
     // Must resolve (not reject) even though the first send rejects.

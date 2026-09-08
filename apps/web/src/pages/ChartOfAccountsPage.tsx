@@ -1,4 +1,8 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router';
+import { useAuth } from '@/contexts/AuthContext';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import PeakMappingSettings from './SettingsPage/components/PeakMappingSettings';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -80,6 +84,11 @@ const emptyForm: FormState = {
 
 export default function ChartOfAccountsPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const canViewPeak = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
+  const canEditPeak = user?.role === 'OWNER' || user?.role === 'ACCOUNTANT';
+  const view = canViewPeak && searchParams.get('tab') === 'peak' ? 'peak' : 'chart';
   // แท็บฝั่งผังบัญชี — default FINANCE (ผังหลักที่นักบัญชีใช้บ่อยสุด)
   const [scope, setScope] = useState<CoaScope>('FINANCE');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
@@ -254,20 +263,33 @@ export default function ChartOfAccountsPage() {
       <PageHeader
         title="ผังบัญชี"
         subtitle={
-          scope === 'FINANCE'
+          view === 'peak'
+            ? 'จับคู่รหัสบัญชี FINANCE และ SHOP เพื่อส่งออกเข้า PEAK'
+            : scope === 'FINANCE'
             ? 'จัดการรหัสบัญชี (Chart of Accounts) — BESTCHOICE FINANCE (จด VAT)'
             : 'จัดการรหัสบัญชี (Chart of Accounts) — BESTCHOICE SHOP (หน้าร้าน — ไม่จด VAT, รหัสขึ้นต้น S)'
         }
-        action={
+        action={view === 'chart' ? (
           <button
             onClick={openCreate}
             className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shadow-sm"
           >
             + เพิ่มบัญชี ({scope})
           </button>
-        }
+        ) : undefined}
       />
 
+      <Tabs value={view} onValueChange={(next) => {
+        const params = new URLSearchParams(searchParams);
+        if (next === 'peak') params.set('tab', 'peak');
+        else params.delete('tab');
+        setSearchParams(params, { replace: true });
+      }}>
+        <TabsList variant="line" aria-label="ข้อมูลผังบัญชี" className="mb-4">
+          <TabsTrigger value="chart" className="leading-snug">รายการบัญชี</TabsTrigger>
+          {canViewPeak && <TabsTrigger value="peak" className="leading-snug">จับคู่รหัส PEAK</TabsTrigger>}
+        </TabsList>
+        <TabsContent value="chart" forceMount hidden={view !== 'chart'}>
       {/* Scope tabs — ผัง 2 ฝั่งในตารางเดียว แยกด้วย S-prefix (P3-SP5) */}
       <div className="inline-flex rounded-lg border border-border overflow-hidden mb-4" role="group">
         {(
@@ -412,6 +434,14 @@ export default function ChartOfAccountsPage() {
           </div>
         )}
       </QueryBoundary>
+
+        </TabsContent>
+        {canViewPeak && (
+          <TabsContent value="peak" forceMount hidden={view !== 'peak'}>
+            <PeakMappingSettings canEdit={canEditPeak} />
+          </TabsContent>
+        )}
+      </Tabs>
 
       {/* Add / Edit form overlay */}
       {showForm && (

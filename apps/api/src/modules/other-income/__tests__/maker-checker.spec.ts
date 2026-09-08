@@ -1,3 +1,4 @@
+import { setIncomeFixturePermissions } from './fixtures/accounting-permission-fixture';
 /**
  * PR-2: Maker-Checker integration tests for OtherIncomeService.
  * Uses real DB (matches pattern in other-income.service.spec.ts).
@@ -114,6 +115,8 @@ describe('OtherIncomeService — Maker-Checker', () => {
       },
     });
     approverId = approverUser.id;
+    await setIncomeFixturePermissions(prisma, makerId, ['INCOME_POST', 'INCOME_APPROVE']);
+    await setIncomeFixturePermissions(prisma, approverId, ['INCOME_APPROVE']);
 
     // Enable Maker-Checker flag in SystemConfig
     await prisma.systemConfig.upsert({
@@ -161,6 +164,8 @@ describe('OtherIncomeService — Maker-Checker', () => {
       create: { key: 'OTHER_INCOME_MAKER_CHECKER_ENABLED', value: 'false' },
     });
 
+    await setIncomeFixturePermissions(prisma, makerId, []);
+    await setIncomeFixturePermissions(prisma, approverId, []);
     await prisma.$disconnect();
   }, 30_000);
 
@@ -241,6 +246,14 @@ describe('OtherIncomeService — Maker-Checker', () => {
   // ─────────────────────────────────────────────────────────────
   // Task 4: approve()
   // ─────────────────────────────────────────────────────────────
+
+  it('rejects direct POST while Maker-Checker is enabled even for an assigned poster', async () => {
+    const draft = await createStandardDraft();
+    await expect(service.post(draft.id, {}, makerId)).rejects.toMatchObject({ status: 400 });
+    const unchanged = await prisma.otherIncome.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(unchanged.status).toBe('DRAFT');
+    expect(unchanged.journalEntryId).toBeNull();
+  });
 
   it('approve(): READY → POSTED atomically with approver metadata + receipt', async () => {
     const draft = await createStandardDraft();
@@ -417,6 +430,7 @@ describe('OtherIncomeService — Maker-Checker', () => {
     let draftId: string;
 
     beforeEach(async () => {
+      await prisma.systemConfig.update({ where: { key: 'OTHER_INCOME_MAKER_CHECKER_ENABLED' }, data: { value: 'false' } });
       const draft = await createStandardDraft();
       draftId = draft.id;
     }, 30_000);

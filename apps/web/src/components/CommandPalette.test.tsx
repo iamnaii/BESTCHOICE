@@ -124,11 +124,11 @@ describe('CommandPalette — settings registry integration', () => {
     expect(screen.queryByText('บัญชี & ภาษี › VAT')).not.toBeInTheDocument();
   });
 
-  it('shows ALL-role items (like PEAK mapping) to FINANCE_MANAGER', async () => {
+  it('shows the combined chart and PEAK entry to FINANCE_MANAGER', async () => {
     await renderPaletteOpen(makeFinanceManager());
 
-    // "PEAK mapping" (accounting › peak-mapping) has roles ALL which includes FM
-    const entry = screen.getByText('บัญชี & ภาษี › PEAK mapping');
+    // The chart now owns PEAK mapping and remains available to FM.
+    const entry = screen.getByText('บัญชี & ภาษี › ผังบัญชี / รหัส PEAK');
     expect(entry).toBeInTheDocument();
   });
 

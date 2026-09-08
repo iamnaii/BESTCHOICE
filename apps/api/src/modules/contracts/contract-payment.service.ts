@@ -6,6 +6,8 @@ import {
   InternalServerErrorException,
   Inject,
   forwardRef,
+  ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PaymentMethod, Prisma } from '@prisma/client';
@@ -27,6 +29,11 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
 import { EarlyPayoffDto, ShopCollectSettlementDto } from './dto/contract.dto';
+import {
+  consumePaymentApproval,
+  type PaymentApprovalContext,
+  canonical,
+} from '../payments/services/payment-approval-request.util';
 import { d, dAdd, dSub, dRound } from '../../utils/decimal.util';
 
 @Injectable()
@@ -168,8 +175,13 @@ export class ContractPaymentService {
    *   (7) ส่วนลด           = (6) × discountPct
    *   (8) ยอดชำระปิดยอด    = (3) - (7)
    */
-  async getEarlyPayoffQuote(id: string, discountPctInput?: number, depositAccountCode?: string) {
-    const contract = await this.findOne(id);
+  async getEarlyPayoffQuote(
+    id: string,
+    discountPctInput?: number,
+    depositAccountCode?: string,
+    client: Prisma.TransactionClient = this.prisma,
+  ) {
+    const contract = await this.findOne(id, client);
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
     }
@@ -183,7 +195,7 @@ export class ContractPaymentService {
     // 1:1 invariant, but using the same shape as the template guarantees
     // preview and post never drift if the data model evolves (e.g.,
     // multiple Payment rows per installment from PARTIAL flows).
-    const allInstNos = await this.prisma.installmentSchedule.findMany({
+    const allInstNos = await client.installmentSchedule.findMany({
       where: { contractId: contract.id, deletedAt: null },
       select: { installmentNo: true },
     });
@@ -232,7 +244,7 @@ export class ContractPaymentService {
       // ขา JE ใช้ค่าปรับ NETTED (หัก Cr 42-1103 ที่เคยลงผ่าน partial แล้ว) —
       // กัน double-book; quote.unpaidLateFees (ยอดเก็บ/แถว UI) เป็นค่าดิบโดยตั้งใจ
       unpaidLateFees: (
-        await this.computeUnbookedLateFees(this.prisma, contract, contract.payments)
+        await this.computeUnbookedLateFees(client, contract, contract.payments)
       ).toString(),
       // ถังพักงวดสุดท้ายที่ยอดปิดดูดซับจริง → ขา Dr 21-1103 (ขาเงินสดลดเท่ากัน)
       // ต้องอยู่ทั้ง preview และตอน post ไม่งั้น preview ≠ posted (คำสั่งเจ้าของ
@@ -242,7 +254,7 @@ export class ContractPaymentService {
 
     // Resolve all account names from CoA so preview shows real labels.
     const epCodes = je.lines.map((l) => l.accountCode);
-    const epCoaRows = await this.prisma.chartOfAccount.findMany({
+    const epCoaRows = await client.chartOfAccount.findMany({
       where: { code: { in: epCodes } },
       select: { code: true, name: true },
     });
@@ -312,7 +324,13 @@ export class ContractPaymentService {
     };
   }
 
-  async earlyPayoff(id: string, userId: string, dto: EarlyPayoffDto) {
+  async earlyPayoff(
+    id: string,
+    userId: string,
+    dto: EarlyPayoffDto,
+    approvalContext?: PaymentApprovalContext,
+  ) {
+    if (!approvalContext) throw new ForbiddenException('กรุณาส่งคำขอปิดยอดผ่านหน้ารออนุมัติ');
     // Resolve cash dimension once: dto > 11-1201 (KBank). Owner rule 2026-07-08:
     // direct FINANCE receipt is KBank-only — cash collected at a branch goes
     // through collectedByShop → 11-2107 instead.
@@ -321,7 +339,7 @@ export class ContractPaymentService {
     // when collectedByShop=true. The DTO's @IsIn([KBANK_ACCOUNT_CODE]) validator
     // stays intact — the client never names 11-2107 directly.
     const effectiveDepositCode = dto.collectedByShop ? '11-2107' : depositAccountCode;
-    const quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode);
+    let quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode);
     const paidDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
     // Future check on BKK calendar days (mirror the payment wizard).
     if (isFutureBkkDay(paidDate)) {
@@ -348,6 +366,14 @@ export class ContractPaymentService {
 
     await this.prisma.$transaction(
       async (tx) => {
+        const approval = await consumePaymentApproval(tx, approvalContext, 'EARLY_PAYOFF', id);
+        if (approval.requestedById !== userId)
+          throw new ForbiddenException('ผู้ขออนุมัติไม่ตรงกับผู้ทำรายการ');
+        quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
+        if (canonical(quote) !== canonical(approval.reviewSummary)) {
+          throw new ConflictException('ยอดปิดสัญญาเปลี่ยนแล้ว กรุณาส่งขออนุมัติใหม่');
+        }
+
         const freshContract = await tx.contract.findUnique({
           where: { id },
           select: { status: true, contractNumber: true, branchId: true },
@@ -754,8 +780,8 @@ export class ContractPaymentService {
   }
 
   /** Shared findOne - reuses Prisma query for contract with full includes */
-  private async findOne(id: string) {
-    const contract = await this.prisma.contract.findUnique({
+  private async findOne(id: string, client: Prisma.TransactionClient = this.prisma) {
+    const contract = await client.contract.findUnique({
       where: { id },
       include: {
         customer: true,

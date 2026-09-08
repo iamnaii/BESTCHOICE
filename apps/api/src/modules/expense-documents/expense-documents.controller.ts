@@ -17,8 +17,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { PostPermissionGuard } from './post-permission.guard';
-import { ReversePermissionGuard } from './reverse-permission.guard';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
@@ -272,7 +270,6 @@ export class ExpenseDocumentsController {
    */
   @Post(':id/post')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT')
-  @UseGuards(PostPermissionGuard)
   post(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
     return this.service.post(id, user.id, user.role);
   }
@@ -289,21 +286,9 @@ export class ExpenseDocumentsController {
     return this.service.submitForApproval(id, user.id);
   }
 
-  /**
-   * D1.2.1.6 — Approve a PENDING_APPROVAL expense doc.
-   *
-   * When SystemConfig `auto_post_on_approve` is true (default) the doc is
-   * immediately auto-posted in the same transaction (status: POSTED).
-   * When false the doc stays APPROVED and an OWNER can call /post later.
-   *
-   * D1.2.1.3 — approver gating is the runtime membership check inside
-   * service.approve() against SystemConfig `approvers_list`. The @Roles
-   * decorator widens beyond OWNER so any listed user (including SALES /
-   * ACCOUNTANT) is not blocked at the controller before that runtime check
-   * runs. OWNER is always allowed regardless of list contents.
-   */
+  /** Approval permission authorizes the configured approve/auto-post action. */
   @Post(':id/approve')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   approve(
     @Param('id') id: string,
     @CurrentUser() user: { id: string; role?: string },
@@ -311,21 +296,9 @@ export class ExpenseDocumentsController {
     return this.service.approve(id, user.id, user.role);
   }
 
-  /**
-   * D1.3.2.4 — Reverse / void a posted doc.
-   *
-   * Class-level guards (JwtAuthGuard, RolesGuard, BranchGuard) run first.
-   * Method-level `@Roles(...)` is the COARSE SUPERSET of any role the dynamic
-   * SystemConfig key `reverse_permission` may select — OWNER + FINANCE_MANAGER
-   * + ACCOUNTANT — so RolesGuard never pre-blocks a role the dynamic guard
-   * would allow (e.g. ACCOUNTANT under the 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
-   * or CUSTOM modes). `ReversePermissionGuard` then narrows per-request; the
-   * default `reverse_permission = 'OWNER+FINANCE_MANAGER'` still rejects
-   * ACCOUNTANT, preserving current behavior.
-   */
+  /** Per-user EXPENSE_CANCEL and the actual document branch are checked in the service. */
   @Post(':id/void')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  @UseGuards(ReversePermissionGuard)
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER')
   void(
     @Param('id') id: string,
     @Body() dto: VoidExpenseDocumentDto,

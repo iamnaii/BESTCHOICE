@@ -91,7 +91,12 @@ export function SettingsLayout() {
             {results.slice(0, 8).map(({ category, item }) => (
               <button
                 key={`${category.id}/${item.id}`}
-                onClick={() => { setQuery(''); navigate(`/settings/${category.id}#${item.id}`); }}
+                onClick={() => {
+                  setQuery('');
+                  navigate(item.kind === 'inline'
+                    ? `/settings/${category.id}#${item.id}`
+                    : item.path ?? `/settings/${category.id}/${item.id}`);
+                }}
                 className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-accent"
               >
                 <span className="text-foreground">{item.label}</span>

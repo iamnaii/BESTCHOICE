@@ -12,8 +12,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const apiGet = vi.fn();
+const apiPost = vi.fn();
 vi.mock('@/lib/api', () => ({
-  default: { get: (...a: unknown[]) => apiGet(...a), post: vi.fn() },
+  default: { get: (...a: unknown[]) => apiGet(...a), post: (...a: unknown[]) => apiPost(...a) },
   getErrorMessage: (e: unknown) => String(e),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -36,6 +37,8 @@ import { RepossessionOverlay } from '../RepossessionOverlay';
 
 /** Backend stand-in: grade A is in the table (6,500), other grades are not. */
 let eligibilityOverride: { canRepossess: boolean; reason: string | null } | null = null;
+let missingJournal = false;
+let unbalancedJournal = false;
 
 function routePreview() {
   apiGet.mockImplementation((url?: string) => {
@@ -76,8 +79,16 @@ function routePreview() {
           customerRefundEnabled: false,
           customerRefund: 0,
           profitLoss: marketValue - 1940.42,
+          rescheduleAdvanceApplied: 1714,
         },
-        journalPreview: null,
+        journalPreview: missingJournal ? null : {
+          lines: [
+            { accountCode: '11-2107', accountName: 'ลูกหนี้หน้าร้าน', debit: '16717.97', credit: '0', description: '' },
+            { accountCode: '21-1103', accountName: 'เงินรับล่วงหน้า', debit: '1714', credit: '0', description: '' },
+            { accountCode: '41-1102', accountName: 'กำไรจากการยึด', debit: '0', credit: '18431.97', description: '' },
+          ],
+          totalDebit: '18431.97', totalCredit: '18431.97', isBalanced: !unbalancedJournal,
+        },
         valuation: { grade, found, suggestedPrice: found ? 6500 : null, note: null },
         eligibility: eligibilityOverride ?? { canRepossess: true, reason: null },
       },
@@ -86,7 +97,7 @@ function routePreview() {
 }
 
 function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 180_000 } } });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
@@ -108,9 +119,12 @@ const submitButton = () =>
 
 beforeEach(() => {
   eligibilityOverride = null;
+  missingJournal = false;
+  unbalancedJournal = false;
   // NOTE: block body on purpose — `mockReset()` returns the mock, and vitest would run a
   // returned function as the hook's cleanup (= api.get() with no args after every test).
   apiGet.mockReset();
+  apiPost.mockReset().mockResolvedValue({ data: { id: 'repo-1' } });
 });
 
 describe('RepossessionOverlay — ราคาเดียว + ตารางรับซื้อ', () => {
@@ -167,6 +181,7 @@ describe('RepossessionOverlay — ราคาเดียว + ตาราง�
     routePreview();
     renderOverlay();
     await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), { target: { value: 'UNAFFORDABLE' } });
 
     fireEvent.change(appraisalInput(), { target: { value: '5000' } }); // −23%
     await waitFor(() =>
@@ -174,7 +189,7 @@ describe('RepossessionOverlay — ราคาเดียว + ตาราง�
     );
     expect(submitButton().disabled).toBe(true);
 
-    fireEvent.change(screen.getByPlaceholderText(/สาเหตุการยึด/), {
+    fireEvent.change(screen.getByLabelText(/รายละเอียดเพิ่มเติม/), {
       target: { value: 'จอแตก กระจกหลังร้าว' },
     });
     await waitFor(() => expect(submitButton().disabled).toBe(false));
@@ -193,5 +208,87 @@ describe('RepossessionOverlay — ราคาเดียว + ตาราง�
     expect(banner).toHaveTextContent(/ต้องส่งหนังสือบอกเลิกสัญญาก่อน/);
     await waitFor(() => expect(appraisalInput().value).toBe('6500'));
     expect(submitButton().disabled).toBe(true);
+    expect(submitButton()).toHaveAttribute('aria-describedby', 'repo-submit-block');
+    expect(document.getElementById('repo-submit-block')).toHaveTextContent(/ต้องส่งหนังสือบอกเลิก/);
+    expect(screen.getByRole('link', { name: /เปิดสัญญา/ })).toHaveAttribute('href', '/contracts/c-1');
+    fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), { target: { value: 'UNAFFORDABLE' } });
+    fireEvent.click(submitButton());
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('requires a return reason, then sends it separately from valuation notes', async () => {
+    routePreview(); renderOverlay();
+    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    await waitFor(() => expect(submitButton()).toHaveAttribute('title', 'กรุณาเลือกเหตุผลคืนเครื่อง'));
+    fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), { target: { value: 'UNAFFORDABLE' } });
+    await waitFor(() => expect(submitButton()).toBeEnabled());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/repossessions', expect.objectContaining({ returnReason: 'UNAFFORDABLE', notes: undefined })));
+  });
+
+  it('requires free-text detail for Other', async () => {
+    routePreview(); renderOverlay();
+    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), { target: { value: 'OTHER' } });
+    expect(submitButton()).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/รายละเอียดเพิ่มเติม/), { target: { value: 'รายละเอียดการคืน' } });
+    await waitFor(() => expect(submitButton()).toBeEnabled());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/repossessions', expect.objectContaining({ returnReason: 'OTHER', notes: 'รายละเอียดการคืน' })));
+  });
+
+  it('shows a retryable preview error and never enables submit without a preview', async () => {
+    apiGet.mockRejectedValue(new Error('preview unavailable'));
+    renderOverlay();
+    expect(await screen.findByRole('alert')).toHaveTextContent('preview unavailable');
+    fireEvent.change(appraisalInput(), { target: { value: '6500' } });
+    fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), { target: { value: 'UNAFFORDABLE' } });
+    expect(submitButton()).toBeDisabled();
+    await screen.findByRole('button', { name: 'ลองคำนวณใหม่' });
+    routePreview();
+    fireEvent.click(screen.getByRole('button', { name: 'ลองคำนวณใหม่' }));
+    await waitFor(() => expect(submitButton()).toBeEnabled());
+  });
+
+  it.each(['missing', 'unbalanced'])('blocks a %s JP5 preview', async (state) => {
+    missingJournal = state === 'missing'; unbalancedJournal = state === 'unbalanced';
+    routePreview(); renderOverlay();
+    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), { target: { value: 'UNAFFORDABLE' } });
+    await waitFor(() => expect(submitButton().title).toMatch(/JP5/));
+    expect(submitButton()).toBeDisabled();
+    expect(screen.getByText('รายการบัญชีคืนเครื่อง (JP5)')).toBeInTheDocument();
+  });
+
+  it('explains the JP5-only gain, shows the park deduction and does not promise a VAT credit note with no VAT reversal', async () => {
+    routePreview(); renderOverlay();
+    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    expect(await screen.findByText('ส่วนต่างราคาประเมินเทียบยอดปิด')).toBeInTheDocument();
+    expect(screen.getByText('กำไร/ขาดทุนจากรายการยึดคืน')).toBeInTheDocument();
+    expect(screen.getByText(/\+18,431\.97/)).toBeInTheDocument();
+    expect(screen.getByText('หักเงินรับล่วงหน้าที่พักไว้')).toBeInTheDocument();
+    expect(screen.getByText(/JP5 ชุดนี้ไม่มีบรรทัดตัดลูกหนี้/)).toBeInTheDocument();
+    expect(screen.queryByText(/พร้อมออกใบลดหนี้/)).not.toBeInTheDocument();
+  });
+
+  it('refreshes and disables confirmation even when returning to a cached appraisal', async () => {
+    routePreview(); renderOverlay();
+    await waitFor(() => expect(appraisalInput().value).toBe('6500'));
+    fireEvent.change(screen.getByLabelText(/เหตุผลคืนเครื่อง/), { target: { value: 'UNAFFORDABLE' } });
+    await waitFor(() => expect(submitButton()).toBeEnabled());
+    const successfulPreview = apiGet.getMockImplementation()!;
+    let resolvePreview: (value: unknown) => void = () => {};
+    apiGet.mockImplementation(() => new Promise((resolve) => { resolvePreview = resolve; }));
+    fireEvent.change(appraisalInput(), { target: { value: '6501' } });
+    await waitFor(() => expect(submitButton()).toHaveAttribute('title', 'กำลังตรวจสอบยอดและรายการ JP5'));
+    expect(submitButton()).toBeDisabled();
+    resolvePreview(await successfulPreview(apiGet.mock.calls[apiGet.mock.calls.length - 1][0]));
+    await waitFor(() => expect(submitButton()).toBeEnabled());
+    const requestsBefore = apiGet.mock.calls.length;
+    fireEvent.change(appraisalInput(), { target: { value: '6500' } });
+    await waitFor(() => expect(apiGet.mock.calls.length).toBeGreaterThan(requestsBefore));
+    expect(submitButton()).toBeDisabled();
+    resolvePreview(await successfulPreview(apiGet.mock.calls[apiGet.mock.calls.length - 1][0]));
+    await waitFor(() => expect(submitButton()).toBeEnabled());
   });
 });

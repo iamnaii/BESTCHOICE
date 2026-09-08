@@ -16,7 +16,9 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
     const contract = {
       id: 'c1',
       totalMonths: 12,
-      interestTotal: '3000',
+      financedAmount: '10000',
+      storeCommission: '1000',
+      interestTotal: '6000',
       monthlyPayment: '1515.83',
       vatAmount: '1190',
       advanceBalance: '0',
@@ -32,6 +34,7 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
           contract,
         }),
       },
+      payment: { findFirst: jest.fn().mockResolvedValue({ amountDue: '1515.83', amountPaid: '0' }) },
       journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
     } as never;

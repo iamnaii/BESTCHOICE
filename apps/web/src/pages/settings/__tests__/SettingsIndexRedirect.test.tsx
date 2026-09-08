@@ -9,7 +9,7 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role } }) }
 /** Reads the in-memory router location so tests can assert where navigate() landed. */
 function LocationProbe() {
   const loc = useLocation();
-  return <div data-testid="loc">{loc.pathname + loc.hash}</div>;
+  return <div data-testid="loc">{loc.pathname + loc.search + loc.hash}</div>;
 }
 
 function renderRedirect() {
@@ -46,6 +46,13 @@ describe('HASH_TO_CATEGORY', () => {
 });
 
 describe('SettingsIndexRedirect — navigation', () => {
+  it('#peak-mapping redirects directly into the chart mapping tab', () => {
+    window.location.hash = '#peak-mapping';
+    role = 'OWNER';
+    renderRedirect();
+    expect(screen.getByTestId('loc').textContent).toBe('/settings/accounting/chart?tab=peak');
+  });
+
   it('#contacts redirects to the standalone /contacts page', () => {
     window.location.hash = '#contacts';
     role = 'OWNER';

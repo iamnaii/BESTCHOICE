@@ -9,7 +9,7 @@ import {
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
+import { CreateRepossessionDto, UpdateRepossessionDto, REPOSSESSION_RETURN_REASONS } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
 import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
@@ -448,6 +448,7 @@ export class RepossessionsService {
         discountPct: quote.discountPercent,
         discountAmount: quote.discountAmount,
         unpaidLateFees: quote.unpaidLateFees,
+        rescheduleAdvanceApplied: quote.rescheduleAdvanceApplied,
         closingAmount: closingAmount.toNumber(),
         marketValue: TWO_DP(marketValue).toNumber(),
         marketValueSource,
@@ -493,6 +494,12 @@ export class RepossessionsService {
    * Create repossession record and update contract/product statuses
    */
   async create(dto: CreateRepossessionDto, userId: string) {
+    if (dto.returnReason != null && !Object.prototype.hasOwnProperty.call(REPOSSESSION_RETURN_REASONS, dto.returnReason)) {
+      throw new BadRequestException('กรุณาเลือกเหตุผลคืนเครื่องที่ถูกต้อง');
+    }
+    if (dto.returnReason === 'OTHER' && !dto.notes?.trim()) {
+      throw new BadRequestException('กรุณาระบุรายละเอียดเหตุผลคืนเครื่อง');
+    }
     // คำตัดสินเจ้าของ 2026-09-05: ไม่มีเงินคืนส่วนต่างให้ลูกค้า — ปฏิเสธตรงๆ แทนละเลยเงียบๆ
     if (dto.customerRefundEnabled) {
       throw new BadRequestException(
@@ -683,7 +690,10 @@ export class RepossessionsService {
             appraisedById: userId,
             repairCost: dto.repairCost || 0,
             resellPrice: dto.resellPrice,
-            notes: dto.notes,
+            notes: dto.returnReason
+              ? [`เหตุผลคืนเครื่อง: ${REPOSSESSION_RETURN_REASONS[dto.returnReason]}`, dto.notes?.trim()]
+                  .filter(Boolean).join('\n')
+              : dto.notes,
             status: 'REPOSSESSED',
             marketValue,
             remainingMonths,
@@ -873,6 +883,7 @@ export class RepossessionsService {
               contractNumber: contract.contractNumber,
               productId: contract.productId,
               conditionGrade: dto.conditionGrade,
+              ...(dto.returnReason ? { returnReason: dto.returnReason, returnReasonLabel: REPOSSESSION_RETURN_REASONS[dto.returnReason] } : {}),
               appraisalPrice: dto.appraisalPrice,
               outstandingBalance: outstandingBalance.toFixed(2),
               totalPaid: totalPaid.toFixed(2),

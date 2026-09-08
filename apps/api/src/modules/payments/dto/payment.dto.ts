@@ -186,13 +186,19 @@ export class RecordPaymentDto {
   /**
    * ค่าปรับชำระล่าช้าที่รวมอยู่ใน `amount` (ถ้ามี).
    * ส่งเป็นข้อมูล advisory จาก wizard เพื่อความโปร่งใส — service จะคำนวณ
-   * lateFee ใหม่จากข้อมูลในฐานข้อมูล (Payment.lateFee + late_fee_per_day config)
-   * เพื่อเป็น source of truth. ห้ามให้ลูกค้า/พนักงานกำหนดค่าปรับเอง.
+   * lateFee จากฐานข้อมูล/กฎค่าปรับเป็น source of truth.
+   * พนักงานเพิ่มค่าปรับได้ผ่าน additionalLateFee โดยบันทึกพร้อมการรับเงิน.
    */
   @IsOptional()
   @IsNumber()
   @Min(0)
   lateFee?: number;
+
+  /** ค่าปรับที่พนักงานเพิ่มสำหรับการรับเงินครั้งนี้ (เพิ่มจากยอดเดิม ไม่ใช่ยอดสะสม). */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  additionalLateFee?: number;
 
   /**
    * หักเครดิตล่วงหน้า (21-1103) อัตโนมัติเมื่อจ่ายไม่ครบ — default true (พฤติกรรมเดิม).

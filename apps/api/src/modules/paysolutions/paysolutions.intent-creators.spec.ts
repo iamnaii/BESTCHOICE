@@ -385,6 +385,26 @@ describe('PaySolutionsService — intent creators (characterization)', () => {
       expect(res.sentToLine).toBe(false);
     });
 
+    it('freezes an explicit fee and the staff identity on the QR without changing Payment', async () => {
+      buildPrisma();
+      await buildService();
+      fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(gatewayOk());
+      await service.createPartialPaymentQR({ paymentId, amount: 750, additionalLateFee: 50, requestedById: 'staff-1' });
+      expect(prisma.partialPaymentLink.create.mock.calls[0][0].data.metadata).toEqual({
+        additionalLateFee: '50.00', requestedById: 'staff-1',
+      });
+    });
+
+    it.each([-1, 0.001, Number.NaN])('rejects an invalid QR fee %s before gateway creation', async (additionalLateFee) => {
+      buildPrisma();
+      await buildService();
+      fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(gatewayOk());
+      await expect(service.createPartialPaymentQR({ paymentId, amount: 750, additionalLateFee, requestedById: 'staff-1' }))
+        .rejects.toThrow('ค่าปรับที่เพิ่ม');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(prisma.partialPaymentLink.updateMany).not.toHaveBeenCalled();
+    });
+
     it('orphan path: gateway OK then PartialPaymentLink.create throws → Sentry critical=paysolutions-partial-orphan + InternalServerError', async () => {
       buildPrisma();
       prisma.partialPaymentLink.create.mockRejectedValueOnce(new Error('DB down'));

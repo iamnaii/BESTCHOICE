@@ -4,6 +4,7 @@
  * Runner: vitest (DB-backed, *.integration.spec.ts is jest-ignored)
  * Run:    cd apps/api && npx vitest run --no-file-parallelism src/modules/contracts/shop-collect-settlement.integration.spec.ts
  */
+import { earlyPayoffWithApproval } from '../../../e2e/helpers/payment-approval';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -143,6 +144,7 @@ describe('shop-collect-settlement integration', () => {
   afterAll(async () => {
     // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
     // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.receipt.deleteMany({});
     await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     // contract_cancellations.reversal_journal_entry_id FK-references journal_entries —
@@ -170,6 +172,7 @@ describe('shop-collect-settlement integration', () => {
     // Clean slate
     // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
     // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.receipt.deleteMany({});
     await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     // contract_cancellations.reversal_journal_entry_id FK-references journal_entries —
@@ -205,7 +208,7 @@ describe('shop-collect-settlement integration', () => {
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
     await seedPendingPayments(c.id, c.installmentCount);
 
-    await svc.earlyPayoff(c.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, c.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -278,7 +281,7 @@ describe('shop-collect-settlement integration', () => {
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c2.id);
     await seedPendingPayments(c2.id, c2.installmentCount);
 
-    await svc.earlyPayoff(c2.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, c2.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -302,7 +305,7 @@ describe('shop-collect-settlement integration', () => {
     await new ContractActivation1ATemplate(journalVoid, prisma as any).execute(cVoid.id);
     await seedPendingPayments(cVoid.id, cVoid.installmentCount);
 
-    await svc.earlyPayoff(cVoid.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, cVoid.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -347,10 +350,10 @@ describe('shop-collect-settlement integration', () => {
     await seedPendingPayments(c3.id, c3.installmentCount);
 
     // FINANCE-direct payoff (no 11-2107)
-    await svc.earlyPayoff(c3.id, userId, {
-      paymentMethod: 'CASH',
+    await earlyPayoffWithApproval(prisma, svc, c3.id, userId, {
+      paymentMethod: 'BANK_TRANSFER',
       discountPct: 50,
-      depositAccountCode: '11-1101',
+      depositAccountCode: '11-1201',
     } as any);
 
     // Try to settle — should throw because outstanding = 0
@@ -369,7 +372,7 @@ describe('shop-collect-settlement integration', () => {
     await new ContractActivation1ATemplate(journalPartial, prisma as any).execute(cPartial.id);
     await seedPendingPayments(cPartial.id, cPartial.installmentCount);
 
-    await svc.earlyPayoff(cPartial.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, cPartial.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -450,7 +453,7 @@ describe('shop-collect-settlement integration', () => {
     await new ContractActivation1ATemplate(journalPartial2, prisma as any).execute(cPartial2.id);
     await seedPendingPayments(cPartial2.id, cPartial2.installmentCount);
 
-    await svc.earlyPayoff(cPartial2.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, cPartial2.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -497,7 +500,7 @@ describe('shop-collect-settlement integration', () => {
     const journalCrossA = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalCrossA, prisma as any).execute(cCrossA.id);
     await seedPendingPayments(cCrossA.id, cCrossA.installmentCount);
-    await svc.earlyPayoff(cCrossA.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, cCrossA.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -507,7 +510,7 @@ describe('shop-collect-settlement integration', () => {
     const journalCrossB = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalCrossB, prisma as any).execute(cCrossB.id);
     await seedPendingPayments(cCrossB.id, cCrossB.installmentCount);
-    await svc.earlyPayoff(cCrossB.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, cCrossB.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -578,7 +581,7 @@ describe('shop-collect-settlement integration', () => {
     await new ContractActivation1ATemplate(journalRetry, prisma as any).execute(cRetry.id);
     await seedPendingPayments(cRetry.id, cRetry.installmentCount);
 
-    await svc.earlyPayoff(cRetry.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, cRetry.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -641,7 +644,7 @@ describe('shop-collect-settlement integration', () => {
     await new ContractActivation1ATemplate(journalAmountChange, prisma as any).execute(cAmountChange.id);
     await seedPendingPayments(cAmountChange.id, cAmountChange.installmentCount);
 
-    await svc.earlyPayoff(cAmountChange.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, cAmountChange.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -724,7 +727,7 @@ describe('shop-collect-settlement integration', () => {
     await new ContractActivation1ATemplate(journalRace, prisma as any).execute(cRace.id);
     await seedPendingPayments(cRace.id, cRace.installmentCount);
 
-    await svc.earlyPayoff(cRace.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, cRace.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -972,7 +975,7 @@ describe('shop-collect-settlement integration', () => {
       const journal = new JournalAutoService(prisma as any);
       await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
       await seedPendingPayments(c.id, c.installmentCount);
-      await svc.earlyPayoff(c.id, userId, {
+      await earlyPayoffWithApproval(prisma, svc, c.id, userId, {
         paymentMethod: 'CASH',
         discountPct: 50,
         collectedByShop: true,

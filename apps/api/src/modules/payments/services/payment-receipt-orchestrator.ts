@@ -23,6 +23,11 @@ import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.
 import { assertSequentialInstallment } from './installment-sequence.util';
 import { d, dAdd, dSub, dMul, dRound, dGte } from '../../../utils/decimal.util';
 import { loadLateFeeConfig, resolveLateFee } from '../../../utils/late-fee.util';
+import { loadLateFeePaidByPaymentIds } from './payment-late-fee-paid.util';
+import {
+  consumePaymentApproval,
+  type PaymentApprovalContext,
+} from './payment-approval-request.util';
 import { PaymentCase } from '../dto/payment.dto';
 import {
   resolveUserDefaultCashAccount,
@@ -112,7 +117,16 @@ export class PaymentReceiptOrchestrator {
      * is enforced at QR-SEND time for that path instead.
      */
     enforceSequence: boolean = true,
+    additionalLateFee: number = 0,
+    approvalContext?: PaymentApprovalContext,
   ) {
+    if (
+      !Number.isFinite(additionalLateFee) ||
+      additionalLateFee < 0 ||
+      !d(additionalLateFee).eq(d(additionalLateFee).toDecimalPlaces(2))
+    ) {
+      throw new BadRequestException('ค่าปรับที่เพิ่มต้องไม่ติดลบและมีทศนิยมไม่เกิน 2 ตำแหน่ง');
+    }
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
     }
@@ -143,54 +157,16 @@ export class PaymentReceiptOrchestrator {
       await resolveFinanceCompanyId(this.prisma),
     );
 
-    // T16: Tolerance approver role validation.
-    // If toleranceApproverId is supplied, verify the named user has an approved role.
-    // This is validated early (before the serializable tx) to fail fast without
-    // holding a DB lock on a rejection.
-    if (toleranceApproverId) {
-      const approver = await this.prisma.user.findUnique({
-        where: { id: toleranceApproverId },
-        select: { id: true, role: true, deletedAt: true },
-      });
-      if (!approver || approver.deletedAt) {
-        throw new BadRequestException('ไม่พบผู้อนุมัติที่ระบุ');
-      }
-      const allowedRoles = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
-      if (!allowedRoles.includes(approver.role)) {
-        throw new ForbiddenException(
-          'ผู้อนุมัติต้องมีบทบาท OWNER, FINANCE_MANAGER, ACCOUNTANT หรือ BRANCH_MANAGER',
-        );
-      }
-    }
-
-    // D1: late-fee waiver (gross model) — validate 4-eyes SoD + required fields BEFORE
-    // the tx (fail fast). Amount ≤ actual gross late fee is re-checked inside the tx.
     const waiverRequested = !!lateFeeWaiverAmount && lateFeeWaiverAmount > 0;
-    if (waiverRequested) {
-      if (!lateFeeWaiverReasonCode) {
-        throw new BadRequestException('กรุณาระบุเหตุผลการอนุโลมค่าปรับ');
-      }
-      if (!waiverApproverId) {
-        throw new BadRequestException('ต้องระบุผู้อนุมัติการอนุโลม (waiverApproverId)');
-      }
-      if (waiverApproverId === recordedById) {
-        throw new ForbiddenException(
-          'ผู้ขออนุโลมและผู้อนุมัติต้องเป็นคนละคน (Segregation of Duties)',
-        );
-      }
-      const wApprover = await this.prisma.user.findUnique({
-        where: { id: waiverApproverId },
-        select: { id: true, role: true, isActive: true, deletedAt: true },
-      });
-      if (!wApprover || !wApprover.isActive || wApprover.deletedAt) {
-        throw new NotFoundException('ไม่พบผู้อนุมัติการอนุโลม หรือถูกปิดการใช้งาน');
-      }
-      if (!['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'].includes(wApprover.role)) {
-        throw new ForbiddenException(
-          'ผู้อนุมัติการอนุโลมต้องมีสิทธิ์ OWNER / FINANCE_MANAGER / BRANCH_MANAGER',
-        );
-      }
+    if ((waiverRequested || toleranceApproverId) && !approvalContext) {
+      throw new ForbiddenException('รายการนี้ต้องส่งขออนุมัติและให้ผู้มีสิทธิกดอนุมัติ');
     }
+    if (waiverRequested && !lateFeeWaiverReasonCode) {
+      throw new BadRequestException('กรุณาระบุเหตุผลการอนุโลมค่าปรับ');
+    }
+    // Approval identity is supplied only by the authenticated approval endpoint.
+    if (waiverRequested) waiverApproverId = approvalContext!.actorId;
+    if (toleranceApproverId) toleranceApproverId = approvalContext!.actorId;
 
     // T15: Resolve deposit account — caller-provided > user default > system default 11-1101
     const resolvedDepositAccountCode =
@@ -205,6 +181,7 @@ export class PaymentReceiptOrchestrator {
     // Capture dueDate for loyalty points check (on-time = paidDate <= dueDate)
     let capturedDueDate: Date | null = null;
     let capturedCustomerId: string | null = null;
+    let postedReceiptEntryNo: string | undefined;
 
     // Use serializable transaction to prevent concurrent duplicate payments
     const updated = await this.prisma.$transaction(
@@ -253,6 +230,16 @@ export class PaymentReceiptOrchestrator {
         if (enforceSequence) {
           await assertSequentialInstallment(tx, contractId, installmentNo);
         }
+        if (approvalContext) {
+          const approval = await consumePaymentApproval(
+            tx,
+            approvalContext,
+            'RECORD_PAYMENT',
+            payment.id,
+          );
+          if (approval.requestedById !== recordedById)
+            throw new ForbiddenException('ผู้บันทึกไม่ตรงกับคำขออนุมัติ');
+        }
         capturedDueDate = payment.dueDate;
 
         // Auto-cancel any active partial-payment QR for this Payment so the
@@ -270,7 +257,11 @@ export class PaymentReceiptOrchestrator {
         // max(stored, resolved)) so this path agrees with the overdue cron's
         // retroactive downgrade. Skip waived.
         let lateFee = d(payment.lateFee);
-        if (!payment.lateFeeWaived && payment.dueDate < effectivePaidDate) {
+        if (
+          !payment.lateFeeWaived &&
+          d(payment.amountPaid).lte(0) &&
+          payment.dueDate < effectivePaidDate
+        ) {
           const daysOverdue = Math.max(
             0,
             Math.floor(
@@ -285,15 +276,49 @@ export class PaymentReceiptOrchestrator {
           }
         }
 
+        // An explicit staff addition belongs to this receipt transaction. A retry
+        // is stopped by the existing transactionRef check before this mutation.
+        if (additionalLateFee > 0) {
+          // Standalone waivers can zero the stored charge. Keep fees actually
+          // paid in the cumulative obligation; amountPaid still includes them.
+          if (payment.lateFeeWaived) {
+            const paidFees = d(payment.amountPaid).gt(0)
+              ? await loadLateFeePaidByPaymentIds(tx, [payment.id])
+              : new Map<string, Prisma.Decimal>();
+            lateFee = paidFees.get(payment.id) ?? d(0);
+          }
+          lateFee = lateFee.plus(d(additionalLateFee));
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              lateFee,
+              lateFeeWaived: false,
+              ...(payment.lateFeeWaived
+                ? {
+                    waivedAmount: null,
+                    waivedById: null,
+                    waivedApprovedById: null,
+                    waivedAt: null,
+                    waivedReason: null,
+                  }
+                : {}),
+            },
+          });
+        }
+
         // D1: validate the waiver against the actual (recomputed) gross late fee.
         const waiverAmount = waiverRequested ? d(lateFeeWaiverAmount as number) : d(0);
         if (waiverAmount.gt(0)) {
           if (lateFee.lte(0)) {
             throw new BadRequestException('งวดนี้ไม่มีค่าปรับให้อนุโลม');
           }
-          if (waiverAmount.gt(lateFee)) {
+          const paidFees = d(payment.amountPaid).gt(0)
+            ? await loadLateFeePaidByPaymentIds(tx, [payment.id])
+            : new Map<string, Prisma.Decimal>();
+          const availableFee = Prisma.Decimal.max(lateFee.minus(paidFees.get(payment.id) ?? 0), 0);
+          if (waiverAmount.gt(availableFee)) {
             throw new BadRequestException(
-              `ยอดอนุโลม ${waiverAmount.toFixed(2)} เกินค่าปรับ ${lateFee.toFixed(2)}`,
+              `ยอดอนุโลม ${waiverAmount.toFixed(2)} เกินค่าปรับที่ยังไม่ได้รับ ${availableFee.toFixed(2)}`,
             );
           }
         }
@@ -382,6 +407,15 @@ export class PaymentReceiptOrchestrator {
         // NEW: shortage > 1฿ requires explicit case='PARTIAL'.
         // Compute shortage AFTER advanceConsume + parkConsume (both cover part of the gap).
         const shortage = remaining.minus(d(amount)).minus(advanceConsume).minus(parkConsume);
+        if (paymentCase === 'PARTIAL' && shortage.gt(0)) isPartialClear = true;
+        if (
+          !shortage.eq(0) &&
+          shortage.abs().lte(1) &&
+          paymentCase !== 'PARTIAL' &&
+          (!approvalContext || !toleranceApproverId)
+        ) {
+          throw new ForbiddenException('ส่วนต่างยอดชำระต้องส่งให้ผู้มีสิทธิกดอนุมัติ');
+        }
         if (shortage.gt(d('1.00'))) {
           if (paymentCase !== 'PARTIAL') {
             throw new BadRequestException(
@@ -403,10 +437,14 @@ export class PaymentReceiptOrchestrator {
 
         // For OVERPAY_ADVANCE: amountPaid = installmentTotal (full clear via cash + advance posting).
         // Otherwise: amountPaid = cash + consumed advance (generic + park) (may or may not fully clear).
+        const approvedShortage =
+          approvalContext && toleranceApproverId && shortage.gt(0) && shortage.lte(1)
+            ? shortage
+            : d(0);
         const recordedAmountPaid =
           paymentCase === 'OVERPAY_ADVANCE' || advanceCredit.gt(0)
-            ? remaining
-            : dAdd(prevPaid, amount).plus(advanceConsume).plus(parkConsume);
+            ? amountDue
+            : dAdd(prevPaid, amount).plus(advanceConsume).plus(parkConsume).plus(approvedShortage);
 
         const isPaidInFull =
           paymentCase === 'OVERPAY_ADVANCE' || advanceCredit.gt(0)
@@ -443,6 +481,13 @@ export class PaymentReceiptOrchestrator {
               : {}),
           },
         });
+
+        if (approvalContext) {
+          await tx.paymentDraft.updateMany({
+            where: { paymentId: result.id, deletedAt: null },
+            data: { deletedAt: new Date() },
+          });
+        }
 
         // D1: immutable 4-eyes approval evidence — same tx as the receipt JE.
         if (waiverAmount.gt(0)) {
@@ -583,6 +628,8 @@ export class PaymentReceiptOrchestrator {
               tx,
             );
 
+            postedReceiptEntryNo = receiptPosted.entryNo;
+
             // I-2 (review 2026-08-16): the receipt JE folds the generic advance
             // bucket and the last-installment park bucket into ONE `Dr 21-1103`
             // line (same GL account — the split is application-level only).
@@ -693,7 +740,12 @@ export class PaymentReceiptOrchestrator {
       action: updated.status === 'PAID' ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
       amount,
       installmentNo,
-      details: { paymentMethod, transactionRef, totalPaid: d(updated.amountPaid).toNumber() },
+      details: {
+        paymentMethod,
+        transactionRef,
+        totalPaid: d(updated.amountPaid).toNumber(),
+        additionalLateFee,
+      },
     });
 
     // T16: Write TOLERANCE_APPROVED audit log when a tolerance approver was named.
@@ -765,6 +817,7 @@ export class PaymentReceiptOrchestrator {
           transactionRef || null,
           recordedById,
           effectivePaidDate, // D4 backdating — ใบเสร็จลงวันที่รับเงินจริง
+          postedReceiptEntryNo,
         );
       } catch (error) {
         // Receipt generation failure should not block payment, but must be logged

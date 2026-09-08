@@ -4,6 +4,7 @@
  * Runner: vitest (DB-backed, *.integration.spec.ts is jest-ignored)
  * Run:    cd apps/api && npx vitest run --no-file-parallelism src/modules/contracts/shop-collect-payoff.integration.spec.ts
  */
+import { earlyPayoffWithApproval } from '../../../e2e/helpers/payment-approval';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -119,6 +120,7 @@ describe('shop-collect-payoff integration', () => {
   afterAll(async () => {
     // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
     // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.receipt.deleteMany({});
     await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
@@ -136,6 +138,7 @@ describe('shop-collect-payoff integration', () => {
     // Clean slate (auditLog is immutable — skip it)
     // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
     // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.receipt.deleteMany({});
     await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
@@ -164,7 +167,7 @@ describe('shop-collect-payoff integration', () => {
 
     // Call earlyPayoff with collectedByShop=true
     const svc = buildService();
-    await svc.earlyPayoff(c.id, userId, {
+    await earlyPayoffWithApproval(prisma, svc, c.id, userId, {
       paymentMethod: 'CASH',
       discountPct: 50,
       collectedByShop: true,
@@ -254,10 +257,10 @@ describe('shop-collect-payoff integration', () => {
     await seedPendingPayments(c2.id, c2.installmentCount);
 
     const svc = buildService();
-    await svc.earlyPayoff(c2.id, userId, {
-      paymentMethod: 'CASH',
+    await earlyPayoffWithApproval(prisma, svc, c2.id, userId, {
+      paymentMethod: 'BANK_TRANSFER',
       discountPct: 50,
-      depositAccountCode: '11-1101',
+      depositAccountCode: '11-1201',
       // collectedByShop intentionally omitted
     } as any);
 
@@ -265,9 +268,9 @@ describe('shop-collect-payoff integration', () => {
 
     // Assert: cash account Dr exists
     const cashDrLine = je.lines.find(
-      (l) => l.accountCode === '11-1101' && new Decimal(l.debit.toString()).gt(0),
+      (l) => l.accountCode === '11-1201' && new Decimal(l.debit.toString()).gt(0),
     );
-    expect(cashDrLine, 'FINANCE-direct: Dr 11-1101 should be present').toBeDefined();
+    expect(cashDrLine, 'FINANCE-direct: Dr 11-1201 should be present').toBeDefined();
 
     // Assert: NO 11-2107 Dr line
     const dr11_2107 = je.lines.find(

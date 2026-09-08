@@ -15,6 +15,7 @@ import {
 } from '../../../utils/reschedule-quote.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { d } from '../../../utils/decimal.util';
+import { addBkkDays } from '../../../utils/date.util';
 import { resolveUserDefaultCashAccount, resolveFinanceCompanyId } from './payment-helpers';
 import { RESCHEDULE_ADVANCE_UNPARKED } from '../../receipts/services/receipt-void.service';
 
@@ -139,8 +140,7 @@ export class RescheduleCollectService {
       input.daysToShift,
       input.splitMode,
     );
-    const newDue = new Date(payment.dueDate);
-    newDue.setDate(newDue.getDate() + input.daysToShift);
+    const newDue = addBkkDays(payment.dueDate, input.daysToShift);
     return {
       rescheduleFee: q.rescheduleFee.toFixed(2),
       lateFee: q.lateFee.toFixed(2),
@@ -382,6 +382,7 @@ export class RescheduleCollectService {
                 delta: q.rescheduleFee.toString(),
                 beforeBalance: beforePark.toString(),
                 afterBalance: beforePark.plus(q.rescheduleFee).toString(),
+                parkTargetInstallmentNo: contract.totalMonths,
                 source: 'RESCHEDULE_COLLECT_6A_FEE',
                 bucket: 'RESCHEDULE_PARK',
               },
@@ -473,6 +474,7 @@ export class RescheduleCollectService {
                     afterGenericBalance: beforeGeneric.minus(sweep).toString(),
                     beforeParkBalance: beforePark.toString(),
                     afterParkBalance: beforePark.plus(sweep).toString(),
+                    parkTargetInstallmentNo: contract.totalMonths,
                     source: 'RESCHEDULE_COLLECT_6B_FEE_SWEEP',
                   },
                 },
@@ -516,6 +518,10 @@ export class RescheduleCollectService {
             contractId: input.contractId,
             fromInstallmentNo: input.bundledPaid ? input.installmentNo + 1 : input.installmentNo,
             daysToShift: input.daysToShift,
+            scheduleAnchor: {
+              installmentNo: input.installmentNo,
+              dueDate: addBkkDays(payment.dueDate, input.daysToShift),
+            },
             userId: input.recordedById,
             variant: q.variant,
           },
@@ -540,6 +546,7 @@ export class RescheduleCollectService {
               contractId: contract.id,
               installmentNo: input.installmentNo,
               variant: q.variant,
+              parkTargetInstallmentNo: contract.totalMonths,
               daysToShift: input.daysToShift,
               rescheduleFee: q.rescheduleFee.toString(),
               lateFeeCollected: q.lateFee.toString(),
@@ -587,6 +594,8 @@ export class RescheduleCollectService {
           input.paymentMethod,
           input.transactionRef || null,
           input.recordedById,
+          undefined,
+          txResult.journalEntryNo ?? undefined,
         );
       } catch (error) {
         this.logger.error(

@@ -151,4 +151,151 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
     expect(capturedHtml).toContain('RT-202607-00050');
     expect(capturedHtml).not.toContain('อ้างอิง: เลิกสัญญา');
   });
+  it('uses the receipt fee for a later manual charge instead of the cumulative installment fee', async () => {
+    query.getReceipt.mockResolvedValue(baseReceipt({
+      receiptType: 'INSTALLMENT', amount: new Decimal('3050'), amountBeforeVat: null,
+      vatAmount: null, installmentNo: 2, paymentId: 'p1', priorReceiptCount: 1,
+      lateFeeCollected: '50.00', lateFeeWaivedThisReceipt: '0.00', hasReceiptFeeHistory: true,
+      payment: { amountDue: new Decimal('6079'), lateFee: new Decimal('150'),
+        amountPaid: new Decimal('6229'), status: 'PAID', lateFeeWaived: false,
+        waivedAmount: null, waivedReason: null },
+    }));
+    await service.generatePDF('r2');
+    expect(capturedHtml).toContain('ค่าปรับชำระล่าช้า');
+    expect(capturedHtml).toContain('<strong>50.00</strong>');
+    expect(capturedHtml).not.toContain('<strong>150.00</strong>');
+    expect(capturedHtml).toContain('<strong>3,000.00</strong>');
+  });
+
+  it('does not print guessed VAT when an unknown legacy receipt has linked fee history', async () => {
+    query.getReceipt.mockResolvedValue(baseReceipt({
+      receiptType: 'INSTALLMENT', installmentNo: 2, paymentId: 'p1',
+      lateFeeCollected: null, lateFeeWaivedThisReceipt: null, hasReceiptFeeHistory: true,
+    }));
+    await expect(service.generatePDF('ambiguous')).rejects.toThrow(
+      'ไม่สามารถระบุค่าปรับของใบเสร็จนี้จากรายการบัญชีได้',
+    );
+    expect(capturedHtml).toBe('');
+  });
+
+  const installmentDocument = (overrides: Record<string, unknown> = {}) => baseReceipt({
+    receiptType: 'INSTALLMENT', amount: new Decimal('5516'), amountBeforeVat: null,
+    vatAmount: null, installmentNo: 4, paymentId: 'p4',
+    remainingBalance: new Decimal('4112'), remainingMonths: 6,
+    documentRemainingBalance: '25788.00', documentRemainingMonths: 6,
+    documentInstallmentAmountDue: '4472.00', documentInstallmentAmountPaid: '4472.00',
+    paymentCase: 'RESCHEDULE', lateFeeCollected: '0.00', lateFeeWaivedThisReceipt: '0.00',
+    hasReceiptFeeHistory: true,
+    installmentAllocations: [
+      { installmentNo: 4, amount: '4472.00', kind: 'INSTALLMENT' },
+      { installmentNo: 10, amount: '1044.00', kind: 'RESCHEDULE_ADVANCE' },
+    ],
+    contract: { ...baseReceipt().contract, totalMonths: 10, financedAmount: new Decimal('22000'),
+      storeCommission: new Decimal('2200'), interestTotal: new Decimal('17594.40'), vatAmount: new Decimal('2925.61') },
+    ...overrides,
+  });
+
+  it('bundled 5516 splits both rows while preserving the original document VAT totals', async () => {
+    query.getReceipt.mockResolvedValue(installmentDocument());
+    await service.generatePDF('bundle');
+    expect(capturedHtml).toContain('ค่างวดเช่าซื้อ งวดที่ 4/10');
+    expect(capturedHtml).toContain('เงินรับล่วงหน้างวดที่ 10/10 — ปรับดิว');
+    expect(capturedHtml).toContain('<strong>4,472.00</strong>');
+    expect(capturedHtml).toContain('<strong>1,044.00</strong>');
+    expect(capturedHtml).toContain('4,179.44');
+    expect(capturedHtml).toContain('292.56');
+    expect(capturedHtml).toContain('5,516.00');
+    expect(capturedHtml).toContain('25,788.00 บาท');
+    expect(capturedHtml).toContain('975.70');
+    expect(capturedHtml).toContain('68.30');
+    expect(capturedHtml).toContain('5,155.14');
+    expect(capturedHtml).toContain('360.86');
+    expect(capturedHtml).not.toContain('4,112.00 บาท');
+  });
+
+  it('separate reschedule 1144 prints last advance 1044 and collected fee 100 without current installment VAT', async () => {
+    query.getReceipt.mockResolvedValue(installmentDocument({
+      receiptType: 'RESCHEDULE_FEE', amount: new Decimal('1144'),
+      lateFeeCollected: '100.00', lateFeeWaivedThisReceipt: '0.00',
+      installmentAllocations: [{ installmentNo: 10, amount: '1044.00', kind: 'RESCHEDULE_ADVANCE' }],
+      documentRemainingBalance: '30260.00', documentRemainingMonths: 7,
+    }));
+    await service.generatePDF('separate');
+    expect(capturedHtml).toContain('งวดที่รับล่วงหน้า</strong> 10 จาก 10 งวด');
+    expect(capturedHtml).toContain('เงินรับล่วงหน้างวดที่ 10/10 — ปรับดิว');
+    expect(capturedHtml).toContain('<strong>1,044.00</strong>');
+    expect(capturedHtml).toContain('<strong>100.00</strong>');
+    expect(capturedHtml).toContain('30,260.00 บาท');
+    expect(capturedHtml).not.toContain('ค่างวดเช่าซื้อ งวดที่ 4/10');
+    expect(capturedHtml).not.toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
+  });
+
+  it('historic partial cumulative remains 2900 despite later payment or manual fees', async () => {
+    query.getReceipt.mockResolvedValue(installmentDocument({
+      amount: new Decimal('3000'), lateFeeCollected: '100.00', paymentStatus: 'PARTIAL',
+      installmentAllocations: [{ installmentNo: 4, amount: '2900.00', kind: 'INSTALLMENT' }],
+      documentInstallmentAmountPaid: '2900.00', documentRemainingBalance: '28404.00',
+      documentRemainingMonths: 7,
+      payment: { amountDue: new Decimal('4472'), amountPaid: new Decimal('4522'),
+        lateFee: new Decimal('150'), status: 'PAID', lateFeeWaived: false },
+    }));
+    await service.generatePDF('partial');
+    expect(capturedHtml).toContain('ชำระบางส่วน — สะสมงวดนี้ 2,900.00 จากยอดงวด 4,472.00 บาท');
+    expect(capturedHtml).not.toContain('4,622.00');
+    expect(capturedHtml).not.toContain('4,522.00');
+  });
+
+  it('prints a clear unavailable balance when historical evidence is incomplete', async () => {
+    query.getReceipt.mockResolvedValue(installmentDocument({
+      documentRemainingBalance: null, documentRemainingMonths: null,
+    }));
+    await service.generatePDF('unknown-balance');
+    expect(capturedHtml).toContain('ไม่สามารถยืนยันยอด ณ วันออกใบเสร็จจากประวัติได้');
+    expect(capturedHtml).not.toContain('4,112.00 บาท');
+    expect(capturedHtml).not.toContain('ชำระครบตามเอกสารนี้');
+  });
+
+  it.each([null, [{ installmentNo: 4, amount: '5516.01', kind: 'INSTALLMENT' }]])(
+    'refuses missing or inconsistent allocation instead of inventing its VAT base', async (installmentAllocations) => {
+      query.getReceipt.mockResolvedValue(installmentDocument({ installmentAllocations }));
+      await expect(service.generatePDF('unknown-allocation')).rejects.toThrow('กรุณาตรวจสอบก่อนพิมพ์');
+      expect(capturedHtml).toBe('');
+    },
+  );
+
+  it('ordinary overpay advance has a printable source-based split without inventing a target installment', async () => {
+    query.getReceipt.mockResolvedValue(installmentDocument({
+      paymentCase: 'OVERPAY_ADVANCE', installmentAllocations: null, receiptAdvanceAmount: '1044.00',
+    }));
+    await service.generatePDF('generic-advance');
+    expect(capturedHtml).toContain('เงินรับล่วงหน้าในสัญญา');
+    expect(capturedHtml).toContain('<strong>4,472.00</strong>');
+    expect(capturedHtml).toContain('<strong>1,044.00</strong>');
+    expect(capturedHtml).toContain('292.56');
+    expect(capturedHtml).toContain('360.86');
+    expect(capturedHtml).not.toContain('เงินรับล่วงหน้างวดที่ 10/10');
+    expect(capturedHtml).not.toContain('เงินรับล่วงหน้างวดสุดท้าย');
+  });
+
+  it('prints a verified zero balance even when unapplied funds cover future installments', async () => {
+    query.getReceipt.mockResolvedValue(installmentDocument({ documentRemainingBalance: '0.00', documentRemainingMonths: 6 }));
+    await service.generatePDF('covered');
+    expect(capturedHtml).toContain('ค่างวดคงเหลือ</span><span class="v">0.00 บาท');
+    expect(capturedHtml).toContain('6 งวด');
+    expect(capturedHtml).not.toContain('ชำระครบตามเอกสารนี้');
+  });
+
+  it('keeps the final cash receipt tax unchanged after an earlier advance receipt', async () => {
+    query.getReceipt.mockResolvedValue(installmentDocument({
+      amount: new Decimal('3428'), installmentNo: 10,
+      installmentAllocations: [{ installmentNo: 10, amount: '3428.00', kind: 'INSTALLMENT' }],
+      documentRemainingBalance: '0.00', documentRemainingMonths: 0,
+    }));
+    await service.generatePDF('final-cash');
+    expect(capturedHtml).toContain('3,203.74');
+    expect(capturedHtml).toContain('224.26');
+    expect(capturedHtml).toContain('<strong>3,428.00</strong>');
+    expect(capturedHtml).not.toContain('เงินรับล่วงหน้างวดที่');
+  });
+
 });

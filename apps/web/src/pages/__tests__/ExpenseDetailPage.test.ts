@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapExpenseStatusToIcab } from '../ExpenseDetailPage';
+import { mapExpenseStatusToIcab } from '@/pages/ExpenseDetailPage';
 
 /**
  * The bar speaks the 4-state ICAB model; expense docs carry 6 states. This
@@ -15,8 +15,11 @@ describe('mapExpenseStatusToIcab', () => {
     expect(mapExpenseStatusToIcab('PENDING_APPROVAL')).toBe('READY');
   });
 
-  it('APPROVED / ACCRUAL / POSTED all map to POSTED (booked → close/print/reverse)', () => {
-    expect(mapExpenseStatusToIcab('APPROVED')).toBe('POSTED');
+  it('APPROVED exposes the posting action because no journal has been booked yet', () => {
+    expect(mapExpenseStatusToIcab('APPROVED')).toBe('DRAFT');
+  });
+
+  it('ACCRUAL / POSTED map to POSTED (booked → close/print/reverse)', () => {
     expect(mapExpenseStatusToIcab('ACCRUAL')).toBe('POSTED');
     expect(mapExpenseStatusToIcab('POSTED')).toBe('POSTED');
   });

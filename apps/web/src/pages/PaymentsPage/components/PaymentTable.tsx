@@ -100,8 +100,12 @@ export default function PaymentTable({
       return <span className="text-sm font-medium">{total.toLocaleString()} ฿</span>;
     }},
     { key: 'amountPaid', label: 'ชำระแล้ว', render: (p: PendingPayment) => {
-      const paid = parseFloat(p.amountPaid);
-      return paid > 0 ? <span className="text-sm text-success">{paid.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
+      const paid = isPaidMode
+        ? p.receiptCashAmount == null ? null : Number(p.receiptCashAmount)
+        : Number(p.amountPaid);
+      if (paid === null)
+        return <span className="text-xs text-muted-foreground" title="ไม่พบข้อมูลยอดรับจากใบเสร็จ">–</span>;
+      return paid > 0 || isPaidMode ? <span className="text-sm text-success">{paid.toLocaleString()} ฿</span> : <span className="text-xs text-muted-foreground">-</span>;
     }},
     { key: 'lateFee', label: 'ค่าปรับ', render: (p: PendingPayment) => {
       const fee = parseFloat(p.lateFee);

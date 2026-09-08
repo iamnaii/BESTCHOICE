@@ -44,7 +44,7 @@ function isValidPeakCode(v: string): boolean {
   return PEAK_CODE_RE.test(v);
 }
 
-export default function PeakMappingSettings() {
+export default function PeakMappingSettings({ canEdit = false }: { canEdit?: boolean }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 200);
@@ -74,6 +74,7 @@ export default function PeakMappingSettings() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!canEdit) throw new Error('ไม่มีสิทธิ์แก้ไขรหัส PEAK');
       const mappings = Object.entries(dirty).map(([id, peakCode]) => ({
         id,
         peakCode,
@@ -207,10 +208,10 @@ export default function PeakMappingSettings() {
               aria-label="ค้นหารหัสบัญชี"
             />
           </div>
-          <Button variant="outline" onClick={() => setBulkOpen(true)} aria-label="นำเข้าจาก CSV">
+          {canEdit && <Button variant="outline" onClick={() => setBulkOpen(true)} aria-label="นำเข้าจาก CSV">
             <Upload className="size-4 mr-1" aria-hidden />
             นำเข้า
-          </Button>
+          </Button>}
           <Button variant="outline" onClick={downloadCsv} aria-label="ดาวน์โหลด CSV">
             <Download className="size-4 mr-1" aria-hidden />
             ดาวน์โหลด CSV
@@ -247,6 +248,8 @@ export default function PeakMappingSettings() {
                         <TableCell>
                           <Input
                             value={value}
+                            readOnly={!canEdit}
+                            disabled={saveMutation.isPending}
                             onChange={(e) => onCellChange(row, e.target.value)}
                             placeholder="—"
                             maxLength={20}
@@ -263,7 +266,7 @@ export default function PeakMappingSettings() {
           </div>
         )}
 
-        <div className="flex justify-end gap-2 pt-2">
+        {canEdit && <div className="flex justify-end gap-2 pt-2">
           {dirtyCount > 0 && (
             <Button variant="ghost" onClick={resetChanges} disabled={saveMutation.isPending}>
               <RotateCcw className="size-4 mr-1" aria-hidden />
@@ -277,10 +280,10 @@ export default function PeakMappingSettings() {
             <Save className="size-4 mr-1" aria-hidden />
             บันทึก {dirtyCount > 0 && `(${dirtyCount})`}
           </Button>
-        </div>
+        </div>}
       </CardContent>
 
-      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+      <Dialog open={canEdit && bulkOpen} onOpenChange={setBulkOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>นำเข้ารหัส PEAK จาก CSV</DialogTitle>

@@ -52,6 +52,13 @@ export class SettingsWriteService {
    *    DocumentType additions).
    */
   private validateKeyValue(key: string, value: string): void {
+    // Approval grants require owner identity, target-user validation and dedicated auditing.
+    if (key === 'accounting_permissions') {
+      throw new BadRequestException('กรุณาจัดการสิทธิ์รายการบัญชีผ่านหน้าตั้งค่าสิทธิ์รายการบัญชี');
+    }
+    if (key === 'payment_approval_permissions') {
+      throw new BadRequestException('กรุณาจัดการสิทธิ์อนุมัติรับชำระผ่านหน้าตั้งค่าสิทธิ์อนุมัติรับชำระ');
+    }
     if (key === 'doc_prefix_per_type') {
       let parsed: unknown;
       try {

@@ -6,7 +6,6 @@ import {
   receiptLabelsForJes,
   caseForReceipt,
   type ReceiptAmountRow,
-  type FeePaymentRow,
   type JeRef,
   type JeForLabel,
   type ReceiptForLabel,
@@ -18,15 +17,6 @@ const rec = (over: Partial<ReceiptAmountRow>): ReceiptAmountRow => ({
   isVoided: false,
   receiptType: 'INSTALLMENT',
   amount: '0',
-  ...over,
-});
-
-const pay = (over: Partial<FeePaymentRow>): FeePaymentRow => ({
-  status: 'PENDING',
-  amountPaid: '0',
-  lateFee: '0',
-  waivedAmount: null,
-  lateFeeWaived: false,
   ...over,
 });
 
@@ -66,38 +56,18 @@ describe('computeCumulativePaid', () => {
 });
 
 describe('computeFeeTotals', () => {
-  it('counts the fee once collection has started via amountPaid > 0 (even if status is OVERDUE)', () => {
-    // Simulates the midnight cron flipping a base-touched PARTIALLY_PAID row back to
-    // OVERDUE — the fee must NOT vanish because amountPaid > 0.
-    const payments = [pay({ status: 'OVERDUE', amountPaid: '2000', lateFee: '100' })];
-    expect(computeFeeTotals(payments)).toEqual({ totalLateFee: 100, totalWaived: 0 });
+  it('totals the displayed receipt fees and waivers, including standalone reschedule collections', () => {
+    const fees = new Map([
+      ['first', { lateFee: 100, waived: 0 }],
+      ['second', { lateFee: 50, waived: 20 }],
+      ['reschedule', { lateFee: 100, waived: 0 }],
+      ['voided', { lateFee: 0, waived: 0 }],
+    ]);
+    expect(computeFeeTotals(fees.values())).toEqual({ totalLateFee: 250, totalWaived: 20 });
   });
 
-  it('counts the fee for a PAID installment', () => {
-    const payments = [pay({ status: 'PAID', amountPaid: '3671', lateFee: '77' })];
-    expect(computeFeeTotals(payments).totalLateFee).toBe(77);
-  });
-
-  it('excludes pure accruals (amountPaid 0 and not PAID) so untouched overdue rows do not inflate the card', () => {
-    const payments = [
-      pay({ status: 'OVERDUE', amountPaid: '0', lateFee: '100' }), // untouched → excluded
-      pay({ status: 'PAID', amountPaid: '1000', lateFee: '50' }), // included
-    ];
-    expect(computeFeeTotals(payments).totalLateFee).toBe(50);
-  });
-
-  it('prefers waivedAmount, falling back to full lateFee when lateFeeWaived is set', () => {
-    const payments = [
-      pay({ status: 'PAID', amountPaid: '1', lateFee: '100', waivedAmount: '40' }), // explicit partial waiver
-      pay({
-        status: 'PAID',
-        amountPaid: '1',
-        lateFee: '80',
-        waivedAmount: null,
-        lateFeeWaived: true,
-      }), // full waive
-    ];
-    expect(computeFeeTotals(payments)).toEqual({ totalLateFee: 180, totalWaived: 120 });
+  it('does not include uncollected installment accruals when there are no receipt fees', () => {
+    expect(computeFeeTotals([])).toEqual({ totalLateFee: 0, totalWaived: 0 });
   });
 });
 
@@ -249,40 +219,71 @@ const casePay = (over: Partial<CasePaymentRow>): CasePaymentRow => ({
 });
 
 describe('caseForReceipt', () => {
+  it('does not guess a historical case when the API explicitly reports unknown provenance', () => {
+    const r = caseRcpt({ amount: '5516', paymentCase: null });
+    expect(caseForReceipt(r, casePay({ amountDue: '4472' })).label).toBe('ไม่ระบุ');
+  });
+
+  it('uses the receipt reschedule action for the 5,516 bundled collection', () => {
+    const r = caseRcpt({ amount: '5516', paymentCase: 'RESCHEDULE' });
+    expect(caseForReceipt(r, casePay({ amountDue: '4472' })).label).toBe('ปรับดิว');
+  });
+
+  it('keeps a final split receipt classified as แบ่งชำระ after the installment is paid', () => {
+    const r = caseRcpt({ amount: '3000', paymentStatus: 'PAID', paymentCase: 'PARTIAL' });
+    expect(caseForReceipt(r, casePay({ amountDue: '6079' })).label).toBe('แบ่งชำระ');
+  });
+
+  it('uses the historical action even when installment fees subsequently change', () => {
+    const r = caseRcpt({ amount: '4572', paymentCase: 'NORMAL' });
+    expect(caseForReceipt(r, casePay({ amountDue: '4472', lateFee: '0' })).label).toBe('ตรงดิว');
+  });
+
+  it('shows repossession credit notes as คืนเครื่อง and ordinary notes as ใบลดหนี้', () => {
+    const r = caseRcpt({ receiptType: 'CREDIT_NOTE', paymentCase: 'REPOSSESSION' });
+    expect(caseForReceipt(r, undefined).label).toBe('คืนเครื่อง');
+    expect(caseForReceipt(caseRcpt({ receiptType: 'CREDIT_NOTE' }), undefined).label).toBe('ใบลดหนี้');
+  });
+
+  it('distinguishes genuine advance payments from rescheduling', () => {
+    const r = caseRcpt({ amount: '5516', paymentCase: 'OVERPAY_ADVANCE' });
+    expect(caseForReceipt(r, casePay({ amountDue: '4472' })).label).toBe('ชำระล่วงหน้า');
+  });
+
   it('paying งวด + ค่าปรับ exactly is NORMAL, not OVER', () => {
     const r = caseRcpt({ amount: '3771' });
     const p = casePay({ lateFee: '100' });
-    expect(caseForReceipt(r, p).label).toBe('NORMAL');
+    expect(caseForReceipt(r, p).label).toBe('ตรงดิว');
   });
 
   it('paying above งวด + ค่าปรับ is OVER', () => {
     const r = caseRcpt({ amount: '3800' });
     const p = casePay({ lateFee: '100' });
-    expect(caseForReceipt(r, p).label).toBe('OVER');
+    expect(caseForReceipt(r, p).label).toBe('ชำระเกิน');
   });
 
   it('cash short of the obligation (credit covered the rest) is NORMAL, not OVER', () => {
     const r = caseRcpt({ amount: '3742' });
     const p = casePay({ lateFee: '100' });
-    expect(caseForReceipt(r, p).label).toBe('NORMAL');
+    expect(caseForReceipt(r, p).label).toBe('ตรงดิว');
   });
 
   it('a waived late fee lowers the obligation back to the installment', () => {
     const r = caseRcpt({ amount: '3700' });
     const p = casePay({ lateFee: '100', lateFeeWaived: true, waivedAmount: '100' });
-    expect(caseForReceipt(r, p).label).toBe('OVER');
+    expect(caseForReceipt(r, p).label).toBe('ชำระเกิน');
   });
 
   it('a partially waived late fee uses the NET fee as the threshold', () => {
     // งวด 3,671 + net fee (100 − 40 = 60) = 3,731 is the exact obligation.
     const p = casePay({ lateFee: '100', waivedAmount: '40' });
-    expect(caseForReceipt(caseRcpt({ amount: '3731' }), p).label).toBe('NORMAL');
-    expect(caseForReceipt(caseRcpt({ amount: '3732' }), p).label).toBe('OVER');
+    expect(caseForReceipt(caseRcpt({ amount: '3731' }), p).label).toBe('ตรงดิว');
+    expect(caseForReceipt(caseRcpt({ amount: '3732' }), p).label).toBe('ชำระเกิน');
   });
 
   it('PARTIAL wins over the amount comparison', () => {
     const r = caseRcpt({ amount: '2000', paymentStatus: 'PARTIAL' });
-    expect(caseForReceipt(r, casePay({ lateFee: '100' })).label).toBe('PARTIAL');
+    expect(caseForReceipt(r, casePay({ lateFee: '100' })).label).toBe('แบ่งชำระ');
   });
 
   it('document receipt types keep their own labels', () => {
@@ -293,6 +294,6 @@ describe('caseForReceipt', () => {
   });
 
   it('falls back to NORMAL when the receipt has no linked installment', () => {
-    expect(caseForReceipt(caseRcpt({ amount: '9999' }), undefined).label).toBe('NORMAL');
+    expect(caseForReceipt(caseRcpt({ amount: '9999' }), undefined).label).toBe('ตรงดิว');
   });
 });

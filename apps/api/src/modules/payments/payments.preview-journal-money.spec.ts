@@ -61,7 +61,7 @@ jest.mock('@sentry/nestjs', () => ({
 }));
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -77,6 +77,15 @@ import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
+import { consumePaymentApproval } from './services/payment-approval-request.util';
+
+jest.mock('./services/payment-approval-request.util', () => ({
+  ...jest.requireActual('./services/payment-approval-request.util'),
+  consumePaymentApproval: jest.fn(),
+}));
+
+const approvalContext = { requestId: 'approval-request-1', actorId: 'approver-1' };
+const consumeApproval = consumePaymentApproval as jest.Mock;
 
 const D = (n: number | string): Prisma.Decimal => new Prisma.Decimal(n);
 
@@ -97,9 +106,9 @@ const lineFor = (lines: JeLine[], code: string): JeLine | undefined =>
  * are populated; money fields are Prisma.Decimal to mirror production.
  */
 type ContractStub = {
-  totalMonths: number;
   financedAmount: Prisma.Decimal;
   storeCommission: Prisma.Decimal;
+  totalMonths: number;
   interestTotal: Prisma.Decimal | null;
   monthlyPayment: Prisma.Decimal | null;
   vatAmount: Prisma.Decimal | null;
@@ -124,19 +133,28 @@ describe('PaymentsService.previewJournal (characterization)', () => {
   // Per-test installment returned by installmentSchedule.findUnique.
   let installment: InstallmentStub;
 
-  const baseContract = (overrides: Partial<ContractStub> = {}): ContractStub => ({
-    totalMonths: 12,
-    // 18,000 principal + 6,000 interest = 12 installments of 2,000;
-    // the final-period preview derives this from actual contract totals.
-    financedAmount: D(18000),
-    storeCommission: D(0),
-    interestTotal: D(6000),
-    monthlyPayment: D(2000),
-    vatAmount: D(0),
-    advanceBalance: D(0),
-    rescheduleAdvanceBalance: D(0),
-    ...overrides,
-  });
+  const baseContract = (overrides: Partial<ContractStub> = {}): ContractStub => {
+    const contract = {
+      totalMonths: 12,
+      interestTotal: D(6000),
+      monthlyPayment: D(2000),
+      vatAmount: D(0),
+      advanceBalance: D(0),
+      rescheduleAdvanceBalance: D(0),
+      ...overrides,
+    };
+    // Keep the financial fixture consistent with the billed installment so the
+    // preview can use the same accrual breakdown as real receipt posting.
+    const monthly = contract.monthlyPayment!;
+    const vatPerMonth = contract.vatAmount === null
+      ? monthly.div('1.07').times('0.07').toDecimalPlaces(2)
+      : contract.vatAmount.div(contract.totalMonths).toDecimalPlaces(2);
+    return {
+      ...contract,
+      financedAmount: overrides.financedAmount ?? monthly.minus(vatPerMonth).times(contract.totalMonths).minus(contract.interestTotal!),
+      storeCommission: overrides.storeCommission ?? D(0),
+    };
+  };
 
   const baseInstallment = (overrides: Partial<InstallmentStub> = {}): InstallmentStub => ({
     // accrualJournalEntryId set → 2B-ONLY path (single Cr 11-2103 clear).
@@ -151,6 +169,11 @@ describe('PaymentsService.previewJournal (characterization)', () => {
     installment = baseInstallment();
 
     prisma = {
+      payment: {
+        findFirst: jest.fn().mockImplementation(() => Promise.resolve({
+          amountDue: installment.contract.monthlyPayment, amountPaid: D(0),
+        })),
+      },
       installmentSchedule: {
         // Lazy-gen recovery (#1170): count>0 → ensureInstallmentSchedules no-op.
         count: jest.fn().mockResolvedValue(1),
@@ -255,20 +278,13 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       expect(out.isBalanced).toBe(true);
     });
 
-    it('roundingDiff == 1.01 does NOT route (no adjustment line; JE left unbalanced)', async () => {
-      const out = await service.previewJournal({
+    it('rejects a ledger rounding difference above 1.00', async () => {
+      await expect(service.previewJournal({
         contractId: 'c-1',
         installmentNo: 1,
-        amountReceived: 2001.01, // +1.01 — over tolerance
+        amountReceived: 2001.01,
         depositAccountCode: '11-1101',
-      });
-
-      expect(lineFor(out.lines, '53-1503')).toBeUndefined();
-      expect(lineFor(out.lines, '52-1104')).toBeUndefined();
-      // QUIRK: with no adj line the preview JE is intentionally NOT balanced.
-      expect(out.totalDebit).toBe('2001.01');
-      expect(out.totalCredit).toBe('2000.00');
-      expect(out.isBalanced).toBe(false);
+      })).rejects.toThrow(/เกินเกณฑ์ปัดเศษ/);
     });
   });
 
@@ -555,30 +571,22 @@ describe('PaymentsService.previewJournal (characterization)', () => {
   // consumes when installmentNo === contract.totalMonths.
   // ───────────────────────────────────────────────────────────────────────────
   describe('park-at-last-installment preview', () => {
-    it('non-last installment: rescheduleAdvanceBalance is NOT consumed even with a matching shortfall', async () => {
+    it('non-last installment: parked advance cannot cover a normal receipt shortage', async () => {
       installment = baseInstallment({
-        installmentNo: 1, // totalMonths=12 → NOT the last installment
+        installmentNo: 1,
         contract: baseContract({
           monthlyPayment: D(2000),
           advanceBalance: D(0),
           rescheduleAdvanceBalance: D(300),
         }),
       });
-
-      const out = await service.previewJournal({
+      await expect(service.previewJournal({
         contractId: 'c-1',
         installmentNo: 1,
-        amountReceived: 1900, // 100 short of 2000
+        amountReceived: 1900,
         depositAccountCode: '11-1101',
         case: 'NORMAL',
-      });
-
-      // No 21-1103 line at all — park bucket ignored on a non-last installment,
-      // so the 100 shortfall falls through to the ≤1฿ tolerance check (it's
-      // NOT ≤1฿, so no adj line either — the preview simply shows an unbalanced
-      // JE, same as it would with no advance/park at all).
-      expect(lineFor(out.lines, '21-1103')).toBeUndefined();
-      expect(out.isBalanced).toBe(false);
+      })).rejects.toThrow(/PARTIAL/);
     });
 
     it('last installment, no generic advance: rescheduleAdvanceBalance covers the shortfall via 21-1103', async () => {
@@ -635,7 +643,7 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       expect(out.isBalanced).toBe(true);
     });
 
-    it('uses the actual final-period residual when consuming parked money', async () => {
+    it.each(['1515.87', '1515.83'])('preserves final GL residual against a billed amount of %s', async (billedAmount) => {
       installment = baseInstallment({
         installmentNo: 12,
         contract: baseContract({
@@ -648,15 +656,19 @@ describe('PaymentsService.previewJournal (characterization)', () => {
         }),
       });
 
+      // New schedules carry the final residual. Legacy billing may still be
+      // flat; save consumes its billed gap and clears GL cents by rounding.
+      prisma.payment.findFirst.mockResolvedValue({ amountDue: D(billedAmount), amountPaid: D(0) });
+
       const out = await service.previewJournal({
         contractId: 'c-1', installmentNo: 12, amountReceived: 1415.83,
         depositAccountCode: '11-1101', case: 'NORMAL',
       });
 
-      // The last accrual is 1,515.87, so the parked bucket covers 100.04.
-      expect(lineFor(out.lines, '21-1103')?.debit).toBe('100.04');
+      expect(lineFor(out.lines, '21-1103')?.debit).toBe(billedAmount === '1515.87' ? '100.04' : '100.00');
       expect(lineFor(out.lines, '11-2103')?.credit).toBe('1515.87');
-      expect(lineFor(out.lines, '52-1104')).toBeUndefined();
+      if (billedAmount === '1515.87') expect(lineFor(out.lines, '52-1104')).toBeUndefined();
+      else expect(lineFor(out.lines, '52-1104')?.debit).toBe('0.04');
       expect(out.totalDebit).toBe('1515.87');
       expect(out.totalCredit).toBe('1515.87');
       expect(out.isBalanced).toBe(true);
@@ -702,7 +714,9 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
   });
 
   beforeEach(async () => {
+    consumeApproval.mockReset().mockResolvedValue({ requestedById: 'user-1', approverId: approvalContext.actorId });
     const buildMockPrisma = () => ({
+      paymentDraft: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       contract: {
         findUnique: jest.fn().mockImplementation(() => Promise.resolve(makeContract())),
         update: jest.fn().mockResolvedValue(makeContract()),
@@ -826,18 +840,16 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
     service = module.get<PaymentsService>(PaymentsService);
   });
 
-  it('overage == 1.00 records without a case (gt 1.00 is exclusive)', async () => {
-    const result = await service.recordPayment(
+  it('overage == 1.00 requires an approval request', async () => {
+    await expect(service.recordPayment(
       'tol-contract-1',
       1,
       REMAINING + 1.0, // 1001 → overage 1.00
       'CASH',
       'user-1',
       'https://slip.test/over-100',
-    );
-
-    expect(prisma.payment.update).toHaveBeenCalled();
-    expect(result.status).toBe('PAID');
+    )).rejects.toThrow(ForbiddenException);
+    expect(prisma.payment.update).not.toHaveBeenCalled();
   });
 
   it('overage above the auto-advance ceiling throws BadRequest mentioning OVERPAY_ADVANCE', async () => {
@@ -869,19 +881,29 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
     ).rejects.toThrow(/OVERPAY_ADVANCE/);
   });
 
-  it('shortage == 1.00 records without a case (gt 1.00 is exclusive)', async () => {
-    const result = await service.recordPayment(
+  it('shortage == 1.00 requires an approval request', async () => {
+    await expect(service.recordPayment(
       'tol-contract-1',
       1,
       REMAINING - 1.0, // 999 → shortage 1.00
       'CASH',
       'user-1',
       'https://slip.test/short-100',
-    );
+    )).rejects.toThrow(ForbiddenException);
+    expect(prisma.payment.update).not.toHaveBeenCalled();
+  });
 
-    expect(prisma.payment.update).toHaveBeenCalled();
-    // shortage 1.00 is NOT a partial clear; recordedAmountPaid 999 < amountDue 1000.
-    expect(result.status).toBe('PARTIALLY_PAID');
+  it.each([1001, 999])('an approved boundary receipt of %s settles without hiding its cash amount', async (cashAmount) => {
+    const result = await service.recordPayment(
+      'tol-contract-1', 1, cashAmount, 'CASH', 'user-1', 'https://slip.test/approved',
+      undefined, undefined, undefined, 'nominated-user', undefined, true,
+      undefined, undefined, undefined, undefined, true, 0, approvalContext,
+    );
+    expect(result.status).toBe('PAID');
+    expect(Number(result.amountPaid)).toBe(Math.max(REMAINING, cashAmount));
+    expect(consumeApproval).toHaveBeenCalledWith(prisma, approvalContext, 'RECORD_PAYMENT', 'tol-payment-1');
+    const receipts = service['receiptsService'] as unknown as { generateReceipt: jest.Mock };
+    expect(receipts.generateReceipt.mock.calls[0][3]).toBe(cashAmount);
   });
 
   it('shortage == 1.01 throws BadRequest mentioning PARTIAL', async () => {

@@ -325,8 +325,9 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
     expect(Sentry.captureException as jest.Mock).not.toHaveBeenCalled();
   });
 
-  it('LINE push success: sentToLine=true, Flex pushed via the FINANCE channel', async () => {
+  it('LINE push success: sentToLine=true, Flex uses the Bangkok anchor via the FINANCE channel', async () => {
     buildPrisma({
+      dueDate: new Date('2026-09-26T17:00:00.000Z'),
       contract: {
         contractNumber: 'CT-2026-0009',
         monthlyPayment: new Prisma.Decimal(1500),
@@ -354,5 +355,10 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
       'line-finance',
     );
     expect(res.sentToLine).toBe(true);
+    expect(JSON.stringify(lineOa.pushMessage.mock.calls[0][1])).toContain(
+      new Date('2026-10-06T17:00:00.000Z').toLocaleDateString('th-TH', {
+        day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok',
+      }),
+    );
   });
 });

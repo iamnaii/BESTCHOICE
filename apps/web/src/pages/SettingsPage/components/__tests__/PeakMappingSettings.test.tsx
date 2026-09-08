@@ -58,7 +58,7 @@ describe('PeakMappingSettings', () => {
         { id: 'a2', code: '11-1102', name: 'ลูกหนี้', type: 'สินทรัพย์', peakCode: null },
       ],
     });
-    wrap(<PeakMappingSettings />);
+    wrap(<PeakMappingSettings canEdit />);
     expect(await screen.findByText('11-1101')).toBeInTheDocument();
     expect(screen.getByText('11-1102')).toBeInTheDocument();
     expect(screen.getByDisplayValue('1110-01')).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe('PeakMappingSettings', () => {
     });
     apiPut.mockResolvedValueOnce({ data: { updated: 1 } });
 
-    wrap(<PeakMappingSettings />);
+    wrap(<PeakMappingSettings canEdit />);
     await screen.findByText('11-1101');
 
     const input = screen.getByLabelText(/รหัส PEAK สำหรับ 11-1101/) as HTMLInputElement;
@@ -101,7 +101,7 @@ describe('PeakMappingSettings', () => {
       }
       return Promise.reject(new Error('unexpected path: ' + path));
     });
-    wrap(<PeakMappingSettings />);
+    wrap(<PeakMappingSettings canEdit />);
     // Wait for initial fetch to settle
     await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/chart-of-accounts/peak-mapping'));
 
@@ -141,7 +141,7 @@ describe('PeakMappingSettings', () => {
       return Promise.reject(new Error('unexpected path: ' + path));
     });
 
-    wrap(<PeakMappingSettings />);
+    wrap(<PeakMappingSettings canEdit />);
     await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/chart-of-accounts/peak-mapping'));
 
     fireEvent.click(screen.getByRole('button', { name: /ดาวน์โหลด CSV/ }));

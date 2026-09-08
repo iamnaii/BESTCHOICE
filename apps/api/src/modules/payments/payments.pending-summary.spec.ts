@@ -19,7 +19,11 @@ describe('PaymentQueryService — getPendingSummary', () => {
     waived?: { _sum: { waivedAmount: unknown } };
     collected?: { _count: number; _sum: { amountPaid: unknown } };
     overdue60?: number;
-    pendingRows?: Array<{ dueDate: Date; amountDue: Prisma.Decimal; lateFeeWaived: boolean }>;
+    pendingRows?: Array<{
+      id: string; dueDate: Date; amountDue: Prisma.Decimal; amountPaid?: Prisma.Decimal;
+      lateFee?: Prisma.Decimal; lateFeeWaived: boolean;
+    }>;
+    journalEntries?: unknown[];
   }) {
     const D = (v: string) => new Prisma.Decimal(v);
     const calls: { pending?: any; waived?: any; collected?: any; overdue60?: any; pendingRows?: any } = {};
@@ -61,7 +65,9 @@ describe('PaymentQueryService — getPendingSummary', () => {
       }),
     };
 
-    const prisma = { payment: { aggregate, count, findMany }, systemConfig };
+    const prisma = { payment: { aggregate, count, findMany }, systemConfig,
+      journalEntry: { findMany: jest.fn().mockResolvedValue(buckets.journalEntries ?? []) },
+    };
     const service = new PaymentQueryService(prisma as any);
     return { service, calls, aggregate, count };
   }
@@ -74,7 +80,7 @@ describe('PaymentQueryService — getPendingSummary', () => {
       overdue60: 3,
       collected: { _count: 8, _sum: { amountPaid: D('12580.00') } },
       // one 30-day-overdue installment; flat bracket tier2 (>=3 days) = 100
-      pendingRows: [{ dueDate: new Date(Date.now() - 30 * 86_400_000), amountDue: D('6000'), lateFeeWaived: false }],
+      pendingRows: [{ id: 'p1', dueDate: new Date(Date.now() - 30 * 86_400_000), amountDue: D('6000'), lateFeeWaived: false }],
     });
 
     const result = await service.getPendingSummary({});
@@ -90,12 +96,31 @@ describe('PaymentQueryService — getPendingSummary', () => {
     });
   });
 
+  it.each([
+    { grossFee: '100', waived: '0', liveFee: '100', paidFee: '100', amountPaid: '3179', waivedFlag: false },
+    { grossFee: '100', waived: '50', liveFee: '100', paidFee: '50', amountPaid: '3129', waivedFlag: true },
+  ])('moves only settled fees out of installment payments (waiver $waived)', async (scenario) => {
+    const D = (v: string) => new Prisma.Decimal(v);
+    const { service } = makeService({
+      pending: { _count: 1, _sum: { amountDue: D('6079'), amountPaid: D(scenario.amountPaid), lateFee: D(scenario.liveFee) } },
+      pendingRows: [{ id: 'p1', dueDate: new Date(Date.now() - 30 * 86_400_000),
+        amountDue: D('6079'), amountPaid: D(scenario.amountPaid), lateFee: D(scenario.liveFee), lateFeeWaived: scenario.waivedFlag }],
+      journalEntries: [{ status: 'POSTED', deletedAt: null, metadata: { tag: 'receipt', paymentId: 'p1' }, lines: [
+        { accountCode: '42-1103', debit: D('0'), credit: D(scenario.grossFee), deletedAt: null },
+        { accountCode: '52-1105', debit: D(scenario.waived), credit: D('0'), deletedAt: null },
+      ] }],
+    });
+    const result = await service.getPendingSummary({});
+    expect(result.outstandingPrincipal).toBe(3000);
+    expect(result.outstandingLateFee).toBe(0);
+  });
+
   it('keeps satang precision (no float drift across the subtraction)', async () => {
     const D = (v: string) => new Prisma.Decimal(v);
     const { service } = makeService({
       pending: { _count: 3, _sum: { amountDue: D('4547.49'), amountPaid: D('1515.83'), lateFee: D('99.17') } },
       // 30 days overdue → flat bracket tier2 (>=3 days) = 100, regardless of amountDue
-      pendingRows: [{ dueDate: new Date(Date.now() - 30 * 86_400_000), amountDue: D('1983.40'), lateFeeWaived: false }],
+      pendingRows: [{ id: 'p2', dueDate: new Date(Date.now() - 30 * 86_400_000), amountDue: D('1983.40'), lateFeeWaived: false }],
     });
 
     const result = await service.getPendingSummary({});

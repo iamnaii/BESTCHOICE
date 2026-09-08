@@ -1,3 +1,5 @@
+import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
+import { getApprovalReason } from '@/hooks/useApprovalActions';
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -80,7 +82,6 @@ const initial = (
     reference: '',
     receiptImageUrl: '',
     note: '',
-    approvedById: '',
     fromTemplateId: '',
     lines: [newLine()],
     cnMode: 'LINKED',
@@ -115,6 +116,7 @@ const initial = (
 
 export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, editDocId }: Props) {
   const { user } = useAuth();
+  const permissions = useAccountingPermissions();
   const queryClient = useQueryClient();
   // D1.1.5.1 — Petty Cash feature flag. When disabled, the picker hides the
   // PETTY_CASH_REIMBURSEMENT chip and the form section is not rendered.
@@ -123,7 +125,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   // D1.3.4.1 — smartDoctypeSwitchEnabled gates the SAMEDAY→ACCRUAL auto-flip.
   // D1.3.4.2 — smartSwitchThresholdDays adds a tolerance: only flip when
   // (today − docDate) > threshold. Default 0 = legacy behavior.
-  const { smartDoctypeSwitchEnabled, smartSwitchThresholdDays, pettyCashEnabled, approvalEnabled } =
+  const { smartDoctypeSwitchEnabled, smartSwitchThresholdDays, pettyCashEnabled, approvalEnabled, approvalThreshold, approvalRequiredDocTypes } =
     useUiFlags();
   const [showQuickStart, setShowQuickStart] = useState(true);
   const [state, setState] = useState<ExpenseFormState>(() =>
@@ -272,8 +274,17 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
   const { preview, loading, error } = useFormCompute(state);
 
+  const requiresApproval = approvalEnabled && (!!getApprovalReason({
+    totalAmount: Number(preview?.totals.totalAmount ?? 0),
+    docType: state.docType.startsWith('EXPENSE_') ? 'EXPENSE' : state.docType,
+    approvalThreshold,
+    approvalRequiredDocTypes,
+  }) || !permissions.can('EXPENSE_POST'));
+  const maySubmit = requiresApproval || permissions.can('EXPENSE_POST');
+
   const saveMutation = useMutation({
     mutationFn: async ({ andPost }: { andPost: boolean }) => {
+      if (andPost && !maySubmit) throw new Error('ไม่มีสิทธิ์บันทึกและ POST รายจ่าย');
       let createdId: string | null = null;
 
       if (state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') {
@@ -290,7 +301,6 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           paymentMethod: state.docType === 'EXPENSE_SAMEDAY' ? state.paymentMethod : undefined,
           depositAccountCode:
             state.docType === 'EXPENSE_SAMEDAY' ? state.depositAccountCode : undefined,
-          approvedById: state.approvedById || undefined,
           fromTemplateId: state.fromTemplateId || undefined,
           // Phase A.5 — doc-level non-deductible flag. Server defaults to false
           // if omitted; we always send the explicit boolean so the value is
@@ -492,7 +502,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
         // คำสั่งเจ้าของ 2026-08-06 — เงินเดือนต้องผ่านการอนุมัติก่อนจ่าย. เมื่อ
         // approval workflow เปิด เอกสาร PAYROLL ห้าม POST ตรง (backend ปฏิเสธ
         // ด้วย approval_required_doc_types อยู่แล้ว) — ส่งขออนุมัติแทน.
-        if (state.docType === 'PAYROLL' && approvalEnabled) {
+        if (requiresApproval) {
           await api.post(`/expense-documents/${createdId}/submit-for-approval`);
           submittedForApproval = true;
         } else {
@@ -784,16 +794,19 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
                 {/* Section: Approver */}
                 <Section num={next()} title="ผู้บันทึก & ผู้อนุมัติ" Icon={Users}>
-                  <ApproverSection
-                    approvedById={state.approvedById}
-                    onChange={(id) => patch({ approvedById: id })}
-                  />
+                  <ApproverSection />
                 </Section>
               </>
             );
           })()}
         </div>
 
+        {!maySubmit && (
+          <p className="px-6 py-2 text-sm text-muted-foreground" role="status">
+            {permissions.isError ? 'โหลดสิทธิ์ไม่สำเร็จ' : permissions.isPending ? 'กำลังตรวจสอบสิทธิ์…' : 'ไม่มีสิทธิ์ POST รายจ่าย — สามารถบันทึกร่างได้'}
+            {permissions.isError && <Button variant="ghost" onClick={() => permissions.refetch()}>ลองใหม่</Button>}
+          </p>
+        )}
         {/* Footer */}
         <div className="flex-none bg-background border-t px-6 py-3 flex items-center justify-between">
           <Button variant="ghost" onClick={onClose} className="gap-1.5">
@@ -817,9 +830,10 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
             </Button>
             <Button
               onClick={() => saveMutation.mutate({ andPost: true })}
-              disabled={!ready || saveMutation.isPending}
+              disabled={!ready || saveMutation.isPending || !maySubmit}
+              title={!maySubmit ? 'ไม่มีสิทธิ์ POST รายจ่าย — สามารถบันทึกร่างได้' : undefined}
             >
-              {state.docType === 'PAYROLL' && approvalEnabled
+              {requiresApproval
                 ? 'บันทึก & ส่งขออนุมัติ'
                 : 'บันทึก & POST'}
             </Button>

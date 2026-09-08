@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { Prisma } from '@prisma/client';
 import * as puppeteer from 'puppeteer';
@@ -171,51 +172,22 @@ export class ReceiptPdfService {
       new Prisma.Decimal((v ?? 0).toString());
     const ZERO = new Prisma.Decimal(0);
     const total = toDec(receipt.amount);
-    const totalDue = receipt.payment
-      ? toDec(receipt.payment.amountDue).plus(
-          receipt.payment.lateFeeWaived ? ZERO : toDec(receipt.payment.lateFee),
-        )
-      : null;
-    // Partial-payment context: prefer the receipt's own issuance-time
-    // snapshot (paymentStatus / remainingAmount) over live Payment state —
-    // voiding a later sibling resets Payment.amountPaid to 0, which used to
-    // erase the "ชำระบางส่วน" tag from re-generated historical PDFs. The
-    // snapshot is only trusted on installment-money receipts (fee/payoff
-    // documents also carry a PARTIAL snapshot but must never show the tag).
     const isInstallmentReceipt = (INSTALLMENT_MONEY_RECEIPT_TYPES as readonly string[]).includes(
       receipt.receiptType ?? 'PAYMENT',
     );
-    const snapshotPartial = isInstallmentReceipt && receipt.paymentStatus === 'PARTIAL';
-    const livePartial = isInstallmentReceipt && receipt.payment?.status === 'PARTIALLY_PAID';
-    const isPartial = snapshotPartial || livePartial;
-    // Cumulative paid on this installment: while the installment is still
-    // live-partial, Payment.amountPaid is exact — keep it. Once live state
-    // no longer reflects this receipt (sibling voided → amountPaid reset,
-    // or installment completed later), reconstruct the issuance-time value
-    // from the immutable snapshot: amountDue − remainingAmount. Legacy rows
-    // without the snapshot fall back to live amountPaid (old behavior).
-    // Sanity guard on the reconstruction: rows written before the
-    // INSTALLMENT-type filter existed can carry a remainingAmount corrupted
-    // by credit-note/fee amounts (e.g. remaining=0 on a genuinely-partial
-    // receipt → reconstruction = full amountDue, contradicting PARTIAL).
-    // When the snapshot contradicts itself, fall back to live amountPaid.
-    const snapshotCumulative =
-      snapshotPartial && receipt.payment && receipt.remainingAmount != null
-        ? toDec(receipt.payment.amountDue).minus(toDec(receipt.remainingAmount))
-        : null;
-    const snapshotSane =
-      snapshotCumulative != null &&
-      receipt.payment != null &&
-      snapshotCumulative.gt(0) &&
-      snapshotCumulative.lt(toDec(receipt.payment.amountDue));
-    const totalPaidOnInstallment = receipt.payment
-      ? livePartial
-        ? toDec(receipt.payment.amountPaid)
-        : snapshotSane && snapshotCumulative != null
-          ? snapshotCumulative
-          : toDec(receipt.payment.amountPaid)
-      : null;
-    const remainingBalance = toDec(receipt.remainingBalance ?? 0);
+    const isPartial = isInstallmentReceipt && receipt.paymentStatus === 'PARTIAL';
+    // The current Payment can be completed, charged again, or reversed later.
+    // Only document-time gross settlement is suitable for the old partial tag.
+    const totalDue = receipt.documentInstallmentAmountDue != null
+      ? toDec(receipt.documentInstallmentAmountDue) : null;
+    const totalPaidOnInstallment = receipt.documentInstallmentAmountPaid != null
+      ? toDec(receipt.documentInstallmentAmountPaid) : null;
+    const documentBalanceApplies = isInstallmentReceipt || receipt.receiptType === 'RESCHEDULE_FEE';
+    const balanceKnown = !documentBalanceApplies || receipt.documentRemainingBalance != null;
+    const remainingBalance = toDec(documentBalanceApplies
+      ? receipt.documentRemainingBalance : receipt.remainingBalance);
+    const remainingMonths = documentBalanceApplies
+      ? receipt.documentRemainingMonths : receipt.remainingMonths;
     const fmt = (v: Prisma.Decimal | number) =>
       (typeof v === 'number' ? v : v.toNumber()).toLocaleString('en-US', {
         minimumFractionDigits: 2,
@@ -235,28 +207,52 @@ export class ReceiptPdfService {
     // (SHOP — ไม่จด VAT) and reschedule fees (เงินรับล่วงหน้า + ค่าปรับ) carry no VAT.
     const vatBearing = !['DOWN_PAYMENT', 'RESCHEDULE_FEE'].includes(receiptType);
 
-    // Late fee — first receipt of the installment only (owner convention
-    // 2026-07-02, mirrors the payment-history display). Fee is VAT-exempt.
-    const firstReceiptOfInstallment = (receipt.priorReceiptCount ?? 0) === 0;
-    const rawFee =
-      receipt.payment && !isCreditNote && firstReceiptOfInstallment
-        ? toDec(receipt.payment.lateFee)
-        : ZERO;
-    const feeWaived =
-      receipt.payment && !isCreditNote && firstReceiptOfInstallment
+    // The exact receipt JE freezes its fee/waiver when later manual charges
+    // change Payment.lateFee. Keep the old convention only for an entirely
+    // unresolved legacy history; never assign its cumulative fee to a sibling
+    // when another receipt already has an authoritative breakdown.
+    const exactFee = (isInstallmentReceipt || receiptType === 'RESCHEDULE_FEE') && receipt.lateFeeCollected != null &&
+      receipt.lateFeeWaivedThisReceipt != null;
+    const legacyFirst = isInstallmentReceipt && !receipt.hasReceiptFeeHistory &&
+      (receipt.priorReceiptCount ?? 0) === 0;
+    const rawFee = exactFee
+      ? toDec(receipt.lateFeeCollected).plus(toDec(receipt.lateFeeWaivedThisReceipt))
+      : receipt.payment && legacyFirst ? toDec(receipt.payment.lateFee) : ZERO;
+    const feeWaived = exactFee
+      ? toDec(receipt.lateFeeWaivedThisReceipt)
+      : receipt.payment && legacyFirst
         ? receipt.payment.waivedAmount != null
           ? toDec(receipt.payment.waivedAmount)
-          : receipt.payment.lateFeeWaived
-            ? rawFee
-            : ZERO
+          : receipt.payment.lateFeeWaived ? rawFee : ZERO
         : ZERO;
-    const feeCharged = rawFee.gt(0) ? rawFee : ZERO;
+    const feeCharged = Prisma.Decimal.max(rawFee, ZERO);
     const feeNet = Prisma.Decimal.max(feeCharged.minus(feeWaived), ZERO);
+    if (isInstallmentReceipt && !exactFee && receipt.hasReceiptFeeHistory) {
+      throw new BadRequestException('ไม่สามารถระบุค่าปรับของใบเสร็จนี้จากรายการบัญชีได้ กรุณาตรวจสอบประวัติรับชำระก่อนพิมพ์');
+    }
     // Cash attributed to the fee cannot exceed what was actually received.
     const feePortion = Prisma.Decimal.min(feeNet, total);
 
-    // Installment (VAT-bearing) portion of this receipt's cash.
-    const installmentPortion = total.minus(feePortion);
+    const allocations = receipt.installmentAllocations;
+    const knownAdvance = receipt.receiptAdvanceAmount != null ? toDec(receipt.receiptAdvanceAmount) : null;
+    if (documentBalanceApplies && allocations === null && knownAdvance == null) {
+      throw new BadRequestException('ไม่สามารถแยกค่างวดและเงินรับล่วงหน้าของใบเสร็จนี้จากประวัติได้ กรุณาตรวจสอบก่อนพิมพ์');
+    }
+    const advanceAllocations = allocations?.filter((allocation) => allocation.kind === 'RESCHEDULE_ADVANCE') ?? [];
+    const advancePortion = allocations
+      ? advanceAllocations.reduce((sum, allocation) => sum.plus(allocation.amount), ZERO)
+      : knownAdvance ?? ZERO;
+    const genericAdvance = !allocations && advancePortion.gt(0);
+    if (advancePortion.lt(0) || advancePortion.plus(feePortion).gt(total)) {
+      throw new BadRequestException('ยอดจัดสรรในใบเสร็จไม่ตรงกับเงินรับชำระ กรุณาตรวจสอบก่อนพิมพ์');
+    }
+    if (allocations && !allocations.reduce((sum, allocation) => sum.plus(allocation.amount), ZERO).plus(feePortion).eq(total)) {
+      throw new BadRequestException('ยอดจัดสรรในใบเสร็จไม่ตรงกับเงินรับชำระ กรุณาตรวจสอบก่อนพิมพ์');
+    }
+    // Split the description without changing this document type's existing VAT
+    // treatment. Changing advance tax timing requires its own end-to-end policy.
+    const installmentPortion = total.minus(feePortion).minus(advancePortion);
+    const documentVatPortion = total.minus(feePortion);
     const breakdown =
       receipt.contract?.financedAmount != null && receipt.contract?.totalMonths
         ? computeInstallmentBreakdown({
@@ -269,6 +265,7 @@ export class ReceiptPdfService {
             vatAmount:
               receipt.contract.vatAmount != null ? receipt.contract.vatAmount.toString() : null,
             totalMonths: receipt.contract.totalMonths,
+            installmentNo: receipt.installmentNo ?? undefined,
           })
         : null;
     // Phase 3 standalone CN (CreditNoteDocumentService): amountBeforeVat/vatAmount
@@ -291,22 +288,39 @@ export class ReceiptPdfService {
 
     let exclVat = ZERO;
     let vatPart = ZERO;
-    if (vatBearing && installmentPortion.gt(0)) {
+    if (vatBearing && documentVatPortion.gt(0)) {
       if (hasExplicitVatSplit) {
         exclVat = toDec(receipt.amountBeforeVat);
         vatPart = toDec(receipt.vatAmount);
-      } else if (breakdown && installmentPortion.equals(breakdown.installmentTotal)) {
+      } else if (breakdown && documentVatPortion.equals(breakdown.installmentTotal)) {
         // Full standard installment → exact ledger figures (per CPA manual).
         exclVat = breakdown.installmentExclVat;
         vatPart = breakdown.vatPerInst;
       } else {
         // Partial / payoff / residual final installment → pro-rata 7% split.
-        exclVat = installmentPortion.times(100).div(107).toDecimalPlaces(2);
-        vatPart = installmentPortion.minus(exclVat);
+        exclVat = documentVatPortion.times(100).div(107).toDecimalPlaces(2);
+        vatPart = documentVatPortion.minus(exclVat);
       }
-    } else if (installmentPortion.gt(0)) {
-      exclVat = installmentPortion; // non-VAT document — full value, no VAT column
+    } else if (documentVatPortion.gt(0)) {
+      exclVat = documentVatPortion; // non-VAT document — full value, no VAT column
     }
+
+    // Allocate the existing document VAT between the displayed rows. Assign
+    // rounding residue to the final advance row so the table matches the totals.
+    const installmentVat = advancePortion.isZero() ? vatPart : vatBearing
+      ? installmentPortion.minus(installmentPortion.times(100).div(107).toDecimalPlaces(2))
+      : ZERO;
+    const installmentExclVat = advancePortion.isZero() ? exclVat : installmentPortion.minus(installmentVat);
+    const advanceVat = vatPart.minus(installmentVat);
+    let allocatedAdvanceVat = ZERO;
+    const advanceRows = advanceAllocations.map((allocation, index) => {
+      const amount = toDec(allocation.amount);
+      const rowVat = index === advanceAllocations.length - 1
+        ? advanceVat.minus(allocatedAdvanceVat)
+        : advanceVat.times(amount).div(advancePortion).toDecimalPlaces(2);
+      allocatedAdvanceVat = allocatedAdvanceVat.plus(rowVat);
+      return { ...allocation, amount, vat: rowVat, beforeVat: amount.minus(rowVat) };
+    });
 
     const docTitle = isCreditNote
       ? 'ใบลดหนี้'
@@ -324,6 +338,8 @@ export class ReceiptPdfService {
       ? `ค่างวดเช่าซื้อ งวดที่ ${receipt.installmentNo}${receipt.contract?.totalMonths ? `/${receipt.contract.totalMonths}` : ''}`
       : 'การรับชำระเงิน';
     const itemLabel = itemLabels[receiptType] ?? installmentLabel;
+    const advanceOnly = advancePortion.gt(0) && installmentPortion.isZero();
+    const displayedInstallmentNo = advanceOnly ? advanceAllocations[0]?.installmentNo : receipt.installmentNo;
 
     const verifyUrl = `https://bestchoicephone.app/r/${receipt.receiptNumber}`;
     const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
@@ -483,7 +499,7 @@ export class ReceiptPdfService {
       <div class="party-heading">รายละเอียดสัญญา</div>
       ${safe.productName ? `<div class="party-name">${safe.productName}</div>` : `<div class="party-name">–</div>`}
       ${safe.imeiSerial ? `<div class="party-line"><strong>IMEI</strong> ${safe.imeiSerial}</div>` : (safe.serialNumber ? `<div class="party-line"><strong>S/N</strong> ${safe.serialNumber}</div>` : '')}
-      ${receipt.installmentNo && receipt.contract?.totalMonths ? `<div class="party-line"><strong>งวดที่ชำระ</strong> ${receipt.installmentNo} จาก ${receipt.contract.totalMonths} งวด</div>` : ''}
+      ${displayedInstallmentNo && receipt.contract?.totalMonths ? `<div class="party-line"><strong>${advanceOnly ? 'งวดที่รับล่วงหน้า' : 'งวดที่ชำระ'}</strong> ${displayedInstallmentNo} จาก ${receipt.contract.totalMonths} งวด</div>` : ''}
     </div>
   </div>
 
@@ -507,15 +523,30 @@ export class ReceiptPdfService {
       </tr>
     </thead>
     <tbody>
-      ${installmentPortion.gt(0) || feePortion.lte(0) ? `
+      ${installmentPortion.gt(0) || (feePortion.lte(0) && advancePortion.lte(0)) ? `
       <tr>
         <td>
           <div class="item-name">${itemLabel}</div>
           ${safe.productName && !isCreditNote ? `<div class="item-meta">${safe.productName}${safe.imeiSerial ? ` · IMEI ${safe.imeiSerial}` : ''}</div>` : ''}
         </td>
-        <td class="right">${fmt(exclVat)}</td>
-        <td class="right">${vatBearing && vatPart.gt(0) ? fmt(vatPart) : '<span class="vat-exempt">ยกเว้น</span>'}</td>
+        <td class="right">${fmt(installmentExclVat)}</td>
+        <td class="right">${vatBearing && installmentVat.gt(0) ? fmt(installmentVat) : '<span class="vat-exempt">ยกเว้น</span>'}</td>
         <td class="right"><strong>${fmt(installmentPortion)}</strong></td>
+      </tr>` : ''}
+      ${advanceRows.map((allocation) => `
+      <tr class="alt">
+        <td><div class="item-name">เงินรับล่วงหน้างวดที่ ${allocation.installmentNo}/${receipt.contract?.totalMonths} — ปรับดิว</div>
+          <div class="item-meta">พักไว้หักค่างวดสุดท้าย</div></td>
+        <td class="right">${fmt(allocation.beforeVat)}</td>
+        <td class="right">${allocation.vat.gt(0) ? fmt(allocation.vat) : '<span class="vat-exempt">–</span>'}</td>
+        <td class="right"><strong>${fmt(allocation.amount)}</strong></td>
+      </tr>`).join('')}
+      ${genericAdvance ? `
+      <tr class="alt">
+        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div></td>
+        <td class="right">${fmt(advancePortion.minus(advanceVat))}</td>
+        <td class="right">${advanceVat.gt(0) ? fmt(advanceVat) : '<span class="vat-exempt">–</span>'}</td>
+        <td class="right"><strong>${fmt(advancePortion)}</strong></td>
       </tr>` : ''}
       ${feeCharged.gt(0) ? `
       <tr class="alt">
@@ -580,9 +611,10 @@ export class ReceiptPdfService {
         ${isCreditNote
           ? `<span class="k">สถานะ</span><span class="v">กลับรายการ — งวดนี้กลับเป็นยอดค้างชำระ</span>`
           : `
-        ${remainingBalance.gt(0) ? `<span class="k">ยอดคงเหลือ</span><span class="v">${fmt(remainingBalance)} บาท</span>` : ''}
-        ${receipt.remainingMonths ? `<span class="k">งวดคงเหลือ</span><span class="v">${receipt.remainingMonths} งวด</span>` : ''}
-        ${!remainingBalance.gt(0) && !receipt.remainingMonths ? `<span class="k">สถานะ</span><span class="v">ชำระครบตามเอกสารนี้</span>` : ''}`}
+        ${!balanceKnown ? `<span class="k">ยอดคงเหลือ</span><span class="v">ไม่สามารถยืนยันยอด ณ วันออกใบเสร็จจากประวัติได้</span>` : ''}
+        ${balanceKnown ? `<span class="k">ค่างวดคงเหลือ</span><span class="v">${fmt(remainingBalance)} บาท</span>` : ''}
+        ${remainingMonths ? `<span class="k">งวดคงเหลือ</span><span class="v">${remainingMonths} งวด</span>` : ''}
+        ${balanceKnown && !remainingBalance.gt(0) && !remainingMonths ? `<span class="k">สถานะ</span><span class="v">ชำระครบตามเอกสารนี้</span>` : ''}`}
       </div>
     </div>
   </div>

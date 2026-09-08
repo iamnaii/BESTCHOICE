@@ -1,13 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route, Navigate } from 'react-router';
+import { MemoryRouter, Routes, Route, Navigate, useLocation } from 'react-router';
 import { SettingsLayout } from '../SettingsLayout';
 import { SettingsCategoryRoute } from '../SettingsCategoryRoute';
 import { SettingsItemRoute } from '../SettingsItemRoute';
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'OWNER' } }) }));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
-vi.mock('@/pages/ChartOfAccountsPage', () => ({ default: () => <div>chart-page</div> }));
+vi.mock('@/pages/ChartOfAccountsPage', () => ({ default: () => { const loc = useLocation(); return <div>chart-page{loc.search}</div>; } }));
 vi.mock('@/pages/PeakSyncPage', () => ({ default: () => <div>peak-sync-page</div> }));
 vi.mock('@/pages/ETaxConfigPage', () => ({ ETaxConfigPage: () => <div>e-tax-page</div> }));
 
@@ -28,6 +28,11 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('accounting migration', () => {
+  it.each(['/settings/accounting#peak-mapping', '/settings/accounting/peak-mapping'])('legacy mapping %s redirects into the chart tab', async (entry) => {
+    render(<App entry={entry} />);
+    expect(await screen.findByText('chart-page?tab=peak')).toBeTruthy();
+  });
+
   it('/settings/accounting/chart → render หน้า chart ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', async () => {
     render(<App entry="/settings/accounting/chart" />);
     expect(await screen.findByText('chart-page')).toBeTruthy();

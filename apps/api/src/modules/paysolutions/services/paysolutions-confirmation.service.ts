@@ -245,13 +245,14 @@ export class PaySolutionsConfirmationService {
       return;
     }
 
+    const receiptMeta = (link.metadata ?? {}) as { additionalLateFee?: string; requestedById?: string };
     try {
       await this.paymentsService.recordPayment(
         payment.contractId,
         payment.installmentNo,
         Number(link.amount),
         'ONLINE_GATEWAY',
-        systemUser.id,
+        receiptMeta.requestedById || systemUser.id,
         undefined, // evidenceUrl — webhook log is the audit trail
         `ชำระผ่าน Pay Solutions (${transaction_id || refno})`,
         refno, // transactionRef
@@ -268,6 +269,7 @@ export class PaySolutionsConfirmationService {
         // PaySolutions with no retry). Sequence is enforced at QR-SEND time
         // (POST /payments/:id/partial-qr) where refusal is still safe.
         false,
+        Number(receiptMeta.additionalLateFee ?? 0),
       );
       this.logger.log(
         `Partial-payment auto-recorded: refno=${refno}, payment=${link.paymentId}, amount=${link.amount}`,

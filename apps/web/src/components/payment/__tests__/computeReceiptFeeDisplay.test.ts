@@ -66,7 +66,7 @@ describe('computeReceiptFeeDisplay', () => {
     expect(out.get('good')?.lateFee).toBe(100);
   });
 
-  it('never attributes the fee to a RESCHEDULE_FEE (ปรับดิว) receipt', () => {
+  it('never attributes the installment-level fee to a RESCHEDULE_FEE receipt', () => {
     const receipts = [
       receipt({ id: 'rf', receiptNumber: 'RT-202607-00003', receiptType: 'RESCHEDULE_FEE' }),
       receipt({ id: 'good', receiptNumber: 'RT-202607-00004', paidDate: '2026-07-01T05:00:00.000Z' }),
@@ -75,6 +75,13 @@ describe('computeReceiptFeeDisplay', () => {
     const out = computeReceiptFeeDisplay(receipts, fees);
     expect(out.get('rf')?.lateFee).toBe(0);
     expect(out.get('good')?.lateFee).toBe(100);
+  });
+
+  it('shows the reschedule receipt own collected fee, separate from the last-installment advance', () => {
+    const out = computeReceiptFeeDisplay([
+      receipt({ id: 'reschedule', receiptType: 'RESCHEDULE_FEE', lateFeeCollected: '100.00', lateFeeWaivedThisReceipt: '0.00' }),
+    ], new Map([['pay-1', { lateFee: 0, waived: 0 }]]));
+    expect(out.get('reschedule')).toEqual({ lateFee: 100, waived: 0 });
   });
 
   it('attributes each installment its own first-receipt fee', () => {
@@ -92,4 +99,52 @@ describe('computeReceiptFeeDisplay', () => {
     expect(out.get('a2')?.lateFee).toBe(0);
     expect(out.get('b1')?.lateFee).toBe(50);
   });
+  it('keeps first fee 100 and a manually added second fee 50 on their own receipts', () => {
+    const rows = [
+      receipt({ id: 'first', lateFeeCollected: '100.00', lateFeeWaivedThisReceipt: '0.00' }),
+      receipt({ id: 'second', receiptNumber: 'RT-202607-00002', lateFeeCollected: '50.00', lateFeeWaivedThisReceipt: '0.00' }),
+      receipt({ id: 'third', receiptNumber: 'RT-202607-00003', lateFeeCollected: '0.00', lateFeeWaivedThisReceipt: '0.00' }),
+    ];
+    const out = computeReceiptFeeDisplay(rows, new Map([['pay-1', { lateFee: 150, waived: 0 }]]));
+    expect(out.get('first')).toEqual({ lateFee: 100, waived: 0 });
+    expect(out.get('second')).toEqual({ lateFee: 50, waived: 0 });
+    expect(out.get('third')).toEqual({ lateFee: 0, waived: 0 });
+  });
+
+  it('adds only this receipt waiver back to collected cash to display the gross fee', () => {
+    const out = computeReceiptFeeDisplay([
+      receipt({ id: 'first', lateFeeCollected: '70.00', lateFeeWaivedThisReceipt: '30.00' }),
+    ], new Map([['pay-1', { lateFee: 999, waived: 999 }]]));
+    expect(out.get('first')).toEqual({ lateFee: 100, waived: 30 });
+  });
+
+  it('does not guess the fee of an ambiguous receipt when a sibling has authoritative data', () => {
+    const out = computeReceiptFeeDisplay([
+      receipt({ id: 'old', lateFeeCollected: null, lateFeeWaivedThisReceipt: null }),
+      receipt({ id: 'new', receiptNumber: 'RT-202607-00002', lateFeeCollected: '50.00', lateFeeWaivedThisReceipt: '0.00' }),
+    ], new Map([['pay-1', { lateFee: 150, waived: 0 }]]));
+    expect(out.get('old')).toEqual({ lateFee: 0, waived: 0, unavailable: true });
+    expect(out.get('new')).toEqual({ lateFee: 50, waived: 0 });
+  });
+
+  it('honors authoritative history outside the loaded page, including a known zero fee', () => {
+    const out = computeReceiptFeeDisplay([
+      receipt({ id: 'old', lateFeeCollected: null, lateFeeWaivedThisReceipt: null, hasReceiptFeeHistory: true }),
+    ], new Map([['pay-1', { lateFee: 150, waived: 0 }]]));
+    expect(out.get('old')?.unavailable).toBe(true);
+    const zero = computeReceiptFeeDisplay([
+      receipt({ id: 'zero', lateFeeCollected: '0.00', lateFeeWaivedThisReceipt: '0.00' }),
+    ], new Map([['pay-1', { lateFee: 100, waived: 0 }]]));
+    expect(zero.get('zero')).toEqual({ lateFee: 0, waived: 0 });
+  });
+
+  it('keeps voided and non-payment receipts at zero even when fee fields are present', () => {
+    const out = computeReceiptFeeDisplay([
+      receipt({ id: 'voided', isVoided: true, lateFeeCollected: '100.00', lateFeeWaivedThisReceipt: '0.00' }),
+      receipt({ id: 'cn', receiptType: 'CREDIT_NOTE', lateFeeCollected: '100.00', lateFeeWaivedThisReceipt: '0.00' }),
+    ], new Map());
+    expect(out.get('voided')).toEqual({ lateFee: 0, waived: 0 });
+    expect(out.get('cn')).toEqual({ lateFee: 0, waived: 0 });
+  });
+
 });

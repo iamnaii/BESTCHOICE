@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { FinanceConfigService } from './finance-config.service';
 import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
-import { loadLateFeeConfig, resolveLateFee } from '../../../utils/late-fee.util';
+import { loadLateFeeConfig, resolveLateFee, resolveLivePaymentLateFee } from '../../../utils/late-fee.util';
 
 /**
  * Finance Tools — wrap DB queries สำหรับ Claude tool use
@@ -63,9 +63,7 @@ export class FinanceToolsService {
     // Late fee MUST match what the collection path actually charges (recordPayment):
     // flat-bracket formula, config-driven via SystemConfig.
     const lateFeeCfg = await loadLateFeeConfig(this.prisma);
-    const lateFee = nextPayment.lateFeeWaived
-      ? 0
-      : Number(resolveLateFee(lateFeeCfg, daysOverdue));
+    const lateFee = Number(resolveLivePaymentLateFee(nextPayment, lateFeeCfg, now));
     const totalAmount = remainingBase + lateFee;
 
     return {

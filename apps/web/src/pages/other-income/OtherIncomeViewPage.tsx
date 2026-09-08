@@ -1,3 +1,4 @@
+import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,13 +21,12 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { RejectModal } from './components/RejectModal';
 import { SaveAsTemplateModal } from './components/SaveAsTemplateModal';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
-import { InternalControlActionBar, resolveCanReverse } from '@/components/accounting';
+import { InternalControlActionBar } from '@/components/accounting';
 import type { IcabAuditEvent } from '@/components/accounting';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import api from '@/lib/api';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatThaiDateLong, formatThaiDateShort } from '@/lib/date';
 
 // ------------------------------------------------------------------
@@ -188,7 +188,7 @@ function mapAuditEvents(
     const reason =
       label && note && label !== note ? `${label} — ${note}` : (label ?? note ?? enumFallback);
     return {
-      event: e.action,
+      event: e.action === 'OI_APPROVAL_REQUESTED' ? 'SUBMITTED_FOR_APPROVAL' : e.action.replace(/^OI_/, ''),
       userId: e.user?.id ?? 'unknown',
       userName: e.user?.name ?? 'ระบบ',
       timestamp: e.createdAt,
@@ -226,11 +226,11 @@ async function fetchAndOpenReceiptPdf(docId: string, docNumber: string): Promise
 // ------------------------------------------------------------------
 
 export default function OtherIncomeViewPage() {
+  const permissions = useAccountingPermissions();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const flags = useUiFlags();
 
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -339,7 +339,7 @@ export default function OtherIncomeViewPage() {
   // the "↺ ยกเลิก/กลับรายการ" button only shows when the server will allow it —
   // respects OWNER_ONLY / +FM / +FM+ACCOUNTANT / CUSTOM modes uniformly.
   const canReverse =
-    resolveCanReverse(flags.reversePermission, user?.role, user?.canReverseOverride) &&
+    permissions.can('INCOME_CANCEL') &&
     docQuery.data?.status === 'POSTED';
 
   const doc = docQuery.data;
@@ -420,7 +420,7 @@ export default function OtherIncomeViewPage() {
                       className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
                     >
                       <Check size={14} />
-                      แก้ไขและ POST
+                      {permissions.can('INCOME_POST') ? 'แก้ไขและ POST' : 'แก้ไขร่าง'}
                     </button>
                   )}
                 </>
@@ -430,7 +430,7 @@ export default function OtherIncomeViewPage() {
                   เคยถูกปฏิเสธ: {doc.rejectNote}
                 </div>
               )}
-              {doc.status === 'READY' && user?.role === 'OWNER' && doc.createdById === user.id && (
+              {doc.status === 'READY' && permissions.can('INCOME_APPROVE') && doc.createdById === user?.id && (
                 <div className="rounded-md bg-muted text-muted-foreground text-sm px-3 py-2">
                   ไม่สามารถอนุมัติเอกสารที่ตนสร้างได้
                 </div>
@@ -760,7 +760,7 @@ export default function OtherIncomeViewPage() {
                         className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"
                       >
                         <Edit size={14} />
-                        แก้ไขและ POST
+                        {permissions.can('INCOME_POST') ? 'แก้ไขและ POST' : 'แก้ไขร่าง'}
                       </button>
                     )}
                   </div>
@@ -773,7 +773,7 @@ export default function OtherIncomeViewPage() {
                       รออนุมัติ
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      เอกสารนี้รอการอนุมัติจาก OWNER — ยังไม่มี Journal Entry
+                      เอกสารนี้รอผู้มีสิทธิ์อนุมัติ — ยังไม่มี Journal Entry
                     </p>
                   </div>
                 )}
@@ -905,6 +905,7 @@ export default function OtherIncomeViewPage() {
           }
           docSubtitle={doc.paymentAccountCode ? `บัญชี ${doc.paymentAccountCode}` : undefined}
           auditLog={mapAuditEvents(auditQuery.data ?? [])}
+          recorderName={doc.createdBy?.name}
           currentUser={{
             id: user.id,
             role: user.role,
@@ -912,7 +913,7 @@ export default function OtherIncomeViewPage() {
             canReverseOverride: user.canReverseOverride,
           }}
           makerCheckerEnabled={makerCheckerEnabled}
-          isViewerApprover={user.role === 'OWNER' && doc.createdById !== user.id}
+          isViewerApprover={permissions.can('INCOME_APPROVE') && doc.createdById !== user.id}
           isOwnDoc={doc.createdById === user.id}
           isLoading={isActionLoading}
           canReverse={Boolean(canReverse)}

@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
 import { computeNetReceiptDue, computeRemainingObligation } from '../computeNetReceiptDue';
 import { computeWizardPrefill } from '../computeWizardPrefill';
+import { computeReceiptLateFee } from '../receiptLateFee';
 import {
   draftFingerprint,
   draftToFormValues,
@@ -103,14 +104,6 @@ const WAIVER_REASONS: { code: string; label: string }[] = [
   { code: 'other', label: 'อื่นๆ (ระบุในหมายเหตุ)' },
 ];
 
-const WAIVER_APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
-
-interface ApproverRow {
-  id: string;
-  name: string;
-  role: string;
-}
-
 // ─── Auto-detect case from amount diff ───────────────────────────────────────
 
 function detectCase(
@@ -162,6 +155,8 @@ export interface WizardSubmitPayload {
   paymentMethod: string;
   depositAccountCode: string;
   lateFee: number;
+  /** Additional fee explicitly entered for this receipt; cumulative lateFee stays gross. */
+  additionalLateFee?: number;
   case: PaymentCase;
   wizardMethod: WizardMethod;
   referenceNumber?: string;
@@ -216,6 +211,10 @@ export function RecordPaymentWizard({
 
   // Amount fields
   const lateFeeDecimal = useMemo(() => new Decimal(payment.lateFee), [payment.lateFee]);
+  const initialFee = useMemo(
+    () => computeReceiptLateFee(lateFeeDecimal, payment.lateFeePaid ?? 0),
+    [lateFeeDecimal, payment.lateFeePaid],
+  );
   const amountDueDecimal = useMemo(() => new Decimal(payment.amountDue), [payment.amountDue]);
   const amountPaidDecimal = useMemo(() => new Decimal(payment.amountPaid), [payment.amountPaid]);
   // Pre-fill amount = FULL owed INCLUDING the net late fee (single source of truth:
@@ -232,10 +231,8 @@ export function RecordPaymentWizard({
 
   const [amountReceived, setAmountReceived] = useState(defaultAmount.toFixed(2));
   const [amountManuallyEdited, setAmountManuallyEdited] = useState(false);
-  // I4 fix: pre-fill lateFee from the server-computed payment.lateFee instead
-  // of hard-coding '0.00'. Previously the cashier had to retype the displayed
-  // late-fee figure from the contract info panel — error-prone and slow.
-  const [lateFeeStr, setLateFeeStr] = useState(lateFeeDecimal.toFixed(2));
+  // Only the uncollected fee belongs in this receipt's editable field.
+  const [lateFeeStr, setLateFeeStr] = useState(initialFee.remaining.toFixed(2));
 
   // Advance balance parked in 21-1103 (Decimal, serialized as string from Prisma).
   const advanceBalance = useMemo(
@@ -257,7 +254,6 @@ export function RecordPaymentWizard({
   // Cr 42-1103 stays gross. Reason + approver gate the submit when waiver > 0.
   const [waiverStr, setWaiverStr] = useState('0');
   const [waiverReasonCode, setWaiverReasonCode] = useState('');
-  const [waiverApproverId, setWaiverApproverId] = useState('');
 
   // Auto-sync amountReceived = (amountDue + NET late fee − paid) minus the auto-deducted
   // advance, while the user hasn't touched the amount field. Toggling the credit checkbox
@@ -268,9 +264,9 @@ export function RecordPaymentWizard({
     if (isNaN(lf)) return;
     const next = computeNetReceiptDue({
       amountDue: amountDueDecimal,
-      lateFee: lf,
+      lateFee: initialFee.paid.plus(lf),
       amountPaid: amountPaidDecimal,
-      waiver: Math.max(parseFloat(waiverStr) || 0, 0),
+      waiver: Math.min(Math.max(parseFloat(waiverStr) || 0, 0), Math.max(lf, 0)),
       advanceBalance,
       consumeAdvance,
       rescheduleAdvanceBalance,
@@ -279,6 +275,7 @@ export function RecordPaymentWizard({
     setAmountReceived(next.toFixed(2));
   }, [
     lateFeeStr,
+    initialFee,
     waiverStr,
     amountDueDecimal,
     amountPaidDecimal,
@@ -383,44 +380,22 @@ export function RecordPaymentWizard({
     }
   }, [methodConfigs, method, accountsForMethod, defaultAccountForMethod, depositAccountCode]);
 
-  // Current effective late fee
-  const currentLateFee = useMemo(() => {
-    const v = parseFloat(lateFeeStr);
-    return isNaN(v) ? new Decimal(0) : new Decimal(v);
-  }, [lateFeeStr]);
+  const receiptFee = useMemo(
+    () => computeReceiptLateFee(lateFeeDecimal, payment.lateFeePaid ?? 0, lateFeeStr),
+    [lateFeeDecimal, payment.lateFeePaid, lateFeeStr],
+  );
+  const currentLateFee = receiptFee.gross;
+  const currentReceiptLateFee = receiptFee.remaining;
 
   // P2 (D1) — waiver computed values (clamped ≤ gross late fee) + net late fee.
   const waiverDec = useMemo(() => {
     const w = parseFloat(waiverStr);
     if (isNaN(w) || w <= 0) return new Decimal(0);
-    return Decimal.min(new Decimal(w), currentLateFee);
-  }, [waiverStr, currentLateFee]);
-  const netLateFee = useMemo(() => currentLateFee.minus(waiverDec), [currentLateFee, waiverDec]);
-
-  // Phase 3 — approval matrix: which actions in THIS receipt need 4-eyes approval.
-  // Today only the late-fee waiver is gated in-wizard (ปิดยอด/คืนเครื่อง route out;
-  // กลับรายการ = Phase 4; ยอดเกินวงเงิน is gated server-side on the OVERPAY_ADVANCE ceiling).
-  const approvalActions = useMemo(() => (waiverDec.gt(0) ? ['อนุโลม'] : []), [waiverDec]);
-  const needsApproval = approvalActions.length > 0;
-
-  // 4-eyes approver list — managers other than the current user (SoD).
-  // /users/approvers is the lean PII-free lookup (GET /users is OWNER-only,
-  // so non-OWNER recorders used to get an empty list here). Server already
-  // filters to active manager roles; keep the waiver role subset + SoD here.
-  const { data: approverData = [] } = useQuery<ApproverRow[]>({
-    queryKey: ['waiver-approvers'],
-    queryFn: async () => {
-      const { data } = await api.get('/users/approvers');
-      return data ?? [];
-    },
-    staleTime: 60_000,
-  });
-  const approvers = useMemo(
-    () =>
-      approverData.filter(
-        (u) => WAIVER_APPROVER_ROLES.includes(u.role) && u.id !== user?.id, // 4-eyes: approver ≠ recorder
-      ),
-    [approverData, user?.id],
+    return Decimal.min(new Decimal(w), Decimal.max(currentReceiptLateFee, 0));
+  }, [waiverStr, currentReceiptLateFee]);
+  const netLateFee = useMemo(
+    () => currentReceiptLateFee.minus(waiverDec),
+    [currentReceiptLateFee, waiverDec],
   );
 
   // Late-fee waiver reasons — server config (SystemConfig late_fee_waiver_reasons),
@@ -463,6 +438,7 @@ export function RecordPaymentWizard({
     hydratedDraftIdRef.current = draftKey;
     const v = draftToFormValues(existingDraft, {
       lateFee: lateFeeStr,
+      lateFeePaid: initialFee.paid.toFixed(2),
       depositAccountCode,
       paidDate,
     });
@@ -473,7 +449,6 @@ export function RecordPaymentWizard({
     setLateFeeStr(v.lateFee);
     setWaiverStr(v.waiver);
     setWaiverReasonCode(v.waiverReasonCode);
-    setWaiverApproverId(v.waiverApproverId);
     setConsumeAdvance(v.consumeAdvance);
     setPaidDate(v.paidDate);
     setCaseOverride(v.caseOverride);
@@ -493,7 +468,7 @@ export function RecordPaymentWizard({
     lateFee: lateFeeStr,
     waiver: waiverStr,
     waiverReasonCode,
-    waiverApproverId,
+    waiverApproverId: '',
     consumeAdvance,
     paidDate,
     caseOverride,
@@ -577,6 +552,11 @@ export function RecordPaymentWizard({
     [receivedNum, expectedTotal],
   );
   const apiCase = caseOverride ?? toApiCase(detectedCase);
+  const approvalActions = [
+    ...(waiverDec.gt(0) ? ['อนุโลมค่าปรับ'] : []),
+    ...(['UNDERPAY', 'OVERPAY'].includes(apiCase) ? ['ส่วนต่างยอดชำระ'] : []),
+  ];
+  const needsApproval = approvalActions.length > 0;
 
   // JE Preview — debounced
   const previewParams = useMemo(
@@ -640,12 +620,13 @@ export function RecordPaymentWizard({
     // credit is applied automatically at accrual. Fully-covered installments need no
     // receipt at all.
     if (receivedNum <= 0) return false;
+    if (receiptFee.reduced) return false;
     if (!depositAccountCode) return false;
     if (detectedCase === 'OUT_OF_RANGE') return false;
     if (requiresRef && !referenceNumber.trim()) return false;
     if (requiresSlip && !slipUrl) return false;
     // P2 (D1): a waiver requires a reason + a 4-eyes approver (≠ recorder).
-    if (waiverDec.gt(0) && (!waiverReasonCode || !waiverApproverId)) return false;
+    if (waiverDec.gt(0) && !waiverReasonCode) return false;
     // QR mode skips the JE preview gate — the JE only posts when webhook
     // fires and recordPayment runs server-side, where the preview will be
     // recomputed against the actual paid amount.
@@ -654,7 +635,10 @@ export function RecordPaymentWizard({
   };
 
   const canSendQr = (): boolean => {
+    // The QR confirmation payload does not carry waiver approval.
+    if (waiverDec.gt(0)) return false;
     if (receivedNum <= 0) return false;
+    if (receiptFee.reduced) return false;
     if (!depositAccountCode) return false;
     return true;
   };
@@ -673,6 +657,7 @@ export function RecordPaymentWizard({
             : 'CASH',
     depositAccountCode,
     lateFee: currentLateFee.toNumber(),
+    additionalLateFee: receiptFee.additional.toNumber(),
     case: apiCase,
     wizardMethod: method,
     referenceNumber: referenceNumber || undefined,
@@ -682,7 +667,6 @@ export function RecordPaymentWizard({
     paidDate,
     lateFeeWaiverAmount: waiverDec.gt(0) ? waiverDec.toNumber() : undefined,
     lateFeeWaiverReasonCode: waiverDec.gt(0) ? waiverReasonCode : undefined,
-    waiverApproverId: waiverDec.gt(0) ? waiverApproverId : undefined,
   });
 
   const actuallySubmit = () => {
@@ -701,6 +685,10 @@ export function RecordPaymentWizard({
   // without ref/slip must be completed before posting — attaching them makes the
   // form dirty, so the completed values save over the draft on post.
   const handlePostDraft = () => {
+    if (needsApproval) {
+      onSubmit(buildPayload());
+      return;
+    }
     onPostDraft?.(payment.id, isDraftDirty() ? buildPayload() : undefined);
   };
 
@@ -722,7 +710,10 @@ export function RecordPaymentWizard({
         paymentUrl: string;
         orderRef: string;
         sentToLine: boolean;
-      }>(`/payments/${payment.id}/partial-qr`, { amount: receivedNum });
+      }>(`/payments/${payment.id}/partial-qr`, {
+        amount: receivedNum,
+        additionalLateFee: receiptFee.additional.toNumber(),
+      });
       return data;
     },
     onSuccess: (data) => {
@@ -752,9 +743,8 @@ export function RecordPaymentWizard({
       setShowRepoOverlay(false);
       setWaiverStr('0');
       setWaiverReasonCode('');
-      setWaiverApproverId('');
       setPaidDate(bkkToday());
-      setLateFeeStr(lateFeeDecimal.toFixed(2));
+      setLateFeeStr(initialFee.remaining.toFixed(2));
       setMethod('CASH');
       setReferenceNumber('');
       setSlipUrl('');
@@ -994,7 +984,7 @@ export function RecordPaymentWizard({
                 {/* Late fee */}
                 <div>
                   <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
-                    ค่าปรับ (฿)
+                    ค่าปรับที่รับครั้งนี้ (฿)
                     <span className="ml-1 text-xs text-muted-foreground font-normal">
                       (ระบุ 0 ถ้าไม่มี)
                     </span>
@@ -1006,18 +996,29 @@ export function RecordPaymentWizard({
                     min={0}
                     step="0.01"
                     className="text-right font-mono"
+                    aria-label="ค่าปรับที่รับครั้งนี้"
                   />
+                  {initialFee.paid.gt(0) && (
+                    <p className="mt-1 text-xs text-muted-foreground leading-snug">
+                      รับค่าปรับงวดนี้แล้ว {initialFee.paid.toFixed(2)} ฿
+                    </p>
+                  )}
+                  {receiptFee.reduced && (
+                    <p className="mt-1 text-xs text-destructive leading-snug" role="alert">
+                      หากต้องการลดค่าปรับ ให้ใช้ “อนุโลมค่าปรับ” แทนการลดยอดในช่องนี้
+                    </p>
+                  )}
                 </div>
 
                 {/* P2 (D1) — อนุโลมค่าปรับ (gross model: Dr 52-1105 / Cr 42-1103 gross) */}
-                {currentLateFee.gt(0) && (
+                {currentReceiptLateFee.gt(0) && (
                   <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-semibold text-foreground leading-snug">
                         อนุโลมค่าปรับ
                       </h3>
                       <span className="text-xs text-muted-foreground leading-snug">
-                        ค่าปรับเต็ม {currentLateFee.toFixed(2)} ฿
+                        ค่าปรับครั้งนี้ {currentReceiptLateFee.toFixed(2)} ฿
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -1025,9 +1026,13 @@ export function RecordPaymentWizard({
                         {
                           key: '50',
                           label: '50%',
-                          apply: () => currentLateFee.div(2).toDecimalPlaces(2).toFixed(2),
+                          apply: () => currentReceiptLateFee.div(2).toDecimalPlaces(2).toFixed(2),
                         },
-                        { key: 'full', label: 'เต็ม', apply: () => currentLateFee.toFixed(2) },
+                        {
+                          key: 'full',
+                          label: 'เต็ม',
+                          apply: () => currentReceiptLateFee.toFixed(2),
+                        },
                         { key: 'custom', label: 'กำหนดเอง', apply: null as null | (() => string) },
                       ].map((b) => {
                         const active = b.apply != null && waiverDec.eq(new Decimal(b.apply()));
@@ -1056,7 +1061,7 @@ export function RecordPaymentWizard({
                       type="number"
                       value={waiverStr}
                       min={0}
-                      max={currentLateFee.toNumber()}
+                      max={currentReceiptLateFee.toNumber()}
                       step="0.01"
                       onChange={(e) => {
                         setWaiverStr(e.target.value);
@@ -1087,7 +1092,7 @@ export function RecordPaymentWizard({
                     )}
                     <div className="flex items-center justify-between text-xs font-medium pt-1 border-t border-border/50">
                       <span className="text-muted-foreground leading-snug">
-                        ค่าปรับ {currentLateFee.toFixed(2)} − อนุโลม {waiverDec.toFixed(2)} =
+                        ค่าปรับ {currentReceiptLateFee.toFixed(2)} − อนุโลม {waiverDec.toFixed(2)} =
                       </span>
                       <span className="text-foreground font-mono leading-snug">
                         {netLateFee.toFixed(2)} ฿
@@ -1217,6 +1222,13 @@ export function RecordPaymentWizard({
                   </div>
                 )}
 
+                {isQrMode && waiverDec.gt(0) && (
+                  <p className="text-xs text-destructive leading-snug" role="alert">
+                    QR ยังไม่รองรับการอนุโลมค่าปรับ กรุณาเลือกเงินสดหรือโอนธนาคาร
+                    และส่งคำขออนุมัติเพื่อบันทึกรับชำระรายการนี้
+                  </p>
+                )}
+
                 {/* Reference number — TRANSFER only */}
                 {requiresRef && (
                   <div>
@@ -1329,31 +1341,10 @@ export function RecordPaymentWizard({
                       </div>
                     </div>
                     <div>
-                      <label
-                        htmlFor="waiver-approver"
-                        className="text-muted-foreground leading-snug"
-                      >
-                        ผู้อนุมัติ {needsApproval && <span className="text-destructive">*</span>}
-                      </label>
-                      <select
-                        id="waiver-approver"
-                        value={waiverApproverId}
-                        onChange={(e) => setWaiverApproverId(e.target.value)}
-                        disabled={!needsApproval}
-                        className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground leading-snug disabled:opacity-50"
-                      >
-                        <option value="">— เลือกผู้อนุมัติ —</option>
-                        {approvers.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.name} ({a.role})
-                          </option>
-                        ))}
-                      </select>
-                      {needsApproval && approvers.length === 0 && (
-                        <p className="text-[11px] text-destructive leading-snug mt-1">
-                          ไม่มีผู้อนุมัติที่ใช้ได้ (ต้องมี OWNER/FM/BM คนอื่น)
-                        </p>
-                      )}
+                      <span className="text-muted-foreground">การอนุมัติ</span>
+                      <p className="font-medium">
+                        {needsApproval ? 'ส่งให้ผู้มีสิทธิพิจารณา' : 'รับเงินปกติ ไม่ต้องอนุมัติ'}
+                      </p>
                     </div>
                   </div>
                   {needsApproval && (
@@ -1363,7 +1354,7 @@ export function RecordPaymentWizard({
                     </div>
                   )}
                   <div className="text-[10px] text-muted-foreground leading-snug">
-                    Approval Matrix: อนุโลม · ปิดยอด · คืนเครื่อง · กลับรายการ · ยอดเกินวงเงิน
+                    ผู้อนุมัติต้องกดด้วยบัญชีของตนเอง · OWNER กำหนดสิทธิในตั้งค่า
                   </div>
                 </div>
               </div>
@@ -1373,6 +1364,7 @@ export function RecordPaymentWizard({
                 <ContractInfoPanel
                   payment={payment}
                   lateFee={currentLateFee}
+                  lateFeePaid={initialFee.paid}
                   netExposure={netExposure}
                   onOpenPayoff={() => setShowPayoffOverlay(true)}
                 />
@@ -1431,7 +1423,8 @@ export function RecordPaymentWizard({
                       isSubmitting ||
                       receivedNum <= 0 ||
                       !depositAccountCode ||
-                      detectedCase === 'OUT_OF_RANGE'
+                      detectedCase === 'OUT_OF_RANGE' ||
+                      receiptFee.reduced
                     }
                     title="อัปเดตฉบับร่าง — ยังไม่ลงบัญชี"
                   >
@@ -1455,6 +1448,8 @@ export function RecordPaymentWizard({
                         <Loader2 className="size-4 animate-spin mr-2" />
                         กำลังลงบัญชี...
                       </>
+                    ) : needsApproval ? (
+                      'ส่งขออนุมัติ'
                     ) : (
                       'ลงบัญชี'
                     )}
@@ -1474,7 +1469,8 @@ export function RecordPaymentWizard({
                       isSubmitting ||
                       receivedNum <= 0 ||
                       !depositAccountCode ||
-                      detectedCase === 'OUT_OF_RANGE'
+                      detectedCase === 'OUT_OF_RANGE' ||
+                      receiptFee.reduced
                     }
                     title="เก็บเป็นฉบับร่าง — ยังไม่ลงบัญชี"
                   >
@@ -1498,7 +1494,10 @@ export function RecordPaymentWizard({
                       กำลังบันทึก...
                     </>
                   ) : (
-                    <>บันทึก + ลงบัญชี ฿{formatNumberDecimal(receivedNum)}</>
+                    <>
+                      {needsApproval ? 'ส่งขออนุมัติ' : 'บันทึก + ลงบัญชี'} ฿
+                      {formatNumberDecimal(receivedNum)}
+                    </>
                   )}
                 </Button>
               </div>

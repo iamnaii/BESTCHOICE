@@ -98,14 +98,14 @@ export function ReversePermissionCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 leading-snug">
           <ShieldCheck size={18} className="text-info" aria-hidden />
-          สิทธิ์การยกเลิก / กลับรายการ (Reverse Entry)
+          สิทธิ์กลับรายการสินทรัพย์
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground leading-snug">
           ระบุว่าใครมีสิทธิ์กดปุ่ม{' '}
           <span className="font-mono">↺ ยกเลิก/กลับรายการ</span>{' '}
-          ในเอกสารบัญชี (รายได้อื่น · รายจ่าย · สินทรัพย์)
+          ในเอกสารสินทรัพย์ ส่วนรายรับและรายจ่ายกำหนดที่ “สิทธิ์รายการบัญชีรายรับ–รายจ่าย”
         </p>
 
         <div className="space-y-2">

@@ -10,6 +10,10 @@ export function SettingsItemRoute() {
   const { categoryId = '', itemId = '' } = useParams<{ categoryId: string; itemId: string }>();
   const found = findItem(categoryId, itemId);
 
+  if (categoryId === 'accounting' && itemId === 'peak-mapping') {
+    return <Navigate to="/settings/accounting/chart?tab=peak" replace />;
+  }
+
   // ไม่พบ / ไม่ใช่ route / ไม่มี component / role ไม่ถึง → กลับหน้าหมวด
   if (!found || found.item.kind !== 'route' || !found.item.component || !found.item.roles.includes(role)) {
     return <Navigate to={`/settings/${categoryId}`} replace />;

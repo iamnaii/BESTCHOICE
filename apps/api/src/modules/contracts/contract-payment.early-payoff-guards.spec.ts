@@ -1,3 +1,5 @@
+import { consumePaymentApproval } from '../payments/services/payment-approval-request.util';
+jest.mock('../payments/services/payment-approval-request.util', () => ({ ...jest.requireActual('../payments/services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from './contract-payment.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
@@ -350,7 +352,7 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       buildService({ periodStatus: 'CLOSED' });
 
       await expect(
-        service.earlyPayoff(baseContract.id, 'user-1', backDatedClosedDto),
+        approvedEarlyPayoff(service, baseContract.id, 'user-1', backDatedClosedDto),
       ).rejects.toThrow('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว');
 
       // validatePeriodOpen looked up the (FINANCE-company, 2020, 1) period.
@@ -371,7 +373,7 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       buildService({ periodStatus: 'SYNCED' });
 
       await expect(
-        service.earlyPayoff(baseContract.id, 'user-1', backDatedClosedDto),
+        approvedEarlyPayoff(service, baseContract.id, 'user-1', backDatedClosedDto),
       ).rejects.toThrow('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว');
 
       expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -383,7 +385,7 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       // returns without throwing → the $transaction and the JE posting run.
       buildService();
 
-      await service.earlyPayoff(baseContract.id, 'user-1', backDatedClosedDto);
+      await approvedEarlyPayoff(service, baseContract.id, 'user-1', backDatedClosedDto);
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(createAndPost).toHaveBeenCalledTimes(1);
@@ -407,7 +409,7 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       const bkkTodayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
       const [y, m] = bkkTodayStr.split('-').map(Number);
 
-      await service.earlyPayoff(baseContract.id, 'user-1', {
+      await approvedEarlyPayoff(service, baseContract.id, 'user-1', {
         paymentMethod: 'CASH',
         paymentDate: bkkTodayStr,
       });
@@ -425,3 +427,21 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
     });
   });
 });
+
+/** Money tests run an already-approved action; the kernel's own suites test authority and stale snapshots. */
+async function approvedEarlyPayoff(service: ContractPaymentService, id: string, userId: string, dto: Parameters<ContractPaymentService['earlyPayoff']>[2]) {
+  (consumePaymentApproval as jest.Mock).mockReset();
+  const originalQuote = service.getEarlyPayoffQuote.bind(service);
+  let approvedQuote: Awaited<ReturnType<ContractPaymentService['getEarlyPayoffQuote']>>;
+  const quoteSpy = jest.spyOn(service, 'getEarlyPayoffQuote').mockImplementation(async (...args) => {
+    // These unit fixtures model a reviewed quote; real transactional re-quote/staleness is covered by the approval integration suite.
+    if (args[3]) return approvedQuote;
+    const quote = await originalQuote(...args);
+    approvedQuote = quote;
+    (consumePaymentApproval as jest.Mock).mockResolvedValueOnce({ requestedById: userId, approverId: 'test-approver', payload: dto, reviewSummary: quote });
+    return quote;
+  });
+  try {
+    return await service.earlyPayoff(id, userId, dto, { requestId: 'payoff-request', actorId: 'test-approver' });
+  } finally { quoteSpy.mockRestore(); }
+}

@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 import { ReceiptNumberService } from './receipt-number.service';
+import { getReceiptDocumentBalance, persistReceiptDocumentBalance } from './receipt-document-balance';
 import { CreditNoteDeliveryService } from './credit-note-delivery.service';
 
 /**
@@ -38,6 +39,7 @@ export class ReceiptIssuanceService {
     issuedById: string,
     /** วันที่รับเงินจริง (D4 backdating) — default = ตอนออกใบ. ใบเสร็จต้องลงวันที่เงินเข้า ไม่ใช่วันที่พิมพ์ */
     paidDate?: Date,
+    sourceJournalEntryNumber?: string,
   ) {
     const receiptPaidDate = paidDate ?? new Date();
     return this.prisma.$transaction(async (tx) => {
@@ -116,6 +118,26 @@ export class ReceiptIssuanceService {
         }
       }
 
+      // Link the exact JE returned by the payment transaction. Never guess by
+      // latest entry: a concurrent receipt may have posted for this payment.
+      let sourceJournalEntryId: string | undefined;
+      if (sourceJournalEntryNumber) {
+        const source = await tx.journalEntry.findUnique({
+          where: { entryNumber: sourceJournalEntryNumber },
+          select: { id: true, status: true, deletedAt: true, metadata: true },
+        });
+        const meta = (source?.metadata ?? {}) as Record<string, unknown>;
+        const acceptedTag = receiptType === 'RESCHEDULE_FEE'
+          ? meta.tag === 'reschedule-collect'
+          : ['receipt', '2B'].includes(String(meta.tag));
+        if (!source || source.status !== 'POSTED' || source.deletedAt ||
+            meta.paymentId !== paymentId || meta.contractId !== contractId ||
+            !acceptedTag) {
+          throw new BadRequestException('ไม่พบรายการบัญชีรับชำระที่ตรงกับใบเสร็จ');
+        }
+        sourceJournalEntryId = source.id;
+      }
+
       // Generate receipt number inside transaction (uses FOR UPDATE lock)
       const receiptNumber = await this.numbers.generateReceiptNumber(tx);
 
@@ -129,7 +151,7 @@ export class ReceiptIssuanceService {
       });
       const fileHash = crypto.createHash('sha256').update(receiptContent).digest('hex');
 
-      const receipt = await tx.receipt.create({
+      let receipt = await tx.receipt.create({
         data: {
           receiptNumber,
           contractId,
@@ -139,7 +161,7 @@ export class ReceiptIssuanceService {
           receiverName,
           amount,
           installmentNo,
-          remainingBalance,
+          remainingBalance: [...INSTALLMENT_MONEY_RECEIPT_TYPES, 'RESCHEDULE_FEE'].includes(receiptType) ? null : remainingBalance,
           remainingMonths: Math.max(0, remainingMonths),
           paymentStatus,
           installmentPartialSeq,
@@ -149,8 +171,39 @@ export class ReceiptIssuanceService {
           paidDate: receiptPaidDate,
           fileHash,
           issuedById,
+          ...(sourceJournalEntryId ? { sourceJournalEntryId } : {}),
         },
       });
+
+      // Freeze gross debt from this document's actual ledger timeline. The old
+      // financedAmount - paid gross cash formula mixed principal and installments.
+      // Null is deliberate when an old/migrated history cannot be proved.
+      const balance = await getReceiptDocumentBalance(tx, receipt, {
+        financedAmount: contract.financedAmount,
+        storeCommission: contract.storeCommission,
+        interestTotal: contract.interestTotal,
+        vatAmount: contract.vatAmount,
+        totalMonths: contract.totalMonths,
+      });
+      if (balance.documentRemainingBalance != null) {
+        const currentRemaining = balance.documentInstallmentAmountDue != null &&
+          balance.documentInstallmentAmountPaid != null
+          ? new Prisma.Decimal(balance.documentInstallmentAmountDue).minus(balance.documentInstallmentAmountPaid)
+          : null;
+        receipt = await tx.receipt.update({
+          where: { id: receipt.id },
+          data: {
+            remainingBalance: new Prisma.Decimal(balance.documentRemainingBalance),
+            remainingMonths: balance.documentRemainingMonths,
+            ...(INSTALLMENT_TYPES.includes(receiptType) ? { remainingAmount: currentRemaining } : {}),
+          },
+        });
+      }
+
+      // Must commit with the Receipt row, including an explicit unknown result.
+      // PostgreSQL createdAt uses transaction start, so a timestamp-only replay
+      // could otherwise absorb a later-committing partial on PDF regeneration.
+      await persistReceiptDocumentBalance(tx, receipt, balance, issuedById, contract.totalMonths);
 
       // Send receipt via LINE if customer is linked
       if (this.lineOaService) {

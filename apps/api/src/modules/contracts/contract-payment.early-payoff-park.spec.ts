@@ -1,3 +1,5 @@
+import { consumePaymentApproval } from '../payments/services/payment-approval-request.util';
+jest.mock('../payments/services/payment-approval-request.util', () => ({ ...jest.requireActual('../payments/services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from './contract-payment.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
@@ -205,7 +207,7 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     expect(quote.totalPayoff).toBe(10752);
     expect(quote.rescheduleAdvanceApplied).toBe(354);
 
-    await h.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);
+    await approvedEarlyPayoff(h.service, 'contract-ep-park-1', 'user-1', baseDto);
     const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
 
     // C-3 หัวใจ: ขาเงินสดต้องเท่าเงินที่ลูกค้าหยิบมาจ่ายจริง (fixture นี้ตั้งให้
@@ -225,11 +227,11 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
 
   it('ทุกขา Cr เหมือนเคสไม่มีถังพักทุกบาท — ขาที่ขยับมีแค่เงินสด (ลด) + 21-1103 (เพิ่ม)', async () => {
     const withPark = build('354');
-    await withPark.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);
+    await approvedEarlyPayoff(withPark.service, 'contract-ep-park-1', 'user-1', baseDto);
     const jeWith = withPark.createAndPost.mock.calls[0][0] as CapturedJe;
 
     const noPark = build('0');
-    await noPark.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);
+    await approvedEarlyPayoff(noPark.service, 'contract-ep-park-1', 'user-1', baseDto);
     const jeWithout = noPark.createAndPost.mock.calls[0][0] as CapturedJe;
 
     const crSig = (je: CapturedJe) =>
@@ -245,7 +247,7 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
 
   it('ตัดคอลัมน์ถังพักด้วยยอดที่ปลดหนี้จริง ใน $transaction เดียวกับ JE + เขียน AuditLog', async () => {
     const h = build('354');
-    await h.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);
+    await approvedEarlyPayoff(h.service, 'contract-ep-park-1', 'user-1', baseDto);
 
     const parkUpdate = h.contractUpdates.find((d) => 'rescheduleAdvanceBalance' in d);
     expect(parkUpdate).toBeDefined();
@@ -270,7 +272,7 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
 
   it('ไม่มีถังพัก → ไม่มีบรรทัด 21-1103, ไม่แตะคอลัมน์, ไม่มี audit row (JE เดิมไม่ขยับ)', async () => {
     const h = build('0');
-    await h.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);
+    await approvedEarlyPayoff(h.service, 'contract-ep-park-1', 'user-1', baseDto);
     const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
 
     expect(lineFor(je, '21-1103')).toBeUndefined();
@@ -290,7 +292,7 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     expect(previewCash?.debit).toBe('10752.00');
     expect(quote.journalPreview.isBalanced).toBe(true);
 
-    await h.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);
+    await approvedEarlyPayoff(h.service, 'contract-ep-park-1', 'user-1', baseDto);
     const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
     for (const l of quote.journalPreview.lines) {
       const posted = lineFor(je, l.accountCode)!;
@@ -308,7 +310,7 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     // ดูดซับได้แค่ยอดปิดเดิม (11,106.00 = 11,556 − ส่วนลด 450) ไม่ใช่ 50,000
     expect(quote.rescheduleAdvanceApplied).toBe(11106);
 
-    await h.service.earlyPayoff('contract-ep-park-1', 'user-1', baseDto);
+    await approvedEarlyPayoff(h.service, 'contract-ep-park-1', 'user-1', baseDto);
     const je = h.createAndPost.mock.calls[0][0] as CapturedJe;
 
     // totalCash ของ JE = 11106.00 → clamp ทำให้ปลดได้แค่ 11106.00, เงินสด = 0.00
@@ -324,3 +326,21 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
     expect((audit!.newValue as Record<string, string>).afterParkBalance).toBe('38894.00');
   });
 });
+
+/** Money tests run an already-approved action; the kernel's own suites test authority and stale snapshots. */
+async function approvedEarlyPayoff(service: ContractPaymentService, id: string, userId: string, dto: Parameters<ContractPaymentService['earlyPayoff']>[2]) {
+  (consumePaymentApproval as jest.Mock).mockReset();
+  const originalQuote = service.getEarlyPayoffQuote.bind(service);
+  let approvedQuote: Awaited<ReturnType<ContractPaymentService['getEarlyPayoffQuote']>>;
+  const quoteSpy = jest.spyOn(service, 'getEarlyPayoffQuote').mockImplementation(async (...args) => {
+    // These unit fixtures model a reviewed quote; real transactional re-quote/staleness is covered by the approval integration suite.
+    if (args[3]) return approvedQuote;
+    const quote = await originalQuote(...args);
+    approvedQuote = quote;
+    (consumePaymentApproval as jest.Mock).mockResolvedValueOnce({ requestedById: userId, approverId: 'test-approver', payload: dto, reviewSummary: quote });
+    return quote;
+  });
+  try {
+    return await service.earlyPayoff(id, userId, dto, { requestId: 'payoff-request', actorId: 'test-approver' });
+  } finally { quoteSpy.mockRestore(); }
+}

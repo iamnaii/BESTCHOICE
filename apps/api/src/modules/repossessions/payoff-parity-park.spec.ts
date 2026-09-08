@@ -127,6 +127,7 @@ describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 
       expect(repoPreview.calculation.closingAmount).toBe(epQuote.totalPayoff);
       expect(repoPreview.calculation.outstandingBalance).toBe(epQuote.remainingBalance);
       expect(repoPreview.calculation.discountAmount).toBe(epQuote.discountAmount);
+      expect(repoPreview.calculation.rescheduleAdvanceApplied).toBe(epQuote.rescheduleAdvanceApplied);
 
       // ยอดปลดหนี้ 21-1103 ต้องเป็นก้อนเดียวกันทั้งสองเส้นทาง
       expect(previewJe).toHaveBeenCalledTimes(1);
@@ -150,6 +151,7 @@ describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 
     expect(repoPreview.calculation.closingAmount).toBe(epQuote.totalPayoff);
     expect(epQuote.totalPayoff).toBe(33411.96); // golden เดิม 2026-07-20
     expect(epQuote.rescheduleAdvanceApplied).toBe(0);
+    expect(repoPreview.calculation.rescheduleAdvanceApplied).toBe(0);
     expect(epQuote.journalPreview.lines.find((l) => l.accountCode === '21-1103')).toBeUndefined();
     expect(
       (previewJe.mock.calls[0][0] as { parkRelief?: Prisma.Decimal }).parkRelief,

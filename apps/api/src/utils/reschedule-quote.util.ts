@@ -18,6 +18,7 @@ export interface RescheduleQuoteInput {
     amountDue: Prisma.Decimal | number | string;
     /** Optional for legacy callers — missing → 0 (nothing paid yet). */
     amountPaid?: Prisma.Decimal | number | string;
+    lateFee?: Prisma.Decimal | number | string;
     lateFeeWaived: boolean;
   };
   lateFeeCfg: LateFeeConfig;

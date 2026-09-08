@@ -24,6 +24,7 @@ export interface PaymentDraftRow {
   paymentMethod: string;
   depositAccountCode: string | null;
   lateFee: string | null;
+  additionalLateFee?: string | null;
   lateFeeWaiverAmount: string | null;
   lateFeeWaiverReasonCode: string | null;
   waiverApproverId: string | null;
@@ -86,7 +87,7 @@ const money2 = (s: string | null | undefined): string => {
 
 export function draftToFormValues(
   draft: PaymentDraftRow,
-  fallbacks: { lateFee: string; depositAccountCode: string; paidDate: string },
+  fallbacks: { lateFee: string; lateFeePaid?: string; depositAccountCode: string; paidDate: string },
 ): DraftFormValues {
   const waiver = money2(draft.lateFeeWaiverAmount);
   const hasWaiver = new Decimal(waiver).gt(0);
@@ -94,7 +95,9 @@ export function draftToFormValues(
     amount: money2(draft.amount),
     method: apiMethodToWizard(draft.paymentMethod),
     depositAccountCode: draft.depositAccountCode ?? fallbacks.depositAccountCode,
-    lateFee: draft.lateFee != null ? money2(draft.lateFee) : fallbacks.lateFee,
+    lateFee: draft.lateFee != null
+      ? Decimal.max(new Decimal(draft.lateFee).minus(fallbacks.lateFeePaid ?? 0), 0).toFixed(2)
+      : fallbacks.lateFee,
     waiver: hasWaiver ? new Decimal(waiver).toString() : '0',
     // A waiver of 0 means the reason/approver rows are stale leftovers — drop them
     // so the fingerprint matches what buildPayload() would actually send.

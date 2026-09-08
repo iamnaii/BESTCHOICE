@@ -382,7 +382,11 @@ export function RescheduleOverlay({
           </div>
           <div className="space-y-1.5 text-sm">
             {newDueDate && (
-              <Row label="ครบกำหนดใหม่ (งวดนี้)" value={formatThaiDate(newDueDate)} bold />
+              <Row
+                label={splitMode === 'SPLIT' ? 'ครบกำหนดใหม่ (งวดนี้)' : 'วันอ้างอิงดิวใหม่'}
+                value={formatThaiDate(newDueDate)}
+                bold
+              />
             )}
             <Row
               label="ค่าธรรมเนียมเลื่อนดิว"
@@ -622,14 +626,15 @@ export function RescheduleOverlay({
             {splitMode === 'SINGLE' ? (
               <>
                 <Effect text={`งวดที่ ${installmentNo} ชำระครบวันนี้ (ค่างวด + ยอดปรับดิว) — ออกใบเสร็จปกติ`} />
-                <Effect text={`เลื่อนวันครบกำหนดงวดที่ ${installmentNo + 1} เป็นต้นไป +${days} วัน`} />
+                <Effect text={`งวดที่ ${installmentNo + 1} เป็นต้นไป ครบกำหนดวันเดียวกันทุกเดือนตามดิวใหม่`} />
               </>
             ) : (
-              <Effect text={`เลื่อนวันครบกำหนดงวดที่ ${installmentNo} เป็นต้นไป +${days} วัน`} />
+              <Effect text={`งวดที่ ${installmentNo} เป็นต้นไป ครบกำหนดวันเดียวกันทุกเดือนตามดิวใหม่`} />
             )}
+            <Effect text="เดือนที่ไม่มีวันตรงกับดิวใหม่ ใช้วันสุดท้ายของเดือน" />
             {fee.gt(0) && (
               <Effect
-                text={`ยอดปรับดิว ${fee.toFixed(2)} บาท บันทึกเป็นเงินรับล่วงหน้า (21-1103 — นำไปหักค่างวดถัดไปอัตโนมัติ)`}
+                text={`ยอดปรับดิว ${fee.toFixed(2)} บาท เป็นเงินชำระล่วงหน้าสำหรับหักค่างวดสุดท้าย`}
               />
             )}
             <Effect

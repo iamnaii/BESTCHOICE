@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { SettingsLayout } from '../SettingsLayout';
 
@@ -45,6 +46,14 @@ describe('SettingsLayout', () => {
     mobile = true;
     renderAt('/settings/company');
     expect(screen.getByRole('combobox')).toBeTruthy();
+  });
+
+  it('searching PEAK opens the chart route instead of a missing category anchor', async () => {
+    renderAt('/settings/accounting');
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText(/ค้นหา/), 'mapping');
+    await user.click(screen.getByRole('button', { name: /ผังบัญชี \/ รหัส PEAK/ }));
+    expect(screen.getByText('item-child')).toBeTruthy();
   });
 
   it('มีช่องค้นหา', () => {

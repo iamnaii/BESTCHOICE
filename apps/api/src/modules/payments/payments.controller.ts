@@ -17,7 +17,7 @@ import {
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { IsIn, IsNumber, IsString, Min } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto, PreviewJournalDto } from './dto/payment.dto';
 import { ImportPaymentsCsvDto } from './dto/csv-import.dto';
@@ -37,6 +37,11 @@ class CreatePartialQrDto {
   @IsNumber()
   @Min(1, { message: 'ยอดต้องมากกว่า 0 บาท' })
   amount!: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  additionalLateFee?: number;
 }
 
 class CreateRescheduleQrDto {
@@ -377,6 +382,8 @@ export class PaymentsController {
       dto.lateFeeWaiverAmount,
       dto.lateFeeWaiverReasonCode,
       dto.waiverApproverId,
+      true,
+      dto.additionalLateFee,
     );
   }
 
@@ -410,6 +417,7 @@ export class PaymentsController {
         paymentMethod,
         depositAccountCode: dto.depositAccountCode,
         lateFee: dto.lateFee,
+        additionalLateFee: dto.additionalLateFee,
         lateFeeWaiverAmount: dto.lateFeeWaiverAmount,
         lateFeeWaiverReasonCode: dto.lateFeeWaiverReasonCode,
         waiverApproverId: dto.waiverApproverId,
@@ -572,6 +580,8 @@ export class PaymentsController {
     return this.paySolutionsService.createPartialPaymentQR({
       paymentId: id,
       amount: dto.amount,
+      additionalLateFee: dto.additionalLateFee,
+      requestedById: user.id,
     });
   }
 

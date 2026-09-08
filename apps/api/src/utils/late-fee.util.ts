@@ -70,21 +70,35 @@ export function resolveLateFee(cfg: LateFeeConfig, daysOverdue: number): Prisma.
  * Display-side live late fee for an UNPAID installment as of `asOf`. The twin of
  * the record-time recompute in PaymentReceiptOrchestrator — call this wherever a
  * pending/overdue installment's late fee is SHOWN, so the figure tracks the
- * current config instead of the stored `Payment.lateFee` stamp (refreshed only at
- * record time / by the overdue cron).
+ * current config until the first payment. After any amount has been paid, keep
+ * the stored cumulative fee (including zero and later explicit additions) so a
+ * follow-up receipt on the SAME installment cannot trigger a new automatic fee.
+ * Receipt allocation subtracts fees already booked; this returns the cumulative
+ * obligation, not the fee to book on the next receipt.
  *
  *   waived                    → 0
+ *   amountPaid > 0            → stored lateFee (frozen for this installment)
  *   dueDate >= asOf (≥ today) → 0  (resolveLateFee returns 0 for < 1 whole day)
  *   otherwise                 → resolveLateFee(cfg, whole days overdue)
  *
  * Do NOT use this for PAID installments: their stored lateFee is the actual charge.
  */
 export function resolveLivePaymentLateFee(
-  payment: { dueDate: Date; amountDue: Prisma.Decimal | number | string; lateFeeWaived: boolean },
+  payment: {
+    dueDate: Date;
+    amountDue: Prisma.Decimal | number | string;
+    /** Legacy quote inputs omit these; missing means no prior payment/fee. */
+    amountPaid?: Prisma.Decimal | number | string;
+    lateFee?: Prisma.Decimal | number | string;
+    lateFeeWaived: boolean;
+  },
   cfg: LateFeeConfig,
   asOf: Date,
 ): Prisma.Decimal {
   if (payment.lateFeeWaived) return new Prisma.Decimal(0);
+  if (new Prisma.Decimal(payment.amountPaid ?? 0).gt(0)) {
+    return new Prisma.Decimal(payment.lateFee ?? 0);
+  }
   const daysOverdue = Math.max(
     0,
     Math.floor((asOf.getTime() - new Date(payment.dueDate).getTime()) / 86_400_000),

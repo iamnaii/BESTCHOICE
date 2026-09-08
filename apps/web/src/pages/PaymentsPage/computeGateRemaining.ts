@@ -19,6 +19,8 @@ export interface GateRemainingPayment {
 /** Minimal shape of the wizard's submit payload needed by the gate. */
 export interface GateRemainingPayload {
   consumeAdvance: boolean;
+  /** Current cumulative gross fee, including any explicitly added amount. */
+  lateFee?: number;
   lateFeeWaiverAmount?: number;
 }
 
@@ -42,7 +44,7 @@ export function computeGateRemaining(
 ): number {
   return computeNetReceiptDue({
     amountDue: payment.amountDue,
-    lateFee: payment.lateFee,
+    lateFee: payload.lateFee ?? payment.lateFee,
     amountPaid: payment.amountPaid,
     waiver: payload.lateFeeWaiverAmount ?? 0,
     advanceBalance: payment.contract.advanceBalance ?? 0,

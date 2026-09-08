@@ -161,6 +161,7 @@ describe('PaymentsService — real-time late fee on payment (flat-bracket)', () 
       partialPaymentLink: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'al-1' }),
       },
@@ -226,6 +227,77 @@ describe('PaymentsService — real-time late fee on payment (flat-bracket)', () 
     const arg = receiptPrimitiveExecute.mock.calls[0]?.[0];
     return arg?.lateFee;
   };
+
+  it.each([0, 50, 175])('keeps cumulative fee %s when completing a prior partial receipt', async (lateFee) => {
+    const amountPaid = 3000 + lateFee;
+    prisma.payment.findFirst.mockResolvedValue(makePayment({
+      dueDate: overdueDays(30), amountPaid: D(amountPaid), lateFee: D(lateFee), status: 'PARTIALLY_PAID',
+    }));
+    await service.recordPayment(
+      'lf-contract-1', 1, 7000, 'CASH', 'user-1',
+      'https://slip.test/frozen-fee', undefined, `LF-FROZEN-${lateFee}`, '11-1101',
+    );
+    expect(lateFeeWritten()).toBeUndefined();
+    expect(lateFeeForwarded()?.toFixed(2) ?? '0.00').toBe(D(lateFee).toFixed(2));
+  });
+
+  it('adds only a staff-entered fee and forwards the new cumulative target to the journal', async () => {
+    prisma.payment.findFirst.mockResolvedValue(makePayment({
+      dueDate: overdueDays(30), amountPaid: D(3100), lateFee: D(100), status: 'PARTIALLY_PAID',
+    }));
+    const result = await service.recordPayment(
+      'lf-contract-1', 1, 7050, 'CASH', 'user-1',
+      'https://slip.test/manual-fee', undefined, 'LF-ADD-50', '11-1101',
+      undefined, 'NORMAL', true, undefined, undefined, undefined, undefined, true, 50,
+    );
+    expect(lateFeeWritten()?.toFixed(2)).toBe('150.00');
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('150.00');
+    expect(result.amountPaid.toFixed(2)).toBe('10150.00');
+    expect(result.status).toBe('PAID');
+  });
+
+  it('keeps an uncollected part of an explicit fee in the cumulative obligation', async () => {
+    prisma.payment.findFirst.mockResolvedValue(makePayment({
+      amountPaid: D(3100), lateFee: D(100), status: 'PARTIALLY_PAID',
+    }));
+    receiptPrimitiveExecute.mockResolvedValue({ entryNo: 'JE-ADD-PARTIAL', split: { principalRemainingAfter: D(7000) } });
+    const result = await service.recordPayment(
+      'lf-contract-1', 1, 20, 'CASH', 'user-1',
+      'https://slip.test/manual-fee-partial', undefined, 'LF-ADD-50-PARTIAL', '11-1101',
+      undefined, 'PARTIAL', true, undefined, undefined, undefined, undefined, true, 50,
+    );
+    expect(lateFeeWritten()?.toFixed(2)).toBe('150.00');
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('150.00');
+    expect(result.status).toBe('PARTIALLY_PAID');
+  });
+
+  it.each([0, 100])('adds a new fee after a standalone waiver, preserving prior paid fee %s', async (priorFee) => {
+    prisma.payment.findFirst.mockResolvedValue(makePayment({
+      amountPaid: D(3000 + priorFee), lateFee: D(0), lateFeeWaived: true, waivedAmount: D(100), status: 'PARTIALLY_PAID',
+    }));
+    prisma.journalEntry.findMany.mockResolvedValue([{
+      status: 'POSTED', deletedAt: null, metadata: { tag: 'receipt', paymentId: 'lf-payment-1' },
+      lines: [{ accountCode: '42-1103', debit: D(0), credit: D(priorFee), deletedAt: null }],
+    }]);
+    await service.recordPayment(
+      'lf-contract-1', 1, 7050, 'CASH', 'user-1', 'https://slip.test/new-fee',
+      undefined, 'LF-ADD-AFTER-WAIVER', '11-1101', undefined, 'NORMAL', true,
+      undefined, undefined, undefined, undefined, true, 50,
+    );
+    expect(lateFeeForwarded()?.toFixed(2)).toBe(D(50 + priorFee).toFixed(2));
+    expect(prisma.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ lateFeeWaived: false, waivedAmount: null, waivedReason: null }),
+    }));
+  });
+
+  it.each([-1, 0.001, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid explicit fee %s before mutation', async (fee) => {
+    await expect(service.recordPayment(
+      'lf-contract-1', 1, 7000, 'CASH', 'user-1', 'https://slip.test/invalid',
+      undefined, 'LF-INVALID', '11-1101', undefined, 'NORMAL', true,
+      undefined, undefined, undefined, undefined, true, fee,
+    )).rejects.toThrow('ค่าปรับที่เพิ่ม');
+    expect(prisma.payment.update).not.toHaveBeenCalled();
+  });
 
   // ───────────────────────────────────────────────────────────────────────────
   // On-time → zero late fee

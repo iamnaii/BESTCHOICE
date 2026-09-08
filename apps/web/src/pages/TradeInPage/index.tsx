@@ -58,12 +58,12 @@ function Segmented<T extends string>({
   ariaLabel?: string;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
       {label && <span className="text-xs leading-snug text-muted-foreground">{label}</span>}
       <div
         role="radiogroup"
         aria-label={ariaLabel ?? label}
-        className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5"
+        className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg bg-muted p-0.5"
       >
         {options.map(([key, text]) => {
           const active = value === key;
@@ -176,6 +176,7 @@ export default function TradeInPage() {
     onSuccess: () => {
       toast.success('ประเมินราคาเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
       setAppraiseModal(null);
       setAppraiseValue('');
       setAppraiseCondition('B');
@@ -192,6 +193,7 @@ export default function TradeInPage() {
       queryClient.invalidateQueries({ queryKey: ['qc-pending-count'] });
       toast.success('ยอมรับการรับซื้อเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
       setAcceptModal(null);
       setAcceptForm(EMPTY_ACCEPT_FORM);
     },
@@ -203,6 +205,7 @@ export default function TradeInPage() {
     onSuccess: () => {
       toast.success('ปฏิเสธการรับซื้อ');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -227,6 +230,7 @@ export default function TradeInPage() {
     },
     onSuccess: async (res, id, context) => {
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
       if (context.requestId !== voucherRequest.current) return;
       toast.success(`ออกใบสำคัญเลขที่ ${res.data.voucherNumber}`);
       await openVoucherPdf(id, context.requestId);
@@ -312,10 +316,12 @@ export default function TradeInPage() {
         onClose={() => setShowQuickBuy(false)}
         onIncomplete={(id) => {
           queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+          queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
           setDetailId(id);
         }}
         onSuccess={(result) => {
           queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+          queryClient.invalidateQueries({ queryKey: ['trade-in-detail'] });
           queryClient.invalidateQueries({ queryKey: ['products'] });
           queryClient.invalidateQueries({ queryKey: ['qc-pending-count'] });
           setReceived(result);
@@ -351,7 +357,7 @@ export default function TradeInPage() {
             /* Filters live in the table's own toolbar so the list reads as one
                surface instead of three stacked bars. */
             filters={
-              <>
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-3">
                 <div className="relative w-full sm:w-72">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -388,7 +394,7 @@ export default function TradeInPage() {
                     ล้างตัวกรอง
                   </Button>
                 )}
-              </>
+              </div>
             }
             data={data?.data}
             total={data?.total}
@@ -428,7 +434,8 @@ export default function TradeInPage() {
             onClose={handleCloseAccept}
           />
 
-          <TradeInDetailDialog id={detailId} onClose={() => setDetailId(null)} />
+          <TradeInDetailDialog id={detailId} onClose={() => setDetailId(null)} onVoucher={handleVoucher}
+            voucherLoading={voucherLoadingId === detailId || generateVoucherMutation.isPending} />
           <OnlineAppraiseModal item={onlineAppraise} onClose={() => setOnlineAppraise(null)} />
         </>
       )}

@@ -24,6 +24,15 @@ export interface TradeIn {
   sellerPhone: string | null;
   voucherNumber: string | null;
   voucherPdfUrl: string | null;
+  transferBankName?: string | null;
+  transferAccountNumber?: string | null;
+  transferAccountName?: string | null;
+  sellerConsentSigned?: boolean;
+  notes?: string | null;
+  creditBaseAmount?: string | number | null;
+  creditBonusAmount?: string | number | null;
+  creditIssuedAt?: string | null;
+  currentRedemptionId?: string | null;
   createdAt: string;
   idCardVerifiedAt?: string | null;
   paymentMethod?: 'CASH' | 'TRANSFER' | 'TRADE_IN_CREDIT' | null;

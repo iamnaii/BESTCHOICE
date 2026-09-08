@@ -106,4 +106,51 @@ export async function checkTradeIn(page, origin, output, width) {
   const size = await page.evaluate(() => ({ content: document.documentElement.scrollWidth, viewport: innerWidth }));
   assert.ok(size.content <= size.viewport + 1, 'Product handoff must fit the viewport');
   await page.screenshot({ path: join(output, `trade-in-stock-${width}.png`), fullPage: true });
+
+  // A successful purchase is not enough: staff must still reach the list controls,
+  // inspect its receipt and distinguish current stock/prices from the intake record.
+  await page.goto(new URL('/trade-in?zone=shop', origin).href);
+  await page.getByRole('textbox', { name: 'ค้นหารายการรับซื้อ' }).fill(imei);
+  await expect(page.getByTestId('data-table').locator('tbody tr')).toHaveCount(1);
+  await expect(page.getByRole('table').getByText(imei, { exact: true })).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const controls = await page.evaluate(() => ({
+    viewport: innerWidth, content: document.documentElement.scrollWidth,
+    clipped: [...document.querySelectorAll('main input, main [role=radio], main button')]
+      .filter((e) => !e.closest('table'))
+      .filter((e) => {
+        const r = e.getBoundingClientRect();
+        return r.width < 24 || r.x < 0 || r.right > innerWidth + 1;
+      }).map((e) => e.getAttribute('aria-label') || e.textContent),
+  }));
+  assert.ok(controls.content <= controls.viewport + 1, 'Trade-in list must fit the viewport');
+  assert.deepEqual(controls.clipped, [], 'Search, filters and page actions must remain reachable');
+  const scroller = page.getByTestId('data-table');
+  for (const edge of ['start', 'end']) {
+    await scroller.evaluate((e, side) => { e.scrollLeft = side === 'start' ? 0 : e.scrollWidth; }, edge);
+    const menu = page.getByRole('button', { name: 'เมนูการทำงาน' });
+    const action = await menu.boundingBox();
+    assert.ok(action && action.x >= 0 && action.x + action.width <= width, 'Row actions must stay pinned inside the viewport');
+    await menu.click();
+    await page.getByRole('menuitem', { name: 'ดูรายละเอียด', exact: true }).click();
+    const detail = page.getByRole('dialog', { name: 'รายละเอียดรายการรับซื้อ' });
+    await expect(detail.getByText(result.voucherNumber, { exact: true })).toBeVisible();
+    await expect(detail.getByText(serialNumber, { exact: true })).toBeVisible();
+    const inventory = detail.getByRole('region', { name: 'สถานะเครื่องปัจจุบัน' });
+    await expect(inventory.getByText('พร้อมขาย', { exact: true })).toBeVisible();
+    await expect(inventory.getByText('6/6 มุม')).toBeVisible();
+    await expect(inventory.getByText('฿6,000', { exact: true })).toBeVisible();
+    await expect(inventory.getByText('฿6,500', { exact: true })).toBeVisible();
+    assert.equal(await detail.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), true, 'Receipt details must not clip horizontally');
+    await page.screenshot({ path: join(output, `trade-in-detail-${width}.png`) });
+    if (edge === 'start') {
+      await detail.getByRole('button', { name: 'พิมพ์เอกสารรับเครื่อง', exact: true }).click();
+      const documentPreview = page.getByRole('dialog', { name: 'ตัวอย่างเอกสารรับเครื่อง' });
+      await expect(documentPreview.getByRole('link', { name: 'ดาวน์โหลด PDF' })).toBeVisible();
+      await documentPreview.getByRole('button', { name: 'Close', exact: true }).click();
+    }
+    await detail.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(detail).toHaveCount(0);
+  }
+  await page.screenshot({ path: join(output, `trade-in-list-${width}.png`), fullPage: true });
 }

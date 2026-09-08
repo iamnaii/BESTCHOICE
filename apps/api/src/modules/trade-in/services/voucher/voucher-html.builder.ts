@@ -175,14 +175,16 @@ export class VoucherHtmlBuilder {
     .meta-row { display: grid; grid-template-columns: 14mm minmax(0, 1fr); gap: 2mm; margin-bottom: 1.5mm; }
     .meta-row > :last-child { text-align: right; overflow-wrap: anywhere; }
     .copy-status { margin-top: 2mm; text-align: right; font-size: 8pt; color: var(--muted); }
-    .hero { display: flex; justify-content: space-between; align-items: center; gap: 7mm; margin-top: 5mm; }
+    .hero { margin-top: 4mm; }
     .document-title { min-width: 0; }
     h1 { font-size: 24pt; font-weight: 600; line-height: 1.3; letter-spacing: -0.5pt; }
     .subtitle { margin-top: 2mm; font-size: 8pt; letter-spacing: 1.5pt; color: var(--muted); }
-    .total-amount { text-align: right; flex-shrink: 0; }
+    .total-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7mm; align-items: center; margin-top: 3mm; }
+    .total-amount { text-align: right; }
     .amount { font-size: 30pt; font-weight: 600; line-height: 1.3; letter-spacing: -0.8pt; color: var(--green); white-space: nowrap; }
-    .currency { font-size: 9pt; color: var(--muted); }
-    .amount-words { display: grid; grid-template-columns: 37mm minmax(0, 1fr); gap: 3mm; align-items: baseline; margin-top: 3mm; padding-bottom: 4mm; border-bottom: 0.5pt solid var(--rule); font-size: 10pt; overflow-wrap: anywhere; }
+    .currency { margin-left: 2mm; font-size: 9pt; font-weight: 400; letter-spacing: normal; color: var(--muted); }
+    .amount-words { font-size: 10pt; overflow-wrap: anywhere; }
+    .amount-words .label { margin-bottom: 1mm; }
     .section { margin-top: 4mm; }
     h2 { font-size: 11pt; line-height: 1.5; font-weight: 600; margin-bottom: 2mm; }
     .section-title { display: flex; align-items: center; gap: 3mm; }
@@ -193,7 +195,7 @@ export class VoucherHtmlBuilder {
     .seller-contact { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 5mm; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th { padding: 2mm 3mm; border-top: 0.5pt solid var(--rule); border-bottom: 0.5pt solid var(--rule); text-align: left; font-size: 9pt; font-weight: 500; color: var(--muted); }
-    td { padding: 4mm 3mm; border-bottom: 0.5pt solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
+    td { padding: 3mm; border-bottom: 0.5pt solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
     th:first-child, td:first-child { padding-left: 0; }
     th:last-child, td:last-child { padding-right: 0; }
     .center { text-align: center; }
@@ -201,7 +203,7 @@ export class VoucherHtmlBuilder {
     .device-name { font-size: 11pt; font-weight: 600; }
     .device-details { font-size: 9pt; color: var(--muted); line-height: 1.6; margin-top: 1.5mm; }
     .item-amount { white-space: nowrap; font-size: 11pt; }
-    .payment { margin-top: 4mm; }
+    .payment { margin-top: 3mm; }
     .payment-row { display: grid; grid-template-columns: 37mm minmax(0, 1fr); gap: 3mm; margin-top: 1mm; align-items: baseline; }
     .payment-row > :last-child { overflow-wrap: anywhere; }
     .credit-note { margin-top: 2mm; font-size: 9pt; color: var(--muted); }
@@ -215,7 +217,7 @@ export class VoucherHtmlBuilder {
     .signer-date { font-size: 8pt; color: var(--muted); margin-top: 1mm; }
     footer { display: flex; justify-content: space-between; gap: 5mm; padding-top: 2.5mm; margin-top: 3mm; border-top: 0.5pt solid var(--rule); color: var(--muted); font-size: 8pt; }
     footer span { overflow-wrap: anywhere; }
-    .masthead, .hero, .amount-words, .seller, tr, .payment, .declaration, .signatures, footer { break-inside: avoid; }
+    .masthead, .hero, .items, .seller, tr, .payment, .declaration, .signatures, footer { break-inside: avoid; }
     h2 { break-after: avoid; }
     p { orphans: 3; widows: 3; }
   </style>
@@ -243,13 +245,7 @@ export class VoucherHtmlBuilder {
       <h1>${title}</h1>
       <p class="subtitle">${isCredit ? 'TRADE-IN RECEIPT' : 'PAYMENT VOUCHER'}</p>
     </div>
-    <div class="total-amount">
-      <p class="label">${isCredit ? 'ยอดเครดิตที่ตกลง' : 'ยอดจ่ายสุทธิ'}</p>
-      <p class="amount number">${this.formatBaht(data.amount)}</p>
-      <p class="currency">บาท</p>
-    </div>
   </section>
-  <div class="amount-words"><span class="label">จำนวนเงินเป็นตัวอักษร</span><span>${esc(data.amountText)}</span></div>
 
   <section class="seller section">
     <h2 class="section-title">${isCredit ? 'ผู้ส่งมอบเครื่อง' : 'ผู้รับเงิน / ผู้ขาย'}</h2>
@@ -261,7 +257,7 @@ export class VoucherHtmlBuilder {
     <div class="seller-row"><span class="label">ที่อยู่</span><span>${esc(data.sellerAddress)}</span></div>
   </section>
 
-  <section class="section">
+  <section class="items section">
     <h2 class="section-title">${isCredit ? 'รายการรับเครื่องเทิร์น' : 'รายการรับซื้อ'}</h2>
     <table aria-label="${isCredit ? 'รายการเครื่องเทิร์น' : 'รายการจ่ายเงิน'}">
       <colgroup><col style="width:12mm"><col><col style="width:22mm"><col style="width:38mm"></colgroup>
@@ -273,6 +269,13 @@ export class VoucherHtmlBuilder {
         <td class="right item-amount number"><strong>${this.formatBaht(data.amount)}</strong></td>
       </tr></tbody>
     </table>
+    <div class="total-summary">
+      <div class="amount-words"><p class="label">จำนวนเงินเป็นตัวอักษร</p><p>${esc(data.amountText)}</p></div>
+      <div class="total-amount">
+        <p class="label">${isCredit ? 'ยอดเครดิตที่ตกลง' : 'ยอดจ่ายสุทธิ'}</p>
+        <p class="amount number">${this.formatBaht(data.amount)}<span class="currency">บาท</span></p>
+      </div>
+    </div>
   </section>
 
   <section class="payment">

@@ -165,7 +165,7 @@ export class VoucherHtmlBuilder {
     .label { font-size: 9pt; }
     .number { font-variant-numeric: tabular-nums; }
     .masthead { display: grid; grid-template-columns: minmax(0, 1fr) 60mm; gap: 8mm; padding-bottom: 4mm; border-bottom: 1.2pt solid var(--green); }
-    .brand { display: flex; align-items: flex-start; gap: 4mm; }
+    .brand { display: flex; align-items: center; gap: 4mm; }
     .logo { flex: 0 0 20mm; width: 20mm; }
     .logo svg { width: 100%; height: auto; display: block; }
     .company { min-width: 0; font-size: 9pt; line-height: 1.6; overflow-wrap: anywhere; }

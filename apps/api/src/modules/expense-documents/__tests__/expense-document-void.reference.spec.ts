@@ -25,7 +25,8 @@ describeWithDatabase('Expense post and void — distinct journal references (Pos
 
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL!);
-    if (!['localhost', '127.0.0.1'].includes(url.hostname) || !url.pathname.endsWith('_test')) {
+    const isTestDatabase = url.pathname === '/test_db' || url.pathname.endsWith('_test');
+    if (!['localhost', '127.0.0.1'].includes(url.hostname) || !isTestDatabase) {
       throw new Error('This regression requires a disposable local PostgreSQL test database');
     }
     await prisma.$connect();

@@ -134,3 +134,7 @@ Browser หน้าเริ่มงาน: `node tools/verify-staff-experienc
 Preview รวมแบบแยกฐาน: `CREDIT_PREVIEW_PORT=5195 bash tools/preview-chat-credit.sh` แล้วใช้ `CREDIT_PREVIEW_ORIGIN=http://localhost:5195 node tools/check-staff-offer-preview.mjs` และ `tools/check-chat-credit-preview.mjs` ข้อมูลและ AI ของ preview เป็นตัวอย่าง ส่วน HTTP สต็อก เครื่องคิด และเครดิตใช้โค้ดจริง
 
 ตรวจ provider จริงด้วย `tools/check-ai-provider-parity.ts` ต้องตั้ง explicit live opt-in และ credential ผ่าน environment ตามหัวไฟล์ ไม่ใส่ key ใน command argument หรือรายงาน
+
+### ออกแบบใบสำคัญจ่ายใหม่ — 8 กันยายน 2026
+
+ปรับ PDF รับซื้อให้เป็น A4 ที่อ่านยอด ผู้รับเงิน และลายเซ็นง่ายขึ้น ลดข้อมูลซ้ำและโค้ด template ถอด QR ที่ยังไม่มีหน้าตรวจสอบ รองรับชื่อยาวและสำเนาหลายหน้า โดยคงความหมายเงินสด/โอน/เครดิตเดิม รายละเอียดและผลตรวจ: [ใบสำคัญจ่ายรับซื้อเครื่อง](2026-09-08-payment-voucher-redesign.md)

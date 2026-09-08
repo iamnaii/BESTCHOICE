@@ -76,11 +76,6 @@ export class TradeInVoucherService {
       });
     }
 
-    // ─── QR code: link ไปหน้า verify (ถ้ายังไม่มี endpoint ก็เป็น URL placeholder)
-    const verifyUrl = `${process.env.PUBLIC_APP_URL || 'https://bestchoice.local'}/verify/voucher/${tradeIn.voucherNumber}`;
-    const qrcode = await import('qrcode');
-    const qrDataUrl = await qrcode.toDataURL(verifyUrl, { width: 220, margin: 0 });
-
     const html = this.builder.buildHtml({
       voucherNumber: tradeIn.voucherNumber,
       voucherDate: tradeIn.voucherDate,
@@ -93,14 +88,15 @@ export class TradeInVoucherService {
       sellerSignatureBase64: tradeIn.sellerSignatureBase64,
       issuerName,
       issuerSignatureBase64: issuerSignature,
-      qrDataUrl,
       deviceLabel: this.builder.buildDeviceLabel(tradeIn),
       amount,
       amountText: this.builder.numberToThaiBahtText(amount),
       // Legacy counter purchases had flow=EXCHANGE despite an actual CASH/TRANSFER payout.
       // Preserve their original receipt; only explicit credit acceptance gets a credit receipt.
-      paymentMethod: tradeIn.paymentMethod === 'TRADE_IN_CREDIT' ? 'TRADE_IN_CREDIT'
-        : (tradeIn.paymentMethod as 'CASH' | 'TRANSFER' | null) ?? 'CASH',
+      paymentMethod:
+        tradeIn.paymentMethod === 'TRADE_IN_CREDIT'
+          ? 'TRADE_IN_CREDIT'
+          : ((tradeIn.paymentMethod as 'CASH' | 'TRANSFER' | null) ?? 'CASH'),
       transferBankName: tradeIn.transferBankName,
       transferAccountNumber: tradeIn.transferAccountNumber,
       transferAccountName: tradeIn.transferAccountName,

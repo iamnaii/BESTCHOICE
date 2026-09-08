@@ -19,6 +19,8 @@ export class VoucherPdfRenderer {
     try {
       const fontPaths = [
         path.join(process.cwd(), 'public', 'fonts'),
+        path.join(process.cwd(), 'apps', 'api', 'public', 'fonts'),
+        path.join(__dirname, '..', '..', '..', '..', '..', 'public', 'fonts'),
         path.join(__dirname, '..', '..', '..', '..', '..', '..', 'public', 'fonts'),
         path.join(process.cwd(), '..', 'web', 'public', 'fonts'),
       ];

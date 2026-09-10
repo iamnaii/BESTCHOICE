@@ -345,8 +345,29 @@ describe('resolveZoneForPath — hash-aware (regression: FM/ACC must not bounce 
     expect(config?.zones).toEqual(zones);
     expect(config?.defaultZone).toBe(defaultZone);
   });
-  it('an account without company grants has no work choice', () => {
-    expect(getZoneConfigForRole('OWNER', [])?.zones).toEqual([]);
+  // เดิมชื่อ 'an account without company grants has no work choice' และ pin ว่า [] → zones ว่าง
+  // กลับด้านเมื่อ 2026-09-10: array ว่าง = "ยังไม่ตั้งค่า" ไม่ใช่ "ไม่มีสิทธิ์" — พฤติกรรมเดิมคือ
+  // ต้นเหตุที่ทุกคนเจอหน้าจอ "ยังไม่มีสิทธิ์เข้าถึงบริษัท" หลัง deploy 2026-09-08
+  it('บัญชีที่ยังไม่ตั้งค่าบริษัท ใช้ค่า default ของ role ไม่ถูกล็อกออก', () => {
+    expect(getZoneConfigForRole('OWNER', [])?.zones).toEqual(['shop', 'fin']);
     expect(getZoneConfigForRole('OWNER')?.zones).toEqual(['shop', 'fin']);
+  });
+
+  it.each([
+    ['OWNER', ['shop', 'fin'], 'shop'],
+    ['FINANCE_MANAGER', ['shop', 'fin'], 'fin'],
+    ['ACCOUNTANT', ['shop', 'fin'], 'fin'],
+    ['VIEWER', ['shop', 'fin'], 'fin'],
+    ['BRANCH_MANAGER', ['shop'], 'shop'],
+    ['SALES', ['shop'], 'shop'],
+  ])('%s ที่ยังไม่ backfill ([]) ได้โซนเท่ากับ role default', (role, zones, defaultZone) => {
+    const config = getZoneConfigForRole(role as string, []);
+    expect(config?.zones).toEqual(zones);
+    expect(config?.defaultZone).toBe(defaultZone);
+  });
+
+  // fallback อยู่ที่ "บริษัท" ไม่ใช่ "role" — role ที่ไม่มีเมนูยังต้องไม่มีเมนู
+  it('role ที่ไม่รู้จักยังคืน undefined แม้ companies จะว่าง', () => {
+    expect(getZoneConfigForRole('UNKNOWN_ROLE', [])).toBeUndefined();
   });
 });

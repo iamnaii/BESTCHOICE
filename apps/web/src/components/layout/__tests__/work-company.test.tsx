@@ -5,9 +5,10 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import api from '@/lib/api';
 import { setRequestCompany } from '@/lib/company-scope';
 import { LayoutProvider, useLayout } from '../LayoutContext';
-import { getWorkZoneHref } from '@/config/menu';
+import { PillSwitcher } from '../PillSwitcher';
+import { getWorkZoneHref, getZoneConfigForRole } from '@/config/menu';
 
-let user = { id: 'u1', role: 'OWNER', accessibleCompanies: ['SHOP', 'FINANCE'] };
+let user: { id: string; role: string; accessibleCompanies: string[] } = { id: 'u1', role: 'OWNER', accessibleCompanies: ['SHOP', 'FINANCE'] };
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user }) }));
 let client: QueryClient;
 let requests: string[];
@@ -19,6 +20,8 @@ function Probe() {
   const navigate = useNavigate();
   const query = useQuery({ queryKey: ['company-probe'], queryFn: () => api.get('/probe').then(r => r.data) });
   return <>
+    {/* แถบสลับบริษัทตัวจริงที่ Sidebar วาด — ต้องอยู่ในต้นไม้นี้ ไม่งั้นเทสต์ "ไม่มี pill" ผ่านฟรี */}
+    <PillSwitcher zones={getZoneConfigForRole(user.role, user.accessibleCompanies)?.zones ?? []} current={currentZone} />
     <output data-testid="context">{location.pathname}|{currentZone}|{workZone}</output>
     <output data-testid="data">{query.data ?? 'loading'}</output>
     <button onClick={() => navigate(getWorkZoneHref('/finance-portfolio', 'fin'))}>finance</button>
@@ -134,6 +137,27 @@ describe('one work selection owns the company and its query cache', () => {
     user.accessibleCompanies = ['SHOP'];
     render(<App entry="/finance-portfolio?company=finance&zone=fin" />);
     await waitFor(() => expect(screen.getByTestId('data')).toHaveTextContent('shop'));
+    expect(requests).toEqual(['shop']);
+  });
+
+  // 2026-09-08: accessible_companies ไม่เคยถูกเขียนเลยตั้งแต่ migration ทุกคนจึงมี [] และ
+  // เงื่อนไข `!companies` ที่เดิมอยู่ใน getZoneConfigForRole ทำให้โซนถูกกรองทิ้งหมด =
+  // ทั้งบริษัทเห็นแต่ป้าย alert แทนแอป สองเทสต์นี้กันไม่ให้กลับมาอีก
+  it('an account that has never been backfilled ([]) still gets its role default, not the lockout alert', async () => {
+    user = { id: 'u1', role: 'OWNER', accessibleCompanies: [] };
+    render(<App entry="/" />);
+    await waitFor(() => expect(screen.getByTestId('data')).toHaveTextContent('shop'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(requests[0]).toBe('shop');
+    expect(screen.getAllByRole('tablist', { name: 'หมวดงาน' })).toHaveLength(1);
+  });
+
+  it('SALES with [] sees the app in SHOP only — the fallback grants a role default, not everything', async () => {
+    user = { id: 'u2', role: 'SALES', accessibleCompanies: [] };
+    render(<App entry="/" />);
+    await waitFor(() => expect(screen.getByTestId('data')).toHaveTextContent('shop'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryAllByRole('tablist', { name: 'หมวดงาน' })).toHaveLength(0);
     expect(requests).toEqual(['shop']);
   });
 });

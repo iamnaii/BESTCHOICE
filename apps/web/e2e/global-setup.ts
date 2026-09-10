@@ -6,16 +6,34 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = path.join(__dirname, '../.playwright-auth.json');
 const ROLE_AUTH_FILE = path.join(__dirname, '../.playwright-roles-auth.json');
+// สองตารางนี้คือ "กระจก" ของ ROLE_COMPANY_ACCESS ใน packages/shared/src/company-access.ts
+// ซึ่งเป็น source of truth เดียวของ role → บริษัท (apps/api/prisma/seed.ts derive จากที่นั่น)
+// ที่ต้อง hardcode ซ้ำเพราะ Playwright โหลดไฟล์ใน e2e/ เป็น ESM แต่ @installment/shared
+// ถูก transpile เป็น CJS → named import พังตั้งแต่ขั้น --list (ลองแล้วทั้งผ่าน alias และ
+// path ตรงไป packages/shared/src) ⇒ แก้ค่าที่ packages/shared เมื่อไร ต้องตามมาแก้ที่นี่ด้วย
 const EXPECTED_COMPANIES: Record<string, string[]> = {
   OWNER: ['SHOP', 'FINANCE'], BRANCH_MANAGER: ['SHOP'], SALES: ['SHOP'],
-  FINANCE_MANAGER: ['FINANCE'], ACCOUNTANT: ['SHOP', 'FINANCE'],
+  FINANCE_MANAGER: ['SHOP', 'FINANCE'], ACCOUNTANT: ['SHOP', 'FINANCE'],
+};
+// เดิมเช็ค primaryCompany ด้วย expression `role === 'FINANCE_MANAGER' ? 'FINANCE' : 'SHOP'`
+// ซึ่งพังทันทีที่มี role ที่สองที่ลงโซน fin (ACCOUNTANT) — ใช้ตารางแทนเพื่อให้เพิ่ม role
+// ใหม่แล้วไม่ต้องแก้ตรรกะ
+const EXPECTED_PRIMARY: Record<string, string> = {
+  OWNER: 'SHOP', BRANCH_MANAGER: 'SHOP', SALES: 'SHOP',
+  FINANCE_MANAGER: 'FINANCE', ACCOUNTANT: 'FINANCE',
 };
 function assertGrants(user: { role?: string; accessibleCompanies?: string[]; primaryCompany?: string } | undefined, role: string, source: string) {
   const expected = [...EXPECTED_COMPANIES[role]].sort();
   const actual = Array.isArray(user?.accessibleCompanies) ? [...user.accessibleCompanies].sort() : [];
   if (user?.role !== role || JSON.stringify(actual) !== JSON.stringify(expected)
-    || user?.primaryCompany !== (role === 'FINANCE_MANAGER' ? 'FINANCE' : 'SHOP')) {
-    throw new Error(`Global setup: ${role} company grants are incorrect in ${source}; check seed and auth serialization`);
+    || user?.primaryCompany !== EXPECTED_PRIMARY[role]) {
+    throw new Error(
+      `Global setup: ${role} company grants are incorrect in ${source} — ` +
+      `expected [${expected.join(', ')}] / primary ${EXPECTED_PRIMARY[role]}, ` +
+      `got [${actual.join(', ')}] / primary ${user?.primaryCompany ?? 'undefined'}. ` +
+      'ค่าที่คาดหวังมาจาก packages/shared/src/company-access.ts — ตรวจ seed (apps/api/prisma/seed.ts) ' +
+      'และการ serialize ใน auth.service.ts ว่าส่งค่าที่ผ่าน resolveCompanyAccess แล้ว',
+    );
   }
 }
 

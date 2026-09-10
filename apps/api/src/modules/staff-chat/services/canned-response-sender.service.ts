@@ -60,6 +60,12 @@ export class CannedResponseSenderService {
         password: 'NEVER_LOGIN_SYSTEM_USER',
         name: 'System Bot',
         role: 'SALES',
+        // ค่าคงที่ ไม่ derive จาก role โดยตั้งใจ — แถวนี้ถูกแย่งสร้างโดยสองที่ด้วย role
+        // ต่างกัน (ที่นี่ SALES, collections-foundation.seed OWNER) และทั้งคู่ `update: {}`
+        // เป็น no-op ⇒ ใครสร้างก่อนได้ role นั้นถาวร การ hardcode ค่าเดียวกันทั้งสองที่
+        // ทำให้ผลของ race ไม่ต่างกัน (backfill CLI ก็ข้ามแถว isSystemUser ด้วยเหตุนี้)
+        accessibleCompanies: ['SHOP', 'FINANCE'],
+        primaryCompany: 'SHOP',
         isActive: false,
         isSystemUser: true,
       },

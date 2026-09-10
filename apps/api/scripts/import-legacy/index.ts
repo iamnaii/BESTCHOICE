@@ -151,6 +151,10 @@ async function ensurePlaceholders() {
           password,
           name: 'Legacy Import (โปรแกรมเขียว)',
           role: UserRole.SALES,
+          // ตรงกับ ROLE_COMPANY_ACCESS.SALES — บัญชี placeholder นี้ไม่เคยล็อกอิน (backfill
+          // CLI ข้ามด้วย) จึงต้องเขียนค่าให้ตั้งแต่ตอนสร้าง ไม่งั้นจะค้างเป็น [] ตลอดไป
+          accessibleCompanies: ['SHOP'],
+          primaryCompany: 'SHOP',
           branchId: branch!.id,
           isActive: false, // disabled — for record-keeping only
         },

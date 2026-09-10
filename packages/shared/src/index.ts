@@ -1,4 +1,5 @@
 export * from './constants';
+export * from './company-access';
 export * from './types';
 export * from './liff-types';
 export * from './trade-in-declaration';

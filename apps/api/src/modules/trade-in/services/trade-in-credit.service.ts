@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { Prisma } from '@prisma/client';
-import { TradeInCreditSnapshot } from '@installment/shared';
+import { TradeInCreditSnapshot, hasCompanyAccess } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
@@ -53,9 +53,13 @@ export class TradeInCreditService {
     return companyId;
   }
 
+  // อ่านแถว user จาก tx ตรง ๆ (ไม่ใช่ req.user) จึงไม่ถูกครอบด้วย JwtStrategy ที่ resolve
+  // สิทธิ์บริษัทให้แล้ว — ต้องเรียก hasCompanyAccess เองเพื่อให้กฎ "array ว่าง = ยังไม่ตั้งค่า"
+  // ใช้ชุดเดียวกับที่อื่น ไม่ใช่ปฏิเสธแถวที่ยังไม่ backfill
   private async assertActor(tx: Prisma.TransactionClient, actorId: string, branchId: string) {
     const actor = await tx.user.findUnique({ where: { id: actorId } });
-    if (!actor || actor.deletedAt || !actor.isActive || !actor.accessibleCompanies.includes('SHOP')
+    if (!actor || actor.deletedAt || !actor.isActive
+      || !hasCompanyAccess(actor.role, actor.accessibleCompanies, 'SHOP')
       || !['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(actor.role)
       || (!hasCrossBranchAccess(actor) && actor.branchId !== branchId)) {
       throw new ForbiddenException('ต้องมีสิทธิ์ SHOP และสาขาที่ทำรายการเครดิตเทิร์น');

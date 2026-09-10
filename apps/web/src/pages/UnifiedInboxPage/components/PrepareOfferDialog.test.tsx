@@ -68,6 +68,14 @@ describe('PrepareOfferDialog', () => {
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
+  // ก่อน 2026-09-10 เงื่อนไขคือ user.accessibleCompanies?.includes('SHOP') — และไม่มีแถวไหนใน prod
+  // ที่คอลัมน์นี้ไม่ว่าง ปุ่มนี้จึงหายไปจากทุกคนเงียบ ๆ array ว่าง = ยังไม่ตั้งค่า ไม่ใช่ไม่มีสิทธิ์
+  it('keeps the action for a SHOP role whose companies were never backfilled', () => {
+    mocks.auth.mockReturnValue({ user: { id: 'staff', role: 'SALES', accessibleCompanies: [] } });
+    mount();
+    expect(screen.getByRole('button', { name: 'เตรียมข้อเสนอ' })).toBeInTheDocument();
+  });
+
   it('does not display a late response from another room', async () => {
     let resolve!: (value: { data: typeof result }) => void;
     mocks.post.mockReturnValue(new Promise((done) => { resolve = done; }));

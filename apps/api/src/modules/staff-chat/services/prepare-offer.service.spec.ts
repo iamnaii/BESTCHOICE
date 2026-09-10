@@ -59,7 +59,6 @@ describe('staff offer preparation', () => {
     ['finance-only identity', {}, { ...actor, accessibleCompanies: ['FINANCE'] }],
     ['shop-only identity in an unassigned finance room', { channel: 'LINE_FINANCE', assignedToId: null }, actor],
     ['owner without the room company permission', { channel: 'LINE_FINANCE', assignedToId: null }, { ...actor, role: 'OWNER' }],
-    ['identity without company permissions', {}, { ...actor, accessibleCompanies: undefined }],
     ['unpermitted role', {}, { ...actor, role: 'VIEWER' }],
   ])('rejects %s before reading conversation or calling AI', async (_label, patch, identity) => {
     prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-1', channel: 'LINE_SHOP', assignedToId: actor.id, ...patch });
@@ -67,6 +66,18 @@ describe('staff offer preparation', () => {
     expect(prisma.chatMessage.findMany).not.toHaveBeenCalled();
     expect(ai.generate).not.toHaveBeenCalled();
     expect(search.run).not.toHaveBeenCalled();
+  });
+
+  // เดิมเคสนี้อยู่ในลิสต์ปฏิเสธข้างบนในชื่อ 'identity without company permissions' — พลิกด้าน
+  // ไม่ใช่ลบ: ตั้งแต่ 2026-09-08 "ไม่มีค่าสิทธิ์บริษัท" (ว่าง/undefined) แปลว่า "ยังไม่ตั้งค่า"
+  // ไม่ใช่ "ไม่มีสิทธิ์" — พนักงานทั้งบริษัทมีค่าเป็น array ว่างอยู่จริงบน prod และปุ่ม
+  // 'เตรียมข้อเสนอ' หายไปเงียบ ๆ ทุกคน สิทธิ์จริงมาจาก role (SALES = SHOP) แทน
+  it.each([
+    ['ยังไม่ตั้งค่า (undefined)', undefined],
+    ['ยังไม่ตั้งค่า (array ว่าง)', [] as string[]],
+  ])('อนุญาตพนักงานหน้าร้านที่สิทธิ์บริษัท %s', async (_label, accessibleCompanies) => {
+    const result = await service.prepare('room-1', { tenureMonths: 12 }, { ...actor, accessibleCompanies });
+    expect(result.products).toHaveLength(1);
   });
 
   it('rejects a missing/deleted room before generating text', async () => {

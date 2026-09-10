@@ -1,5 +1,6 @@
 import { NAV_LABELS } from './work-navigation';
 import { WORK_COMPANY } from '@/lib/company-scope';
+import { resolveCompanyAccess } from '@installment/shared';
 import type { LucideIcon } from 'lucide-react';
 import { settingsNavEntries } from './settings-access';
 import type { SettingsRole } from './settings-registry';
@@ -1127,13 +1128,24 @@ export function resolveZoneForPath(role: string, path: string, preferredZone?: Z
   return null;
 }
 
-/** Returns the RoleZoneConfig for a role (or undefined). Used by Sidebar to check pills/gear visibility. */
+/**
+ * Returns the RoleZoneConfig for a role (or undefined). Used by Sidebar to check pills/gear visibility.
+ *
+ * ห้ามเช็ค "ยังไม่ตั้งค่าบริษัท" ด้วย `!companies` — array ว่างเป็น truthy ใน JS ทุกคนที่ยังไม่ถูก
+ * backfill จึงถูกกรองโซนทิ้งหมดแล้วเจอหน้าจอ "ยังไม่มีสิทธิ์เข้าถึงบริษัท" (เหตุการณ์ 2026-09-08)
+ * กฎ "ว่าง = ยังไม่ตั้งค่า → ใช้ค่า default ของ role" อยู่ที่ resolveCompanyAccess ตัวเดียว
+ * ซึ่งฝั่ง API (JwtStrategy/EntityScope) เรียกตัวเดียวกัน ทั้งสองฝั่งจึงตัดสินเหมือนกันเสมอ
+ */
 export function getZoneConfigForRole(role: string, companies?: readonly string[]): RoleZoneConfig | undefined {
   const config = ZONE_CONFIG[role];
+  // role ที่ไม่มีเมนูเลย = ไม่มีอะไรให้แสดง — คนละเรื่องกับ "ยังไม่ตั้งค่าบริษัท" จึงยังคืน undefined
   if (!config) return undefined;
+  const granted = resolveCompanyAccess(role, companies).accessible;
+  // conjunct `sections.some(...)` ห้ามตัดออก: BRANCH_MANAGER มีสิทธิ์ตามบริษัทก็จริงแต่ไม่มี
+  // section โซน fin เลย ถ้าตัดจะได้ pill 'งานการเงิน' ที่กดแล้วเจอ sidebar ว่าง
   const zones = config.zones.filter(z => z !== 'settings' &&
     config.sections.some(section => section.zone === z) &&
-    (!companies || companies.includes(WORK_COMPANY[z])));
+    granted.includes(WORK_COMPANY[z]));
   return { ...config, zones, defaultZone: zones.includes(config.defaultZone) ? config.defaultZone : zones[0] ?? config.defaultZone };
 }
 

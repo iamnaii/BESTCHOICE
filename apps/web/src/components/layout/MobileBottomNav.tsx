@@ -17,13 +17,14 @@ function MobileBottomNav() {
 
   const { enabled: collectionsEnabled } = useCollectionsFlag();
   const tabs = useMemo<BottomNavItem[]>(() => {
-    const zoneConfig = getZoneConfigForRole(user?.role ?? '');
+    // ส่ง accessibleCompanies เหมือน LayoutContext/Sidebar — แท็บล่างต้องเป็นชุดเดียวกับโซนที่ผู้ใช้เข้าได้จริง
+    const zoneConfig = getZoneConfigForRole(user?.role ?? '', user?.accessibleCompanies);
     const rawTabs: BottomNavItem[] = zoneConfig?.bottomNav[currentZone] ?? [];
     if (!collectionsEnabled) return rawTabs;
     return rawTabs.map((tab) =>
       tab.path === '/overdue' ? { ...tab, path: '/collections' } : tab,
     );
-  }, [user?.role, currentZone, collectionsEnabled]);
+  }, [user?.role, user?.accessibleCompanies, currentZone, collectionsEnabled]);
 
   const isActive = (path: string) => {
     if (path === '/') return pathname === '/';

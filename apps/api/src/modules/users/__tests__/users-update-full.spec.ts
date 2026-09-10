@@ -93,4 +93,28 @@ describe('UsersService.updateFull', () => {
     await svc.updateFull('u1', { isActive: false, password: 'newpass1234' }, { userId: 'owner' });
     expect(refreshUpdateMany).toHaveBeenCalledTimes(1);
   });
+
+  // PUT /users/:id/profile คือ endpoint ที่หน้าโปรไฟล์ใช้จริงและเปลี่ยน role ได้เหมือน
+  // PATCH /users/:id — ถ้าเขียนสิทธิ์บริษัทแค่ใน update() จะเหลือรูรั่วตรงนี้ เทสต์เดิม
+  // ในไฟล์นี้ assert แค่ toHaveBeenCalledTimes จึงไม่เคยจับ payload ที่หายไป
+  it('เปลี่ยน role → derive accessibleCompanies/primaryCompany ใหม่', async () => {
+    userFindUnique.mockResolvedValue({ id: 'u1', isActive: true, role: 'SALES' });
+
+    await svc.updateFull('u1', { role: 'ACCOUNTANT' }, { userId: 'owner' });
+
+    const data = userUpdate.mock.calls[0][0].data;
+    expect(data.role).toBe('ACCOUNTANT');
+    expect(data.accessibleCompanies).toEqual(['SHOP', 'FINANCE']);
+    expect(data.primaryCompany).toBe('FINANCE');
+  });
+
+  it('ไม่แตะสิทธิ์บริษัทเมื่อ save โปรไฟล์โดยไม่เปลี่ยน role', async () => {
+    userFindUnique.mockResolvedValue({ id: 'u1', isActive: true, role: 'SALES' });
+
+    await svc.updateFull('u1', { name: 'A', nickname: 'B' }, { userId: 'owner' });
+
+    const data = userUpdate.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('accessibleCompanies');
+    expect(data).not.toHaveProperty('primaryCompany');
+  });
 });

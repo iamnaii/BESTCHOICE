@@ -234,6 +234,48 @@ describe('AuthService', () => {
       const updateCall = (prisma.user.update as jest.Mock).mock.calls[0][0];
       expect(updateCall.data.failedLoginAttempts).toBe(0);
     });
+
+    /**
+     * เว็บอ่าน accessibleCompanies จาก response body ของ login ไปเก็บใน AuthContext ตรง ๆ
+     * ถ้าปล่อยค่าดิบ (array ว่างของแถวที่ยังไม่ backfill) ออกไป หน้าจอจะกลับไปพึ่ง fallback
+     * ฝั่งเว็บอย่างเดียว — เหตุการณ์ 2026-09-08 พิสูจน์แล้วว่าชั้นเดียวไม่พอ
+     */
+    it.each([
+      ['SALES', ['SHOP'], 'SHOP'],
+      ['FINANCE_MANAGER', ['SHOP', 'FINANCE'], 'FINANCE'],
+    ])(
+      'login ของ %s ที่ยังไม่ backfill คืนสิทธิ์บริษัทตามค่า default ของ role',
+      async (role, expectedCompanies, expectedPrimary) => {
+        (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+          ...mockUser,
+          role,
+          accessibleCompanies: [],
+          primaryCompany: null,
+        });
+
+        const result = await service.login({ email: 'test@test.com', password: 'password123' });
+
+        expect(result).toMatchObject({
+          user: { accessibleCompanies: expectedCompanies, primaryCompany: expectedPrimary },
+        });
+      },
+    );
+
+    // สิทธิ์ที่ตั้งไว้แล้วต้องไม่ถูกขยาย — ไม่งั้นบัญชีที่ถูกจำกัดโดยตั้งใจจะได้สิทธิ์คืนเงียบ ๆ
+    it('login ของบัญชีที่ตั้งสิทธิ์ไว้แล้วต้องไม่ถูก widen', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        ...mockUser,
+        role: 'OWNER',
+        accessibleCompanies: ['FINANCE'],
+        primaryCompany: null,
+      });
+
+      const result = await service.login({ email: 'test@test.com', password: 'password123' });
+
+      expect(result).toMatchObject({
+        user: { accessibleCompanies: ['FINANCE'], primaryCompany: 'FINANCE' },
+      });
+    });
   });
 
   describe('refreshToken', () => {

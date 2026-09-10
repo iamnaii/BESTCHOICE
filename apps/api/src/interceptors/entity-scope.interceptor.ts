@@ -30,11 +30,25 @@ import { Company, resolveCompanyAccess } from '@installment/shared';
  * คืนค่า default ของ role ให้ (packages/shared/src/company-access.ts) การ 403 ใส่ array ว่าง
  * คือต้นเหตุของ outage 2026-09-08 ห้ามคืนพฤติกรรมนั้นกลับมา
  *
- * เจตนา: ถ้า request ไม่ได้ระบุ company มา จะ **ไม่เขียน** req.entityScope เลย (ทิ้ง precedence
- * ข้อ 3-4 ของ middleware เดิม คือ primaryCompany และ default 'SHOP') เพื่อไม่ปลุก tax scoping
- * ที่หลับอยู่ให้ตื่นพร้อมกับการแก้ครั้งนี้ — tax-report.service.ts:120-122 จะยังไม่กรองด้วย
- * companyCode และ tax-entity.util.ts จะยังไม่ปฏิเสธ PP30 ของ client ที่ไม่ส่ง company
- * blast radius จึงเหลือแค่ "request ที่ระบุ company มาชัด ๆ แต่ไม่มีสิทธิ์" เท่านั้น
+ * precedence เหลือแค่สองข้อ: `?company=` แล้วก็ `x-company-scope` — ทิ้งข้อ 3-4 ของ middleware เดิม
+ * (primaryCompany และ default 'SHOP') ถ้าไม่ได้ระบุมาทั้งสองทาง = **ไม่เขียน** req.entityScope
+ *
+ * ⚠️ อย่าอ่านข้อนี้ว่า "tax scoping ยังหลับอยู่" — มันตื่นแล้ว: apps/web/src/lib/api.ts:49-52 ยัด
+ * `?company=shop|finance` ให้ทุก request ที่ออกจาก workspace ⇒ req.entityScope มีค่าจริงแทบทุก
+ * request ของหน้าเว็บแอดมิน ซึ่งต่างจากเดิมที่ EntityScopeMiddleware รันก่อน guard จึง `next()`
+ * ทิ้งเสมอและ req.entityScope เป็น undefined 100% มาตั้งแต่ พ.ค. สิ่งที่ยกเว้นข้อ 3 กันไว้จริง ๆ
+ * คือ client ที่ไม่ใช่เบราว์เซอร์ (curl / สคริปต์ / LIFF / webhook) ซึ่งไม่ส่งพารามิเตอร์นี้
+ *
+ * ที่ blast radius ยังเล็กไม่ใช่เพราะ tax หลับ แต่เพราะผู้อ่าน req.entityScope มีแค่สามจุดใน
+ * tax.controller.ts (:57 findAll, :73 pp30-preview, :217 generate) และ:
+ *   - GET /api/tax (findAll → tax-report.service.ts:120-122 กรองด้วย company.companyCode)
+ *     **ไม่มีผู้เรียกในโค้ดเบสนี้เลย** — เว็บ redirect /tax-reports → /finance/vat (App.tsx:1029)
+ *   - หน้า VAT (VatReportPage) ซึ่งเป็นผู้เรียก pp30-preview เพียงรายเดียว อยู่ใน zone 'fin'
+ *     ของทั้งสาม role ที่ @Roles อนุญาต (menu.ts:430/590/751) ⇒ entityScope = 'FINANCE' เสมอ
+ *     ensureTaxTypeAllowedForEntity จึงผ่าน
+ * ถ้าจะเพิ่มหน้าที่เรียก GET /api/tax เมื่อไร ต้องเช็คก่อนว่า Company.companyCode
+ * (schema.prisma:3410 เป็น String?) ถูกเติมครบแล้ว ไม่งั้นแถวที่ companyCode เป็น NULL จะหาย
+ * จากรายการเงียบ ๆ — ดูขั้นตอนนับแถวใน docs/runbooks/2026-09-10-user-companies-backfill-runbook.md
  */
 @Injectable()
 export class EntityScopeInterceptor implements NestInterceptor {
@@ -76,6 +90,12 @@ export class EntityScopeInterceptor implements NestInterceptor {
     return next.handle();
   }
 
+  /**
+   * `?.` สองตัวข้างล่างเป็นของจำเป็น ห้ามลบ: APP_INTERCEPTOR ถูกเรียกกับ WebSocket context ด้วย
+   * (@SubscribeMessage 7 ตัวใน staff-chat.gateway.ts + 2 ตัวใน web-widget.gateway.ts) ซึ่ง
+   * switchToHttp().getRequest() คืน Socket ที่ไม่มีทั้ง .query และ .headers — middleware ตัวเดิม
+   * ที่ยกตรรกะนี้มาใช้ `req.query.company` แบบไม่มี `?.` ได้เพราะมันเป็น HTTP-only เท่านั้น
+   */
   private resolveRequested(req: Request): Company | null {
     const fromQuery = String(req.query?.company ?? '').toUpperCase();
     if (fromQuery === 'SHOP' || fromQuery === 'FINANCE') return fromQuery;

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { COMPANY_ACCESS_ROLES } from '@installment/shared';
 import { getSidebarForRole, getZoneConfigForRole, resolveZoneForPath } from './menu';
 
 describe('getSidebarForRole — empty ZONE_CONFIG fallback', () => {
@@ -369,5 +370,17 @@ describe('resolveZoneForPath — hash-aware (regression: FM/ACC must not bounce 
   // fallback อยู่ที่ "บริษัท" ไม่ใช่ "role" — role ที่ไม่มีเมนูยังต้องไม่มีเมนู
   it('role ที่ไม่รู้จักยังคืน undefined แม้ companies จะว่าง', () => {
     expect(getZoneConfigForRole('UNKNOWN_ROLE', [])).toBeUndefined();
+  });
+
+  // ตาข่าย exhaustiveness ของ ZONE_CONFIG — คู่กับตัวที่ apps/api มีให้ ROLE_COMPANY_ACCESS
+  // (backfill-user-companies.cli.spec.ts iterate enum UserRole ของ Prisma แล้ว assert ว่า
+  // COMPANY_ACCESS_ROLES ครบ) ⇒ ต่อโซ่เป็น Prisma UserRole → COMPANY_ACCESS_ROLES → ZONE_CONFIG
+  //
+  // ทำไมต้องมีตัวนี้แยก: roleCompanyAccess fail-OPEN เมื่อเจอ role ที่ไม่รู้จัก แต่
+  // getZoneConfigForRole fail-CLOSED (คืน undefined → hasWorkAccess = false → หน้าจอ
+  // "ยังไม่มีสิทธิ์เข้าถึงบริษัท" ตัวเดียวกับ outage 2026-09-08) ⇒ role ใหม่ที่เพิ่มใน
+  // ROLE_COMPANY_ACCESS แล้วลืมเพิ่มใน ZONE_CONFIG จะสร้างเหตุการณ์เดิมซ้ำโดย CI เขียว
+  it.each(COMPANY_ACCESS_ROLES)('role %s มี ZONE_CONFIG ที่ให้โซนทำงานอย่างน้อยหนึ่งโซน', (role) => {
+    expect(getZoneConfigForRole(role, [])?.zones.length ?? 0).toBeGreaterThan(0);
   });
 });

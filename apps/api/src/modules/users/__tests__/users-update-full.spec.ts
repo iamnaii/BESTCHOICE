@@ -117,4 +117,17 @@ describe('UsersService.updateFull', () => {
     expect(data).not.toHaveProperty('accessibleCompanies');
     expect(data).not.toHaveProperty('primaryCompany');
   });
+
+  // UserDetailPage.buildBody() ยัด `role: account.role` ลงทุก payload แม้ผู้ใช้แก้แค่เบอร์โทร
+  // ⇒ เทสต์ข้างบนที่ตัด role ออกจาก DTO ไม่ได้ครอบเส้นทางที่หน้าจอเดินจริง
+  it('save โปรไฟล์พร้อม role เดิม → ไม่ทับสิทธิ์บริษัทที่ตั้งไว้', async () => {
+    userFindUnique.mockResolvedValue({ id: 'u1', isActive: true, role: 'OWNER' });
+
+    await svc.updateFull('u1', { role: 'OWNER', phone: '0812345678' }, { userId: 'owner' });
+
+    const data = userUpdate.mock.calls[0][0].data;
+    expect(data.role).toBe('OWNER');
+    expect(data).not.toHaveProperty('accessibleCompanies');
+    expect(data).not.toHaveProperty('primaryCompany');
+  });
 });

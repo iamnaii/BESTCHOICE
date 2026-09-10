@@ -76,6 +76,19 @@ describe('EntityScopeInterceptor', () => {
       expect(next.handle).toHaveBeenCalled();
       expect(req.entityScope).toBeUndefined();
     });
+
+    // APP_INTERCEPTOR ถูกเรียกกับ WebSocket context ด้วย (@SubscribeMessage 7 ตัวใน
+    // staff-chat.gateway.ts + 2 ตัวใน web-widget.gateway.ts) — getRequest() คืน Socket ที่ไม่มี
+    // ทั้ง .query และ .headers ⇒ `?.` ใน resolveRequested เป็นของจำเป็น ไม่ใช่ของประดับ
+    // middleware ตัวเดิมที่ยกตรรกะนี้มาใช้ `req.query.company` แบบไม่มี `?.` รอดได้เพราะ HTTP-only
+    it('context เป็น WebSocket (ไม่มี query/headers) → ผ่าน ไม่ throw', () => {
+      const req: Record<string, unknown> = {
+        user: { role: 'SALES', accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP' },
+      };
+      const { next } = run(req);
+      expect(next.handle).toHaveBeenCalled();
+      expect(req.entityScope).toBeUndefined();
+    });
   });
 
   describe('การอ่านค่า company ที่ร้องขอ', () => {

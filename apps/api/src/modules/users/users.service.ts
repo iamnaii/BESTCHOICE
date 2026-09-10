@@ -241,13 +241,17 @@ export class UsersService {
 
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
-    // role เปลี่ยน = สิทธิ์บริษัท derive ใหม่เสมอ (ยังไม่รองรับการตั้งเองรายคน — ถ้าเปิด
-    // ให้ตั้งเองเมื่อไร ตรรกะนี้ต้องเปลี่ยนเป็น "เขียนก็ต่อเมื่อยังว่าง" ไม่งั้นจะทับค่าที่ตั้งมือไว้)
     if (dto.role !== undefined) {
       data.role = dto.role as UserRole;
-      const access = roleCompanyAccess(dto.role);
-      data.accessibleCompanies = [...access.accessible];
-      data.primaryCompany = access.primary;
+      // สิทธิ์บริษัท derive ใหม่ **เฉพาะตอน role เปลี่ยนจริง** ไม่ใช่ทุกครั้งที่ payload มี role มาด้วย —
+      // ฟอร์มผู้ใช้ (UserDetailPage.tsx buildBody) ยัด `role` ทุกครั้งแม้แก้แค่เบอร์โทร ⇒ ถ้าเขียนตาม
+      // `!== undefined` การบันทึกโปรไฟล์ธรรมดาจะรีเซ็ตสิทธิ์ที่ตั้งมือไว้กลับเป็นค่า default ของ role
+      // และเมื่อคอลัมน์ไม่ว่างแล้ว resolveCompanyAccess จะไม่แก้กลับให้อีก = ค่าที่ทับกลายเป็นถาวร
+      if (dto.role !== user.role) {
+        const access = roleCompanyAccess(dto.role);
+        data.accessibleCompanies = [...access.accessible];
+        data.primaryCompany = access.primary;
+      }
     }
     if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
@@ -323,13 +327,17 @@ export class UsersService {
 
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
-    // role เปลี่ยน = สิทธิ์บริษัท derive ใหม่เสมอ (ยังไม่รองรับการตั้งเองรายคน — ถ้าเปิด
-    // ให้ตั้งเองเมื่อไร ตรรกะนี้ต้องเปลี่ยนเป็น "เขียนก็ต่อเมื่อยังว่าง" ไม่งั้นจะทับค่าที่ตั้งมือไว้)
     if (dto.role !== undefined) {
       data.role = dto.role as UserRole;
-      const access = roleCompanyAccess(dto.role);
-      data.accessibleCompanies = [...access.accessible];
-      data.primaryCompany = access.primary;
+      // สิทธิ์บริษัท derive ใหม่ **เฉพาะตอน role เปลี่ยนจริง** ไม่ใช่ทุกครั้งที่ payload มี role มาด้วย —
+      // ฟอร์มผู้ใช้ (UserDetailPage.tsx buildBody) ยัด `role` ทุกครั้งแม้แก้แค่เบอร์โทร ⇒ ถ้าเขียนตาม
+      // `!== undefined` การบันทึกโปรไฟล์ธรรมดาจะรีเซ็ตสิทธิ์ที่ตั้งมือไว้กลับเป็นค่า default ของ role
+      // และเมื่อคอลัมน์ไม่ว่างแล้ว resolveCompanyAccess จะไม่แก้กลับให้อีก = ค่าที่ทับกลายเป็นถาวร
+      if (dto.role !== user.role) {
+        const access = roleCompanyAccess(dto.role);
+        data.accessibleCompanies = [...access.accessible];
+        data.primaryCompany = access.primary;
+      }
     }
     if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;

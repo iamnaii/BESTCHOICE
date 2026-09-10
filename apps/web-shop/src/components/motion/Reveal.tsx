@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { useRef } from 'react';
+import { useScrollReveal } from './useScrollReveal';
 
 interface Props extends React.HTMLAttributes<HTMLDivElement> {
   once?: boolean;
@@ -14,28 +14,10 @@ export function Reveal({
   ...props
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          if (once) io.disconnect();
-        } else if (!once) {
-          setVisible(false);
-        }
-      },
-      { rootMargin },
-    );
-    io.observe(node);
-    return () => io.disconnect();
-  }, [once, rootMargin]);
+  useScrollReveal(ref, { once, rootMargin });
 
   return (
-    <div ref={ref} className={cn('reveal', visible && 'in-view', className)} {...props}>
+    <div ref={ref} className={className} {...props}>
       {children}
     </div>
   );

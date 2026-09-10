@@ -1,6 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQueries, type UseQueryResult } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { gsap, useGSAP } from '@/components/motion/gsap';
 import { MessageCircle } from 'lucide-react';
-import { Card, CardHeader, CardBody, CardTitle, Badge, Button } from '@/components';
+import { Card, CardHeader, CardBody, CardTitle, Button } from '@/components';
 import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
 
 interface PreviewResponse {
@@ -64,7 +67,6 @@ function DownPaymentInput({
   useEffect(() => setPctRaw(String(pct)), [pct]);
   useEffect(() => setAmtRaw(String(amount)), [amount]);
 
-
   const minAmount = Math.ceil((installmentPrice * minDownPct) / 100);
   const pctTyped = Number(pctRaw);
   const amtTyped = Number(amtRaw.replace(/,/g, ''));
@@ -73,7 +75,7 @@ function DownPaymentInput({
     (amtRaw.trim() !== '' && Number.isFinite(amtTyped) && amtTyped < minAmount);
 
   const box =
-    'border border-border rounded-md px-2 py-1 text-sm bg-background text-foreground ' +
+    'min-h-11 border border-border rounded-md px-2 py-1 text-sm bg-background text-foreground ' +
     'focus:outline-none focus:ring-2 focus:ring-primary num text-right';
 
   function commitPct() {
@@ -138,45 +140,44 @@ function DownPaymentInput({
   return (
     <>
       <span className="flex items-center gap-x-2">
-      <span className="text-sm font-medium">เงินดาวน์:</span>
+        <span className="text-sm font-medium">เงินดาวน์:</span>
 
-      <span className="inline-flex items-center gap-1">
-        <input
-          id="downpct-input"
-          aria-label="เงินดาวน์ เป็นเปอร์เซ็นต์"
-          type="number"
-          inputMode="numeric"
-          value={pctRaw}
-          min={minDownPct}
-          max={MAX_DOWN_PCT}
-          onChange={(e) => setPctRaw(e.target.value)}
-          onBlur={commitPct}
-          onKeyDown={enterCommits}
-          className={`${box} w-16`}
-        />
-        <span className="text-sm text-muted-foreground">%</span>
-      </span>
+        <span className="inline-flex items-center gap-1">
+          <input
+            id="downpct-input"
+            aria-label="เงินดาวน์ เป็นเปอร์เซ็นต์"
+            type="number"
+            inputMode="numeric"
+            value={pctRaw}
+            min={minDownPct}
+            max={MAX_DOWN_PCT}
+            onChange={(e) => setPctRaw(e.target.value)}
+            onBlur={commitPct}
+            onKeyDown={enterCommits}
+            className={`${box} w-16`}
+          />
+          <span className="text-sm text-muted-foreground">%</span>
+        </span>
 
-      <span className="text-sm text-muted-foreground">=</span>
+        <span className="text-sm text-muted-foreground">=</span>
 
-      <span className="inline-flex items-center gap-1">
-        <span className="text-sm text-muted-foreground">฿</span>
-        <input
-          id="downamount-input"
-          aria-label="เงินดาวน์ เป็นบาท"
-          type="number"
-          inputMode="numeric"
-          value={amtRaw}
-          min={minAmount}
-          max={installmentPrice - 1}
-          step={500}
-          onChange={(e) => setAmtRaw(e.target.value)}
-          onBlur={commitAmount}
-          onKeyDown={enterCommits}
-          className={`${box} w-28`}
-        />
-      </span>
-
+        <span className="inline-flex items-center gap-1">
+          <span className="text-sm text-muted-foreground">฿</span>
+          <input
+            id="downamount-input"
+            aria-label="เงินดาวน์ เป็นบาท"
+            type="number"
+            inputMode="numeric"
+            value={amtRaw}
+            min={minAmount}
+            max={installmentPrice - 1}
+            step={500}
+            onChange={(e) => setAmtRaw(e.target.value)}
+            onBlur={commitAmount}
+            onKeyDown={enterCommits}
+            className={`${box} w-28`}
+          />
+        </span>
       </span>
 
       <p
@@ -195,92 +196,143 @@ function DownPaymentInput({
   );
 }
 
-export function InstallmentCalculatorCard({ productId, installmentPrice }: Props) {
+function QuoteOption({
+  label,
+  query,
+}: {
+  label: string;
+  query: UseQueryResult<PreviewResponse, Error>;
+}) {
+  const highlight = useRef<HTMLDivElement>(null);
+  const result = query.data;
+  useGSAP(
+    () => {
+      if (query.isFetching || query.isError || !result?.available || !window.matchMedia) return;
+      const media = gsap.matchMedia();
+      media.add('(prefers-reduced-motion: no-preference)', () => {
+        gsap.fromTo(
+          highlight.current,
+          { opacity: 1 },
+          { opacity: 0, duration: 0.9, ease: 'power2.out' },
+        );
+      });
+      return () => media.revert();
+    },
+    {
+      dependencies: [query.dataUpdatedAt, query.isFetching, query.isError, result?.available],
+      revertOnUpdate: true,
+    },
+  );
+
+  return (
+    <div className="relative min-h-36 overflow-hidden rounded-xl border border-border bg-card p-4">
+      <div
+        ref={highlight}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-primary/10 opacity-0"
+      />
+      <div className="relative space-y-2">
+        <h3 className="text-sm font-semibold text-primary leading-snug">{label}</h3>
+        {query.isFetching || query.isPending ? (
+          <div aria-hidden="true" className="space-y-2">
+            <div className="h-8 w-2/3 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+          </div>
+        ) : query.isError ? (
+          <>
+            <p className="text-sm text-muted-foreground leading-snug">
+              โหลดค่างวดไม่สำเร็จ ลองอีกครั้งได้
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => query.refetch()}
+              aria-label={`ลองคำนวณ ${label} อีกครั้ง`}
+            >
+              ลองใหม่
+            </Button>
+          </>
+        ) : result?.available ? (
+          <>
+            <p className="num text-2xl font-bold text-primary leading-snug">
+              ฿{formatTHB(result.monthlyPayment ?? 0)}
+              <span className="text-sm font-normal"> / เดือน</span>
+            </p>
+            <p className="text-sm text-muted-foreground leading-snug">
+              ดาวน์ ฿{formatTHB(result.downAmount ?? 0)} · {result.months} งวด
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground leading-snug">
+            ยังไม่มีแผนผ่อนสำหรับตัวเลือกนี้ ลองเปลี่ยนเงินดาวน์หรืองวด
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InstallmentCalculator({
+  productId,
+  installmentPrice,
+}: Props & { installmentPrice: number }) {
   const [months, setMonths] = useState(12);
   const [downPct, setDownPct] = useState(DEFAULT_DOWN_PCT);
-  /**
-   * Which box the shopper last committed. Typing baht sends `customDownAmount`
-   * so the quote uses that exact figure — deriving a percentage from it would
-   * come back as ฿4,998.67 when they asked for ฿5,000.
-   */
   const [downMode, setDownMode] = useState<'PCT' | 'AMOUNT'>('PCT');
   const [downAmountInput, setDownAmountInput] = useState<number | null>(null);
-  const [bcResult, setBcResult] = useState<PreviewResponse | null>(null);
-  const [gfinResult, setGfinResult] = useState<PreviewResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const commitPct = useCallback((v: number) => {
+  const [minDownPct, setMinDownPct] = useState(DEFAULT_DOWN_PCT);
+  const commitPct = useCallback((value: number) => {
     setDownMode('PCT');
-    setDownPct(v);
+    setDownPct(value);
     setDownAmountInput(null);
   }, []);
   const commitAmount = useCallback(
-    (v: number) => {
+    (value: number) => {
       setDownMode('AMOUNT');
-      setDownAmountInput(v);
-      if (installmentPrice) setDownPct(Math.round((v / installmentPrice) * 100));
+      setDownAmountInput(value);
+      setDownPct(Math.round((value / installmentPrice) * 100));
     },
     [installmentPrice],
   );
 
+  const quotes = useQueries({
+    queries: ['BC', 'GFIN'].map((provider) => ({
+      queryKey: [
+        'shop-installment-options',
+        productId,
+        installmentPrice,
+        provider,
+        months,
+        downPct,
+        downMode,
+        downAmountInput,
+      ],
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        // Endpoint expects a fraction; exact baht are also sent to BOTH providers.
+        const params = new URLSearchParams({
+          productId,
+          provider,
+          months: String(months),
+          downPct: String(downPct / 100),
+        });
+        if (downMode === 'AMOUNT' && downAmountInput != null)
+          params.set('customDownAmount', String(downAmountInput));
+        const { data } = await api.get<PreviewResponse>(`/api/shop/installment-preview?${params}`, {
+          signal,
+        });
+        return data;
+      },
+      retry: false,
+    })),
+  });
+  const bcResult = quotes[0].data;
+  const loading = quotes.some((query) => query.isFetching || query.isPending);
+  const hasError = quotes.some((query) => query.isError);
+  const anyAvailable = quotes.some((query) => query.data?.available);
   useEffect(() => {
-    if (!installmentPrice) return;
-    const params = new URLSearchParams({ productId, months: String(months) });
-    // NOTE: this endpoint takes downPct as a FRACTION (0.15), unlike
-    // /shop/products which takes a percent. Do not "tidy" one to match.
-    //
-    // downPct always goes along, even when the shopper typed baht: BC prefers
-    // customDownAmount and quotes the exact figure, while GFIN has no
-    // customDownAmount path at all and would otherwise fall back to its own
-    // hardcoded 30% — leaving the two cards compared at different terms.
-    params.set('downPct', String(downPct / 100));
-    if (downMode === 'AMOUNT' && downAmountInput != null) {
-      params.set('customDownAmount', String(downAmountInput));
-    }
-    let cancelled = false;
-    const fetchBoth = async () => {
-      setLoading(true);
-      try {
-        const [bc, gfin] = await Promise.all([
-          fetch(`/api/shop/installment-preview?${params.toString()}&provider=BC`).then((r) =>
-            r.json(),
-          ),
-          fetch(`/api/shop/installment-preview?${params.toString()}&provider=GFIN`).then((r) =>
-            r.json(),
-          ),
-        ]);
-        if (!cancelled) {
-          setBcResult(bc as PreviewResponse);
-          setGfinResult(gfin as PreviewResponse);
-        }
-      } catch {
-        if (!cancelled) {
-          setBcResult({ available: false });
-          setGfinResult({ available: false });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void fetchBoth();
-    return () => {
-      cancelled = true;
-    };
-  }, [productId, months, downPct, downMode, downAmountInput, installmentPrice]);
-
-  // Hide the entire card if no installment price
-  if (!installmentPrice) return null;
-
-  // Hide if BOTH providers unavailable (after data loaded)
-  const bothUnavailable = bcResult?.available === false && gfinResult?.available === false;
-  if (bcResult && gfinResult && bothUnavailable) return null;
-
-  const anyAvailable = bcResult?.available || gfinResult?.available;
-  // The floor comes from whichever BC answer we last got — valid or not, the
-  // API sends it — and only falls back while the very first request is in
-  // flight. Never a hardcoded percentage.
-  const minDownPct = bcResult?.minDownPct ?? DEFAULT_DOWN_PCT;
-  // Show what the quote actually used, not what was typed: the API clamps.
+    if (bcResult?.minDownPct != null) setMinDownPct(bcResult.minDownPct);
+  }, [bcResult?.minDownPct]);
   const effectiveDownAmount =
     bcResult?.downAmount ?? downAmountInput ?? Math.round((installmentPrice * downPct) / 100);
 
@@ -290,8 +342,7 @@ export function InstallmentCalculatorCard({ productId, installmentPrice }: Props
         <CardTitle>เลือกการผ่อน</CardTitle>
       </CardHeader>
       <CardBody className="space-y-4">
-        {/* Controls */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <div className="flex items-center gap-2">
             <label htmlFor="months-select" className="text-sm font-medium">
               จำนวนงวด:
@@ -299,17 +350,16 @@ export function InstallmentCalculatorCard({ productId, installmentPrice }: Props
             <select
               id="months-select"
               value={months}
-              onChange={(e) => setMonths(Number(e.target.value))}
-              className="border border-border rounded-md px-2 py-1 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              onChange={(event) => setMonths(Number(event.target.value))}
+              className="min-h-11 rounded-md border border-border bg-background px-3 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              {MONTHS_OPTIONS.map((m) => (
-                <option key={m} value={m}>
-                  {m} งวด
+              {MONTHS_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value} งวด
                 </option>
               ))}
             </select>
           </div>
-
           <DownPaymentInput
             installmentPrice={installmentPrice}
             minDownPct={minDownPct}
@@ -319,66 +369,22 @@ export function InstallmentCalculatorCard({ productId, installmentPrice }: Props
             onCommitAmount={commitAmount}
           />
         </div>
-
-        {/* Results */}
-        {loading && (
-          <div className="grid md:grid-cols-2 gap-3">
-            {[0, 1].map((i) => (
-              <div key={i} className="rounded-xl border border-border p-4 space-y-2">
-                <div className="h-4 bg-muted animate-pulse rounded w-1/3" />
-                <div className="h-8 bg-muted animate-pulse rounded w-2/3" />
-                <div className="h-3 bg-muted animate-pulse rounded w-1/2" />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!loading && anyAvailable && (
-          <div className="grid md:grid-cols-2 gap-3">
-            {bcResult?.available && (
-              <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-emerald-700">BESTCHOICE</span>
-                  <Badge variant="success" size="sm">
-                    ของเรา
-                  </Badge>
-                </div>
-                <div className="num text-2xl font-bold text-emerald-700 leading-snug">
-                  ฿{formatTHB(bcResult.monthlyPayment ?? 0)}
-                  <span className="text-sm font-normal text-emerald-600"> / เดือน</span>
-                </div>
-                <div className="text-xs text-emerald-600 leading-snug">
-                  ดาวน์: ฿{formatTHB(bcResult.downAmount ?? 0)}
-                </div>
-              </div>
-            )}
-
-            {gfinResult?.available && (
-              <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-4 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-blue-700">GFIN</span>
-                  <Badge variant="outline" size="sm">
-                    ไฟแนนซ์นอก
-                  </Badge>
-                </div>
-                <div className="num text-2xl font-bold text-blue-700 leading-snug">
-                  ฿{formatTHB(gfinResult.monthlyPayment ?? 0)}
-                  <span className="text-sm font-normal text-blue-600"> / เดือน</span>
-                </div>
-                <div className="text-xs text-blue-600 leading-snug">
-                  ดาวน์: ฿{formatTHB(gfinResult.downAmount ?? 0)}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Disclaimer */}
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground leading-snug">
+          {loading
+            ? 'กำลังคำนวณค่างวดล่าสุด…'
+            : hasError
+              ? 'โหลดค่างวดบางรายการไม่สำเร็จ กดลองใหม่ได้'
+              : anyAvailable
+                ? 'อัปเดตค่างวดตามตัวเลือกแล้ว'
+                : 'ยังไม่มีแผนผ่อนสำหรับตัวเลือกนี้'}
+        </p>
+        <div aria-label="ผลคำนวณค่างวด" aria-busy={loading} className="grid gap-3 md:grid-cols-2">
+          <QuoteOption label="BESTCHOICE" query={quotes[0]} />
+          <QuoteOption label="GFIN" query={quotes[1]} />
+        </div>
         <p className="text-xs text-muted-foreground leading-snug">
           ค่างวดข้างต้นเป็นการประมาณการ — ราคาจริงเป็นไปตามสัญญาที่ลงนาม
         </p>
-
-        {/* CTA — ร้านไม่มีสมัครผ่อนออนไลน์: ปิดจ๊อบผ่านแชท (คำสั่งเจ้าของ 2026-08-31) */}
         <Button asChild variant="primary" size="lg">
           <a
             href={lineOaMessageUrl(`สนใจผ่อนเครื่องนี้ ${productShareUrl(productId)}`)}
@@ -391,5 +397,17 @@ export function InstallmentCalculatorCard({ productId, installmentPrice }: Props
         </Button>
       </CardBody>
     </Card>
+  );
+}
+
+export function InstallmentCalculatorCard(props: Props) {
+  if (!props.installmentPrice) return null;
+  // A different physical device starts with its own quote and input state.
+  return (
+    <InstallmentCalculator
+      key={props.productId}
+      {...props}
+      installmentPrice={props.installmentPrice}
+    />
   );
 }

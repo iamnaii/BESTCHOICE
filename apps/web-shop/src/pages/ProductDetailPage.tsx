@@ -13,7 +13,6 @@ import {
   messengerRefUrl,
   productShareUrl,
 } from '@/lib/copy';
-import { media } from '@/lib/media-placeholders';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import ShopLayout from '@/components/layout/ShopLayout';
@@ -23,8 +22,7 @@ import type { ProductUnit } from '@/types/product';
 import { Breadcrumb } from '@/components/catalog/Breadcrumb';
 import { SpecTable } from '@/components/catalog/SpecTable';
 import { UnitPicker } from '@/components/catalog/UnitPicker';
-import { ImageLightbox } from '@/components/catalog/ImageLightbox';
-import { Product360Viewer } from '@/components/catalog/Product360Viewer';
+import { ProductGallery } from '@/components/catalog/ProductGallery';
 import { RelatedSection } from '@/components/catalog/RelatedSection';
 import { StockIndicator } from '@/components/catalog/StockIndicator';
 import {
@@ -70,19 +68,12 @@ function conditionDescription(g: string): string {
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const track = useTrackEvent();
-  const [activeImage, setActiveImage] = useState(0);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [view360, setView360] = useState(false);
 
-  // Reset per-product UI state on navigation between products (RelatedSection
-  // links keep this component mounted, so stale hero image / 360 mode /
-  // selected unit would otherwise carry over to the new product).
+  // Related links keep this page mounted; reset the selected device on navigation.
+  // The keyed gallery independently resets photos, zoom and 360 mode per device.
   useEffect(() => {
-    setActiveImage(0);
     setSelectedUnitId(null);
-    setView360(false);
-    setLightboxOpen(false);
   }, [id]);
 
   const { data, isLoading, isError, isFetching, error, refetch } = useQuery({
@@ -144,12 +135,6 @@ export default function ProductDetailPage() {
       track('ViewContent', { content_type: 'product', content_ids: [id] });
     }
   }, [data, id, track]);
-
-  // สลับเครื่องแล้ว gallery เป็นคนละชุด — index เดิมอาจชี้เกินขอบ/ชี้รูปเครื่องอื่น
-  useEffect(() => {
-    setActiveImage(0);
-    setView360(false);
-  }, [selectedUnitId]);
 
   // Hook must run every render (rules-of-hooks) — call before the loading
   // early-return below, with an undefined title while data hasn't arrived
@@ -249,7 +234,9 @@ export default function ProductDetailPage() {
     );
   }
 
-  const displayName = [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ');
+  const displayName = [data.brand, data.model, data.storage, selectedUnit?.color ?? data.color]
+    .filter(Boolean)
+    .join(' ');
   const price = selectedUnit?.cashPrice ?? null;
   const monthlyFrom =
     preview?.available && preview.monthlyPayment ? Math.ceil(preview.monthlyPayment) : null;
@@ -259,11 +246,9 @@ export default function ProductDetailPage() {
   // รูปตามเครื่องที่เลือก — ถอยไปใช้รูประดับรุ่นเมื่อเครื่องนั้นยังไม่มีรูปของตัวเอง
   const unitGallery = selectedUnit?.gallery ?? [];
   const gallerySource = unitGallery.length > 0 ? unitGallery : (data.gallery ?? []);
-  const gallery = gallerySource.length > 0 ? gallerySource : [media('product.placeholder')];
-  const mainImage = gallery[activeImage] ?? gallery[0];
+  const gallery = gallerySource;
   const unitGallery360 = selectedUnit?.gallery360 ?? [];
   const gallery360 = unitGallery360.length > 0 ? unitGallery360 : data.gallery360;
-  const has360 = gallery360.length > 0;
   const stockCount = flatUnits.length;
   // B5 T12b: model นี้เหลือ 0 หน่วยพร้อมขาย (ทุกเครื่องถูกขาย/ไม่ IN_STOCK แล้ว) —
   // permalink ยังเปิดได้ตามสเปก B4 (getProductDetail requireInStock:false บน head
@@ -276,7 +261,11 @@ export default function ProductDetailPage() {
   const messengerUrl = messengerRefUrl(shareTargetId, shopConfig?.facebookPageHandle);
 
   async function handleShare() {
-    const shareData = { title: displayName, text: `${displayName} — BESTCHOICE ลพบุรี`, url: shareUrl };
+    const shareData = {
+      title: displayName,
+      text: `${displayName} — BESTCHOICE ลพบุรี`,
+      url: shareUrl,
+    };
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
         await navigator.share(shareData);
@@ -305,87 +294,12 @@ export default function ProductDetailPage() {
           ]}
         />
         <div className="grid md:grid-cols-2 gap-8 leading-snug mt-3">
-          {/* Gallery */}
-          <div className="space-y-3">
-            {has360 && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setView360(false)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    !view360
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                      : 'border-border text-muted-foreground hover:border-foreground/40'
-                  }`}
-                >
-                  รูป
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView360(true)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    view360
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                      : 'border-border text-muted-foreground hover:border-foreground/40'
-                  }`}
-                >
-                  360°
-                </button>
-              </div>
-            )}
-            {view360 && has360 ? (
-              <Product360Viewer frames={gallery360} alt={displayName} />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setLightboxOpen(true)}
-                aria-label="ดูรูปขยาย"
-                className="aspect-square w-full rounded-2xl bg-zinc-50 overflow-hidden flex items-center justify-center cursor-zoom-in"
-              >
-                <img
-                  src={mainImage}
-                  alt={displayName}
-                  className="max-h-full max-w-full object-contain"
-                  loading="eager"
-                />
-              </button>
-            )}
-            {gallery.length > 1 && (
-              <div className="grid grid-cols-5 gap-2">
-                {gallery.map((src, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => {
-                      setView360(false);
-                      setActiveImage(i);
-                    }}
-                    aria-label={`รูปที่ ${i + 1}`}
-                    className={`aspect-square rounded-xl bg-zinc-50 overflow-hidden flex items-center justify-center border transition-all ${
-                      i === activeImage && !view360
-                        ? 'border-emerald-500 ring-2 ring-emerald-200'
-                        : 'border-zinc-200 hover:border-emerald-200'
-                    }`}
-                  >
-                    <img
-                      src={src}
-                      alt={`${displayName} ${i + 1}`}
-                      className="max-h-full max-w-full object-contain"
-                      loading="lazy"
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-            <ImageLightbox
-              images={gallery}
-              open={lightboxOpen}
-              index={activeImage}
-              onOpenChange={setLightboxOpen}
-              onIndexChange={setActiveImage}
-              alt={displayName}
-            />
-          </div>
+          <ProductGallery
+            key={selectedUnit?.id ?? data.id}
+            images={gallery}
+            frames360={gallery360}
+            alt={displayName}
+          />
 
           {/* Details */}
           <Stack gap={4}>
@@ -473,11 +387,7 @@ export default function ProductDetailPage() {
                 // ต้องพาไปทักแชทแทน (ไม่ใช่ปุ่มที่ดูเหมือนซื้อได้จริงแล้ว fail
                 // แบบ reactive ตอนกด — ดู B5 task-12 QA report scenario I)
                 <Button asChild variant="cta" size="lg" fullWidth>
-                  <a
-                    href={lineOaMessageUrl(linePrefill)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                  <a href={lineOaMessageUrl(linePrefill)} target="_blank" rel="noopener noreferrer">
                     <MessageCircle className="size-4" aria-hidden="true" />
                     {copy.product.soldOutLineCta}
                   </a>

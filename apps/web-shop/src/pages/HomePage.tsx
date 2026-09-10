@@ -31,6 +31,8 @@ import {
   Card,
   CardBody,
   Button,
+  Reveal,
+  StaggerChildren,
   type ProductGroup,
 } from '@/components';
 import { api } from '@/lib/api';
@@ -144,7 +146,7 @@ export default function HomePage() {
             title={copy.home.whyUsTitle}
             description="ซื้อ iPhone มือ 1 และมือสองอย่างสบายใจ ผ่อนง่าย รับประกันจริง"
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StaggerChildren className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {WHY_US_ITEMS.map((item, i) => (
               <Card key={i} variant="outlined" className="h-full">
                 <CardBody className="space-y-3 leading-snug">
@@ -156,7 +158,7 @@ export default function HomePage() {
                 </CardBody>
               </Card>
             ))}
-          </div>
+          </StaggerChildren>
         </Container>
       </Section>
 
@@ -166,7 +168,7 @@ export default function HomePage() {
             title={copy.home.servicesTitle}
             description={copy.home.servicesDescription}
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <StaggerChildren className="grid grid-cols-1 sm:grid-cols-2 gap-4" stagger={100}>
             {SERVICE_ITEMS.map((s) => (
               <Card key={s.to} variant="outlined" className="h-full">
                 <CardBody className="flex h-full flex-col space-y-3 leading-snug">
@@ -181,49 +183,51 @@ export default function HomePage() {
                 </CardBody>
               </Card>
             ))}
-          </div>
+          </StaggerChildren>
         </Container>
       </Section>
 
       {/* ออมดาวน์ — catches the "ดาวน์ยังไม่พอ" lead that would otherwise bounce */}
       <Section padding="md">
         <Container>
-          <Card variant="outlined" className="overflow-hidden">
-            <CardBody className="md:flex md:items-center md:gap-8 space-y-5 md:space-y-0 leading-snug">
-              <div className="flex-1 space-y-2">
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-full px-2.5 py-1">
-                  <PiggyBank className="size-3.5" aria-hidden="true" />
-                  ออมดาวน์
-                </span>
-                <h2 className="text-xl md:text-2xl font-bold leading-snug">
-                  ดาวน์ยังไม่พอ? ออมกับเราก่อนได้ เริ่ม ฿500/เดือน
-                </h2>
-                <p className="text-sm text-muted-foreground leading-snug">
-                  เลือกรุ่นที่อยากได้ ออมทีละน้อยทุกเดือน
-                  พอครบเป้าก็ใช้เงินออมเป็นเงินดาวน์รับเครื่องได้เลย
-                </p>
-                <div className="flex flex-wrap gap-x-5 gap-y-1.5 pt-1 text-sm">
-                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                    <Target className="size-4 text-emerald-500" aria-hidden="true" />
-                    ตั้งเป้ารุ่นที่อยากได้
+          <Reveal>
+            <Card variant="outlined" className="overflow-hidden">
+              <CardBody className="md:flex md:items-center md:gap-8 space-y-5 md:space-y-0 leading-snug">
+                <div className="flex-1 space-y-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-full px-2.5 py-1">
+                    <PiggyBank className="size-3.5" aria-hidden="true" />
+                    ออมดาวน์
                   </span>
-                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                    <PiggyBank className="size-4 text-emerald-500" aria-hidden="true" />
-                    ออมรายเดือนตามไหว
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                    <ShoppingBag className="size-4 text-emerald-500" aria-hidden="true" />
-                    ครบเป้า = รับเครื่อง
-                  </span>
+                  <h2 className="text-xl md:text-2xl font-bold leading-snug">
+                    ดาวน์ยังไม่พอ? ออมกับเราก่อนได้ เริ่ม ฿500/เดือน
+                  </h2>
+                  <p className="text-sm text-muted-foreground leading-snug">
+                    เลือกรุ่นที่อยากได้ ออมทีละน้อยทุกเดือน
+                    พอครบเป้าก็ใช้เงินออมเป็นเงินดาวน์รับเครื่องได้เลย
+                  </p>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1.5 pt-1 text-sm">
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <Target className="size-4 text-emerald-500" aria-hidden="true" />
+                      ตั้งเป้ารุ่นที่อยากได้
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <PiggyBank className="size-4 text-emerald-500" aria-hidden="true" />
+                      ออมรายเดือนตามไหว
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <ShoppingBag className="size-4 text-emerald-500" aria-hidden="true" />
+                      ครบเป้า = รับเครื่อง
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="shrink-0">
-                <Button asChild variant="primary" size="lg">
-                  <Link to="/saving-plan">เริ่มออมดาวน์</Link>
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
+                <div className="shrink-0">
+                  <Button asChild variant="primary" size="lg">
+                    <Link to="/saving-plan">เริ่มออมดาวน์</Link>
+                  </Button>
+                </div>
+              </CardBody>
+            </Card>
+          </Reveal>
         </Container>
       </Section>
 
@@ -234,7 +238,7 @@ export default function HomePage() {
             title="รีวิวจากลูกค้าจริง"
             description="กดดูรีวิวทั้งหมดได้ที่ Google Maps และเพจ Facebook ของร้าน"
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <StaggerChildren className="grid grid-cols-1 sm:grid-cols-2 gap-4" stagger={100}>
             <Card variant="outlined" className="h-full">
               <CardBody className="space-y-3 leading-snug">
                 <div className="flex items-end gap-3">
@@ -272,7 +276,7 @@ export default function HomePage() {
                 </Button>
               </CardBody>
             </Card>
-          </div>
+          </StaggerChildren>
         </Container>
       </Section>
 
@@ -352,11 +356,11 @@ export default function HomePage() {
               title={copy.home.testimonialsTitle}
               description="เสียงจริงจากลูกค้าที่ซื้อเครื่องและผ่อนกับเรา"
             />
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StaggerChildren className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {reviews.slice(0, 6).map((r) => (
                 <ReviewCard key={r.id} review={r} />
               ))}
-            </div>
+            </StaggerChildren>
           </Container>
         </Section>
       )}

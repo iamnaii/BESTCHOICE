@@ -1,17 +1,17 @@
-import { Children, cloneElement, isValidElement } from 'react';
-import { cn } from '@/lib/utils';
+import { Children, useRef } from 'react';
+import { useScrollReveal } from './useScrollReveal';
 
 interface Props extends React.HTMLAttributes<HTMLDivElement> {
   stagger?: number;
 }
 
-export function StaggerChildren({ stagger: _stagger = 50, className, children, ...props }: Props) {
+export function StaggerChildren({ stagger = 70, className, children, ...props }: Props) {
+  const ref = useRef<HTMLDivElement>(null);
+  useScrollReveal(ref, { stagger, childCount: Children.count(children) });
   return (
-    <div className={cn('stagger', className)} {...props}>
-      {Children.map(children, (child, i) => (
-        <div style={{ ['--stagger-index' as string]: i } as React.CSSProperties}>
-          {isValidElement(child) ? cloneElement(child) : child}
-        </div>
+    <div ref={ref} className={className} {...props}>
+      {Children.map(children, (child) => (
+        <div className="h-full">{child}</div>
       ))}
     </div>
   );

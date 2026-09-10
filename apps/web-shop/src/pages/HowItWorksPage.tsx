@@ -1,11 +1,5 @@
 import { Link } from 'react-router';
-import {
-  MessageCircle,
-  CreditCard,
-  PartyPopper,
-  ShieldCheck,
-  type LucideIcon,
-} from 'lucide-react';
+import { MessageCircle, CreditCard, PartyPopper, ShieldCheck, type LucideIcon } from 'lucide-react';
 import {
   CategoryHero,
   Container,
@@ -15,8 +9,10 @@ import {
   Card,
   CardBody,
   TrustStrip,
+  StaggerChildren,
 } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
+import { FaqAccordion } from '@/components/shop/FaqAccordion';
 import { copy } from '@/lib/copy';
 import { usePageMeta } from '@/hooks/usePageMeta';
 
@@ -90,9 +86,13 @@ export default function HowItWorksPage() {
         <Stack gap={6} className="py-8">
           <section>
             <SectionHeader title={copy.howItWorks.stepsTitle} />
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StaggerChildren
+              role="list"
+              className="grid grid-cols-1 md:grid-cols-3 gap-4"
+              stagger={120}
+            >
               {STEPS.map((step) => (
-                <Card key={step.number} variant="outlined">
+                <Card key={step.number} role="listitem" variant="outlined" className="h-full">
                   <CardBody>
                     <Stack gap={3} className="leading-snug">
                       <div className="flex items-center gap-3">
@@ -109,23 +109,12 @@ export default function HowItWorksPage() {
                   </CardBody>
                 </Card>
               ))}
-            </div>
+            </StaggerChildren>
           </section>
 
           <section>
             <SectionHeader title={copy.howItWorks.faqTitle} />
-            <Stack gap={3}>
-              {FAQS.map((faq, i) => (
-                <Card key={i} variant="outlined">
-                  <CardBody>
-                    <Stack gap={2} className="leading-snug">
-                      <h3 className="text-base font-semibold leading-snug">{faq.question}</h3>
-                      <p className="text-sm text-muted-foreground leading-snug">{faq.answer}</p>
-                    </Stack>
-                  </CardBody>
-                </Card>
-              ))}
-            </Stack>
+            <FaqAccordion items={FAQS} />
             <div className="mt-4 text-center">
               <Link
                 to="/installment-terms"

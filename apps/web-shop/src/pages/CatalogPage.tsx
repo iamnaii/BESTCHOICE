@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
-import { Search, SlidersHorizontal, ChevronDown, X, Banknote, CalendarClock } from 'lucide-react';
+import { SlidersHorizontal, ChevronDown, X, Banknote, CalendarClock } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   FilterSidebar,
@@ -9,6 +9,7 @@ import {
   type ModelOption,
 } from '@/components/catalog/FilterSidebar';
 import { WaitlistCard } from '@/components/catalog/WaitlistCard';
+import { CatalogResults } from '@/components/catalog/CatalogResults';
 import {
   Container,
   Dialog,
@@ -16,8 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  StatefulList,
-  ProductCard,
   type ProductGroup,
 } from '@/components';
 import { api } from '@/lib/api';
@@ -178,26 +177,34 @@ export default function CatalogPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [sortOpen]);
 
-  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useInfiniteQuery<CatalogResponse>({
-      queryKey: ['shop', 'catalog', filters, sort, committedDown, months],
-      queryFn: ({ pageParam }) => {
-        const params = new URLSearchParams();
-        if (filters.condition) params.set('condition', filters.condition);
-        if (filters.model) params.set('model', filters.model);
-        if (filters.conditionGrade) params.set('conditionGrade', filters.conditionGrade);
-        if (filters.minPrice !== undefined) params.set('minPrice', String(filters.minPrice));
-        if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
-        if (filters.search) params.set('search', filters.search);
-        params.set('sort', sort);
-        if (committedDown != null) params.set('downPct', String(committedDown));
-        if (months != null) params.set('months', String(months));
-        params.set('page', String(pageParam));
-        return api.get(`/api/shop/products?${params}`).then((r) => r.data);
-      },
-      initialPageParam: 1,
-      getNextPageParam: (last) => (last.page * last.limit < last.total ? last.page + 1 : undefined),
-    });
+  const {
+    data,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<CatalogResponse>({
+    queryKey: ['shop', 'catalog', filters, sort, committedDown, months],
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams();
+      if (filters.condition) params.set('condition', filters.condition);
+      if (filters.model) params.set('model', filters.model);
+      if (filters.conditionGrade) params.set('conditionGrade', filters.conditionGrade);
+      if (filters.minPrice !== undefined) params.set('minPrice', String(filters.minPrice));
+      if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
+      if (filters.search) params.set('search', filters.search);
+      params.set('sort', sort);
+      if (committedDown != null) params.set('downPct', String(committedDown));
+      if (months != null) params.set('months', String(months));
+      params.set('page', String(pageParam));
+      return api.get(`/api/shop/products?${params}`).then((r) => r.data);
+    },
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page * last.limit < last.total ? last.page + 1 : undefined),
+  });
 
   const groups = data?.pages.flatMap((p) => p.data);
   const first = data?.pages[0];
@@ -241,7 +248,14 @@ export default function CatalogPage() {
                 <rect x="41" y="21" width="21" height="21" rx="7" fill="var(--color-zinc-300)" />
                 <circle cx="47" cy="27" r="3.6" fill="var(--color-zinc-400)" />
                 <circle cx="56" cy="36" r="3.6" fill="var(--color-zinc-400)" />
-                <rect x="49" y="16.5" width="10" height="3.4" rx="1.7" fill="var(--color-zinc-300)" />
+                <rect
+                  x="49"
+                  y="16.5"
+                  width="10"
+                  height="3.4"
+                  rx="1.7"
+                  fill="var(--color-zinc-300)"
+                />
                 <path
                   d="M41 84h36"
                   stroke="var(--color-emerald-500)"
@@ -369,10 +383,6 @@ export default function CatalogPage() {
                 </button>
               )}
 
-              <span className="hidden sm:block text-[13px] text-muted-foreground leading-snug">
-                {total > 0 ? `พร้อมจัด ${total} รุ่น` : ''}
-              </span>
-
               <div className="flex-1" />
 
               {/* Sort dropdown — listbox semantics for screen readers + ESC to
@@ -435,19 +445,15 @@ export default function CatalogPage() {
               </div>
             </div>
 
-            <StatefulList<ProductGroup>
-              isLoading={isLoading}
-              isError={isError}
-              data={groups}
-              loadingVariant="card-grid"
+            <CatalogResults
+              products={groups}
+              total={total}
+              loading={isLoading}
+              error={isError}
+              updating={isFetching}
+              resultKey={JSON.stringify([filters, sort, committedDown, months])}
+              priceMode={priceMode}
               onRetry={() => refetch()}
-              emptyState={{
-                icon: <Search className="size-12" />,
-                title: copy.catalog.emptyTitle,
-                description: copy.catalog.emptyDescription,
-              }}
-              wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-3"
-              renderItem={(p) => <ProductCard key={p.id} product={p} priceMode={priceMode} />}
             />
 
             {hasNextPage && (

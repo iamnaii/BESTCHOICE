@@ -937,24 +937,21 @@ describe('Stock workspace interactions', () => {
 });
 
 describe('Stock table server sorting', () => {
-  it('cycles ascending, descending and default, resets pagination and retains filters', async () => {
-    showProducts(Array.from({ length: 55 }, (_, index) => product({ id: `item-${index}` })));
-    await screen.findAllByText('15,900 ฿');
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    await waitFor(() =>
-      expect(mocks.get).toHaveBeenCalledWith(
-        '/products',
-        expect.objectContaining({ params: expect.objectContaining({ page: '2' }) }),
-      ),
-    );
+  const lastProductQuery = () => {
+    const calls = mocks.get.mock.calls.filter(([url]) => url === '/products');
+    return calls[calls.length - 1]?.[1]?.params;
+  };
+
+  it('cycles ascending, descending and default while retaining filters', async () => {
+    showProducts([product()]);
+    await screen.findByText('15,900 ฿');
     fireEvent.click(screen.getByRole('button', { name: 'ราคาเต็มจำนวน' }));
     await waitFor(() =>
-      expect(mocks.get).toHaveBeenLastCalledWith(
-        '/products',
-        expect.objectContaining({
-          params: expect.objectContaining({ page: '1', sortBy: 'cashPrice', sortDirection: 'asc' }),
-        }),
-      ),
+      expect(lastProductQuery()).toMatchObject({
+        page: '1',
+        sortBy: 'cashPrice',
+        sortDirection: 'asc',
+      }),
     );
     expect(screen.getByRole('columnheader', { name: 'ราคาเต็มจำนวน' })).toHaveAttribute(
       'aria-sort',
@@ -964,16 +961,11 @@ describe('Stock table server sorting', () => {
       target: { value: 'IN_STOCK' },
     });
     await waitFor(() =>
-      expect(mocks.get).toHaveBeenLastCalledWith(
-        '/products',
-        expect.objectContaining({
-          params: expect.objectContaining({
-            status: 'IN_STOCK',
-            sortBy: 'cashPrice',
-            sortDirection: 'asc',
-          }),
-        }),
-      ),
+      expect(lastProductQuery()).toMatchObject({
+        status: 'IN_STOCK',
+        sortBy: 'cashPrice',
+        sortDirection: 'asc',
+      }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'ราคาเต็มจำนวน' }));
     await waitFor(() =>
@@ -991,7 +983,30 @@ describe('Stock table server sorting', () => {
     );
     const calls = mocks.get.mock.calls.filter(([url]) => url === '/products');
     expect(calls[calls.length - 1]?.[1].params).not.toHaveProperty('sortBy');
+    expect(calls[calls.length - 1]?.[1].params).toHaveProperty('status', 'IN_STOCK');
     expect(screen.queryByRole('button', { name: 'เรียงตามselect' })).not.toBeInTheDocument();
+  });
+
+  it('returns to the first page when sorting a paginated result', async () => {
+    showProducts(
+      Array.from({ length: 51 }, (_, index) =>
+        product({ id: `item-${index}`, model: `iPhone ${index}` }),
+      ),
+    );
+    await screen.findByRole('button', { name: 'iPhone 0' });
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+    await screen.findByRole('button', { name: 'iPhone 50' });
+    expect(mocks.get).toHaveBeenCalledWith(
+      '/products',
+      expect.objectContaining({ params: expect.objectContaining({ page: '2' }) }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'ราคาเต็มจำนวน' }));
+    await screen.findByRole('button', { name: 'iPhone 0' });
+    expect(lastProductQuery()).toMatchObject({
+      page: '1',
+      sortBy: 'cashPrice',
+      sortDirection: 'asc',
+    });
   });
 
   it('offers the same sorting on mobile and clears hidden sorts when switching category', async () => {
@@ -1002,21 +1017,11 @@ describe('Stock table server sorting', () => {
       target: { value: 'monthlyPayment' },
     });
     await waitFor(() =>
-      expect(mocks.get).toHaveBeenLastCalledWith(
-        '/products',
-        expect.objectContaining({
-          params: expect.objectContaining({ sortBy: 'monthlyPayment', sortDirection: 'asc' }),
-        }),
-      ),
+      expect(lastProductQuery()).toMatchObject({ sortBy: 'monthlyPayment', sortDirection: 'asc' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'สลับทิศทางการเรียง' }));
     await waitFor(() =>
-      expect(mocks.get).toHaveBeenLastCalledWith(
-        '/products',
-        expect.objectContaining({
-          params: expect.objectContaining({ sortBy: 'monthlyPayment', sortDirection: 'desc' }),
-        }),
-      ),
+      expect(lastProductQuery()).toMatchObject({ sortBy: 'monthlyPayment', sortDirection: 'desc' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'เรียงตาม' })).toHaveValue(''));

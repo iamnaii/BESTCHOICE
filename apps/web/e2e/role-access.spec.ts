@@ -204,12 +204,21 @@ test.describe('FINANCE_MANAGER role — finance access', () => {
     });
   }
 
-  test('FINANCE_MANAGER with only FINANCE grant cannot open SHOP stock', async ({ page }) => {
+  // กลับด้านจากเดิมโดยตั้งใจ (hotfix user-company-access 2026-09-11, เจ้าของเคาะ)
+  // เวอร์ชันเดิมชื่อ 'FINANCE_MANAGER with only FINANCE grant cannot open SHOP stock' ตรึง
+  // ROLE_ACCESS_MAP เก่าที่ให้ FM = ['FINANCE'] อย่างเดียว ทั้งที่ FINANCE_MANAGER_CONFIG ใน
+  // apps/web/src/config/menu.ts มี section โซน shop จริงสองก้อน (fm-shop-ops: contracts /
+  // payments / mdm / stickers / stock / shop-accounting / bookings / insurance /
+  // exchange-requests / products และ fm-online-shop) พร้อม bottomNav ของ shop
+  // ⇒ map เก่าลบ pill 'ร้าน' ของ FM ทิ้งทั้งโซนทั้งที่เมนูมีอยู่ ค่าใหม่คือ ['SHOP','FINANCE']
+  // (packages/shared/src/company-access.ts) เทสต์นี้จึงกลายเป็นด่านกันการย้อนกลับไปค่าเก่า
+  test('FINANCE_MANAGER ได้ทั้งสองบริษัท จึงเปิด SHOP stock ได้และเห็น pill สองอัน', async ({ page }) => {
     await page.goto('/stock', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(url => url.pathname === '/finance-portfolio');
-    await expect(page.getByRole('heading', { name: 'พอร์ตสัญญา BESTCHOICE FINANCE', level: 1 }))
-      .toBeVisible();
-    await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(0);
+    await expect(page).toHaveURL(url => url.pathname === '/stock');
+    expect(await isAccessDenied(page, '/stock')).toBeFalsy();
+    // pill switcher โผล่เมื่อ role มี work zone ตั้งแต่สองโซนขึ้นไป — ถ้าใครย้อน FM กลับเป็น
+    // FINANCE อย่างเดียว โซน shop จะถูกกรองทิ้ง เหลือ pill อันเดียวแล้ว component ซ่อนตัวเอง
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(1);
   });
 
   // FINANCE_MANAGER CANNOT access:

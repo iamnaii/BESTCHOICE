@@ -24,6 +24,7 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PrismaFinanceService } from '../src/prisma/prisma-finance.service';
+import { resolveCompanyAccess } from '@installment/shared';
 
 const HAS_DUAL_DB = !!(process.env.DATABASE_URL && process.env.DATABASE_URL_FINANCE);
 
@@ -87,7 +88,15 @@ describeOrSkip('SP7.1 — Dual Prisma + Entity Scope (e2e)', () => {
   // ยังคง guard "ไม่มีแถว = warn แล้วผ่าน" ไว้ เพราะ CI รันกับ DB เปล่าที่ยังไม่ seed
   // (supertest ไม่ใช่ dev dependency ของ repo นี้ จึงเช็คระดับ service ตามแบบของ
   // approval-workflow.e2e-spec.ts)
-  it('seeded OWNER มี company grants จริง ไม่ใช่แค่มีคอลัมน์', async () => {
+  //
+  // ⚠️ `admin@bestchoice.com` ใช้ยืนยัน seed ไม่ได้ — e2e อีก 6 ไฟล์ upsert อีเมลนี้เป็น fixture
+  // ของตัวเอง (payment-approval-record:60, paysolutions-overpay-surplus:68, autoallocate-
+  // partial-complete:233, backfill-orphan-partial-receipts:82, ...) โดยไม่ใส่ companies และทั้งชุด
+  // ใช้ DB ก้อนเดียวกัน ⇒ ใน CI แถวนี้มาจากสเปกที่รันก่อน ไม่ได้มาจาก seed แถว accessible_companies
+  // จึงเป็น [] โดยชอบธรรม การ assert ค่าดิบตรงนี้จึงแดงโดยไม่ได้แปลว่า seed หรือระบบพัง
+  // (เป็นเหตุให้ deploy run 34503810687 แดง) สิ่งที่ต้องยืนยันกับแถวแบบนี้คือ **กฎ runtime**:
+  // ว่างแล้วต้อง resolve เป็นค่า default ของ role ไม่ใช่ล็อกเอาต์ ซึ่งคือหัวใจของ hotfix นี้
+  it('OWNER ที่แถวยังว่าง ต้อง resolve เป็นสิทธิ์เต็มของ role ไม่ใช่ถูกล็อก', async () => {
     const user = await prismaShop.user.findFirst({
       where: { email: 'admin@bestchoice.com', deletedAt: null },
       select: { accessibleCompanies: true, primaryCompany: true },
@@ -97,8 +106,34 @@ describeOrSkip('SP7.1 — Dual Prisma + Entity Scope (e2e)', () => {
       return;
     }
 
+    const resolved = resolveCompanyAccess('OWNER', user.accessibleCompanies, user.primaryCompany);
+    expect([...resolved.accessible].sort()).toEqual(['FINANCE', 'SHOP']);
+    expect(resolved.primary).toBe('SHOP');
+  });
+
+  // ตัวยืนยัน seed ตัวจริงย้ายมาที่ ACCOUNTANT: `accountant@bestchoice.com` เป็นอีเมลของ seed
+  // ล้วน ไม่มี e2e ไฟล์ไหน upsert ทับ ค่าดิบในแถวจึงเชื่อได้ว่ามาจาก seed จริง
+  //
+  // ขอบเขตที่แท้จริง: ด่านนี้ยิงเฉพาะ environment ที่ **รัน seed แล้ว** (เครื่อง dev / staging)
+  // ใน CI ไม่มีแถวนี้เลยเพราะ job integration รันแค่ migrate ไม่ได้ seed ⇒ เข้า guard แล้วผ่าน
+  // ถ้าอยากให้กันใน CI ด้วยต้องเพิ่มขั้นตอน `prisma:seed` เข้า job ซึ่งกระทบสเปกอื่นที่นับแถว
+  // ในฐาน จึงจงใจไม่ทำในรอบ hotfix นี้
+  // และ primaryCompany ของ role นี้คือค่าที่เพิ่งแก้ในรอบนี้ (seed เดิมให้ 'SHOP' ทั้งที่
+  // ZONE_CONFIG ตั้ง defaultZone ของ ACCOUNTANT เป็น 'fin') — ถ้าใครย้อน seed กลับ เทสต์นี้แดง
+  // ⚠️ ห้ามลดกลับไปเป็น toHaveProperty และห้ามห่อด้วย resolveCompanyAccess ตรงนี้เด็ดขาด
+  // จุดนี้ต้องดูค่าดิบเท่านั้น ไม่งั้นจะกลับไปเขียวแม้ seed เขียน [] เหมือนเดิม
+  it('seeded ACCOUNTANT มี company grants จริงในแถว ไม่ใช่แค่มีคอลัมน์', async () => {
+    const user = await prismaShop.user.findFirst({
+      where: { email: 'accountant@bestchoice.com', deletedAt: null },
+      select: { accessibleCompanies: true, primaryCompany: true },
+    });
+    if (!user) {
+      console.warn('[SP7.1 e2e] accountant@bestchoice.com not in DB — skipping grants check');
+      return;
+    }
+
     expect([...user.accessibleCompanies].sort()).toEqual(['FINANCE', 'SHOP']);
-    expect(user.primaryCompany).toBe('SHOP');
+    expect(user.primaryCompany).toBe('FINANCE');
   });
 
   // FINANCE_MANAGER คือ role ที่ค่าเปลี่ยนจริงในรอบนี้: seed เดิมให้ ['FINANCE'] อย่างเดียว

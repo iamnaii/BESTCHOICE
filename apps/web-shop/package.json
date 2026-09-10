@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
+    "prebuild": "npm run build --workspace=@installment/shared",
     "build": "tsc && vite build && cp dist/index.html dist/spa-shell.html",
     "build:prerender": "npm run build && node scripts/prerender.mjs",
     "preview": "vite preview --port 5174",

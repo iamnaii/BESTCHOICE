@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { STOCK_SORT_KEYS } from '@installment/shared';
+import type { TableSort } from '@/components/ui/DataTable';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
@@ -6,7 +8,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import api, { getErrorMessage } from '@/lib/api';
 import { statusLabels, categoryLabels } from '@/lib/constants';
-import type { BranchSummary, StockProduct } from '../types';
+import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
+import { formatBaht } from '@/pages/ProductDetailPage/utils/buildCustomerSummary';
+import type { StockProduct } from '../types';
 
 export function useStockProducts() {
   const queryClient = useQueryClient();
@@ -17,10 +21,44 @@ export function useStockProducts() {
   const filterBranch = searchParams.get('branchId') ?? '';
   const filterStatus = searchParams.get('status') ?? '';
   const filterCategory = searchParams.get('category') ?? '';
+  const accessoryGroupId = searchParams.get('accessoryGroupId') ?? '';
+  const sortKey = searchParams.get('sortBy') ?? '';
+  const sort: TableSort | null =
+    (STOCK_SORT_KEYS as readonly string[]).includes(sortKey) &&
+    (isManager || sortKey !== 'costPrice')
+      ? { key: sortKey, direction: searchParams.get('sortDirection') === 'desc' ? 'desc' : 'asc' }
+      : null;
+  const sortDirection = sort?.direction;
+  const setSort = useCallback(
+    (value: TableSort | null) => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('page');
+      if (value) {
+        next.set('sortBy', value.key);
+        next.set('sortDirection', value.direction);
+      } else {
+        next.delete('sortBy');
+        next.delete('sortDirection');
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+  const setAccessoryGroupId = useCallback(
+    (id: string) => {
+      const next = new URLSearchParams(searchParams);
+      if (id) next.set('accessoryGroupId', id);
+      else next.delete('accessoryGroupId');
+      next.delete('page');
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const setFilterBranch = useCallback(
     (v: string) => {
       const next = new URLSearchParams(searchParams);
+      next.delete('accessoryGroupId');
       if (v) next.set('branchId', v);
       else next.delete('branchId');
       next.delete('page');
@@ -43,6 +81,9 @@ export function useStockProducts() {
   const setFilterCategory = useCallback(
     (v: string) => {
       const next = new URLSearchParams(searchParams);
+      next.delete('accessoryGroupId');
+      next.delete('sortBy');
+      next.delete('sortDirection');
       if (v) next.set('category', v);
       else next.delete('category');
       next.delete('page');
@@ -53,6 +94,22 @@ export function useStockProducts() {
 
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
   const debouncedSearch = useDebounce(search);
+
+  const clearFilters = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    [
+      'q',
+      'status',
+      'category',
+      'branchId',
+      'page',
+      'accessoryGroupId',
+      'sortBy',
+      'sortDirection',
+    ].forEach((key) => next.delete(key));
+    setSearch('');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const page = Number(searchParams.get('page') ?? '1');
   const setPage = useCallback(
@@ -78,10 +135,19 @@ export function useStockProducts() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Reset selection when filters change
+  // Bulk actions apply to the visible page; never carry hidden selections forward.
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [filterBranch, filterStatus, filterCategory, debouncedSearch]);
+  }, [
+    filterBranch,
+    filterStatus,
+    filterCategory,
+    debouncedSearch,
+    page,
+    accessoryGroupId,
+    sortKey,
+    sortDirection,
+  ]);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -94,23 +160,14 @@ export function useStockProducts() {
 
   const toggleSelectAll = useCallback(
     (listProducts: StockProduct[]) => {
-      if (selectedIds.size === listProducts.length) setSelectedIds(new Set());
-      else setSelectedIds(new Set(listProducts.map((p) => p.id)));
+      const units = listProducts.filter((product) => !product.stockGroup);
+      if (units.every((product) => selectedIds.has(product.id))) setSelectedIds(new Set());
+      else setSelectedIds(new Set(units.map((p) => p.id)));
     },
-    [selectedIds.size],
+    [selectedIds],
   );
 
   // --- Queries ---
-
-  const summaryQuery = useQuery<{ products: StockProduct[]; summary: BranchSummary[] }>({
-    queryKey: ['stock', filterBranch],
-    queryFn: async () => {
-      const params: Record<string, string> = {};
-      if (filterBranch) params.branchId = filterBranch;
-      const { data } = await api.get('/products/stock', { params });
-      return data;
-    },
-  });
 
   const branchesQuery = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -126,14 +183,31 @@ export function useStockProducts() {
     page: number;
     totalPages: number;
   }>({
-    queryKey: ['stock-list', debouncedSearch, filterStatus, filterCategory, filterBranch, page],
+    queryKey: [
+      'stock-list',
+      sort?.key,
+      sort?.direction,
+      debouncedSearch,
+      filterStatus,
+      filterCategory,
+      filterBranch,
+      page,
+      accessoryGroupId,
+    ],
     queryFn: async () => {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
       if (filterStatus) params.status = filterStatus;
       if (filterCategory) params.category = filterCategory;
       if (filterBranch) params.branchId = filterBranch;
+      if (sort) {
+        params.sortBy = sort.key;
+        params.sortDirection = sort.direction;
+      }
       params.page = String(page);
+      if (accessoryGroupId) params.accessoryGroupId = accessoryGroupId;
+      // Every category is a stock view; grouping only affects accessory rows.
+      else params.groupAccessories = 'true';
       const { data } = await api.get('/products', { params });
       return data;
     },
@@ -197,6 +271,7 @@ export function useStockProducts() {
         `โอนสินค้า ${variables.productIds.length} รายการสำเร็จ${batchNumber ? ` (${batchNumber})` : ''}`,
       );
       setShowBulkTransfer(false);
+      if (accessoryGroupId) setAccessoryGroupId('');
       setTransferBranchId('');
       setTransferNotes('');
       setSelectedIds(new Set());
@@ -255,38 +330,46 @@ export function useStockProducts() {
         toast.error('ไม่มีข้อมูลให้ส่งออก');
         return;
       }
-      const headers = isManager
-        ? ['สินค้า', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สี', 'ความจุ', 'ราคาทุน', 'ราคาขาย', 'สถานะ', 'สาขา']
-        : ['สินค้า', 'แบรนด์', 'รุ่น', 'IMEI/Serial', 'ประเภท', 'สี', 'ความจุ', 'ราคาขาย', 'สถานะ', 'สาขา'];
-      const rows = items.map((p) => {
-        const dp = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
-        return isManager
-          ? [
-              p.name,
-              p.brand,
-              p.model,
-              p.imeiSerial || '',
-              categoryLabels[p.category] || p.category,
-              p.color || '',
-              p.storage || '',
-              Number(p.costPrice || 0).toLocaleString(),
-              dp ? Number(dp.amount).toLocaleString() : '',
-              statusLabels[p.status]?.label || p.status,
-              p.branch.name,
-            ]
-          : [
-              p.name,
-              p.brand,
-              p.model,
-              p.imeiSerial || '',
-              categoryLabels[p.category] || p.category,
-              p.color || '',
-              p.storage || '',
-              dp ? Number(dp.amount).toLocaleString() : '',
-              statusLabels[p.status]?.label || p.status,
-              p.branch.name,
-            ];
-      });
+      const headers = [
+        'ชื่อสินค้า/รุ่น',
+        'IMEI/Serial',
+        'ประเภท',
+        'สี',
+        'ความจุ',
+        ...(isManager ? ['ราคาทุน'] : []),
+        'ราคาเต็มจำนวน',
+        'ยังไม่ตั้งราคาขาย (ชิ้น)',
+        'จำนวนในรายการ (ชิ้น)',
+        'คงเหลือพร้อมขาย (ชิ้น)',
+        'สถานะ',
+        'สาขา',
+      ];
+      const range = (min: string | number | null, max?: string | null) => {
+        if (min == null || !Number.isFinite(Number(min))) return '';
+        const first = formatBaht(Number(min));
+        return max != null && Number(max) > Number(min)
+          ? `${first}–${formatBaht(Number(max))}`
+          : first;
+      };
+      const rows = items.map((p) => [
+        p.category === 'ACCESSORY' ? p.name || p.model : p.model || p.name,
+        p.imeiSerial || '',
+        categoryLabels[p.category] || p.category,
+        p.color || '',
+        p.storage || '',
+        ...(isManager ? [range(p.costPrice, p.stockGroup?.costPriceMax)] : []),
+        range(
+          p.stockGroup ? p.cashPrice : getPositiveDisplayPrices(p).cash,
+          p.stockGroup?.cashPriceMax,
+        ),
+        p.stockGroup?.cashPriceMissingCount ?? (getPositiveDisplayPrices(p).cash ? 0 : 1),
+        p.stockGroup?.unitCount ?? 1,
+        p.stockGroup?.inStockQuantity ?? (p.status === 'IN_STOCK' ? 1 : 0),
+        (p.stockGroup?.statuses ?? [p.status])
+          .map((status) => statusLabels[status]?.label || status)
+          .join(' / '),
+        p.branch.name,
+      ]);
       const esc = (c: unknown) => `"${String(c ?? '').replace(/"/g, '""')}"`;
       const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
       const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -300,13 +383,14 @@ export function useStockProducts() {
     [isManager, selectedIds],
   );
 
-  const summary = useMemo(() => summaryQuery.data?.summary ?? [], [summaryQuery.data]);
-
   return {
     isManager,
+    sort,
+    setSort,
     // filters (URL-backed)
     search,
     setSearch,
+    clearFilters,
     debouncedSearch,
     filterBranch,
     setFilterBranch,
@@ -314,6 +398,8 @@ export function useStockProducts() {
     setFilterStatus,
     filterCategory,
     setFilterCategory,
+    accessoryGroupId,
+    setAccessoryGroupId,
     page,
     setPage,
     // selection
@@ -328,7 +414,6 @@ export function useStockProducts() {
     listErrorObj: listQuery.error,
     listRefetch: listQuery.refetch,
     listProducts: listQuery.data?.data ?? [],
-    summary,
     branches: branchesQuery.data ?? [],
     // export
     handleExport,

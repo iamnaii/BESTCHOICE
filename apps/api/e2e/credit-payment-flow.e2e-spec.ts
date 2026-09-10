@@ -245,7 +245,8 @@ describe('approved credit → real create/sign/activate → partial/complete pay
 
   it('keeps unused credit and retained cancellation cash in the derived balance sheet', async () => {
     const report = new TransactionalReportService(db, new CompanyResolverService(db));
-    const date = new Date().toISOString().slice(0, 10);
+    // The report cutoff uses the local calendar day; UTC ISO is yesterday after Thai midnight.
+    const date = new Date().toLocaleDateString('en-CA');
     const before = await report.getBalanceSheet(date, branchId);
     const c = await exchangeCase();
     const issued = await report.getBalanceSheet(date, branchId);

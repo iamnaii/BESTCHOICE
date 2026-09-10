@@ -29,11 +29,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 export interface Column<T> {
   key: string;
@@ -80,7 +76,15 @@ interface BulkAction<T> {
   onAction: (selectedItems: T[]) => void;
 }
 
+export interface TableSort {
+  key: string;
+  direction: 'asc' | 'desc';
+}
+
 interface DataTableProps<T> {
+  /** Controlled server sorting; pagination is applied by the caller after sorting. */
+  sort?: TableSort | null;
+  onSortChange?: (sort: TableSort | null) => void;
   columns: Column<T>[];
   data: T[];
   isLoading?: boolean;
@@ -107,6 +111,10 @@ interface DataTableProps<T> {
    * Raise it for wide tables so fixed columns aren't crushed on small screens.
    */
   minWidth?: string;
+  /** Optional container styling for embedding in an existing workspace panel. */
+  className?: string;
+  /** Constrain tall lists so the header and horizontal scrollbar stay reachable. */
+  maxHeight?: string;
 }
 
 const densityPadding = {
@@ -153,8 +161,17 @@ function DataTable<T extends { id: string }>({
   toolbar,
   density = 'default',
   minWidth = '640px',
+  className,
+  maxHeight,
+  sort,
+  onSortChange,
 }: DataTableProps<T>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [localSorting, setSorting] = useState<SortingState>([]);
+  const sorting: SortingState = onSortChange
+    ? sort
+      ? [{ id: sort.key, desc: sort.direction === 'desc' }]
+      : []
+    : localSorting;
   const [globalFilter, setGlobalFilter] = useState('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
@@ -196,7 +213,11 @@ function DataTable<T extends { id: string }>({
       const path = (col.sortKey ?? col.key).split('.');
       cols.push(
         helper.accessor(
-          (row) => path.reduce<unknown>((v, k) => (v == null ? v : (v as Record<string, unknown>)[k]), row),
+          (row) =>
+            path.reduce<unknown>(
+              (v, k) => (v == null ? v : (v as Record<string, unknown>)[k]),
+              row,
+            ),
           {
             id: col.key,
             header: col.label,
@@ -227,13 +248,23 @@ function DataTable<T extends { id: string }>({
       columnVisibility,
     },
     enableRowSelection: selectable,
-    onSortingChange: setSorting,
+    manualSorting: !!onSortChange,
+    enableMultiSort: !onSortChange,
+    ...(onSortChange ? { sortDescFirst: false } : {}),
+    onSortingChange: onSortChange
+      ? (updater) => {
+          const next = typeof updater === 'function' ? updater(sorting) : updater;
+          onSortChange(
+            next[0] ? { key: next[0].id, direction: next[0].desc ? 'desc' : 'asc' } : null,
+          );
+        }
+      : setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: selectable ? setRowSelection : undefined,
     onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: (searchable) ? getFilteredRowModel() : undefined,
+    getFilteredRowModel: searchable ? getFilteredRowModel() : undefined,
     globalFilterFn: 'includesString',
     getRowId: (row) => row.id,
   });
@@ -249,10 +280,7 @@ function DataTable<T extends { id: string }>({
   const cellText = densityText[density];
 
   // Column layout lookup — tanstack only knows ids, we need the source config back.
-  const columnByKey = useMemo(
-    () => new Map(columns.map((c) => [c.key, c])),
-    [columns],
-  );
+  const columnByKey = useMemo(() => new Map(columns.map((c) => [c.key, c])), [columns]);
   // Any explicit width opts the whole table into fixed layout, otherwise browsers
   // treat <col width> as a hint and long cells still blow the column out.
   const isFixedLayout = useMemo(() => columns.some((c) => c.width), [columns]);
@@ -262,10 +290,16 @@ function DataTable<T extends { id: string }>({
 
   const rows = table.getRowModel().rows;
   const visibleColumnCount = table.getVisibleLeafColumns().length;
-  const hasToolbar = searchable || columnToggle || toolbar || (selectable && selectedRows.length > 0);
+  const hasToolbar =
+    searchable || columnToggle || toolbar || (selectable && selectedRows.length > 0);
 
   return (
-    <div className="bg-card rounded-xl border border-border/60 overflow-hidden shadow-card">
+    <div
+      className={cn(
+        'bg-card rounded-xl border border-border/60 overflow-hidden shadow-card',
+        className,
+      )}
+    >
       {/* Toolbar */}
       {hasToolbar && (
         <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-3 border-b border-border/60">
@@ -295,7 +329,13 @@ function DataTable<T extends { id: string }>({
                 {bulkActions?.map((action) => (
                   <Button
                     key={action.label}
-                    variant={action.variant === 'destructive' ? 'destructive' : action.variant === 'primary' ? 'primary' : 'outline'}
+                    variant={
+                      action.variant === 'destructive'
+                        ? 'destructive'
+                        : action.variant === 'primary'
+                          ? 'primary'
+                          : 'outline'
+                    }
                     size="sm"
                     onClick={() => {
                       action.onAction(selectedRows);
@@ -326,7 +366,8 @@ function DataTable<T extends { id: string }>({
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1.5 mb-1">
                   แสดง/ซ่อนคอลัมน์
                 </div>
-                {table.getAllLeafColumns()
+                {table
+                  .getAllLeafColumns()
                   .filter((col) => col.id !== '_select' && col.getCanHide())
                   .map((col) => (
                     <button
@@ -339,12 +380,14 @@ function DataTable<T extends { id: string }>({
                           : 'text-muted-foreground hover:bg-muted',
                       )}
                     >
-                      <div className={cn(
-                        'size-4 rounded border flex items-center justify-center',
-                        col.getIsVisible()
-                          ? 'bg-primary border-primary text-white'
-                          : 'border-border',
-                      )}>
+                      <div
+                        className={cn(
+                          'size-4 rounded border flex items-center justify-center',
+                          col.getIsVisible()
+                            ? 'bg-primary border-primary text-white'
+                            : 'border-border',
+                        )}
+                      >
                         {col.getIsVisible() && <Check className="size-3" />}
                       </div>
                       {typeof col.columnDef.header === 'string'
@@ -358,7 +401,18 @@ function DataTable<T extends { id: string }>({
         </div>
       )}
 
-      <div className="overflow-x-auto" data-testid="data-table">
+      <div
+        className={cn(
+          'overflow-auto',
+          maxHeight &&
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        )}
+        style={{ maxHeight }}
+        tabIndex={maxHeight ? 0 : undefined}
+        role={maxHeight ? 'region' : undefined}
+        aria-label={maxHeight ? 'เลื่อนตารางรายการสินค้า' : undefined}
+        data-testid="data-table"
+      >
         <table className={cn('w-full', isFixedLayout && 'table-fixed')} style={{ minWidth }}>
           {isFixedLayout && (
             <colgroup>
@@ -366,14 +420,13 @@ function DataTable<T extends { id: string }>({
                 <col
                   key={leaf.id}
                   style={{
-                    width:
-                      leaf.id === '_select' ? '40px' : columnByKey.get(leaf.id)?.width,
+                    width: leaf.id === '_select' ? '40px' : columnByKey.get(leaf.id)?.width,
                   }}
                 />
               ))}
             </colgroup>
           )}
-          <thead>
+          <thead className={maxHeight ? 'sticky top-0 z-20 bg-muted' : undefined}>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr
                 key={headerGroup.id}
@@ -391,34 +444,59 @@ function DataTable<T extends { id: string }>({
                   return (
                     <th
                       key={header.id}
+                      aria-sort={
+                        canSort
+                          ? sorted === 'asc'
+                            ? 'ascending'
+                            : sorted === 'desc'
+                              ? 'descending'
+                              : 'none'
+                          : undefined
+                      }
+                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                       className={cn(
                         cellPadding,
                         'text-xs font-semibold text-muted-foreground uppercase tracking-wider',
                         alignClass[align],
-                        canSort && 'cursor-pointer select-none hover:text-foreground transition-colors',
+                        canSort &&
+                          'cursor-pointer select-none hover:text-foreground transition-colors',
                         isSelect && 'w-10 px-3',
                         src?.stickyRight &&
                           'sticky right-0 z-20 bg-muted border-l border-border/60 shadow-[-6px_0_10px_-6px_rgb(0_0_0/0.10)]',
                         src?.headerClassName,
                       )}
-                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                     >
-                      {header.isPlaceholder ? null : (
+                      {header.isPlaceholder ? null : canSort ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            header.column.getToggleSortingHandler()?.(event);
+                          }}
+                          className={cn(
+                            'flex min-h-6 w-full min-w-0 cursor-pointer items-center gap-1 rounded text-inherit hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            alignFlex[align],
+                          )}
+                          title={`เรียงตาม${src?.label ?? header.id}`}
+                        >
+                          <span className="min-w-0 leading-snug">
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </span>
+                          <span aria-hidden="true" className="inline-flex shrink-0">
+                            {sorted === 'asc' ? (
+                              <ArrowUp className="size-3.5 text-primary" />
+                            ) : sorted === 'desc' ? (
+                              <ArrowDown className="size-3.5 text-primary" />
+                            ) : (
+                              <ArrowUpDown className="size-3.5 text-muted-foreground" />
+                            )}
+                          </span>
+                        </button>
+                      ) : (
                         <div className={cn('flex items-center gap-1.5 min-w-0', alignFlex[align])}>
                           <span className="min-w-0 truncate">
                             {flexRender(header.column.columnDef.header, header.getContext())}
                           </span>
-                          {canSort && (
-                            <span className="inline-flex shrink-0">
-                              {sorted === 'asc' ? (
-                                <ArrowUp className="h-3.5 w-3.5 text-primary" />
-                              ) : sorted === 'desc' ? (
-                                <ArrowDown className="h-3.5 w-3.5 text-primary" />
-                              ) : (
-                                <ArrowUpDown className="h-3.5 w-3.5 opacity-30" />
-                              )}
-                            </span>
-                          )}
                         </div>
                       )}
                     </th>

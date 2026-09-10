@@ -52,6 +52,7 @@ import { RoomAiAccessService } from '../../src/modules/staff-chat/services/room-
 import { SearchProductsTool } from '../../src/modules/sales-bot/tools/search-products.tool';
 import { CalculateInstallmentTool } from '../../src/modules/sales-bot/tools/calculate-installment.tool';
 import { ReceivablesReportService } from '../../src/modules/reports/services/receivables-report.service';
+import { seedPreviewStock } from './preview-stock-fixture';
 import { seedPreviewPortfolio } from './preview-portfolio-fixture';
 import { CustomerQueryService } from '../../src/modules/customers/services/customer-query.service';
 import { CustomerTierService } from '../../src/modules/customers/customer-tier.service';
@@ -235,7 +236,7 @@ class PreviewController {
     return transactionalReports.getComparativePL(Number(year), Number(month), undefined, undefined, true);
   }
   @Get('products') products(@Query() query: Record<string, string>) {
-    return products.findAll({ ...query, page: Number(query.page) || 1, limit: Number(query.limit) || 50 });
+    return products.findAll({ ...query, groupAccessories: query.groupAccessories === 'true', page: Number(query.page) || 1, limit: Number(query.limit) || 50 });
   }
   @Get('products/:id') product(@Param('id') id: string) { return products.findOne(id); }
   @Patch('products/:id') updateProduct(@Param('id') id: string, @Body() dto: UpdateProductDto) {
@@ -334,6 +335,7 @@ async function main() {
   await db.$connect();
   await seedTradeInShop(db, 'LOCAL PREVIEW BRANCH');
   await seedTradeInAppraisal(db);
+  await seedPreviewStock(db);
   const user = await db.user.upsert({
     where: { email: 'preview@test.invalid' },
     update: {},

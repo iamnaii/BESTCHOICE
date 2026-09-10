@@ -87,16 +87,35 @@ DATABASE_URL_FINANCE=postgresql://postgres:postgres@localhost:5433/installment_f
 
 ## User backfill
 
-Existing users need `accessibleCompanies` + `primaryCompany` set per role:
+Existing users need `accessibleCompanies` + `primaryCompany` set per role. An empty
+`accessibleCompanies` means "not configured yet" — `resolveCompanyAccess()` resolves it to the
+role default, so a missing backfill can never lock anyone out. The backfill only makes the stored
+data match what the code already resolves.
+
+The CLI is **dry-run by default** and refuses to run without `EXPECTED_DB_NAME`:
 
 ```bash
-cd apps/api && npm run backfill:user-companies
+# dry-run — prints the per-role plan + samples, writes nothing
+EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:user-companies
+
+# write for real
+CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> \
+  [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] \
+  npm --prefix apps/api run backfill:user-companies
 ```
 
-Mapping:
-- OWNER, ACCOUNTANT → both SHOP + FINANCE
-- FINANCE_MANAGER → FINANCE only
-- BRANCH_MANAGER, SALES → SHOP only
+Run it from the **repo root**, not `apps/api` (`npm --prefix` resolves against the cwd, so
+`cd apps/api` first would look for `apps/api/apps/api`). The script runs `dist`, so build once
+(`npm --prefix apps/api run build`) before running it locally.
+
+Mapping — do **not** duplicate it here. The single source of truth is
+`packages/shared/src/company-access.ts` (`ROLE_COMPANY_ACCESS`), shared by the CLI, `JwtStrategy`,
+the entity-scope check and the web menu. A test pinned to the `UserRole` enum
+(`apps/api/src/cli/backfill-user-companies.cli.spec.ts`) fails CI if a new role is added without an
+entry.
+
+Production procedure (backup → deploy check → dry-run → live → verify):
+[`docs/runbooks/2026-09-10-user-companies-backfill-runbook.md`](../runbooks/2026-09-10-user-companies-backfill-runbook.md)
 
 ## CI integration
 

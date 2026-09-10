@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasCompanyAccess } from '@installment/shared';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,7 +51,9 @@ export default function PrepareOfferDialog({ roomId, onInsert }: { roomId: strin
     })).data,
     onSuccess: () => { void client.invalidateQueries({ queryKey: ['ai-usage'] }); },
   });
-  if (!user || !['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user.role) || !user.accessibleCompanies?.includes('SHOP')) return null;
+  // accessibleCompanies ที่ยังว่าง = ยังไม่ถูก backfill ไม่ใช่ "ไม่มีสิทธิ์" — เช็คผ่าน resolver
+  // ตัวเดียวกับฝั่ง API ไม่งั้นปุ่มนี้หายเงียบ ๆ จากทุกคนเหมือนที่เกิดกับ prod
+  if (!user || !['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user.role) || !hasCompanyAccess(user.role, user.accessibleCompanies, 'SHOP')) return null;
 
   const prepare = () => {
     if (!Number.isInteger(Number(months)) || Number(months) < 1 || Number(months) > 60 ||

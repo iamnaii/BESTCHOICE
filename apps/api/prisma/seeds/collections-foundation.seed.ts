@@ -27,6 +27,11 @@ export async function seedCollectionsFoundation(
       name: 'SYSTEM',
       role: 'OWNER',
       password: '__NO_LOGIN__',
+      // ค่าคงที่ต้องตรงกับ CannedResponseSenderService.getSystemUserId() เป๊ะ — สองที่นี้
+      // แย่ง upsert แถวเดียวกันด้วย role ต่างกันและ `update` ไม่แตะสองฟิลด์นี้ การ hardcode
+      // ค่าเดียวกันทำให้ไม่ว่าใครสร้างก่อน แถว system ก็ได้สิทธิ์ชุดเดียวกัน
+      accessibleCompanies: ['SHOP', 'FINANCE'],
+      primaryCompany: 'SHOP',
       isActive: false,
       isSystemUser: true,
     },

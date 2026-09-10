@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { hasCompanyAccess } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AiTextService } from '../../ai-usage/ai-text.service';
 import { getBranchScope } from '../../auth/branch-access.util';
@@ -39,8 +40,10 @@ export class PrepareOfferService {
 
   async prepare(roomId: string, input: PrepareOfferDto, actor: StaffAiActor) {
     const room = await this.access.assertAccess(roomId, actor);
+    // actor มาจาก req.user ซึ่ง JwtStrategy resolve สิทธิ์บริษัทให้แล้ว — เรียก helper ซ้ำ
+    // เพื่อให้ผลถูกต้องด้วยเมื่อถูกเรียกจากทางอื่นที่ส่ง actor ดิบเข้ามา
     if (!['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(actor.role) ||
-      !actor.accessibleCompanies?.includes('SHOP')) {
+      !hasCompanyAccess(actor.role, actor.accessibleCompanies, 'SHOP')) {
       throw new ForbiddenException('ข้อเสนอขายใช้ได้เฉพาะพนักงานที่มีสิทธิ์หน้าร้าน');
     }
     const branch = getBranchScope(actor);

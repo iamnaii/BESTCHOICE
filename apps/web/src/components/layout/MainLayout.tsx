@@ -84,7 +84,7 @@ function MainContent() {
   useEffect(() => {
     const role = user?.role ?? '';
     if (!role) return;
-    if (!getZoneConfigForRole(role)) return;
+    if (!getZoneConfigForRole(role, user?.accessibleCompanies)) return;
 
     // Skip if only `currentZone` changed (pill click) — preserve manual intent.
     const isFirstRun = prevPathnameRef.current === null;
@@ -140,7 +140,7 @@ function MainContent() {
         setCurrentZone(targetZone);
       }
     }
-  }, [pathname, search, hash, user?.role, currentZone, workZone, setCurrentZone, enterSettings, navigate]);
+  }, [pathname, search, hash, user?.role, user?.accessibleCompanies, currentZone, workZone, setCurrentZone, enterSettings, navigate]);
 
   // D1.4.1.2 — when OWNER disables `show_keyboard_shortcuts`, the Shift+?
   // help-dialog binding becomes a no-op AND the overlay is never rendered.

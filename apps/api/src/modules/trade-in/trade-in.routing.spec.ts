@@ -90,3 +90,71 @@ describe('TradeInController routing', () => {
     expect(tradeInService.findOne).toHaveBeenCalledWith('some-id');
   });
 });
+
+/**
+ * หลักฐาน end-to-end ว่า lockout หายจริง — ไฟล์นี้เป็นที่เดียวในบ้านที่ยิง route ผ่าน Nest
+ * pipeline โดย **ไม่** override EntityScopeGuard จึงเป็นตัวเดียวที่ทดสอบ guard ตัวจริง
+ * 10 route ของ trade-in ที่ติด @Entity('SHOP') ตอบ 403 ให้ทุกคนมาตั้งแต่ migration
+ * 20260951000000 เพราะ users.accessible_companies ไม่เคยถูกเขียน (String[] @default([]))
+ * describe นี้ pin ว่า user ที่ยังไม่ backfill ต้องผ่าน
+ */
+describe('TradeInController × EntityScopeGuard — user ที่ยังไม่ backfill', () => {
+  let app: INestApplication;
+  const tradeInService = {
+    availableCredits: jest.fn().mockResolvedValue([]),
+  };
+  const onlineAppraisal = {
+    quickBuyCatalog: jest.fn().mockResolvedValue({ models: [] }),
+    referenceCatalog: jest.fn().mockResolvedValue(null),
+  };
+
+  beforeAll(async () => {
+    const mod = await Test.createTestingModule({
+      controllers: [TradeInController],
+      providers: [
+        { provide: TradeInService, useValue: tradeInService },
+        { provide: BuybackQuestionAdminService, useValue: {} },
+        { provide: OnlineAppraisalService, useValue: onlineAppraisal },
+        { provide: PiiAuditService, useValue: { logDecryption: jest.fn() } },
+        { provide: PrismaService, useValue: {} },
+      ],
+    })
+      // accessibleCompanies: [] = สภาพจริงของทุกแถวบน prod ก่อน backfill
+      .overrideGuard(JwtAuthGuard).useValue({ canActivate: (ctx) => { ctx.switchToHttp().getRequest().user = { role: 'SALES', accessibleCompanies: [], primaryCompany: null }; return true; } })
+      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
+      .overrideGuard(BranchGuard).useValue({ canActivate: () => true })
+      .compile();
+    app = mod.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => await app.close());
+
+  it.each([
+    ['/trade-ins/quick-buy/catalog'],
+    ['/trade-ins/credits?customerId=c-1&branchId=b-1'],
+  ])('GET %s ไม่โดน EntityScopeGuard 403 ทั้งที่ accessibleCompanies ว่าง', async (path) => {
+    await request(app.getHttpServer()).get(path).expect(200);
+  });
+
+  it('SALES ที่ถูกจำกัดเป็น FINANCE จริง ๆ ยังโดน 403 (array ไม่ว่าง = บังคับเป๊ะ)', async () => {
+    const mod = await Test.createTestingModule({
+      controllers: [TradeInController],
+      providers: [
+        { provide: TradeInService, useValue: tradeInService },
+        { provide: BuybackQuestionAdminService, useValue: {} },
+        { provide: OnlineAppraisalService, useValue: onlineAppraisal },
+        { provide: PiiAuditService, useValue: { logDecryption: jest.fn() } },
+        { provide: PrismaService, useValue: {} },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard).useValue({ canActivate: (ctx) => { ctx.switchToHttp().getRequest().user = { role: 'SALES', accessibleCompanies: ['FINANCE'], primaryCompany: 'FINANCE' }; return true; } })
+      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
+      .overrideGuard(BranchGuard).useValue({ canActivate: () => true })
+      .compile();
+    const restricted = mod.createNestApplication();
+    await restricted.init();
+    await request(restricted.getHttpServer()).get('/trade-ins/quick-buy/catalog').expect(403);
+    await restricted.close();
+  });
+});

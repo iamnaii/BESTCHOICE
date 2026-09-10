@@ -1,0 +1,89 @@
+name: Backfill User Companies (prod)
+
+# Manually-triggered, one-off backfill that fills users.accessible_companies /
+# users.primary_company for rows that still have the `String[] @default([])` value.
+# Runs the CLI (apps/api/src/cli/backfill-user-companies.cli.ts → dist) as a Cloud Run
+# Job, mirroring the `bestchoice-migrate` job pattern in deploy-gcp.yml.
+#
+# ⚠️ ORDER MATTERS: run this only AFTER the user-company-access hotfix is deployed.
+# The old CLI wrote FINANCE_MANAGER=['FINANCE'] and VIEWER=['SHOP'], and once the
+# column is non-empty the empty-array→role-default fallback stops applying — a wrong
+# value becomes permanent. Runbook:
+# docs/runbooks/2026-09-10-user-companies-backfill-runbook.md
+#
+# SAFETY: default is a DRY-RUN (prints the per-role plan + samples, writes nothing).
+# Tick `live` to actually write. The CLI itself triple-guards: EXPECTED_DB_NAME must
+# match current_database(), CONFIRM_BACKFILL=YES_I_AM_SURE, and (NODE_ENV=production
+# OR db name `bestchoice`) ALLOW_PROD_BACKFILL=YES_I_AM_SURE, plus a 5s cooldown.
+# It is idempotent — rows that already have companies are excluded, so re-running is safe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_db_name:
+        description: 'Prod DB name — must equal current_database() or the job aborts. (= the part after the last "/" in the DATABASE_URL secret; prod is `bestchoice`.)'
+        required: true
+        type: string
+      live:
+        description: 'WRITE accessible_companies for real? Leave UNCHECKED for a safe dry-run (plan only, no writes).'
+        required: false
+        type: boolean
+        default: false
+
+# Never let two backfill runs overlap.
+concurrency:
+  group: backfill-user-companies
+  cancel-in-progress: false
+
+env:
+  API_IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bestchoice/api
+
+jobs:
+  backfill-user-companies:
+    name: Backfill user companies (Cloud Run Job)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Compose job env (dry-run vs live)
+        id: cfg
+        run: |
+          if [ "${{ inputs.live }}" = "true" ]; then
+            echo "vars=EXPECTED_DB_NAME=${{ inputs.expected_db_name }},CONFIRM_BACKFILL=YES_I_AM_SURE,ALLOW_PROD_BACKFILL=YES_I_AM_SURE,NODE_ENV=production" >> "$GITHUB_OUTPUT"
+            echo "mode=LIVE — writing accessible_companies" >> "$GITHUB_OUTPUT"
+          else
+            echo "vars=EXPECTED_DB_NAME=${{ inputs.expected_db_name }}" >> "$GITHUB_OUTPUT"
+            echo "mode=DRY-RUN — no writes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update backfill job
+        run: |
+          ARGS=(
+            --project="${{ secrets.GCP_PROJECT_ID }}"
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}"
+            --image="${{ env.API_IMAGE }}:latest"
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest
+            --set-cloudsql-instances="${{ secrets.CLOUD_SQL_CONNECTION_NAME }}"
+            --set-env-vars="${{ steps.cfg.outputs.vars }}"
+            --command=node
+            --args="apps/api/dist/src/cli/backfill-user-companies.cli.js"
+            --max-retries=0
+            --task-timeout=900s
+          )
+          gcloud run jobs update bestchoice-backfill-user-companies "${ARGS[@]}" 2>/dev/null \
+            || gcloud run jobs create bestchoice-backfill-user-companies "${ARGS[@]}"
+
+      - name: Execute backfill (${{ steps.cfg.outputs.mode }})
+        run: |
+          echo "::notice::Backfill mode → ${{ steps.cfg.outputs.mode }} (DB=${{ inputs.expected_db_name }})"
+          gcloud run jobs execute bestchoice-backfill-user-companies \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}" \
+            --wait
+          echo "::notice::Done. Read the per-role SUMMARY/RESULT blocks in the Cloud Run Job execution logs."

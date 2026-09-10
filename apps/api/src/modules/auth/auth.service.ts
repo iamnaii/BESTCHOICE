@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
+import { resolveCompanyAccess } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
@@ -187,6 +188,11 @@ export class AuthService {
     // Fully authenticated
     await this.auditLogin(loginDto.email, true, meta, user.id);
 
+    // สิทธิ์บริษัทที่ส่งออกจาก login ต้องเป็นค่าที่ resolve แล้ว ไม่ใช่ค่าดิบจากแถว User —
+    // เว็บอ่าน accessibleCompanies จาก response body ของ login/me ไปเก็บใน AuthContext
+    // ถ้าปล่อยค่าว่างออกไป หน้าจอต้องพึ่ง fallback ฝั่งเว็บอย่างเดียว (จุดเดียวพัง = ล็อกทั้งระบบ)
+    const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
+
     const payload = {
       sub: user.id,
       email: user.email,
@@ -197,8 +203,8 @@ export class AuthService {
       aud: 'admin',
       scope: 'admin:full',
       // SP7.1 — dual-entity authorization
-      accessibleCompanies: user.accessibleCompanies,
-      primaryCompany: user.primaryCompany,
+      accessibleCompanies: [...access.accessible],
+      primaryCompany: access.primary,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -219,8 +225,8 @@ export class AuthService {
         role: user.role,
         branchId: user.branchId,
         branchName: user.branch?.name || null,
-        accessibleCompanies: user.accessibleCompanies,
-        primaryCompany: user.primaryCompany,
+        accessibleCompanies: [...access.accessible],
+        primaryCompany: access.primary,
         // InternalControlActionBar — per-user reverse override (CUSTOM mode).
         // Without this, a freshly-logged-in user keeps canReverseOverride
         // undefined until the next /auth/me, hiding the reverse button.
@@ -285,6 +291,8 @@ export class AuthService {
       throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
     }
 
+    const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
+
     const payload = {
       sub: user.id,
       email: user.email,
@@ -292,9 +300,9 @@ export class AuthService {
       branchId: user.branchId,
       aud: 'admin',
       scope: 'admin:full',
-      // SP7.1 — dual-entity authorization
-      accessibleCompanies: user.accessibleCompanies,
-      primaryCompany: user.primaryCompany,
+      // SP7.1 — dual-entity authorization (ค่าที่ resolve แล้ว ดูเหตุผลที่ login)
+      accessibleCompanies: [...access.accessible],
+      primaryCompany: access.primary,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -357,7 +365,10 @@ export class AuthService {
       throw new UnauthorizedException('ไม่พบผู้ใช้งาน');
     }
 
-    return user;
+    // /auth/me คือแหล่งที่ AuthContext ใช้เติมสิทธิ์ตอนรีเฟรชหน้า — ต้องคืนค่าที่ resolve แล้ว
+    // ให้ตรงกับ login ไม่งั้นผู้ใช้เดิมจะได้ค่าต่างกันแล้วแต่ว่าเพิ่งล็อกอินหรือรีเฟรชหน้า
+    const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
+    return { ...user, accessibleCompanies: [...access.accessible], primaryCompany: access.primary };
   }
 
   /**
@@ -612,6 +623,8 @@ export class AuthService {
         throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
       }
 
+      const access = resolveCompanyAccess(user.role, user.accessibleCompanies, user.primaryCompany);
+
       const newPayload = {
         sub: user.id,
         email: user.email,
@@ -619,9 +632,9 @@ export class AuthService {
         branchId: user.branchId,
         aud: 'admin',
         scope: 'admin:full',
-        // SP7.1 — dual-entity authorization
-        accessibleCompanies: user.accessibleCompanies,
-        primaryCompany: user.primaryCompany,
+        // SP7.1 — dual-entity authorization (ค่าที่ resolve แล้ว ดูเหตุผลที่ login)
+        accessibleCompanies: [...access.accessible],
+        primaryCompany: access.primary,
       };
 
       const accessToken = this.jwtService.sign(newPayload, {

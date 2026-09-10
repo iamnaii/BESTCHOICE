@@ -138,6 +138,48 @@ describe('InviteService.register — T7-C6 OTP guard', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  // invite คือทางเดียวที่สร้าง VIEWER ได้ (create-invite.dto ใช้ @IsEnum(UserRole) ครบ 6 ค่า
+  // ส่วน create-user.dto ใช้ @IsIn แค่ 5) ถ้าไม่ derive สิทธิ์บริษัทตรงนี้ VIEWER จะเกิดมา
+  // พร้อม accessibleCompanies ว่าง ซึ่งคือต้นเหตุของเหตุการณ์ 2026-09-08
+  it('register() ด้วย invite role VIEWER → เขียน accessibleCompanies/primaryCompany ตาม role', async () => {
+    prisma.inviteToken.findUnique.mockResolvedValue(inviteRow({ role: 'VIEWER' }));
+
+    await service.register({
+      token: rawToken,
+      password: 'password123',
+      name: 'New Viewer',
+    });
+
+    expect(prisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          role: 'VIEWER',
+          accessibleCompanies: ['SHOP', 'FINANCE'],
+          primaryCompany: 'FINANCE',
+        }),
+      }),
+    );
+  });
+
+  it('register() ด้วย invite role SALES → ได้สิทธิ์ SHOP อย่างเดียว', async () => {
+    prisma.inviteToken.findUnique.mockResolvedValue(inviteRow({ role: 'SALES' }));
+
+    await service.register({
+      token: rawToken,
+      password: 'password123',
+      name: 'New Staff',
+    });
+
+    expect(prisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          accessibleCompanies: ['SHOP'],
+          primaryCompany: 'SHOP',
+        }),
+      }),
+    );
+  });
+
   it('OTP invite after 3 failed attempts → BadRequest (burned)', async () => {
     prisma.inviteToken.findUnique.mockResolvedValue(
       inviteRow({

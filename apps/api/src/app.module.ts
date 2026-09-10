@@ -146,8 +146,7 @@ import { ImportedSalesModule } from './modules/imported-sales/imported-sales.mod
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
-import { EntityScopeMiddleware } from './middleware/entity-scope.middleware';
-import { SentryEntityTagMiddleware } from './middleware/sentry-entity-tag.middleware';
+import { EntityScopeInterceptor } from './interceptors/entity-scope.interceptor';
 // SP7.10 — Maintenance-mode toggle for cutover window (MAINTENANCE_MODE=true blocks writes)
 import { MaintenanceModeMiddleware } from './middleware/maintenance-mode.middleware';
 // D1.1.3.1 — One-shot startup warning for VAT_RATE/vat_pct orphan keys.
@@ -418,6 +417,14 @@ import { AppCacheModule } from './cache/cache.module';
       provide: APP_GUARD,
       useClass: JwtAudienceGuard,
     },
+    // SP7.1 — entity scope ต้องเป็น interceptor ไม่ใช่ APP_GUARD: Nest ประกอบ guard chain เป็น
+    // [...global, ...class, ...method] และ JwtAuthGuard ในบ้านนี้เป็น per-controller → global guard
+    // จะเห็น req.user เป็น undefined ตลอด (JwtAudienceGuard ด้านบนติดกับดักนี้อยู่แล้ว)
+    // ต้องมาก่อน AuditInterceptor เพื่อให้ req.entityScope พร้อมใช้ตอน audit ทำงาน
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: EntityScopeInterceptor,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,
@@ -439,9 +446,9 @@ export class AppModule implements NestModule {
     // RequestIdMiddleware must run before SecurityMiddleware so Sentry scope is tagged first.
     consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer.apply(SecurityMiddleware).forRoutes('*');
-    // SP7.1 — Resolves req.entityScope after auth (runs after JwtAuthGuard populates req.user).
-    consumer.apply(EntityScopeMiddleware).forRoutes('*');
-    // SP7.8 — Tags the Sentry request scope with entity_scope (SHOP|FINANCE) for error segmentation.
-    consumer.apply(SentryEntityTagMiddleware).forRoutes('*');
+    // SP7.1/SP7.8 — EntityScopeMiddleware + SentryEntityTagMiddleware ถูกลบทิ้ง: middleware รัน
+    // *ก่อน* guard ทุกตัว จึงเห็น req.user เป็น undefined แล้ว next() ทุก request มาตลอด (คอมเมนต์
+    // เดิมตรงนี้เขียนว่า "runs after JwtAuthGuard" ซึ่งไม่จริง) ตรรกะทั้งสองย้ายไปอยู่ใน
+    // EntityScopeInterceptor แล้ว
   }
 }

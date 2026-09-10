@@ -77,28 +77,43 @@ describeOrSkip('SP7.1 — Dual Prisma + Entity Scope (e2e)', () => {
     }
   });
 
-  it('JWT login returns accessibleCompanies (smoke — only runs if seed has admin user)', async () => {
-    // Optional check — guard against missing seed data so test doesn't fail if DB is empty.
-    const adminExists = await prismaShop.user.findFirst({
-      where: { email: 'admin@bestchoice.com', deletedAt: null },
-    });
-    if (!adminExists) {
-      console.warn(
-        '[SP7.1 e2e] admin@bestchoice.com not in DB — skipping login smoke',
-      );
-      return;
-    }
-
-    // Perform a direct service-layer check rather than HTTP (supertest is not a
-    // dev dependency in this repo — see approval-workflow.e2e-spec.ts for the
-    // same pattern). We simply confirm the user record has accessibleCompanies
-    // populated after the backfill-user-companies migration ran.
-    const user = await prismaShop.user.findFirstOrThrow({
+  // ⚠️ ห้ามลดกลับไปเป็น toHaveProperty('accessibleCompanies') อีกเด็ดขาด
+  // เวอร์ชันเดิม assert แค่ว่า "มีคีย์" ซึ่งเขียวแม้ค่าจะเป็น [] — จึงไม่เคยจับได้เลยว่า
+  // ไม่มีเส้นทางไหนเขียนคอลัมน์นี้ให้ user จริง ๆ ตลอด 4 เดือน จนกลายเป็น outage
+  // 2026-09-08 (ทุกคนเห็นหน้าจอ "ไม่มีสิทธิ์เข้าถึงบริษัท") ต้อง assert **ค่าจริง** เท่านั้น
+  // ค่าที่คาดหวังคือ ROLE_COMPANY_ACCESS ใน packages/shared/src/company-access.ts
+  // ซึ่ง apps/api/prisma/seed.ts derive มาใช้โดยตรง
+  //
+  // ยังคง guard "ไม่มีแถว = warn แล้วผ่าน" ไว้ เพราะ CI รันกับ DB เปล่าที่ยังไม่ seed
+  // (supertest ไม่ใช่ dev dependency ของ repo นี้ จึงเช็คระดับ service ตามแบบของ
+  // approval-workflow.e2e-spec.ts)
+  it('seeded OWNER มี company grants จริง ไม่ใช่แค่มีคอลัมน์', async () => {
+    const user = await prismaShop.user.findFirst({
       where: { email: 'admin@bestchoice.com', deletedAt: null },
       select: { accessibleCompanies: true, primaryCompany: true },
     });
+    if (!user) {
+      console.warn('[SP7.1 e2e] admin@bestchoice.com not in DB — skipping grants check');
+      return;
+    }
 
-    expect(user).toHaveProperty('accessibleCompanies');
-    expect(user).toHaveProperty('primaryCompany');
+    expect([...user.accessibleCompanies].sort()).toEqual(['FINANCE', 'SHOP']);
+    expect(user.primaryCompany).toBe('SHOP');
+  });
+
+  // FINANCE_MANAGER คือ role ที่ค่าเปลี่ยนจริงในรอบนี้: seed เดิมให้ ['FINANCE'] อย่างเดียว
+  // ทั้งที่เมนูของ role นี้มี section โซน shop จริง — ถ้าใครย้อน seed กลับ เทสต์นี้แดง
+  it('seeded FINANCE_MANAGER เข้าถึงได้ทั้ง SHOP และ FINANCE โดย primary = FINANCE', async () => {
+    const user = await prismaShop.user.findFirst({
+      where: { email: 'finance@bestchoice.com', deletedAt: null },
+      select: { accessibleCompanies: true, primaryCompany: true },
+    });
+    if (!user) {
+      console.warn('[SP7.1 e2e] finance@bestchoice.com not in DB — skipping grants check');
+      return;
+    }
+
+    expect([...user.accessibleCompanies].sort()).toEqual(['FINANCE', 'SHOP']);
+    expect(user.primaryCompany).toBe('FINANCE');
   });
 });

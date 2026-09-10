@@ -10,6 +10,7 @@ import { EmailService } from '../email/email.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { RegisterInviteDto } from './dto/register-invite.dto';
 import { UserRole } from '@prisma/client';
+import { roleCompanyAccess } from '@installment/shared';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 
@@ -277,6 +278,11 @@ export class InviteService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
+    // สิทธิ์บริษัท derive จาก role ของ invite ฝั่ง server — เส้นทางนี้เป็นทางเดียวที่สร้าง
+    // VIEWER ได้ (create-invite.dto ใช้ @IsEnum(UserRole) ครบ 6 ค่า ส่วน create-user.dto
+    // ใช้ @IsIn แค่ 5) ถ้าไม่เขียนตรงนี้ VIEWER จะเกิดมาพร้อม accessibleCompanies ว่าง
+    const access = roleCompanyAccess(invite.role);
+
     // Create user and mark invite as used in a transaction
     await this.prisma.$transaction([
       this.prisma.user.create({
@@ -285,6 +291,8 @@ export class InviteService {
           password: hashedPassword,
           name: dto.name,
           role: invite.role as UserRole,
+          accessibleCompanies: [...access.accessible],
+          primaryCompany: access.primary,
           branchId: invite.branchId || null,
           phone: dto.phone || null,
           nickname: dto.nickname || null,

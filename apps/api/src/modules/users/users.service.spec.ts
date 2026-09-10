@@ -3,6 +3,7 @@ import { UsersService } from './users.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmployeesService } from '../employees/employees.service';
+import { COMPANY_ACCESS_ROLES, ROLE_COMPANY_ACCESS } from '@installment/shared';
 
 describe('UsersService.update — T7-C7 deactivation revokes refresh tokens', () => {
   let service: UsersService;
@@ -134,5 +135,100 @@ describe('UsersService.findApprovers — lean 4-eyes approver lookup', () => {
 
     const arg = prisma.user.findMany.mock.calls[0][0];
     expect(arg.where.email.notIn).toEqual(expect.arrayContaining(['legacy-import@bestchoice.com']));
+  });
+});
+
+// เหตุ 2026-09-08: users.accessible_companies เป็น String[] @default([]) ที่ไม่มีเส้นทางไหน
+// เขียนค่าให้เลย ทุกบัญชีจึงเกิดมาพร้อม array ว่าง เทสต์ชุดนี้ pin ว่าทุกทางที่ INSERT users
+// หรือ UPDATE users.role ต้องเขียน accessibleCompanies/primaryCompany ตาม ROLE_COMPANY_ACCESS
+// (source of truth เดียวที่ packages/shared/src/company-access.ts)
+describe('UsersService — สิทธิ์บริษัท derive จาก role', () => {
+  let service: UsersService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  const txUserCreate = jest.fn();
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    txUserCreate.mockResolvedValue({ id: 'u1' });
+    prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({ id: 'u1' }),
+      },
+      refreshToken: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      // create() ห่อ tx.user.create ไว้ใน $transaction แบบ callback — mock ต้องคืน tx ปลอมให้
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      $transaction: jest.fn(async (cb: any) => cb({ user: { create: txUserCreate } })),
+    };
+
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: EmployeesService, useValue: { upsertProfileTx: jest.fn() } },
+      ],
+    }).compile();
+    service = mod.get(UsersService);
+    // create() ปิดท้ายด้วย findOneFull — stub ไว้เพื่อให้เทสต์โฟกัสที่ payload ของ user.create
+    jest.spyOn(service, 'findOneFull').mockResolvedValue({ id: 'u1' } as never);
+  });
+
+  describe('create()', () => {
+    it.each(COMPANY_ACCESS_ROLES)(
+      'เขียน accessibleCompanies/primaryCompany ตาม ROLE_COMPANY_ACCESS สำหรับ role %s',
+      async (role) => {
+        // หมายเหตุ: VIEWER มาถึงที่นี่ไม่ได้จริงเพราะ create-user.dto ใช้ @IsIn แค่ 5 role
+        // (ทางเดียวที่สร้าง VIEWER คือ invite) แต่ service ต้อง derive ถูกอยู่ดีถ้ามีคนเปิด DTO
+        await service.create({
+          email: `${role.toLowerCase()}@test.com`,
+          password: 'password123',
+          name: 'New Staff',
+          role,
+        });
+
+        const data = txUserCreate.mock.calls[0][0].data;
+        expect(data.accessibleCompanies).toEqual([...ROLE_COMPANY_ACCESS[role].accessible]);
+        expect(data.primaryCompany).toBe(ROLE_COMPANY_ACCESS[role].primary);
+      },
+    );
+
+    it('ส่ง array ก็อปปี้ ไม่ใช่ตัวอ้างอิงของ ROLE_COMPANY_ACCESS (กัน Prisma/ผู้เรียกไปแก้ค่ากลาง)', async () => {
+      await service.create({
+        email: 'owner@test.com',
+        password: 'password123',
+        name: 'New Staff',
+        role: 'OWNER',
+      });
+
+      const data = txUserCreate.mock.calls[0][0].data;
+      expect(data.accessibleCompanies).not.toBe(ROLE_COMPANY_ACCESS.OWNER.accessible);
+    });
+  });
+
+  describe('update()', () => {
+    it('เปลี่ยน role → derive สิทธิ์บริษัทใหม่ตาม role ปลายทาง', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: true, role: 'SALES' });
+
+      await service.update('u1', { role: 'FINANCE_MANAGER' });
+
+      const data = prisma.user.update.mock.calls[0][0].data;
+      expect(data.role).toBe('FINANCE_MANAGER');
+      expect(data.accessibleCompanies).toEqual(['SHOP', 'FINANCE']);
+      expect(data.primaryCompany).toBe('FINANCE');
+    });
+
+    it('ไม่แตะสิทธิ์บริษัทเมื่อ update ไม่ได้ส่ง role มา', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: true, role: 'SALES' });
+
+      await service.update('u1', { name: 'renamed' });
+
+      const data = prisma.user.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('accessibleCompanies');
+      expect(data).not.toHaveProperty('primaryCompany');
+    });
   });
 });

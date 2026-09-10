@@ -26,7 +26,10 @@ import { loginAsRole } from './helpers/auth';
  * each file by default in this project's playwright.config (workers: 2).
  */
 
-async function loginAndExpandSidebar(page: Page, role: 'OWNER' | 'SALES' | 'ACCOUNTANT') {
+async function loginAndExpandSidebar(
+  page: Page,
+  role: 'OWNER' | 'SALES' | 'ACCOUNTANT' | 'FINANCE_MANAGER',
+) {
   // Force expanded sidebar so pills/gear labels are visible (default is
   // a collapsed icon rail — same pattern used by login.spec.ts).
   await page.addInitScript(() => {
@@ -66,14 +69,30 @@ test.describe('SP1 — Sidebar zones', () => {
     await expect(page.getByRole('button', { name: 'ตั้งค่ากลาง' })).toHaveCount(0);
   });
 
-  test('ACCOUNTANT sees work choices only for its granted companies', async ({ page }) => {
-    const meResponse = page.waitForResponse(response => /\/auth\/me(?:\?|$)/.test(response.url()));
+  // เดิมเทสต์นี้อ่าน /auth/me สดแล้ว branch เอาเอง (`both ? 1 : 0`) จึงเขียวได้แม้ ACCOUNTANT
+  // จะไม่มีสิทธิ์บริษัทเลย — assert ที่ปรับตัวตามค่าที่ได้มาไม่เคยจับ regression ได้
+  // ตอนนี้ ROLE_COMPANY_ACCESS (packages/shared/src/company-access.ts) ระบุชัดว่า
+  // ACCOUNTANT = SHOP + FINANCE จึงยืนยันตรง ๆ ว่าต้องเห็น pill ครบสองอัน
+  test('ACCOUNTANT sees both work pills (SHOP + FINANCE)', async ({ page }) => {
     await loginAndExpandSidebar(page, 'ACCOUNTANT');
-    const me = await meResponse;
-    const envelope = await me.json();
-    const user = envelope.data ?? envelope;
-    const both = ['SHOP', 'FINANCE'].every(company => user.accessibleCompanies.includes(company));
-    await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(both ? 1 : 0);
+
+    const tablist = page.getByRole('tablist', { name: 'หมวดงาน' }).first();
+    await expect(tablist.getByRole('tab')).toHaveCount(2);
+    await expect(tablist.getByRole('tab', { name: 'งานหน้าร้าน' }).first()).toBeVisible();
+    await expect(tablist.getByRole('tab', { name: 'งานการเงิน' }).first()).toBeVisible();
+  });
+
+  // FINANCE_MANAGER เคยถูก map เก่า (seed + backfill CLI) ให้ ['FINANCE'] อย่างเดียว
+  // ทั้งที่ FINANCE_MANAGER_CONFIG มี sidebar section โซน shop จริงสองก้อน (fm-shop-ops,
+  // fm-online-shop) — ถ้าใครย้อน map กลับไปแบบเดิม pill 'งานหน้าร้าน' จะหายทั้งโซน
+  // และเทสต์นี้คือด่านที่จับได้แบบ end-to-end
+  test('FINANCE_MANAGER sees both work pills (โซนหน้าร้านต้องไม่ถูกตัดทิ้ง)', async ({ page }) => {
+    await loginAndExpandSidebar(page, 'FINANCE_MANAGER');
+
+    const tablist = page.getByRole('tablist', { name: 'หมวดงาน' }).first();
+    await expect(tablist.getByRole('tab')).toHaveCount(2);
+    await expect(tablist.getByRole('tab', { name: 'งานหน้าร้าน' }).first()).toBeVisible();
+    await expect(tablist.getByRole('tab', { name: 'งานการเงิน' }).first()).toBeVisible();
   });
 
   test('OWNER zone selection persists across reload', async ({ page }) => {

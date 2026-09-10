@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ChatChannel } from '@prisma/client';
+import { hasCompanyAccess } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { getBranchScope } from '../../auth/branch-access.util';
 
@@ -38,8 +39,10 @@ export class RoomAiAccessService {
       },
     });
     if (!room) throw new NotFoundException('ไม่พบห้องแชท');
+    // ช่องทางที่ไม่รู้จักยังต้องปฏิเสธก่อนเสมอ — hasCompanyAccess รับ required เป็น string
+    // จึงต้องกัน undefined ที่ตรงนี้ ไม่ใช่ปล่อยให้ไปตกที่ includes()
     const company = CHANNEL_COMPANY[room.channel];
-    if (!company || !actor.accessibleCompanies?.includes(company)) {
+    if (!company || !hasCompanyAccess(actor.role, actor.accessibleCompanies, company)) {
       throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทของบริษัทนี้');
     }
     if (actor.role === 'SALES' && room.assignedToId && room.assignedToId !== actor.id) {

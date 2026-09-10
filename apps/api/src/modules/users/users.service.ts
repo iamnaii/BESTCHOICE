@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { UserRole, Prisma } from '@prisma/client';
+import { roleCompanyAccess } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmployeesService } from '../employees/employees.service';
@@ -114,6 +115,9 @@ export class UsersService {
     if (existing && !existing.deletedAt) throw new ConflictException('อีเมลนี้ถูกใช้แล้ว');
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
+    // สิทธิ์บริษัท derive จาก role ฝั่ง server เสมอ ไม่รับจาก DTO — คอลัมน์นี้ default เป็น []
+    // และไม่มีเส้นทางไหนเคยเขียนค่าให้ จนเกิดเหตุ 2026-09-08 ที่ [] ถูกตีความว่า "ไม่มีสิทธิ์"
+    const access = roleCompanyAccess(dto.role);
     const created = await this.prisma.$transaction(async (tx) => {
       const u = await tx.user.create({
         data: {
@@ -121,6 +125,8 @@ export class UsersService {
           password: hashedPassword,
           name: dto.name,
           role: dto.role as UserRole,
+          accessibleCompanies: [...access.accessible],
+          primaryCompany: access.primary,
           branchId: dto.branchId || null,
           employeeId: dto.employeeId || null,
           nickname: dto.nickname || null,
@@ -235,7 +241,14 @@ export class UsersService {
 
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
-    if (dto.role !== undefined) data.role = dto.role as UserRole;
+    // role เปลี่ยน = สิทธิ์บริษัท derive ใหม่เสมอ (ยังไม่รองรับการตั้งเองรายคน — ถ้าเปิด
+    // ให้ตั้งเองเมื่อไร ตรรกะนี้ต้องเปลี่ยนเป็น "เขียนก็ต่อเมื่อยังว่าง" ไม่งั้นจะทับค่าที่ตั้งมือไว้)
+    if (dto.role !== undefined) {
+      data.role = dto.role as UserRole;
+      const access = roleCompanyAccess(dto.role);
+      data.accessibleCompanies = [...access.accessible];
+      data.primaryCompany = access.primary;
+    }
     if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.password) data.password = await bcrypt.hash(dto.password, 10);
@@ -310,7 +323,14 @@ export class UsersService {
 
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
-    if (dto.role !== undefined) data.role = dto.role as UserRole;
+    // role เปลี่ยน = สิทธิ์บริษัท derive ใหม่เสมอ (ยังไม่รองรับการตั้งเองรายคน — ถ้าเปิด
+    // ให้ตั้งเองเมื่อไร ตรรกะนี้ต้องเปลี่ยนเป็น "เขียนก็ต่อเมื่อยังว่าง" ไม่งั้นจะทับค่าที่ตั้งมือไว้)
+    if (dto.role !== undefined) {
+      data.role = dto.role as UserRole;
+      const access = roleCompanyAccess(dto.role);
+      data.accessibleCompanies = [...access.accessible];
+      data.primaryCompany = access.primary;
+    }
     if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.password) data.password = await bcrypt.hash(dto.password, 10);

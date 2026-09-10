@@ -33,15 +33,32 @@ export class MyService {
 
 ## Request entity scope
 
-Every authenticated request has `req.entityScope: 'SHOP' | 'FINANCE'` set by `EntityScopeMiddleware`.
+`req.entityScope: 'SHOP' | 'FINANCE' | undefined` is written by **`EntityScopeInterceptor`**
+(`apps/api/src/interceptors/entity-scope.interceptor.ts`, registered as an `APP_INTERCEPTOR`).
+`EntityScopeMiddleware` was deleted on 2026-09-10: middleware runs *before* every guard, so it saw
+`req.user === undefined` on every request and `next()`-ed without ever checking anything. An
+interceptor always runs after the per-controller `JwtAuthGuard`, so it sees the real principal.
 
-Resolution order:
+Resolution order — **two steps only**:
 1. `?company=shop|finance` URL query (case-insensitive)
 2. `x-company-scope: shop|finance` header
-3. `user.primaryCompany` from JWT
-4. Fallback `SHOP`
 
-If the resolved scope is NOT in `user.accessibleCompanies`, request rejected with 403.
+Anything else — including a value that is neither `shop` nor `finance` — counts as *not specified*:
+no check is performed and **`req.entityScope` is left `undefined`**. The old precedence steps
+(`user.primaryCompany`, then a `SHOP` fallback) were dropped deliberately; do not reintroduce them.
+
+Two more pass-throughs: a request with no `req.user` (public / `@Public()` / LIFF / webhook), and a
+storefront customer principal (`aud === 'shop'` or `role === 'CUSTOMER'`), which carries no company
+fields at all.
+
+If a company IS named and is not in the caller's resolved access set, the request is rejected with
+`ForbiddenException` (403). An **empty** `accessibleCompanies` array means "not configured yet" and
+resolves to the role default via `resolveCompanyAccess()` — it is never a 403 on its own.
+
+> The admin web sends `?company=` on **every** request (`apps/web/src/lib/api.ts`), so browser
+> traffic does populate `req.entityScope`. Non-browser clients (curl, scripts, LIFF, webhooks)
+> typically do not. Its only readers today are the three tax handlers in
+> `apps/api/src/modules/tax/tax.controller.ts`.
 
 ## Handler-level scope guard
 
@@ -52,11 +69,14 @@ For routes that are entity-specific, decorate the handler:
 @Entity('FINANCE')
 @Get('contracts')
 async getContracts(@Req() req: Request) {
-  // req.entityScope === 'FINANCE' guaranteed here
+  // req.entityScope may be undefined here — @Entity() ENFORCES access, it does not
+  // populate the scope. Only a request that named a company gets one.
 }
 ```
 
-A user without `FINANCE` in `accessibleCompanies` gets 403.
+`EntityScopeGuard` rejects with 403 when the caller's resolved access set lacks `FINANCE`, and
+always rejects a storefront customer principal. A user whose `accessibleCompanies` is empty is NOT
+rejected — the empty array resolves to their role default first.
 
 ## Migration management
 

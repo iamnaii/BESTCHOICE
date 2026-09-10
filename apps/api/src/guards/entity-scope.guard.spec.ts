@@ -11,7 +11,14 @@ describe('EntityScopeGuard', () => {
     guard = new EntityScopeGuard(reflector);
   });
 
-  function mkCtx(opts: { userCompanies?: string[]; role?: string; noUser?: boolean }): ExecutionContext {
+  function mkCtx(opts: {
+    userCompanies?: string[];
+    role?: string;
+    noUser?: boolean;
+    aud?: string;
+    // principal ลูกค้าหน้าร้านไม่มีฟิลด์นี้เลย — ต่างจาก staff ที่ jwt.strategy resolve มาให้เสมอ
+    omitCompanies?: boolean;
+  }): ExecutionContext {
     return {
       switchToHttp: () => ({
         getRequest: () =>
@@ -20,7 +27,10 @@ describe('EntityScopeGuard', () => {
             : {
                 user: {
                   role: opts.role ?? 'OWNER',
-                  accessibleCompanies: opts.userCompanies ?? ['SHOP', 'FINANCE'],
+                  ...(opts.aud ? { aud: opts.aud } : {}),
+                  ...(opts.omitCompanies
+                    ? {}
+                    : { accessibleCompanies: opts.userCompanies ?? ['SHOP', 'FINANCE'] }),
                 },
               },
       }),
@@ -73,5 +83,22 @@ describe('EntityScopeGuard', () => {
   it('allows OWNER (both) on FINANCE handler', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('FINANCE');
     expect(guard.canActivate(mkCtx({ userCompanies: ['SHOP', 'FINANCE'] }))).toBe(true);
+  });
+
+  // กติกา "role ไม่รู้จัก = fail-open" ของ roleCompanyAccess มีไว้ให้ staff role ใหม่ ไม่ใช่ token
+  // คนละชนิด — ถ้าไม่กันไว้ principal ลูกค้าหน้าร้าน (ไม่มีฟิลด์ companies เลย) จะผ่าน @Entity route
+  // ที่บังเอิญไม่มี @Roles กำกับ
+  it('ปฏิเสธ token ฝั่งลูกค้าหน้าร้าน (aud=shop) แม้ handler จะขอ SHOP', () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('SHOP');
+    expect(() =>
+      guard.canActivate(mkCtx({ role: 'CUSTOMER', aud: 'shop', omitCompanies: true })),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('ปฏิเสธ role CUSTOMER แม้ไม่มี aud มาด้วย', () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('SHOP');
+    expect(() => guard.canActivate(mkCtx({ role: 'CUSTOMER', omitCompanies: true }))).toThrow(
+      ForbiddenException,
+    );
   });
 });

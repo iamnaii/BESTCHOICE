@@ -230,5 +230,19 @@ describe('UsersService — สิทธิ์บริษัท derive จาก
       expect(data).not.toHaveProperty('accessibleCompanies');
       expect(data).not.toHaveProperty('primaryCompany');
     });
+
+    // เคสที่เกิดจริงบ่อยที่สุด: ฟอร์มผู้ใช้ยัด role เดิมมาทุกครั้งแม้แก้แค่ชื่อ/เบอร์ ถ้า derive
+    // ตาม `dto.role !== undefined` OWNER ที่ถูกจำกัดไว้เป็น FINANCE จะได้ SHOP คืนเงียบ ๆ
+    // และเมื่อคอลัมน์ไม่ว่างแล้ว fallback จะไม่แก้กลับให้อีก
+    it('ส่ง role เดิมมาด้วย (ไม่ได้เปลี่ยน) → ไม่ทับสิทธิ์บริษัทที่ตั้งไว้', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: true, role: 'OWNER' });
+
+      await service.update('u1', { role: 'OWNER', phone: '0812345678' });
+
+      const data = prisma.user.update.mock.calls[0][0].data;
+      expect(data.role).toBe('OWNER');
+      expect(data).not.toHaveProperty('accessibleCompanies');
+      expect(data).not.toHaveProperty('primaryCompany');
+    });
   });
 });

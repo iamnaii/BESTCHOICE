@@ -417,17 +417,25 @@ import { AppCacheModule } from './cache/cache.module';
       provide: APP_GUARD,
       useClass: JwtAudienceGuard,
     },
-    // SP7.1 — entity scope ต้องเป็น interceptor ไม่ใช่ APP_GUARD: Nest ประกอบ guard chain เป็น
-    // [...global, ...class, ...method] และ JwtAuthGuard ในบ้านนี้เป็น per-controller → global guard
-    // จะเห็น req.user เป็น undefined ตลอด (JwtAudienceGuard ด้านบนติดกับดักนี้อยู่แล้ว)
-    // ต้องมาก่อน AuditInterceptor เพื่อให้ req.entityScope พร้อมใช้ตอน audit ทำงาน
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: EntityScopeInterceptor,
-    },
+    // ลำดับสำคัญ: AuditInterceptor ต้องมา **ก่อน** EntityScopeInterceptor
+    // Nest เรียก interceptors[0].intercept() ก่อน แล้วจึงถึงตัวถัดไปผ่าน handler.handle()
+    // (node_modules/@nestjs/core/interceptors/interceptors-consumer.js:16-24) ⇒ ตัวแรกคือชั้นนอกสุด
+    // ถ้า EntityScopeInterceptor อยู่นอกสุด ForbiddenException ของมันจะ throw แบบ synchronous
+    // ก่อน AuditInterceptor.intercept() จะได้รัน → tap({error}) ไม่เคยถูกต่อ → 403 ทุกครั้งไม่ทิ้ง
+    // แถวใน audit_logs เลย ซึ่งคือลายเซ็นเงียบแบบเดียวกับ outage 2026-09-08 ที่ถูกจับได้เพราะ
+    // audit_logs ว่าง วางไว้ชั้นนอกแบบนี้ error จึงไหลออกมาเป็น observable error ให้ audit บันทึก
+    // (AuditInterceptor ไม่ได้อ่าน req.entityScope เลย — ผู้อ่าน entityScope ทั้งหมดคือ
+    // tax.controller.ts:57,73,217 ซึ่งเป็น controller จึงอยู่ชั้นในกว่า interceptor ทั้งสองตัวอยู่แล้ว)
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,
+    },
+    // SP7.1 — entity scope ต้องเป็น interceptor ไม่ใช่ APP_GUARD: Nest ประกอบ guard chain เป็น
+    // [...global, ...class, ...method] และ JwtAuthGuard ในบ้านนี้เป็น per-controller → global guard
+    // จะเห็น req.user เป็น undefined ตลอด (JwtAudienceGuard ด้านบนติดกับดักนี้อยู่แล้ว)
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: EntityScopeInterceptor,
     },
     // D1.1.3.1 — VAT_RATE orphan-key bootstrap warning. No exports, no
     // controllers — just a one-shot OnModuleInit that warns when both the

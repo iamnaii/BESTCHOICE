@@ -11,6 +11,7 @@ import { ENTITY_KEY, EntityType } from '../decorators/entity.decorator';
  *   ของ role ผ่าน hasCompanyAccess (packages/shared/src/company-access.ts) การ 403 ใส่ array ว่าง
  *   คือบั๊กเดิมที่ทำให้ 10 route ของ trade-in ตายเงียบมาตั้งแต่ พ.ค. — ห้ามคืนกลับมา
  * accessibleCompanies ไม่ว่าง → บังคับตามนั้นเป๊ะ แม้ role default จะกว้างกว่าก็ตาม
+ * token ฝั่งลูกค้าหน้าร้าน (aud='shop' / role='CUSTOMER') → 403 เสมอ (ดูเหตุผลในตัวเมธอด)
  */
 @Injectable()
 export class EntityScopeGuard implements CanActivate {
@@ -27,11 +28,25 @@ export class EntityScopeGuard implements CanActivate {
     if (!required) return true;
 
     const req = context.switchToHttp().getRequest();
-    const user = req.user as { role?: string; accessibleCompanies?: string[] } | undefined;
+    const user = req.user as
+      | { role?: string; accessibleCompanies?: string[]; aud?: string }
+      | undefined;
 
     // route ที่ติด @Entity ต้องผ่าน JwtAuthGuard มาก่อนเสมอ ไม่มี user = ผิดปกติ
     if (!user) {
       throw new ForbiddenException(`Handler ต้องการสิทธิ์ company ${required}; ไม่พบผู้ใช้ในคำขอ`);
+    }
+
+    // principal ฝั่งลูกค้าหน้าร้าน (jwt.strategy สาขา aud='shop') ไม่มีฟิลด์ companies เลย และ
+    // role 'CUSTOMER' ไม่มีใน ROLE_COMPANY_ACCESS ⇒ hasCompanyAccess จะ fail-open ให้ผ่าน
+    // (กติกา "role ไม่รู้จัก = fail-open" มีไว้สำหรับ staff role ใหม่ ไม่ใช่ token คนละชนิด)
+    // ต้องปฏิเสธที่นี่ก่อน ไม่งั้น @Entity route ที่ไม่มี @Roles กำกับจะเปิดให้ token ลูกค้าเข้า —
+    // EntityScopeInterceptor มีการยกเว้นคู่นี้อยู่แล้ว guard จึงต้องมีให้ตรงกัน (คนละทิศ: ตัวนั้น
+    // "ไม่ตรวจ" เพราะไม่ใช่ scope ของบริษัท ตัวนี้ "ปฏิเสธ" เพราะ handler ประกาศว่าต้องมีสิทธิ์)
+    if (user.aud === 'shop' || user.role === 'CUSTOMER') {
+      throw new ForbiddenException(
+        `Handler ต้องการสิทธิ์ company ${required}; token ฝั่งลูกค้าไม่มีสิทธิ์บริษัท`,
+      );
     }
 
     if (!hasCompanyAccess(user.role ?? '', user.accessibleCompanies, required)) {

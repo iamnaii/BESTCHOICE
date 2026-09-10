@@ -28,6 +28,7 @@
     "prisma:finance:migrate:dev": "prisma migrate dev --schema=prisma-finance/schema.prisma",
     "prisma:finance:migrate:deploy": "prisma migrate deploy --schema=prisma-finance/schema.prisma",
     "prisma:finance:studio": "prisma studio --schema=prisma-finance/schema.prisma --port 5556",
+    "preprisma:seed": "npm run build --workspace=@installment/shared",
     "prisma:seed": "npx tsx prisma/seed.ts",
     "seed:letters-mock": "npx tsx prisma/seeds/letters-mock.seed.ts",
     "backfill:promise-slots": "tsx scripts/backfill-promise-slots.ts",

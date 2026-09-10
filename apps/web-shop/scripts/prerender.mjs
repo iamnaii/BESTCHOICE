@@ -127,7 +127,8 @@ try {
   const browser = await chromium.launch();
   const snapshots = [];
   try {
-    const context = await browser.newContext();
+    // Save final visible content, never paused below-fold GSAP reveal styles.
+    const context = await browser.newContext({ reducedMotion: 'reduce' });
     await context.route('**/*', async (routeHandle) => {
       const req = routeHandle.request();
       const url = new URL(req.url());

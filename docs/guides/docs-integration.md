@@ -28,6 +28,8 @@ bash tools/docs-integration.sh contract-pdpa   # เฉพาะไฟล์ท�
 
 harness หยุด cron/interval ทุกตัวที่ AppModule ลงทะเบียนทันทีหลัง boot (`h.mutedJobs`) — งานที่ต้องทดสอบให้เรียกเอง (เช่น `h.app.get(LetterAutoGenerateCron).run()`); ก่อนหน้านี้ job รายชั่วโมงยิงตามนาฬิกาจริงกลาง scenario (CI ตอน 23:15 น. เวลากรุงเทพ เจอ outbound 2 รายการที่ไม่ได้มาจาก scenario — DOC-11)
 
+ข้อควรระวังเรื่อง global state ในฐานร่วม (DOC-11): ทุก suite ของ `npm run docs:check` ใช้ PostgreSQL เดียวกัน รันทีละ suite แต่**ลำดับไม่แน่นอน** (jest เรียงตามเวลารอบก่อน) ⇒ spec ที่แตะค่าระดับระบบต้องเริ่มจากค่าตั้งต้นเองและคืนค่าเมื่อจบ — เคสจริง: e-Tax `submitMode` (IntegrationConfig) ถูก suite เบราว์เซอร์เปิดไว้ทำให้ suite API ที่คาด "ปิดอยู่" ตก 3 เทสต์บน ref รวม (แก้ที่ DOC-07 ให้รีเซ็ตเป็น `disabled` ก่อน/หลัง) · `export_enabled` ถูกสลับเป็น false ชั่วครู่ใน DOC-02/05/10 เพื่อพิสูจน์ 403 · DOC-02 ตั้ง `isMainWarehouse: true` ให้สาขาของ world ตัวเอง (ค้างถึงจบ run — po-receiving เลือก `findFirst({ isMainWarehouse: true })`) — ทั้งหมดปลอดภัยเพราะ `maxWorkers: 1`; **ห้ามรันหลาย suite ขนานบนฐานเดียว** ถ้าจะทำต้องแยกฐานต่อ worker ก่อน
+
 harness ปฏิเสธที่จะเริ่มถ้า `DATABASE_URL` ไม่ใช่ฐาน `bc_docs_*` บน socket `bc-docs.`, ถ้า `NODE_ENV=production`, ถ้ามี credential ภายนอกค้างอยู่, ถ้าไม่มี Chromium (`apps/api/e2e/documents/support/runtime.ts`) หรือถ้า session timezone ของฐานไม่ใช่ `UTC` อย่าง prod (`harness.ts` — DOC-11)
 
 อย่ารัน `npm run local:check` กับ `npm run docs:check` **ใน checkout เดียวกันพร้อมกัน** — ทั้งคู่ `prisma generate` ลง `node_modules/.prisma/client` ก้อนเดียวกัน jest ที่กำลังโหลดจะเจอ `Cannot find module '.prisma/client/default'` (ข้าม checkout/worktree ไม่มีปัญหาถ้า node_modules แยกกัน)

@@ -1,11 +1,35 @@
 import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
 import { TRANSACTION_PAGE_CSS, transactionDocumentCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { hasCrossBranchAccess } from '../../auth/branch-access.util';
+
+/** The authenticated reader of a voucher — `@CurrentUser()` shape the controller passes through. */
+export interface VoucherViewer {
+  role?: string | null;
+  branchId?: string | null;
+}
+
+/**
+ * Branch scope for a voucher addressed by document id. `BranchGuard` only
+ * inspects an explicit `branchId` param, so `GET /expense-documents/:id/voucher.pdf`
+ * used to render any branch's voucher for a BRANCH_MANAGER that knew the id
+ * (found by the DOC-03 integration scenario, issue #1562). Same rule as
+ * `ExpenseDocumentQueryService.findOne`: cross-branch roles pass, everyone else
+ * must own the document's branch; a branch-bound account without a branch is
+ * refused (fail-closed, mirrors `assertAccountingBranch`).
+ */
+export function assertVoucherBranchAccess(doc: { branchId: string | null }, viewer: VoucherViewer | undefined): void {
+  if (!viewer) return; // internal callers (no request principal) keep the unscoped behaviour
+  if (hasCrossBranchAccess({ role: viewer.role ?? '' })) return;
+  if (!viewer.branchId || doc.branchId !== viewer.branchId) {
+    throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสารของสาขาอื่น');
+  }
+}
 
 
 type ExpenseDocWithLines = Prisma.ExpenseDocumentGetPayload<{
@@ -125,7 +149,7 @@ export class ExpenseVoucherPdfService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async generate(id: string): Promise<Buffer> {
+  async generate(id: string, viewer?: VoucherViewer): Promise<Buffer> {
     const doc = await this.prisma.expenseDocument.findFirst({
       where: { id, deletedAt: null },
       include: {
@@ -136,6 +160,7 @@ export class ExpenseVoucherPdfService {
       },
     });
     if (!doc) throw new NotFoundException('ไม่พบเอกสาร');
+    assertVoucherBranchAccess(doc, viewer);
     // Only POSTED/VOIDED documents reflect a recorded (or reversed) payment in
     // the books. Printing a ใบสำคัญจ่าย for a DRAFT/PENDING/ACCRUAL doc would
     // certify a payment the journal hasn't recognized. Mirrors the OI gate.

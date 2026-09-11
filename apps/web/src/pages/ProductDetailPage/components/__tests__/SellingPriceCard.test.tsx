@@ -80,3 +80,66 @@ describe('SellingPriceCard', () => {
     ).toBeNull();
   });
 });
+
+// รีดีไซน์ 2026-09-11: บรรทัดสถานะขึ้นเว็บในการ์ดราคา + ราคาในระบบเดิมเป็นลิงก์เล็ก (เฉพาะเมื่อมีแถว)
+describe('SellingPriceCard — สถานะขึ้นเว็บ + ราคาในระบบเดิม', () => {
+  const baseProps = {
+    cashPrice: '19900',
+    installmentPrice: '19900',
+    priceAutofilledAt: null,
+    canEdit: true,
+    onEdit: vi.fn(),
+  };
+
+  it('พร้อมขึ้นเว็บ → "ขึ้นเว็บแล้ว · ลิงก์ส่งลูกค้าใช้ได้" + ปุ่มไปแท็บขึ้นเว็บ', async () => {
+    const onGoOnline = vi.fn();
+    render(
+      <SellingPriceCard
+        {...baseProps}
+        readiness={{ isReady: true, checks: [] }}
+        onGoOnline={onGoOnline}
+      />,
+    );
+    expect(screen.getByText('ขึ้นเว็บแล้ว · ลิงก์ส่งลูกค้าใช้ได้')).toBeInTheDocument();
+    const { default: userEvent } = await import('@testing-library/user-event');
+    await userEvent.click(screen.getByRole('button', { name: /ขึ้นเว็บ/ }));
+    expect(onGoOnline).toHaveBeenCalled();
+  });
+
+  it('ยังไม่พร้อม → บอกเงื่อนไขแรกที่ยังไม่ผ่าน', () => {
+    render(
+      <SellingPriceCard
+        {...baseProps}
+        readiness={{
+          isReady: false,
+          checks: [
+            { key: 'price', label: 'มีราคาขาย', ok: true, severity: 'blocking' },
+            { key: 'photos', label: 'รูป 6 มุมครบ', ok: false, severity: 'blocking' },
+            { key: 'desc', label: 'มีคำอธิบาย', ok: false, severity: 'blocking' },
+          ],
+        }}
+        onGoOnline={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('ยังขึ้นเว็บไม่ได้ · รูป 6 มุมครบ')).toBeInTheDocument();
+  });
+
+  it('ราคาในระบบเดิม: ไม่มีแถว → ไม่โชว์ · มี 2 แถว → ลิงก์เล็กเปิดรายการ', async () => {
+    const { rerender } = render(<SellingPriceCard {...baseProps} legacyPrices={[]} />);
+    expect(screen.queryByText(/ราคาในระบบเดิม/)).toBeNull();
+
+    rerender(
+      <SellingPriceCard
+        {...baseProps}
+        legacyPrices={[
+          { id: 'l1', label: 'ราคาเงินสด', amount: '18900', isDefault: true },
+          { id: 'l2', label: 'ราคาผ่อน GFIN', amount: '23000', isDefault: false },
+        ]}
+      />,
+    );
+    const { default: userEvent } = await import('@testing-library/user-event');
+    await userEvent.click(screen.getByRole('button', { name: 'ราคาในระบบเดิม (2)' }));
+    expect(await screen.findByText('ราคาผ่อน GFIN')).toBeInTheDocument();
+    expect(screen.getByText('23,000 ฿')).toBeInTheDocument();
+  });
+});

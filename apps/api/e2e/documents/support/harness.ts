@@ -9,6 +9,8 @@ import { PrismaFinanceService } from '../../../src/prisma/prisma-finance.service
 import { StorageService } from '../../../src/modules/storage/storage.service';
 import { NotificationTransportService } from '../../../src/modules/notifications/services/notification-transport.service';
 import { EmailService } from '../../../src/modules/email/email.service';
+import { LineApiClientService } from '../../../src/modules/line-oa/services/line-api-client.service';
+import { LineFinanceClientService } from '../../../src/modules/chatbot-finance/services/line-finance-client.service';
 import { seedFinanceCoa } from '../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../prisma/seed-coa-shop';
 import { assertDisposableRuntime } from './runtime';
@@ -87,6 +89,9 @@ function recordExternalTransports(): ExternalRecorder {
     jest.spyOn(transport, 'sendSms').mockImplementation(async (recipient: string, message: string) => { calls.push({ channel: 'sms', recipient, summary: String(message).slice(0, 120), at: at() }); return 'SIMULATED'; }),
     jest.spyOn(transport, 'sendSmsFromQueue').mockImplementation(async (recipient: string, message: string) => { calls.push({ channel: 'sms', recipient, summary: String(message).slice(0, 120), at: at() }); return 'SIMULATED'; }),
     jest.spyOn(EmailService.prototype as any, 'sendMail').mockImplementation(async (params: { to: string | string[]; subject: string }) => { calls.push({ channel: 'email', recipient: Array.isArray(params.to) ? params.to.join(',') : params.to, summary: params.subject, at: at() }); return true; }),
+    // Direct LINE pushes that bypass NotificationTransportService (credit-note delivery, payment links, campaigns).
+    jest.spyOn(LineApiClientService.prototype as any, 'pushMessage').mockImplementation(async (to: string, messages: unknown[]) => { calls.push({ channel: 'line', recipient: String(to), summary: `${Array.isArray(messages) ? messages.length : 1} message(s) via LineApiClientService`, at: at() }); }),
+    jest.spyOn(LineFinanceClientService.prototype as any, 'pushMessage').mockImplementation(async (to: string, messages: unknown[]) => { calls.push({ channel: 'line', recipient: String(to), summary: `${Array.isArray(messages) ? messages.length : 1} message(s) via LineFinanceClientService`, at: at() }); }),
   ];
   return { calls, restore: () => spies.forEach((spy) => spy.mockRestore()) };
 }
@@ -108,6 +113,14 @@ export async function seedReferenceData(): Promise<{ finance: { created: number;
     await prisma.$connect();
     const finance = await seedFinanceCoa(prisma);
     const shop = await seedShopCoa(prisma);
+    // JournalAutoService.resolveSystemUserId looks this account up by e-mail for
+    // auto-generated entries (activation, receipts, JP5…). Not loginable: the
+    // password is not a bcrypt hash, and the name carries the test marker.
+    await prisma.user.upsert({
+      where: { email: 'admin@bestchoice.com' },
+      update: {},
+      create: { email: 'admin@bestchoice.com', password: 'not-a-login', name: 'ทดสอบระบบ system user (journal)', role: 'OWNER', accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'SHOP' },
+    });
     return { finance, shop };
   } finally {
     await prisma.$disconnect();

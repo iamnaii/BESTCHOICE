@@ -25,6 +25,8 @@ bash tools/docs-integration.sh contract-pdpa   # เฉพาะไฟล์ท�
 
 harness ปฏิเสธที่จะเริ่มถ้า `DATABASE_URL` ไม่ใช่ฐาน `bc_docs_*` บน socket `bc-docs.`, ถ้า `NODE_ENV=production`, ถ้ามี credential ภายนอกค้างอยู่ หรือถ้าไม่มี Chromium (`apps/api/e2e/documents/support/runtime.ts`)
 
+อย่ารัน `npm run local:check` กับ `npm run docs:check` **ใน checkout เดียวกันพร้อมกัน** — ทั้งคู่ `prisma generate` ลง `node_modules/.prisma/client` ก้อนเดียวกัน jest ที่กำลังโหลดจะเจอ `Cannot find module '.prisma/client/default'` (ข้าม checkout/worktree ไม่มีปัญหาถ้า node_modules แยกกัน)
+
 ### รันพร้อมกันหลายคน
 
 แต่ละ run มีฐานข้อมูล/socket, โฟลเดอร์ storage, โฟลเดอร์ output และพอร์ต API (สุ่มโดย `app.listen(0)`) ของตัวเอง จึงเปิดสอง worktree แล้วรันพร้อมกันได้ทันที ไม่ต้องจองพอร์ต ถ้าต้องการเก็บผลนอก repo ให้ตั้ง `DOCS_QA_OUTPUT=/path/ที่ว่าง` ก่อนรัน
@@ -66,6 +68,15 @@ describe('DOC-01 receipts', () => {
   });
 });
 ```
+
+ตัวช่วยเพิ่มเติมใน `support/`
+
+- `receipts-fixtures.ts`: `createFinancedContract()` (สัญญา FINANCE 17K/12M แบบเดียวกับ CPA golden case พร้อม `installment_schedule` + `Payment` 12 งวด) · `activateContract()` (โพสต์ JE 1A ผ่าน template จริง) · `grantApprovalPermissions()` (ให้สิทธิ์อนุมัติ EARLY_PAYOFF / VOID_RECEIPT ผ่าน SystemConfig เดียวกับหน้าแอดมิน)
+- `web.ts`: `startWeb(h)` เปิด Vite dev server ของ `apps/web` (config `vite.docs-qa.config.ts` proxy `/api` → API ของ run นี้) + Playwright Chromium; `web.login(page, email, password)` ล็อกอินผ่านฟอร์มจริง; `downloadBytes(download)` อ่านไฟล์ที่ปุ่มดาวน์โหลดบันทึก — ตัวอย่างเต็มใน `receipts.browser.docs-spec.ts`
+- `pdf.ts`: `contentSignature(pdf)` ใช้เทียบเอกสารที่ render ใหม่ทุกครั้ง (ใบเสร็จ) — bytes ของ Chromium ไม่นิ่งข้าม render แม้ตัด `/CreationDate`; ใช้ `sha256` ตรง ๆ เฉพาะไฟล์ที่เก็บครั้งเดียว (EDocument)
+- harness seed ผังบัญชี CPA และผู้ใช้ระบบ `admin@bestchoice.com` (JournalAutoService ใช้เป็นผู้บันทึก JE อัตโนมัติ; ล็อกอินไม่ได้) ก่อน boot ทุกครั้ง
+
+ข้อควรระวังจากงาน DOC-01: `POST /payments/record` ถูกจำกัด 5 ครั้ง/10 วิ แต่ในทางปฏิบัติ throttler ส่วนกลางกับ `UserThrottlerGuard` นับซ้ำกัน ⇒ บันทึกได้ ~2 ครั้งต่อ 10 วิ ต้องเว้นช่วง (ดู helper `pay()` ใน `receipts.docs-spec.ts`) และทุกการรับเงินต้องมี `transactionRef` หรือ slip
 
 กติกา
 

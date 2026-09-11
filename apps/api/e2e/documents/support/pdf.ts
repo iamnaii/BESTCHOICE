@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+import { createHash } from 'crypto';
 /**
  * PDF assertions for the documents harness — pdfjs (legacy build, Node) so the
  * evidence is the real bytes Chromium produced: page boxes, embedded font names,
@@ -90,6 +91,30 @@ function groupLines(items: PdfTextItem[]): string[] {
 }
 
 /** Chromium reports A4 as 595.92 × 841.92 pt (rounded mm), so allow ±1 pt. Safe for `pages.every(isA4)`. */
+/**
+ * Content hash of a Chromium PDF with the render-time metadata removed
+ * (`/CreationDate`, `/ModDate`, trailer `/ID`). Two renders of the same
+ * document differ only there, so this is the value to compare across renders;
+ * compare raw sha256 only against bytes stored once (e.g. EDocument files).
+ */
+export function pdfFingerprint(bytes: Buffer): string {
+  const text = bytes.toString('latin1')
+    .replace(/\/CreationDate \([^)]*\)/g, '/CreationDate ()')
+    .replace(/\/ModDate \([^)]*\)/g, '/ModDate ()')
+    .replace(/\/ID \[[^\]]*\]/g, '/ID []');
+  return createHash('sha256').update(Buffer.from(text, 'latin1')).digest('hex');
+}
+
+/**
+ * Content identity of a parsed PDF: page sizes, embedded font names and every
+ * text line in order. Chromium output is not byte-stable across renders (even
+ * with dates stripped), so compare documents rendered twice with this.
+ */
+export function contentSignature(pdf: ParsedPdf): string {
+  const payload = { fonts: pdf.fonts, pages: pdf.pages.map((page) => ({ w: page.widthPt.toFixed(1), h: page.heightPt.toFixed(1), lines: page.lines })) };
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
 export function isA4(page: PdfPage): boolean {
   return isPageSize(page, A4.width, A4.height, 1);
 }

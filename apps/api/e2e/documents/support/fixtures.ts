@@ -38,15 +38,14 @@ export async function seedDocumentsWorld(prisma: PrismaService, options: { prefi
   const password = `Docs!${prefix.slice(-8)}`;
   const hashed = await bcrypt.hash(password, 10);
 
+  // Migrations seed "(stub)" SHOP/FINANCE rows; give both synthetic, marked identities so every
+  // printed issuer/payer line is recognisably test data.
   for (const [companyCode, nameTh] of [['SHOP', 'บริษัทหน้าร้าน'], ['FINANCE', 'บริษัทไฟแนนซ์']] as const) {
-    await prisma.companyInfo.upsert({
-      where: { companyCode },
-      update: {},
-      create: {
-        companyCode, nameTh: `${TEST_NAME_PREFIX} ${nameTh}`, nameEn: `SYNTHETIC ${companyCode}`, taxId: '0000000000000',
-        address: TEST_CUSTOMER_ADDRESS, phone: '020000000', directorName: `${TEST_NAME_PREFIX} ผู้ลงนาม`, directorPosition: 'กรรมการ',
-      },
-    });
+    const identity = {
+      nameTh: `${TEST_NAME_PREFIX} ${nameTh}`, nameEn: `SYNTHETIC ${companyCode}`, taxId: '0000000000000',
+      address: TEST_CUSTOMER_ADDRESS, phone: '020000000', directorName: `${TEST_NAME_PREFIX} ผู้ลงนาม`, directorPosition: 'กรรมการ', isActive: true, deletedAt: null,
+    };
+    await prisma.companyInfo.upsert({ where: { companyCode }, update: identity, create: { companyCode, ...identity } });
   }
 
   const branch = async (label: string) => {

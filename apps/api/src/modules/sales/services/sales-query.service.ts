@@ -1,3 +1,4 @@
+import { bangkokDateRange } from '../../../utils/date.util';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -36,20 +37,8 @@ export class SalesQueryService {
     if (contractStatus) where.contract = { status: contractStatus };
     else where.AND = [completedSaleWhere];
 
-    // Date range filter
-    if (startDate || endDate) {
-      const dateFilter: Record<string, Date> = {};
-      if (startDate) {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        dateFilter.gte = start;
-      }
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        dateFilter.lte = end;
-      }
-      where.createdAt = dateFilter;
+    if (startDate !== undefined || endDate !== undefined) {
+      where.createdAt = bangkokDateRange(startDate, endDate);
     }
 
     if (search) {
@@ -65,7 +54,7 @@ export class SalesQueryService {
     const [data, total, agg, groupBySaleType] = await Promise.all([
       this.prisma.sale.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
         include: {
@@ -97,13 +86,20 @@ export class SalesQueryService {
     let totalProfit = 0;
 
     if (actor.role === 'OWNER') {
-      // Calculate profit from already-fetched data to avoid duplicate query
-      totalProfit = data.reduce(
-        (sum, s) => sum
-          .add(new Prisma.Decimal(s.netAmount ?? 0))
-          .sub(new Prisma.Decimal(s.product?.costPrice ?? 0)),
-        new Prisma.Decimal(0),
-      ).toNumber();
+      const groups = await this.prisma.sale.groupBy({
+        by: ['productId'], where, _sum: { netAmount: true }, _count: { _all: true },
+      });
+      const products = groups.length ? await this.prisma.product.findMany({
+        where: { id: { in: groups.map(group => group.productId) } },
+        select: { id: true, costPrice: true },
+      }) : [];
+      const costByProduct = new Map(products.map(product => [product.id, product.costPrice]));
+      // Same business definition as before: net sale less current product cost.
+      // This is a filtered operational margin, not a historical ledger profit.
+      totalProfit = groups.reduce((sum, group) => sum
+        .plus(group._sum.netAmount ?? 0)
+        .minus(new Prisma.Decimal(costByProduct.get(group.productId) ?? 0).mul(group._count._all)),
+      new Prisma.Decimal(0)).toNumber();
     }
 
     const summary = {
@@ -147,7 +143,7 @@ export class SalesQueryService {
       where: { AND: [{ id }, salesBranchWhere(actor)] },
       include: {
         customer: { select: { id: true, name: true, phone: true, nationalId: true } },
-        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, costPrice: true } },
+        product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, costPrice: true } },
         branch: { select: { id: true, name: true } },
         salesperson: { select: { id: true, name: true } },
         voidedBy: { select: { id: true, name: true } },
@@ -190,13 +186,8 @@ export class SalesQueryService {
   }
 
   async getDailySummary(date: string, actor: SalesReadActor, branchId?: string) {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
-
     const where: Record<string, unknown> = {
-      createdAt: { gte: startOfDay, lte: endOfDay },
+      createdAt: bangkokDateRange(date, date),
       AND: [completedSaleWhere],
       deletedAt: null,
       ...salesBranchWhere(actor, branchId),
@@ -209,7 +200,7 @@ export class SalesQueryService {
         product: { select: { name: true, brand: true, model: true } },
         salesperson: { select: { name: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
 
     const summary = {

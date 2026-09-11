@@ -1,3 +1,4 @@
+import { ContractsListQueryDto } from './dto/contracts-list-query.dto';
 import { ContractQuoteDto } from './dto/contract-quote.dto';
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { Request } from 'express';
@@ -34,31 +35,10 @@ export class ContractsController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
-    @Query('status') status?: string,
-    @Query('workflowStatus') workflowStatus?: string,
-    @Query('branchId') branchId?: string,
-    @Query('customerId') customerId?: string,
-    @Query('search') search?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('salespersonId') salespersonId?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @CurrentUser() user?: { id: string; role: string; branchId: string | null },
+    @Query() filters: ContractsListQueryDto,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    const parsedPage = page ? parseInt(page, 10) : undefined;
-    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
-
-    // BRANCH_MANAGER and below can only see contracts from their own branch
-    const effectiveBranchId = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER'
-      ? branchId
-      : (user?.branchId || branchId);
-
-    return this.contractsService.findAll({
-      status, workflowStatus, branchId: effectiveBranchId, customerId, search, salespersonId, startDate, endDate,
-      page: parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
-      limit: parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
-    });
+    return this.contractsService.findAll(filters, user);
   }
 
   @Get('document-dashboard')

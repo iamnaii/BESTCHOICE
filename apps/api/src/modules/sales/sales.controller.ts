@@ -1,3 +1,5 @@
+import { SalesListQueryDto } from './dto/sales-list-query.dto';
+import { bangkokDateString } from '../../utils/date.util';
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
@@ -25,31 +27,9 @@ export class SalesController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @CurrentUser() user: SalesReadActor,
-    @Query('saleType') saleType?: string,
-    @Query('branchId') branchId?: string,
-    @Query('search') search?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('paymentMethod') paymentMethod?: string,
-    @Query('salespersonId') salespersonId?: string,
-    @Query('contractStatus') contractStatus?: string,
-    @Query('includeVoided') includeVoided?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query() filters: SalesListQueryDto,
   ) {
-    return this.salesService.findAll({
-      saleType,
-      branchId,
-      search,
-      startDate,
-      endDate,
-      paymentMethod,
-      salespersonId,
-      contractStatus,
-      includeVoided: includeVoided === 'true',
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
-    }, user);
+    return this.salesService.findAll(filters, user);
   }
 
   @Get('salespersons')
@@ -79,7 +59,7 @@ export class SalesController {
     @Query('branchId') branchId?: string,
   ) {
     return this.salesService.getDailySummary(
-      date || new Date().toISOString().split('T')[0],
+      date || bangkokDateString(),
       user,
       branchId,
     );

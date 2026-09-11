@@ -1,3 +1,4 @@
+import { bangkokDateRange } from '../../../utils/date.util';
 import { BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -38,14 +39,8 @@ export class CreditCheckCrudService {
     if (filters.search) {
       where.customer = { name: { contains: filters.search, mode: 'insensitive' } };
     }
-    if (filters.startDate || filters.endDate) {
-      where.createdAt = {};
-      if (filters.startDate) (where.createdAt as Record<string, Date>).gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const endDate = new Date(filters.endDate);
-        endDate.setHours(23, 59, 59, 999);
-        (where.createdAt as Record<string, Date>).lte = endDate;
-      }
+    if (filters.startDate !== undefined || filters.endDate !== undefined) {
+      where.createdAt = bangkokDateRange(filters.startDate, filters.endDate);
     }
     if (filters.branchId) {
       where.customer = {
@@ -56,12 +51,12 @@ export class CreditCheckCrudService {
     if (filters.checkedById) where.checkedById = filters.checkedById;
 
     const page = filters.page || 1;
-    const limit = Math.min(filters.limit || 50, 100);
+    const limit = Math.min(filters.limit || 50, 200);
 
     const [data, total, summaryData] = await Promise.all([
       this.prisma.creditCheck.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
         include: {
@@ -83,7 +78,7 @@ export class CreditCheckCrudService {
     const approved = summaryData.filter((c) => c.status === 'APPROVED').length;
     const rejected = summaryData.filter((c) => c.status === 'REJECTED').length;
     const scoredItems = summaryData.filter((c) => c.aiScore !== null);
-    const avgScore = scoredItems.length > 0 ? Math.round(scoredItems.reduce((sum, c) => sum + (c.aiScore || 0), 0) / scoredItems.length) : 0;
+    const avgScore = scoredItems.length > 0 ? Math.round(scoredItems.reduce((sum, c) => sum + (c.aiScore || 0), 0) / scoredItems.length) : null;
 
     return {
       data,
@@ -118,7 +113,7 @@ export class CreditCheckCrudService {
   async findByCustomer(customerId: string, actor?: CreditHistoryActor) {
     return this.prisma.creditCheck.findMany({
       where: { customerId, deletedAt: null, ...creditHistoryAccess(actor) },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
         contract: { select: { id: true, contractNumber: true } },
         checkedBy: { select: { id: true, name: true } },
@@ -141,7 +136,7 @@ export class CreditCheckCrudService {
     // FULL=APPROVED that a manager signed off on.
     const latestFull = await this.prisma.creditCheck.findFirst({
       where: { customerId, deletedAt: null, checkType: 'FULL', ...creditHistoryAccess(actor) },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include,
     });
     if (latestFull) return latestFull;
@@ -150,7 +145,7 @@ export class CreditCheckCrudService {
     // auto-approve via pre-check flow).
     return this.prisma.creditCheck.findFirst({
       where: { customerId, deletedAt: null, ...creditHistoryAccess(actor) },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include,
     });
   }
@@ -173,7 +168,7 @@ export class CreditCheckCrudService {
         bankName: dto.bankName ?? null,
         statementMonths: dto.statementMonths ?? 3,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
         checkedBy: { select: { id: true, name: true } },

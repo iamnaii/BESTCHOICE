@@ -322,7 +322,7 @@ describe('ContractsService', () => {
       const where = prisma.contract.findMany.mock.calls[0][0].where;
       const createdAt = where.createdAt as Record<string, Date>;
       expect(createdAt.gte).toBeInstanceOf(Date);
-      expect(createdAt.lte).toBeInstanceOf(Date);
+      expect(createdAt.lt).toBeInstanceOf(Date);
     });
 
     it('defaults to page 1 and limit 50', async () => {
@@ -332,10 +332,10 @@ describe('ContractsService', () => {
       expect(call.take).toBe(50);
     });
 
-    it('caps limit at 100 regardless of what is passed', async () => {
+    it('caps limit at 200 regardless of what is passed', async () => {
       await service.findAll({ limit: 999 });
       const call = prisma.contract.findMany.mock.calls[0][0];
-      expect(call.take).toBe(100);
+      expect(call.take).toBe(200);
     });
 
     it('returns a summary block alongside paginated data', async () => {

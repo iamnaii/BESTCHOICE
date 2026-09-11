@@ -1,3 +1,4 @@
+import { ContractQueryService } from './services/contract-query.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -16,11 +17,17 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 describe('POST /contracts/quote boundary', () => {
   let app: INestApplication;
   let actor: { id: string; role: string; branchId: string | null };
+  const listDb = { contract: {
+    findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0),
+    aggregate: jest.fn().mockResolvedValue({ _sum: { sellingPrice: null } }),
+  } };
+  const listService = new ContractQueryService(listDb as unknown as PrismaService);
+  const findAll = jest.fn((filters, user) => listService.findAll(filters, user));
   const quote = jest.fn().mockResolvedValue({ fingerprint: 'a'.repeat(64) });
   const dto = { customerId: 'customer', productId: 'product', branchId: 'branch', sellingPrice: 10000, downPayment: 2000, totalMonths: 6, paymentDueDay: 31 };
   beforeAll(async () => {
     const module = await Test.createTestingModule({ controllers: [ContractsController], providers: [
-      { provide: PrismaService, useValue: {} }, RolesGuard, BranchGuard, { provide: ContractsService, useValue: { quote } },
+      { provide: PrismaService, useValue: {} }, RolesGuard, BranchGuard, { provide: ContractsService, useValue: { quote, findAll } },
       ...[ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractJournalQueryService]
         .map(provide => ({ provide, useValue: {} })),
     ] }).overrideGuard(JwtAuthGuard).useValue({ canActivate: (context: any) => {
@@ -32,6 +39,19 @@ describe('POST /contracts/quote boundary', () => {
   });
   afterAll(async () => { await app?.close(); });
   beforeEach(() => { actor = { id: 'staff', role: 'SALES', branchId: 'branch' }; quote.mockClear(); });
+  it.each(['SALES', 'BRANCH_MANAGER'])('fails closed on a branchless %s contract list/export', async role => {
+    actor.role = role; actor.branchId = null;
+    await request(app.getHttpServer()).get('/contracts').query({ limit: 200 }).expect(200);
+    expect(listDb.contract.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: { in: [] } }), take: 200 }));
+  });
+  it.each(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'])('keeps %s cross-branch contract list access with an assigned branch', async role => {
+    actor.role = role;
+    await request(app.getHttpServer()).get('/contracts').expect(200);
+    expect(listDb.contract.findMany.mock.calls.slice(-1)[0][0].where).not.toHaveProperty('branchId');
+  });
+  it.each([{ page: 0 }, { page: 'NaN' }, { limit: 201 }])('validates contract pagination %j', async query => {
+    await request(app.getHttpServer()).get('/contracts').query(query).expect(400);
+  });
   it.each(['OWNER', 'BRANCH_MANAGER', 'SALES'])('allows %s and passes the authenticated actor', async role => {
     actor.role = role;
     await request(app.getHttpServer()).post('/contracts/quote').send(dto).expect(201);

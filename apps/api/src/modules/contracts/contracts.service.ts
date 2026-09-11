@@ -76,8 +76,8 @@ export class ContractsService {
     salespersonId?: string;
     startDate?: string;
     endDate?: string;
-  }) {
-    return this.query.findAll(filters);
+  }, user?: BranchAccessUser) {
+    return this.query.findAll(filters, user);
   }
 
   findOne(id: string, user?: BranchAccessUser) {

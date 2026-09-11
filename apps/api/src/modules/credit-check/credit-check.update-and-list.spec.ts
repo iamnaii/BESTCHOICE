@@ -33,7 +33,7 @@ import { CreditCheckService } from './credit-check.service';
  *      projection [{ status, aiScore }].
  *    - summary counts: pendingCount = PENDING + MANUAL_REVIEW, approvedCount =
  *      APPROVED, rejectedCount = REJECTED.
- *    - avgScore = Math.round(mean of aiScore where aiScore !== null), and 0 when
+ *    - avgScore = Math.round(mean of aiScore where aiScore !== null), and null when
  *      there are no scored items.
  *    - pagination: page defaults 1, limit defaults 50 and is clamped to
  *      min(limit, 100); totalPages = Math.ceil(total / limit).
@@ -315,7 +315,12 @@ describe('CreditCheckService.findAll', () => {
     expect(res.summary.rejectedCount).toBe(1);
   });
 
-  it('avgScore is 0 when there are no scored items', async () => {
+  it('preserves a measured zero score', async () => {
+    const { svc } = setup({ total: 1, summary: [{ status: 'REJECTED', aiScore: 0 }] });
+    expect((await svc.findAll({})).summary.avgScore).toBe(0);
+  });
+
+  it('avgScore is null when there are no scored items', async () => {
     const summary: SummaryRow[] = [
       { status: 'PENDING', aiScore: null },
       { status: 'APPROVED', aiScore: null },
@@ -324,10 +329,10 @@ describe('CreditCheckService.findAll', () => {
 
     const res = await svc.findAll({});
 
-    expect(res.summary.avgScore).toBe(0);
+    expect(res.summary.avgScore).toBeNull();
   });
 
-  it('avgScore is 0 when the summary set is entirely empty', async () => {
+  it('avgScore is null when the summary set is entirely empty', async () => {
     const { svc } = setup({ total: 0, summary: [] });
 
     const res = await svc.findAll({});
@@ -337,19 +342,19 @@ describe('CreditCheckService.findAll', () => {
       pendingCount: 0,
       approvedCount: 0,
       rejectedCount: 0,
-      avgScore: 0,
+      avgScore: null,
     });
     expect(res.totalPages).toBe(0); // ceil(0/50)
   });
 
-  it('clamps a too-large limit to 100 and computes totalPages off the clamp', async () => {
+  it('clamps a too-large limit to 200 and computes totalPages off the clamp', async () => {
     const { svc } = setup({ total: 250, summary: [] });
 
     const res = await svc.findAll({ limit: 500 });
 
-    expect(res.limit).toBe(100); // min(500, 100)
+    expect(res.limit).toBe(200); // min(500, 200)
     expect(res.page).toBe(1);
-    expect(res.totalPages).toBe(3); // ceil(250/100)
+    expect(res.totalPages).toBe(2); // ceil(250/200)
   });
 
   it('honours an explicit page and a within-bounds limit (skip/take wiring)', async () => {

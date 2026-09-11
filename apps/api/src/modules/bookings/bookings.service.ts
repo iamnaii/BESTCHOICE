@@ -120,7 +120,7 @@ export class BookingsService {
     user: RequestUser,
   ) {
     const page = Math.max(1, opts.page ?? 1);
-    const limit = Math.min(100, Math.max(1, opts.limit ?? 50));
+    const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
     const skip = (page - 1) * limit;
 
     const baseWhere: Prisma.BookingWhereInput = { deletedAt: null };
@@ -154,7 +154,7 @@ export class BookingsService {
         include: BOOKING_DEFAULT_INCLUDE,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
       this.prisma.booking.count({ where }),
     ]);
@@ -812,7 +812,7 @@ export class BookingsService {
       ).padStart(2, '0')}`;
       const rule = await tx.commissionRule.findFirst({
         where: { isActive: true, deletedAt: null },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
       const commissionRate = rule?.rate ? Number(rule.rate) : 0.03;
       const commissionAmount = totalAmount.mul(commissionRate).toDecimalPlaces(2);

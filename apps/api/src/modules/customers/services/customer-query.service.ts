@@ -57,13 +57,12 @@ export class CustomerQueryService {
       ];
     }
 
-    // Contract status filters
-    if (hasOverdue) {
-      where.contracts = { some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } };
-    } else if (contractStatus) {
-      where.contracts = { some: { status: contractStatus, deletedAt: null } };
-    } else if (branchId) {
-      where.contracts = { some: { branchId, deletedAt: null } };
+    // Contract status and branch must constrain the same matching contract.
+    if (hasOverdue || contractStatus || branchId) {
+      where.contracts = { some: { deletedAt: null,
+        ...(hasOverdue ? { status: { in: ['OVERDUE', 'DEFAULT'] } } : contractStatus ? { status: contractStatus } : {}),
+        ...(branchId ? { branchId } : {}),
+      } };
     }
 
     // สองตัวกรองนี้อ่านคนละฟิลด์และคนละ enum — ห้ามสลับกัน:
@@ -76,7 +75,7 @@ export class CustomerQueryService {
     // เพื่อให้ได้ 400 พร้อมข้อความไทยแทน
     if (creditStatus) {
       assertEnumValue(creditStatus, CREDIT_CHECK_STATUSES, 'สถานะใบตรวจเครดิต');
-      where.creditChecks = { some: { status: creditStatus } };
+      where.creditChecks = { some: { status: creditStatus, deletedAt: null } };
     }
 
     if (creditCheckStatus) {
@@ -95,13 +94,38 @@ export class CustomerQueryService {
     } else if (sortBy === 'contractCount') {
       orderBy = { contracts: { _count: order } };
     }
-    // For creditScore, we'll sort in-memory after fetching
+    // Derived filters must be resolved before pagination. Fetch only IDs/scores
+    // here; PII and full customer rows remain bounded to the requested page.
+    let matchedIds: string[] | undefined;
+    let tierById: Awaited<ReturnType<CustomerTierService['getCustomerTiers']>> | undefined;
+    if (tier || sortBy === 'creditScore') {
+      if (tier && !['GOLD', 'GOOD', 'NEW', 'RISKY', 'BLACKLIST'].includes(tier)) {
+        throw new BadRequestException('ระดับลูกค้าไม่ถูกต้อง');
+      }
+      const candidates = await this.prisma.customer.findMany({
+        where, orderBy: [orderBy, { id: 'asc' }],
+        select: { id: true, creditChecks: { where: { deletedAt: null },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { aiScore: true } } },
+      });
+      if (tier) tierById = await this.tierService.getCustomerTiers(candidates.map(customer => customer.id));
+      const matching = tier ? candidates.filter(customer => tierById!.get(customer.id)?.tier === tier) : candidates;
+      if (sortBy === 'creditScore') matching.sort((a, b) => {
+        const aScore = a.creditChecks[0]?.aiScore, bScore = b.creditChecks[0]?.aiScore;
+        if (aScore == null && bScore != null) return 1;
+        if (bScore == null && aScore != null) return -1;
+        const delta = aScore == null || bScore == null ? 0 : aScore - bScore;
+        return (order === 'asc' ? delta : -delta) || a.id.localeCompare(b.id);
+      });
+      matchedIds = matching.map(customer => customer.id);
+    }
+    const selectedIds = matchedIds?.slice((page - 1) * limit, page * limit);
+
 
     const [data, total, withActiveContract, withOverdue, newThisMonth] = await Promise.all([
       this.prisma.customer.findMany({
-        where,
-        orderBy,
-        skip: (page - 1) * limit,
+        where: selectedIds ? { AND: [where, { id: { in: selectedIds } }] } : where,
+        orderBy: [orderBy, { id: 'asc' }],
+        skip: selectedIds ? 0 : (page - 1) * limit,
         take: limit,
         select: {
           id: true,
@@ -122,13 +146,14 @@ export class CustomerQueryService {
             select: { status: true },
           },
           creditChecks: {
-            orderBy: { createdAt: 'desc' },
+            where: { deletedAt: null },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: 1,
             select: { status: true, aiScore: true },
           },
         },
       }),
-      this.prisma.customer.count({ where }),
+      matchedIds ? Promise.resolve(matchedIds.length) : this.prisma.customer.count({ where }),
       this.prisma.customer.count({
         // "มีสัญญาผ่อน" = ยังไม่จบ (รวม ACTIVE + OVERDUE + DEFAULT) — พอร์ตสัญญาที่ business ใส่ใจ
         where: {
@@ -167,33 +192,16 @@ export class CustomerQueryService {
         activeContracts,
         overdueContracts,
         latestCreditStatus: latestCredit?.status || null,
-        latestCreditScore: latestCredit?.aiScore || null,
+        latestCreditScore: latestCredit?.aiScore ?? null,
       };
     });
 
-    // In-memory sort for creditScore
-    if (sortBy === 'creditScore') {
-      enriched.sort((a, b) => {
-        const scoreA = a.latestCreditScore || -1;
-        const scoreB = b.latestCreditScore || -1;
-        return order === 'asc' ? scoreA - scoreB : scoreB - scoreA;
-      });
+    if (selectedIds) {
+      const position = new Map(selectedIds.map((id, index) => [id, index]));
+      enriched.sort((a, b) => position.get(a.id)! - position.get(b.id)!);
     }
-
-    // Compute tier for each customer in parallel (bounded by page limit)
-    const withTier = await Promise.all(
-      enriched.map(async (c) => {
-        try {
-          const t = await this.tierService.getCustomerTier(c.id);
-          return { ...c, tier: t.tier };
-        } catch {
-          return { ...c, tier: 'NEW' as const };
-        }
-      }),
-    );
-
-    // Apply tier filter after compute (in-memory — valid for small shops)
-    const filtered = tier ? withTier.filter((c) => c.tier === tier) : withTier;
+    const pageTiers = tierById ?? await this.tierService.getCustomerTiers(enriched.map(customer => customer.id));
+    const withTier = enriched.map(customer => ({ ...customer, tier: pageTiers.get(customer.id)?.tier ?? 'NEW' }));
 
     const totalCustomers = await this.prisma.customer.count({ where: { deletedAt: null } });
 
@@ -204,7 +212,7 @@ export class CustomerQueryService {
       newThisMonth,
     };
 
-    return { ...paginatedResponse(filtered, total, page, limit), summary };
+    return { ...paginatedResponse(withTier, total, page, limit), summary };
   }
 
   async findOne(id: string) {

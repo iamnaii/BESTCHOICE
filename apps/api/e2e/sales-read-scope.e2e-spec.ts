@@ -94,6 +94,24 @@ describe('Sales read authorization on isolated PostgreSQL', () => {
     await db.$disconnect();
   });
 
+  it.each<Record<string, string | number>>([{ page: 0 }, { page: 'NaN' }, { page: '1oops' }, { limit: 201 }, { limit: 0 }])('rejects invalid list pagination %j', async query => {
+    await read('', query).expect(400);
+  });
+  it('exports at limit200 and keeps full-filter profit on either page', async () => {
+    actor.role = 'OWNER'; actor.branchId = null;
+    for (const page of [1, 2]) {
+      const result = await read('', { search: prefix, page, limit: 1 }).expect(200);
+      expect(result.body.summary).toMatchObject({ totalAmount: 20000, totalProfit: 8000 });
+    }
+    const result = await read('', { search: prefix, limit: 200 }).expect(200);
+    expect(result.body.data).toHaveLength(2);
+  });
+  it('validates calendar dates and uses Thai daily boundaries', async () => {
+    await read('', { startDate: '2026-02-30' }).expect(400);
+    await read('', { startDate: '2026-09-30', endDate: '2026-09-01' }).expect(400);
+    const result = await read('', { search: prefix, startDate: date, endDate: date }).expect(200);
+    expect(result.body.total).toBe(1);
+  });
   it.each(['SALES', 'BRANCH_MANAGER'])('%s scopes list, counts and totals when branchId is omitted', async role => {
     actor.role = role;
     const response = await read('', { search: prefix }).expect(200);

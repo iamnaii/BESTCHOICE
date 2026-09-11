@@ -167,7 +167,7 @@ describe('SalesService', () => {
         findFirst: jest.fn().mockResolvedValue(mockSale),
         count: jest.fn().mockResolvedValue(1),
         aggregate: jest.fn().mockResolvedValue({ _sum: { netAmount: new Prisma.Decimal(25000), discount: new Prisma.Decimal(0) } }),
-        groupBy: jest.fn().mockResolvedValue([
+        groupBy: jest.fn().mockImplementation(async ({ by }) => by[0] === 'productId' ? [] : [
           { saleType: 'CASH', _count: 1, _sum: { netAmount: new Prisma.Decimal(25000) } },
         ]),
         create: jest.fn().mockResolvedValue(mockSale),
@@ -325,7 +325,7 @@ describe('SalesService', () => {
       const where = prisma.sale.findMany.mock.calls[0][0].where;
       const createdAt = where.createdAt as Record<string, Date>;
       expect(createdAt.gte).toBeInstanceOf(Date);
-      expect(createdAt.lte).toBeInstanceOf(Date);
+      expect(createdAt.lt).toBeInstanceOf(Date);
     });
 
     it('defaults to page 1 and limit 50', async () => {
@@ -360,7 +360,7 @@ describe('SalesService', () => {
     });
 
     it('includes a summary with cash/installment/finance counts', async () => {
-      prisma.sale.groupBy.mockResolvedValue([
+      prisma.sale.groupBy.mockImplementation(async ({ by }: { by: string[] }) => by[0] === 'productId' ? [] : [
         { saleType: 'CASH', _count: 3, _sum: { netAmount: new Prisma.Decimal(75000) } },
         { saleType: 'INSTALLMENT', _count: 2, _sum: { netAmount: new Prisma.Decimal(40000) } },
         { saleType: 'EXTERNAL_FINANCE', _count: 1, _sum: { netAmount: new Prisma.Decimal(20000) } },

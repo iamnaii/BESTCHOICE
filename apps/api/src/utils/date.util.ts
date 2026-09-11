@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 /**
  * Calculate days between a reference date and now (floored to whole days).
  * Returns 0 if the reference date is in the future.
@@ -78,4 +80,25 @@ export function addBkkMonths(anchor: Date, months: number): Date {
   local.setUTCMonth(targetMonth);
   local.setUTCDate(Math.min(day, lastDay));
   return new Date(local.getTime() - BANGKOK_OFFSET_MS);
+}
+
+/** Inclusive Bangkok calendar dates, expressed as [gte, lt) UTC instants. */
+export function bangkokDateRange(startDate?: string, endDate?: string): { gte?: Date; lt?: Date } {
+  const parse = (value: string): Date => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new BadRequestException('วันที่ต้องเป็น YYYY-MM-DD');
+    const instant = new Date(`${value}T00:00:00+07:00`);
+    if (!Number.isFinite(instant.getTime()) ||
+      new Date(instant.getTime() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10) !== value) {
+      throw new BadRequestException('วันที่ไม่ถูกต้อง');
+    }
+    return instant;
+  };
+  const start = startDate === undefined ? undefined : parse(startDate);
+  const end = endDate === undefined ? undefined : parse(endDate);
+  if (start && end && start > end) throw new BadRequestException('วันเริ่มต้นต้องไม่เกินวันสิ้นสุด');
+  return { ...(start ? { gte: start } : {}), ...(end ? { lt: new Date(end.getTime() + 86_400_000) } : {}) };
+}
+
+export function bangkokDateString(now: Date = new Date()): string {
+  return new Date(now.getTime() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10);
 }

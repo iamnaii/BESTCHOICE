@@ -52,7 +52,7 @@ export class BookingsController {
     return this.bookingsService.findAll(
       {
         page: page ? Math.max(1, parseInt(page, 10) || 1) : undefined,
-        limit: limit ? Math.min(100, parseInt(limit, 10) || 50) : undefined,
+        limit: limit ? Math.min(200, parseInt(limit, 10) || 50) : undefined,
         status,
         branchId,
         customerId,

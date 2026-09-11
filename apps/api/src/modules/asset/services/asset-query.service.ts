@@ -217,7 +217,11 @@ export class AssetQueryService {
       ];
     }
 
-    const [assets, total] = await Promise.all([
+    // The page of rows to display, plus every matching asset for the summary — the
+    // register's totals describe the whole filtered register, not the current page
+    // (DOC-06 #1565: the stat cards used to sum only the visible page while `count`
+    // was the full total).
+    const [assets, allAssets] = await Promise.all([
       this.prisma.fixedAsset.findMany({
         where,
         skip: (page - 1) * limit,
@@ -225,11 +229,15 @@ export class AssetQueryService {
         orderBy: { purchaseDate: 'desc' },
         include: { branch: { select: { id: true, name: true } } },
       }),
-      this.prisma.fixedAsset.count({ where }),
+      this.prisma.fixedAsset.findMany({
+        where,
+        select: { id: true, purchaseCost: true },
+      }),
     ]);
+    const total = allAssets.length;
 
-    // Compute historical NBV per asset
-    const assetIds = assets.map((a) => a.id);
+    // Compute historical NBV per asset (accumulated depreciation booked through asOfDate)
+    const assetIds = allAssets.map((a) => a.id);
     const entries = assetIds.length
       ? await this.prisma.depreciationEntry.findMany({
           where: {
@@ -249,6 +257,13 @@ export class AssetQueryService {
     let totalPurchaseCost = new Decimal(0);
     let totalAccumulatedDepr = new Decimal(0);
     let totalNbv = new Decimal(0);
+    for (const a of allAssets) {
+      const purchaseCost = new Decimal(a.purchaseCost.toString());
+      const accumulatedDeprAt = accumByAsset.get(a.id) ?? new Decimal(0);
+      totalPurchaseCost = totalPurchaseCost.plus(purchaseCost);
+      totalAccumulatedDepr = totalAccumulatedDepr.plus(accumulatedDeprAt);
+      totalNbv = totalNbv.plus(purchaseCost.minus(accumulatedDeprAt));
+    }
 
     const data = assets.map((a) => {
       const purchaseCost = new Decimal(a.purchaseCost.toString());
@@ -261,10 +276,6 @@ export class AssetQueryService {
         monthlyDepr.gt(0) && remainingDepreciable.gt(0)
           ? remainingDepreciable.div(monthlyDepr).ceil().toNumber()
           : 0;
-
-      totalPurchaseCost = totalPurchaseCost.plus(purchaseCost);
-      totalAccumulatedDepr = totalAccumulatedDepr.plus(accumulatedDeprAt);
-      totalNbv = totalNbv.plus(netBookValueAt);
 
       return {
         id: a.id,

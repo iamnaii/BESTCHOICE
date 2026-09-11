@@ -21,6 +21,11 @@ import { formatChatTimestamp } from '@/lib/chat-time';
 import ProductContextCard from './ProductContextCard';
 import Customer360Panel from './Customer360Panel';
 import LinkCustomerDialog from './LinkCustomerDialog';
+import CustomerCreateDialog, { splitDisplayName } from '@/components/customer/CustomerCreateDialog';
+import { useLinkRoomCustomer } from '../hooks/useLinkRoomCustomer';
+import { useAuth } from '@/contexts/AuthContext';
+import { canCreateCustomer } from '@/lib/constants';
+import { toast } from 'sonner';
 import { ContractHeroCard, PaymentsTimeline, CallLogList, DeviceWarrantyCard, type SummaryContract } from './DossierCards';
 import { TodoForm } from '@/pages/TodosPage/components/TodoForm';
 import type { Todo, AssigneeRef } from '@/pages/TodosPage/types';
@@ -362,6 +367,19 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
     setTab('customer');
   }
   const [linkOpen, setLinkOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  /* สิทธิ์สร้างลูกค้า = `@Roles` ของ POST /customers (OWNER/BRANCH_MANAGER/SALES) — ปิดปุ่มก่อน ไม่ให้กรอกจนจบแล้ว 403
+     ส่วน "ผูกห้อง" (PATCH rooms/:id/customer) กว้างกว่า (มี FINANCE_MANAGER) จึงไม่แตะปุ่มค้นหาลูกค้าเดิม */
+  const { user } = useAuth();
+  const canCreate = canCreateCustomer(user?.role);
+  /* ผูกลูกค้าที่เพิ่งสร้างเข้าห้อง — แยกจากขั้นสร้าง เพราะสร้างสำเร็จแล้วผูกพลาดต้อง "ลองผูกอีกครั้ง" ไม่ใช่กดบันทึกซ้ำ (จะ 409) */
+  const linkCreated = useLinkRoomCustomer(room?.id ?? '', {
+    onSuccess: () => toast.success('เพิ่มลูกค้าและผูกกับแชทแล้ว'),
+    onError: (_err, customerId) => toast.error('สร้างลูกค้าแล้ว แต่ผูกกับแชทไม่สำเร็จ', {
+      description: 'ลูกค้าอยู่ในระบบแล้ว ผูกอีกครั้งได้เลย',
+      action: { label: 'ลองผูกอีกครั้ง', onClick: () => linkCreated.mutate(customerId) },
+    }),
+  });
   const [apptOpen, setApptOpen] = useState(false);
 
   const linked = !!customerId;
@@ -412,11 +430,11 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
     { key: 'device', label: 'ประกัน', count: linked ? devicesCount || undefined : undefined },
   ];
 
-  const openCreateCustomer = () => {
-    const params = new URLSearchParams({ new: '1' });
-    if (room.displayName) params.set('name', room.displayName);
-    params.set('fromRoomId', room.id);
-    navigate(`/customers?${params.toString()}`);
+  /* เปิดฟอร์มสร้างลูกค้าเป็น popup ทับห้อง (ของเดิม navigate ไป /customers?new=1 แล้วเด้งกลับ /inbox = หลุดห้อง)
+     เติมชื่อจากห้องให้ก่อน · ห้อง Facebook เติม "ชื่อ Facebook" ด้วย เพราะเป็นชื่อบัญชีจริงของลูกค้า */
+  const createInitialValues = {
+    ...splitDisplayName(room.displayName),
+    ...(room.channel === 'FACEBOOK' && room.displayName ? { facebookName: room.displayName } : {}),
   };
 
   return (
@@ -508,7 +526,14 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
                     <Button variant="outline" size="sm" className="flex-1" onClick={() => setLinkOpen(true)}>
                       <Search className="mr-1 size-3.5" /> ค้นหาลูกค้าเดิม
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1" onClick={openCreateCustomer}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      disabled={!canCreate}
+                      title={canCreate ? undefined : 'สร้างลูกค้าได้เฉพาะเจ้าของ ผู้จัดการสาขา และฝ่ายขาย'}
+                      onClick={() => setCreateOpen(true)}
+                    >
                       <UserPlus className="mr-1 size-3.5" /> สร้างลูกค้าใหม่
                     </Button>
                   </div>
@@ -599,6 +624,29 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
       </div>
 
       <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={room.id} />
+      <CustomerCreateDialog
+        key={room.id}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        initialValues={createInitialValues}
+        submitLabel="บันทึกและผูกกับแชท"
+        onCreated={(c) => linkCreated.mutate(c.id)}
+        onUseExisting={(c) => linkCreated.mutate(c.id)}
+        context={
+          <div className="flex items-center gap-2.5 border-b border-primary/25 bg-primary/8 px-6 py-2.5 text-xs leading-snug">
+            <span className="relative size-7 shrink-0 overflow-hidden rounded-full bg-muted ring-1 ring-border">
+              <img src={avatar} alt="" className="size-full object-cover" />
+              <span className={cn('absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-card', channelDot[room.channel] ?? 'bg-muted-foreground')} />
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              <span className="text-muted-foreground">บันทึกแล้วจะผูกกับห้องแชท </span>
+              <span className="font-semibold">{name}</span>
+              <span className="text-muted-foreground"> · {channelLabel[room.channel] ?? room.channel}</span>
+            </span>
+            <span className="shrink-0 font-medium text-primary">ยังอยู่ในห้องนี้หลังบันทึก</span>
+          </div>
+        }
+      />
       {/* ตั้งนัด = ฟอร์ม Todo ตัวเดิม ผูกห้อง + ชื่อล่วงหน้า · บันทึกแล้ว invalidate ['todos'] → รายการนัดข้างบนรีเฟรช */}
       <TodoForm
         open={apptOpen}

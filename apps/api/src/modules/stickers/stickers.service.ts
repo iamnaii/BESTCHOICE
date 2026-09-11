@@ -1,35 +1,42 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ProductCategory } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStickerTemplateDto, UpdateStickerTemplateDto } from './dto/sticker.dto';
 
-export interface StickerRate {
-  downPayment: number;
-  monthlyPrice: number;
-  termMonths: number;
-}
-
-export interface StickerData {
+/**
+ * ข้อมูลเครื่องสำหรับพิมพ์สติกเกอร์ติดเครื่อง — อ่านจาก "ตัวเครื่อง" ล้วน ๆ
+ * (คำตัดสินเจ้าของ 2026-09-11: เลิกอ่านตารางราคากลาง PricingTemplate ซึ่งบน prod ราคาเงินสด = 0
+ * ทุกแถวและไม่ตรงรุ่นจริง). ราคา/ค่างวดให้ฝั่ง web คำนวณด้วยสูตรเดียวกับหน้ารายละเอียดสินค้า
+ * (getPositiveDisplayPrices + resolveQuotes) เพื่อให้สติกเกอร์ = สรุปส่งลูกค้าแบบย่อ
+ */
+export interface StickerProductData {
   productId: string;
+  name: string;
   brand: string;
   model: string;
+  category: string;
+  status: string;
   color: string | null;
   storage: string | null;
   batteryHealth: number | null;
-  warrantyExpireDate: string | null; // ISO date YYYY-MM-DD or null
+  hasBox: boolean | null;
+  /** ISO date YYYY-MM-DD เฉพาะประกันศูนย์ที่ยังไม่หมด — หมดแล้ว/ไม่ระบุ = null */
+  warrantyExpireDate: string | null;
   imei: string | null;
-  cashPrice: number | null;
-  rate1: StickerRate | null;
-  rate2: StickerRate | null;
-  shopLogoUrl: string | null;
+  /** ISO datetime ของวันที่รับเข้าสต็อกล่าสุด */
+  stockInDate: string | null;
+  cashPrice: string | null;
+  installmentPrice: string | null;
+  prices: { label: string; amount: string; isDefault: boolean }[];
 }
 
-interface StickerDefaults {
-  rate1Down: number;
-  rate1Term: number;
-  rate2Down: number;
-  rate2Term: number;
-}
+/** จำนวนเครื่องสูงสุดต่อคำขอ (ตรงกับด่านใน controller) */
+export const STICKER_BATCH_LIMIT = 100;
+
+const stickerProductArgs = Prisma.validator<Prisma.ProductDefaultArgs>()({
+  include: { prices: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } } },
+});
+type StickerProductRow = Prisma.ProductGetPayload<typeof stickerProductArgs>;
 
 @Injectable()
 export class StickersService {
@@ -75,122 +82,70 @@ export class StickersService {
     return this.prisma.stickerTemplate.update({ where: { id }, data: { isActive: false } });
   }
 
-  async getStickerData(productId: string): Promise<StickerData> {
-    const [defaults, shopLogoUrl] = await Promise.all([
-      this.loadDefaults(),
-      this.loadShopLogoUrl(),
-    ]);
-    const data = await this.composeOne(productId, defaults, shopLogoUrl);
+  /** เครื่องเดียว — key เป็น Product ID หรือ IMEI ก็ได้ */
+  async getStickerData(key: string): Promise<StickerProductData> {
+    const [data] = await this.getStickerDataBatch([key]);
     if (!data) throw new NotFoundException('ไม่พบสินค้า');
     return data;
   }
 
-  async getStickerDataBatch(productIds: string[]): Promise<StickerData[]> {
-    if (productIds.length === 0) return [];
-    const [defaults, shopLogoUrl] = await Promise.all([
-      this.loadDefaults(),
-      this.loadShopLogoUrl(),
-    ]);
-    const results = await Promise.all(
-      productIds.map((id) => this.composeOne(id, defaults, shopLogoUrl)),
-    );
-    return results.filter((r): r is StickerData => r !== null);
+  /**
+   * หลายเครื่องในคำขอเดียว — key แต่ละตัวเป็น Product ID หรือ IMEI (ช่องสแกนยิงบาร์โค้ด IMEI ได้ตรง ๆ)
+   * คืนตามลำดับ key ที่ขอ เครื่องเดียวกันที่ถูกอ้างสองทางส่งครั้งเดียว · key ที่หาไม่พบถูกข้าม
+   */
+  async getStickerDataBatch(keys: string[]): Promise<StickerProductData[]> {
+    const wanted = [...new Set(keys.map((k) => k.trim()).filter(Boolean))].slice(0, STICKER_BATCH_LIMIT);
+    if (wanted.length === 0) return [];
+
+    const rows = await this.prisma.product.findMany({
+      where: { deletedAt: null, OR: [{ id: { in: wanted } }, { imeiSerial: { in: wanted } }] },
+      ...stickerProductArgs,
+    });
+
+    const byKey = new Map<string, StickerProductRow>();
+    for (const row of rows) {
+      byKey.set(row.id, row);
+      if (row.imeiSerial) byKey.set(row.imeiSerial, row);
+    }
+    const seen = new Set<string>();
+    const ordered: StickerProductRow[] = [];
+    for (const key of wanted) {
+      const row = byKey.get(key);
+      if (row && !seen.has(row.id)) {
+        seen.add(row.id);
+        ordered.push(row);
+      }
+    }
+    return ordered.map((row) => this.toStickerData(row));
   }
 
-  private async loadDefaults(): Promise<StickerDefaults> {
-    const rows = await this.prisma.systemConfig.findMany({
-      where: { key: { startsWith: 'sticker.' } },
-    });
-    const map = new Map((rows ?? []).map((r) => [r.key, r.value]));
-    return {
-      rate1Down: Number(map.get('sticker.rate1.defaultDown') ?? 0),
-      rate1Term: Number(map.get('sticker.rate1.defaultTerm') ?? 24),
-      rate2Down: Number(map.get('sticker.rate2.defaultDown') ?? 0),
-      rate2Term: Number(map.get('sticker.rate2.defaultTerm') ?? 12),
-    };
-  }
-
-  private async loadShopLogoUrl(): Promise<string | null> {
-    const company = await this.prisma.companyInfo.findFirst({
-      where: { companyCode: 'SHOP' },
-      select: { logoUrl: true },
-    });
-    return company?.logoUrl ?? null;
-  }
-
-  private async composeOne(
-    productId: string,
-    defaults: StickerDefaults,
-    shopLogoUrl: string | null,
-  ): Promise<StickerData | null> {
-    const product = await this.prisma.product.findFirst({
-      where: { id: productId, deletedAt: null },
-      include: {
-        branch: { select: { name: true } },
-        inspection: { select: { overallGrade: true, gradeOverride: true } },
-      },
-    });
-    if (!product) return null;
-
-    // PHONE_USED templates are uniquely keyed by hasWarranty too — derive from product
-    const productHasWarranty =
-      product.category === 'PHONE_USED' &&
-      product.warrantyExpired !== true &&
-      product.warrantyExpireDate !== null &&
-      product.warrantyExpireDate.getTime() >= Date.now();
-
-    const pricing = await this.prisma.pricingTemplate.findFirst({
-      where: {
-        brand: { equals: product.brand, mode: 'insensitive' },
-        model: { equals: product.model, mode: 'insensitive' },
-        storage: product.storage ?? '',
-        category: product.category as ProductCategory,
-        hasWarranty: product.category === 'PHONE_USED' ? productHasWarranty : false,
-        isActive: true,
-        deletedAt: null,
-      },
-    });
-
-    const warrantyExpireDate = this.computeWarranty(
-      product.warrantyExpireDate,
-      product.warrantyExpired,
-    );
-
+  private toStickerData(product: StickerProductRow): StickerProductData {
     return {
       productId: product.id,
+      name: product.name,
       brand: product.brand,
       model: product.model,
+      category: product.category,
+      status: product.status,
       color: product.color,
       storage: product.storage,
       batteryHealth: product.batteryHealth,
-      warrantyExpireDate,
+      hasBox: product.hasBox,
+      warrantyExpireDate: this.activeWarrantyDate(product.warrantyExpireDate, product.warrantyExpired),
       imei: product.imeiSerial,
-      cashPrice: pricing ? Number(pricing.cashPrice) : null,
-      rate1: pricing
-        ? {
-            downPayment:
-              pricing.rate1DownPayment !== null
-                ? Number(pricing.rate1DownPayment)
-                : defaults.rate1Down,
-            monthlyPrice: Number(pricing.installmentBestchoicePrice),
-            termMonths: pricing.rate1TermMonths ?? defaults.rate1Term,
-          }
-        : null,
-      rate2: pricing
-        ? {
-            downPayment:
-              pricing.rate2DownPayment !== null
-                ? Number(pricing.rate2DownPayment)
-                : defaults.rate2Down,
-            monthlyPrice: Number(pricing.installmentFinancePrice),
-            termMonths: pricing.rate2TermMonths ?? defaults.rate2Term,
-          }
-        : null,
-      shopLogoUrl,
+      stockInDate: product.stockInDate ? product.stockInDate.toISOString() : null,
+      cashPrice: product.cashPrice != null ? product.cashPrice.toString() : null,
+      installmentPrice: product.installmentPrice != null ? product.installmentPrice.toString() : null,
+      prices: product.prices.map((p) => ({
+        label: p.label,
+        amount: p.amount.toString(),
+        isDefault: p.isDefault,
+      })),
     };
   }
 
-  private computeWarranty(expireDate: Date | null, expired: boolean | null): string | null {
+  /** ประกันศูนย์ที่ยังใช้ได้เท่านั้น — หมดแล้ว (flag หรือวันที่ผ่านมาแล้ว) ไม่ขึ้นบนสติกเกอร์ */
+  private activeWarrantyDate(expireDate: Date | null, expired: boolean | null): string | null {
     if (!expireDate) return null;
     if (expired === true) return null;
     if (expireDate.getTime() < Date.now()) return null;

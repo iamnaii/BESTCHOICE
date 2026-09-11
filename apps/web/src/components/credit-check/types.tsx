@@ -90,7 +90,7 @@ export interface CreditCheckSummary {
   pendingCount: number;
   approvedCount: number;
   rejectedCount: number;
-  avgScore: number;
+  avgScore: number | null;
 }
 
 export interface CreditChecksResponse {

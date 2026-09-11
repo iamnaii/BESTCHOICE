@@ -29,6 +29,7 @@ export interface CreditCheckItem {
 interface Props {
   cc: CreditCheckItem;
   canOverride: boolean;
+  canAnalyze?: boolean;
   isAnalyzing: boolean;
   onAnalyze: (id: string) => void;
   onOverride: (id: string) => void;
@@ -46,6 +47,7 @@ function riskFromScore(score: number | null) {
 export default function CreditCheckCard({
   cc,
   canOverride,
+  canAnalyze = false,
   isAnalyzing,
   onAnalyze,
   onOverride,
@@ -104,7 +106,7 @@ export default function CreditCheckCard({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {cc.status === 'PENDING' && !chatSource && (
+          {canAnalyze && cc.status === 'PENDING' && !chatSource && (
             <Button size="sm" variant="primary" onClick={() => onAnalyze(cc.id)} disabled={isAnalyzing}>
               <Brain className="size-3.5" />
               {isAnalyzing ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์'}

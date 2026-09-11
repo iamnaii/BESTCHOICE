@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import type { Product, Customer } from './types';
 import POSPage from './index';
 
@@ -19,9 +19,10 @@ vi.mock('./components/CustomerSearch', () => ({ default: ({ onSelectCustomer }: 
   <button onClick={() => onSelectCustomer({ id: 'c1', name: 'ลูกค้าทดสอบ', phone: '0800000000', nationalId: '', _count: { contracts: 0 } })}>เลือกลูกค้าทดสอบ</button> }));
 vi.mock('./components/BundleSearch', () => ({ default: () => null }));
 
+function Location() { const location = useLocation(); return <output aria-label="current location">{location.pathname}{location.search}</output>; }
 function renderPOS() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<MemoryRouter><QueryClientProvider client={client}><POSPage /></QueryClientProvider></MemoryRouter>);
+  return render(<MemoryRouter><QueryClientProvider client={client}><POSPage /><Location /></QueryClientProvider></MemoryRouter>);
 }
 const priceInput = () => screen.getByLabelText(/ราคาขาย/);
 const selectProduct = async () => userEvent.click(await screen.findByRole('button', { name: 'เลือกเครื่องทดสอบ' }));
@@ -39,6 +40,19 @@ beforeEach(() => {
 });
 
 describe('POS price selection', () => {
+  it('preserves selected customer/product on handoff after disclosing non-transferable conditions', async () => {
+    renderPOS(); await selectProduct();
+    await userEvent.click(screen.getByRole('button', { name: 'เลือกลูกค้าทดสอบ' }));
+    await userEvent.click(screen.getByRole('button', { name: /ต้องการผ่อนกับ BESTCHOICE/ }));
+    expect(screen.getByText(/ราคา ส่วนลด ของแถม เครดิตเทิร์น/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'กลับมาแก้ไข' }));
+    expect(priceInput()).toHaveValue(9000);
+    await userEvent.click(screen.getByRole('button', { name: /ต้องการผ่อนกับ BESTCHOICE/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'ไปสร้างสัญญาด้วยข้อมูลนี้' }));
+    expect(screen.getByLabelText('current location')).toHaveTextContent('/contracts/create?customerId=c1&productId=p1');
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
   it('initializes CASH from the cash price and submits that exact amount', async () => {
     renderPOS(); await selectProduct();
     expect(priceInput()).toHaveValue(9000);

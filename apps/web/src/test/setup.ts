@@ -32,3 +32,13 @@ if (typeof Blob !== 'undefined' && !Blob.prototype.arrayBuffer) {
     });
   };
 }
+
+// jsdom has no media queries. Responsive layout itself is checked in Playwright;
+// component tests still need the browser's subscription interface.
+if (typeof window.matchMedia !== 'function') {
+  window.matchMedia = (media: string) => ({
+    media, matches: false, onchange: null,
+    addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
+    dispatchEvent: () => true,
+  });
+}

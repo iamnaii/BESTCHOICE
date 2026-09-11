@@ -187,6 +187,8 @@ export default function CustomerDetailPage() {
   }, [editSameAddress, editAddrIdCard]);
 
   const canEdit = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
+  const canStartCredit = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
+  const canUploadDocuments = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
   const canReviewCredit = !!user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user.role);
 
   const {
@@ -555,7 +557,7 @@ export default function CustomerDetailPage() {
     : null;
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader title={displayName} subtitle="รายละเอียดลูกค้า" badge={tierData ? <CustomerTierBadge tier={tierData.tier} size="md" /> : undefined} breadcrumb={
         <Breadcrumb>
           <BreadcrumbList>
@@ -661,8 +663,9 @@ export default function CustomerDetailPage() {
       })()}
 
       {/* Customer Info — Tabbed Layout */}
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6">
-        <TabsList variant="line" className="mb-5">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="min-w-0 mb-6">
+        <div className="max-w-full overflow-x-auto mb-5">
+        <TabsList variant="line" className="min-w-max">
           <TabsTrigger value="info">ข้อมูลส่วนตัว</TabsTrigger>
           <TabsTrigger value="contact">ติดต่อ & ที่อยู่</TabsTrigger>
           <TabsTrigger value="work">งาน & อ้างอิง ({refs?.length ?? 0})</TabsTrigger>
@@ -678,8 +681,9 @@ export default function CustomerDetailPage() {
             )}
           </TabsTrigger>
         </TabsList>
+        </div>
 
-        <TabsContent value="info">
+        <TabsContent className="min-w-0" value="info">
       <Card>
         <CardHeader>
           <CardTitle>ข้อมูลส่วนตัว</CardTitle>
@@ -703,7 +707,7 @@ export default function CustomerDetailPage() {
       </Card>
         </TabsContent>
 
-        <TabsContent value="contact">
+        <TabsContent className="min-w-0" value="contact">
       {/* Address */}
       <Card className="mb-6">
         <CardHeader>
@@ -759,7 +763,7 @@ export default function CustomerDetailPage() {
       </Card>
         </TabsContent>
 
-        <TabsContent value="work">
+        <TabsContent className="min-w-0" value="work">
       {/* Work */}
       <Card className="mb-6">
         <CardHeader>
@@ -809,7 +813,7 @@ export default function CustomerDetailPage() {
       </Card>
 
       {/* Documents */}
-      {canEdit && (
+      {canUploadDocuments && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>เอกสาร</CardTitle>
@@ -864,12 +868,12 @@ export default function CustomerDetailPage() {
 
         </TabsContent>
 
-        <TabsContent value="credit">
+        <TabsContent className="min-w-0" value="credit">
       {/* Credit Check */}
       <Card className="mb-6">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>ตรวจสอบเครดิต</CardTitle>
-          {canEdit && (
+          {canStartCredit && (
             <Button variant="primary" size="sm" onClick={() => setShowCreditDialog(true)}>
               + ตรวจเครดิตใหม่
             </Button>
@@ -885,6 +889,7 @@ export default function CustomerDetailPage() {
                 key={cc.id}
                 cc={cc}
                 canOverride={canReviewCredit}
+                canAnalyze={canStartCredit}
                 isAnalyzing={analyzeCreditMutation.isPending}
                 onAnalyze={(ccId) => analyzeCreditMutation.mutate(ccId)}
                 onOverride={(ccId) => {
@@ -907,7 +912,7 @@ export default function CustomerDetailPage() {
 
         </TabsContent>
 
-        <TabsContent value="contracts">
+        <TabsContent className="min-w-0" value="contracts">
       {/* Contracts */}
       <div className="mb-6">
         <DataTable columns={contractColumns} data={customer.contracts} emptyMessage="ยังไม่มีสัญญา" />
@@ -949,7 +954,7 @@ export default function CustomerDetailPage() {
         </TabsContent>
 
         {/* ─── Purchases Tab (ขายสด / ไฟแนนซ์นอก) ───────────────────────── */}
-        <TabsContent value="purchases">
+        <TabsContent className="min-w-0" value="purchases">
           {/* ประกัน/แจ้งเตือนทางไลน์ใช้ `lineIdShop` เป็นตัวระบุ — ลูกค้าที่ยังไม่ผูก
               จะไม่ได้รับอะไรเลย จึงชวนผูกตรงจุดที่พนักงานกำลังคุยเรื่องเครื่องกับลูกค้าพอดี */}
           <div className="mb-4">
@@ -965,7 +970,7 @@ export default function CustomerDetailPage() {
         </TabsContent>
 
         {/* ─── Loyalty Tab ────────────────────────────────────────────── */}
-        <TabsContent value="loyalty">
+        <TabsContent className="min-w-0" value="loyalty">
           {/* Points Balance */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">

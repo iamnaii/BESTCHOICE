@@ -1,3 +1,5 @@
+import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { AvailableTradeInCredit, ContractQuote } from '@installment/shared';
 import Decimal from 'decimal.js';
@@ -43,6 +45,7 @@ export function useContractCreateData() {
   const [productSearch, setProductSearch] = useState('');
   const [selectedProduct, setSelectedProductState] = useState<Product | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
+  const debouncedCustomerSearch = useDebounce(customerSearch);
   const [selectedCustomer, setSelectedCustomerState] = useState<Customer | null>(null);
   const [tradeInCreditId, setTradeInCreditId] = useState(entry.restored?.tradeInCreditId ?? '');
   const [tradeInCredit, setTradeInCredit] = useState<AvailableTradeInCredit | null>(null);
@@ -182,10 +185,10 @@ export function useContractCreateData() {
   }, [products, selectedProduct]);
 
   const { data: customers = [] } = useQuery<Customer[]>({
-    queryKey: ['customers-search', customerSearch],
+    queryKey: ['customers-search', debouncedCustomerSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (customerSearch) params.set('search', customerSearch);
+      if (debouncedCustomerSearch) params.set('search', debouncedCustomerSearch);
       const { data } = await api.get(`/customers?${params}`);
       return data.data || [];
     },
@@ -328,7 +331,7 @@ export function useContractCreateData() {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['trade-in-credits'] });
+      void invalidateSalesQueries(queryClient, 'contract-created');
       draft.clear();
       toast.success('สร้างสัญญาสำเร็จ — อัปโหลดเอกสารที่หน้ารายละเอียดสัญญา');
       navigate(`/contracts/${data.id}`);

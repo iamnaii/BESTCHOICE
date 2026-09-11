@@ -1,3 +1,4 @@
+import { contractBalances } from '@/lib/contract-balances';
 import type { SignatureRequirements } from '@installment/shared';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -271,16 +272,17 @@ const deleteMutation = useMutation({
   }
 
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
-  const totalOutstanding = contract.payments
-    .filter((p) => p.status !== 'PAID')
-    .reduce((sum, p) => sum + parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid || '0'), 0);
-  const isReviewer = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role) && (user.role === 'OWNER' || contract.salespersonId !== user.id);
+  const { outstanding: totalOutstanding, overdue: totalOverdue } = contractBalances(contract.status, contract.payments);
+  const isReviewer = user && ['OWNER', 'FINANCE_MANAGER'].includes(user.role) && (user.role === 'OWNER' || contract.salespersonId !== user.id);
   const isCreator = user && contract.salespersonId === user.id;
   const isOwner = user?.role === 'OWNER';
   const canEdit = (isCreator || isOwner) && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const canEditMaster = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
   const canDelete = isOwner && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const allSigned = contract.signatureRequirements?.complete === true;
+  const canSign = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '') && contract.status === 'DRAFT' && ['CREATING', 'REJECTED', 'PENDING_REVIEW', 'APPROVED'].includes(contract.workflowStatus);
+  const canActivate = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user?.role ?? '');
+  const canCreateCustomerLink = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
 
   return (
     <div>
@@ -298,9 +300,9 @@ const deleteMutation = useMutation({
         }
         action={
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 shadow-sm">
-              ลงนาม/เอกสาร
-            </button>
+            {canSign && <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 shadow-sm">
+              ลงนามสัญญา
+            </button>}
             <button
               onClick={async () => {
                 try {
@@ -323,7 +325,7 @@ const deleteMutation = useMutation({
             </button>
 
             {/* Workflow buttons */}
-            {contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
+            {canActivate && contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
               <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทุกฝ่ายที่ระบุในสัญญา' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
               </button>
@@ -351,18 +353,18 @@ const deleteMutation = useMutation({
               </button>
             )}
 
-            {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
+            {canActivate && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
               <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 shadow-sm">
                 ปิดก่อนกำหนด
               </button>
             )}
-            {['ACTIVE', 'OVERDUE', 'COMPLETED'].includes(contract.status) && (
+            {canCreateCustomerLink && ['ACTIVE', 'OVERDUE', 'COMPLETED'].includes(contract.status) && (
               <button
                 onClick={() => customerLinkMutation.mutate()}
                 disabled={customerLinkMutation.isPending}
                 className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 shadow-sm"
               >
-                {customerLinkMutation.isPending ? 'กำลังสร้าง...' : 'ส่งลิงก์ลูกค้า'}
+                {customerLinkMutation.isPending ? 'กำลังสร้าง...' : 'สร้างลิงก์ลูกค้า'}
               </button>
             )}
             {canDelete && (
@@ -407,7 +409,7 @@ const deleteMutation = useMutation({
         const stepHints: { text: string; action?: () => void; actionLabel?: string }[] = [
           { text: '' },
           { text: 'อัปโหลดเอกสารที่จำเป็น', action: () => setActiveTab('documents'), actionLabel: 'ไปแนบเอกสาร' },
-          { text: 'ให้ลูกค้ายินยอม PDPA และลงนามสัญญา', action: () => navigate(`/contracts/${id}/sign`), actionLabel: 'ไปลงนาม' },
+          { text: 'ให้ลูกค้ายินยอม PDPA และลงนามสัญญา', action: canSign ? () => navigate(`/contracts/${id}/sign`) : undefined, actionLabel: canSign ? 'ไปลงนาม' : undefined },
           (() => {
             const canSubmit = isCreator && allSigned && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
             return {
@@ -418,8 +420,8 @@ const deleteMutation = useMutation({
           })(),
           {
             text: allSigned ? 'สัญญาอนุมัติแล้ว พร้อมเปิดใช้งาน' : 'ต้องลงนามครบก่อนเปิดใช้งาน',
-            action: allSigned ? () => activateMutation.mutate() : undefined,
-            actionLabel: allSigned ? 'เปิดใช้งานสัญญา' : undefined,
+            action: allSigned && canActivate ? () => activateMutation.mutate() : undefined,
+            actionLabel: allSigned && canActivate ? 'เปิดใช้งานสัญญา' : undefined,
           },
         ];
         const hint = currentStep >= 0 ? stepHints[currentStep] : null;
@@ -480,10 +482,11 @@ const deleteMutation = useMutation({
           </CardContent>
         </Card>
         <Card className={`rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden ${totalOutstanding > 0 ? '' : 'opacity-60'}`}>
-          <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${totalOutstanding > 0 ? 'bg-destructive' : 'bg-muted-foreground/30'}`} />
+          <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${totalOverdue > 0 ? 'bg-destructive' : 'bg-muted-foreground/30'}`} />
           <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างชำระ</div>
-            <div className={`text-xl font-bold tabular-nums font-mono ${totalOutstanding > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{formatNumber(totalOutstanding)} บาท</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดคงเหลือทั้งหมด</div>
+            <div className={`text-xl font-bold tabular-nums font-mono ${totalOverdue > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{formatNumber(totalOutstanding)} บาท</div>
+            <p className="mt-2 text-xs text-muted-foreground">เกินกำหนด {formatNumber(totalOverdue)} บาท</p>
           </CardContent>
         </Card>
       </div>

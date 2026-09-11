@@ -1,3 +1,6 @@
+import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
+import { contractReturnUrl } from '@/lib/contract-return';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useState, useMemo, useEffect } from 'react';
 import Decimal from 'decimal.js';
 import type { AvailableTradeInCredit } from '@installment/shared';
@@ -51,6 +54,7 @@ export default function POSPage() {
 
   // Sale type (kept as separate state — drives conditional UI sections)
   const [saleType, setSaleType] = useState<SaleType>('CASH');
+  const [handoffOpen, setHandoffOpen] = useState(false);
 
   // Product search state
   const [productSearch, setProductSearch] = useState('');
@@ -237,9 +241,7 @@ export default function POSPage() {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['pos-products'] });
-      queryClient.invalidateQueries({ queryKey: ['trade-in-credits'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      void invalidateSalesQueries(queryClient, 'sale-created');
       const typeLabel = saleTypeConfig[saleType].label;
       toast.success(`ขาย${typeLabel}สำเร็จ - ${data.saleNumber}`);
       resetForm();
@@ -318,7 +320,7 @@ export default function POSPage() {
               </div>
               <div className="mt-4 p-3 rounded-xl bg-primary/5 border border-primary/10 text-center">
                 <button
-                  onClick={() => navigate('/contracts/create')}
+                  onClick={() => setHandoffOpen(true)}
                   className="text-xs text-primary font-semibold hover:underline flex items-center gap-1 justify-center"
                 >
                   ต้องการผ่อนกับ BESTCHOICE?
@@ -415,6 +417,21 @@ export default function POSPage() {
         </div>
       </div>
       </QueryBoundary>
+      <ConfirmDialog open={handoffOpen} onOpenChange={setHandoffOpen} title="ไปสร้างสัญญาผ่อนชำระ"
+        description="ใช้ลูกค้าและเครื่องที่เลือก แล้วคำนวณเงื่อนไขผ่อนในหน้าสัญญาอีกครั้ง"
+        confirmLabel="ไปสร้างสัญญาด้วยข้อมูลนี้" cancelLabel="กลับมาแก้ไข"
+        onConfirm={() => {
+          const params = new URLSearchParams();
+          if (selectedCustomer) params.set('customerId', selectedCustomer.id);
+          if (selectedProduct) params.set('productId', selectedProduct.id);
+          navigate(contractReturnUrl(`/contracts/create?${params}`)!);
+        }}>
+        <div className="text-sm space-y-3">
+          <p>ลูกค้า: {selectedCustomer?.name ?? 'ยังไม่ได้เลือก'}<br />เครื่อง: {selectedProduct?.name ?? 'ยังไม่ได้เลือก'}</p>
+          <p>ราคาใน POS {Number(sellingPrice).toLocaleString()} บาท · ส่วนลด {Number(discount).toLocaleString()} บาท · ของแถม {bundleProducts.length} รายการ</p>
+          <p className="text-muted-foreground">ราคา ส่วนลด ของแถม เครดิตเทิร์น วิธีรับเงิน และดาวน์ใน POS จะไม่ถูกย้าย กรุณาตรวจและระบุเงื่อนไขใหม่ในหน้าสัญญา การส่งต่อนี้ยังไม่บันทึกรับเงิน</p>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

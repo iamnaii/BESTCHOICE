@@ -1,8 +1,12 @@
-import { useState, useMemo, useEffect } from 'react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
+import { computeDefaultTimeRange, formatThaiDateTime } from '@/lib/date';
+import { createExportGuard, ExportError, fetchExportPages } from '@/lib/fetch-export-pages';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { TradeInCreditSnapshot } from '@installment/shared';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -36,7 +40,7 @@ interface Sale {
   discount: string;
   netAmount: string;
   paymentMethod: string;
-  amountReceived: string;
+  amountReceived: string | null;
   downPaymentAmount: string | null;
   financeCompany: string | null;
   financeRefNumber: string | null;
@@ -91,6 +95,17 @@ const paymentMethodLabels: Record<string, string> = {
 export default function SalesHistoryPage() {
   useDocumentTitle('รายการขาย');
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const saleId = searchParams.get('saleId');
+  const saleOpenerId = useRef<string | null>(null);
+  const saleListRegion = useRef<HTMLDivElement>(null);
+  const openSale = (id: string) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous); next.set('saleId', id); return next;
+  });
+  const saleDetail = useQuery<Sale>({
+    queryKey: ['sale', saleId], enabled: !!saleId,
+    queryFn: async () => (await api.get(`/sales/${encodeURIComponent(saleId!)}`)).data,
+  });
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
   const isOwnerOrManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
@@ -125,7 +140,7 @@ export default function SalesHistoryPage() {
     setPage(1);
   }, [search, saleTypeFilter, startDate, endDate, paymentMethodFilter, salespersonFilter, branchFilter, contractStatusFilter, includeVoided]);
 
-  const buildParams = (overrideLimit?: number) => {
+  const buildParams = (targetPage = page, targetLimit = limit) => {
     const params = new URLSearchParams();
     if (includeVoided) params.set('includeVoided', 'true');
     if (saleTypeFilter) params.set('saleType', saleTypeFilter);
@@ -136,9 +151,8 @@ export default function SalesHistoryPage() {
     if (salespersonFilter) params.set('salespersonId', salespersonFilter);
     if (branchFilter) params.set('branchId', branchFilter);
     if (contractStatusFilter) params.set('contractStatus', contractStatusFilter);
-    params.set('page', String(page));
-    if (overrideLimit) params.set('limit', String(overrideLimit));
-    else params.set('limit', String(limit));
+    params.set('page', String(targetPage));
+    params.set('limit', String(targetLimit));
     return params;
   };
 
@@ -156,6 +170,9 @@ export default function SalesHistoryPage() {
     },
   });
 
+  useEffect(() => {
+    if (salesData && page > Math.max(1, salesData.totalPages)) setPage(Math.max(1, salesData.totalPages));
+  }, [salesData, page]);
   const voidMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
       const { data } = await api.post<{ saleNumber: string; restoredProductIds: string[]; reversalEntryNumbers: string[] }>(
@@ -168,7 +185,7 @@ export default function SalesHistoryPage() {
       toast.success(`ยกเลิกใบขาย ${data.saleNumber} แล้ว — คืนสินค้าเข้าสต็อก ${data.restoredProductIds.length} รายการ`);
       setVoidTarget(null);
       setVoidReason('');
-      queryClient.invalidateQueries({ queryKey: ['sales-history'] });
+      void invalidateSalesQueries(queryClient, 'sale-voided');
     },
     // ข้อความจาก server ชี้ทางออกของแต่ละด่านอยู่แล้ว — แสดงตรง ๆ ไม่เขียนทับ
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -196,20 +213,9 @@ export default function SalesHistoryPage() {
   const summary = salesData?.summary;
 
   // Date shortcut buttons
-  const setDateRange = (type: 'today' | 'week' | 'month') => {
-    const now = new Date();
-    const fmt = (d: Date) => d.toISOString().slice(0, 10);
-    setEndDate(fmt(now));
-    if (type === 'today') {
-      setStartDate(fmt(now));
-    } else if (type === 'week') {
-      const d = new Date(now);
-      d.setDate(d.getDate() - d.getDay());
-      setStartDate(fmt(d));
-    } else {
-      const d = new Date(now.getFullYear(), now.getMonth(), 1);
-      setStartDate(fmt(d));
-    }
+  const setDateRange = (type: 'today' | 'week' | 'month' | 'last_month') => {
+    const range = computeDefaultTimeRange(type === 'week' ? 'this_week' : type === 'month' ? 'this_month' : type);
+    setStartDate(range.startDate); setEndDate(range.endDate);
   };
 
   const clearFilters = () => {
@@ -222,19 +228,25 @@ export default function SalesHistoryPage() {
     setSalespersonFilter('');
     setBranchFilter('');
     setContractStatusFilter('');
+    setIncludeVoided(false);
   };
 
-  const hasActiveFilters = saleTypeFilter || search || startDate || endDate || paymentMethodFilter || salespersonFilter || branchFilter || contractStatusFilter;
+  const hasActiveFilters = saleTypeFilter || search || startDate || endDate || paymentMethodFilter || salespersonFilter || branchFilter || contractStatusFilter || includeVoided;
 
+  const [isExporting, setIsExporting] = useState(false);
   // Excel export
   const exportExcel = async () => {
+    const assertCurrent = createExportGuard();
     try {
+      setIsExporting(true);
       toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
-      const { data: allData } = await api.get<SalesResponse>(`/sales?${buildParams(10000)}`);
+      const allRows = await fetchExportPages<Sale>(async (page, limit) =>
+        (await api.get<SalesResponse>(`/sales?${buildParams(page, limit)}`)).data, assertCurrent);
 
       const baseCols: ExcelColumn[] = [
         { header: 'เลขที่ขาย', key: 'saleNumber', width: 18 },
         { header: 'วันที่', key: 'date', width: 14 },
+        { header: 'ดึงข้อมูลเมื่อ (เวลาไทย)', key: 'fetchedAt', width: 24 },
         { header: 'ประเภท', key: 'saleType', width: 12 },
         { header: 'ยี่ห้อ/รุ่น', key: 'product', width: 25 },
         { header: 'IMEI/SN', key: 'imei', width: 20 },
@@ -278,10 +290,12 @@ export default function SalesHistoryPage() {
 
       const now = new Date();
       await exportToExcel({
+        assertCurrent,
         columns: baseCols,
-        data: allData.data.map((s: Sale) => {
+        data: allRows.map((s: Sale) => {
           const row: Record<string, unknown> = {
             saleNumber: s.saleNumber,
+            fetchedAt: formatThaiDateTime(now, 'Asia/Bangkok'),
             date: formatDateShort(s.createdAt),
             saleType: saleTypeLabels[s.saleType] || s.saleType,
             product: `${s.product.brand} ${s.product.model}`,
@@ -322,10 +336,10 @@ export default function SalesHistoryPage() {
         sheetName: 'ประวัติการขาย',
         filename: `ประวัติการขาย_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`,
       });
-      toast.success(`ดาวน์โหลดสำเร็จ (${allData.data.length} รายการ)`, { id: 'excel-export' });
-    } catch {
-      toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });
-    }
+      toast.success(`ดาวน์โหลดสำเร็จ (${allRows.length} รายการ)`, { id: 'excel-export' });
+    } catch (error) {
+      toast.error(error instanceof ExportError ? error.message : getErrorMessage(error), { id: 'excel-export' });
+    } finally { setIsExporting(false); }
   };
 
   const columns = useMemo(() => [
@@ -341,9 +355,9 @@ export default function SalesHistoryPage() {
       label: 'เลขที่',
       render: (s: Sale) => (
         <div className="space-y-1">
-          <span className={`font-mono text-sm font-medium ${s.deletedAt ? 'text-muted-foreground line-through' : 'text-primary'}`}>
+          <Link data-sale-id={s.id} to={`/sales?${new URLSearchParams({ ...Object.fromEntries(searchParams), saleId: s.id })}`} onClick={event => { event.stopPropagation(); saleOpenerId.current = s.id; }} className={`font-mono text-sm font-medium hover:underline ${s.deletedAt ? 'text-muted-foreground line-through' : 'text-primary'}`}>
             {s.saleNumber}
-          </span>
+          </Link>
           {s.deletedAt && (
             <div className="text-xs leading-snug space-y-0.5">
               <Badge variant="destructive" size="sm">ยกเลิกแล้ว</Badge>
@@ -506,13 +520,13 @@ export default function SalesHistoryPage() {
         );
       },
     }] : []),
-  ], [navigate, salesData?.page, limit, isOwner, isOwnerOrManager]);
+  ].filter(column => ['saleNumber', 'createdAt', 'saleType', 'product', 'customer', 'netAmount', 'actions'].includes(column.key)), [navigate, searchParams, salesData?.page, limit, isOwner, isOwnerOrManager]);
 
   const inputClass = 'px-3 py-2 border border-input rounded-lg text-sm bg-background';
 
   return (
     <div>
-      <PageHeader title="ประวัติการขาย" subtitle="ดูรายการขายทั้งหมด" />
+      <PageHeader title="รายการขาย" subtitle="ยอดขายตามตัวกรอง แยกจากยอดเงินที่รับ" />
 
       {/* Summary Cards */}
       {summary && salesData && (
@@ -566,6 +580,7 @@ export default function SalesHistoryPage() {
                   <div className={`text-xl font-bold tabular-nums ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
                     {summary.totalProfit >= 0 ? '+' : ''}{summary.totalProfit.toLocaleString()} <span className="text-sm font-normal">฿</span>
                   </div>
+                  <p className="text-xs text-muted-foreground mt-2">ยอดสุทธิ − ต้นทุนเครื่องปัจจุบัน</p>
                 </CardContent>
               </div>
             </Card>
@@ -579,13 +594,13 @@ export default function SalesHistoryPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           <input
             type="text"
-            value={searchInput}
+            aria-label="ค้นหารายการขาย" value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="ค้นหาเลขที่ขาย, ลูกค้า, สินค้า, ไฟแนนซ์..."
             className={`${inputClass} md:col-span-1`}
           />
           <select
-            value={saleTypeFilter}
+            aria-label="ประเภทการขาย" value={saleTypeFilter}
             onChange={(e) => setSaleTypeFilter(e.target.value)}
             className={inputClass}
           >
@@ -595,7 +610,7 @@ export default function SalesHistoryPage() {
             <option value="EXTERNAL_FINANCE">ไฟแนนซ์</option>
           </select>
           <select
-            value={paymentMethodFilter}
+            aria-label="วิธีชำระ" value={paymentMethodFilter}
             onChange={(e) => setPaymentMethodFilter(e.target.value)}
             className={inputClass}
           >
@@ -605,7 +620,7 @@ export default function SalesHistoryPage() {
             <option value="QR_EWALLET">QR/E-Wallet</option>
           </select>
           <select
-            value={contractStatusFilter}
+            aria-label="สถานะสัญญา" value={contractStatusFilter}
             onChange={(e) => setContractStatusFilter(e.target.value)}
             className={inputClass}
           >
@@ -621,19 +636,20 @@ export default function SalesHistoryPage() {
         {/* Row 2: Date filters + shortcuts + Excel */}
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <ThaiDateInput
-            value={startDate}
+            aria-label="วันเริ่มต้น" value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className={`${inputClass} w-40`}
           />
           <span className="text-sm text-muted-foreground">ถึง</span>
           <ThaiDateInput
-            value={endDate}
+            aria-label="วันสิ้นสุด" value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className={`${inputClass} w-40`}
           />
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             <button onClick={() => setDateRange('today')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">วันนี้</button>
             <button onClick={() => setDateRange('week')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">สัปดาห์นี้</button>
+            <button onClick={() => setDateRange('last_month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent">เดือนก่อน</button>
             <button onClick={() => setDateRange('month')} className="px-3 py-2 text-xs rounded-lg border border-input hover:bg-accent transition-colors">เดือนนี้</button>
           </div>
           <div className="ml-auto flex gap-2">
@@ -643,7 +659,7 @@ export default function SalesHistoryPage() {
                 ล้างตัวกรอง
               </button>
             )}
-            <button onClick={exportExcel} className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
+            <button onClick={exportExcel} disabled={isExporting || isError || isLoading} className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
               <Download className="w-3.5 h-3.5" />
               ส่งออก Excel
             </button>
@@ -654,7 +670,7 @@ export default function SalesHistoryPage() {
         {isOwnerOrManager && (
           <div className="flex flex-wrap items-center gap-3">
             <select
-              value={salespersonFilter}
+              aria-label="พนักงานขาย" value={salespersonFilter}
               onChange={(e) => setSalespersonFilter(e.target.value)}
               className={inputClass}
             >
@@ -665,7 +681,7 @@ export default function SalesHistoryPage() {
             </select>
             {isOwner && (
               <select
-                value={branchFilter}
+                aria-label="สาขา" value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
                 className={inputClass}
               >
@@ -699,6 +715,7 @@ export default function SalesHistoryPage() {
         </div>
       </div>
 
+      {contractStatusFilter === 'DRAFT' && <p className="text-sm text-warning mb-4">รายการเตรียมสัญญา ยังไม่ใช่ยอดขายสำเร็จ</p>}
       {/* Sales Table */}
       <QueryBoundary
         isLoading={isLoading && !salesData}
@@ -707,12 +724,13 @@ export default function SalesHistoryPage() {
         onRetry={refetch}
         errorTitle="ไม่สามารถโหลดประวัติการขายได้"
       >
+        <div ref={saleListRegion} tabIndex={-1} aria-label="รายการขาย">
         <DataTable
           columns={columns}
           data={salesData?.data || []}
           isLoading={isLoading}
-          emptyMessage="ยังไม่มีรายการขาย"
-          onRowClick={(sale) => sale.contract ? navigate(`/contracts/${sale.contract.id}`) : undefined}
+          emptyMessage={hasActiveFilters ? 'ไม่พบรายการขายตามตัวกรอง' : 'ยังไม่มีรายการขาย'}
+          onRowClick={(sale) => { saleOpenerId.current = null; openSale(sale.id); }}
           pagination={salesData ? {
             page: salesData.page,
             totalPages: salesData.totalPages,
@@ -720,7 +738,50 @@ export default function SalesHistoryPage() {
             onPageChange: setPage,
           } : undefined}
         />
+        </div>
       </QueryBoundary>
+
+      <Sheet open={!!saleId} onOpenChange={open => { if (!open) setSearchParams(previous => {
+        const next = new URLSearchParams(previous); next.delete('saleId'); return next;
+      }); }}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto" onCloseAutoFocus={event => {
+          event.preventDefault();
+          // Updating URL-driven columns can replace the original link node.
+          const opener = Array.from(saleListRegion.current?.querySelectorAll<HTMLAnchorElement>('a[data-sale-id]') ?? [])
+            .find(link => link.dataset.saleId === saleOpenerId.current);
+          (opener ?? saleListRegion.current)?.focus();
+        }}>
+          <SheetHeader><SheetTitle>รายละเอียดใบขาย</SheetTitle><SheetDescription>ยอดขาย วิธีรับเงิน และเอกสารที่เกี่ยวข้อง</SheetDescription></SheetHeader>
+          <QueryBoundary isLoading={saleDetail.isLoading} isError={saleDetail.isError} error={saleDetail.error} onRetry={saleDetail.refetch}>
+            {saleDetail.data && <div className="space-y-5 text-sm">
+              <div><p className="font-mono text-lg font-semibold">{saleDetail.data.saleNumber}</p><p className="text-muted-foreground">{formatThaiDateTime(saleDetail.data.createdAt, 'Asia/Bangkok')}</p>
+                <Badge variant={saleDetail.data.deletedAt ? 'destructive' : 'success'}>{saleDetail.data.deletedAt ? 'ยกเลิกแล้ว' : saleDetail.data.contract?.status === 'DRAFT' ? 'เตรียมสัญญา' : 'ขายสำเร็จ'}</Badge></div>
+              <div><Link className="text-primary underline" to={`/customers/${saleDetail.data.customer.id}`}>{saleDetail.data.customer.name}</Link><p>{saleDetail.data.product.name}</p><p className="font-mono text-xs text-muted-foreground">{saleDetail.data.product.imeiSerial || saleDetail.data.product.serialNumber}</p></div>
+              <dl className="space-y-2 tabular-nums">
+                {[
+                  ['ราคาขาย', Number(saleDetail.data.sellingPrice)], ['ส่วนลด', Number(saleDetail.data.discount)], ['ยอดสุทธิ', Number(saleDetail.data.netAmount)],
+                  ...(isOwner && saleDetail.data.product.costPrice != null ? [['ต้นทุนเครื่องปัจจุบัน', Number(saleDetail.data.product.costPrice)], ['กำไรจากราคาเครื่อง', Number(saleDetail.data.netAmount) - Number(saleDetail.data.product.costPrice)]] : []),
+                  ...(saleDetail.data.downPaymentAmount != null ? [['ดาวน์ที่ตกลง', Number(saleDetail.data.downPaymentAmount)]] : []),
+                  [saleDetail.data.saleType === 'CASH' ? 'รับก่อนทอน' : 'รับดาวน์', saleDetail.data.amountReceived == null ? null : Number(saleDetail.data.amountReceived)],
+                  ...(saleDetail.data.financeAmount ? [['ยอดจัดไฟแนนซ์', Number(saleDetail.data.financeAmount)]] : []),
+                ].map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd>{value == null ? 'ยังไม่ระบุ' : `${Number(value).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`}</dd></div>)}
+              </dl>
+              <div><p>วิธีรับ: {paymentMethodLabels[saleDetail.data.paymentMethod] ?? 'ยังไม่ระบุ'}</p><p>พนักงาน: {saleDetail.data.salesperson.name}</p><p>สาขา: {saleDetail.data.branch.name}</p></div>
+              {saleDetail.data.tradeInCreditSnapshot && <div className="rounded-lg border border-border p-3">
+                <p>เงินสด/โอนสุทธิ {Number(saleDetail.data.tradeInCreditSnapshot.cashDownAmount).toLocaleString()} บาท</p>
+                <p>เครดิตเทิร์น {Number(saleDetail.data.tradeInCreditSnapshot.baseAmount).toLocaleString()} บาท</p>
+                <p>โบนัส {Number(saleDetail.data.tradeInCreditSnapshot.bonusAmount).toLocaleString()} บาท (รวมในส่วนลด)</p>
+                <p>ใบรับเทิร์น: {saleDetail.data.tradeInCreditSnapshot.voucherNumber ?? saleDetail.data.tradeInCreditSnapshot.tradeInId}</p>
+              </div>}
+              {saleDetail.data.contract && <p className="tabular-nums">ค่างวด {Number(saleDetail.data.contract.monthlyPayment).toLocaleString()} บาท × {saleDetail.data.contract.totalMonths} งวด</p>}
+              {saleDetail.data.contract && <Link className="inline-block text-primary underline" to={`/contracts/${saleDetail.data.contract.id}`}>เปิดสัญญา {saleDetail.data.contract.contractNumber}</Link>}
+              {saleDetail.data.financeCompany && <p>ไฟแนนซ์: {saleDetail.data.financeCompany}<br />เลขอ้างอิง: {saleDetail.data.financeRefNumber || '-'}</p>}
+              {saleDetail.data.notes && <p className="whitespace-pre-wrap break-words">หมายเหตุ: {saleDetail.data.notes}</p>}
+              {saleDetail.data.deletedAt && <p className="text-destructive break-words">ยกเลิกเมื่อ {formatThaiDateTime(saleDetail.data.deletedAt, 'Asia/Bangkok')} โดย {saleDetail.data.voidedBy?.name ?? '-'}<br />เหตุผล: {saleDetail.data.voidReason}</p>}
+            </div>}
+          </QueryBoundary>
+        </SheetContent>
+      </Sheet>
 
       {/* Void sale dialog */}
       <ConfirmDialog

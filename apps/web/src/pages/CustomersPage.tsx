@@ -1,3 +1,6 @@
+import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
+import { createExportGuard, ExportError, fetchExportPages } from '@/lib/fetch-export-pages';
+import { formatThaiDateTime } from '@/lib/date';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
@@ -224,19 +227,25 @@ export default function CustomersPage() {
     }
   }, [sameAddress, addressIdCard]);
 
+  const buildParams = (targetPage = page, targetLimit = 50) => {
+    const params: Record<string, string> = {};
+    if (debouncedSearch) params.search = debouncedSearch;
+    if (contractStatusFilter) params.contractStatus = contractStatusFilter;
+    if (hasOverdueFilter) params.hasOverdue = 'true';
+    applyCreditFilter(params, creditStatusFilter);
+    if (branchFilter) params.branchId = branchFilter;
+    if (tierFilter) params.tier = tierFilter;
+    if (sortBy) params.sortBy = sortBy;
+    if (sortBy) params.sortOrder = sortOrder;
+    params.page = String(targetPage);
+    params.limit = String(targetLimit);
+    return params;
+  };
+
   const { data: result, isLoading, isError, error, refetch } = useQuery<CustomersResponse>({
     queryKey: ['customers', debouncedSearch, page, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, tierFilter, sortBy, sortOrder],
     queryFn: async () => {
-      const params: Record<string, string> = {};
-      if (debouncedSearch) params.search = debouncedSearch;
-      if (contractStatusFilter) params.contractStatus = contractStatusFilter;
-      if (hasOverdueFilter) params.hasOverdue = 'true';
-      applyCreditFilter(params, creditStatusFilter);
-      if (branchFilter) params.branchId = branchFilter;
-      if (tierFilter) params.tier = tierFilter;
-      if (sortBy) params.sortBy = sortBy;
-      if (sortBy) params.sortOrder = sortOrder;
-      params.page = String(page);
+      const params = buildParams();
       const { data } = await api.get('/customers', { params });
       return data;
     },
@@ -249,6 +258,9 @@ export default function CustomersPage() {
     enabled: !!isOwner,
   });
 
+  useEffect(() => {
+    if (result && page > Math.max(1, result.totalPages)) setPage(Math.max(1, result.totalPages));
+  }, [result, page]);
   const customers = result?.data ?? [];
 
   const createMutation = useMutation({
@@ -510,17 +522,14 @@ export default function CustomersPage() {
     [copy],
   );
 
+  const [isExporting, setIsExporting] = useState(false);
   const exportExcel = async () => {
+    const assertCurrent = createExportGuard();
     try {
       toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
-      const params: Record<string, string> = {};
-      if (debouncedSearch) params.search = debouncedSearch;
-      if (contractStatusFilter) params.contractStatus = contractStatusFilter;
-      if (hasOverdueFilter) params.hasOverdue = 'true';
-      applyCreditFilter(params, creditStatusFilter);
-      if (branchFilter) params.branchId = branchFilter;
-      params.limit = '10000';
-      const { data: allData } = await api.get<CustomersResponse>('/customers', { params });
+      setIsExporting(true);
+      const allRows = await fetchExportPages<Customer>(async (page, limit) =>
+        (await api.get<CustomersResponse>('/customers', { params: buildParams(page, limit) })).data, assertCurrent);
 
       const baseCols: ExcelColumn[] = [
         { header: 'ชื่อ', key: 'name', width: 22 },
@@ -533,6 +542,7 @@ export default function CustomersPage() {
         { header: 'สถานะเครดิต', key: 'creditStatus', width: 14 },
         { header: 'คะแนนเครดิต', key: 'creditScore', width: 12 },
         { header: 'วันที่เพิ่ม', key: 'createdAt', width: 14 },
+        { header: 'ดึงข้อมูลเมื่อ (เวลาไทย)', key: 'fetchedAt', width: 24 },
       ];
 
       if (isOwnerOrManager) {
@@ -544,10 +554,12 @@ export default function CustomersPage() {
 
       const now = new Date();
       await exportToExcel({
+        assertCurrent,
         columns: baseCols,
-        data: allData.data.map((c: Customer) => {
+        data: allRows.map((c: Customer) => {
           const row: Record<string, unknown> = {
             name: c.name,
+            fetchedAt: formatThaiDateTime(now, 'Asia/Bangkok'),
             nickname: c.nickname || '-',
             phone: c.phone,
             occupation: c.occupation || '-',
@@ -569,10 +581,10 @@ export default function CustomersPage() {
         sheetName: 'รายชื่อลูกค้า',
         filename: `รายชื่อลูกค้า_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`,
       });
-      toast.success(`ดาวน์โหลดสำเร็จ (${allData.data.length} รายการ)`, { id: 'excel-export' });
-    } catch {
-      toast.error('ไม่สามารถสร้างไฟล์ Excel ได้', { id: 'excel-export' });
-    }
+      toast.success(`ดาวน์โหลดสำเร็จ (${allRows.length} รายการ)`, { id: 'excel-export' });
+    } catch (error) {
+      toast.error(error instanceof ExportError ? error.message : getErrorMessage(error), { id: 'excel-export' });
+    } finally { setIsExporting(false); }
   };
 
   const columns = useMemo(() => [
@@ -729,7 +741,7 @@ export default function CustomersPage() {
             {/* D1.3.3.1 — hide export button when OWNER disables export_enabled. */}
             {exportEnabled && (
               <button
-                onClick={exportExcel}
+                onClick={exportExcel} disabled={isExporting || isLoading || isError}
                 className="inline-flex items-center gap-1.5 px-4 py-2 border border-input text-foreground rounded-lg text-sm font-medium hover:bg-accent transition-colors"
               >
                 <Download className="w-4 h-4" />
@@ -792,18 +804,20 @@ export default function CustomersPage() {
       )}
 
       {/* Filters + Sorting — merged in one card */}
-      <div className="bg-card rounded-xl border border-border/50 p-4 mb-5 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+      <ResponsiveFilterPanel search={
           <div className="lg:col-span-2 relative">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input
               type="text"
               placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..."
-              value={search}
+              aria-label="ค้นหาลูกค้า" value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm outline-hidden focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors bg-background"
             />
           </div>
+      }>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+
           <Select
             value={contractStatusFilter || 'ALL'}
             onValueChange={(v) => setContractStatusFilter(v === 'ALL' ? '' : v)}
@@ -822,7 +836,7 @@ export default function CustomersPage() {
             value={creditStatusFilter || 'ALL'}
             onValueChange={(v) => setCreditStatusFilter(v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-10">
+            <SelectTrigger aria-label="สถานะเครดิต" className="h-10">
               <SelectValue placeholder="ทุกสถานะเครดิต" />
             </SelectTrigger>
             <SelectContent>
@@ -849,7 +863,7 @@ export default function CustomersPage() {
             value={tierFilter || 'ALL'}
             onValueChange={(v) => setTierFilter(v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-10">
+            <SelectTrigger aria-label="ระดับลูกค้า" className="h-10">
               <SelectValue placeholder="ทุกระดับลูกค้า" />
             </SelectTrigger>
             <SelectContent>
@@ -896,7 +910,7 @@ export default function CustomersPage() {
           <div className="flex items-center gap-2 ml-auto text-xs">
             <span className="text-muted-foreground hidden sm:inline">เรียงโดย:</span>
             <Select value={sortBy || 'DEFAULT'} onValueChange={(v) => setSortBy(v === 'DEFAULT' ? '' : v)}>
-              <SelectTrigger className="h-9 w-auto min-w-[140px] text-xs">
+              <SelectTrigger aria-label="เรียงลูกค้าโดย" className="h-9 w-auto min-w-[140px] text-xs">
                 <SelectValue placeholder="ค่าเริ่มต้น" />
               </SelectTrigger>
               <SelectContent>
@@ -921,7 +935,7 @@ export default function CustomersPage() {
             )}
           </div>
         </div>
-      </div>
+      </ResponsiveFilterPanel>
 
       <Card>
         <CardHeader>

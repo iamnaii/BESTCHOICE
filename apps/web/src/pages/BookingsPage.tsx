@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
+import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { PaginationBar } from '@/components/ui/PaginationBar';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -90,7 +94,7 @@ interface BookingListResponse {
 interface CustomerOption {
   id: string;
   name: string;
-  phone: string;
+  phone?: string | null;
 }
 
 interface BranchOption {
@@ -196,19 +200,30 @@ export default function BookingsPage() {
 
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
+  const { page, size, setPage, setSize } = usePaginationParams();
+  const previousFilters = useRef([statusFilter, debouncedSearch].join('|'));
+  useEffect(() => {
+    const next = [statusFilter, debouncedSearch].join('|');
+    if (previousFilters.current !== next) { previousFilters.current = next; setPage(1); }
+  }, [statusFilter, debouncedSearch, setPage]);
   const [createOpen, setCreateOpen] = useState(false);
   const [detailBookingId, setDetailBookingId] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery<BookingListResponse>({
-    queryKey: ['bookings', statusFilter, search],
+    queryKey: ['bookings', statusFilter, debouncedSearch, page, size],
     queryFn: async () => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ page: String(page), limit: String(size) });
       if (statusFilter && statusFilter !== 'ALL') params.set('status', statusFilter);
-      if (search.trim()) params.set('search', search.trim());
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
       const { data } = await api.get(`/bookings?${params}`);
       return data;
     },
   });
+
+  useEffect(() => {
+    if (data && page > Math.max(1, Math.ceil(data.total / size))) setPage(Math.max(1, Math.ceil(data.total / size)));
+  }, [data, page, size, setPage]);
 
   return (
     <div className="space-y-4 p-4 md:p-6">
@@ -233,7 +248,7 @@ export default function BookingsPage() {
               <Input
                 placeholder="ค้นหาเลขที่ / ชื่อลูกค้า"
                 className="pl-9"
-                value={search}
+                aria-label="ค้นหาใบจอง" value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
@@ -265,6 +280,7 @@ export default function BookingsPage() {
               bookings={data?.data ?? []}
               onOpenDetail={(id) => setDetailBookingId(id)}
             />
+            {data && <PaginationBar total={data.total} page={page} size={size} sizeOptions={[20, 50, 100, 200]} onPageChange={setPage} onSizeChange={setSize} />}
           </QueryBoundary>
         </CardContent>
       </Card>
@@ -274,7 +290,7 @@ export default function BookingsPage() {
           open={createOpen}
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
-            qc.invalidateQueries({ queryKey: ['bookings'] });
+            invalidateSalesQueries(qc, 'booking-updated');
             setCreateOpen(false);
           }}
         />
@@ -286,7 +302,7 @@ export default function BookingsPage() {
           canDelete={canDelete}
           canMutate={canMutate}
           onClose={() => setDetailBookingId(null)}
-          onChanged={() => qc.invalidateQueries({ queryKey: ['bookings'] })}
+          onChanged={() => invalidateSalesQueries(qc, 'booking-updated')}
         />
       )}
     </div>
@@ -379,6 +395,7 @@ function CreateBookingDialog({
   const paidEdit = initialBooking?.status === 'PAID';
 
   const [customerId, setCustomerId] = useState(initialBooking?.customer.id ?? '');
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(initialBooking?.customer ?? null);
   const [branchId, setBranchId] = useState(initialBooking?.branch.id ?? user?.branchId ?? '');
   const [expireDate, setExpireDate] = useState(() => {
     if (initialBooking) return toBangkokDateString(new Date(new Date(initialBooking.expireDate).getTime() - 1));
@@ -391,10 +408,12 @@ function CreateBookingDialog({
     quantity: item.quantity, unitPrice: Number(item.unitPrice),
   })) ?? [{ description: '', quantity: 1, unitPrice: 0 }]);
 
-  const { data: customers } = useQuery<CustomerOption[]>({
-    queryKey: ['booking-customer-search'],
+  const [customerSearch, setCustomerSearch] = useState('');
+  const debouncedCustomerSearch = useDebounce(customerSearch);
+  const { data: customers, isFetching: customerFetching, isError: customerError, refetch: retryCustomers } = useQuery<CustomerOption[]>({
+    queryKey: ['booking-customer-search', debouncedCustomerSearch],
     queryFn: async () => {
-      const { data } = await api.get('/customers?limit=200');
+      const { data } = await api.get(`/customers?${new URLSearchParams({ limit: '50', search: debouncedCustomerSearch })}`);
       return (data.data ?? data ?? []) as CustomerOption[];
     },
     enabled: open,
@@ -460,11 +479,15 @@ function CreateBookingDialog({
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="booking-customer">ลูกค้า</Label>
-            <Select value={customerId} onValueChange={setCustomerId} disabled={paidEdit}>
+            {!paidEdit && <Input aria-label="ค้นหาลูกค้าสำหรับใบจอง" placeholder="ค้นหาชื่อหรือเบอร์โทรลูกค้า" value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />}
+            {customerError && <button type="button" className="text-sm text-destructive underline" onClick={() => retryCustomers()}>โหลดลูกค้าไม่สำเร็จ ลองอีกครั้ง</button>}
+            {customerFetching && <p className="text-xs text-muted-foreground">กำลังค้นหาลูกค้า...</p>}
+            <Select value={customerId} onValueChange={id => { setCustomerId(id); setSelectedCustomer(customers?.find(customer => customer.id === id) ?? null); }} disabled={paidEdit || customerFetching || customerError}>
               <SelectTrigger id="booking-customer">
                 <SelectValue placeholder="เลือกลูกค้า" />
               </SelectTrigger>
               <SelectContent>
+                {selectedCustomer && !customers?.some(c => c.id === selectedCustomer.id) && <SelectItem value={selectedCustomer.id}>{selectedCustomer.name}</SelectItem>}
                 {(customers ?? []).map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
@@ -690,7 +713,7 @@ function BookingDetailDialog({
       }),
     onSuccess: () => {
       toast.success('บันทึกการรับมัดจำแล้ว');
-      qc.invalidateQueries({ queryKey: ['booking', bookingId] });
+      void invalidateSalesQueries(qc, 'booking-updated');
       onChanged();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -701,7 +724,7 @@ function BookingDetailDialog({
       api.post(`/bookings/${bookingId}/cancel`, { cancelReason: cancelReason || undefined }),
     onSuccess: () => {
       toast.success('ยกเลิกใบจองแล้ว (คืนมัดจำ 100% ก่อนหมดอายุ)');
-      qc.invalidateQueries({ queryKey: ['booking', bookingId] });
+      void invalidateSalesQueries(qc, 'booking-updated');
       onChanged();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -718,10 +741,7 @@ function BookingDetailDialog({
       }),
     onSuccess: () => {
       toast.success('บันทึกขายเงินสดแล้ว นำมัดจำมาหักยอดเรียบร้อย');
-      qc.invalidateQueries({ queryKey: ['booking', bookingId] });
-      for (const key of ['sales', 'sales-summary', 'products', 'pos-products', 'booking-products', 'stock']) {
-        qc.invalidateQueries({ queryKey: [key] });
-      }
+      void invalidateSalesQueries(qc, 'booking-converted');
       onChanged();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -915,7 +935,7 @@ function BookingDetailDialog({
               disabled={mutationPending || (depositMethod === 'CASH' && !booking.branch.shopCashAccountCode)}
               className="gap-2"
             >
-              <HandCoins className="h-4 w-4" /> ชำระมัดจำ
+              <HandCoins className="h-4 w-4" /> บันทึกรับมัดจำ
             </Button>
           )}
           {canMutate &&
@@ -942,7 +962,7 @@ function BookingDetailDialog({
                   : undefined
               }
             >
-              <ShoppingCart className="h-4 w-4" /> แปลงเป็นการขาย
+              <ShoppingCart className="h-4 w-4" /> {isPartialDeposit ? 'รับส่วนต่างและขาย' : 'ขายโดยใช้มัดจำที่รับแล้ว'}
             </Button>
           )}
           {canDelete && booking?.status === 'PENDING_DEPOSIT' && !expired && !isError && (

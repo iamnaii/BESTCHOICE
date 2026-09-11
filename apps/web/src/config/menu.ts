@@ -166,7 +166,7 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
-        { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
+        { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
       ],
     },
     {
@@ -218,7 +218,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: NAV_LABELS.home, path: '/', icon: Home },
-        { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
+        { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
@@ -677,7 +677,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
-        { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
+        { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
       ],
     },
     {

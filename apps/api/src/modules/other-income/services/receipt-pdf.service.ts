@@ -179,7 +179,11 @@ export class OtherIncomeReceiptPdfService {
     const totalAmount = Number(doc.totalAmount);
     const amountReceived = Number(doc.amountReceived);
     const thaiAmount = numberToThaiText(totalAmount);
-    const isPartial = Math.abs(amountReceived - totalAmount) >= 0.01 && amountReceived < totalAmount;
+    // "Partial" is measured against what the payer owes after withholding tax — a payer who
+    // withholds ภ.ง.ด. has paid in full, and the WHT line below already explains the gap
+    // (DOC-05 #1564: comparing with totalAmount printed ชำระเงินบางส่วน on every WHT receipt).
+    const dueAfterWht = totalAmount - whtAmount;
+    const isPartial = dueAfterWht - amountReceived >= 0.01;
     const isReversed = doc.status === 'REVERSED';
 
     const itemsHtml = (doc.items || [])
@@ -238,7 +242,7 @@ ${isReversed ? `<div class="void-overlay">VOID / กลับรายการ<
 <table class="items"><thead><tr><th>#</th><th>รายการ</th><th class="right">จำนวน</th><th class="right">ราคา</th><th class="right">ส่วนลด</th><th class="right">VAT</th><th class="right">ก่อนภาษี</th></tr></thead><tbody>${itemsHtml}</tbody></table>
 ${safe.customerNote ? `<p class="bc-doc-note"><strong>หมายเหตุ</strong> ${safe.customerNote}</p>` : ''}
 <div class="bc-doc-closing">
-<div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงิน (ตัวอักษร)</p><strong>${thaiAmount}</strong>${isPartial ? `<p class="bc-doc-note">ชำระเงินบางส่วน ${fmtMoney(amountReceived)} / ${fmtMoney(totalAmount)} บาท</p>` : ''}</div>
+<div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงิน (ตัวอักษร)</p><strong>${thaiAmount}</strong>${isPartial ? `<p class="bc-doc-note">ชำระเงินบางส่วน ${fmtMoney(amountReceived)} / ${fmtMoney(dueAfterWht)} บาท</p>` : ''}</div>
 <div><div class="bc-doc-totals"><span>มูลค่าก่อนภาษี</span><span>${fmtMoney(incomeGross)}</span><span>ภาษีมูลค่าเพิ่ม 7%</span><span>${fmtMoney(vatAmount)}</span><span>จำนวนเงินทั้งสิ้น</span><span>${fmtMoney(totalAmount)}</span>${whtAmount > 0 ? `<span>หัก ณ ที่จ่าย</span><span>${fmtMoney(whtAmount)}</span>` : ''}</div><div class="bc-doc-grand"><span>จำนวนเงินที่ชำระ</span><span>${fmtMoney(amountReceived)} บาท</span></div></div></div>
 <div class="bc-doc-approval"><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div><div><p class="bc-doc-label">ติดต่อผู้ออกเอกสาร</p><p>${safe.issuerName}</p><p>${safe.issuerEmail}</p></div><div class="bc-doc-signature"><div class="sign-space">${safe.issuerSignName}</div><strong>${safe.issuerName}</strong><p>ผู้ออกใบเสร็จรับเงิน</p><p class="bc-doc-kicker">${safe.paymentDateStr}</p></div></div>
 <footer class="bc-doc-footer"><span>${safe.receiptNumber}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>

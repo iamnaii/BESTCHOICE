@@ -48,6 +48,33 @@ function toDate(input: DateInput): Date | null {
 
 const pad = (n: number) => n.toString().padStart(2, '0');
 
+function calendarParts(d: Date, timeZone?: string): [number, number, number] {
+  if (!timeZone) return [d.getFullYear(), d.getMonth() + 1, d.getDate()];
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  return ['year', 'month', 'day'].map((part) =>
+    Number(parts.find((item) => item.type === part)!.value),
+  ) as [number, number, number];
+}
+
+/** Calendar-day age, optionally in a business timezone rather than the browser timezone. */
+export function calendarDaysSince(
+  input: DateInput,
+  now: DateInput = Date.now(),
+  timeZone?: string,
+): number | null {
+  const start = toDate(input);
+  const end = toDate(now);
+  if (!start || !end) return null;
+  const [sy, sm, sd] = calendarParts(start, timeZone);
+  const [ey, em, ed] = calendarParts(end, timeZone);
+  return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86_400_000);
+}
+
 /**
  * YYYY-MM-DD of the given moment in LOCAL time — e.g. "2026-07-03".
  *
@@ -62,10 +89,11 @@ export function toLocalDateString(d: Date = new Date()): string {
 /**
  * DD/MM/YYYY (พ.ศ.) — e.g. "08/04/2569"
  */
-export function formatThaiDate(input: DateInput): string {
+export function formatThaiDate(input: DateInput, timeZone?: string): string {
   const d = toDate(input);
   if (!d) return '-';
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear() + 543}`;
+  const [year, month, day] = calendarParts(d, timeZone);
+  return `${pad(day)}/${pad(month)}/${year + 543}`;
 }
 
 /**

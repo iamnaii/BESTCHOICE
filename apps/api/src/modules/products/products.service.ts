@@ -23,6 +23,7 @@ import {
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 import { isAccessoryProductCode } from '../../utils/accessory-type.util';
+import { findAccessoryGroupWhere, findStockGroups, StockListFilters } from './products-stock-groups';
 
 /** One accessory SKU as the PO picker sees it (see findAccessorySkus). */
 export interface AccessorySku {
@@ -60,7 +61,7 @@ const productInclude = {
    * (`liveRows` คงไว้เป็น defense-in-depth ให้ผู้เรียกที่ `select` ชุดของตัวเอง เช่น
    * `ProductPhotosService.completePhotos`)
    */
-  prices: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' as const } },
+  prices: { where: { deletedAt: null }, orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }] },
   supplier: { select: { id: true, name: true } },
   branch: { select: { id: true, name: true } },
   po: { select: { id: true, poNumber: true } },
@@ -77,20 +78,23 @@ export class ProductsService {
 
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filters: {
-    search?: string;
-    branchId?: string;
-    status?: string | string[];
-    category?: string;
-    brand?: string;
-    model?: string;
-    storage?: string;
-    supplierId?: string;
-    page?: number;
-    limit?: number;
-  }) {
+  async findAll(filters: StockListFilters) {
+    if (filters.groupAccessories && !filters.accessoryGroupId) {
+      return findStockGroups(this.prisma, filters, productInclude);
+    }
+    if (filters.sortBy) {
+      if (filters.accessoryGroupId && !await findAccessoryGroupWhere(this.prisma, filters.accessoryGroupId, filters.branchId)) {
+        throw new NotFoundException('ไม่พบกลุ่มอุปกรณ์');
+      }
+      return findStockGroups(this.prisma, filters, productInclude);
+    }
     const where: Record<string, unknown> = { deletedAt: null };
 
+    if (filters.accessoryGroupId) {
+      const group = await findAccessoryGroupWhere(this.prisma, filters.accessoryGroupId, filters.branchId);
+      if (!group) throw new NotFoundException('ไม่พบกลุ่มอุปกรณ์');
+      where.AND = [group];
+    }
     if (filters.branchId) where.branchId = filters.branchId;
     // status รับได้ทั้ง ?status=A, ?status=A&status=B (array) และ ?status=A,B
     // — FE ของ B1 ส่งแบบ comma เพื่อไม่ต้องพึ่ง query serializer ของ axios
@@ -112,6 +116,8 @@ export class ProductsService {
         { brand: { contains: filters.search, mode: 'insensitive' } },
         { model: { contains: filters.search, mode: 'insensitive' } },
         { imeiSerial: { contains: filters.search, mode: 'insensitive' } },
+        { accessoryType: { contains: filters.search, mode: 'insensitive' } },
+        { legacyProductCode: { contains: filters.search, mode: 'insensitive' } },
       ];
     }
 

@@ -104,7 +104,11 @@ export async function findStockGroups(
     .flatMap((status) => status.split(','))
     .map((status) => status.trim())
     .filter(Boolean);
-  if (statuses.length) clauses.push(Prisma.sql`p.status::text IN (${Prisma.join(statuses)})`);
+  // ตัวกรองสถานะแยกจากฐาน: ฐาน (clauses) ใช้นับทั้งสองฝั่งของสวิตช์ "พร้อมขาย | ทั้งหมด"
+  // บนหน้ารายการสินค้า — ถ้านับรวมสถานะที่ผู้ใช้เลือก ตัวเลขฝั่งที่ไม่ได้เลือกจะผิด
+  const statusClause = statuses.length
+    ? Prisma.sql`p.status::text IN (${Prisma.join(statuses)})`
+    : null;
   if (filters.search) {
     // Literal substring search, matching Prisma's contains semantics.
     const term = `%${filters.search.replace(/[\\%_]/g, '\\$&')}%`;
@@ -117,18 +121,30 @@ export async function findStockGroups(
       Prisma.sql`p.category = 'ACCESSORY' AND md5(${accessoryIdentity}) = ${filters.accessoryGroupId}`,
     );
   const grouped = !!filters.groupAccessories && !filters.accessoryGroupId;
-  const filtered = Prisma.sql`
+  const filteredFrom = (where: Prisma.Sql[]) => Prisma.sql`
     SELECT p.*,
       CASE WHEN ${grouped} AND p.category = 'ACCESSORY'
         THEN ${accessoryIdentity}
         ELSE p.id END AS group_key
-    FROM products p WHERE ${Prisma.join(clauses, ' AND ')}
+    FROM products p WHERE ${Prisma.join(where, ' AND ')}
   `;
+  const filteredBase = filteredFrom(clauses);
+  const filtered = statusClause ? filteredFrom([...clauses, statusClause]) : filteredBase;
   return prisma.$transaction(
     async (tx) => {
       const [{ total }] = await tx.$queryRaw<Array<{ total: number }>>(Prisma.sql`
       SELECT COUNT(DISTINCT group_key)::int AS total FROM (${filtered}) filtered
     `);
+      // ตัวเลขบนสวิตช์ พร้อมขาย | ทั้งหมด — ฐานเดียวกับรายการ (หมวด/สาขา/คำค้น) แต่ไม่รวมตัวกรองสถานะ
+      // กลุ่มอุปกรณ์นับเป็น "พร้อมขาย" เมื่อมีชิ้น IN_STOCK อย่างน้อยหนึ่งชิ้น (ตรงกับคอลัมน์คงเหลือ)
+      const [{ readyTotal, allTotal }] = await tx.$queryRaw<
+        Array<{ readyTotal: number; allTotal: number }>
+      >(Prisma.sql`
+      SELECT COUNT(DISTINCT group_key) FILTER (WHERE status::text = 'IN_STOCK')::int AS "readyTotal",
+        COUNT(DISTINCT group_key)::int AS "allTotal"
+      FROM (${filteredBase}) filtered
+    `);
+      const viewCounts = { ready: readyTotal, all: allTotal };
       const sortedKeys = filters.sortBy
         ? await sortedStockPageKeys(
             tx,
@@ -140,7 +156,7 @@ export async function findStockGroups(
             limit,
           )
         : null;
-      if (sortedKeys?.length === 0) return paginatedResponse([], total, page, limit);
+      if (sortedKeys?.length === 0) return { ...paginatedResponse([], total, page, limit), viewCounts };
       const groups = await tx.$queryRaw<GroupRow[]>(Prisma.sql`
       WITH filtered AS (${filtered}), page_groups AS (
         SELECT group_key, MAX(created_at) AS latest FROM filtered
@@ -206,7 +222,7 @@ export async function findStockGroups(
           },
         ];
       });
-      return paginatedResponse(data, total, page, limit);
+      return { ...paginatedResponse(data, total, page, limit), viewCounts };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
   );

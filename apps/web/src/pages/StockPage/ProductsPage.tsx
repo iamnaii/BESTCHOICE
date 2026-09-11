@@ -74,6 +74,9 @@ export default function StockProductsPage() {
   const products = useStockProducts();
   const {
     isManager,
+    view,
+    setView,
+    viewCounts,
     sort,
     setSort,
     search,
@@ -130,6 +133,7 @@ export default function StockProductsPage() {
   const isTabletView = filterCategory === 'TABLET';
   const isAccessoryView = filterCategory === 'ACCESSORY';
   const isDeviceView = filterCategory === 'PHONE_NEW' || isUsedPhoneView || isTabletView;
+  const isAllCategories = filterCategory === '';
 
   useEditingProductSync(editingProduct, listProducts, setEditingProduct);
 
@@ -419,7 +423,9 @@ export default function StockProductsPage() {
             },
           ]
         : []),
-      ...(isDeviceView
+      // เจ้าของขอ 2026-09-11 ให้แท็บ "ทั้งหมด" มีวันที่รับเข้าด้วย — แถวกลุ่มอุปกรณ์เว้นว่าง
+      // (วันที่ของกลุ่มไม่มีความหมายเดียว ส่วนแท็บอุปกรณ์ล้วนยังไม่แสดงคอลัมน์นี้เหมือนเดิม)
+      ...(isDeviceView || isAllCategories
         ? [
             {
               key: 'stockInDate',
@@ -427,7 +433,12 @@ export default function StockProductsPage() {
               sortable: true,
               hideable: false,
               width: '135px',
-              render: (product: StockProduct) => <StockReceivedDate product={product} />,
+              render: (product: StockProduct) =>
+                product.stockGroup ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  <StockReceivedDate product={product} />
+                ),
             },
           ]
         : []),
@@ -444,14 +455,19 @@ export default function StockProductsPage() {
             },
           ]
         : []),
-      {
-        key: 'status',
-        label: 'สถานะ',
-        sortable: true,
-        hideable: false,
-        width: '100px',
-        render: (product) => <StockProductStatus product={product} />,
-      },
+      // มุมมอง "พร้อมขาย" ทุกแถวเป็นสถานะเดียวกัน — ซ่อนคอลัมน์ให้ตารางแคบลง (mockup 54e6c624)
+      ...(view === 'all'
+        ? [
+            {
+              key: 'status',
+              label: 'สถานะ',
+              sortable: true,
+              hideable: false,
+              width: '100px',
+              render: (product: StockProduct) => <StockProductStatus product={product} />,
+            },
+          ]
+        : []),
       {
         key: 'branch',
         label: 'สาขา',
@@ -507,9 +523,11 @@ export default function StockProductsPage() {
     ],
     [
       isManager,
+      view,
       selectableProducts,
       setAccessoryGroupId,
       isDeviceView,
+      isAllCategories,
       isAccessoryView,
       isUsedPhoneView,
       isTabletView,
@@ -672,6 +690,9 @@ export default function StockProductsPage() {
         search={search}
         setSearch={setSearch}
         clearFilters={clearFilters}
+        view={view}
+        setView={setView}
+        viewCounts={viewCounts}
         filterStatus={filterStatus}
         setFilterStatus={setFilterStatus}
         filterCategory={filterCategory}

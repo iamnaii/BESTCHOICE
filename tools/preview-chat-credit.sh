@@ -33,7 +33,7 @@ fi
 CREDIT_PG_STARTED=1
 rm -f "$CREDIT_PREVIEW_ROOT/runtime.json"
 printf '%s\n' "$$" > "$CREDIT_PREVIEW_ROOT/runner.pid"
-if ! "$CREDIT_PG_BIN/psql" -h "$CREDIT_PREVIEW_ROOT/socket" -p 55476 -U credit_test -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname='bc_chat_credit_test'" | rg -q '^1$'; then
+if ! "$CREDIT_PG_BIN/psql" -h "$CREDIT_PREVIEW_ROOT/socket" -p 55476 -U credit_test -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname='bc_chat_credit_test'" | grep -q '^1$'; then
   "$CREDIT_PG_BIN/createdb" -h "$CREDIT_PREVIEW_ROOT/socket" -p 55476 -U credit_test bc_chat_credit_test
 fi
 export DATABASE_URL="postgresql://credit_test@localhost:55476/bc_chat_credit_test?host=$CREDIT_PREVIEW_ROOT/socket&schema=public"

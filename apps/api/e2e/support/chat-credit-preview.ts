@@ -270,6 +270,8 @@ class PreviewController {
   }
   @Get('promotions/active') promotions() { return promotions.findActivePromotions(); }
   @Get('interest-configs/resolved') resolvedInterest(@Query('category') category: string) { return interestConfigs.resolveConfig(category); }
+  // ProductDetailPage (useGfinTables) reads settings alongside the three tables since 49a40a1a1.
+  @Get('gfin-config/settings') gfinSettings() { return gfin.getSettings(); }
   @Get('gfin-config/max-prices') maxPrices() { return gfin.listMaxPrices(); }
   @Get('gfin-config/overprice-rules') overprice() { return gfin.listOverpriceRules(); }
   @Get('gfin-config/rate-factors') rateFactors() { return gfin.listRateFactors(); }

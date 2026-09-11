@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
-import { Request } from 'express';
+import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ContractDocumentsService } from './contract-documents.service';
 import { UploadContractDocumentDto } from './dto/contract-document.dto';
@@ -7,28 +7,21 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { ContractFileAccessGuard } from './contract-file-access.guard';
+import { pipeDocumentStream } from './services/document-stream';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('Documents')
 @ApiBearerAuth('JWT')
 @Controller('contracts/:contractId/documents')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ContractFileAccessGuard)
 export class ContractDocumentsController {
   constructor(private service: ContractDocumentsService) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findByContract(
-    @Param('contractId') contractId: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const parsedPage = page ? parseInt(page, 10) : undefined;
-    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
-    return this.service.findByContract(
-      contractId,
-      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
-      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
-    );
+  findByContract(@Param('contractId') contractId: string, @Query() pagination: PaginationDto) {
+    return this.service.findByContract(contractId, pagination.page, pagination.limit);
   }
 
   @Get('checklist')
@@ -65,6 +58,15 @@ export class ContractDocumentsController {
       ip: req.ip,
       userAgent: req.headers?.['user-agent'],
     });
+  }
+
+  @Get(':docId/content')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async content(@Param('contractId') contractId: string, @Param('docId') docId: string, @Res() res: Response,
+    @CurrentUser() user: { id: string }, @Req() req: Request) {
+    await this.service.recordView(contractId, docId, user.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
+    const file = await this.service.getContent(contractId, docId);
+    pipeDocumentStream(res, file);
   }
 
   @Post(':docId/download')

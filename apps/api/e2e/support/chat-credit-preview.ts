@@ -1,3 +1,12 @@
+import { chromium } from 'playwright';
+import { SettingsService } from '../../src/modules/settings/settings.service';
+import { NotificationsService } from '../../src/modules/notifications/notifications.service';
+import { DocumentsService } from '../../src/modules/contracts/documents.service';
+import { DocumentsController } from '../../src/modules/contracts/documents.controller';
+import { ContractDocumentsService } from '../../src/modules/contracts/contract-documents.service';
+import { ContractDocumentsController } from '../../src/modules/contracts/contract-documents.controller';
+import { ContractFileAccessGuard } from '../../src/modules/contracts/contract-file-access.guard';
+import { seedPreviewDocuments } from './preview-documents-fixture';
 import { SettingsFlagsService } from '../../src/modules/settings/services/settings-flags.service';
 import { previewBookings, seedPreviewSales } from './preview-sales-fixture';
 import { SalesQueryService } from '../../src/modules/sales/services/sales-query.service';
@@ -427,6 +436,7 @@ async function main() {
   const module = await Test.createTestingModule({
     controllers: [
       TradeInController, ContactsController, ProductPhotosController,
+      ContractDocumentsController, DocumentsController,
       RoomCreditController,
       RoomAssistanceController,
       OcrController,
@@ -436,7 +446,9 @@ async function main() {
     ],
     providers: [
       ...tradeInProviders(db, storageForPreview as StorageService),
-      ProductPhotosService,
+      ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
+      { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
+      { provide: NotificationsService, useValue: { send: () => { throw new Error('Document preview cannot send notifications'); } } },
       RoomCreditService,
       PrepareOfferService, RoomAiAccessService, SearchProductsTool, CalculateInstallmentTool,
       { provide: AiTextService, useValue: { isAvailable: true, generate: async () => JSON.stringify({
@@ -458,6 +470,8 @@ async function main() {
     .overrideGuard(BranchGuard)
     .useValue({ canActivate: () => true })
     .compile();
+  process.env.PUPPETEER_EXECUTABLE_PATH ||= chromium.executablePath();
+  const documentsFixture = await seedPreviewDocuments(db, module.get(DocumentsService), actor.id);
   const app = module.createNestApplication({ logger: false });
   app.use(json({ limit: '20mb' }));
   app.setGlobalPrefix('api');
@@ -520,7 +534,7 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
-      /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' ||
+      /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*)?)$/.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
@@ -586,6 +600,7 @@ async function main() {
     roomUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/inbox/${room.id}`,
     resultUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/inbox/${resultRoom.id}`,
     saleUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/sales?saleId=${salesFixture.saleId}`,
+    documentUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/contracts/${documentsFixture.contractId}`,
     bookingUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/bookings?bookingId=${salesFixture.bookingId}`,
     queueUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/credit-checks`,
     apiOrigin,

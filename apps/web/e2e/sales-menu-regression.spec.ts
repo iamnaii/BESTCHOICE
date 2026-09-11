@@ -28,7 +28,7 @@ async function fixture(page: Page, role = 'OWNER') {
     items: [{ id: `item${i}`, productId: product.id, description: product.name, quantity: 1, unitPrice: '10000', amount: '10000' }] }));
   const sales: Row[] = Array.from({ length: 201 }, (_, i) => ({ id: `sale${i}`, saleNumber: `SALE-UX-${String(i).padStart(3, '0')}`, saleType: 'CASH', sellingPrice: '10000', discount: '0', netAmount: '10000', costPriceSnapshot: '6000',
     amountReceived: '10000', paymentMethod: 'CASH', customer: customers[i], product, branch, salesperson: actor, createdAt: '2026-09-01T00:00:00Z', deletedAt: null, contract: null }));
-  const state = { customers, credits, bookings, contracts, sales, failPath: '', holdPath: '', holdPage: '', hold: null as Promise<void> | null, emptyPath: '', missingCash: false, requests: [] as Row[] };
+  const state = { attachments: [] as Row[], generated: [] as Row[], uploadCount: 0, failUploadAt: 0, customers, credits, bookings, contracts, sales, failPath: '', holdPath: '', holdPage: '', hold: null as Promise<void> | null, emptyPath: '', missingCash: false, requests: [] as Row[] };
   const paged = (rows: Row[], query: URLSearchParams) => {
     const page = Number(query.get('page') || 1), limit = Number(query.get('limit') || 50);
     return { data: rows.slice((page - 1) * limit, page * limit), total: rows.length, page, limit, totalPages: Math.ceil(rows.length / limit) };
@@ -43,6 +43,15 @@ async function fixture(page: Page, role = 'OWNER') {
     if (state.holdPath === rawPath && state.hold && (!state.holdPage || query.get('page') === state.holdPage)) await state.hold;
     if (state.failPath === routePath) return route.fulfill({ status: 503, json: { message: 'บริการตัวอย่างไม่พร้อม กรุณาลองใหม่' } });
     if (request.method() !== 'GET') {
+      if (routePath === '/contracts/hp0/documents' && request.method() === 'POST') {
+        state.uploadCount++;
+        if (state.uploadCount === state.failUploadAt) return route.fulfill({ status: 503, json: { message: 'Synthetic upload failure' } });
+        const body = request.postDataJSON();
+        const doc = { ...body, id: `attachment-${state.uploadCount}`, createdAt: '2026-09-11T00:00:00Z', uploadedBy: actor };
+        state.attachments.push(doc);
+        return route.fulfill({ json: doc });
+      }
+
       if (/^\/sales\/sale\d+\/void$/.test(routePath)) {
         const id = routePath.split('/')[2], sale = state.sales.find(row => row.id === id)!;
         state.sales = state.sales.filter(row => row.id !== id);
@@ -95,6 +104,14 @@ async function fixture(page: Page, role = 'OWNER') {
       if (query.get('endDate')) rows = rows.filter(row => row.createdAt.slice(0, 10) <= query.get('endDate')!);
       return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { totalContracts: rows.length, activeContracts: 0, overdueContracts: 0, portfolioValue: rows.length * 10000 } } });
     }
+    if (routePath === '/contracts/hp0/e-documents') return route.fulfill({ json: paged(state.generated, query) });
+    if (routePath === '/contracts/hp0/documents') return route.fulfill({ json: paged(state.attachments, query) });
+    if (routePath === '/contracts/hp0/documents/checklist') return route.fulfill({ json: { checklist: [
+      { type: 'SIGNED_CONTRACT', autoGenerate: true, present: false },
+      ...['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO', 'GUARDIAN_DOC'].map(type => ({ type, autoGenerate: false, present: state.attachments.some(doc => doc.documentType === type) })),
+    ] } });
+    if (routePath === '/contracts/hp0/preview') return route.fulfill({ json: { html: '<html><body>ตัวอย่างสัญญาสำหรับทดสอบ</body></html>' } });
+    if (/^\/documents\/generated-\d+\/download$/.test(routePath) || /^\/contracts\/hp0\/documents\/attachment-\d+\/content$/.test(routePath)) return route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%SYNTHETIC-DOCUMENT-CONTENT\n%%EOF' });
     if (routePath === '/contracts/hp0/download-pdf') return route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%Synthetic download transport fixture\n%%EOF' });
     if (/^\/contracts\/hp\d+$/.test(routePath)) return route.fulfill({ json: state.contracts.find(row => row.id === routePath.split('/')[2]) });
     if (routePath === '/sales') {
@@ -363,6 +380,64 @@ for (const width of [1440, 390]) {
       release(); state.hold = null; state.holdPath = ''; state.holdPage = '';
       await expect(page.getByText('เปลี่ยนบริษัทระหว่างส่งออก กรุณาส่งออกใหม่จากบริษัทที่ต้องการ', { exact: true })).toBeVisible();
       expect(downloads).toHaveLength(0);
+    });
+
+    test('documents: generated list error retry, pagination and authenticated download', async ({ page }) => {
+      const state = await fixture(page);
+      state.generated = Array.from({ length: 21 }, (_, i) => ({ id: `generated-${i}`, documentType: 'CONTRACT', fileUrl: `private/${i}.pdf`, createdAt: '2026-09-11T00:00:00Z' }));
+      state.failPath = '/contracts/hp0/e-documents';
+      await page.goto('/contracts/hp0');
+      await expect(page.getByRole('alert').getByText('โหลดเอกสารที่ระบบสร้างไม่สำเร็จ')).toBeVisible();
+      state.failPath = '';
+      await page.getByRole('alert').getByRole('button', { name: 'ลองใหม่' }).click();
+      await expect(page.getByRole('button', { name: 'ดาวน์โหลด', exact: true })).toHaveCount(20);
+      await page.getByRole('button', { name: 'ถัดไป', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'ดาวน์โหลด', exact: true })).toHaveCount(1);
+      const saved = page.waitForEvent('download');
+      await page.getByRole('button', { name: 'ดาวน์โหลด', exact: true }).click();
+      expect((await saved).suggestedFilename()).toBe('CONTRACT_generated-20.pdf');
+      expect(state.requests.some(row => row.path === '/documents/generated-20/download')).toBe(true);
+      state.failPath = '/contracts/hp0/preview';
+      await page.getByRole('button', { name: 'ดูสัญญา', exact: true }).click();
+      await expect(page.getByRole('alert').getByText('โหลดตัวอย่างสัญญาไม่สำเร็จ')).toBeVisible();
+      await snapshot(page, 'documents-preview-error', width);
+      state.failPath = '';
+      await page.getByRole('alert').getByRole('button', { name: 'ลองใหม่' }).click();
+      await expect(page.locator('iframe[title="contract-preview"]')).toBeVisible();
+    });
+
+    test('documents: duplicate files never complete the required-type workflow step', async ({ page }) => {
+      const state = await fixture(page, 'SALES');
+      state.attachments = [1, 2, 3].map(n => ({ id: `duplicate-${n}`, documentType: 'DEVICE_PHOTO', fileName: `${n}.pdf`, fileUrl: 'fixture.pdf', createdAt: '2026-09-11T00:00:00Z' }));
+      state.contracts[0].contractDocuments = state.attachments;
+      await page.goto('/contracts/hp0');
+      await expect(page.getByText('อัปโหลดเอกสารที่จำเป็น', { exact: true })).toBeVisible();
+      state.attachments.push(...['ID_CARD_COPY', 'KYC_SELFIE', 'GUARDIAN_DOC'].map(type => ({ id: type, documentType: type, fileName: `${type}.pdf`, fileUrl: 'fixture.pdf', createdAt: '2026-09-11T00:00:00Z' })));
+      await page.reload();
+      await expect(page.getByText('ให้ลูกค้ายินยอม PDPA และลงนามสัญญา', { exact: true })).toBeVisible();
+    });
+
+    test('documents: partial upload remains visible, guardian input and protected preview', async ({ page }) => {
+      const state = await fixture(page, 'SALES');
+      state.failUploadAt = 2;
+      await page.goto('/contracts/hp0');
+      await page.getByRole('button', { name: 'เอกสาร', exact: true }).click();
+      await expect(page.getByText('เอกสารที่ต้องแนบครบ 0/4 ประเภท', { exact: false })).toBeVisible();
+      await page.getByLabel('แนบ เอกสารผู้ปกครอง', { exact: true }).setInputFiles([
+        { name: 'guardian-1.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') },
+        { name: 'guardian-2.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') },
+      ]);
+      await expect.poll(() => state.uploadCount).toBe(2);
+      await expect(page.getByText('guardian-1.pdf', { exact: true })).toBeVisible();
+      await expect(page.getByRole('alert').filter({ hasText: 'ระบบขัดข้องชั่วคราว' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'ลบเอกสาร', exact: true })).toHaveCount(0);
+      const open = page.getByRole('button', { name: 'ดูเอกสาร', exact: true });
+      await open.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      expect(state.requests.some(row => row.path === '/contracts/hp0/documents/attachment-1/content')).toBe(true);
+      await snapshot(page, 'documents-protected-preview', width);
+      await page.keyboard.press('Escape');
+      await expect(open).toBeFocused();
     });
 
     test('role states: finance manager cannot create contracts or sign; active downloads PDF fixture', async ({ page }) => {

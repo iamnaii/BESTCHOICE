@@ -1,6 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import api, { getErrorMessage } from '@/lib/api';
+import api from '@/lib/api';
+import { queryErrorMessage } from '@/lib/query-error-message';
 import { toast } from 'sonner';
 
 interface StepCompleteProps {
@@ -27,16 +29,18 @@ export default function StepComplete({
       return data;
     },
     onSuccess: (data) => {
-      const contractOk = !!data?.contract;
-      const pdpaOk = !!data?.pdpa;
-      if (contractOk && pdpaOk) {
+      const contractOk = data?.contract?.pdfGenerated === true;
+      const pdpaOk = data?.pdpa?.pdfGenerated === true;
+      if (data?.errors?.length) {
+        toast.error('PDF ยังไม่ครบ กรุณาลองสร้างเอกสารใหม่');
+      } else if (contractOk && pdpaOk) {
         toast.success('สร้างเอกสารสัญญาและ PDPA สำเร็จ');
       } else if (contractOk) {
         toast.success('สร้างเอกสารสัญญาสำเร็จ');
       } else if (pdpaOk) {
         toast.success('สร้างเอกสาร PDPA สำเร็จ');
       } else {
-        toast.error('ไม่สามารถสร้างเอกสารได้');
+        toast.error('PDF ยังไม่ครบ กรุณาลองสร้างเอกสารใหม่');
       }
       queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contract-edocuments', contractId] });
@@ -45,15 +49,23 @@ export default function StepComplete({
       queryClient.invalidateQueries({ queryKey: ['contract-preview', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contract-doc-checklist', contractId] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => toast.error(queryErrorMessage(err)),
   });
 
-  // Auto-generate on mount
-  const autoGenRef = { current: false };
-  if (!autoGenRef.current && !generateMutation.isPending && !generateMutation.isSuccess && !generateMutation.isError) {
-    autoGenRef.current = true;
-    generateMutation.mutate();
-  }
+  // A real ref survives rerenders and StrictMode's effect replay.
+  const startedFor = useRef<string | null>(null);
+  const generate = generateMutation.mutate;
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled || startedFor.current === contractId) return;
+      startedFor.current = contractId;
+      generate();
+    });
+    return () => { cancelled = true; };
+  }, [contractId, generate]);
+  const pdfComplete = generateMutation.data?.contract?.pdfGenerated === true && generateMutation.data?.pdpa?.pdfGenerated === true && !generateMutation.data?.errors?.length;
+  const incomplete = generateMutation.isSuccess && !pdfComplete;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
@@ -75,20 +87,20 @@ export default function StepComplete({
       {/* PDF generation status */}
       <div className="mb-6 w-full max-w-sm">
         {generateMutation.isPending && (
-          <div className="flex items-center justify-center gap-3 text-muted-foreground">
+          <div role="status" className="flex items-center justify-center gap-3 text-muted-foreground">
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
             <span className="text-sm">กำลังสร้างเอกสาร PDF...</span>
           </div>
         )}
-        {generateMutation.isSuccess && (
+        {generateMutation.isSuccess && pdfComplete && (
           <div className="text-sm text-success font-medium">สร้างเอกสาร PDF เรียบร้อย</div>
         )}
-        {generateMutation.isError && (
-          <div className="space-y-2">
-            <div className="text-sm text-destructive">สร้างเอกสารไม่สำเร็จ</div>
+        {(generateMutation.isError || incomplete) && (
+          <div role="alert" className="space-y-2">
+            <div className="text-sm text-foreground">{incomplete ? 'PDF ยังไม่ครบ เอกสารบางฉบับอาจเป็น HTML กรุณาลองสร้างใหม่' : queryErrorMessage(generateMutation.error)}</div>
             <button
               onClick={() => generateMutation.mutate()}
-              className="px-4 py-2 text-sm bg-destructive/10 text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/20"
+              className="min-h-11 px-4 py-2 text-sm bg-destructive/10 text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/20"
             >
               ลองใหม่
             </button>

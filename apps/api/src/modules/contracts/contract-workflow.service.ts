@@ -778,8 +778,9 @@ export class ContractWorkflowService {
         interestConfig: true,
         payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         signatures: { where: { deletedAt: null } },
-        eDocuments: true,
+        eDocuments: { where: { deletedAt: null } },
         contractDocuments: {
+          where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
           include: { uploadedBy: { select: { id: true, name: true } } },
         },

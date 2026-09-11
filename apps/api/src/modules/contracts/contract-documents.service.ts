@@ -4,6 +4,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UploadContractDocumentDto } from './dto/contract-document.dto';
 import { calculateAgeInYears } from '../../utils/date.util';
 import * as crypto from 'crypto';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
+import { StorageService } from '../storage/storage.service';
+import { Readable } from 'stream';
+import { matchesDocumentMime } from './services/document-mime.util';
 
 const VALID_DOCUMENT_TYPES = [
   'SIGNED_CONTRACT',
@@ -32,7 +36,39 @@ const IMMUTABLE_DOC_TYPES = ['SIGNED_CONTRACT', 'PDPA_CONSENT', 'PAYMENT_RECEIPT
 
 @Injectable()
 export class ContractDocumentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private storage: StorageService) {}
+
+  async getContent(contractId: string, docId: string) {
+    const doc = await this.prisma.contractDocument.findFirst({ where: { id: docId, contractId, deletedAt: null } });
+    if (!doc) throw new NotFoundException('ไม่พบเอกสาร');
+    const inline = /^data:(image\/(?:png|jpeg|gif|webp)|application\/pdf);base64,([A-Za-z0-9+/=\s]+)$/.exec(doc.fileUrl);
+    if (inline) return { stream: Readable.from([Buffer.from(inline[2], 'base64')]), filename: doc.fileName, contentType: inline[1] };
+    // Private object keys only. Never fetch a user-supplied external URL.
+    if (/^[a-zA-Z0-9][^:?#]*\.(pdf|png|jpe?g|gif|webp)$/i.test(doc.fileUrl) && !doc.fileUrl.split('/').includes('..') && this.storage.configured) {
+      const ext = doc.fileUrl.split('.').pop()!.toLowerCase();
+      const contentType = ext === 'pdf' ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+      return { stream: await this.storage.getStream(doc.fileUrl), filename: doc.fileName, contentType };
+    }
+    throw new BadRequestException('เปิดไฟล์นี้ไม่ได้ กรุณาตรวจสอบไฟล์แนบกับผู้ดูแลระบบ');
+  }
+
+  async assertContractAccess(contractId: string, actor: { role?: string; branchId?: string | null } | undefined, docId?: string) {
+    if (!actor?.role) throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสาร');
+    const contract = await this.prisma.contract.findUnique({ where: { id: contractId }, select: { branchId: true, deletedAt: true } });
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+    if (!hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== contract.branchId)) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสารของสาขานี้');
+    }
+    if (docId && !await this.prisma.contractDocument.findFirst({ where: { id: docId, contractId, deletedAt: null }, select: { id: true } })) {
+      throw new NotFoundException('ไม่พบเอกสารของสัญญานี้');
+    }
+  }
+
+  async assertGeneratedAccess(id: string, actor: { role?: string; branchId?: string | null } | undefined) {
+    const document = await this.prisma.eDocument.findUnique({ where: { id, deletedAt: null }, select: { contractId: true } });
+    if (!document) throw new NotFoundException('ไม่พบเอกสาร');
+    await this.assertContractAccess(document.contractId, actor);
+  }
 
   async findByContract(contractId: string, page = 1, limit = 50) {
     const safeLimit = Math.min(limit, 100);
@@ -110,32 +146,19 @@ export class ContractDocumentsService {
       throw new BadRequestException(`ประเภทเอกสารไม่ถูกต้อง: ${dto.documentType}`);
     }
 
-    // WR-004: Validate actual file size (base64 encoding is ~33% larger than raw bytes)
-    // The DTO @MaxLength(15_000_000) guards the base64 string length;
-    // this checks the decoded binary size does not exceed 10MB.
-    if (dto.fileUrl.startsWith('data:')) {
-      const rawBase64 = dto.fileUrl.substring(dto.fileUrl.indexOf(',') + 1);
-      const actualSize = Buffer.byteLength(rawBase64, 'base64');
-      if (actualSize > 10 * 1024 * 1024) {
-        throw new BadRequestException('ไฟล์มีขนาดเกิน 10MB');
-      }
-    }
-
-    // Compute file hash from actual file content (base64 bytes) for integrity verification
-    let fileHash: string;
-    if (dto.fileUrl.startsWith('data:')) {
-      const base64Data = dto.fileUrl.substring(dto.fileUrl.indexOf(',') + 1);
-      const buffer = Buffer.from(base64Data, 'base64');
-      fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
-    } else {
-      // For external URLs, hash the URL + filename + size as a fingerprint
-      fileHash = crypto.createHash('sha256')
-        .update(`${dto.fileUrl}|${dto.fileName}|${dto.fileSize || 0}`)
-        .digest('hex');
-    }
+    const data = /^data:(image\/(?:png|jpeg|gif|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(dto.fileUrl);
+    if (!data) throw new BadRequestException('รองรับไฟล์ JPG, PNG, GIF, WEBP หรือ PDF เท่านั้น');
+    const bytes = Buffer.from(data[2], 'base64');
+    if (!matchesDocumentMime(bytes, data[1])) throw new BadRequestException('เนื้อหาไฟล์ไม่ตรงกับประเภทที่ระบุ กรุณาเลือกไฟล์ใหม่');
+    if (!bytes.length || bytes.toString('base64') !== data[2]) throw new BadRequestException('ข้อมูลไฟล์ไม่สมบูรณ์ กรุณาเลือกไฟล์ใหม่');
+    if (bytes.length > 10 * 1024 * 1024) throw new BadRequestException('ไฟล์มีขนาดเกิน 10MB');
+    const fileHash = crypto.createHash('sha256').update(bytes).digest('hex');
 
     // Use transaction to ensure version control + audit log are atomic
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM contracts WHERE id = ${contractId} FOR UPDATE`;
+      const currentContract = await tx.contract.findUnique({ where: { id: contractId } });
+      if (!currentContract || currentContract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
       // Version control: mark previous versions as not latest
       const existingLatest = await tx.contractDocument.findFirst({
         where: { contractId, documentType: dto.documentType as ContractDocumentType, isLatest: true, deletedAt: null },
@@ -159,7 +182,7 @@ export class ContractDocumentsService {
 
       // Determine if this document should be immutable
       const isImmutable = IMMUTABLE_DOC_TYPES.includes(dto.documentType) &&
-        ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'].includes(contract.status);
+        ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'].includes(currentContract.status);
 
       const doc = await tx.contractDocument.create({
         data: {
@@ -168,8 +191,8 @@ export class ContractDocumentsService {
           fileName: dto.fileName,
           originalName: dto.fileName,
           fileUrl: dto.fileUrl,
-          fileSize: dto.fileSize,
-          mimeType: dto.mimeType,
+          fileSize: bytes.length,
+          mimeType: data[1],
           fileHash,
           version,
           isLatest: true,

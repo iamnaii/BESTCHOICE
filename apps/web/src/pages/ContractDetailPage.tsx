@@ -1,3 +1,5 @@
+import { downloadProtectedDocument } from '@/lib/document-download';
+import { queryErrorMessage } from '@/lib/query-error-message';
 import { contractBalances } from '@/lib/contract-balances';
 import type { SignatureRequirements } from '@installment/shared';
 import { useParams, useNavigate, Link } from 'react-router';
@@ -129,22 +131,29 @@ export default function ContractDetailPage() {
     enabled: !!contract && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status),
   });
 
-  // E-Documents (generated PDFs)
-  const { data: eDocuments = [] } = useQuery<{ id: string; documentType: string; fileUrl: string; fileHash: string; createdAt: string }[]>({
-    queryKey: ['contract-edocuments', id],
-    queryFn: async () => { const { data } = await api.get(`/contracts/${id}/documents`); return data; },
+  const downloadPdfMutation = useMutation({
+    mutationFn: (number: string) => downloadProtectedDocument(`/contracts/${id}/download-pdf`, `${number}.pdf`),
+    onSuccess: () => toast.success('ดาวน์โหลด PDF สำเร็จ'),
+    onError: (error: unknown) => toast.error(queryErrorMessage(error)),
   });
 
-  const { data: preview, isLoading: previewLoading } = useQuery<{ html: string }>({
+  // E-Documents (generated PDFs)
+  const [documentPage, setDocumentPage] = useState(1);
+  const eDocumentsQuery = useQuery<{ data: { id: string; documentType: string; fileUrl: string; fileHash: string; createdAt: string }[]; total: number }>({
+    queryKey: ['contract-edocuments', id, documentPage],
+    queryFn: async () => { const { data } = await api.get(`/contracts/${id}/e-documents`, { params: { page: documentPage, limit: 20 } }); return data; },
+  });
+
+  const previewQuery = useQuery<{ html: string }>({
     queryKey: ['contract-preview', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}/preview`); return data; },
     enabled: activeTab === 'preview',
   });
 
-  const { data: docChecklist } = useQuery<{ complete: boolean; checklist: { type: string; label: string; present: boolean }[] }>({
+  const { data: docChecklist } = useQuery<{ complete: boolean; checklist: { type: string; label: string; present: boolean; autoGenerate?: boolean }[] }>({
     queryKey: ['contract-doc-checklist', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}/documents/checklist`); return data; },
-    enabled: !!contract && contract.workflowStatus === 'PENDING_REVIEW',
+    enabled: !!contract,
   });
 
   const invalidateContract = () => {
@@ -304,24 +313,11 @@ const deleteMutation = useMutation({
               ลงนามสัญญา
             </button>}
             <button
-              onClick={async () => {
-                try {
-                  toast.loading('กำลังสร้าง PDF...', { id: 'pdf-gen' });
-                  const res = await api.get(`/contracts/${id}/download-pdf`, { responseType: 'blob' });
-                  const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${contract.contractNumber}.pdf`;
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                  toast.success('ดาวน์โหลด PDF สำเร็จ', { id: 'pdf-gen' });
-                } catch (err) {
-                  toast.error(getErrorMessage(err) || 'ไม่สามารถสร้าง PDF ได้', { id: 'pdf-gen' });
-                }
-              }}
+              onClick={() => downloadPdfMutation.mutate(contract.contractNumber)}
+              disabled={downloadPdfMutation.isPending}
               className="px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"
             >
-              ดาวน์โหลด PDF
+              {downloadPdfMutation.isPending ? 'กำลังสร้าง PDF…' : 'ดาวน์โหลด PDF'}
             </button>
 
             {/* Workflow buttons */}
@@ -400,7 +396,7 @@ const deleteMutation = useMutation({
       {contract.status === 'DRAFT' && (() => {
         const steps = [
           { label: 'สร้างสัญญา', done: true },
-          { label: 'แนบเอกสาร', done: contract.contractDocuments.length >= 3 },
+          { label: 'แนบเอกสาร', done: !!docChecklist?.checklist.length && docChecklist.checklist.filter(row => !row.autoGenerate).every(row => row.present) },
           { label: 'ลงนาม & PDPA', done: !!contract.pdpaConsentId && allSigned },
           { label: 'ตรวจสอบ & อนุมัติ', done: contract.workflowStatus === 'APPROVED' },
           { label: 'เปิดใช้งาน', done: false },
@@ -891,7 +887,14 @@ const deleteMutation = useMutation({
       <ContractDocuments
         signatureRequirements={contract.signatureRequirements}
         signatures={contract.signatures}
-        eDocuments={eDocuments}
+        eDocuments={eDocumentsQuery.data?.data ?? []}
+        isLoading={eDocumentsQuery.isPending}
+        isError={eDocumentsQuery.isError}
+        error={eDocumentsQuery.error}
+        onRetry={() => { void eDocumentsQuery.refetch(); }}
+        page={documentPage}
+        total={eDocumentsQuery.data?.total ?? 0}
+        onPageChange={setDocumentPage}
         pdpaConsentId={contract.pdpaConsentId}
       />
 
@@ -930,15 +933,10 @@ const deleteMutation = useMutation({
       {/* Tab Content */}
       {activeTab === 'preview' && (
         <div className="bg-muted rounded-lg border overflow-hidden h-[80vh]">
-          {previewLoading ? (
-            <div className="flex items-center justify-center py-12 bg-background">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : preview ? (
-            <ContractPreviewFrame html={preview.html} />
-          ) : (
-            <div className="flex items-center justify-center py-12 bg-background text-muted-foreground">ไม่สามารถโหลดตัวอย่างสัญญาได้</div>
-          )}
+          <QueryBoundary isLoading={previewQuery.isPending} isError={previewQuery.isError || !previewQuery.data?.html?.trim()}
+            error={previewQuery.error} onRetry={() => { void previewQuery.refetch(); }} errorTitle="โหลดตัวอย่างสัญญาไม่สำเร็จ">
+            {previewQuery.data?.html && <ContractPreviewFrame html={previewQuery.data.html} />}
+          </QueryBoundary>
         </div>
       )}
 
@@ -947,7 +945,7 @@ const deleteMutation = useMutation({
       )}
 
       {activeTab === 'documents' && (
-        <DocumentUpload contractId={contract.id} customerId={contract.customer.id} />
+        <DocumentUpload key={contract.id} contractId={contract.id} customerId={contract.customer.id} contractStatus={contract.status} />
       )}
 
       {activeTab === 'credit' && (

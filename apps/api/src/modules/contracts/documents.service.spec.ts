@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { DocumentsService } from './documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -13,6 +14,7 @@ jest.mock('puppeteer-core', () => ({
 
 describe('DocumentsService', () => {
   let service: DocumentsService;
+  const audit = jest.spyOn(AuditService.prototype, 'log').mockResolvedValue(undefined);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,6 +95,8 @@ describe('DocumentsService', () => {
   };
 
   const mockPrisma = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    $transaction: jest.fn(async (callback) => callback(mockPrisma)),
     contract: {
       findUnique: jest.fn().mockResolvedValue(mockContract),
     },
@@ -157,6 +161,7 @@ describe('DocumentsService', () => {
     mockPrisma.setting.findMany.mockResolvedValue([]);
     mockPrisma.auditLog.create.mockResolvedValue({ id: 'audit-1' });
     mockStorage.configured = true;
+    mockStorage.upload.mockImplementation(async (key: string) => key);
     mockStorage.getStream.mockResolvedValue('mock-stream');
     mockStorage.getSignedDownloadUrl.mockResolvedValue('https://signed-url.example.com/file.pdf');
     mockNotifications.send.mockResolvedValue({ id: 'notif-1', status: 'SENT' });
@@ -186,6 +191,7 @@ describe('DocumentsService', () => {
       expect(result.renderedHtml).toBeDefined();
       // Puppeteer is mocked to fail, so pdfGenerated should be false (HTML fallback)
       expect(result.pdfGenerated).toBe(false);
+      expect(storage.upload).toHaveBeenCalledWith(expect.stringMatching(/\.html$/), Buffer.from(result.renderedHtml), 'text/html; charset=utf-8');
       expect(prisma.eDocument.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -203,6 +209,25 @@ describe('DocumentsService', () => {
       await expect(
         service.generateDocument('nonexistent', 'user-1', 'CONTRACT'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('does not record a document when storage upload fails', async () => {
+      storage.upload.mockRejectedValue(new Error('storage unavailable'));
+      await expect(service.generateDocument('contract-1', 'user-1', 'CONTRACT')).rejects.toThrow();
+      expect(prisma.eDocument.create).not.toHaveBeenCalled();
+    });
+
+    it('does not create a fictitious path when storage is not configured', async () => {
+      storage.configured = false;
+      await expect(service.generateDocument('contract-1', 'user-1', 'CONTRACT')).rejects.toThrow();
+      expect(prisma.eDocument.create).not.toHaveBeenCalled();
+    });
+
+    it('persists PDPA content before recording its document', async () => {
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract,
+        pdpaConsent: { id: 'consent', grantedAt: new Date(), signatureImage: null } });
+      const result = await service.generatePdpaDocument('contract-1', 'user-1');
+      expect(storage.upload).toHaveBeenCalledWith(expect.stringMatching(/\.html$/), Buffer.from(result.renderedHtml), 'text/html; charset=utf-8');
     });
 
     it('should throw NotFoundException when contract is deleted', async () => {
@@ -240,31 +265,16 @@ describe('DocumentsService', () => {
       // PDPA may or may not succeed depending on pdpaConsent
     });
 
-    it('should send LINE notification after generating documents', async () => {
-      const result = await service.generateSignedDocuments('contract-1', 'user-1');
-
-      expect(notifications.send).toHaveBeenCalledWith(
-        expect.objectContaining({
-          channel: 'LINE',
-          recipient: 'U1234567890',
-          relatedId: 'contract-1',
-        }),
-      );
+    it('does not announce PDF completion after HTML fallback or partial failure', async () => {
+      await service.generateSignedDocuments('contract-1', 'user-1');
+      expect(notifications.send).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.create).not.toHaveBeenCalled();
     });
 
     it('should create audit log after generating documents', async () => {
       await service.generateSignedDocuments('contract-1', 'user-1');
 
-      expect(prisma.auditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            userId: 'user-1',
-            action: 'CONTRACT_SIGNED',
-            entity: 'contract',
-            entityId: 'contract-1',
-          }),
-        }),
-      );
+      expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', action: 'CONTRACT_DOCUMENTS_GENERATED', entity: 'contract', entityId: 'contract-1' }));
     });
 
     it('should not throw when notification fails', async () => {
@@ -277,7 +287,7 @@ describe('DocumentsService', () => {
     });
 
     it('should not throw when audit log fails', async () => {
-      prisma.auditLog.create.mockRejectedValueOnce(new Error('DB error'));
+      audit.mockResolvedValueOnce(undefined);
 
       await expect(
         service.generateSignedDocuments('contract-1', 'user-1'),
@@ -374,7 +384,7 @@ describe('DocumentsService', () => {
       expect(result).toEqual({ data: [mockEDocument], total: 1, page: 1, limit: 50 });
       expect(prisma.eDocument.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { contractId: 'contract-1' },
+          where: { contractId: 'contract-1', deletedAt: null },
           skip: 0,
           take: 50,
         }),

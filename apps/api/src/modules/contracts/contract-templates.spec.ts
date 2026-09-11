@@ -1,3 +1,4 @@
+import { AuditService } from '../audit/audit.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
@@ -193,6 +194,8 @@ describe('Contract Templates — กระบวนการสร้างเ�
 
   // ─── Mock Setup ────────────────────────────────────────
   const mockPrisma = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    $transaction: jest.fn(async (callback) => callback(mockPrisma)),
     contract: { findUnique: jest.fn() },
     contractTemplate: {
       findFirst: jest.fn(),
@@ -230,6 +233,7 @@ describe('Contract Templates — กระบวนการสร้างเ�
   };
 
   beforeEach(async () => {
+    jest.spyOn(AuditService.prototype, 'log').mockResolvedValue(undefined);
     jest.clearAllMocks();
     mockPrisma.contract.findUnique.mockResolvedValue(fullContract);
     mockPrisma.contractTemplate.findFirst.mockResolvedValue(storeDirectTemplate);

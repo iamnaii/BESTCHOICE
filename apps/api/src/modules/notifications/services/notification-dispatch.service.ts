@@ -2,7 +2,7 @@ import { BadRequestException, InternalServerErrorException, Logger } from '@nest
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SendNotificationDto } from '../dto/create-notification.dto';
 import type { LineChannelKey } from '../dto/create-notification.dto';
-import { NotificationChannel } from '@prisma/client';
+import { NotificationChannel, Prisma } from '@prisma/client';
 import { FlexMessagePayload } from '../../line-oa/flex-messages/base-template';
 import { ComplianceService } from '../compliance.service';
 import { NotificationCategory } from '../notification-category.enum';
@@ -39,7 +39,9 @@ export class NotificationDispatchService {
    * blindly `await notifications.send(...)` will continue without
    * disruption. LINE/SMS are unaffected.
    */
-  async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
+  async send(
+    dto: SendNotificationDto,
+  ): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
     // CRITICAL: IN_APP gate MUST remain at top of send() — before LINE/SMS channel
     // validators, before compliance gating, before any DB writes. Refactoring this
     // lower silently regresses the master toggle: cron jobs calling send({channel:'IN_APP'})
@@ -113,10 +115,7 @@ export class NotificationDispatchService {
     // NOT block delivery (manual review pattern).
     let messageToSend = dto.message;
     if (dto.category === NotificationCategory.DUNNING) {
-      messageToSend = this.compliance.ensureIdentificationPrefix(
-        dto.message,
-        dto.category,
-      );
+      messageToSend = this.compliance.ensureIdentificationPrefix(dto.message, dto.category);
       // Derive dunning stage from subject (e.g. "Dunning: LEGAL_ACTION") so
       // the legal-threat pattern is only allowed when staff is sending an
       // actual LEGAL_ACTION-stage message.
@@ -176,7 +175,9 @@ export class NotificationDispatchService {
               sentAt = new Date();
               errorMsg = `LINE failed, sent via SMS fallback`;
             } catch (fallbackErr) {
-              this.logger.error(`SMS fallback also failed: ${fallbackErr instanceof Error ? fallbackErr.message : 'Unknown'}`);
+              this.logger.error(
+                `SMS fallback also failed: ${fallbackErr instanceof Error ? fallbackErr.message : 'Unknown'}`,
+              );
             }
           }
         }
@@ -294,7 +295,11 @@ export class NotificationDispatchService {
       try {
         const flexJson = JSON.parse(tpl.flexTemplate);
         const resolvedFlex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
-        await this.transport.sendLineFlexMessage(recipient, resolvedFlex, tpl.channelKey as LineChannelKey);
+        await this.transport.sendLineFlexMessage(
+          recipient,
+          resolvedFlex,
+          tpl.channelKey as LineChannelKey,
+        );
 
         // Mirror to staff inbox: create a ChatMessage so the staff sees what
         // the customer received. Best-effort — failures here must not break
@@ -411,18 +416,31 @@ export class NotificationDispatchService {
     return { total: contractIds.length, results };
   }
 
+  private updateRetryLog(
+    id: string,
+    data: Prisma.NotificationLogUpdateManyMutationInput,
+    cancelAware = false,
+  ) {
+    if (cancelAware) {
+      return this.prisma.notificationLog.updateMany({
+        where: { id, deletedAt: null, status: { not: 'CANCELLED' } },
+        data,
+      });
+    }
+    return this.prisma.notificationLog.update({ where: { id }, data });
+  }
+
   /**
    * Mark failed notification for retry with exponential backoff.
    * Max 5 retries: 5m, 15m, 45m, 2h, 6h
    */
-  private async markForRetry(logId: string, retryCount: number) {
+  private async markForRetry(logId: string, retryCount: number, cancelAware = false) {
     const maxRetries = 5;
     if (retryCount >= maxRetries) {
-      this.logger.warn(`Notification ${logId} exceeded max retries (${maxRetries}), marking as permanently failed`);
-      await this.prisma.notificationLog.update({
-        where: { id: logId },
-        data: { status: 'FAILED' },
-      });
+      this.logger.warn(
+        `Notification ${logId} exceeded max retries (${maxRetries}), marking as permanently failed`,
+      );
+      await this.updateRetryLog(logId, { status: 'FAILED' }, cancelAware);
       return;
     }
 
@@ -430,14 +448,15 @@ export class NotificationDispatchService {
     const backoffMs = 5 * 60 * 1000 * Math.pow(3, retryCount);
     const nextRetryAt = new Date(Date.now() + backoffMs);
 
-    await this.prisma.notificationLog.update({
-      where: { id: logId },
-      data: {
+    await this.updateRetryLog(
+      logId,
+      {
         status: 'RETRY_PENDING',
         retryCount: retryCount + 1,
         nextRetryAt,
       },
-    });
+      cancelAware,
+    );
   }
 
   /**
@@ -481,6 +500,7 @@ export class NotificationDispatchService {
     let failed = 0;
 
     for (const notification of pendingRetries) {
+      const cancelAware = notification.subject === 'CONTRACT_DOCUMENTS_READY';
       // Re-check compliance for DELAYED items (was blocked due to time window).
       // If still outside hours, re-schedule; if now blocked for a different
       // reason (e.g. consent revoked), mark BLOCKED and stop retrying.
@@ -493,27 +513,44 @@ export class NotificationDispatchService {
         });
         if (!result.allowed) {
           if (result.reason === 'OUTSIDE_HOURS') {
-            await this.prisma.notificationLog.update({
-              where: { id: notification.id },
-              data: {
+            await this.updateRetryLog(
+              notification.id,
+              {
                 nextRetryAt: result.retryAfter ?? new Date(Date.now() + 60 * 60 * 1000),
               },
-            });
+              cancelAware,
+            );
           } else {
-            await this.prisma.notificationLog.update({
-              where: { id: notification.id },
-              data: {
+            await this.updateRetryLog(
+              notification.id,
+              {
                 status: 'BLOCKED',
                 blockReason: result.reason ?? null,
                 errorMsg: `Compliance block on retry: ${result.reason}`,
               },
-            });
+              cancelAware,
+            );
           }
           continue;
         }
       }
 
       try {
+        if (cancelAware) {
+          // Atomic five-minute lease: cancellation or another worker wins by
+          // changing status/updatedAt. Expired leases re-enter this same queue.
+          const claimed = await this.prisma.notificationLog.updateMany({
+            where: {
+              id: notification.id,
+              deletedAt: null,
+              updatedAt: notification.updatedAt,
+              status: { in: ['RETRY_PENDING', 'DELAYED'] },
+              nextRetryAt: { lte: now },
+            },
+            data: { nextRetryAt: new Date(Date.now() + 5 * 60 * 1000) },
+          });
+          if (!claimed.count) continue;
+        }
         if (notification.channel === 'LINE') {
           // Use the original channelKey persisted on the log so retries hit
           // the same OA the message was meant for. Falls back to line-finance
@@ -524,28 +561,30 @@ export class NotificationDispatchService {
           await this.transport.sendSms(notification.recipient, notification.message);
         }
         // Mark as sent
-        await this.prisma.notificationLog.update({
-          where: { id: notification.id },
-          data: { status: 'SENT', sentAt: now, errorMsg: null },
-        });
+        await this.updateRetryLog(
+          notification.id,
+          { status: 'SENT', sentAt: now, errorMsg: null },
+          cancelAware,
+        );
         succeeded++;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-        this.logger.warn(`Retry failed for notification ${notification.id} (attempt ${notification.retryCount}): ${errorMsg}`);
+        this.logger.warn(
+          `Retry failed for notification ${notification.id} (attempt ${notification.retryCount}): ${errorMsg}`,
+        );
 
-        await this.prisma.notificationLog.update({
-          where: { id: notification.id },
-          data: { errorMsg },
-        });
+        await this.updateRetryLog(notification.id, { errorMsg }, cancelAware);
 
         // Schedule next retry or mark as permanently failed
-        await this.markForRetry(notification.id, notification.retryCount);
+        await this.markForRetry(notification.id, notification.retryCount, cancelAware);
         failed++;
       }
     }
 
     if (pendingRetries.length > 0) {
-      this.logger.log(`Retry queue processed: ${succeeded} succeeded, ${failed} failed out of ${pendingRetries.length}`);
+      this.logger.log(
+        `Retry queue processed: ${succeeded} succeeded, ${failed} failed out of ${pendingRetries.length}`,
+      );
     }
 
     return { retried: pendingRetries.length, succeeded, failed };

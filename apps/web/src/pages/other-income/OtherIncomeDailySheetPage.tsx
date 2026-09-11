@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -6,7 +7,7 @@ import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
 import { DateRangeChips } from './components/DateRangeChips';
 import { useUiFlags } from '@/hooks/useUiFlags';
-import { computeDefaultTimeRange } from '@/lib/date';
+import { computeDefaultTimeRange, formatThaiDateLong } from '@/lib/date';
 
 function fmt(v: string | number | undefined | null) {
   if (v === undefined || v === null) return '—';
@@ -96,7 +97,11 @@ export default function OtherIncomeDailySheetPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
+    <div className="p-6 max-w-7xl mx-auto space-y-4 document-landscape">
+      <div className="hidden print:block">
+        <h1>สรุปรายได้อื่น</h1>
+        <p>{formatThaiDateLong(startDate)} – {formatThaiDateLong(endDate)}</p>
+      </div>
       {/* Toolbar — hidden on print via data-print-hide opt-in (W9). */}
       <div
         data-print-hide="true"
@@ -124,7 +129,7 @@ export default function OtherIncomeDailySheetPage() {
             </button>
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={printDocument}
               className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             >
               <Printer size={14} /> พิมพ์

@@ -1,6 +1,4 @@
-import { Logger } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
+import { embeddedDocumentFonts } from '../../../../assets/fonts/document-fonts';
 
 /**
  * VoucherPdfRenderer — Chromium/puppeteer PDF renderer for the Trade-In voucher.
@@ -10,32 +8,6 @@ import * as path from 'path';
  * base64 font CSS.
  */
 export class VoucherPdfRenderer {
-  private readonly logger = new Logger(VoucherPdfRenderer.name);
-
-  // ─── Font cache (base64) — โหลด TTF ครั้งเดียว ใช้ทุกครั้ง ──
-  private cachedFontCss: string | null | undefined;
-  private resolveFontCss(): string | null {
-    if (this.cachedFontCss !== undefined) return this.cachedFontCss;
-    try {
-      // Reuse the licensed font assets already packaged by Nest in src and dist.
-      const fontsDir = path.join(__dirname, '..', '..', '..', 'other-income', 'assets', 'fonts');
-      const css = [400, 500, 600]
-        .map((weight) => {
-          const data = fs
-            .readFileSync(path.join(fontsDir, `ibmplexsansthai-${weight}.ttf`))
-            .toString('base64');
-          return `@font-face{font-family:'IBM Plex Sans Thai';src:url(data:font/truetype;base64,${data}) format('truetype');font-weight:${weight};font-style:normal;}`;
-        })
-        .join('');
-      this.cachedFontCss = css || null;
-      return this.cachedFontCss;
-    } catch (err) {
-      this.logger.warn(`Font preload failed: ${err instanceof Error ? err.message : err}`);
-      this.cachedFontCss = null;
-      return null;
-    }
-  }
-
   // ─── Shared browser (singleton) — ลดเวลา launch Chromium ลง ──
   private static sharedBrowser: Promise<unknown> | null = null;
   private async getBrowser() {
@@ -77,7 +49,7 @@ export class VoucherPdfRenderer {
   async htmlToPdf(html: string): Promise<Buffer> {
     // Inject fonts เข้า <head> ของ HTML ก่อนส่งให้ Chromium
     // (ก่อนหน้านี้ใช้ addStyleTag หลัง setContent — ฟอนต์มาช้า text render ไม่ทัน)
-    const fontCss = this.resolveFontCss();
+    const fontCss = embeddedDocumentFonts();
     const htmlWithFonts = fontCss
       ? html.replace('</head>', `<style>${fontCss}</style></head>`)
       : html;
@@ -97,11 +69,7 @@ export class VoucherPdfRenderer {
       // domcontentloaded + รอ fonts ready — เร็วกว่า networkidle0 มาก
       // เพราะเนื้อหาเป็น self-contained HTML ไม่มี external network call
       await page.setContent(htmlWithFonts, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      try {
-        await page.evaluateHandle('document.fonts.ready');
-      } catch {
-        // fonts API อาจไม่พร้อม — ไม่ block PDF
-      }
+      await page.evaluateHandle('document.fonts.ready');
 
       const pdf = await page.pdf({
         format: 'A4',

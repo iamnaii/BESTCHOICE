@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -96,7 +97,7 @@ export default function WhtAnnualPage() {
   const data = query.data;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 document-landscape">
       <PageHeader
         title="ภ.ง.ด.1ก + ใบ 50 ทวิ — สรุปรายปี"
         icon={<FileBadge className="size-5" />}
@@ -210,16 +211,12 @@ export default function WhtAnnualPage() {
 
       {/* ใบรับรองหักภาษี ณ ที่จ่าย ม.50 ทวิ — print sheet */}
       <Dialog open={certFor !== null} onOpenChange={(o) => !o && setCertFor(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="document-print-dialog max-w-3xl max-h-[90vh] overflow-y-auto">
           {certFor && payer && (
             <>
-              <style>{`@media print {
-                body * { visibility: hidden !important; }
-                #wht-cert-print, #wht-cert-print * { visibility: visible !important; }
-                #wht-cert-print { position: fixed; inset: 0; padding: 24px; background: white; }
-              }`}</style>
+
               {/* print/receipt context — เอกสารทางการพิมพ์ขาวดำ จึงใช้สีตรงได้ตามข้อยกเว้นใน rules */}
-              <div id="wht-cert-print" className="bg-white text-black p-6 text-sm space-y-4">
+              <div id="wht-cert-print" className="document-sheet bg-white text-black p-6 text-sm space-y-4">
                 <div className="text-center space-y-1">
                   <h1 className="text-base font-bold leading-snug">
                     หนังสือรับรองการหักภาษี ณ ที่จ่าย
@@ -306,7 +303,7 @@ export default function WhtAnnualPage() {
                 <Button variant="ghost" onClick={() => setCertFor(null)}>
                   ปิด
                 </Button>
-                <Button className="gap-1.5" onClick={() => window.print()}>
+                <Button className="gap-1.5" onClick={printDocument}>
                   <Printer className="size-4" /> พิมพ์
                 </Button>
               </div>

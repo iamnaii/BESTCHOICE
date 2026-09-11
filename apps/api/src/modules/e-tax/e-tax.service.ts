@@ -1,3 +1,4 @@
+import { DOCUMENT_STYLE } from '@installment/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { jsPDF } from 'jspdf';
@@ -331,23 +332,20 @@ export class ETaxService {
     const { payment, base, vat, total, issuer } = args;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
 
-    // Register Thai font (Noto Sans Thai VF — PR #843 bundle).
-    // If font is missing on disk this returns 'helvetica' as a fallback;
-    // Thai text will still appear as tofu but PDF renders.
     const fontFamily = registerThaiFont(doc);
     const setBold = () => doc.setFont(fontFamily, 'bold');
     const setNormal = () => doc.setFont(fontFamily, 'normal');
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 40;
+    const margin = 19 * 72 / 25.4;
     const contentWidth = pageWidth - margin * 2;
 
     // ─── HEADER ────────────────────────────────────────────────────
     setBold();
-    doc.setFontSize(20);
+    doc.setFontSize(DOCUMENT_STYLE.headingPt);
     doc.text('ใบกำกับภาษี', pageWidth / 2, 56, { align: 'center' });
-    doc.setFontSize(11);
+    doc.setFontSize(DOCUMENT_STYLE.bodyPt);
     doc.text('(ต้นฉบับ / ORIGINAL)', pageWidth / 2, 76, { align: 'center' });
     setNormal();
 
@@ -359,23 +357,13 @@ export class ETaxService {
     const paidDateThai = payment.paidDate
       ? formatThaiDate(payment.paidDate)
       : '-';
-    doc.setFontSize(10);
+    doc.setFontSize(DOCUMENT_STYLE.bodyPt);
     doc.text(`เลขที่ใบกำกับภาษี: ${invoiceNumber}`, margin, 110);
     doc.text(`วันที่ออกใบกำกับ: ${paidDateThai}`, pageWidth - margin, 110, {
       align: 'right',
     });
 
     // ─── ISSUER (left) + BUYER (right) BLOCKS ──────────────────────
-    const blockTop = 140;
-    const colWidth = (contentWidth - 20) / 2;
-
-    setBold();
-    doc.setFontSize(11);
-    doc.text('ผู้ออกใบกำกับภาษี (ผู้ขาย)', margin, blockTop);
-    doc.text('ผู้ซื้อ / ผู้รับบริการ', margin + colWidth + 20, blockTop);
-    setNormal();
-
-    doc.setFontSize(10);
     const issuerLines = buildPartyLines({
       name: issuer?.nameTh ?? 'BESTCHOICE FINANCE',
       taxId: issuer?.taxId ?? '-',
@@ -389,33 +377,24 @@ export class ETaxService {
       phone: null,
     });
 
-    // Both blocks share a fixed leading. Wrap each line to colWidth.
-    let yL = blockTop + 18;
-    let yR = blockTop + 18;
-    const lineHeight = 14;
-    for (const line of issuerLines) {
-      const wrapped = doc.splitTextToSize(line, colWidth) as string[];
-      for (const w of wrapped) {
-        doc.text(w, margin, yL);
-        yL += lineHeight;
-      }
-    }
-    for (const line of buyerLines) {
-      const wrapped = doc.splitTextToSize(line, colWidth) as string[];
-      for (const w of wrapped) {
-        doc.text(w, margin + colWidth + 20, yR);
-        yR += lineHeight;
-      }
-    }
-
-    // ─── REFERENCE LINE (สัญญา / งวด) ─────────────────────────────
-    const refTop = Math.max(yL, yR) + 8;
-    doc.setFontSize(10);
-    doc.text(
-      `อ้างอิงสัญญา: ${payment.contract.contractNumber}    งวดที่: ${payment.installmentNo}`,
-      margin,
-      refTop,
-    );
+    autoTable(doc, {
+      startY: 134,
+      head: [['ผู้ออกใบกำกับภาษี (ผู้ขาย)', 'ผู้ซื้อ / ผู้รับบริการ']],
+      body: Array.from({ length: Math.max(issuerLines.length, buyerLines.length) }, (_, i) => [issuerLines[i] ?? '', buyerLines[i] ?? '']),
+      theme: 'plain',
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 4 },
+      columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
+      margin: { left: margin, right: margin, top: 57, bottom: 80 },
+    });
+    const partyEnd = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+    autoTable(doc, {
+      startY: partyEnd + 8,
+      body: [[`อ้างอิงสัญญา: ${payment.contract.contractNumber}    งวดที่: ${payment.installmentNo}`]],
+      theme: 'plain',
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 4 },
+      margin: { left: margin, right: margin, top: 57, bottom: 80 },
+    });
+    const refTop = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
 
     // ─── ITEM TABLE ───────────────────────────────────────────────
     // ม.86/4: must list ชนิด/ประเภท/จำนวน/ราคาต่อหน่วย/รวม
@@ -424,7 +403,7 @@ export class ETaxService {
       startY: refTop + 14,
       head: [['ลำดับ', 'รายการ', 'จำนวน', 'ราคา/หน่วย (บาท)', 'รวม (บาท)']],
       body: [['1', description, '1', base.toFixed(2), base.toFixed(2)]],
-      styles: { font: fontFamily, fontSize: 10, cellPadding: 6 },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 6 },
       headStyles: { font: fontFamily, fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [0, 0, 0] },
       columnStyles: {
         0: { halign: 'center', cellWidth: 40 },
@@ -432,7 +411,7 @@ export class ETaxService {
         3: { halign: 'right', cellWidth: 100 },
         4: { halign: 'right', cellWidth: 100 },
       },
-      margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin, top: 57, bottom: 80 },
     });
 
     // ─── SUMMARY ─────────────────────────────────────────────────
@@ -445,28 +424,27 @@ export class ETaxService {
       ['ภาษีมูลค่าเพิ่ม 7%', vat.toFixed(2)],
       ['รวมทั้งสิ้น', total.toFixed(2)],
     ];
-    let sumY = finalY + 18;
-    for (let i = 0; i < summaryRows.length; i++) {
-      const [label, value] = summaryRows[i];
-      if (i === summaryRows.length - 1) setBold();
-      doc.setFontSize(10);
-      doc.text(label, pageWidth - margin - 140, sumY, { align: 'right' });
-      doc.text(value, pageWidth - margin, sumY, { align: 'right' });
-      if (i === summaryRows.length - 1) setNormal();
-      sumY += 16;
-    }
+    autoTable(doc, {
+      startY: finalY + 12,
+      body: summaryRows,
+      theme: 'plain',
+      pageBreak: 'avoid',
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 4, halign: 'right' },
+      didParseCell: (data) => { if (data.row.index === 2) data.cell.styles.fontStyle = 'bold'; },
+      margin: { left: margin, right: margin, top: 57, bottom: 80 },
+    });
 
     // ─── FOOTER DISCLAIMER ───────────────────────────────────────
-    doc.setFontSize(8);
+    doc.setFontSize(DOCUMENT_STYLE.footerPt);
     doc.setTextColor(120, 120, 120);
     const disclaimer =
       'เอกสารฉบับนี้เป็นใบกำกับภาษีแบบกระดาษตาม ม.86/4 ป.รัษฎากร — ' +
       'การส่งแบบอิเล็กทรอนิกส์ (XML + PKCS#7) ให้กรมสรรพากร อยู่ระหว่างเตรียมการ.';
     const wrapped = doc.splitTextToSize(disclaimer, contentWidth) as string[];
-    let footY = pageHeight - 30 - wrapped.length * 10;
+    let footY = pageHeight - 28 - wrapped.length * 16;
     for (const w of wrapped) {
       doc.text(w, margin, footY);
-      footY += 10;
+      footY += 16;
     }
     doc.setTextColor(0, 0, 0);
 

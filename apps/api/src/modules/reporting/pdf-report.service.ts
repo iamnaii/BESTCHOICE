@@ -1,3 +1,5 @@
+import { DOCUMENT_STYLE } from '@installment/shared';
+import { registerDocumentFont } from '../../assets/fonts/document-fonts';
 import { Injectable, Logger } from '@nestjs/common';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -59,19 +61,22 @@ export class PdfReportService {
       ]);
 
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const font = registerDocumentFont(doc);
+    const tableStyles = { font, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 6 };
+    const margin = { top: 57, bottom: 57, left: 54, right: 54 };
     const formatDate = (d: Date) => d.toISOString().slice(0, 10);
 
     // ---- Cover page ----
-    doc.setFontSize(22);
-    doc.text('BESTCHOICE Collections Report', 40, 80);
-    doc.setFontSize(12);
-    doc.text(`Period: ${formatDate(range.from)} -> ${formatDate(range.to)}`, 40, 110);
-    doc.text(`Generated: ${new Date().toISOString()}`, 40, 130);
+    doc.setFontSize(DOCUMENT_STYLE.headingPt);
+    doc.text('BESTCHOICE Collections Report', 54, 80);
+    doc.setFontSize(DOCUMENT_STYLE.bodyPt);
+    doc.text(`Period: ${formatDate(range.from)} -> ${formatDate(range.to)}`, 54, 110);
+    doc.text(`Generated: ${new Date().toISOString()}`, 54, 130);
 
     // ---- KPI strip ----
     let y = 170;
-    doc.setFontSize(14);
-    doc.text('Key Indicators', 40, y);
+    doc.setFontSize(DOCUMENT_STYLE.headingPt);
+    doc.text('Key Indicators', 54, y);
     y += 10;
     const totalDue = analytics.weeklyCollectionRate.reduce((s, r) => s + r.dueCount, 0);
     const totalPaid = analytics.weeklyCollectionRate.reduce((s, r) => s + r.paidCount, 0);
@@ -89,7 +94,9 @@ export class PdfReportService {
         ['Dunning sent / failed', `${totalSent} / ${totalFailed}`],
         ['Stuck contracts (>=14d)', String(stuckRows.length)],
       ],
-      styles: { fontSize: 10 },
+      styles: tableStyles,
+        margin,
+        rowPageBreak: 'avoid',
     });
 
     // ---- Aging buckets ----
@@ -97,7 +104,9 @@ export class PdfReportService {
       autoTable(doc, {
         head: [['Aging bucket', 'Contracts', 'Outstanding']],
         body: agingBuckets.map((b) => [b.bucket, String(b.count), String(b.outstanding)]),
-        styles: { fontSize: 10 },
+        styles: tableStyles,
+        margin,
+        rowPageBreak: 'avoid',
       });
     }
 
@@ -109,7 +118,9 @@ export class PdfReportService {
           const row = r as { name?: string; contractsHandled?: number; amountCollected?: string | number };
           return [row.name ?? '-', String(row.contractsHandled ?? 0), String(row.amountCollected ?? 0)];
         }),
-        styles: { fontSize: 10 },
+        styles: tableStyles,
+        margin,
+        rowPageBreak: 'avoid',
       });
     }
 
@@ -126,7 +137,9 @@ export class PdfReportService {
             row.rate != null ? `${Math.round(row.rate * 100)}%` : '-',
           ];
         }),
-        styles: { fontSize: 10 },
+        styles: tableStyles,
+        margin,
+        rowPageBreak: 'avoid',
       });
     }
 
@@ -148,7 +161,9 @@ export class PdfReportService {
             row.status ?? '-',
           ];
         }),
-        styles: { fontSize: 9 },
+        styles: tableStyles,
+        margin,
+        rowPageBreak: 'avoid',
       });
     }
 
@@ -157,7 +172,9 @@ export class PdfReportService {
       autoTable(doc, {
         head: [['Letter type', 'Month', 'Count']],
         body: analytics.letterDispatchByType.map((r) => [r.type, r.month.slice(0, 7), String(r.count)]),
-        styles: { fontSize: 10 },
+        styles: tableStyles,
+        margin,
+        rowPageBreak: 'avoid',
       });
     }
 
@@ -170,7 +187,9 @@ export class PdfReportService {
           String(r.kept),
           String(r.broken),
         ]),
-        styles: { fontSize: 10 },
+        styles: tableStyles,
+        margin,
+        rowPageBreak: 'avoid',
       });
     }
 

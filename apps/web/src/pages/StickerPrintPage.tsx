@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -424,7 +425,7 @@ export default function StickerPrintPage() {
     scanRef.current?.focus();
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = printDocument;
 
   const products = stockQuery.data?.products ?? [];
   const brandPills = ['ทั้งหมด', ...(brandsQuery.data ?? [])];
@@ -731,7 +732,7 @@ export default function StickerPrintPage() {
           width: 50mm;
           height: 30mm;
           padding: 1.6mm 1.8mm 1.2mm;
-          font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
+          font-family: 'TH Sarabun PSK', sans-serif;
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
@@ -744,6 +745,7 @@ export default function StickerPrintPage() {
           align-items: flex-start;
           gap: 1.2mm;
         }
+        .sticker * { font-family: 'TH Sarabun PSK', sans-serif !important; }
         .st-row-top { align-items: center; }
         .st-brandblock {
           display: flex;

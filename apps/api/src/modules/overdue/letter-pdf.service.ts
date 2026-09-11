@@ -1,3 +1,5 @@
+import { DOCUMENT_A4_CSS, documentTypographyCss } from '@installment/shared';
+import { embeddedDocumentFonts } from '../../assets/fonts/document-fonts';
 /* eslint-disable max-len */
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as fs from 'fs';
@@ -287,6 +289,8 @@ export class LetterPdfService {
   .signature .company-foot { font-size: 14pt; }
   /* keep header inside top of every page so demand list never starts orphaned */
   .keep-together { page-break-inside: avoid; break-inside: avoid; }
+${DOCUMENT_A4_CSS}
+${documentTypographyCss()}
 </style>
 </head>
 <body>
@@ -412,22 +416,19 @@ ${coord}
     });
     try {
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
-
-      const fontCss = this.buildEmbeddedFontCss();
-      if (fontCss) {
-        await page.addStyleTag({ content: fontCss });
-      }
+      const fontCss = embeddedDocumentFonts();
+      await page.setContent(html.replace('</head>', `<style>${fontCss}</style></head>`), { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.evaluate('document.fonts.ready');
 
       const footerLeft = escapeHtmlAttr(`เลขที่ ${letterNumber}`);
       const footerFontCss = fontCss ? `<style>${fontCss}</style>` : '';
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '18mm', right: '22mm', bottom: '22mm', left: '22mm' },
+        margin: { top: '20mm', right: '19mm', bottom: '20mm', left: '19mm' },
         displayHeaderFooter: true,
         headerTemplate: '<span></span>',
-        footerTemplate: `${footerFontCss}<div style="width:100%;padding:0 22mm;font-family:'TH Sarabun PSK',sans-serif;font-size:10pt;color:#666;display:flex;justify-content:space-between;align-items:center"><span>${footerLeft}</span><span>หน้า <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
+        footerTemplate: `${footerFontCss}<div style="width:100%;padding:0 22mm;font-family:'TH Sarabun PSK',sans-serif;font-size:12pt;color:#666;display:flex;justify-content:space-between;align-items:center"><span>${footerLeft}</span><span>หน้า <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
       });
       return Buffer.from(pdf);
     } finally {
@@ -447,31 +448,7 @@ ${coord}
     return candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
   }
 
-  private buildEmbeddedFontCss(): string {
-    const fontDirCandidates = [
-      path.join(process.cwd(), 'public', 'fonts'),
-      path.join(process.cwd(), '..', 'web', 'public', 'fonts'),
-      path.join(__dirname, '..', '..', '..', '..', 'public', 'fonts'),
-    ];
-    const fontsDir = fontDirCandidates.find((p) =>
-      fs.existsSync(path.join(p, 'THSarabunPSK-Regular.ttf')),
-    );
-    if (!fontsDir) {
-      this.logger.warn(`TH Sarabun PSK fonts not found — checked: ${fontDirCandidates.join(', ')}`);
-      return '';
-    }
-    const regular = fs.readFileSync(path.join(fontsDir, 'THSarabunPSK-Regular.ttf')).toString('base64');
-    const bold = fs.existsSync(path.join(fontsDir, 'THSarabunPSK-Bold.ttf'))
-      ? fs.readFileSync(path.join(fontsDir, 'THSarabunPSK-Bold.ttf')).toString('base64')
-      : '';
-    return (
-      `@font-face { font-family: 'TH Sarabun PSK'; src: url(data:font/truetype;base64,${regular}) format('truetype'); font-weight: 400; }` +
-      (bold
-        ? `@font-face { font-family: 'TH Sarabun PSK'; src: url(data:font/truetype;base64,${bold}) format('truetype'); font-weight: 700; }`
-        : '') +
-      `html, body, div, p, span, ol, ul, li, strong { font-family: 'TH Sarabun PSK', sans-serif !important; }`
-    );
-  }
+
 }
 
 // ─── Helper types + functions ─────────────────────────────────────────────

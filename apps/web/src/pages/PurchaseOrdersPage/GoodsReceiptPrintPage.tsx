@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 // Purchasing v2 B1 — Printable ใบรับของ (Goods Receipt) per GoodsReceiving record.
 //
 // Route: /purchase-orders/:id/goods-receivings/:receivingId/print
@@ -90,7 +91,7 @@ export default function GoodsReceiptPrintPage() {
   }, [grQuery.data]);
 
   return (
-    <div className="bg-muted/30 min-h-screen">
+    <div className="bg-muted/30 min-h-screen print:bg-white print:min-h-0">
       <div className="no-print bg-card border-b border-border sticky top-0 z-10">
         <div className="max-w-[210mm] mx-auto px-6 py-3 flex items-center justify-between">
           <button
@@ -103,7 +104,7 @@ export default function GoodsReceiptPrintPage() {
           </button>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={printDocument}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Printer size={14} />
@@ -122,7 +123,7 @@ export default function GoodsReceiptPrintPage() {
       </QueryBoundary>
 
       <style>{`
-        @page { size: A4; margin: 14mm 12mm; }
+        @page { size: A4; margin: 20mm 19mm; }
         @media print {
           .no-print { display: none !important; }
           .voucher-sheet { box-shadow: none !important; }

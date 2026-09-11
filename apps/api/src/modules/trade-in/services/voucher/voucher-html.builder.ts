@@ -1,3 +1,4 @@
+import { DOCUMENT_A4_CSS, DOCUMENT_WEB_FONT_FACES, documentTypographyCss } from '@installment/shared';
 import { thaiBahtText } from '../../../../utils/thai-baht-text.util';
 import { LEGACY_TRADE_IN_DECLARATION } from '@installment/shared';
 import * as fs from 'fs';
@@ -149,8 +150,8 @@ export class VoucherHtmlBuilder {
       margin: 15mm 17mm;
       @bottom-center {
         content: "${data.isReprint ? 'สำเนา / COPY' : ''}";
-        font-family: 'IBM Plex Sans Thai', sans-serif;
-        font-size: 8pt;
+        font-family: 'TH Sarabun PSK', sans-serif;
+        font-size: 12pt;
         color: #53635c;
       }
     }
@@ -246,7 +247,26 @@ export class VoucherHtmlBuilder {
     .signature-space { height: 14mm; margin-bottom: 1.5mm; }
     .signature-space img { max-height: 12mm; }
     ` : ''}
-  </style>
+  ${DOCUMENT_WEB_FONT_FACES}
+${DOCUMENT_A4_CSS}
+${documentTypographyCss('body', undefined, 1.15)}
+
+    .header { padding-bottom: 8px; }
+    .parties { padding: 8px 0; margin-bottom: 8px; }
+    .summary, .pay-section, .notes { padding-bottom: 8px; margin-bottom: 8px; }
+    .pay-grid { margin-top: 8px; padding: 8px 0; }
+    .footer { margin-top: 10px; }
+    .approval { margin-top: 10px; }
+    .masthead { padding-bottom: 3mm; }
+    .hero, .section { margin-top: 2mm; }
+    .subtitle { margin-top: 1mm; }
+    .signature-space { height: 14mm; margin-bottom: 1.5mm; }
+    .declaration { margin-top: 2mm; padding-top: 2mm; }
+    h2 { margin-bottom: 1mm; }
+footer { margin-top: 1mm; padding-top: 1mm; }
+.signatures { margin-top: 2mm; }
+.signer-date, .signer-role { margin-top: 0; }
+</style>
 </head>
 <body>
   <header class="masthead">

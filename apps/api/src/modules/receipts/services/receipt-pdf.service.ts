@@ -3,7 +3,8 @@ import { formatDateShort } from '../../../utils/thai-date.util';
 import { Prisma } from '@prisma/client';
 import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
-import { EMBEDDED_FONT_FACES } from '../../../assets/fonts/embedded-fonts';
+import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
+import { DOCUMENT_A4_CSS, documentTypographyCss } from '@installment/shared';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 import { ReceiptQueryService } from './receipt-query.service';
@@ -348,12 +349,6 @@ export class ReceiptPdfService {
       color: { dark: '#18181b', light: '#ffffff' },
     });
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    const page = await browser.newPage();
-
     // C5 fix (round 2): self-host Thai fonts via base64-embedded @font-face.
     // Cloud Run's `node:20-slim` and the puppeteer-bundled Chromium do NOT
     // ship Thai fonts — without these embedded faces every Thai glyph
@@ -366,7 +361,7 @@ export class ReceiptPdfService {
 <head>
   <meta charset="UTF-8">
   <style>
-    ${EMBEDDED_FONT_FACES}
+    ${embeddedDocumentFonts()}
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -458,7 +453,24 @@ export class ReceiptPdfService {
     .doc-note { grid-column:1 / -1; margin-top:10px; padding-top:8px; border-top:1px solid var(--zinc-200); font-size:8.5pt; color:var(--zinc-400); text-align:center; }
 
     .void-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-15deg); font-size:80pt; font-weight:900; color:rgba(220,38,38,0.18); letter-spacing:0.1em; pointer-events:none; }
-  </style>
+    ${DOCUMENT_A4_CSS}
+    ${documentTypographyCss('body', undefined, 1.15)}
+    .header > *, .parties > *, .pay-grid > *, .footer > * { min-width: 0; overflow-wrap: anywhere; }
+    .totals-wrap { grid-template-columns: minmax(0, 1fr) minmax(0, 88mm); }
+    .footer { grid-template-columns: 28mm minmax(0, 1fr) minmax(0, 1fr); }
+
+    .header { padding-bottom: 8px; }
+    .parties { padding: 8px 0; margin-bottom: 8px; }
+    .summary, .pay-section, .notes { padding-bottom: 8px; margin-bottom: 8px; }
+    .pay-grid { margin-top: 8px; padding: 8px 0; }
+    .footer { margin-top: 10px; }
+    .approval { margin-top: 10px; }
+    .qr-caption, .sig-date { font-size: 12pt !important; }
+    .doc-note { margin-top: 4px; padding-top: 4px; }
+    .party-heading, .pay-col .heading { letter-spacing: normal; }
+    .totals .row { padding: 2px; }
+    .pay-grid { margin-top: 4px; padding: 4px 0; }
+</style>
 </head>
 <body>
   ${receipt.isVoided ? `<div class="void-overlay">VOID / ยกเลิก</div>` : ''}
@@ -638,9 +650,17 @@ export class ReceiptPdfService {
 </body>
 </html>`;
 
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    try {
+    const page = await browser.newPage();
+
     // C5 fix (round 2): fonts are embedded as base64 @font-face data URIs.
     // No external network needed — domcontentloaded is sufficient.
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 10_000 });
+    await page.evaluate('document.fonts.ready');
 
     const pdf = await page.pdf({
       format: 'A4',
@@ -648,7 +668,9 @@ export class ReceiptPdfService {
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
     });
 
-    await browser.close();
     return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
   }
 }

@@ -18,3 +18,5 @@ export * from './default-bc-installment';
 export * from './stock-sort';
 export type * from './contract-quote';
 export * from './signature-requirements';
+
+export * from './document-style';

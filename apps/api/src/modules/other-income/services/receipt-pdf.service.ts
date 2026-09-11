@@ -1,89 +1,12 @@
+import { DOCUMENT_A4_CSS, documentTypographyCss } from '@installment/shared';
+import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { thaiBahtText } from '../../../utils/thai-baht-text.util';
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Self-hosted fonts (Fix C15 — eliminate fonts.googleapis.com hot path)
-//
-// Background: PR #839 added an 8s timeout on `networkidle0` for Google Fonts.
-// Every PDF render still paid up to 8s on each request, and a brief gstatic
-// DNS hiccup degraded each receipt by 5-8s silently. We now embed the four
-// IBM Plex Sans Thai weights + Sriracha as base64 data: URIs at boot time
-// (cached in module scope), so puppeteer can wait on `domcontentloaded` only.
-//
-// TTF files were fetched once from fonts.gstatic.com and committed to
-// `src/modules/other-income/assets/fonts/` — OFL license (SIL Open Font
-// License) permits redistribution. Total payload ~726 KB cached in memory.
-// ──────────────────────────────────────────────────────────────────────────────
-
-const FONT_DIR_CANDIDATES = [
-  // Dev: src/modules/other-income/assets/fonts/*.ttf
-  path.join(__dirname, '..', 'assets', 'fonts'),
-  // Prod (nest build): dist/src/modules/other-income/assets/fonts/*.ttf
-  path.join(__dirname, '..', '..', '..', '..', 'src', 'modules', 'other-income', 'assets', 'fonts'),
-  // Fallback when working directory matters
-  path.join(process.cwd(), 'src', 'modules', 'other-income', 'assets', 'fonts'),
-  path.join(
-    process.cwd(),
-    'apps',
-    'api',
-    'src',
-    'modules',
-    'other-income',
-    'assets',
-    'fonts',
-  ),
-];
-
-interface FontDef {
-  family: string;
-  weight: number;
-  file: string;
-}
-
-const FONT_FILES: FontDef[] = [
-  { family: 'IBM Plex Sans Thai', weight: 400, file: 'ibmplexsansthai-400.ttf' },
-  { family: 'IBM Plex Sans Thai', weight: 500, file: 'ibmplexsansthai-500.ttf' },
-  { family: 'IBM Plex Sans Thai', weight: 600, file: 'ibmplexsansthai-600.ttf' },
-  { family: 'IBM Plex Sans Thai', weight: 700, file: 'ibmplexsansthai-700.ttf' },
-  { family: 'Sriracha', weight: 400, file: 'sriracha-400.ttf' },
-];
-
-let cachedFontCss: string | null = null;
-
-/** Build the @font-face block once at first call, cache for the process lifetime. */
-function getEmbeddedFontCss(logger: Logger): string {
-  if (cachedFontCss !== null) return cachedFontCss;
-
-  const fontsDir =
-    FONT_DIR_CANDIDATES.find((dir) =>
-      fs.existsSync(path.join(dir, FONT_FILES[0].file)),
-    ) ?? FONT_DIR_CANDIDATES[0];
-
-  const blocks: string[] = [];
-  for (const f of FONT_FILES) {
-    const full = path.join(fontsDir, f.file);
-    try {
-      const b64 = fs.readFileSync(full).toString('base64');
-      blocks.push(
-        `@font-face{font-family:'${f.family}';font-style:normal;font-weight:${f.weight};font-display:block;` +
-          `src:url(data:font/ttf;base64,${b64}) format('truetype');}`,
-      );
-    } catch (err) {
-      logger.warn(
-        `Could not embed font ${f.file} (looked in ${fontsDir}): ${err instanceof Error ? err.message : err}`,
-      );
-    }
-  }
-
-  cachedFontCss = blocks.join('\n');
-  return cachedFontCss;
-}
 
 type DocWithItems = Prisma.OtherIncomeGetPayload<{
   include: {
@@ -204,6 +127,7 @@ export class OtherIncomeReceiptPdfService {
       // HTML), so there are zero outbound network requests. Wait only for the
       // HTML document to parse — no need for `networkidle0` + 8s fallback.
       await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 10_000 });
+      await page.evaluate('document.fonts.ready');
       const pdf = await page.pdf({
         format: 'A4',
         margin: { top: '0', right: '0', bottom: '0', left: '0' },
@@ -280,7 +204,7 @@ export class OtherIncomeReceiptPdfService {
       })
       .join('');
 
-    const embeddedFontCss = getEmbeddedFontCss(this.logger);
+    const embeddedFontCss = embeddedDocumentFonts();
 
     return `<!DOCTYPE html>
 <html lang="th">
@@ -375,7 +299,43 @@ export class OtherIncomeReceiptPdfService {
     .sig-date { font-size:9pt; color:var(--zinc-500); margin-top:1px; font-variant-numeric:tabular-nums; }
 
     .void-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-15deg); font-size:80pt; font-weight:900; color:rgba(220,38,38,0.18); letter-spacing:0.1em; pointer-events:none; }
-  </style>
+    ${DOCUMENT_A4_CSS}
+    ${documentTypographyCss('body', undefined, 1.15)}
+    .party-label { white-space: normal; }
+    .parties { grid-template-columns: minmax(0, 1fr) minmax(0, 240px); }
+    .parties > *, .summary > *, .pay-row > * { min-width: 0; overflow-wrap: anywhere; }
+    .breakdown { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; column-gap: 10px; }
+    .pay-row { grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) auto; }
+
+    table.items { table-layout: fixed; }
+    table.items th, table.items td { padding: 5px 6px; }
+    table.items :is(th,td):first-child { width: 8mm; }
+    table.items :is(th,td):nth-last-child(1) { width: 25mm; }
+    table.items :is(th,td):nth-last-child(2) { width: 20mm; }
+    table.items :is(th,td):nth-last-child(3) { width: 23mm; }
+    table.items :is(th,td):nth-last-child(4) { width: 14mm; }
+    table.items td.right { white-space: nowrap; overflow-wrap: normal; }
+    .parties { padding: 8px 0; margin-bottom: 8px; }
+    .party-row { margin-bottom: 2px; grid-template-columns: 105px minmax(0, 1fr); }
+    .summary, .pay-section, .notes { padding-bottom: 8px; margin-bottom: 8px; }
+    .approval { margin-top: 10px; }
+    table.items :is(th,td):nth-last-child(2) { width: 10mm; }
+    table.items :is(th,td):nth-last-child(3) { width: 20mm; }
+    table.items :is(th,td):nth-last-child(4) { width: 23mm; }
+    table.items :is(th,td):nth-last-child(5) { width: 14mm; }
+    .qr-caption-top { font-size: 12pt !important; }
+    .qr-pane img { width: 88px; height: 88px; }
+    .contact-info { margin-top: 6px; }
+    .breakdown { grid-template-columns: minmax(0, 1fr) auto; }
+    .breakdown .text { grid-column: 1 / -1; }
+    .pay-row .head { grid-template-columns: 100px minmax(0, 1fr); }
+    table.items th:nth-child(3) { white-space: nowrap; }
+    table.items :is(th,td):nth-last-child(2) { width: 12mm; }
+    .party-divider { margin: 6px 0; }
+    .summary-aux { margin-top: 6px; }
+    .grand-card { padding: 6px 10px; }
+
+</style>
 </head>
 <body>
   ${isReversed ? `<div class="void-overlay">VOID / กลับรายการ</div>` : ''}
@@ -456,14 +416,13 @@ export class OtherIncomeReceiptPdfService {
           <div style="font-weight:700; margin-bottom:4px;">สรุป</div>
           <div class="breakdown">
             ${vatAmount > 0 ? `
-              <span class="label">มูลค่าที่คำนวณภาษี 7%</span><span></span><span class="num">${fmtMoney(incomeGross)} บาท</span>
-              <span class="label">ภาษีมูลค่าเพิ่ม 7%</span><span></span><span class="num">${fmtMoney(vatAmount)} บาท</span>
+              <span class="label">มูลค่าที่คำนวณภาษี 7%</span><span class="num">${fmtMoney(incomeGross)} บาท</span>
+              <span class="label">ภาษีมูลค่าเพิ่ม 7%</span><span class="num">${fmtMoney(vatAmount)} บาท</span>
             ` : `
-              <span class="label">มูลค่ารวม</span><span></span><span class="num">${fmtMoney(incomeGross)} บาท</span>
+              <span class="label">มูลค่ารวม</span><span class="num">${fmtMoney(incomeGross)} บาท</span>
             `}
             <span class="label bold">จำนวนเงินทั้งสิ้น</span>
             <span class="text">${thaiAmount}</span>
-            <span></span>
           </div>
         </div>
       </div>
@@ -501,7 +460,7 @@ export class OtherIncomeReceiptPdfService {
   </div>
 
   <!-- Notes -->
-  <div class="notes-section">
+  <div class="notes-section" style="display:${safe.customerNote ? 'block' : 'none'}">
     <div class="sec-title">
       <span class="icon-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
       <span>หมายเหตุ</span>

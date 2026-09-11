@@ -1,3 +1,4 @@
+import { DOCUMENT_STYLE } from '@installment/shared';
 // Document Template Editor types
 
 export type BlockType =
@@ -71,6 +72,6 @@ export const DEFAULT_SETTINGS: TemplateSettings = {
   showSignatureExceptLastPage: false,
   footerText: 'BESTCHOICEPHONE Co., Ltd.',
   footerContent: '',
-  margins: { top: 25, bottom: 20, left: 30, right: 25 },
-  fontSize: { body: 16, heading: 20, footer: 12 },
+  margins: { ...DOCUMENT_STYLE.marginsMm },
+  fontSize: { body: DOCUMENT_STYLE.bodyPt, heading: DOCUMENT_STYLE.headingPt, footer: DOCUMENT_STYLE.footerPt },
 };

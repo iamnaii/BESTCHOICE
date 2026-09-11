@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router';
@@ -83,7 +84,7 @@ export default function ExpenseDailySummaryPage() {
     enabled: !!branchId && !!date,
   });
 
-  const handlePrint = () => window.print();
+  const handlePrint = printDocument;
 
   const handleExportExcel = async () => {
     if (!summary) return;

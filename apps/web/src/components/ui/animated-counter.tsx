@@ -62,7 +62,11 @@ export default function AnimatedCounter({
 
   return (
     <span className={className}>
-      {prefix}{formatted}{suffix}
+      <span className="print:hidden">{prefix}{formatted}{suffix}</span>
+      <span className="hidden print:inline">{prefix}{value.toLocaleString(locale, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })}{suffix}</span>
     </span>
   );
 }

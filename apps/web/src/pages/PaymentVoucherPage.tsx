@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 // Fix Report v1.0 P1-2 — Payment Voucher A4 print
 //
 // Routes:
@@ -166,7 +167,7 @@ export default function PaymentVoucherPage() {
   }, [docQuery.data]);
 
   return (
-    <div className="bg-muted/30 min-h-screen">
+    <div className="bg-muted/30 min-h-screen print:bg-white print:min-h-0">
       {/* Screen-only header (hidden on print via .no-print) */}
       <div className="no-print bg-card border-b border-border sticky top-0 z-10">
         <div className="max-w-[210mm] mx-auto px-6 py-3 flex items-center justify-between">
@@ -180,7 +181,7 @@ export default function PaymentVoucherPage() {
           </button>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={printDocument}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Printer size={14} />
@@ -200,7 +201,7 @@ export default function PaymentVoucherPage() {
 
       {/* Print CSS lives co-located with the page */}
       <style>{`
-        @page { size: A4; margin: 14mm 12mm; }
+        @page { size: A4; margin: 20mm 19mm; }
         @media print {
           .no-print { display: none !important; }
           .voucher-sheet { box-shadow: none !important; }
@@ -496,7 +497,7 @@ function PayrollSlipSheet({
 
   return (
     <article
-      className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      className="voucher-sheet standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
       style={{
         minHeight: '270mm',
         pageBreakBefore: slipNo > 1 ? 'always' : 'auto',
@@ -703,7 +704,7 @@ function Sheet({
     : `/verify/${doc.number}`;
   return (
     <article
-      className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      className="voucher-sheet standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
       style={{
         minHeight: '270mm',
         pageBreakBefore: isCustomerCopy ? 'always' : 'auto',
@@ -872,21 +873,19 @@ function Sheet({
         </section>
       )}
 
-      {/* Signature grid */}
-      <section className="grid grid-cols-4 gap-6 mt-12">
+      {/* Keep signatures and verification together on the same printed page. */}
+      <section className="document-approval grid gap-2 mt-6" style={{ gridTemplateColumns: voucherShowQrCode ? 'repeat(4, minmax(0, 1fr)) 88px' : 'repeat(4, minmax(0, 1fr))' }}>
         <SignatureSlot label="ผู้จัดทำ" />
         <SignatureSlot label="ผู้อนุมัติ" />
         <SignatureSlot label="ผู้รับเงิน" />
         <SignatureSlot label="ตราประทับ" border={false} />
+        {voucherShowQrCode && (
+          <div className="flex flex-col items-end gap-1">
+            <QRCodeSVG value={verifyUrl} size={80} level="M" />
+            <span className="document-footer">สแกนเพื่อตรวจสอบ</span>
+          </div>
+        )}
       </section>
-
-      {/* D1.2.2.7 — verification QR (OWNER toggleable via voucher_show_qr_code) */}
-      {voucherShowQrCode && (
-        <section className="mt-6 flex flex-col items-end gap-1">
-          <QRCodeSVG value={verifyUrl} size={80} level="M" />
-          <span className="text-[9px] text-muted-foreground">สแกนเพื่อตรวจสอบ</span>
-        </section>
-      )}
 
       <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
         <span>ออกเอกสารจากระบบ BESTCHOICE — ไม่ต้องเซ็นต์ถือเป็นโมฆะ</span>
@@ -1036,7 +1035,7 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
 
 function MetaRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div>
+    <div className="voucher-meta-row">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={mono ? 'font-mono text-sm' : 'text-sm'}>{value}</p>
     </div>
@@ -1093,7 +1092,7 @@ function PartialCell({
   return (
     <div
       className={
-        'rounded-md border border-border p-3 text-right ' +
+        'voucher-partial-cell rounded-md border border-border p-3 text-right ' +
         (highlight ? 'bg-primary/5' : 'bg-muted/20')
       }
     >
@@ -1119,7 +1118,7 @@ function SignatureSlot({ label, border = true }: { label: string; border?: boole
         }
       ></div>
       <p className="text-xs text-muted-foreground">({label})</p>
-      <p className="text-[10px] text-muted-foreground mt-1">วันที่ ___ / ___ / ______</p>
+      <p className="text-[10px] text-muted-foreground mt-1">วันที่ __ / __ / ____</p>
     </div>
   );
 }

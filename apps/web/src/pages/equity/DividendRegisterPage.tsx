@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -60,7 +61,7 @@ export default function DividendRegisterPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 document-landscape">
       <PageHeader
         title="ทะเบียนปันผล + ภ.ง.ด.2"
         subtitle="สรุปเงินปันผลจ่ายจริงต่อผู้ถือหุ้น — ภ.ง.ด.2 ยื่นภายในวันที่ 7 ของเดือนถัดจากเดือนที่จ่าย (ม.52)"
@@ -188,16 +189,12 @@ export default function DividendRegisterPage() {
 
       {/* หนังสือรับรองการหักภาษี ณ ที่จ่าย (ม.50 ทวิ) — pattern จาก WhtAnnualPage.tsx บรรทัด 212-321 */}
       <Dialog open={certFor !== null} onOpenChange={(o) => !o && setCertFor(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="document-print-dialog max-w-3xl max-h-[90vh] overflow-y-auto">
           {certFor && payer && (
             <>
-              <style>{`@media print {
-                body * { visibility: hidden !important; }
-                #div-cert-print, #div-cert-print * { visibility: visible !important; }
-                #div-cert-print { position: fixed; inset: 0; padding: 24px; background: white; }
-              }`}</style>
+
               {/* print/receipt context — เอกสารทางการพิมพ์ขาวดำ ใช้สีตรงได้ตามข้อยกเว้นใน rules */}
-              <div id="div-cert-print" className="bg-white text-black p-6 text-sm space-y-4">
+              <div id="div-cert-print" className="document-sheet bg-white text-black p-6 text-sm space-y-4">
                 <h2 className="text-center font-bold text-base leading-snug">
                   หนังสือรับรองการหักภาษี ณ ที่จ่าย (ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร)
                 </h2>
@@ -246,7 +243,7 @@ export default function DividendRegisterPage() {
                 <Button variant="ghost" onClick={() => setCertFor(null)}>
                   ปิด
                 </Button>
-                <Button onClick={() => window.print()}>
+                <Button onClick={printDocument}>
                   <Printer className="h-4 w-4 mr-1" /> พิมพ์
                 </Button>
               </div>
